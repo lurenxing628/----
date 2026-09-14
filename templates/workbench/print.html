@@ -28,7 +28,7 @@ main { max-width:1400px; }
   <div class="print-toolbar no-print">
     <button type="button" onclick="window.print()">打印</button>
     <a href="{{ links.switch_view_url }}">{{ links.switch_view_label }}</a>
-    <a href="{{ links.back_url }}">返回周计划</a>
+    <a href="{{ links.back_url }}">返回选择排产方案</a>
     <span>{{ group_by_label }}视图 · {{ range_label }}</span>
   </div>
   {% if sheets %}{% for sheet in sheets %}
@@ -50,11 +50,11 @@ main { max-width:1400px; }
   </table></section>
   {% endfor %}{% else %}
     <p class="notice" role="status">{% if not has_history %}
-      该版本没有排产历史，无法生成派工单。请回到周计划页选择有排程记录的版本。
+      这一版没有排产历史，无法生成派工单。请点「返回选择排产方案」，挑一版已经排过的计划。
     {% else %}
-      {{ range_label }} 没有排程记录，没有可打印的派工单。请回到周计划页换一个周或版本。
+      {{ range_label }} 没有排程记录，没有可打印的派工单。请点「返回选择排产方案」，换一周或换一版。
     {% endif %}</p>
-    <a class="no-print" href="{{ links.back_url }}">返回周计划</a>
+    <a class="no-print" href="{{ links.back_url }}">返回选择排产方案</a>
   {% endif %}
 </main></body>
 </html>

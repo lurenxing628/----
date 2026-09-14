@@ -35,7 +35,7 @@ class ProcessHoursFileOperations:
             writable = [row for row in rows if row["row"] not in skipped]
             if any(row["after"]["source"] == "internal" and row["after"]["unit_hours"] == 0
                    for row in writable) and not confirm_zero_unit_hours:
-                raise WorkbenchCommandRejected("zero_unit_hours_review", "单件工时为0，必须明确复核后才能导入。", 422)
+                raise WorkbenchCommandRejected("zero_unit_hours_review", "有单件工时是 0 的工序。请勾选确认已复核后再导入。", 422)
             groups = self._group_updates(writable)
             results, affected = [], set()
             for row in rows:
@@ -56,14 +56,14 @@ class ProcessHoursFileOperations:
     @staticmethod
     def _check_rows(rows, discarded, zero_ack):
         if type(discarded) is not list or discarded:
-            raise WorkbenchCommandRejected("group_discard_mismatch", "工时文件不解除外协组，discard_group_refs 必须为空。", 422)
+            raise WorkbenchCommandRejected("group_discard_mismatch", "工时导入不会解除外协组，请不要提交要解除的外协组。", 422)
         if type(zero_ack) is not bool:
             raise WorkbenchCommandRejected("invalid_input", "必须明确提供是否已复核零工时。", 422)
         if any(row["errors"] or row["result"] not in ("update", "unchanged", "skipped") or row["input"] is None for row in rows):
-            raise WorkbenchCommandRejected("constraint_conflict", "预览包含拒绝行，本批未写入任何数据。", 422)
+            raise WorkbenchCommandRejected("constraint_conflict", "预检里有被拒绝的行，这批一条都没写入。请改好文件后重新预检。", 422)
         refs = [row["expected"]["operation_ref"] for row in rows]
         if len(refs) != len(set(refs)):
-            raise WorkbenchCommandRejected("duplicate_entry", "本批包含重复工序，未写入任何数据。", 422)
+            raise WorkbenchCommandRejected("duplicate_entry", "这批里有重复工序，一条都没写入。请合并重复行后重新导入。", 422)
 
     @staticmethod
     def _skipped_rows(rows, current, locks):
@@ -73,14 +73,14 @@ class ProcessHoursFileOperations:
             old = row["expected"]["operation"]
             live = current[ref]
             if old["id"] != live["id"] or old["part_no"] != live["part_no"] or old["seq"] != live["seq"]:
-                raise WorkbenchCommandRejected("stale_write", "原工序归属或序号已变化，未重新绑定。")
+                raise WorkbenchCommandRejected("stale_write", "工序的归属或序号在预检之后变了，系统不会自动重新对应。请重新预检。")
             values = row["input"]["hours"]
             if ref in locks and "unit_hours" in values and values["unit_hours"] != live["unit_hours"]:
                 skipped[row["row"]] = quota_skip(ref, locks[ref])
             elif row["result"] == "skipped":
                 raise WorkbenchCommandRejected("stale_write", "原跳过原因已变化，请重新预检。")
             elif old["revision"] != live["revision"]:
-                raise WorkbenchCommandRejected("stale_write", "预览工序已经变化，本批未写入。")
+                raise WorkbenchCommandRejected("stale_write", "预检时的工序已经变了，这批没有写入。请重新预检。")
         return skipped
 
     @staticmethod
@@ -95,7 +95,7 @@ class ProcessHoursFileOperations:
             total = process_number(row["input"]["hours"]["group_total_days"], positive=True)
             ref = group["ref"]
             if ref in groups and groups[ref] != (group, total):
-                raise WorkbenchCommandRejected("group_value_conflict", "同组合并周期不一致，本批未写入。", 422)
+                raise WorkbenchCommandRejected("group_value_conflict", "同一个合并组填了不一样的周期，这批没有写入。请统一后重新导入。", 422)
             groups[ref] = (group, total)
         return {ref: item for ref, item in groups.items() if item[0]["total_days"] != item[1]}
 
@@ -107,7 +107,7 @@ class ProcessHoursFileOperations:
                 continue
             column = "ext_days" if field == "external_days" else field
             if column not in ("setup_hours", "unit_hours", "ext_days"):
-                raise WorkbenchCommandRejected("invalid_input", "工时文件含非工时写入字段。", 422)
+                raise WorkbenchCommandRejected("invalid_input", "工时文件里有不属于工时的列。请下载模板对照后重新导入。", 422)
             if old[column] != value:
                 updates[column] = value
         if updates:
@@ -120,4 +120,4 @@ class ProcessHoursFileOperations:
                "AND entity_key=CAST(" + table + "." + key_column + " AS TEXT))")
         cursor = self.conn.execute(sql, list(values.values()) + [key, expected["ref"], expected["revision"]])
         if cursor.rowcount != 1:
-            raise WorkbenchCommandRejected("stale_write", "预览工序或外协组已经变化，本批写入已回滚。")
+            raise WorkbenchCommandRejected("stale_write", "预检时的工序或外协组已经变了，这批写入已经全部还原。请重新预检。")

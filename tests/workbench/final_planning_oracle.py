@@ -47,9 +47,9 @@ def candidate_download(browser, check):
         rows = list(csv.DictReader(stream))
     tasks = evidence["tasks"]
     check(len(rows) == len(tasks), "Candidate CSV did not preserve complete row count")
-    for column, field in (("行引用", "row_ref"), ("工序引用", "operation_ref"), ("安排开始", "start"), ("安排结束", "end")):
+    for column, field in (("行编号", "row_ref"), ("工序编号", "operation_ref"), ("安排开始", "start"), ("安排结束", "end")):
         check([row[column] for row in rows] == ["'" + task[field] for task in tasks], "Candidate CSV drift: " + column)
-    check(all(row["候选引用"] == "'" + evidence["candidate_ref"] and row["运行引用"] == "'" + evidence["run_ref"] for row in rows),
+    check(all(row["候选方案编号"] == "'" + evidence["candidate_ref"] and row["排产编号"] == "'" + evidence["run_ref"] for row in rows),
           "Candidate CSV changed source identity")
 
 

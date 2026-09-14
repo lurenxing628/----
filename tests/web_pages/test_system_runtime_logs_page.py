@@ -66,7 +66,7 @@ def test_non_whitelist_file_redirects_with_warning_no_read(app_client, monkeypat
     assert response.status_code == 400
     payload = response.get_json()
     assert payload["error"]["code"] == "invalid_input" and payload["committed"] is False
-    assert "不支持该日志来源" in payload["error"]["message"]
+    assert "不支持这个日志来源" in payload["error"]["message"]
     assert calls == []
 
 
@@ -107,7 +107,7 @@ def test_read_failure_shown_not_500(app_client, monkeypatch):
     data = _read(app_client)
     source = _source(data, "aps_error.log")
     assert data["rows"] == [] and source["state"] == "error" and source["count"] is None
-    assert "日志文件无法读取" in source["message"]
+    assert "日志文件读不到" in source["message"]
 
 
 def test_system_nav_has_runtime_logs_entry_and_active(app_client):

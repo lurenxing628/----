@@ -34,7 +34,7 @@ def validate_trial_adoption(conn, scenario_ref):
             checked = _scenario_validation(conn, saved, admission, rows, live)
             issues = [row for row in checked["issues"] if row["code"] != "scenario_adoption_not_connected"]
             if issues:
-                raise TrialAdoptionBlocked("scenario_constraint_unproven", "保存场景未通过当前完整约束复核。", issues)
+                raise TrialAdoptionBlocked("scenario_constraint_unproven", "试调方案没有通过当前的完整核对，正式计划没有改变。", issues)
             settings = _settings(rows)
             projections = run_execution_projections(conn, settings)
             _require_official_baseline(live["baseline"], projections)
@@ -42,7 +42,7 @@ def validate_trial_adoption(conn, scenario_ref):
             _complete_scope(rows, prepared)
             payload = validate_candidate(prepared, schedule_rows(rows), [])
             if payload.scheduled_op_ids != {op.id for op in prepared.operations}:
-                raise TrialAdoptionBlocked("scenario_scope_incomplete", "场景未完整覆盖当前所选批次工序。")
+                raise TrialAdoptionBlocked("scenario_scope_incomplete", "试调方案没有覆盖所选批次的全部工序，正式计划没有改变。")
             svc = ScheduleService(conn)
             _require_official_scope(svc, prepared.prev_version, payload.scheduled_op_ids)
             validate_adoption_payload(conn, prepared, payload)
@@ -55,23 +55,26 @@ def validate_trial_adoption(conn, scenario_ref):
     except TrialAdoptionBlocked:
         raise
     except CandidateAdoptionBlocked as exc:
-        raise TrialAdoptionBlocked(exc.code, str(exc).replace("候选", "场景")) from exc
+        raise TrialAdoptionBlocked(
+            exc.code, "试调方案没有通过采用前的核对，正式计划没有改变。请回到试调列表重新预检。") from exc
     except WorkbenchCommandRejected:
         raise
     except CandidateRunInputError as exc:
-        raise TrialAdoptionBlocked("scenario_constraint_unproven", "场景未通过正式采用输入复核：" + exc.reason) from exc
+        raise TrialAdoptionBlocked(
+            "scenario_constraint_unproven",
+            "试调方案的排产输入没有通过核对，正式计划没有改变。请回到试调列表重新预检。") from exc
     except (AppError, ValueError, TypeError, KeyError, OverflowError) as exc:
-        raise TrialAdoptionBlocked("scenario_constraint_unproven", "场景事实、身份或约束证据不完整，未执行正式采用。") from exc
+        raise TrialAdoptionBlocked("scenario_constraint_unproven", "试调方案的现场数据、编号或约束资料不完整，没有执行正式采用。") from exc
 
 
 def _current_baseline(conn, admission, live):
     if fingerprint(admission["baseline"]) != fingerprint(live["baseline"]):
-        raise TrialAdoptionBlocked("snapshot_stale", "场景原正式基线已不是当前基线，未切换到最新计划。")
+        raise TrialAdoptionBlocked("snapshot_stale", "建草稿时的正式计划已经不是当前正式计划了，这里不会自动切到最新计划。")
     if conn.execute("SELECT 1 FROM Schedule s WHERE NOT EXISTS "
                     "(SELECT 1 FROM ScheduleHistory h WHERE h.version=s.version) LIMIT 1").fetchone():
         raise TrialAdoptionBlocked("official_history_inconsistent", "正式安排缺少所属历史版本，不能采用。")
     if fingerprint(admission["execution"]) != fingerprint(live["execution"]):
-        raise TrialAdoptionBlocked("snapshot_stale", "场景创建后的实际生产事实已变化，请依据原场景重新核对。")
+        raise TrialAdoptionBlocked("snapshot_stale", "建草稿之后现场数据变了，请重新核对这份试调方案。")
 
 
 def _scenario_validation(conn, saved, admission, rows, live):
@@ -96,12 +99,12 @@ def _original_work(rows, live):
         if (fingerprint(original["operation"]) != fingerprint(ops.get(original["operation"]["id"]))
                 or fingerprint(original["batch"]) != fingerprint(batches.get(original["batch"]["batch_id"]))
                 or refs.get(("batch", original["batch"]["batch_id"])) != original["batch_ref"]):
-            raise TrialAdoptionBlocked("scenario_work_changed", "场景原工序、数量、工时或批次身份与当前事实不一致。")
+            raise TrialAdoptionBlocked("scenario_work_changed", "试调方案里的工序、数量、工时或批次和当前资料不一致。")
         for kind in ("machine", "operator"):
             current = row["current"]
             key, ref = current[kind + "_id"], current[kind + "_ref"]
             if (key is None) != (ref is None) or (key is not None and refs.get((kind, key)) != ref):
-                raise TrialAdoptionBlocked("scenario_resource_identity_changed", "场景原资源已移除或替换，未按同号资源替代。")
+                raise TrialAdoptionBlocked("scenario_resource_identity_changed", "试调方案里的设备或人员已删除或被替换，这里不会用同号的顶替。")
 
 
 def _settings(rows):
@@ -114,9 +117,9 @@ def _settings(rows):
 def _complete_scope(rows, prepared):
     saved = {row["operation_ref"]: row for row in rows}
     if set(saved) != {item["operation_ref"] for item in prepared.dispositions}:
-        raise TrialAdoptionBlocked("scenario_scope_incomplete", "场景未完整覆盖批次全部当前工序，不能只采用显示范围。")
+        raise TrialAdoptionBlocked("scenario_scope_incomplete", "试调方案没有覆盖批次现在的全部工序，不能只采用看到的这部分。")
     for item in prepared.dispositions:
         original = saved[item["operation_ref"]]["original"]
         if (original["operation"]["id"] != item["op_id"]
                 or original["predecessor_operation_refs"] != item["predecessor_refs"]):
-            raise TrialAdoptionBlocked("scenario_dependency_changed", "场景原工序身份或前后序与当前完整工艺不一致。")
+            raise TrialAdoptionBlocked("scenario_dependency_changed", "试调方案里的工序或前后序和当前工艺不一致。")

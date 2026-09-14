@@ -35,13 +35,13 @@ _CURSOR_SCOPE = "workbench-plan-catalog-cursor-v1"
 
 def _arguments(allowed):
     if set(request.args) - set(allowed) or any(len(request.args.getlist(key)) != 1 for key in request.args):
-        raise WorkbenchCommandRejected("invalid_input", "计划读取含未知或重复参数，未忽略筛选条件。", 400)
+        raise WorkbenchCommandRejected("invalid_input", "计划的筛选条件有重复或不支持的项，当前筛选没有变化。请刷新页面后重新选择。", 400)
 
 
 def _response(data, snapshot):
     response = query_success(data, snapshot)
     if len(response.get_data()) > MAX_PLAN_RESPONSE_BYTES:
-        raise WorkbenchCommandRejected("query_too_large", "计划查询响应超出本批读取大小上限，未返回截断结果。", 413)
+        raise WorkbenchCommandRejected("query_too_large", "这次要读的计划数据太多，系统没有给出不完整结果。请缩小日期范围后点「刷新」。", 413)
     response.headers["Cache-Control"] = "no-store"
     return response
 
@@ -52,7 +52,7 @@ def _cursor(scope):
     if token is None:
         return None, snapshot
     try:
-        payload = json.loads(resolve_public_token(_CURSOR_SCOPE, token, message="计划目录游标已失效。", field="cursor"))
+        payload = json.loads(resolve_public_token(_CURSOR_SCOPE, token, message="翻页位置已失效，请回到第 1 页重新查询。", field="cursor"))
         if not isinstance(payload, dict) or set(payload) != {"scope", "seek", "snapshot_ref"}:
             raise ValueError("Invalid stored cursor")
         if payload["scope"] != scope.scope() or not isinstance(payload["snapshot_ref"], str):
@@ -67,7 +67,7 @@ def _cursor(scope):
             raise ValueError("Invalid scenario seek")
         return seek, payload["snapshot_ref"]
     except (ValidationError, ValueError, TypeError) as exc:
-        raise WorkbenchCommandRejected("snapshot_stale", "计划目录游标或范围已失效，请明确刷新，未自动跳回第一页。") from exc
+        raise WorkbenchCommandRejected("snapshot_stale", "翻页位置已失效，请回到第 1 页重新查询。") from exc
 
 
 @api_endpoint
@@ -75,7 +75,7 @@ def plan_list():
     _arguments(("collection", "size", "cursor", "snapshot_ref"))
     size = request.args.get("size", "20")
     if re.fullmatch(r"[1-9][0-9]?", size) is None:
-        raise WorkbenchCommandRejected("invalid_input", "目录每页数量必须为 1 至 50 的整数。", 400)
+        raise WorkbenchCommandRejected("invalid_input", "每页数量要填 1 至 50 的整数，列表没有变化。请回到第 1 页重新查询。", 400)
     scope = PlanCatalogScope(request.args.get("collection", "history"), int(size))
     seek, token = _cursor(scope)
     reader = WorkbenchPlanQueryService(g.db, current_app.logger)
@@ -105,7 +105,7 @@ def plan_export(plan_ref):
     _arguments(("format", "range_start", "range_end", "snapshot_ref"))
     fmt, token = request.args.get("format"), request.args.get("snapshot_ref")
     if fmt not in ("csv", "xlsx") or not token:
-        raise WorkbenchCommandRejected("invalid_input", "导出必须提供 CSV/XLSX 格式和当前工作区的读取快照。", 400)
+        raise WorkbenchCommandRejected("invalid_input", "没有选好导出格式，或数据已更新，没有开始下载。请点「刷新」后重新点「导出计划」。", 400)
     scope = PlanReadScope(plan_ref, request.args.get("range_start"), request.args.get("range_end"))
     reader = WorkbenchPlanQueryService(g.db, current_app.logger)
     with reader.read_snapshot():

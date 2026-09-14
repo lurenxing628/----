@@ -106,4 +106,4 @@ def _generation(run, capture):
             "input": values, "data_gaps": gaps,
             "baseline": {"captured_task_count": len(baseline) if type(baseline) is list else None,
                          "comparison_available": False, "reason": {"code": "candidate_baseline_comparison_not_connected",
-                         "message": "已保留生成时正式基线，本读取模块尚未接入逐任务基线比较。"}}}
+                         "message": "排产时的正式计划已经存下来了，这个列表还不支持逐道工序对比。请打开候选方案详情查看对比。"}}}

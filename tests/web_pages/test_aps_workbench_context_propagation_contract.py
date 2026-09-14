@@ -167,7 +167,7 @@ def test_workbench_non_adopted_review_entry_is_disabled_and_plain_chinese() -> N
     query = dict(version="12", plan_role="baseline_best", date_from="2026-05-06", date_to="2026-05-06")
     for path in ("/scheduler/analysis", "/"):
         html, parser = _retired(client, path, query)
-        assert "所选对比方案未保存" in html and "未沿用旧页的采用方案回退" in html
+        assert "要对比的方案没有保存过" in html and "没有改成已采用的正式计划" in html
         assert not [link for link in parser.links if "/execution-review" in link["href"]]
         _no_current_summary(html)
     # The old disabled button's business guard remains in the actual export endpoint.
@@ -184,7 +184,7 @@ def test_workbench_scenario_preview_home_entry_is_read_only_and_does_not_use_cur
                  resource_type="machine", resource_id="M-RPT")
     broken_before = _business_state(client)
     broken, _ = _retired(client, "/scheduler/analysis", query)
-    assert "永久身份缺失或绑定已失效" in broken
+    assert "还没有正式编号，或编号已经失效" in broken
     assert _business_state(client) == broken_before
     # The old helper inserts the scenario before its base history. Recreate only
     # this disposable fixture after that history exists; never repair refs on GET.
@@ -201,7 +201,7 @@ def test_workbench_scenario_preview_home_entry_is_read_only_and_does_not_use_cur
     before = _business_state(client)
     for path in ("/scheduler/analysis", "/"):
         html, parser = _retired(client, path, query)
-        assert "已保存模拟方案" in html
+        assert "已保存的试调方案" in html
         _no_current_summary(html)
         assert not [link for link in parser.links if "/execution-review" in link["href"]]
     _, parser = _retired(client, "/reports/utilization", query)

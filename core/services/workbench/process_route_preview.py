@@ -70,18 +70,18 @@ def _text_rows(raw, diagnostics):
                 "missing_operation_name" if is_tail else "missing_sequence", message,
                 sequence=route_sequence(tail.group(1)) if is_tail and tail is not None else None))
         if _segment_ambiguities(segment):
-            diagnostics.append(route_diagnostic("ambiguous_route_format", "路线含符号、小数、指数或空白拼接歧义，请按逐行序号和名称核对。"))
+            diagnostics.append(route_diagnostic("ambiguous_route_format", "工艺路线里有符号、小数、指数或空格，拼不出明确的工序。请改用逐行填工序号和工种名。"))
         for seq, name in tokens:
             sequence = route_sequence(seq)
             if sequence is None:
-                diagnostics.append(route_diagnostic("invalid_sequence", "工序号必须是SQLite范围内的正整数。"))
+                diagnostics.append(route_diagnostic("invalid_sequence", "工序号必须是正整数，而且不能超出可用范围。"))
             else:
                 sequences.append(sequence)
                 operations.append((sequence, name.strip()))
         if tail:
             sequence = route_sequence(tail.group(1))
             if sequence is None:
-                diagnostics.append(route_diagnostic("invalid_sequence", "尾部工序号必须是SQLite范围内的正整数。"))
+                diagnostics.append(route_diagnostic("invalid_sequence", "最后一道工序号必须是正整数，而且不能超出可用范围。"))
             else:
                 sequences.append(sequence)
     append_duplicate_diagnostics(sequences, diagnostics)
@@ -101,7 +101,7 @@ def _persisted_refs(repo, kind, keys, cached=None):
     identities = repo.active_map(kind, keys) if cached is None else cached
     if any(key not in identities or type(identities[key].ref) is not str or
            re.fullmatch(r"[0-9a-f]{48}", identities[key].ref) is None for key in keys):
-        raise WorkbenchCommandRejected("storage_failure", "工艺参考资料的永久引用缺失或无效，未自动修补数据。", 500)
+        raise WorkbenchCommandRejected("storage_failure", "工艺参考资料找不到编号，或者编号无效，系统不会自动补建。请刷新重试；仍不行请联系维护人员。", 500)
     return {key: identities[key].ref for key in keys}
 
 
@@ -164,7 +164,7 @@ class ProcessRoutePreviewService:
         if request.mode == "rows":
             _structured_name_warnings(rows, diagnostics)
         if not rows:
-            diagnostics.append(route_diagnostic("empty_route", "路线没有可预览的工序。"))
+            diagnostics.append(route_diagnostic("empty_route", "这条工艺路线里没有可检查的工序。请先填写工序。"))
         operations = self._interpret_operations(rows, diagnostics)
         _append_operation_diagnostics(operations, diagnostics)
         recognized = sum(op["op_type_ref"] is not None for op in operations)
@@ -180,8 +180,8 @@ class ProcessRoutePreviewService:
         candidates = self._candidates(types, capabilities) if self._batch is None else self._batch["candidates"]
         for issue in context.supplier_global_issues:
             ot = types.get(issue.op_type_id)
-            label = "工种“" + ot.name + "”" if ot else "供应商能力资料"
-            diagnostics.append(route_diagnostic("supplier_capability_invalid", label + "存在无效能力关系，请核对主数据。", severity="warning"))
+            label = "工种“" + ot.name + "”" if ot else "供应商承接能力资料"
+            diagnostics.append(route_diagnostic("supplier_capability_invalid", label + "的承接能力关系无效。请到资料总览核对。", severity="warning"))
         return [self._operation(seq, name, context, candidates, suppliers, op_refs, supplier_refs)
                 for seq, name in sorted(rows, key=lambda row: row[0])]
 
@@ -208,17 +208,17 @@ class ProcessRoutePreviewService:
         ot = context.op_types.get(name)
         result = {"sequence": seq, "op_type_name": name, "op_type_ref": None, "source_suggestion": None,
                   "supplier_ref": None, "supplier_label": None, "external_days": None,
-                  "basis": "未匹配到真实工种，归属阶段仍需建档及确认。", "issues": []}
+                  "basis": "没有匹配到已登记的工种，归属这一步还要先建档再确认。", "issues": []}
         if ot is None:
-            result["issues"].append({"code": "unknown_op_type", "message": "未知工种，路线可确认；归属阶段仍待建档，不能据此排产。"})
+            result["issues"].append({"code": "unknown_op_type", "message": "这个工种还没登记，工艺路线可以先确认；归属要先建档，暂时不能据此排产。"})
             return result
         result["op_type_ref"] = op_refs[ot.op_type_id]
         if ot.category not in ("internal", "external"):
-            result["basis"] = "真实工种类别无效，未猜测自制或外协。"
-            result["issues"].append({"code": "invalid_op_type_category", "message": "工种类别不是internal或external，归属待核对。"})
+            result["basis"] = "已登记工种的类别无效，系统不猜是自制还是外协。"
+            result["issues"].append({"code": "invalid_op_type_category", "message": "工种类别既不是自制也不是外协，归属还要核对。"})
             return result
         result["source_suggestion"] = ot.category
-        result["basis"] = "依据真实工种类别，仅为归属建议，尚非人工确认。"
+        result["basis"] = "这是按已登记的工种类别给出的归属建议，还不算人工确认。"
         if ot.category == "external":
             ProcessRoutePreviewService._supplier_suggestion(result, context, candidates, suppliers, supplier_refs)
         return result
@@ -228,16 +228,16 @@ class ProcessRoutePreviewService:
         name = result["op_type_name"]
         selected = context.suppliers.get(name)
         if selected is None:
-            result["issues"].append({"code": "supplier_missing", "message": "没有可用供应商能力，供应商和外协周期待确认。"})
+            result["issues"].append({"code": "supplier_missing", "message": "没有能承接这个工种的供应商，供应商和外协周期还要确认。"})
             return
         key = selected[0]
         raw = candidates[name][key]
         if key not in suppliers or type(suppliers[key]["name"]) is not str:
-            raise WorkbenchCommandRejected("storage_failure", "建议供应商的真实名称缺失或无效，请核对主数据。", 500)
+            raise WorkbenchCommandRejected("storage_failure", "建议的供应商名称缺失或无效。请到资料总览核对。", 500)
         result.update(supplier_ref=supplier_refs[key], supplier_label=suppliers[key]["name"],
                       external_days=_positive_days(raw["default_days"]))
-        result["basis"] += "供应商从当前能承接此工种的记录中选取；有多家时沿用现有规则，取编号排序最后一家，仅供核对。"
+        result["basis"] += "供应商从当前能承接这个工种的记录里选；有多家时按编号排序取最后一家，仅供核对。"
         if len(candidates[name]) > 1:
-            result["issues"].append({"code": "multiple_supplier_candidates", "message": "有多个可用供应商能力，当前建议沿用正式解析器选择规则，仍需人工确认。"})
+            result["issues"].append({"code": "multiple_supplier_candidates", "message": "有多家供应商能承接，这里按系统既有规则给了一家建议，仍要人工确认。"})
         if result["external_days"] is None:
-            result["issues"].append({"code": "external_days_missing_or_invalid", "message": "真实外协周期缺失或不是有限正数，未补成1天。"})
+            result["issues"].append({"code": "external_days_missing_or_invalid", "message": "外协周期没填，或者不是正数，系统不会补成 1 天。请到基础资料补填周期。"})

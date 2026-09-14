@@ -9,16 +9,16 @@ from core.models.workbench_resource_table_query import MAX_FACET_KEYS
 from .resource_table_cells import TableCell, number_cell, text_cell
 from .resource_table_index import ResourceTableIndex
 
-_STAGE_LABELS = dict(zip(PROCESS_STAGES, ("待导入路线", "待分拣", "待填工时", "已就绪")))
+_STAGE_LABELS = dict(zip(PROCESS_STAGES, ("待导入路线", "待定归属", "待填工时", "已就绪")))
 
 
 def process_table_cells(entity):
     workflow = entity["workflow"]
     stage = workflow["stage"]
     if stage not in PROCESS_STAGES or workflow["ready"] is not (stage == "ready"):
-        raise WorkbenchCommandRejected("storage_failure", "工艺阶段投影不一致，未猜测确认状态。", 500)
+        raise WorkbenchCommandRejected("storage_failure", "工艺阶段记录前后不一致，系统不猜确认状态。请刷新重试；仍不行请联系维护人员。", 500)
     if stage == "ready" and workflow["origin"] != "managed":
-        raise WorkbenchCommandRejected("storage_failure", "存量工艺没有显式确认，不能视为已就绪。", 500)
+        raise WorkbenchCommandRejected("storage_failure", "这条历史遗留工艺没有单独确认过，不能算已就绪。请到基础资料逐道工序确认。", 500)
     cell = text_cell(_STAGE_LABELS[stage])
     return {"business_code": text_cell(entity["business_code"]), "label": text_cell(entity["label"]),
             "operation_count": number_cell(entity["relationships"]["operation_count"]),
@@ -38,7 +38,7 @@ class ProcessTable:
         for entity in entities:
             ref = entity["ref"]
             if ref in self.rows:
-                raise WorkbenchCommandRejected("storage_failure", "工艺快照包含重复零件引用。", 500)
+                raise WorkbenchCommandRejected("storage_failure", "读到的工艺数据里有重复零件。请刷新重试；仍不行请联系维护人员。", 500)
             self.rows[ref] = entity
             self.cells[ref] = process_table_cells(entity)
             self.search_text[ref] = tuple(str(value).casefold() for value in (
@@ -87,7 +87,7 @@ class ProcessTable:
         total = len(options)
         pages = max(1, (total + size - 1) // size)
         if number > pages:
-            raise WorkbenchCommandRejected("snapshot_stale", "筛选值页码已超出当前范围，请刷新。")
+            raise WorkbenchCommandRejected("snapshot_stale", "翻页位置已失效，请回到第 1 页重新查询。")
         values = [{key: row[key] for key in ("key", "label", "count")}
                   for row in options[(number - 1) * size:number * size]]
         # Keep ResourceTableFilterModel's envelope; process_facet_scope binds the
@@ -99,6 +99,6 @@ class ProcessTable:
         validate_process_facet_request(column, search, 1, size)
         options, _ = self._facet_options(query, column, search)
         if len(options) > MAX_FACET_KEYS:
-            raise WorkbenchCommandRejected("capacity_exceeded", "搜索命中的不同值超过50000个，请缩小范围后重试；未截断结果。", 413)
+            raise WorkbenchCommandRejected("capacity_exceeded", "搜索命中的不同值超过 50000 个，没有返回结果，也不会只给一部分。请缩小范围后重试。", 413)
         keys = [row["key"] for row in options]
         return {"column": column, "basis": "toolbar_scope", "keys": keys, "total": len(keys)}

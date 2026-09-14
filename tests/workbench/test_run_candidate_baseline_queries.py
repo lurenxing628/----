@@ -43,7 +43,7 @@ def test_no_original_plan_is_explicit_and_not_a_zero_baseline(candidate_case):
     data, _ = baseline(case, refs[0])
     assert data["baseline"] == {"baseline_ref": None, "kind": "admission_official", "available": False,
                                 "captured_task_count": 0, "comparison_available": False,
-                                "reason": {"code": "no_admission_baseline", "message": "受理时没有正式初始计划，不能计算相对改善。"}}
+                                "reason": {"code": "no_admission_baseline", "message": "排产时没有正式的初始计划，算不出相对改善。"}}
     item = data["comparisons"][0]
     assert item["status"] == "newly_scheduled" and item["baseline_segments"] == []
     assert all(value is None for value in item["delta"].values())

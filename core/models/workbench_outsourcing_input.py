@@ -16,7 +16,7 @@ def text(value, field, limit=2000):
 
 def factory_time(value: object) -> datetime:
     if type(value) is not str or re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}", value) is None:
-        raise WorkbenchCommandRejected("invalid_input", "登记时间必须是有效工厂本地时间 YYYY-MM-DDTHH:mm:ss。", 422)
+        raise WorkbenchCommandRejected("invalid_input", "登记时间格式不对，请按 2026-09-13 08:30:00 这样填写。", 422)
     try:
         return datetime.fromisoformat(value)
     except ValueError as exc:
@@ -26,10 +26,10 @@ def factory_time(value: object) -> datetime:
 def target_input(target):
     fields = {"kind", "batch_ref", "supplier_ref", "operation_refs"}
     if type(target) is not dict or set(target) != fields or target["kind"] not in ("single", "merged"):
-        reject("须明确选择单工序或合并发出，并提供批次、供应商及全部成员引用。", status=400)
+        reject("请选择单工序发出或合并发出，并选好批次、供应商和全部工序。", status=400)
     members = target["operation_refs"]
     if type(members) is not list or not 1 <= len(members) <= MAX_MEMBERS:
-        reject("登记成员必须是1至200个明确工序引用。", status=400)
+        reject("一次最少选 1 道工序、最多选 200 道工序。", status=400)
     members = [reference(ref) for ref in members]
     if len(set(members)) != len(members) or (target["kind"] == "single") != (len(members) == 1):
         reject("单工序只能选一项；合并发出至少两项，成员不可重复。")
@@ -39,13 +39,13 @@ def target_input(target):
 
 def normalize_input(payload) -> Dict[str, object]:
     if type(payload) is not dict:
-        reject("外协登记输入必须是对象。", status=400)
+        reject("提交内容格式不对，这次登记没有保存。请刷新页面后重试。", status=400)
     creating = "outsourcing_ref" not in payload
     allowed = set(FACT_FIELDS) | {"declared_operator", "reason", "target" if creating else "outsourcing_ref"}
     required = {"declared_operator", "reason", "target"} | set(FACT_FIELDS) if creating else {"declared_operator", "reason", "outsourcing_ref"}
     if set(payload) - allowed or not required <= set(payload):
-        reject("外协登记字段缺失或含未知字段；未忽略输入。", status=400)
-    result: Dict[str, object] = {"declared_operator": text(payload["declared_operator"], "声明人", 200),
+        reject("外协登记缺少必填项或含有多余项，这次登记没有保存。请刷新页面后重试。", status=400)
+    result: Dict[str, object] = {"declared_operator": text(payload["declared_operator"], "经办人", 200),
                                  "reason": text(payload["reason"], "本次核实或更正原因")}
     if creating:
         result["target"] = target_input(payload["target"])
@@ -74,7 +74,7 @@ def _validate_timeline(sent: datetime, planned: datetime, returned: Optional[dat
     if planned < sent or returned is not None and returned < sent:
         reject("计划回厂和实际回厂不能早于发出时间。")
     if sent > now or returned is not None and returned > now:
-        reject("实际发出和实际回厂不能晚于服务端当前时点。")
+        reject("实际发出和实际回厂不能晚于当前时间。")
 
 
 def next_values(before, payload, now):
@@ -83,7 +83,7 @@ def next_values(before, payload, now):
     values = dict(before or {})
     values.update({key: payload[key] for key in FACT_FIELDS if key in payload})
     if set(values) != set(FACT_FIELDS):
-        reject("首次登记须明确填写发出、计划回厂、实际回厂及确认状态。")
+        reject("新增登记要填写发出时间、计划回厂、实际回厂和确认状态。")
     # Revalidate preserved facts too; a sparse correction must not bless invalid history.
     values = _fact_patch(values)
     sent, planned = factory_time(values["sent"]), factory_time(values["planned"])

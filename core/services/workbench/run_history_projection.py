@@ -135,7 +135,7 @@ def _manifest(row, candidates):
 
 def _gap(field, value):
     return {"field": field, "code": "not_recorded" if value is None else "invalid_stored_value",
-            "message": "受理时未记录有效值，未从当前设置或资源补齐。"}
+            "message": "排产时没有记下这一项的有效值，这里留空；系统不会拿当前设置或资料去补。"}
 
 
 def _scope_value_valid(key, value):

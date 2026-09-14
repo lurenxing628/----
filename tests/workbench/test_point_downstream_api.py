@@ -94,8 +94,8 @@ def test_real_point_http_half_open_range_and_exports(trial_case, low, high, coun
     assert len(rows) == count
     if count:
         assert rows[0]['计划事件类型'] == 'point'
-        assert rows[0]['计划时长秒'] == '0' and rows[0]['计划占用资源'] == 'False'
-        assert rows[0]['任务引用'] == identity['task']['task_ref']
+        assert rows[0]['计划时长（秒）'] == '0' and rows[0]['计划占用资源'] == 'False'
+        assert rows[0]['任务编号'] == identity['task']['task_ref']
         assert rows[0]['计划开工'] == rows[0]['计划完工']
     assert snapshot(trial_case.conn) == before
 
@@ -125,8 +125,8 @@ def test_real_point_report_http_retains_intervals_unknowns_and_readback(trial_ca
     assert response.status_code == 200
     rows = list(csv.DictReader(StringIO(response.data.decode('utf-8-sig'))))
     assert len(rows) == 3 and all(row['计划事件类型'] == 'point' for row in rows)
-    assert next(row for row in rows if row['报工引用'] == unknown['report_ref'])['本次数量'] == ''
-    assert next(row for row in rows if row['报工引用'] == known['report_ref'])['有效加工小时'] == '1.25'
+    assert next(row for row in rows if row['报工编号'] == unknown['report_ref'])['本次数量'] == ''
+    assert next(row for row in rows if row['报工编号'] == known['report_ref'])['有效加工工时（小时）'] == '1.25'
 
 
 def test_point_report_read_does_not_open_public_adoption(trial_case):

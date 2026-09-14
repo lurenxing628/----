@@ -18,7 +18,7 @@ def _check_workspace_tasks(tasks, facts, plan_ref):
     for task in tasks:
         actual = facts["comparison_tasks"].get(task["operation_ref"])
         if actual is None or actual["task_ref"] != task["task_ref"] or task["plan_ref"] != plan_ref:
-            reject("传入计划任务与永久身份不一致。", "constraint_conflict", 409)
+            reject("提交的计划任务和系统里记的不是同一条。请刷新后重试。", "constraint_conflict", 409)
 
 
 def _actual_resources(repo, projections):
@@ -60,7 +60,7 @@ class ExecutionLedgerService(ExecutionLedgerReader):
         result = [attach_context(row, self.context_factory if contexts else None,
                                  self.fact_snapshot(facts, row.operation_ref)) for row in projections]
         if len(canonical_json([row.to_dict() for row in result]).encode("utf-8")) > MAX_REPORT_BYTES:
-            reject("执行投影超过本次响应大小上限，未截断历史。", "query_too_large", 413)
+            reject("这次要读的报工记录太多，超过一次能返回的上限，系统没有截断历史记录。请缩小范围后重试。", "query_too_large", 413)
         return result
 
     def get_task(self, task_ref, *, comparison_task_ref=None):
@@ -68,12 +68,12 @@ class ExecutionLedgerService(ExecutionLedgerReader):
             task = self.repo.task(task_ref)
             comparison = self.repo.task(comparison_task_ref) if comparison_task_ref else task
             if any(not row["row_active"] or not row["plan_active"] for row in (task, comparison)):
-                reject("原任务安排已移除，旧引用不会改指同号新安排。", "entity_not_found", 404)
+                reject("这条任务安排已经删除了，系统不会换成编号相同的新安排。请刷新后重新选择。", "entity_not_found", 404)
             if comparison["operation_ref"] != task["operation_ref"]:
-                reject("比较安排不属于同一执行工序实例。", "constraint_conflict", 409)
+                reject("用来比对的安排不是同一道工序的。请刷新后重新选择。", "constraint_conflict", 409)
             projection = self.project_operations([task["operation_ref"]], comparison_plan_ref=comparison["plan_ref"])[0]
             if projection.comparison_task_ref != comparison["task_ref"]:
-                reject("原比较任务绑定已变化，不能改指其他安排。", "constraint_conflict", 409)
+                reject("用来比对的任务已经变了，系统不会自动换成别的安排。请刷新后重试。", "constraint_conflict", 409)
             return projection
 
     def get_report(self, report_ref):

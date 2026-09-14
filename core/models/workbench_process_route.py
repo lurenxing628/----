@@ -60,12 +60,12 @@ class ProcessRoutePreviewInput:
 
 def _object(value, keys):
     if type(value) is not dict or set(value) != keys:
-        raise WorkbenchCommandRejected("invalid_input", "预检对象字段缺失或包含未知字段。", 400)
+        raise WorkbenchCommandRejected("invalid_input", "预检内容缺少必填项或含有多余项，请刷新页面后重试。", 400)
 
 
 def _row_input(rows):
     if type(rows) is not list:
-        raise WorkbenchCommandRejected("invalid_input", "rows必须是逐行对象列表。", 422)
+        raise WorkbenchCommandRejected("invalid_input", "工艺内容必须逐行提交。", 422)
     check_route_capacity(len(rows))
     operations, diagnostics, raw_lines, sequences = [], [], [], []
     for index, row in enumerate(rows, 1):
@@ -75,7 +75,7 @@ def _row_input(rows):
             raise WorkbenchCommandRejected("invalid_input", "序号必须是整数且不能是bool，工种名称必须是文字。", 422)
         # Check magnitude before formatting potentially enormous Python integers.
         if route_sequence(seq) is None:
-            diagnostics.append(route_diagnostic("invalid_sequence", f"第{index}行序号必须是SQLite范围内的正整数。"))
+            diagnostics.append(route_diagnostic("invalid_sequence", f"第 {index} 行的工序号必须是正整数，而且不能过大。"))
             raw_lines.append("[invalid sequence] " + name)
             continue
         raw_lines.append(str(seq) + name)

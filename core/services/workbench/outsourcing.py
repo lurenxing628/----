@@ -37,7 +37,7 @@ class WorkbenchOutsourcingService:
             source = self.sources.load(header["target"])
             if source["identity"] != header["identity"]:
                 state = "identity_drift"
-                issues = [{"code": "identity_drift", "message": "原成员或所属对象已变化；历史保留，不重绑同号对象。"}]
+                issues = [{"code": "identity_drift", "message": "原来登记的工序或它所属的批次已经变了；历史记录保留，系统不会重新绑到编号相同的另一条上。"}]
         except WorkbenchCommandRejected as exc:
             if exc.code not in ("identity_missing", "identity_drift", "entity_not_found", "constraint_conflict"):
                 raise

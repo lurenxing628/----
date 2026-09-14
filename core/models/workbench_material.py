@@ -18,9 +18,9 @@ _TOP_LEVEL = {
 
 def _object(value: Any, allowed, path: str) -> Dict[str, Any]:
     if type(value) is not dict:
-        raise ValidationError("操作内容必须是 JSON 对象。", field=path)
+        raise ValidationError("提交内容格式不对，这次操作没有执行。请刷新页面后重试。", field=path)
     if any(type(key) is not str or key not in allowed for key in value):
-        raise ValidationError("操作内容包含不允许的字段。", field=path)
+        raise ValidationError("提交内容含有不支持的项，这次操作没有执行。请刷新页面后重试。", field=path)
     return value
 
 
@@ -28,15 +28,15 @@ def _text(value: Any, path: str, *, clearable: bool = False):
     if value is None and clearable:
         return None
     if type(value) is not str:
-        raise ValidationError("该字段必须是文字。", field=path)
+        raise ValidationError("这一项必须填文字。", field=path)
     text = value.strip()
     if not text and not clearable:
-        raise ValidationError("该字段不能为空。", field=path)
+        raise ValidationError("这一项不能为空。", field=path)
     return text or None
 
 
 def _stock_qty(value: Any) -> float:
-    message = "库存数量必须是有限非负数字，不能是布尔值或数字字符串。"
+    message = "库存数量请填 0 或正数。"
     if type(value) not in (int, float):
         raise ValidationError(message, field="fields.stock_qty")
     try:

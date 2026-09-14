@@ -213,7 +213,7 @@ return document.body.innerText;
         response = client.get(path)
         if path.startswith("/scheduler/resource-dispatch?"):
             assert response.status_code == 400
-            assert "未改选对象或扩大范围" in response.get_data(as_text=True)
+            assert "没有替你换记录或放宽范围" in response.get_data(as_text=True)
             assert "Location" not in response.headers
             continue
         body = retired_response(response)

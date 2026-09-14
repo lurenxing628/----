@@ -871,11 +871,11 @@ def _assert_relation_reverse_header_copy_matches_templates() -> None:
         "总说明书必须写清人员设备关联和设备人员关联是同一类关系"
     )
     relation_section = _extract_markdown_section(static_manual_text, "#### 1.6.7 人员设备关联")
-    assert "| 人员管理侧 | 工号、设备编号、技能等级、主操设备 |" in relation_section, (
-        "总说明书必须写清人员管理侧人员设备关联模板列顺序"
+    assert "| 从人员这边填 | 工号、设备编号、技能等级、主操设备 |" in relation_section, (
+        "总说明书必须写清从人员这边填的人员设备关联模板列顺序"
     )
-    assert "| 设备管理侧 | 设备编号、工号、技能等级、主操设备 |" in relation_section, (
-        "总说明书必须写清设备管理侧设备人员关联模板列顺序"
+    assert "| 从设备这边填 | 设备编号、工号、技能等级、主操设备 |" in relation_section, (
+        "总说明书必须写清从设备这边填的设备人员关联模板列顺序"
     )
 
     for manual_id, contract in RELATION_REVERSE_HEADER_COPY_CONTRACTS.items():

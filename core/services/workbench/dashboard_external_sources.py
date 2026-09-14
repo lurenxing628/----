@@ -11,7 +11,7 @@ def latest_fact(reader, ref):
     # Validate raw dates before DI's JSON-only DTO admission rejects a legacy BLOB.
     selected = rows(reader.conn, "SELECT * FROM WorkbenchOutsourcingFacts WHERE outsourcing_ref=? ORDER BY sequence DESC LIMIT 1", (ref,))
     if not selected:
-        raise WorkbenchCommandRejected("outsourcing_unavailable", "外协登记缺少确认事实，请恢复完整记录。", 503)
+        raise WorkbenchCommandRejected("outsourcing_unavailable", "这条外协登记缺少确认记录，请先恢复完整记录。", 503)
     return selected[0]
 
 

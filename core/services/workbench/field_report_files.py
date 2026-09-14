@@ -6,6 +6,11 @@ from typing import List, Optional, Union
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_execution_input import REQUIRED_FIELDS
+from core.services.workbench.execution_ledger_projection import (
+    COMPLETION_BASIS_TEXT,
+    DATA_QUALITY_TEXT,
+    EXECUTION_STATE_TEXT,
+)
 from core.services.workbench.field_report_files_codec import decode_reports, encode_reports
 from core.services.workbench.field_report_files_identity import identity_values, matched_task, task_indexes
 
@@ -37,7 +42,7 @@ class FieldReportFileService:
             return None
         options = index.get((kind, value), set())
         if len(options) != 1:
-            raise WorkbenchCommandRejected('invalid_input', '实际资源名称或编号不存在或有重名歧义，请核对。', 422)
+            raise WorkbenchCommandRejected('invalid_input', '填的设备或人员在系统里找不到，或者有重名分不清，请核对。', 422)
         return next(iter(options))
 
     def _items(self, content, tasks):
@@ -73,7 +78,7 @@ class FieldReportFileService:
         payload.update(source='excel', report_no=value['report_no'] or 'BG-X-' + digest[:32] + '-' + str(row['row']))
         existing = next((report for report in task['execution']['reports'] if report['report_no'] == payload['report_no']), None)
         if existing and existing.get('legacy_fact_ref'):
-            payload.update(legacy_fact_ref=existing['legacy_fact_ref'], reason='Excel 核对已关联的原始完工记录')
+            payload.update(legacy_fact_ref=existing['legacy_fact_ref'], reason='Excel 核对已关联的历史完工记录')
         return {'action': 'create', 'ref': task['task_ref'], 'payload': payload}
 
     def preview(self, content, cohort):
@@ -140,13 +145,12 @@ class FieldReportFileService:
         rows = self.rows(cohort, template)
         summaries: List[List[Optional[Union[str, int, float]]]] = [['批次号', '工序', '应做数量', '累计完成', '剩余数量', '工序状态', '完成依据', '资料完整性']]
         metadata: List[List[Optional[Union[str, int, float]]]] = [['报工编号', '录入时间', '报工来源', '补齐及更正次数']]
-        labels = {'unreported': '待报工', 'started': '已登记开工', 'partial': '部分完成', 'paused': '已暂停', 'exception': '异常', 'complete': '已完工'}
         for task in cohort['tasks']:
             p = task['execution']
             summaries.append([task['batch_id'], task['operation_label'], p['target_quantity'], p['known_completed_quantity'],
-                              p['remaining_quantity'], labels[p['execution_state']],
-                              {'complete_reports': '完整逐次报工', 'legacy_finish_event': '原始完工事实'}.get(p['completion_basis']),
-                              {'complete': '完整', 'incomplete': '待补', 'legacy_incomplete': '旧记录待补', 'invalid': '需复核'}[p['data_quality']]])
+                              p['remaining_quantity'], EXECUTION_STATE_TEXT[p['execution_state']],
+                              COMPLETION_BASIS_TEXT.get(p['completion_basis']),
+                              DATA_QUALITY_TEXT[p['data_quality']]])
             for report in p['reports']:
                 corrections = sum(item['action'] in ('supplement', 'correct') for item in report['correction_history'])
                 metadata.append([report['report_no'], report['recorded_at'], 'Excel' if report['source'] == 'excel' else '手工', corrections])

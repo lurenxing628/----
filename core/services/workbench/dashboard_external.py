@@ -73,13 +73,13 @@ def _targets(reader, result):
         source, issues = target_source(reader, item)
         snapshots.append({"target": item, "source": source, "issues": issues})
         if not issues:
-            issues = [source_issue("outsourcing_unregistered", "外协工序尚无真实发出和回厂登记，不能按默认周期或正式计划推定风险。")]
+            issues = [source_issue("outsourcing_unregistered", "这道外协工序还没有发出和回厂登记，系统不会按默认周期或正式计划推算风险。")]
         result["evaluation_gaps"].append(gap(item["operation_ref"], subject(item["business_code"], "外协工序"), issues))
     invalid = unknown_sources(reader.conn)
     for item in invalid:
         if item["outsourcing_ref"] is None:
             result["evaluation_gaps"].append(gap(item["operation_ref"], subject(item["business_code"], "来源未知工序"),
-                [source_issue("external_source_unknown", "工序来源不是有效的 internal/external，不能静默排除外协或推定发出。")]))
+                [source_issue("external_source_unknown", "这道工序的归属没填自制或外协；系统不会当它不是外协，也不会假定已经发出。")]))
     return {"targets": targets, "unregistered_sources": snapshots, "unknown_sources": invalid}
 
 

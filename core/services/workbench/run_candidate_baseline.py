@@ -24,7 +24,7 @@ from .run_input_projection_codec import restore_execution_projections
 
 
 def _invalid() -> NoReturn:
-    reject("candidate_baseline_invalid", "受理时基线、输入、执行快照或永久引用缺失或不一致，未替换为当前数据。", 500)
+    reject("candidate_baseline_invalid", "排产时记下的对照计划、排产范围或报工记录有缺失或对不上，对比没有生成，系统也没有拿当前数据顶替。请重新排产后再看。", 500)
 
 
 class AdmissionBaseline:
@@ -334,7 +334,7 @@ def _in_time(row, start, end):
 def _scope_rows(rows, scope):
     if scope.batch_ref is not None:
         if scope.batch_ref not in {row["batch_ref"] for row in rows}:
-            reject("entity_not_found", "该批次不属于受理时对照范围，未查询当前同号批次。", 404)
+            reject("entity_not_found", "这个批次不在排产时的对照范围里，没有查询；就算现在有同编号的批次，也不会替你查。请重新选择批次。", 404)
         rows = [row for row in rows if row["batch_ref"] == scope.batch_ref]
     if scope.range_start is not None:
         start, end = local_time(scope.range_start), local_time(scope.range_end)

@@ -36,7 +36,7 @@ def _occupied(tasks, low, high):
     for task in tasks:
         start, end = local_time(task["start"]), local_time(task["end"])
         if start > end:
-            raise WorkbenchCommandRejected("invalid_task_interval", "任务时间无效，未计算替代占用。", 422)
+            raise WorkbenchCommandRejected("invalid_task_interval", "这条任务的时间填得不对，系统不会另算一个占用值。", 422)
         if start == end:
             continue
         if start < high and end > low:

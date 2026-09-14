@@ -168,7 +168,7 @@ def test_runtime_logs_page_refuses_symlink(app_client, monkeypatch):
         assert payload["ok"] and payload["data"]["rows"] == []
         failed = next(row for row in payload["data"]["sources"] if row["source"] == "aps_error.log")
         assert failed["state"] == "error" and failed["count"] is None
-        assert "日志文件无法读取" in failed["message"]
+        assert "日志文件读不到" in failed["message"]
         assert "PAGE-LEAK-SECRET" not in canonical.get_data(as_text=True)
         canonical.close()
 

@@ -5,14 +5,20 @@
 {% if download_url %}<a href="{{ download_url }}" download>{{ download_button_label or "下载说明书" }}</a>{% endif %}
 {% if manual_mode == "page" and full_manual_section_url %}<a href="{{ full_manual_section_url }}">{{ current_manual.full_manual_label or "阅读整本说明书" }}</a>{% endif %}
 </nav>
-{% if manual_mtime %}<p class="muted">文件更新时间：{{ manual_mtime }}</p>{% endif %}
-{% if not download_url %}<p class="notice" data-level="warning">说明书文件当前不可下载，下面保留现有说明内容。</p>{% endif %}
+{% if manual_mtime %}<p class="muted">说明书文件更新时间：{{ manual_mtime }}</p>{% endif %}
+{% if not download_url %}<p class="notice" data-level="warning">说明书文件现在下载不了。下面的说明内容没有变化，可以继续看。</p>{% endif %}
 {% set blocks = (fallback_text if manual_mode == "page" else manual_text)|legacy_manual_blocks %}
-<nav class="actions" aria-label="说明书目录">{% for block in blocks if block.anchor %}<a href="#{{ block.anchor }}">{{ block.title }}</a>{% endfor %}</nav>
-<section aria-label="说明书正文">
+<nav class="manual-outline" aria-label="说明书章节">
+<ul>{% for item in blocks|legacy_manual_outline %}
+<li><a href="#{{ item.anchor }}">{{ item.title }}</a>{% if item.children %}
+<ul>{% for child in item.children %}<li><a href="#{{ child.anchor }}">{{ child.title }}</a></li>{% endfor %}</ul>
+{% endif %}</li>{% endfor %}</ul>
+</nav>
+<section class="manual-source" aria-label="说明书正文">
 {% for block in blocks %}
-{% if block.anchor %}<h2 id="{{ block.anchor }}">{{ block.title }}</h2>{% endif %}
-<pre class="manual-source">{{ block.body }}</pre>
+{% if block.anchor %}{% set tag = "h2" if block.level < 3 else ("h3" if block.level == 3 else "h4") %}
+<{{ tag }} id="{{ block.anchor }}">{{ block.title }}</{{ tag }}>{% endif %}
+{{ block.html|safe }}
 {% endfor %}
 </section>
 {% if related_manuals %}
@@ -22,7 +28,8 @@
 <article>
 <h3><a href="{{ item.url }}">{{ item.title }}</a></h3>
 {% if item.summary %}<p>{{ item.summary }}</p>{% endif %}
-{% for section in item.preview_sections %}<h4>{{ section.title }}</h4><pre class="manual-source">{{ section.body_md }}</pre>{% endfor %}
+{% for section in item.preview_sections %}<h4>{{ section.title }}</h4>
+<div class="manual-source">{{ section.body_md|legacy_manual_markdown|safe }}</div>{% endfor %}
 {% if item.full_manual_section_url %}<a href="{{ item.full_manual_section_url }}">阅读对应章节</a>{% endif %}
 </article>
 {% endfor %}

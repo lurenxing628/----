@@ -18,12 +18,12 @@ from .write_context import issue_write_context, validate_write_context
 def _query(kind):
     allowed = {"query", "status", "category", "page", "size", "sort", "direction", "snapshot_ref"}
     if set(request.args) - allowed or any(len(request.args.getlist(key)) != 1 for key in request.args):
-        raise WorkbenchCommandRejected("invalid_input", "资源列表包含未知或重复参数。", 400)
+        raise WorkbenchCommandRejected("invalid_input", "列表的筛选条件有重复或不支持的项，当前筛选没有变化。请刷新页面后重新选择。", 400)
     values = {}
     for key, default in (("page", "1"), ("size", "20")):
         text = request.args.get(key, default)
         if re.fullmatch(r"[1-9][0-9]{0,6}", text) is None:
-            raise WorkbenchCommandRejected("invalid_input", "页码和每页条数必须是正整数。", 400)
+            raise WorkbenchCommandRejected("invalid_input", "页码或每页条数填写不对，列表没有变化。请回到第 1 页重新查询。", 400)
         values[key] = int(text)
     return ResourcePageRequest(kind=kind, query=request.args.get("query", ""), status=request.args.get("status") or None,
                                category=request.args.get("category") or None, number=values["page"], size=values["size"],
@@ -38,7 +38,7 @@ def _with_context(kind, record):
     context = issue_write_context(record.identity.ref, actions, record.state)
     context["capabilities"][kind + ".delete"] = not bool(referenced)
     if referenced:
-        context["blocked_reasons"] = [{"action": kind + ".delete", "code": "constraint_conflict", "message": "资源仍被其他记录引用，不能删除。"}]
+        context["blocked_reasons"] = [{"action": kind + ".delete", "code": "constraint_conflict", "message": "这条记录还被其他资料用到，不能删除。请先处理用到它的资料，再删除。"}]
     entity["write_context"] = context
     return entity
 
@@ -59,7 +59,7 @@ def resource_list(kind):
 @api_endpoint
 def resource_detail(kind, ref):
     if set(request.args) - {"snapshot_ref"} or len(request.args.getlist("snapshot_ref")) > 1:
-        raise WorkbenchCommandRejected("invalid_input", "资源详情参数不正确。", 400)
+        raise WorkbenchCommandRejected("invalid_input", "详情的查询条件不对，详情没有打开。请刷新页面后重新点开这一行。", 400)
     reader = WorkbenchResourceQueryService(g.db, kind, current_app.logger)
     with reader.read_snapshot() as state:
         snapshot = bind_read_snapshot({"kind": kind, "entity_ref": ref}, state, request.args.get("snapshot_ref"))
@@ -70,13 +70,13 @@ def resource_detail(kind, ref):
 @api_endpoint
 def resource_command(kind, action, ref=None):
     if action not in ("create", "update", "delete") or (action == "create") != (ref is None):
-        raise WorkbenchCommandRejected("invalid_input", "资源操作入口不正确。", 400)
+        raise WorkbenchCommandRejected("invalid_input", "这个操作入口不对，数据没有改动。请刷新页面后重试。", 400)
     body = _command_body()
     reader = WorkbenchResourceQueryService(g.db, kind, current_app.logger)
     normalized = reader.domain.normalize_input(action, body["input"])
     subject = kind + ":create" if action == "create" else ref
     if not isinstance(subject, str) or not subject:
-        raise WorkbenchCommandRejected("invalid_input", "资源操作缺少对象引用。", 400)
+        raise WorkbenchCommandRejected("invalid_input", "没有指明要改哪一条记录，数据没有改动。请刷新页面后重新选择。", 400)
     command = kind + "." + action
 
     def guard():
@@ -94,7 +94,7 @@ def resource_command(kind, action, ref=None):
 @api_endpoint
 def resource_summary():
     if request.args:
-        raise WorkbenchCommandRejected("invalid_input", "资源统计入口不接受其他参数。", 400)
+        raise WorkbenchCommandRejected("invalid_input", "这个汇总不需要其他条件。请刷新页面后重试。", 400)
     reader = WorkbenchResourceQueryService(g.db, "op_type", current_app.logger)
     with reader.read_snapshot() as state:
         data = reader.summary_projection()

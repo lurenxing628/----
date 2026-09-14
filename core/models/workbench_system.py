@@ -16,7 +16,28 @@ JOB_STATES = TERMINAL_STATES | frozenset((
     "accepted", "checking", "protecting", "restoring", "verifying", "rolling_back",
     "rollback_failed", "recovery_required",
 ))
-RESTORE_DISABLED = "恢复尚未接入启动恢复检查和全局写入隔离，当前不能安全切换数据库。"
+RESTORE_DISABLED = "此功能尚未开通，现在不能切换数据库。"
+LOG_LEVELS = ("INFO", "WARNING", "ERROR", "DEBUG", "CRITICAL", "UNKNOWN")
+# 日志导出里给用户看的中文标签；前端 SystemMaintenanceRecords.jsx 有同名字典，两边措辞必须一致。
+LOG_SOURCE_LABELS = {"aps.log": "主日志（aps.log）", "aps_error.log": "错误日志（aps_error.log）",
+                     "launcher.log": "启动日志（launcher.log）", "OperationLogs": "操作记录"}
+LOG_RECORD_TYPE_LABELS = {"runtime": "运行日志", "operation": "操作记录"}
+LOG_RECORD_STATUS_LABELS = {"recorded": "已记录"}
+LOG_LEVEL_LABELS = {"INFO": "信息", "WARNING": "警告", "ERROR": "错误",
+                    "DEBUG": "调试", "CRITICAL": "严重", "UNKNOWN": "未知"}
+# 操作日志历史写的是 WARN，运行日志文件写的是 WARNING；读取时统一成 WARNING，存储不动。
+_LOG_LEVEL_ALIASES = {"WARN": "WARNING"}
+
+
+def normalize_log_level(value):
+    """把同义的日志级别写法归一，供筛选匹配和返回值共用。"""
+    return _LOG_LEVEL_ALIASES.get(value, value)
+
+
+def log_level_label(value):
+    """导出与展示用的中文级别名。"""
+    level = normalize_log_level(value)
+    return LOG_LEVEL_LABELS.get(level, level or "未读取")
 
 
 class SystemQuery(TypedDict):
@@ -33,7 +54,7 @@ class SystemQuery(TypedDict):
 
 def object_fields(value, required, optional=()):
     if type(value) is not dict or not set(required) <= set(value) or set(value) - set(required) - set(optional):
-        raise WorkbenchCommandRejected("invalid_input", "请求字段不完整或包含不支持的字段。", 400)
+        raise WorkbenchCommandRejected("invalid_input", "提交内容不完整或含有不支持的项，这次操作没有执行。请刷新页面后重试。", 400)
     return value
 
 
@@ -48,7 +69,7 @@ def config_input(value):
             maximum = 365 if key.endswith("_days") else 1440
             valid = type(raw) is int and 1 <= raw <= maximum
         if not valid:
-            raise WorkbenchCommandRejected("invalid_input", "维护配置须填写合法开关和范围内的整数：" + key, 422)
+            raise WorkbenchCommandRejected("invalid_input", "维护设置里有一项填写不对，这次保存没有生效。请检查开关和天数、分钟数后重新保存。", 422)
         result[key] = raw
     return result
 
@@ -61,7 +82,7 @@ def _query_dates(result):
                     raise ValueError()
                 datetime.strptime(result[key], "%Y-%m-%d")
             except ValueError as exc:
-                raise WorkbenchCommandRejected("invalid_input", "筛选日期无效。", 422) from exc
+                raise WorkbenchCommandRejected("invalid_input", "筛选日期填写不对，请按 2026-09-13 这样填写。", 422) from exc
     if result["start"] and result["end"] and result["start"] > result["end"]:
         raise WorkbenchCommandRejected("invalid_input", "开始日期不能晚于结束日期。", 422)
 
@@ -71,10 +92,10 @@ def _query_pagination(value):
     for key, default in (("page", 1), ("page_size", 10)):
         raw = value.get(key, str(default))
         if not isinstance(raw, str) or not re.fullmatch(r"[1-9]\d{0,6}", raw):
-            raise WorkbenchCommandRejected("invalid_input", "分页参数无效。", 400)
+            raise WorkbenchCommandRejected("invalid_input", "翻页位置已失效，请回到第 1 页重新查询。", 400)
         result[key] = int(raw)
     if result["page_size"] not in (10, 25, 50):
-        raise WorkbenchCommandRejected("invalid_input", "每页只能选择10、25或50条。", 400)
+        raise WorkbenchCommandRejected("invalid_input", "每页只能选 10、25 或 50 条。", 400)
     return result
 
 
@@ -83,15 +104,16 @@ def query_input(value, kind) -> SystemQuery:
     object_fields(value, (), allowed)
     result = {key: value.get(key, "") for key in allowed - {"page", "page_size", "snapshot_ref"}}
     if any(not isinstance(item, str) or len(item) > 200 for item in result.values()):
-        raise WorkbenchCommandRejected("invalid_input", "筛选值必须是长度不超过200的文本。", 400)
+        raise WorkbenchCommandRejected("invalid_input", "筛选条件最多 200 个字。", 400)
     _query_dates(result)
+    result["level"] = normalize_log_level(result["level"])
     choices = {"type": ("", "runtime", "operation") if kind == "logs" else
                ("", "manual", "auto", "before_restore", "unknown", "restore", "cleanup"),
                "status": ("", "recorded") if kind == "logs" else ("", "unverified", "unknown") + tuple(sorted(JOB_STATES)),
-               "level": ("", "INFO", "WARNING", "WARN", "ERROR", "DEBUG", "CRITICAL", "UNKNOWN"),
+               "level": ("",) + LOG_LEVELS,
                "file": ("", "aps.log", "aps_error.log", "launcher.log", "OperationLogs")}
     if any(result[key] not in items for key, items in choices.items()):
-        raise WorkbenchCommandRejected("invalid_input", "不支持该日志来源、类型或状态筛选。", 400)
+        raise WorkbenchCommandRejected("invalid_input", "不支持这个日志来源、类型或状态的筛选条件，请重新选择。", 400)
     pagination = _query_pagination(value)
     return SystemQuery(query=result["query"], type=result["type"], status=result["status"],
                        level=result["level"], file=result["file"], start=result["start"],

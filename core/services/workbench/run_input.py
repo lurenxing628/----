@@ -43,10 +43,10 @@ def _projection_map(execution_projections, selected_refs):
             fail("execution_projection_type", "Every execution item must be an AJ ExecutionProjection.")
         validate_projection_dto(projection)
         if projection.operation_ref in result:
-            fail("execution_projection_duplicate", "Execution projection identity is duplicated.")
+            fail("execution_projection_duplicate", "同一道工序读到了多份报工记录，这次排产没有开始。请刷新重试；仍不行请联系维护人员。")
         result[projection.operation_ref] = projection
     if not set(selected_refs) <= set(result):
-        fail("execution_projection_missing", "Execution projection does not cover every selected operation.")
+        fail("execution_projection_missing", "有选中的工序读不到报工记录，这次排产没有开始。请重新做排产检查后再排。")
     return result
 
 
@@ -59,7 +59,7 @@ def prepare_candidate_run_input(conn, normalized_input: Dict[str, Any],
     """
     settings = normalize_preflight_input(normalized_input)
     if not settings["batch_refs"]:
-        fail("empty_scope", "An empty batch selection is not a request for all batches.")
+        fail("empty_scope", "还没有选批次，这次排产没有开始；不选不等于排全部批次。请先勾选要排的批次。")
     with candidate_read_snapshot(conn):
         facts = PreflightFacts(conn)
         with facts.snapshot() as fingerprint:

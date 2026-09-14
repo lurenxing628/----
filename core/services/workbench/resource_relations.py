@@ -21,7 +21,7 @@ def _valid_ref(ref):
 
 
 def _invalid_facts(message):
-    raise WorkbenchCommandRejected("storage_failure", message + "；未自动修补资料。", 500)
+    raise WorkbenchCommandRejected("storage_failure", message + "，列表没有打开，资料也没有被改动。请到资料总览核对后重试。", 500)
 
 
 @dataclass(frozen=True)
@@ -33,7 +33,7 @@ class ResourceRelationRequest:
 
     def __post_init__(self):
         if type(self.relation) is not str or self.relation not in RELATION_KINDS:
-            raise WorkbenchCommandRejected("invalid_input", "关联类型不正确，请明确选择设备、人员或供应商。", 400)
+            raise WorkbenchCommandRejected("invalid_input", "关联类型填得不对，列表没有打开。请选择设备、人员或供应商。", 400)
         ResourcePageRequest(RELATION_KINDS[self.relation], query=self.query, number=self.number, size=self.size)
 
     def scope(self, parent_ref):
@@ -49,18 +49,18 @@ class WorkbenchResourceRelationService:
 
     def _parent(self, kind, ref, relation):
         if kind != "op_type" or not _valid_ref(ref):
-            raise WorkbenchCommandRejected("entity_not_found", "工种引用或入口不正确，请从工种列表重新选择。", 404)
+            raise WorkbenchCommandRejected("entity_not_found", "这个工种记录已失效，列表没有打开。请从工种列表重新选择。", 404)
         identity = self.identities.get(ref)
         if identity is None or identity.kind != kind or not identity.active:
-            raise WorkbenchCommandRejected("entity_not_found", "工种已不存在；旧引用不会指向同编号的新记录。", 404)
+            raise WorkbenchCommandRejected("entity_not_found", "这个工种已经删除了，列表没有打开；就算有同编号的新记录，也不会自动指过去。请从工种列表重新选择。", 404)
         parent = self.repo.parent(identity.entity_key)
         if parent is None:
-            raise WorkbenchCommandRejected("entity_not_found", "工种记录已不存在。", 404)
+            raise WorkbenchCommandRejected("entity_not_found", "这个工种记录已经不存在，列表没有打开。请从工种列表重新选择。", 404)
         if parent["category"] not in ("internal", "external"):
-            _invalid_facts("工种的自制或外协归属无效")
+            _invalid_facts("这个工种的自制或外协归属填得不对")
         allowed = ("machines", "operators") if parent["category"] == "internal" else ("suppliers",)
         if relation not in allowed:
-            raise WorkbenchCommandRejected("invalid_input", "此工种归属不支持所选关联类型，未自动切换查询范围。", 400)
+            raise WorkbenchCommandRejected("invalid_input", "这个工种的归属看不了这一类关联，查询范围没有变。请换一个关联类型。", 400)
         return identity, parent
 
     @contextmanager
@@ -81,11 +81,11 @@ class WorkbenchResourceRelationService:
         for row in rows:
             code = row["business_code"]
             if not isinstance(code, str) or not code or code != code.strip() or "\x00" in code or code in records:
-                _invalid_facts("关联资源编号无效或重复")
+                _invalid_facts("关联的资源编号不合法或者有重复")
             if row["name"] is None:
-                _invalid_facts("关联指向不存在的资源")
+                _invalid_facts("关联指向的资源已经不存在")
             if not _valid_ref(row["ref"]):
-                _invalid_facts("关联资源永久引用缺失或无效")
+                _invalid_facts("关联的资源在资料里查不到编号")
             records[code] = row
         return records
 
@@ -93,18 +93,18 @@ class WorkbenchResourceRelationService:
         if relation == "suppliers":
             for row in rows:
                 if row["legacy_type"] is not None and row["legacy_category"] != "external":
-                    _invalid_facts("供应商旧单工种不存在或不是外协工种")
+                    _invalid_facts("供应商的旧单工种不存在，或者不是外协工种")
             if any(row["category"] != "external" for row in facts["capabilities"]):
-                _invalid_facts("供应商显式能力工种不存在或不是外协工种")
+                _invalid_facts("供应商单独设置的能力工种不存在，或者不是外协工种")
         elif relation == "operators":
             seen = set()
             for row in facts["authorizations"]:
                 key = (row["operator_id"], row["machine_id"])
                 if key in seen or row["machine_name"] is None:
-                    _invalid_facts("设备授权重复或指向不存在的设备")
+                    _invalid_facts("设备授权有重复，或者指向的设备已经不存在")
                 seen.add(key)
                 if row["op_type_id"] is not None and row["work_type_category"] != "internal":
-                    _invalid_facts("授权设备的工种不存在或不是自制工种")
+                    _invalid_facts("被授权设备的工种不存在，或者不是自制工种")
 
     def _qualifications(self, relation, codes):
         if relation != "operators":
@@ -112,13 +112,13 @@ class WorkbenchResourceRelationService:
         try:
             return OperatorQualificationService(self.conn, logger=self.logger).load(codes)
         except OperatorQualificationError as exc:
-            raise WorkbenchCommandRejected("storage_failure", "人员资格资料无效或无法读取；未退回旧授权或空集合。", 500) from exc
+            raise WorkbenchCommandRejected("storage_failure", "人员资格资料读不出来，列表没有打开，系统也不会退回按旧授权算。请到资料总览核对后重试。", 500) from exc
 
     def _page(self, parent, query, records, qualifications, facts):
         codes, total = self.repo.page(parent.entity_key, query.relation, query)
         pages = max(1, (total + query.size - 1) // query.size)
         if query.number > pages:
-            raise WorkbenchCommandRejected("snapshot_stale", "关联页码已超出当前范围，请明确刷新后重新选择。")
+            raise WorkbenchCommandRejected("snapshot_stale", "翻页位置已失效，请回到第 1 页重新查询。")
         authorizations = defaultdict(list)
         for row in facts.get("authorizations", []):
             authorizations[row["operator_id"]].append(row)

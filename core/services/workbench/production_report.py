@@ -60,7 +60,7 @@ class WorkbenchProductionReportService:
     @staticmethod
     def _batch_context(ref):
         if not isinstance(ref, str) or re.fullmatch(r"[A-Za-z0-9_-]{32,48}", ref) is None:
-            reject("批量操作上下文引用无效。", status=400)
+            reject("本页数据已过期，请刷新后重试。", status=400)
 
     def execute_import(self, preview_ref, *, request_key, load_items, validate_context):
         """Replay before resolving expiring retained bytes, with the same intent hash.

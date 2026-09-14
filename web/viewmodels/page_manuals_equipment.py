@@ -9,7 +9,7 @@ EQUIPMENT_TOPICS: Dict[str, Dict[str, Any]] = {
     "equipment_management": _topic(
         title="设备管理",
         summary="这里维护设备编号、状态、工种、班组、类别和可操作人员。设备资料填错了，排产、停机和资源排班都会跟着偏。",
-        full_manual_anchor="#5-3设备管理",
+        full_manual_anchor="#5-3设备和停机",
         help_card=_card(
             "设备资料先把资源底账填准",
             "设备编号、状态、工种、班组会直接影响排产能用哪些设备，设备状态不对，后面的排产结果就会偏。",
@@ -161,7 +161,7 @@ EQUIPMENT_TOPICS: Dict[str, Dict[str, Any]] = {
     "equipment_detail": _topic(
         title="设备详情",
         summary="这里维护单台设备的状态、工种、班组、类别、关联人员和停机记录。单台设备查不到或排错了，通常先看这里。",
-        full_manual_anchor="#5-3设备管理",
+        full_manual_anchor="#5-3设备和停机",
         help_card=_card(
             "先看这台设备现在能不能用",
             "优先确认设备状态、工种、班组和类别是不是对的。",

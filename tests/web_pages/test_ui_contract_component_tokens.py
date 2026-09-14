@@ -137,10 +137,10 @@ def test_summary_item_legacy_macro_still_shows_dash_for_old_pages() -> None:
     _components("""
 const C = window.APSResourceContract, UI = window.APSWorkbenchUI;
 const values = [null, ''].map(value => C.fieldValue('supplier','default_days',value));
-expect(values.every(value => value === '未填写 / 未知'), 'Missing data became zero or a success value');
+expect(values.every(value => value === '未填写'), 'Missing data became zero or a success value');
 const node = await render(React.createElement(UI.MetricStrip, null,
   ...values.map((value,index) => React.createElement(UI.Metric,{key:index,label:'旧摘要',value}))));
-expect(Array.from(node.querySelectorAll('.wb-metric-value')).every(item => item.textContent === '未填写 / 未知'));
+expect(Array.from(node.querySelectorAll('.wb-metric-value')).every(item => item.textContent === '未填写'));
 expect(C.fieldValue('supplier','default_days',0) === '0');
 return values;
 """)
@@ -170,10 +170,10 @@ def test_presenterized_pages_do_not_bypass_summary_item_values() -> None:
 const data = {metrics:{counts:{total:0,active:null,low_stock:null,inactive:2},issues:[],basis:{}}};
 const node = await render(React.createElement(window.ResourceMetrics,{node:'material',data}));
 const values = Array.from(node.querySelectorAll('.wb-metric-value')).map(item => item.textContent);
-expect(JSON.stringify(values) === JSON.stringify(['0','无法核实','未设阈值','2']));
+expect(JSON.stringify(values) === JSON.stringify(['0','暂无数据','未设阈值','2']));
 return values;
 """)
-    assert values == ["0", "无法核实", "未设阈值", "2"]
+    assert values == ["0", "暂无数据", "未设阈值", "2"]
     for path in ("frontend/workbench/app/BatchDetail.jsx", "frontend/workbench/app/SystemLive.jsx",
                  "frontend/workbench/app/SystemMaintenanceConfig.jsx"):
         source = _read(path)

@@ -21,7 +21,7 @@ def link_chain(chain):
             if not predecessor_satisfied(previous) and row["status"] != "protected":
                 if row["status"] != "blocked":
                     row["status"] = "skipped"
-                row["issues"].append(issue("predecessor_excluded", "前序未进入本次排产且无可信完工证据，后序不能断链排入。",
+                row["issues"].append(issue("predecessor_excluded", "前道工序没有进这次排产，也没有可信的完工记录，后道工序不能跳过它单独排。",
                                            related_operation_ref=previous["operation_ref"], predecessor_sequence=previous["sequence"]))
         previous = row
 
@@ -37,6 +37,6 @@ def link_predecessors(rows):
             for row in chain:
                 if row["status"] != "protected":
                     row["status"] = "blocked"
-                    row["issues"].append(issue("dependency_ambiguous", "同一分件的工序顺序缺失或重复，无法确认前后序。"))
+                    row["issues"].append(issue("dependency_ambiguous", "同一个分件的工序顺序号缺失或重复，排不出前后关系。请到批次管理核对工序号。"))
         else:
             link_chain(chain)

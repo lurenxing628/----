@@ -22,6 +22,7 @@ from tempfile import SpooledTemporaryFile
 
 import openpyxl
 from openpyxl.cell import WriteOnlyCell
+from openpyxl.cell.cell import TYPE_STRING
 from openpyxl.comments import Comment
 from openpyxl.styles import Font
 from openpyxl.utils import get_column_letter
@@ -46,12 +47,12 @@ def _headers(values):
     fields = []
     for value in values:
         if type(value) is not str or value not in HEADER_FIELDS:
-            raise _file_error("表头含未知字段或空列，只能使用已定义的物料字段。", field="headers")
+            raise _file_error("表头里有认不出的列或空列，只能用系统认识的物料列。", field="headers")
         fields.append(HEADER_FIELDS[value])
     if "business_code" not in fields:
         raise _file_error("缺少物料编号列。", field="headers")
     if len(set(fields)) != len(fields):
-        raise _file_error("表头包含重复字段（含中英文同义列）。", field="headers")
+        raise _file_error("表头里有重复的列（中文列名和英文列名指同一项也算重复）。", field="headers")
     return fields
 
 
@@ -65,7 +66,7 @@ def _csv_rows(content):
                 break
             yield number, row, {}
     except UnicodeDecodeError as exc:
-        raise _file_error("CSV 必须使用 UTF-8 编码，未猜测或替换字符。") from exc
+        raise _file_error("CSV 要存成 UTF-8 编码；系统不会猜着替换看不懂的字符。") from exc
     except csv.Error as exc:
         raise _file_error("CSV 格式错误，请核对引号和分隔符。", reader.line_num) from exc
 
@@ -75,7 +76,7 @@ def _xlsx_rows(content):
     try:
         wb = openpyxl.load_workbook(BytesIO(content), read_only=True, data_only=False, keep_links=False)
         if len(wb.sheetnames) != 1 or len(wb.worksheets) != 1:
-            raise _file_error("物料文件必须只有一张数据工作表，不能静默忽略其他表。")
+            raise _file_error("物料文件只能有一张数据工作表；系统不会悄悄忽略其他表。")
         ws = wb.worksheets[0]
         # Do not trust a producer's cached dimensions to hide later rows/columns.
         ws.reset_dimensions()
@@ -102,7 +103,7 @@ def _decode_value(value, field, file_format):
             value = value[1:]
         if file_format == "csv" and field == "stock_qty":
             if _NUMBER.fullmatch(value) is None:
-                raise ValidationError("库存数量必须是独立数值，不能混入单位、布尔值或分组逗号。", field="stock_qty")
+                raise ValidationError("库存数量只填数字，不要带单位、「是/否」或千分位逗号。", field="stock_qty")
             value = float(value)
     return value
 
@@ -110,7 +111,7 @@ def _decode_value(value, field, file_format):
 def _parse_row(number, values, cell_errors, fields, file_format):
     parsed, errors = {}, []
     if len(values) > len(fields) and any(v is not None and v != "" for v in values[len(fields):]):
-        errors.append({"row": number, "field": "columns", "code": "invalid_input", "message": "数据行有未声明的多余列。"})
+        errors.append({"row": number, "field": "columns", "code": "invalid_input", "message": "数据行里有表头之外的多余列。"})
     for index, field in enumerate(fields):
         value = values[index] if index < len(values) else None
         if index in cell_errors:
@@ -137,7 +138,7 @@ def read_material_file(content: bytes, file_format: str):
             if not errors and all(v is None or v == "" for v in values):
                 continue
             if len(result) == IMPORT_ROW_LIMIT:
-                raise _file_error("单次最多导入 2000 行，未截断或导入前半部分。", number)
+                raise _file_error("一次最多导入 2000 行；这次一行都没有导入。", number)
             result.append(_parse_row(number, values, errors, fields, file_format))
         return result
     finally:
@@ -147,12 +148,12 @@ def read_material_file(content: bytes, file_format: str):
 def _export_value(value, field, number, file_format):
     if field == "stock_qty":
         if value is not None and (type(value) not in (int, float) or not math.isfinite(value) or value < 0):
-            raise _file_error("原始库存不是有效的非负数，未转换成零。", number, field)
+            raise _file_error("存着的库存数量不是 0 或大于 0 的有效数字，系统不会当成 0。", number, field)
         return value
     if value is None:
         return r"\N" if field in _CLEARABLE else None
     if type(value) is not str:
-        raise _file_error("原始文字字段不是文字，未猜测转换类型。", number, field)
+        raise _file_error("这一项存的不是文字，系统不会猜着转换。", number, field)
     value = "\\" + value if value.startswith("\\") else value
     _check_export_text(value, field, number, file_format)
     return value
@@ -161,22 +162,22 @@ def _export_value(value, field, number, file_format):
 def _check_export_text(value, field, number, file_format):
     if file_format == "csv":
         if "\x00" in value:
-            raise _file_error("CSV 读取工具链不支持 NUL 字符，未删除或替换原文。", number, field)
+            raise _file_error("这段文字里有 CSV 打不开的隐藏字符，系统没有删除或替换原文。", number, field)
     elif _ILLEGAL.search(value) or len(value) > XLSX_MAX_CELL_CHARACTERS:
-        raise _file_error("文字含 XLSX 不支持的控制字符或超过单元格 32767 字符容量，未截断内容。", number, field)
+        raise _file_error("这段文字里有 XLSX 放不了的隐藏字符，或者超过单元格 32767 字的上限；系统没有截断内容。", number, field)
 
 
 def check_export_capacity(row_count, file_format):
     if file_format not in ("csv", "xlsx"):
         raise _file_error("物料导出仅支持 CSV 和 XLSX。", field="format")
     if file_format == "xlsx" and row_count + 1 > XLSX_MAX_ROWS:
-        raise _file_error("XLSX 超过单张工作表 1048576 行容量（含表头），未截断；可导出 CSV。", row_count + 1)
+        raise _file_error("行数超过 XLSX 单张工作表 1048576 行的上限（含表头），系统没有截断；请改导 CSV。", row_count + 1)
 
 
 def write_material_file(rows, file_format, *, template=False):
     """Consume rows exactly once; only returned file bytes require full materialization."""
     check_export_capacity(0, file_format)
-    filename = "materials-template" if template else "materials"
+    filename = "物料导入模板" if template else "物料清单"
     if file_format == "csv":
         return _write_csv(rows, filename)
     return _write_xlsx(rows, filename, template)
@@ -215,7 +216,7 @@ def _xlsx_row(ws, row, number):
         value = _export_value(row[field], field, number, "xlsx")
         cell = WriteOnlyCell(ws, value=value)
         if type(value) is str:
-            cell.data_type = "s"
+            cell.data_type = TYPE_STRING
             cell.number_format = "@"
         elif field == "stock_qty":
             cell.number_format = "0.###############"

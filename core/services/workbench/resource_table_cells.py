@@ -30,7 +30,7 @@ def number_cell(value, unit="", *, missing="未知"):
     if value is None:
         return TableCell(input_fingerprint({"type": "number", "value": None}), missing, (0, 0))
     if type(value) not in (int, float) or not math.isfinite(value):
-        raise WorkbenchCommandRejected("storage_failure", "业务单元格含无效数值，未用零值替代。", 500)
+        raise WorkbenchCommandRejected("storage_failure", "这个格子里存的数字不合法，没有显示成 0。请到资料总览核对后重试。", 500)
     number = format(Decimal(str(value)).normalize(), "f")
     unit = text_value(unit) if unit else ""
     return TableCell(input_fingerprint({"type": "number", "value": number, "unit": unit}),
@@ -39,11 +39,11 @@ def number_cell(value, unit="", *, missing="未知"):
 
 def relation_cell(labels):
     values = sorted(text_value(label) for label in labels)
-    return TableCell(input_fingerprint({"type": "relations", "value": values}), "、".join(values) or "未绑定", (1, tuple(values)))
+    return TableCell(input_fingerprint({"type": "relations", "value": values}), "、".join(values) or "未选", (1, tuple(values)))
 
 
 def status_cell(kind, status):
-    labels = {"active": "启用", "inactive": "停用", "maintain": "检修", "leave": "请假", "pending_review": "待复核"}
+    labels = {"active": "启用", "inactive": "停用", "maintain": "停机", "leave": "请假", "pending_review": "待复核"}
     labels["active"] = {"machine": "可用", "operator": "在岗"}.get(kind, "启用")
     # All unidentified old values have the same visible business status, without rewriting them.
     label = labels.get(status, "旧状态 / 原因未知")

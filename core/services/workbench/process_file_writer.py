@@ -20,7 +20,7 @@ from core.services.workbench.resource_file_writer import XLSX_MAX_ROWS
 def _row_values(kind, row, number, file_format):
     fields = file_columns(kind)
     if not isinstance(row, Mapping) or any(type(key) is not str or key not in fields for key in row):
-        raise file_error("导出行必须是已定义的工艺字段，不能忽略未知列。", number)
+        raise file_error("导出内容里出现认不出的列，导出没有继续。请刷新重试；仍不行请联系维护人员。", number)
     # An empty string is a blank cell, just as it is in an uploaded template.
     return [export_value(row[field], field, number, file_format) if field in row and row[field] != "" else None
             for field in fields]
@@ -59,7 +59,7 @@ def write_xlsx(kind, rows):
         ws.append(headers)
         for count, row in enumerate(rows, 1):
             if count + 1 > XLSX_MAX_ROWS:
-                raise file_error("XLSX 超过单表 1048576 行容量（含表头），未截断；可改用 CSV。", count + 1)
+                raise file_error("行数超过 XLSX 单表 1048576 行上限（算上表头），没有导出，也不会只导一部分。请改用 CSV 导出。", count + 1)
             cells = []
             for value in _row_values(kind, row, count + 1, "xlsx"):
                 cell = WriteOnlyCell(ws, value=value)

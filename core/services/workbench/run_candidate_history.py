@@ -14,7 +14,7 @@ from .run_candidate_values import bounded_size
 
 
 def _invalid():
-    reject("candidate_adoption_history_invalid", "原候选的采用回执与来源或正式版本不一致，未改查其他采用记录。", 500)
+    reject("candidate_adoption_history_invalid", "这个候选方案的采用结果和它的来源或正式计划对不上，没有改去查别的采用记录。请到「排产记录」重新选择。", 500)
 
 
 def _adoption_evidence(conn, row, plan, candidate_ref, run_ref):
@@ -55,7 +55,7 @@ def _entry(conn, row, candidate_ref, run_ref):
         if WorkbenchPlanIdentityRepository(conn).resolve_plan(plan["plan_ref"]) != WorkbenchPlanLocator(plan["version"], "adopted"):
             _invalid()
     except WorkbenchPlanReferenceError:
-        issues.append({"code": "official_identity_unavailable", "message": "原采用版本的永久身份现已失效；回执保留，未打开其他版本。"})
+        issues.append({"code": "official_identity_unavailable", "message": "原来采用的那一版计划编号已经失效，结果记录照样保留，系统没有替你打开别的版本。请到计划列表重新选择。"})
     fields = ("reason", "declared_operator", "application_operator", "adopted_at", "baseline_ref", "baseline_version")
     return {"receipt_ref": row["receipt_ref"], "request_key": row["request_key"], "candidate_ref": candidate_ref,
             "run_ref": run_ref, "committed_at_utc": row["committed_at_utc"], "row_count": data["row_count"],

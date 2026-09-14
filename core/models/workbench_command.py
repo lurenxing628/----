@@ -19,7 +19,7 @@ class WorkbenchCommandRejected(ValueError):
 
 class WorkbenchCommandUncertain(RuntimeError):
     def __init__(self, request_key: str):
-        super().__init__("本次写入结果待核实，请按请求记录查询，不要换一个请求重复提交。")
+        super().__init__("这次提交结果不确定，可能已经生效。请刷新后核对，不要重复提交。")
         self.request_key = request_key
         self.committed = "unknown"
 
@@ -34,7 +34,7 @@ def input_fingerprint(value: Any) -> str:
 
 def validate_request_key(value: str) -> str:
     if not isinstance(value, str) or re.fullmatch(r"[A-Za-z0-9_-]{16,128}", value) is None:
-        raise WorkbenchCommandRejected("invalid_input", "请求标识无效，请重新打开当前操作。", 400)
+        raise WorkbenchCommandRejected("invalid_input", "操作编号无效，请刷新页面后重新提交。", 400)
     return value
 
 

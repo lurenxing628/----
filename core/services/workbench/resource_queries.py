@@ -33,7 +33,7 @@ class ResourceReadRecord:
 class WorkbenchResourceQueryService:
     def __init__(self, conn, kind, logger=None):
         if kind not in RESOURCE_KINDS:
-            raise WorkbenchCommandRejected("entity_not_found", "此资源入口不存在。", 404)
+            raise WorkbenchCommandRejected("entity_not_found", "没有这个资源页面。请从左边的资料总览重新进入。", 404)
         self.conn, self.kind = conn, kind
         self.repo = WorkbenchResourceQueryRepository(conn, logger=logger)
         self.identities = WorkbenchIdentityRepository(conn, logger=logger)
@@ -91,10 +91,10 @@ class WorkbenchResourceQueryService:
 
     def resolve(self, ref):
         if type(ref) is not str or len(ref) != 48 or any(char not in "0123456789abcdef" for char in ref):
-            raise WorkbenchCommandRejected("entity_not_found", "资源引用不正确，请从列表重新选择。", 404)
+            raise WorkbenchCommandRejected("entity_not_found", "这条资源记录已失效，页面没有打开。请从列表重新选择。", 404)
         identity = self.identities.get(ref)
         if identity is None or identity.kind != self.kind or not identity.active:
-            raise WorkbenchCommandRejected("entity_not_found", "资源已不存在，旧引用不会指向同编号的新记录。", 404)
+            raise WorkbenchCommandRejected("entity_not_found", "这条资源已经删除了，页面没有打开；就算有同编号的新记录，也不会自动指过去。请从列表重新选择。", 404)
         return identity
 
     def detail(self, ref):
@@ -114,7 +114,7 @@ class WorkbenchResourceQueryService:
         advanced = table_query_required(query)
         rows, total = self.table_index(query).page(query) if advanced else self.repo.page(query)
         if any(row["ref"] is None for row in rows):
-            raise WorkbenchCommandRejected("storage_failure", "资源永久引用缺失，未自动修补数据。", 500)
+            raise WorkbenchCommandRejected("storage_failure", "这条资源在资料里查不到编号，页面没有打开，数据也没有被改动。请到资料总览核对后重试。", 500)
         metrics = self._metrics_reader()
         if self.kind == "op_type":
             records = self._op_type_page(rows, metrics)

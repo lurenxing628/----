@@ -263,7 +263,7 @@ def test_resource_dispatch_data_returns_machine_field_and_invalid_query_keys(tmp
         "machine_id",
         "team_id",
     ]
-    assert payload["error"]["details"]["invalid_query_labels"] == ["范围类型", "范围对象", "人员", "设备", "班组"]
+    assert payload["error"]["details"]["invalid_query_labels"] == ["范围类型", "范围", "人员", "设备", "班组"]
     assert payload["error"]["details"]["cleanup_query_keys"] == [
         "scope_type",
         "scope_id",
@@ -280,7 +280,7 @@ def test_resource_dispatch_data_returns_machine_field_and_invalid_query_keys(tmp
     ]
     assert payload["error"]["diagnostics"]["invalid_query_labels"] == [
         "范围类型",
-        "范围对象",
+        "范围",
         "人员",
         "设备",
         "班组",

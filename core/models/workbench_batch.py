@@ -17,13 +17,13 @@ MAX_INTEGER = 9007199254740991
 
 def object_fields(value, allowed, required=()):
     if not isinstance(value, dict) or set(value) - set(allowed) or set(required) - set(value):
-        raise WorkbenchCommandRejected("invalid_input", "请求缺少必要字段或包含不支持的字段。", 400)
+        raise WorkbenchCommandRejected("invalid_input", "提交内容缺少必填项或含有多余项，这次操作没有执行。请刷新页面后重试。", 400)
     return value
 
 
 def public_ref(value):
     if not isinstance(value, str) or re.fullmatch(r"[0-9a-f]{48}", value) is None:
-        raise WorkbenchCommandRejected("invalid_input", "对象引用无效，请重新选择。", 400)
+        raise WorkbenchCommandRejected("invalid_input", "这条记录已失效，请刷新后重新选择。", 400)
     return value
 
 
@@ -44,7 +44,7 @@ def date_value(value, field):
     if value is None:
         return None
     if not isinstance(value, str) or re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", value) is None:
-        raise ValidationError("日期必须为真实日期 YYYY-MM-DD，清空请传 null。", field=field)
+        raise ValidationError("日期请按 2026-09-13 这样填；不填就是清除。", field=field)
     try:
         date.fromisoformat(value)
     except ValueError as exc:
@@ -69,7 +69,7 @@ def normalize_batch_input(action, payload):
     object_fields(payload, required, required)
     fields = object_fields(payload["fields"], FIELDS, FIELDS if action == "create" else ())
     if not fields:
-        raise ValidationError("至少填写一个要修改的字段。", field="fields")
+        raise ValidationError("至少填写一项要修改的内容。", field="fields")
     normalized_fields = {}
     for key, value in fields.items():
         path = "fields." + key

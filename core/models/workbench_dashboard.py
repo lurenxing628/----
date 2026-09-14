@@ -18,7 +18,7 @@ HANDLING_FIELDS = ("owner", "deadline", "action", "remark", "completed_at",
 
 def reference(value):
     if type(value) is not str or re.fullmatch(r"[0-9a-f]{48}", value) is None:
-        raise WorkbenchCommandRejected("entity_not_found", "条目引用无效，未改指同号对象。", 404)
+        raise WorkbenchCommandRejected("entity_not_found", "这条记录已失效，请刷新后重新选择。", 404)
     return value
 
 

@@ -43,8 +43,8 @@ def read_rows(response, fmt):
 
 
 @pytest.mark.parametrize('fmt', ['csv', 'xlsx'])
-@pytest.mark.parametrize('role,scenario,kind', [('adopted', None, '正式'), ('baseline_best', None, '候选'),
-                                               ('critical_best', None, '候选'), ('adopted', 'PRIVATE-ACTIVE', '场景')])
+@pytest.mark.parametrize('role,scenario,kind', [('adopted', None, '正式计划'), ('baseline_best', None, '候选方案'),
+                                               ('critical_best', None, '候选方案'), ('adopted', 'PRIVATE-ACTIVE', '试调方案')])
 def test_exact_workspace_tasks_and_source_in_file(plan_api, fmt, role, scenario, kind):
     prepare(plan_api)
     ref = plan_api.ref(role=role, scenario_id=scenario)

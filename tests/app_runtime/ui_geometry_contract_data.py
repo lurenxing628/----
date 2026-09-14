@@ -17,7 +17,7 @@ PLUGIN_PUBLIC_BEGIN = "几何启动公开诊断"
 PLUGIN_PUBLIC_END = "geometry-public-end"
 PRIVATE_PATH_CANARY = "APS_GEOMETRY_PRIVATE_PATH_CANARY"
 NORMAL_LOG_TEXT = "历史日志里保留 Traceback / Werkzeug / Internal Server Error 字样"
-INVALID_PLAN_TEXT = "排产摘要无效，无法确认计划完整性。"
+INVALID_PLAN_TEXT = "这次排产的摘要无效，确认不了计划是否完整。请刷新后重试。"
 
 RETIRED_GEOMETRY = {
     "scheduler.config": {
@@ -49,9 +49,9 @@ def _case(case, view, selectors, texts, *, action="", **checks):
 GEOMETRY_CASES = (
     _case("dashboard", "dashboard", ['[data-dashboard-workspace][data-ready="true"]'],
           ["计划员值班台"], ready='[data-dashboard-workspace][data-ready="true"][aria-busy="false"]'),
-    _case("run-preflight", "run", ["[data-preflight-workspace]", 'table[aria-label="排产前检查明细"]'],
-          ["排产前检查", BATCH], action="preflight",
-          controls={READY_RADIOS: 2, RESOURCE_RADIOS: 2}, tables=['table[aria-label="排产前检查明细"]'],
+    _case("run-preflight", "run", ["[data-preflight-workspace]", 'table[aria-label="排产检查明细"]'],
+          ["排产检查", BATCH], action="preflight",
+          controls={READY_RADIOS: 2, RESOURCE_RADIOS: 2}, tables=['table[aria-label="排产检查明细"]'],
           notices=[".pf-alert"], summaries=[".pf-metrics"]),
     _case("analysis", "analysis", ["[data-plan-workspace]", '.plan-projections table'],
           ["选择排产方案", BATCH], action="plan", plan_scope=True, summaries=[".wb-metrics"]),
@@ -65,7 +65,7 @@ GEOMETRY_CASES = (
           ["批次详情", BATCH], batch_scope=True,
           controls={'[data-batch-detail] input[type="checkbox"]': 1}),
     _case("batch-import", "batches", ['[role="dialog"] input[type="file"]'],
-          ["批量维护批次", "新建批次不自动生成工序"], action="batch-import"),
+          ["批量维护批次", "新增批次不自动生成工序"], action="batch-import"),
     _case("system-config", "system", ['#sm-panel-config', '#sm-maintenance-auto_backup_enabled'],
           ["本机自动维护配置"], action="system-config",
           controls={'#sm-maintenance-auto_backup_enabled': 1,

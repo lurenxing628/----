@@ -9,8 +9,8 @@ from .review_legacy import legacy_review
 from .review_records import actual_resource, project_records, resource_directory
 from .review_values import hour_totals, local_time, minutes
 
-STATUS_LABELS = {"complete": "已完工", "partial": "部分完成", "started": "生产中", "paused": "已暂停",
-                 "exception": "异常中", "unreported": "暂无现场反馈"}
+STATUS_LABELS = {"complete": "已完工", "partial": "部分完成", "started": "已开工", "paused": "已暂停",
+                 "exception": "异常", "unreported": "待报工"}
 
 
 def resource(facts, kind, key):
@@ -33,7 +33,7 @@ def project_operation(row, projection, label, facts, as_of):
             "planned_start": planned_start, "planned_end": planned_end, "actual_start": projection["first_actual_start"],
             "confirmed_finish": confirmed_finish, "completion_basis": projection["completion_basis"],
             "execution_state": status, "ledger_execution_state": projection["execution_state"],
-            "execution_label": "事实时间或顺序异常，需复核" if status == "invalid" else STATUS_LABELS[status],
+            "execution_label": "记录的时间或先后顺序不对，要复核" if status == "invalid" else STATUS_LABELS[status],
             **{key: projection[key] for key in ("target_quantity", "target_basis", "known_completed_quantity", "remaining_quantity",
                 "quantity_complete", "unknown_record_count", "records_complete", "data_quality")},
             "machine_ref": machine["ref"], "machine_label": machine["label"],
@@ -95,4 +95,4 @@ def validate_selected_refs(scope, facts):
             identity = facts["reader"].plans.entities.get(ref)
             historical = kind in directory and ref in directory[kind]
             if identity is None or identity.kind != kind or (not identity.active and not historical):
-                raise WorkbenchCommandRejected("entity_not_found", "筛选对象不存在或类型不符，未静默忽略条件。", 404)
+                raise WorkbenchCommandRejected("entity_not_found", "筛选条件里选的记录不存在或者类型不对，没有查询，条件也没有被悄悄忽略。请重新选择后再查。", 404)

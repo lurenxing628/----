@@ -73,14 +73,14 @@ class LegacyNavigationQueries:
         if scenario_id is not None and (type(scenario_id) is not str or not scenario_id or "\x00" in scenario_id):
             raise ValueError("Legacy scenario must be a parsed nonempty identifier.")
         if not self.version_exists(version):
-            raise LegacyNavigationSourceMissing("Selected plan history no longer exists.")
+            raise LegacyNavigationSourceMissing("所选排产版本已不存在。")
         resolution = self.plans.resolve_plan_view(version, role, scenario_id)
         locator = WorkbenchPlanLocator(version, resolution.requested_role, scenario_id)
         if resolution.requested_role != resolution.selected_role:
             return LegacyPlanBinding(locator, "", True)
         ref = self.references.get_plan_ref(locator)
         if self.references.resolve_plan(ref) != locator:
-            raise WorkbenchPlanReferenceError("plan_binding_invalid", "永久计划身份绑定不一致。")
+            raise WorkbenchPlanReferenceError("plan_binding_invalid", "这份计划的系统编号绑定不一致。")
         return LegacyPlanBinding(locator, ref, False)
 
     def entity(self, kind: str, business_key: str):
@@ -92,10 +92,10 @@ class LegacyNavigationQueries:
         table, key = _ENTITIES[kind]
         row = self.conn.execute("SELECT * FROM " + table + " WHERE " + key + " = ?", (business_key,)).fetchone()
         if row is None:
-            raise LegacyNavigationSourceMissing("Selected detail record no longer exists.")
+            raise LegacyNavigationSourceMissing("所选明细记录已不存在。")
         identity = self.entities.find_active(kind, business_key)
         if identity is not None and self.entities.get(identity.ref) != identity:
-            raise WorkbenchPlanReferenceError("identity_missing", "原对象永久身份反查不一致。")
+            raise WorkbenchPlanReferenceError("identity_missing", "这条记录的系统编号反查不一致。")
         return LegacyEntityReference(identity.ref if identity else None, row["category"] if kind == "op_type" else None)
 
     def get_plan_time_span(self, version: int, plan_role: Optional[str] = None):

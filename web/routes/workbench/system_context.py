@@ -16,6 +16,7 @@ from core.models.workbench_command import (
     validate_request_key,
 )
 from core.models.workbench_system import object_fields
+from core.services.workbench import messages
 from core.services.workbench.system_journal import SystemMaintenanceJournal
 from web.public_token_registry import issue_public_token, resolve_public_token
 
@@ -34,11 +35,11 @@ def system_endpoint(function):
             status = exc.status if isinstance(exc, WorkbenchCommandRejected) else 503
             response = failure(exc.code, str(exc) if isinstance(exc, WorkbenchCommandRejected) else exc.message, status)
         except HTTPException as exc:
-            response = failure("invalid_input", "请求格式不正确。", exc.code or 400)
+            response = failure("invalid_input", "提交的内容格式不正确，还没有保存。请刷新页面后重新填写。", exc.code or 400)
         except Exception:
             current_app.logger.exception("系统工作区请求失败 endpoint=%s", request.endpoint)
             key = getattr(g, "system_request_key", None)
-            response = failure("storage_failure", "本机维护请求失败，请核查原请求结果后再操作。", 500,
+            response = failure("storage_failure", messages.unknown("这次维护操作"), 500,
                                committed="unknown" if key else False)
             if key:
                 payload = response.get_json()
@@ -60,26 +61,26 @@ def issue_context(kind, value):
 
 def resolve_context(kind, token):
     try:
-        payload = json.loads(resolve_public_token(SCOPE, token, message="维护上下文已失效，请刷新后重新核对。", field="write_token"))
+        payload = json.loads(resolve_public_token(SCOPE, token, message=messages.STALE, field="write_token"))
     except (ValueError, TypeError) as exc:
-        raise WorkbenchCommandRejected("stale_write", "维护上下文已失效，请刷新后重新核对。") from exc
+        raise WorkbenchCommandRejected("stale_write", messages.STALE) from exc
     except Exception as exc:
         from core.errors import ValidationError
         if isinstance(exc, ValidationError):
-            raise WorkbenchCommandRejected("stale_write", "维护上下文已失效，请刷新后重新核对。") from exc
+            raise WorkbenchCommandRejected("stale_write", messages.STALE) from exc
         raise
     if payload.get("source") != "production" or payload.get("database") != database_scope() or payload.get("kind") != kind:
-        raise WorkbenchCommandRejected("stale_write", "维护上下文不属于本机当前操作。")
+        raise WorkbenchCommandRejected("stale_write", "本页数据已过期，和这次操作对不上，数据没有改动。请刷新页面后重试。")
     return payload["value"]
 
 
 def command_body():
     if request.args or request.mimetype != "application/json":
-        raise WorkbenchCommandRejected("invalid_input", "维护动作须提交JSON对象。", 400)
+        raise WorkbenchCommandRejected("invalid_input", "提交的内容格式不正确，数据没有改动。请刷新页面后重新填写。", 400)
     body = object_fields(request.get_json(), ("request_key", "write_token", "input"))
     validate_request_key(body["request_key"])
     if not isinstance(body["write_token"], str):
-        raise WorkbenchCommandRejected("invalid_input", "维护上下文无效。", 400)
+        raise WorkbenchCommandRejected("invalid_input", "本页数据已过期，数据没有改动。请刷新页面后重试。", 400)
     object_fields(body["input"], (), body["input"].keys() if isinstance(body["input"], dict) else ())
     g.system_request_key = body["request_key"]
     return body

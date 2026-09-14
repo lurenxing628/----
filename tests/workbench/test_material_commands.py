@@ -281,7 +281,7 @@ def test_snapshot_returns_all_model_fields_readonly_and_does_not_repair_missing_
     material_conn.execute("DELETE FROM WorkbenchEntityRefs WHERE ref = ?", (identity.ref,))
     material_conn.commit()
     before, changes = stored_state(material_conn), material_conn.total_changes
-    with pytest.raises(WorkbenchCommandRejected, match="引用已失效"):
+    with pytest.raises(WorkbenchCommandRejected, match="记录已失效"):
         adapter.snapshot(identity)
     assert stored_state(material_conn) == before and material_conn.total_changes == changes
 

@@ -42,7 +42,7 @@ def read_endpoint(function):
         except (AppError, HTTPException, WorkbenchCommandRejected):
             raise
         except Exception as exc:
-            raise WorkbenchCommandRejected("storage_failure", "资源预检或下载失败，未写入数据。", 500) from exc
+            raise WorkbenchCommandRejected("storage_failure", "资源预检或下载没有完成，数据没有改动。请刷新重试；仍不行请联系维护人员，并告知下方编号。", 500) from exc
     return api_endpoint(wrapped)
 
 
@@ -78,15 +78,15 @@ def retain_context(namespace, document, content=None):
 
 def resolve_context(namespace, ref, code):
     try:
-        binding = json.loads(resolve_public_token(namespace, ref, message="操作预览已失效，请重新预检。", field="preview_ref"))
+        binding = json.loads(resolve_public_token(namespace, ref, message="预检结果已过期，数据没有改动。请重新点「开始预检」。", field="preview_ref"))
     except (ValidationError, ValueError) as exc:
-        raise WorkbenchCommandRejected(code, "操作预览已失效，请重新预检；未切换范围。") from exc
+        raise WorkbenchCommandRejected(code, "预检结果已过期，数据没有改动，范围也没有自动更换。请重新点「开始预检」。") from exc
     if binding.get("version") != 1 or binding.get("source") != "production":
-        raise WorkbenchCommandRejected(code, "预览来源不正确。")
+        raise WorkbenchCommandRejected(code, "预检结果和这次操作对不上，数据没有改动。请重新点「开始预检」。")
     with LOCK:
         value = _store().get(binding["context_key"])
         if value is None:
-            raise WorkbenchCommandRejected(code, "服务器原预览已失效，未从客户端重建。")
+            raise WorkbenchCommandRejected(code, "预检结果已过期，数据没有改动；系统没有拿页面上的内容凑一份。请重新点「开始预检」。")
         return value.document, value.content
 
 
@@ -98,7 +98,7 @@ def issue_preview(kind, preview, content=None):
     rejected = body["summary"]["rejected"] != 0
     if rejected:
         context["capabilities"][action] = False
-        context["blocked_reasons"] = [{"action": action, "code": "constraint_conflict", "message": "预览包含拒绝行。"}]
+        context["blocked_reasons"] = [{"action": action, "code": "constraint_conflict", "message": "这一批里有不能提交的行，数据没有改动。请修好标红的行后重新点「开始预检」。"}]
     result = {"preview_ref": ref, "expires_at": expires_at, "operation": action, "commit_policy": "atomic",
               "summary": body["summary"], "rows": [public_action_row(row) for row in body["rows"]],
               "can_confirm": not rejected, "write_context": context, "columns": public_columns(kind), "scope": body["request"]["scope"]}
@@ -116,6 +116,6 @@ def resolve_preview(ref, action, write_token):
     document, content = resolve_context(PREVIEW_SCOPE, ref, "stale_write")
     preview = ResourceActionPreview(document)
     if preview.as_dict()["operation"] != action:
-        raise WorkbenchCommandRejected("stale_write", "预览不属于本次资源或操作。")
+        raise WorkbenchCommandRejected("stale_write", "预检结果和这次操作或这条记录对不上，数据没有改动。请重新点「开始预检」。")
     validate_write_context(write_token, ref, action, preview.intent())
     return preview, content

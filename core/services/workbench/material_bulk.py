@@ -60,14 +60,14 @@ class WorkbenchMaterialBulkService:
         row["entity_ref"] = ref
         identity = self.identities.get(ref)
         if identity is None or identity.kind != "material" or not identity.active:
-            reject_row(row, "物料引用不存在或已失效。", field="entity_ref", code="entity_not_found")
+            reject_row(row, "这条物料记录已失效，请重新选择。", field="entity_ref", code="entity_not_found")
             return row
         row["business_code"] = identity.entity_key
         row["expected"] = full_material_snapshot(self.adapter, self.repo, identity)
         if identity.entity_key != identity.entity_key.strip():
-            reject_row(row, "物料编号含首尾空白，不能由领域服务安全删除。", code="constraint_conflict")
+            reject_row(row, "这个物料编号首尾有空格，不能安全删除。请先核对原记录。", code="constraint_conflict")
         elif row["expected"]["requirements"]:
-            reject_row(row, "物料仍被批次物料需求引用，不能删除。", field="entity_ref", code="constraint_conflict")
+            reject_row(row, "这个物料还挂在批次的物料需求上，不能删除。", field="entity_ref", code="constraint_conflict")
         else:
             row["result"] = "delete"
         return row

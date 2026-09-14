@@ -124,7 +124,7 @@ def test_create_savepoint_and_outer_rollback_restore_every_table(schema_conn):
     before = storage(conn)
     with TransactionManager(conn).transaction(begin_immediate=True):
         with patch("core.services.workbench.process_part_actions.start_workflow", side_effect=RuntimeError("fixture failure")):
-            with pytest.raises(WorkbenchCommandRejected, match="本次未保存"):
+            with pytest.raises(WorkbenchCommandRejected, match="这次没有保存零件"):
                 service.create(CREATE)
         assert storage(conn) == before and conn.in_transaction
     with pytest.raises(RuntimeError, match="outer rollback"):

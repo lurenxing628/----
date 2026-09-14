@@ -28,12 +28,12 @@ class WorkbenchMaterialService:
 
     def _current_material(self, identity: Optional[WorkbenchEntityIdentity]) -> Tuple[WorkbenchEntityIdentity, Dict[str, Any]]:
         if not isinstance(identity, WorkbenchEntityIdentity) or identity.kind != "material":
-            raise WorkbenchCommandRejected("invalid_input", "需要已核对的物料引用。", 400)
+            raise WorkbenchCommandRejected("invalid_input", "要先选中一条已核对过的物料。", 400)
         if not identity.active:
-            raise WorkbenchCommandRejected("entity_not_found", "该物料引用已失效，请刷新。", 404)
+            raise WorkbenchCommandRejected("entity_not_found", "这条物料记录已失效，请刷新后重新选择。", 404)
         current = self._identities.get(identity.ref)
         if current is None or not current.active or current.kind != "material":
-            raise WorkbenchCommandRejected("entity_not_found", "该物料引用已失效，请刷新。", 404)
+            raise WorkbenchCommandRejected("entity_not_found", "这条物料记录已失效，请刷新后重新选择。", 404)
         if current != identity:
             raise WorkbenchCommandRejected("stale_write", "物料已变化，请刷新后重新核对。")
         material = self._query.get_by_ref(current.ref)
@@ -41,7 +41,7 @@ class WorkbenchMaterialService:
             raise WorkbenchCommandRejected("entity_not_found", "该物料已不存在，请刷新。", 404)
         if (material["material_id"], material["ref"], material["revision"]) != (
                 current.entity_key, current.ref, current.revision):
-            raise WorkbenchCommandRejected("stale_write", "物料与引用不一致，请重新核对。")
+            raise WorkbenchCommandRejected("stale_write", "物料和选中的记录对不上，请刷新后重新核对。")
         return current, material
 
     def snapshot(self, identity: WorkbenchEntityIdentity) -> Dict[str, Any]:
@@ -61,7 +61,7 @@ class WorkbenchMaterialService:
         payload = self.normalize_input(action, normalized_input)
         if action == "create":
             if identity is not None:
-                raise WorkbenchCommandRejected("invalid_input", "新增物料不能指定已有对象。", 400)
+                raise WorkbenchCommandRejected("invalid_input", "新增物料时不能指定一条已有记录。", 400)
             created = self._materials.create(payload["business_code"], payload["label"], **payload["fields"])
             current = self._identities.find_active("material", created.material_id)
             if current is None:
@@ -70,7 +70,7 @@ class WorkbenchMaterialService:
             current, material = self._current_material(identity)
             # Legacy keys must not be redirected by MaterialService's text trimming.
             if current.entity_key != current.entity_key.strip():
-                raise WorkbenchCommandRejected("constraint_conflict", "物料编号含首尾空白，无法按当前领域规则修改。")
+                raise WorkbenchCommandRejected("constraint_conflict", "这个物料编号首尾有空格，现在改不了。请先核对原记录。")
             if action == "delete":
                 self._delete(current.entity_key)
             elif not self._update(material, payload):
@@ -98,7 +98,7 @@ class WorkbenchMaterialService:
             if (exc.code == ErrorCode.DB_INTEGRITY_ERROR
                     and isinstance(exc.cause, sqlite3.IntegrityError)
                     and str(exc.cause) == "FOREIGN KEY constraint failed"):
-                raise WorkbenchCommandRejected("constraint_conflict", "物料仍被其他数据引用，不能删除。") from exc
+                raise WorkbenchCommandRejected("constraint_conflict", "这个物料还被别的数据用着，不能删除。") from exc
             raise
 
     @staticmethod

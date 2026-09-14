@@ -20,7 +20,7 @@ def _common_batches(admission, batch_ref):
     refs = set(admission.settings["batch_refs"])
     if batch_ref is not None:
         if batch_ref not in refs:
-            reject("entity_not_found", "所选批次不在本运行受理范围内，未扩大比较范围。", 404)
+            reject("entity_not_found", "所选批次不在这次排产的范围里，系统不会扩大比较范围。", 404)
         refs = {batch_ref}
     return sorted(refs)
 
@@ -58,7 +58,7 @@ def _baseline_deliveries(admission, capture, refs):
         archive = stored_json(capture["facts_text"])
         history = [row for row in _table(archive, "ScheduleHistory") or [] if row["version"] == admission.baseline["version"]]
         if len(history) != 1:
-            reject("candidate_baseline_invalid", "受理时正式计划摘要无法唯一核对，未推定完整交付。", 500)
+            reject("candidate_baseline_invalid", "排产时的正式计划摘要对不上唯一一条，系统不会据此推断交付情况。请刷新后重试。", 500)
         finish = _baseline_finish(schedules, intervals)
         incomplete, uncertain = completion_evidence({"source": SOURCE_SCHEDULE, "summary": history[0]["result_summary"],
                                                      "result_status": history[0]["result_status"]}, len(schedules), finish)
@@ -80,12 +80,12 @@ def _delivery_summary(rows):
 def _delivery_rows(before, after, refs):
     old, new = ({row["batch_ref"]: row for row in rows} for rows in (before, after))
     if not set(refs) <= set(old) or not set(refs) <= set(new):
-        reject("candidate_comparison_incomplete", "比较缺少受理时批次，未仅比较可见安排。", 500)
+        reject("candidate_comparison_incomplete", "缺少排产时的批次数据，系统不会只拿看得见的安排凑比较结果。请刷新后重试。", 500)
     result = []
     for ref in refs:
         previous, current = old[ref], new[ref]
         if previous["batch_id"] != current["batch_id"] or previous["due_date"] != current["due_date"]:
-            reject("candidate_comparison_inconsistent", "候选和基线批次元数据不一致，未合并不同来源。", 500)
+            reject("candidate_comparison_inconsistent", "候选方案和对比基准里的批次基本信息不一致，系统不会把两份来源合起来算。请刷新后重试。", 500)
         first, second = previous["delay_hours"], current["delay_hours"]
         result.append({"batch_ref": ref, "batch_id": current["batch_id"], "part_label": current["part_label"],
                        "before": previous, "after": current,
@@ -132,7 +132,7 @@ def _projection(workspace, baseline, full_workspace, full_baseline, admission, c
 
 def read_candidate_comparison(conn, scope):
     if scope.range_start is None or scope.range_end is None:
-        reject("invalid_input", "候选比较必须提供共同时间范围，未套用全局摘要。", 400)
+        reject("invalid_input", "比较候选方案要给一段共同的时间范围，系统不会拿全局汇总凑。", 400)
     reader = WorkbenchRunCandidateQueryService(conn)
     baseline_reader = WorkbenchRunCandidateBaselineQueryService(conn)
     baseline_scope = RunCandidateBaselineScope(scope.candidate_ref, scope.range_start, scope.range_end,

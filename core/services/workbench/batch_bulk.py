@@ -13,13 +13,13 @@ from core.services.workbench.batches import WorkbenchBatchService
 def normalize_bulk(payload):
     object_fields(payload, ("action", "refs", "patch"), ("action", "refs"))
     if payload["action"] not in ("update", "delete", "copy"):
-        raise WorkbenchCommandRejected("invalid_input", "不支持的批量操作。", 400)
+        raise WorkbenchCommandRejected("invalid_input", "不支持这种批量操作。", 400)
     refs = payload["refs"]
     if not isinstance(refs, list) or not 1 <= len(refs) <= 5000:
-        raise WorkbenchCommandRejected("invalid_input", "请明确选择1至5000个批次。", 400)
+        raise WorkbenchCommandRejected("invalid_input", "请选择 1 到 5000 批。", 400)
     refs = [public_ref(ref) for ref in refs]
     if len(set(refs)) != len(refs):
-        raise WorkbenchCommandRejected("invalid_input", "批次选择存在重复引用。", 400)
+        raise WorkbenchCommandRejected("invalid_input", "选中的批次里有重复，请重新选择。", 400)
     patch = object_fields(payload.get("patch", {}), ("priority", "due_date", "remark") if payload["action"] == "update" else ())
     if payload["action"] == "update":
         patch = normalize_batch_input("update", {"fields": patch})["fields"]
@@ -53,7 +53,7 @@ class WorkbenchBatchBulkService:
             if payload["action"] == "delete":
                 require_unreferenced(facts, batch)
                 if related(facts, batch)["materials"]:
-                    raise WorkbenchCommandRejected("constraint_conflict", "所选批次仍有物料需求，未执行任何删除。")
+                    raise WorkbenchCommandRejected("constraint_conflict", "所选批次里还有挂着物料需求的，系统一条都没有删除。")
             elif payload["action"] == "update":
                 after = {**before, "fields": {**before["fields"], **payload["patch"]}}
             else:

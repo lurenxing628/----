@@ -6,6 +6,9 @@ from core.models.workbench_resource_input import normalize_resource_input
 
 from .resource_states import WorkbenchResourceStateService
 
+# 提示里按界面上的叫法称呼这类资料，不写内部的“目录”。
+_KIND_NAMES = {"machine_group": "设备组", "shift_profile": "班次档"}
+
 
 class WorkbenchResourceCatalogService:
     def __init__(self, conn, kind, logger=None):
@@ -28,14 +31,14 @@ class WorkbenchResourceCatalogService:
         payload = self.normalize_input(action, normalized_input)
         if action == "create":
             if identity is not None:
-                raise WorkbenchCommandRejected("invalid_input", "新增目录不能指定已有记录。", 400)
+                raise WorkbenchCommandRejected("invalid_input", "新增" + _KIND_NAMES[self.kind] + "时不能指定已有记录，没有保存。请重新点「新增」。", 400)
             return self._create(payload)
         current, raw = self.state.current(identity, self.kind)
         code = current.entity_key
         if action == "delete":
             members = self.repo.group_members(code) if self.kind == "machine_group" else self.repo.shift_members(code)
             if members:
-                raise WorkbenchCommandRejected("constraint_conflict", "仍有资源使用此目录，不能删除。")
+                raise WorkbenchCommandRejected("constraint_conflict", "还有资源在用这个" + _KIND_NAMES[self.kind] + "，没有删除。请先把这些资源改到别处。")
             self.repo.delete_catalog(self.kind, code)
             changed = True
         else:
@@ -45,7 +48,7 @@ class WorkbenchResourceCatalogService:
     def _create(self, payload):
         code = payload["business_code"]
         if self.repo.get_raw(self.kind, code) is not None:
-            raise WorkbenchCommandRejected("constraint_conflict", "资源目录编号已存在，不能重复新增。")
+            raise WorkbenchCommandRejected("constraint_conflict", "这个" + _KIND_NAMES[self.kind] + "编号已经存在，没有新增。请换一个编号。")
         fields = {"name": payload["label"], "status": "active", **payload["fields"]}
         self._check_name(code, fields["name"])
         pattern = fields.pop("pattern", None)
@@ -80,4 +83,4 @@ class WorkbenchResourceCatalogService:
     def _check_name(self, code, name):
         existing = self.repo.catalog_by_name(self.kind, name)
         if existing is not None and existing["business_code"] != code:
-            raise WorkbenchCommandRejected("constraint_conflict", "目录名称已存在，请使用不同名称。")
+            raise WorkbenchCommandRejected("constraint_conflict", "这个名称已经被占用，没有保存。请换一个名称。")

@@ -57,7 +57,7 @@ class WorkbenchResourceFileService:
             if len(repeated) > 1:
                 numbers = ", ".join(str(row["row"]) for row in repeated)
                 for row in repeated:
-                    reject_action_row(row, "文件包含重复编号或名称，涉及行：" + numbers, field=field, code="duplicate_entry")
+                    reject_action_row(row, "文件里有重复的编号或名称，这些行都没有导入：第 " + numbers + " 行。请去掉重复项后重新上传。", field=field, code="duplicate_entry")
 
     def _import_row(self, source, scope):
         row = action_row(source["row"])
@@ -67,7 +67,7 @@ class WorkbenchResourceFileService:
             code = cast(str, resource_text(values.get("business_code"), "business_code"))
             row["business_code"] = code
             if values["business_code"] != code and self.repo.raw(self.kind, values["business_code"]) is not None:
-                raise ValidationError("旧编号含首尾空白，不能猜测为另一编号。", field="business_code")
+                raise ValidationError("这个编号前后带空格，这一行没有导入，系统不会猜成另一个编号。请去掉前后的空格。", field="business_code")
             raw = self.repo.raw(self.kind, code)
             row["action"] = "create" if raw is None else "update"
             if raw is None:
@@ -75,7 +75,7 @@ class WorkbenchResourceFileService:
             else:
                 identity = self.reader.identities.find_active(self.kind, code)
                 if identity is None:
-                    raise WorkbenchCommandRejected("storage_failure", "资源缺少永久引用，未修补资料。", 500)
+                    raise WorkbenchCommandRejected("storage_failure", "这条资源在资料里查不到编号，这一行没有导入，资料也没有被改动。请到资料总览核对后重试。", 500)
                 expected = resource_file_state(self.reader, self.repo, identity)
                 row.update(entity_ref=identity.ref, expected=expected,
                            before=flat_resource(self.kind, identity, expected, self.repo), reference_count=reference_count(expected))
@@ -112,7 +112,7 @@ class WorkbenchResourceFileService:
             try:
                 current = self.preview_import(content, file_format=file_format, scope=scope, mode=mode)
             except ValidationError as exc:
-                raise WorkbenchCommandRejected("stale_write", "导入文件或范围已变化，请重新预检。") from exc
+                raise WorkbenchCommandRejected("stale_write", "文件或导入范围已经变了，没有导入。请重新点「预检」后再确认。") from exc
             check_resource_preview(preview, current)
             results = []
             for row in current.as_dict()["rows"]:
@@ -126,7 +126,7 @@ class WorkbenchResourceFileService:
         if not self.conn.in_transaction:
             raise RuntimeError("资源导出预览必须在已验证的查询快照事务中执行。")
         if selection not in ("all", "filtered", "selected") or (selection != "selected" and selected_refs is not None):
-            raise WorkbenchCommandRejected("invalid_input", "导出须明确全量、筛选或选中，仅选中项可传refs。", 400)
+            raise WorkbenchCommandRejected("invalid_input", "导出前要先选清楚是全部、当前筛选还是勾选的记录，没有开始下载。请重新选择导出范围。", 400)
         scope = resource_scope(self.kind, scope)
         if selection == "selected":
             refs = resource_refs(selected_refs, allow_empty=True)
@@ -155,7 +155,7 @@ class WorkbenchResourceFileService:
     def _export_rows(self, rows, scope):
         for row in rows:
             if row["ref"] is None:
-                raise WorkbenchCommandRejected("storage_failure", "导出资源缺少永久引用，未修补资料。", 500)
+                raise WorkbenchCommandRejected("storage_failure", "有资源在资料里查不到编号，没有开始下载，资料也没有被改动。请到资料总览核对后重试。", 500)
             identity = self.reader.resolve(row["ref"])
             state = resource_file_state(self.reader, self.repo, identity)
             flat = flat_resource(self.kind, identity, state, self.repo)
@@ -166,5 +166,5 @@ class WorkbenchResourceFileService:
     def template(kind, file_format="xlsx", *, category=None):
         action_kind(kind)
         if (kind == "op_type" and category not in ("internal", "external")) or (kind != "op_type" and category is not None):
-            raise ValidationError("仅工种模板必须明确自制或外协归属。", field="category")
+            raise ValidationError("下载工种模板要先选自制还是外协，没有开始下载。请选好归属后重试。", field="category")
         return write_resource_file(kind, [], file_format, template=True, category=category)

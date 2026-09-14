@@ -157,10 +157,10 @@ def test_full_factory_13_column_identity_old10_unique_csv_and_atomic_import(fina
     assert code == 200
     rows = list(csv.DictReader(io.StringIO(raw.decode("utf-8-sig"))))
     columns = list(rows[0])
-    assert columns[:10] == ["计划引用", "任务引用", "工序引用", "批次", "工序", "计划开工", "计划完工", "计划设备", "计划人员", "目标数量"]
+    assert columns[:10] == ["计划编号", "任务编号", "工序编号", "批次", "工序", "计划开工", "计划完工", "计划设备", "计划人员", "目标数量"]
     assert columns[42:] == ["单件编号", "计划应做数量", "计划批次数量", "计划数量依据", "计划数量缺失原因"]
     old_row = next(row for row in rows if row["报工单号"] == "FINAL-E-OLD-10")
-    assert old_row["本次数量"] == "0" and old_row["有效加工小时"] == ""
+    assert old_row["本次数量"] == "0" and old_row["有效加工工时（小时）"] == ""
     assert host.state() == preserved
     old_rows_preserved(original, preserved, {"WorkbenchExecutionLedgerClock"})
     write_json(host.root / "files-proof.json", {"template_columns": 13, "template_tasks": len(decoded),

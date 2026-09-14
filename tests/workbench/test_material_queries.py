@@ -104,7 +104,7 @@ def test_missing_metadata_fails_visible_instead_of_omitting_or_repairing_row(mat
     conn.execute("DELETE FROM WorkbenchEntityRefs WHERE kind='material' AND entity_key='M-1'")
     conn.commit()
     before = list(conn.iterdump())
-    with pytest.raises(WorkbenchCommandRejected, match="永久引用缺失"):
+    with pytest.raises(WorkbenchCommandRejected, match="物料缺少系统编号"):
         service.page(MaterialPageRequest())
     assert list(conn.iterdump()) == before
 

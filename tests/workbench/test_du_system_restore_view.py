@@ -35,7 +35,7 @@ def test_true_cold_readonly_page_and_diagnostic_never_open_database(tmp_path, da
             assert 'data-restore-maintenance="cold"' in page and "系统已暂停" in page
             assert 'src="/static/' not in page and "nonce" not in page
             assert '<a href="/workbench?view=system">返回工作台</a>' in page
-            assert '返回入口会重新核实维护状态' in page
+            assert '返回入口会重新查询维护状态' in page
         query = "/workbench?" + urlencode({"kind": "request", "reference": KEY})
         status, page = host.request(query)
         assert status == 503 and KEY in page.decode("utf-8")

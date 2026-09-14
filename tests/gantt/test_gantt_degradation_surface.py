@@ -76,7 +76,7 @@ def test_gantt_bad_time_rows_surface_degraded(schema_conn, repo_root) -> None:
     with pytest.raises(WorkbenchCommandRejected) as caught:
         public_time("2026-03-02 99:00:00")
     assert (caught.value.code, caught.value.status) == ("plan_unavailable", 409)
-    assert "未返回截断或替代数据" in str(caught.value)
+    assert "不会用别的时间顶替" in str(caught.value)
     assert conn.execute("SELECT start_time FROM Schedule WHERE op_id=?", (op_id_invalid,)).fetchone()[0] == "2026-03-02 99:00:00"
     assert not (repo_root / "static/js/gantt_boot.js").exists()
     run_current_js(r"""

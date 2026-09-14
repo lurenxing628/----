@@ -15,8 +15,8 @@ from .trial_adoption_storage import load_saved_scenario
 
 
 def _unavailable(facts, code, gap):
-    message = ("该计划未记录可核实的冻结工艺关系。" if code == "process_order_not_recorded" else
-               "原采用证据、冻结工艺关系或永久身份无法核实，未改用当前 BOM 或同号任务。")
+    message = ("这一版计划没有记下当时锁定的工序先后关系，这里不显示工序顺序。" if code == "process_order_not_recorded" else
+               "当时锁定的工序先后关系或它的编号核对不上，这里不显示工序顺序；系统不会改用当前 BOM 或同号的新任务。")
     facts.update(outcome=code, evidence_gap=gap)
     return {"state": "unavailable", "basis": None, "items": [],
             "issues": [{"code": code, "message": message}]}, facts

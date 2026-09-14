@@ -39,7 +39,7 @@ def project_lineage_calibration(templates, instances, projections, lineage, *, a
         summary["exclusion_reasons"] += missing["exclusion_reasons"]
         rows.append(build_suggestion(template, summary, generated_at=as_of.isoformat(timespec="seconds")))
     unbound_count = sum(map(len, unbound.values()))
-    constraints = ([issue("template_lineage_missing", "部分实例没有明确模板来源，只供核对，未计入有效样本。")]
+    constraints = ([issue("template_lineage_missing", "有一部分完工记录找不到对应的工艺模板，只能用来核对，没有计进可用记录数。")]
                    if unbound_count else [])
     return {"rows": rows, "samples_by_part": dict(samples_by_part), "samples_by_template": dict(samples_by_template),
             "unbound_samples_by_part": dict(unbound), "unbound_instance_count": unbound_count,

@@ -7,6 +7,7 @@ from core.infrastructure.safe_files import stat_regular_file
 from core.models.operation_log_labels import operation_log_summary
 from core.models.operation_log_public_projection import public_operation_log_detail_text
 from core.models.workbench_command import input_fingerprint
+from core.models.workbench_system import normalize_log_level
 from core.services.system.operation_log_service import OperationLogService
 from core.services.system.runtime_log_reader import LOG_FILE_CHOICES, NO_ANCHOR_HEAD, read_log_entries_tail
 from core.services.workbench.system_redaction import public_system_text
@@ -29,14 +30,14 @@ def backup_records(directory):
         try:
             signature = backup_signature(os.path.join(directory, name))
         except OSError:
-            issues.append({"code": "file_unreadable", "message": "有备份文件无法读取或不是普通文件，未列为可操作目标。"})
+            issues.append({"code": "file_unreadable", "message": "有备份文件读不到（可能不是真正的备份文件），没有列进可以操作的备份。请让维护人员检查备份目录。"})
             continue
         kind = next((suffix for suffix in ("before_restore", "manual", "auto") if "_" + suffix in name), "unknown")
         rows.append({"key": input_fingerprint({"name": name, **signature}), "filename": name,
                      "time": datetime.fromtimestamp(signature["mtime_ns"] / 1e9).strftime("%Y-%m-%dT%H:%M:%S"),
                      "size_bytes": signature["size"], "type": kind, "status": "unverified",
                      "file_exists": True, "verification_state": "not_checked", "last_run_result": None,
-                     "summary": name, "body": "仅已读取文件元信息，没有本次完整性校验证据。", "_signature": signature})
+                     "summary": name, "body": "这里只读了文件的基本信息，没有做完整性检查。", "_signature": signature})
     return rows, issues
 
 
@@ -75,7 +76,7 @@ def log_records(conn, log_dir, logger):
         except OSError:
             logger.exception("系统工作区运行日志读取失败")
             sources.append({"source": name, "state": "error", "window": 200, "count": None,
-                            "truncated": False, "message": "日志文件无法读取，请检查文件状态。"})
+                            "truncated": False, "message": "日志文件读不到，请让维护人员检查日志文件。"})
     try:
         operations = OperationLogService(conn, logger=logger).list_recent(limit=501)
         for item in operations[:500]:
@@ -83,7 +84,7 @@ def log_records(conn, log_dir, logger):
             body = public_system_text(public_operation_log_detail_text(item.detail) + "\n" + str(item.error_message or ""))
             rows.append({"key": input_fingerprint({"operation": item.id, "time": item.log_time, "body": body}),
                          "time": str(item.log_time or "").replace(" ", "T") or None,
-                         "type": "operation", "status": "recorded", "level": item.log_level,
+                         "type": "operation", "status": "recorded", "level": normalize_log_level(item.log_level),
                          "file": "OperationLogs", "summary": summary, "body": body,
                          "content_truncated": "展示长度已截断" in body})
         sources.append({"source": "OperationLogs", "state": "available" if operations else "empty",
@@ -91,5 +92,5 @@ def log_records(conn, log_dir, logger):
     except Exception:
         logger.exception("系统工作区操作日志读取失败")
         sources.append({"source": "OperationLogs", "state": "error", "window": 500, "count": None,
-                        "truncated": False, "message": "操作日志无法读取，未以空记录代替。"})
+                        "truncated": False, "message": "操作日志读不到，这里不代表没有日志。请刷新重试。"})
     return rows, sources

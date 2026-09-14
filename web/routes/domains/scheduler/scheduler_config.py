@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import os
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple, cast
 
 from flask import current_app, flash, g, redirect, render_template, request, send_file, url_for
 
 from core.infrastructure.errors import AppError
 from core.services.scheduler import ConfigService
+from core.services.workbench.messages import beijing_text
 from web.error_boundary import user_visible_app_error_message
 from web.manual_src_security import (
     get_full_manual_section_url,
@@ -121,7 +122,7 @@ def _normalize_scheduler_manual_args(raw_src: Optional[str], raw_page: Optional[
     safe_page = raw_page if bundle else None
     page_warning = None
     if raw_page and safe_page is None:
-        page_warning = f"未找到页面说明：{raw_page}，已改为打开整本说明。"
+        page_warning = "这一页还没有单独的说明，已经打开整本说明书。"
     return safe_src, safe_page, bundle, page_warning
 
 
@@ -134,9 +135,10 @@ def _resolve_manual_entry_endpoint(manual_id: Optional[str]) -> Optional[str]:
 
 def _format_manual_mtime(manual_path: str) -> Optional[str]:
     try:
-        return datetime.fromtimestamp(os.path.getmtime(manual_path)).strftime("%Y-%m-%d %H:%M:%S")
-    except Exception:
+        stamp = datetime.fromtimestamp(os.path.getmtime(manual_path), timezone.utc)
+    except OSError:
         return None
+    return beijing_text(stamp.isoformat())
 
 
 def _load_manual_text_and_mtime(manual_path: Optional[str], candidates: List[str]) -> Tuple[str, Optional[str]]:
@@ -147,7 +149,7 @@ def _load_manual_text_and_mtime(manual_path: Optional[str], candidates: List[str
             except Exception:
                 g._aps_scheduler_manual_warning_status = "log_warning_failed"
             return (
-                "系统找不到使用说明文件：运行配置缺失，BASE_DIR 未配置或为空，请联系管理员检查软件安装目录。",
+                "找不到说明书文件：本机安装信息不完整。请联系维护人员检查安装目录。",
                 None,
             )
 
@@ -155,7 +157,7 @@ def _load_manual_text_and_mtime(manual_path: Optional[str], candidates: List[str
             current_app.logger.warning("系统使用说明文件不存在（candidates=%s）", candidates)
         except Exception:
             g._aps_scheduler_manual_warning_status = "log_warning_failed"
-        return "说明书文件缺失（可能是安装包未包含或文件被误删）。请联系管理员。", None
+        return "找不到说明书文件，可能安装包里没带或文件被删了。请联系维护人员。", None
 
     try:
         with open(manual_path, encoding="utf-8") as f:
@@ -163,7 +165,7 @@ def _load_manual_text_and_mtime(manual_path: Optional[str], candidates: List[str
         return manual_text, _format_manual_mtime(manual_path)
     except Exception:
         current_app.logger.exception("读取系统使用说明失败")
-        return "说明书加载失败，请稍后重试或联系管理员。", None
+        return "说明书加载失败。请刷新重试；仍不行请联系维护人员。", None
 
 
 def _build_manual_download_url(manual_path: Optional[str], safe_src: Optional[str], safe_page: Optional[str]) -> Optional[str]:
@@ -245,7 +247,7 @@ def _build_manual_page_view_state(
 def config_manual_page():
     """
     系统使用说明（面向计划/工艺新手）。
-    - 原样展示 Markdown（不做渲染，避免新增依赖）
+    - 页内把 Markdown 转成 HTML 后展示（转换器在 legacy_presentation，不新增依赖）
     - 提供下载原始 md
     """
     raw_src = (request.args.get("src") or "").strip()
@@ -297,9 +299,9 @@ def config_manual_download():
     manual_path, candidates = _resolve_scheduler_manual_md_path_for_download()
     if not manual_path:
         if not candidates:
-            flash("系统找不到使用说明文件：运行配置缺失，BASE_DIR 未配置或为空，请联系管理员检查软件安装目录。", "error")
+            flash("找不到说明书文件：本机安装信息不完整。请联系维护人员检查安装目录。", "error")
             return redirect(_build_manual_page_url(safe_src, safe_page))
-        flash("说明书文件不存在，无法下载。", "error")
+        flash("说明书文件不在了，下载不了。请联系维护人员。", "error")
         return redirect(_build_manual_page_url(safe_src, safe_page))
     try:
         return send_file(
@@ -310,7 +312,7 @@ def config_manual_download():
         )
     except Exception:
         current_app.logger.exception("下载系统使用说明失败")
-        flash("下载说明书失败，请稍后重试。", "error")
+        flash("下载说明书失败。请重试一次；仍不行请联系维护人员。", "error")
         return redirect(_build_manual_page_url(safe_src, safe_page))
 @bp.get("/config")
 def config_page():

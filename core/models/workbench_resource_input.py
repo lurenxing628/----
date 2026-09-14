@@ -23,7 +23,7 @@ _STATUS = {"machine": ("active", "maintain", "inactive"), "operator": ("active",
 
 def resource_object(value, allowed, path):
     if type(value) is not dict or any(type(key) is not str or key not in allowed for key in value):
-        raise ValidationError("内容不是约定的对象，或包含未知字段。", field=path)
+        raise ValidationError("提交内容格式不对或含有不支持的项，这次操作没有执行。请刷新页面后重试。", field=path)
     return value
 
 
@@ -31,10 +31,10 @@ def resource_text(value, path, *, nullable=False):
     if value is None and nullable:
         return None
     if type(value) is not str:
-        raise ValidationError("该字段必须是文字。", field=path)
+        raise ValidationError("这一项必须填文字。", field=path)
     text = value.strip()
     if not text and not nullable:
-        raise ValidationError("该字段不能为空。", field=path)
+        raise ValidationError("这一项不能为空。", field=path)
     return text or None
 
 
@@ -107,7 +107,7 @@ def _field(kind, name, value):
         return value
     allowed = _STATUS[kind] if name == "status" else (("internal", "external") if name == "category" else (None, "separate", "merged"))
     if value not in allowed:
-        raise ValidationError("字段选项不正确。", field=path)
+        raise ValidationError("这一项的选项不正确。", field=path)
     return value
 
 
@@ -128,7 +128,7 @@ def normalize_resource_input(kind, action, payload):
     fields = resource_object(payload.get("fields", {}), _FIELDS[kind], "fields")
     result["fields"] = {key: _field(kind, key, value) for key, value in fields.items()}
     if kind == "shift_profile" and action == "create" and not {"anchor_date", "cycle_days", "pattern"} <= fields.keys():
-        raise ValidationError("新建班次必须填写起始日期、轮换周期和逐日时间，不能只保存名称。", field="fields")
+        raise ValidationError("新增班次必须填起始日期、轮换周期和每天的时间，不能只填名称。", field="fields")
     result["relationships"] = _normalize_relations(kind, payload.get("relationships", {}))
     return result
 

@@ -1,4 +1,4 @@
-"""回归测试：模拟方案（scenario_id）预览贯穿二级页与服务层——周计划/资源排班/超期/利用率/停机的页面、data 接口、Excel 导出都读取场景行而不回退正式计划，页面挂出「正在预览…」横幅且 scenario_id 随翻页保留；导出仅用公开方案名（含未命名时的「模拟预览（未命名）」），不泄露 scenario_id/plan_role/candidate_key 等内部字段；scenario_id 不存在时统一 400「模拟方案不存在」而非展示正式计划。"""
+"""回归测试：模拟方案（scenario_id）预览贯穿二级页与服务层——周计划/资源排班/超期/利用率/停机的页面、data 接口、Excel 导出都读取场景行而不回退正式计划，页面挂出「正在预览…」横幅且 scenario_id 随翻页保留；导出仅用公开方案名（含未命名时的「试调方案（未命名）」），不泄露 scenario_id/plan_role/candidate_key 等内部字段；scenario_id 不存在时统一 400「模拟方案不存在」而非展示正式计划。"""
 
 from __future__ import annotations
 
@@ -177,7 +177,7 @@ def _retired_preview(client, path, scenario_id, name):
         assert exported.status_code == 200
         _assert_report_export_uses_public_scenario_name(exported, scenario_id=scenario_id, expected_name=name)
         downloads = [link]
-    assert_retired(response, public=(str(VERSION), "正式采用方案", "已保存模拟方案"),
+    assert_retired(response, public=(str(VERSION), "正式采用方案", "已保存的试调方案"),
                    downloads=downloads,
                    message=UNSUPPORTED_SCOPE if parts.path == "/scheduler/gantt" else RETIRED_SCOPE)
     assert scenario_id not in unquote(response.get_data(as_text=True))
@@ -390,7 +390,7 @@ def test_secondary_output_pages_use_plain_fallback_for_unnamed_scenario(tmp_path
         f"/reports/downtime?start_date=2026-05-06&end_date=2026-05-06&{scenario_query}",
     ]
     for url in page_urls:
-        model = _retired_preview(client, url, scenario_id, "模拟预览（未命名）")
+        model = _retired_preview(client, url, scenario_id, "试调方案（未命名）")
         if model is not None:
             assert "当前方案：None" not in model["report_plan_status"]["source_text"]
 
@@ -398,10 +398,10 @@ def test_secondary_output_pages_use_plain_fallback_for_unnamed_scenario(tmp_path
     assert week_export.status_code == 200
     week_disposition = unquote(str(week_export.headers.get("Content-Disposition") or ""))
     assert scenario_id not in week_disposition
-    assert "模拟预览（未命名）" in week_disposition
+    assert "试调方案（未命名）" in week_disposition
     week_summary = _workbook_summary_values(week_export.data)
     assert week_summary is not None
-    assert week_summary["模拟方案"] == "模拟预览（未命名）"
+    assert week_summary["模拟方案"] == "试调方案（未命名）"
     assert scenario_id not in "\n".join(str(value or "") for value in week_summary.values())
 
     resource_export = client.get(
@@ -410,7 +410,7 @@ def test_secondary_output_pages_use_plain_fallback_for_unnamed_scenario(tmp_path
     assert resource_export.status_code == 200
     resource_disposition = unquote(str(resource_export.headers.get("Content-Disposition") or ""))
     assert scenario_id not in resource_disposition
-    assert "模拟预览（未命名）" in resource_disposition
+    assert "试调方案（未命名）" in resource_disposition
     assert "正式采用方案" not in resource_disposition
 
     report_exports = [
@@ -423,7 +423,7 @@ def test_secondary_output_pages_use_plain_fallback_for_unnamed_scenario(tmp_path
         _assert_report_export_uses_public_scenario_name(
             response,
             scenario_id=scenario_id,
-            expected_name="模拟预览（未命名）",
+            expected_name="试调方案（未命名）",
         )
 
 

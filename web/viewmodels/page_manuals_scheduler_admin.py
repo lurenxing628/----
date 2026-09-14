@@ -8,7 +8,7 @@ SCHEDULER_ADMIN_TOPICS: Dict[str, Dict[str, Any]] = {
     "scheduler_config": _topic(
         title="高级设置",
         summary="这里切换排产方案、调策略和计算模式，所有影响排产行为的开关都在这一页。表单支持草稿自动保存。",
-        full_manual_anchor="#7-高级设置每个开关的作用",
+        full_manual_anchor="#7-排产规则每个开关的作用",
         help_card=_card(
             "高级设置先抓住这几个原则",
             "日常先切\u201c常用方案\u201d，再改详细参数。",
@@ -158,7 +158,7 @@ SCHEDULER_ADMIN_TOPICS: Dict[str, Dict[str, Any]] = {
     "scheduler_calendar": _topic(
         title="工作日历配置",
         summary="这里设置全厂统一的工作日历，哪天上班、效率多少、能不能排急件，都在这里定。",
-        full_manual_anchor="#5-5工作日历配置",
+        full_manual_anchor="#5-5工作日历",
         help_card=_card(
             "工作日历决定哪天能排、效率多少",
             "只需要配和默认规则不一样的日子，比如周末加班、节假日调休。",

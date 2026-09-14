@@ -19,7 +19,7 @@ from .calibration_samples import number
 
 def _select_recent(samples):
     if len({row["sample_ref"] for row in samples}) != len(samples):
-        raise WorkbenchCommandRejected("storage_failure", "校准样本永久引用重复，不能重复计数。", 500)
+        raise WorkbenchCommandRejected("storage_failure", "同一条完工记录出现了多次，系统不会重复计数。请刷新重试；仍不行请联系维护人员。", 500)
     eligible = sorted((row for row in samples if row["eligible"]),
                       key=lambda row: (row["confirmed_finish"], row["sample_ref"]), reverse=True)
     selected = eligible[:MAX_SAMPLES]
@@ -27,7 +27,7 @@ def _select_recent(samples):
     for row in samples:
         row["selected"] = row["sample_ref"] in selected_refs
         if row["eligible"]:
-            row["exclusion_reasons"] = [] if row["selected"] else [issue("outside_recent_20", "有效样本不在最近20个整道完工样本内。")]
+            row["exclusion_reasons"] = [] if row["selected"] else [issue("outside_recent_20", "这条完工记录不在最近 20 条整道完工记录里。")]
     return selected, len(eligible)
 
 
@@ -65,7 +65,7 @@ def build_suggestion(template, summary, *, generated_at):
     old, suggested = number(template.old_unit_hours), number(summary["suggested_unit_hours"])
     reasons = write_blockers()
     if suggested is None:
-        reasons.append(issue("insufficient_samples", "同模板修订的有效样本不足5个，暂不生成建议值。"))
+        reasons.append(issue("insufficient_samples", "这个模板版本下可用的完工记录不足 5 条，暂时不给建议值。"))
     if template.source != "internal":
         reasons.append(issue("processing_basis_unconfirmed", "当前模板不是已确认的自制加工工序。"))
     return {"suggestion_ref": template.operation_ref, "operation_ref": template.operation_ref,

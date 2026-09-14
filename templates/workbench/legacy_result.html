@@ -1,11 +1,11 @@
 {% extends "workbench/legacy_base.html" %}
 {% block content %}
-<h2>原入口提交结果</h2>
-<p>处理状态以本页提示和逐行结果为准。没有成功提示时，不表示已经写入。</p>
+<h2>旧入口提交结果</h2>
+<p>处理结果以本页提示和逐行结果为准。没有看到成功提示时，就不能当成已经写入。</p>
 <dl>
-  <dt>文件</dt><dd>{{ filename or "未提供" }}</dd>
+  <dt>文件</dt><dd>{{ filename or "未读取" }}</dd>
   <dt>模式</dt><dd>
-  {% set mode_names = {'overwrite':'更新已有，新增缺少','append':'只新增，已有跳过','replace':'清空本类数据后重导'} %}
+  {% set mode_names = {'overwrite':'更新已有，新增缺少','append':'只新增，已有跳过','replace':'先清除本类数据，再按表格重导'} %}
   {% set chosen = namespace(label=mode_names.get(mode, mode)) %}
   {% if mode_options %}{% for option in mode_options %}
     {% set value = option.value if option is mapping else option[0] %}
@@ -17,8 +17,8 @@
 </dl>
 {% if strict_mode_help_text %}<p class="muted">{{ strict_mode_help_text }}</p>{% endif %}
 {% if holiday_default_efficiency_warning %}<p class="notice" data-level="warning">{{ holiday_default_efficiency_warning }}</p>{% endif %}
-{% if auto_generate_ops %}<p class="notice" data-level="warning">确认后会按模板重新生成批次工序；原来手工补过的资源、工时和外协周期可能改变。原预检基线仍会由后端核对。</p>{% endif %}
-{% if mode == "replace" %}<p class="notice" data-level="warning">该模式会按原业务规则清空本类数据后重导，不是只替换当前筛选或勾选集合。</p>{% endif %}
+{% if auto_generate_ops %}<p class="notice" data-level="warning">确认后会按模板重新生成批次工序；原来手工补过的资源、工时和外协周期可能改变。系统仍会按刚才预检时的数据再核对一遍。</p>{% endif %}
+{% if mode == "replace" %}<p class="notice" data-level="warning">这个模式会按原业务规则先清除本类数据再重导，不是只替换当前筛选或勾选的那几条。</p>{% endif %}
 {% set state = namespace(has_error=false) %}
 {% if preview_rows %}
 <section aria-label="检查结果">
@@ -29,7 +29,7 @@
       {% set status = row.status.value %}
       {% if status not in ("new", "update", "unchanged", "skip") %}{% set state.has_error = true %}{% endif %}
       <tr><td>{{ row.row_num }}</td><td>{{ {'new':'新增','update':'更新','unchanged':'无变化','skip':'跳过','error':'错误'}.get(status, '未知结果') }}</td>
-        <td>{{ row.message }}</td><td><details><summary>查看本行数据</summary>
+        <td>{{ row.message }}</td><td><details><summary>查看这一行的数据</summary>
         <dl>{% for field in row|legacy_preview_fields(request.endpoint) %}
           <dt>{{ field.label }}</dt><dd>{% if field.changed %}{{ field.before }} → {{ field.after }}{% else %}{{ field.value }}{% endif %}</dd>
         {% endfor %}</dl>
@@ -38,7 +38,7 @@
   </table></div>
 </section>
 {% endif %}
-<section aria-label="确认原请求">
+<section aria-label="确认写入">
   <h2>确认写入</h2>
   {% if preview_rows and raw_rows_json and preview_baseline and not state.has_error %}
   <form action="{{ confirm_url }}" method="post" data-legacy-confirmation="true">
@@ -48,16 +48,16 @@
     {% if auto_generate_ops is defined %}<input type="hidden" name="auto_generate_ops" value="{{ '1' if auto_generate_ops else '0' }}">{% endif %}
     {% if strict_mode_supported %}<input type="hidden" name="strict_mode" value="{{ 'yes' if strict_mode else 'no' }}">{% endif %}
     <textarea name="raw_rows_json" hidden>{{ raw_rows_json }}</textarea>
-    <label class="confirmation"><input type="checkbox" required>已核对本次模式、逐行结果与影响，确认提交原请求。</label>
+    <label class="confirmation"><input type="checkbox" required>已核对本次模式、逐行结果和影响，确认提交这次写入。</label>
     <button type="submit">确认写入系统</button>
   </form>
   {% else %}
-  <p class="notice">当前没有可确认的完整检查结果。请保留上方提示，重新进入相应工作区检查文件；本页不会自动重试或改写数据。</p>
+  <p class="notice">现在没有可确认的完整检查结果。请留着上方提示，回到对应工作区重新检查文件；本页不会自动重试，也不会改写数据。</p>
   {% endif %}
 </section>
 <nav class="actions">
-  {% if back_url %}<a href="{{ back_url }}">{{ back_label or "返回原业务入口" }}</a>{% endif %}
+  {% if back_url %}<a href="{{ back_url }}">{{ back_label or "返回原来的入口" }}</a>{% endif %}
   {% if export_url %}<a href="{{ export_url }}">导出当前数据</a>{% endif %}
-  {% if template_download_url %}<a href="{{ template_download_url }}">下载原模板</a>{% endif %}
+  {% if template_download_url %}<a href="{{ template_download_url }}">下载模板</a>{% endif %}
 </nav>
 {% endblock %}

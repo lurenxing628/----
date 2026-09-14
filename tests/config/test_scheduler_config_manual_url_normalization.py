@@ -70,7 +70,9 @@ def test_normalize_scheduler_manual_args_accepts_same_origin_absolute_src_and_fl
     assert safe_src == "/scheduler/gantt?view=machine"
     assert safe_page is None
     assert bundle is None
-    assert "bad.page" in str(warning or "")
+    # 页面标识是内部名，不进用户提示；提示只说明已经改开整本说明书。
+    assert warning and "bad.page" not in warning
+    assert "整本说明书" in warning
 
 
 def test_get_manual_url_drops_unknown_plan_role_from_return_src(monkeypatch: pytest.MonkeyPatch) -> None:

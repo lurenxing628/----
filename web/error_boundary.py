@@ -24,14 +24,14 @@ _PUBLIC_DIAGNOSTIC_REASONS = {
 _PUBLIC_DETAIL_MODES = {"reject_need_async"}
 _PUBLIC_LITERAL_MESSAGE_FIELDS = {"version"}
 _GENERIC_ERROR_MESSAGES = {
-    ErrorCode.NOT_FOUND: "请求的资源不存在或已不可用。",
+    ErrorCode.NOT_FOUND: "要找的内容不存在或已不可用。",
     ErrorCode.PERMISSION_DENIED: "当前操作没有权限或不允许执行。",
-    ErrorCode.DUPLICATE_ENTRY: "请求与现有数据冲突，请调整后重试。",
-    ErrorCode.FILE_TOO_LARGE: "上传文件过大，请缩小文件后重试。",
+    ErrorCode.DUPLICATE_ENTRY: "和现有数据冲突，这次操作没有保存。请调整后重试。",
+    ErrorCode.FILE_TOO_LARGE: "文件太大，请缩小文件后重试。",
     ErrorCode.DB_CONNECTION_ERROR: "数据访问失败，请稍后重试。",
     ErrorCode.DB_QUERY_ERROR: "数据访问失败，请稍后重试。",
     ErrorCode.DB_TRANSACTION_ERROR: "数据访问失败，请稍后重试。",
-    ErrorCode.DB_INTEGRITY_ERROR: "请求与现有数据冲突，请调整后重试。",
+    ErrorCode.DB_INTEGRITY_ERROR: "和现有数据冲突，这次操作没有保存。请调整后重试。",
 }
 _KNOWN_FIELD_LABELS = {
     "end_date": "结束日期",
@@ -40,7 +40,7 @@ _KNOWN_FIELD_LABELS = {
     "operator_id": "人员",
     "period_preset": "时间范围",
     "query_date": "查询日期",
-    "scope_id": "范围对象",
+    "scope_id": "范围",
     "scope_type": "范围类型",
     "date_range": "日期范围",
     "start_date": "开始日期",
@@ -76,7 +76,7 @@ def _generic_app_error_message(code: ErrorCode) -> str:
     if code.value.startswith("2"):
         return "数据访问失败，请稍后重试。"
     if code.value.endswith("02"):
-        return "请求与现有数据冲突，请调整后重试。"
+        return "和现有数据冲突，这次操作没有保存。请调整后重试。"
     if code.value.endswith("03") or code.value.endswith("04") or code.value.endswith("05"):
         return "当前操作无法完成，请调整后重试。"
     return "操作失败，请稍后重试。"
@@ -196,7 +196,7 @@ def _validation_error_message(exc: AppError, details: dict) -> str:
     if reason in reason_messages:
         return reason_messages[reason]
     if field == "freeze_window":
-        return "冻结窗口配置或种子排程异常，请修复后重试。"
+        return "冻结期设置或打底排程有问题，请修复后重试。"
     if not (_looks_internal_message(exc.message) or message_mentions_field or message_mentions_key or message_mentions_path):
         return exc.message
     return f"{field_label}填写不正确，请检查后重试。" if field_label else "参数填写不正确，请检查后重试。"
@@ -315,13 +315,13 @@ def render_minimal_error_page(
     field_label: Optional[str] = None,
 ) -> str:
     title_text = html.escape(str(title or "发生错误"))
-    message_text = html.escape(str(message or "发生未知错误，请查看日志。"))
+    message_text = html.escape(str(message or "系统出错，这次操作没有完成。请刷新重试；仍不行请联系维护人员。"))
     details_text = _details_text(details)
     # 发生时刻与日志时间戳同格式，供用户去运行日志页按时间对位定位条目
     occurred_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     extra_parts = []
     if field_label:
-        extra_parts.append(f"<p><strong>相关字段：</strong>{html.escape(str(field_label))}</p>")
+        extra_parts.append(f"<p><strong>需要检查的项：</strong>{html.escape(str(field_label))}</p>")
     if details_text:
         extra_parts.append(f"<pre>{html.escape(str(details_text))}</pre>")
     extra_html = "".join(extra_parts)
@@ -347,8 +347,8 @@ def render_minimal_error_page(
         f"{extra_html}"
         f"<p class=\"hint\"><strong>发生时刻：</strong>{occurred_at}</p>"
         # 本页渲染于「模板系统已坏」的兜底场景，url_for 可能同样不可靠——只给裸路径文本
-        "<p class=\"hint\">可访问 /system/runtime-logs 打开「运行日志」页，按上面的发生时刻查找报错详情；"
-        "如果问题反复出现，请联系管理员。</p>"
+        "<p class=\"hint\">可打开 /workbench?view=system 的「系统管理」页，按上面的发生时刻查找报错详情；"
+        "如果问题反复出现，请联系维护人员。</p>"
         "</main>"
         "</body>"
         "</html>"

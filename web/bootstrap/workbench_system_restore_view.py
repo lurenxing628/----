@@ -11,10 +11,11 @@ from core.models.workbench_command import WorkbenchCommandRejected
 from .paths import runtime_base_dir
 
 BASE = "/api/workbench/v1/system"
-LABELS = {"accepted": "已受理", "checking": "检查中", "protecting": "创建保护副本", "restoring": "恢复中",
-          "verifying": "校验中", "rolling_back": "回滚中", "succeeded": "已完成", "failed": "操作失败",
-          "rolled_back": "恢复失败，已回滚", "rollback_failed": "回滚失败，需人工核查", "recovery_required": "结果未知，需人工核查"}
-ORIGINS = {"selected_backup": "来自所选备份", "protection_backup": "已回滚到恢复前保护副本",
+LABELS = {"accepted": "已接收", "checking": "检查中", "protecting": "生成保护副本", "restoring": "恢复中",
+          "verifying": "完整性检查中", "rolling_back": "还原中", "succeeded": "已完成", "failed": "操作失败",
+          "rolled_back": "恢复失败，已还原", "rollback_failed": "还原失败，需人工核对",
+          "recovery_required": "结果不确定，需人工核对"}
+ORIGINS = {"selected_backup": "来自所选备份", "protection_backup": "已还原到恢复前的保护副本",
            "unchanged": "原数据库未被替换", "unconfirmed": "未知，不能确认当前数据库内容"}
 
 
@@ -24,7 +25,7 @@ def _query(request, status):
             or any(len(args.getlist(key)) != 1 for key in args)
             or args.get("download", "") not in ("", "diagnostic")
             or args.get("kind", "request") not in ("request", "job")):
-        raise WorkbenchCommandRejected("invalid_input", "维护页只接受只读查询；查询条件无效，未执行任何操作。", 400)
+        raise WorkbenchCommandRejected("invalid_input", "这一页只能查看，查询条件不对，没有执行任何操作。", 400)
     kind = args.get("kind", "request")
     reference = args.get("reference", status.get("request_key") or "").strip()
     return kind, reference
@@ -45,13 +46,13 @@ def recovery_response(environ, journal, status, lookup):
     except WorkbenchCommandRejected as exc:
         error, code = str(exc), exc.status
     except Exception:
-        error = "维护记录损坏或无法读取，不能确认执行结果。系统保持停止，请保留原记录，不要重复恢复。"
+        error = "维护记录损坏或读不出来，不能确认这次恢复的结果。系统已停下，请不要再操作，联系维护人员。"
     # A bad record must not turn into an empty/successful maintenance history.
     rows, history_error = [], ""
     try:
         rows = _recent_records(journal)
     except Exception:
-        history_error = "维护记录清单无法完整读取；没有按空记录处理。仍可用原请求标识核查单条记录。"
+        history_error = "维护记录列表没能完整读出来，这里不是完整清单。可以用操作编号单独查一条记录。"
     operation = result.get("operation") if result else None
     uncertain = (status["state"] == "recovery_required" or not operation or not operation["terminal"]
                  or status.get("request_key") != operation["request_key"])
@@ -59,7 +60,7 @@ def recovery_response(environ, journal, status, lookup):
             "query": {"kind": kind, "reference": reference},
             "recent_records": rows, "scope": "read_only_maintenance", "result_source": "external_maintenance_journal",
             "database_checked_by_page": False, "history_limit": 20,
-            "note": "仅含本次读取的外置维护状态，不含数据库或完整日志；没有修改数据库或维护标记。"}
+            "note": "这一页只显示本次读到的维护状态，不含数据库内容和完整日志；打开这一页不会改动任何数据。"}
     headers = {"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer"}
     if request.method == "GET" and request.args.get("download") == "diagnostic" and code != 400:
         headers["Content-Disposition"] = 'attachment; filename="aps-restore-maintenance-diagnostic.json"'

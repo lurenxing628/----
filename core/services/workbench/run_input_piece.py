@@ -19,9 +19,9 @@ def input_piece_scope(operations, batches):
 def validate_piece_seed_precedence(*, scope, algo_ops, seed_results, operations, execution_completed_op_ids):
     seeds = {row["op_id"]: row for row in seed_results}
     if len(seeds) != len(seed_results):
-        fail("piece_protected_seed_missing", "Protected work cannot have duplicate seeds.")
+        fail("piece_protected_seed_missing", "要保持原安排的工序出现了重复记录，这次排产没有开始。请刷新重试；仍不行请联系维护人员。")
     if not execution_completed_op_ids <= set(seeds):
-        fail("piece_protected_seed_missing", "Completed piece work lacks its exact actual interval.")
+        fail("piece_protected_seed_missing", "已完工的单件工序缺少准确的实际起止时间，这次排产没有开始。请到现场记录补齐后重试。")
     by_id = {op.id: op for op in algo_ops}
     for work in scope.operations:
         if work.op_id not in seeds:
@@ -35,9 +35,9 @@ def _validate_seed_pair(left, right, previous, current):
     if (left.source == right.source == "external" and left.ext_merge_mode == right.ext_merge_mode == "merged"
             and left.ext_group_id == right.ext_group_id and left.piece_id == right.piece_id):
         if (current["start_time"], current["end_time"]) != (previous["start_time"], previous["end_time"]):
-            fail("piece_merged_group_split", "Protected members of one external group differ.")
+            fail("piece_merged_group_split", "同一个外协合并分组里，保持原安排的工序时段不一致，这次排产没有开始。请到现场记录核对后重试。")
     elif current["start_time"] < previous["end_time"]:
-        fail("piece_protected_precedence_violation", "Original protected work violates its common/piece predecessors.")
+        fail("piece_protected_precedence_violation", "保持原安排的工序和它的前道工序时间冲突，这次排产没有开始。请到现场记录核对后重试。")
 
 
 def piece_seed_metadata(seeds, algo_ops):

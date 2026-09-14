@@ -389,6 +389,24 @@ def _extract_section(markdown_text: str, heading: str) -> str:
     return markdown_text[start:end]
 
 
+def _rendered_pieces(line: str) -> Tuple[str, ...]:
+    """Drop the Markdown markers the manual page now renders away."""
+    raw = line.strip()
+    if not raw or re.match(r"^(?:\|[\s:|-]+\|$|-{3,}$|\*{3,}$|_{3,}$|```)", raw):
+        return ()
+    body = re.sub(r"^(?:#{1,6}\s+|>\s?|[-*+]\s+|\d+[.)]\s+)", "", raw)
+    cells = body.strip("|").split("|") if raw.startswith("|") else [body]
+    return tuple(cell.strip().replace("**", "").replace("`", "") for cell in cells)
+
+
+def _assert_rendered_text_covers_source(parsed: Any, markdown_text: str) -> None:
+    """No retained manual line may disappear while the source symbols are hidden."""
+    text = "".join(parsed.body)
+    missing = [piece for line in markdown_text.splitlines()
+               for piece in _rendered_pieces(line) if piece and piece not in text]
+    assert not missing, f"渲染后丢失说明书内容：{missing[:10]}"
+
+
 def _assert_ordered_phrases(markdown_text: str, label: str, phrases: Tuple[str, ...]) -> None:
     cursor = -1
     for phrase in phrases:
@@ -399,7 +417,7 @@ def _assert_ordered_phrases(markdown_text: str, label: str, phrases: Tuple[str, 
 
 
 def _assert_history_section_does_not_claim_export_or_restore(markdown_text: str, label: str) -> None:
-    section = _extract_section(markdown_text, "### 10.3 排产历史")
+    section = _extract_section(markdown_text, "### 10.3 排产记录")
     for needle in ("不能导出版本", "不能恢复某个排产版本"):
         assert needle in section, f"{label} 排产历史章节缺少边界说明：{needle}"
     forbidden_positive_phrases = (
@@ -416,17 +434,17 @@ def _assert_history_section_does_not_claim_export_or_restore(markdown_text: str,
 
 
 def _assert_resource_dispatch_site_record_section(markdown_text: str, label: str) -> None:
-    section = _extract_section(markdown_text, "### 6.6 资源排班")
+    section = _extract_section(markdown_text, "### 6.6 现场记录")
     for needle in (
-        "任务明细/日历矩阵/甘特图/现场记录",
-        "页面里有任务明细、日历矩阵、甘特图和现场记录四个视图",
-        "资源排班里的现场记录只对当前最新的正式采用方案开放",
+        "任务明细/日历矩阵/排布图/现场记录",
+        "页面里有任务明细、日历矩阵、排布图和现场记录四种看法",
+        "现场记录只对当前最新的正式计划开放",
         "填写实际情况",
         "下载填写模板",
         "导入实际情况 Excel",
         "查看现场记录",
         "查看计划和实际",
-        "当前是直接导入，不走预览/二次确认",
+        "当前是直接导入，不走预检和二次确认",
     ):
         assert needle in section, f"{label} 资源排班章节缺少现场记录当前口径：{needle}"
 
@@ -445,7 +463,7 @@ def _assert_resource_dispatch_site_record_section(markdown_text: str, label: str
 
 def _assert_scheduler_manual_closeout_contracts(markdown_text: str, label: str) -> None:
     for needle in (
-        "页面上的 **本页说明** 按钮",
+        "**本页说明**",
         "只打开操作说明",
         "设备 Excel 真实模板只有这 5 列：设备编号、设备名称、工种、班组、状态",
     ):
@@ -460,17 +478,17 @@ def _assert_scheduler_manual_closeout_contracts(markdown_text: str, label: str) 
     ):
         assert needle in resource_load_section, f"{label} 资源负荷章节缺少设备/人员两张表口径：{needle}"
 
-    config_section = _extract_section(markdown_text, "## 7. 高级设置：每个开关的作用")
+    config_section = _extract_section(markdown_text, "## 7. 排产规则：每个开关的作用")
     for needle in (
         "优化目标",
         "最少超期",
-        "最少拖期小时",
-        "最少加权拖期小时",
+        "最少超期小时",
+        "最少加权超期小时",
         "最少换型次数",
     ):
         assert needle in config_section, f"{label} 高级设置章节缺少优化目标口径：{needle}"
 
-    scheduler_section = _extract_section(markdown_text, "### 6.3 执行排产与模拟排产")
+    scheduler_section = _extract_section(markdown_text, "### 6.3 执行排产与试调")
     for needle in ("排产截止日期", "这是严格限制，不是普通备注"):
         assert needle in scheduler_section, f"{label} 执行排产章节缺少截止日期严格限制口径：{needle}"
     for forbidden in (
@@ -484,9 +502,9 @@ def _assert_scheduler_manual_closeout_contracts(markdown_text: str, label: str) 
     ):
         assert forbidden not in scheduler_section, f"{label} 截止日期说明写得过死或写反：{forbidden}"
 
-    gantt_section = _extract_section(markdown_text, "### 6.4 甘特图")
-    assert "版本留空或版本为空字符串，都表示看最新排产历史" in gantt_section, f"{label} 甘特图章节缺少版本留空口径"
-    assert "`latest` 是英文，意思就是“最新”" not in gantt_section, f"{label} 甘特图章节不能再教用户填写 latest"
+    gantt_section = _extract_section(markdown_text, "### 6.4 计划甘特")
+    assert "版本留空或版本为空字符串，都表示看最新排产记录" in gantt_section, f"{label} 计划甘特章节缺少版本留空说法"
+    assert "`latest` 是英文，意思就是“最新”" not in gantt_section, f"{label} 计划甘特章节不能再教用户填写 latest"
 
 
 def _assert_scheduler_manual_required_content(markdown_text: str, label: str) -> None:
@@ -494,53 +512,53 @@ def _assert_scheduler_manual_required_content(markdown_text: str, label: str) ->
         "旧模板中已有数据行不会被系统擅自改写",
         "新填数据请使用 `自制`/`外协`",
         "批次自动生成工序时的模板提醒，是当前页局部提醒",
-        "正式排产或模拟排产成功后的排产结果提醒",
-        "可以到排产历史查看这次排产的详细提醒",
-        "版本留空或版本为空字符串，都表示看最新排产历史",
+        "正式排产或试调成功后的排产结果提醒",
+        "可以到排产记录查看这次排产的详细提醒",
+        "版本留空或版本为空字符串，都表示看最新排产记录",
         "输入不存在的数字版本时",
         "输入 `abc` 这类不是数字的版本号",
         "空工时按 0 小时处理",
         "日历类型空着按工作日理解",
         "连续外协周期示例",
-        "系统管理 → 排产历史** 只看版本摘要、提醒和结果概况",
+        "执行排产 → 排产记录** 只看版本摘要、提醒和结果概况",
         "选择查看最近 10 条、50 条这类记录",
-        "首页驾驶舱怎么看",
-        "如果停机时间填错，先取消原停机，再按正确时间新建",
+        "值班台怎么看",
+        "如果停机时间填错，先取消原来的停机，再按正确时间新增一条",
         "保存补齐资源",
         "报表首页的两个数字只做快速速览",
         "同一批次里，同一个物料只能新增一次",
         "物料下拉框只显示状态为“可用”的物料",
-        "批次齐套日期会自动清空",
+        "批次齐套日期会自动清除",
         "趋势图只使用有排产指标的版本",
         "只有历史摘要读取失败时，页面才会提示读取失败的版本数量",
-        "正式排产和模拟排产都算",
-        "按这个最新版本的超期清单口径重新计算",
+        "正式排产和试调都算",
+        "按这个最新版本的超期清单统计范围重新计算",
         "查询结果表包含 10 列",
         "任务明细表有 14 列",
         "| 现场状态 | 显示待开工、生产中、暂停中、异常中、已完工等现场记录状态 |",
         "| 最近异常 | 显示最近一次异常的中文摘要；没有异常时显示暂无异常 |",
         "| 影响资源 | 显示异常影响到的设备或人员；没有填写时显示未填写 |",
-        "任务明细/日历矩阵/甘特图/现场记录",
-        "页面里有任务明细、日历矩阵、甘特图和现场记录四个视图",
+        "任务明细/日历矩阵/排布图/现场记录",
+        "页面里有任务明细、日历矩阵、排布图和现场记录四种看法",
         "填写实际情况",
         "导入实际情况 Excel",
         "查看现场记录",
-        "| 查询对象 | 当前视角正在看的人员、设备或班组 |",
+        "| 查询目标 | 当前视角正在看的人员、设备或班组 |",
         "| 日志序号 | 当前查询结果里的顺序，不是固定不变的数据库编号 |",
         "导入批次时“自动生成工序”覆盖了手工补的数据怎么办？",
-        "版本下拉为空或提示“暂无排产历史”怎么办？",
+        "版本下拉为空或提示“暂无排产记录”怎么办？",
         "恢复备份后数据和之前不一样？",
-        "排产成功但甘特图上看不到任务？",
+        "排产成功但计划甘特上看不到任务？",
         "系统默认按待排批次查看",
         "先确认状态筛选是 **待排**",
-        "模拟排产后网页不会记住上一次表单里的临时勾选，所以正式排产前一定要重新勾选",
+        "试调之后页面不会记住上一次的临时勾选，所以正式排产前一定要重新勾选",
         "备份/恢复",
         "深度优化 + 深度优化尝试时间",
     ):
         assert needle in markdown_text, f"{label} 缺少说明书必备内容：{needle}"
     assert "用来查看、导出、恢复这些版本" not in markdown_text, f"{label} 不应再写排产历史可以导出或恢复版本"
     assert "模拟方案报表只能在页面上查看" not in markdown_text, f"{label} 不应再写模拟方案报表不能导出"
-    assert "导出的 Excel 也会按这个模拟方案生成" in markdown_text, f"{label} 缺少模拟预览导出口径"
+    assert "导出的 Excel 也会按这份试调方案生成" in markdown_text, f"{label} 缺少试调方案导出说法"
     for forbidden in (
         "备份与恢复",
         "默认是全部",
@@ -558,7 +576,7 @@ def _assert_scheduler_manual_required_content(markdown_text: str, label: str) ->
     _assert_resource_dispatch_site_record_section(markdown_text, label)
 
     batch_warning_paragraph = _extract_paragraph_containing(markdown_text, "自动生成批次工序时产生提醒")
-    assert "当前页面确认写入后只会展示去重后的前 3 条提醒" in batch_warning_paragraph
+    assert "当前页面确认写入后只会展示合并重复后的前 3 条提醒" in batch_warning_paragraph
     assert "另有 X 条提醒" in batch_warning_paragraph or "剩余提醒" in batch_warning_paragraph
     assert "系统历史" not in batch_warning_paragraph, f"{label} 的批次剩余提醒口径不应再要求去系统历史：{batch_warning_paragraph}"
 
@@ -570,7 +588,7 @@ def _assert_scheduler_manual_required_content(markdown_text: str, label: str) ->
             "先建基础资料",
             "再建批次",
             "生成并补齐批次工序",
-            "先模拟排产",
+            "先试调",
             "再正式排产",
             "最后复盘和下发",
         ),
@@ -591,6 +609,7 @@ def test_config_manual_markdown_contract(app_client, monkeypatch, tmp_path) -> N
             super().__init__(convert_charrefs=True)
             self.ids, self.hrefs, self.tags, self.pre, self.active = set(), [], [], [], False
             self.scripts, self.in_script = [], False
+            self.body, self.in_style = [], False
             self.feed(text)
         def handle_starttag(self, tag, attrs):
             attrs = dict(attrs)
@@ -605,16 +624,22 @@ def test_config_manual_markdown_contract(app_client, monkeypatch, tmp_path) -> N
             if tag == "script":
                 self.in_script = True
                 self.scripts.append("")
+            if tag == "style":
+                self.in_style = True
         def handle_endtag(self, tag):
             if tag == "pre":
                 self.active = False
             if tag == "script":
                 self.in_script = False
+            if tag == "style":
+                self.in_style = False
         def handle_data(self, text):
             if self.active:
                 self.pre[-1] += text
             if self.in_script:
                 self.scripts[-1] += text
+            if not self.in_script and not self.in_style:
+                self.body.append(text)
 
     root = Path(_find_repo_root())
     manual_path = root / "static/docs/scheduler_manual.md"
@@ -647,7 +672,7 @@ def test_config_manual_markdown_contract(app_client, monkeypatch, tmp_path) -> N
             assert not [attrs for tag, attrs in parsed.tags if tag == "script" and attrs.get("src")]
             assert not any(href.lower().startswith(("javascript:", "data:")) for href in parsed.hrefs)
             assert all(href[1:] in parsed.ids for href in parsed.hrefs if href.startswith("#"))
-            assert "说明书正文" in html and "说明书目录" in html
+            assert "说明书正文" in html and "说明书章节" in html
             return html, parsed, captured[0][1]
 
         material_src = _build_url(app, "material.materials_page") + "?"
@@ -658,8 +683,10 @@ def test_config_manual_markdown_contract(app_client, monkeypatch, tmp_path) -> N
         assert state["current_manual"] is None and state["related_manuals"] == []
         assert material_src in full.hrefs
         assert heading_ids <= full.ids and set(internal_hashes) <= full.ids
-        expected_bodies = [line for line in manual_text.splitlines(keepends=True) if not re.match(r"^#{1,6}\s+", line)]
-        assert "".join(full.pre) == "".join(expected_bodies)
+        # The manual is now rendered: every source line stays readable, the markers do not.
+        _assert_rendered_text_covers_source(full, manual_text)
+        assert "<table>" in full_html and "<strong>" in full_html and "<li>" in full_html
+        assert "|---|" not in "".join(full.body) and "**" not in "".join(full.body)
         assert "相关说明" not in full_html
 
         page_url = _build_url(app, "scheduler.config_manual_page", page="material.materials_page", src=material_src)
@@ -671,14 +698,14 @@ def test_config_manual_markdown_contract(app_client, monkeypatch, tmp_path) -> N
         assert all(len(item.get("preview_sections") or []) <= 2 for item in related)
         assert "物料主数据" in page_html and "相关说明" in page_html
         assert material_src in page.hrefs and page_state["full_manual_section_url"] in page.hrefs
-        assert "说明书正文" in page_html and page.pre
+        assert "说明书正文" in page_html and page.body
         sections = page_state["current_manual"]["sections"]
         assert sections and sections[0]["title"] in page_html
         assert _slugify_heading("物料主数据") in page.ids
         for item in related:
             assert item["url"] in page.hrefs and item["title"] in page_html
             for section in item.get("preview_sections") or []:
-                assert section["body_md"] in page.pre
+                _assert_rendered_text_covers_source(page, section["body_md"])
         for url in (state["download_url"], page_state["download_url"]):
             download = client.get(url)
             assert download.status_code == 200 and "attachment" in download.headers["Content-Disposition"]
@@ -690,7 +717,7 @@ def test_config_manual_markdown_contract(app_client, monkeypatch, tmp_path) -> N
             patch.setattr(route_mod, "_load_manual_text_and_mtime", lambda *_: (malicious, None))
             html, parsed, _ = read(full_url)
             assert "1-数字章节" in parsed.ids
-            assert "[危险](javascript:alert(1))" in "".join(parsed.pre)
+            assert "[危险](javascript:alert(1))" in "".join(parsed.body)
             assert "<img" not in html and "&lt;img" in html
             assert not [tag for tag, attrs in parsed.tags if tag in ("img", "iframe")]
             assert len(parsed.scripts) == 1 and "alert(1)" not in parsed.scripts[0]
@@ -700,6 +727,6 @@ def test_config_manual_markdown_contract(app_client, monkeypatch, tmp_path) -> N
         with monkeypatch.context() as patch:
             patch.setattr(route_mod, "_resolve_scheduler_manual_md_path", lambda: (str(blocked), [str(blocked)]))
             failed, parsed, _ = read(full_url)
-            assert "说明书加载失败" in failed and parsed.pre
+            assert "说明书加载失败" in failed and parsed.body
     finally:
         template_rendered.disconnect(rendered, app)

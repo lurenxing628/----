@@ -149,7 +149,7 @@ def unplanned_projection(disposition, tasks, facts):
         skipped = row["status"] == "skipped"
         item.update(row_ref=None, status="skipped" if skipped else "unscheduled",
                     reason={"code": "input_operation_skipped" if skipped else "candidate_operation_unscheduled",
-                            "message": "生成时该工序明确排除，未隐藏此项。" if skipped else "该候选未保存此工序的安排。"})
+                            "message": "排产时这道工序被排除在外，这里照样列出来。" if skipped else "这个候选方案没有给这道工序排时间。"})
         result.append(item)
     return result
 
@@ -159,7 +159,7 @@ def filter_workspace(tasks, unplanned, scope):
         known = {row["batch_ref"] for row in tasks + (unplanned or [])}
         if scope.batch_ref not in known:
             from core.models.workbench_run_candidate import reject
-            reject("entity_not_found", "该批次不属于候选的生成时范围，未改查当前批次。", 404)
+            reject("entity_not_found", "这个批次不在这个候选方案的范围里，没有查询；系统也不会改去查当前的同编号批次。请重新选择批次。", 404)
         tasks = [row for row in tasks if row["batch_ref"] == scope.batch_ref]
         if unplanned is not None:
             unplanned = [row for row in unplanned if row["batch_ref"] == scope.batch_ref]

@@ -7,6 +7,7 @@ from core.infrastructure.database import ensure_schema, get_connection
 from core.models.workbench_command import WorkbenchCommandRejected, validate_request_key
 from core.models.workbench_system import RESTORE_DISABLED, object_fields
 from core.services.system.backup_restore import audit_backup_operation, run_backup_restore
+from core.services.workbench import messages
 from core.services.workbench.commands import WorkbenchCommandService
 from core.services.workbench.system_config import SystemConfigWorkspace
 from core.services.workbench.system_files import SystemFileWorkspace
@@ -24,7 +25,7 @@ def system_config_save():
         return service.check(resolve_context("config", body["write_token"]))
     with maintenance_window(current_app.config["DATABASE_PATH"], logger=current_app.logger, action="workbench_config"):
         if current_app.config.get("WORKBENCH_SYSTEM_JOURNAL_DIR") and journal().lookup(body["request_key"]):
-            raise WorkbenchCommandRejected("request_key_conflict", "该请求标识已用于文件维护，请核对原结果。")
+            raise WorkbenchCommandRejected("request_key_conflict", "这个操作编号已经用在文件维护上了，这次没有重复执行。请点「查询结果」核对上次的结果。")
         return jsonify(service.save(request_key=body["request_key"], values=body["input"], guard=guard))
 
 
@@ -40,21 +41,21 @@ def system_result(request_key):
         # This endpoint is system-only, even if a caller provides another domain's key.
         stored = WorkbenchCommandService(g.db, current_app.logger).repo.get(request_key)
         if stored is None or stored["action"] != "system.config.save":
-            raise WorkbenchCommandRejected("entity_not_found", "没有找到本系统操作结果。", 404)
+            raise WorkbenchCommandRejected("entity_not_found", "暂无这次操作的结果。请稍后点「查询结果」再看，不要重复提交。", 404)
         return query_payload({"kind": "config", "command": result})
-    return query_payload({"kind": "not_recorded", "message": "尚未查到持久结果；不能据此认定未执行，请继续核实原请求。"})
+    return query_payload({"kind": "not_recorded", "message": messages.pending("操作")})
 
 
 @system_endpoint
 def system_job_result(job_ref):
     import re
     if not re.fullmatch(r"[a-f0-9]{32}", job_ref):
-        raise WorkbenchCommandRejected("invalid_input", "维护记录引用无效。", 400)
+        raise WorkbenchCommandRejected("invalid_input", "这条维护记录的编号已失效，详情没有打开。请刷新页面后重新选择。", 400)
     records = journal()
     for row in records.records():
         if row["job_ref"] == job_ref:
             return query_payload({"kind": "file_operation", "operation": records.public(row, True)})
-    raise WorkbenchCommandRejected("entity_not_found", "未找到该维护记录。", 404)
+    raise WorkbenchCommandRejected("entity_not_found", "找不到这条维护记录，详情没有打开。请刷新页面后重新选择。", 404)
 
 
 def _file_service():
@@ -86,11 +87,11 @@ def system_file_action(action):
         # No maintenance window may be held while the host waits for other
         # admitted requests: their existing maintenance/write work must finish.
         if journal().lookup(body["request_key"]) is None and WorkbenchCommandService(g.db, current_app.logger).lookup(body["request_key"]):
-            raise WorkbenchCommandRejected("request_key_conflict", "该请求标识已用于数据库命令，请核对原结果。")
+            raise WorkbenchCommandRejected("request_key_conflict", "这个操作编号已经用在数据库维护上了，这次没有重复执行。请点「查询结果」核对上次的结果。")
         return _execute_file_action(action, body)
     with maintenance_window(current_app.config["DATABASE_PATH"], logger=current_app.logger, action="workbench_file"):
         if WorkbenchCommandService(g.db, current_app.logger).lookup(body["request_key"]):
-            raise WorkbenchCommandRejected("request_key_conflict", "该请求标识已用于数据库命令，请核对原结果。")
+            raise WorkbenchCommandRejected("request_key_conflict", "这个操作编号已经用在数据库维护上了，这次没有重复执行。请点「查询结果」核对上次的结果。")
         return _execute_file_action(action, body)
 
 
@@ -101,7 +102,7 @@ def _execute_file_action(action, body):
             resolve_context("create", body["write_token"])
             return None
         if resolve_context("file", body["write_token"]) != body["input"]["backup_ref"]:
-            raise WorkbenchCommandRejected("stale_write", "所选备份和确认上下文不一致。")
+            raise WorkbenchCommandRejected("stale_write", "本页数据已过期，所选备份和确认内容对不上，备份没有改动。请刷新页面后重新选择备份。")
         return resolve_context("backup", body["input"]["backup_ref"])
     if action == "restore":
         from web.bootstrap.workbench_system_restore import EXTENSION, GUARD, WorkbenchSystemRestoreHost

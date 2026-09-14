@@ -102,7 +102,7 @@ class WorkbenchTrialService:
             head, rows, live = self._loaded(ref)
             self.context_validator(token, ref, action, write_snapshot(head, rows, live))
             if head["status"] != "editing":
-                reject("draft_closed", "草稿已保存或放弃，不能继续写入。")
+                reject("draft_closed", "草稿已保存或已放弃，不能再改。")
             return head, rows, live
 
         return WorkbenchCommandService(self.conn).execute(request_key=key, action=action, context_ref=ref,
@@ -115,7 +115,7 @@ class WorkbenchTrialService:
             head, rows, live = prepared
             row = next((item for item in rows if item["task_ref"] == intent["task_ref"]), None)
             if row is None:
-                reject("task_not_in_draft", "原任务引用不属于指定草稿，不能跨草稿调整。", 404)
+                reject("task_not_in_draft", "这条工序不属于当前试调草稿，没有调整。请回到本草稿重新选择。", 404)
             validator = TrialValidator(self.conn, head["admission"], rows, live)
             before = row["current"]
             row["current"] = validator.adjusted(row, intent)
@@ -139,7 +139,7 @@ class WorkbenchTrialService:
             for row in snapshot["tasks"]:
                 row.update(source_row_ref=row["row_ref"], source_task_ref=row["task_ref"],
                            row_ref=new_ref(), task_ref=new_ref())
-                row["edit_context"] = {"can_change": False, "blocked_reasons": [{"code": "scenario_readonly", "message": "已保存场景为只读快照。"}]}
+                row["edit_context"] = {"can_change": False, "blocked_reasons": [{"code": "scenario_readonly", "message": "试调方案已保存，只能查看不能改。"}]}
             old_to_new = {row["source_task_ref"]: row["task_ref"] for row in snapshot["tasks"]}
             for row in snapshot["tasks"]:
                 row["predecessor_refs"] = [old_to_new[ref] for ref in row["predecessor_refs"]]
@@ -175,7 +175,7 @@ class WorkbenchTrialService:
             if row is None:
                 return None
             if row["action"] not in (CREATE,) + ACTIONS:
-                reject("request_key_conflict", "原请求不属于试调操作，请查询对应业务回执。")
+                reject("request_key_conflict", "这个操作编号不是试调的操作，请到对应页面查询结果。")
             return commands.repo.public_result(row, replayed=True)
 
 

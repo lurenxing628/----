@@ -19,11 +19,11 @@ def resource_directory(rows, resources):
             identity = resources[kind][str(key)]
             label = row[kind + "_name"]
             if label is not None and (type(label) is not str or not label.strip()):
-                raise WorkbenchCommandRejected("plan_unavailable", "资源名称无效，未用内部编号替代名称。")
+                raise WorkbenchCommandRejected("plan_unavailable", "设备或人员的名称无效，系统不会拿编号当名称显示。请到资料总览补填名称。")
             value = {"kind": kind, "ref": identity.ref, "business_code": identity.entity_key, "label": label}
             previous = directory.setdefault((kind, identity.ref), value)
             if previous != value:
-                raise WorkbenchCommandRejected("plan_unavailable", "同一资源存在不一致的名称或业务编号。")
+                raise WorkbenchCommandRejected("plan_unavailable", "同一台设备或同一个人员有两套名称或编号，对不上。请到资料总览核对。")
     return [directory[key] for key in sorted(directory)]
 
 

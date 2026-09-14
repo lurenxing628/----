@@ -26,7 +26,7 @@ def _sheet(archive):
     relationships = ElementTree.fromstring(archive.read('xl/_rels/workbook.xml.rels'))
     links = [node for node in relationships if node.get('Id') == target_id]
     if len(links) != 1 or links[0].get('TargetMode') == 'External' or not links[0].get('Type', '').endswith('/worksheet'):
-        invalid('首张工作表链接无效，不能改读其他表。')
+        invalid('第一张工作表的链接坏了，系统不会改去读别的工作表。')
     target = links[0].get('Target', '')
     return posixpath.normpath(target.lstrip('/') if target.startswith('/') else posixpath.join('xl', target))
 
@@ -41,20 +41,20 @@ def check_package(content):
                 invalid('工作簿解压后超过读取上限。')
             types = ElementTree.fromstring(archive.read('[Content_Types].xml'))
             if not any(node.get('ContentType') == 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml' for node in types):
-                invalid('内容不是标准 XLSX，不能只改扩展名。')
+                invalid('这不是标准的 XLSX 文件，只把扩展名改成 .xlsx 不行。')
             with archive.open(_sheet(archive)) as stream:
                 return _rows(stream)
     except WorkbenchCommandRejected:
         raise
     except Exception as exc:
-        raise WorkbenchCommandRejected('invalid_input', 'XLSX 原始结构无效，未忽略文件内容。', 422) from exc
+        raise WorkbenchCommandRejected('invalid_input', '这个 XLSX 的内部结构不对，系统没有跳过文件内容。请重新下载模板再填。', 422) from exc
 
 
 def _rows(stream):
     previous, columns = 0, 0
     for _event, node in ElementTree.iterparse(stream, events=('end',)):
         if node.tag == NS + 'mergeCell':
-            invalid('首张报工记录表不能含合并单元格。')
+            invalid('第一张报工记录表里不能有合并单元格。')
         if node.tag != NS + 'row':
             continue
         number = int(node.get('r', '0'))
@@ -66,7 +66,7 @@ def _rows(stream):
                 continue
             match = re.fullmatch(r'([A-M])([1-9][0-9]*)', cell.get('r', ''))
             if match is None or int(match[2]) != number or match[1] <= column:
-                invalid('单元格越出十三列、重复或错位，不能覆盖或忽略原值。')
+                invalid('有单元格超出 13 列、重复或错位，系统不会覆盖或忽略原来的值。')
             column = match[1]
             columns = max(columns, ord(column) - ord('A') + 1)
         node.clear()

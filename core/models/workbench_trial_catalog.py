@@ -20,16 +20,16 @@ class TrialCatalogScope:
 
     def __post_init__(self):
         if self.collection not in ("drafts", "scenarios"):
-            reject("invalid_input", "试调目录类型无效。", 400)
+            reject("invalid_input", "试调列表类型无效。", 400)
         allowed = ("all", "editing", "saved", "discarded") if self.collection == "drafts" else ("all", "saved")
         if self.status not in allowed:
-            reject("invalid_input", "目录状态筛选无效，未忽略条件。", 400)
+            reject("invalid_input", "列表的状态筛选不对，请重新选择。", 400)
         if type(self.page) is not int or not 1 <= self.page <= MAX_CATALOG_ROWS:
-            reject("invalid_input", "目录页码必须为1至100000的整数。", 400)
+            reject("invalid_input", "页码必须是 1 至 100000 的整数。", 400)
         if type(self.size) is not int or not 1 <= self.size <= 50:
-            reject("invalid_input", "目录每页数量必须为1至50的整数。", 400)
+            reject("invalid_input", "每页条数必须是 1 至 50 的整数。", 400)
         if (self.base_kind is None) != (self.base_ref is None):
-            reject("invalid_input", "筛选基础方案时必须同时提供来源类型和永久引用。", 400)
+            reject("invalid_input", "按来源筛选时，来源类型和来源编号要一起选。", 400)
         if self.base_kind is not None:
             if self.base_kind not in ("plan_ref", "candidate_ref"):
                 reject("invalid_input", "基础来源类型必须为plan_ref或candidate_ref。", 400)

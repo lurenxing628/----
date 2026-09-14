@@ -41,8 +41,8 @@ def test_xlsx_identity_bytes_and_dtype_are_exact_text(schema_conn, tmp_path, mon
     assert exported.estimated_rows == 2
     book = openpyxl.load_workbook(io.BytesIO(payload), read_only=True, data_only=False)
     try:
-        cells = list(book["范围与口径"].iter_rows())
-        identities = [row[1] for row in cells if row[0].value in ("计划引用", "范围快照")]
+        cells = list(book["范围与计算方式"].iter_rows())
+        identities = [row[1] for row in cells if row[0].value in ("计划编号", "数据版本编号")]
         assert len(identities) == 2
         assert all(cell.value == identity and cell.data_type == "s" for cell in identities)
         assert cells[1][1].value == "中文正式计划" and cells[1][1].data_type == "s"
@@ -78,7 +78,7 @@ def test_csv_keeps_original_prefix_and_unknown_value_contract(schema_conn, ident
     records = list(csv.DictReader(io.StringIO(payload.decode("utf-8-sig"))))
     assert len(records) == exported.estimated_rows == 2
     expected_identity = "'" + identity if identity[0] in "-+=@" else identity
-    assert all(row["范围快照"] == expected_identity for row in records)
+    assert all(row["数据版本编号"] == expected_identity for row in records)
     assert records[0]["备注"] == "'=1+1" and records[1]["备注"] == "'-保留原转义"
     assert records[0]["工时"] == "未知" and records[1]["工时"] == "0"
     assert records[0]["工序"] == "中文工序"

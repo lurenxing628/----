@@ -15,7 +15,7 @@ def trial_piece_predecessors(rows, all_ops, operation_refs):
     by_id = {}
     for work in scope.operations:
         if work.op_id not in operation_refs or any(key not in operation_refs for key in work.predecessor_op_ids):
-            raise PieceAdoptionBlocked("dependency_identity_missing", "Original piece predecessor identity is missing.")
+            raise PieceAdoptionBlocked("dependency_identity_missing", "原分件工序的前道工序编号缺失，试调结果不完整。请点「刷新当前试调」重新试调。")
         by_id[work.op_id] = [operation_refs[key] for key in work.predecessor_op_ids]
     return by_id
 
@@ -32,10 +32,10 @@ def trial_piece_issues(rows, live):
     except PieceAdoptionBlocked as exc:
         return [issue(exc.code, str(exc))]
     if len(rows) != len(expected) or {row["original"]["operation"]["id"] for row in rows} != set(expected):
-        return [issue("piece_scope_incomplete", "Trial must retain the entire common and piece operation scope.")]
+        return [issue("piece_scope_incomplete", "试调要包含全部共同工序和分件工序，现在有缺漏。请点「刷新当前试调」重新试调。")]
     issues = []
     for row in rows:
         original = row["original"]
         if original["predecessor_operation_refs"] != expected[original["operation"]["id"]]:
-            issues.append(issue("piece_dependency_mismatch", "Original common/piece predecessors disagree with the complete scope.", row["task_ref"]))
+            issues.append(issue("piece_dependency_mismatch", "原共同工序或分件工序的前后关系和完整范围对不上。请点「刷新当前试调」重新试调。", row["task_ref"]))
     return issues

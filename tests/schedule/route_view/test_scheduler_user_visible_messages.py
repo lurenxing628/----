@@ -134,7 +134,7 @@ def test_scheduler_manual_missing_base_dir_message_is_user_facing_chinese() -> N
         text, mtime = scheduler_config_route._load_manual_text_and_mtime(None, [])
 
     assert mtime is None
-    assert "运行配置缺失" in text
+    assert "找不到说明书文件：本机安装信息不完整" in text
     assert "Runtime config missing" not in text
 
 
@@ -197,7 +197,7 @@ def test_scheduler_version_validation_message_is_user_facing_chinese(tmp_path, m
     analysis_resp = client.get("/scheduler/analysis?version=abc")
     analysis_html = analysis_resp.get_data(as_text=True)
     assert analysis_resp.status_code == 400
-    assert "原计划身份、日期或筛选无效，未改选对象或扩大范围。" in analysis_html
+    assert "地址里的计划编号、日期或筛选不对，页面没有打开；系统没有替你换记录或放宽范围。请从侧栏重新进入。" in analysis_html
     assert "Location" not in analysis_resp.headers
     assert "abc" not in analysis_html
     assert "version 不合法" not in analysis_html
@@ -220,7 +220,7 @@ def test_mixed_internal_field_message_is_mapped_to_chinese_field_label(tmp_path,
     body = resp.get_data(as_text=True)
 
     assert resp.status_code == 410
-    assert "未忽略条件后跳转" in body
+    assert "没有跳转，也没有丢掉任何条件" in body
     assert "Location" not in resp.headers
     assert "abc" not in body
     assert "offset 不合法" not in body
@@ -228,7 +228,7 @@ def test_mixed_internal_field_message_is_mapped_to_chinese_field_label(tmp_path,
 
     current = client.get("/scheduler/gantt?week_start=2026-03-02&offset_weeks=abc")
     assert current.status_code == 400
-    assert "原计划身份、日期或筛选无效，未改选对象或扩大范围。" in current.get_data(as_text=True)
+    assert "地址里的计划编号、日期或筛选不对，页面没有打开；系统没有替你换记录或放宽范围。请从侧栏重新进入。" in current.get_data(as_text=True)
     assert "Location" not in current.headers
 
     data_resp = client.get("/scheduler/gantt/data?view=machine&week_start=2026-03-02&offset=abc")

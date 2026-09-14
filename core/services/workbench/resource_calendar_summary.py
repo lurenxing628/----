@@ -18,7 +18,7 @@ def _holiday_efficiency(conn, logger):
     key = "holiday_default_efficiency"
     row = ConfigRepository(conn, logger=logger).get(key)
     result = {"status": "not_configured", "value": None, "source": "ScheduleConfig." + key,
-              "basis": "假期录入且效率未填时使用；不覆盖已存日历或未配置日期的服务默认。", "issues": []}
+              "basis": "只有录了假期又没填效率时才用这个值；已经设过的班表和没设过的日期都不会被它覆盖。", "issues": []}
     if row is None:
         return result
     try:
@@ -67,7 +67,7 @@ def _day_summary(service, day, row, today):
                      if row[key] is None or isinstance(row[key], str) and not row[key].strip()]
         if inherited:
             result["issues"].append({"code": "calendar_fields_defaulted", "fields": inherited,
-                                     "message": "部分已存字段为空，按真实日历服务默认解释；未补写。"})
+                                     "message": "已设置的日期里有几项是空的，按班表默认值解释；系统没有替你补写。"})
     return result
 
 
@@ -84,7 +84,7 @@ def _week_stats(days):
         if result[key] is not None and not math.isfinite(result[key]):
             result[key] = None
             result["issues"].append({"code": "calendar_week_total_unavailable", "field": key,
-                                     "message": "本周工时汇总超出有限数值范围，未把部分工时当作整周合计。"})
+                                     "message": "本周工时加起来超出可计算范围，没有拿其中一部分当整周合计。"})
     result["known_rest_dates"] = [day["date"] for day in known if day["effective"]["is_rest"]]
     return result
 
@@ -104,8 +104,8 @@ def resource_calendar_summary(conn, logger=None, *, clock=None):
     return {"status": "partial" if stats["unavailable_days"] or stats["issues"] else "known",
             "factory_today": today.isoformat(), "as_of": now.replace(microsecond=0).isoformat(),
             "time_basis": "factory_local", "week_start": first.isoformat(), "week_end": last.isoformat(),
-            "basis": "全局班次按起始日期归属；有效工时=班次时长×效率，普通/急件按许可分别计算。"
-                     "跨夜不拆成两天，不计人员专属日历、班次、设备停机或当前占用；外协周期仍按自然日。",
+            "basis": "全局班次按起始日期归到那一天；有效工时 = 班次时长 × 效率，普通件和急件按许可分别算。"
+                     "跨夜不拆成两天；不算人员专属班表、班次、设备停机和当前占用；外协周期仍按自然日算。",
             "standard_hours": {"status": "not_configured", "value": None, "source": None,
-                               "message": "现有配置契约没有全局标准工时/日字段；不从日历默认值或本周平均值推定。"},
+                               "message": "当前设置里没有「每天标准工时」这一项；系统不会拿班表默认值或本周平均值去凑。"},
             "holiday_default_efficiency": _holiday_efficiency(conn, logger), "days": days, "stats": stats}

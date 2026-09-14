@@ -46,7 +46,7 @@ def _identity_user_label(
     scenario_display_name: str,
 ) -> str:
     if is_scenario_preview:
-        return scenario_display_name or "模拟预览（未命名）"
+        return scenario_display_name or "试调方案（未命名）"
     if requested_role != ROLE_ADOPTED or status in ("resolved_comparison", "fallback_to_adopted", "missing_detail"):
         return "对比参考方案"
     if is_superseded and source_table == SOURCE_SCHEDULE:

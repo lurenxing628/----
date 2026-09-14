@@ -27,10 +27,10 @@ NUMBER_FIELDS = frozenset(("setup_hours", "unit_hours", "external_days", "group_
 SOURCE_VALUES = {"自制": "internal", "外协": "external", "internal": "internal", "external": "external"}
 SOURCE_LABELS = {"internal": "自制", "external": "外协"}
 TEMPLATE_VERSION = 1
-INSTRUCTIONS = ("图号必须为文本；缺列、空单元格不更新，\\N 表示明确清空，能否清空由预检决定。"
-                "文字起始反斜线双写；CSV 文字有一层可逆单引号，空格和换行保留。"
-                "工序及组起止序必须为正整数，大整数用文本数字。工种、归属及组起止序仅核对原事实；"
-                "合并周期仅供修改原组周期，不创建或调整组范围。空白工时不补零，周期不自动补一天。")
+INSTRUCTIONS = ("图号必须是文本；缺列或空单元格不更新，\\N 表示明确清除，能不能清除由预检决定。"
+                "文字开头的反斜线要写两个；CSV 文字有一层可逆单引号，空格和换行保留。"
+                "工序号和组起止序必须是正整数，很大的数用文本填。工种、归属和组起止序只用来核对原记录；"
+                "合并周期只用来改原来的组周期，不新增也不调整组范围。空白工时不补零，周期不自动补一天。")
 INT64_MAX = 9223372036854775807
 XLSX_EXACT_INTEGER_MAX = 2 ** 53
 # Matches Config.EXCEL_MAX_UPLOAD_BYTES; this core contract does not import Flask/config.

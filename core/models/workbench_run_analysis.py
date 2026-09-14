@@ -11,7 +11,7 @@ def metric(value, known, unknown, total, reason=None):
 
 def delivery_metrics(rows, summary):
     unknown, total = summary["unknown_count"], summary["batch_count"]
-    reason = {"code": "delivery_evidence_incomplete", "message": "部分受理批次的完整安排或交期无法核实；已知小计不代表全批结果。"}
+    reason = {"code": "delivery_evidence_incomplete", "message": "排产时有部分批次的安排或交期资料不全，这里的小计不包含它们。"}
     return {
         "overdue_count": metric(summary["overdue_count"], summary["known_overdue_count"], unknown, total, reason),
         "total_tardiness_hours": metric(summary["total_tardiness_hours"],

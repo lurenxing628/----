@@ -20,7 +20,7 @@ def _service():
 def _body(fields):
     value = request.get_json()
     if request.args or type(value) is not dict or set(value) != set(fields):
-        raise WorkbenchCommandRejected("invalid_input", "采用请求字段缺失、重复范围或含未知内容。", 400)
+        raise WorkbenchCommandRejected("invalid_input", "提交的内容不完整或有多余项，还没有采用。请刷新页面后重新点「确认正式采用」。", 400)
     return value
 
 

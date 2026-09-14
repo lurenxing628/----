@@ -71,7 +71,7 @@ def test_batch_detail_linkage(app_client) -> None:
         orphan, = [row for row in rows if row["value"] == missing]
         assert orphan == {"value": missing, "label": missing + "（已删除）", "disabled": True, "orphan": True}
 
-    assert_retired_scope(client, "/scheduler/batches/B_TEST?lazy_select=1", message="未忽略条件后跳转")
+    assert_retired_scope(client, "/scheduler/batches/B_TEST?lazy_select=1", message="没有跳转，也没有丢掉任何条件")
     response = client.get("/scheduler/batches/B_TEST")
     assert response.status_code == 302
     target = response.headers["Location"]

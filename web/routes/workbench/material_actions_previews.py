@@ -54,5 +54,5 @@ def stored_preview(key: str) -> Tuple[MaterialPreview, Optional[bytes]]:
     with _LOCK:
         entry = _live_store().get(key)
         if entry is None:
-            raise WorkbenchCommandRejected("stale_write", "原始物料预览已失效，请重新预检；未使用浏览器内容重建。")
+            raise WorkbenchCommandRejected("stale_write", "预检结果已过期，物料没有改动；系统没有拿页面上的内容凑一份。请重新点「开始预检」。")
         return entry.preview, entry.content

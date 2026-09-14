@@ -105,10 +105,10 @@ def _safe_filename_part(value: Any) -> str:
     return "".join(ch for ch in text if ord(ch) >= 32 and ord(ch) != 127).strip()
 
 def _scenario_public_label(filters: Dict[str, Any]) -> str:
-    return _text(filters.get("scenario_display_name") or filters.get("scenario_name")) or "模拟预览（未命名）"
+    return _text(filters.get("scenario_display_name") or filters.get("scenario_name")) or "试调方案（未命名）"
 
 def _scenario_filename_label(filters: Dict[str, Any]) -> str:
-    return _safe_filename_part(_scenario_public_label(filters)) or "模拟预览（未命名）"
+    return _safe_filename_part(_scenario_public_label(filters)) or "试调方案（未命名）"
 
 def _public_plan_view_label(filters: Dict[str, Any], plan_identity: Dict[str, Any]) -> str:
     if filters.get("is_scenario_preview"):

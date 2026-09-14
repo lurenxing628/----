@@ -38,7 +38,7 @@ from .material_actions_context import (
 def _selection(body, reader, scope):
     selected = body["selection"]
     if selected not in ("all", "filtered", "selected") or ("refs" in body) != (selected == "selected"):
-        raise WorkbenchCommandRejected("invalid_input", "导出范围必须明确为全部、当前筛选或选中项；仅选中项可提供refs。", 400)
+        raise WorkbenchCommandRejected("invalid_input", "请先选好导出全部、当前筛选还是选中的物料，没有开始下载。选好后重新点「导出」。", 400)
     if selected == "selected":
         refs = normalize_refs(body["refs"], allow_empty=True)
         for ref in refs:
@@ -67,10 +67,10 @@ def material_export_preview():
 
 def _download_args(required):
     if set(request.args) != set(required) or any(len(request.args.getlist(key)) != 1 for key in request.args):
-        raise WorkbenchCommandRejected("invalid_input", "下载参数缺失、重复或包含不支持的字段。", 400)
+        raise WorkbenchCommandRejected("invalid_input", "下载条件不完整或有多余项，没有开始下载。请刷新页面后重新点「导出」。", 400)
     file_format = request.args["format"]
     if file_format not in ("csv", "xlsx"):
-        raise WorkbenchCommandRejected("invalid_input", "下载格式只支持CSV或XLSX。", 400)
+        raise WorkbenchCommandRejected("invalid_input", "下载只支持 CSV 或 XLSX 格式，没有开始下载。请重新选择格式后点「导出」。", 400)
     return file_format
 
 

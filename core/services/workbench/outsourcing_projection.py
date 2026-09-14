@@ -21,7 +21,7 @@ def execution_boundary(target):
             "lookup_parameter": "operation_ref",
             "command_target_template": "/api/workbench/v1/execution/tasks/<task_ref>/reports",
             "requires": ["current_official_task_ref", "execution_write_context", "explicit_actual_values", "separate_request_key"],
-            "reason": "回厂只确认外协物流事实，不推定工序完工、产量、有效工时或当前正式任务。"}
+            "reason": "回厂只确认外协物流记录，不代表工序已完工，也不代表产量、有效工时或当前正式任务已确认。"}
 
 
 def receipt(header, latest, now, *, source_state, issues):

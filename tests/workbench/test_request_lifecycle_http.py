@@ -51,9 +51,9 @@ def test_http_transaction_and_close_finish_before_lock_release(request_case, tmp
                         assert response["committed"] is False
                         assert response["error"]["code"] == "request_lifecycle_stopping"
                         assert set(response["error"]) == {"code", "message", "fields", "retryable", "request_ref"}
-                        assert "未受理" in response["error"]["message"]
+                        assert "没有执行" in response["error"]["message"]
                     else:
-                        assert "未受理" in response.decode("utf-8")
+                        assert "没有执行" in response.decode("utf-8")
                 assert (len(case.opened), len(case.statements)) == (opened, statements)
                 case.release.set()
                 assert case.close_entered.wait(10)

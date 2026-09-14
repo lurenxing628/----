@@ -360,7 +360,7 @@ def test_gantt_missing_valid_plan_role_page_only_shows_fallback_notice(tmp_path,
     client = app.test_client()
     before = prepare_read_state(client)
     html = assert_retired(client, {"version": VERSION, "plan_role": ROLE_CRITICAL_BEST},
-                          "所选对比方案未保存，未沿用旧页的采用方案回退。")
+                          "要对比的方案没有保存过，页面没有打开；系统没有改成已采用的正式计划。请从侧栏进入「选择排产方案」重新选择。")
     assert "已显示正式采用方案" not in html
     assert "这套结果只用来对照查看" not in html
     assert "这是一套对比参考方案" not in html

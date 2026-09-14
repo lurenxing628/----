@@ -20,29 +20,38 @@ from .process_file_xml import preserve_carriage_returns
 from .resource_file_writer import _value, check_capacity
 
 HEADERS = (
-    "计划引用", "来源版本", "计划角色", "计划名称", "当前正式", "计划完整性", "读取快照", "读取时间",
-    "范围起点（含）", "范围终点（不含）", "时间口径", "任务引用", "工序引用", "批次编号", "工序号", "工序名称",
+    "计划编号", "来源版本", "计划类型", "计划名称", "是否当前正式", "计划完整性", "数据版本", "读取时间",
+    "范围起点（含）", "范围终点（不含）", "时间计算方式", "任务编号", "工序编号", "批次编号", "工序号", "工序名称",
     "设备编号", "设备名称", "人员编号", "人员名称", "外协商编号", "外协商名称", "安排开始", "安排结束",
-    "交付风险", "计划完成", "部分计划完成", "交期", "交期截止（不含）", "延期小时", "延期天数", "交付完整性",
+    "交付风险", "计划完成", "部分计划完成", "交期", "交期截止（不含）", "超期小时", "超期天数", "交付完整性",
 )
+
+# 导出单元格只写用户看得懂的中文，英文枚举值不外显。
+PLAN_KINDS = {"official": "正式计划", "candidate": "候选方案", "scenario": "试调方案"}
+PLAN_COMPLETENESS = {"complete": "记录完整", "partial": "部分记录", "invalid": "无效记录", "unknown": "暂无数据"}
+DELIVERY_RISKS = {"overdue": "预计超期", "on_time": "预计按期", "unknown": "暂无数据"}
+DELIVERY_COMPLETENESS = {"complete": "完整", "incomplete": "尚不完整", "unknown": "暂无数据"}
 
 
 def export_rows(data, snapshot):
     plan = data["plan"]
     resources = {item["ref"]: item for item in data["resources"]}
     delivery = {item["batch_id"]: item for item in data["projections"]["delivery_risks"]["items"]}
-    common = [plan["plan_ref"], str(plan["version"]), {"official": "正式", "candidate": "候选", "scenario": "场景"}[plan["kind"]],
-              plan["display_name"], "是" if plan["is_current_official"] else "否", plan["completeness"],
+    common = [plan["plan_ref"], str(plan["version"]), PLAN_KINDS[plan["kind"]],
+              plan["display_name"], "是" if plan["is_current_official"] else "否",
+              PLAN_COMPLETENESS[plan["completeness"]],
               snapshot["snapshot_ref"], snapshot["as_of"], data["time_scope"]["range_start"],
-              data["time_scope"]["range_end"], "工厂本地时间（半开区间）"]
+              data["time_scope"]["range_end"], "含起日，不含止日"]
     for task in data["tasks"]:
         values = common + [task["task_ref"], task["operation_ref"], task["batch_id"], str(task["sequence"]), task["process_label"]]
         for kind in ("machine", "operator", "supplier"):
             resource = resources.get(task[kind + "_ref"])
             values += [resource["business_code"], resource["label"]] if resource is not None else [None, None]
         item = delivery[task["batch_id"]]
-        values += [task["start"], task["end"], item["risk"], item["planned_finish"], item["partial_planned_finish"],
-                   item["due_date"], item["delivery_deadline_exclusive"], item["delay_hours"], item["delay_days"], item["completeness"]]
+        values += [task["start"], task["end"], DELIVERY_RISKS[item["risk"]],
+                   item["planned_finish"], item["partial_planned_finish"],
+                   item["due_date"], item["delivery_deadline_exclusive"], item["delay_hours"], item["delay_days"],
+                   DELIVERY_COMPLETENESS[item["completeness"]]]
         yield values
 
 

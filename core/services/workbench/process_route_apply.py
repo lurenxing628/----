@@ -33,7 +33,7 @@ def affected_group_rows(groups, operations, changed_sequences):
 
 def require_group_ack(payload, affected):
     if set(payload["discard_group_refs"]) != {row["ref"] for row in affected}:
-        raise WorkbenchCommandRejected("group_discard_required", "受影响外协组已变化，必须完整核对并明确勾选全部受影响组，不能多选或漏选。")
+        raise WorkbenchCommandRejected("group_discard_required", "受影响的外协组已经变了。请重新核对并勾选全部受影响的组，不要多选或漏选。")
 
 
 def discard_groups(conn, part_no, affected):
@@ -48,7 +48,7 @@ def _suggested_key(identities, ref, kind):
         return None
     identity = identities.get(ref)
     if identity is None or not identity.active or identity.kind != kind:
-        raise WorkbenchCommandRejected("storage_failure", "预检建议的永久引用已失效，请刷新后核对。", 500)
+        raise WorkbenchCommandRejected("storage_failure", "预检给出的记录已失效。请刷新后重新预检。", 500)
     return identity.entity_key
 
 

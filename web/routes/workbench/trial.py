@@ -8,6 +8,7 @@ from flask import g, jsonify, request
 from core.models.workbench_command import WorkbenchCommandUncertain, input_fingerprint
 from core.models.workbench_trial import fields
 from core.models.workbench_trial_catalog import TrialCatalogScope
+from core.services.workbench import messages
 from core.services.workbench.trial import WorkbenchTrialService
 from core.services.workbench.trial_catalog import WorkbenchTrialCatalogService
 
@@ -23,7 +24,7 @@ def _service():
 def _body(command=False):
     if request.args:
         from core.models.workbench_trial import reject
-        reject("invalid_input", "试调写请求不能在URL中叠加范围或参数。", 400)
+        reject("invalid_input", "提交的内容格式不正确，试调还没有保存。请刷新页面后重新填写。", 400)
     value = request.get_json()
     if command:
         fields(value, ("request_key", "write_token", "input"))
@@ -35,7 +36,7 @@ def _query(data, scope):
     allowed = {"snapshot_ref"}
     if set(request.args) - allowed or any(len(request.args.getlist(key)) != 1 for key in request.args):
         from core.models.workbench_trial import reject
-        reject("invalid_input", "草稿读取只接受原快照引用，不重新筛选或切换基础计划。", 400)
+        reject("invalid_input", messages.STALE, 400)
     response = query_success(data, bind_read_snapshot(scope, input_fingerprint(data), request.args.get("snapshot_ref")))
     response.headers["Cache-Control"] = "no-store"
     return response
@@ -107,12 +108,12 @@ def _catalog(collection):
 
     allowed = {"page", "size", "status", "base_kind", "base_ref", "snapshot_ref"}
     if set(request.args) - allowed or any(len(request.args.getlist(key)) != 1 for key in request.args):
-        reject("invalid_input", "目录查询含未知或重复参数，未忽略筛选。", 400)
+        reject("invalid_input", "试调列表的筛选条件有重复或不支持的项，当前筛选没有变化。请刷新页面后重新选择。", 400)
     numbers = {}
     for key, default in (("page", "1"), ("size", "20")):
         raw = request.args.get(key, default)
         if re.fullmatch(r"[1-9][0-9]{0,5}", raw) is None:
-            reject("invalid_input", "目录页码与每页数量必须为正整数。", 400)
+            reject("invalid_input", "页码或每页数量填写不对，列表没有变化。请回到第 1 页重新查询。", 400)
         numbers[key] = int(raw)
     scope = TrialCatalogScope(collection, status=request.args.get("status", "all"),
         base_kind=request.args.get("base_kind"), base_ref=request.args.get("base_ref"), **numbers)

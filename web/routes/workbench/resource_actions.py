@@ -19,7 +19,7 @@ def resource_bulk_preview(kind):
     action_kind(kind)
     body = json_body({"action", "refs", "scope", "snapshot_ref"}, {"page_size"})
     if body["action"] != "delete":
-        raise WorkbenchCommandRejected("invalid_input", "资源批量操作只支持明确选中项的删除。", 400)
+        raise WorkbenchCommandRejected("invalid_input", "批量操作只支持删除选中的记录，这次没有改动任何记录。请先勾选要删除的记录。", 400)
     refs = resource_refs(body["refs"])
     scope, query_scope, token = scope_input(kind, body)
     reader = WorkbenchResourceQueryService(g.db, kind, current_app.logger)
@@ -35,7 +35,7 @@ def _upload_shape(kind):
     if (request.args or request.mimetype != "multipart/form-data" or set(request.files) != {"file"}
             or len(request.files.getlist("file")) != 1 or set(request.form) != required
             or any(len(request.form.getlist(key)) != 1 for key in request.form)):
-        raise WorkbenchCommandRejected("invalid_input", "须上传一个文件及format/mode；仅工种必须带category。", 400)
+        raise WorkbenchCommandRejected("invalid_input", "请上传一个文件并选好格式和导入方式，工种还要选自制或外协；数据没有改动。选好后点「开始预检」。", 400)
 
 
 def _upload(kind):
@@ -43,11 +43,11 @@ def _upload(kind):
     fmt, mode = request.form["format"], request.form["mode"]
     category = request.form.get("category")
     if fmt not in ("csv", "xlsx") or mode != "upsert" or (kind == "op_type" and category not in ("internal", "external")):
-        raise WorkbenchCommandRejected("invalid_input", "仅支持CSV/XLSX按编号增量导入，工种须明确归属。", 400)
+        raise WorkbenchCommandRejected("invalid_input", "只支持 CSV 或 XLSX 按编号增量导入，工种还要选自制或外协；数据没有改动。请换用正确的文件后点「开始预检」。", 400)
     content = request.files["file"].read()
     limit = int(current_app.config.get("EXCEL_MAX_UPLOAD_BYTES") or current_app.config.get("MAX_CONTENT_LENGTH") or 0)
     if limit > 0 and len(content) > limit:
-        raise WorkbenchCommandRejected("invalid_input", "上传超过本机配置的文件大小上限。", 413)
+        raise WorkbenchCommandRejected("invalid_input", "文件超过本机允许的大小，一行都没有导入。请缩小文件后重新点「开始预检」。", 413)
     return content, fmt, mode, {"category": category} if kind == "op_type" else {}
 
 
@@ -69,7 +69,7 @@ def _confirm_body():
     g.workbench_request_key = body["request_key"]
     opaque_ref(body["write_token"], "write_token")
     if type(body["input"]) is not dict or set(body["input"]) != {"preview_ref"}:
-        raise WorkbenchCommandRejected("invalid_input", "确认只能提交原preview_ref，不能提交浏览器预览事实或ack。", 400)
+        raise WorkbenchCommandRejected("invalid_input", "只能确认刚才预检过的那一批，数据没有改动。请重新点「开始预检」。", 400)
     opaque_ref(body["input"]["preview_ref"], "preview_ref")
     return body
 

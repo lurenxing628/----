@@ -29,7 +29,7 @@ def stored_point_validator(conn, version):
             work = official_point_work(conn, version)
         item = work.get(row.op_id)
         if item is None or not item["witness"].matches(row):
-            fail("point_evidence_unproven", "Stored seed has no matching adopted point evidence.", op_id=row.op_id)
+            fail("point_evidence_unproven", "有零工时工序在正式计划里找不到对应依据，这次排产没有开始。请重新做排产检查后再排。", op_id=row.op_id)
         return item["witness"]
 
     return validate
@@ -38,7 +38,7 @@ def stored_point_validator(conn, version):
 def _strict_pool(svc, *, cfg, algo_ops, meta):
     pool, warnings = build_resource_pool(svc, cfg=cfg, algo_ops=algo_ops, meta=meta)
     if cfg.auto_assign_enabled == "yes" and (pool is None or meta.get("resource_pool_build_ok") is not True):
-        fail("resource_pool_unavailable", "Required auto-assignment resource pool could not be built.")
+        fail("resource_pool_unavailable", "自动分配要用的设备人员清单建不起来，这次排产没有开始。请到资料总览核对设备和人员后重试。")
     return pool, warnings
 
 
@@ -51,14 +51,14 @@ def _locked_seeds(svc, operations, prev_version):
     result = []
     for op_id, row in latest.items():
         if row["lock_status"] not in ("locked", "unlocked"):
-            fail("invalid_schedule_lock", "Original schedule lock state is unknown.", op_id=op_id)
+            fail("invalid_schedule_lock", "原安排里有工序的锁定状态读不出来，这次排产没有开始。请刷新重试；仍不行请联系维护人员。", op_id=op_id)
         if row["lock_status"] != "locked":
             continue
         op = by_id[op_id]
         start = svc._normalize_datetime(row["start_time"])
         end = svc._normalize_datetime(row["end_time"])
         if start is None or end is None or end < start:
-            fail("invalid_locked_interval", "Locked original schedule has an invalid interval.", op_id=op_id)
+            fail("invalid_locked_interval", "锁定的原安排时间不对，结束早于开始，这次排产没有开始。请到计划甘特核对后重试。", op_id=op_id)
         result.append({"op_id": op.id, "op_code": op.op_code, "batch_id": op.batch_id, "seq": op.seq,
                        "source": op.source, "op_type_name": op.op_type_name, "machine_id": row["machine_id"],
                        "operator_id": row["operator_id"], "start_time": start, "end_time": end})
@@ -96,34 +96,34 @@ def _validate_calendar_shifts(row, table):
         try:
             parsed = datetime.strptime(value, "%H:%M")
         except (TypeError, ValueError):
-            fail("invalid_calendar_shift", "Stored shift time is unknown or invalid.", table=table, field=field)
+            fail("invalid_calendar_shift", "工作日历里有班次时间读不出来或者填得不对，这次排产没有开始。请到工作日历按 08:30 这样改好。", table=table, field=field)
         if parsed.strftime("%H:%M") != value:
-            fail("invalid_calendar_shift", "Stored shift time must be canonical HH:MM.", table=table, field=field)
+            fail("invalid_calendar_shift", "工作日历里的班次时间格式不对，这次排产没有开始。请按 08:30 这样填。", table=table, field=field)
 
 
 def _validate_calendar_row(row, table):
     if stored_date(row["date"]) is None:
-        fail("invalid_calendar_date", "Stored calendar date is invalid.", table=table)
+        fail("invalid_calendar_date", "工作日历里有日期填得不对，这次排产没有开始。请按 2026-09-13 这样改好。", table=table)
     for field in ("shift_hours", "efficiency"):
         if not number(row[field], positive=field == "efficiency"):
-            fail("invalid_calendar_number", "Stored calendar capacity is unknown or invalid.", table=table, field=field)
+            fail("invalid_calendar_number", "工作日历里有班次工时或效率读不出来，这次排产没有开始。请到工作日历补上。", table=table, field=field)
     if row["day_type"] not in ("workday", "weekend", "holiday"):
-        fail("invalid_calendar_state", "Stored calendar day type is unknown.", table=table)
+        fail("invalid_calendar_state", "工作日历里有日期类型认不出来，这次排产没有开始。请到工作日历重新选工作日、周末或假期。", table=table)
     if row["allow_normal"] not in ("yes", "no") or row["allow_urgent"] not in ("yes", "no"):
-        fail("invalid_calendar_state", "Stored calendar permission is unknown.", table=table)
+        fail("invalid_calendar_state", "工作日历里普通件或急件的许可认不出来，这次排产没有开始。请到工作日历重新设置。", table=table)
     _validate_calendar_shifts(row, table)
 
 
 def _validate_downtime_row(row):
     if row["status"] not in ("active", "cancelled"):
-        fail("invalid_downtime_state", "Stored downtime state is unknown.")
+        fail("invalid_downtime_state", "停机记录的状态认不出来，这次排产没有开始。请到工作日历核对停机记录。")
     if row["status"] == "active":
         try:
             start, end = (datetime.fromisoformat(row[field]) for field in ("start_time", "end_time"))
         except (TypeError, ValueError):
-            fail("invalid_downtime_interval", "Active downtime has invalid time values.")
+            fail("invalid_downtime_interval", "有生效的停机记录时间填得不对，这次排产没有开始。请到工作日历按 2026-09-13 08:30 这样改好。")
         if start.tzinfo is not None or end.tzinfo is not None or end <= start:
-            fail("invalid_downtime_interval", "Active downtime must be a positive local interval.")
+            fail("invalid_downtime_interval", "有生效的停机记录结束时间不比开始时间晚，这次排产没有开始。请到工作日历改好起止时间。")
 
 
 def _validate_stored_runtime(conn):

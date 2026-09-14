@@ -8,7 +8,7 @@ SCHEDULER_WEEK_PLAN_TOPICS: Dict[str, Dict[str, Any]] = {
     "scheduler_week_plan": _topic(
         title="周计划导出",
         summary="周计划导出用于把排产结果整理成班组/现场更容易执行的周度输出。",
-        full_manual_anchor="#6-5周计划导出",
+        full_manual_anchor="#6-5导出周计划",
         help_card=_card(
             "周计划适合发给现场执行",
             "先确认版本号，避免导出错版本。",

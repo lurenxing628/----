@@ -87,13 +87,23 @@ def _page(client, **query):
     return parsed, body
 
 
+def _markdown_pieces(line):
+    """Drop the Markdown markers the page now renders, keep every readable piece."""
+    raw = line.strip()
+    if not raw or re.match(r"^(?:\|[\s:|-]+\|$|-{3,}$|\*{3,}$|_{3,}$|```)", raw):
+        return ()
+    body = re.sub(r"^(?:#{1,6}\s+|>\s?|[-*+]\s+|\d+[.)]\s+)", "", raw)
+    cells = body.strip("|").split("|") if raw.startswith("|") else [body]
+    return tuple(cell.strip().replace("**", "").replace("`", "") for cell in cells)
+
+
 def _source_visible(parsed, source):
     """Every retained Markdown line must remain visible, not just a short excerpt."""
     text = "".join(parsed.text)
     for line in source.splitlines():
-        expected = re.sub(r"^#{1,6}\s+", "", line.strip())
-        if expected:
-            assert expected in text, expected
+        for expected in _markdown_pieces(line):
+            if expected:
+                assert expected in text, expected
 
 
 def _link(parsed, label):

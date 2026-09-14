@@ -54,7 +54,7 @@ class DashboardFacts:
         required = {"ScheduleHistory", "Schedule", "BatchOperations", "WorkbenchPlanSourceRefs", "WorkbenchTaskRefs"}
         if not required <= self.repo.present:
             self.plan_state = "unavailable"
-            self.plan_issues = [source_issue("source_not_read", "正式计划来源尚未完整安装或读取，不能计算零风险。")]
+            self.plan_issues = [source_issue("source_not_read", "正式计划的数据还没读全，不能得出零风险的结论。")]
             return
         reader = WorkbenchPlanQueryService(self.conn)
         version = WorkbenchPlanCatalogRepository(self.conn).latest_version()
@@ -70,7 +70,7 @@ class DashboardFacts:
             plan = project_plan(entry, ref)
             identity = entry.plan_identity
             if identity is None or not plan["is_current_official"] or plan["kind"] != "official" or identity.source_table != "schedule":
-                raise WorkbenchCommandRejected("plan_unavailable", "当前正式计划身份未通过校验，未选取其他版本或候选。")
+                raise WorkbenchCommandRejected("plan_unavailable", "当前正式计划的编号没通过校验，系统不会换用别的版本或候选方案。请刷新后重试。")
             self.plan = plan
             scope = PlanReadScope(ref)
             self.delivery, self.delivery_facts = read_plan_delivery(self.conn, scope=scope, identity=identity)
@@ -85,7 +85,7 @@ class DashboardFacts:
             self.pressure, self.raw["resource_pressure"] = resource_pressure(self.conn, {
                 "entry": entry, "scope": scope, "rows": self.task_rows, "resources": resources, "plan_span": span})
         except WorkbenchPlanReferenceError as exc:
-            self._plan_failure("plan_binding_invalid", "当前正式来源永久身份失效，未改读同号或其他计划。")
+            self._plan_failure("plan_binding_invalid", "当前正式计划的系统编号已失效，系统不会改读编号相同的或别的计划。请刷新后重试。")
             self.raw["plan_reference_failure"] = exc.code
         except WorkbenchCommandRejected as exc:
             if exc.code not in UNAVAILABLE:
@@ -108,7 +108,7 @@ class DashboardFacts:
             for task in self.tasks:
                 projection = self.execution[task["operation_ref"]]
                 if projection["current_task_ref"] != task["task_ref"] or projection["comparison_task_ref"] != task["task_ref"]:
-                    raise WorkbenchCommandRejected("task_binding_invalid", "执行投影与当前正式安排身份不一致。")
+                    raise WorkbenchCommandRejected("task_binding_invalid", "报工记录对应的任务和当前正式计划里的安排不是同一条。请刷新后重试。")
         except WorkbenchCommandRejected as exc:
             if exc.code not in UNAVAILABLE:
                 raise

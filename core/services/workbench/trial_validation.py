@@ -41,11 +41,11 @@ class TrialValidator:
             issues.append(self.calendar_issue)
         if any(row["operation_ref"] is None or row["recorded_against_task_ref"] is None
                for row in self.tables["WorkbenchExecutionLegacyFacts"]):
-            issues.append(issue("execution_scope_unproven", "保留的旧执行事实存在无法无歧义关联的工序或任务，未忽略范围外生产。"))
+            issues.append(issue("execution_scope_unproven", "保留的历史报工记录里有对不上工序的记录，这里没有忽略它们。"))
         if self.admission["facts_hash"] != self.live["facts_hash"]:
-            issues.append(issue("trial_facts_changed", "创建后生产事实已变化；原任务和基线保持不变，不能据旧快照正式采用。"))
+            issues.append(issue("trial_facts_changed", "建草稿之后现场数据变了；草稿里的工序和对比基准没变，不能按旧数据正式采用。"))
         if fingerprint(self.admission["baseline"]) != fingerprint(self.live["baseline"]):
-            issues.append(issue("trial_baseline_changed", "创建时正式基线已变化，草稿未切换到最新计划。"))
+            issues.append(issue("trial_baseline_changed", "建草稿时的正式计划已经变了，草稿没有自动切到最新计划。"))
         for row in self.rows:
             issues.extend(self._row(row))
         issues.extend(relation_issues(self.rows, self.live))
@@ -146,7 +146,7 @@ class TrialValidator:
             ref = intent[kind + "_ref"]
             entity = refs.get(ref)
             if ref is not None and (entity is None or entity["kind"] != kind):
-                reject("entity_not_found", "指定资源引用不存在、已替换或类型不匹配。", 404)
+                reject("entity_not_found", "所选设备或人员不存在、已被替换或类型不对。", 404)
             current[kind + "_ref"] = ref
             current[kind + "_id"] = entity["entity_key"] if entity else None
         return current

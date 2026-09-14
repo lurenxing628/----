@@ -39,12 +39,12 @@ def _reject_row(error: WorkbenchCommandRejected, row_number: int) -> NoReturn:
 
 def normalize_items(items):
     if not isinstance(items, list) or not 1 <= len(items) <= 5000:
-        reject("报工批次必须包含1至5000行。", status=400)
+        reject("一次报工要填 1 到 5000 行。请调整行数后重新提交。", status=400)
     result = []
     for index, item in enumerate(items, 1):
         try:
             if type(item) is not dict or set(item) != {"action", "ref", "payload"}:
-                reject("报工行结构无效。", status=400)
+                reject("报工行的内容不完整。请核对标红的项后重新提交。", status=400)
             result.append({"action": item["action"], "ref": public_ref(item["ref"]),
                            "payload": normalize_report_input(item["action"], item["payload"])})
         except WorkbenchCommandRejected as exc:
@@ -58,7 +58,7 @@ def _merge(action, original, patch):
         if key not in patch:
             continue
         if action == "supplement" and original.get(key) not in (None, "") and original[key] != patch[key]:
-            reject("已知事实不能通过补齐覆盖，请使用明确更正动作。", "constraint_conflict", 409)
+            reject("已有的报工记录不能用「补齐」盖掉。请改用「更正」。", "constraint_conflict", 409)
         values[key] = patch[key]
     return values
 
@@ -91,7 +91,7 @@ class ReportBatchPreparation:
         for index, item in enumerate(self.items, 1):
             row = (task_headers if item["action"] == "create" else report_headers).get(item["ref"])
             if row is None:
-                raise ReportBatchRejected("entity_not_found", "任务或报工原记录不存在。", 404, row_number=index)
+                raise ReportBatchRejected("entity_not_found", "这道工序的安排或原报工记录不存在。请刷新后重新选择。", 404, row_number=index)
             self.resolved.append(row)
 
     def _preload_resources(self):
@@ -137,7 +137,7 @@ class ReportBatchPreparation:
                 revisions = [row for row in changed if row["sequence"] > 1]
                 conflicts = correction_conflicts(self.conn, self.ledger, self.facts, before[after.operation_ref], after, revisions) if revisions else []
                 if conflicts:
-                    raise ReportBatchRejected("constraint_conflict", "更正会破坏后序生产或已采用安排，请先处理影响。", conflicts=conflicts)
+                    raise ReportBatchRejected("constraint_conflict", "这次更正会影响后道工序或已采用的排产安排。请先处理下面列出的影响。", conflicts=conflicts)
             except WorkbenchCommandRejected as exc:
                 _reject_row(exc, max(row["row_number"] for row in self.rows if row["operation_ref"] == after.operation_ref))
         return self
@@ -149,9 +149,9 @@ class ReportBatchPreparation:
         old = history[-1] if history else None
         if old is None:
             if self.before_projections[operation_ref].completion_basis == "complete_reports":
-                reject("工序已由完整报工确认完成，新增记录不能撤销完成；需通过有原因的更正处理。", "constraint_conflict", 409)
+                reject("这道工序已经报完工，用「新增」不能把完工撤掉。请改用「更正」并填写原因。", "constraint_conflict", 409)
             if self.before_projections[operation_ref].completion_basis == "legacy_finish_event" and not item["payload"].get("legacy_fact_ref"):
-                reject("工序已有旧完工证据，补录必须明确关联旧事实，不能新增未关联产量。", "constraint_conflict", 409)
+                reject("这道工序已有历史完工记录，「补齐」必须指明补的是哪一条，不能凭空加产量。请选定要补齐的记录。", "constraint_conflict", 409)
             row = _new_row(item, operation_ref, task, actor=self.actor, now=now.isoformat(timespec="seconds"), row_number=index)
         else:
             row = dict(old, revision_ref=new_ref(), sequence=old["sequence"] + 1, previous_revision_ref=old["revision_ref"],
@@ -177,17 +177,17 @@ class ReportBatchPreparation:
         if item["action"] != "create":
             history = group[item["ref"]]
             if history[-1]["revision_ref"] != item["payload"]["original_revision_ref"]:
-                reject("原报工版本已变化，请刷新后复核更正。", "stale_write", 409)
+                reject("这条报工记录已经被人改过。请刷新后重新核对再更正。", "stale_write", 409)
             return history, item["action"]
         number = item["payload"].get("report_no")
         row = self.by_number.get(number)
         if row is not None:
             if row["operation_ref"] != operation_ref:
-                reject("该报工单号已属于另一工序实例，不能改指当前任务。", "constraint_conflict", 409)
+                reject("这个报工单号已经属于另一道工序，不能改到当前工序。请换一个单号。", "constraint_conflict", 409)
             if item["payload"]["source"] != "excel":
-                reject("报工单号已存在，请使用补齐或更正。", "constraint_conflict", 409)
+                reject("这个报工单号已经有了。请改用「补齐」或「更正」。", "constraint_conflict", 409)
             if row["legacy_fact_ref"] != item["payload"].get("legacy_fact_ref"):
-                reject("重复导入改变了旧事实关联，不能自动重绑来源。", "constraint_conflict", 409)
+                reject("重复导入把历史记录的关联改掉了，系统不会自动重新对应来源。请核对后重新提交。", "constraint_conflict", 409)
             return group[row["report_ref"]], "supplement"
         return [], "create"
 
@@ -195,7 +195,7 @@ class ReportBatchPreparation:
         link = row["legacy_fact_ref"]
         if link and any(history[-1]["legacy_fact_ref"] == link and ref != row["report_ref"]
                         for ref, history in self.facts["reports"].get(row["operation_ref"], {}).items()):
-            reject("该旧事实已有明确补充报工，不能重复累计。", "constraint_conflict", 409)
+            reject("这条历史记录已经补过报工了，不能重复累计。请核对后重新提交。", "constraint_conflict", 409)
 
     @staticmethod
     def _result(index, item, row, result, action=None):

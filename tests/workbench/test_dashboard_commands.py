@@ -36,7 +36,7 @@ def test_same_intent_replay_and_unchanged_do_not_duplicate(dashboard_case):
     first = case.command(original, follow(), key="dashboard-same-intent-01")
     replay = case.command(original, follow(), key="dashboard-same-intent-01")
     assert first["receipt_ref"] == replay["receipt_ref"] and replay["replayed"]
-    with pytest.raises(WorkbenchCommandRejected, match="同一请求"):
+    with pytest.raises(WorkbenchCommandRejected, match="操作编号对应的内容"):
         case.command(original, follow(owner="Other"), key="dashboard-same-intent-01")
     unchanged = case.command(case.item(), follow())
     assert unchanged["result"] == "unchanged"

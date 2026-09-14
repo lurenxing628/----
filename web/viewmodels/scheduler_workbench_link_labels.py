@@ -36,7 +36,7 @@ def _text(value: Any) -> str:
 
 def plan_role_label(value: Any, *, is_preview: bool = False, scenario_display_label: str = "") -> str:
     if is_preview:
-        return _text(scenario_display_label) or "模拟预览（未命名）"
+        return _text(scenario_display_label) or "试调方案（未命名）"
     text = _text(value) or ROLE_ADOPTED
     return _core_plan_role_label(text)
 

@@ -29,20 +29,20 @@ def build_piece_adoption_scope(operations, batches):
     for op in operations:
         if (not number(op.id, integer=True, positive=True) or op.id in ids
                 or not number(op.seq, integer=True, positive=True) or op.batch_id not in batches):
-            block("piece_identity_invalid", "Operation identities or sequence numbers are invalid or duplicated.", batch_id=op.batch_id)
+            block("piece_identity_invalid", "工序编号或工序顺序号无效、重复，本次没有采用。请到批次管理核对本批工序。", batch_id=op.batch_id)
         if op.piece_id is not None and (
             type(op.piece_id) is not str or not op.piece_id or op.piece_id.strip() != op.piece_id
         ):
-            block("piece_identity_invalid", "A piece identity must be explicit and canonical, not an empty alias.", batch_id=op.batch_id)
+            block("piece_identity_invalid", "分件号必须明确填写，不能留空白，本次没有采用。请到批次管理核对本批工序。", batch_id=op.batch_id)
         ids.add(op.id)
         by_batch[op.batch_id].append(op)
     if set(by_batch) != set(batches):
-        block("piece_scope_incomplete", "Every selected batch must retain its complete operation scope.")
+        block("piece_scope_incomplete", "所选批次里有批次缺工序，本次没有采用。请到批次管理核对本批工序。")
     work = []
     for batch_id, ops in sorted(by_batch.items()):
         quantity = batches[batch_id].quantity
         if not number(quantity, integer=True):
-            block("piece_quantity_unknown", "Batch quantity must be an explicit supported non-negative integer.", batch_id=batch_id)
+            block("piece_quantity_unknown", "批次数量必须是明确的非负整数，本次没有采用。请到批次管理补填数量。", batch_id=batch_id)
         work.extend(_batch_stages(batch_id, ops, quantity))
     return PieceAdoptionScope(tuple(sorted(work, key=lambda item: item.op_id)))
 
@@ -50,7 +50,7 @@ def build_piece_adoption_scope(operations, batches):
 def _batch_stages(batch_id, ops, quantity):
     pieces = {op.piece_id for op in ops if op.piece_id is not None}
     if pieces and len(pieces) != quantity:
-        block("piece_scope_incomplete", "Distinct single-piece identities do not cover the exact batch quantity.", batch_id=batch_id)
+        block("piece_scope_incomplete", "分件号的个数和批次数量不一致，本次没有采用。请到批次管理核对分件和数量。", batch_id=batch_id)
     stages = defaultdict(list)
     for op in ops:
         stages[op.seq].append(op)
@@ -67,7 +67,7 @@ def _batch_stages(batch_id, ops, quantity):
 
 def _common_stage(batch_id, seq, stage, quantity, frontier):
     if len(stage) != 1:
-        block("piece_dependency_ambiguous", "Common and split work cannot share an ambiguous sequence stage.", batch_id=batch_id)
+        block("piece_dependency_ambiguous", "同一个工序顺序里既有共同工序又有分件工序，分不清归属，本次没有采用。请到批次管理核对工序顺序。", batch_id=batch_id)
     op = stage[0]
     predecessors = tuple(sorted({value for value in frontier.values() if value is not None}))
     work = PieceOperationWork(op.id, batch_id, None, seq, quantity, predecessors)
@@ -76,7 +76,7 @@ def _common_stage(batch_id, seq, stage, quantity, frontier):
 
 def _split_stage(batch_id, seq, stage, frontier):
     if len(stage) != len(frontier) or {op.piece_id for op in stage} != set(frontier):
-        block("piece_stage_incomplete", "A split stage is missing or repeating a piece; no route is inferred.", batch_id=batch_id)
+        block("piece_stage_incomplete", "分件工序有缺漏或重复，系统不猜工艺路线，本次没有采用。请到批次管理核对本批工序。", batch_id=batch_id)
     result = []
     for op in stage:
         previous = frontier[op.piece_id]

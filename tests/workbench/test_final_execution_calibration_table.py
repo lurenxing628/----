@@ -53,7 +53,7 @@ def test_full_calibration_facets_are_not_first_page_values_and_all_selection_is_
         response = read(api, "/facets/old_unit_hours", scope={}, size=2, page=number, snapshot_ref=first["meta"]["snapshot_ref"])
         options.extend(response["data"]["options"])
     assert len({row["key"] for row in options}) == 5 and sum(row["count"] for row in options) == 24
-    assert {row["label"]: row["count"] for row in options} == {"未提供": 1, "0": 1, "1": 1, "7": 1, "10": 20}
+    assert {row["label"]: row["count"] for row in options} == {"未填写": 1, "0": 1, "1": 1, "7": 1, "10": 20}
     selected = read(api, "/facet-selection/old_unit_hours", scope={}, size=2, snapshot_ref=first["meta"]["snapshot_ref"])
     assert set(selected["data"]["keys"]) == {row["key"] for row in options}
     assert selected["meta"]["snapshot_ref"] == first["meta"]["snapshot_ref"]
@@ -66,8 +66,8 @@ def test_zero_unknown_and_other_columns_keep_typed_scope_and_threshold_exclusion
     before = database_state(api.path)
     options = read(api, "/facets/old_unit_hours", scope={})["data"]["options"]
     keys = {row["label"]: row["key"] for row in options}
-    assert keys["未提供"] != keys["0"]
-    for label, expected in (("未提供", None), ("0", 0)):
+    assert keys["未填写"] != keys["0"]
+    for label, expected in (("未填写", None), ("0", 0)):
         filters = {"old_unit_hours": {"mode": "include", "values": [keys[label]]}}
         selected = read(api, column_filters=filters)["data"]
         assert selected["summary"]["total"] == 1 and selected["items"][0]["old_unit_hours"] == expected
@@ -109,7 +109,7 @@ def test_filtered_export_and_detail_use_complete_same_scope_not_page_size(table_
                 workbook.close()
         references = set()
         for row in exported:
-            reference, exported_scope = row["模板工序引用"], row["筛选范围"]
+            reference, exported_scope = row["模板工序编号"], row["筛选范围"]
             assert isinstance(reference, str) and isinstance(exported_scope, str)
             references.add(reference)
             assert json.loads(exported_scope)["column_filters"] == filters

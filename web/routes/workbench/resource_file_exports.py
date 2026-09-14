@@ -26,7 +26,7 @@ from .resource_action_context import (
 def _selection(kind, body, scope):
     selection = body["selection"]
     if selection not in ("all", "filtered", "selected") or ("refs" in body) != (selection == "selected"):
-        raise WorkbenchCommandRejected("invalid_input", "导出须明确全量、筛选或选中，仅选中项可传refs。", 400)
+        raise WorkbenchCommandRejected("invalid_input", "请先选好导出全部、当前筛选还是选中的记录，没有开始下载。选好后重新点「导出」。", 400)
     service = WorkbenchResourceFileService(g.db, kind, current_app.logger)
     return service.preview_export(selection, scope=scope, selected_refs=body.get("refs"))
 
@@ -48,10 +48,10 @@ def resource_export_preview(kind):
 
 def _download_args(required):
     if set(request.args) != required or any(len(request.args.getlist(key)) != 1 for key in request.args):
-        raise WorkbenchCommandRejected("invalid_input", "下载参数缺失、重复或含未知字段。", 400)
+        raise WorkbenchCommandRejected("invalid_input", "下载条件不完整或有多余项，没有开始下载。请刷新页面后重新点「导出」。", 400)
     fmt = request.args["format"]
     if fmt not in ("csv", "xlsx"):
-        raise WorkbenchCommandRejected("invalid_input", "下载仅支持CSV或XLSX。", 400)
+        raise WorkbenchCommandRejected("invalid_input", "下载只支持 CSV 或 XLSX 格式，没有开始下载。请重新选择格式后点「导出」。", 400)
     return fmt
 
 
@@ -71,7 +71,7 @@ def resource_export(kind):
     document, _ = resolve_context(EXPORT_SCOPE, ref, "snapshot_stale")
     binding = json.loads(document)
     if binding["kind"] != kind:
-        raise WorkbenchCommandRejected("snapshot_stale", "导出引用属于其他资源类型。")
+        raise WorkbenchCommandRejected("snapshot_stale", "这次导出的编号属于另一类记录，没有开始下载。请刷新页面后重新点「导出」。")
     reader = WorkbenchResourceQueryService(g.db, kind, current_app.logger)
     with reader.read_snapshot() as fingerprint:
         snapshot = bind_read_snapshot(binding["query_scope"], fingerprint, binding["snapshot_ref"])

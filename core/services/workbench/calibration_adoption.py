@@ -9,6 +9,7 @@ from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchComm
 from core.models.workbench_execution_input import public_ref
 from data.repositories.workbench_calibration_adoption_repo import WorkbenchCalibrationAdoptionRepository
 
+from . import messages
 from .calibration_adoption_evidence import read_evidence
 from .commands import WorkbenchCommandService
 
@@ -27,7 +28,7 @@ class WorkbenchCalibrationAdoptionService:
 
     def _enabled(self):
         if not self.integration_enabled:
-            raise WorkbenchCommandRejected("calibration_adoption_not_connected", "采纳存储升级和普通定额写保护尚未联合接入，采纳保持关闭。", 503)
+            raise WorkbenchCommandRejected("calibration_adoption_not_connected", messages.UNAVAILABLE, 503)
         factory, validator = self.context_factory, self.context_validator
         if not callable(factory) or not callable(validator):
             raise RuntimeError("Calibration adoption write-context callbacks are not connected.")
@@ -59,7 +60,7 @@ class WorkbenchCalibrationAdoptionService:
         def guard():
             _, validator = self._enabled()
             if type(write_token) is not str or not write_token:
-                raise WorkbenchCommandRejected("stale_write", "请先重新预览并复核采纳，未提供有效写上下文。")
+                raise WorkbenchCommandRejected("stale_write", messages.STALE)
             evidence = read_evidence(self.conn, self.repo, template_operation_ref, intent, self.clock)
             validator(write_token, template_operation_ref, ADOPT_ACTION, evidence.snapshot)
             evidence.require_adoptable()
@@ -86,5 +87,5 @@ class WorkbenchCalibrationAdoptionService:
         if row is None:
             return None
         if (row["action"], row["context_ref"]) != (ADOPT_ACTION, template_operation_ref):
-            raise WorkbenchCommandRejected("request_key_conflict", "此回执属于其他对象或操作，请核对原请求。")
+            raise WorkbenchCommandRejected("request_key_conflict", "这个操作编号属于另一条记录或另一个操作，请核对上次提交的内容。")
         return self.commands.repo.public_result(row, replayed=True)

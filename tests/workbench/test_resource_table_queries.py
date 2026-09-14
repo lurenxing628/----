@@ -175,7 +175,7 @@ def test_missing_refs_fail_before_facet_or_filtered_paging_without_repairs(table
     table_conn.commit()
     before = stored_state(table_conn)
     service, query = reader(table_conn, kind), query_for(kind, category, size=1)
-    with pytest.raises(WorkbenchCommandRejected, match="永久引用"):
+    with pytest.raises(WorkbenchCommandRejected, match="编号"):
         with service.read_snapshot():
             service.facets(query, "label")
     assert stored_state(table_conn) == before
@@ -188,7 +188,7 @@ def test_unavailable_qualification_is_unknown_not_zero_and_invalid_binding_is_vi
     service = reader(table_conn, "op_type")
     with service.read_snapshot():
         facet = service.facets(ResourcePageRequest("op_type", category="internal"), "available_operators")
-        assert [(row["label"], row["count"]) for row in facet["options"]] == [("无法核实", 3)]
+        assert [(row["label"], row["count"]) for row in facet["options"]] == [("暂无数据", 3)]
     service = reader(table_conn, "machine")
     with service.read_snapshot():
         query = ResourcePageRequest("machine", sort="op_type_ref")

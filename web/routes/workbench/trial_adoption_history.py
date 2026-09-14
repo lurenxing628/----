@@ -15,15 +15,15 @@ from .read_context import bind_read_snapshot
 def trial_adoption_history(scenario_ref):
     allowed = {"page", "size", "status", "snapshot_ref"}
     if set(request.args) - allowed or any(len(request.args.getlist(key)) != 1 for key in request.args):
-        reject("invalid_input", "采用历史含未知或重复筛选参数，未忽略条件。", 400)
+        reject("invalid_input", "采用记录的筛选条件有重复或不支持的项，当前筛选没有变化。请刷新页面后重新选择。", 400)
     numbers = {}
     for key, default in (("page", "1"), ("size", "20")):
         raw = request.args.get(key, default)
         if re.fullmatch(r"[1-9][0-9]{0,5}", raw) is None:
-            reject("invalid_input", "采用记录页码和每页数量必须为正整数。", 400)
+            reject("invalid_input", "页码或每页数量填写不对，列表没有变化。请回到第 1 页重新查询。", 400)
         numbers[key] = int(raw)
     if numbers["page"] > 1 and not request.args.get("snapshot_ref"):
-        reject("snapshot_required", "翻页必须提供原采用记录快照，未自动读取新目录。", 400)
+        reject("snapshot_required", "翻页位置已失效，请回到第 1 页重新查询。", 400)
     status = request.args.get("status", "all")
     scope = history_scope(scenario_ref, status, numbers["size"])
     data, digest = WorkbenchTrialAdoptionHistoryService(g.db).read(scenario_ref, status=status, **numbers)

@@ -18,7 +18,7 @@ def _unique_query():
     pairs = tuple(request.args.items(multi=True))
     names = [name for name, _ in pairs]
     if len(names) != len(set(names)):
-        raise BadRequest("页面查询条件重复，未忽略任何条件或切换范围。")
+        raise BadRequest("页面地址里的条件有重复项，页面没有打开。请从侧栏重新进入。")
     return pairs
 
 

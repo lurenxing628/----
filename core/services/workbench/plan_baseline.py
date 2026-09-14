@@ -35,11 +35,11 @@ from .plan_projection import check_payload_size, project_plan, project_tasks, pu
 _CHANGE_FIELDS = ("start", "end", "machine_ref", "operator_ref")
 _REASONS = {
     **ADOPTION_REASONS,
-    "not_recorded": "该正式或代表候选计划未记录独立的初始基线，不能用当前安排冒充初始计划。",
-    "baseline_binding_invalid": "场景或其持久基础计划身份已失效，不能对照；未切换到其他计划。",
-    "baseline_unavailable": "持久基础计划的摘要、角色或明细无效，不能完整对照。",
-    "scenario_unavailable": "所选场景不是有效的已保存预览，不能进行初始计划对照。",
-    "baseline_task_invalid": "对照任务的时间、业务信息或永久身份不完整，不能返回完整对照。",
+    "not_recorded": "这一版正式计划没有单独记下初始计划，这里不显示对比；系统不会拿当前安排顶替。",
+    "baseline_binding_invalid": "试调方案或它依据的那份计划编号已失效，这里不显示对比；系统不会自动换成别的计划。",
+    "baseline_unavailable": "试调依据的那份计划摘要或明细无效，对不全，这里不显示对比。",
+    "scenario_unavailable": "所选试调方案不是有效的已保存方案，做不了初始计划对比。请回「试调」重新选一个。",
+    "baseline_task_invalid": "对比工序的时间、批次信息或编号不完整，给不出完整对比。请刷新后重试。",
 }
 
 
@@ -56,12 +56,12 @@ def _complete_rows(repo, *, version, source, candidate_id=None, scenario_id=None
     ids = repo.fetchall("SELECT id FROM (" + sql + ") LIMIT ?", params + [MAX_PLAN_TASKS + 1])
     if len(ids) > MAX_PLAN_TASKS:
         raise WorkbenchCommandRejected(
-            "query_too_large", "完整基线或对照计划超过 10000 条上限，未用范围截断冒充完整对照。", 413,
+            "query_too_large", "完整的初始计划或对比计划超过 10000 条上限，没有读取，也不会只给屏幕上这一段。请缩小时间范围后重试。", 413,
         )
     detail = build_schedule_detail_sql(where_clauses=["1 = 1"], plan_rows_cte_sql=sql)
     rows = repo.fetchall(detail + " LIMIT ?", params + [MAX_PLAN_TASKS + 1])
     if len(rows) != len(ids):
-        raise WorkbenchCommandRejected("plan_unavailable", "对照计划明细数量不一致，不能确认完整范围。")
+        raise WorkbenchCommandRejected("plan_unavailable", "对比计划的明细条数前后不一致，确认不了完整范围。请刷新后重试。")
     return rows
 
 
@@ -72,7 +72,7 @@ def _resource_maps(conn, rows):
         keys = sorted({str(row[kind + "_id"]) for row in rows if row[kind + "_id"] not in (None, "")})
         mapping = entities.active_map(kind, keys)
         if set(keys) != set(mapping):
-            raise WorkbenchCommandRejected("identity_missing", "对照任务关联的资源或批次永久身份缺失。")
+            raise WorkbenchCommandRejected("identity_missing", "对比工序关联的设备、人员或批次找不到编号。请刷新后重试。")
         resources[kind] = mapping
         state[kind] = [(key, value.ref, value.revision) for key, value in sorted(mapping.items())]
     return resources, state
@@ -89,14 +89,14 @@ def _verify_selected_rows(rows, selected_rows, scope):
     supplied = {row["schedule_id"]: {key: value for key, value in row.items() if key != "_point_work"} for row in selected_rows}
     if len(supplied) != len(selected_rows) or supplied != expected:
         raise WorkbenchCommandRejected(
-            "invalid_input", "选定任务必须来自同一事务、同一计划和完整时间范围，不能用额外筛选后的子集对照。", 400,
+            "invalid_input", "对比只能用同一个计划、同一次读取的完整时间范围，不能拿再筛过的一部分来比。请刷新后重试。", 400,
         )
 
 
 def _by_operation(tasks):
     mapped = {task["operation_ref"]: task for task in tasks}
     if len(mapped) != len(tasks):
-        raise WorkbenchCommandRejected("task_binding_invalid", "同一计划的工序安排重复，不能唯一对齐。")
+        raise WorkbenchCommandRejected("task_binding_invalid", "同一个计划里有工序安排重复，对不齐。请刷新后重试。")
     return mapped
 
 
@@ -126,7 +126,7 @@ class _BaselineReader:
         locator = self.references.resolve_plan(self.scope.plan_ref)
         selected = self.entry.locator
         if locator != WorkbenchPlanLocator(selected.version, selected.plan_role, selected.scenario_id):
-            raise WorkbenchCommandRejected("invalid_input", "计划引用与已解析条目不一致，不能跨计划对照。", 400)
+            raise WorkbenchCommandRejected("invalid_input", "所选计划已经变了，不能跨计划对比。请刷新计划列表后重新选择。", 400)
         if locator.scenario_id is None:
             return self._adopted(locator)
         header = self.repo.get_scenario_context(locator.scenario_id)

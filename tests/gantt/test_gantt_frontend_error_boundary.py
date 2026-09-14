@@ -216,7 +216,7 @@ def test_boot_rejects_non_array_tasks_instead_of_showing_no_schedule(app_client)
 const C=h.runtime.APSPlanContract,ref=sourceData.data.plan.plan_ref;C.workspace(sourceData,ref);
 for(const tasks of [null,{},'RAW_SECRET',3]) {
  const bad=h.clone(sourceData);bad.data.tasks=tasks;let error;try{C.workspace(bad,ref);}catch(value){error=value;}assert(error);
- const text=h.text(h.render(h.runtime.ResourceControls.ErrorBox,{error}));assert(text.includes('计划任务、范围或投影协议不完整或串源'));assert(!text.includes('RAW_SECRET'));assert(!text.includes('该读取范围没有安排。'));
+ const text=h.text(h.render(h.runtime.ResourceControls.ErrorBox,{error}));assert(text.includes('读到的工序安排、时间范围或分析数据不完整或来源对不上'));assert(!text.includes('RAW_SECRET'));assert(!text.includes('该读取范围没有安排。'));
 }
 """, payload)
     assert _business_state(app_client) == before
@@ -262,7 +262,7 @@ def test_boot_catches_prepare_stage_errors_as_visible_generic_error(app_client, 
     text = response.get_data(as_text=True)
     assert hits
     assert response.status_code == 503
-    assert "工作台资源清单尚未生成或无法读取。" in text
+    assert "页面文件清单读不到，页面没有打开。" in text
     assert "workbench-boot" not in text
     assert all(value not in text for value in ("RAW_SECRET", "sqlite", "/tmp/private.db", str(target)))
     assert app_client.get("/workbench?view=gantt").status_code == 200
@@ -280,7 +280,7 @@ def test_boot_hides_internal_dom_mismatch_message_from_visible_error(app_client)
 const C=h.runtime.APSPlanContract,ref=sourceData.data.plan.plan_ref,secret='outline.installCriticalOutlineSyncAdapter RAW_SECRET /tmp/private.db';
 for(const change of [p=>p.data.tasks[0].start=secret,p=>p.data.tasks[0].raw_dom_error=secret,p=>p.data.scope.plan_ref=secret]) {
  const bad=h.clone(sourceData);change(bad);let error;try{C.workspace(bad,ref);}catch(value){error=value;}assert(error);
- const text=h.text(h.render(h.runtime.ResourceControls.ErrorBox,{error}));assert(text.includes('未作为完整结果使用'));
+ const text=h.text(h.render(h.runtime.ResourceControls.ErrorBox,{error}));assert(text.includes('没有当作完整结果使用'));
  for(const raw of ['outline','RAW_SECRET','/tmp/private.db'])assert(!text.includes(raw));
 }
 """, payload)

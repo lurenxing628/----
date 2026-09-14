@@ -153,8 +153,8 @@ def test_error_handler_500_page_does_not_depend_on_main_site_routes() -> None:
 
     body = response.get_data(as_text=True)
     assert response.status_code == 500
-    assert "服务" in body
-    assert "错误" in body
+    assert "系统出错" in body
+    assert "出错" in body
 
 
 def test_error_handler_500_page_survives_half_dead_request_container() -> None:
@@ -165,8 +165,8 @@ def test_error_handler_500_page_survives_half_dead_request_container() -> None:
 
     body = response.get_data(as_text=True)
     assert response.status_code == 500
-    assert "服务" in body
-    assert "错误" in body
+    assert "系统出错" in body
+    assert "出错" in body
 
 
 def test_error_handler_request_entity_too_large_keeps_unified_file_too_large_contract() -> None:
@@ -179,7 +179,7 @@ def test_error_handler_request_entity_too_large_keeps_unified_file_too_large_con
     assert response.status_code == 413
     assert payload["success"] is False
     assert payload["error"]["code"] == ErrorCode.FILE_TOO_LARGE.value
-    assert "16MB" in payload["error"]["message"]
+    assert "16 MB" in payload["error"]["message"]
 
 
 def test_error_boundary_import_does_not_load_scheduler_service_aggregate() -> None:
@@ -422,7 +422,8 @@ def test_render_error_template_renders_rich_error_template_path() -> None:
     assert '<main data-workbench-error="true">' in body
     assert 'role="alert"' in body
     assert "请修复配置后重试" in body
-    assert 'href="/system/runtime-logs"' in body
+    # 旧运行日志入口已退役（410），错误页指向工作台的系统管理。
+    assert 'href="/workbench?view=system"' in body and "/system/runtime-logs" not in body
     assert "配置错误" in body
     assert "400" not in body
     assert "错误码" not in body

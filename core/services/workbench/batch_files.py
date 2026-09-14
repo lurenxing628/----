@@ -19,10 +19,10 @@ class WorkbenchBatchFileService:
 
     def preview(self, content, mode):
         if mode not in ("overwrite", "append", "replace"):
-            raise WorkbenchCommandRejected("invalid_input", "批次导入模式不正确。", 400)
+            raise WorkbenchCommandRejected("invalid_input", "批次导入方式选得不对。", 400)
         parsed, warnings = read_batch_file(content)
         if not parsed:
-            raise ValidationError("文件没有批次数据行，不能用空文件清空资料。", field="file")
+            raise ValidationError("文件里一行批次数据都没有，不能用空文件清除已有资料。", field="file")
         preview = BatchImportPreview(self.reader.load(), mode)
         rows = [preview.row(row) for row in parsed]
         deleted = preview.deleted()
@@ -35,7 +35,7 @@ class WorkbenchBatchFileService:
         if not self.conn.in_transaction:
             raise RuntimeError("批次文件确认必须由工作台命令事务持有。")
         if document["operation"] != "batch.import_confirm" or not document["can_confirm"]:
-            raise WorkbenchCommandRejected("constraint_conflict", "文件预览有拒绝行，未写入任何批次。")
+            raise WorkbenchCommandRejected("constraint_conflict", "预检里还有不能通过的行，系统一条批次都没有写入。")
         for row in document["deleted"]:
             self.domain.apply("delete", {}, row["entity_ref"])
         outcomes = []

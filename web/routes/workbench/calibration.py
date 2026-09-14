@@ -7,6 +7,7 @@ from flask import g, request, send_file
 
 from core.models.workbench_calibration import MAX_RESPONSE_BYTES, CalibrationQuery, unique_calibration_object
 from core.models.workbench_command import WorkbenchCommandRejected
+from core.services.workbench import messages
 from core.services.workbench.calibration import WorkbenchCalibrationService
 from core.services.workbench.calibration_export import export_calibration
 
@@ -21,18 +22,18 @@ def _arguments(*, export, detail):
     if export:
         allowed.add("format")
     if set(request.args) - allowed or any(len(request.args.getlist(key)) != 1 for key in request.args):
-        raise WorkbenchCommandRejected("invalid_input", "校准查询包含未知或重复参数，未忽略筛选条件。", 400)
+        raise WorkbenchCommandRejected("invalid_input", "工时校准的筛选条件有重复或不支持的项，当前筛选没有变化。请刷新页面后重新选择。", 400)
     fields: Dict[str, Any] = {key: value for key, value in request.args.items() if key not in ("snapshot_ref", "format", "page", "size")}
     fields.update(number=_page_integer("page", "1"), size=_page_integer("size", "20"))
     if "column_filters" in fields:
         try:
             fields["column_filters"] = json.loads(fields["column_filters"], object_pairs_hook=unique_calibration_object)
         except (ValueError, TypeError) as exc:
-            raise WorkbenchCommandRejected("invalid_input", "校准列筛选JSON无效。", 400) from exc
+            raise WorkbenchCommandRejected("invalid_input", "列筛选内容读不出来，当前筛选没有变化。请点「清除筛选」后重新选择。", 400) from exc
     query = CalibrationQuery(**fields)
     token = request.args.get("snapshot_ref")
     if (export or detail or query.number > 1) and not token:
-        raise WorkbenchCommandRejected("snapshot_required", "分页、详情和导出须携带列表快照，请先读取列表。", 400)
+        raise WorkbenchCommandRejected("snapshot_required", messages.STALE, 400)
     return query, token
 
 
@@ -54,7 +55,7 @@ def _read(*, export=False, suggestion_ref=None):
     else:
         response = query_success(data, snapshot)
         if len(response.get_data()) > MAX_RESPONSE_BYTES:
-            raise WorkbenchCommandRejected("query_too_large", "完整校准详情超过8MB，请缩小范围；未截断样本出处。", 413)
+            raise WorkbenchCommandRejected("query_too_large", "这次要读的校准明细超过 8 MB，系统没有给出不完整内容。请缩小筛选范围后点「刷新」。", 413)
     response.headers["Cache-Control"] = "no-store"
     return response
 

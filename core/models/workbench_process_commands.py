@@ -16,13 +16,13 @@ MAX_STAGE_ITEMS = 10000
 
 def process_object(value, keys):
     if type(value) is not dict or set(value) != set(keys):
-        raise WorkbenchCommandRejected("invalid_input", "操作字段缺失或包含未知字段。", 400)
+        raise WorkbenchCommandRejected("invalid_input", "提交内容缺少必填项或含有多余项，这次操作没有执行。请刷新页面后重试。", 400)
     return value
 
 
 def process_ref(value):
     if type(value) is not str or re.fullmatch(r"[0-9a-f]{48}", value) is None:
-        raise WorkbenchCommandRejected("invalid_input", "所选记录无效，请重新读取后选择。", 422)
+        raise WorkbenchCommandRejected("invalid_input", "所选记录已失效，请刷新后重新选择。", 422)
     return value
 
 
@@ -40,9 +40,9 @@ def process_number(value, *, positive=False):
 
 def _list(value):
     if type(value) is not list:
-        raise WorkbenchCommandRejected("invalid_input", "必须提供完整列表，不能省略或使用单个对象。", 422)
+        raise WorkbenchCommandRejected("invalid_input", "必须提交完整的列表。", 422)
     if len(value) > MAX_STAGE_ITEMS:
-        raise WorkbenchCommandRejected("stage_too_large", "阶段列表最多允许10000条，未截断。", 413)
+        raise WorkbenchCommandRejected("stage_too_large", "一次最多 10000 条，这次没有提交。请缩小范围后重试。", 413)
     return value
 
 
@@ -73,7 +73,7 @@ def _hours_operations(rows):
     result = []
     for row in _list(rows):
         if type(row) is not dict:
-            raise WorkbenchCommandRejected("invalid_input", "工序工时必须是对象。", 400)
+            raise WorkbenchCommandRejected("invalid_input", "工序工时的填写格式不对。", 400)
         keys = {"ref", "external_days"} if "external_days" in row else {"ref", "setup_hours", "unit_hours"}
         process_object(row, keys)
         normalized: Dict[str, Optional[Union[str, float]]] = {"ref": process_ref(row["ref"])}
@@ -102,7 +102,7 @@ def normalize_process_input(action, payload):
                 "confirm_zero_unit_hours": payload["confirm_zero_unit_hours"]}
     field = "route" if action == "route_confirm" else "operations"
     if type(payload) is not dict or field not in payload or set(payload) - {field, "discard_group_refs"}:
-        raise WorkbenchCommandRejected("invalid_input", "操作字段缺失或包含未知字段。", 400)
+        raise WorkbenchCommandRejected("invalid_input", "提交内容缺少必填项或含有多余项，这次操作没有执行。请刷新页面后重试。", 400)
     discarded = _unique(_list(payload.get("discard_group_refs", [])), refs_only=True)
     if action == "source_confirm":
         return {field: _source_operations(payload[field]), "discard_group_refs": discarded}

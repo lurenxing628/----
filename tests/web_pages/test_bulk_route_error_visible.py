@@ -272,7 +272,8 @@ def test_system_backup_page_surfaces_unsafe_hidden_backup_file(tmp_path, monkeyp
     assert response.status_code == 200
     data = response.get_json()["data"]
     assert not any(row.get("filename") == unsafe_backup.name for row in data["rows"])
-    assert any(item["code"] == "file_unreadable" and "不是普通文件" in item["message"] for item in data["sources"])
+    assert any(item["code"] == "file_unreadable" and "读不到" in item["message"]
+               and "没有列进可以操作的备份" in item["message"] for item in data["sources"]), data["sources"]
     source = (REPO_ROOT / "frontend/workbench/app/SystemMaintenanceRecords.jsx").read_text(encoding="utf-8")
     assert "data.sources.map" in source and "{item.message}" in source
     assert victim.read_text(encoding="utf-8") == "VICTIM-UNTOUCHED"

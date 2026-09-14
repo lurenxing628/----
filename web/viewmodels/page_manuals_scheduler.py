@@ -140,7 +140,7 @@ SCHEDULER_TOPICS: Dict[str, Dict[str, Any]] = {
     "scheduler_batches": _topic(
         title="排产调度",
         summary="这里是排产调度入口，用来筛选批次、切换方案、查看当前配置，并在页面里的\u201c排产操作\u201d区域启动执行排产或模拟排产。",
-        full_manual_anchor="#6-3执行排产与模拟排产",
+        full_manual_anchor="#6-3执行排产与试调",
         help_card=_card(
             "排产调度页先看这 5 点",
             "先勾选待排批次，再设开始时间、截止日期和\u201c本次启用齐套检查\u201d。",

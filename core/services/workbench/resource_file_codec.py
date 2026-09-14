@@ -36,22 +36,22 @@ def _source_rows(content, fmt):
                     return
                 yield number, row, {}
         except (UnicodeDecodeError, csv.Error) as exc:
-            raise file_error("CSV必须是有效UTF-8，不能猜编码或修补引号。", reader.line_num if reader else 1) from exc
+            raise file_error("这个 CSV 不是 UTF-8 编码，或者引号不成对，一行都没有导入。请另存为 UTF-8 编码后重新上传。", reader.line_num if reader else 1) from exc
     else:
         wb = None
         try:
             wb = openpyxl.load_workbook(BytesIO(content), read_only=True, data_only=False, keep_links=False)
             if len(wb.sheetnames) != 1 or len(wb.worksheets) != 1:
-                raise file_error("文件只能包含一张数据工作表，不能忽略其他表。")
+                raise file_error("文件里只能有一张数据表，没有导入。请删掉多余的工作表后重新上传。")
             ws = wb.worksheets[0]
             ws.reset_dimensions()
             for number, cells in enumerate(ws.iter_rows(), 1):
-                errors = {i: "不接受公式或Excel错误单元格。" for i, cell in enumerate(cells) if cell.data_type in ("f", "e")}
+                errors = {i: "这个格子是公式或者显示为错误值，没有导入。请改成纯文本后重新上传。" for i, cell in enumerate(cells) if cell.data_type in ("f", "e")}
                 yield number, [cell.value for cell in cells], errors
         except ValidationError:
             raise
         except Exception as exc:
-            raise file_error("XLSX读取失败，请核对文件字节。") from exc
+            raise file_error("这个 XLSX 打不开，没有导入。请确认文件完整后重新上传。") from exc
         finally:
             if wb is not None:
                 wb.close()
@@ -63,10 +63,10 @@ def _headers(kind, values):
     fields = []
     for value in values:
         if type(value) is not str or value not in names:
-            raise file_error("表头含未知字段或空列。", field="headers")
+            raise file_error("表头里有认不出的列或者空列，没有导入。请照模板里的列名填写。", field="headers")
         fields.append(names[value])
     if "business_code" not in fields or len(fields) != len(set(fields)):
-        raise file_error("表头必须包含编号且不得重复（含中英文同义列）。", field="headers")
+        raise file_error("表头必须有编号这一列，而且不能有重复的列（中文名和英文名指同一列也算重复），没有导入。请照模板改好后重新上传。", field="headers")
     return fields
 
 
@@ -82,7 +82,7 @@ def _decode(value, field, fmt):
         value = _decode_json(value, field)
     if field in NUMERIC_FIELDS and fmt == "csv":
         if type(value) is not str or NUMBER.fullmatch(value) is None:
-            raise ValidationError("数值不能混入单位、布尔值或分组逗号。", field=field)
+            raise ValidationError("这个格子只能填数字，不能带单位、是或否、千分位逗号，没有导入。请改成纯数字。", field=field)
         value = float(value)
     return value
 
@@ -98,24 +98,24 @@ def _unique_pairs(pairs):
 
 def _decode_json(value, field):
     if type(value) is not str:
-        raise ValidationError("该单元格必须明确填写JSON文本。", field=field)
+        raise ValidationError("这个格子要填 JSON 文本，没有导入。多个编号请按 [\"A\",\"B\"] 这样填。", field=field)
     try:
         value = json.loads(value, object_pairs_hook=_unique_pairs,
                            parse_constant=lambda _: (_ for _ in ()).throw(ValueError("nonfinite")))
     except (ValueError, TypeError) as exc:
-        raise ValidationError("该单元格必须是有效且无重复键的JSON，不猜逗号分隔。", field=field) from exc
+        raise ValidationError("这个格子里的 JSON 写得不对或者有重复的键，没有导入。多个编号请按 [\"A\",\"B\"] 这样填，不要只用逗号隔开。", field=field) from exc
     if field in MULTI_CODES:
         if type(value) is not list or any(type(code) is not str for code in value):
-            raise ValidationError("多值必须是JSON字符串数组。", field=field)
+            raise ValidationError("这个格子要填一组用引号括起来的编号，没有导入。请按 [\"A\",\"B\"] 这样填。", field=field)
         if len(value) != len(set(value)):
-            raise ValidationError("编号数组不能重复。", field=field)
+            raise ValidationError("这个格子里的编号有重复，没有导入。请去掉重复的编号。", field=field)
     return value
 
 
 def _parse(number, values, errors, fields, fmt):
     parsed, issues = {}, []
     if len(values) > len(fields) and any(v is not None and v != "" for v in values[len(fields):]):
-        issues.append({"row": number, "field": "columns", "code": "invalid_input", "message": "数据行包含未声明的多余列。"})
+        issues.append({"row": number, "field": "columns", "code": "invalid_input", "message": "这一行的列数比表头多，多出来的内容没有导入。请删掉多余的列。"})
     for index, field in enumerate(fields):
         value = values[index] if index < len(values) else None
         try:
@@ -130,19 +130,19 @@ def _parse(number, values, errors, fields, fmt):
 
 def read_resource_file(kind, content, fmt):
     if type(content) is not bytes or fmt not in ("csv", "xlsx"):
-        raise file_error("必须提供CSV/XLSX原始字节。")
+        raise file_error("只能导入 CSV 或 XLSX 文件，没有导入。请重新选择文件。")
     source = _source_rows(content, fmt)
     try:
         header = next(source, None)
         if header is None or header[2]:
-            raise file_error("文件缺少有效表头。", field="headers")
+            raise file_error("文件第一行不是表头，没有导入。请照模板补上表头行。", field="headers")
         fields = _headers(kind, header[1])
         rows = []
         for number, values, errors in source:
             if not errors and all(value is None or value == "" for value in values):
                 continue
             if len(rows) == IMPORT_ROW_LIMIT:
-                raise file_error("单次最多导入2000行，未截断或写入前半部分。", number)
+                raise file_error("一次最多导入 2000 行，这个文件超了，一行都没有导入。请拆成几个小文件分次上传。", number)
             rows.append(_parse(number, values, errors, fields, fmt))
         return rows
     finally:

@@ -219,7 +219,7 @@ def test_input_ref_binds_complete_input_and_full_facts(pf, change):
         pf.conn.execute(change)
         pf.conn.commit()
         pf.conn.execute("BEGIN")
-        with pytest.raises(WorkbenchCommandRejected, match="已经变化"):
+        with pytest.raises(WorkbenchCommandRejected, match="有变化"):
             resolve_preflight_input(pf.conn, data["input_ref"])
         pf.conn.rollback()
 
@@ -228,7 +228,7 @@ def test_expired_context_and_read_failure_stay_uncommitted(pf):
     checked(pf)
     with pf.application.app_context():
         pf.conn.execute("BEGIN")
-        with pytest.raises(WorkbenchCommandRejected, match="失效"):
+        with pytest.raises(WorkbenchCommandRejected, match="已过期"):
             resolve_preflight_input(pf.conn, "invalid")
         pf.conn.rollback()
     pf.conn.set_authorizer(lambda action, table, _col, _db, _trigger: sqlite3.SQLITE_DENY if action == sqlite3.SQLITE_READ and table == "BatchOperations" else sqlite3.SQLITE_OK)

@@ -28,17 +28,17 @@ class WorkbenchSupplierService:
 
     def _current_supplier(self, identity):
         if not isinstance(identity, WorkbenchEntityIdentity) or identity.kind != "supplier":
-            raise WorkbenchCommandRejected("invalid_input", "需要已核对的供应商引用。", 400)
+            raise WorkbenchCommandRejected("invalid_input", "没有选中供应商，这次操作没有保存。请回到供应商列表重新选择。", 400)
         current = self._identities.get(identity.ref)
         if not identity.active or current is None or not current.active or current.kind != "supplier":
-            raise WorkbenchCommandRejected("entity_not_found", "该供应商引用已失效，请刷新。", 404)
+            raise WorkbenchCommandRejected("entity_not_found", "这条供应商记录已失效，请刷新后重新选择。", 404)
         if current != identity:
-            raise WorkbenchCommandRejected("stale_write", "供应商已变化，请刷新后重新核对。")
+            raise WorkbenchCommandRejected("stale_write", "供应商资料已更新，请刷新后重新核对。")
         supplier = self._query.get_by_ref(current.ref)
         if supplier is None:
             raise WorkbenchCommandRejected("entity_not_found", "供应商已不存在，请刷新。", 404)
         if (supplier["supplier_id"], supplier["ref"], supplier["revision"]) != (current.entity_key, current.ref, current.revision):
-            raise WorkbenchCommandRejected("stale_write", "供应商与引用不一致，请重新核对。")
+            raise WorkbenchCommandRejected("stale_write", "供应商资料已更新，这次操作没有保存。请刷新后重新核对。")
         return current, supplier
 
     def snapshot(self, identity: WorkbenchEntityIdentity) -> Dict[str, Any]:
@@ -53,7 +53,7 @@ class WorkbenchSupplierService:
         for ref in payload["relationships"]["op_type_refs"]:
             op_type = self._query.get_op_type_by_ref(ref)
             if op_type is None:
-                raise WorkbenchCommandRejected("entity_not_found", "工种引用不存在或已失效，请刷新。", 404)
+                raise WorkbenchCommandRejected("entity_not_found", "所选工种已失效，请刷新后重新选择。", 404)
             if op_type["category"] != "external":
                 raise ValidationError("供应商只能绑定外协工种。", field="relationships.op_type_refs")
             keys.add(op_type["op_type_id"])
@@ -66,7 +66,7 @@ class WorkbenchSupplierService:
         payload = self.normalize_input(action, normalized_input)
         if action == "create":
             if identity is not None:
-                raise WorkbenchCommandRejected("invalid_input", "新增供应商不能指定已有对象。", 400)
+                raise WorkbenchCommandRejected("invalid_input", "新增供应商时不能选中已有供应商。请点「新增」后重新填写。", 400)
             selected = self._resolve_op_types(payload)
             fields = dict(payload["fields"])
             status, reason = self._stored_status(fields.pop("status", "active"))
@@ -130,7 +130,7 @@ class WorkbenchSupplierService:
             if (exc.code == ErrorCode.DB_INTEGRITY_ERROR
                     and isinstance(exc.cause, sqlite3.IntegrityError)
                     and str(exc.cause) == "FOREIGN KEY constraint failed"):
-                raise WorkbenchCommandRejected("constraint_conflict", "供应商仍被其他数据引用，不能删除。") from exc
+                raise WorkbenchCommandRejected("constraint_conflict", "这家供应商还被其他资料使用，没有删除。请先解除这些关联再删除。") from exc
             raise
 
     @staticmethod

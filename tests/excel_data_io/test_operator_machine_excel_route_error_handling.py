@@ -1,4 +1,4 @@
-"""回归测试：POST /personnel/excel/links/preview 路由内部异常时不泄露实现细节——当 normalize_skill_level_optional 抛 RuntimeError，响应应为 500 且页面只显示「服务器内部错误」，绝不把原始异常文案（normalize exploded）透出给用户。"""
+"""回归测试：POST /personnel/excel/links/preview 路由内部异常时不泄露实现细节——当 normalize_skill_level_optional 抛 RuntimeError，响应应为 500 且页面只显示「系统出错」的笼统提示，绝不把原始异常文案（normalize exploded）透出给用户。"""
 
 from __future__ import annotations
 
@@ -92,7 +92,7 @@ def test_personnel_excel_preview_hides_internal_runtime_error(monkeypatch) -> No
             body = resp.data.decode("utf-8", errors="ignore")
             assert resp.status_code == 500
             assert "normalize exploded" not in body
-            assert "服务器内部错误" in body
+            assert "系统出错，这次操作没有完成" in body
         finally:
             _reset_aps_logger_handlers()
             logging.shutdown()

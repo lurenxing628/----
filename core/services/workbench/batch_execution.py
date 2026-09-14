@@ -15,9 +15,9 @@ def read_execution(conn, operation_refs):
         version = conn.execute("SELECT version FROM SchemaVersion WHERE id=1").fetchone()
         receipts = conn.execute("SELECT 1 FROM WorkbenchCommandReceipts WHERE action GLOB 'execution.*' LIMIT 1").fetchone()
         if version is None or type(version[0]) is not int or not 0 <= version[0] < 25 or receipts:
-            raise WorkbenchCommandRejected("execution_ledger_unavailable", "已声明的新执行台账缺失，请恢复完整资料；不能退回旧状态读取。")
+            raise WorkbenchCommandRejected("execution_ledger_unavailable", "报工记录表缺失，读不出现场进度。系统不会退回旧的状态标记，请先恢复完整数据。")
         return {"available": False, "projections": {}, "snapshot_facts": {"schema_version": version[0]},
-                "issues": [{"code": "execution_ledger_not_installed", "message": "旧库尚未安装执行台账；当前仅保留旧状态标记和引用保护，未核实分次进度。"}]}
+                "issues": [{"code": "execution_ledger_not_installed", "message": "这个数据库还没装报工记录表；现在只保留旧的状态标记和删除保护，逐次进度暂无数据。"}]}
     ledger = ExecutionLedgerService(conn)
     refs, projections = list(operation_refs), {}
     with ledger.read_snapshot() as clock:
@@ -25,7 +25,7 @@ def read_execution(conn, operation_refs):
             for row in ledger.project_operations(refs[start:start + MAX_OPERATIONS]):
                 projections[row.operation_ref] = row.to_dict()
         if set(projections) != set(refs):
-            raise WorkbenchCommandRejected("execution_ledger_unavailable", "执行投影未覆盖当前工序，不能按编号或旧状态补齐。")
+            raise WorkbenchCommandRejected("execution_ledger_unavailable", "有工序读不到报工记录，系统不会按编号或旧状态补齐。请刷新后重试。")
         return {"available": True, "projections": projections, "issues": [],
                 "snapshot_facts": {**clock, "projection_hash": input_fingerprint(_plain(projections))}}
 
@@ -41,7 +41,7 @@ def operation_execution_fields(row, ref, facts):
     state = execution["execution_state"] if execution else None
     quality = execution["data_quality"] if execution else "unavailable"
     if execution and row["status"] == "completed" and state != "complete":
-        gaps.append({"code": "completion_inconsistent", "message": "原工序完成标记与台账证据尚未一致，保留原完成事实及保护，请核对。"})
+        gaps.append({"code": "completion_inconsistent", "message": "工序标着已完工，但报工记录还对不上；系统保留原来的完工标记和删除保护，请核对。"})
         quality = "invalid" if quality == "invalid" or execution["reports"] or execution["legacy_facts"] else "legacy_incomplete"
     status = {"complete": "completed", "started": "processing", "partial": "processing",
               "paused": "paused", "exception": "exception"}.get(state, row["status"]) if state is not None else row["status"]

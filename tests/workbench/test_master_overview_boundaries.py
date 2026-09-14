@@ -25,7 +25,7 @@ def test_content_confirmed_zero_no_longer_flagged_but_no_health_claim(overview_c
     route = detail(client, result, "route", ref_for(client, "part", "P000"), "issues")
     assert route["data"]["page"]["total"] == 0
     assert route["data"]["entity"]["status"] == "checked"
-    assert "不代表排产就绪" in result["data"]["overview"]["basis"]
+    assert "不代表可以排产" in result["data"]["overview"]["basis"]
     assert stored(client) == before
     assert client.get(BASE + "/export", query_string=args(old)).status_code == 409
 
@@ -127,7 +127,7 @@ def test_invalid_calendar_is_visible_but_navigation_is_not_guessed(overview_clie
     client.conn.commit()
     result = query(client, {"view": "entities", "domain": "calendar"})
     row = next(item for item in result["data"]["rows"] if item["business_code"] == "invalid-date")
-    assert "日期无效" in row["target"]["unavailable_reason"]
+    assert "日期填得不对" in row["target"]["unavailable_reason"]
     issues = detail(client, result, "calendar", row["ref"], "issues")
     assert all(item["target"]["unavailable_reason"] for item in issues["data"]["rows"])
 

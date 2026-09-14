@@ -8,7 +8,7 @@ from core.models.workbench_run_candidate import reject
 
 
 def corrupt() -> NoReturn:
-    reject("candidate_artifact_invalid", "候选持久结果缺失或不一致，请核对运行台账；未返回替代结果。", 500)
+    reject("candidate_artifact_invalid", "这次排产存下来的结果缺失或对不上，页面没有显示替代内容。请到「排产记录」核对。", 500)
 
 
 def _pairs(pairs):
@@ -37,11 +37,11 @@ def stored_json(value, expected: Type[Any] = dict) -> Any:
 
 
 def gap(field, code="not_recorded"):
-    messages = {"not_recorded": "生成时未记录该字段。", "invalid_stored_value": "生成时字段格式无效。",
-                "blob_metadata": "生成时该字段为字节型数据，未猜测解码。",
-                "source_missing": "生成时源记录缺失，未套用当前同编号实体。",
-                "undefined_metric": "生成时指标未定义，不能把占位值当作测量结果。"}
-    return {"field": field, "code": code, "message": messages[code]}
+    texts = {"not_recorded": "排产时没有记下这一项。", "invalid_stored_value": "排产时记下的这一项格式不对。",
+             "blob_metadata": "排产时这一项存的是二进制内容，系统不猜着解读。",
+             "source_missing": "排产时的原始记录已经没有了，系统不会拿当前同编号的资料顶替。",
+             "undefined_metric": "排产时这个指标没有算出来，占位数字不能当成真实结果。"}
+    return {"field": field, "code": code, "message": texts[code]}
 
 
 def text(value, field, gaps):
@@ -69,4 +69,4 @@ def bounded_size(size, limit):
     if type(size) is not int or size < 0:
         corrupt()
     if size > limit:
-        reject("candidate_capacity_exceeded", "候选或生成时历史快照超过读取容量，未截断或退回当前数据。", 413)
+        reject("candidate_capacity_exceeded", "这次排产的记录太多，一次读不完，页面没有显示，也没有换成当前数据。请缩小查询范围后重试。", 413)

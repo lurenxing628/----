@@ -71,7 +71,7 @@ class MasterOverviewFacts:
     def ref(self, kind, key):
         row = self.identities.get((kind, str(plain(key))))
         if row is None or not public_ref(row["ref"]):
-            raise WorkbenchCommandRejected("storage_failure", "主数据永久引用缺失或无效，未分配身份或按编号代替。", 500)
+            raise WorkbenchCommandRejected("storage_failure", "基础资料缺少有效的系统编号，读不出来。资料没有改动，请刷新重试；仍不行请联系维护人员。", 500)
         return row["ref"]
 
     def _load(self):
@@ -80,7 +80,8 @@ class MasterOverviewFacts:
         present = {row[0] for row in self.conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
         for name in TABLES:
             if name not in present:
-                self.gaps.append({"code": "source_unavailable", "source": name, "message": name + "来源未加载，相关数量或检查结果未知。"})
+                self.gaps.append({"code": "source_unavailable", "source": name,
+                                  "message": "数据来源 " + name + " 未读取，相关数量和检查结果都算不出来。"})
                 continue
             cursor = self.conn.execute('SELECT * FROM "' + name + '" ORDER BY rowid')
             keys = [column[0] for column in cursor.description]
@@ -89,7 +90,7 @@ class MasterOverviewFacts:
             if row["active"] == 1:
                 key = (row["kind"], row["entity_key"])
                 if key in self.identities:
-                    raise WorkbenchCommandRejected("storage_failure", "同一主数据有多个有效永久引用，未猜测选择。", 500)
+                    raise WorkbenchCommandRejected("storage_failure", "同一条基础资料有多个有效的系统编号，系统不会自己挑一个。资料没有改动，请联系维护人员处理。", 500)
                 self.identities[key] = row
         required = ("Parts", "PartOperations", "ExternalGroups", "OpTypes", "Suppliers", "WorkbenchEntityRefs") + WORKFLOW
         metadata_sources = {table for table, _ in RESOURCE_TABLES.values()}
@@ -97,10 +98,10 @@ class MasterOverviewFacts:
             try:
                 self.workflow = workflow_snapshot(self.conn)
             except RuntimeError as exc:
-                raise WorkbenchCommandRejected("storage_failure", "工艺确认或身份存储契约不完整，未自动修补。", 500) from exc
+                raise WorkbenchCommandRejected("storage_failure", "工艺确认的数据读得不完整，系统不会自动补。请刷新重试；仍不行请联系维护人员。", 500) from exc
         else:
             self.gaps.append({"code": "workflow_unavailable", "source": "process.workflow_snapshot",
-                              "message": "工艺确认来源不完整，不能将现存路线、归属或0工时当作人工确认。"})
+                              "message": "工艺确认的来源读不完整，已有路线、归属或 0 工时都不能当成人工确认过。"})
 
     @contextmanager
     def read_snapshot(self):

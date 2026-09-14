@@ -42,4 +42,4 @@ def validate_report_histories(facts, heads, as_of):
         if seen != heads:
             raise ValueError("Stored production report has no revision history")
     except (ValueError, TypeError, KeyError, OverflowError) as exc:
-        raise WorkbenchCommandRejected("storage_failure", "报工来源或修订链损坏，未生成校准建议，请核对数据。", 500) from exc
+        raise WorkbenchCommandRejected("storage_failure", "报工来源或更正记录损坏，没有生成校准建议。请核对报工数据；仍不行请联系维护人员。", 500) from exc

@@ -123,9 +123,9 @@ class WorkbenchSystemRestoreHost:
             raise RuntimeError("Restore workspace does not belong to this host")
         conn = g.get("db")
         if conn is None or conn.in_transaction:
-            raise WorkbenchCommandRejected("maintenance_active", "请求连接缺失或仍有事务，恢复未执行。", 503)
+            raise WorkbenchCommandRejected("maintenance_active", "还有没结束的数据库操作，恢复没有执行。请稍后重新点「恢复」。", 503)
         if not self():
-            raise WorkbenchCommandRejected("maintenance_active", "恢复宿主或排产运行状态不可用，恢复未执行。", 503)
+            raise WorkbenchCommandRejected("maintenance_active", "本软件或排产还没有停下来，恢复没有执行。请稍后重新点「恢复」。", 503)
         with self._lock:
             row, replayed, path = self._prepare(service, request_key, intent, guard)
             if not replayed:
@@ -152,7 +152,7 @@ class WorkbenchSystemRestoreHost:
             # A failed terminal write leaves the prior pending record intact.
             self.journal.record(row, "recovery_required", code="host_restore_unconfirmed",
                                 database_origin="unconfirmed", restart_required=True,
-                                message="恢复宿主未能确认安全终态，系统保持停止；请核查原请求及保护副本，不能重复恢复。")
+                                message="这次恢复没有得到能确认的最终结果，系统已停下。请不要再操作，留好恢复前的保护副本并联系维护人员。")
             return self.journal.public(row)
 
     def audit_restore_result(self, result):

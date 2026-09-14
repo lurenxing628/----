@@ -59,7 +59,7 @@ def test_future_finish_is_invalid_not_completed(report_api):
     assert response.status_code == 200
     workbook = openpyxl.load_workbook(io.BytesIO(response.data), read_only=True)
     cells = [value for row in workbook["计划和现场实际"].values for value in row]
-    assert "未确认整道完工（事实时间异常）" in cells
+    assert "未确认整道完工（记录时间异常）" in cells
     assert not any(isinstance(value, str) and "2099-09-02" in value for value in cells)
     workbook.close()
 
@@ -96,7 +96,7 @@ def test_catalog_window_numbers_sort_and_staleness(report_api):
     first = report_api.client.get(path).get_json()
     assert len(first["data"]["rows"]) == 1
     assert first["data"]["rows"][0]["downtime_hours"] == .5
-    assert "台账" in first["data"]["provenance"]
+    assert "停机记录" in first["data"]["provenance"]
     query = {"snapshot_ref": first["meta"]["snapshot_ref"], "sort": "downtime_hours", "direction": "desc"}
     assert report_api.client.get(path, query_string=query).status_code == 200
     with report_api.db() as conn:

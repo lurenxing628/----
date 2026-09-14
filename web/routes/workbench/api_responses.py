@@ -11,6 +11,7 @@ from werkzeug.exceptions import HTTPException
 
 from core.errors import AppError, BusinessError, ValidationError, app_error_http_status
 from core.models.workbench_command import WorkbenchCommandRejected, WorkbenchCommandUncertain
+from core.services.workbench import messages
 
 
 def failure(code, message, status, *, committed: Union[bool, Literal["unknown"]] = False, fields=None, request_key=None):
@@ -40,7 +41,7 @@ def _domain_failure(exc):
         missing = app_error_http_status(exc.code) == 404
         return failure("entity_not_found" if missing else "constraint_conflict", exc.message, 404 if missing else 409)
     current_app.logger.exception("工作台读取或领域存储失败 code=%s", exc.code.value)
-    return failure("storage_failure", "本机数据读取失败，请查看运行日志后重试。", 500)
+    return failure("storage_failure", messages.FAILURE, 500)
 
 
 def api_endpoint(function):
@@ -58,11 +59,11 @@ def api_endpoint(function):
         except AppError as exc:
             return _domain_failure(exc)
         except HTTPException as exc:
-            return failure("invalid_input", "请求格式不正确，请检查输入后重试。", exc.code or 400)
+            return failure("invalid_input", "提交的内容不完整或有多余项，还没有保存。请刷新页面后重新填写。", exc.code or 400)
         except Exception:
             current_app.logger.exception("工作台请求发生未预期错误 endpoint=%s", request.endpoint)
             is_write = request.method not in ("GET", "HEAD", "OPTIONS")
-            return failure("storage_failure", "本机请求失败，请查看运行日志并核对结果后再操作。", 500,
+            return failure("storage_failure", messages.FAILURE, 500,
                            committed="unknown" if is_write else False,
                            request_key=getattr(g, "workbench_request_key", None) if is_write else None)
     return wrapped

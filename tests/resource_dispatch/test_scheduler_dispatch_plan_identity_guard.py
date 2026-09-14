@@ -356,7 +356,7 @@ def test_history_comparison_and_scenario_plans_are_read_only_with_plain_reasons(
             query_date="2026-05-06",
         )
         scenario_identity = scenario_data["plan_identity"]
-        assert scenario_identity["label"] == "模拟预览（未命名）"
+        assert scenario_identity["label"] == "试调方案（未命名）"
         assert scenario_identity["kind_label"] == "模拟预览"
         assert scenario_identity["can_dispatch"] is False
         assert scenario_identity["can_write_feedback"] is False
@@ -397,10 +397,10 @@ def test_public_payload_and_export_never_show_internal_plan_identity_fields(tmp_
 
         filename = build_resource_dispatch_filename(data)
         assert scenario_id not in unquote(filename)
-        assert "模拟预览（未命名）" in filename
+        assert "试调方案（未命名）" in filename
 
         workbook_text = _workbook_text(data)
-        assert "模拟预览（未命名）" in workbook_text
+        assert "试调方案（未命名）" in workbook_text
         assert "正式计划还没有改变" in workbook_text
         for text in ("source_table", "candidate_rows", "candidate_id", "scenario_id", scenario_id):
             assert text not in workbook_text

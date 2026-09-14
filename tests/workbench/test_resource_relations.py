@@ -195,7 +195,7 @@ def test_missing_child_refs_anywhere_in_scope_fail_without_repair(relation_conn,
     relation_conn.execute("DELETE FROM WorkbenchEntityRefs WHERE kind=? AND entity_key=?", (kind, code))
     relation_conn.commit()
     before = stored_state(relation_conn)
-    with pytest.raises(WorkbenchCommandRejected, match="永久引用缺失"):
+    with pytest.raises(WorkbenchCommandRejected, match="查不到编号"):
         read_page(relation_conn, relation, parent, size=1)
     assert stored_state(relation_conn) == before
 

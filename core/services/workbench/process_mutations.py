@@ -30,15 +30,15 @@ class WorkbenchProcessMutationService:
 
     def _snapshot(self, identity):
         if not isinstance(identity, WorkbenchEntityIdentity) or identity.kind != "part":
-            raise WorkbenchCommandRejected("invalid_input", "必须提供已核对的零件身份。", 400)
+            raise WorkbenchCommandRejected("invalid_input", "请先选定零件再操作。", 400)
         current = self.identities.get(identity.ref)
         if not identity.active or current is None or not current.active or current.kind != "part":
-            raise WorkbenchCommandRejected("entity_not_found", "零件引用已失效，请刷新后核对。", 404)
+            raise WorkbenchCommandRejected("entity_not_found", "这条零件记录已失效。请刷新列表后重新选择。", 404)
         if current != identity:
-            raise WorkbenchCommandRejected("stale_write", "零件已变化，请刷新后核对。")
+            raise WorkbenchCommandRejected("stale_write", "零件资料已经变了。请刷新后重新核对。")
         part = self.repo.fetchone("SELECT * FROM Parts WHERE part_no=?", (current.entity_key,))
         if part is None:
-            raise WorkbenchCommandRejected("entity_not_found", "零件不存在。", 404)
+            raise WorkbenchCommandRejected("entity_not_found", "这个零件不存在。请刷新列表后重新选择。", 404)
         operations = self.repo.fetchall("""SELECT o.*,r.ref FROM PartOperations o LEFT JOIN WorkbenchEntityRefs r
             ON r.kind='template_operation' AND r.entity_key=CAST(o.id AS TEXT) AND r.active=1
             WHERE o.part_no=? ORDER BY o.seq""", (current.entity_key,))
@@ -53,16 +53,16 @@ class WorkbenchProcessMutationService:
         for row in operations:
             require_ref(row["ref"], "模板工序")
             if row["status"] not in ("active", "deleted") or type(row["seq"]) is not int or row["seq"] <= 0:
-                raise WorkbenchCommandRejected("template_invalid", "原工序序号或状态不明确，未猜测恢复或删除。", 422)
+                raise WorkbenchCommandRejected("template_invalid", "原工序的序号或状态说不清，系统不会猜着恢复或删除。请到基础资料核对工序。", 422)
             if row["ext_group_id"] is not None and row["ext_group_id"] not in group_keys:
                 raise WorkbenchCommandRejected("group_invalid", "原工序关联外协组不存在或属于其他零件，请先核对资料。", 422)
         for row in groups:
             require_ref(row["ref"], "模板外协组")
             if type(row["start_seq"]) is not int or type(row["end_seq"]) is not int or not 0 < row["start_seq"] <= row["end_seq"]:
-                raise WorkbenchCommandRejected("group_invalid", "原外协组范围不明确，无法安全计算影响。", 422)
+                raise WorkbenchCommandRejected("group_invalid", "原外协组的工序范围说不清，算不准影响面。请到基础资料核对外协组起止序。", 422)
         if self.repo.fetchone("""SELECT 1 FROM PartOperations o JOIN ExternalGroups g ON g.group_id=o.ext_group_id
             WHERE g.part_no=? AND o.part_no<>? LIMIT 1""", (part_no, part_no)):
-            raise WorkbenchCommandRejected("group_invalid", "原外协组被其他零件工序引用，不能在当前零件解除。", 422)
+            raise WorkbenchCommandRejected("group_invalid", "这个外协组还被别的零件工序用着，不能在当前零件解除。请先到那些零件上解除。", 422)
 
     def _prepare(self, action, payload, operations, groups):
         if action == "route_confirm":

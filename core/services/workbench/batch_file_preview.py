@@ -50,9 +50,9 @@ class BatchImportPreview:
     @staticmethod
     def _source(values):
         if any(type(values[key]) is not str or not values[key].strip() for key in ("批次号", "图号")):
-            raise ValidationError("批次号和图号必须为文本，不能猜测丢失的前导零。")
+            raise ValidationError("批次号和图号要填文字，系统不会替你补丢掉的前导零。")
         if type(values["数量"]) is bool:
-            raise ValidationError("数量不能使用布尔值。")
+            raise ValidationError("数量要填数字，不能填「是/否」。")
         source = dict(values)
         source["批次号"], source["图号"] = source["批次号"].strip(), source["图号"].strip()
         return source
@@ -83,7 +83,7 @@ class BatchImportPreview:
         try:
             require_unreferenced(self.facts, batch)
             if related(self.facts, batch)["materials"]:
-                raise WorkbenchCommandRejected("constraint_conflict", "批次有物料需求，不允许清空。")
+                raise WorkbenchCommandRejected("constraint_conflict", "这个批次挂着物料需求，不能清除。")
         except WorkbenchCommandRejected as exc:
             item["errors"].append(str(exc))
         return item

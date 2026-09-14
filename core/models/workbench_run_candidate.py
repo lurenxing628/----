@@ -22,7 +22,7 @@ def reject(code, message, status=409) -> NoReturn:
 def reference(value, *, stored=False):
     if type(value) is not str or re.fullmatch(r"[0-9a-f]{48}", value) is None:
         reject("candidate_binding_invalid" if stored else "invalid_input",
-               "候选或关联记录的永久引用无效，未用编号替代。", 500 if stored else 400)
+               "候选方案或相关记录已失效，请刷新后重新选择。", 500 if stored else 400)
     return value
 
 
@@ -47,7 +47,7 @@ class RunCandidateCatalogScope:
                 or self.sort not in ("sequence", "label", "task_count") or self.order not in ("asc", "desc")
                 or type(self.page) is not int or not 1 <= self.page <= MAX_CANDIDATES
                 or type(self.size) is not int or not 1 <= self.size <= 50):
-            reject("invalid_input", "候选目录筛选、排序或页码无效，未忽略条件。", 400)
+            reject("invalid_input", "候选方案列表的筛选、排序或页码不对，请重新选择。", 400)
 
     def scope(self):
         return {"kind": "run-candidate-catalog", "run_ref": self.run_ref, "status": self.status,
@@ -74,7 +74,7 @@ class RunCandidateReadScope:
                 if local_time(self.range_start) >= local_time(self.range_end):
                     raise ValueError("Empty time range")
             except (ValueError, TypeError):
-                reject("invalid_input", "范围须为成对的工厂本地时间，起点早于终点。", 400)
+                reject("invalid_input", "起止时间要一起填，请按 2026-09-13 08:30:00 这样填写，起点要早于终点。", 400)
 
     def scope(self):
         return {"kind": "run-candidate-workspace", **self.__dict__}
@@ -87,9 +87,9 @@ def read_capabilities():
 def blocked_reasons():
     return [
         {"capability": "adopt", "code": "candidate_adoption_preview_required",
-         "message": "查看候选不授予采用权限；正式采用须单独预览并重新核对完整安排。"},
+         "message": "看候选方案不等于可以采用；要采用请单独点「预检」并重新核对完整安排。"},
         {"capability": "edit_draft", "code": "candidate_draft_not_connected",
-         "message": "候选为永久只读结果，尚未接入草稿调整。"},
+         "message": "候选方案只能查看不能改；要调整请另建试调草稿。"},
         {"capability": "report_actual", "code": "candidate_execution_write_not_connected",
          "message": "候选不是正式执行安排，不能据此写入报工或改变唯一执行状态。"},
     ]

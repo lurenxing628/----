@@ -8,7 +8,7 @@ SYSTEM_HISTORY_TOPICS: Dict[str, Dict[str, Any]] = {
     "system_history": _topic(
         title="排产历史",
         summary="这里看每次排产生成的版本摘要和结果概况，想对比不同版本先从这里入手。",
-        full_manual_anchor="#10-3排产历史",
+        full_manual_anchor="#10-3排产记录",
         help_card=_card(
             "排产历史和结果查看的分工",
             "这里主要看版本摘要、提醒和排产结果概况；你可以按版本号筛选，也可以选择查看最近 10 条、50 条这类记录。",

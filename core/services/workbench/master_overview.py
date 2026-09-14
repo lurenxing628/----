@@ -15,17 +15,17 @@ from .master_overview_relations import batch_relations, resource_profile_fields
 from .master_overview_resources import add_resources, resource_links
 
 LABELS = dict(DOMAINS)
-BASIS = ("仅检查已读取的原始字段和显式关系，不代表排产就绪。日历仅计显式全局记录；"
-         "技能不等于设备授权，库存不等于批次到料。")
+BASIS = ("这里只核对已读取的资料项和单独登记的关联，不代表可以排产。日历只算全局工作日历；"
+         "会做工序不等于有设备授权，有库存不等于批次已到料。")
 
 
 def cell(row, column):
     value = row.get(column)
     if column == "domain":
-        return LABELS.get(value, "未知")
+        return LABELS.get(value, "暂无数据")
     if column == "status":
-        return STATUS.get(value, "未知")
-    return "未知" if value is None else text(value)
+        return STATUS.get(value, "暂无数据")
+    return "暂无数据" if value is None else text(value)
 
 
 def brief(entity):
@@ -95,27 +95,27 @@ class MasterOverviewService:
         rows = self.matched(scope)
         pages = max(1, (len(rows) + scope.size - 1) // scope.size)
         if number > pages:
-            raise WorkbenchCommandRejected("snapshot_stale", "主数据页码超出原范围，请明确刷新。")
+            raise WorkbenchCommandRejected("snapshot_stale", "翻页位置已失效，请回到第 1 页重新查询。")
         start = (number - 1) * scope.size
         return {"rows": [brief(row) for row in rows[start:start + scope.size]], "scope": scope.values(), "overview": self.overview(),
                 "page": {"number": number, "size": scope.size, "total": len(rows), "pages": pages}}
 
     def resolve(self, domain, ref):
         if domain not in LABELS or not public_ref(ref):
-            raise WorkbenchCommandRejected("entity_not_found", "主数据引用不正确，请重新选择。", 404)
+            raise WorkbenchCommandRejected("entity_not_found", "这条记录已失效，请重新选择。", 404)
         entity = next((row for row in self.entities if row["domain"] == domain and row["ref"] == ref), None)
         if entity is None:
-            raise WorkbenchCommandRejected("entity_not_found", "实体已不存在或来源未加载；旧引用不会定位同号新记录。", 404)
+            raise WorkbenchCommandRejected("entity_not_found", "这条资料已经不在了，或者来源还没读取。请刷新后重新选择。", 404)
         return entity
 
     def detail(self, scope, domain, ref, section, page):
         entity = self.resolve(domain, ref)
         if not any(row["domain"] == domain and (row.get("entity_ref") or row.get("ref")) == ref for row in self.matched(scope)):
-            raise WorkbenchCommandRejected("scope_mismatch", "实体不在原筛选范围，必须通过关系定位切换范围。", 409)
+            raise WorkbenchCommandRejected("scope_mismatch", "这条资料不在当前筛选范围里。请先清除筛选，或者从相关项里点进去。", 409)
         rows = entity[section]
         pages = max(1, (len(rows) + 9) // 10)
         if page > pages:
-            raise WorkbenchCommandRejected("snapshot_stale", "详情页码超出原范围。")
+            raise WorkbenchCommandRejected("snapshot_stale", "翻页位置已失效，请回到第 1 页重新查询。")
         return {"entity": brief(entity), "scope": scope.values(), "section": section, "rows": rows[(page - 1) * 10:page * 10],
                 "counts": {name: len(entity[name]) for name in ("issues", "relations", "fields")},
                 "page": {"number": page, "size": 10, "total": len(rows), "pages": pages}}
@@ -131,10 +131,10 @@ class MasterOverviewService:
 
     def csv(self, scope):
         rows = self.matched(scope)
-        columns = (("domain", "数据域"), ("business_code", "编号"), ("label", "名称"))
-        columns += (("rule", "检查规则"), ("title", "待维护项"), ("evidence", "当前记录"), ("action", "维护建议")) if scope.view == "issues" else (
-            ("status", "检查状态"), ("filled_fields", "已填字段"), ("checked_fields", "检查字段"),
-            ("relation_count", "关联项数"), ("issue_count", "待维护项数"), ("summary", "检查结果"))
+        columns = (("domain", "资料类别"), ("business_code", "编号"), ("label", "名称"))
+        columns += (("title", "待维护项"), ("evidence", "当前记录"), ("action", "维护建议"), ("rule", "检查规则编号")) if scope.view == "issues" else (
+            ("status", "检查状态"), ("filled_fields", "已填项"), ("checked_fields", "检查项"),
+            ("relation_count", "关联项"), ("issue_count", "待维护项"), ("summary", "检查结果"))
         output = io.StringIO(newline="")
         writer = csv.writer(output, lineterminator="\r\n", quoting=csv.QUOTE_ALL)
         writer.writerow([label for _, label in columns])

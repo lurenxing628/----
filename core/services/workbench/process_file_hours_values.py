@@ -12,7 +12,7 @@ HOURS_FIELDS = ("setup_hours", "unit_hours", "external_days", "group_total_days"
 
 def supplied_values(values):
     if type(values) is not dict or set(values) - set(COLUMNS["hours"]):
-        raise ValidationError("工时文件包含未知字段。", field="input")
+        raise ValidationError("工时文件里有认不出的列。请下载模板对照后重新导入。", field="input")
     # The codec omits empty cells. Also retain this contract for direct callers.
     return {key: value for key, value in values.items() if value != ""}
 
@@ -20,9 +20,9 @@ def supplied_values(values):
 def row_key(values):
     code, sequence = values.get("business_code"), values.get("sequence")
     if type(code) is not str or not code.strip():
-        raise ValidationError("图号必须是准确的非空文本。", field="business_code")
+        raise ValidationError("图号必须填文本，不能留空。", field="business_code")
     if type(sequence) is not int or not 1 <= sequence <= INT64_MAX:
-        raise ValidationError("工序必须是有效的正数 int64，不能猜测或舍入。", field="sequence")
+        raise ValidationError("工序号必须是正整数，系统不会猜，也不会四舍五入。", field="sequence")
     return code, sequence
 
 
@@ -48,9 +48,9 @@ def assertions(values, operation, group):
         value = values[field]
         if field in ("group_start", "group_end") and value is not None:
             if type(value) is not int or not 1 <= value <= INT64_MAX:
-                raise ValidationError("组范围必须是准确的正数 int64。", field=field)
+                raise ValidationError("外协组起止序必须是正整数。", field=field)
         if value != previous:
-            raise ValidationError("此列仅核对原事实，不能修改归属、工种或组范围。", field=field)
+            raise ValidationError("这一列只用来核对原记录，改不了归属、工种或外协组范围。", field=field)
 
 
 def hours_values(values, operation, group):
@@ -65,7 +65,7 @@ def hours_values(values, operation, group):
         value = values[field]
         if field not in applicable:
             if value is not None:
-                raise ValidationError("该字段不适用于原归属或现有组，不能写入隐藏值或创建合并组。", field=field)
+                raise ValidationError("这一列不适用于当前归属或现有外协组，系统不会偷偷写值，也不会新增合并组。", field=field)
         elif field == "external_days" and value is None and merged:
             result[field] = None
         else:

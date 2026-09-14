@@ -27,7 +27,7 @@ def test_asset_manifest_requires_local_complete_files(tmp_path):
     expected = _manifest(tmp_path)
     assert read_asset_manifest(str(tmp_path)) == expected
     (tmp_path / "workbench/entry.js").unlink()
-    with pytest.raises(WorkbenchAssetsUnavailable, match="资源文件缺失"):
+    with pytest.raises(WorkbenchAssetsUnavailable, match="页面文件缺失"):
         read_asset_manifest(str(tmp_path))
 
 
@@ -93,7 +93,7 @@ def test_new_host_reports_missing_assets_explicitly(app_client, tmp_path, monkey
     monkeypatch.setattr(app_client.application, "static_folder", str(tmp_path / "empty-static"))
     response = app_client.get("/workbench?view=system")
     assert response.status_code == 503
-    assert "资源清单" in response.get_data(as_text=True)
+    assert "页面文件清单读不到" in response.get_data(as_text=True)
 
 
 def test_system_overview_skips_maintenance_but_normal_requests_keep_it(app_client, monkeypatch):

@@ -103,11 +103,11 @@ def _outside_occupancy(row, conn, point_versions):
             if row["op_id"] in point_versions[row["version"]]:
                 return None, None
         except WorkbenchCommandRejected:
-            return None, issue("outside_scope_point_unproven", "范围外零时长安排没有已核验的点证据。")
+            return None, issue("outside_scope_point_unproven", "范围外那道零工时工序没有可核对的依据。")
     try:
         return interval({"start": row["start_time"], "end": row["end_time"]}), None
     except (TypeError, ValueError):
-        return None, issue("outside_scope_interval_invalid", "范围外正式安排时间无效，无法证明资源可用。")
+        return None, issue("outside_scope_interval_invalid", "范围外正式安排的时间不对，判断不了设备人员有没有空。")
 
 
 def _trial_intervals(rows):
@@ -177,7 +177,7 @@ def _actual_index(live):
             for kind in ("machine", "operator"):
                 resource = fact.get("actual_" + kind + "_ref")
                 if resource is None:
-                    issues.append(issue("execution_resource_unknown", "实际生产资源引用缺失，不能猜测范围外占用。"))
+                    issues.append(issue("execution_resource_unknown", "现场数据里没有设备人员编号，范围外的占用情况无法判断。"))
                 else:
                     index[kind, resource].append((ref, execution, fact))
     return index, issues

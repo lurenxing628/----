@@ -22,25 +22,25 @@ def _source_label(row):
     if row["base_kind"] == "candidate_ref":
         sequence = row["candidate_sequence"]
         if type(sequence) is int and sequence >= 0 and isinstance(row["candidate_accepted_at"], str):
-            return "排产候选 " + str(sequence + 1) + "（" + row["candidate_accepted_at"] + "）"
-        return "原排产候选（来源暂不可读）"
+            return "候选方案 " + str(sequence + 1) + "（" + row["candidate_accepted_at"].replace("T", " ")[:16] + "）"
+        return "候选方案（来源读不到）"
     version = row["base_version"]
     if type(version) is not int or version <= 0:
-        return "原计划（来源暂不可读）"
-    label = {"official": "正式计划", "scenario": "原场景", "selection": "代表方案"}.get(row["base_plan_kind"], "原计划")
+        return "计划（来源读不到）"
+    label = {"official": "正式计划", "scenario": "试调方案", "selection": "候选方案"}.get(row["base_plan_kind"], "计划")
     return label + " v" + str(version)
 
 
 def _text(value):
     if type(value) is not str or not value or len(value) > 1000:
-        reject("trial_catalog_invalid", "持久目录摘要字段无效；原记录未被替换。")
+        reject("trial_catalog_invalid", "试调列表里这条记录的内容不对，原记录没有改动。请刷新后重试。")
     return value
 
 
 def _summary(row, collection):
     base_kind, base_ref = row["base_kind"], reference(row["base_ref"])
     if base_kind not in ("plan_ref", "candidate_ref") or type(row["row_count"]) is not int or row["row_count"] <= 0:
-        reject("trial_catalog_invalid", "持久目录的来源或原范围不完整，未猜测内容。")
+        reject("trial_catalog_invalid", "试调列表里这条记录的来源或范围不完整，这里不猜内容。请刷新后重试。")
     source = _source_label(row)
     is_draft = collection == "drafts"
     ref = reference(row["draft_ref"] if is_draft else row["scenario_ref"])

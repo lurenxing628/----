@@ -53,7 +53,7 @@ class BatchFacts:
         public_ref(ref)
         identity = self.identities.get(ref)
         if identity is None or not identity.active or identity.kind != kind:
-            raise WorkbenchCommandRejected("entity_not_found", "对象已不存在，旧引用不会指向同号新记录。", 404)
+            raise WorkbenchCommandRejected("entity_not_found", "这条记录已经不在了，系统不会换成编号相同的新记录。请刷新后重新选择。", 404)
         return identity
 
     def batch(self, ref):
@@ -64,7 +64,7 @@ class BatchFacts:
         else:
             row = next((item for item in self._facts["Batches"] if item["batch_id"] == identity.entity_key), None)
         if row is None:
-            raise WorkbenchCommandRejected("storage_failure", "批次与永久引用不一致，未自动修补。", 500)
+            raise WorkbenchCommandRejected("storage_failure", "批次和系统编号对不上，系统不会自动修补。请刷新重试；仍不行请联系维护人员。", 500)
         if identity.entity_key != identity.entity_key.strip():
             raise WorkbenchCommandRejected("constraint_conflict", "批次号存在首尾空格，请先核对原记录。")
         return row
@@ -76,7 +76,7 @@ def related(facts, batch):
 
 def require_unreferenced(facts, batch):
     if related(facts, batch)["protected"]:
-        raise WorkbenchCommandRejected("constraint_conflict", "批次已有计划、试调或执行事实，不能删除、重建工序或改变数量。")
+        raise WorkbenchCommandRejected("constraint_conflict", "这个批次已经进了计划、试调或现场报工，不能删除、重建工序或改数量。")
 
 
 def group_protected(group, batch):

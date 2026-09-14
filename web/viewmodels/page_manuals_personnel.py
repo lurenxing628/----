@@ -9,7 +9,7 @@ PERSONNEL_TOPICS: Dict[str, Dict[str, Any]] = {
     "personnel_management": _topic(
         title="人员管理",
         summary="这里管理所有计划会用到的人，先把工号、姓名、状态、班组和可操作设备配清楚，排产才知道谁能上岗、能操作哪台设备。",
-        full_manual_anchor="#5-2人员管理",
+        full_manual_anchor="#5-2人员和班组",
         help_card=_card(
             "先把人建对，再谈排产",
             "工号和姓名是最基础的信息，工号后面会被人员设备关系、个人日历和排产结果引用。",
@@ -114,7 +114,7 @@ PERSONNEL_TOPICS: Dict[str, Dict[str, Any]] = {
     "personnel_detail": _topic(
         title="人员详情",
         summary="这里维护单个人的资料、可操作设备和个人工作日历，适合排查“这个人为什么没被排上”或“为什么不能选某台设备”。",
-        full_manual_anchor="#5-2人员管理",
+        full_manual_anchor="#5-2人员和班组",
         help_card=_card(
             "单个人的问题就在这里查",
             "先看这个人是不是在岗，再看班组、可操作设备和个人工作日历。",

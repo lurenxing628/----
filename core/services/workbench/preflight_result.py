@@ -19,21 +19,21 @@ def result_blockers(rows, no_route, counts):
     blockers = []
     for row in rows:
         if row["status"] == "blocked":
-            blockers.append(issue("operation_blocked", "工序有必填资料缺项。", operation_ref=row["operation_ref"], batch_ref=row["batch_ref"]))
+            blockers.append(issue("operation_blocked", "这道工序有必填资料没填。请在下面的明细里补齐后重新检查。", operation_ref=row["operation_ref"], batch_ref=row["batch_ref"]))
         if row["status"] == "protected" and (row["execution"]["execution_state"] != "complete" or row["execution"]["data_quality"] == "invalid"):
-            blockers.append(issue("execution_review_required", "已有执行事实需复核，不能解除保护。", operation_ref=row["operation_ref"], batch_ref=row["batch_ref"]))
-    blockers.extend(issue("route_not_generated", "批次尚未生成工艺。", batch_ref=row["ref"], batch_id=row["batch_id"]) for row in no_route)
+            blockers.append(issue("execution_review_required", "已开工工序的报工记录要先复核，暂时不能解除保护。请到现场记录核对。", operation_ref=row["operation_ref"], batch_ref=row["batch_ref"]))
+    blockers.extend(issue("route_not_generated", "这批还没有生成工艺。请到批次管理按工艺模板生成工序。", batch_ref=row["ref"], batch_id=row["batch_id"]) for row in no_route)
     if not counts["eligible_tasks"]:
-        blockers.append(issue("no_eligible_tasks", "当前精确范围没有可进入排产的工序。"))
+        blockers.append(issue("no_eligible_tasks", "当前选择范围里没有能排产的工序。请重新勾选批次，或先补齐缺的资料。"))
     return blockers
 
 
 def result_warnings(settings, counts):
-    warnings = [issue("calendar_not_evaluated", "尚未验证设备、人员、夜班、停机及产能日历，不代表排产可行性通过。")]
+    warnings = [issue("calendar_not_evaluated", "还没核对设备、人员、夜班、停机和产能班表，所以这一步通过不等于一定排得出来。")]
     if not settings["ready_check"]:
-        warnings.append(issue("ready_check_disabled", "本次未校验齐套状态；原齐套事实不变。"))
+        warnings.append(issue("ready_check_disabled", "这次没有检查齐套状态；原来的齐套记录不变。"))
     if counts["auto_assign_required"]:
-        warnings.append(issue("auto_assign_not_evaluated", "待自动分配工序只识别了资料缺口，尚未验证有可用设备人员组合。"))
+        warnings.append(issue("auto_assign_not_evaluated", "待自动分配的工序只查了资料缺口，还没核对有没有可用的设备人员组合。"))
     return warnings
 
 
@@ -42,7 +42,7 @@ def summarize(settings, batches, rows, no_route, unready, ledger_reasons):
     blockers = result_blockers(rows, no_route, counts)
     included_refs = {row["batch_ref"] for row in rows if row["status"] in ("eligible", "auto_assign_required")}
     included = [{"batch_ref": row["ref"], "batch_id": row["batch_id"]} for row in batches if row["ref"] in included_refs]
-    excluded = [{"batch_ref": row["ref"], "batch_id": row["batch_id"], "reason": "没有可排工序；详见工序检查或未生成工艺项。"}
+    excluded = [{"batch_ref": row["ref"], "batch_id": row["batch_id"], "reason": "这批没有可排的工序。具体原因见工序明细，或者这批还没生成工艺。"}
                 for row in batches if row["ref"] not in included_refs]
     start, end = preflight_window(settings)
     return {"normalized_input": settings, "scope": {"source": "production", "batch_refs": settings["batch_refs"]},

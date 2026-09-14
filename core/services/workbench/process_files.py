@@ -75,7 +75,7 @@ class WorkbenchProcessFileService:
             if set(refs) != {group["ref"] for group in extra["affected_groups"]}:
                 raise WorkbenchCommandRejected("group_discard_required", "请逐项核对全部受影响外协组，不能漏选或多选。")
             if extra["zero_review_required"] and not confirm_zero_unit_hours:
-                raise WorkbenchCommandRejected("zero_review_required", "存在单件工时为0的记录，请明确复核后再导入。")
+                raise WorkbenchCommandRejected("zero_review_required", "有单件工时是 0 的记录。请逐条复核并勾选确认后再导入。")
             body = current.as_dict()
             rows, affected_refs = self._domain(original["kind"]).apply_rows(
                 body["rows"], discard_group_refs=refs, confirm_zero_unit_hours=confirm_zero_unit_hours)

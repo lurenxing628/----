@@ -116,7 +116,7 @@ def test_scheduler_batches_keeps_latest_history_when_summary_is_invalid(tmp_path
     assert context["latest_summary"] is None
     assert "v2" in projection_text(context["latest_head_items"])
     assert any("排产页 排产摘要 解析失败（version=2" in item for item in warnings)
-    assert_retired_scope(client, "/scheduler/", message="未忽略条件后跳转")
+    assert_retired_scope(client, "/scheduler/", message="没有跳转，也没有丢掉任何条件")
 
 
 
@@ -134,7 +134,7 @@ def test_system_history_logs_warning_for_selected_and_list_summary_parse_failure
     assert context["selected_summary"] is None
     assert any("排产历史页 排产摘要 解析失败（version=3, source=selected" in item for item in warnings)
     assert any("排产历史页 排产摘要 解析失败（version=4, source=list" in item for item in warnings)
-    assert_retired_scope(client, path, message="未忽略条件后跳转")
+    assert_retired_scope(client, path, message="没有跳转，也没有丢掉任何条件")
 
 
 

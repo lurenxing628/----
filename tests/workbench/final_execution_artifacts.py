@@ -9,14 +9,16 @@ from urllib.parse import parse_qs, urlsplit
 
 from openpyxl import load_workbook
 
+from core.services.workbench.report_exports import CELL_TEXTS
+
 FIELD_HEADERS = ['报工编号', '批次号', '工序', '本次完成数量', '实际开工', '本次实际完工',
                  '有效加工工时(h)', '实际设备', '实际人员', '备注', '任务编号', '工序范围', '单件编号']
 CALIB_FIELDS = ["part_no", "part_name", "sequence", "operation_label", "template_operation_ref", "template_revision",
                 "template_snapshot", "old_unit_hours", "suggested_unit_hours", "deviation_percent", "deviation_basis",
                 "sample_count", "candidate_count", "sample_refs", "sample_revisions", "exclusion_reasons", "method_version",
                 "generated_at", "as_of", "snapshot_ref"]
-CALIB_HEADERS = ["图号", "零件名称", "工序号", "工序名称", "模板工序引用", "模板修订", "模板快照", "旧单件定额h", "建议单件定额h",
-                 "偏差百分比", "偏差计算状态", "有效样本数", "待核对实例数", "样本引用", "样本修订", "剔除原因", "计算方法", "生成时间", "数据截至", "范围快照", "筛选范围"]
+CALIB_HEADERS = ["图号", "零件名称", "工序号", "工序名称", "模板工序编号", "模板版本", "模板数据版本", "旧单件定额（小时）", "建议单件定额（小时）",
+                 "偏差百分比", "偏差计算状态", "可用完工记录数", "待核对完工记录数", "完工记录编号", "完工记录版本", "剔除原因", "计算方法", "生成时间", "数据截至", "数据版本编号", "筛选范围"]
 
 
 def _unescape(value):
@@ -47,13 +49,13 @@ def _calibration(content, name, query, report):
     else:
         book = load_workbook(BytesIO(content), read_only=True, data_only=True)
         try:
-            assert book.sheetnames == ["校准建议", "范围与口径"]
+            assert book.sheetnames == ["校准建议", "范围与计算方式"]
             rows = list(book["校准建议"].iter_rows(values_only=True))
             meta = {}
-            for row in book["范围与口径"].iter_rows(values_only=True):
+            for row in book["范围与计算方式"].iter_rows(values_only=True):
                 assert len(row) == 2 and isinstance(row[0], str)
                 meta[row[0]] = row[1]
-            assert _unescape(meta["范围快照"]) == snapshot
+            assert _unescape(meta["数据版本编号"]) == snapshot
             assert meta["数据截至"] == source["meta"]["as_of"]
         finally:
             book.close()
@@ -64,7 +66,7 @@ def _calibration(content, name, query, report):
         for value, key in zip(values, CALIB_FIELDS):
             value = _unescape(value)
             if item[key] is None:
-                assert value == "未知", key
+                assert value == "暂无数据", key
             elif isinstance(item[key], (list, dict)):
                 assert isinstance(value, str)
                 assert json.loads(value) == item[key], key
@@ -132,18 +134,18 @@ def _actual(content, query, report):
     task = report["completed_task"]
     item = next(item for item in source["items"] if item["task"]["task_ref"] == task["task_ref"])
     originals = {record["report_ref"]: record for record in item["execution"]["reports"]}
-    assert {row["报工引用"] for row in rows} == set(originals)
+    assert {row["报工编号"] for row in rows} == set(originals)
     for row in rows:
-        record = originals[row["报工引用"]]
-        assert row["计划引用"] == row["录入依据计划"] == task["plan_ref"]
-        assert row["任务引用"] == row["录入依据任务"] == task["task_ref"]
-        assert row["工序引用"] == task["operation_ref"]
-        assert row["快照引用"] == query["snapshot_ref"][0]
+        record = originals[row["报工编号"]]
+        assert row["计划编号"] == row["录入依据计划"] == task["plan_ref"]
+        assert row["任务编号"] == row["录入依据任务"] == task["task_ref"]
+        assert row["工序编号"] == task["operation_ref"]
+        assert row["数据版本编号"] == query["snapshot_ref"][0]
         assert json.loads(row["本地筛选"])["local_query"] == query["local_query"][0]
         assert row["计划应做数量"] == row["计划批次数量"] == ""
         assert row["计划数量缺失原因"] == "plan_target_not_recorded"
         for key, field in [("本次数量", "completed_quantity"), ("本次开工", "actual_start"),
-                           ("本次结束", "actual_end"), ("有效加工小时", "effective_processing_hours")]:
+                           ("本次结束", "actual_end"), ("有效加工工时（小时）", "effective_processing_hours")]:
             _scalar(row[key], record[field])
     return {"rows": 2, "operations": 1, "same_original_plan_task_reports": True}
 
@@ -152,18 +154,20 @@ def _review(content, query, report):
     rows = list(csv.DictReader(StringIO(content.decode("utf-8-sig"))))
     expected = {row["operation_ref"]: row for response in report["export_source"] for row in response["data"]["rows"]}
     columns = report["export_source"][0]["data"]["columns"]
-    assert len(expected) == len(rows) == 66 and {row["工序引用"] for row in rows} == set(expected)
+    assert len(expected) == len(rows) == 66 and {row["工序编号"] for row in rows} == set(expected)
     for row in rows:
-        original = expected[row["工序引用"]]
+        original = expected[row["工序编号"]]
         for column in columns:
             value, source = row[column["label"]], original[column["key"]]
             if source is None:
                 assert value == "未知", column
+            elif column["key"] in CELL_TEXTS:
+                assert value == CELL_TEXTS[column["key"]][source], (column, value, source)
             elif isinstance(source, (list, dict)):
                 assert json.loads(_unescape(value)) == source
             else:
                 _scalar(value, source)
-        assert row["范围快照"] == query["snapshot_ref"][0]
+        assert row["数据版本编号"] == query["snapshot_ref"][0]
     return {"rows": 66, "all_pages_and_columns_equal": True, "source_snapshot": query["snapshot_ref"][0]}
 
 

@@ -32,18 +32,18 @@ def test_full_report_cohort_export_preserves_zero_null_revisions_and_refs(report
     else:
         workbook = openpyxl.load_workbook(io.BytesIO(response.data), read_only=True)
         rows = list(workbook["范围全部结果"].values)
-        assert dict(workbook["范围与口径"].values)["范围快照"] == snapshot
+        assert dict(workbook["范围与计算方式"].values)["数据版本编号"] == snapshot
         workbook.close()
     assert len(rows) == 14
     values = [dict(zip(rows[0], row)) for row in rows[1:]]
     assert "实际记录时间" in rows[0] and "记录登记数量" in rows[0]
-    exported = next(row for row in values if row["报工引用"] == first["report_ref"])
+    exported = next(row for row in values if row["报工编号"] == first["report_ref"])
     assert exported["备注"] == "'=1+1"
-    revisions = json.loads(exported["完整修订历史"])
+    revisions = json.loads(exported["完整更正记录"])
     assert revisions[0]["after"]["completed_quantity"] is None
     assert revisions[1]["before"]["completed_quantity"] is None and revisions[1]["after"]["completed_quantity"] == 0
-    assert str(exported["本次完成数量"]) == "0" and str(exported["有效加工工时(h)"]) in ("0", "0.0")
-    assert exported["原报工任务引用"] == api.task()["task_ref"]
+    assert str(exported["本次完成数量"]) == "0" and str(exported["有效加工工时（小时）"]) in ("0", "0.0")
+    assert exported["原报工任务编号"] == api.task()["task_ref"]
     assert api.state() == before
 
 

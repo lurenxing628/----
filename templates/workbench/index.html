@@ -14,7 +14,7 @@
     <h1>APS 智能排产</h1><p role="status">正在打开工作台…</p>
     <a href="{{ request.full_path }}">重新加载</a>
   </section></div>
-  <noscript>工作台需要启用本地浏览器的 JavaScript。</noscript>
+  <noscript>这台电脑的浏览器没有允许运行 JavaScript 脚本，工作台打不开。请用交付包里自带的浏览器打开。</noscript>
   <script>
   (function () {
     'use strict';
@@ -27,7 +27,7 @@
       if (root.getAttribute('data-workbench-boot') === 'loading') {
         root.setAttribute('data-workbench-boot', 'failed');
         var message = document.createElement('p'), retry = document.createElement('a');
-        message.setAttribute('role', 'alert'); message.textContent = '工作台资源加载失败或启动超时，请重新加载；若仍失败，请检查本机安装文件。';
+        message.setAttribute('role', 'alert'); message.textContent = '工作台没有打开成功。业务数据没有变化。请点「重新加载」；仍打不开请联系维护人员。';
         retry.href = location.href; retry.textContent = '重新加载'; root.replaceChildren(message, retry);
       }
       stop();

@@ -49,7 +49,7 @@ const full=M.layout(data,'machine','',false,830,false);
 for(const query of ['钻孔','DOES_NOT_EXIST']){const filtered=M.layout(data,'machine',query,false,830,false);assert.strictEqual(filtered.start,full.start);assert.strictEqual(filtered.end,full.end);}
 for(const value of ['2026-05-04T08:30:00','2026-05-03T08:00:00']) {
  const bad=h.clone(sourceData);bad.data.plan_span.start=value;
- assert.throws(()=>C.workspace(bad,data.plan.plan_ref),/计划任务、范围或投影协议不完整或串源/);
+ assert.throws(()=>C.workspace(bad,data.plan.plan_ref),/读到的工序安排、时间范围或分析数据不完整或来源对不上/);
 }
 assert(full.tasks.length===3);assert.strictEqual(M.layout(data,'machine','DOES_NOT_EXIST',false,830,false).tasks.length,0);
 """, payload)
@@ -106,13 +106,13 @@ def test_render_guard_blocks_too_many_tasks_before_new_gantt(app_client) -> None
     with pytest.raises(WorkbenchCommandRejected) as caught:
         _admit_rows(Rows(MAX_PLAN_TASKS + 1), 5, SOURCE_SCHEDULE)
     assert (caught.value.code, caught.value.status, caught.value.committed) == ("query_too_large", 413, False)
-    assert "未返回截断任务" in str(caught.value)
+    assert "也不会只给一部分" in str(caught.value)
     _, _, payload, before = plan_fixture(app_client)
     run_current_js(r"""
 const C=h.runtime.APSPlanContract, ref=sourceData.data.plan.plan_ref;C.workspace(sourceData,ref);
 const bad=h.clone(sourceData);bad.data.tasks=Array(10001).fill(bad.data.tasks[0]);bad.data.task_count=10001;let visited=0;
 bad.data.tasks.every=()=>{visited++;throw new Error('must not inspect an oversize payload');};
-assert.throws(()=>C.workspace(bad,ref),/计划任务、范围或投影协议不完整或串源/);assert.strictEqual(visited,0);
+assert.throws(()=>C.workspace(bad,ref),/读到的工序安排、时间范围或分析数据不完整或来源对不上/);assert.strictEqual(visited,0);
 """, payload)
     assert _business_state(app_client) == before
 

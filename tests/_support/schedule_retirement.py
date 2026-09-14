@@ -89,7 +89,7 @@ def capture_schedule_context(client, *, endpoint, path, template, path_values=No
         state.clear()
 
 
-def assert_retired_scope(client, path, *, message="未改用", status=410):
+def assert_retired_scope(client, path, *, message="没有改用", status=410):
     """A non-equivalent old scope must remain explicit and never change data."""
     before = _business_state(client)
     response = client.get(path)

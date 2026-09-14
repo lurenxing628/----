@@ -9,6 +9,7 @@ from core.models.workbench_trial_adoption import ADOPT_ACTION, TrialAdoptionBloc
 from core.services.scheduler import schedule_service
 
 from .commands import WorkbenchCommandService
+from .messages import UNAVAILABLE
 from .run_candidate_adoption import _ADOPTION_LOCK
 from .run_input_readonly import candidate_read_snapshot
 from .trial_adoption_persistence import persist_trial_adoption_in_tx
@@ -25,7 +26,7 @@ class WorkbenchTrialAdoptionService:
 
     def _point_surface(self, evidence):
         if not self.point_rendering_enabled and any(row.start_time == row.end_time for row in evidence.payload.schedule_rows):
-            raise TrialAdoptionBlocked("point_rendering_not_connected", "后端点事件已验证，但前端点标记尚未联合接入，正式采用保持关闭。")
+            raise TrialAdoptionBlocked("point_rendering_not_connected", UNAVAILABLE)
 
     def _outer(self):
         if self.conn.in_transaction:
@@ -33,7 +34,7 @@ class WorkbenchTrialAdoptionService:
 
     def _enabled(self):
         if not self.integration_enabled:
-            raise TrialAdoptionBlocked("scenario_adoption_not_connected", "正式采用尚未完成运行锁与HTTP生命周期接入，保持关闭。")
+            raise TrialAdoptionBlocked("scenario_adoption_not_connected", UNAVAILABLE)
         factory, validator = self.context_factory, self.context_validator
         if not callable(factory) or not callable(validator):
             raise RuntimeError("Scenario adoption authorization callbacks are not connected")
@@ -54,7 +55,7 @@ class WorkbenchTrialAdoptionService:
         except WorkbenchCommandRejected:
             raise
         except Exception as exc:
-            raise WorkbenchCommandRejected("storage_failure", "场景采用预览失败，未改变正式计划，请核对运行日志。", 500) from exc
+            raise WorkbenchCommandRejected("storage_failure", "试调方案的采用预检没有完成，正式计划没有改变。请刷新重试；仍不行请联系维护人员。", 500) from exc
         return {"scenario_ref": scenario_ref, "draft_ref": evidence.draft_ref,
                 "baseline": {key: evidence.baseline[key] for key in ("plan_ref", "version")},
                 "task_count": len(evidence.payload.schedule_rows), "scope_complete": True,
@@ -70,7 +71,7 @@ class WorkbenchTrialAdoptionService:
         def guard():
             _, context_validator = self._enabled()
             if type(write_token) is not str or not write_token:
-                raise WorkbenchCommandRejected("stale_write", "请先预览并复核场景正式采用。")
+                raise WorkbenchCommandRejected("stale_write", "请先点「预检」并核对试调方案，再采用。")
             evidence = validate_trial_adoption(self.conn, scenario_ref)
             self._point_surface(evidence)
             context_validator(write_token, scenario_ref, ADOPT_ACTION, evidence.snapshot)
@@ -84,7 +85,7 @@ class WorkbenchTrialAdoptionService:
         with _ADOPTION_LOCK:
             lock = schedule_service._RUN_SCHEDULE_LOCK
             if not lock.acquire(blocking=False):
-                raise WorkbenchCommandRejected("scheduling_busy", "已有排产正在运行，未执行场景采用，请稍后核对。")
+                raise WorkbenchCommandRejected("scheduling_busy", "正在排产，这次采用没有执行。请等排产结束后重新点「采用」。")
             try:
                 return WorkbenchCommandService(self.conn).execute(request_key=request_key, action=ADOPT_ACTION,
                     context_ref=scenario_ref, normalized_input=intent, guard=guard, mutate=mutate)
@@ -100,5 +101,5 @@ class WorkbenchTrialAdoptionService:
             if row is None:
                 return None
             if (row["action"], row["context_ref"]) != (ADOPT_ACTION, scenario_ref):
-                raise WorkbenchCommandRejected("request_key_conflict", "原请求回执不属于此场景采用，请核对原对象。")
+                raise WorkbenchCommandRejected("request_key_conflict", "这个操作编号不是本试调方案的采用结果，请回到试调列表重新打开。")
             return commands.repo.public_result(row, replayed=True)

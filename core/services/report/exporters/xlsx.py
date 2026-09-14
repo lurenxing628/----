@@ -102,8 +102,12 @@ _EXECUTION_REVIEW_HEADERS = [
 ]
 
 
+# 摘要区里必须按原文落格、不能被 Excel 当公式的编号行标签；workbench 导出器从这里取，保证单一来源。
+SUMMARY_IDENTITY_LABELS = ("计划编号", "数据版本编号")
+
+
 def _append_summary_row(ws, values: List[Any], *, write_only: bool) -> None:
-    if len(values) == 2 and values[0] in ("计划引用", "范围快照"):
+    if len(values) == 2 and values[0] in SUMMARY_IDENTITY_LABELS:
         cells = [WriteOnlyCell(ws, value=_sanitize_export_cell(values[0])),
                  WriteOnlyCell(ws, value=values[1])]
         cells[1].data_type = "s"

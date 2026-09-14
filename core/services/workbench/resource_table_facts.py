@@ -24,7 +24,7 @@ class ResourceTableFacts:
     def identity(self, kind, code):
         row = self.identities.get((kind, code))
         if row is None or type(row["ref"]) is not str or re.fullmatch(r"[0-9a-f]{48}", row["ref"]) is None:
-            raise WorkbenchCommandRejected("storage_failure", "资源永久引用缺失或无效，未自动修补数据。", 500)
+            raise WorkbenchCommandRejected("storage_failure", "这条资源在资料里查不到编号，列表没有打开，数据也没有被改动。请到资料总览核对后重试。", 500)
         return WorkbenchEntityIdentity(row["ref"], kind, code, row["revision"], True)
 
     def records(self, kind):
@@ -51,7 +51,7 @@ class ResourceTableFacts:
         identity = self.identity(kind, code)
         raw = self.records(kind).get(code)
         if raw is None:
-            raise WorkbenchCommandRejected("storage_failure", "资源关联指向不存在的记录，未按未绑定处理。", 500)
+            raise WorkbenchCommandRejected("storage_failure", "这条资源的关联指向一条已经不存在的记录，列表没有打开，系统也不会当成没选。请到资料总览核对后重试。", 500)
         return {"identity": asdict(identity), "record": raw}
 
     def supplier_types(self, code):
@@ -84,7 +84,7 @@ class ResourceTableFacts:
                 for key in codes:
                     related = self.related(related_kind, key)
                     if related is None:
-                        raise WorkbenchCommandRejected("storage_failure", "资源关联缺少编号，未按未绑定处理。", 500)
+                        raise WorkbenchCommandRejected("storage_failure", "这条资源的关联缺少编号，列表没有打开，系统也不会当成没选。请到资料总览核对后重试。", 500)
                     labels.append(related["record"]["name"])
                 result[column] = relation_cell(labels)
             if kind == "supplier":
@@ -96,7 +96,7 @@ class ResourceTableFacts:
         if category == "internal":
             value = self.metrics.availability(code)
             for field, metric, unit in (("available_machines", "machines", "台"), ("available_operators", "operators", "人")):
-                result[field] = number_cell(value[metric] if value is not None else None, unit, missing="无法核实")
+                result[field] = number_cell(value[metric] if value is not None else None, unit, missing="暂无数据")
         elif category == "external":
             policy = self.mapped("policies", "op_type_id").get(code)
             mode = policy["default_merge_mode"] if policy else None
@@ -115,5 +115,5 @@ class ResourceTableFacts:
             status = None if query.kind == "op_type" else _status(query.kind, raw, profiles.get(code))
             legacy_values[code] = {"business_code": code, "label": raw["name"], "status": status, "default_days": raw.get("default_days")}
             if not set(table_columns(query.kind, query.category)).issubset(cells[code]):
-                raise WorkbenchCommandRejected("invalid_input", "视图归属与业务列不一致。", 400)
+                raise WorkbenchCommandRejected("invalid_input", "当前视图和这些列对不上，列表没有打开。请刷新页面后重试。", 400)
         return ResourceTableIndex(rows, cells, legacy_values)

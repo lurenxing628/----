@@ -300,7 +300,7 @@ def test_calendar_pages_show_degraded_warning_when_holiday_default_efficiency_in
         body = assert_retired_response(client.get(path))
         assert "holidayDefaultEfficiency" not in body
         if personal:
-            assert "未改查公共日历或其他人员" in body
+            assert "没有改查公共班表或别人" in body
         conn = get_connection(db_path)
         try:
             service = ConfigService(conn)

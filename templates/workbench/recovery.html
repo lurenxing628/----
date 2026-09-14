@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>只读维护 · APS 智能排产</title>
+  <title>系统维护 · APS 智能排产</title>
   <style>
     :root{color-scheme:light;--bg:#fff;--muted-bg:#f8fafc;--text:#0f172a;--muted:#64748b;--line:#e2e8f0;--warning:#92400e;--info:#1d4ed8;--success:#15803d}
     [data-theme="dark"]{color-scheme:dark;--bg:#1e293b;--muted-bg:#162032;--text:#f1f5f9;--muted:#cbd5e1;--line:#475569;--warning:#fde68a;--info:#93c5fd;--success:#a7f3d0}
@@ -31,44 +31,50 @@
 <body data-restore-maintenance="cold">
   <header><strong>APS 智能排产 · 系统维护</strong><fieldset id="themes"><legend>主题</legend><label><input type="radio" name="theme" value="light">浅色</label><label><input type="radio" name="theme" value="dark">深色</label></fieldset></header>
   <main>
-    <h1>{{ '系统已暂停，维护结果待核实' if uncertain else '维护已结束，请重启整个软件' }}</h1>
-    <p class="muted">只读维护状态 · 普通工作台未开放 · 不读取业务数据库</p>
-    <noscript><p class="notice">浏览器脚本未启用，仍可查询维护结果和导出诊断。</p></noscript>
+    <h1>{{ '系统已暂停，维护结果待确认' if uncertain else '维护已结束，请重启整个软件' }}</h1>
+    <p class="muted">维护状态 · 工作台暂时不能用 · 不读取业务数据</p>
+    <noscript><p class="notice">浏览器没有允许运行脚本，仍然可以查询维护结果和导出诊断文件。</p></noscript>
     <section aria-label="维护结果">
       <h2 class="{{ 'success' if operation and operation.state == 'succeeded' and not uncertain else 'warning' }}">{{ labels[operation.state] if operation else '尚未查到可确认的维护结果' }}</h2>
-      <p class="notice">{% if uncertain %}请保留原请求标识、备份和保护副本，交给维护人员核查。未核实记录会继续阻止启动；不要重复恢复，也不要自行改维护标记。{% else %}请先关闭整个 APS 软件，再重新启动。只刷新或关闭浏览器不算重启；重新启动后再读取本机资料。{% endif %}</p>
+      <p class="notice">{% if uncertain %}请把下面的操作编号、备份文件和保护副本一起交给维护人员核对。结果没有确认前，系统不会启动；不要重复恢复，也不要自己改维护标记。{% else %}请先关闭整个 APS 软件，再重新启动。只刷新或关闭浏览器不算重启；重新启动后再读取本机资料。{% endif %}</p>
       {% if uncertain %}<p>本页面不会自动恢复，也不会解除维护停止状态。即使查到旧的成功记录，也不能据此认定本次启动可以继续使用。</p>{% endif %}
       {% if error %}<p class="notice warning" role="alert">{{ error }}</p>{% endif %}
       {% if operation %}<p>{{ operation.message }}</p>{% endif %}
-      {% if result and result.kind == 'not_recorded' %}<p role="status">{{ result.message }} 查不到不代表没有执行。</p>{% endif %}
+      {% if result and result.kind == 'not_recorded' %}<p role="status">{{ result.message }} 没查到记录，不等于恢复没有执行过。</p>{% endif %}
       <dl class="facts">
-        <div><dt>结果来源</dt><dd>本机数据库外的维护记录，不是当前数据库业务回执</dd></div>
+        <div><dt>结果来源</dt><dd>数据库之外的维护记录，不是数据库里的业务结果</dd></div>
         <div><dt>该次维护记录的数据库来源</dt><dd>{{ origins.get(operation.database_origin, origins.unconfirmed) if operation else origins.unconfirmed }}</dd></div>
         <div><dt>选定备份</dt><dd>{{ operation.filename if operation and operation.filename else '维护记录尚未确认' }}</dd></div>
-        <div><dt>恢复前保护副本</dt><dd>{{ operation.protection_filename if operation and operation.protection_filename else '未查到已留存证据，不代表已创建' }}</dd></div>
+        <div><dt>恢复前保护副本</dt><dd>{{ operation.protection_filename if operation and operation.protection_filename else '没查到留存记录，不等于这份副本没有生成' }}</dd></div>
         <div><dt>业务审计</dt><dd>{{ '维护记录报告已留存；当前数据库内容仍需重启后读取' if operation and operation.audit_persisted else '未确认留存' }}</dd></div>
-        <div><dt>软件状态</dt><dd>业务操作已停用，须核实结果并重启整个软件</dd></div>
+        <div><dt>软件状态</dt><dd>业务操作已停用。请先确认维护结果，再重启整个软件</dd></div>
       </dl>
       {% if operation %}<p class="muted">更新时间 {{ operation.updated_at.replace('T', ' ') }}</p>{% endif %}
-      {% if operation and host.request_key != operation.request_key %}<p class="muted">这条记录不能代表当前数据库状态，也不会解除软件的维护停止状态。</p>{% endif %}
+      {% if operation and host.request_key != operation.request_key %}
+      <p class="muted">这条记录不能代表当前数据库状态，也不会解除软件的维护停止状态。</p>{% endif %}
       <div class="actions"><form action="/workbench" method="get"><input type="hidden" name="reference" value="{{ reference }}"><input type="hidden" name="kind" value="{{ kind }}"><button type="submit" name="download" value="diagnostic">导出维护诊断</button></form><a href="/workbench?view=system">返回工作台</a></div>
-      <p class="muted">返回入口会重新核实维护状态；需要重启或核查时仍停留在维护页。</p>
+      <p class="muted">返回入口会重新查询维护状态；需要重启或需要核对时，仍然停在这个维护页。</p>
     </section>
-    <section aria-label="按标识查询"><h2>查询维护结果</h2><form action="/workbench" method="get">
-      <fieldset style="margin-top:12px"><legend>标识类型</legend><label><input type="radio" name="kind" value="request"{% if kind == 'request' %} checked{% endif %}>原请求标识</label><label><input type="radio" name="kind" value="job"{% if kind == 'job' %} checked{% endif %}>维护记录编号</label></fieldset>
-      <div class="query"><label class="field"><span>查询标识</span><input id="reference" type="text" name="reference" value="{{ reference }}" maxlength="128" autocomplete="off" spellcheck="false"></label><button type="submit">查询维护结果</button></div>
-      <p class="muted" id="local-note">查询只读取维护记录，不会更换请求标识重新执行。</p>
+    <section aria-label="按编号查询"><h2>查询维护结果</h2><form action="/workbench" method="get">
+      <fieldset style="margin-top:12px"><legend>编号类型</legend><label><input type="radio" name="kind" value="request"{% if kind == 'request' %} checked{% endif %}>操作编号</label><label><input type="radio" name="kind" value="job"{% if kind == 'job' %} checked{% endif %}>维护记录编号</label></fieldset>
+      <div class="query"><label class="field"><span>查询编号</span><input id="reference" type="text" name="reference" value="{{ reference }}" maxlength="128" autocomplete="off" spellcheck="false"></label><button type="submit">查询维护结果</button></div>
+      <p class="muted" id="local-note">查询只读取维护记录，不会换个编号重新执行恢复。</p>
     </form></section>
-    {% if operation %}<details><summary>维护阶段与核对信息</summary><p>原请求：<code>{{ operation.request_key }}</code></p><p>维护记录编号：<code>{{ operation.job_ref }}</code> · 结果代码：<code>{{ operation.code }}</code></p>
+    {% if operation %}<details><summary>维护阶段与核对信息</summary>
+      <p>操作编号：
+      <code>{{ operation.request_key }}</code></p>
+      <p>维护记录编号：<code>{{ operation.job_ref }}</code> · 结果代码：<code>{{ operation.code }}</code></p>
       {% for step in operation.history %}<p>{{ step.time.replace('T', ' ') }} · {{ labels[step.state] }}</p>{% endfor %}
       {% for label, field in [('所选备份 SHA-256', 'target_sha256'), ('保护副本 SHA-256', 'protection_sha256'), ('维护结束数据库 SHA-256', 'database_after_sha256')] %}<p>{{ label }}：<code>{{ operation.get(field) or '未确认' }}</code></p>{% endfor %}
-      <p>上述指纹来自维护记录，本页面没有重新打开或校验数据库。数据库内旧回执可能已被恢复覆盖。</p>
+      <p>上面这些指纹来自维护记录，本页没有重新打开或校验数据库。数据库里的旧结果可能已经被恢复覆盖。</p>
     </details>{% endif %}
     <section aria-label="最近维护记录"><h2>最近维护记录</h2><p class="muted">最多列出最近 20 条，不代表全部历史。</p>
       {% if history_error %}<p role="alert" class="warning">{{ history_error }}</p>
-      {% elif rows %}<div class="table-scroll"><table><caption>最近维护记录（最多 20 条）</caption><thead><tr><th scope="col">工厂本地时间</th><th scope="col">维护状态</th><th scope="col">目标文件</th><th scope="col">操作</th></tr></thead><tbody>
-        {% for row in rows %}<tr><td>{{ row.updated_at.replace('T', ' ') }}</td><td>{{ labels[row.state] }}</td><td>{{ row.filename or '尚未记录目标文件' }}</td><td><a href="/workbench?kind=request&amp;reference={{ row.request_key|urlencode }}">查看原结果</a></td></tr>{% endfor %}
-      </tbody></table></div>{% else %}<p>外置目录未列出维护记录。不能因此认定没有执行过操作或可以继续使用。</p>{% endif %}
+      {% elif rows %}<div class="table-scroll"><table><caption>最近维护记录（最多 20 条）</caption><thead><tr><th scope="col">时间</th><th scope="col">维护状态</th><th scope="col">目标文件</th><th scope="col">操作</th></tr></thead><tbody>
+        {% for row in rows %}<tr><td>{{ row.updated_at.replace('T', ' ') }}</td><td>{{ labels[row.state] }}</td><td>{{ row.filename or '尚未记录目标文件' }}</td>
+        <td><a href="/workbench?kind=request&amp;reference={{ row.request_key|urlencode }}"
+        >查看这条结果</a></td></tr>{% endfor %}
+      </tbody></table></div>{% else %}<p>维护记录里没有列出任何记录。不能据此认为没有执行过恢复，也不能据此继续使用。</p>{% endif %}
     </section>
     <p class="muted" id="theme-note">诊断仅含本次维护状态，不含数据库和完整业务日志。</p>
   </main>
@@ -77,14 +83,16 @@
       var choices=document.querySelectorAll('#themes input');
       choices.forEach(function(input){input.checked=input.value===document.documentElement.dataset.theme;input.addEventListener('change',function(){
         document.documentElement.dataset.theme=input.value;
-        try{localStorage.setItem('aps_theme',input.value);localStorage.setItem('aps_kit_theme',input.value);}catch(error){document.getElementById('theme-note').textContent='主题已切换，但本机偏好未能保存。';}
+        try{localStorage.setItem('aps_theme',input.value);localStorage.setItem('aps_kit_theme',input.value);}catch(error){document.getElementById('theme-note').textContent='深浅色已切换，但这台电脑没能记住这个设置。';}
       });});
       var field=document.getElementById('reference');
       if(!field.value&&!new URLSearchParams(location.search).has('reference')){try{
         var raw=localStorage.getItem('aps_workbench_system_pending_v1');if(raw){var pending=JSON.parse(raw);
           if(!pending||!/^system-[a-f0-9]{48}$/.test(pending.request_key))throw new Error('pending');
-          field.value=pending.request_key;document.getElementById('local-note').textContent='已填入此浏览器保留的原请求标识，尚未查询；没有清除或重新提交。';}
-      }catch(error){document.getElementById('local-note').textContent='此浏览器保留的原请求标识无法读取。未清除记录，可手动输入原标识核查。';}}
+          field.value=pending.request_key;
+          document.getElementById('local-note').textContent='已填入这台电脑上次留下的操作编号，还没有查询；没有清除记录，也没有重新提交。';}
+      }catch(error){
+        document.getElementById('local-note').textContent='读不到这台电脑上次留下的操作编号。记录没有清除，可以手动输入编号查询。';}}
     })();
   </script>
 </body>

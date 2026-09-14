@@ -93,7 +93,7 @@ def test_sort_model_rejects_unknown_duplicate_and_ambiguous_operations(value, di
     '{"column_filters":{"label":{"mode":"include","mode":"exclude","values":[]}}}',
     '{"sort":[{"field":"label","field":"stage","direction":"asc"}]}'])
 def test_duplicate_json_fields_are_rejected_before_scope_parsing(raw):
-    with pytest.raises(WorkbenchCommandRejected, match="重复字段"):
+    with pytest.raises(WorkbenchCommandRejected, match="重复的项"):
         json.loads(raw, object_pairs_hook=unique_process_table_object)
 
 
@@ -315,7 +315,7 @@ def test_inconsistent_stage_projection_is_not_inferred_or_hidden(patch):
 
 def test_duplicate_identity_is_not_silently_overwritten_and_empty_table_is_valid():
     entity = part_entity(1)
-    with pytest.raises(WorkbenchCommandRejected, match="重复零件引用"):
+    with pytest.raises(WorkbenchCommandRejected, match="有重复零件"):
         ProcessTable([entity, entity])
     table, query = ProcessTable([]), ProcessTablePageRequest()
     assert table.page(query)["metrics"]["counts"]["total"] == 0

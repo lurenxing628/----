@@ -13,7 +13,7 @@ KINDS = {"part": "part", "route": "part", "opType": "op_type", "equipment": "mac
 def text(value):
     value = plain(value)
     if value is None:
-        return "未填"
+        return "未填写"
     if isinstance(value, dict):
         return json.dumps(value, ensure_ascii=False, sort_keys=True)
     return str(value)
@@ -96,7 +96,7 @@ class MasterOverviewGraph:
     def related(self, entity, domain, key, label, source, reverse, *, required=False, operation_ref=None, stage=None):
         if key is None or key == "":
             if required:
-                self.issue(entity, source + ".unbound", label + "未绑定", "原记录为空；未按名称猜测关系。", operation_ref=operation_ref, stage=stage)
+                self.issue(entity, source + ".unbound", label + "未选", "这一项在资料里是空的，系统不会按名称去猜该连到哪条记录。", operation_ref=operation_ref, stage=stage)
             return None
         target = self.by_key.get((domain, key))
         if target is None:
@@ -105,7 +105,7 @@ class MasterOverviewGraph:
             if not self.facts.available(*SOURCES[domain]):
                 self.unknown(entity, label, source, relation=True)
             else:
-                self.issue(entity, source + ".missing", label + "指向缺失记录", "关系来源：" + source + "；关联对象不存在，未按同号或同名替代。", operation_ref=operation_ref, stage=stage)
+                self.issue(entity, source + ".missing", label + "指向的记录不存在", "这一项填的编号在系统里找不到对应记录，系统不会拿编号相同或名称相同的记录顶替。", operation_ref=operation_ref, stage=stage)
                 entity["relations_complete"] = False
             return None
         self.link(entity, target, label, source, reverse)
@@ -121,5 +121,5 @@ class MasterOverviewGraph:
                           issue_count=len(entity["issues"]), known_relation_count=len(entity["relations"]),
                           relation_count=len(entity["relations"]) if entity["relations_complete"] else None)
             entity["status"] = "inactive" if entity.pop("inactive") else "attention" if entity["issues"] else "checked" if entity["checks_complete"] else "unknown"
-            entity["summary"] = (entity["issues"][0]["title"] + (" 等{}项".format(len(entity["issues"])) if len(entity["issues"]) > 1 else "")) if entity["issues"] else "已检查字段未发现待维护项" if entity["checks_complete"] else "部分来源或检查无法核实"
+            entity["summary"] = (entity["issues"][0]["title"] + (" 等 {} 项".format(len(entity["issues"])) if len(entity["issues"]) > 1 else "")) if entity["issues"] else "已检查的项里没有发现待维护项。" if entity["checks_complete"] else "部分来源或检查没有完成，结果可能不全。"
         return self.entities

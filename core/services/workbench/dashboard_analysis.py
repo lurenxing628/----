@@ -6,6 +6,7 @@ from datetime import datetime
 from core.models.workbench_command import WorkbenchCommandRejected, input_fingerprint
 from core.models.workbench_dashboard import payload_size, reference
 
+from . import messages
 from .dashboard import WorkbenchDashboardService
 from .dashboard_downtime import downtime
 from .dashboard_execution import actual
@@ -22,6 +23,14 @@ def _time(value):
         return None
 
 
+def _stored_time(value):
+    """数据库 created_at 由 SQLite 按 UTC 写入；发给界面前统一走 messages.stored_utc_text 换算，外发格式仍是接口约定的 ISO。"""
+    try:
+        return messages.stored_utc_text(str(value)).replace(" ", "T")
+    except (TypeError, ValueError):
+        return None
+
+
 def _pending(facts):
     observations, state = safe_material(facts)
     batches = facts.raw["Batches"]
@@ -33,7 +42,7 @@ def _pending(facts):
     unknown = sum(row["status"] not in ("pending", "scheduled", "processing", "completed") for row in batches)
     return {"state": "partial" if unknown else "available", "count": None if unknown else len(items),
             "known_count": len(items), "unknown_status_count": unknown, "items": items,
-            "issues": [] if not unknown else [{"code": "batch_status_unknown", "message": "部分批次状态无效，待排总数未知。"}],
+            "issues": [] if not unknown else [{"code": "batch_status_unknown", "message": "有批次的状态填得不对，待排总数算不出来。"}],
             "basis": "stored_pending_batch_pool", "scheduling_input": None}
 
 
@@ -75,12 +84,12 @@ def _resources(facts, tasks, scope):
 
 def _downtime_record(raw, ref, machine_ref):
     if ref is None:
-        raise WorkbenchCommandRejected("identity_missing", "停机登记的永久引用缺失，未绘制替代记录。")
+        raise WorkbenchCommandRejected("identity_missing", "这条停机登记没有系统编号，画不出来。系统不会拿别的记录顶替，请刷新后重试。")
     start, end = _time(raw["start_time"]), _time(raw["end_time"])
     valid = raw["status"] == "active" and start is not None and end is not None and start < end
     return {"downtime_ref": ref, "machine_ref": machine_ref, "start": start, "end": end,
-            "valid": valid, "reason": raw["reason_detail"], "recorded_at": _time(raw["created_at"]),
-            "recorded_at_basis": "stored_database_timestamp"}
+            "valid": valid, "reason": raw["reason_detail"], "recorded_at": _stored_time(raw["created_at"]),
+            "recorded_at_basis": "local_time"}
 
 
 def _downtime_overlaps(observations, tasks):
@@ -106,7 +115,7 @@ def _downtimes(facts, tasks):
         record = _downtime_record(raw, identities.get(raw["id"]), machines[str(raw["machine_id"])])
         records.append(record)
         if not record["valid"]:
-            issues.append({"code": "downtime_invalid", "message": "有停机窗口或状态无效，未绘制为有效检修条。"})
+            issues.append({"code": "downtime_invalid", "message": "有停机记录的起止时间或状态填得不对，没有画成有效的停机条。"})
     observations, state = downtime(facts)
     return records, _downtime_overlaps(observations, tasks), issues + state["issues"]
 

@@ -85,7 +85,7 @@ def test_optional_unbound_relation_stays_empty_but_null_label_member_fails_close
     with service.read_snapshot():
         facts = service._table_reader()
         assert facts.related("op_type", None) is None
-        assert facts.cells("machine", "FREE", None)["op_type_ref"].label == "未绑定"
+        assert facts.cells("machine", "FREE", None)["op_type_ref"].label == "未选"
         monkeypatch.setattr(facts, "_relation_labels", lambda *args: {"op_type_ref": ("op_type", [None])})
         with pytest.raises(WorkbenchCommandRejected) as error:
             facts.cells("machine", "FREE", None)

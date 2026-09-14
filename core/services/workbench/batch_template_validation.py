@@ -9,9 +9,9 @@ def template_diagnostics(rows, facts, batch):
     diagnostics = []
     for row in rows:
         if type(row["seq"]) is not int or row["seq"] <= 0:
-            raise WorkbenchCommandRejected("constraint_conflict", "模板工序号不合法，不能自动改号。")
+            raise WorkbenchCommandRejected("constraint_conflict", "模板里的工序号不对，系统不会替你改号。")
         if row["source"] not in ("internal", "external"):
-            raise WorkbenchCommandRejected("constraint_conflict", "模板工序归属不明确，不能让旧运行时将其默认成自制。")
+            raise WorkbenchCommandRejected("constraint_conflict", "模板工序的归属没填清楚，系统不会默认当成自制。")
         if row["op_type_id"] is None:
             diagnostics.append(issue("工序 " + str(row["seq"]) + " 缺少明确工种。"))
         if row["source"] == "internal":
@@ -36,7 +36,7 @@ def _external_diagnostics(row, facts, batch):
     days = group["total_days"] if group and group["merge_mode"] == "merged" else row["ext_days"]
     if row["ext_group_id"] is not None and (not group or group["part_no"] != batch["part_no"]
                                           or group["merge_mode"] not in ("merged", "separate")):
-        raise WorkbenchCommandRejected("constraint_conflict", "模板外协组关系不完整，不能按单工序周期猜测。")
+        raise WorkbenchCommandRejected("constraint_conflict", "模板里的外协组关系不完整，系统不会按单道工序的周期去猜。")
     number(days, "external_days", positive=True, nullable=True)
     if days is None:
         diagnostics.append(issue("工序 " + str(row["seq"]) + " 的外协周期待补齐。"))

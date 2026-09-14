@@ -47,7 +47,9 @@ def retired_response(response, *, post_result=False):
     assert "Location" not in response.headers
     assert 'data-workbench-legacy-response="true"' in body
     assert "旧入口已退役" in body and "原业务数据、保存的配置和历史记录仍保留" in body
-    assert "未忽略" in body or "未改用" in body or "未沿用" in body or "未改写原条件" in body
+    assert any(text in body for text in ("没有丢掉任何条件", "没有改用新报表的默认范围",
+                                         "没有改成已采用的正式计划", "原来的条件没有被改动",
+                                         "不会替你补编号", "没有改查公共班表或别人")), body
     if post_result:
         assert len(response.history) == 1
         assert response.history[0].status_code == 302

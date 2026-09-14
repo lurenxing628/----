@@ -16,7 +16,7 @@ from .trial_adoption_history_evidence import audit_fields, gap, invalid, receipt
 def history_scope(scenario_ref, status="all", size=20):
     reference(scenario_ref)
     if status not in ("all", "current", "historical", "unavailable") or type(size) is not int or not 1 <= size <= 50:
-        reject("invalid_input", "采用记录状态或每页数量无效。", 400)
+        reject("invalid_input", "采用记录的状态筛选或每页条数不对，请重新选择。", 400)
     return {"source": "production", "kind": "trial_adoption_history", "scenario_ref": scenario_ref, "status": status, "size": size}
 
 
@@ -27,7 +27,7 @@ class WorkbenchTrialAdoptionHistoryService:
     def read(self, scenario_ref, *, status="all", page=1, size=20):
         scope = history_scope(scenario_ref, status, size)
         if type(page) is not int or not 1 <= page <= 100000:
-            reject("invalid_input", "采用记录页码必须是1至100000的整数。", 400)
+            reject("invalid_input", "页码必须是 1 至 100000 的整数。", 400)
         with candidate_read_snapshot(self.conn):
             try:
                 return self._read(scope, page)
@@ -66,7 +66,7 @@ class WorkbenchTrialAdoptionHistoryService:
         items = [item for item in all_items if scope["status"] == "all" or item["current_state"] == scope["status"]]
         pages = (len(items) + scope["size"] - 1) // scope["size"]
         if page > max(1, pages):
-            reject("invalid_input", "采用记录页码超出当前筛选范围，请明确刷新。", 400)
+            reject("invalid_input", "翻页位置已失效，请回到第 1 页重新查询。", 400)
         source = {"base": saved["base"], "base_identity": saved["base_identity"], "baseline": saved["baseline"],
                   "name": saved["name"], "saved_at": header["saved_at"], "saved_by": header["local_operator"],
                   "save_request_key": header["request_key"], "draft_ref": saved["draft_ref"], "scenario_ref": saved["scenario_ref"]}
@@ -92,4 +92,4 @@ class WorkbenchTrialAdoptionHistoryService:
                 raise ValueError("Receipt plan ref mismatch")
             return identity, identity["blocked_reasons"]
         except WorkbenchPlanReferenceError:
-            return None, [gap("official_identity_unavailable", "原采用回执仍保留，但新正式计划的永久身份现已失效，不能打开或认作当前正式。")]
+            return None, [gap("official_identity_unavailable", "这次采用的结果还在，但它生成的正式计划编号已失效，不能打开，也不能当成当前正式计划。")]

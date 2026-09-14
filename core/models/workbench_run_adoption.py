@@ -25,9 +25,9 @@ class CandidateAdoptionEvidence:
 
 def adoption_input(value):
     if type(value) is not dict or set(value) != {"confirm", "reason", "declared_operator"}:
-        raise WorkbenchCommandRejected("invalid_input", "采用须提供确认、原因和声明操作人，不能夹带其他字段。", 400)
+        raise WorkbenchCommandRejected("invalid_input", "采用要填写原因和经办人，并勾选确认；不要带其他内容。", 400)
     if value["confirm"] is not True:
-        raise WorkbenchCommandRejected("invalid_input", "请明确确认正式采用。", 422)
+        raise WorkbenchCommandRejected("invalid_input", "请勾选确认后再正式采用。", 422)
     result: Dict[str, Union[bool, str]] = {"confirm": True}
     for key, limit in (("reason", 1000), ("declared_operator", 100)):
         text = value[key]

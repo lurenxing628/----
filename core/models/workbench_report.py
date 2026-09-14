@@ -21,7 +21,7 @@ def reject(message):
 
 def reference(value):
     if value is not None and (type(value) is not str or re.fullmatch(r"[0-9a-f]{48}", value) is None):
-        reject("对象引用无效，请重新选择。")
+        reject("这条记录已失效，请刷新后重新选择。")
 
 
 def _validate_finish_dates(start: Optional[str], end: Optional[str]) -> None:
@@ -60,7 +60,7 @@ class ReportScope:
         if self.resource_type not in (None, "machine", "operator"):
             reject("资源类型只能是设备或人员。")
         if self.resource_ref and not self.resource_type:
-            reject("选择资源对象时必须指定设备或人员类型。")
+            reject("选了设备或人员，就要同时选类型。")
         if self.focus not in FOCUSES or type(self.query) is not str or len(self.query) > 200:
             reject("分析范围或搜索文字无效。")
         _validate_finish_dates(self.plan_finish_date_from, self.plan_finish_date_to)
@@ -86,7 +86,7 @@ class ReportPage:
 
     def apply(self, rows, allowed):
         if self.sort not in allowed:
-            reject("当前专题不支持该排序字段。")
+            reject("这个报表不支持按这一列排序。")
         known = [row for row in rows if row.get(self.sort) is not None]
         unknown = [row for row in rows if row.get(self.sort) is None]
         ordered = sorted(known, key=lambda row: row[self.sort], reverse=self.direction == "desc") + unknown

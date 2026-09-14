@@ -32,16 +32,16 @@ class WorkbenchResourceService:
         payload = self.normalize_input(action, normalized_input)
         if action == "create":
             if identity is not None:
-                raise WorkbenchCommandRejected("invalid_input", "新增资源不能指定已有对象。", 400)
+                raise WorkbenchCommandRejected("invalid_input", "新增资源时不能指定已有记录，没有保存。请重新点「新增」。", 400)
             code, raw = payload["business_code"], {}
         else:
             identity, raw = self.state.current(identity, self.kind)
             code = identity.entity_key
             if code != code.strip():
-                raise WorkbenchCommandRejected("constraint_conflict", "旧编号含首尾空白，不能由当前领域规则误写另一对象。")
+                raise WorkbenchCommandRejected("constraint_conflict", "这条旧记录的编号前后带空格，没有保存，以免写错到别的记录上。请联系维护人员修正编号。")
         if action == "delete":
             if self.kind == "op_type" and any(self.repo.op_type_dependencies(code).values()):
-                raise WorkbenchCommandRejected("constraint_conflict", "工种仍被资源、技能或工序引用，不能删除。")
+                raise WorkbenchCommandRejected("constraint_conflict", "还有设备、人员技能或工序在用这个工种，没有删除。请先解除这些关联。")
             self.domain.delete(code)
             changed = True
         else:
@@ -76,9 +76,9 @@ class WorkbenchResourceService:
         mode = fields.pop("default_merge_mode", None)
         category = fields.get("category", raw.get("category", "internal"))
         if marker and mode is not None and category != "external":
-            raise WorkbenchCommandRejected("constraint_conflict", "自制工种不能设置外协周期策略。")
+            raise WorkbenchCommandRejected("constraint_conflict", "自制工种不能设置外协周期规则，没有保存。请把归属改成外协，或者去掉周期设置。")
         if action != "create" and category != raw["category"] and any(self.repo.op_type_dependencies(code).values()):
-            raise WorkbenchCommandRejected("constraint_conflict", "工种仍有资源或工序引用，不能直接切换自制/外协归属。")
+            raise WorkbenchCommandRejected("constraint_conflict", "还有设备人员或工序在用这个工种，不能直接改自制或外协归属，没有保存。请先解除这些关联。")
         profile = self.repo.get_profile("op_type", code)
         old_mode = profile["default_merge_mode"] if profile else None
         changed = self._domain_save(action, code, raw, fields)

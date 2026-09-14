@@ -23,12 +23,12 @@ def validate_candidate(schedule_input, results, errors):
         if row is None or any(getattr(row, field) != seed[field] for field in (
             "start_time", "end_time", "machine_id", "operator_id", "source",
         )):
-            fail("protected_seed_changed", "Candidate changed or omitted an original protected seed.", op_id=op_id)
+            fail("protected_seed_changed", "这次排产改动或漏掉了要保持原安排的工序，结果没有保存。请重新做排产检查后再排。", op_id=op_id)
     end = datetime.combine(schedule_input.end_date_norm + timedelta(days=1), datetime.min.time())
     for row in by_id.values():
         if row.op_id not in seeds and (row.start_time < schedule_input.start_dt_norm or row.end_time > end
                                       or row.start_time == end):
-            fail("candidate_outside_window", "Candidate schedules mutable work outside the requested window.", op_id=row.op_id)
+            fail("candidate_outside_window", "这次排产把工序排到了选定的日期范围之外，结果没有保存。请放宽排产起止日期后重试。", op_id=row.op_id)
     _validate_chain(schedule_input, by_id)
     return payload
 
@@ -52,9 +52,9 @@ def _validate_chain(schedule_input, by_id):
             previous_id = ids_by_ref[ref]
             previous = by_id.get(previous_id)
             if previous is None:
-                fail("candidate_predecessor_missing", "Candidate contains a successor without its predecessor.", op_id=row.op_id)
+                fail("candidate_predecessor_missing", "这次排产漏掉了前道工序，只排了后道，结果没有保存。请把整条工序链一起选上再排。", op_id=row.op_id)
             if _same_merged_group(previous_id, row.op_id, algo_by_id):
                 if (row.start_time, row.end_time) != (previous.start_time, previous.end_time):
-                    fail("candidate_merged_group_split", "Merged external operations no longer share their interval.", op_id=row.op_id)
+                    fail("candidate_merged_group_split", "合并送出的外协工序被排到了不同时段，结果没有保存。请改成分别送出，或者联系维护人员。", op_id=row.op_id)
             elif row.start_time < previous.end_time:
-                fail("candidate_precedence_violation", "Candidate starts before its predecessor finishes.", op_id=row.op_id)
+                fail("candidate_precedence_violation", "这次排产让后道工序比前道还早开工，结果没有保存。请刷新重试；仍不行请联系维护人员。", op_id=row.op_id)

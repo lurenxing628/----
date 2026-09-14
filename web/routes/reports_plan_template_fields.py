@@ -7,7 +7,7 @@ from core.services.scheduler.schedule_plan_option_display import public_plan_rol
 from web.viewmodels.scheduler_plan_guardrail_messages import result_status_label, summary_unavailable_guardrail_text
 
 DEFAULT_PLAN_LABEL = plan_role_label(ROLE_ADOPTED)
-DEFAULT_PREVIEW_LABEL = "模拟预览（未命名）"
+DEFAULT_PREVIEW_LABEL = "试调方案（未命名）"
 
 
 def _text(value: Any) -> str:

@@ -27,18 +27,18 @@ class MaterialReadRecord:
 
 def _project(row):
     if type(row.get("ref")) is not str or re.fullmatch(r"[0-9a-f]{48}", row["ref"]) is None or row.get("revision") is None:
-        raise WorkbenchCommandRejected("storage_failure", "物料永久引用缺失，未自动修补数据；请检查数据库。", 500)
+        raise WorkbenchCommandRejected("storage_failure", "物料缺少系统编号，系统不会自动修补数据。请刷新重试；仍不行请联系维护人员。", 500)
     stock = row["stock_qty"]
     if stock is not None and (type(stock) not in (int, float) or not math.isfinite(stock) or stock < 0):
         cause = ValueError("Materials material_id={!r} stock_qty={!r}".format(row["material_id"], stock))
         raise WorkbenchCommandRejected(
-            "storage_failure", "物料“{}”库存数量不是有效的非负有限数字，未用零值替代；请核对原资料。".format(row["material_id"]),
+            "storage_failure", "物料「{}」的库存数量不是 0 或大于 0 的有效数字，系统不会当成 0；请核对原资料。".format(row["material_id"]),
             500) from cause
-    issues = [{"code": "stock_level_unknown", "scope": "collection", "message": "尚未配置低库存判断依据。"}]
+    issues = [{"code": "stock_level_unknown", "scope": "collection", "message": "还没有设置低库存的判断标准。"}]
     if stock is None:
-        issues.append({"code": "stock_unknown", "message": "库存数量尚未填写。"})
+        issues.append({"code": "stock_unknown", "message": "库存数量还没填写。"})
     if row["status"] not in ("active", "inactive"):
-        issues.append({"code": "status_unknown", "message": "原有物料状态未归类，当前保留原值。"})
+        issues.append({"code": "status_unknown", "message": "这个物料的状态不在已知的几种里，系统保留原值。"})
     identity = WorkbenchEntityIdentity(row["ref"], "material", row["material_id"], int(row["revision"]), True)
     entity = {"ref": identity.ref, "business_code": row["material_id"], "label": row["name"],
               "status": row["status"], "fields": {key: row[key] for key in ("spec", "unit", "stock_qty", "remark")},
@@ -77,7 +77,7 @@ class WorkbenchMaterialQueryService:
         else:
             counts = self.repo.metrics(query)
         return {"scope": "filtered", "counts": counts,
-                "basis": {"low_stock": "尚未配置低库存判断阈值，不能按库存为零或样例数量推定。"},
+                "basis": {"low_stock": "还没有设置低库存的判断标准，系统不会按库存为 0 或示例数量去推断。"},
                 "issues": []}
 
     def resolve(self, ref):
@@ -85,14 +85,14 @@ class WorkbenchMaterialQueryService:
             raise WorkbenchCommandRejected("entity_not_found", "物料记录不存在，请返回列表重新选择。", 404)
         identity = self.identities.get(ref)
         if identity is None or not identity.active or identity.kind != "material":
-            raise WorkbenchCommandRejected("entity_not_found", "物料记录已不存在，旧引用不会指向同编号的新记录。", 404)
+            raise WorkbenchCommandRejected("entity_not_found", "这条物料已经不在了，系统不会换成编号相同的新记录。请刷新后重新选择。", 404)
         return identity
 
     def detail(self, ref):
         identity = self.resolve(ref)
         row = self.repo.get_by_ref(identity.ref)
         if row is None:
-            raise WorkbenchCommandRejected("storage_failure", "物料引用与实际记录不一致，请检查数据库。", 500)
+            raise WorkbenchCommandRejected("storage_failure", "物料的系统编号和实际记录对不上。请刷新重试；仍不行请联系维护人员。", 500)
         return _project(row)
 
     def page(self, query: MaterialPageRequest):

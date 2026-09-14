@@ -7,6 +7,7 @@ from flask import Response, current_app, request
 
 from core.infrastructure.safe_files import read_fixed_bytes
 from core.models.workbench_command import WorkbenchCommandRejected
+from core.services.workbench import messages
 from core.services.workbench.system_reads import backup_signature
 
 from .system_context import resolve_context, system_endpoint
@@ -17,12 +18,12 @@ def _selected_filename(selected, rows):
     name = selected["filename"]
     if (not isinstance(name, str) or os.path.basename(name) != name or "\\" in name
             or not name.startswith("aps_backup_") or not name.endswith(".db")):
-        raise WorkbenchCommandRejected("invalid_input", "备份引用无效。", 400)
+        raise WorkbenchCommandRejected("invalid_input", "这个备份文件的编号已失效，没有开始下载。请刷新页面后重新选择备份。", 400)
     row = next((row for row in rows if row["record_kind"] == "backup_file" and row["filename"] == name), None)
     if row is None:
-        raise WorkbenchCommandRejected("entity_not_found", "所选备份不在当前已读取范围，请刷新后重新选择。", 404)
+        raise WorkbenchCommandRejected("entity_not_found", "所选备份不在当前清单里，没有开始下载。请刷新页面后重新选择备份。", 404)
     if row["_signature"] != selected["signature"]:
-        raise WorkbenchCommandRejected("snapshot_stale", "备份文件已变化，请重新读取清单后下载。")
+        raise WorkbenchCommandRejected("snapshot_stale", "备份文件有变化，没有开始下载。请刷新页面后重新点「下载备份」。")
     return name
 
 
@@ -32,22 +33,22 @@ def _selected_bytes(selected, rows):
     try:
         before = backup_signature(path)
         if before != selected["signature"]:
-            raise WorkbenchCommandRejected("snapshot_stale", "备份文件已变化，请重新读取清单后下载。")
+            raise WorkbenchCommandRejected("snapshot_stale", "备份文件有变化，没有开始下载。请刷新页面后重新点「下载备份」。")
         data = read_fixed_bytes(path)
         after = backup_signature(path)
     except OSError as exc:
-        raise WorkbenchCommandRejected("entity_not_found", "所选备份已不存在或无法读取，请刷新。", 404) from exc
+        raise WorkbenchCommandRejected("entity_not_found", "所选备份已经不在或读不出来，没有开始下载。请刷新页面后重新选择备份。", 404) from exc
     if after != before or len(data) != before["size"]:
-        raise WorkbenchCommandRejected("snapshot_stale", "备份在读取期间发生变化，未提供下载文件。")
+        raise WorkbenchCommandRejected("snapshot_stale", "下载过程中备份文件发生变化，没有给出文件。请刷新页面后重新点「下载备份」。")
     if not data.startswith(b"SQLite format 3\x00"):
-        raise WorkbenchCommandRejected("backup_format_invalid", "所选文件不是可识别的 SQLite 备份，未提供下载。", 422)
+        raise WorkbenchCommandRejected("backup_format_invalid", "所选文件不是本软件能识别的备份，没有给出文件。请刷新页面后重新选择备份。", 422)
     return data, name
 
 
 @system_endpoint
 def system_backup_export(backup_ref):
     if not request.args.get("snapshot_ref"):
-        raise WorkbenchCommandRejected("snapshot_stale", "请先读取备份清单再下载。")
+        raise WorkbenchCommandRejected("snapshot_stale", messages.STALE)
     selected = resolve_context("backup", backup_ref)
     rows, _sources, _query, _snapshot = collection("backups")
     data, name = _selected_bytes(selected, rows)

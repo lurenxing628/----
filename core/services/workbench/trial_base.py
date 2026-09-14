@@ -31,13 +31,13 @@ def _arrangement(payload, refs):
                 raise ValueError("Not second-precision factory time")
             result[field] = parsed.isoformat(timespec="seconds")
         except (ValueError, TypeError):
-            reject("trial_base_time_invalid", "基础安排时间无效或不能无损表示为工厂本地秒精度，未猜测时长。")
+            reject("trial_base_time_invalid", "基础安排的时间不对或带了秒以下的零头，这里不猜时长。请刷新后重试。")
     for kind in ("machine", "operator"):
         key = payload.get(kind + "_id")
         result[kind + "_id"] = key
         result[kind + "_ref"] = refs.get((kind, key)) if key is not None else None
         if key is not None and result[kind + "_ref"] is None:
-            reject("identity_missing", "原安排资源缺少永久引用，未匹配同号替代对象。")
+            reject("identity_missing", "原安排里的设备或人员没有编号，这里不会用同号的顶替。")
     return result
 
 
@@ -79,7 +79,7 @@ def _plan(conn, ref):
                                source_row_ref=source_refs[item["schedule_id"]], operation_ref=operations[item["op_id"]], detail=item))
             if result[-1]["current"]["start"] == result[-1]["current"]["end"]:
                 if identity.source_table != "schedule":
-                    reject("point_evidence_unproven", "旧候选或模拟的零时长行没有已核验点证据。")
+                    reject("point_evidence_unproven", "这道零工时工序来自旧候选方案或模拟结果，没有可核对的依据。")
                 if point_work is None:
                     point_work = official_point_work(conn, entry.locator.version)
                 _attach_point_work(result[-1], point_work[item["op_id"]])
@@ -136,7 +136,7 @@ def _candidate(conn, ref):
             op = facts.operation(item["operation_ref"], item["payload"], gaps)
             batch = facts.tables["Batches"].get(op.get("batch_id"))
             if gaps or not op or batch is None:
-                reject("trial_base_incomplete", "候选生成时原工序或批次快照缺失，未改用当前同号记录。")
+                reject("trial_base_incomplete", "生成候选方案时的工序或批次数据缺失，这里不会改用当前的同号记录。")
             result.append(_row(item["payload"], op, batch, facts.entity_refs, source_task_ref=None,
                                source_row_ref=item["row_ref"], operation_ref=item["operation_ref"]))
             if result[-1]["current"]["start"] == result[-1]["current"]["end"]:
@@ -146,7 +146,7 @@ def _candidate(conn, ref):
         summary = candidate_summary(candidate, scope)
         issues = []
         if scope is None or {row["operation_ref"] for row in result} != set(scope) or summary["completeness"] != "complete":
-            issues.append(issue("trial_base_incomplete", "候选未完整覆盖原受理工序，未隐藏未排入工序。"))
+            issues.append(issue("trial_base_incomplete", "候选方案没有覆盖排产时的全部工序，没排上的工序也照样列出。"))
         extra = {"identity": {"candidate_ref": ref, "run_ref": run_ref, "kind": "candidate",
                                "display_name": summary["label"], "completeness": summary["completeness"]},
                  "capture": capture, "dispositions": scope, "artifact": candidate["artifact"]}
@@ -177,7 +177,7 @@ def _attach_original_context(rows, source, key, live):
     templates = _table(original_tables, "PartOperations") if original_tables is not None else live["facts"]["tables"]["PartOperations"]
     groups = _table(original_tables, "ExternalGroups") if original_tables is not None else live["facts"]["tables"]["ExternalGroups"]
     if templates is None or groups is None:
-        reject("trial_base_incomplete", "候选生成时的工艺或外协组快照表缺失，未改用当前数据。")
+        reject("trial_base_incomplete", "生成候选方案时的工艺或外协组数据缺失，这里不会改用当前数据。")
     template_by_key = {(item["part_no"], item["seq"]): item for item in templates if item["status"] == "active"}
     group_by_key = {item["group_id"]: item for item in groups}
     for row in rows:

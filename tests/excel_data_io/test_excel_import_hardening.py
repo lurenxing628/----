@@ -431,7 +431,7 @@ def test_upload_over_limit_returns_413(tmp_path, monkeypatch) -> None:
     )
 
     assert resp.status_code == 413
-    assert "16MB" in resp.get_data(as_text=True)
+    assert "16 MB" in resp.get_data(as_text=True)
 
 
 def test_exact_file_limit_is_not_rejected_by_multipart_overhead(tmp_path, monkeypatch) -> None:

@@ -33,7 +33,7 @@ class WorkbenchBatchService:
         if action == "delete":
             require_unreferenced(self.facts.load(), batch)
             if related(self.facts.load(), batch)["materials"]:
-                raise WorkbenchCommandRejected("constraint_conflict", "批次仍有物料需求记录，不能直接删除。")
+                raise WorkbenchCommandRejected("constraint_conflict", "这个批次还挂着物料需求，不能直接删除。")
             self.domain.delete(batch["batch_id"])
         else:
             changes = {key: value for key, value in payload["fields"].items() if batch[key] != value}

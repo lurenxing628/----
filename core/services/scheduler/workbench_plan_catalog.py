@@ -202,7 +202,7 @@ def _scenario_entry(
     return PlanCatalogEntry(
         locator=PlanCatalogLocator(scenario.base_version, scenario.base_plan_role, scenario.scenario_id),
         kind="scenario",
-        display_name=scenario.scenario_name or "模拟预览（未命名）",
+        display_name=scenario.scenario_name or "试调方案（未命名）",
         is_latest_version=scenario.base_version == latest,
         schedule_result_status=history.get("result_status") if history else None,
         completeness=completeness,

@@ -128,10 +128,10 @@ def test_caller_must_keep_entry_scope_calendar_and_rows_bound(calendar_case):
     with calendar_case.selected() as args:
         _, facts = project_plan_calendar(calendar_case.conn, **args)
         args["rows"] = [dict(args["rows"][0], end_time="2026-09-09 15:00:00")]
-        with pytest.raises(WorkbenchCommandRejected, match="日历与安排"):
+        with pytest.raises(WorkbenchCommandRejected, match="班表和安排"):
             project_plan_occupancy(calendar_case.conn, calendar_facts=facts, **args)
         args["rows"][0]["version"] = 2
-        with pytest.raises(WorkbenchCommandRejected, match="安排版本"):
+        with pytest.raises(WorkbenchCommandRejected, match="不属于所选计划的这一版"):
             project_plan_calendar(calendar_case.conn, **args)
     with pytest.raises(RuntimeError, match="read transaction"):
         project_plan_calendar(calendar_case.conn, **args)
@@ -140,7 +140,7 @@ def test_caller_must_keep_entry_scope_calendar_and_rows_bound(calendar_case):
 def test_conflicting_duplicates_are_rejected(calendar_case):
     with calendar_case.selected() as args:
         args["rows"] = [args["rows"][0], dict(args["rows"][0], end_time="2026-09-09 15:00:00")]
-        with pytest.raises(WorkbenchCommandRejected, match="同一安排"):
+        with pytest.raises(WorkbenchCommandRejected, match="同一条安排"):
             project_plan_calendar(calendar_case.conn, **args)
 
 

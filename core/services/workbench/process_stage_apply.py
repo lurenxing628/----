@@ -20,7 +20,7 @@ def _related(identities, ref, kind, cache):
         cache[ref] = identities.get(ref)
     current = cache[ref]
     if current is None or not current.active or current.kind != kind:
-        raise WorkbenchCommandRejected("invalid_relation", "所选工种或供应商记录不存在、已失效或引用类型错误。", 422)
+        raise WorkbenchCommandRejected("invalid_relation", "所选工种或供应商记录不存在、已失效，或者选错了类型。请刷新后重新选择。", 422)
     return current.entity_key
 
 
@@ -44,7 +44,7 @@ def prepare_source(conn, logger, payload, operations, identities):
             if supplier_key not in suppliers or suppliers[supplier_key]["status"] != "active" or suppliers[supplier_key]["inactive_reason"] is not None:
                 raise WorkbenchCommandRejected("supplier_unavailable", "所选供应商不存在或未启用，不能确认外协归属。", 422)
             if (supplier_key, type_key) not in capabilities:
-                raise WorkbenchCommandRejected("supplier_capability_mismatch", "供应商没有所选外协工种的有效v21能力关系，不能猜测其能力。", 422)
+                raise WorkbenchCommandRejected("supplier_capability_mismatch", "这家供应商没有登记所选外协工种的承接能力，系统不猜。请到资料总览补登。", 422)
         values = (row["source"], type_key, supplier_key)
         if values != (old["source"], old["op_type_id"], old["supplier_id"]):
             changes.append(values + (old["id"],))
@@ -67,9 +67,9 @@ def _merged_hours_groups(payload, active, groups):
 def _hours_fields(row, old, merged_keys):
     expected = {"ref", "setup_hours", "unit_hours"} if old["source"] == "internal" else {"ref", "external_days"}
     if old["source"] not in ("internal", "external") or set(row) != expected:
-        raise WorkbenchCommandRejected("hours_source_mismatch", "工时字段必须匹配已确认的本序归属。", 422)
+        raise WorkbenchCommandRejected("hours_source_mismatch", "填的工时项要和这道工序已确认的归属对上。", 422)
     if "external_days" in row and row["external_days"] is None and old["ext_group_id"] not in merged_keys:
-        raise WorkbenchCommandRejected("external_days_required", "非合并外协工序必须提供有限正数周期，不能使用空值。", 422)
+        raise WorkbenchCommandRejected("external_days_required", "不是合并组的外协工序必须填正数周期，不能留空。", 422)
     return {("ext_days" if key == "external_days" else key): value for key, value in row.items() if key != "ref"}
 
 
@@ -92,7 +92,7 @@ def apply_hours(conn, payload, operations, groups):
         {row["ref"]: row.get("unit_hours", active[row["ref"]]["unit_hours"]) for row in payload["operations"]})
     if any(current[ref]["id"] != row["id"] or current[ref]["part_no"] != row["part_no"] or
            current[ref]["seq"] != row["seq"] for ref, row in active.items()):
-        raise WorkbenchCommandRejected("stale_write", "原模板工序已变化，未更新同号新对象。")
+        raise WorkbenchCommandRejected("stale_write", "原模板工序已经变了，系统不会改到同号的新工序。请刷新后重新操作。")
     updates = _hours_updates(payload, active, merged)
     changed = bool(updates)
     for key, fields in updates:

@@ -23,9 +23,9 @@ from web.routes.workbench.pages import VIEW_TITLES
 
 NAV_INPUTS = ("static/workbench/app/WorkbenchNavigation.js",)
 DESTINATIONS = [
-    ("dashboard", "值班台"), ("process", "基础资料"), ("basedata", "主数据总览"),
+    ("dashboard", "值班台"), ("process", "基础资料"), ("basedata", "资料总览"),
     ("batches", "批次管理"), ("run", "执行排产"), ("analysis", "选择排产方案"),
-    ("trial", "方案试调"), ("field", "现场记录"), ("fieldgantt", "现场实际甘特"),
+    ("trial", "试调"), ("field", "现场记录"), ("fieldgantt", "现场实际甘特"),
     ("reports", "报表中心"), ("calib", "工时定额校准"), ("system", "系统管理"),
 ]
 SUPPORTED_VIEWS = {"dashboard", "process", "batches", "run", "analysis", "gantt", "delay", "field",
@@ -110,7 +110,7 @@ def test_navigation_metadata_preserves_supported_view_contract_and_help(app_clie
 
     boot = boot_payload(app_client.get("/workbench"))
     assert set(boot["enabled_views"]) == set(VIEW_TITLES) == set(ROUTE_VIEWS) == SUPPORTED_VIEWS
-    assert [group["title"] for group in boot["nav_groups"]] == ["值班台", "数据准备", "执行排产", "现场", "统计分析", "系统"]
+    assert [group["title"] for group in boot["nav_groups"]] == ["值班台", "数据准备", "排产", "现场", "统计分析", "系统"]
     assert [(item["id"], item["label"]) for group in boot["nav_groups"] for item in group["items"]] == DESTINATIONS
     assert boot["view_aliases"] == ALIASES
     for group in boot["nav_groups"]:
@@ -253,7 +253,7 @@ def test_workbench_menu_disables_team_context_links_that_would_400(db_env) -> No
         response = client.get("/workbench", query_string={"view": view, "nav": json.dumps(navigation)})
         assert response.status_code == 400
         assert "Location" not in response.headers
-        message = "未忽略" if view in ("dashboard", "analysis", "gantt") else "未恢复旧选择"
+        message = "没有丢掉" if view in ("dashboard", "analysis", "gantt") else "没有恢复上次选择"
         assert message in response.get_data(as_text=True)
         assert 'id="workbench-boot"' not in response.get_data(as_text=True)
     # Team-specific dispatch has no equivalent typed navigation; never silently widen it.
@@ -268,7 +268,7 @@ def test_workbench_menu_disables_execution_review_for_non_formal_context(db_env)
         for locator in (WorkbenchPlanLocator(12, "baseline_best", "SCN-1"), WorkbenchPlanLocator(12, "adopted", "SCN-1")):
             with patch.object(reader.plans.references, "resolve_plan", return_value=locator) as resolve, \
                     patch.object(reader.plans, "_selected") as selected, patch.object(reader.engine, "latest_version") as latest:
-                with pytest.raises(WorkbenchCommandRejected, match="不能使用候选或模拟方案") as failure:
+                with pytest.raises(WorkbenchCommandRejected, match="只看当前正式计划") as failure:
                     reader.current_plan(ReportScope(plan_ref="a" * 48))
                 assert failure.value.code == "plan_not_current_official"
                 resolve.assert_called_once_with("a" * 48)

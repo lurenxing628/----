@@ -19,11 +19,11 @@ def invalid(message):
 def _references(result):
     for key in ('plan_ref', 'resource_ref'):
         if key in result and (type(result[key]) is not str or not re.fullmatch('[0-9a-f]{48}', result[key])):
-            invalid('计划或资源永久引用无效。')
+            invalid('计划或资源的编号不对，请刷新后重新选择。')
     if result.get('resource_type') not in (None, 'machine', 'operator'):
         invalid('现场资源类型只能为设备或人员。')
     if 'resource_ref' in result and 'resource_type' not in result:
-        invalid('资源引用必须同时提供资源类型。')
+        invalid('选了具体设备或人员，就要同时选资源类型。')
 
 
 def _search(result):
@@ -68,11 +68,11 @@ def _batches(result):
 
 def normalize_scope(value):
     if type(value) is not dict or set(value) - set(PARAMETERS):
-        invalid('现场范围包含未知参数，未忽略筛选。')
+        invalid('查询条件里有认不出的参数，系统不会忽略它继续筛。')
     if value.get('source', 'production') != 'production':
         invalid('现场记录仅接受真实生产来源。')
     if value.get('operation_ref') and not value.get('task_ref'):
-        invalid('执行工序辅助核验须绑定明确任务，不能替代任务引用。')
+        invalid('按工序核对时要同时指定具体任务，只给工序不够。')
     result = {key: item for key, item in value.items() if item is not None and item != '' and key in FILTERS}
     _references(result)
     _search(result)

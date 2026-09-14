@@ -21,6 +21,7 @@ from core.services.scheduler.run.schedule_input_builder import build_algo_operat
 from core.services.scheduler.run.schedule_payload_contract import build_validated_schedule_payload
 from core.services.scheduler.schedule_service import ScheduleService
 
+from .messages import FAILURE
 from .piece_adoption_execution import validate_piece_execution
 from .piece_adoption_facts import current_piece_scope
 from .piece_adoption_scope import block
@@ -50,13 +51,13 @@ def validate_piece_adoption(conn, *, prepared, payload):
         code = (exc.details or {}).get("reason", "piece_constraint_unproven")
         raise PieceAdoptionBlocked(code, str(exc)) from exc
     except (KeyError, TypeError, ValueError, OverflowError) as exc:
-        raise PieceAdoptionBlocked("piece_evidence_incomplete", "Piece evidence fields are incomplete or invalid.") from exc
+        raise PieceAdoptionBlocked("piece_evidence_incomplete", "分件排产依据不完整或有错，本次没有采用。请回「执行排产」重新排一次。") from exc
 
 
 def _validate_piece_adoption(conn, prepared, payload):
     with candidate_read_snapshot(conn):
         if prepared.cal_svc.conn is not conn:
-            block("piece_connection_mismatch", "Prepared calendar belongs to another SQLite connection.")
+            block("piece_connection_mismatch", FAILURE)
         scope, refs = current_piece_scope(conn, prepared)
         _payload(prepared, payload, scope)
         svc = ScheduleService(conn)
@@ -78,15 +79,15 @@ def _payload(prepared, payload, scope):
     ids = {work.op_id for work in scope.operations}
     if (prepared.schedule_output_allowed_op_ids != ids or payload.scheduled_op_ids != ids
             or len(payload.schedule_rows) != len(ids)):
-        block("piece_scope_incomplete", "Payload must contain all common and piece work exactly once.")
+        block("piece_scope_incomplete", "排产结果没有把共同工序和每个分件各排一次，本次没有采用。请回「执行排产」重新排一次。")
     for row in payload.schedule_rows:
         for time in (row.start_time, row.end_time):
             if not isinstance(time, datetime) or time.tzinfo is not None or time.microsecond:
-                block("piece_time_unrepresentable", "Official persistence requires exact factory-local whole seconds.")
+                block("piece_time_unrepresentable", "排产结果的开始或结束时刻不是整秒，写不进正式计划。请回「执行排产」重新排一次。")
     checked = build_validated_schedule_payload(list(payload.schedule_rows), allowed_op_ids=ids,
         operations=prepared.operations, point_validator=candidate_point_validator(prepared))
     if checked != payload:
-        block("piece_payload_inconsistent", "Validated rows, resource assignments and identity sets disagree.")
+        block("piece_payload_inconsistent", "排产结果的工序行、设备人员分配和工序编号对不上，本次没有采用。请回「执行排产」重新排一次。")
 
 
 def _precedence(payload, scope, ops):
@@ -100,9 +101,9 @@ def _precedence(payload, scope, ops):
                       and left.ext_group_id == right.ext_group_id and left.ext_group_id is not None)
             if merged:
                 if (previous.start_time, previous.end_time) != (row.start_time, row.end_time):
-                    block("piece_merged_group_split", "One original merged external group has inconsistent intervals.")
+                    block("piece_merged_group_split", "同一个合并外协组里的工序时间不一致，本次没有采用。请回「执行排产」重新排一次。")
             elif row.start_time < previous.end_time:
-                block("piece_precedence_violation", "A successor starts before its own piece or common predecessors finish.")
+                block("piece_precedence_violation", "有后道工序早于本分件或共同工序的前道工序开始，本次没有采用。请回「执行排产」重新排一次。")
 
 
 def _constraints(conn, prepared, payload, scope, algo_ops):
@@ -124,7 +125,7 @@ def _constraints(conn, prepared, payload, scope, algo_ops):
         batch = prepared.batches[op.batch_id]
         raw = dict(asdict(op), machine_id=row.machine_id, operator_id=row.operator_id)
         if checks.fields(asdict(batch), raw) or checks.resources(raw):
-            block("piece_resource_invalid", "Original work or assigned resources/qualifications are invalid.")
+            block("piece_resource_invalid", "原工序资料或分配的设备、人员、工种资格有问题，本次没有采用。请到基础资料核对后重新排产。")
         if row.op_id in actual:
             continue
         _mutable_work(prepared, checks, row, op, batch, quantities[row.op_id], seeds, high)
@@ -133,20 +134,20 @@ def _constraints(conn, prepared, payload, scope, algo_ops):
 
 def _mutable_work(prepared, checks, row, op, batch, quantity, seeds, high):
     if op.status in ("processing", "completed", "skipped") or batch.status in ("completed", "cancelled"):
-        block("piece_execution_unprotected", "Closed or executed raw work has no matching actual protection.")
+        block("piece_execution_unprotected", "已开工、已完工或已取消的工序没有对应的报工记录保护，本次没有采用。请刷新现场记录后重新排产。")
     if op.source == "external" and quantity == 0:
-        block("piece_scope_incomplete", "Zero-target external work has no schedulable quantity.")
+        block("piece_scope_incomplete", "外协工序的目标数量是 0，排不出工期，本次没有采用。请到批次管理补数量后重新排产。")
     if row.op_id not in seeds and (row.start_time < prepared.start_dt_norm or row.end_time > high
                                   or row.start_time == high):
-        block("piece_outside_window", "Mutable piece work is outside the accepted scheduling window.")
+        block("piece_outside_window", "有工序排到了这次排产日期范围之外，本次没有采用。请回「执行排产」重新排一次。")
     if checks.readiness(asdict(batch), prepared.readiness_gate_enabled):
-        block("piece_material_not_ready", "Original material readiness is not satisfied.")
+        block("piece_material_not_ready", "批次齐套条件不满足，本次没有采用。请到批次管理核对齐套状态后重新排产。")
     if batch.ready_date is not None:
         ready = stored_date(batch.ready_date)
         if ready is None:
-            block("piece_ready_date_invalid", "Original ready date is not a canonical factory date.")
+            block("piece_ready_date_invalid", "原齐套日期格式不对，本次没有采用。请到批次管理核对后重新排产。")
         if row.start_time < datetime.fromisoformat(ready):
-            block("piece_before_ready_date", "Piece work is earlier than its original ready date.")
+            block("piece_before_ready_date", "有工序排在齐套日期之前，本次没有采用。请回「执行排产」重新排一次。")
 
 
 def _duration(calendar, downtime, row, op, batch, quantity):
@@ -154,7 +155,7 @@ def _duration(calendar, downtime, row, op, batch, quantity):
         days = op.ext_group_total_days if op.ext_merge_mode == "merged" else op.ext_days
         if (row.machine_id is not None or row.operator_id is not None
                 or calendar.add_calendar_days(row.start_time, days) != row.end_time):
-            block("piece_external_duration_conflict", "External work differs from its original period or resource contract.")
+            block("piece_external_duration_conflict", "外协工序的周期或设备人员安排和原资料不一致，本次没有采用。请回「执行排产」重新排一次。")
         return
     total = internal_duration_hours(op.setup_hours, op.unit_hours, quantity)
     if row.start_time == row.end_time:
@@ -162,7 +163,7 @@ def _duration(calendar, downtime, row, op, batch, quantity):
             quantity=quantity, machine_id=row.machine_id, operator_id=row.operator_id,
             priority=batch.priority, start=row.start_time)
         if (start, end) != (row.start_time, row.end_time):
-            block("piece_calendar_duration_conflict", "The original work point differs from its current actual calendar.")
+            block("piece_calendar_duration_conflict", "零工时工序的时刻和当前工作日历算出来的不一致，本次没有采用。请回「执行排产」重新排一次。")
         return
     slot = estimate_internal_slot(calendar=calendar, op=op, batch=batch,
         machine_id=row.machine_id, operator_id=row.operator_id, base_time=row.start_time,
@@ -170,4 +171,4 @@ def _duration(calendar, downtime, row, op, batch, quantity):
         machine_downtimes=downtime.get(row.machine_id, ()),
         last_op_type_by_machine=None, abort_after=None, total_hours_base=total)
     if (slot.efficiency_fallback_used or slot.start_time != row.start_time or slot.end_time != row.end_time):
-        block("piece_calendar_duration_conflict", "Duration does not match exact piece quantity, hours and real calendar.")
+        block("piece_calendar_duration_conflict", "工序时长和数量、工时定额、工作日历算出来的对不上，本次没有采用。请回「执行排产」重新排一次。")

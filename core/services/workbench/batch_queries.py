@@ -64,13 +64,13 @@ class WorkbenchBatchQueryService(BatchFacts):
         projection = BatchProjection(self.load())
         parts = [{"ref": projection.ref("part", row["part_no"]), "business_code": row["part_no"], "label": row["part_name"]}
                  for row in self.load()["Parts"]]
-        return {"parts": parts, **{kind + "s": [projection.resource(kind, key) for key in projection.catalogs[kind]]
-                                  for kind in ("machine", "operator", "supplier")},
+        return {"parts": parts, **{name: [projection.resource(kind, key) for key in projection.catalogs[kind]]
+                                  for name, kind in (("machines", "machine"), ("operators", "operator"), ("suppliers", "supplier"))},
                 "authorizations": [{"machine_ref": projection.ref("machine", mid), "operator_ref": projection.ref("operator", oid)}
                                    for oid, mid in sorted(projection.links)]}
 
     def selection(self, scope):
         rows = self.matched(scope)
         if len(rows) > 5000:
-            raise WorkbenchCommandRejected("invalid_input", "当前范围超过5000个批次，请缩小范围后选择。", 422)
+            raise WorkbenchCommandRejected("invalid_input", "当前范围超过 5000 批，请缩小范围后再选择。", 422)
         return {"refs": [row["ref"] for row in rows], "count": len(rows)}

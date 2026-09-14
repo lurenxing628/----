@@ -26,8 +26,8 @@ def test_entire_filtered_cohort_export_and_bytes(report_api, topic, format_name)
         assert response.data[:2] == b"PK"
         workbook = openpyxl.load_workbook(io.BytesIO(response.data), read_only=True)
         rows = list(workbook["范围全部结果"].values)
-        meta = dict(workbook["范围与口径"].values)
-        assert meta["范围快照"] == snapshot and meta["数据截至"] == first["meta"]["as_of"]
+        meta = dict(workbook["范围与计算方式"].values)
+        assert meta["数据版本编号"] == snapshot and meta["数据截至"] == first["meta"]["as_of"]
         workbook.close()
     assert len(rows) - 1 == first["data"]["page"]["total"]
     assert report_api.state() == before

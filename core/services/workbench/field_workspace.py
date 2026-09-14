@@ -73,7 +73,7 @@ class FieldWorkspaceService:
     def _task(row, projection, labels, names):
         if projection['current_task_ref'] != row['task_ref']:
             projection['write_context'] = {'write_token': None, 'expires_at': None, 'capabilities': {'create': False},
-                'blocked_reasons': [{'code': 'plan_not_writable', 'message': '此安排属于旧计划，不能按旧任务新增报工。'}]}
+                'blocked_reasons': [{'code': 'plan_not_writable', 'message': '这条安排属于旧计划，不能在旧任务上新增报工。'}]}
         for report in projection['reports']:
             for kind in ('machine', 'operator'):
                 report['actual_' + kind + '_label'] = labels.get(report['actual_' + kind + '_ref'])
@@ -119,7 +119,7 @@ class FieldWorkspaceService:
         total = len(cohort['tasks'])
         pages = max(1, (total + size - 1) // size)
         if number > pages:
-            raise WorkbenchCommandRejected('invalid_input', '页码超过当前范围，未跳回第一页。', 400)
+            raise WorkbenchCommandRejected('invalid_input', '翻页位置已失效，请回到第 1 页重新查询。', 400)
         return dict(cohort, tasks=cohort['tasks'][(number - 1) * size:number * size],
                     page={'number': number, 'size': size, 'total': total, 'pages': pages, 'sort': [{'field': 'batch_id', 'direction': 'asc'}]})
 
@@ -128,4 +128,4 @@ class FieldWorkspaceService:
         for task in cohort['tasks']:
             if task['task_ref'] == task_ref:
                 return {'task': task, 'scope': cohort['scope'], 'plan': cohort['plan']}
-        raise WorkbenchCommandRejected('entity_not_found', '所选任务不在原读取范围，未切换到其他安排。', 404)
+        raise WorkbenchCommandRejected('entity_not_found', '选中的任务不在当前查询范围里，系统不会换成别的安排。请刷新后重新选择。', 404)

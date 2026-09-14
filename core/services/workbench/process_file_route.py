@@ -54,18 +54,18 @@ class ProcessRouteFileOperations:
     @staticmethod
     def _validate_batch(rows, discard_group_refs, confirm_zero_unit_hours):
         if type(rows) is not list or any(row["errors"] or row["result"] not in ("new", "update", "unchanged") for row in rows):
-            raise WorkbenchCommandRejected("constraint_conflict", "预检包含拒绝行，本批未写入任何数据。")
+            raise WorkbenchCommandRejected("constraint_conflict", "预检里有被拒绝的行，这批一条都没写入。请改好文件后重新预检。")
         codes = [row["business_code"] for row in rows]
         if len(codes) != len(set(codes)):
-            raise WorkbenchCommandRejected("constraint_conflict", "文件含重复图号，本批不能导入。")
+            raise WorkbenchCommandRejected("constraint_conflict", "文件里有重复图号，这批不能导入。请合并重复行后重新导入。")
         try:
             refs = resource_refs(discard_group_refs, allow_empty=True)
         except ValidationError as exc:
-            raise WorkbenchCommandRejected("group_discard_required", "受影响外协组必须用不重复的永久引用完整确认。") from exc
+            raise WorkbenchCommandRejected("group_discard_required", "受影响的外协组要逐个确认，不能重复也不能漏。请在受影响外协组列表里全部勾选。") from exc
         affected = [group for row in rows for group in row["related"]["affected_groups"]]
         require_group_ack({"discard_group_refs": refs}, affected)
         if type(confirm_zero_unit_hours) is not bool:
-            raise ValidationError("零工时复核必须是明确布尔值。", field="confirm_zero_unit_hours")
+            raise ValidationError("请明确勾选是否已复核零工时。", field="confirm_zero_unit_hours")
 
     def _apply_row(self, row):
         if row["action"] == "create":
@@ -77,7 +77,7 @@ class ProcessRouteFileOperations:
             ref = row["entity_ref"]
             identity = self.identities.get(ref)
             if identity is None or not identity.active or identity.kind != "part" or identity.entity_key != row["business_code"]:
-                raise WorkbenchCommandRejected("stale_write", "零件引用已失效，未更新其他同号记录。")
+                raise WorkbenchCommandRejected("stale_write", "这个零件已失效，系统不会改到同号的新零件。请刷新列表后重新选择。")
             if identity.revision != row["expected"]["revision"]:
                 raise WorkbenchCommandRejected("stale_write", "零件资料已变化，请重新预检。")
             part, operations = row["expected"]["part"], row["expected"]["operations"]

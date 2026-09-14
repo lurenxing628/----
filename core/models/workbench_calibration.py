@@ -20,7 +20,7 @@ TABLE_COLUMNS = ("part_no", "operation_label", "old_unit_hours", "suggested_unit
 
 def normalize_calibration_filters(value):
     if type(value) is not dict or set(value) - set(TABLE_COLUMNS):
-        raise WorkbenchCommandRejected("invalid_input", "校准列筛选字段不正确。", 400)
+        raise WorkbenchCommandRejected("invalid_input", "校准列表的筛选列不正确，请重新选择筛选条件。", 400)
     result = {}
     for column, rule in value.items():
         if type(rule) is not dict or set(rule) != {"mode", "values"}:
@@ -38,7 +38,7 @@ def unique_calibration_object(pairs):
     result = {}
     for key, value in pairs:
         if key in result:
-            raise WorkbenchCommandRejected("invalid_input", "校准筛选JSON包含重复字段。", 400)
+            raise WorkbenchCommandRejected("invalid_input", "筛选条件里有重复的列，请重新选择。", 400)
         result[key] = value
     return result
 
@@ -52,7 +52,7 @@ def closed_capabilities():
 
 
 def write_blockers():
-    return [issue("adoption_schema_unavailable", "采纳来源、人员、时间、原因及锁定写保护尚未完整接入，不能采用或锁定。")]
+    return [issue("adoption_schema_unavailable", "此功能尚未开通，暂时不能采用或锁定定额。")]
 
 
 @dataclass(frozen=True)

@@ -13,7 +13,7 @@ from web.routes.workbench.write_context import issue_write_context, validate_wri
 
 def arguments():
     if set(request.args) - set(PARAMETERS) or any(len(request.args.getlist(key)) != 1 for key in request.args):
-        raise WorkbenchCommandRejected('invalid_input', '现场查询含未知或重复参数。', 400)
+        raise WorkbenchCommandRejected('invalid_input', '现场记录的筛选条件有重复或不支持的项，当前筛选没有变化。请刷新页面后重新选择。', 400)
     return request.args.to_dict()
 
 
@@ -30,7 +30,7 @@ def field_query(task_ref=None):
     scope = normalize_scope(args)
     number, size = page_input(args)
     if number > 1 and not args.get('snapshot_ref'):
-        raise WorkbenchCommandRejected('snapshot_required', '翻页必须保留原读取快照。', 400)
+        raise WorkbenchCommandRejected('snapshot_required', '翻页位置已失效，请回到第 1 页重新查询。', 400)
     reader = FieldWorkspaceService(g.db, context_factory=field_context)
     with reader.read_snapshot():
         cohort, state = reader.cohort(scope)
@@ -38,7 +38,7 @@ def field_query(task_ref=None):
         if args.get('task_ref'):
             selected = reader.detail(cohort, args['task_ref'])['task']
             if args.get('operation_ref') and selected['operation_ref'] != args['operation_ref']:
-                raise WorkbenchCommandRejected('constraint_conflict', '来源工序与原任务不匹配，未改指安排。')
+                raise WorkbenchCommandRejected('constraint_conflict', '选中的工序和这条任务对不上，安排没有变化。请刷新页面后重新选择工序。')
             number = next(index for index, row in enumerate(cohort['tasks']) if row['task_ref'] == selected['task_ref']) // size + 1
         data = reader.detail(cohort, task_ref) if task_ref else reader.page(cohort, number, size)
     response = query_success(data, snapshot)
@@ -58,10 +58,10 @@ def field_task(task_ref):
 
 def command_body():
     if request.args or not request.is_json:
-        raise WorkbenchCommandRejected('invalid_input', '保存须提供明确 JSON 请求。', 400)
+        raise WorkbenchCommandRejected('invalid_input', '提交的内容格式不正确，报工还没有保存。请刷新页面后重新填写。', 400)
     body = request.get_json()
     if type(body) is not dict or set(body) != {'input', 'request_key', 'write_token'} or type(body['input']) is not dict:
-        raise WorkbenchCommandRejected('invalid_input', '保存请求合同不完整或包含未知字段。', 400)
+        raise WorkbenchCommandRejected('invalid_input', '提交的内容不完整或有多余项，报工还没有保存。请刷新页面后重新填写。', 400)
     g.workbench_request_key = body['request_key']
     return body
 

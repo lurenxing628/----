@@ -47,7 +47,7 @@ class WorkbenchCalibrationService:
             public_ref(suggestion_ref)
             row = next((row for row in rows if row["suggestion_ref"] == suggestion_ref), None)
             if row is None:
-                raise WorkbenchCommandRejected("entity_not_found", "建议不在当前筛选快照内，不能改指同号模板。", 404)
+                raise WorkbenchCommandRejected("entity_not_found", "这条建议不在当前筛选结果里。数据可能已更新，请刷新后重新选择。", 404)
             linked = facts["samples_by_template"].get(row["template_operation_ref"], [])
             unbound = facts["unbound_samples_by_part"].get(row["part_no"], [])
             data.update(suggestion=row, samples=linked + unbound,

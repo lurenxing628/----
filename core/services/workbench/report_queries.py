@@ -9,9 +9,9 @@ from .review_projection import project_cohort, validate_selected_refs
 from .review_records import resource_directory
 from .review_summary import charts, resource_rows, summary
 
-GAPS = ["执行状态与累计数量来自唯一执行台账；旧合法整道完工事实保留，旧事件登记数量不按逐次产量累加。",
-        "暂无反馈不等于未生产；未知工时与零工时分开。已知工时小计不代表含缺失记录的完整总工时。",
-        "实际时段与新报工登记时间按工厂墙钟；旧登记时间保留 legacy_storage 声明，不猜测转换。"]
+GAPS = ["执行情况和累计数量都只认报工记录；旧系统的整道完工记录照样保留，它登记的数量不会再按逐次报工累加一遍。",
+        "暂无反馈不等于没生产；工时未知和零工时分开算。已知工时小计不是完整总工时，缺记录的部分没算进去。",
+        "实际时段和新报工的登记时间都按车间挂钟；旧系统登记的时间按原样显示，系统不猜着换算。"]
 SORTS = {"delivery": ("batch_label", "planned_end", "finish_deviation_minutes", "effective_processing_hours"),
          "quality": ("batch_label", "event_count", "data_quality"),
          "records": ("event_time", "batch_label", "quantity_done", "effective_processing_hours"),
@@ -21,7 +21,7 @@ SORTS = {"delivery": ("batch_label", "planned_end", "finish_deviation_minutes", 
 
 def report_workspace(reader, facts, snapshot, topic, page, operation_ref=None):
     if topic not in TOPICS:
-        raise WorkbenchCommandRejected("invalid_input", "未知报表专题。", 400)
+        raise WorkbenchCommandRejected("invalid_input", "没有这个报表专题，报表没有变化。请从上方专题里重新选择。", 400)
     facts["reader"] = reader
     validate_selected_refs(facts["scope"], facts)
     operations, records, labels = project_cohort(facts, snapshot["as_of"])
@@ -31,7 +31,7 @@ def report_workspace(reader, facts, snapshot, topic, page, operation_ref=None):
     directory = resource_directory(facts)
     choices = {**directory, "batch": facts["resources"]["batch"]}
     scope_gaps = list(dict.fromkeys(gap for operation in operations for gap in operation["data_gaps"]))
-    data = {"plan": facts["plan"], "scope": facts["scope"].scope(), "topic": topic, "provenance": "当前正式计划与唯一执行台账（逐次报工、更正、旧现场事实）",
+    data = {"plan": facts["plan"], "scope": facts["scope"].scope(), "topic": topic, "provenance": "当前正式计划与报工记录（逐次报工、更正、旧现场记录）",
             "time_scope": {"selection": "plan_finish_date", "boundary": "inclusive_dates", "time_basis": "factory_local"},
             "rows": visible, "summary": summary(operations, records), "page": pagination,
             "charts": charts(operations, snapshot["as_of"]), "resources": resources,
@@ -43,6 +43,6 @@ def report_workspace(reader, facts, snapshot, topic, page, operation_ref=None):
     if operation_ref is not None:
         operation = next((row for row in operations if row["operation_ref"] == operation_ref), None)
         if operation is None:
-            raise WorkbenchCommandRejected("entity_not_found", "工序不在当前筛选快照内，未猜测其他对象。", 404)
+            raise WorkbenchCommandRejected("entity_not_found", "这道工序不在当前筛选结果里，详情没有打开。请调整筛选条件后重新点这一行。", 404)
         data["detail"] = {"operation": operation, "records": [row for row in records if row["operation_ref"] == operation_ref]}
     return data, ordered, labels

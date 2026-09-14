@@ -37,15 +37,15 @@ def calendar_date(value: Any, field: str = "date") -> str:
 
 def _object(value: Any, allowed, field: str) -> Dict[str, Any]:
     if type(value) is not dict:
-        raise ValidationError("操作内容必须是 JSON 对象。", field=field)
+        raise ValidationError("提交内容格式不对，这次操作没有执行。请刷新页面后重试。", field=field)
     if any(type(key) is not str or key not in allowed for key in value):
-        raise ValidationError("操作内容包含不允许的字段。", field=field)
+        raise ValidationError("提交内容含有不支持的项，这次操作没有执行。请刷新页面后重试。", field=field)
     return value
 
 
 def _number(value: Any, field: str, maximum: float, *, positive: bool = False) -> float:
     if type(value) not in (int, float):
-        raise ValidationError("该字段必须是数字，不能是布尔值或数字字符串。", field=field)
+        raise ValidationError("这一项必须填数字。", field=field)
     try:
         number = float(value)
     except OverflowError as exc:
@@ -99,7 +99,7 @@ def normalize_calendar_input(action: str, payload: Any) -> Dict[str, Any]:
     if action == "confirm":
         ref = payload.get("preview_ref")
         if type(ref) is not str or re.fullmatch(r"[0-9a-f]{32}", ref) is None:
-            raise ValidationError("日历预览引用无效。", field="preview_ref")
+            raise ValidationError("这次预检结果已失效，请重新点「预检」。", field="preview_ref")
         return {"preview_ref": ref}
     if action in ("upsert", "delete"):
         result: Dict[str, Any] = {"date": calendar_date(payload.get("date"))}
@@ -122,7 +122,7 @@ def _range_input(payload: Dict[str, Any]) -> Dict[str, Any]:
         raise ValidationError("范围操作只能保存或清除日历。", field="operation")
     fields = _fields(payload.get("fields", {}))
     if operation == "delete" and fields:
-        raise ValidationError("清除配置不能同时设置字段。", field="fields")
+        raise ValidationError("选择清除设置时不能再填其他项。", field="fields")
     return {"start_date": start, "end_date": end, "scope": scope, "operation": operation, "fields": fields}
 
 

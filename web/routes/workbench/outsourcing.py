@@ -17,6 +17,7 @@ from core.errors import ValidationError
 from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
 from core.models.workbench_outsourcing import bounded, reject
 from core.models.workbench_outsourcing_input import factory_time
+from core.services.workbench import messages
 from core.services.workbench.outsourcing import WorkbenchOutsourcingService
 from core.services.workbench.outsourcing_commands import WorkbenchOutsourcingCommandService
 from web.public_token_registry import issue_public_token, resolve_public_token
@@ -29,7 +30,7 @@ _SCOPE = "workbench-outsourcing-read-v1"
 
 def _positive_integer(value: str) -> int:
     if not value.isascii() or not value.isdigit() or len(value) > 6 or int(value) < 1:
-        reject("页码和每页数量须为正整数。", status=400)
+        reject("页码或每页数量填写不对，列表没有变化。请回到第 1 页重新查询。", status=400)
     return int(value)
 
 
@@ -40,12 +41,12 @@ def _arguments(kind):
     if kind == "receipts":
         allowed.add("status")
     if set(request.args) - allowed or any(len(request.args.getlist(key)) != 1 for key in request.args):
-        reject("外协查询含未知或重复参数，未忽略查询条件。", status=400)
+        reject("外协的筛选条件有重复或不支持的项，当前筛选没有变化。请刷新页面后重新选择。", status=400)
     args = request.args.to_dict()
     number = _positive_integer(args.pop("page", "1"))
     size = _positive_integer(args.pop("size", "20"))
     if number > 1 and not args.get("snapshot_ref"):
-        reject("翻页必须携带原读取快照。", "snapshot_required", 400)
+        reject("翻页位置已失效，请回到第 1 页重新查询。", "snapshot_required", 400)
     return args, number, size
 
 
@@ -53,12 +54,12 @@ def _snapshot_time(token, scope):
     if token is None:
         return datetime.now().replace(microsecond=0), None
     try:
-        saved = json.loads(resolve_public_token(_SCOPE, token, message="外协读取快照已失效。", field="snapshot_ref"))
+        saved = json.loads(resolve_public_token(_SCOPE, token, message=messages.STALE, field="snapshot_ref"))
         if type(saved) is not dict or saved.get("scope") != scope or saved.get("source") != "production":
             raise ValueError("scope changed")
         return factory_time(saved["as_of"]), saved
     except (ValidationError, ValueError, TypeError, KeyError) as exc:
-        raise WorkbenchCommandRejected("snapshot_stale", "外协读取快照已失效，请明确刷新；未自动换范围。") from exc
+        raise WorkbenchCommandRejected("snapshot_stale", messages.STALE) from exc
 
 
 def _read(kind, ref=None):
@@ -76,11 +77,11 @@ def _read(kind, ref=None):
             data = reader.history(ref, number=number, size=size, as_of=now)
         else:
             if number != 1:
-                reject("单条登记没有翻页。", status=400)
+                reject("单条外协登记没有分页。请直接查看这一条。", status=400)
             data = reader.detail(ref, as_of=now)
         fingerprint = data.pop("fingerprint")
         if saved is not None and saved.get("fingerprint") != fingerprint:
-            reject("外协来源或登记已变化，请刷新后核对；未静默使用新数据。", "snapshot_stale", 409)
+            reject("外协来源或登记内容有变化，还没有保存；系统没有偷偷用新数据。请点「刷新」后重新核对。", "snapshot_stale", 409)
         if token is None:
             token = issue_public_token(_SCOPE, canonical_json({"scope": scope, "source": "production", "fingerprint": fingerprint,
                                        "as_of": now.isoformat(timespec="seconds")}), ttl_seconds=900)
@@ -111,11 +112,11 @@ def outsourcing_history(outsourcing_ref):
 
 def _body(confirm):
     if request.args or not request.is_json:
-        reject("外协登记须提交 JSON 请求。", status=400)
+        reject("提交的内容格式不正确，外协登记还没有保存。请刷新页面后重新填写。", status=400)
     body = request.get_json()
     fields = {"input", "request_key", "write_token"} if confirm else {"input"}
     if type(body) is not dict or set(body) != fields or type(body["input"]) is not dict:
-        reject("外协登记请求合同不完整或包含未知字段。", status=400)
+        reject("提交的内容不完整或有多余项，外协登记还没有保存。请刷新页面后重新填写。", status=400)
     return body
 
 

@@ -82,7 +82,7 @@ def test_explicit_merged_mapping_not_template_cycle_inference(outsourcing_case):
     assert item["target"]["grouping_basis"] == "explicit_receipt_membership"
     assert len(item["target"]["operation_refs"]) == 2
     assert item["planned"] == "2026-09-09T12:00:00"
-    with pytest.raises(WorkbenchCommandRejected, match="已有外协登记"):
+    with pytest.raises(WorkbenchCommandRejected, match="已经有外协登记"):
         case.preview(case.payload())
     with case.reader.read_snapshot():
         targets = case.reader.targets()["items"]

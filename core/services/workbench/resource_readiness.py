@@ -9,7 +9,7 @@ from core.services.process.workflow_state import workflow_snapshot
 _STAGES = ("route", "source", "hours")
 _PROCESS_COUNTS = _STAGES + ("ready", "legacy", "managed", "legacy_route_present",
                             "route_confirmed", "source_confirmed", "hours_confirmed")
-_PROCESS_BASIS = "当前模板内容绑定的工艺确认；存量路线资料不等于人工确认，工艺确认完成不等于可排产。"
+_PROCESS_BASIS = "统计的是当前模板上的工艺确认。老资料里有路线不等于有人确认过，工艺全部确认完也不等于能排产。"
 
 
 def _checked_workflow(record):
@@ -71,7 +71,7 @@ def process_readiness(conn, total, logger=None):
     except (RuntimeError, sqlite3.DatabaseError):
         (logger or logging.getLogger(__name__)).exception("Process readiness could not verify the workflow snapshot; no records were repaired.")
         return {"status": "unavailable", "counts": counts, "basis": _PROCESS_BASIS,
-                "issues": [{"code": "process_workflow_unavailable", "message": "工艺阶段无法核实：确认记录、永久引用或存储契约不完整；未自动修补资料。"}]}
+                "issues": [{"code": "process_workflow_unavailable", "message": "工艺确认情况读不出来，这一项按暂无数据显示，资料没有被改动。请刷新页面；仍不行请联系维护人员。"}]}
     counts.update(verified)
     return {"status": "zero" if total == 0 else "ready" if counts["ready"] == total else "pending",
             "counts": counts, "issues": [], "basis": _PROCESS_BASIS}
@@ -90,10 +90,10 @@ def resource_readiness(counts, metrics, calendar, process):
         ("op_ext", "external_op_type"), ("supplier", "supplier"))}
     items["process"] = process
     items["material"] = {"status": "zero" if counts["material"] == 0 else "recorded", "counts": {"total": counts["material"]},
-                         "issues": [], "basis": "物料主数据记录量；未按批次需求核实齐套。"}
+                         "issues": [], "basis": "这里只数物料资料有多少条，没有按批次需求核对齐套。"}
     items["calendar"] = {"status": "unavailable" if calendar["status"] != "known" else
                           "not_configured" if not calendar["stats"]["configured_days"] else "recorded",
                          "counts": dict(calendar["stats"]), "basis": calendar["basis"],
                          "issues": calendar["stats"]["issues"] + [issue for day in calendar["days"] for issue in day["issues"]]}
     return {"status": "unknown", "ratio": None, "basis": "static_resource_facts_not_schedule_precheck",
-            "message": "整体就绪度未知：静态资料不是排产前检查；工艺确认完成也不代表物料齐套或资源时段可用。", "items": items}
+            "message": "整体就绪度暂无数据：静态资料不是排产检查；工艺确认完成也不代表物料齐套、设备人员有空。", "items": items}

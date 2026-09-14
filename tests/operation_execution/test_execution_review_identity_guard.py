@@ -186,7 +186,7 @@ def test_execution_review_direct_candidate_request_is_visible_blocked() -> None:
     )
     visible = _visible_text(parser)
 
-    assert "未沿用旧页的采用方案回退" in visible
+    assert "没有改成已采用的正式计划" in visible
     assert "B-RPT" not in visible
     assert "查看现场记录入口" not in visible
     assert _export_links(parser) == []
@@ -197,13 +197,13 @@ def test_execution_review_unknown_plan_role_does_not_leak_raw_role() -> None:
     client = _client()
     resp = get_unchanged(client, "/reports/execution-review?version=12&plan_role=future_role",
                          client.application.config["DATABASE_PATH"])
-    assert_rejected(resp, message="原计划角色无效，未改用采用方案。", forbidden=("future_role",))
+    assert_rejected(resp, message="地址里的计划类型不对，页面没有打开；系统没有改用已采用的正式计划。请从侧栏进入「选择排产方案」重新选择。", forbidden=("future_role",))
     parser = _PageParser()
     parser.feed(resp.get_data(as_text=True))
     body = resp.get_data(as_text=True)
     visible = _visible_text(parser)
 
-    assert "未改用采用方案" in visible
+    assert "没有改用已采用的正式计划" in visible
     assert "future_role" not in body
     assert "future_role" not in visible
     assert _export_links(parser) == []
@@ -219,7 +219,7 @@ def test_execution_review_direct_scenario_request_is_visible_blocked() -> None:
     )
     visible = _visible_text(parser)
 
-    assert "未补建身份或换查其他计划" in visible
+    assert "不会替你补编号，也不会换查别的计划" in visible
     assert "B-RPT" not in visible
     assert _export_links(parser) == []
     _assert_no_adopted_continuation_links(parser)

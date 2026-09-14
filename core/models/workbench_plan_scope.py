@@ -20,13 +20,13 @@ def invalid_scope(message) -> NoReturn:
 
 def plan_reference(value):
     if type(value) is not str or re.fullmatch(r"[0-9a-f]{48}", value) is None:
-        raise WorkbenchCommandRejected("entity_not_found", "所选计划引用不存在，请返回目录重新选择。", 404)
+        raise WorkbenchCommandRejected("entity_not_found", "所选计划已失效，请回到计划列表重新选择。", 404)
     return value
 
 
 def local_time(value) -> str:
     if type(value) is not str or re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}", value) is None:
-        invalid_scope("时间必须为工厂本地 YYYY-MM-DDTHH:mm:ss，不能包含时区或省略时分秒。")
+        invalid_scope("时间格式不对，请按 2026-09-13 08:30:00 这样填写。")
     try:
         datetime.fromisoformat(value)
     except ValueError as exc:
@@ -41,9 +41,9 @@ class PlanCatalogScope:
 
     def __post_init__(self):
         if self.collection not in ("history", "scenario"):
-            invalid_scope("计划目录只能选择历史版本或已保存场景。")
+            invalid_scope("计划列表只能选历史版本或已保存的试调方案。")
         if type(self.size) is not int or not 1 <= self.size <= 50:
-            invalid_scope("计划目录每页必须为 1 至 50 个版本或场景。")
+            invalid_scope("计划列表每页只能是 1 至 50 条。")
 
     def scope(self):
         return {"source": "production", "kind": "plan_catalog", "collection": self.collection, "size": self.size}

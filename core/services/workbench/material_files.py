@@ -46,6 +46,7 @@ from core.models.workbench_material_file import (
     reject_row,
 )
 from core.models.workbench_material_query import MaterialPageRequest
+from core.services.workbench import messages
 from core.services.workbench.material_bulk import full_material_snapshot
 from core.services.workbench.material_file_codec import check_export_capacity, read_material_file, write_material_file
 from core.services.workbench.material_queries import WorkbenchMaterialQueryService
@@ -53,6 +54,16 @@ from core.services.workbench.materials import WorkbenchMaterialService
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
 from data.repositories.workbench_material_file_repo import WorkbenchMaterialFileRepository
 from data.repositories.workbench_material_query_repo import WorkbenchMaterialQueryRepository
+
+
+def _local_created_at(value):
+    """Materials.created_at 由数据库按 UTC 写入；导出文件和导入回读比对都用 messages.stored_utc_text 换算后的值。"""
+    if value is None:
+        return None
+    try:
+        return messages.stored_utc_text(str(value))
+    except ValueError as exc:
+        raise WorkbenchCommandRejected("storage_failure", "物料的创建时间存得不对，读不出来。请刷新重试；仍不行请联系维护人员。", 500) from exc
 
 
 class WorkbenchMaterialFileService:
@@ -88,7 +99,7 @@ class WorkbenchMaterialFileService:
             code = normalize_material_input("create", {"business_code": values.get("business_code"), "label": "_"})["business_code"]
             row["business_code"] = code
             if values["business_code"] != code and self.repo.raw_material(values["business_code"]) is not None:
-                raise ValidationError("原物料编号含首尾空白，不能按去空白后的编号创建或更新另一对象。", field="business_code")
+                raise ValidationError("原来的物料编号首尾有空格，系统不会按去掉空格后的编号去新增或改另一条物料。", field="business_code")
             raw = self.query.get_raw(code)
             row["action"] = "create" if raw is None else "update"
             if raw is None:
@@ -97,10 +108,10 @@ class WorkbenchMaterialFileService:
             else:
                 identity = self.identities.get(raw["ref"]) if raw["ref"] else None
                 if identity is None:
-                    raise WorkbenchCommandRejected("storage_failure", "物料缺少永久引用，未自动修复。", 500)
+                    raise WorkbenchCommandRejected("storage_failure", "这条物料缺少系统编号，系统不会自动补。请刷新重试；仍不行请联系维护人员。", 500)
                 row["expected"] = full_material_snapshot(self.adapter, self.repo, identity)
                 if code != raw["material_id"] or raw["material_id"] != raw["material_id"].strip():
-                    raise ValidationError("原物料编号含首尾空白，不能安全更新。", field="business_code")
+                    raise ValidationError("原来的物料编号首尾有空格，不能安全更新。请先核对原记录。", field="business_code")
             if not row["errors"]:
                 row["input"] = self._normalize_values(row["action"], code, values, raw)
                 self._classify(row, raw)
@@ -113,8 +124,8 @@ class WorkbenchMaterialFileService:
     @staticmethod
     def _check_created_at(values, raw):
         if "created_at" in values and (raw is None or type(values["created_at"]) is not str
-                                       or values["created_at"] != raw["created_at"]):
-            raise ValidationError("创建时间是只读原始事实，不能通过导入新增或覆盖。", field="created_at")
+                                       or values["created_at"] != _local_created_at(raw["created_at"])):
+            raise ValidationError("创建时间只能看不能改，导入不会新增也不会覆盖它。", field="created_at")
 
     @staticmethod
     def _changed_input(normalized, values, raw):
@@ -176,7 +187,7 @@ class WorkbenchMaterialFileService:
         if not self.conn.in_transaction:
             raise RuntimeError("物料导出必须在调用方已验证的查询快照事务中执行。")
         if (scope is None) == (selected_refs is None):
-            raise ValidationError("导出必须明确提供筛选或选中引用，两者只能选一种。", field="scope")
+            raise ValidationError("导出要么按筛选范围，要么按勾选的记录，只能选一种。", field="scope")
         if selected_refs is None:
             query = MaterialPageRequest(**normalize_scope(scope))
             matching = WorkbenchMaterialQueryService(self.conn).matching_rows(query)
@@ -191,12 +202,14 @@ class WorkbenchMaterialFileService:
     def _export_rows(self, rows):
         for raw in rows:
             if raw is None:
-                raise WorkbenchCommandRejected("entity_not_found", "选中的物料已删除，旧引用不会导出重建对象。", 404)
+                raise WorkbenchCommandRejected("entity_not_found", "勾选的物料已经删除了，系统不会为它重建一条再导出。请刷新后重新勾选。", 404)
             identity = self.identities.get(raw["ref"]) if raw["ref"] else None
             if identity is None:
-                raise WorkbenchCommandRejected("storage_failure", "导出物料缺少永久引用，未自动修补。", 500)
+                raise WorkbenchCommandRejected("storage_failure", "要导出的物料缺少系统编号，系统不会自动补。请刷新重试；仍不行请联系维护人员。", 500)
             self.adapter.snapshot(identity)
-            yield dict(zip(COLUMNS, (raw[key] for key in MATERIAL_COLUMNS)))
+            row = dict(zip(COLUMNS, (raw[key] for key in MATERIAL_COLUMNS)))
+            row["created_at"] = _local_created_at(raw["created_at"])
+            yield row
 
     @staticmethod
     def template(file_format="xlsx"):

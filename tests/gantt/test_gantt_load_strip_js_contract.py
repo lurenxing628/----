@@ -113,8 +113,8 @@ const data=h.fixture();
 for(const state of ['available','unavailable','partial']) {
  data.projections.occupancy={state,resources:[],issues:[]};const before=h.clone(data);
  const tree=h.render(h.runtime.PlanDetailsUI.ProjectionTables,{data},{ProjectionTables:{0:'load'}}),text=h.text(tree);
- assert(text.includes(state==='available'?'所选时间范围内没有记录。':'资料未记录或无法核实。'));
- assert(!text.includes(state==='available'?'资料未记录或无法核实。':'所选时间范围内没有记录。'));
+ assert(text.includes(state==='available'?'所选时间范围内没有记录。':'资料未记录或读不到，暂无数据。'));
+ assert(!text.includes(state==='available'?'资料未记录或读不到，暂无数据。':'所选时间范围内没有记录。'));
  assert(!h.walk(tree).some(n=>n.props.id==='ganttLoadStrip'));assert(!text.includes('0%'));h.equal(data,before);
 }
 """)

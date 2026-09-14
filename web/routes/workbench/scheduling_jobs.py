@@ -42,10 +42,10 @@ def _boundary(function):
                                  result_target="/api/workbench/v1/scheduling/requests/" + exc.request_key)
             response.set_data(json.dumps(data, ensure_ascii=False))
         except HTTPException as exc:
-            response = failure("invalid_input", "排产请求格式不正确。", exc.code or 400)
+            response = failure("invalid_input", "提交的内容格式不正确，这次排产没有开始。请刷新页面后重新点「确认开始排产」。", exc.code or 400)
         except Exception:
             current_app.logger.exception("排产运行接口失败")
-            response = failure("storage_failure", "排产运行记录读取失败，请核对台账。", 500,
+            response = failure("storage_failure", "排产记录没有读出来。请刷新重试；仍不行请联系维护人员，并告知下方编号。", 500,
                                committed="unknown" if function.__name__ == "accept_scheduling_run" else False)
         response.headers["Cache-Control"] = "no-store"
         return response
@@ -54,10 +54,10 @@ def _boundary(function):
 
 def _input(keys):
     if request.args or not request.is_json:
-        raise WorkbenchCommandRejected("invalid_input", "排产接口只接受完整JSON参数。", 400)
+        raise WorkbenchCommandRejected("invalid_input", "提交的内容不完整，这次排产没有开始。请刷新页面后重新点「确认开始排产」。", 400)
     value = request.get_json()
     if not isinstance(value, dict) or set(value) != set(keys):
-        raise WorkbenchCommandRejected("invalid_input", "排产参数缺失或含不支持字段。", 400)
+        raise WorkbenchCommandRejected("invalid_input", "提交的内容不完整或有多余项，这次排产没有开始。请刷新页面后重新点「确认开始排产」。", 400)
     return value
 
 
@@ -90,14 +90,14 @@ def accept_scheduling_run():
 @_boundary
 def get_scheduling_run(run_ref):
     if request.args:
-        raise WorkbenchCommandRejected("invalid_input", "运行查询不接受额外参数。", 400)
+        raise WorkbenchCommandRejected("invalid_input", "查询这次排产不需要其他条件。请直接点「刷新」。", 400)
     return _query(_service().get(run_ref), {"kind": "scheduling-run", "run_ref": run_ref})
 
 
 @_boundary
 def get_scheduling_request(request_key):
     if request.args:
-        raise WorkbenchCommandRejected("invalid_input", "运行查询不接受额外参数。", 400)
+        raise WorkbenchCommandRejected("invalid_input", "查询这次排产不需要其他条件。请直接点「刷新」。", 400)
     data = _service().lookup(request_key)
     return _query({"found": data is not None, "run": data}, {"kind": "scheduling-request", "request_key": request_key})
 

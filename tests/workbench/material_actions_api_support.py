@@ -3,6 +3,7 @@
 import sqlite3
 from contextlib import closing
 from io import BytesIO
+from urllib.parse import quote
 
 import pytest
 from flask import Blueprint
@@ -116,10 +117,10 @@ def check_download(response, expected, fmt):
     assert response.status_code == 200, response.get_data(as_text=True)
     assert response.headers["Cache-Control"] == "no-store"
     assert "attachment" in response.headers["Content-Disposition"]
-    assert "materials." + fmt in response.headers["Content-Disposition"]
+    assert "filename*=UTF-8''" + quote("物料清单." + fmt) in response.headers["Content-Disposition"]
     mime = "text/csv" if fmt == "csv" else "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     assert response.mimetype == mime
-    verify_download(MaterialFileDownload("materials." + fmt, mime, response.data,
+    verify_download(MaterialFileDownload("物料清单." + fmt, mime, response.data,
                                          int(response.headers["X-Workbench-Row-Count"])), expected, fmt)
 
 

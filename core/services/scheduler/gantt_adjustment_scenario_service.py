@@ -116,7 +116,7 @@ class GanttAdjustmentScenarioService:
     ) -> ScheduleAdjustmentScenario:
         resolution = evaluation.plan_resolution
         scenario_id = "scenario-" + uuid.uuid4().hex[:16]
-        name = _text(scenario_name) or "模拟预览（未命名）"
+        name = _text(scenario_name) or "试调方案（未命名）"
         return ScheduleAdjustmentScenario(
             scenario_id=scenario_id,
             source_draft_id=evaluation.draft.draft_id,

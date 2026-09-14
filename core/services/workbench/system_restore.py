@@ -56,24 +56,24 @@ class SystemRestoreManager(BackupManager):
 def restore_outcome(manager, outcome):
     result = outcome.result or manager.rollback_result or manager.restore_result
     if result is None:
-        return "recovery_required", "result_missing", "恢复结果不完整，请停止使用数据库并核查维护记录。"
+        return "recovery_required", "result_missing", "这次恢复没有留下完整结果，现在不能确认数据库内容。请不要再操作，联系维护人员。"
     code = result.code
     if code == "verified" and result.ok is True and outcome.category == "success":
-        return "succeeded", code, "已恢复备份并完成结构校验；须重启宿主并重新读取工作台，不能只刷新页面。"
+        return "succeeded", code, "已恢复所选备份并通过完整性检查。请重启本软件再打开工作台，只刷新页面不够。"
     if result.ok is not False or outcome.category not in ("error", "warning"):
-        return "recovery_required", code, "恢复结果标志不一致，请保持停止并核查原操作。"
+        return "recovery_required", code, "恢复结果前后不一致，不能确认数据库内容。请不要再操作，联系维护人员。"
     if code in ("restore_failed_rollback_failed", "verify_failed_rollback_failed"):
-        return "rollback_failed", code, "恢复失败且自动回滚未成功，请停止使用数据库，保留保护副本并人工核查。"
+        return "rollback_failed", code, "恢复失败，自动还原也没有成功。请不要再操作，留好恢复前的保护副本并联系维护人员。"
     if code in ("restore_failed_rolled_back", "verify_failed_rolled_back"):
-        return "rolled_back", code, "恢复未成功，已经自动回滚到恢复前副本；须重启宿主并核对原操作结果。"
+        return "rolled_back", code, "恢复没有成功，已自动还原到恢复前的保护副本。请重启本软件后核对上次操作结果。"
     messages = {
-        "busy": "数据库正在维护，本次恢复未执行。",
-        "before_restore_backup_failed": "恢复前保护副本创建或校验失败，原数据库未被修改。",
-        "backup_integrity_failed": "备份完整性检查失败，原数据库未被修改。",
-        "backup_missing": "备份文件已不存在，恢复未执行。",
-        "backup_unreadable": "备份文件无法读取，恢复未执行。",
-        "db_target_unreadable": "目标数据库不可写，恢复未执行。",
+        "busy": "数据库正在维护，这次恢复没有执行。请稍后重新点「恢复」。",
+        "before_restore_backup_failed": "恢复前的保护副本没有生成成功，原数据库没有改动。请稍后重新点「恢复」。",
+        "backup_integrity_failed": "所选备份没有通过完整性检查，原数据库没有改动。请换一个备份再试。",
+        "backup_missing": "所选备份文件已不在了，恢复没有执行。请刷新后重新选择。",
+        "backup_unreadable": "所选备份文件读不到，恢复没有执行。请换一个备份再试。",
+        "db_target_unreadable": "当前数据库不能写入，恢复没有执行。请不要再操作，联系维护人员。",
     }
     if code in messages:
         return "failed", code, messages[code]
-    return "recovery_required", code, "恢复没有得到可确认的终态，请停止使用数据库并核查维护记录。"
+    return "recovery_required", code, "恢复没有得到能确认的最终结果，现在不能确认数据库内容。请不要再操作，联系维护人员。"

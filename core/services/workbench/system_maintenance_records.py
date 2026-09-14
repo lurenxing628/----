@@ -42,13 +42,13 @@ def _restore_records(journal):
     except FileNotFoundError:
         names = []
     if sum(name.endswith(".json") for name in names) > _JOURNAL_LIMIT:
-        raise WorkbenchCommandRejected("maintenance_record_capacity", "外置维护记录超过读取上限，未截断或伪装为空记录。", 413)
+        raise WorkbenchCommandRejected("maintenance_record_capacity", "维护记录条数超过一次能读的上限，这次没有列出。请让维护人员清理维护目录后再看。", 413)
     rows = []
     for record in journal.records():
         if record["action"] != "restore":
             continue
         event = journal.public(record)
-        filename = event["filename"] or "目标文件未确认"
+        filename = event["filename"] or "文件名未读取"
         rows.append(_event("restore", "external_maintenance_journal", event["job_ref"], event["updated_at"],
                            event["state"], "恢复 · " + filename, event))
     return rows
@@ -102,7 +102,7 @@ def _latest_cleanup(conn, audited_actions):
         rows.append(_event("cleanup", "latest_job_state_only", job.job_key, job.last_run_time, state,
                            label + " · 仅最近状态", {"job_key": job.job_key, "detail": detail,
                            "basis": "latest_job_state_not_complete_history"}))
-        issues.append({"code": "cleanup_latest_state_only", "message": label + "未读到对应操作审计，所列仅最近状态，不是完整历史。"})
+        issues.append({"code": "cleanup_latest_state_only", "message": label + "没有读到对应的操作记录，这里只有最近一次的状态，不是完整历史。"})
     return rows, issues
 
 
@@ -111,7 +111,7 @@ def maintenance_records(conn, backup_dir, journal):
     files, issues = backup_records(backup_dir)
     rows = [{**row, "record_kind": "backup_file"} for row in files]
     if journal is None:
-        issues.append({"code": "restore_event_source_unconfigured", "message": "外置维护目录未配置，恢复事件不可读取；备份文件仅展示已读元信息。"})
+        issues.append({"code": "restore_event_source_unconfigured", "message": "还没有配置维护目录，读不到恢复操作记录；下面只显示备份文件的基本信息。"})
     else:
         rows.extend(_restore_records(journal))
     audits, present, truncated = _cleanup_audits(conn)
@@ -120,9 +120,9 @@ def maintenance_records(conn, backup_dir, journal):
     rows.extend(latest)
     sources = issues + latest_issues
     sources.append({"code": "maintenance_sources", "message":
-                    f"备份文件元信息、已校验外置恢复记录、最近 {_AUDIT_LIMIT} 条清理审计分别列示；事件不代表文件当前存在。"})
+                    f"这里分三部分列出：备份文件的基本信息、已核对的恢复操作记录、最近 {_AUDIT_LIMIT} 条清理记录；记录里的文件现在不一定还在。"})
     if truncated:
-        sources.append({"code": "cleanup_audit_window_truncated", "message": "清理审计超过最近读取窗口，不代表完整历史。"})
+        sources.append({"code": "cleanup_audit_window_truncated", "message": "清理记录超过本次能读的条数，这里不是完整历史。"})
     return rows, sources
 
 

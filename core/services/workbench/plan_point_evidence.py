@@ -22,7 +22,7 @@ def official_point_work(conn, version):
         history = conn.execute("SELECT result_summary FROM ScheduleHistory WHERE version=?", (version,)).fetchone()
         recorded = _audit(conn, plan_ref, version, dict(history) if history else None)
         if recorded is None:
-            raise PointEventError("point_evidence_missing", "No recorded workbench adoption proves this point.")
+            raise PointEventError("point_evidence_missing", "这一版正式计划没有可核对的采用记录，证明不了这道零工时工序。")
         basis, audit, _ = recorded
         load = candidate_source if basis == "candidate_adoption" else trial_source
         _, tables, arranged = load(conn, audit)
@@ -38,7 +38,7 @@ def official_point_work(conn, version):
                  **{key: row["original"][key] for key in ("operation", "batch", "execution")}}
                 for row in rows if row["current"]["start"] == row["current"]["end"]}
     except (AdoptionBaselineUnavailable, PointEventError, KeyError, TypeError, ValueError) as exc:
-        raise WorkbenchCommandRejected("point_evidence_unproven", "零时长安排缺少可核验的原始采用证据，未按合法点读取。") from exc
+        raise WorkbenchCommandRejected("point_evidence_unproven", "零工时工序缺少可核对的原始采用记录，这里不当成正常零工时工序读。请刷新后重试。") from exc
 
 
 def annotate_plan_points(conn, rows, *, source_table="schedule"):
@@ -53,7 +53,7 @@ def annotate_plan_points(conn, rows, *, source_table="schedule"):
         start, end = row["start_time"], row["end_time"]
         if parse_dt_for_sql(start) is not None and parse_dt_for_sql(start) == parse_dt_for_sql(end):
             if source_table != "schedule":
-                raise WorkbenchCommandRejected("point_evidence_unproven", "旧候选或模拟行没有合法点证据。")
+                raise WorkbenchCommandRejected("point_evidence_unproven", "旧候选方案或试调行没有零工时工序的采用记录，读不出来。请刷新后重试。")
             version = row["version"]
             if version not in versions:
                 versions[version] = official_point_work(conn, version)
@@ -61,7 +61,7 @@ def annotate_plan_points(conn, rows, *, source_table="schedule"):
             check = SimpleNamespace(op_id=row["op_id"], source="internal", machine_id=row["machine_id"],
                 operator_id=row["operator_id"], start_time=datetime.fromisoformat(start), end_time=datetime.fromisoformat(end))
             if work is None or not work["witness"].matches(check):
-                raise WorkbenchCommandRejected("point_evidence_unproven", "零时长安排与原采用证据不一致。")
+                raise WorkbenchCommandRejected("point_evidence_unproven", "零工时工序和原采用记录对不上。请刷新后重试。")
             # Keep only a plain immutable-work projection in read fingerprints.
             row["_point_work"] = {key: value for key, value in work.items() if key != "witness"}
         result.append(row)

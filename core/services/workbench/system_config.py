@@ -5,6 +5,7 @@ from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchComm
 from core.models.workbench_system import CONFIG_FIELDS, config_input
 from core.services.system.system_config_service import SystemConfigService
 from core.services.workbench.commands import WorkbenchCommandService
+from core.services.workbench.messages import STALE
 
 
 class SystemConfigWorkspace:
@@ -41,5 +42,5 @@ class SystemConfigWorkspace:
     def check(self, fingerprint):
         current, revision = self.snapshot()
         if revision != fingerprint:
-            raise WorkbenchCommandRejected("stale_write", "维护配置已被修改，请重新读取并核对草稿。")
+            raise WorkbenchCommandRejected("stale_write", STALE)
         return current

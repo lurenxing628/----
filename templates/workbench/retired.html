@@ -1,7 +1,7 @@
 {% extends "workbench/legacy_base.html" %}
 {% block content %}
 <p class="notice" role="status">{{ decision.message }}</p>
-<p>已退役的是旧页面或控件；原业务数据、保存的配置和历史记录仍保留。</p>
+<p>已退役的是旧页面或控件；原业务数据、保存的配置和历史记录仍保留。请点上方「工作台」进入现在的入口。</p>
 {% if decision.public_context %}
 <dl>{% for label, value in decision.public_context.items() %}<dt>{{ label }}</dt><dd>{{ value }}</dd>{% endfor %}</dl>
 {% endif %}

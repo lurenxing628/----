@@ -24,9 +24,9 @@ class TrialProtection:
         op_id = original["operation"]["id"]
         identity = self.identities.get(row["operation_ref"])
         if identity is None or identity["active"] != 1 or identity["source_key"] != str(op_id):
-            return issue("operation_identity_changed", "原工序实例已移除或替换，草稿引用不会改指同号新工序。", ref)
+            return issue("operation_identity_changed", "这道工序已删除或被替换，草稿不会自动改指同号的新工序。", ref)
         if not original["lock_known"]:
-            return issue("lock_state_unknown", "原固定状态不明确，不能按未固定处理。", ref)
+            return issue("lock_state_unknown", "这道工序是不是已固定读不到，这里不当成未固定处理。", ref)
         latest = self.latest.get(op_id)
         if original["locked"] or (latest is not None and latest["lock_status"] != "unlocked"):
             return issue("task_locked", "固定工序不可调整。", ref)
@@ -36,11 +36,11 @@ class TrialProtection:
         original, ref = row["original"], row["task_ref"]
         execution = self.execution.get(row["operation_ref"])
         if execution is None or execution["data_quality"] == "invalid":
-            return issue("execution_unproven", "唯一执行投影缺失或存在坏数据，不能证明工序可调整。", ref)
+            return issue("execution_unproven", "这道工序的报工记录缺失或有坏数据，不能确认可以调整。", ref)
         for facts in (execution, original["execution"]):
             if facts and (facts["execution_state"] != "unreported" or facts["reports"] or facts["legacy_facts"]
                           or facts["first_actual_start"] or facts["confirmed_finish"]):
-                return issue("execution_protected", "工序已有开工、报工或完工事实，不能通过试调改写安排。", ref)
+                return issue("execution_protected", "这道工序已经开工、报工或完工，不能用试调改安排。", ref)
         return None
 
     def _closed(self, row):

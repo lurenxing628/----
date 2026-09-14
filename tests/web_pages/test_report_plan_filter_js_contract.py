@@ -54,7 +54,7 @@ page = api.navigate(boot, page, 'reports', {});
 assert.deepStrictEqual(api.read(boot).context, {});
 const wrong = {version: 1, view: 'reports', context: changedVersion};
 global.location = new URL('http://localhost/workbench?view=reports&nav=' + encodeURIComponent(JSON.stringify(wrong)));
-assert.throws(() => api.read(boot), /未自动切换对象或扩大范围/);
+assert.throws(() => api.read(boot), /没有自动切换记录或扩大范围/);
 assert(!JSON.stringify(first).includes('scenario_id'));
 assert(!JSON.stringify(first).includes('plan_context_token'));
 console.log(JSON.stringify({restored: first, changed: changedRole, rejectedMismatch: true}));

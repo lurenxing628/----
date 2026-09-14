@@ -146,7 +146,7 @@ def _retired_list_and_current_boot(client, original_path, view):
     try:
         assert response.status_code == 410
         html = response.get_data(as_text=True)
-        assert "新入口不能等价表达这组旧条件" in html
+        assert "新页面装不下这组旧条件" in html
         assert "原业务数据、保存的配置和历史记录仍保留" in html
     finally:
         response.close()
@@ -212,7 +212,7 @@ def test_excel_import_component_renders_strict_mode_toggle_fields() -> None:
         assert 'name="preview_baseline" value="fixed-original-preview"' in html
         assert 'name="raw_rows_json" hidden' in html
     current = _read("frontend/workbench/app/BatchFiles.jsx")
-    assert "新建批次不自动生成工序" in current
+    assert "新增批次不自动生成工序" in current
     assert "adapter.importPreview(file, mode, scope, snapshot)" in current
     assert "strict_mode" not in current
 

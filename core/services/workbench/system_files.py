@@ -17,24 +17,24 @@ class SystemFileWorkspace:
         self.journal = SystemMaintenanceJournal(journal_dir, database_path)
         root, backups = os.path.realpath(journal_dir), os.path.realpath(backup_dir)
         if os.path.commonpath((root, backups)) == backups or root == os.path.dirname(os.path.realpath(database_path)):
-            raise WorkbenchCommandRejected("maintenance_unavailable", "维护结果须配置专属目录，不能放在备份目录或数据库文件所在目录。", 503)
+            raise WorkbenchCommandRejected("maintenance_unavailable", "维护记录必须放在单独的维护目录里，不能放在备份目录或数据库所在的文件夹。", 503)
 
     def selected_path(self, selected):
         name = selected["filename"]
         if (os.path.basename(name) != name or "\\" in name or not name.startswith("aps_backup_") or not name.endswith(".db")):
-            raise WorkbenchCommandRejected("invalid_input", "备份引用无效。", 400)
+            raise WorkbenchCommandRejected("invalid_input", "这个备份文件名不对，没有执行任何操作。请回到备份列表重新选择。", 400)
         path = os.path.join(self.backup_dir, name)
         try:
             signature = backup_signature(path)
         except OSError as exc:
-            raise WorkbenchCommandRejected("entity_not_found", "所选备份已不存在或无法读取，请刷新。", 404) from exc
+            raise WorkbenchCommandRejected("entity_not_found", "所选备份已不存在或读不到，请刷新后重新选择。", 404) from exc
         if signature != selected["signature"]:
-            raise WorkbenchCommandRejected("stale_write", "备份文件已变化，请重新选择并确认。")
+            raise WorkbenchCommandRejected("stale_write", "这个备份文件已经变了，没有执行任何操作。请刷新后重新选择并确认。")
         return path
 
     def execute(self, *, request_key, action, intent, guard, audit, restore_runner=None):
         if action not in ("create", "delete", "restore"):
-            raise WorkbenchCommandRejected("invalid_input", "不支持此维护动作。", 400)
+            raise WorkbenchCommandRejected("invalid_input", "不支持这个维护动作，没有执行任何操作。", 400)
         with maintenance_window(self.database_path, logger=self.logger, action="workbench_" + action):
             old = self.journal.lookup(request_key)
             if old:
@@ -61,7 +61,7 @@ class SystemFileWorkspace:
             row, _ = self.journal.begin(request_key, "restore", intent)
             self.journal.record(row, "checking", target=target, restart_required=True,
                                 database_origin="unconfirmed", code="host_draining",
-                                message="恢复请求已持久受理，正在停止请求与排产线程；请保留原请求标识。")
+                                message="恢复已接收，正在停止当前操作和排产；请不要关闭页面，稍后在本页查看结果。")
             return row, False, path
 
     def finish_restore(self, row, path, *, restore_runner, audit, confirm_host):
@@ -79,7 +79,7 @@ class SystemFileWorkspace:
         except Exception:
             self.logger.exception("系统文件维护结果待核查 job_ref=%s", row["job_ref"])
             self.journal.record(row, "recovery_required", code="storage_failure",
-                                message="维护中发生存储故障，结果待核查；请保留现场，不要重复执行。")
+                                message="维护过程中磁盘出错，这次结果还不能确认。请不要再操作，联系维护人员。")
             return self.journal.public(row)
         persisted = False
         if state == "succeeded":
@@ -111,4 +111,4 @@ class SystemFileWorkspace:
         manager = BackupManager(self.database_path, self.backup_dir, logger=self.logger)
         path = manager.backup(suffix="manual_" + uuid.uuid4().hex[:12])
         self.journal.record(row, "checking", target={"filename": os.path.basename(path), "sha256": file_fingerprint(path)})
-        return "succeeded", "backup_verified", "备份已创建并通过本次完整性检查；尚未进行恢复演练。"
+        return "succeeded", "backup_verified", "备份已新增并通过完整性检查；还没有做过恢复演练。"

@@ -35,13 +35,13 @@ def read_endpoint(function):
         except (AppError, HTTPException, WorkbenchCommandRejected):
             raise
         except Exception as exc:
-            raise WorkbenchCommandRejected("storage_failure", "物料预检或下载失败，未写入数据；请查看运行日志。", 500) from exc
+            raise WorkbenchCommandRejected("storage_failure", "物料预检或下载没有完成，数据没有改动。请刷新重试；仍不行请联系维护人员，并告知下方编号。", 500) from exc
     return api_endpoint(wrapped)
 
 
 def json_body(required, optional=()):
     if request.args or not request.is_json:
-        raise WorkbenchCommandRejected("invalid_input", "请求必须使用JSON内容，不能带查询参数。", 400)
+        raise WorkbenchCommandRejected("invalid_input", "提交的内容格式不正确，物料没有改动。请刷新页面后重新填写。", 400)
     # Reject duplicate keys rather than silently taking the last scope or ref.
     def pairs(items):
         result = {}
@@ -53,15 +53,15 @@ def json_body(required, optional=()):
     try:
         body = json.loads(request.get_data(), object_pairs_hook=pairs)
     except (ValueError, UnicodeError) as exc:
-        raise WorkbenchCommandRejected("invalid_input", "JSON内容无效或包含重复字段。", 400) from exc
+        raise WorkbenchCommandRejected("invalid_input", "提交的内容格式不正确或有重复项，物料没有改动。请刷新页面后重新填写。", 400) from exc
     if type(body) is not dict or not set(required) <= set(body) or set(body) - set(required) - set(optional):
-        raise WorkbenchCommandRejected("invalid_input", "请求缺少必要字段或包含未知字段。", 400)
+        raise WorkbenchCommandRejected("invalid_input", "提交的内容不完整或有多余项，物料没有改动。请刷新页面后重新填写。", 400)
     return body
 
 
 def opaque_ref(value, field):
     if type(value) is not str or re.fullmatch(r"[A-Za-z0-9_-]{32}", value) is None:
-        raise WorkbenchCommandRejected("invalid_input", "操作引用无效，请重新打开当前操作。", 400)
+        raise WorkbenchCommandRejected("invalid_input", "这次操作的编号已失效，物料没有改动。请关掉弹窗后重新打开。", 400)
     return value
 
 
@@ -79,12 +79,12 @@ def issue_binding(namespace, binding):
 
 def resolve_binding(namespace, token, *, field, code):
     try:
-        raw = resolve_public_token(namespace, token, message="操作预览已失效，请重新预检。", field=field)
+        raw = resolve_public_token(namespace, token, message="预检结果已过期，物料没有改动。请重新点「开始预检」。", field=field)
     except ValidationError as exc:
-        raise WorkbenchCommandRejected(code, "操作预览已失效，请重新预检；未自动更换范围。") from exc
+        raise WorkbenchCommandRejected(code, "预检结果已过期，物料没有改动，范围也没有自动更换。请重新点「开始预检」。") from exc
     binding = json.loads(raw)
     if binding["version"] != 1 or binding["source"] != "production":
-        raise WorkbenchCommandRejected(code, "操作预览来源不正确，请重新预检。")
+        raise WorkbenchCommandRejected(code, "预检结果和这次操作对不上，物料没有改动。请重新点「开始预检」。")
     return binding
 
 
@@ -99,7 +99,7 @@ def issue_preview(preview, content=None):
     rejected = document["summary"]["rejected"] != 0
     if rejected:
         context["capabilities"][action] = False
-        context["blocked_reasons"] = [{"action": action, "code": "constraint_conflict", "message": "预览包含拒绝行，本批不能提交。"}]
+        context["blocked_reasons"] = [{"action": action, "code": "constraint_conflict", "message": "这一批里有不能提交的行，物料没有改动。请修好标红的行后重新点「开始预检」。"}]
     result = {"preview_ref": ref, "expires_at": expires_at, "operation": action, "commit_policy": "atomic",
               "summary": document["summary"], "rows": [public_row(row) for row in document["rows"]],
               "can_confirm": not rejected, "write_context": context}
@@ -113,7 +113,7 @@ def resolve_preview(ref, action, write_token):
     binding = resolve_binding(PREVIEW_SCOPE, ref, field="preview_ref", code="stale_write")
     preview, content = stored_preview(binding["preview_key"])
     if preview.as_dict()["operation"] != action:
-        raise WorkbenchCommandRejected("stale_write", "预览不适用于当前操作，请重新预检。")
+        raise WorkbenchCommandRejected("stale_write", "预检结果不适用于这次操作，物料没有改动。请重新点「开始预检」。")
     validate_write_context(write_token, ref, action, preview.intent())
     return preview, content
 

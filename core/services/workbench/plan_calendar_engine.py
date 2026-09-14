@@ -29,7 +29,7 @@ class _ShiftRows(OperatorShiftRepository):
     def pattern_day(self, profile_id, offset):
         row = self.patterns.get((profile_id, offset))
         if row is not None and (type(row["is_rest"]) is not int or row["is_rest"] not in (0, 1)):
-            raise ValidationError("Invalid shift rest flag", field="shift_profile")
+            raise ValidationError("人员班表里的休息标记不合法。请到工作日历核对人员班表。", field="shift_profile")
         return row
 
 
@@ -37,12 +37,12 @@ def _calendar_row(row, model):
     # Defaults apply to an absent date, not to a damaged explicit row.
     for field in ("shift_hours", "efficiency"):
         if row[field] is None or row[field] == "":
-            raise ValidationError("Explicit calendar numeric value is missing", field=field)
+            raise ValidationError("工作日历里有单独设过的日期缺了班时或效率。请到工作日历补填。", field=field)
     if not isinstance(row["day_type"], str) or row["day_type"].strip().lower() not in ("workday", "weekend", "holiday"):
-        raise ValidationError("Unknown calendar day type", field="day_type")
+        raise ValidationError("工作日历里有日期的类型不认识，只能是工作日、周末或节假日。请到工作日历核对。", field="day_type")
     if any(not isinstance(row[name], str) or row[name].strip().lower() not in ("yes", "no")
            for name in ("allow_normal", "allow_urgent")):
-        raise ValidationError("Unknown calendar priority policy", field="priority")
+        raise ValidationError("工作日历里有日期的普通件或急件许可填得不对。请到工作日历核对。", field="priority")
     return model.from_row(row)
 
 
@@ -56,14 +56,14 @@ def _calendar_index(rows, *, personal=False):
             try:
                 day = date.fromisoformat(raw).isoformat()
             except ValueError:
-                raise ValidationError("Invalid explicit calendar date", field="date") from None
+                raise ValidationError("工作日历里有日期格式不对。请按 2026-09-13 这样的写法到工作日历改正。", field="date") from None
             if day != raw:
-                raise ValidationError("Noncanonical explicit calendar date", field="date")
+                raise ValidationError("工作日历里有日期写法不规范。请按 2026-09-13 这样的写法到工作日历改正。", field="date")
         else:
-            raise ValidationError("Invalid explicit calendar date type", field="date")
+            raise ValidationError("工作日历里有记录不是合法日期。请到工作日历核对日期。", field="date")
         key = (row["operator_id"], day) if personal else day
         if key in index:
-            raise ValidationError("Duplicate normalized calendar date", field="date")
+            raise ValidationError("工作日历里同一天出现了两条记录。请到工作日历删掉重复的一条。", field="date")
         # Normalize lookup keys only; keep typed source rows for private snapshots.
         index[key] = row
     return index

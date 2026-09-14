@@ -84,7 +84,7 @@ def test_same_intent_replay_and_no_change_do_not_duplicate_history(external_hand
     first = case.command(item, follow(), key="external-handling-replay-01")
     replay = case.command(item, follow(), key="external-handling-replay-01")
     assert replay["replayed"] and replay["receipt_ref"] == first["receipt_ref"]
-    with pytest.raises(WorkbenchCommandRejected, match="同一请求"):
+    with pytest.raises(WorkbenchCommandRejected, match="操作编号对应的内容"):
         case.command(item, follow(owner="Other"), key="external-handling-replay-01")
     result = case.command(case.item("external"), follow())
     assert result["result"] == "unchanged" and result["data"]["history_ref"] is None

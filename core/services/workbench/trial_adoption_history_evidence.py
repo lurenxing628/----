@@ -13,7 +13,7 @@ from data.repositories.workbench_trial_repo import WorkbenchTrialRepository
 
 
 def invalid() -> NoReturn:
-    reject("adoption_history_invalid", "采用历史的永久场景、草稿或正式回执关联不一致，未替换原记录。")
+    reject("adoption_history_invalid", "采用记录里的试调方案、草稿和结果对不上，这里没有改动原记录。请刷新后重试。")
 
 
 def json_object(raw):
@@ -41,7 +41,7 @@ def scenario_evidence(conn, scenario_ref):
     sizes = conn.execute("SELECT length(CAST(payload_json AS BLOB)) FROM WorkbenchTrialScenarioRows WHERE scenario_ref=? LIMIT 10001", (scenario_ref,)).fetchall()
     repo.bound(sum(row[0] or 0 for row in sizes), MAX_SCENARIO_BYTES)
     if len(sizes) > 10000:
-        reject("query_too_large", "场景明细超过10000条上限，未截断。", 413)
+        reject("query_too_large", "试调方案的明细超过 10000 条上限，这次没有读取。请缩小范围。", 413)
     saved = WorkbenchTrialRepository(conn).scenario(scenario_ref)
     admission_row = conn.execute("SELECT admission_json FROM WorkbenchTrialDrafts WHERE draft_ref=?", (draft["draft_ref"],)).fetchone()
     if admission_row is None:
@@ -125,7 +125,7 @@ def audit_fields(repo, row, plan, saved, header, draft):
     empty = {"reason": None, "declared_operator": None, "application_operator": None, "adopted_at": None}
     history = repo.history(plan["version"])
     if history is None:
-        return empty, [gap("audit_missing", "正式历史不存在或同版本记录不唯一，采用审计字段暂无可靠证据。")]
+        return empty, [gap("audit_missing", "找不到对应的正式计划历史，或同一版本有多条记录，采用信息暂时无法确认。")]
     try:
         audit = json_object(history["result_summary"])
         _audit_lineage(audit, row, plan, saved, header, draft)
@@ -143,4 +143,4 @@ def audit_fields(repo, row, plan, saved, header, draft):
             raise ValueError("Not factory local time")
         return fields, []
     except (ValueError, TypeError, KeyError):
-        return empty, [gap("audit_unproven", "正式历史审计与原回执或保存来源不符，人、原因和本地采用时间未采信。")]
+        return empty, [gap("audit_unproven", "正式计划历史与保存结果对不上，经办人、原因和采用时间暂时不采信。")]

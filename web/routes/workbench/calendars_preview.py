@@ -37,9 +37,9 @@ def retain_preview(preview: CalendarRangePreview) -> None:
                 del store[ref]
         if (len(store) >= _MAX_PREVIEWS
                 or sum(len(value.dates) for value in store.values()) + len(preview.dates) > _MAX_RETAINED_DAYS):
-            raise WorkbenchCommandRejected("preview_capacity", "待确认日历预览过多，请先完成已有预览或等待其过期。", 503)
+            raise WorkbenchCommandRejected("preview_capacity", "待确认的日历变更太多，这次没有算出变更内容。请先完成或关掉已有的变更，再点「预览变更」。", 503)
         if preview.preview_ref in store:
-            raise RuntimeError("日历预览引用重复，不能替换已有预览。")
+            raise RuntimeError("同一个预览变更编号重复登记，不能替换已有内容。")
         store[preview.preview_ref] = preview
 
 
@@ -48,7 +48,7 @@ def resolve_preview(ref: str) -> CalendarRangePreview:
     with _LOCK:
         preview = _store().get(ref)
         if preview is None:
-            raise WorkbenchCommandRejected("snapshot_stale", "日历预览已失效，请重新预览。")
+            raise WorkbenchCommandRejected("snapshot_stale", "预览变更已过期，日历没有修改。请重新点「预览变更」。")
         return preview
 
 

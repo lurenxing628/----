@@ -24,13 +24,13 @@ _WORKSPACE_ARGS = ("range_start", "range_end", "batch_ref", "sort", "order", "sn
 
 def _arguments(allowed):
     if set(request.args) - set(allowed) or any(len(request.args.getlist(key)) != 1 for key in request.args):
-        reject("invalid_input", "候选查询含未知或重复参数，未忽略筛选条件。", 400)
+        reject("invalid_input", "候选方案的筛选条件有重复或不支持的项，当前筛选没有变化。请刷新页面后重新选择。", 400)
 
 
 def _integer(name, default: str):
     value = request.args.get(name, default)
     if re.fullmatch(r"[1-9][0-9]{0,5}", value) is None:
-        reject("invalid_input", "候选目录页码和每页数量必须为正整数。", 400)
+        reject("invalid_input", "页码或每页数量填写不对，列表没有变化。请回到第 1 页重新查询。", 400)
     return int(value)
 
 
@@ -42,7 +42,7 @@ def _scope(candidate_ref):
 def _response(data, snapshot):
     response = query_success(data, snapshot)
     if len(response.get_data()) > MAX_RESPONSE_BYTES:
-        reject("candidate_capacity_exceeded", "候选读取响应超出容量，未截断结果。", 413)
+        reject("candidate_capacity_exceeded", "这次要读的候选方案数据太多，系统没有给出不完整结果。请缩小筛选范围后点「刷新」。", 413)
     response.headers["Cache-Control"] = "no-store"
     return response
 
@@ -71,7 +71,7 @@ def run_candidate_export(candidate_ref):
     _arguments(_WORKSPACE_ARGS + ("format",))
     fmt, token = request.args.get("format"), request.args.get("snapshot_ref")
     if fmt not in ("csv", "xlsx") or not token:
-        reject("invalid_input", "导出必须提供 CSV/XLSX 格式及当前候选工作区读取快照。", 400)
+        reject("invalid_input", "没有选好导出格式，或数据已更新，没有开始下载。请点「刷新」后重新点「导出」。", 400)
     scope = _scope(candidate_ref)
     data, state = WorkbenchRunCandidateQueryService(g.db).workspace(scope)
     snapshot = bind_read_snapshot(scope.scope(), state, token)

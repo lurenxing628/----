@@ -819,7 +819,7 @@ def test_live_render_syncs_outline_with_real_vendor_and_no_runtime_sweeps(app_cl
         response = app_client.get("/scheduler/gantt", query_string=dict(version=str(VERSION), **controls))
         assert response.status_code == 410 and "Location" not in response.headers
         html = response.get_data(as_text=True)
-        assert "旧入口已退役" in html and "未忽略条件后跳转" in html
+        assert "旧入口已退役" in html and "没有跳转，也没有丢掉任何条件" in html
         assert "aps-cc-outline" not in html and "/static/js/" not in html and "/static/css/" not in html
         response.close()
     for helper in (_vendor_js, _gantt_js, _gantt_zoom_js, _gantt_adapter_js, _gantt_color_js,
@@ -1028,8 +1028,8 @@ def test_gantt_templates_use_contract_rendered_help_list() -> None:
     run_current_js(r"""
 const data=h.fixture(),result=h.gantt(data);
 assert(h.text(result.tree).includes(data.projections.baseline.reason));
-const baseline=result.nodes.find(n=>n.props['aria-label']==='显示初始基线'),changes=result.nodes.find(n=>n.props['aria-label']==='仅变更');assert(baseline.props.disabled&&changes.props.disabled);
-assert(h.text(result.tree).includes('工厂本地时间'));assert(h.text(result.tree).includes('预计超期'));assert(h.text(result.tree).includes('资源重叠'));
+const baseline=result.nodes.find(n=>n.props['aria-label']==='显示初始计划'),changes=result.nodes.find(n=>n.props['aria-label']==='仅变更');assert(baseline.props.disabled&&changes.props.disabled);
+assert(!h.text(result.tree).includes('工厂本地时间'));assert(h.text(result.tree).includes('预计超期'));assert(h.text(result.tree).includes('资源重叠'));
 assert(!result.nodes.some(n=>n.props.id==='ganttHelpList'));assert(!h.text(result.tree).includes('当前版本关键链'));
 """)
 
@@ -1057,7 +1057,7 @@ def test_gantt_contract_disables_calendar_fallback_when_calendar_load_failed(app
 const data=h.runtime.APSPlanContract.workspace(sourceData,sourceData.data.plan.plan_ref).data;
 for(const tab of ['calendar','load']) {
  const tree=h.render(h.runtime.PlanDetailsUI.ProjectionTables,{data},{ProjectionTables:{0:tab}}),text=h.text(tree);
- assert(text.includes('无法核实'));assert(!text.includes('0%'));assert(!text.includes('周末默认'));assert(!text.includes('BROKEN_CALENDAR_CANARY'));
+ assert(text.includes('暂无数据'));assert(!text.includes('0%'));assert(!text.includes('周末默认'));assert(!text.includes('BROKEN_CALENDAR_CANARY'));
  assert(!h.walk(tree).some(node=>node.props.className==='plan-meter'));
 }
 """, payload)
@@ -1150,8 +1150,8 @@ def test_formal_preview_and_export_html_share_degradation_and_overdue_warnings(t
     context, payload, before = invalid_calendar_fixture(app_client)
     run_current_js(r"""
 const data=sourceData.data,task=data.tasks[0],detail=h.render(h.runtime.PlanDetailsUI.TaskDetail,{data,selected:{task}}),text=h.text(detail);
-assert(text.includes('无法核实'));assert(!text.includes('0%'));assert(!text.includes('周末默认'));assert(!text.includes('BROKEN_CALENDAR_CANARY'));
-const calendar=h.render(h.runtime.PlanDetailsUI.ProjectionTables,{data},{ProjectionTables:{0:'calendar'}});assert(h.text(calendar).includes('无法核实'));
+assert(text.includes('暂无数据'));assert(!text.includes('0%'));assert(!text.includes('周末默认'));assert(!text.includes('BROKEN_CALENDAR_CANARY'));
+const calendar=h.render(h.runtime.PlanDetailsUI.ProjectionTables,{data},{ProjectionTables:{0:'calendar'}});assert(h.text(calendar).includes('暂无数据'));
 """, payload)
     assert_plan_exports(app_client, context, payload)
     assert not list(tmp_path.glob("preview_degraded*.html"))

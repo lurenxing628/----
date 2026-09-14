@@ -14,7 +14,7 @@ from .run_candidates import _response
 
 def _arguments(allowed):
     if set(request.args) - set(allowed) or any(len(request.args.getlist(key)) != 1 for key in request.args):
-        raise WorkbenchCommandRejected("invalid_input", "分析查询含未知或重复参数，未忽略原范围。", 400)
+        raise WorkbenchCommandRejected("invalid_input", "分析的查询条件有重复或不支持的项，当前范围没有变化。请点「刷新分析」后重试。", 400)
 
 
 @api_endpoint

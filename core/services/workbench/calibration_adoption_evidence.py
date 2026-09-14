@@ -23,7 +23,7 @@ def read_evidence(conn, repo, template_ref, intent, clock: Callable[[], datetime
         facts = facts_reader.read(CalibrationQuery(part_ref=template["part_ref"]))
         row = next((row for row in facts["rows"] if row["template_operation_ref"] == template_ref), None)
         if row is None:
-            raise WorkbenchCommandRejected("entity_not_found", "当前模板建议已不可用，不能改指同号模板。", 404)
+            raise WorkbenchCommandRejected("entity_not_found", "这条模板的建议已经不能用了，系统不会换成编号相同的另一条模板。请刷新后重新选择。", 404)
         locks = repo.read_locks([template_ref])
         suggestion = {key: value for key, value in row.items() if key not in
                       ("generated_at", "capabilities", "blocked_reasons", "write_context")}
@@ -36,21 +36,21 @@ def read_evidence(conn, repo, template_ref, intent, clock: Callable[[], datetime
         evidence = CalibrationAdoptionEvidence(template, suggestion, samples, binding, as_of.isoformat(timespec="seconds"), blockers)
         encoded = canonical_json({"snapshot": binding, "suggestion": suggestion, "samples": samples})
         if len(encoded.encode("utf-8")) > MAX_EVIDENCE_BYTES:
-            raise WorkbenchCommandRejected("query_too_large", "完整采纳证据超过8MB，未截断样本，请缩小范围后重试。", 413)
+            raise WorkbenchCommandRejected("query_too_large", "采用依据超过 8 MB，系统没有截断完工记录，请缩小范围后重试。", 413)
         return evidence
 
 
 def _blockers(template, suggestion, samples, lineage_available, locks):
     blockers = []
     if locks:
-        blockers.append(issue("calibration_quota_locked", "此模板定额已采纳并锁定，不能重复采纳或覆盖。"))
+        blockers.append(issue("calibration_quota_locked", "这个模板的定额已经采用并锁定，不能重复采用或覆盖。"))
     if not lineage_available:
-        blockers.append(issue("template_lineage_missing", "缺少已核实的模板复制来源，不能采纳。"))
+        blockers.append(issue("template_lineage_missing", "找不到已确认的模板来源，不能采用。"))
     if template["source"] != "internal":
-        blockers.append(issue("processing_basis_unconfirmed", "只有已确认自制加工口径的模板才能采纳。"))
+        blockers.append(issue("processing_basis_unconfirmed", "只有已确认按自制加工计算的模板才能采用。"))
     value = number(suggestion["suggested_unit_hours"])
     if value is None or not MIN_SAMPLES <= suggestion["sample_count"] <= MAX_SAMPLES:
-        blockers.append(issue("insufficient_samples", "当前模板修订的合格整道完工样本不足5个，不能采纳。"))
+        blockers.append(issue("insufficient_samples", "这个模板版本下合格的整道完工记录不足 5 条，不能采用。"))
     if len(samples) != suggestion["sample_count"] or any(not row["eligible"] for row in samples):
-        raise WorkbenchCommandRejected("calibration_source_unavailable", "所选样本与统计证据不一致，未执行采纳。", 500)
+        raise WorkbenchCommandRejected("calibration_source_unavailable", "所选完工记录和统计依据对不上，没有执行采用。请刷新后重试。", 500)
     return blockers

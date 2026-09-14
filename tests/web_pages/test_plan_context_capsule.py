@@ -228,7 +228,7 @@ def test_week_plan_capsule_fed(app_client, db_env):
     _seed_history(db_env)
     _reference, capsule, body = _retired_plan(app_client, "/scheduler/week-plan?version=7")
     assert capsule["generated_at_label"] == "2026年6月1日 08:00"
-    assert "未改用新报表默认范围" in body
+    assert "没有改用新报表的默认范围" in body
 
 
 def test_reports_capsule_fed(app_client, db_env):
@@ -298,7 +298,7 @@ def test_resource_dispatch_capsule_fed(app_client, db_env):
     _seed_history(db_env)
     _reference, capsule, body = _retired_plan(app_client, "/scheduler/resource-dispatch?version=7")
     assert capsule["generated_at_label"] == "2026年6月1日 08:00"
-    assert "未改用新报表默认范围" in body
+    assert "没有改用新报表的默认范围" in body
 
 
 def test_basic_data_page_renders_no_capsule(app_client, db_env):
@@ -317,7 +317,7 @@ def test_url_fallback_renders_base_fields_without_query(app_client, db_env):
 
     with patch.object(LegacyNavigationQueries, "bind_plan", side_effect=AssertionError("Retired control must not query a plan")):
         body = retired_response(app_client.get("/system/history?version=7"))
-    assert "未忽略条件后跳转" in body
+    assert "没有跳转，也没有丢掉任何条件" in body
     assert "2026年6月1日 08:00" not in body
     assert 'class="aps-plan-capsule"' not in body
     assert _business_state(app_client) == before

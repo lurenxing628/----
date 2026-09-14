@@ -65,9 +65,9 @@ def _trend(operations, as_of):
 def charts(operations, as_of):
     completed = [row for row in operations if row["finish_deviation_minutes"] is not None]
     finish = [{"label": label, "count": sum(test(row["finish_deviation_minutes"]) for row in completed)} for label, test in (
-        ("提前超过10分钟", lambda value: value < -10), ("按时（偏差不超过10分钟）", lambda value: -10 <= value <= 10),
-        ("晚完超过10分钟", lambda value: value > 10))]
+        ("提前超过 10 分钟", lambda value: value < -10), ("按时（偏差不超过 10 分钟）", lambda value: -10 <= value <= 10),
+        ("晚完成超过 10 分钟", lambda value: value > 10))]
     aging = [{"label": label, "count": sum(test(row["elapsed_since_planned_minutes"]) for row in operations if row["unclosed"])} for label, test in (
-        ("到期10分钟内", lambda value: value <= 10), ("超过10分钟至1小时", lambda value: 10 < value <= 60),
-        ("超过1小时至1天", lambda value: 60 < value <= 1440), ("超过1天", lambda value: value > 1440))]
+        ("到期 10 分钟内", lambda value: value <= 10), ("超过 10 分钟到 1 小时", lambda value: 10 < value <= 60),
+        ("超过 1 小时到 1 天", lambda value: 60 < value <= 1440), ("超过 1 天", lambda value: value > 1440))]
     return {"finish": finish, "aging": aging, "trend": _trend(operations, as_of)}

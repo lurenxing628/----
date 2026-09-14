@@ -20,16 +20,16 @@ def _upload(kind):
     if (request.args or request.mimetype != "multipart/form-data" or set(request.files) != {"file"}
             or len(request.files.getlist("file")) != 1 or not required <= set(request.form)
             or set(request.form) - required - optional or any(len(request.form.getlist(key)) != 1 for key in request.form)):
-        raise WorkbenchCommandRejected("invalid_input", "请选择一个文件及明确的格式和导入方式。", 400)
+        raise WorkbenchCommandRejected("invalid_input", "请先选好文件、格式和导入方式，工艺资料没有改动。选好后点「开始预检」。", 400)
     fmt, mode = request.form["format"], request.form["mode"]
     check_format(fmt)
     if mode != "upsert":
-        raise WorkbenchCommandRejected("invalid_input", "工艺文件仅支持按图号增量导入。", 400)
+        raise WorkbenchCommandRejected("invalid_input", "工艺文件只支持按图号增量导入，工艺资料没有改动。请换用正确的导入方式后点「开始预检」。", 400)
     configured = current_app.config.get("EXCEL_MAX_UPLOAD_BYTES")
     limit = min(IMPORT_BYTE_LIMIT, configured) if type(configured) is int and configured > 0 else IMPORT_BYTE_LIMIT
     content = request.files["file"].read(limit + 1)
     if len(content) > limit:
-        raise WorkbenchCommandRejected("invalid_input", "文件超过本机允许的大小，未截断或导入前半部分。", 413)
+        raise WorkbenchCommandRejected("invalid_input", "文件超过本机允许的大小，一行都没有导入，也没有只导入前半部分。请缩小文件后重新点「开始预检」。", 413)
     return content, fmt, mode, request.form.get("target_ref")
 
 

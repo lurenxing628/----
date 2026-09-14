@@ -39,11 +39,11 @@ class WorkbenchCommandService:
         """
         validate_request_key(request_key)
         if not isinstance(action, str) or not action or not isinstance(context_ref, str) or not context_ref:
-            raise WorkbenchCommandRejected("invalid_input", "未提供要操作的对象或操作类型。", 400)
+            raise WorkbenchCommandRejected("invalid_input", "没有指定要操作哪条记录或做什么操作。", 400)
         try:
             fingerprint = input_fingerprint(normalized_input)
         except (TypeError, ValueError, OverflowError) as exc:
-            raise WorkbenchCommandRejected("invalid_input", "操作内容包含不能保存的数据。", 400) from exc
+            raise WorkbenchCommandRejected("invalid_input", "提交的内容里有存不下来的数据，操作没有完成。", 400) from exc
         if self.conn.in_transaction:
             raise RuntimeError("工作台命令必须拥有最外层事务，不能在调用方未提交的事务中声称已保存。")
         try:
@@ -63,7 +63,7 @@ class WorkbenchCommandService:
     @staticmethod
     def _check_replay(row, action: str, context_ref: str, fingerprint: str) -> None:
         if (row["action"], row["context_ref"], row["input_hash"]) != (action, context_ref, fingerprint):
-            raise WorkbenchCommandRejected("request_key_conflict", "同一请求标识对应的操作内容发生变化，请核对已有结果。")
+            raise WorkbenchCommandRejected("request_key_conflict", "这个操作编号对应的内容和上次提交的不一样，请先核对上次的结果。")
 
     def _apply(self, request_key, action, context_ref, fingerprint, guard, mutate):
         checked = guard()

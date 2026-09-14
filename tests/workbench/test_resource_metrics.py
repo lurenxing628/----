@@ -207,7 +207,7 @@ def test_missing_permanent_reference_fails_without_backfill(metrics_conn):
     metrics_conn.execute("DELETE FROM WorkbenchEntityRefs WHERE kind='op_type' AND entity_key='A'")
     metrics_conn.commit()
     before = stored_state(metrics_conn)
-    with pytest.raises(WorkbenchCommandRejected, match="永久引用缺失"):
+    with pytest.raises(WorkbenchCommandRejected, match="查不到编号"):
         page(metrics_conn)
     assert stored_state(metrics_conn) == before
 

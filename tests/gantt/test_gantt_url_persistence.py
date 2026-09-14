@@ -27,7 +27,7 @@ def _assert_retired(client, query):
     assert response.status_code == 410, response.get_data(as_text=True)
     assert "Location" not in response.headers and response.headers["Cache-Control"] == "no-store"
     html = response.get_data(as_text=True)
-    assert "旧入口已退役" in html and "未忽略条件后跳转" in html
+    assert "旧入口已退役" in html and "没有跳转，也没有丢掉任何条件" in html
     for old in ('id="ganttZoomLevel"', 'id="ganttZoomFormValue"', 'id="ganttZoomWarning"',
                 'data-gantt-mode="view"', 'data-zoom-level="', 'id="ganttColorMode"',
                 'id="ganttFilterBatch"', "/static/js/", "/static/css/"):

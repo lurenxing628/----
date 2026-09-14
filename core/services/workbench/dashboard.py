@@ -33,10 +33,10 @@ def navigation(item, *, current=True):
         return [{"view": "fieldgantt", "context": context, "enabled": current,
                  "query_target": "/api/workbench/v1/execution/tasks/" + source["task_ref"],
                  "command_target": "/api/workbench/v1/execution/tasks/" + source["task_ref"] + "/reports",
-                 "command_context": "read_execution_write_context", "reason": None if current else "原安排已非当前正式，请先核对原记录。"}]
+                 "command_context": "read_execution_write_context", "reason": None if current else "这条安排已经不是当前正式计划里的了，请先核对原记录。"}]
     view = "batches" if kind == "material" else "gantt"
     return [{"view": view, "context": context, "enabled": current,
-             "reason": None if current else "原来源当前未评估；保留原引用，不改指同号对象。"}]
+             "reason": None if current else "这条来源这次没有参与评估；系统保留原记录，不会换成编号相同的另一条。"}]
 
 
 def _handling_view(item, stored, now):
@@ -111,7 +111,7 @@ class WorkbenchDashboardService:
                 identity = mappings[item["anchor_ref"]]
                 ref = identity["item_ref"]
                 if ref in found:
-                    raise WorkbenchCommandRejected("identity_missing", "同一风险来源出现重复条目，未合并或丢弃。")
+                    raise WorkbenchCommandRejected("identity_missing", "同一个风险来源出现了重复条目，系统不会合并也不会丢掉。请刷新后重试。")
                 item = dict(item, item_ref=ref, navigation=navigation(item), source_state="current")
                 found[ref] = self._decorate(item, stored.get(ref), source_state, identity, now)
         for ref, saved in stored.items():
@@ -173,4 +173,4 @@ class WorkbenchDashboardService:
         for item in selected:
             if item["item_ref"] == item_ref:
                 return item
-        raise WorkbenchCommandRejected("entity_not_found", "条目不在原读取范围内，未改读其他来源。", 404)
+        raise WorkbenchCommandRejected("entity_not_found", "这一条不在当前查询范围里，系统不会改去读别的来源。请刷新后重试。", 404)

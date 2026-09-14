@@ -16,15 +16,15 @@ class WorkbenchResourceStateService:
 
     def current(self, identity, kind):
         if not isinstance(identity, WorkbenchEntityIdentity) or identity.kind != kind or not identity.active:
-            raise WorkbenchCommandRejected("entity_not_found", "资源引用已失效或不属于当前类型。", 404)
+            raise WorkbenchCommandRejected("entity_not_found", "这条资源记录已失效，或者不属于当前这一类资料，操作没有执行。请从列表重新选择。", 404)
         current = self.identities.get(identity.ref)
         if current is None or not current.active or current.kind != kind:
-            raise WorkbenchCommandRejected("entity_not_found", "原资源已经删除，旧引用不会指向同编号的新记录。", 404)
+            raise WorkbenchCommandRejected("entity_not_found", "这条资源已经删除了，操作没有执行；就算有同编号的新记录，也不会自动指过去。请从列表重新选择。", 404)
         if current != identity:
-            raise WorkbenchCommandRejected("stale_write", "资源或相关资料已变化，请重新读取后核对。")
+            raise WorkbenchCommandRejected("stale_write", "资源或相关资料已经变了，操作没有执行。请刷新后重新核对。")
         raw = self.repo.get_raw(kind, current.entity_key)
         if raw is None:
-            raise WorkbenchCommandRejected("storage_failure", "资源永久引用与实际记录不一致，请检查数据库。", 500)
+            raise WorkbenchCommandRejected("storage_failure", "这条资源的编号和实际记录对不上，操作没有执行。请联系维护人员核对数据。", 500)
         return current, raw
 
     def by_ref(self, kind, ref):
@@ -36,7 +36,7 @@ class WorkbenchResourceStateService:
             return None
         identity = self.identities.find_active(kind, code)
         if identity is None:
-            raise WorkbenchCommandRejected("storage_failure", "资源关联的永久引用缺失，未自动修补资料。", 500)
+            raise WorkbenchCommandRejected("storage_failure", "这条资源的关联记录在资料里查不到编号，操作没有执行，资料也没有被改动。请到资料总览核对后重试。", 500)
         current, raw = self.current(identity, kind)
         return {"identity": asdict(current), "record": raw}
 
@@ -78,9 +78,9 @@ class WorkbenchResourceStateService:
             return None
         identity, raw = self.by_ref(kind, ref)
         if raw.get("status", "active") != "active":
-            raise WorkbenchCommandRejected("constraint_conflict", "所选关联资源已停用，请重新选择。")
+            raise WorkbenchCommandRejected("constraint_conflict", "选中的关联资源已经停用，没有保存。请重新选择一个在用的。")
         if category is not None and raw.get("category") != category:
-            raise WorkbenchCommandRejected("constraint_conflict", "所选工种的自制/外协归属不适用于当前资源。")
+            raise WorkbenchCommandRejected("constraint_conflict", "选中工种的自制或外协归属和当前资源不匹配，没有保存。请换一个工种。")
         if identity.entity_key != identity.entity_key.strip():
-            raise WorkbenchCommandRejected("constraint_conflict", "关联业务编号含首尾空白，不能按当前领域规则安全写入。")
+            raise WorkbenchCommandRejected("constraint_conflict", "关联编号前后带空格，没有保存，以免写错到别的记录上。请去掉前后的空格。")
         return identity.entity_key

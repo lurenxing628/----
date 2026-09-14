@@ -51,12 +51,12 @@ class RestoreStatusTransport:
         result_path = path.startswith(BASE + "/results/") or path.startswith(BASE + "/jobs/")
         if not status_path and not (stopped and result_path):
             if stopped:
-                return self._error("system_restore_stopped", "系统已为恢复停止普通服务，请核查原回执并重启宿主；不要重复执行。", 503)(environ, start_response)
+                return self._error("system_restore_stopped", "系统为恢复已停止普通功能。请用操作编号查询上次结果，并重启本软件；不要重复恢复。", 503)(environ, start_response)
             if self.application is not None:
                 return self.application(environ, start_response)
-            return self._error("maintenance_active", "维护记录未核实，普通服务未启动。", 503)(environ, start_response)
+            return self._error("maintenance_active", "上一次维护还没有确认结果，普通功能没有启动。", 503)(environ, start_response)
         if environ.get("REQUEST_METHOD") != "GET" or environ.get("QUERY_STRING"):
-            return self._error("invalid_input", "维护核查只接受无查询参数的GET。", 400)(environ, start_response)
+            return self._error("invalid_input", "这个地址只能直接打开查看，不能带查询条件。", 400)(environ, start_response)
         try:
             data = {"kind": "restore_host", "host": status} if status_path else self._result(path, status)
             payload = {"ok": True, "schema_version": 1, "data": data, "warnings": [],
@@ -66,7 +66,7 @@ class RestoreStatusTransport:
         except WorkbenchCommandRejected as exc:
             response = self._error(exc.code, str(exc), exc.status)
         except Exception:
-            response = self._error("maintenance_unconfirmed", "维护记录无法核实；系统保持停止，请保留现场。", 503)
+            response = self._error("maintenance_unconfirmed", "维护记录读不出来，不能确认结果。系统已停下，请不要再操作，联系维护人员。", 503)
         return response(environ, start_response)
 
     def _result(self, path, status):
@@ -77,11 +77,11 @@ class RestoreStatusTransport:
         else:
             reference = path[len(BASE + "/jobs/"):]
             if not re.fullmatch(r"[a-f0-9]{32}", reference):
-                raise WorkbenchCommandRejected("invalid_input", "维护记录引用无效。", 400)
+                raise WorkbenchCommandRejected("invalid_input", "这个维护记录编号无效，请重新打开维护页。", 400)
             row = next((item for item in self.journal.records() if item["job_ref"] == reference), None)
         if row is None:
             return {"kind": "not_recorded", "host": status,
-                    "message": "数据库外未查到此回执，不能认定未执行；当前数据库回执须在核实并重启后查询。"}
+                    "message": "外部维护记录里没有这次操作，不能就此认定没有执行。请重启本软件后再查一次结果。"}
         return {"kind": "file_operation", "operation": self.journal.public(row, True), "host": status}
 
     @staticmethod

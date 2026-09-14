@@ -23,7 +23,7 @@ def test_eight_domains_are_real_counts_and_get_is_readonly(overview_client):
     assert overview["stats"]["entities"] == 104
     assert overview["complete"] is True
     assert overview["stats"]["relations"] > 50
-    assert "不代表排产就绪" in overview["basis"]
+    assert "不代表可以排产" in overview["basis"]
     assert client.get(BASE + "/export", query_string=args(result)).status_code == 200
     assert before == stored(client)
     assert not any(line.lstrip().upper().startswith(("INSERT", "UPDATE", "DELETE", "CREATE", "DROP", "ALTER")) for line in traces)

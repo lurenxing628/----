@@ -10,21 +10,22 @@ from core.models.workbench_command import WorkbenchCommandRejected, canonical_js
 from core.services.common.excel_templates import _sanitize_export_cell
 from core.services.report.exporters.xlsx import _append_write_only_row
 from core.services.report.report_engine import ReportExport
+from core.services.workbench import messages
 
 COLUMNS = (("part_no", "图号"), ("part_name", "零件名称"), ("sequence", "工序号"),
-           ("operation_label", "工序名称"), ("template_operation_ref", "模板工序引用"),
-           ("template_revision", "模板修订"), ("template_snapshot", "模板快照"),
-           ("old_unit_hours", "旧单件定额h"), ("suggested_unit_hours", "建议单件定额h"),
+           ("operation_label", "工序名称"), ("template_operation_ref", "模板工序编号"),
+           ("template_revision", "模板版本"), ("template_snapshot", "模板数据版本"),
+           ("old_unit_hours", "旧单件定额（小时）"), ("suggested_unit_hours", "建议单件定额（小时）"),
            ("deviation_percent", "偏差百分比"), ("deviation_basis", "偏差计算状态"),
-           ("sample_count", "有效样本数"), ("candidate_count", "待核对实例数"),
-           ("sample_refs", "样本引用"), ("sample_revisions", "样本修订"),
+           ("sample_count", "可用完工记录数"), ("candidate_count", "待核对完工记录数"),
+           ("sample_refs", "完工记录编号"), ("sample_revisions", "完工记录版本"),
            ("exclusion_reasons", "剔除原因"), ("method_version", "计算方法"),
-           ("generated_at", "生成时间"), ("as_of", "数据截至"), ("snapshot_ref", "范围快照"))
+           ("generated_at", "生成时间"), ("as_of", "数据截至"), ("snapshot_ref", "数据版本编号"))
 
 
 def _cell(value):
     if value is None:
-        return "未知"
+        return "暂无数据"
     if isinstance(value, (dict, list)):
         value = canonical_json(value)
     if isinstance(value, str) and value and (value.lstrip()[:1] in ("=", "+", "-", "@") or value[0] in "\t\r\n"):
@@ -35,9 +36,9 @@ def _cell(value):
 def _export_values(rows, scope, format_name):
     values = [[_cell(row[key]) for key, _ in COLUMNS] + [scope] for row in rows]
     if sum(len(str(value).encode("utf-8")) for row in values for value in row) > MAX_EXPORT_BYTES:
-        raise WorkbenchCommandRejected("export_too_large", "完整导出超过16MB，请缩小范围；未截断内容。", 413)
+        raise WorkbenchCommandRejected("export_too_large", "完整导出超过 16 MB，请缩小范围后重试；系统没有截断内容。", 413)
     if format_name == "xlsx" and any(isinstance(value, str) and len(value) > 32767 for row in values for value in row):
-        raise WorkbenchCommandRejected("export_too_large", "内容超过XLSX单元格上限，请改用CSV；未截断。", 413)
+        raise WorkbenchCommandRejected("export_too_large", "有单元格内容超出 XLSX 的上限，请改导 CSV；系统没有截断内容。", 413)
     return values
 
 
@@ -59,7 +60,7 @@ def _xlsx(values, headers, output, metadata_rows):
         _append_write_only_row(sheet, headers, is_header=True)
         for row in values:
             _append_write_only_row(sheet, row)
-        metadata = workbook.create_sheet("范围与口径")
+        metadata = workbook.create_sheet("范围与计算方式")
         for row in metadata_rows:
             _append_write_only_row(metadata, list(row))
         workbook.save(output)
@@ -70,7 +71,7 @@ def _xlsx(values, headers, output, metadata_rows):
 
 def export_calibration(data, rows, snapshot, format_name):
     if format_name not in ("csv", "xlsx"):
-        raise WorkbenchCommandRejected("invalid_input", "仅支持CSV或XLSX格式。", 400)
+        raise WorkbenchCommandRejected("invalid_input", "只支持 CSV 或 XLSX 格式。", 400)
     if not rows:
         raise WorkbenchCommandRejected("empty_export", "当前筛选范围没有可导出的建议行。", 422)
     scope = canonical_json(data["scope"])
@@ -80,12 +81,12 @@ def export_calibration(data, rows, snapshot, format_name):
     if format_name == "csv":
         mime = _csv(values, headers, output)
     else:
-        metadata_rows = (("数据来源", "production"), ("数据截至", snapshot["as_of"]),
-                         ("范围快照", snapshot["snapshot_ref"]), ("筛选范围", scope),
-                         ("来源限制", canonical_json(data["source_constraints"])), ("采纳与锁定", "未接入，不可操作"))
+        metadata_rows = (("数据来源", "生产库"), ("数据截至", snapshot["as_of"]),
+                         ("数据版本编号", snapshot["snapshot_ref"]), ("筛选范围", scope),
+                         ("来源限制", canonical_json(data["source_constraints"])), ("采用与锁定", messages.UNAVAILABLE))
         mime = _xlsx(values, headers, output, metadata_rows)
     if output.tell() > MAX_EXPORT_BYTES:
-        raise WorkbenchCommandRejected("export_too_large", "完整导出超过16MB，请缩小范围；未截断内容。", 413)
+        raise WorkbenchCommandRejected("export_too_large", "完整导出超过 16 MB，请缩小范围后重试；系统没有截断内容。", 413)
     output.seek(0)
-    filename = "workbench-calibration-" + snapshot["as_of"].replace(":", "") + "." + format_name
+    filename = "工时校准明细-" + snapshot["as_of"].replace(":", "") + "." + format_name
     return ReportExport(filename, mime, output, estimated_rows=len(rows))

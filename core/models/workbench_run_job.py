@@ -21,7 +21,7 @@ def new_run_ref():
 
 def validate_run_ref(value):
     if not isinstance(value, str) or re.fullmatch(r"[0-9a-f]{48}", value) is None:
-        raise WorkbenchCommandRejected("invalid_input", "运行引用无效。", 400)
+        raise WorkbenchCommandRejected("invalid_input", "这次排产的编号无效，请回到排产记录重新选择。", 400)
     return value
 
 

@@ -13,7 +13,7 @@ def capabilities():
 
 def require_ref(value, label):
     if type(value) is not str or re.fullmatch(r"[0-9a-f]{48}", value) is None:
-        raise WorkbenchCommandRejected("storage_failure", label + "永久引用缺失，未自动修补数据；请检查数据库。", 500)
+        raise WorkbenchCommandRejected("storage_failure", label + "记录找不到编号，系统不会自动补建。请刷新重试；仍不行请联系维护人员。", 500)
     return value
 
 
@@ -38,13 +38,13 @@ def project_part(row, operations, workflow=None):
     internal = sum(op["source"] == "internal" for op in active)
     external = sum(op["source"] == "external" for op in active)
     workflow = legacy_workflow(bool(active)) if workflow is None else workflow
-    issues = [issue("legacy_confirmation_unknown", "存量模板未记录逐序人工确认，未将已有归属或工时当作已确认。")] if workflow["origin"] == "legacy" else []
+    issues = [issue("legacy_confirmation_unknown", "这是历史遗留模板，没有逐道工序的人工确认记录；已有的归属和工时不算已确认。")] if workflow["origin"] == "legacy" else []
     if workflow["origin"] == "managed" and not workflow["ready"]:
         issues.append(issue("workflow_pending", "工艺尚未完成确认，暂不能用它生成新的批次工序。"))
     if row["route_parsed"] not in ("yes", "no"):
-        issues.append(issue("route_parsed_unknown", "原有路线解析标记不明确，当前保留原值。"))
+        issues.append(issue("route_parsed_unknown", "原来的工艺路线解析状态说不清，这里保留原值。"))
     if row["route_parsed"] == "yes" and not active:
-        issues.append(issue("template_missing", "原标记为已解析，但没有有效模板工序。"))
+        issues.append(issue("template_missing", "标记是已解析，但没有有效的模板工序。请到基础资料核对。"))
     if active and row["route_parsed"] != "yes":
         issues.append(issue("template_route_state_mismatch", "已有模板工序与路线解析标记不一致，请核对。"))
     return {"ref": require_ref(row["ref"], "零件"), "business_code": row["part_no"], "label": row["part_name"], "status": None,
@@ -60,7 +60,7 @@ def _number(value, label, issues, *, positive=False):
         issues.append(issue("value_missing", label + "未填写。"))
         return None
     if type(value) not in (int, float) or not math.isfinite(value) or (value <= 0 if positive else value < 0):
-        issues.append(issue("value_invalid", label + "原值不合法，未用默认值替代。"))
+        issues.append(issue("value_invalid", label + "填的值不合法，系统不会用默认值顶替。"))
         return None
     return value
 
@@ -69,7 +69,7 @@ def _relation(row, name, exists, ref, label, issues):
     if row[name] is None or row[name] == "":
         return None
     if row[exists] is None:
-        issues.append(issue("relation_missing", label + "记录已不存在，未猜测绑定其他对象。"))
+        issues.append(issue("relation_missing", label + "记录已经不在了，系统不会改绑别的记录。"))
         return None
     return require_ref(row[ref], label)
 
@@ -82,7 +82,7 @@ def _setup_and_unit_hours(row, source, issues):
 
 def _external_days(row, source, group_ref, group, issues):
     if group is not None and group["issues"]:
-        issues.append(issue("external_group_invalid", "关联外协组规则不合法，请核对组范围、成员和周期；未用组周期替代本序原值。"))
+        issues.append(issue("external_group_invalid", "关联的外协组规则不合法，这道工序仍用自己的周期。请核对外协组的起止序、成员和周期。"))
     group_cycle = (source == "external" and row["status"] == "active" and group_ref is not None
                    and group is not None and group["ref"] == group_ref and group["merge_mode"] == "merged"
                    and group["total_days"] is not None and not group["issues"])
@@ -99,21 +99,21 @@ def project_operation(row, confirmation, group=None):
         issues.append(issue("sequence_invalid", "原工序号不合法，当前按原值展示；未自动改号。"))
     source = row["source"] if row["source"] in ("internal", "external") else None
     if source is None:
-        issues.append(issue("source_unknown", "原工序归属不明确。"))
+        issues.append(issue("source_unknown", "这道工序的归属说不清。请到基础资料确认归属。"))
     op_ref = _relation(row, "op_type_id", "op_type_exists", "op_type_ref", "工种", issues)
     if not op_ref:
-        issues.append(issue("op_type_unbound", "尚未绑定有效工种，归属仍需核对。"))
+        issues.append(issue("op_type_unbound", "还没选有效工种，归属还要核对。请到基础资料选工种。"))
     supplier_ref = _relation(row, "supplier_id", "supplier_exists", "supplier_ref", "供应商", issues)
     group_ref = _relation(row, "ext_group_id", "group_exists", "external_group_ref", "外协组", issues)
     if group_ref and row["group_part_no"] != row["part_no"]:
-        issues.append(issue("external_group_part_mismatch", "关联外协组属于其他零件，未将它作为本模板规则。"))
+        issues.append(issue("external_group_part_mismatch", "关联的外协组属于别的零件，这里不拿它当本模板的规则。请到基础资料核对外协组。"))
         group_ref = None
     if op_ref and row["op_type_category"] != source:
         issues.append(issue("source_category_mismatch", "当前工种类别与本序原归属不一致，请核对；未修改任何一方。"))
     setup, unit = _setup_and_unit_hours(row, source, issues)
     days, days_source = _external_days(row, source, group_ref, group, issues)
     if source == "internal" and unit == 0 and confirmation["hours"]["state"] != "confirmed":
-        issues.append(issue("zero_unit_hours_review", "单件工时为0，请复核；未当作空值或自动修改。"))
+        issues.append(issue("zero_unit_hours_review", "单件工时是 0，请复核；系统不会当成未填写，也不会自动改。"))
     if row["status"] not in ("active", "deleted"):
         issues.append(issue("operation_status_unknown", "原工序状态不明确，未计为有效模板工序。"))
     return {"ref": require_ref(row["ref"], "模板工序"), "sequence": public_sequence(row["seq"]), "label": row["op_type_name"],
@@ -129,18 +129,18 @@ def _group_member_issues(row, members, issues):
     facts = dict(row, members=[[op["ref"], op["seq"], op["source"]] for op in members])
     _, valid = _group_facts(facts, row["part_no"])
     if any(op["part_no"] != row["part_no"] for op in members):
-        issues.append(issue("external_group_part_mismatch", "外协组被其他零件的有效工序引用，未将它作为有效合并周期。"))
+        issues.append(issue("external_group_part_mismatch", "这个外协组被别的零件的工序用着，这里不拿它当有效合并周期。请到基础资料核对外协组。"))
     if not valid and not any(item["code"] in ("external_group_range_invalid", "external_group_mode_unknown") for item in issues):
-        issues.append(issue("external_group_members_invalid", "外协组含非外协或超出组范围的有效成员，未将它作为有效合并周期。"))
+        issues.append(issue("external_group_members_invalid", "外协组里有非外协工序，或者有超出起止序范围的工序，这里不拿它当有效合并周期。请到基础资料核对外协组。"))
 
 
 def project_group(row, members=None):
     issues = []
     supplier = _relation(row, "supplier_id", "supplier_exists", "supplier_ref", "供应商", issues)
     if type(row["start_seq"]) is not int or type(row["end_seq"]) is not int or not 0 < row["start_seq"] <= row["end_seq"]:
-        issues.append(issue("external_group_range_invalid", "外协组序号范围不合法，未自动交换或修正。"))
+        issues.append(issue("external_group_range_invalid", "外协组的起止序不合法，系统不会自动对调或改正。请到基础资料核对。"))
     if row["merge_mode"] not in ("separate", "merged"):
-        issues.append(issue("external_group_mode_unknown", "原外协组周期策略不明确。"))
+        issues.append(issue("external_group_mode_unknown", "原外协组用哪种周期算法说不清。请到基础资料核对外协组。"))
     if members is not None:
         _group_member_issues(row, members, issues)
     days = _number(row["total_days"], "合并周期", issues, positive=True) if row["merge_mode"] == "merged" or row["total_days"] is not None else None

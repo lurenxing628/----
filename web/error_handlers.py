@@ -83,14 +83,14 @@ def register_error_handlers(app):
 
     @app.errorhandler(404)
     def handle_not_found(_e):
-        payload = error_response(ErrorCode.NOT_FOUND, "请求的资源不存在")
+        payload = error_response(ErrorCode.NOT_FOUND, "页面不存在或已被删除。")
         if wants_json_error_response_or_default(log_message="404 响应分类失败，已回退 HTML 404：%s"):
             return payload, 404
         return (
             render_error_template(
                 title="页面不存在",
                 code=None,
-                message="页面不存在或已被删除",
+                message="页面不存在或已被删除。",
                 field_label=None,
             ),
             404,
@@ -98,14 +98,14 @@ def register_error_handlers(app):
 
     @app.errorhandler(RequestEntityTooLarge)
     def handle_request_too_large(_e):
-        payload = error_response(ErrorCode.FILE_TOO_LARGE, "上传文件超过 16MB，请缩小文件后重试。")
+        payload = error_response(ErrorCode.FILE_TOO_LARGE, "文件超过 16 MB，请缩小文件后重试。")
         if wants_json_error_response_or_default(log_message="413 响应分类失败，已回退 HTML 413：%s"):
             return payload, 413
         return (
             render_error_template(
                 title="文件过大",
                 code=None,
-                message="上传文件超过 16MB，请缩小文件后重试。",
+                message="文件超过 16 MB，请缩小文件后重试。",
                 field_label=None,
             ),
             413,
@@ -114,14 +114,14 @@ def register_error_handlers(app):
     @app.errorhandler(500)
     def handle_internal_error(e):
         app.logger.error(f"服务器内部错误：{e}\n{traceback.format_exc()}")
-        payload = error_response(ErrorCode.UNKNOWN_ERROR, "服务器内部错误，请查看日志")
+        payload = error_response(ErrorCode.UNKNOWN_ERROR, "系统出错，这次操作没有完成。请刷新重试；仍不行请联系维护人员。")
         if wants_json_error_response_or_default(log_message="500 响应分类失败，已回退 HTML 500：%s"):
             return payload, 500
         return (
             render_error_template(
-                title="服务器内部错误",
+                title="系统出错",
                 code=None,
-                message="服务器内部错误，请查看日志",
+                message="系统出错，这次操作没有完成。请刷新重试；仍不行请联系维护人员。",
                 field_label=None,
             ),
             500,

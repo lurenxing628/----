@@ -42,10 +42,10 @@ def test_fullscope_export_matches_workspace_and_retains_partial_rows(candidate_c
         assert response.headers["X-Workbench-Task-Count"] == "2"
         assert response.headers["X-Workbench-Row-Count"] == "3"
         assert response.headers["X-Workbench-Snapshot-Ref"] == token
-        assert [row[headers.index("行引用")] for row in rows[:2]] == [row["row_ref"] for row in data["tasks"]]
+        assert [row[headers.index("行编号")] for row in rows[:2]] == [row["row_ref"] for row in data["tasks"]]
         assert [row[headers.index("安排开始")] for row in rows[:2]] == [row["start"] for row in data["tasks"]]
-        assert rows[-1][0] == "unplanned_operation" and rows[-1][headers.index("行引用")] == r"\N"
-        assert all(row[headers.index("候选状态")] == "partial" for row in rows)
+        assert rows[-1][0] == "未安排工序" and rows[-1][headers.index("行编号")] == r"\N"
+        assert all(row[headers.index("候选方案状态")] == "部分排完" for row in rows)
         assert not any(value in headers for value in ("version", "plan_ref", "task_ref"))
 
 

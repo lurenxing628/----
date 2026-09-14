@@ -74,7 +74,7 @@ class LegacyReportDateTests(unittest.TestCase):
             for left, right in (("2026-09-09", "2026-09-10"), ("2026-9-9", "2026-09-09")):
                 with self.subTest(primary=primary, left=left), self.assertRaises(LegacyNavigationInvalid) as raised:
                     legacy_navigation_plan.report_dates({primary: left, alias: right})
-                self.assertEqual(raised.exception.description, "旧入口包含冲突的日期别名，未选择其中一组继续。")
+                self.assertEqual(raised.exception.description, "地址里有两组互相冲突的日期条件，页面没有打开；系统没有替你挑一组继续。请从侧栏重新进入并选择日期。")
 
     def test_equal_aliases_normalize_and_empty_inputs_keep_no_explicit_range(self):
         args = {"date_from": " 2026/09/09 ", "start_date": "2026-09-09",

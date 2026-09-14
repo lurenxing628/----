@@ -99,6 +99,6 @@ def unique_query(pairs):
     result = {}
     for key, value in pairs:
         if type(key) is not str or type(value) is not str or key in result:
-            raise LegacyNavigationInvalid("旧入口的查询条件重复或类型无效，未忽略任何条件。")
+            raise LegacyNavigationInvalid("旧地址里的条件有重复或格式不对，页面没有打开，也没有丢掉任何条件。请从侧栏重新进入。")
         result[key] = value
     return result

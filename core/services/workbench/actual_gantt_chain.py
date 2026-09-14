@@ -89,14 +89,14 @@ def plan_chain(plans, planned, plan_state, visible_refs, *, target_task_ref=None
     target = {"target_task_ref": target_task_ref}
     if _mixed_piece_groups(planned["tasks"]):
         return unavailable(plan_ref, "engine_piece_precedence_unsupported",
-            "原计划链算法不支持共同工序与分件之间的跨组依赖，未以分组排序冒充完整关键链。", **target)
+            "这份计划里共同工序和分件之间有跨组依赖，计划链算法处理不了；系统不会拿分组顺序冒充完整关键链。", **target)
     rows, mapping = _bound_rows(plans, planned)
     if rows is None or mapping is None:
         return unavailable(plan_ref, "chain_plan_facts_mismatch",
-            "关键链明细与本次计划任务不一致或原引擎任务键有冲突，未改指同号工序。", **target)
+            "关键链明细和这次的计划任务对不上，系统不会换成编号相同的另一道工序。请刷新后重试。", **target)
     target_id = next((key for key, task in mapping.items() if task["task_ref"] == target_task_ref), None)
     if target_task_ref is not None and target_id is None:
-        return unavailable(plan_ref, "chain_target_not_found", "所选目标不在该完整计划内，未切换到全局终点。", **target)
+        return unavailable(plan_ref, "chain_target_not_found", "选的目标不在这份计划里，系统不会自动改成整份计划的终点。请重新选择。", **target)
     point_count = sum(task["start"] == task["end"] for task in planned["tasks"])
     raw = compute_critical_chain_from_rows(rows, target_id=target_id)
     if type(raw) is not dict:
@@ -105,10 +105,10 @@ def plan_chain(plans, planned, plan_state, visible_refs, *, target_task_ref=None
     evidence_ref = input_fingerprint({"engine": ENGINE, "plan_ref": plan_ref, "plan_state": plan_state,
                                       "target_task_ref": target_task_ref, "rows": plain_plan_facts(rows), "result": raw})
     if not _result_valid(raw, mapping, point_count, target_id):
-        return unavailable(plan_ref, "chain_engine_unavailable", "原计划链引擎未返回完整、可核对的结果。",
+        return unavailable(plan_ref, "chain_engine_unavailable", "计划链没算出完整、可核对的结果。请刷新后重试。",
                            engine_evidence_ref=evidence_ref, engine_reason=raw.get("reason_code", "invalid_result"), **target)
     if not raw["ids"]:
-        return unavailable(plan_ref, "chain_no_supported_nodes", "原计划链算法没有可分析的正时长节点，未把零时长点延长。",
+        return unavailable(plan_ref, "chain_no_supported_nodes", "这条计划链上没有可分析的工序，全是零工时工序；系统不会把零工时工序拉长。",
                            engine_evidence_ref=evidence_ref, omitted_point_count=point_count, **target)
     return _public_chain(raw, mapping, visible_refs, plan_ref, evidence_ref, point_count, len(planned["tasks"]), target_task_ref)
 

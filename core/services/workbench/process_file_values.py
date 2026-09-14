@@ -28,12 +28,12 @@ def _integer(value, field, number, file_format):
             raise file_error(LABELS[field] + "必须填写正整数，不接受小数、科学记数法或单位。", number, field)
         digits = value.lstrip("0")
         if len(digits) > 19:
-            raise file_error(LABELS[field] + "超过 64 位整数范围。", number, field)
+            raise file_error(LABELS[field] + "的数字太大，超出可用范围。请填小一些的整数。", number, field)
         value = int(digits or "0")
     elif type(value) not in (int, float) or type(value) is float and (not math.isfinite(value) or value != int(value)):
-        raise file_error(LABELS[field] + "必须是正整数，不能混入布尔值。", number, field)
+        raise file_error(LABELS[field] + "必须是正整数，不能填 TRUE 或 FALSE。", number, field)
     elif file_format == "xlsx" and value > XLSX_EXACT_INTEGER_MAX:
-        raise file_error(LABELS[field] + "超过 Excel 数值精确范围，请在原始文件中使用文本数字；未猜测原值。", number, field)
+        raise file_error(LABELS[field] + "超出 Excel 能精确表示的范围，系统不猜原值。请把这个格子改成文本格式再填。", number, field)
     if not 1 <= value <= INT64_MAX:
         raise file_error(LABELS[field] + "必须在 1 到 9223372036854775807 之间。", number, field)
     return int(value)
@@ -49,9 +49,9 @@ def _number(value, field, number):
     except (ValueError, OverflowError):
         result = float("nan")
     if not math.isfinite(result):
-        raise file_error(LABELS[field] + "必须是有限数值，不能混入布尔值、单位、公式或分组逗号。", number, field)
+        raise file_error(LABELS[field] + "必须是有限数字，不能填 TRUE、FALSE、单位、公式或带千分位逗号。", number, field)
     if result == 0 and type(value) is str and not Decimal(value).is_zero():
-        raise file_error(LABELS[field] + "过小，不能精确表示为非零数值；未转换成零。", number, field)
+        raise file_error(LABELS[field] + "的数字太小，存不住这个精度，系统也不会当 0 处理。请填大一些的数。", number, field)
     return result
 
 
@@ -63,7 +63,7 @@ def typed_value(value, field, number, file_format):
     if field in NUMBER_FIELDS:
         return _number(value, field, number)
     if type(value) is not str:
-        raise file_error(LABELS[field] + "必须是文本，不能猜测数字或日期原文。", number, field)
+        raise file_error(LABELS[field] + "必须填文本，系统不猜你写的是数字还是日期。请把这个格子改成文本格式再填。", number, field)
     _check_text(value, field, number, file_format)
     if field == "source":
         if value not in SOURCE_VALUES:
@@ -87,22 +87,22 @@ def numeric_diagnostic(field, value):
     if value is None or field not in NUMBER_FIELDS:
         return None
     if field in ("setup_hours", "unit_hours") and value < 0:
-        return LABELS[field] + "不能为负数，未改成零。"
+        return LABELS[field] + "不能填负数，系统不会改成 0。"
     if field in ("external_days", "group_total_days") and value <= 0:
-        return LABELS[field] + "必须为正数，未自动补周期。"
+        return LABELS[field] + "必须填正数，系统不会替你补周期。"
     return None
 
 
 def _check_text(value, field, number, file_format):
     if file_format == "xlsx" and (_ILLEGAL_XML.search(value) or len(value) > XLSX_MAX_CELL_CHARACTERS):
-        raise file_error("文字含 XLSX 不支持的字符或超过单元格 32767 字符容量，未截断。", number, field)
+        raise file_error("这段文字含 XLSX 不支持的字符，或者超过单元格 32767 字上限，系统不会截掉一部分。请缩短后重新导入。", number, field)
     if file_format == "csv":
         try:
             value.encode("utf-8")
         except UnicodeEncodeError as exc:
-            raise file_error("文字不能完整编码为 UTF-8，未替换原文。", number, field) from exc
+            raise file_error("这段文字存不成 UTF-8，系统不会替换原文。请改掉特殊字符后重新导入。", number, field) from exc
         if "\x00" in value:
-            raise file_error("CSV 工具链不支持 NUL 字符，未删除原文。", number, field)
+            raise file_error("这段文字含 CSV 不支持的空字符，系统不会删掉原文。请改掉后重新导入。", number, field)
 
 
 def export_value(value, field, number, file_format) -> str:

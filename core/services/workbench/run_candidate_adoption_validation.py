@@ -40,13 +40,13 @@ def _rows(tasks, candidate, prepared):
             raw = value[field]
             parsed = datetime.fromisoformat(raw)
             if parsed.tzinfo is not None or parsed.isoformat() != raw:
-                raise CandidateAdoptionBlocked("candidate_artifact_invalid", "候选时间不是明确的工厂本地时间。")
+                raise CandidateAdoptionBlocked("candidate_artifact_invalid", "这个候选方案里的时间格式不对，不能采用。请重新排产后再试。")
             # Schedule's legacy formatter retains seconds only. Do not round a proof.
             if parsed.microsecond:
-                raise CandidateAdoptionBlocked("candidate_time_precision_unsupported", "候选含秒以下时间，正式安排无法无损保存，未采用。")
+                raise CandidateAdoptionBlocked("candidate_time_precision_unsupported", "这个候选方案的时间精确到了秒以下，正式计划存不了这么细，没有采用。请重新排产后再试。")
             value[field] = parsed
         if set(value) != {"op_id", "machine_id", "operator_id", "start_time", "end_time", "source"}:
-            raise CandidateAdoptionBlocked("candidate_artifact_invalid", "候选行字段不完整或存在未知字段。")
+            raise CandidateAdoptionBlocked("candidate_artifact_invalid", "这个候选方案的工序明细有缺项或多出认不出的项，不能采用。请重新排产后再试。")
         result.append(SimpleNamespace(**value))
     return result
 
@@ -59,12 +59,12 @@ def validate_adoption(conn, candidate_ref):
             baseline, projections = check_admission_current(conn, capture)
             prepared = prepare_candidate_run_input(conn, capture["input"], projections)
             if {row["operation_ref"]: row for row in prepared.dispositions} != scope:
-                raise CandidateAdoptionBlocked("candidate_disposition_mismatch", "受理工序范围或前后序与当前事实不一致。")
+                raise CandidateAdoptionBlocked("candidate_disposition_mismatch", "排产时的工序范围或前后顺序和现在的记录对不上，不能采用。请重新做排产检查。")
             rows = _rows(tasks, candidate, prepared)
             payload = validate_candidate(prepared, rows, [])
             _check_artifact_payload(candidate, payload)
             if payload.scheduled_op_ids != {op.id for op in prepared.operations}:
-                raise CandidateAdoptionBlocked("candidate_scope_incomplete", "未完整覆盖选中工序，不能采用。")
+                raise CandidateAdoptionBlocked("candidate_scope_incomplete", "这个候选方案没有排全选中的工序，不能采用。请重新排产后再试。")
             svc = ScheduleService(conn)
             _require_official_scope(svc, prepared.prev_version, payload.scheduled_op_ids)
             validate_adoption_payload(conn, prepared, payload)
@@ -78,10 +78,10 @@ def validate_adoption(conn, candidate_ref):
         raise
     except WorkbenchCommandRejected as exc:
         if exc.code in ("candidate_artifact_invalid", "run_result_inconsistent"):
-            raise CandidateAdoptionBlocked(exc.code, "候选台账损坏或内容不一致，未启用采用。") from exc
+            raise CandidateAdoptionBlocked(exc.code, "这次排产的记录读不出来或内容对不上，不能采用，正式计划没有改动。请重新排产后再试。") from exc
         raise
     except (CandidateRunInputError, AppError, ValueError, TypeError, KeyError, OverflowError) as exc:
-        raise CandidateAdoptionBlocked("candidate_constraint_unproven", "候选未通过完整事实和约束复核，未启用采用。") from exc
+        raise CandidateAdoptionBlocked("candidate_constraint_unproven", "这个候选方案没有通过完整复核，不能采用，正式计划没有改动。请重新排产后再试。") from exc
 
 
 def _require_official_scope(svc, version, scheduled_ids):

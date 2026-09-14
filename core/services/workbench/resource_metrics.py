@@ -22,14 +22,14 @@ _READ_FACTS = {
 }
 _READ_FACTS["op_type"] = set().union(_INTERNAL, _EXTERNAL, *_READ_FACTS.values())
 _BASIS = {
-    "machines": "启用且绑定匹配自制工种的设备；不含日历与当前占用。",
-    "operators": "启用、对匹配的启用设备有现授权且通过现有技能资格规则的去重人数；不含日历与当前占用。",
-    "linked_machines": "绑定所选自制工种的全部设备，含检修与停用设备。",
-    "without_machines": "所选自制工种中完全没有绑定设备的工种数，并非没有空闲设备。",
-    "available_suppliers": "启用且有匹配外协工种能力的去重供应商数。",
-    "skills": "已登记的人员与自制工种关系条数，不将旧设备授权推算为技能登记或认证。",
+    "machines": "启用并绑定了对应自制工种的设备；没算班表和当前占用。",
+    "operators": "启用、对匹配设备有授权、并符合技能资格规则的人数，同一人只算一次；没算班表和当前占用。",
+    "linked_machines": "绑定所选自制工种的全部设备，含停机和停用的设备。",
+    "without_machines": "所选自制工种里一台设备都没绑的工种数，不是说设备都占满了。",
+    "available_suppliers": "启用并且能做所选外协工种的供应商数，同一家只算一次。",
+    "skills": "已登记的人员与自制工种关系条数；旧的设备授权不算技能登记。",
     "groups": "筛选范围内设备实际绑定的不同设备组数。",
-    "status": "active仅表示资料启用，不代表今日出勤；未知旧状态单列，不推断原因。",
+    "status": "标成启用只说明这条资料在用，不代表今天出勤；读不出来的旧状态单独列，不猜原因。",
 }
 
 
@@ -38,7 +38,7 @@ class ResourceMetricFactsError(WorkbenchCommandRejected):
 
 
 def _invalid(message):
-    raise ResourceMetricFactsError("storage_failure", message + "；未修补或推算资源资料。", 500)
+    raise ResourceMetricFactsError("storage_failure", message + "，这一项没有统计出来，资料没有被改动。请到资料总览核对后重试。", 500)
 
 
 def _index(rows, key):
@@ -46,7 +46,7 @@ def _index(rows, key):
     for row in rows:
         value = row[key]
         if not isinstance(value, str) or not value or value in result:
-            _invalid("资源编号缺失或重复")
+            _invalid("有资源没有编号或者编号重复")
         result[value] = row
     return result
 
@@ -55,7 +55,7 @@ def _relation(value, records, label, *, nullable=False):
     if value is None and nullable:
         return
     if value not in records:
-        _invalid(label + "指向不存在的记录")
+        _invalid(label + "指向的记录已经不存在")
 
 
 def _status(kind, raw, profile=None):
@@ -123,7 +123,7 @@ class WorkbenchResourceMetricsService:
     def _work_type(self, code, category, *, nullable=False):
         _relation(code, self.records["op_type"], "资源工种关联", nullable=nullable)
         if code is not None and self.records["op_type"][code]["category"] != category:
-            _invalid("资源关联工种的自制或外协归属不匹配")
+            _invalid("资源关联的工种，自制或外协归属对不上")
 
     def _validate_suppliers(self):
         for row in self.records["supplier"].values():
@@ -206,7 +206,7 @@ class WorkbenchResourceMetricsService:
     def metrics(self, kind, codes, *, scope="filtered"):
         selected = set(codes)
         if not selected.issubset(self._records(kind)):
-            _invalid("资源统计范围与实际记录不一致")
+            _invalid("统计范围和实际记录对不上")
         if kind == "op_type":
             counts = self._work_type_counts(selected)
         else:
@@ -214,7 +214,7 @@ class WorkbenchResourceMetricsService:
         issues = []
         if counts.get("unknown", 0):
             issues.append({"code": "resource_status_unknown", "count": counts["unknown"],
-                           "message": "存在状态或停用原因未知的旧资源，未计作启用或已明确停用。"})
+                           "message": "有旧资源的状态或停用原因读不出来，既没算成启用，也没算成停用。"})
         if kind == "op_type":
             categories = {self.records[kind][code]["category"] for code in selected}
             unavailable = {"internal": ["linked_machines", "available_operators", "without_machines"],
@@ -250,7 +250,7 @@ class WorkbenchResourceMetricsService:
     def _work_type_counts(self, codes):
         self.op_type_records()
         if any(self.records["op_type"][code]["category"] not in ("internal", "external") for code in codes):
-            _invalid("工种的自制或外协归属无效")
+            _invalid("工种的自制或外协归属填得不对")
         internal = {code for code in codes if self.records["op_type"][code]["category"] == "internal"}
         external = codes - internal
         counts = {"total": len(codes), "internal": len(internal), "external": len(external)}
@@ -268,7 +268,7 @@ class WorkbenchResourceMetricsService:
 
     def _policy_counts(self, external):
         if any(code in self.policies and self.policies[code]["default_merge_mode"] not in ("merged", "separate") for code in external):
-            _invalid("工种周期策略无效")
+            _invalid("工种的周期算法填得不对")
         modes = Counter(self.policies[code]["default_merge_mode"] if code in self.policies else "unset" for code in external)
         return {"merged": modes["merged"], "separate": modes["separate"], "merge_mode_unset": modes["unset"]}
 

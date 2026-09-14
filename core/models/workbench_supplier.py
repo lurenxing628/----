@@ -18,9 +18,9 @@ _FIELDS = frozenset(("default_days", "status", "remark"))
 
 def _object(value, allowed, path):
     if type(value) is not dict:
-        raise ValidationError("操作内容必须是 JSON 对象。", field=path)
+        raise ValidationError("提交内容格式不对，这次操作没有执行。请刷新页面后重试。", field=path)
     if any(type(key) is not str or key not in allowed for key in value):
-        raise ValidationError("操作内容包含不允许的字段。", field=path)
+        raise ValidationError("提交内容含有不支持的项，这次操作没有执行。请刷新页面后重试。", field=path)
     return value
 
 
@@ -28,12 +28,12 @@ def _text(value, path, clearable=False):
     if value is None and clearable:
         return None
     if type(value) is not str or (not value.strip() and not clearable):
-        raise ValidationError("该字段必须是非空文字。", field=path)
+        raise ValidationError("这一项必须填文字，不能为空。", field=path)
     return value.strip() or None
 
 
 def _days(value):
-    message = "默认周期必须是有限正数，不能是布尔值或数字字符串。"
+    message = "默认周期请填正数。"
     if type(value) not in (int, float):
         raise ValidationError(message, field="fields.default_days")
     try:
@@ -49,9 +49,9 @@ def _relationships(value):
     relation = _object(value, {"op_type_refs"}, "relationships")
     refs = relation.get("op_type_refs")
     if type(refs) is not list or any(type(ref) is not str or re.fullmatch(r"[0-9a-f]{48}", ref) is None for ref in refs):
-        raise ValidationError("必须提交完整的工种永久引用列表，不能使用内部编号。", field="relationships.op_type_refs")
+        raise ValidationError("请从列表里选工种，而且要一次提交完整的工种列表。", field="relationships.op_type_refs")
     if len(set(refs)) != len(refs):
-        raise ValidationError("工种引用不能重复。", field="relationships.op_type_refs")
+        raise ValidationError("工种不能重复选。", field="relationships.op_type_refs")
     return {"op_type_refs": sorted(refs)}
 
 

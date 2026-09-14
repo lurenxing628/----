@@ -110,7 +110,7 @@ def test_broken_storage_is_unavailable_not_zero_and_other_facts_survive(workflow
     assert item["status"] == "unavailable" and item["counts"]["total"] == 1
     assert all(value is None for key, value in item["counts"].items() if key != "total")
     assert item["issues"][0]["code"] == "process_workflow_unavailable"
-    assert "无法核实" in item["issues"][0]["message"] and "no records were repaired" in caplog.text
+    assert "读不出来" in item["issues"][0]["message"] and "no records were repaired" in caplog.text
     for key in ("counts", "metrics", "calendar"):
         assert after[key] == first[key]
     assert stored_state(workflow_conn) == before and workflow_conn.total_changes == changes
@@ -198,4 +198,4 @@ def test_three_real_stage_saves_refresh_summary_and_snapshot_without_read_writes
         assert counts[stage] == (2 if stage == "source" else 1) and counts["legacy"] == 4
         assert current["meta"]["snapshot_ref"] != snapshots[-1]["meta"]["snapshot_ref"]
         snapshots.append(current)
-    assert "静态资料不是排产前检查" in snapshots[-1]["data"]["readiness"]["message"]
+    assert "静态资料不是排产检查" in snapshots[-1]["data"]["readiness"]["message"]

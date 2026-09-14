@@ -20,7 +20,7 @@ class PointPlanCatalogRepository(WorkbenchPlanCatalogRepository):
         sql, params = self._plan_rows_sql(source_table=source_table, candidate_id=candidate_id, scenario_id=scenario_id)
         rows = self.fetchall("SELECT * FROM (" + sql + ") LIMIT ?", [version] + params + [MAX_PLAN_TASKS + 1])
         if len(rows) > MAX_PLAN_TASKS:
-            raise WorkbenchCommandRejected("query_too_large", "完整计划超过10000条，未截断点证据。", 413)
+            raise WorkbenchCommandRejected("query_too_large", "整个计划超过 10000 条上限，没有读取，也不会只给一部分零工时工序。请缩小时间范围后重试。", 413)
         try:
             for row in rows:
                 _interval(row)

@@ -16,6 +16,7 @@ from flask import g, render_template, request, url_for
 
 from core.infrastructure.errors import ValidationError
 from core.services.scheduler.week_plan_print_sheet import build_week_plan_print_sheets
+from core.services.workbench.messages import stored_utc_text
 from web.viewmodels.scheduler_history_summary import format_public_datetime
 
 from .scheduler_bp import bp
@@ -36,7 +37,7 @@ _GROUP_BY_LABELS = {"machine": "按设备", "operator": "按人员"}
 def _get_group_by_arg() -> str:
     text = str(request.args.get("group_by") or "").strip() or "machine"
     if text not in _VALID_GROUP_BY:
-        raise ValidationError("派工单视图不正确，请选择：按设备（machine）/ 按人员（operator）。", field="group_by")
+        raise ValidationError("派工单视图不正确。请选择按设备或按人员。", field="group_by")
     return text
 
 
@@ -56,14 +57,29 @@ def _get_day_arg(week_start: str, week_end: str) -> Optional[str]:
 def _identity_warning(plan_resolution: Dict[str, Any]) -> str:
     """贴旧纸误用警示（4.7 身份诚实，必须进纸面）。
 
-    只看 selected_role/scenario_id 会漏掉「历史正式方案」（旧版本仍是 adopted
+    只看 selected_role/scenario_id 会漏掉「旧版正式计划」（旧版本仍是 adopted
     无 scenario）——判定取 is_current_executable_official_version 为假即印。
     """
     if plan_resolution.get("is_current_executable_official_version"):
         return ""
     if plan_resolution.get("is_superseded_by_newer_version"):
-        return "历史正式方案，已被新版本替代，不得下发执行"
-    return "非正式方案，不得下发执行"
+        return "这是旧版正式计划，已被新版本替代，不能下发执行"
+    return "这不是正式计划，不能下发执行"
+
+
+def _generated_at_label(raw: Any) -> str:
+    """纸面「生成时间」印北京时间。
+
+    schedule_time 落库走 SQLite 的 DEFAULT CURRENT_TIMESTAMP，存的是 UTC；
+    直接印会比现场时间早 8 小时。换算不了的旧值不猜时间，仍按公开口径明示异常。
+    """
+    text = str(raw or "").strip()
+    if not text:
+        return format_public_datetime(None)
+    try:
+        return format_public_datetime(stored_utc_text(text))
+    except ValueError:
+        return "时间记录异常"
 
 
 def _filter_scope_label(resource_context: Dict[str, Any], batch_id: Optional[str]) -> str:
@@ -97,7 +113,8 @@ def _print_page_links(*, version: Any, week_start: str, plan_resolution: Dict[st
     if day:
         switch_kwargs["day"] = day
     return {
-        "back_url": url_for("scheduler.week_plan_page", **common),
+        # 旧周计划页已退役，返回入口指向工作台的「选择排产方案」，不再指向 410 页面。
+        "back_url": url_for("workbench.index", view="analysis"),
         "switch_view_url": url_for("scheduler.week_plan_print_page", **switch_kwargs),
         "switch_view_label": f"切换为{_GROUP_BY_LABELS[other_view]}视图",
     }
@@ -143,7 +160,7 @@ def week_plan_print_page():
         version=version,
         plan_role_label=str(plan_resolution.get("user_label") or ""),
         identity_warning=_identity_warning(plan_resolution),
-        generated_at_label=format_public_datetime((history or {}).get("schedule_time")),
+        generated_at_label=_generated_at_label((history or {}).get("schedule_time")),
         range_label=(f"{day}（单日）" if day else f"{week_start} ～ {week_end}"),
         filter_scope_label=_filter_scope_label(resource_context, batch_id),
         group_by_label=_GROUP_BY_LABELS[group_by],

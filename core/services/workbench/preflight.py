@@ -25,20 +25,20 @@ def operation_gaps(checks, batch, op, projection):
     if projection["data_quality"] == "invalid":
         gaps.extend(projection["data_gaps"])
     if batch["ready_date"] is not None and stored_date(batch["ready_date"]) is None:
-        gaps.append(issue("ready_date_invalid", "批次齐套日期原值不合法。"))
+        gaps.append(issue("ready_date_invalid", "批次的齐套日期格式不对。请到批次管理改正。"))
     if batch["status"] not in ("pending", "scheduled", "processing", "completed", "cancelled"):
-        gaps.append(issue("batch_status_invalid", "批次状态未知，不能认定为待排。"))
+        gaps.append(issue("batch_status_invalid", "批次状态读不出来，不能当成待排产。请到批次管理核对批次状态。"))
     if op["status"] not in ("pending", "scheduled"):
-        gaps.append(issue("operation_status_invalid", "工序状态未知，不能认定为待排。"))
+        gaps.append(issue("operation_status_invalid", "工序状态读不出来，不能当成待排产。请到批次管理核对工序状态。"))
     return gaps
 
 
 def classify(checks, batch, op, projection, settings, ready_reasons):
     if is_protected(projection, op):
-        reasons = [issue("actuals_preserved", "已有执行事实或执行标记，保留原事实，不重新安排整道工序。")]
+        reasons = [issue("actuals_preserved", "这道工序已有报工记录或已经开工，原记录保留，整道工序不重排。")]
         reasons.extend(projection["data_gaps"])
         if projection["execution_state"] != "complete":
-            reasons.append(issue("remaining_execution_unresolved", "已发生执行；剩余数量或剩余安排需由后续执行保护核验，不能直接重排。"))
+            reasons.append(issue("remaining_execution_unresolved", "这道工序已经开工；剩下的数量要先在现场记录里确认，暂时不能重排。"))
         return "protected", reasons
     gaps = operation_gaps(checks, batch, op, projection)
     if gaps:
@@ -46,12 +46,12 @@ def classify(checks, batch, op, projection, settings, ready_reasons):
     if batch["status"] in ("completed", "cancelled"):
         return "skipped", [issue("batch_closed", "批次已完成或取消，不进入本次排产。")]
     if batch["quantity"] == 0 and op["source"] != "internal":
-        return "skipped", [issue("zero_quantity", "批次数量明确为0，没有待排需求。")]
+        return "skipped", [issue("zero_quantity", "批次数量填的是 0，没有要排的量。")]
     if ready_reasons:
         return "skipped", ready_reasons
     ready_date = stored_date(batch["ready_date"])
     if ready_date and ready_date > settings["end_date"]:
-        return "skipped", [issue("ready_after_window", "齐套日期在本次窗口之后，不能排入本窗口。")]
+        return "skipped", [issue("ready_after_window", "齐套日期晚于这次排产日期范围，排不进来。请放宽日期范围，或到批次管理调齐套日期。")]
     missing = checks.resources(op)
     if missing:
         return ("auto_assign_required" if settings["missing_resource_policy"] == "auto_assign" else "skipped"), missing

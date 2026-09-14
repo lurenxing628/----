@@ -111,7 +111,7 @@ def test_gantt_page_version_default_latest(tmp_path, monkeypatch) -> None:
     invalid_page_resp = client.get("/scheduler/gantt?view=machine&week_start=2026-03-02&version=0")
     invalid_page_html = invalid_page_resp.get_data(as_text=True)
     assert invalid_page_resp.status_code == 400
-    assert "原计划身份、日期或筛选无效，未改选对象或扩大范围。" in invalid_page_html
+    assert "地址里的计划编号、日期或筛选不对，页面没有打开；系统没有替你换记录或放宽范围。请从侧栏重新进入。" in invalid_page_html
     assert "Location" not in invalid_page_resp.headers
 
     invalid_data_resp = client.get("/scheduler/gantt/data?view=machine&week_start=2026-03-02&version=-1")

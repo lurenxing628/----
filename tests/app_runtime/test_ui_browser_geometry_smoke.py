@@ -149,7 +149,7 @@ def _assert_geometry_results(results, scenarios):
         for table in item["multilineTableDetails"]:
             if table["selector"] == ".sm-logs-table":
                 assert table["fixedLogHeaders"] and table["headerTexts"] == [
-                    "工厂本地时间", "类型", "状态", "级别", "摘要 / 来源", "详情",
+                    "时间", "类型", "状态", "级别", "摘要 / 来源", "详情",
                 ]
     if not any(item["darkSummaryCount"] > 0 for item in results):
         failures.append({"kind": "page_expected_dom_failed", "details": {"message": "no visible summaries found"}})

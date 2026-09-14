@@ -14,7 +14,7 @@ def check_part_action_storage(conn):
     issues = (workbench_metadata_contract_issues(conn) + workbench_process_contract_issues(conn)
               + workbench_process_workflow_contract_issues(conn))
     if conn.execute("PRAGMA foreign_keys").fetchone()[0] != 1 or issues:
-        raise WorkbenchCommandRejected("storage_failure", "工艺数据保存设置不完整，请检查本机数据库；未修改资料。", 500)
+        raise WorkbenchCommandRejected("storage_failure", "工艺数据的保存设置不完整，这次没有改动任何资料。请刷新重试；仍不行请联系维护人员。", 500)
 
 
 def plain_part_action_facts(value):

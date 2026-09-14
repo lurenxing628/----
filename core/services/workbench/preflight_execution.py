@@ -36,7 +36,7 @@ def legacy_guard(op, events):
             starts.extend(actual_starts)
             finishes.extend(actual_finishes)
         except ValueError:
-            gaps.append(issue("legacy_execution_invalid", "旧执行记录的身份或顺序不完整，保持保护并等待复核。"))
+            gaps.append(issue("legacy_execution_invalid", "旧报工记录的编号或先后顺序不完整，这道工序先保持保护，等人工复核。"))
     complete = bool(finishes)
     protected = bool(events or op["status"] in ("processing", "completed", "paused", "exception"))
     return {"execution_state": "complete" if complete else "started" if starts else "unreported",
@@ -70,7 +70,7 @@ def execution_projections(facts, operations):
     for row in facts.tables["OperationExecutionEvents"]:
         events[row["op_id"]].append(row)
     result = {facts.operation_ref(op): legacy_guard(op, events[op["id"]]) for op in operations}
-    return result, [issue("execution_ledger_unavailable", "新执行台账尚未安装；已读取旧执行保护，但不能受理新的排产运行。")]
+    return result, [issue("execution_ledger_unavailable", "新的报工记录功能尚未开通；旧报工保护已经读到，但这次排产不能提交。")]
 
 
 def is_protected(projection, op):

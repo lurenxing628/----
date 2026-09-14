@@ -30,23 +30,23 @@ def download(content, name, count):
 @api_endpoint
 def batch_template():
     if request.args:
-        raise WorkbenchCommandRejected("invalid_input", "模板下载不接受其他参数。", 400)
-    return download(write_batch_file(TEMPLATE["sample_rows"], template=True), "batches-template.xlsx", len(TEMPLATE["sample_rows"]))
+        raise WorkbenchCommandRejected("invalid_input", "模板下载不需要其他条件，没有开始下载。请直接点「下载批次模板」。", 400)
+    return download(write_batch_file(TEMPLATE["sample_rows"], template=True), "批次导入模板.xlsx", len(TEMPLATE["sample_rows"]))
 
 
 @api_endpoint
 def batch_import_preview():
     if request.args or set(request.files) != {"file"} or len(request.files.getlist("file")) != 1:
-        raise WorkbenchCommandRejected("invalid_input", "请选择一个批次XLSX文件。", 400)
+        raise WorkbenchCommandRejected("invalid_input", "请先选择一个批次 XLSX 文件，再点「导入预检」。", 400)
     if set(request.form) != {"mode", "scope", "snapshot_ref"} or any(len(request.form.getlist(key)) != 1 for key in request.form):
-        raise WorkbenchCommandRejected("invalid_input", "文件预览缺少当前范围或导入模式。", 400)
+        raise WorkbenchCommandRejected("invalid_input", "没有选好导入方式，或本页数据已过期，文件还没有导入。请刷新页面后重新选择文件。", 400)
     try:
         scope = batch_scope(json.loads(request.form["scope"]))
     except ValueError as exc:
-        raise WorkbenchCommandRejected("invalid_input", "文件读取范围不正确。", 400) from exc
+        raise WorkbenchCommandRejected("invalid_input", "文件导入范围不对，文件还没有导入。请刷新页面后重新点「导入预检」。", 400) from exc
     upload = request.files["file"]
     if not upload.filename or not upload.filename.lower().endswith(".xlsx") or not request.form["snapshot_ref"]:
-        raise WorkbenchCommandRejected("invalid_input", "批次文件必须为XLSX且绑定当前资料。", 400)
+        raise WorkbenchCommandRejected("invalid_input", "批次文件必须是 XLSX，并且要在当前页面数据下导入；文件还没有导入。请刷新页面后重新选择文件。", 400)
     content = upload.stream.read(MAX_BYTES + 1)
     reader = WorkbenchBatchQueryService(g.db, current_app.logger)
     with reader.read_snapshot() as fingerprint:
@@ -66,13 +66,13 @@ def batch_import_confirm():
     normalized = dict(object_fields(body["input"], ("preview_ref",), ("preview_ref",)))
     token = normalized["preview_ref"]
     if not isinstance(token, str) or not token:
-        raise WorkbenchCommandRejected("invalid_input", "文件确认缺少预览引用。", 400)
+        raise WorkbenchCommandRejected("invalid_input", "预检结果编号缺失，文件还没有导入。请重新点「导入预检」。", 400)
 
     def guard():
         binding = load_preview(token, "import_confirm", None)
         fingerprint = WorkbenchBatchQueryService(g.db, current_app.logger).fingerprint()
         if binding["fingerprint"] != fingerprint:
-            raise WorkbenchCommandRejected("stale_write", "文件预览后资料变化，请重新预览。")
+            raise WorkbenchCommandRejected("stale_write", "预检之后批次资料有变化，文件还没有导入。请重新点「导入预检」。")
         validate_write_context(body["write_token"], token, "batch.import_confirm", {"fingerprint": fingerprint, "input": binding["input"]})
         return binding["input"]
 
@@ -85,22 +85,22 @@ def batch_export_preview():
     body = object_fields(json_body(), ("selection", "scope", "refs"), ("selection", "scope"))
     scope = batch_scope(body["scope"])
     if body["selection"] not in ("selected", "filtered") or not scope.get("snapshot_ref"):
-        raise WorkbenchCommandRejected("invalid_input", "请选择导出当前筛选或明确选中集合，并绑定当前快照。", 400)
+        raise WorkbenchCommandRejected("invalid_input", "请先选好导出当前筛选还是导出选中的批次，没有开始下载。数据已更新时请先点「刷新」，再点「下载批次清单」。", 400)
     reader = WorkbenchBatchQueryService(g.db, current_app.logger)
     with reader.read_snapshot() as fingerprint:
         bind_read_snapshot(snapshot_scope(scope), fingerprint, scope["snapshot_ref"])
         if body["selection"] == "selected":
             refs = body.get("refs")
             if not isinstance(refs, list) or not 1 <= len(refs) <= MAX_ROWS:
-                raise WorkbenchCommandRejected("invalid_input", "导出须明确选择1至5000个批次且不能重复。", 400)
+                raise WorkbenchCommandRejected("invalid_input", "导出要选 1 至 5000 批批次且不能重复，没有开始下载。请重新选择后点「下载批次清单」。", 400)
             refs = [public_ref(ref) for ref in refs]
             if len(set(refs)) != len(refs):
-                raise WorkbenchCommandRejected("invalid_input", "导出选择不能重复。", 400)
+                raise WorkbenchCommandRejected("invalid_input", "选中的批次有重复，没有开始下载。请重新选择后点「下载批次清单」。", 400)
             for ref in refs:
                 reader.resolve(public_ref(ref))
         else:
             if "refs" in body:
-                raise WorkbenchCommandRejected("invalid_input", "筛选范围导出不能混入选择集合。", 400)
+                raise WorkbenchCommandRejected("invalid_input", "导出当前筛选时不能再带选中的批次，没有开始下载。请重新选择后点「下载批次清单」。", 400)
             refs = reader.selection(scope)["refs"]
         token = save_preview("export", None, {"refs": refs}, fingerprint)
         snapshot = bind_read_snapshot({"kind": "batch_export", "export_ref": token}, fingerprint)
@@ -110,15 +110,15 @@ def batch_export_preview():
 @api_endpoint
 def batch_export():
     if set(request.args) != {"export_ref"} or len(request.args.getlist("export_ref")) != 1:
-        raise WorkbenchCommandRejected("invalid_input", "导出缺少已核对范围。", 400)
+        raise WorkbenchCommandRejected("invalid_input", "导出范围已过期，没有开始下载。请重新点「下载批次清单」。", 400)
     binding = load_preview(request.args["export_ref"], "export", None)
     reader = WorkbenchBatchQueryService(g.db, current_app.logger)
     with reader.read_snapshot() as fingerprint:
         if binding["fingerprint"] != fingerprint:
-            raise WorkbenchCommandRejected("snapshot_stale", "导出范围资料已变化，请重新核对。")
+            raise WorkbenchCommandRejected("snapshot_stale", "导出范围里的批次有变化，没有开始下载。请重新点「下载批次清单」。")
         entities = [reader.detail(ref) for ref in binding["input"]["refs"]]
         content = WorkbenchBatchFileService.export(entities)
-    return download(content, "batches.xlsx", len(entities))
+    return download(content, "批次清单.xlsx", len(entities))
 
 
 def register_batch_file_routes(bp):

@@ -23,7 +23,7 @@ def check_sheet_order(stream):
             continue
         number = int(node.attrib.get("r", "0"))
         if not previous < number <= 1048576:
-            raise file_error("XLSX 存在重复、逆序或非法的原始行号，不能忽略记录。", max(1, number))
+            raise file_error("这个 XLSX 的行号有重复、倒序或不合法，系统不会忽略这些行。请用 Excel 另存一份后重新上传。", max(1, number))
         previous = number
         column = 0
         for cell in node:
@@ -31,10 +31,10 @@ def check_sheet_order(stream):
                 continue
             match = _COORDINATE.fullmatch(cell.attrib.get("r", ""))
             if match is None:
-                raise file_error("XLSX 单元格缺少有效坐标，不能猜测原始位置。", number)
+                raise file_error("这个 XLSX 有单元格缺少坐标，系统不猜它原来在哪。请用 Excel 另存一份后重新上传。", number)
             current = column_index_from_string(match[1])
             if int(match[2]) != number or not column < current <= 16384:
-                raise file_error("XLSX 存在重复、逆序或错位单元格，不能覆盖或忽略原值。", number)
+                raise file_error("这个 XLSX 有重复、倒序或错位的单元格，系统不会覆盖或忽略原值。请用 Excel 另存一份后重新上传。", number)
             column = current
         node.clear()
         if data is not None:

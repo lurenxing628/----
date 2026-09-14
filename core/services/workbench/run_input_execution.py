@@ -12,7 +12,7 @@ def _prior_operation_refs(facts, plan_rows):
     for op_id in plan_rows:
         ref = facts.operation_refs.get(op_id)
         if ref is None:
-            fail("execution_scope_missing", "A last-official operation has no active permanent identity.", op_id=op_id)
+            fail("execution_scope_missing", "正式计划里有工序在资料里查不到编号，这次排产没有开始。请到批次管理核对后重试。", op_id=op_id)
         prior_refs.add(ref)
     return prior_refs
 
@@ -21,7 +21,7 @@ def _validate_execution_target(op, batches, projection):
     quantity = 1 if op.piece_id is not None else batches[op.batch_id].quantity
     basis = "piece" if op.piece_id is not None else "batch"
     if projection.target_quantity != quantity or projection.target_basis != basis:
-        fail("execution_target_changed", "Execution target differs from the original operation work.", op_id=op.id)
+        fail("execution_target_changed", "这道工序的报工目标数量和当前批次数量对不上，这次排产没有开始。请到现场记录核对后重试。", op_id=op.id)
 
 
 def _validate_execution_origin(op_id, projection, prior_refs):
@@ -30,7 +30,7 @@ def _validate_execution_origin(op_id, projection, prior_refs):
         or projection.first_actual_start is not None or projection.confirmed_finish is not None
         or projection.known_completed_quantity != 0
     ):
-        fail("execution_scope_missing", "Execution exists without a valid last-official scope.", op_id=op_id)
+        fail("execution_scope_missing", "这道工序有报工记录，但不在正式计划范围里，这次排产没有开始。请到现场记录核对后重试。", op_id=op_id)
 
 
 def execution_guards(svc, facts, operations, batches, projections, prev_version, *, piece_scope=None):

@@ -8,14 +8,14 @@ from core.models.workbench_plan_scope import MAX_PLAN_TASKS
 from core.models.workbench_trial_codec import fingerprint
 
 REASONS = {
-    "no_adoption_baseline": "采用当时没有正式基线；这是首个正式计划，不能拿自身或当前正式计划作初始基线。",
-    "adoption_evidence_missing": "旧库或采用记录缺少必要的原始证据，不能证明采用当时的正式基线。",
-    "adoption_source_archived": "采用的原运行、场景或草稿已归档或移除，不能完整核验原始快照。",
-    "adoption_snapshot_invalid": "采用审计、回执或原始快照损坏或不一致，未改用当前数据。",
-    "adoption_baseline_archived": "采用时的原正式基线或原任务已归档或移除，不能完整对照。",
-    "adoption_reference_invalid": "采用时的原正式基线、工序、任务或资源引用已失效，未绑定当前同号对象。",
-    "adoption_baseline_drift": "原正式基线行已不同于采用当时记录的完整原值，不能冒充初始计划。",
-    "adoption_plan_drift": "所选正式计划的完整安排已不同于原采用来源，不能确认原采用对照。",
+    "no_adoption_baseline": "这是第一版正式计划，采用时还没有上一版，所以没有可对比的初始计划。系统不会拿当前正式计划顶替。",
+    "adoption_evidence_missing": "旧数据或采用记录缺少必要的原始凭据，认不出采用时的正式计划是第几版，这里不显示对比。",
+    "adoption_source_archived": "采用时那次排产、试调方案或试调草稿已归档或删除，原始数据核对不全，这里不显示对比。",
+    "adoption_snapshot_invalid": "采用记录、保存结果或原始数据损坏、互相对不上，这里不显示对比；系统不会改用当前数据顶替。",
+    "adoption_baseline_archived": "采用时那一版正式计划或它的工序安排已归档或删除，对不全，这里不显示对比。",
+    "adoption_reference_invalid": "采用时那一版正式计划、工序、任务或设备人员的编号已失效，这里不显示对比；系统不会改绑同号的新记录。",
+    "adoption_baseline_drift": "采用时那一版正式计划的安排后来被改过，和当时记下的原值不一样了，不能当初始计划用。",
+    "adoption_plan_drift": "所选正式计划的安排和采用时的来源已经不一样了，确认不了当时的对比。",
 }
 
 
@@ -42,7 +42,7 @@ def stored(text):
     if type(text) is not str:
         fail(gap="json_storage_type")
     if len(text.encode("utf-8")) > 64 * 1024 * 1024:
-        raise WorkbenchCommandRejected("query_too_large", "完整采用证据超过64 MiB上限，未截断。", 413)
+        raise WorkbenchCommandRejected("query_too_large", "完整采用凭据超过 64 MB 上限，没有读取，也不会只给一部分。请缩小查询范围后重试。", 413)
 
     def pairs(items):
         result = {}
@@ -74,7 +74,7 @@ def raw_rows(conn, table, *, where="1=1", params=(), limit=None):
         params = tuple(params) + (limit + 1,)
     rows = [dict(zip(columns, row)) for row in conn.execute(sql, params)]
     if limit is not None and len(rows) > limit:
-        raise WorkbenchCommandRejected("query_too_large", "完整采用基线或计划超过10000条上限，未按可见范围截断。", 413)
+        raise WorkbenchCommandRejected("query_too_large", "完整的初始计划或对比计划超过 10000 条上限，没有读取，也不会只给屏幕上这一段。请缩小时间范围后重试。", 413)
     return rows
 
 

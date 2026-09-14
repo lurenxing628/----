@@ -236,7 +236,7 @@ def _facts(day, *, personal=False):
 def test_index_rejects_invalid_or_lossy_dates_without_mutating_facts(personal, day):
     facts = _facts(day, personal=personal)
     before = deepcopy(facts)
-    with pytest.raises(ValidationError, match="calendar date"):
+    with pytest.raises(ValidationError, match="工作日历"):
         SnapshotCalendarEngine(facts)
     assert facts == before
 
@@ -250,7 +250,7 @@ def test_duplicate_normalized_date_is_an_error_even_for_identical_rows(personal,
     facts = _facts(days[0], personal=personal)
     facts[name].extend(_facts(days[1], personal=personal)[name])
     before = deepcopy(facts)
-    with pytest.raises(ValidationError, match="Duplicate normalized calendar date"):
+    with pytest.raises(ValidationError, match="同一天出现了两条记录"):
         SnapshotCalendarEngine(facts)
     assert facts == before
 

@@ -169,7 +169,7 @@ def _batches_context(app, path="/scheduler/") -> dict:
     context = capture_schedule_context(
         client, endpoint="scheduler.batches_page", path=path, template="scheduler/batches.html",
     )
-    body = assert_retired_scope(client, path, message="未忽略条件后跳转")
+    body = assert_retired_scope(client, path, message="没有跳转，也没有丢掉任何条件")
     for retired_control in ("jsRunScheduleForm", "js-batch-check", "js-select-all", "jsSelectedCount"):
         assert retired_control not in body
     return context

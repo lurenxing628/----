@@ -43,7 +43,7 @@ class WorkbenchBatchOperationService:
         require_template_ready(self.conn, batch["part_no"])
         rows = [row for row in facts["PartOperations"] if row["part_no"] == batch["part_no"] and row["status"] == "active"]
         if not rows:
-            raise WorkbenchCommandRejected("constraint_conflict", "当前零件没有有效模板工序；未自动解析路线或覆盖原工序。")
+            raise WorkbenchCommandRejected("constraint_conflict", "这个零件还没有有效的模板工序；系统不会自动解析路线，也不会覆盖原工序。")
         diagnostics = template_diagnostics(rows, facts, batch)
         if payload["strict_mode"] and diagnostics:
             raise WorkbenchCommandRejected("constraint_conflict", "模板资料不完整，已按严格选项停止刷新。")
@@ -90,7 +90,7 @@ class WorkbenchBatchOperationService:
     def _changes(self, row, fields, internal):
         allowed = ("machine_ref", "operator_ref", "setup_hours", "unit_hours") if internal else ("supplier_ref", "external_days")
         if row["source"] not in ("internal", "external") or set(fields) - set(allowed):
-            raise WorkbenchCommandRejected("invalid_input", "工序字段与实际归属不匹配。", 422)
+            raise WorkbenchCommandRejected("invalid_input", "要改的项和这道工序的归属对不上：自制和外协能改的内容不一样。", 422)
         changes = {}
         for key, value in fields.items():
             if key.endswith("_ref"):
@@ -128,4 +128,4 @@ class WorkbenchBatchOperationService:
         if row["supplier_id"]:
             capable = {(r["supplier_id"], r["op_type_id"]) for r in SupplierRepository(self.conn).list_capabilities(status="active") if not r["missing_supplier"]}
             if (row["supplier_id"], row["op_type_id"]) not in capable:
-                raise WorkbenchCommandRejected("constraint_conflict", "供应商未登记本外协工种能力。")
+                raise WorkbenchCommandRejected("constraint_conflict", "这家供应商没有登记这道外协工序的能力。")

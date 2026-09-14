@@ -6,14 +6,14 @@ from io import StringIO
 from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
 
 from .actual_gantt_scope import view_items
+from .execution_ledger_projection import COMPLETION_BASIS_TEXT, DATA_QUALITY_TEXT, EXECUTION_STATE_TEXT
 
-HEADERS = ["计划引用", "任务引用", "工序引用", "批次", "工序", "计划开工", "计划完工", "计划设备", "计划人员",
-           "目标数量", "整道状态", "完成依据", "已知完成数量", "未知记录数", "整道实际完工", "数据质量",
-           "报工引用", "报工单号", "录入依据计划", "录入依据任务", "本次开工", "本次结束", "本次数量", "有效加工小时",
+HEADERS = ["计划编号", "任务编号", "工序编号", "批次", "工序", "计划开工", "计划完工", "计划设备", "计划人员",
+           "目标数量", "整道状态", "完成依据", "已知完成数量", "未知记录数", "整道实际完工", "资料完整性",
+           "报工编号", "报工单号", "录入依据计划", "录入依据任务", "本次开工", "本次结束", "本次数量", "有效加工工时（小时）",
            "实际设备", "实际人员", "备注", "登记时间", "剩余数量", "剩余计划开工", "剩余计划完工", "剩余设备", "剩余人员",
-           "旧事实", "数据缺项", "数据截至", "快照引用", "服务端范围", "本地筛选", "计划事件类型", "计划时长秒", "计划占用资源",
+           "历史记录", "数据缺项", "数据截至", "数据版本编号", "查询范围", "本地筛选", "计划事件类型", "计划时长（秒）", "计划占用资源",
            "单件编号", "计划应做数量", "计划批次数量", "计划数量依据", "计划数量缺失原因"]
-STATES = {"unreported": "待报工", "started": "已开工", "partial": "部分报工", "paused": "已暂停", "exception": "异常", "complete": "整道已完工"}
 
 
 def _cell(value):
@@ -27,7 +27,7 @@ def _cell(value):
 
 def actual_gantt_csv(data, snapshot, view):
     if data["availability"]["state"] != "available":
-        raise WorkbenchCommandRejected("execution_ledger_unavailable", "执行投影不可用，不能导出为完整实际数据。")
+        raise WorkbenchCommandRejected("execution_ledger_unavailable", "现场报工记录读不出来，导不出完整的实际数据。请刷新后重试。")
     selected = view_items(data, snapshot["as_of"], view)
     names = {row["ref"]: row["label"] or row["business_code"] for row in data["resources"]}
     stream = StringIO(newline="")
@@ -39,8 +39,9 @@ def actual_gantt_csv(data, snapshot, view):
         future = e["remaining_plan"] or {}
         prefix = [t["plan_ref"], t["task_ref"], t["operation_ref"], t["batch_id"], str(t["sequence"]) + " " + t["process_label"],
                   t["start"], t["end"], names.get(t["machine_ref"]), names.get(t["operator_ref"]), e["target_quantity"],
-                  STATES[e["execution_state"]], e["completion_basis"], e["known_completed_quantity"], e["unknown_record_count"],
-                  e["confirmed_finish"], e["data_quality"]]
+                  EXECUTION_STATE_TEXT[e["execution_state"]], COMPLETION_BASIS_TEXT.get(e["completion_basis"]),
+                  e["known_completed_quantity"], e["unknown_record_count"],
+                  e["confirmed_finish"], DATA_QUALITY_TEXT[e["data_quality"]]]
         suffix = [e["remaining_quantity"], future.get("start"), future.get("end"), names.get(future.get("machine_ref")),
                   names.get(future.get("operator_ref")), canonical_json(e["legacy_facts"]), canonical_json(e["data_gaps"]),
                   snapshot["as_of"], snapshot["snapshot_ref"], canonical_json(data["scope"]), canonical_json(view),

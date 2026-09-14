@@ -57,7 +57,7 @@ def _preview_context(is_preview: bool, scenario_id: Any, scenario_display_label:
     if scenario_label:
         return scenario_text, preview, scenario_label
     if preview:
-        return scenario_text, preview, "模拟预览（未命名）"
+        return scenario_text, preview, "试调方案（未命名）"
     return scenario_text, preview, ""
 
 

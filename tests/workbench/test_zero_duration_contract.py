@@ -31,7 +31,7 @@ def test_invalid_operand_is_not_legal_zero(field, value):
 def test_cancelled_negatives_are_not_an_engine_zero_proof():
     op, batch = SimpleNamespace(setup_hours=-1, unit_hours=1), SimpleNamespace(quantity=1)
     assert validate_internal_hours(op, batch) == 0
-    with pytest.raises(PointEventError, match="non-negative"):
+    with pytest.raises(PointEventError, match="不能是负数"):
         internal_duration_hours(op.setup_hours, op.unit_hours, batch.quantity)
 
 

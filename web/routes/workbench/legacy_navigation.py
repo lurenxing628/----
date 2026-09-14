@@ -67,23 +67,23 @@ def _redirect(view, context):
 
 
 def _unsupported(code="unsupported_scope", message=None, public=None):
-    return retired(code, message or "新入口不能等价表达这组旧条件，未忽略条件后跳转。原数据和下载接口仍保留。",
+    return retired(code, message or "新页面装不下这组旧条件，没有跳转，也没有丢掉任何条件。原来的数据和下载都还在，请从侧栏进入对应页面重新筛选。",
                    public_context=public)
 
 
 def _detail(queries, legacy, args):
     kind, key = _DETAILS[legacy.endpoint]
     if set(legacy.path_values) != {key}:
-        raise LegacyNavigationInvalid("旧详情入口的路径字段不完整或存在多余字段。")
+        raise LegacyNavigationInvalid("旧详情地址不完整或有多余项，页面没有打开。请从侧栏重新进入。")
     code = legacy.path_values[key]
     if type(code) is not str or not code:
-        raise LegacyNavigationInvalid("旧详情入口缺少明确对象。")
+        raise LegacyNavigationInvalid("旧详情地址里没有指明要看哪一条记录，页面没有打开。请从侧栏重新进入。")
     entity = queries.entity(kind, code)
     if entity.entity_ref is None:
-        return _unsupported("identity_missing", "原对象缺少永久引用，读取不会补建或换成其他对象。")
+        return _unsupported("identity_missing", "这条记录还没有正式编号，页面没有打开；系统不会替你补编号，也不会换成别的记录。请从侧栏重新进入。")
     if legacy.endpoint == "personnel.operator_calendar_page":
         return _unsupported("operator_calendar_scope_retired",
-                            "原入口定位的是指定人员的专属日历；当前导航不能等价保留这份人员范围，未改查公共日历或其他人员。")
+                            "旧入口看的是某个人员的专属班表，新页面装不下这个范围；系统没有改查公共班表或别人。请从侧栏进入「工作日历」重新选择。")
     if args:
         return _unsupported()
     context = {"entity_ref": entity.entity_ref}
@@ -113,7 +113,7 @@ def _plan_page(queries, legacy, args):
     public = dict(plan.public_context)
     resource = resource_filter(args)
     if plan.fallback:
-        return _unsupported("requested_role_unavailable", "所选对比方案未保存，未沿用旧页的采用方案回退。", public)
+        return _unsupported("requested_role_unavailable", "要对比的方案没有保存过，页面没有打开；系统没有改成已采用的正式计划。请从侧栏进入「选择排产方案」重新选择。", public)
     if legacy.endpoint == "scheduler.gantt_page":
         context = gantt_context(queries, plan, args)
         allowed = IDENTITY_KEYS | {"week_start", "offset_weeks", "start_date", "end_date"}
@@ -124,14 +124,14 @@ def _plan_page(queries, legacy, args):
         if not (set(args) - IDENTITY_KEYS):
             return _redirect("analysis", {"plan_ref": plan.plan_ref})
         return _unsupported("analysis_link_scope_not_equivalent",
-                            "旧分析页的日期和资源条件用于关联入口，不能当成新分析筛选范围，未改写原条件。", public)
+                            "旧分析页的日期和设备人员条件只用来跳转，新分析页装不下，页面没有打开；原来的条件没有被改动。请从侧栏进入「选择排产方案」重新筛选。", public)
     dates = report_dates(args)
     if dates:
         public["原日期条件"] = " 至 ".join(dates)
     if resource[0]:
-        public["资源维度"] = "设备" if resource[0] == "machine" else "人员"
+        public["按什么统计"] = "设备" if resource[0] == "machine" else "人员"
     result = _unsupported("old_scope_not_equivalent",
-                          "原页面的统计、日期或资源口径不能由当前导航完整表达，未改用新报表默认范围。", public)
+                          "旧页面的统计范围、日期和设备人员条件，新报表装不下，页面没有打开；系统没有改用新报表的默认范围。请从侧栏进入「报表中心」重新筛选。", public)
     return replace(result, links=_download_links(legacy.endpoint, args, plan))
 
 
@@ -142,7 +142,7 @@ def _resolve(queries, legacy, args):
     if legacy.endpoint in _DETAILS:
         return _detail(queries, legacy, args)
     if legacy.path_values:
-        raise LegacyNavigationInvalid("旧页面包含未支持的路径条件。")
+        raise LegacyNavigationInvalid("旧地址里有不支持的条件，页面没有打开。请从侧栏重新进入。")
     if legacy.endpoint == "dashboard.index" and not args:
         return _redirect("dashboard", {})
     if legacy.endpoint in _PLAN_PAGES or legacy.endpoint.startswith("reports."):
@@ -169,8 +169,8 @@ def resolve_legacy_get(conn, legacy):
         with queries.read_snapshot():
             return _resolve(queries, legacy, args)
     except LegacyNavigationSourceMissing as exc:
-        raise NotFound("原对象或排产版本不存在，未选择其他对象。") from exc
+        raise NotFound("要找的记录或排产版本不存在，页面没有打开；系统没有替你换成别的记录。请从侧栏重新进入。") from exc
     except WorkbenchPlanReferenceError:
-        return _unsupported("identity_unavailable", "原计划的永久身份缺失或绑定已失效，未补建身份或换查其他计划。")
+        return _unsupported("identity_unavailable", "这份计划还没有正式编号，或编号已经失效，页面没有打开；系统不会替你补编号，也不会换查别的计划。请从侧栏进入「选择排产方案」重新选择。")
     except (ValueError, AppError, OverflowError) as exc:
         invalid_plan_input(exc)

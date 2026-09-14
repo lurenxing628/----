@@ -91,7 +91,7 @@ def test_csv_all_rows_null_preservation_formula_and_local_view(actual_api):
     assert rows[1]["本次数量"] == "" and rows[2]["本次数量"] == "0"
     assert rows[2]["本次结束"] == "" and rows[2]["剩余数量"] == ""
     assert rows[0]["备注"].startswith("'=")
-    assert all(row["快照引用"] == result["meta"]["snapshot_ref"] for row in rows)
+    assert all(row["数据版本编号"] == result["meta"]["snapshot_ref"] for row in rows)
     query["local_query"] = "no-match"
     empty = actual_api.client.get(BASE + "/export", query_string=query)
     assert empty.headers["X-Workbench-Operation-Count"] == "0"
@@ -207,6 +207,6 @@ def test_read_transaction_does_not_mix_concurrent_ledger_commit(actual_api):
 def test_unresolved_legacy_resource_is_not_silently_excluded(actual_api):
     item = read(actual_api)["data"]["items"][0]
     item["execution"]["data_gaps"].append({"code": "legacy_resource_identity_unresolved", "message": "旧资源身份不明确", "fields": ["actual_machine_ref"]})
-    with pytest.raises(WorkbenchCommandRejected, match="不能将可能匹配"):
+    with pytest.raises(WorkbenchCommandRejected, match="不会把可能符合"):
         cohort_match(item, ActualGanttScope(actual_api.ref(), resource_type="machine", resource_ref="f" * 48))
     assert cohort_match(item, ActualGanttScope(actual_api.ref(), resource_type="machine", resource_ref=item["task"]["machine_ref"]))

@@ -7,6 +7,7 @@ from datetime import datetime
 
 from core.errors import ValidationError
 from core.models.workbench_command import WorkbenchCommandRejected, canonical_json, input_fingerprint
+from core.services.workbench import messages
 from web.public_token_registry import issue_public_token, resolve_public_token
 
 _SCOPE = "workbench-read-v1"
@@ -24,13 +25,13 @@ def _matches_scope(payload, scope):
 def bind_read_snapshot(scope, fingerprint, token=None):
     if token is not None:
         try:
-            payload = json.loads(resolve_public_token(_SCOPE, token, message="读取范围已失效，请重新刷新。", field="snapshot_ref"))
+            payload = json.loads(resolve_public_token(_SCOPE, token, message=messages.STALE, field="snapshot_ref"))
         except (ValidationError, ValueError, TypeError) as exc:
-            raise WorkbenchCommandRejected("snapshot_stale", "读取范围已失效，请重新刷新；未自动切换到新数据。") from exc
+            raise WorkbenchCommandRejected("snapshot_stale", messages.STALE) from exc
         if (not isinstance(payload, dict) or payload.get("source") != "production"
                 or not _matches_scope(payload, scope) or payload.get("fingerprint") != fingerprint
                 or not isinstance(payload.get("as_of"), str)):
-            raise WorkbenchCommandRejected("snapshot_stale", "筛选范围或数据已经变化，请明确刷新后再继续。")
+            raise WorkbenchCommandRejected("snapshot_stale", messages.STALE)
         return {"snapshot_ref": token, "as_of": payload["as_of"]}
     as_of = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
     payload = {"version": 2, "source": "production", "scope_hash": input_fingerprint(scope),

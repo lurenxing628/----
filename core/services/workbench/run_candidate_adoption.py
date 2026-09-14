@@ -8,6 +8,7 @@ from core.models.workbench_run_adoption import ADOPT_ACTION, CandidateAdoptionBl
 from core.models.workbench_run_job import validate_run_ref
 from core.services.scheduler import schedule_service
 
+from . import messages
 from .commands import WorkbenchCommandService
 from .run_candidate_adoption_persistence import persist_adoption_in_tx
 from .run_candidate_adoption_validation import validate_adoption
@@ -26,7 +27,7 @@ class WorkbenchRunCandidateAdoptionService:
 
     def _point_surface(self, evidence):
         if not self.point_rendering_enabled and any(row.start_time == row.end_time for row in evidence.payload.schedule_rows):
-            raise CandidateAdoptionBlocked("point_rendering_not_connected", "后端点事件已验证，但前端点标记尚未联合接入，正式采用保持关闭。")
+            raise CandidateAdoptionBlocked("point_rendering_not_connected", "这个方案里有零工时工序，界面还显示不出来，暂时不能采用。请联系维护人员。")
 
     def _outer(self):
         if self.conn.in_transaction:
@@ -34,7 +35,7 @@ class WorkbenchRunCandidateAdoptionService:
 
     def _enabled(self):
         if not self.integration_enabled:
-            raise CandidateAdoptionBlocked("candidate_adoption_not_connected", "候选正式采用尚未完成联合接入，保持关闭。")
+            raise CandidateAdoptionBlocked("candidate_adoption_not_connected", messages.UNAVAILABLE)
         factory, validator = self.context_factory, self.context_validator
         if not callable(factory) or not callable(validator):
             raise RuntimeError("Candidate adoption authorization callbacks are not connected")
@@ -56,7 +57,7 @@ class WorkbenchRunCandidateAdoptionService:
         except WorkbenchCommandRejected:
             raise
         except Exception as exc:
-            raise WorkbenchCommandRejected("storage_failure", "采用预览失败，未改变正式计划，请核对运行日志。", 500) from exc
+            raise WorkbenchCommandRejected("storage_failure", messages.FAILURE, 500) from exc
         context = context_factory(candidate_ref, [ADOPT_ACTION], evidence.snapshot)
         return {"candidate_ref": candidate_ref, "run_ref": evidence.run_ref,
                 "baseline": {"plan_ref": evidence.baseline["plan_ref"], "version": evidence.baseline["version"]},
@@ -73,7 +74,7 @@ class WorkbenchRunCandidateAdoptionService:
         def guard():
             _, context_validator = self._enabled()
             if type(write_token) is not str or not write_token:
-                raise WorkbenchCommandRejected("stale_write", "请先预览并复核正式采用，未提供有效写上下文。")
+                raise WorkbenchCommandRejected("stale_write", "还没有确认采用，正式计划没有改动。请先点「预检」核对，再点「采用」。")
             evidence = validate_adoption(self.conn, candidate_ref)
             self._point_surface(evidence)
             context_validator(write_token, candidate_ref, ADOPT_ACTION, evidence.snapshot)
@@ -88,7 +89,7 @@ class WorkbenchRunCandidateAdoptionService:
         with _ADOPTION_LOCK:
             run_lock = schedule_service._RUN_SCHEDULE_LOCK
             if not run_lock.acquire(blocking=False):
-                raise WorkbenchCommandRejected("scheduling_busy", "已有排产正在运行，未执行本次采用，请稍后核对。")
+                raise WorkbenchCommandRejected("scheduling_busy", "正在排产，这次采用没有执行，正式计划没有改动。请等排产结束后重试。")
             try:
                 return commands.execute(request_key=request_key, action=ADOPT_ACTION, context_ref=candidate_ref,
                                         normalized_input=intent, guard=guard, mutate=mutate)
@@ -103,5 +104,5 @@ class WorkbenchRunCandidateAdoptionService:
         if row is None:
             return None
         if (row["action"], row["context_ref"]) != (ADOPT_ACTION, candidate_ref):
-            raise WorkbenchCommandRejected("request_key_conflict", "该请求记录不属于此候选采用，请核对原请求。")
+            raise WorkbenchCommandRejected("request_key_conflict", "这条操作记录不属于这个候选方案，没有查到结果。请核对上次提交的操作编号。")
         return commands.repo.public_result(row, replayed=True)

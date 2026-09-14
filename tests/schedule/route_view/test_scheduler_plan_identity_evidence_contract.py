@@ -388,7 +388,7 @@ def test_scenario_preview_plan_identity_uses_plain_label_and_cannot_write_feedba
         assert identity["scenario_id"] == scenario_id
         assert identity["source_table"] == "adjustment_scenario_rows"
         assert identity["source_row_id"] is not None
-        assert identity["user_label"] == "模拟预览（未命名）"
+        assert identity["user_label"] == "试调方案（未命名）"
         assert identity["is_official"] is False
         assert identity["is_preview"] is True
         assert identity["is_simulation"] is True

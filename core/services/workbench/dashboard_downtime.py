@@ -50,8 +50,8 @@ def _task(task, raw_task, resource_rows, index):
               "overlap_hours": amount if not bad else None, "known_overlap_hours": amount,
               "delay_after_reschedule_hours": None, "basis": "union_of_registered_downtime_intersections"}
     active = True if amount else None if bad else False
-    code, message = {True: ("downtime_overlap", "正式安排与有效停机窗口重叠；重叠时长不代表最终延期。"),
-                     None: ("downtime_unknown", "停机或设备依据无效，尚不能判断。"),
+    code, message = {True: ("downtime_overlap", "正式安排和已登记的停机时段有重叠；重叠时长不等于最后一定超期。"),
+                     None: ("downtime_unknown", "停机记录或设备资料填得不对，还判断不了。"),
                      False: ("no_overlap", "正式安排与已登记有效停机无重叠。")}[active]
     result = observation("downtime", task["task_ref"], task["batch_id"] + " · " + task["process_label"], source, active, code, message,
                          {"task": raw_task, "resource": resource, "downtimes": [row for _, _, row in windows],
@@ -64,7 +64,7 @@ def downtime(facts):
         return [], category(facts.plan_state, issues=facts.plan_issues)
     raw, refs, machines = (facts.raw[key] for key in ("MachineDowntimes", "WorkbenchDashboardDowntimeRefs", "Machines"))
     if any(value is None for value in (raw, refs, machines)):
-        return [], category("unavailable", issues=[source_issue("source_not_read", "停机台账或资源事实尚未读取。")])
+        return [], category("unavailable", issues=[source_issue("source_not_read", "停机记录或设备资料还没读取。")])
     index, resource_rows = _index(raw, refs), {row["machine_id"]: row for row in machines}
     result, unknown, intersections = [], 0, 0
     for task, raw_task in zip(facts.tasks, facts.task_rows):

@@ -27,10 +27,10 @@ class WorkbenchOutsourcingCommandService:
         target = header["target"] if header else payload["target"]
         source = self.reader.sources.load(target)
         if header and source["identity"] != header["identity"]:
-            reject("原登记成员或所属对象发生漂移，不能把历史重新关联到当前同编号对象。", "identity_drift", 409)
+            reject("原来登记的工序或它所属的批次已经变了，系统不会把历史记录重新挂到编号相同的另一条上。请刷新后重新登记。", "identity_drift", 409)
         memberships = repo.membership(target["operation_refs"])
         if header is None and memberships:
-            reject("成员已有外协登记；请打开原登记，不能重复建账或换组。", "constraint_conflict", 409)
+            reject("这些工序已经有外协登记了；请打开原来的登记修改，不要重复登记或换组。", "constraint_conflict", 409)
         before = values(previous) if previous else None
         after = next_values(before, payload, self.reader.now())
         snapshot = {"input_hash": input_fingerprint(payload), "source": source["facts"],

@@ -27,9 +27,9 @@ def entity_context(entity, fingerprint):
         if not entity["relationships"]["material_requirement_count"]:
             actions.append("batch.delete")
         else:
-            blocked.append({"action": "batch.delete", "message": "批次仍有物料需求，不能直接删除。"})
+            blocked.append({"action": "batch.delete", "message": "批次还挂着物料需求，不能删除。请先清除这个批次的物料需求，再删除批次。"})
     else:
-        blocked.append({"action": "batch.delete", "message": "批次已有计划或执行事实，不能删除或重建工序。"})
+        blocked.append({"action": "batch.delete", "message": "批次已经有计划或报工记录，不能删除，也不能重建工序。要改工序请先处理已有的计划和报工。"})
     context = issue_write_context(entity["ref"], actions, fingerprint)
     for action in ("delete", "sync_confirm", "operation_update"):
         context["capabilities"]["batch." + action] = "batch." + action in actions
@@ -62,7 +62,7 @@ def batch_query():
 def batch_selection():
     scope = batch_scope(json_body())
     if not scope.get("snapshot_ref"):
-        raise WorkbenchCommandRejected("invalid_input", "全选需要当前列表快照。", 400)
+        raise WorkbenchCommandRejected("invalid_input", "数据已更新，还没有全选。请点「刷新」后重新点「全选当前筛选」。", 400)
     reader = WorkbenchBatchQueryService(g.db, current_app.logger)
     with reader.read_snapshot() as fingerprint:
         snapshot = bind_read_snapshot(snapshot_scope(scope), fingerprint, scope["snapshot_ref"])
@@ -83,7 +83,7 @@ def batch_detail(ref):
 @api_endpoint
 def batch_choices():
     if request.args:
-        raise WorkbenchCommandRejected("invalid_input", "目录读取不接受其他参数。", 400)
+        raise WorkbenchCommandRejected("invalid_input", "这个下拉列表不需要其他条件。请刷新页面后重试。", 400)
     reader = WorkbenchBatchQueryService(g.db, current_app.logger)
     with reader.read_snapshot() as fingerprint:
         data = reader.choices()
@@ -119,7 +119,7 @@ def batch_preview(action, ref=None):
     required = ("input", "snapshot_ref", "scope") if action == "bulk_confirm" else ("input", "snapshot_ref")
     object_fields(body, required, required)
     if not isinstance(body["snapshot_ref"], str) or not body["snapshot_ref"]:
-        raise WorkbenchCommandRejected("invalid_input", "预览缺少当前资料快照。", 400)
+        raise WorkbenchCommandRejected("invalid_input", "数据已更新，还没有保存。请刷新页面后重新点「预览变更」。", 400)
     payload = normalize_bulk(body["input"]) if action == "bulk_confirm" else WorkbenchBatchOperationService.normalize_sync(body["input"])
     reader = WorkbenchBatchQueryService(g.db, current_app.logger)
     with reader.read_snapshot() as fingerprint:
@@ -131,7 +131,7 @@ def batch_preview(action, ref=None):
             bind_read_snapshot(snapshot_scope(scope), fingerprint, body["snapshot_ref"])
             data = WorkbenchBatchBulkService(g.db, current_app.logger).plan(payload)
             if not isinstance(body["snapshot_ref"], str) or not body["snapshot_ref"]:
-                raise WorkbenchCommandRejected("invalid_input", "批量预览缺少列表快照。", 400)
+                raise WorkbenchCommandRejected("invalid_input", "数据已更新，批量修改还没有保存。请刷新页面后重新点「预览变更」。", 400)
         preview = save_preview(action, ref, payload, fingerprint)
         data.update(preview_ref=preview, write_context=issue_write_context(ref or preview, ["batch." + action],
                     {"fingerprint": fingerprint, "input": payload}), warnings=data.get("warnings", []))
@@ -147,7 +147,7 @@ def batch_facets():
     body = object_fields(json_body(), ("scope", "field"), ("scope", "field"))
     scope = batch_scope(body["scope"])
     if body["field"] not in SORTS or not scope.get("snapshot_ref"):
-        raise WorkbenchCommandRejected("invalid_input", "列筛选缺少有效字段或当前快照。", 400)
+        raise WorkbenchCommandRejected("invalid_input", "要筛选的列不对或数据已更新，筛选没有变化。请点「刷新」后重新打开列筛选。", 400)
     reader = WorkbenchBatchQueryService(g.db, current_app.logger)
     with reader.read_snapshot() as fingerprint:
         snapshot = bind_read_snapshot(snapshot_scope(scope), fingerprint, scope["snapshot_ref"])
@@ -156,7 +156,7 @@ def batch_facets():
         values = list(dict.fromkeys(cell(row, body["field"]) for row in rows))
         values.sort(key=lambda value: (value is None, str(value)))
         if len(values) > 5000:
-            raise WorkbenchCommandRejected("invalid_input", "列值超过5000项，请缩小搜索范围。", 422)
+            raise WorkbenchCommandRejected("invalid_input", "这一列的可选值超过 5000 项，没有全部列出。请在搜索框里先输入关键字缩小范围。", 422)
     return query_success({"field": body["field"], "values": values, "count": len(values)}, snapshot)
 
 
@@ -166,13 +166,13 @@ def batch_confirm(action, ref=None):
     normalized = dict(object_fields(body["input"], ("preview_ref",), ("preview_ref",)))
     token = normalized["preview_ref"]
     if not isinstance(token, str) or not token:
-        raise WorkbenchCommandRejected("invalid_input", "确认缺少预览引用。", 400)
+        raise WorkbenchCommandRejected("invalid_input", "预检结果编号缺失，还没有保存。请重新点「预览变更」。", 400)
 
     def guard():
         binding = load_preview(token, action, ref)
         fingerprint = WorkbenchBatchQueryService(g.db, current_app.logger).fingerprint()
         if binding["fingerprint"] != fingerprint:
-            raise WorkbenchCommandRejected("stale_write", "预览后资料发生变化，请重新预览。")
+            raise WorkbenchCommandRejected("stale_write", "预检之后资料有变化，还没有保存。请重新点「预览变更」。")
         validate_write_context(body["write_token"], ref or token, "batch." + action, {"fingerprint": fingerprint, "input": binding["input"]})
         return binding["input"]
 

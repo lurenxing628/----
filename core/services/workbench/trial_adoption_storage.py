@@ -29,11 +29,11 @@ def load_saved_scenario(conn, scenario_ref):
     for task in saved["tasks"]:
         source = sources.get(task["source_row_ref"])
         if source is None or source["row_ref"] in seen:
-            _invalid("场景没有逐一覆盖原草稿任务，未重建缺失任务。")
+            _invalid("试调方案没有逐条对上草稿里的工序，缺的工序不会自动补。请刷新后重试。")
         seen.add(source["row_ref"])
         rows.append(_saved_row(task, source))
     if seen != set(sources):
-        _invalid("场景完整范围与原草稿不一致。")
+        _invalid("试调方案的范围和草稿不一致。请刷新后重试。")
     _require_links(saved["tasks"], rows)
     return saved, head, rows
 
@@ -44,13 +44,13 @@ def _require_head(saved, header, head, originals):
             or saved["status"] != "saved" or head["status"] != "saved"
             or saved["name"] != header["name"] or saved["saved_at"] != header["saved_at"]
             or head["revision"] != header["revision"] + 1):
-        _invalid("保存场景与已关闭草稿的永久身份或版本不一致。")
+        _invalid("试调方案和它的草稿编号或版本对不上。请刷新后重试。")
     _require_saved_scope(saved, originals)
     for key, expected in (("base", admission["input"]["base"]), ("scope", admission["input"]["scope"]),
                           ("base_identity", admission["source"]["identity"]),
                           ("baseline", {name: admission["baseline"][name] for name in ("plan_ref", "version")})):
         if fingerprint(saved[key]) != fingerprint(expected):
-            _invalid("场景的原基础、范围或正式基线不一致。")
+            _invalid("试调方案的来源、范围或建草稿时的正式计划对不上。请刷新后重试。")
 
 
 def _require_saved_scope(saved, originals):
@@ -58,7 +58,7 @@ def _require_saved_scope(saved, originals):
             or saved["unplanned_operations"] or not 0 < len(originals) <= MAX_TRIAL_TASKS
             or type(saved["task_count"]) is not int or saved["task_count"] != len(originals)
             or len(saved["tasks"]) != len(originals)):
-        raise TrialAdoptionBlocked("scenario_scope_incomplete", "保存场景尚未完整覆盖原范围，不能正式采用。")
+        raise TrialAdoptionBlocked("scenario_scope_incomplete", "试调方案没有覆盖原来的全部范围，不能正式采用。")
 
 
 def _require_receipts(conn, saved, header, head):
@@ -66,10 +66,10 @@ def _require_receipts(conn, saved, header, head):
     created, persisted = repo.get(head["request_key"]), repo.get(header["request_key"])
     if (created is None or (created["action"], created["context_ref"]) != ("trial.create", head["base_ref"])
             or persisted is None or (persisted["action"], persisted["context_ref"]) != ("trial.save", head["draft_ref"])):
-        _invalid("原草稿创建或场景保存回执缺失，不能证明完整持久来源。")
+        _invalid("找不到建草稿或保存试调方案的结果记录，来源无法确认。请刷新后重试。")
     result = repo.public_result(persisted, replayed=True)
     if result["result"] != "committed" or fingerprint(result["data"]) != fingerprint(saved):
-        _invalid("场景快照与原保存回执不一致，未覆盖或重新生成快照。")
+        _invalid("试调方案的内容和保存结果对不上，这里不会重新生成。请刷新后重试。")
 
 
 def _saved_row(task, source):
@@ -81,21 +81,21 @@ def _saved_row(task, source):
                 "sequence": op["seq"], "piece_id": op["piece_id"], "source": op["source"],
                 "predecessor_operation_refs": original["predecessor_operation_refs"]}
     if fingerprint({key: task[key] for key in expected}) != fingerprint(expected):
-        _invalid("场景任务的原工序、批次、前序或草稿来源不一致。")
+        _invalid("试调方案里的工序、批次、前序或草稿来源对不上。请刷新后重试。")
     for key in ("row_ref", "task_ref"):
         reference(task[key])
         if task[key] == source[key]:
-            _invalid("场景任务身份不能冒充原草稿任务身份。")
+            _invalid("试调方案里的工序编号不能和草稿里的编号相同。请刷新后重试。")
     current = {key: task[key] for key in ("machine_ref", "operator_ref", "start", "end")}
     for kind in ("machine", "operator"):
         current[kind + "_id"] = source["current"][kind + "_id"]
     if fingerprint(current) != fingerprint(source["current"]):
-        _invalid("场景保存的安排与已关闭草稿不一致，未使用当前安排替换。")
+        _invalid("试调方案保存的安排和草稿不一致，这里不会用当前安排顶替。请刷新后重试。")
     for name in ("start", "end"):
         raw = current[name]
         parsed = datetime.fromisoformat(raw)
         if parsed.tzinfo is not None or parsed.microsecond or parsed.isoformat(timespec="seconds") != raw:
-            _invalid("场景时间必须是可无损保存的工厂本地秒精度时间。")
+            _invalid("试调方案里的时间只能精确到秒，请按 2026-09-13 08:30:00 这样填写。")
     return {**source, "row_ref": task["row_ref"], "task_ref": task["task_ref"],
             "current": current, "original": deepcopy(original)}
 
@@ -103,12 +103,12 @@ def _saved_row(task, source):
 def _require_links(tasks, rows):
     for key in ("row_ref", "task_ref", "operation_ref"):
         if len({row[key] for row in rows}) != len(rows):
-            _invalid("场景永久行、任务或工序身份重复。")
+            _invalid("试调方案里有重复的工序。请刷新后重试。")
     by_operation = {row["operation_ref"]: row["task_ref"] for row in rows}
     for task, row in zip(tasks, rows):
         expected = [by_operation[ref] for ref in row["original"]["predecessor_operation_refs"] if ref in by_operation]
         if task["predecessor_refs"] != expected:
-            _invalid("场景前后序引用与保存的完整任务不一致。")
+            _invalid("试调方案里的前后序和保存的工序对不上。请刷新后重试。")
 
 
 def schedule_rows(rows):

@@ -32,7 +32,7 @@ def delivery(facts):
                   "evaluation": row, "time_basis": "factory_local", "due_boundary": "next_day_exclusive"}
         items.append(observation("delivery", row["batch_ref"], row["batch_id"] + " · " + (row["part_label"] or "未填写名称"),
                                  source, active, "planned_overdue" if active else "delivery_unknown" if active is None else "on_time",
-                                 "正式计划预计晚交。" if active else "交期或完整排程依据不足，尚不能判断。" if active is None else "正式计划预计按期完成。",
+                                 "正式计划预计超期。" if active else "交期或排产数据不够，还判断不了。" if active is None else "正式计划预计按期完成。",
                                  {"batch": batches.get(row["batch_id"]), "tasks": by_batch[row["batch_id"]],
                                   "completion_record": facts.delivery_facts["completion_record"]}))
     unknown = sum(row["risk"]["active"] is None for row in items)
@@ -72,7 +72,7 @@ def _material_batch(batch, checks, refs, by_material, material_refs):
               "ready_date": stored_date(batch["ready_date"]), "due_date": stored_date(batch["due_date"]),
               "quantity": batch["quantity"] if number(batch["quantity"], integer=True) else None,
               "requirements": [row for row, _ in projected], "readiness_issues": reasons, "basis": "batch_material_requirements_not_stock"}
-    code, message = {None: ("readiness_unknown", "齐套事实不完整，不能认定缺口数量或齐套。"),
+    code, message = {None: ("readiness_unknown", "齐套数据读不完整，算不出缺多少，也不能认定已齐套。"),
                      True: ("not_ready", "批次或已登记物料需求尚未确认齐套。"),
                      False: ("ready", "当前齐套检查无缺口（不等于排产就绪）。")}[active]
     label = batch["part_name"] if type(batch["part_name"]) is str else "未填写名称"

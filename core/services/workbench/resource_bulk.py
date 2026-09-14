@@ -43,9 +43,9 @@ class WorkbenchResourceBulkService:
                        reference_count=reference_count(expected))
             check_category(self.kind, row["before"], scope)
             if identity.entity_key != identity.entity_key.strip():
-                raise WorkbenchCommandRejected("constraint_conflict", "旧编号含首尾空白，不能按领域规则安全删除。")
+                raise WorkbenchCommandRejected("constraint_conflict", "这条旧记录的编号前后带空格，没有删除，以免删错记录。请联系维护人员修正编号。")
             if row["reference_count"]:
-                raise WorkbenchCommandRejected("constraint_conflict", "资源仍有工序、授权、日历或历史执行引用，不能删除。")
+                raise WorkbenchCommandRejected("constraint_conflict", "这个资源还被工序、授权、班表或历史报工用着，没有删除。请先解除这些关联。")
             row["result"] = "delete"
         except WorkbenchCommandRejected as exc:
             if exc.status >= 500:
@@ -60,7 +60,7 @@ class WorkbenchResourceBulkService:
             try:
                 current = self.preview_delete(refs, scope=scope)
             except ValidationError as exc:
-                raise WorkbenchCommandRejected("stale_write", "删除选择或范围已变化，请重新预检。") from exc
+                raise WorkbenchCommandRejected("stale_write", "要删的记录或范围已经变了，没有删除。请重新点「预检」。") from exc
             check_resource_preview(preview, current)
             results = []
             for row in current.as_dict()["rows"]:

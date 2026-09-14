@@ -19,7 +19,7 @@ def reject(message, code="invalid_input", status=422):
 
 def reference(value):
     if type(value) is not str or re.fullmatch(r"[0-9a-f]{48}", value) is None:
-        reject("请使用原对象的永久引用，不能使用显示编号代替。", status=400)
+        reject("这条记录已失效，请刷新后重新选择。", status=400)
     return value
 
 
@@ -44,7 +44,7 @@ def raw_facts(value):
 
 def bounded(value):
     if len(canonical_json(value).encode("utf-8")) > MAX_BYTES:
-        reject("外协读取超过8MB，请缩小范围；未截断事实或历史。", "query_too_large", 413)
+        reject("外协数据超过 8 MB，这次没有读取。请缩小查询范围。", "query_too_large", 413)
     return value
 
 

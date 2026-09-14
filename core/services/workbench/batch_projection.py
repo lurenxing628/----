@@ -63,7 +63,7 @@ class BatchProjection:
             return None
         value = self.refs.get((kind, str(key)))
         if value is None:
-            raise WorkbenchCommandRejected("storage_failure", "永久实体引用不完整，未使用编号替代或自动补建。", 500)
+            raise WorkbenchCommandRejected("storage_failure", "有资料缺少系统编号，系统不会拿业务编号顶替，也不会自动补建。请刷新重试；仍不行请联系维护人员。", 500)
         return value
 
     def resource(self, kind, key):
@@ -109,7 +109,7 @@ class BatchProjection:
             else:
                 numbers["ext_days"] = numeric(row["ext_days"], issues, "外协周期", positive=True)
         else:
-            issues.append(issue("工序归属未明确。"))
+            issues.append(issue("归属未明确。"))
         if not resources["op_type"]:
             issues.append(issue("工序工种未登记。"))
         # Hidden hours of external operations remain raw in storage, not defaulted.
@@ -139,7 +139,7 @@ class BatchProjection:
         issues = list(self.facts["execution"]["issues"])
         part = self.parts.get(row["part_no"])
         if part is None:
-            raise WorkbenchCommandRejected("storage_failure", "批次所引用的零件不存在。", 500)
+            raise WorkbenchCommandRejected("storage_failure", "这个批次对应的零件已经不在了。请刷新重试；仍不行请联系维护人员。", 500)
         ops = [self.operation(row, op, facts["protected"]) for op in sorted(facts["operations"], key=lambda op: (op["seq"], op["id"]))]
         fields = {key: row[key] for key in FIELDS}
         fields["quantity"] = numeric(row["quantity"], issues, "数量", integer=True)
@@ -150,7 +150,7 @@ class BatchProjection:
                 issues.append(issue("原优先级、齐套或状态标记不明确。"))
         done, all_complete, status = batch_progress(ops, row["status"])
         if row["status"] == "completed" and (not ops or done != len(ops)):
-            issues.append(issue("批次完成标记与全部工序不一致，不能据此认定整批完成。", "completion_inconsistent"))
+            issues.append(issue("批次标着完成，但工序状态对不上，不能认定整批已完成。", "completion_inconsistent"))
         return {"ref": self.ref("batch", row["batch_id"]), "business_code": row["batch_id"], "label": part["part_name"],
                 "status": status, "stored_status": row["status"], "execution_available": self.facts["execution"]["available"],
                 "fields": fields, "relationships": {"part_ref": self.ref("part", row["part_no"]),

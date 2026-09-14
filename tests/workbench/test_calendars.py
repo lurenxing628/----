@@ -160,7 +160,7 @@ def test_crossnight_omissions_preserved_and_other_tables_untouched(calendar_env)
 def test_hidden_end_conflict_never_claims_input_hours_saved(calendar_env, fields):
     conn, adapter, _ = calendar_env
     before = stored_state(conn)
-    with pytest.raises(WorkbenchCommandRejected, match="推导为 8 小时") as error:
+    with pytest.raises(WorkbenchCommandRejected, match="算出 8 小时") as error:
         run_day(calendar_env, "upsert", {"date": NIGHT, "fields": fields})
     assert error.value.code == "constraint_conflict" and stored_state(conn) == before
     with pytest.raises(WorkbenchCommandRejected):
@@ -335,7 +335,7 @@ def test_absent_created_deleted_aba_is_not_an_unchanged_snapshot(calendar_env):
     domain.upsert("2027-01-01")
     domain.delete("2027-01-01")
     before = stored_state(conn)
-    with pytest.raises(WorkbenchCommandRejected, match="已变化"):
+    with pytest.raises(WorkbenchCommandRejected, match="已经变了"):
         run_confirm(calendar_env, preview)
     assert stored_state(conn) == before
 
@@ -440,7 +440,7 @@ def test_raw_null_fields_preserved_in_snapshot_and_not_silently_rewritten(calend
     conn.commit()
     assert adapter.snapshot(NIGHT)["row"]["shift_start"] is None
     before = stored_state(conn)
-    with pytest.raises(WorkbenchCommandRejected, match="未编辑字段"):
+    with pytest.raises(WorkbenchCommandRejected, match="没改的项"):
         run_day(calendar_env, "upsert", {"date": NIGHT, "fields": {"eff": 50}})
     assert stored_state(conn) == before
 
@@ -457,9 +457,9 @@ def test_query_failure_propagates_without_fake_default_or_write(calendar_env):
 def test_subminute_hours_rejected_before_preview_or_domain_write(calendar_env):
     conn, adapter, _ = calendar_env
     before = stored_state(conn)
-    with pytest.raises(WorkbenchCommandRejected, match="分钟精度"):
+    with pytest.raises(WorkbenchCommandRejected, match="存不稳"):
         adapter.preview(range_input(fields={**WORK, "hours": 1.001}))
-    with pytest.raises(WorkbenchCommandRejected, match="分钟精度"):
+    with pytest.raises(WorkbenchCommandRejected, match="存不稳"):
         run_day(calendar_env, "upsert", {"date": "2024-02-29", "fields": {**WORK, "hours": 1.001}})
     assert stored_state(conn) == before
 
@@ -535,7 +535,7 @@ def test_actual_recomputed_date_set_must_equal_preview(calendar_env):
     preview = adapter.preview(range_input())
     before = stored_state(conn)
     with patch("core.services.workbench.calendars.calendar_range_dates", return_value=preview.dates[:-1]):
-        with pytest.raises(WorkbenchCommandRejected, match="命中日期"):
+        with pytest.raises(WorkbenchCommandRejected, match="命中的日期"):
             run_confirm(calendar_env, preview)
     assert stored_state(conn) == before
 

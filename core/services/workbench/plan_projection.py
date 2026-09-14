@@ -10,17 +10,17 @@ from data.repositories.schedule_time_sql import parse_dt_for_sql
 from .zero_duration import point_event_dto
 
 _REASONS = {
-    "summary_invalid": "排产摘要无效，无法确认计划完整性。",
-    "summary_missing": "排产摘要缺失，无法确认计划完整性。",
-    "plan_unavailable": "计划角色关系或明细无效，暂不可查看。",
-    "history_missing": "场景的基础排产历史不存在。",
-    "scenario_not_active": "场景已发布、过期或作废，不能作为当前预览。",
-    "scenario_unavailable": "场景的基础关系或明细无效，暂不可查看。",
-    "plan_capacity_exceeded": "计划或必要基础计划的明细超过本批读取上限，尚未验证完整性。",
-    "plan_binding_invalid": "计划角色或基础计划的绑定已失效，暂不可查看。",
-    "identity_missing": "计划永久引用缺失，读取不会自动补建。",
-    "identity_invalid": "计划永久引用与当前对象不一致，暂不可查看。",
-    "source_missing": "计划源对象已不存在，未自动切换到其他计划。",
+    "summary_invalid": "这次排产的摘要无效，确认不了计划是否完整。请刷新后重试。",
+    "summary_missing": "这次排产的摘要缺失，确认不了计划是否完整。请刷新后重试。",
+    "plan_unavailable": "这个计划的类型关系或明细无效，暂时看不了。请刷新计划列表后重试。",
+    "history_missing": "这个试调方案依据的那次排产已经没有了，暂时看不了。",
+    "scenario_not_active": "这个试调方案已发布、过期或作废，不能再拿来查看。请回「试调」重新选一个。",
+    "scenario_unavailable": "这个试调方案依据的计划关系或明细无效，暂时看不了。",
+    "plan_capacity_exceeded": "这个计划或它依据的计划明细超过本次读取上限，还确认不了是否完整。请缩小时间范围后重试。",
+    "plan_binding_invalid": "这个计划的类型或它依据的计划已经变了，暂时看不了。请刷新计划列表后重试。",
+    "identity_missing": "这个计划找不到编号，系统不会自动补建。请刷新计划列表后重试。",
+    "identity_invalid": "这个计划的编号和当前记录对不上，暂时看不了。请刷新计划列表后重试。",
+    "source_missing": "这个计划的来源记录已经不在了，系统不会自动换成别的计划。请刷新计划列表后重试。",
 }
 
 
@@ -39,7 +39,7 @@ def project_plan(entry, plan_ref):
     identity = entry.plan_identity
     version = _wire_positive_int64(entry.locator.version)
     if entry.can_view and version is None:
-        raise WorkbenchCommandRejected("plan_unavailable", "计划版本号无效，不能标记为可查看。")
+        raise WorkbenchCommandRejected("plan_unavailable", "计划的版本号无效，不能开放查看。请刷新计划列表后重试。")
     return {"plan_ref": plan_ref, "version": version, "kind": entry.kind,
             "is_current_official": bool(entry.can_view and identity is not None
                                         and identity.is_current_executable_official_version),
@@ -66,7 +66,7 @@ def project_capacity_blocked_plan(locator, plan_ref, display_name):
 def public_time(value):
     parsed = parse_dt_for_sql(value)
     if parsed is None:
-        raise WorkbenchCommandRejected("plan_unavailable", "计划含无效时间明细，未返回截断或替代数据。")
+        raise WorkbenchCommandRejected("plan_unavailable", "计划里有安排的时间无效，系统不会跳过，也不会用别的时间顶替。请到计划甘特核对。")
     return parsed.replace(" ", "T")
 
 
@@ -79,14 +79,14 @@ def task_span(rows):
 
 def _required_text(value):
     if type(value) is not str or not value.strip():
-        raise WorkbenchCommandRejected("plan_unavailable", "任务的业务批次或工序信息缺失，无法完整投影。")
+        raise WorkbenchCommandRejected("plan_unavailable", "有安排缺批次号或工序名称，读不全。请到批次管理核对。")
     return value
 
 
 def _sequence(value):
     wire = _wire_positive_int64(value)
     if wire is None:
-        raise WorkbenchCommandRejected("plan_unavailable", "任务工序号无效，未自动改号。")
+        raise WorkbenchCommandRejected("plan_unavailable", "有安排的工序号无效，系统不会替你改号。请到批次管理核对工序号。")
     return wire
 
 
@@ -96,7 +96,7 @@ def _resource_ref(row, kind, identities):
         return None
     identity = identities[kind].get(str(key))
     if identity is None:
-        raise WorkbenchCommandRejected("identity_missing", "任务关联资源的永久引用缺失，读取不会补建身份。")
+        raise WorkbenchCommandRejected("identity_missing", "有安排关联的设备或人员找不到编号，系统不会自动补建。请到资料总览核对。")
     return identity.ref
 
 
@@ -195,9 +195,9 @@ def project_tasks(plan_ref, rows, task_refs, operation_refs, resources, *, conn=
     for row in rows:
         start, end = public_time(row["start_time"]), public_time(row["end_time"])
         if start > end or (start == end and not row.get("_point_work")):
-            raise WorkbenchCommandRejected("plan_unavailable", "计划任务起止时间无效，未返回替代数据。")
+            raise WorkbenchCommandRejected("plan_unavailable", "有安排的起止时间无效，系统不会用别的时间顶替。请到计划甘特核对。")
         if row["schedule_id"] not in task_refs or row["op_id"] not in operation_refs:
-            raise WorkbenchCommandRejected("identity_missing", "计划任务永久引用缺失，读取不会补建身份。")
+            raise WorkbenchCommandRejected("identity_missing", "有安排找不到编号，系统不会自动补建。请刷新后重试。")
         piece = row.get("piece_id")
         if piece is not None:
             piece = _required_text(piece)
@@ -214,11 +214,11 @@ def project_tasks(plan_ref, rows, task_refs, operation_refs, resources, *, conn=
             from datetime import datetime
             tasks[-1].update(point_event_dto(datetime.fromisoformat(start), datetime.fromisoformat(end)))
     if len({task["task_ref"] for task in tasks}) != len(tasks):
-        raise WorkbenchCommandRejected("task_binding_invalid", "计划任务引用重复，无法确认完整任务范围。")
+        raise WorkbenchCommandRejected("task_binding_invalid", "计划里有安排编号重复，确认不了完整范围。请刷新后重试。")
     return tasks
 
 
 def check_payload_size(data):
     if len(canonical_json(data).encode("utf-8")) > MAX_PLAN_RESPONSE_BYTES:
-        raise WorkbenchCommandRejected("query_too_large", "计划查询结果超出本批读取大小上限，未返回截断结果。", 413)
+        raise WorkbenchCommandRejected("query_too_large", "计划查询结果超过本次读取大小上限，没有读取，也不会只给一部分。请缩小时间范围后重试。", 413)
     return data

@@ -46,7 +46,7 @@ def test_scheduler_run_no_reschedulable_flash(app_client, monkeypatch) -> None:
     landing = client.get(resp.headers["Location"])
     assert landing.status_code == 410
     landing_body = landing.get_data(as_text=True)
-    assert "未忽略条件后跳转" in landing_body
+    assert "没有跳转，也没有丢掉任何条件" in landing_body
     assert "所选批次没有可重排工序，本次未执行排产。" in landing_body
     assert "排产完成（版本" not in landing_body
     assert "Location" not in landing.headers

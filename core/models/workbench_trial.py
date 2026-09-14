@@ -22,13 +22,13 @@ def reject(code, message, status=409) -> NoReturn:
 
 def reference(value):
     if type(value) is not str or re.fullmatch(r"[0-9a-f]{48}", value) is None:
-        reject("invalid_input", "请提供有效的永久对象引用。", 400)
+        reject("invalid_input", "这条记录已失效，请刷新后重新选择。", 400)
     return value
 
 
 def fields(value, required, optional=()):
     if type(value) is not dict or not set(required) <= set(value) or set(value) - set(required) - set(optional):
-        reject("invalid_input", "请求字段缺失或含未支持字段，未推测输入。", 400)
+        reject("invalid_input", "提交内容缺少必填项或含有多余项，这次操作没有执行。请刷新页面后重试。", 400)
 
 
 def create_input(value):
@@ -49,7 +49,7 @@ def _scope(scope):
             reject("invalid_input", "显示范围开始必须早于结束。", 400)
     if "batch_refs" in scope:
         if type(scope["batch_refs"]) is not list or len(scope["batch_refs"]) > MAX_TRIAL_TASKS:
-            reject("invalid_input", "批次范围必须为明确引用列表。", 400)
+            reject("invalid_input", "请从批次列表里勾选批次。", 400)
         scope = dict(scope, batch_refs=sorted(set(reference(ref) for ref in scope["batch_refs"])))
     if "resource_type" in scope and scope["resource_type"] not in ("machine", "operator", "batch"):
         reject("invalid_input", "资源视图类型无效。", 400)
@@ -73,7 +73,7 @@ def save_input(value):
     fields(value, ("name",))
     name = value["name"]
     if type(name) is not str or not name.strip() or len(name.strip()) > 120:
-        reject("invalid_input", "场景名称必须为1至120个字符。", 400)
+        reject("invalid_input", "试调方案名称请填 1 至 120 个字。", 400)
     return {"name": name.strip()}
 
 
@@ -107,6 +107,6 @@ class TrialValidation:
 
 def validation(issues):
     state = "blocked" if any(row["severity"] == "blocker" for row in issues) else "warning" if issues else "valid"
-    blocked = issue("scenario_adoption_not_connected", "完整试调场景的正式采用尚未接入；保存仅保留场景，不改变正式计划。")
+    blocked = issue("scenario_adoption_not_connected", "此功能尚未开通：保存只留下试调方案，不会改变正式计划。")
     return TrialValidation("blocked", False, issues + [blocked], state,
                            {"available": False, "blocked_reasons": [blocked]}).to_dict()

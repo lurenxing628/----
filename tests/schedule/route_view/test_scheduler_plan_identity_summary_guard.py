@@ -64,7 +64,7 @@ def _dashboard_text(workbench):
     return projection_text(workbench["hero"], workbench["risk_cards"], workbench["summary_stats"])
 
 
-def _rejected_dashboard(client, path, *, status=400, message="原计划身份、日期或筛选无效"):
+def _rejected_dashboard(client, path, *, status=400, message="地址里的计划编号、日期或筛选不对"):
     """The current adapter rejects bad identity/scope instead of selecting latest."""
     body = assert_retired_scope(client, path, status=status, message=message)
     assert "ValueError" not in body and "Traceback" not in body
@@ -267,8 +267,8 @@ def test_dashboard_invalid_plan_identity_is_visible_gap_instead_of_500() -> None
     client = _client()
 
     for path, message in (
-        ("/?version=12&plan_role=bad_role", "原计划角色无效，未改用采用方案"),
-        ("/?version=12&plan_role=adopted&scenario_id=missing-scenario", "原计划身份、日期或筛选无效"),
+        ("/?version=12&plan_role=bad_role", "地址里的计划类型不对"),
+        ("/?version=12&plan_role=adopted&scenario_id=missing-scenario", "地址里的计划编号、日期或筛选不对"),
     ):
         text = _rejected_dashboard(client, path, message=message)
         assert "bad_role" not in text and "missing-scenario" not in text

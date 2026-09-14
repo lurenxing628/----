@@ -29,42 +29,42 @@ def _unique_object(pairs):
     result = {}
     for key, value in pairs:
         if key in result:
-            raise WorkbenchCommandRejected("invalid_input", "查询JSON包含重复字段。", 400)
+            raise WorkbenchCommandRejected("invalid_input", "查询条件里有重复项，当前列表没有变化。请刷新页面后重新选择。", 400)
         result[key] = value
     return result
 
 
 def _body():
     if request.args or not request.is_json:
-        raise WorkbenchCommandRejected("invalid_input", "表格查询必须使用JSON正文，不能带URL查询参数。", 400)
+        raise WorkbenchCommandRejected("invalid_input", "查询条件格式不正确，当前列表没有变化。请刷新页面后重新选择。", 400)
     if request.content_length is not None and request.content_length > MAX_TABLE_BODY_BYTES:
-        raise WorkbenchCommandRejected("capacity_exceeded", "查询正文超过32 MiB，请缩小筛选范围。", 413)
+        raise WorkbenchCommandRejected("capacity_exceeded", "一次提交的查询条件超过 32 MB，当前列表没有变化。请缩小筛选范围后重试。", 413)
     raw = request.stream.read(MAX_TABLE_BODY_BYTES + 1)
     if len(raw) > MAX_TABLE_BODY_BYTES:
-        raise WorkbenchCommandRejected("capacity_exceeded", "查询正文超过32 MiB，请缩小筛选范围。", 413)
+        raise WorkbenchCommandRejected("capacity_exceeded", "一次提交的查询条件超过 32 MB，当前列表没有变化。请缩小筛选范围后重试。", 413)
     try:
         body = json.loads(raw, object_pairs_hook=_unique_object)
     except (ValueError, UnicodeError) as exc:
         if isinstance(exc, WorkbenchCommandRejected):
             raise
-        raise WorkbenchCommandRejected("invalid_input", "查询正文不是有效JSON。", 400) from exc
+        raise WorkbenchCommandRejected("invalid_input", "查询条件读不出来，当前列表没有变化。请点「清除筛选」后重新选择。", 400) from exc
     if type(body) is not dict:
-        raise WorkbenchCommandRejected("invalid_input", "查询正文必须是对象。", 400)
+        raise WorkbenchCommandRejected("invalid_input", "查询条件不完整，当前列表没有变化。请刷新页面后重新选择。", 400)
     return body
 
 
 def _scope(kind, value):
     if kind not in TABLE_KINDS:
-        raise WorkbenchCommandRejected("entity_not_found", "此资源没有表头筛选入口。", 404)
+        raise WorkbenchCommandRejected("entity_not_found", "这类记录的表头不支持筛选，当前列表没有变化。请改用上方的筛选条。", 404)
     if type(value) is not dict or set(value) - _SCOPE_FIELDS:
-        raise WorkbenchCommandRejected("invalid_input", "列表范围包含未知字段。", 400)
+        raise WorkbenchCommandRejected("invalid_input", "筛选范围里有不支持的列，当前列表没有变化。请刷新页面后重新选择。", 400)
     fields = dict(value)
     token = fields.pop("snapshot_ref", None)
     if "page" in fields:
         fields["number"] = fields.pop("page")
     if kind == "material":
         if fields.pop("category", None) is not None:
-            raise WorkbenchCommandRejected("invalid_input", "物料列表不支持工种归属。", 400)
+            raise WorkbenchCommandRejected("invalid_input", "物料列表没有自制或外协的分类，当前列表没有变化。请去掉这个条件后重试。", 400)
         query = MaterialPageRequest(**fields)
     else:
         query = ResourcePageRequest(kind, **fields)
@@ -87,7 +87,7 @@ def _readonly_endpoint(function):
             raise
         except Exception as exc:
             # POST is only a transport for large read scopes, never an uncertain write.
-            raise WorkbenchCommandRejected("storage_failure", "表格读取失败，未写入任何业务结果。", 500) from exc
+            raise WorkbenchCommandRejected("storage_failure", "列表没有读出来，数据没有任何改动。请刷新重试；仍不行请联系维护人员，并告知下方编号。", 500) from exc
     return wrapped
 
 
@@ -95,7 +95,7 @@ def _readonly_endpoint(function):
 def resource_table_query(kind):
     query, token = _scope(kind, _body())
     if query.number > 1 and token is None:
-        raise WorkbenchCommandRejected("snapshot_stale", "继续翻页需要原列表快照，请先刷新。")
+        raise WorkbenchCommandRejected("snapshot_stale", "翻页位置已失效，请回到第 1 页重新查询。")
     if isinstance(query, MaterialPageRequest):
         return _material_table_query(query, token)
     return _resource_table_query(query, token)
@@ -107,7 +107,7 @@ def _material_table_query(query: MaterialPageRequest, token):
         snapshot = bind_read_snapshot(query.scope(), state, token)
         records, page = reader.page(query)
         if query.number > page["pages"]:
-            raise WorkbenchCommandRejected("snapshot_stale", "列表页码已过时，请刷新。")
+            raise WorkbenchCommandRejected("snapshot_stale", "翻页位置已失效，请回到第 1 页重新查询。")
         domain = WorkbenchMaterialService(g.db, current_app.logger)
         entities = [_entity_with_context(record, domain) for record in records]
         metrics = reader.metrics(query)
@@ -123,7 +123,7 @@ def _resource_table_query(query: ResourcePageRequest, token):
         snapshot = bind_read_snapshot(query.scope(), state, token)
         records, page = reader.page(query)
         if query.number > page["pages"]:
-            raise WorkbenchCommandRejected("snapshot_stale", "列表页码已过时，请刷新。")
+            raise WorkbenchCommandRejected("snapshot_stale", "翻页位置已失效，请回到第 1 页重新查询。")
         entities = [_with_context(kind, record) for record in records]
         metrics = page.pop("metrics")
         data = {"entities": entities, "page": page, "metrics": metrics,
@@ -134,14 +134,14 @@ def _resource_table_query(query: ResourcePageRequest, token):
 def _facet_query(kind, body, *, selection=False):
     allowed = {"scope", "column", "query", "size", "snapshot_ref"} | (set() if selection else {"page"})
     if set(body) - allowed or not {"scope", "column"}.issubset(body):
-        raise WorkbenchCommandRejected("invalid_input", "筛选值查询字段不正确。", 400)
+        raise WorkbenchCommandRejected("invalid_input", "列筛选的条件不对，筛选没有变化。请刷新页面后重新打开列筛选。", 400)
     query, list_token = _scope(kind, body["scope"])
     column, search = body["column"], body.get("query", "")
     number, size = body.get("page", 1), body.get("size", 100)
     validate_facet_request(query, column, search, number, size)
     facet_token = body.get("snapshot_ref")
     if (selection or number > 1) and facet_token is None:
-        raise WorkbenchCommandRejected("snapshot_stale", "继续读取筛选值需要菜单自身快照，请重新打开菜单。")
+        raise WorkbenchCommandRejected("snapshot_stale", "列筛选的可选值已过期，筛选没有变化。请关掉后重新打开列筛选。")
     signature = {"kind": "resource_table_facets", "scope": toolbar_scope(query), "column": column, "query": search, "size": size}
     reader = _reader(kind)
     with reader.read_snapshot() as state:

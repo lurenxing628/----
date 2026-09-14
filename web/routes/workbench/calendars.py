@@ -35,12 +35,12 @@ def _service():
 
 def _month_input():
     if set(request.args) - {"year", "month", "snapshot_ref"} or any(len(request.args.getlist(key)) != 1 for key in request.args):
-        raise WorkbenchCommandRejected("invalid_input", "日历查询包含未知或重复参数。", 400)
+        raise WorkbenchCommandRejected("invalid_input", "工作日历的查询条件有重复或不支持的项，当前月份没有变化。请刷新页面后重新选择月份。", 400)
     values = {}
     for key in ("year", "month"):
         text = request.args.get(key, "")
         if re.fullmatch(r"[1-9][0-9]{0,3}", text) is None:
-            raise WorkbenchCommandRejected("invalid_input", "请提供有效年份及 1 至 12 的月份。", 400)
+            raise WorkbenchCommandRejected("invalid_input", "请填写有效的年份和 1 至 12 的月份，当前月份没有变化。", 400)
         values[key] = int(text)
     return values
 
@@ -87,10 +87,10 @@ def calendar_day_command(action):
 
 def _preview_input():
     if request.args or not request.is_json:
-        raise WorkbenchCommandRejected("invalid_input", "预览必须使用 JSON 内容，不能带查询参数。", 400)
+        raise WorkbenchCommandRejected("invalid_input", "提交的内容格式不正确，日历还没有修改。请刷新页面后重新点「预览变更」。", 400)
     body = request.get_json()
     if not isinstance(body, dict) or set(body) != {"input"}:
-        raise WorkbenchCommandRejected("invalid_input", "预览只能提交本次填写的内容，不能附带旧资料或其他信息。", 400)
+        raise WorkbenchCommandRejected("invalid_input", "提交的内容有多余项，日历还没有修改。请刷新页面后重新点「预览变更」。", 400)
     return body["input"]
 
 
@@ -103,7 +103,7 @@ def calendar_range_preview():
         raise
     except Exception:
         current_app.logger.exception("工作台日历预览读取失败")
-        return failure("storage_failure", "日历预览读取失败，未修改日历，请查看运行日志后重试。", 500)
+        return failure("storage_failure", "预览变更没有算出来，日历没有修改。请刷新重试；仍不行请联系维护人员，并告知下方编号。", 500)
 
 
 def _build_preview(domain, payload):

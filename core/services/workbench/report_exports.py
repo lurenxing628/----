@@ -11,8 +11,24 @@ from openpyxl.styles import Alignment
 
 from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
 from core.services.common.excel_templates import _sanitize_export_cell
-from core.services.report.exporters.xlsx import _append_write_only_row
+from core.services.report.exporters.xlsx import SUMMARY_IDENTITY_LABELS, _append_write_only_row
 from core.services.report.report_engine import ReportExport
+
+from .execution_ledger_projection import COMPLETION_BASIS_TEXT, DATA_QUALITY_TEXT
+
+# 导出标题与列名都是用户直接看到的文字，统一走词表，不再暴露专题代号。
+TOPIC_TITLES = {"delivery": "工序完成情况", "records": "报工记录", "machines": "设备工时",
+                "people": "人员工时", "quality": "数据完整性",
+                "overdue": "超期批次", "utilization": "资源负荷", "downtime": "停机影响"}
+# 这两行写的是记录编号，必须原样往返，不能被 Excel 当成公式。
+IDENTITY_LABELS = SUMMARY_IDENTITY_LABELS
+# 存的是英文代号，写进导出格子时换成用户看得懂的说法；代号本身留在接口里不动。
+CELL_TEXTS = {
+    "data_quality": DATA_QUALITY_TEXT,
+    "completion_basis": COMPLETION_BASIS_TEXT,
+    "recorded_at_time_basis": {"factory_local": "现场记录时间", "legacy_storage": "历史系统导入的原始时间"},
+    "source": {"manual": "手工填写", "excel": "Excel 导入"},
+}
 
 
 def _value(value):
@@ -27,30 +43,37 @@ def _value(value):
     return value
 
 
+def _cell(column_key, value):
+    texts = CELL_TEXTS.get(column_key)
+    if texts is None or value is None:
+        return _value(value)
+    return texts[value]
+
+
 def metadata(data, snapshot):
     return [["数据来源", data["provenance"]], ["计划", data["plan"]["display_name"]],
-            ["计划引用", data["plan"]["plan_ref"]], ["数据截至", snapshot["as_of"]],
-            ["范围快照", snapshot["snapshot_ref"]], ["筛选范围", canonical_json(data["scope"])],
+            [IDENTITY_LABELS[0], data["plan"]["plan_ref"]], ["数据截至", snapshot["as_of"]],
+            [IDENTITY_LABELS[1], snapshot["snapshot_ref"]], ["筛选范围", canonical_json(data["scope"])],
             ["数据缺口", "；".join(data["data_gaps"])]]
 
 
 def ensure_export_size(engine, count):
     decision = engine._build_export_decision(count)
     if decision.mode == "reject_need_async":
-        raise WorkbenchCommandRejected("export_too_large", "当前结果超出既有导出上限，请缩小筛选范围。", 413)
+        raise WorkbenchCommandRejected("export_too_large", "这次筛出来的条数超过一次能导出的上限，没有开始下载。请缩小筛选范围后再点「导出」。", 413)
     return decision
 
 
 def _export_values(columns, rows, format_name):
-    values = [[_value(row.get(column["key"])) for column in columns] for row in rows]
+    values = [[_cell(column["key"], row.get(column["key"])) for column in columns] for row in rows]
     if format_name == "xlsx" and any(isinstance(value, str) and len(value) > 32767 for row in values for value in row):
-        raise WorkbenchCommandRejected("export_too_large", "完整修订历史或原始资料超过 XLSX 单元格上限，请使用 CSV；未截断数据。", 413)
+        raise WorkbenchCommandRejected("export_too_large", "有格子里的内容太长，XLSX 放不下，没有开始下载。请改用 CSV 导出，内容不会被截断。", 413)
     return values
 
 
 def _append_xlsx_metadata(sheet, data, snapshot):
     for label, value in metadata(data, snapshot):
-        if label not in ("计划引用", "范围快照"):
+        if label not in IDENTITY_LABELS:
             _append_write_only_row(sheet, [label, value])
             continue
         # References must round-trip exactly without ever becoming formulas.
@@ -63,24 +86,24 @@ def _append_xlsx_metadata(sheet, data, snapshot):
 
 def export_table(engine, data, rows, snapshot, format_name):
     if format_name not in ("csv", "xlsx"):
-        raise WorkbenchCommandRejected("invalid_input", "只支持 CSV 或 XLSX 导出。", 400)
+        raise WorkbenchCommandRejected("invalid_input", "只能导出 CSV 或 XLSX，没有开始下载。请重新选择格式。", 400)
     if not rows:
-        raise WorkbenchCommandRejected("empty_export", "当前范围没有可导出的结果。", 422)
+        raise WorkbenchCommandRejected("empty_export", "当前筛选范围里没有可导出的结果，没有开始下载。请放宽筛选条件后重试。", 422)
     decision = ensure_export_size(engine, len(rows))
     columns = data["columns"]
     values = _export_values(columns, rows, format_name)
-    filename = "workbench-" + data["topic"] + "-" + snapshot["as_of"].replace(":", "")
+    filename = TOPIC_TITLES[data["topic"]] + "-" + snapshot["as_of"].replace(":", "")
     if format_name == "csv":
         output = io.StringIO(newline="")
         writer = csv.writer(output)
-        writer.writerow([column["label"] for column in columns] + ["数据截至", "范围快照", "筛选范围", "数据来源", "数据缺口"])
+        writer.writerow([column["label"] for column in columns] + ["数据截至", IDENTITY_LABELS[1], "筛选范围", "数据来源", "数据缺口"])
         for row in values:
             writer.writerow([_sanitize_export_cell(value) for value in row + [snapshot["as_of"], snapshot["snapshot_ref"], canonical_json(data["scope"]), data["provenance"], "；".join(data["data_gaps"])]])
         return ReportExport(filename + ".csv", "text/csv;charset=utf-8", io.BytesIO(output.getvalue().encode("utf-8-sig")), estimated_rows=len(rows))
     workbook = openpyxl.Workbook(write_only=True)
     output = io.BytesIO()
     try:
-        sheet = workbook.create_sheet("范围与口径")
+        sheet = workbook.create_sheet("范围与计算方式")
         _append_xlsx_metadata(sheet, data, snapshot)
         for key, value in data["summary"].items():
             _append_write_only_row(sheet, [key, _value(value)])

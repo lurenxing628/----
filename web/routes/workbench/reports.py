@@ -11,6 +11,7 @@ from flask import current_app, g, request, send_file
 from core.errors import ValidationError
 from core.models.workbench_command import WorkbenchCommandRejected, canonical_json, input_fingerprint
 from core.models.workbench_report import ReportPage, ReportScope, reference
+from core.services.workbench import messages
 from core.services.workbench.report_columns import public_columns
 from core.services.workbench.report_exports import export_table
 from core.services.workbench.report_facts import WorkbenchReportFacts
@@ -27,13 +28,13 @@ def report_read_time(token):
         return read_context.datetime.now().replace(microsecond=0)
     try:
         payload = json.loads(resolve_public_token(read_context._SCOPE, token,
-            message="读取范围已失效，请重新刷新。", field="snapshot_ref"))
+            message=messages.STALE, field="snapshot_ref"))
         as_of = datetime.fromisoformat(payload["as_of"])
         if as_of.tzinfo is not None:
             raise ValueError("factory local time required")
         return as_of
     except (ValidationError, ValueError, TypeError, KeyError) as exc:
-        raise WorkbenchCommandRejected("snapshot_stale", "读取范围已失效，请重新刷新；未自动切换到新数据。") from exc
+        raise WorkbenchCommandRejected("snapshot_stale", messages.STALE) from exc
 
 
 def bind_report_snapshot(scope, fingerprint, token, as_of):
@@ -54,7 +55,7 @@ def _report_page(topic):
         sort = request.args["sort"] if "sort" in request.args else SORTS[topic][0]
         return ReportPage(int(raw_page), int(raw_size), sort, request.args.get("direction", "asc"))
     except ValueError as exc:
-        raise WorkbenchCommandRejected("invalid_input", "页码和每页数量必须为整数。", 400) from exc
+        raise WorkbenchCommandRejected("invalid_input", "页码或每页数量填写不对，列表没有变化。请回到第 1 页重新查询。", 400) from exc
 
 
 def arguments(export=False, detail=False):
@@ -63,15 +64,15 @@ def arguments(export=False, detail=False):
     if export:
         allowed.add("format")
     if set(request.args) - allowed or any(len(request.args.getlist(key)) != 1 for key in request.args):
-        raise WorkbenchCommandRejected("invalid_input", "报表包含未知或重复参数，未忽略筛选条件。", 400)
+        raise WorkbenchCommandRejected("invalid_input", "报表的筛选条件有重复或不支持的项，当前筛选没有变化。请刷新页面后重新选择。", 400)
     scope = ReportScope(**{key: request.args[key] for key in scope_keys if key in request.args})
     topic = request.args.get("topic", "delivery")
     if topic not in SORTS:
-        raise WorkbenchCommandRejected("invalid_input", "未知报表专题。", 400)
+        raise WorkbenchCommandRejected("invalid_input", "这个报表专题不支持，报表没有变化。请从侧栏进入「报表中心」重新选择。", 400)
     page = _report_page(topic)
     token = request.args.get("snapshot_ref")
     if (export or detail or page.number > 1) and not token:
-        raise WorkbenchCommandRejected("snapshot_required", "分页、详情或导出必须使用已读取的范围快照。", 400)
+        raise WorkbenchCommandRejected("snapshot_required", messages.STALE, 400)
     return scope, topic, page, token
 
 
@@ -103,7 +104,7 @@ def _read(export=False, operation_ref=None):
     response = query_success(data, snapshot)
     response.headers["Cache-Control"] = "no-store"
     if len(response.get_data()) > 8 * 1024 * 1024:
-        raise WorkbenchCommandRejected("query_too_large", "报表响应超出完整读取上限，未返回截断数据。", 413)
+        raise WorkbenchCommandRejected("query_too_large", "这次要读的报表数据太多，系统没有给出不完整结果。请缩小筛选范围后点「刷新」。", 413)
     return response
 
 

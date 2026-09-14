@@ -42,11 +42,11 @@ def normalize_scope(scope: Any) -> Dict[str, Any]:
 
 def normalize_refs(refs: Any, *, allow_empty: bool = False):
     if type(refs) is not list or (not refs and not allow_empty):
-        raise ValidationError("必须明确列出物料永久引用。", field="refs")
+        raise ValidationError("请先选择要操作的物料。", field="refs")
     if any(type(ref) is not str or len(ref) != 48 or any(c not in "0123456789abcdef" for c in ref) for ref in refs):
-        raise ValidationError("物料选择必须是永久引用，不能使用业务编号。", field="refs")
+        raise ValidationError("物料选择已失效，请刷新后重新选择。", field="refs")
     if len(set(refs)) != len(refs):
-        raise ValidationError("物料选择中有重复引用。", field="refs")
+        raise ValidationError("物料选择里有重复，请重新选择。", field="refs")
     return list(refs)
 
 
@@ -76,7 +76,7 @@ class MaterialPreview:
             return cls(canonical_json({"version": 1, "operation": operation, "request": request,
                                        "commit_policy": "atomic", "rows": rows, "summary": summary}))
         except (TypeError, ValueError, OverflowError) as exc:
-            raise WorkbenchCommandRejected("storage_failure", "原始物料事实不能形成完整预览，未写入数据。", 500) from exc
+            raise WorkbenchCommandRejected("storage_failure", "这批物料数据算不出完整预检结果，没有写入任何数据。请刷新后重新预检。", 500) from exc
 
     def as_dict(self):
         return json.loads(self.document)
@@ -92,7 +92,7 @@ class MaterialPreview:
 
 def check_request(preview, operation, request):
     if not isinstance(preview, MaterialPreview):
-        raise WorkbenchCommandRejected("stale_write", "缺少原始物料预览，请重新预检。")
+        raise WorkbenchCommandRejected("stale_write", "找不到刚才的预检结果，没有写入数据。请重新点「预检」。")
     body = preview.as_dict()
     if body["operation"] != operation or canonical_json(body["request"]) != canonical_json(request):
         raise WorkbenchCommandRejected("stale_write", "文件内容、模式或选择范围已变化，请重新预检。")
@@ -100,9 +100,9 @@ def check_request(preview, operation, request):
 
 def check_preview(original: MaterialPreview, current: MaterialPreview):
     if original.document != current.document:
-        raise WorkbenchCommandRejected("stale_write", "物料或引用事实已变化，请重新预检并确认整批内容。")
+        raise WorkbenchCommandRejected("stale_write", "物料数据已更新，没有写入数据。请重新点「预检」并核对整批内容。")
     if current.as_dict()["summary"]["rejected"]:
-        raise WorkbenchCommandRejected("constraint_conflict", "预览包含拒绝行，本批未写入任何数据。")
+        raise WorkbenchCommandRejected("constraint_conflict", "预检里有不通过的行，这一批没有写入任何数据。请改好后重新预检。")
 
 
 def preview_row(number, *, code=None, action=None, normalized=None, expected=None):

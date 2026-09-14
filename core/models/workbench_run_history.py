@@ -19,7 +19,7 @@ def reject(code, message, status=400) -> NoReturn:
 
 
 def inconsistent() -> NoReturn:
-    reject("run_result_inconsistent", "运行目录、受理回执或候选任务计数不一致，须核对台账；未返回替代结果。", 500)
+    reject("run_result_inconsistent", "排产记录、提交结果和候选方案的条数对不上，这里不返回结果。请刷新重试；仍不行请联系维护人员。", 500)
 
 
 def local_date(value):
@@ -54,7 +54,7 @@ class RunHistoryScope:
                 if local_date(self.accepted_from) > local_date(self.accepted_to):
                     raise ValueError("Reversed dates")
             except (ValueError, TypeError):
-                reject("invalid_input", "受理日期须成对提供 YYYY-MM-DD，起日不得晚于止日。")
+                reject("invalid_input", "提交起止日期要一起填，请按 2026-09-13 这样填写，起日不能晚于止日。")
 
     def scope(self):
         return {"source": "production", "kind": "scheduling-run-history", "state": self.state,

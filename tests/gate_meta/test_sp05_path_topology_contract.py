@@ -535,7 +535,8 @@ def test_sp05_scheduler_manual_path_requires_base_dir_without_root_fallback(tmp_
     assert manual_path is None
     assert candidates == []
     assert manual_mtime is None
-    assert "BASE_DIR" in manual_text
+    # 用户看到的是安装信息不完整，内部配置名只进日志。
+    assert "本机安装信息不完整" in manual_text and "BASE_DIR" not in manual_text
 
 
 def test_sp05_documentation_uses_migrated_scheduler_paths() -> None:

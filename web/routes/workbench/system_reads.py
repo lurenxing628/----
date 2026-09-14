@@ -24,7 +24,7 @@ def file_capabilities():
         journal().assert_ready()
         reason = ""
     except Exception as exc:
-        reason = str(exc) if isinstance(exc, WorkbenchCommandRejected) else "维护记录无法读取，请人工核查后再操作。"
+        reason = str(exc) if isinstance(exc, WorkbenchCommandRejected) else "维护记录读不出来，数据没有改动。请刷新重试；仍不行请联系维护人员，并告知下方编号。"
     return {"create": not bool(reason), "delete": not bool(reason),
             "restore": not bool(reason) and restore_available(), "blocked_reason": reason,
             "restore_reason": reason or ("" if restore_available() else RESTORE_DISABLED)}
@@ -32,7 +32,7 @@ def file_capabilities():
 
 def collection(kind):
     if any(len(request.args.getlist(key)) != 1 for key in request.args):
-        raise WorkbenchCommandRejected("invalid_input", "筛选字段不得重复。", 400)
+        raise WorkbenchCommandRejected("invalid_input", "筛选条件有重复项，当前筛选没有变化。请刷新页面后重新选择。", 400)
     query = query_input(request.args.to_dict(), kind)
     if kind == "backups":
         event_journal = journal() if current_app.config.get("WORKBENCH_SYSTEM_JOURNAL_DIR") else None
@@ -52,7 +52,7 @@ def system_collection(kind):
     count, size, page = len(rows), query["page_size"], query["page"]
     pages = max(1, (count + size - 1) // size)
     if page > pages:
-        raise WorkbenchCommandRejected("invalid_input", "页码超出当前筛选范围，请返回第一页。", 400)
+        raise WorkbenchCommandRejected("invalid_input", "翻页位置已失效，请回到第 1 页重新查询。", 400)
     public = []
     for row in rows[(page - 1) * size:page * size]:
         item = {key: value for key, value in row.items() if not key.startswith("_")}
@@ -71,7 +71,7 @@ def system_collection(kind):
 @system_endpoint
 def system_config_read():
     if request.args:
-        raise WorkbenchCommandRejected("invalid_input", "配置读取不接受筛选字段。", 400)
+        raise WorkbenchCommandRejected("invalid_input", "读取设置不需要筛选条件。请刷新页面后重试。", 400)
     with TransactionManager(g.db).transaction():
         data, fingerprint = SystemConfigWorkspace(g.db, current_app.logger, current_app.config.get("BACKUP_KEEP_DAYS", 7)).snapshot()
     data["stored_values"] = {key: public_system_text(value, 256) if value is not None else None for key, value in data["stored_values"].items()}

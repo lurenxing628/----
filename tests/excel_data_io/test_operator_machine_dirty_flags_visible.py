@@ -91,7 +91,7 @@ def test_workbench_authorization_issues_are_read_only(app_client, db_path, skill
     if issues:
         assert set(issues[0]["fields"]) == set(expected_fields)
         message = issues[0]["message"]
-        assert "MC-PAIR" in message and "原值未改写" in message
+        assert "MC-PAIR" in message and "原值没有被改" in message
         for field, label in (("skill_level", "技能等级"), ("is_primary", "主操设备")):
             assert (label in message) is (field in expected_fields)
         assert all(value not in message for value in (skill, primary) if value)

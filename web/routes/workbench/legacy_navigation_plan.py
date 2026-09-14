@@ -35,7 +35,7 @@ def _scenario(args):
     result = request_scenario_id_from_args(args)
     raw = str(args.get("scenario_id") or "").strip()
     if args.get("plan_context_token") and raw and raw != result:
-        raise LegacyNavigationInvalid("方案令牌与原方案条件冲突，未选择其中一个继续。")
+        raise LegacyNavigationInvalid("地址里的方案条件互相冲突，页面没有打开；系统没有替你挑一个继续。请从侧栏进入「选择排产方案」重新选择。")
     return result
 
 
@@ -43,16 +43,16 @@ def resolve_legacy_plan(queries, args):
     version = resolve_version_or_latest(args.get("version"), latest_version=queries.latest_version(),
                                         version_exists=queries.version_exists)
     if version.selected_version is None:
-        raise NotFound("所选排产版本不存在，未改查最新版本。")
+        raise NotFound("所选排产版本不存在，页面没有打开；系统没有改查最新版本。请从侧栏进入「排产记录」重新选择。")
     scenario = _scenario(args)
     role = _normalize_role(args.get("plan_role"))
     if role not in VALID_PLAN_ROLES:
-        raise LegacyNavigationInvalid("原计划角色无效，未改用采用方案。")
+        raise LegacyNavigationInvalid("地址里的计划类型不对，页面没有打开；系统没有改用已采用的正式计划。请从侧栏进入「选择排产方案」重新选择。")
     binding = queries.bind_plan(version.selected_version, role, scenario)
     locator = binding.locator
     public = {"排产版本": str(locator.version), "方案": plan_role_label(locator.plan_role)}
     if scenario is not None:
-        public["方案范围"] = "已保存模拟方案"
+        public["方案范围"] = "已保存的试调方案"
     return ResolvedLegacyPlan(locator, binding.plan_ref, binding.fallback, public)
 
 
@@ -64,7 +64,7 @@ def report_dates(args):
             a, _ = validate_explicit_report_date_range(left, left)
             b, _ = validate_explicit_report_date_range(right, right)
             if a != b:
-                raise LegacyNavigationInvalid("旧入口包含冲突的日期别名，未选择其中一组继续。")
+                raise LegacyNavigationInvalid("地址里有两组互相冲突的日期条件，页面没有打开；系统没有替你挑一组继续。请从侧栏重新进入并选择日期。")
         values.append(left or right)
     if any(values):
         return validate_explicit_report_date_range(*values)
@@ -91,5 +91,5 @@ def gantt_context(queries, plan, args):
 
 def invalid_plan_input(exc):
     if isinstance(exc, (ValueError, AppError, OverflowError)):
-        raise LegacyNavigationInvalid("原计划身份、日期或筛选无效，未改选对象或扩大范围。") from exc
+        raise LegacyNavigationInvalid("地址里的计划编号、日期或筛选不对，页面没有打开；系统没有替你换记录或放宽范围。请从侧栏重新进入。") from exc
     raise TypeError("Only domain input failures may be translated here.")

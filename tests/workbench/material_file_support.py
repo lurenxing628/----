@@ -3,6 +3,7 @@
 import csv
 import json
 import tracemalloc
+from datetime import datetime, timedelta
 from io import BytesIO, StringIO
 from itertools import zip_longest
 from time import perf_counter
@@ -115,10 +116,18 @@ def seed_export_scale(conn):
     return [dict(row) for row in conn.execute("SELECT * FROM Materials ORDER BY material_id")]
 
 
+def _local_created_at(value):
+    """独立预期：Materials.created_at 由数据库按 UTC 写入，导出文件里显示的是加 8 小时后的时刻。"""
+    if value is None:
+        return None
+    return (datetime.strptime(str(value)[:19].replace("T", " "), "%Y-%m-%d %H:%M:%S")
+            + timedelta(hours=8)).strftime("%Y-%m-%d %H:%M:%S")
+
+
 def _expected_file_values(row, file_format):
     result = []
     for field, column in zip(COLUMNS, MATERIAL_COLUMNS):
-        value = row[column]
+        value = _local_created_at(row[column]) if field == "created_at" else row[column]
         if field == "stock_qty":
             if file_format == "csv":
                 value = "" if value is None else str(value)
@@ -193,4 +202,6 @@ class OnePassRows:
 
 
 def codec_rows(rows):
-    return (dict(zip(COLUMNS, (row[key] for key in MATERIAL_COLUMNS))) for row in rows)
+    """编码器拿到的 created_at 已经由服务层换算过，直接喂编码器时要照同一口径准备。"""
+    return (dict(zip(COLUMNS, (_local_created_at(row[key]) if key == "created_at" else row[key]
+                               for key in MATERIAL_COLUMNS))) for row in rows)

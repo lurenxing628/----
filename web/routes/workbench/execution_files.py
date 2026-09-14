@@ -7,6 +7,7 @@ from io import BytesIO
 from flask import g, jsonify, request, send_file
 
 from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
+from core.services.workbench import messages
 from core.services.workbench.field_report_files import FieldReportFileService
 from core.services.workbench.field_report_files_codec import BYTE_LIMIT, MIME, encode_issues
 from core.services.workbench.field_workspace import FieldWorkspaceService
@@ -24,17 +25,17 @@ PREVIEW_NAMESPACE = 'workbench-field-file-preview-v1'
 @read_endpoint
 def field_file_preview():
     if request.args or request.mimetype != 'multipart/form-data' or set(request.files) != {'file'} or set(request.form) != {'scope', 'snapshot_ref'} or len(request.files.getlist('file')) != 1 or any(len(request.form.getlist(key)) != 1 for key in request.form):
-        raise WorkbenchCommandRejected('invalid_input', '预检须包含一个文件、原筛选和读取快照。', 400)
+        raise WorkbenchCommandRejected('invalid_input', '请先选择一个文件，并确认本页数据没有过期；报工还没有写入。请刷新页面后点「预检文件」。', 400)
     content = request.files['file'].read(BYTE_LIMIT + 1)
     try:
         scope = normalize_scope(json.loads(request.form['scope']))
     except (ValueError, TypeError) as exc:
         if isinstance(exc, WorkbenchCommandRejected):
             raise
-        raise WorkbenchCommandRejected('invalid_input', '文件筛选范围不是有效 JSON。', 400) from exc
+        raise WorkbenchCommandRejected('invalid_input', '文件导入范围读不出来，报工还没有写入。请刷新页面后重新点「预检文件」。', 400) from exc
     token = request.form['snapshot_ref']
     if not token:
-        raise WorkbenchCommandRejected('snapshot_required', '文件预检必须保留原读取范围。', 400)
+        raise WorkbenchCommandRejected('snapshot_required', messages.STALE, 400)
     reader = FieldWorkspaceService(g.db)
     with reader.read_snapshot():
         cohort, state = reader.cohort(scope)
@@ -44,7 +45,7 @@ def field_file_preview():
         ref, expiry = retain_context(PREVIEW_NAMESPACE, canonical_json(document), content)
         context = field_context(ref, ['import_confirm'], preview['snapshot'])
         if not preview['can_confirm']:
-            context.update(capabilities={'import_confirm': False}, blocked_reasons=[{'code': 'constraint_conflict', 'message': '预检存在问题或没有可导入记录。'}])
+            context.update(capabilities={'import_confirm': False}, blocked_reasons=[{'code': 'constraint_conflict', 'message': '文件里有问题行或没有可导入的记录，一条报工都没有写入。请修好文件后重新点「预检文件」。'}])
         public = {key: value for key, value in preview.items() if key not in ('snapshot', 'items')}
         public.update(preview_ref=ref, expires_at=expiry, write_context=context)
     response = query_success(public, snapshot)
@@ -58,7 +59,7 @@ def field_file_confirm():
 
     body = command_body()
     if set(body['input']) != {'preview_ref'}:
-        raise WorkbenchCommandRejected('invalid_input', '确认仅接受原文件预检引用。', 400)
+        raise WorkbenchCommandRejected('invalid_input', '只能确认刚才预检过的那份文件，报工还没有写入。请重新点「预检文件」。', 400)
     ref = body['input']['preview_ref']
     # Replay must remain possible after retained bytes and edit tokens expire.
     service = WorkbenchProductionReportService(g.db, context_factory=field_context)
@@ -67,12 +68,12 @@ def field_file_confirm():
         stored = json.loads(document)
         preview = stored['preview']
         if not preview['can_confirm'] or hashlib.sha256(content).hexdigest() != preview['file_sha256']:
-            raise WorkbenchCommandRejected('stale_write', '原文件或可执行预检无效，未替换内容。')
+            raise WorkbenchCommandRejected('stale_write', '预检结果已过期，报工还没有写入，也没有替换任何内容。请重新点「预检文件」。')
         cohort, read_state = FieldWorkspaceService(g.db).cohort(preview['scope'])
         bind_read_snapshot({'kind': 'field', **cohort['scope']}, read_state, stored['read_snapshot'])
         checked = FieldReportFileService(g.db).preview(content, cohort)
         if checked['items'] != preview['items'] or checked['snapshot'] != preview['snapshot'] or not checked['can_confirm']:
-            raise WorkbenchCommandRejected('stale_write', '原文件对应事实或处理内容变化，请重新预检。')
+            raise WorkbenchCommandRejected('stale_write', '预检之后报工记录有变化，报工还没有写入。请重新点「预检文件」。')
         return checked['items']
 
     def guard(subject, action, state):
@@ -86,7 +87,7 @@ def field_file_confirm():
 @read_endpoint
 def field_file_errors():
     if set(request.args) != {'preview_ref'} or len(request.args.getlist('preview_ref')) != 1:
-        raise WorkbenchCommandRejected('invalid_input', '下载问题清单须提供原预检引用。', 400)
+        raise WorkbenchCommandRejected('invalid_input', '预检结果已过期，没有开始下载。请重新点「预检文件」。', 400)
     document, _ = resolve_context(PREVIEW_NAMESPACE, request.args['preview_ref'], 'snapshot_stale')
     content = encode_issues(json.loads(document)['preview']['rows'])
     response = send_file(BytesIO(content), mimetype=MIME, as_attachment=True, download_name='报工导入问题.xlsx', max_age=0)
@@ -98,7 +99,7 @@ def download(template):
     args = arguments()
     token = args.get('snapshot_ref')
     if not token:
-        raise WorkbenchCommandRejected('snapshot_required', '下载必须提供原读取快照。', 400)
+        raise WorkbenchCommandRejected('snapshot_required', messages.STALE, 400)
     reader = FieldWorkspaceService(g.db)
     with reader.read_snapshot():
         cohort, state = reader.cohort(normalize_scope(args))

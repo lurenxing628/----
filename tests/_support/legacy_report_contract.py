@@ -18,12 +18,12 @@ BUSINESS_TABLES = (
     "ScheduleAdjustmentScenario", "ScheduleAdjustmentScenarioRow", "OperationExecutionEvents",
     "WorkbenchPlanSourceRefs", "WorkbenchPlanIdentityClock", "Batches", "BatchOperations",
 )
-INVALID_CONTEXT = "原计划身份、日期或筛选无效，未改选对象或扩大范围。"
-RETIRED_SCOPE = "原页面的统计、日期或资源口径不能由当前导航完整表达，未改用新报表默认范围。"
-MISSING_ROLE = "所选对比方案未保存，未沿用旧页的采用方案回退。"
-IDENTITY_UNAVAILABLE = "原计划的永久身份缺失或绑定已失效，未补建身份或换查其他计划。"
-UNSUPPORTED_SCOPE = "新入口不能等价表达这组旧条件，未忽略条件后跳转。原数据和下载接口仍保留。"
-ANALYSIS_SCOPE = "旧分析页的日期和资源条件用于关联入口，不能当成新分析筛选范围，未改写原条件。"
+INVALID_CONTEXT = "地址里的计划编号、日期或筛选不对，页面没有打开；系统没有替你换记录或放宽范围。请从侧栏重新进入。"
+RETIRED_SCOPE = "旧页面的统计范围、日期和设备人员条件，新报表装不下，页面没有打开；系统没有改用新报表的默认范围。请从侧栏进入「报表中心」重新筛选。"
+MISSING_ROLE = "要对比的方案没有保存过，页面没有打开；系统没有改成已采用的正式计划。请从侧栏进入「选择排产方案」重新选择。"
+IDENTITY_UNAVAILABLE = "这份计划还没有正式编号，或编号已经失效，页面没有打开；系统不会替你补编号，也不会换查别的计划。请从侧栏进入「选择排产方案」重新选择。"
+UNSUPPORTED_SCOPE = "新页面装不下这组旧条件，没有跳转，也没有丢掉任何条件。原来的数据和下载都还在，请从侧栏进入对应页面重新筛选。"
+ANALYSIS_SCOPE = "旧分析页的日期和设备人员条件只用来跳转，新分析页装不下，页面没有打开；原来的条件没有被改动。请从侧栏进入「选择排产方案」重新筛选。"
 
 
 class PageContract(HTMLParser):

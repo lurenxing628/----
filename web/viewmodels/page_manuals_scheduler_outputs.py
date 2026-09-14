@@ -9,7 +9,7 @@ SCHEDULER_OUTPUT_TOPICS: Dict[str, Dict[str, Any]] = {
     "scheduler_gantt": _topic(
         title="甘特图",
         summary="甘特图用于可视化查看排产结果，支持设备和人员两种视角，是验证排程是否合理的核心页面。",
-        full_manual_anchor="#6-4甘特图",
+        full_manual_anchor="#6-4计划甘特",
         help_card=_card(
             "甘特图怎么看最快",
             "先选版本，再切换设备视角或人员视角。",
@@ -201,7 +201,7 @@ SCHEDULER_OUTPUT_TOPICS: Dict[str, Dict[str, Any]] = {
     "scheduler_dispatch": _topic(
         title="资源排班",
         summary="资源排班用来从人员、设备或班组视角查看任务排布，是甘特图之外更偏运营调度的观察页。",
-        full_manual_anchor="#6-6资源排班",
+        full_manual_anchor="#6-6现场记录",
         help_card=_card(
             "资源排班怎么用最快",
             "先选视角（人员 / 设备 / 班组），再选时间范围和版本。",
@@ -327,7 +327,7 @@ SCHEDULER_OUTPUT_TOPICS: Dict[str, Dict[str, Any]] = {
     "scheduler_analysis": _topic(
         title="排产优化分析",
         summary="这里对比不同版本的关键指标和优化过程，用来判断方案是否真的更优。",
-        full_manual_anchor="#6-7排产优化分析",
+        full_manual_anchor="#6-7选择排产方案",
         help_card=_card(
             "排产优化分析先看什么",
             "先选版本再点加载；至少两个有指标的版本才有趋势图。",

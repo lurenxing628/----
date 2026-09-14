@@ -19,23 +19,23 @@ def unique_process_table_object(pairs):
     result = {}
     for key, value in pairs:
         if key in result:
-            raise WorkbenchCommandRejected("invalid_input", "工艺查询JSON包含重复字段。", 400)
+            raise WorkbenchCommandRejected("invalid_input", "查询条件里有重复的项，请重新选择。", 400)
         result[key] = value
     return result
 
 
 def normalize_process_column_filters(value):
     if type(value) is not dict or set(value) - set(PROCESS_TABLE_COLUMNS):
-        raise WorkbenchCommandRejected("invalid_input", "工艺列筛选字段不正确。", 400)
+        raise WorkbenchCommandRejected("invalid_input", "工艺列表的筛选列不正确，请重新选择筛选条件。", 400)
     result = {}
     for column, condition in value.items():
         if type(condition) is not dict or set(condition) != {"mode", "values"}:
             raise WorkbenchCommandRejected("invalid_input", "列筛选必须包含mode和values。", 400)
         values = condition["values"]
         if condition["mode"] not in ("include", "exclude") or type(values) is not list or len(values) > MAX_FACET_KEYS:
-            raise WorkbenchCommandRejected("invalid_input", "列筛选方式不正确，每列最多50000个值。", 400)
+            raise WorkbenchCommandRejected("invalid_input", "列筛选方式不对，每列最多 50000 个值。", 400)
         if any(type(key) is not str or re.fullmatch(r"[0-9a-f]{64}", key) is None for key in values) or len(set(values)) != len(values):
-            raise WorkbenchCommandRejected("invalid_input", "筛选值必须是唯一的64位小写十六进制 facet key。", 400)
+            raise WorkbenchCommandRejected("invalid_input", "筛选值不对或有重复，请重新选择筛选条件。", 400)
         result[column] = {"mode": condition["mode"], "values": sorted(values)}
     return {column: result[column] for column in sorted(result)}
 
@@ -91,7 +91,7 @@ class ProcessTablePageRequest:
 def process_table_request(value):
     """Parse a list scope; transport owns snapshot_ref and duplicate-key decoding."""
     if type(value) is not dict or set(value) - (_SCOPE_FIELDS | {"page", "size"}):
-        raise WorkbenchCommandRejected("invalid_input", "工艺列表范围包含未知字段。", 400)
+        raise WorkbenchCommandRejected("invalid_input", "工艺列表的查询条件含有不支持的项，请刷新页面后重试。", 400)
     fields = dict(value)
     if "page" in fields:
         fields["number"] = fields.pop("page")

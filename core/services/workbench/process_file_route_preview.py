@@ -29,7 +29,7 @@ def reject_duplicates(rows):
         if len(repeated) > 1:
             for row in repeated:
                 if not any(error["code"] == "duplicate_entry" for error in row["errors"]):
-                    reject_action_row(row, "同一图号在文件中重复，本批不能导入。",
+                    reject_action_row(row, "同一图号在文件中重复，这批不能导入。请合并重复行后重新导入。",
                                       field="business_code", code="duplicate_entry")
 
 
@@ -78,7 +78,7 @@ class RouteFilePreview:
             typed_value(code, "business_code", row["row"], "csv")
             row["business_code"] = code
             if values["business_code"] != code and values["business_code"] in self.parts:
-                raise ValidationError("原图号含首尾空白，不能猜测为其他同号零件。", field="business_code")
+                raise ValidationError("原图号前后有空格，系统不会当成别的同号零件。请到基础资料改正图号。", field="business_code")
             part = self._resolve(row)
             if not row["errors"]:
                 self._propose(row, values, part)
@@ -98,7 +98,7 @@ class RouteFilePreview:
             ref = require_ref(part["ref"], "零件")
             identity = self.identities.get(ref)
             if identity is None or not identity["active"] or identity["kind"] != "part" or identity["entity_key"] != part["part_no"]:
-                raise WorkbenchCommandRejected("storage_failure", "零件与永久引用不一致，未修补资料。", 500)
+                raise WorkbenchCommandRejected("storage_failure", "零件和它的编号对不上，系统不会替你改资料。请刷新重试；仍不行请联系维护人员。", 500)
             row.update(entity_ref=ref, before=canonical_part(part), reference_count=part["batch_count"],
                        expected={"revision": part["revision"], "part": {
                            key: part[key] for key in ("part_no", "route_raw", "route_parsed")}, "operations": []})
@@ -109,7 +109,7 @@ class RouteFilePreview:
             return
         target = self.identities.get(self.target_ref) if type(self.target_ref) is str else None
         if target is None or not target["active"] or target["kind"] != "part":
-            raise ValidationError("详情零件引用已失效，不能导入同号新记录。", field="target_ref")
+            raise ValidationError("这个零件已失效，不能导入到同号的新零件上。请刷新列表后重新选择。", field="target_ref")
         if part is None or part["ref"] != self.target_ref or target["entity_key"] != part["part_no"]:
             raise ValidationError("详情导入的每一行都必须属于当前零件，不能替换为其他图号。", field="business_code")
 
@@ -143,7 +143,7 @@ class RouteFilePreview:
                 typed_value(value, key, row["row"], "csv")
                 if key != "route_raw":
                     if type(value) is str and not value.strip():
-                        raise ValidationError("空白文字不能代替清空指令，请用\\N明确清空可空字段。", field=key)
+                        raise ValidationError("留空格不算清除，要清除请在格子里填 \\N（大写）。", field=key)
                     value = resource_text(value, key, nullable=key == "remark")
                 after[key] = value
         return after
@@ -154,28 +154,28 @@ class RouteFilePreview:
         for row in operations:
             require_ref(row["ref"], "模板工序")
             if row["status"] not in ("active", "deleted") or type(row["seq"]) is not int or row["seq"] <= 0:
-                raise WorkbenchCommandRejected("template_invalid", "原工序序号或状态无效，未自动恢复或删除。", 422)
+                raise WorkbenchCommandRejected("template_invalid", "原工序的序号或状态无效，系统不会自动恢复或删除。请到基础资料核对工序。", 422)
             if row["ext_group_id"] is not None and row["ext_group_id"] not in keys:
-                raise WorkbenchCommandRejected("group_invalid", "原工序关联外协组不存在或属于其他零件。", 422)
+                raise WorkbenchCommandRejected("group_invalid", "原工序关联的外协组不存在，或者属于别的零件。请到基础资料核对外协组。", 422)
         for row in groups:
             require_ref(row["ref"], "模板外协组")
             if type(row["start_seq"]) is not int or type(row["end_seq"]) is not int or not 0 < row["start_seq"] <= row["end_seq"]:
-                raise WorkbenchCommandRejected("group_invalid", "原外协组范围无效，无法准确计算影响。", 422)
+                raise WorkbenchCommandRejected("group_invalid", "原外协组的工序范围无效，算不准影响面。请到基础资料核对外协组起止序。", 422)
         if code in self.foreign_members:
-            raise WorkbenchCommandRejected("group_invalid", "原外协组被其他零件工序引用，不能在本零件解除。", 422)
+            raise WorkbenchCommandRejected("group_invalid", "这个外协组还被别的零件工序用着，不能在本零件解除。请先到那些零件上解除。", 422)
         return operations, groups
 
     def _route(self, row, part):
         raw = row["after"]["route_raw"]
         if raw is None:
-            raise ValidationError("已有路线不能用\\N清空；文件导入不能据此删除原模板。", field="route_raw")
+            raise ValidationError("已有工艺路线不能用 \\N 清除；文件导入不会据此删掉原模板。请到基础资料操作。", field="route_raw")
         if not self.parser_ready:
             self.stack.enter_context(self.parser.reference_snapshot())
             self.parser_ready = True
         preview = self.parser.preview({"mode": "text", "route_raw": raw})
         row["route_summary"] = _route_summary(preview)
         if not preview["can_confirm_route"]:
-            raise WorkbenchCommandRejected("route_invalid", "工艺路线无效，请核对完整诊断；本批不能导入。", 422)
+            raise WorkbenchCommandRejected("route_invalid", "工艺路线无效，这批不能导入。请按下面的逐条提示改好后重新预检。", 422)
         code = row["business_code"]
         operations, groups = self._check_template(code) if part is not None else ([], [])
         affected = affected_group_rows(groups, operations, _changed_sequences(operations, preview))

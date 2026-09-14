@@ -86,7 +86,7 @@ def _plan_summary_rows(
             ["周计划日期", f"{week_start} ～ {week_end}".strip()],
             ["导出时间", time.strftime("%Y-%m-%d %H:%M:%S")],
         ]
-    scenario_label = _text(plan_resolution.get("scenario_display_name") or plan_resolution.get("scenario_name")) or "模拟预览（未命名）"
+    scenario_label = _text(plan_resolution.get("scenario_display_name") or plan_resolution.get("scenario_name")) or "试调方案（未命名）"
     return [
         ["导出类型", "模拟方案预览"],
         ["提示", "这是模拟方案预览，正式计划还没有改变。"],

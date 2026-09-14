@@ -56,7 +56,7 @@ def test_print_page_machine_view_sheets_header_and_remark_column(app_client, db_
     assert "M1 车床" in html
     assert "外协/未分配" in html  # 无设备行兜底段
     assert "v7" in html and "正式采用方案" in html
-    assert "2026年6月1日 08:00" in html  # 生成时间走 format_public_datetime 公开口径
+    assert "2026年6月1日 16:00" in html  # 生成时间按北京时间印（库里 schedule_time 是 UTC）
     assert "2026-06-01 ～ 2026-06-07" in html
     assert "<th class=\"col-remark\"" in html and "备注" in html
     assert "现场状态" not in html  # 4.11：纸面零现场事实
@@ -101,7 +101,7 @@ def test_print_page_empty_week_honest_state_not_404(app_client, db_env):
     assert resp.status_code == 200
     html = resp.get_data(as_text=True)
     assert "没有排程记录" in html
-    assert "返回周计划" in html
+    assert "返回选择排产方案" in html
     assert '<section class="print-sheet">' not in html
 
 
@@ -122,7 +122,7 @@ def test_week_plan_page_print_entry_carries_full_params(app_client, db_env):
     old_page = app_client.get("/scheduler/week-plan", query_string=query)
     assert old_page.status_code == 410 and "Location" not in old_page.headers
     assert "旧入口已退役" in old_page.get_data(as_text=True)
-    # 旧周计划的按钮退役；真实打印页及其切换/返回链接继续逐字段保留查询。
+    # 旧周计划页按钮退役；打印页的切换链接继续逐字段保留查询，返回入口改指工作台的选择排产方案。
     response = app_client.get("/scheduler/week-plan/print", query_string=query)
     assert response.status_code == 200
     html = response.get_data(as_text=True)
@@ -136,13 +136,15 @@ def test_week_plan_page_print_entry_carries_full_params(app_client, db_env):
                 self.links.append(dict(attrs).get("href", ""))
     parser = Links()
     parser.feed(html)
-    selected = [href for href in parser.links if urlsplit(href).path in
-                ("/scheduler/week-plan/print", "/scheduler/week-plan")]
-    assert len(selected) >= 2
+    selected = [href for href in parser.links if urlsplit(href).path == "/scheduler/week-plan/print"]
+    assert len(selected) >= 1
     for href in selected:
         actual = parse_qs(urlsplit(href).query)
         for key, value in query.items():
             assert actual[key] == [value], href
+    back = [href for href in parser.links if urlsplit(href).path == "/workbench"]
+    assert back and all(parse_qs(urlsplit(href).query) == {"view": ["analysis"]} for href in back)
+    assert not [href for href in parser.links if urlsplit(href).path == "/scheduler/week-plan"]
 
 
 def test_print_page_filter_scope_label_in_header(app_client, db_env):
@@ -158,7 +160,7 @@ def test_print_page_filter_scope_label_in_header(app_client, db_env):
     headers = [part.split("</thead>", 1)[0] for part in warning_html.split("<thead>")[1:]]
     assert len(headers) == 2
     for header in headers:
-        assert "历史正式方案，已被新版本替代，不得下发执行" in header
+        assert "这是旧版正式计划，已被新版本替代，不能下发执行" in header
 
 
 def test_identity_warning_three_states():
@@ -167,10 +169,10 @@ def test_identity_warning_three_states():
     # 历史正式方案（旧 adopted 无 scenario——只看 selected_role 会漏的态）
     assert (
         _identity_warning({"is_current_executable_official_version": False, "is_superseded_by_newer_version": True})
-        == "历史正式方案，已被新版本替代，不得下发执行"
+        == "这是旧版正式计划，已被新版本替代，不能下发执行"
     )
     # 其余非可执行态（候选/模拟预览/摘要坏）
     assert (
         _identity_warning({"is_current_executable_official_version": False})
-        == "非正式方案，不得下发执行"
+        == "这不是正式计划，不能下发执行"
     )

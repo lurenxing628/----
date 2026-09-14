@@ -39,7 +39,7 @@ const node = await render(React.createElement(window.PreflightControls.Rules,
   {value:{ready_check:true,missing_resource_policy:'auto_assign'},onChange:()=>{},disabled:false}));
 expect(node.textContent.includes('工时、工种、外协资料仍为必填项'));
 expect(node.textContent.includes('本次参数，不改全局配置'));
-expect(node.textContent.includes('开工和完工事实不能解除保护'));
+expect(node.textContent.includes('已开工和已完工的工序不能解除保护'));
 expect(!node.textContent.includes('missing_resource_policy') && !node.textContent.includes('strict_mode'));
 return true;
 """, scripts=("static/workbench/app/resource-contract.js", "static/workbench/app/ResourceControls.js",
@@ -97,7 +97,7 @@ def test_scheduler_analysis_gantt_and_logs_do_not_surface_internal_terms() -> No
     from core.services.workbench.system_reads import log_records
 
     analysis = _read_analysis_template()
-    for label in ("齐套检查", "缺资源策略", "任务详情", "前序", "后序", "计划开始", "计划结束"):
+    for label in ("齐套检查", "缺设备人员时的规则", "任务详情", "前序", "后序", "计划开始", "计划结束"):
         assert label in analysis
     for term in ("attempts / 优化曲线 / 超期明细", 'data-col-key="score"', "r.dispatch_mode }}/{{ r.dispatch_rule"):
         assert term not in analysis
@@ -313,7 +313,7 @@ def test_manuals_keep_backend_supported_english_aliases_but_mark_them_as_compati
     assert "缺工种、缺供应商或外协周期不正确" in static_manual
     assert "route_raw 自动补建模板" not in static_manual
     assert "未指定设备或人员时，系统自动分配" in static_manual
-    assert "智能派工策略" in static_manual
+    assert "智能派工规则" in static_manual
     assert "dispatch_mode / dispatch_rule / auto_assign_enabled" not in static_manual
 
 
@@ -628,7 +628,7 @@ def test_frontend_scripts_keep_internal_details_out_of_user_messages() -> None:
     for term in ("缺失：", "未找到数据接口 URL（data-url；兼容 data-data-url）", "dataUrl="):
         assert term not in boot
     transport = _read("frontend/workbench/app/transport.js")
-    for phrase in ("本机状态读取超时，请稍后重试。", "无法连接本机服务", "本机工作台数据协议不匹配，未使用样例替代。"):
+    for phrase in ("本机状态读取超时，请稍后重试。", "无法连接本机服务", "读到的数据不完整，页面没有改动。请刷新后重试。"):
         assert phrase in transport
     assert "AbortController" in transport and "clearTimeout(timer)" in transport
     detail = _read("frontend/workbench/app/PlanDetailsUI.jsx")
@@ -639,7 +639,7 @@ def test_frontend_scripts_keep_internal_details_out_of_user_messages() -> None:
     manual = _read("static/docs/scheduler_manual.md")
     manual_viewmodel = _read("web/viewmodels/page_manuals_scheduler_outputs.py")
     for phrase in (
-        "甘特图当前是",
+        "计划甘特现在是",
         "月、周、日",
         "12小时 / 6小时",
         "1分钟",
@@ -691,7 +691,7 @@ def test_scheduler_analysis_hides_internal_schema_and_attempt_tags() -> None:
     assert '"best_score_schema": "系统比较顺序"' in analysis_compat
 
     analysis = _read_analysis_template()
-    assert "完整候选比较摘要" in analysis and "整份候选与受理基线" in analysis
+    assert "完整候选比较摘要" in analysis and "整份候选与排产时的正式计划" in analysis
     assert "metric.value === null" in analysis and "metric.known_subtotal" in analysis
     assert "metric.reason.message" in analysis
     for term in ("compat_fallback.missing_fields | join", "方案 {{ loop.index }}", "/{{ dispatch_rule_zh", "{plan.source_table}", "{plan.scenario_id}"):
@@ -700,7 +700,7 @@ def test_scheduler_analysis_hides_internal_schema_and_attempt_tags() -> None:
 
 def test_reports_and_v2_batch_templates_match_public_manual_contracts() -> None:
     catalog = _read("core/services/workbench/report_catalog.py")
-    assert '("utilization_percent", "计划利用率(%)")' in catalog
+    assert '("utilization_percent", "计划利用率（%）")' in catalog
     assert 'None if row.get("utilization") is None else round(row["utilization"] * 100, 2)' in catalog
     exporter = _read("core/services/report/exporters/xlsx.py")
     assert '["类别", "批次号", "图号", "名称", "数量", "交期", "完工/截至时间", "超期(天)", "超期(小时)"]' in exporter

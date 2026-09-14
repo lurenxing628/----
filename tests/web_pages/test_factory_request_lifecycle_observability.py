@@ -524,7 +524,7 @@ def test_request_services_construction_failure_closes_local_db_and_preserves_err
     response = client.get("/")
 
     assert response.status_code == 500
-    assert "服务器内部错误" in response.get_data(as_text=True)
+    assert "系统出错，这次操作没有完成" in response.get_data(as_text=True)
     assert isinstance(captured.get("db"), _CloseAwareDb)
     assert captured["db"].close_calls == 1
 

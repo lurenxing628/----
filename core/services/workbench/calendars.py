@@ -148,15 +148,15 @@ class WorkbenchCalendarService:
 
     def _check_proposed(self, before: Dict[str, Any], patch: Dict[str, Any], proposed: Dict[str, Any]) -> None:
         if self._calendar._admin._build_work_calendar_from_payload(proposed).to_dict() != proposed:
-            raise WorkbenchCommandRejected("constraint_conflict", "输入工时无法按原班次分钟精度稳定保存，请核对工时。")
+            raise WorkbenchCommandRejected("constraint_conflict", "填的工时换成班次的分钟数后存不稳，请核对工时。")
         if "shift_hours" in patch and abs(proposed["shift_hours"] - patch["shift_hours"]) > 1e-9:
             raise WorkbenchCommandRejected(
-                "constraint_conflict", f"{before['date']} 保留的班次起止推导为 {proposed['shift_hours']:g} 小时，"
-                f"与输入的 {patch['shift_hours']:g} 小时冲突；未保存，请先核对原班次。")
+                "constraint_conflict", f"{before['date']} 按原班次起止算出 {proposed['shift_hours']:g} 小时，"
+                f"和你填的 {patch['shift_hours']:g} 小时对不上，所以没有保存；请先核对原班次。")
         row = before["row"]
         if row is not None:
             if any(proposed.get(name) != value for name, value in row.items() if name not in patch):
-                raise WorkbenchCommandRejected("constraint_conflict", "原日历的未编辑字段会被领域规则改写，未保存，请先核对原配置。")
+                raise WorkbenchCommandRejected("constraint_conflict", "这一天没改的项会被规则改写，所以没有保存；请先核对原来的配置。")
 
     def _require_write_transaction(self) -> None:
         if not self.conn.in_transaction or not in_transaction_context(self.conn):
@@ -176,7 +176,7 @@ class WorkbenchCalendarService:
         if action == "confirm":
             return self.confirm(payload, checked)
         if action not in ("upsert", "delete"):
-            raise ValidationError("预览不能当作写入命令。", field="action")
+            raise ValidationError("「预览变更」不能当成保存操作。", field="action")
         before = self.snapshot(payload["date"])
         if checked != before:
             raise WorkbenchCommandRejected("stale_write", "日历已变化，请刷新后重新核对。")
@@ -202,13 +202,13 @@ class WorkbenchCalendarService:
     def _preview_days(self, request: Dict[str, Any], expected: Optional[CalendarRangePreview] = None) -> Dict[str, Any]:
         dates = calendar_range_dates(request)
         if expected is not None and dates != expected.dates:
-            raise WorkbenchCommandRejected("snapshot_stale", "命中日期已变化，请重新预览。")
+            raise WorkbenchCommandRejected("snapshot_stale", "命中的日期已经变了，请重新点「预览变更」。")
         states = self._query.range_states(request["start_date"], request["end_date"])
         days = []
         for index, day in enumerate(dates):
             before = self._snapshot(day, states)
             if expected is not None and before != expected.days[index]["before"]:
-                raise WorkbenchCommandRejected("snapshot_stale", "范围内日历已变化，请重新预览。")
+                raise WorkbenchCommandRejected("snapshot_stale", "范围里的日历已经变了，请重新点「预览变更」。")
             row = self._proposed(request["fields"], before) if request["operation"] == "upsert" else None
             days.append({"date": day, "before": before,
                          "after": {"explicit": row is not None, "row": row, "effective": _effective(day, row)}})
@@ -238,13 +238,13 @@ class WorkbenchCalendarService:
         self._require_write_transaction()
         payload = self.normalize("confirm", normalized_input)
         if not isinstance(preview, CalendarRangePreview) or preview.preview_ref != payload["preview_ref"]:
-            raise WorkbenchCommandRejected("snapshot_stale", "日历预览已失效，请重新预览。")
+            raise WorkbenchCommandRejected("snapshot_stale", "这份变更清单已失效，请重新点「预览变更」。")
         now = self._now().isoformat(timespec="seconds")
         if not preview.created_at <= now < preview.expires_at or input_fingerprint(preview.facts()) != preview.fingerprint:
-            raise WorkbenchCommandRejected("snapshot_stale", "日历预览已过期或内容变化，请重新预览。")
+            raise WorkbenchCommandRejected("snapshot_stale", "这份变更清单已过期或内容有变化，请重新点「预览变更」。")
         current = self._preview_days(self.normalize("preview", preview.request), expected=preview)
         if current != {"request": preview.request, "dates": preview.dates, "days": preview.days}:
-            raise WorkbenchCommandRejected("snapshot_stale", "范围内日历或命中日期已变化，请重新预览。")
+            raise WorkbenchCommandRejected("snapshot_stale", "范围里的日历或命中的日期已经变了，请重新点「预览变更」。")
         results = [self._write(item["before"], item["after"]["row"]) for item in current["days"]]
         return WorkbenchCommandOutcome("committed" if any(item.result == "committed" for item in results) else "unchanged",
                                        {"dates": [{**item.data, "result": item.result} for item in results]})

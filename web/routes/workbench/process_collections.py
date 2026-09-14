@@ -6,6 +6,7 @@ from core.models.workbench_command import WorkbenchCommandRejected, validate_req
 from core.models.workbench_process_actions import process_part_refs, process_part_scope
 from core.models.workbench_process_query import ProcessPageRequest
 from core.models.workbench_process_table_query import ProcessTablePageRequest
+from core.services.workbench import messages
 from core.services.workbench.commands import WorkbenchCommandService
 from core.services.workbench.process_part_actions import WorkbenchProcessPartActionService
 from core.services.workbench.process_queries import WorkbenchProcessQueryService
@@ -32,7 +33,7 @@ def collection_scope(scope, size=20):
 def process_create():
     body = read_process_json("新增零件", 1024 * 1024)
     if set(body) != {"request_key", "write_token", "input"}:
-        raise WorkbenchCommandRejected("invalid_input", "新增零件请求字段不正确。", 400)
+        raise WorkbenchCommandRejected("invalid_input", "提交的内容不完整或有多余项，零件还没有新增。请刷新页面后重新填写。", 400)
     validate_request_key(body["request_key"])
     g.workbench_request_key = body["request_key"]
     domain = WorkbenchProcessPartActionService(g.db, current_app.logger)
@@ -53,9 +54,9 @@ def process_create():
 def process_bulk_preview():
     body = read_process_json("删除预检", 4 * 1024 * 1024)
     if not {"refs", "scope", "snapshot_ref"} <= set(body) or set(body) - {"refs", "scope", "snapshot_ref", "page_size"}:
-        raise WorkbenchCommandRejected("invalid_input", "删除预检字段不正确。", 400)
+        raise WorkbenchCommandRejected("invalid_input", "提交的内容不完整或有多余项，零件没有删除。请刷新页面后重新点「检查删除范围」。", 400)
     if type(body["snapshot_ref"]) is not str or not body["snapshot_ref"]:
-        raise WorkbenchCommandRejected("snapshot_stale", "删除预检需要原列表快照，请先重新读取列表。")
+        raise WorkbenchCommandRejected("snapshot_stale", messages.STALE)
     refs = process_part_refs(body["refs"])
     scope, query_scope = collection_scope(body["scope"], body.get("page_size", 20))
     reader = WorkbenchProcessQueryService(g.db, current_app.logger)

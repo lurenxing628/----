@@ -42,13 +42,13 @@ def _headers(kind, values):
     fields = []
     for value in values:
         if type(value) is not str or value not in names:
-            raise file_error("表头含未知字段或空列，只能使用已定义的工艺字段。", field="headers")
+            raise file_error("表头有认不出的列或空列，只能用模板里的列。请下载模板对照后重新导入。", field="headers")
         fields.append(names[value])
     if len(set(fields)) != len(fields):
-        raise file_error("表头包含重复字段（含中英文同义列）。", field="headers")
+        raise file_error("表头有重复的列，中文和英文同义列也算重复。请删掉多余的列后重新导入。", field="headers")
     for field in REQUIRED[kind]:
         if field not in fields:
-            raise file_error("表头缺少" + LABELS[field] + "列。", field="headers")
+            raise file_error("表头缺少" + LABELS[field] + "列。请下载模板对照后重新导入。", field="headers")
     return fields
 
 
@@ -59,7 +59,7 @@ def _issue(row, field, message, code="invalid_input"):
 def _parse_row(kind, number, values, cell_errors, fields, file_format):
     row = {"row": number, "values": {}, "errors": []}
     if len(values) > len(fields):
-        _issue(row, "columns", "数据行包含未声明的多余列，不能忽略。")
+        _issue(row, "columns", "这一行有表头里没有的多余列，系统不会忽略。请删掉多余的列后重新导入。")
     for index, field in enumerate(fields):
         value = values[index] if index < len(values) else None
         if index in cell_errors:
@@ -76,7 +76,7 @@ def _parse_row(kind, number, values, cell_errors, fields, file_format):
     for field in REQUIRED[kind]:
         value = row["values"].get(field)
         if (value is None or type(value) is str and not value.strip()) and not any(e["field"] == field for e in row["errors"]):
-            _issue(row, field, LABELS[field] + "不能为空，不能忽略空记录。")
+            _issue(row, field, LABELS[field] + "不能留空，系统不会跳过这一行。请补填后重新导入。")
     return row
 
 
@@ -92,7 +92,7 @@ def _duplicates(kind, rows):
             first = repeated[0]["row"]
             for row in repeated:
                 _issue(row, REQUIRED[kind][-1], "同一图号" + ("和工序" if kind == "hours" else "")
-                       + "在文件中重复，首次出现在第 " + str(first) + " 行。", "duplicate_entry")
+                       + "在文件中重复，第一次出现在第 " + str(first) + " 行。请合并重复行后重新导入。", "duplicate_entry")
 
 
 def decode_process_file(kind, content, fmt):
@@ -103,12 +103,12 @@ def decode_process_file(kind, content, fmt):
     try:
         header = next(source, None)
         if header is None or header[2]:
-            raise file_error("文件缺少有效表头。", field="headers")
+            raise file_error("文件没有有效表头。请下载模板对照后重新导入。", field="headers")
         fields = _headers(kind, header[1])
         rows = []
         for number, values, errors in source:
             if len(rows) == IMPORT_ROW_LIMIT:
-                raise file_error("单次最多导入 2000 行，未截断或导入前半部分。", number)
+                raise file_error("一次最多导入 2000 行，这次没有导入，也不会只导前面一部分。请拆分文件后重新导入。", number)
             rows.append(_parse_row(kind, number, values, errors, fields, fmt))
         _duplicates(kind, rows)
         return rows

@@ -88,11 +88,11 @@ def export_rows(content, format_name, scope, snapshot, as_of):
     else:
         book = openpyxl.load_workbook(io.BytesIO(content), read_only=True, data_only=False)
         try:
-            assert book.sheetnames == ["校准建议", "范围与口径"]
+            assert book.sheetnames == ["校准建议", "范围与计算方式"]
             assert all(cell.data_type != "f" for sheet in book for row in sheet for cell in row)
             rows = list(book["校准建议"].iter_rows(values_only=True))
-            metadata = dict(book["范围与口径"].iter_rows(values_only=True))
-            assert metadata["范围快照"].lstrip("'") == snapshot
+            metadata = dict(book["范围与计算方式"].iter_rows(values_only=True))
+            assert metadata["数据版本编号"].lstrip("'") == snapshot
             assert metadata["数据截至"] == as_of and json.loads(metadata["筛选范围"]) == scope
         finally:
             book.close()
@@ -104,7 +104,7 @@ def verify_cell(value, actual, key):
     if isinstance(actual, (dict, list)):
         assert json.loads(value) == actual, key
     elif actual is None:
-        assert value == "未知", key
+        assert value == "暂无数据", key
     elif isinstance(actual, (int, float)):
         assert float(value) == actual, key
     else:

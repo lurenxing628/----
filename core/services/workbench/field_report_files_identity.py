@@ -22,15 +22,15 @@ def matched_task(row, by_scope, by_ref):
     if row['format_version'] == 1:
         candidates = by_scope.get((value['batch_id'], value['operation_label']), [])
         if len(candidates) != 1:
-            raise WorkbenchCommandRejected('invalid_input', '批次与工序未唯一匹配当前范围；分件重名不能猜关联。', 422)
+            raise WorkbenchCommandRejected('invalid_input', '批次和工序在当前范围里没有唯一对应的一条；分件重名时系统不会猜该配哪一条。', 422)
         return candidates[0]
     candidates = by_ref.get(value['task_ref'], [])
     if len(candidates) != 1:
-        raise WorkbenchCommandRejected('invalid_input', '任务编号未唯一匹配当前读取范围，请重新下载模板；不能使用伪造、过期或范围外编号。', 422)
+        raise WorkbenchCommandRejected('invalid_input', '任务编号在当前范围里没有唯一对应的一条，请重新下载模板；不能用自己编的、过期的或范围外的编号。', 422)
     task = candidates[0]
     expected = identity_values(task)
     if (value['batch_id'] != task['batch_id'] or value['operation_label'] != task['operation_label']
             or value['operation_scope'] != expected['operation_scope']
             or (value['piece_id'] or None) != expected['piece_id']):
-        raise WorkbenchCommandRejected('invalid_input', '任务编号与批次、工序、工序范围或单件编号不一致；请保留模板预填身份。', 422)
+        raise WorkbenchCommandRejected('invalid_input', '任务编号和批次、工序、工序范围或单件编号对不上；请保留模板里预填的编号，不要改。', 422)
     return task

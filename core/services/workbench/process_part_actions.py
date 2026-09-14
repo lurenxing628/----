@@ -60,10 +60,10 @@ class WorkbenchProcessPartActionService:
             try:
                 workflow = start_workflow(self.conn, part.part_no)
             except RuntimeError as exc:
-                raise WorkbenchCommandRejected("storage_failure", "工艺确认流程未能建立，本次未保存零件，请检查本机数据库。", 500) from exc
+                raise WorkbenchCommandRejected("storage_failure", "工艺确认流程没有建立，这次没有保存零件。请刷新重试；仍不行请联系维护人员。", 500) from exc
             identity = self.identities.find_active("part", part.part_no)
             if identity is None:
-                raise WorkbenchCommandRejected("storage_failure", "新零件未能完整保存，请检查本机数据库。", 500)
+                raise WorkbenchCommandRejected("storage_failure", "新零件没有完整保存。请刷新重试；仍不行请联系维护人员。", 500)
             return WorkbenchCommandOutcome("committed", {"entity_ref": identity.ref,
                 "business_code": part.part_no, "workflow": workflow})
 
@@ -101,13 +101,13 @@ class WorkbenchProcessPartActionService:
     @staticmethod
     def _check_delete(expected, code):
         if not code.strip() or code != code.strip():
-            raise WorkbenchCommandRejected("constraint_conflict", "原图号为空或含首尾空白，请先核对，未删除其他同号零件。")
+            raise WorkbenchCommandRejected("constraint_conflict", "原图号是空的或前后有空格，系统不会去删同号的其他零件。请到基础资料核对图号。")
         if expected["batches"]:
             raise WorkbenchCommandRejected("constraint_conflict", "该零件已被批次使用，不能删除。")
         if expected["foreign_group_members"]:
             raise WorkbenchCommandRejected("constraint_conflict", "该零件的外协组被其他零件工序使用，不能删除。")
         if len(expected["template_identities"]) != len(expected["operations"]) + len(expected["groups"]):
-            raise WorkbenchCommandRejected("storage_failure", "原工序或外协组记录不完整，请检查本机数据库；未删除资料。", 500)
+            raise WorkbenchCommandRejected("storage_failure", "原工序或外协组记录不完整，这次没有删除任何资料。请刷新重试；仍不行请联系维护人员。", 500)
 
     def confirm_delete(self, preview, refs, *, scope):
         self._require_transaction()

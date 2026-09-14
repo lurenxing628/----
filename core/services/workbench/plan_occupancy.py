@@ -87,7 +87,7 @@ def project_plan_occupancy(conn, *, entry, scope, rows, resources, plan_span, ca
     """calendar_facts is the private result of project_plan_calendar in this read."""
     rows, start, end, time_scope, context = selected_context(conn, entry, scope, rows, resources, plan_span)
     if calendar_facts["context"] != context:
-        raise WorkbenchCommandRejected("snapshot_stale", "日历与安排的计划或范围不一致，未合并两个读快照。")
+        raise WorkbenchCommandRejected("snapshot_stale", "班表和安排不是同一个计划或同一个时间范围，系统不会把两份数据硬拼在一起。请刷新后重试。")
     constraints = TaskConstraints(calendar_facts)
     groups, unknown = _occupancy_groups(rows, start, end, constraints)
     calendars = calendar_facts["resources"]

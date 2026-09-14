@@ -7,6 +7,8 @@ from datetime import datetime
 
 from flask import Blueprint, current_app, g, get_flashed_messages, jsonify, render_template, request, url_for
 
+from core.services.workbench import messages
+
 from .assets import WorkbenchAssetsUnavailable, read_asset_manifest
 from .navigation_boot import WorkbenchNavigationInvalid, read_navigation
 from .navigation_metadata import VIEW_ALIASES, VIEW_TITLES, navigation_groups
@@ -28,7 +30,7 @@ def normalize_read_failure(response):
     current_app.logger.warning("工作台请求被中止 status=%s request_ref=%s", response.status_code, request_ref)
     response.set_data(current_app.json.dumps({"ok": False, "committed": False, "error": {
         "code": "service_unavailable" if unavailable else "request_failed",
-        "message": "系统暂不可用，可能正在维护，请稍后重试。" if unavailable else "本机请求被中止，请检查入口、请求格式或运行日志后重试。",
+        "message": "系统暂时不能用，可能正在维护，这次操作没有执行。请稍后刷新重试。" if unavailable else messages.FAILURE,
         "fields": [], "retryable": response.status_code >= 500, "request_ref": request_ref,
     }}))
     response.content_type = "application/json"
@@ -49,7 +51,7 @@ def _unavailable(message: str, status: int):
 
 def _host(view: str):
     if view not in VIEW_TITLES:
-        return _unavailable("工作区不存在，请检查入口地址。", 404)
+        return _unavailable("这个页面不存在，页面没有打开。请从侧栏重新进入。", 404)
     try:
         navigation = read_navigation(view, request.args)
     except WorkbenchNavigationInvalid as exc:
@@ -107,7 +109,7 @@ def system_overview():
     except Exception:
         current_app.logger.exception("工作台系统概况读取失败 request_ref=%s", request_ref)
         response = jsonify({"ok": False, "committed": False, "error": {
-            "code": "system_read_failed", "message": "本机状态读取失败，请查看运行日志后重试。",
+            "code": "system_read_failed", "message": "系统概况没有读出来，页面数据没有变化。请刷新重试；仍不行请联系维护人员，并告知下方编号。",
             "fields": [], "retryable": True, "request_ref": request_ref,
         }})
         response.status_code = 500

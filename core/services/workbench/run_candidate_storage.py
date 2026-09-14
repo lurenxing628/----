@@ -26,7 +26,7 @@ class CandidateStore:
     def snapshot(self):
         with candidate_read_snapshot(self.conn):
             if workbench_run_contract_issues(self.conn):
-                reject("candidate_schema_unavailable", "候选台账结构尚未安装或不完整，读取不会自动修复。", 503)
+                reject("candidate_schema_unavailable", "排产记录用的结构还没装好或不完整，读不出来，系统也不会自动修。请联系维护人员。", 503)
             yield
 
     def run(self, run_ref):
@@ -35,7 +35,7 @@ class CandidateStore:
             length(CAST(baseline_json AS BLOB)),length(CAST(facts_json AS BLOB))
             FROM WorkbenchRunJobs WHERE run_ref=?""", (run_ref,)).fetchone()
         if row is None:
-            reject("entity_not_found", "未找到该排产运行。", 404)
+            reject("entity_not_found", "找不到这次排产，页面没有打开。请到「排产记录」重新选择。", 404)
         for size in row[4:]:
             bounded_size(size, MAX_FACT_BYTES)
         try:

@@ -45,7 +45,7 @@ def _admit_rows(repo, version, source, candidate_id=None, scenario_id=None):
     sql, extra = repo._plan_rows_sql(source_table=source, candidate_id=candidate_id, scenario_id=scenario_id)
     rows = repo.fetchall("SELECT id FROM (" + sql + ") LIMIT ?", [version] + extra + [MAX_PLAN_TASKS + 1])
     if len(rows) > MAX_PLAN_TASKS:
-        raise WorkbenchCommandRejected("query_too_large", "所选计划明细超过本批 10000 条读取上限，未返回截断任务。", 413)
+        raise WorkbenchCommandRejected("query_too_large", "所选计划明细超过 10000 条上限，没有读取，也不会只给一部分。请缩小时间范围后重试。", 413)
 
 
 def _admit_version(repo, version, selected_role=None):
@@ -83,8 +83,8 @@ class WorkbenchPlanQueryService:
             missing = exc.code == "reference_not_found"
             raise WorkbenchCommandRejected(
                 "entity_not_found" if missing else exc.code,
-                "所选计划已不存在，未自动切换到其他计划。" if missing
-                else "计划或任务的永久身份缺失或绑定失效，读取不会补建或替换身份。",
+                "所选计划已经不存在，系统不会自动换成别的计划。请刷新计划列表后重新选择。" if missing
+                else "计划或安排的编号已失效，系统不会自动补建或改绑。请刷新计划列表后重新选择。",
                 404 if missing else 409,
             ) from exc
 
@@ -134,7 +134,7 @@ class WorkbenchPlanQueryService:
     def _catalog_scenario(self, query, row):
         scenario = ScheduleAdjustmentScenario.from_row(row)
         locator = WorkbenchPlanLocator(scenario.base_version, scenario.base_plan_role, scenario.scenario_id)
-        name = scenario.scenario_name or "模拟预览（未命名）"
+        name = scenario.scenario_name or "试调方案（未命名）"
         ref, blocked = self._catalog_reference(locator, name)
         if blocked is not None:
             return blocked
@@ -165,22 +165,22 @@ class WorkbenchPlanQueryService:
         if locator.scenario_id is not None:
             row = repo.get_scenario_context(locator.scenario_id)
             if row is None:
-                raise WorkbenchCommandRejected("entity_not_found", "所选场景已不存在，未自动切换计划。", 404)
+                raise WorkbenchCommandRejected("entity_not_found", "所选试调方案已经不存在，系统不会自动换计划。请回「试调」重新选一个。", 404)
             _admit_scenario(repo, row)
             entry = _scenario_entry(query, ScheduleAdjustmentScenario.from_row(row), history, query.latest)
         else:
             if history is None:
-                raise WorkbenchCommandRejected("entity_not_found", "所选排产历史已不存在，未自动切换计划。", 404)
+                raise WorkbenchCommandRejected("entity_not_found", "所选排产记录已经不存在，系统不会自动换计划。请刷新计划列表后重新选择。", 404)
             _admit_version(repo, locator.version, locator.plan_role)
             option = next((row for row in repo.list_plan_role_options(locator.version) if row["role"] == locator.plan_role), None)
             entry = _role_entry(query, history, query.latest, locator.plan_role, option)
         identity = entry.plan_identity
         if not entry.can_view or identity is None:
-            raise WorkbenchCommandRejected("plan_unavailable", "所选计划的状态、摘要或明细无效，请在目录查看不可用原因。")
+            raise WorkbenchCommandRejected("plan_unavailable", "所选计划的状态、摘要或明细无效，看不了。请回计划列表查看不可用原因。")
         span = repo.get_plan_time_span(version=locator.version, source_table=identity.source_table,
                                        candidate_id=identity.candidate_id, scenario_id=locator.scenario_id)
         if span is None:
-            raise WorkbenchCommandRejected("plan_unavailable", "所选计划没有可查看的真实明细。")
+            raise WorkbenchCommandRejected("plan_unavailable", "所选计划没有可查看的明细。请刷新计划列表后重新选择。")
         public_span: Dict[str, Union[str, bool]] = {
             "start": public_time(span.get("start_time")), "end": public_time(span.get("end_time")),
         }
@@ -200,7 +200,7 @@ class WorkbenchPlanQueryService:
         sql = build_schedule_detail_sql(where_clauses=where, plan_rows_cte_sql=plan_sql)
         rows = repo.fetchall(sql + " LIMIT ?", params + [MAX_PLAN_TASKS + 1])
         if len(rows) > MAX_PLAN_TASKS:
-            raise WorkbenchCommandRejected("query_too_large", "任务范围超过本批读取上限，未返回截断结果。", 413)
+            raise WorkbenchCommandRejected("query_too_large", "这次要读的安排超过上限，没有读取，也不会只给一部分。请缩小时间范围后重试。", 413)
         rows = annotate_plan_points(self.conn, rows, source_table=identity.source_table)
         if scope.range_start is not None:
             rows = [row for row in rows if not row.get("_point_work") or overlaps(
@@ -213,7 +213,7 @@ class WorkbenchPlanQueryService:
             keys = {str(row[kind + "_id"]) for row in rows if row[kind + "_id"] not in (None, "")}
             mapping = self.entities.active_map(kind, sorted(keys))
             if keys != set(mapping):
-                raise WorkbenchCommandRejected("identity_missing", "任务关联批次或资源的永久身份缺失，读取不会补建。")
+                raise WorkbenchCommandRejected("identity_missing", "安排关联的批次、设备或人员找不到编号，系统不会自动补建。请到资料总览核对。")
             resources[kind] = mapping
             state[kind] = [(key, value.ref, value.revision) for key, value in sorted(mapping.items())]
         return resources, state

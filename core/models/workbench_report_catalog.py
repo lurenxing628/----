@@ -19,11 +19,11 @@ class ReportCatalogScope:
 
     def __post_init__(self):
         if self.kind not in ("overdue", "utilization", "downtime"):
-            reject("未知目录报表。")
+            reject("没有这个报表。")
         ReportScope(source=self.source, plan_ref=self.plan_ref, query=self.query,
                     plan_finish_date_from=self.window_date_from, plan_finish_date_to=self.window_date_to)
         if self.kind == "overdue" and self.window_date_from is not None:
-            reject("超期清单按正式计划全部批次统计，不接受时间窗口冒充批次范围。")
+            reject("超期清单按正式计划的全部批次统计，不能用日期范围当批次范围。")
 
     def scope(self):
         return {"selection": "all_plan_batches" if self.kind == "overdue" else "schedule_window_overlap", **asdict(self)}

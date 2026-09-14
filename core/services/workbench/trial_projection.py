@@ -73,12 +73,12 @@ def resources_projection(live):
     tables = live["facts"]["tables"]
     refs = {(row["kind"], row["entity_key"]): row["ref"] for row in tables["WorkbenchEntityRefs"] if row["active"] == 1}
     result = {"machines": [], "operators": [], "authorizations": []}
-    for kind, table in (("machine", "Machines"), ("operator", "Operators")):
+    for kind, table, bucket in (("machine", "Machines", "machines"), ("operator", "Operators", "operators")):
         for row in tables[table]:
             ref = refs.get((kind, row[kind + "_id"]))
             if ref is not None:
-                result[kind + "s"].append({"ref": ref, "business_code": row[kind + "_id"],
-                                           "label": row["name"], "status": row["status"]})
+                result[bucket].append({"ref": ref, "business_code": row[kind + "_id"],
+                                       "label": row["name"], "status": row["status"]})
     result["authorizations"] = [{"machine_ref": refs["machine", row["machine_id"]],
                                   "operator_ref": refs["operator", row["operator_id"]]}
                                  for row in tables["OperatorMachine"]
@@ -137,7 +137,7 @@ def _display_fields(task):
     for key in ("part_no", "part_name", "process_label", "sequence", "piece_id", "source", "quantity", "priority", "due_date"):
         value = _public_value(task[key])
         if value is None and task[key] is not None:
-            task["data_gaps"].append({"field": key, "storage_type": type(task[key]).__name__, "message": "原字段不能作为业务值展示，原始类型与内容已保留。"})
+            task["data_gaps"].append({"field": key, "storage_type": type(task[key]).__name__, "message": "这一项的原始内容格式不对，不能直接显示；原始数据没有改动。"})
         task[key] = value
 
 
@@ -176,7 +176,7 @@ def _unplanned(admission, rows):
     scheduled = {row["operation_ref"] for row in rows}
     fields = ("operation_ref", "batch_ref", "piece_id", "sequence", "status", "predecessor_refs")
     return [{**{key: row[key] for key in fields}, "reason": {"code": "base_operation_unscheduled",
-             "message": "原候选受理范围中的工序未保存排程，未从草稿范围隐藏。"}}
+             "message": "排产时选中的这道工序没有保存安排，这里仍然照样列出。"}}
             for ref, row in scope.items() if ref not in scheduled]
 
 

@@ -14,7 +14,7 @@ class WorkbenchRunRepository:
     def require_schema(self):
         issues = workbench_run_contract_issues(self.conn)
         if issues:
-            raise WorkbenchCommandRejected("run_schema_unavailable", "运行台账尚未完整安装，未补建或修复。", 503)
+            raise WorkbenchCommandRejected("run_schema_unavailable", "排产记录用的结构还没装好，读不出来，系统也不会自动补。请联系维护人员。", 503)
 
     def get(self, run_ref):
         row = self.conn.execute("SELECT * FROM WorkbenchRunJobs WHERE run_ref=?", (run_ref,)).fetchone()
@@ -33,7 +33,7 @@ class WorkbenchRunRepository:
             WHERE request_key=?""", (row["request_key"],)).fetchone()
         if (receipt is None or receipt[0] != "scheduling.run" or receipt[1] != row["input_ref"]
                 or json.loads(receipt[2])["data"] != {"run_ref": row["run_ref"]}):
-            raise WorkbenchCommandRejected("run_result_inconsistent", "排产运行缺少一致的受理回执，必须核对台账。", 500)
+            raise WorkbenchCommandRejected("run_result_inconsistent", "这次排产没有一致的接收结果记录，请让维护人员核对排产记录。", 500)
 
     def insert(self, *, request_key, input_ref, settings, facts_hash, facts_json, projections, baseline, now):
         ref = new_run_ref()
@@ -73,11 +73,11 @@ class WorkbenchRunRepository:
         if ((row["state"] in TERMINAL_STATES) != bool(receipt)
                 or (receipt and (not isinstance(result, dict) or receipt["state"] != row["state"]
                                  or result["state"] != receipt["state"]))):
-            raise WorkbenchCommandRejected("run_result_inconsistent", "运行终态与结果回执不一致，必须核对台账。", 500)
+            raise WorkbenchCommandRejected("run_result_inconsistent", "这次排产的最终状态和保存的结果不一致，请让维护人员核对排产记录。", 500)
         if receipt:
             from .workbench_run_result_repo import WorkbenchRunResultRepository
             if not WorkbenchRunResultRepository(self.conn).consistent(row["run_ref"], result):
-                raise WorkbenchCommandRejected("run_result_inconsistent", "候选明细与结果回执不一致，必须核对台账。", 500)
+                raise WorkbenchCommandRejected("run_result_inconsistent", "候选方案明细和保存的结果不一致，请让维护人员核对排产记录。", 500)
         return {"run_ref": row["run_ref"], "job_ref": row["run_ref"], "state": row["state"], "stage": row["stage"],
                 "progress": None, "plans": [], "plan_catalog_connected": False,
                 "candidates": result["candidates"] if result else [], "result_persisted": bool(result and result["result_persisted"]),

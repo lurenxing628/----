@@ -22,7 +22,7 @@ def _service():
 
 def _body(required):
     if request.args:
-        reject("invalid_input", "场景采用不接受URL附加范围或参数。", 400)
+        reject("invalid_input", "提交的内容格式不正确，试调方案还没有采用。请刷新页面后重新点「确认正式采用」。", 400)
     value = request.get_json()
     fields(value, required)
     return value
@@ -63,7 +63,7 @@ def trial_adopt(scenario_ref):
 @api_endpoint
 def trial_adoption_receipt(scenario_ref, request_key):
     if request.args:
-        reject("invalid_input", "原请求回执查询不接受其他筛选参数。", 400)
+        reject("invalid_input", "查询采用结果时不需要其他筛选条件。请直接点「查询结果」。", 400)
     result = _service().lookup(scenario_ref, request_key)
     return _query({"state": "committed" if result else "not_observed", "receipt": result,
                    "may_be_in_flight": result is None, "can_retry_automatically": False},

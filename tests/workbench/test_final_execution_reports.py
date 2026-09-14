@@ -66,12 +66,12 @@ def test_report_snapshot_oracle_checks_exact_format_and_rejects_wrong_identity(s
                 "headers": {"x-workbench-snapshot": token}}
     sheets, metadata = rows_from_download(download)
     expected = "'" + token if format_name == "csv" and token[0] in "=+-@" else token
-    assert metadata["范围快照"] == expected
+    assert metadata["数据版本编号"] == expected
     assert [row[0] for row in sheets["范围全部结果"][1:]] == ["'=1+1", "'-note"]
     verify_snapshot(download, sheets, metadata)
     for wrong in {"wrong-ref", "'" + expected, expected[1:] if expected.startswith("'") else "-" + expected}:
         with pytest.raises(AssertionError):
-            verify_snapshot(download, sheets, {**metadata, "范围快照": wrong})
+            verify_snapshot(download, sheets, {**metadata, "数据版本编号": wrong})
     with pytest.raises(AssertionError):
         verify_snapshot({**download, "headers": {"x-workbench-snapshot": "wrong-ref"}}, sheets, metadata)
     with pytest.raises(AssertionError):
@@ -84,7 +84,7 @@ def test_report_snapshot_oracle_checks_exact_format_and_rejects_wrong_identity(s
     else:
         workbook = openpyxl.load_workbook(str(path), read_only=True, data_only=False)
         try:
-            cell = next(row[1] for row in workbook["范围与口径"].iter_rows() if row[0].value == "范围快照")
+            cell = next(row[1] for row in workbook["范围与计算方式"].iter_rows() if row[0].value == "数据版本编号")
             assert cell.value == token and cell.data_type == "s"
             assert all(cell.data_type != "f" for sheet in workbook for row in sheet.iter_rows() for cell in row)
         finally:
@@ -97,7 +97,7 @@ def test_report_snapshot_oracle_checks_exact_format_and_rejects_wrong_identity(s
 @pytest.mark.parametrize("write_only", (False, True), ids=("normal", "write-only"))
 @pytest.mark.parametrize("prefix", ("-", "="), ids=("minus", "equals"))
 def test_report_xlsx_reference_metadata_preserves_literal_text(tmp_path, write_only, prefix):
-    references = {"计划引用": prefix + "plan-ref", "范围快照": prefix + "snapshot-ref"}
+    references = {"计划编号": prefix + "plan-ref", "数据版本编号": prefix + "snapshot-ref"}
     formula = "=1+1"
     options = {"summary_rows": [list(item) for item in references.items()] + [["备注", formula]],
                "write_only": write_only}

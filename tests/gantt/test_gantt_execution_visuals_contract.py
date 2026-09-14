@@ -152,7 +152,7 @@ for (const status of ['processing','paused','exception','completed']) {
 return true;
 """)
     assert result["result"] is True
-    assert ".plan-bar.critical .plan-bar-face { background:var(--wb-gantt-critical-fill); border-color:var(--wb-gantt-critical-edge); }" in css
+    assert ".plan-bar.critical .plan-bar-face { background:var(--wb-gantt-critical-stripe),var(--wb-gantt-critical-fill); border-color:var(--wb-gantt-critical-edge); }" in css
     assert ".plan-bar.conflict .plan-bar-face { border-style:dashed; }" in css
 
 

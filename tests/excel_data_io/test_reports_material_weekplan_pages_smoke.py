@@ -37,7 +37,7 @@ def test_reports_material_weekplan_pages_smoke(app_client) -> None:
         body = assert_retired_response(app_client.get(path))
         assert "<dt>排产版本</dt><dd>1</dd>" in body
         assert "<dt>方案</dt><dd>正式采用方案</dd>" in body
-        assert "未改用新报表默认范围" in body
+        assert "没有改用新报表的默认范围" in body
         if path in ("/reports/overdue", "/reports/utilization", "/reports/downtime"):
             links = [urlsplit(link) for link in LegacyHTML(body).links if urlsplit(link).path == path + "/export"]
             assert len(links) == 1

@@ -243,4 +243,4 @@ def test_scheduler_batches_page_renders_provenance_and_hidden_degraded_html(tmp_
                            context["config_notice_items"])
     assert "基线未记录" in body
     assert "auto_assign_persist" not in body
-    assert_retired_scope(client, "/scheduler/", message="未忽略条件后跳转")
+    assert_retired_scope(client, "/scheduler/", message="没有跳转，也没有丢掉任何条件")

@@ -33,13 +33,13 @@ def rows_from_download(download):
     path = Path(download["path"])
     if path.suffix == ".csv":
         rows = list(csv.reader(io.StringIO(path.read_bytes().decode("utf-8-sig"))))
-        return {"范围全部结果": rows}, {"范围快照": rows[1][-4]}
+        return {"范围全部结果": rows}, {"数据版本编号": rows[1][-4]}
     workbook = openpyxl.load_workbook(str(path), read_only=True, data_only=False)
     try:
         sheets = {sheet.title: list(sheet.iter_rows(values_only=True)) for sheet in workbook}
     finally:
         workbook.close()
-    info = sheets.get("范围与口径", sheets.get("查询摘要", []))
+    info = sheets.get("范围与计算方式", sheets.get("查询摘要", []))
     return sheets, {row[0]: row[1] for row in info if len(row) == 2}
 
 
@@ -49,16 +49,16 @@ def verify_snapshot(download, sheets, meta):
     is_csv = Path(download["path"]).suffix == ".csv"
     # Compare the exact protected CSV representation, never strip arbitrary apostrophes.
     expected = "'" + token if is_csv and token.startswith(("=", "+", "-", "@")) else token
-    assert meta["范围快照"] == expected, (download["path"], meta["范围快照"], expected)
+    assert meta["数据版本编号"] == expected, (download["path"], meta["数据版本编号"], expected)
     if is_csv:
         rows = sheets["范围全部结果"]
-        assert rows[0][-4] == "范围快照"
+        assert rows[0][-4] == "数据版本编号"
         assert all(row[-4] == expected for row in rows[1:])
 
 
 def verify_records(rows, reports, revisions):
     values = [dict(zip(rows[0], row)) for row in rows[1:]]
-    production = {row["报工引用"]: row for row in values if row["记录来源"] == "逐次报工"}
+    production = {row["报工编号"]: row for row in values if row["记录来源"] == "逐次报工"}
     assert set(production) == set(reports)
     assert len(values) - len(production) == 6
     known_hours, unknown = 0, 0
@@ -67,14 +67,14 @@ def verify_records(rows, reports, revisions):
         history = revisions[ref]
         latest = json.loads(history[-1]["values_json"])
         assert row["报工单号"] == source["report_no"]
-        assert row["原报工任务引用"] == source["recorded_against_task_ref"]
-        assert row["原报工计划引用"] == source["recorded_against_plan_ref"]
-        for label, key in (("本次完成数量", "completed_quantity"), ("有效加工工时(h)", "effective_processing_hours"),
+        assert row["原报工任务编号"] == source["recorded_against_task_ref"]
+        assert row["原报工计划编号"] == source["recorded_against_plan_ref"]
+        for label, key in (("本次完成数量", "completed_quantity"), ("有效加工工时（小时）", "effective_processing_hours"),
                            ("实际开工", "actual_start"), ("本次实际结束", "actual_end"), ("备注", "remark")):
             original = latest[key]
             expected = "未知" if original is None else ("'" + original if key == "remark" and original.startswith("=") else original)
             assert normalized(row[label]) == normalized(expected), (ref, key, row[label], expected)
-        assert [item["after"] for item in json.loads(row["完整修订历史"])] == [json.loads(item["values_json"]) for item in history]
+        assert [item["after"] for item in json.loads(row["完整更正记录"])] == [json.loads(item["values_json"]) for item in history]
         hours = latest["effective_processing_hours"]
         if hours is None:
             unknown += 1
@@ -138,7 +138,7 @@ def verify(root):
             topic = query["topic"][0]
             values = [dict(zip(rows[0], row)) for row in rows[1:]]
             if topic in ("delivery", "quality"):
-                assert {row["工序引用"] for row in values} == operations
+                assert {row["工序编号"] for row in values} == operations
                 assert sum(int(row["逐次报工数"]) for row in values) == 27
                 assert sum(int(row["旧现场事件数"]) for row in values) == 6
             elif topic == "records":
@@ -147,7 +147,7 @@ def verify(root):
                 assert count == 2
                 assert sum(int(row["逐次报工数"]) for row in values) == 27
                 assert sum(int(row["全部记录数"]) for row in values) == 33
-                assert sum(float(row["已知加工工时小计(h)"]) for row in values if row["已知加工工时小计(h)"] != "未知") == 7.5
+                assert sum(float(row["已知加工工时小计（小时）"]) for row in values if row["已知加工工时小计（小时）"] != "未知") == 7.5
         elif "计划和现场实际" in sheets:
             rows = sheets["计划和现场实际"]
             assert len(rows) == 67 and count == 66

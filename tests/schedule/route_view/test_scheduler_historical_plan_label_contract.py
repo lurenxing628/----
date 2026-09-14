@@ -93,7 +93,7 @@ def test_gantt_page_labels_superseded_adopted_version_as_historical() -> None:
     )
     _assert_context_plan_label(context, "历史正式方案（已被新版本替代）")
     _assert_selected_plan_option_label(context["plan_role_options"], "历史正式方案（已被新版本替代）")
-    assert_retired_scope(client, path, message="未忽略条件后跳转")
+    assert_retired_scope(client, path, message="没有跳转，也没有丢掉任何条件")
 
 
 def test_week_plan_page_labels_superseded_adopted_version_as_historical() -> None:

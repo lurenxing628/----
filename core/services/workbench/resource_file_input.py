@@ -5,8 +5,22 @@ from dataclasses import asdict
 
 from core.errors import ValidationError
 from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
-from core.models.workbench_resource_file import MULTI_CODES, NULLABLE, NUMERIC_FIELDS, READONLY, RELATIONS, WRITABLE
+from core.models.workbench_resource_file import (
+    LABELS,
+    MULTI_CODES,
+    NULLABLE,
+    NUMERIC_FIELDS,
+    READONLY,
+    RELATIONS,
+    WRITABLE,
+)
 from core.services.workbench.resource_states import WorkbenchResourceStateService
+
+
+def _column(field):
+    """提示里按“列 英文名（中文说明）”称呼文件里的列，英文名是文件格式的一部分，必须留。"""
+    label = LABELS.get(field)
+    return "列 " + field + "（" + label + "）" if label else "列 " + field
 
 
 def same_value(left, right, field):
@@ -51,9 +65,9 @@ class ResourceFileInput:
     def _changes(self, values, before, scope):
         for key in READONLY[self.kind]:
             if key in values and (before is None or not _same_column(key, values[key], before[key])):
-                raise ValidationError("只读列只能原样核对已有事实，不能新增或覆盖。", field=key)
+                raise ValidationError(_column(key) + "是只读列，只能照原样填写，不能改也不能新增，这一行没有导入。请把它改回原值。", field=key)
         if self.kind == "op_type" and "category" in values and values["category"] != scope["category"]:
-            raise ValidationError("文件归属与本次导入归属不一致，不能跨类更新。", field="category")
+            raise ValidationError("文件里的归属和这次导入选的归属不一样，这一行没有导入。请分开导入自制和外协工种。", field="category")
         changes = {key: value for key, value in values.items() if key in WRITABLE[self.kind]
                    and key != "business_code" and (before is None or not _same_column(key, value, before[key]))}
         if self._declares_empty_skills(values, before):
@@ -69,21 +83,21 @@ class ResourceFileInput:
         if self.kind == "op_type":
             changes["category"] = scope["category"]
         elif "status" not in changes:
-            raise ValidationError("新记录必须明确填写有效状态。", field="status")
+            raise ValidationError("新增的记录必须填状态，这一行没有导入。请在" + _column("status") + "里填好状态。", field="status")
 
     def _clear_fields(self, changes):
         for key, value in changes.items():
             if value is None and key not in NULLABLE:
-                raise ValidationError("该字段不能用\\N清空，数组应明确填写[]。", field=key)
+                raise ValidationError(_column(key) + "不能用 \\N 清除，这一行没有导入。要改成一组空编号请填 []。", field=key)
             if type(value) is str and not value.strip():
-                raise ValidationError("空白文字不是清空指令；空单元格保留，允许字段用\\N清空。", field=key)
+                raise ValidationError(_column(key) + "只填了空格，这不算清除，这一行没有导入。要清除请填 \\N（大写），要留着原值请把格子空着。", field=key)
 
     def _relation(self, value, field, kind, category):
         multiple = field in MULTI_CODES
         if multiple and (type(value) is not list or any(type(code) is not str for code in value)):
-            raise ValidationError("关系必须是明确JSON字符串数组。", field=field)
+            raise ValidationError(_column(field) + "要填一组用引号括起来的编号，这一行没有导入。请按 [\"A\",\"B\"] 这样填。", field=field)
         if multiple and len(value) != len(set(value)):
-            raise ValidationError("关系编号数组不能重复。", field=field)
+            raise ValidationError(_column(field) + "里的编号有重复，这一行没有导入。请去掉重复的编号。", field=field)
         if not multiple and value is None:
             return None, None
         refs, evidence = [], []
@@ -95,10 +109,10 @@ class ResourceFileInput:
 
     def _selected_code(self, code, kind, category, field):
         if type(code) is not str or not code or code != code.strip():
-            raise ValidationError("关系必须使用准确业务编号，不接受空白或名称猜测。", field=field)
+            raise ValidationError(_column(field) + "要填准确的编号，不能填空格或名称，这一行没有导入。请改填编号。", field=field)
         identity = self.reader.identities.find_active(kind, code)
         if identity is None:
-            raise ValidationError("关系编号不存在或缺少永久引用：" + code, field=field)
+            raise ValidationError(_column(field) + "里的编号 " + code + " 在资料里找不到，这一行没有导入。请先在资料总览新增它，或者改填已有编号。", field=field)
         self.state.selected(kind, identity.ref, category=category)
         return identity, self.repo.raw(kind, code)
 
@@ -106,13 +120,13 @@ class ResourceFileInput:
         if self.kind == "op_type" and "label" in payload:
             owner = self.repo.name_owner(self.kind, payload["label"])
             if owner and owner["business_code"] != code:
-                raise ValidationError("工种名称已被其他编号使用。", field="label")
+                raise ValidationError("这个工种名称已经被另一个编号用了，这一行没有导入。请换一个名称。", field="label")
 
     @staticmethod
     def _policy(payload, scope):
         mode = payload["fields"].get("default_merge_mode")
         if mode is not None and scope["category"] != "external":
-            raise WorkbenchCommandRejected("constraint_conflict", "自制工种不能设置外协周期策略。")
+            raise WorkbenchCommandRejected("constraint_conflict", "自制工种不能设置外协周期规则，没有导入。请把归属改成外协，或者清掉" + _column("default_merge_mode") + "。")
 
 
 def proposed_fields(kind, code, before, payload, related):

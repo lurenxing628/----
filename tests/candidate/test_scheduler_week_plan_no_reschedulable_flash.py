@@ -45,7 +45,7 @@ def test_scheduler_week_plan_no_reschedulable_flash(app_client, monkeypatch) -> 
     body = resp.get_data(as_text=True)
     final_path = str(getattr(getattr(resp, "request", None), "path", "") or "")
 
-    assert_retired(resp, message="新入口不能等价表达这组旧条件，未忽略条件后跳转。原数据和下载接口仍保留。")
+    assert_retired(resp, message="新页面装不下这组旧条件，没有跳转，也没有丢掉任何条件。原来的数据和下载都还在，请从侧栏进入对应页面重新筛选。")
     assert "所选批次没有可重排工序，本次未执行模拟排产。" in body, "模拟排产页面未展示业务错误提示"
     assert "模拟排产完成：生成版本" not in body, "模拟排产页面不应误报成功"
     if final_path:

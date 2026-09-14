@@ -50,7 +50,7 @@ def test_lazy_select_orphan_option(app_client, repo_root, monkeypatch) -> None:
         assert [row["business_code"] for row in choices["operators"]] == ["OP1"]
         messages = " ".join(item["message"] for item in operation["issues"])
         if source == "INTERNAL":
-            assert operation["editable"] is False and "工序归属未明确" in messages
+            assert operation["editable"] is False and "归属未明确" in messages
             assert entity["write_context"]["capabilities"]["batch.operation_update"] is False
         else:
             assert "设备未补齐或不可用" in messages and "人员未补齐或不在岗" in messages
@@ -59,7 +59,7 @@ def test_lazy_select_orphan_option(app_client, repo_root, monkeypatch) -> None:
 for (let i=0;i<150 && !document.querySelector('table[aria-label="批次工序"]');i++) await new Promise(resolve=>setTimeout(resolve,20));
 const table = document.querySelector('table[aria-label="批次工序"]'); expect(table);
 const row = table.tBodies[0].rows[0], button = Array.from(row.querySelectorAll('button')).find(node=>node.textContent==='补充资料');
-expect(row.textContent.includes(data.source === 'INTERNAL' ? '工序归属未明确' : '设备未补齐或不可用'));
+expect(row.textContent.includes(data.source === 'INTERNAL' ? '归属未明确' : '设备未补齐或不可用'));
 expect(!row.textContent.includes('Machine1') && !row.textContent.includes('Operator1'), 'Missing resource silently replaced');
 if(data.source === 'INTERNAL') expect(button.disabled);
 return row.textContent;

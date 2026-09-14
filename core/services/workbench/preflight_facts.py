@@ -55,14 +55,14 @@ class PreflightFacts:
         for ref in refs:
             key = identities.get(ref)
             if key is None:
-                raise WorkbenchCommandRejected("entity_not_found", "选中的批次引用已失效，请重新选择；未自动换成同号批次。", 404)
+                raise WorkbenchCommandRejected("entity_not_found", "选中的批次已失效，系统不会自动换成同号的新批次。请刷新批次列表后重新选择。", 404)
             if key not in batches:
-                raise WorkbenchCommandRejected("storage_failure", "批次永久引用与原记录不一致。", 500)
+                raise WorkbenchCommandRejected("storage_failure", "批次编号和原记录对不上，检查没有继续。请刷新重试；仍不行请联系维护人员。", 500)
             result.append({**batches[key], "ref": ref})
         return result
 
     def operation_ref(self, op):
         ref = self.operation_refs.get(op["id"])
         if ref is None:
-            raise WorkbenchCommandRejected("storage_failure", "工序永久引用缺失，未补建或使用编号代替。", 500)
+            raise WorkbenchCommandRejected("storage_failure", "有工序找不到编号，系统不会自动补建。请刷新重试；仍不行请联系维护人员。", 500)
         return ref

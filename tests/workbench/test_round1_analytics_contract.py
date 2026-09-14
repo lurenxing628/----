@@ -181,7 +181,7 @@ def test_invalid_future_fact_stays_in_cohort_charts_and_download(report_api, for
         book = openpyxl.load_workbook(io.BytesIO(response.data), read_only=True)
         try:
             rows = list(book["范围全部结果"].iter_rows(values_only=True))
-            exported_snapshots = [row[1] for row in book["范围与口径"].iter_rows(values_only=True) if row[0] == "范围快照"]
+            exported_snapshots = [row[1] for row in book["范围与计算方式"].iter_rows(values_only=True) if row[0] == "数据版本编号"]
             assert exported_snapshots == [token]
         finally:
             book.close()

@@ -40,7 +40,7 @@ def file_fingerprint(path):
 class SystemMaintenanceJournal:
     def __init__(self, directory, database_path):
         if not directory or not os.path.isabs(directory):
-            raise WorkbenchCommandRejected("maintenance_unavailable", "维护结果目录尚未配置，文件操作未启用。", 503)
+            raise WorkbenchCommandRejected("maintenance_unavailable", "还没有配置维护目录，备份和恢复暂时不能用。请先在系统维护页设置维护目录。", 503)
         self.directory = directory
         self.database_scope = input_fingerprint(os.path.normcase(os.path.realpath(database_path)))
 
@@ -86,19 +86,19 @@ class SystemMaintenanceJournal:
 
     def assert_ready(self):
         if self.pending():
-            raise WorkbenchCommandRejected("maintenance_active", "存在未核实的维护结果，已阻止新的写入；请保留现场并核查原操作。", 503)
+            raise WorkbenchCommandRejected("maintenance_active", "上一次维护还没有确认结果，这次没有执行。请先用操作编号查询上次维护的结果。", 503)
 
     def begin(self, request_key, action, intent):
         previous = self.lookup(request_key)
         digest = input_fingerprint({"action": action, "input": intent})
         if previous:
             if previous["input_hash"] != digest:
-                raise WorkbenchCommandRejected("request_key_conflict", "原请求对应的维护内容不同，请核对原结果。")
+                raise WorkbenchCommandRejected("request_key_conflict", "这个操作编号对应的是另一次维护，这次没有执行。请重新提交。")
             return previous, True
         self.assert_ready()
         row = {"version": 1, "database_scope": self.database_scope, "job_ref": uuid.uuid4().hex,
                "request_key": request_key, "input_hash": digest, "action": action, "state": "accepted",
-               "code": "accepted", "message": "已持久记录维护请求，尚未完成。", "history": [],
+               "code": "accepted", "message": "维护已接收，还没有完成。", "history": [],
                "target": None, "protection": None, "audit_persisted": False}
         self.record(row, "accepted")
         return row, False

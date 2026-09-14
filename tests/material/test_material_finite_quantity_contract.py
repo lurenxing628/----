@@ -312,7 +312,7 @@ def test_existing_material_page_surfaces_dirty_quantity_location(app_client, db_
         assert all(private not in message for private in ("Materials", "stock_qty", "NaN", "Traceback"))
         assert "M002" in message
         assert "\u5e93\u5b58\u6570\u91cf" in message
-        assert "\u6709\u9650\u6570\u5b57" in message
+        assert "\u6709\u6548\u6570\u5b57" in message
         assert "Materials" in caplog.text
         assert "stock_qty" in caplog.text
         assert "NaN" in caplog.text
@@ -347,7 +347,7 @@ def test_workbench_material_query_preserves_stock_and_identity(app_client, db_pa
             assert payload["ok"] is False and payload["committed"] is False
             assert payload["error"]["code"] == "storage_failure"
             message = payload["error"]["message"]
-            assert "M-PAIR" in message and "库存数量" in message and "有限数字" in message
+            assert "M-PAIR" in message and "库存数量" in message and "有效数字" in message
             assert all(value not in message for value in ("Materials", "stock_qty", str(stock), "Traceback"))
             assert "Materials" in caplog.text and "stock_qty" in caplog.text and repr(stored) in caplog.text
         assert _snapshot(conn) == before

@@ -289,7 +289,7 @@ def test_receipt_failure_rolls_back_import_and_original_intent_replays_once(mate
 def test_export_all_filtered_and_explicit_selection_not_only_visible_page(material_conn, fmt):
     seed_many(material_conn, 240)
     filtered = export_file(material_conn, fmt, scope={"query": "BULK", "sort": "business_code", "direction": "desc"})
-    assert filtered.row_count == 240 and filtered.filename == "materials." + fmt
+    assert filtered.row_count == 240 and filtered.filename == "物料清单." + fmt
     refs = [identity_for(material_conn, code).ref for code in ("BULK00230", "BULK00001", "MAT1")]
     selected = export_file(material_conn, fmt, selected_refs=refs)
     assert selected.row_count == 3
@@ -435,7 +435,7 @@ def test_xlsx_cell_capacity_never_truncates_and_is_not_a_csv_limit(material_conn
 
 def test_csv_rejects_runtime_unsupported_nul_without_silent_deletion(material_conn):
     row = {**material_row(material_conn), "remark": "original\x00text"}
-    with pytest.raises(ValidationError, match="CSV.*NUL"):
+    with pytest.raises(ValidationError, match="CSV 打不开的隐藏字符"):
         write_material_file(codec_rows([row]), "csv")
 
 

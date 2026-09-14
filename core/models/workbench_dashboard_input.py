@@ -17,25 +17,25 @@ def _text(key, value, required):
     if value is None and key not in required:
         return None
     if type(value) is not str or "\x00" in value or len(value) > (200 if key == "owner" else 4000):
-        invalid(key, "请填写有效文字，不能以数字、布尔值或对象替代。")
+        invalid(key, "请填写文字内容。")
     return value.strip() or None
 
 
 def normalize_input(action, payload):
     if type(payload) is not dict:
-        raise WorkbenchCommandRejected("invalid_input", "处置输入必须是对象。", 400)
+        raise WorkbenchCommandRejected("invalid_input", "提交内容格式不对，这次处置没有保存。请刷新页面后重试。", 400)
     allowed = {"reason"} if action == "reopen" else set(HANDLING_FIELDS) | {"target_status"}
     required = {"reason"} if action == "reopen" else {"remark", "target_status"}
     if set(payload) - allowed or not required <= set(payload):
-        raise WorkbenchCommandRejected("invalid_input", "处置字段缺失或含未知字段，未忽略输入。", 400)
+        raise WorkbenchCommandRejected("invalid_input", "处置内容缺少必填项或含有多余项，这次处置没有保存。请刷新页面后重试。", 400)
     result = {key: _text(key, value, required) for key, value in payload.items()}
     for key in required:
         if not result[key]:
-            invalid(key, "请填写重开原因。" if key == "reason" else "请填写处置状态和本次核实备注。")
+            invalid(key, "请填写重开原因。" if key == "reason" else "请选择处置状态并填写处置备注。")
     if action == "transition" and result["target_status"] not in STATUSES:
         invalid("target_status", "请选择有效的处置状态。")
     if result.get("evidence_ref") is not None:
-        invalid("evidence_ref", "本批尚未接入已核验附件关联，请使用凭据文字；文字不会冒充已核验引用。")
+        invalid("evidence_ref", "附件关联尚未开通，请把凭据写在文字里。")
     return result
 
 
@@ -56,12 +56,12 @@ def _dates(value, now):
             if parsed > now:
                 raise ValueError()
         except (TypeError, ValueError):
-            invalid("completed_at", "完成时间必须是有效工厂本地时点，精确到秒且不晚于当前时点。")
+            invalid("completed_at", "完成时间格式不对，请按 2026-09-13 08:30:00 这样填写，而且不能晚于当前时间。")
 
 
 def validate_handling(value, now):
     if not value["remark"]:
-        invalid("remark", "请填写本次核实备注。")
+        invalid("remark", "请填写处置备注。")
     if value["status"] != "new":
         for key in ("owner", "deadline", "action"):
             if not value[key]:

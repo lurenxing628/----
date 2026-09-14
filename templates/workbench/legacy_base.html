@@ -14,7 +14,7 @@
 <body>
   <main data-workbench-legacy-response="true">
     <header><h1>{{ title or "APS 智能排产" }}</h1><a href="/workbench">工作台</a></header>
-    <p class="notice preference-error" role="status">显示偏好无法读取，本页使用浅色。业务处理结果未被修改。</p>
+    <p class="notice preference-error" role="status">读不到深浅色设置，本页按浅色显示。业务数据和刚才的操作结果都没有变化。</p>
     {% for category, message in get_flashed_messages(with_categories=true) %}
       <p class="notice" data-level="{{ category }}" role="status">{{ message }}</p>
     {% endfor %}

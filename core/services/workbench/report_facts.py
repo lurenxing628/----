@@ -44,11 +44,11 @@ class WorkbenchReportFacts:
             ref = self.plans.references.get_plan_ref(WorkbenchPlanLocator(version, ROLE_ADOPTED))
         locator = self.plans.references.resolve_plan(ref)
         if locator.plan_role != ROLE_ADOPTED or locator.scenario_id is not None:
-            raise WorkbenchCommandRejected("plan_not_current_official", "执行分析只认当前正式采用计划，不能使用候选或模拟方案。")
+            raise WorkbenchCommandRejected("plan_not_current_official", "现场分析只看当前正式计划，没有生成结果。候选方案和试调方案请到试调页查看。")
         _, entry, span = self.plans._selected(ref)
         plan = project_plan(entry, ref)
         if not plan["is_current_official"]:
-            raise WorkbenchCommandRejected("plan_not_current_official", "所选计划不是当前可执行的正式计划，未切换到其他版本。")
+            raise WorkbenchCommandRejected("plan_not_current_official", "所选计划不是当前正式计划，分析没有生成，也没有替你换成别的版本。请到计划列表选正式计划后重试。")
         return replace(scope, plan_ref=ref), plan, locator.version, span
 
     def _resource_maps(self, rows):
@@ -58,7 +58,7 @@ class WorkbenchReportFacts:
             keys = {str(row[key]) for row in rows if row.get(key) not in (None, "")}
             identities = self.plans.entities.active_map(kind, sorted(keys))
             if set(identities) != keys:
-                raise WorkbenchCommandRejected("identity_missing", "批次或实际资源永久引用缺失，读取不会补建或猜测对象。")
+                raise WorkbenchCommandRejected("identity_missing", "有批次或实际用到的设备人员在资料里查不到编号，分析没有生成。请到资料总览核对后重试。")
             labels = {}
             if kind != "batch":
                 values = sorted(keys)
@@ -66,7 +66,7 @@ class WorkbenchReportFacts:
                     chunk = values[start:start + 400]
                     sql = "SELECT " + key + ", name FROM " + table + " WHERE " + key + " IN (" + ",".join("?" for _ in chunk) + ")"
                     labels.update((str(row[0]), row[1]) for row in self.conn.execute(sql, chunk))
-            maps[kind] = {key: {"ref": identity.ref, "label": labels.get(key) or (key if kind == "batch" else "未命名资源")}
+            maps[kind] = {key: {"ref": identity.ref, "label": labels.get(key) or (key if kind == "batch" else "名称未填写")}
                           for key, identity in identities.items()}
         return maps
 
@@ -80,11 +80,11 @@ class WorkbenchReportFacts:
         scope, plan, version, span = self.current_plan(scope)
         count = self.conn.execute("SELECT COUNT(*) FROM Schedule WHERE version=?", (version,)).fetchone()[0]
         if count > MAX_REPORT_OPERATIONS:
-            raise WorkbenchCommandRejected("query_too_large", "正式计划工序或事件超出本批完整读取上限，未截断数据。", 413)
+            raise WorkbenchCommandRejected("query_too_large", "这份正式计划的工序太多，一次读不完，没有生成结果。请缩小计划完工日期范围后重试。", 413)
         report = self.engine.execution_review(version)
         rows = self.engine.plan_rows
         if len({row["op_id"] for row in rows}) != len(rows):
-            raise WorkbenchCommandRejected("plan_unavailable", "正式计划含重复工序，不能重复计入完成率。")
+            raise WorkbenchCommandRejected("plan_unavailable", "正式计划里有重复的工序，完成率算不出来，没有生成结果。请联系维护人员核对这份计划。")
         operation_refs = self.plans.references.get_operation_refs(row["op_id"] for row in rows)
         task_refs = self.plans.references.get_task_refs(scope.plan_ref, rows)
         tasks = [{"plan_ref": scope.plan_ref, "operation_ref": operation_refs[row["op_id"]],
@@ -93,7 +93,7 @@ class WorkbenchReportFacts:
         events_count = sum(len(row["legacy_facts"]) + sum(len(report["correction_history"]) for report in row["reports"])
                            for row in ledger["projections"])
         if events_count > MAX_REPORT_EVENTS:
-            raise WorkbenchCommandRejected("query_too_large", "执行事实或修订历史超出完整读取上限，未截断数据。", 413)
+            raise WorkbenchCommandRejected("query_too_large", "这个范围里的报工和更正记录太多，一次读不完，没有生成结果。请缩小计划完工日期范围后重试。", 413)
         resources = self._resource_maps(rows)
         facts = {"plan": plan, "scope": scope, "span": span, "rows": rows,
                  "ledger": ledger, "labels": report["rows"], "resources": resources,

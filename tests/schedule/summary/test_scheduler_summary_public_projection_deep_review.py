@@ -86,7 +86,7 @@ def test_optimizer_diagnostics_secret_is_not_rendered_on_public_scheduler_surfac
         body = assert_retired_scope(client, path)
         assert INTERNAL_SECRET not in body, path
     for path in ("/system/history?version=3", "/scheduler/"):
-        body = assert_retired_scope(client, path, message="未忽略条件后跳转")
+        body = assert_retired_scope(client, path, message="没有跳转，也没有丢掉任何条件")
         assert INTERNAL_SECRET not in body, path
     for path in (
         "/scheduler/gantt/data?include_history=1",

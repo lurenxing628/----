@@ -97,7 +97,7 @@ def oracle_cell(entity, column):
     if column in ("business_code", "label"):
         value = entity[column]
     elif column == "status":
-        value = {"active": "启用", "inactive": "停用", "maintain": "检修", "leave": "请假", "pending_review": "待复核"}.get(entity["status"], "旧状态 / 原因未知")
+        value = {"active": "启用", "inactive": "停用", "maintain": "停机", "leave": "请假", "pending_review": "待复核"}.get(entity["status"], "旧状态 / 原因未知")
         if entity["status"] == "active":
             value = "可用" if "op_type_ref" in relations else "在岗" if "skill_refs" in relations else value
     elif column in ("stock_qty", "default_days", "available_machines", "available_operators"):

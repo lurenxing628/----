@@ -87,7 +87,7 @@ def test_verify_failure_and_rollback_failure_are_distinct(system_api, monkeypatc
     assert result["code"] == ("verify_failed_rollback_failed" if rollback_fails else "verify_failed_rolled_back")
     assert result["state"] == ("rollback_failed" if rollback_fails else "rolled_back")
     if rollback_fails:
-        with pytest.raises(ValueError, match="未核实"):
+        with pytest.raises(ValueError, match="还没有确认结果"):
             assert_system_maintenance_ready(str(system_api.database), str(system_api.journal_dir))
         assert system_api.get("/backups").status_code == 503
         assert system_api.read("/restore-host")["data"]["host"]["operations_available"] is False

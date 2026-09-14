@@ -193,7 +193,7 @@ def test_collect_zoom_spec_mismatches_red_green(app_client):
 const C=h.runtime.APSPlanContract, original=h.clone(sourceData), ref=sourceData.data.plan.plan_ref;
 const data=C.workspace(sourceData,ref).data; assert.strictEqual(data.task_count,3);
 for(const alter of [p=>p.data.tasks[0].start='2026-99-99T00:00:00',p=>p.data.task_count++,p=>p.data.tasks[0].end=p.data.tasks[0].start]) {
- const bad=h.clone(sourceData);alter(bad);assert.throws(()=>C.workspace(bad,ref),/计划任务、范围或投影协议不完整或串源/);
+ const bad=h.clone(sourceData);alter(bad);assert.throws(()=>C.workspace(bad,ref),/读到的工序安排、时间范围或分析数据不完整或来源对不上/);
 }
 for(const width of [830,1660,849920]) {const M=h.runtime.PlanGanttModel,model=M.layout(data,'machine','',false,width,false);for(const row of model.rows) for(const item of row.items) assert.strictEqual(item.end-item.start,M.instant(item.task.end)-M.instant(item.task.start));}
 h.equal(sourceData,original);
@@ -216,7 +216,7 @@ const valid=accept(sourceData);assert(valid.nodes.some(n=>n.props['data-plan-tas
 for(const alter of [p=>p.data.time_scope.time_basis='utc',p=>p.data.time_scope.range_end='2027-01-01T00:00:00',p=>p.data.tasks_complete=false]) {
  const bad=h.clone(sourceData);alter(bad);let failure;
  try {accept(bad);}catch(error){failure=error;}assert(failure);assert.strictEqual(renders,1);
- const error=h.render(h.runtime.ResourceControls.ErrorBox,{error:failure});assert(h.text(error).includes('未作为完整结果使用'));
+ const error=h.render(h.runtime.ResourceControls.ErrorBox,{error:failure});assert(h.text(error).includes('没有当作完整结果使用'));
  assert(!h.walk(error).some(n=>n.props['data-plan-task']));
 }
 """, payload)

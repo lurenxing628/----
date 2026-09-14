@@ -34,7 +34,7 @@ def original_duration(original, *, allow_point=False):
             reject("external_duration_unknown", "原外协周期缺失或无效，不能推测完工时间。", 422)
         return {"basis": "calendar_days", "days": days, "total_hours": None, "quantity": None}
     if op["source"] != "internal":
-        reject("duration_source_unknown", "原工序内制或外协属性未知，不能计算时长。", 422)
+        reject("duration_source_unknown", "这道工序是自制还是外协读不到，算不出时长。", 422)
     if not number(op["setup_hours"]) or not number(op["unit_hours"]):
         reject("hours_missing", "原换型工时或单件工时缺失，不能按零或最小时长补齐。", 422)
     quantity = _original_target(op, batch, execution)
@@ -46,7 +46,7 @@ def original_duration(original, *, allow_point=False):
         try:
             trial_point_evidence(original)
         except PointEventError:
-            reject("zero_or_invalid_duration", "零工时安排缺少已核验的冻结点证据，未擅补最小时长。", 422)
+            reject("zero_or_invalid_duration", "这道零工时工序没有可核对的存档依据，这里不会自己补一个最小时长。", 422)
     return {"basis": "effective_processing_hours", "setup_hours": op["setup_hours"],
             "unit_hours": op["unit_hours"], "quantity": quantity, "total_hours": total}
 
@@ -84,13 +84,13 @@ def estimate(engine, original, arrangement, *, allow_point=False):
         end_dt_exclusive=None, last_op_type_by_machine=None, abort_after=None,
         total_hours_base=duration["total_hours"])
     if slot.efficiency_fallback_used:
-        reject("calendar_efficiency_unknown", "真实日历效率缺失，未回退到默认效率。", 422)
+        reject("calendar_efficiency_unknown", "班表效率读不到，这里不会改用默认效率。", 422)
     if slot.end_time <= slot.start_time:
-        reject("duration_precision_unsupported", "正工时被时间精度压零，不能作为点保存。", 422)
+        reject("duration_precision_unsupported", "这道工序有实际工时，但算出来不足 1 秒，不能按零工时工序保存。", 422)
     return slot.start_time, _second_precision(slot.end_time)
 
 
 def _second_precision(value):
     if value.microsecond:
-        reject("duration_precision_unsupported", "真实工时或周期得到秒以下时间，不能无损保存为秒精度，未取整。", 422)
+        reject("duration_precision_unsupported", "算出来的时间带了秒以下的零头，不能保存，这里也不四舍五入。", 422)
     return value

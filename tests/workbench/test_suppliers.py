@@ -191,7 +191,7 @@ def test_deleted_rebuilt_supplier_never_accepts_old_ref_and_receipt_replays(supp
     assert identity_for(conn).ref != old.ref
     assert run_supplier(conn, "delete", {}, identity=old, guard=lambda: pytest.fail("must replay")) == {**first, "replayed": True}
     before = stored_state(conn)
-    with pytest.raises(WorkbenchCommandRejected, match="引用已失效"):
+    with pytest.raises(WorkbenchCommandRejected, match="记录已失效"):
         run_supplier(conn, "update", {"label": "unsafe"}, identity=old, key=KEY + "-stale")
     assert stored_state(conn) == before
 

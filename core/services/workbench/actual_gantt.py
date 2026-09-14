@@ -20,7 +20,7 @@ def ledger_projection(conn, plan_ref, tasks):
 
 def check_actual_size(data):
     if len(canonical_json(data).encode("utf-8")) > MAX_ACTUAL_RESPONSE_BYTES:
-        raise WorkbenchCommandRejected("query_too_large", "现场甘特超过 32 MiB 读取上限，未返回截断数据。", 413)
+        raise WorkbenchCommandRejected("query_too_large", "这次要读的现场甘特数据超过 32 MB，系统没有返回截断后的数据。请缩小范围后重试。", 413)
     return data
 
 
@@ -45,7 +45,7 @@ def _merge_resources(planned, actual):
                 if previous["label"] is None and public["label"] == public["business_code"]:
                     public["label"] = None
                 if previous != public:
-                    raise WorkbenchCommandRejected("projection_invalid", "计划和实际资源名称不一致，未合并不同来源。")
+                    raise WorkbenchCommandRejected("projection_invalid", "计划里和现场记录里的设备人员名称对不上，系统不会把两边合成一条。")
             resources[row["ref"]] = public
     return [resources[key] for key in sorted(resources)]
 
@@ -53,15 +53,15 @@ def _merge_resources(planned, actual):
 def _items(tasks, projection):
     by_operation = {row["operation_ref"]: row for row in projection["projections"]}
     if len(by_operation) != len(projection["projections"]) or set(by_operation) != {t["operation_ref"] for t in tasks}:
-        raise WorkbenchCommandRejected("projection_invalid", "执行投影未完整对应计划工序，未按批次序号猜测关联。")
+        raise WorkbenchCommandRejected("projection_invalid", "报工记录和计划工序对不上，系统不会按批次和工序号去猜该配哪一条。请刷新后重试。")
     items = []
     for task in tasks:
         execution = by_operation[task["operation_ref"]]
         if execution["comparison_task_ref"] != task["task_ref"]:
-            raise WorkbenchCommandRejected("projection_invalid", "执行投影的比较任务与所选计划不一致。")
+            raise WorkbenchCommandRejected("projection_invalid", "报工记录对应的任务和你选的计划不是一份。请刷新后重试。")
         items.append({"task": task, "execution": execution})
     if sum(len(item["execution"]["reports"]) for item in items) > MAX_ACTUAL_REPORTS:
-        raise WorkbenchCommandRejected("query_too_large", "所选范围超过 50000 条报工读取上限，未返回截断记录。", 413)
+        raise WorkbenchCommandRejected("query_too_large", "所选范围超过一次能读的 50000 条报工上限，系统没有返回截断后的记录。请缩小范围后重试。", 413)
     return items
 
 
@@ -96,15 +96,15 @@ class ActualGanttService:
                 raise
             projection = None
             availability = {"state": "unavailable", "reason_code": exc.code,
-                            "reason": "新报工执行投影尚未安装或安装不完整；当前仅显示计划，实际与剩余状态不可核实。"}
+                            "reason": "现场报工数据还没装好，现在只显示计划；实际进度和剩余量暂无数据。"}
         if projection is None:
             if scope.resource_ref is not None:
-                raise WorkbenchCommandRejected("execution_ledger_unavailable", "执行投影不可用，无法完整核实计划或实际资源范围。")
+                raise WorkbenchCommandRejected("execution_ledger_unavailable", "现场报工记录读不出来，按设备或人员筛选的结果会不全。请刷新后重试。")
             items = [{"task": task, "execution": None} for task in planned["tasks"]]
             resources = planned["resources"]
         else:
             if projection["available"] is not True or projection["time_basis"] != "factory_local":
-                raise WorkbenchCommandRejected("projection_invalid", "执行投影不可用或时间口径不一致。")
+                raise WorkbenchCommandRejected("projection_invalid", "现场报工记录读不出来，或者时间的计算方式对不上。请刷新后重试。")
             items = _items(planned["tasks"], projection)
             resources = _merge_resources(planned["resources"], projection["resources"])
         return projection, items, resources, availability

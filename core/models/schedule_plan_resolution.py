@@ -59,7 +59,7 @@ class SchedulePlanResolution:
     def scenario_display_name(self) -> str:
         if not truthy_contract_bool(self.is_scenario_preview):
             return ""
-        return str(self.scenario_name or "").strip() or "模拟预览（未命名）"
+        return str(self.scenario_name or "").strip() or "试调方案（未命名）"
 
     def to_dict(self) -> Dict[str, Any]:
         plan_identity = self.plan_identity.to_dict() if self.plan_identity is not None else {}

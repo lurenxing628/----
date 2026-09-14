@@ -28,11 +28,11 @@ def resource_scope(kind, scope):
 
 def resource_refs(refs, *, allow_empty=False):
     if type(refs) is not list or (not refs and not allow_empty):
-        raise ValidationError("必须明确列出资源永久引用。", field="refs")
+        raise ValidationError("请先选择要操作的设备或人员。", field="refs")
     if any(type(ref) is not str or len(ref) != 48 or any(c not in "0123456789abcdef" for c in ref) for ref in refs):
-        raise ValidationError("选择必须使用永久引用，不能用业务编号。", field="refs")
+        raise ValidationError("所选设备或人员已失效，请刷新后重新选择。", field="refs")
     if len(set(refs)) != len(refs):
-        raise ValidationError("选择中有重复引用。", field="refs")
+        raise ValidationError("选择里有重复，请重新选择。", field="refs")
     return list(refs)
 
 
@@ -53,7 +53,7 @@ class ResourceActionPreview:
             return cls(canonical_json({"version": 1, "operation": operation, "request": request,
                                        "commit_policy": "atomic", "rows": rows, "summary": summary}))
         except (TypeError, ValueError, OverflowError) as exc:
-            raise WorkbenchCommandRejected("storage_failure", "原始事实不能形成完整预览，未写入数据。", 500) from exc
+            raise WorkbenchCommandRejected("storage_failure", "这批数据算不出完整预检结果，没有写入任何数据。请刷新后重新预检。", 500) from exc
 
     def as_dict(self):
         return json.loads(self.document)
@@ -69,9 +69,9 @@ class ResourceActionPreview:
 
 def check_resource_preview(original, current):
     if not isinstance(original, ResourceActionPreview) or original.document != current.document:
-        raise WorkbenchCommandRejected("stale_write", "原预览、文件、范围或关联事实已变化，请重新核对整批。")
+        raise WorkbenchCommandRejected("stale_write", "预检结果、文件或相关数据已更新，没有写入数据。请重新点「预检」并核对整批内容。")
     if current.as_dict()["summary"]["rejected"]:
-        raise WorkbenchCommandRejected("constraint_conflict", "预览包含拒绝行，本批未写入任何数据。")
+        raise WorkbenchCommandRejected("constraint_conflict", "预检里有不通过的行，这一批没有写入任何数据。请改好后重新预检。")
 
 
 def action_row(number, code=None, action=None):

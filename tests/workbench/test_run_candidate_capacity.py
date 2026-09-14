@@ -50,7 +50,7 @@ def test_real_5000_by_four_no_n_plus_one_full_csv_xlsx_and_preservation(candidat
             response = client.get(BASE + "/candidates/" + refs[-1] + "/export", query_string={"format": fmt, "snapshot_ref": result["meta"]["snapshot_ref"]})
             assert response.status_code == 200 and response.headers["X-Workbench-Row-Count"] == "5000"
             headers, rows = decode(response, fmt)
-            assert [row[headers.index("行引用")] for row in rows] == [task["row_ref"] for task in result["data"]["tasks"]]
+            assert [row[headers.index("行编号")] for row in rows] == [task["row_ref"] for task in result["data"]["tasks"]]
             assert len([sql for sql in statements if sql.startswith("SELECT")]) <= 14
             timings[fmt] = time.monotonic() - started
         with connect(case.path) as reopened:

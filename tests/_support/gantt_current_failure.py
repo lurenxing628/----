@@ -34,7 +34,7 @@ def assert_missing_asset(client, monkeypatch, relative):
     assert hits
     assert response.status_code == 503
     assert response.headers["Cache-Control"] == "no-store"
-    assert "工作台资源文件缺失，请重新构建资源。" in text
+    assert "页面文件缺失，页面没有打开。请联系维护人员重新安装本机程序。" in text
     assert "workbench-boot" not in text
     assert relative not in text
     assert str(target) not in text

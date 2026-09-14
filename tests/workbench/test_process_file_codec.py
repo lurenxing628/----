@@ -255,12 +255,12 @@ def test_byte_and_expanded_limits_before_openpyxl(monkeypatch):
     assert process_file_reader.XLSX_EXPANDED_BYTE_LIMIT == 64 * 1024 ** 2
     content = file_bytes(["图号"], [["甲"]], "xlsx")
     monkeypatch.setattr(process_file_reader, "IMPORT_BYTE_LIMIT", len(content) - 1)
-    with pytest.raises(ValidationError, match="16 MiB"):
+    with pytest.raises(ValidationError, match="16 MB"):
         decode_process_file("route", content, "xlsx")
     monkeypatch.setattr(process_file_reader, "IMPORT_BYTE_LIMIT", len(content))
     assert not decode_process_file("route", content, "xlsx")[0]["errors"]
     monkeypatch.setattr(process_file_reader, "XLSX_EXPANDED_BYTE_LIMIT", 1024)
-    with pytest.raises(ValidationError, match="64 MiB"):
+    with pytest.raises(ValidationError, match="64 MB"):
         decode_process_file("route", content, "xlsx")
 
 
@@ -305,7 +305,7 @@ def test_export_abort_cleans_tempfiles_and_never_truncates(monkeypatch):
             encode_process_file("route", [{"business_code": "甲", "remark": value}], "xlsx")
         assert list(ALL_TEMP_FILES) == before
     monkeypatch.setattr(process_file_writer, "XLSX_MAX_ROWS", 2)
-    with pytest.raises(ValidationError, match="容量"):
+    with pytest.raises(ValidationError, match="1048576 行上限"):
         encode_process_file("route", SinglePassRows("route", 2), "xlsx")
     assert list(ALL_TEMP_FILES) == before
 

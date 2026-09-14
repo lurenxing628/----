@@ -97,10 +97,10 @@ def candidate_delivery_risks(candidate, facts, tasks, disposition, scope, settin
     incomplete, negative = _negative_completion(candidate, disposition)
     uncertain.update(negative)
     items, missing = _items(keys, facts, rows, by_batch, task_intervals(rows), incomplete, uncertain)
-    issues = [{"code": code, "message": "受理时依据不完整，未用当前业务资料或摘要补全交付结论。"}
+    issues = [{"code": code, "message": "排产时记下的依据不完整，交付结论算不出来；系统没有拿当前资料凑。"}
               for code in sorted(uncertain)]
     if missing:
-        issues.append({"code": "captured_batch_missing", "message": "受理时批次资料缺失，相关批次交付无法核实。"})
+        issues.append({"code": "captured_batch_missing", "message": "排产时缺少部分批次资料，这些批次的交付情况算不出来。"})
     unknown = sum(item["risk"] == "unknown" for item in items) + len(missing)
     return {"candidate_ref": candidate["candidate_ref"], "scope": scope.scope(),
             "state": "available" if not issues else "partial" if items else "unavailable",

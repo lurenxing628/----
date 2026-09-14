@@ -5,6 +5,7 @@ import zipfile
 from io import BytesIO
 
 import openpyxl
+from openpyxl.cell.cell import TYPE_STRING
 from openpyxl.comments import Comment
 from openpyxl.styles import Font
 from openpyxl.utils import get_column_letter
@@ -28,7 +29,7 @@ def read_batch_file(content):
                 raise ValidationError("Excel展开后超过64MB，请拆分文件。", field="file")
         workbook = openpyxl.load_workbook(BytesIO(content), read_only=True, data_only=False, keep_links=False)
         rows = _read_first_sheet(workbook)
-        warnings = ([{"code": "first_sheet_only", "message": "仅读取第一个工作表；其余工作表未导入。"}] if len(workbook.worksheets) > 1 else [])
+        warnings = ([{"code": "first_sheet_only", "message": "只读第一张工作表；其他工作表不会导入。"}] if len(workbook.worksheets) > 1 else [])
         return rows, warnings
     except ValidationError:
         raise
@@ -55,7 +56,7 @@ def _read_first_sheet(workbook):
         if not any(cell.value is not None for cell in cells):
             continue
         if len(rows) == MAX_ROWS:
-            raise ValidationError("单次最多导入5000行；未截断或写入前半部分。", field="file")
+            raise ValidationError("一次最多导入 5000 行；这次一行都没有写入。", field="file")
         rows.append(_read_data_row(line, cells, headers))
     return rows
 
@@ -65,7 +66,7 @@ def _read_data_row(line, cells, headers):
     if any(cell.data_type in ("f", "e") for cell in cells):
         errors.append("不能导入公式或错误单元格，请提供实际值。")
     if any(cell.value is not None for cell in cells[len(headers):]):
-        errors.append("数据行包含未声明的多余列。")
+        errors.append("数据行里有表头之外的多余列。")
     values = {key: cells[index].value if index < len(cells) else None for index, key in enumerate(headers)}
     return {"row": line, "values": values, "errors": errors}
 
@@ -89,10 +90,10 @@ def write_batch_file(rows, *, template=False):
     for number, row in enumerate(rows, 2):
         for index, value in enumerate(row, 1):
             if isinstance(value, str) and (re.search(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", value) or len(value) > 32767):
-                raise ValidationError("文字含Excel不支持的字符或过长，未删除或截断内容。", field="file")
+                raise ValidationError("这段文字里有 Excel 放不了的字符，或者太长；系统没有删除或截断内容。", field="file")
             cell = sheet.cell(number, index, value)
             if isinstance(value, str):
-                cell.data_type = "s"
+                cell.data_type = TYPE_STRING
                 cell.number_format = "@"
     sheet.auto_filter.ref = "A1:" + get_column_letter(len(headers)) + str(max(1, len(rows) + 1))
     try:

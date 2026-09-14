@@ -54,7 +54,7 @@ def test_real_http_verified_restore_requires_process_restart_and_external_receip
         assert len(opened) == count
         status, missing = http_json(port, BASE + "/results/dh-config-before-restore-000001", method="GET")
         assert status == 200 and missing["data"]["kind"] == "not_recorded"
-        assert "不能认定未执行" in missing["data"]["message"]
+        assert "不能就此认定没有执行" in missing["data"]["message"]
         with closing(get_connection(str(case.backups / result["protection_filename"]))) as conn:
             assert conn.execute("SELECT COUNT(*) FROM WorkbenchCommandReceipts").fetchone()[0] == 1
     assert not case.runtime.ready and case.runtime.status["closed"]
@@ -93,7 +93,7 @@ def test_http_verify_failure_rolls_back_or_stays_unconfirmed(restore_host, monke
         assert http_json(port, "/workbench", method="GET")[0] == 503
     case.assert_locks_held()
     if rollback_fails:
-        with pytest.raises(ValueError, match="未核实"):
+        with pytest.raises(ValueError, match="还没有确认结果"):
             assert_system_maintenance_ready(case.path, case.journal.directory)
     else:
         assert_system_maintenance_ready(case.path, case.journal.directory)
