@@ -286,12 +286,14 @@ class NativeSgsReuse:
             return UNSUPPORTED
         return op_token, batch_token, graph, (timing, segments), types, dispatch_rule, calendar
 
-    def score(self, score, inputs):
+    def score(self, score, inputs, fallback=None):
+        # Candidates this certificate cannot serve go to ``fallback`` (the witness cache) when given.
+        direct = score if fallback is None else fallback
         if not self.round_supported or (self.eligible is not None and id(inputs["op"]) not in self.eligible):
-            return score()
+            return direct()
         token = self.score_token(**inputs)
         if token is UNSUPPORTED:
-            return score()
+            return direct()
         op = inputs["op"]
         previous = self.entries.get(id(op))
         if previous is not None and previous[0] == token:

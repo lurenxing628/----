@@ -26,6 +26,11 @@ class MachineTypeState(Dict[str, str]):
             owned: Any = OwnedTypeEntries()
             insort(self._entries.setdefault(machine_id, owned), (start, end, op_id, op_type))
 
+    def neighbor_witness(self, machine_id: str) -> Tuple[int, Optional[str]]:
+        """O(1) change witness for one machine: recorded neighbor count plus the tail type."""
+        entries = self._entries.get(machine_id)
+        return (len(entries) if entries is not None else 0), self.get(machine_id)
+
     def certificate(self, machine_id: str) -> Tuple[TypeEntry, ...]:
         """Content certificate for consumers whose cached scores depend on neighbors."""
         return tuple(self._entries.get(machine_id, ()))

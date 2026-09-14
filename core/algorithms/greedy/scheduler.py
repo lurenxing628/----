@@ -39,10 +39,16 @@ from core.algorithm_runtime.sgs_estimate_reuse import sgs_reuse_scope
 from core.algorithm_runtime.slot_overlap_reuse import SlotReuseTimeline
 from core.infrastructure.errors import ValidationError
 
-from .auto_assign import auto_assign_internal_resources, auto_assign_internal_resources_attempt
+from .auto_assign import (
+    auto_assign_internal_resources,
+    auto_assign_internal_resources_attempt,
+    eligible_auto_assign_resources,
+    native_auto_assign_unchanged,
+)
 from .dispatch import dispatch_batch_order, dispatch_sgs
 from .dispatch.route import dispatch_run
 from .dispatch.sgs_reuse import can_skip_native_sgs_reuse, create_native_sgs_reuse
+from .dispatch.sgs_score_cache import AutoAssignProbeContract, attach_sgs_score_cache, sgs_score_cache_stats
 from .external_groups import rebuild_external_group_cache_from_seeds, schedule_external
 from .internal_operation import schedule_internal_operation
 from .run_context import ScheduleRunContext
@@ -74,6 +80,7 @@ class GreedyScheduler:
         self._last_algo_stats = make_algo_stats()
         self._decode_invocations = 0
         self._last_sgs_reuse_stats = {"hits": 0, "misses": 0}
+        self._last_sgs_score_cache_stats = sgs_score_cache_stats(None)
 
     def schedule(
         self,
@@ -95,6 +102,7 @@ class GreedyScheduler:
     ) -> Tuple[List[ScheduleResult], ScheduleSummary, SortStrategy, Dict[str, Any]]:
         self._decode_invocations += 1
         self._last_sgs_reuse_stats = {"hits": 0, "misses": 0}
+        self._last_sgs_score_cache_stats = sgs_score_cache_stats(None)
         t0 = datetime.now()
         algo_stats = self._reset_algo_stats()
         warnings: List[str] = []
@@ -137,6 +145,7 @@ class GreedyScheduler:
         ctx = ScheduleRunContext.from_legacy_scheduler(self)
         ctx.algo_stats = algo_stats
         initialize_resource_quality(state, sorted_ops, resource_pool)
+        attach_sgs_score_cache(ctx, self, GreedyScheduler, state=state, params=params, resource_pool=resource_pool, probe=_SGS_AUTO_ASSIGN_PROBE)
 
         self._log_start(batches=batches, sorted_ops=sorted_ops, params=params)
         reuse = (create_native_sgs_reuse(self, ctx, state, sorted_ops, batches,
@@ -157,6 +166,7 @@ class GreedyScheduler:
             )
         if reuse is not None:
             self._last_sgs_reuse_stats = {"hits": reuse.hits, "misses": reuse.misses}
+        self._last_sgs_score_cache_stats = sgs_score_cache_stats(ctx.sgs_score_cache)
         summary = _build_summary(state=state, warnings=warnings, sorted_ops=sorted_ops, duration=(datetime.now() - t0).total_seconds())
         self.logger.info(f"排产结束：成功={summary.scheduled_ops}/{summary.total_ops} 失败={summary.failed_ops} 耗时={summary.duration_seconds:.2f}s")
         return state.results, summary, params.strategy, params.used_params
@@ -487,6 +497,7 @@ def _build_summary(*, state: ScheduleRunState, warnings: List[str], sorted_ops: 
 
 
 _NATIVE_SGS_SCHEDULER_GUARD = make_class_guard(GreedyScheduler)
+_SGS_AUTO_ASSIGN_PROBE = AutoAssignProbeContract(eligible_auto_assign_resources, native_auto_assign_unchanged)
 # Freeze the imported context's original methods during module initialization;
 # the dispatch child never imports its parent or certifies a caller-supplied type.
 _NATIVE_SGS_CONTEXT_GUARD = make_class_guard(ScheduleRunContext)

@@ -27,6 +27,8 @@ class ScheduleRunContext:
     internal_callback: Optional[InternalScheduleCallback] = None
     auto_assign_callback: Optional[AutoAssignCallback] = None
     auto_assign_attempt_callback: Optional[AutoAssignAttemptCallback] = None
+    # Per-decode SGS dispatch-key cache owned by the scheduler; None keeps every candidate re-scored.
+    sgs_score_cache: Any = None
 
     @classmethod
     def from_legacy_scheduler(cls, scheduler: Any) -> ScheduleRunContext:

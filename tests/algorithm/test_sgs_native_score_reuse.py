@@ -64,10 +64,10 @@ def test_disjoint_native_resources_score_once_and_reuse_formal_estimate(count, n
     actual, new = _run(operations, batches, enabled=True)
     assert actual == legacy
     assert (operations, batches) == before
-    assert old["_score_candidate"] == count * (count + 1) // 2
-    assert new["_score_candidate"] == count
-    assert old["estimate_internal_slot"] == old["_score_candidate"] + count
-    assert new["estimate_internal_slot"] == count
+    # Without the certificate the witness cache still scores each disjoint candidate once and hands the
+    # scoring estimate to formal placement, so both paths estimate every operation exactly once.
+    assert old["_score_candidate"] == new["_score_candidate"] == count
+    assert old["estimate_internal_slot"] == new["estimate_internal_slot"] == count
     assert current_sgs_reuse() is None
 
 
@@ -78,17 +78,21 @@ def test_shared_resource_scores_invalidate_and_results_match(machine, operator):
     actual, new = _run(operations, batches, enabled=True)
     assert actual == legacy
     assert new["_score_candidate"] == old["_score_candidate"] == 36
-    assert new["estimate_internal_slot"] == 44
+    # Shared resources invalidate every peer each round; the selected candidate's scoring estimate is
+    # still handed to formal placement, so no extra estimate is spent there.
+    assert new["estimate_internal_slot"] == old["estimate_internal_slot"] == 36
 
 
-def test_scheduler_subclass_and_callback_override_keep_full_scoring():
+def test_scheduler_subclass_keeps_results_and_falls_back_to_the_witness_cache():
     class Customized(scheduler_module.GreedyScheduler):
         pass
     operations, batches = _case(8)
     old, _ = _run(operations, batches, enabled=False, scheduler_type=Customized)
     actual, counts = _run(operations, batches, enabled=True, scheduler_type=Customized)
     assert actual == old
-    assert counts == {"_score_candidate": 36, "estimate_internal_slot": 44}
+    # The certificate refuses a subclass; fixed-resource scoring never touches scheduler methods, so the
+    # witness cache still serves every unchanged candidate and hands its estimate to formal placement.
+    assert counts == {"_score_candidate": 8, "estimate_internal_slot": 8}
 
 
 @pytest.mark.parametrize("scope", ["score_function", "calendar_method", "callback"])
@@ -113,7 +117,9 @@ def test_instrumented_native_functions_are_observable_every_round(scope):
                 return original(*args, **kwargs)
             setattr(owner, name, method_wrapper)
             scheduler.schedule(operations, batches, start_dt=BASE, dispatch_mode="sgs", dispatch_rule="slack")
-        assert len(seen) == (20 if scope == "calendar_method" else 5)
+        # An instrumented calendar disables the certificate; the witness cache then estimates each
+        # disjoint candidate once and formal placement reuses that estimate.
+        assert len(seen) == 5
 
 
 def _direct_reuse(calendar):
@@ -269,4 +275,4 @@ def test_context_originals_are_fixed_before_first_reuse_construction(monkeypatch
     actual, counts = _run(operations, batches, enabled=True)
     assert actual[1]["scheduled_ops"] == 5
     assert len(calls) == 5
-    assert counts == {"_score_candidate": 15, "estimate_internal_slot": 20}
+    assert counts == {"_score_candidate": 5, "estimate_internal_slot": 5}

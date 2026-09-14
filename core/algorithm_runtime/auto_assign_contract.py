@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Optional
 
 AUTO_ASSIGN_REASON_SUCCESS = ""
 AUTO_ASSIGN_REASON_MISSING_OP_TYPE_ID = "auto_assign_missing_op_type_id"
@@ -20,6 +20,10 @@ class AutoAssignAttempt:
     machine_id: str = ""
     operator_id: str = ""
     reason: str = AUTO_ASSIGN_REASON_SUCCESS
+    # Native probes report whether two feasible pairs tied on (end_time, changeover), the only
+    # case in which the resource-demand window can influence the chosen pair. None means the
+    # attempt came from a caller that does not report it, so consumers must not assume either way.
+    pair_tie_occurred: Optional[bool] = None
 
 
 def auto_assign_attempt_from_result(

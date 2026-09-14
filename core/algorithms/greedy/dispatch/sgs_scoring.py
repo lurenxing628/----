@@ -17,7 +17,7 @@ from core.algorithm_runtime.internal_slot import (
 )
 from core.algorithm_runtime.piece_input import external_group_key
 from core.algorithm_runtime.run_state import ScheduleRunState
-from core.algorithm_runtime.sgs_estimate_reuse import current_sgs_reuse, remember_sgs_estimate
+from core.algorithm_runtime.sgs_estimate_reuse import current_sgs_handoff, current_sgs_reuse, remember_sgs_estimate
 from core.algorithm_runtime.slot_overlap_reuse import overlap_reuse_for
 from core.infrastructure.errors import ValidationError
 from core.shared.strict_parse import is_blank_input, parse_optional_date, parse_required_float, parse_required_int
@@ -187,6 +187,7 @@ def _score_internal_candidate(
     total_hours_by_op_id: Optional[Dict[int, float]] = None,
     estimate_slot: Callable[..., Any] = estimate_internal_slot,
     dispatch_key_builder: Callable[[DispatchInputs], Tuple[float, ...]] = build_dispatch_key,
+    attempt_sink: Optional[Callable[[Any], None]] = None,
 ) -> Tuple[float, ...]:
     meta = _candidate_meta(op=op, batch=batch, batch_id=batch_id, state=state, strict_mode=strict_mode)
     total_hours = _scoring_total_hours(
@@ -206,6 +207,7 @@ def _score_internal_candidate(
         machine_downtimes=machine_downtimes,
         auto_assign_enabled=auto_assign_enabled,
         resource_pool=resource_pool,
+        attempt_sink=attempt_sink,
     )
     if not resources.machine_id or not resources.operator_id:
         if resources.auto_assign_reason == AUTO_ASSIGN_REASON_WINDOW_BLOCKED:
@@ -350,6 +352,7 @@ def _scoring_resources(
     machine_downtimes: Optional[Dict[str, List[Tuple[datetime, datetime]]]],
     auto_assign_enabled: bool,
     resource_pool: Optional[Dict[str, Any]],
+    attempt_sink: Optional[Callable[[Any], None]] = None,
 ) -> _ScoringResources:
     machine_id = str(getattr(op, "machine_id", None) or "").strip()
     operator_id = str(getattr(op, "operator_id", None) or "").strip()
@@ -366,6 +369,8 @@ def _scoring_resources(
         machine_downtimes=machine_downtimes,
         resource_pool=resource_pool,
     )
+    if attempt_sink is not None:
+        attempt_sink(attempt)
     if not attempt.machine_id or not attempt.operator_id:
         return _ScoringResources("", "", RESOURCE_REASON_AUTO_ASSIGN_UNAVAILABLE, attempt.reason)
     return _ScoringResources(attempt.machine_id, attempt.operator_id, RESOURCE_REASON_FIXED, "")
@@ -415,27 +420,38 @@ def _estimate_scoring_slot(
     total_hours: float,
     estimate_slot: Callable[..., Any] = estimate_internal_slot,
 ):
-    estimate = estimate_slot(
-        calendar=ctx.calendar,
-        op=op,
-        batch=batch,
-        machine_id=machine_id,
-        operator_id=operator_id,
-        base_time=state.base_time,
-        prev_end=meta["prev_end"],
-        machine_timeline=state.machine_timeline.get(machine_id) or [],
-        operator_timeline=state.operator_timeline.get(operator_id) or [],
-        end_dt_exclusive=end_dt_exclusive,
-        machine_downtimes=(machine_downtimes.get(machine_id) or []) if machine_downtimes and machine_id else [],
-        last_op_type_by_machine=state.last_op_type_by_machine,
-        abort_after=None,
-        total_hours_base=total_hours,
-        overlap_reuse=overlap_reuse_for(state.machine_timeline),
-    )
+    def estimate_selected():
+        return estimate_slot(
+            calendar=ctx.calendar,
+            op=op,
+            batch=batch,
+            machine_id=machine_id,
+            operator_id=operator_id,
+            base_time=state.base_time,
+            prev_end=meta["prev_end"],
+            machine_timeline=state.machine_timeline.get(machine_id) or [],
+            operator_timeline=state.operator_timeline.get(operator_id) or [],
+            end_dt_exclusive=end_dt_exclusive,
+            machine_downtimes=(machine_downtimes.get(machine_id) or []) if machine_downtimes and machine_id else [],
+            last_op_type_by_machine=state.last_op_type_by_machine,
+            abort_after=None,
+            total_hours_base=total_hours,
+            overlap_reuse=overlap_reuse_for(state.machine_timeline),
+        )
+
+    handoff = current_sgs_handoff()
+    estimate = None
+    if handoff is not None and estimate_slot is estimate_internal_slot:
+        estimate = handoff.pair_estimate(
+            op=op, machine_id=machine_id, operator_id=operator_id, prev_end=meta["prev_end"],
+            machine_timeline=state.machine_timeline, operator_timeline=state.operator_timeline, compute=estimate_selected,
+        )
+    if estimate is None:
+        estimate = estimate_selected()
     if estimate.abort_after_hit:
         raise RuntimeError("SGS 评分不应命中 abort_after 早停")
     reuse = current_sgs_reuse()
-    if reuse is not None and reuse.scoring_op is op:
+    if (reuse is not None and reuse.scoring_op is op) or current_sgs_handoff() is not None:
         remember_sgs_estimate(
             estimate, calendar=ctx.calendar, op=op, batch=batch,
             machine_id=machine_id, operator_id=operator_id, base_time=state.base_time, prev_end=meta["prev_end"],

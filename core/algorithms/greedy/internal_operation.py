@@ -20,7 +20,7 @@ from core.algorithm_runtime.internal_slot import (
     raise_strict_internal_hours_validation,
     validate_internal_hours,
 )
-from core.algorithm_runtime.sgs_estimate_reuse import current_sgs_reuse, selected_sgs_estimate
+from core.algorithm_runtime.sgs_estimate_reuse import selected_sgs_estimate, selected_sgs_resources
 from core.algorithm_runtime.slot_overlap_reuse import overlap_reuse_for
 
 
@@ -126,7 +126,9 @@ def _resolve_internal_resources(
         return "", ""
 
     increment_counter(algo_stats, "internal_auto_assign_attempt_count")
-    attempt = auto_assign_attempt_from_result(auto_assign_resources(
+    # The scoring probe of this very round already chose the pair against the unchanged state.
+    handoff = selected_sgs_resources(op)
+    attempt = auto_assign_attempt_from_result(handoff if handoff is not None else auto_assign_resources(
         op=op,
         batch=batch,
         batch_progress=batch_progress,
@@ -203,7 +205,7 @@ def _estimate_internal(
             last_op_type_by_machine=last_op_type_by_machine,
         )
         estimate = None
-        if current_sgs_reuse() is not None and estimate_internal_slot is _NATIVE_ESTIMATE_SLOT:
+        if estimate_internal_slot is _NATIVE_ESTIMATE_SLOT:
             reused = selected_sgs_estimate(**inputs)
             # Formal placement keeps its own validation, failure accounting and occupancy writes.
             if reused is not None and validate_internal_hours(op, batch) == reused[1]:

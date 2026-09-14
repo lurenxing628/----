@@ -10,7 +10,7 @@ from core.algorithm_runtime.dispatch_context import DispatchContextContractError
 from core.algorithm_runtime.internal_slot import estimate_internal_slot, validate_internal_hours_for_mode
 from core.algorithm_runtime.piece_input import operation_batch, operation_dispatch_state
 from core.algorithm_runtime.run_state import ScheduleRunState
-from core.algorithm_runtime.sgs_estimate_reuse import current_sgs_reuse
+from core.algorithm_runtime.sgs_estimate_reuse import current_sgs_reuse, sgs_handoff_scope
 from core.algorithm_runtime.slot_overlap_reuse import sgs_overlap_reuse
 from core.infrastructure.errors import ValidationError
 from core.shared.strict_parse import parse_required_int
@@ -203,55 +203,63 @@ def _run_sgs_loop(
     graph_state = _prepare_graph_ready_state(graph_ready_context, ops_by_batch=ops_by_batch)
     if graph_state is not None and isinstance(graph_ready_context, dict) and graph_ready_context.get("piece_scope"):
         graph_state["end_time_by_op_id"] = {row.op_id: row.end_time for row in state.results}
-    while True:
-        candidates = _collect_candidates(
-            graph_state=graph_state,
-            batch_ids=batch_ids,
-            ops_by_batch=ops_by_batch,
-            next_idx=next_idx,
-            blocked_batches=state.blocked_batches,
-        )
-        if not candidates:
-            if graph_state is not None:
-                _ensure_graph_ready_complete(
-                    graph_state=graph_state,
-                    ops_by_batch=ops_by_batch,
-                    blocked_batches=state.blocked_batches,
+    score_cache = getattr(ctx, "sgs_score_cache", None)
+    if score_cache is not None and score_cache.state is not state:
+        raise RuntimeError("SGS 评分缓存绑定的运行状态与本次派工不一致")
+    with sgs_handoff_scope(score_cache):
+        while True:
+            if score_cache is not None:
+                score_cache.next_round()
+            candidates = _collect_candidates(
+                graph_state=graph_state,
+                batch_ids=batch_ids,
+                ops_by_batch=ops_by_batch,
+                next_idx=next_idx,
+                blocked_batches=state.blocked_batches,
+            )
+            if not candidates:
+                if graph_state is not None:
+                    _ensure_graph_ready_complete(
+                        graph_state=graph_state,
+                        ops_by_batch=ops_by_batch,
+                        blocked_batches=state.blocked_batches,
+                    )
+                return
+            batch_id, op = _pick_best_candidate(
+                _score_candidates(
+                    ctx,
+                    state,
+                    candidates,
+                    batches,
+                    batch_order,
+                    dispatch_rule,
+                    end_dt_exclusive,
+                    machine_downtimes,
+                    auto_assign_enabled,
+                    resource_pool,
+                    strict_mode,
+                    avg_proc_hours,
+                    total_hours_by_op_id,
+                    graph_state,
                 )
-            return
-        batch_id, op = _pick_best_candidate(
-            _score_candidates(
+            )
+            _dispatch_selected(
                 ctx,
                 state,
-                candidates,
+                op,
+                batch_id,
                 batches,
-                batch_order,
-                dispatch_rule,
+                next_idx,
+                ops_by_batch,
                 end_dt_exclusive,
                 machine_downtimes,
                 auto_assign_enabled,
                 resource_pool,
                 strict_mode,
-                avg_proc_hours,
-                total_hours_by_op_id,
-                graph_state,
+                graph_state=graph_state,
             )
-        )
-        _dispatch_selected(
-            ctx,
-            state,
-            op,
-            batch_id,
-            batches,
-            next_idx,
-            ops_by_batch,
-            end_dt_exclusive,
-            machine_downtimes,
-            auto_assign_enabled,
-            resource_pool,
-            strict_mode,
-            graph_state=graph_state,
-        )
+            if score_cache is not None:
+                score_cache.forget(op)
 
 
 def _score_candidates(
@@ -270,11 +278,16 @@ def _score_candidates(
     total_hours_by_op_id: Dict[int, float],
     graph_state: Optional[Dict[str, Any]],
 ) -> List[Tuple[Tuple[float, ...], str, Any]]:
+    natives_intact = _native_score_functions_unchanged()
     reuse = current_sgs_reuse()
-    if reuse is not None and (reuse.state is not state or not _native_score_functions_unchanged()):
+    if reuse is not None and (reuse.state is not state or not natives_intact):
         reuse = None
     if reuse is not None and not reuse.begin_round(candidates):
         reuse = None
+    cache = getattr(ctx, "sgs_score_cache", None) if natives_intact else None
+    if cache is not None and not cache.begin_round():
+        cache = None
+    attempt_sink = cache.record_attempt if cache is not None else None
     scored = []
     for batch_id, op in candidates:
         def score(batch_id=batch_id, op=op):
@@ -294,16 +307,19 @@ def _score_candidates(
                 avg_proc_hours,
                 total_hours_by_op_id,
                 graph_state,
+                attempt_sink=attempt_sink,
             )
-        if reuse is None:
-            key = score()
-        else:
+        def cached(batch_id=batch_id, op=op, score=score):
+            return cache.resolve(op, batches[batch_id], batch_id, graph_state, score)
+        if reuse is not None:
             key = reuse.score(score, dict(
                 op=op, batch=batches[batch_id], batch_id=batch_id, batch_order=batch_order,
                 graph_state=graph_state, end_dt_exclusive=end_dt_exclusive,
                 machine_downtimes=machine_downtimes, dispatch_rule=dispatch_rule,
                 strict_mode=strict_mode, avg_proc_hours=avg_proc_hours, total_hours_by_op_id=total_hours_by_op_id,
-            ))
+            ), fallback=cached if cache is not None else None)
+        else:
+            key = cached() if cache is not None else score()
         scored.append((key, batch_id, op))
     return scored
 
@@ -324,6 +340,7 @@ def _score_candidate(
     avg_proc_hours: float,
     total_hours_by_op_id: Dict[int, float],
     graph_state: Optional[Dict[str, Any]] = None,
+    attempt_sink: Optional[Any] = None,
 ) -> Tuple[float, ...]:
     state = operation_dispatch_state(state, graph_state, op, batch)
     batch = operation_batch(op, batch)
@@ -357,6 +374,7 @@ def _score_candidate(
             avg_proc_hours=avg_proc_hours,
             total_hours_by_op_id=total_hours_by_op_id,
             strict_mode=strict_mode,
+            attempt_sink=attempt_sink,
         )
 
     base_key = score()
