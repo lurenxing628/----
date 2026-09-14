@@ -43,8 +43,9 @@ def test_replay_after_token_expiry_does_not_compute_or_reauthorize(job_case):
     assert second["receipt_ref"] == first["receipt_ref"]
     assert second["run_ref"] == first["run_ref"]
     assert case.conn.execute("SELECT COUNT(*) FROM WorkbenchRunJobs").fetchone()[0] == 1
-    with pytest.raises(WorkbenchCommandRejected, match="同一请求"):
+    with pytest.raises(WorkbenchCommandRejected) as conflict:
         service(case.conn).accept("another-input-ref", token, "run-request-00000001")
+    assert conflict.value.code == "request_key_conflict"
 
 
 @pytest.mark.parametrize("token", [None, "", "not-issued"])

@@ -156,8 +156,9 @@ def test_projection_contract_is_exact(run_case, kind):
 
 def test_empty_and_stale_scope_never_expand_to_all_batches(run_case):
     case = run_case
-    with pytest.raises(CandidateRunInputError, match="empty"):
+    with pytest.raises(CandidateRunInputError) as empty:
         unchanged(case, lambda: compute_candidate_run(case.conn, case.settings(batch_refs=[]), []))
+    assert empty.value.reason == "empty_scope"
     prepared = prepare_candidate_run_input(case.conn, case.settings(), case.projections())
     case.conn.execute("UPDATE BatchOperations SET unit_hours=0.5")
     case.conn.commit()

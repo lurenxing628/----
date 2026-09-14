@@ -15,6 +15,7 @@ from .run_compute import compute_candidate_run
 from .run_input_projection_codec import restore_execution_projections
 from .run_input_readonly import candidate_read_snapshot
 from .run_jobs_facts import capture_run_facts
+from .run_progress import clear_progress, report_progress
 from .run_worker_snapshot import computation_database
 
 
@@ -30,7 +31,7 @@ class WorkbenchRunWorker:
 
     def _check_facts(self, row, conn=None):
         if capture_run_facts(self.conn if conn is None else conn)[0] != row["facts_hash"]:
-            raise WorkbenchCommandRejected("snapshot_stale", "受理后的生产事实已经变化；本次未保存候选，请重新检查。")
+            raise WorkbenchCommandRejected("snapshot_stale", "排产之后现场数据有变化，这次的候选方案没有保存。请重新做一次排产检查。")
 
     def execute(self, run_ref):
         validate_run_ref(run_ref)
@@ -38,13 +39,13 @@ class WorkbenchRunWorker:
             raise RuntimeError("Run worker must own its connection's transactions")
         lock = schedule_service._RUN_SCHEDULE_LOCK
         if not lock.acquire(blocking=False):
-            raise WorkbenchCommandRejected("scheduling_busy", "已有排产正在运行，本次未重复计算。")
+            raise WorkbenchCommandRejected("scheduling_busy", "已经有一次排产在跑，这次没有重复计算。请等它结束后再看。")
         try:
             with TransactionManager(self.conn).transaction(begin_immediate=True):
                 self.repo.require_schema()
                 row = self.repo.get(run_ref)
                 if row is None:
-                    raise WorkbenchCommandRejected("entity_not_found", "未找到该排产运行。", 404)
+                    raise WorkbenchCommandRejected("entity_not_found", "找不到这次排产，页面没有打开。请到「排产记录」重新选择。", 404)
                 if row["state"] != "queued" or row["stage"] != "queued":
                     return self.repo.public(row)
                 self.repo.require_admission(row)
@@ -58,13 +59,18 @@ class WorkbenchRunWorker:
             self._persist(row, candidates, result)
             return self.repo.public(self.repo.get(run_ref))
         finally:
+            # The run is terminal (or failed to claim) here; the receipt is the record from now on.
+            clear_progress(run_ref)
             lock.release()
 
     def _compute(self, row):
         with computation_database(self.conn) as snapshot, candidate_read_snapshot(snapshot):
             self._check_facts(row, snapshot)
             projections = restore_execution_projections(json.loads(row["execution_json"]))
-            computation = compute_candidate_run(snapshot, json.loads(row["normalized_input_json"]), projections)
+            run_ref = row["run_ref"]
+            computation = compute_candidate_run(
+                snapshot, json.loads(row["normalized_input_json"]), projections,
+                on_progress=lambda done, total: report_progress(run_ref, done, total, self._now()))
             identities = {int(item[0]): item[1] for item in snapshot.execute(
                 "SELECT source_key,ref FROM WorkbenchPlanSourceRefs WHERE kind='operation' AND active=1")}
             return prepare_run_result(computation, identities)
@@ -89,7 +95,7 @@ class WorkbenchRunWorker:
         code = "snapshot_stale" if isinstance(exc, WorkbenchCommandRejected) and exc.code == "snapshot_stale" else "candidate_computation_failed"
         if isinstance(exc, CandidateRunInputError):
             code = exc.reason
-        error = {"code": code, "message": "候选排产未完成，请查看运行记录并重新检查。"}
+        error = {"code": code, "message": "候选排产没有完成。请到「排产记录」查看原因，改好后重新做排产检查。"}
         result = {"state": "failed", "result_persisted": False, "candidates": [], "error": error,
                   "diagnostic": {"exception_type": type(exc).__name__, "message": str(exc)}}
         try:

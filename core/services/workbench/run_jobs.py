@@ -10,12 +10,21 @@ from core.models.workbench_command import (
     validate_request_key,
 )
 from core.models.workbench_run_job import validate_run_ref
+from core.services.workbench import messages
 from core.services.workbench.commands import WorkbenchCommandService
 from core.services.workbench.preflight import PreflightService
 from data.repositories.workbench_run_repo import WorkbenchRunRepository
 
 from .run_input_admission import piece_admission_issues
 from .run_jobs_facts import capture_run_facts, run_baseline, run_execution_projections
+from .run_progress import read_progress
+
+
+def _with_progress(payload):
+    """Attach the worker's in-process candidate progress while the run is still computing."""
+    if payload is not None and payload["state"] == "running" and payload["stage"] == "computing":
+        payload["progress"] = read_progress(payload["run_ref"])
+    return payload
 
 
 class WorkbenchRunService:
@@ -35,7 +44,7 @@ class WorkbenchRunService:
 
     def _resolve(self, input_ref):
         if not callable(self.input_resolver):
-            raise WorkbenchCommandRejected("run_worker_not_connected", "候选排产受理服务尚未接入。", 503)
+            raise WorkbenchCommandRejected("run_worker_not_connected", messages.UNAVAILABLE, 503)
         settings = self.input_resolver(self.conn, input_ref)
         data, fingerprint = PreflightService(self.conn).evaluate(settings)
         data["blockers"].extend(piece_admission_issues(self.conn, settings))
@@ -45,9 +54,9 @@ class WorkbenchRunService:
     def _reasons(self, data):
         reasons = list(data["blockers"])
         if data["execution_projection_source"] != "execution_ledger":
-            reasons.append({"code": "execution_ledger_unavailable", "message": "执行台账未完整接入。"})
+            reasons.append({"code": "execution_ledger_unavailable", "message": "报工记录还没有准备好，这次排产不能开始。请刷新重试；仍不行请联系维护人员。"})
         if not self.integration_enabled:
-            reasons.append({"code": "run_worker_not_connected", "message": "候选排产运行服务尚未启用。"})
+            reasons.append({"code": "run_worker_not_connected", "message": "排产功能尚未开通，这次排产不能开始。请联系维护人员。"})
         return reasons
 
     def preview(self, input_ref):
@@ -69,16 +78,16 @@ class WorkbenchRunService:
     def accept(self, input_ref, write_token, request_key):
         self.repo.require_schema()
         if not isinstance(input_ref, str) or not input_ref or len(input_ref) > 256:
-            raise WorkbenchCommandRejected("invalid_input", "检查结果引用无效。", 400)
+            raise WorkbenchCommandRejected("invalid_input", "这份排产检查结果已失效，排产没有开始。请重新做一次排产检查。", 400)
 
         def guard():
             if not self.integration_enabled:
-                raise WorkbenchCommandRejected("run_worker_not_connected", "候选排产运行服务尚未启用，未受理。", 503)
+                raise WorkbenchCommandRejected("run_worker_not_connected", "排产功能尚未开通，这次排产没有开始。请联系维护人员。", 503)
             if not isinstance(write_token, str) or not write_token:
-                raise WorkbenchCommandRejected("stale_write", "请先复核排产授权，检查结果本身不能启动排产。")
+                raise WorkbenchCommandRejected("stale_write", "还没有确认开始排产，这次排产没有开始。请在排产检查页点「开始排产」。")
             settings, data, snapshot = self._resolve(input_ref)
             if self._reasons(data):
-                raise WorkbenchCommandRejected("constraint_conflict", "排产检查仍有阻断项，未受理。")
+                raise WorkbenchCommandRejected("constraint_conflict", "排产检查还有缺资料的项，这次排产没有开始。请先按上面列出的项补齐。")
             if not callable(self.context_validator):
                 raise RuntimeError("Run authorization validator is not connected")
             self.context_validator(write_token, input_ref, "scheduling.run", snapshot)
@@ -110,8 +119,8 @@ class WorkbenchRunService:
             self.repo.require_schema()
             row = self.repo.get(run_ref)
             if row is None:
-                raise WorkbenchCommandRejected("entity_not_found", "未找到该排产运行。", 404)
-            return self.repo.public(row)
+                raise WorkbenchCommandRejected("entity_not_found", "找不到这次排产，页面没有打开。请到「排产记录」重新选择。", 404)
+            return _with_progress(self.repo.public(row))
 
     def lookup(self, request_key):
         validate_request_key(request_key)
@@ -120,8 +129,8 @@ class WorkbenchRunService:
             row = self.repo.by_request(request_key)
             receipt = self.conn.execute("SELECT action FROM WorkbenchCommandReceipts WHERE request_key=?", (request_key,)).fetchone()
             if row is None and receipt is not None and receipt[0] == "scheduling.run":
-                raise WorkbenchCommandRejected("run_result_inconsistent", "受理回执存在但运行记录缺失，必须核对台账。", 500)
-            return self.repo.public(row) if row else None
+                raise WorkbenchCommandRejected("run_result_inconsistent", messages.unknown("排产"), 500)
+            return _with_progress(self.repo.public(row)) if row else None
 
     def recover_unfinished_runs(self, *, executor_is_active=None):
         from .run_worker_recovery import recover_unfinished_runs
