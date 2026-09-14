@@ -135,5 +135,6 @@ def test_real_stop_cli_reports_not_exited_after_token_acceptance(tmp_path):
         assert before == _artifact_bytes(tmp_path)
         contract = json.loads((tmp_path / "logs" / "aps_runtime.json").read_text(encoding="utf-8"))
         assert contract["pid"] == process.pid
-        assert contract["db_path"] == str(tmp_path / "work.sqlite")
+        expected_db_path = os.path.normcase(os.path.abspath(str(tmp_path / "work.sqlite")))
+        assert contract["db_path"] == expected_db_path
         assert _rows(tmp_path) == []
