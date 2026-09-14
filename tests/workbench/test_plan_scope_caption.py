@@ -70,8 +70,8 @@ def test_plan_scope_caption_real_adoption(trial_case, caption_assets, tmp_path, 
             return value.replace("T", " ")
 
         prefix = "计划时间范围：" + label(span["start"]) + " → " + label(span["end"])
-        caption = "计划时间点：" + label(span["start"]) if kind == "point-only" else (
-            prefix + ("（包含末端计划点）" if inclusive else "（不含结束时刻）"))
+        caption = "计划时刻：" + label(span["start"]) if kind == "point-only" else (
+            prefix + ("（包含末端零工时工序）" if inclusive else "（不含结束时刻）"))
         fixtures = [{"name": "whole", "scope": {}, "caption": caption, "payload": read(client, path)}]
         boundary = points[0]["start"] if points else span["end"]
         low = (datetime.fromisoformat(span["start"]) - timedelta(seconds=1)).isoformat()

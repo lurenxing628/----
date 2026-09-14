@@ -91,8 +91,8 @@ async function geometry(page) {
       await submit.click();
       await page.locator('[data-restore-maintenance=warm]').waitFor();
       await page.waitForFunction(() => !document.querySelector('[data-restore-maintenance] [aria-busy=true]'));
-      if (options.drop) { assert.equal(dropped, true); await page.getByRole('button', { name: '核实原请求', exact: true }).click(); }
-      await page.getByText(options.expected === 'rollback_failed' ? '系统已暂停，维护结果待核实' : '维护已结束，请重启整个软件', { exact: true }).waitFor();
+      if (options.drop) { assert.equal(dropped, true); await page.getByRole('button', { name: '查询结果', exact: true }).click(); }
+      await page.getByText(options.expected === 'rollback_failed' ? '系统已暂停，维护结果待确认' : '维护已结束，请重启整个软件', { exact: true }).waitFor();
       assert(await page.evaluate(() => document.getElementById('root').inert));
       assert.equal(await page.getByRole('button', { name: '确认结果', exact: true }).count(), 0);
       assert.equal(await page.getByRole('button', { name: '继续使用', exact: true }).count(), 0);
@@ -102,7 +102,7 @@ async function geometry(page) {
       assert.equal(report.operation.state, options.expected || 'succeeded');
       await screenshot(page, 'warm-result');
       await page.getByRole('radio', { name: '维护记录编号', exact: true }).check();
-      await page.getByRole('textbox', { name: '查询标识', exact: true }).fill(report.operation.job_ref);
+      await page.getByRole('textbox', { name: '查询编号', exact: true }).fill(report.operation.job_ref);
       await page.getByRole('button', { name: '查询维护结果', exact: true }).click();
       await page.waitForFunction(() => !document.querySelector('[data-restore-maintenance] [aria-busy=true]'));
       assert((await page.locator('[data-restore-maintenance]').textContent()).includes(report.operation.filename));
@@ -123,11 +123,11 @@ async function geometry(page) {
       report.after_readonly_hashes = hashes(); assert.deepEqual(report.after_readonly_hashes, report.after_restore_hashes);
     } else {
       await page.locator('[data-restore-maintenance=cold]').waitFor();
-      await page.getByRole('textbox', { name: '查询标识', exact: true }).fill(options.reference);
+      await page.getByRole('textbox', { name: '查询编号', exact: true }).fill(options.reference);
       await page.getByRole('button', { name: '查询维护结果', exact: true }).click();
       await page.waitForURL('**reference=' + options.reference);
-      assert((await page.locator('main').textContent()).includes(options.corrupt ? '维护记录损坏' : '校验中'));
-      assert.equal(await page.getByRole('textbox', { name: '查询标识', exact: true }).inputValue(), options.reference);
+      assert((await page.locator('main').textContent()).includes(options.corrupt ? '维护记录损坏' : '完整性检查中'));
+      assert.equal(await page.getByRole('textbox', { name: '查询编号', exact: true }).inputValue(), options.reference);
       const download = page.waitForEvent('download'); await page.getByRole('button', { name: '导出维护诊断', exact: true }).click();
       const artifact = await download; await artifact.saveAs(path.join(options.output, artifact.suggestedFilename()));
       report.diagnostic = JSON.parse(fs.readFileSync(path.join(options.output, artifact.suggestedFilename()), 'utf8'));

@@ -79,7 +79,7 @@
         setBusy(false);
       }
     }
-    const fields = [['结果来源', '本机数据库外的维护记录，不是当前数据库业务回执'], ['该次维护记录的数据库来源', description.origin], ['选定备份', op && op.filename || (!query && command.selection ? command.selection.filename + '（页面选择，尚未核实）' : '维护记录尚未确认')], ['恢复前保护副本', op && op.protection_filename || '未查到已留存证据，不代表已创建'], ['业务审计', op && op.audit_persisted ? '维护记录报告已留存；当前数据库内容仍需重启后读取' : '未确认留存'], ['软件状态', command.hostError || !host ? '无法读取维护状态，当前页面已暂停业务读写' : host.restart_required ? '业务操作已停用，须重启整个软件' : '维护状态尚未核实，当前页面已暂停业务读写']];
+    const fields = [['结果来源', '来自本机数据库以外的维护记录，不是数据库里的业务结果'], ['该次维护记录的数据库来源', description.origin], ['选定备份', op && op.filename || (!query && command.selection ? command.selection.filename + '（页面上选的，还没有确认）' : '维护记录尚未确认')], ['恢复前保护副本', op && op.protection_filename || '没有查到留存证据，不能认为保护副本已经生成'], ['业务审计', op && op.audit_persisted ? '维护记录报告已留存；当前数据库内容仍需重启后读取' : '未确认留存'], ['软件状态', command.hostError || !host ? '无法读取维护状态，当前页面已暂停业务读写' : host.restart_required ? '业务操作已停用，须重启整个软件' : '维护状态还没有确认，当前页面已暂停业务读写']];
     return ReactDOM.createPortal(/*#__PURE__*/React.createElement("div", {
       className: "sm-workbench sm-maintenance-workspace plana sm-restore-screen",
       "data-restore-maintenance": "warm",
@@ -110,7 +110,7 @@
       error: problem
     }), waiting && /*#__PURE__*/React.createElement("p", {
       role: "status"
-    }, "\u6B63\u5728\u6838\u5B9E\u7EF4\u62A4\u72B6\u6001\uFF0C\u6CA1\u6709\u91CD\u65B0\u63D0\u4EA4\u6062\u590D\u3002"), notice && /*#__PURE__*/React.createElement("p", {
+    }, "\u6B63\u5728\u67E5\u8BE2\u7EF4\u62A4\u72B6\u6001\uFF0C\u6CA1\u6709\u91CD\u65B0\u63D0\u4EA4\u6062\u590D\u3002"), notice && /*#__PURE__*/React.createElement("p", {
       role: "status"
     }, notice), op && /*#__PURE__*/React.createElement("p", null, op.message), result && result.kind === 'not_recorded' && /*#__PURE__*/React.createElement("p", {
       role: "status"
@@ -119,14 +119,14 @@
     }, fields.map(([label, value]) => /*#__PURE__*/React.createElement("div", {
       key: label
     }, /*#__PURE__*/React.createElement("dt", null, label), /*#__PURE__*/React.createElement("dd", null, value)))), original ? /*#__PURE__*/React.createElement(window.WorkbenchReference, {
-      label: "\u672C\u673A\u4FDD\u7559\u7684\u539F\u8BF7\u6C42",
+      label: "\u672C\u673A\u4FDD\u7559\u7684\u64CD\u4F5C\u7F16\u53F7",
       value: original
     }) : /*#__PURE__*/React.createElement("p", {
       className: "sm-meta"
-    }, "\u672A\u8BFB\u53D6\u5230\u539F\u8BF7\u6C42\uFF0C\u53EF\u5728\u4E0B\u65B9\u8F93\u5165\u539F\u8BF7\u6C42\u6807\u8BC6\u3002"), op && (!host || host.request_key !== op.request_key) && /*#__PURE__*/React.createElement("p", {
+    }, "\u6CA1\u6709\u8BFB\u5230\u64CD\u4F5C\u7F16\u53F7\uFF0C\u53EF\u4EE5\u5728\u4E0B\u9762\u8F93\u5165\u3002"), op && (!host || host.request_key !== op.request_key) && /*#__PURE__*/React.createElement("p", {
       className: "sm-note"
     }, "\u8FD9\u6761\u8BB0\u5F55\u4E0D\u80FD\u4EE3\u8868\u5F53\u524D\u6570\u636E\u5E93\u72B6\u6001\uFF0C\u4E5F\u4E0D\u4F1A\u89E3\u9664\u8F6F\u4EF6\u7684\u7EF4\u62A4\u505C\u6B62\u72B6\u6001\u3002"), op && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(window.WorkbenchReference, {
-      label: "\u5F53\u524D\u7ED3\u679C\u7684\u539F\u8BF7\u6C42",
+      label: "\u8FD9\u6761\u7ED3\u679C\u7684\u64CD\u4F5C\u7F16\u53F7",
       value: op.request_key
     }), /*#__PURE__*/React.createElement("p", {
       className: "sm-meta"
@@ -140,7 +140,7 @@
         setError(null);
         intent ? command.lookup() : command.inspectHost();
       }
-    }, "\u6838\u5B9E\u539F\u8BF7\u6C42"), /*#__PURE__*/React.createElement(C.Button, {
+    }, window.WorkbenchTerms.actions.query_result), /*#__PURE__*/React.createElement(C.Button, {
       transfer: "export",
       onClick: () => {
         try {
@@ -154,8 +154,8 @@
       href: "/workbench?view=system"
     }, "\u8FD4\u56DE\u5DE5\u4F5C\u53F0")), /*#__PURE__*/React.createElement("p", {
       className: "sm-meta"
-    }, "\u8FD4\u56DE\u5165\u53E3\u4F1A\u91CD\u65B0\u6838\u5B9E\u7EF4\u62A4\u72B6\u6001\uFF1B\u9700\u8981\u91CD\u542F\u6216\u6838\u67E5\u65F6\u4ECD\u505C\u7559\u5728\u7EF4\u62A4\u9875\u3002")), /*#__PURE__*/React.createElement("section", {
-      "aria-label": "\u6309\u6807\u8BC6\u67E5\u8BE2"
+    }, "\u70B9\u300C\u8FD4\u56DE\u5DE5\u4F5C\u53F0\u300D\u4F1A\u91CD\u65B0\u67E5\u8BE2\u7EF4\u62A4\u72B6\u6001\uFF1B\u9700\u8981\u91CD\u542F\u6216\u4EBA\u5DE5\u6838\u5BF9\u65F6\u4ECD\u7136\u505C\u5728\u7EF4\u62A4\u9875\u3002")), /*#__PURE__*/React.createElement("section", {
+      "aria-label": "\u6309\u7F16\u53F7\u67E5\u8BE2"
     }, /*#__PURE__*/React.createElement("h2", null, "\u67E5\u8BE2\u5176\u4ED6\u7EF4\u62A4\u7ED3\u679C"), /*#__PURE__*/React.createElement("form", {
       onSubmit: lookup
     }, /*#__PURE__*/React.createElement("fieldset", {
@@ -163,7 +163,7 @@
       style: {
         marginTop: 12
       }
-    }, /*#__PURE__*/React.createElement("legend", null, "\u6807\u8BC6\u7C7B\u578B"), [['request', '原请求标识'], ['job', '维护记录编号']].map(([value, label]) => /*#__PURE__*/React.createElement("label", {
+    }, /*#__PURE__*/React.createElement("legend", null, "\u7F16\u53F7\u7C7B\u578B"), [['request', '操作编号'], ['job', '维护记录编号']].map(([value, label]) => /*#__PURE__*/React.createElement("label", {
       key: value
     }, /*#__PURE__*/React.createElement("input", {
       type: "radio",
@@ -174,8 +174,8 @@
       className: "sm-restore-query"
     }, /*#__PURE__*/React.createElement("label", {
       className: "sm-field"
-    }, /*#__PURE__*/React.createElement("span", null, kind === 'request' ? '原请求标识' : '维护记录编号'), /*#__PURE__*/React.createElement("input", {
-      "aria-label": "\u67E5\u8BE2\u6807\u8BC6",
+    }, /*#__PURE__*/React.createElement("span", null, kind === 'request' ? '操作编号' : '维护记录编号'), /*#__PURE__*/React.createElement("input", {
+      "aria-label": "\u67E5\u8BE2\u7F16\u53F7",
       value: reference,
       maxLength: 128,
       autoComplete: "off",
@@ -192,7 +192,7 @@
       key: index
     }, window.WorkbenchFormat.dateTime(step.time), " \xB7 ", R.labels[step.state])), [['所选备份 SHA-256', op.target_sha256], ['保护副本 SHA-256', op.protection_sha256], ['维护结束数据库 SHA-256', op.database_after_sha256]].map(([label, value]) => /*#__PURE__*/React.createElement("p", {
       key: label
-    }, label, "\uFF1A", /*#__PURE__*/React.createElement("code", null, value || '未确认'))), /*#__PURE__*/React.createElement("p", null, "\u4E0A\u8FF0\u6307\u7EB9\u6765\u81EA\u7EF4\u62A4\u8BB0\u5F55\uFF0C\u672C\u9875\u9762\u6CA1\u6709\u91CD\u65B0\u6253\u5F00\u6216\u6821\u9A8C\u6570\u636E\u5E93\u3002\u6570\u636E\u5E93\u5185\u65E7\u56DE\u6267\u53EF\u80FD\u5DF2\u88AB\u6062\u590D\u8986\u76D6\u3002")))), document.body);
+    }, label, "\uFF1A", /*#__PURE__*/React.createElement("code", null, value || '未确认'))), /*#__PURE__*/React.createElement("p", null, "\u4E0A\u9762\u7684\u6307\u7EB9\u6765\u81EA\u7EF4\u62A4\u8BB0\u5F55\uFF0C\u672C\u9875\u6CA1\u6709\u91CD\u65B0\u6253\u5F00\u6216\u68C0\u67E5\u6570\u636E\u5E93\u3002\u6570\u636E\u5E93\u91CC\u65E7\u7684\u7ED3\u679C\u53EF\u80FD\u5DF2\u88AB\u6062\u590D\u8986\u76D6\u3002")))), document.body);
   }
   window.SystemRestorePanel = Panel;
 })();

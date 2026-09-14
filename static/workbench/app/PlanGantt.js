@@ -4,8 +4,11 @@
   const M = window.PlanGanttModel,
     {
       Button,
-      Icon
+      Icon,
+      TimelineZoom,
+      timelineZoomKey
     } = window.ResourceControls;
+  const ZOOM_MAX = 1024;
   const {
     DenseRow,
     Overview
@@ -49,7 +52,7 @@
   }) {
     const task = item.task,
       size = (item.end - item.start) / (model.end - model.start) * width;
-    const title = (item.baseline ? '初始基线\n' : '') + M.taskTitle(task, model.labels, !item.baseline && model.conflicts.has(task.task_ref));
+    const title = (item.baseline ? '初始计划\n' : '') + M.taskTitle(task, model.labels, !item.baseline && model.conflicts.has(task.task_ref));
     if (window.PointContract.isPoint(task)) return /*#__PURE__*/React.createElement(window.PointGantt.Marker, {
       task: task,
       "data-plan-task": task.task_ref,
@@ -192,7 +195,13 @@
     }, [expanded]);
     function changeZoom(next) {
       pending.current = (position.left + viewport / 2) / width;
-      setZoom(Math.max(1, Math.min(1024, next)));
+      setZoom(Math.max(1, Math.min(ZOOM_MAX, next)));
+    }
+    function fit() {
+      pending.current = 0.5;
+      setZoom(1);
+      board.current.scrollLeft = 0;
+      measure();
     }
     function locate(taskRef = selectedRef) {
       const location = model.locations.get(taskRef);
@@ -236,19 +245,18 @@
           event.preventDefault();
           search.current.focus();
         }
-        if (event.key === '+' || event.key === '=') {
+        const zoomAction = timelineZoomKey(event);
+        if (zoomAction === 'in') {
           event.preventDefault();
           changeZoom(zoom * 2);
         }
-        if (event.key === '-') {
+        if (zoomAction === 'out') {
           event.preventDefault();
           changeZoom(zoom / 2);
         }
-        if (event.key.toLowerCase() === 'f') {
+        if (zoomAction === 'fit') {
           event.preventDefault();
-          pending.current = 0.5;
-          setZoom(1);
-          board.current.scrollLeft = 0;
+          fit();
         }
         if (event.key.toLowerCase() === 'l') {
           event.preventDefault();
@@ -265,16 +273,16 @@
       disabled: disabled
     }), /*#__PURE__*/React.createElement("label", {
       className: "plan-check",
-      title: showBaseline ? '持久基础计划对照' : before.reason || '初始基线无法核实'
+      title: showBaseline ? '和初始计划对照' : before.reason || '初始计划暂无数据'
     }, /*#__PURE__*/React.createElement("input", {
       type: "checkbox",
-      "aria-label": "\u663E\u793A\u521D\u59CB\u57FA\u7EBF",
+      "aria-label": "\u663E\u793A\u521D\u59CB\u8BA1\u5212",
       checked: baseline && showBaseline,
       disabled: !showBaseline || disabled,
       onChange: event => setBaseline(event.target.checked)
-    }), "\u521D\u59CB\u57FA\u7EBF"), /*#__PURE__*/React.createElement("label", {
+    }), "\u521D\u59CB\u8BA1\u5212"), /*#__PURE__*/React.createElement("label", {
       className: "plan-check",
-      title: showBaseline ? '按已核实的初始计划对照筛选' : before.reason || '初始基线无法核实'
+      title: showBaseline ? '只看和初始计划不一样的安排' : before.reason || '初始计划暂无数据'
     }, /*#__PURE__*/React.createElement("input", {
       type: "checkbox",
       "aria-label": "\u4EC5\u53D8\u66F4",
@@ -303,35 +311,13 @@
       }
     })), /*#__PURE__*/React.createElement("div", {
       className: "plan-actions"
-    }, /*#__PURE__*/React.createElement(Button, {
-      icon: "minus",
-      className: "btn plan-icon",
-      "aria-label": "\u7F29\u5C0F\u65F6\u95F4\u8F74",
-      disabled: zoom <= 1 || disabled,
-      onClick: () => changeZoom(zoom / 2)
-    }), /*#__PURE__*/React.createElement("span", {
-      className: "plan-muted",
-      style: {
-        minWidth: 34,
-        textAlign: 'center'
-      }
-    }, zoom, "\xD7"), /*#__PURE__*/React.createElement(Button, {
-      icon: "plus",
-      className: "btn plan-icon",
-      "aria-label": "\u653E\u5927\u65F6\u95F4\u8F74",
-      disabled: zoom >= 1024 || disabled,
-      onClick: () => changeZoom(zoom * 2)
-    }), /*#__PURE__*/React.createElement(Button, {
-      icon: "unfold-vertical",
-      className: "btn plan-icon plan-fit",
-      "aria-label": "\u9002\u5408\u5B8C\u6574\u8DE8\u5EA6",
-      title: "\u9002\u5408\u5B8C\u6574\u8DE8\u5EA6 (F)",
-      onClick: () => {
-        pending.current = 0.5;
-        setZoom(1);
-        board.current.scrollLeft = 0;
-        measure();
-      }
+    }, /*#__PURE__*/React.createElement(TimelineZoom, {
+      zoom: zoom,
+      max: ZOOM_MAX,
+      onZoom: changeZoom,
+      onFit: fit,
+      disabled: disabled,
+      className: "btn plan-icon"
     }), /*#__PURE__*/React.createElement(Button, {
       icon: "search",
       className: "btn plan-icon",
@@ -352,7 +338,7 @@
       }
     }))), !showBaseline && /*#__PURE__*/React.createElement("div", {
       className: "plan-note"
-    }, "\u521D\u59CB\u57FA\u7EBF\uFF1A", before.reason || '无法核实'), /*#__PURE__*/React.createElement("div", {
+    }, "\u521D\u59CB\u8BA1\u5212\uFF1A", before.reason || '暂无数据'), /*#__PURE__*/React.createElement("div", {
       className: "plan-board-frame"
     }, /*#__PURE__*/React.createElement(Overview, {
       model: model,
@@ -368,6 +354,7 @@
       ref: board,
       className: "plan-board",
       "data-plan-scroll": true,
+      "data-wb-scroll-key": "plan-board",
       tabIndex: 0,
       "aria-label": M.kindLabels[mode] + '甘特时间轴',
       onScroll: () => {
@@ -392,7 +379,7 @@
       style: {
         display: 'block'
       }
-    }, model.groupCount, "\u7EC4 \xB7 \u5DE5\u5382\u672C\u5730\u65F6\u95F4")), /*#__PURE__*/React.createElement("div", {
+    }, model.groupCount, " \u7EC4")), /*#__PURE__*/React.createElement("div", {
       className: "plan-ticks",
       style: {
         width
@@ -415,8 +402,8 @@
         }
       }, /*#__PURE__*/React.createElement("div", {
         className: "plan-resource",
-        title: row.label + ' · ' + (row.before ? '初始基线' : row.tasks.length + '道安排 · 子轨 ' + (row.track + 1) + '/' + row.trackCount + (row.overlap ? ' · 存在重叠' : ''))
-      }, /*#__PURE__*/React.createElement("strong", null, row.label), !row.before && /*#__PURE__*/React.createElement("small", null, row.tasks.length, "\u9053\u5B89\u6392", row.trackCount > 1 ? ' · 子轨 ' + (row.track + 1) + '/' + row.trackCount : '', row.overlap ? ' · 重叠' : ''), row.before && /*#__PURE__*/React.createElement("small", null, "\u521D\u59CB\u57FA\u7EBF")), /*#__PURE__*/React.createElement("div", {
+        title: row.label + ' · ' + (row.before ? '初始计划' : row.tasks.length + ' 道安排 · 子轨 ' + (row.track + 1) + '/' + row.trackCount + (row.overlap ? ' · 存在重叠' : ''))
+      }, /*#__PURE__*/React.createElement("strong", null, row.label), !row.before && /*#__PURE__*/React.createElement("small", null, row.tasks.length, " \u9053\u5B89\u6392", row.trackCount > 1 ? ' · 子轨 ' + (row.track + 1) + '/' + row.trackCount : '', row.overlap ? ' · 重叠' : ''), row.before && /*#__PURE__*/React.createElement("small", null, "\u521D\u59CB\u8BA1\u5212")), /*#__PURE__*/React.createElement("div", {
         className: "plan-track",
         style: {
           width
@@ -467,7 +454,7 @@
       }
     }, /*#__PURE__*/React.createElement(window.WorkbenchControls.EmptyState, {
       kind: query || changedOnly ? 'filtered' : 'empty',
-      title: changedOnly ? '当前范围没有匹配的变更安排。' : query ? '没有匹配安排，完整计划跨度保持不变。' : '该读取范围没有安排。',
+      title: changedOnly ? '当前范围没有匹配的变更安排。' : query ? '没有匹配安排，完整计划的时间范围保持不变。' : '该读取范围没有安排。',
       action: query || changedOnly ? /*#__PURE__*/React.createElement(Button, {
         onClick: () => {
           onQuery('');
@@ -486,7 +473,7 @@
       className: "plan-legend"
     }, /*#__PURE__*/React.createElement("i", {
       className: "plan-swatch success"
-    }), "\u5DF2\u6838\u5B9E\u51C6\u65F6"), /*#__PURE__*/React.createElement("span", {
+    }), "\u5DF2\u786E\u8BA4\u51C6\u65F6"), /*#__PURE__*/React.createElement("span", {
       className: "plan-legend"
     }, /*#__PURE__*/React.createElement("i", {
       className: "plan-swatch critical"
@@ -498,11 +485,11 @@
       className: "plan-legend"
     }, /*#__PURE__*/React.createElement("i", {
       className: "plan-swatch before"
-    }), "\u521D\u59CB\u57FA\u7EBF"), /*#__PURE__*/React.createElement("span", {
+    }), "\u521D\u59CB\u8BA1\u5212"), /*#__PURE__*/React.createElement("span", {
       className: "plan-legend"
     }, /*#__PURE__*/React.createElement("i", {
       className: "plan-swatch point"
-    }), "\u96F6\u65F6\u957F\u70B9"), /*#__PURE__*/React.createElement("span", {
+    }), "\u96F6\u5DE5\u65F6\u5DE5\u5E8F"), /*#__PURE__*/React.createElement("span", {
       className: "plan-legend"
     }, /*#__PURE__*/React.createElement("i", {
       className: "plan-swatch today"
@@ -530,7 +517,7 @@
         overflow: 'auto',
         overflowWrap: 'anywhere'
       }
-    }, (hover.before ? '初始基线\n' : '') + M.taskTitle(hover.task, model.labels, !hover.before && model.conflicts.has(hover.task.task_ref))));
+    }, (hover.before ? '初始计划\n' : '') + M.taskTitle(hover.task, model.labels, !hover.before && model.conflicts.has(hover.task.task_ref))));
   }
   window.PlanGantt = PlanGantt;
   window.PlanSegmentUI = Segment;

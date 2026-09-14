@@ -53,11 +53,11 @@ const evidence = async () => (await page.request.get(origin + '/fixture/evidence
 async function ready() {
   await page.locator('[data-trial-workspace][data-open-kind="scenario"][data-open-ref="' + refs.scenario_ref + '"] .tt-main').waitFor();
   await page.waitForFunction(() => {
-    const reload = document.querySelector('[data-trial-workspace] [aria-label="重读当前试调"]');
+    const reload = document.querySelector('[data-trial-workspace] [aria-label="刷新当前试调"]');
     return reload && !reload.disabled;
   });
 }
-async function historyReady() { await page.locator('.trial-adoption-history .tah-meta').filter({ hasText: '本场景共' }).waitFor(); }
+async function historyReady() { await page.locator('.trial-adoption-history .tah-meta').filter({ hasText: '本试调方案共' }).waitFor(); }
 async function shot(name) { const file = path.join(output, variant + '-' + name + '.png'); await page.screenshot({ path: file, fullPage: false }); report.screenshots.push(file); }
 async function layout() {
   await page.locator('.trial-adoption-history').scrollIntoViewIfNeeded();
@@ -76,11 +76,11 @@ async function layout() {
 }
 async function basic() {
   await ready(); await tab('调整记录').click(); await page.getByRole('table', { name: '调整记录', exact: true }).waitFor();
-  await tab('采用记录').click(); await historyReady(); await page.getByText('尚无本场景的正式采用回执。', { exact: true }).waitFor(); done('original-adjustments-and-empty-history');
-  await button('正式采用').click(); await page.getByLabel('采用原因', { exact: true }).fill('核对完整场景与现场记录，保留原基线和全部调整依据。');
-  await page.getByLabel('声明人', { exact: true }).fill('计划员 张三'); await page.getByRole('checkbox', { name: /^我已核对原场景/ }).check();
-  await button('确认正式采用').click(); await page.getByRole('dialog', { name: '场景正式采用回执', exact: true }).waitFor();
-  await button('完成核实').click(); await ready(); await button('刷新采用记录').click(); await historyReady();
+  await tab('采用记录').click(); await historyReady(); await page.getByText('这个试调方案还没有正式采用记录。', { exact: true }).waitFor(); done('original-adjustments-and-empty-history');
+  await button('采用方案').click(); await page.getByLabel('采用原因', { exact: true }).fill('核对完整场景与现场记录，保留原基线和全部调整依据。');
+  await page.getByLabel('经办人', { exact: true }).fill('计划员 张三'); await page.getByRole('checkbox', { name: /^我已核对试调方案/ }).check();
+  await button('确认正式采用').click(); await page.getByRole('dialog', { name: '试调方案采用结果', exact: true }).waitFor();
+  await button('完成').click(); await ready(); await button('刷新采用记录').click(); await historyReady();
   await page.locator('[data-adoption-receipt]').waitFor(); assert.equal(await page.locator('[data-adoption-receipt]').count(), 1);
   const receipt = (await evidence()).receipts[0], planRef = JSON.parse(receipt.outcome_json).data.official_plan.plan_ref;
   assert.equal(await page.locator('[data-adoption-receipt]').getAttribute('data-adoption-receipt'), receipt.receipt_ref);
@@ -89,7 +89,7 @@ async function basic() {
   await page.getByLabel('采用状态', { exact: true }).selectOption('current'); await historyReady();
   await page.getByLabel('采用记录每页', { exact: true }).selectOption('10'); await historyReady();
   await page.locator('.tah-list summary').click(); await layout(); await shot('current-history');
-  await button('查看正式方案').click(); await page.locator('[data-plan-workspace] .plan-bar').first().waitFor();
+  await button('查看正式计划').click(); await page.locator('[data-plan-workspace] .plan-bar').first().waitFor();
   assert.equal(await page.evaluate(() => history.state.workbench.context.plan_ref), planRef);
   await page.goBack(); await ready(); await historyReady();
   assert.equal(await tab('采用记录').getAttribute('aria-selected'), 'true');

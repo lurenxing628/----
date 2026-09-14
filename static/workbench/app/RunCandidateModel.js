@@ -25,17 +25,17 @@
   };
   const metricLabels = {
     overdue_count: window.WorkbenchTerms.overdue_count,
-    total_tardiness_hours: window.WorkbenchTerms.total_tardiness_hours + ' h',
-    makespan_hours: '安排跨度 h',
+    total_tardiness_hours: window.WorkbenchTerms.total_tardiness_hours + '（小时）',
+    makespan_hours: '安排时长（小时）',
     changeover_count: '换型次数',
-    weighted_tardiness_hours: '加权拖期 h',
+    weighted_tardiness_hours: '加权拖期（小时）',
     machine_used_count: '已用设备',
     operator_used_count: '已用人员',
-    machine_busy_hours_total: '设备占用 h',
-    operator_busy_hours_total: '人员占用 h',
+    machine_busy_hours_total: '设备占用（小时）',
+    operator_busy_hours_total: '人员占用（小时）',
     machine_util_avg: '设备利用率',
     operator_util_avg: '人员利用率',
-    elapsed_seconds: '计算耗时 s'
+    elapsed_seconds: '计算用时（秒）'
   };
   const executionLabels = {
     target_quantity: '目标数量',
@@ -43,7 +43,7 @@
     remaining_quantity: '剩余数量',
     execution_state: '执行状态',
     data_quality: '数据质量',
-    target_basis: '数量口径'
+    target_basis: '数量计算方式'
   };
   const executionValue = v => ({
     complete: '完成',
@@ -69,7 +69,7 @@
     label: t.batch_label
   } : t[mode];
   function title(t) {
-    return [t.batch_label || '批次未记录', number(t.sequence) + ' · ' + (t.process_label || '工序未记录'), pieceLabel(t), '本工序目标量：' + number(t.quantity) + ' · 生成时整批量：' + number(t.batch_quantity), timeLabel(t.start) + ' 至 ' + timeLabel(t.end), window.PointContract.isPoint(t) ? '时间点 · 0 h · 不占用资源' : null, '设备：' + (t.machine && t.machine.label || '未记录'), '人员：' + (t.operator && t.operator.label || '未记录')].filter(Boolean).join('\n');
+    return [t.batch_label || '批次未记录', number(t.sequence) + ' · ' + (t.process_label || '工序未记录'), pieceLabel(t), '本工序目标量：' + number(t.quantity) + ' · 生成时整批量：' + number(t.batch_quantity), timeLabel(t.start) + ' 至 ' + timeLabel(t.end), window.PointContract.isPoint(t) ? '零工时工序 · 不占设备人员' : null, '设备：' + (t.machine && t.machine.label || '未记录'), '人员：' + (t.operator && t.operator.label || '未记录')].filter(Boolean).join('\n');
   }
   function push(heap, item) {
     let i = heap.length;

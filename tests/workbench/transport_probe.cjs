@@ -56,7 +56,7 @@ async function run() {
     p => { delete p.meta.as_of; }, p => { p.meta.snapshot_ref = 123; },
     p => { p.meta.time_basis = 'UTC'; }, p => { p.data = []; }, p => { p.meta.request_ref = ''; }]) {
     const payload = valid(); mutate(payload);
-    await rejects(async () => response(payload), /协议不匹配/);
+    await rejects(async () => response(payload), /读到的数据不完整/);
   }
   await rejects(async (_, options) => aborted(options.signal), /读取超时/, 5);
   await rejects(async (_, options) => ({...response(null), json: () => aborted(options.signal)}), /读取超时/, 5);

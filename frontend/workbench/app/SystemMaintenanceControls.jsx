@@ -29,39 +29,39 @@
     const [checked, setChecked] = React.useState(false), [typed, setTyped] = React.useState('');
     const destructive = action !== 'create', ready = !destructive || checked && (action !== 'restore' || typed === '恢复');
     return <window.ResourceControls.Modal title={A.actions[action]} icon={action === 'create' ? 'plus' : action === 'delete' ? 'x' : 'history'} onClose={onClose}
-      footer={<><Button onClick={onClose}>取消</Button><Button icon="check" className="btn primary" reason={reason} disabled={!ready} onClick={onConfirm}>确认{action === 'create' ? '创建' : action === 'delete' ? '删除' : '恢复'}</Button></>}>
+      footer={<><Button onClick={onClose}>取消</Button><Button icon="check" className="btn primary" reason={reason} disabled={!ready} onClick={onConfirm}>确认{action === 'create' ? '新增' : action === 'delete' ? '删除' : '恢复'}</Button></>}>
       <div className="modal-b form scroll" style={{ overflowWrap: 'anywhere' }}>
         {row && <p><strong>{row.filename}</strong><br />文件修改时间 {window.WorkbenchFormat.dateTime(row.time)} · {row.size_bytes} 字节<br />文件存在，尚无本次完整性校验证据。</p>}
-        <p>{action === 'create' ? '创建本机数据库备份。结果以外置维护记录为准。' : action === 'delete' ? '仅删除此备份文件，删除后不能撤销。' : '将用所选备份替换当前数据库。恢复前保护副本、校验和失败回滚均由后端执行。'}</p>
-        {action === 'restore' && <p className="sm-notice">一旦受理恢复，业务操作将停用。即使恢复成功或已回滚，也须关闭整个软件再启动；只刷新浏览器不算重启。</p>}
+        <p>{action === 'create' ? '新增一份本机数据库备份。结果以维护记录为准。' : action === 'delete' ? '仅删除此备份文件，删除后不能撤销。' : '将用所选备份替换当前数据库。系统会先生成保护副本；完整性检查不通过时自动还原。'}</p>
+        {action === 'restore' && <p className="sm-notice">一旦提交恢复，业务操作会停用。无论恢复成功还是已还原，都要关闭整个软件再启动；只刷新浏览器不算重启。</p>}
         {destructive && <label className="sm-inline-label"><input type="checkbox" checked={checked} onChange={event => setChecked(event.target.checked)} />我已核对所选文件与操作影响</label>}
         {action === 'restore' && <label className="field" style={{ marginTop: 16 }}><span>输入“恢复”确认</span><input value={typed} onChange={event => setTyped(event.target.value)} /></label>}
         {reason && <ErrorBox error={reason} />}
       </div>
     </window.ResourceControls.Modal>;
   }
-  const labels = { accepted: '已受理', checking: '检查中', protecting: '创建保护副本', restoring: '恢复中', verifying: '校验中', rolling_back: '回滚中',
-    succeeded: '已完成', failed: '操作失败', rolled_back: '恢复失败，已回滚', rollback_failed: '回滚失败，需人工核查', recovery_required: '需人工恢复核查' };
+  const labels = { accepted: '已接收', checking: '检查中', protecting: '生成保护副本', restoring: '恢复中', verifying: '完整性检查中', rolling_back: '还原中',
+    succeeded: '已完成', failed: '操作失败', rolled_back: '恢复失败，已还原', rollback_failed: '还原失败，需人工核对', recovery_required: '需人工核对' };
   function Outcome({ command }) {
     const { intent, result, error, busy, storageError } = command;
     if (!intent && !storageError) return null;
     const op = result && result.kind === 'file_operation' && result.operation;
-    return <section className="sm-section sm-maintenance-outcome" aria-label="维护原请求结果" style={{ padding: '12px 20px', background: 'var(--ui-card-bg)', borderBottom: '1px solid var(--ui-border)', overflowWrap: 'anywhere' }}>
-      <div className="sm-section-head"><h3>{intent ? intent.summary : '待核实记录不可用'}</h3><div className="sm-actions">
-        {intent && !(result && result.kind === 'rejected') && <Button icon="refresh-cw" busy={busy} onClick={command.lookup}>核实原请求</Button>}
+    return <section className="sm-section sm-maintenance-outcome" aria-label="上次维护操作的结果" style={{ padding: '12px 20px', background: 'var(--ui-card-bg)', borderBottom: '1px solid var(--ui-border)', overflowWrap: 'anywhere' }}>
+      <div className="sm-section-head"><h3>{intent ? intent.summary : '上次操作记录不可用'}</h3><div className="sm-actions">
+        {intent && !(result && result.kind === 'rejected') && <Button icon="refresh-cw" busy={busy} onClick={command.lookup}>{window.WorkbenchTerms.actions.query_result}</Button>}
         {result && result.terminal && !command.suspended && <Button icon="check" disabled={busy} onClick={command.acknowledge}>确认结果</Button>}
       </div></div>
-      {intent && <window.WorkbenchReference label="原请求编号" value={intent.request_key} />}
+      {intent && <window.WorkbenchReference label="操作编号" value={intent.request_key} />}
       <ErrorBox error={storageError || error} />
-      {busy && <p role="status">正在等待维护结果，未重新提交。</p>}
+      {busy && <p role="status">正在等待维护结果，没有重新提交。</p>}
       {op ? <div role="status"><p><strong className={op.state === 'succeeded' ? 'sm-tone-success' : 'sm-tone-warning'}>{labels[op.state]}</strong> · {op.message}</p>
         <window.WorkbenchReference label="维护记录与结果代码" entries={{ '维护编号': op.job_ref, '结果代码': op.code }} />
-        <p>更新时间：{window.WorkbenchFormat.dateTime(op.updated_at)}<br />业务审计：{op.audit_persisted ? '已留存' : '未确认留存'}{op.replayed ? ' · 查询原结果' : ''}</p>
+        <p>更新时间：{window.WorkbenchFormat.dateTime(op.updated_at)}<br />业务审计：{op.audit_persisted ? '已留存' : '未确认留存'}{op.replayed ? ' · 查询上次结果' : ''}</p>
         {op.filename && <p>目标文件：{op.filename}</p>}{op.protection_filename && <p>保护副本：{op.protection_filename}</p>}
         <details className="sm-rules"><summary>维护阶段</summary>{op.history.map((step, index) => <p key={index}>{window.WorkbenchFormat.dateTime(step.time)} · {labels[step.state]}</p>)}</details>
-      </div> : result && result.kind === 'config' ? <div role="status"><p>{result.command.result === 'committed' ? '八项维护配置已保存，事务和审计已留存。' : '配置没有变化，已留存无变更回执；未新增业务审计。'}</p>
-        <window.WorkbenchReference label="配置回执" value={result.command.receipt_ref} />{result.command.replayed && <p>查询原结果</p>}</div> : result && result.kind === 'rejected' ? <p role="status">后端明确拒绝，本次未提交。核对错误后可确认结果。</p> : null}
-      {intent && !(result && result.terminal) && <p className="sm-note">{result && result.kind === 'not_recorded' ? result.message : '原操作仍待核实。'} 查不到结果不代表未执行；不会更换请求键重做。{intent.action === 'restore' ? ' 恢复未核实前暂停读取其他数据库信息。' : ''}</p>}
+      </div> : result && result.kind === 'config' ? <div role="status"><p>{result.command.result === 'committed' ? '八项维护配置已保存，操作记录已留存。' : '配置没有变化，没有写入新的操作记录。'}</p>
+        <window.WorkbenchReference label="保存结果编号" value={result.command.receipt_ref} />{result.command.replayed && <p>查询上次结果</p>}</div> : result && result.kind === 'rejected' ? <p role="status">系统拒绝了这次提交，配置没有改动。请按上面的提示改好后重新提交。</p> : null}
+      {intent && !(result && result.terminal) && <p className="sm-note">{result && result.kind === 'not_recorded' ? result.message : '上次操作还没有确认结果。'} 查不到结果不代表没有执行，系统不会换个编号重做。{intent.action === 'restore' ? ' 恢复的结果确认前，暂停读取数据库里的其他信息。' : ''}</p>}
     </section>;
   }
   function Preferences({ theme, onSetTheme, pageSize, onPageSize, compact, onCompact }) {

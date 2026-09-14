@@ -61,20 +61,16 @@
       })
     })), /*#__PURE__*/React.createElement("div", {
       className: "pf-rule"
-    }, /*#__PURE__*/React.createElement("strong", null, "\u5DF2\u53D1\u751F\u6267\u884C"), /*#__PURE__*/React.createElement(Segment, {
-      label: "\u5DF2\u53D1\u751F\u6267\u884C",
-      value: "preserve_actuals",
-      choices: [["preserve_actuals", '保留事实'], ['reopen', '可重排', true]],
-      disabled: disabled,
-      onChange: () => {}
-    })), /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "pf-fixed"
+    }, "\u5DF2\u5F00\u5DE5\u5DE5\u5E8F\uFF1A\u4FDD\u7559\u8BB0\u5F55\uFF08\u4E0D\u53EF\u4FEE\u6539\uFF09")), /*#__PURE__*/React.createElement("div", {
       className: "pf-rule pf-note"
-    }, "\u672C\u6B21\u53C2\u6570\uFF0C\u4E0D\u6539\u5168\u5C40\u914D\u7F6E\u3002\u5DE5\u65F6\u3001\u5DE5\u79CD\u3001\u5916\u534F\u8D44\u6599\u4ECD\u4E3A\u5FC5\u586B\u9879\uFF1B\u5F00\u5DE5\u548C\u5B8C\u5DE5\u4E8B\u5B9E\u4E0D\u80FD\u89E3\u9664\u4FDD\u62A4\u3002")));
+    }, "\u672C\u6B21\u53C2\u6570\uFF0C\u4E0D\u6539\u5168\u5C40\u914D\u7F6E\u3002\u5DE5\u65F6\u3001\u5DE5\u79CD\u3001\u5916\u534F\u8D44\u6599\u4ECD\u4E3A\u5FC5\u586B\u9879\uFF1B\u5DF2\u5F00\u5DE5\u548C\u5DF2\u5B8C\u5DE5\u7684\u5DE5\u5E8F\u4E0D\u80FD\u89E3\u9664\u4FDD\u62A4\u3002")));
   }
   function Metrics({
     counts
   }) {
-    const items = [['selected_tasks', '范围内工序'], ['ready_tasks', '资料有效'], ['auto_assign_required', '自动分配待补'], ['skipped_tasks', '本次跳过'], ['blocked_tasks', '阻塞工序'], ['no_route_batches', '未生成工艺批次'], ['actual_fact_tasks', '已发生事实']];
+    const items = [['selected_tasks', '范围内工序'], ['ready_tasks', '资料有效'], ['auto_assign_required', '自动分配待补'], ['skipped_tasks', '本次跳过'], ['blocked_tasks', '缺资料工序'], ['no_route_batches', '未生成工艺批次'], ['actual_fact_tasks', '已开工工序']];
     return /*#__PURE__*/React.createElement("dl", {
       className: "pf-metrics"
     }, items.map(([key, label]) => /*#__PURE__*/React.createElement("div", {
@@ -102,7 +98,7 @@
     function objectLabel(item) {
       const task = tasks.get(item.operation_ref);
       if (task) return task.batch_id + ' · ' + task.sequence + ' ' + task.label + (task.piece_id ? ' · ' + task.piece_id : '');
-      return item.batch_id || batches.get(item.batch_ref) || '对象信息未完整记录';
+      return item.batch_id || batches.get(item.batch_ref) || '批次与工序未读取';
     }
     return /*#__PURE__*/React.createElement("div", {
       className: "pf-alert"
@@ -113,7 +109,7 @@
       "data-reason-group": code
     }, summary(code, items)))), /*#__PURE__*/React.createElement("details", {
       className: "pf-reasons"
-    }, /*#__PURE__*/React.createElement("summary", null, "\u539F\u56E0\u4E0E\u5BF9\u5E94\u5BF9\u8C61 \xB7 ", data.run_blocked_reasons.length + data.warnings.length, " \u9879"), /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("summary", null, "\u539F\u56E0\u660E\u7EC6 \xB7 ", data.run_blocked_reasons.length + data.warnings.length, " \u9879"), /*#__PURE__*/React.createElement("div", {
       className: "pf-reason-list"
     }, Array.from(groups, ([code, items]) => /*#__PURE__*/React.createElement("div", {
       key: code

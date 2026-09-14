@@ -10,7 +10,7 @@ async function adoption(page, ready, theme, report, flush) {
   await page.getByLabel('计划开始日期', { exact: true }).fill('2026-09-09');
   await page.getByLabel('计划结束日期', { exact: true }).fill('2026-09-25');
   await page.getByRole('button', { name: '开始排产检查', exact: true }).click();
-  await page.getByText('逐工序检查 · ' + ready.expected.task_count + ' 道', { exact: true }).click();
+  await page.getByText('检查明细 · ' + ready.expected.task_count + ' 道', { exact: true }).click();
   await page.getByRole('button', { name: '核对并开始排产', exact: true }).click();
   await page.getByRole('button', { name: '确认开始排产', exact: true }).click();
   const table = page.getByRole('table', { name: '已保存候选', exact: true });
@@ -20,10 +20,10 @@ async function adoption(page, ready, theme, report, flush) {
   await page.locator('[data-run-adoption-action]').getByRole('button', { name: '采用方案', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: '确认正式采用', exact: true });
   await dialog.getByLabel('采用原因', { exact: true }).fill('FB isolated downstream acceptance');
-  await dialog.getByLabel('声明人', { exact: true }).fill('FB browser');
+  await dialog.getByLabel('经办人', { exact: true }).fill('FB browser');
   await dialog.getByRole('checkbox').check();
   await dialog.getByRole('button', { name: '确认正式采用', exact: true }).click();
-  await page.getByRole('dialog', { name: '正式采用回执', exact: true }).getByRole('button', { name: '进入正式方案', exact: true }).click();
+  await page.getByRole('dialog', { name: '正式采用结果', exact: true }).getByRole('button', { name: '进入正式计划', exact: true }).click();
   await page.locator('[data-plan-workspace] .plan-main').waitFor(); await flush();
   const formal = report.responses.slice().reverse().find(row => row.body.data && row.body.data.plan && row.body.data.tasks).body.data;
   assert.equal(formal.tasks.length, 9); assert.equal(formal.plan.version, 5);

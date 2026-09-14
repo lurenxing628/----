@@ -18,7 +18,7 @@
     const view = input.ownerDocument.defaultView;
     const constructor = input.tagName === 'SELECT' ? view.HTMLSelectElement : view.HTMLInputElement;
     const descriptor = Object.getOwnPropertyDescriptor(constructor.prototype, property);
-    if (!descriptor || !descriptor.set) throw new Error('该控件不支持值更新。');
+    if (!descriptor || !descriptor.set) throw new Error('control_value_setter_missing');
     const before = input.value;
     // Use the native setter so React observes the existing input/change contract.
     descriptor.set.call(input, value);

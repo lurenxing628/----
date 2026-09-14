@@ -61,7 +61,7 @@ function SystemLive({
     setLoading(true);
     setError('');
     window.APSWorkbenchTransport.read(boot.overview_url, controller.signal).then(result => {
-      if (!window.APSWorkbenchSystemContract.validate(result.data)) throw new Error('本机系统信息不完整，未使用样例数据替代。');
+      if (!window.APSWorkbenchSystemContract.validate(result.data)) throw new Error('读到的本机系统信息不完整，页面没有改动。请点「重新检查」重试。');
       setPayload(result);
     }).catch(problem => {
       if (problem.name !== 'AbortError') {
@@ -89,7 +89,7 @@ function SystemLive({
   };
   const exportDiagnostic = () => {
     try {
-      window.APSWorkbenchTransport.downloadJSON('aps-system-diagnostic.json', {
+      window.APSWorkbenchTransport.downloadJSON('系统诊断.json', {
         instance: boot.instance_label,
         page_check: local,
         system: payload
@@ -102,7 +102,7 @@ function SystemLive({
   const exportSampleLogs = filters => {
     try {
       const file = model.sampleLogCSV(filters);
-      model.download(window, 'aps-management-sample-logs.csv', 'text/csv;charset=utf-8', file);
+      model.download(window, '管理样例日志.csv', 'text/csv;charset=utf-8', file);
       setNotice('已生成独立管理样例日志，不含本机记录。');
     } catch (problem) {
       setNotice('样例日志导出失败：' + problem.message);
@@ -113,7 +113,7 @@ function SystemLive({
     available: '可读取',
     empty: '暂无记录',
     partial: '需核对',
-    missing: '目录不存在',
+    missing: '文件夹不存在',
     error: '读取失败',
     not_read: '未读取'
   })[state] || '未知';
@@ -132,7 +132,7 @@ function SystemLive({
   }, /*#__PURE__*/React.createElement(ControlButton, {
     className: "sm-button sm-icon-button",
     size: "sm",
-    title: "\u91CD\u65B0\u8BFB\u53D6\u672C\u673A\u72B6\u6001",
+    title: "\u5237\u65B0\u672C\u673A\u72B6\u6001",
     "aria-label": "\u91CD\u65B0\u68C0\u67E5",
     disabled: loading || !current || readSuspended,
     onClick: () => {
@@ -169,9 +169,9 @@ function SystemLive({
     value: ready + ' / ' + local.checks.length,
     helper: "\u4EC5\u9875\u9762\u4F9D\u8D56\u4E0E\u8D44\u6E90"
   }), /*#__PURE__*/React.createElement(Metric, {
-    label: "\u672C\u673A\u6570\u636E\u63A5\u5165",
+    label: "\u672C\u673A\u6570\u636E\u8BFB\u53D6",
     value: !current ? '演示模式' : readSuspended ? '读取已暂停' : loading ? '读取中' : error ? '读取失败' : payload ? '已连接' : '未读取',
-    helper: current ? readSuspended ? '先核实原维护请求' : '来自本机服务' : '独立固定样例',
+    helper: current ? readSuspended ? '请先查询上次维护操作的结果' : '来自本机服务' : '独立固定样例',
     tone: error && current ? 'danger' : undefined
   }), /*#__PURE__*/React.createElement(Metric, {
     label: "\u6570\u636E\u5E93\u72B6\u6001",
@@ -288,7 +288,7 @@ function SystemLiveOverview({
     description: logs.message
   }, {
     tab: 'config',
-    title: '自动维护策略',
+    title: '自动维护规则',
     icon: 'square-pen',
     status: config.values ? '自动备份' + (config.values.auto_backup_enabled === 'yes' ? '已启用' : '已关闭') : '配置读取失败',
     description: config.message
@@ -301,7 +301,7 @@ function SystemLiveOverview({
     className: "sm-section-head"
   }, /*#__PURE__*/React.createElement("h3", null, "\u672C\u673A\u7EF4\u62A4\u4E8B\u9879"), /*#__PURE__*/React.createElement("span", {
     className: "sm-meta"
-  }, "\u5907\u4EFD\u3001\u65E5\u5FD7\u4E0E\u7EF4\u62A4\u7B56\u7565")), entries.map(item => /*#__PURE__*/React.createElement("button", {
+  }, "\u5907\u4EFD\u3001\u65E5\u5FD7\u4E0E\u7EF4\u62A4\u89C4\u5219")), entries.map(item => /*#__PURE__*/React.createElement("button", {
     key: item.tab,
     type: "button",
     className: "sm-work-row",
@@ -451,7 +451,7 @@ function SystemLiveFiles({
     className: "sm-section"
   }, /*#__PURE__*/React.createElement("div", {
     className: "sm-section-head"
-  }, /*#__PURE__*/React.createElement("h3", null, kind === 'backups' ? '备份与恢复记录' : '运行日志与操作记录'), /*#__PURE__*/React.createElement("span", {
+  }, /*#__PURE__*/React.createElement("h3", null, kind === 'backups' ? '备份与维护记录' : '运行日志与操作记录'), /*#__PURE__*/React.createElement("span", {
     className: "sm-meta"
   }, data.files_truncated ? '仅列最近20个文件' : '已读取文件信息')), /*#__PURE__*/React.createElement("div", {
     className: "sm-toolbar"
@@ -470,10 +470,10 @@ function SystemLiveFiles({
     disabled: true
   }), /*#__PURE__*/React.createElement("div", {
     className: "sm-actions sm-record-actions"
-  }, (kind === 'backups' ? ['创建备份', '恢复备份', '删除备份'] : ['导出日志 CSV', '正式诊断包']).map(label => /*#__PURE__*/React.createElement(SMDisabled, {
+  }, (kind === 'backups' ? ['新增备份', '恢复备份', '删除备份'] : ['导出日志 CSV', '正式诊断包']).map(label => /*#__PURE__*/React.createElement(SMDisabled, {
     key: label,
     label: label,
-    reason: "\u8BE5\u64CD\u4F5C\u7684\u7EF4\u62A4\u63A5\u53E3\u5C1A\u672A\u8FC1\u79FB\uFF0C\u5F53\u524D\u53EA\u8BFB\u6587\u4EF6\u4FE1\u606F\u3002"
+    reason: window.WorkbenchTerms.outcomes.unavailable
   })))), /*#__PURE__*/React.createElement("p", {
     className: "sm-note"
   }, data.message, kind === 'logs' && data.operation_record_count != null ? ' 当前共有 ' + data.operation_record_count + ' 条操作记录。' : ''), data.error && /*#__PURE__*/React.createElement("p", {
@@ -495,7 +495,7 @@ function SystemLiveFiles({
     className: "sm-pager"
   }, /*#__PURE__*/React.createElement("span", {
     className: "sm-meta"
-  }, "\u5DF2\u8BFB\u53D6 ", entries.length, " \u4E2A\u6587\u4EF6", data.count != null ? ' · 目录共 ' + data.count + ' 个' : ' · 总数尚不能确认'), /*#__PURE__*/React.createElement(window.WorkbenchListControls.Pager, {
+  }, "\u5DF2\u8BFB\u53D6 ", entries.length, " \u4E2A\u6587\u4EF6", data.count != null ? ' · 文件夹共 ' + data.count + ' 个' : ' · 总数尚不能确认'), /*#__PURE__*/React.createElement(window.WorkbenchListControls.Pager, {
     page: current,
     pages: pages,
     total: entries.length,
@@ -544,7 +544,7 @@ function SystemLiveConfig({
     className: "sm-section-head"
   }, /*#__PURE__*/React.createElement("h3", null, "\u672C\u673A\u81EA\u52A8\u7EF4\u62A4\u914D\u7F6E"), /*#__PURE__*/React.createElement(SMDisabled, {
     label: "\u4FDD\u5B58\u6B63\u5F0F\u914D\u7F6E",
-    reason: "\u914D\u7F6E\u5199\u5165\u63A5\u53E3\u5C1A\u672A\u8FC1\u79FB\uFF0C\u5F53\u524D\u53EA\u8BFB\u3002"
+    reason: window.WorkbenchTerms.outcomes.unavailable
   })), /*#__PURE__*/React.createElement("p", {
     className: "sm-note"
   }, data.message), data.error && /*#__PURE__*/React.createElement("p", {
@@ -556,7 +556,7 @@ function SystemLiveConfig({
     className: "sm-config-form"
   }, /*#__PURE__*/React.createElement("div", {
     className: "sm-config-groups"
-  }, [['backup', '备份策略'], ['logs', '操作日志策略']].map(([group, label]) => /*#__PURE__*/React.createElement("fieldset", {
+  }, [['backup', '备份规则'], ['logs', '操作日志规则']].map(([group, label]) => /*#__PURE__*/React.createElement("fieldset", {
     className: "sm-config-group",
     key: group
   }, /*#__PURE__*/React.createElement("legend", null, label), model.CONFIG_FIELDS.filter(field => field.group === group).map(field => /*#__PURE__*/React.createElement("div", {
@@ -582,9 +582,9 @@ function SystemLiveConfig({
     className: "sm-error"
   }, data.dirty_reasons[field.key]) : data.defaulted_fields.includes(field.key) ? /*#__PURE__*/React.createElement("small", {
     className: "sm-meta"
-  }, "\u7F3A\u7701\u503C\uFF0C\u5C1A\u672A\u4FDD\u5B58") : /*#__PURE__*/React.createElement("small", {
+  }, "\u9ED8\u8BA4\u503C\uFF0C\u5C1A\u672A\u4FDD\u5B58") : /*#__PURE__*/React.createElement("small", {
     className: "sm-meta"
   }, "\u5DF2\u5B58\u914D\u7F6E")))))))), /*#__PURE__*/React.createElement("details", {
     className: "sm-rules"
-  }, /*#__PURE__*/React.createElement("summary", null, "\u751F\u6548\u8303\u56F4\u4E0E\u81EA\u52A8\u7EF4\u62A4\u89C4\u5219"), /*#__PURE__*/React.createElement("p", null, "\u81EA\u52A8\u7EF4\u62A4\u7531\u6B63\u5E38\u9875\u9762\u8BBF\u95EE\u8BF7\u6C42\u89E6\u53D1\u68C0\u67E5\uFF0C\u4E0D\u4FDD\u8BC1\u6307\u5B9A\u65F6\u523B\u6267\u884C\u3002\u5F53\u524D\u6982\u51B5\u8BFB\u53D6\u4E0D\u4F1A\u89E6\u53D1\u5907\u4EFD\u6216\u6E05\u7406\u3002"))));
+  }, /*#__PURE__*/React.createElement("summary", null, "\u751F\u6548\u8303\u56F4\u4E0E\u81EA\u52A8\u7EF4\u62A4\u89C4\u5219"), /*#__PURE__*/React.createElement("p", null, "\u6253\u5F00\u9875\u9762\u65F6\u7CFB\u7EDF\u624D\u4F1A\u68C0\u67E5\u4E00\u6B21\u81EA\u52A8\u7EF4\u62A4\uFF0C\u4E0D\u4FDD\u8BC1\u5728\u6307\u5B9A\u65F6\u523B\u6267\u884C\u3002\u770B\u6982\u51B5\u4E0D\u4F1A\u89E6\u53D1\u5907\u4EFD\u6216\u6E05\u7406\u3002"))));
 }

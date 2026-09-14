@@ -53,7 +53,7 @@ def test_bad_internal_values_reject_entire_file(hours_conn, field, value):
     rows, _ = preview(hours_conn, {"sequence": 3, "external_days": 9}, {"sequence": 1, field: value})
     assert rows[1]["result"] == "rejected"
     assert rows[1]["errors"][0]["field"] == field
-    with pytest.raises(WorkbenchCommandRejected, match="拒绝行"):
+    with pytest.raises(WorkbenchCommandRejected, match="被拒绝的行"):
         apply(hours_conn, rows, ack=True)
     assert snapshot(hours_conn) == before
 

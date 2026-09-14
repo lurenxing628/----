@@ -11,12 +11,12 @@
     return <section aria-labelledby="pf-rules-title"><h3 id="pf-rules-title">本次排产规则</h3><div className="pf-rows">
       <div className="pf-rule"><strong>齐套检查</strong><Segment label="齐套检查" value={value.ready_check} choices={[[true, '开启'], [false, '关闭']]} disabled={disabled} onChange={ready_check => onChange({ ready_check })} /></div>
       <div className="pf-rule"><strong>缺资源工序</strong><Segment label="缺资源工序" value={value.missing_resource_policy} choices={[["auto_assign", '自动分配'], ['exclude', '暂不排']]} disabled={disabled} onChange={missing_resource_policy => onChange({ missing_resource_policy })} /></div>
-      <div className="pf-rule"><strong>已发生执行</strong><Segment label="已发生执行" value="preserve_actuals" choices={[["preserve_actuals", '保留事实'], ['reopen', '可重排', true]]} disabled={disabled} onChange={() => {}} /></div>
-      <div className="pf-rule pf-note">本次参数，不改全局配置。工时、工种、外协资料仍为必填项；开工和完工事实不能解除保护。</div>
+      <div className="pf-rule"><span className="pf-fixed">已开工工序：保留记录（不可修改）</span></div>
+      <div className="pf-rule pf-note">本次参数，不改全局配置。工时、工种、外协资料仍为必填项；已开工和已完工的工序不能解除保护。</div>
     </div></section>;
   }
   function Metrics({ counts }) {
-    const items = [['selected_tasks', '范围内工序'], ['ready_tasks', '资料有效'], ['auto_assign_required', '自动分配待补'], ['skipped_tasks', '本次跳过'], ['blocked_tasks', '阻塞工序'], ['no_route_batches', '未生成工艺批次'], ['actual_fact_tasks', '已发生事实']];
+    const items = [['selected_tasks', '范围内工序'], ['ready_tasks', '资料有效'], ['auto_assign_required', '自动分配待补'], ['skipped_tasks', '本次跳过'], ['blocked_tasks', '缺资料工序'], ['no_route_batches', '未生成工艺批次'], ['actual_fact_tasks', '已开工工序']];
     return <dl className="pf-metrics">{items.map(([key, label]) => <div key={key}><dt>{label}</dt><dd>{counts ? counts[key] : '未检查'}</dd></div>)}</dl>;
   }
   function Reasons({ data }) {
@@ -37,10 +37,10 @@
     function objectLabel(item) {
       const task = tasks.get(item.operation_ref);
       if (task) return task.batch_id + ' · ' + task.sequence + ' ' + task.label + (task.piece_id ? ' · ' + task.piece_id : '');
-      return item.batch_id || batches.get(item.batch_ref) || '对象信息未完整记录';
+      return item.batch_id || batches.get(item.batch_ref) || '批次与工序未读取';
     }
     return <div className="pf-alert"><div role="status">{Array.from(groups, ([code, items]) => <div key={code} data-reason-group={code}>{summary(code, items)}</div>)}</div>
-      <details className="pf-reasons"><summary>原因与对应对象 · {data.run_blocked_reasons.length + data.warnings.length} 项</summary>
+      <details className="pf-reasons"><summary>原因明细 · {data.run_blocked_reasons.length + data.warnings.length} 项</summary>
         <div className="pf-reason-list">{Array.from(groups, ([code, items]) => <div key={code}>{items.map((item, index) => <div className="pf-reason-item" key={index}
           data-reason-code={item.code} data-operation-ref={item.operation_ref} data-batch-ref={item.batch_ref}>
           {objectLabel(item) && <strong>{objectLabel(item)}： </strong>}{item.message}<window.WorkbenchReference entries={{ '原因编号': item.code, '工序编号': item.operation_ref, '批次编号': item.batch_ref }} /></div>)}</div>)}</div>

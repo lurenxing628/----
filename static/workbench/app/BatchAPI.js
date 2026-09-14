@@ -6,7 +6,7 @@
     const api = window.APSResourceAPI.create('batches'),
       C = window.APSBatchContract;
     const entity = ref => {
-      if (!C.ref(ref)) throw window.APSResourceContract.failure('批次引用不正确。');
+      if (!C.ref(ref)) throw window.APSResourceContract.failure('这个批次已失效，请返回批次列表重新选择。');
       return root + '/' + ref;
     };
     return {
@@ -69,7 +69,7 @@
           input,
           snapshot_ref: snapshot
         }, signal);
-        throw window.APSResourceContract.failure('批次预览操作不正确。');
+        throw window.APSResourceContract.failure('批次预检操作不正确。');
       },
       async command(kind, action, ref, body, signal) {
         if (kind !== 'batch' || !C.actions.includes(action)) throw window.APSResourceContract.failure('批次操作不正确。');
@@ -78,7 +78,7 @@
           if (ref !== null) throw window.APSResourceContract.failure('新增批次不能绑定已有批次。');
           path = root + '/create';
         } else if (['bulk_confirm', 'import_confirm'].includes(action)) {
-          if (ref !== body.input.preview_ref) throw window.APSResourceContract.failure('批量确认与预览不一致。');
+          if (ref !== body.input.preview_ref) throw window.APSResourceContract.failure('批量确认与预检结果不一致。');
           path = root + (action === 'bulk_confirm' ? '/bulk-confirm' : '/import-confirm');
         } else path = entity(ref) + '/' + (action === 'sync_confirm' ? 'sync-confirm' : action);
         const result = await api.execute(path, body, signal);

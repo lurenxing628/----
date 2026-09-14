@@ -8,7 +8,7 @@ async function assertSuggestedTimes(page, start, end, since) {
   const time = await page.evaluate(value => ({ suggested: Date.parse(value), now: Date.now() }), actualStart);
   assert(time.suggested >= Math.floor(since / 1000) * 1000 && time.suggested <= time.now,
     'New report times must be current suggestions, not retained manual draft values');
-  assert(await page.getByText('以下时间为建议值，保存后将登记为实际记录。请核对；不确定时清空，保持未知。', { exact: true }).isVisible());
+  assert(await page.getByText('以下时间为建议值，保存后会登记成实际记录。请核对；不确定时请清除，保持未知。', { exact: true }).isVisible());
 }
 
 async function exercise(p) {
@@ -21,13 +21,13 @@ async function exercise(p) {
   await page.getByRole('button', { name: '新增本次报工', exact: true }).click();
   const quantity = page.getByRole('spinbutton', { name: '本次完成数量', exact: true });
   const start = page.getByLabel('实际开工', { exact: true }), end = page.getByLabel('本次实际完工', { exact: true });
-  const hours = page.getByRole('spinbutton', { name: '有效工时 (h)', exact: true });
+  const hours = page.getByRole('spinbutton', { name: '有效工时（小时）', exact: true });
   await p.step(['WBP-FIELD-007.A001', 'WBP-FIELD-013.A004'], 'typed-quantity-and-initial-focus', async () => {
     assert(await quantity.evaluate(node => document.activeElement === node));
     await assertSuggestedTimes(page, start, end, openedAt);
     assert.equal(await hours.inputValue(), '');
     await quantity.type('3'); assert.equal(await quantity.inputValue(), '3');
-    assert.equal(await page.getByLabel('已知累计预览', { exact: true }).innerText(), '3');
+    assert.equal(await page.getByLabel('已知累计', { exact: true }).innerText(), '3');
   });
   for (const [action, button, expected] of [['A002', '增加本次完成数量', '4'], ['A003', '减少本次完成数量', '3']])
     await p.step(['WBP-FIELD-007.' + action], button, async () => {
@@ -47,7 +47,7 @@ async function exercise(p) {
   await p.step(['WBP-FIELD-008.A001', 'WBP-FIELD-008.A002', 'WBP-FIELD-009.A006'], 'manual-wall-clock-values-do-not-create-hours', async () => {
     await start.fill('2026-08-31T08:00'); await end.fill('2026-08-31T10:00');
     assert.equal(await hours.inputValue(), '');
-    assert.equal(await page.getByLabel('作业跨度', { exact: true }).innerText(), '2 h');
+    assert.equal(await page.getByLabel('作业时长', { exact: true }).innerText(), '2 小时');
     assert.equal(await page.getByLabel('工时差额', { exact: true }).innerText(), '未知');
   });
   let popup;
@@ -71,18 +71,18 @@ async function exercise(p) {
     await hour.fill('23'); await minute.fill('59');
     assert(await popup.getByRole('button', { name: '增加时', exact: true }).isDisabled());
     assert(await popup.getByRole('button', { name: '增加分', exact: true }).isDisabled());
-    await hour.fill('24'); assert(await popup.getByRole('button', { name: '确定', exact: true }).isDisabled());
-    await hour.fill('08'); await minute.fill('60'); assert(await popup.getByRole('button', { name: '确定', exact: true }).isDisabled());
-    await minute.fill('00'); await popup.getByRole('button', { name: '确定', exact: true }).click();
+    await hour.fill('24'); assert(await popup.getByRole('button', { name: '确认', exact: true }).isDisabled());
+    await hour.fill('08'); await minute.fill('60'); assert(await popup.getByRole('button', { name: '确认', exact: true }).isDisabled());
+    await minute.fill('00'); await popup.getByRole('button', { name: '确认', exact: true }).click();
     await popup.waitFor({ state: 'detached' }); assert.equal(await start.inputValue(), '2026-08-31T08:00');
   });
   await p.step(['WBP-FIELD-008.A006', 'WBP-FIELD-008.A007'], 'today-confirm-then-clear-time', async () => {
     popup = await controls.openPicker(start);
     const today = await page.evaluate(() => { const d = new Date(); return [d.getFullYear(), String(d.getMonth() + 1).padStart(2, '0'), String(d.getDate()).padStart(2, '0')].join('-'); });
     await popup.getByRole('button', { name: '今天', exact: true }).click();
-    await popup.getByRole('button', { name: '确定', exact: true }).click(); await popup.waitFor({ state: 'detached' });
+    await popup.getByRole('button', { name: '确认', exact: true }).click(); await popup.waitFor({ state: 'detached' });
     assert((await start.inputValue()).startsWith(today));
-    popup = await controls.openPicker(start); await popup.getByRole('button', { name: '清空', exact: true }).click();
+    popup = await controls.openPicker(start); await popup.getByRole('button', { name: '清除', exact: true }).click();
     await popup.waitFor({ state: 'detached' }); assert.equal(await start.inputValue(), '');
   });
   await start.fill('2026-08-31T08:00');
@@ -140,17 +140,17 @@ async function exercise(p) {
     await page.setViewportSize(viewport); await p.shot('datetime-resize-closed');
   });
   await p.step(['WBP-FIELD-009.A001', 'WBP-FIELD-009.A003', 'WBP-FIELD-009.A004', 'WBP-FIELD-009.A005'], 'hours-step-resources-remark-and-fold', async () => {
-    await hours.fill('0.5'); await page.getByRole('button', { name: '增加有效工时 (h)', exact: true }).click();
+    await hours.fill('0.5'); await page.getByRole('button', { name: '增加有效工时（小时）', exact: true }).click();
     assert.equal(await hours.inputValue(), '0.6'); await hours.press('ArrowDown'); assert.equal(await hours.inputValue(), '0.5');
     await page.locator('.field-editor > details > summary').click();
     await p.choose('实际设备', ready.expected.final_e.machine_ref); await p.choose('实际人员', ready.expected.final_e.operator_ref);
     await page.getByLabel('作业备注', { exact: true }).fill('仅控件验收，不提交');
-    await page.getByLabel('现场声明人', { exact: true }).fill('控件验收员');
+    await page.getByLabel('经办人', { exact: true }).fill('控件验收员');
     await p.shot('all-editable-fields');
     await page.locator('.field-editor > details > summary').click();
     assert.equal(await page.locator('.field-editor > details').getAttribute('open'), null);
-    assert.equal(await page.getByLabel('作业跨度', { exact: true }).innerText(), '2 h');
-    assert.equal(await page.getByLabel('工时差额', { exact: true }).innerText(), '1.5 h');
+    assert.equal(await page.getByLabel('作业时长', { exact: true }).innerText(), '2 小时');
+    assert.equal(await page.getByLabel('工时差额', { exact: true }).innerText(), '1.5 小时');
   });
   await p.step(['WBP-FIELD-013.A003', 'WBP-FIELD-013.A005'], 'cancel-discards-draft-without-history-command', async () => {
     await page.getByRole('button', { name: '取消', exact: true }).click();
@@ -166,10 +166,10 @@ async function exercise(p) {
     await page.getByRole('button', { name: '新增本次报工', exact: true }).click();
     assert.equal(await quantity.inputValue(), ''); assert.equal(await hours.inputValue(), '');
     await assertSuggestedTimes(page, start, end, reopenedAt);
-    await page.getByRole('button', { name: '清空实际开工', exact: true }).click();
-    await page.getByRole('button', { name: '清空本次实际完工', exact: true }).click();
+    await page.getByRole('button', { name: '清除实际开工', exact: true }).click();
+    await page.getByRole('button', { name: '清除本次实际完工', exact: true }).click();
     assert.equal(await start.inputValue(), ''); assert.equal(await end.inputValue(), '');
-    assert.equal(await page.getByLabel('作业跨度', { exact: true }).innerText(), '未知');
+    assert.equal(await page.getByLabel('作业时长', { exact: true }).innerText(), '未知');
     assert.equal(await page.getByLabel('工时差额', { exact: true }).innerText(), '未知');
     const entry = await page.evaluate(() => history.state.workbench.context);
     assert.equal(entry.draft, undefined); assert.equal(entry.editor, undefined);

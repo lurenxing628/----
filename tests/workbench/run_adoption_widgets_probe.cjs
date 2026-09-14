@@ -67,13 +67,13 @@ async function reset(mode = 'normal') {
   await page.evaluate(ref => { localStorage.removeItem(RunAdoptionAPI.PENDING_KEY); mountAdoption(ref); }, fixture.candidate_ref);
   await button('正式采用').waitFor();
 }
-async function inspect() { await button('正式采用').click(); await page.getByRole('dialog', { name: '确认正式采用' }).waitFor(); await button('重新预览').waitFor(); }
+async function inspect() { await button('正式采用').click(); await page.getByRole('dialog', { name: '确认正式采用' }).waitFor(); await button('重新预检').waitFor(); }
 async function fill(reason = '生产负责人复核：覆盖完整批次，按此候选安排生产。') {
   await page.getByLabel('采用原因', { exact: true }).fill(reason);
-  await page.getByLabel('声明人', { exact: true }).fill('现场计划员 张三');
+  await page.getByLabel('经办人', { exact: true }).fill('现场计划员 张三');
   await page.getByRole('checkbox').check();
 }
-async function success() { await page.getByRole('dialog', { name: '正式采用回执' }).waitFor(); await page.getByText('已核实：本次生成正式版本 v41，共 2 道工序。', { exact: false }).waitFor(); }
+async function success() { await page.getByRole('dialog', { name: '正式采用结果' }).waitFor(); await page.getByText('已确认：本次生成第 41 版正式计划，共 2 道工序。', { exact: false }).waitFor(); }
 async function layout() {
   const result = await page.evaluate(() => {
     const dialogs = [...document.querySelectorAll('[role="dialog"]')], dialog = dialogs[dialogs.length - 1], r = dialog.getBoundingClientRect();
@@ -107,16 +107,16 @@ async function basic() {
   assert(await button('确认正式采用').isDisabled()); assert.equal(await page.getByLabel('采用原因', { exact: true }).inputValue(), '');
   await fill(); await layout(); await shot('confirm'); assert.equal(await state(), null);
   assert.equal((await evidence()).receipts, 0); await button('取消').click(); assert.equal(await state(), null); done('preview-readonly-manual-input-and-cancel');
-  await inspect(); assert.equal(await page.getByLabel('声明人', { exact: true }).inputValue(), '现场计划员 张三');
+  await inspect(); assert.equal(await page.getByLabel('经办人', { exact: true }).inputValue(), '现场计划员 张三');
   assert(await button('确认正式采用').isDisabled()); await page.getByRole('checkbox').check();
   await button('确认正式采用').click(); await success(); await layout(); await shot('receipt');
   const saved = await state(); assert.equal(saved.input.confirm, true); assert.equal((await evidence()).receipts, 1);
   assert(!JSON.stringify(saved).includes('write_token'));
-  await page.locator('.ra-records summary').click(); await page.getByText('新正式方案编号：', { exact: false }).waitFor(); await layout(); await shot('expanded-receipt');
-  await button('进入正式方案').click(); const nav = await page.evaluate(() => window.nav); assert.equal(nav[0][0], 'analysis');
+  await page.locator('.ra-records summary').click(); await page.getByText('新正式计划编号：', { exact: false }).waitFor(); await layout(); await shot('expanded-receipt');
+  await button('进入正式计划').click(); const nav = await page.evaluate(() => window.nav); assert.equal(nav[0][0], 'analysis');
   assert.notEqual(nav[0][1].plan_ref, fixture.candidate_ref); assert.equal((await page.evaluate(() => window.events)).length, 1);
   const beforeReload = (await evidence()).journal.filter(r => r.path.endsWith('/adopt')).length;
-  await page.reload(); await button('查看采用回执').waitFor(); await button('查看采用回执').click(); await success();
+  await page.reload(); await button('查看采用结果').waitFor(); await button('查看采用结果').click(); await success();
   assert.equal((await state()).request_key, saved.request_key);
   assert.equal((await evidence()).journal.filter(r => r.path.endsWith('/adopt')).length, beforeReload); done('receipt-only-navigation-and-reload-lookup');
   const receipt = await (await page.request.get(origin + '/api/workbench/v1/commands/' + saved.request_key)).json();
@@ -125,45 +125,45 @@ async function basic() {
       v => v.data.official_plan.kind = 'candidate', v => v.data.official_plan.version = 7, v => v.data.official_plan.baseline_ref = null];
     return cases.map(change => { const copy = JSON.parse(JSON.stringify(receipt)); change(copy); try { RunAdoptionAPI.receipt(copy, intent); return false; } catch (_) { return true; } });
   }, { receipt, intent: saved }); assert(rejected.every(Boolean)); done('receipt-identity-scope-and-version-validation');
-  await button('完成核实').click(); assert.equal(await state(), null);
+  await button('完成').click(); assert.equal(await state(), null);
   await reset('empty'); await inspect(); await page.getByText('尚无正式计划', { exact: true }).waitFor(); await fill();
   await button('确认正式采用').click(); await success(); done('explicit-empty-formal-baseline');
 }
 async function rejections() {
-  await reset('disabled'); await inspect(); await page.getByText('候选正式采用尚未完成联合接入，保持关闭。', { exact: true }).waitFor();
-  assert(await button('确认正式采用').isDisabled()); await control('enable'); await button('重新预览').click(); await page.getByText('v7', { exact: true }).waitFor();
+  await reset('disabled'); await inspect(); await page.getByText('此功能尚未开通。', { exact: true }).waitFor();
+  assert(await button('确认正式采用').isDisabled()); await control('enable'); await button('重新预检').click(); await page.getByText('v7', { exact: true }).waitFor();
   await button('取消').click(); done('disabled-is-retryable-with-explicit-preview');
   await reset('partial'); await inspect(); await page.locator('.ra-notice').waitFor(); assert(await button('确认正式采用').isDisabled()); await button('取消').click(); done('partial-is-not-adoptable');
   await reset(); await inspect(); await fill(); await control('drift'); await button('确认正式采用').click();
-  await page.getByText('输入已保留，请重新预览并确认。', { exact: false }).waitFor(); const stale = await state(); assert.equal(stale.phase, 'rejected');
-  await page.reload(); await button('重新核对采用').click(); assert.equal(await page.getByLabel('声明人', { exact: true }).inputValue(), stale.input.declared_operator);
-  assert(await button('确认正式采用').isDisabled()); await button('重新预览').click(); await page.locator('.ra-notice').waitFor();
+  await page.getByText('填写内容已保留，请重新预检并确认。', { exact: false }).waitFor(); const stale = await state(); assert.equal(stale.phase, 'rejected');
+  await page.reload(); await button('重新核对采用').click(); assert.equal(await page.getByLabel('经办人', { exact: true }).inputValue(), stale.input.declared_operator);
+  assert(await button('确认正式采用').isDisabled()); await button('重新预检').click(); await page.locator('.ra-notice').waitFor();
   assert(await button('确认正式采用').isDisabled()); assert.equal((await evidence()).receipts, 0); await shot('drift-blocked'); done('409-retains-input-and-repreview-blocks-drift');
   await button('结束本次未采用').click(); assert.equal(await state(), null); await button('正式采用').waitFor(); done('explicit-rejection-can-release-original-intent');
   await reset(); await inspect(); await fill(); await control('expire'); await button('确认正式采用').click();
-  await page.getByText('输入已保留，请重新预览并确认。', { exact: false }).waitFor(); const old = await state();
-  await button('重新预览').click(); await page.getByText('v7', { exact: true }).waitFor(); assert(await button('确认正式采用').isDisabled());
+  await page.getByText('填写内容已保留，请重新预检并确认。', { exact: false }).waitFor(); const old = await state();
+  await button('重新预检').click(); await page.getByText('v7', { exact: true }).waitFor(); assert(await button('确认正式采用').isDisabled());
   await page.getByRole('checkbox').check(); await button('确认正式采用').click(); await success();
   assert.equal((await state()).request_key, old.request_key); assert.equal((await evidence()).receipts, 1); done('expired-preview-reconfirmed-with-original-key');
 }
 async function uncertain() {
   await reset('paused'); await inspect(); await fill(); await button('确认正式采用').click();
   await waitForAsyncCondition(async () => (await (await fetch('/fixture/evidence')).json()).started);
-  const original = await state(); await button('关闭并保留请求').click();
-  await page.evaluate(ref => mountAdoption(ref), fixture.other_ref); await button('核实采用结果').click();
-  await page.getByText('存在另一候选的原采用请求，请先核实该记录。', { exact: true }).waitFor();
+  const original = await state(); await button('关闭并保留上次操作').click();
+  await page.evaluate(ref => mountAdoption(ref), fixture.other_ref); await button('查询采用结果').click();
+  await page.getByText('另一个候选方案还有没确认的采用操作，请先确认那条记录。', { exact: true }).waitFor();
   assert.equal(await button('确认正式采用').count(), 0); assert.equal(await page.getByLabel('采用原因', { exact: true }).getAttribute('readonly'), '');
-  await page.reload(); await button('核实采用结果').click(); await page.getByRole('button', { name: '查询原请求', exact: true }).waitFor();
+  await page.reload(); await button('查询采用结果').click(); await page.getByRole('button', { name: '查询结果', exact: true }).waitFor();
   assert.equal((await state()).request_key, original.request_key); assert.equal((await evidence()).receipts, 0);
   await control('release'); await waitForAsyncCondition(async () => (await (await fetch('/fixture/evidence')).json()).receipts === 1);
-  await button('查询原请求').click(); await success(); done('inflight-close-candidate-switch-refresh-not-recorded-then-lookup');
+  await button('查询结果').click(); await success(); done('inflight-close-candidate-switch-refresh-not-recorded-then-lookup');
   await reset(); await inspect(); await fill(); await page.route('**/api/workbench/v1/commands/*', route => route.abort());
   await page.request.post(origin + '/probe/drop-next-adoption-reply'); await button('确认正式采用').click();
-  await page.getByRole('dialog', { name: '核实原采用请求' }).waitFor();
+  await page.getByRole('dialog', { name: '查询上次采用结果' }).waitFor();
   await waitForAsyncCondition(async () => (await (await fetch('/fixture/evidence')).json()).receipts === 1);
-  const lost = await state(); await button('关闭并保留请求').click(); await page.reload();
-  await button('核实采用结果').click(); assert.equal(await button('进入正式方案').count(), 0); await shot('unknown-preserved');
-  await page.unroute('**/api/workbench/v1/commands/*'); await button('查询原请求').click(); await success();
+  const lost = await state(); await button('关闭并保留上次操作').click(); await page.reload();
+  await button('查询采用结果').click(); assert.equal(await button('进入正式计划').count(), 0); await shot('unknown-preserved');
+  await page.unroute('**/api/workbench/v1/commands/*'); await button('查询结果').click(); await success();
   assert.equal((await state()).request_key, lost.request_key);
   const journal = (await evidence()).journal.filter(r => r.path.endsWith('/adopt') && r.request_key === lost.request_key);
   assert.equal(journal.length, 1); done('lost-real-commit-response-recovered-without-rewrite');
@@ -177,12 +177,12 @@ async function focusAndStorage() {
   assert.equal(await page.getByRole('dialog').count(), 0); done('nested-top-modal-focus-escape-restores-parent');
   await inspect(); await fill();
   await page.evaluate(() => { window.originalStorageWrite = Storage.prototype.setItem; Storage.prototype.setItem = function(k, v) { if (k === RunAdoptionAPI.PENDING_KEY) throw Error('fixture storage full'); return window.originalStorageWrite.call(this, k, v); }; });
-  await button('确认正式采用').click(); await page.getByText('无法保存采用恢复记录', { exact: false }).first().waitFor();
+  await button('确认正式采用').click(); await page.getByText('存不下采用的操作记录', { exact: false }).first().waitFor();
   assert.equal((await evidence()).receipts, 0); await page.evaluate(() => { Storage.prototype.setItem = window.originalStorageWrite; });
-  await button('重读恢复记录').click(); await button('重新预览').click(); await page.getByText('v7', { exact: true }).waitFor();
+  await button('刷新上次操作记录').click(); await button('重新预检').click(); await page.getByText('v7', { exact: true }).waitFor();
   await page.evaluate(() => { window.failAdoptCallback = true; });
   await page.getByRole('checkbox').check(); await button('确认正式采用').click(); await success(); done('storage-failure-before-write-and-actionable-recovery');
-  await page.getByText('采用已核实，但关联页面更新失败，请重新打开正式方案。', { exact: true }).waitFor(); done('parent-refresh-failure-does-not-erase-receipt');
+  await page.getByText('采用已确认，但关联页面没刷新成功，请重新打开正式计划。', { exact: true }).waitFor(); done('parent-refresh-failure-does-not-erase-receipt');
   assert.deepEqual(await page.evaluate(() => [localStorage.getItem('aps_workbench_run_pending_v1'), localStorage.getItem('aps_workbench_batch_pending_v1')]), ['unrelated-run', 'unrelated-batch']);
   done('independent-pending-namespace');
 }

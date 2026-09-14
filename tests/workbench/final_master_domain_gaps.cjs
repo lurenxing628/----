@@ -30,8 +30,8 @@ async function processDetail(code) {
 }
 async function masterCounts() {
   await open('basedata');
-  const area = page.getByRole('region', {name: '主数据总览', exact: true});
-  const response = await p.response('/api/workbench/v1/master-overview', () => p.click(b(area, '刷新主数据')));
+  const area = page.getByRole('region', {name: '资料总览', exact: true});
+  const response = await p.response('/api/workbench/v1/master-overview', () => p.click(b(area, '刷新资料')));
   await area.locator('.mo-table[aria-busy="false"]').waitFor();
   const overview = response.data.overview, tables = p.snapshot().tables;
   const withOperations = new Set(tables.PartOperations.map(row => row.part_no));
@@ -41,7 +41,7 @@ async function masterCounts() {
   assert.equal(overview.domains.length, 8);
   for (const domain of overview.domains) {
     assert(domain.loaded); assert.equal(domain.count, raw[domain.id]);
-    const tile = b(area, '查看数据域 ' + domain.label);
+    const tile = b(area, '查看资料类别 ' + domain.label);
     assert.equal(await tile.locator('.wb-metric-value').innerText(), String(raw[domain.id]));
   }
   assert.equal(overview.stats.entities, Object.values(raw).reduce((sum, count) => sum + count, 0));
@@ -74,10 +74,10 @@ async function manualRows() {
   assert.equal(await table.locator('tbody tr').count(), 1);
   await p.type(child.getByLabel('第 1 行工序号', {exact: true}), '10');
   await p.type(child.getByLabel('第 1 行工种', {exact: true}), '车削');
-  await p.click(b(child, '添加工序'));
+  await p.click(b(child, '新增工序'));
   await p.type(child.getByLabel('第 2 行工序号', {exact: true}), '30');
   await p.type(child.getByLabel('第 2 行工种', {exact: true}), '检验');
-  await p.click(b(child, '添加工序')); assert.equal(await table.locator('tbody tr').count(), 3);
+  await p.click(b(child, '新增工序')); assert.equal(await table.locator('tbody tr').count(), 3);
   await p.click(b(child, '删除第 3 行')); assert.equal(await table.locator('tbody tr').count(), 2);
   async function preview() {
     const waiting = page.waitForResponse(row => new URL(row.url()).pathname.endsWith('/route-preview'));
@@ -105,7 +105,7 @@ async function manualRows() {
 async function processMissing() {
   const scope = await processPage(), response = await search(scope, 'C-NO-SUCH-PART');
   assert.equal(response.data.page.total, 0);
-  await scope.getByText('当前条件下没有零件。', {exact: true}).waitFor();
+  await scope.getByText('当前筛选没有匹配的零件', {exact: true}).waitFor();
 }
 async function previousPage() {
   const scope = await processPage(); await search(scope, 'FC-P-');

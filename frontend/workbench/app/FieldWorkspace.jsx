@@ -25,7 +25,7 @@
     const readPlan = React.useRef(scope.plan_ref);
     if (data && !read.loading && !read.error) readPlan.current = data.scope.plan_ref;
     const captionPlan = !read.loading && !read.error && data && data.plan;
-    const captionStatus = captionPlan && ({ official: captionPlan.is_current_official ? '当前正式采用' : '历史正式方案', candidate: window.WorkbenchTerms.candidate, scenario: window.WorkbenchTerms.trial + '场景' })[captionPlan.kind];
+    const captionStatus = captionPlan && ({ official: captionPlan.is_current_official ? '当前正式采用' : '历史正式计划', candidate: window.WorkbenchTerms.candidate, scenario: window.WorkbenchTerms.trial_scenario })[captionPlan.kind];
     window.WorkbenchCaption.useCaption(captionStatus ? {
       reference: captionPlan.plan_ref, label: '现场计划', name: captionPlan.display_name, status: captionStatus,
       version: captionPlan.kind === 'official' && Number.isSafeInteger(captionPlan.version) ? '正式 v' + captionPlan.version : undefined,
@@ -61,7 +61,7 @@
     function done(options = {}) {
       if (command.phase !== 'done' || !command.reset()) return;
       if (editor) drafts.current.delete(editor.taskRef);
-      setNextDraft(options.continueAfter ? options : null); setNotice('已保存，正在自动重读最新报工。');
+      setNextDraft(options.continueAfter ? options : null); setNotice('已保存，正在自动刷新最新报工。');
       setEditor(null); setFiles(false); setScope(current => ({ ...current, plan_ref: current.plan_ref || readPlan.current,
         page: undefined, task_ref: opened || undefined, snapshot_ref: undefined })); setRevision(value => value + 1);
     }
@@ -83,7 +83,7 @@
         <Button transfer="import" disabled={blocked || !data} onClick={() => { command.reset(); setFiles(true); }}>报工文件</Button>
       </div>
       {!editor && !files && <Feedback command={command} onDone={done} />}
-      {notice && <p className="field-note field-save-status" role="status">{read.error ? '报工已保存，但重读失败；请重试读取，未再次写入。' : read.loading ? notice : nextDraft ? '已保存，正在核对最新写入上下文…' : notice === '已保存，正在自动重读最新报工。' ? '已保存并重读最新报工。' : notice}</p>}
+      {notice && <p className="field-note field-save-status" role="status">{read.error ? '报工已保存，但刷新失败；请再点「刷新现场记录」，没有重复写入。' : read.loading ? notice : nextDraft ? '已保存，正在核对最新数据…' : notice === '已保存，正在自动刷新最新报工。' ? '已保存并刷新最新报工。' : notice}</p>}
       <window.FieldFilters scope={effectiveScope} onChange={filter} disabled={blocked || read.loading} summary={data && data.summary} />
       <ErrorBox error={read.error} />
       <window.FieldTable tasks={data ? data.tasks : []} loading={read.loading} loaded={!!data} filtered={filtered} onClear={() => filter({ plan_ref: effectiveScope.plan_ref })} error={read.error} onRetry={() => { if (!command.locked) { setScope(current => ({ ...current, snapshot_ref: undefined })); setRevision(value => value + 1); } }} opened={opened} disabled={rowBlocked || read.loading} onOpen={openTask} />

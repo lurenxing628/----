@@ -62,11 +62,11 @@
   }
   function continuation(previousContext, task, identity) {
     if (task.task_ref !== identity.taskRef || task.operation_ref !== identity.operationRef) return '原任务或工序已变化，未打开新的报工草稿。';
-    if (task.execution.execution_state === 'complete') return '工序已完工；已重读结果，请按需要补齐或更正原记录。';
+    if (task.execution.execution_state === 'complete') return '工序已完工；已刷新结果，请按需要补齐或更正原记录。';
     const context = task.execution.write_context,
       blocked = C.blocked(context, 'create');
     if (blocked) return blocked;
-    if (!previousContext || context.write_token === previousContext.write_token) return '尚未取得新的报工写入上下文，未打开新的草稿。请重读后再新增。';
+    if (!previousContext || context.write_token === previousContext.write_token) return '本页数据已过期，没有打开新的报工草稿。请点「刷新现场记录」后再新增。';
     return '';
   }
   window.FieldDraftModel = {

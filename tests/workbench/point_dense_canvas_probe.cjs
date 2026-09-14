@@ -68,7 +68,7 @@ async function interact(page, state) {
   // Real pointer offsets, not model-only hit() calls: inside/outside a fixed 24px square.
   for (const [dx, dy] of [[-11, 0], [11, 0], [0, -11], [0, 11]]) {
     await page.mouse.move(x + dx, y + dy);
-    await page.getByRole('tooltip').filter({hasText: '时间点'}).waitFor();
+    await page.getByRole('tooltip').filter({hasText: '零工时工序'}).waitFor();
     await page.mouse.click(x + dx, y + dy); await choose(page, target.ref);
   }
   for (const [dx, dy] of [[-13, 0], [13, 0], [0, -13], [0, 13]]) {
@@ -81,7 +81,7 @@ async function interact(page, state) {
   assert(await page.evaluate(() => !PointContract.isPoint(pointHost.selected.task)));
   await page.mouse.click(x + 13, y); assert.equal(await selected(page), normal.target.ref, 'Miss outside 24px cannot reselect point');
   await page.mouse.click(x + 11, y); await choose(page, target.ref);
-  assert((await page.locator('[data-plan-inspector]').textContent()).includes('0 h'));
+  assert((await page.locator('[data-plan-inspector]').textContent()).includes('0 小时'));
   await canvas.focus();
   const index = row.refs.indexOf(target.ref);
   for (const [key, ref] of [['ArrowRight', row.refs[index + 1]], ['ArrowLeft', target.ref], ['Home', row.refs[0]],

@@ -15,7 +15,7 @@
   const emptyAdapter = {};
   const readScopeKeys = window.APSProcessReadView.scopeKeys;
   async function readList(adapter, scope, signal) {
-    if (!adapter || typeof adapter.list !== 'function') throw C.failure('工艺列表接口尚未接入。');
+    if (!adapter || typeof adapter.list !== 'function') throw C.failure('dependency not wired: window.APSProcessAPI.list');
     let request = scope;
     if (scope.page > 1 && !scope.snapshot_ref) {
       const firstScope = {
@@ -23,7 +23,7 @@
           page: 1
         },
         first = P.list(await adapter.list('part', firstScope, signal), firstScope);
-      if (first.meta.source !== 'production') throw C.failure('未取得原范围的生产快照，不能恢复后续页。');
+      if (first.meta.source !== 'production') throw C.failure('翻页位置已失效，请回到第 1 页重新查询。');
       request = {
         ...scope,
         snapshot_ref: first.meta.snapshot_ref
@@ -50,6 +50,40 @@
       hours: '工时'
     }[key], " \xB7 ", w[key].state === 'confirmed' ? '已确认' : w[key].state === 'locked' ? key === 'source' ? '待路线' : '待归属' : w[key].state === 'present' ? '已有记录' : w[key].state === 'missing' ? '待录入' : '未确认'))));
   }
+  function TableEmpty({
+    loading,
+    error,
+    filtered,
+    onClear,
+    onRetry
+  }) {
+    const {
+      EmptyState
+    } = window.WorkbenchListControls;
+    if (loading) return /*#__PURE__*/React.createElement(EmptyState, {
+      kind: "loading",
+      title: "\u6B63\u5728\u8BFB\u53D6\u96F6\u4EF6\u5DE5\u827A"
+    });
+    if (error) return /*#__PURE__*/React.createElement(EmptyState, {
+      kind: "error",
+      action: /*#__PURE__*/React.createElement(Button, {
+        icon: "refresh-cw",
+        onClick: onRetry
+      }, "\u5237\u65B0")
+    });
+    if (filtered) return /*#__PURE__*/React.createElement(EmptyState, {
+      kind: "filtered",
+      title: "\u5F53\u524D\u7B5B\u9009\u6CA1\u6709\u5339\u914D\u7684\u96F6\u4EF6",
+      action: /*#__PURE__*/React.createElement(Button, {
+        icon: "x",
+        onClick: onClear
+      }, "\u6E05\u9664\u7B5B\u9009")
+    });
+    return /*#__PURE__*/React.createElement(EmptyState, {
+      kind: "empty",
+      title: "\u6682\u65E0\u96F6\u4EF6\u5DE5\u827A"
+    });
+  }
   function ProcessTable({
     entities,
     selected,
@@ -64,7 +98,9 @@
     onSort,
     onFilter,
     matchingCount,
-    deleteReason
+    deleteReason,
+    onClear,
+    onRetry
   }) {
     const allRef = React.useRef(null),
       visible = entities.map(row => row.ref);
@@ -205,13 +241,14 @@
       "aria-label": '删除 ' + row.business_code,
       onClick: () => onDelete([row.ref])
     }))))), !entities.length && /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", {
-      colSpan: 6,
-      style: {
-        padding: 28,
-        textAlign: 'center'
-      },
-      className: "muted"
-    }, loading ? '正在读取工艺…' : error ? '工艺读取失败。' : '当前条件下没有零件。'))))));
+      colSpan: P.columns.length + 2
+    }, /*#__PURE__*/React.createElement(TableEmpty, {
+      loading: loading,
+      error: error,
+      onClear: onClear,
+      onRetry: onRetry,
+      filtered: !!(scope.query || scope.stage || Object.keys(scope.column_filters || {}).length)
+    })))))));
   }
   function ProcessWorkspace({
     adapter = emptyAdapter,
@@ -255,7 +292,7 @@
     window.WorkbenchGuards.useDirtyGuard({
       dirty: false,
       locked: !dialog && command.locked,
-      message: '工艺原请求尚未核实，请保留当前页面。'
+      message: '上次操作的结果还没查到，请先留在本页。'
     });
     React.useEffect(() => {
       if (previousAdapter.current === adapter) return;
@@ -312,6 +349,14 @@
         snapshot_ref: undefined
       }));
     };
+    const clearFilters = () => {
+      setSearch('');
+      filter({
+        query: '',
+        stage: undefined,
+        column_filters: {}
+      });
+    };
     function sortBy(key, direction) {
       const ordering = P.ordering(scope),
         next = ordering.filter(item => item.field !== key);
@@ -365,7 +410,7 @@
     const blocked = disabled || !!dialog || command.locked || !!recoveryError;
     function continueNavigation() {
       if (blocked || command.phase !== 'idle') {
-        setNavigationError(C.failure('请先处理原请求并关闭原工艺详情，再继续导航。'));
+        setNavigationError(C.failure('请先处理完上次操作并关闭工艺详情，再继续。'));
         return;
       }
       setDeferred(false);
@@ -373,21 +418,21 @@
       setDialog(navigationDialog());
     }
     return /*#__PURE__*/React.createElement("div", {
-      className: "process-workspace",
+      className: "process-workspace wb-fill-viewport",
       "data-process-workspace": true
     }, /*#__PURE__*/React.createElement(ErrorBox, {
       error: navigationError
     }), deferred && /*#__PURE__*/React.createElement("div", {
       role: "status"
-    }, /*#__PURE__*/React.createElement("p", null, "\u539F\u5DE5\u827A\u8BF7\u6C42\u4F18\u5148\u5904\u7406\uFF0C\u7CBE\u786E\u5BFC\u822A\u6682\u7F13\u3002"), /*#__PURE__*/React.createElement(Button, {
+    }, /*#__PURE__*/React.createElement("p", null, "\u4E0A\u6B21\u64CD\u4F5C\u8FD8\u6CA1\u5904\u7406\u5B8C\uFF0C\u6682\u65F6\u6CA1\u6709\u8DF3\u8F6C\u5230\u6307\u5B9A\u96F6\u4EF6\u3002"), /*#__PURE__*/React.createElement(Button, {
       icon: "arrow-right",
       onClick: continueNavigation
-    }, "\u7EE7\u7EED\u539F\u5BFC\u822A")), /*#__PURE__*/React.createElement("div", {
+    }, "\u7EE7\u7EED\u8DF3\u8F6C")), /*#__PURE__*/React.createElement("div", {
       className: "statline wb-metrics",
       style: {
         '--wb-columns': 4
       }
-    }, [['total', '零件总数', 'primary'], ['source', '待分拣', 'warn'], ['hours', '待填工时', 'warn'], ['ready', '已就绪', 'ok']].map(([key, label, tone]) => /*#__PURE__*/React.createElement("div", {
+    }, [['total', '零件总数', 'primary'], ['source', '待定归属', 'warn'], ['hours', '待填工时', 'warn'], ['ready', '已就绪', 'ok']].map(([key, label, tone]) => /*#__PURE__*/React.createElement("div", {
       key: key,
       className: "stat wb-metric",
       "data-tone": tone
@@ -395,7 +440,7 @@
       className: "sl wb-metric-label"
     }, label), /*#__PURE__*/React.createElement("span", {
       className: "sv wb-metric-value"
-    }, counts ? counts[key] : '待读取')))), /*#__PURE__*/React.createElement("div", {
+    }, counts ? counts[key] : '未读取')))), /*#__PURE__*/React.createElement("div", {
       className: "subtabs",
       role: "tablist",
       "aria-label": "\u5DE5\u827A\u9636\u6BB5"
@@ -483,7 +528,7 @@
       icon: "refresh-cw",
       disabled: blocked,
       onClick: () => filter({})
-    }, "\u91CD\u8BD5\u8BFB\u53D6\u5DE5\u827A"), /*#__PURE__*/React.createElement(ErrorBox, {
+    }, "\u5237\u65B0\u5217\u8868"), /*#__PURE__*/React.createElement(ErrorBox, {
       error: recoveryError
     }), !dialog && command.locked && /*#__PURE__*/React.createElement(window.ResourceForms.Feedback, {
       command: command
@@ -506,7 +551,9 @@
       adapter: adapter,
       onSort: sortBy,
       onFilter: columnFilter,
-      matchingCount: data && data.page.total
+      matchingCount: data && data.page.total,
+      onClear: clearFilters,
+      onRetry: () => filter({})
     }), data && /*#__PURE__*/React.createElement(window.ResourceTables.Pager, {
       page: data.page,
       disabled: blocked || list.loading,

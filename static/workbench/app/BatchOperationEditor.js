@@ -59,13 +59,19 @@
       unit_hours: '单件工时（小时）',
       external_days: '外协周期（天）'
     };
+    // 资源下拉读的是 choices 里的列表键；这里显式写出对应关系，避免用字符串拼接拼出键名。
+    const catalogKeys = {
+      machine_ref: 'machines',
+      operator_ref: 'operators',
+      supplier_ref: 'suppliers'
+    };
     const allowed = catalogs && draft.machine_ref ? catalogs.authorizations.filter(row => row.machine_ref === draft.machine_ref).map(row => row.operator_ref) : null;
     const mismatch = allowed && draft.operator_ref && !allowed.includes(draft.operator_ref);
     React.useEffect(() => {
       if (!done || seen.current === command.result.receipt_ref) return;
       try {
         B.receipt(command.result, 'operation_update', entity.ref);
-        if (command.result.data.operation_ref !== operation.ref) throw C.failure('回执工序与当前工序不一致。');
+        if (command.result.data.operation_ref !== operation.ref) throw C.failure('保存结果对应的不是当前工序。请刷新批次详情核对，不要重复提交。');
         seen.current = command.result.receipt_ref;
         onCommitted(command.result);
       } catch (error) {
@@ -81,7 +87,7 @@
           if (draft[key] === original[key]) continue;
           let value = draft[key] === '' ? null : draft[key];
           if (!key.endsWith('_ref') && value !== null) {
-            if (!/^\d+(?:\.\d+)?$/.test(value) || !Number.isFinite(Number(value)) || Number(value) > Number.MAX_SAFE_INTEGER || key === 'external_days' && Number(value) <= 0) throw C.failure('请检查标记的工序字段。', [{
+            if (!/^\d+(?:\.\d+)?$/.test(value) || !Number.isFinite(Number(value)) || Number(value) > Number.MAX_SAFE_INTEGER || key === 'external_days' && Number(value) <= 0) throw C.failure('请核对标红的项。', [{
               path: 'fields.' + key,
               message: names[key] + '必须为有效数字。'
             }]);
@@ -138,7 +144,7 @@
       })
     }, /*#__PURE__*/React.createElement("option", {
       value: ""
-    }, "\u672A\u9009\u62E9"), catalogs && catalogs[key.slice(0, -4) + 's'].map(row => /*#__PURE__*/React.createElement("option", {
+    }, "\u672A\u9009"), catalogs && catalogs[catalogKeys[key]].map(row => /*#__PURE__*/React.createElement("option", {
       key: row.ref,
       value: row.ref,
       disabled: row.status !== 'active'

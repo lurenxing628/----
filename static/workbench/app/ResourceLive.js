@@ -5,7 +5,7 @@
   function fileAdapter(kind) {
     const adapter = window.APSResourceAPI.create(kind + '_files');
     adapter.command = (commandKind, action, ref, body, signal) => {
-      if (![kind + '_import', kind + '_bulk'].includes(commandKind) || action !== 'confirm' || !body || !body.input || body.input.preview_ref !== ref) throw window.APSResourceContract.failure('确认操作与当前资源预览不一致。');
+      if (![kind + '_import', kind + '_bulk'].includes(commandKind) || action !== 'confirm' || !body || !body.input || body.input.preview_ref !== ref) throw window.APSResourceContract.failure('确认操作与当前预检结果不一致。');
       return adapter.execute(commandKind === kind + '_import' ? 'imports/' + kind + '/confirm' : 'entities/' + kind + '/bulk-confirm', body, signal);
     };
     return adapter;
@@ -70,7 +70,7 @@
       const files = Object.fromEntries(fileKinds.map(kind => [kind, fileAdapter(kind)])),
         catalog = window.APSResourceAPI.create('catalog');
       calendar.command = (kind, action, ref, body, signal) => {
-        if (kind !== 'calendar' || !['upsert', 'delete', 'confirm'].includes(action)) throw window.APSResourceContract.failure('日历操作不正确。');
+        if (kind !== 'calendar' || !['upsert', 'delete', 'confirm'].includes(action)) throw window.APSResourceContract.failure('工作日历操作不正确。');
         return calendar.execute('calendar/' + (action === 'confirm' ? 'range/confirm' : action), body, signal);
       };
       const open = (type, kind, request) => {
@@ -133,9 +133,9 @@
         if (pending) {
           setInitialNode(pending.node);
           if (!auxiliary && pending.auxiliary) setAuxiliary(pending.auxiliary);
-          throw window.APSResourceContract.failure('仍有原请求待核实，请先处理并关闭原结果。');
+          throw window.APSResourceContract.failure('上次操作的结果还没确认，请先处理并关闭。');
         }
-        if (auxiliary || !navigationReady) throw window.APSResourceContract.failure('请先关闭原结果或处理未保存草稿，再继续原导航。');
+        if (auxiliary || !navigationReady) throw window.APSResourceContract.failure('请先关闭上次结果或处理未保存的草稿，再继续跳转。');
         setHostError(null);
         setDeferred(false);
         setInitialNode(boot.target.node);
@@ -163,10 +163,10 @@
         display: 'block',
         margin: 12
       }
-    }, /*#__PURE__*/React.createElement("p", null, "\u539F\u8BF7\u6C42\u4F18\u5148\u5904\u7406\uFF0C\u7CBE\u786E\u5BFC\u822A\u6682\u7F13\uFF1B\u5F85\u6838\u5B9E\u5199\u5165\u672A\u88AB\u8986\u76D6\u3002"), /*#__PURE__*/React.createElement(window.ResourceControls.Button, {
+    }, /*#__PURE__*/React.createElement("p", null, "\u4E0A\u6B21\u64CD\u4F5C\u8FD8\u6CA1\u5904\u7406\u5B8C\uFF0C\u6682\u65F6\u6CA1\u6709\u8DF3\u8F6C\u5230\u6307\u5B9A\u8BB0\u5F55\u3002\u521A\u624D\u7684\u63D0\u4EA4\u6CA1\u6709\u88AB\u8986\u76D6\u3002"), /*#__PURE__*/React.createElement(window.ResourceControls.Button, {
       icon: "arrow-right",
       onClick: continueNavigation
-    }, "\u7EE7\u7EED\u539F\u5BFC\u822A")), /*#__PURE__*/React.createElement(ResourceWorkspace, {
+    }, "\u7EE7\u7EED\u8DF3\u8F6C")), /*#__PURE__*/React.createElement(ResourceWorkspace, {
       key: initialNode + ':' + navigationKey,
       adapter: adapters.base,
       onNavigate: onNavigate,

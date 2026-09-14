@@ -40,7 +40,7 @@ async function delayConflictDetails(page, ready, report, h, flush) {
     Array.from(row.querySelectorAll('td'), cell => cell.textContent.trim())));
   assert.deepEqual(await cells(), expectedCells);
   const detail = workspace.getByRole('region', { name: '资源重叠明细', exact: true });
-  assert((await detail.innerText()).includes('不代表等待、停机、缺料或延期原因'));
+  assert((await detail.innerText()).includes('不代表等待、停机、缺料或超期原因'));
   await page.reload(); await table.waitFor(); await flush();
   const restored = h.last(value => value.plan && value.tasks);
   assert.equal(restored.plan.plan_ref, data.plan.plan_ref);
@@ -171,13 +171,13 @@ async function requiredReadonly(page, ready, report, h, flush) {
   assert.equal(expected.case, 'readonly');
   await h.action(['WBP-RUN-007.no-result'], async () => {
     await page.goto(navigation(ready, 'run', { run_ref: expected.run_ref }));
-    await page.getByText('本次没有保存候选结果。', { exact: true }).waitFor(); await theme(page, report); await flush();
+    await page.getByText('这次排产没有保存候选方案。', { exact: true }).waitFor(); await theme(page, report); await flush();
     const data = h.last(value => value.run_ref === expected.run_ref && Array.isArray(value.candidates));
     assert.equal(data.state, 'failed'); assert.equal(data.result_persisted, false); assert.deepEqual(data.candidates, []);
     assert.equal(data.error.code, 'snapshot_stale');
     assert.equal(await page.getByRole('table', { name: '已保存候选', exact: true }).count(), 0);
-    assert.equal(await h.button('详情', page.getByRole('region', { name: '指定运行', exact: true })).count(), 0);
-    await page.reload(); await page.getByText('本次没有保存候选结果。', { exact: true }).waitFor(); await flush();
+    assert.equal(await h.button('详情', page.getByRole('region', { name: '这次排产', exact: true })).count(), 0);
+    await page.reload(); await page.getByText('这次排产没有保存候选方案。', { exact: true }).waitFor(); await flush();
     assert.deepEqual(h.last(value => value.run_ref === expected.run_ref && Array.isArray(value.candidates)), data);
     report.no_result = { run: data, reload_same_record: true };
   });

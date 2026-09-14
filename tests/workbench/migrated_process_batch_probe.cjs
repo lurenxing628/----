@@ -11,7 +11,15 @@ const processArea = () => page.locator('[data-process-workspace]');
 const batchArea = () => page.locator('[data-batch-workspace]');
 async function processPage() {
   await page.goto(ready.resource_url); await page.locator('.hb-tile').first().waitFor();
-  await p.response('/entities/part', () => p.click(page.locator('.hb-tile').filter({hasText: /^工艺/})));
+  // Since 2026-09-13 the entry restores the last node and the last open detail dialog: dismiss a restored dialog,
+  // and when the process list is already open the tile click issues no request, so wait for the rows instead.
+  const tile = page.locator('.hb-tile').filter({hasText: /^工艺/});
+  for (let i = 0; i < 40 && await tile.isDisabled(); i++) {
+    if (await page.locator('[role="dialog"][aria-modal="true"]:visible').count()) await page.keyboard.press('Escape');
+    await page.waitForTimeout(250);
+  }
+  if (await tile.getAttribute('aria-pressed') === 'true') await processArea().waitFor();
+  else await p.response('/entities/part', () => p.click(tile));
   await processArea().locator('tbody tr[data-process-ref]').first().waitFor();
 }
 async function batchPage() {
@@ -118,7 +126,7 @@ async function processStages(code, legacy = false) {
   const source = page.locator('[data-process-source-editor]:visible'); await source.waitFor();
   await p.click(button(source, '选择工序 10 工种'));
   const picker = dialog('选择自制工种 · 工序 10'); await p.type(picker.getByRole('searchbox'), '车削');
-  await p.response('/entities/op_type', () => p.click(button(picker, '搜索'))); await p.click(button(picker, '选用 车削'));
+  await p.response('/entities/op_type', () => p.click(button(picker, '搜索'))); await p.click(button(picker, '采用 车削'));
   await p.click(source.getByRole('checkbox', {name: '确认本页已核对工序', exact: true}));
   const checked = await p.response('/stage-preview', () => p.click(button(source, '检查归属')));
   if (legacy) assert.equal(checked.data.affected_groups.length, 0);
@@ -132,7 +140,7 @@ async function processStages(code, legacy = false) {
   await p.type(hours.getByLabel('工序 10 单件工时', {exact: true}), '');
   await p.click(hours.getByRole('checkbox', {name: '确认本页已核对工时', exact: true}));
   const beforeBlank = p.oracle(); await p.click(button(hours, '保存工时'));
-  await hours.getByText(/空值不能按 0 保存/).waitFor(); assert.deepEqual(p.diff(beforeBlank, p.oracle()), []);
+  await hours.getByText(/留空不会按 0 保存/).waitFor(); assert.deepEqual(p.diff(beforeBlank, p.oracle()), []);
   await p.shot('hours-blank-rejected');
   await p.type(hours.getByLabel('工序 10 单件工时', {exact: true}), legacy ? '0.25' : '0');
   await p.click(hours.getByRole('checkbox', {name: '确认本页已核对工时', exact: true}));
@@ -156,7 +164,7 @@ async function importProcess(kind, file, {cancel = false, rejected = false} = {}
   }
   for (const label of [/已复核单件工时为 0 的记录/, /已核对全部修改前后内容/]) { const check = d.getByRole('checkbox', {name: label}); if (await check.count()) await p.click(check); }
   const receipt = await saved('confirm', button(d, '确认导入'));
-  await d.getByText(/已取得原文件请求的完成回执/).waitFor(); await p.shot('import-' + kind + '-receipt');
+  await d.getByText(/文件导入已完成|已查到文件导入结果/).waitFor(); await p.shot('import-' + kind + '-receipt');
   await p.click(button(d, '完成')); return receipt;
 }
 async function searchBatch(code) { await p.type(batchArea().getByRole('searchbox'), code); return p.response('/entities/batch', () => batchArea().getByRole('searchbox').press('Enter')); }
@@ -173,7 +181,7 @@ async function batchCreate() {
   await p.click(calendar.locator('[data-date="2026-10-20"]')); assert.equal(await due.inputValue(), '2026-10-20');
   await p.select(d.getByLabel('优先级', {exact: true}), '急件');
   await p.type(d.getByLabel('备注', {exact: true}), 'AN batch original');
-  await p.shot('batch-create-date-dropdown'); await saved('create', button(d, '创建批次')); await p.click(button(d, '关闭'));
+  await p.shot('batch-create-date-dropdown'); await saved('create', button(d, '确认新增')); await p.click(button(d, '关闭'));
 }
 async function batchEditSync() {
   await openBatch('AN-B-' + state + '-001'); await p.click(button(batchArea(), '编辑基础信息')); let d = dialog('编辑批次基础信息');
@@ -184,14 +192,15 @@ async function batchEditSync() {
   const first = page.getByRole('table', {name: '批次工序', exact: true}).locator('tbody tr').first(); await p.click(button(first, '补充资料'));
   d = page.getByRole('dialog', {name: /^工序 10 · /}); await p.type(d.getByLabel('单件工时（小时）', {exact: true}), '1.375');
   await saved('operation_update', button(d, '保存工序')); await p.click(button(d, '关闭'));
-  await page.getByText('换型 0.5 / 单件 1.375 小时', {exact: true}).waitFor(); await p.shot('batch-operation-edited');
+  // BatchDetail renders entered hours through WorkbenchFormat.hours, so each value carries its own unit (2026-09-13).
+  await page.getByText('换型 0.5 小时 / 单件 1.375 小时', {exact: true}).waitFor(); await p.shot('batch-operation-edited');
   await p.click(button(batchArea(), '返回列表'));
 }
 async function batchImport(file, mode, cancel = false) {
   await p.click(button(batchArea(), '批量导入')); const d = dialog('批量维护批次');
-  if (mode !== 'overwrite') await p.select(d.getByLabel('导入模式', {exact: true}), mode === 'append' ? '只新增没有的批次（已有的跳过）' : '先清空全部批次，再按表格重导');
+  if (mode !== 'overwrite') await p.select(d.getByLabel('导入模式', {exact: true}), mode === 'append' ? '只新增没有的批次（已有的跳过）' : '先清除全部批次，再按表格重导');
   p.step('setInputFiles', 'input[type=file]', file); await d.locator('input[type=file]').setInputFiles(path.join(root, 'uploads', file + '.xlsx'));
-  const preview = await p.response('/import-preview', () => p.click(button(d, '预览导入'))); await p.shot('batch-file-' + mode + (cancel ? '-cancel' : ''));
+  const preview = await p.response('/import-preview', () => p.click(button(d, '导入预检'))); await p.shot('batch-file-' + mode + (cancel ? '-cancel' : ''));
   if (mode === 'replace') { assert.equal(preview.data.can_confirm, false); assert(preview.data.deleted.some(r => r.before.business_code === 'PROC-B')); assert(await button(d, '确认导入').isDisabled()); }
   else if (!cancel) { assert(preview.data.can_confirm); await saved('import_confirm', button(d, '确认导入')); }
   await p.click(button(d, cancel || mode === 'replace' ? '取消' : '关闭')); return preview;

@@ -54,28 +54,28 @@ async function planActions(page, report, h, flush) {
     assert(visible.every(ref => expected.some(task => task.task_ref === ref)));
     await shot('formal-only-changed'); await changed.uncheck();
     const original = await gantt.boundingBox();
-    const zoom = await gantt.locator('.plan-actions .plan-muted').innerText();
+    const zoom = await gantt.locator('.plan-actions .wb-zoom-level').innerText();
     await button('展开甘特', gantt).click(); await page.locator('.plan-gantt.plan-expanded').waitFor();
     const expanded = await gantt.boundingBox(), viewport = page.viewportSize();
     assert(expanded.width > original.width && expanded.height > original.height);
     assert(expanded.x >= 0 && expanded.y >= 0 && expanded.x + expanded.width <= viewport.width && expanded.y + expanded.height <= viewport.height);
-    assert.equal(await gantt.locator('.plan-actions .plan-muted').innerText(), zoom, 'Expanding must not change timeline zoom');
+    assert.equal(await gantt.locator('.plan-actions .wb-zoom-level').innerText(), zoom, 'Expanding must not change timeline zoom');
     await shot('formal-expanded'); await button('收起甘特', gantt).click();
     assert.equal(await page.locator('.plan-gantt.plan-expanded').count(), 0);
     await button('展开甘特', gantt).click(); await page.keyboard.press('Escape');
     assert.equal(await page.locator('.plan-gantt.plan-expanded').count(), 0);
-    assert.equal(await gantt.locator('.plan-actions .plan-muted').innerText(), zoom);
+    assert.equal(await gantt.locator('.plan-actions .wb-zoom-level').innerText(), zoom);
   });
   await action(['WBP-GANTT-001.machine', 'WBP-GANTT-001.operator', 'WBP-GANTT-001.batch',
     'WBP-GANTT-001.baseline', 'WBP-GANTT-001.search', 'WBP-GANTT-004.missing'], async () => {
     const group = page.getByRole('group', { name: '甘特分组', exact: true });
     for (const mode of ['人员', '批次', '设备']) { await button(mode, group).click(); assert.equal(await button(mode, group).getAttribute('aria-pressed'), 'true'); }
-    await page.getByRole('checkbox', { name: '显示初始基线', exact: true }).check();
+    await page.getByRole('checkbox', { name: '显示初始计划', exact: true }).check();
     await shot('formal-baseline');
-    await page.getByRole('checkbox', { name: '显示初始基线', exact: true }).uncheck();
+    await page.getByRole('checkbox', { name: '显示初始计划', exact: true }).uncheck();
     const search = page.getByRole('searchbox', { name: '搜索批次、工序、设备、人员', exact: true });
     await search.fill('D-does-not-exist');
-    await page.getByText('没有匹配安排，完整计划跨度保持不变。', { exact: true }).waitFor();
+    await page.getByText('没有匹配安排，完整计划的时间范围保持不变。', { exact: true }).waitFor();
     await search.fill('');
     report.formal_search_keystrokes = [];
     let value = '';
@@ -102,8 +102,8 @@ async function planActions(page, report, h, flush) {
     const group = page.getByRole('group', { name: '计划分析视图', exact: true });
     await button('资源负荷', group).click();
     await page.getByRole('table', { name: '资源负荷列表', exact: true }).waitFor(); await shot('resource-load');
-    await button('资源日历', group).click();
-    await page.getByRole('table', { name: '资源日历列表', exact: true }).waitFor(); await shot('resource-calendar');
+    await button('资源班表', group).click();
+    await page.getByRole('table', { name: '资源班表列表', exact: true }).waitFor(); await shot('resource-calendar');
     await button('交付风险', group).click();
   });
   await action(['WBP-PLAN-005.gantt-navigation', 'WBP-PLAN-004.reload'], async () => {
@@ -116,8 +116,8 @@ async function planActions(page, report, h, flush) {
     await views.getByRole('tab', { name: '选择排产方案', exact: true }).click();
     await views.getByRole('tab', { name: '选择排产方案', exact: true, selected: true }).waitFor();
     await page.locator('[data-plan-workspace] .plan-main').waitFor();
-    await views.getByRole('tab', { name: '设备 / 人员 / 批次甘特', exact: true }).click();
-    await views.getByRole('tab', { name: '设备 / 人员 / 批次甘特', exact: true, selected: true }).waitFor();
+    await views.getByRole('tab', { name: '计划甘特', exact: true }).click();
+    await views.getByRole('tab', { name: '计划甘特', exact: true, selected: true }).waitFor();
     await page.locator('[data-plan-workspace] .plan-main').waitFor();
     await flush(); assert.equal(last(data => data.plan && data.tasks).plan.plan_ref, report.first_official.plan.plan_ref);
     await page.reload(); await page.locator('[data-plan-workspace] .plan-main').waitFor();

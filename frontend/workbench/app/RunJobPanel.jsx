@@ -6,7 +6,10 @@
     const [initial] = React.useState(() => { try { return { intent: A.pending().read(), error: '' }; } catch (e) { return { intent: null, error: e.message }; } });
     const [intent, setIntent] = React.useState(initial.intent), [storageError, setStorageError] = React.useState(initial.error);
     const [run, setRun] = React.useState(null), [preview, setPreview] = React.useState(null), [confirming, setConfirming] = React.useState(false);
-    const [error, setError] = React.useState(''), [notice, setNotice] = React.useState(''), [busy, setBusy] = React.useState(false);
+    const [error, setError] = React.useState(''), [errorDetails, setErrorDetails] = React.useState(null), [notice, setNotice] = React.useState(''), [busy, setBusy] = React.useState(false);
+    // 错误正文只说人话；版本号之类的技术细节走 A.details 进折叠编号区。
+    const fail = (e, text) => { setError(text || A.message(e)); setErrorDetails(A.details(e)); };
+    const clearError = () => { setError(''); setErrorDetails(null); };
     const [unavailable, setUnavailable] = React.useState('');
     const [verified, setVerified] = React.useState(false);
     const [checking, setChecking] = React.useState(false), [paused, setPaused] = React.useState(document.hidden), [revision, refresh] = React.useReducer(v => v + 1, 0);
@@ -40,7 +43,7 @@
           if (!boundRef) {
             const found = A.lookup(await api.lookup(intent.request_key, controller.signal), intent.run_ref);
             if (!current() || controller.signal.aborted) return;
-            if (!found.found) { setVerified(false); setNotice('暂未查到原请求记录，结果仍未知；不会更换请求编号或重新提交。'); setError(''); return; }
+            if (!found.found) { setVerified(false); setNotice(window.WorkbenchTerms.outcomes.pending('排产')); clearError(); return; }
             result = found.run; boundRef = result.run_ref;
           } else result = A.run(A.envelope(await api.get(boundRef, controller.signal)), boundRef);
           if (!current() || controller.signal.aborted) return;
@@ -48,8 +51,8 @@
             try { const saved = A.pending().attach(intent, result.run_ref); activeIntent.current = saved; setIntent(saved); }
             catch (e) { setStorageError(e.message); return; }
           }
-          setRun(result); setVerified(true); setError(''); setNotice(''); done = A.terminal(result);
-        } catch (e) { if (current() && !controller.signal.aborted) { setVerified(false); setError(A.message(e)); } }
+          setRun(result); setVerified(true); clearError(); setNotice(''); done = A.terminal(result);
+        } catch (e) { if (current() && !controller.signal.aborted) { setVerified(false); fail(e); } }
         finally {
           querying = false;
           if (current()) { setChecking(false); schedule(); }
@@ -65,7 +68,7 @@
     }, [api, intent, revision, storageError]);
     async function inspect() {
       if (locked.current || storageError || !inputRef || intent && (!A.terminal(run) || !verified)) return;
-      locked.current = true; setBusy(true); setError(''); setNotice(''); setPreview(null); setUnavailable('');
+      locked.current = true; setBusy(true); clearError(); setNotice(''); setPreview(null); setUnavailable('');
       const original = inputRef, controller = new AbortController(); previewRequest.current = controller;
       try {
         const value = A.preview(await api.preview(original, controller.signal), original);
@@ -74,7 +77,7 @@
         if (!value.write_context.capabilities['scheduling.run']) setUnavailable(A.message(value.write_context.blocked_reasons[0]));
       } catch (e) {
         if (alive.current && !controller.signal.aborted) {
-          setError(A.message(e));
+          fail(e);
           if (['run_schema_unavailable', 'run_worker_not_connected'].includes(e.code)) setUnavailable(A.message(e));
         }
       }
@@ -82,16 +85,16 @@
     }
     async function submit() {
       if (locked.current || !preview || preview.input_ref !== activeInput.current || preview.write_context.capabilities['scheduling.run'] !== true || storageError) return;
-      locked.current = true; setBusy(true); setError('');
+      locked.current = true; setBusy(true); clearError();
       let original;
       try {
         // Keep admission and the durable identity claim serialized across browser tabs.
-        if (!navigator.locks || typeof navigator.locks.request !== 'function') throw new Error('当前浏览器无法锁定原请求，暂时不能开始排产。');
+        if (!navigator.locks || typeof navigator.locks.request !== 'function') throw new Error('当前浏览器不支持，请用 Chrome 打开。');
         await navigator.locks.request(A.PENDING_KEY, { ifAvailable: true }, async lock => {
-          if (!lock) throw new Error('另一页面正在提交排产，请稍后核实原请求。');
+          if (!lock) throw new Error('另一个页面正在提交排产，请稍后点「查询结果」。');
           if (!alive.current || preview.input_ref !== activeInput.current) return;
           const previous = activeIntent.current;
-          if (previous && (!A.terminal(run) || !verified)) throw new Error('原运行尚未核实，不能开始下一次排产。');
+          if (previous && (!A.terminal(run) || !verified)) throw new Error('上次排产还没确认结果，不能开始下一次排产。');
           original = A.pending().begin(preview.input_ref, previous);
           activeIntent.current = original; setIntent(original); setRun(null); setVerified(false); setConfirming(false);
           try {
@@ -99,13 +102,13 @@
             const saved = A.pending().attach(original, receipt.run_ref);
             if (alive.current && activeIntent.current && activeIntent.current.request_key === original.request_key) {
               activeIntent.current = saved; setIntent(saved); setRun(receipt.data); setVerified(true);
-              setNotice(receipt.dispatch_pending ? '排产已受理，交给本机执行器时未确认；正在查询原运行，没有重新提交。' : '');
+              setNotice(receipt.dispatch_pending ? '排产已接收，交给计算程序时没有确认。正在查询结果，没有重新提交。' : '');
             }
           } catch (e) {
             if (A.isRejected(e)) {
               A.pending().reject(original);
-              if (alive.current) { activeIntent.current = null; setIntent(null); setRun(null); setError(A.message(e)); }
-            } else if (alive.current) setError('受理结果尚未确认。已保留原请求，正在核实，不会重复提交。');
+              if (alive.current) { activeIntent.current = null; setIntent(null); setRun(null); fail(e); }
+            } else if (alive.current) fail(null, window.WorkbenchTerms.outcomes.pending('排产'));
           }
         });
       } catch (e) { if (alive.current) setStorageError(e.message); }
@@ -115,17 +118,17 @@
       try { setIntent(A.pending().read()); setStorageError(''); setVerified(false); setRun(null); refresh(); }
       catch (e) { setStorageError(e.message); }
     }
-    const reason = storageError || (!inputRef ? '请先完成排产检查，再确认本次计算。' : intent && (!A.terminal(run) || !verified) ? '原请求尚未结束或结果未知，请先核实原运行。' : unavailable);
+    const reason = storageError || (!inputRef ? '请先完成排产检查，再确认本次计算。' : intent && (!A.terminal(run) || !verified) ? '上次排产还没结束或结果未知，请先点「查询结果」。' : unavailable);
     const selected = preflight && preflight.normalized_input && preflight.normalized_input.batch_refs;
     return <section className="plana run-job-panel" data-run-job-panel="true" aria-label="候选排产"><U.Styles />
       <div className="rj-heading"><h2>候选排产</h2><div className="rj-tools">
         <U.Button icon="play" className={inputRef && selected && selected.length ? 'btn primary' : 'btn'} reason={reason} reasonDisplay="inline" busy={busy} onClick={inspect}>核对并开始排产</U.Button>
-        {unavailable && <U.Button icon="refresh-cw" aria-label="重新核对排产能力" busy={busy} onClick={inspect} />}
-        {intent && <U.Button icon="refresh-cw" aria-label="查询原运行" busy={checking || busy} onClick={() => { setNotice(''); refresh(); }} />}
+        {unavailable && <U.Button icon="refresh-cw" aria-label="重新核对排产条件" busy={busy} onClick={inspect} />}
+        {intent && <U.Button icon="refresh-cw" aria-label={window.WorkbenchTerms.actions.query_result} busy={checking || busy} onClick={() => { setNotice(''); refresh(); }} />}
         {typeof onNavigate === 'function' && <U.Button icon="arrow-left" onClick={() => onNavigate('run')}>返回排产检查</U.Button>}
       </div></div>
-      {storageError && <div className="rj-notice" role="alert">{storageError}<div className="rj-tools"><U.Button icon="refresh-cw" disabled={busy} onClick={rereadStorage}>重新读取恢复记录</U.Button></div></div>}
-      {error && <div className="rj-notice" role="alert">{error}</div>}{notice && <div className="rj-notice" role="status">{notice}</div>}
+      {storageError && <div className="rj-notice" role="alert">{storageError}<div className="rj-tools"><U.Button icon="refresh-cw" disabled={busy} onClick={rereadStorage}>刷新上次操作记录</U.Button></div></div>}
+      {error && <div className="rj-notice" role="alert">{error}{errorDetails && <window.WorkbenchReference entries={errorDetails} />}</div>}{notice && <div className="rj-notice" role="status">{notice}</div>}
       {preview && !confirming && <><U.Scope preview={preview} /><U.Reasons rows={preview.write_context.blocked_reasons} /></>}
       {intent && <U.Record run={run} intent={intent} paused={paused} checking={checking} verified={verified} api={api} />}
       {confirming && preview && <U.Confirmation preview={preview} busy={busy} onConfirm={submit} onClose={() => { if (!locked.current) { setConfirming(false); setPreview(null); } }} />}

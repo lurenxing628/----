@@ -15,7 +15,7 @@ body.aps-workbench .plan-workspace .plan-global input[type="range"] { display: b
 .plan-workspace .plan-note { padding: var(--space-1) 10px; }
 .plan-workspace .plan-time-line { position: absolute; width: 0; border-left: 1px dashed var(--wb-sev-notice); pointer-events: none; }
 .plan-workspace .plan-time-line.as-of { border-left-style: solid; border-left-color: var(--wb-sev-warning); }
-.plan-workspace .plan-swatch.success { background: var(--wb-gantt-success-fill); border-color: var(--wb-gantt-success-edge); }
+.plan-workspace .plan-swatch.success { background: var(--wb-gantt-success-fill); border-color: var(--wb-gantt-success-edge); box-shadow: var(--wb-gantt-success-ring); }
 .plan-workspace .plan-swatch.conflict { background: var(--wb-gantt-critical-fill); border: 1px dashed var(--wb-gantt-critical-edge); }
 .plan-workspace .plan-swatch.point { width: 9px; height: 9px; transform: rotate(45deg); }
 .plan-workspace .plan-swatch.today { width: 0; height: 12px; background: transparent; border-left: 1px dashed var(--wb-sev-notice); }
@@ -24,8 +24,8 @@ body.aps-workbench .plan-workspace .plan-global input[type="range"] { display: b
 .aps-workbench .fg-live .fg-mark.fg-act,.aps-workbench .fg-live .fg-mark.fg-plan,.aps-workbench .fg-live .fg-mark.fg-remaining { background: transparent; border: 0; box-shadow: none; overflow: visible; }
 .aps-workbench .fg-live .fg-mark > .fg-mark-face { position: absolute; top: 0; bottom: 0; padding: 0; overflow: hidden; pointer-events: none; border-radius: var(--wb-gantt-radius-bar); }
 .aps-workbench .fg-live .fg-mark.fg-act > .fg-mark-face { background: var(--wb-gantt-primary-fill); box-shadow: inset 0 0 0 1px var(--wb-gantt-primary-edge); }
-.aps-workbench .fg-live .fg-mark.fg-plan > .fg-mark-face { background: var(--wb-gantt-plan-fill); border-block: 1px dashed var(--wb-gantt-plan-edge); }
-.aps-workbench .fg-live .fg-mark.fg-remaining > .fg-mark-face { background: var(--wb-gantt-reference-fill); border-block: 1px dashed var(--wb-gantt-primary-edge); }
+.aps-workbench .fg-live .fg-mark.fg-plan > .fg-mark-face { background: transparent; border: 1px dashed var(--wb-gantt-plan-edge); }
+.aps-workbench .fg-live .fg-mark.fg-remaining > .fg-mark-face { background: transparent; border-block: 1px dashed var(--wb-gantt-primary-edge); }
 .aps-workbench .fg-live .fg-mark[aria-pressed=true] { outline: 0; }
 .aps-workbench .fg-live .fg-mark[aria-pressed=true] > .fg-mark-face { outline: 1px solid var(--wb-gantt-gold); outline-offset: -1px; }
 .aps-workbench .fg-live .fg-mark:focus-visible { outline: 2px solid var(--wb-gantt-gold); outline-offset: 1px; }

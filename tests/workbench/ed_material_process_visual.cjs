@@ -28,6 +28,8 @@ async function geometry(page) {
         }
       }
       if (n.matches('input,select,textarea') || !/(hidden|clip)/.test(s.overflowX + s.overflowY) || s.textOverflow === 'ellipsis') continue;
+      // .wb-visually-hidden (1x1, overflow hidden, clip rect(0 0 0 0)) is screen-reader-only text; clipping it is the intent, not a defect.
+      if (n.classList.contains('wb-visually-hidden') || s.clip === 'rect(0px, 0px, 0px, 0px)') continue;
       for (const child of n.childNodes) {
         if (child.nodeType !== Node.TEXT_NODE || !child.textContent.trim()) continue;
         const range = document.createRange(); range.selectNodeContents(child);

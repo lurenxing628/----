@@ -59,7 +59,7 @@
     React.useEffect(() => {
       if (error || command.error) focusFirstInvalid(formRef.current);
     }, [error, command.error]);
-    const reason = K.stale(command) ? '资料已变化，请重新读取并核对。' : review ? '请先核对最新资料。' : C.blocked(base.write_context, 'calendar', clearing ? 'delete' : 'upsert', source);
+    const reason = K.stale(command) ? window.WorkbenchTerms.outcomes.stale : review ? '请先核对最新资料。' : C.blocked(base.write_context, 'calendar', clearing ? 'delete' : 'upsert', source);
     async function reloadContext() {
       if (disabled) return;
       setReading(true);
@@ -173,7 +173,7 @@
       busy: reading,
       disabled: command.locked,
       onClick: reloadContext
-    }, "\u91CD\u65B0\u8BFB\u53D6\u6700\u65B0\u8D44\u6599"), review && /*#__PURE__*/React.createElement("div", {
+    }, "\u5237\u65B0\u6700\u65B0\u8D44\u6599"), review && /*#__PURE__*/React.createElement("div", {
       className: "match-note",
       style: {
         display: 'block'

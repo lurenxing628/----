@@ -42,7 +42,7 @@ function visibleText(value) {
 const referenceNodes = nodes(diagnostic).filter(node => node.type === context.window.WorkbenchReference);
 const retained = Object.assign({}, ...referenceNodes.map(node => node.props.entries));
 assert.equal(retained['原因代码'], 'missing_hours'); assert.equal(retained['规则'], 'quota.minimum_samples');
-assert.equal(retained['规则代码'], 'R17'); assert.equal(retained['请求编号'], requestKey);
+assert.equal(retained['规则代码'], 'R17'); assert.equal(retained['操作编号'], requestKey);
 assert.equal(retained['诊断代码'], 0); assert.equal(retained.fingerprint, reference);
 assert.equal(JSON.stringify(retained.operation_refs), JSON.stringify([reference, null, 0]));
 assert(referenceNodes.some(node => node.props.value === arrayReference), 'Hexadecimal references inside raw arrays must also be collected');

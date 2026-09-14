@@ -569,7 +569,7 @@
       type: "button",
       className: "btn",
       onClick: () => onCommit('')
-    }, "\u6E05\u7A7A"), hasDate && /*#__PURE__*/React.createElement("button", {
+    }, "\u6E05\u9664"), hasDate && /*#__PURE__*/React.createElement("button", {
       type: "button",
       className: "btn",
       disabled: !shortcutAllowed,
@@ -589,7 +589,7 @@
       onClick: confirm
     }, /*#__PURE__*/React.createElement(Icon, {
       name: "check"
-    }), "\u786E\u5B9A")));
+    }), "\u786E\u8BA4")));
   }
   function WorkbenchDatePicker(props) {
     return /*#__PURE__*/React.createElement(DatePickerBody, {

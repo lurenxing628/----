@@ -102,15 +102,15 @@ async function adopt(page, reason) {
     fs.writeFileSync(path.join(output, 'calibration-detail.txt'), await page.locator('body').innerText());
   }
   record.calibration_samples.push({ reason, template_ref: detail.suggestion.template_operation_ref, groups });
-  await button(page, '预览采用').click();
+  await button(page, '预检采用').click();
   const dialog = page.getByRole('dialog'); await dialog.getByLabel('采用原因', { exact: true }).fill(reason);
-  await dialog.getByLabel('声明人', { exact: true }).fill('DG工时复核员'); await button(page, '读取真实预览').click();
-  await dialog.getByText('当前预览可采用：来源、旧定额和合格样本已核对。', { exact: true }).waitFor();
+  await dialog.getByLabel('经办人', { exact: true }).fill('DG工时复核员'); await button(page, '读取真实预检').click();
+  await dialog.getByText('当前预检可以采用：来源、原定额和可用完工记录已核对。', { exact: true }).waitFor();
   await dialog.getByRole('checkbox').check(); const saved = page.waitForResponse(response => response.url().endsWith('/adopt'));
   await button(page, '确认采用并锁定').click(); const receipt = await (await saved).json();
   assert.equal(receipt.result, 'committed'); assert.equal(receipt.data.new_unit_hours, 3); assert(receipt.data.locked);
-  await dialog.getByText('已核实采用，新定额 3 h / 件，模板定额已锁定。', { exact: true }).waitFor();
-  await button(page, '完成核实').click();
+  await dialog.getByText('采用已完成。新定额 3 小时 / 件，定额已锁定（来自工时校准）。', { exact: true }).waitFor();
+  await button(page, '完成').click();
 }
 async function openImport(page, detail) {
   await page.goto(origin + (detail ? '/process' : '/import'));
@@ -126,7 +126,7 @@ async function preview(page, filename) {
   await page.getByRole('region', { name: '工时导入预检', exact: true }).waitFor(); return result;
 }
 async function rowChecks(page, changed, skipped, unchanged, receipt = false) {
-  const region = page.getByRole('region', { name: receipt ? '工时导入回执' : '工时导入预检', exact: true });
+  const region = page.getByRole('region', { name: receipt ? '工时导入结果' : '工时导入预检', exact: true });
   await region.waitFor(); const summary = await region.locator('.rm-summary').innerText();
   assert(summary.includes((receipt ? '已导入' : '可导入') + ' ' + changed)); assert(summary.includes('锁定跳过 ' + skipped)); assert(summary.includes('原值相同 ' + unchanged));
   assert.equal(await region.locator('[data-quota-result=skipped]').count(), skipped);
@@ -165,7 +165,7 @@ async function happy(layout, viewport, theme) {
   const wait = lose ? null : page.waitForResponse(response => response.url().endsWith('/hours/confirm'));
   await button(page, changed ? '确认导入' : '确认跳过并记录结果').click();
   let result;
-  if (lose) { await button(page, '查询原请求回执').waitFor(); await shot(page, name + '-pending', viewport);
+  if (lose) { await button(page, '查询结果').waitFor(); await shot(page, name + '-pending', viewport);
     result = record.responses.filter(row => row.path.endsWith('/hours/confirm')).slice(-1)[0].payload; }
   else { result = await (await wait).json(); await rowChecks(page, changed, 1, 0, true); await shot(page, name + '-receipt', viewport); }
   assert.equal(result.result, changed ? 'committed' : 'unchanged');
@@ -176,10 +176,10 @@ async function happy(layout, viewport, theme) {
   const lookup = page.waitForResponse(response => response.url().endsWith('/commands/' + stored.request_key));
   page.once('dialog', dialog => dialog.accept()); await page.reload(); const replay = await (await lookup).json();
   assert(replay.replayed); assert.deepEqual(replay.data, result.data); assert.equal(replay.receipt_ref, result.receipt_ref);
-  await rowChecks(page, changed, 1, 0, true); await page.getByText('采纳原因：' + reason, { exact: true }).waitFor();
+  await rowChecks(page, changed, 1, 0, true); await page.getByText('采用原因：' + reason, { exact: true }).waitFor();
   await shot(page, name + '-refreshed-receipt', viewport); record.refreshes++; if (lose) record.lost_response_recovered = true;
   await button(page, '完成').click();
-  if (layout === 'mixed') await page.getByText('服务器已确认提交，已重新读取工艺详情。', { exact: true }).waitFor();
+  if (layout === 'mixed') await page.getByText('提交已确认，工艺详情已刷新。', { exact: true }).waitFor();
   assert.equal(await page.evaluate(() => sessionStorage.getItem('aps_workbench_resource_pending_v1_process')), null);
   record.cases.push({ name, layout, viewport, theme, reason, request_key: stored.request_key, receipt: result }); await context.close();
 }

@@ -27,7 +27,7 @@
         <div className="field-note">XLSX · 13 列 · 任务编号、工序范围、单件编号已预填，不可修改 · 兼容旧 10 列</div>
         <div className="field-upload"><Button icon="folder-open" disabled={locked} onClick={() => input.current.click()}>选择 Excel 文件</Button><span>{file ? file.name : '尚未选择文件'}</span>
           <input ref={input} hidden type="file" accept=".xlsx" aria-label="报工 XLSX 文件" disabled={locked} onChange={event => { setFile(event.target.files[0] || null); setPreview(null); setError(null); }} /></div>
-        {busy && <p role="status">正在核对原始文件和现场事实…</p>}
+        {busy && <p role="status">正在核对文件和现场记录…</p>}
         {preview && <><div className="field-files-summary">{[['total', '行数'], ['changed', '变更'], ['unchanged', '重复'], ['blank', '空白'], ['rejected', '问题']].map(([key, label]) => <span key={key}>{label} <b>{preview.summary[key] || 0}</b></span>)}</div>
           <p role="status">{preview.can_confirm ? '预检通过，尚未写入报工。' : preview.summary.rejected ? '预检未通过，未写入任何报工。' : '没有可导入的实际记录，未写入报工。'}</p>
           <div className="field-scroll wb-table-frame" data-sticky-head tabIndex="0" aria-label="文件预检表格滚动区"><table className="field-table wb-table" aria-label="文件逐行预检"><caption className="wb-visually-hidden">当前文件逐行预检结果</caption><thead><tr><th scope="col">Excel 行号</th><th scope="col">处理结果</th><th scope="col">问题</th></tr></thead><tbody>{preview.rows.map((row, index) => <tr key={index}><td>{row.row_number || row.row}</td><td>{({ create: '新增', supplement: '补齐', unchanged: '重复', blank: '空白', rejected: '拒绝', committed: '将变更', pending: '未执行' })[row.result] || '待核对'}</td><td>{(row.errors || []).map(item => item.message).join('；')}</td></tr>)}</tbody></table></div>

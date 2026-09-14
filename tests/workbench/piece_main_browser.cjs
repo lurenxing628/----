@@ -66,12 +66,12 @@ async function main() {
     await page.getByLabel('计划开始日期', { exact: true }).fill('2026-09-09');
     await page.getByLabel('计划结束日期', { exact: true }).fill('2026-09-25');
     await page.getByRole('button', { name: '开始排产检查', exact: true }).click();
-    await page.getByText('逐工序检查 · ' + ready.expected.task_count + ' 道', { exact: true }).click();
+    await page.getByText('检查明细 · ' + ready.expected.task_count + ' 道', { exact: true }).click();
     await screenshot(page, '02-preflight'); record('preflight_user_selected');
     await page.getByRole('button', { name: '核对并开始排产', exact: true }).click();
     await page.getByRole('button', { name: '确认开始排产', exact: true }).click();
     await Promise.race([page.getByRole('table', { name: '已保存候选', exact: true }).waitFor({ timeout: 120000 }),
-      page.getByText('候选排产未完成，请查看运行记录并重新检查。', { exact: true }).waitFor({ timeout: 120000 }).then(() => { throw new Error('Real worker rejected the run; inspect server log'); })]);
+      page.getByText('候选排产没有完成。请到「排产记录」查看原因，改好后重新做排产检查。', { exact: true }).waitFor({ timeout: 120000 }).then(() => { throw new Error('Real worker rejected the run; inspect server log'); })]);
     await screenshot(page, '03-worker-complete'); record('real_worker_complete');
     await page.getByRole('table', { name: '已保存候选', exact: true }).getByRole('button', { name: '详情', exact: true }).first().click();
     await page.getByRole('table', { name: '候选任务安排', exact: true }).waitFor();

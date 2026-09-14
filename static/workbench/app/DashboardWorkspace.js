@@ -138,7 +138,7 @@
         return;
       }
       if (n.view === 'batches' && context.batch_ref) context.entity_ref = context.batch_ref;
-      C.check(onNavigate(n.view, context) !== false, '目标页面未接受导航，原条目仍保留。');
+      C.check(onNavigate(n.view, context) !== false, '目标页面没有打开，这条记录仍然保留。请刷新后重试。');
     }
     function navigate(n, origin) {
       try {
@@ -146,7 +146,7 @@
         const label = P.navigationTarget(n, onNavigate),
           current = readContext();
         if (!n.enabled) {
-          C.check(origin && origin === item && origin.item_ref === selected && origin.navigation.includes(n), '不可定位的原条目来源不一致，未打开其他对象。');
+          C.check(origin && origin === item && origin.item_ref === selected && origin.navigation.includes(n), '这条记录的来源和详情对不上，页面没有跳转。请刷新后重试。');
           setNavigationConfirmation({
             navigation: n,
             item: origin,
@@ -178,7 +178,7 @@
         items: '处置清单',
         records: '处置历史'
       } : {
-        items: '登记与核实历史'
+        items: '登记与更正历史'
       } : S.tabs;
     const activeTab = Object.prototype.hasOwnProperty.call(activeTabs, tab) ? tab : 'items',
       tabKeys = Object.keys(activeTabs);
@@ -188,7 +188,7 @@
     const plan = !list.loading && !list.error && !outsourcing && !comparing && (showingAnalysis ? !analysisRead.loading && !analysisRead.error && analysisData && analysisData.plan : data && data.plan);
     const caption = comparing ? !list.loading && !list.error && !outsourcing ? comparisonState.caption : null : plan && plan.kind === 'official' && plan.is_current_official === true ? {
       reference: plan.plan_ref,
-      label: '当前方案',
+      label: '正式计划',
       name: plan.display_name,
       status: '当前正式',
       ...(Number.isSafeInteger(plan.version) && plan.version > 0 ? {
@@ -205,11 +205,11 @@
     }, /*#__PURE__*/React.createElement("h2", null, "\u5916\u534F\u7269\u6D41\u767B\u8BB0"), /*#__PURE__*/React.createElement(Button, {
       icon: "arrow-left",
       onClick: () => setOutsourcing(null)
-    }, "\u8FD4\u56DE\u539F\u503C\u73ED\u53F0\u6761\u76EE")), /*#__PURE__*/React.createElement("div", {
+    }, "\u8FD4\u56DE\u503C\u73ED\u53F0\u6761\u76EE")), /*#__PURE__*/React.createElement("div", {
       className: "dy-note"
     }, "\u5916\u534F\u7269\u6D41\u767B\u8BB0\u6982\u89C8 \xB7 \u7269\u6D41\u767B\u8BB0\u4E0D\u66FF\u4EE3\u98CE\u9669\u5904\u7F6E\u3002"), /*#__PURE__*/React.createElement(window.WorkbenchReference, {
       entries: {
-        '原登记编号': outsourcing.outsourcing_ref
+        '登记编号': outsourcing.outsourcing_ref
       }
     }), typeof window.OutsourcingWorkspace === 'function' ? /*#__PURE__*/React.createElement(window.OutsourcingWorkspace, {
       outsourcingRef: outsourcing.outsourcing_ref,
@@ -217,7 +217,7 @@
     }) : /*#__PURE__*/React.createElement("div", {
       className: "dy-note warning",
       role: "status"
-    }, "\u5916\u534F\u767B\u8BB0\u6A21\u5757\u5C1A\u672A\u52A0\u8F7D\u3002"));
+    }, window.WorkbenchTerms.outcomes.unavailable));
     return /*#__PURE__*/React.createElement("div", {
       className: "plana dashboard-live",
       "data-dashboard-workspace": true,
@@ -230,28 +230,28 @@
       className: "wb-page-title"
     }, "\u8BA1\u5212\u5458\u503C\u73ED\u53F0"), /*#__PURE__*/React.createElement("div", {
       className: "dy-context wb-page-context"
-    }, /*#__PURE__*/React.createElement("span", null, comparing ? comparisonState.caption ? comparisonState.caption.name + ' · ' + comparisonState.caption.status : '尚未核实所选候选方案' : data ? data.plan ? data.plan.display_name + ' · 当前正式' : data.categories.delivery.state === 'no_official_plan' ? '当前无正式计划' : '正式计划未能读取' : '正式计划未加载'), /*#__PURE__*/React.createElement("span", null, data ? '数据截至 ' + window.WorkbenchFormat.dateTime(data.as_of) + ' · 工厂本地时间' : '数据尚未读取'))), /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("span", null, comparing ? comparisonState.caption ? comparisonState.caption.name + ' · ' + comparisonState.caption.status : '尚未确认所选候选方案' : data ? data.plan ? data.plan.display_name + ' · 当前正式' : data.categories.delivery.state === 'no_official_plan' ? '当前无正式计划' : '正式计划未能读取' : '正式计划未读取'), /*#__PURE__*/React.createElement("span", null, data ? '数据截至 ' + window.WorkbenchFormat.dateTime(data.as_of) : '数据尚未读取'))), /*#__PURE__*/React.createElement("div", {
       className: "dy-tools"
     }, /*#__PURE__*/React.createElement(Button, {
       icon: "refresh-cw",
-      "aria-label": "\u660E\u786E\u5237\u65B0\u503C\u73ED\u53F0",
+      "aria-label": "\u5237\u65B0\u503C\u73ED\u53F0",
       busy: list.loading,
       disabled: command.busy,
       onClick: reload
     }), command.saved && /*#__PURE__*/React.createElement(Button, {
       icon: "history",
       onClick: () => setDialog(true)
-    }, command.saved.phase === 'confirmed' ? '查看已确认回执' : '核实原处置请求'))), /*#__PURE__*/React.createElement(ErrorBox, {
+    }, command.saved.phase === 'confirmed' ? '查看已确认的结果' : '查询上次处置结果'))), /*#__PURE__*/React.createElement(ErrorBox, {
       error: command.storageError
     }), command.storageError && /*#__PURE__*/React.createElement(Button, {
       icon: "refresh-cw",
       onClick: command.sync
-    }, "\u91CD\u8BFB\u539F\u8BF7\u6C42\u8BB0\u5F55"), registrationChanged && /*#__PURE__*/React.createElement("div", {
+    }, "\u5237\u65B0\u4E0A\u6B21\u64CD\u4F5C\u8BB0\u5F55"), registrationChanged && /*#__PURE__*/React.createElement("div", {
       className: "dy-note warning",
       role: "status"
-    }, "\u539F\u7269\u6D41\u767B\u8BB0\u5DF2\u66F4\u65B0\uFF1B\u5F53\u524D\u4FDD\u7559\u79BB\u5F00\u65F6\u7684\u7B5B\u9009\u3001\u6761\u76EE\u4E0E\u5386\u53F2\u9875\uFF0C\u8BF7\u660E\u786E\u5237\u65B0\u98CE\u9669\u4E0E\u5904\u7F6E\u3002"), !dialog && command.saved && /*#__PURE__*/React.createElement("div", {
+    }, "\u5916\u534F\u7269\u6D41\u767B\u8BB0\u5DF2\u66F4\u65B0\u3002\u5F53\u524D\u4ECD\u663E\u793A\u79BB\u5F00\u524D\u7684\u7B5B\u9009\u548C\u6761\u76EE\uFF0C\u8BF7\u70B9\u300C\u5237\u65B0\u503C\u73ED\u53F0\u300D\u66F4\u65B0\u98CE\u9669\u4E0E\u5904\u7F6E\u3002"), !dialog && command.saved && /*#__PURE__*/React.createElement("div", {
       className: 'dy-note ' + (command.saved.phase === 'confirmed' ? 'success' : 'warning')
-    }, command.saved.phase === 'confirmed' ? '原处置回执已确认，完成核实后刷新风险与处置。' : '存在原处置请求；结果未核实前不可新建处置。'), /*#__PURE__*/React.createElement(P.Overview, {
+    }, command.saved.phase === 'confirmed' ? '上次处置结果已确认，点「完成」后更新风险与处置。' : '上次处置还没确认结果，确认前不能新增处置。'), /*#__PURE__*/React.createElement(P.Overview, {
       data: data,
       analysis: analysisData,
       onCategory: category,
@@ -316,9 +316,9 @@
     }), list.error && /*#__PURE__*/React.createElement(Button, {
       icon: "refresh-cw",
       onClick: reload
-    }, "\u660E\u786E\u91CD\u8BFB\u5F53\u524D\u7B5B\u9009"), list.loading && /*#__PURE__*/React.createElement(window.WorkbenchListControls.EmptyState, {
+    }, "\u5237\u65B0\u5F53\u524D\u7B5B\u9009"), list.loading && /*#__PURE__*/React.createElement(window.WorkbenchListControls.EmptyState, {
       kind: "loading",
-      title: "\u6B63\u5728\u8BFB\u53D6\u771F\u5B9E\u98CE\u9669\u3001\u8D44\u6E90\u4E0E\u5019\u9009\u76EE\u5F55"
+      title: "\u6B63\u5728\u8BFB\u53D6\u98CE\u9669\u3001\u8D44\u6E90\u4E0E\u5019\u9009\u65B9\u6848\u5217\u8868"
     }), external && /*#__PURE__*/React.createElement(P.ExternalRegistration, {
       summary: currentSummary,
       onUpdated: reload
@@ -355,7 +355,7 @@
       error: detail.error
     }), detail.loading && /*#__PURE__*/React.createElement(window.WorkbenchListControls.EmptyState, {
       kind: "loading",
-      title: "\u6B63\u5728\u8BFB\u53D6\u539F\u6761\u76EE\u8BE6\u60C5"
+      title: "\u6B63\u5728\u8BFB\u53D6\u8FD9\u6761\u8BB0\u5F55\u7684\u8BE6\u60C5"
     })), item && /*#__PURE__*/React.createElement(P.Detail, {
       item: item,
       onClose: () => choose(null),
@@ -368,7 +368,7 @@
     }, "\u6B63\u5728\u8BFB\u53D6\u540C\u4E00\u6B63\u5F0F\u8BA1\u5212\u7684\u5206\u6790\u4F9D\u636E\u3002"), analysisRead.error && /*#__PURE__*/React.createElement(Button, {
       icon: "refresh-cw",
       onClick: reload
-    }, "\u660E\u786E\u91CD\u8BFB\u5206\u6790"), analysisData && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(ErrorBox, {
+    }, "\u5237\u65B0\u5206\u6790"), analysisData && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(ErrorBox, {
       error: analysisRead.error
     }), /*#__PURE__*/React.createElement(window.ResourceControls.Issues, {
       issues: analysisData.issues
@@ -404,7 +404,7 @@
       canNavigate: typeof onNavigate === 'function'
     })) : /*#__PURE__*/React.createElement("section", {
       "aria-label": "\u672C\u95EE\u9898\u5019\u9009\u72B6\u6001"
-    }, /*#__PURE__*/React.createElement("h3", null, "\u672C\u95EE\u9898\u5C1A\u65E0\u72EC\u7ACB\u5019\u9009\u7ED3\u679C"), /*#__PURE__*/React.createElement("p", null, "\u672A\u501F\u7528\u5176\u4ED6\u95EE\u9898\u7684\u5019\u9009\u4F5C\u4E3A\u672C\u95EE\u9898\u7ED3\u8BBA\u3002"), /*#__PURE__*/React.createElement(Button, {
+    }, /*#__PURE__*/React.createElement("h3", null, "\u8FD9\u4E2A\u95EE\u9898\u8FD8\u6CA1\u6709\u5355\u72EC\u7684\u5019\u9009\u65B9\u6848"), /*#__PURE__*/React.createElement("p", null, "\u8FD9\u91CC\u4E0D\u4F1A\u62FF\u5176\u4ED6\u95EE\u9898\u7684\u5019\u9009\u65B9\u6848\u5F53\u6210\u672C\u95EE\u9898\u7684\u7ED3\u8BBA\u3002"), /*#__PURE__*/React.createElement(Button, {
       icon: "git-compare-arrows",
       onClick: () => category('candidate')
     }, "\u67E5\u770B\u73B0\u6709\u5019\u9009\u65B9\u6848"))), handlingAvailable && activeTab === 'records' && /*#__PURE__*/React.createElement(window.DashboardHistory, {
@@ -417,7 +417,7 @@
       onHandle: () => setDialog(true)
     }))))), /*#__PURE__*/React.createElement("footer", {
       className: "dy-footer"
-    }, /*#__PURE__*/React.createElement("span", null, "\u6B63\u5F0F\u8BA1\u5212 / \u6267\u884C\u8BB0\u5F55 / \u8D44\u6E90\u65E5\u5386 / \u9F50\u5957\u4E8B\u5B9E / \u5916\u534F\u767B\u8BB0"), /*#__PURE__*/React.createElement("span", null, "\u98CE\u9669\u4E0E\u5904\u7F6E\u72EC\u7ACB \xB7 \u5916\u534F\u56DE\u5382\u4E0D\u7B49\u4E8E\u5DE5\u5E8F\u5B8C\u5DE5")), dialog && (command.saved || item) && /*#__PURE__*/React.createElement(window.DashboardHandling, {
+    }, /*#__PURE__*/React.createElement("span", null, "\u6B63\u5F0F\u8BA1\u5212 / \u62A5\u5DE5\u8BB0\u5F55 / \u8D44\u6E90\u73ED\u8868 / \u9F50\u5957\u8BB0\u5F55 / \u5916\u534F\u767B\u8BB0"), /*#__PURE__*/React.createElement("span", null, "\u98CE\u9669\u4E0E\u5904\u7F6E\u72EC\u7ACB \xB7 \u5916\u534F\u56DE\u5382\u4E0D\u7B49\u4E8E\u5DE5\u5E8F\u5B8C\u5DE5")), dialog && (command.saved || item) && /*#__PURE__*/React.createElement(window.DashboardHandling, {
       key: command.saved ? command.saved.request_key : item.item_ref,
       item: item,
       command: command,

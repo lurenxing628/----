@@ -76,11 +76,11 @@ async function selectDetail(page, ref = config.template_ref) {
   assert.equal(response.status(), 200); await page.locator('[data-sample-group=selected]').waitFor(); return response.json();
 }
 async function startPreview(page, reason = '核对已完成批次和加工小时，采用中位数定额', declared = '校准复核员') {
-  await page.getByRole('button', { name: '预览采用', exact: true }).click();
+  await page.getByRole('button', { name: '预检采用', exact: true }).click();
   const dialog = page.getByRole('dialog'); await dialog.waitFor();
-  await dialog.getByLabel('采用原因', { exact: true }).fill(reason); await dialog.getByLabel('声明人', { exact: true }).fill(declared);
+  await dialog.getByLabel('采用原因', { exact: true }).fill(reason); await dialog.getByLabel('经办人', { exact: true }).fill(declared);
   const wait = page.waitForResponse(r => r.url().endsWith('/adopt-preview'));
-  await dialog.getByRole('button', { name: '读取真实预览', exact: true }).click(); const response = await wait; return { response, dialog, reason, declared };
+  await dialog.getByRole('button', { name: '读取真实预检', exact: true }).click(); const response = await wait; return { response, dialog, reason, declared };
 }
 async function validated(page, preview, original, intent, receipt, stored) {
   return page.evaluate(({ preview, original, intent, receipt, stored }) => {
@@ -125,7 +125,7 @@ async function happyCase(viewport, theme) {
   const inspected = await startPreview(page, reason, declared), preview = await inspected.response.json();
   assert.equal(inspected.response.status(), 200); assert.equal(preview.data.validation.can_adopt, true);
   assert.equal(preview.data.suggestion.old_unit_hours, 2); assert.equal(preview.data.suggestion.suggested_unit_hours, 3);
-  await inspected.dialog.getByText('当前预览可采用：来源、旧定额和合格样本已核对。', { exact: true }).waitFor();
+  await inspected.dialog.getByText('当前预检可以采用：来源、原定额和可用完工记录已核对。', { exact: true }).waitFor();
   assert(await inspected.dialog.getByRole('button', { name: '确认采用并锁定', exact: true }).isDisabled());
   const layout = await geometry(page, viewport); assert.equal(layout.theme, theme); await screenshot(page, name + '-preview');
   await inspected.dialog.getByRole('checkbox').check();
@@ -136,8 +136,8 @@ async function happyCase(viewport, theme) {
   await screenshot(page, name + '-unknown'); const state = await context.storageState();
   await context.close(); await browser.close(); browser = await launch(); record.browser_restarts++;
   blockReceipts = false; fault = ''; ({ context, page } = await contextFor(name, viewport, theme, state));
-  await page.getByRole('button', { name: '查看采用回执', exact: true }).click();
-  let dialog = page.getByRole('dialog'); await dialog.getByText('已核实采用，新定额 3 h / 件，模板定额已锁定。', { exact: true }).waitFor();
+  await page.getByRole('button', { name: '查看采用结果', exact: true }).click();
+  let dialog = page.getByRole('dialog'); await dialog.getByText('采用已完成。新定额 3 小时 / 件，定额已锁定（来自工时校准）。', { exact: true }).waitFor();
   const committed = await page.evaluate(() => window.CalibrationAdoptionState.read());
   assert.equal(committed.request_key, stored.request_key); assert(committed.receipt.replayed);
   await geometry(page, viewport); await screenshot(page, name + '-receipt');
@@ -148,22 +148,22 @@ async function happyCase(viewport, theme) {
   const wrong = await context.request.get(origin + '/api/workbench/v1/calibration/' + config.other_ref + '/adopt/receipts/' + stored.request_key);
   assert.equal(wrong.status(), 409);
   if (!record.contract_rejections) record.contract_rejections = await validated(page, preview, original.data.suggestion, { reason, declared_operator: declared }, committed.receipt, stored);
-  await dialog.getByRole('button', { name: '完成核实', exact: true }).click();
+  await dialog.getByRole('button', { name: '完成', exact: true }).click();
   await selectDetail(page); const locked = await startPreview(page, reason, declared);
   assert.equal((await locked.response.json()).data.quota_lock.locked, true);
-  await locked.dialog.getByText('此模板定额已采纳并锁定，不能重复采纳或覆盖。', { exact: true }).waitFor();
+  await locked.dialog.getByText('这个模板的定额已经采用并锁定，不能重复采用或覆盖。', { exact: true }).waitFor();
   assert(await locked.dialog.getByRole('button', { name: '确认采用并锁定', exact: true }).isDisabled()); await screenshot(page, name + '-locked');
   record.cases.push({ name, viewport, theme, request_key: stored.request_key, reason, declared_operator: declared, geometry: layout }); await context.close();
 }
 async function boundaries() {
   let { context, page } = await contextFor('disabled'); await selectDetail(page);
   let inspected = await startPreview(page); assert.equal(inspected.response.status(), 503);
-  await inspected.dialog.getByText('采纳存储升级和普通定额写保护尚未联合接入，采纳保持关闭。', { exact: true }).waitFor();
+  await inspected.dialog.getByText('此功能尚未开通。', { exact: true }).waitFor();
   record.disabled_reason = true; await screenshot(page, 'disabled'); await context.close();
   ({ context, page } = await contextFor('missing'));
   await selectDetail(page, config.missing_ref);
   inspected = await startPreview(page); assert.equal((await inspected.response.json()).data.validation.can_adopt, false);
-  await inspected.dialog.getByText('当前模板修订的合格整道完工样本不足5个，不能采纳。', { exact: true }).waitFor();
+  await inspected.dialog.getByText('这个模板版本下合格的整道完工记录不足 5 条，不能采用。', { exact: true }).waitFor();
   record.insufficient_reason = true; await screenshot(page, 'insufficient'); await context.close();
   ({ context, page } = await contextFor('cross')); await selectDetail(page); crossed = true;
   inspected = await startPreview(page); assert.equal(inspected.response.status(), 200);
@@ -173,20 +173,20 @@ async function boundaries() {
   assert.equal(inspected.response.status(), 200); await inspected.dialog.getByRole('checkbox').check();
   assert.equal((await context.request.post(origin + '/__calibration_adoption_fixture__/mutate')).status(), 200);
   const confirm = page.waitForResponse(r => r.url().endsWith('/adopt')); await inspected.dialog.getByRole('button', { name: '确认采用并锁定', exact: true }).click();
-  assert.equal((await confirm).status(), 409); await inspected.dialog.getByText(/本次未采用；请明确刷新/).waitFor();
+  assert.equal((await confirm).status(), 409); await inspected.dialog.getByText(/本次没有采用；请点「刷新所选模板」/).waitFor();
   assert(await inspected.dialog.getByRole('button', { name: '确认采用并锁定', exact: true }).isDisabled());
-  const changed = page.waitForResponse(r => r.url().endsWith('/adopt-preview')); await inspected.dialog.getByRole('button', { name: '读取真实预览', exact: true }).click();
-  assert.equal((await changed).status(), 200); await inspected.dialog.getByText('模板、旧定额或样本已变化，请明确刷新所选记录后重新预览。', { exact: true }).waitFor();
+  const changed = page.waitForResponse(r => r.url().endsWith('/adopt-preview')); await inspected.dialog.getByRole('button', { name: '读取真实预检', exact: true }).click();
+  assert.equal((await changed).status(), 200); await inspected.dialog.getByText('模板、原定额或完工记录已变化，请点「刷新所选模板」后重新预检。', { exact: true }).waitFor();
   const refreshed = page.waitForResponse(r => new URL(r.url()).pathname.endsWith('/calibration/' + config.template_ref));
-  await inspected.dialog.getByRole('button', { name: '明确刷新所选记录', exact: true }).click(); assert.equal((await refreshed).status(), 200);
+  await inspected.dialog.getByRole('button', { name: '刷新所选模板', exact: true }).click(); assert.equal((await refreshed).status(), 200);
   record.drift_blocked = true; await screenshot(page, 'drift-refreshed'); await context.close();
   ({ context, page } = await contextFor('lost')); await selectDetail(page); inspected = await startPreview(page); await inspected.dialog.getByRole('checkbox').check();
   fault = 'before'; const notFound = page.waitForResponse(r => r.url().includes('/receipts/'));
   await inspected.dialog.getByRole('button', { name: '确认采用并锁定', exact: true }).click(); assert.equal((await notFound).status(), 404);
-  await inspected.dialog.getByText(/尚未查到原回执/).waitFor(); const stored = await page.evaluate(() => window.CalibrationAdoptionState.read());
-  await inspected.dialog.getByRole('button', { name: '关闭并保留请求', exact: true }).click(); await selectDetail(page, config.other_ref);
-  await page.getByRole('button', { name: '核实原采纳请求', exact: true }).click();
-  await page.getByRole('dialog').getByText('原请求属于另一模板，当前选择不会改变原请求对象。请先核实原回执。', { exact: true }).waitFor();
+  await inspected.dialog.getByText(/上次采用的结果还没查到/).waitFor(); const stored = await page.evaluate(() => window.CalibrationAdoptionState.read());
+  await inspected.dialog.getByRole('button', { name: '关闭并保留上次操作', exact: true }).click(); await selectDetail(page, config.other_ref);
+  await page.getByRole('button', { name: '查询上次采用结果', exact: true }).click();
+  await page.getByRole('dialog').getByText('上次操作属于另一个模板，当前选择不会改动它。请先点「查询结果」确认上次结果。', { exact: true }).waitFor();
   assert.equal((await page.evaluate(() => window.CalibrationAdoptionState.read())).request_key, stored.request_key);
   assert.equal(await page.getByRole('button', { name: '确认采用并锁定', exact: true }).count(), 0);
   record.not_found_retained = true; await screenshot(page, 'not-found-retained'); await context.close();

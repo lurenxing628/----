@@ -26,16 +26,16 @@
     const entries = {}, messages = [];
     if (message && technical(message)) entries['原始错误信息'] = message;
     if (!hideMessage) messages.push(message && !technical(message) ? message : fallback);
-    const labels = { code: '错误编号', status: '响应状态', request_key: '请求编号', request_ref: '请求引用', request_id: '请求标记', trace_id: '诊断编号' };
+    const labels = { code: '错误编号', status: '状态码', request_key: '操作编号', request_ref: '结果编号', request_id: '操作标记', trace_id: '诊断编号' };
     Object.entries(labels).forEach(([key, label]) => { if (present(error[key])) entries[label] = error[key]; });
     if (error.name && error.name !== 'Error') entries['错误类型'] = error.name;
     fields.forEach((field, index) => {
       if (!field || excludePaths.includes(field.path)) return;
       const detail = typeof field.message === 'string' ? field.message : '';
       if (!detail) return;
-      if (technical(detail)) { entries['字段说明 ' + (index + 1)] = detail; if (!messages.length) messages.push(fallback); }
+      if (technical(detail)) { entries['填写项说明 ' + (index + 1)] = detail; if (!messages.length) messages.push(fallback); }
       else if (!messages.includes(detail)) messages.push(detail);
-      if (present(field.code)) entries['字段编号 ' + (index + 1)] = field.code;
+      if (present(field.code)) entries['填写项编号 ' + (index + 1)] = field.code;
     });
     if (!messages.length && !Object.keys(entries).length) return null;
     return <div className="wb-error" role="alert">

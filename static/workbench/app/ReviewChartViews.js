@@ -1,6 +1,11 @@
 (function () {
   'use strict';
 
+  // Axis marks label the 0 / 50% / 100% positions of the bar track with the counts they stand for.
+  const tick = value => window.WorkbenchFormat.number(value, {
+    digits: 1,
+    trim: true
+  });
   function DistributionChart({
     items,
     label
@@ -13,7 +18,7 @@
     }, /*#__PURE__*/React.createElement("figcaption", {
       className: "aw-caption",
       id: id
-    }, label), /*#__PURE__*/React.createElement("ul", {
+    }, label), items.length ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("ul", {
       className: "aw-bars"
     }, items.map(row => /*#__PURE__*/React.createElement("li", {
       key: row.id
@@ -29,7 +34,19 @@
       style: {
         width: row.count / maximum * 100 + '%'
       }
-    })), /*#__PURE__*/React.createElement("strong", null, row.count))))));
+    })), /*#__PURE__*/React.createElement("strong", null, row.count))))), /*#__PURE__*/React.createElement("div", {
+      className: "aw-bar-row aw-scale",
+      "aria-hidden": "true"
+    }, /*#__PURE__*/React.createElement("span", null), /*#__PURE__*/React.createElement("span", {
+      className: "aw-scale-ticks"
+    }, [0, maximum / 2, maximum].map(value => /*#__PURE__*/React.createElement("span", {
+      key: value
+    }, tick(value)))), /*#__PURE__*/React.createElement("strong", {
+      className: "aw-scale-gutter"
+    }, maximum))) : /*#__PURE__*/React.createElement(window.WorkbenchListControls.EmptyState, {
+      kind: "empty",
+      title: "\u5F53\u524D\u8303\u56F4\u6682\u65E0\u6570\u636E"
+    }));
   }
   function TrendChart({
     points,
@@ -66,11 +83,15 @@
       style: {
         top: 0
       }
-    }, max), /*#__PURE__*/React.createElement("span", {
+    }, tick(max)), /*#__PURE__*/React.createElement("span", {
+      style: {
+        top: '50%'
+      }
+    }, tick(max / 2)), /*#__PURE__*/React.createElement("span", {
       style: {
         bottom: 0
       }
-    }, "0")), /*#__PURE__*/React.createElement("div", {
+    }, tick(0))), /*#__PURE__*/React.createElement("div", {
       className: "aw-plot"
     }, /*#__PURE__*/React.createElement("svg", {
       className: "aw-plot-svg",
@@ -124,7 +145,7 @@
       scope: "row"
     }, window.WorkbenchFormat.date(row.label)), /*#__PURE__*/React.createElement("td", null, row.planned), /*#__PURE__*/React.createElement("td", null, row.actual == null ? '未知' : row.actual))))))));
   }
-  const resourceColumns = [['resource_label', '实际资源'], ['operations', '涉及工序'], ['events', '旧现场事件数'], ['production_reports', '逐次报工数'], ['records', '全部记录数'], ['effective_processing_hours', '有效加工工时(h)'], ['known_effective_processing_hours', '已知工时小计(h)'], ['unknown_hour_events', '工时未知记录数']].map(([key, label]) => ({
+  const resourceColumns = [['resource_label', '实际资源'], ['operations', '涉及工序'], ['events', '旧现场事件数'], ['production_reports', '逐次报工数'], ['records', '全部记录数'], ['effective_processing_hours', '有效加工工时（小时）'], ['known_effective_processing_hours', '已知工时小计（小时）'], ['unknown_hour_events', '工时未知记录数']].map(([key, label]) => ({
     key,
     label
   }));

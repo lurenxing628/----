@@ -25,9 +25,9 @@
   function available(entity, key) {
     if (!C.availability(entity.availability)) {
       const issue = entity.issues.find(item => item.code === 'resource_availability_unavailable');
-      return <span className="muted" title={issue ? issue.message : '可用数量尚未读取，不能以引用总数代替。'}>{issue ? '无法核实' : '待读取'}</span>;
+      return <span className="muted" title={issue ? issue.message : '可用数量还没读取，不会用关联总数代替。'}>{issue ? '暂无数据' : '未读取'}</span>;
     }
-    return <span title={key === 'machines' ? '启用且绑定此工种的设备；不代表当日日历空闲。' : '启用、具有匹配设备授权且工种资格合格的去重人数；不代表当日日历空闲。'}>{entity.availability[key]}</span>;
+    return <span title={key === 'machines' ? '启用并绑定此工种的设备；不代表当天班表有空。' : '启用、有匹配设备授权、工种资格合格的人数（不重复计数）；不代表当天班表有空。'}>{entity.availability[key]}</span>;
   }
   function opColumns(category) {
     if (category === 'internal') return [
@@ -36,7 +36,7 @@
       { key: 'remark', title: '产能备注', render: entity => cell(entity, 'remark') }
     ];
     if (category === 'external') return [
-      { key: 'default_merge_mode', title: '默认周期策略', width: 150, render: entity => C.fieldValue('op_type', 'default_merge_mode', entity.fields.default_merge_mode) },
+      { key: 'default_merge_mode', title: '默认周期规则', width: 150, render: entity => C.fieldValue('op_type', 'default_merge_mode', entity.fields.default_merge_mode) },
       { key: 'remark', title: '备注', render: entity => cell(entity, 'remark') }
     ];
     return [
@@ -84,7 +84,7 @@
           <Button className="mini" icon="search" disabled={disabled} onClick={() => onOpen(entity.ref)}>{kind === 'op_type' ? entity.fields.category === 'internal' ? '查看绑定' : entity.fields.category === 'external' ? '查看供应商' : '查看/编辑' : '查看/编辑'}</Button>
           <Button className="mini danger" icon="minus" reasonDisplay="inline" reason={disabled ? '正在处理，请稍候。' : C.blocked(entity.write_context, kind, 'delete', source)} onClick={() => onDelete(entity.ref)}>删除</Button>
         </div></td></tr>)}{!entities.length && <tr><td colSpan={cols.length + 2}><window.WorkbenchControls.EmptyState kind={loading ? 'loading' : error ? 'error' : filtered ? 'filtered' : 'empty'} error={error}
-          action={error ? <Button onClick={onRetry}>重新读取</Button> : filtered ? <Button onClick={onClear}>清除筛选</Button> : undefined} /></td></tr>}</tbody>
+          action={error ? <Button onClick={onRetry}>刷新</Button> : filtered ? <Button onClick={onClear}>清除筛选</Button> : undefined} /></td></tr>}</tbody>
     </table></div></div>;
   }
   function Pager({ page, onPage, onSize, disabled }) {

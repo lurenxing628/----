@@ -59,9 +59,9 @@ def test_run_candidate_widgets_real_browser_and_downloads(candidate_case):
             data = Path(item["path"]).read_bytes()
         headers, rows = decode(Response(), item["format"])
         assert len(rows) == item["row_count"]
-        assert [row[headers.index("行引用")] for row in rows[:item["task_count"]]] == item["row_refs"]
-        assert [row[headers.index("工序引用")] for row in rows[:item["task_count"]]] == item["operation_refs"]
-        assert all(row[headers.index("候选引用")] == item["candidate_ref"] for row in rows)
-        assert all(row[headers.index("运行引用")] == item["run_ref"] for row in rows)
+        assert [row[headers.index("行编号")] for row in rows[:item["task_count"]]] == item["row_refs"]
+        assert [row[headers.index("工序编号")] for row in rows[:item["task_count"]]] == item["operation_refs"]
+        assert all(row[headers.index("候选方案编号")] == item["candidate_ref"] for row in rows)
+        assert all(row[headers.index("排产编号")] == item["run_ref"] for row in rows)
         assert [row[headers.index("安排开始")] for row in rows[:item["task_count"]]] == item["starts"]
     print(probe_output, flush=True)

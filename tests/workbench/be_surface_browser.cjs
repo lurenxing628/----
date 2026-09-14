@@ -6,7 +6,7 @@ const hash = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
 const files = ['WorkbenchFormat.js', 'WorkbenchTerms.js', 'WorkbenchReferences.jsx', 'WorkbenchGuards.js',
   'WorkbenchCaption.jsx', 'WorkbenchPageContext.jsx', 'resource-contract.js', 'resource-api.js', 'resource-session.js', 'ResourceControls.jsx', 'CalendarContract.js',
   'PointContract.js', 'PointGanttModel.js', 'PointGantt.jsx', 'PlanProcessOrder.js', 'PlanContract.js', 'PlanAPI.js',
-  'ActualGanttModel.js', 'ActualGanttWindow.js', 'ActualGanttContract.js', 'ActualGanttAPI.js', 'ActualGanttControls.jsx', 'ActualGanttCanvas.jsx', 'ActualGanttRows.jsx', 'ActualGanttWorkspace.jsx',
+  'FieldContract.js', 'ActualGanttModel.js', 'ActualGanttWindow.js', 'ActualGanttContract.js', 'ActualGanttAPI.js', 'ActualGanttControls.jsx', 'ActualGanttCanvas.jsx', 'ActualGanttRows.jsx', 'ActualGanttWorkspace.jsx',
   'RunPresentation.js', 'PreflightContract.js', 'PreflightAPI.js', 'PreflightControls.jsx', 'PreflightBatchPicker.jsx', 'PreflightWorkspace.jsx',
   'WorkbenchControlBridge.js', 'WorkbenchControlStyles.jsx', 'WorkbenchSelectMenu.jsx', 'WorkbenchDatePickerModel.js', 'WorkbenchDatePicker.jsx', 'WorkbenchControls.jsx', 'WorkbenchListControls.jsx', 'WorkbenchNumberControls.jsx'];
 const report = { errors: [], external: [], variants: [], screenshots: [], target: 'chrome109', static_build: false,
@@ -106,7 +106,7 @@ async function preflight(page, variant) {
   variant.preflight = { ...rect, alertHeight: compact.height, footerBottom: footer.y + footer.height };
   await shot(page, variant.key + '-preflight');
   await page.locator('.pf-detail > summary').first().click();
-  assert.equal(await page.getByRole('table', { name: '排产前检查明细' }).locator('tbody tr').count(), 23);
+  assert.equal(await page.getByRole('table', { name: '排产检查明细' }).locator('tbody tr').count(), 23);
   await page.locator('.pf-reasons > summary').click();
   const rows = await page.locator('.pf-reason-list [data-reason-code]').evaluateAll(nodes => nodes.map(node => ({ code: node.dataset.reasonCode,
     operation_ref: node.dataset.operationRef, batch_ref: node.dataset.batchRef, text: node.textContent })));
@@ -186,7 +186,7 @@ async function edgeCases(page) {
   await page.evaluate(() => mountActual({ theme: 'dark', key: 'unavailable', unavailable: true })); await ready(page);
   assert.ok((await page.locator('[data-actual-gantt]').innerText()).includes('报工记录不可用，实际状态无法核实。'));
   assert.equal(await page.getByRole('button', { name: '导出 CSV', exact: true }).isDisabled(), true);
-  assert.ok((await page.locator('.fg-group-summary').innerText()).includes('执行记录不可用'));
+  assert.ok((await page.locator('.fg-group-summary').innerText()).includes('报工记录不可用'));
   report.edge_cases = ['duplicate operation count stays unique', 'same-code detail and trailing reason retained', 'reports under other bound resources',
     'no reports in task or resource', 'unavailable reason and disabled export retained'];
 }

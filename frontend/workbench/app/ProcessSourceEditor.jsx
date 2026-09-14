@@ -24,7 +24,10 @@
     });
     return next;
   }
-  function input(entity, draft) {
+  const complete = row => ['internal', 'external'].includes(row.source) && !!row.op_type_ref && (row.source === 'internal' || !!row.supplier_ref);
+  function input(entity, draft, pageSize) {
+    const pending = E.active(entity).filter(row => !draft[row.ref].confirmed);
+    if (pending.length) throw E.unconfirmed(pending, entity.operations, pageSize, '归属');
     const operations = E.active(entity).map(row => {
       const current = draft[row.ref];
       if (!current.confirmed || !['internal', 'external'].includes(current.source) || !current.op_type_ref || current.source === 'external' && !current.supplier_ref)
@@ -37,18 +40,18 @@
   function Picker({ adapter, target, onSelect, onClose, disabled }) {
     const [search, setSearch] = React.useState(''), [scope, setScope] = React.useState({ query: '', page: 1, size: 50 });
     const read = S.useQuery(async signal => {
-      if (typeof adapter.choices !== 'function') throw C.failure('关系选项读取接口尚未接入。');
+      if (typeof adapter.choices !== 'function') throw C.failure('dependency not wired: window.APSProcessAPI.choices');
       return C.query(await adapter.choices(target.kind, { ...scope, ...(target.kind === 'op_type' ? { category: target.source } : {}) }, signal), 'choices');
     }, [adapter, target.kind, target.source, scope]);
     const data = read.result && read.result.data, title = target.kind === 'op_type' ? P.sourceLabel(target.source) + '工种' : '供应商';
     return <Modal title={'选择' + title + ' · 工序 ' + target.sequence} icon="search" onClose={onClose} locked={disabled} footer={<Button onClick={onClose} disabled={disabled}>取消</Button>}>
       <div className="modal-b scroll"><form className="toolbar" onSubmit={event => { event.preventDefault(); setScope({ query: search, page: 1, size: 50 }); }}>
         <label className="search"><input type="search" aria-label={'搜索' + title} value={search} onChange={event => setSearch(event.target.value)} disabled={disabled} /></label><Button type="submit" icon="search" disabled={disabled}>搜索</Button></form>
-        <ErrorBox error={read.error} />{read.error && <Button icon="refresh-cw" onClick={() => setScope({ query: search, page: 1, size: 50 })}>重读选项</Button>}
+        <ErrorBox error={read.error} />{read.error && <Button icon="refresh-cw" onClick={() => setScope({ query: search, page: 1, size: 50 })}>刷新选项</Button>}
         {read.loading && <p role="status">正在读取选项…</p>}
         {data && <><Issues issues={read.result.warnings} /><div className="wb-table-frame"><table className="tbl wb-table" aria-label={title + '选项'} style={{ width: '100%', tableLayout: 'fixed' }}><caption className="wb-visually-hidden">{title + '选项'}</caption><thead><tr><th scope="col">编号</th><th scope="col">名称</th><th scope="col">选择</th></tr></thead>
           <tbody>{data.entities.map(row => <tr key={row.ref}><td>{row.business_code}</td><td>{row.label}</td><td><Button icon="check" disabled={disabled || !(row.status === 'active' || target.kind === 'op_type' && row.status === null) || target.kind === 'op_type' && row.fields.category !== target.source}
-            aria-label={'选用 ' + row.label} onClick={() => onSelect(row)}>选用</Button></td></tr>)}{!data.entities.length && <tr><td colSpan={3}>没有匹配选项。</td></tr>}</tbody></table></div>
+            aria-label={'采用 ' + row.label} onClick={() => onSelect(row)}>采用</Button></td></tr>)}{!data.entities.length && <tr><td colSpan={3}>没有匹配选项。</td></tr>}</tbody></table></div>
           <window.ResourceTables.Pager page={data.page} disabled={disabled || read.loading} onPage={page => setScope(current => ({ ...current, page, snapshot_ref: read.result.meta.snapshot_ref }))}
             onSize={size => setScope(current => ({ ...current, size, page: 1, snapshot_ref: undefined }))} /></>}
       </div></Modal>;
@@ -76,8 +79,8 @@
       invalidate(); model.setError(null);
       const controller = new AbortController(); request.current = controller;
       try {
-        if (typeof adapter.stagePreview !== 'function' || typeof P.stagePreview !== 'function') throw C.failure('归属检查接口尚未接入。');
-        const body = input(entity, draft); setChecking(true);
+        if (typeof adapter.stagePreview !== 'function' || typeof P.stagePreview !== 'function') throw C.failure('dependency not wired: window.APSProcessAPI.stagePreview');
+        const body = input(entity, draft, paging.page.size); setChecking(true);
         const response = P.stagePreview(await adapter.stagePreview(entity.ref, 'source_confirm', body, model.base.meta.snapshot_ref, controller.signal), entity.ref, 'source_confirm');
         if (!controller.signal.aborted && request.current === controller) { setPreview({ response, body, base: model.base, draft }); setChecking(false); }
       } catch (error) { if (!controller.signal.aborted && request.current === controller) { model.setError(error); setChecking(false); } }
@@ -90,27 +93,35 @@
       if (blocked || saveReason) return;
       await command.submit('process', 'source_confirm', entity.ref, preview.response.data.write_context, { ...preview.body, discard_group_refs: discarded });
     }
-    const confirmed = Object.values(draft).filter(row => row.confirmed).length;
-    return <section data-process-source-editor><div className="toolbar"><E.Search paging={paging} disabled={blocked} /><span>有效工序 {E.active(entity).length} · 已核对 {confirmed}</span><span className="tb-spacer" />
-      <Button icon="plus" disabled={editBlocked} reason={!adapter.resourceAdapter || !window.ProcessOpTypeCreate ? '工种独立建档尚未接入。' : ''}
+    const confirmed = Object.values(draft).filter(row => row.confirmed).length, active = E.active(entity), ready = active.filter(row => complete(draft[row.ref]));
+    const [confirmAll, setConfirmAll] = React.useState(false);
+    // Only rows that already carry a source, a real op type and (for external work) a supplier can be confirmed in bulk; the rest are listed back.
+    function confirmEverything() {
+      invalidate(); model.edit(current => { const next = { ...current }; ready.forEach(row => { next[row.ref] = { ...next[row.ref], confirmed: true }; }); return next; }); setConfirmAll(false);
+    }
+    return <section data-process-source-editor><div className="toolbar"><E.Search paging={paging} disabled={blocked} /><span>有效工序 {active.length} · 已核对 {confirmed}</span><span className="tb-spacer" />
+      <Button icon="plus" disabled={editBlocked} reason={!adapter.resourceAdapter || !window.ProcessOpTypeCreate ? window.WorkbenchTerms.outcomes.unavailable : ''}
         onClick={() => { invalidate(); setCreate({}); onOverlay(true); }}>待建工种</Button></div>
       <div className="toolbar"><label><input type="checkbox" aria-label="确认本页已核对工序" disabled={editBlocked || !paging.rows.some(row => row.status === 'active')}
         checked={paging.rows.some(row => row.status === 'active') && paging.rows.filter(row => row.status === 'active').every(row => draft[row.ref].confirmed)}
-        onChange={event => { const checked = event.target.checked; invalidate(); model.edit(current => { const next = { ...current }; paging.rows.filter(row => row.status === 'active').forEach(row => { next[row.ref] = { ...next[row.ref], confirmed: checked }; }); return next; }); }} />确认本页已核对工序</label></div>
-      <div className="wb-table-frame"><div className="card-scroll wb-table-shell"><table className="tbl wb-table" aria-label="工序归属明细" style={{ minWidth: 950, tableLayout: 'fixed' }}><caption className="wb-visually-hidden">{"工序归属明细"}</caption>
+        onChange={event => { const checked = event.target.checked; invalidate(); model.edit(current => { const next = { ...current }; paging.rows.filter(row => row.status === 'active').forEach(row => { next[row.ref] = { ...next[row.ref], confirmed: checked }; }); return next; }); }} />确认本页已核对工序</label>
+        {paging.page.pages > 1 && <Button icon="check" disabled={editBlocked || !ready.length} onClick={() => setConfirmAll(true)}>确认全部 {ready.length} 道已核对</Button>}</div>
+      {confirmAll && <Modal title="确认全部工序已核对归属" icon="check" onClose={() => setConfirmAll(false)} footer={<><Button onClick={() => setConfirmAll(false)}>取消</Button><Button className="btn primary" icon="check" onClick={confirmEverything}>确认全部 {ready.length} 道</Button></>}>
+        <div className="modal-b"><p>会把已选好归属和工种的 {ready.length} 道有效工序（包括没翻到的页）全部标记为已核对。{active.length - ready.length > 0 ? '另有 ' + (active.length - ready.length) + ' 道还没选归属、工种或外协供应商，不会被标记，检查时会按页列出。' : '所有有效工序都已选好，可以整体确认。'}</p></div></Modal>}
+      <div className="wb-table-frame"><div className="card-scroll wb-table-shell"><table className="tbl wb-table" aria-label="归属明细" style={{ minWidth: 950, tableLayout: 'fixed' }}><caption className="wb-visually-hidden">{"归属明细"}</caption>
         <thead><tr><th scope="col" style={{ width: 150 }}>工序</th><th scope="col" style={{ width: 160 }}>工种</th><th scope="col" style={{ width: 160 }}>归属</th><th scope="col" style={{ width: 190 }}>供应商</th><th scope="col">核对 / 确认记录</th></tr></thead><tbody>{paging.rows.map(row => {
           const current = draft[row.ref] || row, inactive = row.status !== 'active', cycle = current.source === row.source && P.groupCycle(row, entity.external_groups);
-          return <tr key={row.ref}><td><b>{row.sequence}</b> {row.label}{cycle && <div className="muted" data-process-cycle-group={row.external_group_ref}>{cycle}</div>}</td><td>{current.op_type_label || '未绑定工种'}<div><Button icon="search" aria-label={'选择工序 ' + row.sequence + ' 工种'} disabled={editBlocked || inactive || !current.source} onClick={() => openPicker(row, 'op_type')} /></div></td>
+          return <tr key={row.ref}><td><b>{row.sequence}</b> {row.label}{cycle && <div className="muted" data-process-cycle-group={row.external_group_ref}>{cycle}</div>}</td><td>{current.op_type_label || '未选工种'}<div><Button icon="search" aria-label={'选择工序 ' + row.sequence + ' 工种'} disabled={editBlocked || inactive || !current.source} onClick={() => openPicker(row, 'op_type')} /></div></td>
             <td><span className="segm" role="group" aria-label={'工序 ' + row.sequence + ' 归属'}>{['internal', 'external'].map(source => <Button key={source} className={current.source === source ? 'on ' + (source === 'internal' ? 'int' : 'ext') : ''}
               aria-pressed={current.source === source} disabled={editBlocked || inactive} onClick={() => { if (source !== current.source) change(row.ref, { source, op_type_ref: null, op_type_label: null, supplier_ref: null, supplier_label: null, confirmed: false }); }}>{P.sourceLabel(source)}</Button>)}</span>{!current.source && <div>未归类</div>}</td>
-            <td>{current.source === 'internal' ? '不适用' : <>{current.supplier_label || '未绑定供应商'}<div><Button icon="search" aria-label={'选择工序 ' + row.sequence + ' 供应商'} disabled={editBlocked || inactive || current.source !== 'external'} onClick={() => openPicker(row, 'supplier')} />
+            <td>{current.source === 'internal' ? '不适用' : <>{current.supplier_label || '未选供应商'}<div><Button icon="search" aria-label={'选择工序 ' + row.sequence + ' 供应商'} disabled={editBlocked || inactive || current.source !== 'external'} onClick={() => openPicker(row, 'supplier')} />
               {current.supplier_ref && <Button icon="x" aria-label={'清除工序 ' + row.sequence + ' 供应商'} disabled={editBlocked || inactive} onClick={() => change(row.ref, { supplier_ref: null, supplier_label: null, confirmed: false })} />}</div></>}</td>
             <td>{inactive ? '已停用工序' : <label><input type="checkbox" aria-label={'确认工序 ' + row.sequence + ' 归属'} checked={!!current.confirmed} disabled={editBlocked} onChange={event => change(row.ref, { confirmed: event.target.checked })} />已核对</label>}
               <div className="muted"><E.Confirmation record={row.confirmation && row.confirmation.source} /></div><Issues issues={row.issues} /></td></tr>;
         })}{!paging.rows.length && <tr><td colSpan={5}>{rows.length ? '没有匹配的工序。' : '尚无工序记录。'}</td></tr>}</tbody></table></div></div><E.Pager paging={paging} disabled={blocked} />
       <E.Groups rows={displayGroups} affected={affected.map(row => row.ref)} discarded={discarded} onDiscard={preview ? setDiscarded : undefined} disabled={blocked} />
       {preview && <><Issues issues={preview.response.warnings} /><p role="status">当前归属已检查；受影响外协组 {affected.length} 个，尚未提交。</p></>}
-      <E.Feedback model={model} disabled={blocked || checking} />
+      <E.Feedback model={model} disabled={blocked || checking} paging={paging} />
       <div className="pd-foot"><span className="muted">现有归属仅作建议；仅提交有效工序，不修改已有批次。</span><Button icon="search" busy={checking} disabled={blocked} reason={stageReason} onClick={preflight}>检查归属</Button>
         <Button icon="check" className="btn primary" disabled={blocked} reason={saveReason} onClick={save}>完成归属 · 解锁工时</Button></div>
       {picker && ReactDOM.createPortal(<div className="plana process-detail"><Picker adapter={adapter} target={picker} onSelect={choose} onClose={closePicker} disabled={blocked} /></div>, document.body)}

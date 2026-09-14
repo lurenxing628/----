@@ -31,7 +31,7 @@
   }
   function location(stage, operationRef, groupRef) {
     const ref = item => typeof item === 'string' && /^[0-9a-f]{48}$/.test(item);
-    if (stage != null && !['route', 'source', 'hours'].includes(stage) || operationRef != null && !ref(operationRef) || groupRef != null && !ref(groupRef)) throw C.failure('工艺导航阶段或模板引用不正确，未按序号或名称替代。');
+    if (stage != null && !['route', 'source', 'hours'].includes(stage) || operationRef != null && !ref(operationRef) || groupRef != null && !ref(groupRef)) throw C.failure('要定位的阶段或工序已失效，不会按序号或名称找相近的替代。');
     return {
       stage: stage || null,
       operationRef: operationRef || null,
@@ -43,7 +43,7 @@
     const group = target.groupRef && entity.external_groups.find(row => row.ref === target.groupRef);
     if (target.operationRef && (!operation || operation.status !== 'active')) throw C.failure('目标工序已删除、停用或不属于此零件，未按序号或同名替代。');
     if (target.groupRef && !group) throw C.failure('目标外协组已删除或不属于此零件，未按工序范围替代。');
-    if (operation && group && operation.external_group_ref !== group.ref) throw C.failure('目标工序不属于指定外协组，不能混用定位引用。');
+    if (operation && group && operation.external_group_ref !== group.ref) throw C.failure('要定位的工序不属于指定外协组，不能混用两种定位。');
     return target;
   }
   function useFocus(root, ref, page) {
@@ -164,7 +164,7 @@
       scope: "col"
     }, "\u5DE5\u5E8F\u8303\u56F4"), /*#__PURE__*/React.createElement("th", {
       scope: "col"
-    }, "\u5468\u671F\u7B56\u7565"), /*#__PURE__*/React.createElement("th", {
+    }, "\u5468\u671F\u7B97\u6CD5"), /*#__PURE__*/React.createElement("th", {
       scope: "col"
     }, "\u603B\u5468\u671F\uFF08\u5929\uFF09"), /*#__PURE__*/React.createElement("th", {
       scope: "col"
@@ -216,7 +216,7 @@
       old = new Map(before.operations.map(row => [row.ref, row]));
     const oldGroups = new Map(before.external_groups.map(row => [row.ref, row])),
       newGroups = new Map(after.external_groups.map(row => [row.ref, row]));
-    const range = group => group ? value(group.start_sequence) + ' 至 ' + value(group.end_sequence) : '范围未提供';
+    const range = group => group ? value(group.start_sequence) + ' 至 ' + value(group.end_sequence) : '范围未填写';
     const state = item => ({
       missing: '未录入',
       present: '已有记录，未人工确认',
@@ -226,14 +226,14 @@
     })[item] || '状态未明确';
     const stage = item => ({
       route: '工艺路线',
-      source: '工序归属',
+      source: '归属',
       hours: '工时定额',
       ready: '已就绪'
     })[item] || '阶段未明确';
-    const strategy = item => ({
+    const cycleMode = item => ({
       merged: '合并设置',
       separate: '分别设置'
-    })[item] || (item === null ? '未设置' : '原周期策略未明确');
+    })[item] || (item === null ? '未设置' : '原周期算法未明确');
     function field(label, previous, current, format = value) {
       if (!same(previous, current)) result.push({
         label,
@@ -243,8 +243,8 @@
     }
     function relation(label, previousRef, currentRef, previousLabel, currentLabel) {
       if (previousRef === currentRef && previousLabel === currentLabel) return;
-      const previous = previousRef ? previousLabel || '名称未提供' : '未绑定';
-      let current = currentRef ? currentLabel || '名称未提供' : '未绑定';
+      const previous = previousRef ? previousLabel || '名称未填写' : '未选';
+      let current = currentRef ? currentLabel || '名称未填写' : '未选';
       if (previousRef && currentRef && previousRef !== currentRef && previous === current) current += '（关联记录已更换）';
       result.push({
         label,
@@ -297,7 +297,7 @@
         previous: previous ? '原有外协组' : '无原记录',
         current: current ? '新增外协组' : '已移除'
       });
-      [['工序范围', range], ['周期策略', row => strategy(row.merge_mode)], ['总周期（天）', row => value(row.total_days)], ['备注', row => value(row.remark)]].forEach(([label, format]) => {
+      [['工序范围', range], ['周期算法', row => cycleMode(row.merge_mode)], ['总周期（天）', row => value(row.total_days)], ['备注', row => value(row.remark)]].forEach(([label, format]) => {
         field(prefix + label, previous ? format(previous) : '无原记录', current ? format(current) : '已移除');
       });
       relation(prefix + '供应商', previous && previous.supplier_ref, current && current.supplier_ref, previous && previous.supplier_label, current && current.supplier_label);
@@ -325,7 +325,7 @@
         display: 'block'
       },
       role: "status"
-    }, /*#__PURE__*/React.createElement("p", null, "\u6700\u65B0\u8D44\u6599\u5DF2\u8BFB\u53D6\uFF0C\u8349\u7A3F\u672A\u88AB\u66FF\u6362\u3002\u5DEE\u5F02 ", rows.length, " \u9879\uFF1B\u8BF7\u6838\u5BF9\u4E0B\u8868\u4E0E\u5F53\u524D\u8349\u7A3F\u3002\u7EE7\u7EED\u7F16\u8F91\u65F6\uFF0C\u4FDD\u7559\u60A8\u6539\u8FC7\u7684\u5B57\u6BB5\uFF0C\u5176\u4F59\u91C7\u7528\u6700\u65B0\u503C\uFF1B\u53D8\u5316\u5DE5\u5E8F\u9700\u91CD\u65B0\u786E\u8BA4\uFF0C\u5DF2\u79FB\u9664\u5DE5\u5E8F\u4E0D\u518D\u63D0\u4EA4\u3002"), !!rows.length && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("p", null, "\u6700\u65B0\u8D44\u6599\u5DF2\u8BFB\u53D6\uFF0C\u8349\u7A3F\u6CA1\u6709\u88AB\u66FF\u6362\u3002\u5DEE\u5F02 ", rows.length, " \u9879\uFF0C\u8BF7\u6838\u5BF9\u4E0B\u8868\u548C\u5F53\u524D\u8349\u7A3F\u3002\u70B9\u300C\u91C7\u7528\u6700\u65B0\u8D44\u6599\u300D\u540E\uFF1A\u60A8\u6539\u8FC7\u7684\u9879\u4FDD\u7559\uFF0C\u5176\u4F59\u6309\u6700\u65B0\u503C\uFF1B\u6709\u53D8\u5316\u7684\u5DE5\u5E8F\u8981\u91CD\u65B0\u786E\u8BA4\uFF0C\u5DF2\u79FB\u9664\u7684\u5DE5\u5E8F\u4E0D\u518D\u63D0\u4EA4\u3002"), !!rows.length && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
       className: "card-scroll"
     }, /*#__PURE__*/React.createElement("table", {
       className: "tbl wb-table",
@@ -359,7 +359,7 @@
       icon: "check",
       disabled: disabled,
       onClick: onAccept
-    }, "\u5DF2\u6838\u5BF9\uFF0C\u91C7\u7528\u6700\u65B0\u8303\u56F4\u5E76\u4FDD\u7559\u53EF\u5339\u914D\u8349\u7A3F"));
+    }, "\u91C7\u7528\u6700\u65B0\u8D44\u6599"));
   }
   function useDraft({
     result,
@@ -436,25 +436,47 @@
   }
   function Feedback({
     model,
-    disabled
+    disabled,
+    paging
   }) {
+    const page = model.error && model.error.locate_page;
     return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(ErrorBox, {
       error: model.error
-    }), /*#__PURE__*/React.createElement(Button, {
+    }), page && paging && /*#__PURE__*/React.createElement(Button, {
+      icon: "arrow-right",
+      disabled: disabled,
+      onClick: () => {
+        paging.setQuery('');
+        paging.setNumber(page);
+      }
+    }, "\u5B9A\u4F4D\u5230\u7B2C ", page, " \u9875"), /*#__PURE__*/React.createElement(Button, {
       icon: "refresh-cw",
       busy: model.busy,
       disabled: disabled,
       onClick: model.reload
-    }, "\u91CD\u8BFB\u8BE6\u60C5\u5E76\u4FDD\u7559\u8349\u7A3F"), model.review && /*#__PURE__*/React.createElement(Review, {
+    }, "\u5237\u65B0\u8BE6\u60C5\u5E76\u4FDD\u7559\u8349\u7A3F"), model.review && /*#__PURE__*/React.createElement(Review, {
       before: model.base.data,
       after: model.review.data,
       disabled: disabled || model.busy,
       onAccept: model.accept
     }));
   }
+  // Unconfirmed operations are reported with the page they sit on (unfiltered order, current page size),
+  // so a 120-operation part can be fixed without paging blind; the first offending page rides on the error.
+  function unconfirmed(rows, all, size, label) {
+    const pages = new Map();
+    rows.forEach(row => {
+      const page = Math.floor(all.indexOf(row) / size) + 1;
+      pages.set(page, (pages.get(page) || []).concat(row.sequence));
+    });
+    const ordered = Array.from(pages.entries()).sort((a, b) => a[0] - b[0]);
+    const error = C.failure('还有 ' + rows.length + ' 道工序的' + label + '没有勾选确认：' + ordered.map(([page, sequences]) => '第 ' + page + ' 页工序 ' + sequences.join('、')).join('；') + '。');
+    error.locate_page = ordered[0][0];
+    return error;
+  }
   function reason(model, adapter, stage) {
     const entity = model.base.data;
-    return model.review ? '请先核对最新资料。' : model.busy ? '正在读取最新资料。' : P.reason(entity.capabilities, 'stage_confirm', typeof adapter.command === 'function') || (entity.workflow[stage === 'source' ? 'route' : 'source'].state !== 'confirmed' ? stage === 'source' ? '请先确认路线。' : '请先确认工序归属。' : '') || (stage === 'source' ? model.base.meta.source !== 'production' ? '当前不是生产数据，不能保存。' : '' : C.blocked(entity.write_context, 'process', stage + '_confirm', model.base.meta.source));
+    return model.review ? '请先核对最新资料。' : model.busy ? '正在读取最新资料。' : P.reason(entity.capabilities, 'stage_confirm', typeof adapter.command === 'function') || (entity.workflow[stage === 'source' ? 'route' : 'source'].state !== 'confirmed' ? stage === 'source' ? '请先确认路线。' : '请先确认归属。' : '') || (stage === 'source' ? model.base.meta.source !== 'production' ? '当前不是生产数据，不能保存。' : '' : C.blocked(entity.write_context, 'process', stage + '_confirm', model.base.meta.source));
   }
   window.ProcessStageEditor = {
     active,
@@ -472,6 +494,7 @@
     reason,
     location,
     locate,
-    useFocus
+    useFocus,
+    unconfirmed
   };
 })();

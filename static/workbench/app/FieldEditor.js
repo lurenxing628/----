@@ -98,9 +98,9 @@
       try {
         const input = C.input(value, record, action);
         if (legacy) {
-          if (!value.reason.trim()) throw window.APSResourceContract.failure('请填写旧完工事实的补齐原因。', [{
+          if (!value.reason.trim()) throw window.APSResourceContract.failure('请填写历史完工记录的补齐原因。', [{
             path: 'reason',
-            message: '请填写旧完工事实的补齐原因。'
+            message: '请填写历史完工记录的补齐原因。'
           }]);
           input.legacy_fact_ref = legacy.legacy_fact_ref;
           input.reason = value.reason.trim();

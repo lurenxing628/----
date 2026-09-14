@@ -14,7 +14,7 @@ async function pointHit(page, locator, kind) {
   const hit = await page.evaluate(({x, y, ref}) => document.elementFromPoint(x, y)?.closest('[data-point-ref]')?.dataset.pointRef === ref, {...center, ref});
   assert(hit, 'Point is topmost clickable target');
   await page.mouse.move(center.x, center.y);
-  await page.getByRole('tooltip').filter({hasText: '时间点'}).waitFor();
+  await page.getByRole('tooltip').filter({hasText: '零工时工序'}).waitFor();
   // A real click outside the visible diamond but inside its explicit hit region.
   await page.mouse.click(center.x + 10, center.y);
   await page.waitForFunction(({ref, kind}) => {
@@ -80,12 +80,12 @@ async function checkGeometry(page, kind) {
         const marker = page.locator(kind === 'trial' ? '[data-point-ref][data-task-ref]' : '[data-point-ref]:not([data-before])').first();
         await pointHit(page, marker, kind);
         const detail = page.locator(kind === 'plan' ? '[data-plan-inspector]' : kind === 'candidate' ? '[data-candidate-point-facts]' : '.tt-detail');
-        assert((await detail.textContent()).includes('0 h'), 'Detail shows zero occupancy');
+        assert((await detail.textContent()).includes('0 小时'), 'Detail shows zero occupancy');
         if (kind === 'plan') {
-          await page.getByRole('checkbox', {name: '显示初始基线', exact: true}).check(); await settled(page);
+          await page.getByRole('checkbox', {name: '显示初始计划', exact: true}).check(); await settled(page);
           await pointHit(page, page.locator('[data-point-ref][data-before]').first(), kind);
           assert((await detail.textContent()).includes('初始计划安排'));
-          await page.getByRole('checkbox', {name: '显示初始基线', exact: true}).uncheck();
+          await page.getByRole('checkbox', {name: '显示初始计划', exact: true}).uncheck();
           await page.getByRole('button', {name: '查看当前安排', exact: true}).click();
         }
         const zoomName = kind === 'plan' ? '放大时间轴' : kind === 'candidate' ? '放大候选时间轴' : '放大甘特';
@@ -96,7 +96,7 @@ async function checkGeometry(page, kind) {
         await marker.focus(); await marker.press('Enter'); await settled(page);
         assert.equal(await marker.getAttribute('aria-pressed'), 'true', 'Keyboard can select points');
         report.actions.push({kind, type: 'zoom-pan-point-click-and-keyboard'});
-        if (kind === 'plan') await page.getByRole('button', {name: '适合完整跨度', exact: true}).click();
+        if (kind === 'plan') await page.getByRole('button', {name: '显示完整时间范围', exact: true}).click();
         else {
           const shrink = kind === 'candidate' ? '缩小候选时间轴' : '缩小甘特';
           await page.getByRole('button', {name: shrink, exact: true}).click();

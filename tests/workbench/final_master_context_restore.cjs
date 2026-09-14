@@ -138,17 +138,17 @@ async function calendar() {
 }
 async function overview() {
   await open('basedata'); const scope = page.locator('.master-overview');
-  await p.response(base, () => p.click(scope.getByRole('tab', {name: /^实体清单/})));
-  await p.response(base, () => p.select(scope.getByLabel('筛选数据域'), 'part'));
-  await p.type(scope.getByRole('searchbox', {name: '搜索主数据', exact: true}), 'FC-P-');
-  await p.response(base, () => p.click(b(scope, '执行主数据搜索')));
-  await p.response(base, () => p.select(scope.getByLabel('主数据排序'), 'business_code'));
-  await p.response(base, () => p.click(b(scope, '主数据下一页')));
+  await p.response(base, () => p.click(scope.getByRole('tab', {name: /^资料清单/})));
+  await p.response(base, () => p.select(scope.getByLabel('筛选资料类别'), 'part'));
+  await p.type(scope.getByRole('searchbox', {name: '搜索基础资料', exact: true}), 'FC-P-');
+  await p.response(base, () => p.click(b(scope, '执行基础资料搜索')));
+  await p.response(base, () => p.select(scope.getByLabel('基础资料排序'), 'business_code'));
+  await p.response(base, () => p.click(b(scope, '基础资料下一页')));
   await p.click(b(scope, '查看 FC-P-024'));
   await p.click(scope.locator('.mo-detail').getByRole('tab', {name: /^字段/}));
-  await page.getByRole('tabpanel', {name: '实体字段', exact: true}).waitFor();
+  await page.getByRole('tabpanel', {name: '资料项', exact: true}).waitFor();
   const expected = await saved([['read_view.scope.query', 'FC-P-'], ['read_view.page', 2], ['read_view.section', 'fields']], 'master-page-2-fields');
-  const check = async () => { await b(scope, '查看 FC-P-024').waitFor(); await page.getByRole('tabpanel', {name: '实体字段', exact: true}).waitFor();
+  const check = async () => { await b(scope, '查看 FC-P-024').waitFor(); await page.getByRole('tabpanel', {name: '资料项', exact: true}).waitFor();
     assert((await scope.locator('.mo-detail').innerText()).includes('FC-P-024')); assert.equal(await scope.getByRole('searchbox').inputValue(), 'FC-P-'); };
   await roundTrips('basedata', expected, check);
 }

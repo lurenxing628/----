@@ -2,8 +2,11 @@
   'use strict';
 
   const C = window.APSResourceContract,
-    P = window.APSProcessContract;
+    P = window.APSProcessContract,
+    S = window.APSResourceSession;
   const E = window.ProcessStageEditor;
+  // The op_type page caps at 200 rows (core/models/workbench_resource_query.py), so a single read is the whole candidate list it can offer.
+  const OP_TYPE_PAGE_SIZE = 200;
   const {
     Button,
     Modal,
@@ -79,7 +82,7 @@
       key: index
     }, /*#__PURE__*/React.createElement("td", null, row.sequence), /*#__PURE__*/React.createElement("td", null, row.op_type_name, /*#__PURE__*/React.createElement("div", {
       className: "muted"
-    }, row.op_type_ref === null ? '未识别' : '已识别')), /*#__PURE__*/React.createElement("td", null, P.sourceLabel(row.source_suggestion)), /*#__PURE__*/React.createElement("td", null, row.supplier_label === null ? '未提供' : row.supplier_label), /*#__PURE__*/React.createElement("td", null, P.valueText(row.external_days)), /*#__PURE__*/React.createElement("td", null, typeof row.basis === 'string' ? row.basis : JSON.stringify(row.basis), /*#__PURE__*/React.createElement(Issues, {
+    }, row.op_type_ref === null ? '未识别' : '已识别')), /*#__PURE__*/React.createElement("td", null, P.sourceLabel(row.source_suggestion)), /*#__PURE__*/React.createElement("td", null, row.supplier_label === null ? '未选' : row.supplier_label), /*#__PURE__*/React.createElement("td", null, P.valueText(row.external_days)), /*#__PURE__*/React.createElement("td", null, typeof row.basis === 'string' ? row.basis : JSON.stringify(row.basis), /*#__PURE__*/React.createElement(Issues, {
       issues: row.issues
     })))))))), /*#__PURE__*/React.createElement(E.Pager, {
       paging: paging
@@ -132,6 +135,15 @@
     const paging = E.usePage(rows),
       locked = !!command && (command.locked || command.phase === 'done');
     const blocked = disabled || locked;
+    // Read the op_type catalog once on entry so the row inputs can suggest real names. Free text stays allowed and
+    // the server route preflight remains the only authority on what is recognized.
+    const opTypeListId = React.useId();
+    const opTypes = S.useQuery(signal => Promise.resolve(adapter.choices('op_type', {
+      query: '',
+      page: 1,
+      size: OP_TYPE_PAGE_SIZE
+    }, signal)).then(result => C.query(result, 'choices')), [adapter], typeof adapter.choices === 'function');
+    const opTypeNames = React.useMemo(() => opTypes.result ? Array.from(new Set(opTypes.result.data.entities.map(item => item.label).filter(Boolean))) : [], [opTypes.result]);
     function abort() {
       if (request.current) request.current.abort();
       request.current = null;
@@ -305,7 +317,14 @@
         width: '100%',
         resize: 'vertical'
       }
-    })) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+    })) : /*#__PURE__*/React.createElement(React.Fragment, null, opTypeNames.length > 0 && /*#__PURE__*/React.createElement("datalist", {
+      id: opTypeListId
+    }, opTypeNames.map(name => /*#__PURE__*/React.createElement("option", {
+      key: name,
+      value: name
+    }))), opTypeNames.length > 0 && /*#__PURE__*/React.createElement("p", {
+      className: "muted"
+    }, "\u5DE5\u79CD\u8F93\u5165\u4F1A\u63D0\u793A\u5DF2\u767B\u8BB0\u7684\u5DE5\u79CD", opTypes.result.data.page.total > opTypeNames.length ? '，现有工种较多，只提示前 ' + opTypeNames.length + ' 个' : '', "\uFF1B\u672A\u767B\u8BB0\u7684\u5DE5\u79CD\u4E5F\u53EF\u4EE5\u76F4\u63A5\u8F93\u5165\u3002"), /*#__PURE__*/React.createElement("div", {
       className: "wb-table-frame"
     }, /*#__PURE__*/React.createElement("div", {
       className: "card-scroll wb-table-shell"
@@ -352,6 +371,7 @@
       })
     })), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("input", {
       type: "text",
+      list: opTypeNames.length ? opTypeListId : undefined,
       "aria-label": '第 ' + ((paging.page.number - 1) * paging.page.size + index + 1) + ' 行工种',
       value: row.op_type_name,
       disabled: blocked,
@@ -388,22 +408,24 @@
         }));
         paging.setNumber(Math.ceil((rows.length + 1) / paging.page.size));
       }
-    }, "\u6DFB\u52A0\u5DE5\u5E8F")), state.busy && /*#__PURE__*/React.createElement("p", {
+    }, "\u65B0\u589E\u5DE5\u5E8F")), state.busy && /*#__PURE__*/React.createElement("p", {
       role: "status"
-    }, state.reading ? '正在重读详情…' : '正在预检路线…'), /*#__PURE__*/React.createElement(ErrorBox, {
+    }, state.reading ? '正在刷新详情…' : '正在预检路线…'), /*#__PURE__*/React.createElement(ErrorBox, {
       error: state.error
+    }), /*#__PURE__*/React.createElement(ErrorBox, {
+      error: opTypes.error
     }), state.refreshed && /*#__PURE__*/React.createElement("p", {
       role: "status"
-    }, "\u5DF2\u91CD\u8BFB\u8BE6\u60C5\uFF0C\u5F55\u5165\u5185\u5BB9\u4FDD\u7559\uFF1B\u8BF7\u6838\u5BF9\u540E\u91CD\u65B0\u9884\u68C0\u3002"), state.error && /*#__PURE__*/React.createElement(Button, {
+    }, "\u5DF2\u5237\u65B0\u8BE6\u60C5\uFF0C\u5F55\u5165\u5185\u5BB9\u4FDD\u7559\uFF1B\u8BF7\u6838\u5BF9\u540E\u91CD\u65B0\u9884\u68C0\u3002"), state.error && /*#__PURE__*/React.createElement(Button, {
       icon: "refresh-cw",
       disabled: blocked || !!review,
       onClick: preflight
     }, "\u91CD\u8BD5\u9884\u68C0"), /*#__PURE__*/React.createElement(Button, {
       icon: "refresh-cw",
       disabled: blocked || state.busy,
-      reason: typeof adapter.detail !== 'function' ? '工艺详情接口尚未接入。' : '',
+      reason: typeof adapter.detail !== 'function' ? window.WorkbenchTerms.outcomes.unavailable : '',
       onClick: reloadDetail
-    }, "\u91CD\u8BFB\u8BE6\u60C5\u5E76\u4FDD\u7559\u8349\u7A3F"), review && /*#__PURE__*/React.createElement(E.Review, {
+    }, "\u5237\u65B0\u8BE6\u60C5\u5E76\u4FDD\u7559\u8349\u7A3F"), review && /*#__PURE__*/React.createElement(E.Review, {
       before: context.data,
       after: review.data,
       disabled: blocked,
@@ -429,7 +451,7 @@
     }), refreshState.error && /*#__PURE__*/React.createElement(Button, {
       icon: "refresh-cw",
       onClick: onRefresh
-    }, "\u91CD\u65B0\u8BFB\u53D6\u4FDD\u5B58\u7ED3\u679C"))));
+    }, "\u67E5\u8BE2\u7ED3\u679C"))));
   }
   window.ProcessRouteEntry = ProcessRouteEntry;
 })();

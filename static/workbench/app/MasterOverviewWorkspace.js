@@ -33,9 +33,9 @@
       detailPage: 1
     };
     if (context == null) return empty;
-    if (!C.canonical(context) || typeof context !== 'object' || Array.isArray(context) || Object.keys(context).some(key => !['domain', 'entity_ref', 'read_view'].includes(key))) C.fail('主数据导航含不支持的字段。');
+    if (!C.canonical(context) || typeof context !== 'object' || Array.isArray(context) || Object.keys(context).some(key => !['domain', 'entity_ref', 'read_view'].includes(key))) C.fail('跳转到基础资料的条件不支持，页面没有跳转。请刷新后重试。');
     if (context.read_view === undefined) {
-      if (!C.ref(context.entity_ref) || !C.domains.some(row => row[0] === context.domain)) C.fail('初始定位缺少数据域或永久引用。');
+      if (!C.ref(context.entity_ref) || !C.domains.some(row => row[0] === context.domain)) C.fail('定位条件缺少资料类别或记录编号，页面没有跳转。请刷新后重试。');
       return {
         ...empty,
         initial: {
@@ -44,13 +44,13 @@
         }
       };
     }
-    if (Object.keys(context).length !== 1) C.fail('主数据定位与恢复范围不能混用。');
+    if (Object.keys(context).length !== 1) C.fail('定位和恢复浏览状态不能同时使用，页面没有跳转。请刷新后重试。');
     const view = context.read_view;
-    if (!view || typeof view !== 'object' || Array.isArray(view) || Object.keys(view).some(key => !['scope', 'page', 'selected', 'section', 'detail_page'].includes(key))) C.fail('主数据恢复记录只能包含只读查看状态。');
+    if (!view || typeof view !== 'object' || Array.isArray(view) || Object.keys(view).some(key => !['scope', 'page', 'selected', 'section', 'detail_page'].includes(key))) C.fail('上次操作记录里只能保存浏览状态，页面没有恢复。请刷新后重试。');
     const scope = C.scope(view.scope);
-    if (!Number.isSafeInteger(view.page) || view.page < 1 || !Number.isSafeInteger(view.detail_page) || view.detail_page < 1 || !['issues', 'relations', 'fields'].includes(view.section)) C.fail('主数据恢复页码或详情页签不正确。');
+    if (!Number.isSafeInteger(view.page) || view.page < 1 || !Number.isSafeInteger(view.detail_page) || view.detail_page < 1 || !['issues', 'relations', 'fields'].includes(view.section)) C.fail('上次操作记录里的页码或页签不正确，页面没有恢复。请刷新后重试。');
     const selected = view.selected;
-    if (selected !== null && (!selected || typeof selected !== 'object' || Array.isArray(selected) || Object.keys(selected).some(key => !['domain', 'entity_ref', 'issue_ref'].includes(key)) || !C.ref(selected.entity_ref) || !C.domains.some(row => row[0] === selected.domain) || selected.issue_ref !== undefined && !C.ref(selected.issue_ref))) C.fail('主数据恢复实体引用不正确。');
+    if (selected !== null && (!selected || typeof selected !== 'object' || Array.isArray(selected) || Object.keys(selected).some(key => !['domain', 'entity_ref', 'issue_ref'].includes(key)) || !C.ref(selected.entity_ref) || !C.domains.some(row => row[0] === selected.domain) || selected.issue_ref !== undefined && !C.ref(selected.issue_ref))) C.fail('上次操作记录里的资料编号不正确，页面没有恢复。请刷新后重试。');
     return {
       scope,
       page: view.page,
@@ -96,7 +96,8 @@
       [columnText, setColumnText] = useState('');
     const [message, setMessage] = useState(''),
       [actionError, setActionError] = useState(null),
-      [exporting, setExporting] = useState(false);
+      [exporting, setExporting] = useState(false),
+      [stale, setStale] = useState(false);
     const opener = useRef(null),
       listRef = useRef(null),
       exportController = useRef(null),
@@ -115,6 +116,16 @@
         page: 1
       });
     };
+    // Re-read the current page in place: page, selected row, detail section and detail page all survive the refresh.
+    const refreshInPlace = () => {
+      setActionError(null);
+      setMessage('');
+      setRequest({
+        scope: currentScope.current,
+        page: data ? data.page.number : request.page,
+        keep: true
+      });
+    };
     useEffect(() => {
       alive.current = true;
       return () => {
@@ -127,10 +138,12 @@
         scope: currentScope.current,
         page: 1
       });
-      window.addEventListener('focus', changed);
+      // Window focus only marks the list as possibly stale; a real data change still resets the list to page 1.
+      const focused = () => setStale(true);
+      window.addEventListener('focus', focused);
       window.addEventListener('aps:master-data-changed', changed);
       return () => {
-        window.removeEventListener('focus', changed);
+        window.removeEventListener('focus', focused);
         window.removeEventListener('aps:master-data-changed', changed);
       };
     }, []);
@@ -151,31 +164,38 @@
     useEffect(() => {
       const controller = new AbortController();
       let active = true;
+      const kept = request.keep ? selected : null;
       setLoading(true);
       setError(null);
-      setResult(null);
-      setSelected(null);
-      setDetail(null);
+      setStale(false);
       setActionError(null);
       setMessage('');
+      if (!request.keep) {
+        setResult(null);
+        setSelected(null);
+        setDetail(null);
+      }
       if (exportController.current) exportController.current.abort();
       async function read() {
         try {
           if (initial.error) throw initial.error;
           let next = request.locate ? await api.locate(request.scope, request.locate, request.token, controller.signal) : await readList(api, request.scope, request.page, request.token, controller.signal);
           if (request.initial) {
-            if (!C.ref(request.initial.entity_ref) || !C.domains.some(row => row[0] === request.initial.domain)) C.fail('初始定位缺少数据域或永久引用。');
+            if (!C.ref(request.initial.entity_ref) || !C.domains.some(row => row[0] === request.initial.domain)) C.fail('定位条件缺少资料类别或记录编号，页面没有跳转。请刷新后重试。');
             next = await api.locate(next.data.scope, request.initial, next.meta.snapshot_ref, controller.signal);
           }
           if (!active) return;
           const focus = next.data.selected,
             restored = request.restore && request.restore.selected;
-          const row = restored ? next.data.rows.find(item => (item.entity_ref || item.ref) === restored.entity_ref && item.domain === restored.domain && (!restored.issue_ref || item.issue_ref === restored.issue_ref)) : focus ? next.data.rows.find(item => item.ref === focus.entity_ref && item.domain === focus.domain) : next.data.rows[0];
-          if (restored && !row) C.fail('原选中实体已不在当前范围，未自动替换成其他记录。');
+          const same = (item, target) => (item.entity_ref || item.ref) === target.entity_ref && item.domain === target.domain && (!target.issue_ref || item.issue_ref === target.issue_ref);
+          const row = kept ? next.data.rows.find(item => same(item, kept)) : restored ? next.data.rows.find(item => same(item, restored)) : focus ? next.data.rows.find(item => item.ref === focus.entity_ref && item.domain === focus.domain) : next.data.rows[0];
+          if (restored && !row) C.fail('原来选中的资料已不在当前范围，这里没有自动换成其他记录。请刷新后重试。');
           setResult(next);
           setSelected(row ? selection(row) : null);
-          setSection(request.restore ? request.restore.section : 'issues');
-          setDetailPage(request.restore ? request.restore.detailPage : 1);
+          if (!request.keep) {
+            setSection(request.restore ? request.restore.section : 'issues');
+            setDetailPage(request.restore ? request.restore.detailPage : 1);
+          }
         } catch (failure) {
           if (active && failure.name !== 'AbortError') setError(failure);
         } finally {
@@ -284,7 +304,7 @@
       try {
         C.target(target);
         if (target.unavailable_reason) C.fail(target.unavailable_reason);
-        if (typeof onNavigate !== 'function') C.fail('维护导航尚未接入。');
+        if (typeof onNavigate !== 'function') C.fail('dependency not wired: props.onNavigate');
         await onNavigate(target.view, target.context);
       } catch (failure) {
         setActionError(failure);
@@ -323,20 +343,20 @@
     };
     return /*#__PURE__*/React.createElement("section", {
       className: "plana master-overview",
-      "aria-label": "\u4E3B\u6570\u636E\u603B\u89C8"
+      "aria-label": "\u8D44\u6599\u603B\u89C8"
     }, /*#__PURE__*/React.createElement(window.MasterOverviewStyles, null), /*#__PURE__*/React.createElement("header", {
       className: "mo-heading"
     }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h2", {
       className: "wb-page-title"
-    }, "\u4E3B\u6570\u636E\u603B\u89C8"), /*#__PURE__*/React.createElement("p", {
+    }, "\u8D44\u6599\u603B\u89C8"), /*#__PURE__*/React.createElement("p", {
       className: "wb-page-context"
-    }, result ? '基础资料 · 本机记录 · ' + window.WorkbenchFormat.dateTime(result.meta.as_of) : '基础资料 · 待读取')), /*#__PURE__*/React.createElement("div", {
+    }, result ? '基础资料 · 本机记录 · ' + window.WorkbenchFormat.dateTime(result.meta.as_of) : '基础资料 · 未读取')), /*#__PURE__*/React.createElement("div", {
       className: "mo-actions"
     }, /*#__PURE__*/React.createElement(Button, {
       reasonDisplay: "inline",
       className: "btn mo-icon",
       icon: "refresh-cw",
-      "aria-label": "\u5237\u65B0\u4E3B\u6570\u636E",
+      "aria-label": "\u5237\u65B0\u8D44\u6599",
       onClick: refresh
     }), /*#__PURE__*/React.createElement(Button, {
       reasonDisplay: "inline",
@@ -346,7 +366,7 @@
     }, "\u5BFC\u51FA\u7B5B\u9009\u7ED3\u679C"), /*#__PURE__*/React.createElement(Button, {
       reasonDisplay: "inline",
       className: "btn primary",
-      reason: typeof onNavigate !== 'function' ? '维护导航尚未接入。' : '',
+      reason: typeof onNavigate !== 'function' ? window.WorkbenchTerms.outcomes.unavailable : '',
       onClick: async () => {
         try {
           await onNavigate('process', {
@@ -359,7 +379,7 @@
     }, "\u7EF4\u62A4\u57FA\u7840\u8D44\u6599"))), /*#__PURE__*/React.createElement("div", {
       className: "wb-metrics mo-metrics",
       "aria-label": "\u603B\u89C8\u72B6\u6001"
-    }, [['entities', overview && !overview.complete ? '已读取实体' : '实体条目'], ['issues', '待维护项'], ['affected', '涉及实体'], ['relations', '已关联条目对']].map(([key, label]) => /*#__PURE__*/React.createElement("div", {
+    }, [['entities', overview && !overview.complete ? '已读取资料' : '资料条数'], ['issues', '待维护项'], ['affected', '涉及资料'], ['relations', '已关联对数']].map(([key, label]) => /*#__PURE__*/React.createElement("div", {
       className: "wb-metric",
       key: key,
       "data-tone": key === 'issues' ? 'warn' : undefined
@@ -367,9 +387,9 @@
       className: "wb-metric-label"
     }, label), /*#__PURE__*/React.createElement("strong", {
       className: "wb-metric-value"
-    }, metrics ? C.value(metrics[key]) : '未加载')))), /*#__PURE__*/React.createElement("div", {
+    }, metrics ? C.value(metrics[key]) : '未读取')))), /*#__PURE__*/React.createElement("div", {
       className: "wb-metrics mo-domains",
-      "aria-label": "\u4E3B\u6570\u636E\u57DF\u6570\u91CF"
+      "aria-label": "\u8D44\u6599\u7C7B\u522B\u6570\u91CF"
     }, C.domains.map(([id, label], index) => {
       const domain = overview && overview.domains[index];
       return /*#__PURE__*/React.createElement("button", {
@@ -377,7 +397,7 @@
         className: "wb-metric mo-domain",
         key: id,
         "aria-pressed": scope.domain === id,
-        "aria-label": '查看数据域 ' + label,
+        "aria-label": '查看资料类别 ' + label,
         onClick: () => filter({
           domain: scope.domain === id ? 'all' : id
         }),
@@ -386,9 +406,9 @@
         className: "wb-metric-label"
       }, label), /*#__PURE__*/React.createElement("strong", {
         className: "wb-metric-value"
-      }, domain && domain.loaded ? domain.count : '未加载'), /*#__PURE__*/React.createElement("span", {
+      }, domain && domain.loaded ? domain.count : '未读取'), /*#__PURE__*/React.createElement("span", {
         className: "wb-metric-helper"
-      }, domain && domain.loaded ? domain.attention + ' 条需维护' + (domain.unknown ? ' · ' + domain.unknown + ' 条未核实' : '') : '来源未加载'));
+      }, domain && domain.loaded ? domain.attention + ' 条需维护' + (domain.unknown ? ' · ' + domain.unknown + ' 条未确认' : '') : '来源未读取'));
     })), overview && /*#__PURE__*/React.createElement("p", {
       className: "mo-basis"
     }, overview.basis), overview && overview.gaps.length > 0 && /*#__PURE__*/React.createElement("details", {
@@ -401,7 +421,14 @@
     }), message && /*#__PURE__*/React.createElement("div", {
       className: "mo-message",
       role: "status"
-    }, message), /*#__PURE__*/React.createElement(Tabs, {
+    }, message), stale && !loading && data && /*#__PURE__*/React.createElement("div", {
+      className: "mo-message mo-stale",
+      role: "status",
+      "data-master-stale": true
+    }, /*#__PURE__*/React.createElement("span", null, "\u5207\u56DE\u672C\u9875\u540E\u8D44\u6599\u53EF\u80FD\u5DF2\u66F4\u65B0\uFF0C\u5F53\u524D\u9875\u3001\u9009\u4E2D\u9879\u548C\u8BE6\u60C5\u90FD\u8FD8\u4FDD\u7559\u7740\u3002"), /*#__PURE__*/React.createElement(Button, {
+      icon: "refresh-cw",
+      onClick: refreshInPlace
+    }, "\u5237\u65B0\u672C\u9875")), /*#__PURE__*/React.createElement(Tabs, {
       label: "\u6E05\u5355\u7C7B\u578B",
       value: scope.view,
       onChange: view => filter({
@@ -409,7 +436,7 @@
         status: 'all',
         column_filters: {}
       }),
-      values: [["issues", "待维护项", metrics ? metrics.issues : '未加载'], ["entities", "实体清单", metrics ? metrics.entities : '未加载']]
+      values: [["issues", "待维护项", metrics ? metrics.issues : '未读取'], ["entities", "资料清单", metrics ? metrics.entities : '未读取']]
     }), /*#__PURE__*/React.createElement("form", {
       className: "mo-tools",
       onSubmit: event => {
@@ -418,15 +445,15 @@
           query: search
         });
       }
-    }, /*#__PURE__*/React.createElement("label", null, "\u6570\u636E\u57DF", /*#__PURE__*/React.createElement("select", {
-      "aria-label": "\u7B5B\u9009\u6570\u636E\u57DF",
+    }, /*#__PURE__*/React.createElement("label", null, "\u8D44\u6599\u7C7B\u522B", /*#__PURE__*/React.createElement("select", {
+      "aria-label": "\u7B5B\u9009\u8D44\u6599\u7C7B\u522B",
       value: scope.domain,
       onChange: event => filter({
         domain: event.target.value
       })
     }, /*#__PURE__*/React.createElement("option", {
       value: "all"
-    }, "\u5168\u90E8\u6570\u636E\u57DF"), C.domains.map(([id, label]) => /*#__PURE__*/React.createElement("option", {
+    }, "\u5168\u90E8\u8D44\u6599\u7C7B\u522B"), C.domains.map(([id, label]) => /*#__PURE__*/React.createElement("option", {
       key: id,
       value: id
     }, label)))), /*#__PURE__*/React.createElement("label", null, "\u72B6\u6001", /*#__PURE__*/React.createElement("select", {
@@ -444,7 +471,7 @@
       className: "mo-search"
     }, /*#__PURE__*/React.createElement("input", {
       type: "search",
-      "aria-label": "\u641C\u7D22\u4E3B\u6570\u636E",
+      "aria-label": "\u641C\u7D22\u57FA\u7840\u8D44\u6599",
       placeholder: "\u7F16\u53F7\u3001\u540D\u79F0\u6216\u5F85\u7EF4\u62A4\u9879",
       value: search,
       maxLength: 1000,
@@ -454,9 +481,9 @@
       type: "submit",
       icon: "search",
       className: "btn mo-icon",
-      "aria-label": "\u6267\u884C\u4E3B\u6570\u636E\u641C\u7D22"
+      "aria-label": "\u6267\u884C\u57FA\u7840\u8D44\u6599\u641C\u7D22"
     }), /*#__PURE__*/React.createElement("label", null, "\u6392\u5E8F", /*#__PURE__*/React.createElement("select", {
-      "aria-label": "\u4E3B\u6570\u636E\u6392\u5E8F",
+      "aria-label": "\u57FA\u7840\u8D44\u6599\u6392\u5E8F",
       value: scope.sort,
       onChange: event => filter({
         sort: event.target.value,
@@ -482,7 +509,7 @@
       reasonDisplay: "inline",
       className: "btn mo-icon",
       icon: "x",
-      "aria-label": "\u6E05\u9664\u4E3B\u6570\u636E\u7B5B\u9009",
+      "aria-label": "\u6E05\u9664\u57FA\u7840\u8D44\u6599\u7B5B\u9009",
       onClick: clearFilters
     })), column && /*#__PURE__*/React.createElement("form", {
       className: "mo-filter-band",

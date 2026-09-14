@@ -21,7 +21,7 @@
     return;
   }
   if (boot.messages !== undefined && (!Array.isArray(boot.messages) || boot.messages.some(value => !value || typeof value.category !== 'string' || typeof value.message !== 'string'))) {
-    fail('工作台返回消息格式不正确，请重新加载后核对原操作结果。');
+    fail('工作台返回的消息格式不正确。请刷新后核对上次操作的结果。');
     return;
   }
   if (boot.schema_version !== 1 || !window.React || !window.ReactDOM || !window.APSWorkbenchUI || !window.APSWorkbenchTheme || !window.APSWorkbenchTransport || !window.APSWorkbenchSystemContract || typeof SystemLive !== 'function' || typeof window.ResourceLive !== 'function' || typeof window.WorkbenchControls !== 'function' || typeof window.WorkbenchControlStyles !== 'function' || typeof window.WorkbenchNumberControls !== 'function' || typeof window.PlanWorkspace !== 'function' || typeof window.ReportWorkspace !== 'function' || typeof window.ReviewWorkspace !== 'function' || typeof window.BatchWorkspace !== 'function' || typeof window.MasterOverviewWorkspace !== 'function' || typeof window.SystemMaintenanceWorkspace !== 'function' || typeof window.FieldWorkspace !== 'function' || typeof window.ActualGanttWorkspace !== 'function' || typeof window.PreflightWorkspace !== 'function' || typeof window.RunWorkspace !== 'function' || typeof window.PlanCenterWorkspace !== 'function' || typeof window.RunCandidateWorkspace !== 'function' || typeof window.RunHistoryWorkspace !== 'function' || typeof window.CalibrationWorkspace !== 'function' || typeof window.RunAdoptionAction !== 'function' || typeof window.WorkbenchTrialWorkspace !== 'function' || typeof window.TrialAdoptionAction !== 'function' || typeof window.WorkbenchDashboardWorkspace !== 'function' || !window.WorkbenchNavigation || !window.WorkbenchCaption || !window.WorkbenchPageContext || !window.WorkbenchBoundary || !window.WorkbenchGuards || typeof window.WorkbenchGuardHost !== 'function' || !window.WorkbenchDensity || !window.WorkbenchScrollShadows) {
@@ -147,7 +147,8 @@
       "aria-pressed": density === 'compact',
       onClick: () => window.WorkbenchDensity.set(density === 'compact' ? 'comfortable' : 'compact')
     }, "\u7D27\u51D1\u8868\u683C"))), /*#__PURE__*/React.createElement("main", {
-      className: "page-content"
+      className: "page-content",
+      "data-wb-scroll-key": "page-content"
     }, messages.length > 0 && /*#__PURE__*/React.createElement("section", {
       className: "wb-server-messages",
       "aria-label": "\u64CD\u4F5C\u7ED3\u679C"
@@ -339,7 +340,7 @@
     const rememberTrialTarget = nextContext => {
       window.TrialContract.target(nextContext);
       const entry = currentPage();
-      if (entry.view !== 'trial' || entry.key !== page.key) throw new Error('当前页面已变化，未覆盖其他页面的恢复记录。');
+      if (entry.view !== 'trial' || entry.key !== page.key) throw new Error('当前页面已变化，没有保存这次选择。请刷新后重新选择。');
       window.WorkbenchNavigation.replaceContext(boot, entry, nextContext);
       if (historyGuard.current) historyGuard.current.sync();
     };
@@ -445,7 +446,7 @@
       "aria-label": boot.titles[view] || '工作区不存在'
     }, /*#__PURE__*/React.createElement("h2", null, boot.titles[view] || '工作区不存在'), /*#__PURE__*/React.createElement("p", {
       role: "status"
-    }, "\u8BE5\u5DE5\u4F5C\u533A\u5C1A\u672A\u63A5\u5165\u771F\u5B9E\u6570\u636E\uFF0C\u6682\u4E0D\u63D0\u4F9B\u4E1A\u52A1\u64CD\u4F5C\u3002")))))));
+    }, window.WorkbenchTerms.outcomes.unavailable)))))));
   }
   ReactDOM.createRoot(root).render(/*#__PURE__*/React.createElement(App, null));
 })();

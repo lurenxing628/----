@@ -38,11 +38,16 @@ async function mouseClick(page, selector) {
         await page.getByLabel('导入模式').selectOption('replace');
         await page.getByLabel('选择 Excel 文件').setInputFiles({ name: 'az-replace.xlsx', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', buffer: Buffer.from('AZ explicit component mock; no parser or persistence assertion') });
         await H.settle(page); await mouseClick(page, '.modal-f button[data-wb-transfer="import"]');
-        await page.getByRole('table', { name: '批次导入预览' }).waitFor(); await H.settle(page);
+        await page.getByRole('table', { name: '批次导入预检' }).waitFor(); await H.settle(page);
         row.before = await geometry(page); await h.shot(page, variant.name + '-' + action + '-before');
-        // Use the visible body gutter, outside the nested table's horizontal/vertical scrollbar.
+        // Wheel over the nested preview table itself: once the table is exhausted the wheel must chain to the modal body
+        // (table frames inside .modal-b do not contain overscroll, 21-table-frame.css), otherwise the footer is unreachable.
         const b = row.before.body;
-        await page.mouse.move(b.right - 24, Math.min(b.bottom - 16, variant.viewport.height - 50));
+        const frame = page.locator('.modal-b .wb-table-frame').first();
+        row.frame = await frame.evaluate(node => { const r = node.getBoundingClientRect(); return { left: r.left, right: r.right, top: r.top, bottom: r.bottom,
+          scrollable: node.scrollHeight > node.clientHeight + 1, overscroll: getComputedStyle(node).overscrollBehaviorY }; });
+        assert.equal(row.frame.overscroll, 'auto', 'Nested table frame must let the wheel chain to the modal body');
+        await page.mouse.move((row.frame.left + row.frame.right) / 2, Math.min(Math.max(row.frame.top + 24, b.top + 24), b.bottom - 16, variant.viewport.height - 50));
         for (let index = 0; index < 24; index++) {
           await page.mouse.wheel(0, 420); await page.waitForTimeout(50);
           const sample = await geometry(page); row.wheel.push(sample);

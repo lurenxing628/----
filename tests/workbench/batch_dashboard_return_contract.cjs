@@ -26,6 +26,7 @@ let renderState;
 const Button = Symbol('Button'), ErrorBox = Symbol('ErrorBox');
 const window = {ResourceControls: {Button, ErrorBox}, BatchControls: {Styles: Symbol('Styles')}, BatchTable: Symbol('BatchTable'),
   WorkbenchGuards: {useDirtyGuard: () => 'batch-contract-test'},
+  WorkbenchTerms: {outcomes: {unavailable: '此功能尚未开通。'}},
   APSResourceSession: {
     useCommand: () => ({phase: 'idle', locked: false}),
     useQuery: (_load, _dependencies, enabled) => {
@@ -57,7 +58,7 @@ function render(initialContext) {
   const calls = [];
   renderState = {};
   const tree = window.BatchWorkspace({initialContext, onNav: (...args) => calls.push(args)}), all = nodes(tree);
-  const back = all.find(node => node.type === Button && ['返回值班台', '返回排产'].includes(node.props.children[0]));
+  const back = all.find(node => node.type === Button && ['返回值班台', '返回排产', '下一步 · 去排产'].includes(node.props.children[0]));
   assert(back, 'The real BatchWorkspace return button must exist');
   return {back, calls, all, state: renderState};
 }
@@ -106,13 +107,13 @@ const invalid = [
   ...[null, undefined, [], '', 1, false, () => ({})].map((value, index) => ['context-type-' + index, {view: 'dashboard', context: value}])
 ];
 for (const [name, value] of invalid) {
-  check('reject-direct-' + name, () => assert.throws(() => read({return_to: value}), /批次来源引用或返回入口不正确/));
-  check('reject-restored-' + name, () => assert.throws(() => read(restored(value)), /批次来源引用或返回入口不正确/));
+  check('reject-direct-' + name, () => assert.throws(() => read({return_to: value}), /批次来源或返回入口已失效/));
+  check('reject-restored-' + name, () => assert.throws(() => read(restored(value)), /批次来源或返回入口已失效/));
 }
 check('invalid-envelope-blocks-read-and-return', () => {
   const value = render({return_to: {...target, extra: true}});
   assert.equal(value.state.queryEnabled, false); assert.equal(value.back.props.disabled, true); equal(value.calls, []);
-  assert(value.all.some(node => node.type === ErrorBox && node.props.error && /批次来源引用或返回入口不正确/.test(node.props.error.message)));
+  assert(value.all.some(node => node.type === ErrorBox && node.props.error && /批次来源或返回入口已失效/.test(node.props.error.message)));
 });
 const failed = cases.filter(row => row.status === 'failed');
 console.log(JSON.stringify({scope: 'batch_dashboard_return', cases: cases.length, failed: failed.length, checks: cases}));

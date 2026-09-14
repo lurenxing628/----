@@ -160,13 +160,13 @@
     }, [data, runRef]);
     const shown = data && data.capabilities.view === true && data.candidate.capabilities.view === true ? data : null;
     const analysisRead = useRead(async signal => {
-      if (typeof adapter.analysis !== 'function') throw new Error('完整候选比较接口尚未接入，未用可见安排估算。');
+      if (typeof adapter.analysis !== 'function') throw new Error('dependency not wired: adapter.analysis');
       const value = await adapter.analysis(candidateRef, runRef, signal);
       AnalysisAPI.analysis(value, candidateRef, runRef);
       return value;
     }, [adapter, candidateRef, runRef, revision, analysisPaused], !!candidateRef && !invalid && !analysisPaused);
     const historyRead = useRead(async signal => {
-      if (typeof adapter.adoptions !== 'function') throw new Error('候选采用历史接口尚未接入，未显示其他来源记录。');
+      if (typeof adapter.adoptions !== 'function') throw new Error('dependency not wired: adapter.adoptions');
       const value = await adapter.adoptions(candidateRef, runRef, signal);
       AnalysisAPI.history(value, candidateRef, runRef);
       return value;
@@ -176,12 +176,12 @@
       reference: shown.candidate.candidate_ref,
       label: '当前候选',
       name: shown.candidate.label,
-      status: '候选预览 · ' + ({
+      status: '候选方案 · ' + ({
         completed: '已完成',
         partial: '部分完成',
         failed: '失败',
         skipped: '已跳过'
-      }[shown.candidate.status] || '状态待核实'),
+      }[shown.candidate.status] || '状态待确认'),
       range: (scope.range_start ? M.timeLabel(scope.range_start) + ' 至 ' + M.timeLabel(scope.range_end) + '（不含结束）' : '完整候选范围') + ' · ' + shown.task_count + ' / ' + shown.candidate_task_count + ' 道安排'
     } : null);
     const tasks = React.useMemo(() => shown ? M.matching(shown.tasks, query) : [], [shown, query]);
@@ -197,7 +197,7 @@
         });
         setPendingRow(null);
       } else if (!scope.range_start && !scope.batch_ref) {
-        setRangeError(new Error('指定末端工序不在完整候选中，未替换为其他工序。'));
+        setRangeError(new Error('这道末端工序不在完整候选方案里，没有换成其他工序。'));
         setPendingRow(null);
       }
     }, [result, pendingRow]);
@@ -287,22 +287,28 @@
       className: "rc-muted"
     }, "\u5DF2\u4FDD\u5B58\u7684\u5019\u9009\u65B9\u6848")), /*#__PURE__*/React.createElement("div", {
       className: "rc-tools"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "rc-nav"
     }, onNavigate && /*#__PURE__*/React.createElement(C.Button, {
       icon: "chevron-left",
+      className: "btn link",
       onClick: () => onNavigate('run', {
         ...returnContext(initialContext.return_run_context),
         ...(runRef ? {
           run_ref: runRef
         } : {})
       })
-    }, "\u8FD4\u56DE\u8FD0\u884C\u9875"), onNavigate && initialContext.return_plan_context && A.ref(initialContext.return_plan_context.plan_ref) && /*#__PURE__*/React.createElement(C.Button, {
+    }, "\u8FD4\u56DE\u6392\u4EA7\u8BB0\u5F55"), onNavigate && initialContext.return_plan_context && A.ref(initialContext.return_plan_context.plan_ref) && /*#__PURE__*/React.createElement(C.Button, {
       icon: "chevron-left",
+      className: "btn link",
       onClick: () => onNavigate('analysis', returnContext(initialContext.return_plan_context))
-    }, "\u8FD4\u56DE\u6B63\u5F0F\u65B9\u6848"), typeof renderAdoption === 'function' ? renderAdoption(candidateRef) : /*#__PURE__*/React.createElement(C.Button, {
+    }, "\u8FD4\u56DE\u6B63\u5F0F\u8BA1\u5212")), /*#__PURE__*/React.createElement("div", {
+      className: "rc-actions"
+    }, typeof renderAdoption === 'function' ? renderAdoption(candidateRef) : /*#__PURE__*/React.createElement(C.Button, {
       icon: "check",
       className: "btn primary",
       reasonDisplay: "inline",
-      reason: "\u6B63\u5F0F\u91C7\u7528\u5165\u53E3\u672A\u63A5\u5165\uFF0C\u8BF7\u5148\u6838\u5BF9\u5B8C\u6574\u5019\u9009\u65B9\u6848\u3002"
+      reason: window.WorkbenchTerms.outcomes.unavailable
     }, "\u91C7\u7528\u65B9\u6848"), typeof renderTrial === 'function' ? renderTrial({
       candidateRef,
       scope,
@@ -310,19 +316,21 @@
       disabled: !shown || read.busy || invalid
     }) : /*#__PURE__*/React.createElement(C.Button, {
       icon: "square-pen",
-      reason: "\u8BD5\u8C03\u5165\u53E3\u672A\u63A5\u5165\uFF0C\u8BF7\u5148\u6838\u5BF9\u5B8C\u6574\u5019\u9009\u65B9\u6848\u3002"
-    }, "\u8BD5\u8C03"), /*#__PURE__*/React.createElement(C.Button, {
+      reason: window.WorkbenchTerms.outcomes.unavailable
+    }, "\u8BD5\u8C03"), /*#__PURE__*/React.createElement("small", {
+      className: "rc-muted"
+    }, "\u8BD5\u8C03\u4E0D\u5F71\u54CD\u6B63\u5F0F\u8BA1\u5212"), /*#__PURE__*/React.createElement(C.Button, {
       icon: "refresh-cw",
-      "aria-label": "\u5237\u65B0\u6307\u5B9A\u5019\u9009\u6765\u6E90",
+      "aria-label": "\u5237\u65B0\u5019\u9009\u65B9\u6848",
       disabled: invalid || !runRef && !candidateRef,
       busy: read.busy || directory.busy,
       onClick: reload
-    }))), invalid && /*#__PURE__*/React.createElement(C.ErrorBox, {
-      error: new Error('记录编号无效，未改查其他运行或最新候选。')
+    })))), invalid && /*#__PURE__*/React.createElement(C.ErrorBox, {
+      error: new Error('记录编号无效，没有改查其他排产或最新候选方案。请从排产记录里重新打开。')
     }), !runRef && !candidateRef && /*#__PURE__*/React.createElement("div", {
       className: "rc-empty",
       role: "status"
-    }, "\u5C1A\u672A\u6307\u5B9A\u8FD0\u884C\u6216\u5019\u9009\u6765\u6E90\u3002\u8BF7\u4ECE\u8FD0\u884C\u8BB0\u5F55\u6253\u5F00\u5019\u9009\uFF0C\u672A\u81EA\u52A8\u9009\u62E9\u6700\u65B0\u8FD0\u884C\u3002"), runRef && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(C.ErrorBox, {
+    }, "\u5C1A\u672A\u6307\u5B9A\u6392\u4EA7\u6216\u5019\u9009\u65B9\u6848\u3002\u8BF7\u4ECE\u6392\u4EA7\u8BB0\u5F55\u91CC\u6253\u5F00\u5019\u9009\u65B9\u6848\uFF0C\u6CA1\u6709\u81EA\u52A8\u9009\u6700\u65B0\u7684\u6392\u4EA7\u3002"), runRef && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(C.ErrorBox, {
       error: directory.error
     }), /*#__PURE__*/React.createElement(C.Catalog, {
       result: directory.result,
@@ -341,13 +349,13 @@
     }), (read.busy || directory.busy) && /*#__PURE__*/React.createElement("p", {
       className: "rc-muted",
       role: "status"
-    }, "\u6B63\u5728\u8BFB\u53D6\u6307\u5B9A\u5019\u9009\u6765\u6E90\u3002"), read.error && /*#__PURE__*/React.createElement("div", {
+    }, "\u6B63\u5728\u8BFB\u53D6\u8FD9\u4E2A\u5019\u9009\u65B9\u6848\u3002"), read.error && /*#__PURE__*/React.createElement("div", {
       className: "rc-empty"
-    }, "\u6307\u5B9A\u5019\u9009\u672A\u8BFB\u53D6\u6210\u529F\uFF0C\u672A\u663E\u793A\u5176\u4ED6\u5019\u9009\u6216\u4E0A\u6B21\u5185\u5BB9\u3002"), (analysisRead.busy || historyRead.busy) && /*#__PURE__*/React.createElement("div", {
+    }, "\u8FD9\u4E2A\u5019\u9009\u65B9\u6848\u6CA1\u8BFB\u5230\uFF0C\u6CA1\u6709\u663E\u793A\u5176\u4ED6\u5019\u9009\u65B9\u6848\u6216\u4E0A\u6B21\u5185\u5BB9\u3002\u8BF7\u5237\u65B0\u540E\u91CD\u8BD5\u3002"), (analysisRead.busy || historyRead.busy) && /*#__PURE__*/React.createElement("div", {
       className: "rc-tools"
     }, /*#__PURE__*/React.createElement("span", {
       role: "status"
-    }, "\u6B63\u5728\u6838\u5BF9\u6307\u5B9A\u5019\u9009\u7684\u5B8C\u6574\u8BC1\u636E\u3002"), /*#__PURE__*/React.createElement(C.Button, {
+    }, "\u6B63\u5728\u6838\u5BF9\u8FD9\u4E2A\u5019\u9009\u65B9\u6848\u7684\u5B8C\u6574\u4F9D\u636E\u3002"), /*#__PURE__*/React.createElement(C.Button, {
       icon: "x",
       "aria-label": "\u53D6\u6D88\u5019\u9009\u6BD4\u8F83\u8BFB\u53D6",
       onClick: () => setAnalysisPaused(true)
@@ -358,11 +366,11 @@
     }, "\u5019\u9009\u6BD4\u8F83\u8BFB\u53D6\u5DF2\u53D6\u6D88\uFF0C\u672A\u663E\u793A\u4E0A\u6B21\u6BD4\u8F83\u3002"), /*#__PURE__*/React.createElement(C.Button, {
       icon: "refresh-cw",
       onClick: reload
-    }, "\u91CD\u65B0\u8BFB\u53D6\u5019\u9009\u6BD4\u8F83")), runRef && !candidateRef && /*#__PURE__*/React.createElement("div", {
+    }, "\u5237\u65B0\u5019\u9009\u6BD4\u8F83")), runRef && !candidateRef && /*#__PURE__*/React.createElement("div", {
       className: "rc-empty"
-    }, "\u5C1A\u672A\u9009\u62E9\u6B64\u8FD0\u884C\u4E2D\u7684\u5019\u9009\u3002"), data && !shown && /*#__PURE__*/React.createElement("div", {
+    }, "\u5C1A\u672A\u9009\u62E9\u8FD9\u6B21\u6392\u4EA7\u91CC\u7684\u5019\u9009\u65B9\u6848\u3002"), data && !shown && /*#__PURE__*/React.createElement("div", {
       className: "rc-notice"
-    }, "\u63A5\u53E3\u672A\u6388\u6743\u67E5\u770B\u8BE5\u5019\u9009\u3002", /*#__PURE__*/React.createElement(C.Reasons, {
+    }, "\u5F53\u524D\u4E0D\u80FD\u67E5\u770B\u8FD9\u4E2A\u5019\u9009\u65B9\u6848\u3002", /*#__PURE__*/React.createElement(C.Reasons, {
       rows: data.blocked_reasons
     })), shown && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(C.Generation, {
       key: shown.candidate.candidate_ref,
@@ -378,7 +386,7 @@
       className: "rc-tools"
     }, /*#__PURE__*/React.createElement("h3", null, "\u5019\u9009\u5DE5\u4F5C\u533A"), /*#__PURE__*/React.createElement("span", {
       className: "rc-muted"
-    }, "\u8BFB\u53D6\u4E8E ", M.timeLabel(result.meta.as_of), " \xB7 \u5DE5\u5382\u672C\u5730\u65F6\u95F4")), /*#__PURE__*/React.createElement("div", {
+    }, "\u8BFB\u53D6\u4E8E ", M.timeLabel(result.meta.as_of))), /*#__PURE__*/React.createElement("div", {
       className: "rc-tools"
     }, /*#__PURE__*/React.createElement("input", {
       type: "search",
@@ -442,7 +450,7 @@
       entries: {
         '筛选批次编号': scope.batch_ref
       }
-    }), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "\u8303\u56F4\u4E0E\u5BFC\u51FA\u53E3\u5F84"), /*#__PURE__*/React.createElement("div", null, "\u65F6\u95F4\u7B5B\u9009\u6309\u91CD\u53E0\u8BFB\u53D6\uFF0C\u4FDD\u7559\u6BCF\u9053\u5B89\u6392\u5B8C\u6574\u8D77\u6B62\uFF1B\u672A\u5B89\u6392\u9879\u6CA1\u6709\u65F6\u95F4\u533A\u95F4\uFF0C\u4ECD\u968F\u8303\u56F4\u4FDD\u7559\u3002\u641C\u7D22\u4EC5\u5F71\u54CD\u9884\u89C8\u548C\u660E\u7EC6\uFF0C\u4E0D\u6539\u53D8\u5BFC\u51FA\u8303\u56F4\u3002\u5BFC\u51FA\u5F53\u524D\u8BFB\u53D6\u8303\u56F4\u5168\u90E8\u5B89\u6392\u4E0E\u672A\u5B89\u6392\u8BB0\u5F55\u3002"))), view === 'delay' && /*#__PURE__*/React.createElement(C.Delivery, {
+    }), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "\u8303\u56F4\u4E0E\u5BFC\u51FA\u8BF4\u660E"), /*#__PURE__*/React.createElement("div", null, "\u65F6\u95F4\u7B5B\u9009\u6309\u91CD\u53E0\u8BFB\u53D6\uFF0C\u4FDD\u7559\u6BCF\u9053\u5B89\u6392\u5B8C\u6574\u8D77\u6B62\uFF1B\u672A\u5B89\u6392\u9879\u6CA1\u6709\u65F6\u95F4\u533A\u95F4\uFF0C\u4ECD\u968F\u8303\u56F4\u4FDD\u7559\u3002\u641C\u7D22\u53EA\u5F71\u54CD\u9875\u9762\u663E\u793A\u548C\u660E\u7EC6\uFF0C\u4E0D\u6539\u53D8\u5BFC\u51FA\u8303\u56F4\u3002\u5BFC\u51FA\u5F53\u524D\u8BFB\u53D6\u8303\u56F4\u5168\u90E8\u5B89\u6392\u4E0E\u672A\u5B89\u6392\u8BB0\u5F55\u3002"))), view === 'delay' && /*#__PURE__*/React.createElement(C.Delivery, {
       data: shown.delivery_risks,
       onLast: lastOperation
     }), /*#__PURE__*/React.createElement("div", {
@@ -491,7 +499,7 @@
       }))
     }) : tab === 'unplanned' && shown.unplanned_operations === null ? /*#__PURE__*/React.createElement("div", {
       className: "rc-notice"
-    }, "\u751F\u6210\u65F6\u672A\u4FDD\u7559\u53EF\u6838\u5B9E\u7684\u672A\u5B89\u6392\u660E\u7EC6\uFF0C\u4E0D\u80FD\u5F53\u6210\u96F6\u9879\u3002") : /*#__PURE__*/React.createElement(window.RunCandidateGantt.TaskList, {
+    }, "\u751F\u6210\u65F6\u6CA1\u6709\u4FDD\u7559\u672A\u5B89\u6392\u660E\u7EC6\uFF0C\u4E0D\u80FD\u5F53\u6210\u96F6\u9879\u3002") : /*#__PURE__*/React.createElement(window.RunCandidateGantt.TaskList, {
       key: tab + ':' + query + ':' + result.meta.snapshot_ref,
       tasks: tab === 'tasks' ? tasks : unplanned,
       selected: chosen,

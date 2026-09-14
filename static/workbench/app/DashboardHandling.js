@@ -18,7 +18,7 @@
   function inputFor(draft, reopen) {
     const normalized = text => text.trim() || null;
     if (reopen) {
-      C.check(normalized(draft.reason), '请填写独立重开原因。');
+      C.check(normalized(draft.reason), '请填写重开原因。');
       return {
         reason: draft.reason.trim()
       };
@@ -28,9 +28,9 @@
       ...Object.fromEntries(C.fields.filter(k => k !== 'evidence_ref').map(k => [k, normalized(draft[k])]))
     };
     if (input.completed_at && /^\d{4}-\d\d-\d\dT\d\d:\d\d$/.test(input.completed_at)) input.completed_at += ':00';
-    C.check(input.remark, '请填写原因和本次核实备注。');
+    C.check(input.remark, '请填写原因说明。');
     if (input.target_status !== 'new') C.check(input.owner && input.deadline && input.action, '请填写责任人、期限和处置行动。');
-    if (input.target_status === 'closed') C.check(input.completed_at && input.completion_evidence && input.evidence_reference_text, '关闭须填写完成时间、具体结果和可核对凭据。');
+    if (input.target_status === 'closed') C.check(input.completed_at && input.completion_evidence && input.evidence_reference_text, '关闭前请填写完成时间、具体完成结果和可核对凭据。');
     return input;
   }
   function Receipt({
@@ -41,10 +41,10 @@
     return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
       className: 'dy-note ' + (s.phase === 'confirmed' ? 'success' : 'warning'),
       role: "status"
-    }, s.phase === 'confirmed' ? '已确认：' + (s.receipt.result === 'unchanged' ? '无变化，未重复增加历史。' : '处置与历史已保存。') : s.phase === 'rejected' ? '本次明确未写入。' : '结果尚未确认，仅查询原请求。'), /*#__PURE__*/React.createElement("p", null, s.subject), /*#__PURE__*/React.createElement(window.WorkbenchReference, {
+    }, s.phase === 'confirmed' ? window.WorkbenchTerms.outcomes.done('处置', s.receipt.result === 'unchanged' ? '内容和原来一样，没有新增历史记录' : '处置和历史都已保存') : s.phase === 'rejected' ? '上次处置没有生效，填写内容已保留。改好后重新提交。' : window.WorkbenchTerms.outcomes.pending('处置')), /*#__PURE__*/React.createElement("p", null, s.subject), /*#__PURE__*/React.createElement(window.WorkbenchReference, {
       entries: {
-        '原请求编号': s.request_key,
-        '回执编号': s.phase === 'confirmed' ? s.receipt.receipt_ref : null
+        '操作编号': s.request_key,
+        '结果编号': s.phase === 'confirmed' ? s.receipt.receipt_ref : null
       }
     }), /*#__PURE__*/React.createElement(P.Facts, {
       handling: s.phase === 'confirmed' ? s.receipt.data.handling : C.expected(s)
@@ -53,11 +53,11 @@
       icon: "refresh-cw",
       busy: command.busy,
       onClick: command.lookup
-    }, "\u67E5\u8BE2\u539F\u56DE\u6267") : /*#__PURE__*/React.createElement(Button, {
+    }, "\u67E5\u8BE2\u7ED3\u679C") : /*#__PURE__*/React.createElement(Button, {
       reasonDisplay: "inline",
       icon: "check",
       onClick: onFinish
-    }, "\u5B8C\u6210\u6838\u5B9E\u5E76\u5237\u65B0"));
+    }, "\u5B8C\u6210"));
   }
   function Handling({
     item,
@@ -86,9 +86,9 @@
     }
     const action = reopen ? 'reopen' : 'transition',
       context = item && item.write_context;
-    const disabledReason = !context || context.capabilities[action] !== true ? '没有有效处置能力，请明确刷新条目。' : '';
+    const disabledReason = !context || context.capabilities[action] !== true ? '这条记录现在不能处置，请刷新后重试。' : '';
     return /*#__PURE__*/React.createElement(Modal, {
-      title: saved ? '处置请求核实' : reopen ? '独立重开处置' : '登记条目处置',
+      title: saved ? '上次处置结果' : reopen ? '独立重开处置' : '登记条目处置',
       icon: reopen ? 'refresh-cw' : 'square-pen',
       locked: command.busy,
       onClose: onClose,
@@ -96,12 +96,12 @@
         reasonDisplay: "inline",
         onClick: onClose,
         disabled: command.busy
-      }, saved && saved.phase === 'pending' ? '关闭并保留请求' : '关闭窗口'), !saved && /*#__PURE__*/React.createElement(Button, {
+      }, saved && saved.phase === 'pending' ? '关闭并保留这次操作' : '关闭'), !saved && /*#__PURE__*/React.createElement(Button, {
         reasonDisplay: "inline",
         icon: "check",
         className: "btn primary",
         busy: command.busy,
-        reason: disabledReason || (command.storageError ? '恢复记录尚未核实' : ''),
+        reason: disabledReason || (command.storageError ? '上次操作记录还没确认' : ''),
         onClick: submit
       }, reopen ? '确认独立重开' : '提交处置'))
     }, /*#__PURE__*/React.createElement("div", {
@@ -121,7 +121,7 @@
       handling: item.handling
     })), reopen ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
       className: "dy-note"
-    }, "\u91CD\u5F00\u540E\u8F6C\u4E3A\u8DDF\u8FDB\u4E2D\uFF0C\u672C\u8F6E\u5B8C\u6210\u5B57\u6BB5\u6E05\u7A7A\uFF1B\u65E7\u5B8C\u6210\u65F6\u95F4\u3001\u7ED3\u679C\u548C\u51ED\u636E\u4FDD\u7559\u5728\u5386\u53F2\u3002"), /*#__PURE__*/React.createElement("label", {
+    }, "\u91CD\u5F00\u540E\u72B6\u6001\u53D8\u4E3A\u8DDF\u8FDB\u4E2D\uFF0C\u672C\u6B21\u586B\u7684\u5B8C\u6210\u5185\u5BB9\u4F1A\u6E05\u9664\u3002\u539F\u6765\u7684\u5B8C\u6210\u65F6\u95F4\u3001\u7ED3\u679C\u548C\u51ED\u636E\u90FD\u7559\u5728\u5386\u53F2\u91CC\u3002"), /*#__PURE__*/React.createElement("label", {
       className: "dy-form"
     }, "\u91CD\u5F00\u539F\u56E0", /*#__PURE__*/React.createElement("textarea", {
       "aria-label": "\u91CD\u5F00\u539F\u56E0",
@@ -174,7 +174,7 @@
       disabled: command.busy
     })))), /*#__PURE__*/React.createElement("div", {
       className: "dy-note"
-    }, "\u51ED\u636E\u6587\u5B57\u5C1A\u672A\u6838\u9A8C\u4E3A\u9644\u4EF6\u3002\u5904\u7F6E\u72B6\u6001\u4E0D\u6539\u62A5\u5DE5\u4E8B\u5B9E\uFF0C\u5173\u95ED\u4E0D\u5220\u9664\u98CE\u9669\u3002"))));
+    }, "\u51ED\u636E\u8FD9\u91CC\u53EA\u5B58\u6587\u5B57\u8BF4\u660E\uFF0C\u8FD8\u6CA1\u6709\u5F53\u6210\u9644\u4EF6\u6838\u9A8C\u3002\u5904\u7F6E\u72B6\u6001\u4E0D\u4F1A\u6539\u52A8\u62A5\u5DE5\u8BB0\u5F55\uFF0C\u5173\u95ED\u4E5F\u4E0D\u4F1A\u5220\u6389\u98CE\u9669\u3002"))));
   }
   window.DashboardHandling = Handling;
 })();

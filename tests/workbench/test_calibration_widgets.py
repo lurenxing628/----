@@ -22,8 +22,8 @@ EXPORT_FIELDS = ["part_no", "part_name", "sequence", "operation_label", "templat
                  "template_snapshot", "old_unit_hours", "suggested_unit_hours", "deviation_percent", "deviation_basis",
                  "sample_count", "candidate_count", "sample_refs", "sample_revisions", "exclusion_reasons", "method_version",
                  "generated_at", "as_of", "snapshot_ref"]
-HEADERS = ["图号", "零件名称", "工序号", "工序名称", "模板工序引用", "模板修订", "模板快照", "旧单件定额h", "建议单件定额h",
-           "偏差百分比", "偏差计算状态", "有效样本数", "待核对实例数", "样本引用", "样本修订", "剔除原因", "计算方法", "生成时间", "数据截至", "范围快照", "筛选范围"]
+HEADERS = ["图号", "零件名称", "工序号", "工序名称", "模板工序编号", "模板版本", "模板数据版本", "旧单件定额（小时）", "建议单件定额（小时）",
+           "偏差百分比", "偏差计算状态", "可用完工记录数", "待核对完工记录数", "完工记录编号", "完工记录版本", "剔除原因", "计算方法", "生成时间", "数据截至", "数据版本编号", "筛选范围"]
 
 
 def unescape(value):
@@ -41,10 +41,10 @@ def verify_download(download):
     else:
         book = openpyxl.load_workbook(io.BytesIO(content), read_only=True, data_only=True)
         try:
-            assert book.sheetnames == ["校准建议", "范围与口径"]
+            assert book.sheetnames == ["校准建议", "范围与计算方式"]
             rows = list(book["校准建议"].iter_rows(values_only=True))
-            metadata = dict(book["范围与口径"].iter_rows(values_only=True))
-            assert unescape(metadata["范围快照"]) == download["snapshot"]
+            metadata = dict(book["范围与计算方式"].iter_rows(values_only=True))
+            assert unescape(metadata["数据版本编号"]) == download["snapshot"]
             assert metadata["数据截至"] == download["as_of"]
             assert json.loads(metadata["筛选范围"]) == download["scope"]
         finally:
@@ -58,7 +58,7 @@ def verify_download(download):
             if isinstance(expected_value, (list, dict)):
                 assert json.loads(value) == expected_value, key
             elif expected_value is None:
-                assert value == "未知", key
+                assert value == "暂无数据", key
             elif isinstance(expected_value, (int, float)):
                 assert float(value) == expected_value, key
             else:

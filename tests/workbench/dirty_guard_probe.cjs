@@ -64,7 +64,7 @@ async function result(expected) { await page.waitForFunction(value => JSON.strin
   });
   await run('pending-command-cannot-be-discarded', async () => {
     await page.getByLabel('A pending', { exact: true }).check(); await button('离开全部').click();
-    await page.getByRole('dialog', { name: '原请求尚未核实', exact: true }).waitFor(); assert.equal(await button('放弃未保存内容并继续').count(), 0);
+    await page.getByRole('dialog', { name: '上次操作还没有确认结果', exact: true }).waitFor(); assert.equal(await button('放弃未保存内容并继续').count(), 0);
     await button('留在当前页面').click(); await result([false]); assert(await page.getByLabel('A pending', { exact: true }).isChecked());
   });
   await run('external-leave-and-owner-exclusions', async () => {

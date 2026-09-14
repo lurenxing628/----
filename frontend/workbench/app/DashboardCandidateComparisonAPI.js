@@ -3,7 +3,7 @@
   const C = window.DashboardContract, A = window.RunCandidateAPI, D = window.DashboardAnalysisAPI;
   const { shape, number, count, nullable } = D;
   function context(value = {}) {
-    C.check(shape(value, [], ['run_ref', 'candidate_ref', 'range_start', 'range_end', 'batch_ref']), '候选比较上下文含不支持的字段。');
+    C.check(shape(value, [], ['run_ref', 'candidate_ref', 'range_start', 'range_end', 'batch_ref']), '候选方案比较条件无效，本页内容没有变化。请重新选择排产记录和候选方案。');
     for (const key of ['run_ref', 'candidate_ref', 'batch_ref']) if (value[key] !== undefined) C.check(C.ref(value[key]));
     C.check(!value.candidate_ref || value.run_ref);
     if (value.range_start !== undefined || value.range_end !== undefined) C.check(A.time(value.range_start) && A.time(value.range_end) && value.range_start < value.range_end);
@@ -57,7 +57,7 @@
   function create(fetcher = window.fetch.bind(window)) {
     return { async read(workspace, baseline, signal) {
       const scope = window.RunBaselineAPI.scope(workspace);
-      C.check(scope.range_start && scope.range_end, '比较需明确共同时间范围。');
+      C.check(scope.range_start && scope.range_end, '请先填写两个方案共同的开始和结束时间。');
       const value = await D.request('/api/workbench/v1/dashboard/candidates/' + workspace.candidate.candidate_ref + '/comparison?' + new URLSearchParams(scope), fetcher, signal);
       validate(value, workspace, baseline); return value;
     } };

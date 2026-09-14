@@ -107,13 +107,13 @@ async function inspect(page) {
       for (const mode of ['route','source','hours','ready','mixed','stale','empty','unavailable']) {
         await commit(page, mode);
         const item = facts[mode].readiness.items.process, counts = item.counts, text = await tile.innerText();
-        check(text.includes(item.status === 'unavailable' ? '工艺阶段无法核实' : item.status === 'zero' ? '暂无零件' : '工艺已确认 ' + counts.ready + ' / ' + counts.total + ' 项'), mode + ': ' + text);
+        check(text.includes(item.status === 'unavailable' ? '工艺阶段暂无数据' : item.status === 'zero' ? '暂无零件' : '工艺已确认 ' + counts.ready + ' / ' + counts.total + ' 项'), mode + ': ' + text);
         if (!['unavailable','zero'].includes(item.status)) {
           check(text.includes('待路线 ' + counts.route + ' / 待归属 ' + counts.source + ' / 待工时 ' + counts.hours), mode);
           check(text.includes('已确认：路线 ' + counts.route_confirmed + ' / 归属 ' + counts.source_confirmed + ' / 工时 ' + counts.hours_confirmed), mode);
         }
-        check(await page.locator('.hb-rl2').innerText() === '未知', 'Process confirmation is not scheduling readiness');
-        check((await page.locator('.rail-foot').innerText()).includes('静态资料不是排产前检查'), 'Static boundary must remain visible');
+        check(await page.locator('.hb-rl2').innerText() === '暂无数据', 'Process confirmation is not scheduling readiness');
+        check((await page.locator('.rail-foot').innerText()).includes('静态资料不是排产检查'), 'Static boundary must remain visible');
         check(await page.locator('.hb-r-floor i').count() === 0, 'No invented percentage');
         check(!text.includes('阶段未知') && !text.includes('100%'), 'No obsolete placeholder or vacuous ratio');
         if (mode === 'ready' || mode === 'mixed') {
@@ -125,11 +125,11 @@ async function inspect(page) {
       }
       for (const mode of ['missing','malformed','mismatch','old-placeholder','failed']) {
         await commit(page, mode);
-        check((await tile.innerText()).includes('工艺阶段无法核实'), mode);
+        check((await tile.innerText()).includes('工艺阶段暂无数据'), mode);
         check(!(await tile.innerText()).includes('工艺已确认'), mode);
       }
       await commit(page, 'delayed', false);
-      check((await tile.innerText()).includes('工艺阶段待读取'), 'Refresh must not retain old confirmation counts');
+      check((await tile.innerText()).includes('工艺阶段未读取'), 'Refresh must not retain old confirmation counts');
       await page.evaluate(() => processRailFixture.resolve());
       await page.waitForFunction(() => document.querySelector('.rail').getAttribute('aria-busy') === 'false');
       check((await tile.innerText()).includes('工艺已确认 1 / 1 项'), 'Successful callback refresh reaches new facts');

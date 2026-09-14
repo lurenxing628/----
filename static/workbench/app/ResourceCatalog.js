@@ -54,19 +54,19 @@
       className: "search"
     }, /*#__PURE__*/React.createElement("input", {
       type: "search",
-      "aria-label": "\u641C\u7D22\u76EE\u5F55\u7F16\u53F7\u6216\u540D\u79F0",
+      "aria-label": "\u641C\u7D22\u7F16\u53F7\u6216\u540D\u79F0",
       value: search,
       disabled: disabled,
       onChange: event => setSearch(event.target.value)
     })), /*#__PURE__*/React.createElement(Button, {
       icon: "search",
       type: "submit",
-      "aria-label": "\u641C\u7D22\u76EE\u5F55",
+      "aria-label": "\u641C\u7D22",
       disabled: disabled
     }), /*#__PURE__*/React.createElement("div", {
       className: "field"
     }, /*#__PURE__*/React.createElement("select", {
-      "aria-label": "\u76EE\u5F55\u72B6\u6001\u7B5B\u9009",
+      "aria-label": "\u72B6\u6001\u7B5B\u9009",
       value: scope.status,
       disabled: disabled,
       onChange: event => filter({
@@ -82,7 +82,7 @@
       value: "unknown"
     }, "\u65E7\u72B6\u6001\u672A\u77E5"))), /*#__PURE__*/React.createElement(Button, {
       icon: "refresh-cw",
-      "aria-label": "\u5237\u65B0\u76EE\u5F55",
+      "aria-label": "\u5237\u65B0\u5217\u8868",
       disabled: disabled,
       busy: list.loading,
       onClick: () => {
@@ -101,7 +101,7 @@
       error: list.error
     }), list.loading && /*#__PURE__*/React.createElement(EmptyState, {
       kind: "loading",
-      title: "\u6B63\u5728\u8BFB\u53D6\u76EE\u5F55"
+      title: "\u6B63\u5728\u8BFB\u53D6\u5217\u8868"
     }), data && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Issues, {
       issues: list.result.warnings
     }), /*#__PURE__*/React.createElement("div", {
@@ -112,7 +112,7 @@
       className: "tbl wb-table rc-list"
     }, /*#__PURE__*/React.createElement("caption", {
       className: "wb-visually-hidden"
-    }, M.names[kind], "\u76EE\u5F55"), /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
+    }, M.names[kind], "\u5217\u8868"), /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
       scope: "col",
       className: "wb-col-key"
     }, "\u7F16\u53F7 / \u540D\u79F0"), /*#__PURE__*/React.createElement("th", {
@@ -132,7 +132,7 @@
       className: 'pill ' + (entity.status === 'active' ? 'ok' : entity.status === 'inactive' ? 'off' : 'warn')
     }, /*#__PURE__*/React.createElement("span", {
       className: "dot"
-    }), entity.status === 'active' ? '启用' : entity.status === 'inactive' ? '停用' : '未知')), /*#__PURE__*/React.createElement("td", null, M.memberCount(kind, entity) === null ? '未读取' : M.memberCount(kind, entity)), kind === 'shift_profile' && /*#__PURE__*/React.createElement("td", null, entity.fields.cycle_days), /*#__PURE__*/React.createElement("td", {
+    }), entity.status === 'active' ? '启用' : entity.status === 'inactive' ? '停用' : '旧状态未知')), /*#__PURE__*/React.createElement("td", null, M.memberCount(kind, entity) === null ? '未读取' : M.memberCount(kind, entity)), kind === 'shift_profile' && /*#__PURE__*/React.createElement("td", null, entity.fields.cycle_days), /*#__PURE__*/React.createElement("td", {
       className: "wb-col-actions"
     }, /*#__PURE__*/React.createElement("div", {
       className: "rowact"
@@ -154,8 +154,8 @@
       onClick: () => onOpen('delete', entity.ref)
     })))))))), !data.entities.length && /*#__PURE__*/React.createElement(EmptyState, {
       kind: scope.query || scope.status ? 'filtered' : 'empty',
-      title: "\u5F53\u524D\u8303\u56F4\u6CA1\u6709\u76EE\u5F55\u8BB0\u5F55",
-      hint: "\u53EF\u6E05\u9664\u641C\u7D22\u548C\u72B6\u6001\u7B5B\u9009\u540E\u67E5\u770B\u5168\u90E8\u76EE\u5F55\u3002",
+      title: "\u5F53\u524D\u8303\u56F4\u6CA1\u6709\u8BB0\u5F55",
+      hint: "\u53EF\u6E05\u9664\u641C\u7D22\u548C\u72B6\u6001\u7B5B\u9009\u540E\u67E5\u770B\u5168\u90E8\u8BB0\u5F55\u3002",
       action: scope.query || scope.status ? /*#__PURE__*/React.createElement(Button, {
         disabled: disabled,
         onClick: () => {
@@ -170,7 +170,7 @@
       page: data.page,
       sizes: [20],
       unit: "\u6761",
-      label: "\u76EE\u5F55",
+      label: "\u5217\u8868",
       disabled: disabled || list.loading,
       onPage: page => setScope({
         ...scope,
@@ -212,7 +212,7 @@
       owner: 'resource-catalog-' + formId,
       dirty: !!(editor && editor.action !== 'delete' && !done && JSON.stringify(editor.draft) !== JSON.stringify(M.draft(editor.base))),
       locked: command.locked,
-      message: '资源目录有尚未保存的修改。'
+      message: (M.names[kind] || '基础资料') + '有尚未保存的填写内容。'
     });
     React.useEffect(() => {
       if (error || command.error) focusFirstInvalid(root.current);
@@ -241,7 +241,7 @@
           page: 1,
           snapshot_ref: undefined
         }, new AbortController().signal), 'list');
-        if (ref && result.data.ref !== ref) throw C.failure('读取对象与所选目录不一致。');
+        if (ref && result.data.ref !== ref) throw C.failure('读到的记录与所选记录不一致，请刷新后重试。');
         if (!alive.current || ticket !== generation.current) return;
         if (reviewing) setReview(result);else setEditor({
           action,
@@ -296,6 +296,12 @@
       }));
       setError(null);
     }
+    function acknowledge(value) {
+      setEditor(current => ({
+        ...current,
+        acknowledged: value
+      }));
+    }
     function acceptReview() {
       if (!review || locked || !command.reset()) return;
       // Refresh guards only. The original baseline and draft remain unchanged, so unseen fields are not overwritten.
@@ -308,10 +314,12 @@
       setNeedsReview(false);
       setError(null);
     }
-    const reason = editor ? needsReview ? '资料已变化，请重新读取并核对。' : review ? '请先核对最新资料。' : C.blocked(editor.context, kind, editor.action, editor.source) : '';
+    const reason = editor ? needsReview ? window.WorkbenchTerms.outcomes.stale : review ? '请先核对最新资料。' : C.blocked(editor.context, kind, editor.action, editor.source) : '';
+    // Deleting basic data needs the checkbox confirmation, so the unchecked state becomes the confirm button's own reason.
+    const confirmReason = editor && editor.action === 'delete' && !editor.acknowledged ? '请先勾选已核对要删除的资料及其关联关系。' : '';
     async function submit(event) {
       event.preventDefault();
-      if (locked || done || !editor || reason) return;
+      if (locked || done || !editor || reason || confirmReason) return;
       try {
         const input = editor.action === 'delete' ? {} : M.input(kind, editor.draft, editor.base);
         setError(null);
@@ -324,7 +332,7 @@
       create: '新增',
       update: '编辑',
       delete: '删除'
-    }[editor.action] : '维护') + (M.names[kind] || '资源目录');
+    }[editor.action] : '维护') + (M.names[kind] || '基础资料');
     return /*#__PURE__*/React.createElement("div", {
       className: "plana resource-catalog",
       "data-resource-catalog": kind,
@@ -337,16 +345,16 @@
       onClose: options => requestClose('close', options),
       footer: /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Button, {
         onClick: () => requestClose(),
-        reason: locked ? '操作尚未核实，请保留当前页面。' : ''
+        reason: locked ? '操作结果还没确认，请保留当前页面。' : ''
       }, lastReceipt || done ? '完成并返回' : '关闭'), editor && !done && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Button, {
         onClick: () => requestClose('list'),
         disabled: locked
-      }, "\u8FD4\u56DE\u76EE\u5F55"), /*#__PURE__*/React.createElement(Button, {
+      }, "\u8FD4\u56DE\u5217\u8868"), /*#__PURE__*/React.createElement(Button, {
         type: "submit",
         form: formId,
         className: "btn primary",
         icon: editor.action === 'delete' ? 'minus' : 'check',
-        reason: reason,
+        reason: reason || confirmReason,
         disabled: locked
       }, editor.action === 'delete' ? '确认删除' : '保存')), done && /*#__PURE__*/React.createElement(Button, {
         icon: "folder-open",
@@ -355,10 +363,10 @@
     }, /*#__PURE__*/React.createElement("div", {
       className: "modal-b form scroll"
     }, !validKind && /*#__PURE__*/React.createElement(ErrorBox, {
-      error: C.failure('不支持此类资源目录。')
+      error: C.failure('不支持这类基础资料。')
     }), busy && /*#__PURE__*/React.createElement("p", {
       role: "status"
-    }, "\u6B63\u5728\u8BFB\u53D6\u76EE\u5F55\u8D44\u6599\u2026"), validKind && showList && /*#__PURE__*/React.createElement(CatalogList, {
+    }, "\u6B63\u5728\u8BFB\u53D6\u8D44\u6599\u2026"), validKind && showList && /*#__PURE__*/React.createElement(CatalogList, {
       kind: kind,
       list: list,
       scope: scope,
@@ -375,7 +383,8 @@
       error: error || command.error,
       disabled: locked,
       onChange: change,
-      onValidationError: setError
+      onValidationError: setError,
+      onAcknowledge: acknowledge
     })), /*#__PURE__*/React.createElement(ErrorBox, {
       error: error,
       excludePaths: editor && !done && editor.action !== 'delete' ? Editor.fieldPaths : []
@@ -384,7 +393,7 @@
       excludePaths: editor && !done && editor.action !== 'delete' ? Editor.fieldPaths : []
     }), command.intent && command.locked && /*#__PURE__*/React.createElement(window.WorkbenchReference, {
       entries: {
-        '请求编号': command.intent.request_key
+        '操作编号': command.intent.request_key
       }
     }), editor && !done && !command.locked && /*#__PURE__*/React.createElement("div", {
       className: "rc-pattern"
@@ -395,14 +404,14 @@
         setReview(null);
         load(editor.action, editor.ref, true);
       }
-    }, "\u91CD\u65B0\u8BFB\u53D6\u6700\u65B0\u8D44\u6599"), reason && /*#__PURE__*/React.createElement("p", {
+    }, "\u5237\u65B0\u6700\u65B0\u8D44\u6599"), reason && /*#__PURE__*/React.createElement("p", {
       role: "status"
     }, reason), review && /*#__PURE__*/React.createElement("div", {
       className: "match-note rc-note"
     }, /*#__PURE__*/React.createElement("p", null, "\u6700\u65B0\u8D44\u6599\u5DF2\u8BFB\u53D6\uFF0C\u5DF2\u586B\u5199\u7684\u5185\u5BB9\u4FDD\u6301\u4E0D\u53D8\u3002\u8BF7\u6838\u5BF9\u540E\u7EE7\u7EED\u7F16\u8F91\u3002"), editor.ref ? /*#__PURE__*/React.createElement(Editor.Facts, {
       kind: kind,
       entity: review.data
-    }) : /*#__PURE__*/React.createElement("p", null, "\u5F53\u524D\u76EE\u5F55\u5171\u6709 ", review.data.page.total, " \u6761\u3002"), /*#__PURE__*/React.createElement(Button, {
+    }) : /*#__PURE__*/React.createElement("p", null, "\u5F53\u524D\u5171\u6709 ", review.data.page.total, " \u6761\u8BB0\u5F55\u3002"), /*#__PURE__*/React.createElement(Button, {
       icon: "check",
       disabled: locked,
       onClick: acceptReview

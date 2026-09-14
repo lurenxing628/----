@@ -25,7 +25,7 @@ for (const mutate of mutations) {
   let refused = false; try { N.validateBoot(boot); } catch (_) { refused = true; }
   expect(refused, 'Invalid navigation was accepted');
 }
-expect(N.title(original, {view: 'analysis', context: {source: 'run_history'}}) === '排产历史');
+expect(N.title(original, {view: 'analysis', context: {source: 'run_history'}}) === '排产记录');
 expect(N.title(original, {view: 'analysis', context: {source: 'run_history', run_ref: 'x'}}) === original.titles.analysis);
 expect(N.historyView({view: 'analysis', context: {source: 'run_history'}}) === true);
 expect(N.historyView({view: 'gantt', context: {source: 'run_history', candidate_ref: 'x'}}) === false);

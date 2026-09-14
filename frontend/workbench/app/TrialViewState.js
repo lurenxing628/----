@@ -6,20 +6,20 @@
   const exact = (value, keys) => C.object(value) && Object.keys(value).length === keys.length && keys.every(key => Object.prototype.hasOwnProperty.call(value, key));
   function problem(code, message) { const error = new Error(message); error.code = code; return error; }
   function identity(data) {
-    C.check(C.object(data) && C.ref(data.draft_ref), '试调查看偏好缺少原草稿身份。');
+    C.check(C.object(data) && C.ref(data.draft_ref), '试调查看偏好缺少原草稿编号。');
     const kind = data.scenario_ref === undefined ? 'draft' : 'scenario', ref = kind === 'draft' ? data.draft_ref : data.scenario_ref;
-    C.check(C.ref(ref), '试调查看偏好的场景身份无效。');
+    C.check(C.ref(ref), '试调查看偏好的试调方案编号无效。');
     return { kind, ref };
   }
   function key(target) {
-    C.check(exact(target, ['kind', 'ref']) && ['draft', 'scenario'].includes(target.kind) && C.ref(target.ref), '试调查看偏好的身份类型无效。');
+    C.check(exact(target, ['kind', 'ref']) && ['draft', 'scenario'].includes(target.kind) && C.ref(target.ref), '试调查看偏好的记录类型无效。');
     return PREFIX + target.kind + ':' + target.ref;
   }
   function preferences(value) {
     if (!exact(value, fields) || !['machine', 'operator', 'batch'].includes(value.mode)
         || typeof value.baseline !== 'boolean' || typeof value.only_changed !== 'boolean'
         || typeof value.query !== 'string' || value.query.length > 200 || !tabs.includes(value.result_tab)) {
-      throw problem('invalid_preferences', '试调查看偏好的字段或格式无效，原记录未覆盖。');
+      throw problem('invalid_preferences', '试调查看偏好的项或格式无效，原记录没有被覆盖。');
     }
     return value;
   }
@@ -41,14 +41,14 @@
     } catch (_) { throw problem('corrupt_preferences', '本机试调查看偏好损坏，原记录未覆盖。'); }
     if (!exact(value, ['schema_version', 'kind', 'ref', 'preferences']) || value.schema_version !== 1
         || value.kind !== target.kind || value.ref !== target.ref) {
-      throw problem('invalid_identity', '本机试调查看偏好的版本或原对象身份不一致，未恢复其他对象。');
+      throw problem('invalid_identity', '本机试调查看偏好的版本或所属记录不一致，没有恢复其他记录。');
     }
     return preferences(value.preferences);
   }
   function write(target, initial, patch, store) {
     const name = key(target);
     if (!C.object(patch) || !Object.keys(patch).every(field => fields.includes(field))) {
-      throw problem('invalid_preferences', '试调查看偏好含未知字段，未保存业务内容。');
+      throw problem('invalid_preferences', '试调查看偏好含未知的项，没有保存业务内容。');
     }
     preferences(initial); preferences({ ...initial, ...patch });
     const value = preferences({ ...(read(target, store) || initial), ...patch });
@@ -56,7 +56,7 @@
     catch (_) { throw problem('write_unavailable', '本次查看偏好尚未保存，本页选择已保留。'); }
     const saved = read(target, store);
     if (!saved || !fields.every(field => saved[field] === value[field])) {
-      throw problem('write_unverified', '本次查看偏好未能核实保存，本页选择已保留。');
+      throw problem('write_unverified', '本次查看偏好没有确认存上，本页选择已保留。');
     }
     return value;
   }
@@ -66,7 +66,7 @@
       const targetStorage = storage(store);
       targetStorage.removeItem(name);
       if (targetStorage.getItem(name) !== null) throw new Error('not removed');
-    } catch (_) { throw problem('clear_unavailable', '无法核实本对象查看偏好已清除，未清理其他对象。'); }
+    } catch (_) { throw problem('clear_unavailable', '不能确认这条记录的查看偏好已清除，没有清理其他记录。'); }
   }
   function useView(data) {
     const target = identity(data), name = key(target), initial = defaults(data), signature = JSON.stringify(initial);
@@ -82,7 +82,7 @@
       if (active.current !== name || !current.value) return false;
       let merged, value;
       try {
-        if (!C.object(patch) || !Object.keys(patch).every(field => fields.includes(field))) throw problem('invalid_preferences', '查看偏好含未知字段，未保存。');
+        if (!C.object(patch) || !Object.keys(patch).every(field => fields.includes(field))) throw problem('invalid_preferences', '查看偏好含未知的项，没有保存。');
         merged = { ...pending.current.patch, ...patch }; value = preferences({ ...current.value, ...merged });
       } catch (error) { setState({ ...current, error }); return false; }
       pending.current.patch = merged;
@@ -122,8 +122,8 @@
     return React.createElement('div', { className: 'tt-notice', role: 'region', 'aria-label': label },
       React.createElement(U.ErrorBox, { error: state.error }),
       React.createElement('div', { className: 'tt-tools' },
-        React.createElement(U.Button, { icon: 'refresh-cw', onClick: state.reload, 'aria-label': '重读' + label }, state.pending ? '重试保存偏好' : '重读偏好'),
-        React.createElement(U.Button, { icon: 'rotate-ccw', onClick: state.reset, 'aria-label': '清除' + label }, '清除此对象本机偏好')));
+        React.createElement(U.Button, { icon: 'refresh-cw', onClick: state.reload, 'aria-label': '刷新' + label }, state.pending ? '重试保存偏好' : '刷新偏好'),
+        React.createElement(U.Button, { icon: 'rotate-ccw', onClick: state.reset, 'aria-label': '清除' + label }, '清除本机的这份偏好')));
   }
   window.TrialViewState = { identity, key, defaults, read, write, clear, useView, Notice };
 })();

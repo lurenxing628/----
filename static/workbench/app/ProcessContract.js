@@ -16,7 +16,7 @@
   const number = value => value === null || Number.isFinite(value);
   const issues = value => Array.isArray(value) && value.every(row => C.object(row) && text(row.code) && text(row.message));
   const source = value => value === null || ['internal', 'external'].includes(value);
-  const stages = [['', '全部', 'total'], ['route', '待导入路线', 'route'], ['source', '待分拣', 'source'], ['hours', '待填工时', 'hours'], ['ready', '已就绪', 'ready']];
+  const stages = [['', '全部', 'total'], ['route', '待导入路线', 'route'], ['source', '待定归属', 'source'], ['hours', '待填工时', 'hours'], ['ready', '已就绪', 'ready']];
   const sorts = [['business_code', '图号'], ['label', '零件名称'], ['operation_count', '工序数量'], ['stage', '进度']];
   const columns = sorts.map(([key, title], index) => ({
     key,
@@ -75,28 +75,28 @@
   function groupCycle(row, groups) {
     if (row.external_days_source !== 'group') return null;
     const group = groups.find(item => item.ref === row.external_group_ref);
-    if (!group || group.merge_mode !== 'merged' || !Number.isFinite(group.total_days) || group.total_days <= 0 || group.issues.length || row.external_days !== null || row.source !== 'external' || row.status !== 'active' || !within(row.sequence, group.start_sequence, group.end_sequence)) throw C.failure('工序周期与指定外协组不一致，请重新读取。');
+    if (!group || group.merge_mode !== 'merged' || !Number.isFinite(group.total_days) || group.total_days <= 0 || group.issues.length || row.external_days !== null || row.source !== 'external' || row.status !== 'active' || !within(row.sequence, group.start_sequence, group.end_sequence)) throw C.failure('工序周期和指定外协组不一致，请刷新后重试。');
     return '按外协组周期 · ' + group.start_sequence + ' 至 ' + group.end_sequence;
   }
   function list(result, scope) {
     C.query(result, 'list');
     const d = result.data,
       p = d.page;
-    if (!d.entities.every(entity) || !uniqueRefs(d.entities) || !capabilities(d.capabilities) || d.create_context !== null && (!writeContext(d.create_context) || !C.object(d.create_context)) || !C.object(d.metrics) || !C.object(d.metrics.counts) || !stages.every(row => count(d.metrics.counts[row[2]])) || p.number !== scope.page || p.size !== scope.size || p.pages !== Math.max(1, Math.ceil(p.total / p.size)) && !(p.total === 0 && p.pages === 0) || p.sort.length !== ordering(scope).length || !p.sort.every((item, index) => C.object(item) && item.field === ordering(scope)[index].field && item.direction === ordering(scope)[index].direction)) throw C.failure('工艺列表、阶段或分页协议不完整，请重新读取。');
-    if (scope.snapshot_ref && result.meta.snapshot_ref !== scope.snapshot_ref) throw C.failure('列表快照已变化，请刷新后重新翻页。');
+    if (!d.entities.every(entity) || !uniqueRefs(d.entities) || !capabilities(d.capabilities) || d.create_context !== null && (!writeContext(d.create_context) || !C.object(d.create_context)) || !C.object(d.metrics) || !C.object(d.metrics.counts) || !stages.every(row => count(d.metrics.counts[row[2]])) || p.number !== scope.page || p.size !== scope.size || p.pages !== Math.max(1, Math.ceil(p.total / p.size)) && !(p.total === 0 && p.pages === 0) || p.sort.length !== ordering(scope).length || !p.sort.every((item, index) => C.object(item) && item.field === ordering(scope)[index].field && item.direction === ordering(scope)[index].direction)) throw C.failure('读到的工艺列表不完整，请刷新后重试。');
+    if (scope.snapshot_ref && result.meta.snapshot_ref !== scope.snapshot_ref) throw C.failure('翻页位置已失效，请回到第 1 页重新查询。');
     return result;
   }
   function detail(result, expectedRef) {
     C.query(result, 'entity');
     const d = result.data;
-    if (!entity(d) || d.ref !== expectedRef || !capabilities(d.capabilities) || !Array.isArray(d.operations) || !d.operations.every(operation) || !uniqueRefs(d.operations) || !Array.isArray(d.external_groups) || !d.external_groups.every(externalGroup) || !uniqueRefs(d.external_groups) || !cycleReferences(d)) throw C.failure('工艺详情不完整或对象不一致，请重新读取。');
+    if (!entity(d) || d.ref !== expectedRef || !capabilities(d.capabilities) || !Array.isArray(d.operations) || !d.operations.every(operation) || !uniqueRefs(d.operations) || !Array.isArray(d.external_groups) || !d.external_groups.every(externalGroup) || !uniqueRefs(d.external_groups) || !cycleReferences(d)) throw C.failure('读到的工艺详情不完整或不是这个零件，请刷新后重试。');
     return result;
   }
   function preview(result, expectedRef, body) {
     if (result && result.ok === false) throw result;
-    if (!C.object(result) || result.ok !== true || result.schema_version !== 1 || !C.object(result.meta) || !['production', 'demo'].includes(result.meta.source) || result.meta.time_basis !== 'factory_local' || !token(result.meta.snapshot_ref) || !text(result.meta.request_ref) || !text(result.meta.as_of) || !Array.isArray(result.warnings)) throw C.failure('路线预检协议不匹配。');
+    if (!C.object(result) || result.ok !== true || result.schema_version !== 1 || !C.object(result.meta) || !['production', 'demo'].includes(result.meta.source) || result.meta.time_basis !== 'factory_local' || !token(result.meta.snapshot_ref) || !text(result.meta.request_ref) || !text(result.meta.as_of) || !Array.isArray(result.warnings)) throw C.failure('读到的路线预检结果不完整，请刷新重试。');
     const d = result.data;
-    if (!C.object(d) || d.part_ref !== expectedRef || d.mode !== body.mode || !text(d.route_raw) || !text(d.normalized_input) || !writeContext(d.write_context, d.can_confirm_route ? 'route_confirm' : null) || typeof d.can_confirm_route !== 'boolean' || !Array.isArray(d.operations) || !d.operations.every(row => C.object(row) && sequence(row.sequence) && text(row.op_type_name) && nullableRef(row.op_type_ref) && source(row.source_suggestion) && nullableRef(row.supplier_ref) && nullableText(row.supplier_label) && number(row.external_days) && (text(row.basis) || C.object(row.basis) || Array.isArray(row.basis)) && issues(row.issues)) || !Array.isArray(d.diagnostics) || !d.diagnostics.every(row => C.object(row) && text(row.code) && text(row.message) && ['error', 'warning'].includes(row.severity) && (!C.own(row, 'sequence') || sequence(row.sequence))) || !C.object(d.counts) || !['operations', 'recognized', 'unknown'].every(key => count(d.counts[key])) || d.counts.operations !== d.operations.length || d.counts.recognized + d.counts.unknown !== d.counts.operations || !C.object(d.baseline) || !count(d.baseline.operation_count) || !count(d.baseline.external_group_count) || typeof d.baseline.has_published_template !== 'boolean' || !C.object(d.changes) || !['added', 'removed', 'retained', 'same_sequence_changed'].every(key => Array.isArray(d.changes[key]) && d.changes[key].every(sequence)) || !Array.isArray(d.affected_groups) || !d.affected_groups.every(externalGroup) || !uniqueRefs(d.affected_groups)) throw C.failure('路线预检结果不完整或对象不一致，未视为有效输入。');
+    if (!C.object(d) || d.part_ref !== expectedRef || d.mode !== body.mode || !text(d.route_raw) || !text(d.normalized_input) || !writeContext(d.write_context, d.can_confirm_route ? 'route_confirm' : null) || typeof d.can_confirm_route !== 'boolean' || !Array.isArray(d.operations) || !d.operations.every(row => C.object(row) && sequence(row.sequence) && text(row.op_type_name) && nullableRef(row.op_type_ref) && source(row.source_suggestion) && nullableRef(row.supplier_ref) && nullableText(row.supplier_label) && number(row.external_days) && (text(row.basis) || C.object(row.basis) || Array.isArray(row.basis)) && issues(row.issues)) || !Array.isArray(d.diagnostics) || !d.diagnostics.every(row => C.object(row) && text(row.code) && text(row.message) && ['error', 'warning'].includes(row.severity) && (!C.own(row, 'sequence') || sequence(row.sequence))) || !C.object(d.counts) || !['operations', 'recognized', 'unknown'].every(key => count(d.counts[key])) || d.counts.operations !== d.operations.length || d.counts.recognized + d.counts.unknown !== d.counts.operations || !C.object(d.baseline) || !count(d.baseline.operation_count) || !count(d.baseline.external_group_count) || typeof d.baseline.has_published_template !== 'boolean' || !C.object(d.changes) || !['added', 'removed', 'retained', 'same_sequence_changed'].every(key => Array.isArray(d.changes[key]) && d.changes[key].every(sequence)) || !Array.isArray(d.affected_groups) || !d.affected_groups.every(externalGroup) || !uniqueRefs(d.affected_groups)) throw C.failure('读到的路线预检结果不完整或不是这个零件，本次不作为有效输入。');
     if (d.can_confirm_route && d.diagnostics.some(row => row.severity === 'error')) throw C.failure('路线预检的诊断与确认标记矛盾，请重试。');
     return result;
   }
@@ -119,10 +119,10 @@
         let seq = null;
         if (!/^\d+$/.test(raw) || digits === '0') fields.push({
           path: 'rows.' + index + '.seq',
-          message: '第 ' + (index + 1) + ' 行工序号必须是安全正整数。'
+          message: '第 ' + (index + 1) + ' 行工序号必须是正整数。'
         });else if (digits.length > 16 || digits.length === 16 && digits > '9007199254740991') fields.push({
           path: 'rows.' + index + '.seq',
-          message: '第 ' + (index + 1) + ' 行工序号超出安全整数范围，请改用整条文字预检；原值未改动。'
+          message: '第 ' + (index + 1) + ' 行工序号太大，请改用整条文字预检；原值没有改动。'
         });else seq = Number(digits);
         return {
           seq,
@@ -140,8 +140,8 @@
   }
   function reason(value, action, connected = false) {
     if (!value) return '请先读取当前工艺能力。';
-    if (value[action] !== true) return action === 'stage_confirm' ? '服务尚未开放阶段确认，当前不能保存。' : '服务尚未开放此操作。';
-    return connected ? '' : '此操作的事务接口尚未接入。';
+    if (value[action] !== true) return action === 'stage_confirm' ? '当前不允许确认这一步，不能保存。' : '当前不允许此操作。';
+    return connected ? '' : window.WorkbenchTerms.outcomes.unavailable;
   }
   function sourceLabel(value) {
     return value === 'internal' ? '自制' : value === 'external' ? '外协' : '未归类';

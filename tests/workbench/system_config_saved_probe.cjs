@@ -82,11 +82,11 @@ const passed = name => report.cases.push({ name, passed: true });
 async function ready(page) { await page.waitForFunction(() => { const node = document.querySelector('#sm-maintenance-auto_backup_interval_minutes'); return node && !node.disabled; }); }
 async function settled(page) { await page.waitForFunction(() => { const section = document.querySelector('.sm-maintenance-config'); return section && !section.textContent.includes('正在读取八项维护配置'); }); }
 async function clean(page, expected) {
-  await page.waitForFunction(value => { const section = document.querySelector('.sm-maintenance-config'); return section && !section.textContent.includes('有未保存修改') && !section.textContent.includes('当前草稿尚未覆盖') && section.textContent.includes('已存值：' + value); }, expected);
+  await page.waitForFunction(value => { const section = document.querySelector('.sm-maintenance-config'); return section && !section.textContent.includes('有未保存修改') && !section.textContent.includes('没有被覆盖') && section.textContent.includes('已存值：' + value); }, expected);
   assert.equal(await interval(page).inputValue(), String(expected));
   assert(await page.getByRole('button', { name: '放弃草稿', exact: true }).isDisabled());
 }
-async function acknowledge(page) { await page.getByRole('button', { name: '确认结果', exact: true }).click(); await page.getByRole('region', { name: '维护原请求结果' }).waitFor({ state: 'detached' }); }
+async function acknowledge(page) { await page.getByRole('button', { name: '确认结果', exact: true }).click(); await page.getByRole('region', { name: '上次维护操作的结果' }).waitFor({ state: 'detached' }); }
 const flush = page => page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
 const pending = page => page.evaluate(() => JSON.parse(localStorage.getItem(window.SystemMaintenanceAPI.PENDING_KEY)));
 const read = page => page.evaluate(() => window.SystemMaintenanceAPI.create().read('config', {}));
@@ -113,7 +113,7 @@ const helpers = { assert, report, output, save, interval, ready, settled, clean,
 async function minimal(page) {
   await ready(page); assert.equal(await interval(page).inputValue(), '120');
   await interval(page).fill('121'); await page.getByText('有未保存修改', { exact: true }).waitFor();
-  await save(page).click(); await page.getByText('八项维护配置已保存，事务和审计已留存。').waitFor();
+  await save(page).click(); await page.getByText('八项维护配置已保存，操作记录已留存。').waitFor();
   assert(await save(page).isDisabled()); assert(await interval(page).isDisabled());
   passed('200-receipt-does-not-unlock-before-acknowledgement');
   await acknowledge(page); await flush(page); await settled(page); await flush(page);
@@ -126,7 +126,7 @@ async function minimal(page) {
   await ready(page); await clean(page, 121);
   assert(report.requests.some(row => row.method === 'GET' && row.read_values && row.read_values.auto_backup_interval_minutes === 121));
   passed('120-to-121-confirmed-readback-becomes-clean-baseline');
-  await page.getByRole('button', { name: '重新读取配置', exact: true }).click(); await ready(page);
+  await page.getByRole('button', { name: '刷新配置', exact: true }).click(); await ready(page);
   assert.equal(await page.getByRole('dialog').count(), 0); await clean(page, 121);
   passed('refresh-after-save-does-not-ask-to-discard');
   assert.equal(report.requests.filter(row => row.method === 'POST').length, 1);

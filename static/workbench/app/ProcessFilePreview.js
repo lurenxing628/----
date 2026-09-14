@@ -50,7 +50,7 @@
     const fields = !receipt && Object.fromEntries(data.columns.map(row => [row.key, row.label]));
     return /*#__PURE__*/React.createElement("section", {
       className: "rm-preview",
-      "aria-label": receipt ? '工时导入回执' : '工时导入预检'
+      "aria-label": receipt ? '工时导入结果' : '工时导入预检'
     }, /*#__PURE__*/React.createElement("div", {
       className: "rm-summary",
       role: "status"
@@ -58,7 +58,7 @@
       className: "rm-danger"
     }, "\u4E0D\u80FD\u63D0\u4EA4 ", /*#__PURE__*/React.createElement("b", null, counts.rejected), " \u884C")), /*#__PURE__*/React.createElement("p", {
       role: "status"
-    }, receipt ? counts.changed ? '仅已导入行发生修改，其余行未修改。' : '本次没有导入任何工时，业务数据未变化。' : !data.can_confirm ? '本批存在不能提交的行，当前不能导入任何工时。' : counts.skipped === data.rows.length ? '全部行因单件工时已校准锁定而跳过；确认只记录结果，不修改工时。' : '尚未导入；确认后只写入可导入行。'), counts.skipped > 0 && /*#__PURE__*/React.createElement("p", null, "\u6821\u51C6\u9501\u53EA\u4FDD\u62A4\u5355\u4EF6\u5DE5\u65F6\u3002\u9501\u5B9A\u884C\u82E5\u8981\u4FEE\u6539\u5355\u4EF6\u5DE5\u65F6\uFF0C\u672C\u884C\u5168\u90E8\u8DF3\u8FC7\uFF0C\u6362\u578B\u65F6\u95F4\u4E5F\u4E0D\u4F1A\u968F\u672C\u884C\u5BFC\u5165\uFF1B\u4EC5\u6539\u6362\u578B\u65F6\u95F4\u65F6\uFF0C\u4FDD\u7559\u539F\u5355\u4EF6\u5DE5\u65F6\u6216\u5C06\u8BE5\u5217\u7559\u7A7A\u5373\u53EF\u3002"), /*#__PURE__*/React.createElement("div", {
+    }, receipt ? counts.changed ? '仅已导入行发生修改，其余行未修改。' : '本次没有导入任何工时，业务数据未变化。' : !data.can_confirm ? '本批存在不能提交的行，当前不能导入任何工时。' : counts.skipped === data.rows.length ? '全部行的单件工时都已锁定，本次跳过；确认只记录结果，不修改工时。' : '尚未导入；确认后只写入可导入行。'), counts.skipped > 0 && /*#__PURE__*/React.createElement("p", null, "\u5B9A\u989D\u9501\u5B9A\u53EA\u4FDD\u62A4\u5355\u4EF6\u5DE5\u65F6\uFF08\u6765\u81EA\u5DE5\u65F6\u6821\u51C6\uFF09\u3002\u9501\u5B9A\u884C\u82E5\u8981\u4FEE\u6539\u5355\u4EF6\u5DE5\u65F6\uFF0C\u672C\u884C\u5168\u90E8\u8DF3\u8FC7\uFF0C\u6362\u578B\u65F6\u95F4\u4E5F\u4E0D\u4F1A\u968F\u672C\u884C\u5BFC\u5165\uFF1B\u53EA\u6539\u6362\u578B\u65F6\u95F4\u65F6\uFF0C\u4FDD\u7559\u539F\u5355\u4EF6\u5DE5\u65F6\u6216\u628A\u8BE5\u5217\u7559\u7A7A\u5373\u53EF\u3002"), /*#__PURE__*/React.createElement("div", {
       className: "rm-preview-toolbar"
     }, /*#__PURE__*/React.createElement("h3", null, receipt ? '逐行导入结果' : '逐行核对'), /*#__PURE__*/React.createElement("label", null, "\u67E5\u627E ", /*#__PURE__*/React.createElement("input", {
       type: "search",
@@ -128,11 +128,11 @@
         "data-quota-result": status(row)
       }, /*#__PURE__*/React.createElement("td", null, row.row), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("strong", null, row.business_code || '图号未识别'), /*#__PURE__*/React.createElement("div", null, "\u5DE5\u5E8F ", row.sequence === undefined ? '未识别' : row.sequence)), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("div", null, skip && /*#__PURE__*/React.createElement(Icon, {
         name: "lock"
-      }), " ", labels[status(row)]), skip && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", null, "\u5DF2\u91C7\u7EB3\u6821\u51C6\u7ED3\u679C\uFF0C\u5355\u4EF6\u5DE5\u65F6\u4E0D\u80FD\u88AB\u672C\u6587\u4EF6\u8986\u76D6\u3002"), /*#__PURE__*/React.createElement("div", {
+      }), " ", labels[status(row)]), skip && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", null, "\u5DF2\u91C7\u7528\u6821\u51C6\u7ED3\u679C\uFF0C\u5355\u4EF6\u5DE5\u65F6\u4E0D\u80FD\u88AB\u672C\u6587\u4EF6\u8986\u76D6\u3002"), /*#__PURE__*/React.createElement("div", {
         style: {
           whiteSpace: 'pre-wrap'
         }
-      }, "\u91C7\u7EB3\u539F\u56E0\uFF1A", skip.reason)), !receipt && row.errors.map((error, index) => /*#__PURE__*/React.createElement("div", {
+      }, "\u91C7\u7528\u539F\u56E0\uFF1A", skip.reason)), !receipt && row.errors.map((error, index) => /*#__PURE__*/React.createElement("div", {
         className: "rm-danger",
         key: index
       }, error.message))), !receipt && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(HoursFacts, {
@@ -221,7 +221,7 @@
       checked: selected.includes(row.ref),
       disabled: disabled,
       onChange: event => onChange(event.target.checked ? selected.concat(row.ref) : selected.filter(ref => ref !== row.ref))
-    })), /*#__PURE__*/React.createElement("td", null, row.business_code), /*#__PURE__*/React.createElement("td", null, row.start_sequence, " \u81F3 ", row.end_sequence), /*#__PURE__*/React.createElement("td", null, row.merge_mode === 'merged' ? '合并周期' : row.merge_mode === 'separate' ? '逐序周期' : row.merge_mode === null ? '未填写' : row.merge_mode), /*#__PURE__*/React.createElement("td", null, row.total_days === null ? '未填写' : row.total_days + ' 天'), /*#__PURE__*/React.createElement("td", null, row.supplier_label === null ? '未绑定' : row.supplier_label), /*#__PURE__*/React.createElement("td", null, row.remark === null ? '未填写' : row.remark, /*#__PURE__*/React.createElement(Issues, {
+    })), /*#__PURE__*/React.createElement("td", null, row.business_code), /*#__PURE__*/React.createElement("td", null, row.start_sequence, " \u81F3 ", row.end_sequence), /*#__PURE__*/React.createElement("td", null, row.merge_mode === 'merged' ? '合并周期' : row.merge_mode === 'separate' ? '逐序周期' : row.merge_mode === null ? '未填写' : row.merge_mode), /*#__PURE__*/React.createElement("td", null, row.total_days === null ? '未填写' : row.total_days + ' 天'), /*#__PURE__*/React.createElement("td", null, row.supplier_label === null ? '未选' : row.supplier_label), /*#__PURE__*/React.createElement("td", null, row.remark === null ? '未填写' : row.remark, /*#__PURE__*/React.createElement(Issues, {
       issues: row.issues
     }))))))), /*#__PURE__*/React.createElement("div", {
       className: "rm-pagination"

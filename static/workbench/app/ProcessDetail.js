@@ -22,7 +22,7 @@
       className: "stepper",
       role: "tablist",
       "aria-label": "\u96F6\u4EF6\u5DE5\u827A\u6B65\u9AA4"
-    }, [['route', '工艺路线'], ['source', '工序归属'], ['hours', '工时定额']].map(([key, title], index) => /*#__PURE__*/React.createElement(Button, {
+    }, [['route', '工艺路线'], ['source', '归属'], ['hours', '工时定额']].map(([key, title], index) => /*#__PURE__*/React.createElement(Button, {
       key: key,
       className: 'stp ' + (stage === key ? 'active' : entity.workflow[key].state === 'confirmed' ? 'done' : ''),
       role: "tab",
@@ -67,7 +67,7 @@
       }
     }, /*#__PURE__*/React.createElement("caption", {
       className: "wb-visually-hidden"
-    }, hours ? '已就绪工序汇总' : '路线工序明细'), hours && /*#__PURE__*/React.createElement("colgroup", null, [14, 10, 8, 18, 10, 10, 10, 20].map((width, index) => /*#__PURE__*/React.createElement("col", {
+    }, hours ? '已就绪工序汇总' : '路线工序明细'), hours && /*#__PURE__*/React.createElement("colgroup", null, [11, 9, 8, 16, 13, 13, 11, 19].map((width, index) => /*#__PURE__*/React.createElement("col", {
       key: index,
       style: {
         width: width + '%'
@@ -82,9 +82,9 @@
       scope: "col"
     }, "\u4F9B\u5E94\u5546 / \u5916\u534F\u7EC4"), hours && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("th", {
       scope: "col"
-    }, "\u6362\u578B\u5DE5\u65F6\uFF08h\uFF09"), /*#__PURE__*/React.createElement("th", {
+    }, "\u6362\u578B\u5DE5\u65F6\uFF08\u5C0F\u65F6\uFF09"), /*#__PURE__*/React.createElement("th", {
       scope: "col"
-    }, "\u5355\u4EF6\u5DE5\u65F6\uFF08h\uFF09"), /*#__PURE__*/React.createElement("th", {
+    }, "\u5355\u4EF6\u5DE5\u65F6\uFF08\u5C0F\u65F6\uFF09"), /*#__PURE__*/React.createElement("th", {
       scope: "col"
     }, "\u5916\u534F\u5468\u671F\uFF08\u5929\uFF09")), /*#__PURE__*/React.createElement("th", {
       scope: "col"
@@ -97,7 +97,7 @@
         "aria-current": row.ref === focusRef ? 'true' : undefined
       }, /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("b", null, row.sequence), " ", row.label, row.ref === focusRef && /*#__PURE__*/React.createElement(window.WorkbenchReference, {
         value: row.ref
-      })), /*#__PURE__*/React.createElement("td", null, row.op_type_label || '未绑定工种'), /*#__PURE__*/React.createElement("td", null, P.sourceLabel(row.source)), /*#__PURE__*/React.createElement("td", null, row.source === 'internal' ? '不适用' : row.supplier_label || '未绑定供应商', group && /*#__PURE__*/React.createElement("div", null, "\u5916\u534F\u7EC4 ", group.start_sequence, " \u81F3 ", group.end_sequence)), hours && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("td", null, row.source === 'internal' ? E.value(row.setup_hours) : '不适用'), /*#__PURE__*/React.createElement("td", null, row.source === 'internal' ? E.value(row.unit_hours) : '不适用'), /*#__PURE__*/React.createElement("td", {
+      })), /*#__PURE__*/React.createElement("td", null, row.op_type_label || '未选工种'), /*#__PURE__*/React.createElement("td", null, P.sourceLabel(row.source)), /*#__PURE__*/React.createElement("td", null, row.source === 'internal' ? '不适用' : row.supplier_label || '未选供应商', group && /*#__PURE__*/React.createElement("div", null, "\u5916\u534F\u7EC4 ", group.start_sequence, " \u81F3 ", group.end_sequence)), hours && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("td", null, row.source === 'internal' ? E.value(row.setup_hours) : '不适用'), /*#__PURE__*/React.createElement("td", null, row.source === 'internal' ? E.value(row.unit_hours) : '不适用'), /*#__PURE__*/React.createElement("td", {
         "data-process-cycle-group": row.external_days_source === 'group' ? row.external_group_ref : undefined
       }, row.source === 'external' ? P.groupCycle(row, entity.external_groups) || E.value(row.external_days) : '不适用')), /*#__PURE__*/React.createElement("td", null, row.status === 'active' ? '有效' : '已停用工序', /*#__PURE__*/React.createElement("div", {
         className: "muted"
@@ -192,7 +192,7 @@
     }), []);
     async function loadPart(signal) {
       if (target.error) throw target.error;
-      if (typeof adapter.detail !== 'function') throw C.failure('工艺详情接口尚未接入。');
+      if (typeof adapter.detail !== 'function') throw C.failure('dependency not wired: window.APSProcessAPI.detail');
       const raw = await adapter.detail('part', partRef, signal);
       if (raw && raw.data && raw.data.ref !== partRef) throw C.failure('返回的不是原零件记录，不能继续使用同图号的新零件。');
       const value = P.detail(raw, partRef);
@@ -222,7 +222,7 @@
       ...command,
       phase: 'pending',
       locked: true,
-      error: C.failure('回执未完整确认当前零件和本次步骤，请查询原请求回执。')
+      error: C.failure(window.WorkbenchTerms.outcomes.pending('保存'))
     } : command;
     const hasDraft = Object.values(dirty).some(Boolean);
     window.WorkbenchGuards.useDirtyGuard({
@@ -311,7 +311,7 @@
         loading: true
       });
       try {
-        if (!receiptMatches) throw C.failure('回执未完整确认当前零件和本次步骤，结果仍待核对，请查询原请求回执。');
+        if (!receiptMatches) throw C.failure(window.WorkbenchTerms.outcomes.pending('保存'));
         notify(command.result);
         const fresh = await loadPart(controller.signal);
         if (controller.signal.aborted) return;
@@ -332,7 +332,7 @@
           done: true
         });
         if (!command.reset()) setRefresh({
-          error: C.failure('回执已确认，但本地待核实记录未清除，请重试读取保存结果。')
+          error: C.failure('保存已确认，但本机还留着上次操作记录。请点「查询结果」重试。')
         });
       } catch (error) {
         if (!controller.signal.aborted) setRefresh({
@@ -362,11 +362,11 @@
           done: true
         });
         if (command.reset()) setFileReceipt(null);else setRefresh({
-          error: C.failure('文件已保存，但本地待核实记录未清除，请重试读取保存结果。')
+          error: C.failure('文件已保存，但本机还留着上次操作记录。请点「查询结果」重试。')
         });
       } catch (error) {
         if (!controller.signal.aborted) setRefresh({
-          error: C.failure('文件已保存，但重新读取原零件详情失败：' + C.message(error) + ' 请重试读取；若原引用已删除，不能续用同图号的新零件。')
+          error: C.failure('文件已保存，但刷新零件详情失败：' + C.message(error) + ' 请点「查询结果」重试；如果这条零件已删除，不能续用同图号的新零件。')
         });
       } finally {
         if (request.current === controller) request.current = null;
@@ -432,20 +432,20 @@
     }), detail.error && /*#__PURE__*/React.createElement(Button, {
       icon: "refresh-cw",
       onClick: detail.reload
-    }, "\u91CD\u8BD5\u8BFB\u53D6\u8BE6\u60C5"), !fileKind && !fileReceipt && /*#__PURE__*/React.createElement(window.ResourceForms.Feedback, {
+    }, "\u5237\u65B0\u8BE6\u60C5"), !fileKind && !fileReceipt && /*#__PURE__*/React.createElement(window.ResourceForms.Feedback, {
       command: visibleCommand
     }), refresh.loading && (receiptMatches || fileReceipt) && /*#__PURE__*/React.createElement("p", {
       role: "status"
-    }, "\u56DE\u6267\u5DF2\u786E\u8BA4\uFF0C\u6B63\u5728\u91CD\u8BFB\u5DE5\u827A\u8BE6\u60C5\u2026"), /*#__PURE__*/React.createElement(ErrorBox, {
+    }, "\u4FDD\u5B58\u5DF2\u786E\u8BA4\uFF0C\u6B63\u5728\u5237\u65B0\u5DE5\u827A\u8BE6\u60C5\u2026"), /*#__PURE__*/React.createElement(ErrorBox, {
       error: refresh.error
     }), refresh.error && !needsReceiptCheck && /*#__PURE__*/React.createElement(Button, {
       icon: "refresh-cw",
       onClick: fileReceipt ? () => readFileSaved(fileReceipt) : readSaved
-    }, "\u91CD\u65B0\u8BFB\u53D6\u4FDD\u5B58\u7ED3\u679C"), fileReceipt && !refresh.done && !refresh.loading && /*#__PURE__*/React.createElement("p", {
+    }, "\u67E5\u8BE2\u7ED3\u679C"), fileReceipt && !refresh.done && !refresh.loading && /*#__PURE__*/React.createElement("p", {
       role: "status"
-    }, "\u4EE5\u4E0B\u4ECD\u4E3A\u4FDD\u5B58\u524D\u8D44\u6599\uFF0C\u6682\u4E0D\u80FD\u7EE7\u7EED\u7F16\u8F91\uFF1B\u91CD\u65B0\u8BFB\u53D6\u4E0D\u4F1A\u518D\u6B21\u5BFC\u5165\u6587\u4EF6\u3002"), receipt && refresh.done && command.phase === 'idle' && /*#__PURE__*/React.createElement("p", {
+    }, "\u4EE5\u4E0B\u4ECD\u662F\u4FDD\u5B58\u524D\u7684\u8D44\u6599\uFF0C\u6682\u65F6\u4E0D\u80FD\u7EE7\u7EED\u7F16\u8F91\uFF1B\u5237\u65B0\u4E0D\u4F1A\u518D\u6B21\u5BFC\u5165\u6587\u4EF6\u3002"), receipt && refresh.done && command.phase === 'idle' && /*#__PURE__*/React.createElement("p", {
       role: "status"
-    }, "\u670D\u52A1\u5668\u5DF2\u786E\u8BA4\u63D0\u4EA4\uFF0C\u5DF2\u91CD\u65B0\u8BFB\u53D6\u5DE5\u827A\u8BE6\u60C5\u3002"), entity && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Issues, {
+    }, "\u63D0\u4EA4\u5DF2\u786E\u8BA4\uFF0C\u5DE5\u827A\u8BE6\u60C5\u5DF2\u5237\u65B0\u3002"), entity && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Issues, {
       issues: result.warnings
     }), /*#__PURE__*/React.createElement(Issues, {
       issues: entity.issues
@@ -462,7 +462,7 @@
       role: "status"
     }, "\u5DF2\u6309\u539F\u96F6\u4EF6\u8BB0\u5F55\u53EA\u8BFB\u5B9A\u4F4D \xB7 ", {
       route: '工艺路线',
-      source: '工序归属',
+      source: '归属',
       hours: '工时定额',
       ready: '已就绪汇总'
     }[selected]), /*#__PURE__*/React.createElement(Button, {
@@ -566,7 +566,7 @@
       }, discard.kind ? '放弃草稿并打开文件' : '放弃草稿并关闭'))
     }, /*#__PURE__*/React.createElement("div", {
       className: "modal-b"
-    }, "\u672A\u4FDD\u5B58\u7684\u8DEF\u7EBF\u3001\u5F52\u5C5E\u548C\u5DE5\u65F6\u4FEE\u6539\u5C06\u88AB\u4E22\u5F03\uFF0C\u5DF2\u6536\u5230\u771F\u5B9E\u56DE\u6267\u7684\u4FDD\u5B58\u4E0D\u53D7\u5F71\u54CD\u3002")));
+    }, "\u672A\u4FDD\u5B58\u7684\u8DEF\u7EBF\u3001\u5F52\u5C5E\u548C\u5DE5\u65F6\u4FEE\u6539\u5C06\u88AB\u4E22\u5F03\uFF1B\u5DF2\u7ECF\u4FDD\u5B58\u6210\u529F\u7684\u5185\u5BB9\u4E0D\u53D7\u5F71\u54CD\u3002")));
   }
   function ProcessDetail(props) {
     return /*#__PURE__*/React.createElement(DetailSession, {

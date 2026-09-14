@@ -9,7 +9,7 @@ async function systemRestart(h) {
   if (config.theme === 'dark') await page.getByRole('button', { name: '切换深色', exact: true }).click();
   await page.locator('.sidebar-nav').getByRole('link', { name: '系统管理', exact: true }).click();
   await page.getByRole('button', { name: '查看备份与恢复', exact: true }).waitFor();
-  const backupRows = page.getByRole('region', { name: '备份与恢复记录', exact: true });
+  const backupRows = page.getByRole('region', { name: '备份与维护记录', exact: true });
   const logRows = page.getByRole('region', { name: '运行日志与操作记录', exact: true });
   await request('/system/backups', () => page.getByRole('tab', { name: '备份恢复', exact: true }).click());
   await select('记录类型', '手动备份', backupRows);
@@ -23,7 +23,7 @@ async function systemRestart(h) {
   await page.getByRole('region', { name: '备份详情', exact: true }).waitFor();
   await request('/system/logs', () => page.getByRole('tab', { name: '运行日志', exact: true }).click());
   await select('日志来源', '操作记录', logRows); await select('记录类型', '操作记录', logRows);
-  await select('记录状态', '已记录', logRows); await select('日志级别', 'INFO', logRows);
+  await select('记录状态', '已记录', logRows); await select('日志级别', '信息', logRows);
   await logRows.getByLabel('搜索维护记录', { exact: true }).fill('F operation row');
   const allLogs = await request('/system/logs', () => logRows.getByRole('button', { name: '查询', exact: true }).click());
   assert.equal(allLogs.data.page.total, 31);
@@ -50,7 +50,7 @@ async function systemRestart(h) {
     const submitted = page.waitForRequest(value => new URL(value.url()).pathname === '/api/workbench/v1/system/config/save' && value.method() === 'POST');
     await page.getByRole('button', { name: '保存维护配置', exact: true }).click();
     await submitted; await saved;
-    await page.getByRole('region', { name: '维护原请求结果', exact: true }).getByText(/原操作仍待核实/).waitFor();
+    await page.getByRole('region', { name: '上次维护操作的结果', exact: true }).getByText(/还没有确认结果/).waitFor();
     report.pending_before_restart = await page.evaluate(() => JSON.parse(localStorage.getItem('aps_workbench_system_pending_v1')));
     assert.equal(report.pending_before_restart.request_key, report.config_input.request_key);
     await page.unroute('**/api/workbench/v1/system/config/save');
@@ -86,7 +86,7 @@ async function systemRestart(h) {
   const writesBeforeRestart = writes.length;
   await page.reload();
   if (['replaced_file', 'legacy_selection'].includes(config.recovery_case)) {
-    const message = config.recovery_case === 'legacy_selection' ? '原选择缺少可信的稳定记录标识或记录类型' : '原选择记录未通过当前返回页的唯一身份核对';
+    const message = config.recovery_case === 'legacy_selection' ? '原先选中的记录编号不完整，没有按同名文件或第一条记录乱猜。' : '这一页里找不到原先选中的记录，没有自动换成别的记录。';
     await backupRows.getByText(new RegExp(message)).waitFor();
     assert.equal(await page.getByRole('region', { name: '备份详情', exact: true }).count(), 0);
     assert.equal(await page.getByRole('dialog').count(), 0);
@@ -111,7 +111,7 @@ async function systemRestart(h) {
   const labels = { backups: '备份详情', logs: '日志详情' };
   await page.getByRole('region', { name: labels[config.active_kind], exact: true }).waitFor();
   if (config.recovery_case === 'pending_config') {
-    await page.getByText('八项维护配置已保存，事务和审计已留存。', { exact: true }).waitFor();
+    await page.getByText('八项维护配置已保存，操作记录已留存。', { exact: true }).waitFor();
     const pending = await page.evaluate(() => JSON.parse(localStorage.getItem('aps_workbench_system_pending_v1')));
     assert.deepEqual(pending, report.pending_before_restart);
     const receipt = report.responses.find(row => new URL(row.url).pathname.endsWith('/system/results/' + pending.request_key));

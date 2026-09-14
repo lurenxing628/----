@@ -1,0 +1,495 @@
+{
+  "decision": ".codestable/compound/2026-09-13-decision-ui-copy-glossary.md",
+  "scan": {
+    "frontend": [
+      "frontend/workbench/app",
+      "frontend/workbench/prototype/ui_kits/workbench/AppShell.jsx",
+      "frontend/workbench/prototype/ui_kits/workbench/SystemManagementScreen.jsx",
+      "frontend/workbench/prototype/ui_kits/workbench/workbench-ui.js",
+      "frontend/workbench/prototype/ui_kits/workbench/system-workbench-model.js",
+      "frontend/workbench/prototype/ui_kits/workbench/assets/field-report-icons.js"
+    ],
+    "templates": [
+      "templates/workbench",
+      "templates/error.html",
+      "templates/error_base.html"
+    ],
+    "backend": [
+      "core/services/workbench",
+      "web/routes/workbench",
+      "web/routes/domains/scheduler/scheduler_week_plan_print.py",
+      "web/routes/domains/scheduler/scheduler_config.py",
+      "core/models/workbench_*.py",
+      "web/error_boundary.py",
+      "web/error_handlers.py",
+      "web/bootstrap/workbench_*.py",
+      "data/repositories/workbench_run_repo.py"
+    ],
+    "docs": [
+      "static/docs/scheduler_manual.md",
+      "static/docs/aps_three_gap_user_guide.md"
+    ]
+  },
+  "banned": [
+    {
+      "term": "回执",
+      "pattern": "回执",
+      "replace": "结果 / 保存结果 / 结果编号"
+    },
+    {
+      "term": "原请求",
+      "pattern": "原请求",
+      "replace": "上次操作 / 上次提交"
+    },
+    {
+      "term": "请求",
+      "pattern": "请求",
+      "replace": "操作；编号区写“操作编号”"
+    },
+    {
+      "term": "恢复记录",
+      "pattern": "恢复记录",
+      "replace": "上次操作记录"
+    },
+    {
+      "term": "核实",
+      "pattern": "核实",
+      "replace": "查询结果 / 确认；外协核实登记保留"
+    },
+    {
+      "term": "核查",
+      "pattern": "核查",
+      "replace": "核对"
+    },
+    {
+      "term": "受理",
+      "pattern": "受理",
+      "replace": "提交 / 排产时 / 已接收"
+    },
+    {
+      "term": "快照",
+      "pattern": "快照",
+      "replace": "数据版本；句子改“数据已更新，请刷新后重试”"
+    },
+    {
+      "term": "明确刷新",
+      "pattern": "明确(?=刷新|重读|重新)",
+      "replace": "刷新"
+    },
+    {
+      "term": "游标",
+      "pattern": "游标",
+      "replace": "翻页位置"
+    },
+    {
+      "term": "引用",
+      "pattern": "引用",
+      "replace": "编号；错误改“这条记录已失效，请重新选择”"
+    },
+    {
+      "term": "对象",
+      "pattern": "对象",
+      "replace": "写具体名词：批次 / 工序 / 这条记录"
+    },
+    {
+      "term": "实体",
+      "pattern": "实体",
+      "replace": "资料"
+    },
+    {
+      "term": "数据域",
+      "pattern": "数据域",
+      "replace": "资料类别"
+    },
+    {
+      "term": "字段",
+      "pattern": "字段",
+      "replace": "项 / 列"
+    },
+    {
+      "term": "上下文",
+      "pattern": "上下文",
+      "replace": "不出现；改“本页数据已过期，请刷新后重试”"
+    },
+    {
+      "term": "协议",
+      "pattern": "协议|契约|合同",
+      "replace": "不出现；改“读到的数据不完整，请刷新重试”"
+    },
+    {
+      "term": "投影",
+      "pattern": "投影",
+      "replace": "记录 / 报工记录"
+    },
+    {
+      "term": "事实",
+      "pattern": "事实",
+      "replace": "记录 / 报工记录 / 历史记录"
+    },
+    {
+      "term": "台账",
+      "pattern": "台账",
+      "replace": "报工记录 / 排产记录 / 处置记录"
+    },
+    {
+      "term": "基线",
+      "pattern": "基线",
+      "replace": "初始计划 / 排产时的正式计划"
+    },
+    {
+      "term": "基准",
+      "pattern": "(?<!对比)基准",
+      "replace": "对比基准"
+    },
+    {
+      "term": "场景",
+      "pattern": "场景",
+      "replace": "试调方案"
+    },
+    {
+      "term": "目录",
+      "pattern": "(?<![份护置装据])目录",
+      "replace": "列表"
+    },
+    {
+      "term": "口径",
+      "pattern": "口径",
+      "replace": "计算方式 / 统计范围"
+    },
+    {
+      "term": "修订",
+      "pattern": "修订",
+      "replace": "版本 / 更正记录"
+    },
+    {
+      "term": "样本",
+      "pattern": "样本",
+      "replace": "完工记录 / 可用记录数"
+    },
+    {
+      "term": "实例",
+      "pattern": "实例",
+      "replace": "完工记录 / 这次排产"
+    },
+    {
+      "term": "去重",
+      "pattern": "去重",
+      "replace": "实际占用"
+    },
+    {
+      "term": "并行重叠",
+      "pattern": "并行重叠",
+      "replace": "重叠时间"
+    },
+    {
+      "term": "窗口",
+      "pattern": "窗口",
+      "replace": "班表 / 可工作时段"
+    },
+    {
+      "term": "跨度",
+      "pattern": "跨度",
+      "replace": "时长"
+    },
+    {
+      "term": "时间点",
+      "pattern": "时间点|计划点|零时长",
+      "replace": "零工时工序"
+    },
+    {
+      "term": "显式",
+      "pattern": "显式",
+      "replace": "单独设置"
+    },
+    {
+      "term": "服务默认",
+      "pattern": "服务默认",
+      "replace": "按默认"
+    },
+    {
+      "term": "阻断",
+      "pattern": "阻断",
+      "replace": "有冲突，不能采用"
+    },
+    {
+      "term": "阻塞",
+      "pattern": "阻塞",
+      "replace": "缺资料"
+    },
+    {
+      "term": "策略",
+      "pattern": "策略",
+      "replace": "规则 / 周期算法"
+    },
+    {
+      "term": "接入",
+      "pattern": "接入|尚未迁移|尚未启用",
+      "replace": "尚未开通（开发期守卫不得显示）"
+    },
+    {
+      "term": "服务端",
+      "pattern": "服务端|服务器|后端|主线|接口|响应",
+      "replace": "系统，或删主语"
+    },
+    {
+      "term": "浏览器存储",
+      "pattern": "浏览器存储",
+      "replace": "请重新打开页面"
+    },
+    {
+      "term": "保留现场",
+      "pattern": "保留现场",
+      "replace": "请不要再操作，联系维护人员"
+    },
+    {
+      "term": "运维词",
+      "pattern": "宿主|终态|回滚|排空|线程|元信息|校验和",
+      "replace": "本软件 / 最终结果 / 还原 / 停止 / 处理 / 基本信息 / 完整性检查"
+    },
+    {
+      "term": "校准锁",
+      "pattern": "校准锁|采纳锁",
+      "replace": "定额已锁定（来自工时校准）"
+    },
+    {
+      "term": "声明人",
+      "pattern": "声明人",
+      "replace": "经办人"
+    },
+    {
+      "term": "记录人变体",
+      "pattern": "本机操作者|登记人员|系统记录人",
+      "replace": "记录人"
+    },
+    {
+      "term": "确定",
+      "pattern": "(?<!不)确定(?!性)",
+      "replace": "确认"
+    },
+    {
+      "term": "采纳",
+      "pattern": "采纳|选用",
+      "replace": "采用"
+    },
+    {
+      "term": "延期",
+      "pattern": "延期|晚交|逾期",
+      "replace": "超期"
+    },
+    {
+      "term": "拖期",
+      "pattern": "(?<![总权])拖期",
+      "replace": "超期（KPI 名“总拖期 / 加权拖期”保留）"
+    },
+    {
+      "term": "正式版本",
+      "pattern": "正式版本|正式方案|正式身份|正式基线|当前方案",
+      "replace": "正式计划"
+    },
+    {
+      "term": "模拟排产",
+      "pattern": "模拟排产|模拟预览|试算|插单模拟",
+      "replace": "试调"
+    },
+    {
+      "term": "重读",
+      "pattern": "重读|重新读取|重试读取",
+      "replace": "刷新"
+    },
+    {
+      "term": "新建",
+      "pattern": "新建|添加|创建(?!时间|日期|人)",
+      "replace": "新增"
+    },
+    {
+      "term": "清空",
+      "pattern": "清空",
+      "replace": "清除"
+    },
+    {
+      "term": "预览",
+      "pattern": "预览(?!变更)",
+      "replace": "预检"
+    },
+    {
+      "term": "就绪检查",
+      "pattern": "就绪检查|逐工序检查|排产前检查",
+      "replace": "排产检查"
+    },
+    {
+      "term": "检修",
+      "pattern": "检修",
+      "replace": "停机"
+    },
+    {
+      "term": "内制",
+      "pattern": "内制",
+      "replace": "自制"
+    },
+    {
+      "term": "待分拣",
+      "pattern": "待分拣",
+      "replace": "归属"
+    },
+    {
+      "term": "空值变体",
+      "pattern": "未绑定|未提供|待读取|空值",
+      "replace": "未选 / 未读取 / 暂无数据 / 未填写"
+    },
+    {
+      "term": "名称缺失",
+      "pattern": "名称未记录|名称未提供|名称未知|名称未填(?!写)",
+      "replace": "名称未填写"
+    },
+    {
+      "term": "报工类型变体",
+      "pattern": "首次报工|补录|首次登记",
+      "replace": "新增 / 补齐 / 更正"
+    },
+    {
+      "term": "UTC",
+      "pattern": "UTC|世界时",
+      "replace": "不写时区；值换算成本地时间后直接写“提交时间”",
+      "scope": "any"
+    },
+    {
+      "term": "英文机制词",
+      "pattern": "Blob|MIME|SQLite|int64|(?<![A-Za-z])NUL(?![A-Za-z])|MiB|(?<![A-Za-z])key(?![A-Za-z])",
+      "replace": "不出现"
+    },
+    {
+      "term": "数学黑话",
+      "pattern": "左闭右开|半开区间|布尔值|非有限数|安全正整数|安全整数",
+      "replace": "大白话：含起日不含止日 / 是或否 / 有效数字 / 正整数"
+    },
+    {
+      "term": "表名列名",
+      "pattern": "(?<![A-Za-z.])[A-Z][A-Za-z]+\\.[a-z_]{2,}(?![A-Za-z])",
+      "replace": "不出现；只能进折叠编号区并配中文标签"
+    },
+    {
+      "term": "分钟英文",
+      "pattern": "(?<![A-Za-z])min(?![A-Za-z])",
+      "replace": "分钟"
+    },
+    {
+      "term": "北京时间",
+      "pattern": "北京时间|时区|工厂本地|本地时间",
+      "replace": "不写时区和“工厂本地”这类限定词，直接写提交时间 / 登记时间；格式提示写“请按 2026-09-13 08:30 这样填”"
+    }
+  ],
+  "units": [
+    {
+      "term": "h 单位",
+      "pattern": "(?:(?<=\\d)|(?<=\\s))h(?![A-Za-z0-9_])",
+      "replace": "小时"
+    },
+    {
+      "term": "(h) 表头",
+      "pattern": "[（(]h[)）]",
+      "replace": "（小时）"
+    },
+    {
+      "term": "h/件",
+      "pattern": "h/件",
+      "replace": "小时/件"
+    },
+    {
+      "term": "m 分钟后缀",
+      "pattern": "(?<=\\d)m(?![A-Za-z0-9_])",
+      "replace": "分钟"
+    },
+    {
+      "term": "裸单位字面量",
+      "pattern": "^\\s?[hms]$",
+      "replace": "小时 / 分钟 / 秒",
+      "scope": "any",
+      "kinds": [
+        "frontend"
+      ]
+    }
+  ],
+  "allow": [
+    {
+      "path": "frontend/workbench/app/Outsourcing",
+      "term": "核实"
+    },
+    {
+      "path": "core/services/workbench/outsourcing",
+      "term": "核实"
+    },
+    {
+      "path": "web/routes/workbench/outsourcing",
+      "term": "核实"
+    },
+    {
+      "path": "static/docs/scheduler_manual.md",
+      "term": "(h) 表头",
+      "text": "换型时间\\(h\\)|单件工时\\(h\\)",
+      "why": "Excel 导入模板的真实列名，用户必须照抄"
+    },
+    {
+      "path": "static/docs/scheduler_manual.md",
+      "term": "模拟排产",
+      "text": "现在叫|→",
+      "why": "旧名称对照表必须列出旧叫法"
+    },
+    {
+      "path": "static/docs/scheduler_manual.md",
+      "term": "预览",
+      "text": "现在叫|→",
+      "why": "旧名称对照表必须列出旧叫法"
+    },
+    {
+      "path": "core/models/workbench_process_file.py",
+      "term": "(h) 表头",
+      "why": "导入模板表头匹配键，改了旧文件导不进"
+    },
+    {
+      "path": "core/services/workbench/run_compute.py",
+      "term": "英文提示",
+      "text": "Prepared calendar and worker|Version context must be|existing orchestrator cannot|requires its active read-only snapshot",
+      "why": "调用方装配断言，用户数据触发不了"
+    },
+    {
+      "path": "core/services/workbench/run_input.py",
+      "term": "英文提示",
+      "text": "AJ ExecutionProjection",
+      "why": "内部调用方类型断言"
+    },
+    {
+      "path": "core/services/workbench/run_input_execution.py",
+      "term": "英文提示",
+      "text": "Supply selected operations plus",
+      "why": "worker 调用契约断言"
+    },
+    {
+      "path": "core/models/workbench_dashboard_input.py",
+      "term": "核实",
+      "text": "已核实\\|已关闭|已处理\\|已完成",
+      "why": "匹配用户输入的正则，不是展示文案"
+    },
+    {
+      "path": "core/models/workbench_outsourcing_input.py",
+      "term": "核实",
+      "why": "外协核实登记是业务动作，与界面标签一致"
+    },
+    {
+      "path": "core/models/workbench_resource_file.py",
+      "term": "策略",
+      "text": "外协周期策略",
+      "why": "导入模板表头匹配键"
+    },
+    {
+      "path": "core/models/workbench_resource_file.py",
+      "term": "显式",
+      "text": "显式工种编号数组",
+      "why": "导入模板表头匹配键"
+    },
+    {
+      "path": "core/services/workbench/field_report_files_codec.py",
+      "term": "(h) 表头",
+      "why": "现场报工导入文件的表头匹配键，改了旧文件导不进"
+    }
+  ]
+}

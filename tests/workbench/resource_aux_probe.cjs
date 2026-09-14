@@ -8,7 +8,7 @@ async function post(page,suffix,click,status=200){
 }
 async function receipt(page,suffix,name){
   const value=await post(page,suffix,()=>page.getByRole('dialog').getByRole('button',{name,exact:true}).click());
-  assert(['committed','unchanged'].includes(value.result));await page.getByRole('dialog').getByText('服务器已确认提交。',{exact:true}).waitFor();return value;
+  assert(['committed','unchanged'].includes(value.result));await page.getByRole('dialog').getByText('保存已完成。',{exact:true}).waitFor();return value;
 }
 async function calendar(page,state,helpers){
   const {run,close,type,shot,layout,recordExpected}=helpers;
@@ -22,7 +22,7 @@ async function calendar(page,state,helpers){
     await type(fields.getByLabel('可排工时（小时）',{exact:true}),'8.375');
     const precision=await post(page,'/calendar/upsert',()=>fields.getByRole('button',{name:'保存配置',exact:true}).click(),409);
     assert.equal(precision.committed,false);assert.equal(precision.error.code,'constraint_conflict');
-    assert(precision.error.message.includes('分钟精度'));assert.equal(await fields.getByLabel('可排工时（小时）',{exact:true}).inputValue(),'8.375');
+    assert(precision.error.message.includes('换成班次的分钟数后存不稳'));assert.equal(await fields.getByLabel('可排工时（小时）',{exact:true}).inputValue(),'8.375');
     recordExpected({path:'/api/workbench/v1/calendar/upsert',status:409,code:precision.error.code,kind:'subminute-rejected-without-rounding'});
     await type(fields.getByLabel('可排工时（小时）',{exact:true}),'8.4');
     await fields.getByRole('button',{name:'增加可排工时（小时）',exact:true}).click();
@@ -33,21 +33,21 @@ async function calendar(page,state,helpers){
     assert.equal(await fields.getByLabel('效率（%）',{exact:true}).inputValue(),'67.5');
     await fields.getByLabel('效率（%）',{exact:true}).press('ArrowDown');
     await receipt(page,'/calendar/upsert','保存配置');
-    await page.getByText('已重新读取最新工作日历。',{exact:true}).waitFor();await close(page);
-    await page.getByRole('button',{name:/^2026-09-10 单独配置/}).click();
+    await page.getByText('已刷新，显示最新工作日历。',{exact:true}).waitFor();await close(page);
+    await page.getByRole('button',{name:/^2026-09-10 单独设置/}).click();
     assert.equal(await page.getByRole('dialog').getByLabel('可排工时（小时）',{exact:true}).inputValue(),'8.4');
     assert.equal(await page.getByRole('dialog').getByLabel('效率（%）',{exact:true}).inputValue(),'62.5');
     await page.getByRole('dialog').getByRole('button',{name:'休息日',exact:true}).click();
     const conflict=await post(page,'/calendar/upsert',()=>page.getByRole('dialog').getByRole('button',{name:'保存配置',exact:true}).click(),409);
     assert.equal(conflict.committed,false);assert.equal(conflict.error.code,'constraint_conflict');assert(conflict.error.message.includes('班次起止'));
     recordExpected({path:'/api/workbench/v1/calendar/upsert',status:409,code:conflict.error.code,kind:'retained-shift-window-protected'});
-    await close(page,{discard:true});await page.getByRole('button',{name:/^2026-09-10 单独配置/}).click();
+    await close(page,{discard:true});await page.getByRole('button',{name:/^2026-09-10 单独设置/}).click();
     assert.equal(await page.getByRole('dialog').getByLabel('可排工时（小时）',{exact:true}).inputValue(),'8.4');
     await page.getByRole('button',{name:'清除配置',exact:true}).click();await receipt(page,'/calendar/delete','确认清除，恢复默认');await close(page);
     await page.getByRole('button',{name:/^2026-09-10 默认规则/}).click();await page.getByRole('dialog').getByRole('button',{name:'休息日',exact:true}).click();
     await shot(page,state+'-calendar-rest-draft');await receipt(page,'/calendar/upsert','保存配置');
-    await page.getByText('已重新读取最新工作日历。',{exact:true}).waitFor();await close(page);
-    await page.getByRole('button',{name:/^2026-09-10 单独配置/}).click();await page.getByRole('button',{name:'清除配置',exact:true}).click();
+    await page.getByText('已刷新，显示最新工作日历。',{exact:true}).waitFor();await close(page);
+    await page.getByRole('button',{name:/^2026-09-10 单独设置/}).click();await page.getByRole('button',{name:'清除配置',exact:true}).click();
     await receipt(page,'/calendar/delete','确认清除，恢复默认');await close(page);
     await page.getByRole('button',{name:/^2026-09-10 默认规则/}).waitFor();await layout(page);
   });
@@ -66,9 +66,9 @@ async function calendar(page,state,helpers){
       await end.fill('2027-01-09');
       const endPicker=await openPicker(end);await endPicker.getByRole('gridcell',{name:'2027-01-08',exact:true}).click();
       if(operation==='delete')await dialog.getByRole('button',{name:'清除配置，恢复默认',exact:true}).click();
-      const preview=await post(page,'/calendar/range/preview',()=>dialog.getByRole('button',{name:'预览全部日期',exact:true}).click());
+      const preview=await post(page,'/calendar/range/preview',()=>dialog.getByRole('button',{name:'预览变更',exact:true}).click());
       assert.equal(preview.data.counts.selected,5);assert.equal(preview.data.days.length,5);
-      const control=await dialog.getByRole('combobox',{name:'预览页码',exact:true}).evaluate(node=>({height:node.getBoundingClientRect().height,background:getComputedStyle(node).backgroundColor,theme:document.documentElement.dataset.theme}));
+      const control=await dialog.getByRole('combobox',{name:'预览变更页码',exact:true}).evaluate(node=>({height:node.getBoundingClientRect().height,background:getComputedStyle(node).backgroundColor,theme:document.documentElement.dataset.theme}));
       assert.equal(control.height,32);if(control.theme==='dark')assert.notEqual(control.background,'rgb(255, 255, 255)');
       await shot(page,state+'-calendar-range-'+operation);await receipt(page,'/calendar/range/confirm','确认全部 5 天');await close(page);
     }
@@ -91,11 +91,12 @@ async function catalog(page,state,helpers){
         await modal.getByLabel('第 1 天开始',{exact:true}).fill('21:14');
         const clock=await openPicker(modal.getByLabel('第 1 天开始',{exact:true}));
         await clock.getByRole('button',{name:'增加分',exact:true}).click();await shot(page,state+'-catalog-custom-time');
-        await clock.getByRole('button',{name:'确定',exact:true}).click();await modal.getByLabel('第 1 天结束',{exact:true}).fill('05:15');
+        await clock.getByRole('button',{name:'确认',exact:true}).click();await modal.getByLabel('第 1 天结束',{exact:true}).fill('05:15');
         await select(modal.getByLabel('第 2 天工作安排',{exact:true}),'rest');
       }
       await shot(page,state+'-catalog-filled-'+kind);await receipt(page,'/entities/'+kind+'/create','保存');
       await modal.getByRole('button',{name:'继续维护',exact:true}).click();await modal.getByRole('button',{name:'删除 '+code,exact:true}).click();
+      await modal.getByRole('checkbox',{name:'我已核对要删除的资料及其关联关系',exact:true}).check();
       const deleted=await receipt(page,'/delete','确认删除');assert(deleted.data.entity_ref);
       await modal.getByRole('button',{name:'完成并返回',exact:true}).click();await page.locator('.resource-catalog').waitFor({state:'detached'});
       await page.getByRole('dialog',{name:'新增'+node,exact:true}).waitFor();await close(page);

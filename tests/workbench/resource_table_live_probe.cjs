@@ -91,7 +91,7 @@ async function resourceTableControls(page,state,helpers,root,report){
     await type(dialog.locator('input[name="stock_qty"]'),'8.375');await save(page,'material','update');await close(page);
     dialog=await stockDialog('MAT-001');assert.equal(await dialog.locator('input[name="stock_qty"]').inputValue(),'8.375');await shot(page,state+'-stock-quick-action');
     const beforeClear=report.commands.length;await dialog.locator('input[name="stock_qty"]').fill('');await dialog.getByRole('button',{name:'保存',exact:true}).click();
-    await dialog.getByText('库存不能清空；未知原值可保持不改。',{exact:true}).first().waitFor();assert.equal(report.commands.length,beforeClear);
+    await dialog.getByText('库存不能清除；原值未知时可以不改。',{exact:true}).first().waitFor();assert.equal(report.commands.length,beforeClear);
     await type(dialog.locator('input[name="stock_qty"]'),'1.25');await save(page,'material','update');await close(page);
   });
   await run(page,state,'accepted-category-change-does-not-reuse-internal-filters',async()=>{
@@ -109,7 +109,7 @@ async function resourceTableControls(page,state,helpers,root,report){
     assert.equal(response.status(),200,await response.text());const receipt=await response.json();
     report.commands.push({state,path:new URL(endpoint).pathname+'/update',request_key,result:receipt.result,receipt_ref:receipt.receipt_ref,status:200,evidence:'external-fixture-maintenance-not-a-prototype-control'});
     await save(page,'op_type','update',409);
-    await page.getByRole('button',{name:'重新读取最新资料',exact:true}).click();await page.getByRole('button',{name:'已核对，继续编辑',exact:true}).click();
+    await page.getByRole('button',{name:'刷新最新资料',exact:true}).click();await page.getByRole('button',{name:'已核对，继续编辑',exact:true}).click();
     await page.getByRole('dialog',{name:'编辑外协工种',exact:true}).waitFor();assert.equal(await page.getByRole('dialog').locator('textarea[name="remark"]').inputValue(),'Reviewed category remark');
     await save(page,'op_type','update');await close(page);await helpers.empty(page);
     await rail(page,'外协工种');await search(page,code);await row(page,code).getByRole('button',{name:'删除',exact:true}).click();await save(page,'op_type','delete');await close(page);

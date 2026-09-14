@@ -8,9 +8,15 @@ const sha = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
 const variants = [1920, 1392].flatMap(width => ['light', 'dark'].map(theme => ({
   name: width + '-' + theme, theme, viewport: { width, height: width === 1920 ? 1080 : 924 }
 })));
-const appFiles = ['resource-contract.js', 'resource-session.js', 'ResourceControls.jsx', 'ResourceForms.jsx',
-  'WorkbenchControlStyles.jsx', 'BatchContract.js', 'BatchControls.jsx', 'BatchFiles.jsx',
-  'ProcessContract.js', 'ProcessStageEditor.jsx', 'ProcessSourceEditor.jsx'];
+// Every window.* owner the mounted components read, in scripts/workbench/build-order.json live order (2026-09-14:
+// the 2026-09-13 UI refresh made these components read WorkbenchFormat / WorkbenchTerms / WorkbenchControls and more).
+const appFiles = ['WorkbenchFormat.js', 'WorkbenchTerms.js', 'WorkbenchReferences.jsx', 'WorkbenchGuards.js',
+  'resource-contract.js', 'resource-api.js', 'ProcessContract.js', 'resource-session.js', 'ResourceControls.jsx',
+  'WorkbenchControlBridge.js', 'CalendarContract.js', 'WorkbenchSelectMenu.jsx', 'WorkbenchDatePickerModel.js',
+  'WorkbenchDatePicker.jsx', 'WorkbenchControls.jsx', 'ResourceTableFilterModel.js', 'ResourceTableFilter.jsx',
+  'ResourceTableHeader.jsx', 'ResourceDetailRelations.jsx', 'ResourceForms.jsx', 'ResourceTables.jsx', 'ProcessAPI.js',
+  'ProcessStageEditor.jsx', 'ProcessOpTypeCreate.jsx', 'ProcessSourceEditor.jsx', 'BatchContract.js', 'BatchControls.jsx',
+  'BatchFiles.jsx', 'WorkbenchControlStyles.jsx'];
 async function setup(kind) {
   const output = process.argv[2];
   assert(output, 'Pass a temporary artifact directory'); fs.mkdirSync(output, { recursive: true });
@@ -29,23 +35,25 @@ async function setup(kind) {
   report.sources = sources.map(row => ({ path: row.path, sha256: sha(row.code) }));
   const babelPath = 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js';
   freeze(babelPath);
-  // Extract the real private Steps and inline detail styles with Babel's AST, not a look-alike stylesheet.
+  // Extract the real private Steps function with Babel's AST. Its presentation moved from an inline <style> into the
+  // maintained CSS layer (32-process-trial.css, 2026-09-13), which this harness already freezes and serves below.
   const detailPath = 'frontend/workbench/app/ProcessDetail.jsx', detail = freeze(detailPath).toString('utf8');
   const babel = require(path.join(output, 'frozen', babelPath));
   const ast = babel.transform(detail, { filename: detailPath, ast: true, code: false, parserOpts: { plugins: ['jsx'] } }).ast;
   const declarations = ast.program.body[0].expression.callee.body.body;
   const steps = declarations.find(node => node.type === 'FunctionDeclaration' && node.id.name === 'Steps');
-  const styles = [];
+  const inlineStyles = [];
   function visit(node) {
     if (!node || typeof node !== 'object') return;
-    if (node.type === 'JSXElement' && node.openingElement.name.name === 'style') styles.push(node);
+    if (node.type === 'JSXElement' && node.openingElement.name.name === 'style') inlineStyles.push(node);
     Object.values(node).forEach(value => { if (Array.isArray(value)) value.forEach(visit); else if (value && typeof value === 'object') visit(value); });
   }
-  visit(ast.program); assert(steps && styles.length === 1, 'ProcessDetail presentation extraction changed');
-  report.presentation = { path: detailPath, sha256: sha(detail), extraction: 'Babel AST: Steps function and its exact inline style element' };
+  visit(ast.program); assert(steps, 'ProcessDetail Steps extraction changed');
+  assert.equal(inlineStyles.length, 0, 'ProcessDetail grew an inline <style>; its presentation belongs to the CSS layer');
+  report.presentation = { path: detailPath, sha256: sha(detail), extraction: 'Babel AST: Steps function; styles come from the maintained CSS layer' };
   sources.splice(sources.length - 1, 0, { path: 'az-extracted-process-presentation.jsx', code:
     '(function(){const {Button}=window.ResourceControls;' + detail.slice(steps.start, steps.end) +
-    ';window.AZProcessSteps=Steps;window.AZProcessDetailStyles=()=>(' + detail.slice(styles[0].start, styles[0].end) + ');})();' });
+    ';window.AZProcessSteps=Steps;window.AZProcessDetailStyles=()=>null;})();' });
   const built = compile({ babel_path: path.join(output, 'frozen', babelPath), sources, check_combined: true });
   report.compile = { target: built.target, babel: built.babel_version, global_build: false };
   const scripts = new Map(built.outputs.map((row, index) => {

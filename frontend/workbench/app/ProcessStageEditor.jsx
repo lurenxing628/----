@@ -16,7 +16,7 @@
   function location(stage, operationRef, groupRef) {
     const ref = item => typeof item === 'string' && /^[0-9a-f]{48}$/.test(item);
     if (stage != null && !['route', 'source', 'hours'].includes(stage) || operationRef != null && !ref(operationRef) || groupRef != null && !ref(groupRef))
-      throw C.failure('工艺导航阶段或模板引用不正确，未按序号或名称替代。');
+      throw C.failure('要定位的阶段或工序已失效，不会按序号或名称找相近的替代。');
     return { stage: stage || null, operationRef: operationRef || null, groupRef: groupRef || null };
   }
   function locate(entity, target) {
@@ -24,7 +24,7 @@
     const group = target.groupRef && entity.external_groups.find(row => row.ref === target.groupRef);
     if (target.operationRef && (!operation || operation.status !== 'active')) throw C.failure('目标工序已删除、停用或不属于此零件，未按序号或同名替代。');
     if (target.groupRef && !group) throw C.failure('目标外协组已删除或不属于此零件，未按工序范围替代。');
-    if (operation && group && operation.external_group_ref !== group.ref) throw C.failure('目标工序不属于指定外协组，不能混用定位引用。');
+    if (operation && group && operation.external_group_ref !== group.ref) throw C.failure('要定位的工序不属于指定外协组，不能混用两种定位。');
     return target;
   }
   function useFocus(root, ref, page) {
@@ -61,7 +61,7 @@
     useFocus(root, focusRef, paging.page.number);
     return <section ref={root}><h3>{title}</h3>{!rows.length ? <p className="muted">{empty}</p> : <>
       <div className="wb-table-frame"><div className="card-scroll wb-table-shell"><table className="tbl wb-table" aria-label={title} style={{ minWidth: 850, tableLayout: 'fixed' }}><caption className="wb-visually-hidden">{title}</caption>
-        <thead><tr><th scope="col">工序范围</th><th scope="col">周期策略</th><th scope="col">总周期（天）</th><th scope="col">供应商</th><th scope="col">备注 / 问题</th>{onDiscard && <th scope="col">解除原组</th>}</tr></thead>
+        <thead><tr><th scope="col">工序范围</th><th scope="col">周期算法</th><th scope="col">总周期（天）</th><th scope="col">供应商</th><th scope="col">备注 / 问题</th>{onDiscard && <th scope="col">解除原组</th>}</tr></thead>
         <tbody>{paging.rows.map(row => <tr key={row.ref} data-process-location={row.ref} tabIndex={row.ref === focusRef ? -1 : undefined} aria-current={row.ref === focusRef ? 'true' : undefined}>
           <td>{row.start_sequence} 至 {row.end_sequence}{row.ref === focusRef && <window.WorkbenchReference value={row.ref} />}</td><td>{({ merged: '合并设置', separate: '分别设置' })[row.merge_mode] || value(row.merge_mode)}</td>
           <td>{onTotal && row.merge_mode === 'merged' && C.own(totals, row.ref) ? <input className="wt-in" type="number" step="any" min="0" aria-label={'外协组 ' + row.start_sequence + ' 至 ' + row.end_sequence + ' 总周期'} value={totals[row.ref]} disabled={disabled} onChange={event => onTotal(row.ref, event.target.value)} style={{ width: '100%' }} /> : P.valueText(row.total_days)}</td>
@@ -73,17 +73,17 @@
   function changes(before, after) {
     const result = [], old = new Map(before.operations.map(row => [row.ref, row]));
     const oldGroups = new Map(before.external_groups.map(row => [row.ref, row])), newGroups = new Map(after.external_groups.map(row => [row.ref, row]));
-    const range = group => group ? value(group.start_sequence) + ' 至 ' + value(group.end_sequence) : '范围未提供';
+    const range = group => group ? value(group.start_sequence) + ' 至 ' + value(group.end_sequence) : '范围未填写';
     const state = item => ({ missing: '未录入', present: '已有记录，未人工确认', locked: '待前一步确认', unconfirmed: '未人工确认', confirmed: '已确认' })[item] || '状态未明确';
-    const stage = item => ({ route: '工艺路线', source: '工序归属', hours: '工时定额', ready: '已就绪' })[item] || '阶段未明确';
-    const strategy = item => ({ merged: '合并设置', separate: '分别设置' })[item] || (item === null ? '未设置' : '原周期策略未明确');
+    const stage = item => ({ route: '工艺路线', source: '归属', hours: '工时定额', ready: '已就绪' })[item] || '阶段未明确';
+    const cycleMode = item => ({ merged: '合并设置', separate: '分别设置' })[item] || (item === null ? '未设置' : '原周期算法未明确');
     function field(label, previous, current, format = value) {
       if (!same(previous, current)) result.push({ label, previous: format(previous), current: format(current) });
     }
     function relation(label, previousRef, currentRef, previousLabel, currentLabel) {
       if (previousRef === currentRef && previousLabel === currentLabel) return;
-      const previous = previousRef ? previousLabel || '名称未提供' : '未绑定';
-      let current = currentRef ? currentLabel || '名称未提供' : '未绑定';
+      const previous = previousRef ? previousLabel || '名称未填写' : '未选';
+      let current = currentRef ? currentLabel || '名称未填写' : '未选';
       if (previousRef && currentRef && previousRef !== currentRef && previous === current) current += '（关联记录已更换）';
       result.push({ label, previous, current });
     }
@@ -111,7 +111,7 @@
     new Set([...oldGroups.keys(), ...newGroups.keys()]).forEach(ref => {
       const previous = oldGroups.get(ref), current = newGroups.get(ref), prefix = '外协组 ' + range(current || previous) + ' · ';
       if (!previous || !current) result.push({ label: prefix + '记录', previous: previous ? '原有外协组' : '无原记录', current: current ? '新增外协组' : '已移除' });
-      [['工序范围', range], ['周期策略', row => strategy(row.merge_mode)], ['总周期（天）', row => value(row.total_days)], ['备注', row => value(row.remark)]].forEach(([label, format]) => {
+      [['工序范围', range], ['周期算法', row => cycleMode(row.merge_mode)], ['总周期（天）', row => value(row.total_days)], ['备注', row => value(row.remark)]].forEach(([label, format]) => {
         field(prefix + label, previous ? format(previous) : '无原记录', current ? format(current) : '已移除');
       });
       relation(prefix + '供应商', previous && previous.supplier_ref, current && current.supplier_ref, previous && previous.supplier_label, current && current.supplier_label);
@@ -125,10 +125,10 @@
   function Review({ before, after, onAccept, disabled }) {
     const rows = React.useMemo(() => changes(before, after), [before, after]), paging = usePage(rows);
     return <section className="match-note" style={{ display: 'block' }} role="status">
-      <p>最新资料已读取，草稿未被替换。差异 {rows.length} 项；请核对下表与当前草稿。继续编辑时，保留您改过的字段，其余采用最新值；变化工序需重新确认，已移除工序不再提交。</p>
+      <p>最新资料已读取，草稿没有被替换。差异 {rows.length} 项，请核对下表和当前草稿。点「采用最新资料」后：您改过的项保留，其余按最新值；有变化的工序要重新确认，已移除的工序不再提交。</p>
       {!!rows.length && <><div className="card-scroll"><table className="tbl wb-table" aria-label="最新资料差异" style={{ tableLayout: 'fixed', width: '100%' }}><caption className="wb-visually-hidden">{"最新资料差异"}</caption><thead><tr><th scope="col">项目</th><th scope="col">编辑前资料</th><th scope="col">最新资料</th></tr></thead>
         <tbody>{paging.rows.map((row, index) => <tr key={index}><td>{row.label}</td><td style={{ overflowWrap: 'anywhere' }}>{row.previous}</td><td style={{ overflowWrap: 'anywhere' }}>{row.current}</td></tr>)}</tbody></table></div><Pager paging={paging} disabled={disabled} /></>}
-      <Button icon="check" disabled={disabled} onClick={onAccept}>已核对，采用最新范围并保留可匹配草稿</Button>
+      <Button icon="check" disabled={disabled} onClick={onAccept}>采用最新资料</Button>
     </section>;
   }
   function useDraft({ result, adapter, stage, build, reconcile, saved, onDirty }) {
@@ -158,16 +158,29 @@
     }
     return { base, draft, edit, dirty, review, error, setError, busy, reload, accept };
   }
-  function Feedback({ model, disabled }) {
-    return <><ErrorBox error={model.error} /><Button icon="refresh-cw" busy={model.busy} disabled={disabled} onClick={model.reload}>重读详情并保留草稿</Button>
+  function Feedback({ model, disabled, paging }) {
+    const page = model.error && model.error.locate_page;
+    return <><ErrorBox error={model.error} />
+      {page && paging && <Button icon="arrow-right" disabled={disabled} onClick={() => { paging.setQuery(''); paging.setNumber(page); }}>定位到第 {page} 页</Button>}
+      <Button icon="refresh-cw" busy={model.busy} disabled={disabled} onClick={model.reload}>刷新详情并保留草稿</Button>
       {model.review && <Review before={model.base.data} after={model.review.data} disabled={disabled || model.busy} onAccept={model.accept} />}</>;
+  }
+  // Unconfirmed operations are reported with the page they sit on (unfiltered order, current page size),
+  // so a 120-operation part can be fixed without paging blind; the first offending page rides on the error.
+  function unconfirmed(rows, all, size, label) {
+    const pages = new Map();
+    rows.forEach(row => { const page = Math.floor(all.indexOf(row) / size) + 1; pages.set(page, (pages.get(page) || []).concat(row.sequence)); });
+    const ordered = Array.from(pages.entries()).sort((a, b) => a[0] - b[0]);
+    const error = C.failure('还有 ' + rows.length + ' 道工序的' + label + '没有勾选确认：' + ordered.map(([page, sequences]) => '第 ' + page + ' 页工序 ' + sequences.join('、')).join('；') + '。');
+    error.locate_page = ordered[0][0];
+    return error;
   }
   function reason(model, adapter, stage) {
     const entity = model.base.data;
     return model.review ? '请先核对最新资料。' : model.busy ? '正在读取最新资料。' :
       P.reason(entity.capabilities, 'stage_confirm', typeof adapter.command === 'function') ||
-      (entity.workflow[stage === 'source' ? 'route' : 'source'].state !== 'confirmed' ? stage === 'source' ? '请先确认路线。' : '请先确认工序归属。' : '') ||
+      (entity.workflow[stage === 'source' ? 'route' : 'source'].state !== 'confirmed' ? stage === 'source' ? '请先确认路线。' : '请先确认归属。' : '') ||
       (stage === 'source' ? model.base.meta.source !== 'production' ? '当前不是生产数据，不能保存。' : '' : C.blocked(entity.write_context, 'process', stage + '_confirm', model.base.meta.source));
   }
-  window.ProcessStageEditor = { active, same, value, confirmationTime, Confirmation, usePage, Pager, Search, Groups, Review, useDraft, Feedback, reason, location, locate, useFocus };
+  window.ProcessStageEditor = { active, same, value, confirmationTime, Confirmation, usePage, Pager, Search, Groups, Review, useDraft, Feedback, reason, location, locate, useFocus, unconfirmed };
 })();

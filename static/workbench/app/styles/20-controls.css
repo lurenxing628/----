@@ -2,6 +2,7 @@
 body.aps-workbench {
   --wb-control-height: 32px;
   --wb-control-edit-height: 36px;
+  --wb-control-mini-height: 30px;
   --wb-control-radius: var(--wb-radius-control);
   --wb-control-focus: var(--ui-primary);
   --wb-control-edge-hover: var(--ui-info-muted);
@@ -82,9 +83,9 @@ body.aps-workbench :is(button.pg,button.sm-icon-button,button.modal-x,button.cal
   flex: none;
 }
 /* override: body.aps-workbench button.mini; preserve shared control geometry against legacy inline and prototype declarations. */
-body.aps-workbench button.mini { min-height: 30px !important; padding: var(--space-1) 9px !important; }
+body.aps-workbench button.mini { min-height: var(--wb-control-mini-height) !important; padding: var(--space-1) 9px !important; }
 /* override: body.aps-workbench .resource-catalog .rc-list button.mini; preserve shared control geometry against legacy inline and prototype declarations. */
-body.aps-workbench .resource-catalog .rc-list button.mini { width: 30px; min-width: 30px; padding: var(--space-1) !important; }
+body.aps-workbench .resource-catalog .rc-list button.mini { width: var(--wb-control-mini-height); min-width: var(--wb-control-mini-height); padding: var(--space-1) !important; }
 /* override: body.aps-workbench button.modal-x; preserve shared control geometry against legacy inline and prototype declarations. */
 body.aps-workbench button.modal-x { background: transparent !important; border-color: transparent !important; color: var(--ui-info-muted) !important; }
 body.aps-workbench :is(button.wb-primary,button.btn.primary,button.sm-primary-button,button.hb-r-next) {
@@ -115,6 +116,12 @@ body.aps-workbench :is(button.wb-primary,button.btn.primary,button.sm-primary-bu
 }
 /* override: body.aps-workbench :is(button.btn.danger,button.mini.danger); preserve shared control geometry against legacy inline and prototype declarations. */
 body.aps-workbench :is(button.btn.danger,button.mini.danger) { color: var(--ui-danger-text) !important; }
+/* override: body.aps-workbench button.btn.link; navigation-only buttons read as text links (flat, underlined) while keeping the shared control height, so they never compete with the action buttons beside them. */
+body.aps-workbench button.btn.link { background: transparent !important; border-color: transparent !important; color: var(--ui-info-text) !important; padding: 5px var(--space-1) !important; text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--wb-control-edge-hover); }
+/* override: body.aps-workbench button.btn.link:is(:hover,:active):not(:disabled):not([aria-disabled="true"]); hover and press stay flat, only the text and underline darken. */
+body.aps-workbench button.btn.link:is(:hover,:active):not(:disabled):not([aria-disabled="true"]) { background: transparent !important; border-color: transparent !important; color: var(--ui-primary) !important; text-decoration-color: currentColor; }
+/* override: body.aps-workbench button.btn.link:is(:disabled,[aria-disabled="true"]); an unavailable link is muted text without an underline. */
+body.aps-workbench button.btn.link:is(:disabled,[aria-disabled="true"]) { color: var(--ui-info-muted) !important; text-decoration: none; }
 body.aps-workbench :is(button.btn.danger,button.mini.danger):hover:not(:disabled) {
   /* override: body.aps-workbench :is(button.btn.danger,button.mini.danger):hover:not(:disabled); preserve shared control geometry against legacy inline and prototype declarations. */
   color: var(--ui-danger-text) !important;
@@ -426,7 +433,7 @@ body.aps-workbench table.wb-table thead th { color: var(--ui-text) !important; b
 /* override: table.wb-table thead th and tbody td; density changes padding only, retaining readable font size. */
 body.aps-workbench table.wb-table :is(thead th,tbody td) { padding: var(--wb-table-cell-py) var(--wb-table-cell-px) !important; }
 /* override: table.wb-table tbody td; data text uses the shared integer font scale. */
-body.aps-workbench table.wb-table tbody td { font-size: var(--font-size-2) !important; }
+body.aps-workbench table.wb-table tbody td { font-size: var(--font-size-2) !important; font-variant-numeric: var(--num-variant); }
 /* override: table.wb-table tbody tr:hover; paint the row and sticky columns with the same semantic surface. */
 body.aps-workbench table.wb-table tbody tr:is(:hover,:focus-within) { background: var(--ui-table-row-hover-bg) !important; }
 /* override: legacy input[type=radio]; an unselected option must keep its hollow center. */
@@ -437,3 +444,23 @@ body.aps-workbench [hidden], body.aps-workbench :is(button,input,select,textarea
 body.aps-workbench .plan-workspace .wb-metric { min-height: 56px !important; padding: var(--space-1) 10px !important; }
 /* override: workbench-ui.css .wb-metrics/.wb-metric background; preserve the report summaries' transparent surface after style extraction. */
 body.aps-workbench .rw-workbench :is(.rw-metrics,.wb-metric) { background: transparent !important; }
+
+/* Select popups keep a sticky tools row: a filter box for long lists plus the visible type-ahead echo. */
+body.aps-workbench .wb-select-tools {
+  position: sticky; top: 0; z-index: var(--wb-z-sticky); display: flex; align-items: center; flex: none; flex-wrap: wrap;
+  gap: var(--space-2); padding-bottom: var(--space-1); background: var(--ui-card-bg);
+}
+body.aps-workbench .wb-select-tools .wb-popup-search { flex: 1 1 120px; width: auto; min-width: 0; margin-bottom: 0; }
+body.aps-workbench .wb-select-tools .wb-select-typed { flex: none; margin: 0; font-size: var(--font-size-1); }
+
+/* 共用时间轴缩放控件：倍数文字与“显示完整范围”图标方向，三处时间轴一致。 */
+.wb-zoom-level{display:inline-block;min-width:34px;text-align:center;color:var(--ui-info-muted);font-variant-numeric:tabular-nums}
+.wb-zoom-fit svg{transform:rotate(90deg)}
+
+/* 矮屏应用式布局：填满视口的工作区把指标条压成一行紧凑数字，把高度留给表格。 */
+@media (max-height: 820px) {
+  /* override: workbench-ui.css .wb-metric min-height/padding/align-items/justify-content; short screens put label and number on one line so the table keeps the height. */
+  body.aps-workbench .wb-fill-viewport .statline .wb-metric { min-height: 0 !important; padding: 5px 12px !important; flex-direction: row; align-items: baseline !important; justify-content: space-between !important; }
+  /* override: plana.css .stat .sv font-size; compact metric numbers on short screens. */
+  body.aps-workbench .wb-fill-viewport .statline .wb-metric-value { font-size: var(--font-size-4) !important; line-height: 22px !important; }
+}

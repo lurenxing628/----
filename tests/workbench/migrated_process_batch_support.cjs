@@ -99,7 +99,8 @@ class Probe {
         continue;
       }
       if (c.table === 'sqlite_sequence') {
-        assert.notEqual(policy, 'read'); assert(['PartOperations', 'BatchOperations'].includes((c.after || c.before).name));
+        // Batch operation writes also append template lineage events (autoincrement event_id).
+        assert.notEqual(policy, 'read'); assert(['PartOperations', 'BatchOperations', 'WorkbenchTemplateLineageEvents'].includes((c.after || c.before).name), JSON.stringify(c));
         assert(c.after && (!c.before || c.after.seq >= c.before.seq)); continue;
       }
       if (policy === 'read') assert.fail('Read/cancel changed ' + c.table + ': ' + JSON.stringify(c));
@@ -122,7 +123,17 @@ class Probe {
         const identity = this.lastAfter.tables.WorkbenchEntityRefs.find(r => r.ref === ref);
         assert(identity && (identity.entity_key.startsWith('AN-') || identity.entity_key === 'PROC-001')); continue;
       }
-      const row = c.after || c.before, owner = c.table.startsWith('Batch') ? row.batch_id : row.part_no || row.op_type_id;
+      // Derived per-batch registries (dashboard items, outsourcing operation origins, template lineage events and origins)
+      // are owned by the batch they point at: directly (batch_id), through the batch identity (batch_ref) or through the
+      // operation's plan source ref (operation_ref = WorkbenchPlanSourceRefs.ref -> alternate_key such as AN-B-…_10).
+      const row = c.after || c.before;
+      const batchOwner = () => {
+        if (row.batch_id) return row.batch_id;
+        if (row.batch_ref) { const identity = this.lastAfter.tables.WorkbenchEntityRefs.find(r => r.ref === row.batch_ref && r.kind === 'batch'); return identity && identity.entity_key; }
+        if (row.operation_ref) { const source = this.lastAfter.tables.WorkbenchPlanSourceRefs.find(r => r.ref === row.operation_ref && r.kind === 'operation'); return source && source.alternate_key; }
+        return undefined;
+      };
+      const owner = batchOwner() || row.part_no || row.op_type_id;
       if (String(owner).startsWith('AN-')) continue;
       if (c.table === 'PartOperations' && owner === 'PROC-001') {
         assert(c.before && c.after && c.after.seq === 10); assert(c.columns.every(k => ['unit_hours'].includes(k)), JSON.stringify(c)); continue;

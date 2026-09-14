@@ -52,7 +52,7 @@ function Harness({spec}) {
   const navigate=(next,ctx)=>{fixture.navigations.push({next,context:ctx});setView(next);if(ctx)setContext(ctx);};
   return React.createElement(React.Fragment,null,
     React.createElement(WorkbenchControlStyles),React.createElement(WorkbenchControls),React.createElement(WorkbenchNumberControls),
-    React.createElement(AppShell,{active:view,onNav:navigate,theme,onToggleTheme:()=>setTheme(t=>t==='light'?'dark':'light'),operations:true,showCapsule:false,title:view==='gantt'?'设备 / 人员 / 批次甘特':'选择排产方案'},
+    React.createElement(AppShell,{active:view,onNav:navigate,theme,onToggleTheme:()=>setTheme(t=>t==='light'?'dark':'light'),operations:true,showCapsule:false,title:view==='gantt'?'计划甘特':'选择排产方案'},
       React.createElement(PlanWorkspace,{adapter,view,onNavigate:navigate,initialContext:context,disabled:!!spec.disabled})));
 }
 window.mountPlan = spec => {

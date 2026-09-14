@@ -2,7 +2,7 @@
 const assert = require('node:assert/strict'), fs = require('node:fs'), path = require('node:path'), vm = require('node:vm');
 const host = { window: {}, Date, Number, Map, Set, Object, Array, Math };
 vm.createContext(host);
-for (const file of ['WorkbenchFormat.js', 'PointContract.js', 'PointGanttModel.js', 'PlanSelectionModel.js', 'ActualGanttModel.js', 'ActualGanttWindow.js'])
+for (const file of ['WorkbenchFormat.js', 'PointContract.js', 'PointGanttModel.js', 'PlanSelectionModel.js', 'WorkbenchTerms.js', 'FieldContract.js', 'ActualGanttModel.js', 'ActualGanttWindow.js'])
   vm.runInContext(fs.readFileSync(path.resolve(__dirname, '../../frontend/workbench/app', file), 'utf8'), host);
 const S = host.window.PlanSelectionModel, W = host.window.ActualGanttWindow, M = host.window.ActualGanttModel;
 assert.equal(W.dimensions(1102).viewport, 810);

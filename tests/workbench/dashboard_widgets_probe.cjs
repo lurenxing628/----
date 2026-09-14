@@ -93,15 +93,15 @@ async function fillHandling(page, status, remark, complete) {
   await select(page, '目标处置状态', status); const dialog = page.getByRole('dialog');
   await dialog.getByLabel('责任人', { exact: true }).fill('计划员李工'); await dialog.getByLabel('责任期限', { exact: true }).fill('2026-09-11');
   await dialog.getByLabel('处置行动', { exact: true }).fill('核对精车安排及齐套，协调设备检修后复核交期');
-  await dialog.getByLabel('原因 / 核实备注', { exact: true }).fill(remark);
+  await dialog.getByLabel('原因说明', { exact: true }).fill(remark);
   if (complete) { await dialog.getByLabel('完成时间', { exact: true }).fill('2026-09-10T11:00:17'); await dialog.getByLabel('具体完成结果', { exact: true }).fill(complete.result); await dialog.getByLabel('可核对凭据', { exact: true }).fill(complete.evidence); }
 }
 async function send(page, reopen = false) {
   const wait = page.waitForResponse(r => commandPath(new URL(r.url()).pathname));
   await page.getByRole('dialog').getByRole('button', { name: reopen ? '确认独立重开' : '提交处置', exact: true }).click(); return wait;
 }
-async function confirmed(page) { await page.getByRole('dialog').getByText(/^已确认：/).waitFor(); }
-async function finish(page) { await listAction(page, () => page.getByRole('dialog').getByRole('button', { name: '完成核实并刷新', exact: true }).click()); }
+async function confirmed(page) { await page.getByRole('dialog').getByText(/^处置已完成。/).waitFor(); }
+async function finish(page) { await listAction(page, () => page.getByRole('dialog').getByRole('button', { name: '完成', exact: true }).click()); }
 async function historyTab(page) { const wait = page.waitForResponse(r => /\/dashboard\/items\/[a-f0-9]{48}\/history$/.test(new URL(r.url()).pathname)); await page.getByRole('tab', { name: '处置历史', exact: true }).click(); assert.equal((await wait).status(), 200); await page.locator('[data-history-sequence]').first().waitFor(); }
 async function geometry(page, viewport) {
   const g = await page.evaluate(() => {
@@ -145,7 +145,7 @@ async function filtersAndTabs(page) {
   await listAction(page, () => select(page, '排序', '责任期限'));
   data = await listAction(page, () => page.getByRole('button', { name: '改为降序', exact: true }).click()); assert.equal(data.data.scope.direction, 'desc');
   data = await listAction(page, () => select(page, '每页条目数', '10 项')); assert.equal(data.data.items.length, 10);
-  await listAction(page, () => select(page, '排序', '对象')); await listAction(page, () => page.getByRole('button', { name: '改为升序', exact: true }).click());
+  await listAction(page, () => select(page, '排序', '涉及记录')); await listAction(page, () => page.getByRole('button', { name: '改为升序', exact: true }).click());
   await listAction(page, () => page.getByRole('button', { name: '清除条目筛选', exact: true }).click());
   data = await category(page, '外协回厂');
   assert.equal(data.data.categories.external.state, 'no_data');
@@ -173,12 +173,12 @@ async function happy(viewport, theme) {
   await page.getByRole('tab', { name: '方案对比', exact: true }).click(); assert.equal(await page.locator('[data-run-ref]').count(), 1);
   assert.equal(await page.locator('[data-run-ref]').getAttribute('data-run-ref'), config.run_ref); await shot(page, name + '-candidates');
   await navigateAndReturn(page, page.getByRole('button', { name: '查看候选', exact: true }), 'analysis', '/api/workbench/v1/scheduling/runs/' + config.run_ref + '/candidates');
-  await navigateAndReturn(page, page.getByRole('button', { name: '完整运行目录', exact: true }), 'analysis', '/api/workbench/v1/scheduling/runs');
+  await navigateAndReturn(page, page.getByRole('button', { name: '排产记录', exact: true }), 'analysis', '/api/workbench/v1/scheduling/runs');
   const material = await detail(page, 'material'); await page.locator('[data-detail-ref] span:visible').filter({ hasText: /^圆钢$/ }).waitFor();
-  await navigateAndReturn(page, page.locator('[data-detail-ref]').getByRole('button', { name: '批次资料', exact: true }), 'batches', '/api/workbench/v1/entities/batch/' + material.source.batch_ref);
-  const actual = await detail(page, 'actual'); await navigateAndReturn(page, page.locator('[data-detail-ref]').getByRole('button', { name: '现场报工', exact: true }), 'field', '/api/workbench/v1/execution/tasks');
+  await navigateAndReturn(page, page.locator('[data-detail-ref]').getByRole('button', { name: '批次管理', exact: true }), 'batches', '/api/workbench/v1/entities/batch/' + material.source.batch_ref);
+  const actual = await detail(page, 'actual'); await navigateAndReturn(page, page.locator('[data-detail-ref]').getByRole('button', { name: '现场记录', exact: true }), 'field', '/api/workbench/v1/execution/tasks');
   assert.equal(report.navigation[report.navigation.length - 1].context.task_ref, actual.source.task_ref);
-  await page.locator('[data-detail-ref]').waitFor(); await navigateAndReturn(page, page.locator('[data-detail-ref]').getByRole('button', { name: '现场实际', exact: true }), 'fieldgantt', '/api/workbench/v1/actual-gantt');
+  await page.locator('[data-detail-ref]').waitFor(); await navigateAndReturn(page, page.locator('[data-detail-ref]').getByRole('button', { name: '现场实际甘特', exact: true }), 'fieldgantt', '/api/workbench/v1/actual-gantt');
   await detail(page, 'downtime');
   const selected = await detail(page), ref = selected.item_ref; await openHandling(page);
   await page.keyboard.press('Escape'); await page.getByRole('dialog').waitFor({ state: 'hidden' }); await openHandling(page);
@@ -192,12 +192,12 @@ async function happy(viewport, theme) {
   assert.equal((await send(page)).status(), 200); await confirmed(page); await finish(page); await page.locator('[data-history-sequence="3"]').waitFor();
   await page.getByRole('button', { name: '调整当前处置', exact: true }).click(); await fillHandling(page, '已关闭', '依据现场核验完成本轮处置', complete);
   await geometry(page, viewport); await shot(page, name + '-close-form'); fault = 'after'; blockReceipts = true;
-  await page.getByRole('dialog').getByRole('button', { name: '提交处置', exact: true }).click(); await page.getByRole('dialog').getByText('结果尚未确认，仅查询原请求。', { exact: true }).waitFor();
-  await page.getByRole('dialog').getByRole('button', { name: '查询原回执', exact: true }).waitFor();
+  await page.getByRole('dialog').getByRole('button', { name: '提交处置', exact: true }).click(); await page.getByRole('dialog').getByText('上次处置的结果还没查到，可能已经生效。请点「查询结果」，不要重复提交。', { exact: true }).waitFor();
+  await page.getByRole('dialog').getByRole('button', { name: '查询结果', exact: true }).waitFor();
   const pending = await page.evaluate(() => window.DashboardSession.read()); assert.equal(pending.phase, 'pending'); assert.equal(pending.item_ref, ref); assert(!JSON.stringify(pending).includes('write_token'));
   const savedState = await context.storageState(); await shot(page, name + '-unknown'); await context.close(); await browser.close(); browser = await launch(); report.restarts++;
   fault = ''; blockReceipts = false; ({ context, page } = await fresh(name, viewport, theme, savedState));
-  await page.getByRole('button', { name: '查看已确认回执', exact: true }).waitFor(); await page.getByRole('button', { name: '查看已确认回执', exact: true }).click(); await confirmed(page);
+  await page.getByRole('button', { name: '查看已确认的结果', exact: true }).waitFor(); await page.getByRole('button', { name: '查看已确认的结果', exact: true }).click(); await confirmed(page);
   assert.equal((await page.evaluate(() => window.DashboardSession.read())).request_key, pending.request_key); await finish(page);
   const closed = await detail(page); assert.equal(closed.handling.status, 'closed'); assert.equal(closed.risk.active, true); assert.deepEqual(closed.allowed_transitions, []);
   await historyTab(page); await page.locator('[data-history-sequence="4"]').getByText('变更前后及完成凭据', { exact: true }).click(); await page.getByText(complete.evidence, { exact: true }).waitFor(); await shot(page, name + '-closed-history');
@@ -220,22 +220,22 @@ async function boundaries() {
   await page.getByRole('tab', { name: '方案对比', exact: true }).click(); assert.equal(await page.locator('[data-run-ref]').count(), 1); report.boundaries.no_official_not_candidate = true; await shot(page, 'no-official'); await context.close();
   ({ context, page, data } = await fresh('unknown')); assert.equal(data.data.categories.material.risk_count, null);
   assert.equal(data.data.categories.material.unknown_count, 1); assert.equal(await page.locator('.dy-metric').filter({ hasText: '齐套缺口' }).locator('strong').innerText(), '未知');
-  await category(page, '齐套缺口'); await page.getByText(/齐套缺口 · 无法评估 1 项/).click(); await page.getByText(/齐套事实不完整/).waitFor();
+  await category(page, '齐套缺口'); await page.getByText(/齐套缺口 · 无法评估 1 项/).click(); await page.getByText(/齐套数据读不完整/).waitFor();
   assert(!await page.locator('[data-item-ref]').filter({ hasText: '精密轴套' }).count()); report.boundaries.unknown_not_alarm = true; await shot(page, 'unknown-source'); await context.close();
-  ({ context, page } = await fresh('no-data')); await page.getByRole('tab', { name: '方案对比', exact: true }).click(); await page.getByText('尚无排产运行记录。', { exact: true }).waitFor();
+  ({ context, page } = await fresh('no-data')); await page.getByRole('tab', { name: '方案对比', exact: true }).click(); await page.getByText('还没有排产记录。', { exact: true }).waitFor();
   report.boundaries.no_data_not_unloaded = true; await shot(page, 'no-data'); await context.close();
   for (const name of ['drift', 'rollback', 'lost', 'malformed']) {
     ({ context, page } = await fresh(name)); await detail(page); await openHandling(page); await fillHandling(page, '跟进中', '边界测试保留原请求 ' + name);
     if (name === 'drift' || name === 'rollback') assert.equal((await context.request.post(origin + '/__dashboard_fixture__/mutate')).status(), 200);
     if (name === 'lost') fault = 'before'; if (name === 'malformed') { fault = 'malformed'; blockReceipts = true; }
     if (name === 'lost') await page.getByRole('dialog').getByRole('button', { name: '提交处置', exact: true }).click(); else { const response = await send(page); assert.equal(response.status(), name === 'drift' ? 409 : name === 'rollback' ? 500 : 200); }
-    if (name === 'drift') { await page.getByText('本次明确未写入。', { exact: true }).waitFor(); report.boundaries.stale_rejected = true; }
+    if (name === 'drift') { await page.getByText('上次处置没有生效，填写内容已保留。改好后重新提交。', { exact: true }).waitFor(); report.boundaries.stale_rejected = true; }
     else {
-      await page.getByRole('dialog').getByText('结果尚未确认，仅查询原请求。', { exact: true }).waitFor();
+      await page.getByRole('dialog').getByText('上次处置的结果还没查到，可能已经生效。请点「查询结果」，不要重复提交。', { exact: true }).waitFor();
       const pending = await page.evaluate(() => window.DashboardSession.read()); assert.equal(pending.phase, 'pending');
       assert.equal(await page.getByRole('button', { name: '提交处置', exact: true }).count(), 0);
-      if (name === 'malformed') { fault = ''; blockReceipts = false; await page.getByRole('button', { name: '查询原回执', exact: true }).click(); await confirmed(page); report.boundaries.fetch200_not_confirmed = true; }
-      else { await page.getByText(/尚未查到原回执/).waitFor(); report.boundaries[name === 'lost' ? 'not_recorded_retained' : 'transaction_rollback'] = true; }
+      if (name === 'malformed') { fault = ''; blockReceipts = false; await page.getByRole('button', { name: '查询结果', exact: true }).click(); await confirmed(page); report.boundaries.fetch200_not_confirmed = true; }
+      else { await page.getByText(/还是没有查到结果/).waitFor(); report.boundaries[name === 'lost' ? 'not_recorded_retained' : 'transaction_rollback'] = true; }
     }
     await shot(page, name); fault = ''; blockReceipts = false; await context.close();
   }

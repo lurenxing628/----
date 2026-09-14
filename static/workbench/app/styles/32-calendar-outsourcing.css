@@ -7,7 +7,7 @@
     .outsourcing-live .os-muted {color:var(--ui-info-muted);font-size:var(--font-size-1);overflow-wrap:anywhere;}
     .outsourcing-live .os-scroll {max-width:100%;overflow:auto;}
     .outsourcing-live table {width:100%;border-collapse:collapse;text-align:left;table-layout:fixed;font-size:var(--font-size-2);}
-    .outsourcing-live th,.outsourcing-live td {border-bottom:1px solid var(--ui-border);padding:10px var(--space-2);vertical-align:top;overflow-wrap:anywhere;}
+    .outsourcing-live th,.outsourcing-live td {border-bottom:1px solid var(--ui-border);padding:var(--wb-table-cell-py) var(--wb-table-cell-px);vertical-align:top;overflow-wrap:anywhere;}
     .outsourcing-live th {background:var(--ui-surface-muted);color:var(--ui-info-muted);font-weight:500;}
     .outsourcing-live .os-table {min-width:680px;} .outsourcing-live .os-table th:first-child {width:24%;} .outsourcing-live .os-table th:last-child {width:88px;}
     .outsourcing-live tr[data-selected=true] {background:var(--ui-primary-soft);}
@@ -33,7 +33,7 @@
     .outsourcing-live .os-form {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--space-3);margin-top:var(--space-4);}
     .outsourcing-live .os-form label {display:flex;flex-direction:column;gap:var(--space-1);min-width:0;}.outsourcing-live .os-form .wide {grid-column:1/-1;}
     .outsourcing-live input,.outsourcing-live select,.outsourcing-live textarea {color:var(--ui-text);background:var(--ui-card-bg);border:1px solid var(--ui-border);border-radius:var(--wb-radius-control);min-width:0;max-width:100%;padding:6px 9px;}
-    .outsourcing-live input,.outsourcing-live select {height:34px;}.outsourcing-live textarea {min-height:76px;resize:vertical;}
+    .outsourcing-live input,.outsourcing-live select {height:var(--wb-control-height);}.outsourcing-live textarea {min-height:76px;resize:vertical;}
     .outsourcing-live input[type=radio],.outsourcing-live input[type=checkbox] {height:16px;width:16px;padding:0;flex:none;vertical-align:middle;}
     .outsourcing-live .os-modes label {display:flex;align-items:center;gap:var(--space-2);cursor:pointer;}.outsourcing-live .os-clear {display:flex;align-items:flex-end;}
     .outsourcing-live .os-pick-scroll {max-height:248px;}.outsourcing-live .os-pick-table {min-width:570px;}.outsourcing-live .os-pick-table th:first-child {width:52px;}.outsourcing-live .os-pick-table th:last-child {width:145px;}
@@ -87,7 +87,7 @@ body.aps-workbench .outsourcing-live .wb-table-frame[data-sticky-actions] > tabl
 .resource-catalog .rc-facts { overflow-wrap:anywhere; }
 .resource-catalog .rc-list td, .resource-catalog .rc-pattern-table td { vertical-align:middle; }
 .resource-catalog .rc-list .rowact { gap:var(--space-2); }
-.resource-catalog .rc-list .mini { width:30px; height:30px; padding:0; flex:none; }
+.resource-catalog .rc-list .mini { width:var(--wb-control-mini-height); height:var(--wb-control-mini-height); padding:0; flex:none; }
 .resource-catalog .rc-list .mini svg { width:18px; height:18px; flex:none; }
 .resource-catalog .rc-pattern-table td { padding:var(--space-2) 6px; }
 .resource-catalog .rc-list-scroll { --wb-table-max-height: 44vh; --wb-table-min: 540px; }

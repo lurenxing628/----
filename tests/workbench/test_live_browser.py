@@ -24,7 +24,7 @@ def runtime_tools():
     return node, browser, os.pathsep.join(module_paths)
 
 
-def run_probe():
+def run_probe(probe="live_browser_probe.cjs"):
     tools = runtime_tools()
     check_assets()
     root = create_root()
@@ -49,7 +49,7 @@ def run_probe():
             time.sleep(0.05)
         outcome["ready"] = json.loads(ready_file.read_text(encoding="utf-8"))
         with (root / "probe-output.log").open("w", encoding="utf-8") as probe_stdout, (root / "probe-errors.log").open("w", encoding="utf-8") as probe_stderr:
-            result = subprocess.run([tools[0], str(HERE / "live_browser_probe.cjs"), str(ready_file)],
+            result = subprocess.run([tools[0], str(HERE / probe), str(ready_file)],
                                     cwd=str(root), env=env, stdout=probe_stdout, stderr=probe_stderr, timeout=300)
         outcome["probe_returncode"] = result.returncode
     except Exception as error:

@@ -22,7 +22,7 @@
   };
   const statuses = {
     material: [['active', '启用'], ['inactive', '停用']],
-    machine: [['active', '可用'], ['maintain', '检修'], ['inactive', '停用'], ['unknown', '旧状态 / 原因未知']],
+    machine: [['active', '可用'], ['maintain', '停机'], ['inactive', '停用'], ['unknown', '旧状态 / 原因未知']],
     operator: [['active', '在岗'], ['leave', '请假'], ['inactive', '停用'], ['unknown', '旧状态 / 原因未知']],
     supplier: [['active', '启用'], ['pending_review', '待复核'], ['inactive', '停用'], ['unknown', '旧状态 / 原因未知']]
   };
@@ -49,7 +49,7 @@
     const error = new Error(message); error.fields = fields; error.committed = false; return error;
   }
   function message(error) {
-    return error && error.error && error.error.message || error && error.message || '读取失败，请重试。';
+    return error && error.error && error.error.message || error && error.message || '读取失败，请刷新后重试。';
   }
   function fieldErrors(error) {
     const list = error && error.error && error.error.fields || error && error.fields || [];
@@ -70,12 +70,12 @@
         || !['production', 'demo'].includes(result.meta.source) || result.meta.time_basis !== 'factory_local'
         || !text(result.meta.snapshot_ref) || !result.meta.snapshot_ref || !text(result.meta.request_ref)
         || !text(result.meta.as_of) || !Array.isArray(result.warnings))
-      throw failure('资源读取协议不匹配，未使用样例替代。');
+      throw failure('读到的数据不完整，请刷新重试。');
     if (shape === 'entity') {
-      if (!entity(result.data)) throw failure('资源详情不完整，请重新读取。');
+      if (!entity(result.data)) throw failure('读到的详情不完整，请刷新后重试。');
     } else if (shape === 'summary') {
       if (!object(result.data) || !object(result.data.counts) || !Object.values(result.data.counts).every(value => value === null || count(value)))
-        throw failure('资源统计协议不完整，请重新读取。');
+        throw failure('读到的统计数据不完整，请刷新后重试。');
     } else {
       const data = result.data, page = data && data.page;
       if (!object(data) || !Array.isArray(data.entities) || !data.entities.every(entity)
@@ -83,13 +83,13 @@
           || !object(page) || !count(page.number) || page.number < 1 || !count(page.size) || page.size < 1
           || !count(page.total) || !count(page.pages) || !Array.isArray(page.sort)
           || data.entities.length > page.size || data.entities.length > page.total)
-        throw failure('资源列表或分页协议不完整，请重新读取。');
+        throw failure('读到的列表或分页数据不完整，请刷新后重试。');
     }
     return result;
   }
   function blocked(context, kind, action, source) {
     if (source !== 'production') return '当前不是生产数据，不能保存。';
-    if (!context || !text(context.write_token) || !context.write_token) return '尚未读取可用于保存的资料，请重新读取最新资料。';
+    if (!context || !text(context.write_token) || !context.write_token) return '还没读到可以保存的资料，请点「刷新最新资料」后重试。';
     const name = kind + '.' + action;
     if (!context.capabilities || context.capabilities[name] !== true) {
       const reasons = Array.isArray(context.blocked_reasons) ? context.blocked_reasons : [];
@@ -100,7 +100,7 @@
   }
   function requestKey() {
     if (!window.crypto || typeof window.crypto.getRandomValues !== 'function')
-      throw failure('浏览器无法生成可靠请求标识，本次未提交。');
+      throw failure('本次没有提交。当前浏览器不支持，请用 Chrome 打开本页。');
     const bytes = new Uint8Array(24); window.crypto.getRandomValues(bytes);
     return 'resource-' + Array.from(bytes, value => value.toString(16).padStart(2, '0')).join('');
   }
@@ -123,12 +123,12 @@
     const labels = { spec: '规格', unit: '单位', stock_qty: '库存数量', remark: '备注', category: '归属',
       status: '原状态', legacy_status: '原始状态（只读）', inactive_reason: '停用原因', default_days: '默认周期（天）' };
     if (kind === 'op_type' && category === 'internal') labels.remark = '产能备注';
-    if (kind === 'op_type' && category === 'external') labels.default_merge_mode = '默认周期策略';
+    if (kind === 'op_type' && category === 'external') labels.default_merge_mode = '默认周期规则';
     if (kind === 'machine') labels.category = '设备分类（只读）';
     return labels;
   }
   function fieldValue(kind, key, value) {
-    if (value == null || value === '') return key === 'default_merge_mode' ? '未设置' : '未填写 / 未知';
+    if (value == null || value === '') return '未填写';
     const values = {
       category: { internal: '自制', external: '外协' }, default_merge_mode: { separate: '分别设置', merged: '合并设置' },
       inactive_reason: { unknown: '未知', disabled: '停用', leave: '请假', pending_review: '待复核' },
@@ -167,7 +167,7 @@
     return a === b;
   }
   function input(kind, value, original, category) {
-    if (!own(textFields, kind)) throw failure('不支持此类资源表单。');
+    if (!own(textFields, kind)) throw failure('不支持这类资料的表单。');
     const base = draft(kind, original, category), create = !original, errors = [];
     const result = {}, fields = {}, relationships = {};
     function bad(path, msg) { errors.push({ path, message: msg }); }
@@ -185,11 +185,11 @@
       if (!create && same(v, base.fields[key])) return;
       if (key === 'stock_qty' || key === 'default_days') {
         if (typeof v === 'string' && v.trim() === '') {
-          if (key === 'default_days' || !create) bad('fields.' + key, key === 'stock_qty' ? '库存不能清空；未知原值可保持不改。' : '请填写大于 0 的默认周期。');
+          if (key === 'default_days' || !create) bad('fields.' + key, key === 'stock_qty' ? '库存不能清除；原值未知时可以不改。' : '请填写大于 0 的默认周期。');
           return;
         }
         const n = Number(v);
-        if (!Number.isFinite(n) || n < 0 || (key === 'default_days' && n === 0)) bad('fields.' + key, '请填写有效的' + (key === 'stock_qty' ? '非负库存数量。' : '正数周期。'));
+        if (!Number.isFinite(n) || n < 0 || (key === 'default_days' && n === 0)) bad('fields.' + key, key === 'stock_qty' ? '请填写有效的库存数量，不能小于 0。' : '请填写有效的周期天数，要大于 0。');
         else fields[key] = n;
       } else if (key === 'status') {
         if (!(statuses[kind] || []).some(item => item[0] === v && v !== 'unknown')) bad('fields.status', '请明确选择状态。');
@@ -198,7 +198,7 @@
         if (!['internal', 'external'].includes(v)) bad('fields.category', '请明确选择自制或外协。');
         else fields.category = v;
       } else if (key === 'default_merge_mode') {
-        if (!['', 'separate', 'merged'].includes(v)) bad('fields.default_merge_mode', '请选择有效周期策略。');
+        if (!['', 'separate', 'merged'].includes(v)) bad('fields.default_merge_mode', '请选择有效的周期规则。');
         else fields[key] = v || null;
       } else {
         const normalized = v.trim();
@@ -213,7 +213,7 @@
     });
     if (Object.keys(fields).length) result.fields = fields;
     if (kind !== 'material' && Object.keys(relationships).length) result.relationships = relationships;
-    if (errors.length) throw failure('请核对表单中的字段。', errors);
+    if (errors.length) throw failure('请核对标红的项。', errors);
     return result;
   }
   function receipt(result) {

@@ -32,12 +32,12 @@
       document.addEventListener('visibilitychange', visibility); visibility();
       return () => { disposed = true; clearTimeout(timer); if (controller) controller.abort(); document.removeEventListener('visibilitychange', visibility); };
     }, [runRef, api, revision]);
-    return <section className="plana run-job-panel" aria-label="指定运行"><U.Styles />
-      <div className="rj-heading"><h2>排产运行</h2><U.Button icon="refresh-cw" aria-label="刷新指定运行" busy={checking} disabled={!A.ref(runRef)} onClick={refresh} /></div>
-      {!A.ref(runRef) ? <p role="alert">运行来源无效，未切换到其他运行。</p> : <>
-        <window.WorkbenchReference entries={{ '指定运行': runRef }} />{error && <div className="rj-notice" role="alert">{error}</div>}
+    return <section className="plana run-job-panel" aria-label="这次排产"><U.Styles />
+      <div className="rj-heading"><h2>这次排产</h2><U.Button icon="refresh-cw" aria-label="刷新这次排产" busy={checking} disabled={!A.ref(runRef)} onClick={refresh} /></div>
+      {!A.ref(runRef) ? <p role="alert">这条排产记录已失效，页面没有切换。请点「排产记录」重新选择。</p> : <>
+        <window.WorkbenchReference entries={{ '排产编号': runRef }} />{error && <div className="rj-notice" role="alert">{error}</div>}
         {record && <U.Record run={record} intent={null} paused={paused} checking={checking} verified={verified} api={api} />}
-        {!record && <p role="status" className="rj-muted">{checking ? '正在读取指定运行。' : paused ? '返回页面后继续读取指定运行。' : '尚未核实指定运行，未显示其他运行结果。'}</p>}
+        {!record && <p role="status" className="rj-muted">{checking ? '正在读取这次排产。' : paused ? '返回本页后继续读取这次排产。' : '还没读到这次排产的结果。请点右上角的刷新按钮。'}</p>}
       </>}
     </section>;
   }
@@ -48,7 +48,7 @@
     const api = useRunAdapter(onNavigate), specified = initialContext && Object.prototype.hasOwnProperty.call(initialContext, 'run_ref');
     const history = <U.Button icon="history" onClick={() => onNavigate('analysis', { source: 'run_history' })}>排产记录</U.Button>;
     // The preflight page carries 排产记录 in its own heading; only the specified-run view keeps the navigation strip.
-    return specified ? <><Navigation>{history}<U.Button icon="plus" onClick={() => onNavigate('run', {})}>新建排产范围</U.Button></Navigation>
+    return specified ? <><Navigation>{history}<U.Button icon="plus" onClick={() => onNavigate('run', {})}>开始新排产</U.Button></Navigation>
       <ReadRun key={initialContext.run_ref} runRef={initialContext.run_ref} api={api} /></> :
       <window.PreflightWorkspace initialContext={initialContext} onNavigate={onNavigate} actions={history}
         renderRunPanel={data => <window.RunJobPanel preflight={data} adapter={api} />} />;
@@ -69,7 +69,8 @@
     return <><Navigation>
       <U.Button icon="files" aria-pressed={!candidate && !history} onClick={() => onNavigate(view, {})}>计划版本</U.Button>
       <U.Button icon="history" aria-pressed={history} onClick={() => onNavigate('analysis', { source: 'run_history', ...(historyQuery ? { history_query: historyQuery } : {}) })}>排产记录</U.Button>
-      {candidate && <span className="scheduling-source">候选预览 · 非正式执行安排</span>}
+      {candidate && <U.Button icon="chart" aria-pressed={true} aria-current="page">候选方案</U.Button>}
+      {candidate && <span className="scheduling-source">不是正式计划</span>}
     </Navigation>{candidate ? <window.RunCandidateWorkspace view={view} initialContext={initialContext} onNavigate={onNavigate}
       renderAdoption={candidateRef => <window.RunAdoptionAction candidateRef={candidateRef} onNavigate={onNavigate} />} renderTrial={renderTrial} /> : history ?
       <window.RunHistoryWorkspace initialContext={context.history_query} onNavigate={onNavigate} /> :

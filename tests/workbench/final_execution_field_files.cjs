@@ -52,7 +52,7 @@ async function files(p) {
       await p.shot('file-' + round + '-preview');
       const committed = await p.read(() => page.getByRole('button', { name: '确认导入', exact: true }).click(), '/files/confirm');
       p.report.file_commits = [...(p.report.file_commits || []), committed];
-      await page.getByRole('button', { name: '重读已确认结果', exact: true }).click();
+      await page.getByRole('button', { name: '刷新已确认结果', exact: true }).click();
       await page.getByRole('dialog', { name: '报工文件', exact: true }).waitFor({ state: 'hidden' });
       await page.locator('[data-field-task]').first().waitFor();
     }

@@ -122,14 +122,14 @@ async function exercise(p, view) {
     await page.locator('.rw-detail').getByRole('alert').waitFor();
     await page.locator('.rw-detail').getByRole('button', { name: /^关闭/ }).click();
     const pageError = await p.read(() => page.locator('#report-topic-panel .rw-list-pane > .wb-pager').getByRole('button', { name: '下一页', exact: true }).click(), '/analytics', 409);
-    assert.equal(pageError.error.code, 'snapshot_stale'); await page.getByRole('button', { name: '重新读取', exact: true }).waitFor();
+    assert.equal(pageError.error.code, 'snapshot_stale'); await page.getByRole('button', { name: '刷新报表数据', exact: true }).waitFor();
     const failed = events.slice(first);
     assert.equal(failed.length, 2); assert(failed.every(event => event.status === 409));
     assert(failed.every(event => new URL(event.url).searchParams.get('snapshot_ref') === result.meta.snapshot_ref));
     await p.shot('live-stale-explicit-error');
     p.report.live_stale = { export: downloadError, reads: failed };
     const recovery = events.length;
-    await page.getByRole('button', { name: '重新读取', exact: true }).click();
+    await page.getByRole('button', { name: '刷新报表数据', exact: true }).click();
     await page.waitForFunction(() => { const node = document.querySelector('#report-topic-panel .rw-list-pane > .wb-pager'); return node && node.textContent.includes('第 3 /'); });
     const recovered = events.slice(recovery).filter(event => new URL(event.url).pathname.endsWith('/analytics'));
     assert.equal(recovered.length, 2); assert.equal(recovered[0].payload.data.page.number, 1); assert.equal(recovered[1].payload.data.page.number, 3);

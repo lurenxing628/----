@@ -39,8 +39,8 @@
     </div>;
   }
   function RefreshResult({ state, onRefresh }) {
-    return <><p role="status">{state.loading ? '正在重读保存后的工作日历…' : state.done ? '已重新读取最新工作日历。' : '最新工作日历尚未确认。'}</p>
-      <ErrorBox error={state.error} />{state.error && <Button icon="refresh-cw" onClick={onRefresh}>重新读取保存结果</Button>}</>;
+    return <><p role="status">{state.loading ? '正在刷新工作日历…' : state.done ? '已刷新，显示最新工作日历。' : '最新工作日历尚未确认。'}</p>
+      <ErrorBox error={state.error} />{state.error && <Button icon="refresh-cw" onClick={onRefresh}>刷新保存结果</Button>}</>;
   }
   window.CalendarFields = { Fields: CalendarFields, Segment, Policy, RefreshResult, fieldPaths };
 })();

@@ -130,3 +130,11 @@
       .calibration-adoption .ca-table th,.calibration-adoption .ca-table td{padding:7px var(--space-2)}.calibration-adoption button{white-space:normal;max-width:100%}
       .calibration-adoption .cad-inline{font-size:var(--font-size-1);color:var(--ui-info-muted);max-width:380px;overflow-wrap:anywhere}
       @media(max-width:700px){.calibration-adoption .cad-fields,.calibration-adoption .cad-facts{grid-template-columns:1fr}.calibration-adoption .cad-body{padding:var(--space-3)}}
+
+/* Distribution bars carry a 0 / half / max axis so a bar length can be read without hovering it. */
+.aw-distribution .aw-scale {padding-top:0;}
+.aw-distribution .aw-scale-gutter {visibility:hidden;}
+.aw-distribution .aw-scale-ticks {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));border-top:1px solid var(--ui-border);padding-top:var(--space-1);color:var(--ui-info-muted);font-variant-numeric:tabular-nums;}
+.aw-distribution .aw-scale-ticks > span {min-width:0;overflow-wrap:anywhere;}
+.aw-distribution .aw-scale-ticks > span:nth-child(2) {text-align:center;}
+.aw-distribution .aw-scale-ticks > span:nth-child(3) {text-align:right;}

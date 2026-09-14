@@ -47,7 +47,7 @@ async function main() {
       items: [], page: { number: query.page, size: 10, total: 0, total_pages: 0 } } });
   await test('calibration-restored-page-without-old-token-does-not-weaken-live-input', () => {
     assert.equal(calInput.snapshot_ref, undefined); assert.equal(calInput.page, 3); assert.equal(calInput.part_ref, saved.scope.part_ref);
-    assert.equal(saved.snapshot_ref, 'expired'); assert.throws(() => calibration.input(calInput), /原列表快照缺失/);
+    assert.equal(saved.snapshot_ref, 'expired'); assert.throws(() => calibration.input(calInput), /翻页位置已失效/);
   });
   await test('calibration-fresh-first-page-then-original-page-same-part-and-filters', async () => {
     const calls = [];

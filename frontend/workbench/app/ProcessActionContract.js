@@ -27,7 +27,7 @@
   }
   function listContext(request) {
     if (!request || !token(request.snapshot_ref) || !Number.isSafeInteger(request.page_size) || request.page_size < 1 || request.page_size > 200)
-      throw C.failure('请先重新读取零件列表，再进行操作。');
+      throw C.failure('请先刷新零件列表，再操作。');
     return { scope: scope(request.scope), snapshot_ref: request.snapshot_ref, page_size: request.page_size };
   }
   function deleteBody(request) { return { ...listContext(request), refs: selection(request.refs) }; }
@@ -44,7 +44,7 @@
   function createReason(context, source) {
     if (source !== 'production') return '尚未读取可保存的零件资料。';
     if (!C.object(context) || !token(context.write_token) || !C.object(context.capabilities) || context.capabilities['process.create'] !== true)
-      return '新增许可尚未取得，请重新读取列表。';
+      return '现在不能新增零件，请刷新列表后重试。';
     return '';
   }
   function deletePreview(raw, request) {
@@ -74,20 +74,20 @@
     return '';
   }
   function receipt(result, intent, expectedRefs) {
-    if (!intent || C.receipt(result) !== 'terminal' || result.result !== 'committed') throw C.failure('回执没有确认本次完整操作，请继续查询原请求。');
+    if (!intent || C.receipt(result) !== 'terminal' || result.result !== 'committed') throw C.failure(window.WorkbenchTerms.outcomes.pending('操作'));
     const data = result.data;
     if (intent.kind === 'process' && intent.action === 'create' && intent.ref === null) {
       if (!ref(data.entity_ref) || typeof data.business_code !== 'string' || !data.business_code || !C.object(data.workflow)
           || data.workflow.origin !== 'managed' || data.workflow.ready !== false || data.workflow.stage !== 'route')
-        throw C.failure('新增回执缺少原零件或确认状态，不能按图号打开另一条记录。');
-      if (intent.input && data.business_code !== intent.input.business_code) throw C.failure('新增回执的图号与本次录入不一致，请核实原请求。');
+        throw C.failure('新增结果不完整，没有自动打开这条零件。请点「查询结果」核对，不要重复提交。');
+      if (intent.input && data.business_code !== intent.input.business_code) throw C.failure('新增结果的图号和您录入的不一致。请点「查询结果」核对，不要重复提交。');
     } else if (intent.kind === 'process_bulk' && intent.action === 'confirm' && token(intent.ref)) {
       if (!Number.isSafeInteger(data.deleted_count) || data.deleted_count < 1 || !Array.isArray(data.rows) || data.rows.length !== data.deleted_count
           || !data.rows.every(row => C.object(row) && ref(row.entity_ref) && row.result === 'committed')
           || new Set(data.rows.map(row => row.entity_ref)).size !== data.rows.length
           || expectedRefs && (data.rows.length !== expectedRefs.length || data.rows.some((row, index) => row.entity_ref !== expectedRefs[index])))
-        throw C.failure('删除回执没有逐项确认全部原零件，请继续核实；未视为部分成功。');
-    } else throw C.failure('回执与当前操作不一致，请查询原请求。');
+        throw C.failure('删除结果没有逐条对上，不算部分成功。请点「查询结果」核对，不要重复提交。');
+    } else throw C.failure('保存结果和当前操作不一致。请点「查询结果」核对，不要重复提交。');
     return data;
   }
   function restored(intent) {

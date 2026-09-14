@@ -99,10 +99,10 @@ async function cases(){
     await page.getByRole('dialog',{name:'调整库存',exact:true}).waitFor();assert.equal(await page.evaluate(()=>stockFixture.adjusted),1);
     assert.equal(await panel().locator('form input').count(),1);assert.equal(await stock().inputValue(),'8.375');assert(await panel().getByText('kg',{exact:true}).isVisible());
     assert.equal(await panel().locator('input[name="label"],input[name="unit"],input[name="spec"],select').count(),0);
-    const numberBox=await stock().boundingBox(),reloadBox=await panel().getByRole('button',{name:'重新读取最新资料',exact:true}).boundingBox();assert(reloadBox.y-numberBox.y-numberBox.height>=8);
+    const numberBox=await stock().boundingBox(),reloadBox=await panel().getByRole('button',{name:'刷新最新资料',exact:true}).boundingBox();assert(reloadBox.y-numberBox.y-numberBox.height>=8);
     await shot('stock-only');
     await stock().fill('12.625');await save();const call=await lastInput();assert.equal(call.kind,'material');assert.equal(call.action,'update');assert.equal(call.ref,'1'.padStart(48,'0'));
-    assert.deepEqual(call.body.input,{fields:{stock_qty:12.625}});await panel().getByText('服务器已确认提交。',{exact:true}).waitFor();await panel().getByText('已重新读取最新数据。',{exact:true}).waitFor();
+    assert.deepEqual(call.body.input,{fields:{stock_qty:12.625}});await panel().getByText('保存已完成。',{exact:true}).waitFor();await panel().getByText('已刷新到最新数据。',{exact:true}).waitFor();
     assert(await stock().isDisabled());assert.equal(await page.evaluate(()=>stockFixture.original.fields.unit),'kg');assert.equal(await page.evaluate(()=>stockFixture.original.fields.hidden_legacy),'legacy-exact');});
   await run('unchanged-unknown-and-explicit-zero',async()=>{await mount({fields:{stock_qty:null,unit:null}});assert.equal(await stock().inputValue(),'');assert(await panel().getByText('未知',{exact:true}).isVisible());
     assert.deepEqual(await page.evaluate(()=>stockFixture.calls),[]);await save();assert.deepEqual((await lastInput()).body.input,{});
@@ -120,7 +120,7 @@ async function cases(){
     await mount({allowed:false});assert(await panel().getByRole('button',{name:'保存',exact:true}).isDisabled());await panel().locator('form').evaluate(form=>form.requestSubmit());assert.equal(await page.evaluate(()=>stockFixture.calls.length),0);
     await mount({detail:true,source:'demo'});assert(await panel().getByRole('button',{name:'调整库存',exact:true}).isDisabled());});
   await run('stale-context-keeps-stock-draft',async()=>{await mount({behavior:'stale'});await stock().fill('17.875');await save();await panel().getByRole('alert').getByText('资料已变化，请重新读取并核对。',{exact:true}).waitFor();
-    assert.equal(await stock().inputValue(),'17.875');await panel().getByRole('button',{name:'重新读取最新资料',exact:true}).click();
+    assert.equal(await stock().inputValue(),'17.875');await panel().getByRole('button',{name:'刷新最新资料',exact:true}).click();
     await panel().getByText('服务端新名称',{exact:false}).waitFor();assert.equal(await stock().inputValue(),'17.875');await shot('stale-draft');
     await panel().getByRole('button',{name:'已核对，继续编辑',exact:true}).click();assert.equal(await stock().inputValue(),'17.875');
     assert(await panel().getByText('18.625',{exact:true}).isVisible());assert(await panel().getByText('件',{exact:true}).isVisible());assert.equal(await panel().getByText('kg',{exact:true}).count(),0);
@@ -138,7 +138,7 @@ async function cases(){
     await backdrop();await page.getByRole('button',{name:'放弃未保存内容并继续',exact:true}).click();assert.equal(await page.locator('.modal-bg').count(),0);assert.equal(await page.evaluate(()=>stockFixture.calls.length),0);assert(await page.locator('#fixture-trigger').evaluate(el=>document.activeElement===el));});
   await run('locked-submit-blocks-backdrop',async()=>{await mount({behavior:'pending'});await stock().fill('9.875');await save();await page.waitForFunction(()=>typeof stockFixture.resolve==='function');
     await backdrop();await page.keyboard.press('Escape');assert.equal(await page.evaluate(()=>stockFixture.closed),0);assert.equal(await page.locator('.modal-bg').count(),1);
-    await page.evaluate(()=>stockFixture.resolve());await panel().getByText('服务器已确认提交。',{exact:true}).waitFor();await backdrop();assert.equal(await page.locator('.modal-bg').count(),0);});
+    await page.evaluate(()=>stockFixture.resolve());await panel().getByText('保存已完成。',{exact:true}).waitFor();await backdrop();assert.equal(await page.locator('.modal-bg').count(),0);});
   await run('drag-out-and-drag-in-do-not-close',async()=>{await mount({overlay:true});const box=await panel().locator('.modal-head').boundingBox();
     await page.mouse.move(box.x+50,box.y+20);await page.mouse.down();await page.mouse.move(8,8);await page.mouse.up();assert.equal(await page.evaluate(()=>stockFixture.closed),0);
     await page.mouse.move(8,8);await page.mouse.down();await page.mouse.move(box.x+50,box.y+20);await page.mouse.up();assert.equal(await page.evaluate(()=>stockFixture.closed),0);

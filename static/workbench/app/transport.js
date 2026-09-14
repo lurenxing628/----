@@ -15,7 +15,7 @@
       var message = payload && payload.error && payload.error.message;
       throw new Error(typeof message === 'string' && message ? message : '本机服务未能完成读取，请重试。');
     }
-    if (payload.schema_version !== 1 || !payload.meta || payload.meta.source !== 'production' || payload.meta.time_basis !== 'factory_local' || typeof payload.meta.snapshot_ref !== 'string' || !payload.meta.snapshot_ref || typeof payload.meta.request_ref !== 'string' || !payload.meta.request_ref || typeof payload.meta.as_of !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(payload.meta.as_of) || !payload.data || typeof payload.data !== 'object' || Array.isArray(payload.data)) throw new Error('本机工作台数据协议不匹配，未使用样例替代。');
+    if (payload.schema_version !== 1 || !payload.meta || payload.meta.source !== 'production' || payload.meta.time_basis !== 'factory_local' || typeof payload.meta.snapshot_ref !== 'string' || !payload.meta.snapshot_ref || typeof payload.meta.request_ref !== 'string' || !payload.meta.request_ref || typeof payload.meta.as_of !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(payload.meta.as_of) || !payload.data || typeof payload.data !== 'object' || Array.isArray(payload.data)) throw new Error('读到的数据不完整，页面没有改动。请刷新后重试。');
     return payload;
   }
   async function read(url, signal) {

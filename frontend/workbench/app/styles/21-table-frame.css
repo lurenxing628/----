@@ -4,6 +4,8 @@ body.aps-workbench .wb-table-frame {
   max-height: max(180px, var(--wb-table-max-height)); overflow: auto; overscroll-behavior: contain;
   background: var(--ui-card-bg); border-radius: var(--wb-radius-surface);
 }
+/* 弹窗里的表格框不截断滚轮：表格到底后滚轮要继续滚弹窗正文，否则光标停在表格上时永远够不到底部按钮（AZ modal-scroll 合同）。 */
+body.aps-workbench .modal-b .wb-table-frame { overscroll-behavior: auto; }
 body.aps-workbench .wb-table-frame > table.wb-table {
   width: 100%; min-width: var(--wb-table-min, 0px); border-spacing: 0;
 }
@@ -70,3 +72,8 @@ body.aps-workbench .plana .modal-bg { z-index: var(--wb-z-modal); }
 body.aps-workbench :is(.aps-filter-pop,.pl-menu,.selpop) { z-index: var(--wb-z-dropdown); }
 body.aps-workbench :is(.toast,.bd-toast) { z-index: var(--wb-z-toast); }
 body.aps-workbench .wb-guard-host > .modal-bg { z-index: var(--wb-z-popup); }
+
+/* 矮屏应用式布局：填满视口的工作区里，表格框吃掉剩余高度，不再按 --wb-table-max-height 限高。 */
+@media (max-height: 820px) {
+  body.aps-workbench .wb-fill-viewport > .wb-table-frame { flex: 0 1 auto; min-height: 180px; max-height: none; }
+}

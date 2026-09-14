@@ -1,7 +1,9 @@
 (function () {
   'use strict';
   const C = window.APSResourceContract;
-  const states = { unreported: '待报工', started: '已登记开工', partial: '部分完成', paused: '已暂停', exception: '异常', complete: '已完工' };
+  // 报工状态与报工类型的唯一词表：现场记录、现场实际甘特、报表中心、工时校准都从这里取，不再各自造词。
+  const states = { unreported: '待报工', started: '已开工', partial: '部分完成', paused: '已暂停', exception: '异常', complete: '已完工' };
+  const reportActions = window.WorkbenchTerms.report_actions;
   const fields = ['completed_quantity', 'actual_start', 'actual_end', 'effective_processing_hours', 'actual_machine_ref', 'actual_operator_ref', 'remark'];
   const ref = value => typeof value === 'string' && /^[0-9a-f]{48}$/.test(value);
   const nullable = value => value === null || Number.isFinite(value) && value >= 0;
@@ -40,17 +42,17 @@
   }
   function query(result, mode, expected) {
     if (!result || result.ok !== true || result.schema_version !== 1 || !result.meta || result.meta.source !== 'production' || result.meta.time_basis !== 'factory_local'
-      || !result.meta.snapshot_ref || !result.meta.as_of || !C.object(result.data)) throw C.failure('现场记录协议不完整，未使用样例替代。');
+      || !result.meta.snapshot_ref || !result.meta.as_of || !C.object(result.data)) throw C.failure('读到的现场记录不完整，请刷新重试。');
     const d = result.data;
-    if (mode === 'list' && (!Array.isArray(d.tasks) || !d.tasks.every(task) || !C.object(d.page) || !Number.isInteger(d.page.total) || !C.object(d.summary))) throw C.failure('现场任务列表协议不完整。');
+    if (mode === 'list' && (!Array.isArray(d.tasks) || !d.tasks.every(task) || !C.object(d.page) || !Number.isInteger(d.page.total) || !C.object(d.summary))) throw C.failure('读到的现场任务列表不完整，请刷新重试。');
     if (mode === 'list' && d.tasks.some(row => !d.plan || row.plan_ref !== d.plan.plan_ref)) throw C.failure('现场任务与所选计划不一致。');
     if (mode === 'detail' && (!task(d.task) || d.task.task_ref !== expected)) throw C.failure('现场任务详情不匹配，未替换所选任务。');
-    if (mode === 'preview' && (!/^[A-Za-z0-9_-]{32}$/.test(d.preview_ref) || !Array.isArray(d.rows) || typeof d.can_confirm !== 'boolean' || d.commit_policy !== 'atomic' || !C.object(d.write_context))) throw C.failure('文件预检协议不完整。');
+    if (mode === 'preview' && (!/^[A-Za-z0-9_-]{32}$/.test(d.preview_ref) || !Array.isArray(d.rows) || typeof d.can_confirm !== 'boolean' || d.commit_policy !== 'atomic' || !C.object(d.write_context))) throw C.failure('读到的文件预检结果不完整，请刷新重试。');
     return result;
   }
   function blocked(context, action) {
     if (!context || !context.write_token || !context.capabilities || context.capabilities[action] !== true)
-      return (context && context.blocked_reasons || []).map(item => item.message).join('；') || '当前上下文不可写，请刷新并核对正式计划。';
+      return (context && context.blocked_reasons || []).map(item => item.message).join('；') || '本页数据已过期，请刷新后重试。';
     return '';
   }
   function draft(record) {
@@ -62,11 +64,11 @@
     fields.forEach(key => {
       let v = value[key];
       if (['completed_quantity', 'effective_processing_hours'].includes(key)) {
-        if (v !== '' && (!Number.isFinite(Number(v)) || Number(v) < 0 || key === 'completed_quantity' && !Number.isSafeInteger(Number(v)))) bad(key, key === 'completed_quantity' ? '数量必须为非负整数。' : '工时必须为有限非负数。');
+        if (v !== '' && (!Number.isFinite(Number(v)) || Number(v) < 0 || key === 'completed_quantity' && !Number.isSafeInteger(Number(v)))) bad(key, key === 'completed_quantity' ? '数量必须为非负整数。' : '工时必须是 0 或正数。');
         v = v === '' ? null : Number(v);
       } else if (key === 'actual_start' || key === 'actual_end') {
         v = v ? v.length === 16 ? v + ':00' : v : null;
-        if (v !== null && !validTime(v)) bad(key, '请填写有效的工厂本地日期和时间，未知时请清空。');
+        if (v !== null && !validTime(v)) bad(key, '请按 2026-09-13 08:30 这样填写；未知时请清除。');
       }
       else if (key.endsWith('_ref')) v = v || null;
       if (!record || v !== record[key]) result[key] = v;
@@ -76,12 +78,12 @@
       if (!Object.keys(result).length) throw C.failure('内容没有变化。');
       result.original_revision_ref = record.revision_ref; result.reason = value.reason.trim();
     } else result.source = 'manual';
-    if (action === 'supplement') fields.filter(key => Object.prototype.hasOwnProperty.call(result, key) && record[key] !== null && record[key] !== '' && result[key] !== record[key]).forEach(key => bad(key, '补齐不能修改已知事实，请使用明确更正。'));
+    if (action === 'supplement') fields.filter(key => Object.prototype.hasOwnProperty.call(result, key) && record[key] !== null && record[key] !== '' && result[key] !== record[key]).forEach(key => bad(key, '补齐不能改动已有记录，请改用「更正」。'));
     const start = value.actual_start ? Date.parse(value.actual_start + 'Z') : NaN, end = value.actual_end ? Date.parse(value.actual_end + 'Z') : NaN;
     if (Number.isFinite(start) && Number.isFinite(end) && start > end) bad('actual_end', '本次实际完工不能早于实际开工。');
     if (Number.isFinite(start) && Number.isFinite(end) && end >= start && value.effective_processing_hours !== '' && Number(value.effective_processing_hours) > (end - start) / 3600000)
-      bad('effective_processing_hours', '有效工时不能超过本次实际起止跨度。');
-    if (errors.length) throw C.failure('请核对标记的报工字段。', errors);
+      bad('effective_processing_hours', '有效工时不能超过本次实际起止的时长。');
+    if (errors.length) throw C.failure('请核对标红的项。', errors);
     result.declared_operator = value.declared_operator.trim();
     return result;
   }
@@ -95,5 +97,5 @@
   const display = value => value === null || value === undefined || value === '' ? '未知' : String(value);
   // Report times are second-precision facts (see the time pattern and step="1" inputs); never drop the seconds.
   const date = value => window.WorkbenchFormat.dateTime(value, { seconds: true });
-  window.FieldContract = { states, fields, ref, task, report, query, blocked, draft, input, saveFile, display, date, quantity, pieceLabel, planQuantity, quantityReasons, validTime };
+  window.FieldContract = { states, reportActions, fields, ref, task, report, query, blocked, draft, input, saveFile, display, date, quantity, pieceLabel, planQuantity, quantityReasons, validTime };
 })();

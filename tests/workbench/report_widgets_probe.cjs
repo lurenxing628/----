@@ -175,11 +175,11 @@ async function shot(page, name) {
       await page.waitForFunction(() => document.querySelector('.rw-list-pane > .wb-pager')?.textContent.includes('共 23 项'));
       failNext = true; await work.getByRole('button', { name: '下一页', exact: true }).click();
       await work.getByRole('alert').waitFor(); assert.equal(await work.getByRole('button', { name: '导出范围', exact: true }).count(), 0);
-      await work.getByRole('button', { name: '重新读取', exact: true }).click();
+      await work.getByRole('button', { name: '刷新报表数据', exact: true }).click();
       await work.locator('[role="tabpanel"] table tbody tr').first().waitFor();
       await work.locator('.rw-catalog > summary').click();
       await work.getByLabel('其他报表', { exact: true }).selectOption('downtime');
-      await work.getByText('停机来自有效停机台账，不把报工空档当停机。', { exact: false }).waitFor();
+      await work.getByText('停机只认已登记的停机记录，不把报工空档当成停机。', { exact: false }).waitFor();
       await work.locator('.rw-catalog > summary').evaluate(node => node.scrollIntoView({ block: 'start' }));
       await shot(page, prefix + '-catalog');
       await work.getByRole('tab', { name: '执行复盘', exact: true }).click();

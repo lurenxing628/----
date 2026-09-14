@@ -12,7 +12,7 @@ if (!output) throw new Error('Pass an artifact directory');
 fs.mkdirSync(output, { recursive: true });
 const manifest = JSON.parse(fs.readFileSync(path.join(root, 'static/workbench/asset-manifest.json')));
 const files = ['resource-contract.js', 'resource-api.js', 'resource-session.js', 'WorkbenchGuards.js', 'ResourceControls.jsx', 'WorkbenchGuardHost.jsx', 'ResourceForms.jsx',
-  'WorkbenchControlBridge.js', 'WorkbenchControls.jsx', 'WorkbenchListControls.jsx', 'WorkbenchFormat.js', 'WorkbenchReferences.jsx',
+  'WorkbenchControlBridge.js', 'WorkbenchControls.jsx', 'WorkbenchListControls.jsx', 'WorkbenchFormat.js', 'WorkbenchTerms.js', 'WorkbenchReferences.jsx',
   'ResourceCatalogModel.js', 'ResourceCatalogEditor.jsx', 'ResourceCatalog.jsx'];
 const sources = files.map(file => ({ path: 'frontend/workbench/app/' + file, code: fs.readFileSync(path.join(root, 'frontend/workbench/app', file), 'utf8') }));
 const styleSources = ['00-tokens.css', '21-table-frame.css', '22-shared-controls.css', '32-calendar-outsourcing.css'].map(name =>
@@ -83,6 +83,7 @@ async function open(kind, action='update') {
   const name=kind==='machine_group'?'设备组':'班次档';
   await page.getByRole('button',{name:action==='create'?'新增'+name:(action==='delete'?'删除 ':'编辑 ')+(kind==='machine_group'?'G-':'S-')+'002',exact:true}).click();
   await page.getByRole('dialog',{name:({create:'新增',update:'编辑',delete:'删除'})[action]+name,exact:true}).waitFor();
+  if(action==='delete')await page.getByRole('checkbox',{name:'我已核对要删除的资料及其关联关系',exact:true}).check();
 }
 async function save() {await page.getByRole('button',{name:'保存',exact:true}).click();}
 async function lastInput(count=1) {
@@ -126,9 +127,9 @@ async function cases() {
   await run('list-pagination-search-protection',async()=>{
     await mount({kind:'machine_group'});
     assert(await page.getByRole('button',{name:'删除 G-001',exact:true}).isDisabled());
-    await page.getByRole('button',{name:'目录下一页',exact:true}).click();await page.getByRole('button',{name:'编辑 G-023',exact:true}).waitFor();
+    await page.getByRole('button',{name:'列表下一页',exact:true}).click();await page.getByRole('button',{name:'编辑 G-023',exact:true}).waitFor();
     assert.equal(await page.evaluate(()=>fixture.reads[fixture.reads.length-1].scope.snapshot_ref),'fixture-snapshot');
-    await page.getByRole('searchbox',{name:'搜索目录编号或名称'}).fill('G-002');await page.getByRole('button',{name:'搜索目录',exact:true}).click();
+    await page.getByRole('searchbox',{name:'搜索编号或名称'}).fill('G-002');await page.getByRole('button',{name:'搜索',exact:true}).click();
     await page.getByRole('button',{name:'编辑 G-002',exact:true}).waitFor();assert.equal(await page.locator('.rc-list tbody tr').count(),1);
     assert.equal(await page.evaluate(()=>fixture.reads[fixture.reads.length-1].scope.page),1);
     assert.equal(await page.evaluate(()=>fixture.reads[fixture.reads.length-1].scope.snapshot_ref),undefined);
@@ -137,7 +138,7 @@ async function cases() {
   await run('cancel-no-write-and-group-create',async()=>{
     await mount({kind:'machine_group'});await open('machine_group','create');await save();assert.equal(await page.evaluate(()=>fixture.calls.length),0);
     await page.getByLabel('编号',{exact:true}).fill('GROUP-NEW');await page.getByLabel('名称',{exact:true}).fill('独立设备组');await page.getByLabel('状态',{exact:true}).selectOption('active');
-    await page.getByRole('button',{name:'返回目录',exact:true}).click();assert(await page.getByRole('button',{name:'放弃未保存内容并继续',exact:true}).isVisible());
+    await page.getByRole('button',{name:'返回列表',exact:true}).click();assert(await page.getByRole('button',{name:'放弃未保存内容并继续',exact:true}).isVisible());
     await page.getByRole('button',{name:'留在当前页面',exact:true}).click();assert.equal(await page.getByLabel('名称',{exact:true}).inputValue(),'独立设备组');
     await page.getByLabel('备注',{exact:true}).fill('真实独立目录');result.cases.push({variant,name:'group-form-visual',...await screenshot('group')});
     await save();assert.deepEqual(await lastInput(),{business_code:'GROUP-NEW',label:'独立设备组',fields:{status:'active',remark:'真实独立目录'}});
@@ -196,7 +197,7 @@ async function cases() {
   await run('stale-retains-draft-review-then-patch',async()=>{
     await mount({kind:'machine_group',stale:true});await open('machine_group');await page.getByLabel('名称',{exact:true}).fill('待保存名称');await save();await lastInput();
     await page.getByRole('alert').getByText('资料已变化，请重新读取并核对。',{exact:true}).waitFor();assert(await page.getByRole('button',{name:/^保存/}).isDisabled());
-    await page.getByRole('button',{name:'重新读取最新资料',exact:true}).click();await page.getByRole('button',{name:'已核对，继续编辑',exact:true}).waitFor();
+    await page.getByRole('button',{name:'刷新最新资料',exact:true}).click();await page.getByRole('button',{name:'已核对，继续编辑',exact:true}).waitFor();
     assert.equal(await page.getByLabel('名称',{exact:true}).inputValue(),'待保存名称');assert(await page.getByText('G-002 · 服务器新名称',{exact:true}).isVisible());
     result.cases.push({variant,name:'stale-review-visual',...await screenshot('review')});await page.getByRole('button',{name:'已核对，继续编辑',exact:true}).click();
     await save();assert.deepEqual(await lastInput(2),{label:'待保存名称'});
@@ -205,13 +206,13 @@ async function cases() {
   await run('unknown-key-survives-reload-without-resubmit',async()=>{
     await mount({kind:'machine_group',pending:true});await page.evaluate(()=>sessionStorage.setItem('aps_workbench_resource_pending_v1','parent-intent-preserved'));
     await open('machine_group');await page.getByLabel('名称',{exact:true}).fill('不重复提交');await save();await lastInput();
-    await page.getByRole('button',{name:'查询原请求回执',exact:true}).waitFor();const key=await page.evaluate(()=>fixture.calls[0].body.request_key);
+    await page.getByRole('button',{name:'查询结果',exact:true}).waitFor();const key=await page.evaluate(()=>fixture.calls[0].body.request_key);
     const persisted=await page.evaluate(()=>JSON.parse(sessionStorage.getItem('aps_workbench_resource_pending_v1_catalog')));
     assert.equal(persisted.request_key,key);assert(!('input' in persisted));assert(!('write_token' in persisted));
     await page.keyboard.press('Escape');assert.equal(await page.evaluate(()=>fixture.events.length),0);
-    assert(await page.getByRole('button',{name:/^保存/}).isDisabled());await page.reload();await page.getByRole('button',{name:'查询原请求回执',exact:true}).waitFor();
+    assert(await page.getByRole('button',{name:/^保存/}).isDisabled());await page.reload();await page.getByRole('button',{name:'查询结果',exact:true}).waitFor();
     assert.equal(await page.evaluate(()=>fixture.calls.length),1);assert((await page.evaluate(()=>fixture.lookups)).every(value=>value===key));
-    await page.evaluate(()=>{fixture.confirm=true;});await page.getByRole('button',{name:'查询原请求回执',exact:true}).click();await page.getByRole('button',{name:'完成并返回',exact:true}).waitFor();
+    await page.evaluate(()=>{fixture.confirm=true;});await page.getByRole('button',{name:'查询结果',exact:true}).click();await page.getByRole('button',{name:'完成并返回',exact:true}).waitFor();
     await page.getByRole('button',{name:'完成并返回',exact:true}).click();assert.equal(await page.evaluate(()=>fixture.calls.length),1);assert.equal(await page.evaluate(()=>fixture.events[0].name),'commit');
     assert.equal(await page.evaluate(()=>sessionStorage.getItem('aps_workbench_resource_pending_v1_catalog')),null);
     assert.equal(await page.evaluate(()=>sessionStorage.getItem('aps_workbench_resource_pending_v1')),'parent-intent-preserved');

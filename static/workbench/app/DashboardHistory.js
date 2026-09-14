@@ -48,14 +48,14 @@
       risk: item.risk
     }), /*#__PURE__*/React.createElement(P.Status, {
       handling: item.handling
-    }), /*#__PURE__*/React.createElement("span", null, "\u5F53\u524D\u5904\u7F6E\uFF0C\u975E\u5386\u53F2\u72B6\u6001")), /*#__PURE__*/React.createElement(ErrorBox, {
+    }), /*#__PURE__*/React.createElement("span", null, "\u8FD9\u91CC\u662F\u5F53\u524D\u72B6\u6001\uFF0C\u4E0D\u662F\u5386\u53F2\u72B6\u6001")), /*#__PURE__*/React.createElement(ErrorBox, {
       error: read.error
     }), read.loading && /*#__PURE__*/React.createElement(window.WorkbenchListControls.EmptyState, {
       kind: "loading",
-      title: "\u6B63\u5728\u8BFB\u53D6\u539F\u6761\u76EE\u5386\u53F2"
+      title: "\u6B63\u5728\u8BFB\u53D6\u8FD9\u6761\u8BB0\u5F55\u7684\u5904\u7F6E\u5386\u53F2"
     }), !selected && /*#__PURE__*/React.createElement(window.WorkbenchListControls.EmptyState, {
       kind: "empty",
-      title: "\u5C1A\u672A\u9009\u62E9\u5386\u53F2\u6761\u76EE\u3002"
+      title: "\u8FD8\u6CA1\u6709\u9009\u62E9\u6761\u76EE\u3002"
     }), history && /*#__PURE__*/React.createElement(React.Fragment, null, !history.items.length && /*#__PURE__*/React.createElement(window.WorkbenchListControls.EmptyState, {
       kind: "empty",
       title: "\u8BE5\u6761\u76EE\u5C1A\u65E0\u5904\u7F6E\u5386\u53F2\u3002"
@@ -65,11 +65,11 @@
       "data-history-sequence": h.sequence
     }, /*#__PURE__*/React.createElement("div", {
       className: "dy-heading"
-    }, /*#__PURE__*/React.createElement("b", null, "\u7B2C ", h.sequence, " \u6B21 \xB7 ", C.statuses[h.before.status], " \u2192 ", C.statuses[h.after.status], h.action === 'reopen' ? ' · 独立重开' : ''), /*#__PURE__*/React.createElement("time", null, window.WorkbenchFormat.dateTime(h.recorded_at))), /*#__PURE__*/React.createElement("p", null, h.action === 'reopen' ? '重开原因：' + h.reason : '核实备注：' + h.after.remark), /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("b", null, "\u7B2C ", h.sequence, " \u6B21 \xB7 ", C.statuses[h.before.status], " \u2192 ", C.statuses[h.after.status], h.action === 'reopen' ? ' · 独立重开' : ''), /*#__PURE__*/React.createElement("time", null, window.WorkbenchFormat.dateTime(h.recorded_at))), /*#__PURE__*/React.createElement("p", null, h.action === 'reopen' ? '重开原因：' + h.reason : '原因说明：' + h.after.remark), /*#__PURE__*/React.createElement("div", {
       className: "dy-muted"
-    }, "\u767B\u8BB0\u4EBA ", h.local_operator), /*#__PURE__*/React.createElement(window.WorkbenchReference, {
+    }, "\u8BB0\u5F55\u4EBA ", h.local_operator), /*#__PURE__*/React.createElement(window.WorkbenchReference, {
       entries: {
-        '回执编号': h.receipt_ref
+        '结果编号': h.receipt_ref
       }
     }), /*#__PURE__*/React.createElement("details", {
       className: "dy-evidence"
@@ -77,9 +77,9 @@
       className: "dy-scroll"
     }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("caption", {
       className: "wb-sr-only"
-    }, "\u5904\u7F6E\u5B57\u6BB5\u53D8\u66F4\u8BB0\u5F55"), /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
+    }, "\u5904\u7F6E\u9879\u53D8\u66F4\u8BB0\u5F55"), /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
       scope: "col"
-    }, "\u5B57\u6BB5"), /*#__PURE__*/React.createElement("th", {
+    }, "\u9879"), /*#__PURE__*/React.createElement("th", {
       scope: "col"
     }, "\u53D8\u66F4\u524D"), /*#__PURE__*/React.createElement("th", {
       scope: "col"

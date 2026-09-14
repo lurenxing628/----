@@ -47,9 +47,9 @@ function detailPart(n,long=false,count) {
   p.operations=Array.from({length:total},(_,i)=>({ref:ref(1000+i),sequence:(i+1)*5,label:['Turn','Polish','Unknown'][i%3],source:['internal','external',null][i%3],
     op_type_ref:i%3===2?null:ref(100+i),op_type_label:i%3===2?null:['Turn','Polish'][i%3],supplier_ref:i%3===1?ref(300):null,supplier_label:i%3===1?'供应商长名称'.repeat(long?16:1):null,
     external_group_ref:i%3===1?ref(400):null,setup_hours:i%3===0?0:null,unit_hours:i%3===0?1.25:null,external_days:null,external_days_source:null,status:'active',
-    issues:i%3===1?[{code:'external_group_invalid',message:'关联外协组规则不合法，请核对组范围、成员和周期；未用组周期替代本序原值。'},
-      {code:'value_invalid',message:'外协周期原值不合法，未用默认值替代。'}]:i%3===2?[{code:'unknown_type',message:'旧记录工种未识别'}]:[],confirmation:{source:stamp('unconfirmed'),hours:stamp('unconfirmed')}}));
-  p.external_groups=total?[{ref:ref(400),start_sequence:10,end_sequence:10,merge_mode:'merged',total_days:null,supplier_ref:ref(300),supplier_label:'原供应商',remark:'保留原外协规则',issues:[{code:'value_invalid',message:'合并周期原值不合法，未用默认值替代。'}]}]:[];
+    issues:i%3===1?[{code:'external_group_invalid',message:'关联的外协组规则不合法，这道工序仍用自己的周期。请核对外协组的起止序、成员和周期。'},
+      {code:'value_invalid',message:'外协周期填的值不合法，系统不会用默认值顶替。'}]:i%3===2?[{code:'unknown_type',message:'旧记录工种未识别'}]:[],confirmation:{source:stamp('unconfirmed'),hours:stamp('unconfirmed')}}));
+  p.external_groups=total?[{ref:ref(400),start_sequence:10,end_sequence:10,merge_mode:'merged',total_days:null,supplier_ref:ref(300),supplier_label:'原供应商',remark:'保留原外协规则',issues:[{code:'value_invalid',message:'合并周期填的值不合法，系统不会用默认值顶替。'}]}]:[];
   p.capabilities={...caps};return p;
 }
 function previewData(partRef,body) {
@@ -112,6 +112,12 @@ function Harness({spec}) {
         }
         if(f.spec.unknownParsed)d.fields.route_parsed='legacy-unknown-flag';
         if(f.spec.badDetail)d.ref=ref(999);return envelope(d,f.spec.detailSnapshot||'fixture-detail',f.spec.demoDetail?'demo':'production');
+      },
+      choices:async(kind,scope,signal)=>{
+        await call('choices',{kind,scope},signal);
+        const entities=[[101,'OP-1','Turn','internal'],[102,'OP-2','Polish','external'],[103,'OP-3','Grind','internal']]
+          .map(([n,code,label,category])=>({ref:ref(n),business_code:code,label,status:null,fields:{category},relationships:{},issues:[],write_context:null}));
+        return envelope({entities,page:{number:1,size:scope.size,total:entities.length,pages:1,sort:[]}},'fixture-choices');
       },
       routePreview:async(id,body,signal)=>{
         await call('preview',{ref:id,body},signal);if(f.spec.failPreview)throw {ok:false,error:{code:'stale_snapshot',message:'Mock 预检快照失效'}};
@@ -263,7 +269,7 @@ async function cases() {
       }
     }
     await page.getByRole('tab', { name: /^待导入路线/ }).click(); await settled(); assert.equal(await table().locator('tbody tr').count(), 22);
-    await page.getByRole('tab', { name: /^已就绪/ }).click(); await settled(); assert(await page.getByText('当前条件下没有零件。', { exact: true }).isVisible());
+    await page.getByRole('tab', { name: /^已就绪/ }).click(); await settled(); assert(await page.getByText('当前筛选没有匹配的零件', { exact: true }).isVisible());
     await page.getByRole('tab', { name: /^全部/ }).click(); await settled(); await button('清除所有选择').click();
     assert.equal(await page.locator('[data-process-selection-count]').innerText(), '0'); await shot('list');
     assert((await page.evaluate(() => fixture.keys.filter(x => x.label === '搜索图号、名称、路线').map(x => x.key))).includes('P'));
@@ -271,8 +277,8 @@ async function cases() {
   await run('long-detail-unconfirmed-source-zero-vs-null', async () => {
     await mount({ long: true }); await open(); assert.equal(await page.getByRole('tab', { selected: true, name: /工艺路线/ }).count(), 1);
     assert(await page.getByRole('table', { name: '路线工序明细', exact: true }).isVisible());
-    assert.equal(await page.getByRole('table', { name: '工序归属明细', exact: true }).count(), 0);
-    await page.getByRole('tab', { name: /工序归属/ }).click();
+    assert.equal(await page.getByRole('table', { name: '归属明细', exact: true }).count(), 0);
+    await page.getByRole('tab', { name: /^2 归属/ }).click();
     assert(await page.getByRole('group', { name: '工序 5 归属' }).getByRole('button', { name: /^自制/ }).isDisabled());
     await page.getByRole('tab', { name: /工时定额/ }).click();
     assert.equal(await page.getByRole('spinbutton', { name: '工序 5 换型工时', exact: true }).inputValue(), '0');
@@ -282,8 +288,8 @@ async function cases() {
     assert(!(await page.getByRole('spinbutton', { name: '工序 5 换型工时' }).locator('..').innerText()).includes('请复核'));
     assert.equal(await page.getByRole('spinbutton', { name: '工序 10 外协周期', exact: true }).inputValue(), '');
     assert.equal(await page.getByRole('spinbutton', { name: '外协组 10 至 10 总周期', exact: true }).inputValue(), '');
-    assert((await page.getByRole('dialog').innerText()).includes('外协周期原值不合法，未用默认值替代。'));
-    assert((await page.getByRole('table', { name: '外协组原记录', exact: true }).innerText()).includes('合并周期原值不合法，未用默认值替代。'));
+    assert((await page.getByRole('dialog').innerText()).includes('外协周期填的值不合法，系统不会用默认值顶替。'));
+    assert((await page.getByRole('table', { name: '外协组原记录', exact: true }).innerText()).includes('合并周期填的值不合法，系统不会用默认值顶替。'));
     assert(await page.getByRole('table', { name: '外协组原记录', exact: true }).getByRole('cell', { name: '保留原外协规则', exact: true }).isVisible()); await shot('hours');
     await page.getByRole('tab', { name: /工艺路线/ }).click(); await shot('route-long');
     for (let i = 0; i < 12; i++) { await page.keyboard.press('Tab'); assert(await page.evaluate(() => document.querySelector('.process-detail [role="dialog"]').contains(document.activeElement))); }
@@ -308,11 +314,17 @@ async function cases() {
   await run('rows-preview-invalid-integer-duplicate-mode-drafts', async () => {
     await mount(); await entry(2); const input = page.getByRole('textbox', { name: '路线文字', exact: true }); await type(input, 'TextDraft');
     await page.getByRole('tab', { name: '逐行表格', exact: true }).click();
-    const seq = page.getByRole('textbox', { name: '第 1 行工序号', exact: true }), name = page.getByRole('textbox', { name: '第 1 行工种', exact: true });
-    await type(seq, '5.5'); await type(name, 'Turn'); await button('预检路线').click(); await page.getByText('第 1 行工序号必须是安全正整数。', { exact: true }).waitFor();
+    const seq = page.getByRole('textbox', { name: '第 1 行工序号', exact: true }), name = page.getByRole('combobox', { name: '第 1 行工种', exact: true });
+    // The op_type catalog is read once on entry and only suggests: free text still reaches the server preflight.
+    await page.waitForFunction(() => document.querySelectorAll('.process-route-entry datalist option').length === 3);
+    assert.deepEqual(await page.evaluate(() => Array.from(document.querySelectorAll('.process-route-entry datalist option')).map(node => node.value)), ['Turn', 'Polish', 'Grind']);
+    assert.equal(await page.evaluate(() => fixture.reads.filter(x => x.type === 'choices').length), 1);
+    assert.deepEqual(await page.evaluate(() => fixture.reads.find(x => x.type === 'choices').scope), { query: '', page: 1, size: 200 });
+    assert.equal(await page.evaluate(() => document.querySelector('.process-route-entry datalist').id), await name.getAttribute('list'));
+    await type(seq, '5.5'); await type(name, 'Turn'); await button('预检路线').click(); await page.getByText('第 1 行工序号必须是正整数。', { exact: true }).waitFor();
     assert.equal(await page.evaluate(() => fixture.reads.filter(x => x.type === 'preview').length), 0);
-    await type(seq, '5'); await button('添加工序').click(); await type(page.getByRole('textbox', { name: '第 2 行工序号', exact: true }), '5');
-    await type(page.getByRole('textbox', { name: '第 2 行工种', exact: true }), 'Unknown'); await preflight();
+    await type(seq, '5'); await button('新增工序').click(); await type(page.getByRole('textbox', { name: '第 2 行工序号', exact: true }), '5');
+    await type(page.getByRole('combobox', { name: '第 2 行工种', exact: true }), 'Unknown'); await preflight();
     assert(await page.getByText(/工序号重复/).isVisible()); assert((await page.locator('[data-process-preview]').innerText()).includes('输入存在待处理问题'));
     await type(page.getByRole('textbox', { name: '第 2 行工序号', exact: true }), '10'); await preflight();
     assert.deepEqual(await page.evaluate(() => fixture.reads.filter(x => x.type === 'preview').at(-1).body), { mode: 'rows', rows: [{ seq: 5, op_type_name: 'Turn' }, { seq: 10, op_type_name: 'Unknown' }], snapshot_ref: 'fixture-detail' });
@@ -325,21 +337,21 @@ async function cases() {
   });
   await run('list-fail-empty-retry-malformed-stale-page', async () => {
     await mount({ failList: true }); assert(await page.getByText('Mock 列表读取失败', { exact: true }).isVisible());
-    await page.evaluate(() => { fixture.spec.failList = false; fixture.spec.empty = true; }); await button('重试读取工艺').click(); await settled(); assert(await page.getByText('当前条件下没有零件。', { exact: true }).isVisible());
-    await page.evaluate(() => { fixture.spec.empty = false; fixture.spec.badList = true; }); await button('刷新工艺列表').click(); await settled(); assert(await page.getByText(/工艺列表、阶段或分页协议不完整/).isVisible());
-    await page.evaluate(() => { fixture.spec.badList = false; fixture.spec.stalePage = true; }); await button('重试读取工艺').click(); await settled();
-    await button('下一页').click(); await settled(); assert(await page.getByText(/列表快照已变化/).isVisible());
-    await page.evaluate(() => fixture.spec.stalePage = false); await button('重试读取工艺').click(); await button('查看 PART-001').waitFor();
+    await page.evaluate(() => { fixture.spec.failList = false; fixture.spec.empty = true; }); await button('刷新列表').click(); await settled(); assert(await page.getByText('暂无零件工艺', { exact: true }).isVisible());
+    await page.evaluate(() => { fixture.spec.empty = false; fixture.spec.badList = true; }); await button('刷新工艺列表').click(); await settled(); assert(await page.getByText(/读到的工艺列表不完整/).isVisible());
+    await page.evaluate(() => { fixture.spec.badList = false; fixture.spec.stalePage = true; }); await button('刷新列表').click(); await settled();
+    await button('下一页').click(); await settled(); assert(await page.getByText(/翻页位置已失效/).isVisible());
+    await page.evaluate(() => fixture.spec.stalePage = false); await button('刷新列表').click(); await button('查看 PART-001').waitFor();
   });
   await run('detail-preview-errors-retry-capability-fail-closed', async () => {
     await mount({ demoDetail: true }); await button('查看 PART-001').click(); await page.getByText('未取得原零件的生产详情，不能使用样例替代。', { exact: true }).waitFor();
     assert.equal(await page.locator('.process-detail .stepper').count(), 0); await noCommands(); await button('关闭详情').click();
     await mount({ failDetail: true }); await button('查看 PART-001').click(); await page.getByText('Mock 详情读取失败', { exact: true }).waitFor();
-    await page.evaluate(() => { fixture.spec.failDetail = false; fixture.spec.badDetail = true; }); await button('重试读取详情').click(); await page.getByText('返回的不是原零件记录，不能继续使用同图号的新零件。', { exact: true }).waitFor();
+    await page.evaluate(() => { fixture.spec.failDetail = false; fixture.spec.badDetail = true; }); await button('刷新详情').click(); await page.getByText('返回的不是原零件记录，不能继续使用同图号的新零件。', { exact: true }).waitFor();
     assert.equal(await page.locator('.process-detail .stepper').count(), 0);
-    await page.evaluate(() => { fixture.spec.badDetail = false; fixture.spec.failPreview = true; }); await button('重试读取详情').click(); await page.locator('.process-detail .stepper').waitFor();
+    await page.evaluate(() => { fixture.spec.badDetail = false; fixture.spec.failPreview = true; }); await button('刷新详情').click(); await page.locator('.process-detail .stepper').waitFor();
     await page.getByRole('tab', { name: /工艺路线/ }).click(); await button('录入路线').click(); await button('预检路线').click(); await page.getByText('Mock 预检快照失效', { exact: true }).waitFor();
-    await page.evaluate(() => { fixture.spec.failPreview = false; fixture.spec.badPreview = true; }); await button('重试预检').click(); await page.getByText(/路线预检结果不完整或对象不一致/).waitFor();
+    await page.evaluate(() => { fixture.spec.failPreview = false; fixture.spec.badPreview = true; }); await button('重试预检').click(); await page.getByText(/读到的路线预检结果不完整或不是这个零件/).waitFor();
     await page.evaluate(() => fixture.spec.badPreview = false); await button('重试预检').click(); await page.locator('[data-process-preview]').waitFor();
     await button('取消').click(); await closeDetail();
     await mount({ capabilities: { route_preview: false } }); await open(2); assert(await page.getByRole('button', { name: /^录入路线/ }).isDisabled()); await button('关闭详情').click();
@@ -384,7 +396,7 @@ async function cases() {
   await run('2000-operation-detail-no-truncation', async () => {
     const start = Date.now(); await mount({ operationCount: 2000 }); await open();
     const expected = Array.from({ length: 2000 }, (_, index) => String((index + 1) * 5));
-    for (const [stage, name] of [[/工艺路线/, '路线工序明细'], [/工序归属/, '工序归属明细'], [/工时定额/, '工时定额明细']]) {
+    for (const [stage, name] of [[/^1 工艺路线/, '路线工序明细'], [/^2 归属/, '归属明细'], [/^3 工时定额/, '工时定额明细']]) {
       await page.getByRole('tab', { name: stage }).click(); await readAllOperations(name, expected);
       const last = page.getByRole('table', { name, exact: true }).locator('tbody tr').last();
       await last.scrollIntoViewIfNeeded(); assert((await last.innerText()).includes('10000'));
@@ -404,9 +416,9 @@ async function cases() {
     assert(!rendered.includes('9223372036854776000'));
     await page.getByRole('tab', { name: '逐行表格', exact: true }).click();
     assert.equal(await page.getByRole('textbox', { name: '第 1 行工序号', exact: true }).inputValue(), '9223372036854775807');
-    assert.equal(await page.getByRole('textbox', { name: '第 1 行工种', exact: true }).inputValue(), 'Turn', 'original operation name, not renamed master label');
+    assert.equal(await page.getByRole('combobox', { name: '第 1 行工种', exact: true }).inputValue(), 'Turn', 'original operation name, not renamed master label');
     assert.equal(await page.getByRole('table', { name: '逐行路线录入' }).locator('tbody tr').count(), 3, 'deleted record not resurrected into draft');
-    await button('预检路线').click(); await page.getByText(/超出安全整数范围，请改用整条文字预检/).waitFor();
+    await button('预检路线').click(); await page.getByText(/行工序号太大，请改用整条文字预检/).waitFor();
     assert.equal(await page.evaluate(() => fixture.reads.filter(x => x.type === 'preview').length), 1);
     assert.equal(await page.getByRole('textbox', { name: '第 1 行工序号', exact: true }).inputValue(), '9223372036854775807');
     const check = await page.evaluate(() => {
@@ -431,9 +443,9 @@ async function cases() {
     await mount({ failPreview: true }); await entry(2); const input = page.getByRole('textbox', { name: '路线文字', exact: true });
     await type(input, '5Turn10Unknown'); await button('预检路线').click(); await page.getByText('Mock 预检快照失效', { exact: true }).waitFor();
     await page.evaluate(() => { fixture.spec.failPreview = false; fixture.spec.detailSnapshot = 'fresh-detail'; });
-    await button('重读详情并保留草稿').click(); await page.getByText('已重读详情，录入内容保留；请核对后重新预检。', { exact: true }).waitFor();
+    await button('刷新详情并保留草稿').click(); await page.getByText('已刷新详情，录入内容保留；请核对后重新预检。', { exact: true }).waitFor();
     assert.equal(await input.inputValue(), '5Turn10Unknown'); assert(await button('预检路线').isDisabled());
-    await button('已核对，采用最新范围并保留可匹配草稿').click();
+    await button('采用最新资料').click();
     assert.equal(await input.inputValue(), '5Turn10Unknown'); await preflight();
     assert.equal(await page.evaluate(() => fixture.reads.filter(x => x.type === 'preview').at(-1).body.snapshot_ref), 'fresh-detail');
     assert(await page.getByRole('button', { name: /^确认保存路线/ }).isDisabled());

@@ -56,9 +56,9 @@
       data = response && response.data;
     const captionPlan = !request.busy && !request.error && data && data.plan;
     const captionStatus = captionPlan && {
-      official: captionPlan.is_current_official ? '当前正式采用' : '历史正式方案',
-      candidate: '候选方案',
-      scenario: '试调场景'
+      official: captionPlan.is_current_official ? '当前正式采用' : '历史正式计划',
+      candidate: window.WorkbenchTerms.candidate,
+      scenario: window.WorkbenchTerms.trial_scenario
     }[captionPlan.kind];
     window.WorkbenchCaption.useCaption(captionStatus ? {
       reference: captionPlan.plan_ref,
@@ -237,7 +237,7 @@
     }
     function navigateOperation(operationRef, original, row, target = 'field', reportRef = null) {
       if (!row || row.operation_ref !== operationRef || !window.FieldContract.ref(row.task_ref) || !data.plan.is_current_official || data.scope.source !== 'production' || original.snapshot_ref !== response.meta.snapshot_ref || !['field', 'fieldgantt'].includes(target) || reportRef !== null && !window.FieldContract.ref(reportRef)) {
-        setError(window.APSResourceContract.failure('来源任务、记录或计划未经核实，未改指其他工序。'));
+        setError(window.APSResourceContract.failure('来源任务、记录或计划没有通过核对，没有改指其他工序。'));
         return;
       }
       const targetScope = {
@@ -270,7 +270,7 @@
       className: "wb-page-title"
     }, title), /*#__PURE__*/React.createElement("p", {
       className: "wb-page-context"
-    }, data ? data.plan.display_name + ' · 当前正式计划与执行台账' : '当前正式计划', response && /*#__PURE__*/React.createElement("span", {
+    }, data ? data.plan.display_name + ' · 当前正式计划与报工记录' : '当前正式计划', response && /*#__PURE__*/React.createElement("span", {
       className: "rw-asof"
     }, "\u6570\u636E\u622A\u81F3 ", window.WorkbenchFormat.dateTime(response.meta.as_of)))), /*#__PURE__*/React.createElement("div", {
       className: "rw-actions"
@@ -329,7 +329,7 @@
     }), request.error && /*#__PURE__*/React.createElement(Button, {
       icon: "refresh-cw",
       onClick: reload
-    }, "\u91CD\u65B0\u8BFB\u53D6"), notice && /*#__PURE__*/React.createElement("p", {
+    }, "\u5237\u65B0\u62A5\u8868\u6570\u636E"), notice && /*#__PURE__*/React.createElement("p", {
       className: "rw-notice",
       role: "status"
     }, notice), mode !== 'review' && /*#__PURE__*/React.createElement(Tabs, {
@@ -337,7 +337,7 @@
       onChange: changeTopic
     }), request.busy && /*#__PURE__*/React.createElement(window.WorkbenchListControls.EmptyState, {
       kind: "loading",
-      title: "\u6B63\u5728\u8BFB\u53D6\u771F\u5B9E\u8303\u56F4"
+      title: "\u6B63\u5728\u8BFB\u53D6\u5F53\u524D\u8303\u56F4"
     }), data && /*#__PURE__*/React.createElement("div", {
       id: "report-topic-panel",
       role: mode === 'review' ? undefined : 'tabpanel',
@@ -349,7 +349,7 @@
       summary: data.summary
     }), /*#__PURE__*/React.createElement("p", {
       className: "rw-basis"
-    }, "\u8BA1\u5212\u5B8C\u5DE5\u65E5\u9009\u5DE5\u5E8F \xB7 \u5EF6\u540E\u8D85\u8FC7 10 \u5206\u949F\u624D\u8BA1\u665A\u5B8C \xB7 \u672A\u786E\u8BA4\u5B8C\u6210\u4E0D\u7B49\u4E8E\u672A\u751F\u4EA7\u3002"), /*#__PURE__*/React.createElement("div", {
+    }, "\u6309\u8BA1\u5212\u5B8C\u5DE5\u65E5\u6311\u5DE5\u5E8F \xB7 \u665A 10 \u5206\u949F\u4EE5\u4E0A\u624D\u7B97\u665A\u5B8C\u6210 \xB7 \u672A\u786E\u8BA4\u5B8C\u6210\u4E0D\u7B49\u4E8E\u6CA1\u751F\u4EA7\u3002"), /*#__PURE__*/React.createElement("div", {
       className: "rw-table-heading"
     }, /*#__PURE__*/React.createElement("div", {
       className: "rw-table-title"
@@ -433,7 +433,7 @@
         topic = props.mode === 'review' ? 'delivery' : context.topic || 'delivery';
       if (!window.ReportAPI.topics.includes(topic)) throw window.APSResourceContract.failure('原报表专题无效，未改用默认专题。');
       window.ReportAPI.table(context.table, topic);
-      if (context.selected !== undefined && context.selected !== null && !/^[0-9a-f]{48}$/.test(context.selected)) throw window.APSResourceContract.failure('原工序引用无效，未改选其他对象。');
+      if (context.selected !== undefined && context.selected !== null && !/^[0-9a-f]{48}$/.test(context.selected)) throw window.APSResourceContract.failure('原工序编号无效，没有改选其他工序。');
       const value = props.initialContext && props.initialContext.resourceView;
       if (value !== undefined && (!value || !['machine', 'operator'].includes(value.kind) || !Number.isSafeInteger(value.page) || value.page < 1)) throw window.APSResourceContract.failure('资源工时查看状态无效，未改选其他资源。');
       const detail = props.initialContext && props.initialContext.detailView;

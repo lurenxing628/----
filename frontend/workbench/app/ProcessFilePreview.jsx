@@ -17,12 +17,12 @@
       (String(row.business_code || '') + ' ' + String(row.sequence || '')).toLowerCase().includes(search.trim().toLowerCase()));
     const pages = Math.max(1, Math.ceil(rows.length / 20)), current = Math.min(page, pages);
     const fields = !receipt && Object.fromEntries(data.columns.map(row => [row.key, row.label]));
-    return <section className="rm-preview" aria-label={receipt ? '工时导入回执' : '工时导入预检'}>
+    return <section className="rm-preview" aria-label={receipt ? '工时导入结果' : '工时导入预检'}>
       <div className="rm-summary" role="status"><span>{receipt ? '已导入' : data.can_confirm ? '可导入' : '待处理更新'} <b>{counts.changed}</b> 行</span>
         <span>锁定跳过 <b>{counts.skipped}</b> 行</span><span>原值相同 <b>{counts.unchanged}</b> 行</span>{counts.rejected > 0 && <span className="rm-danger">不能提交 <b>{counts.rejected}</b> 行</span>}</div>
       <p role="status">{receipt ? counts.changed ? '仅已导入行发生修改，其余行未修改。' : '本次没有导入任何工时，业务数据未变化。' :
-        !data.can_confirm ? '本批存在不能提交的行，当前不能导入任何工时。' : counts.skipped === data.rows.length ? '全部行因单件工时已校准锁定而跳过；确认只记录结果，不修改工时。' : '尚未导入；确认后只写入可导入行。'}</p>
-      {counts.skipped > 0 && <p>校准锁只保护单件工时。锁定行若要修改单件工时，本行全部跳过，换型时间也不会随本行导入；仅改换型时间时，保留原单件工时或将该列留空即可。</p>}
+        !data.can_confirm ? '本批存在不能提交的行，当前不能导入任何工时。' : counts.skipped === data.rows.length ? '全部行的单件工时都已锁定，本次跳过；确认只记录结果，不修改工时。' : '尚未导入；确认后只写入可导入行。'}</p>
+      {counts.skipped > 0 && <p>定额锁定只保护单件工时（来自工时校准）。锁定行若要修改单件工时，本行全部跳过，换型时间也不会随本行导入；只改换型时间时，保留原单件工时或把该列留空即可。</p>}
       <div className="rm-preview-toolbar"><h3>{receipt ? '逐行导入结果' : '逐行核对'}</h3>
         <label>查找 <input type="search" aria-label="查找图号或工序" value={search} onChange={event => { setSearch(event.target.value); setPage(1); }} /></label>
         <label>显示 <select aria-label="工时明细筛选" value={filter} onChange={event => { setFilter(event.target.value); setPage(1); }}>
@@ -34,7 +34,7 @@
           {!receipt && <><th scope="col" style={{ width: '22%' }}>原记录</th><th scope="col" style={{ width: '22%' }}>导入后</th></>}</tr></thead>
         <tbody>{rows.slice((current - 1) * 20, current * 20).map(row => { const skip = skips.get(row.row); return <tr key={row.row} data-quota-row={row.row} data-quota-result={status(row)}>
           <td>{row.row}</td><td><strong>{row.business_code || '图号未识别'}</strong><div>工序 {row.sequence === undefined ? '未识别' : row.sequence}</div></td>
-          <td><div>{skip && <Icon name="lock" />} {labels[status(row)]}</div>{skip && <><div>已采纳校准结果，单件工时不能被本文件覆盖。</div><div style={{ whiteSpace: 'pre-wrap' }}>采纳原因：{skip.reason}</div></>}
+          <td><div>{skip && <Icon name="lock" />} {labels[status(row)]}</div>{skip && <><div>已采用校准结果，单件工时不能被本文件覆盖。</div><div style={{ whiteSpace: 'pre-wrap' }}>采用原因：{skip.reason}</div></>}
             {!receipt && row.errors.map((error, index) => <div className="rm-danger" key={index}>{error.message}</div>)}</td>
           {!receipt && <><td><HoursFacts value={row.before} fields={fields} changes={row.changes} /></td><td><HoursFacts value={row.after} fields={fields} changes={row.changes} /></td></>}</tr>; })}
           {!rows.length && <tr><td colSpan={receipt ? 3 : 5}>没有匹配的工时记录。</td></tr>}</tbody></table></div>
@@ -59,7 +59,7 @@
         {rows.slice((current - 1) * 50, current * 50).map(row => <tr key={row.ref}><td><input type="checkbox" aria-label={'解除 ' + row.business_code + ' 工序 ' + row.start_sequence + ' 至 ' + row.end_sequence + ' 的外协组'} checked={selected.includes(row.ref)} disabled={disabled}
           onChange={event => onChange(event.target.checked ? selected.concat(row.ref) : selected.filter(ref => ref !== row.ref))} /></td><td>{row.business_code}</td><td>{row.start_sequence} 至 {row.end_sequence}</td>
           <td>{row.merge_mode === 'merged' ? '合并周期' : row.merge_mode === 'separate' ? '逐序周期' : row.merge_mode === null ? '未填写' : row.merge_mode}</td>
-          <td>{row.total_days === null ? '未填写' : row.total_days + ' 天'}</td><td>{row.supplier_label === null ? '未绑定' : row.supplier_label}</td><td>{row.remark === null ? '未填写' : row.remark}<Issues issues={row.issues} /></td></tr>)}
+          <td>{row.total_days === null ? '未填写' : row.total_days + ' 天'}</td><td>{row.supplier_label === null ? '未选' : row.supplier_label}</td><td>{row.remark === null ? '未填写' : row.remark}<Issues issues={row.issues} /></td></tr>)}
       </tbody></table></div><div className="rm-pagination"><span>共 {rows.length} 组 · 第 {current} / {pages} 页</span><span>每页 50 组</span><Button icon="chevron-left" aria-label="外协组上一页" disabled={current <= 1} onClick={() => setPage(current - 1)} /><Button icon="chevron-right" aria-label="外协组下一页" disabled={current >= pages} onClick={() => setPage(current + 1)} /></div>
     </section>;
   }

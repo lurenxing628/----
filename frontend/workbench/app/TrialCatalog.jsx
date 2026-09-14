@@ -9,20 +9,20 @@
     const q = { ...query, ...(selectedBase ? { base_kind: Object.keys(selectedBase)[0], base_ref: Object.values(selectedBase)[0] } : {}) };
     const read = S.useRead(async signal => { const v = await A.read('/trial/' + collection, q, signal); C.catalog(v, collection, q); return v; }, [collection, JSON.stringify(q), revision, reload]);
     function reset(patch = {}) { setQuery({ page: 1, size: query.size, status: query.status, ...patch }); refresh(); }
-    return <section aria-label="持久试调目录" className="tt-directory"><div className="tt-heading"><U.Tabs value={collection} label="试调目录类别"
-      options={[["drafts", '试调草稿'], ['scenarios', '已存场景']]} onChange={value => { setCollection(value); reset({ status: 'all' }); }} />
-      <div className="tt-tools"><label>状态 <select aria-label="目录状态" value={query.status} onChange={e => reset({ status: e.target.value })}>
+    return <section aria-label="试调草稿与试调方案" className="tt-directory"><div className="tt-heading"><U.Tabs value={collection} label="试调列表类别"
+      options={[["drafts", '试调草稿'], ['scenarios', '试调方案']]} onChange={value => { setCollection(value); reset({ status: 'all' }); }} />
+      <div className="tt-tools"><label>状态 <select aria-label="列表状态" value={query.status} onChange={e => reset({ status: e.target.value })}>
         {(collection === 'drafts' ? ['all', 'editing', 'saved', 'discarded'] : ['all', 'saved']).map(s => <option key={s} value={s}>{s === 'all' ? '全部' : U.statusLabel(s)}</option>)}</select></label>
-        <label>每页 <select aria-label="目录每页数量" value={query.size} onChange={e => reset({ size: Number(e.target.value) })}>{[10, 20, 50].map(n => <option key={n}>{n}</option>)}</select></label>
+        <label>每页 <select aria-label="列表每页数量" value={query.size} onChange={e => reset({ size: Number(e.target.value) })}>{[10, 20, 50].map(n => <option key={n}>{n}</option>)}</select></label>
         {filterBase && <label className="tt-check"><input type="checkbox" checked={!!fixedBase || onlyBase} disabled={!!fixedBase} onChange={e => { setOnlyBase(e.target.checked); reset(); }} />仅此原来源</label>}
-        <U.Button icon="refresh-cw" aria-label="重新读取试调目录" busy={read.busy} onClick={() => reset()} /></div></div>
-      <U.ErrorBox error={read.error} />{read.busy && <p role="status">正在读取目录…</p>}
-      {read.result && <><div className="tt-directory-scroll"><table className="tt-table" aria-label="试调目录"><caption className="wb-visually-hidden">{"试调目录"}</caption><thead><tr><th scope="col">名称</th><th scope="col">原来源</th><th scope="col">状态</th><th scope="col">安排</th><th scope="col">更新时间</th><th scope="col">本机操作者</th><th scope="col">操作</th></tr></thead>
+        <U.Button icon="refresh-cw" aria-label="刷新试调列表" busy={read.busy} onClick={() => reset()} /></div></div>
+      <U.ErrorBox error={read.error} />{read.busy && <p role="status">正在读取列表…</p>}
+      {read.result && <><div className="tt-directory-scroll"><table className="tt-table" aria-label="试调列表"><caption className="wb-visually-hidden">{"试调列表"}</caption><thead><tr><th scope="col">名称</th><th scope="col">原来源</th><th scope="col">状态</th><th scope="col">安排</th><th scope="col">更新时间</th><th scope="col">记录人</th><th scope="col">操作</th></tr></thead>
         <tbody>{read.result.data.items.map(r => <tr key={r.detail_target} data-trial-ref={r.open_target.draft_ref || r.open_target.scenario_ref}><td>{r.display_name}</td><td>{r.base_display_name}</td><td>{U.statusLabel(r.status)}</td>
           <td>{r.task_count}</td><td>{U.timeLabel(r.updated_at)}</td><td>{r.local_operator}</td><td><U.Button icon="arrow-right" onClick={() => onOpen(r.open_target)}>打开</U.Button></td></tr>)}</tbody></table>
-        {!read.result.data.items.length && <div className="tt-empty">此范围暂无{collection === 'drafts' ? '草稿' : '场景'}</div>}</div>
-        <U.Pager page={read.result.data.page} label="目录" onPage={page => setQuery({ ...query, page, snapshot_ref: read.result.meta.snapshot_ref })} />
-        <div className="tt-muted">目录未执行约束校验；打开草稿后读取当前检查，场景为保存时快照。</div></>}
+        {!read.result.data.items.length && <div className="tt-empty">此范围暂无{collection === 'drafts' ? '试调草稿' : '试调方案'}</div>}</div>
+        <U.Pager page={read.result.data.page} label="列表" onPage={page => setQuery({ ...query, page, snapshot_ref: read.result.meta.snapshot_ref })} />
+        <div className="tt-muted">列表不做约束检查；打开草稿会读当前的检查结果，试调方案显示的是保存时的内容。</div></>}
     </section>;
   }
   function SourceCatalog({ onSelect, selected }) {
@@ -45,9 +45,9 @@
     const d = read.result && read.result.data, rows = d ? kind === 'plan' ? d.plans.filter(p => p.kind === 'official') : run ? d.candidates : d.runs : [];
     return <><U.Tabs label="原来源类型" value={kind} options={[["plan", '原正式计划'], ['candidate', '排产候选']]}
       onChange={value => { setKind(value); setRun(null); setQ({}); }} />
-      <div className="tt-heading"><span>{run ? '候选来源：' + U.timeLabel(run.accepted_at) : kind === 'plan' ? '正式计划目录' : '运行目录'}</span>
-        <div className="tt-tools">{run && <U.Button icon="chevron-left" onClick={() => { setRun(null); setQ({}); }}>运行目录</U.Button>}
-          <U.Button icon="refresh-cw" aria-label="重读原来源目录" busy={read.busy} onClick={() => { setQ({}); refresh(); }} /></div></div>
+      <div className="tt-heading"><span>{run ? '候选来源：' + U.timeLabel(run.accepted_at) : kind === 'plan' ? '正式计划列表' : '排产记录列表'}</span>
+        <div className="tt-tools">{run && <U.Button icon="chevron-left" onClick={() => { setRun(null); setQ({}); }}>排产记录列表</U.Button>}
+          <U.Button icon="refresh-cw" aria-label="刷新原来源列表" busy={read.busy} onClick={() => { setQ({}); refresh(); }} /></div></div>
       <U.ErrorBox error={read.error} />{read.busy && <p role="status">正在读取原来源…</p>}
       {d && <><div className="tt-source-list">{rows.map(r => {
         const key = kind === 'plan' ? 'plan_ref' : run ? 'candidate_ref' : 'run_ref', id = r[key];
@@ -68,22 +68,22 @@
     const input = { base, scope: initialScope };
     const baseline = React.useRef(initialBase || null);
     const guardOwner = window.WorkbenchGuards.useDirtyGuard({ dirty: JSON.stringify(base) !== JSON.stringify(baseline.current),
-      locked: commands.busy || !!commands.key, message: '新建试调的来源选择或确认尚未提交。' });
+      locked: commands.busy || !!commands.key, message: '新增试调的来源选择或确认还没提交。' });
     async function close(detail) {
       if (detail && detail.guardConfirmed === true && detail.guardOwner === guardOwner || await window.WorkbenchGuards.confirmLeave({ owner: guardOwner })) onClose();
     }
     const read = S.useRead(signal => A.preview(input, signal), [JSON.stringify(input), epoch], inspect && !!base);
     function select(value, title) { setBase(value); setLabel(title); setInspect(false); setAgreed(false); }
     const d = read.result && read.result.data;
-    return <U.Modal title="从原来源创建试调" icon="square-pen" onClose={close} guardOwner={guardOwner} locked={commands.busy || !!commands.key}
+    return <U.Modal title="从原来源新增试调" icon="square-pen" onClose={close} guardOwner={guardOwner} locked={commands.busy || !!commands.key}
       footer={<><U.Button icon="x" disabled={commands.busy || !!commands.key} onClick={close}>取消</U.Button>
         {onExisting && <U.Button icon="folder-open" disabled={commands.busy || !!commands.key} onClick={async () => { if (await window.WorkbenchGuards.confirmLeave({ owner: guardOwner })) onExisting(); }}>打开已有草稿</U.Button>}
         <U.Button icon="refresh-cw" disabled={!base || commands.busy} onClick={() => { commands.restore(); setInspect(true); setAgreed(false); refresh(); }}>核对原来源</U.Button>
-        <U.Button icon="plus" className="btn primary" disabled={!d || !agreed || commands.blocked} onClick={() => commands.execute({ action: 'create', input }, d.write_context.write_token)}>确认创建草稿</U.Button></>}>
+        <U.Button icon="plus" className="btn primary" disabled={!d || !agreed || commands.blocked} onClick={() => commands.execute({ action: 'create', input }, d.write_context.write_token)}>确认新增草稿</U.Button></>}>
       <div className="trial-modal-body">{!fixedBase && <SourceCatalog selected={base} onSelect={select} />}
         <p>已选择：{label || '尚未选择'}</p><U.ErrorBox error={read.error} /><U.ErrorBox error={commands.error} />
         {read.busy && <p role="status">正在核对完整原来源…</p>}{d && <><p>原来源共 {d.task_count} 道安排，完整复制；显示范围不截断草稿。</p>
-          <U.Issues rows={d.validation.issues} /><label className="tt-check"><input type="checkbox" checked={agreed} onChange={e => setAgreed(e.target.checked)} />确认基于此来源创建独立草稿，正式计划保持不变</label></>}
+          <U.Issues rows={d.validation.issues} /><label className="tt-check"><input type="checkbox" checked={agreed} onChange={e => setAgreed(e.target.checked)} />确认基于此来源新增独立草稿，正式计划保持不变</label></>}
       </div></U.Modal>;
   }
   window.TrialCatalog = { Directory, Create };

@@ -76,7 +76,7 @@ async function batchCountBoundary() {
 }
 async function masterHeaderBoundary() {
   await open('basedata');
-  const table = page.getByRole('table', {name: '主数据清单', exact: true});
+  const table = page.getByRole('table', {name: '资料清单', exact: true});
   const expected = await table.locator('thead .mo-column').count();
   assert(expected > 1);
   assert.equal(await table.locator('thead button[aria-label^="筛选列 "]').count(), expected);

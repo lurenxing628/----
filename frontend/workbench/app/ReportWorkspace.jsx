@@ -20,7 +20,7 @@
     const request = useRead(signal => window.ReportAPI.readView(api, input, signal), JSON.stringify(input) + revision);
     const response = request.result, data = response && response.data;
     const captionPlan = !request.busy && !request.error && data && data.plan;
-    const captionStatus = captionPlan && ({ official: captionPlan.is_current_official ? '当前正式采用' : '历史正式方案', candidate: '候选方案', scenario: '试调场景' })[captionPlan.kind];
+    const captionStatus = captionPlan && ({ official: captionPlan.is_current_official ? '当前正式采用' : '历史正式计划', candidate: window.WorkbenchTerms.candidate, scenario: window.WorkbenchTerms.trial_scenario })[captionPlan.kind];
     window.WorkbenchCaption.useCaption(captionStatus ? {
       reference: captionPlan.plan_ref, label: mode === 'review' ? '复盘计划' : '报表计划', name: captionPlan.display_name, status: captionStatus,
       version: captionPlan.kind === 'official' && Number.isSafeInteger(captionPlan.version) ? '正式 v' + captionPlan.version : undefined,
@@ -89,7 +89,7 @@
     function navigateOperation(operationRef, original, row, target = 'field', reportRef = null) {
       if (!row || row.operation_ref !== operationRef || !window.FieldContract.ref(row.task_ref) || !data.plan.is_current_official
         || data.scope.source !== 'production' || original.snapshot_ref !== response.meta.snapshot_ref || !['field', 'fieldgantt'].includes(target)
-        || reportRef !== null && !window.FieldContract.ref(reportRef)) { setError(window.APSResourceContract.failure('来源任务、记录或计划未经核实，未改指其他工序。')); return; }
+        || reportRef !== null && !window.FieldContract.ref(reportRef)) { setError(window.APSResourceContract.failure('来源任务、记录或计划没有通过核对，没有改指其他工序。')); return; }
       const targetScope = { plan_ref: data.plan.plan_ref };
       for (const key of ['plan_finish_date_from', 'plan_finish_date_to']) if (data.scope[key]) targetScope[key] = data.scope[key];
       onNav(target, { plan_ref: data.plan.plan_ref, task_ref: row.task_ref, operation_ref: operationRef, scope: targetScope,
@@ -97,7 +97,7 @@
     }
     return <section ref={root} className={mode === 'review' ? 'er-workbench rw-workbench' : 'rw-workbench'} aria-label={title} data-source="production" data-ready={!!data}>
       <Styles />
-      <header className="rw-header"><div><h2 className="wb-page-title">{title}</h2><p className="wb-page-context">{data ? data.plan.display_name + ' · 当前正式计划与执行台账' : '当前正式计划'}{response && <span className="rw-asof">数据截至 {window.WorkbenchFormat.dateTime(response.meta.as_of)}</span>}</p></div>
+      <header className="rw-header"><div><h2 className="wb-page-title">{title}</h2><p className="wb-page-context">{data ? data.plan.display_name + ' · 当前正式计划与报工记录' : '当前正式计划'}{response && <span className="rw-asof">数据截至 {window.WorkbenchFormat.dateTime(response.meta.as_of)}</span>}</p></div>
         <div className="rw-actions">{initialContext.returnTo && initialContext.returnTo.view === 'calib' && <Button icon="arrow-left"
           disabled={typeof onNav !== 'function'} onClick={() => go('calib')}>返回工时校准</Button>}
           {initialContext.returnTo && ['reports', 'review'].includes(initialContext.returnTo.view) && <Button icon="arrow-left"
@@ -115,14 +115,14 @@
       </div>
       <div id="analytics-view-panel" role="tabpanel" aria-labelledby={'analytics-view-' + mode}>
       <Scope value={scope} onChange={changeScope} choices={lastChoices} busy={request.busy} />
-      <ErrorBox error={request.error || error} />{request.error && <Button icon="refresh-cw" onClick={reload}>重新读取</Button>}
+      <ErrorBox error={request.error || error} />{request.error && <Button icon="refresh-cw" onClick={reload}>刷新报表数据</Button>}
       {notice && <p className="rw-notice" role="status">{notice}</p>}
       {mode !== 'review' && <Tabs topic={state.topic} onChange={changeTopic} />}
-      {request.busy && <window.WorkbenchListControls.EmptyState kind="loading" title="正在读取真实范围" />}
+      {request.busy && <window.WorkbenchListControls.EmptyState kind="loading" title="正在读取当前范围" />}
       {data && <div id="report-topic-panel" role={mode === 'review' ? undefined : 'tabpanel'} aria-labelledby={mode === 'review' ? undefined : 'report-tab-' + state.topic}>
         <Metrics summary={data.summary} topic={state.topic} />
         <window.ReportEvidence.NoFeedback summary={data.summary} />
-        <p className="rw-basis">计划完工日选工序 · 延后超过 10 分钟才计晚完 · 未确认完成不等于未生产。</p>
+        <p className="rw-basis">按计划完工日挑工序 · 晚 10 分钟以上才算晚完成 · 未确认完成不等于没生产。</p>
         <div className="rw-table-heading"><div className="rw-table-title"><h3>{state.topic === 'records' ? '逐次报工与旧现场事件' : ['machines', 'people'].includes(state.topic) ? '实际资源记录' : '范围内工序'}</h3><span>{data.page.total} 项</span></div>
           <div className="rw-filters"><Sort topic={state.topic} state={state} onChange={changePage} />
             <label>格式<select aria-label="导出格式" value={format} onChange={event => setFormat(event.target.value)}><option value="csv">CSV</option><option value="xlsx">XLSX</option></select></label>
@@ -145,7 +145,7 @@
       if (!window.ReportAPI.topics.includes(topic)) throw window.APSResourceContract.failure('原报表专题无效，未改用默认专题。');
       window.ReportAPI.table(context.table, topic);
       if (context.selected !== undefined && context.selected !== null && !/^[0-9a-f]{48}$/.test(context.selected))
-        throw window.APSResourceContract.failure('原工序引用无效，未改选其他对象。');
+        throw window.APSResourceContract.failure('原工序编号无效，没有改选其他工序。');
       const value = props.initialContext && props.initialContext.resourceView;
       if (value !== undefined && (!value || !['machine', 'operator'].includes(value.kind) || !Number.isSafeInteger(value.page) || value.page < 1))
         throw window.APSResourceContract.failure('资源工时查看状态无效，未改选其他资源。');

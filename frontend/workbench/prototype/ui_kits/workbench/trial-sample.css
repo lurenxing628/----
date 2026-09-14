@@ -173,7 +173,6 @@ html, body { margin: 0; }
 .tr-history strong { font-size: var(--font-size-1); font-weight: 500; }
 .tr-history p, .tr-history time { display: block; font-size: var(--font-size-1); color: var(--ui-info-muted); margin-top: 4px; }
 .tr-empty { padding: 28px 16px; text-align: center; color: var(--ui-info-muted); font-size: var(--font-size-1); }
-.tr-modal-layer { position: fixed; z-index: 80; inset: 0; display: grid; place-items: center; padding: 20px; background: rgba(12, 20, 32, .38); }
 .tr-modal { width: 520px; max-width: 100%; max-height: calc(100vh - 40px); overflow: auto; background: var(--ui-card-bg); border: 1px solid var(--ui-border); border-radius: var(--wb-radius-overlay); box-shadow: var(--ui-shadow-md); }
 .tr-modal-head, .tr-modal-foot { padding: 14px 18px; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .tr-modal-head { background: var(--ui-surface-muted); }

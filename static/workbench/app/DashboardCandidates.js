@@ -14,7 +14,7 @@
   function rangeFor(input) {
     const start = input && input.start_date + 'T00:00:00',
       raw = input && input.end_date + 'T00:00:00';
-    C.check(A.time(start) && A.time(raw), '运行未提供有效的受理时间范围。');
+    C.check(A.time(start) && A.time(raw), '这次排产没有有效的提交时间范围，无法比较。请重新选择排产记录。');
     const end = new Date(Date.parse(raw + 'Z') + 86400000).toISOString().slice(0, 19);
     C.check(A.time(end) && start < end);
     return {
@@ -167,8 +167,8 @@
     const caption = data ? {
       reference: data.candidate.candidate_ref,
       label: '比较方案',
-      name: data.candidate.label || '候选名称未记录',
-      status: data.baseline.available ? '已保存候选 · 受理时正式基线对照' : '已保存候选 · 无受理时正式基线'
+      name: data.candidate.label || '候选方案名称未填写',
+      status: data.baseline.available ? '已保存候选方案 · 与排产时的正式计划对照' : '已保存候选方案 · 排产时没有正式计划'
     } : null;
     const captionKey = JSON.stringify(caption);
     React.useLayoutEffect(() => {
@@ -216,27 +216,27 @@
       }
     }
     return /*#__PURE__*/React.createElement("section", {
-      "aria-label": "\u5DF2\u4FDD\u5B58\u5019\u9009\u540C\u8303\u56F4\u6BD4\u8F83",
+      "aria-label": "\u5DF2\u4FDD\u5B58\u5019\u9009\u65B9\u6848\u540C\u8303\u56F4\u6BD4\u8F83",
       "data-dashboard-candidates": true,
       "data-comparison-ready": !!data
     }, /*#__PURE__*/React.createElement("div", {
       className: "dy-heading"
-    }, /*#__PURE__*/React.createElement("h3", null, "\u540C\u4E00\u53D7\u7406\u8303\u56F4\u4E0B\u6BD4\u8F83"), /*#__PURE__*/React.createElement(Button, {
+    }, /*#__PURE__*/React.createElement("h3", null, "\u540C\u4E00\u6392\u4EA7\u8303\u56F4\u4E0B\u6BD4\u8F83"), /*#__PURE__*/React.createElement(Button, {
       reasonDisplay: "inline",
       icon: "refresh-cw",
-      "aria-label": "\u91CD\u65B0\u8BFB\u53D6\u5019\u9009\u6BD4\u8F83",
+      "aria-label": "\u5237\u65B0\u5019\u9009\u65B9\u6848\u6BD4\u8F83",
       onClick: refresh
     })), /*#__PURE__*/React.createElement("label", {
       className: "dy-run-picker"
-    }, "\u6392\u4EA7\u8FD0\u884C", /*#__PURE__*/React.createElement("select", {
-      "aria-label": "\u9009\u62E9\u6392\u4EA7\u8FD0\u884C",
+    }, "\u6392\u4EA7\u8BB0\u5F55", /*#__PURE__*/React.createElement("select", {
+      "aria-label": "\u9009\u62E9\u6392\u4EA7\u8BB0\u5F55",
       value: choice.run_ref || '',
       onChange: event => changeRun(event.target.value)
     }, /*#__PURE__*/React.createElement("option", {
       value: ""
-    }, "\u8BF7\u9009\u62E9\u8FD0\u884C"), choice.run_ref && !catalog.runs.some(row => row.run_ref === choice.run_ref) && /*#__PURE__*/React.createElement("option", {
+    }, "\u8BF7\u9009\u62E9\u6392\u4EA7\u8BB0\u5F55"), choice.run_ref && !catalog.runs.some(row => row.run_ref === choice.run_ref) && /*#__PURE__*/React.createElement("option", {
       value: choice.run_ref
-    }, "\u539F\u9009\u4E2D\u7684\u6392\u4EA7\u8FD0\u884C"), catalog.runs.map(run => /*#__PURE__*/React.createElement("option", {
+    }, "\u539F\u6765\u9009\u4E2D\u7684\u6392\u4EA7\u8BB0\u5F55"), catalog.runs.map(run => /*#__PURE__*/React.createElement("option", {
       key: run.run_ref,
       value: run.run_ref
     }, window.WorkbenchFormat.dateTime(run.accepted_at), " \xB7 ", run.candidate_count, " \u4EFD\u5019\u9009")))), /*#__PURE__*/React.createElement(Issues, {
@@ -253,7 +253,7 @@
       }
     })), list.loading && /*#__PURE__*/React.createElement("p", {
       role: "status"
-    }, "\u6B63\u5728\u8BFB\u53D6\u539F\u8FD0\u884C\u7684\u5DF2\u4FDD\u5B58\u5019\u9009\u76EE\u5F55\u3002"), options && /*#__PURE__*/React.createElement("fieldset", {
+    }, "\u6B63\u5728\u8BFB\u53D6\u8FD9\u6B21\u6392\u4EA7\u5DF2\u4FDD\u5B58\u7684\u5019\u9009\u65B9\u6848\u5217\u8868\u3002"), options && /*#__PURE__*/React.createElement("fieldset", {
       className: "dy-candidate-options"
     }, /*#__PURE__*/React.createElement("legend", null, "\u5019\u9009\u65B9\u6848"), options.candidates.map(row => /*#__PURE__*/React.createElement("label", {
       key: row.candidate_ref,
@@ -267,14 +267,14 @@
         ...choice,
         candidate_ref: row.candidate_ref
       })
-    }), /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("b", null, row.label || '候选名称未记录'), /*#__PURE__*/React.createElement("small", null, {
+    }), /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("b", null, row.label || '候选方案名称未填写'), /*#__PURE__*/React.createElement("small", null, {
       completed: '计算完成',
       partial: '部分完成',
       failed: '失败',
       skipped: '已跳过'
     }[row.status], " \xB7 ", row.task_count, " \u9053\u5B89\u6392")))), !options.candidates.length && /*#__PURE__*/React.createElement(window.WorkbenchListControls.EmptyState, {
       kind: "empty",
-      title: "\u539F\u8FD0\u884C\u5C1A\u65E0\u5DF2\u4FDD\u5B58\u5019\u9009\u7ED3\u679C\u3002"
+      title: "\u8FD9\u6B21\u6392\u4EA7\u8FD8\u6CA1\u6709\u4FDD\u5B58\u5019\u9009\u65B9\u6848\u3002"
     })), choice.run_ref && /*#__PURE__*/React.createElement("form", {
       className: "dy-compare-range",
       onSubmit: applyRange
@@ -302,11 +302,11 @@
       type: "submit"
     }, "\u5E94\u7528\u8303\u56F4")), current && current.loading && /*#__PURE__*/React.createElement("p", {
       role: "status"
-    }, "\u6B63\u5728\u6838\u5BF9\u6240\u9009\u5019\u9009\u3001\u53D7\u7406\u65F6\u57FA\u7EBF\u4E0E\u5171\u540C\u8303\u56F4\u3002"), data && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+    }, "\u6B63\u5728\u6838\u5BF9\u6240\u9009\u5019\u9009\u65B9\u6848\u3001\u6392\u4EA7\u65F6\u7684\u6B63\u5F0F\u8BA1\u5212\u548C\u5171\u540C\u8303\u56F4\u3002"), data && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
       className: "dy-context"
-    }, /*#__PURE__*/React.createElement("span", null, window.WorkbenchFormat.dateTime(data.time_scope.range_start), " \u81F3 ", window.WorkbenchFormat.dateTime(data.time_scope.range_end), " \xB7 \u5DE6\u95ED\u53F3\u5F00"), /*#__PURE__*/React.createElement("span", null, data.batch_refs.length, " \u4E2A\u53D7\u7406\u65F6\u6279\u6B21 \xB7 \u5B8C\u5DE5\u4F9D\u636E\u4E3A\u5B8C\u6574\u5DE5\u5E8F")), !data.baseline.available && /*#__PURE__*/React.createElement("p", {
+    }, /*#__PURE__*/React.createElement("span", null, window.WorkbenchFormat.dateTime(data.time_scope.range_start), " \u81F3 ", window.WorkbenchFormat.dateTime(data.time_scope.range_end), " \xB7 \u542B\u8D77\u65E5\uFF0C\u4E0D\u542B\u6B62\u65E5"), /*#__PURE__*/React.createElement("span", null, data.batch_refs.length, " \u4E2A\u6392\u4EA7\u65F6\u7684\u6279\u6B21 \xB7 \u5B8C\u5DE5\u6309\u5B8C\u6574\u5DE5\u5E8F\u8BA1\u7B97")), !data.baseline.available && /*#__PURE__*/React.createElement("p", {
       className: "dy-note warning"
-    }, "\u53D7\u7406\u65F6\u6CA1\u6709\u6B63\u5F0F\u57FA\u7EBF\uFF0C\u76F8\u5BF9\u53D8\u5316\u4FDD\u6301\u672A\u77E5\u3002"), /*#__PURE__*/React.createElement(P.Metrics, {
+    }, "\u6392\u4EA7\u65F6\u6CA1\u6709\u6B63\u5F0F\u8BA1\u5212\uFF0C\u53D8\u5316\u91CF\u6309\u672A\u77E5\u663E\u793A\u3002"), /*#__PURE__*/React.createElement(P.Metrics, {
       data: data
     }), /*#__PURE__*/React.createElement(P.Batches, {
       data: data,
@@ -314,17 +314,17 @@
       onSelect: onSelectBatch
     }), /*#__PURE__*/React.createElement("div", {
       className: "dy-heading"
-    }, /*#__PURE__*/React.createElement("h3", null, data.candidate.label || '候选名称未记录'), /*#__PURE__*/React.createElement(Button, {
+    }, /*#__PURE__*/React.createElement("h3", null, data.candidate.label || '候选方案名称未填写'), /*#__PURE__*/React.createElement(Button, {
       reasonDisplay: "inline",
       icon: "chart-gantt",
       onClick: () => setSummary(true)
     }, "\u67E5\u770B\u65B9\u6848\u6458\u8981")), /*#__PURE__*/React.createElement("details", {
       className: "dy-evidence"
-    }, /*#__PURE__*/React.createElement("summary", null, "\u53D7\u7406\u65F6\u6392\u4EA7\u7EA6\u675F"), /*#__PURE__*/React.createElement("dl", {
+    }, /*#__PURE__*/React.createElement("summary", null, "\u6392\u4EA7\u65F6\u7684\u7EA6\u675F"), /*#__PURE__*/React.createElement("dl", {
       className: "dy-facts"
-    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u9F50\u5957\u68C0\u67E5"), /*#__PURE__*/React.createElement("dd", null, data.generation.input.ready_check ? '开启' : '关闭')), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u7F3A\u8D44\u6E90\u7B56\u7565"), /*#__PURE__*/React.createElement("dd", null, data.generation.input.missing_resource_policy === 'auto_assign' ? '按匹配规则自动分配' : '排除缺资源工序')), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u5DF2\u5F00\u5DE5\u7B56\u7565"), /*#__PURE__*/React.createElement("dd", null, "\u4FDD\u7559\u5DF2\u8BB0\u5F55\u5B9E\u9645\u53CA\u53D7\u4FDD\u62A4\u5B89\u6392"))), /*#__PURE__*/React.createElement(window.WorkbenchReference, {
+    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u9F50\u5957\u68C0\u67E5"), /*#__PURE__*/React.createElement("dd", null, data.generation.input.ready_check ? '开启' : '关闭')), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u7F3A\u8BBE\u5907\u4EBA\u5458\u65F6\u7684\u89C4\u5219"), /*#__PURE__*/React.createElement("dd", null, data.generation.input.missing_resource_policy === 'auto_assign' ? '按匹配规则自动分配' : '排除缺设备人员的工序')), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u5DF2\u5F00\u5DE5\u5DE5\u5E8F\u7684\u89C4\u5219"), /*#__PURE__*/React.createElement("dd", null, "\u4FDD\u7559\u5DF2\u767B\u8BB0\u7684\u5B9E\u9645\u6570\u636E\u548C\u53D7\u4FDD\u62A4\u7684\u5B89\u6392"))), /*#__PURE__*/React.createElement(window.WorkbenchReference, {
       entries: {
-        '运行编号': data.generation.run_ref
+        '排产编号': data.generation.run_ref
       }
     })), summary && /*#__PURE__*/React.createElement(P.Summary, {
       data: data,

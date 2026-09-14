@@ -54,21 +54,21 @@
       if (store.running || !store.state.intent) return;
       const intent = store.state.intent;
       if (typeof adapter.lookup !== 'function') {
-        publish(store, { ...store.state, phase: 'pending', error: C.failure('结果待核实；回执查询尚未接入。请保留当前页面。') }); return;
+        publish(store, { ...store.state, phase: 'pending', error: C.failure('dependency not wired: adapter.lookup') }); return;
       }
       store.running = true; publish(store, { ...store.state, phase: 'checking', error: null });
       try {
         const result = await adapter.lookup(intent.request_key, new AbortController().signal);
         const status = C.receipt(result);
         publish(store, { intent, result, phase: status === 'terminal' ? 'done' : 'pending',
-          error: status === 'terminal' ? null : C.failure(result && result.message || '尚未查到完成回执，原请求仍可能执行中。请继续核实，不要重复保存。') });
+          error: status === 'terminal' ? null : C.failure(result && result.message || window.WorkbenchTerms.outcomes.pending('操作')) });
       } catch (error) { publish(store, { intent, phase: 'pending', error }); }
       finally { store.running = false; }
     }
     async function submit(kind, action, ref, context, input, category) {
       if (store.running || ['sending', 'pending', 'checking', 'done'].includes(store.state.phase)) return;
       if (typeof adapter.command !== 'function') {
-        publish(store, { phase: 'rejected', error: C.failure('保存接口尚未接入。') }); return;
+        publish(store, { phase: 'rejected', error: C.failure('dependency not wired: adapter.command') }); return;
       }
       let intent;
       try {
@@ -131,10 +131,10 @@
   }
   function useSummary(adapter, revision) {
     return useQuery(async signal => {
-      if (typeof adapter.summary !== 'function') throw C.failure('资源汇总接口尚未接入。');
+      if (typeof adapter.summary !== 'function') throw C.failure('dependency not wired: adapter.summary');
       const result = C.query(await adapter.summary(signal), 'summary'), data = { ...result.data };
-      if (!calendarSummary(data.calendar)) { data.calendar = null; data.calendar_error = '日历汇总缺失或协议不完整，无法核实。'; }
-      if (!readinessSummary(data.readiness)) { data.readiness = null; data.readiness_error = '就绪口径缺失或协议不完整，未知。'; }
+      if (!calendarSummary(data.calendar)) { data.calendar = null; data.calendar_error = '读到的班表汇总不完整，请刷新后重试。'; }
+      if (!readinessSummary(data.readiness)) { data.readiness = null; data.readiness_error = '读到的就绪度数据不完整，请刷新后重试。'; }
       return { ...result, data };
     }, [adapter, revision]);
   }

@@ -38,7 +38,7 @@ async function states(page, H) {
   assert.deepEqual((await read(page)).data.values, original); passed('preferences-never-write-maintenance-config');
   for (const value of ['0', '1.5', '1441', '']) {
     await interval(page).fill(value); await save(page).click();
-    await page.getByText('配置校验未通过，请修正标出的字段。', { exact: true }).waitFor();
+    await page.getByText('有几项填得不对，配置没有保存。请修正标红的项。', { exact: true }).waitFor();
     assert.equal(report.requests.filter(row => row.method === 'POST').length, initialCount);
     passed('invalid-input-kept-without-post-' + (value || 'empty'));
   }
@@ -57,7 +57,7 @@ async function states(page, H) {
   assert(await save(page).isDisabled()); assert.equal(report.requests.filter(row => row.method === 'POST').length, count);
   assert.deepEqual(await pending(page), originalPending); passed('unacknowledged-reload-uses-get-only');
   await acknowledge(page); await ready(page); await clean(page, 121);
-  await save(page).click(); await page.getByText('配置没有变化，已留存无变更回执；未新增业务审计。').waitFor();
+  await save(page).click(); await page.getByText('配置没有变化，没有写入新的操作记录。').waitFor();
   await acknowledge(page); await ready(page); await clean(page, 121); passed('unchanged-receipt-readback-is-clean');
 
   await resetPage(page); await interval(page).fill('121'); await save(page).click();
@@ -76,7 +76,7 @@ async function states(page, H) {
 
   await resetPage(page); await interval(page).fill('121');
   await externalSave(page, {auto_backup_interval_minutes: 122}); await save(page).click();
-  await page.getByText('后端明确拒绝，本次未提交。核对错误后可确认结果。', { exact: true }).waitFor();
+  await page.getByText('系统拒绝了这次提交，配置没有改动。请按上面的提示改好后重新提交。', { exact: true }).waitFor();
   assert(await save(page).isDisabled()); await acknowledge(page); await settled(page); await conflict(page, 121);
   assert(report.requests.some(row => row.path.endsWith('/config/save') && row.status === 409));
   passed('stale-rejection-does-not-rebase-to-receipt-or-discard-draft');
@@ -89,7 +89,7 @@ async function states(page, H) {
   assert.equal(await interval(page).inputValue(), '121'); assert(await save(page).isDisabled());
   await page.getByText('有未保存修改', { exact: true }).waitFor();
   passed('confirmed-receipt-with-failed-read-does-not-pretend-draft-is-saved');
-  await page.getByRole('button', { name: '重新读取配置', exact: true }).click();
+  await page.getByRole('button', { name: '刷新配置', exact: true }).click();
   await page.getByRole('dialog').getByRole('button', { name: '保留草稿', exact: true }).click();
   assert.equal(await interval(page).inputValue(), '121');
   await page.unroute(readEndpoint); await revision(page); await ready(page); await clean(page, 121);
@@ -106,7 +106,7 @@ async function states(page, H) {
   await settled(page); await clean(page, 121); assert(await save(page).isDisabled()); assert(await interval(page).isDisabled());
   assert.deepEqual(await pending(page), unknown); assert.equal(report.requests.filter(row => row.method === 'POST').length, afterLost);
   passed('lost-committed-response-equal-readback-does-not-unlock-or-resend');
-  await page.getByRole('button', { name: '核实原请求', exact: true }).click();
+  await page.getByRole('button', { name: '查询结果', exact: true }).click();
   await page.getByRole('button', { name: '确认结果', exact: true }).waitFor(); assert(await save(page).isDisabled());
   await acknowledge(page); await ready(page); await clean(page, 121);
   assert.equal(report.requests.filter(row => row.method === 'POST').length, afterLost); passed('lost-response-recovers-original-receipt-get-only');
@@ -115,8 +115,8 @@ async function states(page, H) {
   await page.route(endpoint, route => route.abort('failed')); await save(page).click();
   await page.locator('.sm-maintenance-outcome [role="alert"]').waitFor(); await page.unroute(endpoint);
   const notRecorded = await pending(page), noWrite = report.requests.filter(row => row.method === 'POST').length;
-  await page.getByRole('button', { name: '核实原请求', exact: true }).click();
-  await page.waitForFunction(() => document.querySelector('.sm-maintenance-outcome').textContent.includes('查不到结果不代表未执行'));
+  await page.getByRole('button', { name: '查询结果', exact: true }).click();
+  await page.waitForFunction(() => document.querySelector('.sm-maintenance-outcome').textContent.includes('查不到结果不代表没有执行'));
   await revision(page); await conflict(page, 121); assert(await page.getByRole('button', { name: '核对后沿用草稿', exact: true }).isDisabled());
   assert.equal(await page.getByRole('button', { name: '确认结果', exact: true }).count(), 0);
   await page.reload(); await settled(page); await flush(page);
@@ -130,7 +130,7 @@ async function states(page, H) {
 async function metadata(page, H) {
   const { assert, report, interval, save, ready, clean, acknowledge, passed, output, revision } = H;
   await ready(page);
-  await page.getByText(/旧配置异常：.*原值：bad-old-value/).waitFor(); await page.getByText('缺省值，尚未保存', { exact: true }).waitFor();
+  await page.getByText(/旧配置异常：.*原值：bad-old-value/).waitFor(); await page.getByText('默认值，尚未保存', { exact: true }).waitFor();
   assert.equal(await page.locator('.sm-config-row').count(), 8);
   const before = report.requests.filter(row => row.method === 'POST').length;
   await revision(page); await page.getByText(/旧配置异常：.*原值：bad-old-value/).waitFor();
@@ -139,7 +139,7 @@ async function metadata(page, H) {
   await interval(page).fill('121'); await save(page).click(); await page.getByRole('button', { name: '确认结果', exact: true }).waitFor();
   await page.getByText(/旧配置异常：.*原值：bad-old-value/).waitFor();
   await acknowledge(page); await ready(page); await clean(page, 121);
-  assert.equal(await page.getByText(/旧配置异常/).count(), 0); assert.equal(await page.getByText('缺省值，尚未保存', { exact: true }).count(), 0);
+  assert.equal(await page.getByText(/旧配置异常/).count(), 0); assert.equal(await page.getByText('默认值，尚未保存', { exact: true }).count(), 0);
   assert.equal(await page.locator('.sm-config-row small').filter({hasText: '已存值：'}).count(), 8);
   await page.screenshot({path: path.join(output, 'system_config_saved_metadata.png'), fullPage: true});
   passed('confirmed-equal-snapshot-refreshes-raw-default-metadata-as-well-as-baseline');

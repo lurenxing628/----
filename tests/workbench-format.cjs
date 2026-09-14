@@ -13,10 +13,12 @@ const invalid = action => assert.throws(action, error => error.name === 'TypeErr
 if (process.argv[2] === '--timezone') {
   assert.equal(F.dateTime('2026-09-12T08:03:09.123456'), '2026-09-12 08:03');
   assert.equal(F.dateTime('2026-09-12 08:03:09', { seconds: true }), '2026-09-12 08:03:09');
-  const expected = { 'Asia/Shanghai': '2026-09-12 08:03:09', UTC: '2026-09-12 00:03:09', 'America/New_York': '2026-09-11 20:03:09' };
-  assert.equal(F.instant('2026-09-12T00:03:09.123456Z', { seconds: true }), expected[process.env.TZ]);
-  assert.equal(F.instant('2026-09-12T08:03:09+08:00', { seconds: true }), expected[process.env.TZ]);
-  assert.equal(F.instant('2026-09-11T20:03:09-04:00', { seconds: true }), expected[process.env.TZ]);
+  // 时刻一律按北京时间显示，与浏览器时区无关：三个时区下都得到同一个北京时间。
+  const beijing = '2026-09-12 08:03:09';
+  assert.equal(F.instant('2026-09-12T00:03:09.123456Z', { seconds: true }), beijing);
+  assert.equal(F.instant('2026-09-12T08:03:09+08:00', { seconds: true }), beijing);
+  assert.equal(F.instant('2026-09-11T20:03:09-04:00', { seconds: true }), beijing);
+  assert.equal(F.instant('2026-09-11T16:03:09Z'), '2026-09-12 00:03');
   process.stdout.write('Timezone passed: ' + process.env.TZ + '\n');
 } else {
   for (const empty of [null, undefined, '']) {
@@ -43,13 +45,13 @@ if (process.argv[2] === '--timezone') {
   assert.equal(F.integerText('9007199254740993'), '9,007,199,254,740,993');
   assert.equal(F.integerText('123456789012345678901234567890'), '123,456,789,012,345,678,901,234,567,890');
   for (const value of ['01', '+1', '-1', '1.0', '1e10', ' 123', '123 ', 123, true, [], {}]) invalid(() => F.integerText(value));
-  assert.equal(F.hours(3.25), '3.3 h');
-  assert.equal(F.hours(-1.25, 2), '-1.25 h');
+  assert.equal(F.hours(3.25), '3.3 小时');
+  assert.equal(F.hours(-1.25, 2), '-1.25 小时');
   // Negative zero and values that round to zero never read as a reduction.
   assert.equal(F.number(-0), '0.0');
   assert.equal(F.number(-0.04), '0.0');
   assert.equal(F.number(-0.06), '-0.1');
-  assert.equal(F.hours(-0), '0.0 h');
+  assert.equal(F.hours(-0), '0.0 小时');
   assert.equal(F.percent(-0), '0.0%');
   assert.equal(F.percent(-0.0004), '0.0%');
   // trim keeps entered precision (up to `digits` decimals) instead of padding a fixed one-decimal summary.
@@ -57,8 +59,8 @@ if (process.argv[2] === '--timezone') {
   assert.equal(F.number(2, { digits: 3, trim: true }), '2');
   assert.equal(F.number(0.0833, { digits: 3, trim: true }), '0.083');
   assert.equal(F.number(1234.5678, { digits: 3, trim: true }), '1,234.568');
-  assert.equal(F.hours(0.05, { digits: 3, trim: true }), '0.05 h');
-  assert.equal(F.hours(3.25, { digits: 2 }), '3.25 h');
+  assert.equal(F.hours(0.05, { digits: 3, trim: true }), '0.05 小时');
+  assert.equal(F.hours(3.25, { digits: 2 }), '3.25 小时');
   assert.equal(F.percent(0.5, { digits: 2 }), '50.00%');
   assert.equal(F.percent(0.5, { digits: 2, trim: true }), '50%');
   for (const options of [{ trim: 'yes' }, { digits: 21 }, null, 'x']) invalid(() => F.number(1, options));

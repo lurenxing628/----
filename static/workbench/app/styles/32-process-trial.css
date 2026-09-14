@@ -24,6 +24,11 @@
 
 /* ProcessWorkspace.jsx */
 .process-workspace { min-width:0; }
+@media (max-height: 820px) {
+  .wb-fill-viewport .statline.wb-metrics { margin-bottom:var(--space-2); padding:0; }
+  .wb-fill-viewport .subtabs { margin-bottom:var(--space-2); }
+  .wb-fill-viewport .toolbar { margin:6px 0 8px; }
+}
 .process-workspace .wb-table td { white-space:normal; overflow-wrap:anywhere; }
 .process-workspace .pipe { flex-wrap:wrap; gap:var(--space-1) 0; }
 .process-workspace .subtabs { flex-wrap:wrap; height:auto; }
@@ -83,11 +88,11 @@ background:var(--ui-card-bg);color:var(--ui-text);border:1px solid var(--ui-bord
 .tt-gantt-row.selected .tt-task-label{background:var(--ui-info-bg);box-shadow:inset 3px 0 var(--ui-primary)}
 .tt-track{position:relative;overflow:hidden;min-width:0;background-image:linear-gradient(to right,var(--ui-border) 1px,transparent 1px);background-size:10% 100%}
 .tt-bar{position:absolute;top:10px;height:24px;min-width:0;padding:0;border:0;border-radius:3px;overflow:hidden;background:var(--wb-gantt-primary-fill);box-shadow:inset 0 0 0 1px var(--wb-gantt-primary-edge)}
-.tt-bar.conflict{background:var(--wb-gantt-critical-fill);box-shadow:inset 0 0 0 1px var(--wb-gantt-critical-edge)}
-.tt-bar.locked{background:var(--wb-gantt-success-fill);box-shadow:inset 0 0 0 1px var(--wb-gantt-success-edge)}
+.tt-bar.conflict{background:var(--wb-gantt-critical-stripe),var(--wb-gantt-critical-fill);box-shadow:inset 0 0 0 1px var(--wb-gantt-critical-edge)}
+.tt-bar.locked{background:var(--wb-gantt-success-fill);box-shadow:var(--wb-gantt-success-ring)}
 .tt-bar[aria-pressed=true]{box-shadow:inset 0 0 0 2px var(--wb-gantt-gold)}.tt-baseline{position:absolute;top:44px;height:6px;background:var(--wb-gantt-plan-fill);box-shadow:inset 0 0 0 1px var(--wb-gantt-plan-edge);border-radius:2px;pointer-events:none}
 .tt-legend{display:flex;gap:var(--space-4);flex-wrap:wrap;font-size:var(--font-size-1);color:var(--ui-info-muted)}.tt-legend span{display:inline-flex;align-items:center;gap:var(--space-2)}.tt-legend i{display:inline-block;width:20px;height:10px;background:var(--wb-gantt-primary-fill);border:1px solid var(--wb-gantt-primary-edge);border-radius:2px}
-.tt-legend i.baseline{height:6px;background:var(--wb-gantt-plan-fill);border-color:var(--wb-gantt-plan-edge)}.tt-legend i.conflict{background:var(--wb-gantt-critical-fill);border-color:var(--wb-gantt-critical-edge)}
+.tt-legend i.baseline{height:6px;background:var(--wb-gantt-plan-fill);border-color:var(--wb-gantt-plan-edge)}.tt-legend i.conflict{background:var(--wb-gantt-critical-stripe),var(--wb-gantt-critical-fill);border-color:var(--wb-gantt-critical-edge)}.tt-legend i.locked{background:var(--wb-gantt-success-fill);box-shadow:var(--wb-gantt-success-ring)}
 .tt-expanded{position:fixed;inset:16px;z-index:var(--wb-z-modal);background:var(--ui-card-bg);padding:var(--space-3)}.tt-expanded .tt-board{max-height:calc(100vh - 225px);height:calc(100vh - 225px)}
 .tt-footer{display:flex;justify-content:space-between;align-items:center;gap:var(--space-3);flex-wrap:wrap;padding:10px 0;margin-top:var(--space-3);border-top:1px solid var(--ui-border)}
 .trial-workspace :focus-visible,.trial-modal-body :focus-visible{outline:2px solid var(--ui-primary);outline-offset:2px}
@@ -116,7 +121,7 @@ background:var(--ui-card-bg);color:var(--ui-text);border:1px solid var(--ui-bord
 /* TrialAdoptionHistoryStyles.jsx */
 .tah-toolbar{display:flex;align-items:center;flex-wrap:wrap;gap:var(--space-2) var(--space-4);padding:var(--space-2) 0;border-bottom:1px solid var(--ui-border)}
 .tah-toolbar label{display:flex;gap:var(--space-2);align-items:center;font-size:var(--font-size-1)}
-.tah-toolbar select{max-width:160px;min-height:30px;border:1px solid var(--ui-border);border-radius: var(--wb-radius-control);background:var(--ui-card-bg);color:var(--ui-text);padding:3px 6px}
+.tah-toolbar select{max-width:160px;min-height:var(--wb-control-height);border:1px solid var(--ui-border);border-radius: var(--wb-radius-control);background:var(--ui-card-bg);color:var(--ui-text);padding:3px 6px}
 .tah-meta{font-size:var(--font-size-1);color:var(--ui-info-muted);margin:var(--space-2) 0;overflow-wrap:anywhere}
 .tah-list{list-style:none;margin:0;padding:0}
 .tah-list>li{padding:10px 0;border-bottom:1px solid var(--ui-border);font-size:var(--font-size-1);line-height:20px;min-width:0}

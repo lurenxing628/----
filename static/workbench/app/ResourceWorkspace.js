@@ -24,24 +24,24 @@
     return ['business_code', 'label', ...fields, ...(config.kind === 'op_type' ? [] : ['status'])];
   }
   function resourceReadView(view, node) {
-    if (!C.object(view) || Object.keys(view).some(key => !['scope', 'selected_refs', 'sort_active', 'detail'].includes(key))) throw C.failure('资源恢复记录只能包含只读查看状态。');
+    if (!C.object(view) || Object.keys(view).some(key => !['scope', 'selected_refs', 'sort_active', 'detail'].includes(key))) throw C.failure('上次浏览位置只能包含查看状态。');
     const config = C.nodes[node],
       scope = view.scope;
-    if (!C.object(scope) || Object.keys(scope).some(key => !readScopeKeys.includes(key)) || typeof scope.query !== 'string' || !Number.isSafeInteger(scope.page) || scope.page < 1 || !Number.isSafeInteger(scope.size) || scope.size < 1 || scope.size > 100 || typeof scope.sort !== 'string' || !readColumns(config).includes(scope.sort) || !['asc', 'desc'].includes(scope.direction) || typeof view.sort_active !== 'boolean') throw C.failure('资源恢复范围、排序或分页不正确。');
-    if (config.category ? scope.category !== config.category || C.own(scope, 'status') : C.own(scope, 'category') || !['', ...(C.statuses[config.kind] || []).map(row => row[0])].includes(scope.status)) throw C.failure('资源恢复范围与当前节点不一致。');
+    if (!C.object(scope) || Object.keys(scope).some(key => !readScopeKeys.includes(key)) || typeof scope.query !== 'string' || !Number.isSafeInteger(scope.page) || scope.page < 1 || !Number.isSafeInteger(scope.size) || scope.size < 1 || scope.size > 100 || typeof scope.sort !== 'string' || !readColumns(config).includes(scope.sort) || !['asc', 'desc'].includes(scope.direction) || typeof view.sort_active !== 'boolean') throw C.failure('上次浏览位置的范围、排序或分页不正确。');
+    if (config.category ? scope.category !== config.category || C.own(scope, 'status') : C.own(scope, 'category') || !['', ...(C.statuses[config.kind] || []).map(row => row[0])].includes(scope.status)) throw C.failure('上次浏览位置与当前资料不一致。');
     const selected = view.selected_refs;
-    if (!Array.isArray(selected) || selected.some(value => typeof value !== 'string' || !/^[0-9a-f]{48}$/.test(value)) || new Set(selected).size !== selected.length) throw C.failure('资源已选引用集合不正确。');
+    if (!Array.isArray(selected) || selected.some(value => typeof value !== 'string' || !/^[0-9a-f]{48}$/.test(value)) || new Set(selected).size !== selected.length) throw C.failure('上次勾选的记录编号不正确。');
     if (scope.column_filters !== undefined) {
-      if (!C.object(scope.column_filters) || Object.keys(scope.column_filters).some(key => !readColumns(config).includes(key))) throw C.failure('资源恢复列筛选字段不正确。');
+      if (!C.object(scope.column_filters) || Object.keys(scope.column_filters).some(key => !readColumns(config).includes(key))) throw C.failure('上次浏览位置的列筛选不正确。');
       Object.values(scope.column_filters).forEach(value => window.ResourceTableFilterModel.rule(value));
     }
     if (view.detail !== null) {
-      if (!C.object(view.detail) || Object.keys(view.detail).some(key => !['kind', 'entity_ref', 'category'].includes(key))) throw C.failure('资源只读详情恢复字段不正确。');
+      if (!C.object(view.detail) || Object.keys(view.detail).some(key => !['kind', 'entity_ref', 'category'].includes(key))) throw C.failure('上次打开的详情记录不正确。');
       const checked = navigation({
         source: 'production',
         ...view.detail
       });
-      if (checked.error || !checked.context || ['part', 'calendar'].includes(checked.context.kind)) throw C.failure('资源只读详情恢复目标不正确。');
+      if (checked.error || !checked.context || ['part', 'calendar'].includes(checked.context.kind)) throw C.failure('上次打开的详情对不上，已取消定位。');
     }
     return JSON.parse(JSON.stringify(view));
   }
@@ -50,22 +50,22 @@
       context: null
     };
     try {
-      if (!C.object(context) || context.source !== 'production') throw C.failure('导航来源不正确，只能定位生产资料。');
+      if (!C.object(context) || context.source !== 'production') throw C.failure('定位来源不正确，只能打开生产资料。');
       const keys = Object.keys(context),
         kind = context.kind,
         ref = value => typeof value === 'string' && /^[0-9a-f]{48}$/.test(value);
       if (keys.length === 1 && keys[0] === 'source') return {
         context: null
       };
-      if (!['material', 'op_type', 'machine', 'operator', 'supplier', 'part', 'calendar'].includes(kind)) throw C.failure('未知的基础资料导航类型。');
+      if (!['material', 'op_type', 'machine', 'operator', 'supplier', 'part', 'calendar'].includes(kind)) throw C.failure('未知的基础资料定位类型。');
       const allowed = ['source', 'kind'].concat(kind === 'calendar' ? ['month', 'date'] : ['entity_ref', 'read_view'], kind === 'op_type' ? ['category'] : [], kind === 'part' ? ['stage', 'template_operation_ref', 'template_external_group_ref'] : []);
-      if (keys.some(key => !allowed.includes(key))) throw C.failure('导航含有不支持的定位字段，未忽略或按编号查找。');
-      if (C.own(context, 'read_view') && ['entity_ref', 'stage', 'template_operation_ref', 'template_external_group_ref'].some(key => C.own(context, key))) throw C.failure('基础资料单次定位与只读恢复范围不能混用。');
+      if (keys.some(key => !allowed.includes(key))) throw C.failure('定位信息里有不支持的项，没有改用编号查找。');
+      if (C.own(context, 'read_view') && ['entity_ref', 'stage', 'template_operation_ref', 'template_external_group_ref'].some(key => C.own(context, key))) throw C.failure('单条定位和记住的浏览位置不能混用。');
       if (kind === 'calendar') {
-        if (typeof context.month !== 'string' || !/^\d{4}-(0[1-9]|1[0-2])$/.test(context.month) || Number(context.month.slice(0, 4)) < 1 || C.own(context, 'date') && (!window.APSCalendarContract.isDate(context.date) || context.date.slice(0, 7) !== context.month)) throw C.failure('导航月份或日期不正确，日期必须属于指定月份。');
-      } else if ((!C.own(context, 'read_view') || C.own(context, 'entity_ref')) && !ref(context.entity_ref)) throw C.failure('导航缺少有效的原记录引用，不能按同号或同名替代。');
-      if (kind === 'op_type' && !['internal', 'external'].includes(context.category)) throw C.failure('工种导航缺少明确的自制或外协类别，不能猜测节点。');
-      if (kind === 'part' && (C.own(context, 'stage') && !['route', 'source', 'hours'].includes(context.stage) || ['template_operation_ref', 'template_external_group_ref'].some(key => C.own(context, key) && !ref(context[key])))) throw C.failure('工艺阶段或模板记录引用不正确。');
+        if (typeof context.month !== 'string' || !/^\d{4}-(0[1-9]|1[0-2])$/.test(context.month) || Number(context.month.slice(0, 4)) < 1 || C.own(context, 'date') && (!window.APSCalendarContract.isDate(context.date) || context.date.slice(0, 7) !== context.month)) throw C.failure('定位的月份或日期不正确，日期必须属于指定月份。');
+      } else if ((!C.own(context, 'read_view') || C.own(context, 'entity_ref')) && !ref(context.entity_ref)) throw C.failure('定位缺少有效的记录编号，不会按同编号或同名替代。');
+      if (kind === 'op_type' && !['internal', 'external'].includes(context.category)) throw C.failure('定位缺少自制或外协类别，不做猜测。');
+      if (kind === 'part' && (C.own(context, 'stage') && !['route', 'source', 'hours'].includes(context.stage) || ['template_operation_ref', 'template_external_group_ref'].some(key => C.own(context, key) && !ref(context[key])))) throw C.failure('工艺阶段或模板记录编号不正确。');
       const node = kind === 'part' ? 'process' : kind === 'op_type' ? context.category === 'internal' ? 'op_int' : 'op_ext' : kind;
       const restored = C.own(context, 'read_view') ? kind === 'part' ? window.APSProcessReadView.read(context.read_view) : resourceReadView(context.read_view, node) : undefined;
       return {
@@ -107,9 +107,9 @@
     } : {})
   });
   async function readList(adapter, kind, scope, signal) {
-    if (typeof adapter.list !== 'function') throw C.failure('资源列表接口尚未接入。');
+    if (typeof adapter.list !== 'function') throw C.failure('dependency not wired: adapter.list');
     const result = C.query(await adapter.list(kind, scope, signal), 'list');
-    if (result.data.page.number !== scope.page || result.data.page.size !== scope.size) throw C.failure('返回页码与请求范围不一致，请重新读取。');
+    if (result.data.page.number !== scope.page || result.data.page.size !== scope.size) throw C.failure('翻页位置已失效，请回到第 1 页重新查询。');
     const page = Math.min(scope.page, Math.max(1, Math.ceil(result.data.page.total / scope.size)));
     if (page === scope.page) return result;
     // A smaller total can invalidate the last page; keep the returned snapshot and all filters.
@@ -118,7 +118,7 @@
       page,
       snapshot_ref: result.meta.snapshot_ref
     }, signal), 'list');
-    if (clamped.data.page.number !== page || clamped.data.page.size !== scope.size || clamped.data.page.total !== result.data.page.total || clamped.meta.snapshot_ref !== result.meta.snapshot_ref || clamped.meta.source !== result.meta.source) throw C.failure('收缩页码后的列表与原读取范围不一致，请重新读取。');
+    if (clamped.data.page.number !== page || clamped.data.page.size !== scope.size || clamped.data.page.total !== result.data.page.total || clamped.meta.snapshot_ref !== result.meta.snapshot_ref || clamped.meta.source !== result.meta.source) throw C.failure('翻页位置已失效，请回到第 1 页重新查询。');
     return clamped;
   }
   const Rail = window.ResourceRail;
@@ -203,7 +203,7 @@
       transfer: name === 'openImport' ? 'import' : name === 'openExport' ? 'export' : undefined,
       disabled: disabled || loading,
       reasonDisplay: "tooltip",
-      reason: typeof adapter[name] !== 'function' || typeof adapter.supports === 'function' && !adapter.supports(name, config.kind) ? label + '向导尚未接入。' : !ready ? '请先读取当前范围。' : name === 'openBulk' && !selected.length ? '请先勾选记录。' : '',
+      reason: typeof adapter[name] !== 'function' || typeof adapter.supports === 'function' && !adapter.supports(name, config.kind) ? label + '尚未开通。' : !ready ? '请先读取当前列表。' : name === 'openBulk' && !selected.length ? '请先勾选记录。' : '',
       onClick: () => onExternal(name)
     }, label)), /*#__PURE__*/React.createElement(Button, {
       icon: "plus",
@@ -241,16 +241,16 @@
     })), /*#__PURE__*/React.createElement(Button, {
       icon: "calendar-days",
       disabled: disabled || !month,
-      reason: typeof adapter.openCalendar !== 'function' ? '工作日历向导尚未接入，不能修改日历。' : '',
+      reason: typeof adapter.openCalendar !== 'function' ? '工作日历维护尚未开通，不能修改。' : '',
       onClick: () => onExternal('openCalendar', {
         month
       })
     }, "\u7EF4\u62A4\u5DE5\u4F5C\u65E5\u5386")), /*#__PURE__*/React.createElement("p", {
       className: "muted",
       role: "status"
-    }, typeof adapter.openCalendar === 'function' ? '工作日历由已接入的日历向导读取和维护。' : '工作日历明细尚未接入。')), /*#__PURE__*/React.createElement("aside", {
+    }, typeof adapter.openCalendar === 'function' ? '工作日历在维护向导里读取和修改。' : '工作日历明细尚未开通。')), /*#__PURE__*/React.createElement("aside", {
       className: "cal-panel cal-side"
-    }, /*#__PURE__*/React.createElement("h3", null, "\u9ED8\u8BA4\u89C4\u5219"), /*#__PURE__*/React.createElement("p", null, "\u5C1A\u672A\u8BFB\u53D6\u3002\u672A\u63A8\u5B9A\u6BCF\u5929\u5DE5\u65F6\u3001\u6548\u7387\u6216\u5468\u672B\u5B89\u6392\u3002")));
+    }, /*#__PURE__*/React.createElement("h3", null, "\u9ED8\u8BA4\u89C4\u5219"), /*#__PURE__*/React.createElement("p", null, "\u9ED8\u8BA4\u89C4\u5219\u8FD8\u6CA1\u8BFB\u53D6\u3002\u8BF7\u70B9\u300C\u7EF4\u62A4\u5DE5\u4F5C\u65E5\u5386\u300D\u67E5\u770B\u6BCF\u5929\u5DE5\u65F6\u3001\u6548\u7387\u548C\u5468\u672B\u5B89\u6392\u3002")));
   }
   function ResourceWorkspace({
     adapter = emptyAdapter,
@@ -294,10 +294,10 @@
     }, [basic, dialog, command.phase, external.busy, onNavigationReady]);
     const list = S.useQuery(signal => readList(adapter, config.kind, scope, signal), [adapter, node, scope, revision, externalRevision], basic);
     const detail = S.useQuery(async signal => {
-      if (typeof adapter.detail !== 'function') throw C.failure('资源详情接口尚未接入。');
+      if (typeof adapter.detail !== 'function') throw C.failure('dependency not wired: adapter.detail');
       const result = C.query(await adapter.detail(dialog.kind, dialog.ref, signal), 'entity');
-      if (result.data.ref !== dialog.ref) throw C.failure('详情对象与所选记录不一致。');
-      if (dialog.navigation && (result.meta.source !== 'production' || C.own(result.data, 'kind') && result.data.kind !== dialog.kind || dialog.kind === 'op_type' && result.data.fields.category !== dialog.category)) throw C.failure('原记录的来源、类型或工种类别与导航不一致，未打开替代对象。');
+      if (result.data.ref !== dialog.ref) throw C.failure('读到的详情与所选记录不一致，请刷新后重试。');
+      if (dialog.navigation && (result.meta.source !== 'production' || C.own(result.data, 'kind') && result.data.kind !== dialog.kind || dialog.kind === 'op_type' && result.data.fields.category !== dialog.category)) throw C.failure('这条记录的来源、类型或工种类别和定位不一致，没有打开别的记录。');
       return result;
     }, [adapter, dialog && dialog.ref, dialog && dialog.kind], !!(dialog && dialog.ref));
     const data = list.result && list.result.data;
@@ -452,7 +452,7 @@
     }
     function continueNavigation() {
       if (command.phase !== 'idle' || dialog || external.busy) {
-        setNavigationError(C.failure('请先核实原请求并关闭原结果，再继续导航。'));
+        setNavigationError(C.failure('请先确认上次操作的结果并关闭，再继续跳转。'));
         return;
       }
       setNavigationError(null);
@@ -477,7 +477,7 @@
           page: 1,
           snapshot_ref: undefined
         }, new AbortController().signal), 'list');
-        if (dialog.ref && result.data.ref !== dialog.ref) throw C.failure('读取的资料与所选记录不一致，请重新读取并核对。');
+        if (dialog.ref && result.data.ref !== dialog.ref) throw C.failure('读到的资料与所选记录不一致，请刷新后核对。');
         setContextReview(result);
       } catch (error) {
         setContextError(error);
@@ -508,7 +508,7 @@
       });
       refresh();
       try {
-        if (typeof adapter.list !== 'function') throw C.failure('列表刷新接口尚未接入。');
+        if (typeof adapter.list !== 'function') throw C.failure('dependency not wired: adapter.list');
         const intentNode = Object.keys(C.nodes).find(key => C.nodes[key].kind === intent.kind && (!C.nodes[key].category || C.nodes[key].category === intent.category));
         const sameView = config && config.kind === intent.kind && (intent.kind !== 'op_type' || config.category === intent.category);
         const readScope = {
@@ -523,11 +523,11 @@
         let fresh = null;
         if (intent.action !== 'delete') {
           const ref = C.resultRef(command.result, intent.ref);
-          if (typeof ref !== 'string' || !ref) throw C.failure('保存回执未提供对象引用，无法重读详情。');
-          if (intent.ref && ref !== intent.ref) throw C.failure('保存回执对象与原请求不一致，需核实。');
-          if (typeof adapter.detail !== 'function') throw C.failure('详情刷新接口尚未接入。');
+          if (typeof ref !== 'string' || !ref) throw C.failure('保存结果里没有记录编号，暂时读不到详情。请点「刷新」后核对。');
+          if (intent.ref && ref !== intent.ref) throw C.failure('保存结果对应的记录和上次提交的不一致，请点「查询结果」核对。');
+          if (typeof adapter.detail !== 'function') throw C.failure('dependency not wired: adapter.detail');
           fresh = C.query(await adapter.detail(intent.kind, ref, new AbortController().signal), 'entity');
-          if (fresh.data.ref !== ref) throw C.failure('保存结果详情与回执对象不一致。');
+          if (fresh.data.ref !== ref) throw C.failure('保存后的详情和结果编号对不上，请点「刷新」后核对。');
         }
         if (mounted.current && generation === refreshGeneration.current) setRefreshState({
           done: true,
@@ -555,7 +555,7 @@
         if (C.receipt(result) !== 'terminal') {
           setExternal({
             busy: false,
-            error: C.failure('向导未返回完成回执，结果仍待核实。')
+            error: C.failure('向导没有返回完成结果。请点「查询结果」，不要重复提交。')
           });
           return;
         }
@@ -593,7 +593,7 @@
           onCommitted(result);
           return;
         }
-        throw C.failure('向导未返回明确结果，未视为成功。');
+        throw C.failure('向导没有返回明确结果，没有当成功处理。请刷新后核对。');
       } catch (error) {
         setExternal({
           busy: false,
@@ -618,11 +618,11 @@
       error: navigationError
     }), deferred && /*#__PURE__*/React.createElement("div", {
       role: "status"
-    }, /*#__PURE__*/React.createElement("p", null, "\u539F\u8BF7\u6C42\u4F18\u5148\u5904\u7406\uFF0C\u7CBE\u786E\u5BFC\u822A\u6682\u7F13\uFF1B\u5F85\u6838\u5B9E\u5199\u5165\u672A\u88AB\u8986\u76D6\u3002"), /*#__PURE__*/React.createElement(Button, {
+    }, /*#__PURE__*/React.createElement("p", null, "\u4E0A\u6B21\u64CD\u4F5C\u8FD8\u6CA1\u5904\u7406\u5B8C\uFF0C\u6682\u65F6\u6CA1\u6709\u8DF3\u8F6C\u5230\u6307\u5B9A\u8BB0\u5F55\u3002\u521A\u624D\u7684\u63D0\u4EA4\u6CA1\u6709\u88AB\u8986\u76D6\u3002"), /*#__PURE__*/React.createElement(Button, {
       icon: "arrow-right",
       onClick: continueNavigation
-    }, "\u7EE7\u7EED\u539F\u5BFC\u822A")), !config ? /*#__PURE__*/React.createElement(ErrorBox, {
-      error: C.failure('未知的基础资料节点，请选择产能链中的资源。')
+    }, "\u7EE7\u7EED\u8DF3\u8F6C")), !config ? /*#__PURE__*/React.createElement(ErrorBox, {
+      error: C.failure('未知的基础资料入口，请在上方产能链里选一项。')
     }) : /*#__PURE__*/React.createElement(React.Fragment, null, !(node === 'calendar' && renderCalendar) && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
       className: "crumb"
     }, /*#__PURE__*/React.createElement("span", null, "\u4EA7\u80FD\u94FE"), /*#__PURE__*/React.createElement("span", {
@@ -638,7 +638,7 @@
       className: "cur"
     }, config.label)), /*#__PURE__*/React.createElement("div", {
       className: "chead wb-page-heading"
-    }, /*#__PURE__*/React.createElement("h2", null, config.label, node === 'material' ? ' · 物料主数据' : ''))), /*#__PURE__*/React.createElement(ErrorBox, {
+    }, /*#__PURE__*/React.createElement("h2", null, config.label, node === 'material' ? ' · 基础资料' : ''))), /*#__PURE__*/React.createElement(ErrorBox, {
       error: external.error
     }), external.busy && /*#__PURE__*/React.createElement("p", {
       role: "status"
@@ -656,7 +656,7 @@
     }) : /*#__PURE__*/React.createElement("p", {
       role: "status",
       className: "muted"
-    }, "\u5DE5\u827A\u5DE5\u4F5C\u533A\u5C1A\u672A\u63A5\u5165\u3002") : node === 'calendar' ? typeof renderCalendar === 'function' ? renderCalendar({
+    }, "\u5DE5\u827A\u5DE5\u4F5C\u533A\u5C1A\u672A\u5F00\u901A\u3002") : node === 'calendar' ? typeof renderCalendar === 'function' ? renderCalendar({
       onCommitted: refresh,
       rememberEnabled: rememberEnabled && !navigationError && !deferred,
       initialContext: !deferred && target.context && target.context.kind === 'calendar' ? target.context : undefined
@@ -765,13 +765,13 @@
       contextReview: contextReview,
       onAcceptContext: acceptContext
     })), !dialog && (command.locked || command.phase === 'done') && /*#__PURE__*/React.createElement(Modal, {
-      title: "\u539F\u8BF7\u6C42\u7ED3\u679C",
+      title: "\u4E0A\u6B21\u64CD\u4F5C\u7ED3\u679C",
       icon: "history",
       onClose: close,
       locked: command.locked,
       footer: /*#__PURE__*/React.createElement(Button, {
         onClick: close,
-        reason: command.locked ? '原请求尚未核实。' : ''
+        reason: command.locked ? '上次操作的结果还没确认。' : ''
       }, "\u5173\u95ED")
     }, /*#__PURE__*/React.createElement("div", {
       className: "modal-b"

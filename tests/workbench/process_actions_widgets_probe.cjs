@@ -108,23 +108,23 @@ async function cases() {
     assert.deepEqual(await page.evaluate(() => fixture.reads.filter(r => r.type === 'bulk').at(-1).body.refs), [1, 21].map(n => n.toString(16).padStart(48, '0')));
     assert.equal(await page.evaluate(() => fixture.commands.length), 0); await button('取消').click(); await button('删除 PART-022').click(); await button('检查删除范围').click();
     await page.getByRole('table', { name: '零件操作预检' }).waitFor(); await page.getByRole('checkbox', { name: '已核对全部明细，确认删除这些零件。', exact: true }).check(); await button('确认删除').click();
-    await page.getByText('原请求已确认删除 1 个零件。', { exact: true }).waitFor();
+    await page.getByText('上次操作已确认删除 1 个零件。', { exact: true }).waitFor();
     assert.equal(await page.evaluate(() => fixture.commands.length), 1); assert.equal(await page.evaluate(() => fixture.previewRefs.length), 1); await shot('delete'); await button('完成').click();
     assert.equal(await page.locator('[data-process-selection-count]').innerText(), '2');
   });
   await run('create-dirty-cancel-save-original-ref', async () => {
     await mount(); await fillCreate(); await button('取消').click(); await page.getByRole('dialog', { name: '放弃新增零件的填写内容？', exact: true }).waitFor(); await button('继续编辑').click();
     assert.equal(await page.getByRole('textbox', { name: '图号', exact: true }).inputValue(), 'NEW-01'); assert.equal(await page.evaluate(() => fixture.commands.length), 0);
-    await button('保存零件').click(); await page.getByText('零件已登记，工艺仍待确认。打开详情前会重读这条原零件。', { exact: true }).waitFor();
+    await button('保存零件').click(); await page.getByText('零件已登记，工艺仍待确认。打开详情前会先刷新这条零件。', { exact: true }).waitFor();
     assert.equal(await page.evaluate(() => fixture.commands.length), 1); await shot('create'); await button('打开工艺详情').click();
     await page.getByRole('dialog', { name: 'NEW-01 · 新增零件', exact: true }).waitFor(); assert(await page.getByText('待录入路线', { exact: true }).isVisible());
     assert.equal(await page.evaluate(() => fixture.reads.filter(r => r.type === 'detail').at(-1).ref), (900).toString(16).padStart(48, '0')); await button('关闭详情').click();
   });
   await run('pending-receipt-remount-never-resubmits', async () => {
-    await mount({ pending: true, notRecorded: true }); await fillCreate('RECOVER'); await button('保存零件').click(); await button('查询原请求回执').waitFor();
+    await mount({ pending: true, notRecorded: true }); await fillCreate('RECOVER'); await button('保存零件').click(); await button('查询结果').waitFor();
     assert(await button('取消').isDisabled()); const key = await page.evaluate(() => fixture.pending.request_key); await page.evaluate(() => remountFixture());
-    await button('查询原请求回执').waitFor(); assert.equal(await page.evaluate(() => fixture.commands.length), 1); await page.evaluate(() => fixture.spec.notRecorded = false);
-    await button('查询原请求回执').click(); await button('打开工艺详情').waitFor(); assert.equal(await page.evaluate(() => fixture.commands.length), 1);
+    await button('查询结果').waitFor(); assert.equal(await page.evaluate(() => fixture.commands.length), 1); await page.evaluate(() => fixture.spec.notRecorded = false);
+    await button('查询结果').click(); await button('打开工艺详情').waitFor(); assert.equal(await page.evaluate(() => fixture.commands.length), 1);
     assert((await page.evaluate(() => fixture.lookups)).every(item => item === key)); await button('完成').click(); assert.equal(await page.evaluate(() => fixture.pending), null);
   });
   await run('atomic-rejection-pagination-and-expired-preview', async () => {
@@ -139,9 +139,9 @@ async function cases() {
     await mount({ missingCreated: true }); await fillCreate('SAME-CODE'); await button('保存零件').click(); await button('打开工艺详情').click();
     await page.getByText('原零件已不存在，未打开同图号的新零件。', { exact: true }).waitFor(); assert.equal(await page.locator('.process-detail').count(), 0); await button('完成').click();
     await mount({ partial: true }); await button('删除 PART-001').click(); await button('检查删除范围').click(); await page.getByRole('table', { name: '零件操作预检' }).waitFor();
-    await page.getByRole('checkbox', { name: '已核对全部明细，确认删除这些零件。', exact: true }).check(); await button('确认删除').click(); await button('查询原请求回执').waitFor();
+    await page.getByRole('checkbox', { name: '已核对全部明细，确认删除这些零件。', exact: true }).check(); await button('确认删除').click(); await button('查询结果').waitFor();
     assert(await button('取消').isDisabled()); assert.equal(await page.evaluate(() => fixture.committed.length), 0);
-    await button('查询原请求回执').click(); await page.getByText('原请求已确认删除 1 个零件。', { exact: true }).waitFor(); await button('完成').click();
+    await button('查询结果').click(); await page.getByText('上次操作已确认删除 1 个零件。', { exact: true }).waitFor(); await button('完成').click();
   });
   await run('file-import-group-discard-and-zero-review-explicit', async () => {
     await mount({ files: true }); await button('导入工艺路线').click(); await button('CSV (.csv)').click();
@@ -149,7 +149,7 @@ async function cases() {
     await button('开始预检').click(); await page.getByRole('table', { name: '原外协组规则', exact: true }).waitFor();
     assert(await page.getByRole('button', { name: /^确认导入/ }).isDisabled()); assert((await page.getByRole('table', { name: '原外协组规则', exact: true }).innerText()).includes('6.75 天'));
     await page.getByRole('checkbox', { name: '已核对全部 1 组，同意解除这些原外协组。', exact: true }).check(); await page.getByRole('checkbox', { name: '已核对全部修改前后内容，确认这些更新。', exact: true }).check();
-    await shot('file-route'); await button('确认导入').click(); await page.getByText('已取得原文件请求的完成回执，工艺确认状态以重新读取的详情为准。', { exact: true }).waitFor();
+    await shot('file-route'); await button('确认导入').click(); await page.getByText('文件导入已完成；工艺确认状态以刷新后的详情为准。', { exact: true }).waitFor();
     const input = await page.evaluate(() => fixture.commands.at(-1).body.input);
     assert.deepEqual(input, { preview_ref: 'p'.repeat(32), discard_group_refs: [(450).toString(16).padStart(48, '0')], confirm_zero_unit_hours: false }); await button('完成').click();
     await button('导入工时定额').click(); await button('CSV (.csv)').click();
@@ -159,7 +159,7 @@ async function cases() {
     await page.getByRole('checkbox', { name: '已复核单件工时为 0 的记录，确认保留 0。', exact: true }).check();
     const beforeHours = await page.evaluate(() => ({committed:fixture.committed.length,reads:fixture.reads.length}));
     await button('确认导入').click(); await page.getByRole('table', {name:'工时导入结果明细',exact:true}).waitFor();
-    assert.match(await page.getByRole('region', {name:'工时导入回执',exact:true}).innerText(), /已导入\s+1\s+行[\s\S]*锁定跳过\s+0\s+行/);
+    assert.match(await page.getByRole('region', {name:'工时导入结果',exact:true}).innerText(), /已导入\s+1\s+行[\s\S]*锁定跳过\s+0\s+行/);
     assert.equal(await page.evaluate(() => fixture.committed.length), beforeHours.committed);
     assert.equal(await page.evaluate(() => fixture.reads.length), beforeHours.reads);
     assert.equal(await page.evaluate(() => fixture.commands.at(-1).body.input.confirm_zero_unit_hours), true); await button('完成').click();
@@ -184,12 +184,12 @@ async function cases() {
     await mount({ files: true, pending: true, notRecorded: true }); await button('导入工时定额').click(); await button('CSV (.csv)').click();
     await page.getByLabel('选择工时定额文件', { exact: true }).setInputFiles({ name: 'hours.csv', mimeType: 'text/csv', buffer: Buffer.from('图号,工序\nPART-001,5\n') });
     await button('开始预检').click(); await page.getByRole('checkbox', { name: '已复核单件工时为 0 的记录，确认保留 0。', exact: true }).check();
-    await page.getByRole('checkbox', { name: '已核对全部修改前后内容，确认这些更新。', exact: true }).check(); await button('确认导入').click(); await button('查询原请求回执').waitFor();
+    await page.getByRole('checkbox', { name: '已核对全部修改前后内容，确认这些更新。', exact: true }).check(); await button('确认导入').click(); await button('查询结果').waitFor();
     const pending = await page.evaluate(() => fixture.pending); assert.equal(pending.kind, 'process_hours_import'); assert.equal(pending.action, 'confirm'); assert(!pending.input);
-    await page.evaluate(() => remountFixture()); await button('查询原请求回执').waitFor(); assert.equal(await page.evaluate(() => fixture.commands.length), 1);
-    await page.evaluate(() => { fixture.spec.notRecorded = false; fixture.receipt.data.kind = 'route'; }); await button('查询原请求回执').click();
-    await page.getByText('导入回执没有完整确认本次文件，请继续查询原请求。', { exact: true }).waitFor(); assert(await button('取消').isDisabled()); assert.equal(await page.evaluate(() => fixture.committed.length), 0);
-    await page.evaluate(() => fixture.receipt.data.kind = 'hours'); await button('查询原请求回执').click(); await button('完成').waitFor(); assert.equal(await page.evaluate(() => fixture.commands.length), 1);
+    await page.evaluate(() => remountFixture()); await button('查询结果').waitFor(); assert.equal(await page.evaluate(() => fixture.commands.length), 1);
+    await page.evaluate(() => { fixture.spec.notRecorded = false; fixture.receipt.data.kind = 'route'; }); await button('查询结果').click();
+    await page.getByText('上次导入的结果还没查到，可能已经生效。请点「查询结果」，不要重复提交。', { exact: true }).waitFor(); assert(await button('取消').isDisabled()); assert.equal(await page.evaluate(() => fixture.committed.length), 0);
+    await page.evaluate(() => fixture.receipt.data.kind = 'hours'); await button('查询结果').click(); await button('完成').waitFor(); assert.equal(await page.evaluate(() => fixture.commands.length), 1);
     assert((await page.evaluate(() => fixture.lookups)).every(key => key === pending.request_key));
     assert.equal(await page.evaluate(() => fixture.committed.length), 0); await page.getByRole('table', {name:'工时导入结果明细',exact:true}).waitFor();
     await button('完成').click(); await settle(); assert.equal(await page.evaluate(() => fixture.pending), null); assert.equal(await page.evaluate(() => fixture.committed.length), 1);

@@ -24,19 +24,35 @@
   };
   const states = {
     unverified: '未校验',
-    unknown: '结果未知',
-    accepted: '已受理',
+    unknown: '结果不确定',
+    accepted: '已接收',
     checking: '检查中',
-    protecting: '创建保护副本',
+    protecting: '生成保护副本',
     restoring: '恢复中',
-    verifying: '校验中',
-    rolling_back: '回滚中',
+    verifying: '完整性检查中',
+    rolling_back: '还原中',
     succeeded: '已完成',
     failed: '失败',
-    rolled_back: '已回滚',
-    rollback_failed: '回滚失败',
-    recovery_required: '需人工核查'
+    rolled_back: '已还原',
+    rollback_failed: '还原失败',
+    recovery_required: '需人工核对'
   };
+  const levels = {
+    INFO: '信息',
+    WARNING: '警告',
+    ERROR: '错误',
+    DEBUG: '调试',
+    CRITICAL: '严重',
+    UNKNOWN: '未知'
+  };
+  const sources = {
+    'aps.log': '主日志（aps.log）',
+    'aps_error.log': '错误日志（aps_error.log）',
+    'launcher.log': '启动日志（launcher.log）',
+    OperationLogs: '操作记录'
+  };
+  const levelText = value => levels[value] || value;
+  const sourceText = value => sources[value] || value;
   function Filters({
     kind,
     value,
@@ -83,7 +99,7 @@
         query: event.target.value
       }),
       placeholder: kind === 'logs' ? '摘要、已读取详情、来源' : '备份文件名'
-    }))), select('type', '记录类型', Object.entries(types).filter(([key]) => kind === 'logs' ? ['runtime', 'operation'].includes(key) : !['runtime', 'operation'].includes(key))), select('status', '记录状态', kind === 'logs' ? [['recorded', '已记录']] : Object.entries(states)), kind === 'logs' && /*#__PURE__*/React.createElement(React.Fragment, null, select('file', '日志来源', ['aps.log', 'aps_error.log', 'launcher.log', 'OperationLogs'].map(key => [key, key === 'OperationLogs' ? '操作记录' : key])), select('level', '日志级别', ['INFO', 'WARNING', 'WARN', 'ERROR', 'DEBUG', 'CRITICAL', 'UNKNOWN'].map(key => [key, key]))), ['start', 'end'].map(key => /*#__PURE__*/React.createElement("label", {
+    }))), select('type', '记录类型', Object.entries(types).filter(([key]) => kind === 'logs' ? ['runtime', 'operation'].includes(key) : !['runtime', 'operation'].includes(key))), select('status', '记录状态', kind === 'logs' ? [['recorded', '已记录']] : Object.entries(states)), kind === 'logs' && /*#__PURE__*/React.createElement(React.Fragment, null, select('file', '日志来源', Object.keys(sources).map(key => [key, sourceText(key)])), select('level', '日志级别', Object.keys(levels).map(key => [key, levelText(key)]))), ['start', 'end'].map(key => /*#__PURE__*/React.createElement("label", {
       className: "sm-field",
       key: key
     }, /*#__PURE__*/React.createElement("span", null, key === 'start' ? '开始日期' : '结束日期'), /*#__PURE__*/React.createElement("input", {
@@ -124,13 +140,13 @@
     })));
     const labels = {
       available: '可读取',
-      empty: '窗口内暂无记录',
+      empty: '这段范围内暂无记录',
       missing: '来源不存在',
       error: '来源读取失败'
     };
     return /*#__PURE__*/React.createElement("div", {
       className: "sm-log-sources",
-      "aria-label": "\u65E5\u5FD7\u8BFB\u53D6\u7A97\u53E3",
+      "aria-label": "\u65E5\u5FD7\u8BFB\u53D6\u8303\u56F4",
       style: {
         borderBottom: '1px solid var(--ui-border)',
         paddingBottom: 12,
@@ -138,7 +154,7 @@
       }
     }, /*#__PURE__*/React.createElement("p", {
       className: "sm-note"
-    }, "\u5148\u8BFB\u53D6\u5404\u6765\u6E90\u6700\u8FD1\u7A97\u53E3\uFF0C\u518D\u6309\u6761\u4EF6\u7B5B\u9009\uFF1B\u4E0D\u662F\u5168\u5386\u53F2\u65E5\u5FD7\u3002\u8BB0\u5F55\u72B6\u6001\u4E0D\u4EE3\u8868\u4E1A\u52A1\u6267\u884C\u6210\u529F\u3002"), /*#__PURE__*/React.createElement("div", {
+    }, "\u5148\u8BFB\u53D6\u5404\u6765\u6E90\u6700\u8FD1\u7684\u4E00\u6BB5\u65E5\u5FD7\uFF0C\u518D\u6309\u6761\u4EF6\u7B5B\u9009\uFF0C\u4E0D\u662F\u5168\u90E8\u5386\u53F2\u65E5\u5FD7\u3002\u8BB0\u5F55\u5DF2\u5199\u4E0B\u4E0D\u7B49\u4E8E\u4E1A\u52A1\u505A\u6210\u4E86\u3002"), /*#__PURE__*/React.createElement("div", {
       style: {
         display: 'flex',
         flexWrap: 'wrap',
@@ -152,11 +168,11 @@
         overflowWrap: 'anywhere',
         fontSize: 13
       }
-    }, /*#__PURE__*/React.createElement("strong", null, item.source === 'OperationLogs' ? '操作记录' : item.source), /*#__PURE__*/React.createElement("span", {
+    }, /*#__PURE__*/React.createElement("strong", null, sourceText(item.source)), /*#__PURE__*/React.createElement("span", {
       className: ['error', 'missing'].includes(item.state) ? 'sm-tone-warning' : 'sm-meta'
-    }, " \xB7 ", labels[item.state]), /*#__PURE__*/React.createElement("div", null, "\u6700\u8FD1 ", item.window, " \u6761 \xB7 ", item.count === null ? '数量未知' : '读取 ' + item.count + ' 条', item.truncated ? ' · 窗口已截断' : ' · 未报告窗口截断'), item.boundary_unknown && /*#__PURE__*/React.createElement("div", {
+    }, " \xB7 ", labels[item.state]), /*#__PURE__*/React.createElement("div", null, "\u6700\u8FD1 ", item.window, " \u6761 \xB7 ", item.count === null ? '数量未知' : '读取 ' + item.count + ' 条', item.truncated ? ' · 已截断' : ' · 没有截断'), item.boundary_unknown && /*#__PURE__*/React.createElement("div", {
       className: "sm-tone-warning"
-    }, "\u8BFB\u53D6\u8FB9\u754C\u672A\u80FD\u5B8C\u6574\u786E\u8BA4"), item.message && /*#__PURE__*/React.createElement("div", {
+    }, "\u8BFB\u5230\u7684\u8D77\u6B62\u4F4D\u7F6E\u6CA1\u80FD\u5B8C\u6574\u786E\u8BA4"), item.message && /*#__PURE__*/React.createElement("div", {
       className: "sm-tone-warning"
     }, item.message)))));
   }
@@ -202,12 +218,12 @@
       onClick: onClose
     })), /*#__PURE__*/React.createElement("div", {
       className: "sm-detail-meta"
-    }, /*#__PURE__*/React.createElement("time", null, row.time ? window.WorkbenchFormat.dateTime(row.time) : '时间未识别'), /*#__PURE__*/React.createElement("span", null, types[row.type]), /*#__PURE__*/React.createElement("span", null, kind === 'logs' ? row.file + ' · ' + row.level + ' · 已记录' : file ? '未校验 · ' + row.size_bytes + ' 字节' : states[row.status])), event && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", {
+    }, /*#__PURE__*/React.createElement("time", null, row.time ? window.WorkbenchFormat.dateTime(row.time) : '时间未识别'), /*#__PURE__*/React.createElement("span", null, types[row.type]), /*#__PURE__*/React.createElement("span", null, kind === 'logs' ? sourceText(row.file) + ' · ' + levelText(row.level) + ' · 已记录' : file ? '未校验 · ' + row.size_bytes + ' 字节' : states[row.status])), event && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", {
       className: "sm-note"
     }, {
-      external_maintenance_journal: '外置维护记录',
+      external_maintenance_journal: '维护记录',
       operation_audit: '操作审计',
-      latest_job_state_only: '仅最近任务状态'
+      latest_job_state_only: '仅最近一次维护状态'
     }[row.event_source]), /*#__PURE__*/React.createElement(window.WorkbenchReference, {
       label: "\u7EF4\u62A4\u4E8B\u4EF6\u7F16\u53F7",
       value: row.event_ref
@@ -370,7 +386,7 @@
         setDownloadBusy(false);
       }
     }
-    const writeReason = command.locked ? '原维护请求尚未确认，请先核实结果。' : request.loading || !data ? '请先读取有效的备份清单。' : '';
+    const writeReason = command.locked ? '上次维护操作还没有确认结果。请先点「查询结果」。' : request.loading || !data ? '请先读取有效的备份清单。' : '';
     const ask = (action, row) => {
       if (action !== 'create' && (!row || row.record_kind !== 'backup_file')) {
         setError(new Error('维护事件不是可操作的备份文件。'));
@@ -383,12 +399,12 @@
     };
     return /*#__PURE__*/React.createElement("section", {
       className: "sm-section",
-      "aria-label": kind === 'logs' ? '运行日志与操作记录' : '备份与恢复记录'
+      "aria-label": kind === 'logs' ? '运行日志与操作记录' : '备份与维护记录'
     }, /*#__PURE__*/React.createElement("div", {
       className: "sm-section-head"
-    }, /*#__PURE__*/React.createElement("h3", null, kind === 'logs' ? '运行日志与操作记录' : '备份与恢复记录'), /*#__PURE__*/React.createElement(C.Button, {
+    }, /*#__PURE__*/React.createElement("h3", null, kind === 'logs' ? '运行日志与操作记录' : '备份与维护记录'), /*#__PURE__*/React.createElement(C.Button, {
       icon: "refresh-cw",
-      "aria-label": "\u91CD\u65B0\u8BFB\u53D6\u6E05\u5355",
+      "aria-label": "\u5237\u65B0\u6E05\u5355",
       busy: request.loading,
       onClick: () => {
         setPage(1);
@@ -416,12 +432,12 @@
       icon: "plus",
       reason: writeReason || A.blocked(data, 'create'),
       onClick: () => ask('create', null)
-    }, "\u521B\u5EFA\u5907\u4EFD") : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(C.Button, {
+    }, "\u65B0\u589E\u5907\u4EFD") : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(C.Button, {
       transfer: "export",
       disabled: !data || request.loading,
       busy: downloadBusy,
       onClick: () => download('csv')
-    }, "\u5BFC\u51FA\u7A97\u53E3 CSV"), /*#__PURE__*/React.createElement(C.Button, {
+    }, "\u5BFC\u51FA\u8FD9\u6BB5\u65E5\u5FD7 CSV"), /*#__PURE__*/React.createElement(C.Button, {
       transfer: "export",
       disabled: !data || request.loading,
       busy: downloadBusy,
@@ -434,7 +450,7 @@
     }, notice), selection && data && !selected && /*#__PURE__*/React.createElement("p", {
       className: "sm-notice",
       role: "status"
-    }, !stableSelection ? '原选择缺少可信的稳定记录标识或记录类型，未按旧令牌、同名文件或第一条记录定位。' : '原选择记录未通过当前返回页的唯一身份核对，未自动替换为其他记录。', /*#__PURE__*/React.createElement(C.Button, {
+    }, !stableSelection ? '原先选中的记录编号不完整，没有按同名文件或第一条记录乱猜。请重新选择。' : '这一页里找不到原先选中的记录，没有自动换成别的记录。请重新选择。', /*#__PURE__*/React.createElement(C.Button, {
       icon: "x",
       onClick: () => setSelected(null)
     }, "\u6E05\u9664\u539F\u9009\u62E9")), kind === 'backups' && data && A.blocked(data, 'create') && /*#__PURE__*/React.createElement("p", {
@@ -442,12 +458,12 @@
     }, "\u6587\u4EF6\u52A8\u4F5C\u7981\u7528\uFF1A", A.blocked(data, 'create')), request.loading && /*#__PURE__*/React.createElement("p", {
       className: "sm-note",
       role: "status"
-    }, "\u6B63\u5728\u8BFB\u53D6", kind === 'logs' ? '日志窗口' : '备份清单', "\u2026"), data && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Sources, {
+    }, "\u6B63\u5728\u8BFB\u53D6", kind === 'logs' ? '日志' : '备份清单', "\u2026"), data && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Sources, {
       data: data,
       kind: kind
     }), /*#__PURE__*/React.createElement("div", {
       className: "sm-meta"
-    }, "\u5DE5\u5382\u672C\u5730\u65F6\u95F4 \xB7 \u6570\u636E\u622A\u81F3 ", window.WorkbenchFormat.dateTime(payload.meta.as_of)), data.rows.length ? /*#__PURE__*/React.createElement("div", {
+    }, "\u6570\u636E\u622A\u81F3 ", window.WorkbenchFormat.dateTime(payload.meta.as_of)), data.rows.length ? /*#__PURE__*/React.createElement("div", {
       className: "wb-table-shell wb-table-frame",
       "data-sticky-head": "true",
       "data-sticky-actions": "true"
@@ -455,10 +471,10 @@
       className: 'wb-table sm-table sm-record-table sm-' + kind + '-table'
     }, /*#__PURE__*/React.createElement("caption", {
       className: "wb-visually-hidden"
-    }, kind === 'logs' ? '已读取窗口内的运行日志与操作记录' : '备份文件及恢复、清理事件'), /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
+    }, kind === 'logs' ? '已读取的运行日志与操作记录' : '备份文件及恢复、清理事件'), /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
       scope: "col",
       className: "wb-col-key"
-    }, "\u5DE5\u5382\u672C\u5730\u65F6\u95F4"), /*#__PURE__*/React.createElement("th", {
+    }, "\u65F6\u95F4"), /*#__PURE__*/React.createElement("th", {
       scope: "col"
     }, "\u7C7B\u578B"), /*#__PURE__*/React.createElement("th", {
       scope: "col"
@@ -495,13 +511,13 @@
       className: "sm-status sm-tone-neutral"
     }, kind === 'logs' ? '已记录' : states[row.status])), kind === 'logs' && /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("span", {
       className: 'sm-level sm-level-' + row.level
-    }, row.level)), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("div", {
+    }, levelText(row.level))), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("div", {
       className: "sm-summary"
     }, /*#__PURE__*/React.createElement("strong", {
       style: {
         fontSize: 14
       }
-    }, row.summary), kind === 'logs' && /*#__PURE__*/React.createElement("small", null, row.file, row.content_truncated ? ' · 详情已截断' : ''))), kind === 'backups' && /*#__PURE__*/React.createElement("td", {
+    }, row.summary), kind === 'logs' && /*#__PURE__*/React.createElement("small", null, sourceText(row.file), row.content_truncated ? ' · 详情已截断' : ''))), kind === 'backups' && /*#__PURE__*/React.createElement("td", {
       style: {
         textAlign: 'right'
       }
@@ -520,7 +536,7 @@
     }))))))) : /*#__PURE__*/React.createElement(window.WorkbenchListControls.EmptyState, {
       kind: Object.values(filters).some(Boolean) ? 'filtered' : 'empty',
       title: "\u5F53\u524D\u7B5B\u9009\u4E0B\u6682\u65E0\u8BB0\u5F55",
-      hint: kind === 'logs' ? '仅限已读取的日志窗口；来源缺失和读取失败另行列出。' : '仅限已读取的备份文件、恢复事件和清理记录。',
+      hint: kind === 'logs' ? '只看已读取的那段日志；来源缺失和读取失败另行列出。' : '只看已读取的备份文件、恢复事件和清理记录。',
       action: Object.values(filters).some(Boolean) ? /*#__PURE__*/React.createElement(C.Button, {
         onClick: () => {
           setDraft({

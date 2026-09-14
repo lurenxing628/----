@@ -133,11 +133,11 @@ async function small() {
   const gold = await baselineLane.evaluate(n => n.__strokes.some(s => s.color === getComputedStyle(n).getPropertyValue('--wb-gantt-gold').trim() && s.lineWidth === 2)); assert(gold); done('selected-baseline-gold-border');
   const multiRef = await page.evaluate(() => baselineEnvelope.data.comparisons.find(r => r.baseline_segments.length > 1).operation_ref);
   await button('初始计划对照 ' + multiRef).click(); assert.equal(await page.locator('[data-baseline-segment]').count(), 2);
-  await page.getByText('初始计划同一工序有多个分段，未合并或任选一段作一一对照。', { exact: true }).waitFor(); await shot('multi-segment-detail'); done('multiple-segments-not-merged');
+  await page.getByText('初始计划里这道工序分成了几段，这里不合并也不任选一段来对照。', { exact: true }).waitFor(); await shot('multi-segment-detail'); done('multiple-segments-not-merged');
   const unplannedRef = await page.evaluate(() => baselineEnvelope.data.comparisons.find(r => r.status === 'unscheduled').operation_ref);
   await button('初始计划对照 ' + unplannedRef).click(); await page.getByText('候选没有安排此工序；未排不代表改善。', { exact: true }).waitFor(); done('unscheduled-is-not-improvement');
   const onlyRef = await page.evaluate(() => baselineEnvelope.data.comparisons.find(r => r.status === 'baseline_only').operation_ref);
-  await button('初始计划对照 ' + onlyRef).click(); await page.getByText('该工序仅在受理时正式计划中，不属于本次选择范围。', { exact: true }).waitFor(); done('baseline-only-detail-retained');
+  await button('初始计划对照 ' + onlyRef).click(); await page.getByText('这道工序只在排产时的正式计划里，不在这次选择的范围内。', { exact: true }).waitFor(); done('baseline-only-detail-retained');
   for (const name of ['人员', '批次', '设备']) { await button(name).click(); await proportions(); await layout(); }
   done('three-dimensions-preserve-both-sides');
   await button('放大候选时间轴').click(); await paintedFrame(); await page.getByLabel('候选时间轴水平位置', { exact: true }).evaluate(n => {
@@ -145,21 +145,21 @@ async function small() {
   });
   await page.locator('.rc-scroll').evaluate(n => { n.scrollLeft = n.scrollWidth; });
   await page.waitForFunction(() => document.querySelector('.rc-scroll').scrollLeft > 0); await layout(); await proportions(); await shot('zoom-right-edge'); done('zoom-pan-no-label-overpaint');
-  await toggle().uncheck(); assert.equal(await page.locator('[data-baseline-lane]').count(), 0); await button('适配完整候选时间轴').click();
+  await toggle().uncheck(); assert.equal(await page.locator('[data-baseline-lane]').count(), 0); await button('显示完整候选时间范围').click();
   assert.equal(await page.locator('[data-candidate-track]').count(), initial.rows); assert.equal(await page.locator('.rb-panel').count(), 0); await layout(); done('close-restores-candidate-only-geometry');
   await toggle().check(); await loaded(); await toggle().uncheck(); done('close-and-reopen-fresh-read');
   await mount('no_baseline'); await toggle().check(); await loaded(); await page.locator('.rb-panel summary').click();
-  await page.getByText('受理时没有正式初始计划，不能计算相对改善。', { exact: true }).waitFor(); assert.equal(await page.locator('[data-baseline-lane]').count(), 0); done('no-baseline-not-zero-improvement');
+  await page.getByText('排产时没有正式的初始计划，算不出相对改善。', { exact: true }).waitFor(); assert.equal(await page.locator('[data-baseline-lane]').count(), 0); done('no-baseline-not-zero-improvement');
   await mount('execution'); await toggle().check(); await loaded(); await readBaseline(); await page.locator('.rb-panel summary').click();
   const execRef = await page.evaluate(() => baselineEnvelope.data.comparisons.find(r => r.execution_affected).operation_ref);
-  await button('初始计划对照 ' + execRef).click(); await page.getByText('受理时已有执行证据或数量未知，时间差不能归因为排产优化。', { exact: true }).waitFor(); done('real-execution-evidence-no-benefit-attribution');
+  await button('初始计划对照 ' + execRef).click(); await page.getByText('排产时这道工序已经开工或数量不明，时间差不能算成排产优化。', { exact: true }).waitFor(); done('real-execution-evidence-no-benefit-attribution');
 }
 async function scopes() {
   await mount('mixed', { range_start: '2026-09-12T08:01:00', range_end: '2026-09-12T08:02:00' });
   assert.equal(await page.locator('[data-candidate-lane]').count(), 0); await toggle().check(); await loaded(); await readBaseline();
   assert(await page.locator('[data-baseline-lane]').count() > 0); await page.locator('.rb-panel summary').click();
   const ref = await page.evaluate(() => baselineEnvelope.data.comparisons.find(r => r.candidate).operation_ref);
-  await button('初始计划对照 ' + ref).click(); await page.getByText('该候选安排不在当前候选预览范围；此处保留完整对照。', { exact: true }).waitFor();
+  await button('初始计划对照 ' + ref).click(); await page.getByText('该候选安排不在当前读取范围；此处保留完整对照。', { exact: true }).waitFor();
   assert.equal(await page.locator('[data-candidate-lane]').count(), 0); await layout(); done('baseline-side-only-scope-no-fabricated-candidate-row');
   const result = await page.evaluate(async ref => {
     const all = await RunCandidateAPI.create().workspace(ref), batch = all.data.tasks[0].batch_ref;
@@ -179,7 +179,7 @@ async function failuresAndRaces() {
   const pattern = '**/scheduling/candidates/' + fixtures.mixed.candidate_ref + '/baseline?*';
   await page.route(pattern, route => route.fulfill({ status: 500, contentType: 'text/html', body: 'Unavailable' }));
   await toggle().check(); await page.getByRole('alert').waitFor(); assert.equal(await page.locator('[data-baseline-lane]').count(), 0); assert.equal(await page.locator('.rb-panel').count(), 0);
-  assert(await page.locator('[data-candidate-lane]').count() > 0); await page.unroute(pattern); await button('重读初始计划').click(); await loaded(); done('failed-read-clears-baseline-only-and-retry');
+  assert(await page.locator('[data-candidate-lane]').count() > 0); await page.unroute(pattern); await button('刷新初始计划').click(); await loaded(); done('failed-read-clears-baseline-only-and-retry');
   for (const action of ['cancel', 'candidate', 'scope']) {
     await mount('mixed'); let release, ready;
     const gate = new Promise(resolve => { release = resolve; }), received = new Promise(resolve => { ready = resolve; });

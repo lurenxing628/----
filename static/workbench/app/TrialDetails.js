@@ -15,7 +15,7 @@
       className: "tt-refs wb-ref"
     }, /*#__PURE__*/React.createElement("summary", null, "\u7F16\u53F7\u4E0E\u539F\u59CB\u4F9D\u636E"), /*#__PURE__*/React.createElement("dl", null, [['任务', task.task_ref], ['行', task.row_ref], ['原任务', task.source_task_ref], ['原行', task.source_row_ref], ['工序', task.operation_ref], ['批次', task.batch_ref]].map(([label, ref]) => /*#__PURE__*/React.createElement(React.Fragment, {
       key: label
-    }, /*#__PURE__*/React.createElement("dt", null, label), /*#__PURE__*/React.createElement("dd", null, ref || '无（候选来源无正式任务引用）')))), /*#__PURE__*/React.createElement("div", null, "\u524D\u5E8F\u5DE5\u5E8F\u5F15\u7528\uFF1A", task.predecessor_operation_refs.join('、') || '无'), /*#__PURE__*/React.createElement("div", null, "\u539F\u5DE5\u65F6\u4F9D\u636E\uFF1A", /*#__PURE__*/React.createElement("code", null, task.hours.basis || '未记录')));
+    }, /*#__PURE__*/React.createElement("dt", null, label), /*#__PURE__*/React.createElement("dd", null, ref || '无（候选来源没有正式任务编号）')))), /*#__PURE__*/React.createElement("div", null, "\u524D\u5E8F\u5DE5\u5E8F\u7F16\u53F7\uFF1A", task.predecessor_operation_refs.join('、') || '无'), /*#__PURE__*/React.createElement("div", null, "\u539F\u5DE5\u65F6\u4F9D\u636E\uFF1A", /*#__PURE__*/React.createElement("code", null, task.hours.basis || '未记录')));
   }
   function Execution({
     title,
@@ -87,8 +87,8 @@
         start: form.start.length === 16 ? form.start + ':00' : form.start
       };
       try {
-        C.check(C.time(value.start), '开工时间必须是有效的工厂本地时间。');
-        C.check(external ? value.machine_ref === null && value.operator_ref === null : C.ref(value.machine_ref) && C.ref(value.operator_ref), '必须明确选择设备与人员。');
+        C.check(C.time(value.start), '开工时间请按 2026-09-13 08:30 这样填。');
+        C.check(external ? value.machine_ref === null && value.operator_ref === null : C.ref(value.machine_ref) && C.ref(value.operator_ref), '请选择设备和人员。');
         const ok = await commands.execute({
           action: 'change',
           draft_ref: data.draft_ref,
@@ -111,7 +111,7 @@
     }, "\u8C03\u6574\u6B64\u5DE5\u5E8F") : /*#__PURE__*/React.createElement("form", {
       onSubmit: submit,
       className: "tt-editor"
-    }, /*#__PURE__*/React.createElement("h4", null, "\u8C03\u6574\u5DE5\u5E8F"), ['machine', 'operator'].map((kind, i) => /*#__PURE__*/React.createElement("label", {
+    }, /*#__PURE__*/React.createElement("h4", null, "\u8C03\u6574\u5DE5\u5E8F"), [['machine', 'machines'], ['operator', 'operators']].map(([kind, listKey], i) => /*#__PURE__*/React.createElement("label", {
       key: kind
     }, i ? '调整人员' : '调整设备', /*#__PURE__*/React.createElement("select", {
       "aria-label": i ? '调整人员' : '调整设备',
@@ -124,13 +124,13 @@
       })
     }, /*#__PURE__*/React.createElement("option", {
       value: ""
-    }, external ? '外协，无内部资源' : '请选择'), form[kind + '_ref'] && !data.resources[kind + 's'].some(r => r.ref === form[kind + '_ref']) && /*#__PURE__*/React.createElement("option", {
+    }, external ? '外协，无内部资源' : '请选择'), form[kind + '_ref'] && !data.resources[listKey].some(r => r.ref === form[kind + '_ref']) && /*#__PURE__*/React.createElement("option", {
       value: form[kind + '_ref']
-    }, "\u539F\u8D44\u6E90\uFF08\u5DF2\u4E0D\u53EF\u8BFB\uFF09"), data.resources[kind + 's'].map(r => /*#__PURE__*/React.createElement("option", {
+    }, "\u539F\u8D44\u6E90\uFF08\u5DF2\u4E0D\u53EF\u8BFB\uFF09"), data.resources[listKey].map(r => /*#__PURE__*/React.createElement("option", {
       key: r.ref,
       value: r.ref,
       disabled: r.status !== 'active'
-    }, r.business_code, " \xB7 ", r.label || '名称未记录', r.status !== 'active' ? '（不可用）' : ''))))), /*#__PURE__*/React.createElement("label", null, "\u8C03\u6574\u5F00\u5DE5", /*#__PURE__*/React.createElement("input", {
+    }, r.business_code, " \xB7 ", r.label || '名称未填写', r.status !== 'active' ? '（不可用）' : ''))))), /*#__PURE__*/React.createElement("label", null, "\u8C03\u6574\u5F00\u5DE5", /*#__PURE__*/React.createElement("input", {
       type: "datetime-local",
       step: "1",
       "aria-label": "\u8C03\u6574\u5F00\u5DE5",
@@ -143,7 +143,7 @@
       })
     })), /*#__PURE__*/React.createElement("div", {
       className: "tt-muted"
-    }, "\u539F\u5DE5\u65F6\u4E0D\u53D8\uFF1B\u5B8C\u5DE5\u7531\u771F\u5B9E\u65E5\u5386\u8BA1\u7B97\uFF0C\u524D\u540E\u5E8F\u4E0D\u81EA\u52A8\u79FB\u52A8\u3002"), !external && !data.resources.authorizations.some(r => r.machine_ref === form.machine_ref && r.operator_ref === form.operator_ref) && /*#__PURE__*/React.createElement("p", {
+    }, "\u539F\u5DE5\u65F6\u4E0D\u53D8\uFF1B\u5B8C\u5DE5\u6309\u771F\u5B9E\u73ED\u8868\u8BA1\u7B97\uFF0C\u524D\u540E\u5E8F\u4E0D\u81EA\u52A8\u79FB\u52A8\u3002"), !external && !data.resources.authorizations.some(r => r.machine_ref === form.machine_ref && r.operator_ref === form.operator_ref) && /*#__PURE__*/React.createElement("p", {
       className: "tt-notice"
     }, "\u5F53\u524D\u8BBE\u5907\u4E0E\u4EBA\u5458\u672A\u767B\u8BB0\u64CD\u4F5C\u6388\u6743\uFF0C\u63D0\u4EA4\u540E\u4EE5\u771F\u5B9E\u7EA6\u675F\u68C0\u67E5\u4E3A\u51C6\u3002"), /*#__PURE__*/React.createElement(U.ErrorBox, {
       error: error
@@ -169,7 +169,7 @@
       icon: "refresh-cw",
       disabled: commands.busy || !!commands.key,
       onClick: onRecheck
-    }, "\u91CD\u8BFB\u5DE5\u5E8F"))));
+    }, "\u5237\u65B0\u5DE5\u5E8F"))));
   }
   function Detail({
     data,
@@ -197,7 +197,7 @@
       icon: "x",
       "aria-label": "\u5173\u95ED\u5DE5\u5E8F\u8BE6\u60C5",
       onClick: () => onSelect(null)
-    })), /*#__PURE__*/React.createElement("h4", null, task.batch_id, " \xB7 ", task.process_label), /*#__PURE__*/React.createElement("p", null, task.part_no, " \xB7 ", task.part_name || '零件名称未记录'), /*#__PURE__*/React.createElement(Editor, {
+    })), /*#__PURE__*/React.createElement("h4", null, task.batch_id, " \xB7 ", task.process_label), /*#__PURE__*/React.createElement("p", null, task.part_no, " \xB7 ", task.part_name || '零件名称未填写'), /*#__PURE__*/React.createElement(Editor, {
       key: task.task_ref,
       data,
       task,
@@ -208,7 +208,7 @@
       editorRevision
     }), /*#__PURE__*/React.createElement("dl", {
       className: "tt-facts"
-    }, [['分件', task.piece_id || '整批'], ['原目标量', U.number(task.quantity)], ['批次数量', U.number(task.batch_quantity)], ...(window.PointContract.isPoint(task) ? [['安排类型', '时间点'], ['本工序占用', '0 h · 不占用资源']] : []), ['优先级', {
+    }, [['分件', task.piece_id || '整批'], ['原目标量', U.number(task.quantity)], ['批次数量', U.number(task.batch_quantity)], ...(window.PointContract.isPoint(task) ? [['安排类型', '零工时工序'], ['本工序占用', '0 小时 · 不占设备人员']] : []), ['优先级', {
       normal: '普通',
       urgent: '急件',
       critical: '特急'
@@ -248,10 +248,10 @@
     }), /*#__PURE__*/React.createElement(U.Issues, {
       rows: task.data_gaps
     })), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "\u6267\u884C\u4F9D\u636E"), /*#__PURE__*/React.createElement(Execution, {
-      title: "\u521B\u5EFA\u65F6\u6267\u884C\u6295\u5F71",
+      title: "\u5EFA\u8349\u7A3F\u65F6\u7684\u62A5\u5DE5\u8BB0\u5F55",
       value: task.execution_at_creation
     }), /*#__PURE__*/React.createElement(Execution, {
-      title: "\u672C\u6B21\u8BFB\u53D6\u6267\u884C\u6295\u5F71",
+      title: "\u672C\u6B21\u8BFB\u53D6\u7684\u62A5\u5DE5\u8BB0\u5F55",
       value: task.execution
     })), /*#__PURE__*/React.createElement(References, {
       task: task

@@ -47,6 +47,7 @@
     "WorkbenchScrollShadows.js",
     "WorkbenchFormat.js",
     "WorkbenchTerms.js",
+    "WorkbenchHandlerMemory.js",
     "WorkbenchReferences.jsx",
     "WorkbenchGuards.js",
     "WorkbenchCaption.jsx",

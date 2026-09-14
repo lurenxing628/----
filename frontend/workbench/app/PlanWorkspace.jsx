@@ -32,8 +32,8 @@
       if (!target) return;
       const task = data.tasks.find(row => row.task_ref === target);
       if (task) setSelected({ task, before: false, result, ...(relatedRef ? { locate: true } : {}) });
-      else setRangeError(C.failure(relatedRef ? '同一完整计划中未找到该关系任务，未定位到替代任务。'
-        : '指定恢复任务不在当前计划读取范围内，未选择替代任务。'));
+      else setRangeError(C.failure(relatedRef ? '这份完整计划里没找到相关的工序，没有改选其他工序。'
+        : '要恢复的工序不在当前读取范围内，没有改选其他工序。'));
       if (relatedRef) setRelatedRef(null);
     }, [relatedRef, result, read.loading, read.error]);
     const remembered = { ...initialContext, ...(selection ? { plan_ref: selection.plan_ref } : {}), query };
@@ -74,17 +74,17 @@
     const ready = !!data && !disabled;
     const includesPlanEnd = data && data.scope.range_start === null && data.plan_span.end_inclusive === true;
     const scopeCaption = !data ? '' : includesPlanEnd && data.plan_span.start === data.plan_span.end
-      ? `计划时间点：${M.timeLabel(data.plan_span.start)}`
-      : `计划时间范围：${M.timeLabel(data.time_scope.range_start)} → ${M.timeLabel(data.time_scope.range_end)}（${includesPlanEnd ? '包含末端计划点' : '不含结束时刻'}）`;
+      ? `计划时刻：${M.timeLabel(data.plan_span.start)}`
+      : `计划时间范围：${M.timeLabel(data.time_scope.range_start)} → ${M.timeLabel(data.time_scope.range_end)}（${includesPlanEnd ? '包含末端零工时工序' : '不含结束时刻'}）`;
     window.WorkbenchCaption.useCaption(data && !read.loading && !read.error && !paused ? {
-      reference: data.plan.plan_ref, label: '当前方案', name: data.plan.display_name,
-      status: data.plan.is_current_official ? '当前正式' : data.plan.kind === 'official' ? '历史正式' : data.plan.kind === 'candidate' ? '候选预览' : '场景预览',
-      ...(data.plan.kind === 'official' && data.plan.version !== null ? { version: '正式 v' + data.plan.version } : {}),
+      reference: data.plan.plan_ref, label: '正式计划', name: data.plan.display_name,
+      status: data.plan.is_current_official ? '当前正式' : data.plan.kind === 'official' ? '历史正式' : data.plan.kind === 'candidate' ? '候选方案' : '试调方案',
+      ...(data.plan.kind === 'official' && data.plan.version !== null ? { version: '第 ' + data.plan.version + ' 版' } : {}),
       range: scopeCaption,
     } : null);
     return <div className="plana plan-workspace" data-plan-workspace>
       <window.PlanLayout />
-      <div className="plan-heading"><div>{!data && <h2>{view === 'gantt' ? '设备 / 人员 / 批次甘特' : view === 'delay' ? '交付风险' : '选择排产方案'}</h2>}
+      <div className="plan-heading"><div>{!data && <h2>{view === 'gantt' ? '计划甘特' : view === 'delay' ? '交付风险' : '选择排产方案'}</h2>}
         <div className="plan-muted">{data ? data.plan.display_name : selection ? selection.display_name : '尚未选择计划'}{data && <> · <Identity plan={data.plan} /></>}</div></div>
         <div className="plan-actions">
           {typeof renderTrial === 'function' && renderTrial({ planRef: selection && selection.plan_ref, scope, query, disabled: !ready || read.loading })}
@@ -92,7 +92,7 @@
         </div>
       </div>
       <Catalog adapter={adapter} selectedRef={selection && selection.plan_ref} onSelect={choose} autoSelect={!planRef && Object.keys(initialContext).length === 0} disabled={disabled} />
-      <div className="plan-heading plan-read-heading"><div>{data && <div className="plan-muted">读取于 {M.timeLabel(result.meta.as_of)} · 工厂本地时间</div>}</div>
+      <div className="plan-heading plan-read-heading"><div>{data && <div className="plan-muted">读取于 {M.timeLabel(result.meta.as_of)}</div>}</div>
         <div className="plan-actions"><Button icon="calendar-days" aria-expanded={rangeOpen} onClick={() => setRangeOpen(!rangeOpen)} disabled={!selection}>读取范围</Button>
           <Button icon="refresh-cw" className="btn plan-icon" aria-label="刷新所选计划" disabled={!selection || disabled} busy={read.loading} onClick={refresh} />
           {read.loading && <Button icon="x" aria-label="取消计划读取" onClick={() => setPaused(true)}>取消读取</Button>}</div>
@@ -104,11 +104,11 @@
       </form>}
       <ErrorBox error={rangeError} /><ErrorBox error={read.error} />
       {result && <Issues issues={result.warnings} />}
-      {!data && <window.WorkbenchControls.EmptyState kind={read.loading ? 'loading' : 'empty'} title={read.loading ? '正在读取所选计划、工序安排和分析结果…' : paused ? '计划读取已取消，未显示上次读取的内容。' : read.error ? '所选计划未读取成功，没有替换成其他计划。' : '从目录中选择一个可查看的计划。'} />}
-      {(read.error || paused) && <Button icon="refresh-cw" onClick={refresh}>重新读取所选计划</Button>}
+      {!data && <window.WorkbenchControls.EmptyState kind={read.loading ? 'loading' : 'empty'} title={read.loading ? '正在读取所选计划、工序安排和分析结果…' : paused ? '计划读取已取消，未显示上次读取的内容。' : read.error ? '所选计划未读取成功，没有替换成其他计划。' : '请在计划列表里选一个可查看的计划。'} />}
+      {(read.error || paused) && <Button icon="refresh-cw" onClick={refresh}>刷新重试</Button>}
       {data && <>
         <div className="statline wb-metrics" style={{ '--wb-columns': 4, marginBottom: 8 }}>
-          {[[data.task_count, '范围内安排', 'primary'], [risks.length, '关联批次', 'primary'], [risks.filter(row => row.risk === 'overdue').length, '已核实预计超期', 'warn'], [risks.filter(row => row.risk === 'unknown').length, '交付风险待核实', 'warn']].map(([value, label, tone]) =>
+          {[[data.task_count, '范围内安排', 'primary'], [risks.length, '关联批次', 'primary'], [risks.filter(row => row.risk === 'overdue').length, '已确认预计超期', 'warn'], [risks.filter(row => row.risk === 'unknown').length, '交付风险暂无数据', 'warn']].map(([value, label, tone]) =>
             <div className="stat wb-metric" key={label} data-tone={tone === 'warn' && value === 0 ? 'neutral' : tone}><span className="sl wb-metric-label">{label}</span><span className="sv wb-metric-value">{value}</span></div>)}
         </div>
         <div className="plan-note" style={{ marginBottom: 10 }}>{scopeCaption}

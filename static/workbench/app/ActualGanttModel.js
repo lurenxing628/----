@@ -11,6 +11,9 @@
   const number = value => window.WorkbenchFormat.number(value, {
     digits: 2
   });
+  const hours = value => window.WorkbenchFormat.hours(value, {
+    digits: 2
+  });
   const pieceLabel = task => task.piece_id === null ? '共同工序' : '分件 ' + task.piece_id;
   const taskLabel = task => task.batch_id + ' · ' + task.sequence + ' ' + task.process_label + ' · ' + pieceLabel(task);
   const quantityReasons = {
@@ -18,14 +21,8 @@
     plan_target_unavailable: '原计划数量证据不可用',
     plan_target_invalid: '原计划数量证据无效'
   };
-  const states = {
-    unreported: '待报工',
-    started: '已开工',
-    partial: '部分报工',
-    paused: '已暂停',
-    exception: '异常',
-    complete: '整道已完工'
-  };
+  // 报工状态只有 FieldContract 那一份词表，本页不再另起一套叫法。
+  const states = window.FieldContract.states;
   const views = {
     machine: '设备',
     operator: '人员',
@@ -33,9 +30,9 @@
   };
   const lateLabels = {
     all: '全部工序',
-    finishLate: '已完晚',
+    finishLate: '已晚完成',
     unclosed: '到期未确认完成',
-    forecastLate: '剩余安排预计晚'
+    forecastLate: '剩余安排预计晚完成'
   };
   const names = data => new Map(data.resources.map(row => [row.ref, row.label || row.business_code]));
   function deadlines(item, asOf) {
@@ -299,15 +296,15 @@
     const t = item.task,
       e = item.execution;
     const result = [taskLabel(t), '计划应做：' + number(t.quantity) + ' 件 · 批次：' + number(t.batch_quantity) + ' 件', '原计划：' + time(t.start) + ' → ' + time(t.end), '计划资源：' + (labels.get(t.machine_ref) || '设备未填写') + ' / ' + (labels.get(t.operator_ref) || '人员未填写')];
-    if (window.PointContract.isPoint(t)) result.push('计划点 · 0 秒 · 不占用排产资源；完成状态以实际记录为准');
+    if (window.PointContract.isPoint(t)) result.push('零工时工序，不占设备人员；完成状态以实际记录为准');
     if (t.quantity_reason) result.push(quantityReasons[t.quantity_reason]);
-    if (!e) return result.concat('执行投影不可用');
-    result.push(states[e.execution_state] + ' · 已知完成 ' + number(e.known_completed_quantity) + ' 件', '整道实际完工：' + time(e.confirmed_finish), '剩余数量：' + number(e.remaining_quantity), e.completion_basis === 'legacy_finish_event' ? '旧完工事件确认完成；旧数量与工时可能未记录' : '完成依据：逐次执行投影');
-    if (report) result.push('本次报工：' + report.report_no, '实际：' + time(report.actual_start) + ' → ' + (report.actual_end ? time(report.actual_end) : '本次结束未填写'), '本次数量：' + number(report.completed_quantity) + ' · 有效工时：' + number(report.effective_processing_hours) + 'h', '实际资源：' + (labels.get(report.actual_machine_ref) || '设备未填写') + ' / ' + (labels.get(report.actual_operator_ref) || '人员未填写'), '备注：' + (report.remark || '未填写'));
+    if (!e) return result.concat('报工记录不可用');
+    result.push(states[e.execution_state] + ' · 已知完成 ' + number(e.known_completed_quantity) + ' 件', '整道实际完工：' + time(e.confirmed_finish), '剩余数量：' + number(e.remaining_quantity), e.completion_basis === 'legacy_finish_event' ? '历史完工记录确认完成；当时的数量与工时可能没有记录' : '完成依据：逐次报工记录');
+    if (report) result.push('本次报工：' + report.report_no, '实际：' + time(report.actual_start) + ' → ' + (report.actual_end ? time(report.actual_end) : '本次结束未填写'), '本次数量：' + number(report.completed_quantity) + ' 件 · 有效工时：' + hours(report.effective_processing_hours), '实际资源：' + (labels.get(report.actual_machine_ref) || '设备未填写') + ' / ' + (labels.get(report.actual_operator_ref) || '人员未填写'), '备注：' + (report.remark || '未填写'));
     return result;
   }
   function markTitle(mark, item, labels) {
-    const heading = mark.kind === 'plan-point' ? '原计划点基线' : mark.kind === 'plan' ? '原计划基线' : mark.kind === 'remaining' ? '已有剩余安排' : mark.kind === 'point' ? mark.report.actual_end ? '报工时点' : '报工开工时点 · 结束未填写' : '实际报工时段';
+    const heading = mark.kind === 'plan-point' ? '原计划 · 零工时工序' : mark.kind === 'plan' ? '原计划' : mark.kind === 'remaining' ? '已有剩余安排' : mark.kind === 'point' ? mark.report.actual_end ? '报工时刻' : '报工开工时刻 · 结束未填写' : '实际报工时段';
     return [heading].concat(describe(item, labels, mark.report)).join('\n');
   }
   function metrics(data) {
@@ -332,6 +329,7 @@
     wire,
     time,
     number,
+    hours,
     pieceLabel,
     taskLabel,
     states,

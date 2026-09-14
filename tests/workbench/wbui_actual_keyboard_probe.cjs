@@ -5,7 +5,7 @@ const root = path.resolve(__dirname, '../..'), output = process.argv[2];
 assert(output && !path.resolve(output).startsWith(root + path.sep)); fs.mkdirSync(output, { recursive: true });
 const hash = value => crypto.createHash('sha256').update(value).digest('hex');
 const report = { sources: [], errors: [], cases: [], fixture: 'synthetic component reports', production_database_tested: false, win7_hardware_tested: false };
-const names = ['WorkbenchFormat.js', 'PointContract.js', 'PointGanttModel.js', 'ActualGanttModel.js', 'ActualGanttWindow.js', 'ActualGanttCanvas.jsx'];
+const names = ['WorkbenchFormat.js', 'PointContract.js', 'PointGanttModel.js', 'WorkbenchTerms.js', 'FieldContract.js', 'ActualGanttModel.js', 'ActualGanttWindow.js', 'ActualGanttCanvas.jsx'];
 const sources = names.map(name => ({ path: 'frontend/workbench/app/' + name, code: fs.readFileSync(path.join(root, 'frontend/workbench/app', name), 'utf8') }));
 report.sources = sources.map(source => ({ path: source.path, sha256: hash(source.code) })); report.probe_sha256 = hash(fs.readFileSync(__filename));
 const built = compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'), sources, check_combined: true });
@@ -91,7 +91,7 @@ async function visibleActive(page) {
     report.cases.push('Pointer focus keeps hit coordinates stable and Enter retains the clicked report');
     for (const mode of ['remaining', 'plan-point']) {
       await page.evaluate(mode => mountKeyboard(mode), mode); await canvas.waitFor(); await canvas.focus(); await visibleActive(page); await page.keyboard.press('Enter');
-      assert.deepEqual(await page.evaluate(() => selections), [null]); assert.ok((await canvas.getAttribute('aria-label')).includes(mode === 'remaining' ? '已有剩余安排' : '原计划点基线'));
+      assert.deepEqual(await page.evaluate(() => selections), [null]); assert.ok((await canvas.getAttribute('aria-label')).includes(mode === 'remaining' ? '已有剩余安排' : '原计划 · 零工时工序'));
     }
     report.cases.push('Remaining interval and plan point can be focused and activated');
     await page.evaluate(() => mountKeyboard('empty')); await canvas.waitFor();

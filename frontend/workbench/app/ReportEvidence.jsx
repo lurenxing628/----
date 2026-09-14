@@ -3,14 +3,14 @@
   const labels = {
     actual_start: '实际开工', actual_end: '本次实际结束', completed_quantity: '本次完成数量', quantity_done: '旧登记数量',
     effective_processing_hours: '有效加工工时', remark: '备注', event_type: '事件类型', event_time: '事件时间',
-    event_label: '事件名称', recorded_at: '登记时间', recorded_at_time_basis: '登记时间口径', source: '来源',
-    local_operator: '登记人员', declared_operator: '声明人员', raw_values: '原存储字段', evidence: '来源证据',
-    message: '说明', reason: '原因', event_time_basis: '事件时间口径', raw_event_time: '原存储事件时间',
-    legacy_fact_ref: '旧事实编号', operation_ref: '工序编号', actual_machine_ref: '设备编号', actual_operator_ref: '人员编号',
-    task_ref: '任务编号', receipt_ref: '回执编号', revision_ref: '修订编号', snapshot_ref: '范围快照',
+    event_label: '事件名称', recorded_at: '登记时间', recorded_at_time_basis: '登记时间说明', source: '来源',
+    local_operator: '记录人', declared_operator: '经办人', raw_values: '原存储内容', evidence: '来源证据',
+    message: '说明', reason: '原因', event_time_basis: '事件时间说明', raw_event_time: '原存储事件时间',
+    legacy_fact_ref: '历史记录编号', operation_ref: '工序编号', actual_machine_ref: '设备编号', actual_operator_ref: '人员编号',
+    task_ref: '任务编号', receipt_ref: '结果编号', revision_ref: '版本编号', snapshot_ref: '数据版本编号',
     recorded_against_plan_ref: '原计划编号', recorded_against_task_ref: '原任务编号', report_ref: '报工编号',
     machine_label: '设备', operator_label: '人员', code: '原因代码', rule: '规则', rule_code: '规则代码',
-    diagnostic_code: '诊断代码', request_key: '请求编号', fields: '字段', original_values: '原始值'
+    diagnostic_code: '诊断代码', request_key: '操作编号', fields: '相关项', original_values: '原始值'
   };
   const diagnosticFields = new Set(['code', 'rule', 'rule_code', 'diagnostic_code', 'request_key']);
   const businessTextFields = new Set(['part_no', 'remark', 'message', 'reason', 'description', 'source', 'event_type',

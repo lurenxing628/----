@@ -18,7 +18,7 @@ async function conflicts(page,context,state,helpers,report,origin){
     }finally{await other.close();}
     const rejected=await save(page,'material','update',409);assert.equal(rejected.error.code,'stale_write');
     assert.equal(await page.getByRole('dialog').locator('input[name="label"]').inputValue(),'Primary reviewed name');
-    await page.getByRole('button',{name:'重新读取最新资料',exact:true}).click();await page.getByRole('button',{name:'已核对，继续编辑',exact:true}).click();
+    await page.getByRole('button',{name:'刷新最新资料',exact:true}).click();await page.getByRole('button',{name:'已核对，继续编辑',exact:true}).click();
     assert.equal(await page.getByRole('dialog').locator('input[name="spec"]').inputValue(),'Other window spec');
     assert.equal(await page.getByRole('dialog').locator('input[name="unit"]').inputValue(),'件');
     assert.equal(await page.getByRole('dialog').locator('input[name="label"]').inputValue(),'Primary reviewed name');
@@ -36,15 +36,15 @@ async function conflicts(page,context,state,helpers,report,origin){
     await page.route(updateMatcher,handler);await page.route(receiptMatcher,missing);
     try{
       await openEdit(page,code);await type(page.getByRole('dialog').locator('input[name="label"]'),'Recovered after disconnect');
-      await page.getByRole('dialog').getByRole('button',{name:'保存',exact:true}).click();await page.getByText('结果待核实。请保留当前页面，不要重新新建或重复保存。',{exact:true}).waitFor();
-      await page.locator('.modal-bg').click({position:{x:5,y:5}});assert(await page.getByText('结果待核实。请保留当前页面，不要重新新建或重复保存。',{exact:true}).isVisible());
+      await page.getByRole('dialog').getByRole('button',{name:'保存',exact:true}).click();await page.getByText('上次保存的结果还没查到，可能已经生效。请点「查询结果」，不要重复提交。',{exact:true}).waitFor();
+      await page.locator('.modal-bg').click({position:{x:5,y:5}});assert(await page.getByText('上次保存的结果还没查到，可能已经生效。请点「查询结果」，不要重复提交。',{exact:true}).isVisible());
       assert.equal(committed.result,'committed');
       const storage=await page.evaluate(()=>sessionStorage.getItem('aps_workbench_resource_pending_v1'));
       assert.equal(JSON.parse(storage).request_key,intent.request_key);assert(!storage.includes('write_token'));assert(!storage.includes('Recovered after disconnect'));
       report.expected_failures.push({state,kind:'lost-success-response-and-receipt-connection',request_key:intent.request_key,paths:[update,'/api/workbench/v1/commands/'+intent.request_key]});
     }finally{await page.unroute(updateMatcher,handler);await page.unroute(receiptMatcher,missing);}
     page.on('dialog',dialog=>dialog.accept());await page.reload();
-    await page.getByText('服务器已确认提交。',{exact:true}).waitFor();await close(page);
+    await page.getByText('保存已完成。',{exact:true}).waitFor();await close(page);
     await search(page,code);await row(page,code).waitFor();assert.equal((await readEntity(context,'material',ref)).label,'Recovered after disconnect');
     assert.equal(await page.evaluate(()=>sessionStorage.getItem('aps_workbench_resource_pending_v1')),null);
     await row(page,code).getByRole('button',{name:'删除',exact:true}).click();await save(page,'material','delete');await close(page);

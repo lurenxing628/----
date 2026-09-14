@@ -21,21 +21,36 @@ def _node():
     return executable
 
 
-def _run(directory=None):
+def _run(directory=None, check_variables=False):
     args = [_node(), str(CHECKER)]
     if directory is not None:
         args.extend(["--styles-dir", str(directory)])
+    if check_variables:
+        args.append("--check-variables")
     return subprocess.run(args, cwd=str(ROOT), capture_output=True, text=True, timeout=20)
 
 
-def _fixture(tmp_path, files):
+def _fixture(tmp_path, files, check_variables=False):
     for name, source in files.items():
         target = tmp_path / name
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(source, encoding="utf-8")
-    result = _run(tmp_path)
+    result = _run(tmp_path, check_variables=check_variables)
     assert result.returncode in (0, 1), result.stderr
     return result, json.loads(result.stdout)
+
+
+def test_undefined_css_variable_is_rejected_when_variable_checks_are_on(tmp_path):
+    files = {
+        "00-tokens.css": ":root { --wb-detail-w: 320px; }",
+        "30-workspaces.css": ".row { width: var(--wb-detail-w); color: var(--ui-text); background: var(--wb-not-defined, var(--ui-card-bg)); }",
+    }
+    result, report = _fixture(tmp_path, files, check_variables=True)
+    assert result.returncode == 1
+    assert [(row["rule"], row["file"], row["line"]) for row in report["violations"]] == [("undefined-variable", "30-workspaces.css", 1)]
+    assert "--wb-not-defined" in report["violations"][0]["message"]
+    passing, clean = _fixture(tmp_path, files)
+    assert passing.returncode == 0 and clean["violations"] == []
 
 
 def test_application_css_has_no_style_contract_violations():

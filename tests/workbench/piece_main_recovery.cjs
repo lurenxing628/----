@@ -16,13 +16,13 @@ async function recover(page, report, screenshot, record, flush, original) {
   assert.equal(restored.plan.plan_ref, original.plan.plan_ref); assert.deepEqual(restored.tasks, original.tasks);
   await screenshot(page, '13-original-plan-restored');
   await page.locator('.sidebar-nav').getByRole('link', { name: '执行排产', exact: true }).click();
-  await page.getByRole('button', { name: '查询原运行', exact: true }).click();
+  await page.getByRole('button', { name: '查询结果', exact: true }).click();
   await page.getByRole('table', { name: '已保存候选', exact: true }).waitFor();
   await page.getByRole('table', { name: '已保存候选', exact: true }).getByRole('button', { name: '详情', exact: true }).first().click();
   await page.getByRole('table', { name: '候选任务安排', exact: true }).waitFor();
   await page.locator('[data-run-adoption-action]').getByRole('button').first().click();
   const dialog = page.getByRole('dialog');
-  await dialog.getByRole('button', { name: '进入正式方案', exact: true }).waitFor();
+  await dialog.getByRole('button', { name: '进入正式计划', exact: true }).waitFor();
   await screenshot(page, '14-candidate-key-recovered');
   await flush();
   const posted = report.requests.filter(row => row.method === 'POST' && /\/candidates\/[^/]+\/adopt$/.test(row.url));

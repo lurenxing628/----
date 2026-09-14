@@ -6,6 +6,40 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const DEFAULT_STYLES = path.resolve(__dirname, '../frontend/workbench/app/styles');
+const PROTOTYPE_DIR = path.resolve(__dirname, '../frontend/workbench/prototype');
+const APP_DIR = path.resolve(__dirname, '../frontend/workbench/app');
+
+function listFiles(folder, extensions) {
+  const files = [];
+  if (!fs.existsSync(folder)) return files;
+  for (const item of fs.readdirSync(folder, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
+    const name = path.join(folder, item.name);
+    if (item.isDirectory()) files.push(...listFiles(name, extensions));
+    else if (item.isFile() && extensions.some(extension => item.name.endsWith(extension))) files.push(name);
+  }
+  return files;
+}
+
+// Custom properties are "defined" when a stylesheet declares them (app layer or imported prototype tokens)
+// or when application scripts set them dynamically by name (inline style objects, setProperty calls).
+function collectDefinedVariables(stylesDir) {
+  const defined = new Set();
+  const declaration = /(^|[;{}\s])(--[\w-]+)\s*:/g;
+  const scripted = /['"`](--[\w-]+)['"`]/g;
+  const stylesheets = [...listFiles(stylesDir, ['.css']), ...listFiles(PROTOTYPE_DIR, ['.css'])];
+  for (const file of stylesheets) {
+    let code;
+    try { code = maskNonCode(fs.readFileSync(file, 'utf8')); } catch (_) { continue; }
+    let match;
+    while ((match = declaration.exec(code))) defined.add(match[2]);
+  }
+  for (const file of listFiles(APP_DIR, ['.js', '.jsx'])) {
+    const source = fs.readFileSync(file, 'utf8');
+    let match;
+    while ((match = scripted.exec(source))) defined.add(match[1]);
+  }
+  return defined;
+}
 
 function maskNonCode(source) {
   const masked = source.split('');
@@ -50,7 +84,7 @@ function maskNonCode(source) {
   return masked.join('');
 }
 
-function checkSource(source, filename) {
+function checkSource(source, filename, definedVariables = null) {
   const violations = [];
   const lines = source.split(/\r?\n/);
   const lineAt = offset => source.slice(0, offset).split('\n').length;
@@ -80,6 +114,13 @@ function checkSource(source, filename) {
     if (property === 'z-index' && !/^\s*var\(\s*--wb-z-[\w-]+\s*\)\s*(?:!\s*important\s*)?$/i.test(value)) {
       add('z-index-token', valueOffset, 'z-index must directly use var(--wb-z-*), without a numeric fallback');
     }
+    if (definedVariables) {
+      // A var() whose first argument nobody defines silently renders its fallback (or nothing) and hides a broken selector state.
+      const references = /var\(\s*(--[\w-]+)/g;
+      while ((found = references.exec(value))) {
+        if (!definedVariables.has(found[1])) add('undefined-variable', valueOffset + found.index, found[1] + ' is not defined by the app styles, prototype tokens or application scripts');
+      }
+    }
     const important = /!\s*important\b/ig;
     while ((found = important.exec(value))) {
       const offset = valueOffset + found.index;
@@ -96,8 +137,9 @@ function checkSource(source, filename) {
   return violations;
 }
 
-function checkDirectory(directory) {
+function checkDirectory(directory, options = {}) {
   const stylesDir = path.resolve(directory);
+  const definedVariables = options.checkVariables ? collectDefinedVariables(stylesDir) : null;
   const files = [];
   function visit(folder) {
     for (const item of fs.readdirSync(folder, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
@@ -114,23 +156,25 @@ function checkDirectory(directory) {
     const bytes = fs.readFileSync(file);
     const relative = path.relative(stylesDir, file).split(path.sep).join('/');
     sources.push({ file: relative, sha256: crypto.createHash('sha256').update(bytes).digest('hex') });
-    violations.push(...checkSource(bytes.toString('utf8'), relative));
+    violations.push(...checkSource(bytes.toString('utf8'), relative, definedVariables));
   }
   return { passed: violations.length === 0, styles_dir: stylesDir, sources, violations };
 }
 
 function main(argv) {
-  let directory = DEFAULT_STYLES;
-  if (argv.length && (argv.length !== 2 || argv[0] !== '--styles-dir' || !argv[1].trim())) {
-    throw new Error('Usage: node tests/workbench-app-styles.cjs [--styles-dir DIR]');
-  }
-  if (argv.length) directory = argv[1];
-  const report = checkDirectory(directory);
+  // The real app layer always checks var() references; fixtures opt in with --check-variables.
+  const usage = 'Usage: node tests/workbench-app-styles.cjs [--styles-dir DIR] [--check-variables]';
+  const args = argv.slice();
+  const checkVariablesFlag = args.indexOf('--check-variables');
+  if (checkVariablesFlag >= 0) args.splice(checkVariablesFlag, 1);
+  if (args.length && (args.length !== 2 || args[0] !== '--styles-dir' || !args[1].trim())) throw new Error(usage);
+  const directory = args.length ? args[1] : DEFAULT_STYLES;
+  const report = checkDirectory(directory, { checkVariables: checkVariablesFlag >= 0 || !args.length });
   process.stdout.write(JSON.stringify(report, null, 2) + '\n');
   return report.passed ? 0 : 1;
 }
 
-module.exports = { checkSource, checkDirectory, main };
+module.exports = { checkSource, checkDirectory, collectDefinedVariables, main };
 if (require.main === module) {
   try { process.exitCode = main(process.argv.slice(2)); }
   catch (error) { process.stderr.write(error.message + '\n'); process.exitCode = 2; }

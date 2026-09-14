@@ -7,9 +7,9 @@
   const number = value => window.WorkbenchFormat.number(value, { digits: 2 });
   const quantityLabel = value => value === null ? '未知' : typeof value === 'string' ? value : number(value);
   const pieceLabel = task => task.piece_id === null ? '共同工序' : '分件 ' + task.piece_id;
-  const quantityReasons = { plan_target_not_recorded: '该计划未记录可核实的原目标量，未使用当前批次数量。',
-    plan_target_unavailable: '原采用审计、回执或来源证据缺失或不一致，未使用当前批次数量。',
-    plan_target_invalid: '原数量证据无效或缺失，未推算目标量。' };
+  const quantityReasons = { plan_target_not_recorded: '这份计划没有记录原来的目标量，没有拿当前批次数量代替。',
+    plan_target_unavailable: '采用记录或来源依据缺失、对不上，没有拿当前批次数量代替。',
+    plan_target_invalid: '原来的数量依据无效或缺失，没有推算目标量。' };
   const kindLabels = { machine: '设备', operator: '人员', batch: '批次' };
   function names(data) {
     const result = new Map();
@@ -23,7 +23,7 @@
   function resourceLabel(task, mode, labels) {
     if (mode === 'batch') return task.batch_id;
     const ref = task[mode + '_ref'];
-    return ref ? labels.get(ref) || kindLabels[mode] + '名称未记录' : '未绑定' + kindLabels[mode];
+    return ref ? labels.get(ref) || kindLabels[mode] + '名称未填写' : '未选' + kindLabels[mode];
   }
   function searchText(task, labels) {
     return [task.batch_id, task.process_label, task.sequence, pieceLabel(task), labels.get(task.machine_ref), labels.get(task.operator_ref)].filter(value => value != null).join(' ').toLocaleLowerCase();
@@ -140,7 +140,7 @@
     return [task.batch_id + ' · ' + task.sequence + ' ' + task.process_label, pieceLabel(task),
       '本工序目标量：' + quantityLabel(task.quantity) + ' · 计划来源整批量：' + quantityLabel(task.batch_quantity),
       task.quantity_reason ? quantityReasons[task.quantity_reason] : null,
-      window.PointContract.isPoint(task) ? '时间点 · 0 h · 不占用资源' : null,
+      window.PointContract.isPoint(task) ? '零工时工序 · 0 小时 · 不占设备人员' : null,
       timeLabel(task.start) + ' → ' + timeLabel(task.end), resourceLabel(task, 'machine', labels) + ' / ' + resourceLabel(task, 'operator', labels),
       conflict ? '资源时间冲突（安排重叠）' : null].filter(Boolean).join('\n');
   }

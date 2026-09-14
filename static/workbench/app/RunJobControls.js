@@ -12,7 +12,7 @@
     complete: '计算完成',
     partial: '部分完成',
     failed: '计算失败',
-    interrupted: '运行中断'
+    interrupted: '排产中断'
   };
   function Progress({
     run
@@ -25,10 +25,31 @@
       }, 1000);
       return () => clearInterval(timer);
     }, [run.run_ref, run.finished_at]);
-    return /*#__PURE__*/React.createElement("p", {
+    const progress = run.progress,
+      computing = !A.terminal(run) && !run.recovery_required;
+    const percent = progress && progress.total > 0 ? Math.round(progress.done / progress.total * 100) : null;
+    return /*#__PURE__*/React.createElement("div", {
       className: "rj-progress",
       "data-run-progress": true
-    }, /*#__PURE__*/React.createElement("strong", null, window.RunPresentation.stage(run)), /*#__PURE__*/React.createElement("span", null, "\u5DF2\u8017\u65F6 ", window.RunPresentation.elapsed(run, now)));
+    }, /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("strong", null, window.RunPresentation.stage(run)), /*#__PURE__*/React.createElement("span", null, "\u5DF2\u8017\u65F6 ", window.RunPresentation.elapsed(run, now)), progress && /*#__PURE__*/React.createElement("span", {
+      "data-run-progress-count": true
+    }, "\u5DF2\u7B97\u5B8C ", progress.done, " / ", progress.total, " \u4E2A\u5019\u9009\u65B9\u6848 \xB7 \u6700\u8FD1\u66F4\u65B0 ", window.WorkbenchFormat.dateTime(progress.updated_at))), computing && /*#__PURE__*/React.createElement("div", {
+      className: 'rj-bar' + (percent === null ? ' rj-bar-indeterminate' : ''),
+      role: "progressbar",
+      "aria-label": "\u6392\u4EA7\u8BA1\u7B97\u8FDB\u5EA6",
+      "aria-valuemin": 0,
+      "aria-valuemax": 100,
+      "aria-valuenow": percent === null ? undefined : percent,
+      "aria-valuetext": percent === null ? '正在计算，进度未知' : '已算完 ' + progress.done + ' / ' + progress.total + ' 个候选方案'
+    }, /*#__PURE__*/React.createElement("i", {
+      className: "rj-bar-fill",
+      style: percent === null ? undefined : {
+        width: percent + '%'
+      }
+    })), computing && /*#__PURE__*/React.createElement("p", {
+      className: "rj-notice",
+      role: "status"
+    }, "\u8BA1\u7B97\u8FD8\u6CA1\u7ED3\u675F\uFF0C\u8BF7\u4E0D\u8981\u5173\u95ED\u6216\u5237\u65B0\u672C\u9875\uFF1B\u5207\u5230\u522B\u7684\u9875\u9762\u4F1A\u6682\u505C\u67E5\u8BE2\uFF0C\u56DE\u6765\u540E\u81EA\u52A8\u7EED\u67E5\u3002"));
   }
   function Status({
     run
@@ -39,7 +60,7 @@
       "data-run-stage": run.stage
     }, /*#__PURE__*/React.createElement("span", {
       className: "dot"
-    }), run.recovery_required ? '等待核对运行' : labels[run.state]);
+    }), run.recovery_required ? '等待核对排产记录' : labels[run.state]);
   }
   function Scope({
     preview
@@ -47,7 +68,7 @@
     const value = preview.normalized_input;
     return /*#__PURE__*/React.createElement("dl", {
       className: "rj-scope"
-    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u672C\u6B21\u6279\u6B21"), /*#__PURE__*/React.createElement("dd", null, value.batch_refs.length, " \u6279")), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u8BA1\u5212\u7A97\u53E3"), /*#__PURE__*/React.createElement("dd", null, value.start_date, " \u81F3 ", value.end_date)), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u9F50\u5957\u68C0\u67E5"), /*#__PURE__*/React.createElement("dd", null, value.ready_check ? '开启' : '关闭')), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u7F3A\u8D44\u6E90\u5DE5\u5E8F"), /*#__PURE__*/React.createElement("dd", null, value.missing_resource_policy === 'auto_assign' ? '自动分配' : '暂不排')), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u5DF2\u6709\u6267\u884C"), /*#__PURE__*/React.createElement("dd", null, "\u4FDD\u7559\u5F00\u5DE5\u548C\u5B8C\u5DE5\u4E8B\u5B9E")));
+    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u672C\u6B21\u6279\u6B21"), /*#__PURE__*/React.createElement("dd", null, value.batch_refs.length, " \u6279")), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u6392\u4EA7\u65E5\u671F"), /*#__PURE__*/React.createElement("dd", null, value.start_date, " \u81F3 ", value.end_date)), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u9F50\u5957\u68C0\u67E5"), /*#__PURE__*/React.createElement("dd", null, value.ready_check ? '开启' : '关闭')), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u7F3A\u8D44\u6E90\u5DE5\u5E8F"), /*#__PURE__*/React.createElement("dd", null, value.missing_resource_policy === 'auto_assign' ? '自动分配' : '暂不排')), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u5DF2\u6709\u62A5\u5DE5"), /*#__PURE__*/React.createElement("dd", null, "\u4FDD\u7559\u5DF2\u5F00\u5DE5\u548C\u5DF2\u5B8C\u5DE5\u7684\u8BB0\u5F55")));
   }
   function Reasons({
     rows
@@ -66,7 +87,9 @@
       role: "status"
     }, Array.from(groups.values()).slice(0, 20).map((row, index) => /*#__PURE__*/React.createElement("div", {
       key: index
-    }, ['run_worker_not_connected', 'run_schema_unavailable', 'execution_ledger_unavailable'].includes(row.code) ? A.message(row) : row.message, row.count > 1 ? '（' + row.count + ' 项）' : '')), groups.size > 20 && /*#__PURE__*/React.createElement("div", null, "\u53E6\u6709 ", groups.size - 20, " \u7C7B\u539F\u56E0\uFF0C\u8BF7\u8FD4\u56DE\u6392\u4EA7\u68C0\u67E5\u6838\u5BF9\u3002"));
+    }, ['run_worker_not_connected', 'run_schema_unavailable', 'execution_ledger_unavailable'].includes(row.code) ? A.message(row) : row.message, row.count > 1 ? '（' + row.count + ' 项）' : '', /*#__PURE__*/React.createElement(window.WorkbenchReference, {
+      entries: A.details(row)
+    }))), groups.size > 20 && /*#__PURE__*/React.createElement("div", null, "\u53E6\u6709 ", groups.size - 20, " \u7C7B\u539F\u56E0\uFF0C\u8BF7\u8FD4\u56DE\u6392\u4EA7\u68C0\u67E5\u6838\u5BF9\u3002"));
   }
   function Confirmation({
     preview,
@@ -97,7 +120,7 @@
       preview: preview
     }), /*#__PURE__*/React.createElement("div", {
       className: "rj-notice"
-    }, "\u4EC5\u8BA1\u7B97\u5E76\u4FDD\u5B58\u5019\u9009\uFF0C\u4E0D\u66FF\u6362\u6B63\u5F0F\u8BA1\u5212\u3002\u65E5\u5386\u53EF\u884C\u6027\u5C1A\u672A\u9A8C\u8BC1\uFF0C\u6700\u7EC8\u7ED3\u679C\u4EE5\u672C\u6B21\u8BA1\u7B97\u8BB0\u5F55\u4E3A\u51C6\u3002"), /*#__PURE__*/React.createElement("details", {
+    }, "\u53EA\u8BA1\u7B97\u5E76\u4FDD\u5B58\u5019\u9009\u65B9\u6848\uFF0C\u4E0D\u66FF\u6362\u6B63\u5F0F\u8BA1\u5212\u3002\u73ED\u8868\u662F\u5426\u6392\u5F97\u4E0B\u8FD8\u6CA1\u6838\u5BF9\uFF0C\u6700\u7EC8\u7ED3\u679C\u770B\u8FD9\u6B21\u6392\u4EA7\u8BB0\u5F55\u3002"), /*#__PURE__*/React.createElement("details", {
       className: "wb-ref"
     }, /*#__PURE__*/React.createElement("summary", null, "\u6279\u6B21\u5185\u90E8\u7F16\u53F7 \xB7 ", values.length, " \u6279"), /*#__PURE__*/React.createElement("ol", {
       className: "rj-refs",
@@ -134,17 +157,17 @@
       setError('');
       async function load() {
         try {
-          if (typeof api.catalog !== 'function') throw new Error('候选目录尚未接入。');
+          if (typeof api.catalog !== 'function') throw new Error('dependency not wired: adapter.catalog');
           const response = await api.catalog(run.run_ref, query, controller.signal),
             data = A.catalog(response, run.run_ref, query);
           const saved = new Map(run.candidates.map(c => [c.candidate_ref, c]));
-          if (data.run_state !== run.state || data.candidate_count !== saved.size || data.candidates.some(c => !saved.has(c.candidate_ref) || saved.get(c.candidate_ref).status !== c.persisted_status || saved.get(c.candidate_ref).task_count !== c.task_count)) throw new Error('候选目录与运行回执不一致。');
+          if (data.run_state !== run.state || data.candidate_count !== saved.size || data.candidates.some(c => !saved.has(c.candidate_ref) || saved.get(c.candidate_ref).status !== c.persisted_status || saved.get(c.candidate_ref).task_count !== c.task_count)) throw new Error('候选方案列表与这次排产的结果不一致。');
           if (!disposed) setCatalog({
             ...data,
             snapshot_ref: response.meta.snapshot_ref
           });
         } catch (e) {
-          if (!disposed) setError('候选目录暂时无法核实；运行回执仍保留 ' + run.candidates.length + ' 项候选。');
+          if (!disposed) setError('暂时读不到候选方案列表；这次排产的结果里仍有 ' + run.candidates.length + ' 个候选方案。');
         } finally {
           if (!disposed) setBusy(false);
         }
@@ -157,16 +180,16 @@
     }, [api, run.run_ref, run.state, query, revision]);
     if (!run.candidates.length) return /*#__PURE__*/React.createElement("p", {
       className: "rj-muted"
-    }, A.terminal(run) ? '本次没有保存候选结果。' : '候选结果尚未保存。');
+    }, A.terminal(run) ? '这次排产没有保存候选方案。' : '候选方案还没保存。');
     const canOpen = typeof api.openCandidate === 'function',
       selected = new Set(run.candidates.filter(c => c.selected).map(c => c.candidate_ref));
     return /*#__PURE__*/React.createElement("section", {
-      "aria-label": "\u5DF2\u4FDD\u5B58\u5019\u9009"
+      "aria-label": "\u5DF2\u4FDD\u5B58\u5019\u9009\u65B9\u6848"
     }, /*#__PURE__*/React.createElement("div", {
       className: "rj-heading"
-    }, /*#__PURE__*/React.createElement("h3", null, "\u5DF2\u4FDD\u5B58\u5019\u9009 \xB7 ", run.candidates.length, " \u9879"), /*#__PURE__*/React.createElement(Button, {
+    }, /*#__PURE__*/React.createElement("h3", null, "\u5DF2\u4FDD\u5B58\u5019\u9009\u65B9\u6848 \xB7 ", run.candidates.length, " \u9879"), /*#__PURE__*/React.createElement(Button, {
       icon: "refresh-cw",
-      "aria-label": "\u5237\u65B0\u5019\u9009\u76EE\u5F55",
+      "aria-label": "\u5237\u65B0\u5019\u9009\u65B9\u6848\u5217\u8868",
       busy: busy,
       onClick: () => {
         setQuery({});
@@ -174,13 +197,13 @@
       }
     })), !canOpen && /*#__PURE__*/React.createElement("p", {
       className: "rj-muted"
-    }, "\u5019\u9009\u8BE6\u60C5\u9875\u9762\u5C1A\u672A\u63A5\u5165\uFF0C\u6682\u4E0D\u80FD\u9884\u89C8\u3002"), error && /*#__PURE__*/React.createElement("div", {
+    }, window.WorkbenchTerms.outcomes.unavailable), error && /*#__PURE__*/React.createElement("div", {
       className: "rj-notice",
       role: "alert"
     }, error), busy && /*#__PURE__*/React.createElement("p", {
       className: "rj-muted",
       role: "status"
-    }, "\u6B63\u5728\u8BFB\u53D6\u5DF2\u4FDD\u5B58\u5019\u9009\u3002"), catalog && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+    }, "\u6B63\u5728\u8BFB\u53D6\u5DF2\u4FDD\u5B58\u5019\u9009\u65B9\u6848\u3002"), catalog && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
       className: "rj-table wb-table-frame",
       "data-sticky-head": true,
       "data-sticky-actions": true
@@ -206,7 +229,7 @@
       className: "wb-col-key"
     }, /*#__PURE__*/React.createElement("div", {
       className: "rj-name"
-    }, /*#__PURE__*/React.createElement("span", null, row.label || '生成时未记录名称', selected.has(row.candidate_ref) && /*#__PURE__*/React.createElement("span", {
+    }, /*#__PURE__*/React.createElement("span", null, row.label || '生成时名称未填写', selected.has(row.candidate_ref) && /*#__PURE__*/React.createElement("span", {
       className: "rj-selected"
     }, "\u672C\u6B21\u9009\u4E2D")), /*#__PURE__*/React.createElement(window.WorkbenchReference, {
       value: row.candidate_ref
@@ -221,7 +244,7 @@
       icon: "eye",
       className: "mini",
       reasonDisplay: "tooltip",
-      reason: canOpen ? '' : '候选详情页面尚未接入，暂不能预览。',
+      reason: canOpen ? '' : window.WorkbenchTerms.outcomes.unavailable,
       onClick: () => api.openCandidate({
         candidate_ref: row.candidate_ref,
         run_ref: row.run_ref
@@ -247,32 +270,32 @@
     api
   }) {
     return /*#__PURE__*/React.createElement("section", {
-      "aria-label": "\u672C\u6B21\u8FD0\u884C\u8BB0\u5F55",
+      "aria-label": "\u8FD9\u6B21\u6392\u4EA7\u8BB0\u5F55",
       className: "rj-record"
     }, /*#__PURE__*/React.createElement("div", {
       className: "rj-heading"
-    }, /*#__PURE__*/React.createElement("h3", null, "\u8FD0\u884C\u8BB0\u5F55"), run ? /*#__PURE__*/React.createElement(Status, {
+    }, /*#__PURE__*/React.createElement("h3", null, "\u6392\u4EA7\u8BB0\u5F55"), run ? /*#__PURE__*/React.createElement(Status, {
       run: run
     }) : /*#__PURE__*/React.createElement("span", {
       role: "status"
-    }, "\u6B63\u5728\u6838\u5B9E\u539F\u8BF7\u6C42")), (intent || run) && /*#__PURE__*/React.createElement(window.WorkbenchReference, {
+    }, "\u6B63\u5728\u67E5\u8BE2\u4E0A\u6B21\u6392\u4EA7\u7684\u7ED3\u679C")), (intent || run) && /*#__PURE__*/React.createElement(window.WorkbenchReference, {
       entries: {
         ...(intent ? {
-          '请求编号': intent.request_key
+          '操作编号': intent.request_key
         } : {}),
         ...(run ? {
-          '运行编号': run.run_ref
+          '排产编号': run.run_ref
         } : {})
       }
     }), run && !verified && /*#__PURE__*/React.createElement("p", {
       className: "rj-muted"
-    }, "\u4EE5\u4E0B\u4E3A\u4E0A\u6B21\u5DF2\u6838\u5B9E\u7ED3\u679C\uFF0C\u672C\u6B21\u67E5\u8BE2\u5C1A\u672A\u786E\u8BA4\u3002"), run && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Progress, {
+    }, "\u4E0B\u9762\u662F\u4E0A\u6B21\u67E5\u5230\u7684\u7ED3\u679C\uFF0C\u8FD9\u6B21\u67E5\u8BE2\u8FD8\u6CA1\u786E\u8BA4\u3002"), run && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Progress, {
       run: run
     }), /*#__PURE__*/React.createElement("div", {
       className: "rj-tools rj-muted"
-    }, /*#__PURE__*/React.createElement("span", null, "\u53D7\u7406\uFF1A", window.WorkbenchFormat.dateTime(run.accepted_at)), run.started_at && /*#__PURE__*/React.createElement("span", null, "\u5F00\u59CB\uFF1A", window.WorkbenchFormat.dateTime(run.started_at)), run.finished_at && /*#__PURE__*/React.createElement("span", null, "\u7ED3\u675F\uFF1A", window.WorkbenchFormat.dateTime(run.finished_at))), run.recovery_required && /*#__PURE__*/React.createElement("p", {
+    }, /*#__PURE__*/React.createElement("span", null, "\u63D0\u4EA4\uFF1A", window.WorkbenchFormat.dateTime(run.accepted_at)), run.started_at && /*#__PURE__*/React.createElement("span", null, "\u5F00\u59CB\uFF1A", window.WorkbenchFormat.dateTime(run.started_at)), run.finished_at && /*#__PURE__*/React.createElement("span", null, "\u7ED3\u675F\uFF1A", window.WorkbenchFormat.dateTime(run.finished_at))), run.recovery_required && /*#__PURE__*/React.createElement("p", {
       className: "rj-notice"
-    }, "\u672C\u673A\u6B63\u5728\u6838\u5BF9\u539F\u6267\u884C\u8BB0\u5F55\uFF0C\u7ED3\u679C\u5C1A\u672A\u786E\u5B9A\uFF0C\u6CA1\u6709\u91CD\u65B0\u8BA1\u7B97\u3002"), run.error && /*#__PURE__*/React.createElement("div", {
+    }, "\u6B63\u5728\u6838\u5BF9\u4E0A\u6B21\u7684\u6392\u4EA7\u8BB0\u5F55\uFF0C\u7ED3\u679C\u8FD8\u6CA1\u786E\u8BA4\uFF0C\u6CA1\u6709\u91CD\u65B0\u8BA1\u7B97\u3002"), run.error && /*#__PURE__*/React.createElement("div", {
       className: "rj-notice",
       role: "alert"
     }, A.message(run.error)), /*#__PURE__*/React.createElement(Candidates, {
@@ -280,9 +303,9 @@
       run: run,
       api: api
     })), !A.terminal(run) && /*#__PURE__*/React.createElement("p", {
-      className: "rj-muted",
+      className: paused ? 'rj-notice' : 'rj-muted',
       role: "status"
-    }, paused ? '页面不可见，已暂停查询；返回后继续核实原运行。' : checking ? '正在查询原运行记录。' : '等待下一次查询，不会重复提交排产。'));
+    }, paused ? '页面切走了，已暂停查询；回到本页会继续查上次排产的结果。' : checking ? '正在查询上次排产的记录。' : '等待下一次查询，不会重复提交排产。'));
   }
   function Styles() {
     return null;

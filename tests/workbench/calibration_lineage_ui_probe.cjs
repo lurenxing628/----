@@ -73,7 +73,7 @@ async function verifyCells(page, payload) {
   assert.equal(rows.length, payload.data.items.length);
   payload.data.items.forEach((item, index) => {
     assert.equal(rows[index].ref, item.suggestion_ref);
-    assert.equal(rows[index].cells[2], item.old_unit_hours === null ? '未提供' : String(item.old_unit_hours));
+    assert.equal(rows[index].cells[2], item.old_unit_hours === null ? '未填写' : String(item.old_unit_hours));
     assert.equal(rows[index].cells[3], item.suggested_unit_hours === null ? '暂无建议' : String(item.suggested_unit_hours));
     assert.equal(rows[index].cells[4], String(item.sample_count));
     assert.equal(rows[index].cells[6], item.status === 'suggested' ? '待复核' : '数据不足');
@@ -164,7 +164,7 @@ async function rejectInvalidDetails(page, payload) {
       await sample.locator('details:not([open]).wb-ref > summary').first().click(); await sample.getByText(config.report_ref, { exact: true }).waitFor();
       await sample.getByText('登记与更正记录（2 条）', { exact: true }).waitFor();
       await sample.locator('details > summary').filter({ hasText: /^更正 ·/ }).click();
-      const correction = await sample.getByRole('table', { name: '更正前后值' }).locator('tr').filter({ hasText: '有效加工小时' }).textContent();
+      const correction = await sample.getByRole('table', { name: '更正前后值' }).locator('tr').filter({ hasText: '有效加工工时（小时）' }).textContent();
       assert(correction.includes('900') && correction.includes('1000')); await geometry(page, viewport);
       await sample.locator('details > summary').filter({ hasText: /^更正 ·/ }).scrollIntoViewIfNeeded(); await capture(page, prefix + '-correction');
       const unknown = detail.locator('.ca-sample[data-sample-ref="' + config.unknown_ref + '"]');
@@ -179,13 +179,13 @@ async function rejectInvalidDetails(page, payload) {
       payload = await search(page, 'Turning-03'); assert.equal(payload.data.items[0].old_unit_hours, null); assert.equal(payload.data.items[0].suggested_unit_hours, null); await verifyCells(page, payload);
       const empty = await openDetail(page, payload.data.items[0].suggestion_ref);
       assert(empty.data.samples.every(sample => sample.template_operation_ref === null));
-      await detail.getByText('同模板、同修订有效样本不足 5 个，暂无建议。', { exact: true }).waitFor(); await capture(page, prefix + '-insufficient');
+      await detail.getByText('同模板、同版本的可用完工记录不足 5 条，暂无建议。', { exact: true }).waitFor(); await capture(page, prefix + '-insufficient');
       payload = await search(page, 'Turning-04'); const recent = await openDetail(page, payload.data.items[0].suggestion_ref);
       assert.equal(recent.data.suggestion.sample_count, 20); assert.equal(recent.data.suggestion.suggested_unit_hours, 15.5);
       const group = detail.locator('[data-sample-group="selected"]');
       const refs = () => group.locator('.ca-sample').evaluateAll(nodes => nodes.map(node => node.dataset.sampleRef));
       assert.deepEqual(await refs(), recent.data.suggestion.sample_refs.slice(0, 10));
-      await group.getByRole('button', { name: '有效样本下一页', exact: true }).click();
+      await group.getByRole('button', { name: '可用记录下一页', exact: true }).click();
       assert.deepEqual(await refs(), recent.data.suggestion.sample_refs.slice(10));
       assert(recent.data.samples.filter(sample => sample.eligible && !sample.selected).every(sample => sample.exclusion_reasons.some(reason => reason.code === 'outside_recent_20')));
       payload = await listAfter(page, () => page.getByRole('button', { name: '清除筛选', exact: true }).click());
@@ -193,7 +193,7 @@ async function rejectInvalidDetails(page, payload) {
       payload = await listAfter(page, () => page.getByRole('checkbox', { name: '仅看偏差 > 20%' }).check()); assert.equal(payload.data.summary.total, 2);
       payload = await listAfter(page, () => page.getByRole('button', { name: '清除筛选', exact: true }).click());
       payload = await listAfter(page, () => select(page, '工序来源', '自制'));
-      payload = await listAfter(page, () => select(page, '排序字段', '建议单件定额'));
+      payload = await listAfter(page, () => select(page, '排序列', '建议单件定额'));
       payload = await listAfter(page, () => select(page, '排序方向', '降序'));
       payload = await listAfter(page, () => select(page, '每页条数', '10 项'));
       payload = await listAfter(page, () => page.getByRole('button', { name: '下一页', exact: true }).click());
@@ -219,7 +219,7 @@ async function rejectInvalidDetails(page, payload) {
     await page.getByRole('button', { name: '导出全部筛选', exact: true }).click(); assert.equal((await stale).status(), 409);
     await page.locator('.calibration-live[data-stale="true"]').waitFor();
     const missing = page.waitForResponse(response => new URL(response.url()).pathname.endsWith('/calibration/' + config.template_ref));
-    payload = await listAfter(page, () => page.getByRole('button', { name: '明确刷新', exact: true }).click());
+    payload = await listAfter(page, () => page.getByRole('button', { name: '刷新', exact: true }).click());
     assert.equal((await missing).status(), 404); assert.notEqual(payload.data.items[0].suggestion_ref, config.template_ref);
     assert.equal(payload.data.items[0].sample_count, 0); assert.equal(payload.data.items[0].suggested_unit_hours, null);
     await page.locator('.ca-detail .wb-ref > summary').first().click(); await page.locator('.ca-detail').getByText(config.template_ref, { exact: true }).waitFor();

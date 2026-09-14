@@ -196,17 +196,26 @@
     disabled,
     error,
     onChange,
-    onValidationError
+    onValidationError,
+    onAcknowledge
   }) {
     const {
       draft: value,
       action,
       base
     } = editor;
-    if (action === 'delete') return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", null, "\u786E\u8BA4\u5220\u9664\u8BE5", M.names[kind], "\uFF1F\u670D\u52A1\u7AEF\u5C06\u518D\u6B21\u6838\u5BF9\u5F15\u7528\uFF0C\u5DF2\u88AB\u4F7F\u7528\u7684\u76EE\u5F55\u4E0D\u80FD\u5220\u9664\u3002"), /*#__PURE__*/React.createElement(Facts, {
+    // Deleting takes the same checkbox confirmation as the other delete paths; the host turns an unchecked box into the confirm button's reason.
+    if (action === 'delete') return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", null, "\u786E\u8BA4\u5220\u9664\u8BE5", M.names[kind], "\uFF1F\u7CFB\u7EDF\u4F1A\u518D\u6B21\u6838\u5BF9\u5173\u8054\u5173\u7CFB\uFF0C\u5DF2\u88AB\u4F7F\u7528\u7684\u8BB0\u5F55\u4E0D\u80FD\u5220\u9664\u3002"), /*#__PURE__*/React.createElement(Facts, {
       kind: kind,
       entity: base
-    }));
+    }), /*#__PURE__*/React.createElement("label", {
+      className: "rm-check"
+    }, /*#__PURE__*/React.createElement("input", {
+      type: "checkbox",
+      checked: !!editor.acknowledged,
+      disabled: disabled,
+      onChange: event => onAcknowledge(event.target.checked)
+    }), "\u6211\u5DF2\u6838\u5BF9\u8981\u5220\u9664\u7684\u8D44\u6599\u53CA\u5176\u5173\u8054\u5173\u7CFB"));
     const field = (name, label, options = {}) => /*#__PURE__*/React.createElement(Field, {
       name: name,
       label: label,

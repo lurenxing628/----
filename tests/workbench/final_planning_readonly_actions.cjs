@@ -17,7 +17,7 @@ async function readonlyActions(page, ready, report, h, flush) {
     assert.equal(response.status(), 400);
     report.expected_rejected_documents = [{ url: response.url(), status: response.status() }];
     await page.getByRole('heading', { name: '工作台暂不可用', exact: true }).waitFor();
-    await page.getByText('页面定位或范围无效，未恢复旧选择、改查其他身份或扩大范围。', { exact: true }).waitFor();
+    await page.getByText('页面地址里的定位或范围不对，页面没有打开；系统没有恢复上次选择，也没有换记录或放宽范围。请从侧栏重新进入。', { exact: true }).waitFor();
     await flush();
     assert(!report.requests.some(row => row.url.includes('/plans/not-a-valid-plan')));
     assert.equal(await page.locator('[data-plan-gantt]').count(), 0);
@@ -35,12 +35,12 @@ async function readonlyActions(page, ready, report, h, flush) {
     await page.locator('.sidebar-nav').getByRole('link', { name: '选择排产方案', exact: true }).click();
     await page.locator('[data-plan-workspace] .plan-main').waitFor(); await flush();
     if (await page.locator('html').getAttribute('data-theme') !== report.theme) await page.getByRole('button', { name: /^切换(?:深色|浅色)$/ }).click();
-    await button('展开计划目录', page.locator('.plan-catalog')).click();
+    await button('展开计划列表', page.locator('.plan-catalog')).click();
     const row = page.getByRole('table', { name: '可选排产方案', exact: true }).getByRole('row')
       .filter({ has: page.getByRole('cell', { name: String(ready.expected.official_version), exact: true }) });
     assert.equal(await row.count(), 1); assert(await row.getByRole('radio').isChecked());
     assert((await row.innerText()).includes('当前正式'));
-    await button('收起计划目录', page.locator('.plan-catalog')).click();
+    await button('收起计划列表', page.locator('.plan-catalog')).click();
     assert.equal(await page.getByRole('combobox', { name: '切换所选计划', exact: true }).inputValue(), ready.expected.original_plan_ref);
     const data = last(value => value.plan && value.tasks);
     assert.equal(data.plan.plan_ref, ready.expected.original_plan_ref);
@@ -59,7 +59,7 @@ async function readonlyActions(page, ready, report, h, flush) {
     assert.equal(last(value => value.plan && value.tasks).plan.plan_ref, ready.expected.original_plan_ref);
     assert.equal(last(value => value.plan && value.tasks).plan.version, 4);
     const batch = page.getByRole('table', { name: '交付风险列表', exact: true }).getByRole('row').filter({ has: button('B1') });
-    assert((await batch.innerText()).includes('无法核实'));
+    assert((await batch.innerText()).includes('暂无数据'));
     assert(!(await batch.innerText()).includes('预计按期'));
     await h.caption(ready.expected.original_plan_ref, '当前正式');
     report.original_incomplete_batch = risk;

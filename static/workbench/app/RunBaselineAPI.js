@@ -21,7 +21,7 @@
   const statuses = ['matched', 'newly_scheduled', 'unscheduled', 'baseline_only', 'not_comparable'];
   const deltaKeys = ['start_hours', 'end_hours', 'elapsed_hours', 'machine_changed', 'operator_changed', 'supplier_changed', 'effective_processing_hours'];
   function check(ok) {
-    if (!ok) throw new Error('初始计划对照缺失或与当前候选范围不一致，未显示上次结果。');
+    if (!ok) throw new Error('初始计划对照缺失，或者跟当前候选方案范围不一致，没有显示上次结果。请点「刷新初始计划」。');
   }
   function equal(a, b) {
     if (a === b) return true;
@@ -156,7 +156,7 @@
           });
           const json = (response.headers.get('Content-Type') || '').split(';')[0].trim().toLowerCase() === 'application/json';
           const payload = json ? await response.json() : null;
-          if (!response.ok) throw new Error(payload && payload.error && text(payload.error.message) ? payload.error.message : '初始计划读取失败，未显示上次结果。');
+          if (!response.ok) throw new Error(payload && payload.error && text(payload.error.message) ? payload.error.message : '初始计划读取失败，没有显示上次结果。请点「刷新初始计划」。');
           check(response.status === 200 && json);
           validate(payload, workspace);
           return payload;

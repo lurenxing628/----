@@ -83,7 +83,6 @@
 #aps-reporting .r-key.plan {height:6px;}
 #aps-reporting .r-footer {padding-top: 13px; display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; font-size: var(--font-size-1); color: var(--r-muted);}
 #aps-reporting .r-empty {padding: 35px 14px; text-align: center; color: var(--r-muted);}
-#aps-reporting .r-editor-layer {position: fixed; inset: 0; z-index: 5000; background: rgb(10 18 30 / .36); display: flex; align-items: flex-start; justify-content: flex-end; padding: 24px;}
 #aps-reporting .r-editor {width: 500px; max-width: 100%; max-height: calc(100vh - 48px); display: flex; flex-direction: column; background: var(--r-panel); border: 1px solid var(--r-line); border-radius: var(--wb-radius-overlay); box-shadow: 0 9px 28px rgb(0 0 0 / .16); min-width: 0;}
 #aps-reporting .r-editor-head {display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 15px 19px; border-bottom: 1px solid var(--r-line);}
 #aps-reporting .r-editor-body {padding: 16px 19px; overflow-y: auto; min-height: 0;}

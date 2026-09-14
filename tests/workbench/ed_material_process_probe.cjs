@@ -56,6 +56,13 @@ async function main() {
       const [size, theme] = state.split('-'), width = Number(size), data = ready.expected.ed.states[state];
       const context = await browser.newContext({viewport: {width, height: width === 1920 ? 1080 : 924}, timezoneId: 'Asia/Shanghai'});
       const page = await context.newPage(); p.attach(page, state);
+      p.recover = async () => {
+        // A failed case can leave a modal (and its locked command) open; later cases then time out on intercepted clicks.
+        const modal = page.locator('[role="dialog"][aria-modal="true"]:visible');
+        for (let i = 0; i < 5 && await modal.count(); i++) { await page.keyboard.press('Escape'); await page.waitForTimeout(250); }
+        if (await modal.count()) { p.step('recover-reload', 'modal stayed open after Escape'); await page.reload(); }
+        await page.locator('[data-resource-workspace] [data-rail-node]').first().waitFor();
+      };
       await page.goto(ready.url + '/workbench'); await page.locator('.sidebar').waitFor();
       await p.click(page.locator('.sidebar').getByText('基础资料', {exact: true}));
       await page.locator('[data-resource-workspace] .hb-tile').first().waitFor();

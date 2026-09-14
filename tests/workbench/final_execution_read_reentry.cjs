@@ -51,7 +51,7 @@ async function exercise(p, view) {
     await page.getByRole('searchbox', { name: '搜索校准明细', exact: true }).fill('P1');
     await p.read(() => page.getByRole('button', { name: '搜索', exact: true }).click(), endpoint);
     await p.read(() => p.choose('工序来源', 'internal'), endpoint);
-    await p.read(() => p.choose('排序字段', 'sample_count'), endpoint);
+    await p.read(() => p.choose('排序列', 'sample_count'), endpoint);
     await p.read(() => p.choose('每页条数', '10'), endpoint);
     for (let number = 1; number < expectedPage; number++) result = await p.read(() => page.getByRole('button', { name: '下一页', exact: true }).click(), endpoint);
   }

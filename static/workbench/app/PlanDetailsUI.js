@@ -9,7 +9,7 @@
   const riskLabel = {
     overdue: '预计超期',
     on_time: '预计按期',
-    unknown: '无法核实'
+    unknown: '暂无数据'
   };
   const deliveryIssues = {
     operations_unscheduled: '尚有工序未安排',
@@ -21,7 +21,7 @@
     due_date_unspecified: '未指定交期',
     part_label_missing: '零件名称或图号未记录'
   };
-  const issueText = issues => (issues || []).map(issue => typeof issue === 'string' ? deliveryIssues[issue] || '无法核实（' + issue + '）' : issue.message).join('；');
+  const issueText = issues => (issues || []).map(issue => typeof issue === 'string' ? deliveryIssues[issue] || '暂无数据（原因编号 ' + issue + '）' : issue.message).join('；');
   function Facts({
     items
   }) {
@@ -36,7 +36,7 @@
   }) {
     const [open, setOpen] = React.useState(false),
       [page, setPage] = React.useState(0);
-    if (windows === null) return '无法核实';
+    if (windows === null) return '暂无数据';
     return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(Button, {
       className: "linkbtn",
       "aria-expanded": open,
@@ -50,13 +50,13 @@
     }, /*#__PURE__*/React.createElement(Button, {
       className: "btn plan-icon",
       icon: "chevron-left",
-      "aria-label": "\u65E5\u5386\u7A97\u53E3\u4E0A\u4E00\u6BB5",
+      "aria-label": "\u53EF\u5DE5\u4F5C\u65F6\u6BB5\u4E0A\u4E00\u6BB5",
       disabled: !page,
       onClick: () => setPage(page - 1)
     }), /*#__PURE__*/React.createElement("span", null, page + 1), /*#__PURE__*/React.createElement(Button, {
       className: "btn plan-icon",
       icon: "chevron-right",
-      "aria-label": "\u65E5\u5386\u7A97\u53E3\u4E0B\u4E00\u6BB5",
+      "aria-label": "\u53EF\u5DE5\u4F5C\u65F6\u6BB5\u4E0B\u4E00\u6BB5",
       disabled: (page + 1) * 10 >= windows.length,
       onClick: () => setPage(page + 1)
     }))));
@@ -100,7 +100,7 @@
       }, prefix, "\u672A\u5728\u672C\u8BA1\u5212\u5B89\u6392");
     })))) : /*#__PURE__*/React.createElement("p", {
       className: "plan-muted"
-    }, !selected ? '尚未选中任务' : selected.before ? '当前关系只属于所选计划，初始安排的关系未单独核实。' : order.issues.map(row => row.message).join('；') || '该任务的冻结关系无法核实。'));
+    }, !selected ? '尚未选中任务' : selected.before ? '这里的前后序只属于所选计划，初始安排的前后序没有单独查询。' : order.issues.map(row => row.message).join('；') || '这道工序的冻结工艺关系暂无数据。'));
   }
   function TaskDetail({
     data,
@@ -121,7 +121,8 @@
     return /*#__PURE__*/React.createElement("aside", {
       className: "plan-inspector",
       "aria-label": "\u4EFB\u52A1\u8BE6\u60C5",
-      "data-plan-inspector": true
+      "data-plan-inspector": true,
+      "data-wb-scroll-key": "plan-inspector"
     }, /*#__PURE__*/React.createElement("section", null, /*#__PURE__*/React.createElement("h2", null, "\u4EFB\u52A1\u8BE6\u60C5"), !task ? /*#__PURE__*/React.createElement("div", {
       className: "plan-empty"
     }, "\u5C1A\u672A\u9009\u4E2D\u4EFB\u52A1\u3002\u9009\u4E2D\u7518\u7279\u4E2D\u7684\u5B89\u6392\u540E\uFF0C\u8FD9\u91CC\u663E\u793A\u5DE5\u827A\u524D\u540E\u5E8F\u3001\u521D\u59CB\u8BA1\u5212\u5BF9\u7167\u3001\u4EA4\u4ED8\u98CE\u9669\u548C\u8D44\u6E90\u5360\u7528\u3002") : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
@@ -143,7 +144,7 @@
         style: {
           overflowWrap: 'anywhere'
         }
-      }, M.pieceLabel(task))], ['本工序目标量', M.quantityLabel(task.quantity)], ['计划来源整批量', M.quantityLabel(task.batch_quantity)], ['数量依据', task.quantity_reason ? M.quantityReasons[task.quantity_reason] : task.quantity_basis === 'run_admission' ? '原候选受理快照，已核验采用审计与回执' : '原试调创建快照，已核验采用审计与回执'], ...(window.PointContract.isPoint(task) ? [['安排类型', '时间点'], ['本工序占用', '0 h · 不占用资源']] : []), ['计划开始', M.timeLabel(task.start)], ['计划结束', M.timeLabel(task.end)], ['时间跨度', M.number((M.instant(task.end) - M.instant(task.start)) / 3600000) + ' h'], ['设备', M.resourceLabel(task, 'machine', labels)], ['人员', M.resourceLabel(task, 'operator', labels)], ['供应商', selected.before && ['candidate_adoption', 'trial_adoption'].includes(baseline.basis) ? '未记录' : task.supplier_ref ? labels.get(task.supplier_ref) || '名称未记录' : '未绑定']]
+      }, M.pieceLabel(task))], ['本工序目标量', M.quantityLabel(task.quantity)], ['计划来源整批量', M.quantityLabel(task.batch_quantity)], ['数量依据', task.quantity_reason ? M.quantityReasons[task.quantity_reason] : task.quantity_basis === 'run_admission' ? '来自上次排产候选方案的数据，已核对采用记录' : '来自建试调草稿时的数据，已核对采用记录'], ...(window.PointContract.isPoint(task) ? [['安排类型', '零工时工序'], ['本工序占用', '0 小时 · 不占设备人员']] : []), ['计划开始', M.timeLabel(task.start)], ['计划结束', M.timeLabel(task.end)], ['时长', window.WorkbenchFormat.hours((M.instant(task.end) - M.instant(task.start)) / 3600000, 2)], ['设备', M.resourceLabel(task, 'machine', labels)], ['人员', M.resourceLabel(task, 'operator', labels)], ['供应商', selected.before && ['candidate_adoption', 'trial_adoption'].includes(baseline.basis) ? '未记录' : task.supplier_ref ? labels.get(task.supplier_ref) || '名称未填写' : '未选']]
     }), /*#__PURE__*/React.createElement("div", {
       className: "plan-actions"
     }, typeof renderTrial === 'function' ? renderTrial({
@@ -159,7 +160,7 @@
       label: '调整此工序'
     }) : /*#__PURE__*/React.createElement(Button, {
       icon: "square-pen",
-      reason: "\u8BD5\u8C03\u5165\u53E3\u672A\u63A5\u5165\uFF0C\u5F53\u524D\u53EA\u80FD\u67E5\u770B\u8BA1\u5212\u3002"
+      reason: window.WorkbenchTerms.outcomes.unavailable
     }, "\u8C03\u6574\u6B64\u5DE5\u5E8F")))), task && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Relations, {
       data: data,
       selected: selected,
@@ -187,7 +188,7 @@
       className: "plan-muted"
     }, "\u5C1A\u672A\u9009\u4E2D\u4EFB\u52A1") : selected.before ? /*#__PURE__*/React.createElement("p", {
       className: "plan-muted"
-    }, "\u5F53\u524D\u4EA4\u4ED8\u98CE\u9669\u5C5E\u4E8E\u6240\u9009\u8BA1\u5212\uFF0C\u672A\u6838\u5B9E\u521D\u59CB\u8BA1\u5212\u7684\u4EA4\u4ED8\u98CE\u9669\u3002") : risk ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Facts, {
+    }, "\u8FD9\u91CC\u7684\u4EA4\u4ED8\u98CE\u9669\u53EA\u5C5E\u4E8E\u6240\u9009\u8BA1\u5212\uFF0C\u521D\u59CB\u8BA1\u5212\u7684\u4EA4\u4ED8\u98CE\u9669\u6CA1\u6709\u5355\u72EC\u67E5\u8BE2\u3002") : risk ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Facts, {
       items: [['判定', /*#__PURE__*/React.createElement("span", {
         className: risk.risk === 'overdue' ? 'plan-danger' : ''
       }, riskLabel[risk.risk])], ['交期', risk.due_date || '未记录'], ['计划完工', M.timeLabel(risk.planned_finish)], [window.WorkbenchTerms.delay_hours, risk.delay_hours === null ? '未知' : window.WorkbenchFormat.hours(risk.delay_hours, 2)], ['未排工序', M.number(risk.unscheduled_operation_count)]]
@@ -197,18 +198,18 @@
       className: "plan-muted"
     }, issueText(risk.issues))) : /*#__PURE__*/React.createElement("p", {
       className: "plan-muted"
-    }, "\u672A\u8BB0\u5F55\uFF0C\u65E0\u6CD5\u6838\u5B9E")), /*#__PURE__*/React.createElement("section", null, /*#__PURE__*/React.createElement("h3", null, "\u8D44\u6E90\u5360\u7528"), window.PointContract.isPoint(task) ? /*#__PURE__*/React.createElement("p", {
+    }, "\u6682\u65E0\u6570\u636E")), /*#__PURE__*/React.createElement("section", null, /*#__PURE__*/React.createElement("h3", null, "\u8D44\u6E90\u5360\u7528"), window.PointContract.isPoint(task) ? /*#__PURE__*/React.createElement("p", {
       className: "plan-muted"
-    }, "\u672C\u5DE5\u5E8F\u4E3A\u65F6\u95F4\u70B9\uFF0C\u8D44\u6E90\u5360\u7528 0 h\u3002") : selected && selected.before ? /*#__PURE__*/React.createElement("p", {
+    }, "\u96F6\u5DE5\u65F6\u5DE5\u5E8F\uFF0C\u4E0D\u5360\u8BBE\u5907\u4EBA\u5458\u3002") : selected && selected.before ? /*#__PURE__*/React.createElement("p", {
       className: "plan-muted"
-    }, "\u521D\u59CB\u8BA1\u5212\u7684\u65E5\u5386\u548C\u5360\u7528\u672A\u5355\u72EC\u6838\u5B9E\u3002") : !resources.length ? /*#__PURE__*/React.createElement("p", {
+    }, "\u521D\u59CB\u8BA1\u5212\u7684\u73ED\u8868\u548C\u5360\u7528\u6CA1\u6709\u5355\u72EC\u67E5\u8BE2\u3002") : !resources.length ? /*#__PURE__*/React.createElement("p", {
       className: "plan-muted"
-    }, "\u672A\u8BB0\u5F55\u53EF\u6838\u5B9E\u7684\u8D44\u6E90\u5360\u7528") : resources.map(row => /*#__PURE__*/React.createElement("div", {
+    }, "\u6682\u65E0\u8D44\u6E90\u5360\u7528\u6570\u636E") : resources.map(row => /*#__PURE__*/React.createElement("div", {
       key: row.resource_ref
-    }, /*#__PURE__*/React.createElement("strong", null, row.label || labels.get(row.resource_ref) || '资源名称未记录'), /*#__PURE__*/React.createElement(Facts, {
-      items: [['已占时间', M.number(row.occupied_hours) + ' h'], ['可用时间', row.available_hours === null ? '无法核实' : M.number(row.available_hours) + ' h'], ['日历内占用', row.utilization === null ? '无法核实' : M.number(row.utilization * 100) + '%'], ['重叠时间', /*#__PURE__*/React.createElement("span", {
+    }, /*#__PURE__*/React.createElement("strong", null, row.label || labels.get(row.resource_ref) || '资源名称未填写'), /*#__PURE__*/React.createElement(Facts, {
+      items: [['已占时间', window.WorkbenchFormat.hours(row.occupied_hours, 2)], ['可用时间', row.available_hours === null ? '暂无数据' : window.WorkbenchFormat.hours(row.available_hours, 2)], ['班表内占用', row.utilization === null ? '暂无数据' : M.number(row.utilization * 100) + '%'], ['重叠时间', /*#__PURE__*/React.createElement("span", {
         className: row.has_overlap ? 'plan-danger' : ''
-      }, M.number(row.overlap_hours), " h")]]
+      }, window.WorkbenchFormat.hours(row.overlap_hours, 2))]]
     }), /*#__PURE__*/React.createElement(Issues, {
       issues: row.issues
     }))))));
@@ -217,7 +218,7 @@
     const projection = data.projections.occupancy,
       scope = data.time_scope;
     const require = value => {
-      if (!value) throw new Error('资源重叠明细的范围或并行依据无法核实，未按零重叠显示。');
+      if (!value) throw new Error('资源重叠明细的时间范围或重叠依据读不到，没有按零重叠显示。请点「刷新」重试。');
     };
     require(projection && projection.basis === 'selected_plan_only' && projection.plan_ref === data.plan.plan_ref && ['available', 'partial', 'unavailable'].includes(projection.state) && Array.isArray(projection.resources) && Array.isArray(projection.issues) && projection.time_scope && scope && ['range_start', 'range_end', 'selection', 'boundary', 'time_basis'].every(key => projection.time_scope[key] === scope[key]));
     const start = M.instant(scope.range_start),
@@ -279,16 +280,17 @@
       labels = M.names(data);
     const known = projection.state === 'available',
       scope = projection.time_scope;
-    const empty = !known ? '当前范围仍有资料无法核实，不能认定为没有重叠。' : !projection.resources.length ? '当前读取范围没有资源占用记录。' : '当前读取范围未发现资源安排重叠。';
+    const empty = !known ? '当前范围还有资料读不到，不能认定为没有重叠。' : !projection.resources.length ? '当前读取范围没有资源占用记录。' : '当前读取范围未发现资源安排重叠。';
     return /*#__PURE__*/React.createElement("section", {
       className: "plan-projections",
       "aria-label": "\u8D44\u6E90\u91CD\u53E0\u660E\u7EC6"
     }, /*#__PURE__*/React.createElement("h3", null, "\u8D44\u6E90\u91CD\u53E0\u660E\u7EC6"), /*#__PURE__*/React.createElement("div", {
       className: "plan-note"
-    }, M.timeLabel(scope.range_start), " \u81F3 ", M.timeLabel(scope.range_end), "\uFF08\u4E0D\u542B\u7ED3\u675F\uFF09", data.scope.range_start !== null ? ' · 当前读取切片，不代表整份计划' : ' · 完整计划读取范围', /*#__PURE__*/React.createElement("div", null, "\u4EC5\u5217\u6240\u9009\u8BA1\u5212\u5728\u8BE5\u8303\u56F4\u7684\u8D44\u6E90\u5B89\u6392\u91CD\u53E0\uFF0C\u4E0D\u4EE3\u8868\u7B49\u5F85\u3001\u505C\u673A\u3001\u7F3A\u6599\u6216\u5EF6\u671F\u539F\u56E0\u3002"), !known && /*#__PURE__*/React.createElement("div", null, projection.state === 'partial' ? '部分资料无法核实。' : '资源依据不可完整核实。', "\u4EE5\u4E0B\u4EC5\u5217\u5DF2\u6838\u5B9E\u7247\u6BB5\uFF0C\u672A\u77E5\u90E8\u5206\u4E0D\u8BA1\u4E3A\u96F6\u3002")), /*#__PURE__*/React.createElement(Issues, {
+    }, M.timeLabel(scope.range_start), " \u81F3 ", M.timeLabel(scope.range_end), "\uFF08\u4E0D\u542B\u7ED3\u675F\uFF09", data.scope.range_start !== null ? ' · 当前读取切片，不代表整份计划' : ' · 完整计划读取范围', /*#__PURE__*/React.createElement("div", null, "\u4EC5\u5217\u6240\u9009\u8BA1\u5212\u5728\u8BE5\u8303\u56F4\u7684\u8D44\u6E90\u5B89\u6392\u91CD\u53E0\uFF0C\u4E0D\u4EE3\u8868\u7B49\u5F85\u3001\u505C\u673A\u3001\u7F3A\u6599\u6216\u8D85\u671F\u539F\u56E0\u3002"), !known && /*#__PURE__*/React.createElement("div", null, projection.state === 'partial' ? '部分资料读不到。' : '资源依据读不全。', "\u4EE5\u4E0B\u53EA\u5217\u5DF2\u786E\u8BA4\u7684\u7247\u6BB5\uFF0C\u672A\u77E5\u90E8\u5206\u4E0D\u8BA1\u4E3A\u96F6\u3002")), /*#__PURE__*/React.createElement(Issues, {
       issues: projection.issues
     }), rows.length ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
       className: "plan-projection-table wb-table-frame",
+      "data-wb-scroll-key": "plan-conflict-table",
       "data-sticky-head": true,
       "data-sticky-actions": true
     }, /*#__PURE__*/React.createElement("table", {
@@ -304,7 +306,7 @@
       key: row.resource_ref + ':' + row.start + ':' + row.end
     }, /*#__PURE__*/React.createElement("td", {
       className: "wb-col-key"
-    }, row.label || labels.get(row.resource_ref) || '资源名称未记录', /*#__PURE__*/React.createElement("div", {
+    }, row.label || labels.get(row.resource_ref) || '资源名称未填写', /*#__PURE__*/React.createElement("div", {
       className: "plan-muted"
     }, M.kindLabels[row.kind])), /*#__PURE__*/React.createElement("td", null, M.timeLabel(row.start)), /*#__PURE__*/React.createElement("td", null, M.timeLabel(row.end)), /*#__PURE__*/React.createElement("td", null, row.concurrent_operations)))))), /*#__PURE__*/React.createElement(window.WorkbenchControls.Pager, {
       label: "\u91CD\u53E0\u660E\u7EC6",
@@ -337,7 +339,7 @@
       "aria-label": "\u8BA1\u5212\u5206\u6790"
     }, /*#__PURE__*/React.createElement(window.PlanSegmentUI, {
       value: tab,
-      options: [["risk", "交付风险"], ["load", "资源负荷"], ["calendar", "资源日历"]],
+      options: [["risk", "交付风险"], ["load", "资源负荷"], ["calendar", "资源班表"]],
       label: "\u8BA1\u5212\u5206\u6790\u89C6\u56FE",
       onChange: value => {
         setTab(value);
@@ -345,18 +347,19 @@
       }
     }), /*#__PURE__*/React.createElement("div", {
       className: "plan-note"
-    }, tab === 'risk' ? '按所选计划的完整批次安排判定，不代表实际完工或发货。' : tab === 'load' ? '只统计所选计划在此时间范围内的安排；占用率 = 日历内已占时间 / 可用时间。设备有空闲时间不代表人员已就绪。' : '只列出所选时间范围内的可工作时段；普通件、急件能否安排及效率分别记录。', projection.state !== 'available' && /*#__PURE__*/React.createElement("span", null, " \xB7 ", projection.state === 'partial' ? '部分资料无法核实' : '无法核实')), /*#__PURE__*/React.createElement(Issues, {
+    }, tab === 'risk' ? '按所选计划的完整批次安排判定，不代表实际完工或发货。' : tab === 'load' ? '只统计所选计划在此时间范围内的安排；占用率 = 班表内已占时间 / 可用时间。设备有空闲时间不代表人员已就绪。' : '只列出所选时间范围内的可工作时段；普通件、急件能否安排及效率分别记录。', projection.state !== 'available' && /*#__PURE__*/React.createElement("span", null, " \xB7 ", projection.state === 'partial' ? '部分资料读不到' : '暂无数据')), /*#__PURE__*/React.createElement(Issues, {
       issues: projection.issues || []
     }), /*#__PURE__*/React.createElement("div", {
       className: "plan-projection-table wb-table-frame",
+      "data-wb-scroll-key": "plan-projection-table",
       "data-sticky-head": true,
       "data-sticky-actions": true
     }, /*#__PURE__*/React.createElement("table", {
       className: "wb-table",
-      "aria-label": tab === 'risk' ? '交付风险列表' : tab === 'load' ? '资源负荷列表' : '资源日历列表'
+      "aria-label": tab === 'risk' ? '交付风险列表' : tab === 'load' ? '资源负荷列表' : '资源班表列表'
     }, /*#__PURE__*/React.createElement("caption", {
       className: "wb-visually-hidden"
-    }, tab === 'risk' ? '交付风险列表' : tab === 'load' ? '资源负荷列表' : '资源日历列表'), /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, (tab === 'risk' ? ['批次 / 零件', '交期', '计划完工', '交付风险', '未排工序', '证据'] : tab === 'load' ? ['资源', '安排 h', '已占 h', '可用 h', '重叠 h', '日历内占用率'] : ['资源', '可用 h', '普通有效 h', '急件有效 h', '窗口', '证据']).map((label, index) => /*#__PURE__*/React.createElement("th", {
+    }, tab === 'risk' ? '交付风险列表' : tab === 'load' ? '资源负荷列表' : '资源班表列表'), /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, (tab === 'risk' ? ['批次 / 零件', '交期', '计划完工', '交付风险', '未排工序', '说明'] : tab === 'load' ? ['资源', '安排（小时）', '已占（小时）', '可用（小时）', '重叠（小时）', '班表内占用率'] : ['资源', '可用（小时）', '普通有效（小时）', '急件有效（小时）', '可工作时段', '说明']).map((label, index) => /*#__PURE__*/React.createElement("th", {
       scope: "col",
       className: index === 0 ? 'wb-col-key' : undefined,
       key: label
@@ -369,18 +372,18 @@
       onClick: () => onBatch(row.batch_id)
     }, row.batch_id), /*#__PURE__*/React.createElement("div", {
       className: "plan-muted"
-    }, row.part_no || '图号未记录', " \xB7 ", row.part_label || '名称未记录')), /*#__PURE__*/React.createElement("td", null, window.WorkbenchFormat.date(row.due_date)), /*#__PURE__*/React.createElement("td", null, M.timeLabel(row.planned_finish), row.partial_planned_finish && /*#__PURE__*/React.createElement("div", {
+    }, row.part_no || '图号未填写', " \xB7 ", row.part_label || '名称未填写')), /*#__PURE__*/React.createElement("td", null, window.WorkbenchFormat.date(row.due_date)), /*#__PURE__*/React.createElement("td", null, M.timeLabel(row.planned_finish), row.partial_planned_finish && /*#__PURE__*/React.createElement("div", {
       className: "plan-muted"
     }, "\u5DF2\u5B89\u6392\u90E8\u5206\u7ED3\u675F\u4E8E\uFF1A", M.timeLabel(row.partial_planned_finish))), /*#__PURE__*/React.createElement("td", {
       className: row.risk === 'overdue' ? 'plan-danger' : ''
-    }, riskLabel[row.risk], row.delay_hours !== null && /*#__PURE__*/React.createElement("div", null, M.number(row.delay_hours), " h")), /*#__PURE__*/React.createElement("td", null, row.unscheduled_operation_count), /*#__PURE__*/React.createElement("td", null, issueText(row.issues) || '当前工序安排已覆盖')) : /*#__PURE__*/React.createElement("tr", {
+    }, riskLabel[row.risk], row.delay_hours !== null && /*#__PURE__*/React.createElement("div", null, window.WorkbenchFormat.hours(row.delay_hours, 2))), /*#__PURE__*/React.createElement("td", null, row.unscheduled_operation_count), /*#__PURE__*/React.createElement("td", null, issueText(row.issues) || '当前工序安排已覆盖')) : /*#__PURE__*/React.createElement("tr", {
       key: row.resource_ref
     }, /*#__PURE__*/React.createElement("td", {
       className: "wb-col-key"
     }, /*#__PURE__*/React.createElement(Button, {
       className: "linkbtn",
       onClick: () => onResource(labels.get(row.resource_ref) || '')
-    }, row.label || labels.get(row.resource_ref) || '名称未记录'), /*#__PURE__*/React.createElement("div", {
+    }, row.label || labels.get(row.resource_ref) || '名称未填写'), /*#__PURE__*/React.createElement("div", {
       className: "plan-muted"
     }, M.kindLabels[row.kind])), tab === 'load' ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("td", null, M.number(row.arranged_hours)), /*#__PURE__*/React.createElement("td", null, M.number(row.occupied_hours)), /*#__PURE__*/React.createElement("td", null, M.number(row.available_hours)), /*#__PURE__*/React.createElement("td", {
       className: row.has_overlap ? 'plan-danger' : ''
@@ -394,11 +397,11 @@
       className: "plan-muted"
     }, issueText(row.issues)))) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("td", null, M.number(row.available_hours)), /*#__PURE__*/React.createElement("td", null, M.number(row.normal_effective_hours)), /*#__PURE__*/React.createElement("td", null, M.number(row.urgent_effective_hours)), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(CalendarWindows, {
       windows: row.windows
-    })), /*#__PURE__*/React.createElement("td", null, issueText(row.issues) || '已读取真实日历')))), !visible.length && /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", {
+    })), /*#__PURE__*/React.createElement("td", null, issueText(row.issues) || '已读取真实班表')))), !visible.length && /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", {
       colSpan: 6
     }, /*#__PURE__*/React.createElement(window.WorkbenchControls.EmptyState, {
       kind: "empty",
-      title: projection.state === 'available' ? '所选时间范围内没有记录。' : '资料未记录或无法核实。'
+      title: projection.state === 'available' ? '所选时间范围内没有记录。' : '资料未记录或读不到，暂无数据。'
     })))))), /*#__PURE__*/React.createElement(window.WorkbenchControls.Pager, {
       label: "\u5206\u6790",
       page: page + 1,

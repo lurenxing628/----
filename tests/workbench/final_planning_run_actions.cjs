@@ -28,7 +28,7 @@ async function runActions(page, ready, report, h, flush) {
     await page.locator('input[aria-label="选择 B2"]:checked').waitFor();
     assert(await page.getByRole('checkbox', { name: '选择 B1', exact: true }).isChecked());
     assert(await page.getByRole('checkbox', { name: '选择 B2', exact: true }).isChecked());
-    await button('清空选择').click();
+    await button('清除选择').click();
     assert(!await page.getByRole('checkbox', { name: '选择 B1', exact: true }).isChecked());
     assert(!await page.getByRole('checkbox', { name: '选择 B2', exact: true }).isChecked());
     await button('仅已齐套').click(); await flush();
@@ -59,12 +59,14 @@ async function runActions(page, ready, report, h, flush) {
     const resources = page.getByRole('radiogroup', { name: '缺资源工序', exact: true });
     await resources.getByText('暂不排', { exact: true }).click();
     await resources.getByText('自动分配', { exact: true }).click();
-    assert(await page.getByRole('radio', { name: '可重排', exact: true }).isDisabled());
+    // 已开工工序不再是永远禁用的假单选，而是一行固定说明；这里锁住说明可见且没有残留的单选控件。
+    await page.getByText('已开工工序：保留记录（不可修改）', { exact: true }).waitFor();
+    assert.equal(await page.getByRole('radio', { name: '可重排', exact: true }).count(), 0);
   });
   await action(['WBP-RUN-004.check', 'WBP-RUN-004.tasks', 'WBP-RUN-004.metrics'], async () => {
     await button('开始排产检查').click();
-    await page.getByText('逐工序检查 · ' + ready.expected.task_count + ' 道', { exact: true }).click();
-    await page.getByRole('table', { name: '排产前检查明细', exact: true }).waitFor();
+    await page.getByText('检查明细 · ' + ready.expected.task_count + ' 道', { exact: true }).click();
+    await page.getByRole('table', { name: '排产检查明细', exact: true }).waitFor();
     await flush(); const data = last((_data, row) => row.url.endsWith('/scheduling/preflight'));
     assert.equal(data.tasks.length, ready.expected.task_count);
     assert(data.tasks.some(task => task.status === 'protected'));
@@ -120,7 +122,7 @@ async function runActions(page, ready, report, h, flush) {
   await action(['WBP-ANA-004.delay', 'WBP-PLAN-005.return-comparison', 'WBP-DELAY-001.scope', 'WBP-DELAY-002.full-batch-finish',
     'WBP-DELAY-003.last-operation', 'WBP-DELAY-003.compare', 'WBP-DELAY-002.due-date', 'WBP-DELAY-004.no-root-cause-claim'], async () => {
     const original = report.candidate;
-    await h.caption(original.candidate.candidate_ref, '候选预览');
+    await h.caption(original.candidate.candidate_ref, '候选方案');
     await page.getByRole('tablist', { name: '计划中心视图', exact: true }).getByRole('tab', { name: '交付风险', exact: true }).click();
     await page.locator('[data-run-candidate-workspace]').getByRole('heading', { name: '候选交付风险', exact: true }).waitFor();
     const table = page.getByRole('table', { name: '候选交付风险列表', exact: true }); await table.waitFor();
@@ -150,7 +152,7 @@ async function runActions(page, ready, report, h, flush) {
     await page.getByText('匹配安排 1 / 1', { exact: true }).waitFor(); await flush();
     current = last(data => data.candidate && data.tasks);
     assert.equal(current.time_scope.range_start, first.start);
-    await h.caption(original.candidate.candidate_ref, '候选预览');
+    await h.caption(original.candidate.candidate_ref, '候选方案');
     report.candidate_scope_recovery = { candidate_ref: current.candidate.candidate_ref, range: current.time_scope, actual_sidebar_and_reload: true };
     await button('读取范围').click(); await button('完整候选').click();
     await page.getByText('匹配安排 ' + ready.expected.task_count + ' / ' + ready.expected.task_count, { exact: true }).waitFor();
@@ -188,11 +190,11 @@ async function runActions(page, ready, report, h, flush) {
     assert.equal(recovered.official_plan.plan_ref, report.first_official.plan.plan_ref);
     assert.equal(recovered.candidate_ref, report.candidate.candidate.candidate_ref);
     await page.locator('[data-run-adoption-action]').getByRole('button').first().click();
-    const dialog = page.getByRole('dialog', { name: '正式采用回执', exact: true });
-    await button('进入正式方案', dialog).waitFor();
-    assert((await dialog.innerText()).includes('v5'));
+    const dialog = page.getByRole('dialog', { name: '正式采用结果', exact: true });
+    await button('进入正式计划', dialog).waitFor();
+    assert((await dialog.innerText()).includes('第 ' + recovered.official_plan.version + ' 版'));
     await shot('candidate-original-receipt');
-    await button('进入正式方案', dialog).click(); await page.locator('[data-plan-workspace] .plan-main').waitFor(); await flush();
+    await button('进入正式计划', dialog).click(); await page.locator('[data-plan-workspace] .plan-main').waitFor(); await flush();
     assert.equal(last(data => data.plan && data.tasks).plan.plan_ref, report.first_official.plan.plan_ref);
     assert.equal(report.requests.filter(row => row.method === 'POST' && row.url.endsWith('/adopt')).length, writes);
   });

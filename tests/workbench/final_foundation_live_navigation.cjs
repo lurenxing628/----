@@ -80,12 +80,13 @@ async function caption(page, recipe, dto, record) {
   }
   await target.waitFor(); const data = dto.body.data;
   const draft = recipe.caption.identity === 'draft', plan = data.plan;
-  const name = draft ? data.name || (data.base_identity.display_name || '原排产候选')
+  const name = draft ? data.name || (data.base_identity.display_name || '上次排产的候选方案')
     + (data.base_identity.plan_ref && data.base_identity.version ? ' · v' + data.base_identity.version : '') : plan.display_name;
   const expected = {reference: recipe.caption.reference, name,
-    label: draft ? '当前草稿' : recipe.view === 'reports' ? '报表计划' : '当前方案',
+    label: draft ? '当前试调草稿' : recipe.view === 'reports' ? '报表计划' : '正式计划',
     status: draft ? '试调草稿 · 可继续试调' : recipe.view === 'reports' ? '当前正式采用' : '当前正式',
-    version: draft ? '创建时正式基线 v' + data.baseline.version : '正式 v' + plan.version};
+    version: draft ? '建草稿时的正式计划 第 ' + data.baseline.version + ' 版'
+      : recipe.view === 'reports' ? '正式 v' + plan.version : '第 ' + plan.version + ' 版'};
   record.equal(await target.getAttribute('data-plan-ref'), expected.reference);
   record.equal(await target.locator('.wb-current-name').innerText(), name);
   record.equal(await target.locator('strong').innerText(), expected.label);
@@ -199,7 +200,7 @@ async function unknownObject(browser, state, recipe, record) {
       await assertFailure(after);
       const shot = await record.shot(page, state, recipe.id + '--domain404-first', 'fault');
       after = record.data.api_responses.length;
-      const label = recipe.view === 'trial' ? '核对原来源' : recipe.view === 'reports' ? '重新读取' : '重新读取所选计划';
+      const label = recipe.view === 'trial' ? '核对原来源' : recipe.view === 'reports' ? '刷新报表数据' : '刷新重试';
       await page.getByRole('button', {name: label, exact: true}).click();
       const retry = await dtoResponse(page, specification, record, after, 404);
       record.equal(retry.body.error.code, recipe.domain_error_code); await assertFailure(after);

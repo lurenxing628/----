@@ -6,7 +6,7 @@ const config = JSON.parse(fs.readFileSync(0, 'utf8')), output = process.argv[2],
 const hash = value => crypto.createHash('sha256').update(value).digest('hex');
 const manifest = JSON.parse(fs.readFileSync(path.join(root, 'static/workbench/asset-manifest.json')));
 const names = ['WorkbenchPageContext.jsx', 'WorkbenchCaption.jsx', 'WorkbenchGuards.js', 'ResourceControls.jsx', 'WorkbenchGuardHost.jsx', 'WorkbenchControlStyles.jsx', 'WorkbenchControlBridge.js', 'WorkbenchSelectMenu.jsx', 'WorkbenchDatePickerModel.js',
-  'WorkbenchDatePicker.jsx', 'WorkbenchControls.jsx', 'WorkbenchListControls.jsx', 'WorkbenchFormat.js', 'WorkbenchReferences.jsx', 'WorkbenchNumberControls.jsx', 'OutsourcingContract.js', 'OutsourcingSession.js', 'OutsourcingControls.jsx', 'OutsourcingStyles.jsx', 'OutsourcingWorkspace.jsx',
+  'WorkbenchDatePicker.jsx', 'WorkbenchControls.jsx', 'WorkbenchListControls.jsx', 'WorkbenchFormat.js', 'WorkbenchTerms.js', 'WorkbenchReferences.jsx', 'WorkbenchNumberControls.jsx', 'OutsourcingContract.js', 'OutsourcingSession.js', 'OutsourcingControls.jsx', 'OutsourcingStyles.jsx', 'OutsourcingWorkspace.jsx',
   'DashboardContract.js', 'DashboardAnalysisAPI.js', 'DashboardCandidateComparisonAPI.js', 'DashboardTimelineModel.js', 'DashboardTimeline.jsx',
   'DashboardAnalysisPanels.jsx', 'DashboardCandidatePanels.jsx', 'DashboardCandidates.jsx', 'DashboardSession.js', 'DashboardStyles.jsx',
   'DashboardPanels.jsx', 'DashboardHistory.jsx', 'DashboardHandling.jsx', 'DashboardWorkspace.jsx'];
@@ -99,7 +99,7 @@ async function findMember(page, code) {
   throw new Error('Member not found: ' + code);
 }
 async function start(page, merged = false, codes = ['DN-O01']) {
-  await action(page, '/targets', () => page.getByRole('button', { name: '新建外协登记', exact: true }).click());
+  await action(page, '/targets', () => page.getByRole('button', { name: '新增外协登记', exact: true }).click());
   if (merged) await dialog(page).getByRole('radio', { name: '合并发出', exact: true }).check();
   for (const code of codes) await (await findMember(page, code)).check();
 }
@@ -108,16 +108,16 @@ async function dates(page, { sent = '2026-09-07T09:00:00', planned = '2026-09-09
   if (returned) { await dialog(page).getByLabel('实际回厂', { exact: true }).fill(returned); await select(page, '外协确认状态', '已回厂'); }
 }
 async function operator(page, reason) {
-  await dialog(page).getByLabel('外协声明人', { exact: true }).fill('物流员张工'); await dialog(page).getByLabel('外协核实原因', { exact: true }).fill(reason);
+  await dialog(page).getByLabel('外协经办人', { exact: true }).fill('物流员张工'); await dialog(page).getByLabel('外协核实原因', { exact: true }).fill(reason);
 }
 async function preview(page, status = 200) {
-  return action(page, '/receipts/preview', () => dialog(page).getByRole('button', { name: '预览核对', exact: true }).click(), status, 'POST');
+  return action(page, '/receipts/preview', () => dialog(page).getByRole('button', { name: '预检核对', exact: true }).click(), status, 'POST');
 }
 async function send(page, status = 200) {
   return action(page, '/receipts', () => dialog(page).getByRole('button', { name: '确认保存外协登记', exact: true }).click(), status, 'POST');
 }
-async function confirmed(page) { await dialog(page).getByText('已确认：外协登记已保存，回厂不等于工序完工。', { exact: true }).waitFor(); }
-async function finish(page) { await action(page, '/receipts', () => dialog(page).getByRole('button', { name: '完成核实并刷新', exact: true }).click()); }
+async function confirmed(page) { await dialog(page).getByText('外协登记已完成。回厂不等于工序完工。', { exact: true }).waitFor(); }
+async function finish(page) { await action(page, '/receipts', () => dialog(page).getByRole('button', { name: '完成', exact: true }).click()); }
 async function edit(page, ref) {
   if (!await page.locator('[data-outsourcing-detail="' + ref + '"]').count()) await action(page, '/receipts/' + ref + '/history', () => page.locator('[data-outsourcing-ref="' + ref + '"]').getByRole('button').click());
   await page.locator('[data-outsourcing-detail="' + ref + '"]').getByRole('button', { name: '核实 / 更正登记', exact: true }).click();
@@ -148,7 +148,7 @@ async function datePicker(page) {
   await page.keyboard.press('Escape'); assert.equal(await dialog(page).count(), 1); report.boundaries.picker_escape_preserves_dialog = true;
   await field.click({ position: { x: box.width - 12, y: box.height / 2 } }); await popup.getByRole('gridcell', { name: '2026-09-07', exact: true }).click();
   await popup.getByLabel('时', { exact: true }).fill('09'); await popup.getByLabel('分', { exact: true }).fill('00'); await popup.getByLabel('秒', { exact: true }).fill('17');
-  await popup.getByRole('button', { name: '确定', exact: true }).click(); assert.equal(await field.inputValue(), '2026-09-07T09:00:17'); report.boundaries.picker_commits_seconds = true;
+  await popup.getByRole('button', { name: '确认', exact: true }).click(); assert.equal(await field.inputValue(), '2026-09-07T09:00:17'); report.boundaries.picker_commits_seconds = true;
 }
 async function contracts(page, p, v, intent, list) {
   const targets = report.responses.find(r => r.path === base + '/targets').payload;
@@ -183,15 +183,15 @@ async function happy(viewport, theme) {
   await edit(page, ref); const reconfirm = await commit(page, '重新核实原值仍一致'); assert.deepEqual(Object.keys(reconfirm.p.data.input).sort(), ['declared_operator', 'outsourcing_ref', 'reason']);
   await edit(page, ref); await dialog(page).getByLabel('计划回厂', { exact: true }).fill('2026-09-11T12:00');
   const sparse = await commit(page, '更正约定计划回厂'); assert.deepEqual(Object.keys(sparse.p.data.input).sort(), ['declared_operator', 'outsourcing_ref', 'planned', 'reason']);
-  await edit(page, ref); await select(page, '外协确认状态', '待确认'); await dialog(page).getByRole('button', { name: '清空实际回厂', exact: true }).click();
+  await edit(page, ref); await select(page, '外协确认状态', '待确认'); await dialog(page).getByRole('button', { name: '清除实际回厂', exact: true }).click();
   await commit(page, '纠正误认的回厂记录，待签收凭据确认');
   await edit(page, ref); await dialog(page).getByLabel('实际回厂', { exact: true }).fill('2026-09-10T11:15:27'); await select(page, '外协确认状态', '已回厂');
   await operator(page, '签收凭据 DN-20260910-' + name); await preview(page); fault = 'after'; blockReceipts = true;
-  await dialog(page).getByRole('button', { name: '确认保存外协登记', exact: true }).click(); await dialog(page).getByText('结果尚未确认，仅查询原请求。', { exact: true }).first().waitFor();
+  await dialog(page).getByRole('button', { name: '确认保存外协登记', exact: true }).click(); await dialog(page).getByText('上次外协登记的结果还没查到，可能已经生效。请点「查询结果」，不要重复提交。', { exact: true }).first().waitFor();
   const pending = await page.evaluate(() => window.OutsourcingSession.read()); assert.equal(pending.phase, 'pending'); assert(!JSON.stringify(pending).includes('write_token'));
   await shot(page, name + '-unknown'); const storageState = await context.storageState(); await context.close(); await browser.close(); browser = await launch(); report.restarts++;
   fault = ''; blockReceipts = false; ({ context, page } = await fresh(name, viewport, theme, storageState));
-  await page.getByRole('button', { name: '查看已确认外协回执', exact: true }).click(); await confirmed(page);
+  await page.getByRole('button', { name: '查看已确认的结果', exact: true }).click(); await confirmed(page);
   assert.equal((await page.evaluate(() => window.OutsourcingSession.read())).request_key, pending.request_key); await finish(page);
   await start(page, false, ['DN-O04']); await dates(page); await commit(page, '第三份登记用于分页核对');
   let list = await action(page, '/receipts', () => select(page, '外协登记每页数量', '2 项'));
@@ -213,28 +213,28 @@ async function happy(viewport, theme) {
 async function boundaries() {
   let { context, page } = await fresh('missing'); assert.equal(await page.locator('[data-outsourcing-ref]').count(), 0); report.boundaries.schema_missing = true; await shot(page, 'missing-schema'); await context.close();
   ({ context, page } = await fresh('stale')); await start(page); await dates(page, { sent: '2026-09-08T10:00:00', planned: '2026-09-07T09:00:00' }); await operator(page, '倒序边界');
-  await dialog(page).getByRole('button', { name: '预览核对', exact: true }).click(); await dialog(page).getByText('计划回厂和实际回厂不能早于实际发出。', { exact: true }).waitFor(); report.boundaries.reverse_dates = true;
+  await dialog(page).getByRole('button', { name: '预检核对', exact: true }).click(); await dialog(page).getByText('计划回厂和实际回厂不能早于实际发出。', { exact: true }).waitFor(); report.boundaries.reverse_dates = true;
   await dates(page, { sent: '2026-09-11T09:00:00', planned: '2026-09-12T12:00:00' }); await preview(page, 422); await dialog(page).getByRole('alert').waitFor(); report.boundaries.future_actuals = true;
   await dates(page); await operator(page, '真实服务未来回厂拒绝'); await dialog(page).getByLabel('实际回厂', { exact: true }).fill('2026-09-11T10:00'); await select(page, '外协确认状态', '已回厂'); await preview(page, 422);
-  await dialog(page).getByRole('button', { name: '清空实际回厂', exact: true }).click(); await select(page, '外协确认状态', '在途'); await preview(page); const created = await send(page); await confirmed(page); await finish(page);
+  await dialog(page).getByRole('button', { name: '清除实际回厂', exact: true }).click(); await select(page, '外协确认状态', '在途'); await preview(page); const created = await send(page); await confirmed(page); await finish(page);
   const ref = created.data.outsourcing_ref; await edit(page, ref); await commit(page, '为翻页建立第二次核实'); await edit(page, ref); await commit(page, '为翻页建立第三次核实');
   const old = await action(page, '/receipts/' + ref + '/history', () => select(page, '外协历史每页数量', '2 项'));
   const input = { outsourcing_ref: ref, declared_operator: '另一个核实人', reason: '并发增加核实，旧快照应失效' };
   const p = await context.request.post(origin + base + '/receipts/preview', { data: { input } }); assert.equal(p.status(), 200); const d = (await p.json()).data;
   const update = await context.request.post(origin + base + '/receipts', { data: { input, write_token: d.write_context.write_token, request_key: 'dn-other-page-history-command' } }); assert.equal(update.status(), 200);
   await action(page, '/receipts/' + ref + '/history', () => page.getByRole('button', { name: '外协历史下一页', exact: true }).click(), 409);
-  assert.equal(await page.locator('[data-fact-ref]').count(), 0); await action(page, '/receipts/' + ref + '/history', () => page.getByRole('button', { name: '明确刷新原登记历史', exact: true }).click());
+  assert.equal(await page.locator('[data-fact-ref]').count(), 0); await action(page, '/receipts/' + ref + '/history', () => page.getByRole('button', { name: '刷新登记历史', exact: true }).click());
   assert.equal(await page.locator('[data-fact-ref]').count(), 2); report.boundaries.stale_history_not_mixed = true; await shot(page, 'stale-history-refreshed'); await context.close();
   for (const name of ['lost', 'malformed', 'drift', 'rollback']) {
     ({ context, page } = await fresh(name)); await start(page); await dates(page); await operator(page, '边界核实 ' + name); await preview(page);
     if (['drift', 'rollback'].includes(name)) assert.equal((await context.request.post(origin + '/__outsourcing_fixture__/mutate')).status(), 200);
     if (name === 'lost') fault = 'before'; if (name === 'malformed') { fault = 'malformed'; blockReceipts = true; }
     if (name === 'lost') await dialog(page).getByRole('button', { name: '确认保存外协登记', exact: true }).click(); else await send(page, name === 'drift' ? 409 : name === 'rollback' ? 500 : 200);
-    if (name === 'drift') { await dialog(page).getByText('本次明确未写入。', { exact: true }).waitFor(); report.boundaries.stale_preview_rejected = true; }
+    if (name === 'drift') { await dialog(page).getByText('上次外协登记没有生效，填写内容已保留。改好后重新提交。', { exact: true }).waitFor(); report.boundaries.stale_preview_rejected = true; }
     else {
-      await dialog(page).getByText('结果尚未确认，仅查询原请求。', { exact: true }).first().waitFor(); assert.equal(await dialog(page).getByRole('button', { name: '确认保存外协登记', exact: true }).count(), 0);
-      if (name === 'malformed') { fault = ''; blockReceipts = false; await dialog(page).getByRole('button', { name: '查询原回执', exact: true }).click(); await confirmed(page); report.boundaries.malformed200_not_success = true; }
-      else { await dialog(page).getByText(/尚未查到原回执/).waitFor(); report.boundaries[name === 'lost' ? 'not_recorded_retained' : 'rollback_atomic'] = true; }
+      await dialog(page).getByText('上次外协登记的结果还没查到，可能已经生效。请点「查询结果」，不要重复提交。', { exact: true }).first().waitFor(); assert.equal(await dialog(page).getByRole('button', { name: '确认保存外协登记', exact: true }).count(), 0);
+      if (name === 'malformed') { fault = ''; blockReceipts = false; await dialog(page).getByRole('button', { name: '查询结果', exact: true }).click(); await confirmed(page); report.boundaries.malformed200_not_success = true; }
+      else { await dialog(page).getByText(/还是没有查到结果/).waitFor(); report.boundaries[name === 'lost' ? 'not_recorded_retained' : 'rollback_atomic'] = true; }
     }
     await shot(page, name); fault = ''; blockReceipts = false; await context.close();
   }
@@ -250,7 +250,7 @@ async function dashboard(viewport, theme) {
   assert.equal(await page.getByRole('tab', { name: '处置历史', exact: true }).count(), 0); assert.equal(await page.getByLabel('处置状态', { exact: true }).count(), 0);
   assert(!/已关闭处置/.test(await page.locator('.dy-metric').nth(2).innerText()));
   await geometry(page, viewport); await shot(page, theme + '-' + viewport.width + '-dashboard');
-  await page.getByRole('button', { name: '新建外协登记', exact: true }).click(); await dialog(page).waitFor();
+  await page.getByRole('button', { name: '新增外协登记', exact: true }).click(); await dialog(page).waitFor();
   await geometry(page, viewport); await shot(page, theme + '-' + viewport.width + '-dashboard-form'); await page.keyboard.press('Escape');
   report.boundaries.dashboard_summary_independent = true; await context.close();
 }

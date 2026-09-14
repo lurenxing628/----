@@ -63,8 +63,12 @@ async function keyboardFocus(page, selector) {
       const normal = await sample('normal'); await h.shot(page, variant.name + '-normal'); assertColors(normal);
       row.secondaryCopy = await colors(page, ['[data-secondary-copy]']);
       assert.equal(row.secondaryCopy.length, 4);
+      // Secondary copy must paint with the --wb-secondary-copy token (00-tokens.css); the literal follows the token, not the probe.
+      const secondaryToken = await page.evaluate(() => { const probe = document.createElement('span'); probe.style.color = 'var(--wb-secondary-copy)';
+        document.body.appendChild(probe); const color = getComputedStyle(probe).color; probe.remove(); return color; });
+      row.secondaryToken = secondaryToken; assert.match(secondaryToken, /^rgb\(/, 'token --wb-secondary-copy must resolve');
       for (const copy of row.secondaryCopy) {
-        assert.equal(copy.color, variant.theme === 'dark' ? 'rgb(148, 163, 184)' : 'rgb(96, 112, 135)');
+        assert.equal(copy.color, secondaryToken);
         assert.equal(copy.effectiveBackground[3], 1); assert.equal(copy.opacity, 1);
         assert(copy.ratio >= 4.5, JSON.stringify(copy));
       }

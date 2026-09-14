@@ -6,7 +6,7 @@
     adapter.command = (commandKind, action, ref, body, signal) => {
       if (![kind + '_import', kind + '_bulk'].includes(commandKind) || action !== 'confirm'
           || !body || !body.input || body.input.preview_ref !== ref)
-        throw window.APSResourceContract.failure('确认操作与当前资源预览不一致。');
+        throw window.APSResourceContract.failure('确认操作与当前预检结果不一致。');
       return adapter.execute(commandKind === kind + '_import' ? 'imports/' + kind + '/confirm' : 'entities/' + kind + '/bulk-confirm', body, signal);
     };
     return adapter;
@@ -31,7 +31,7 @@
       const base = window.APSResourceAPI.create(), calendar = window.APSResourceAPI.create('calendar');
       const files = Object.fromEntries(fileKinds.map(kind => [kind, fileAdapter(kind)])), catalog = window.APSResourceAPI.create('catalog');
       calendar.command = (kind, action, ref, body, signal) => {
-        if (kind !== 'calendar' || !['upsert', 'delete', 'confirm'].includes(action)) throw window.APSResourceContract.failure('日历操作不正确。');
+        if (kind !== 'calendar' || !['upsert', 'delete', 'confirm'].includes(action)) throw window.APSResourceContract.failure('工作日历操作不正确。');
         return calendar.execute('calendar/' + (action === 'confirm' ? 'range/confirm' : action), body, signal);
       };
       const open = (type, kind, request) => { setHostError(null); setAuxiliary({ type, kind, request }); return { state: 'opened' }; };
@@ -63,9 +63,9 @@
         const pending = recovery(adapters);
         if (pending) {
           setInitialNode(pending.node); if (!auxiliary && pending.auxiliary) setAuxiliary(pending.auxiliary);
-          throw window.APSResourceContract.failure('仍有原请求待核实，请先处理并关闭原结果。');
+          throw window.APSResourceContract.failure('上次操作的结果还没确认，请先处理并关闭。');
         }
-        if (auxiliary || !navigationReady) throw window.APSResourceContract.failure('请先关闭原结果或处理未保存草稿，再继续原导航。');
+        if (auxiliary || !navigationReady) throw window.APSResourceContract.failure('请先关闭上次结果或处理未保存的草稿，再继续跳转。');
         setHostError(null); setDeferred(false); setInitialNode(boot.target.node); setNavigationKey(value => value + 1);
       } catch (error) { setHostError(error); }
     }
@@ -81,8 +81,8 @@
     }
     return <>
       <window.ResourceControls.ErrorBox error={hostError || boot.target.error || boot.error} />
-      {deferred && <div role="status" className="match-note" style={{ display: 'block', margin: 12 }}><p>原请求优先处理，精确导航暂缓；待核实写入未被覆盖。</p>
-        <window.ResourceControls.Button icon="arrow-right" onClick={continueNavigation}>继续原导航</window.ResourceControls.Button></div>}
+      {deferred && <div role="status" className="match-note" style={{ display: 'block', margin: 12 }}><p>上次操作还没处理完，暂时没有跳转到指定记录。刚才的提交没有被覆盖。</p>
+        <window.ResourceControls.Button icon="arrow-right" onClick={continueNavigation}>继续跳转</window.ResourceControls.Button></div>}
       <ResourceWorkspace key={initialNode + ':' + navigationKey} adapter={adapters.base} onNavigate={onNavigate} initialNode={initialNode} externalRevision={revision}
         rememberEnabled={!auxiliary && !deferred && !hostError && !boot.error && !boot.target.error}
         initialContext={deferred || boot.error ? undefined : boot.target.context} onNavigationReady={setNavigationReady}

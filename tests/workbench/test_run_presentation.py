@@ -93,10 +93,10 @@ def test_run_presentation_chrome109_real_fixture(candidate_case, monkeypatch):
             data = Path(item["path"]).read_bytes()
         headers, rows = decode(Response(), item["format"])
         assert len(rows) == item["row_count"]
-        assert [r[headers.index("行引用")] for r in rows[:item["task_count"]]] == item["row_refs"]
-        assert [r[headers.index("工序引用")] for r in rows] == item["operation_refs"]
-        assert all(r[headers.index("候选引用")] == item["candidate_ref"] for r in rows)
-        assert all(r[headers.index("运行引用")] == item["run_ref"] for r in rows)
+        assert [r[headers.index("行编号")] for r in rows[:item["task_count"]]] == item["row_refs"]
+        assert [r[headers.index("工序编号")] for r in rows] == item["operation_refs"]
+        assert all(r[headers.index("候选方案编号")] == item["candidate_ref"] for r in rows)
+        assert all(r[headers.index("排产编号")] == item["run_ref"] for r in rows)
         assert [r[headers.index("安排开始")] for r in rows[:item["task_count"]]] == item["starts"]
     ast.parse(Path(__file__).read_text(encoding="utf-8"), feature_version=8)
     print(probe_output, flush=True)

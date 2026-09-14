@@ -108,10 +108,10 @@ async function protocolFailures(p, page, data) {
     });
     await p.click(b(page.locator('[data-process-workspace]'), '查看 ' + data.part));
     const detail = page.locator('.process-detail');
-    await detail.getByText('工艺详情不完整或对象不一致，请重新读取。', {exact: true}).waitFor();
+    await detail.getByText('读到的工艺详情不完整或不是这个零件，请刷新后重试。', {exact: true}).waitFor();
     assert.equal(await detail.locator('[data-process-hours-editor]').count(), 0);
     await p.shot('protocol-' + kind + '-rejected'); await page.unroute(url);
-    await p.click(b(detail, '重试读取详情')); await page.getByRole('tablist', {name: '零件工艺步骤', exact: true}).waitFor();
+    await p.click(b(detail, '刷新详情')); await page.getByRole('tablist', {name: '零件工艺步骤', exact: true}).waitFor();
     await p.click(b(page, '关闭详情'));
   }
 }

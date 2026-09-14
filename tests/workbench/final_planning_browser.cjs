@@ -24,7 +24,7 @@ async function restart(page, h, flush) {
     await page.goto(ready.url + '/workbench?view=analysis');
     await page.locator('[data-plan-workspace] .plan-main').waitFor(); await flush();
     await h.caption(original.second_official.plan.plan_ref, '当前正式');
-    await button('展开计划目录').click();
+    await button('展开计划列表').click();
     const row = page.getByRole('table', { name: '可选排产方案', exact: true }).getByRole('row')
       .filter({ has: page.getByRole('cell', { name: String(original.second_official.plan.version), exact: true }) });
     assert.equal(await row.count(), 1);
@@ -46,8 +46,8 @@ async function restart(page, h, flush) {
     assert.equal(data.plan.plan_ref, original.first_official.plan.plan_ref);
     assert.deepEqual(data.tasks, original.first_official.tasks);
     await h.caption(data.plan.plan_ref, '历史正式'); await shot('new-process-historical');
-    await button('展开计划目录').click();
-    await button('已存场景', page.locator('.plan-catalog')).click(); await flush();
+    await button('展开计划列表').click();
+    await button('试调方案', page.locator('.plan-catalog')).click(); await flush();
     const legacy = table.getByRole('row').filter({ hasText: 'piece-main-old-scene name' });
     await legacy.waitFor();
     const catalog = last(value => value.plans && value.plans.some(plan => plan.display_name === 'piece-main-old-scene name'));
@@ -59,7 +59,7 @@ async function restart(page, h, flush) {
       await choice.click(); await flush();
       assert.equal(await page.locator('.plan-catalog').getAttribute('data-collapsed'), 'true');
       assert.equal(last(value => value.plan && value.tasks).plan.plan_ref, plan.plan_ref);
-      await h.caption(plan.plan_ref, '场景预览');
+      await h.caption(plan.plan_ref, '试调方案');
     } else {
       assert(plan.blocked_reasons.length > 0);
       assert.equal(last(value => value.plan && value.tasks).plan.plan_ref, original.first_official.plan.plan_ref);
@@ -70,8 +70,8 @@ async function restart(page, h, flush) {
   await restartCandidateAnalysis(page, original, report, h, flush);
   await action(['WBP-TRIAL-012.new-process', 'WBP-TRIAL-002.catalog-source'], async () => {
     await page.goto(ready.url + '/workbench/trial');
-    await page.getByRole('tab', { name: '已存场景', exact: true }).click();
-    const row = page.getByRole('table', { name: '试调目录', exact: true }).getByRole('row').filter({ hasText: original.scenario_name });
+    await page.getByRole('tab', { name: '试调方案', exact: true }).click();
+    const row = page.getByRole('table', { name: '试调列表', exact: true }).getByRole('row').filter({ hasText: original.scenario_name });
     await button('打开', row).click(); await page.locator('[data-open-kind="scenario"] .tt-main').waitFor(); await flush();
     const data = last(value => value.scenario_ref === original.scenario_ref && value.tasks);
     assert.deepEqual(data.tasks, original.scenario.tasks);

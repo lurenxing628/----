@@ -19,7 +19,7 @@
     operation_label: '工序名称',
     old_unit_hours: '原单件定额',
     suggested_unit_hours: '建议单件定额',
-    sample_count: '有效样本数',
+    sample_count: '可用记录数',
     absolute_deviation_percent: '绝对偏差',
     status: '状态'
   };
@@ -51,11 +51,11 @@
   }
   function input(value = {}) {
     const result = readInput(value);
-    if (result.page > 1 && !result.snapshot_ref) throw failure('原列表快照缺失，请明确刷新。', 'snapshot_required');
+    if (result.page > 1 && !result.snapshot_ref) throw failure('翻页位置已失效，请回到第 1 页重新查询。', 'snapshot_required');
     return result;
   }
   function initial(value = {}) {
-    if (!object(value) || Object.keys(value).some(key => !['scope', 'table', 'snapshot_ref', 'selected', 'sample_ref', 'table_widths'].includes(key))) throw failure('传入的样本来源无法识别，未改选其他记录。');
+    if (!object(value) || Object.keys(value).some(key => !['scope', 'table', 'snapshot_ref', 'selected', 'sample_ref', 'table_widths'].includes(key))) throw failure('传入的完工记录来源无法识别，没有改选其他记录。');
     if (value.selected != null && !ref(value.selected) || value.sample_ref != null && !ref(value.sample_ref)) throw failure('已选记录编号无效。');
     if (value.table_widths !== undefined && (!object(value.table_widths) || Object.keys(value.table_widths).some(key => !(key in sorts) || !Number.isFinite(value.table_widths[key]) || value.table_widths[key] < 56 || value.table_widths[key] > 16384))) throw failure('校准表格列宽记录无效。');
     const saved = {
@@ -100,11 +100,11 @@
       meta = result && result.meta;
     if (!result || result.ok !== true || result.schema_version !== 1 || !meta || meta.source !== 'production' || meta.time_basis !== 'factory_local' || typeof meta.snapshot_ref !== 'string' || !meta.snapshot_ref || typeof meta.as_of !== 'string' || !Array.isArray(result.warnings) || !data || !object(data.scope) || !object(data.summary) || !object(data.capabilities) || !Array.isArray(data.blocked_reasons) || !Array.isArray(data.source_constraints) || typeof data.lineage_available !== 'boolean' || !object(data.exports) || data.exports.url !== base + '/export' || data.exports.scope !== 'all_filtered_suggestions' || !Array.isArray(data.exports.formats)) throw failure('校准数据不完整，未使用样例或零值替代。');
     const wanted = input(query);
-    if (wanted.snapshot_ref && wanted.snapshot_ref !== meta.snapshot_ref) throw failure('前后快照不一致，请明确刷新；已选记录保留。', 'snapshot_stale');
+    if (wanted.snapshot_ref && wanted.snapshot_ref !== meta.snapshot_ref) throw failure(window.WorkbenchTerms.outcomes.stale, 'snapshot_stale');
     if (Object.keys(defaults).filter(key => !['page', 'column_filters'].includes(key)).some(key => data.scope[key] !== wanted[key]) || window.ResourceTableFilterModel.signature(data.scope.column_filters || {}) !== window.ResourceTableFilterModel.signature(wanted.column_filters)) throw failure('返回筛选范围不一致，未改选其他来源。', 'snapshot_stale');
     if (!['total', 'suggested', 'insufficient_data', 'over_20_percent'].every(key => count(data.summary[key])) || data.summary.total !== data.summary.suggested + data.summary.insufficient_data) throw failure('校准汇总数量不一致。');
     if (detailRef) {
-      if (!validRow(data.suggestion, meta) || data.suggestion.suggestion_ref !== detailRef || !validSamples(data)) throw failure('样本分组或来源不一致，未当作有效样本显示。');
+      if (!validRow(data.suggestion, meta) || data.suggestion.suggestion_ref !== detailRef || !validSamples(data)) throw failure('完工记录分组或来源不一致，没有当作可用记录显示。');
     } else if (!Array.isArray(data.items) || !data.items.every(row => validRow(row, meta)) || !data.page || !count(data.page.total) || data.page.number !== wanted.page || data.page.size !== wanted.size || data.page.total !== data.summary.total || data.page.total_pages !== Math.ceil(data.page.total / wanted.size) || data.items.length !== Math.max(0, Math.min(wanted.size, data.page.total - (wanted.page - 1) * wanted.size))) throw failure('校准列表或分页数量不一致。');
     return result;
   }
@@ -118,7 +118,7 @@
     const query = input(value),
       reason = exportReason(result.data, format);
     if (reason) throw failure(reason);
-    if (!query.snapshot_ref || query.snapshot_ref !== result.meta.snapshot_ref) throw failure('导出快照缺失或不一致，请明确刷新。', 'snapshot_stale');
+    if (!query.snapshot_ref || query.snapshot_ref !== result.meta.snapshot_ref) throw failure('导出的数据版本缺失或不一致，请刷新后重试。', 'snapshot_stale');
     const target = new URL(base + '/export', location.origin);
     Object.entries(transport({
       ...query,
@@ -148,7 +148,7 @@
         const payload = mime.includes('application/json') ? await response.json() : null;
         throw failure(payload && payload.error && payload.error.message || '导出读取失败，请重试。', payload && payload.error && payload.error.code);
       }
-      if (response.headers.get('X-Workbench-Snapshot') !== query.snapshot_ref || response.headers.get('X-Workbench-As-Of') !== result.meta.as_of || response.headers.get('X-Workbench-Row-Count') !== String(result.data.summary.total)) throw failure('导出快照或总行数不一致，文件未保存，请明确刷新。', 'snapshot_stale');
+      if (response.headers.get('X-Workbench-Snapshot') !== query.snapshot_ref || response.headers.get('X-Workbench-As-Of') !== result.meta.as_of || response.headers.get('X-Workbench-Row-Count') !== String(result.data.summary.total)) throw failure('导出的数据版本或总行数不一致，文件没有保存，请刷新后重试。', 'snapshot_stale');
       const expected = format === 'csv' ? 'text/csv' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
       if (!mime.toLowerCase().startsWith(expected)) throw failure('导出文件格式不正确，文件未保存。');
       const blob = await response.blob(),
@@ -157,7 +157,7 @@
       const disposition = response.headers.get('content-disposition') || '';
       const match = /filename\*=UTF-8''([^;]+)/i.exec(disposition) || /filename="?([^";]+)/i.exec(disposition);
       const filename = match ? decodeURIComponent(match[1]) : '';
-      if (!/^workbench-calibration-[\wT-]+\.(csv|xlsx)$/.test(filename) || !filename.endsWith('.' + format)) throw failure('导出文件名不正确，文件未保存。');
+      if (!/^工时校准明细-[\wT-]+\.(csv|xlsx)$/.test(filename) || !filename.endsWith('.' + format)) throw failure('导出文件名不正确，文件未保存。');
       if (controller.signal.aborted) throw failure('导出已取消，文件未保存。');
       const url = URL.createObjectURL(blob),
         link = document.createElement('a');
@@ -201,7 +201,7 @@
     const io = supplied || window.APSResourceAPI.create();
     const parameters = value => transport(input(value));
     function facet(kind, request, signal, selection) {
-      if (kind !== 'calibration' || !(request.column in sorts)) throw failure('校准列值对象无效。');
+      if (kind !== 'calibration' || !(request.column in sorts)) throw failure('校准列筛选项无效。');
       const {
         scope,
         column,
@@ -215,7 +215,7 @@
     return {
       read: (value, signal) => io.query('calibration', parameters(value), signal),
       detail: (value, query, signal) => {
-        if (!ref(value) || !query.snapshot_ref) throw failure('所选记录或原快照缺失。');
+        if (!ref(value) || !query.snapshot_ref) throw failure('所选记录或数据版本缺失。');
         return io.query('calibration/' + value, parameters(query), signal);
       },
       download,

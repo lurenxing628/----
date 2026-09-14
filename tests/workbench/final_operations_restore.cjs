@@ -13,10 +13,10 @@ async function restore(h) {
   if (config.mode === 'cold') {
     await page.locator('[data-restore-maintenance=cold]').waitFor();
     await page.getByRole('radio', { name: config.theme === 'dark' ? '深色' : '浅色', exact: true }).check();
-    await page.getByRole('textbox', { name: '查询标识', exact: true }).fill(config.reference);
+    await page.getByRole('textbox', { name: '查询编号', exact: true }).fill(config.reference);
     await page.getByRole('button', { name: '查询维护结果', exact: true }).click();
     await page.waitForURL('**reference=' + config.reference);
-    assert((await page.locator('main').innerText()).includes(config.corrupt ? '维护记录损坏' : '校验中'));
+    assert((await page.locator('main').innerText()).includes(config.corrupt ? '维护记录损坏' : '完整性检查中'));
     await mark(config.corrupt ? 'WBP-SYS-019.blocked' : 'WBP-SYS-019.pending', async () => {
       assert.equal(await page.locator('[data-restore-maintenance=cold]').count(), 1);
     });
@@ -48,7 +48,7 @@ async function restore(h) {
   assert.equal(report.operation.state, config.expected || 'succeeded');
   report.after_restore_files = files(config);
   await page.locator('[data-restore-maintenance=warm]').waitFor();
-  await page.getByText(config.expected === 'rollback_failed' ? '系统已暂停，维护结果待核实' : '维护已结束，请重启整个软件', { exact: true }).waitFor();
+  await page.getByText(config.expected === 'rollback_failed' ? '系统已暂停，维护结果待确认' : '维护已结束，请重启整个软件', { exact: true }).waitFor();
   await mark('WBP-SYS-009.restored-readonly', async () => {
     assert(await page.evaluate(() => document.getElementById('root').inert));
     assert.equal(await page.getByRole('button', { name: '确认结果', exact: true }).count(), 0);
@@ -62,18 +62,18 @@ async function restore(h) {
   });
   await mark('WBP-SYS-009.verify', async () => {
     assert(report.operation.history.some(row => row.state === 'verifying'));
-    assert((await stages.innerText()).includes('校验中'));
+    assert((await stages.innerText()).includes('完整性检查中'));
   });
   if (config.expected) await mark(config.expected === 'rolled_back' ? ['WBP-SYS-009.rollback', 'WBP-SYS-019.failure']
     : ['WBP-SYS-009.rollback-failure', 'WBP-SYS-019.rollback-failure'], async () => {
-    assert((await stages.innerText()).includes('回滚中'));
-    assert((await page.locator('.sm-restore-content').innerText()).includes(config.expected === 'rolled_back' ? '恢复失败，已回滚' : '回滚失败，需人工核查'));
+    assert((await stages.innerText()).includes('还原中'));
+    assert((await page.locator('.sm-restore-content').innerText()).includes(config.expected === 'rolled_back' ? '恢复失败，已还原' : '还原失败，需人工核对'));
   });
   report.pending = await page.evaluate(() => JSON.parse(localStorage.getItem('aps_workbench_system_pending_v1')));
   assert.equal(report.pending.request_key, report.operation.request_key);
   await shot('restore-result-readonly');
   await page.getByRole('radio', { name: '维护记录编号', exact: true }).check();
-  await page.getByRole('textbox', { name: '查询标识', exact: true }).fill(report.operation.job_ref);
+  await page.getByRole('textbox', { name: '查询编号', exact: true }).fill(report.operation.job_ref);
   await page.getByRole('button', { name: '查询维护结果', exact: true }).click();
   await page.waitForFunction(() => !document.querySelector('[data-restore-maintenance] [aria-busy=true]'));
   const diagnostic = await download('导出维护诊断', 'restore-diagnostic.json');

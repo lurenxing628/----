@@ -75,8 +75,8 @@ async function prepareCurrentScenario(expected) {
     if (!choice.checked) throw new Error('Fixture batch was not selected');
     await button('收起范围');
     await button('开始排产检查');
-    await openDetails('逐工序检查');
-    await tableReady('table[aria-label="排产前检查明细"]');
+    await openDetails('检查明细');
+    await tableReady('table[aria-label="排产检查明细"]');
   }
   async function plan() {
     await planCatalog();
@@ -127,7 +127,7 @@ async function prepareCurrentScenario(expected) {
     const rows = [...document.querySelectorAll('table[aria-label="可选排产方案"] tbody tr')]
       .filter(row => row.querySelector('td:nth-child(2)')?.textContent.trim() === '2');
     if (rows.length !== 1 || !rows[0].querySelector('input[type="radio"]')?.disabled
-      || !rows[0].textContent.includes('排产摘要无效，无法确认计划完整性。'))
+      || !rows[0].textContent.includes('这次排产的摘要无效，确认不了计划是否完整。请刷新后重试。'))
       throw new Error('Malformed version 2 was not visible and unavailable');
   }
   async function batchImport() {

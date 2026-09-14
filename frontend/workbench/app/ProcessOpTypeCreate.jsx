@@ -21,12 +21,12 @@
       if (command.phase !== 'done' || request.current) return;
       const controller = new AbortController(); request.current = controller; setRefresh({ loading: true });
       try {
-        if (!command.intent || command.intent.kind !== 'op_type' || command.intent.action !== 'create' || !['committed', 'unchanged'].includes(command.result.result)) throw C.failure('该资源回执不是当前工种的完整新建回执。');
+        if (!command.intent || command.intent.kind !== 'op_type' || command.intent.action !== 'create' || !['committed', 'unchanged'].includes(command.result.result)) throw C.failure(window.WorkbenchTerms.outcomes.unknown('新增工种'));
         if (notified.current !== command.result.receipt_ref) { notified.current = command.result.receipt_ref; onCommitted(command.result); }
         const ref = C.resultRef(command.result);
-        if (typeof ref !== 'string' || !ref) throw C.failure('新建回执缺少工种引用，尚未绑定工序。');
+        if (typeof ref !== 'string' || !ref) throw C.failure('新增结果里没有工种编号，工序还没绑定。请刷新后核对。');
         const detail = C.query(await adapter.detail('op_type', ref, controller.signal), 'entity');
-        if (detail.data.ref !== ref) throw C.failure('新建工种的详情与回执对象不一致。');
+        if (detail.data.ref !== ref) throw C.failure('读到的工种详情和新增结果不一致，请刷新后核对。');
         await adapter.list('op_type', scope, controller.signal);
         if (!controller.signal.aborted) setRefresh({ done: true, detail });
       } catch (failure) { if (!controller.signal.aborted) setRefresh({ error: failure }); }
@@ -35,8 +35,8 @@
     React.useEffect(() => { if (initialized && command.phase === 'done') readSaved(); }, [initialized, command.phase, command.result && command.result.receipt_ref]);
     function close() { if (!command.locked && !busy && !refresh.loading && command.reset()) onClose(); }
     if (!context) return <Modal title="新增工种" icon="plus" onClose={close} locked={command.locked || busy} footer={<Button onClick={close} disabled={command.locked || busy}>取消</Button>}>
-      <div className="modal-b"><ErrorBox error={list.error} />{list.loading && <p role="status">正在读取工种建档资料…</p>}{list.error && <Button icon="refresh-cw" onClick={list.reload}>重读建档资料</Button>}
-        {!initialized && <><p>另一个资源请求尚未完成，请先核实。</p><window.ResourceForms.Feedback command={command} /></>}</div></Modal>;
+      <div className="modal-b"><ErrorBox error={list.error} />{list.loading && <p role="status">正在读取工种建档资料…</p>}{list.error && <Button icon="refresh-cw" onClick={list.reload}>刷新资料</Button>}
+        {!initialized && <><p>另一个操作还没处理完，请先查询上次结果。</p><window.ResourceForms.Feedback command={command} /></>}</div></Modal>;
     return <window.ResourceForms adapter={adapter} kind="op_type" action="create" writeContext={review ? null : context.data.create_context} source={context.meta.source} command={command}
       onClose={close} onReloadContext={reload} contextBusy={busy || refresh.loading} contextError={error} contextReview={review} onAcceptContext={() => { setContext(review); setReview(null); setError(null); }}
       refreshState={refresh} onRefresh={readSaved} />;

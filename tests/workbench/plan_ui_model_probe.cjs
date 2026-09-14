@@ -2,7 +2,7 @@
 const assert = require('node:assert/strict'), fs = require('node:fs'), path = require('node:path'), vm = require('node:vm');
 const F = require('./plan_ui_fixtures.cjs'), root = path.resolve(__dirname, '../..');
 const runtime = vm.createContext({ window: {}, console }); runtime.window = runtime;
-for (const name of ['WorkbenchFormat.js', 'resource-contract.js', 'PointContract.js', 'PlanProcessOrder.js', 'PlanContract.js', 'PointGanttModel.js', 'PlanGanttModel.js']) vm.runInContext(fs.readFileSync(path.join(root, 'frontend/workbench/app', name), 'utf8'), runtime);
+for (const name of ['WorkbenchFormat.js', 'WorkbenchTerms.js', 'resource-contract.js', 'PointContract.js', 'PlanProcessOrder.js', 'PlanContract.js', 'PointGanttModel.js', 'PlanGanttModel.js']) vm.runInContext(fs.readFileSync(path.join(root, 'frontend/workbench/app', name), 'utf8'), runtime);
 const M = runtime.PlanGanttModel, P = runtime.APSPlanContract, checks = [];
 function check(name, fn) { fn(); checks.push(name); }
 function admitted(ref, scope = {}, options = {}) { const data = F.workspace(ref, scope, options); P.workspace(data, ref, scope); return data.data; }

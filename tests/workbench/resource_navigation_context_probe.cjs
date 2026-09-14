@@ -161,24 +161,24 @@ async function cases() {
   });
   await run('calendar-deleted-or-demo-no-default-substitution', async () => { for (const spec of [{ deletedDate: true }, { demo: true }]) { await mount({ ...spec, context: { source: 'production', kind: 'calendar', month: '2026-09', date: '2026-09-09' } }); await page.getByRole('alert').waitFor(); assert.equal(await page.getByRole('dialog').count(), 0); } });
   await run('base-pending-remount-resolve-explicit-continue', async () => {
-    await mount({ pending: ['resources'], context: ctx('machine', 2) }); await page.getByRole('dialog', { name: '原请求结果', exact: true }).waitFor(); await button('查询原请求回执').waitFor(); assert.equal(await page.evaluate(() => fixture.reads.filter(row => row.type === 'detail').length), 0);
-    await page.evaluate(context => navigateFixture(context), ctx('supplier', 4)); await button('查询原请求回执').waitFor(); assert.deepEqual(await page.evaluate(() => JSON.parse(sessionStorage.getItem('aps_workbench_resource_pending_v1'))), await page.evaluate(() => fixture.originalPending.resources));
-    await page.evaluate(() => { fixture.resolved = true; }); await button('查询原请求回执').click(); await page.waitForFunction(() => fixture.reads.some(row => row.type === 'detail' && row.ref === '1'.padStart(48, '0')));
+    await mount({ pending: ['resources'], context: ctx('machine', 2) }); await page.getByRole('dialog', { name: '上次操作结果', exact: true }).waitFor(); await button('查询结果').waitFor(); assert.equal(await page.evaluate(() => fixture.reads.filter(row => row.type === 'detail').length), 0);
+    await page.evaluate(context => navigateFixture(context), ctx('supplier', 4)); await button('查询结果').waitFor(); assert.deepEqual(await page.evaluate(() => JSON.parse(sessionStorage.getItem('aps_workbench_resource_pending_v1'))), await page.evaluate(() => fixture.originalPending.resources));
+    await page.evaluate(() => { fixture.resolved = true; }); await button('查询结果').click(); await page.waitForFunction(() => fixture.reads.some(row => row.type === 'detail' && row.ref === '1'.padStart(48, '0')));
     await page.getByRole('dialog').locator('.modal-f').getByRole('button', { name: '关闭', exact: true }).click(); await page.getByRole('dialog').waitFor({ state: 'detached' }); assert.equal(await page.evaluate(() => fixture.reads.some(row => row.type === 'detail' && row.ref === '4'.padStart(48, '0'))), false);
-    await shot('pending-ready-to-continue'); await button('继续原导航').click(); await page.getByRole('dialog').getByText('supplier原记录4', { exact: true }).waitFor(); assert.equal(await page.evaluate(() => sessionStorage.getItem('aps_workbench_resource_pending_v1')), null);
+    await shot('pending-ready-to-continue'); await button('继续跳转').click(); await page.getByRole('dialog').getByText('supplier原记录4', { exact: true }).waitFor(); assert.equal(await page.evaluate(() => sessionStorage.getItem('aps_workbench_resource_pending_v1')), null);
   });
   await run('process-pending-keeps-original-part-before-navigation', async () => {
-    await mount({ pending: ['process'], context: ctx('part', 6, { stage: 'hours', template_operation_ref: ref(61116) }) }); await page.getByRole('dialog').getByText('原零件5', { exact: false }).first().waitFor(); await button('查询原请求回执').waitFor();
-    assert.equal(await page.evaluate(() => fixture.reads.some(row => row.type === 'detail' && row.ref === '6'.padStart(48, '0'))), false); await page.evaluate(() => { fixture.resolved = true; }); await button('查询原请求回执').click();
-    await page.getByText('服务器已确认提交，已重新读取工艺详情。', { exact: true }).waitFor(); await button('关闭详情').click(); await page.getByRole('dialog').waitFor({ state: 'detached' });
-    assert.equal(await page.evaluate(() => fixture.reads.some(row => row.type === 'detail' && row.ref === '6'.padStart(48, '0'))), false); await button('继续原导航').click(); await focused(ref(61116));
+    await mount({ pending: ['process'], context: ctx('part', 6, { stage: 'hours', template_operation_ref: ref(61116) }) }); await page.getByRole('dialog').getByText('原零件5', { exact: false }).first().waitFor(); await button('查询结果').waitFor();
+    assert.equal(await page.evaluate(() => fixture.reads.some(row => row.type === 'detail' && row.ref === '6'.padStart(48, '0'))), false); await page.evaluate(() => { fixture.resolved = true; }); await button('查询结果').click();
+    await page.getByText('提交已确认，工艺详情已刷新。', { exact: true }).waitFor(); await button('关闭详情').click(); await page.getByRole('dialog').waitFor({ state: 'detached' });
+    assert.equal(await page.evaluate(() => fixture.reads.some(row => row.type === 'detail' && row.ref === '6'.padStart(48, '0'))), false); await button('继续跳转').click(); await focused(ref(61116));
   });
-  await run('calendar-pending-priority-and-continue', async () => { await mount({ pending: ['calendar'], context: ctx('material', 1) }); await page.getByRole('dialog', { name: '工作日历操作回执', exact: true }).waitFor();
-    await button('查询原请求回执').waitFor(); assert.equal(await page.evaluate(() => fixture.reads.filter(row => row.type === 'detail').length), 0); await page.evaluate(() => { fixture.resolved = true; }); await button('查询原请求回执').click();
-    await page.getByRole('dialog').locator('.modal-f').getByRole('button', { name: '关闭', exact: true }).click(); await page.getByRole('dialog').waitFor({ state: 'detached' }); await button('继续原导航').click(); await page.getByRole('dialog').getByText('material原记录1', { exact: true }).waitFor();
+  await run('calendar-pending-priority-and-continue', async () => { await mount({ pending: ['calendar'], context: ctx('material', 1) }); await page.getByRole('dialog', { name: '工作日历操作结果', exact: true }).waitFor();
+    await button('查询结果').waitFor(); assert.equal(await page.evaluate(() => fixture.reads.filter(row => row.type === 'detail').length), 0); await page.evaluate(() => { fixture.resolved = true; }); await button('查询结果').click();
+    await page.getByRole('dialog').locator('.modal-f').getByRole('button', { name: '关闭', exact: true }).click(); await page.getByRole('dialog').waitFor({ state: 'detached' }); await button('继续跳转').click(); await page.getByRole('dialog').getByText('material原记录1', { exact: true }).waitFor();
   });
-  await run('file-catalog-pending-not-overwritten', async () => { for (const namespace of ['machine_files', 'catalog']) { await mount({ pending: [namespace], context: ctx('material', 1) }); await button('查询原请求回执').waitFor();
-    assert.equal(await page.evaluate(() => fixture.reads.filter(row => row.type === 'detail').length), 0); await page.evaluate(context => navigateFixture(context), ctx('part', 6)); await button('查询原请求回执').waitFor();
+  await run('file-catalog-pending-not-overwritten', async () => { for (const namespace of ['machine_files', 'catalog']) { await mount({ pending: [namespace], context: ctx('material', 1) }); await button('查询结果').waitFor();
+    assert.equal(await page.evaluate(() => fixture.reads.filter(row => row.type === 'detail').length), 0); await page.evaluate(context => navigateFixture(context), ctx('part', 6)); await button('查询结果').waitFor();
     assert.deepEqual(await page.evaluate(namespace => JSON.parse(sessionStorage.getItem('aps_workbench_resource_pending_v1_' + namespace)), namespace), await page.evaluate(namespace => fixture.originalPending[namespace], namespace));
     assert.equal(await page.locator('[data-process-navigation-stage]').count(), 0); }
   });

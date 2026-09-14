@@ -65,7 +65,7 @@ def test_piece_downstream_exact_identity_quantity_and_search(trial_case):
         rows = list(csv.DictReader(io.StringIO(response.data.decode('utf-8-sig'))))
         assert len(rows) == 2
         assert all(r['单件编号'] == piece and r['计划应做数量'] == '1' and r['计划批次数量'] == '3' for r in rows)
-        assert {r['任务引用'] for r in rows} == {t['task_ref'] for t in filtered}
+        assert {r['任务编号'] for r in rows} == {t['task_ref'] for t in filtered}
 
 
 def test_piece_downstream_old_plan_unknown_and_current_master_drift(trial_case):

@@ -7,7 +7,7 @@ const { predecessorLinks } = require('./piece_main_dependencies.cjs');
 async function adoption(page, kind, screenshot, record, report, flush) {
   const action = page.locator(kind === 'candidate' ? '[data-run-adoption-action]' : '.trial-adoption-action');
   const response = page.waitForResponse(row => row.url().endsWith('/adopt-preview') && row.request().method() === 'POST');
-  await action.getByRole('button', { name: kind === 'candidate' ? '采用方案' : '正式采用', exact: true }).click();
+  await action.getByRole('button', { name: '采用方案', exact: true }).click();
   const preview = await (await response).json();
   const dialog = page.getByRole('dialog');
   if (!preview.data.validation.can_adopt) {
@@ -18,13 +18,13 @@ async function adoption(page, kind, screenshot, record, report, flush) {
     return false;
   }
   await dialog.getByLabel('采用原因', { exact: true }).fill('EQ browser verified complete piece scope');
-  await dialog.getByLabel('声明人', { exact: true }).fill('EQ browser acceptance');
+  await dialog.getByLabel('经办人', { exact: true }).fill('EQ browser acceptance');
   await dialog.getByRole('checkbox').check();
   await dialog.getByRole('button', { name: '确认正式采用', exact: true }).click();
-  await dialog.getByRole('button', { name: '进入正式方案', exact: true }).waitFor();
+  await dialog.getByRole('button', { name: '进入正式计划', exact: true }).waitFor();
   await flush();
   await screenshot(page, kind + '-adopted'); record(kind + '_adopted');
-  await dialog.getByRole('button', { name: '进入正式方案', exact: true }).click();
+  await dialog.getByRole('button', { name: '进入正式计划', exact: true }).click();
   await page.locator('[data-plan-workspace] .plan-main').waitFor();
   return true;
 }
@@ -45,9 +45,9 @@ async function trialChain(page, ready, report, screenshot, record, flush) {
   await page.locator('[data-plan-workspace] .plan-heading').first().getByRole('button', { name: '试调', exact: true }).click();
   let dialog = page.getByRole('dialog');
   await dialog.getByRole('button', { name: '核对原来源', exact: true }).click();
-  await dialog.getByRole('checkbox', { name: '确认基于此来源创建独立草稿，正式计划保持不变', exact: true }).check();
+  await dialog.getByRole('checkbox', { name: '确认基于此来源新增独立草稿，正式计划保持不变', exact: true }).check();
   await flush();
-  await dialog.getByRole('button', { name: '确认创建草稿', exact: true }).click();
+  await dialog.getByRole('button', { name: '确认新增草稿', exact: true }).click();
   await page.locator('[data-trial-workspace] .tt-main').waitFor();
   await page.getByRole('tab', { name: '完整任务', exact: true }).click();
   const table = page.getByRole('table', { name: '完整任务明细', exact: true });
@@ -86,11 +86,11 @@ async function trialChain(page, ready, report, screenshot, record, flush) {
   await page.getByRole('button', { name: '保存调整', exact: true }).click();
   await page.getByRole('button', { name: '调整此工序', exact: true }).waitFor();
   await screenshot(page, '07-changed'); record('trial_change_saved');
-  await page.getByRole('button', { name: '保存场景', exact: true }).click();
+  await page.getByRole('button', { name: '保存试调方案', exact: true }).click();
   dialog = page.getByRole('dialog');
-  await dialog.getByLabel('场景名称', { exact: true }).fill('EQ pieces ' + report.width + ' ' + report.theme);
-  await dialog.getByRole('checkbox', { name: '确认保存完整场景，冲突和未排工序一并保留', exact: true }).check();
-  await dialog.getByRole('button', { name: '确认保存场景', exact: true }).click();
+  await dialog.getByLabel('试调方案名称', { exact: true }).fill('EQ pieces ' + report.width + ' ' + report.theme);
+  await dialog.getByRole('checkbox', { name: '确认保存完整试调方案，冲突和未排工序一并保留', exact: true }).check();
+  await dialog.getByRole('button', { name: '确认保存试调方案', exact: true }).click();
   await page.locator('[data-open-kind="scenario"] .tt-main').waitFor();
   report.scenario_ref = await page.locator('[data-trial-workspace]').getAttribute('data-open-ref');
   await flush();
@@ -114,8 +114,8 @@ async function trialChain(page, ready, report, screenshot, record, flush) {
   assert.deepEqual(report.responses.findLast(row => row.body.data && row.body.data.scenario_ref === report.scenario_ref && row.body.data.tasks).body.data.tasks, savedTasks);
   await page.locator('.trial-adoption-action').getByRole('button').first().click();
   dialog = page.getByRole('dialog');
-  await dialog.getByRole('button', { name: '查询原请求', exact: true }).click();
-  await dialog.getByRole('button', { name: '进入正式方案', exact: true }).waitFor();
+  await dialog.getByRole('button', { name: '查询结果', exact: true }).click();
+  await dialog.getByRole('button', { name: '进入正式计划', exact: true }).waitFor();
   await screenshot(page, '10-original-key-recovered');
   await dialog.locator('.modal-f').getByRole('button', { name: '关闭', exact: true }).click();
   await page.getByRole('button', { name: '返回方案', exact: true }).click();

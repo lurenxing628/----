@@ -3,7 +3,7 @@
 const assert = require('node:assert/strict'), fs = require('node:fs'), http = require('node:http'), path = require('node:path'), crypto = require('node:crypto');
 const { chromium } = require('playwright'), { compile } = require('../../scripts/workbench/compile.cjs');
 const root = path.resolve(__dirname, '../..'), output = process.argv[2], backend = process.argv[3];
-const files = ['WorkbenchFormat.js', 'WorkbenchTerms.js', 'WorkbenchReferences.jsx', 'WorkbenchGuards.js', 'WorkbenchCaption.jsx', 'WorkbenchPageContext.jsx', 'resource-contract.js', 'resource-api.js', 'resource-session.js', 'ResourceControls.jsx', 'WorkbenchGuardHost.jsx', 'WorkbenchControlStyles.jsx', 'WorkbenchControlBridge.js', 'WorkbenchSelectMenu.jsx', 'WorkbenchDatePickerModel.js', 'WorkbenchDatePicker.jsx', 'WorkbenchControls.jsx', 'WorkbenchListControls.jsx', 'WorkbenchNumberControls.jsx',  'PointContract.js', 'PointGanttModel.js', 'PointGantt.jsx',
+const files = ['WorkbenchFormat.js', 'WorkbenchTerms.js', 'WorkbenchHandlerMemory.js', 'WorkbenchReferences.jsx', 'WorkbenchGuards.js', 'WorkbenchCaption.jsx', 'WorkbenchPageContext.jsx', 'resource-contract.js', 'resource-api.js', 'resource-session.js', 'ResourceControls.jsx', 'WorkbenchGuardHost.jsx', 'WorkbenchControlStyles.jsx', 'WorkbenchControlBridge.js', 'WorkbenchSelectMenu.jsx', 'WorkbenchDatePickerModel.js', 'WorkbenchDatePicker.jsx', 'WorkbenchControls.jsx', 'WorkbenchListControls.jsx', 'WorkbenchNumberControls.jsx',  'PointContract.js', 'PointGanttModel.js', 'PointGantt.jsx',
   'TrialContract.js', 'TrialAPI.js', 'TrialSession.js', 'TrialControls.jsx', 'TrialViewState.js', 'TrialCatalog.jsx', 'TrialGantt.jsx', 'TrialDetails.jsx', 'TrialResults.jsx', 'TrialStyles.jsx', 'TrialWorkspace.jsx',
   'TrialAdoptionAPI.js', 'TrialAdoptionState.js', 'TrialAdoptionControls.jsx', 'TrialAdoptionAction.jsx',
   'PlanProcessOrder.js', 'PlanContract.js', 'PlanAPI.js', 'PlanLayout.jsx', 'PlanSelectionModel.js', 'PlanCatalogUI.jsx', 'PlanGanttModel.js', 'PlanGanttCanvas.jsx', 'PlanGantt.jsx', 'PlanDetailsUI.jsx', 'PlanExportUI.jsx', 'PlanWorkspace.jsx'];
@@ -64,25 +64,25 @@ async function eventually(predicate) {
   while (!await predicate()) { assert(Date.now() < deadline, 'Timed out waiting for real fixture evidence'); await new Promise(resolve => setTimeout(resolve, 40)); }
 }
 async function shot(name) { const file = path.join(output, variant + '-' + name + '.png'); await page.screenshot({ path: file, fullPage: false, animations: 'disabled' }); report.screenshots.push(file); }
-async function ready() { await page.locator('[data-trial-adoption-action]').waitFor(); await page.waitForFunction(() => !document.querySelector('[aria-label="重读当前试调"]')?.disabled); }
+async function ready() { await page.locator('[data-trial-adoption-action]').waitFor(); await page.waitForFunction(() => !document.querySelector('[aria-label="刷新当前试调"]')?.disabled); }
 async function reset(mode = 'normal') {
   const response = await page.request.post(origin + '/fixture/reset', { data: { mode } }); assert.equal(response.status(), 200, await response.text()); refs = await response.json();
   await page.evaluate(ref => { localStorage.removeItem(TrialAdoptionState.KEY); sessionStorage.setItem('cx_scenario', ref); }, refs.scenario_ref);
-  await page.goto(origin); await ready(); await button('正式采用').waitFor();
+  await page.goto(origin); await ready(); await button('采用方案').waitFor();
 }
-async function inspect() { await button('正式采用').click(); await page.getByRole('dialog', { name: '确认场景正式采用', exact: true }).waitFor(); }
+async function inspect() { await button('采用方案').click(); await page.getByRole('dialog', { name: '确认正式采用试调方案', exact: true }).waitFor(); }
 async function fill() {
   await page.getByLabel('采用原因', { exact: true }).fill('现场核对完整场景与原草稿，保留原执行，采用全部安排。');
-  await page.getByLabel('声明人', { exact: true }).fill('计划员 张三'); await page.getByRole('checkbox', { name: /^我已核对原场景/ }).check();
+  await page.getByLabel('经办人', { exact: true }).fill('计划员 张三'); await page.getByRole('checkbox', { name: /^我已核对试调方案/ }).check();
 }
 async function success(version = 41) {
-  await page.getByRole('dialog', { name: '场景正式采用回执', exact: true }).waitFor();
-  await page.getByText('已核实：本次生成正式版本 v' + version + '，共 2 道工序。', { exact: false }).waitFor();
+  await page.getByRole('dialog', { name: '试调方案采用结果', exact: true }).waitFor();
+  await page.getByText('已确认：这次生成正式计划第 ' + version + ' 版，共 2 道工序。', { exact: false }).waitFor();
 }
 async function selectedOfficial(planRef, version, identity) {
-  const catalog = page.getByRole('region', { name: '排产方案目录', exact: true });
+  const catalog = page.getByRole('region', { name: '排产方案列表', exact: true });
   assert.equal(await catalog.getByRole('combobox', { name: '切换所选计划', exact: true }).inputValue(), planRef);
-  await catalog.getByRole('button', { name: '展开计划目录', exact: true }).click();
+  await catalog.getByRole('button', { name: '展开计划列表', exact: true }).click();
   const selected = catalog.getByRole('table', { name: '可选排产方案', exact: true }).locator('tbody tr[aria-selected=true]');
   await selected.waitFor(); assert.equal(await selected.count(), 1); assert(await selected.getByRole('radio').isChecked());
   assert.equal(await selected.getByRole('cell').nth(1).innerText(), String(version));
@@ -115,78 +115,78 @@ async function basic() {
   assert.equal(await page.locator('.tt-bar').count(), 0); assert.equal(await state(), null);
   const initial = await evidence();
   assert(!initial.journal.some(r => r.path.endsWith('/adopt-preview') && r.database === initial.lifecycle.database_path));
-  await inspect(); await page.getByText('完整场景，共 2 道工序', { exact: true }).waitFor(); assert(await button('确认正式采用').isDisabled());
+  await inspect(); await page.getByText('完整试调方案，共 2 道工序', { exact: true }).waitFor(); assert(await button('确认正式采用').isDisabled());
   await fill(); assert.equal(await state(), null); await geometry('confirm'); await shot('confirm');
   assert(!/write_token|snapshot_ref|write_context/.test(await page.locator('.ta-body').innerText()));
   await button('取消').click(); assert.equal((await evidence()).receipts.length, 0); assert.deepEqual(await savedScenario(), before); done('new-post-preview-only-historical-validation-unchanged-full-hidden-scope');
-  await inspect(); await page.getByText('完整场景，共 2 道工序', { exact: true }).waitFor(); assert(await button('确认正式采用').isDisabled());
-  await page.getByRole('checkbox', { name: /^我已核对原场景/ }).check(); await button('确认正式采用').click(); await success();
+  await inspect(); await page.getByText('完整试调方案，共 2 道工序', { exact: true }).waitFor(); assert(await button('确认正式采用').isDisabled());
+  await page.getByRole('checkbox', { name: /^我已核对试调方案/ }).check(); await button('确认正式采用').click(); await success();
   const intent = await state(); assert.equal(intent.phase, 'committed'); assert(!JSON.stringify(intent).includes('write_token'));
   assert.equal(intent.scenario_ref, before.scenario_ref); assert.equal(intent.preview.draft_ref, before.draft_ref); assert.equal((await evidence()).receipts.length, 1);
   assert.deepEqual(await savedScenario(), before); assert.equal(await page.evaluate(ref => hookSnapshots[ref], refs.scenario_ref), JSON.stringify(before));
   await geometry('receipt'); await shot('receipt'); await page.locator('.ta-records summary').click(); await geometry('expanded'); await shot('expanded');
-  await button('进入正式方案').click(); await page.locator('[data-plan-workspace] .plan-bar').first().waitFor();
+  await button('进入正式计划').click(); await page.locator('[data-plan-workspace] .plan-bar').first().waitFor();
   const navigation = await page.evaluate(() => nav[nav.length - 1]); assert.deepEqual(navigation, ['analysis', { plan_ref: intent.receipt.data.official_plan.plan_ref }]);
   assert.notEqual(navigation[1].plan_ref, refs.scenario_ref); assert.notEqual(navigation[1].plan_ref, refs.baseline_ref);
   await selectedOfficial(navigation[1].plan_ref, 41, '当前正式'); await shot('official-navigation'); done('real-commit-new-official-identity-main-plan-navigation');
-  await button('返回原场景').click(); await ready(); await button('查看场景采用回执').click(); await success();
+  await button('返回原场景').click(); await ready(); await button('查看采用结果').click(); await success();
   const advanced = await control('advance'); assert.equal(advanced.data.official_plan.version, 42);
   const writes = (await evidence()).journal.filter(r => r.request_key === intent.request_key && r.path.endsWith('/adopt')).length;
-  await page.reload(); await ready(); await button('查看场景采用回执').click(); await success(); await button('查询原请求').click();
-  await page.getByText('已按原 key 读取原回执，未新增正式版本。', { exact: true }).waitFor();
+  await page.reload(); await ready(); await button('查看采用结果').click(); await success(); await button('查询结果').click();
+  await page.getByText('按同一个操作编号读到的是上次的结果，没有新增正式计划版本。', { exact: true }).waitFor();
   assert.equal((await state()).request_key, intent.request_key); assert.equal((await evidence()).journal.filter(r => r.request_key === intent.request_key && r.path.endsWith('/adopt')).length, writes);
   const replay = await page.request.post(origin + '/api/workbench/v1/trial/scenarios/' + refs.scenario_ref + '/adopt', {
     data: { write_token: 'expired-replay-token', request_key: intent.request_key, input: intent.input } });
   const replayed = await replay.json(); assert.equal(replayed.receipt_ref, intent.receipt.receipt_ref); assert(replayed.replayed); assert.equal(replayed.data.official_plan.version, 41);
   assert.equal((await evidence()).receipts.length, 2); assert.deepEqual(await savedScenario(), before); await shot('old-receipt-after-new-official');
-  await button('进入正式方案').click(); await page.locator('[data-plan-workspace] .plan-bar').first().waitFor();
+  await button('进入正式计划').click(); await page.locator('[data-plan-workspace] .plan-bar').first().waitFor();
   await selectedOfficial(intent.receipt.data.official_plan.plan_ref, 41, '历史正式'); done('original-key-replay-after-newer-official-is-historical-not-current');
-  await button('返回原场景').click(); await ready(); await button('查看场景采用回执').click(); await success(); await button('完成核实').click(); assert.equal(await state(), null);
+  await button('返回原场景').click(); await ready(); await button('查看采用结果').click(); await success(); await button('完成').click(); assert.equal(await state(), null);
 }
 async function rejectedCases() {
-  await reset('disabled'); await inspect(); await page.locator('.ta-notice').filter({ hasText: '保持关闭' }).waitFor(); assert(await button('确认正式采用').isDisabled());
-  await control('enable'); await button('重新预览').click(); await page.getByText('完整场景，共 2 道工序', { exact: true }).waitFor(); await button('取消').click(); done('explicit-disabled-preview-blocker');
+  await reset('disabled'); await inspect(); await page.locator('.ta-notice').filter({ hasText: '此功能尚未开通' }).waitFor(); assert(await button('确认正式采用').isDisabled());
+  await control('enable'); await button('重新预检').click(); await page.getByText('完整试调方案，共 2 道工序', { exact: true }).waitFor(); await button('取消').click(); done('explicit-disabled-preview-blocker');
   await reset('invalid'); await inspect(); await page.locator('.ta-notice').waitFor(); assert(await button('确认正式采用').isDisabled());
-  assert.equal(await page.getByText('完整场景，共 2 道工序', { exact: true }).count(), 1); await shot('invalid-blocked'); done('invalid-saved-constraints-blocked');
+  assert.equal(await page.getByText('完整试调方案，共 2 道工序', { exact: true }).count(), 1); await shot('invalid-blocked'); done('invalid-saved-constraints-blocked');
   await reset(); await inspect(); await fill(); await control('expire'); await button('确认正式采用').click();
-  await page.getByText('本次明确未采用', { exact: false }).waitFor(); const original = await state(); assert.equal(original.phase, 'rejected');
-  await page.reload(); await ready(); await button('重新核对场景采用').click();
-  assert.equal(await page.getByLabel('声明人', { exact: true }).inputValue(), original.input.declared_operator); assert(await page.getByLabel('声明人', { exact: true }).getAttribute('readonly') !== null);
-  await button('重新预览').click(); await page.getByText('完整场景，共 2 道工序', { exact: true }).waitFor(); assert(await button('确认正式采用').isDisabled());
-  await page.getByRole('checkbox', { name: /^我已核对原场景/ }).check(); await button('确认正式采用').click(); await success();
+  await page.getByText('上次采用没有生效', { exact: false }).waitFor(); const original = await state(); assert.equal(original.phase, 'rejected');
+  await page.reload(); await ready(); await button('重新核对采用').click();
+  assert.equal(await page.getByLabel('经办人', { exact: true }).inputValue(), original.input.declared_operator); assert(await page.getByLabel('经办人', { exact: true }).getAttribute('readonly') !== null);
+  await button('重新预检').click(); await page.getByText('完整试调方案，共 2 道工序', { exact: true }).waitFor(); assert(await button('确认正式采用').isDisabled());
+  await page.getByRole('checkbox', { name: /^我已核对试调方案/ }).check(); await button('确认正式采用').click(); await success();
   assert.equal((await state()).request_key, original.request_key); assert.equal((await evidence()).receipts.length, 1); done('expired-token-refresh-frozen-intent-explicit-reconfirm-same-key');
   await reset(); await inspect(); await fill(); await control('run-busy'); await button('确认正式采用').click();
-  await page.getByText('已有排产正在运行', { exact: false }).waitFor(); assert.equal((await state()).phase, 'rejected'); assert.equal((await evidence()).receipts.length, 0);
+  await page.getByText('正在排产，这次采用没有执行', { exact: false }).waitFor(); assert.equal((await state()).phase, 'rejected'); assert.equal((await evidence()).receipts.length, 0);
   await control('run-idle'); await button('结束本次未采用').click(); assert.equal(await state(), null); done('real-global-run-lock-explained-no-write');
   await reset(); await inspect(); await fill(); await control('drift'); await button('确认正式采用').click();
-  await page.getByText('本次明确未采用', { exact: false }).waitFor(); await button('重新预览').click(); await page.locator('.ta-notice').waitFor();
+  await page.getByText('上次采用没有生效', { exact: false }).waitFor(); await button('重新预检').click(); await page.locator('.ta-notice').waitFor();
   assert(await button('确认正式采用').isDisabled()); assert.equal((await evidence()).receipts.length, 0); await shot('drift-blocked'); done('current-facts-drift-rechecked-and-blocked');
 }
 async function uncertainCases() {
   await reset('paused'); await inspect(); await fill(); await button('确认正式采用').click();
   await eventually(async () => (await evidence()).started); const original = await state();
   const peer = await page.context().newPage(); peer.on('pageerror', e => report.errors.push(e.message));
-  await peer.goto(origin); await peer.evaluate(ref => mountTrial(ref), refs.other_ref); await peer.getByRole('button', { name: '核实场景采用结果', exact: true }).click();
-  await peer.getByText('原请求属于另一场景，请先核实该原记录；不能用于当前场景。', { exact: true }).waitFor();
+  await peer.goto(origin); await peer.evaluate(ref => mountTrial(ref), refs.other_ref); await peer.getByRole('button', { name: '查询采用结果', exact: true }).click();
+  await peer.getByText('上次操作属于另一个试调方案，请先查询那条记录的结果；不能用在当前试调方案上。', { exact: true }).waitFor();
   assert.equal((await peer.evaluate(() => TrialAdoptionState.read())).request_key, original.request_key);
   assert.equal(await peer.getByRole('button', { name: '确认正式采用', exact: true }).count(), 0); await peer.close(); done('another-tab-recovers-same-key-no-adoption-for-other-scenario');
-  await button('关闭并保留请求').click(); await page.evaluate(ref => mountTrial(ref), refs.other_ref); await ready(); await button('核实场景采用结果').click();
-  await page.getByText('原请求属于另一场景，请先核实该原记录；不能用于当前场景。', { exact: true }).waitFor();
-  await page.reload(); await ready(); await button('核实场景采用结果').click(); await page.getByText('尚未观察到原请求回执', { exact: false }).waitFor();
+  await button('关闭并保留这次操作').click(); await page.evaluate(ref => mountTrial(ref), refs.other_ref); await ready(); await button('查询采用结果').click();
+  await page.getByText('上次操作属于另一个试调方案，请先查询那条记录的结果；不能用在当前试调方案上。', { exact: true }).waitFor();
+  await page.reload(); await ready(); await button('查询采用结果').click(); await page.getByText('上次采用的结果还没查到', { exact: false }).waitFor();
   assert.equal((await state()).request_key, original.request_key); assert.equal(await button('确认正式采用').count(), 0); assert.equal((await evidence()).receipts.length, 0);
   await shot('inflight-other-scenario'); await control('release');
   await eventually(async () => { const e = await evidence(); return e.receipts.length === 1 && e.journal.some(r => r.request_key === original.request_key && r.status === 200 && r.path.endsWith('/adopt')); });
-  await button('查询原请求').click(); await success();
+  await button('查询结果').click(); await success();
   assert.equal((await evidence()).journal.filter(r => r.request_key === original.request_key && r.path.endsWith('/adopt')).length, 1); done('inflight-switch-refresh-not-observed-original-scenario-only-lookup');
   for (const mode of ['ack', 'normal', 'rollback']) {
     await reset(mode); await inspect(); await fill(); await page.route('**/adoption-commands/*', route => route.abort());
     if (mode === 'normal') await page.request.post(origin + '/probe/drop-next-reply');
-    await button('确认正式采用').click(); await page.getByRole('dialog', { name: '核实原场景采用请求', exact: true }).waitFor(); const lost = await state();
+    await button('确认正式采用').click(); await page.getByRole('dialog', { name: '查询上次采用结果', exact: true }).waitFor(); const lost = await state();
     await eventually(async () => (await evidence()).journal.some(r => r.request_key === lost.request_key && r.path.endsWith('/adopt')));
     assert.equal((await state()).phase, 'pending');
-    await page.reload(); await ready(); await button('核实场景采用结果').click(); assert.equal(await button('进入正式方案').count(), 0);
-    assert.equal((await state()).request_key, lost.request_key); await shot('unknown-' + mode); await page.unroute('**/adoption-commands/*'); await button('查询原请求').click();
-    if (mode === 'rollback') { await page.getByText('尚未观察到原请求回执', { exact: false }).waitFor(); assert.equal((await evidence()).receipts.length, 0); }
+    await page.reload(); await ready(); await button('查询采用结果').click(); assert.equal(await button('进入正式计划').count(), 0);
+    assert.equal((await state()).request_key, lost.request_key); await shot('unknown-' + mode); await page.unroute('**/adoption-commands/*'); await button('查询结果').click();
+    if (mode === 'rollback') { await page.getByText('上次采用的结果还没查到', { exact: false }).waitFor(); assert.equal((await evidence()).receipts.length, 0); }
     else { await success(); assert.equal((await evidence()).receipts.length, 1); }
     const posts = (await evidence()).journal.filter(r => r.request_key === lost.request_key && r.path.endsWith('/adopt')); assert.equal(posts.length, 1);
     if (mode !== 'normal') { assert.equal(posts[0].status, 500); assert.equal(posts[0].committed, 'unknown'); assert(posts[0].error.result_target.endsWith(lost.request_key)); }
@@ -196,13 +196,13 @@ async function uncertainCases() {
 async function storageAndBoundaries() {
   await reset(); await inspect(); await fill();
   await page.evaluate(() => { window.originalSetItem = Storage.prototype.setItem; Storage.prototype.setItem = function(k, v) { if (k === TrialAdoptionState.KEY) throw Error('CX storage full'); return originalSetItem.call(this, k, v); }; });
-  await button('确认正式采用').click(); await page.getByText('无法保存场景采用恢复记录', { exact: false }).first().waitFor();
+  await button('确认正式采用').click(); await page.getByText('存不下这次采用操作的记录', { exact: false }).first().waitFor();
   const blocked = await evidence(); assert.equal(blocked.receipts.length, 0);
   assert.equal(blocked.journal.filter(r => r.path.endsWith('/adopt') && r.database === blocked.lifecycle.database_path).length, 0);
-  await page.evaluate(() => { Storage.prototype.setItem = originalSetItem; }); await button('重读恢复记录').click();
-  await button('重新预览').click(); await page.getByText('完整场景，共 2 道工序', { exact: true }).waitFor();
-  await page.evaluate(() => { window.failAdoptCallback = true; }); await page.getByRole('checkbox', { name: /^我已核对原场景/ }).check(); await button('确认正式采用').click(); await success();
-  await page.getByText('采用已核实，但关联页面更新失败，请重新打开正式方案。', { exact: true }).waitFor(); done('storage-failure-no-post-receipt-survives-parent-callback-failure');
+  await page.evaluate(() => { Storage.prototype.setItem = originalSetItem; }); await button('刷新上次操作记录').click();
+  await button('重新预检').click(); await page.getByText('完整试调方案，共 2 道工序', { exact: true }).waitFor();
+  await page.evaluate(() => { window.failAdoptCallback = true; }); await page.getByRole('checkbox', { name: /^我已核对试调方案/ }).check(); await button('确认正式采用').click(); await success();
+  await page.getByText('采用已确认，但相关页面没有更新成功。请重新打开正式计划。', { exact: true }).waitFor(); done('storage-failure-no-post-receipt-survives-parent-callback-failure');
   const intent = await state();
   const guards = await page.evaluate(intent => {
     const clone = x => JSON.parse(JSON.stringify(x)), rejects = f => { try { f(); return false; } catch (_) { return true; } };
@@ -218,15 +218,15 @@ async function storageAndBoundaries() {
     return invalid;
   }, intent); assert(guards.every(Boolean)); done('wrong-object-provenance-count-version-and-original-intent-fail-closed');
   await reset(); await page.evaluate(() => localStorage.setItem(TrialAdoptionState.KEY, '{')); await page.reload(); await ready();
-  const corruption = page.getByRole('alert').filter({ hasText: '场景采用恢复记录损坏，请保留现场，不能换请求重提。' });
+  const corruption = page.getByRole('alert').filter({ hasText: '上次采用操作的记录已损坏。请不要再操作，联系维护人员。' });
   await corruption.waitFor(); await corruption.scrollIntoViewIfNeeded();
   assert(await page.locator('[data-trial-adoption-action] button').first().isDisabled());
   const corrupt = await evidence(); assert(!corrupt.journal.some(r => r.database === corrupt.lifecycle.database_path && r.path.endsWith('/adopt')));
   await shot('corrupt-storage'); done('corrupt-persistent-record-blocks-new-adoption');
   await reset(); await inspect(); await fill(); await page.evaluate(() => disableAdoption(true));
-  await page.getByRole('dialog', { name: '确认场景正式采用', exact: true }).getByText('原场景正在读取或有待核实操作，新的采用已暂停。', { exact: true }).waitFor(); assert(await button('确认正式采用').isDisabled());
-  await page.evaluate(() => disableAdoption(false)); assert(await button('确认正式采用').isDisabled()); await button('重新预览').click();
-  await page.getByText('完整场景，共 2 道工序', { exact: true }).waitFor(); assert(await button('确认正式采用').isDisabled()); done('host-disabled-invalidates-preview-and-consent');
+  await page.getByRole('dialog', { name: '确认正式采用试调方案', exact: true }).getByText('试调方案正在读取，或还有操作没确认结果，暂时不能开始采用。', { exact: true }).waitFor(); assert(await button('确认正式采用').isDisabled());
+  await page.evaluate(() => disableAdoption(false)); assert(await button('确认正式采用').isDisabled()); await button('重新预检').click();
+  await page.getByText('完整试调方案，共 2 道工序', { exact: true }).waitFor(); assert(await button('确认正式采用').isDisabled()); done('host-disabled-invalidates-preview-and-consent');
   await fill(); await control('drain'); await button('确认正式采用').click();
   await page.getByText('系统正在退出或维护', { exact: false }).waitFor(); assert.equal((await evidence()).receipts.length, 0); assert.equal((await state()).phase, 'rejected');
   await geometry('draining'); await shot('draining'); done('real-http-draining-503-explained-and-original-key-retained');

@@ -3,7 +3,7 @@ const fs = require('node:fs'), path = require('node:path'), http = require('node
 const { chromium } = require('playwright'), { compile } = require('../../scripts/workbench/compile.cjs');
 const root = path.resolve(__dirname, '../..'), output = process.argv[2], ready = JSON.parse(fs.readFileSync(path.join(output, 'ready.json')));
 const files = ['WorkbenchFormat.js', 'WorkbenchTerms.js', 'WorkbenchReferences.jsx', 'WorkbenchCaption.jsx', 'WorkbenchPageContext.jsx', 'resource-contract.js', 'resource-api.js', 'resource-session.js', 'ResourceControls.jsx', 'CalendarContract.js', 'PointContract.js', 'PointGanttModel.js', 'PointGantt.jsx', 'PlanProcessOrder.js', 'PlanContract.js', 'PlanAPI.js',
-  'ActualGanttModel.js', 'ActualGanttWindow.js', 'ActualGanttContract.js', 'ActualGanttAPI.js', 'ActualGanttControls.jsx', 'ActualGanttCanvas.jsx', 'ActualGanttRows.jsx', 'ActualGanttWorkspace.jsx',
+  'FieldContract.js', 'ActualGanttModel.js', 'ActualGanttWindow.js', 'ActualGanttContract.js', 'ActualGanttAPI.js', 'ActualGanttControls.jsx', 'ActualGanttCanvas.jsx', 'ActualGanttRows.jsx', 'ActualGanttWorkspace.jsx',
   'WorkbenchControlBridge.js', 'WorkbenchControlStyles.jsx', 'WorkbenchSelectMenu.jsx', 'WorkbenchDatePickerModel.js', 'WorkbenchDatePicker.jsx', 'WorkbenchControls.jsx', 'WorkbenchNumberControls.jsx', 'WorkbenchListControls.jsx'];
 const hash = value => crypto.createHash('sha256').update(value).digest('hex');
 const report = { errors: [], external: [], screenshots: [], cases: [], real_api_reads: 0, compile_global_build: false,
@@ -206,7 +206,7 @@ async function main() {
       await page.getByLabel('晚期筛选').selectOption('finishLate'); assert.ok((await page.locator('[data-actual-count]').innerText()).includes('0 / 1'));
       await page.getByLabel('晚期筛选').selectOption('unclosed'); assert.ok((await page.locator('[data-actual-count]').innerText()).includes('1 / 1'));
       await page.getByLabel('晚期筛选').selectOption('all');
-      await page.getByRole('button', { name: '现场报工', exact: true }).click(); assert.equal(await page.evaluate(() => navigations.at(-1).view), 'field');
+      await page.getByRole('button', { name: '现场记录', exact: true }).click(); assert.equal(await page.evaluate(() => navigations.at(-1).view), 'field');
       assert.equal(await page.evaluate(() => navigations.at(-1).context.return_to.context.return_to), undefined);
     });
     await action('default-current-plan-and-demo-never-substituted', async () => {
@@ -218,7 +218,7 @@ async function main() {
     await action('field-producer-only-normalizes-empty-batches-with-original-return-context', async () => {
       for (const batches of [[], ['CAT-B']]) {
         await page.evaluate(context => mountActual({ context }), { plan_ref: ready.plan_ref, scope: { source: 'production', batch_ids: batches } });
-        await wait(page); await page.getByRole('button', { name: '现场报工', exact: true }).click();
+        await wait(page); await page.getByRole('button', { name: '现场记录', exact: true }).click();
         const field = await page.evaluate(() => navigations.at(-1));
         assert.equal(field.view, 'field'); assert.equal(field.context.plan_ref, ready.plan_ref);
         assert.equal(field.context.scope.source, 'production');
@@ -231,7 +231,7 @@ async function main() {
       for (const batches of ['[]', { batch_id: 'CAT-B' }, [7]]) {
         await page.evaluate(context => mountActual({ context }), { plan_ref: ready.plan_ref, scope: { batch_ids: batches } });
         await page.getByRole('alert').waitFor(); assert.equal(await page.locator('[data-actual-scroll]').count(), 0);
-        await page.getByRole('button', { name: '现场报工', exact: true }).click();
+        await page.getByRole('button', { name: '现场记录', exact: true }).click();
         assert.deepEqual(await page.evaluate(() => navigations.at(-1).context.scope.batch_ids), batches, 'Malformed scope cannot be dropped into an unrestricted read');
       }
     });

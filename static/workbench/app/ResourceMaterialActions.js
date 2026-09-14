@@ -53,7 +53,7 @@
       disabled: disabled
     }, /*#__PURE__*/React.createElement("legend", {
       className: "seclabel"
-    }, "\u5BFC\u51FA\u8303\u56F4"), [['filtered', '当前筛选结果', '当前搜索与状态筛选下的全部记录，不限当前页'], ['all', '全部' + label, '忽略搜索与状态筛选，导出全部' + label + (kind === 'op_type' ? '，保留当前工种类别' : '')], ['selected', '已选' + label, refs.length + ' 条，包含非当前页或当前筛选外的选中记录']].map(([key, title, detail]) => /*#__PURE__*/React.createElement("label", {
+    }, "\u5BFC\u51FA\u8303\u56F4"), [['filtered', '当前筛选结果', '当前搜索与状态筛选下的全部记录，不限当前页'], ['all', '全部' + label, '忽略搜索与状态筛选，导出全部' + label + (kind === 'op_type' ? '，保留当前工种类别' : '')], ['selected', '已选' + label, refs.length + ' 条，含非当前页和当前筛选外的勾选记录']].map(([key, title, detail]) => /*#__PURE__*/React.createElement("label", {
       key: key,
       className: 'iorow' + (selection === key ? ' on' : '')
     }, /*#__PURE__*/React.createElement("input", {
@@ -108,7 +108,7 @@
       done = command.phase === 'done',
       recovery = original.recovery === true;
     const query = S.useQuery(async signal => {
-      if (typeof adapter.preview !== 'function') throw C.failure(label + '预检接口尚未接入。');
+      if (typeof adapter.preview !== 'function') throw C.failure('dependency not wired: adapter.preview');
       let body;
       if (effectiveMode === 'import') {
         await M.validateFile(job.file, job.format);
@@ -121,7 +121,7 @@
       const raw = await adapter.preview(M.paths[effectiveMode], body, signal);
       if (isExport) {
         const result = M.exportPreview(raw, job.selection, original);
-        if (job.selection === 'selected' && result.data.row_count !== M.selection(original).length) throw C.failure('导出预览数量与明确选中的' + label + '不一致，未开始下载。');
+        if (job.selection === 'selected' && result.data.row_count !== M.selection(original).length) throw C.failure('导出预检数量与勾选的' + label + '不一致，没有开始下载。');
         return result;
       }
       return M.preview(raw, effectiveMode, effectiveMode === 'import' ? job.format : M.selection(original), original);
@@ -148,7 +148,7 @@
       if (!done || notified.current === command.intent.request_key) return;
       notified.current = command.intent.request_key;
       Promise.resolve().then(() => onCommitted(command.result)).catch(failure => {
-        if (alive.current) setError(C.failure('服务器已确认提交，但列表刷新失败：' + C.message(failure)));
+        if (alive.current) setError(C.failure('已保存，但列表刷新失败：' + C.message(failure)));
       });
     }, [done, command.intent, command.result, onCommitted]);
     function close() {
@@ -217,9 +217,9 @@
     const needsAcknowledgement = data && !isExport && (effectiveMode === 'bulk' || data.rows.some(row => row.requires_confirmation));
     const expired = data && now >= Date.parse(data.expires_at);
     let reason = isExport ? '' : M.blocked(result, M.source(original));
-    if (expired) reason = '预览已过期，请重新预检。';
+    if (expired) reason = '预检结果已过期，请重新预检。';
     if (needsAcknowledgement && !acknowledged && !reason) reason = '请先核对并勾选确认项。';
-    if (command.phase === 'rejected') reason = '本次未提交，请重新预检后再确认。';
+    if (command.phase === 'rejected') reason = '本次没有提交。请重新预检后再确认。';
     function confirm() {
       if (controlsDisabled || reason || !data) return;
       command.submit(M.kind + (effectiveMode === 'import' ? '_import' : '_bulk'), 'confirm', data.preview_ref, data.write_context, {
@@ -229,11 +229,11 @@
     async function downloadFile(template) {
       if (controlsDisabled || !template && (!data || expired)) return;
       if (typeof adapter.download !== 'function') {
-        setError(C.failure('文件下载接口尚未接入。'));
+        setError(C.failure('dependency not wired: adapter.download'));
         return;
       }
       if (!template && !data.formats.includes(format)) {
-        setError(C.failure('该导出预览不支持所选文件格式，请重新预检。'));
+        setError(C.failure('这次导出预检不支持所选文件格式，请重新预检。'));
         return;
       }
       const controller = new AbortController();
@@ -285,7 +285,7 @@
       locked: command.locked,
       footer: /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Button, {
         onClick: close,
-        reason: command.locked ? '结果未核实，暂不能关闭。' : ''
+        reason: command.locked ? '结果还没确认，暂时不能关闭。' : ''
       }, done || download.name ? '完成' : '取消'), !done && !command.locked && !recovery && /*#__PURE__*/React.createElement(Button, {
         icon: "check",
         onClick: preflight,
@@ -295,7 +295,7 @@
         transfer: "export",
         className: "btn primary wb-action wb-primary",
         disabled: controlsDisabled,
-        reason: expired ? '预览已过期，请重新预检。' : '',
+        reason: expired ? '预检结果已过期，请重新预检。' : '',
         onClick: () => downloadFile(false)
       }, "\u4E0B\u8F7D\u6587\u4EF6"), !isExport && !done && data && /*#__PURE__*/React.createElement(Button, {
         icon: effectiveMode === 'bulk' ? 'minus' : 'check',
@@ -313,7 +313,7 @@
       role: "status"
     }, "\u5C1A\u672A\u8BFB\u53D6\u751F\u4EA7\u8D44\u6599\uFF0C\u4E0D\u80FD\u63D0\u4EA4", label, "\u53D8\u66F4\u3002"), recovery && !command.intent && !command.error && /*#__PURE__*/React.createElement("p", {
       role: "status"
-    }, "\u672A\u8BFB\u5230\u539F\u8BF7\u6C42\u6807\u8BC6\uFF1B\u672A\u6267\u884C\u5176\u4ED6", label, "\u64CD\u4F5C\u3002"), !recovery && !done && !command.locked && effectiveMode === 'import' && !data && /*#__PURE__*/React.createElement("div", {
+    }, "\u8BFB\u4E0D\u5230\u4E0A\u6B21\u64CD\u4F5C\u7684\u7F16\u53F7\uFF0C\u6CA1\u6709\u6267\u884C\u5176\u4ED6", label, "\u64CD\u4F5C\u3002"), !recovery && !done && !command.locked && effectiveMode === 'import' && !data && /*#__PURE__*/React.createElement("div", {
       className: "iopane on"
     }, /*#__PURE__*/React.createElement(Format, {
       value: format,
@@ -363,7 +363,7 @@
       }
     })), /*#__PURE__*/React.createElement("p", {
       className: "iohint"
-    }, M.importHint || /*#__PURE__*/React.createElement(React.Fragment, null, "\u6309\u7F16\u53F7\u589E\u91CF\u66F4\u65B0\uFF1A\u5DF2\u6709\u7F16\u53F7\u66F4\u65B0\uFF0C\u4E0D\u5B58\u5728\u5219\u65B0\u589E\uFF1B\u4E0D\u5220\u9664\u6587\u4EF6\u4EE5\u5916\u7684\u7269\u6599\u3002\u7A7A\u767D\u5355\u5143\u683C\u4FDD\u6301\u539F\u503C\uFF1B", /*#__PURE__*/React.createElement("code", null, '\\N'), " \u4EC5\u6E05\u7A7A\u89C4\u683C\u3001\u5355\u4F4D\u6216\u5907\u6CE8\u3002"))), !done && !command.locked && effectiveMode === 'import' && data && /*#__PURE__*/React.createElement("div", {
+    }, M.importHint || /*#__PURE__*/React.createElement(React.Fragment, null, "\u6309\u7F16\u53F7\u589E\u91CF\u66F4\u65B0\uFF1A\u7F16\u53F7\u5DF2\u6709\u7684\u66F4\u65B0\uFF0C\u6CA1\u6709\u7684\u65B0\u589E\uFF0C\u6587\u4EF6\u4EE5\u5916\u7684\u7269\u6599\u4E0D\u4F1A\u5220\u9664\u3002\u7A7A\u767D\u683C\u4FDD\u6301\u539F\u503C\uFF1B\u8981\u6E05\u9664\u89C4\u683C\u3001\u5355\u4F4D\u6216\u5907\u6CE8\uFF0C\u8BF7\u5728\u683C\u5B50\u91CC\u586B ", /*#__PURE__*/React.createElement("code", null, '\\N'), "\uFF08\u5927\u5199\uFF09\u3002"))), !done && !command.locked && effectiveMode === 'import' && data && /*#__PURE__*/React.createElement("div", {
       className: "tmpl-row"
     }, /*#__PURE__*/React.createElement("span", {
       className: "tmpl-ico"
@@ -393,7 +393,7 @@
       value: format,
       onChange: chooseFormat,
       disabled: controlsDisabled
-    })), !done && effectiveMode === 'bulk' && (!recovery || command.intent) && (recovery || command.intent && !job ? /*#__PURE__*/React.createElement("p", null, "\u6B63\u5728\u6838\u5B9E\u5148\u524D\u7684\u6279\u91CF\u5220\u9664\u8BF7\u6C42\uFF0C\u5F53\u524D\u5217\u8868\u7684\u65B0\u9009\u62E9\u5C1A\u672A\u63D0\u4EA4\u3002") : /*#__PURE__*/React.createElement("p", null, "\u672C\u6B21\u660E\u786E\u9009\u4E2D ", /*#__PURE__*/React.createElement("b", null, refs.length), " \u6761", label, "\uFF0C\u5305\u542B\u975E\u5F53\u524D\u9875\u6216\u5F53\u524D\u7B5B\u9009\u5916\u7684\u9009\u4E2D\u9879\uFF1B\u4E0D\u4F1A\u6269\u5C55\u6210\u7B5B\u9009\u7ED3\u679C\u6216\u5168\u5E93\u5220\u9664\u3002")), activeRead && /*#__PURE__*/React.createElement("p", {
+    })), !done && effectiveMode === 'bulk' && (!recovery || command.intent) && (recovery || command.intent && !job ? /*#__PURE__*/React.createElement("p", null, "\u6B63\u5728\u67E5\u8BE2\u4E0A\u6B21\u6279\u91CF\u5220\u9664\u7684\u7ED3\u679C\uFF0C\u5F53\u524D\u5217\u8868\u91CC\u65B0\u52FE\u9009\u7684\u8FD8\u6CA1\u63D0\u4EA4\u3002") : /*#__PURE__*/React.createElement("p", null, "\u672C\u6B21\u52FE\u9009\u4E86 ", /*#__PURE__*/React.createElement("b", null, refs.length), " \u6761", label, "\uFF0C\u542B\u975E\u5F53\u524D\u9875\u548C\u5F53\u524D\u7B5B\u9009\u5916\u7684\u52FE\u9009\u9879\u3002\u4E0D\u4F1A\u6269\u5927\u6210\u6574\u4E2A\u7B5B\u9009\u7ED3\u679C\u6216\u5168\u90E8\u8BB0\u5F55\u3002")), activeRead && /*#__PURE__*/React.createElement("p", {
       role: "status"
     }, "\u6B63\u5728\u8BFB\u53D6\u5B8C\u6574\u9884\u68C0\u7ED3\u679C\uFF0C\u5C1A\u672A\u5199\u5165\u6570\u636E\u2026"), /*#__PURE__*/React.createElement(ErrorBox, {
       error: error
@@ -415,11 +415,11 @@
       checked: acknowledged,
       disabled: controlsDisabled,
       onChange: event => setAcknowledged(event.target.checked)
-    }), /*#__PURE__*/React.createElement("span", null, effectiveMode === 'bulk' ? '已核对完整删除范围及明细，确认删除这些' + label + '。' : M.kind === 'material' ? '已核对被引用物料的修改前后内容，确认这些更新。' : '已核对关键字段及引用关系的修改前后内容，确认这些更新。')), reason && !done && /*#__PURE__*/React.createElement("p", {
+    }), /*#__PURE__*/React.createElement("span", null, effectiveMode === 'bulk' ? '已核对完整删除范围及明细，确认删除这些' + label + '。' : M.kind === 'material' ? '已核对在用物料的修改前后内容，确认这些更新。' : '已核对关键项和关联关系的修改前后内容，确认这些更新。')), reason && !done && /*#__PURE__*/React.createElement("p", {
       role: "status"
     }, reason)), data && isExport && /*#__PURE__*/React.createElement("p", {
       role: "status"
-    }, "\u5DF2\u6838\u5BF9\u5BFC\u51FA\u8303\u56F4\uFF1A", /*#__PURE__*/React.createElement("b", null, data.row_count), " \u6761 \xB7 ", format.toUpperCase(), expired ? ' · 预览已过期' : ''), download.busy && /*#__PURE__*/React.createElement("p", {
+    }, "\u5DF2\u6838\u5BF9\u5BFC\u51FA\u8303\u56F4\uFF1A", /*#__PURE__*/React.createElement("b", null, data.row_count), " \u6761 \xB7 ", format.toUpperCase(), expired ? ' · 预检结果已过期' : ''), download.busy && /*#__PURE__*/React.createElement("p", {
       role: "status"
     }, "\u6B63\u5728\u8BFB\u53D6\u4E0B\u8F7D\u6587\u4EF6\u2026"), download.name && /*#__PURE__*/React.createElement("p", {
       role: "status"
@@ -427,11 +427,11 @@
       command: command
     }), command.intent && /*#__PURE__*/React.createElement(window.WorkbenchReference, {
       entries: {
-        '请求编号': command.intent.request_key
+        '操作编号': command.intent.request_key
       }
     }), done && /*#__PURE__*/React.createElement("p", {
       role: "status"
-    }, Number.isSafeInteger(command.result.data.deleted_count) ? '已删除 ' + command.result.data.deleted_count + ' 条。' : command.result.data.summary ? '导入结果已由服务器回执确认。' : '已取得原请求的完成回执。'))));
+    }, Number.isSafeInteger(command.result.data.deleted_count) ? '已删除 ' + command.result.data.deleted_count + ' 条。' : command.result.data.summary ? '导入结果已确认。' : '已查到上次操作的完成结果。'))));
   }
   window.ResourceFileActionFlow = Actions;
   window.ResourceMaterialActions = props => /*#__PURE__*/React.createElement(Actions, {

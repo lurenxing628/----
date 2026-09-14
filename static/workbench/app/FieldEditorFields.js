@@ -78,12 +78,12 @@
       onClick: () => change('completed_quantity', String(task.execution.remaining_quantity))
     }, "\u6700\u5927")), /*#__PURE__*/React.createElement("p", {
       className: "field-note"
-    }, "\u5DF2\u77E5\u7D2F\u8BA1\u9884\u89C8 ", /*#__PURE__*/React.createElement("output", {
-      "aria-label": "\u5DF2\u77E5\u7D2F\u8BA1\u9884\u89C8"
+    }, "\u5DF2\u77E5\u7D2F\u8BA1 ", /*#__PURE__*/React.createElement("output", {
+      "aria-label": "\u5DF2\u77E5\u7D2F\u8BA1"
     }, cumulative === null ? '未核对' : cumulative), " / \u6267\u884C\u76EE\u6807 ", C.quantity(task.execution.target_quantity), " \u4EF6", task.execution.unknown_record_count > 0 && /*#__PURE__*/React.createElement("small", null, " \xB7 \u539F\u8BB0\u5F55\u6570\u91CF\u5F85\u8865 ", task.execution.unknown_record_count, " \u6761"))), /*#__PURE__*/React.createElement("section", null, /*#__PURE__*/React.createElement("h4", null, "\u5B9E\u9645\u8D77\u6B62"), timeHints && /*#__PURE__*/React.createElement("p", {
       className: "field-suggestion",
       role: "status"
-    }, "\u4EE5\u4E0B\u65F6\u95F4\u4E3A\u5EFA\u8BAE\u503C\uFF0C\u4FDD\u5B58\u540E\u5C06\u767B\u8BB0\u4E3A\u5B9E\u9645\u8BB0\u5F55\u3002\u8BF7\u6838\u5BF9\uFF1B\u4E0D\u786E\u5B9A\u65F6\u6E05\u7A7A\uFF0C\u4FDD\u6301\u672A\u77E5\u3002"), /*#__PURE__*/React.createElement("div", {
+    }, "\u4EE5\u4E0B\u65F6\u95F4\u4E3A\u5EFA\u8BAE\u503C\uFF0C\u4FDD\u5B58\u540E\u4F1A\u767B\u8BB0\u6210\u5B9E\u9645\u8BB0\u5F55\u3002\u8BF7\u6838\u5BF9\uFF1B\u4E0D\u786E\u5B9A\u65F6\u8BF7\u6E05\u9664\uFF0C\u4FDD\u6301\u672A\u77E5\u3002"), /*#__PURE__*/React.createElement("div", {
       className: "field-time-grid"
     }, [['actual_start', '实际开工'], ['actual_end', '本次实际完工']].map(([key, label]) => /*#__PURE__*/React.createElement("div", {
       key: key
@@ -101,10 +101,10 @@
       onChange: event => change(key, event.target.value)
     })), /*#__PURE__*/React.createElement(Button, {
       disabled: readonly(key) || !draft[key],
-      "aria-label": '清空' + label,
+      "aria-label": '清除' + label,
       onClick: () => change(key, '')
-    }, "\u6E05\u7A7A\uFF0C\u8BB0\u4E3A\u672A\u77E5"))))), /*#__PURE__*/React.createElement("section", null, /*#__PURE__*/React.createElement("h4", null, "\u5DE5\u65F6\u6838\u5BF9"), /*#__PURE__*/React.createElement(Field, {
-      label: "\u6709\u6548\u5DE5\u65F6 (h)",
+    }, "\u6E05\u9664\uFF0C\u8BB0\u4E3A\u672A\u77E5"))))), /*#__PURE__*/React.createElement("section", null, /*#__PURE__*/React.createElement("h4", null, "\u5DE5\u65F6\u6838\u5BF9"), /*#__PURE__*/React.createElement(Field, {
+      label: "\u6709\u6548\u5DE5\u65F6\uFF08\u5C0F\u65F6\uFF09",
       path: "effective_processing_hours",
       error: error
     }, /*#__PURE__*/React.createElement("input", {
@@ -112,14 +112,14 @@
       min: "0",
       step: "any",
       "data-wb-step": "0.1",
-      "aria-label": "\u6709\u6548\u5DE5\u65F6 (h)",
+      "aria-label": "\u6709\u6548\u5DE5\u65F6\uFF08\u5C0F\u65F6\uFF09",
       value: draft.effective_processing_hours,
       disabled: readonly('effective_processing_hours'),
       onChange: event => change('effective_processing_hours', event.target.value)
     })), /*#__PURE__*/React.createElement("p", {
       className: "field-note"
-    }, "\u4F5C\u4E1A\u8DE8\u5EA6 ", /*#__PURE__*/React.createElement("output", {
-      "aria-label": "\u4F5C\u4E1A\u8DE8\u5EA6"
+    }, "\u4F5C\u4E1A\u65F6\u957F ", /*#__PURE__*/React.createElement("output", {
+      "aria-label": "\u4F5C\u4E1A\u65F6\u957F"
     }, hours(span))), /*#__PURE__*/React.createElement("p", {
       className: 'field-note' + (difference !== null && difference < 0 ? ' field-hours-warning' : '')
     }, "\u5DE5\u65F6\u5DEE\u989D ", /*#__PURE__*/React.createElement("output", {
@@ -151,11 +151,11 @@
       disabled: disabled,
       onChange: event => change('reason', event.target.value)
     })), /*#__PURE__*/React.createElement(Field, {
-      label: "\u73B0\u573A\u58F0\u660E\u4EBA",
+      label: "\u7ECF\u529E\u4EBA",
       path: "declared_operator",
       error: error
     }, /*#__PURE__*/React.createElement("input", {
-      "aria-label": "\u73B0\u573A\u58F0\u660E\u4EBA",
+      "aria-label": "\u7ECF\u529E\u4EBA",
       maxLength: "2000",
       value: draft.declared_operator,
       disabled: disabled,

@@ -5,7 +5,10 @@ const boot = {titles: {dashboard: 'Dashboard', reports: 'Reports', trial: 'Trial
 let checks = 0;
 function runtime(state = null, url = 'http://127.0.0.1:59991/workbench') {
   let location = new URL(url), now = 0;
-  const entries = [{state, url: location.href}], main = {scrollTop: 0, scrollLeft: 0}, frames = new Map(), events = new Map();
+  const panes = [];
+  const entries = [{state, url: location.href}], frames = new Map(), events = new Map();
+  // Inner panes are addressed by data-wb-scroll-key, so the fake .main-content answers querySelectorAll like the real element.
+  const main = {scrollTop: 0, scrollLeft: 0, querySelectorAll: () => panes};
   let index = 0, frame = 0;
   const context = vm.createContext({URL, performance: {now: () => now}, document: {querySelector: () => main},
     get location() { return location; },
@@ -18,7 +21,8 @@ function runtime(state = null, url = 'http://127.0.0.1:59991/workbench') {
     removeEventListener(name, fn) { if (events.has(name)) events.get(name).delete(fn); }});
   context.window = context;
   vm.runInContext(source, context);
-  return {context, main, api: context.WorkbenchNavigation, entries,
+  const pane = key => { const node = {scrollTop: 0, scrollLeft: 0, getAttribute: name => name === 'data-wb-scroll-key' ? key : null}; panes.push(node); return node; };
+  return {context, main, panes, pane, api: context.WorkbenchNavigation, entries,
     back() { index--; location = new URL(entries[index].url); },
     flush() { for (let step = 0; frames.size && step < 250; step++) { const pending = [...frames.values()]; frames.clear(); now += 16; pending.forEach(fn => fn()); } },
     event(name) { [...(events.get(name) || [])].forEach(fn => fn()); },
@@ -70,6 +74,25 @@ check('installing history protection does not eagerly rewrite or consume invalid
   protection.dispose();
 });
 check('return context preserves report-owned scroll', () => { const r = runtime(); const next = r.api.navigate(boot, r.api.read(boot), 'reports', {scroll: {windowTop: 140, mainTop: 200}}); r.api.restore(next, () => {}); r.flush(); assert.equal(r.main.scrollTop, 200); assert.equal(r.context.scrollY, 140); });
+check('inner panes keep their own scroll and unknown keys are skipped', () => {
+  const r = runtime(); r.api.navigate(boot, r.api.read(boot), 'reports', {});
+  const board = r.pane('plan-board'), inspector = r.pane('plan-inspector'), untracked = r.pane('');
+  board.scrollLeft = 900; board.scrollTop = 40; inspector.scrollTop = 120; untracked.scrollTop = 7;
+  r.api.navigate(boot, r.api.read(boot), 'process', {});
+  board.scrollLeft = 0; board.scrollTop = 0; inspector.scrollTop = 0;
+  const returned = r.api.navigate(boot, r.api.read(boot), 'reports');
+  assert.deepEqual(returned.scroll.containers, {'plan-board': [900, 40], 'plan-inspector': [0, 120]});
+  assert.equal(returned.scroll.mainTop, 0);
+  const missing = r.pane('plan-catalog');
+  let done = 0; r.api.restore(returned, () => done++); r.flush();
+  assert.equal(done, 1); assert.equal(board.scrollLeft, 900); assert.equal(board.scrollTop, 40);
+  assert.equal(inspector.scrollTop, 120); assert.equal(missing.scrollTop, 0);
+});
+check('a page without remembered panes restores the window surfaces only', () => {
+  const r = runtime(); const board = r.pane('plan-board'); board.scrollTop = 55;
+  let done = 0; r.api.restore({scroll: {mainTop: 30}}, () => done++); r.flush();
+  assert.equal(done, 1); assert.equal(r.main.scrollTop, 30); assert.equal(board.scrollTop, 55);
+});
 check('user input cancels delayed restoration exactly once', () => { const r = runtime(); let done = 0; const cancel = r.api.restore({scroll: {mainTop: 200}}, () => done++); r.event('pointerdown'); r.flush(); cancel(); assert.equal(done, 1); assert.equal(r.main.scrollTop, 0); });
 function navURL(value) { return 'http://127.0.0.1:59991/workbench?view=reports&nav=' + encodeURIComponent(JSON.stringify(value)); }
 const explicitBoot = {...boot, navigation: {version: 1, view: 'reports', context: {scope: {batch_ref: 'specific'}}}};

@@ -63,15 +63,15 @@
         loading: true
       });
       try {
-        if (!command.intent || command.intent.kind !== 'op_type' || command.intent.action !== 'create' || !['committed', 'unchanged'].includes(command.result.result)) throw C.failure('该资源回执不是当前工种的完整新建回执。');
+        if (!command.intent || command.intent.kind !== 'op_type' || command.intent.action !== 'create' || !['committed', 'unchanged'].includes(command.result.result)) throw C.failure(window.WorkbenchTerms.outcomes.unknown('新增工种'));
         if (notified.current !== command.result.receipt_ref) {
           notified.current = command.result.receipt_ref;
           onCommitted(command.result);
         }
         const ref = C.resultRef(command.result);
-        if (typeof ref !== 'string' || !ref) throw C.failure('新建回执缺少工种引用，尚未绑定工序。');
+        if (typeof ref !== 'string' || !ref) throw C.failure('新增结果里没有工种编号，工序还没绑定。请刷新后核对。');
         const detail = C.query(await adapter.detail('op_type', ref, controller.signal), 'entity');
-        if (detail.data.ref !== ref) throw C.failure('新建工种的详情与回执对象不一致。');
+        if (detail.data.ref !== ref) throw C.failure('读到的工种详情和新增结果不一致，请刷新后核对。');
         await adapter.list('op_type', scope, controller.signal);
         if (!controller.signal.aborted) setRefresh({
           done: true,
@@ -109,7 +109,7 @@
     }, "\u6B63\u5728\u8BFB\u53D6\u5DE5\u79CD\u5EFA\u6863\u8D44\u6599\u2026"), list.error && /*#__PURE__*/React.createElement(Button, {
       icon: "refresh-cw",
       onClick: list.reload
-    }, "\u91CD\u8BFB\u5EFA\u6863\u8D44\u6599"), !initialized && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", null, "\u53E6\u4E00\u4E2A\u8D44\u6E90\u8BF7\u6C42\u5C1A\u672A\u5B8C\u6210\uFF0C\u8BF7\u5148\u6838\u5B9E\u3002"), /*#__PURE__*/React.createElement(window.ResourceForms.Feedback, {
+    }, "\u5237\u65B0\u8D44\u6599"), !initialized && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", null, "\u53E6\u4E00\u4E2A\u64CD\u4F5C\u8FD8\u6CA1\u5904\u7406\u5B8C\uFF0C\u8BF7\u5148\u67E5\u8BE2\u4E0A\u6B21\u7ED3\u679C\u3002"), /*#__PURE__*/React.createElement(window.ResourceForms.Feedback, {
       command: command
     }))));
     return /*#__PURE__*/React.createElement(window.ResourceForms, {

@@ -6,7 +6,7 @@
       fail = window.APSResourceContract.failure;
     const resources = resourceAdapter || window.APSResourceAPI.create();
     function part(kind, ref) {
-      if (kind !== 'part' || ref != null && (typeof ref !== 'string' || !/^[0-9a-f]{48}$/.test(ref))) throw fail('工艺对象引用不正确，请返回列表重新选择。');
+      if (kind !== 'part' || ref != null && (typeof ref !== 'string' || !/^[0-9a-f]{48}$/.test(ref))) throw fail('这条零件记录已失效，请返回列表重新选择。');
       return 'entities/part' + (ref == null ? '' : '/' + ref);
     }
     function tableRequest(scope) {
@@ -71,17 +71,17 @@
         return base.download(filePath(kind, template ? 'template' : 'export'), scope, signal);
       },
       detail(kind, ref, signal) {
-        if (ref == null) throw fail('工艺详情缺少对象引用。');
+        if (ref == null) throw fail('没有指定要打开的零件，请返回列表重新选择。');
         return base.query(part(kind, ref), {}, signal);
       },
       routePreview(ref, body, signal) {
-        if (ref == null) throw fail('工艺预检缺少对象引用。');
+        if (ref == null) throw fail('没有指定要预检的零件，请返回列表重新选择。');
         part('part', ref);
         return base.preview('process/' + ref + '/route-preview', body, signal);
       },
       stagePreview(ref, action, input, snapshotRef, signal) {
         part('part', ref);
-        if (ref == null || action !== 'source_confirm' || typeof snapshotRef !== 'string' || !snapshotRef) throw fail('归属检查缺少当前零件资料，请重新读取。');
+        if (ref == null || action !== 'source_confirm' || typeof snapshotRef !== 'string' || !snapshotRef) throw fail('归属检查缺少当前零件资料，请刷新后重试。');
         return base.preview('process/' + ref + '/stage-preview', {
           action,
           input,

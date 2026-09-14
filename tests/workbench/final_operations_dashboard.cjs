@@ -7,22 +7,22 @@ async function lifecycle(h, kind = 'delivery', label = '交期风险') {
   const modal = () => page.getByRole('dialog');
   const open = () => region.getByRole('button', { name: '登记处置', exact: true }).click();
   const submit = () => request('/dashboard/items/' + ref + '/transition', () => modal().getByRole('button', { name: '提交处置', exact: true }).click(), 200, 'POST');
-  const finish = async () => { await request('/dashboard', () => modal().getByRole('button', { name: '完成核实并刷新', exact: true }).click()); await region.waitFor(); };
+  const finish = async () => { await request('/dashboard', () => modal().getByRole('button', { name: '完成', exact: true }).click()); await region.waitFor(); };
   await open(); await mark('WBP-DASH-003.cancel', async () => { await page.keyboard.press('Escape'); await modal().waitFor({ state: 'hidden' }); });
   await open();
   await mark('WBP-DASH-003.reject-invalid', async () => { await modal().getByRole('button', { name: '提交处置', exact: true }).click(); await modal().getByRole('alert').waitFor(); });
   await mark('WBP-DASH-003.edit-status', () => select('目标处置状态', '跟进中'));
   for (const [label, value, id] of [['责任人', 'F planner', 'edit-owner'], ['责任期限', '2026-09-11', 'edit-deadline'],
-    ['处置行动', 'F verify material and machine arrangement', 'edit-action'], ['原因 / 核实备注', 'F original facts verified', 'edit-remark']]) {
+    ['处置行动', 'F verify material and machine arrangement', 'edit-action'], ['原因说明', 'F original facts verified', 'edit-remark']]) {
     await mark('WBP-DASH-003.' + id, () => modal().getByLabel(label, { exact: true }).fill(value));
   }
   await mark('WBP-DASH-003.retain-failed-draft', async () => {
-    await modal().getByLabel('原因 / 核实备注', { exact: true }).fill('');
+    await modal().getByLabel('原因说明', { exact: true }).fill('');
     await modal().getByRole('button', { name: '提交处置', exact: true }).click(); await modal().getByRole('alert').waitFor();
     assert.equal(await modal().getByLabel('责任人', { exact: true }).inputValue(), 'F planner');
     assert.equal(await modal().getByLabel('责任期限', { exact: true }).inputValue(), '2026-09-11');
     assert.equal(await modal().getByLabel('处置行动', { exact: true }).inputValue(), 'F verify material and machine arrangement');
-    await modal().getByLabel('原因 / 核实备注', { exact: true }).fill('F original facts verified');
+    await modal().getByLabel('原因说明', { exact: true }).fill('F original facts verified');
   });
   await shot(kind + '-following-form');
   const followed = await mark('WBP-DASH-003.submit', submit); assert.equal(followed.data.handling.status, 'following');
@@ -34,7 +34,7 @@ async function lifecycle(h, kind = 'delivery', label = '交期风险') {
   }
   const closed = await mark('WBP-DASH-004.close', submit); assert.equal(closed.data.handling.status, 'closed');
   assert.deepEqual(closed.data.risk, followed.data.risk); await finish();
-  await mark(['WBP-DASH-004.view-closed', 'WBP-DASH-004.retain-risk-facts'], async () => { await region.getByText('处置已关闭，风险按当前真实来源继续评估。', { exact: true }).waitFor(); assert.equal(item.risk.active, true); });
+  await mark(['WBP-DASH-004.view-closed', 'WBP-DASH-004.retain-risk-facts'], async () => { await region.getByText('处置已关闭，风险仍按最新数据继续评估。', { exact: true }).waitFor(); assert.equal(item.risk.active, true); });
   await shot(kind + '-closed-risk-still-active');
   await mark('WBP-DASH-005.open-reopen', () => region.getByRole('button', { name: '独立重开', exact: true }).click());
   await mark('WBP-DASH-005.require-reason', async () => { await modal().getByRole('button', { name: '确认独立重开', exact: true }).click(); await modal().getByRole('alert').waitFor(); });
@@ -66,7 +66,7 @@ async function dashboard(h) {
   assert((await caption.innerText()).includes(plan.display_name)); assert((await caption.innerText()).includes('正式 v1'));
   report.dashboard_caption = { reference: plan.plan_ref, text: await caption.innerText() };
   await shot('dashboard-overview');
-  for (const [label, suffix] of [['交期风险', 'delivery'], ['执行偏差', 'actual'], ['外协回厂', 'external'], ['停机影响', 'downtime'], ['齐套缺口', 'material'], ['候选方案', 'candidate']]) {
+  for (const [label, suffix] of [['交期风险', 'delivery'], ['执行偏差', 'actual'], ['外协回厂', 'external'], ['停机影响', 'downtime'], ['齐套缺口', 'material'], ['候选方案待确认', 'candidate']]) {
     await mark('WBP-DASH-001.card-' + suffix, () => category(label));
   }
   for (const [label, suffix] of [['交期风险', 'delivery'], ['执行偏差', 'actual'], ['外协回厂', 'external']]) {
@@ -94,7 +94,7 @@ async function dashboard(h) {
   await shot('downtime-evidence');
   await detail('actual', '执行偏差'); await shot('actual-evidence');
   await mark('WBP-DASH-008.actual-comparison-navigation', async () => {
-    await page.locator('[data-detail-ref]').getByRole('button', { name: '现场实际', exact: true }).click();
+    await page.locator('[data-detail-ref]').getByRole('button', { name: '现场实际甘特', exact: true }).click();
     await page.waitForURL('**view=fieldgantt'); await page.getByRole('button', { name: '回来源', exact: true }).waitFor();
     const state = await page.evaluate(() => history.state.workbench); assert.equal(state.context.return_to.view, 'dashboard');
     await page.getByRole('button', { name: '回来源', exact: true }).click(); await page.locator('[data-detail-ref]').waitFor();

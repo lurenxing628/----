@@ -36,14 +36,14 @@ async function main() {
   }
   for (const property of ['page', 'size']) {
     const value = envelope(scope); value.data.page[property === 'page' ? 'number' : 'size']++;
-    await assert.rejects(read({list: async () => value}, 'material', scope), /返回页码/); checks++;
+    await assert.rejects(read({list: async () => value}, 'material', scope), /翻页位置已失效/); checks++;
   }
   for (const mutate of [result => {result.data.page.number = 1;}, result => {result.data.page.size = 50;},
     result => {result.data.page.total = 39;}, result => {result.meta.snapshot_ref = 'different';}, result => {result.meta.source = 'demo';}]) {
     let calls = 0;
     await assert.rejects(read({list: async (_, request) => {
       const result = envelope(request, 40); if (++calls === 2) mutate(result); return result;
-    }}, 'material', scope), /收缩页码/);
+    }}, 'material', scope), /翻页位置已失效/);
     assert.equal(calls, 2); checks++;
   }
   for (const at of [1, 2]) {
@@ -53,7 +53,7 @@ async function main() {
     }}, 'material', scope), error => error === failure);
     assert.equal(calls, at); checks++;
   }
-  await assert.rejects(read({}, 'material', scope), /尚未接入/); checks++;
+  await assert.rejects(read({}, 'material', scope), /dependency not wired/); checks++;
   assert.equal(scope.page, 3); assert.equal(scope.snapshot_ref, undefined); checks++;
   console.log(JSON.stringify({checks, passed: true, scope: 'extracted-private-reader-unit-not-browser'}));
 }

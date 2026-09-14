@@ -28,8 +28,18 @@
       [preview, setPreview] = React.useState(null),
       [confirming, setConfirming] = React.useState(false);
     const [error, setError] = React.useState(''),
+      [errorDetails, setErrorDetails] = React.useState(null),
       [notice, setNotice] = React.useState(''),
       [busy, setBusy] = React.useState(false);
+    // 错误正文只说人话；版本号之类的技术细节走 A.details 进折叠编号区。
+    const fail = (e, text) => {
+      setError(text || A.message(e));
+      setErrorDetails(A.details(e));
+    };
+    const clearError = () => {
+      setError('');
+      setErrorDetails(null);
+    };
     const [unavailable, setUnavailable] = React.useState('');
     const [verified, setVerified] = React.useState(false);
     const [checking, setChecking] = React.useState(false),
@@ -101,8 +111,8 @@
             if (!current() || controller.signal.aborted) return;
             if (!found.found) {
               setVerified(false);
-              setNotice('暂未查到原请求记录，结果仍未知；不会更换请求编号或重新提交。');
-              setError('');
+              setNotice(window.WorkbenchTerms.outcomes.pending('排产'));
+              clearError();
               return;
             }
             result = found.run;
@@ -121,13 +131,13 @@
           }
           setRun(result);
           setVerified(true);
-          setError('');
+          clearError();
           setNotice('');
           done = A.terminal(result);
         } catch (e) {
           if (current() && !controller.signal.aborted) {
             setVerified(false);
-            setError(A.message(e));
+            fail(e);
           }
         } finally {
           querying = false;
@@ -160,7 +170,7 @@
       if (locked.current || storageError || !inputRef || intent && (!A.terminal(run) || !verified)) return;
       locked.current = true;
       setBusy(true);
-      setError('');
+      clearError();
       setNotice('');
       setPreview(null);
       setUnavailable('');
@@ -175,7 +185,7 @@
         if (!value.write_context.capabilities['scheduling.run']) setUnavailable(A.message(value.write_context.blocked_reasons[0]));
       } catch (e) {
         if (alive.current && !controller.signal.aborted) {
-          setError(A.message(e));
+          fail(e);
           if (['run_schema_unavailable', 'run_worker_not_connected'].includes(e.code)) setUnavailable(A.message(e));
         }
       } finally {
@@ -187,18 +197,18 @@
       if (locked.current || !preview || preview.input_ref !== activeInput.current || preview.write_context.capabilities['scheduling.run'] !== true || storageError) return;
       locked.current = true;
       setBusy(true);
-      setError('');
+      clearError();
       let original;
       try {
         // Keep admission and the durable identity claim serialized across browser tabs.
-        if (!navigator.locks || typeof navigator.locks.request !== 'function') throw new Error('当前浏览器无法锁定原请求，暂时不能开始排产。');
+        if (!navigator.locks || typeof navigator.locks.request !== 'function') throw new Error('当前浏览器不支持，请用 Chrome 打开。');
         await navigator.locks.request(A.PENDING_KEY, {
           ifAvailable: true
         }, async lock => {
-          if (!lock) throw new Error('另一页面正在提交排产，请稍后核实原请求。');
+          if (!lock) throw new Error('另一个页面正在提交排产，请稍后点「查询结果」。');
           if (!alive.current || preview.input_ref !== activeInput.current) return;
           const previous = activeIntent.current;
-          if (previous && (!A.terminal(run) || !verified)) throw new Error('原运行尚未核实，不能开始下一次排产。');
+          if (previous && (!A.terminal(run) || !verified)) throw new Error('上次排产还没确认结果，不能开始下一次排产。');
           original = A.pending().begin(preview.input_ref, previous);
           activeIntent.current = original;
           setIntent(original);
@@ -213,7 +223,7 @@
               setIntent(saved);
               setRun(receipt.data);
               setVerified(true);
-              setNotice(receipt.dispatch_pending ? '排产已受理，交给本机执行器时未确认；正在查询原运行，没有重新提交。' : '');
+              setNotice(receipt.dispatch_pending ? '排产已接收，交给计算程序时没有确认。正在查询结果，没有重新提交。' : '');
             }
           } catch (e) {
             if (A.isRejected(e)) {
@@ -222,9 +232,9 @@
                 activeIntent.current = null;
                 setIntent(null);
                 setRun(null);
-                setError(A.message(e));
+                fail(e);
               }
-            } else if (alive.current) setError('受理结果尚未确认。已保留原请求，正在核实，不会重复提交。');
+            } else if (alive.current) fail(null, window.WorkbenchTerms.outcomes.pending('排产'));
           }
         });
       } catch (e) {
@@ -250,7 +260,7 @@
         setStorageError(e.message);
       }
     }
-    const reason = storageError || (!inputRef ? '请先完成排产检查，再确认本次计算。' : intent && (!A.terminal(run) || !verified) ? '原请求尚未结束或结果未知，请先核实原运行。' : unavailable);
+    const reason = storageError || (!inputRef ? '请先完成排产检查，再确认本次计算。' : intent && (!A.terminal(run) || !verified) ? '上次排产还没结束或结果未知，请先点「查询结果」。' : unavailable);
     const selected = preflight && preflight.normalized_input && preflight.normalized_input.batch_refs;
     return /*#__PURE__*/React.createElement("section", {
       className: "plana run-job-panel",
@@ -269,12 +279,12 @@
       onClick: inspect
     }, "\u6838\u5BF9\u5E76\u5F00\u59CB\u6392\u4EA7"), unavailable && /*#__PURE__*/React.createElement(U.Button, {
       icon: "refresh-cw",
-      "aria-label": "\u91CD\u65B0\u6838\u5BF9\u6392\u4EA7\u80FD\u529B",
+      "aria-label": "\u91CD\u65B0\u6838\u5BF9\u6392\u4EA7\u6761\u4EF6",
       busy: busy,
       onClick: inspect
     }), intent && /*#__PURE__*/React.createElement(U.Button, {
       icon: "refresh-cw",
-      "aria-label": "\u67E5\u8BE2\u539F\u8FD0\u884C",
+      "aria-label": window.WorkbenchTerms.actions.query_result,
       busy: checking || busy,
       onClick: () => {
         setNotice('');
@@ -292,10 +302,12 @@
       icon: "refresh-cw",
       disabled: busy,
       onClick: rereadStorage
-    }, "\u91CD\u65B0\u8BFB\u53D6\u6062\u590D\u8BB0\u5F55"))), error && /*#__PURE__*/React.createElement("div", {
+    }, "\u5237\u65B0\u4E0A\u6B21\u64CD\u4F5C\u8BB0\u5F55"))), error && /*#__PURE__*/React.createElement("div", {
       className: "rj-notice",
       role: "alert"
-    }, error), notice && /*#__PURE__*/React.createElement("div", {
+    }, error, errorDetails && /*#__PURE__*/React.createElement(window.WorkbenchReference, {
+      entries: errorDetails
+    })), notice && /*#__PURE__*/React.createElement("div", {
       className: "rj-notice",
       role: "status"
     }, notice), preview && !confirming && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(U.Scope, {

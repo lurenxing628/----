@@ -23,7 +23,7 @@ async function system(h) {
     assert.equal(await checks.locator('tbody tr .sm-status[data-state=available]').count(), 8);
   });
   await shot('system-overview');
-  for (const [title, tab, name] of [['查看备份与恢复', 'backups', '备份恢复'], ['查看运行日志', 'logs', '运行日志'], ['查看自动维护策略', 'config', '配置']]) {
+  for (const [title, tab, name] of [['查看备份与恢复', 'backups', '备份恢复'], ['查看运行日志', 'logs', '运行日志'], ['查看自动维护规则', 'config', '配置']]) {
     await mark('WBP-SYS-002.row-' + tab, async () => { await page.getByRole('button', { name: title, exact: true }).click(); assert.equal(await page.getByRole('tab', { name, exact: true }).getAttribute('aria-selected'), 'true'); });
     await page.getByRole('tab', { name: '概况', exact: true }).click();
   }
@@ -40,7 +40,7 @@ async function system(h) {
     });
   }
   await page.locator('#sm-maintenance-auto_backup_interval_minutes').fill('0');
-  await mark('WBP-SYS-017.invalid-fields', async () => { await config.getByRole('button', { name: '保存维护配置', exact: true }).click(); await config.getByText('配置校验未通过，请修正标出的字段。', { exact: true }).waitFor(); });
+  await mark('WBP-SYS-017.invalid-fields', async () => { await config.getByRole('button', { name: '保存维护配置', exact: true }).click(); await config.getByText('有几项填得不对，配置没有保存。请修正标红的项。', { exact: true }).waitFor(); });
   await page.locator('#sm-maintenance-auto_backup_interval_minutes').fill('37');
   await mark('WBP-SYS-017.discard-cancel', async () => { await page.getByRole('button', { name: '放弃草稿', exact: true }).click(); await page.getByRole('dialog').getByRole('button', { name: '保留草稿', exact: true }).click(); assert.equal(await page.locator('#sm-maintenance-auto_backup_interval_minutes').inputValue(), '37'); });
   await shot('system-eight-fields');
@@ -50,12 +50,12 @@ async function system(h) {
     report.config_committed_response = await response.json(); report.config_input = route.request().postDataJSON(); await route.abort('failed');
   });
   await mark('WBP-SYS-018.save', () => config.getByRole('button', { name: '保存维护配置', exact: true }).click());
-  await page.getByRole('region', { name: '维护原请求结果', exact: true }).getByText(/原操作仍待核实/).waitFor();
+  await page.getByRole('region', { name: '上次维护操作的结果', exact: true }).getByText(/还没有确认结果/).waitFor();
   await mark('WBP-SYS-018.unknown-result', async () => { report.config_pending = await page.evaluate(() => JSON.parse(localStorage.getItem('aps_workbench_system_pending_v1'))); assert.equal(report.config_pending.action, 'config'); });
   await shot('system-config-unknown');
   await page.unroute('**/api/workbench/v1/system/config/save');
   await mark(['WBP-SYS-018.reload', 'WBP-SYS-018.lookup', 'WBP-SYS-018.original-receipt'], async () => {
-    await page.reload(); await page.getByText('八项维护配置已保存，事务和审计已留存。', { exact: true }).waitFor();
+    await page.reload(); await page.getByText('八项维护配置已保存，操作记录已留存。', { exact: true }).waitFor();
     const original = await page.evaluate(() => JSON.parse(localStorage.getItem('aps_workbench_system_pending_v1'))); assert.equal(original.request_key, report.config_pending.request_key);
   });
   await shot('system-config-original-receipt'); await page.getByRole('button', { name: '确认结果', exact: true }).click();
@@ -73,7 +73,7 @@ async function system(h) {
   await mark('WBP-SYS-001.tab-logs', () => page.getByRole('tab', { name: '运行日志', exact: true }).click());
   const logs = page.getByRole('region', { name: '运行日志与操作记录', exact: true });
   await logs.getByRole('button', { name: '查询', exact: true }).waitFor();
-  await select('日志来源', '操作记录', logs); await select('记录类型', '操作记录', logs); await select('记录状态', '已记录', logs); await select('日志级别', 'INFO', logs);
+  await select('日志来源', '操作记录', logs); await select('记录类型', '操作记录', logs); await select('记录状态', '已记录', logs); await select('日志级别', '信息', logs);
   await logs.getByLabel('搜索维护记录', { exact: true }).fill('F operation row');
   const filtered = await mark(['WBP-SYS-011.operation-source', 'WBP-SYS-012.search-detail', 'WBP-SYS-012.type-operation', 'WBP-SYS-012.status', 'WBP-SYS-012.level', 'WBP-SYS-012.record-set'], () => request('/system/logs', () => logs.getByRole('button', { name: '查询', exact: true }).click()));
   assert.equal(filtered.data.page.total, 31);
@@ -92,22 +92,22 @@ async function system(h) {
   await shot('system-log-detail-restored'); await page.getByRole('region', { name: '日志详情', exact: true }).press('Escape');
   await request('/system/logs', () => logs.getByRole('button', { name: '上一页', exact: true }).click());
   report.log_rows = filtered.data.page.total;
-  await mark(['WBP-SYS-013.export', 'WBP-SYS-013.all-filtered-pages'], () => download('导出窗口 CSV', 'logs.csv', logs));
+  await mark(['WBP-SYS-013.export', 'WBP-SYS-013.all-filtered-pages'], () => download('导出这段日志 CSV', 'logs.csv', logs));
   await mark(['WBP-SYS-014.build-zip', 'WBP-SYS-014.download-zip'], () => download('脱敏诊断 ZIP', 'logs.zip', logs));
   await shot('system-logs');
   await mark('WBP-SYS-001.tab-backups', () => page.getByRole('tab', { name: '备份恢复', exact: true }).click());
-  await page.getByRole('button', { name: '创建备份', exact: true }).waitFor();
-  await page.getByRole('button', { name: '创建备份', exact: true }).click(); await page.getByRole('dialog').getByRole('button', { name: '取消', exact: true }).click();
-  await page.getByRole('button', { name: '创建备份', exact: true }).click();
-  const created = await mark('WBP-SYS-008.create', () => request('/system/backups/create', () => page.getByRole('dialog').getByRole('button', { name: '确认创建', exact: true }).click(), 200, 'POST'));
+  await page.getByRole('button', { name: '新增备份', exact: true }).waitFor();
+  await page.getByRole('button', { name: '新增备份', exact: true }).click(); await page.getByRole('dialog').getByRole('button', { name: '取消', exact: true }).click();
+  await page.getByRole('button', { name: '新增备份', exact: true }).click();
+  const created = await mark('WBP-SYS-008.create', () => request('/system/backups/create', () => page.getByRole('dialog').getByRole('button', { name: '确认新增', exact: true }).click(), 200, 'POST'));
   assert.equal(created.data.operation.state, 'succeeded'); report.created_backup = created.data.operation;
   const backupBytes = fs.readFileSync(path.join(h.config.backup_dir, created.data.operation.filename));
   await mark('WBP-SYS-008.database-payload', async () => { assert.equal(backupBytes.subarray(0, 16).toString(), 'SQLite format 3\u0000'); });
   fs.writeFileSync(path.join(h.config.output, 'created-backup-payload.db'), backupBytes);
   report.created_payload_sha256 = crypto.createHash('sha256').update(backupBytes).digest('hex');
-  await mark('WBP-SYS-008.receipt', async () => { await page.getByRole('region', { name: '维护原请求结果', exact: true }).getByText('已完成', { exact: true }).waitFor(); });
+  await mark('WBP-SYS-008.receipt', async () => { await page.getByRole('region', { name: '上次维护操作的结果', exact: true }).getByText('已完成', { exact: true }).waitFor(); });
   await page.getByRole('button', { name: '确认结果', exact: true }).click();
-  const filename = created.data.operation.filename, backups = page.getByRole('region', { name: '备份与恢复记录', exact: true });
+  const filename = created.data.operation.filename, backups = page.getByRole('region', { name: '备份与维护记录', exact: true });
   await mark('WBP-SYS-010.select', () => backups.getByRole('button', { name: '查看详情 ' + filename, exact: true }).click());
   await mark('WBP-SYS-005.detail', async () => { await page.getByRole('region', { name: '备份详情', exact: true }).waitFor(); });
   await mark('WBP-SYS-008.download-backup', () => download('下载备份', filename, page.getByRole('region', { name: '备份详情', exact: true })));
@@ -121,7 +121,7 @@ async function system(h) {
   await page.getByRole('dialog').getByRole('checkbox').check();
   const deleted = await mark('WBP-SYS-010.confirm', () => request('/system/backups/delete', () => page.getByRole('dialog').getByRole('button', { name: '确认删除', exact: true }).click(), 200, 'POST'));
   assert.equal(deleted.data.operation.state, 'succeeded'); report.deleted_backup = deleted.data.operation;
-  await mark('WBP-SYS-010.receipt', async () => { await page.getByRole('region', { name: '维护原请求结果', exact: true }).getByText('已完成', { exact: true }).waitFor(); });
+  await mark('WBP-SYS-010.receipt', async () => { await page.getByRole('region', { name: '上次维护操作的结果', exact: true }).getByText('已完成', { exact: true }).waitFor(); });
   await page.getByRole('button', { name: '确认结果', exact: true }).click();
   await mark('WBP-SYS-010.filesystem-removal', async () => {
     assert.equal(fs.existsSync(path.join(h.config.backup_dir, filename)), false);

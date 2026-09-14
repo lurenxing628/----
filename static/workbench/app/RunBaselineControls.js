@@ -36,7 +36,7 @@
         if (!controller.signal.aborted) setState({
           identity,
           result: null,
-          error: new Error(error.name === 'AbortError' ? '初始计划读取超时，未显示上次结果。' : error.message),
+          error: new Error(error.name === 'AbortError' ? '初始计划读取超时，没有显示上次结果。请点「刷新初始计划」。' : error.message),
           busy: false
         });
       });
@@ -104,7 +104,7 @@
         top: (first + i) * 76
       },
       "aria-selected": !!chosen && chosen.row_ref === s.row_ref
-    }, /*#__PURE__*/React.createElement("div", null, M.timeLabel(s.start), " \u81F3 ", M.timeLabel(s.end), !s.interval_comparable && ' · 起止不可比较'), /*#__PURE__*/React.createElement("div", null, "\u8BBE\u5907 ", s.machine && s.machine.label || '未记录', " \xB7 \u4EBA\u5458 ", s.operator && s.operator.label || '未记录', " \xB7 \u8D77\u6B62\u8DE8\u5EA6 ", M.number(s.elapsed_hours), " h"), /*#__PURE__*/React.createElement("small", null, s.data_gaps.map(g => g.message).join(' · ')), /*#__PURE__*/React.createElement(window.WorkbenchReference, {
+    }, /*#__PURE__*/React.createElement("div", null, M.timeLabel(s.start), " \u81F3 ", M.timeLabel(s.end), !s.interval_comparable && ' · 起止不可比较'), /*#__PURE__*/React.createElement("div", null, "\u8BBE\u5907 ", s.machine && s.machine.label || '未记录', " \xB7 \u4EBA\u5458 ", s.operator && s.operator.label || '未记录', " \xB7 \u8D77\u6B62\u65F6\u957F ", M.number(s.elapsed_hours), " \u5C0F\u65F6"), /*#__PURE__*/React.createElement("small", null, s.data_gaps.map(g => g.message).join(' · ')), /*#__PURE__*/React.createElement(window.WorkbenchReference, {
       value: s.row_ref
     })))), !row.baseline_segments.length && /*#__PURE__*/React.createElement("div", null, "\u521D\u59CB\u8BA1\u5212\u6CA1\u6709\u8BE5\u5DE5\u5E8F\u5B89\u6392\u3002"));
   }
@@ -127,11 +127,11 @@
       entries: {
         '候选安排编号': c.row_ref
       }
-    }), !workspace.tasks.some(t => t.row_ref === c.row_ref) && /*#__PURE__*/React.createElement("div", null, "\u8BE5\u5019\u9009\u5B89\u6392\u4E0D\u5728\u5F53\u524D\u5019\u9009\u9884\u89C8\u8303\u56F4\uFF1B\u6B64\u5904\u4FDD\u7559\u5B8C\u6574\u5BF9\u7167\u3002")) : /*#__PURE__*/React.createElement("div", null, "\u5019\u9009\u6CA1\u6709\u5B89\u6392\u6B64\u5DE5\u5E8F\uFF1B\u672A\u6392\u4E0D\u4EE3\u8868\u6539\u5584\u3002"), /*#__PURE__*/React.createElement(Segments, {
+    }), !workspace.tasks.some(t => t.row_ref === c.row_ref) && /*#__PURE__*/React.createElement("div", null, "\u8BE5\u5019\u9009\u5B89\u6392\u4E0D\u5728\u5F53\u524D\u8BFB\u53D6\u8303\u56F4\uFF1B\u6B64\u5904\u4FDD\u7559\u5B8C\u6574\u5BF9\u7167\u3002")) : /*#__PURE__*/React.createElement("div", null, "\u5019\u9009\u6CA1\u6709\u5B89\u6392\u6B64\u5DE5\u5E8F\uFF1B\u672A\u6392\u4E0D\u4EE3\u8868\u6539\u5584\u3002"), /*#__PURE__*/React.createElement(Segments, {
       key: row.operation_ref,
       row: row,
       chosen: segment
-    }), row.comparison_available && /*#__PURE__*/React.createElement("div", null, "\u5B89\u6392\u53D8\u52A8\uFF08\u5019\u9009\u51CF\u521D\u59CB\u8BA1\u5212\uFF09\uFF1A\u5F00\u59CB ", M.number(delta.start_hours), " h \xB7 \u7ED3\u675F ", M.number(delta.end_hours), " h \xB7 \u8D77\u6B62\u8DE8\u5EA6 ", M.number(delta.elapsed_hours), " h", /*#__PURE__*/React.createElement("small", null, "\u8BBE\u5907\u53D8\u5316 ", delta.machine_changed === null ? '未知' : delta.machine_changed ? '有' : '无', " \xB7 \u4EBA\u5458\u53D8\u5316 ", delta.operator_changed === null ? '未知' : delta.operator_changed ? '有' : '无')), /*#__PURE__*/React.createElement("div", null, "\u751F\u6210\u65F6\u6267\u884C\uFF1A", row.execution_at_generation ? M.executionValue(row.execution_at_generation.execution_state) : '未记录', row.execution_affected && ' · 已有执行影响或数量未知'), row.reasons.concat(row.data_gaps).map((r, i) => /*#__PURE__*/React.createElement("div", {
+    }), row.comparison_available && /*#__PURE__*/React.createElement("div", null, "\u5B89\u6392\u53D8\u52A8\uFF08\u5019\u9009\u51CF\u521D\u59CB\u8BA1\u5212\uFF09\uFF1A\u5F00\u59CB ", M.number(delta.start_hours), " \u5C0F\u65F6 \xB7 \u7ED3\u675F ", M.number(delta.end_hours), " \u5C0F\u65F6 \xB7 \u8D77\u6B62\u65F6\u957F ", M.number(delta.elapsed_hours), " \u5C0F\u65F6", /*#__PURE__*/React.createElement("small", null, "\u8BBE\u5907\u53D8\u5316 ", delta.machine_changed === null ? '未知' : delta.machine_changed ? '有' : '无', " \xB7 \u4EBA\u5458\u53D8\u5316 ", delta.operator_changed === null ? '未知' : delta.operator_changed ? '有' : '无')), /*#__PURE__*/React.createElement("div", null, "\u751F\u6210\u65F6\u62A5\u5DE5\uFF1A", row.execution_at_generation ? M.executionValue(row.execution_at_generation.execution_state) : '未记录', row.execution_affected && ' · 已有报工影响或数量未知'), row.reasons.concat(row.data_gaps).map((r, i) => /*#__PURE__*/React.createElement("div", {
       key: i
     }, r.message)));
   }
@@ -173,7 +173,7 @@
       title: r.batch_label || '未记录'
     }, r.batch_label || '未记录'), /*#__PURE__*/React.createElement("span", {
       title: r.process_label || '未记录'
-    }, M.number(r.sequence), " ", r.process_label || '未记录'), /*#__PURE__*/React.createElement("span", null, B.statusLabels[r.status]), /*#__PURE__*/React.createElement("span", null, r.baseline_segments.length, " \u6BB5", r.execution_affected && ' · 执行影响'), /*#__PURE__*/React.createElement(Button, {
+    }, M.number(r.sequence), " ", r.process_label || '未记录'), /*#__PURE__*/React.createElement("span", null, B.statusLabels[r.status]), /*#__PURE__*/React.createElement("span", null, r.baseline_segments.length, " \u6BB5", r.execution_affected && ' · 有报工影响'), /*#__PURE__*/React.createElement(Button, {
       icon: "search",
       className: "mini",
       "aria-label": '初始计划对照 ' + (r.batch_label || '批次未记录') + ' ' + M.number(r.sequence) + ' ' + (r.process_label || '工序未记录'),
@@ -200,11 +200,11 @@
     return /*#__PURE__*/React.createElement(React.Fragment, null, state.enabled && /*#__PURE__*/React.createElement(React.Fragment, null, state.busy && /*#__PURE__*/React.createElement("div", {
       className: "rc-muted",
       role: "status"
-    }, "\u6B63\u5728\u8BFB\u53D6\u53D7\u7406\u65F6\u521D\u59CB\u8BA1\u5212\u3002"), state.error && /*#__PURE__*/React.createElement("div", {
+    }, "\u6B63\u5728\u8BFB\u53D6\u6392\u4EA7\u65F6\u7684\u521D\u59CB\u8BA1\u5212\u3002"), state.error && /*#__PURE__*/React.createElement("div", {
       role: "alert"
     }, state.error.message, /*#__PURE__*/React.createElement(Button, {
       icon: "refresh-cw",
-      "aria-label": "\u91CD\u8BFB\u521D\u59CB\u8BA1\u5212",
+      "aria-label": "\u5237\u65B0\u521D\u59CB\u8BA1\u5212",
       onClick: state.retry
     })), d && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
       className: "rb-legend"
@@ -216,7 +216,7 @@
       className: "rb-panel",
       open: open,
       onToggle: e => setOpen(e.currentTarget.open)
-    }, /*#__PURE__*/React.createElement("summary", null, "\u521D\u59CB\u8BA1\u5212\u5BF9\u7167\u660E\u7EC6\uFF08", rows.length, "\uFF09 \xB7 \u8BF4\u660E"), open && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", null, "\u53D7\u7406\u4E8E ", M.timeLabel(d.generation.accepted_at), " \xB7 ", d.baseline.captured_task_count, " \u6BB5\u521D\u59CB\u5B89\u6392 \xB7 \u6267\u884C\u5F71\u54CD ", d.execution_affected_count, " \u9053"), /*#__PURE__*/React.createElement("div", null, "\u5B89\u6392\u53D8\u52A8\u4E0D\u7B49\u4E8E\u6536\u76CA\uFF1B\u672A\u6392\u4E0D\u4EE3\u8868\u6539\u5584\u3002"), d.baseline.reason && /*#__PURE__*/React.createElement("div", null, d.baseline.reason.message), d.data_gaps.concat(state.result.warnings).map((g, i) => /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("summary", null, "\u521D\u59CB\u8BA1\u5212\u5BF9\u7167\u660E\u7EC6\uFF08", rows.length, "\uFF09 \xB7 \u8BF4\u660E"), open && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", null, "\u63D0\u4EA4\u4E8E ", M.timeLabel(d.generation.accepted_at), " \xB7 ", d.baseline.captured_task_count, " \u6BB5\u521D\u59CB\u5B89\u6392 \xB7 \u6709\u62A5\u5DE5\u5F71\u54CD ", d.execution_affected_count, " \u9053"), /*#__PURE__*/React.createElement("div", null, "\u5B89\u6392\u53D8\u52A8\u4E0D\u7B49\u4E8E\u6536\u76CA\uFF1B\u672A\u6392\u4E0D\u4EE3\u8868\u6539\u5584\u3002"), d.baseline.reason && /*#__PURE__*/React.createElement("div", null, d.baseline.reason.message), d.data_gaps.concat(state.result.warnings).map((g, i) => /*#__PURE__*/React.createElement("div", {
       key: i
     }, g.message)), /*#__PURE__*/React.createElement(ComparisonList, {
       rows: rows,

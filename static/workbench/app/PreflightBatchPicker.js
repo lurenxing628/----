@@ -181,7 +181,7 @@
       icon: "x",
       disabled: disabled || selecting || !selected.length,
       onClick: () => onChange([])
-    }, "\u6E05\u7A7A\u9009\u62E9"), /*#__PURE__*/React.createElement("span", {
+    }, "\u6E05\u9664\u9009\u62E9"), /*#__PURE__*/React.createElement("span", {
       "aria-live": "polite"
     }, "\u5DF2\u9009 ", selected.length, " \u6279", hidden > 0 ? ' · 含非当前页 ' + hidden + ' 批' : '')), /*#__PURE__*/React.createElement(ErrorBox, {
       error: error
@@ -189,7 +189,7 @@
       icon: "refresh-cw",
       disabled: disabled || loading || selecting,
       onClick: () => filter({})
-    }, "\u91CD\u8BFB\u6279\u6B21"), loading || selecting ? /*#__PURE__*/React.createElement(window.WorkbenchListControls.EmptyState, {
+    }, "\u5237\u65B0\u6279\u6B21"), loading || selecting ? /*#__PURE__*/React.createElement(window.WorkbenchListControls.EmptyState, {
       kind: "loading",
       title: selecting ? '正在核对全部选择范围' : '正在读取批次'
     }) : data && !visible.length ? /*#__PURE__*/React.createElement(window.WorkbenchListControls.EmptyState, {

@@ -53,7 +53,7 @@ async function layout(page) {
     let painted = 0;
     if (canvas) { const data = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;
       for (let i = 3; i < data.length; i += 4) if (data[i]) painted++; }
-    const relevant = '[data-run-candidate-workspace], [data-run-history-workspace], [aria-label="本次运行记录"]';
+    const relevant = '[data-run-candidate-workspace], [data-run-history-workspace], [aria-label="这次排产记录"]';
     const body = document.querySelector(relevant), controls = [...body.querySelectorAll('button,select,input')].filter(n => n.getClientRects().length);
     const table = body.querySelector('table');
     return { viewport: { width: innerWidth, height: innerHeight }, scrollY, canvas: canvas && rect(canvas), painted,

@@ -104,8 +104,8 @@ async function candidates() {
   assert((await generation.innerText()).includes(fixtures.complete.candidate_ref));
   assert((await generation.innerText()).includes('实际工时 / 成本')); await shot('generation-expanded');
   await generation.locator('summary').first().click(); done('generation-details-retain-records-metrics-and-gaps');
-  await page.getByText('范围与导出口径', { exact: true }).click();
-  assert((await page.locator('.rc-scope').filter({ has: page.getByText('范围与导出口径', { exact: true }) }).innerText()).includes('不改变导出范围')); await page.getByText('范围与导出口径', { exact: true }).click();
+  await page.getByText('范围与导出说明', { exact: true }).click();
+  assert((await page.locator('.rc-scope').filter({ has: page.getByText('范围与导出说明', { exact: true }) }).innerText()).includes('不改变导出范围')); await page.getByText('范围与导出说明', { exact: true }).click();
   await page.locator('.rc-reasons').filter({ has: page.locator('summary', { hasText: '原因与数据缺项' }) }).first().locator('summary').first().click();
   await shot('gaps-expanded'); await page.locator('.rc-reasons[open]').locator('summary').first().click();
   await page.getByLabel('候选状态', { exact: true }).click(); await page.getByRole('listbox').waitFor(); await shot('shared-select');
@@ -140,11 +140,11 @@ async function candidates() {
   assert.equal(selected.capabilities.adopt, false); assert.equal(selected.capabilities.edit_draft, false);
   report.hostEntrypoints.push({ variant, host: 'full-current-shell', adoption: '采用方案', trial: '试调', enabled: true, writes_exercised: false });
   done('full-shell-injected-host-entrypoints');
-  assert((await page.locator('[aria-label="生成时范围"]').innerText()).includes('生成时未分配正式版本'));
+  assert((await page.locator('[aria-label="生成时范围"]').innerText()).includes('生成时还没成为正式计划'));
   await restore(fixtures.partial); const partial = (await realWorkspace(fixtures.partial.candidate_ref)).data;
-  assert(partial.unplanned_operation_count > 0); assert((await page.locator('.rc-scope').filter({ has: page.getByText('范围与导出口径', { exact: true }) }).innerText()).includes('未安排 1 道'));
+  assert(partial.unplanned_operation_count > 0); assert((await page.locator('.rc-scope').filter({ has: page.getByText('范围与导出说明', { exact: true }) }).innerText()).includes('未安排 1 道'));
   await checkLayout('partial-first-screen'); await page.getByRole('tab', { name: '未安排明细', exact: true }).click();
-  await page.getByText('生成时该工序明确排除，未隐藏此项。', { exact: true }).waitFor(); await download('xlsx', partial, 'partial');
+  await page.getByText('排产时这道工序被排除在外，这里照样列出来。', { exact: true }).waitFor(); await download('xlsx', partial, 'partial');
   for (const state of ['failed', 'skipped']) {
     await restore(fixtures[state]); assert.equal(await page.locator('[data-candidate-lane]').count(), 0);
     const current = page.locator('[aria-label="生成时范围"]'); assert.equal(await current.locator('[data-candidate-status]').getAttribute('data-candidate-status'), state);
@@ -164,7 +164,7 @@ async function capacity() {
   done('5000-last-row-reachable-virtualization-and-full-export');
 }
 async function historyAndRun() {
-  await button('返回运行页').click(); await page.getByRole('table', { name: '已保存候选' }).waitFor();
+  await button('返回排产记录').click(); await page.getByRole('table', { name: '已保存候选' }).waitFor();
   const identity = page.locator('.rj-record > .wb-ref'); assert(!(await identity.innerText()).includes(fixtures.capacity.run_ref));
   await identity.locator('summary').click(); assert((await identity.innerText()).includes(fixtures.capacity.run_ref)); await identity.locator('summary').click();
   const rows = page.getByRole('table', { name: '已保存候选' }).locator('tbody tr'); assert.equal(await rows.count(), 4);
@@ -173,7 +173,7 @@ async function historyAndRun() {
   await rows.first().getByRole('button', { name: '详情', exact: true }).click(); await page.getByRole('heading', { name: '候选工作区', exact: true }).waitFor();
   await button('排产记录').click(); await page.locator('[data-run-history-workspace][aria-busy=false]').waitFor();
   const response = await (await page.request.get(origin + '/api/workbench/v1/scheduling/runs')).json();
-  const historyRows = page.getByRole('table', { name: '排产历史', exact: true }).locator('tbody tr'); assert.equal(await historyRows.count(), response.data.runs.length);
+  const historyRows = page.getByRole('table', { name: '排产记录', exact: true }).locator('tbody tr'); assert.equal(await historyRows.count(), response.data.runs.length);
   for (const run of response.data.runs) {
     const r = page.locator('[data-run-ref="' + run.run_ref + '"]'); assert(!(await r.innerText()).includes(run.run_ref));
     assert.equal(await r.getAttribute('data-run-state'), run.state);

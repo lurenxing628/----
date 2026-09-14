@@ -2,7 +2,7 @@
 const fs = require('node:fs'), path = require('node:path'), vm = require('node:vm'), assert = require('node:assert/strict');
 const window = { APSResourceContract: {}, PointContract: { isPoint: () => false } };
 const context = vm.createContext({ window, Date, Number, Map, Set });
-for (const file of ['WorkbenchFormat.js', 'FieldContract.js', 'ActualGanttModel.js']) vm.runInContext(fs.readFileSync(path.join(__dirname, '../../frontend/workbench/app', file), 'utf8'), context);
+for (const file of ['WorkbenchFormat.js', 'WorkbenchTerms.js', 'FieldContract.js', 'ActualGanttModel.js']) vm.runInContext(fs.readFileSync(path.join(__dirname, '../../frontend/workbench/app', file), 'utf8'), context);
 const C = window.FieldContract, M = window.ActualGanttModel;
 const base = { piece_id: 'item-A', quantity: 1, batch_quantity: 3, quantity_basis: 'run_admission', quantity_reason: null };
 assert(C.planQuantity(base));

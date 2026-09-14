@@ -33,7 +33,7 @@ def verify_exports(evidence):
             assert sum(row["记录来源"] == "现场事件" for row in records) == 2
             assert sum(row["记录来源"] == "逐次报工" for row in records) == 13
             revised = next(row for row in records if row["备注"] == "BC corrected quantity and hours")
-            history = json.loads(revised["完整修订历史"])
+            history = json.loads(revised["完整更正记录"])
             assert [row["action"] for row in history] == ["create", "supplement", "correct"]
             assert history[0]["after"]["completed_quantity"] is None
             assert history[1]["after"]["completed_quantity"] == 0
@@ -41,7 +41,7 @@ def verify_exports(evidence):
             assert history[2]["after"]["completed_quantity"] == 2
             assert sum(str(row["本次完成数量"]) == "0" for row in records) == 3
             unknown = next(row for row in records if "OP-03" in row["工序"])
-            assert unknown["本次完成数量"] == "未知" and unknown["有效加工工时(h)"] == "未知"
+            assert unknown["本次完成数量"] == "未知" and unknown["有效加工工时（小时）"] == "未知"
 
 
 def test_report_ledger_widgets_live():

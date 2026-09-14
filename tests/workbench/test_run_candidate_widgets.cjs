@@ -124,7 +124,7 @@ async function contracts() {
   assert.deepEqual(result.failures, []); result.passed.forEach(done);
 }
 async function baseline() {
-  assert.equal(report.requests.filter(r => r.variant === variant).length, 0); await page.getByText(/尚未指定运行或候选来源/).waitFor(); done('no-source-no-latest-no-request');
+  assert.equal(report.requests.filter(r => r.variant === variant).length, 0); await page.getByText(/尚未指定排产或候选方案/).waitFor(); done('no-source-no-latest-no-request');
   await mount(null, { candidate_ref: 'latest' }); await page.getByRole('alert').waitFor(); assert.equal(report.requests.filter(r => r.variant === variant).length, 0); done('invalid-ref-no-request');
   await mount(null, { run_ref: fixtures.complete.run_ref }); await catalogState(true); await page.locator('[data-candidate-ref]').first().waitFor();
   report.catalog_checks.push({ variant, name: 'no-selection-opens-catalog', passed: true });
@@ -175,8 +175,12 @@ async function baseline() {
   }, full.data);
   await page.mouse.move(box.x + ((model.start0 + model.end0) / 2 - model.start) / (model.end - model.start) * box.width, box.y + 20);
   await page.getByRole('tooltip').waitFor(); assert((await page.getByRole('tooltip').innerText()).includes(full.data.tasks[0].batch_label)); done('real-canvas-hit-tooltip');
-  await button('放大候选时间轴').click(); assert.equal(await page.getByLabel('候选时间轴缩放', { exact: true }).inputValue(), '2');
-  await button('适配完整候选时间轴').click(); done('zoom-and-fit');
+  await button('放大候选时间轴').click(); assert.equal(await page.locator('.rc-tools .wb-zoom-level').innerText(), '2×');
+  await button('显示完整候选时间范围').click(); assert.equal(await page.locator('.rc-tools .wb-zoom-level').innerText(), '1×'); done('zoom-and-fit');
+  // 导航类按钮走链接变体：透明底、透明边框、带下划线，和旁边的动作按钮分层。
+  const navLink = page.locator('.rc-nav .btn.link').first(); await navLink.waitFor();
+  const linkStyle = await navLink.evaluate(node => { const s = getComputedStyle(node); return { bg: s.backgroundColor, border: s.borderTopColor, line: s.textDecorationLine, height: node.getBoundingClientRect().height }; });
+  assert.equal(linkStyle.bg, 'rgba(0, 0, 0, 0)'); assert.equal(linkStyle.border, 'rgba(0, 0, 0, 0)'); assert(linkStyle.line.includes('underline'), linkStyle.line); assert(linkStyle.height >= 32, String(linkStyle.height)); done('nav-buttons-read-as-links');
   await page.getByLabel('搜索候选工序').fill(full.data.tasks[0].row_ref); assert.equal(await page.locator('[data-candidate-task-list] [data-row-ref]').count(), 1);
   await download('csv', full); await download('xlsx', full); done('search-does-not-truncate-export');
   await page.getByLabel('搜索候选工序').fill('');
@@ -189,10 +193,10 @@ async function baseline() {
   const partial = await workspace(fixtures.complete.candidate_ref, { range_start: '2026-09-01T00:00:00', range_end: full.data.tasks[0].end });
   assert.equal(partial.data.task_count, 1); await download('csv', partial); done('half-open-range-exact-download');
   await button('完整候选').click(); await page.getByRole('heading', { name: '候选工作区', exact: true }).waitFor();
-  await button('返回运行页').click(); assert.deepEqual(await page.evaluate(() => navigation), ['run', { run_ref: fixtures.complete.run_ref }]);
-  await button('返回正式方案').click(); assert.deepEqual(await page.evaluate(() => navigation), ['analysis', { plan_ref: 'f'.repeat(48) }]); done('navigation-context-no-read-token');
+  await button('返回排产记录').click(); assert.deepEqual(await page.evaluate(() => navigation), ['run', { run_ref: fixtures.complete.run_ref }]);
+  await button('返回正式计划').click(); assert.deepEqual(await page.evaluate(() => navigation), ['analysis', { plan_ref: 'f'.repeat(48) }]); done('navigation-context-no-read-token');
   const storage = await page.evaluate(() => ({ keys: Object.keys(localStorage), url: location.href })); assert(storage.keys.every(k => k === 'aps_theme' || k === 'aps_kit_theme')); assert.equal(storage.url, origin + '/'); done('no-token-in-location-or-storage');
-  await mount('partial'); await page.getByRole('tab', { name: '未安排明细', exact: true }).click(); await page.getByText('生成时该工序明确排除，未隐藏此项。', { exact: true }).waitFor();
+  await mount('partial'); await page.getByRole('tab', { name: '未安排明细', exact: true }).click(); await page.getByText('排产时这道工序被排除在外，这里照样列出来。', { exact: true }).waitFor();
   const partialAll = await workspace(fixtures.partial.candidate_ref); assert.equal(partialAll.data.unplanned_operation_count, 1); await download('xlsx', partialAll); await shot('partial'); done('real-partial-preserves-skipped-operation');
   for (const status of ['failed', 'skipped']) {
     await mount(status); const value = await workspace(fixtures[status].candidate_ref); assert.equal(value.data.task_count, 0);
@@ -204,15 +208,15 @@ async function baseline() {
     assert((await page.locator('[aria-label="生成时范围"]').innerText()).includes('未知')); await shot(status); done('persisted-' + status + '-not-fabricated-plan');
   }
   await mount('complete'); await openCatalog(); await page.getByLabel('候选状态', { exact: true }).click(); await page.getByRole('listbox').waitFor();
-  await page.getByRole('listbox').getByRole('option', { name: '失败', exact: true }).click(); await page.getByText('此运行在当前筛选下没有候选记录。', { exact: true }).waitFor(); done('workbench-dropdown-empty-filter-not-latest');
+  await page.getByRole('listbox').getByRole('option', { name: '失败', exact: true }).click(); await page.getByText('这次排产在当前筛选下没有候选方案。', { exact: true }).waitFor(); done('workbench-dropdown-empty-filter-not-latest');
   await mount('complete'); const pattern = '**/scheduling/candidates/' + fixtures.complete.candidate_ref + '/workspace?*';
-  await page.route(pattern, route => route.fulfill({ status: 500, contentType: 'text/html', body: 'Unavailable' })); await button('刷新指定候选来源').click();
+  await page.route(pattern, route => route.fulfill({ status: 500, contentType: 'text/html', body: 'Unavailable' })); await button('刷新候选方案').click();
   await page.getByRole('alert').waitFor(); assert.equal(await page.locator('[data-candidate-lane]').count(), 0); assert.equal(await button('CSV').count(), 0);
-  await page.unroute(pattern); await button('刷新指定候选来源').click(); await page.getByRole('heading', { name: '候选工作区', exact: true }).waitFor(); done('failed-refresh-clears-old-data-and-export');
+  await page.unroute(pattern); await button('刷新候选方案').click(); await page.getByRole('heading', { name: '候选工作区', exact: true }).waitFor(); done('failed-refresh-clears-old-data-and-export');
   await page.request.post(origin + '/fixture/restart'); await button('CSV').click(); await page.getByRole('alert').waitFor(); done('expired-read-token-download-not-faked');
-  await button('刷新指定候选来源').click(); await page.getByRole('heading', { name: '候选工作区', exact: true }).waitFor();
+  await button('刷新候选方案').click(); await page.getByRole('heading', { name: '候选工作区', exact: true }).waitFor();
   await page.evaluate(() => { const api = RunCandidateAnalysisAPI.create(); window.mountCandidate(fixtureSource, { ...api, workspace: async (...args) => { const v = await api.workspace(...args); v.data.capabilities.view = false; return v; } }); });
-  await page.getByText('接口未授权查看该候选。', { exact: false }).waitFor(); assert.equal(await button('CSV').count(), 0); assert.equal(await page.locator('[data-candidate-lane]').count(), 0); done('view-capability-false-no-content-or-export');
+  await page.getByText('当前不能查看这个候选方案。', { exact: false }).waitFor(); assert.equal(await button('CSV').count(), 0); assert.equal(await page.locator('[data-candidate-lane]').count(), 0); done('view-capability-false-no-content-or-export');
   await page.evaluate(() => { const api = RunCandidateAnalysisAPI.create(); window.mountCandidate(fixtureSource, { ...api, workspace: async (...args) => { const v = await api.workspace(...args); v.data.capabilities.export = false; return v; } }); });
   await button('CSV').waitFor(); assert(await button('CSV').isDisabled()); assert(await button('XLSX').isDisabled()); done('export-capability-false-disabled');
   const history = await (await page.request.get(origin + '/api/workbench/v1/scheduling/runs')).json();
@@ -242,7 +246,7 @@ async function capacity() {
   await button('工序详情 ' + full.data.tasks[4999].row_ref).click(); await UI.reference(page.getByRole('complementary'), full.data.tasks[4999].row_ref);
   await layout(); await shot('5000'); await page.getByLabel('搜索候选工序').fill('CAP-099');
   await download('csv', full); await download('xlsx', full); done('5000-source-tasks-bounded-dom-and-complete-download');
-  await page.reload(); await page.getByText(/尚未指定运行或候选来源/).waitFor();
+  await page.reload(); await page.getByText(/尚未指定排产或候选方案/).waitFor();
   await mount(null, { candidate_ref: fixtures.capacity.candidate_ref }); await catalogState(false); await openCatalog(); await page.locator('[data-candidate-ref]').first().waitFor();
   assert.equal(await page.locator('[data-candidate-ref]').count(), 4); done('fresh-page-explicit-old-candidate-recovers-run');
 }

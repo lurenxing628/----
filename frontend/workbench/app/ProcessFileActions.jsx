@@ -18,7 +18,7 @@
       let body;
       if (importing) {
         await M.validateFile(job.file, job.format);
-        if (job.file.size > 16 * 1024 * 1024) throw C.failure('文件超过 16 MiB，请缩小文件后再预检。');
+        if (job.file.size > 16 * 1024 * 1024) throw C.failure('文件超过 16 MB，请缩小文件后再预检。');
         body = new FormData(); body.append('file', job.file); body.append('format', job.format); body.append('mode', 'upsert');
         if (original.target_ref) { if (!A.ref(original.target_ref)) throw C.failure('当前零件已无法核对，请返回列表重新选择。'); body.append('target_ref', original.target_ref); }
       } else body = F.exportBody(original, job.selection, job.format);
@@ -29,7 +29,7 @@
     if (data && importing) checkedPreview.current = data;
     const controlsDisabled = disabled || locked || done || busy;
     React.useEffect(() => () => { alive.current = false; if (abort.current) abort.current.abort(); }, []);
-    window.WorkbenchGuards.useDirtyGuard({ dirty, locked: visible.locked, message: label + '导入文件尚未保存或原请求仍待核实。' });
+    window.WorkbenchGuards.useDirtyGuard({ dirty, locked: visible.locked, message: label + '导入文件尚未保存，上次操作的结果也还没查到。' });
     React.useEffect(() => {
       if (!done || kind === 'hours' || notified.current === command.result.receipt_ref) return;
       notified.current = command.result.receipt_ref;
@@ -59,7 +59,7 @@
     function preflight() {
       if (controlsDisabled || recovery || !command.reset()) return;
       invalidate();
-      if (typeof adapter.filePreview !== 'function') { setError(C.failure('工艺文件预检接口尚未接入。')); return; }
+      if (typeof adapter.filePreview !== 'function') { setError(C.failure('dependency not wired: window.APSProcessAPI.filePreview')); return; }
       if (importing && !file) { setError(C.failure('请先选择文件。')); return; }
       if (!importing && !selection) { setError(C.failure('请先选择导出范围。')); return; }
       setJob({ file, format, selection }); setNow(Date.now());
@@ -76,7 +76,7 @@
     }
     async function downloadFile(template) {
       if (controlsDisabled || !template && (!data || reason)) return;
-      if (typeof adapter.fileDownload !== 'function') { setError(C.failure('工艺文件下载接口尚未接入。')); return; }
+      if (typeof adapter.fileDownload !== 'function') { setError(C.failure('dependency not wired: window.APSProcessAPI.fileDownload')); return; }
       if (!template && data.format !== format) { setError(C.failure('当前导出格式已变化，请重新预检。')); return; }
       const controller = new AbortController(); abort.current = controller; setDownload({ busy: true }); setError(null);
       try {
@@ -95,7 +95,7 @@
           {!done && !recovery && <Button icon="check" disabled={disabled || locked} busy={busy} onClick={preflight}>{job ? '重新预检' : '开始预检'}</Button>}
           {!done && !recovery && data && <Button transfer={importing ? 'import' : 'export'} className="btn primary" disabled={controlsDisabled} reason={reason} onClick={importing ? confirm : () => downloadFile(false)}>{importing ? allSkipped ? '确认跳过并记录结果' : '确认导入' : '下载文件'}</Button>}</>}>
         <div className="modal-b scroll rm-body">
-          {recovery && !done && <p>正在核实原文件请求，不会重新上传或再次导入。</p>}
+          {recovery && !done && <p>正在查询上次文件操作的结果，不会重新上传或再次导入。</p>}
           {!recovery && !done && <><div className="rm-format"><span className="seclabel">文件格式</span><div className="seg" role="group" aria-label="文件格式">{['xlsx', 'csv'].map(value => <button type="button" key={value} className={format === value ? 'on' : ''} aria-pressed={format === value} disabled={controlsDisabled} onClick={() => { invalidate(); setFormat(value); }}>{value === 'xlsx' ? 'Excel (.xlsx)' : 'CSV (.csv)'}</button>)}</div></div>
             {importing ? <><div className="tmpl-row"><span className="tmpl-ico"><Icon name="file-input" /></span><div className="tmpl-t">{label}空白模板.{format}</div><Button transfer="template" disabled={controlsDisabled} onClick={() => downloadFile(true)}>下载模板</Button></div>
               <div className="field full"><label>{label}文件<input type="file" aria-label={'选择' + label + '文件'} accept=".csv,.xlsx" disabled={controlsDisabled} onChange={event => { chooseFile(event.target.files); event.target.value = ''; }} /></label>{file && <span className="fhint">{file.name} · {file.size} 字节</span>}</div>
@@ -107,10 +107,10 @@
             {!done && data.rows.some(row => row.requires_confirmation) && <label className="rm-check"><input type="checkbox" checked={ack} disabled={controlsDisabled} onChange={event => setAck(event.target.checked)} />已核对全部修改前后内容，确认这些更新。</label>}
             <p>{kind === 'hours' ? '锁定跳过行不参与写入；其余行整体确认，任何一行不能提交，本批全部不修改。' : '本批整体确认；任何一行不能提交，本批全部不修改。'}</p></>}
           {data && !importing && <p role="status">已核对 {data.part_count} 个零件，导出 {data.row_count} 行{kind === 'hours' ? '工序记录' : '零件记录'}，不限当前显示页。</p>}
-          {reason && data && !done && <p role="status">{reason}</p>}{download.name && <p role="status">已交给浏览器下载：{download.name}</p>}
+          {reason && data && !done && <p role="status">{reason}</p>}{download.name && <p role="status">已开始下载：{download.name}</p>}
           {importing && <window.ResourceForms.Feedback command={done && kind === 'hours' ? { ...visible, phase: 'idle' } : visible} />}
           {done && kind === 'hours' && <window.ProcessFileReceipt data={saved} />}
-          {done && <p role="status">{kind === 'hours' ? '已核实原文件回执；导入不代替工时阶段的人工确认。' : '已取得原文件请求的完成回执，工艺确认状态以重新读取的详情为准。'}</p>}
+          {done && <p role="status">{kind === 'hours' ? '已查到文件导入结果；导入不代替工时阶段的人工确认。' : '文件导入已完成；工艺确认状态以刷新后的详情为准。'}</p>}
         </div></Modal>
       {discard && <Modal title="放弃本次文件导入？" icon="file-input" onClose={() => setDiscard(false)} footer={<><Button onClick={() => setDiscard(false)}>继续核对</Button><Button className="btn danger" onClick={() => close(true)}>放弃导入并关闭</Button></>}><div className="modal-b">当前选择的文件与未提交的确认项将被丢弃，不会修改零件。</div></Modal>}
     </div>;

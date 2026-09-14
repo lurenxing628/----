@@ -130,7 +130,6 @@
 #aps-decision .d-record time {font-variant-numeric:tabular-nums;color:var(--d-muted);font-size:var(--font-size-1);}
 #aps-decision .d-footer {font-size:var(--font-size-1);color:var(--d-muted);display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;padding-top:13px;}
 #aps-decision .d-changed {display:flex;align-items:center;gap:7px;padding:8px 11px;background:var(--d-orange-soft);color:var(--d-orange);font-size:var(--font-size-1);margin-bottom:12px;}
-#aps-decision .d-modal-layer {position:fixed;inset:0;z-index:60;background:rgb(12 20 32 / .38);display:flex;align-items:center;justify-content:center;padding:24px 18px;overflow:auto;}
 #aps-decision .d-modal {background:var(--d-panel);width:100%;max-width:490px;max-height:calc(100vh - 48px);overflow:auto;border:1px solid var(--d-line);border-radius:var(--wb-radius-overlay);box-shadow:0 12px 40px rgb(0 0 0 / .2);}
 #aps-decision .d-modal-head {display:flex;align-items:center;justify-content:space-between;gap:10px;padding:15px 18px;border-bottom:1px solid var(--d-line);}
 #aps-decision .d-modal-body {padding:17px 18px;}

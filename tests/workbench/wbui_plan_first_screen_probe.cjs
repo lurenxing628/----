@@ -54,8 +54,8 @@ async function selectionLifecycle(page) {
       assert.equal(before.writes, 0); assert.equal(after.writes, 0);
       assert(after.calls.every(call => ['catalog', 'workspace'].includes(call.type)), 'Selection navigation may only read');
       assert.deepEqual(after.selected_refs, related && !missing ? [previous] : [], 'Full read must honor the new intent and never replay the old initial task');
-      if (!related) assert(before.alerts.some(text => /任务|定位/.test(text) && /范围|未找到|不存在/.test(text)), 'Missing initial target must be explicitly reported without expanding its range');
-      if (missing) assert(after.alerts.some(text => text.includes('同一完整计划中未找到该关系任务，未定位到替代任务。')), 'Missing relation must expose its exact failure');
+      if (!related) assert(before.alerts.some(text => /工序|任务|定位/.test(text) && /范围|未找到|不存在|没找到/.test(text)), 'Missing initial target must be explicitly reported without expanding its range');
+      if (missing) assert(after.alerts.some(text => text.includes('这份完整计划里没找到相关的工序，没有改选其他工序。')), 'Missing relation must expose its exact failure');
       else if (related) assert.deepEqual(after.alerts, []);
       item.passed = true;
     } catch (error) {
@@ -72,7 +72,7 @@ async function selectionLifecycle(page) {
     await page.getByRole('alert').waitFor();
     retry.stages.push(await capture('initial-read-failed', false));
     await page.evaluate(() => { fixture.spec.workspaceFailure = null; });
-    await page.getByRole('button', { name: '重新读取所选计划', exact: true }).click();
+    await page.getByRole('button', { name: '刷新重试', exact: true }).click();
     retry.stages.push(await capture('explicit-retry'));
     const [before, after] = retry.stages, reads = after.calls.filter(call => call.type === 'workspace');
     assert.deepEqual(before.visible_refs, []); assert.deepEqual(before.selected_refs, []);
@@ -135,7 +135,7 @@ async function selectionLifecycle(page) {
       assert(value.pageWidth <= width + 1, 'No root horizontal overflow');
       assert.deepEqual(value.plans, ['1'.padStart(48, '0')]);
       const text = await page.locator('.plan-footer').textContent();
-      for (const label of ['已核实准时', '资源重叠', '初始基线', '零时长点']) assert(text.includes(label));
+      for (const label of ['已确认准时', '资源重叠', '初始计划', '零工时工序']) assert(text.includes(label));
       const visibleBar = page.locator('.plan-bar-face strong').first();
       if (await visibleBar.count()) assert((await visibleBar.textContent()).startsWith('D2609-'));
       const image = path.join(output, view + '-' + width + '.png'); await page.screenshot({ path: image }); report.screenshots.push(image);

@@ -3,13 +3,13 @@ const assert = require('node:assert/strict');
 const { run } = require('./final_execution_browser_support.cjs');
 
 async function caption(page, plan, label) {
-  const node = page.getByRole('status', { name: '当前方案', exact: true });
+  const node = page.getByRole('status', { name: '当前计划', exact: true });
   if (!plan) { assert.equal(await node.count(), 0); return; }
   await node.waitFor();
   assert.equal(await node.getAttribute('data-plan-ref'), plan.plan_ref);
   const text = await node.innerText();
   assert(text.includes(label) && text.includes(plan.display_name));
-  assert(text.includes(plan.is_current_official ? '当前正式采用' : '历史正式方案'));
+  assert(text.includes(plan.is_current_official ? '当前正式采用' : '历史正式计划'));
   assert(text.includes('正式 v' + plan.version));
 }
 
@@ -107,7 +107,7 @@ async function reports(p) {
   await page.getByLabel('搜索批次或工序', { exact: true }).fill('B1');
   await p.read(() => page.getByRole('button', { name: '查询范围', exact: true }).click(), suffix);
   await p.read(() => page.getByRole('tab', { name: '报工记录', exact: true }).click(), suffix);
-  await p.read(() => p.choose('排序字段', 'effective_processing_hours'), suffix);
+  await p.read(() => p.choose('排序列', 'effective_processing_hours'), suffix);
   await p.read(() => p.choose('排序方向', 'desc'), suffix);
   await p.read(() => p.choose('每页条数', '10'), suffix);
   const paging = () => page.locator('#report-topic-panel .rw-list-pane > .wb-pager');
@@ -133,7 +133,7 @@ async function reports(p) {
     await page.locator('.rw-detail[role="region"]').waitFor();
     assert.equal(await page.getByLabel('搜索批次或工序', { exact: true }).inputValue(), 'B1');
     assert.equal(await page.getByRole('tab', { name: '报工记录', exact: true }).getAttribute('aria-selected'), 'true');
-    assert.equal(await page.getByLabel('排序字段', { exact: true }).inputValue(), 'effective_processing_hours');
+    assert.equal(await page.getByLabel('排序列', { exact: true }).inputValue(), 'effective_processing_hours');
     assert.equal(await page.getByLabel('排序方向', { exact: true }).inputValue(), 'desc');
     assert((await paging().innerText()).includes('第 2 / 4 页'));
     await page.locator('.er-chart-disclosure[open]').waitFor(); await page.locator('.rw-catalog[open]').waitFor();

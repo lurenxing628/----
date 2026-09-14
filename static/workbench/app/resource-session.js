@@ -121,7 +121,7 @@
         publish(store, {
           ...store.state,
           phase: 'pending',
-          error: C.failure('结果待核实；回执查询尚未接入。请保留当前页面。')
+          error: C.failure('dependency not wired: adapter.lookup')
         });
         return;
       }
@@ -138,7 +138,7 @@
           intent,
           result,
           phase: status === 'terminal' ? 'done' : 'pending',
-          error: status === 'terminal' ? null : C.failure(result && result.message || '尚未查到完成回执，原请求仍可能执行中。请继续核实，不要重复保存。')
+          error: status === 'terminal' ? null : C.failure(result && result.message || window.WorkbenchTerms.outcomes.pending('操作'))
         });
       } catch (error) {
         publish(store, {
@@ -155,7 +155,7 @@
       if (typeof adapter.command !== 'function') {
         publish(store, {
           phase: 'rejected',
-          error: C.failure('保存接口尚未接入。')
+          error: C.failure('dependency not wired: adapter.command')
         });
         return;
       }
@@ -257,18 +257,18 @@
   }
   function useSummary(adapter, revision) {
     return useQuery(async signal => {
-      if (typeof adapter.summary !== 'function') throw C.failure('资源汇总接口尚未接入。');
+      if (typeof adapter.summary !== 'function') throw C.failure('dependency not wired: adapter.summary');
       const result = C.query(await adapter.summary(signal), 'summary'),
         data = {
           ...result.data
         };
       if (!calendarSummary(data.calendar)) {
         data.calendar = null;
-        data.calendar_error = '日历汇总缺失或协议不完整，无法核实。';
+        data.calendar_error = '读到的班表汇总不完整，请刷新后重试。';
       }
       if (!readinessSummary(data.readiness)) {
         data.readiness = null;
-        data.readiness_error = '就绪口径缺失或协议不完整，未知。';
+        data.readiness_error = '读到的就绪度数据不完整，请刷新后重试。';
       }
       return {
         ...result,

@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const root = path.resolve(__dirname, '../..');
-const files = ['resource-contract.js', 'resource-api.js', 'PointContract.js', 'PlanProcessOrder.js', 'PlanContract.js', 'PlanAPI.js'];
+const files = ['resource-contract.js', 'resource-api.js', 'WorkbenchTerms.js', 'PointContract.js', 'PlanProcessOrder.js', 'PlanContract.js', 'PlanAPI.js'];
 const scripts = files.map(name => ({name, source: fs.readFileSync(path.join(root, 'frontend/workbench/app', name), 'utf8')}));
 const digest = value => crypto.createHash('sha256').update(value).digest('hex');
 const sources = scripts.map(script => ({path: 'frontend/workbench/app/' + script.name, sha256: digest(script.source)}));

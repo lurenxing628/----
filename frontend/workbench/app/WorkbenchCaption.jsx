@@ -8,10 +8,10 @@
       if (!publish) return undefined;
       const caption = JSON.parse(serialized);
       if (caption && ['reference', 'label', 'name', 'status'].some(key => typeof caption[key] !== 'string' || !caption[key].trim())) {
-        throw new Error('当前方案信息不完整，未显示其他方案。');
+        throw new Error('当前计划信息不完整，没有显示其他计划。');
       }
       if (caption && ['version', 'range'].some(key => caption[key] !== undefined && typeof caption[key] !== 'string')) {
-        throw new Error('当前方案版本或范围无效。');
+        throw new Error('当前计划的版本或范围无效。');
       }
       const entry = { caption }; publish(entry);
       return () => publish(previous => previous === entry ? null : previous);
@@ -24,7 +24,7 @@
   function Caption() {
     const value = React.useContext(Current);
     if (!value) return <div className="cap-rich" />;
-    return <div className="cap-rich wb-current-plan" role="status" aria-label="当前方案" data-plan-ref={value.reference}>
+    return <div className="cap-rich wb-current-plan" role="status" aria-label="当前计划" data-plan-ref={value.reference}>
       <strong>{value.label}</strong><span className="wb-current-name" title={value.name}>{value.name}</span>
       <span className="cap-preview">{value.status}</span>
       {value.version && <span className="cap-muted">{value.version}</span>}

@@ -98,8 +98,8 @@
       try {
         const receipt = await api.download(result, bound, format, controller.signal);
         if (!controller.signal.aborted) {
-          if (!receipt || receipt.rows !== data.summary.total || receipt.snapshot_ref !== result.meta.snapshot_ref) throw A.failure('导出结果未核实，未报告成功。');
-          setNotice('已核对快照和数量，导出全部筛选 ' + receipt.rows + ' 项。');
+          if (!receipt || receipt.rows !== data.summary.total || receipt.snapshot_ref !== result.meta.snapshot_ref) throw A.failure('导出结果没有通过核对，没有按成功处理。');
+          setNotice('已核对数据版本和数量，导出当前筛选全部 ' + receipt.rows + ' 项。');
         }
       } catch (failure) {
         if (!controller.signal.aborted) {
@@ -114,7 +114,10 @@
       }
     }
     const disabled = request.busy || downloading || stale;
-    const viewError = selected && data && data.capabilities.view !== true ? A.failure('查看权限尚未确认，暂不能读取样本来源。') : null;
+    // 错误正文就是通用“数据已更新”句时，只保留下面带保留说明的过期提示，不重复报两遍；具体原因照常显示。
+    const shownError = request.error || error,
+      staleOnly = !!(stale && shownError && shownError.message === window.WorkbenchTerms.outcomes.stale);
+    const viewError = selected && data && data.capabilities.view !== true ? A.failure('查看权限尚未确认，暂不能读取完工记录来源。') : null;
     return /*#__PURE__*/React.createElement("section", {
       className: "calib-workbench calibration-live",
       "aria-label": "\u5DE5\u65F6\u5B9A\u989D\u6821\u51C6",
@@ -173,15 +176,15 @@
         part_ref: null
       })
     })), /*#__PURE__*/React.createElement(ErrorBox, {
-      error: request.error || error
+      error: staleOnly ? null : shownError
     }), stale && /*#__PURE__*/React.createElement("p", {
       className: "ca-note",
       role: "alert"
-    }, "\u524D\u540E\u5FEB\u7167\u4E0D\u4E00\u81F4\uFF0C\u8BF7\u660E\u786E\u5237\u65B0\u3002\u5DF2\u9009\u8BB0\u5F55\u548C\u6837\u672C\u6765\u6E90\u4FDD\u7559\uFF0C\u4E0D\u4F1A\u81EA\u52A8\u8DF3\u5230\u6700\u65B0\u8BB0\u5F55\u3002"), (stale || request.error) && /*#__PURE__*/React.createElement(Button, {
+    }, "\u6570\u636E\u5DF2\u66F4\u65B0\uFF0C\u8BF7\u70B9\u300C\u5237\u65B0\u300D\u540E\u91CD\u8BD5\u3002\u5DF2\u9009\u8BB0\u5F55\u548C\u5B8C\u5DE5\u8BB0\u5F55\u6765\u6E90\u5DF2\u4FDD\u7559\uFF0C\u4E0D\u4F1A\u81EA\u52A8\u8DF3\u5230\u6700\u65B0\u8BB0\u5F55\u3002"), (stale || request.error) && /*#__PURE__*/React.createElement(Button, {
       icon: "refresh-cw",
       disabled: downloading,
       onClick: reload
-    }, "\u660E\u786E\u5237\u65B0"), request.busy && /*#__PURE__*/React.createElement(window.WorkbenchListControls.EmptyState, {
+    }, "\u5237\u65B0"), request.busy && /*#__PURE__*/React.createElement(window.WorkbenchListControls.EmptyState, {
       kind: "loading",
       title: "\u6B63\u5728\u8BFB\u53D6\u6821\u51C6\u8BB0\u5F55"
     }), notice && /*#__PURE__*/React.createElement("p", {
@@ -201,7 +204,7 @@
     }, item.message)), /*#__PURE__*/React.createElement("div", {
       className: "ca-tools"
     }, /*#__PURE__*/React.createElement("h3", null, "\u6821\u51C6\u660E\u7EC6"), /*#__PURE__*/React.createElement("label", null, "\u6392\u5E8F", /*#__PURE__*/React.createElement("select", {
-      "aria-label": "\u6392\u5E8F\u5B57\u6BB5",
+      "aria-label": "\u6392\u5E8F\u5217",
       disabled: disabled,
       value: input.sort,
       onChange: event => change({

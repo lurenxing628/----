@@ -62,7 +62,7 @@
     }
     const choices = S.useQuery(async signal => {
       const result = await adapter.choices(signal);
-      if (!result || !result.data || !Array.isArray(result.data.parts) || !result.data.parts.every(row => B.ref(row.ref))) throw C.failure('图号目录未能正确读取。');
+      if (!result || !result.data || !Array.isArray(result.data.parts) || !result.data.parts.every(row => B.ref(row.ref))) throw C.failure('图号列表没有读到，请刷新后重试。');
       return result;
     }, [adapter], !entity);
     React.useEffect(() => {
@@ -140,7 +140,7 @@
         disabled: locked || !!review || !entity && !choices.result,
         reasonDisplay: "inline",
         reason: B.reason(context, action, source)
-      }, entity ? '保存基础信息' : '创建批次'))
+      }, entity ? '保存基础信息' : '确认新增'))
     }, /*#__PURE__*/React.createElement("form", {
       id: form,
       ref: formElement,
@@ -170,18 +170,18 @@
       icon: "refresh-cw",
       disabled: locked,
       onClick: reload
-    }, "\u91CD\u65B0\u8BFB\u53D6\u5E76\u6838\u5BF9"), review && /*#__PURE__*/React.createElement("div", {
+    }, "\u5237\u65B0\u5E76\u6838\u5BF9"), review && /*#__PURE__*/React.createElement("div", {
       className: "batch-band"
     }, /*#__PURE__*/React.createElement(Issues, {
       issues: [{
-        message: '最新资料已读回，未覆盖已填写内容。'
+        message: '已读到最新资料，您填写的内容没有被覆盖。'
       }]
     }), entity && /*#__PURE__*/React.createElement("dl", null, B.fields.map(key => /*#__PURE__*/React.createElement(React.Fragment, {
       key: key
     }, /*#__PURE__*/React.createElement("dt", null, B.fieldNames[key]), /*#__PURE__*/React.createElement("dd", null, window.BatchControls.display(key, review.data.fields[key]))))), /*#__PURE__*/React.createElement(Button, {
       onClick: acceptReview,
       disabled: locked
-    }, "\u91C7\u7528\u6700\u65B0\u8D44\u6599\u7EE7\u7EED\u7F16\u8F91"))));
+    }, "\u91C7\u7528\u6700\u65B0\u8D44\u6599"))));
   }
   function Preview({
     preview,
@@ -246,7 +246,7 @@
       key: row.ref
     }, row.sequence, " \xB7 ", row.label, " \xB7 ", B.label('status', row.status)))), /*#__PURE__*/React.createElement("td", null, preview.after.map((row, index) => /*#__PURE__*/React.createElement("div", {
       key: index
-    }, row.sequence, " \xB7 ", row.label, " \xB7 \u6362\u578B ", window.WorkbenchFormat.hours(row.setup_hours, ENTERED_HOURS), " / \u5355\u4EF6 ", window.WorkbenchFormat.hours(row.unit_hours, ENTERED_HOURS), " / \u5468\u671F ", window.WorkbenchFormat.number(row.external_days, ENTERED_DAYS)))))))), action === 'sync_confirm' && /*#__PURE__*/React.createElement("p", null, "\u5237\u65B0\u4F1A\u66FF\u6362\u73B0\u6709\u5DE5\u5E8F\u53CA\u8D44\u6E90\u8865\u5145\uFF1B\u7F3A\u5931\u5DE5\u65F6\u4FDD\u7559\u672A\u586B\u5199\uFF0C\u5DF2\u6709\u8BA1\u5212\u6216\u6267\u884C\u5F15\u7528\u65F6\u4E0D\u80FD\u5237\u65B0\u3002"), /*#__PURE__*/React.createElement(Issues, {
+    }, row.sequence, " \xB7 ", row.label, " \xB7 \u6362\u578B ", window.WorkbenchFormat.hours(row.setup_hours, ENTERED_HOURS), " / \u5355\u4EF6 ", window.WorkbenchFormat.hours(row.unit_hours, ENTERED_HOURS), " / \u5468\u671F ", window.WorkbenchFormat.number(row.external_days, ENTERED_DAYS)))))))), action === 'sync_confirm' && /*#__PURE__*/React.createElement("p", null, "\u5237\u65B0\u4F1A\u66FF\u6362\u73B0\u6709\u5DE5\u5E8F\u548C\u8D44\u6E90\u8865\u5145\uFF1B\u7F3A\u5931\u5DE5\u65F6\u4FDD\u7559\u672A\u586B\u5199\u3002\u5DF2\u88AB\u8BA1\u5212\u6216\u62A5\u5DE5\u8BB0\u5F55\u7528\u5230\u7684\u6279\u6B21\u4E0D\u80FD\u5237\u65B0\u3002"), /*#__PURE__*/React.createElement(Issues, {
       issues: preview.warnings || []
     }), /*#__PURE__*/React.createElement(ErrorBox, {
       error: error

@@ -24,16 +24,16 @@
     ready_status: '齐套状态',
     due_date: '交期',
     planned_finish: '计划完工',
-    delay_days: '预计晚交天数',
+    delay_days: '预计超期天数',
     planned_start: '正式安排开始',
     planned_end: '正式安排结束',
     first_actual_start: '首次实际开始',
     confirmed_finish: '确认完工时间',
     finish_deviation_minutes: '完工偏差（分钟）',
     overlap_hours: '停机重叠（小时）',
-    delay_after_reschedule_hours: '重排后延期（小时）',
+    delay_after_reschedule_hours: '重排后超期（小时）',
     execution_state: '执行状态',
-    data_quality: '事实完整性',
+    data_quality: '记录完整性',
     hours: '工时依据',
     effective_processing_hours: '有效加工小时',
     quota_processing_hours: '定额加工小时',
@@ -56,7 +56,7 @@
     quantity: '数量',
     risk: '风险判断',
     active: '当前是否存在',
-    subject: '对象',
+    subject: '涉及记录',
     note: '备注',
     processing_hours: '加工小时',
     available: '是否可用',
@@ -67,20 +67,20 @@
     yes: '已齐套',
     no: '未齐套',
     partial: '部分完成',
-    unreported: '尚未报工',
-    started: '已开始',
+    unreported: '待报工',
+    started: '已开工',
     complete: '完整',
     paused: '已暂停',
     exception: '异常',
     incomplete: '尚不完整',
     invalid: '待核对',
-    legacy: '旧事实需核对',
+    legacy: '旧记录需核对',
     available: '已读取',
     unknown: '未知',
     missing: '缺少来源',
     unavailable: '无法读取',
     on_time: '预计准时',
-    overdue: '预计晚交',
+    overdue: '预计超期',
     complete_report_processing_hours_vs_operation_unit_hours_times_target: '完整报工加工工时与单件定额乘以目标数量对照'
   };
   // Only diagnostics and opaque references fold into the reference summary. Business identifiers such as
@@ -139,13 +139,13 @@
         '正式计划编号': source.plan_ref,
         '批次编号': source.batch_ref
       }
-    }), source.kind === 'outsourcing_receipt' && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("h4", null, "\u539F\u7269\u6D41\u767B\u8BB0\u4E8B\u5B9E"), source.receipt && window.OutsourcingControls ? /*#__PURE__*/React.createElement("div", {
+    }), source.kind === 'outsourcing_receipt' && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("h4", null, "\u7269\u6D41\u767B\u8BB0\u8BB0\u5F55"), source.receipt && window.OutsourcingControls ? /*#__PURE__*/React.createElement("div", {
       className: "outsourcing-live"
     }, /*#__PURE__*/React.createElement(window.OutsourcingStyles, null), /*#__PURE__*/React.createElement(window.OutsourcingControls.Facts, {
       facts: source.receipt
     })) : /*#__PURE__*/React.createElement("div", {
       className: "dy-note warning"
-    }, "\u539F\u767B\u8BB0\u5F53\u524D\u65E0\u6CD5\u6838\u5BF9\uFF0C\u672A\u63A8\u5B9A\u53D1\u51FA\u6216\u56DE\u5382\u3002")), source.requirements && /*#__PURE__*/React.createElement(Structure, {
+    }, "\u8FD9\u6761\u7269\u6D41\u767B\u8BB0\u73B0\u5728\u8BFB\u4E0D\u5230\uFF0C\u53D1\u51FA\u548C\u56DE\u5382\u65F6\u95F4\u90FD\u6309\u672A\u77E5\u5904\u7406\u3002")), source.requirements && /*#__PURE__*/React.createElement(Structure, {
       title: "\u7269\u6599\u9700\u6C42",
       value: source.requirements
     }), e && /*#__PURE__*/React.createElement(Structure, {
@@ -160,7 +160,7 @@
       title: "\u52A0\u5DE5\u5DE5\u65F6\u4F9D\u636E",
       value: source.hours
     }), source.downtimes && /*#__PURE__*/React.createElement(Structure, {
-      title: "\u505C\u673A\u7A97\u53E3\u4F9D\u636E",
+      title: "\u505C\u673A\u65F6\u6BB5\u4F9D\u636E",
       value: source.downtimes
     }), source.data_gaps && /*#__PURE__*/React.createElement(Issues, {
       issues: source.data_gaps

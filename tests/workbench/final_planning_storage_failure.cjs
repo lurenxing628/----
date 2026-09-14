@@ -32,18 +32,18 @@ async function candidateStorageFailure(page, report, h, flush) {
     await h.button('采用方案', page.locator('[data-run-adoption-action]')).click();
     const dialog = page.getByRole('dialog', { name: '确认正式采用', exact: true });
     await dialog.getByLabel('采用原因', { exact: true }).fill('Private native storage failure');
-    await dialog.getByLabel('声明人', { exact: true }).fill('D acceptance');
+    await dialog.getByLabel('经办人', { exact: true }).fill('D acceptance');
     await dialog.getByRole('checkbox').check();
     const quota = await fillNativeStorage(page);
     try {
       await h.button('确认正式采用', dialog).click();
-      await dialog.getByText('无法保存采用恢复记录，未开始新的采用，请保留当前页面。', { exact: true }).waitFor();
+      await dialog.getByText('存不下采用的操作记录，没有开始新的采用。请重新打开页面。', { exact: true }).waitFor();
       assert(await h.button('确认正式采用', dialog).isDisabled());
       assert.equal(await dialog.getByLabel('采用原因', { exact: true }).inputValue(), 'Private native storage failure');
       assert.equal(await page.evaluate(() => localStorage.getItem('aps_workbench_candidate_adoption_pending_v1')), null);
       await h.shot('candidate-native-storage-refused');
     } finally { await releaseNativeStorage(page, quota); }
-    await h.button('重读恢复记录', dialog).click(); await flush();
+    await h.button('刷新上次操作记录', dialog).click(); await flush();
     await h.button('取消', dialog).click(); await dialog.waitFor({ state: 'hidden' });
     assert(!report.requests.slice(before).some(row => row.method === 'POST' && row.url.endsWith('/adopt')));
     report.candidate_native_storage = { ...quota, no_adoption_sent: true };
@@ -59,7 +59,7 @@ async function trialStorageFailure(page, report, h, flush) {
     const before = report.requests.length, quota = await fillNativeStorage(page);
     try {
       await h.button('保存调整', detail).click();
-      await page.getByText('无法保存试调请求恢复记录，本次未发送。', { exact: true }).first().waitFor();
+      await page.getByText('存不下上次操作记录，这次没有提交。请重新打开页面。', { exact: true }).first().waitFor();
       assert.equal(await page.getByLabel('调整开工', { exact: true }).inputValue(), '2026-09-09T13:15');
       assert.equal(await page.evaluate(() => localStorage.getItem('aps_workbench_trial_pending_v1')), null);
       assert(await h.button('保存调整', detail).isDisabled());
@@ -75,7 +75,7 @@ async function trialStorageFailure(page, report, h, flush) {
     await h.button('取消编辑', detail).click();
     await h.button('放弃未保存内容并继续', discard).click(); await discard.waitFor({ state: 'hidden' });
     assert.equal(await page.getByLabel('调整开工', { exact: true }).count(), 0);
-    await h.button('重读恢复记录与当前内容').click(); await flush();
+    await h.button('刷新试调内容和操作记录').click(); await flush();
     assert(report.requests.slice(before).every(row => row.method === 'GET'));
     const latest = h.last(row => row.draft_ref === report.draft_ref && row.tasks);
     const task = latest.tasks.find(row => row.sequence === 20 && row.piece_id === 'item-B');

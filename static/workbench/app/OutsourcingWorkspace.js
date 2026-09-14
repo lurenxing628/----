@@ -55,7 +55,7 @@
       className: "os-tools"
     }, /*#__PURE__*/React.createElement(Button, {
       icon: "refresh-cw",
-      "aria-label": "\u660E\u786E\u5237\u65B0\u539F\u767B\u8BB0\u5386\u53F2",
+      "aria-label": "\u5237\u65B0\u767B\u8BB0\u5386\u53F2",
       busy: read.loading,
       onClick: reload
     }), /*#__PURE__*/React.createElement(Button, {
@@ -66,7 +66,7 @@
       error: read.error
     }), read.loading && /*#__PURE__*/React.createElement(EmptyState, {
       kind: "loading",
-      title: "\u6B63\u5728\u8BFB\u53D6\u539F\u767B\u8BB0\u548C\u540C\u4E00\u5FEB\u7167\u5386\u53F2"
+      title: "\u6B63\u5728\u8BFB\u53D6\u8FD9\u6761\u767B\u8BB0\u548C\u5B83\u7684\u5386\u53F2"
     }), item && /*#__PURE__*/React.createElement("div", {
       "data-outsourcing-detail": item.outsourcing_ref
     }, /*#__PURE__*/React.createElement(P.Target, {
@@ -79,10 +79,10 @@
       className: "os-heading"
     }, /*#__PURE__*/React.createElement("span", {
       className: "os-muted"
-    }, "\u6570\u636E\u622A\u81F3 ", P.when(result.meta.as_of), " \xB7 \u5DE5\u5382\u672C\u5730\u65F6\u95F4"), /*#__PURE__*/React.createElement(Button, {
+    }, "\u6570\u636E\u622A\u81F3 ", P.when(result.meta.as_of)), /*#__PURE__*/React.createElement(Button, {
       icon: "square-pen",
       disabled: blocked,
-      reason: !item.can_preview ? '原来源已变化，历史保留，不能改绑新对象。' : '',
+      reason: !item.can_preview ? '来源已经变化，历史仍然保留，不能改绑到其他工序。' : '',
       onClick: () => onEdit(item)
     }, "\u6838\u5B9E / \u66F4\u6B63\u767B\u8BB0")), data.history.items.map((h, i) => /*#__PURE__*/React.createElement("details", {
       className: "os-history",
@@ -93,7 +93,7 @@
       before: h.before
     }), /*#__PURE__*/React.createElement("p", null, h.reason), /*#__PURE__*/React.createElement("div", {
       className: "os-muted"
-    }, "\u7CFB\u7EDF\u8BB0\u5F55\u4EBA ", h.local_operator), /*#__PURE__*/React.createElement(window.WorkbenchReference, {
+    }, "\u8BB0\u5F55\u4EBA ", h.local_operator), /*#__PURE__*/React.createElement(window.WorkbenchReference, {
       entries: {
         '历史编号': h.fact_ref
       }
@@ -160,7 +160,7 @@
     }
     return /*#__PURE__*/React.createElement("section", {
       className: "outsourcing-live",
-      "aria-label": "\u771F\u5B9E\u5916\u534F\u767B\u8BB0",
+      "aria-label": "\u5916\u534F\u767B\u8BB0",
       "data-outsourcing-workspace": true,
       "data-ready": !!data
     }, /*#__PURE__*/React.createElement(window.OutsourcingStyles, null), /*#__PURE__*/React.createElement("div", {
@@ -179,7 +179,7 @@
       value: k
     }, label)))), /*#__PURE__*/React.createElement(Button, {
       icon: "refresh-cw",
-      "aria-label": "\u660E\u786E\u5237\u65B0\u5916\u534F\u767B\u8BB0",
+      "aria-label": "\u5237\u65B0\u5916\u534F\u767B\u8BB0",
       busy: read.loading,
       disabled: command.busy,
       onClick: reload
@@ -190,28 +190,28 @@
       onClick: () => setDialog({
         item: null
       })
-    }, "\u65B0\u5EFA\u5916\u534F\u767B\u8BB0"))), /*#__PURE__*/React.createElement(ErrorBox, {
+    }, "\u65B0\u589E\u5916\u534F\u767B\u8BB0"))), /*#__PURE__*/React.createElement(ErrorBox, {
       error: command.storageError
     }), command.storageError && /*#__PURE__*/React.createElement(Button, {
       icon: "refresh-cw",
       onClick: command.sync
-    }, "\u91CD\u8BFB\u539F\u5916\u534F\u8BF7\u6C42\u8BB0\u5F55"), command.saved && /*#__PURE__*/React.createElement("div", {
+    }, "\u5237\u65B0\u4E0A\u6B21\u64CD\u4F5C\u8BB0\u5F55"), command.saved && /*#__PURE__*/React.createElement("div", {
       className: "os-note warning"
     }, /*#__PURE__*/React.createElement("div", {
       className: "os-heading"
-    }, /*#__PURE__*/React.createElement("span", null, command.saved.phase === 'pending' ? '存在未核实的原外协请求，不可换 key 重做。' : '原外协回执待完成核实。'), /*#__PURE__*/React.createElement(Button, {
+    }, /*#__PURE__*/React.createElement("span", null, command.saved.phase === 'pending' ? '上次外协登记还没确认结果，不能重新提交。' : '上次外协登记的结果已经出来了，请点「完成」。'), /*#__PURE__*/React.createElement(Button, {
       icon: "history",
       onClick: () => setDialog({
         item: null
       })
-    }, command.saved.phase === 'confirmed' ? '查看已确认外协回执' : '核实原外协请求'))), /*#__PURE__*/React.createElement(ErrorBox, {
+    }, command.saved.phase === 'confirmed' ? '查看已确认的结果' : '查询上次登记结果'))), /*#__PURE__*/React.createElement(ErrorBox, {
       error: read.error
     }), read.loading && /*#__PURE__*/React.createElement(EmptyState, {
       kind: "loading",
-      title: "\u6B63\u5728\u8BFB\u53D6\u5916\u534F\u771F\u5B9E\u767B\u8BB0"
+      title: "\u6B63\u5728\u8BFB\u53D6\u5916\u534F\u767B\u8BB0"
     }), data && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
       className: "os-muted"
-    }, "\u6570\u636E\u622A\u81F3 ", P.when(result.meta.as_of), " \xB7 \u5DE5\u5382\u672C\u5730\u65F6\u95F4"), /*#__PURE__*/React.createElement("div", {
+    }, "\u6570\u636E\u622A\u81F3 ", P.when(result.meta.as_of)), /*#__PURE__*/React.createElement("div", {
       className: "os-scroll os-register-scroll wb-table-shell wb-table-frame",
       "data-sticky-head": true,
       "data-sticky-actions": true
@@ -254,7 +254,7 @@
     }, "\u8BE6\u60C5"))))))), !data.items.length && /*#__PURE__*/React.createElement(EmptyState, {
       kind: q.status === 'all' ? 'empty' : 'filtered',
       title: data.page.total ? '当前页没有登记' : '当前筛选没有外协登记',
-      hint: "\u53EF\u4EE5\u8C03\u6574\u7B5B\u9009\u67E5\u770B\u5DF2\u6709\u767B\u8BB0\uFF0C\u4E5F\u53EF\u5728\u6709\u771F\u5B9E\u5916\u534F\u5DE5\u5E8F\u65F6\u65B0\u5EFA\u767B\u8BB0\u3002",
+      hint: "\u53EF\u4EE5\u8C03\u6574\u7B5B\u9009\u67E5\u770B\u5DF2\u6709\u767B\u8BB0\uFF1B\u6709\u53EF\u767B\u8BB0\u7684\u5916\u534F\u5DE5\u5E8F\u65F6\u4E5F\u53EF\u4EE5\u65B0\u589E\u767B\u8BB0\u3002",
       action: q.status !== 'all' ? /*#__PURE__*/React.createElement(Button, {
         disabled: read.loading,
         onClick: () => change({
@@ -298,7 +298,7 @@
     onUpdated
   }) {
     if (batchRef !== undefined && !C.ref(batchRef) || outsourcingRef !== undefined && !C.ref(outsourcingRef)) return /*#__PURE__*/React.createElement(ErrorBox, {
-      error: new Error('外协登记上下文不是有效的原对象引用。')
+      error: new Error('本页数据已过期，请刷新后重试。')
     });
     return /*#__PURE__*/React.createElement(Content, {
       key: (batchRef || '') + ':' + (outsourcingRef || ''),

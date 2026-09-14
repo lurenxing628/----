@@ -135,7 +135,7 @@ function inspectCurrentPage(httpStatus) {
   function multilineTableComputedOk(selector) {
     const table = document.querySelector(selector);
     if (!visible(table)) return false;
-    const logHeaders = ['工厂本地时间', '类型', '状态', '级别', '摘要 / 来源', '详情'];
+    const logHeaders = ['时间', '类型', '状态', '级别', '摘要 / 来源', '详情'];
     const headers = [...table.querySelectorAll('thead th')];
     const fixedLogHeaders = selector === '.sm-logs-table' && headers.length === logHeaders.length
       && headers.every((cell, index) => cell.textContent.trim() === logHeaders[index]);

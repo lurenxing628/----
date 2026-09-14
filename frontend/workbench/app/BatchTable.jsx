@@ -43,7 +43,7 @@
         {['priority', 'ready_status', 'status'].map(key => <td key={key}><span className={'pill ' + (key === 'ready_status' ? row.fields[key] === 'yes' ? 'ok' : 'warn' : key === 'priority' ? row.fields[key] === 'normal' ? 'off' : 'warn' : row.status === 'completed' ? 'ok' : row.status === 'processing' ? 'warn' : 'off')}>{B.label(key, key === 'status' ? row.status : row.fields[key])}</span></td>)}
         <td className="wb-col-actions"><div className="batch-head"><Button icon="square-pen" onClick={() => onOpen(row.ref)} disabled={disabled}>查看/编辑</Button><Button icon="x" className="btn danger" aria-label={'删除批次 ' + row.business_code} onClick={() => onDelete(row)} disabled={disabled} reasonDisplay="tooltip" reason={B.reason(row.write_context, 'delete', 'production')} /></div></td>
       </tr>)}{!rows.length && <tr><td colSpan={10}><window.WorkbenchControls.EmptyState kind={loading ? 'loading' : error ? 'error' : filtered ? 'filtered' : 'empty'} error={error}
-        title={loading ? '正在读取批次…' : error || filtered ? undefined : '暂无批次'} action={error ? <Button onClick={onRetry}>重新读取</Button> : filtered ? <Button onClick={onClear}>清除筛选</Button> : undefined} /></td></tr>}</tbody>
+        title={loading ? '正在读取批次…' : error || filtered ? undefined : '暂无批次'} action={error ? <Button onClick={onRetry}>刷新</Button> : filtered ? <Button onClick={onClear}>清除筛选</Button> : undefined} /></td></tr>}</tbody>
     </table></div>;
   }
   BatchTable.ColumnFilter = ColumnFilter;

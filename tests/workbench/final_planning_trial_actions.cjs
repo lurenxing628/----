@@ -91,15 +91,15 @@ async function trialActions(page, ready, report, h, flush) {
     assert(!report.requests.some(row => /\/discard$/.test(row.url)));
   });
   await action(['WBP-TRIAL-007.save-scenario', 'WBP-TRIAL-011.csv', 'WBP-TRIAL-011.raw'], async () => {
-    await button('保存场景').click(); const dialog = page.getByRole('dialog');
+    await button('保存试调方案').click(); const dialog = page.getByRole('dialog');
     report.scenario_name = 'D final planning ' + report.width + ' ' + report.theme;
-    await dialog.getByLabel('场景名称', { exact: true }).fill(report.scenario_name);
-    await dialog.getByRole('checkbox', { name: '确认保存完整场景，冲突和未排工序一并保留', exact: true }).check();
-    await button('确认保存场景', dialog).click();
+    await dialog.getByLabel('试调方案名称', { exact: true }).fill(report.scenario_name);
+    await dialog.getByRole('checkbox', { name: '确认保存完整试调方案，冲突和未排工序一并保留', exact: true }).check();
+    await button('确认保存试调方案', dialog).click();
     await page.locator('[data-open-kind="scenario"] .tt-main').waitFor(); await flush();
     report.scenario_ref = await page.locator('[data-trial-workspace]').getAttribute('data-open-ref');
     report.scenario = last(data => data.scenario_ref === report.scenario_ref && data.tasks);
-    await h.caption(report.scenario_ref, '已存场景预览');
+    await h.caption(report.scenario_ref, '已保存的试调方案');
     for (const name of ['导出对比', '导出原始数据']) {
       const pending = page.waitForEvent('download'); await button(name).click(); const file = await pending;
       const destination = path.join(ready.root, 'downloads', file.suggestedFilename()); await file.saveAs(destination);
@@ -121,8 +121,8 @@ async function trialActions(page, ready, report, h, flush) {
     assert.equal(await page.locator('[data-trial-workspace]').getAttribute('data-open-ref'), report.scenario_ref);
     assert.deepEqual(last(data => data.scenario_ref === report.scenario_ref && data.tasks).tasks, report.scenario.tasks);
     await page.locator('.trial-adoption-action').getByRole('button').first().click();
-    const dialog = page.getByRole('dialog'); await button('查询原请求', dialog).click();
-    await button('进入正式方案', dialog).waitFor(); await shot('original-receipt');
+    const dialog = page.getByRole('dialog'); await button('查询结果', dialog).click();
+    await button('进入正式计划', dialog).waitFor(); await shot('original-receipt');
     await button('关闭', dialog.locator('.modal-f')).click();
     await button('返回方案').click(); await page.locator('[data-plan-workspace] .plan-main').waitFor(); await flush();
     assert.equal(last(data => data.plan && data.tasks).plan.plan_ref, report.first_official.plan.plan_ref);
@@ -155,7 +155,7 @@ async function trialActions(page, ready, report, h, flush) {
       assert.equal(closed.blocked_reasons.at(-1).code, 'draft_closed');
       assert(closed.blocked_reasons.at(-1).message.length > 0);
     }
-    assert(await button('放弃草稿').isDisabled()); assert(await button('保存场景').isDisabled());
+    assert(await button('放弃草稿').isDisabled()); assert(await button('保存试调方案').isDisabled());
     report.discarded_draft = discarded;
     await page.reload(); await page.locator('[data-trial-workspace] .tt-main').waitFor(); await flush();
     assert.equal(await page.locator('[data-trial-workspace]').getAttribute('data-open-ref'), draft.draft_ref);

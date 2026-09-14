@@ -19,7 +19,7 @@
         || typeof payload.meta.request_ref !== 'string' || !payload.meta.request_ref
         || typeof payload.meta.as_of !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(payload.meta.as_of)
         || !payload.data || typeof payload.data !== 'object' || Array.isArray(payload.data))
-      throw new Error('本机工作台数据协议不匹配，未使用样例替代。');
+      throw new Error('读到的数据不完整，页面没有改动。请刷新后重试。');
     return payload;
   }
   async function read(url, signal) {

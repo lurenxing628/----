@@ -102,7 +102,7 @@
       }
     })), busy && /*#__PURE__*/React.createElement("p", {
       role: "status"
-    }, "\u6B63\u5728\u6838\u5BF9\u539F\u59CB\u6587\u4EF6\u548C\u73B0\u573A\u4E8B\u5B9E\u2026"), preview && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+    }, "\u6B63\u5728\u6838\u5BF9\u6587\u4EF6\u548C\u73B0\u573A\u8BB0\u5F55\u2026"), preview && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
       className: "field-files-summary"
     }, [['total', '行数'], ['changed', '变更'], ['unchanged', '重复'], ['blank', '空白'], ['rejected', '问题']].map(([key, label]) => /*#__PURE__*/React.createElement("span", {
       key: key

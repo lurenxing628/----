@@ -20,7 +20,7 @@ async function exercise(p, phase) {
       p.read(async () => {}, list),
       p.read(() => page.getByRole('button', { name: label, exact: true }).click(), endpoint)
     ]);
-    await page.getByText('已保存并重读最新报工。', { exact: true }).waitFor();
+    await page.getByText('已保存并刷新最新报工。', { exact: true }).waitFor();
     await page.getByRole('table', { name: '逐次报工记录', exact: true }).waitFor();
     return { after: response, saved };
   };
@@ -51,10 +51,10 @@ async function exercise(p, phase) {
     const metrics = await page.locator('.field-metrics').innerText();
     assert.equal(await page.locator('.field-metrics > span').count(), 1);
     assert.equal(await page.locator('[data-field-state-count]').count(), 7);
-    for (const label of ['待报工', '已登记开工', '部分完成', '已完工']) assert(!metrics.includes(label));
-    assert(metrics.includes('累计实报工时') && metrics.includes('未知') && metrics.includes('已知小计 3 h'));
+    for (const label of ['待报工', '已开工', '部分完成', '已完工']) assert(!metrics.includes(label));
+    assert(metrics.includes('累计实报工时') && metrics.includes('未知') && metrics.includes('已知小计 3 小时'));
     assert.deepEqual(initial.data.summary.state_counts, { complete: 1, exception: 0, partial: 1, paused: 1, started: 1, unreported: 29 });
-    for (const [state, label] of [['unreported', '待报工'], ['started', '已登记开工'], ['partial', '部分完成'],
+    for (const [state, label] of [['unreported', '待报工'], ['started', '已开工'], ['partial', '部分完成'],
       ['paused', '已暂停'], ['exception', '异常'], ['complete', '已完工'], ['all', '全部']]) {
       const result = await p.read(() => page.getByRole('group', { name: '报工状态' }).getByRole('button', { name: label, exact: true }).click(), list);
       if (state === 'all') assert.equal(Object.prototype.hasOwnProperty.call(result.data.scope, 'state'), false);
@@ -85,7 +85,7 @@ async function exercise(p, phase) {
   await p.step(['WBP-FIELD-006', 'WBP-FIELD-008', 'WBP-FIELD-010'], 'keyboard-create-start-only-unknown-not-zero', async () => {
     await page.getByRole('button', { name: '新增本次报工', exact: true }).click();
     await page.getByLabel('实际开工', { exact: true }).fill('2026-09-02T08:00');
-    await page.getByRole('button', { name: '清空本次实际完工', exact: true }).click();
+    await page.getByRole('button', { name: '清除本次实际完工', exact: true }).click();
     const { saved, after } = await saveAndRead('保存报工', detail + '/reports');
     const report = after.data.tasks.find(row => row.task_ref === taskRef).execution.reports.find(row => row.report_ref === saved.data.rows[0].report_ref);
     p.report.created = report; p.report.receipts = [saved];
@@ -100,7 +100,7 @@ async function exercise(p, phase) {
     await page.getByRole('button', { name: '补齐 ' + p.report.created.report_no, exact: true }).click();
     await page.getByRole('spinbutton', { name: '本次完成数量', exact: true }).fill('3');
     await page.getByLabel('本次实际完工', { exact: true }).fill('2026-09-02T09:00');
-    await page.getByRole('spinbutton', { name: '有效工时 (h)', exact: true }).fill('0.75');
+    await page.getByRole('spinbutton', { name: '有效工时（小时）', exact: true }).fill('0.75');
     await p.choose('实际设备', seed.machine_ref); await p.choose('实际人员', seed.operator_ref);
     await page.getByLabel('作业备注', { exact: true }).fill('三件首批真实报工');
     await page.getByLabel('补齐或更正原因', { exact: true }).fill('根据原始报工单补齐');
@@ -113,7 +113,7 @@ async function exercise(p, phase) {
     const reason = page.getByLabel('补齐或更正原因', { exact: true });
     assert.equal(await reason.getAttribute('required'), '');
     await page.getByRole('spinbutton', { name: '本次完成数量', exact: true }).fill('2');
-    await page.getByRole('spinbutton', { name: '有效工时 (h)', exact: true }).fill('0.5');
+    await page.getByRole('spinbutton', { name: '有效工时（小时）', exact: true }).fill('0.5');
     await reason.fill('逐项复核有效工时');
     const { saved, after } = await saveAndRead('保存更正', '/reports/' + p.report.created.report_ref + '/correct');
     p.report.receipts.push(saved);
@@ -170,7 +170,7 @@ async function exercise(p, phase) {
     await page.getByRole('button', { name: '新增本次报工', exact: true }).click();
     await page.getByLabel('实际开工', { exact: true }).fill('2026-09-02T10:00');
     await page.getByLabel('本次实际完工', { exact: true }).fill('2026-09-02T12:00');
-    await page.getByRole('spinbutton', { name: '有效工时 (h)', exact: true }).fill('1.5');
+    await page.getByRole('spinbutton', { name: '有效工时（小时）', exact: true }).fill('1.5');
     await page.locator('.field-editor details > summary').click();
     await p.choose('实际设备', seed.machine_ref); await p.choose('实际人员', seed.operator_ref);
     const { saved, after } = await saveAndRead('剩余全部完工', detail + '/reports');

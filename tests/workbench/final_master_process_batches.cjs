@@ -16,8 +16,8 @@ const anchor = '  await page.goto(ready.resource_url); await page.locator(\'.hb-
 assert.equal(original.split(anchor).length, 2, 'Expected one explicit fresh-entry setup in the original probe');
 const replacement = '  p.step(\'goto\', \'about:blank\', \'Independent scenario; F5 restoration is tested by final_master_context_restore\');\n'
   + '  await page.goto(\'about:blank\');\n' + anchor;
-const oldReceipt = 'd.getByText(/已取得原文件请求的完成回执/)';
-const newReceipt = 'd.getByText(kind === \'hours\' ? \'已核实原文件回执；导入不代替工时阶段的人工确认。\' : \'已取得原文件请求的完成回执，工艺确认状态以重新读取的详情为准。\', {exact: true})';
+const oldReceipt = 'd.getByText(/文件导入已完成|已查到文件导入结果/)';
+const newReceipt = 'd.getByText(kind === \'hours\' ? \'已查到文件导入结果；导入不代替工时阶段的人工确认。\' : \'文件导入已完成；工艺确认状态以刷新后的详情为准。\', {exact: true})';
 assert.equal(original.split(oldReceipt).length, 2, 'Expected one original receipt label assertion');
 const oldSupport = "require('./migrated_process_batch_support.cjs')", newSupport = "require('./final_master_process_support.cjs')";
 assert.equal(original.split(oldSupport).length, 2);

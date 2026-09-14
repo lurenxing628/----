@@ -21,10 +21,10 @@
   }
   function toggleKeys(value, changed, enabled) {
     if (!Array.isArray(changed) || changed.some(key => typeof key !== 'string' || !keyPattern.test(key)))
-      throw C.failure('列值标识无效，未改变筛选。');
+      throw C.failure('列值编号无效，筛选没有改动。');
     const selected = rule(value), keys = new Set(selected.values);
     changed.forEach(key => { if ((selected.mode === 'include') === enabled) keys.add(key); else keys.delete(key); });
-    if (keys.size > 50000) throw C.failure('本次选择会使本列筛选超过 50000 个值，未改变原条件。请先清除或减少已选范围。');
+    if (keys.size > 50000) throw C.failure('本次选择会使本列筛选超过 50000 个值，原条件没有改动。请先清除或减少已选范围。');
     return { mode: selected.mode, values: Array.from(keys).sort() };
   }
   function groupState(value, keys) {
@@ -54,9 +54,9 @@
       || !['snapshot_ref', 'request_ref', 'as_of'].every(key => typeof meta[key] === 'string' && meta[key])
       || !Array.isArray(raw.warnings) || !raw.warnings.every(row => C.object(row) && typeof row.message === 'string')
       || !C.object(data) || data.column !== request.column || data.basis !== 'toolbar_scope';
-    if (invalid) throw C.failure('列值响应不完整，不能将它当作空列表。请回到首页重新读取。');
+    if (invalid) throw C.failure('读到的列值不完整，没有当成空列表。请回到第 1 页重新查询。');
     if (request.snapshot_ref && meta.snapshot_ref !== request.snapshot_ref)
-      throw C.failure('列值快照已经变化，未混用不同页的数据。请回到首页重新读取。');
+      throw C.failure('列值已经更新，没有混用不同页的数据。请回到第 1 页重新查询。');
     return data;
   }
   function facets(raw, request) {
@@ -64,12 +64,12 @@
     const invalid = !count(data.row_count) || !C.object(page) || page.number !== request.page || page.size !== request.size || !count(page.total)
       || page.pages !== Math.max(1, Math.ceil(page.total / page.size)) || page.number > page.pages
       || !Array.isArray(data.options) || data.options.length !== Math.min(page.size, Math.max(0, page.total - (page.number - 1) * page.size));
-    if (invalid) throw C.failure('列值响应不完整，不能将它当作空列表。请回到首页重新读取。');
+    if (invalid) throw C.failure('读到的列值不完整，没有当成空列表。请回到第 1 页重新查询。');
     const keys = new Set();
     for (const option of data.options) {
       if (!C.object(option) || typeof option.key !== 'string' || !keyPattern.test(option.key) || keys.has(option.key)
           || typeof option.label !== 'string' || !count(option.count))
-        throw C.failure('列值标识、文字或数量不正确，请回到首页重新读取。');
+        throw C.failure('列值编号、文字或数量不正确，请回到第 1 页重新查询。');
       keys.add(option.key);
     }
     return raw;
@@ -79,7 +79,7 @@
     if (!count(data.total) || !Array.isArray(data.keys) || data.total !== data.keys.length || data.total > 50000
         || request.expected_total !== undefined && data.total !== request.expected_total
         || data.keys.some(key => typeof key !== 'string' || !keyPattern.test(key)) || new Set(data.keys).size !== data.total)
-      throw C.failure('全部匹配值响应不完整或超过 50000 个值，未改变筛选。请回到首页重新读取。');
+      throw C.failure('全部匹配值不完整或超过 50000 个，筛选没有改动。请回到第 1 页重新查询。');
     return raw;
   }
   window.ResourceTableFilterModel = { rule, checked, toggle, toggleKeys, groupState, toolbarScope, active, signature, facets, selection };

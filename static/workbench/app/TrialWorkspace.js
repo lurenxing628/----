@@ -21,7 +21,7 @@
     const guardOwner = window.WorkbenchGuards.useDirtyGuard({
       dirty: save && !!name,
       locked: commands.busy || !!commands.key,
-      message: save ? '试调场景名称或保存确认尚未提交。' : '放弃草稿的确认尚未提交。'
+      message: save ? '试调方案名称或保存确认还没提交。' : '放弃草稿的确认还没提交。'
     });
     async function close(detail) {
       if (detail && detail.guardConfirmed === true && detail.guardOwner === guardOwner || (await window.WorkbenchGuards.confirmLeave({
@@ -29,7 +29,7 @@
       }))) onClose();
     }
     return /*#__PURE__*/React.createElement(U.Modal, {
-      title: save ? '保存试调场景' : '确认放弃草稿',
+      title: save ? '保存试调方案' : '确认放弃草稿',
       icon: save ? 'check' : 'x',
       locked: commands.busy || !!commands.key,
       guardOwner: guardOwner,
@@ -45,7 +45,7 @@
           setConfirm(false);
           onRecheck();
         }
-      }, "\u91CD\u8BFB\u8349\u7A3F"), /*#__PURE__*/React.createElement(U.Button, {
+      }, "\u5237\u65B0\u8349\u7A3F"), /*#__PURE__*/React.createElement(U.Button, {
         className: "btn primary",
         icon: save ? 'check' : 'x',
         disabled: !confirm || save && !name.trim() || commands.blocked || !data.write_context || data.write_context.capabilities['trial.' + kind] !== true,
@@ -58,13 +58,13 @@
             confirm: true
           }
         }, data.write_context.write_token)
-      }, save ? '确认保存场景' : '确认放弃'))
+      }, save ? '确认保存试调方案' : '确认放弃'))
     }, /*#__PURE__*/React.createElement("div", {
       className: "trial-modal-body"
-    }, /*#__PURE__*/React.createElement("p", null, save ? '保存后草稿关闭，场景保留全部原任务与调整记录，不改变正式计划。' : '仅关闭此草稿，不删除原计划、草稿记录和调整历史。此草稿将不能继续调整。'), /*#__PURE__*/React.createElement("p", null, "\u539F\u6765\u6E90\uFF1A", U.sourceLabel(data.base_identity), " \xB7 \u5B8C\u6574 ", data.task_count, " \u9053\u5B89\u6392 \xB7 \u5F53\u524D\u7EA6\u675F ", U.statusLabel(data.validation.constraints_status)), save && /*#__PURE__*/React.createElement("label", {
+    }, /*#__PURE__*/React.createElement("p", null, save ? '保存后草稿关闭，试调方案保留全部原任务和调整记录，不改变正式计划。' : '仅关闭此草稿，不删除原计划、草稿记录和调整历史。此草稿将不能继续调整。'), /*#__PURE__*/React.createElement("p", null, "\u539F\u6765\u6E90\uFF1A", U.sourceLabel(data.base_identity), " \xB7 \u5B8C\u6574 ", data.task_count, " \u9053\u5B89\u6392 \xB7 \u5F53\u524D\u7EA6\u675F ", U.statusLabel(data.validation.constraints_status)), save && /*#__PURE__*/React.createElement("label", {
       className: "tt-naming"
-    }, "\u573A\u666F\u540D\u79F0", /*#__PURE__*/React.createElement("input", {
-      "aria-label": "\u573A\u666F\u540D\u79F0",
+    }, "\u8BD5\u8C03\u65B9\u6848\u540D\u79F0", /*#__PURE__*/React.createElement("input", {
+      "aria-label": "\u8BD5\u8C03\u65B9\u6848\u540D\u79F0",
       maxLength: 120,
       value: name,
       onChange: e => {
@@ -78,7 +78,7 @@
       type: "checkbox",
       checked: confirm,
       onChange: e => setConfirm(e.target.checked)
-    }), save ? '确认保存完整场景，冲突和未排工序一并保留' : '确认放弃当前指定草稿'), /*#__PURE__*/React.createElement(U.ErrorBox, {
+    }), save ? '确认保存完整试调方案，冲突和未排工序一并保留' : '确认放弃当前指定草稿'), /*#__PURE__*/React.createElement(U.ErrorBox, {
       error: commands.error
     })));
   }
@@ -126,7 +126,7 @@
       locatedOrigin = React.useRef(null);
     function notifyTarget(next) {
       if (typeof onTargetChange !== 'function') return;
-      const failed = () => setError(new Error('试调对象已定位，但页面恢复地址更新失败。原记录仍在目录中，未重复写入。'));
+      const failed = () => setError(new Error('试调记录已定位，但页面地址没有更新成功。记录还在试调列表里，没有重复写入。'));
       try {
         Promise.resolve(onTargetChange({
           ...next,
@@ -181,11 +181,11 @@
     }, [originalTask.task, key]);
     window.WorkbenchCaption.useCaption(data && read.result && !read.busy && !read.error ? {
       reference: data.scenario_ref || data.draft_ref,
-      label: data.scenario_ref ? '当前场景' : '当前草稿',
+      label: data.scenario_ref ? '当前试调方案' : '当前试调草稿',
       name: data.name || U.sourceLabel(data.base_identity),
-      status: data.scenario_ref ? '已存场景预览' : '试调草稿 · ' + U.statusLabel(data.status),
+      status: data.scenario_ref ? '已保存的试调方案' : '试调草稿 · ' + U.statusLabel(data.status),
       ...(data.baseline.version !== null ? {
-        version: '创建时正式基线 v' + data.baseline.version
+        version: '建草稿时的正式计划 第 ' + data.baseline.version + ' 版'
       } : {}),
       range: '完整 ' + data.task_count + ' 道 · ' + U.timeLabel(data.time_scope.start) + ' 至 ' + U.timeLabel(data.time_scope.end)
     } : null);
@@ -205,7 +205,7 @@
         setOrigin(null);
       }
       refresh();
-      setNotice(d.scenario_ref ? '场景已保存，正在读取原场景快照；正式计划未改变。' : d.status === 'discarded' ? '指定草稿已放弃，原记录与历史仍保留。' : '试调已持久保存，正式计划未改变。');
+      setNotice(d.scenario_ref ? '试调方案已保存，正在刷新；正式计划没有改变。' : d.status === 'discarded' ? '指定草稿已放弃，原记录与历史仍保留。' : '试调已保存，正式计划没有改变。');
       notifyTarget(next);
     });
     const actions = {
@@ -216,7 +216,7 @@
       owner: guardOwner,
       dirty: false,
       locked: commands.busy || !!commands.key,
-      message: '试调原请求尚未核实，请保留当前页面。'
+      message: '上次提交的结果还没查到，请先留在这个页面。'
     });
     async function guard() {
       if (!(await window.WorkbenchGuards.confirmLeave({
@@ -235,7 +235,7 @@
     async function open(next) {
       if (!(await guard())) return;
       try {
-        C.check(!origin || !!next.draft_ref, '原任务定位只能打开草稿，不能把已存场景当作草稿。');
+        C.check(!origin || !!next.draft_ref, '原任务定位只能打开试调草稿，不能把已保存的试调方案当成草稿。');
         C.target(next);
         const canonical = next.scenario_ref ? {
           scenario_ref: next.scenario_ref
@@ -258,7 +258,7 @@
       commands.restore();
       refresh();
     }
-    const title = data ? data.name || U.sourceLabel(data.base_identity) : '尚未选择草稿或场景';
+    const title = data ? data.name || U.sourceLabel(data.base_identity) : '尚未选择试调草稿或试调方案';
     return /*#__PURE__*/React.createElement("div", {
       className: "plana trial-workspace",
       "data-trial-workspace": true,
@@ -279,13 +279,13 @@
       icon: "folder-open",
       onClick: () => setDirectory(!directory),
       "aria-expanded": directory
-    }, "\u8349\u7A3F / \u573A\u666F\u76EE\u5F55"), /*#__PURE__*/React.createElement(U.Button, {
+    }, "\u8349\u7A3F / \u8BD5\u8C03\u65B9\u6848\u5217\u8868"), /*#__PURE__*/React.createElement(U.Button, {
       icon: "plus",
       disabled: commands.blocked,
       onClick: async () => {
         if (await guard()) setModal('create');
       }
-    }, "\u65B0\u5EFA\u8BD5\u8C03"))), /*#__PURE__*/React.createElement(U.ErrorBox, {
+    }, "\u65B0\u589E\u8BD5\u8C03"))), /*#__PURE__*/React.createElement(U.ErrorBox, {
       error: error
     }), /*#__PURE__*/React.createElement(U.ErrorBox, {
       error: commands.error
@@ -297,16 +297,16 @@
       icon: "refresh-cw",
       onClick: reload,
       disabled: commands.busy
-    }, "\u91CD\u8BFB\u6062\u590D\u8BB0\u5F55\u4E0E\u5F53\u524D\u5185\u5BB9"), commands.key && /*#__PURE__*/React.createElement("section", {
+    }, "\u5237\u65B0\u8BD5\u8C03\u5185\u5BB9\u548C\u64CD\u4F5C\u8BB0\u5F55"), commands.key && /*#__PURE__*/React.createElement("section", {
       className: "tt-notice",
-      "aria-label": "\u5F85\u6838\u5B9E\u8BD5\u8C03\u8BF7\u6C42"
-    }, /*#__PURE__*/React.createElement("strong", null, "\u539F\u8BD5\u8C03\u8BF7\u6C42\u5F85\u6838\u5B9E"), /*#__PURE__*/React.createElement("p", null, commands.note || '恢复记录只包含原请求编号，尚未读取结果。'), /*#__PURE__*/React.createElement("div", {
+      "aria-label": "\u5F85\u786E\u8BA4\u7684\u8BD5\u8C03\u63D0\u4EA4"
+    }, /*#__PURE__*/React.createElement("strong", null, "\u4E0A\u6B21\u8BD5\u8C03\u63D0\u4EA4\u5F85\u786E\u8BA4"), /*#__PURE__*/React.createElement("p", null, commands.note || '本机只存了操作编号，还没读到结果。'), /*#__PURE__*/React.createElement("div", {
       className: "tt-tools"
     }, /*#__PURE__*/React.createElement(U.Button, {
       icon: "refresh-cw",
       onClick: commands.lookup,
       busy: commands.busy
-    }, "\u67E5\u8BE2\u539F\u8BF7\u6C42"), /*#__PURE__*/React.createElement(window.WorkbenchReference, {
+    }, "\u67E5\u8BE2\u7ED3\u679C"), /*#__PURE__*/React.createElement(window.WorkbenchReference, {
       value: commands.key
     }))), notice && /*#__PURE__*/React.createElement("p", {
       role: "status",
@@ -324,22 +324,22 @@
       className: "tt-heading"
     }, /*#__PURE__*/React.createElement("span", {
       className: "tt-muted"
-    }, read.busy ? '正在重新读取，写入已暂停。' : read.error ? '读取失败。下方为上次读取内容，写入已暂停。' : result ? '读取于 ' + U.timeLabel(result.meta.as_of) : ''), /*#__PURE__*/React.createElement(U.Button, {
+    }, read.busy ? '正在刷新，暂时不能提交。' : read.error ? '读取失败。下面是上次读到的内容，暂时不能提交。' : result ? '读取于 ' + U.timeLabel(result.meta.as_of) : ''), /*#__PURE__*/React.createElement(U.Button, {
       icon: "refresh-cw",
-      "aria-label": "\u91CD\u8BFB\u5F53\u524D\u8BD5\u8C03",
+      "aria-label": "\u5237\u65B0\u5F53\u524D\u8BD5\u8C03",
       busy: read.busy,
       disabled: commands.busy || !!commands.key,
       onClick: reload
     })), !data && /*#__PURE__*/React.createElement("div", {
       className: "tt-empty",
       role: "status"
-    }, read.busy ? '正在读取完整试调…' : '尚未打开试调草稿或场景'), data && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+    }, read.busy ? '正在读取完整试调…' : '尚未打开试调草稿或试调方案'), data && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
       className: "tt-heading"
     }, /*#__PURE__*/React.createElement("span", null, "\u539F\u6765\u6E90\uFF1A", U.sourceLabel(data.base_identity), " \xB7 \u5B8C\u6574 ", data.task_count, " \u9053\u5B89\u6392 \xB7 \u672A\u6392 ", data.unplanned_operations.length, " \u9053"), /*#__PURE__*/React.createElement(U.Download, {
       data: data
     })), /*#__PURE__*/React.createElement("div", {
       className: "tt-muted"
-    }, "\u521B\u5EFA\u65F6\u6B63\u5F0F\u57FA\u7EBF\uFF1A", data.baseline.plan_ref ? 'v' + data.baseline.version : '无正式基线', " \xB7 \u5BF9\u6BD4\u59CB\u7EC8\u4F7F\u7528\u539F\u8BD5\u8C03\u57FA\u7840"), /*#__PURE__*/React.createElement(window.TrialResults.Summary, {
+    }, "\u5EFA\u8349\u7A3F\u65F6\u7684\u6B63\u5F0F\u8BA1\u5212\uFF1A", data.baseline.plan_ref ? '第 ' + data.baseline.version + ' 版' : '当时还没有正式计划', " \xB7 \u5BF9\u6BD4\u59CB\u7EC8\u4F7F\u7528\u539F\u8BD5\u8C03\u57FA\u7840"), /*#__PURE__*/React.createElement(window.TrialResults.Summary, {
       data: data
     }), /*#__PURE__*/React.createElement("div", {
       className: "tt-main"
@@ -365,7 +365,7 @@
       className: "tt-footer"
     }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("strong", null, "\u6574\u4F53\u7EA6\u675F\uFF1A", U.statusLabel(data.validation.constraints_status)), /*#__PURE__*/React.createElement("div", {
       className: "tt-muted"
-    }, typeof renderAdoption === 'function' ? '保存试调不代表正式采用' : '完整场景正式采用尚未接入，正式计划未改变')), /*#__PURE__*/React.createElement("div", {
+    }, typeof renderAdoption === 'function' ? '保存试调不代表正式采用' : window.WorkbenchTerms.outcomes.unavailable)), /*#__PURE__*/React.createElement("div", {
       className: "tt-tools"
     }, /*#__PURE__*/React.createElement(U.Button, {
       icon: "x",
@@ -380,25 +380,25 @@
       onClick: async () => {
         if (await guard()) setModal('save');
       }
-    }, "\u4FDD\u5B58\u573A\u666F"), data.scenario_ref && typeof renderAdoption === 'function' ? renderAdoption({
+    }, "\u4FDD\u5B58\u8BD5\u8C03\u65B9\u6848"), data.scenario_ref && typeof renderAdoption === 'function' ? renderAdoption({
       scenarioRef: data.scenario_ref,
       data,
       onNavigate,
       disabled: actions.blocked,
       onAdopted: () => {
-        setNotice('采用结果由独立场景采用回执核实；当前仍为原场景快照。');
+        setNotice('采用结果在采用面板里确认；这里显示的还是上次读取的试调方案内容。');
         refresh();
       }
     }) : /*#__PURE__*/React.createElement(U.Button, {
       icon: "check",
-      reason: data.scenario_ref ? '完整场景正式采用尚未接入，未改变正式计划。' : '须先保存场景，再核对独立场景采用入口。'
-    }, "\u6B63\u5F0F\u91C7\u7528"))), /*#__PURE__*/React.createElement("details", {
+      reason: data.scenario_ref ? window.WorkbenchTerms.outcomes.unavailable : '请先保存试调方案，再做正式采用。'
+    }, "\u91C7\u7528\u65B9\u6848"))), /*#__PURE__*/React.createElement("details", {
       className: "tt-refs wb-ref"
-    }, /*#__PURE__*/React.createElement("summary", null, "\u7F16\u53F7\u4E0E\u8BFB\u53D6\u8303\u56F4"), /*#__PURE__*/React.createElement("div", null, "\u8349\u7A3F\uFF1A", /*#__PURE__*/React.createElement("span", {
+    }, /*#__PURE__*/React.createElement("summary", null, "\u7F16\u53F7\u4E0E\u8BFB\u53D6\u8303\u56F4"), /*#__PURE__*/React.createElement("div", null, "\u8349\u7A3F\u7F16\u53F7\uFF1A", /*#__PURE__*/React.createElement("span", {
       className: "tt-ref"
-    }, data.draft_ref)), data.scenario_ref && /*#__PURE__*/React.createElement("div", null, "\u573A\u666F\uFF1A", /*#__PURE__*/React.createElement("span", {
+    }, data.draft_ref)), data.scenario_ref && /*#__PURE__*/React.createElement("div", null, "\u8BD5\u8C03\u65B9\u6848\u7F16\u53F7\uFF1A", /*#__PURE__*/React.createElement("span", {
       className: "tt-ref"
-    }, data.scenario_ref)), /*#__PURE__*/React.createElement("div", null, "\u539F\u6765\u6E90\uFF1A", /*#__PURE__*/React.createElement("span", {
+    }, data.scenario_ref)), /*#__PURE__*/React.createElement("div", null, "\u539F\u6765\u6E90\u7F16\u53F7\uFF1A", /*#__PURE__*/React.createElement("span", {
       className: "tt-ref"
     }, Object.values(data.base)[0])), /*#__PURE__*/React.createElement("div", null, "\u5B8C\u6574\u65F6\u95F4\uFF1A", U.timeLabel(data.time_scope.start), " \u81F3 ", U.timeLabel(data.time_scope.end)))), modal === 'create' && /*#__PURE__*/React.createElement(window.TrialCatalog.Create, {
       initialBase: origin ? {

@@ -9,7 +9,7 @@
     token = v => text(v) && /^[A-Za-z0-9_-]{32}$/.test(v);
   const own = (v, k) => Object.prototype.hasOwnProperty.call(v, k);
   const shape = (v, required, optional = []) => object(v) && required.every(k => own(v, k)) && Object.keys(v).every(k => required.concat(optional).includes(k));
-  function check(value, message = '排产历史数据不完整或不一致，未显示替代结果。') {
+  function check(value, message = '读到的排产记录数据不完整，请刷新重试。') {
     if (!value) {
       const error = new Error(message);
       error.code = 'invalid_response';
@@ -28,7 +28,7 @@
   const gap = v => shape(v, ['field', 'code', 'message']) && [v.field, v.code, v.message].every(text);
   const queryKeys = ['page', 'size', 'state', 'accepted_from', 'accepted_to', 'sort', 'order', 'snapshot_ref'];
   function scope(query = {}) {
-    check(shape(query, [], queryKeys), '历史查询含未知条件，未忽略条件。');
+    check(shape(query, [], queryKeys), '查询条件里有不认识的项，没有自动忽略。请从侧栏重新打开排产记录。');
     const q = {
       page: 1,
       size: 20,
@@ -37,18 +37,18 @@
       order: 'desc',
       ...query
     };
-    check(count(q.page) && q.page >= 1 && q.page <= 1000000 && count(q.size) && q.size >= 1 && q.size <= 50 && ['all', ...states].includes(q.state) && ['accepted_at', 'started_at', 'finished_at'].includes(q.sort) && ['asc', 'desc'].includes(q.order) && (q.snapshot_ref === undefined || token(q.snapshot_ref)), '历史筛选、排序或分页条件无效。');
-    if (q.accepted_from !== undefined || q.accepted_to !== undefined) check(date(q.accepted_from) && date(q.accepted_to) && q.accepted_from <= q.accepted_to, '受理日期须成对填写，起日不得晚于止日。');
+    check(count(q.page) && q.page >= 1 && q.page <= 1000000 && count(q.size) && q.size >= 1 && q.size <= 50 && ['all', ...states].includes(q.state) && ['accepted_at', 'started_at', 'finished_at'].includes(q.sort) && ['asc', 'desc'].includes(q.order) && (q.snapshot_ref === undefined || token(q.snapshot_ref)), '筛选、排序或翻页条件无效，请重新设置后查询。');
+    if (q.accepted_from !== undefined || q.accepted_to !== undefined) check(date(q.accepted_from) && date(q.accepted_to) && q.accepted_from <= q.accepted_to, '提交日期要成对填写，起日不能晚于止日。');
     Object.keys(q).forEach(k => {
       if (q[k] === undefined) delete q[k];
     });
     return q;
   }
   function planContext(value) {
-    check(value === undefined || object(value), '返回方案的上下文无效。');
+    check(value === undefined || object(value), '返回正式计划的来源信息无效，请从侧栏重新打开。');
     const result = {};
     for (const key of ['plan_ref', 'batch_ref']) if (value && own(value, key)) {
-      check(ref(value[key]), '返回方案的永久引用无效。');
+      check(ref(value[key]), '返回正式计划的编号无效，请从侧栏重新打开。');
       result[key] = value[key];
     }
     for (const key of ['range_start', 'range_end']) if (value && own(value, key)) {
@@ -58,7 +58,7 @@
     return result;
   }
   function context(value = {}) {
-    check(shape(value, [], queryKeys.concat(['source', 'return_plan_context'])) && (value.source === undefined || value.source === 'production'), '排产历史来源或返回范围无效，未切换来源。');
+    check(shape(value, [], queryKeys.concat(['source', 'return_plan_context'])) && (value.source === undefined || value.source === 'production'), '排产记录的来源或返回范围无效，没有切换来源。请从侧栏重新打开。');
     const q = {};
     queryKeys.forEach(k => {
       if (own(value, k)) q[k] = value[k];
@@ -103,7 +103,7 @@
     const q = scope(query);
     check(shape(v, ['ok', 'schema_version', 'data', 'meta', 'warnings']) && v.ok === true && v.schema_version === 1 && shape(v.meta, ['request_ref', 'source', 'time_basis', 'snapshot_ref', 'as_of']) && /^[a-f0-9]{32}$/.test(v.meta.request_ref) && v.meta.source === 'production' && v.meta.time_basis === 'factory_local' && token(v.meta.snapshot_ref) && time(v.meta.as_of) && Array.isArray(v.warnings) && v.warnings.every(w => object(w) && text(w.code) && text(w.message)));
     if (q.snapshot_ref && q.snapshot_ref !== v.meta.snapshot_ref) {
-      const error = new Error('历史来源快照已变化，请明确重读；未混用分页结果。');
+      const error = new Error(window.WorkbenchTerms.outcomes.stale);
       error.code = 'snapshot_stale';
       throw error;
     }
@@ -140,7 +140,7 @@
           if (!response.ok) {
             const value = json ? await response.json() : null,
               e = value && value.error;
-            const error = new Error(e && text(e.message) ? e.message : '排产历史读取失败，未显示替代结果。');
+            const error = new Error(e && text(e.message) ? e.message : '排产记录读取失败，没有显示替代结果。请点「重新查询」。');
             error.code = e && text(e.code) ? e.code : 'invalid_response';
             error.status = response.status;
             throw error;
@@ -151,7 +151,7 @@
           return value;
         } catch (error) {
           if (controller.signal.aborted && !(signal && signal.aborted)) {
-            const timeout = new Error('排产历史读取超时，请重试。');
+            const timeout = new Error('排产记录读取超时，请刷新重试。');
             timeout.code = 'timeout';
             throw timeout;
           }

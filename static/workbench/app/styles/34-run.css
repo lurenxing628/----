@@ -28,7 +28,7 @@
       .preflight-workspace .pf-segment label {position:relative;min-width:0;cursor:pointer}
       .preflight-workspace .pf-segment input {position:absolute;opacity:0;width:1px;height:1px;min-width:0;min-height:0;padding:0;margin:0;border:0}
       .preflight-workspace .pf-segment span {display:flex;align-items:center;justify-content:center;min-height:30px;padding:var(--space-1);font-size:var(--font-size-1);color:var(--ui-info-muted);border-radius:var(--wb-radius-control)}
-      .preflight-workspace .pf-segment .selected span {background:var(--ui-surface);color:var(--ui-text);box-shadow:0 1px 3px var(--wb-shadow-color, var(--ui-border));font-weight:600}
+      .preflight-workspace .pf-segment .selected span {background:var(--ui-surface);color:var(--ui-text);box-shadow:var(--ui-shadow-sm);font-weight:600}
       .preflight-workspace .pf-segment input:focus-visible+span {outline:2px solid var(--ui-primary);outline-offset:2px}
       .preflight-workspace .pf-segment input:disabled+span {opacity:.5;cursor:not-allowed}
       .preflight-workspace .pf-picker {padding:var(--space-4) 0;border-bottom:1px solid var(--ui-border);background:var(--ui-surface-muted)}
@@ -68,7 +68,7 @@
       .run-job-panel .rj-name{display:flex;align-items:baseline;gap:var(--space-2) var(--space-4);flex-wrap:wrap;min-width:0}.run-job-panel .rj-id{font-size:var(--font-size-1);color:var(--ui-info-muted);min-width:0}.run-job-panel .rj-id[open]{flex-basis:100%}.run-job-panel .rj-id code{display:block;overflow-wrap:anywhere;font-size:var(--font-size-1);color:var(--ui-text)}.run-job-panel .rj-id summary,.run-job-panel .rj-identity summary{margin:0}
       .run-job-panel .pill.ok{color:var(--ui-success-text);background:var(--ui-success-bg)}.run-job-panel .pill.warn{color:var(--ui-warning-text);background:var(--ui-warning-bg)}
       .run-job-panel .rj-table{width:100%;overflow:auto}.run-job-panel table{width:100%;table-layout:fixed;border-collapse:collapse}
-      .run-job-panel th,.run-job-panel td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--ui-border);white-space:normal;overflow-wrap:anywhere;vertical-align:middle}
+      .run-job-panel th,.run-job-panel td{text-align:left;padding:var(--wb-table-cell-py) var(--wb-table-cell-px);border-bottom:1px solid var(--ui-border);white-space:normal;overflow-wrap:anywhere;vertical-align:middle}
       .run-job-panel th:first-child{width:48%}.run-job-panel th{font-size:var(--font-size-1);color:var(--ui-info-muted)}
       .run-job-panel small{display:block;font-size:var(--font-size-1);line-height:var(--wb-line-relaxed);color:var(--ui-info-muted)}.run-job-panel .rj-selected{margin-left:var(--space-2);color:var(--ui-success-text);font-size:var(--font-size-1)}
       .run-job-panel button{max-width:100%;white-space:normal}.run-job-panel .rj-refs{padding-left:26px;font-size:var(--font-size-1);line-height:1.8;overflow-wrap:anywhere}
@@ -93,7 +93,7 @@
       .run-history-workspace .rh-table .btn{width:32px;height:32px;min-width:32px;padding:0;flex:none}
       .run-history-workspace table{border-collapse:separate;border-spacing:0;table-layout:fixed;width:100%;min-width:960px}.run-history-workspace th,.run-history-workspace td{text-align:left;padding:var(--space-2) 10px;border-bottom:1px solid var(--ui-border);vertical-align:middle;white-space:normal;overflow-wrap:anywhere;line-height:var(--wb-line-relaxed)}
       .run-history-workspace th{position:sticky;top:0;z-index:var(--wb-z-sticky);background:var(--ui-surface-muted);font-size:var(--font-size-1);color:var(--ui-info-muted);font-weight:500}.run-history-workspace tbody tr:last-child td{border-bottom:0}
-      .run-history-workspace tbody tr:hover{background:var(--ui-surface-muted)}.run-history-workspace code{display:block;overflow-wrap:anywhere;font-size:var(--font-size-1);line-height:var(--wb-line-relaxed);color:var(--ui-text);margin-top:var(--space-1);font-family:ui-monospace,monospace}.run-history-workspace .rh-id{color:var(--ui-info-muted)}
+      .run-history-workspace tbody tr:hover{background:var(--ui-surface-muted)}.run-history-workspace code{display:block;overflow-wrap:anywhere;font-size:var(--font-size-1);line-height:var(--wb-line-relaxed);color:var(--ui-text);margin-top:var(--space-1);font-family:monospace}.run-history-workspace .rh-id{color:var(--ui-info-muted)}
       .run-history-workspace time,.run-history-workspace .rh-num{font-variant-numeric:tabular-nums}.run-history-workspace .rh-num{text-align:right}.run-history-workspace td.rh-num{font-size:var(--font-size-3)}
       .run-history-workspace summary{cursor:pointer;font-size:var(--font-size-1)}.run-history-workspace .rh-empty{padding:48px var(--space-3);text-align:center;border-block:1px solid var(--ui-border);line-height:1.8;color:var(--ui-info-muted)}
       .run-history-workspace .rh-empty strong{display:block;font-size:var(--font-size-3);color:var(--ui-text);margin-bottom:6px}.run-history-workspace .rh-pagination{font-size:var(--font-size-1);color:var(--ui-info-muted)}
@@ -121,7 +121,7 @@
 /* RunCandidateGantt.jsx */
 .rc-gantt{min-width:0}.rc-gantt .rc-axis{height:40px;overflow:hidden;border-bottom:1px solid var(--ui-border);position:relative;margin-left:156px}.rc-gantt .rc-tick{position:absolute;top:0;white-space:nowrap;color:var(--ui-info-muted);font-size:var(--font-size-1);line-height:18px;border-left:1px solid var(--ui-border);padding-left:var(--space-1)}
       .rc-gantt .rc-scroll{height:310px;overflow:auto;position:relative;border-bottom:1px solid var(--ui-border);outline-offset:-2px}.rc-gantt .rc-lane{position:absolute;left:0;right:0;border-bottom:1px solid var(--ui-border);height:48px}.rc-gantt .rc-lane-label{position:sticky;left:0;width:156px;height:47px;padding:7px var(--space-2);background:var(--ui-surface);border-right:1px solid var(--ui-border);z-index:var(--wb-z-sticky);font-size:var(--font-size-1);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.rc-gantt .rc-lane-label small{white-space:nowrap}.rc-gantt .rc-bar-space{position:absolute;left:156px;top:0;height:48px}
-      .rc-gantt .rc-overview{width:100%;height:32px;border-bottom:1px solid var(--ui-border)}.run-candidate-workspace .rc-tooltip{position:fixed;pointer-events:none;z-index:var(--wb-z-dropdown);max-width:350px;max-height:calc(100vh - 16px);overflow:auto;padding:10px var(--space-3);border:1px solid var(--ui-border);border-radius:var(--wb-radius-control);background:var(--ui-surface);color:var(--ui-text);white-space:pre-wrap;overflow-wrap:anywhere;font-size:var(--font-size-1);line-height:1.6;box-shadow:0 3px 12px var(--wb-shadow-color, var(--ui-border))}
+      .rc-gantt .rc-overview{width:100%;height:32px;border-bottom:1px solid var(--ui-border)}.run-candidate-workspace .rc-tooltip{position:fixed;pointer-events:none;z-index:var(--wb-z-dropdown);max-width:350px;max-height:calc(100vh - 16px);overflow:auto;padding:10px var(--space-3);border:1px solid var(--ui-border);border-radius:var(--wb-radius-control);background:var(--ui-surface);color:var(--ui-text);white-space:pre-wrap;overflow-wrap:anywhere;font-size:var(--font-size-1);line-height:1.6;box-shadow:var(--ui-shadow-md)}
 
 /* RunBaselineControls.jsx */
 .rc-gantt .rb-toggle{display:inline-flex;align-items:center;gap:var(--space-1);white-space:nowrap;font-size:var(--font-size-1);margin:0}.rc-gantt .rb-toggle input{width:14px;height:14px;min-height:14px;padding:0;margin:0;accent-color:var(--ui-primary)}
@@ -155,7 +155,7 @@
 
 /* SchedulingWorkspace.jsx */
 .scheduling-navigation{display:flex;align-items:center;flex-wrap:wrap;gap:var(--space-2);padding:0;margin-bottom:var(--space-3);min-width:0;color:var(--ui-text)}
-      .scheduling-navigation .btn[aria-pressed="true"]{color:var(--ui-primary-text,var(--ui-text));background:var(--ui-surface-selected,var(--ui-surface));border-color:var(--ui-border-strong,var(--ui-border))}
+      .scheduling-navigation .btn[aria-pressed="true"]{color:var(--ui-info-text);background:var(--ui-info-bg);border-color:var(--ui-primary)}
       .scheduling-navigation .scheduling-source{font-size:var(--font-size-1);color:var(--ui-info-muted);margin-left:auto}
 
 .pf-stepper{display:flex;gap:var(--space-3);list-style:none;margin:0;padding:var(--space-3) 0;border-bottom:1px solid var(--ui-border)}
@@ -165,8 +165,15 @@
 .pf-stepper li[aria-current=step]>span{background:var(--ui-primary-soft);border-color:var(--ui-primary)}
 .pf-stepper li[data-step-state=complete]{color:var(--ui-success-text)}
 .pf-recheck{padding:10px var(--space-3);border-left:3px solid var(--ui-warning);background:var(--ui-surface-muted);color:var(--ui-warning-text)}
-.rj-progress{display:flex;gap:var(--space-4);flex-wrap:wrap;margin:6px 0;color:var(--ui-text);font-size:var(--font-size-2)}
+/* 排产进度：第一行是阶段与计数，下面是进度条；有计数时按百分比填充，没有计数时用往返动画表示“正在算但还不知道到哪了”。 */
+.rj-progress{display:block;margin:6px 0;color:var(--ui-text);font-size:var(--font-size-2)}
+.rj-progress p{display:flex;gap:var(--space-4);flex-wrap:wrap;margin:0}
 .rj-progress span{font-variant-numeric:tabular-nums;color:var(--ui-info-muted)}
+.rj-bar{position:relative;height:6px;margin:var(--space-2) 0;border-radius:3px;background:var(--ui-surface-muted);overflow:hidden}
+.rj-bar-fill{position:absolute;top:0;bottom:0;left:0;width:0;background:var(--ui-primary);transition:width .4s ease}
+.rj-bar-indeterminate .rj-bar-fill{width:30%;animation:rj-bar-slide 1.6s ease-in-out infinite alternate}
+@keyframes rj-bar-slide{from{left:0}to{left:70%}}
+@media (prefers-reduced-motion: reduce){.rj-bar-indeterminate .rj-bar-fill{animation:none;left:0;width:100%;background:var(--ui-border)}}
 .preflight-workspace .wb-table-frame,.run-job-panel .wb-table-frame,.run-candidate-workspace .wb-table-frame{--wb-table-max-height:45vh;max-height:45vh;overflow:auto}
 .preflight-workspace .wb-table-frame th,.run-job-panel .wb-table-frame th,.run-candidate-workspace .wb-table-frame th{position:sticky;top:0;background:var(--ui-surface-muted);z-index:var(--wb-z-sticky);color:var(--ui-text)}
 .run-candidate-workspace .rc-virtual-table{min-width:0;max-width:100%;overflow:hidden}
@@ -176,3 +183,16 @@
 
 .run-history-workspace .rh-pagination>.wb-pager{width:100%}
 .run-history-workspace .rh-table{--wb-table-max-height:calc(100vh - 450px)}
+
+/* 排产检查里不可配置的规则用静态文本呈现，不再渲染成点不动的单选组。 */
+.preflight-workspace .pf-rule>.pf-fixed{grid-column:1/-1;color:var(--ui-info-muted);font-size:var(--font-size-1);line-height:var(--wb-line-relaxed)}
+/* 候选页行动区分组：导航类靠左弱化，动作类靠右并与导航类留出分隔。 */
+.run-candidate-workspace .rc-nav,.run-candidate-workspace .rc-actions{display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap;min-width:0}
+.run-candidate-workspace .rc-nav:not(:empty)+.rc-actions{margin-left:var(--space-5);padding-left:var(--space-4);border-left:1px solid var(--ui-border)}
+
+/* RunCandidateGantt legend: swatches must teach the same channels the canvas paints. */
+.rc-gantt .rc-legend{display:flex;gap:var(--space-4);flex-wrap:wrap;align-items:center;padding:var(--space-1) 0}
+.rc-legend span{display:inline-flex;align-items:center;gap:var(--space-1)}
+.rc-legend i{display:inline-block;width:22px;height:9px;flex:none;background:var(--wb-gantt-primary-fill);border:1px solid var(--wb-gantt-primary-edge)}
+.rc-legend i.rc-overlap{background:var(--wb-gantt-overlap-stripe),var(--wb-gantt-overlap-fill);border-color:var(--wb-gantt-overlap-edge)}
+.rc-legend i.rc-external{background:var(--wb-gantt-plan-fill);border-color:var(--wb-gantt-plan-edge)}

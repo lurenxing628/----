@@ -44,14 +44,16 @@
       try {
         const receipt = await api.download(result, bound, format, controller.signal);
         if (!controller.signal.aborted) {
-          if (!receipt || receipt.rows !== data.summary.total || receipt.snapshot_ref !== result.meta.snapshot_ref) throw A.failure('导出结果未核实，未报告成功。');
-          setNotice('已核对快照和数量，导出全部筛选 ' + receipt.rows + ' 项。');
+          if (!receipt || receipt.rows !== data.summary.total || receipt.snapshot_ref !== result.meta.snapshot_ref) throw A.failure('导出结果没有通过核对，没有按成功处理。');
+          setNotice('已核对数据版本和数量，导出当前筛选全部 ' + receipt.rows + ' 项。');
         }
       } catch (failure) { if (!controller.signal.aborted) { setError(failure); if (isStale(failure)) setStale(true); } }
       finally { if (downloadAbort.current === controller) { downloadAbort.current = null; setDownloading(false); } }
     }
     const disabled = request.busy || downloading || stale;
-    const viewError = selected && data && data.capabilities.view !== true ? A.failure('查看权限尚未确认，暂不能读取样本来源。') : null;
+    // 错误正文就是通用“数据已更新”句时，只保留下面带保留说明的过期提示，不重复报两遍；具体原因照常显示。
+    const shownError = request.error || error, staleOnly = !!(stale && shownError && shownError.message === window.WorkbenchTerms.outcomes.stale);
+    const viewError = selected && data && data.capabilities.view !== true ? A.failure('查看权限尚未确认，暂不能读取完工记录来源。') : null;
     return <section className="calib-workbench calibration-live" aria-label="工时定额校准" data-ready={!!data} data-source="production" data-stale={stale}>
       <C.Styles /><header className="ca-heading"><div><h2 className="wb-page-title">工时定额校准</h2><p className="ca-muted wb-page-context">模板定额与实际加工记录{result ? ' · 数据截至 ' + window.WorkbenchFormat.dateTime(result.meta.as_of) : ''}</p></div>
         <div className="ca-actions"><Button icon="refresh-cw" aria-label="刷新校准数据" busy={request.busy} disabled={downloading} onClick={reload} />
@@ -61,15 +63,15 @@
             table: { page: input.page, size: input.size, sort: input.sort, direction: input.direction }, selected, sample_ref: sampleRef, table_widths: widths } } })}>执行复盘</Button>}</div></header>
       <C.Filters value={input} onChange={change} disabled={disabled} />
       {input.part_ref && <p className="ca-muted">已限定零件来源 <Button icon="x" aria-label="清除零件限定" disabled={disabled} onClick={() => change({ part_ref: null })} /></p>}
-      <ErrorBox error={request.error || error} />
-      {stale && <p className="ca-note" role="alert">前后快照不一致，请明确刷新。已选记录和样本来源保留，不会自动跳到最新记录。</p>}
-      {(stale || request.error) && <Button icon="refresh-cw" disabled={downloading} onClick={reload}>明确刷新</Button>}
+      <ErrorBox error={staleOnly ? null : shownError} />
+      {stale && <p className="ca-note" role="alert">数据已更新，请点「刷新」后重试。已选记录和完工记录来源已保留，不会自动跳到最新记录。</p>}
+      {(stale || request.error) && <Button icon="refresh-cw" disabled={downloading} onClick={reload}>刷新</Button>}
       {request.busy && <window.WorkbenchListControls.EmptyState kind="loading" title="正在读取校准记录" />}{notice && <p role="status">{notice}</p>}
       <div className={selected ? 'wb-detail-layout' : ''}><div className="ca-list-pane">
       {data && <><div className="ca-metrics">{[['模板工序', 'total'], ['偏差 > 20%', 'over_20_percent'], ['已有建议', 'suggested'], ['数据不足', 'insufficient_data']].map(([label, key]) =>
         <div className="ca-metric" key={key}><span>{label}</span><strong>{data.summary[key]}</strong></div>)}</div>
         {data.source_constraints.map(item => <p className="ca-note" key={item.code}>{item.message}</p>)}
-        <div className="ca-tools"><h3>校准明细</h3><label>排序<select aria-label="排序字段" disabled={disabled} value={input.sort} onChange={event => change({ sort: event.target.value })}>
+        <div className="ca-tools"><h3>校准明细</h3><label>排序<select aria-label="排序列" disabled={disabled} value={input.sort} onChange={event => change({ sort: event.target.value })}>
           {Object.entries(A.sorts).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
           <label>顺序<select aria-label="排序方向" disabled={disabled} value={input.direction} onChange={event => change({ direction: event.target.value })}><option value="asc">升序</option><option value="desc">降序</option></select></label>
           <div className="ca-actions" style={{ marginLeft: 'auto' }}><label>格式<select aria-label="导出格式" value={format} disabled={disabled} onChange={event => setFormat(event.target.value)}><option value="csv">CSV</option><option value="xlsx">XLSX</option></select></label>

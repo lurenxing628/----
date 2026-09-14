@@ -46,7 +46,7 @@ class Recorder {
 
 async function connected(page) {
   await page.waitForFunction(()=>Array.from(document.querySelectorAll('.wb-metric')).some(node=>
-    node.querySelector('.wb-metric-label')?.textContent==='本机数据接入' &&
+    node.querySelector('.wb-metric-label')?.textContent==='本机数据读取' &&
     node.querySelector('.wb-metric-value')?.textContent==='已连接'));
 }
 
@@ -119,7 +119,7 @@ async function diagnostic(page, state, label, last, expected, record) {
   const wait=page.waitForEvent('download');
   await page.getByRole('button',{name:'导出诊断文件',exact:true}).click();
   const download=await wait;
-  record.equal(download.suggestedFilename(),'aps-system-diagnostic.json');
+  record.equal(download.suggestedFilename(),'系统诊断.json');
   const file=path.join(record.root,'downloads',state+'-'+label+'.json');
   await download.saveAs(file);
   record.equal(await download.failure(),null);

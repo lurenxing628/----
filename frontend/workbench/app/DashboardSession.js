@@ -7,15 +7,15 @@
       && !!C.baseHandling(v.before) && !!C.baseHandling(C.expected(v)) && (v.phase !== 'confirmed' || !!C.receipt(v.receipt, v)); } catch (_) { return false; }
   }
   function read() {
-    let raw; try { raw = localStorage.getItem(KEY); } catch (_) { throw new Error('原处置恢复记录不可读，不能开始新的处置。'); }
+    let raw; try { raw = localStorage.getItem(KEY); } catch (_) { throw new Error('上次操作记录读不出来，不能开始新的处置。请重新打开页面。'); }
     if (raw === null) return null;
-    let value; try { value = JSON.parse(raw); } catch (_) { throw new Error('原处置恢复记录损坏，请保留现场。'); }
-    C.check(valid(value), '原处置恢复记录不完整，不能换请求重做。'); return value;
+    let value; try { value = JSON.parse(raw); } catch (_) { throw new Error('上次操作记录已损坏，不能开始新的处置。请不要再操作，联系维护人员。'); }
+    C.check(valid(value), '上次操作记录不完整，不能重新提交。请不要再操作，联系维护人员。'); return value;
   }
   function save(value, previous) {
-    C.check(C.equal(read(), previous), '原请求已在其他页面变化，未覆盖。'); C.check(value === null || valid(value));
+    C.check(C.equal(read(), previous), '上次操作已在另一个页面变化，这里没有覆盖它。请刷新后重试。'); C.check(value === null || valid(value));
     try { if (value === null) localStorage.removeItem(KEY); else localStorage.setItem(KEY, JSON.stringify(value)); }
-    catch (_) { throw new Error('原请求无法持久保存，不能开始处置。'); }
+    catch (_) { throw new Error('上次操作记录保存不了，不能开始处置。请重新打开页面。'); }
     C.check(C.equal(read(), value)); window.dispatchEvent(new Event(EVENT)); return value;
   }
   function useCommand(api) {
@@ -29,11 +29,11 @@
       window.addEventListener('storage', changed); window.addEventListener(EVENT, changed);
       return () => { mounted.current = false; window.removeEventListener('storage', changed); window.removeEventListener(EVENT, changed); };
     }, []);
-    function accept(v, original) { C.receipt(v, original); save({ ...original, phase: 'confirmed', receipt: v }, original); if (mounted.current) { setError(null); setNotice('处置回执已确认。'); } }
+    function accept(v, original) { C.receipt(v, original); save({ ...original, phase: 'confirmed', receipt: v }, original); if (mounted.current) { setError(null); setNotice('请点「完成」查看最新风险。'); } }
     async function lookup() {
       if (running.current || !active.current || active.current.phase !== 'pending') return;
       const original = active.current; running.current = true; setBusy(true); setError(null);
-      try { const v = await api.lookup(original); if (v) accept(v, original); else if (mounted.current) setNotice('尚未查到原回执，原请求仍可能完成；保留原 key，不重新提交。'); }
+      try { const v = await api.lookup(original); if (v) accept(v, original); else if (mounted.current) setNotice('还是没有查到结果。请稍后再点「查询结果」，不要重复提交。'); }
       catch (e) { if (mounted.current) setError(e); }
       finally { running.current = false; if (mounted.current) setBusy(false); }
     }
@@ -43,17 +43,17 @@
       running.current = true; setBusy(true); setError(null); setNotice('');
       let original;
       try {
-        C.check(navigator.locks && typeof navigator.locks.request === 'function', '浏览器请求锁不可用，暂不能开始处置。');
+        C.check(navigator.locks && typeof navigator.locks.request === 'function', '当前浏览器不支持，请用 Chrome 打开。');
         await navigator.locks.request(KEY, { ifAvailable: true }, async acquired => {
-          C.check(acquired, '另一页面正在处置，请先读取原请求。'); C.check(read() === null, '存在原处置请求，须先核实。');
-          C.check(item.write_context && item.write_context.capabilities[action] === true, '该条目未提供当前处置能力，请刷新。');
+          C.check(acquired, '另一个页面正在处置，这里没有开始新的处置。请先完成那边的处置。'); C.check(read() === null, '上次处置还没确认结果，不能再提交新的处置。请点「查询结果」。');
+          C.check(item.write_context && item.write_context.capabilities[action] === true, '这条记录现在不能处置，请刷新后重试。');
           original = { version: 1, request_key: 'dashboard-' + Array.from(crypto.getRandomValues(new Uint8Array(24)), n => n.toString(16).padStart(2, '0')).join(''),
             phase: 'pending', item_ref: item.item_ref, subject: item.subject, action, input, before: C.baseHandling(item.handling), source: item.source, risk: item.risk };
           save(original, null);
           try { accept(await api.command(original, item.write_context.write_token), original); }
           catch (e) {
             if (C.isRejected(e)) save({ ...original, phase: 'rejected' }, original);
-            if (mounted.current) { setError(e); setNotice(C.isRejected(e) ? '本次未写入，请明确刷新后再处置。' : '结果尚未确认，已保留原请求。'); }
+            if (mounted.current) { setError(e); setNotice(C.isRejected(e) ? window.WorkbenchTerms.outcomes.rejected('处置', e.message) : window.WorkbenchTerms.outcomes.unknown('处置')); }
           }
         });
       } catch (e) { if (mounted.current) setStorageError(e); }
@@ -62,7 +62,7 @@
     }
     function finish() {
       if (running.current) return false;
-      try { const value = read(); C.check(value && value.phase !== 'pending', '未知结果不能丢弃原请求。'); save(null, value); setError(null); setNotice(''); return true; }
+      try { const value = read(); C.check(value && value.phase !== 'pending', '上次处置的结果还没有确认，不能丢弃这条记录。请先点「查询结果」。'); save(null, value); setError(null); setNotice(''); return true; }
       catch (e) { setStorageError(e); return false; }
     }
     return { saved, busy, error, storageError, notice, lookup, submit, finish, sync };
@@ -70,7 +70,7 @@
   function useRead(load, dependencies, enabled = true) { return window.APSResourceSession.useQuery(load, dependencies, enabled); }
   const tabs = { items: '处置清单', analysis: '影响分析', compare: '方案对比', records: '处置历史' };
   function context(value = {}) {
-    C.check(C.object(value) && Object.keys(value).every(k => ['scope', 'tab', 'item_ref', 'history_page', 'source'].includes(k)) && (value.source === undefined || value.source === 'production'), '值班台来源上下文无效，未忽略条件。');
+    C.check(C.object(value) && Object.keys(value).every(k => ['scope', 'tab', 'item_ref', 'history_page', 'source'].includes(k)) && (value.source === undefined || value.source === 'production'), '本页数据已过期，请刷新后重试。');
     const q = C.scope(value.scope === undefined ? {} : value.scope), tab = value.tab === undefined ? 'items' : value.tab;
     const selected = value.item_ref === undefined ? null : value.item_ref, historyPage = value.history_page === undefined ? 1 : value.history_page;
     C.check(Object.prototype.hasOwnProperty.call(tabs, tab) && (selected === null || C.ref(selected)) && Number.isSafeInteger(historyPage) && historyPage > 0);

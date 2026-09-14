@@ -60,17 +60,17 @@
     React.useEffect(() => { if (data && !runRef) setRunRef(data.candidate.run_ref); }, [data, runRef]);
     const shown = data && data.capabilities.view === true && data.candidate.capabilities.view === true ? data : null;
     const analysisRead = useRead(async signal => {
-      if (typeof adapter.analysis !== 'function') throw new Error('完整候选比较接口尚未接入，未用可见安排估算。');
+      if (typeof adapter.analysis !== 'function') throw new Error('dependency not wired: adapter.analysis');
       const value = await adapter.analysis(candidateRef, runRef, signal); AnalysisAPI.analysis(value, candidateRef, runRef); return value;
     }, [adapter, candidateRef, runRef, revision, analysisPaused], !!candidateRef && !invalid && !analysisPaused);
     const historyRead = useRead(async signal => {
-      if (typeof adapter.adoptions !== 'function') throw new Error('候选采用历史接口尚未接入，未显示其他来源记录。');
+      if (typeof adapter.adoptions !== 'function') throw new Error('dependency not wired: adapter.adoptions');
       const value = await adapter.adoptions(candidateRef, runRef, signal); AnalysisAPI.history(value, candidateRef, runRef); return value;
     }, [adapter, candidateRef, runRef, tab, revision, analysisPaused], !!candidateRef && !invalid && tab === 'history' && !analysisPaused);
     const analysis = shown && analysisRead.result && analysisRead.result.data.run_ref === shown.candidate.run_ref ? analysisRead.result.data : null;
     window.WorkbenchCaption.useCaption(shown && !read.busy && !read.error && shown.candidate.label ? {
       reference: shown.candidate.candidate_ref, label: '当前候选', name: shown.candidate.label,
-      status: '候选预览 · ' + ({ completed: '已完成', partial: '部分完成', failed: '失败', skipped: '已跳过' }[shown.candidate.status] || '状态待核实'),
+      status: '候选方案 · ' + ({ completed: '已完成', partial: '部分完成', failed: '失败', skipped: '已跳过' }[shown.candidate.status] || '状态待确认'),
       range: (scope.range_start ? M.timeLabel(scope.range_start) + ' 至 ' + M.timeLabel(scope.range_end) + '（不含结束）' : '完整候选范围')
         + ' · ' + shown.task_count + ' / ' + shown.candidate_task_count + ' 道安排',
     } : null);
@@ -81,7 +81,7 @@
       if (!shown || !pendingRow) return;
       const task = shown.tasks.find(row => row.row_ref === pendingRow);
       if (task) { setSelected({ task, result }); setPendingRow(null); }
-      else if (!scope.range_start && !scope.batch_ref) { setRangeError(new Error('指定末端工序不在完整候选中，未替换为其他工序。')); setPendingRow(null); }
+      else if (!scope.range_start && !scope.batch_ref) { setRangeError(new Error('这道末端工序不在完整候选方案里，没有换成其他工序。')); setPendingRow(null); }
     }, [result, pendingRow]);
     const remembered = { ...initialContext, ...(runRef ? { run_ref: runRef } : {}), ...(candidateRef ? { candidate_ref: candidateRef } : {}), query, candidate_tab: tab };
     for (const key of ['range_start', 'range_end', 'batch_ref', 'sort', 'order', 'snapshot_ref', 'selected_row_ref']) delete remembered[key];
@@ -106,25 +106,28 @@
     }
     return <div className="plana run-candidate-workspace" data-run-candidate-workspace><C.Styles />
       <div className="rc-heading"><div className="rc-tools"><h2>{view === 'delay' ? '候选交付风险' : view === 'gantt' ? '候选甘特' : '候选排产结果'}</h2><span className="rc-muted">已保存的候选方案</span></div><div className="rc-tools">
-        {onNavigate && <C.Button icon="chevron-left" onClick={() => onNavigate('run', { ...returnContext(initialContext.return_run_context), ...(runRef ? { run_ref: runRef } : {}) })}>返回运行页</C.Button>}
-        {onNavigate && initialContext.return_plan_context && A.ref(initialContext.return_plan_context.plan_ref) && <C.Button icon="chevron-left" onClick={() => onNavigate('analysis', returnContext(initialContext.return_plan_context))}>返回正式方案</C.Button>}
-        {typeof renderAdoption === 'function' ? renderAdoption(candidateRef) : <C.Button icon="check" className="btn primary" reasonDisplay="inline" reason="正式采用入口未接入，请先核对完整候选方案。">采用方案</C.Button>}
-        {typeof renderTrial === 'function' ? renderTrial({ candidateRef, scope, query, disabled: !shown || read.busy || invalid }) :
-          <C.Button icon="square-pen" reason="试调入口未接入，请先核对完整候选方案。">试调</C.Button>}
-        <C.Button icon="refresh-cw" aria-label="刷新指定候选来源" disabled={invalid || !runRef && !candidateRef} busy={read.busy || directory.busy} onClick={reload} /></div></div>
-      {invalid && <C.ErrorBox error={new Error('记录编号无效，未改查其他运行或最新候选。')} />}
-      {!runRef && !candidateRef && <div className="rc-empty" role="status">尚未指定运行或候选来源。请从运行记录打开候选，未自动选择最新运行。</div>}
+        <div className="rc-nav">
+          {onNavigate && <C.Button icon="chevron-left" className="btn link" onClick={() => onNavigate('run', { ...returnContext(initialContext.return_run_context), ...(runRef ? { run_ref: runRef } : {}) })}>返回排产记录</C.Button>}
+          {onNavigate && initialContext.return_plan_context && A.ref(initialContext.return_plan_context.plan_ref) && <C.Button icon="chevron-left" className="btn link" onClick={() => onNavigate('analysis', returnContext(initialContext.return_plan_context))}>返回正式计划</C.Button>}</div>
+        <div className="rc-actions">
+          {typeof renderAdoption === 'function' ? renderAdoption(candidateRef) : <C.Button icon="check" className="btn primary" reasonDisplay="inline" reason={window.WorkbenchTerms.outcomes.unavailable}>采用方案</C.Button>}
+          {typeof renderTrial === 'function' ? renderTrial({ candidateRef, scope, query, disabled: !shown || read.busy || invalid }) :
+            <C.Button icon="square-pen" reason={window.WorkbenchTerms.outcomes.unavailable}>试调</C.Button>}
+          <small className="rc-muted">试调不影响正式计划</small>
+          <C.Button icon="refresh-cw" aria-label="刷新候选方案" disabled={invalid || !runRef && !candidateRef} busy={read.busy || directory.busy} onClick={reload} /></div></div></div>
+      {invalid && <C.ErrorBox error={new Error('记录编号无效，没有改查其他排产或最新候选方案。请从排产记录里重新打开。')} />}
+      {!runRef && !candidateRef && <div className="rc-empty" role="status">尚未指定排产或候选方案。请从排产记录里打开候选方案，没有自动选最新的排产。</div>}
       {runRef && <><C.ErrorBox error={directory.error} /><C.Catalog result={directory.result} selectedRef={candidateRef} busy={directory.busy} query={catalogQuery}
         onQuery={(change, paging) => setCatalogQuery(q => ({ ...q, ...change, page: paging ? change.page : 1, snapshot_ref: paging ? directory.result.meta.snapshot_ref : undefined }))} onSelect={choose} /></>}
-      <C.ErrorBox error={read.error} />{(read.busy || directory.busy) && <p className="rc-muted" role="status">正在读取指定候选来源。</p>}
-      {read.error && <div className="rc-empty">指定候选未读取成功，未显示其他候选或上次内容。</div>}
-      {(analysisRead.busy || historyRead.busy) && <div className="rc-tools"><span role="status">正在核对指定候选的完整证据。</span><C.Button icon="x" aria-label="取消候选比较读取" onClick={() => setAnalysisPaused(true)}>取消读取</C.Button></div>}
-      {analysisPaused && <div className="rc-tools"><span role="status">候选比较读取已取消，未显示上次比较。</span><C.Button icon="refresh-cw" onClick={reload}>重新读取候选比较</C.Button></div>}
-      {runRef && !candidateRef && <div className="rc-empty">尚未选择此运行中的候选。</div>}
-      {data && !shown && <div className="rc-notice">接口未授权查看该候选。<C.Reasons rows={data.blocked_reasons} /></div>}
+      <C.ErrorBox error={read.error} />{(read.busy || directory.busy) && <p className="rc-muted" role="status">正在读取这个候选方案。</p>}
+      {read.error && <div className="rc-empty">这个候选方案没读到，没有显示其他候选方案或上次内容。请刷新后重试。</div>}
+      {(analysisRead.busy || historyRead.busy) && <div className="rc-tools"><span role="status">正在核对这个候选方案的完整依据。</span><C.Button icon="x" aria-label="取消候选比较读取" onClick={() => setAnalysisPaused(true)}>取消读取</C.Button></div>}
+      {analysisPaused && <div className="rc-tools"><span role="status">候选比较读取已取消，未显示上次比较。</span><C.Button icon="refresh-cw" onClick={reload}>刷新候选比较</C.Button></div>}
+      {runRef && !candidateRef && <div className="rc-empty">尚未选择这次排产里的候选方案。</div>}
+      {data && !shown && <div className="rc-notice">当前不能查看这个候选方案。<C.Reasons rows={data.blocked_reasons} /></div>}
       {shown && <><C.Generation key={shown.candidate.candidate_ref} data={shown} analysis={analysis} /><C.Reasons rows={result.warnings} />
         <C.ErrorBox error={analysisRead.error} />
-        <div className="rc-heading"><div className="rc-tools"><h3>候选工作区</h3><span className="rc-muted">读取于 {M.timeLabel(result.meta.as_of)} · 工厂本地时间</span></div>
+        <div className="rc-heading"><div className="rc-tools"><h3>候选工作区</h3><span className="rc-muted">读取于 {M.timeLabel(result.meta.as_of)}</span></div>
         <div className="rc-tools"><input type="search" aria-label="搜索候选工序" placeholder="批次、工序、设备、人员" value={query} onChange={e => setQuery(e.target.value)} />
           <span className="rc-muted">匹配安排 {tasks.length} / {shown.task_count}</span></div>
         <div className="rc-tools"><C.Button icon="calendar-days" aria-expanded={rangeOpen} onClick={() => setRangeOpen(!rangeOpen)}>读取范围</C.Button>
@@ -135,7 +138,7 @@
         <C.ErrorBox error={rangeError} /><div className="rc-scope"><span>读取范围：{scope.range_start ? M.timeLabel(scope.range_start) + ' 至 ' + M.timeLabel(scope.range_end) + '（不含结束）' : '全部时间'}{scope.batch_ref && ' · 指定批次'}
           {' · 安排 ' + shown.task_count + ' / 候选共 ' + shown.candidate_task_count + ' 道 · 未安排 ' + (shown.unplanned_operation_count === null ? '未知（未记录）' : shown.unplanned_operation_count + ' 道')}</span>
           {scope.batch_ref && <window.WorkbenchReference entries={{ '筛选批次编号': scope.batch_ref }} />}
-          <details><summary>范围与导出口径</summary><div>时间筛选按重叠读取，保留每道安排完整起止；未安排项没有时间区间，仍随范围保留。搜索仅影响预览和明细，不改变导出范围。导出当前读取范围全部安排与未安排记录。</div></details></div>
+          <details><summary>范围与导出说明</summary><div>时间筛选按重叠读取，保留每道安排完整起止；未安排项没有时间区间，仍随范围保留。搜索只影响页面显示和明细，不改变导出范围。导出当前读取范围全部安排与未安排记录。</div></details></div>
         {view === 'delay' && <C.Delivery data={shown.delivery_risks} onLast={lastOperation} />}
         <div className="rc-main" style={['delivery', 'history'].includes(tab) ? { gridTemplateColumns: 'minmax(0,1fr)' } : undefined}><div><window.RunCandidateGantt data={shown} query={query} selected={chosen} onSelect={select} />
           <section aria-label="候选明细"><div className="rc-heading"><div role="tablist" className="rc-tabs" aria-label="候选明细类别">
@@ -143,7 +146,7 @@
             {tab === 'history' ? <><C.ErrorBox error={historyRead.error} />{historyRead.result && <Analysis.History data={historyRead.result.data}
               onPlan={onNavigate && (plan => onNavigate('analysis', { plan_ref: plan.plan_ref }))} />}</> :
               tab === 'delivery' ? analysis && <Analysis.Batches key={analysis.candidate_ref} data={analysis} onLast={task => { lastOperation(task); setTab('tasks'); }}
-                onBatch={onNavigate && (row => onNavigate('gantt', { run_ref: analysis.run_ref, candidate_ref: analysis.candidate_ref, batch_ref: row.batch_ref, candidate_tab: 'tasks' }))} /> : tab === 'unplanned' && shown.unplanned_operations === null ? <div className="rc-notice">生成时未保留可核实的未安排明细，不能当成零项。</div> :
+                onBatch={onNavigate && (row => onNavigate('gantt', { run_ref: analysis.run_ref, candidate_ref: analysis.candidate_ref, batch_ref: row.batch_ref, candidate_tab: 'tasks' }))} /> : tab === 'unplanned' && shown.unplanned_operations === null ? <div className="rc-notice">生成时没有保留未安排明细，不能当成零项。</div> :
               <window.RunCandidateGantt.TaskList key={tab + ':' + query + ':' + result.meta.snapshot_ref} tasks={tab === 'tasks' ? tasks : unplanned} selected={chosen} onSelect={select} planned={tab === 'tasks'} />}</section>
         </div>{!['delivery', 'history'].includes(tab) && <C.Detail task={chosen} onClose={() => setSelected(null)} />}</div>
         {analysis && <Analysis.Overview data={analysis} />}</>}

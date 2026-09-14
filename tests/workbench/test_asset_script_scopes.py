@@ -34,13 +34,15 @@ class AssetScriptScopesTest(unittest.TestCase):
         point_code = (ROOT / "frontend" / point).read_text(encoding="utf-8")
         process_order_code = (ROOT / "frontend" / process_order).read_text(encoding="utf-8")
         resource = ("resource.js", "window.APSResourceContract = {};")
+        terms = ("terms.js", "window.WorkbenchTerms = {};")
         with self.assertRaisesRegex(ValueError, "Unresolved script globals.*PlanProcessOrder"):
-            self.analyze(resource, (point, point_code), (name, code))
+            self.analyze(resource, terms, (point, point_code), (name, code))
         with self.assertRaisesRegex(ValueError, "Script dependency must load earlier: .*PlanProcessOrder"):
-            self.analyze(resource, (point, point_code), (name, code), (process_order, process_order_code))
-        result = self.analyze(resource, (point, point_code), (process_order, process_order_code), (name, code))
+            self.analyze(resource, terms, (point, point_code), (name, code), (process_order, process_order_code))
+        result = self.analyze(resource, terms, (point, point_code), (process_order, process_order_code), (name, code))
         self.assertEqual(result[name], [
             {"path": "resource.js", "symbols": ["APSResourceContract"]},
+            {"path": "terms.js", "symbols": ["WorkbenchTerms"]},
             {"path": process_order, "symbols": ["PlanProcessOrder"]},
             {"path": point, "symbols": ["PointContract"]},
         ])

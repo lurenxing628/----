@@ -1,17 +1,17 @@
 (function () {
   'use strict';
   const U = window.TrialControls, A = window.TrialAdoptionHistoryAPI, S = window.TrialAdoptionHistoryState;
-  const labels = { all: '全部采用', current: '当前正式', historical: '历史正式', unavailable: '身份不可用' };
-  const text = value => value === null ? '证据缺失' : value;
+  const labels = { all: '全部采用', current: '当前正式', historical: '历史正式', unavailable: '计划不可用' };
+  const text = value => value === null ? '暂无数据' : value;
   function Evidence({ item, source }) {
     return <details className="wb-ref"><summary>来源与编号</summary><dl className="tah-refs">
       <dt>原来源</dt><dd>{U.sourceLabel(source.base_identity)}<br />{Object.values(source.base)[0]}</dd>
-      <dt>原正式基线</dt><dd>{source.baseline.plan_ref ? 'v' + source.baseline.version + ' · ' + source.baseline.plan_ref : '当时无正式基线'}</dd>
-      <dt>原场景</dt><dd>{source.scenario_ref}</dd><dt>原草稿</dt><dd>{source.draft_ref}</dd>
-      <dt>保存来源</dt><dd>{source.saved_by} · {U.timeLabel(source.saved_at)}<br />{source.save_request_key}</dd>
-      <dt>新正式引用</dt><dd>{item.committed_plan.plan_ref}</dd><dt>命令回执</dt><dd>{item.receipt_ref}</dd>
-      <dt>原请求</dt><dd>{item.request_key}</dd><dt>提交时间 UTC</dt><dd>{item.committed_at_utc}</dd>
-      <dt>字段依据</dt><dd>提交：持久命令回执；原因与声明人：回执意图散列核对；采用人及本地时间：正式历史审计；当前状态：本次正式身份读取。</dd>
+      <dt>当时的正式计划</dt><dd>{source.baseline.plan_ref ? '第 ' + source.baseline.version + ' 版 · ' + source.baseline.plan_ref : '当时还没有正式计划'}</dd>
+      <dt>试调方案编号</dt><dd>{source.scenario_ref}</dd><dt>试调草稿编号</dt><dd>{source.draft_ref}</dd>
+      <dt>保存来源</dt><dd>{source.saved_by} · {U.timeLabel(source.saved_at)}</dd><dt>保存操作编号</dt><dd>{source.save_request_key}</dd>
+      <dt>新正式计划编号</dt><dd>{item.committed_plan.plan_ref}</dd><dt>结果编号</dt><dd>{item.receipt_ref}</dd>
+      <dt>操作编号</dt><dd>{item.request_key}</dd><dt>提交时间</dt><dd>{window.WorkbenchFormat.instant(item.committed_at_utc, { seconds: true })}</dd>
+      <dt>数据来源</dt><dd>提交时间来自保存下来的操作结果；采用原因和经办人来自提交时核对的内容；采用人和采用时间来自正式计划的历史记录；当前状态是这次读取到的。</dd>
     </dl></details>;
   }
   function History({ data }) {
@@ -30,11 +30,11 @@
     function update(patch, reset = true) {
       if (reset) snapshot.current = null;
       const next = { ...query, ...patch, error: null, snapshot_ref: snapshot.current };
-      try { S.remember(ref, next); } catch (_) { setError(new Error('采用记录筛选无法保存，请核对浏览器状态。')); return; }
+      try { S.remember(ref, next); } catch (_) { setError(new Error('采用记录的筛选没有存上，返回后可能要重新选。')); return; }
       setError(null); setQuery(next); refresh();
     }
     const result = read.result, d = result && result.data;
-    return <section className="trial-adoption-history" aria-label="本场景采用记录"><window.TrialAdoptionHistoryStyles />
+    return <section className="trial-adoption-history" aria-label="本试调方案的采用记录"><window.TrialAdoptionHistoryStyles />
       <div className="tah-toolbar"><label>采用状态<select aria-label="采用状态" value={query.status || 'all'} disabled={read.busy || !!query.error}
         onChange={e => update({ status: e.target.value, page: 1 })}>{Object.keys(labels).map(key => <option value={key} key={key}>{labels[key]}</option>)}</select></label>
         <label>每页<select aria-label="采用记录每页" value={query.size || 20} disabled={read.busy || !!query.error} onChange={e => update({ size: Number(e.target.value), page: 1 })}>
@@ -42,20 +42,20 @@
         <U.Button icon="refresh-cw" aria-label="刷新采用记录" title="刷新采用记录" busy={read.busy}
           onClick={() => { if (query.error) { history.replaceState({ ...history.state, trialAdoptionHistory: null }, '', location.href); } update({ page: 1, status: query.status || 'all', size: query.size || 20 }); }} />
       </div><U.ErrorBox error={query.error || error || read.error} />
-      {read.busy && <p role="status" className="tah-meta">正在读取本场景采用记录与当前正式身份…</p>}
-      {d && <><p className="tah-meta">{d.source.name} · 本场景共 {d.total_adoptions} 次采用 · 核对于 {U.timeLabel(result.meta.as_of)}</p>
-        {!d.items.length && <p className="tt-empty" role="status">{d.total_adoptions ? '当前筛选没有采用记录。' : '尚无本场景的正式采用回执。'}</p>}
+      {read.busy && <p role="status" className="tah-meta">正在读取这个试调方案的采用记录和当前正式计划…</p>}
+      {d && <><p className="tah-meta">{d.source.name} · 本试调方案共 {d.total_adoptions} 次采用 · 核对时间 {U.timeLabel(result.meta.as_of)}</p>
+        {!d.items.length && <p className="tt-empty" role="status">{d.total_adoptions ? '当前筛选没有采用记录。' : '这个试调方案还没有正式采用记录。'}</p>}
         <ol className="tah-list">{d.items.map(item => <li key={item.receipt_ref} data-adoption-receipt={item.receipt_ref}>
-          <div className="tah-head"><strong>正式计划 v{item.committed_plan.version}</strong><span className={'tah-state tah-' + item.current_state}>{labels[item.current_state]}</span>
+          <div className="tah-head"><strong>正式计划第 {item.committed_plan.version} 版</strong><span className={'tah-state tah-' + item.current_state}>{labels[item.current_state]}</span>
             <span>{item.committed_plan.row_count} 道工序</span><U.Button icon="arrow-right" disabled={item.current_state === 'unavailable'}
-              onClick={() => { try { S.openPlan(ref, item.committed_plan.plan_ref); } catch (error) { setError(error); } }}>查看正式方案</U.Button></div>
-          <p>采用人：{text(item.adoption.application_operator)} · 声明人：{text(item.adoption.declared_operator)}</p>
-          <p>采用原因：{text(item.adoption.reason)}</p><p className="tah-meta">{U.timeLabel(item.adoption.adopted_at)} · 原基线 {d.source.baseline.plan_ref ? 'v' + d.source.baseline.version : '无正式基线'}</p>
+              onClick={() => { try { S.openPlan(ref, item.committed_plan.plan_ref); } catch (error) { setError(error); } }}>查看正式计划</U.Button></div>
+          <p>采用人：{text(item.adoption.application_operator)} · 经办人：{text(item.adoption.declared_operator)}</p>
+          <p>采用原因：{text(item.adoption.reason)}</p><p className="tah-meta">{U.timeLabel(item.adoption.adopted_at)} · 当时的正式计划 {d.source.baseline.plan_ref ? '第 ' + d.source.baseline.version + ' 版' : '无'}</p>
           {item.evidence_gaps.map((issue, index) => <p className="tah-gap" key={index}>{issue.message}</p>)}<Evidence item={item} source={d.source} />
         </li>)}</ol><U.Pager label="采用记录" page={d.page} busy={read.busy} onPage={page => update({ page }, false)} /></>}
     </section>;
   }
   window.TrialAdoptionHistory = function TrialAdoptionHistory({ data }) {
-    return data.scenario_ref ? <History key={data.scenario_ref} data={data} /> : <p className="tt-empty">当前为试调草稿，尚无已保存场景的采用记录。</p>;
+    return data.scenario_ref ? <History key={data.scenario_ref} data={data} /> : <p className="tt-empty">当前是试调草稿，还没有已保存试调方案的采用记录。</p>;
   };
 })();

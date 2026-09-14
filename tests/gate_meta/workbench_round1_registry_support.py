@@ -66,6 +66,12 @@ UI_REQUIRED_TARGETS = (
     "tests/workbench/test_ui_refinement_browser_dependencies.py",
     "tests/gate_meta/test_daily_ui_refinement_opt_in.py",
     "tests/gate_meta/test_workbench_ui_registry.py",
+    # 2026-09-13 reviewed addition: user-visible copy glossary guard (tools/scan_ui_copy.py must report zero hits).
+    "tests/workbench/test_ui_copy_glossary.py",
+    # 2026-09-13 reviewed additions (UI audit remediation): handler prefill memory contract (pure Node) and the
+    # run progress ledger that feeds the run-job progress bar (pure Python).
+    "tests/workbench/test_handler_memory.py",
+    "tests/workbench/test_run_progress_ledger.py",
 )
 UI_SUPPLEMENTAL_TARGETS = (
     "tests/workbench/test_ui_refinement_geometry.py",
@@ -77,6 +83,8 @@ UI_SUPPLEMENTAL_TARGETS = (
     "tests/workbench/test_wbui_actual_keyboard.py",
     "tests/workbench/test_wbui_plan_first_screen.py",
     "tests/workbench/test_wbui_plan_gantt_models.py",
+    # 2026-09-14 reviewed addition: short-screen application layout (only the table scrolls) on a real Flask + Chromium 109 loop.
+    "tests/workbench/test_short_screen_layout.py",
 )
 UI_GROUP_IDS = ("workbench_ui_refinement", "workbench_ui_refinement_browser")
 

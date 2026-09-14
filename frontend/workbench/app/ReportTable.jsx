@@ -23,7 +23,7 @@
       { key: 'execution_label', title: '执行情况 / 到期', width: 170, render: row => stack(status(row), row.unclosed ? '到期未确认完成' : row.due ? '到期已确认完成' : '计划尚未到期') },
       { key: 'finish_deviation_minutes', title: '整道完工偏差', width: 118, render: row => row.finish_deviation_minutes == null ? empty ? actual(null) : '尚不可比较' : <span className={row.finish_late ? 'rw-danger' : ''}>{row.finish_deviation_minutes > 0 ? '+' : ''}{row.finish_deviation_minutes} 分钟</span> },
       { key: 'known_completed_quantity', title: '已知累计数量', width: 145, render: row => stack(actual(row.known_completed_quantity), row.unknown_record_count > 0 ? '数量未知 ' + row.unknown_record_count + ' 条' : null) },
-      { key: 'effective_processing_hours', title: '有效工时 / 已知小计', width: 145, render: row => stack(actual(row.effective_processing_hours), actual(row.known_effective_processing_hours)) },
+      { key: 'effective_processing_hours', title: '有效工时 / 已知小计（小时）', width: 145, render: row => stack(actual(row.effective_processing_hours), actual(row.known_effective_processing_hours)) },
       { key: 'action', title: '详情', width: 66, render: detail }
     ];
     else if (data.topic === 'records') columns = [
@@ -31,7 +31,7 @@
       { key: 'event_label', title: '记录来源 / 内容', width: 140, render: row => stack(row.record_kind_label, row.record_kind === 'production_report' ? row.report_no : row.event_label) },
       { key: 'event_time', title: '实际时段 / 事件时间', width: 164, render: row => row.record_kind === 'production_report' ? stack(time(row.actual_start), time(row.actual_end)) : time(row.event_time) },
       { key: 'quantity_done', title: '本次 / 旧登记量', width: 130, render: row => text(row.quantity_done) },
-      { key: 'effective_processing_hours', title: '有效工时', width: 100, render: row => text(row.effective_processing_hours) },
+      { key: 'effective_processing_hours', title: '有效工时（小时）', width: 100, render: row => text(row.effective_processing_hours) },
       { key: 'machine_label', title: '实际设备 / 人员', width: 148, render: row => stack(row.machine_label, row.operator_label) },
       { key: 'remark', title: '备注', width: 150, render: row => <CellText value={row.remark || '无'} label="备注" /> }, { key: 'action', title: '工序', width: 66, render: detail }
     ];
@@ -64,9 +64,9 @@
       ['到期工序完成率', pct(s.completion_rate), s.confirmed_due + ' 已确认 / ' + s.due + ' 已到期'],
       ['到期工序按时完成率', pct(s.on_time_rate), s.due_on_time + ' 按时 / ' + s.due + ' 已到期'],
       ['超时未确认完成', s.late_open, '不等于未生产', s.late_open ? 'warning' : undefined],
-      ['完工偏差中位数', actual(s.median_finish_minutes), s.finish_sample ? '样本 ' + s.finish_sample + ' 道 · P90 ' + text(s.p90_finish_minutes) + ' 分钟' : '暂无已确认完工样本']
+      ['完工偏差中位数', actual(s.median_finish_minutes), s.finish_sample ? '完工记录 ' + s.finish_sample + ' 道 · P90 ' + text(s.p90_finish_minutes) + ' 分钟' : '暂无已确认完工记录']
     ] : [['范围内工序', s.operations, s.reported_operations + ' 道有反馈；' + s.unreported + ' 道暂无反馈'],
-      ['逐次报工', s.production_reports, '旧现场事件 ' + s.events + ' 条'], ['全部记录', s.records, '旧事件与逐次报工合计，不含额外修订次数'],
+      ['逐次报工', s.production_reports, '旧现场事件 ' + s.events + ' 条'], ['全部记录', s.records, '历史事件与逐次报工合计，不含额外更正次数'],
       ['有效加工工时', actual(s.effective_processing_hours), empty ? '暂无现场工时记录' : '已知小计 ' + text(s.known_effective_processing_hours) + '；未知 ' + s.unknown_hour_events + ' 条']];
     return <MetricStrip columns={4} className="rw-metrics">{values.map(([label, value, helper, tone]) => <Metric key={label} label={label} value={value} helper={helper} tone={tone} />)}</MetricStrip>;
   }

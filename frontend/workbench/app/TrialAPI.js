@@ -5,19 +5,19 @@
   const validKey = v => typeof v === 'string' && /^trial-[a-f0-9]{48}$/.test(v);
   function pending() {
     let value; try { value = localStorage.getItem(PENDING_KEY); }
-    catch (_) { throw new Error('无法读取试调请求恢复记录，写入已暂停。'); }
-    C.check(value === null || validKey(value), '试调请求恢复记录损坏，未删除或覆盖原记录。'); return value;
+    catch (_) { throw new Error('读不到上次操作记录，暂时不能提交。请重新打开页面。'); }
+    C.check(value === null || validKey(value), '上次操作记录已损坏，没有删除也没有覆盖。请重新打开页面。'); return value;
   }
   function reserve() {
-    C.check(pending() === null, '存在尚未核实的试调请求，请先查询原请求。');
+    C.check(pending() === null, window.WorkbenchTerms.outcomes.pending('试调提交'));
     const bytes = new Uint8Array(24); crypto.getRandomValues(bytes);
     const key = 'trial-' + Array.from(bytes, n => n.toString(16).padStart(2, '0')).join('');
-    try { localStorage.setItem(PENDING_KEY, key); } catch (_) { throw new Error('无法保存试调请求恢复记录，本次未发送。'); }
-    C.check(pending() === key, '试调请求恢复记录写入失败，本次未发送。'); return key;
+    try { localStorage.setItem(PENDING_KEY, key); } catch (_) { throw new Error('存不下上次操作记录，这次没有提交。请重新打开页面。'); }
+    C.check(pending() === key, '上次操作记录没有存上，这次没有提交。请重新打开页面。'); return key;
   }
   function clear(key) {
-    C.check(pending() === key, '试调恢复记录已变化，未清理其他请求。');
-    try { localStorage.removeItem(PENDING_KEY); } catch (_) { throw new Error('原请求已核实，但恢复记录无法清理，请重新查询。'); }
+    C.check(pending() === key, '上次操作记录已变化，没有清除其他操作记录。');
+    try { localStorage.removeItem(PENDING_KEY); } catch (_) { throw new Error('上次提交的结果已确认，但上次操作记录没清掉。请点「刷新」后重新查询。'); }
   }
   async function request(path, options = {}) {
     C.check(path.startsWith(ROOT + '/'));
@@ -28,17 +28,17 @@
       const response = await fetch(path, { method: options.body === undefined ? 'GET' : 'POST', signal: controller.signal,
         credentials: 'same-origin', cache: 'no-store', redirect: 'error', headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
         ...(options.body === undefined ? {} : { body: JSON.stringify(options.body) }) });
-      C.check((response.headers.get('Content-Type') || '').split(';')[0] === 'application/json', '服务响应不是有效试调数据。');
+      C.check((response.headers.get('Content-Type') || '').split(';')[0] === 'application/json', '读到的试调数据不完整，请点「刷新」重试。');
       const value = await response.json();
       if (!response.ok || value.ok !== true) {
-        const error = new Error(value.error && value.error.message || '本机服务未能完成试调请求。');
+        const error = new Error(value.error && value.error.message || window.WorkbenchTerms.outcomes.failure);
         error.code = value.error && value.error.code; error.fields = value.error && value.error.fields;
         error.rejected = response.status >= 400 && response.status < 500 && value.ok === false && value.committed === false;
         throw error;
       }
       return value;
     } catch (error) {
-      if (controller.signal.aborted && !(signal && signal.aborted)) throw new Error('试调请求超时；写入结果须查询原请求核实。');
+      if (controller.signal.aborted && !(signal && signal.aborted)) throw new Error(window.WorkbenchTerms.outcomes.unknown('试调操作'));
       throw error;
     } finally { clearTimeout(timer); if (signal) signal.removeEventListener('abort', abort); }
   }

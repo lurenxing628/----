@@ -142,10 +142,10 @@ async function main() {
       await download(page, dto, 'csv', prefix + '-all23'); await download(page, dto, 'xlsx', prefix + '-all23');
       dto = await change(page, () => page.getByRole('tab', { name: '报工记录', exact: true }).click());
       dto = await change(page, () => select(page, '每页条数', '50')); await compare(page, dto, prefix + '-records'); await shot(page, prefix + '-records');
-      dto = await change(page, () => select(page, '排序字段', 'quantity_done'));
+      dto = await change(page, () => select(page, '排序列', 'quantity_done'));
       dto = await change(page, () => select(page, '排序方向', 'desc')); await compare(page, dto, prefix + '-quantity-desc');
       assert.equal(dto.data.rows[0].quantity_done, 10);
-      dto = await change(page, () => select(page, '排序字段', 'event_time'));
+      dto = await change(page, () => select(page, '排序列', 'event_time'));
       dto = await change(page, () => select(page, '排序方向', 'asc'));
       assert.equal(dto.data.summary.events, 2); assert.equal(dto.data.summary.production_reports, 13); assert.equal(dto.data.summary.records, 15);
       const invalid = await page.evaluate(dto => {
@@ -159,9 +159,9 @@ async function main() {
       const detailDTO = await (await detailRead).json(), detail = page.locator('.rw-detail');
       await detail.getByText('整道完成', { exact: true }).waitFor(); assert.equal(detailDTO.data.detail.operation.record_count, 12);
       await detail.locator('.rw-limitations > summary').first().click();
-      const history = detail.locator('.rw-limitations').first(); await history.getByText('逐次报工修订历史（3 次登记）', { exact: true }).waitFor();
+      const history = detail.locator('.rw-limitations').first(); await history.getByText('逐次报工更正记录（3 次）', { exact: true }).waitFor();
       for (const summary of await history.locator('details > summary').all()) await summary.click();
-      assert((await history.innerText()).includes('首次登记，无前值')); assert((await history.innerText()).includes('BC corrected quantity and hours'));
+      assert((await history.innerText()).includes('新增，无原值')); assert((await history.innerText()).includes('BC corrected quantity and hours'));
       await history.scrollIntoViewIfNeeded(); await shot(page, prefix + '-revisions');
       await detail.getByRole('button', { name: '下一页', exact: true }).click();
       assert.equal(await detail.locator('.wb-detail-body > .rw-table-scroll tbody tr').count(), 2);
@@ -172,12 +172,12 @@ async function main() {
       const oldDTO = await (await oldRead).json();
       await detail.getByText('整道完成', { exact: true }).waitFor();
       await detail.locator('.rw-limitations > summary').first().click();
-      assert((await detail.innerText()).includes('旧原始事实'));
+      assert((await detail.innerText()).includes('历史原始记录'));
       const evidenceText = await detail.locator('.rw-limitations[open] .rw-evidence-facts').first().textContent();
       const leaves = value => value && typeof value === 'object' ? Object.values(value).flatMap(leaves) :
         [value === null ? '未知' : typeof value === 'boolean' ? value ? '是' : '否' : String(value)];
       for (const value of leaves(oldDTO.data.detail.records[0].legacy_evidence)) assert(evidenceText.includes(value), value);
-      assert((await detail.innerText()).includes('旧系统原存储时间，未转换'));
+      assert((await detail.innerText()).includes('历史系统导入的原始时间'));
       await detail.scrollIntoViewIfNeeded(); await shot(page, prefix + '-legacy');
       await detail.getByRole('button', { name: /^关闭/ }).click();
       await download(page, dto, 'csv', prefix + '-records15'); await download(page, dto, 'xlsx', prefix + '-records15');

@@ -7,6 +7,12 @@
     {
       Button
     } = window.RunCandidateControls;
+  const {
+      TimelineZoom,
+      timelineZoomKey,
+      timelineZoomStep
+    } = window.ResourceControls,
+    ZOOM_MAX = 128;
   function PointLane({
     row,
     model,
@@ -87,10 +93,25 @@
             ctx.restore();
             continue;
           }
-          const tone = item.task.source === 'external' ? 'plan' : row.normalLaneCount > 1 ? 'critical' : 'primary';
+          const tone = item.task.source === 'external' ? 'plan' : row.normalLaneCount > 1 ? 'overlap' : 'primary';
           const chosen = baselineSelected ? baselineSelected.comparison.operation_ref === item.task.operation_ref : item.task.row_ref === (selected && selected.row_ref);
           ctx.fillStyle = value('--wb-gantt-' + tone + '-fill');
           ctx.fillRect(x, 7, barWidth, 33);
+          if (tone === 'overlap') {
+            ctx.save();
+            ctx.beginPath();
+            ctx.rect(x, 7, barWidth, 33);
+            ctx.clip();
+            ctx.strokeStyle = value('--wb-gantt-overlap-edge');
+            ctx.lineWidth = 1;
+            for (let stripe = -33; stripe < barWidth; stripe += 6) {
+              ctx.beginPath();
+              ctx.moveTo(x + stripe, 40);
+              ctx.lineTo(x + stripe + 33, 7);
+              ctx.stroke();
+            }
+            ctx.restore();
+          }
           ctx.strokeStyle = value(chosen ? '--wb-gantt-gold' : '--wb-gantt-' + tone + '-edge');
           ctx.lineWidth = Math.min(barWidth, chosen ? 2 : 1);
           ctx.strokeRect(x + ctx.lineWidth / 2, 7 + ctx.lineWidth / 2, Math.max(0, barWidth - ctx.lineWidth), 33 - ctx.lineWidth);
@@ -227,7 +248,7 @@
     }, M.pieceLabel(t), /*#__PURE__*/React.createElement("small", null, M.number(t.sequence), " ", t.process_label || '未记录')), /*#__PURE__*/React.createElement("span", {
       role: "cell",
       title: planned ? M.title(t) : t.reason.message
-    }, planned ? /*#__PURE__*/React.createElement(React.Fragment, null, M.timeLabel(t.start), /*#__PURE__*/React.createElement("small", null, window.PointContract.isPoint(t) ? '时间点 · 0 h · 不占用资源' : M.timeLabel(t.end))) : t.reason.message), /*#__PURE__*/React.createElement("span", {
+    }, planned ? /*#__PURE__*/React.createElement(React.Fragment, null, M.timeLabel(t.start), /*#__PURE__*/React.createElement("small", null, window.PointContract.isPoint(t) ? '零工时工序 · 不占设备人员' : M.timeLabel(t.end))) : t.reason.message), /*#__PURE__*/React.createElement("span", {
       role: "cell",
       title: planned ? (t.machine && t.machine.label || '未记录') + '\n' + (t.operator && t.operator.label || '未记录') : ''
     }, planned ? /*#__PURE__*/React.createElement(React.Fragment, null, t.machine && t.machine.label || '未记录', /*#__PURE__*/React.createElement("small", null, t.operator && t.operator.label || '未记录')) : t.execution_at_generation ? M.executionValue(t.execution_at_generation.execution_state) : '未记录'), /*#__PURE__*/React.createElement("span", {
@@ -238,7 +259,7 @@
       "aria-label": '工序详情 ' + (t.batch_label || '批次未记录') + ' ' + M.number(t.sequence) + ' ' + (t.process_label || '工序未记录') + ' ' + M.pieceLabel(t),
       onClick: () => onSelect(t)
     }, "\u8BE6\u60C5"))))))), !tasks.length && /*#__PURE__*/React.createElement(window.WorkbenchListControls.EmptyState, {
-      title: "\u5F53\u524D\u9884\u89C8\u6CA1\u6709\u5339\u914D\u8BB0\u5F55"
+      title: "\u5F53\u524D\u8303\u56F4\u6CA1\u6709\u5339\u914D\u8BB0\u5F55"
     }));
   }
   function RunCandidateGantt({
@@ -305,12 +326,23 @@
     function pan(left) {
       if (owner.current) owner.current.scrollLeft = Math.max(0, Math.min(width - viewport, left));
     }
+    function fit() {
+      setZoom(1);
+      pan(0);
+    }
+    function zoomKeys(event) {
+      const action = timelineZoomKey(event);
+      if (!action) return;
+      event.preventDefault();
+      if (action === 'fit') fit();else setZoom(z => timelineZoomStep(z, action === 'in' ? 1 : -1, ZOOM_MAX));
+    }
     const visible = M.visibleRows(model.rows, scroll.top - 48, scroll.top + 384);
     const tickRows = model.start === null ? [] : M.ticks(model.start, model.end, width, scroll.left, viewport);
     return /*#__PURE__*/React.createElement("section", {
       ref: host,
       className: "rc-gantt",
-      "aria-label": "\u5019\u9009\u7518\u7279\u9884\u89C8"
+      "aria-label": "\u5019\u9009\u7518\u7279\u56FE",
+      onKeyDown: zoomKeys
     }, /*#__PURE__*/React.createElement(window.PointGantt.Styles, null), /*#__PURE__*/React.createElement("div", {
       className: "rc-heading"
     }, /*#__PURE__*/React.createElement("div", {
@@ -325,35 +357,12 @@
       className: "rc-tools"
     }, /*#__PURE__*/React.createElement(BC.Toggle, {
       state: baseline
-    }), /*#__PURE__*/React.createElement(Button, {
-      icon: "minus",
-      "aria-label": "\u7F29\u5C0F\u5019\u9009\u65F6\u95F4\u8F74",
-      disabled: zoom <= 1,
-      onClick: () => setZoom(z => Math.max(1, z / 2))
-    }), /*#__PURE__*/React.createElement("input", {
-      type: "range",
-      "aria-label": "\u5019\u9009\u65F6\u95F4\u8F74\u7F29\u653E",
-      min: "1",
-      max: "128",
-      step: "1",
-      value: zoom,
-      style: {
-        width: 100
-      },
-      onChange: e => setZoom(Number(e.target.value))
-    }), /*#__PURE__*/React.createElement(Button, {
-      icon: "plus",
-      "aria-label": "\u653E\u5927\u5019\u9009\u65F6\u95F4\u8F74",
-      disabled: zoom >= 128,
-      onClick: () => setZoom(z => Math.min(128, z * 2))
-    }), /*#__PURE__*/React.createElement(Button, {
-      icon: "chart-gantt",
-      "aria-label": "\u9002\u914D\u5B8C\u6574\u5019\u9009\u65F6\u95F4\u8F74",
-      disabled: zoom === 1,
-      onClick: () => {
-        setZoom(1);
-        pan(0);
-      }
+    }), /*#__PURE__*/React.createElement(TimelineZoom, {
+      zoom: zoom,
+      max: ZOOM_MAX,
+      scope: "\u5019\u9009",
+      onZoom: setZoom,
+      onFit: fit
     }))), /*#__PURE__*/React.createElement(BC.Panel, {
       state: baseline,
       rows: model.comparisons || [],
@@ -361,8 +370,12 @@
       onChoose: selectBaseline,
       workspace: data
     }), /*#__PURE__*/React.createElement("div", {
-      className: "rc-muted"
-    }, model.groupCount, " \u7EC4 \xB7 ", model.rows.length, " \u8F68 \xB7 \u91CD\u53E0\u62C6\u8F68\uFF08\u4E0D\u7B49\u540C\u4E8E\u4E1A\u52A1\u51B2\u7A81\u7ED3\u8BBA\uFF09 \xB7 \u5916\u534F\u72EC\u7ACB\u8272"), model.start !== null && /*#__PURE__*/React.createElement("div", {
+      className: "rc-legend rc-muted"
+    }, /*#__PURE__*/React.createElement("span", null, model.groupCount, " \u7EC4 \xB7 ", model.rows.length, " \u8F68"), /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("i", null), "\u5B89\u6392"), /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("i", {
+      className: "rc-overlap"
+    }), "\u65F6\u95F4\u91CD\u53E0\u7684\u5B89\u6392\uFF08\u5206\u884C\u663E\u793A\uFF09"), /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("i", {
+      className: "rc-external"
+    }), "\u5916\u534F\u5DE5\u5E8F")), model.start !== null && /*#__PURE__*/React.createElement("div", {
       className: "rc-heading rc-muted"
     }, /*#__PURE__*/React.createElement("span", null, M.timeLabel(M.wire(model.start))), /*#__PURE__*/React.createElement("span", null, M.timeLabel(M.wire(model.end)))), /*#__PURE__*/React.createElement("div", {
       className: "rc-axis"
@@ -447,7 +460,7 @@
     }), window.PointContract.isPoint(selected) && /*#__PURE__*/React.createElement("dl", {
       className: "rc-meta",
       "data-candidate-point-facts": true
-    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u5B89\u6392\u7C7B\u578B"), /*#__PURE__*/React.createElement("dd", null, "\u65F6\u95F4\u70B9")), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u53D1\u751F\u65F6\u95F4"), /*#__PURE__*/React.createElement("dd", null, M.timeLabel(selected.start))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u672C\u5DE5\u5E8F\u5360\u7528"), /*#__PURE__*/React.createElement("dd", null, "0 h \xB7 \u4E0D\u5360\u7528\u8D44\u6E90"))), hover && /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u5B89\u6392\u7C7B\u578B"), /*#__PURE__*/React.createElement("dd", null, "\u96F6\u5DE5\u65F6\u5DE5\u5E8F")), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u53D1\u751F\u65F6\u95F4"), /*#__PURE__*/React.createElement("dd", null, M.timeLabel(selected.start))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u672C\u5DE5\u5E8F\u5360\u7528"), /*#__PURE__*/React.createElement("dd", null, "0 \u5C0F\u65F6 \xB7 \u4E0D\u5360\u8BBE\u5907\u4EBA\u5458"))), hover && /*#__PURE__*/React.createElement("div", {
       role: "tooltip",
       className: "rc-tooltip",
       style: {

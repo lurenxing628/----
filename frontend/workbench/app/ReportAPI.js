@@ -8,7 +8,7 @@
   function scope(value = {}) {
     if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).some(key => !scopeKeys.includes(key) && key !== 'kind')
       || value.kind !== undefined && value.kind !== 'execution_analysis')
-      throw new Error('传入范围含本页不支持的条件，未忽略日期或对象筛选。');
+      throw new Error('传入范围里有本页不支持的条件，没有忽略日期或批次筛选。');
     const result = { source: 'production' };
     scopeKeys.forEach(key => { if (value[key] !== undefined && value[key] !== null && value[key] !== '') result[key] = value[key]; });
     return result;
@@ -26,11 +26,11 @@
     if (input.snapshot_ref) return api.read(input, signal);
     const first = await api.read({ ...input, page: 1 }, signal);
     if (input.plan_ref && first.data.plan.plan_ref !== input.plan_ref || first.data.topic !== input.topic)
-      throw new Error('重新读取的计划或专题与原查看状态不一致，未改用其他来源。');
+      throw new Error('刷新后的计划或专题与原查看状态不一致，没有改用其他来源。');
     const result = input.page === 1 ? first : await api.read({ ...input, ...scope(first.data.scope),
       snapshot_ref: first.meta.snapshot_ref }, signal);
     if (result.data.page.number !== input.page || result.data.page.size !== input.size)
-      throw new Error('原报表页已不可用，未改到第一页或其他页。');
+      throw new Error('翻页位置已失效，请回到第 1 页重新查询。');
     return result;
   }
   function validateLedger(data) {
@@ -47,17 +47,17 @@
     if (!totals(data.summary) || !data.resources || !['machines', 'people'].every(kind => Array.isArray(data.resources[kind]) && data.resources[kind].every(totals))
       || !data.rows.every(data.topic === 'records' ? record : ['machines', 'people'].includes(data.topic) ? totals : operation)
       || data.detail && (!operation(data.detail.operation) || !Array.isArray(data.detail.records) || !data.detail.records.every(record)))
-      throw new Error('执行台账字段缺失或计数不一致，未把旧事件当作逐次报工，也未把未知量按零处理。');
+      throw new Error('报工记录缺列或计数不一致，没有把历史事件当成逐次报工，也没有把未知量按 0 处理。');
   }
   function validate(result) {
     const data = result && result.data;
     if (!result || result.ok !== true || !result.meta || result.meta.source !== 'production' || !result.meta.snapshot_ref
       || !data || !data.plan || !data.plan.is_current_official || !data.scope || !Array.isArray(data.rows) || !data.page || !data.summary || !Array.isArray(data.data_gaps)
       || !Number.isInteger(data.page.total) || data.page.total < 0 || !Number.isInteger(data.page.number) || !Number.isInteger(data.page.pages))
-      throw new Error('报表数据合同不完整，未使用样例替代。');
+      throw new Error('读到的报表数据不完整，请刷新重试。');
     if (topics.includes(data.topic) && (!['operations', 'events', 'due', 'confirmed_due', 'unreported', 'finish_sample'].every(key => Number.isInteger(data.summary[key]) && data.summary[key] >= 0)
       || !['completion_rate', 'on_time_rate', 'effective_processing_hours', 'median_finish_minutes'].every(key => data.summary[key] === null || Number.isFinite(data.summary[key]))))
-      throw new Error('报表汇总字段缺失或数值无效，未按零处理。');
+      throw new Error('报表汇总缺列或数值无效，没有按 0 处理。');
     if (topics.includes(data.topic)) validateLedger(data);
     return result;
   }
@@ -66,21 +66,21 @@
     return {
       async read(input, signal) { return validate(await io.query('analytics', input, signal)); },
       async detail(ref, input, signal) {
-        if (!/^[0-9a-f]{48}$/.test(ref)) throw new Error('工序引用无效，未定位其他对象。');
+        if (!/^[0-9a-f]{48}$/.test(ref)) throw new Error('工序编号无效，没有定位其他工序。');
         const result = validate(await io.query('analytics/operations/' + ref, input, signal));
         if (!result.data.detail || result.data.detail.operation.operation_ref !== ref
           || result.data.detail.records.some(row => row.operation_ref !== ref) || result.meta.snapshot_ref !== input.snapshot_ref
           || input.plan_ref && result.data.plan.plan_ref !== input.plan_ref)
-          throw new Error('工序详情与原对象、计划或当前读取快照不一致，未改指其他工序。');
+          throw new Error('工序详情与原工序、计划或当前数据版本不一致，没有改指其他工序。');
         return result;
       },
       async catalog(kind, input, signal) {
-        if (!['overdue', 'utilization', 'downtime', 'official-review'].includes(kind)) throw new Error('报表目录不存在。');
+        if (!['overdue', 'utilization', 'downtime', 'official-review'].includes(kind)) throw new Error('报表不存在。');
         return validate(await io.query('reports/' + kind, input, signal));
       },
       async download(path, input, signal) {
         if (!/^\/api\/workbench\/v1\/(analytics|reports\/(overdue|utilization|downtime|official-review))\/export$/.test(path) || !input.snapshot_ref)
-          throw new Error('导出地址或范围快照无效，请明确刷新。');
+          throw new Error('导出地址或数据版本无效，请刷新后重试。');
         const result = await io.download(path, input, signal);
         const filename = /filename\*=UTF-8''([^;]+)/i.exec(result.disposition) || /filename="?([^";]+)/i.exec(result.disposition);
         let name = 'workbench-report.' + input.format;

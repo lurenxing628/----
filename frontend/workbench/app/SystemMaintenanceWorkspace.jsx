@@ -30,7 +30,7 @@
         if (running.current) return;
         const state = A.inspectPending(); setStorageError(state.storageError);
         if (current.current && (!state.intent || state.intent.request_key !== current.current.request_key)) {
-          setStorageError(new Error('原请求的本机记录已变化，未释放待核实状态；请保留现场并核实原请求。'));
+          setStorageError(new Error('本机存的上次操作记录已变化，页面仍然停在等待确认的状态。请不要再操作，联系维护人员。'));
           lookup(); return;
         }
         if (!state.storageError && !current.current) {
@@ -81,7 +81,7 @@
       <C.Styles />
       {suspended && !(command.hostBusy && !command.intent && !command.hostError && !command.storageError && !command.host)
         ? <window.SystemRestorePanel command={command} api={api} theme={theme} onSetTheme={onSetTheme} /> : <C.Outcome command={command} />}
-      {suspended && command.hostBusy && !command.intent && <p className="sm-note" role="status">正在核查软件维护状态，尚未读取数据库。</p>}
+      {suspended && command.hostBusy && !command.intent && <p className="sm-note" role="status">正在核对软件维护状态，还没有读取数据库。</p>}
       {(!current || tab === 'overview') && !suspended && children}
       {['backups', 'logs'].map(kind => visited[kind] || enabled && tab === kind ? <div key={kind} hidden={!enabled || tab !== kind}>
         <window.SystemMaintenanceRecords api={api} kind={kind} pageSize={pageSize} onPageSize={onPageSize} revision={serial} command={command} active={enabled && tab === kind}

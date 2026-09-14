@@ -145,8 +145,8 @@ async function changeOutside(page,date,fields) {
   assert.equal(response.status(),200,await response.text());
 }
 async function done(page) {
-  await page.getByText('已重新读取最新工作日历。',{exact:true}).waitFor();
-  assert(await page.getByText(/服务器已确认提交。|服务器确认内容未变化。/).isVisible());
+  await page.getByText('已刷新，显示最新工作日历。',{exact:true}).waitFor();
+  assert(await page.getByText(/保存已完成。|内容没有变化，已确认。/).isVisible());
 }
 async function closeDialog(page) { await page.getByRole('dialog').getByRole('button',{name:'关闭',exact:true}).last().click(); await page.getByRole('dialog').waitFor({state:'hidden'}); }
 async function openDay(page,date) { await page.getByRole('button',{name:new RegExp('^'+date+' ')}).click(); await page.getByRole('dialog').waitFor(); }
@@ -204,7 +204,7 @@ async function geometry(page,viewport) {
       await page.getByRole('button',{name:'保存配置',exact:true}).click();await page.getByRole('alert').getByText('资料已变化，请重新读取并核对。',{exact:true}).waitFor();
       assert.equal(await page.getByLabel('备注',{exact:true}).inputValue(),'保留草稿 '+id);
       assert(await page.getByRole('button',{name:/^保存配置/}).isDisabled());
-      await page.getByRole('button',{name:'重新读取最新资料',exact:true}).click();await page.getByRole('button',{name:'已核对，继续编辑',exact:true}).click();
+      await page.getByRole('button',{name:'刷新最新资料',exact:true}).click();await page.getByRole('button',{name:'已核对，继续编辑',exact:true}).click();
       await page.getByRole('button',{name:'保存配置',exact:true}).click();await done(page);await closeDialog(page);
       state=await monthJSON(page);assert.equal(state.days[9].fields.hours,9);assert.equal(state.days[9].fields.eff,80);assert.equal(state.days[9].fields.note,'保留草稿 '+id);
       await openDay(page,'2026-09-10');await page.getByLabel('可排工时（小时）').fill('7');
@@ -230,25 +230,25 @@ async function geometry(page,viewport) {
       assert.deepEqual(await page.evaluate(()=>calendarProbe.commands[calendarProbe.commands.length-1].body.input.fields),{note:'Only note'});await closeDialog(page);
       await page.getByRole('button',{name:'批量维护',exact:true}).click();
       await page.getByLabel('开始日期',{exact:false}).fill('2027-01-01');await page.getByLabel('结束日期',{exact:false}).fill('2028-01-01');
-      await page.getByRole('button',{name:'预览全部日期',exact:true}).click();await page.getByText('全部命中 366 天',{exact:true}).waitFor();
-      assert.equal(await page.getByLabel('预览页码').locator('option').count(),37);
-      for(let number=1;number<=37;number++){await page.getByLabel('预览页码').selectOption(String(number));assert((await page.locator('.modal tbody tr').count())===(number===37?6:10));}
+      await page.getByRole('button',{name:'预览变更',exact:true}).click();await page.getByText('全部命中 366 天',{exact:true}).waitFor();
+      assert.equal(await page.getByLabel('预览变更页码').locator('option').count(),37);
+      for(let number=1;number<=37;number++){await page.getByLabel('预览变更页码').selectOption(String(number));assert((await page.locator('.modal tbody tr').count())===(number===37?6:10));}
       assert(await page.getByRole('cell',{name:/^2028-01-01/}).isVisible());
       assert(await page.getByText('确认作用于全部 366 天，包含其他分页日期。',{exact:true}).isVisible());
       await page.screenshot({path:path.join(output,id+'-preview.png'),animations:'disabled'});await geometry(page,viewport);
       await changeOutside(page,'2027-01-01',{note:'Preserve range note'});
       await page.getByRole('button',{name:'确认全部 366 天',exact:true}).click();await page.getByText(/范围内日历已变化，请重新预览/).waitFor();
-      await page.getByRole('button',{name:'重新预览',exact:true}).click();await page.getByText('全部命中 366 天',{exact:true}).waitFor();
+      await page.getByRole('button',{name:'重新预览变更',exact:true}).click();await page.getByText('全部命中 366 天',{exact:true}).waitFor();
       await page.getByRole('button',{name:'确认全部 366 天',exact:true}).click();await done(page);await closeDialog(page);
       assert.equal((await monthJSON(page,2027,1)).days[0].fields.note,'Preserve range note');
       assert((await monthJSON(page,2027,12)).days.every(row=>row.explicit));
       await page.getByRole('button',{name:'批量维护',exact:true}).click();await page.getByLabel('开始日期',{exact:false}).fill('2027-01-03');await page.getByLabel('结束日期',{exact:false}).fill('2027-01-03');
-      await page.getByRole('button',{name:'仅周一至周五',exact:true}).click();await page.getByRole('button',{name:'预览全部日期',exact:true}).click();
+      await page.getByRole('button',{name:'仅周一至周五',exact:true}).click();await page.getByRole('button',{name:'预览变更',exact:true}).click();
       await page.getByText('全部命中 0 天',{exact:true}).waitFor();assert(await page.getByRole('button',{name:/^确认全部 0 天/}).isDisabled());
       await page.getByRole('button',{name:'返回修改范围',exact:true}).click();
       await page.getByLabel('开始日期',{exact:false}).fill('2027-01-01');await page.getByLabel('结束日期',{exact:false}).fill('2028-01-01');
       await page.getByRole('button',{name:'范围内每天',exact:true}).click();await page.getByRole('button',{name:'清除配置，恢复默认',exact:true}).click();
-      await page.getByRole('button',{name:'预览全部日期',exact:true}).click();await page.getByText('全部命中 366 天',{exact:true}).waitFor();
+      await page.getByRole('button',{name:'预览变更',exact:true}).click();await page.getByText('全部命中 366 天',{exact:true}).waitFor();
       await page.getByRole('button',{name:'确认全部 366 天',exact:true}).click();await done(page);await closeDialog(page);
       assert((await monthJSON(page,2027,1)).days.every(row=>row.calendar_ref===null));
       if(theme==='light'&&viewport.width===1920){
@@ -256,13 +256,13 @@ async function geometry(page,viewport) {
         await page.route('**/api/workbench/v1/commands/*',route=>route.abort('connectionfailed'));
         await page.route('**/api/workbench/v1/calendar/upsert',async route=>{await route.fetch();await route.abort('connectionfailed');});
         const commandCount=await page.evaluate(()=>calendarProbe.commands.length);
-        await page.getByRole('button',{name:'保存配置',exact:true}).click();await page.getByText('结果待核实。请保留当前页面，不要重新新建或重复保存。',{exact:true}).waitFor();
+        await page.getByRole('button',{name:'保存配置',exact:true}).click();await page.getByText('上次保存的结果还没查到，可能已经生效。请点「查询结果」，不要重复提交。',{exact:true}).waitFor();
         await page.keyboard.press('Escape');assert(await page.getByRole('dialog').isVisible());assert(await page.getByRole('button',{name:'取消',exact:true}).isDisabled());
         assert.equal(await page.evaluate(()=>calendarProbe.commands.length),commandCount+1);
-        await page.reload();await page.getByRole('dialog',{name:'工作日历操作回执',exact:true}).waitFor();
-        await page.getByText('结果待核实。请保留当前页面，不要重新新建或重复保存。',{exact:true}).waitFor();
+        await page.reload();await page.getByRole('dialog',{name:'工作日历操作结果',exact:true}).waitFor();
+        await page.getByText('上次保存的结果还没查到，可能已经生效。请点「查询结果」，不要重复提交。',{exact:true}).waitFor();
         await page.unroute('**/api/workbench/v1/commands/*');await page.unroute('**/api/workbench/v1/calendar/upsert');
-        await page.getByRole('button',{name:'查询原请求回执',exact:true}).click();await done(page);await closeDialog(page);
+        await page.getByRole('button',{name:'查询结果',exact:true}).click();await done(page);await closeDialog(page);
         assert.equal(await page.evaluate(()=>calendarProbe.commands.length),0);
         assert.equal((await monthJSON(page)).days[9].fields.note,'Receipt uncertainty');
       }

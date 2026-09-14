@@ -31,14 +31,14 @@ async function check(page, fixture, variant) {
   const workspace = page.locator('[data-plan-workspace]'), heading = workspace.locator(':scope > .plan-heading').first();
   await workspace.waitFor();
   if (fixture.plan_ref) await workspace.locator('[data-plan-gantt]').waitFor();
-  else await workspace.getByText('从目录中选择一个可查看的计划。', { exact: true }).waitFor();
+  else await workspace.getByText('请在计划列表里选一个可查看的计划。', { exact: true }).waitFor();
   await settle(page);
   assert.equal(await workspace.getByRole('button', { name: /^(采用|正式采用|重新采用)/ }).count(), 0);
   assert.equal(await workspace.locator('[title*="暂不支持采用方案"]').count(), 0);
   assert(!(await workspace.innerText()).includes('暂不支持采用方案'));
   const ready = !!fixture.plan_ref;
   if (ready && [1280, 1366].includes(page.viewportSize().width)) {
-    for (const [id, name] of [['gantt', '设备 / 人员 / 批次甘特'], ['delay', '交付风险'], ['analysis', '选择排产方案']]) {
+    for (const [id, name] of [['gantt', '计划甘特'], ['delay', '交付风险'], ['analysis', '选择排产方案']]) {
       await page.getByRole('tab', { name, exact: true }).click(); await workspace.locator('[data-plan-gantt]').waitFor();
       await page.evaluate(() => window.scrollTo(0, 0)); await settle(page);
       const row = await workspace.locator('.plan-lane').first().evaluate(node => {
@@ -54,12 +54,12 @@ async function check(page, fixture, variant) {
   assert.equal(await trial.isEnabled(), ready);
   assert.equal(await download.isEnabled(), ready);
   assert.equal(await heading.getByRole('button', { name: '查看甘特', exact: true }).count(), 0, 'The shell owns plan view tabs');
-  assert.equal(await page.getByRole('tab', { name: '设备 / 人员 / 批次甘特', exact: true }).isEnabled(), true);
+  assert.equal(await page.getByRole('tab', { name: '计划甘特', exact: true }).isEnabled(), true);
   if (ready) {
     assert.equal(await heading.locator('.plan-state').innerText(), fixture.identity);
     await download.click(); await page.getByRole('dialog').waitFor();
     await page.getByRole('dialog').getByRole('button', { name: '取消', exact: true }).click();
-    await page.getByRole('tab', { name: '设备 / 人员 / 批次甘特', exact: true }).click();
+    await page.getByRole('tab', { name: '计划甘特', exact: true }).click();
     await page.waitForFunction(() => document.querySelector('#wb-view-tab-gantt').getAttribute('aria-selected') === 'true');
     assert.equal(await page.evaluate(() => history.state.workbench.context.plan_ref), fixture.plan_ref);
     await page.getByRole('tab', { name: '选择排产方案', exact: true }).click();
@@ -69,8 +69,8 @@ async function check(page, fixture, variant) {
     if (fixture.payload) assert.deepEqual(payload.data, fixture.payload.data, 'UI must not change plan data');
     const data = payload.data, label = value => value.replace('T', ' ');
     const inclusive = data.plan_span.end_inclusive === true;
-    const caption = inclusive && data.plan_span.start === data.plan_span.end ? '计划时间点：' + label(data.plan_span.start)
-      : '计划时间范围：' + label(data.time_scope.range_start) + ' → ' + label(data.time_scope.range_end) + (inclusive ? '（包含末端计划点）' : '（不含结束时刻）');
+    const caption = inclusive && data.plan_span.start === data.plan_span.end ? '计划时刻：' + label(data.plan_span.start)
+      : '计划时间范围：' + label(data.time_scope.range_start) + ' → ' + label(data.time_scope.range_end) + (inclusive ? '（包含末端零工时工序）' : '（不含结束时刻）');
     assert.equal(await workspace.locator(':scope > .plan-note').innerText(), caption, 'Keep FA scope caption');
     const metrics = await workspace.locator(':scope > .wb-metrics > .wb-metric').evaluateAll(nodes => nodes.slice(2).map(node => ({
       value: Number(node.querySelector('.wb-metric-value').textContent), tone: node.dataset.tone })));

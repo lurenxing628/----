@@ -459,7 +459,7 @@
       onClick: () => {
         if (canClose()) entry.current.close();
       },
-      reason: locked ? '操作尚未核实，请保留当前页面。' : ''
+      reason: locked ? '操作结果还没确认，请保留当前页面。' : ''
     }))), children, /*#__PURE__*/React.createElement("div", {
       className: "modal-f wb-actions",
       style: {
@@ -526,16 +526,16 @@
         overflowWrap: 'anywhere',
         textAlign: 'left'
       }
-    }, item.label || '关联名称未提供') : /*#__PURE__*/React.createElement("span", {
+    }, item.label || '名称未填写') : /*#__PURE__*/React.createElement("span", {
       className: "chip",
       key: item.ref,
       style: {
         whiteSpace: 'normal',
         overflowWrap: 'anywhere'
       }
-    }, item.label || '关联名称未提供'))) : /*#__PURE__*/React.createElement("span", {
+    }, item.label || '名称未填写'))) : /*#__PURE__*/React.createElement("span", {
       className: "muted"
-    }, entity.relationships[field] === null || Array.isArray(entity.relationships[field]) ? '未绑定' : '待读取');
+    }, entity.relationships[field] === null || Array.isArray(entity.relationships[field]) ? '未选' : '未读取');
   }
   function Choice({
     adapter,
@@ -550,7 +550,6 @@
   }) {
     const [search, setSearch] = React.useState(''),
       [query, setQuery] = React.useState('');
-    const [searching, setSearching] = React.useState(false);
     const [page, setPage] = React.useState(1),
       [snapshot, setSnapshot] = React.useState(undefined);
     const [known, setKnown] = React.useState({});
@@ -560,7 +559,7 @@
       describedBy = invalid ? id + '-error' : undefined;
     const S = window.APSResourceSession;
     const request = S.useQuery(async signal => {
-      if (typeof adapter.choices !== 'function') throw C.failure('暂时无法读取可选资料，请稍后重试。');
+      if (typeof adapter.choices !== 'function') throw C.failure('dependency not wired: adapter.choices');
       const scope = {
         query,
         page,
@@ -608,6 +607,12 @@
       setSnapshot(response.meta.snapshot_ref);
       setPage(next);
     };
+    const runSearch = () => {
+      setQuery(search);
+      setPage(1);
+      setSnapshot(undefined);
+      request.reload();
+    };
     const options = Array.from(available.values());
     return /*#__PURE__*/React.createElement("div", {
       className: 'field wb-field' + (field.multiple ? ' full' : '') + (invalid ? ' err' : ''),
@@ -617,7 +622,7 @@
       "data-field-path": 'relationships.' + field.key
     }, /*#__PURE__*/React.createElement("label", {
       htmlFor: id
-    }, field.label), searching && /*#__PURE__*/React.createElement("div", {
+    }, field.label), /*#__PURE__*/React.createElement("div", {
       className: "rowact"
     }, /*#__PURE__*/React.createElement("div", {
       className: "search",
@@ -638,22 +643,14 @@
       onKeyDown: event => {
         if (event.key === 'Enter') {
           event.preventDefault();
-          setQuery(search);
-          setPage(1);
-          setSnapshot(undefined);
-          request.reload();
+          runSearch();
         }
       }
     })), /*#__PURE__*/React.createElement(Button, {
       icon: "search",
       "aria-label": '执行' + field.label + '搜索',
       disabled: disabled,
-      onClick: () => {
-        setQuery(search);
-        setPage(1);
-        setSnapshot(undefined);
-        request.reload();
-      }
+      onClick: runSearch
     })), field.multiple ? /*#__PURE__*/React.createElement("div", {
       id: id,
       role: "group",
@@ -687,7 +684,7 @@
       checked: selected.includes(item.ref),
       disabled: disabled || !selected.includes(item.ref) && !selectable(item),
       onChange: event => choose(item.ref, event.target.checked)
-    }), item.label, !selectable(item) ? '（停用 / 未核实）' : ''))) : /*#__PURE__*/React.createElement("select", {
+    }), item.label, !selectable(item) ? '（停用 / 未确认）' : ''))) : /*#__PURE__*/React.createElement("select", {
       id: id,
       value: value,
       disabled: disabled,
@@ -696,11 +693,11 @@
       onChange: event => choose(event.target.value)
     }, /*#__PURE__*/React.createElement("option", {
       value: ""
-    }, "\u672A\u7ED1\u5B9A"), options.map(item => /*#__PURE__*/React.createElement("option", {
+    }, "\u672A\u9009"), options.map(item => /*#__PURE__*/React.createElement("option", {
       key: item.ref,
       value: item.ref,
       disabled: !selectable(item) && item.ref !== value
-    }, item.label, !selectable(item) ? '（停用 / 未核实）' : ''))), invalid && /*#__PURE__*/React.createElement("span", {
+    }, item.label, !selectable(item) ? '（停用 / 未确认）' : ''))), invalid && /*#__PURE__*/React.createElement("span", {
       id: describedBy,
       className: "wb-field-error"
     }, Array.from(new Set(errors.map(row => row.message))).join(' ')), request.loading && /*#__PURE__*/React.createElement("span", {
@@ -715,37 +712,232 @@
         setSnapshot(undefined);
         request.reload();
       }
-    }, "\u91CD\u8BFB\u9009\u9879"), response && /*#__PURE__*/React.createElement("div", {
-      className: "rowact",
-      style: {
-        alignItems: 'center',
-        flexWrap: 'wrap'
-      }
-    }, /*#__PURE__*/React.createElement("span", {
-      className: "fhint"
-    }, response.data.page.total, " \u9879", response.data.page.pages > 1 ? ' · 第 ' + response.data.page.number + ' 页' : ''), /*#__PURE__*/React.createElement(Button, {
-      icon: "search",
-      "aria-label": '查找' + field.label,
-      "aria-expanded": searching,
+    }, "\u5237\u65B0\u9009\u9879"), response && /*#__PURE__*/React.createElement(Pager, {
+      page: response.data.page,
+      unit: "\u9879",
+      label: field.label,
       disabled: disabled,
-      onClick: () => setSearching(value => !value)
-    }), response.data.page.pages > 1 && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Button, {
-      icon: "chevron-left",
-      "aria-label": field.label + '上一页',
-      disabled: disabled || page <= 1,
-      onClick: () => changePage(page - 1)
-    }), /*#__PURE__*/React.createElement(Button, {
-      icon: "chevron-right",
-      "aria-label": field.label + '下一页',
-      disabled: disabled || page >= response.data.page.pages,
-      onClick: () => changePage(page + 1)
-    }))), field.catalog && /*#__PURE__*/React.createElement(Button, {
+      onPage: changePage
+    }), field.catalog && /*#__PURE__*/React.createElement(Button, {
       icon: "plus",
       busy: catalogBusy,
       disabled: disabled,
-      reason: typeof adapter.openCatalog !== 'function' ? '暂不支持维护' + field.label + '。' : '',
+      reason: typeof adapter.openCatalog !== 'function' ? '维护' + field.label + '尚未开通。' : '',
       onClick: () => onCatalog(field, request.reload)
     }, "\u7EF4\u62A4", field.label));
+  }
+  // 列表基础件（EmptyState / Pager）和按钮、错误框放在同一层：Choice 用 Pager 翻页，Pager 又用 Button 画按钮，
+  // 分到两个文件就会互相依赖、无法排出加载顺序。WorkbenchListControls / WorkbenchControls 只是它们的既有入口名。
+  const titles = {
+    empty: '暂无记录',
+    filtered: '当前筛选没有匹配项',
+    loading: '正在读取…',
+    error: '读取未完成'
+  };
+  function EmptyState({
+    kind = 'empty',
+    title,
+    hint,
+    action,
+    error
+  }) {
+    if (!Object.prototype.hasOwnProperty.call(titles, kind)) throw new TypeError('empty_state_kind_unknown: ' + kind);
+    if ((kind === 'filtered' || kind === 'error') && !action) throw new TypeError('empty_state_requires_action: ' + kind);
+    return /*#__PURE__*/React.createElement("div", {
+      className: 'wb-empty wb-empty-' + kind,
+      role: kind === 'error' ? undefined : 'status',
+      "aria-busy": kind === 'loading' || undefined
+    }, /*#__PURE__*/React.createElement("p", {
+      className: "wb-empty-title"
+    }, title || titles[kind]), hint && /*#__PURE__*/React.createElement("p", {
+      className: "wb-empty-hint"
+    }, hint), kind === 'error' && error && /*#__PURE__*/React.createElement(ErrorBox, {
+      error: error
+    }), action && /*#__PURE__*/React.createElement("div", {
+      className: "wb-empty-action"
+    }, action));
+  }
+  function Pager({
+    page = 1,
+    pages,
+    total,
+    size,
+    sizes,
+    unit = '项',
+    onPage,
+    onSize,
+    disabled,
+    busy,
+    label = '记录',
+    sizeLabel,
+    mode = 'pages',
+    hasPrevious,
+    hasNext,
+    onPrevious,
+    onNext,
+    showPageSelect = false,
+    showPageJump = false,
+    jumpLabel = '跳转页码',
+    jumpActionLabel = '跳转'
+  }) {
+    const data = page && typeof page === 'object' ? page : {
+      number: page,
+      pages,
+      total,
+      size
+    };
+    const number = data.number || 1,
+      count = data.total == null ? total : data.total,
+      perPage = data.size || size;
+    const pageCount = data.pages || pages || (Number.isFinite(count) && perPage ? Math.max(1, Math.ceil(count / perPage)) : undefined);
+    const [jump, setJump] = React.useState(String(number)),
+      [jumpError, setJumpError] = React.useState(false);
+    const jumpErrorId = React.useId();
+    React.useEffect(() => {
+      setJump(String(number));
+      setJumpError(false);
+    }, [number]);
+    if (!['pages', 'cursor'].includes(mode)) throw new TypeError('pager_mode_unknown: ' + mode);
+    if (onSize && (!Array.isArray(sizes) || !sizes.length || !sizes.every(value => Number.isSafeInteger(value) && value > 0))) {
+      throw new TypeError('pager_sizes_not_declared_by_domain_api');
+    }
+    const locked = disabled || busy;
+    const previous = mode === 'cursor' ? !!hasPrevious : number > 1;
+    const next = mode === 'cursor' ? !!hasNext : pageCount != null ? number < pageCount : !!hasNext;
+    const previousAction = onPrevious || onPage && (() => onPage(number - 1));
+    const nextAction = onNext || onPage && (() => onPage(number + 1));
+    function goToPage() {
+      const target = Number(jump);
+      if (!/^\d+$/.test(jump) || !Number.isSafeInteger(target) || target < 1 || target > pageCount) {
+        setJumpError(true);
+        return;
+      }
+      setJumpError(false);
+      onPage(target);
+    }
+    return /*#__PURE__*/React.createElement("nav", {
+      className: "wb-pager",
+      "aria-label": label + '分页',
+      "aria-busy": busy || undefined
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "wb-pager-summary"
+    }, mode === 'cursor' ? '按读取顺序翻页' : /*#__PURE__*/React.createElement(React.Fragment, null, count != null && /*#__PURE__*/React.createElement(React.Fragment, null, "\u5171 ", count, " ", unit, " \xB7 "), "\u7B2C ", number, pageCount != null && /*#__PURE__*/React.createElement(React.Fragment, null, " / ", pageCount), " \u9875")), /*#__PURE__*/React.createElement("div", {
+      className: "wb-pager-actions"
+    }, mode === 'pages' && showPageSelect && pageCount && onPage && /*#__PURE__*/React.createElement("label", {
+      className: "wb-pager-size"
+    }, "\u9875\u7801", /*#__PURE__*/React.createElement("select", {
+      "aria-label": label + '页码',
+      value: number,
+      disabled: locked,
+      onChange: event => onPage(Number(event.target.value))
+    }, Array.from({
+      length: pageCount
+    }, (_, index) => index + 1).map(value => /*#__PURE__*/React.createElement("option", {
+      key: value,
+      value: value
+    }, value)))), mode === 'pages' && showPageJump && pageCount && onPage && /*#__PURE__*/React.createElement("div", {
+      className: "wb-pager-jump"
+    }, /*#__PURE__*/React.createElement("input", {
+      type: "number",
+      "aria-label": jumpLabel,
+      "aria-invalid": jumpError || undefined,
+      "aria-describedby": jumpError ? jumpErrorId : undefined,
+      min: 1,
+      max: pageCount,
+      step: 1,
+      value: jump,
+      disabled: locked,
+      onChange: event => {
+        setJump(event.target.value);
+        setJumpError(false);
+      },
+      onKeyDown: event => {
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          goToPage();
+        }
+      }
+    }), /*#__PURE__*/React.createElement(Button, {
+      "aria-label": jumpActionLabel,
+      disabled: locked,
+      onClick: goToPage
+    }, "\u8DF3\u8F6C"), jumpError && /*#__PURE__*/React.createElement("span", {
+      id: jumpErrorId,
+      role: "status",
+      className: "wb-field-error"
+    }, "\u8BF7\u8F93\u5165 1 \u5230 ", pageCount, " \u4E4B\u95F4\u7684\u9875\u7801\u3002")), onSize && /*#__PURE__*/React.createElement("label", {
+      className: "wb-pager-size"
+    }, "\u6BCF\u9875", /*#__PURE__*/React.createElement("select", {
+      "aria-label": sizeLabel || label + '每页条数',
+      value: perPage,
+      disabled: locked,
+      onChange: event => onSize(Number(event.target.value))
+    }, !sizes.includes(perPage) && /*#__PURE__*/React.createElement("option", {
+      value: perPage,
+      disabled: true
+    }, perPage, " ", unit, "\uFF08\u5F53\u524D\uFF09"), sizes.map(value => /*#__PURE__*/React.createElement("option", {
+      key: value,
+      value: value
+    }, value, " ", unit)))), /*#__PURE__*/React.createElement(Button, {
+      icon: "chevron-left",
+      "aria-label": label + '上一页',
+      disabled: locked || !previous || !previousAction,
+      onClick: previousAction
+    }, "\u4E0A\u4E00\u9875"), /*#__PURE__*/React.createElement(Button, {
+      icon: "chevron-right",
+      "aria-label": label + '下一页',
+      disabled: locked || !next || !nextAction,
+      onClick: nextAction
+    }, "\u4E0B\u4E00\u9875")));
+  }
+  // 时间轴缩放：计划甘特、候选甘特、值班台分析时间轴共用同一组按钮、叫法和快捷键（+ 或 = 放大，- 缩小，F 显示完整范围）。
+  // 上限由各时间轴按自己的绘制方式（DOM 或 canvas）和时间跨度申报，这里只负责一致地呈现和夹紧。
+  function timelineZoomStep(zoom, direction, max) {
+    return Math.max(1, Math.min(max, direction > 0 ? zoom * 2 : zoom / 2));
+  }
+  function timelineZoomKey(event) {
+    if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey || event.target.closest('input,textarea,select,[role=dialog]')) return null;
+    if (event.key === '+' || event.key === '=') return 'in';
+    if (event.key === '-') return 'out';
+    if (event.key === 'f' || event.key === 'F') return 'fit';
+    return null;
+  }
+  function TimelineZoom({
+    zoom,
+    max,
+    scope = '',
+    onZoom,
+    onFit,
+    disabled,
+    className = 'btn',
+    fitClassName
+  }) {
+    const axis = scope + '时间轴',
+      range = scope + '时间范围';
+    return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Button, {
+      icon: "minus",
+      className: className,
+      "aria-label": '缩小' + axis,
+      title: '缩小' + axis + ' (-)',
+      disabled: disabled || zoom <= 1,
+      onClick: () => onZoom(timelineZoomStep(zoom, -1, max))
+    }), /*#__PURE__*/React.createElement("span", {
+      className: "wb-zoom-level"
+    }, zoom, "\xD7"), /*#__PURE__*/React.createElement(Button, {
+      icon: "plus",
+      className: className,
+      "aria-label": '放大' + axis,
+      title: '放大' + axis + ' (+)',
+      disabled: disabled || zoom >= max,
+      onClick: () => onZoom(timelineZoomStep(zoom, 1, max))
+    }), /*#__PURE__*/React.createElement(Button, {
+      icon: "unfold-vertical",
+      className: (fitClassName || className) + ' wb-zoom-fit',
+      "aria-label": '显示完整' + range,
+      title: '显示完整' + range + ' (F)',
+      disabled: disabled || zoom <= 1,
+      onClick: onFit
+    }));
   }
   window.ResourceControls = {
     Icon,
@@ -758,6 +950,11 @@
     relationLabels,
     Choice,
     Field,
-    focusFirstInvalid
+    focusFirstInvalid,
+    EmptyState,
+    Pager,
+    TimelineZoom,
+    timelineZoomKey,
+    timelineZoomStep
   };
 })();

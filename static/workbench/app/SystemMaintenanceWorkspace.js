@@ -68,7 +68,7 @@
         const state = A.inspectPending();
         setStorageError(state.storageError);
         if (current.current && (!state.intent || state.intent.request_key !== current.current.request_key)) {
-          setStorageError(new Error('原请求的本机记录已变化，未释放待核实状态；请保留现场并核实原请求。'));
+          setStorageError(new Error('本机存的上次操作记录已变化，页面仍然停在等待确认的状态。请不要再操作，联系维护人员。'));
           lookup();
           return;
         }
@@ -213,7 +213,7 @@
     }), suspended && command.hostBusy && !command.intent && /*#__PURE__*/React.createElement("p", {
       className: "sm-note",
       role: "status"
-    }, "\u6B63\u5728\u6838\u67E5\u8F6F\u4EF6\u7EF4\u62A4\u72B6\u6001\uFF0C\u5C1A\u672A\u8BFB\u53D6\u6570\u636E\u5E93\u3002"), (!current || tab === 'overview') && !suspended && children, ['backups', 'logs'].map(kind => visited[kind] || enabled && tab === kind ? /*#__PURE__*/React.createElement("div", {
+    }, "\u6B63\u5728\u6838\u5BF9\u8F6F\u4EF6\u7EF4\u62A4\u72B6\u6001\uFF0C\u8FD8\u6CA1\u6709\u8BFB\u53D6\u6570\u636E\u5E93\u3002"), (!current || tab === 'overview') && !suspended && children, ['backups', 'logs'].map(kind => visited[kind] || enabled && tab === kind ? /*#__PURE__*/React.createElement("div", {
       key: kind,
       hidden: !enabled || tab !== kind
     }, /*#__PURE__*/React.createElement(window.SystemMaintenanceRecords, {

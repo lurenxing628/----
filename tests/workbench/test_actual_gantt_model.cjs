@@ -2,7 +2,7 @@
 const assert = require('node:assert/strict'), fs = require('node:fs'), path = require('node:path'), vm = require('node:vm');
 const root = path.resolve(__dirname, '../..'), host = { window: {}, Date, Map, Set, Number, JSON, Object, Array, Infinity, Math };
 vm.createContext(host);
-for (const name of ['WorkbenchFormat.js', 'PointContract.js', 'PointGanttModel.js', 'ActualGanttModel.js']) vm.runInContext(fs.readFileSync(path.join(root, 'frontend/workbench/app', name), 'utf8'), host);
+for (const name of ['WorkbenchFormat.js', 'PointContract.js', 'PointGanttModel.js', 'WorkbenchTerms.js', 'FieldContract.js', 'ActualGanttModel.js']) vm.runInContext(fs.readFileSync(path.join(root, 'frontend/workbench/app', name), 'utf8'), host);
 const M = host.window.ActualGanttModel, ref = n => n.toString(16).padStart(48, '0');
 const r = (n, start, end, machine = ref(2)) => ({ report_ref: ref(n), report_no: 'report ' + n, actual_start: start, actual_end: end,
   actual_machine_ref: machine, actual_operator_ref: ref(3), completed_quantity: null, effective_processing_hours: null, remark: '' });
@@ -62,7 +62,7 @@ const legacyLayout = M.layout({ ...data, items: [legacy] }, view, '2026-03-08T06
 assert.equal(legacyLayout.start, axisStart, 'Without points the display axis is not padded');
 assert.equal(legacyLayout.end, axisEnd);
 assert.equal(legacyLayout.rows.filter(row => row.kind === 'remaining').length, 0);
-assert.ok(M.describe(legacy, model.labels).some(line => line.includes('旧完工事件确认完成')));
+assert.ok(M.describe(legacy, model.labels).some(line => line.includes('历史完工记录确认完成')));
 assert.equal(JSON.stringify(data), original, 'Layout, marks and display padding never mutate source DTOs');
 console.log(JSON.stringify({ point_tracks: tracks.filter(lane => pointReport(lane[0])).length,
   original_span_ms: axisEnd - axisStart, display_padding_ms: pad, dto_unchanged: true, timezone: process.env.TZ || 'host' }));

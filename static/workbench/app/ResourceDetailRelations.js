@@ -27,7 +27,7 @@
     const meta = result && result.meta,
       data = result && result.data,
       page = data && data.page;
-    if (!C.object(result) || result.ok !== true || result.schema_version !== 1 || !C.object(meta) || !['production', 'demo'].includes(meta.source) || meta.time_basis !== 'factory_local' || !['snapshot_ref', 'request_ref', 'as_of'].every(key => typeof meta[key] === 'string' && meta[key]) || !Array.isArray(result.warnings) || !C.object(data) || !C.object(data.basis) || typeof data.basis.code !== 'string' || !data.basis.code || typeof data.basis.message !== 'string' || !data.basis.message || !ref(parent) || data.parent_ref !== parent || data.parent_kind !== 'op_type' || data.relation !== scope.relation || !C.own(kinds, scope.relation) || !Array.isArray(data.entities) || !data.entities.every(item => C.object(item) && item.kind === kinds[scope.relation] && ref(item.ref) && typeof item.business_code === 'string' && typeof item.label === 'string' && (item.status === null || typeof item.status === 'string') && C.object(item.fields) && Array.isArray(item.issues) && item.write_context === null) || new Set(data.entities.map(item => item.ref)).size !== data.entities.length || !C.object(page) || page.number !== scope.page || page.size !== scope.size || !count(page.total) || !count(page.pages) || page.pages !== Math.max(1, Math.ceil(page.total / page.size)) || page.number < 1 || page.number > Math.max(1, page.pages) || data.entities.length !== Math.min(page.size, Math.max(0, page.total - (page.number - 1) * page.size)) || !Array.isArray(page.sort) || page.sort.length !== 1 || page.sort[0].field !== 'business_code' || page.sort[0].direction !== 'asc' || scope.snapshot_ref && meta.snapshot_ref !== scope.snapshot_ref) throw C.failure('关联资料或分页范围不一致，请重新读取。');
+    if (!C.object(result) || result.ok !== true || result.schema_version !== 1 || !C.object(meta) || !['production', 'demo'].includes(meta.source) || meta.time_basis !== 'factory_local' || !['snapshot_ref', 'request_ref', 'as_of'].every(key => typeof meta[key] === 'string' && meta[key]) || !Array.isArray(result.warnings) || !C.object(data) || !C.object(data.basis) || typeof data.basis.code !== 'string' || !data.basis.code || typeof data.basis.message !== 'string' || !data.basis.message || !ref(parent) || data.parent_ref !== parent || data.parent_kind !== 'op_type' || data.relation !== scope.relation || !C.own(kinds, scope.relation) || !Array.isArray(data.entities) || !data.entities.every(item => C.object(item) && item.kind === kinds[scope.relation] && ref(item.ref) && typeof item.business_code === 'string' && typeof item.label === 'string' && (item.status === null || typeof item.status === 'string') && C.object(item.fields) && Array.isArray(item.issues) && item.write_context === null) || new Set(data.entities.map(item => item.ref)).size !== data.entities.length || !C.object(page) || page.number !== scope.page || page.size !== scope.size || !count(page.total) || !count(page.pages) || page.pages !== Math.max(1, Math.ceil(page.total / page.size)) || page.number < 1 || page.number > Math.max(1, page.pages) || data.entities.length !== Math.min(page.size, Math.max(0, page.total - (page.number - 1) * page.size)) || !Array.isArray(page.sort) || page.sort.length !== 1 || page.sort[0].field !== 'business_code' || page.sort[0].direction !== 'asc' || scope.snapshot_ref && meta.snapshot_ref !== scope.snapshot_ref) throw C.failure('读到的关联记录或翻页位置不对，请回到第 1 页重新查询。');
     return result;
   }
   function Association({
@@ -44,7 +44,7 @@
     });
     const [search, setSearch] = React.useState('');
     const read = S.useQuery(async signal => {
-      if (!adapter || typeof adapter.relations !== 'function') throw C.failure('关联资料读取接口尚未接入。');
+      if (!adapter || typeof adapter.relations !== 'function') throw C.failure('dependency not wired: adapter.relations');
       return query(await adapter.relations(entity.ref, scope, signal), entity.ref, scope);
     }, [adapter, entity.ref, scope]);
     const data = read.result && read.result.data,
@@ -110,7 +110,7 @@
       action: /*#__PURE__*/React.createElement(Button, {
         icon: "refresh-cw",
         onClick: refresh
-      }, "\u91CD\u65B0\u8BFB\u53D6", title)
+      }, "\u5237\u65B0", title)
     }), data && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", {
       className: "muted wb-resource-association-basis"
     }, data.basis.message), /*#__PURE__*/React.createElement("div", {
@@ -172,7 +172,7 @@
       className: "wb-resource-relations"
     }, null, entity.fields.category === 'internal' && /*#__PURE__*/React.createElement("p", {
       className: "muted"
-    }, "\u9759\u6001\u53EF\u7528\u6570\u91CF\uFF1A\u8BBE\u5907 ", C.availability(entity.availability) ? entity.availability.machines : '未知', " \u53F0 \xB7 \u4EBA\u5458 ", C.availability(entity.availability) ? entity.availability.operators : '未知', " \u4EBA\u3002\u5173\u8054\u8BB0\u5F55\u5305\u62EC\u505C\u7528\u6216\u8D44\u683C\u5F85\u6838\u5BF9\u8D44\u6E90\uFF0C\u4E0D\u4EE3\u8868\u5F53\u524D\u65F6\u6BB5\u53EF\u6392\u3002"), relations.map(relation => /*#__PURE__*/React.createElement(Association, {
+    }, "\u5F53\u524D\u53EF\u7528\u6570\u91CF\uFF1A\u8BBE\u5907 ", C.availability(entity.availability) ? entity.availability.machines : '未知', " \u53F0 \xB7 \u4EBA\u5458 ", C.availability(entity.availability) ? entity.availability.operators : '未知', " \u4EBA\u3002\u4E0B\u9762\u7684\u5173\u8054\u8BB0\u5F55\u542B\u505C\u7528\u548C\u8D44\u683C\u5F85\u6838\u5BF9\u7684\uFF0C\u4E0D\u4EE3\u8868\u8FD9\u4E2A\u65F6\u6BB5\u80FD\u6392\u3002"), relations.map(relation => /*#__PURE__*/React.createElement(Association, {
       key: relation,
       adapter: adapter,
       entity: entity,

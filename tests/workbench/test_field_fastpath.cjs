@@ -2,7 +2,7 @@
 const assert = require('node:assert/strict'), fs = require('node:fs'), path = require('node:path'), vm = require('node:vm');
 const root = path.resolve(__dirname, '../..'), app = path.join(root, 'frontend/workbench/app');
 const context = vm.createContext({ window: {}, Date, Blob, URL });
-for (const file of ['resource-contract.js', 'WorkbenchFormat.js', 'FieldContract.js', 'FieldDraftModel.js']) vm.runInContext(fs.readFileSync(path.join(app, file), 'utf8'), context, { filename: file });
+for (const file of ['resource-contract.js', 'WorkbenchFormat.js', 'WorkbenchTerms.js', 'FieldContract.js', 'FieldDraftModel.js']) vm.runInContext(fs.readFileSync(path.join(app, file), 'utf8'), context, { filename: file });
 const C = context.window.FieldContract, M = context.window.FieldDraftModel, plain = value => JSON.parse(JSON.stringify(value));
 const ref = character => character.repeat(48), token = 'new-context';
 const row = (overrides = {}) => ({ report_ref: ref('1'), revision_ref: ref('2'), operation_ref: ref('3'), recorded_against_task_ref: ref('4'),

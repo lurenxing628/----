@@ -71,7 +71,7 @@
     window.WorkbenchGuards.useDirtyGuard({
       dirty,
       locked: visible.locked,
-      message: create ? '新增零件的图号、名称或路线填写尚未保存。' : '零件原请求尚未核实。'
+      message: create ? '新增零件的图号、名称或路线填写尚未保存。' : '上次操作的结果还没查到，先不要离开。'
     });
     React.useEffect(() => {
       if (!done || notified.current === command.result.receipt_ref) return;
@@ -96,7 +96,7 @@
       setError(null);
       setAck(false);
       try {
-        if (typeof adapter.bulkPreview !== 'function') throw C.failure('零件删除预检尚未接入。');
+        if (typeof adapter.bulkPreview !== 'function') throw C.failure('dependency not wired: window.APSProcessAPI.bulkPreview');
         A.deleteBody(original);
         setJob({});
         setNow(Date.now());
@@ -153,7 +153,7 @@
     if (!create && data && now >= Date.parse(data.expires_at)) reason = '预检已过期，请重新预检。';
     if (!create && !reason && !ack) reason = '请先核对并勾选完整删除范围。';
     if (review) reason = '请先核对新读取的资料。';
-    if (command.phase === 'rejected') reason = create ? '本次未保存，请重新读取资料后再试。' : '本次未删除，请重新预检。';
+    if (command.phase === 'rejected') reason = create ? '本次未保存，请刷新资料后再试。' : '本次未删除，请重新预检。';
     function confirm() {
       if (disabled || locked || done || reason || recovery) return;
       setError(null);
@@ -223,7 +223,7 @@
       icon: "refresh-cw",
       disabled: disabled || locked,
       onClick: readCurrent
-    }, "\u91CD\u8BFB\u8D44\u6599\u5E76\u4FDD\u7559\u586B\u5199\u5185\u5BB9")), review && /*#__PURE__*/React.createElement("div", {
+    }, "\u5237\u65B0\u8D44\u6599")), review && /*#__PURE__*/React.createElement("div", {
       role: "status"
     }, /*#__PURE__*/React.createElement("p", null, "\u5DF2\u8BFB\u53D6\u6700\u65B0\u8D44\u6599\uFF0C\u586B\u5199\u5185\u5BB9\u672A\u6539\u3002\u8BF7\u6838\u5BF9\u540E\u7EE7\u7EED\u4FDD\u5B58\u3002"), /*#__PURE__*/React.createElement(Button, {
       disabled: locked,
@@ -233,7 +233,7 @@
           setReview(null);
         }
       }
-    }, "\u5DF2\u6838\u5BF9\uFF0C\u7EE7\u7EED\u7F16\u8F91")), !create && !recovery && /*#__PURE__*/React.createElement("p", null, "\u672C\u6B21\u9009\u4E2D ", original.refs.length, " \u4E2A\u96F6\u4EF6\uFF0C\u5305\u542B\u5176\u4ED6\u9875\u7684\u9009\u62E9\uFF1B\u5DF2\u88AB\u6279\u6B21\u4F7F\u7528\u7684\u96F6\u4EF6\u4E0D\u80FD\u5220\u9664\u3002\u6709\u4E00\u9879\u4E0D\u80FD\u5220\uFF0C\u672C\u6B21\u5C31\u4E00\u9879\u4E5F\u4E0D\u5220\u3002"), recovery && /*#__PURE__*/React.createElement("p", null, "\u6B63\u5728\u6838\u5B9E\u539F\u8BF7\u6C42\uFF1B\u4E0D\u4F1A\u6309\u5F53\u524D\u5217\u8868\u6216\u540C\u56FE\u53F7\u7684\u65B0\u96F6\u4EF6\u91CD\u65B0\u63D0\u4EA4\u3002"), !!job && preview.loading && /*#__PURE__*/React.createElement("p", {
+    }, "\u5DF2\u6838\u5BF9\uFF0C\u7EE7\u7EED\u7F16\u8F91")), !create && !recovery && /*#__PURE__*/React.createElement("p", null, "\u672C\u6B21\u9009\u4E2D ", original.refs.length, " \u4E2A\u96F6\u4EF6\uFF0C\u5305\u542B\u5176\u4ED6\u9875\u7684\u9009\u62E9\uFF1B\u5DF2\u88AB\u6279\u6B21\u4F7F\u7528\u7684\u96F6\u4EF6\u4E0D\u80FD\u5220\u9664\u3002\u6709\u4E00\u9879\u4E0D\u80FD\u5220\uFF0C\u672C\u6B21\u5C31\u4E00\u9879\u4E5F\u4E0D\u5220\u3002"), recovery && /*#__PURE__*/React.createElement("p", null, "\u6B63\u5728\u67E5\u8BE2\u4E0A\u6B21\u64CD\u4F5C\u7684\u7ED3\u679C\uFF1B\u4E0D\u4F1A\u6309\u5F53\u524D\u5217\u8868\u6216\u540C\u56FE\u53F7\u7684\u65B0\u96F6\u4EF6\u91CD\u65B0\u63D0\u4EA4\u3002"), !!job && preview.loading && /*#__PURE__*/React.createElement("p", {
       role: "status"
     }, "\u6B63\u5728\u68C0\u67E5\u5B8C\u6574\u5220\u9664\u8303\u56F4\uFF0C\u5C1A\u672A\u5220\u9664\u2026"), /*#__PURE__*/React.createElement(ErrorBox, {
       error: error
@@ -254,7 +254,7 @@
       command: visible
     }), done && /*#__PURE__*/React.createElement("p", {
       role: "status"
-    }, create ? '零件已登记，工艺仍待确认。打开详情前会重读这条原零件。' : '原请求已确认删除 ' + saved.deleted_count + ' 个零件。'))), discard && /*#__PURE__*/React.createElement(Modal, {
+    }, create ? '零件已登记，工艺仍待确认。打开详情前会先刷新这条零件。' : '上次操作已确认删除 ' + saved.deleted_count + ' 个零件。'))), discard && /*#__PURE__*/React.createElement(Modal, {
       title: "\u653E\u5F03\u65B0\u589E\u96F6\u4EF6\u7684\u586B\u5199\u5185\u5BB9\uFF1F",
       icon: "square-pen",
       onClose: () => setDiscard(false),

@@ -113,18 +113,18 @@ async function cases() {
   await run('self-made-columns',async()=>{
     await mount({kind:'op_type',table:true,category:'internal'});
     assert.deepEqual(await page.locator('th').allInnerTexts(),['','工种编号','名称','可用设备','可用人员','产能备注','操作']);
-    assert.equal(await page.getByText('待读取',{exact:true}).count(),2);
+    assert.equal(await page.getByText('未读取',{exact:true}).count(),2);
     assert(!(await page.locator('tbody').innerText()).includes('99'));
     await mount({kind:'op_type',table:true,category:'internal',patch:{availability:{machines:3,operators:0,basis:'enabled_authorized_matching'}}});
     assert.deepEqual(await page.locator('tbody td.r').allTextContents(),['3','0']);
-    assert(await page.getByTitle('启用且绑定此工种的设备；不代表当日日历空闲。',{exact:true}).isVisible());
+    assert(await page.getByTitle('启用并绑定此工种的设备；不代表当天班表有空。',{exact:true}).isVisible());
     result.cases.push({variant,name:'self-made-visual',...await shot('self-made-table')});
     await mount({kind:'op_type',table:true,category:'internal',empty:true});
     assert.equal(await page.getByRole('columnheader').filter({has:page.locator('.wb-th-title').getByText('可用设备',{exact:true})}).count(),1);
   });
   await run('external-columns',async()=>{
     await mount({kind:'op_type',table:true,category:'external',patch:{fields:{category:'external',default_merge_mode:'merged'}}});
-    assert.deepEqual(await page.locator('th').allInnerTexts(),['','工种编号','名称','默认周期策略','备注','操作']);
+    assert.deepEqual(await page.locator('th').allInnerTexts(),['','工种编号','名称','默认周期规则','备注','操作']);
     assert(await page.getByRole('cell',{name:'合并设置',exact:true}).isVisible());
     result.cases.push({variant,name:'external-visual',...await shot('external-table')});
   });
@@ -139,7 +139,7 @@ async function cases() {
   await run('internal-form-hidden-policy',async()=>{
     await mount({kind:'op_type'});
     assert.equal(await page.getByRole('dialog',{name:'编辑自制工种'}).count(),1);
-    assert.equal(await page.getByLabel('默认周期策略',{exact:true}).count(),0);
+    assert.equal(await page.getByLabel('默认周期规则',{exact:true}).count(),0);
     assert.equal(await page.getByLabel('归属',{exact:true}).count(),0);
     assert(await page.getByLabel('工种编号',{exact:true}).getAttribute('readonly')!==null);
     await page.getByLabel('产能备注',{exact:true}).fill('瓶颈工序，人员偏紧');
@@ -148,11 +148,11 @@ async function cases() {
   });
   await run('external-unknown-policy-and-null',async()=>{
     await mount({kind:'op_type',patch:{fields:{category:'external'}}});
-    assert.equal(await page.getByLabel('默认周期策略',{exact:true}).inputValue(),'legacy-policy');
+    assert.equal(await page.getByLabel('默认周期规则',{exact:true}).inputValue(),'legacy-policy');
     await page.getByLabel('名称',{exact:false}).fill('外协新名称');await save();
     assert.deepEqual(await lastInput(),{label:'外协新名称'});
     await mount({kind:'op_type',patch:{fields:{category:'external',default_merge_mode:'merged'}}});
-    await page.getByLabel('默认周期策略',{exact:true}).selectOption('');await save();
+    await page.getByLabel('默认周期规则',{exact:true}).selectOption('');await save();
     assert.deepEqual(await lastInput(),{fields:{default_merge_mode:null}});
   });
   await run('new-op-types-preserve-category',async()=>{
@@ -161,7 +161,7 @@ async function cases() {
       assert.equal(await page.evaluate(()=>fixture.calls.length),0);
       assert.equal(await page.getByLabel('工种编号',{exact:false}).getAttribute('aria-invalid'),'true');
       await page.getByLabel('工种编号',{exact:false}).fill('OT-NEW');await page.getByLabel('名称',{exact:false}).fill('新增工种');
-      if(category==='external')await page.getByLabel('默认周期策略',{exact:true}).selectOption('merged');
+      if(category==='external')await page.getByLabel('默认周期规则',{exact:true}).selectOption('merged');
       await save();assert.deepEqual(await lastInput(),{business_code:'OT-NEW',label:'新增工种',fields:category==='internal'?{category}:{category,default_merge_mode:'merged'}});
     }
     await mount({kind:'op_type',patch:{fields:{category:null}}});
@@ -208,16 +208,15 @@ async function cases() {
     await mount({kind:'operator',choiceStale:true});
     await page.getByLabel('姓名',{exact:false}).fill('选择失败时的草稿');
     await page.getByRole('button',{name:'技能工种下一页',exact:true}).click();
-    await page.getByRole('button',{name:'重读选项',exact:true}).waitFor();
+    await page.getByRole('button',{name:'刷新选项',exact:true}).waitFor();
     assert(await page.getByRole('checkbox',{name:'自制 65',exact:false}).isChecked());
     assert.equal(await page.getByLabel('姓名',{exact:false}).inputValue(),'选择失败时的草稿');
-    await page.evaluate(()=>{fixture.choiceRetried=true;});await page.getByRole('button',{name:'重读选项',exact:true}).click();
+    await page.evaluate(()=>{fixture.choiceRetried=true;});await page.getByRole('button',{name:'刷新选项',exact:true}).click();
     await page.getByRole('checkbox',{name:'自制 1',exact:true}).waitFor();
     assert(await page.getByRole('checkbox',{name:'自制 65',exact:false}).isChecked());
   });
   await run('choice-search-preserves-off-page-refs',async()=>{
     await mount({kind:'operator'});
-    await page.getByRole('button',{name:'查找技能工种',exact:true}).click();
     await page.getByRole('textbox',{name:'搜索技能工种',exact:true}).fill('自制 55');
     await page.getByRole('button',{name:'执行技能工种搜索',exact:true}).click();
     await page.getByRole('checkbox',{name:'自制 55',exact:true}).waitFor();
@@ -269,7 +268,7 @@ async function cases() {
     await mount({kind:'material',behavior:'stale'});await page.getByLabel('名称',{exact:false}).fill('未提交的草稿');await save();
     await page.getByRole('alert').filter({hasText:'资料已变化'}).waitFor();
     assert.equal(await page.getByLabel('名称',{exact:false}).inputValue(),'未提交的草稿');
-    await page.getByRole('button',{name:'重新读取最新资料',exact:true}).click();
+    await page.getByRole('button',{name:'刷新最新资料',exact:true}).click();
     await page.getByRole('button',{name:'已核对，继续编辑',exact:true}).waitFor();
     assert(await page.getByText('服务器当前名称',{exact:false}).isVisible());
     assert.equal(await page.getByLabel('库存数量',{exact:true}).inputValue(),'');
@@ -284,11 +283,11 @@ async function cases() {
   });
   await run('pending-not-success',async()=>{
     await mount({kind:'material',behavior:'pending'});await page.getByLabel('名称',{exact:false}).fill('待核实草稿');await save();
-    await page.getByRole('button',{name:'查询原请求回执',exact:true}).waitFor();
+    await page.getByRole('button',{name:'查询结果',exact:true}).waitFor();
     assert(await page.getByLabel('名称',{exact:false}).isDisabled());assert.equal(await page.evaluate(()=>fixture.calls.length),1);
-    assert.equal(await page.getByText('服务器已确认提交。',{exact:true}).count(),0);
-    await page.evaluate(()=>{fixture.confirmReceipt=true;});await page.getByRole('button',{name:'查询原请求回执',exact:true}).click();
-    await page.getByText('服务器确认内容未变化。',{exact:true}).waitFor();assert.equal(await page.evaluate(()=>fixture.calls.length),1);
+    assert.equal(await page.getByText('保存已完成。',{exact:true}).count(),0);
+    await page.evaluate(()=>{fixture.confirmReceipt=true;});await page.getByRole('button',{name:'查询结果',exact:true}).click();
+    await page.getByText('内容没有变化，已确认。',{exact:true}).waitFor();assert.equal(await page.evaluate(()=>fixture.calls.length),1);
   });
   await run('demo-cannot-save',async()=>{
     await mount({kind:'material',source:'demo'});
@@ -299,7 +298,7 @@ async function cases() {
   await run('detail-literal-values-and-policy-scope',async()=>{
     await mount({kind:'op_type',detail:true,patch:{fields:{remark:'active'}}});
     assert(await page.getByText('产能备注',{exact:true}).isVisible());assert(await page.getByText('active',{exact:true}).isVisible());
-    assert.equal(await page.getByText('默认周期策略',{exact:true}).count(),0);
+    assert.equal(await page.getByText('默认周期规则',{exact:true}).count(),0);
     await mount({kind:'supplier',detail:true});assert(await page.getByText('旧状态 / 原因未知',{exact:true}).isVisible());
     await mount({kind:'op_type',detail:true,patch:{fields:{category:'external',default_merge_mode:'toString',constructor:'hidden-field'}}});
     assert(await page.getByText('toString',{exact:true}).isVisible());assert.equal(await page.getByText('hidden-field',{exact:true}).count(),0);

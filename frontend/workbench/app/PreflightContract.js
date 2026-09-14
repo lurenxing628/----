@@ -16,7 +16,7 @@
     if (!object(value) || Object.keys(value).length !== fields.length || !fields.every(key => Object.prototype.hasOwnProperty.call(value, key))
         || !refs(value.batch_refs) || !date(value.start_date) || !date(value.end_date) || value.start_date > value.end_date
         || typeof value.ready_check !== 'boolean' || !['auto_assign', 'exclude'].includes(value.missing_resource_policy) || value.completed_policy !== 'preserve_actuals')
-      throw fail('请核对精确批次范围、日期窗口和本次排产规则。');
+      throw fail('请核对已选批次、排产日期范围和本次排产规则。');
     return Object.fromEntries(fields.map(key => [key, key === 'batch_refs' ? value[key].slice().sort() : value[key]]));
   }
   function defaults() {
@@ -37,10 +37,11 @@
       value.batch_refs = scope.batch_refs;
     }
     if (context.entity_ref !== undefined) {
-      if (!ref(context.entity_ref) || context.batch_refs !== undefined) throw fail('批次定位引用无效。');
+      if (!ref(context.entity_ref) || context.batch_refs !== undefined) throw fail('这个批次已失效，请点「选择批次」重新选。');
       value.batch_refs = [context.entity_ref];
     }
-    if (context.return_to !== undefined && !['batches', 'dashboard', 'run'].includes(context.return_to)) throw fail('返回入口无效。');
+    // 来源入口既可以是旧的视图名字符串，也可以是值班台用的 {view, context} 信封；本页不使用它，只做形状校验。
+    if (context.return_to !== undefined && !['batches', 'dashboard', 'run'].includes(object(context.return_to) ? context.return_to.view : context.return_to)) throw fail('返回入口无效。');
     return input(value);
   }
   const issues = rows => Array.isArray(rows) && rows.every(row => object(row) && typeof row.code === 'string' && typeof row.message === 'string');
@@ -92,7 +93,7 @@
   function selection(envelope, snapshot) {
     const data = envelope && envelope.data;
     if (!object(data) || !refs(data.refs) || data.count !== data.refs.length || envelope.meta.snapshot_ref !== snapshot)
-      throw fail('全选范围或快照不一致，原选择保持不变。');
+      throw fail(window.WorkbenchTerms.outcomes.stale);
     return data.refs;
   }
   window.PreflightContract = { input, initial, defaults, result, selection, refs, ref, fail };

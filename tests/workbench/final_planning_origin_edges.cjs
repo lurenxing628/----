@@ -9,12 +9,12 @@ async function originEdges(page, report, h, flush, draft, mapped, canonical) {
   const otherPlan = catalog.plans.find(plan => plan.version === 4 && plan.kind === 'official' && plan.capabilities.view);
   await page.locator('[data-plan-task="' + origin.task_ref + '"]:not([data-before])').click();
   await button('调整此工序', page.locator('[data-plan-inspector]')).click();
-  const dialog = page.getByRole('dialog', { name: '从原来源创建试调', exact: true });
+  const dialog = page.getByRole('dialog', { name: '从原来源新增试调', exact: true });
   await button('打开已有草稿', dialog).click();
   await dialog.waitFor({ state: 'hidden' }); await flush();
   const fixed = page.getByRole('checkbox', { name: '仅此原来源', exact: true });
   assert(await fixed.isChecked()); assert(await fixed.isDisabled());
-  const row = page.getByRole('table', { name: '试调目录', exact: true }).locator('tr[data-trial-ref="' + draft.draft_ref + '"]');
+  const row = page.getByRole('table', { name: '试调列表', exact: true }).locator('tr[data-trial-ref="' + draft.draft_ref + '"]');
   await button('打开', row).click(); await page.locator('[data-trial-workspace] .tt-main').waitFor(); await flush();
   assert.equal(await page.locator('[data-trial-workspace]').getAttribute('data-open-ref'), draft.draft_ref);
   assert.equal(await page.locator('.tt-gantt [data-task-ref][aria-pressed="true"]').getAttribute('data-task-ref'), mapped.task_ref);
@@ -34,7 +34,7 @@ async function originEdges(page, report, h, flush, draft, mapped, canonical) {
     await page.locator('[data-trial-workspace] .tt-main').waitFor(); await flush();
     assert(await page.getByText(message, { exact: true }).count() > 0);
     assert.equal(await page.locator('.tt-gantt [data-task-ref][aria-pressed="true"]').count(), 0);
-    assert(await button('保存场景').isDisabled()); assert(await button('放弃草稿').isDisabled());
+    assert(await button('保存试调方案').isDisabled()); assert(await button('放弃草稿').isDisabled());
     await h.selectTrial(20, 'item-B'); assert(await button('调整此工序').isDisabled());
     report.task_origin.negative_cases.push({ key, context, status: 200, message, no_replacement_write: true });
     await shot('original-task-rejected-' + key);

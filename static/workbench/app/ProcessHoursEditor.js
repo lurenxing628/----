@@ -5,7 +5,8 @@
     P = window.APSProcessContract,
     E = window.ProcessStageEditor,
     {
-      Button
+      Button,
+      Modal
     } = window.ResourceControls;
   const numericText = value => value === null ? '' : String(value);
   function mergedGroups(entity) {
@@ -49,14 +50,15 @@
     return next;
   }
   function number(text, label, positive) {
-    if (text === null || text === undefined || String(text).trim() === '' || !Number.isFinite(Number(text)) || (positive ? Number(text) <= 0 : Number(text) < 0)) throw C.failure(label + (positive ? '必须填写大于 0 的有限数。' : '必须填写大于等于 0 的有限数；空值不能按 0 保存。'));
+    if (text === null || text === undefined || String(text).trim() === '' || !Number.isFinite(Number(text)) || (positive ? Number(text) <= 0 : Number(text) < 0)) throw C.failure(label + (positive ? '必须填写大于 0 的数。' : '必须填写大于等于 0 的数；留空不会按 0 保存。'));
     return Number(text);
   }
-  function input(entity, draft) {
+  function input(entity, draft, pageSize) {
     const merged = new Set(mergedGroups(entity).map(row => row.ref));
+    const pending = E.active(entity).filter(row => !draft.operations[row.ref].confirmed);
+    if (pending.length) throw E.unconfirmed(pending, entity.operations, pageSize, '工时 / 周期');
     const operations = E.active(entity).map(row => {
       const current = draft.operations[row.ref];
-      if (!current.confirmed) throw C.failure('请明确勾选确认工序 ' + row.sequence + ' 的工时 / 周期。');
       if (row.source === 'external') return {
         ref: row.ref,
         external_days: P.groupCycle(row, entity.external_groups) || merged.has(row.external_group_ref) && current.external_days.trim() === '' && !row.issues.some(item => item.code === 'value_invalid') ? null : number(current.external_days, '工序 ' + row.sequence + ' 外协周期', true)
@@ -140,14 +142,35 @@
     async function save() {
       if (blocked || stageReason) return;
       try {
-        const body = input(entity, draft);
+        const body = input(entity, draft, paging.page.size);
         model.setError(null);
         await command.submit('process', 'hours_confirm', entity.ref, entity.write_context, body);
       } catch (error) {
         model.setError(error);
       }
     }
-    const all = paging.rows.filter(row => row.status === 'active');
+    const all = paging.rows.filter(row => row.status === 'active'),
+      active = E.active(entity),
+      [confirmAll, setConfirmAll] = React.useState(false);
+    // The server accepts the whole part in one request, so confirming every page at once is the natural unit; the dialog spells out the scope.
+    function confirmEverything() {
+      model.edit(current => {
+        const operations = {
+          ...current.operations
+        };
+        active.forEach(row => {
+          operations[row.ref] = {
+            ...operations[row.ref],
+            confirmed: true
+          };
+        });
+        return {
+          ...current,
+          operations
+        };
+      });
+      setConfirmAll(false);
+    }
     return /*#__PURE__*/React.createElement("section", {
       "data-process-hours-editor": true
     }, /*#__PURE__*/React.createElement("div", {
@@ -155,7 +178,7 @@
     }, /*#__PURE__*/React.createElement(E.Search, {
       paging: paging,
       disabled: blocked
-    }), /*#__PURE__*/React.createElement("span", null, "\u6709\u6548\u5DE5\u5E8F ", E.active(entity).length), /*#__PURE__*/React.createElement("span", {
+    }), /*#__PURE__*/React.createElement("span", null, "\u6709\u6548\u5DE5\u5E8F ", active.length), /*#__PURE__*/React.createElement("span", {
       className: "tb-spacer"
     }), /*#__PURE__*/React.createElement(window.ProcessFileButtons, {
       capabilities: entity.capabilities,
@@ -187,7 +210,24 @@
           };
         });
       }
-    }), "\u786E\u8BA4\u672C\u9875\u5DF2\u6838\u5BF9\u5DE5\u65F6")), /*#__PURE__*/React.createElement("div", {
+    }), "\u786E\u8BA4\u672C\u9875\u5DF2\u6838\u5BF9\u5DE5\u65F6"), paging.page.pages > 1 && /*#__PURE__*/React.createElement(Button, {
+      icon: "check",
+      disabled: editBlocked || !active.length,
+      onClick: () => setConfirmAll(true)
+    }, "\u786E\u8BA4\u5168\u90E8 ", active.length, " \u9053\u5DF2\u6838\u5BF9")), confirmAll && /*#__PURE__*/React.createElement(Modal, {
+      title: "\u786E\u8BA4\u5168\u90E8\u5DE5\u5E8F\u5DF2\u6838\u5BF9\u5DE5\u65F6",
+      icon: "check",
+      onClose: () => setConfirmAll(false),
+      footer: /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Button, {
+        onClick: () => setConfirmAll(false)
+      }, "\u53D6\u6D88"), /*#__PURE__*/React.createElement(Button, {
+        className: "btn primary",
+        icon: "check",
+        onClick: confirmEverything
+      }, "\u786E\u8BA4\u5168\u90E8 ", active.length, " \u9053"))
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "modal-b"
+    }, /*#__PURE__*/React.createElement("p", null, "\u4F1A\u628A ", active.length, " \u9053\u6709\u6548\u5DE5\u5E8F\uFF08\u5305\u62EC\u6CA1\u7FFB\u5230\u7684 ", paging.page.pages, " \u9875\uFF09\u5168\u90E8\u6807\u8BB0\u4E3A\u5DF2\u6838\u5BF9\u3002\u5DF2\u6838\u5BF9\u53EA\u8868\u793A\u4F60\u770B\u8FC7\u8FD9\u4E9B\u6570\u503C\uFF1B\u4FDD\u5B58\u65F6\u4ECD\u4F1A\u9010\u9879\u6821\u9A8C\uFF0C\u586B\u9519\u7684\u5DE5\u5E8F\u4F1A\u5355\u72EC\u62A5\u51FA\u6765\u3002"))), /*#__PURE__*/React.createElement("div", {
       className: "wb-table-frame"
     }, /*#__PURE__*/React.createElement("div", {
       className: "card-scroll wb-table-shell"
@@ -215,12 +255,12 @@
       style: {
         width: 140
       }
-    }, "\u6362\u578B\u5DE5\u65F6\uFF08h\uFF09"), /*#__PURE__*/React.createElement("th", {
+    }, "\u6362\u578B\u5DE5\u65F6\uFF08\u5C0F\u65F6\uFF09"), /*#__PURE__*/React.createElement("th", {
       scope: "col",
       style: {
         width: 140
       }
-    }, "\u5355\u4EF6\u5DE5\u65F6\uFF08h\uFF09"), /*#__PURE__*/React.createElement("th", {
+    }, "\u5355\u4EF6\u5DE5\u65F6\uFF08\u5C0F\u65F6\uFF09"), /*#__PURE__*/React.createElement("th", {
       scope: "col",
       style: {
         width: 140
@@ -254,7 +294,7 @@
         key: row.ref
       }, /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("b", null, row.sequence), " ", row.label, /*#__PURE__*/React.createElement("div", {
         className: "muted"
-      }, row.op_type_label || '未绑定工种')), /*#__PURE__*/React.createElement("td", null, window.APSProcessContract.sourceLabel(row.source)), row.source === 'external' ? /*#__PURE__*/React.createElement("td", {
+      }, row.op_type_label || '未选工种')), /*#__PURE__*/React.createElement("td", null, window.APSProcessContract.sourceLabel(row.source)), row.source === 'external' ? /*#__PURE__*/React.createElement("td", {
         colSpan: 2,
         className: "muted"
       }, "\u5916\u534F\u5DE5\u5E8F\u4E0D\u586B\u5DE5\u65F6") : /*#__PURE__*/React.createElement(React.Fragment, null, cell('setup_hours', '换型工时'), cell('unit_hours', '单件工时')), row.source === 'external' ? cycle ? /*#__PURE__*/React.createElement("td", {
@@ -297,12 +337,13 @@
       }))
     }), "\u5DF2\u590D\u6838\u5355\u4EF6\u5DE5\u65F6\u4E3A 0\uFF0C\u786E\u8BA4\u6309 0 \u4FDD\u5B58")), /*#__PURE__*/React.createElement(E.Feedback, {
       model: model,
-      disabled: blocked
+      disabled: blocked,
+      paging: paging
     }), /*#__PURE__*/React.createElement("div", {
       className: "pd-foot"
     }, /*#__PURE__*/React.createElement("span", {
       className: "muted"
-    }, "\u7A7A\u503C\u4E0D\u8865 0\uFF1B\u5408\u5E76\u7EC4\u6210\u5458\u5468\u671F\u53EF\u7A7A\uFF0C\u6309\u7EC4\u603B\u5468\u671F\u3002\u5DF2\u586B\u5468\u671F\u5FC5\u987B\u5927\u4E8E 0\u3002"), /*#__PURE__*/React.createElement(Button, {
+    }, "\u7559\u7A7A\u4E0D\u8865 0\uFF1B\u5408\u5E76\u7EC4\u6210\u5458\u7684\u5468\u671F\u53EF\u4EE5\u7559\u7A7A\uFF0C\u6309\u7EC4\u603B\u5468\u671F\u7B97\u3002\u5DF2\u586B\u7684\u5468\u671F\u5FC5\u987B\u5927\u4E8E 0\u3002"), /*#__PURE__*/React.createElement(Button, {
       className: "btn primary",
       icon: "check",
       disabled: blocked,

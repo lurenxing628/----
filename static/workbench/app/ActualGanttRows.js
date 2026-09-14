@@ -7,7 +7,7 @@
     } = window.ResourceControls;
   function emptyReports(row, mode) {
     const execution = row.item.execution;
-    if (!execution) return '执行记录不可用';
+    if (!execution) return '报工记录不可用';
     if (mode !== 'batch') {
       const resource = M.views[mode];
       if (execution.reports.length) {
@@ -16,9 +16,9 @@
         const unbound = execution.reports.some(report => !report[field]);
         return '本' + resource + '暂无报工；报工在' + (bound ? '其他' + resource + (unbound ? '及' : '') : '') + (unbound ? '“' + resource + '未填写”分组' : '下');
       }
-      return '本' + resource + '暂无报工' + (execution.legacy_facts.length ? '；工序有旧执行事实，非逐次报工' : '');
+      return '本' + resource + '暂无报工' + (execution.legacy_facts.length ? '；工序有历史现场记录，不是逐次报工' : '');
     }
-    return execution.legacy_facts.length ? '旧执行事实保留，非逐次报工' : '暂无实际报工';
+    return execution.legacy_facts.length ? '历史现场记录保留，不是逐次报工' : '暂无实际报工';
   }
   function Bar({
     mark,
@@ -113,7 +113,7 @@
         left: box.faceLeft,
         width: size
       }
-    }, size >= 55 && mark.kind !== 'plan' && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("span", null, mark.report ? mark.report.report_no : '剩余 ' + M.number(row.item.execution.remaining_quantity) + ' 件'), size >= 150 && /*#__PURE__*/React.createElement("span", null, mark.report ? M.number(mark.report.completed_quantity) + ' 件 · ' + M.number(mark.report.effective_processing_hours) + 'h' : M.time(row.item.execution.remaining_plan.start)))));
+    }, size >= 55 && mark.kind !== 'plan' && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("span", null, mark.report ? mark.report.report_no : '剩余 ' + M.number(row.item.execution.remaining_quantity) + ' 件'), size >= 150 && /*#__PURE__*/React.createElement("span", null, mark.report ? M.number(mark.report.completed_quantity) + ' 件 · ' + M.hours(mark.report.effective_processing_hours) : M.time(row.item.execution.remaining_plan.start)))));
   }
   function ChainLines({
     chain,
@@ -202,7 +202,7 @@
         title: row.group.label
       }, row.group.label)), /*#__PURE__*/React.createElement("div", {
         className: "fg-group-summary"
-      }, row.group.members.size, " \u9053\u5DE5\u5E8F \xB7 ", model.executionAvailable ? row.group.reportCount + ' 次报工 · ' + (row.group.knownHours === null ? '实报工时未知' : '已知实报工时 ' + M.number(row.group.knownHours) + 'h') + (row.group.unknownHours ? ' · ' + row.group.unknownHours + ' 条工时待补' : '') + (row.group.legacyCount ? ' · ' + row.group.legacyCount + ' 条旧事实' : '') : '执行记录不可用'));
+      }, row.group.members.size, " \u9053\u5DE5\u5E8F \xB7 ", model.executionAvailable ? row.group.reportCount + ' 次报工 · ' + (row.group.knownHours === null ? '实报工时未知' : '已知实报工时 ' + M.hours(row.group.knownHours)) + (row.group.unknownHours ? ' · ' + row.group.unknownHours + ' 条工时待补' : '') + (row.group.legacyCount ? ' · ' + row.group.legacyCount + ' 条历史记录' : '') : '报工记录不可用'));
       const {
           item
         } = row,
@@ -220,7 +220,7 @@
         canvasPainted,
         selected: view.selected
       });
-      const pending = window.PointContract.isPoint(t) ? '计划点已安排 · 完成待确认' : '待续排';
+      const pending = window.PointContract.isPoint(t) ? '零工时工序已安排 · 完成待确认' : '待续排';
       const nowX = (model.asOf - model.start) / (model.end - model.start) * width;
       const timing = M.deadlines(item, M.wire(model.asOf));
       return /*#__PURE__*/React.createElement("div", {
@@ -242,12 +242,12 @@
       }, M.taskLabel(t)), /*#__PURE__*/React.createElement("span", {
         className: "fg-row-caption",
         title: '计划应做 ' + M.number(t.quantity) + ' 件 · 批次 ' + M.number(t.batch_quantity) + ' 件'
-      }, row.kind === 'remaining' ? '执行剩余 ' + M.number(e.remaining_quantity) + ' 件' : e ? M.states[e.execution_state] + ' · 已知 ' + M.number(e.known_completed_quantity) + ' / 计划 ' + M.number(t.quantity) : '计划应做 ' + M.number(t.quantity) + ' 件 · 执行记录不可用'), /*#__PURE__*/React.createElement("span", {
+      }, row.kind === 'remaining' ? '执行剩余 ' + M.number(e.remaining_quantity) + ' 件' : e ? M.states[e.execution_state] + ' · 已知 ' + M.number(e.known_completed_quantity) + ' / 计划 ' + M.number(t.quantity) : '计划应做 ' + M.number(t.quantity) + ' 件 · 报工记录不可用'), /*#__PURE__*/React.createElement("span", {
         className: "fg-row-caption",
         title: !row.reports.length && row.kind === 'actual' ? emptyReports(row, view.mode) : undefined
       }, row.kind === 'remaining' ? e.remaining_plan ? '已有剩余安排' : pending : row.reports.length ? row.reports.length + ' 次报工' + (row.trackCount > 1 ? ' · 分行 ' + row.track + '/' + row.trackCount : '') : emptyReports(row, view.mode)), row.kind !== 'remaining' && (timing.finishLate || timing.unclosed || timing.forecastLate) && /*#__PURE__*/React.createElement("span", {
         className: "fg-row-caption"
-      }, timing.finishLate ? '已完晚' : timing.unclosed ? '到期未确认完成' : '剩余安排预计晚')), /*#__PURE__*/React.createElement("div", {
+      }, timing.finishLate ? '已晚完成' : timing.unclosed ? '到期未确认完成' : '剩余安排预计晚完成')), /*#__PURE__*/React.createElement("div", {
         className: "fg-track",
         style: {
           width

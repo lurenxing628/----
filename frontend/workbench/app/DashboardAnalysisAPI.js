@@ -20,9 +20,9 @@
     const timer = setTimeout(abort, 60000);
     try {
       const response = await fetcher(url, { method: 'GET', credentials: 'same-origin', cache: 'no-store', redirect: 'error', signal: controller.signal });
-      C.check((response.headers.get('Content-Type') || '').split(';')[0].trim().toLowerCase() === 'application/json', '分析接口未返回有效 JSON。');
+      C.check((response.headers.get('Content-Type') || '').split(';')[0].trim().toLowerCase() === 'application/json', '读到的数据不完整，请刷新后重试。');
       const payload = await response.json();
-      if (!response.ok || payload.ok !== true) throw new Error(payload && payload.error && C.text(payload.error.message) ? payload.error.message : '真实分析读取失败。');
+      if (!response.ok || payload.ok !== true) throw new Error(payload && payload.error && C.text(payload.error.message) ? payload.error.message : '影响分析读取失败，请刷新后重试。');
       C.check(response.status === 200); envelope(payload); return payload;
     } finally { clearTimeout(timer); if (signal) signal.removeEventListener('abort', abort); }
   }
@@ -60,7 +60,7 @@
     C.check(new Set(d.resources.map(row => row.resource_ref)).size === d.resources.length);
     d.downtimes.forEach(row => C.check(C.ref(row.downtime_ref) && C.ref(row.machine_ref) && typeof row.valid === 'boolean'
       && nullable(time)(row.start) && nullable(time)(row.end) && (!row.valid || row.start !== null && row.end !== null && row.start < row.end)
-      && nullable(time)(row.recorded_at) && row.recorded_at_basis === 'stored_database_timestamp'));
+      && nullable(time)(row.recorded_at) && row.recorded_at_basis === 'local_time'));
     d.overlaps.forEach(row => C.check(tasks.has(row.task_ref) && row.batch_ref === tasks.get(row.task_ref).batch_ref
       && C.object(row.source) && row.source.task_ref === row.task_ref && number(row.source.known_overlap_hours)));
     d.execution.forEach(row => C.check(C.object(row.source) && tasks.has(row.source.task_ref) && row.batch_ref === tasks.get(row.source.task_ref).batch_ref));

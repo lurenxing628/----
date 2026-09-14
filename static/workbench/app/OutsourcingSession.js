@@ -22,25 +22,25 @@
     try {
       raw = localStorage.getItem(KEY);
     } catch (_) {
-      throw new Error('原外协请求记录不可读，不能开始新的登记。');
+      throw new Error('上次操作记录读不出来，不能开始新的登记。请重新打开页面。');
     }
     if (raw === null) return null;
     let v;
     try {
       v = JSON.parse(raw);
     } catch (_) {
-      throw new Error('原外协请求记录损坏，请保留现场。');
+      throw new Error('上次操作记录已损坏，不能开始新的登记。请不要再操作，联系维护人员。');
     }
-    C.check(valid(v), '原外协请求不完整，不能换请求重做。');
+    C.check(valid(v), '上次操作记录不完整，不能重新提交。请不要再操作，联系维护人员。');
     return v;
   }
   function save(v, previous) {
-    C.check(C.equal(read(), previous), '原外协请求已在其他页面变化，未覆盖。');
+    C.check(C.equal(read(), previous), '上次操作已在另一个页面变化，这里没有覆盖它。请刷新后重试。');
     C.check(v === null || valid(v));
     try {
       if (v === null) localStorage.removeItem(KEY);else localStorage.setItem(KEY, JSON.stringify(v));
     } catch (_) {
-      throw new Error('原外协请求无法持久保存，未开始登记。');
+      throw new Error('上次操作记录保存不了，不能开始登记。请重新打开页面。');
     }
     C.check(C.equal(read(), v));
     window.dispatchEvent(new Event(EVENT));
@@ -100,7 +100,7 @@
       }, original);
       if (mounted.current) {
         setError(null);
-        setNotice('外协回执已确认。');
+        setNotice('请点「完成」查看最新登记。');
       }
     }
     async function lookup() {
@@ -111,7 +111,7 @@
       setError(null);
       try {
         const v = await api.lookup(original);
-        if (v) accept(v, original);else if (mounted.current) setNotice('尚未查到原回执，原请求仍可能完成；保留原 key，不重新提交。');
+        if (v) accept(v, original);else if (mounted.current) setNotice('还是没有查到结果。请稍后再点「查询结果」，不要重复提交。');
       } catch (e) {
         if (mounted.current) setError(e);
       } finally {
@@ -130,11 +130,11 @@
       setNotice('');
       let original;
       try {
-        C.check(navigator.locks && typeof navigator.locks.request === 'function', '浏览器请求锁不可用，不能开始登记。');
+        C.check(navigator.locks && typeof navigator.locks.request === 'function', '当前浏览器不支持，请用 Chrome 打开。');
         await navigator.locks.request(KEY, {
           ifAvailable: true
         }, async lock => {
-          C.check(lock && read() === null, '存在其他页面的原外协请求，请先核实。');
+          C.check(lock && read() === null, '另一个页面有还没确认的外协登记，请先在那里点「查询结果」。');
           const d = C.preview(preview, preview.data.input).data;
           original = {
             version: 1,
@@ -154,7 +154,7 @@
             }, original);
             if (mounted.current) {
               setError(e);
-              setNotice(C.isRejected(e) ? '本次明确未写入，请完成核实后刷新。' : '结果尚未确认，仅查询原请求。');
+              setNotice(C.isRejected(e) ? window.WorkbenchTerms.outcomes.rejected('外协登记', e.message) : window.WorkbenchTerms.outcomes.unknown('外协登记'));
             }
           }
         });
@@ -170,7 +170,7 @@
       if (running.current) return false;
       try {
         const v = read();
-        C.check(v && v.phase !== 'pending', '未知结果不能丢弃原请求。');
+        C.check(v && v.phase !== 'pending', '上次外协登记的结果还没有确认，不能丢弃这条记录。请先点「查询结果」。');
         save(null, v);
         setError(null);
         setNotice('');
@@ -207,7 +207,7 @@
       declared_operator: draft.declared_operator.trim(),
       reason: draft.reason.trim()
     };
-    C.check(p.declared_operator && p.declared_operator.length <= 200 && !p.declared_operator.includes('\0') && p.reason && p.reason.length <= 2000 && !p.reason.includes('\0'), '请填写声明人和本次核实 / 更正原因。');
+    C.check(p.declared_operator && p.declared_operator.length <= 200 && !p.declared_operator.includes('\0') && p.reason && p.reason.length <= 2000 && !p.reason.includes('\0'), '请填写经办人和本次核实 / 更正原因。');
     if (item) {
       p.outsourcing_ref = item.outsourcing_ref;
       C.fields.forEach(k => {

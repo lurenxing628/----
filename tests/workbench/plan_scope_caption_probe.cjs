@@ -55,7 +55,7 @@ async function main() {
       })));
       assert.equal(metrics.length, 4);
       assert.deepEqual(metrics.slice(0, 2).map(row => row.tone), ['primary', 'primary'], 'Other indicators keep their tones');
-      for (const [index, risk, label] of [[2, 'overdue', '已核实预计超期'], [3, 'unknown', '交付风险待核实']]) {
+      for (const [index, risk, label] of [[2, 'overdue', '已确认预计超期'], [3, 'unknown', '交付风险暂无数据']]) {
         const count = actual.projections.delivery_risks.items.filter(row => row.risk === risk).length, metric = metrics[index];
         assert.equal(metric.label, label); assert.equal(metric.value, String(count));
         assert.equal(metric.tone, count === 0 ? 'neutral' : 'warn');

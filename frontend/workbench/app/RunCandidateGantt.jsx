@@ -1,6 +1,7 @@
 (function () {
   'use strict';
   const M = window.RunCandidateModel, B = window.RunBaselineModel, BC = window.RunBaselineControls, { Button } = window.RunCandidateControls;
+  const { TimelineZoom, timelineZoomKey, timelineZoomStep } = window.ResourceControls, ZOOM_MAX = 128;
   function PointLane({ row, model, width, left, viewport, selected, baselineSelected, onSelect, onHover }) {
     const scale = width / (model.end - model.start), G = window.PointGanttModel;
     const items = G.visible(row.items, model.start + left / scale, model.start + (left + viewport) / scale, scale);
@@ -28,9 +29,15 @@
             ctx.strokeRect(x + Math.min(barWidth, ctx.lineWidth) / 2, 11, Math.max(0, barWidth - Math.min(barWidth, ctx.lineWidth)), 7); ctx.restore();
             continue;
           }
-          const tone = item.task.source === 'external' ? 'plan' : row.normalLaneCount > 1 ? 'critical' : 'primary';
+          const tone = item.task.source === 'external' ? 'plan' : row.normalLaneCount > 1 ? 'overlap' : 'primary';
           const chosen = baselineSelected ? baselineSelected.comparison.operation_ref === item.task.operation_ref : item.task.row_ref === (selected && selected.row_ref);
           ctx.fillStyle = value('--wb-gantt-' + tone + '-fill'); ctx.fillRect(x, 7, barWidth, 33);
+          if (tone === 'overlap') {
+            ctx.save(); ctx.beginPath(); ctx.rect(x, 7, barWidth, 33); ctx.clip();
+            ctx.strokeStyle = value('--wb-gantt-overlap-edge'); ctx.lineWidth = 1;
+            for (let stripe = -33; stripe < barWidth; stripe += 6) { ctx.beginPath(); ctx.moveTo(x + stripe, 40); ctx.lineTo(x + stripe + 33, 7); ctx.stroke(); }
+            ctx.restore();
+          }
           ctx.strokeStyle = value(chosen ? '--wb-gantt-gold' : '--wb-gantt-' + tone + '-edge');
           ctx.lineWidth = Math.min(barWidth, chosen ? 2 : 1);
           ctx.strokeRect(x + ctx.lineWidth / 2, 7 + ctx.lineWidth / 2, Math.max(0, barWidth - ctx.lineWidth), 33 - ctx.lineWidth);
@@ -70,10 +77,10 @@
             role="row" aria-rowindex={first + i + 2} aria-selected={selected && (t.row_ref ? selected.row_ref === t.row_ref : selected.operation_ref === t.operation_ref)} style={{ position: 'absolute', top: (first + i) * height, left: 0, right: 0 }}>
             <span role="cell" title={(t.batch_label || '未记录') + '\n' + (t.part_label || '未记录')}>{t.batch_label || '未记录'}<small>{t.part_label || '未记录'}</small></span>
             <span role="cell" title={M.number(t.sequence) + ' ' + (t.process_label || '未记录') + '\n' + M.pieceLabel(t)}>{M.pieceLabel(t)}<small>{M.number(t.sequence)} {t.process_label || '未记录'}</small></span>
-            <span role="cell" title={planned ? M.title(t) : t.reason.message}>{planned ? <>{M.timeLabel(t.start)}<small>{window.PointContract.isPoint(t) ? '时间点 · 0 h · 不占用资源' : M.timeLabel(t.end)}</small></> : t.reason.message}</span>
+            <span role="cell" title={planned ? M.title(t) : t.reason.message}>{planned ? <>{M.timeLabel(t.start)}<small>{window.PointContract.isPoint(t) ? '零工时工序 · 不占设备人员' : M.timeLabel(t.end)}</small></> : t.reason.message}</span>
             <span role="cell" title={planned ? (t.machine && t.machine.label || '未记录') + '\n' + (t.operator && t.operator.label || '未记录') : ''}>{planned ? <>{t.machine && t.machine.label || '未记录'}<small>{t.operator && t.operator.label || '未记录'}</small></> : t.execution_at_generation ? M.executionValue(t.execution_at_generation.execution_state) : '未记录'}</span>
             <span role="cell"><Button icon="search" className="mini" aria-label={'工序详情 ' + (t.batch_label || '批次未记录') + ' ' + M.number(t.sequence) + ' ' + (t.process_label || '工序未记录') + ' ' + M.pieceLabel(t)} onClick={() => onSelect(t)}>详情</Button></span></div>)}
-        </div></div></div>{!tasks.length && <window.WorkbenchListControls.EmptyState title="当前预览没有匹配记录" />}</>;
+        </div></div></div>{!tasks.length && <window.WorkbenchListControls.EmptyState title="当前范围没有匹配记录" />}</>;
   }
   function RunCandidateGantt({ data, query, selected, onSelect }) {
     const [mode, setMode] = React.useState('machine'), [zoom, setZoom] = React.useState(1), [viewport, setViewport] = React.useState(600);
@@ -98,16 +105,20 @@
       if (x < node.scrollLeft || x > node.scrollLeft + viewport) node.scrollLeft = Math.max(0, x - viewport / 3);
     }, [selected, chosen, model, width, viewport]);
     function pan(left) { if (owner.current) owner.current.scrollLeft = Math.max(0, Math.min(width - viewport, left)); }
+    function fit() { setZoom(1); pan(0); }
+    function zoomKeys(event) {
+      const action = timelineZoomKey(event);
+      if (!action) return;
+      event.preventDefault();
+      if (action === 'fit') fit(); else setZoom(z => timelineZoomStep(z, action === 'in' ? 1 : -1, ZOOM_MAX));
+    }
     const visible = M.visibleRows(model.rows, scroll.top - 48, scroll.top + 384);
     const tickRows = model.start === null ? [] : M.ticks(model.start, model.end, width, scroll.left, viewport);
-    return <section ref={host} className="rc-gantt" aria-label="候选甘特预览"><window.PointGantt.Styles /><div className="rc-heading"><div role="group" className="rc-tabs" aria-label="候选甘特维度">{Object.entries(M.kindLabels).map(([key, label]) =>
+    return <section ref={host} className="rc-gantt" aria-label="候选甘特图" onKeyDown={zoomKeys}><window.PointGantt.Styles /><div className="rc-heading"><div role="group" className="rc-tabs" aria-label="候选甘特维度">{Object.entries(M.kindLabels).map(([key, label]) =>
       <Button key={key} aria-pressed={mode === key} onClick={() => setMode(key)}>{label}</Button>)}</div>
-      <div className="rc-tools"><BC.Toggle state={baseline} /><Button icon="minus" aria-label="缩小候选时间轴" disabled={zoom <= 1} onClick={() => setZoom(z => Math.max(1, z / 2))} />
-        <input type="range" aria-label="候选时间轴缩放" min="1" max="128" step="1" value={zoom} style={{ width: 100 }} onChange={e => setZoom(Number(e.target.value))} />
-        <Button icon="plus" aria-label="放大候选时间轴" disabled={zoom >= 128} onClick={() => setZoom(z => Math.min(128, z * 2))} />
-        <Button icon="chart-gantt" aria-label="适配完整候选时间轴" disabled={zoom === 1} onClick={() => { setZoom(1); pan(0); }} /></div></div>
+      <div className="rc-tools"><BC.Toggle state={baseline} /><TimelineZoom zoom={zoom} max={ZOOM_MAX} scope="候选" onZoom={setZoom} onFit={fit} /></div></div>
       <BC.Panel state={baseline} rows={model.comparisons || []} chosen={chosen} onChoose={selectBaseline} workspace={data} />
-      <div className="rc-muted">{model.groupCount} 组 · {model.rows.length} 轨 · 重叠拆轨（不等同于业务冲突结论） · 外协独立色</div>
+      <div className="rc-legend rc-muted"><span>{model.groupCount} 组 · {model.rows.length} 轨</span><span><i />安排</span><span><i className="rc-overlap" />时间重叠的安排（分行显示）</span><span><i className="rc-external" />外协工序</span></div>
       {model.start !== null && <div className="rc-heading rc-muted"><span>{M.timeLabel(M.wire(model.start))}</span><span>{M.timeLabel(M.wire(model.end))}</span></div>}
       <div className="rc-axis">{tickRows.map(t => <span key={t.at} className="rc-tick" style={{ left: t.x - scroll.left }}>{window.WorkbenchFormat.dateTime(t.label, { seconds: true }).slice(5, 10)}<br />{window.WorkbenchFormat.dateTime(t.label, { seconds: true }).slice(11)}</span>)}</div>
       <div ref={owner} className="rc-scroll" data-candidate-gantt-scroll role="region" aria-label="候选时间安排" tabIndex={0}
@@ -117,7 +128,7 @@
             <div className="rc-bar-space" style={{ width, height: row.height, overflow: 'hidden' }}>{React.createElement(row.point ? PointLane : Lane, { row, model, width, left: scroll.left, viewport, selected, baselineSelected: chosen, onSelect: selectCandidate, onBaselineSelect: selectBaseline, onHover: setHover })}</div></div>)}
           {!model.rows.length && <div className="rc-empty">没有可绘制的匹配安排；未安排与失败记录仍保留在明细中。</div>}</div></div>
       <input type="range" aria-label="候选时间轴水平位置" style={{ width: '100%' }} min="0" max={Math.max(0, width - viewport)} step="any" value={Math.min(scroll.left, Math.max(0, width - viewport))} disabled={zoom === 1} onChange={e => pan(Number(e.target.value))} />
-      {window.PointContract.isPoint(selected) && <dl className="rc-meta" data-candidate-point-facts><div><dt>安排类型</dt><dd>时间点</dd></div><div><dt>发生时间</dt><dd>{M.timeLabel(selected.start)}</dd></div><div><dt>本工序占用</dt><dd>0 h · 不占用资源</dd></div></dl>}
+      {window.PointContract.isPoint(selected) && <dl className="rc-meta" data-candidate-point-facts><div><dt>安排类型</dt><dd>零工时工序</dd></div><div><dt>发生时间</dt><dd>{M.timeLabel(selected.start)}</dd></div><div><dt>本工序占用</dt><dd>0 小时 · 不占设备人员</dd></div></dl>}
       {hover && <div role="tooltip" className="rc-tooltip" style={{ left: Math.max(8, Math.min(innerWidth - 358, hover.x + 12)), top: Math.max(8, Math.min(innerHeight - 238, hover.y + 14)) }}>{hover.text}</div>}
     </section>;
   }

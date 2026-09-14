@@ -10,12 +10,12 @@
     return <>
       <div className="match-note" style={{ display: 'block' }}><b>全部命中 {data.counts.selected} 天</b> · 变更 {data.counts.changed} 天 · 不变 {data.counts.unchanged} 天
         <div>{data.request.start_date} 至 {data.request.end_date} · {({ all: '范围内每天', weekday: '仅周一至周五', weekend: '仅周六、周日' })[data.request.scope]}</div>
-        <div>确认作用于全部 {data.counts.selected} 天，包含其他分页日期。</div><div className="muted">预览有效至 {window.WorkbenchFormat.dateTime(data.expires_at)}</div></div>
-      <Pager page={{ number: page, pages, total: data.days.length, size }} sizes={[size]} unit="天" label="预览" onPage={setPage} showPageSelect />
-      {!data.days.length && <EmptyState kind="filtered" title="当前范围没有命中日期" hint="返回修改日期范围或适用日期后，再预览。"
+        <div>确认作用于全部 {data.counts.selected} 天，包含其他分页日期。</div><div className="muted">预览变更有效至 {window.WorkbenchFormat.dateTime(data.expires_at)}</div></div>
+      <Pager page={{ number: page, pages, total: data.days.length, size }} sizes={[size]} unit="天" label="预览变更" onPage={setPage} showPageSelect />
+      {!data.days.length && <EmptyState kind="filtered" title="当前范围没有命中日期" hint="返回修改日期范围或「应用到」后，再预览变更。"
         action={<Button disabled={disabled} onClick={onBack}>修改日期范围</Button>} />}
       <div className="card-scroll wb-table-shell wb-table-frame cal-preview-scroll" data-sticky-head data-sticky-actions><table className="tbl wb-table cal-preview-table">
-        <caption className="wb-visually-hidden">工作日历批量维护预览：第 {page} 页，确认将作用于全部 {data.counts.selected} 天</caption>
+        <caption className="wb-visually-hidden">工作日历批量维护预览变更：第 {page} 页，确认将作用于全部 {data.counts.selected} 天</caption>
         <thead><tr><th scope="col" className="wb-col-key" style={{ width: 105 }}>日期</th><th scope="col">变更前</th><th scope="col">变更后</th></tr></thead>
         <tbody>{data.days.slice((page - 1) * size, page * size).map(row => <tr key={row.date}><td className="wb-col-key"><b>{row.date}</b><div className="muted">{row.changed ? '将变更' : '不变'}</div></td>
           <td><Policy value={row.before} /></td><td><Policy value={row.after} /></td></tr>)}</tbody></table></div>
@@ -35,7 +35,7 @@
       dirty: !done && JSON.stringify({ range, value, replaceNote }) !== original.current, locked: command.locked, message: '批量日历维护有尚未保存的范围或规则。' });
     async function close() { if (!command.locked && !loading && await window.WorkbenchGuards.confirmLeave({ owner: guardOwner })) onClose(); }
     React.useEffect(() => { if (error) focusFirstInvalid(formRef.current); }, [error]);
-    const reason = K.stale(command) ? '预览已失效，请重新预览并核对全部日期。' : !result ? '请先预览全部命中日期。' :
+    const reason = K.stale(command) ? '预览变更已过期，没有写入。请点「重新预览变更」。' : !result ? '请先点「预览变更」查看全部命中日期。' :
       !result.data.counts.selected ? '当前范围没有命中日期。' : C.blocked(result.data.write_context, 'calendar', 'confirm', result.meta.source);
     async function preview(event) {
       if (event) event.preventDefault(); if (disabled) return;
@@ -57,7 +57,7 @@
       <Modal title="批量维护工作日历" icon="calendar-days" onClose={onClose} guardOwner={guardOwner} locked={command.locked || loading}
       footer={<><Button disabled={command.locked || loading} onClick={close}>{done ? '关闭' : '取消'}</Button>
         {!done && result && <Button disabled={disabled} onClick={back}>返回修改范围</Button>}
-        {!done && (!result || K.stale(command)) && <Button type="submit" form={formId} icon="list-checks" className="btn primary" busy={disabled}>{K.stale(command) ? '重新预览' : '预览全部日期'}</Button>}
+        {!done && (!result || K.stale(command)) && <Button type="submit" form={formId} icon="list-checks" className="btn primary" busy={disabled}>{K.stale(command) ? '重新预览变更' : '预览变更'}</Button>}
         {!done && result && <Button icon="check" className="btn primary" busy={disabled} reason={reason} onClick={() => command.submit('calendar', 'confirm', result.data.preview_ref,
           result.data.write_context, { preview_ref: result.data.preview_ref })}>确认全部 {result.data.counts.selected} 天</Button>}</>}>
       <form id={formId} ref={formRef} className="modal-b form scroll" onSubmit={preview} noValidate>

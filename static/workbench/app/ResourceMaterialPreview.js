@@ -6,13 +6,13 @@
     Button
   } = window.ResourceControls;
   function value(key, item, contract) {
-    if (item === null) return '空值';
+    if (item === null) return '未填写';
     if (item === '') return '空白';
     if (contract.displayValue) {
       const formatted = contract.displayValue(key, item);
       if (formatted !== undefined) return formatted;
     }
-    if (Array.isArray(item)) return item.length ? item.join('、') : '未绑定';
+    if (Array.isArray(item)) return item.length ? item.join('、') : '未选';
     if (typeof item === 'boolean') return item ? '是' : '否';
     if (contract.kind !== 'material') return window.APSResourceContract.fieldValue(contract.kind, key, item);
     if (key === 'status') return window.APSResourceContract.fieldValue('material', key, item);
@@ -78,7 +78,7 @@
       value: "rejected"
     }, "\u62D2\u7EDD\u884C ", data.summary.rejected), mode === 'import' && /*#__PURE__*/React.createElement("option", {
       value: "confirmation"
-    }, "\u6D89\u53CA\u5F15\u7528\u7684\u66F4\u65B0 ", data.rows.filter(row => row.requires_confirmation).length)))), /*#__PURE__*/React.createElement("div", {
+    }, "\u6D89\u53CA\u5173\u8054\u7684\u66F4\u65B0 ", data.rows.filter(row => row.requires_confirmation).length)))), /*#__PURE__*/React.createElement("div", {
       className: "rm-table-wrap wb-table-frame",
       "data-sticky-head": true,
       tabIndex: "0",
@@ -88,7 +88,7 @@
       className: "rm-table wb-table"
     }, /*#__PURE__*/React.createElement("caption", {
       className: "wb-visually-hidden"
-    }, label, "\u9884\u68C0\u4FEE\u6539\u524D\u540E\u660E\u7EC6"), /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
+    }, label, "\u9884\u68C0\u7684\u4FEE\u6539\u524D\u540E\u660E\u7EC6"), /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
       scope: "col",
       style: {
         width: '7%'
@@ -113,7 +113,7 @@
       style: {
         width: '10%'
       }
-    }, "\u5F15\u7528"))), /*#__PURE__*/React.createElement("tbody", null, rows.slice((current - 1) * size, current * size).map(row => /*#__PURE__*/React.createElement(React.Fragment, {
+    }, "\u5173\u8054\u6570"))), /*#__PURE__*/React.createElement("tbody", null, rows.slice((current - 1) * size, current * size).map(row => /*#__PURE__*/React.createElement(React.Fragment, {
       key: row.row
     }, /*#__PURE__*/React.createElement("tr", {
       "data-material-row": contract.kind === 'material' ? row.row : undefined,
@@ -139,7 +139,7 @@
     }, row.errors.map((error, index) => /*#__PURE__*/React.createElement("div", {
       className: "rm-danger",
       key: index
-    }, "\u7B2C ", row.row, " \u884C \xB7 ", fields[error.field] || '数据', "\uFF1A", error.message)), row.requires_confirmation && /*#__PURE__*/React.createElement("div", null, contract.kind === 'material' ? '涉及已有物料需求' : '涉及关键字段或已有引用', "\uFF0C\u9700\u6838\u5BF9\u4FEE\u6539\u524D\u540E\u5185\u5BB9\u3002"))))), !rows.length && /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", {
+    }, "\u7B2C ", row.row, " \u884C \xB7 ", fields[error.field] || '数据', "\uFF1A", error.message)), row.requires_confirmation && /*#__PURE__*/React.createElement("div", null, contract.kind === 'material' ? '涉及已有物料需求' : '涉及关键项或已有关联', "\uFF0C\u9700\u6838\u5BF9\u4FEE\u6539\u524D\u540E\u5185\u5BB9\u3002"))))), !rows.length && /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", {
       colSpan: "5"
     }, /*#__PURE__*/React.createElement(window.WorkbenchControls.EmptyState, {
       kind: filter === 'all' ? 'empty' : 'filtered',

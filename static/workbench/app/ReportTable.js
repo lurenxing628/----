@@ -93,7 +93,7 @@
       render: row => stack(actual(row.known_completed_quantity), row.unknown_record_count > 0 ? '数量未知 ' + row.unknown_record_count + ' 条' : null)
     }, {
       key: 'effective_processing_hours',
-      title: '有效工时 / 已知小计',
+      title: '有效工时 / 已知小计（小时）',
       width: 145,
       render: row => stack(actual(row.effective_processing_hours), actual(row.known_effective_processing_hours))
     }, {
@@ -123,7 +123,7 @@
       render: row => text(row.quantity_done)
     }, {
       key: 'effective_processing_hours',
-      title: '有效工时',
+      title: '有效工时（小时）',
       width: 100,
       render: row => text(row.effective_processing_hours)
     }, {
@@ -243,7 +243,7 @@
     const empty = window.ReportEvidence.noFeedback(s),
       actual = value => window.ReportEvidence.actualValue(value, empty);
     const pct = value => value == null ? actual(value) : window.WorkbenchFormat.percent(value);
-    const values = topic === 'delivery' ? [['到期工序完成率', pct(s.completion_rate), s.confirmed_due + ' 已确认 / ' + s.due + ' 已到期'], ['到期工序按时完成率', pct(s.on_time_rate), s.due_on_time + ' 按时 / ' + s.due + ' 已到期'], ['超时未确认完成', s.late_open, '不等于未生产', s.late_open ? 'warning' : undefined], ['完工偏差中位数', actual(s.median_finish_minutes), s.finish_sample ? '样本 ' + s.finish_sample + ' 道 · P90 ' + text(s.p90_finish_minutes) + ' 分钟' : '暂无已确认完工样本']] : [['范围内工序', s.operations, s.reported_operations + ' 道有反馈；' + s.unreported + ' 道暂无反馈'], ['逐次报工', s.production_reports, '旧现场事件 ' + s.events + ' 条'], ['全部记录', s.records, '旧事件与逐次报工合计，不含额外修订次数'], ['有效加工工时', actual(s.effective_processing_hours), empty ? '暂无现场工时记录' : '已知小计 ' + text(s.known_effective_processing_hours) + '；未知 ' + s.unknown_hour_events + ' 条']];
+    const values = topic === 'delivery' ? [['到期工序完成率', pct(s.completion_rate), s.confirmed_due + ' 已确认 / ' + s.due + ' 已到期'], ['到期工序按时完成率', pct(s.on_time_rate), s.due_on_time + ' 按时 / ' + s.due + ' 已到期'], ['超时未确认完成', s.late_open, '不等于未生产', s.late_open ? 'warning' : undefined], ['完工偏差中位数', actual(s.median_finish_minutes), s.finish_sample ? '完工记录 ' + s.finish_sample + ' 道 · P90 ' + text(s.p90_finish_minutes) + ' 分钟' : '暂无已确认完工记录']] : [['范围内工序', s.operations, s.reported_operations + ' 道有反馈；' + s.unreported + ' 道暂无反馈'], ['逐次报工', s.production_reports, '旧现场事件 ' + s.events + ' 条'], ['全部记录', s.records, '历史事件与逐次报工合计，不含额外更正次数'], ['有效加工工时', actual(s.effective_processing_hours), empty ? '暂无现场工时记录' : '已知小计 ' + text(s.known_effective_processing_hours) + '；未知 ' + s.unknown_hour_events + ' 条']];
     return /*#__PURE__*/React.createElement(MetricStrip, {
       columns: 4,
       className: "rw-metrics"

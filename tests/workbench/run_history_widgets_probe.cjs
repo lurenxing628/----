@@ -39,7 +39,7 @@ const server = http.createServer((req, res) => {
   const asset = assets.get(pathname); if (!asset) { res.writeHead(404); res.end(); return; } res.setHeader('Content-Type', asset.mime); res.end(asset.bytes);
 });
 let page, origin, variant, fixtures, phase;
-const button = name => name === '清除历史筛选' ? page.locator('.rh-filters').getByRole('button', { name, exact: true }) : UI.button(page, name);
+const button = name => name === '清除筛选' ? page.locator('.rh-filters').getByRole('button', { name, exact: true }) : UI.button(page, name);
 const done = name => report.checks.push({ variant, name, passed: true });
 const rows = () => page.locator('[data-run-ref]');
 async function shot(name) {
@@ -51,8 +51,8 @@ async function shot(name) {
 async function loaded() { await page.waitForFunction(() => { const root = document.querySelector('[data-run-history-workspace]'); return root && root.getAttribute('aria-busy') !== 'true'; }); }
 async function mount(context = {}) { await page.evaluate(context => mountHistory(context), context); await loaded(); }
 async function control(action) { const response = await page.request.post(origin + '/fixture/control', { data: { action } }); assert(response.ok()); }
-async function select(label, name) { await page.getByLabel(label, { exact: true }).click(); await page.getByRole('listbox').getByRole('option', { name: label === '历史每页数量' ? name + ' 次' : name, exact: true }).click(); }
-async function query() { await button('查询排产历史').click(); await loaded(); }
+async function select(label, name) { await page.getByLabel(label, { exact: true }).click(); await page.getByRole('listbox').getByRole('option', { name: label === '排产记录每页数量' ? name + ' 次' : name, exact: true }).click(); }
+async function query() { await button('查询排产记录').click(); await loaded(); }
 async function layout() {
   const evidence = await page.evaluate(() => {
     const shell = document.querySelector('[data-run-history-workspace]'), table = shell.querySelector('.rh-table');
@@ -116,9 +116,9 @@ async function directCandidate() {
   assert.equal(data.capabilities.adopt, false); assert.equal(data.capabilities.edit_draft, false);
   assert.deepEqual(await page.locator('[data-candidate-task-list] [data-row-ref]').evaluateAll(nodes => nodes.map(n => n.dataset.rowRef)), data.tasks.map(t => t.row_ref));
   const before = report.requests.length, navigation = await page.evaluate(() => window.navigation), blocked = [];
-  for (const [name, reason] of [['采用方案', '正式采用入口未接入，请先核对完整候选方案。'], ['试调', '试调入口未接入，请先核对完整候选方案。']]) {
+  for (const [name, reason] of [['采用方案', '此功能尚未开通。'], ['试调', '此功能尚未开通。']]) {
     const target = button(name); assert(await target.isDisabled()); assert.equal(await target.getAttribute('title'), reason);
-    assert.equal(await target.getAttribute('data-wb-disabled-reason'), reason); await page.getByText(reason, { exact: true }).waitFor();
+    assert.equal(await target.getAttribute('data-wb-disabled-reason'), reason); await page.getByText(reason, { exact: true }).first().waitFor();
     const box = await target.boundingBox(); assert(box); await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
     blocked.push({ name, reason, disabled: true });
   }
@@ -144,31 +144,31 @@ async function browse() {
   assert.equal(await rows().count(), 20); assert.equal(await page.getByRole('button', { name: /导出|CSV|XLSX/ }).count(), 0);
   await layout(); await shot('history'); done('no-export-no-invented-download');
   const first = await rows().evaluateAll(nodes => nodes.map(n => n.dataset.runRef));
-  await button('历史下一页').click(); await loaded(); const second = await rows().evaluateAll(nodes => nodes.map(n => n.dataset.runRef));
+  await button('排产记录下一页').click(); await loaded(); const second = await rows().evaluateAll(nodes => nodes.map(n => n.dataset.runRef));
   assert.equal(first.length + second.length, 27); assert.equal(new Set([...first, ...second]).size, 27);
-  await button('历史上一页').click(); await loaded(); assert.deepEqual(await rows().evaluateAll(nodes => nodes.map(n => n.dataset.runRef)), first); done('snapshot-bound-pagination');
-  await select('历史每页数量', '10'); await loaded(); assert.equal(await rows().count(), 10); done('shared-page-size-select');
-  await page.getByLabel('历史运行状态', { exact: true }).click(); await page.getByRole('listbox').waitFor(); await shot('state-menu');
+  await button('排产记录上一页').click(); await loaded(); assert.deepEqual(await rows().evaluateAll(nodes => nodes.map(n => n.dataset.runRef)), first); done('snapshot-bound-pagination');
+  await select('排产记录每页数量', '10'); await loaded(); assert.equal(await rows().count(), 10); done('shared-page-size-select');
+  await page.getByLabel('排产记录状态', { exact: true }).click(); await page.getByRole('listbox').waitFor(); await shot('state-menu');
   await page.getByRole('listbox').getByRole('option', { name: '计算失败', exact: true }).click(); await query();
   assert.equal(await rows().count(), 4); assert((await rows().allTextContents()).every(t => t.includes('计算失败') && t.includes('未保存可用候选'))); await shot('failed'); done('failed-not-empty-or-complete');
-  await select('历史运行状态', '正在计算'); await query();
-  await page.locator('[data-run-ref="' + fixtures.awaiting.run_ref + '"]').getByText('恢复待核对', { exact: true }).waitFor();
+  await select('排产记录状态', '正在计算'); await query();
+  await page.locator('[data-run-ref="' + fixtures.awaiting.run_ref + '"]').getByText('等待核对', { exact: true }).waitFor();
   assert((await rows().allTextContents()).every(t => t.includes('非最终'))); await shot('running-recovery'); done('running-reconciliation-nonfinal-counts');
-  await select('历史运行状态', '已中断'); await query(); assert((await rows().allTextContents()).every(t => t.includes('未自动重跑'))); done('interrupted-not-complete');
-  await select('历史运行状态', '部分完成'); await query(); assert((await rows().allTextContents()).every(t => t.includes('保留部分结果'))); done('partial-preserved');
-  await button('清除历史筛选').click(); await loaded();
-  await page.getByLabel('历史受理起日', { exact: true }).focus(); await page.keyboard.press('Alt+ArrowDown'); await page.getByRole('dialog').waitFor(); await shot('date-picker'); await page.keyboard.press('Escape');
-  await page.getByLabel('历史受理起日', { exact: true }).fill('2026-09-10'); await button('查询排产历史').click(); await page.getByRole('alert').waitFor(); done('unpaired-dates-rejected');
-  await page.getByLabel('历史受理止日', { exact: true }).fill('2026-09-09'); await button('查询排产历史').click(); await page.getByRole('alert').waitFor(); done('reversed-dates-rejected');
-  await page.getByLabel('历史受理止日', { exact: true }).focus(); await page.keyboard.press('Alt+ArrowDown');
+  await select('排产记录状态', '已中断'); await query(); assert((await rows().allTextContents()).every(t => t.includes('未自动重跑'))); done('interrupted-not-complete');
+  await select('排产记录状态', '部分完成'); await query(); assert((await rows().allTextContents()).every(t => t.includes('保留部分结果'))); done('partial-preserved');
+  await button('清除筛选').click(); await loaded();
+  await page.getByLabel('排产记录提交起日', { exact: true }).focus(); await page.keyboard.press('Alt+ArrowDown'); await page.getByRole('dialog').waitFor(); await shot('date-picker'); await page.keyboard.press('Escape');
+  await page.getByLabel('排产记录提交起日', { exact: true }).fill('2026-09-10'); await button('查询排产记录').click(); await page.getByRole('alert').waitFor(); done('unpaired-dates-rejected');
+  await page.getByLabel('排产记录提交止日', { exact: true }).fill('2026-09-09'); await button('查询排产记录').click(); await page.getByRole('alert').waitFor(); done('reversed-dates-rejected');
+  await page.getByLabel('排产记录提交止日', { exact: true }).focus(); await page.keyboard.press('Alt+ArrowDown');
   await page.getByRole('dialog').getByRole('gridcell', { name: '2026-09-10', exact: true }).click();
-  assert.equal(await page.getByLabel('历史受理止日', { exact: true }).inputValue(), '2026-09-10'); await query(); assert.equal(await rows().count(), 2); done('factory-local-inclusive-date-input-and-calendar-click');
-  await page.getByLabel('历史受理起日', { exact: true }).fill('2030-01-01'); await page.getByLabel('历史受理止日', { exact: true }).fill('2030-01-02'); await query();
-  await page.getByText('当前筛选没有匹配的运行记录', { exact: true }).waitFor(); assert.equal(await rows().count(), 0); await shot('empty-filter'); done('empty-filter-never-falls-back');
-  await button('清除历史筛选').click(); await loaded();
-  await select('历史排序字段', '开始时间'); await select('历史排序方向', '从旧到新'); await query(); assert.equal(await page.getByLabel('历史排序字段').inputValue(), 'started_at'); done('sort-input-click-apply');
+  assert.equal(await page.getByLabel('排产记录提交止日', { exact: true }).inputValue(), '2026-09-10'); await query(); assert.equal(await rows().count(), 2); done('factory-local-inclusive-date-input-and-calendar-click');
+  await page.getByLabel('排产记录提交起日', { exact: true }).fill('2030-01-01'); await page.getByLabel('排产记录提交止日', { exact: true }).fill('2030-01-02'); await query();
+  await page.getByText('当前筛选没有匹配的排产记录', { exact: true }).waitFor(); assert.equal(await rows().count(), 0); await shot('empty-filter'); done('empty-filter-never-falls-back');
+  await button('清除筛选').click(); await loaded();
+  await select('排产记录排序项', '开始时间'); await select('排产记录排序方向', '从旧到新'); await query(); assert.equal(await page.getByLabel('排产记录排序项').inputValue(), 'started_at'); done('sort-input-click-apply');
   await mount({ size: 50 }); await rows().first().waitFor(); const missing = page.locator('[data-run-ref="' + fixtures.missing.run_ref + '"]');
-  await missing.getByText('受理资料缺项 6', { exact: true }).click(); await missing.getByText(/所选批次：受理时未记录/).waitFor(); done('missing-admission-values-and-reasons');
+  await missing.getByText('排产时资料缺项 6', { exact: true }).click(); await missing.getByText(/所选批次：排产时没有记下这一项的有效值/).waitFor(); done('missing-admission-values-and-reasons');
   await mount({ state: 'complete', size: 10, order: 'asc', return_plan_context: { plan_ref: 'f'.repeat(48), snapshot_ref: 'not-carried' } });
   await button('查看运行 ' + fixtures.real.run_ref).click(); const nav = await page.evaluate(() => navigation);
   assert.equal(nav[0], 'analysis'); assert.equal(nav[1].run_ref, fixtures.real.run_ref); assert(!nav[1].candidate_ref && !nav[1].plan_ref);
@@ -177,29 +177,29 @@ async function browse() {
   assert.equal(await page.getByRole('heading', { name: '候选工作区', exact: true }).count(), 0); done('BP-catalog-no-default-candidate');
   await button('查看候选 ' + fixtures.real.candidate_ref).click(); await page.getByRole('heading', { name: '候选工作区', exact: true }).waitFor(); await shot('BP-explicit-candidate'); done('real-engine-history-BP-manual-candidate');
   await directCandidate();
-  await mount(nav[1].return_history_context); assert.equal(await page.getByLabel('历史运行状态').inputValue(), 'complete'); assert.equal(await page.getByLabel('历史排序方向').inputValue(), 'asc');
-  await button('返回方案页').click(); assert.deepEqual(await page.evaluate(() => navigation), ['analysis', { plan_ref: 'f'.repeat(48) }]); done('return-query-context-restored');
+  await mount(nav[1].return_history_context); assert.equal(await page.getByLabel('排产记录状态').inputValue(), 'complete'); assert.equal(await page.getByLabel('排产记录排序方向').inputValue(), 'asc');
+  await button('返回正式计划').click(); assert.deepEqual(await page.evaluate(() => navigation), ['analysis', { plan_ref: 'f'.repeat(48) }]); done('return-query-context-restored');
 }
 async function failures() {
-  await control('empty'); await mount(); await page.getByText('尚无排产运行记录', { exact: true }).waitFor();
-  assert.equal(await rows().count(), 0); assert(await button('历史下一页').isDisabled()); await shot('empty-directory'); done('real-empty-directory-distinct-from-empty-filter');
-  await control('reset'); await mount({ page: 100 }); await page.getByText('当前页没有运行记录', { exact: true }).waitFor();
-  await button('返回第一页').click(); await loaded(); assert.equal(await rows().count(), 20); done('out-of-range-page-explicit-return');
+  await control('empty'); await mount(); await page.getByText('尚无排产记录', { exact: true }).waitFor();
+  assert.equal(await rows().count(), 0); assert(await button('排产记录下一页').isDisabled()); await shot('empty-directory'); done('real-empty-directory-distinct-from-empty-filter');
+  await control('reset'); await mount({ page: 100 }); await page.getByText('当前页没有排产记录', { exact: true }).waitFor();
+  await button('返回第 1 页').click(); await loaded(); assert.equal(await rows().count(), 20); done('out-of-range-page-explicit-return');
   await mount(); const apiPattern = '**/api/workbench/v1/scheduling/runs?*';
   await page.route(apiPattern, route => route.fulfill({ status: 500, contentType: 'text/html', body: 'Unavailable' }));
-  await button('刷新排产历史').click(); await page.getByRole('alert').waitFor(); assert.equal(await rows().count(), 0); await shot('read-error');
-  await page.unroute(apiPattern); await button('重新读取历史').click(); await loaded(); assert.equal(await rows().count(), 20); done('failed-refresh-clears-old-results-and-retries');
-  await control('append'); await button('历史下一页').click(); await page.getByRole('alert').waitFor(); assert.equal(await rows().count(), 0);
-  await button('明确重读历史').waitFor(); await shot('snapshot-changed'); await button('明确重读历史').click(); await loaded();
+  await button('刷新排产记录').click(); await page.getByRole('alert').waitFor(); assert.equal(await rows().count(), 0); await shot('read-error');
+  await page.unroute(apiPattern); await button('重新查询').click(); await loaded(); assert.equal(await rows().count(), 20); done('failed-refresh-clears-old-results-and-retries');
+  await control('append'); await button('排产记录下一页').click(); await page.getByRole('alert').waitFor(); assert.equal(await rows().count(), 0);
+  await button('重新查询').waitFor(); await shot('snapshot-changed'); await button('重新查询').click(); await loaded();
   assert((await page.locator('.rh-pagination').innerText()).includes('28 次')); done('real-SQLite-change-stops-page-until-explicit-refresh');
-  await control('restart'); await button('历史下一页').click(); await page.getByRole('alert').waitFor(); await button('明确重读历史').click(); await loaded(); done('expired-read-token-never-reused');
+  await control('restart'); await button('排产记录下一页').click(); await page.getByRole('alert').waitFor(); await button('重新查询').click(); await loaded(); done('expired-read-token-never-reused');
   await page.evaluate(async () => { const api = RunHistoryAPI.create(), value = await api.catalog(); window.boundSnapshot = value.meta.snapshot_ref; rerenderHistory({ snapshot_ref: boundSnapshot }); });
   await loaded(); await control('restart');
   await page.evaluate(() => rerenderHistory({ snapshot_ref: 'z'.repeat(32) })); await page.getByRole('alert').waitFor(); assert.equal(await rows().count(), 0); done('source-snapshot-prop-change-reloads');
   await mount({ source: 'sample' }); await page.getByRole('alert').waitFor(); assert.equal(await rows().count(), 0); done('unknown-source-no-silent-production-fallback');
   await page.evaluate(() => { const api = RunHistoryAPI.create(); window.deferHistory = null;
     window.mountHistory({}, { catalog: (...args) => api.catalog(...args).then(value => new Promise(resolve => { window.deferHistory = () => resolve(value); })) }); });
-  await page.getByText('正在读取排产历史', { exact: true }).waitFor(); assert.equal(await rows().count(), 0); await shot('loading');
+  await page.getByText('正在读取排产记录', { exact: true }).waitFor(); assert.equal(await rows().count(), 0); await shot('loading');
   await page.waitForFunction(() => typeof deferHistory === 'function'); await mount({ state: 'failed' }); await page.evaluate(() => deferHistory());
   assert((await rows().allTextContents()).every(t => t.includes('计算失败'))); done('late-request-after-source-change-ignored');
   await page.evaluate(() => { const api = RunHistoryAPI.create(); mountHistory({}, { catalog: async (...args) => { const v = await api.catalog(...args); v.data.runs[0].counts_final = true; return v; } }); });

@@ -15,7 +15,7 @@
       dirty: !done && JSON.stringify(value) !== JSON.stringify(K.draft(original.current)), locked: command.locked, message: '工作日历有尚未保存的修改。' });
     async function close() { if (!command.locked && !reading && await window.WorkbenchGuards.confirmLeave({ owner: guardOwner })) onClose(); }
     React.useEffect(() => { if (error || command.error) focusFirstInvalid(formRef.current); }, [error, command.error]);
-    const reason = K.stale(command) ? '资料已变化，请重新读取并核对。' : review ? '请先核对最新资料。' :
+    const reason = K.stale(command) ? window.WorkbenchTerms.outcomes.stale : review ? '请先核对最新资料。' :
       C.blocked(base.write_context, 'calendar', clearing ? 'delete' : 'upsert', source);
     async function reloadContext() {
       if (disabled) return;
@@ -53,7 +53,7 @@
         {clearing ? <p>将清除 <b>{base.date}</b> 的全局日历配置，改用该日期的默认规则。人员专属日历和班次不变。</p> :
           <Fields value={value} error={error || command.error} showSummary={false} disabled={disabled} onChange={next => { setValue(next); setError(null); }} />}
         <ErrorBox error={error} excludePaths={clearing ? [] : window.CalendarFields.fieldPaths} /><Feedback command={command} excludePaths={clearing ? [] : window.CalendarFields.fieldPaths} /><ErrorBox error={readError} />
-        {!done && <Button icon="refresh-cw" busy={reading} disabled={command.locked} onClick={reloadContext}>重新读取最新资料</Button>}
+        {!done && <Button icon="refresh-cw" busy={reading} disabled={command.locked} onClick={reloadContext}>刷新最新资料</Button>}
         {review && <div className="match-note" style={{ display: 'block' }}>
           <p>最新资料已读取，已填写的内容保持不变。请核对后继续编辑。</p><Policy value={review.day} />
           <Button disabled={disabled} reason={C.blocked(review.day.write_context, 'calendar', clearing ? 'delete' : 'upsert', review.source)} onClick={accept}>已核对，继续编辑</Button></div>}

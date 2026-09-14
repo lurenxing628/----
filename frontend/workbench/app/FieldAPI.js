@@ -12,12 +12,12 @@
     const invalid = input.snapshot_ref && value.meta.snapshot_ref !== input.snapshot_ref
       || input.plan_ref && (!data.scope || data.scope.plan_ref !== input.plan_ref)
       || input.page !== undefined && !input.task_ref && data.page.number !== input.page;
-    if (invalid) throw window.APSResourceContract.failure('现场读取与原计划、页码或快照不一致，未替换原对象。');
+    if (invalid) throw window.APSResourceContract.failure('读到的现场数据与原计划、页码或数据版本不一致，没有替换原来的任务。');
     return value;
   }
   async function readView(api, input, signal) {
     if (input.snapshot_ref) return checked(await api.list(input, signal), input);
-    if (input.operation_ref && !input.task_ref) throw window.APSResourceContract.failure('原工序核验缺少明确任务，未改选对象。');
+    if (input.operation_ref && !input.task_ref) throw window.APSResourceContract.failure('核对原工序时缺少明确任务，没有改选其他任务。');
     if (input.page !== undefined && (!Number.isInteger(input.page) || input.page < 1 || input.page > 100000))
       throw window.APSResourceContract.failure('现场原页码无效，未切换到其他页。');
     const firstQuery = { ...input, page: 1 };
@@ -31,13 +31,13 @@
     if (input.page !== undefined && result.data.page.number !== input.page || input.task_ref && !original
       || original && input.operation_ref && original.operation_ref !== input.operation_ref
       || JSON.stringify(result.data.scope) !== JSON.stringify(first.data.scope))
-      throw window.APSResourceContract.failure('原现场任务、页码或筛选范围已不匹配，未切换到其他对象。');
+      throw window.APSResourceContract.failure('原现场任务、页码或筛选范围已不匹配，没有切换到其他任务。');
     return result;
   }
   function create() {
     const api = window.APSResourceAPI.create('execution'), C = window.FieldContract;
     const queryScope = scope => ({ ...scope, ...(Array.isArray(scope.batch_ids) ? { batch_ids: JSON.stringify(scope.batch_ids) } : {}) });
-    function target(group, ref) { if (!C.ref(ref)) throw window.APSResourceContract.failure('报工或任务引用无效。'); return 'execution/' + group + '/' + ref; }
+    function target(group, ref) { if (!C.ref(ref)) throw window.APSResourceContract.failure('报工或任务编号无效。'); return 'execution/' + group + '/' + ref; }
     return {
       readPending: api.readPending, savePending: api.savePending, clearPending: api.clearPending, lookup: api.lookup,
       list(scope, signal) { return api.query('execution/tasks', queryScope(scope), signal); },

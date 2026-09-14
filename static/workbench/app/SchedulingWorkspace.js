@@ -79,20 +79,20 @@
     }, [runRef, api, revision]);
     return /*#__PURE__*/React.createElement("section", {
       className: "plana run-job-panel",
-      "aria-label": "\u6307\u5B9A\u8FD0\u884C"
+      "aria-label": "\u8FD9\u6B21\u6392\u4EA7"
     }, /*#__PURE__*/React.createElement(U.Styles, null), /*#__PURE__*/React.createElement("div", {
       className: "rj-heading"
-    }, /*#__PURE__*/React.createElement("h2", null, "\u6392\u4EA7\u8FD0\u884C"), /*#__PURE__*/React.createElement(U.Button, {
+    }, /*#__PURE__*/React.createElement("h2", null, "\u8FD9\u6B21\u6392\u4EA7"), /*#__PURE__*/React.createElement(U.Button, {
       icon: "refresh-cw",
-      "aria-label": "\u5237\u65B0\u6307\u5B9A\u8FD0\u884C",
+      "aria-label": "\u5237\u65B0\u8FD9\u6B21\u6392\u4EA7",
       busy: checking,
       disabled: !A.ref(runRef),
       onClick: refresh
     })), !A.ref(runRef) ? /*#__PURE__*/React.createElement("p", {
       role: "alert"
-    }, "\u8FD0\u884C\u6765\u6E90\u65E0\u6548\uFF0C\u672A\u5207\u6362\u5230\u5176\u4ED6\u8FD0\u884C\u3002") : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(window.WorkbenchReference, {
+    }, "\u8FD9\u6761\u6392\u4EA7\u8BB0\u5F55\u5DF2\u5931\u6548\uFF0C\u9875\u9762\u6CA1\u6709\u5207\u6362\u3002\u8BF7\u70B9\u300C\u6392\u4EA7\u8BB0\u5F55\u300D\u91CD\u65B0\u9009\u62E9\u3002") : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(window.WorkbenchReference, {
       entries: {
-        '指定运行': runRef
+        '排产编号': runRef
       }
     }), error && /*#__PURE__*/React.createElement("div", {
       className: "rj-notice",
@@ -107,7 +107,7 @@
     }), !record && /*#__PURE__*/React.createElement("p", {
       role: "status",
       className: "rj-muted"
-    }, checking ? '正在读取指定运行。' : paused ? '返回页面后继续读取指定运行。' : '尚未核实指定运行，未显示其他运行结果。')));
+    }, checking ? '正在读取这次排产。' : paused ? '返回本页后继续读取这次排产。' : '还没读到这次排产的结果。请点右上角的刷新按钮。')));
   }
   function Navigation({
     children
@@ -132,7 +132,7 @@
     return specified ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Navigation, null, history, /*#__PURE__*/React.createElement(U.Button, {
       icon: "plus",
       onClick: () => onNavigate('run', {})
-    }, "\u65B0\u5EFA\u6392\u4EA7\u8303\u56F4")), /*#__PURE__*/React.createElement(ReadRun, {
+    }, "\u5F00\u59CB\u65B0\u6392\u4EA7")), /*#__PURE__*/React.createElement(ReadRun, {
       key: initialContext.run_ref,
       runRef: initialContext.run_ref,
       api: api
@@ -201,9 +201,13 @@
           history_query: historyQuery
         } : {})
       })
-    }, "\u6392\u4EA7\u8BB0\u5F55"), candidate && /*#__PURE__*/React.createElement("span", {
+    }, "\u6392\u4EA7\u8BB0\u5F55"), candidate && /*#__PURE__*/React.createElement(U.Button, {
+      icon: "chart",
+      "aria-pressed": true,
+      "aria-current": "page"
+    }, "\u5019\u9009\u65B9\u6848"), candidate && /*#__PURE__*/React.createElement("span", {
       className: "scheduling-source"
-    }, "\u5019\u9009\u9884\u89C8 \xB7 \u975E\u6B63\u5F0F\u6267\u884C\u5B89\u6392")), candidate ? /*#__PURE__*/React.createElement(window.RunCandidateWorkspace, {
+    }, "\u4E0D\u662F\u6B63\u5F0F\u8BA1\u5212")), candidate ? /*#__PURE__*/React.createElement(window.RunCandidateWorkspace, {
       view: view,
       initialContext: initialContext,
       onNavigate: onNavigate,

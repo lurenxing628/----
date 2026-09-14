@@ -39,7 +39,7 @@
   }
   function register(entry) {
     if (!entry || typeof entry.owner !== 'string' || !entry.owner || typeof entry.message !== 'string')
-      throw new TypeError('草稿保护需要明确的 owner 和说明。');
+      throw new TypeError('dirty_guard_entry_invalid');
     const token = {}; entries.set(token, entry); sync();
     return () => { entries.delete(token); sync(); };
   }
@@ -55,11 +55,11 @@
   function confirmLeave(options = {}) {
     if (!hasDirty(options)) return Promise.resolve(true);
     if (pending) return Promise.resolve(false);
-    if (!listeners.size) return Promise.reject(new Error('草稿确认组件未挂载，已保留当前内容。'));
+    if (!listeners.size) return Promise.reject(new Error('页面还没准备好，这次没有离开。请刷新后重试。'));
     return new Promise(resolve => { pending = { id: ++nextPrompt, options, resolve }; notify(); });
   }
   async function leaveExternal(navigate) {
-    if (typeof navigate !== 'function') throw new TypeError('外部离开需要明确导航动作。');
+    if (typeof navigate !== 'function') throw new TypeError('leave_external_requires_navigate');
     if (!await confirmLeave()) return false;
     const permit = {}; externalPermit = permit;
     window.setTimeout(() => { if (externalPermit === permit) externalPermit = null; }, 0);

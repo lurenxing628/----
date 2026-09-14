@@ -4,7 +4,7 @@
   const stages = {
     queued: '等待计算',
     computing: '正在计算',
-    awaiting_reconciliation: '核对运行记录',
+    awaiting_reconciliation: '核对排产记录',
     finished: '计算已结束'
   };
   function step(input, checked) {
@@ -25,10 +25,10 @@
     const seconds = Math.floor((end - begin) / 1000),
       hours = Math.floor(seconds / 3600),
       minutes = Math.floor(seconds % 3600 / 60);
-    return (hours ? hours + ' 小时 ' : '') + (minutes || hours ? minutes + ' 分 ' : '') + seconds % 60 + ' 秒';
+    return (hours ? hours + ' 小时 ' : '') + (minutes || hours ? minutes + ' 分钟 ' : '') + seconds % 60 + ' 秒';
   }
   function stage(run) {
-    return stages[run.stage] || '运行阶段未知';
+    return stages[run.stage] || '排产阶段未知';
   }
   window.RunPresentation = {
     step,

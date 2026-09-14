@@ -46,10 +46,6 @@
   --font-w-bold: 700;    /* @kind font */
 
   /* ---- Line heights ---- */
-  --leading-tight: 1.25;  /* headings */
-  --leading-snug: 1.4;    /* values, dense rows */
-  --leading-normal: 1.5;  /* helper text */
-  --leading-relaxed: 1.65;/* paragraphs */
 
   /* ---- Numerals: always tabular (认知原则 ⑤) ---- */
   --num-variant: tabular-nums; /* @kind other */

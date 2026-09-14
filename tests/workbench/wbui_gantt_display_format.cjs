@@ -6,7 +6,7 @@ const babel = require(path.join(root, 'frontend/workbench/prototype/ui_kits/work
 const { compile } = require('../../scripts/workbench/compile.cjs');
 const sources = new Map(), syntax = new Map();
 const hash = value => crypto.createHash('sha256').update(value).digest('hex'), evidence = { cases: [], baseline_sources: [] };
-const dependencies = ['WorkbenchFormat.js', 'WorkbenchTerms.js', 'PlanGanttModel.js', 'DashboardTimelineModel.js', 'RunCandidateModel.js', 'ActualGanttModel.js'];
+const dependencies = ['WorkbenchFormat.js', 'WorkbenchTerms.js', 'PlanGanttModel.js', 'DashboardTimelineModel.js', 'RunCandidateModel.js', 'FieldContract.js', 'ActualGanttModel.js'];
 function read(name) {
   if (!sources.has(name)) {
     const code = fs.readFileSync(path.join(app, name), 'utf8'); sources.set(name, code);
@@ -65,12 +65,14 @@ const trialActual = [0, 1, 2, 3].map(i => { host.i = i; const actual = vm.runInC
 assert.deepEqual(trialActual, trialExpected);
 evidence.cases.push({ component: 'TrialGantt.jsx', input: host.bounds, expected: trialExpected, actual: trialActual, expressions: trialTick, legacy_expressions: [legacyTrial] });
 assert(calls.slice(-4).every(value => /^2026-09-\d{2}T\d{2}:\d{2}:\d{2}$/.test(value)), 'Trial passes a local full-second wire string without Z');
-const average = expression('ActualGanttWorkspace.jsx', code => code.startsWith("stats.average === null ? '未核实'")); assert.equal(average.length, 1);
+const average = expression('ActualGanttWorkspace.jsx', code => code.startsWith("stats.average === null ? '暂无数据'")); assert.equal(average.length, 1);
+// 词表把「未核实」改成「暂无数据」、把 m 改成分钟；数值语义仍与冻结源逐值对齐，只在比较前抹平这两处措辞。
+const sameNumber = value => value.replace(/,/g, '').replace(' 分钟', 'm').replace('暂无数据', '未核实');
 const legacyAverage = "stats.average === null ? '未核实' : (stats.average > 0 ? '+' : '') + Math.round(stats.average) + 'm'";
 legacySource('ActualGanttWorkspace.jsx', [legacyAverage]);
-for (const [value, expected] of [[null, '未核实'], [0, '0m'], [-0, '0m'], [.1, '+0m'], [-.1, '0m'], [.5, '+1m'], [-.5, '0m'], [1.5, '+2m'], [-1.5, '-1m'], [12345.6, '+12,346m'], [-12345.6, '-12,346m']]) {
+for (const [value, expected] of [[null, '暂无数据'], [0, '0 分钟'], [-0, '0 分钟'], [.1, '+0 分钟'], [-.1, '0 分钟'], [.5, '+1 分钟'], [-.5, '0 分钟'], [1.5, '+2 分钟'], [-1.5, '-1 分钟'], [12345.6, '+12,346 分钟'], [-12345.6, '-12,346 分钟']]) {
   host.stats = { average: value }; const actual = vm.runInContext(average[0], host), original = vm.runInContext(legacyAverage, host);
-  assert.equal(actual, expected, 'Original round/sign semantics with shared number grouping'); assert.equal(actual.replace(/,/g, ''), original);
+  assert.equal(actual, expected, 'Original round/sign semantics with shared number grouping'); assert.equal(sameNumber(actual), original);
   evidence.cases.push({ component: 'ActualGanttWorkspace.jsx average', input: Object.is(value, -0) ? '-0' : value, expected, actual, legacy_output: original, expressions: average, legacy_expressions: [legacyAverage] });
 }
 for (const value of [NaN, Infinity, -Infinity]) {

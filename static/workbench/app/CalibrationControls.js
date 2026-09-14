@@ -7,13 +7,13 @@
     ErrorBox
   } = window.ResourceControls;
   const text = (value, missing = '未知') => value === null || value === undefined ? missing : String(value);
-  const hours = (value, missing = '未提供') => value === null ? missing : text(value) + ' h';
+  const hours = (value, missing = '未填写') => value === null ? missing : text(value) + ' 小时';
   const source = value => ({
     internal: '自制',
     external: '外协',
     unknown: '未确认'
   })[value] || '未确认';
-  const writeReason = '采用与锁定须经独立真实预览核实；仅影响未来模板使用，不改已有批次、历史计划和执行。';
+  const writeReason = '采用与锁定前要先读取真实预检并确认；只影响以后新增的工序模板，不改已有批次、历史计划和现场记录。';
   function useRead(load, identity, adapter, enabled = true) {
     const [state, setState] = React.useState({
       result: null,
@@ -184,7 +184,7 @@
     onResize,
     total
   }) {
-    const columns = [['part_no', '图号 / 零件', 240], ['operation_label', '工序 / 来源', 210], ['old_unit_hours', '原定额 h/件', 155], ['suggested_unit_hours', '建议 h/件', 140], ['sample_count', '有效样本', 125], ['absolute_deviation_percent', '偏差', 125], ['status', '状态', 125]];
+    const columns = [['part_no', '图号 / 零件', 240], ['operation_label', '工序 / 来源', 210], ['old_unit_hours', '原定额（小时/件）', 175], ['suggested_unit_hours', '建议（小时/件）', 160], ['sample_count', '可用记录数', 125], ['absolute_deviation_percent', '偏差', 125], ['status', '状态', 125]];
     const width = (key, value) => widths[key] || value;
     return /*#__PURE__*/React.createElement("div", {
       className: "ca-table-scroll wb-table-frame",
@@ -239,7 +239,7 @@
       onClick: () => onPart(row)
     }, row.part_no), /*#__PURE__*/React.createElement("small", null, row.part_name)), /*#__PURE__*/React.createElement("td", null, row.sequence, " \xB7 ", row.operation_label, /*#__PURE__*/React.createElement("small", null, source(row.source))), /*#__PURE__*/React.createElement("td", {
       className: "ca-number"
-    }, text(row.old_unit_hours, '未提供')), /*#__PURE__*/React.createElement("td", {
+    }, text(row.old_unit_hours, '未填写')), /*#__PURE__*/React.createElement("td", {
       className: "ca-number"
     }, text(row.suggested_unit_hours, '暂无建议')), /*#__PURE__*/React.createElement("td", {
       className: "ca-number"

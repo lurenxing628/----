@@ -48,8 +48,8 @@ async function recoverReceipt({p, page, processArea, kind, file}) {
     p.step('restore-receipt-network', lookupPattern, {request_key: observed.request_key});
     const receipt = await p.response('/commands/' + observed.request_key, () => p.click(b(dialog(), '查询原请求回执')));
     assert.equal(receipt.receipt_ref, observed.stored.receipt_ref); assert(['committed', 'unchanged'].includes(receipt.result));
-    await dialog().getByText(kind === 'hours' ? '已核实原文件回执；导入不代替工时阶段的人工确认。'
-      : '已取得原文件请求的完成回执，工艺确认状态以重新读取的详情为准。', {exact: true}).waitFor();
+    await dialog().getByText(kind === 'hours' ? '已查到文件导入结果；导入不代替工时阶段的人工确认。'
+      : '文件导入已完成；工艺确认状态以刷新后的详情为准。', {exact: true}).waitFor();
     await p.shot('recovered-original-' + kind + '-receipt');
     const writes = p.report.network.slice(started).filter(row => row.event === 'request' && new URL(row.url).pathname === endpoint);
     assert.equal(writes.length, 1); assert.equal(JSON.parse(writes[0].post).request_key, observed.request_key);
@@ -59,7 +59,7 @@ async function recoverReceipt({p, page, processArea, kind, file}) {
       write_requests: writes.length, actual_request: observed.actual_request, actual_server_response: observed.receipt, response: receipt,
       method: 'Original browser request forwarded with route.fetch to real server, committed response discarded; original lookup blocked, F5, real lookup restored; no fulfill or synthetic API data'});
     await p.click(b(dialog(), '完成')); await dialog().waitFor({state: 'detached'});
-    const resume = b(page, '继续原导航');
+    const resume = b(page, '继续跳转');
     if (await resume.isVisible()) { await p.click(resume); await processArea().locator('.wb-table[aria-busy="false"]').waitFor(); }
   } finally {
     unavailable = false;

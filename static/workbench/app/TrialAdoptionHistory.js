@@ -8,9 +8,9 @@
     all: '全部采用',
     current: '当前正式',
     historical: '历史正式',
-    unavailable: '身份不可用'
+    unavailable: '计划不可用'
   };
-  const text = value => value === null ? '证据缺失' : value;
+  const text = value => value === null ? '暂无数据' : value;
   function Evidence({
     item,
     source
@@ -19,7 +19,9 @@
       className: "wb-ref"
     }, /*#__PURE__*/React.createElement("summary", null, "\u6765\u6E90\u4E0E\u7F16\u53F7"), /*#__PURE__*/React.createElement("dl", {
       className: "tah-refs"
-    }, /*#__PURE__*/React.createElement("dt", null, "\u539F\u6765\u6E90"), /*#__PURE__*/React.createElement("dd", null, U.sourceLabel(source.base_identity), /*#__PURE__*/React.createElement("br", null), Object.values(source.base)[0]), /*#__PURE__*/React.createElement("dt", null, "\u539F\u6B63\u5F0F\u57FA\u7EBF"), /*#__PURE__*/React.createElement("dd", null, source.baseline.plan_ref ? 'v' + source.baseline.version + ' · ' + source.baseline.plan_ref : '当时无正式基线'), /*#__PURE__*/React.createElement("dt", null, "\u539F\u573A\u666F"), /*#__PURE__*/React.createElement("dd", null, source.scenario_ref), /*#__PURE__*/React.createElement("dt", null, "\u539F\u8349\u7A3F"), /*#__PURE__*/React.createElement("dd", null, source.draft_ref), /*#__PURE__*/React.createElement("dt", null, "\u4FDD\u5B58\u6765\u6E90"), /*#__PURE__*/React.createElement("dd", null, source.saved_by, " \xB7 ", U.timeLabel(source.saved_at), /*#__PURE__*/React.createElement("br", null), source.save_request_key), /*#__PURE__*/React.createElement("dt", null, "\u65B0\u6B63\u5F0F\u5F15\u7528"), /*#__PURE__*/React.createElement("dd", null, item.committed_plan.plan_ref), /*#__PURE__*/React.createElement("dt", null, "\u547D\u4EE4\u56DE\u6267"), /*#__PURE__*/React.createElement("dd", null, item.receipt_ref), /*#__PURE__*/React.createElement("dt", null, "\u539F\u8BF7\u6C42"), /*#__PURE__*/React.createElement("dd", null, item.request_key), /*#__PURE__*/React.createElement("dt", null, "\u63D0\u4EA4\u65F6\u95F4 UTC"), /*#__PURE__*/React.createElement("dd", null, item.committed_at_utc), /*#__PURE__*/React.createElement("dt", null, "\u5B57\u6BB5\u4F9D\u636E"), /*#__PURE__*/React.createElement("dd", null, "\u63D0\u4EA4\uFF1A\u6301\u4E45\u547D\u4EE4\u56DE\u6267\uFF1B\u539F\u56E0\u4E0E\u58F0\u660E\u4EBA\uFF1A\u56DE\u6267\u610F\u56FE\u6563\u5217\u6838\u5BF9\uFF1B\u91C7\u7528\u4EBA\u53CA\u672C\u5730\u65F6\u95F4\uFF1A\u6B63\u5F0F\u5386\u53F2\u5BA1\u8BA1\uFF1B\u5F53\u524D\u72B6\u6001\uFF1A\u672C\u6B21\u6B63\u5F0F\u8EAB\u4EFD\u8BFB\u53D6\u3002")));
+    }, /*#__PURE__*/React.createElement("dt", null, "\u539F\u6765\u6E90"), /*#__PURE__*/React.createElement("dd", null, U.sourceLabel(source.base_identity), /*#__PURE__*/React.createElement("br", null), Object.values(source.base)[0]), /*#__PURE__*/React.createElement("dt", null, "\u5F53\u65F6\u7684\u6B63\u5F0F\u8BA1\u5212"), /*#__PURE__*/React.createElement("dd", null, source.baseline.plan_ref ? '第 ' + source.baseline.version + ' 版 · ' + source.baseline.plan_ref : '当时还没有正式计划'), /*#__PURE__*/React.createElement("dt", null, "\u8BD5\u8C03\u65B9\u6848\u7F16\u53F7"), /*#__PURE__*/React.createElement("dd", null, source.scenario_ref), /*#__PURE__*/React.createElement("dt", null, "\u8BD5\u8C03\u8349\u7A3F\u7F16\u53F7"), /*#__PURE__*/React.createElement("dd", null, source.draft_ref), /*#__PURE__*/React.createElement("dt", null, "\u4FDD\u5B58\u6765\u6E90"), /*#__PURE__*/React.createElement("dd", null, source.saved_by, " \xB7 ", U.timeLabel(source.saved_at)), /*#__PURE__*/React.createElement("dt", null, "\u4FDD\u5B58\u64CD\u4F5C\u7F16\u53F7"), /*#__PURE__*/React.createElement("dd", null, source.save_request_key), /*#__PURE__*/React.createElement("dt", null, "\u65B0\u6B63\u5F0F\u8BA1\u5212\u7F16\u53F7"), /*#__PURE__*/React.createElement("dd", null, item.committed_plan.plan_ref), /*#__PURE__*/React.createElement("dt", null, "\u7ED3\u679C\u7F16\u53F7"), /*#__PURE__*/React.createElement("dd", null, item.receipt_ref), /*#__PURE__*/React.createElement("dt", null, "\u64CD\u4F5C\u7F16\u53F7"), /*#__PURE__*/React.createElement("dd", null, item.request_key), /*#__PURE__*/React.createElement("dt", null, "\u63D0\u4EA4\u65F6\u95F4"), /*#__PURE__*/React.createElement("dd", null, window.WorkbenchFormat.instant(item.committed_at_utc, {
+      seconds: true
+    })), /*#__PURE__*/React.createElement("dt", null, "\u6570\u636E\u6765\u6E90"), /*#__PURE__*/React.createElement("dd", null, "\u63D0\u4EA4\u65F6\u95F4\u6765\u81EA\u4FDD\u5B58\u4E0B\u6765\u7684\u64CD\u4F5C\u7ED3\u679C\uFF1B\u91C7\u7528\u539F\u56E0\u548C\u7ECF\u529E\u4EBA\u6765\u81EA\u63D0\u4EA4\u65F6\u6838\u5BF9\u7684\u5185\u5BB9\uFF1B\u91C7\u7528\u4EBA\u548C\u91C7\u7528\u65F6\u95F4\u6765\u81EA\u6B63\u5F0F\u8BA1\u5212\u7684\u5386\u53F2\u8BB0\u5F55\uFF1B\u5F53\u524D\u72B6\u6001\u662F\u8FD9\u6B21\u8BFB\u53D6\u5230\u7684\u3002")));
   }
   function History({
     data
@@ -71,7 +73,7 @@
       try {
         S.remember(ref, next);
       } catch (_) {
-        setError(new Error('采用记录筛选无法保存，请核对浏览器状态。'));
+        setError(new Error('采用记录的筛选没有存上，返回后可能要重新选。'));
         return;
       }
       setError(null);
@@ -82,7 +84,7 @@
       d = result && result.data;
     return /*#__PURE__*/React.createElement("section", {
       className: "trial-adoption-history",
-      "aria-label": "\u672C\u573A\u666F\u91C7\u7528\u8BB0\u5F55"
+      "aria-label": "\u672C\u8BD5\u8C03\u65B9\u6848\u7684\u91C7\u7528\u8BB0\u5F55"
     }, /*#__PURE__*/React.createElement(window.TrialAdoptionHistoryStyles, null), /*#__PURE__*/React.createElement("div", {
       className: "tah-toolbar"
     }, /*#__PURE__*/React.createElement("label", null, "\u91C7\u7528\u72B6\u6001", /*#__PURE__*/React.createElement("select", {
@@ -130,19 +132,19 @@
     }), read.busy && /*#__PURE__*/React.createElement("p", {
       role: "status",
       className: "tah-meta"
-    }, "\u6B63\u5728\u8BFB\u53D6\u672C\u573A\u666F\u91C7\u7528\u8BB0\u5F55\u4E0E\u5F53\u524D\u6B63\u5F0F\u8EAB\u4EFD\u2026"), d && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", {
+    }, "\u6B63\u5728\u8BFB\u53D6\u8FD9\u4E2A\u8BD5\u8C03\u65B9\u6848\u7684\u91C7\u7528\u8BB0\u5F55\u548C\u5F53\u524D\u6B63\u5F0F\u8BA1\u5212\u2026"), d && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", {
       className: "tah-meta"
-    }, d.source.name, " \xB7 \u672C\u573A\u666F\u5171 ", d.total_adoptions, " \u6B21\u91C7\u7528 \xB7 \u6838\u5BF9\u4E8E ", U.timeLabel(result.meta.as_of)), !d.items.length && /*#__PURE__*/React.createElement("p", {
+    }, d.source.name, " \xB7 \u672C\u8BD5\u8C03\u65B9\u6848\u5171 ", d.total_adoptions, " \u6B21\u91C7\u7528 \xB7 \u6838\u5BF9\u65F6\u95F4 ", U.timeLabel(result.meta.as_of)), !d.items.length && /*#__PURE__*/React.createElement("p", {
       className: "tt-empty",
       role: "status"
-    }, d.total_adoptions ? '当前筛选没有采用记录。' : '尚无本场景的正式采用回执。'), /*#__PURE__*/React.createElement("ol", {
+    }, d.total_adoptions ? '当前筛选没有采用记录。' : '这个试调方案还没有正式采用记录。'), /*#__PURE__*/React.createElement("ol", {
       className: "tah-list"
     }, d.items.map(item => /*#__PURE__*/React.createElement("li", {
       key: item.receipt_ref,
       "data-adoption-receipt": item.receipt_ref
     }, /*#__PURE__*/React.createElement("div", {
       className: "tah-head"
-    }, /*#__PURE__*/React.createElement("strong", null, "\u6B63\u5F0F\u8BA1\u5212 v", item.committed_plan.version), /*#__PURE__*/React.createElement("span", {
+    }, /*#__PURE__*/React.createElement("strong", null, "\u6B63\u5F0F\u8BA1\u5212\u7B2C ", item.committed_plan.version, " \u7248"), /*#__PURE__*/React.createElement("span", {
       className: 'tah-state tah-' + item.current_state
     }, labels[item.current_state]), /*#__PURE__*/React.createElement("span", null, item.committed_plan.row_count, " \u9053\u5DE5\u5E8F"), /*#__PURE__*/React.createElement(U.Button, {
       icon: "arrow-right",
@@ -154,9 +156,9 @@
           setError(error);
         }
       }
-    }, "\u67E5\u770B\u6B63\u5F0F\u65B9\u6848")), /*#__PURE__*/React.createElement("p", null, "\u91C7\u7528\u4EBA\uFF1A", text(item.adoption.application_operator), " \xB7 \u58F0\u660E\u4EBA\uFF1A", text(item.adoption.declared_operator)), /*#__PURE__*/React.createElement("p", null, "\u91C7\u7528\u539F\u56E0\uFF1A", text(item.adoption.reason)), /*#__PURE__*/React.createElement("p", {
+    }, "\u67E5\u770B\u6B63\u5F0F\u8BA1\u5212")), /*#__PURE__*/React.createElement("p", null, "\u91C7\u7528\u4EBA\uFF1A", text(item.adoption.application_operator), " \xB7 \u7ECF\u529E\u4EBA\uFF1A", text(item.adoption.declared_operator)), /*#__PURE__*/React.createElement("p", null, "\u91C7\u7528\u539F\u56E0\uFF1A", text(item.adoption.reason)), /*#__PURE__*/React.createElement("p", {
       className: "tah-meta"
-    }, U.timeLabel(item.adoption.adopted_at), " \xB7 \u539F\u57FA\u7EBF ", d.source.baseline.plan_ref ? 'v' + d.source.baseline.version : '无正式基线'), item.evidence_gaps.map((issue, index) => /*#__PURE__*/React.createElement("p", {
+    }, U.timeLabel(item.adoption.adopted_at), " \xB7 \u5F53\u65F6\u7684\u6B63\u5F0F\u8BA1\u5212 ", d.source.baseline.plan_ref ? '第 ' + d.source.baseline.version + ' 版' : '无'), item.evidence_gaps.map((issue, index) => /*#__PURE__*/React.createElement("p", {
       className: "tah-gap",
       key: index
     }, issue.message)), /*#__PURE__*/React.createElement(Evidence, {
@@ -179,6 +181,6 @@
       data: data
     }) : /*#__PURE__*/React.createElement("p", {
       className: "tt-empty"
-    }, "\u5F53\u524D\u4E3A\u8BD5\u8C03\u8349\u7A3F\uFF0C\u5C1A\u65E0\u5DF2\u4FDD\u5B58\u573A\u666F\u7684\u91C7\u7528\u8BB0\u5F55\u3002");
+    }, "\u5F53\u524D\u662F\u8BD5\u8C03\u8349\u7A3F\uFF0C\u8FD8\u6CA1\u6709\u5DF2\u4FDD\u5B58\u8BD5\u8C03\u65B9\u6848\u7684\u91C7\u7528\u8BB0\u5F55\u3002");
   };
 })();

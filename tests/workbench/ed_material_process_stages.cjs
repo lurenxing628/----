@@ -3,7 +3,15 @@ const assert = require('node:assert/strict');
 const b = (scope, name) => scope.getByRole('button', {name, exact: true});
 async function processPage(p, page) {
   await page.goto(p.ready.url + '/workbench?view=process');
-  await p.click(page.locator('.hb-tile').filter({hasText: /^工艺/}));
+  // Since 2026-09-13 the workspace restores the last open detail dialog after a reload, which keeps the rail disabled;
+  // dismiss it so this helper always starts from the list.
+  const tile = page.locator('.hb-tile').filter({hasText: /^工艺/}); await tile.waitFor();
+  for (let i = 0; i < 40 && await tile.isDisabled(); i++) {
+    const restored = page.locator('[role="dialog"][aria-modal="true"]:visible').last();
+    if (await restored.count()) { p.step('close-restored-dialog', await restored.getAttribute('aria-label')); await page.keyboard.press('Escape'); }
+    await page.waitForTimeout(250);
+  }
+  await p.click(tile);
   await page.locator('[data-process-workspace] tbody tr[data-process-ref]').first().waitFor();
 }
 async function openProcess(p, page, code) {
@@ -41,7 +49,7 @@ async function processStages(p, page, data) {
   await entry.getByRole('alert').first().waitFor(); await p.shot('route-invalid-sequence-rejected');
   await p.type(entry.getByLabel('第 1 行工序号', {exact: true}), '10');
   await p.type(entry.getByLabel('第 1 行工种', {exact: true}), data.long_operation);
-  await p.click(b(entry, '添加工序')); await p.type(entry.getByLabel('第 5 行工序号', {exact: true}), '50');
+  await p.click(b(entry, '新增工序')); await p.type(entry.getByLabel('第 5 行工序号', {exact: true}), '50');
   await p.type(entry.getByLabel('第 5 行工种', {exact: true}), '检验'); await p.click(b(entry, '删除第 5 行'));
   await p.click(entry.getByRole('tab', {name: '整条录入', exact: true}));
   await p.type(entry.getByRole('textbox', {name: '路线文字', exact: true}), data.route);
@@ -56,12 +64,12 @@ async function processStages(p, page, data) {
   await p.response('/entities/op_type', () => p.click(b(picker, '搜索'))); await picker.getByText('没有匹配选项。').waitFor(); await p.shot('source-picker-empty');
   await p.type(picker.getByRole('searchbox'), data.long_operation);
   await p.response('/entities/op_type', () => p.click(b(picker, '搜索'))); await p.shot('source-picker-long-name');
-  await p.click(b(picker, '选用 ' + data.long_operation));
+  await p.click(b(picker, '采用 ' + data.long_operation));
   await p.click(b(source, '清除工序 20 供应商')); await p.click(b(source, '选择工序 20 供应商'));
   picker = page.getByRole('dialog', {name: '选择供应商 · 工序 20', exact: true});
   await p.type(picker.getByRole('searchbox'), '热处理外协供应商');
   await p.response('/entities/supplier', () => p.click(b(picker, '搜索'))); await p.shot('supplier-picker-long-name');
-  await p.click(picker.getByRole('button', {name: /^选用 热处理外协供应商/}));
+  await p.click(picker.getByRole('button', {name: /^采用 热处理外协供应商/}));
   await p.click(source.getByRole('group', {name: '工序 10 归属', exact: true}).getByRole('button', {name: '自制', exact: true}));
   await p.click(source.getByRole('checkbox', {name: '确认本页已核对工序', exact: true}));
   const checked = await p.response('/stage-preview', () => p.click(b(source, '检查归属')));

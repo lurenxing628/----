@@ -87,7 +87,7 @@ async function verifyCells(page, payload) {
   assert.equal(cells.length, payload.data.items.length);
   payload.data.items.forEach((item, index) => {
     assert.equal(cells[index].ref, item.suggestion_ref);
-    assert.equal(cells[index].cells[2], item.old_unit_hours === null ? '未提供' : String(item.old_unit_hours));
+    assert.equal(cells[index].cells[2], item.old_unit_hours === null ? '未填写' : String(item.old_unit_hours));
     assert.equal(cells[index].cells[3], '暂无建议'); assert.equal(cells[index].cells[4], '0');
     assert.equal(cells[index].cells[5], '未计算'); assert.equal(cells[index].cells[6], '数据不足');
   });
@@ -135,7 +135,7 @@ async function verifyCells(page, payload) {
       payload = await listAfter(page, () => work.getByRole('button', { name: '清除筛选', exact: true }).click());
       payload = await listAfter(page, () => select(page, '工序来源', '自制')); assert.equal(payload.data.page.total, 22);
       payload = await listAfter(page, () => select(page, '建议状态', '数据不足')); assert.equal(payload.data.page.total, 22);
-      payload = await listAfter(page, () => select(page, '排序字段', '原单件定额'));
+      payload = await listAfter(page, () => select(page, '排序列', '原单件定额'));
       payload = await listAfter(page, () => select(page, '排序方向', '降序'));
       payload = await listAfter(page, () => select(page, '每页条数', '10 项'));
       payload = await listAfter(page, () => work.getByRole('button', { name: '下一页', exact: true }).click());
@@ -171,7 +171,7 @@ async function verifyCells(page, payload) {
       await sample.locator('details > summary').filter({ hasText: /^更正 ·/ }).first().click();
       assert(await detail.getByRole('button', { name: /^采用/ }).isDisabled()); assert(await detail.getByRole('button', { name: /^锁定/ }).isDisabled());
       assert.equal(selected.legacy_facts.length, 3);
-      await sample.locator('details > summary').filter({ hasText: /^旧现场记录 1$/ }).click();
+      await sample.locator('details > summary').filter({ hasText: /^历史现场记录 1$/ }).click();
       const evidenceText = await sample.locator('.rw-evidence-facts').first().textContent();
       const leaves = value => value && typeof value === 'object' ? Object.values(value).flatMap(leaves) :
         [value === null ? '未知' : typeof value === 'boolean' ? value ? '是' : '否' : String(value)];
@@ -184,10 +184,10 @@ async function verifyCells(page, payload) {
       const change = await fetch(config.api_origin + '/__calibration_fixture__/change-source'); assert.equal(change.status, 200);
       const staleWait = page.waitForResponse(response => new URL(response.url()).pathname.endsWith('/calibration/export'));
       await work.getByRole('button', { name: '导出全部筛选', exact: true }).click(); assert.equal((await staleWait).status(), 409);
-      await work.locator('[role="alert"]').filter({ hasText: '前后快照不一致' }).waitFor();
+      await work.locator('[role="alert"]').filter({ hasText: '数据已更新' }).waitFor();
       await capture(page, prefix + '-stale');
       const refreshedDetail = page.waitForResponse(response => new URL(response.url()).pathname === '/api/workbench/v1/calibration/' + config.template_ref && response.status() === 200);
-      await listAfter(page, () => work.getByRole('button', { name: '明确刷新', exact: true }).click()); await refreshedDetail;
+      await listAfter(page, () => work.getByRole('button', { name: '刷新', exact: true }).click()); await refreshedDetail;
       await detail.locator('.ca-sample[data-sample-ref="' + beforeRef + '"][open]').waitFor();
       await detail.getByText(config.long_code, { exact: true }).waitFor();
       await work.getByRole('button', { name: '执行复盘', exact: true }).click();
@@ -220,7 +220,7 @@ async function verifyCells(page, payload) {
     for (const name of ['x-workbench-snapshot', 'x-workbench-row-count']) {
       await listAfter(page, () => page.goto(origin)); headerFault = name;
       await page.getByRole('button', { name: '导出全部筛选', exact: true }).click();
-      await page.getByText('导出快照或总行数不一致，文件未保存，请明确刷新。', { exact: true }).waitFor();
+      await page.getByText('导出的数据版本或总行数不一致，文件没有保存，请刷新后重试。', { exact: true }).waitFor();
       assert.equal(saves, 0);
     }
     record.export_header_rejections = 2;

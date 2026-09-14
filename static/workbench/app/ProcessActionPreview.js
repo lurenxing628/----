@@ -104,7 +104,7 @@
       style: {
         width: '10%'
       }
-    }, "\u5F15\u7528"))), /*#__PURE__*/React.createElement("tbody", null, rows.slice((current - 1) * 50, current * 50).map(row => /*#__PURE__*/React.createElement(React.Fragment, {
+    }, "\u88AB\u4F7F\u7528"))), /*#__PURE__*/React.createElement("tbody", null, rows.slice((current - 1) * 50, current * 50).map(row => /*#__PURE__*/React.createElement(React.Fragment, {
       key: row.row
     }, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", null, row.row), /*#__PURE__*/React.createElement("td", null, row.business_code === null ? '原零件已不存在' : row.business_code, /*#__PURE__*/React.createElement("div", null, labels[row.result])), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Facts, {
       value: row.before,
@@ -114,7 +114,7 @@
       value: row.after,
       fields: fields,
       empty: row.action === 'delete' ? '删除后不再存在' : '未形成修改'
-    })), /*#__PURE__*/React.createElement("td", null, row.reference_count, " \u9879")), row.errors.length > 0 && /*#__PURE__*/React.createElement("tr", {
+    })), /*#__PURE__*/React.createElement("td", null, row.reference_count, " \u5904")), row.errors.length > 0 && /*#__PURE__*/React.createElement("tr", {
       className: "rm-row-note"
     }, /*#__PURE__*/React.createElement("td", {
       colSpan: 5

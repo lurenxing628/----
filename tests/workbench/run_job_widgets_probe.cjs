@@ -70,7 +70,7 @@ async function accepted() {
   await page.evaluate(v => { window.fixtureAcceptance = v; }, await response.json());
   assert.deepEqual(Object.keys(intent).sort(), ['input_ref', 'request_key', 'run_ref']); return intent;
 }
-async function refresh() { await button('查询原运行').waitFor({ state: 'visible' }); await button('查询原运行').click(); }
+async function refresh() { await button('查询结果').waitFor({ state: 'visible' }); await button('查询结果').click(); }
 async function layout() {
   const value = await page.evaluate(() => ({ overflow: document.documentElement.scrollWidth > innerWidth,
     clippedButtons: [...document.querySelectorAll('[data-run-job-panel] button')].filter(n => n.scrollWidth > n.clientWidth + 1).map(n => n.textContent),
@@ -140,10 +140,14 @@ async function contracts() {
 async function variants() {
   assert(await startButton().isDisabled()); caseDone('missing-input-disabled');
   await reset(); await control('disable'); await startButton().click();
-  await page.getByText('本机排产执行器尚未接入或启用，暂时不能开始排产。', { exact: true }).first().waitFor();
+  await page.getByText('排产计算程序没有启动，暂时不能开始排产。请联系维护人员。', { exact: true }).first().waitFor();
   assert(await startButton().isDisabled()); assert.equal(await page.getByRole('dialog').count(), 0); await shot('dispatcher-disabled'); caseDone('dispatcher-disabled-with-reason');
   await reset(); await control('missing_schema'); await startButton().click();
-  await page.getByRole('alert').waitFor(); assert((await page.getByRole('alert').innerText()).includes('v26')); assert(await startButton().isDisabled()); await shot('v26-disabled'); caseDone('v26-disabled-with-reason');
+  await page.getByRole('alert').waitFor();
+  assert((await page.getByRole('alert').innerText()).includes('排产记录还没准备好，暂时不能开始排产。请联系维护人员升级数据库。'));
+  assert((await page.getByRole('alert').locator('.wb-ref').textContent()).includes('v26'));
+  assert((await page.locator('.wb-reason').first().innerText()).includes('排产记录还没准备好'));
+  assert(await startButton().isDisabled()); await shot('schema-fault-disabled'); caseDone('v26-disabled-with-reason');
   await reset(); const first = await accepted();
   assert(await startButton().isDisabled()); assert.equal((await control('release')).calls.length, 1);
   caseDone('old-preflight-null-token-independent-preview-and-double-click-once');
@@ -167,8 +171,8 @@ async function variants() {
   const terminalLookup = '**/scheduling/requests/' + first.request_key;
   await page.route(terminalLookup, route => route.fulfill({ status: 500, contentType: 'text/html', body: '<h1>Unavailable</h1>' }));
   await refresh(); await page.getByRole('alert').waitFor(); assert(await startButton().isDisabled());
-  await page.getByText('以下为上次已核实结果，本次查询尚未确认。', { exact: true }).waitFor();
-  await page.unroute(terminalLookup); await refresh(); await page.getByText('以下为上次已核实结果，本次查询尚未确认。', { exact: true }).waitFor({ state: 'hidden' }); caseDone('old-terminal-recheck-failure-blocks-new-run');
+  await page.getByText('下面是上次查到的结果，这次查询还没确认。', { exact: true }).waitFor();
+  await page.unroute(terminalLookup); await refresh(); await page.getByText('下面是上次查到的结果，这次查询还没确认。', { exact: true }).waitFor({ state: 'hidden' }); caseDone('old-terminal-recheck-failure-blocks-new-run');
   await page.evaluate(() => window.mountRun(window.currentPreflight, { ...RunJobAPI.create(), openCandidate: value => { window.candidateLink = value; } }));
   await page.locator('[data-candidate-ref] button:not(:disabled)').first().waitFor();
   await page.locator('[data-candidate-ref] button').first().click();
@@ -218,8 +222,8 @@ async function variants() {
   assert.equal((await control('release')).calls.length, 1); caseDone('lost-response-recovers-same-request-without-post');
   await reset();
   await page.route(acceptPattern, route => route.abort('failed')); report.injected.push({ variant, kind: 'disconnected-before-admission' });
-  await confirm(); await page.getByText(/暂未查到原请求记录/).waitFor(); const unknown = await local(); assert.equal(unknown.run_ref, null);
-  await page.unroute(acceptPattern); await page.reload(); await page.getByText(/暂未查到原请求记录/).waitFor();
+  await confirm(); await page.getByText(/上次排产的结果还没查到/).waitFor(); const unknown = await local(); assert.equal(unknown.run_ref, null);
+  await page.unroute(acceptPattern); await page.reload(); await page.getByText(/上次排产的结果还没查到/).waitFor();
   assert(await startButton().isDisabled()); assert.equal((await local()).request_key, unknown.request_key); assert.equal((await control('release')).calls.length, 0);
   const lookupPattern = '**/scheduling/requests/*';
   await page.route(lookupPattern, route => route.fulfill({ status: 404, contentType: 'text/html', body: '<h1>Missing</h1>' }));
@@ -233,13 +237,13 @@ async function variants() {
   await page.evaluate(() => { window.unmountRun(); window.mountRun(currentPreflight, { preview: async () => ({ ok: true, data: { facts_json: 'private' } }) }); });
   await startButton().click(); await page.getByRole('alert').waitFor(); assert.equal(await local(), null); assert.equal(await page.getByRole('dialog').count(), 0); caseDone('adapter-cannot-bypass-public-schema');
   await reset(); await startButton().click(); await page.getByRole('dialog').waitFor(); await control('restart');
-  await button('确认开始排产').click(); await page.getByText('检查后资料已变化或检查已过期，请重新做排产检查。', { exact: true }).waitFor();
+  await button('确认开始排产').click(); await page.getByText('资料已更新或排产检查已过期，请重新做排产检查。刚才的选择已保留。', { exact: true }).waitFor();
   assert.equal(await local(), null); assert.equal((await control('release')).calls.length, 0); caseDone('definite-stale-rejection-without-automatic-retry');
   await reset(); await startButton().click(); await page.getByRole('dialog').waitFor();
   await page.evaluate(() => { window.fixtureStorageSet = Storage.prototype.setItem; Storage.prototype.setItem = function(k, v) { if (k === RunJobAPI.PENDING_KEY) throw new DOMException('quota', 'QuotaExceededError'); return window.fixtureStorageSet.call(this, k, v); }; });
   await button('确认开始排产').click(); await page.getByRole('alert').waitFor();
-  assert((await page.getByRole('alert').innerText()).includes('本机无法保存原请求记录')); assert.equal((await control('release')).calls.length, 0);
-  await page.evaluate(() => { Storage.prototype.setItem = window.fixtureStorageSet; }); await button('重新读取恢复记录').click();
+  assert((await page.getByRole('alert').innerText()).includes('存不下这次排产的操作记录')); assert.equal((await control('release')).calls.length, 0);
+  await page.evaluate(() => { Storage.prototype.setItem = window.fixtureStorageSet; }); await button('刷新上次操作记录').click();
   await page.getByRole('alert').waitFor({ state: 'hidden' }); assert.equal(await local(), null); caseDone('storage-quota-no-post-friendly-retry');
   await layout();
 }

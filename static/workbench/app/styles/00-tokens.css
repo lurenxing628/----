@@ -5,6 +5,8 @@
   --wb-z-popup: 12000;
   --wb-z-toast: 13000;
   --wb-header-height: 60px;
+  /* 矮屏阈值：视口高 ≤ 此值时启用“只滚表格”的应用式布局；@media 不能引用变量，10-shell / 21-table-frame / 20-controls 里的 820px 要与此同步。 */
+  --wb-short-screen-max: 820px;
   --wb-sticky-top: 0px;
   --wb-sidebar-item-h: 32px;
   --wb-sidebar-group-h: 22px;
@@ -18,6 +20,11 @@
   --wb-line-body: 1.5;
   --wb-line-relaxed: 1.7;
   --wb-gantt-radius-control: var(--wb-radius-control);
+  --wb-gantt-overlap-fill: var(--wb-gantt-primary-fill);
+  --wb-gantt-overlap-edge: var(--wb-gantt-primary-edge);
+  --wb-gantt-critical-stripe: repeating-linear-gradient(135deg, var(--wb-gantt-critical-edge) 0 1px, transparent 1px 6px);
+  --wb-gantt-overlap-stripe: repeating-linear-gradient(135deg, var(--wb-gantt-overlap-edge) 0 1px, transparent 1px 6px);
+  --wb-gantt-success-ring: inset 0 0 0 2px var(--wb-gantt-success-edge);
   --wb-sev-ok: var(--ui-success);
   --wb-sev-notice: var(--ui-primary);
   --wb-sev-warning: var(--ui-warning);

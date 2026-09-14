@@ -23,28 +23,31 @@
   const emptyAdapter = {};
   const scopeKeys = ['query', 'page', 'size', 'sort', 'direction', 'column_filters', 'status', 'ready_status', 'focus', 'batch_ids'];
   const sourceKeys = ['plan_ref', 'batch_ref', 'task_ref', 'operation_ref', 'return_to'];
+  // 查看范围读不进来时页面会退回默认范围，提示按“发生了什么 → 哪些没变 → 点哪里”写。
+  const refilter = '请点「清除全部筛选」重新查询。',
+    fallbackList = '，已按默认范围显示批次列表。';
   function validReturnTarget(value) {
     return ['run', 'dashboard'].includes(value) || C.object(value) && Object.keys(value).every(key => ['view', 'context'].includes(key)) && C.own(value, 'view') && value.view === 'dashboard' && C.own(value, 'context') && C.object(value.context);
   }
   function sourceContext(value, entityRef) {
     if (value == null) return null;
-    if (!C.object(value) || Object.keys(value).some(key => !sourceKeys.includes(key)) || sourceKeys.slice(0, 4).some(key => C.own(value, key) && !B.ref(value[key])) || C.own(value, 'return_to') && !validReturnTarget(value.return_to) || value.batch_ref && value.batch_ref !== entityRef) throw C.failure('批次来源引用或返回入口不正确。');
+    if (!C.object(value) || Object.keys(value).some(key => !sourceKeys.includes(key)) || sourceKeys.slice(0, 4).some(key => C.own(value, key) && !B.ref(value[key])) || C.own(value, 'return_to') && !validReturnTarget(value.return_to) || value.batch_ref && value.batch_ref !== entityRef) throw C.failure('批次来源或返回入口已失效' + fallbackList);
     return {
       ...value
     };
   }
   function readScope(value) {
-    if (!C.object(value) || Object.keys(value).some(key => !scopeKeys.includes(key))) throw C.failure('批次查看范围含不支持的字段。');
+    if (!C.object(value) || Object.keys(value).some(key => !scopeKeys.includes(key))) throw C.failure('查看范围里有不支持的项。' + refilter);
     const scope = {
       ...defaults,
       ...value
     };
     const sorts = B.columns.map(row => row[0]).filter(key => key !== 'progress');
-    if (typeof scope.query !== 'string' || scope.query.length > 200 || !Number.isSafeInteger(scope.page) || scope.page < 1 || scope.page > 1000000 || !Number.isSafeInteger(scope.size) || scope.size < 1 || scope.size > 100 || !sorts.includes(scope.sort) || !['asc', 'desc'].includes(scope.direction) || ![undefined, null, '', ...B.statuses.map(row => row[0])].includes(scope.status) || ![undefined, null, '', ...B.ready.map(row => row[0])].includes(scope.ready_status) || ![undefined, null, '', 'gaps', 'unready'].includes(scope.focus)) throw C.failure('批次查看范围或分页不正确。');
-    if (scope.batch_ids != null && (!Array.isArray(scope.batch_ids) || scope.batch_ids.length > 5000 || scope.batch_ids.some(key => typeof key !== 'string' || !key))) throw C.failure('批次定位集合不正确。');
-    if (!C.object(scope.column_filters) || Object.keys(scope.column_filters).some(key => !sorts.includes(key))) throw C.failure('批次列筛选字段不正确。');
+    if (typeof scope.query !== 'string' || scope.query.length > 200 || !Number.isSafeInteger(scope.page) || scope.page < 1 || scope.page > 1000000 || !Number.isSafeInteger(scope.size) || scope.size < 1 || scope.size > 100 || !sorts.includes(scope.sort) || !['asc', 'desc'].includes(scope.direction) || ![undefined, null, '', ...B.statuses.map(row => row[0])].includes(scope.status) || ![undefined, null, '', ...B.ready.map(row => row[0])].includes(scope.ready_status) || ![undefined, null, '', 'gaps', 'unready'].includes(scope.focus)) throw C.failure('查看范围或页码不正确。' + refilter);
+    if (scope.batch_ids != null && (!Array.isArray(scope.batch_ids) || scope.batch_ids.length > 5000 || scope.batch_ids.some(key => typeof key !== 'string' || !key))) throw C.failure('要定位的批次清单不正确。' + refilter);
+    if (!C.object(scope.column_filters) || Object.keys(scope.column_filters).some(key => !sorts.includes(key))) throw C.failure('列筛选条件里有不支持的列。' + refilter);
     for (const values of Object.values(scope.column_filters)) {
-      if (!Array.isArray(values) || values.length > 5000 || values.some(value => value !== null && typeof value !== 'string' && !(typeof value === 'number' && Number.isFinite(value) && Math.abs(value) <= Number.MAX_SAFE_INTEGER))) throw C.failure('批次列筛选值不正确。');
+      if (!Array.isArray(values) || values.length > 5000 || values.some(value => value !== null && typeof value !== 'string' && !(typeof value === 'number' && Number.isFinite(value) && Math.abs(value) <= Number.MAX_SAFE_INTEGER))) throw C.failure('列筛选的取值不正确。' + refilter);
     }
     return JSON.parse(JSON.stringify(scope));
   }
@@ -58,20 +61,20 @@
       sort: null,
       sourceContext: null
     };
-    if (!C.object(context) || Object.keys(context).some(key => !['entity_ref', 'focus', 'batchIds', 'read_view', ...sourceKeys].includes(key))) throw C.failure('批次导航含不支持的字段。');
-    if (context.entity_ref !== undefined && !B.ref(context.entity_ref)) throw C.failure('批次导航引用不正确。');
+    if (!C.object(context) || Object.keys(context).some(key => !['entity_ref', 'focus', 'batchIds', 'read_view', ...sourceKeys].includes(key))) throw C.failure('页面跳转带的信息里有不支持的项' + fallbackList);
+    if (context.entity_ref !== undefined && !B.ref(context.entity_ref)) throw C.failure('要打开的批次已失效' + fallbackList);
     const view = context.read_view;
-    if (view !== undefined && (!C.object(view) || Object.keys(view).some(key => !['scope', 'selected_refs', 'entity_ref', 'sort_state', 'source_context'].includes(key)))) throw C.failure('批次恢复记录只能包含只读查看状态。');
-    if (view !== undefined && (C.own(context, 'focus') || C.own(context, 'batchIds') || sourceKeys.some(key => C.own(context, key)))) throw C.failure('批次单次定位与恢复范围不能混用。');
+    if (view !== undefined && (!C.object(view) || Object.keys(view).some(key => !['scope', 'selected_refs', 'entity_ref', 'sort_state', 'source_context'].includes(key)))) throw C.failure('上次的查看状态无法恢复' + fallbackList);
+    if (view !== undefined && (C.own(context, 'focus') || C.own(context, 'batchIds') || sourceKeys.some(key => C.own(context, key)))) throw C.failure('定位批次和恢复上次查看不能同时用' + fallbackList);
     const scope = readScope(view ? view.scope : {
       ...defaults,
       focus: context.focus,
       batch_ids: context.batchIds
     });
     const selected = view && view.selected_refs !== undefined ? view.selected_refs : [];
-    if (!Array.isArray(selected) || !selected.every(B.ref) || new Set(selected).size !== selected.length) throw C.failure('批次已选引用集合不正确。');
+    if (!Array.isArray(selected) || !selected.every(B.ref) || new Set(selected).size !== selected.length) throw C.failure('上次勾选的批次已失效' + fallbackList);
     const opened = view && view.entity_ref !== undefined ? view.entity_ref : context.entity_ref || context.batch_ref || null;
-    if (opened !== null && !B.ref(opened)) throw C.failure('批次详情恢复引用不正确。');
+    if (opened !== null && !B.ref(opened)) throw C.failure('上次打开的批次已失效' + fallbackList);
     if (view && context.entity_ref && context.entity_ref !== opened) throw C.failure('批次导航与恢复详情不一致。');
     const sort = view && view.sort_state !== undefined ? view.sort_state : null;
     if (sort !== null && (!C.object(sort) || Object.keys(sort).some(key => !['key', 'direction'].includes(key)) || sort.key !== scope.sort || sort.direction !== scope.direction)) throw C.failure('批次排序状态与范围不一致。');
@@ -132,7 +135,7 @@
       };
     }, [adapter]);
     const list = S.useQuery(async signal => {
-      if (typeof adapter.list !== 'function') throw C.failure('批次服务尚未接入。');
+      if (typeof adapter.list !== 'function') throw C.failure('dependency not wired: window.APSBatchAPI.list');
       return B.list(await adapter.list('batch', scope, signal), scope);
     }, [adapter, scope, revision], !initial.error);
     const data = list.result && list.result.data,
@@ -215,7 +218,7 @@
           ...scope,
           snapshot_ref: snapshot
         });
-        if (!result.data || !Array.isArray(result.data.refs) || !result.data.refs.every(B.ref) || result.data.count !== result.data.refs.length || result.meta.snapshot_ref !== snapshot) throw C.failure('全选范围无法核实。');
+        if (!result.data || !Array.isArray(result.data.refs) || !result.data.refs.every(B.ref) || result.data.count !== result.data.refs.length || result.meta.snapshot_ref !== snapshot) throw C.failure('全选没有完成，已勾选的批次保持不变。请点「刷新批次列表」后重试。');
         setSelected(current => Array.from(new Set(current.concat(result.data.refs))));
       } catch (error) {
         setError(error);
@@ -240,7 +243,9 @@
         direction: 'asc'
       });
     }
-    const returnTarget = initial.sourceContext && initial.sourceContext.return_to || 'run';
+    // 没有来源入口时是从侧栏直接进来的，按钮是去下一步而不是返回。
+    const returnSource = initial.sourceContext && initial.sourceContext.return_to || null;
+    const returnTarget = returnSource || 'run';
     const returnView = typeof returnTarget === 'string' ? returnTarget : returnTarget.view;
     const openEditor = entity => {
       command.reset();
@@ -255,7 +260,7 @@
       patch: {}
     });
     return /*#__PURE__*/React.createElement("div", {
-      className: "plana batch-workspace",
+      className: "plana batch-workspace wb-fill-viewport",
       "data-batch-workspace": true
     }, /*#__PURE__*/React.createElement(window.BatchControls.Styles, null), /*#__PURE__*/React.createElement(ErrorBox, {
       error: initial.error || error
@@ -263,7 +268,7 @@
       role: "status"
     }, "\u6B63\u5728\u6838\u5BF9\u6279\u6B21\u8D44\u6599\u2026"), deferred && /*#__PURE__*/React.createElement("div", {
       role: "status"
-    }, /*#__PURE__*/React.createElement("p", null, "\u539F\u6279\u6B21\u8BF7\u6C42\u4F18\u5148\u5904\u7406\uFF0C\u53EA\u8BFB\u8BE6\u60C5\u6682\u7F13\u6062\u590D\u3002"), /*#__PURE__*/React.createElement(Button, {
+    }, /*#__PURE__*/React.createElement("p", null, "\u4E0A\u6B21\u64CD\u4F5C\u8FD8\u6CA1\u5904\u7406\u5B8C\uFF0C\u6682\u65F6\u6CA1\u6709\u6062\u590D\u4E0A\u6B21\u7684\u67E5\u770B\u8303\u56F4\u3002"), /*#__PURE__*/React.createElement(Button, {
       disabled: command.phase !== 'idle' || !!dialog || busy,
       onClick: () => {
         setScope(initial.scope);
@@ -273,7 +278,7 @@
         setSort(initial.sort);
         setDeferred(false);
       }
-    }, "\u7EE7\u7EED\u539F\u67E5\u770B\u8303\u56F4")), !dialog && (command.locked || command.phase === 'done') && /*#__PURE__*/React.createElement("div", {
+    }, "\u7EE7\u7EED\u4E0A\u6B21\u8303\u56F4")), !dialog && (command.locked || command.phase === 'done') && /*#__PURE__*/React.createElement("div", {
       className: "batch-band"
     }, /*#__PURE__*/React.createElement(window.ResourceForms.Feedback, {
       command: command
@@ -282,7 +287,7 @@
         committed(command.result);
         command.reset();
       }
-    }, "\u91CD\u8BFB\u5DF2\u786E\u8BA4\u7ED3\u679C")), opened ? /*#__PURE__*/React.createElement(window.BatchDetail, {
+    }, "\u5237\u65B0\u5217\u8868")), opened ? /*#__PURE__*/React.createElement(window.BatchDetail, {
       adapter: adapter,
       batchRef: opened,
       revision: revision,
@@ -340,7 +345,7 @@
     }), /*#__PURE__*/React.createElement(Button, {
       transfer: "import",
       disabled: blocked || !snapshot,
-      reason: typeof adapter.importPreview !== 'function' ? '批次文件接口尚未接入。' : '',
+      reason: typeof adapter.importPreview !== 'function' ? window.WorkbenchTerms.outcomes.unavailable : '',
       onClick: () => {
         command.reset();
         setDialog({
@@ -353,7 +358,7 @@
     }, "\u6279\u91CF\u5BFC\u5165"), /*#__PURE__*/React.createElement(Button, {
       transfer: "export",
       disabled: blocked || !snapshot,
-      reason: typeof adapter.exportPreview !== 'function' ? '批次文件接口尚未接入。' : '',
+      reason: typeof adapter.exportPreview !== 'function' ? window.WorkbenchTerms.outcomes.unavailable : '',
       onClick: () => setDialog({
         type: 'files',
         mode: 'export',
@@ -379,10 +384,10 @@
       disabled: blocked,
       onClick: clearFilters
     }, "\u6E05\u9664\u5168\u90E8\u7B5B\u9009"), onNav && /*#__PURE__*/React.createElement(Button, {
-      icon: "arrow-left",
+      icon: returnSource ? 'arrow-left' : 'arrow-right',
       disabled: blocked,
       onClick: () => typeof returnTarget === 'string' ? onNav(returnTarget) : onNav(returnTarget.view, returnTarget.context)
-    }, returnView === 'dashboard' ? '返回值班台' : '返回排产')), data && data.entities.length > 0 && /*#__PURE__*/React.createElement(ErrorBox, {
+    }, !returnSource ? '下一步 · 去排产' : returnView === 'dashboard' ? '返回值班台' : '返回排产')), data && data.entities.length > 0 && /*#__PURE__*/React.createElement(ErrorBox, {
       error: list.error
     }), /*#__PURE__*/React.createElement(window.BatchTable, {
       rows: data ? data.entities : [],

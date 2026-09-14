@@ -42,10 +42,10 @@ async function requiredStale(page, ready, report, h, flush) {
     await h.button('正式采用', page.locator('.trial-adoption-action')).click();
     const preview = (await (await previewing).json()).data;
     assert.equal(preview.validation.can_adopt, true); assert.equal(preview.baseline.plan_ref, expected.baseline.plan_ref);
-    let dialog = page.getByRole('dialog', { name: '确认场景正式采用', exact: true });
+    let dialog = page.getByRole('dialog', { name: '确认正式采用试调方案', exact: true });
     const reason = 'D required original scenario stale rejection', operator = 'D required probe';
     await dialog.getByLabel('采用原因', { exact: true }).fill(reason);
-    await dialog.getByLabel('声明人', { exact: true }).fill(operator);
+    await dialog.getByLabel('经办人', { exact: true }).fill(operator);
     await dialog.getByRole('checkbox').check();
     const other = await h.newTab(ready.run_url);
     let official;
@@ -62,11 +62,11 @@ async function requiredStale(page, ready, report, h, flush) {
     assert.equal(body.error.code, 'snapshot_stale');
     report.expected_rejected_api = (report.expected_rejected_api || []).concat({ url: response.url(), method: 'POST',
       status: 409, status_text: response.statusText(), code: body.error.code });
-    await dialog.getByRole('alert').filter({ hasText: '本次明确未采用' }).waitFor(); await flush();
+    await dialog.getByRole('alert').filter({ hasText: '上次采用没有生效' }).waitFor(); await flush();
     const after = snapshot(ready, 'scenario-stale-after');
     assert.equal(after.sha256, before.sha256); assert.equal(after.tables, before.tables);
     assert.equal(await dialog.getByLabel('采用原因', { exact: true }).inputValue(), reason);
-    assert.equal(await dialog.getByLabel('声明人', { exact: true }).inputValue(), operator);
+    assert.equal(await dialog.getByLabel('经办人', { exact: true }).inputValue(), operator);
     assert(!(await dialog.getByRole('checkbox').isChecked())); assert(await h.button('确认正式采用', dialog).isDisabled());
     const saved = await page.evaluate(() => window.TrialAdoptionState.read());
     assert.equal(saved.phase, 'rejected'); assert.equal(saved.scenario_ref, original.scenario_ref);
@@ -80,11 +80,11 @@ async function requiredStale(page, ready, report, h, flush) {
     assert.deepEqual(h.last(value => value.scenario_ref === original.scenario_ref && value.tasks), original);
     assert.deepEqual(await page.evaluate(() => window.TrialAdoptionState.read()), saved);
     assert(report.requests.slice(restoreStart).every(row => row.method === 'GET'), 'F5 must not replay an adoption');
-    await h.button('重新核对场景采用').click();
-    dialog = page.getByRole('dialog', { name: '确认场景正式采用', exact: true });
+    await h.button('重新核对采用').click();
+    dialog = page.getByRole('dialog', { name: '确认正式采用试调方案', exact: true });
     assert.equal(await dialog.getByLabel('采用原因', { exact: true }).inputValue(), reason);
     const rechecking = page.waitForResponse(row => row.request().method() === 'POST' && row.url().endsWith('/adopt-preview'));
-    await h.button('重新预览', dialog).click();
+    await h.button('重新预检', dialog).click();
     const blocked = (await (await rechecking).json()).data;
     assert.equal(blocked.validation.can_adopt, false);
     assert(blocked.validation.issues.some(row => row.code === 'snapshot_stale'));

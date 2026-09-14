@@ -3,8 +3,12 @@
 
   const M = window.DashboardTimelineModel,
     {
-      Button
-    } = window.ResourceControls;
+      Button,
+      TimelineZoom,
+      timelineZoomKey,
+      timelineZoomStep
+    } = window.ResourceControls,
+    ZOOM_MAX = 64;
   function Timeline({
     data,
     mode = 'delivery',
@@ -63,31 +67,31 @@
         y: rect.bottom
       });
     }
+    function fit() {
+      setZoom(1);
+      if (board.current) board.current.scrollLeft = 0;
+    }
+    function zoomKeys(event) {
+      const action = timelineZoomKey(event);
+      if (!action) return;
+      event.preventDefault();
+      if (action === 'fit') fit();else setZoom(z => timelineZoomStep(z, action === 'in' ? 1 : -1, ZOOM_MAX));
+    }
     return /*#__PURE__*/React.createElement("section", {
       className: "dy-timeline",
-      "aria-label": mode === 'downtime' ? '检修窗口与原计划时间轴' : '关联资源关键时段',
-      "data-dashboard-timeline": mode
+      "aria-label": mode === 'downtime' ? '停机时段与原计划时间轴' : '关联资源关键时段',
+      "data-dashboard-timeline": mode,
+      onKeyDown: zoomKeys
     }, /*#__PURE__*/React.createElement("div", {
       className: "dy-heading"
-    }, /*#__PURE__*/React.createElement("h3", null, mode === 'downtime' ? '检修窗口与原计划' : '关联资源的关键时段'), /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("h3", null, mode === 'downtime' ? '停机时段与原计划' : '关联资源的关键时段'), /*#__PURE__*/React.createElement("div", {
       className: "dy-tools"
-    }, /*#__PURE__*/React.createElement(Button, {
-      icon: "minus",
-      "aria-label": "\u7F29\u5C0F\u5206\u6790\u65F6\u95F4\u8F74",
-      disabled: zoom <= 1,
-      onClick: () => setZoom(Math.max(1, zoom / 2))
-    }), /*#__PURE__*/React.createElement("span", null, zoom, "\xD7"), /*#__PURE__*/React.createElement(Button, {
-      icon: "plus",
-      "aria-label": "\u653E\u5927\u5206\u6790\u65F6\u95F4\u8F74",
-      disabled: zoom >= 64,
-      onClick: () => setZoom(Math.min(64, zoom * 2))
-    }), /*#__PURE__*/React.createElement(Button, {
-      icon: "unfold-vertical",
-      "aria-label": "\u663E\u793A\u5B8C\u6574\u5206\u6790\u65F6\u95F4\u8F74",
-      onClick: () => {
-        setZoom(1);
-        board.current.scrollLeft = 0;
-      }
+    }, /*#__PURE__*/React.createElement(TimelineZoom, {
+      zoom: zoom,
+      max: ZOOM_MAX,
+      scope: "\u5206\u6790",
+      onZoom: setZoom,
+      onFit: fit
     }))), /*#__PURE__*/React.createElement("label", {
       className: "dy-run-picker"
     }, "\u5B9A\u4F4D\u5DE5\u5E8F", /*#__PURE__*/React.createElement("select", {
@@ -162,7 +166,7 @@
       })), mode === 'downtime' && (model.windows.get(row.id) || []).map(stop => {
         const low = Math.max(model.start, M.instant(stop.start)),
           high = Math.min(model.end, M.instant(stop.end));
-        const text = ['检修：' + (stop.reason || '原因未记录'), M.timeLabel(stop.start) + ' 至 ' + M.timeLabel(stop.end), '登记时间（原存值）：' + M.timeLabel(stop.recorded_at)].join('\n');
+        const text = ['停机：' + (stop.reason || '原因未填写'), M.timeLabel(stop.start) + ' 至 ' + M.timeLabel(stop.end), '登记时间：' + M.timeLabel(stop.recorded_at)].join('\n');
         return high > low ? /*#__PURE__*/React.createElement("span", {
           key: stop.downtime_ref,
           role: "img",
@@ -213,7 +217,7 @@
       title: "\u5F53\u524D\u8BFB\u53D6\u8303\u56F4\u6CA1\u6709\u53EF\u663E\u793A\u7684\u8BBE\u5907\u5B89\u6392\u3002"
     }))), /*#__PURE__*/React.createElement("div", {
       className: "dy-context"
-    }, /*#__PURE__*/React.createElement("span", null, M.timeLabel(M.wire(model.start)), " \u81F3 ", M.timeLabel(M.wire(model.end)), " \xB7 \u5DE5\u5382\u672C\u5730"), /*#__PURE__*/React.createElement("span", null, mode === 'downtime' ? '检修窗口 / 原计划工序' : '原计划工序', " \xB7 ", model.tasks.length, " \u9053")), hover && /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("span", null, M.timeLabel(M.wire(model.start)), " \u81F3 ", M.timeLabel(M.wire(model.end))), /*#__PURE__*/React.createElement("span", null, mode === 'downtime' ? '停机时段 / 原计划工序' : '原计划工序', " \xB7 ", model.tasks.length, " \u9053")), hover && /*#__PURE__*/React.createElement("div", {
       role: "tooltip",
       className: "dy-analysis-tooltip",
       style: {

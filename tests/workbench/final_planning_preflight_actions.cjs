@@ -51,11 +51,11 @@ async function preflightReturn(page, report, h, flush) {
     await page.getByLabel('计划开始日期', { exact: true }).fill('2026-10-01');
     await page.getByLabel('计划结束日期', { exact: true }).fill('2026-09-25');
     await button('开始排产检查').click();
-    await page.getByRole('alert').getByText('请核对精确批次范围、日期窗口和本次排产规则。', { exact: true }).waitFor();
+    await page.getByRole('alert').getByText('请核对已选批次、排产日期范围和本次排产规则。', { exact: true }).waitFor();
     await flush(); assert.equal(report.requests.filter(row => row.method === 'POST').length, before);
   });
   await action(['WBP-RUN-004.reasons', 'WBP-RUN-005.batch-link'], async () => {
-    await button('清空选择').click();
+    await button('清除选择').click();
     await page.getByRole('checkbox', { name: '选择 Z-D-01', exact: true }).check();
     await page.getByLabel('计划开始日期', { exact: true }).fill('2026-09-11');
     await page.getByLabel('计划结束日期', { exact: true }).fill('2026-09-23');
@@ -79,7 +79,7 @@ async function preflightReturn(page, report, h, flush) {
     await shot('preflight-return-context');
     assert.equal(values.start_date, '2026-09-11'); assert.equal(values.end_date, '2026-09-23');
     assert(values.window_text.includes('已选 1 批'));
-    assert.equal(await page.getByRole('table', { name: '排产前检查明细', exact: true }).count(), 0);
+    assert.equal(await page.getByRole('table', { name: '排产检查明细', exact: true }).count(), 0);
     const restored = await page.evaluate(() => history.state.workbench.context);
     assert.deepEqual(restored, report.unready_preflight.normalized_input);
     assert.deepEqual(Object.keys(restored).sort(), ['batch_refs', 'completed_policy', 'end_date', 'missing_resource_policy', 'ready_check', 'start_date']);

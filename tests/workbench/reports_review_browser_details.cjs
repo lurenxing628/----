@@ -21,7 +21,7 @@ async function detailsAndCatalogs(p) {
     await work.locator('.rw-primary-table tbody tr').first().getByRole('button', { name: /^查看工序/ }).click();
     await detail.locator('.rw-limitations').first().waitFor();
     await detail.locator('.rw-limitations > summary').first().click();
-    await detail.getByText('逐次报工修订历史（2 次登记）', { exact: true }).waitFor();
+    await detail.getByText('逐次报工更正记录（2 次）', { exact: true }).waitFor();
     await detail.locator('.rw-limitations[open] > details > summary').last().click();
     await p.shot('correction-evidence');
     await detail.getByRole('button', { name: '下一页', exact: true }).click();
@@ -70,14 +70,14 @@ async function detailsAndCatalogs(p) {
   });
   await p.step('all-four-catalogs-filter-sort-window-and-export', async () => {
     await p.read(() => work.locator('.rw-catalog > summary').click(), '/api/workbench/v1/reports/overdue');
-    const catalog = work.getByRole('region', { name: '其他报表目录' });
+    const catalog = work.getByRole('region', { name: '其他报表列表' });
     for (const kind of ['overdue', 'utilization', 'downtime', 'official-review']) {
       if (kind !== 'overdue') await p.read(() => p.choose('其他报表', kind, catalog), '/api/workbench/v1/reports/' + kind);
       if (kind !== 'official-review') {
-        await p.read(() => p.choose('目录排序方向', 'desc', catalog), '/api/workbench/v1/reports/' + kind);
-        const sorts = await catalog.getByLabel('目录排序字段', { exact: true }).locator('option').evaluateAll(nodes => nodes.map(node => ({ value: node.value, selected: node.selected })));
-        for (const option of sorts.filter(row => !row.selected)) await p.read(() => p.choose('目录排序字段', option.value, catalog), '/api/workbench/v1/reports/' + kind);
-        const search = catalog.getByLabel('搜索目录报表', { exact: true });
+        await p.read(() => p.choose('报表排序方向', 'desc', catalog), '/api/workbench/v1/reports/' + kind);
+        const sorts = await catalog.getByLabel('报表排序列', { exact: true }).locator('option').evaluateAll(nodes => nodes.map(node => ({ value: node.value, selected: node.selected })));
+        for (const option of sorts.filter(row => !row.selected)) await p.read(() => p.choose('报表排序列', option.value, catalog), '/api/workbench/v1/reports/' + kind);
+        const search = catalog.getByLabel('搜索报表', { exact: true });
         await search.click(); await search.type('EI-NO-CATALOG');
         const empty = await p.read(() => search.press('Enter'), '/api/workbench/v1/reports/' + kind);
         assert.equal(empty.data.page.total, 0);
@@ -85,9 +85,9 @@ async function detailsAndCatalogs(p) {
         await p.shot('catalog-' + kind + '-empty');
         await search.fill(''); await p.read(() => search.press('Enter'), '/api/workbench/v1/reports/' + kind);
         if (kind !== 'overdue') {
-          await catalog.getByLabel('统计窗口起日', { exact: true }).fill('2026-09-09');
-          await catalog.getByLabel('统计窗口止日', { exact: true }).fill('2026-09-09');
-          await p.read(() => catalog.getByRole('button', { name: '读取目录范围', exact: true }).click(), '/api/workbench/v1/reports/' + kind);
+          await catalog.getByLabel('统计起日', { exact: true }).fill('2026-09-09');
+          await catalog.getByLabel('统计止日', { exact: true }).fill('2026-09-09');
+          await p.read(() => catalog.getByRole('button', { name: '读取报表范围', exact: true }).click(), '/api/workbench/v1/reports/' + kind);
         }
       }
       await catalog.getByLabel('其他报表', { exact: true }).scrollIntoViewIfNeeded();

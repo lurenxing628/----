@@ -66,7 +66,7 @@ function Harness({spec}){
       if(spec.badDownload)return {blob:new Blob(['<html>Error</html>']),contentType:'text/html',disposition:'attachment; filename="error.html"'};
       const template=path==='templates/material';
       const bytes=scope.format==='xlsx'?Uint8Array.from(atob(template?'${workbooks.template}':'${workbooks.data}'),c=>c.charCodeAt(0)):'\uFEFF物料编号,名称,库存数量\\r\\n'+(template?'':Array.from({length:spec.rows||55},(_,i)=>String(i+1).padStart(4,'0')+',组件测试物料,8\\r\\n').join(''));
-      const filename=(path==='templates/material'?'物料导入模板':'物料完整导出')+'.'+scope.format;
+      const filename=(path==='templates/material'?'物料导入模板':'物料清单')+'.'+scope.format;
       return {blob:new Blob([bytes]),contentType:scope.format==='csv'?'text/csv; charset=utf-8':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',disposition:"attachment; filename*=UTF-8''"+encodeURIComponent(filename)};
     }
   }),[]);
@@ -124,7 +124,7 @@ async function cases(){
     await mount({mode:'import',rows:25});await chooseCSV();await preflight();assert(await page.getByRole('button',{name:/^确认导入/}).isDisabled());
     await page.getByLabel('预检明细筛选').selectOption('confirmation');assert.equal(await page.locator('tr[data-material-row]').count(),1);
     assert(await page.getByText('原备注完整保留，不能猜测其他来源',{exact:true}).isVisible());assert(await page.getByText('新备注：覆盖前必须逐项核对',{exact:true}).isVisible());
-    await page.getByRole('checkbox',{name:'已核对被引用物料的修改前后内容，确认这些更新。',exact:true}).check();assert(await page.getByRole('button',{name:'确认导入',exact:true}).isEnabled());await shot('import-confirm');
+    await page.getByRole('checkbox',{name:'已核对在用物料的修改前后内容，确认这些更新。',exact:true}).check();assert(await page.getByRole('button',{name:'确认导入',exact:true}).isEnabled());await shot('import-confirm');
     await page.getByRole('button',{name:'确认导入',exact:true}).click();await page.waitForFunction(()=>fixture.committed.length===1);
     const call=await page.evaluate(()=>fixture.commands[0]);assert.equal(call.kind,'material_import');assert.equal(call.action,'confirm');assert.equal(call.ref,'Ab_-'.repeat(8));assert.deepEqual(call.body.input,{preview_ref:call.ref});assert.equal(call.body.write_token,call.ref);
     await page.getByRole('button',{name:'完成',exact:true}).click();assert.equal(await page.evaluate(()=>sessionStorage.getItem('material-fixture-pending')),null);
@@ -136,36 +136,36 @@ async function cases(){
     await page.getByRole('checkbox',{name:'已核对完整删除范围及明细，确认删除这些物料。',exact:true}).check();await shot('bulk-delete');await page.getByRole('button',{name:'确认删除',exact:true}).click();await page.waitForFunction(()=>fixture.committed.length===1);assert.equal(await page.evaluate(()=>fixture.commands[0].kind),'material_bulk');
   });
   await run('unknown-lock-remount-restart-original-key',async()=>{
-    await mount({mode:'bulk',rows:2,pending:true});await preflight();await page.getByRole('checkbox').check();await page.getByRole('button',{name:'确认删除',exact:true}).click();await page.getByRole('button',{name:'查询原请求回执',exact:true}).waitFor();
+    await mount({mode:'bulk',rows:2,pending:true});await preflight();await page.getByRole('checkbox').check();await page.getByRole('button',{name:'确认删除',exact:true}).click();await page.getByRole('button',{name:'查询结果',exact:true}).waitFor();
     assert(await page.getByRole('button',{name:/^取消/}).isDisabled());await page.keyboard.press('Escape');assert.equal(await page.evaluate(()=>fixture.closed),0);assert.equal(await page.getByRole('button',{name:'开始预检',exact:true}).count(),0);
     const intent=await page.evaluate(()=>JSON.parse(sessionStorage.getItem('material-fixture-pending')));assert(!('input' in intent));assert(!('write_token' in intent));
-    await page.reload();await page.getByRole('button',{name:'查询原请求回执',exact:true}).waitFor();assert.equal(await page.evaluate(()=>fixture.commands.length),0);assert.equal(await page.evaluate(()=>fixture.lookups[0]),intent.request_key);assert.equal(await page.evaluate(()=>sessionStorage.getItem('fixture-command-count')),'1');
-    assert.equal(await page.getByText(/本次明确选中/).count(),0);assert.equal(await page.getByText(/当前为示例数据/).count(),0);assert.equal(await page.getByText(/尚未读取生产资料/).count(),0);assert.equal(await page.locator('[role="dialog"] input').count(),0);
-    await shot('pending-recovered');await page.evaluate(()=>{fixture.ready=true;});await page.getByRole('button',{name:'查询原请求回执',exact:true}).click();await page.waitForFunction(()=>fixture.committed.length===1);assert.equal(await page.evaluate(()=>fixture.commands.length),0);await page.getByRole('button',{name:'完成',exact:true}).click();
+    await page.reload();await page.getByRole('button',{name:'查询结果',exact:true}).waitFor();assert.equal(await page.evaluate(()=>fixture.commands.length),0);assert.equal(await page.evaluate(()=>fixture.lookups[0]),intent.request_key);assert.equal(await page.evaluate(()=>sessionStorage.getItem('fixture-command-count')),'1');
+    assert.equal(await page.getByText(/本次勾选了/).count(),0);assert.equal(await page.getByText(/当前为示例数据/).count(),0);assert.equal(await page.getByText(/尚未读取生产资料/).count(),0);assert.equal(await page.locator('[role="dialog"] input').count(),0);
+    await shot('pending-recovered');await page.evaluate(()=>{fixture.ready=true;});await page.getByRole('button',{name:'查询结果',exact:true}).click();await page.waitForFunction(()=>fixture.committed.length===1);assert.equal(await page.evaluate(()=>fixture.commands.length),0);await page.getByRole('button',{name:'完成',exact:true}).click();
   });
   await run('import-recovery-only-receipt-no-file-source-guess',async()=>{
-    await mount({mode:'import',rows:2,pending:true});await chooseCSV();await preflight();await page.getByRole('checkbox').check();await page.getByRole('button',{name:'确认导入',exact:true}).click();await page.getByRole('button',{name:'查询原请求回执',exact:true}).waitFor();
-    const key=await page.evaluate(()=>JSON.parse(sessionStorage.getItem('material-fixture-pending')).request_key);await page.reload();await page.getByRole('button',{name:'查询原请求回执',exact:true}).waitFor();assert.equal(await page.locator('[role="dialog"] input').count(),0);assert.equal(await page.getByText(/当前为示例数据/).count(),0);assert.equal(await page.evaluate(()=>fixture.previews.length),0);assert.equal(await page.evaluate(()=>fixture.lookups[0]),key);
-    await page.evaluate(()=>{fixture.ready=true;});await page.getByRole('button',{name:'查询原请求回执',exact:true}).click();await page.waitForFunction(()=>fixture.committed.length===1);await page.getByRole('button',{name:'完成',exact:true}).click();assert.equal(await page.evaluate(()=>sessionStorage.getItem('material-fixture-pending')),null);
+    await mount({mode:'import',rows:2,pending:true});await chooseCSV();await preflight();await page.getByRole('checkbox').check();await page.getByRole('button',{name:'确认导入',exact:true}).click();await page.getByRole('button',{name:'查询结果',exact:true}).waitFor();
+    const key=await page.evaluate(()=>JSON.parse(sessionStorage.getItem('material-fixture-pending')).request_key);await page.reload();await page.getByRole('button',{name:'查询结果',exact:true}).waitFor();assert.equal(await page.locator('[role="dialog"] input').count(),0);assert.equal(await page.getByText(/当前为示例数据/).count(),0);assert.equal(await page.evaluate(()=>fixture.previews.length),0);assert.equal(await page.evaluate(()=>fixture.lookups[0]),key);
+    await page.evaluate(()=>{fixture.ready=true;});await page.getByRole('button',{name:'查询结果',exact:true}).click();await page.waitForFunction(()=>fixture.committed.length===1);await page.getByRole('button',{name:'完成',exact:true}).click();assert.equal(await page.evaluate(()=>sessionStorage.getItem('material-fixture-pending')),null);
   });
   await run('missing-or-unreadable-recovery-not-an-edit-form',async()=>{
-    await mount({mode:'import',recovery:true});await page.getByText('未读到原请求标识；未执行其他物料操作。',{exact:true}).waitFor();assert.equal(await page.locator('[role="dialog"] input').count(),0);assert.equal(await page.getByRole('button',{name:'开始预检',exact:true}).count(),0);await page.getByRole('button',{name:'取消',exact:true}).click();
+    await mount({mode:'import',recovery:true});await page.getByText('读不到上次操作的编号，没有执行其他物料操作。',{exact:true}).waitFor();assert.equal(await page.locator('[role="dialog"] input').count(),0);assert.equal(await page.getByRole('button',{name:'开始预检',exact:true}).count(),0);await page.getByRole('button',{name:'取消',exact:true}).click();
     await mount({mode:'import',recovery:true,unreadablePending:true});await page.getByText('待核实记录无法读取。',{exact:true}).waitFor();assert.equal(await page.locator('[role="dialog"] input').count(),0);assert(await page.getByRole('button',{name:/^取消/}).isDisabled());assert.equal(await page.evaluate(()=>fixture.previews.length+fixture.commands.length),0);
   });
   await run('stale-refusal-no-automatic-retry',async()=>{await mount({mode:'bulk',rows:2,rejected:true});await preflight();await page.getByRole('checkbox').check();await page.getByRole('button',{name:'确认删除',exact:true}).click();await page.getByText('数据已变化，本批未写入。',{exact:true}).waitFor();assert.equal(await page.evaluate(()=>fixture.commands.length),1);assert.equal(await page.evaluate(()=>fixture.previews.length),1);assert.equal(await page.evaluate(()=>fixture.committed.length),0);assert(await page.getByRole('button',{name:/^确认删除/}).isDisabled());});
   await run('demo-write-guard',async()=>{await mount({mode:'bulk',rows:2,source:'demo'});await preflight();await page.getByRole('checkbox').check();assert(await page.getByRole('button',{name:/^确认删除/}).isDisabled());assert.equal(await page.evaluate(()=>fixture.commands.length),0);});
   await run('malformed-expired-and-capability-guards',async()=>{
-    await mount({mode:'bulk',rows:2,malformed:true});await page.getByRole('button',{name:'开始预检',exact:true}).click();await page.getByText('预检统计与明细不一致，本批未提交。',{exact:true}).waitFor();assert.equal(await page.getByRole('button',{name:/^确认删除/}).count(),0);
+    await mount({mode:'bulk',rows:2,malformed:true});await page.getByRole('button',{name:'开始预检',exact:true}).click();await page.getByText('预检统计与明细不一致，本批没有提交。',{exact:true}).waitFor();assert.equal(await page.getByRole('button',{name:/^确认删除/}).count(),0);
     for(const constraint of [{expired:true},{deny:true}]){await mount({mode:'bulk',rows:2,...constraint});await preflight();await page.getByRole('checkbox').check();assert(await page.getByRole('button',{name:/^确认删除/}).isDisabled());}
   });
   await run('preview-selection-and-format-mismatch-guards',async()=>{
-    await mount({mode:'bulk',rows:2,wrongRefs:true});await page.getByRole('button',{name:'开始预检',exact:true}).click();await page.getByText('删除预览与明确选中的物料不一致，本批未提交。',{exact:true}).waitFor();assert.equal(await page.getByRole('button',{name:/^确认删除/}).count(),0);
-    await mount({mode:'import',rows:2,wrongFormat:true});await chooseCSV();await page.getByRole('button',{name:'开始预检',exact:true}).click();await page.getByText('导入预览的文件格式或增量模式不一致，本批未提交。',{exact:true}).waitFor();assert.equal(await page.getByRole('button',{name:/^确认导入/}).count(),0);
+    await mount({mode:'bulk',rows:2,wrongRefs:true});await page.getByRole('button',{name:'开始预检',exact:true}).click();await page.getByText('删除预检与勾选的物料不一致，本批没有提交。',{exact:true}).waitFor();assert.equal(await page.getByRole('button',{name:/^确认删除/}).count(),0);
+    await mount({mode:'import',rows:2,wrongFormat:true});await chooseCSV();await page.getByRole('button',{name:'开始预检',exact:true}).click();await page.getByText('导入预检的文件格式或增量方式不一致，本批没有提交。',{exact:true}).waitFor();assert.equal(await page.getByRole('button',{name:/^确认导入/}).count(),0);
   });
   await run('empty-selection-no-bulk-write-explicit-empty-export',async()=>{
     await mount({mode:'bulk',selectionCount:0});await page.getByRole('button',{name:'开始预检',exact:true}).click();await page.getByText('未选中物料，本次不会删除任何记录。',{exact:true}).waitFor();assert.equal(await page.evaluate(()=>fixture.previews.length),0);
     await mount({mode:'export',rows:2,selectionCount:0});await page.getByRole('radio',{name:/已选物料/}).check();await page.getByRole('button',{name:'开始预检',exact:true}).click();await page.getByText('0',{exact:true}).waitFor();assert.deepEqual(await page.evaluate(()=>fixture.previews[0].body.refs),[]);assert.equal(await page.evaluate(()=>fixture.commands.length+fixture.committed.length),0);
-    await mount({mode:'export',rows:2,selectionCount:0,wrongExportCount:true});await page.getByRole('radio',{name:/已选物料/}).check();await page.getByRole('button',{name:'开始预检',exact:true}).click();await page.getByText('导出预览数量与明确选中的物料不一致，未开始下载。',{exact:true}).waitFor();
+    await mount({mode:'export',rows:2,selectionCount:0,wrongExportCount:true});await page.getByRole('radio',{name:/已选物料/}).check();await page.getByRole('button',{name:'开始预检',exact:true}).click();await page.getByText('导出预检数量与勾选的物料不一致，没有开始下载。',{exact:true}).waitFor();
   });
   await run('download-filename-and-cancel-before-save',async()=>{
     const facts=await page.evaluate(async()=>{
@@ -189,7 +189,7 @@ async function cases(){
   });
   await run('templates-and-error-downloads',async()=>{
     await mount({mode:'import'});await page.getByRole('button',{name:'CSV (.csv)',exact:true}).click();const template=await download(page.getByRole('button',{name:'下载模板',exact:true}),'物料导入模板.csv');assert.equal(fs.readFileSync(template,'utf8').trim().split('\r\n').length,1);assert.deepEqual(await page.evaluate(()=>fixture.downloads[0]),{path:'templates/material',scope:{format:'csv'}});assert.equal(await page.evaluate(()=>fixture.previews.length+fixture.commands.length+fixture.committed.length),0);
-    await mount({mode:'import',badDownload:true});await page.getByRole('button',{name:'下载模板',exact:true}).click();await page.getByText('下载内容或文件类型不正确，未把错误响应保存为文件。',{exact:true}).waitFor();assert.equal(await page.getByText(/已交给浏览器下载/).count(),0);
+    await mount({mode:'import',badDownload:true});await page.getByRole('button',{name:'下载模板',exact:true}).click();await page.getByText('下载内容或文件类型不正确，没有把错误内容保存成文件。',{exact:true}).waitFor();assert.equal(await page.getByText(/已交给浏览器下载/).count(),0);
   });
   await run('cancel-pending-read-does-not-write',async()=>{await mount({mode:'bulk',rows:2,delay:400});await page.getByRole('button',{name:'开始预检',exact:true}).click();await page.getByText('正在读取完整预检结果，尚未写入数据…',{exact:true}).waitFor();await page.getByRole('button',{name:'取消',exact:true}).click();assert.equal(await page.evaluate(()=>fixture.commands.length+fixture.committed.length),0);});
 }

@@ -24,7 +24,7 @@ const clone = value => JSON.parse(JSON.stringify(value));
   assert.deepEqual(detail.data.detail, fixture.details[operation]);
   await api.catalog('downtime', { window_date_from: '2026-09-01', window_date_to: '2026-09-02' });
   assert.equal(calls[2][0], 'reports/downtime');
-  await assert.rejects(api.detail(operation, input), /当前读取快照/);
+  await assert.rejects(api.detail(operation, input), /当前数据版本/);
   await assert.rejects(api.detail('23', input));
   await assert.rejects(api.catalog('unknown', {}));
   await assert.rejects(api.download('/api/workbench/v1/entities/machine/export', { snapshot_ref: 'a' }));

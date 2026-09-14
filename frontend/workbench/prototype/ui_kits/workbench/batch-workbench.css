@@ -79,22 +79,6 @@
   cursor: pointer;
 }
 .batch-workbench .batch-col-head .aps-filter-btn { opacity: .65; }
-.batch-workbench .batch-filter-dismiss { position: fixed; inset: 0; z-index: 79; }
-.batch-workbench .batch-column-pop {
-  position: fixed;
-  z-index: 80;
-  display: block;
-  width: 230px;
-  max-width: calc(100vw - 16px);
-  box-sizing: border-box;
-  padding: 10px;
-  border: 1px solid var(--ui-border);
-  border-radius: var(--wb-radius-overlay);
-  background: var(--ui-card-bg);
-  box-shadow: var(--ui-shadow-md);
-  color: var(--ui-text);
-  font-size: var(--font-size-2);
-}
 .batch-workbench .batch-column-pop label { display: flex; align-items: center; gap: 7px; padding: 5px 0; overflow-wrap: anywhere; }
 .batch-workbench .batch-column-values { display: block; max-height: 200px; overflow: auto; border-top: 1px solid var(--ui-border); }
 .batch-workbench .batch-column-pop > button { margin: 8px 18px 0 0; }

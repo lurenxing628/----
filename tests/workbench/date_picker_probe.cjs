@@ -109,25 +109,25 @@ async function cases() {
     }
   });
   await run('empty-time-requires-explicit-fields-and-confirm', async () => {
-    await mount({ type: 'time', value: '' }); assert.equal(await field('时').inputValue(), ''); assert.equal(await field('分').inputValue(), ''); assert(await button('确定').isDisabled());
-    await fillTime('8'); assert(await button('确定').isDisabled()); await calls([]);
-    await fillTime(undefined, '15'); assert(await button('确定').isEnabled()); await calls([]); await button('确定').click(); await calls(['08:15']); await shot('time');
+    await mount({ type: 'time', value: '' }); assert.equal(await field('时').inputValue(), ''); assert.equal(await field('分').inputValue(), ''); assert(await button('确认').isDisabled());
+    await fillTime('8'); assert(await button('确认').isDisabled()); await calls([]);
+    await fillTime(undefined, '15'); assert(await button('确认').isEnabled()); await calls([]); await button('确认').click(); await calls(['08:15']); await shot('time');
   });
   await run('empty-datetime-date-first-requires-time', async () => {
     await mount({ type: 'datetime-local', value: '', min: '2026-09-01T00:00' }); await pick('2026-09-09'); await calls([]);
-    assert(await button('确定').isDisabled()); assert.equal(await field('时').inputValue(), ''); assert.equal(await field('分').inputValue(), '');
-    await fillTime('22', '30'); await button('确定').click(); await calls(['2026-09-09T22:30']); await shot('datetime');
+    assert(await button('确认').isDisabled()); assert.equal(await field('时').inputValue(), ''); assert.equal(await field('分').inputValue(), '');
+    await fillTime('22', '30'); await button('确认').click(); await calls(['2026-09-09T22:30']); await shot('datetime');
   });
   await run('empty-datetime-time-first-never-guesses-date', async () => {
-    await mount({ type: 'datetime-local', value: '' }); await fillTime('0', '0'); assert(await button('确定').isDisabled()); await calls([]);
-    assert(await page.getByText('尚未选择日期', { exact: true }).isVisible()); await button('今天').click(); await calls([]); await button('确定').click();
+    await mount({ type: 'datetime-local', value: '' }); await fillTime('0', '0'); assert(await button('确认').isDisabled()); await calls([]);
+    assert(await page.getByText('尚未选择日期', { exact: true }).isVisible()); await button('今天').click(); await calls([]); await button('确认').click();
     await calls([await page.evaluate(() => WorkbenchDatePickerModel.today() + 'T00:00')]);
   });
   await run('clear-cancel-and-escape-ownership', async () => {
     for (const [type, value] of [['date', '2026-09-09'], ['month', '2026-09'], ['time', '12:00'], ['datetime-local', '2026-09-09T12:00']]) {
       await mount({ type, value }); await button('取消').click(); await calls([]); assert.equal(await page.evaluate(() => fixture.closed), 1);
       await button('关闭日期时间选择').click(); assert.equal(await page.evaluate(() => fixture.closed), 2);
-      await button('清空').click(); await calls(['']); await page.keyboard.press('Escape');
+      await button('清除').click(); await calls(['']); await page.keyboard.press('Escape');
       assert.deepEqual(await page.evaluate(() => fixture.escape), [{ prevented: false }]);
     }
   });
@@ -161,16 +161,16 @@ async function cases() {
   });
   await run('native-value-attribute-step-base', async () => {
     await mount({ type: 'date', value: '2026-09-09', step: '2' }); await unavailable('2026-09-10'); await pick('2026-09-11'); await calls(['2026-09-11']);
-    await mount({ type: 'time', value: '08:03', step: '600' }); await fillTime('08', '10'); assert(await button('确定').isDisabled());
-    await fillTime(undefined, '13'); await button('确定').click(); await calls(['08:13']);
+    await mount({ type: 'time', value: '08:03', step: '600' }); await fillTime('08', '10'); assert(await button('确认').isDisabled());
+    await fillTime(undefined, '13'); await button('确认').click(); await calls(['08:13']);
   });
   await run('live-value-never-replaces-explicit-native-step-base', async () => {
-    await mount({ type: 'time', value: '08:03', valueAttribute: '', step: '600' }); assert(await button('确定').isDisabled());
-    await fillTime('08', '10'); await button('确定').click(); await calls(['08:10']);
+    await mount({ type: 'time', value: '08:03', valueAttribute: '', step: '600' }); assert(await button('确认').isDisabled());
+    await fillTime('08', '10'); await button('确认').click(); await calls(['08:10']);
     await mount({ type: 'date', value: '2026-09-10', valueAttribute: '2026-09-09', step: '2' });
     await unavailable('2026-09-10'); await pick('2026-09-11'); await calls(['2026-09-11']);
     await mount({ type: 'time', value: '', valueAttribute: '08:10:00.125', step: '1' });
-    assert.equal(await field('毫秒').inputValue(), ''); await fillTime('08', '10', '00', '125'); await button('确定').click(); await calls(['08:10:00.125']);
+    assert.equal(await field('毫秒').inputValue(), ''); await fillTime('08', '10', '00', '125'); await button('确认').click(); await calls(['08:10:00.125']);
   });
   await run('month-grid-constraints-and-shortcut', async () => {
     await mount({ type: 'month', value: '', min: '2026-03', max: '2027-08', step: '2' }); await unavailable('2026-04'); await pick('2026-05'); await calls(['2026-05']);
@@ -186,33 +186,33 @@ async function cases() {
     await mount({ type: 'month', value: '9999-12' }); assert(await button('下一年').isDisabled());
   });
   await run('periodic-time-range-and-step', async () => {
-    await mount({ type: 'time', value: '', min: '22:00', max: '06:00', step: '900' }); await fillTime('12', '00'); assert(await button('确定').isDisabled());
-    await fillTime('23', '45'); await button('确定').click(); await calls(['23:45']); await fillTime('05', '30'); await button('确定').click(); await calls(['23:45', '05:30']);
-    await mount({ type: 'time', value: '', min: '08:10', max: '10:00', step: '900' }); await fillTime('08', '15'); assert(await button('确定').isDisabled());
-    await fillTime('08', '25'); await button('确定').click(); await calls(['08:25']);
+    await mount({ type: 'time', value: '', min: '22:00', max: '06:00', step: '900' }); await fillTime('12', '00'); assert(await button('确认').isDisabled());
+    await fillTime('23', '45'); await button('确认').click(); await calls(['23:45']); await fillTime('05', '30'); await button('确认').click(); await calls(['23:45', '05:30']);
+    await mount({ type: 'time', value: '', min: '08:10', max: '10:00', step: '900' }); await fillTime('08', '15'); assert(await button('确认').isDisabled());
+    await fillTime('08', '25'); await button('确认').click(); await calls(['08:25']);
   });
   await run('seconds-fractions-and-no-rounding', async () => {
     await mount({ type: 'time', value: '12:34:56.125', min: '00:00:00', step: '0.125' }); assert.equal(await field('毫秒').inputValue(), '125');
-    await fillTime(undefined, undefined, undefined, '126'); assert(await button('确定').isDisabled()); await fillTime(undefined, undefined, undefined, '250');
-    await button('确定').click(); await calls(['12:34:56.250']); await shot('fractional-time');
-    await mount({ type: 'time', value: '08:30:45', step: '60' }); assert.equal(await field('秒').inputValue(), '45'); await button('确定').click(); await calls(['08:30:45']);
+    await fillTime(undefined, undefined, undefined, '126'); assert(await button('确认').isDisabled()); await fillTime(undefined, undefined, undefined, '250');
+    await button('确认').click(); await calls(['12:34:56.250']); await shot('fractional-time');
+    await mount({ type: 'time', value: '08:30:45', step: '60' }); assert.equal(await field('秒').inputValue(), '45'); await button('确认').click(); await calls(['08:30:45']);
     await mount({ type: 'time', value: '', step: 'any' }); assert.equal(await field('秒').inputValue(), ''); assert.equal(await field('毫秒').inputValue(), '');
-    await fillTime('1', '2', '3', '4'); await button('确定').click(); await calls(['01:02:03.004']);
+    await fillTime('1', '2', '3', '4'); await button('确认').click(); await calls(['01:02:03.004']);
   });
   await run('time-spinners-are-explicit-and-bounded', async () => {
     await mount({ type: 'time', value: '' }); await button('增加时').click(); assert.equal(await field('时').inputValue(), '00'); assert.equal(await field('分').inputValue(), '');
     assert(await button('减少时').isDisabled()); await button('减少分').click(); assert.equal(await field('分').inputValue(), '59'); assert(await button('增加分').isDisabled());
     await field('时').fill('23'); assert(await button('增加时').isDisabled()); await field('时').press('ArrowDown'); assert.equal(await field('时').inputValue(), '22');
-    await fillTime('99', '00'); assert(await button('确定').isDisabled()); await fillTime('22', '59'); await field('分').press('Enter'); await calls(['22:59']);
+    await fillTime('99', '00'); assert(await button('确认').isDisabled()); await fillTime('22', '59'); await field('分').press('Enter'); await calls(['22:59']);
   });
   await run('datetime-partial-day-and-multi-day-step', async () => {
     await mount({ type: 'datetime-local', value: '', min: '2026-09-09T12:15', max: '2026-09-11T08:45', step: '1800' });
     await unavailable('2026-09-08'); await allowed('2026-09-09'); await allowed('2026-09-11'); await unavailable('2026-09-12');
-    await pick('2026-09-11'); await fillTime('09', '00'); assert(await button('确定').isDisabled()); await fillTime('08', '15'); await button('确定').click(); await calls(['2026-09-11T08:15']);
+    await pick('2026-09-11'); await fillTime('09', '00'); assert(await button('确认').isDisabled()); await fillTime('08', '15'); await button('确认').click(); await calls(['2026-09-11T08:15']);
     await mount({ type: 'datetime-local', value: '', min: '2026-09-09T12:00', max: '2026-09-13T12:00', step: '172800' });
     for (const date of ['09', '11', '13']) await allowed('2026-09-' + date);
     for (const date of ['08', '10', '12', '14']) await unavailable('2026-09-' + date);
-    await pick('2026-09-11'); await fillTime('12', '00'); await button('确定').click(); await calls(['2026-09-11T12:00']);
+    await pick('2026-09-11'); await fillTime('12', '00'); await button('确认').click(); await calls(['2026-09-11T12:00']);
   });
   await run('malformed-bounds-follow-native-but-bad-values-never-commit', async () => {
     await mount({ type: 'date', value: '2026-09-09', min: 'garbage', max: '2026-02-30', step: '-1' }); await pick('2026-09-10'); await calls(['2026-09-10']);
@@ -221,20 +221,20 @@ async function cases() {
       return ['0000-01-01', '10000-01-01', '0099-02-29', '2026-02-30', '2026-09-09Z'].map(value => M.validate({ type: 'date' }, value).valid);
     }); assert.deepEqual(values, [false, false, false, false, false]);
     await mount({ type: 'datetime-local', value: '', min: '2026-09-09T12:30', step: 'ANY' }); await allowed('2026-09-09'); await unavailable('2026-09-08');
-    await mount({ type: 'time', value: '08:30', step: 'Infinity' }); assert.equal(await field('秒').count(), 0); await button('确定').click(); await calls(['08:30']);
+    await mount({ type: 'time', value: '08:30', step: 'Infinity' }); assert.equal(await field('秒').count(), 0); await button('确认').click(); await calls(['08:30']);
     await mount({ type: 'datetime-local', value: '', min: '2026-09-09T12:30', max: '2026-09-08T12:30' }); await unavailable('2026-09-09');
   });
   await run('unapplied-year-never-commits-stale-selection', async () => {
-    await mount({ type: 'datetime-local', value: '2026-09-09T12:00' }); await field('年份').fill('0000'); assert(await button('确定').isDisabled());
-    await field('时').press('Enter'); await calls([]); await field('年份').fill('2027'); assert(await button('确定').isDisabled());
+    await mount({ type: 'datetime-local', value: '2026-09-09T12:00' }); await field('年份').fill('0000'); assert(await button('确认').isDisabled());
+    await field('时').press('Enter'); await calls([]); await field('年份').fill('2027'); assert(await button('确认').isDisabled());
     await button('下个月').click(); assert.equal(await field('年份').inputValue(), '2027'); assert.equal(await page.getByRole('grid').getAttribute('aria-label'), '2027 年 10 月');
-    await pick('2027-10-09'); await button('确定').click(); await calls(['2027-10-09T12:00']);
+    await pick('2027-10-09'); await button('确认').click(); await calls(['2027-10-09T12:00']);
   });
   await run('prop-changes-reset-draft-without-implicit-commit', async () => {
     await mount({ type: 'time', value: '08:00' }); await fillTime('09', '15');
     await page.evaluate(() => updateFixture({ type: 'datetime-local', value: '0001-01-02T03:04' })); await field('年份').waitFor();
     assert.equal(await field('年份').inputValue(), '0001'); assert.equal(await field('时').inputValue(), '03'); assert.equal(await field('分').inputValue(), '04'); await calls([]);
-    await button('确定').click(); await calls(['0001-01-02T03:04']);
+    await button('确认').click(); await calls(['0001-01-02T03:04']);
   });
   await run('native-step-and-day-availability-oracle', async () => {
     const mismatches = await page.evaluate(() => {
@@ -290,15 +290,15 @@ async function monthNavigationCases() {
     assert.equal(await page.locator(':focus').getAttribute('data-date'), '2024-02-29');
     assert.equal(await field('时').inputValue(), '22'); assert.equal(await field('分').inputValue(), '30');
     assert.equal(await field('秒').inputValue(), '45'); assert.equal(await field('毫秒').inputValue(), '125');
-    assert(await page.getByText('2024-01-31', { exact: true }).isVisible()); await button('确定').click(); await calls([original]);
+    assert(await page.getByText('2024-01-31', { exact: true }).isVisible()); await button('确认').click(); await calls([original]);
     await mount({ type: 'datetime-local', value: original, step: 'any' }); await openMonths(); await pick('2024-02'); await pick('2024-02-29');
-    await button('确定').click(); await calls(['2024-02-29T22:30:45.125']);
+    await button('确认').click(); await calls(['2024-02-29T22:30:45.125']);
   });
   await run('empty-datetime-month-choice-never-fills-date-or-time', async () => {
     await mount({ type: 'datetime-local', value: '', min: '2024-01-01T00:00' }); await openMonths(); await pick('2024-02'); await dateView();
     assert.equal(await field('时').inputValue(), ''); assert.equal(await field('分').inputValue(), '');
-    assert(await page.getByText('尚未选择日期', { exact: true }).isVisible()); assert(await button('确定').isDisabled()); await calls([]);
-    await pick('2024-02-29'); assert(await button('确定').isDisabled()); await fillTime('22', '00'); await button('确定').click(); await calls(['2024-02-29T22:00']);
+    assert(await page.getByText('尚未选择日期', { exact: true }).isVisible()); assert(await button('确认').isDisabled()); await calls([]);
+    await pick('2024-02-29'); assert(await button('确认').isDisabled()); await fillTime('22', '00'); await button('确认').click(); await calls(['2024-02-29T22:00']);
   });
   await run('date-month-keyboard-enter-is-navigation-only', async () => {
     await mount({ type: 'date', value: '2026-09-30' }); await button('选择月份').focus(); await page.keyboard.press('Enter');
@@ -325,7 +325,7 @@ async function monthNavigationCases() {
     await pick('0099-02'); await dateView(); assert.equal(await page.locator(':focus').getAttribute('data-date'), '0099-02-28'); await calls([]);
     await mount({ type: 'datetime-local', value: '9999-12-31T23:59' }); await openMonths(); assert(await button('下一年').isDisabled());
     await page.locator('[data-picker-initial]').focus(); await page.keyboard.press('ArrowRight'); assert.equal(await page.locator(':focus').getAttribute('data-date'), '9999-12');
-    await page.keyboard.press('Enter'); await dateView(); await calls([]); await button('确定').click(); await calls(['9999-12-31T23:59']);
+    await page.keyboard.press('Enter'); await dateView(); await calls([]); await button('确认').click(); await calls(['9999-12-31T23:59']);
     for (const [value, key, control] of [['0001-09-09', 'PageUp', '上一年'], ['9999-02-28', 'PageDown', '下一年']]) for (const type of ['date', 'month']) {
       await mount({ type, value: type === 'month' ? value.slice(0, 7) : value });
       if (type === 'date') await openMonths(); else await page.locator('[data-picker-initial]').focus();
@@ -350,7 +350,7 @@ async function monthNavigationCases() {
   await run('datetime-month-availability-honors-time-and-fractions', async () => {
     await mount({ type: 'datetime-local', value: '', min: '2026-01-31T23:30', max: '2026-03-02T01:00', step: String(29 * 86400) }); await openMonths();
     await allowed('2026-01'); await unavailable('2026-02'); await allowed('2026-03'); await unavailable('2026-04'); await pick('2026-03'); await dateView();
-    await calls([]); assert(await button('确定').isDisabled()); await pick('2026-03-01'); await fillTime('23', '30'); await button('确定').click(); await calls(['2026-03-01T23:30']);
+    await calls([]); assert(await button('确认').isDisabled()); await pick('2026-03-01'); await fillTime('23', '30'); await button('确认').click(); await calls(['2026-03-01T23:30']);
     await mount({ type: 'datetime-local', value: '', min: '2026-02-28T23:59:59.999', max: '2026-03-01T00:00', step: 'any' }); await openMonths();
     await unavailable('2026-01'); await allowed('2026-02'); await allowed('2026-03'); await unavailable('2026-04'); await calls([]);
     assert.equal(await field('时').inputValue(), ''); assert.equal(await field('毫秒').inputValue(), ''); await shot('datetime-month-navigation');
@@ -408,7 +408,7 @@ async function monthNavigationCases() {
       variant = timezoneId.replace('/', '-'); const context = await browser.newContext({ viewport: { width: 1920, height: 1080 }, timezoneId }); page = await context.newPage();
       await page.goto(origin); await run('local-datetime-no-timezone-or-dst-conversion', async () => {
         for (const value of ['2026-03-08T02:30', '2026-03-29T02:30', '0099-01-01T01:23', '9999-12-31T23:59']) {
-          await mount({ type: 'datetime-local', value }); await button('确定').click(); await calls([value]);
+          await mount({ type: 'datetime-local', value }); await button('确认').click(); await calls([value]);
         }
       }); await context.close();
     }

@@ -8,22 +8,22 @@
     const c = data.comparison;
     return /*#__PURE__*/React.createElement("div", {
       className: "tt-summary"
-    }, [[c.late_count, window.WorkbenchTerms.overdue_count], [c.total_delay_hours, window.WorkbenchTerms.total_tardiness_hours + ' h'], [c.changed_operations, '调整工序'], [c.moved_operations, '换设备工序']].map(([value, label]) => /*#__PURE__*/React.createElement("div", {
+    }, [[c.late_count, window.WorkbenchTerms.overdue_count], [c.total_delay_hours, window.WorkbenchTerms.total_tardiness_hours + '（小时）'], [c.changed_operations, '调整工序'], [c.moved_operations, '换设备工序']].map(([value, label]) => /*#__PURE__*/React.createElement("div", {
       key: label
     }, /*#__PURE__*/React.createElement("span", null, label), /*#__PURE__*/React.createElement("strong", null, U.number(value)))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", null, "\u6362\u578B\u6B21\u6570"), /*#__PURE__*/React.createElement("strong", null, c.changeovers === null ? '未评估' : U.number(c.changeovers))));
   }
   function Calendar({
     resource
   }) {
-    return /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "\u65F6\u6BB5\u4E0E\u65E5\u5386"), /*#__PURE__*/React.createElement("div", {
+    return /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "\u65F6\u6BB5\u4E0E\u73ED\u8868"), /*#__PURE__*/React.createElement("div", {
       className: "tt-subtable"
     }, /*#__PURE__*/React.createElement(U.Table, {
       label: "\u5360\u7528\u65F6\u6BB5",
       rows: resource.segments,
       size: 10,
       columns: [["开始", r => U.timeLabel(r.start)], ['结束', r => U.timeLabel(r.end)], ['并行工序', r => r.concurrent_operations]]
-    }), /*#__PURE__*/React.createElement("h4", null, "\u53EF\u7528\u7A97\u53E3"), resource.calendar.windows === null ? /*#__PURE__*/React.createElement("p", null, "\u771F\u5B9E\u65E5\u5386\u4E0D\u53EF\u7528") : /*#__PURE__*/React.createElement(U.Table, {
-      label: "\u53EF\u7528\u7A97\u53E3",
+    }), /*#__PURE__*/React.createElement("h4", null, "\u53EF\u5DE5\u4F5C\u65F6\u6BB5"), resource.calendar.windows === null ? /*#__PURE__*/React.createElement("p", null, "\u771F\u5B9E\u73ED\u8868\u4E0D\u53EF\u7528") : /*#__PURE__*/React.createElement(U.Table, {
+      label: "\u53EF\u5DE5\u4F5C\u65F6\u6BB5",
       rows: resource.calendar.windows,
       size: 10,
       columns: [["开始", r => U.timeLabel(r.start)], ['结束', r => U.timeLabel(r.end)], ['效率', r => U.number(r.efficiency)], ['普通 / 急件', r => (r.allow_normal ? '允许' : '不允许') + ' / ' + (r.allow_urgent ? '允许' : '不允许')]]
@@ -49,7 +49,7 @@
           tab: null,
           error: null
         };
-        if (!H) throw new Error('本页试调页签恢复组件未加载，未替换原记录。');
+        if (!H) throw new Error('dependency not wired: window.TrialAdoptionHistoryState');
         return {
           tab: H.restore(data.scenario_ref).tab,
           error: null
@@ -116,7 +116,7 @@
     }, /*#__PURE__*/React.createElement(U.Button, {
       icon: "refresh-cw",
       onClick: () => setEntry(readEntry())
-    }, "\u91CD\u8BFB\u672C\u9875\u9875\u7B7E\u8BB0\u5F55"), /*#__PURE__*/React.createElement(U.Button, {
+    }, "\u5237\u65B0\u672C\u9875\u9875\u7B7E\u8BB0\u5F55"), /*#__PURE__*/React.createElement(U.Button, {
       icon: "rotate-ccw",
       onClick: clearEntry
     }, "\u6E05\u9664\u672C\u9875\u9875\u7B7E\u8BB0\u5F55"))));
@@ -137,17 +137,17 @@
       data: data
     }) : /*#__PURE__*/React.createElement("p", {
       role: "alert"
-    }, "\u91C7\u7528\u8BB0\u5F55\u7EC4\u4EF6\u5C1A\u672A\u767B\u8BB0\u52A0\u8F7D\uFF0C\u672A\u663E\u793A\u66FF\u4EE3\u5386\u53F2\u3002")), tab === 'delivery' && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", {
+    }, window.WorkbenchTerms.outcomes.unavailable)), tab === 'delivery' && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", {
       className: "tt-muted"
     }, "\u5BF9\u6BD4\u57FA\u7840\uFF1A\u539F\u8BD5\u8C03\u6765\u6E90\u3002\u4EA4\u671F\u622A\u6B62\u4E3A\u622A\u81F3\u65E5\u6B21\u65E5\u96F6\u70B9\uFF08\u4E0D\u542B\uFF09\uFF1B", c.changeover_reason), /*#__PURE__*/React.createElement(U.Table, {
       rows: c.batches,
       label: "\u6279\u6B21\u4EA4\u4ED8\u5BF9\u6BD4",
-      columns: [['批次 / 零件', r => /*#__PURE__*/React.createElement(React.Fragment, null, r.batch_id, /*#__PURE__*/React.createElement("br", null), r.part_name)], ['批次数量', r => U.number(r.quantity)], ['交付截至日', r => r.due_date || '未知'], ['原完工', r => U.timeLabel(r.baseline_finish)], ['试调完工', r => U.timeLabel(r.finish)], ['提前 h', r => U.number(r.improvement_hours)], ['预计交付', r => ({
+      columns: [['批次 / 零件', r => /*#__PURE__*/React.createElement(React.Fragment, null, r.batch_id, /*#__PURE__*/React.createElement("br", null), r.part_name)], ['批次数量', r => U.number(r.quantity)], ['交付截至日', r => r.due_date || '未知'], ['原完工', r => U.timeLabel(r.baseline_finish)], ['试调完工', r => U.timeLabel(r.finish)], ['提前（小时）', r => U.number(r.improvement_hours)], ['预计交付', r => ({
         on_time: '可按期',
-        overdue: '预计晚交',
-        unavailable: '约束阻断，不可评估',
+        overdue: '预计超期',
+        unavailable: '有冲突，不能评估',
         invalid_data: '交期数据无效'
-      })[r.risk] || '未知'], ['晚交 h', r => U.number(r.late_hours)]]
+      })[r.risk] || '未知'], ['超期（小时）', r => U.number(r.late_hours)]]
     })), tab === 'capacity' && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", {
       className: "tt-muted"
     }, "\u4EC5\u6B64\u8BD5\u8C03\u5360\u7528\uFF0C\u975E\u5168\u5382\u5229\u7528\u7387\u3002", U.timeLabel(data.capacity.start), " \u81F3 ", U.timeLabel(data.capacity.end)), data.capacity.reason && /*#__PURE__*/React.createElement("p", {
@@ -155,15 +155,15 @@
     }, data.capacity.reason), /*#__PURE__*/React.createElement(U.Table, {
       label: "\u8D44\u6E90\u5360\u7528",
       rows: data.capacity.resources,
-      columns: [['资源', r => (r.resource_type === 'machine' ? '设备 ' : '人员 ') + name(r.resource_ref)], ['安排 h', r => U.number(r.arranged_hours)], ['去重占用 h', r => U.number(r.occupied_hours)], ['并行重叠 h', r => U.number(r.overlap_hours)], ['可用 h', r => U.number(r.available_hours)], ['窗口外 h', r => U.number(r.outside_available_hours)], ['本范围占用率', r => r.utilization === null ? '不可评估' : U.number(r.utilization * 100) + '%'], ['依据', r => /*#__PURE__*/React.createElement(Calendar, {
+      columns: [['资源', r => (r.resource_type === 'machine' ? '设备 ' : '人员 ') + name(r.resource_ref)], ['安排（小时）', r => U.number(r.arranged_hours)], ['实际占用（小时）', r => U.number(r.occupied_hours)], ['重叠时间（小时）', r => U.number(r.overlap_hours)], ['可用（小时）', r => U.number(r.available_hours)], ['班表外时间（小时）', r => U.number(r.outside_available_hours)], ['本范围占用率', r => r.utilization === null ? '暂无数据' : U.number(r.utilization * 100) + '%'], ['依据', r => /*#__PURE__*/React.createElement(Calendar, {
         resource: r
       })]]
     })), tab === 'history' && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", {
       className: "tt-muted"
-    }, "\u672C\u8349\u7A3F\u7684\u539F\u5B50\u8C03\u6574\u8BB0\u5F55\uFF0C\u4E0D\u662F\u6B63\u5F0F\u91C7\u7528\u8BB0\u5F55\u3002"), /*#__PURE__*/React.createElement(U.Table, {
+    }, "\u672C\u8349\u7A3F\u7684\u6BCF\u6B21\u8C03\u6574\u8BB0\u5F55\uFF0C\u4E0D\u662F\u6B63\u5F0F\u91C7\u7528\u8BB0\u5F55\u3002"), /*#__PURE__*/React.createElement(U.Table, {
       label: "\u8C03\u6574\u8BB0\u5F55",
       rows: data.change_history.slice().reverse(),
-      columns: [['记录时间', r => U.timeLabel(r.recorded_at)], ['操作者', r => r.local_operator], ['调整前', r => arrangement(r.before)], ['调整后', r => arrangement(r.after)], ['当时约束', r => U.statusLabel(r.validation.constraints_status)], ['记录依据', r => /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "\u6C38\u4E45\u8BB0\u5F55"), /*#__PURE__*/React.createElement("div", {
+      columns: [['记录时间', r => U.timeLabel(r.recorded_at)], ['记录人', r => r.local_operator], ['调整前', r => arrangement(r.before)], ['调整后', r => arrangement(r.after)], ['当时约束', r => U.statusLabel(r.validation.constraints_status)], ['记录依据', r => /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "\u7F16\u53F7"), /*#__PURE__*/React.createElement("div", {
         className: "tt-ref"
       }, r.change_ref), /*#__PURE__*/React.createElement("div", {
         className: "tt-ref"
@@ -184,7 +184,7 @@
     }, "\u5B8C\u6574\u57FA\u7840\u672A\u6392\u5DE5\u5E8F ", data.unplanned_operations.length, " \u9053\uFF1B\u672A\u6392\u5B8C\u6574\u4E0D\u80FD\u5F53\u4F5C\u53EF\u6309\u671F\u3002"), /*#__PURE__*/React.createElement(U.Table, {
       label: "\u672A\u6392\u5DE5\u5E8F",
       rows: data.unplanned_operations,
-      columns: [['工序顺序', r => r.sequence], ['分件', r => r.piece_id || '整批'], ['原因', r => r.reason.message], ['永久工序引用', r => /*#__PURE__*/React.createElement("span", {
+      columns: [['工序顺序', r => r.sequence], ['分件', r => r.piece_id || '整批'], ['原因', r => r.reason.message], ['工序编号', r => /*#__PURE__*/React.createElement("span", {
         className: "tt-ref"
       }, r.operation_ref)]]
     }))));

@@ -57,7 +57,7 @@
       "aria-label": '查看 ' + row.resource_label + ' 关联记录',
       disabled: !onDrill,
       onClick: () => open(row),
-      title: '已知工时 ' + window.ReportTable.text(row.known_effective_processing_hours) + ' h；未知 ' + row.unknown_hour_events + ' 条'
+      title: '已知工时 ' + window.ReportTable.text(row.known_effective_processing_hours) + ' 小时；未知 ' + row.unknown_hour_events + ' 条'
     }, row.known_effective_processing_hours !== null && /*#__PURE__*/React.createElement("i", {
       "aria-hidden": "true",
       style: {
@@ -65,7 +65,7 @@
       }
     })), /*#__PURE__*/React.createElement("span", {
       className: "er-resource-value"
-    }, row.effective_processing_hours === null ? '总工时未知' : row.effective_processing_hours + ' h', " \xB7 \u5DF2\u77E5 ", window.ReportTable.text(row.known_effective_processing_hours), " h \xB7 \u5F85\u8865 ", row.unknown_hour_events, " \u6761"))), !rows.length && /*#__PURE__*/React.createElement(window.WorkbenchListControls.EmptyState, {
+    }, row.effective_processing_hours === null ? '总工时未知' : row.effective_processing_hours + ' 小时', " \xB7 \u5DF2\u77E5 ", window.ReportTable.text(row.known_effective_processing_hours), " \u5C0F\u65F6 \xB7 \u5F85\u8865 ", row.unknown_hour_events, " \u6761"))), !rows.length && /*#__PURE__*/React.createElement(window.WorkbenchListControls.EmptyState, {
       kind: "empty",
       title: "\u5F53\u524D\u8303\u56F4\u6CA1\u6709\u8D44\u6E90\u5DE5\u65F6\u8BB0\u5F55"
     })), /*#__PURE__*/React.createElement(window.WorkbenchListControls.Pager, {
@@ -81,7 +81,7 @@
       })
     }), /*#__PURE__*/React.createElement("p", {
       className: "er-method"
-    }, "\u5B9E\u9645\u52A0\u5DE5\u5DE5\u65F6\uFF0C\u4E0D\u4EE3\u8868\u5229\u7528\u7387\uFF1B\u4E0B\u94BB\u4FDD\u7559\u5173\u8054\u5DE5\u5E8F\u7684\u5168\u90E8\u8BB0\u5F55\u3002"), /*#__PURE__*/React.createElement(window.ReportTable.Table, {
+    }, "\u8FD9\u91CC\u662F\u5B9E\u9645\u52A0\u5DE5\u5DE5\u65F6\uFF0C\u4E0D\u4EE3\u8868\u5229\u7528\u7387\uFF1B\u70B9\u8FDB\u53BB\u4F1A\u4FDD\u7559\u5173\u8054\u5DE5\u5E8F\u7684\u5168\u90E8\u8BB0\u5F55\u3002"), /*#__PURE__*/React.createElement(window.ReportTable.Table, {
       data: {
         topic: kind === 'machine' ? 'machines' : 'people',
         rows: visible,
@@ -126,9 +126,9 @@
       label: "\u8303\u56F4\u5185\u5DE5\u5E8F\u7D2F\u8BA1\u5B8C\u5DE5"
     })), /*#__PURE__*/React.createElement("section", {
       className: "er-section er-insights"
-    }, /*#__PURE__*/React.createElement("h3", null, "\u4E8B\u5B9E\u91CD\u70B9"), /*#__PURE__*/React.createElement("p", null, "\u5DF2\u786E\u8BA4\u665A\u5B8C ", data.summary.finish_late, " \u9053\uFF1B\u5230\u671F\u672A\u786E\u8BA4 ", data.summary.unclosed_due, " \u9053\u3002"), /*#__PURE__*/React.createElement("p", null, "\u65E7\u73B0\u573A\u4E8B\u4EF6 ", data.summary.events, " \u6761\uFF1B\u9010\u6B21\u62A5\u5DE5 ", data.summary.production_reports, " \u6761\uFF1B\u5168\u90E8\u8BB0\u5F55 ", data.summary.records, " \u6761\u3002"), !window.ReportEvidence.noFeedback(data.summary) && /*#__PURE__*/React.createElement("p", null, "\u6709\u6548\u52A0\u5DE5\u5DE5\u65F6 ", window.ReportTable.text(data.summary.effective_processing_hours), " \u5C0F\u65F6\uFF1B\u5DF2\u77E5\u5C0F\u8BA1 ", window.ReportTable.text(data.summary.known_effective_processing_hours), " \u5C0F\u65F6\uFF1B\u5DE5\u65F6\u672A\u77E5 ", data.summary.unknown_hour_events, " \u6761\u3002"), /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("h3", null, "\u8BB0\u5F55\u8981\u70B9"), /*#__PURE__*/React.createElement("p", null, "\u5DF2\u786E\u8BA4\u665A\u5B8C\u6210 ", data.summary.finish_late, " \u9053\uFF1B\u5230\u671F\u672A\u786E\u8BA4 ", data.summary.unclosed_due, " \u9053\u3002"), /*#__PURE__*/React.createElement("p", null, "\u65E7\u73B0\u573A\u4E8B\u4EF6 ", data.summary.events, " \u6761\uFF1B\u9010\u6B21\u62A5\u5DE5 ", data.summary.production_reports, " \u6761\uFF1B\u5168\u90E8\u8BB0\u5F55 ", data.summary.records, " \u6761\u3002"), !window.ReportEvidence.noFeedback(data.summary) && /*#__PURE__*/React.createElement("p", null, "\u6709\u6548\u52A0\u5DE5\u5DE5\u65F6 ", window.ReportTable.text(data.summary.effective_processing_hours), " \u5C0F\u65F6\uFF1B\u5DF2\u77E5\u5C0F\u8BA1 ", window.ReportTable.text(data.summary.known_effective_processing_hours), " \u5C0F\u65F6\uFF1B\u5DE5\u65F6\u672A\u77E5 ", data.summary.unknown_hour_events, " \u6761\u3002"), /*#__PURE__*/React.createElement("div", {
       className: "rw-actions"
-    }, [['finish_late', '晚完明细'], ['unclosed', '未确认明细'], [data.scope.focus, '工序明细']].map(([focus, label]) => /*#__PURE__*/React.createElement(window.ResourceControls.Button, {
+    }, [['finish_late', '晚完成明细'], ['unclosed', '未确认明细'], [data.scope.focus, '工序明细']].map(([focus, label]) => /*#__PURE__*/React.createElement(window.ResourceControls.Button, {
       key: label,
       icon: "arrow-right",
       disabled: !onDrill,
@@ -145,7 +145,7 @@
       label: "\u5230\u671F\u672A\u786E\u8BA4\u5DF2\u8FC7\u65F6\u957F"
     })), /*#__PURE__*/React.createElement("p", {
       className: "er-method"
-    }, "\u5B9E\u9645\u66F2\u7EBF\u6309\u5DF2\u8BB0\u5F55\u7684\u6574\u9053\u5B8C\u5DE5\u4E8B\u5B9E\u56DE\u7B97\uFF0C\u4E0D\u662F\u5386\u53F2\u65F6\u70B9\u5FEB\u7167\uFF1B\u5230\u671F\u672A\u786E\u8BA4\u5DF2\u8FC7\u65F6\u957F\u4E0D\u662F\u5B9E\u9645\u665A\u5B8C\u504F\u5DEE\u3002"), /*#__PURE__*/React.createElement(ResourceHours, {
+    }, "\u5B9E\u9645\u66F2\u7EBF\u6309\u5DF2\u8BB0\u5F55\u7684\u6574\u9053\u5B8C\u5DE5\u56DE\u7B97\uFF0C\u4E0D\u662F\u5F53\u65F6\u90A3\u4E00\u523B\u7684\u6570\u636E\uFF1B\u5230\u671F\u672A\u786E\u8BA4\u5DF2\u8FC7\u65F6\u957F\u4E0D\u662F\u5B9E\u9645\u665A\u5B8C\u6210\u504F\u5DEE\u3002"), /*#__PURE__*/React.createElement(ResourceHours, {
       data: data,
       onDrill: onDrill,
       view: resourceView,

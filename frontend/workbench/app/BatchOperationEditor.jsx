@@ -19,11 +19,13 @@
     const choices = S.useQuery(signal => adapter.choices(signal), [adapter]);
     const catalogs = choices.result && choices.result.data;
     const names = { machine_ref: '设备', operator_ref: '人员', supplier_ref: '供应商', setup_hours: '换型工时（小时）', unit_hours: '单件工时（小时）', external_days: '外协周期（天）' };
+    // 资源下拉读的是 choices 里的列表键；这里显式写出对应关系，避免用字符串拼接拼出键名。
+    const catalogKeys = { machine_ref: 'machines', operator_ref: 'operators', supplier_ref: 'suppliers' };
     const allowed = catalogs && draft.machine_ref ? catalogs.authorizations.filter(row => row.machine_ref === draft.machine_ref).map(row => row.operator_ref) : null;
     const mismatch = allowed && draft.operator_ref && !allowed.includes(draft.operator_ref);
     React.useEffect(() => {
       if (!done || seen.current === command.result.receipt_ref) return;
-      try { B.receipt(command.result, 'operation_update', entity.ref); if (command.result.data.operation_ref !== operation.ref) throw C.failure('回执工序与当前工序不一致。'); seen.current = command.result.receipt_ref; onCommitted(command.result); }
+      try { B.receipt(command.result, 'operation_update', entity.ref); if (command.result.data.operation_ref !== operation.ref) throw C.failure('保存结果对应的不是当前工序。请刷新批次详情核对，不要重复提交。'); seen.current = command.result.receipt_ref; onCommitted(command.result); }
       catch (error) { setError(error); }
     }, [done, command.result]);
     async function submit(event) {
@@ -35,7 +37,7 @@
           let value = draft[key] === '' ? null : draft[key];
           if (!key.endsWith('_ref') && value !== null) {
             if (!/^\d+(?:\.\d+)?$/.test(value) || !Number.isFinite(Number(value)) || Number(value) > Number.MAX_SAFE_INTEGER || key === 'external_days' && Number(value) <= 0)
-              throw C.failure('请检查标记的工序字段。', [{ path: 'fields.' + key, message: names[key] + '必须为有效数字。' }]);
+              throw C.failure('请核对标红的项。', [{ path: 'fields.' + key, message: names[key] + '必须为有效数字。' }]);
             value = Number(value);
           }
           fields[key] = value;
@@ -49,7 +51,7 @@
         disabled={locked || !catalogs || !!mismatch} reason={B.reason(entity.write_context, 'operation_update', source)}>保存工序</Button>}</>}>
       <form id={form} ref={formElement} className="modal-b form" onSubmit={submit} noValidate><div className="fgrid batch-fields">
         {keys.map(key => <Field key={key} label={names[key]} path={'fields.' + key} error={currentError}>{key.endsWith('_ref') ? <select value={draft[key]} disabled={locked || !catalogs} onChange={event => setDraft({ ...draft, [key]: event.target.value })}>
-          <option value="">未选择</option>{catalogs && catalogs[key.slice(0, -4) + 's'].map(row => <option key={row.ref} value={row.ref} disabled={row.status !== 'active'}>{row.business_code} · {row.label}{row.status === 'active' ? '' : '（不可用）'}</option>)}</select>
+          <option value="">未选</option>{catalogs && catalogs[catalogKeys[key]].map(row => <option key={row.ref} value={row.ref} disabled={row.status !== 'active'}>{row.business_code} · {row.label}{row.status === 'active' ? '' : '（不可用）'}</option>)}</select>
           : <input value={draft[key]} type="text" inputMode="decimal" disabled={locked} onChange={event => setDraft({ ...draft, [key]: event.target.value })} />}</Field>)}
       </div>{merged && <p>合并外协组 {operation.external_group.business_code} · 整组周期 {window.WorkbenchFormat.number(operation.external_group.total_days)} 天（只读）</p>}
         {allowed && <p style={mismatch ? { color: 'var(--ui-danger-text)' } : undefined}>{mismatch ? '所选人员未获设备操作授权。' : '设备授权人员：'}{catalogs.operators.filter(row => allowed.includes(row.ref)).map(row => row.label).join('、') || '无'}</p>}

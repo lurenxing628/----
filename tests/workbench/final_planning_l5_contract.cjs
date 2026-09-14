@@ -169,7 +169,7 @@ check('Only the delay caller renders conflict details, with explicit slice and n
   assert(workspace.includes("{view === 'delay' && <Conflicts"));
   const data = plan(); data.scope.range_start = data.time_scope.range_start;
   const rendered = text(render(context.PlanDetailsUI.Conflicts, { data }));
-  assert(rendered.includes('当前读取切片，不代表整份计划')); assert(rendered.includes('不代表等待、停机、缺料或延期原因'));
+  assert(rendered.includes('当前读取切片，不代表整份计划')); assert(rendered.includes('不代表等待、停机、缺料或超期原因'));
 });
 const evidence = sources.map(row => ({ path: row.path, sha256: hash(Buffer.from(row.code)) }));
 assert(evidence.every(row => hash(fs.readFileSync(path.join(root, row.path))) === row.sha256));

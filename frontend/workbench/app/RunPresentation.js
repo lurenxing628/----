@@ -1,6 +1,6 @@
 (function () {
   'use strict';
-  const stages = { queued: '等待计算', computing: '正在计算', awaiting_reconciliation: '核对运行记录', finished: '计算已结束' };
+  const stages = { queued: '等待计算', computing: '正在计算', awaiting_reconciliation: '核对排产记录', finished: '计算已结束' };
   function step(input, checked) { return !input || !input.batch_refs.length ? 1 : checked ? 3 : 2; }
   function elapsed(run, now = Date.now()) {
     const start = run.started_at || run.accepted_at, finish = run.finished_at;
@@ -12,8 +12,8 @@
     const begin = local(start), end = finish ? local(finish) : now;
     if (!Number.isFinite(begin) || !Number.isFinite(end) || end < begin) return '未知';
     const seconds = Math.floor((end - begin) / 1000), hours = Math.floor(seconds / 3600), minutes = Math.floor(seconds % 3600 / 60);
-    return (hours ? hours + ' 小时 ' : '') + (minutes || hours ? minutes + ' 分 ' : '') + seconds % 60 + ' 秒';
+    return (hours ? hours + ' 小时 ' : '') + (minutes || hours ? minutes + ' 分钟 ' : '') + seconds % 60 + ' 秒';
   }
-  function stage(run) { return stages[run.stage] || '运行阶段未知'; }
+  function stage(run) { return stages[run.stage] || '排产阶段未知'; }
   window.RunPresentation = { step, stage, elapsed };
 })();

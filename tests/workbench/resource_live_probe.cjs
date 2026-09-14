@@ -57,9 +57,10 @@ async function close(page,{discard=false}={}){
 }
 async function save(page,kind,action,status=200){
   const wait=page.waitForResponse(res=>new URL(res.url()).pathname.endsWith('/'+action)&&res.request().method()==='POST'&&res.url().includes('/entities/'+kind+'/'));
+  if(action==='delete')await page.getByRole('dialog').getByRole('checkbox',{name:'我已核对要删除的资料及其关联关系',exact:true}).check();
   await page.getByRole('dialog').locator('.modal-f').getByRole('button',{name:action==='delete'?'确认删除':'保存',exact:true}).click();
   const response=await wait,payload=await response.json();equal(response.status(),status);
-  if(status===200){assert(['committed','unchanged'].includes(payload.result));await page.getByText('已重新读取最新数据。',{exact:true}).waitFor();}
+  if(status===200){assert(['committed','unchanged'].includes(payload.result));await page.getByText('已刷新到最新数据。',{exact:true}).waitFor();}
   else{equal(payload.committed,false);report.expected_failures.push({status,code:payload.error.code,path:new URL(response.url()).pathname});}
   return payload;
 }

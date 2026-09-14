@@ -82,7 +82,7 @@ async function saveResource(spec = {}) {
 }
 async function cases() {
   await run('resource-save-close-restores-visible-parent', async () => {
-    await saveResource(process.env.AY_UNSUSPENDED ? { suspend: false } : {}); await page.getByText('已重新读取最新数据。', { exact: true }).waitFor(); await shot('saved-resource');
+    await saveResource(process.env.AY_UNSUSPENDED ? { suspend: false } : {}); await page.getByText('已刷新到最新数据。', { exact: true }).waitFor(); await shot('saved-resource');
     await page.getByRole('dialog', { name: '新增自制工种', exact: true }).locator('.modal-f').getByRole('button', { name: '关闭', exact: true }).click();
     await page.waitForFunction(() => document.activeElement.id === 'child-trigger');
     assert.deepEqual(await page.evaluate(() => focusFixture.closed), ['resource']);
@@ -119,21 +119,21 @@ async function cases() {
     await page.evaluate(() => { document.documentElement.style.removeProperty('overflow'); document.body.style.removeProperty('overflow'); document.body.style.removeProperty('padding-top'); });
   });
   await run('resource-unsuspended-parent-save-close', async () => {
-    await saveResource({ suspend: false }); await page.getByText('已重新读取最新数据。', { exact: true }).waitFor();
+    await saveResource({ suspend: false }); await page.getByText('已刷新到最新数据。', { exact: true }).waitFor();
     await page.getByRole('dialog', { name: '新增自制工种', exact: true }).locator('.modal-f').getByRole('button', { name: '关闭', exact: true }).click();
     assert(await focused('#child-trigger')); await empty();
   });
   await run('pending-receipt-remount-stays-locked', async () => {
-    await saveResource({ pending: true }); await page.getByRole('button', { name: '查询原请求回执', exact: true }).waitFor();
+    await saveResource({ pending: true }); await page.getByRole('button', { name: '查询结果', exact: true }).waitFor();
     await page.keyboard.press('Escape'); await page.mouse.click(4, 4); assert.deepEqual(await page.evaluate(() => focusFixture.closed), []);
     const intent = await page.evaluate(() => focusFixture.calls[0].body.request_key);
     await page.evaluate(() => { ReactDOM.flushSync(() => focusFixture.parentUnmount()); });
     await page.locator('#flow-trigger').click(); await page.locator('#child-trigger').click();
-    await page.getByRole('button', { name: '查询原请求回执', exact: true }).waitFor();
+    await page.getByRole('button', { name: '查询结果', exact: true }).waitFor();
     await page.keyboard.press('Escape'); assert.deepEqual(await page.evaluate(() => focusFixture.closed), []);
     await page.evaluate(() => { focusFixture.resolved = true; });
-    await page.getByRole('button', { name: '查询原请求回执', exact: true }).click();
-    await page.getByText('服务器已确认提交。', { exact: true }).waitFor();
+    await page.getByRole('button', { name: '查询结果', exact: true }).click();
+    await page.getByText('保存已完成。', { exact: true }).waitFor();
     assert.equal(await page.evaluate(() => focusFixture.calls.length), 1);
     assert((await page.evaluate(() => focusFixture.lookups)).every(key => key === intent));
     await page.getByRole('dialog', { name: '新增工种', exact: true }).locator('.modal-f').getByRole('button', { name: '取消', exact: true }).click();

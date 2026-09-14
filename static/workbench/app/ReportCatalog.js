@@ -66,7 +66,7 @@
       }
     }
     return /*#__PURE__*/React.createElement("section", {
-      "aria-label": "\u5176\u4ED6\u62A5\u8868\u76EE\u5F55"
+      "aria-label": "\u5176\u4ED6\u62A5\u8868\u5217\u8868"
     }, /*#__PURE__*/React.createElement("div", {
       className: "rw-table-heading"
     }, /*#__PURE__*/React.createElement("div", {
@@ -81,9 +81,9 @@
     }, options.map(([key, label]) => /*#__PURE__*/React.createElement("option", {
       value: key,
       key: key
-    }, label)))), ['utilization', 'downtime'].includes(kind) && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("label", null, "\u7EDF\u8BA1\u7A97\u53E3\u8D77\u65E5", /*#__PURE__*/React.createElement("input", {
+    }, label)))), ['utilization', 'downtime'].includes(kind) && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("label", null, "\u7EDF\u8BA1\u8D77\u65E5", /*#__PURE__*/React.createElement("input", {
       type: "date",
-      "aria-label": "\u7EDF\u8BA1\u7A97\u53E3\u8D77\u65E5",
+      "aria-label": "\u7EDF\u8BA1\u8D77\u65E5",
       value: draft.window_date_from || '',
       onChange: event => setDraft(old => ({
         ...old,
@@ -91,7 +91,7 @@
       }))
     })), /*#__PURE__*/React.createElement("label", null, "\u6B62\u65E5", /*#__PURE__*/React.createElement("input", {
       type: "date",
-      "aria-label": "\u7EDF\u8BA1\u7A97\u53E3\u6B62\u65E5",
+      "aria-label": "\u7EDF\u8BA1\u6B62\u65E5",
       value: draft.window_date_to || '',
       onChange: event => setDraft(old => ({
         ...old,
@@ -99,7 +99,7 @@
       }))
     })), /*#__PURE__*/React.createElement(Button, {
       icon: "search",
-      "aria-label": "\u8BFB\u53D6\u76EE\u5F55\u8303\u56F4",
+      "aria-label": "\u8BFB\u53D6\u62A5\u8868\u8303\u56F4",
       onClick: () => {
         setFilter(draft);
         setTable({
@@ -109,7 +109,7 @@
       }
     })), kind !== 'official-review' && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("label", null, "\u641C\u7D22", /*#__PURE__*/React.createElement("input", {
       type: "search",
-      "aria-label": "\u641C\u7D22\u76EE\u5F55\u62A5\u8868",
+      "aria-label": "\u641C\u7D22\u62A5\u8868",
       value: draft.query || '',
       onChange: event => setDraft(old => ({
         ...old,
@@ -126,7 +126,7 @@
       }
     })), /*#__PURE__*/React.createElement(Button, {
       icon: "search",
-      "aria-label": "\u641C\u7D22\u76EE\u5F55\u7ED3\u679C",
+      "aria-label": "\u641C\u7D22\u62A5\u8868\u7ED3\u679C",
       onClick: () => {
         setFilter(draft);
         setTable({
@@ -135,7 +135,7 @@
         });
       }
     }), response && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("label", null, "\u6392\u5E8F", /*#__PURE__*/React.createElement("select", {
-      "aria-label": "\u76EE\u5F55\u6392\u5E8F\u5B57\u6BB5",
+      "aria-label": "\u62A5\u8868\u6392\u5E8F\u5217",
       value: table.sort || response.data.page.sort[0].field,
       onChange: event => setTable(old => ({
         ...old,
@@ -147,7 +147,7 @@
       key: column.key,
       value: column.key
     }, column.label)))), /*#__PURE__*/React.createElement("label", null, "\u987A\u5E8F", /*#__PURE__*/React.createElement("select", {
-      "aria-label": "\u76EE\u5F55\u6392\u5E8F\u65B9\u5411",
+      "aria-label": "\u62A5\u8868\u6392\u5E8F\u65B9\u5411",
       value: table.direction || 'asc',
       onChange: event => setTable(old => ({
         ...old,
@@ -171,7 +171,7 @@
       role: "status"
     }, notice), request.busy && /*#__PURE__*/React.createElement("p", {
       role: "status"
-    }, "\u6B63\u5728\u8BFB\u53D6\u76EE\u5F55\u62A5\u8868..."), response && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", null, response.data.data_gaps.join(' '), response.data.scope.window_date_from ? ' 统计窗口：' + response.data.scope.window_date_from + ' 至 ' + response.data.scope.window_date_to : ''), /*#__PURE__*/React.createElement(window.ReportTable.Table, {
+    }, "\u6B63\u5728\u8BFB\u53D6\u62A5\u8868\u2026"), response && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", null, response.data.data_gaps.join(' '), response.data.scope.window_date_from ? ' 统计范围：' + response.data.scope.window_date_from + ' 至 ' + response.data.scope.window_date_to : ''), /*#__PURE__*/React.createElement(window.ReportTable.Table, {
       data: kind === 'official-review' ? {
         ...response.data,
         topic: 'delivery'

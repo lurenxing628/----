@@ -6,13 +6,13 @@ async function candidateNavigation(page, ready, report, h, flush) {
   const views = page.getByRole('tablist', { name: '计划中心视图', exact: true });
   await action(['WBP-ANA-004.gantt'], async () => {
     const before = report.requests.length;
-    await views.getByRole('tab', { name: '设备 / 人员 / 批次甘特', exact: true }).click();
+    await views.getByRole('tab', { name: '计划甘特', exact: true }).click();
     await page.getByRole('heading', { name: '候选甘特', exact: true }).waitFor(); await flush();
     const current = last(value => value.candidate && value.tasks);
     assert.equal(current.candidate.candidate_ref, original.candidate.candidate_ref);
     assert.equal(current.candidate.run_ref, original.candidate.run_ref);
     assert.deepEqual(current.tasks, original.tasks);
-    await h.caption(original.candidate.candidate_ref, '候选预览'); await shot('candidate-gantt-exact-source');
+    await h.caption(original.candidate.candidate_ref, '候选方案'); await shot('candidate-gantt-exact-source');
     await views.getByRole('tab', { name: '交付风险', exact: true }).click();
     await page.getByRole('heading', { name: '候选交付风险', exact: true }).waitFor();
     await views.getByRole('tab', { name: '选择排产方案', exact: true }).click();
@@ -28,10 +28,10 @@ async function candidateTrialSource(page, ready, report, h, flush) {
   await action(['WBP-TRIAL-002.candidate-source'], async () => {
     const before = report.requests.length;
     await button('试调', heading()).click();
-    const dialog = page.getByRole('dialog', { name: '从原来源创建试调', exact: true });
+    const dialog = page.getByRole('dialog', { name: '从原来源新增试调', exact: true });
     await button('核对原来源', dialog).click();
-    await dialog.getByRole('checkbox', { name: '确认基于此来源创建独立草稿，正式计划保持不变', exact: true }).check();
-    await button('确认创建草稿', dialog).click();
+    await dialog.getByRole('checkbox', { name: '确认基于此来源新增独立草稿，正式计划保持不变', exact: true }).check();
+    await button('确认新增草稿', dialog).click();
     await page.locator('[data-trial-workspace] .tt-main').waitFor(); await flush();
     const draft = last(value => value.draft_ref && value.tasks && !value.scenario_ref);
     assert.deepEqual(draft.base, { candidate_ref: original.candidate.candidate_ref });
@@ -44,7 +44,7 @@ async function candidateTrialSource(page, ready, report, h, flush) {
     const returned = last(value => value.candidate && value.tasks);
     assert.equal(returned.candidate.candidate_ref, original.candidate.candidate_ref);
     assert.deepEqual(returned.tasks, original.tasks);
-    await h.caption(original.candidate.candidate_ref, '候选预览');
+    await h.caption(original.candidate.candidate_ref, '候选方案');
     await shot('candidate-source-returned');
   });
   await action(['WBP-PLAN-003.stale-conflict'], async () => {

@@ -237,7 +237,7 @@
       title: loading ? '正在读取批次…' : error || filtered ? undefined : '暂无批次',
       action: error ? /*#__PURE__*/React.createElement(Button, {
         onClick: onRetry
-      }, "\u91CD\u65B0\u8BFB\u53D6") : filtered ? /*#__PURE__*/React.createElement(Button, {
+      }, "\u5237\u65B0") : filtered ? /*#__PURE__*/React.createElement(Button, {
         onClick: onClear
       }, "\u6E05\u9664\u7B5B\u9009") : undefined
     }))))));

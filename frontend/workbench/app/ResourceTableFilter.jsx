@@ -23,7 +23,7 @@
       const query = { scope: baseScope, column: column.key, ...request, query: queryText };
       setReading({ key: requestKey, loading: true, result: null, error: null });
       Promise.resolve().then(() => {
-        if (typeof service.current.facets !== 'function') throw C.failure('列值读取接口尚未接入。');
+        if (typeof service.current.facets !== 'function') throw C.failure('dependency not wired: adapter.facets');
         return service.current.facets(kind, query, controller.signal);
       }).then(raw => {
         if (live && !controller.signal.aborted) setReading({ key: requestKey, loading: false, result: M.facets(raw, query), error: null });
@@ -44,7 +44,7 @@
       const query = { scope: baseScope, column: column.key, query: queryText, size: pageSize, snapshot_ref: snapshot };
       setKeysState({ key: keysKey, loading: true });
       Promise.resolve().then(() => {
-        if (typeof service.current.facetSelection !== 'function') throw C.failure('全部匹配值接口尚未接入，未改变筛选。');
+        if (typeof service.current.facetSelection !== 'function') throw C.failure('dependency not wired: adapter.facetSelection');
         return service.current.facetSelection(kind, query, controller.signal);
       }).then(raw => {
         if (!live || controller.signal.aborted) return;
@@ -78,9 +78,11 @@
         if (panel.current.contains(event.target)) return;
         const target = event.target === document ? document.scrollingElement : event.target;
         const before = scrollPositions.get(target);
+        // Only the anchor's own scroll ancestors can move it; scrolling an unrelated container keeps the popover open.
+        if (!before) return;
         // A pre-open scroll can be delivered after mounting; the anchor has not moved since opening.
-        if (before && target.scrollLeft === before[0] && target.scrollTop === before[1]) return;
-        if (before) {
+        if (target.scrollLeft === before[0] && target.scrollTop === before[1]) return;
+        {
           const left = Math.min(before[0], Math.max(0, target.scrollWidth - target.clientWidth));
           const top = Math.min(before[1], Math.max(0, target.scrollHeight - target.clientHeight));
           const clamped = left < before[0] - 1 || top < before[1] - 1;
@@ -142,7 +144,7 @@
           onChange={event => selectAll(event.target.checked)} />（全选）</label>
         <span className="muted">{data ? data.page.total + ' 个值' : ''}</span></div>
       <ErrorBox error={current.error} /><ErrorBox error={readError} /><ErrorBox error={keyError} /><ErrorBox error={changeError} />
-      {(readError || keyError) && <Button className="mini" icon="refresh-cw" onClick={readFirst}>回到首页重新读取</Button>}
+      {(readError || keyError) && <Button className="mini" icon="refresh-cw" onClick={readFirst}>回到第 1 页重新查询</Button>}
       {keyLoading && <span role="status" className="muted">正在读取全部匹配值…</span>}
       <div className="wb-table-facet-options" role="group" aria-label={column.title + '列值'} aria-busy={loading || keyLoading} style={{ overflowY: 'auto', minHeight: 40, flex: '1 1 auto', borderTop: '1px solid var(--ui-border)', borderBottom: '1px solid var(--ui-border)' }}>
         {loading && <p role="status">正在读取列值…</p>}
@@ -160,7 +162,7 @@
         <span aria-label="列值页码">{data ? data.page.number + '/' + data.page.pages : '—'}</span>
         <Button className="mini" icon="chevron-right" aria-label="列值下一页" disabled={!data || data.page.number >= data.page.pages} onClick={() => changePage(data.page.number + 1)} /></div>
       <div className="wb-popup-footer" style={{ margin: 0, padding: '6px 0 0', justifyContent: 'space-between', alignItems: 'center' }}>
-        <span className="muted" role="status">{Number.isSafeInteger(matchingCount) && matchingCount >= 0 ? matchingCount + ' 行匹配' : '匹配行数待读取'}</span>
+        <span className="muted" role="status">{Number.isSafeInteger(matchingCount) && matchingCount >= 0 ? matchingCount + ' 行匹配' : '匹配行数未读取'}</span>
         <Button className="mini" onClick={() => commitChange(() => null, true)}>清除</Button></div>
     </section>, portal);
   }

@@ -26,7 +26,7 @@
       };
       const parsed = window.ResourceWorkspace.navigation(initialContext);
       return parsed.context && parsed.context.kind !== 'calendar' ? {
-        error: window.APSResourceContract.failure('日历导航类型不正确。')
+        error: window.APSResourceContract.failure('工作日历定位类型不正确。')
       } : parsed;
     });
     const [month, setMonth] = React.useState(() => {
@@ -67,13 +67,13 @@
       if (!target.context || deferred || located.current || !data || command.phase !== 'idle') return;
       located.current = true;
       if (source !== 'production') {
-        setNavigationError(window.APSResourceContract.failure('未取得指定月份的生产日历，未使用样例替代。'));
+        setNavigationError(window.APSResourceContract.failure('没有读到这个月的生产数据，不会用示例代替。'));
         return;
       }
       if (target.context.date) {
         const day = data.days.find(row => row.date === target.context.date);
         if (!day || !day.explicit) {
-          setNavigationError(window.APSResourceContract.failure('原日期配置已不存在，未补建或打开默认规则作为原记录。'));
+          setNavigationError(window.APSResourceContract.failure('这一天的单独设置已经不存在了，没有新增，也没有用默认规则代替。'));
           return;
         }
         setDialog({
@@ -125,13 +125,13 @@
     }
     function continueNavigation() {
       if (dialog || command.phase !== 'idle') {
-        setNavigationError(window.APSResourceContract.failure('请先核实并关闭原日历操作结果，再继续导航。'));
+        setNavigationError(window.APSResourceContract.failure('请先确认并关闭上次工作日历操作的结果，再继续跳转。'));
         return;
       }
       setDeferred(false);
       setNavigationError(null);
     }
-    const stats = [['work_days', '本月工作日', 'primary'], ['configured', '已配置日期', 'ok'], ['overrides', '调休 / 加班', 'warn'], ['weekend_rest', '周末休息', 'neutral']];
+    const stats = [['work_days', '本月工作日', 'primary'], ['configured', '已单独设置', 'ok'], ['overrides', '调休 / 加班', 'warn'], ['weekend_rest', '周末休息', 'neutral']];
     return /*#__PURE__*/React.createElement("section", {
       className: "resource-calendar",
       "aria-label": "\u5DE5\u4F5C\u65E5\u5386",
@@ -159,7 +159,7 @@
       className: "sl wb-metric-label"
     }, label), /*#__PURE__*/React.createElement("span", {
       className: "sv wb-metric-value"
-    }, data ? data.stats[key] : '待读取')))), /*#__PURE__*/React.createElement(ErrorBox, {
+    }, data ? data.stats[key] : '未读取')))), /*#__PURE__*/React.createElement(ErrorBox, {
       error: request.error
     }), /*#__PURE__*/React.createElement(Issues, {
       issues: result && result.warnings || []
@@ -167,10 +167,10 @@
       error: navigationError
     }), deferred && /*#__PURE__*/React.createElement("div", {
       role: "status"
-    }, /*#__PURE__*/React.createElement("p", null, "\u539F\u65E5\u5386\u8BF7\u6C42\u4F18\u5148\u5904\u7406\uFF0C\u7CBE\u786E\u5BFC\u822A\u6682\u7F13\u3002"), /*#__PURE__*/React.createElement(Button, {
+    }, /*#__PURE__*/React.createElement("p", null, "\u4E0A\u6B21\u5DE5\u4F5C\u65E5\u5386\u64CD\u4F5C\u8FD8\u6CA1\u5904\u7406\u5B8C\uFF0C\u6682\u65F6\u6CA1\u6709\u8DF3\u8F6C\u3002"), /*#__PURE__*/React.createElement(Button, {
       icon: "arrow-right",
       onClick: continueNavigation
-    }, "\u7EE7\u7EED\u539F\u5BFC\u822A")), /*#__PURE__*/React.createElement("div", {
+    }, "\u7EE7\u7EED\u8DF3\u8F6C")), /*#__PURE__*/React.createElement("div", {
       className: "cal-wrap",
       style: {
         marginTop: 18
@@ -219,7 +219,7 @@
       }
     }, "\u4ECA\u5929"), /*#__PURE__*/React.createElement(Button, {
       icon: "refresh-cw",
-      "aria-label": "\u91CD\u65B0\u8BFB\u53D6\u6708\u4EFD",
+      "aria-label": "\u5237\u65B0\u672C\u6708",
       busy: request.loading,
       disabled: blocked,
       onClick: request.reload
@@ -264,8 +264,8 @@
         disabled: blocked,
         "data-calendar-date": row.date,
         "aria-current": target.context && target.context.date === row.date ? 'date' : undefined,
-        "aria-label": row.date + ' ' + (row.explicit ? '单独配置' : '默认规则') + ' ' + meta.text,
-        title: row.date + ' · ' + (row.explicit ? '单独配置' : '默认规则'),
+        "aria-label": row.date + ' ' + (row.explicit ? '单独设置' : '默认规则') + ' ' + meta.text,
+        title: row.date + ' · ' + (row.explicit ? '单独设置' : '默认规则'),
         onClick: () => open({
           mode: 'day',
           day: row,
@@ -286,11 +286,11 @@
       className: "cal-leg"
     }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", {
       className: "sw cfg"
-    }), "\u5DF2\u914D\u7F6E\u5DE5\u65F6"), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", {
+    }), "\u5DF2\u5355\u72EC\u8BBE\u7F6E\u5DE5\u65F6"), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", {
       className: "sw rest"
     }), "\u8C03\u4F11 / \u52A0\u73ED"), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", {
       className: "sw we"
-    }), "\u5468\u672B\uFF08\u9ED8\u8BA4\u975E\u5DE5\u4F5C\uFF09")), /*#__PURE__*/React.createElement("h3", null, "\u9ED8\u8BA4\u89C4\u5219"), /*#__PURE__*/React.createElement("p", null, "\u672A\u5355\u72EC\u914D\u7F6E\u7684\u65E5\u671F\uFF1A\u5468\u4E00\u81F3\u5468\u4E94\u6309 8 \u5C0F\u65F6\u3001\u6548\u7387 100%\uFF0C\u666E\u901A\u4EF6 / \u6025\u4EF6\u5747\u53EF\u6392\u4EA7\uFF1B\u5468\u672B\u9ED8\u8BA4\u4E0D\u6392\u4EA7\u3002"), /*#__PURE__*/React.createElement("h3", null, "\u89C4\u5219\u6765\u6E90"), /*#__PURE__*/React.createElement("p", null, "\u672C\u9875\u7EF4\u62A4\u5168\u5C40\u65E5\u5386\u3002\u4EBA\u5458\u4E13\u5C5E\u65E5\u5386\u4E0E\u73ED\u6B21\u4ECD\u5355\u72EC\u751F\u6548\uFF0C\u4E0D\u4F1A\u5728\u6B64\u6E05\u9664\u3002"), data && /*#__PURE__*/React.createElement("p", null, "\u672C\u673A\u6570\u636E\u622A\u81F3 ", window.WorkbenchFormat.dateTime(data.as_of)))), dialog && dialog.mode === 'view' && /*#__PURE__*/React.createElement(Modal, {
+    }), "\u5468\u672B\uFF08\u9ED8\u8BA4\u975E\u5DE5\u4F5C\uFF09")), /*#__PURE__*/React.createElement("h3", null, "\u9ED8\u8BA4\u89C4\u5219"), /*#__PURE__*/React.createElement("p", null, "\u672A\u5355\u72EC\u8BBE\u7F6E\u7684\u65E5\u671F\uFF1A\u5468\u4E00\u81F3\u5468\u4E94\u6309 8 \u5C0F\u65F6\u3001\u6548\u7387 100%\uFF0C\u666E\u901A\u4EF6\u548C\u6025\u4EF6\u90FD\u53EF\u6392\u4EA7\uFF1B\u5468\u672B\u9ED8\u8BA4\u4E0D\u6392\u4EA7\u3002"), /*#__PURE__*/React.createElement("h3", null, "\u89C4\u5219\u6765\u6E90"), /*#__PURE__*/React.createElement("p", null, "\u672C\u9875\u7EF4\u62A4\u5168\u5C40\u5DE5\u4F5C\u65E5\u5386\u3002\u4EBA\u5458\u4E13\u5C5E\u73ED\u8868\u548C\u73ED\u6B21\u4ECD\u5355\u72EC\u751F\u6548\uFF0C\u4E0D\u4F1A\u5728\u8FD9\u91CC\u6E05\u9664\u3002"), data && /*#__PURE__*/React.createElement("p", null, "\u672C\u673A\u6570\u636E\u622A\u81F3 ", window.WorkbenchFormat.dateTime(data.as_of)))), dialog && dialog.mode === 'view' && /*#__PURE__*/React.createElement(Modal, {
       title: dialog.day.date + ' · 日历详情',
       icon: "calendar-days",
       onClose: close,
@@ -326,7 +326,7 @@
       refreshState: refreshState,
       onRefresh: refresh
     }), orphan && /*#__PURE__*/React.createElement(Modal, {
-      title: "\u5DE5\u4F5C\u65E5\u5386\u64CD\u4F5C\u56DE\u6267",
+      title: "\u5DE5\u4F5C\u65E5\u5386\u64CD\u4F5C\u7ED3\u679C",
       icon: "history",
       locked: command.locked,
       onClose: close,
@@ -336,12 +336,12 @@
       }, "\u5173\u95ED")
     }, /*#__PURE__*/React.createElement("div", {
       className: "modal-b form scroll"
-    }, command.intent ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", null, command.intent.action === 'confirm' ? '批量日历维护' : '日期配置维护'), /*#__PURE__*/React.createElement(window.WorkbenchReference, {
+    }, command.intent ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", null, command.intent.action === 'confirm' ? '批量维护工作日历' : '维护单日设置'), /*#__PURE__*/React.createElement(window.WorkbenchReference, {
       entries: {
-        '请求编号': command.intent.request_key,
+        '操作编号': command.intent.request_key,
         '日期编号': command.intent.ref
       }
-    })) : /*#__PURE__*/React.createElement("p", null, "\u672C\u673A\u5F85\u6838\u5B9E\u8BB0\u5F55\u65E0\u6CD5\u8BFB\u53D6"), /*#__PURE__*/React.createElement(window.ResourceForms.Feedback, {
+    })) : /*#__PURE__*/React.createElement("p", null, "\u8BFB\u4E0D\u5230\u4E0A\u6B21\u64CD\u4F5C\u8BB0\u5F55"), /*#__PURE__*/React.createElement(window.ResourceForms.Feedback, {
       command: command
     }), command.phase === 'done' && /*#__PURE__*/React.createElement(RefreshResult, {
       state: refreshState,

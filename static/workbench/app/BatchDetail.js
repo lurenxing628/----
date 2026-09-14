@@ -44,7 +44,7 @@
     }), read.error && /*#__PURE__*/React.createElement(Button, {
       icon: "refresh-cw",
       onClick: read.reload
-    }, "\u91CD\u8BD5\u8BFB\u53D6\u8BE6\u60C5"));
+    }, "\u5237\u65B0\u8BE6\u60C5"));
     const reason = action => B.reason(entity.write_context, action, read.result.meta.source);
     return /*#__PURE__*/React.createElement("div", {
       "data-batch-detail": entity.ref

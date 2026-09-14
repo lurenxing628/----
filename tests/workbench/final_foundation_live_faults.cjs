@@ -49,7 +49,7 @@ async function bootFault(browser, state, record, fault) {
     await page.locator('#root[data-workbench-boot="failed"]').waitFor({timeout: 20000});
     const error = await page.getByRole('alert').allTextContents();
     record.equal(await page.locator('html').getAttribute('data-theme'), state.theme);
-    record.ok(error.some(value => /资源|启动|信息.*读取|消息.*格式/.test(value)), 'Boot failure is readable without main');
+    record.ok(error.some(value => /资源|启动|信息.*读取|消息.*格式|没有打开成功/.test(value)), 'Boot failure is readable without main');
     record.ok(await page.getByRole('link', {name: '重新加载', exact: true}).isVisible());
     const faultShot = await record.shot(page, state, fault + '-injected', 'fault');
     const navDuringFault = await page.locator('.sidebar-nav a.nav-item').count();
@@ -83,7 +83,7 @@ async function renderFault(browser, state, record) {
     record.equal(hits, 1, 'Workspace render injection must hit the real versioned response');
     await page.getByRole('region', {name: '工作区读取失败', exact: true}).waitFor();
     record.equal(await page.locator('.sidebar-nav a.nav-item').count(), SIDEBAR.length);
-    record.ok((await page.getByRole('alert').innerText()).includes('未替换当前对象'));
+    record.ok((await page.getByRole('alert').innerText()).includes('数据没有改动'));
     record.equal((await remembered(page)).route.context.plan_ref, selected.reference);
     const faultShot = await record.shot(page, state, 'workspace-render-throw-injected', 'fault');
     await navigate(page, 'basedata', record);

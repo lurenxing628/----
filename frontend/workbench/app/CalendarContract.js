@@ -36,7 +36,7 @@
     if (!C.object(raw) || raw.ok !== true || raw.schema_version !== 1 || !C.object(raw.data) || !C.object(raw.meta)
         || !['production', 'demo'].includes(raw.meta.source) || raw.meta.time_basis !== 'factory_local'
         || !raw.meta.snapshot_ref || !raw.meta.request_ref || !raw.meta.as_of || !Array.isArray(raw.warnings))
-      throw C.failure('日历读取协议不完整，未使用样例替代。');
+      throw C.failure('读到的工作日历数据不完整，页面没有改动。请刷新后重试。');
     return raw;
   }
   function month(raw, year, number) {
@@ -50,12 +50,12 @@
         || data.cells.length !== Math.ceil((data.days[0].weekday + data.days.length) / 7) * 7
         || data.cells.slice(0, data.days[0].weekday).some(Boolean)
         || !C.object(data.stats) || !['work_days', 'configured', 'overrides', 'weekend_rest'].every(key => Number.isSafeInteger(data.stats[key]) && data.stats[key] >= 0))
-      throw C.failure('月份、日期或统计信息不完整，请重新读取日历。');
+      throw C.failure('读到的月份、日期或统计数据不完整，页面没有改动。请刷新后重试。');
     return result;
   }
   function rangeDates(request) {
     if (!isDate(request.start_date) || !isDate(request.end_date) || request.start_date > request.end_date)
-      throw C.failure('预览日期范围不正确。');
+      throw C.failure('日期范围不正确，没有查看变更。请重新选择开始日期和结束日期。');
     const cursor = new Date(request.start_date + 'T12:00:00'), selected = [];
     for (let count = 0; count < 36500; count++) {
       const key = monthKey(cursor.getFullYear(), cursor.getMonth() + 1) + '-' + String(cursor.getDate()).padStart(2, '0');
@@ -64,7 +64,7 @@
       if (key === request.end_date) return selected;
       cursor.setDate(cursor.getDate() + 1);
     }
-    throw C.failure('预览范围超出日历服务支持的 36500 天，不能确认。');
+    throw C.failure('日期范围超过 36500 天，没有查看变更。请缩小日期范围后重试。');
   }
   function preview(raw) {
     const result = envelope(raw), data = result.data;
@@ -78,7 +78,7 @@
         || data.counts.changed !== data.days.filter(row => row.changed).length
         || data.counts.unchanged !== data.days.filter(row => !row.changed).length
         || data.dates.join() !== rangeDates(data.request).join())
-      throw C.failure('批量预览不完整，不能确认写入。请重新预览。');
+      throw C.failure('读到的变更清单不完整，没有写入。请点「重新预览变更」。');
     return result;
   }
   function draft(value) {
@@ -111,12 +111,12 @@
   }
   function tag(row) {
     const working = row.effective.is_working;
-    let text = working ? displayNumber(row.fields.hours) + 'h' : '休';
+    let text = working ? displayNumber(row.fields.hours) + ' 小时' : '休';
     let tone = row.is_weekend ? 'we' : '';
     if (row.explicit) {
       tone = row.is_weekend === working ? 'rest' : working ? 'cfg' : 'we';
-      text = row.is_weekend && working ? '加班 ' + displayNumber(row.fields.hours) + 'h' : !row.is_weekend && !working ? '调休' : text;
-      if (working && row.fields.allowNormal !== row.fields.allowUrgent) text += row.fields.allowNormal === 'yes' ? ' 普' : ' 急';
+      text = row.is_weekend && working ? '加班 ' + displayNumber(row.fields.hours) + ' 小时' : !row.is_weekend && !working ? '调休' : text;
+      if (working && row.fields.allowNormal !== row.fields.allowUrgent) text += row.fields.allowNormal === 'yes' ? ' · 仅普通件' : ' · 仅急件';
     }
     return { tone, text };
   }

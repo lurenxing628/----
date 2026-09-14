@@ -56,7 +56,7 @@ async function layout() {
 }
 async function cases() {
   await mounted();
-  assert((await page.locator('.pf-stepper [aria-current="step"]').innerText()).includes('选批次与窗口'));
+  assert((await page.locator('.pf-stepper [aria-current="step"]').innerText()).includes('选批次和日期'));
   assert((await page.locator('.pf-picker-row').first().innerText()).includes('交期：'));
   assert((await page.locator('.pf-picker-row').first().innerText()).includes('优先级：'));
   let data = await checked(); assert.equal(data.counts.selected_tasks, 0); assert.equal(data.eligible_tasks, 0);
@@ -75,7 +75,7 @@ async function cases() {
   assert.equal(data.normalized_input.missing_resource_policy, 'exclude'); assert.equal(data.calendar_check, 'not_evaluated');
   const ids = data.included_batches.map(row => row.batch_id).sort(); assert.deepEqual(ids, ['PF-0000', 'PF-0020']);
   await button('收起范围').click(); await layout(); await shot('checked');
-  await page.getByText('逐工序检查 · 2 道', { exact: true }).click(); assert.equal(await page.getByRole('table', { name: '排产前检查明细' }).locator('tbody tr').count(), 2);
+  await page.getByText('检查明细 · 2 道', { exact: true }).click(); assert.equal(await page.getByRole('table', { name: '排产检查明细' }).locator('tbody tr').count(), 2);
   await page.getByRole('radio', { name: '关闭', exact: true }).check(); assert.equal(await page.getByText(/检查时间：/).count(), 0);
   await page.getByText('排产参数已变化，请重新检查后再开始计算。', { exact: true }).waitFor();
   await button('选择批次').click(); await page.getByRole('checkbox', { name: '选择 PF-0000', exact: true }).waitFor();

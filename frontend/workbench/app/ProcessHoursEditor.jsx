@@ -1,6 +1,6 @@
 (function () {
   'use strict';
-  const C = window.APSResourceContract, P = window.APSProcessContract, E = window.ProcessStageEditor, { Button } = window.ResourceControls;
+  const C = window.APSResourceContract, P = window.APSProcessContract, E = window.ProcessStageEditor, { Button, Modal } = window.ResourceControls;
   const numericText = value => value === null ? '' : String(value);
   function mergedGroups(entity) {
     const refs = new Set(E.active(entity).map(row => row.external_group_ref));
@@ -29,14 +29,15 @@
   }
   function number(text, label, positive) {
     if (text === null || text === undefined || String(text).trim() === '' || !Number.isFinite(Number(text)) || (positive ? Number(text) <= 0 : Number(text) < 0))
-      throw C.failure(label + (positive ? '必须填写大于 0 的有限数。' : '必须填写大于等于 0 的有限数；空值不能按 0 保存。'));
+      throw C.failure(label + (positive ? '必须填写大于 0 的数。' : '必须填写大于等于 0 的数；留空不会按 0 保存。'));
     return Number(text);
   }
-  function input(entity, draft) {
+  function input(entity, draft, pageSize) {
     const merged = new Set(mergedGroups(entity).map(row => row.ref));
+    const pending = E.active(entity).filter(row => !draft.operations[row.ref].confirmed);
+    if (pending.length) throw E.unconfirmed(pending, entity.operations, pageSize, '工时 / 周期');
     const operations = E.active(entity).map(row => {
       const current = draft.operations[row.ref];
-      if (!current.confirmed) throw C.failure('请明确勾选确认工序 ' + row.sequence + ' 的工时 / 周期。');
       if (row.source === 'external') return { ref: row.ref, external_days: P.groupCycle(row, entity.external_groups) || merged.has(row.external_group_ref)
         && current.external_days.trim() === '' && !row.issues.some(item => item.code === 'value_invalid') ? null : number(current.external_days, '工序 ' + row.sequence + ' 外协周期', true) };
       if (row.source !== 'internal') throw C.failure('工序 ' + row.sequence + ' 尚未明确归属。');
@@ -61,20 +62,28 @@
     }
     async function save() {
       if (blocked || stageReason) return;
-      try { const body = input(entity, draft); model.setError(null); await command.submit('process', 'hours_confirm', entity.ref, entity.write_context, body); }
+      try { const body = input(entity, draft, paging.page.size); model.setError(null); await command.submit('process', 'hours_confirm', entity.ref, entity.write_context, body); }
       catch (error) { model.setError(error); }
     }
-    const all = paging.rows.filter(row => row.status === 'active');
-    return <section data-process-hours-editor><div className="toolbar"><E.Search paging={paging} disabled={blocked} /><span>有效工序 {E.active(entity).length}</span><span className="tb-spacer" /><window.ProcessFileButtons capabilities={entity.capabilities} disabled={blocked} hoursOnly onAction={onFileAction} /></div>
+    const all = paging.rows.filter(row => row.status === 'active'), active = E.active(entity), [confirmAll, setConfirmAll] = React.useState(false);
+    // The server accepts the whole part in one request, so confirming every page at once is the natural unit; the dialog spells out the scope.
+    function confirmEverything() {
+      model.edit(current => { const operations = { ...current.operations }; active.forEach(row => { operations[row.ref] = { ...operations[row.ref], confirmed: true }; }); return { ...current, operations }; });
+      setConfirmAll(false);
+    }
+    return <section data-process-hours-editor><div className="toolbar"><E.Search paging={paging} disabled={blocked} /><span>有效工序 {active.length}</span><span className="tb-spacer" /><window.ProcessFileButtons capabilities={entity.capabilities} disabled={blocked} hoursOnly onAction={onFileAction} /></div>
       <div className="toolbar"><label><input type="checkbox" aria-label="确认本页已核对工时" checked={!!all.length && all.every(row => draft.operations[row.ref].confirmed)} disabled={editBlocked || !all.length}
-        onChange={event => { const confirmed = event.target.checked; model.edit(current => { const operations = { ...current.operations }; all.forEach(row => { operations[row.ref] = { ...operations[row.ref], confirmed }; }); return { ...current, operations }; }); }} />确认本页已核对工时</label></div>
+        onChange={event => { const confirmed = event.target.checked; model.edit(current => { const operations = { ...current.operations }; all.forEach(row => { operations[row.ref] = { ...operations[row.ref], confirmed }; }); return { ...current, operations }; }); }} />确认本页已核对工时</label>
+        {paging.page.pages > 1 && <Button icon="check" disabled={editBlocked || !active.length} onClick={() => setConfirmAll(true)}>确认全部 {active.length} 道已核对</Button>}</div>
+      {confirmAll && <Modal title="确认全部工序已核对工时" icon="check" onClose={() => setConfirmAll(false)} footer={<><Button onClick={() => setConfirmAll(false)}>取消</Button><Button className="btn primary" icon="check" onClick={confirmEverything}>确认全部 {active.length} 道</Button></>}>
+        <div className="modal-b"><p>会把 {active.length} 道有效工序（包括没翻到的 {paging.page.pages} 页）全部标记为已核对。已核对只表示你看过这些数值；保存时仍会逐项校验，填错的工序会单独报出来。</p></div></Modal>}
       <div className="wb-table-frame"><div className="card-scroll wb-table-shell"><table className="tbl wb-table" aria-label="工时定额明细" style={{ minWidth: 1000, tableLayout: 'fixed' }}><caption className="wb-visually-hidden">{"工时定额明细"}</caption><thead><tr>
-        <th scope="col" style={{ width: 180 }}>工序 / 工种</th><th scope="col" style={{ width: 85 }}>归属</th><th scope="col" style={{ width: 140 }}>换型工时（h）</th><th scope="col" style={{ width: 140 }}>单件工时（h）</th><th scope="col" style={{ width: 140 }}>外协周期（天）</th><th scope="col">核对 / 确认记录</th></tr></thead>
+        <th scope="col" style={{ width: 180 }}>工序 / 工种</th><th scope="col" style={{ width: 85 }}>归属</th><th scope="col" style={{ width: 140 }}>换型工时（小时）</th><th scope="col" style={{ width: 140 }}>单件工时（小时）</th><th scope="col" style={{ width: 140 }}>外协周期（天）</th><th scope="col">核对 / 确认记录</th></tr></thead>
         <tbody>{paging.rows.map(row => {
           const current = draft.operations[row.ref], inactive = !current, cycle = P.groupCycle(row, entity.external_groups);
           const cell = (key, title) => <td><input className="wt-in" type="number" step="any" min="0" aria-label={'工序 ' + row.sequence + ' ' + title} placeholder="未填写" value={current ? current[key] : numericText(row[key])} disabled={editBlocked || inactive}
             onChange={event => change(row.ref, { [key]: event.target.value, confirmed: false })} style={{ width: '100%' }} />{key === 'unit_hours' && current && current[key].trim() !== '' && Number(current[key]) === 0 && <span className="prov">0 · 请复核</span>}</td>;
-          return <tr key={row.ref}><td><b>{row.sequence}</b> {row.label}<div className="muted">{row.op_type_label || '未绑定工种'}</div></td><td>{window.APSProcessContract.sourceLabel(row.source)}</td>
+          return <tr key={row.ref}><td><b>{row.sequence}</b> {row.label}<div className="muted">{row.op_type_label || '未选工种'}</div></td><td>{window.APSProcessContract.sourceLabel(row.source)}</td>
             {row.source === 'external' ? <td colSpan={2} className="muted">外协工序不填工时</td> : <>{cell('setup_hours', '换型工时')}{cell('unit_hours', '单件工时')}</>}
             {row.source === 'external' ? cycle ? <td data-process-cycle-group={row.external_group_ref}>{cycle}</td> : cell('external_days', '外协周期') : <td className="muted">不适用</td>}
             <td>{inactive ? '已停用工序' : <label><input type="checkbox" aria-label={'确认工序 ' + row.sequence + ' 工时'} checked={current.confirmed} disabled={editBlocked} onChange={event => change(row.ref, { confirmed: event.target.checked })} />已核对</label>}
@@ -82,7 +91,7 @@
         })}{!paging.rows.length && <tr><td colSpan={6}>{entity.operations.length ? '没有匹配的工序。' : '尚无工序记录。'}</td></tr>}</tbody></table></div></div><E.Pager paging={paging} disabled={blocked} />
       <E.Groups rows={entity.external_groups} totals={draft.groups} disabled={editBlocked} onTotal={changeGroup} />
       <p><label><input type="checkbox" aria-label="已复核单件工时为0" checked={draft.zero} disabled={editBlocked} onChange={event => model.edit(current => ({ ...current, zero: event.target.checked }))} />已复核单件工时为 0，确认按 0 保存</label></p>
-      <E.Feedback model={model} disabled={blocked} /><div className="pd-foot"><span className="muted">空值不补 0；合并组成员周期可空，按组总周期。已填周期必须大于 0。</span><Button className="btn primary" icon="check" disabled={blocked} reason={stageReason} onClick={save}>保存工时</Button></div>
+      <E.Feedback model={model} disabled={blocked} paging={paging} /><div className="pd-foot"><span className="muted">留空不补 0；合并组成员的周期可以留空，按组总周期算。已填的周期必须大于 0。</span><Button className="btn primary" icon="check" disabled={blocked} reason={stageReason} onClick={save}>保存工时</Button></div>
     </section>;
   }
   window.ProcessHoursEditor = ProcessHoursEditor;

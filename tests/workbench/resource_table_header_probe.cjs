@@ -167,7 +167,7 @@ async function cases() {
     await page.evaluate(() => { fixture.spec.holdSelection = false; fixture.releaseSelection(); fixture.releaseSelection = null; });
     await ready(); await page.evaluate(() => fixture.spec.failSelection = true); await search('设备值 2');
     assert.equal(await popup().getByRole('alert').count(), 1); assert(await all().isDisabled()); assert.equal(await filterValue(), null);
-    await page.evaluate(() => fixture.spec.failSelection = false); await button('回到首页重新读取').click(); await ready(); assert(!(await all().isDisabled()));
+    await page.evaluate(() => fixture.spec.failSelection = false); await button('回到第 1 页重新查询').click(); await ready(); assert(!(await all().isDisabled()));
     await popup().getByRole('textbox').fill('slow'); await page.waitForFunction(() => fixture.facets.some(call => call.query.query === 'slow'));
     await popup().getByRole('textbox').fill('fast'); await ready(); await page.waitForTimeout(230);
     assert.equal(await popup().locator('[data-facet-key]').count(), 12); assert.equal(await popup().getByRole('textbox').inputValue(), 'fast');
@@ -182,14 +182,14 @@ async function cases() {
   });
   await run('explicit-capacity-api-empty-and-stale-page', async () => {
     await mount({ capacity: true }); await open(); await ready(); await search('设备值'); assert(await popup().getByText(/容量拒绝/).isVisible()); assert.equal(await filterValue(), null);
-    await mount({ failFacets: true, filter: { mode: 'include', values: [key(2)] } }); await open(); await ready(); assert(await button('回到首页重新读取').isVisible()); assert.equal(await popup().locator('[data-facet-key]').count(), 0);
+    await mount({ failFacets: true, filter: { mode: 'include', values: [key(2)] } }); await open(); await ready(); assert(await button('回到第 1 页重新查询').isVisible()); assert.equal(await popup().locator('[data-facet-key]').count(), 0);
     assert.equal(await popup().getByText('正在读取全部匹配值…').count(), 0); assert.deepEqual(await filterValue(), { mode: 'include', values: [key(2)] });
-    await page.evaluate(() => fixture.spec.failFacets = false); await button('回到首页重新读取').click(); await ready(); assert.equal(await popup().locator('[data-facet-key]').count(), 100);
-    await mount({ stalePage: true }); await open(); await ready(); await button('列值下一页').click(); await ready(); assert(await popup().getByText(/快照已经变化/).isVisible());
-    await button('回到首页重新读取').click(); await ready(); assert.equal(await page.evaluate(() => fixture.facets[fixture.facets.length - 1].query.page), 1);
+    await page.evaluate(() => fixture.spec.failFacets = false); await button('回到第 1 页重新查询').click(); await ready(); assert.equal(await popup().locator('[data-facet-key]').count(), 100);
+    await mount({ stalePage: true }); await open(); await ready(); await button('列值下一页').click(); await ready(); assert(await popup().getByText(/列值已经更新/).isVisible());
+    await button('回到第 1 页重新查询').click(); await ready(); assert.equal(await page.evaluate(() => fixture.facets[fixture.facets.length - 1].query.page), 1);
     assert(await page.evaluate(() => !('snapshot_ref' in fixture.facets[fixture.facets.length - 1].query)));
-    await mount({ badKey: true }); await open(); await ready(); assert(await popup().getByText(/列值标识、文字或数量/).isVisible());
-    await mount({ empty: true, unknownCount: true }); await open(); await ready(); assert(await all().isDisabled()); assert(await popup().getByText('当前范围没有列值').isVisible()); assert(await popup().getByText('匹配行数待读取').isVisible()); await shot('empty');
+    await mount({ badKey: true }); await open(); await ready(); assert(await popup().getByText(/列值编号、文字或数量/).isVisible());
+    await mount({ empty: true, unknownCount: true }); await open(); await ready(); assert(await all().isDisabled()); assert(await popup().getByText('当前范围没有列值').isVisible()); assert(await popup().getByText('匹配行数未读取').isVisible()); await shot('empty');
   });
   await run('base-scope-source-kind-disabled-and-modal-escape', async () => {
     for (const patch of [{ status: 'inactive' }, { category: 'external' }, { query: '新的基础查询' }, { source: 'production' }]) {

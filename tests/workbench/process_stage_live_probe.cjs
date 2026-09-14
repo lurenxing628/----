@@ -39,8 +39,8 @@ async function saved(action, click) {
   assert.equal(response.status(), 200); return response.json();
 }
 async function reloadDraft(scope) {
-  await responseTo('/entities/part/' + (await currentRef()), () => scope.getByRole('button', {name: '重读详情并保留草稿', exact: true}).click());
-  await scope.getByRole('button', {name: '已核对，采用最新范围并保留可匹配草稿', exact: true}).click();
+  await responseTo('/entities/part/' + (await currentRef()), () => scope.getByRole('button', {name: '刷新详情并保留草稿', exact: true}).click());
+  await scope.getByRole('button', {name: '采用最新资料', exact: true}).click();
 }
 let partRef;
 async function currentRef() { assert(partRef); return partRef; }
@@ -112,7 +112,7 @@ async function smallWorkflow() {
   const picker = page.getByRole('dialog', {name: '选择自制工种 · 工序 10', exact: true});
   await type(picker.getByRole('searchbox', {name: '搜索自制工种', exact: true}), '车削');
   await responseTo('/entities/op_type', () => picker.getByRole('button', {name: '搜索', exact: true}).click());
-  await picker.getByRole('button', {name: '选用 车削', exact: true}).click();
+  await picker.getByRole('button', {name: '采用 车削', exact: true}).click();
   await source().getByRole('checkbox', {name: '确认本页已核对工序', exact: true}).check();
   await reloadDraft(source());
   assert(await source().getByRole('checkbox', {name: '确认工序 10 归属', exact: true}).isChecked());

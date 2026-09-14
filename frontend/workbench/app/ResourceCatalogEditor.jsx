@@ -56,9 +56,11 @@
           {(entity.fields.pattern || []).map(row => <tr key={row.day_offset}><td className="wb-col-key">第 {row.day_offset + 1} 天</td><td>{row.is_rest ? '休息' : '工作'}</td><td>{row.shift_start}</td><td>{row.shift_end}</td></tr>)}</tbody></table></div></>}
       <p className="rc-wrap">备注：{entity.fields.remark || '未填写'}</p><Issues issues={entity.issues} /></section>;
   }
-  function Editor({ kind, editor, disabled, error, onChange, onValidationError }) {
+  function Editor({ kind, editor, disabled, error, onChange, onValidationError, onAcknowledge }) {
     const { draft: value, action, base } = editor;
-    if (action === 'delete') return <><p>确认删除该{M.names[kind]}？服务端将再次核对引用，已被使用的目录不能删除。</p><Facts kind={kind} entity={base} /></>;
+    // Deleting takes the same checkbox confirmation as the other delete paths; the host turns an unchecked box into the confirm button's reason.
+    if (action === 'delete') return <><p>确认删除该{M.names[kind]}？系统会再次核对关联关系，已被使用的记录不能删除。</p><Facts kind={kind} entity={base} />
+      <label className="rm-check"><input type="checkbox" checked={!!editor.acknowledged} disabled={disabled} onChange={event => onAcknowledge(event.target.checked)} />我已核对要删除的资料及其关联关系</label></>;
     const field = (name, label, options = {}) => <Field name={name} label={label} required={options.required} error={error} full={options.full}>
       {options.area ? <textarea value={value[name]} disabled={disabled} onChange={event => onChange(name, event.target.value)} /> :
         <input type={options.type || 'text'} value={value[name]} disabled={disabled} readOnly={options.readOnly} min={options.type === 'number' ? 1 : undefined}

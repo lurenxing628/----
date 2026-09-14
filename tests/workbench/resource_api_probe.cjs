@@ -34,7 +34,7 @@ async function main() {
   assert.deepEqual(await good.api.list('material',{query:'12 / #',page:2,size:20}),envelope());checks++;
   for(const mutate of [p=>p.meta.source='demo',p=>p.meta.time_basis='UTC',p=>p.meta.as_of='2026-09-09',p=>p.data=[],p=>delete p.warnings]) {
     const payload=envelope();mutate(payload);const r=runtime(async()=>response(payload));
-    await rejects(()=>r.api.summary(),false,/协议不匹配/);assert.equal(r.timers(),0);
+    await rejects(()=>r.api.summary(),false,/读到的数据不完整/);assert.equal(r.timers(),0);
   }
   for(const [kind,entity] of [['unknown',ref],['material','bad'],['material','../outside']]) {
     await rejects(()=>good.api.detail(kind,entity),false);assert.equal(good.requests(),1);
@@ -59,7 +59,7 @@ async function main() {
     await assert.rejects(()=>r.api.command('material','update',ref,payload),e=>{assert.equal(e.committed,committed);assert.deepEqual(e.error,error);return true;});checks++;
   }
   const cancelled=new AbortController();cancelled.abort();
-  await rejects(()=>good.api.command('material','update',ref,payload,cancelled.signal),false,/未发送/);assert.equal(good.requests(),1);
+  await rejects(()=>good.api.command('material','update',ref,payload,cancelled.signal),false,/没有发送/);assert.equal(good.requests(),1);
   const timeout=runtime(async(_,options)=>new Promise((_,reject)=>options.signal.addEventListener('abort',()=>reject(Object.assign(new Error('aborted'),{name:'AbortError'})))),{delay:3});
   await rejects(()=>timeout.api.command('material','update',ref,payload),'unknown',/超时/);assert.equal(timeout.timers(),0);
   const lookup=runtime(async()=>response({ok:true,state:'not_recorded',receipt:null,may_be_in_flight:true}));
@@ -150,7 +150,7 @@ async function main() {
   const html=runtime(async()=>response('HTML',200,'text/html'));
   await rejects(()=>html.api.download('exports/material',{}),false,/格式不正确/);
   const empty=runtime(async()=>response('',200,'text/csv'));
-  await rejects(()=>empty.api.download('exports/material',{}),false,/为空/);
+  await rejects(()=>empty.api.download('exports/material',{}),false,/空的/);
   const scope=runtime(async(url)=>{const query=new URL(url).searchParams;assert.equal(query.get('query'),'12 / #');assert.equal(query.get('status'),null);assert.equal(query.get('snapshot_ref'),null);return response(envelope());});
   await scope.api.list('material',{query:'12 / #',status:'',snapshot_ref:undefined});checks++;
   const filters={spec:{mode:'include',values:['c'.repeat(64)]}}, filteredCalls=[];
@@ -164,9 +164,9 @@ async function main() {
   assert(filteredCalls[2].url.endsWith('/entities/machine/facet-selection'));checks++;
   const cleared=runtime(async(url,options)=>{assert.equal(options.method,'GET');assert.equal(new URL(url).searchParams.has('column_filters'),false);return response(envelope());});
   await cleared.api.list('material',{column_filters:{}});checks++;
-  await rejects(()=>cleared.api.list('material',{column_filters:null}),false,/未切换到全量列表/);assert.equal(cleared.requests(),1);
+  await rejects(()=>cleared.api.list('material',{column_filters:null}),false,/列筛选范围不完整/);assert.equal(cleared.requests(),1);
   const readFailed=runtime(async()=>{throw new Error('offline');});
-  await rejects(()=>readFailed.api.list('material',{column_filters:filters}),false,/请重新读取/);
+  await rejects(()=>readFailed.api.list('material',{column_filters:filters}),false,/请刷新后重试/);
   assert.equal(readFailed.storage.size,0);checks++;
   const contracts=vm.createContext({});contracts.window=contracts;
   for(const name of ['resource-contract.js','ResourceMaterialContract.js'])vm.runInContext(fs.readFileSync(path.join(__dirname,'../../frontend/workbench/app',name),'utf8'),contracts);

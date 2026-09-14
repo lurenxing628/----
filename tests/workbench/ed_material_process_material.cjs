@@ -20,7 +20,7 @@ async function materialWrites(p, page, data) {
   await p.shot('material-edited-before-save');
   const response = await p.response('/update', () => p.click(b(d, '保存')));
   assert.equal(response.result, 'committed');
-  await d.getByText('已重新读取最新数据。', {exact: true}).waitFor();
+  await d.getByText('已刷新到最新数据。', {exact: true}).waitFor();
   const current = row(); assert.equal(current.name, label); assert.equal(current.remark, original.remark); assert.equal(current.stock_qty, 0);
   for (const key of Object.keys(original)) if (!['name', 'spec'].includes(key)) assert.deepEqual(current[key], original[key], key);
   await p.shot('material-real-save-receipt'); await p.click(b(d, '关闭'));
@@ -51,7 +51,7 @@ async function materialWrites(p, page, data) {
     await session.send('Network.emulateNetworkConditions', {offline: true, latency: 0, downloadThroughput: -1, uploadThroughput: -1});
     await session.send('Fetch.failRequest', {requestId: headers.requestId, errorReason: 'ConnectionReset'});
     await session.send('Fetch.disable');
-    await b(d, '查询原请求回执').waitFor();
+    await b(d, '查询结果').waitFor();
     const receipt = p.oracle().tables.WorkbenchCommandReceipts.find(r => r.request_key === key);
     assert(receipt); assert.equal(row().stock_qty, 12.375);
     await p.shot('material-pending-original-request');
@@ -64,12 +64,12 @@ async function materialWrites(p, page, data) {
       await page.reload({waitUntil: 'domcontentloaded'});
       const lookup = await automatic; assert(new URL(lookup.request.url).pathname.endsWith('/commands/' + key));
       await session.send('Fetch.failRequest', {requestId: lookup.requestId, errorReason: 'ConnectionReset'}); await session.send('Fetch.disable');
-      d = page.getByRole('dialog', {name: '原请求结果', exact: true}); await b(d, '查询原请求回执').waitFor();
+      d = page.getByRole('dialog', {name: '上次操作结果', exact: true}); await b(d, '查询结果').waitFor();
       await p.shot('material-reloaded-pending-original-key');
     }
-    const recovered = await p.response('/commands/' + key, () => p.click(b(d, '查询原请求回执')));
+    const recovered = await p.response('/commands/' + key, () => p.click(b(d, '查询结果')));
     assert.equal(recovered.receipt_ref, receipt.receipt_ref);
-    await d.getByText(reloaded ? '服务器已确认提交。' : '已重新读取最新数据。', {exact: true}).waitFor();
+    await d.getByText(reloaded ? '保存已完成。' : '已刷新到最新数据。', {exact: true}).waitFor();
     assert.deepEqual(p.oracle().tables.WorkbenchCommandReceipts.filter(r => r.request_key === key), [receipt]);
     const requests = p.report.network.filter(r => r.event === 'request' && r.post && JSON.parse(r.post).request_key === key);
     assert.equal(requests.length, 1); assert.deepEqual(body.input, {fields: {stock_qty: 12.375}});

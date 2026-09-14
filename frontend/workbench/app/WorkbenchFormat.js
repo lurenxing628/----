@@ -3,6 +3,8 @@
   const unknown = '未知';
   const empty = value => value === null || value === undefined || value === '';
   const pad = value => String(value).padStart(2, '0');
+  const BEIJING_OFFSET_MS = 8 * 60 * 60 * 1000;
+  const HOURS_UNIT = ' 小时';
   function invalid(kind) { throw new TypeError('无法显示：' + kind + '格式不正确。'); }
   function parts(value, dateOnly) {
     if (typeof value !== 'string') return invalid('日期时间');
@@ -32,13 +34,15 @@
     const match = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2}:\d{2})(\.\d{1,6})?(Z|[+-]\d{2}:\d{2})$/.exec(value);
     if (!match) return invalid('时刻');
     parts(match[1] + 'T' + match[2] + (match[3] || ''), false);
-    if (match[4] !== 'Z' && (Number(match[4].slice(1, 3)) > 23 || Number(match[4].slice(4)) > 59)) return invalid('时区');
+    if (match[4] !== 'Z' && (Number(match[4].slice(1, 3)) > 23 || Number(match[4].slice(4)) > 59)) return invalid('时刻');
     const point = new Date(value);
     if (!Number.isFinite(point.getTime())) return invalid('时刻');
-    const year = point.getFullYear();
+    // 时刻一律按北京时间（UTC+8）显示，不跟随浏览器时区：同一条记录在任何机器上读到的都是同一个时间。
+    const beijing = new Date(point.getTime() + BEIJING_OFFSET_MS);
+    const year = beijing.getUTCFullYear();
     if (year < 1 || year > 9999) return invalid('时刻');
-    return String(year).padStart(4, '0') + '-' + pad(point.getMonth() + 1) + '-' + pad(point.getDate()) + ' ' +
-      pad(point.getHours()) + ':' + pad(point.getMinutes()) + (seconds ? ':' + pad(point.getSeconds()) : '');
+    return String(year).padStart(4, '0') + '-' + pad(beijing.getUTCMonth() + 1) + '-' + pad(beijing.getUTCDate()) + ' ' +
+      pad(beijing.getUTCHours()) + ':' + pad(beijing.getUTCMinutes()) + (seconds ? ':' + pad(beijing.getUTCSeconds()) : '');
   }
   // digits: fixed decimals (default 1). trim: drop trailing zeros so "up to `digits` decimals" is possible for
   // values whose stored precision matters (entered hours, cumulative totals, candidate comparisons).
@@ -76,7 +80,7 @@
     if (empty(value)) return unknown;
     numberOptions(options, '工时');
     if (typeof value !== 'number' || !Number.isFinite(value)) return invalid('工时');
-    return number(value, options) + ' h';
+    return number(value, options) + HOURS_UNIT;
   }
   window.WorkbenchFormat = Object.freeze({ dateTime, date, instant, number, integerText, percent, hours });
 })();

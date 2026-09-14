@@ -73,7 +73,7 @@
       hint: loaded ? '可调整报工状态、批次或计划完工日期后重新查询。' : undefined,
       action: error ? /*#__PURE__*/React.createElement(Button, {
         onClick: onRetry
-      }, "\u91CD\u8BFB\u73B0\u573A\u4EFB\u52A1") : filtered ? /*#__PURE__*/React.createElement(Button, {
+      }, "\u5237\u65B0\u73B0\u573A\u4EFB\u52A1") : filtered ? /*#__PURE__*/React.createElement(Button, {
         onClick: onClear,
         disabled: disabled
       }, "\u6E05\u9664\u7B5B\u9009") : undefined

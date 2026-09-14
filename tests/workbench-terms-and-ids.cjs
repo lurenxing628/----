@@ -27,15 +27,27 @@ assert.equal(T.candidate, '候选方案');
 assert.equal(T.actions.save, '保存');
 assert.deepEqual(JSON.parse(JSON.stringify(T)), {
   overdue_count: '预计超期批次', delay_hours: '超期时长', total_tardiness_hours: '总拖期', utilization: '利用率',
-  candidate: '候选方案', official_plan: '正式计划', trial: '试调',
-  actions: { add: '新增', save: '保存', confirm: '确认', cancel: '取消', clear: '清除', import: '导入', export: '导出', download: '下载' }
+  candidate: '候选方案', official_plan: '正式计划', trial: '试调', trial_draft: '试调草稿', trial_scenario: '试调方案',
+  hours_unit: '小时', handler: '经办人', recorder: '记录人', owner: '责任人',
+  report_actions: { create: '新增', supplement: '补齐', correct: '更正' },
+  actions: { add: '新增', save: '保存', confirm: '确认', cancel: '取消', clear: '清除', import: '导入', export: '导出', download: '下载',
+    refresh: '刷新', query_result: '查询结果', adopt: '采用' },
+  outcomes: { stale: '数据已更新，请刷新后重试。刚才的选择已保留。', unavailable: '此功能尚未开通。',
+    failure: '操作没有完成。请刷新重试；仍不行请联系维护人员，并告知下方编号。' }
 });
+assert(Object.isFrozen(T.outcomes));
+assert.equal(T.outcomes.pending('保存'), '上次保存的结果还没查到，可能已经生效。请点「查询结果」，不要重复提交。');
+assert.equal(T.outcomes.rejected('采用', '批次号重复'), '上次采用没有生效：批次号重复。填写内容已保留，改好后重新提交。');
+assert.equal(T.outcomes.rejected('采用', '批次号重复。'), '上次采用没有生效：批次号重复。填写内容已保留，改好后重新提交。');
+assert.equal(T.outcomes.done('导入'), '导入已完成。');
+assert.equal(T.outcomes.done('导入', '请到批次管理查看'), '导入已完成。请到批次管理查看。');
+assert.equal(T.outcomes.unknown('提交'), '提交结果不确定，可能已经生效。请刷新后核对，不要重复提交。');
 assert(Object.isFrozen(T));
 assert(Object.isFrozen(T.actions));
 assert.equal(Ref({}), null);
-assert.equal(Ref({ entries: { '资源编号': null, '请求编号': '' } }), null);
+assert.equal(Ref({ entries: { '资源编号': null, '操作编号': '' } }), null);
 const hash = '0123456789abcdef'.repeat(3);
-const refs = Ref({ entries: { '运行编号': hash, '请求编号': 'request-123' } });
+const refs = Ref({ entries: { '排产编号': hash, '操作编号': 'request-123' } });
 assert.equal(refs.type, 'details');
 assert.equal(refs.props.className, 'wb-ref');
 assert.equal(refs.props.open, undefined);

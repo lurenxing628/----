@@ -5,7 +5,7 @@
   const count = v => Number.isSafeInteger(v) && v >= 0;
   const measure = v => v === null || typeof v === 'number' && Number.isFinite(v);
   const fields = (v, keys) => object(v) && keys.every(k => Object.prototype.hasOwnProperty.call(v, k));
-  function check(value, message = '试调数据不完整或身份不一致，未显示替代结果。') { if (!value) throw new Error(message); }
+  function check(value, message = '读到的试调数据不完整或对不上，没有显示其他结果代替。请点「刷新」重试。') { if (!value) throw new Error(message); }
   function time(v) {
     return typeof v === 'string' && /^(?!0000)\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(v)
       && Number.isFinite(Date.parse(v + 'Z')) && new Date(v + 'Z').toISOString().slice(0, 19) === v;
@@ -22,9 +22,9 @@
   }
   // A navigation target is an identity, never an instruction to pick the latest record.
   function target(v = {}) {
-    check(object(v) && Object.keys(v).every(k => ['kind', 'draft_ref', 'scenario_ref', 'base', 'scope', 'task_origin'].includes(k)), '试调入口含未知字段，未猜测来源。');
+    check(object(v) && Object.keys(v).every(k => ['kind', 'draft_ref', 'scenario_ref', 'base', 'scope', 'task_origin'].includes(k)), '试调入口含未知的项，没有猜测来源。');
     const keys = ['draft_ref', 'scenario_ref', 'base'].filter(k => v[k] !== undefined);
-    check(keys.length <= 1, '只能指定一份草稿、场景或原来源。');
+    check(keys.length <= 1, '只能指定一份试调草稿、试调方案或原来源。');
     if (v.kind !== undefined) check(v.kind === (v.draft_ref ? 'draft' : v.scenario_ref ? 'scenario' : 'base'));
     keys.forEach(k => k === 'base' ? base(v[k]) : check(ref(v[k])));
     if (v.scope !== undefined) { check(keys[0] === 'base', '已有草稿不能重新指定基础范围。'); scope(v.scope); }
@@ -37,7 +37,7 @@
   }
   function origin(value) {
     check(fields(value, ['plan_ref', 'operation_ref', 'task_ref']) && Object.keys(value).length === 3
-      && ['plan_ref', 'operation_ref', 'task_ref'].every(key => ref(value[key])), '原任务定位必须包含完整的原计划、工序和任务永久引用。');
+      && ['plan_ref', 'operation_ref', 'task_ref'].every(key => ref(value[key])), '原任务定位必须包含完整的原计划、工序和任务编号。');
     return value;
   }
   function originTask(data, value) {
@@ -56,7 +56,7 @@
   function envelope(v, q = {}) {
     check(v && v.ok === true && v.schema_version === 1 && object(v.data) && v.meta && v.meta.source === 'production'
       && v.meta.time_basis === 'factory_local' && time(v.meta.as_of) && /^[A-Za-z0-9_-]{32}$/.test(v.meta.snapshot_ref) && /^[a-f0-9]{32}$/.test(v.meta.request_ref));
-    issues(v.warnings); if (q.snapshot_ref) check(v.meta.snapshot_ref === q.snapshot_ref, '目录快照已变化，请明确重读。');
+    issues(v.warnings); if (q.snapshot_ref) check(v.meta.snapshot_ref === q.snapshot_ref, window.WorkbenchTerms.outcomes.stale);
     return v.data;
   }
   function arrangement(v, owner) { check(fields(v, ['machine_ref', 'operator_ref', 'start', 'end']) && time(v.start) && time(v.end) && window.PointContract.arrangement(v, owner)

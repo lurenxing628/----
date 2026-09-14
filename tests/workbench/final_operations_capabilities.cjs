@@ -5,19 +5,19 @@ async function capabilities(h) {
   await mark('WBP-DASH-001.metric-pressure', () => request('/dashboard', () => page.locator('.dy-metrics').getByRole('button', { name: /^资源压力/ }).click()));
   await ready(); const axis = page.locator('[data-dashboard-timeline=delivery]'); await axis.waitFor();
   const bar = axis.locator('[data-analysis-task]').first(), batchRef = await bar.getAttribute('data-analysis-batch');
-  await mark('WBP-DASH-007.hover-resource', async () => { await bar.hover(); await page.getByRole('tooltip').waitFor(); assert((await page.getByRole('tooltip').innerText()).includes('计划跨度')); });
+  await mark('WBP-DASH-007.hover-resource', async () => { await bar.hover(); await page.getByRole('tooltip').waitFor(); assert((await page.getByRole('tooltip').innerText()).includes('计划时长')); });
   await mark(['WBP-DASH-007.select-batch', 'WBP-DASH-007.affected-batches'], async () => {
     await bar.click(); await page.locator('[data-analysis-delivery="' + batchRef + '"][data-selected=true]').waitFor();
     assert.equal(await bar.getAttribute('aria-pressed'), 'true');
   });
   await shot('resource-timeline-and-batch-link');
-  await mark('WBP-DASH-007.compare-navigation', async () => { await page.getByRole('button', { name: '对比调整方案', exact: true }).click(); assert.equal(await page.getByRole('tab', { name: '方案对比', exact: true }).getAttribute('aria-selected'), 'true'); });
+  await mark('WBP-DASH-007.compare-navigation', async () => { await page.getByRole('button', { name: '对比候选方案', exact: true }).click(); assert.equal(await page.getByRole('tab', { name: '方案对比', exact: true }).getAttribute('aria-selected'), 'true'); });
   await mark('WBP-DASH-001.category-select', () => request('/dashboard', () => select('异常类别', '停机影响')));
   await page.getByRole('tab', { name: '影响分析', exact: true }).click(); await ready();
   const maintenance = page.locator('[data-dashboard-timeline=downtime]'); await maintenance.waitFor();
   await mark('WBP-DASH-011.downtime-bar', async () => { await maintenance.locator('[data-downtime-ref]').first().focus(); await page.getByRole('tooltip').waitFor(); assert((await page.getByRole('tooltip').innerText()).includes('F maintenance record')); });
   await mark('WBP-DASH-011.plan-task-bar', async () => { const task = maintenance.locator('[data-analysis-task]').first(); await task.click(); assert.equal(await task.getAttribute('aria-pressed'), 'true'); await page.locator('[data-overlap-task][data-selected=true]').first().waitFor(); });
-  await mark('WBP-DASH-011.reason-recorded-at', async () => { const evidence = page.getByRole('region', { name: '停机登记依据', exact: true }); assert((await evidence.innerText()).includes('登记时间（原存值）')); await evidence.getByText('F maintenance record', { exact: true }).waitFor(); });
+  await mark('WBP-DASH-011.reason-recorded-at', async () => { const evidence = page.getByRole('region', { name: '停机登记依据', exact: true }); assert((await evidence.innerText()).includes('登记时间')); await evidence.getByText('F maintenance record', { exact: true }).waitFor(); });
   await shot('maintenance-and-original-plan-bars');
   await mark('WBP-DASH-001.metric-pending', () => request('/dashboard', () => page.locator('.dy-metrics').getByRole('button', { name: /^待排批次/ }).click()));
   await ready(); const pending = page.getByRole('region', { name: '待排批次与齐套日期', exact: true });
@@ -31,16 +31,16 @@ async function capabilities(h) {
   await h.category('执行偏差'); await page.getByRole('tab', { name: '影响分析', exact: true }).click(); await ready();
   await mark('WBP-DASH-008.deviation-table', async () => { await page.getByRole('region', { name: '工序执行偏差', exact: true }).waitFor(); });
   await mark('WBP-DASH-008.field-report-navigation', async () => {
-    await page.getByRole('region', { name: '工序执行偏差', exact: true }).getByRole('button', { name: '现场报工', exact: true }).first().click();
+    await page.getByRole('region', { name: '工序执行偏差', exact: true }).getByRole('button', { name: '现场记录', exact: true }).first().click();
     await page.waitForURL('**view=field'); await page.getByRole('button', { name: '返回', exact: true }).click(); await ready();
   });
   await page.getByRole('tab', { name: '方案对比', exact: true }).click();
   await mark('WBP-DASH-014.no-independent-candidate', async () => { await page.getByRole('region', { name: '本问题候选状态', exact: true }).waitFor(); assert.equal(await page.locator('[data-dashboard-candidates]').count(), 0); });
   await page.getByRole('button', { name: '查看现有候选方案', exact: true }).click();
   await page.locator('[data-dashboard-candidates]').waitFor();
-  const picker = page.getByLabel('选择排产运行', { exact: true }), option = picker.locator('option').nth(1);
+  const picker = page.getByLabel('选择排产记录', { exact: true }), option = picker.locator('option').nth(1);
   const runRef = await option.getAttribute('value'), label = await option.innerText();
-  const catalog = await request('/scheduling/runs/' + runRef + '/candidates', () => select('选择排产运行', label));
+  const catalog = await request('/scheduling/runs/' + runRef + '/candidates', () => select('选择排产记录', label));
   assert(catalog.data.candidates.length >= 3);
   const comparisons = [];
   for (const candidate of catalog.data.candidates.slice(0, 3)) {

@@ -36,9 +36,9 @@ async function exercise(p) {
       await p.choose('资源类型', type); await p.choose('关联资源', 'unassigned');
       result = await p.read(() => work.getByRole('button', { name: '查询范围', exact: true }).click(), suffix);
       assert.equal(result.data.scope.resource_type, type); assert.equal(result.data.scope.resource_ref, 'unassigned');
-      await p.read(() => work.getByRole('button', { name: '清除 resource_ref', exact: true }).click(), suffix);
+      await p.read(() => work.getByRole('button', { name: '清除关联资源', exact: true }).click(), suffix);
       assert.equal(await work.getByLabel('关联资源', { exact: true }).inputValue(), '');
-      await p.read(() => work.getByRole('button', { name: '清除 resource_type', exact: true }).click(), suffix);
+      await p.read(() => work.getByRole('button', { name: '清除资源类型', exact: true }).click(), suffix);
     }
     const options = await work.getByLabel('分析范围', { exact: true }).locator('option').evaluateAll(nodes => nodes.map(node => node.value));
     assert.equal(options.length, 7);
@@ -50,15 +50,15 @@ async function exercise(p) {
       if (value === 'complete') assert.equal(result.data.page.total, 15);
       if (value === 'finish_late') assert.equal(result.data.page.total, 0);
       await p.shot('review-focus-' + value);
-      await p.read(() => work.getByRole('button', { name: '清除 focus', exact: true }).click(), suffix);
+      await p.read(() => work.getByRole('button', { name: '清除分析范围', exact: true }).click(), suffix);
     }
     await work.getByRole('button', { name: '更多筛选', exact: true }).click();
   });
   await p.step(['WBP-REVIEW-003', 'WBP-REVIEW-004', 'WBP-REVIEW-005'], 'review-all-sorts-page-controls-and-complete-csv', async () => {
-    const sorts = await work.getByLabel('排序字段', { exact: true }).locator('option').evaluateAll(nodes => nodes.map(node => node.value));
+    const sorts = await work.getByLabel('排序列', { exact: true }).locator('option').evaluateAll(nodes => nodes.map(node => node.value));
     for (const sort of sorts) {
-      if (sort !== await work.getByLabel('排序字段', { exact: true }).inputValue())
-        await p.read(() => p.choose('排序字段', sort), suffix);
+      if (sort !== await work.getByLabel('排序列', { exact: true }).inputValue())
+        await p.read(() => p.choose('排序列', sort), suffix);
       await p.read(() => p.choose('排序方向', 'desc'), suffix);
       await p.read(() => p.choose('排序方向', 'asc'), suffix);
     }
@@ -85,7 +85,7 @@ async function exercise(p) {
     const facts = await work.locator('.er-insights').innerText(); assert(facts.includes('51'));
     const original = result;
     p.report.fact_drills = [];
-    for (const [name, focus, total] of [['晚完明细', 'finish_late', 0], ['未确认明细', 'unclosed', 51], ['工序明细', 'all', 66]]) {
+    for (const [name, focus, total] of [['晚完成明细', 'finish_late', 0], ['未确认明细', 'unclosed', 51], ['工序明细', 'all', 66]]) {
       const opened = await p.read(() => work.locator('.er-insights').getByRole('button', { name, exact: true }).click(), suffix);
       assert.deepEqual(opened.data.scope, { ...original.data.scope, focus });
       assert.equal(opened.data.topic, 'delivery'); assert.equal(opened.data.page.total, total);

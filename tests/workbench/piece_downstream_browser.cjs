@@ -63,7 +63,7 @@ async function main() {
         await page.getByLabel('本次完成数量', { exact: true }).fill('0');
         await page.getByLabel('实际开工', { exact: true }).fill(task.start.slice(0, 16));
         await page.getByLabel('本次实际完工', { exact: true }).fill(task.end.slice(0, 16));
-        await page.getByLabel('有效工时 (h)', { exact: true }).fill('0');
+        await page.getByLabel('有效工时（小时）', { exact: true }).fill('0');
         const submitted = page.waitForResponse(response => response.request().method() === 'POST'
           && new URL(response.url()).pathname.endsWith('/execution/tasks/' + task.task_ref + '/reports'));
         const reread = page.waitForResponse(response => response.request().method() === 'GET'
@@ -72,7 +72,7 @@ async function main() {
         const receipt = await submitted, refreshed = await reread;
         assert.equal(receipt.status(), 200); assert.equal(refreshed.status(), 200);
         assert.equal((await refreshed.json()).data.task.task_ref, task.task_ref);
-        await page.getByText('已保存并重读最新报工。', { exact: true }).waitFor();
+        await page.getByText('已保存并刷新最新报工。', { exact: true }).waitFor();
         report.automatic_reread = { write_url: receipt.url(), read_url: refreshed.url(), task_ref: task.task_ref };
         await detail.getByRole('button', { name: /^录入信息 / }).waitFor(); await flush();
         assert(!(await detail.locator('.field-detail-heading').innerText()).includes('已完工'));
@@ -105,7 +105,7 @@ async function main() {
       const csv = fs.readFileSync(file, 'utf8'); assert(csv.includes('单件编号') && csv.includes(piece) && csv.includes(task.task_ref));
       assert(!ready.expected.pieces.filter(p => p !== piece).some(p => csv.includes(p)));
       report.pieces_verified.push({ piece, task_ref: task.task_ref, operation_ref: task.operation_ref, plan_ref: task.plan_ref, csv: file });
-      await page.getByRole('button', { name: '现场报工', exact: true }).click(); await page.locator('.field-detail').waitFor(); await flush();
+      await page.getByRole('button', { name: '现场记录', exact: true }).click(); await page.locator('.field-detail').waitFor(); await flush();
     }
     await page.getByRole('button', { name: '清除现场筛选', exact: true }).click(); await flush();
     await page.getByLabel('搜索批次或工序', { exact: true }).fill(ready.expected.pieces[1]);

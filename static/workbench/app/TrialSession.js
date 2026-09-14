@@ -109,7 +109,7 @@
             patch({
               key: null,
               error,
-              note: '本次明确未写入。输入已保留，须重新读取并确认。'
+              note: '这次没有写入。填写内容已保留，请点「刷新」后重新确认。'
             });
           } catch (storageError) {
             patch({
@@ -121,7 +121,7 @@
           error,
           ...(key ? {
             key,
-            note: '结果尚未核实；只能查询原请求，不能重做。'
+            note: window.WorkbenchTerms.outcomes.pending('提交')
           } : {})
         });
         return false;
@@ -150,7 +150,7 @@
         const result = await A.lookup(key);
         if (result.state === 'committed') await confirmed(result.receipt, key);else patch({
           key,
-          note: '尚未观察到原请求回执；在途请求仍可能完成，未重新执行。'
+          note: window.WorkbenchTerms.outcomes.pending('提交')
         });
       } catch (error) {
         patch({

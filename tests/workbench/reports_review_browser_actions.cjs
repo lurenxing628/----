@@ -54,9 +54,9 @@ async function exercise(page, ready, report, state) {
     await p.step('topic-' + topic + '-all-sorts-pagination-export', async () => {
       if (topic !== 'delivery') await p.read(() => work.getByRole('tab', { name: label, exact: true }).click());
       assert.equal(p.data.data.topic, topic);
-      const options = await work.getByLabel('排序字段', { exact: true }).locator('option').evaluateAll(nodes => nodes.map(node => node.value));
+      const options = await work.getByLabel('排序列', { exact: true }).locator('option').evaluateAll(nodes => nodes.map(node => node.value));
       for (const option of options) {
-        if (option !== p.data.data.page.sort[0].field) await p.read(() => p.choose('排序字段', option));
+        if (option !== p.data.data.page.sort[0].field) await p.read(() => p.choose('排序列', option));
         await p.read(() => p.choose('排序方向', 'desc'));
         assert.equal(p.data.data.page.sort[0].direction, 'desc');
         await p.read(() => p.choose('排序方向', 'asc'));

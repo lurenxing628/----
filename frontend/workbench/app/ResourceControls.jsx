@@ -208,7 +208,7 @@
         if (dismiss && canClose()) entry.current.close();
       }}><div className="modal lg" role="dialog" aria-modal={suspended ? undefined : true} aria-labelledby={labelId || id} ref={ref} tabIndex={-1}>
       <div className="modal-head"><span className="modal-ico"><Icon name={icon} /></span><div style={{ minWidth: 0, overflowWrap: 'anywhere' }}><div className="modal-h2" id={labelId || id}>{title}</div></div>
-        <span style={{ marginLeft: 'auto' }}><Button className="modal-x" icon="x" aria-label="关闭" onClick={() => { if (canClose()) entry.current.close(); }} reason={locked ? '操作尚未核实，请保留当前页面。' : ''} /></span></div>
+        <span style={{ marginLeft: 'auto' }}><Button className="modal-x" icon="x" aria-label="关闭" onClick={() => { if (canClose()) entry.current.close(); }} reason={locked ? '操作结果还没确认，请保留当前页面。' : ''} /></span></div>
       {children}<div className="modal-f wb-actions" style={{ flexWrap: 'wrap', marginLeft: 0, width: '100%', boxSizing: 'border-box' }}>{footer}</div></div></div></ModalFocusParent.Provider>;
   }
   function relationLabels(entity, key) {
@@ -224,11 +224,10 @@
   }
   function Relation({ entity, field, onOpen }) {
     const items = relationLabels(entity, field);
-    return items.length ? <span className="chipline">{items.map(item => onOpen ? <Button key={item.ref} className="mini" icon="arrow-right" onClick={() => onOpen(item.ref)} style={{ whiteSpace: 'normal', overflowWrap: 'anywhere', textAlign: 'left' }}>{item.label || '关联名称未提供'}</Button> : <span className="chip" key={item.ref} style={{ whiteSpace: 'normal', overflowWrap: 'anywhere' }}>{item.label || '关联名称未提供'}</span>)}</span> : <span className="muted">{entity.relationships[field] === null || Array.isArray(entity.relationships[field]) ? '未绑定' : '待读取'}</span>;
+    return items.length ? <span className="chipline">{items.map(item => onOpen ? <Button key={item.ref} className="mini" icon="arrow-right" onClick={() => onOpen(item.ref)} style={{ whiteSpace: 'normal', overflowWrap: 'anywhere', textAlign: 'left' }}>{item.label || '名称未填写'}</Button> : <span className="chip" key={item.ref} style={{ whiteSpace: 'normal', overflowWrap: 'anywhere' }}>{item.label || '名称未填写'}</span>)}</span> : <span className="muted">{entity.relationships[field] === null || Array.isArray(entity.relationships[field]) ? '未选' : '未读取'}</span>;
   }
   function Choice({ adapter, field, value, original, onChange, disabled, onCatalog, catalogBusy, error }) {
     const [search, setSearch] = React.useState(''), [query, setQuery] = React.useState('');
-    const [searching, setSearching] = React.useState(false);
     const [page, setPage] = React.useState(1), [snapshot, setSnapshot] = React.useState(undefined);
     const [known, setKnown] = React.useState({});
     const id = React.useId();
@@ -236,7 +235,7 @@
     const invalid = errors.length > 0, describedBy = invalid ? id + '-error' : undefined;
     const S = window.APSResourceSession;
     const request = S.useQuery(async signal => {
-      if (typeof adapter.choices !== 'function') throw C.failure('暂时无法读取可选资料，请稍后重试。');
+      if (typeof adapter.choices !== 'function') throw C.failure('dependency not wired: adapter.choices');
       const scope = { query, page, size: 50 };
       if (field.category) scope.category = field.category;
       if (snapshot) scope.snapshot_ref = snapshot;
@@ -266,32 +265,97 @@
       else onChange(ref);
     }
     const changePage = next => { setSnapshot(response.meta.snapshot_ref); setPage(next); };
+    const runSearch = () => { setQuery(search); setPage(1); setSnapshot(undefined); request.reload(); };
     const options = Array.from(available.values());
     return <div className={'field wb-field' + (field.multiple ? ' full' : '') + (invalid ? ' err' : '')} style={{ minWidth: 0 }} data-field-path={'relationships.' + field.key}>
       <label htmlFor={id}>{field.label}</label>
-      {searching && <div className="rowact"><div className="search" style={{ maxWidth: '100%', flex: '1 1 auto', minWidth: 0 }}><span className="ic"><Icon name="search" /></span>
+      <div className="rowact"><div className="search" style={{ maxWidth: '100%', flex: '1 1 auto', minWidth: 0 }}><span className="ic"><Icon name="search" /></span>
         <input aria-label={'搜索' + field.label} value={search} disabled={disabled} onChange={event => setSearch(event.target.value)} onKeyDown={event => {
-          if (event.key === 'Enter') { event.preventDefault(); setQuery(search); setPage(1); setSnapshot(undefined); request.reload(); }
-        }} /></div><Button icon="search" aria-label={'执行' + field.label + '搜索'} disabled={disabled} onClick={() => { setQuery(search); setPage(1); setSnapshot(undefined); request.reload(); }} /></div>}
+          if (event.key === 'Enter') { event.preventDefault(); runSearch(); }
+        }} /></div><Button icon="search" aria-label={'执行' + field.label + '搜索'} disabled={disabled} onClick={runSearch} /></div>
       {field.multiple ? <div id={id} role="group" aria-label={field.label} aria-invalid={invalid || undefined} aria-describedby={describedBy} tabIndex={invalid ? -1 : undefined} className="fchips" style={{ maxHeight: 160, overflowY: 'auto' }}>
         {options.map(item => <label key={item.ref} className={'fchip' + (selected.includes(item.ref) ? ' on' : '')} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'normal', overflowWrap: 'anywhere' }}>
           <input type="checkbox" style={{ width: 15, height: 15, padding: 0, flex: 'none' }} checked={selected.includes(item.ref)}
             disabled={disabled || (!selected.includes(item.ref) && !selectable(item))} onChange={event => choose(item.ref, event.target.checked)} />
-          {item.label}{!selectable(item) ? '（停用 / 未核实）' : ''}</label>)}</div> :
+          {item.label}{!selectable(item) ? '（停用 / 未确认）' : ''}</label>)}</div> :
         <select id={id} value={value} disabled={disabled} aria-invalid={invalid || undefined} aria-describedby={describedBy} onChange={event => choose(event.target.value)}>
-          <option value="">未绑定</option>{options.map(item => <option key={item.ref} value={item.ref} disabled={!selectable(item) && item.ref !== value}>
-            {item.label}{!selectable(item) ? '（停用 / 未核实）' : ''}</option>)}</select>}
+          <option value="">未选</option>{options.map(item => <option key={item.ref} value={item.ref} disabled={!selectable(item) && item.ref !== value}>
+            {item.label}{!selectable(item) ? '（停用 / 未确认）' : ''}</option>)}</select>}
       {invalid && <span id={describedBy} className="wb-field-error">{Array.from(new Set(errors.map(row => row.message))).join(' ')}</span>}
       {request.loading && <span role="status" className="fhint">正在读取选项…</span>}
       <ErrorBox error={request.error} />
-      {request.error && <Button disabled={disabled} onClick={() => { setPage(1); setSnapshot(undefined); request.reload(); }}>重读选项</Button>}
-      {response && <div className="rowact" style={{ alignItems: 'center', flexWrap: 'wrap' }}>
-        <span className="fhint">{response.data.page.total} 项{response.data.page.pages > 1 ? ' · 第 ' + response.data.page.number + ' 页' : ''}</span>
-        <Button icon="search" aria-label={'查找' + field.label} aria-expanded={searching} disabled={disabled} onClick={() => setSearching(value => !value)} />
-        {response.data.page.pages > 1 && <><Button icon="chevron-left" aria-label={field.label + '上一页'} disabled={disabled || page <= 1} onClick={() => changePage(page - 1)} />
-        <Button icon="chevron-right" aria-label={field.label + '下一页'} disabled={disabled || page >= response.data.page.pages} onClick={() => changePage(page + 1)} /></>}</div>}
-      {field.catalog && <Button icon="plus" busy={catalogBusy} disabled={disabled} reason={typeof adapter.openCatalog !== 'function' ? '暂不支持维护' + field.label + '。' : ''} onClick={() => onCatalog(field, request.reload)}>维护{field.label}</Button>}
+      {request.error && <Button disabled={disabled} onClick={() => { setPage(1); setSnapshot(undefined); request.reload(); }}>刷新选项</Button>}
+      {response && <Pager page={response.data.page} unit="项" label={field.label} disabled={disabled} onPage={changePage} />}
+      {field.catalog && <Button icon="plus" busy={catalogBusy} disabled={disabled} reason={typeof adapter.openCatalog !== 'function' ? '维护' + field.label + '尚未开通。' : ''} onClick={() => onCatalog(field, request.reload)}>维护{field.label}</Button>}
     </div>;
   }
-  window.ResourceControls = { Icon, Button, ErrorBox, Issues, Status, Modal, Relation, relationLabels, Choice, Field, focusFirstInvalid };
+  // 列表基础件（EmptyState / Pager）和按钮、错误框放在同一层：Choice 用 Pager 翻页，Pager 又用 Button 画按钮，
+  // 分到两个文件就会互相依赖、无法排出加载顺序。WorkbenchListControls / WorkbenchControls 只是它们的既有入口名。
+  const titles = { empty: '暂无记录', filtered: '当前筛选没有匹配项', loading: '正在读取…', error: '读取未完成' };
+  function EmptyState({ kind = 'empty', title, hint, action, error }) {
+    if (!Object.prototype.hasOwnProperty.call(titles, kind)) throw new TypeError('empty_state_kind_unknown: ' + kind);
+    if ((kind === 'filtered' || kind === 'error') && !action) throw new TypeError('empty_state_requires_action: ' + kind);
+    return <div className={'wb-empty wb-empty-' + kind} role={kind === 'error' ? undefined : 'status'} aria-busy={kind === 'loading' || undefined}>
+      <p className="wb-empty-title">{title || titles[kind]}</p>
+      {hint && <p className="wb-empty-hint">{hint}</p>}
+      {kind === 'error' && error && <ErrorBox error={error} />}
+      {action && <div className="wb-empty-action">{action}</div>}</div>;
+  }
+  function Pager({ page = 1, pages, total, size, sizes, unit = '项', onPage, onSize, disabled, busy, label = '记录', sizeLabel,
+    mode = 'pages', hasPrevious, hasNext, onPrevious, onNext, showPageSelect = false, showPageJump = false, jumpLabel = '跳转页码', jumpActionLabel = '跳转' }) {
+    const data = page && typeof page === 'object' ? page : { number: page, pages, total, size };
+    const number = data.number || 1, count = data.total == null ? total : data.total, perPage = data.size || size;
+    const pageCount = data.pages || pages || (Number.isFinite(count) && perPage ? Math.max(1, Math.ceil(count / perPage)) : undefined);
+    const [jump, setJump] = React.useState(String(number)), [jumpError, setJumpError] = React.useState(false);
+    const jumpErrorId = React.useId();
+    React.useEffect(() => { setJump(String(number)); setJumpError(false); }, [number]);
+    if (!['pages', 'cursor'].includes(mode)) throw new TypeError('pager_mode_unknown: ' + mode);
+    if (onSize && (!Array.isArray(sizes) || !sizes.length || !sizes.every(value => Number.isSafeInteger(value) && value > 0))) {
+      throw new TypeError('pager_sizes_not_declared_by_domain_api');
+    }
+    const locked = disabled || busy;
+    const previous = mode === 'cursor' ? !!hasPrevious : number > 1;
+    const next = mode === 'cursor' ? !!hasNext : pageCount != null ? number < pageCount : !!hasNext;
+    const previousAction = onPrevious || (onPage && (() => onPage(number - 1)));
+    const nextAction = onNext || (onPage && (() => onPage(number + 1)));
+    function goToPage() {
+      const target = Number(jump);
+      if (!/^\d+$/.test(jump) || !Number.isSafeInteger(target) || target < 1 || target > pageCount) { setJumpError(true); return; }
+      setJumpError(false); onPage(target);
+    }
+    return <nav className="wb-pager" aria-label={label + '分页'} aria-busy={busy || undefined}>
+      <span className="wb-pager-summary">{mode === 'cursor' ? '按读取顺序翻页' : <>{count != null && <>共 {count} {unit} · </>}第 {number}{pageCount != null && <> / {pageCount}</>} 页</>}</span>
+      <div className="wb-pager-actions">
+        {mode === 'pages' && showPageSelect && pageCount && onPage && <label className="wb-pager-size">页码<select aria-label={label + '页码'} value={number} disabled={locked} onChange={event => onPage(Number(event.target.value))}>
+          {Array.from({ length: pageCount }, (_, index) => index + 1).map(value => <option key={value} value={value}>{value}</option>)}</select></label>}
+        {mode === 'pages' && showPageJump && pageCount && onPage && <div className="wb-pager-jump">
+          <input type="number" aria-label={jumpLabel} aria-invalid={jumpError || undefined} aria-describedby={jumpError ? jumpErrorId : undefined} min={1} max={pageCount} step={1} value={jump} disabled={locked}
+            onChange={event => { setJump(event.target.value); setJumpError(false); }} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); goToPage(); } }} />
+          <Button aria-label={jumpActionLabel} disabled={locked} onClick={goToPage}>跳转</Button>
+          {jumpError && <span id={jumpErrorId} role="status" className="wb-field-error">请输入 1 到 {pageCount} 之间的页码。</span>}</div>}
+        {onSize && <label className="wb-pager-size">每页<select aria-label={sizeLabel || label + '每页条数'} value={perPage} disabled={locked} onChange={event => onSize(Number(event.target.value))}>
+          {!sizes.includes(perPage) && <option value={perPage} disabled>{perPage} {unit}（当前）</option>}
+          {sizes.map(value => <option key={value} value={value}>{value} {unit}</option>)}</select></label>}
+        <Button icon="chevron-left" aria-label={label + '上一页'} disabled={locked || !previous || !previousAction} onClick={previousAction}>上一页</Button>
+        <Button icon="chevron-right" aria-label={label + '下一页'} disabled={locked || !next || !nextAction} onClick={nextAction}>下一页</Button>
+      </div></nav>;
+  }
+  // 时间轴缩放：计划甘特、候选甘特、值班台分析时间轴共用同一组按钮、叫法和快捷键（+ 或 = 放大，- 缩小，F 显示完整范围）。
+  // 上限由各时间轴按自己的绘制方式（DOM 或 canvas）和时间跨度申报，这里只负责一致地呈现和夹紧。
+  function timelineZoomStep(zoom, direction, max) { return Math.max(1, Math.min(max, direction > 0 ? zoom * 2 : zoom / 2)); }
+  function timelineZoomKey(event) {
+    if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey || event.target.closest('input,textarea,select,[role=dialog]')) return null;
+    if (event.key === '+' || event.key === '=') return 'in';
+    if (event.key === '-') return 'out';
+    if (event.key === 'f' || event.key === 'F') return 'fit';
+    return null;
+  }
+  function TimelineZoom({ zoom, max, scope = '', onZoom, onFit, disabled, className = 'btn', fitClassName }) {
+    const axis = scope + '时间轴', range = scope + '时间范围';
+    return <><Button icon="minus" className={className} aria-label={'缩小' + axis} title={'缩小' + axis + ' (-)'} disabled={disabled || zoom <= 1} onClick={() => onZoom(timelineZoomStep(zoom, -1, max))} />
+      <span className="wb-zoom-level">{zoom}×</span>
+      <Button icon="plus" className={className} aria-label={'放大' + axis} title={'放大' + axis + ' (+)'} disabled={disabled || zoom >= max} onClick={() => onZoom(timelineZoomStep(zoom, 1, max))} />
+      <Button icon="unfold-vertical" className={(fitClassName || className) + ' wb-zoom-fit'} aria-label={'显示完整' + range} title={'显示完整' + range + ' (F)'} disabled={disabled || zoom <= 1} onClick={onFit} /></>;
+  }
+  window.ResourceControls = { Icon, Button, ErrorBox, Issues, Status, Modal, Relation, relationLabels, Choice, Field, focusFirstInvalid, EmptyState, Pager, TimelineZoom, timelineZoomKey, timelineZoomStep };
 })();

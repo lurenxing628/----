@@ -68,7 +68,7 @@ async function unlocatable(h) {
   if (config.theme === 'dark') await page.getByRole('button', { name: '切换深色', exact: true }).click();
   const material = await h.detail('material', '齐套缺口');
   assert.equal(material.navigation[0].enabled, true);
-  await page.locator('[data-detail-ref]').getByRole('button', { name: '批次资料', exact: true }).click();
+  await page.locator('[data-detail-ref]').getByRole('button', { name: '批次管理', exact: true }).click();
   await page.waitForURL('**view=batches');
   assert.equal(await page.getByRole('dialog').count(), 0);
   report.exact_navigation = await page.evaluate(() => history.state.workbench);
@@ -89,9 +89,9 @@ async function unlocatable(h) {
   const original = await page.evaluate(() => history.state.workbench.context), originalURL = page.url();
   const open = async () => {
     await page.locator('[data-detail-ref]').getByRole('button', { name: '计划甘特', exact: true }).click();
-    await page.getByRole('dialog', { name: '原对象暂不可定位', exact: true }).waitFor();
+    await page.getByRole('dialog', { name: '这条记录暂时打不开', exact: true }).waitFor();
   };
-  const dialog = page.getByRole('dialog', { name: '原对象暂不可定位', exact: true });
+  const dialog = page.getByRole('dialog', { name: '这条记录暂时打不开', exact: true });
   await mark('WBP-DASH-014.unlocatable', async () => {
     report.dismissals = [];
     for (const mode of ['cancel', 'close', 'escape', 'backdrop']) {

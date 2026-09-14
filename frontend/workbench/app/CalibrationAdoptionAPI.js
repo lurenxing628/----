@@ -8,12 +8,12 @@
   const number = v => typeof v === 'number' && Number.isFinite(v) && v >= 0;
   const equal = (a, b) => canonical(a) === canonical(b);
   function canonical(v) { return JSON.stringify(v, (_, value) => object(value) ? Object.keys(value).sort().reduce((out, k) => { out[k] = value[k]; return out; }, {}) : value); }
-  function check(value, message = '采纳响应不完整或来源不一致，未确认采用。') { if (!value) throw new Error(message); }
+  function check(value, message = '读到的采用结果不完整或来源不一致，没有确认采用。') { if (!value) throw new Error(message); }
   function input(value, confirmed = false) {
     check(object(value) && Object.keys(value).length === (confirmed ? 3 : 2) && (!confirmed || value.confirm === true) && typeof value.reason === 'string' && value.reason.trim()
-      && Array.from(value.reason).length <= 2000 && !value.reason.includes('\0'), '请填写1至2000字的采用原因。');
+      && Array.from(value.reason).length <= 2000 && !value.reason.includes('\0'), '请填写 1 到 2000 字的采用原因。');
     check(typeof value.declared_operator === 'string' && value.declared_operator.trim() && Array.from(value.declared_operator).length <= 100
-      && !value.declared_operator.includes('\0'), '请填写1至100字的声明人。');
+      && !value.declared_operator.includes('\0'), '请填写 1 到 100 字的经办人。');
     return { reason: value.reason.trim(), declared_operator: value.declared_operator.trim(), ...(confirmed ? { confirm: true } : {}) };
   }
   const bindingFields = ['template_operation_ref', 'template_revision', 'template_snapshot', 'part_ref', 'part_no', 'part_name', 'sequence', 'operation_label', 'source',
@@ -39,7 +39,7 @@
       && d.template_operation_ref === original.template_operation_ref && d.generated_at === m.as_of
       && d.effect_scope === 'future_template_use_only' && equal(d.input, input(intent)) && object(v) && typeof v.can_adopt === 'boolean'
       && issues(v.issues) && object(c) && object(c.capabilities) && issues(c.blocked_reasons));
-    check(equal(binding(d.suggestion), binding(original)), '模板、旧定额或样本已变化，请明确刷新所选记录后重新预览。');
+    check(equal(binding(d.suggestion), binding(original)), '模板、原定额或完工记录已变化，请点「刷新所选模板」后重新预检。');
     const row = d.suggestion;
     check(row.suggestion_ref === row.template_operation_ref && row.operation_ref === row.template_operation_ref && Array.isArray(d.samples)
       && d.samples.length === row.sample_count && d.samples.every((sample, i) => object(sample) && sample.sample_ref === row.sample_refs[i]
@@ -72,7 +72,7 @@
     const e = value && value.error;
     const valid = object(value) && value.ok === false && [false, 'unknown'].includes(value.committed) && object(e) && text(e.code) && text(e.message)
       && Array.isArray(e.fields) && typeof e.retryable === 'boolean' && typeof e.request_ref === 'string' && /^[a-f0-9]{32}$/.test(e.request_ref);
-    const error = new Error(valid ? e.message : '采纳结果尚未核实，请保留原请求。'); error.code = valid ? e.code : 'invalid_response'; error.status = status;
+    const error = new Error(valid ? e.message : window.WorkbenchTerms.outcomes.pending('采用')); error.code = valid ? e.code : 'invalid_response'; error.status = status;
     if (valid && value.committed === false && [400, 404, 409, 422, 503].includes(status) && !['request_key_conflict', 'receipt_not_found'].includes(e.code)) rejected.add(error);
     error.notFound = valid && value.committed === false && status === 404 && e.code === 'receipt_not_found';
     return error;
@@ -86,7 +86,7 @@
         const response = await fetcher(BASE + path, { method: body === undefined ? 'GET' : 'POST', credentials: 'same-origin', redirect: 'error', cache: 'no-store', signal: controller.signal,
           ...(body === undefined ? {} : { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }) });
         if (response.status === 404 && !(response.headers.get('Content-Type') || '').includes('application/json') && path.endsWith('/adopt-preview'))
-          throw new Error('采纳接口尚未由主线启用；仍可核对样本和导出，当前不能采用。');
+          throw new Error(window.WorkbenchTerms.outcomes.unavailable + '仍可以核对完工记录和导出。');
         check((response.headers.get('Content-Type') || '').split(';')[0].toLowerCase() === 'application/json');
         const value = await response.json(); if (!response.ok) throw failure(value, response.status);
         check(response.status === 200); return value;

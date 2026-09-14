@@ -10,7 +10,7 @@ const canonical = value => Array.isArray(value) ? '[' + value.map(canonical).joi
   ? '{' + Object.keys(value).sort().map(key => JSON.stringify(key) + ':' + canonical(value[key])).join(',') + '}' : JSON.stringify(value);
 const snapshot = scope => 'mock-scope-' + hash(canonical(scope));
 const labels = { part: '零件', route: '工艺路线', opType: '工种', equipment: '设备', personnel: '人员', material: '物料', supplier: '供应商', calendar: '日历配置' };
-const statuses = { attention: '待维护', checked: '已检查', inactive: '停用', unknown: '无法核实' };
+const statuses = { attention: '待维护', checked: '已检查', inactive: '停用', unknown: '未检查' };
 function match(fixture, scope) {
   const rows = fixture[scope.view].filter(row => (scope.domain === 'all' || scope.domain === row.domain)
     && (scope.status === 'all' || (scope.status === 'attention' ? row.issue_count > 0 : scope.status === row.status))
@@ -46,8 +46,8 @@ function setup(report, output) {
   const scripts = shared.map(file => '/static/' + file).concat(compiled).map(url => '<script src="' + url + '"></script>').join('');
   const css = manifest.styles.map(file => '<link rel="stylesheet" href="/static/' + file + '">').join('') + sourceStyles.map(row => '<style>' + row.code + '</style>').join('');
   const harness = `let mounted; window.mountOverview = function(spec) { if(mounted)mounted.unmount(); window.fixtureState={navigations:[],spec}; document.documentElement.dataset.theme=spec.theme || 'light';
-    mounted=ReactDOM.createRoot(document.getElementById('root')); const onNavigate=spec.noNavigation ? undefined : (view,context)=>{fixtureState.navigations.push({view,context});if(spec.navigationFailure)throw new Error('目标实体已不存在，未按同号替代。');};
-    mounted.render(React.createElement(AppShell,{active:'basedata',theme:spec.theme||'light',operations:true,showCapsule:false,title:'主数据总览',onNav:()=>{}},React.createElement(MasterOverviewWorkspace,{onNavigate,initialContext:spec.initialContext})));};`;
+    mounted=ReactDOM.createRoot(document.getElementById('root')); const onNavigate=spec.noNavigation ? undefined : (view,context)=>{fixtureState.navigations.push({view,context});if(spec.navigationFailure)throw new Error('这条资料已不存在，没有换成同号的其他记录。');};
+    mounted.render(React.createElement(AppShell,{active:'basedata',theme:spec.theme||'light',operations:true,showCapsule:false,title:'资料总览',onNav:()=>{}},React.createElement(MasterOverviewWorkspace,{onNavigate,initialContext:spec.initialContext})));};`;
   const html = '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' + css + '</head><body class="aps-workbench"><div id="root"></div>' + scripts + '<script>' + harness + '</script></body></html>';
   const state = { spec: {}, requests: [] };
   async function handle(req, res) {
@@ -62,14 +62,14 @@ function setup(report, output) {
       const failure = message => send({ ok: false, committed: false, error: { code: 'snapshot_stale', message } }, 409);
       if (spec.delay && url.pathname === base) await new Promise(resolve => setTimeout(resolve, spec.delay));
       if (spec.failure) { failure('本机读取失败，未使用样例替代。'); return; }
-      if (spec.stale && token || token && token !== snapshot(scope)) { failure('筛选范围或数据已经变化，请明确刷新后再继续。'); return; }
+      if (spec.stale && token || token && token !== snapshot(scope)) { failure('数据已更新，请刷新后重试。刚才的选择已保留。'); return; }
       if (url.pathname === base) { send(envelope(pageResult(fixture, scope, Number(url.searchParams.get('page') || 1), spec), snapshot(scope))); return; }
       if (url.pathname.endsWith('/export')) {
         const rows = match(fixture, scope); const csv = '\ufeff"编号","名称"\r\n' + rows.map(row => [row.business_code, row.label].map(value => '"' + value.replace(/"/g, '""') + '"').join(',')).join('\r\n');
         res.writeHead(200, { 'Content-Type': 'text/csv;charset=utf-8', 'X-Workbench-Snapshot-Ref': spec.badExport ? 'wrong-snapshot' : token, 'X-Workbench-Row-Count': String(rows.length) }); res.end(csv); return;
       }
       const [, mode, domain, ref] = url.pathname.slice(base.length).split('/'), entity = fixture.entities.find(row => row.ref === ref && row.domain === domain);
-      if (!entity) { send({ ok: false, committed: false, error: { code: 'entity_not_found', message: '目标实体已不存在，未按同号替代。' } }, 404); return; }
+      if (!entity) { send({ ok: false, committed: false, error: { code: 'entity_not_found', message: '这条资料已不存在，没有换成同号的其他记录。' } }, 404); return; }
       if (mode === 'locate') {
         const next = { ...defaults, view: 'entities', domain, sort: 'business_code', direction: 'asc', size: scope.size }, rows = match(fixture, next);
         const data = pageResult(fixture, next, Math.floor(rows.findIndex(row => row.ref === ref) / next.size) + 1, spec); data.selected = { domain, entity_ref: ref };

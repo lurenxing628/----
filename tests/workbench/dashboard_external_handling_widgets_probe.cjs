@@ -81,7 +81,7 @@ async function select(page, label, option) {
 }
 async function register(page) {
   const targets = '/api/workbench/v1/outsourcing/targets';
-  await action(page, targets, () => page.getByRole('button', { name: '新建外协登记', exact: true }).click());
+  await action(page, targets, () => page.getByRole('button', { name: '新增外协登记', exact: true }).click());
   await dialog(page).getByRole('radio', { name: '合并发出', exact: true }).check();
   for (const code of ['DN-O01', 'DN-O02']) {
     while (!await dialog(page).getByRole('button', { name:'工序上一页',exact:true }).isDisabled())
@@ -92,15 +92,15 @@ async function register(page) {
   }
   await dialog(page).getByLabel('实际发出', { exact: true }).fill('2026-09-07T09:00');
   await dialog(page).getByLabel('计划回厂', { exact: true }).fill('2026-09-09T12:00');
-  await dialog(page).getByLabel('外协声明人', { exact: true }).fill('物流员张工');
+  await dialog(page).getByLabel('外协经办人', { exact: true }).fill('物流员张工');
   await dialog(page).getByLabel('外协核实原因', { exact: true }).fill('DX 实际合并发出，原单 WX-20260907-01');
   return saveLogistics(page, true);
 }
 async function saveLogistics(page, dashboard = false) {
-  await action(page, logistics + '/preview', () => dialog(page).getByRole('button', { name: '预览核对', exact: true }).click(), 'POST');
+  await action(page, logistics + '/preview', () => dialog(page).getByRole('button', { name: '预检核对', exact: true }).click(), 'POST');
   const result = await action(page, logistics, () => dialog(page).getByRole('button', { name: '确认保存外协登记', exact: true }).click(), 'POST');
-  await dialog(page).getByText('已确认：外协登记已保存，回厂不等于工序完工。', { exact: true }).waitFor();
-  await action(page, dashboard ? base : logistics, () => dialog(page).getByRole('button', { name: '完成核实并刷新', exact: true }).click());
+  await dialog(page).getByText('外协登记已完成。回厂不等于工序完工。', { exact: true }).waitFor();
+  await action(page, dashboard ? base : logistics, () => dialog(page).getByRole('button', { name: '完成', exact: true }).click());
   return result.data.outsourcing_ref;
 }
 async function choose(page, ref) {
@@ -119,7 +119,7 @@ async function fillHandling(page, status, complete) {
   await dialog(page).getByLabel('责任人', { exact: true }).fill('外协跟单员李工');
   await dialog(page).getByLabel('责任期限', { exact: true }).fill('2026-09-11');
   await dialog(page).getByLabel('处置行动', { exact: true }).fill('核实炉批，协调加急运输并跟进检验');
-  await dialog(page).getByLabel('原因 / 核实备注', { exact: true }).fill('核对原登记与供应商签认，不替代回厂登记');
+  await dialog(page).getByLabel('原因说明', { exact: true }).fill('核对原登记与供应商签认，不替代回厂登记');
   if (complete) {
     await dialog(page).getByLabel('完成时间', { exact: true }).fill('2026-09-10T11:00:17');
     await dialog(page).getByLabel('具体完成结果', { exact: true }).fill(complete.result);
@@ -130,8 +130,8 @@ async function submit(page, ref, reopen = false, status = 200) {
   return action(page, base + '/items/' + ref + '/' + (reopen ? 'reopen' : 'transition'),
     () => dialog(page).getByRole('button', { name: reopen ? '确认独立重开' : '提交处置', exact: true }).click(), 'POST', status);
 }
-async function finish(page) { await dialog(page).getByText(/^已确认：/).waitFor(); return action(page, base, () => dialog(page).getByRole('button', { name: '完成核实并刷新', exact: true }).click()); }
-async function reload(page) { return action(page, base, () => page.getByRole('button', { name: '明确刷新值班台', exact: true }).click()); }
+async function finish(page) { await dialog(page).getByText(/^处置已完成。/).waitFor(); return action(page, base, () => dialog(page).getByRole('button', { name: '完成', exact: true }).click()); }
+async function reload(page) { return action(page, base, () => page.getByRole('button', { name: '刷新值班台', exact: true }).click()); }
 async function geometry(page) {
   const g = await page.evaluate(() => {
     const w = document.querySelector('.dashboard-live'), d = w.querySelector('[role=dialog]'), rect = n => { const r = n.getBoundingClientRect(); return { x:r.x,y:r.y,right:r.right,bottom:r.bottom }; };
@@ -164,18 +164,18 @@ async function happy(viewport, theme) {
   await timeInput.click({ position:{ x:timeBounds.width - 12,y:timeBounds.height / 2 } });
   const picker = page.locator('.wb-control-popup'); await picker.getByRole('button', { name:'增加秒', exact:true }).click();
   const bounds = await picker.boundingBox(); assert(bounds.x >= 0 && bounds.y >= 0 && bounds.x + bounds.width <= viewport.width && bounds.y + bounds.height <= viewport.height);
-  await shot(page, name + '-datetime-control'); await picker.getByRole('button', { name:'确定', exact:true }).click();
+  await shot(page, name + '-datetime-control'); await picker.getByRole('button', { name:'确认', exact:true }).click();
   assert.equal(await dialog(page).getByLabel('完成时间', { exact:true }).inputValue(), '2026-09-10T11:00:18'); report.boundaries.unified_datetime = true;
   fault = 'after'; blockReceipts = true;
   await dialog(page).getByRole('button', { name: '提交处置', exact: true }).click();
-  await dialog(page).getByText('结果尚未确认，仅查询原请求。', { exact: true }).waitFor();
+  await dialog(page).getByText('上次处置的结果还没查到，可能已经生效。请点「查询结果」，不要重复提交。', { exact: true }).waitFor();
   const pending = await page.evaluate(() => window.DashboardSession.read()); assert.equal(pending.phase, 'pending'); assert.equal(pending.item_ref, ref);
   assert(!JSON.stringify(pending).includes('write_token')); await shot(page, name + '-original-key-unknown');
   const savedState = await context.storageState(); await context.close(); await browser.close(); browser = await launch(); report.restarts++;
   fault = ''; blockReceipts = false; ({ context, page } = await fresh(name, viewport, theme, savedState));
-  await page.getByRole('button', { name: '查看已确认回执', exact: true }).waitFor();
+  await page.getByRole('button', { name: '查看已确认的结果', exact: true }).waitFor();
   assert.equal((await page.evaluate(() => window.DashboardSession.read())).request_key, pending.request_key);
-  await page.getByRole('button', { name: '查看已确认回执', exact: true }).click(); await finish(page);
+  await page.getByRole('button', { name: '查看已确认的结果', exact: true }).click(); await finish(page);
   const closed = await choose(page, ref); assert.equal(closed.handling.status, 'closed'); assert.equal(closed.risk.active, true);
   assert.equal(closed.source.receipt.returned, null); assert.equal(closed.source.receipt.confirmedState, 'in_transit');
   const summary = report.responses.filter(r => r.path === base).pop().payload.data.categories.external;
@@ -189,18 +189,18 @@ async function happy(viewport, theme) {
   }, closed);
   await detail(page).scrollIntoViewIfNeeded(); await shot(page, name + '-closed-risk-active');
   await action(page, base, () => select(page, '处置状态', '已关闭')); await choose(page, ref);
-  await detail(page).getByRole('button', { name:'原外协物流登记', exact:true }).click();
+  await detail(page).getByRole('button', { name:'外协物流登记', exact:true }).click();
   assert.equal(await page.locator('[data-dashboard-outsourcing]').getAttribute('data-return-item'), ref);
   await page.locator('[data-outsourcing-detail="' + outsourcingRef + '"]').waitFor();
-  await page.getByRole('button', { name:'返回原值班台条目', exact:true }).click();
+  await page.getByRole('button', { name:'返回值班台条目', exact:true }).click();
   assert.equal(await detail(page).getAttribute('data-detail-ref'), ref); assert.equal(await page.getByLabel('处置状态', { exact:true }).inputValue(), 'closed');
-  await detail(page).getByRole('button', { name:'原外协物流登记', exact:true }).click();
+  await detail(page).getByRole('button', { name:'外协物流登记', exact:true }).click();
   await page.locator('[data-outsourcing-detail="' + outsourcingRef + '"]').getByRole('button', { name:'核实 / 更正登记', exact:true }).click();
   await dialog(page).getByLabel('实际回厂', { exact:true }).fill('2026-09-10T11:40'); await select(page, '外协确认状态', '已回厂');
-  await dialog(page).getByLabel('外协声明人', { exact:true }).fill('收货员王工');
+  await dialog(page).getByLabel('外协经办人', { exact:true }).fill('收货员王工');
   await dialog(page).getByLabel('外协核实原因', { exact:true }).fill('原批次两件回厂，收货单 DX-RETURN-01，不登记工序完工');
-  await saveLogistics(page); await page.getByRole('button', { name:'返回原值班台条目', exact:true }).click();
-  await page.getByText(/原物流登记已更新/).waitFor(); assert.equal(await detail(page).getAttribute('data-detail-ref'), ref);
+  await saveLogistics(page); await page.getByRole('button', { name:'返回值班台条目', exact:true }).click();
+  await page.getByText(/外协物流登记已更新/).waitFor(); assert.equal(await detail(page).getAttribute('data-detail-ref'), ref);
   const returnedList = await reload(page); assert.equal(returnedList.data.categories.external.returned_count, 1); assert.equal(returnedList.data.categories.external.known_risk_count, 0);
   const returned = await choose(page, ref); assert.equal(returned.risk.active, false); assert.equal(returned.handling.history_count, 3); assert.equal(returned.handling.status, 'closed');
   assert.equal(returned.handling.completion_evidence, complete.result);
@@ -216,8 +216,8 @@ async function happy(viewport, theme) {
   assert.equal(histories.data.history.items.find(h => h.sequence === 3).after.completion_evidence, complete.result);
   await page.locator('[data-history-sequence="4"]').scrollIntoViewIfNeeded(); await geometry(page); await shot(page, name + '-reopened');
   await page.getByRole('button', { name:'历史下一页', exact:true }).click(); await page.locator('[data-history-sequence="1"]').waitFor();
-  await page.getByRole('tab', { name:'处置清单', exact:true }).click(); await detail(page).getByRole('button', { name:'原外协物流登记', exact:true }).click();
-  await page.getByRole('button', { name:'返回原值班台条目', exact:true }).click(); await history(page, ref); await page.locator('[data-history-sequence="1"]').waitFor();
+  await page.getByRole('tab', { name:'处置清单', exact:true }).click(); await detail(page).getByRole('button', { name:'外协物流登记', exact:true }).click();
+  await page.getByRole('button', { name:'返回值班台条目', exact:true }).click(); await history(page, ref); await page.locator('[data-history-sequence="1"]').waitFor();
   report.boundaries.original_navigation_and_history_page = true;
   report.cases.push({ name, viewport, theme, item_ref:ref, outsourcing_ref:outsourcingRef, unknown_key:pending.request_key, completion_evidence:complete.result, evidence:complete.evidence, reopen_reason:reason });
   await context.close();
@@ -225,7 +225,7 @@ async function happy(viewport, theme) {
 async function boundaries() {
   for (const name of ['current30', 'missing']) {
     const { context, page, data } = await fresh(name); assert.equal(data.data.categories.external.handling_supported, false);
-    await page.getByText(/处置数量未知，未显示为零/).waitFor(); assert.equal(await page.getByRole('tab', { name:'处置历史', exact:true }).count(), 0);
+    await page.getByText(/处置数量未知，这里不会按零显示/).waitFor(); assert.equal(await page.getByRole('tab', { name:'处置历史', exact:true }).count(), 0);
     await register(page); assert.equal(await page.locator('tr[data-category="external"]').count(), 0);
     if (name === 'missing') { assert.equal(data.data.categories.external.handling_state, 'unavailable'); assert.equal(data.data.categories.external.handling_count, null); }
     await geometry(page); await shot(page, name + '-unsupported'); report.boundaries[name] = true; await context.close();
@@ -236,10 +236,10 @@ async function boundaries() {
     if (name === 'unknown') {
       await submit(page, ref); await finish(page); assert.equal((await context.request.post(origin + '/__dx_fixture__/mutate')).status(), 200);
       await reload(page); const unknown = await choose(page, ref); assert.equal(unknown.risk.active, null); assert.equal(unknown.source_state, 'not_currently_evaluated');
-      const navigation = detail(page).getByRole('button', { name:/^原外协物流登记/ });
+      const navigation = detail(page).getByRole('button', { name:/^外协物流登记/ });
       const beforeNavigation = report.responses.length;
       assert.equal(await navigation.isEnabled(), true); await navigation.click();
-      const confirmation = page.getByRole('dialog', { name:'原对象暂不可定位', exact:true });
+      const confirmation = page.getByRole('dialog', { name:'这条记录暂时打不开', exact:true });
       await confirmation.getByText(unknown.navigation.find(n => n.view === 'outsourcing').reason, { exact:true }).waitFor();
       assert(!(await confirmation.innerText()).includes(ref), '内部编号默认收起');
       const originalReference = confirmation.locator('details.wb-ref').filter({ hasText: ref });
@@ -255,14 +255,14 @@ async function boundaries() {
       if (name === 'stale') assert.equal((await context.request.post(origin + '/__dx_fixture__/mutate')).status(), 200);
       if (name === 'lost') fault = 'before'; if (name === 'malformed') { fault = 'malformed'; blockReceipts = true; }
       if (name === 'lost') await dialog(page).getByRole('button', { name:'提交处置', exact:true }).click(); else await submit(page, ref, false, name === 'stale' ? 409 : 200);
-      if (name === 'stale') { await page.getByText('本次明确未写入。', { exact:true }).waitFor(); report.boundaries.stale_rejected = true; }
+      if (name === 'stale') { await page.getByText('上次处置没有生效，填写内容已保留。改好后重新提交。', { exact:true }).waitFor(); report.boundaries.stale_rejected = true; }
       else {
-        await dialog(page).getByText('结果尚未确认，仅查询原请求。', { exact:true }).waitFor();
+        await dialog(page).getByText('上次处置的结果还没查到，可能已经生效。请点「查询结果」，不要重复提交。', { exact:true }).waitFor();
         const pending = await page.evaluate(() => window.DashboardSession.read()); assert.equal(pending.phase, 'pending');
         assert.equal(await dialog(page).getByRole('button', { name:'提交处置', exact:true }).count(), 0);
-        if (name === 'lost') { await page.getByText(/尚未查到原回执/).waitFor(); await page.reload(); await page.getByRole('button', { name:'核实原处置请求', exact:true }).click();
+        if (name === 'lost') { await page.getByText(/还是没有查到结果/).waitFor(); await page.reload(); await page.getByRole('button', { name:'查询上次处置结果', exact:true }).click();
           assert.equal((await page.evaluate(() => window.DashboardSession.read())).request_key, pending.request_key); report.boundaries.not_recorded_original_key = true; }
-        else { fault = ''; blockReceipts = false; await page.getByRole('button', { name:'查询原回执', exact:true }).click(); await dialog(page).getByText(/^已确认：/).waitFor(); report.boundaries.malformed_not_success = true; }
+        else { fault = ''; blockReceipts = false; await page.getByRole('button', { name:'查询结果', exact:true }).click(); await dialog(page).getByText(/^处置已完成。/).waitFor(); report.boundaries.malformed_not_success = true; }
       }
     }
     await shot(page, name); fault = ''; blockReceipts = false; await context.close();

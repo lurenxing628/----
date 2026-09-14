@@ -17,8 +17,8 @@
   const names = {
     batch_label: '批次',
     planned_end: '计划完工',
-    finish_deviation_minutes: '完工偏差',
-    effective_processing_hours: '有效工时',
+    finish_deviation_minutes: '完工偏差（分钟）',
+    effective_processing_hours: '有效工时（小时）',
     event_time: '实际结束或事件时间',
     quantity_done: '本次数量或旧登记量',
     resource_label: '资源',
@@ -26,7 +26,17 @@
     event_count: '旧现场事件数',
     data_quality: '完整性'
   };
-  const focuses = [['all', '全部工序'], ['unreported', '暂无现场反馈'], ['unclosed', '到期未确认完成'], ['late_open', '超时未确认完成'], ['finish_late', '已确认晚完'], ['complete', '已确认整道完工'], ['data_gaps', '数据待补']];
+  // 「清除某个筛选」按钮的可读名字，不用内部键名。
+  const scopeNames = {
+    plan_finish_date_from: '计划完工起日',
+    plan_finish_date_to: '计划完工止日',
+    batch_ref: '批次',
+    query: '搜索',
+    resource_type: '资源类型',
+    resource_ref: '关联资源',
+    focus: '分析范围'
+  };
+  const focuses = [['all', '全部工序'], ['unreported', '待报工'], ['unclosed', '到期未确认完成'], ['late_open', '超时未确认完成'], ['finish_late', '已确认晚完成'], ['complete', '已确认整道完工'], ['data_gaps', '数据待补']];
   function Styles() {
     return null;
   }
@@ -48,7 +58,7 @@
       const rows = options(kind).slice();
       if (selected && selected !== 'unassigned' && !rows.some(row => row.ref === selected)) rows.unshift({
         ref: selected,
-        label: '当前范围外的已选对象'
+        label: '当前范围外的已选项'
       });
       return rows.map(row => /*#__PURE__*/React.createElement("option", {
         value: row.ref,
@@ -146,7 +156,7 @@
       })
     }, /*#__PURE__*/React.createElement("option", {
       value: ""
-    }, "\u5168\u90E8\u5BF9\u8C61"), /*#__PURE__*/React.createElement("option", {
+    }, "\u5168\u90E8\u5173\u8054\u8D44\u6E90"), /*#__PURE__*/React.createElement("option", {
       value: "unassigned"
     }, "\u672A\u586B\u5199"), selectOptions(draft.resource_type, draft.resource_ref))), /*#__PURE__*/React.createElement("label", null, "\u5206\u6790\u8303\u56F4", /*#__PURE__*/React.createElement("select", {
       "aria-label": "\u5206\u6790\u8303\u56F4",
@@ -163,7 +173,7 @@
       key: key
     }, /*#__PURE__*/React.createElement("span", null, key === 'query' ? item : key === 'focus' ? (focuses.find(row => row[0] === item) || [null, item])[1] : key.endsWith('_ref') ? Object.values(choices).flat().find(row => row.ref === item)?.label || '已选资源' : item === 'machine' ? '设备' : item === 'operator' ? '人员' : item), /*#__PURE__*/React.createElement("button", {
       type: "button",
-      "aria-label": '清除 ' + key,
+      "aria-label": '清除' + (scopeNames[key] || '筛选项'),
       onClick: () => {
         const next = {
           ...value
@@ -236,7 +246,7 @@
     onChange
   }) {
     return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("label", null, "\u6392\u5E8F", /*#__PURE__*/React.createElement("select", {
-      "aria-label": "\u6392\u5E8F\u5B57\u6BB5",
+      "aria-label": "\u6392\u5E8F\u5217",
       value: state.sort,
       onChange: event => onChange({
         sort: event.target.value,

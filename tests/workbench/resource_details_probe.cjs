@@ -73,7 +73,7 @@ async function run(page,state,name,fn){let passed=false;try{await fn();await sho
       assert(await edit.isDisabled());
       const reason=await edit.getAttribute('aria-describedby');assert(reason,'Read-only edit must identify its visible reason');
       const description=page.locator('[id="'+reason+'"]');
-      assert(await description.isVisible());assert.equal(await description.innerText(),'尚未读取可用于保存的资料，请重新读取最新资料。');
+      assert(await description.isVisible());assert.equal(await description.innerText(),'还没读到可以保存的资料，请点「刷新最新资料」后重试。');
       assert.equal(await page.getByRole('dialog').locator('input[name="label"]').count(),0);
       assert.equal(await page.locator('.wb-resource-association[aria-label="关联设备"] .wb-resource-relation').count(),5);
     });
@@ -88,7 +88,7 @@ async function run(page,state,name,fn){let passed=false;try{await fn();await sho
       assert.equal(await page.evaluate(()=>detailFixture.requests.filter(item=>item.relation==='machines').at(-1).snapshot_ref),'detail-fixture');
       await page.evaluate(()=>{detailFixture.stale=true;});await page.getByRole('button',{name:'关联设备下一页',exact:true}).click();await page.getByText('关联资料已经变化',{exact:true}).waitFor();
       assert.equal(await page.locator('.wb-resource-association[aria-label="关联设备"] .wb-resource-relation').count(),0);
-      await page.getByRole('button',{name:'重新读取关联设备',exact:true}).click();await page.getByRole('button',{name:/^查看设备 EQ-00 /}).waitFor();
+      await page.getByRole('button',{name:'刷新关联设备',exact:true}).filter({hasText:'刷新关联设备'}).click();await page.getByRole('button',{name:/^查看设备 EQ-00 /}).waitFor();
       const search=page.getByRole('searchbox',{name:'搜索关联设备',exact:true});await search.click();await search.pressSequentially('EQ-11');await search.press('Enter');
       await page.getByRole('button',{name:/^查看设备 EQ-11 /}).waitFor();assert.equal(await page.locator('.wb-resource-association[aria-label="关联设备"] .wb-resource-relation').count(),1);
     });

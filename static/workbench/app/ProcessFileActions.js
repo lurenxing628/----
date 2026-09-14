@@ -70,7 +70,7 @@
       let body;
       if (importing) {
         await M.validateFile(job.file, job.format);
-        if (job.file.size > 16 * 1024 * 1024) throw C.failure('文件超过 16 MiB，请缩小文件后再预检。');
+        if (job.file.size > 16 * 1024 * 1024) throw C.failure('文件超过 16 MB，请缩小文件后再预检。');
         body = new FormData();
         body.append('file', job.file);
         body.append('format', job.format);
@@ -95,7 +95,7 @@
     window.WorkbenchGuards.useDirtyGuard({
       dirty,
       locked: visible.locked,
-      message: label + '导入文件尚未保存或原请求仍待核实。'
+      message: label + '导入文件尚未保存，上次操作的结果也还没查到。'
     });
     React.useEffect(() => {
       if (!done || kind === 'hours' || notified.current === command.result.receipt_ref) return;
@@ -144,7 +144,7 @@
       if (controlsDisabled || recovery || !command.reset()) return;
       invalidate();
       if (typeof adapter.filePreview !== 'function') {
-        setError(C.failure('工艺文件预检接口尚未接入。'));
+        setError(C.failure('dependency not wired: window.APSProcessAPI.filePreview'));
         return;
       }
       if (importing && !file) {
@@ -184,7 +184,7 @@
     async function downloadFile(template) {
       if (controlsDisabled || !template && (!data || reason)) return;
       if (typeof adapter.fileDownload !== 'function') {
-        setError(C.failure('工艺文件下载接口尚未接入。'));
+        setError(C.failure('dependency not wired: window.APSProcessAPI.fileDownload'));
         return;
       }
       if (!template && data.format !== format) {
@@ -247,7 +247,7 @@
       }, importing ? allSkipped ? '确认跳过并记录结果' : '确认导入' : '下载文件'))
     }, /*#__PURE__*/React.createElement("div", {
       className: "modal-b scroll rm-body"
-    }, recovery && !done && /*#__PURE__*/React.createElement("p", null, "\u6B63\u5728\u6838\u5B9E\u539F\u6587\u4EF6\u8BF7\u6C42\uFF0C\u4E0D\u4F1A\u91CD\u65B0\u4E0A\u4F20\u6216\u518D\u6B21\u5BFC\u5165\u3002"), !recovery && !done && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+    }, recovery && !done && /*#__PURE__*/React.createElement("p", null, "\u6B63\u5728\u67E5\u8BE2\u4E0A\u6B21\u6587\u4EF6\u64CD\u4F5C\u7684\u7ED3\u679C\uFF0C\u4E0D\u4F1A\u91CD\u65B0\u4E0A\u4F20\u6216\u518D\u6B21\u5BFC\u5165\u3002"), !recovery && !done && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
       className: "rm-format"
     }, /*#__PURE__*/React.createElement("span", {
       className: "seclabel"
@@ -347,7 +347,7 @@
       role: "status"
     }, reason), download.name && /*#__PURE__*/React.createElement("p", {
       role: "status"
-    }, "\u5DF2\u4EA4\u7ED9\u6D4F\u89C8\u5668\u4E0B\u8F7D\uFF1A", download.name), importing && /*#__PURE__*/React.createElement(window.ResourceForms.Feedback, {
+    }, "\u5DF2\u5F00\u59CB\u4E0B\u8F7D\uFF1A", download.name), importing && /*#__PURE__*/React.createElement(window.ResourceForms.Feedback, {
       command: done && kind === 'hours' ? {
         ...visible,
         phase: 'idle'
@@ -356,7 +356,7 @@
       data: saved
     }), done && /*#__PURE__*/React.createElement("p", {
       role: "status"
-    }, kind === 'hours' ? '已核实原文件回执；导入不代替工时阶段的人工确认。' : '已取得原文件请求的完成回执，工艺确认状态以重新读取的详情为准。'))), discard && /*#__PURE__*/React.createElement(Modal, {
+    }, kind === 'hours' ? '已查到文件导入结果；导入不代替工时阶段的人工确认。' : '文件导入已完成；工艺确认状态以刷新后的详情为准。'))), discard && /*#__PURE__*/React.createElement(Modal, {
       title: "\u653E\u5F03\u672C\u6B21\u6587\u4EF6\u5BFC\u5165\uFF1F",
       icon: "file-input",
       onClose: () => setDiscard(false),

@@ -14,8 +14,8 @@
     eligible: '资料有效',
     auto_assign_required: '自动分配待补',
     skipped: '本次跳过',
-    blocked: '资料阻塞',
-    protected: '执行保护'
+    blocked: '缺资料',
+    protected: '已开工保护'
   };
   function contextState(value) {
     try {
@@ -37,16 +37,16 @@
       pages = Math.max(1, Math.ceil(data.tasks.length / 100));
     return /*#__PURE__*/React.createElement("details", {
       className: "pf-detail"
-    }, /*#__PURE__*/React.createElement("summary", null, "\u9010\u5DE5\u5E8F\u68C0\u67E5 \xB7 ", data.tasks.length, " \u9053"), /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("summary", null, "\u68C0\u67E5\u660E\u7EC6 \xB7 ", data.tasks.length, " \u9053"), /*#__PURE__*/React.createElement("div", {
       className: "pf-results wb-table-frame",
       "data-sticky-head": true,
       "data-sticky-actions": true
     }, /*#__PURE__*/React.createElement("table", {
       className: "wb-table",
-      "aria-label": "\u6392\u4EA7\u524D\u68C0\u67E5\u660E\u7EC6"
+      "aria-label": "\u6392\u4EA7\u68C0\u67E5\u660E\u7EC6"
     }, /*#__PURE__*/React.createElement("caption", {
       className: "wb-visually-hidden"
-    }, "\u6392\u4EA7\u524D\u68C0\u67E5\u660E\u7EC6"), /*#__PURE__*/React.createElement("colgroup", null, /*#__PURE__*/React.createElement("col", {
+    }, "\u6392\u4EA7\u68C0\u67E5\u660E\u7EC6"), /*#__PURE__*/React.createElement("colgroup", null, /*#__PURE__*/React.createElement("col", {
       style: {
         width: '18%'
       }
@@ -181,7 +181,7 @@
       counts = data && data.counts,
       currentStep = window.RunPresentation.step(remembered, data);
     const runBlocked = !data || data.write_context.capabilities['scheduling.run'] !== true || typeof adapter.run !== 'function';
-    const runReason = data && data.run_blocked_reasons[0].message || '候选排产运行服务尚未接入，不能开始排产。';
+    const runReason = data && data.run_blocked_reasons[0].message || window.WorkbenchTerms.outcomes.unavailable;
     function navigate(kind) {
       if (!onNavigate || !data) return;
       const rows = kind === 'unready' ? data.unready_batches : kind === 'resources' ? data.tasks.filter(row => row.issues.some(item => ['machine_missing', 'operator_missing', 'operator_skill_missing', 'machine_authorization_missing'].includes(item.code))) : data.tasks.filter(row => row.status === 'blocked').concat(data.no_route_batches);
@@ -193,7 +193,7 @@
         return_to: 'run'
       });
     }
-    const checks = [['设备 / 人员', counts ? counts.missing_resource_tasks + ' 道缺资源；' + (value.missing_resource_policy === 'auto_assign' ? counts.auto_assign_required + ' 道待自动分配。' : '按本次策略暂不排入。') : '尚未检查设备与人员。', 'resources', '去补齐'], ['齐套状态', counts ? counts.unready_batches + ' 批未齐套；' + (value.ready_check ? '本次执行齐套检查。' : '本次关闭齐套检查。') : '尚未读取齐套事实。', 'unready', '查看批次'], ['工时 / 工艺 / 外协', counts ? counts.blocked_tasks + ' 道阻塞，' + counts.no_route_batches + ' 批未生成工艺。' : '尚未检查必填资料。', 'gaps', '处理缺项'], ['日历与产能', '未验证，不能据此认定夜班、停机及产能约束通过。', null, null]];
+    const checks = [['设备 / 人员', counts ? counts.missing_resource_tasks + ' 道缺资源；' + (value.missing_resource_policy === 'auto_assign' ? counts.auto_assign_required + ' 道待自动分配。' : '按本次规则暂不排入。') : '尚未检查设备与人员。', 'resources', '去补齐'], ['齐套状态', counts ? counts.unready_batches + ' 批未齐套；' + (value.ready_check ? '本次执行齐套检查。' : '本次关闭齐套检查。') : '尚未读取齐套情况。', 'unready', '查看批次'], ['工时 / 工艺 / 外协', counts ? counts.blocked_tasks + ' 道缺资料，' + counts.no_route_batches + ' 批未生成工艺。' : '尚未检查必填资料。', 'gaps', '处理缺项'], ['班表与产能', '本次不检查。夜班、停机和产能是否够用，请到「工作日历」核对。', null, null]];
     return /*#__PURE__*/React.createElement("div", {
       className: "plana preflight-workspace",
       "data-preflight-workspace": true
@@ -208,7 +208,7 @@
     }, actions)), /*#__PURE__*/React.createElement("ol", {
       className: "pf-stepper",
       "aria-label": "\u6267\u884C\u6392\u4EA7\u6B65\u9AA4"
-    }, ['选批次与窗口', '检查', '计算'].map((label, index) => /*#__PURE__*/React.createElement("li", {
+    }, ['选批次和日期', '检查', '计算'].map((label, index) => /*#__PURE__*/React.createElement("li", {
       key: label,
       "aria-current": currentStep === index + 1 ? 'step' : undefined,
       "data-step-state": currentStep > index + 1 ? 'complete' : currentStep === index + 1 ? 'current' : 'upcoming'
@@ -226,7 +226,7 @@
       }
     }, "\u91CD\u65B0\u9009\u62E9\u8303\u56F4"), /*#__PURE__*/React.createElement("div", {
       className: "pf-window"
-    }, /*#__PURE__*/React.createElement("strong", null, "\u8BA1\u5212\u7A97\u53E3"), /*#__PURE__*/React.createElement("label", null, "\u5F00\u59CB\u65E5\u671F", /*#__PURE__*/React.createElement("input", {
+    }, /*#__PURE__*/React.createElement("strong", null, "\u6392\u4EA7\u65E5\u671F\u8303\u56F4"), /*#__PURE__*/React.createElement("label", null, "\u5F00\u59CB\u65E5\u671F", /*#__PURE__*/React.createElement("input", {
       type: "date",
       "aria-label": "\u8BA1\u5212\u5F00\u59CB\u65E5\u671F",
       min: "1900-01-01",
@@ -271,7 +271,7 @@
       "aria-labelledby": "pf-check-title"
     }, /*#__PURE__*/React.createElement("h3", {
       id: "pf-check-title"
-    }, "\u5C31\u7EEA\u68C0\u67E5"), /*#__PURE__*/React.createElement("div", {
+    }, "\u6392\u4EA7\u68C0\u67E5"), /*#__PURE__*/React.createElement("div", {
       className: "pf-rows"
     }, checks.map(([title, description, kind, action]) => /*#__PURE__*/React.createElement("div", {
       className: "pf-check",
@@ -286,10 +286,10 @@
       role: "status"
     }, "\u6392\u4EA7\u53C2\u6570\u5DF2\u53D8\u5316\uFF0C\u8BF7\u91CD\u65B0\u68C0\u67E5\u540E\u518D\u5F00\u59CB\u8BA1\u7B97\u3002"), busy && /*#__PURE__*/React.createElement("p", {
       role: "status"
-    }, "\u6B63\u5728\u8BFB\u53D6\u6279\u6B21\u3001\u8D44\u6E90\u53CA\u6267\u884C\u4E8B\u5B9E\uFF1B\u672A\u521B\u5EFA\u8FD0\u884C\u3002"), data && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", {
+    }, "\u6B63\u5728\u8BFB\u53D6\u6279\u6B21\u3001\u8BBE\u5907\u4EBA\u5458\u548C\u62A5\u5DE5\u8BB0\u5F55\uFF0C\u8FD8\u6CA1\u5F00\u59CB\u6392\u4EA7\u3002"), data && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", {
       className: "pf-muted",
       role: "status"
-    }, "\u68C0\u67E5\u65F6\u95F4\uFF1A", window.WorkbenchFormat.dateTime(result.meta.as_of), " \xB7 \u8F93\u5165\u6709\u6548\u81F3 ", window.WorkbenchFormat.dateTime(data.input_expires_at), " \xB7 \u65E5\u5386\u672A\u9A8C\u8BC1"), /*#__PURE__*/React.createElement(Details, {
+    }, "\u68C0\u67E5\u65F6\u95F4\uFF1A", window.WorkbenchFormat.dateTime(result.meta.as_of), " \xB7 \u7ED3\u679C\u6709\u6548\u81F3 ", window.WorkbenchFormat.dateTime(data.input_expires_at), " \xB7 \u73ED\u8868\u672A\u6838\u5BF9"), /*#__PURE__*/React.createElement(Details, {
       key: data.input_ref,
       data: data
     }), !!data.no_route_batches.length && /*#__PURE__*/React.createElement(NoRoutes, {
@@ -301,7 +301,7 @@
       className: "pf-footer"
     }, /*#__PURE__*/React.createElement("span", {
       className: "pf-muted"
-    }, data ? '预检不生成版本、不写入业务或审计数据。' : renderRunPanel ? '请先选择批次与计划窗口，再检查排产资料。' : '尚未检查；候选排产运行服务尚未接入。'), /*#__PURE__*/React.createElement("div", {
+    }, data ? '排产检查不生成版本、不写入业务或审计数据。' : renderRunPanel ? '请先选择批次和排产日期范围，再点「开始排产检查」。' : window.WorkbenchTerms.outcomes.unavailable), /*#__PURE__*/React.createElement("div", {
       className: "pf-tools"
     }, /*#__PURE__*/React.createElement(Button, {
       icon: "search",

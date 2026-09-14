@@ -69,18 +69,34 @@ th:focus-within .wb-resource-th .wb-th-filter,
   .plana.resource-workspace .hb-block { height:auto; }
   .plana.resource-workspace .hb-lane-row .hb-tile { min-height:72px; }
 }
+/* 矮屏下产能链可收起成一行快捷切换（ResourceRail.jsx compact 模式）；展开态沿用原型样式。 */
+.plana.resource-workspace .rail-bar:has(.rail-toggle) { align-items:center; }
+.plana.resource-workspace .rail-toggle { margin-left:var(--space-3); }
+.plana.resource-workspace .rail.rail-collapsed { padding:8px 14px 10px; }
+.plana.resource-workspace .rail.rail-collapsed .rail-bar { margin-bottom:6px; }
+.plana.resource-workspace .rail-compact { display:flex; flex-wrap:wrap; gap:6px; margin:0; }
+.plana.resource-workspace .rail-compact > button { flex:0 1 auto; display:inline-flex; align-items:center; gap:6px; min-height:28px; height:auto; padding:3px 8px; white-space:nowrap; }
+.plana.resource-workspace .rail-compact > button svg { width:14px; height:14px; flex:none; }
+.plana.resource-workspace .rail-compact > button b { font-weight:600; color:var(--ui-info-muted); }
+.plana.resource-workspace .rail-compact > button.on b { color:inherit; }
+@media (max-height:820px) {
+  .plana.resource-workspace .rail.rail-collapsed + .content { margin-top:10px; }
+  /* 收起态的快捷切换条已经标出当前节点，面包屑在矮屏下省掉。 */
+  .plana.resource-workspace .rail.rail-collapsed + .content > .crumb { display:none; }
+  .plana.resource-workspace .rail.rail-collapsed + .content > .chead { margin-bottom:6px; }
+}
 
 .wb-resource-th { user-select: none; }
 .wb-resource-th .wb-th-sort-shell { min-width: 0; flex: 1 1 auto; }
 .wb-resource-th .wb-th-sort-shell > span { width: 100%; min-width: 0; }
-.wb-resource-th .wb-th-sort { display: flex; align-items: center; gap: 3px; height: 30px; width: 100%; min-width: 0; border: 0; border-radius: var(--wb-radius-control); padding: 0; background: transparent; color: inherit; font: inherit; }
+.wb-resource-th .wb-th-sort { display: flex; align-items: center; gap: 3px; height: var(--wb-control-mini-height); width: 100%; min-width: 0; border: 0; border-radius: var(--wb-radius-control); padding: 0; background: transparent; color: inherit; font: inherit; }
 .wb-resource-th .wb-th-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wb-resource-th .wb-th-sort-glyph { width: 10px; flex: none; display: flex; flex-direction: column; }
 .wb-resource-th .wb-th-sort-glyph svg { display: block; width: 10px; height: 7px; }
-.wb-resource-th .wb-th-filter { width: 20px; height: 30px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: var(--wb-radius-control); color: var(--ui-info-muted); background: transparent; }
+.wb-resource-th .wb-th-filter { width: 20px; height: var(--wb-control-mini-height); display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: var(--wb-radius-control); color: var(--ui-info-muted); background: transparent; }
 .wb-resource-th .wb-th-filter[aria-pressed="true"] { color: var(--ui-info-text); background: var(--ui-info-bg); }
 .wb-resource-th :is(.wb-th-filter,.wb-th-sort):hover:not(:disabled) { background: var(--ui-surface-muted); }
-.wb-resource-th :is(.wb-th-filter,.wb-th-sort):disabled { color: var(--ui-info-muted); opacity: .55; }
+.wb-resource-th :is(.wb-th-filter,.wb-th-sort):disabled { color: var(--ui-info-muted); }
 .wb-resource-th .wb-th-resize { position: absolute; right: -7px; top: -8px; bottom: -8px; width: 9px; touch-action: none; cursor: col-resize; }
 .wb-resource-th .wb-th-resize::after { content: ''; position: absolute; right: 4px; top: 22%; bottom: 22%; width: 1px; background: transparent; }
 .wb-resource-th .wb-th-resize:is(:hover,:focus-visible,[data-dragging="true"])::after { background: var(--ui-primary); }
@@ -94,7 +110,7 @@ th:focus-within .wb-resource-th .wb-th-filter,
 .plana.rm-actions .modal-b.scroll { max-height: min(70vh,760px); }
 .rm-actions .rm-body { color: var(--ui-text); padding-top: 18px; }
 .rm-actions .rm-body p { margin: var(--space-2) 0; overflow-wrap: anywhere; }
-.rm-actions .rm-body button,.rm-actions .rm-body select { min-height: 30px; }
+.rm-actions .rm-body button,.rm-actions .rm-body select { min-height: var(--wb-control-mini-height); }
 .rm-actions .rm-body select { color: var(--ui-text); background: var(--ui-card-bg); border: 1px solid var(--ui-border); border-radius: var(--wb-radius-control); padding: var(--space-1) var(--space-2); }
 .rm-actions .rm-format { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); margin: var(--space-3) 0; }
 .rm-actions .rm-format .seg { display: inline-flex; flex: none; }
@@ -121,7 +137,8 @@ th:focus-within .wb-resource-th .wb-th-filter,
 .rm-actions .rm-upload { position: relative; }
 .rm-actions .rm-upload input { position: absolute; inset: 0; opacity: 0; width: 100%; cursor: pointer; }
 .rm-actions .rm-upload:focus-within { outline: 2px solid var(--ui-primary); outline-offset: 2px; }
-.rm-actions .rm-upload[aria-disabled=true] { opacity: .65; cursor: default; }
+.rm-actions .rm-upload[aria-disabled=true] { cursor: default; background: var(--ui-surface-muted); border-color: var(--ui-border); }
+.rm-actions .rm-upload[aria-disabled=true] :is(.dt,.dt b,.ds,.di) { color: var(--ui-info-muted); }
 .rm-actions .drop .dt,.rm-actions .tmpl-t { overflow-wrap: anywhere; }
 .rm-actions .tmpl-row > div { min-width: 0; flex: 1; }
 .rm-actions .rm-request { font-family: monospace; font-size: var(--font-size-1); overflow-wrap: anywhere; }
@@ -138,3 +155,4 @@ body.aps-workbench .wb-resource-relation:hover:not(:disabled) { background: var(
 .wb-resource-relation-content .muted { font-size: var(--font-size-1); }
 .wb-resource-relation > svg { flex: none; }
 .wb-resource-association-pager { display: flex; justify-content: flex-end; align-items: center; gap: var(--space-2); padding-top: var(--space-2); }
+.resource-workspace .rm-check,.resource-catalog .rm-check { display: flex; align-items: flex-start; gap: var(--space-2); margin-top: var(--space-4); }

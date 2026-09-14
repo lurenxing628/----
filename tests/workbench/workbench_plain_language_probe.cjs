@@ -41,7 +41,7 @@ const shared = manifest.scripts.filter(name => name.startsWith('workbench/vendor
 const html = '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
   manifest.styles.map(name => '<link rel="stylesheet" href="/static/' + name + '">').join('') + '</head><body class="aps-workbench"><main class="plana"><div id="resource-root"></div></main>' +
   shared.map(name => '<script src="/static/' + name + '"></script>').join('') +
-  ['WorkbenchReferences.jsx', 'resource-contract.js', 'resource-session.js', 'ResourceControls.jsx'].map(name => '<script src="/fixture/' + name + '.js"></script>').join('') +
+  ['WorkbenchTerms.js', 'WorkbenchReferences.jsx', 'resource-contract.js', 'resource-session.js', 'ResourceControls.jsx'].map(name => '<script src="/fixture/' + name + '.js"></script>').join('') +
   extraFiles.map(name => '<script src="/plain/' + name + '"></script>').join('') + '<script>' + resourceHarness + '</script></body></html>';
 server.removeListener('request', original);
 server.on('request', (req, res) => {
@@ -115,7 +115,7 @@ async function plans(page) {
     await page.getByText('所选计划读取失败。', { exact: true }).waitFor();
     assert.equal(await page.locator('[data-plan-gantt]').count(), 0);
     await page.evaluate(() => { fixture.spec.workspaceFailure = null; delete fixture.adapter.workspace; });
-    await page.getByRole('button', { name: '重新读取所选计划', exact: true }).click();
+    await page.getByRole('button', { name: '刷新重试', exact: true }).click();
     await page.getByText('暂时无法读取计划，请稍后重试。', { exact: true }).waitFor();
   });
   await check('plan-scope-export-not-search-no-json-change', async () => {
@@ -149,7 +149,7 @@ async function plans(page) {
   await check('plan-unknown-analysis-not-zero-or-complete', async () => {
     await mountPlan(page, { unknown: true }); await page.locator('[data-plan-gantt]').waitFor();
     const table = page.getByRole('table', { name: '交付风险列表' });
-    assert((await table.innerText()).includes('无法核实')); assert((await table.innerText()).includes('已安排部分结束于'));
+    assert((await table.innerText()).includes('暂无数据')); assert((await table.innerText()).includes('已安排部分结束于'));
     await selectFirstPlanTask(page);
     assert((await page.locator('[data-plan-inspector]').innerText()).includes('不代表批次完工'));
     await page.getByRole('button', { name: '资源负荷', exact: true }).click();
@@ -163,8 +163,8 @@ async function plans(page) {
     await page.getByRole('button', { name: '查看初始安排', exact: true }).click();
     const detail = page.locator('[data-plan-inspector]');
     assert((await detail.innerText()).includes('初始计划安排'));
-    assert((await detail.innerText()).includes('未核实初始计划的交付风险'));
-    assert((await detail.innerText()).includes('初始计划的日历和占用未单独核实'));
+    assert((await detail.innerText()).includes('初始计划的交付风险没有单独查询'));
+    assert((await detail.innerText()).includes('初始计划的班表和占用没有单独查询'));
     assert(await detail.getByRole('button', { name: /^调整此工序(?:：|$)/ }).isDisabled());
     assert.equal(await detail.getByRole('button', { name: /^保存(?:试调)?(?:：|$)/ }).count(), 0);
     assert.equal(await detail.locator('.plan-actions button:not(:disabled)').count(), 0);
@@ -195,7 +195,7 @@ async function resources(page) {
   const phase = value => page.waitForFunction(value => resourceFixture.command.phase === value, value);
   const save = () => page.getByRole('button', { name: '保存', exact: true }).click();
   const noSuccess = async () => {
-    assert.equal(await page.getByText(/^(已保存。?|服务器已确认提交。|已重新读取最新数据。)$/).count(), 0);
+    assert.equal(await page.getByText(/^(已保存。?|保存已完成。|已刷新到最新数据。)$/).count(), 0);
     assert(await page.getByRole('button', { name: '保存', exact: true }).isDisabled());
     assert(await page.getByRole('button', { name: '关闭', exact: true }).isDisabled());
   };
@@ -205,7 +205,7 @@ async function resources(page) {
     await page.getByText('正在提交，请勿重复保存…', { exact: true }).waitFor(); await noSuccess();
     const before = await page.evaluate(key => sessionStorage.getItem(key), pendingKey);
     assert(!before.includes(raw)); assert(!before.includes('write_token')); api.release(); await phase('done');
-    assert(await page.getByText(/^(已保存。?|服务器已确认提交。)$/).isVisible());
+    assert(await page.getByText(/^(已保存。?|保存已完成。)$/).isVisible());
     assert.deepEqual(api.posts[0].body.input, { label: raw });
     assert.equal(api.posts[0].body.write_token, 'fixture-write-token');
     assert.equal(await page.locator('input[name="spec"]').inputValue(), raw);
@@ -214,18 +214,18 @@ async function resources(page) {
     const result = await page.evaluate(() => resourceFixture.command.result);
     assert.deepEqual(result, response);
     await page.evaluate(() => resourceFixture.setRefresh({ loading: true }));
-    await page.getByText('正在重读列表和详情…', { exact: true }).waitFor();
+    await page.getByText('正在刷新列表和详情…', { exact: true }).waitFor();
     await page.evaluate(() => resourceFixture.setRefresh({ error: APSResourceContract.failure('已保存，但最新列表读取失败。') }));
     await page.getByText('已保存，但最新列表读取失败。', { exact: true }).waitFor();
-    await page.getByText('最新数据尚未确认。', { exact: true }).waitFor();
+    await page.getByText('最新数据还没确认。请点「刷新保存结果」。', { exact: true }).waitFor();
     assert.deepEqual(await page.evaluate(() => resourceFixture.command.result), result);
     await shot(page, 'resource-saved-refresh-failed');
-    await page.getByRole('button', { name: '重新读取保存结果', exact: true }).click();
-    await page.getByText('已重新读取最新数据。', { exact: true }).waitFor(); assert.equal(api.posts.length, 1);
+    await page.getByRole('button', { name: '刷新保存结果', exact: true }).click();
+    await page.getByText('已刷新到最新数据。', { exact: true }).waitFor(); assert.equal(api.posts.length, 1);
   });
   await check('resource-unchanged-keeps-unchanged-state', async () => {
     await open(terminal('unchanged')); await save(); await phase('done');
-    assert((await page.getByRole('dialog').innerText()).includes('内容未变化'));
+    assert((await page.getByRole('dialog').innerText()).includes('内容没有变化'));
     assert.equal(await page.evaluate(() => resourceFixture.command.result.result), 'unchanged');
   });
   await check('resource-partial-preserves-item-failures-and-raw-values', async () => {
@@ -233,7 +233,7 @@ async function resources(page) {
     await save(); await phase('done'); await page.getByText('部分操作完成，请核对逐项结果。', { exact: true }).waitFor();
     assert((await page.locator('li').allTextContents()).some(text => text.includes(raw + '：失败；' + raw)));
     assert((await page.locator('li').allTextContents()).some(text => text.includes('第二项：未执行')));
-    assert.equal(await page.getByText(/^(已保存。?|服务器已确认提交。)$/).count(), 0);
+    assert.equal(await page.getByText(/^(已保存。?|保存已完成。)$/).count(), 0);
   });
   await check('resource-explicit-failure-is-editable-not-success', async () => {
     await open(rejected); await save(); await phase('rejected');
@@ -241,7 +241,7 @@ async function resources(page) {
     assert(!(await page.getByRole('button', { name: '保存', exact: true }).isDisabled()));
     assert.equal(await page.locator('input[name="label"]').inputValue(), raw);
     assert.equal(await page.evaluate(key => sessionStorage.getItem(key), pendingKey), null);
-    assert.equal(await page.getByText(/^(已保存。?|服务器已确认提交。)$/).count(), 0);
+    assert.equal(await page.getByText(/^(已保存。?|保存已完成。)$/).count(), 0);
   });
   for (const [name, response, lookup] of [
     ['unknown', { ok: false, committed: 'unknown', error: { code: 'uncertain', message: '提交结果未知，请核对原请求。', fields: [] } }, missing],
@@ -250,7 +250,7 @@ async function resources(page) {
     ['failed-lookup', { ok: true, state: 'pending' }, { ok: false, committed: 'unknown', error: { code: 'unavailable', message: '原请求结果暂时无法核实。', fields: [] } }]
   ]) await check('resource-' + name + '-reload-checks-original-before-unlock', async () => {
     await open(response, lookup); await save(); await phase('pending');
-    await page.waitForFunction(() => document.body.textContent.includes('结果待核实。请保留当前页面'));
+    await page.waitForFunction(() => document.body.textContent.includes('上次保存的结果还没查到'));
     await noSuccess();
     const stored = await page.evaluate(key => JSON.parse(sessionStorage.getItem(key)), pendingKey);
     assert.equal(stored.request_key, api.posts[0].body.request_key);
@@ -258,14 +258,14 @@ async function resources(page) {
     await page.reload(); await phase('pending'); await noSuccess(); assert.equal(api.posts.length, 1);
     assert(api.lookups.every(url => url.endsWith('/' + stored.request_key)));
     assert.deepEqual(await page.evaluate(key => JSON.parse(sessionStorage.getItem(key)), pendingKey), stored);
-    api.holdLookup = true; await page.getByRole('button', { name: '查询原请求回执', exact: true }).click(); await phase('checking');
-    await page.getByText('正在核实原请求的回执…', { exact: true }).waitFor(); await noSuccess();
+    api.holdLookup = true; await page.getByRole('button', { name: '查询结果', exact: true }).click(); await phase('checking');
+    await page.getByText('正在查询上次操作的结果…', { exact: true }).waitFor(); await noSuccess();
     await page.waitForFunction(() => resourceFixture.command.phase === 'checking');
     while (!api.releaseLookup) await new Promise(resolve => setTimeout(resolve, 5));
     api.lookup = { ...terminal(), replayed: true }; api.releaseLookup(); await phase('done');
-    assert(await page.getByText(/^(已保存。?|服务器已确认提交。)$/).isVisible());
+    assert(await page.getByText(/^(已保存。?|保存已完成。)$/).isVisible());
     assert.equal(await page.evaluate(() => resourceFixture.command.result.replayed), true); assert.equal(api.posts.length, 1);
-    await page.getByText('最新数据尚未确认。', { exact: true }).waitFor();
+    await page.getByText('最新数据还没确认。请点「刷新保存结果」。', { exact: true }).waitFor();
     await page.getByRole('dialog').getByRole('button', { name: '关闭', exact: true }).last().click();
     await page.getByText('已关闭', { exact: true }).waitFor();
     assert.equal(await page.evaluate(key => sessionStorage.getItem(key), pendingKey), null);
@@ -278,10 +278,11 @@ async function resources(page) {
         field: { kind: 'machine_group', key: 'group_ref', label: '设备组', catalog: true }, value: resourceFixture.entity.ref,
         original: { relationships: { group_ref: resourceFixture.entity.ref, group: { ref: resourceFixture.entity.ref, label: '原设备组' } } }, onChange: () => {} }));
     });
-    await page.getByText('暂时无法读取可选资料，请稍后重试。', { exact: true }).waitFor();
+    await page.getByText('操作未完成，请核对后重试。', { exact: true }).waitFor();
+    assert((await page.locator('.wb-error').first().textContent()).includes('dependency not wired: adapter.choices'));
     assert.equal(await page.getByLabel('设备组', { exact: true }).inputValue(), F.ref(1000));
     const button = page.getByRole('button', { name: '维护设备组', exact: true });
-    assert(await button.isDisabled()); assert.equal(await button.getAttribute('title'), '暂不支持维护设备组。');
+    assert(await button.isDisabled()); assert.equal(await button.getAttribute('title'), '维护设备组尚未开通。');
   });
 }
 async function main() {

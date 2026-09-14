@@ -55,9 +55,9 @@
         </select></label><Button icon="refresh-cw" aria-label="刷新批次范围" disabled={busy} onClick={() => filter({})} />
       </form>
       <div className="pf-tools"><Button disabled={busy} onClick={() => select('all')}>全部待排</Button><Button disabled={busy} onClick={() => select('ready')}>仅已齐套</Button>
-        <Button disabled={busy || !snapshot} onClick={() => select('filtered')}>全选当前筛选</Button><Button icon="x" disabled={disabled || selecting || !selected.length} onClick={() => onChange([])}>清空选择</Button>
+        <Button disabled={busy || !snapshot} onClick={() => select('filtered')}>全选当前筛选</Button><Button icon="x" disabled={disabled || selecting || !selected.length} onClick={() => onChange([])}>清除选择</Button>
         <span aria-live="polite">已选 {selected.length} 批{hidden > 0 ? ' · 含非当前页 ' + hidden + ' 批' : ''}</span></div>
-      <ErrorBox error={error} />{error && <Button icon="refresh-cw" disabled={disabled || loading || selecting} onClick={() => filter({})}>重读批次</Button>}
+      <ErrorBox error={error} />{error && <Button icon="refresh-cw" disabled={disabled || loading || selecting} onClick={() => filter({})}>刷新批次</Button>}
       {loading || selecting ? <window.WorkbenchListControls.EmptyState kind="loading" title={selecting ? '正在核对全部选择范围' : '正在读取批次'} /> : data && !visible.length ? <window.WorkbenchListControls.EmptyState kind="filtered" title="当前筛选没有待排批次" hint="调整关键词或齐套筛选后再试。" action={<Button onClick={() => { setQuery(''); setScope(baseScope()); }}>清除筛选</Button>} /> : null}
       {!loading && data && <div className="pf-picker-list">{visible.map(row => <label className="pf-picker-row" key={row.ref}>
         <input type="checkbox" aria-label={'选择 ' + row.business_code} checked={chosen.has(row.ref)} disabled={busy} onChange={() => toggle(row.ref)} />

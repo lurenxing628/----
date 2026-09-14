@@ -1,11 +1,13 @@
 (function () {
   'use strict';
-  const A = window.RunAdoptionAPI, U = window.RunAdoptionControls, empty = { reason: '', declared_operator: '' };
+  const A = window.RunAdoptionAPI, U = window.RunAdoptionControls;
+  // A fresh draft starts with the last handler typed on this machine; it is a typing convenience, never an identity.
+  const empty = () => ({ reason: '', declared_operator: window.WorkbenchHandlerMemory.read().value });
   function Session({ candidateRef, onNavigate, onAdopted, adapter }) {
     const api = React.useMemo(() => adapter || A.create(), [adapter]);
     const [initial] = React.useState(() => { try { return { intent: A.pending().read(), error: '' }; } catch (e) { return { intent: null, error: e.message }; } });
     const [intent, setIntent] = React.useState(initial.intent), [storageError, setStorageError] = React.useState(initial.error);
-    const [draft, setDraft] = React.useState(initial.intent ? initial.intent.input : empty), [consent, setConsent] = React.useState(false);
+    const [draft, setDraft] = React.useState(() => initial.intent ? initial.intent.input : empty()), [consent, setConsent] = React.useState(false);
     const [preview, setPreview] = React.useState(null), [result, setResult] = React.useState(null), [open, setOpen] = React.useState(false);
     const [busy, setBusy] = React.useState(false), [checking, setChecking] = React.useState(false), [error, setError] = React.useState(''), [notice, setNotice] = React.useState('');
     const [revision, refresh] = React.useReducer(v => v + 1, 0);
@@ -34,7 +36,7 @@
       if (notified.current !== receipt.receipt_ref) {
         notified.current = receipt.receipt_ref;
         if (typeof callback.current === 'function') {
-          const failed = () => { if (alive.current) setNotice('采用已核实，但关联页面更新失败，请重新打开正式方案。'); };
+          const failed = () => { if (alive.current) setNotice('采用已确认，但关联页面没刷新成功，请重新打开正式计划。'); };
           try { Promise.resolve(callback.current(receipt)).catch(failed); } catch (_) { failed(); }
         }
       }
@@ -49,8 +51,8 @@
           const found = A.lookup(await api.lookup(intent, controller.signal), intent);
           if (disposed) return;
           if (found) acceptResult(found, intent);
-          else { setError(''); setNotice('暂未查到原回执，原请求仍可能执行中。已保留原请求，不会重复提交；请稍后继续查询。'); }
-        } catch (_) { if (!disposed) setError('原采用结果尚未核实，请保留原请求并稍后查询。'); }
+          else { setError(''); setNotice(window.WorkbenchTerms.outcomes.pending('采用')); }
+        } catch (_) { if (!disposed) setError('查询采用结果失败，采用可能已经生效。请点「查询结果」重试，不要重新采用。'); }
         finally { if (!disposed) setChecking(false); }
       }
       query(); return () => { disposed = true; controller.abort(); setChecking(false); };
@@ -70,11 +72,12 @@
       if (lock.current || storageError || !preview || !preview.validation.can_adopt || !consent || active.current && active.current.phase === 'pending') return;
       let values; try { values = A.input({ confirm: true, reason: draft.reason, declared_operator: draft.declared_operator }); }
       catch (e) { setError(e.message); return; }
+      window.WorkbenchHandlerMemory.write(values.declared_operator);
       lock.current = true; setBusy(true); setError(''); setNotice('');
       try {
-        if (!navigator.locks || typeof navigator.locks.request !== 'function') throw new Error('当前浏览器不能锁定采用请求，暂时不能正式采用。');
+        if (!navigator.locks || typeof navigator.locks.request !== 'function') throw new Error('当前浏览器不支持，请用 Chrome 打开。');
         await navigator.locks.request(A.PENDING_KEY, { ifAvailable: true }, async acquired => {
-          if (!acquired) throw new Error('另一页面正在核实采用，请稍后读取恢复记录。');
+          if (!acquired) throw new Error('另一个页面正在确认采用，请稍后刷新上次操作记录。');
           if (!alive.current) return;
           const original = A.pending().begin(preview, values, active.current);
           active.current = original; setIntent(original); setDraft(values); setPreview(null); setConsent(false);
@@ -83,8 +86,8 @@
             if (A.isRejected(e)) {
               // Only an authentic, definitive non-commit permits a new preview. Unknown responses keep the original key.
               const rejected = A.pending().reject(original, e);
-              if (alive.current) { active.current = rejected; setIntent(rejected); setError(e.message + ' 输入已保留，请重新预览并确认。'); }
-            } else if (alive.current) setError('采用响应未确认。已保留原请求，请查询回执，不要重新采用。');
+              if (alive.current) { active.current = rejected; setIntent(rejected); setError(e.message + ' 填写内容已保留，请重新预检并确认。'); }
+            } else if (alive.current) setError(window.WorkbenchTerms.outcomes.pending('采用'));
           }
         });
       } catch (e) { if (alive.current) setStorageError(e.message); }
@@ -95,7 +98,7 @@
       setOpen(false); setPreview(null); setConsent(false);
     }
     function finish() {
-      try { A.pending().finish(intent, result); setResult(null); setOpen(false); setNotice('本次采用已完成核实。'); }
+      try { A.pending().finish(intent, result); setResult(null); setOpen(false); setNotice(window.WorkbenchTerms.outcomes.done('采用')); }
       catch (e) { setStorageError(e.message); }
     }
     function cancelRejected() {
@@ -103,18 +106,18 @@
       catch (e) { setStorageError(e.message); }
     }
     const pending = intent && intent.phase === 'pending';
-    const label = result ? '查看采用回执' : pending ? '核实采用结果' : intent ? '重新核对采用' : '采用方案';
+    const label = result ? '查看采用结果' : pending ? '查询采用结果' : intent ? '重新核对采用' : '采用方案';
     const display = preview && preview.validation.can_adopt ? preview : intent ? intent.preview : { candidate_ref: candidateRef || '未指定' };
     return <span className="plana run-adoption-action" data-run-adoption-action="true"><U.Styles />
       <U.Button icon={pending ? 'refresh-cw' : 'check'} className="btn primary" disabled={!intent && (!A.ref(candidateRef) || !!storageError)} onClick={() => {
         if (intent) { setOpen(true); if (pending && !result) refresh(); }
         else inspect();
       }} aria-expanded={open} busy={busy && !intent}> {label.trim()} </U.Button>
-      {storageError && !open && <span className="ra-inline" role="alert">{storageError}<U.Button icon="refresh-cw" disabled={busy} onClick={() => { readStorage(); refresh(); }}>重读恢复记录</U.Button></span>}
-      {intent && !open && <span className="ra-inline">{result ? '已核实采用回执。' : pending ? '原请求已保留，结果待核实。' : '上次未采用，请重新预览。'}</span>}
+      {storageError && !open && <span className="ra-inline" role="alert">{storageError}<U.Button icon="refresh-cw" disabled={busy} onClick={() => { readStorage(); refresh(); }}>刷新上次操作记录</U.Button></span>}
+      {intent && !open && <span className="ra-inline">{result ? '采用结果已确认。' : pending ? '上次操作已保留，结果待确认。' : '上次没有采用，请重新预检。'}</span>}
       {open && <U.Dialog value={display} intent={intent} result={result} preview={preview} draft={draft} consent={consent} busy={busy || checking}
         error={storageError || error} storageError={storageError} onReadStorage={() => { readStorage(); refresh(); }}
-        notice={intent && intent.candidate_ref !== candidateRef ? '存在另一候选的原采用请求，请先核实该记录。' : notice || (intent && intent.phase === 'rejected' && !preview ? '上次采用已被明确拒绝，输入已保留。请重新预览并再次确认。' : '')}
+        notice={intent && intent.candidate_ref !== candidateRef ? '另一个候选方案还有没确认的采用操作，请先确认那条记录。' : notice || (intent && intent.phase === 'rejected' && !preview ? '上次采用被拒绝了，填写内容已保留。请重新预检并再次确认。' : '')}
         onChange={setDraft} onConsent={setConsent} onClose={close} onPreview={inspect} onConfirm={submit} onLookup={refresh} onFinish={finish} onCancelRejected={cancelRejected} onNavigate={onNavigate} />}
     </span>;
   }

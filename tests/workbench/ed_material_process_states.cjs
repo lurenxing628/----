@@ -5,7 +5,9 @@ const b = (scope, name) => (name === '关闭' ? scope.locator('.modal-f') : scop
 async function detailStates(p, page, data) {
   await page.goto(p.ready.url + '/workbench?view=process');
   const area = page.locator('[data-resource-workspace]');
-  await area.getByRole('searchbox').waitFor();
+  // The entry restores the last visited node (2026-09-13); this case needs the material list.
+  await p.click(area.locator('[data-rail-node="material"]'));
+  await area.getByRole('searchbox', {name: '搜索编号或名称'}).waitFor();
   await p.type(area.getByRole('searchbox'), data.empty_material);
   await p.response('/entities/material', () => p.click(b(area, '搜索')));
   const session = await page.context().newCDPSession(page);
@@ -27,7 +29,7 @@ async function detailStates(p, page, data) {
     assert.equal(await d.locator('.wb-resource-identity').count(), 0); assert.equal(await b(d, '编辑').count(), 0);
     await p.shot('material-detail-network-error-no-edit');
     await session.send('Network.emulateNetworkConditions', {offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1});
-    await p.click(b(d, '重新读取')); await d.locator('.wb-resource-stock').waitFor(); await p.shot('material-error-real-retry');
+    await p.click(b(d, '刷新')); await d.locator('.wb-resource-stock').waitFor(); await p.shot('material-error-real-retry');
     await p.click(b(d, '关闭')); p.intentionalNetworkFault = false;
     await p.type(area.getByRole('searchbox'), 'ED物料不存在的筛选范围'); await p.response('/entities/material', () => p.click(b(area, '搜索')));
     assert.equal(await area.getByRole('table', {name: '物料列表'}).locator('tbody tr input[type="checkbox"]').count(), 0);
@@ -47,7 +49,7 @@ async function detailStates(p, page, data) {
     await page.locator('.process-detail').getByRole('alert').waitFor(); await p.shot('process-detail-network-error');
     assert.equal(await page.getByRole('tablist', {name: '零件工艺步骤'}).count(), 0);
     await session.send('Network.emulateNetworkConditions', {offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1});
-    await p.click(b(page, '重试读取详情')); await page.getByRole('tablist', {name: '零件工艺步骤'}).waitFor();
+    await p.click(b(page, '刷新详情')); await page.getByRole('tablist', {name: '零件工艺步骤'}).waitFor();
     await p.shot('process-error-real-retry'); await p.click(b(page, '关闭详情'));
   } finally {
     await session.send('Fetch.disable'); await session.send('Network.emulateNetworkConditions', {offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1});

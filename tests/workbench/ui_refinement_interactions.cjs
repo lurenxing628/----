@@ -34,7 +34,7 @@ async function action(page,id,settle,selectPlan) {
     });
   }
   if(id==='trial-new') {
-    await page.getByRole('button',{name:'新建试调',exact:true}).click();await settle(page);
+    await page.getByRole('button',{name:'新增试调',exact:true}).click();await settle(page);
     return page.evaluate(()=>{const dialog=document.querySelector('[role="dialog"]'),r=dialog?.getBoundingClientRect();
       return {id:'I7',ok:!!r&&r.top>=0&&r.bottom<=innerHeight&&dialog.contains(document.activeElement),
         detail:{top:r?.top,bottom:r?.bottom,radioCount:dialog?.querySelectorAll('input[type="radio"]').length}};});

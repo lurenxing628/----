@@ -38,22 +38,22 @@
     C.query(result, 'list'); const d = result.data, p = d.page;
     if (!d.entities.every(entity) || !context(d.create_context) || !d.create_context || p.number !== scope.page || p.size !== scope.size
         || p.pages !== Math.max(1, Math.ceil(p.total / p.size)) || p.sort.length !== 1 || p.sort[0].field !== scope.sort || p.sort[0].direction !== scope.direction
-        || scope.snapshot_ref && result.meta.snapshot_ref !== scope.snapshot_ref) throw C.failure('批次列表字段或范围不完整，请重新读取。');
+        || scope.snapshot_ref && result.meta.snapshot_ref !== scope.snapshot_ref) throw C.failure('读到的批次列表不完整，请刷新后重试。');
     return result;
   }
   function detail(result, expected) {
     C.query(result, 'entity'); const d = result.data;
     if (!entity(d) || d.ref !== expected || !object(d.materials) || !Array.isArray(d.materials.requirements)
         || !d.materials.requirements.every(row => object(row) && ref(row.material_ref) && finite(row.required_quantity) && finite(row.available_quantity))
-        || !object(d.template)) throw C.failure('批次详情与实际对象不一致或字段不完整。');
+        || !object(d.template)) throw C.failure('读到的批次详情不完整或不是这个批次，请刷新后重试。');
     return result;
   }
   function receipt(result, action, expected) {
-    if (C.receipt(result) !== 'terminal') throw C.failure('批次保存结果尚未核实。');
+    if (C.receipt(result) !== 'terminal') throw C.failure(window.WorkbenchTerms.outcomes.pending('保存'));
     const data = result.data;
     const valid = ['bulk_confirm', 'import_confirm'].includes(action) ? Array.isArray(data.items) && data.items.length === data.count && data.items.every(row => ref(row.entity_ref) && ['committed', 'unchanged', 'skipped'].includes(row.result))
       : ref(data.entity_ref) && (action === 'create' || data.entity_ref === expected);
-    if (!valid) { const error = C.failure('回执与批次对象不一致，结果待核实。'); error.committed = 'unknown'; throw error; }
+    if (!valid) { const error = C.failure(window.WorkbenchTerms.outcomes.unknown('保存')); error.committed = 'unknown'; throw error; }
     return result;
   }
   function preview(result, action, expectedRef, input) {
@@ -66,7 +66,7 @@
         && entity(row.before) && row.before.ref === row.entity_ref && (input.action === 'delete' ? row.after === null : object(row.after) && object(row.after.fields) && Array.isArray(row.after.operations)));
     if (valid && action === 'sync') valid = data.entity_ref === expectedRef && data.strict_mode === input.strict_mode && Array.isArray(data.before) && data.before.every(operation)
       && Array.isArray(data.after) && data.after.every(row => object(row) && text(row.label) && ['setup_hours', 'unit_hours', 'external_days'].every(key => finite(row[key])));
-    if (!valid) throw C.failure('批次预览与所选对象或操作不一致，不能确认。');
+    if (!valid) throw C.failure('读到的预检结果和所选批次或操作不一致，没有确认。请重新预检。');
     return data;
   }
   function reason(ctx, action, source) {
@@ -84,7 +84,7 @@
   }
   function input(value, original) {
     const errors = inputErrors(value, original);
-    if (errors.length) throw C.failure('请检查标记的批次字段。', errors);
+    if (errors.length) throw C.failure('请核对标红的项。', errors);
     const patch = {};
     for (const key of fields) {
       if (original && String(original.fields[key] == null ? '' : original.fields[key]) === value[key]) continue;
@@ -111,7 +111,7 @@
       if (key === 'quantity' && (!/^[0-9]+$/.test(next) || !Number.isSafeInteger(Number(next)) || Number(next) <= 0))
         errors.push({ path: 'fields.quantity', message: '数量必须是正整数。' });
       if (key.endsWith('_date') && next !== '' && !/^\d{4}-\d{2}-\d{2}$/.test(next))
-        errors.push({ path: 'fields.' + key, message: '日期格式应为 YYYY-MM-DD。' });
+        errors.push({ path: 'fields.' + key, message: '请按 2026-09-13 这样填写日期。' });
     }
     return errors;
   }

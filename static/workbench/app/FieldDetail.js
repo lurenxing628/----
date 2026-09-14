@@ -52,7 +52,7 @@
     }, /*#__PURE__*/React.createElement(window.PointGantt.Styles, null), /*#__PURE__*/React.createElement("div", {
       className: "field-timeline-axis"
     }, /*#__PURE__*/React.createElement("span", null, C.date(new Date(Math.min(...points)).toISOString().slice(0, 19))), /*#__PURE__*/React.createElement("span", null, C.date(new Date(Math.max(...points)).toISOString().slice(0, 19)))), rows.map(row => {
-      const title = (row.key === 'plan' ? row.point ? '计划点 · 0 秒 · 不占用排产资源；完成状态以实际记录为准' : '计划安排' : row.point ? '报工时点' : '实际报工时段') + '\n' + row.label + '\n' + C.date(row.start) + ' 至 ' + (row.end ? C.date(row.end) : '结束未填写');
+      const title = (row.key === 'plan' ? row.point ? '零工时工序，不占设备人员；完成状态以实际记录为准' : '计划安排' : row.point ? '报工时刻' : '实际报工时段') + '\n' + row.label + '\n' + C.date(row.start) + ' 至 ' + (row.end ? C.date(row.end) : '结束未填写');
       const left = (parse(row.start) - axis.start) / (axis.end - axis.start) * 100 + '%';
       return /*#__PURE__*/React.createElement("div", {
         key: row.key,
@@ -98,14 +98,14 @@
   }) {
     return /*#__PURE__*/React.createElement("div", {
       className: "field-history"
-    }, /*#__PURE__*/React.createElement("dl", null, /*#__PURE__*/React.createElement("dt", null, "\u5F55\u5165\u65F6\u95F4"), /*#__PURE__*/React.createElement("dd", null, C.date(record.recorded_at)), /*#__PURE__*/React.createElement("dt", null, "\u672C\u673A\u64CD\u4F5C\u8005"), /*#__PURE__*/React.createElement("dd", null, C.display(record.local_operator)), /*#__PURE__*/React.createElement("dt", null, "\u73B0\u573A\u58F0\u660E\u4EBA"), /*#__PURE__*/React.createElement("dd", null, C.display(record.declared_operator)), /*#__PURE__*/React.createElement("dt", null, "\u5F55\u5165\u6765\u6E90"), /*#__PURE__*/React.createElement("dd", null, record.source === 'excel' ? 'Excel' : '手工')), /*#__PURE__*/React.createElement(window.WorkbenchReference, {
+    }, /*#__PURE__*/React.createElement("dl", null, /*#__PURE__*/React.createElement("dt", null, "\u5F55\u5165\u65F6\u95F4"), /*#__PURE__*/React.createElement("dd", null, C.date(record.recorded_at)), /*#__PURE__*/React.createElement("dt", null, "\u8BB0\u5F55\u4EBA"), /*#__PURE__*/React.createElement("dd", null, C.display(record.local_operator)), /*#__PURE__*/React.createElement("dt", null, "\u7ECF\u529E\u4EBA"), /*#__PURE__*/React.createElement("dd", null, C.display(record.declared_operator)), /*#__PURE__*/React.createElement("dt", null, "\u5F55\u5165\u6765\u6E90"), /*#__PURE__*/React.createElement("dd", null, record.source === 'excel' ? 'Excel' : '手工')), /*#__PURE__*/React.createElement(window.WorkbenchReference, {
       entries: {
         '报工编号': record.report_ref,
         '报工版本编号': record.revision_ref
       }
     }), record.correction_history.map((item, index) => /*#__PURE__*/React.createElement("div", {
       key: index
-    }, /*#__PURE__*/React.createElement("strong", null, item.action === 'supplement' ? '补齐' : item.action === 'create' ? '新增' : '更正'), " ", C.date(item.recorded_at), " \xB7 ", item.reason, item.before && item.after && /*#__PURE__*/React.createElement("dl", null, C.fields.filter(key => item.before[key] !== item.after[key]).map(key => /*#__PURE__*/React.createElement(React.Fragment, {
+    }, /*#__PURE__*/React.createElement("strong", null, C.reportActions[item.action] || C.reportActions.correct), " ", C.date(item.recorded_at), " \xB7 ", item.reason, item.before && item.after && /*#__PURE__*/React.createElement("dl", null, C.fields.filter(key => item.before[key] !== item.after[key]).map(key => /*#__PURE__*/React.createElement(React.Fragment, {
       key: key
     }, /*#__PURE__*/React.createElement("dt", null, {
       completed_quantity: '数量',
@@ -164,7 +164,7 @@
       icon: "refresh-cw",
       onClick: request.reload,
       disabled: command.locked
-    }, "\u91CD\u8BFB\u8BE6\u60C5"), editor && /*#__PURE__*/React.createElement(Button, {
+    }, "\u5237\u65B0\u8BE6\u60C5"), editor && /*#__PURE__*/React.createElement(Button, {
       onClick: onCloseEditor,
       disabled: command.locked
     }, "\u53D6\u6D88\u6682\u5B58\u7F16\u8F91"));
@@ -193,7 +193,7 @@
     }, "\u4F5C\u4E1A\u65F6\u95F4\u7EBF"), /*#__PURE__*/React.createElement(Button, {
       icon: "plus",
       disabled: command.locked || !!editor || !!nextDraft,
-      reason: p.execution_state === 'complete' ? '工序已完工，请补齐原记录或明确更正。' : C.blocked(p.write_context, 'create'),
+      reason: p.execution_state === 'complete' ? '工序已完工，请补齐原记录或做更正。' : C.blocked(p.write_context, 'create'),
       onClick: () => onEdit({
         taskRef,
         action: 'create'
@@ -225,7 +225,7 @@
       task: task
     }), p.completion_basis === 'legacy_finish_event' && /*#__PURE__*/React.createElement("div", {
       className: "field-note"
-    }, "\u5DF2\u6709\u65E7\u5B8C\u5DE5\u4E8B\u5B9E\uFF0C\u5DE5\u5E8F\u4ECD\u4E3A\u5DF2\u5B8C\u5DE5\uFF1B\u7F3A\u5931\u7684\u6570\u91CF\u548C\u6709\u6548\u5DE5\u65F6\u672A\u8865\u9020\u3002"), /*#__PURE__*/React.createElement(Issues, {
+    }, "\u5DF2\u6709\u5386\u53F2\u5B8C\u5DE5\u8BB0\u5F55\uFF0C\u5DE5\u5E8F\u4ECD\u7B97\u5DF2\u5B8C\u5DE5\uFF1B\u7F3A\u7684\u6570\u91CF\u548C\u6709\u6548\u5DE5\u65F6\u6CA1\u6709\u8865\u9020\u3002"), /*#__PURE__*/React.createElement(Issues, {
       issues: p.data_gaps
     }), /*#__PURE__*/React.createElement("div", {
       className: "field-scroll wb-table-frame",
@@ -270,7 +270,7 @@
       style: {
         width: '11%'
       }
-    })), /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, ['报工编号', '本次数量', '实际开工', '本次完工', '有效工时(h)', '实际设备 / 人员', '备注', '操作'].map((name, index) => /*#__PURE__*/React.createElement("th", {
+    })), /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, ['报工编号', '本次数量', '实际开工', '本次完工', '有效工时（小时）', '实际设备 / 人员', '备注', '操作'].map((name, index) => /*#__PURE__*/React.createElement("th", {
       key: name,
       scope: "col",
       className: index === 7 ? 'wb-col-actions' : undefined
@@ -313,7 +313,7 @@
       colSpan: "8"
     }, /*#__PURE__*/React.createElement(window.WorkbenchListControls.EmptyState, {
       title: "\u6682\u65E0\u9010\u6B21\u62A5\u5DE5",
-      hint: "\u53EF\u65B0\u589E\u672C\u6B21\u62A5\u5DE5\uFF1B\u539F\u59CB\u6267\u884C\u4E8B\u5B9E\u4E2D\u7684\u672A\u77E5\u503C\u4ECD\u4FDD\u6301\u672A\u77E5\u3002"
+      hint: "\u53EF\u65B0\u589E\u672C\u6B21\u62A5\u5DE5\uFF1B\u5386\u53F2\u8BB0\u5F55\u91CC\u7684\u672A\u77E5\u503C\u4ECD\u4FDD\u6301\u672A\u77E5\u3002"
     })))))), missingOriginal && /*#__PURE__*/React.createElement("div", {
       className: "field-note"
     }, /*#__PURE__*/React.createElement("p", {
@@ -335,7 +335,7 @@
       onDone: onDone
     }), p.legacy_facts.length > 0 && /*#__PURE__*/React.createElement("details", {
       className: "field-note"
-    }, /*#__PURE__*/React.createElement("summary", null, "\u539F\u59CB\u6267\u884C\u4E8B\u5B9E \xB7 ", p.legacy_facts.length, " \u6761"), p.legacy_facts.map((fact, index) => /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("summary", null, "\u5386\u53F2\u73B0\u573A\u8BB0\u5F55 \xB7 ", p.legacy_facts.length, " \u6761"), p.legacy_facts.map((fact, index) => /*#__PURE__*/React.createElement("div", {
       key: fact.legacy_fact_ref || index
     }, C.date(fact.event_time), " \xB7 ", {
       start: '开工',
@@ -343,7 +343,7 @@
       pause: '暂停',
       resume: '恢复',
       exception: '异常'
-    }[fact.event_type] || '原始事实', " \xB7 ", C.display(fact.remark), fact.event_type === 'finish' && !p.reports.some(row => row.legacy_fact_ref === fact.legacy_fact_ref) && /*#__PURE__*/React.createElement(Button, {
+    }[fact.event_type] || '历史记录', " \xB7 ", C.display(fact.remark), fact.event_type === 'finish' && !p.reports.some(row => row.legacy_fact_ref === fact.legacy_fact_ref) && /*#__PURE__*/React.createElement(Button, {
       icon: "plus",
       disabled: command.locked || !!editor,
       reason: C.blocked(p.write_context, 'create'),

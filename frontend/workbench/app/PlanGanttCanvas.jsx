@@ -57,7 +57,7 @@
       return M.visibleItems(row.items, at, at + 0.001)[0];
     }
     return <canvas ref={ref} className="plan-row-canvas" data-plan-dense-row data-point-row={row.point || undefined} role="button" tabIndex={0}
-      style={{ left, width: viewport }} aria-label={row.label + '，' + row.items.length + '道' + (row.before ? '基线' : '安排')}
+      style={{ left, width: viewport }} aria-label={row.label + '，' + row.items.length + ' 道' + (row.before ? '初始计划' : '安排')}
       onMouseMove={event => { const item = hit(event); onHover(item ? { task: item.task, before: row.before, x: event.clientX, y: event.clientY } : null); }}
       onMouseLeave={() => onHover(null)} onClick={event => { const item = hit(event); if (item) onSelect(item.task, row.before); }}
       onKeyDown={event => {

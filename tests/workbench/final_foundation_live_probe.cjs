@@ -4,9 +4,9 @@ const {PNG} = require('pngjs');
 
 const NAV = [
   ['process', '基础资料'], ['batches', '批次管理'], ['run', '执行排产'], ['analysis', '选择排产方案'],
-  ['trial', '方案试调'], ['gantt', '设备 / 人员 / 批次甘特'], ['field', '现场记录'], ['fieldgantt', '现场实际甘特'],
+  ['trial', '试调'], ['gantt', '计划甘特'], ['field', '现场记录'], ['fieldgantt', '现场实际甘特'],
   ['review', '执行复盘'], ['reports', '报表中心'], ['calib', '工时定额校准'], ['dashboard', '值班台'],
-  ['basedata', '主数据总览'], ['system', '系统管理'],
+  ['basedata', '资料总览'], ['system', '系统管理'],
 ];
 const SIDEBAR = ['dashboard', 'process', 'basedata', 'batches', 'run', 'analysis', 'trial', 'field', 'fieldgantt', 'reports', 'calib', 'system']
   .map(view => NAV.find(row => row[0] === view));

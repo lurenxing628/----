@@ -88,21 +88,21 @@ let browser;
   await run('calendar-range-invalid-date-focus', async () => {
     await page.evaluate(() => mount('range'));
     await page.getByLabel('开始日期', { exact: true }).fill('');
-    await page.getByRole('button', { name: '预览全部日期', exact: true }).click();
+    await page.getByRole('button', { name: '预览变更', exact: true }).click();
     await page.waitForFunction(() => document.activeElement.type === 'date' && document.activeElement.getAttribute('aria-invalid') === 'true');
     assert.equal(await page.locator('.wb-field-error').count(), 1);
   });
   await run('outsourcing-general-errors-stay-general-and-focus-summary', async () => {
     await page.evaluate(() => mount('outsourcing'));
-    await page.getByRole('button', { name: '预览核对', exact: true }).click();
+    await page.getByRole('button', { name: '预检核对', exact: true }).click();
     await page.waitForFunction(() => document.activeElement.querySelector('[role="alert"]'));
     assert.equal(await page.locator('[aria-invalid="true"]').count(), 0);
-    assert.match(await page.getByRole('alert').innerText(), /请填写声明人/);
+    assert.match(await page.getByRole('alert').innerText(), /请填写经办人/);
   });
   await run('outsourcing-server-field-errors-focus-exact-field', async () => {
-    await page.getByLabel('外协声明人', { exact: true }).fill('张工');
+    await page.getByLabel('外协经办人', { exact: true }).fill('张工');
     await page.getByLabel('外协核实原因', { exact: true }).fill('核对现有记录');
-    await page.getByRole('button', { name: '预览核对', exact: true }).click();
+    await page.getByRole('button', { name: '预检核对', exact: true }).click();
     await page.waitForFunction(() => document.activeElement.getAttribute('aria-label') === '外协核实原因');
     assert.equal(await page.locator('.wb-field-error').innerText(), '原因需要核实。');
   });
@@ -113,7 +113,7 @@ let browser;
     await page.waitForFunction(() => document.activeElement.name === 'business_code');
     assert.equal(await page.locator('.wb-field-error').count(), 3);
     await page.getByLabel('名称', { exact: true }).fill('保留目录草稿');
-    await page.getByRole('button', { name: '返回目录', exact: true }).click();
+    await page.getByRole('button', { name: '返回列表', exact: true }).click();
     await page.getByRole('button', { name: '留在当前页面', exact: true }).click();
     assert.equal(await page.getByLabel('名称', { exact: true }).inputValue(), '保留目录草稿');
     await page.getByRole('button', { name: '关闭', exact: true }).first().click();

@@ -9,21 +9,21 @@
     } catch (_) { return false; }
   }
   function read() {
-    let raw; try { raw = localStorage.getItem(KEY); } catch (_) { throw new Error('无法读取原采纳请求，暂不能开始新采用。'); }
+    let raw; try { raw = localStorage.getItem(KEY); } catch (_) { throw new Error('无法读取上次采用操作的记录，暂时不能开始新的采用。'); }
     if (raw === null) return null;
-    let value; try { value = JSON.parse(raw); } catch (_) { throw new Error('原采纳恢复记录损坏，请保留现场，不能换请求重提。'); }
-    A.check(valid(value), '原采纳恢复记录不完整，请保留现场，不能换请求重提。'); return value;
+    let value; try { value = JSON.parse(raw); } catch (_) { throw new Error('上次采用的操作记录已损坏。请不要再操作，联系维护人员；不能换个编号重新提交。'); }
+    A.check(valid(value), '上次采用的操作记录不完整。请不要再操作，联系维护人员；不能换个编号重新提交。'); return value;
   }
   function save(value, previous) {
-    A.check(A.equal(read(), previous), '原请求已变化，未覆盖其他页面的采纳记录。');
+    A.check(A.equal(read(), previous), '上次操作已变化，没有覆盖其他页面的采用记录。');
     A.check(value === null || valid(value));
     try { if (value === null) localStorage.removeItem(KEY); else localStorage.setItem(KEY, JSON.stringify(value)); }
-    catch (_) { throw new Error('无法持久保存原采纳请求，未开始新的采用。'); }
-    A.check(A.equal(read(), value), '原请求未完整保存，不能开始新的采用。');
+    catch (_) { throw new Error('无法保存这次采用操作的记录，没有开始新的采用。'); }
+    A.check(A.equal(read(), value), '这次操作没有完整保存，不能开始新的采用。');
     window.dispatchEvent(new Event(EVENT)); return value;
   }
   function begin(preview, previous) {
-    A.check(!previous || previous.phase === 'rejected', '原请求结果尚未核实，不能开始新的采用。');
+    A.check(!previous || previous.phase === 'rejected', '上次操作的结果还没确认，不能开始新的采用。');
     return save({ version: 1, request_key: 'calibration-' + Array.from(crypto.getRandomValues(new Uint8Array(24)), n => n.toString(16).padStart(2, '0')).join(''),
       phase: 'pending', baseline: A.binding(preview.suggestion), input: A.input({ ...preview.input, confirm: true }, true) }, previous);
   }
@@ -61,14 +61,14 @@
       api.lookup(saved, controller.signal).then(value => {
         if (disposed) return;
         if (value) accept(value, saved);
-        else setNotice('尚未查到原回执，请稍后查询；原请求仍可能完成，不会换 key 或自动重新提交。');
-      }).catch(e => { if (!disposed) setError('原请求结果尚未核实。' + e.message); }).finally(() => { if (!disposed) setBusy(false); });
+        else setNotice('还没有查到上次采用的结果。查不到不代表没有执行，系统不会换个编号重新提交；请稍后再点「查询结果」。');
+      }).catch(e => { if (!disposed) setError('上次操作的结果还没确认。' + e.message); }).finally(() => { if (!disposed) setBusy(false); });
       return () => { disposed = true; controller.abort(); };
     }, [saved, api, revision, storageError]);
     function change(value) { setDraft(value); setPreview(null); setConsent(false); setError(''); }
     async function inspect() {
       if (lock.current || stale || storageError || !detail || saved && saved.phase !== 'rejected') return;
-      if (saved && saved.baseline.template_operation_ref !== detail.suggestion.template_operation_ref) { setError('原请求属于另一模板，请先结束已明确拒绝的原请求。'); return; }
+      if (saved && saved.baseline.template_operation_ref !== detail.suggestion.template_operation_ref) { setError('上次操作属于另一个模板。请先点「结束本次未采用」处理完上次操作。'); return; }
       let values; try { values = A.input(draft); } catch (e) { setError(e.message); return; }
       lock.current = true; setBusy(true); setPreview(null); setConsent(false); setError(''); setNotice('');
       const controller = new AbortController(); request.current = controller;
@@ -82,22 +82,22 @@
         || !A.equal(A.binding(detail.suggestion), A.binding(preview.suggestion)) || !A.equal(A.input(draft), preview.input)) return;
       lock.current = true; setBusy(true); setError(''); setNotice('');
       try {
-        A.check(navigator.locks && typeof navigator.locks.request === 'function', '浏览器请求锁不可用，不能开始采纳。');
+        A.check(navigator.locks && typeof navigator.locks.request === 'function', '当前浏览器不支持这一步，请用 Chrome 打开后重试。');
         await navigator.locks.request(KEY, { ifAvailable: true }, async acquired => {
-          A.check(acquired, '另一页面正在采纳，请先读取原请求。');
+          A.check(acquired, '另一个页面正在采用，请先在那边查询结果。');
           const original = begin(preview, active.current);
           active.current = original; setSaved(original); setPreview(null); setConsent(false);
           try { accept(await api.adopt(original, preview.write_context.write_token), original); }
           catch (e) {
             if (A.isRejected(e)) { const rejected = save({ ...original, phase: 'rejected' }, original); if (mounted.current) setSaved(rejected); }
-            if (mounted.current) setError(A.isRejected(e) ? e.message + ' 本次未采用；请明确刷新并重新预览。' : '采用响应未核实，已保留原请求，请查询回执。');
+            if (mounted.current) setError(A.isRejected(e) ? e.message + ' 本次没有采用；请点「刷新所选模板」后重新预检。' : window.WorkbenchTerms.outcomes.pending('采用'));
           }
         });
       } catch (e) { if (mounted.current) setStorageError(e.message); }
       finally { lock.current = false; if (mounted.current) { setBusy(false); refresh(); } }
     }
     function finish() {
-      try { A.check(saved && saved.phase !== 'pending', '未知结果不能丢弃原请求。'); save(null, saved); setOpen(false); setPreview(null); setConsent(false); }
+      try { A.check(saved && saved.phase !== 'pending', '结果还不确定，不能丢弃这次操作。'); save(null, saved); setOpen(false); setPreview(null); setConsent(false); }
       catch (e) { setStorageError(e.message); }
     }
     return { saved, draft, open, preview, consent, busy, error, notice, storageError, setOpen, setConsent, change, inspect, submit, finish,

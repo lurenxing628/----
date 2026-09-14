@@ -45,16 +45,16 @@
       excludePaths: excludePaths
     }), command.locked && /*#__PURE__*/React.createElement("div", {
       className: "field-note"
-    }, command.phase === 'sending' ? '正在保存，请保留当前页面。' : '结果待核实，已保留原请求。', " ", /*#__PURE__*/React.createElement(Button, {
+    }, command.phase === 'sending' ? '正在保存，请保留当前页面。' : window.WorkbenchTerms.outcomes.pending('报工'), " ", /*#__PURE__*/React.createElement(Button, {
       icon: "refresh-cw",
       disabled: command.phase !== 'pending',
       onClick: command.check
-    }, "\u6838\u5B9E\u539F\u8BF7\u6C42")), command.phase === 'done' && /*#__PURE__*/React.createElement("div", {
+    }, window.WorkbenchTerms.actions.query_result)), command.phase === 'done' && /*#__PURE__*/React.createElement("div", {
       className: "field-note"
-    }, command.result.result === 'unchanged' ? '内容未变化。' : '已保存。', " ", /*#__PURE__*/React.createElement(Button, {
+    }, command.result.result === 'unchanged' ? '内容没有变化，已确认。' : window.WorkbenchTerms.outcomes.done('保存'), " ", /*#__PURE__*/React.createElement(Button, {
       icon: "check",
       onClick: onDone
-    }, "\u91CD\u8BFB\u5DF2\u786E\u8BA4\u7ED3\u679C")));
+    }, "\u5237\u65B0\u5DF2\u786E\u8BA4\u7ED3\u679C")));
   }
   window.FieldControls = {
     Styles,

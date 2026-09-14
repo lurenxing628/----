@@ -22,9 +22,9 @@
     const object = item => item !== null && typeof item === 'object' && !Array.isArray(item);
     const reference = item => item === null || typeof item === 'string' && /^[0-9a-f]{48}$/.test(item);
     const valid = object(value) && object(value.view) && object(value.position) && Number.isFinite(value.zoom) && value.zoom >= 1 && value.zoom <= 1024;
-    if (!valid) throw new Error('实际甘特查看状态无效，未改选其他对象。');
+    if (!valid) throw new Error('现场实际甘特的查看状态无效，没有改选其他工序。');
     const v = value.view;
-    if (!Object.prototype.hasOwnProperty.call(M.views, v.mode) || !Object.prototype.hasOwnProperty.call(M.lateLabels, v.late) || typeof v.query !== 'string' || v.query.length > 200 || !reference(v.selected) || !reference(v.report) || !['onlySelected', 'details', 'chain'].every(key => typeof v[key] === 'boolean') || !object(v.collapsed) || !Object.values(v.collapsed).every(item => typeof item === 'boolean') || v.chainLines !== undefined && typeof v.chainLines !== 'boolean' || value.position.viewport !== undefined && (!Number.isFinite(value.position.viewport) || value.position.viewport < 80) || (value.position.centerAt !== undefined || value.position.windowSpan !== undefined) && (!Number.isFinite(value.position.centerAt) || !Number.isFinite(value.position.windowSpan) || value.position.windowSpan <= 0) || !['left', 'top'].every(key => Number.isFinite(value.position[key]) && value.position[key] >= 0)) throw new Error('实际甘特查看状态无效，未改选其他对象。');
+    if (!Object.prototype.hasOwnProperty.call(M.views, v.mode) || !Object.prototype.hasOwnProperty.call(M.lateLabels, v.late) || typeof v.query !== 'string' || v.query.length > 200 || !reference(v.selected) || !reference(v.report) || !['onlySelected', 'details', 'chain'].every(key => typeof v[key] === 'boolean') || !object(v.collapsed) || !Object.values(v.collapsed).every(item => typeof item === 'boolean') || v.chainLines !== undefined && typeof v.chainLines !== 'boolean' || value.position.viewport !== undefined && (!Number.isFinite(value.position.viewport) || value.position.viewport < 80) || (value.position.centerAt !== undefined || value.position.windowSpan !== undefined) && (!Number.isFinite(value.position.centerAt) || !Number.isFinite(value.position.windowSpan) || value.position.windowSpan <= 0) || !['left', 'top'].every(key => Number.isFinite(value.position[key]) && value.position[key] >= 0)) throw new Error('现场实际甘特的查看状态无效，没有改选其他工序。');
     return value;
   }
   function initial(context) {
@@ -35,10 +35,10 @@
     for (const key of ['source', 'range_start', 'range_end', 'plan_finish_date_from', 'plan_finish_date_to', 'resource_type', 'resource_ref', 'batch_ids']) if (context[key] !== undefined && input[key] === undefined) input[key] = context[key];
     const allowed = ['plan_ref', 'source', 'range_start', 'range_end', 'plan_finish_date_from', 'plan_finish_date_to', 'resource_type', 'resource_ref', 'batch_ids', 'query', 'focus', 'as_of', 'snapshot_ref', 'kind', 'baseline_ref'];
     let issue = Object.keys(input).some(key => !allowed.includes(key)) ? '来源范围含未知条件，未忽略筛选。' : null;
-    if (input.baseline_ref && input.baseline_ref !== (context.plan_ref || input.plan_ref)) issue = '现场实际甘特以所选计划为基线，未替换为另一个基线版本。';
+    if (input.baseline_ref && input.baseline_ref !== (context.plan_ref || input.plan_ref)) issue = '现场实际甘特以所选计划为对比基准，没有换成另一个计划版本。';
     if (input.query !== undefined && (typeof input.query !== 'string' || input.query.length > 200)) issue = '来源搜索条件无效。';
     if (context.return_to && !['gantt', 'field', 'analysis', 'reports', 'review', 'dashboard'].includes(context.return_to.view)) issue = '返回来源不是已登记的工作台页面。';
-    if (context.report_ref !== undefined && !C.ref(context.report_ref)) issue = '来源报工引用无效，未改指其他记录。';
+    if (context.report_ref !== undefined && !C.ref(context.report_ref)) issue = '来源报工编号无效，没有改指其他记录。';
     if (context.report_ref !== undefined && !C.ref(context.task_ref || context.entity_ref)) issue = '来源报工必须绑定明确任务，未猜测其他任务。';
     for (const key of ['plan_ref', 'source', 'range_start', 'range_end', 'plan_finish_date_from', 'plan_finish_date_to', 'resource_type', 'resource_ref', 'batch_ids']) if (input[key] !== undefined && input[key] !== null && input[key] !== '') scope[key] = input[key];
     if (context.plan_ref) scope.plan_ref = context.plan_ref;
@@ -165,9 +165,9 @@
     const data = result && result.data;
     const captionPlan = !loading && !error && data && data.plan;
     const captionStatus = captionPlan && {
-      official: captionPlan.is_current_official ? '当前正式采用' : '历史正式方案',
+      official: captionPlan.is_current_official ? '当前正式采用' : '历史正式计划',
       candidate: window.WorkbenchTerms.candidate,
-      scenario: '试调场景'
+      scenario: window.WorkbenchTerms.trial_scenario
     }[captionPlan.kind];
     window.WorkbenchCaption.useCaption(captionStatus ? {
       reference: captionPlan.plan_ref,
@@ -345,7 +345,7 @@
       });
       const timer = setTimeout(async () => {
         try {
-          if (typeof api.related !== 'function') throw window.APSResourceContract.failure('关联链读取接口未接入，未使用整版链替代。');
+          if (typeof api.related !== 'function') throw window.APSResourceContract.failure('dependency not wired: actual_gantt.related');
           const result = await api.related({
             ...scope,
             snapshot_ref: data.critical_chain.snapshot_ref
@@ -455,7 +455,7 @@
       className: "wb-page-title"
     }, "\u73B0\u573A\u5B9E\u9645\u7518\u7279"), /*#__PURE__*/React.createElement("span", {
       className: "fg-muted wb-page-context"
-    }, data ? data.plan.display_name + ' · 数据截至 ' + M.time(result.meta.as_of) : loading ? '正在读取计划与执行事实' : '计划与执行事实')), /*#__PURE__*/React.createElement("div", {
+    }, data ? data.plan.display_name + ' · 数据截至 ' + M.time(result.meta.as_of) : loading ? '正在读取计划与现场记录' : '计划与现场记录')), /*#__PURE__*/React.createElement("div", {
       className: "wb-actions"
     }, /*#__PURE__*/React.createElement(Button, {
       icon: "refresh-cw",
@@ -468,7 +468,7 @@
     }, "\u8BA1\u5212\u7518\u7279"), /*#__PURE__*/React.createElement(Button, {
       icon: "arrow-right",
       onClick: () => navigate('field')
-    }, "\u73B0\u573A\u62A5\u5DE5")), onNavigate && initialContext.return_to && /*#__PURE__*/React.createElement(Button, {
+    }, "\u73B0\u573A\u8BB0\u5F55")), onNavigate && initialContext.return_to && /*#__PURE__*/React.createElement(Button, {
       icon: "chevron-left",
       onClick: () => {
         const target = initialContext.return_to;
@@ -478,7 +478,7 @@
       error: error
     }), !data && /*#__PURE__*/React.createElement(window.WorkbenchControls.EmptyState, {
       kind: loading ? 'loading' : 'empty',
-      title: loading ? '正在读取计划与执行事实…' : error ? '实际甘特未读取成功' : '暂无实际甘特数据'
+      title: loading ? '正在读取计划与现场记录…' : error ? '现场实际甘特未读取成功' : '暂无现场实际甘特数据'
     }), !data && !loading && onNavigate && /*#__PURE__*/React.createElement(Button, {
       icon: "chart-gantt",
       onClick: () => onNavigate('analysis', {})
@@ -493,11 +493,11 @@
     }, data.availability.reason), /*#__PURE__*/React.createElement("dl", {
       className: "fg-metrics",
       "aria-label": "\u5F53\u524D\u8303\u56F4\u6982\u51B5"
-    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u6574\u9053\u5DF2\u5B8C\u5DE5"), /*#__PURE__*/React.createElement("dd", null, stats.complete === null ? '不可用' : stats.complete)), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u5DF2\u62A5\u5DE5 \xB7 \u672A\u6574\u9053\u5B8C\u5DE5"), /*#__PURE__*/React.createElement("dd", null, stats.reported === null ? '不可用' : stats.reported)), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u5F85\u62A5\u5DE5"), /*#__PURE__*/React.createElement("dd", null, stats.pending === null ? '不可用' : stats.pending)), /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u6574\u9053\u5DF2\u5B8C\u5DE5"), /*#__PURE__*/React.createElement("dd", null, stats.complete === null ? '暂无数据' : stats.complete)), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u5DF2\u62A5\u5DE5 \xB7 \u672A\u6574\u9053\u5B8C\u5DE5"), /*#__PURE__*/React.createElement("dd", null, stats.reported === null ? '暂无数据' : stats.reported)), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u5F85\u62A5\u5DE5"), /*#__PURE__*/React.createElement("dd", null, stats.pending === null ? '暂无数据' : stats.pending)), /*#__PURE__*/React.createElement("div", {
       title: "\u4EC5\u7EDF\u8BA1\u6709\u786E\u8BA4\u5B8C\u5DE5\u65F6\u95F4\u7684\u5DF2\u5B8C\u5DE5\u5DE5\u5E8F"
-    }, /*#__PURE__*/React.createElement("dt", null, "\u5E73\u5747\u6574\u9053\u5B8C\u5DE5\u504F\u5DEE"), /*#__PURE__*/React.createElement("dd", null, stats.average === null ? '未核实' : (stats.average > 0 ? '+' : '') + window.WorkbenchFormat.number(Math.round(stats.average) + 0, {
+    }, /*#__PURE__*/React.createElement("dt", null, "\u5E73\u5747\u6574\u9053\u5B8C\u5DE5\u504F\u5DEE\uFF08\u5206\u949F\uFF09"), /*#__PURE__*/React.createElement("dd", null, stats.average === null ? '暂无数据' : (stats.average > 0 ? '+' : '') + window.WorkbenchFormat.number(Math.round(stats.average) + 0, {
       digits: 0
-    }) + 'm'))), /*#__PURE__*/React.createElement("section", {
+    }) + ' 分钟'))), /*#__PURE__*/React.createElement("section", {
       className: "gb-workspace fg-workspace",
       "aria-label": "\u73B0\u573A\u5B9E\u9645\u7518\u7279\u5DE5\u4F5C\u533A"
     }, /*#__PURE__*/React.createElement(Toolbar, {
@@ -533,7 +533,7 @@
     }), targetRef && (!relatedChain || relatedChain.target !== targetRef || relatedChain.busy) && /*#__PURE__*/React.createElement("div", {
       className: "fg-note",
       role: "status"
-    }, "\u6B63\u5728\u8BFB\u53D6\u5F53\u524D\u5BF9\u8C61\u5173\u8054\u94FE..."), targetRef && relatedChain && relatedChain.target === targetRef && /*#__PURE__*/React.createElement(ErrorBox, {
+    }, "\u6B63\u5728\u8BFB\u53D6\u6240\u9009\u5DE5\u5E8F\u7684\u5173\u8054\u94FE\u2026"), targetRef && relatedChain && relatedChain.target === targetRef && /*#__PURE__*/React.createElement(ErrorBox, {
       error: relatedChain.error
     })), view.selected && !model.items.some(i => i.task.task_ref === view.selected) && /*#__PURE__*/React.createElement("div", {
       role: "status",
@@ -567,7 +567,7 @@
       onClick: () => locate()
     })), selected.execution.remaining_plan && /*#__PURE__*/React.createElement("span", null, "\u5269\u4F59\u5B89\u6392\uFF1A", M.time(selected.execution.remaining_plan.start), " \u2192 ", M.time(selected.execution.remaining_plan.end)), selected.execution.data_gaps.map((gap, i) => /*#__PURE__*/React.createElement("span", {
       key: 'gap' + i
-    }, gap.message || '执行记录待核对')), report && /*#__PURE__*/React.createElement("span", null, "\u767B\u8BB0\uFF1A", M.time(report.recorded_at), " \xB7 \u5386\u53F2\u7248\u672C ", report.correction_history.length, " \u6761"))) : /*#__PURE__*/React.createElement("span", null, "\u672A\u9009\u4E2D\u5DE5\u5E8F")), /*#__PURE__*/React.createElement("div", {
+    }, gap.message || '报工记录待核对')), report && /*#__PURE__*/React.createElement("span", null, "\u767B\u8BB0\uFF1A", M.time(report.recorded_at), " \xB7 \u5386\u53F2\u7248\u672C ", report.correction_history.length, " \u6761"))) : /*#__PURE__*/React.createElement("span", null, "\u672A\u9009\u4E2D\u5DE5\u5E8F")), /*#__PURE__*/React.createElement("div", {
       className: "fg-board",
       ref: board,
       "data-actual-scroll": true,
@@ -595,7 +595,7 @@
       style: {
         display: 'block'
       }
-    }, "\u5DE5\u5382\u672C\u5730\u65F6\u95F4 \xB7 \u8FDE\u7EED\u8DE8\u591C")), /*#__PURE__*/React.createElement("div", {
+    }, "\u8FDE\u7EED\u8DE8\u591C")), /*#__PURE__*/React.createElement("div", {
       className: "fg-ticks",
       style: {
         width
@@ -613,7 +613,7 @@
       style: {
         left: (model.asOf - model.start) / (model.end - model.start) * width
       },
-      title: '数据时点 ' + M.time(result.meta.as_of),
+      title: '数据截至 ' + M.time(result.meta.as_of),
       "aria-hidden": "true"
     }))), /*#__PURE__*/React.createElement(window.ActualGanttRows, {
       model,
@@ -677,7 +677,7 @@
       style: {
         padding: 16
       }
-    }, /*#__PURE__*/React.createElement("p", null, "\u6309\u5F53\u524D\u67E5\u8BE2\u8303\u56F4\u548C\u672C\u6B21\u8BFB\u53D6\u7684\u6570\u636E\u5BFC\u51FA\u5168\u90E8 ", model.items.length, " \u9053\u5339\u914D\u5DE5\u5E8F\u53CA\u5176\u9010\u6B21\u62A5\u5DE5\uFF0C\u4E0D\u53D7\u6EDA\u52A8\u3001\u6298\u53E0\u548C\u8BE6\u60C5\u5F00\u5173\u5F71\u54CD\u3002"), /*#__PURE__*/React.createElement("p", null, "\u672C\u5730\u641C\u7D22\uFF1A", view.query.trim() || '无', "\uFF1B\u665A\u671F\uFF1A", M.lateLabels[view.late], "\uFF1B\u4EC5\u9009\u4E2D\uFF1A", view.onlySelected ? '是' : '否', "\u3002\u672A\u77E5\u6570\u91CF\u548C\u5DE5\u65F6\u4FDD\u6301\u7A7A\u503C\uFF0C\u65E7\u6267\u884C\u4E8B\u5B9E\u53E6\u5217\u3002"), /*#__PURE__*/React.createElement("p", null, "\u8BA1\u5212\u5B8C\u5DE5\u65E5\u671F\uFF1A", scope.plan_finish_date_from || '不限', " \u81F3 ", scope.plan_finish_date_to || '不限', "\uFF1B\u6570\u636E\u622A\u81F3 ", M.time(result.meta.as_of), "\u3002\u6570\u636E\u53D8\u5316\u65F6\u4E0B\u8F7D\u4F1A\u8981\u6C42\u5237\u65B0\u3002"), /*#__PURE__*/React.createElement(ErrorBox, {
+    }, /*#__PURE__*/React.createElement("p", null, "\u6309\u5F53\u524D\u67E5\u8BE2\u8303\u56F4\u548C\u672C\u6B21\u8BFB\u53D6\u7684\u6570\u636E\u5BFC\u51FA\u5168\u90E8 ", model.items.length, " \u9053\u5339\u914D\u5DE5\u5E8F\u53CA\u5176\u9010\u6B21\u62A5\u5DE5\uFF0C\u4E0D\u53D7\u6EDA\u52A8\u3001\u6298\u53E0\u548C\u8BE6\u60C5\u5F00\u5173\u5F71\u54CD\u3002"), /*#__PURE__*/React.createElement("p", null, "\u672C\u5730\u641C\u7D22\uFF1A", view.query.trim() || '无', "\uFF1B\u665A\u671F\uFF1A", M.lateLabels[view.late], "\uFF1B\u4EC5\u9009\u4E2D\uFF1A", view.onlySelected ? '是' : '否', "\u3002\u672A\u77E5\u6570\u91CF\u548C\u5DE5\u65F6\u4FDD\u6301\u672A\u586B\u5199\uFF0C\u5386\u53F2\u73B0\u573A\u8BB0\u5F55\u53E6\u5217\u3002"), /*#__PURE__*/React.createElement("p", null, "\u8BA1\u5212\u5B8C\u5DE5\u65E5\u671F\uFF1A", scope.plan_finish_date_from || '不限', " \u81F3 ", scope.plan_finish_date_to || '不限', "\uFF1B\u6570\u636E\u622A\u81F3 ", M.time(result.meta.as_of), "\u3002\u6570\u636E\u53D8\u5316\u65F6\u4E0B\u8F7D\u4F1A\u8981\u6C42\u5237\u65B0\u3002"), /*#__PURE__*/React.createElement(ErrorBox, {
       error: exportError
     }))));
   }

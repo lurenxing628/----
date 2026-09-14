@@ -24,16 +24,16 @@ async function main(){
   await run('new suggestions clear to unknown and automatic reread preserves ledger null',async()=>{
    await open(5);await exact('新增本次报工').click();assert((await page.locator('.field-suggestion').innerText()).includes('保存后将登记为实际记录'));
    await page.screenshot({path:path.join(output,'field-editor-suggestions.png'),fullPage:false});
-   assert((await page.getByLabel('实际开工',{exact:true}).inputValue()).length>0);await exact('清空实际开工').click();await exact('清空本次实际完工').click();
+   assert((await page.getByLabel('实际开工',{exact:true}).inputValue()).length>0);await exact('清除实际开工').click();await exact('清除本次实际完工').click();
    await page.getByLabel('本次完成数量',{exact:true}).fill('1');await save('保存报工');await page.locator('.field-editor').waitFor({state:'hidden'});
-   await page.getByText('已保存并重读最新报工。',{exact:true}).waitFor();const task=await latest(5);assert.equal(task.execution.reports.length,1);assert.equal(task.execution.reports[0].actual_start,null);assert.equal(task.execution.reports[0].actual_end,null);assert.equal(task.execution.reports[0].completed_quantity,1);
-   // The save notice describes the read that follows a save; a manual refresh must replace it, otherwise a later read failure would be reported as "报工已保存，但重读失败".
+   await page.getByText('已保存并刷新最新报工。',{exact:true}).waitFor();const task=await latest(5);assert.equal(task.execution.reports.length,1);assert.equal(task.execution.reports[0].actual_start,null);assert.equal(task.execution.reports[0].actual_end,null);assert.equal(task.execution.reports[0].completed_quantity,1);
+   // The save notice describes the read that follows a save; a manual refresh must replace it, otherwise a later read failure would be reported as "报工已保存，但刷新失败".
    await exact('刷新现场记录').click();await page.locator('[data-field-task]').first().waitFor();
-   assert.equal(await page.getByText('已保存并重读最新报工。',{exact:true}).count(),0,'a manual refresh replaces the post-save notice');
+   assert.equal(await page.getByText('已保存并刷新最新报工。',{exact:true}).count(),0,'a manual refresh replaces the post-save notice');
   });
   await run('supplement has no fresh defaults and focuses field errors',async()=>{
    const task=await latest(5),record=task.execution.reports[0];await exact('补齐 '+record.report_no).click();assert.equal(await page.getByLabel('实际开工',{exact:true}).inputValue(),'');assert.equal(await page.getByLabel('本次实际完工',{exact:true}).inputValue(),'');assert.equal(await page.locator('.field-suggestion').count(),0);
-   await page.getByLabel('有效工时 (h)',{exact:true}).fill('0');await exact('保存报工').click();await page.locator('[aria-invalid="true"]').waitFor();assert.equal(await page.getByLabel('补齐或更正原因',{exact:true}).evaluate(node=>document.activeElement===node),true);
+   await page.getByLabel('有效工时（小时）',{exact:true}).fill('0');await exact('保存报工').click();await page.locator('[aria-invalid="true"]').waitFor();assert.equal(await page.getByLabel('补齐或更正原因',{exact:true}).evaluate(node=>document.activeElement===node),true);
    await page.screenshot({path:path.join(output,'field-editor-validation.png'),fullPage:false});
    await page.getByLabel('补齐或更正原因',{exact:true}).fill('保留未知起止，仅补零工时');await save('保存报工');await page.locator('.field-editor').waitFor({state:'hidden'});const after=await latest(5);assert.equal(after.execution.reports[0].actual_end,null);assert.equal(after.execution.reports[0].effective_processing_hours,0);
   });
@@ -46,7 +46,7 @@ async function main(){
    for(const value of last)for(const key of ['request_key','report_ref','revision_ref','task_ref','write_context'])assert.equal(Object.hasOwn(value.body.input,key),false);
   });
   await run('retained drafts survive collapsed rows and cancellation is explicit',async()=>{
-   await exact('新增本次报工').click();await exact('清空实际开工').click();await page.getByLabel('本次完成数量',{exact:true}).fill('2');
+   await exact('新增本次报工').click();await exact('清除实际开工').click();await page.getByLabel('本次完成数量',{exact:true}).fill('2');
    await page.locator('[data-field-task].field-selected .field-link').click();await page.locator('.field-editor').waitFor({state:'hidden'});assert(await page.evaluate(()=>WorkbenchGuards.hasDirty()));
    await open(6);await exact('新增本次报工').click();await page.getByLabel('本次完成数量',{exact:true}).fill('3');
    await exact('取消').click();await exact('放弃未保存内容并继续').click();await page.locator('.field-editor').waitFor({state:'hidden'});assert(await page.evaluate(()=>WorkbenchGuards.hasDirty()),'another task draft remains protected');
@@ -63,15 +63,15 @@ async function main(){
   });
   await page.goto(origin+'/?mock=1');await page.locator('[data-field-task]').first().waitFor();
   await run('pending save continue never creates another draft or write',async()=>{
-   await open(5);await exact('新增本次报工').click();await page.getByLabel('本次完成数量',{exact:true}).fill('1');await exact('保存并继续').click();await exact('核实原请求').waitFor();
+   await open(5);await exact('新增本次报工').click();await page.getByLabel('本次完成数量',{exact:true}).fill('1');await exact('保存并继续').click();await exact('查询结果').waitFor();
    assert(await exact('保存并继续').isDisabled());assert(await exact('取消').isDisabled());assert.equal(await page.evaluate(()=>probe.writes.length),1);const key=await page.evaluate(()=>probe.writes[0].body.request_key);
-   await exact('核实原请求').click();assert.equal(await page.evaluate(()=>probe.writes.length),1);assert((await page.evaluate(()=>probe.lookups)).every(value=>value===key));
+   await exact('查询结果').click();assert.equal(await page.evaluate(()=>probe.writes.length),1);assert((await page.evaluate(()=>probe.lookups)).every(value=>value===key));
    assert.equal(await page.getByLabel('本次完成数量',{exact:true}).inputValue(),'1');assert(await page.evaluate(()=>WorkbenchGuards.hasDirty()));
   });
   await run('confirmed receipt with read failure or stale context never opens another draft',async()=>{
    await page.evaluate(()=>{window.mockReadFailure=true;window.mockReceipt={ok:true,result:'committed',data:{rows:[]},receipt_ref:'confirmed-original-request',warnings:[]};});
-   await exact('核实原请求').click();await page.getByText('报工已保存，但重读失败；请重试读取，未再次写入。',{exact:true}).waitFor();assert.equal(await page.locator('.field-editor').count(),0);assert.equal(await page.evaluate(()=>probe.writes.length),1);
-   await page.evaluate(()=>{window.mockReadFailure=false;});await exact('重读现场任务').click();await page.getByText('尚未取得新的报工写入上下文，未打开新的草稿。请重读后再新增。',{exact:true}).waitFor();
+   await exact('查询结果').click();await page.getByText('报工已保存，但刷新失败；请再点「刷新现场记录」，没有重复写入。',{exact:true}).waitFor();assert.equal(await page.locator('.field-editor').count(),0);assert.equal(await page.evaluate(()=>probe.writes.length),1);
+   await page.evaluate(()=>{window.mockReadFailure=false;});await exact('刷新现场任务').click();await page.getByText('本页数据已过期，没有打开新的报工草稿。请点「刷新现场记录」后再新增。',{exact:true}).waitFor();
    assert.equal(await page.locator('.field-editor').count(),0);assert.equal(await page.evaluate(()=>probe.writes.length),1);
   });
   assert.deepEqual(report.errors,[]);report.completed=true;

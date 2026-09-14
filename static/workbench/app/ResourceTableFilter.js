@@ -88,7 +88,7 @@
         error: null
       });
       Promise.resolve().then(() => {
-        if (typeof service.current.facets !== 'function') throw C.failure('列值读取接口尚未接入。');
+        if (typeof service.current.facets !== 'function') throw C.failure('dependency not wired: adapter.facets');
         return service.current.facets(kind, query, controller.signal);
       }).then(raw => {
         if (live && !controller.signal.aborted) setReading({
@@ -148,7 +148,7 @@
         loading: true
       });
       Promise.resolve().then(() => {
-        if (typeof service.current.facetSelection !== 'function') throw C.failure('全部匹配值接口尚未接入，未改变筛选。');
+        if (typeof service.current.facetSelection !== 'function') throw C.failure('dependency not wired: adapter.facetSelection');
         return service.current.facetSelection(kind, query, controller.signal);
       }).then(raw => {
         if (!live || controller.signal.aborted) return;
@@ -223,9 +223,11 @@
         if (panel.current.contains(event.target)) return;
         const target = event.target === document ? document.scrollingElement : event.target;
         const before = scrollPositions.get(target);
+        // Only the anchor's own scroll ancestors can move it; scrolling an unrelated container keeps the popover open.
+        if (!before) return;
         // A pre-open scroll can be delivered after mounting; the anchor has not moved since opening.
-        if (before && target.scrollLeft === before[0] && target.scrollTop === before[1]) return;
-        if (before) {
+        if (target.scrollLeft === before[0] && target.scrollTop === before[1]) return;
+        {
           const left = Math.min(before[0], Math.max(0, target.scrollWidth - target.clientWidth));
           const top = Math.min(before[1], Math.max(0, target.scrollHeight - target.clientHeight));
           const clamped = left < before[0] - 1 || top < before[1] - 1;
@@ -423,7 +425,7 @@
       className: "mini",
       icon: "refresh-cw",
       onClick: readFirst
-    }, "\u56DE\u5230\u9996\u9875\u91CD\u65B0\u8BFB\u53D6"), keyLoading && /*#__PURE__*/React.createElement("span", {
+    }, "\u56DE\u5230\u7B2C 1 \u9875\u91CD\u65B0\u67E5\u8BE2"), keyLoading && /*#__PURE__*/React.createElement("span", {
       role: "status",
       className: "muted"
     }, "\u6B63\u5728\u8BFB\u53D6\u5168\u90E8\u5339\u914D\u503C\u2026"), /*#__PURE__*/React.createElement("div", {
@@ -527,7 +529,7 @@
     }, /*#__PURE__*/React.createElement("span", {
       className: "muted",
       role: "status"
-    }, Number.isSafeInteger(matchingCount) && matchingCount >= 0 ? matchingCount + ' 行匹配' : '匹配行数待读取'), /*#__PURE__*/React.createElement(Button, {
+    }, Number.isSafeInteger(matchingCount) && matchingCount >= 0 ? matchingCount + ' 行匹配' : '匹配行数未读取'), /*#__PURE__*/React.createElement(Button, {
       className: "mini",
       onClick: () => commitChange(() => null, true)
     }, "\u6E05\u9664"))), portal);

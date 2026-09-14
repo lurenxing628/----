@@ -26,7 +26,7 @@ async function main() {
     assert.deepEqual(calls, [{ ...input, snapshot_ref: 'old-token' }]);
   });
   await test('unavailable-target-page-does-not-report-page-one-as-restored', async () => {
-    await assert.rejects(api.readView({ read: async () => response(1) }, input), /原报表页已不可用/);
+    await assert.rejects(api.readView({ read: async () => response(1) }, input), /翻页位置已失效/);
   });
   await test('different-plan-is-not-a-fresh-read-fallback', async () => {
     const calls = [];

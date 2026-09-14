@@ -6,13 +6,8 @@
       Icon
     } = window.ResourceControls,
     M = window.ActualGanttModel;
-  function describe(item, labels, report) {
-    const wording = {
-      '执行投影不可用': '执行记录不可用',
-      '完成依据：逐次执行投影': '完成依据：逐次报工记录'
-    };
-    return M.describe(item, labels, report).map(line => wording[line] || line);
-  }
+  // 工序说明只有 ActualGanttModel 那一份写法，这里不再改写措辞。
+  const describe = M.describe;
   function Styles() {
     return /*#__PURE__*/React.createElement(window.PointGantt.Styles, null);
   }
@@ -87,7 +82,7 @@
       className: "fg-lg"
     }, /*#__PURE__*/React.createElement("i", {
       className: "fg-sw-plan"
-    }), "\u539F\u8BA1\u5212\u57FA\u7EBF"), /*#__PURE__*/React.createElement("span", {
+    }), "\u539F\u8BA1\u5212"), /*#__PURE__*/React.createElement("span", {
       className: "fg-lg"
     }, /*#__PURE__*/React.createElement("i", {
       className: "fg-sw-act"
@@ -184,9 +179,9 @@
       "data-chain-target": chain.target_task_ref || ''
     }, /*#__PURE__*/React.createElement("div", {
       className: "fg-chain-heading"
-    }, /*#__PURE__*/React.createElement("strong", null, chain.mode === 'related' ? '当前对象目标的控制前驱链' : '整版计划控制前驱链'), " \xB7 \u539F\u7B97\u6CD5\u8FD1\u4F3C \xB7 ", chain.mode === 'related' ? '目标计划结束' : '计划最晚结束', " ", M.time(chain.makespan_end), chain.partial && /*#__PURE__*/React.createElement("span", {
+    }, /*#__PURE__*/React.createElement("strong", null, chain.mode === 'related' ? '所选工序的控制前驱链' : '整版计划控制前驱链'), " \xB7 \u539F\u7B97\u6CD5\u8FD1\u4F3C \xB7 ", chain.mode === 'related' ? '目标计划结束' : '计划最晚结束', " ", M.time(chain.makespan_end), chain.partial && /*#__PURE__*/React.createElement("span", {
       role: "status"
-    }, " \xB7 \u90E8\u5206\u7ED3\u679C\uFF1A\u539F\u7B97\u6CD5\u4E0D\u542B ", chain.omitted_point_count, " \u4E2A\u96F6\u65F6\u957F\u70B9")), chain.state === 'unavailable' ? /*#__PURE__*/React.createElement("span", {
+    }, " \xB7 \u90E8\u5206\u7ED3\u679C\uFF1A\u4E0D\u542B ", chain.omitted_point_count, " \u9053\u96F6\u5DE5\u65F6\u5DE5\u5E8F")), chain.state === 'unavailable' ? /*#__PURE__*/React.createElement("span", {
       role: "status"
     }, "\u5173\u8054\u94FE\u4E0D\u53EF\u7528\uFF1A", chain.reason) : chain.nodes.map((node, index) => /*#__PURE__*/React.createElement(React.Fragment, {
       key: node.task_ref
@@ -238,7 +233,7 @@
       }
     }, scope.range_start && /*#__PURE__*/React.createElement("span", {
       className: "fg-muted",
-      title: "\u6309\u539F\u8BA1\u5212\u65F6\u6BB5\u76F8\u4EA4\u9009\u62E9\u5DE5\u5E8F\uFF1B\u5165\u9009\u5DE5\u5E8F\u4FDD\u7559\u5168\u90E8\u6709\u6548\u62A5\u5DE5"
+      title: "\u6309\u539F\u8BA1\u5212\u65F6\u6BB5\u6709\u91CD\u53E0\u6765\u6311\u5DE5\u5E8F\uFF1B\u9009\u4E2D\u7684\u5DE5\u5E8F\u4FDD\u7559\u5168\u90E8\u6709\u6548\u62A5\u5DE5"
     }, "\u539F\u8BA1\u5212\u65F6\u6BB5 ", M.time(scope.range_start), " \u81F3 ", M.time(scope.range_end)), /*#__PURE__*/React.createElement("label", null, "\u8BA1\u5212\u5B8C\u5DE5\u65E5", /*#__PURE__*/React.createElement("input", {
       type: "date",
       "aria-label": "\u8BA1\u5212\u5B8C\u5DE5\u5F00\u59CB\u65E5",

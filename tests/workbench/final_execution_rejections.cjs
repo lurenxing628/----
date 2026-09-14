@@ -11,11 +11,11 @@ async function exercise(p) {
   await page.getByRole('button', { name: '新增本次报工', exact: true }).click();
   const quantity = page.getByLabel('本次完成数量', { exact: true });
   const start = page.getByLabel('实际开工', { exact: true }), end = page.getByLabel('本次实际完工', { exact: true });
-  const hours = page.getByLabel('有效工时 (h)', { exact: true });
+  const hours = page.getByLabel('有效工时（小时）', { exact: true });
   for (const [label, startValue, endValue, quantityValue, hoursValue, status, invalidField, message] of [
     ['future', '2099-01-01T08:00', '2099-01-01T10:00', '2', '1', 422],
     ['reversed', '2026-09-02T08:00', '2026-09-02T07:00', '2', '0', 422, '本次实际完工', '本次实际完工不能早于实际开工。'],
-    ['hours-exceed-span', '2026-09-02T08:00', '2026-09-02T10:00', '2', '3', 422, '有效工时 (h)', '有效工时不能超过本次实际起止跨度。'],
+    ['hours-exceed-span', '2026-09-02T08:00', '2026-09-02T10:00', '2', '3', 422, '有效工时（小时）', '有效工时不能超过本次实际起止的时长。'],
     ['overreport', '2026-09-02T08:00', '2026-09-02T10:00', '11', '1', 409]
   ]) {
     await p.step(['WBP-FIELD-018', 'WBP-FIELD-010.A006'], label + '-real-rejection-retains-editable-draft', async () => {
@@ -46,7 +46,7 @@ async function exercise(p) {
     await quantity.fill('2'); await start.fill('2026-09-02T08:00'); await end.fill('2026-09-02T10:00'); await hours.fill('1');
     const result = await p.read(() => page.getByRole('button', { name: '保存报工', exact: true }).click(), endpoint, 500);
     assert.equal(result.committed, 'unknown');
-    await page.getByText('结果待核实，已保留原请求。', { exact: false }).waitFor();
+    await page.getByText('上次报工的结果还没查到，可能已经生效。请点「查询结果」，不要重复提交。', { exact: false }).waitFor();
     const posted = p.report.requests.filter(request => request.method === 'POST' && request.url.endsWith(endpoint));
     p.report.post_cases.push('sql-abort');
     assert.deepEqual(p.report.post_cases, ['future', 'overreport', 'sql-abort']);
@@ -55,7 +55,7 @@ async function exercise(p) {
     p.report.pending_request_key = JSON.parse(posted[2].body).request_key;
     assert.equal(await quantity.inputValue(), '2'); assert.equal(await hours.inputValue(), '1');
     assert.equal(await quantity.isDisabled(), true);
-    const checked = await p.read(() => page.getByRole('button', { name: '核实原请求', exact: true }).click(),
+    const checked = await p.read(() => page.getByRole('button', { name: '查询结果', exact: true }).click(),
       '/commands/' + p.report.pending_request_key);
     assert.equal(checked.state, 'not_recorded'); assert.equal(checked.may_be_in_flight, true);
     assert.equal(p.report.requests.filter(request => request.method === 'POST').length, 3);
@@ -68,8 +68,8 @@ async function exercise(p) {
     assert.equal(JSON.parse(fs.readFileSync(resumed, 'utf8')).url, p.ready.url);
     const previousRequests = p.report.requests.length;
     await page.reload(); await page.locator('[data-field-workspace]').waitFor();
-    const button = page.getByRole('button', { name: '核实原请求', exact: true });
-    await page.waitForFunction(() => [...document.querySelectorAll('button')].some(node => node.textContent.includes('核实原请求') && !node.disabled));
+    const button = page.getByRole('button', { name: '查询结果', exact: true });
+    await page.waitForFunction(() => [...document.querySelectorAll('button')].some(node => node.textContent.includes('查询结果') && !node.disabled));
     const checked = await p.read(() => button.click(), '/commands/' + p.report.pending_request_key);
     assert.equal(checked.state, 'not_recorded'); assert.equal(checked.may_be_in_flight, true);
     p.report.after_restart_requests = p.report.requests.slice(previousRequests);

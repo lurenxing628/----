@@ -8,6 +8,9 @@ WORKBENCH_UI_REQUIRED_TESTS = (
     "tests/workbench/test_ui_refinement_browser_dependencies.py",
     "tests/gate_meta/test_daily_ui_refinement_opt_in.py",
     "tests/gate_meta/test_workbench_ui_registry.py",
+    "tests/workbench/test_ui_copy_glossary.py",
+    "tests/workbench/test_handler_memory.py",
+    "tests/workbench/test_run_progress_ledger.py",
 )
 
 WORKBENCH_UI_BROWSER_TARGETS = (
@@ -25,6 +28,7 @@ WORKBENCH_UI_SUPPLEMENTAL_TESTS = (
     "tests/workbench/test_wbui_actual_keyboard.py",
     "tests/workbench/test_wbui_plan_first_screen.py",
     "tests/workbench/test_wbui_plan_gantt_models.py",
+    "tests/workbench/test_short_screen_layout.py",
 )
 
 WORKBENCH_UI_REQUIRED_REGRESSION_GROUPS = ({
@@ -38,6 +42,9 @@ WORKBENCH_UI_REQUIRED_REGRESSION_GROUPS = ({
         "tests/workbench-*.cjs", "tests/workbench/ui_refinement_*.py", "tests/workbench/ui_refinement_*.cjs",
         "tests/workbench/analysis_ui_contract.cjs",
         "tests/_support/workbench_browser_contract.py", "tests/_support/workbench_browser_probe.cjs",
+        "tests/workbench/handler_memory_probe.cjs",
+        "core/services/workbench/run_progress.py", "core/services/workbench/run_jobs.py", "core/services/workbench/run_worker.py",
+        "core/services/scheduler/run/schedule_candidate_runner.py",
     ),
     "env_keys": ("WORKBENCH_NODE", "NODE_PATH", "node_executable_realpath", "node_version"),
 },)
@@ -58,6 +65,7 @@ WORKBENCH_UI_SUPPLEMENTAL_REGRESSION_GROUPS = ({
         "tests/workbench/plan_ui_*.cjs", "tests/workbench/test_plan_ui.py",
         "tests/workbench/dashboard_widgets_probe.cjs", "tests/workbench/*_support.py",
         "tests/workbench/test_live_browser.py", "tests/workbench/live_environment.py",
+        "tests/workbench/short_screen_layout_probe.cjs",
         "tests/conftest.py", "tests/workbench/fixtures/schema-v28.sql", "schema.sql",
         "tests/_support/workbench_browser_contract.py", "tests/_support/workbench_browser_probe.cjs",
         "tests/_support/workbench_web_contract.py", "tests/_support/excel_templates.py",

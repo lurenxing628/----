@@ -10,10 +10,10 @@
       if (!publish) return undefined;
       const caption = JSON.parse(serialized);
       if (caption && ['reference', 'label', 'name', 'status'].some(key => typeof caption[key] !== 'string' || !caption[key].trim())) {
-        throw new Error('当前方案信息不完整，未显示其他方案。');
+        throw new Error('当前计划信息不完整，没有显示其他计划。');
       }
       if (caption && ['version', 'range'].some(key => caption[key] !== undefined && typeof caption[key] !== 'string')) {
-        throw new Error('当前方案版本或范围无效。');
+        throw new Error('当前计划的版本或范围无效。');
       }
       const entry = {
         caption
@@ -40,7 +40,7 @@
     return /*#__PURE__*/React.createElement("div", {
       className: "cap-rich wb-current-plan",
       role: "status",
-      "aria-label": "\u5F53\u524D\u65B9\u6848",
+      "aria-label": "\u5F53\u524D\u8BA1\u5212",
       "data-plan-ref": value.reference
     }, /*#__PURE__*/React.createElement("strong", null, value.label), /*#__PURE__*/React.createElement("span", {
       className: "wb-current-name",

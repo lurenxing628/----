@@ -5,7 +5,7 @@
   const own = (value, key) => Object.prototype.hasOwnProperty.call(value, key);
   const position = value => typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : 0;
   function check(value) {
-    if (!value) throw new Error('页面定位信息无效，未自动切换对象或扩大范围。请从侧栏重新打开工作区。');
+    if (!value) throw new Error('页面定位信息无效，没有自动切换记录或扩大范围。请从侧栏重新打开工作区。');
   }
   function same(left, right) {
     if (left === right) return true;
@@ -15,19 +15,20 @@
     return keys.length === Object.keys(right).length && keys.every(key => own(right, key) && same(left[key], right[key]));
   }
   function validateBoot(boot) {
-    const icons = ['box', 'database', 'play', 'home', 'gantt', 'chart', 'users', 'clipboard', 'file', 'grid', 'settings', 'scale'];
+    const icons = ['box', 'database', 'play', 'home', 'gantt', 'chart', 'users', 'clipboard', 'file', 'grid', 'settings', 'scale', 'square-pen'];
     check(object(boot.titles) && Array.isArray(boot.enabled_views) && boot.enabled_views.length > 0 && new Set(boot.enabled_views).size === boot.enabled_views.length && boot.enabled_views.every(id => typeof id === 'string' && typeof boot.titles[id] === 'string') && Object.keys(boot.titles).every(id => boot.enabled_views.includes(id)));
     check(Array.isArray(boot.nav_groups) && boot.nav_groups.length > 0 && object(boot.view_aliases));
+    // Icons are unique across the whole sidebar, not just within a group: two entries sharing a glyph read as one.
     const seen = new Set(),
-      groups = new Set();
+      groups = new Set(),
+      usedIcons = new Set();
     boot.nav_groups.forEach(group => {
       check(object(group) && typeof group.title === 'string' && group.title.trim() && !groups.has(group.title) && Array.isArray(group.items) && group.items.length > 0);
       groups.add(group.title);
-      const groupIcons = new Set();
       group.items.forEach(item => {
-        check(object(item) && boot.enabled_views.includes(item.id) && !seen.has(item.id) && item.label === boot.titles[item.id] && icons.includes(item.icon) && !groupIcons.has(item.icon));
+        check(object(item) && boot.enabled_views.includes(item.id) && !seen.has(item.id) && item.label === boot.titles[item.id] && icons.includes(item.icon) && !usedIcons.has(item.icon));
         seen.add(item.id);
-        groupIcons.add(item.icon);
+        usedIcons.add(item.icon);
       });
     });
     Object.keys(boot.view_aliases).forEach(id => check(boot.enabled_views.includes(id) && !seen.has(id) && seen.has(boot.view_aliases[id])));
@@ -39,7 +40,7 @@
     return ['analysis', 'gantt', 'delay'].includes(page.view) && context.source === 'run_history' && !own(context, 'run_ref') && !own(context, 'candidate_ref');
   }
   function title(boot, page) {
-    if (historyView(page)) return '排产历史';
+    if (historyView(page)) return '排产记录';
     return boot.titles[page.view] || '工作区不存在';
   }
   function view(boot) {
@@ -107,6 +108,19 @@
     });
     return result;
   }
+  // Inner panes (plan catalog, gantt board, inspector, projection tables) scroll inside .main-content and are
+  // addressed by their own stable data-wb-scroll-key, so a view can add or drop a pane without a navigation change.
+  function scrollContainers(main) {
+    return main ? Array.prototype.slice.call(main.querySelectorAll('[data-wb-scroll-key]')) : [];
+  }
+  function containerPositions(main) {
+    const result = {};
+    scrollContainers(main).forEach(node => {
+      const key = node.getAttribute('data-wb-scroll-key');
+      if (key) result[key] = [position(node.scrollLeft), position(node.scrollTop)];
+    });
+    return result;
+  }
   function remember(boot, page) {
     const current = read(boot);
     check(current.view === page.view && current.key === page.key);
@@ -117,7 +131,8 @@
         windowTop: position(window.scrollY),
         windowLeft: position(window.scrollX),
         mainTop: main ? position(main.scrollTop) : 0,
-        mainLeft: main ? position(main.scrollLeft) : 0
+        mainLeft: main ? position(main.scrollLeft) : 0,
+        containers: containerPositions(main)
       }
     };
     const state = history.state || {};
@@ -186,6 +201,22 @@
       ['wheel', 'touchstart', 'keydown', 'pointerdown'].forEach(name => window.removeEventListener(name, cancel, true));
       done();
     }
+    const containers = object(scroll.containers) ? scroll.containers : {};
+    function applyContainers(main) {
+      // Panes that no longer exist in this view are skipped; a pane still sizing its content is retried by the same
+      // animation-frame loop that waits for .main-content.
+      let reached = true;
+      scrollContainers(main).forEach(node => {
+        const saved = containers[node.getAttribute('data-wb-scroll-key')];
+        if (!Array.isArray(saved)) return;
+        const left = position(saved[0]),
+          top = position(saved[1]);
+        node.scrollLeft = left;
+        node.scrollTop = top;
+        if (Math.abs(node.scrollLeft - left) > 1 || Math.abs(node.scrollTop - top) > 1) reached = false;
+      });
+      return reached;
+    }
     function apply() {
       if (stopped) return;
       const main = document.querySelector('.main-content');
@@ -198,7 +229,8 @@
         main.scrollTop = mainTop;
         main.scrollLeft = mainLeft;
       }
-      const reached = Math.abs(window.scrollY - top) <= 1 && Math.abs(window.scrollX - left) <= 1 && (!main || Math.abs(main.scrollTop - mainTop) <= 1 && Math.abs(main.scrollLeft - mainLeft) <= 1);
+      const panes = applyContainers(main);
+      const reached = panes && Math.abs(window.scrollY - top) <= 1 && Math.abs(window.scrollX - left) <= 1 && (!main || Math.abs(main.scrollTop - mainTop) <= 1 && Math.abs(main.scrollLeft - mainLeft) <= 1);
       if (reached || performance.now() - started >= 3000) cancel();else frame = requestAnimationFrame(apply);
     }
     ['wheel', 'touchstart', 'keydown', 'pointerdown'].forEach(name => window.addEventListener(name, cancel, true));

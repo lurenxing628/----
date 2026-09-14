@@ -6,18 +6,20 @@
       Button,
       Issues
     } = window.ResourceControls;
+  // 跳转标签与侧栏视图标题保持同名（web/routes/workbench/navigation_metadata.py VIEW_TITLES）；outsourcing 是页内目标，侧栏没有对应条目。
   const navigationLabels = {
     gantt: '计划甘特',
-    fieldgantt: '现场实际',
-    batches: '批次资料',
-    analysis: '候选方案',
-    field: '现场报工',
+    fieldgantt: '现场实际甘特',
+    batches: '批次管理',
+    analysis: '选择排产方案',
+    field: '现场记录',
+    run: '执行排产',
     outsourcing: '外协物流登记'
   };
   function navigationTarget(n, onNavigate) {
-    C.check(C.object(n) && Object.prototype.hasOwnProperty.call(navigationLabels, n.view) && C.object(n.context) && typeof n.enabled === 'boolean', '导航目标未知或上下文无效，未打开默认页面。');
-    C.check(n.view === 'outsourcing' ? typeof window.OutsourcingWorkspace === 'function' : typeof onNavigate === 'function', '对象导航尚未接入，原条目仍保留。');
-    C.check(n.enabled || typeof n.reason === 'string' && n.reason.trim().length > 0, '原对象不可定位的原因缺失，未打开其他对象。');
+    C.check(C.object(n) && Object.prototype.hasOwnProperty.call(navigationLabels, n.view) && C.object(n.context) && typeof n.enabled === 'boolean', '这条记录的跳转目标不对，页面没有跳转。请刷新后重试。');
+    C.check(n.view === 'outsourcing' ? typeof window.OutsourcingWorkspace === 'function' : typeof onNavigate === 'function', 'dependency not wired: window.OutsourcingWorkspace / props.onNavigate');
+    C.check(n.enabled || typeof n.reason === 'string' && n.reason.trim().length > 0, '这条记录暂时打不开，页面没有跳转。请刷新后重试。');
     return navigationLabels[n.view];
   }
   const value = v => v === null || v === undefined || v === '' ? '未填写' : typeof v === 'boolean' ? v ? '是' : '否' : String(v);
@@ -44,7 +46,7 @@
   function CategoryState({
     summary
   }) {
-    if (!summary) return /*#__PURE__*/React.createElement("span", null, "\u672A\u52A0\u8F7D");
+    if (!summary) return /*#__PURE__*/React.createElement("span", null, "\u672A\u8BFB\u53D6");
     return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("span", null, C.states[summary.state], summary.risk_count === null ? ' · 总风险未知' : ' · ' + summary.risk_count + ' 项风险'), summary.risk_count === null && summary.known_risk_count > 0 && /*#__PURE__*/React.createElement("small", null, "\u5DF2\u786E\u8BA4 ", summary.known_risk_count, " \u9879\u98CE\u9669"));
   }
   function Overview({
@@ -64,7 +66,7 @@
           className: "dy-metric",
           key: k,
           onClick: () => onAnalysis(k === 'pressure' ? 'delivery' : 'material')
-        }, /*#__PURE__*/React.createElement("span", null, k === 'pressure' ? '资源压力' : '待排批次'), /*#__PURE__*/React.createElement("strong", null, !p ? '未读取' : p.count === null ? '未知' : p.count), /*#__PURE__*/React.createElement("small", null, k === 'pressure' ? '≥90% · 同范围日峰值' : '本机待排批次池'), p && k === 'pressure' && (p.unknown_resources > 0 || p.zero_capacity_resources > 0) && /*#__PURE__*/React.createElement("small", null, "\u5BB9\u91CF\u672A\u77E5 ", p.unknown_resources, " \xB7 \u96F6\u53EF\u7528 ", p.zero_capacity_resources));
+        }, /*#__PURE__*/React.createElement("span", null, k === 'pressure' ? '资源压力' : '待排批次'), /*#__PURE__*/React.createElement("strong", null, !p ? '未读取' : p.count === null ? '未知' : p.count), /*#__PURE__*/React.createElement("small", null, k === 'pressure' ? '≥90% · 同范围日峰值' : '本机全部待排批次'), p && k === 'pressure' && (p.unknown_resources > 0 || p.zero_capacity_resources > 0) && /*#__PURE__*/React.createElement("small", null, "\u5BB9\u91CF\u672A\u77E5 ", p.unknown_resources, " \xB7 \u96F6\u53EF\u7528 ", p.zero_capacity_resources));
       }
       const s = data && data.categories[k];
       return /*#__PURE__*/React.createElement("button", {
@@ -74,7 +76,7 @@
         onClick: () => onCategory(k)
       }, /*#__PURE__*/React.createElement("span", null, C.categories[k]), /*#__PURE__*/React.createElement("strong", {
         className: s && s.risk_count > 0 ? 'dy-danger' : 'dy-muted'
-      }, !s ? '未加载' : s.risk_count === null ? C.states[s.state] === '已读取' ? '未知' : C.states[s.state] : s.risk_count), /*#__PURE__*/React.createElement("small", null, !s ? '等待读取' : k === 'external' ? s.awaiting_return_count === null ? '外协风险投影未读取' : '待回厂 ' + s.awaiting_return_count + ' · 超期 ' + s.overdue_count + ' · 待确认 ' + s.awaiting_confirmation_count : s.risk_count === null ? s.known_risk_count > 0 ? '已确认风险 ' + s.known_risk_count + ' 项' : '总风险未评估' : '已关闭处置 ' + s.closed_count + ' 项'));
+      }, !s ? '未读取' : s.risk_count === null ? C.states[s.state] === '已读取' ? '未知' : C.states[s.state] : s.risk_count), /*#__PURE__*/React.createElement("small", null, !s ? '未读取' : k === 'external' ? s.awaiting_return_count === null ? '外协风险未读取' : '待回厂 ' + s.awaiting_return_count + ' · 超期 ' + s.overdue_count + ' · 待确认 ' + s.awaiting_confirmation_count : s.risk_count === null ? s.known_risk_count > 0 ? '已确认风险 ' + s.known_risk_count + ' 项' : '总风险未评估' : '已关闭处置 ' + s.closed_count + ' 项'));
     }));
   }
   function Rail({
@@ -91,7 +93,7 @@
       key: k,
       "aria-pressed": category === k,
       onClick: () => onCategory(k)
-    }, /*#__PURE__*/React.createElement("b", null, label), /*#__PURE__*/React.createElement("small", null, k === 'all' ? '风险与处置分别核对' : k === 'candidate' ? data ? C.states[data.candidate_catalog.state] + ' · 目录不计风险' : '未加载' : /*#__PURE__*/React.createElement(CategoryState, {
+    }, /*#__PURE__*/React.createElement("b", null, label), /*#__PURE__*/React.createElement("small", null, k === 'all' ? '风险与处置分别核对' : k === 'candidate' ? data ? C.states[data.candidate_catalog.state] + ' · 列表不计风险' : '未读取' : /*#__PURE__*/React.createElement(CategoryState, {
       summary: data && data.categories[k]
     })))));
   }
@@ -137,7 +139,7 @@
       onChange: e => onChange({
         sort: e.target.value
       })
-    }, [['subject', '对象'], ['category', '风险类别'], ['status', '处置状态'], ['deadline', '责任期限']].map(([k, label]) => /*#__PURE__*/React.createElement("option", {
+    }, [['subject', '涉及记录'], ['category', '风险类别'], ['status', '处置状态'], ['deadline', '责任期限']].map(([k, label]) => /*#__PURE__*/React.createElement("option", {
       key: k,
       value: k
     }, label)))), /*#__PURE__*/React.createElement(Button, {
@@ -196,7 +198,7 @@
     if (!data.items.length) return /*#__PURE__*/React.createElement(window.WorkbenchListControls.EmptyState, {
       kind: filtered ? 'filtered' : 'empty',
       title: data.page.total === 0 ? '当前筛选没有条目。' : '当前页没有条目。',
-      hint: data.categories.external.state === 'not_connected' ? '外协风险投影尚未接入，不代表零风险。' : '仅表示当前读取范围；未读取或无法评估的来源仍单独列示。',
+      hint: data.categories.external.state === 'not_connected' ? '外协风险还没有开通，这里的空白不代表没有风险。' : '这里只统计已读到的范围，读不到或无法评估的来源会单独列出。',
       action: filtered ? /*#__PURE__*/React.createElement(Button, {
         reasonDisplay: "inline",
         icon: "x",
@@ -214,9 +216,9 @@
     }, "\u503C\u73ED\u53F0\u98CE\u9669\u4E0E\u5904\u7F6E\u6E05\u5355"), /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
       scope: "col",
       className: "wb-col-key"
-    }, "\u5BF9\u8C61 / \u7C7B\u522B"), /*#__PURE__*/React.createElement("th", {
+    }, "\u6D89\u53CA\u8BB0\u5F55 / \u7C7B\u522B"), /*#__PURE__*/React.createElement("th", {
       scope: "col"
-    }, "\u98CE\u9669\u4E8B\u5B9E"), /*#__PURE__*/React.createElement("th", {
+    }, "\u98CE\u9669\u8BF4\u660E"), /*#__PURE__*/React.createElement("th", {
       scope: "col"
     }, "\u5904\u7F6E\u72B6\u6001"), /*#__PURE__*/React.createElement("th", {
       scope: "col"
@@ -240,7 +242,7 @@
       className: "dy-muted"
     }, "\u5386\u53F2 ", row.handling.history_count, " \u6761")), /*#__PURE__*/React.createElement("td", null, value(row.handling.owner), /*#__PURE__*/React.createElement("div", {
       className: row.handling.deadline_overdue ? 'dy-danger' : 'dy-muted'
-    }, value(row.handling.deadline), row.handling.deadline_overdue ? ' · 处置逾期' : '')), /*#__PURE__*/React.createElement("td", {
+    }, value(row.handling.deadline), row.handling.deadline_overdue ? ' · 处置超期' : '')), /*#__PURE__*/React.createElement("td", {
       className: "wb-col-actions"
     }, /*#__PURE__*/React.createElement(Button, {
       reasonDisplay: "inline",
@@ -349,19 +351,19 @@
       key: i,
       icon: "arrow-right",
       onClick: () => navigate(n, item)
-    }, n.view === 'outsourcing' ? '原外协物流登记' : navigationLabels[n.view] || '未知导航目标')), item.category === 'actual' && item.navigation.some(n => n.enabled && n.command_context === 'read_execution_write_context') && /*#__PURE__*/React.createElement(Button, {
+    }, n.view === 'outsourcing' ? '外协物流登记' : navigationLabels[n.view] || '未知跳转目标')), item.category === 'actual' && item.navigation.some(n => n.enabled && n.command_context === 'read_execution_write_context') && /*#__PURE__*/React.createElement(Button, {
       reasonDisplay: "inline",
       icon: "arrow-right",
-      reason: !canNavigate ? '现场报工入口尚未接入' : '',
+      reason: !canNavigate ? window.WorkbenchTerms.outcomes.unavailable : '',
       onClick: () => navigate({
         ...item.navigation[0],
         view: 'field'
       })
-    }, "\u73B0\u573A\u62A5\u5DE5")), item.category === 'external' && /*#__PURE__*/React.createElement("div", {
+    }, navigationLabels.field)), item.category === 'external' && /*#__PURE__*/React.createElement("div", {
       className: "dy-note"
-    }, "\u5173\u95ED\u98CE\u9669\u5904\u7F6E\u4E0D\u4EE3\u8868\u5DF2\u56DE\u5382\uFF0C\u4E5F\u4E0D\u4EE3\u8868\u5DE5\u5E8F\u5B8C\u5DE5\u3002\u7269\u6D41\u4E8B\u5B9E\u4E0E\u5904\u7F6E\u5386\u53F2\u5206\u522B\u4FDD\u7559\u3002"), item.handling.status === 'closed' && /*#__PURE__*/React.createElement("div", {
+    }, "\u5173\u95ED\u98CE\u9669\u5904\u7F6E\u4E0D\u4EE3\u8868\u5DF2\u56DE\u5382\uFF0C\u4E5F\u4E0D\u4EE3\u8868\u5DE5\u5E8F\u5B8C\u5DE5\u3002\u7269\u6D41\u767B\u8BB0\u548C\u5904\u7F6E\u5386\u53F2\u5206\u5F00\u4FDD\u5B58\u3002"), item.handling.status === 'closed' && /*#__PURE__*/React.createElement("div", {
       className: "dy-note"
-    }, "\u5904\u7F6E\u5DF2\u5173\u95ED\uFF0C\u98CE\u9669\u6309\u5F53\u524D\u771F\u5B9E\u6765\u6E90\u7EE7\u7EED\u8BC4\u4F30\u3002")));
+    }, "\u5904\u7F6E\u5DF2\u5173\u95ED\uFF0C\u98CE\u9669\u4ECD\u6309\u6700\u65B0\u6570\u636E\u7EE7\u7EED\u8BC4\u4F30\u3002")));
   }
   function NavigationConfirmation({
     entry,
@@ -379,7 +381,7 @@
         label
       } = entry;
     return /*#__PURE__*/React.createElement(Modal, {
-      title: "\u539F\u5BF9\u8C61\u6682\u4E0D\u53EF\u5B9A\u4F4D",
+      title: "\u8FD9\u6761\u8BB0\u5F55\u6682\u65F6\u6253\u4E0D\u5F00",
       icon: "circle-alert",
       onClose: onClose,
       footer: /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Button, {
@@ -400,13 +402,13 @@
       role: "status"
     }, navigation.reason), /*#__PURE__*/React.createElement("div", {
       className: "dy-context"
-    }, item.source_state === 'current' ? '当前来源' : '原来源当前未评估'), /*#__PURE__*/React.createElement(window.WorkbenchReference, {
+    }, item.source_state === 'current' ? '当前来源' : '这条来源现在没有评估'), /*#__PURE__*/React.createElement(window.WorkbenchReference, {
       entries: {
-        '原条目编号': item.item_ref
+        '条目编号': item.item_ref
       }
     }), /*#__PURE__*/React.createElement(Evidence, {
       source: item.source
-    }), /*#__PURE__*/React.createElement("p", null, "\u539F\u6761\u76EE\u4E0E\u5904\u7F6E\u72B6\u6001\u4FDD\u6301\u4E0D\u53D8\u3002"), /*#__PURE__*/React.createElement(ErrorBox, {
+    }), /*#__PURE__*/React.createElement("p", null, "\u8FD9\u6761\u8BB0\u5F55\u548C\u5B83\u7684\u5904\u7F6E\u72B6\u6001\u90FD\u6CA1\u6709\u53D8\u3002"), /*#__PURE__*/React.createElement(ErrorBox, {
       error: error
     })));
   }
@@ -418,13 +420,13 @@
     const p = data.resource_pressure,
       rows = p.resources;
     return /*#__PURE__*/React.createElement("section", {
-      "aria-label": "\u771F\u5B9E\u8D44\u6E90\u538B\u529B"
+      "aria-label": "\u8D44\u6E90\u538B\u529B"
     }, /*#__PURE__*/React.createElement("div", {
       className: "dy-heading"
     }, /*#__PURE__*/React.createElement("h3", null, "\u6B63\u5F0F\u8BA1\u5212\u8D44\u6E90\u538B\u529B"), data.plan && /*#__PURE__*/React.createElement(Button, {
       reasonDisplay: "inline",
       icon: "arrow-right",
-      reason: !canNavigate ? '对象导航尚未接入' : '',
+      reason: !canNavigate ? window.WorkbenchTerms.outcomes.unavailable : '',
       onClick: () => navigate({
         view: 'gantt',
         context: {
@@ -434,13 +436,13 @@
       })
     }, "\u8BA1\u5212\u7518\u7279")), /*#__PURE__*/React.createElement("div", {
       className: "dy-context"
-    }, data.plan ? data.plan.display_name : data.categories.delivery.state === 'no_official_plan' ? '无正式计划' : '正式计划未能读取', " \xB7 ", p.time_scope ? window.WorkbenchFormat.dateTime(p.time_scope.range_start) + ' 至 ' + window.WorkbenchFormat.dateTime(p.time_scope.range_end) + ' · 工厂本地 · 左闭右开' : '时间范围未读取'), /*#__PURE__*/React.createElement(Issues, {
+    }, data.plan ? data.plan.display_name : data.categories.delivery.state === 'no_official_plan' ? '无正式计划' : '正式计划未能读取', " \xB7 ", p.time_scope ? window.WorkbenchFormat.dateTime(p.time_scope.range_start) + ' 至 ' + window.WorkbenchFormat.dateTime(p.time_scope.range_end) + ' · 含起日，不含止日' : '时间范围未读取'), /*#__PURE__*/React.createElement(Issues, {
       issues: p.issues
     }), /*#__PURE__*/React.createElement("div", {
       className: "dy-note"
-    }, "\u5360\u7528\u5C0F\u65F6\u4E0D\u662F\u6709\u6548\u52A0\u5DE5\u5DE5\u65F6\uFF1B\u53EF\u7528\u4EA7\u80FD\u672A\u77E5\u65F6\u5229\u7528\u7387\u4FDD\u6301\u672A\u77E5\u3002\u505C\u673A\u548C\u65E5\u5386\u6309\u540C\u4E00\u6B63\u5F0F\u8BA1\u5212\u6838\u5BF9\u3002"), !rows || !rows.length ? /*#__PURE__*/React.createElement(window.WorkbenchListControls.EmptyState, {
+    }, "\u5360\u7528\u5C0F\u65F6\u4E0D\u7B49\u4E8E\u6709\u6548\u52A0\u5DE5\u5DE5\u65F6\u3002", /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "\u8BF4\u660E"), "\u53EF\u7528\u4EA7\u80FD\u672A\u77E5\u65F6\uFF0C\u5229\u7528\u7387\u4E5F\u6309\u672A\u77E5\u663E\u793A\u3002\u505C\u673A\u548C\u73ED\u8868\u90FD\u6309\u540C\u4E00\u4EFD\u6B63\u5F0F\u8BA1\u5212\u6838\u5BF9\u3002")), !rows || !rows.length ? /*#__PURE__*/React.createElement(window.WorkbenchListControls.EmptyState, {
       kind: "empty",
-      title: !rows ? '资源压力无法评估，未显示零负荷。' : '当前正式计划没有资源占用数据。'
+      title: !rows ? '资源压力无法评估，这里不会按零负荷显示。' : '当前正式计划没有资源占用数据。'
     }) : /*#__PURE__*/React.createElement("div", {
       className: "dy-scroll"
     }, /*#__PURE__*/React.createElement("table", {
@@ -459,12 +461,12 @@
       scope: "col"
     }, "\u91CD\u53E0\u5360\u7528"), /*#__PURE__*/React.createElement("th", {
       scope: "col"
-    }, "\u65E5\u5386\u5916\u5360\u7528"), /*#__PURE__*/React.createElement("th", {
+    }, "\u73ED\u8868\u5916\u5360\u7528"), /*#__PURE__*/React.createElement("th", {
       scope: "col"
     }, "\u5BB9\u91CF\u7F3A\u53E3"))), /*#__PURE__*/React.createElement("tbody", null, rows.map(r => /*#__PURE__*/React.createElement("tr", {
       key: r.kind + r.resource_ref,
       "data-resource-ref": r.resource_ref
-    }, /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("b", null, r.label || '名称未提供'), /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("b", null, r.label || '名称未填写'), /*#__PURE__*/React.createElement("div", {
       className: "dy-muted"
     }, r.kind === 'machine' ? '设备' : '人员', " \xB7 ", r.operation_count, " \u9053\u5DE5\u5E8F")), /*#__PURE__*/React.createElement("td", null, hours(r.occupied_hours), " / ", hours(r.arranged_hours)), /*#__PURE__*/React.createElement("td", null, hours(r.available_hours)), /*#__PURE__*/React.createElement("td", null, window.WorkbenchFormat.percent(r.utilization), r.utilization !== null && /*#__PURE__*/React.createElement("div", {
       className: 'dy-meter' + (r.capacity_insufficient || r.has_overlap ? ' hot' : '')
@@ -495,13 +497,15 @@
         interrupted: '已中断'
       };
     return /*#__PURE__*/React.createElement("section", {
-      "aria-label": "\u771F\u5B9E\u5019\u9009\u76EE\u5F55"
+      "aria-label": "\u5019\u9009\u65B9\u6848\u5217\u8868"
     }, /*#__PURE__*/React.createElement("div", {
       className: "dy-heading"
-    }, /*#__PURE__*/React.createElement("h3", null, "\u5019\u9009\u65B9\u6848\u76EE\u5F55"), /*#__PURE__*/React.createElement(Button, {
+    }, /*#__PURE__*/React.createElement("h3", null, "\u5019\u9009\u65B9\u6848\u5217\u8868"), /*#__PURE__*/React.createElement("div", {
+      className: "dy-tools"
+    }, /*#__PURE__*/React.createElement(Button, {
       reasonDisplay: "inline",
       icon: "history",
-      reason: !canNavigate ? '候选导航尚未接入' : '',
+      reason: !canNavigate ? window.WorkbenchTerms.outcomes.unavailable : '',
       onClick: () => navigate({
         view: 'analysis',
         context: {
@@ -509,24 +513,33 @@
         },
         enabled: true
       })
-    }, "\u5B8C\u6574\u8FD0\u884C\u76EE\u5F55")), /*#__PURE__*/React.createElement("div", {
+    }, "\u6392\u4EA7\u8BB0\u5F55"), /*#__PURE__*/React.createElement(Button, {
+      reasonDisplay: "inline",
+      icon: "play",
+      reason: !canNavigate ? window.WorkbenchTerms.outcomes.unavailable : '',
+      onClick: () => navigate({
+        view: 'run',
+        context: {},
+        enabled: true
+      })
+    }, "\u53BB\u6267\u884C\u6392\u4EA7"))), /*#__PURE__*/React.createElement("div", {
       className: "dy-note"
-    }, "\u5DF2\u4FDD\u5B58\u8FD0\u884C\u76EE\u5F55 \xB7 \u975E\u5F53\u524D\u6B63\u5F0F\u8BA1\u5212"), /*#__PURE__*/React.createElement(Issues, {
+    }, "\u5DF2\u4FDD\u5B58\u7684\u6392\u4EA7\u8BB0\u5F55 \xB7 \u4E0D\u662F\u5F53\u524D\u6B63\u5F0F\u8BA1\u5212"), /*#__PURE__*/React.createElement(Issues, {
       issues: c.issues
     }), c.state === 'unavailable' ? /*#__PURE__*/React.createElement(window.WorkbenchListControls.EmptyState, {
       kind: "empty",
-      title: "\u5019\u9009\u76EE\u5F55\u672A\u80FD\u8BFB\u53D6\u3002",
-      hint: "\u8BF7\u4F7F\u7528\u9875\u9762\u5237\u65B0\u91CD\u8BD5\uFF0C\u5F53\u524D\u4E0D\u80FD\u5224\u65AD\u5019\u9009\u6570\u91CF\u3002"
+      title: "\u5019\u9009\u65B9\u6848\u5217\u8868\u8BFB\u4E0D\u5230\u3002",
+      hint: "\u8BF7\u70B9\u300C\u5237\u65B0\u300D\u91CD\u8BD5\uFF1B\u73B0\u5728\u65E0\u6CD5\u5224\u65AD\u5019\u9009\u65B9\u6848\u6570\u91CF\u3002"
     }) : !c.runs.length ? /*#__PURE__*/React.createElement(window.WorkbenchListControls.EmptyState, {
       kind: "empty",
-      title: "\u5C1A\u65E0\u6392\u4EA7\u8FD0\u884C\u8BB0\u5F55\u3002"
+      title: "\u8FD8\u6CA1\u6709\u6392\u4EA7\u8BB0\u5F55\u3002"
     }) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
       className: "dy-scroll"
     }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("caption", {
       className: "wb-sr-only"
-    }, "\u5019\u9009\u65B9\u6848\u8FD0\u884C\u76EE\u5F55"), /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
+    }, "\u5019\u9009\u65B9\u6848\u6392\u4EA7\u8BB0\u5F55"), /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
       scope: "col"
-    }, "\u8FD0\u884C\u53D7\u7406\u65F6\u95F4"), /*#__PURE__*/React.createElement("th", {
+    }, "\u6392\u4EA7\u63D0\u4EA4\u65F6\u95F4"), /*#__PURE__*/React.createElement("th", {
       scope: "col"
     }, "\u8BA1\u7B97\u72B6\u6001"), /*#__PURE__*/React.createElement("th", {
       scope: "col"
@@ -540,7 +553,7 @@
     }, /*#__PURE__*/React.createElement("td", null, window.WorkbenchFormat.dateTime(r.accepted_at)), /*#__PURE__*/React.createElement("td", null, runStates[r.state] || '状态未知'), /*#__PURE__*/React.createElement("td", null, r.candidate_count), /*#__PURE__*/React.createElement("td", null, r.scope_summary ? value(r.scope_summary.batch_count) + ' 个批次' : '范围未知'), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Button, {
       reasonDisplay: "inline",
       icon: "arrow-right",
-      reason: !canNavigate ? '候选导航尚未接入' : '',
+      reason: !canNavigate ? window.WorkbenchTerms.outcomes.unavailable : '',
       onClick: () => navigate({
         view: 'analysis',
         context: {
@@ -550,28 +563,28 @@
       })
     }, "\u67E5\u770B\u5019\u9009"))))))), /*#__PURE__*/React.createElement("div", {
       className: "dy-pager"
-    }, "\u76EE\u5F55 ", c.page.total, " \u6B21 \xB7 \u5F53\u524D ", c.runs.length, " \u6B21", c.page.has_more ? ' · 还有更多，请进入完整运行目录' : '')));
+    }, "\u6392\u4EA7\u8BB0\u5F55 ", c.page.total, " \u6B21 \xB7 \u5F53\u524D\u663E\u793A ", c.runs.length, " \u6B21", c.page.has_more ? ' · 还有更多，请点「排产记录」查看' : '')));
   }
   function ExternalRegistration({
     summary,
     onUpdated
   }) {
     return /*#__PURE__*/React.createElement(React.Fragment, null, summary && /*#__PURE__*/React.createElement("section", {
-      "aria-label": "\u5916\u534F\u771F\u5B9E\u6C47\u603B"
+      "aria-label": "\u5916\u534F\u6C47\u603B"
     }, /*#__PURE__*/React.createElement("dl", {
       className: "dy-facts"
-    }, [['receipt_count', '保留登记'], ['current_receipt_count', '来源有效登记'], ['awaiting_return_count', '待回厂'], ['overdue_count', '超期未回'], ['returned_count', '已回厂'], ['awaiting_confirmation_count', '待确认'], ['unregistered_count', '未登记工序'], ['source_gap_count', '来源缺口']].map(([k, label]) => /*#__PURE__*/React.createElement("div", {
+    }, [['receipt_count', '全部登记'], ['current_receipt_count', '来源仍有效的登记'], ['awaiting_return_count', '待回厂'], ['overdue_count', '超期未回'], ['returned_count', '已回厂'], ['awaiting_confirmation_count', '待确认'], ['unregistered_count', '未登记工序'], ['source_gap_count', '来源缺口']].map(([k, label]) => /*#__PURE__*/React.createElement("div", {
       key: k
     }, /*#__PURE__*/React.createElement("dt", null, label), /*#__PURE__*/React.createElement("dd", {
       "data-external-count": k
     }, summary[k] === null ? '未知' : summary[k])))), /*#__PURE__*/React.createElement("div", {
       className: "dy-context"
-    }, "\u5DF2\u786E\u8BA4\u98CE\u9669 ", summary.known_risk_count, " \u9879", summary.risk_count === null ? ' · 总风险未知' : '', " \xB7 \u767B\u8BB0\u4E0E\u6838\u5B9E\u5386\u53F2\u72EC\u7ACB\u4FDD\u7559")), typeof window.OutsourcingWorkspace === 'function' ? /*#__PURE__*/React.createElement(window.OutsourcingWorkspace, {
+    }, "\u5DF2\u786E\u8BA4\u98CE\u9669 ", summary.known_risk_count, " \u9879", summary.risk_count === null ? ' · 总风险未知' : '', " \xB7 \u767B\u8BB0\u548C\u66F4\u6B63\u5386\u53F2\u90FD\u5355\u72EC\u4FDD\u5B58")), typeof window.OutsourcingWorkspace === 'function' ? /*#__PURE__*/React.createElement(window.OutsourcingWorkspace, {
       onUpdated: onUpdated
     }) : /*#__PURE__*/React.createElement("div", {
       className: "dy-note warning",
       role: "status"
-    }, "\u5916\u534F\u767B\u8BB0\u6A21\u5757\u5C1A\u672A\u52A0\u8F7D\u3002"));
+    }, window.WorkbenchTerms.outcomes.unavailable));
   }
   function ExternalHandlingState({
     summary
@@ -580,10 +593,10 @@
       "aria-label": "\u5916\u534F\u98CE\u9669\u5904\u7F6E"
     }, /*#__PURE__*/React.createElement("h3", null, "\u5916\u534F\u98CE\u9669\u5904\u7F6E"), summary.handling_supported ? /*#__PURE__*/React.createElement("div", {
       className: "dy-context"
-    }, "\u5DF2\u767B\u8BB0\u5904\u7F6E ", summary.handling_count, " \u9879 \xB7 \u5DF2\u5173\u95ED\u5904\u7F6E ", summary.closed_count, " \u9879 \xB7 \u5173\u95ED\u4E0D\u6539\u53D8\u771F\u5B9E\u56DE\u5382\u72B6\u6001") : /*#__PURE__*/React.createElement("div", {
+    }, "\u5DF2\u767B\u8BB0\u5904\u7F6E ", summary.handling_count, " \u9879 \xB7 \u5DF2\u5173\u95ED\u5904\u7F6E ", summary.closed_count, " \u9879 \xB7 \u5173\u95ED\u4E0D\u4F1A\u6539\u53D8\u56DE\u5382\u72B6\u6001") : /*#__PURE__*/React.createElement("div", {
       className: "dy-note warning",
       role: "status"
-    }, summary.handling_state === 'unavailable' ? '外协处置台账不可用' : '外协风险处置尚未接入', " \xB7 \u5904\u7F6E\u6570\u91CF\u672A\u77E5\uFF0C\u672A\u663E\u793A\u4E3A\u96F6\u3002"), /*#__PURE__*/React.createElement(Issues, {
+    }, summary.handling_state === 'unavailable' ? '外协处置记录读不到' : '外协风险处置尚未开通', " \xB7 \u5904\u7F6E\u6570\u91CF\u672A\u77E5\uFF0C\u8FD9\u91CC\u4E0D\u4F1A\u6309\u96F6\u663E\u793A\u3002"), /*#__PURE__*/React.createElement(Issues, {
       issues: summary.handling_issues || []
     }));
   }

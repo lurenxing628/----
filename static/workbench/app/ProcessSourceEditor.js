@@ -44,7 +44,10 @@
     });
     return next;
   }
-  function input(entity, draft) {
+  const complete = row => ['internal', 'external'].includes(row.source) && !!row.op_type_ref && (row.source === 'internal' || !!row.supplier_ref);
+  function input(entity, draft, pageSize) {
+    const pending = E.active(entity).filter(row => !draft[row.ref].confirmed);
+    if (pending.length) throw E.unconfirmed(pending, entity.operations, pageSize, '归属');
     const operations = E.active(entity).map(row => {
       const current = draft[row.ref];
       if (!current.confirmed || !['internal', 'external'].includes(current.source) || !current.op_type_ref || current.source === 'external' && !current.supplier_ref) throw C.failure('请逐序核对归属、绑定真实工种及外协供应商，并明确勾选确认。', [{
@@ -79,7 +82,7 @@
         size: 50
       });
     const read = S.useQuery(async signal => {
-      if (typeof adapter.choices !== 'function') throw C.failure('关系选项读取接口尚未接入。');
+      if (typeof adapter.choices !== 'function') throw C.failure('dependency not wired: window.APSProcessAPI.choices');
       return C.query(await adapter.choices(target.kind, {
         ...scope,
         ...(target.kind === 'op_type' ? {
@@ -131,7 +134,7 @@
         page: 1,
         size: 50
       })
-    }, "\u91CD\u8BFB\u9009\u9879"), read.loading && /*#__PURE__*/React.createElement("p", {
+    }, "\u5237\u65B0\u9009\u9879"), read.loading && /*#__PURE__*/React.createElement("p", {
       role: "status"
     }, "\u6B63\u5728\u8BFB\u53D6\u9009\u9879\u2026"), data && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Issues, {
       issues: read.result.warnings
@@ -157,9 +160,9 @@
     }, /*#__PURE__*/React.createElement("td", null, row.business_code), /*#__PURE__*/React.createElement("td", null, row.label), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Button, {
       icon: "check",
       disabled: disabled || !(row.status === 'active' || target.kind === 'op_type' && row.status === null) || target.kind === 'op_type' && row.fields.category !== target.source,
-      "aria-label": '选用 ' + row.label,
+      "aria-label": '采用 ' + row.label,
       onClick: () => onSelect(row)
-    }, "\u9009\u7528")))), !data.entities.length && /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", {
+    }, "\u91C7\u7528")))), !data.entities.length && /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", {
       colSpan: 3
     }, "\u6CA1\u6709\u5339\u914D\u9009\u9879\u3002"))))), /*#__PURE__*/React.createElement(window.ResourceTables.Pager, {
       page: data.page,
@@ -264,8 +267,8 @@
       const controller = new AbortController();
       request.current = controller;
       try {
-        if (typeof adapter.stagePreview !== 'function' || typeof P.stagePreview !== 'function') throw C.failure('归属检查接口尚未接入。');
-        const body = input(entity, draft);
+        if (typeof adapter.stagePreview !== 'function' || typeof P.stagePreview !== 'function') throw C.failure('dependency not wired: window.APSProcessAPI.stagePreview');
+        const body = input(entity, draft, paging.page.size);
         setChecking(true);
         const response = P.stagePreview(await adapter.stagePreview(entity.ref, 'source_confirm', body, model.base.meta.snapshot_ref, controller.signal), entity.ref, 'source_confirm');
         if (!controller.signal.aborted && request.current === controller) {
@@ -297,7 +300,27 @@
         discard_group_refs: discarded
       });
     }
-    const confirmed = Object.values(draft).filter(row => row.confirmed).length;
+    const confirmed = Object.values(draft).filter(row => row.confirmed).length,
+      active = E.active(entity),
+      ready = active.filter(row => complete(draft[row.ref]));
+    const [confirmAll, setConfirmAll] = React.useState(false);
+    // Only rows that already carry a source, a real op type and (for external work) a supplier can be confirmed in bulk; the rest are listed back.
+    function confirmEverything() {
+      invalidate();
+      model.edit(current => {
+        const next = {
+          ...current
+        };
+        ready.forEach(row => {
+          next[row.ref] = {
+            ...next[row.ref],
+            confirmed: true
+          };
+        });
+        return next;
+      });
+      setConfirmAll(false);
+    }
     return /*#__PURE__*/React.createElement("section", {
       "data-process-source-editor": true
     }, /*#__PURE__*/React.createElement("div", {
@@ -305,12 +328,12 @@
     }, /*#__PURE__*/React.createElement(E.Search, {
       paging: paging,
       disabled: blocked
-    }), /*#__PURE__*/React.createElement("span", null, "\u6709\u6548\u5DE5\u5E8F ", E.active(entity).length, " \xB7 \u5DF2\u6838\u5BF9 ", confirmed), /*#__PURE__*/React.createElement("span", {
+    }), /*#__PURE__*/React.createElement("span", null, "\u6709\u6548\u5DE5\u5E8F ", active.length, " \xB7 \u5DF2\u6838\u5BF9 ", confirmed), /*#__PURE__*/React.createElement("span", {
       className: "tb-spacer"
     }), /*#__PURE__*/React.createElement(Button, {
       icon: "plus",
       disabled: editBlocked,
-      reason: !adapter.resourceAdapter || !window.ProcessOpTypeCreate ? '工种独立建档尚未接入。' : '',
+      reason: !adapter.resourceAdapter || !window.ProcessOpTypeCreate ? window.WorkbenchTerms.outcomes.unavailable : '',
       onClick: () => {
         invalidate();
         setCreate({});
@@ -339,20 +362,37 @@
           return next;
         });
       }
-    }), "\u786E\u8BA4\u672C\u9875\u5DF2\u6838\u5BF9\u5DE5\u5E8F")), /*#__PURE__*/React.createElement("div", {
+    }), "\u786E\u8BA4\u672C\u9875\u5DF2\u6838\u5BF9\u5DE5\u5E8F"), paging.page.pages > 1 && /*#__PURE__*/React.createElement(Button, {
+      icon: "check",
+      disabled: editBlocked || !ready.length,
+      onClick: () => setConfirmAll(true)
+    }, "\u786E\u8BA4\u5168\u90E8 ", ready.length, " \u9053\u5DF2\u6838\u5BF9")), confirmAll && /*#__PURE__*/React.createElement(Modal, {
+      title: "\u786E\u8BA4\u5168\u90E8\u5DE5\u5E8F\u5DF2\u6838\u5BF9\u5F52\u5C5E",
+      icon: "check",
+      onClose: () => setConfirmAll(false),
+      footer: /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Button, {
+        onClick: () => setConfirmAll(false)
+      }, "\u53D6\u6D88"), /*#__PURE__*/React.createElement(Button, {
+        className: "btn primary",
+        icon: "check",
+        onClick: confirmEverything
+      }, "\u786E\u8BA4\u5168\u90E8 ", ready.length, " \u9053"))
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "modal-b"
+    }, /*#__PURE__*/React.createElement("p", null, "\u4F1A\u628A\u5DF2\u9009\u597D\u5F52\u5C5E\u548C\u5DE5\u79CD\u7684 ", ready.length, " \u9053\u6709\u6548\u5DE5\u5E8F\uFF08\u5305\u62EC\u6CA1\u7FFB\u5230\u7684\u9875\uFF09\u5168\u90E8\u6807\u8BB0\u4E3A\u5DF2\u6838\u5BF9\u3002", active.length - ready.length > 0 ? '另有 ' + (active.length - ready.length) + ' 道还没选归属、工种或外协供应商，不会被标记，检查时会按页列出。' : '所有有效工序都已选好，可以整体确认。'))), /*#__PURE__*/React.createElement("div", {
       className: "wb-table-frame"
     }, /*#__PURE__*/React.createElement("div", {
       className: "card-scroll wb-table-shell"
     }, /*#__PURE__*/React.createElement("table", {
       className: "tbl wb-table",
-      "aria-label": "\u5DE5\u5E8F\u5F52\u5C5E\u660E\u7EC6",
+      "aria-label": "\u5F52\u5C5E\u660E\u7EC6",
       style: {
         minWidth: 950,
         tableLayout: 'fixed'
       }
     }, /*#__PURE__*/React.createElement("caption", {
       className: "wb-visually-hidden"
-    }, "工序归属明细"), /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
+    }, "归属明细"), /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
       scope: "col",
       style: {
         width: 150
@@ -383,7 +423,7 @@
       }, /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("b", null, row.sequence), " ", row.label, cycle && /*#__PURE__*/React.createElement("div", {
         className: "muted",
         "data-process-cycle-group": row.external_group_ref
-      }, cycle)), /*#__PURE__*/React.createElement("td", null, current.op_type_label || '未绑定工种', /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(Button, {
+      }, cycle)), /*#__PURE__*/React.createElement("td", null, current.op_type_label || '未选工种', /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(Button, {
         icon: "search",
         "aria-label": '选择工序 ' + row.sequence + ' 工种',
         disabled: editBlocked || inactive || !current.source,
@@ -407,7 +447,7 @@
             confirmed: false
           });
         }
-      }, P.sourceLabel(source)))), !current.source && /*#__PURE__*/React.createElement("div", null, "\u672A\u5F52\u7C7B")), /*#__PURE__*/React.createElement("td", null, current.source === 'internal' ? '不适用' : /*#__PURE__*/React.createElement(React.Fragment, null, current.supplier_label || '未绑定供应商', /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(Button, {
+      }, P.sourceLabel(source)))), !current.source && /*#__PURE__*/React.createElement("div", null, "\u672A\u5F52\u7C7B")), /*#__PURE__*/React.createElement("td", null, current.source === 'internal' ? '不适用' : /*#__PURE__*/React.createElement(React.Fragment, null, current.supplier_label || '未选供应商', /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(Button, {
         icon: "search",
         "aria-label": '选择工序 ' + row.sequence + ' 供应商',
         disabled: editBlocked || inactive || current.source !== 'external',
@@ -453,7 +493,8 @@
       role: "status"
     }, "\u5F53\u524D\u5F52\u5C5E\u5DF2\u68C0\u67E5\uFF1B\u53D7\u5F71\u54CD\u5916\u534F\u7EC4 ", affected.length, " \u4E2A\uFF0C\u5C1A\u672A\u63D0\u4EA4\u3002")), /*#__PURE__*/React.createElement(E.Feedback, {
       model: model,
-      disabled: blocked || checking
+      disabled: blocked || checking,
+      paging: paging
     }), /*#__PURE__*/React.createElement("div", {
       className: "pd-foot"
     }, /*#__PURE__*/React.createElement("span", {

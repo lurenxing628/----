@@ -20,7 +20,7 @@
   const text = v => typeof v === 'string' && v.length > 0;
   const count = v => Number.isSafeInteger(v) && v >= 0;
   const rejected = new WeakSet();
-  function check(ok, message = '外协响应不完整或与原对象不一致，未显示替代结果。') {
+  function check(ok, message = '外协读到的数据不完整，请刷新后重试。') {
     if (!ok) throw new Error(message);
   }
   function canonical(v) {
@@ -40,18 +40,18 @@
   }
   function stamp(v) {
     const s = typeof v === 'string' && v.length === 16 ? v + ':00' : v;
-    check(time(s), '请填写有效的工厂本地日期和时间。');
+    check(time(s), '请按 2026-09-13 08:30 这样填写日期和时间。');
     return s;
   }
   function facts(v, now) {
     check(object(v) && fields.every(k => Object.prototype.hasOwnProperty.call(v, k)) && time(v.sent) && time(v.planned) && (v.returned === null || time(v.returned)) && Object.prototype.hasOwnProperty.call(states, v.confirmedState));
     check(v.planned >= v.sent && (v.returned === null || v.returned >= v.sent), '计划回厂和实际回厂不能早于实际发出。');
-    check(v.confirmedState === 'returned' === (v.returned !== null), '已回厂状态与实际回厂时间须同时填写；未回厂时请明确清空实际回厂。');
-    if (now) check(v.sent <= now && (v.returned === null || v.returned <= now), '实际发出和实际回厂不能在未来；以服务端工厂时点为准。');
+    check(v.confirmedState === 'returned' === (v.returned !== null), '已回厂状态和实际回厂时间要一起填。还没回厂就点「清除实际回厂」。');
+    if (now) check(v.sent <= now && (v.returned === null || v.returned <= now), '实际发出和实际回厂不能填未来时间，以系统的工厂时间为准。');
     return Object.fromEntries(fields.map(k => [k, v[k]]));
   }
   function target(t, publicData = false) {
-    check(object(t) && ['single', 'merged'].includes(t.kind) && ref(t.batch_ref) && ref(t.supplier_ref) && Array.isArray(t.operation_refs) && t.operation_refs.length >= 1 && t.operation_refs.length <= 200 && t.operation_refs.every(ref) && new Set(t.operation_refs).size === t.operation_refs.length && t.kind === 'single' === (t.operation_refs.length === 1), '须明确选择单工序一项或合并发出至少两项，不能重复成员。');
+    check(object(t) && ['single', 'merged'].includes(t.kind) && ref(t.batch_ref) && ref(t.supplier_ref) && Array.isArray(t.operation_refs) && t.operation_refs.length >= 1 && t.operation_refs.length <= 200 && t.operation_refs.every(ref) && new Set(t.operation_refs).size === t.operation_refs.length && t.kind === 'single' === (t.operation_refs.length === 1), '单工序要选 1 道，合并发出至少选 2 道，而且不能重复。');
     if (publicData) {
       check(t.grouping_basis === 'explicit_receipt_membership' && object(t.batch) && t.batch.ref === t.batch_ref && object(t.supplier) && t.supplier.ref === t.supplier_ref && Array.isArray(t.operations) && t.operations.length === t.operation_refs.length && equal(t.operations.map(o => o.operation_ref).sort(), t.operation_refs.slice().sort()));
     }
@@ -63,10 +63,10 @@
     };
   }
   function boundary(e, t) {
-    check(object(e) && e.automatically_reported === false && equal(e.operation_refs.slice().sort(), t.operation_refs.slice().sort()) && e.service === 'WorkbenchProductionReportService' && text(e.reason), '回厂回执不得声称已自动报工。');
+    check(object(e) && e.automatically_reported === false && equal(e.operation_refs.slice().sort(), t.operation_refs.slice().sort()) && e.service === 'WorkbenchProductionReportService' && text(e.reason), '读到的回厂数据不对：外协回厂不会自动报工。请刷新后重试。');
   }
   function entityLabel(entity, expected) {
-    check(entity === null || object(entity) && entity.ref === expected && ref(expected) && ['business_code', 'label'].every(k => entity[k] === null || text(entity[k]) && entity[k].trim().length > 0), '外协工序的业务名称与原引用不一致，未显示猜测名称。');
+    check(entity === null || object(entity) && entity.ref === expected && ref(expected) && ['business_code', 'label'].every(k => entity[k] === null || text(entity[k]) && entity[k].trim().length > 0), '外协工序的名称和编号对不上，这里不显示猜测的名称。请刷新后重试。');
   }
   function row(v) {
     check(object(v) && ref(v.outsourcing_ref) && ref(v.latest_fact_ref) && count(v.history_count) && v.history_count >= 1 && typeof v.can_preview === 'boolean' && ['current', 'identity_drift', 'source_unavailable'].includes(v.source_state) && Array.isArray(v.issues) && v.tracking_basis === 'manual_receipt_facts' && time(v.confirmed_at) && text(v.declared_operator) && text(v.local_operator) && text(v.reason));
@@ -83,16 +83,16 @@
       size: 10,
       ...value
     };
-    check(object(value) && Object.keys(q).every(k => allowed.includes(k)) && Number.isSafeInteger(q.page) && q.page >= 1 && q.page <= 1000000 && Number.isSafeInteger(q.size) && q.size >= 1 && q.size <= 100 && (q.batch_ref === undefined || ref(q.batch_ref)) && (q.status === undefined || ['all', 'awaiting', 'overdue', 'returned'].includes(q.status)) && (q.snapshot_ref === undefined || text(q.snapshot_ref)) && (q.page === 1 || text(q.snapshot_ref)), '外协查询条件或翻页快照无效，未扩大原范围。');
+    check(object(value) && Object.keys(q).every(k => allowed.includes(k)) && Number.isSafeInteger(q.page) && q.page >= 1 && q.page <= 1000000 && Number.isSafeInteger(q.size) && q.size >= 1 && q.size <= 100 && (q.batch_ref === undefined || ref(q.batch_ref)) && (q.status === undefined || ['all', 'awaiting', 'overdue', 'returned'].includes(q.status)) && (q.snapshot_ref === undefined || text(q.snapshot_ref)) && (q.page === 1 || text(q.snapshot_ref)), '外协的筛选或翻页条件无效，当前范围没有变化。请重新选择。');
     return q;
   }
   function envelope(v, q, preview = false) {
     check(object(v) && v.ok === true && v.schema_version === 1 && object(v.meta) && v.meta.source === 'production' && v.meta.time_basis === 'factory_local' && time(v.meta.as_of) && (preview ? v.meta.snapshot_ref === null : text(v.meta.snapshot_ref)) && Array.isArray(v.warnings) && object(v.data));
-    if (q && q.snapshot_ref) check(q.snapshot_ref === v.meta.snapshot_ref, '原读取快照已变化，请明确刷新。');
+    if (q && q.snapshot_ref) check(q.snapshot_ref === v.meta.snapshot_ref, '数据已更新，请刷新后重试。刚才的选择已保留。');
     return v.data;
   }
   function page(p, rows, q) {
-    check(object(p) && p.number === q.page && p.size === q.size && count(p.total) && p.pages === Math.ceil(p.total / p.size) && Array.isArray(rows) && rows.length === Math.min(p.size, Math.max(0, p.total - (p.number - 1) * p.size)), '页码、数量与原读取范围不匹配。');
+    check(object(p) && p.number === q.page && p.size === q.size && count(p.total) && p.pages === Math.ceil(p.total / p.size) && Array.isArray(rows) && rows.length === Math.min(p.size, Math.max(0, p.total - (p.number - 1) * p.size)), '读到的页码和数量与当前范围不一致，请刷新后重试。');
   }
   function catalog(v, kind, q, selected) {
     const d = envelope(v, q);
@@ -117,7 +117,7 @@
       check(new Set(d.items.map(r => r.outsourcing_ref)).size === d.items.length);
     } else {
       row(d.item);
-      check(d.item.outsourcing_ref === selected, '详情或历史不是原登记，未改指其他对象。');
+      check(d.item.outsourcing_ref === selected, '详情或历史和所选登记对不上，页面没有切换。请刷新后重试。');
       if (kind === 'history') {
         check(object(d.history));
         page(d.history.page, d.history.items, q);
@@ -151,18 +151,18 @@
   }
   function receipt(v, intent) {
     const d = v && v.data;
-    check(v && v.ok === true && v.result === 'committed' && /^[a-f0-9]{32}$/.test(v.receipt_ref) && typeof v.replayed === 'boolean' && Array.isArray(v.warnings) && object(d) && ref(d.outsourcing_ref) && ref(d.fact_ref) && (!intent.input.outsourcing_ref || d.outsourcing_ref === intent.input.outsourcing_ref) && equal(facts(d), intent.after) && equal(d.target, intent.target) && d.declared_operator === intent.input.declared_operator && d.reason === intent.input.reason && text(d.local_operator) && time(d.confirmed_at) && d.refresh_required === true, '回执与原登记不一致，结果尚未确认，请查询原请求。');
+    check(v && v.ok === true && v.result === 'committed' && /^[a-f0-9]{32}$/.test(v.receipt_ref) && typeof v.replayed === 'boolean' && Array.isArray(v.warnings) && object(d) && ref(d.outsourcing_ref) && ref(d.fact_ref) && (!intent.input.outsourcing_ref || d.outsourcing_ref === intent.input.outsourcing_ref) && equal(facts(d), intent.after) && equal(d.target, intent.target) && d.declared_operator === intent.input.declared_operator && d.reason === intent.input.reason && text(d.local_operator) && time(d.confirmed_at) && d.refresh_required === true, '保存结果和这条外协登记对不上，结果还不确定。请点「查询结果」，不要重复提交。');
     boundary(d.execution, d.target);
     return v;
   }
   function failure(v, status, intent) {
     const e = v && v.error,
       valid = v && v.ok === false && [false, 'unknown'].includes(v.committed) && object(e) && text(e.code) && text(e.message) && Array.isArray(e.fields);
-    const error = new Error(valid ? e.message : '外协响应无法核实，请保留原请求。');
+    const error = new Error(valid ? e.message : '读到的结果无法确认，上次提交可能已经生效。请点「查询结果」，不要重复提交。');
     error.code = valid ? e.code : 'invalid_response';
     error.fields = valid ? e.fields : [];
     if (valid && v.committed === false && [400, 404, 409, 422, 503].includes(status) && e.code !== 'request_key_conflict') rejected.add(error);
-    if (valid && v.committed === 'unknown' && intent && e.result_target !== undefined) check(e.request_key === intent.request_key && e.result_target === COMMANDS + intent.request_key, '未知结果指向非原请求，未访问替代回执。');
+    if (valid && v.committed === 'unknown' && intent && e.result_target !== undefined) check(e.request_key === intent.request_key && e.result_target === COMMANDS + intent.request_key, '返回的结果编号和上次提交对不上，这里没有读取其他结果。请点「查询结果」。');
     return error;
   }
   function create(fetcher = window.fetch.bind(window)) {
@@ -190,7 +190,7 @@
             body: JSON.stringify(body)
           })
         });
-        check((r.headers.get('Content-Type') || '').split(';')[0].trim().toLowerCase() === 'application/json', '外协接口未返回有效数据，请核实主线是否已启用。');
+        check((r.headers.get('Content-Type') || '').split(';')[0].trim().toLowerCase() === 'application/json', '外协读到的数据不完整，请刷新后重试。');
         const v = await r.json();
         if (!r.ok || v.ok === false) throw failure(v, r.status, intent);
         check(r.status === 200);

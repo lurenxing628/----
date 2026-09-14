@@ -31,7 +31,7 @@ html[data-theme="dark"] {
   --ui-warning-bg: #2a2416; --ui-warning-border: #92400e; --ui-warning-text: #fde68a; --ui-warning-muted: #fcd34d;
   --ui-danger-bg: #450a0a;  --ui-danger-border: #b91c1c;  --ui-danger-text: #fecaca;  --ui-danger-muted: #fca5a5;
 
-  --ui-table-head-bg: #1e293b; --ui-table-row-hover-bg: #1e293b; --ui-table-row-even-bg: #162032;
+  --ui-table-head-bg: #1e293b; --ui-table-row-hover-bg: #334155; --ui-table-row-even-bg: #162032;
 
   /* Sidebar in dark mode (light spec re-mapped to slate) */
   --sidebar-bg: #111827; --sidebar-border: #334155;

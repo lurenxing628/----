@@ -28,14 +28,14 @@ function support(page, ready, report, save, flush) {
     assert.equal(await current.getAttribute('data-plan-ref'), ref);
     const text = await current.innerText();
     assert(text.includes(identity), text);
-    if (identity.includes('候选')) assert(!/正式 v\d/.test(text), text);
+    if (identity.includes('候选')) assert(!/第 \d+ 版/.test(text), text);
     report.captions = (report.captions || []).concat({ reference: ref, text });
   }
   async function confirmAdopt(kind, cancel = true) {
     const scope = page.locator(kind === 'candidate' ? '[data-run-adoption-action]' : '.trial-adoption-action');
     async function openPreview() {
       const response = page.waitForResponse(row => row.url().endsWith('/adopt-preview') && row.request().method() === 'POST');
-      await button(kind === 'candidate' ? '采用方案' : '正式采用', scope).click();
+      await button('采用方案', scope).click();
       const preview = await (await response).json();
       assert.equal(preview.data.validation.can_adopt, true, JSON.stringify(preview));
       await flush();
@@ -59,11 +59,11 @@ function support(page, ready, report, save, flush) {
       await openPreview(); dialog = page.getByRole('dialog');
     }
     await dialog.getByLabel('采用原因', { exact: true }).fill('任务D真实全入口验收，保留原身份与完整范围');
-    await dialog.getByLabel('声明人', { exact: true }).fill('D acceptance');
+    await dialog.getByLabel('经办人', { exact: true }).fill('D acceptance');
     await dialog.getByRole('checkbox').check();
     await button('确认正式采用', dialog).click();
-    await button('进入正式方案', dialog).waitFor(); await shot(kind + '-adopted');
-    await button('进入正式方案', dialog).click();
+    await button('进入正式计划', dialog).waitFor(); await shot(kind + '-adopted');
+    await button('进入正式计划', dialog).click();
     await page.locator('[data-plan-workspace] .plan-main').waitFor(); await flush();
     return last(data => data.plan && data.tasks);
   }
@@ -71,8 +71,8 @@ function support(page, ready, report, save, flush) {
     await (fromTask ? button('调整此工序', page.locator('[data-plan-inspector]')) : button('试调', page.locator('.plan-heading').first())).click();
     const dialog = page.getByRole('dialog');
     await button('核对原来源', dialog).click();
-    await dialog.getByRole('checkbox', { name: '确认基于此来源创建独立草稿，正式计划保持不变', exact: true }).check();
-    await button('确认创建草稿', dialog).click();
+    await dialog.getByRole('checkbox', { name: '确认基于此来源新增独立草稿，正式计划保持不变', exact: true }).check();
+    await button('确认新增草稿', dialog).click();
     await page.locator('[data-trial-workspace] .tt-main').waitFor();
     await page.getByRole('tab', { name: '完整任务', exact: true }).click(); await flush();
     return last(data => data.draft_ref && data.tasks && !data.scenario_ref);

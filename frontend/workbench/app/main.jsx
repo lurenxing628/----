@@ -14,7 +14,7 @@
   catch (_) { fail('工作台启动信息无法读取，请重新打开本机应用。'); return; }
   if (boot.messages !== undefined && (!Array.isArray(boot.messages) || boot.messages.some(value => !value
       || typeof value.category !== 'string' || typeof value.message !== 'string'))) {
-    fail('工作台返回消息格式不正确，请重新加载后核对原操作结果。'); return;
+    fail('工作台返回的消息格式不正确。请刷新后核对上次操作的结果。'); return;
   }
   if (boot.schema_version !== 1 || !window.React || !window.ReactDOM || !window.APSWorkbenchUI
       || !window.APSWorkbenchTheme || !window.APSWorkbenchTransport || !window.APSWorkbenchSystemContract || typeof SystemLive !== 'function'
@@ -69,7 +69,7 @@
             <span aria-hidden="true">{theme === 'dark' ? '☀' : '☾'}</span>切换{theme === 'dark' ? '浅色' : '深色'}</button>
           <button type="button" className="hdr-pill" aria-pressed={density === 'compact'}
             onClick={() => window.WorkbenchDensity.set(density === 'compact' ? 'comfortable' : 'compact')}>紧凑表格</button></div>
-      </header><main className="page-content">
+      </header><main className="page-content" data-wb-scroll-key="page-content">
         {messages.length > 0 && <section className="wb-server-messages" aria-label="操作结果">{messages.map((value, index) =>
           <div className="wb-server-message" data-kind={value.category} key={index} role={['error', 'danger', 'warning'].includes(value.category) ? 'alert' : 'status'}>
             <span className="wb-server-badge">{{error: '失败', danger: '失败', warning: '注意', success: '成功'}[value.category] || '提示'}</span>
@@ -165,7 +165,7 @@
     const rememberTrialTarget = nextContext => {
       window.TrialContract.target(nextContext);
       const entry = currentPage();
-      if (entry.view !== 'trial' || entry.key !== page.key) throw new Error('当前页面已变化，未覆盖其他页面的恢复记录。');
+      if (entry.view !== 'trial' || entry.key !== page.key) throw new Error('当前页面已变化，没有保存这次选择。请刷新后重新选择。');
       window.WorkbenchNavigation.replaceContext(boot, entry, nextContext);
       if (historyGuard.current) historyGuard.current.sync();
     };
@@ -198,7 +198,7 @@
       : view === 'trial' ? <window.WorkbenchTrialWorkspace key={view + ':' + page.key} onNavigate={navigate} initialTarget={initialContext} onTargetChange={rememberTrialTarget}
         renderAdoption={props => <window.TrialAdoptionAction {...props} />} />
       : <section className="wb-page-panel" aria-label={boot.titles[view] || '工作区不存在'}>
-        <h2>{boot.titles[view] || '工作区不存在'}</h2><p role="status">该工作区尚未接入真实数据，暂不提供业务操作。</p>
+        <h2>{boot.titles[view] || '工作区不存在'}</h2><p role="status">{window.WorkbenchTerms.outcomes.unavailable}</p>
       </section>}
       </window.WorkbenchBoundary>
     </WorkbenchShell></window.WorkbenchCaption.Provider></window.WorkbenchPageContext.Provider></>;

@@ -150,12 +150,12 @@
   }) {
     return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", {
       role: "status"
-    }, state.loading ? '正在重读保存后的工作日历…' : state.done ? '已重新读取最新工作日历。' : '最新工作日历尚未确认。'), /*#__PURE__*/React.createElement(ErrorBox, {
+    }, state.loading ? '正在刷新工作日历…' : state.done ? '已刷新，显示最新工作日历。' : '最新工作日历尚未确认。'), /*#__PURE__*/React.createElement(ErrorBox, {
       error: state.error
     }), state.error && /*#__PURE__*/React.createElement(Button, {
       icon: "refresh-cw",
       onClick: onRefresh
-    }, "\u91CD\u65B0\u8BFB\u53D6\u4FDD\u5B58\u7ED3\u679C"));
+    }, "\u5237\u65B0\u4FDD\u5B58\u7ED3\u679C"));
   }
   window.CalendarFields = {
     Fields: CalendarFields,

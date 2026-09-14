@@ -70,7 +70,7 @@ async function main() {
     await page.getByText('预检通过，尚未写入报工。', { exact: true }).waitFor();
     await shot('preview');
     await page.getByRole('button', { name: '确认导入', exact: true }).click();
-    await page.getByRole('button', { name: '重读已确认结果', exact: true }).click();
+    await page.getByRole('button', { name: '刷新已确认结果', exact: true }).click();
     await page.getByRole('dialog').waitFor({ state: 'detached' });
     await page.locator('[data-field-task]').first().waitFor();
     await shot('refreshed');
@@ -83,7 +83,7 @@ async function main() {
     assert.equal(await page.getByRole('table', { name: '文件逐行预检' }).getByText('重复', { exact: true }).count(), 3);
     await shot('duplicate');
     await page.getByRole('button', { name: '确认导入', exact: true }).click();
-    await page.getByRole('button', { name: '重读已确认结果', exact: true }).click();
+    await page.getByRole('button', { name: '刷新已确认结果', exact: true }).click();
     await page.getByRole('dialog').waitFor({ state: 'detached' });
     assert.deepEqual(report.errors, []);
     report.completed = true;

@@ -5,7 +5,7 @@ const output = path.resolve(process.argv[2]);
 const report = { scope: 'master-overview-independent-http-mock', persistence_tested_in_browser: false, win7_hardware_tested: false,
   cases: [], screenshots: [], errors: [], external: [], unexpected: [], requests: [], geometry: [], downloads: [] };
 const harness = H.setup(report, output); let browser, state, page;
-const root = () => page.getByRole('region', { name: '主数据总览', exact: true });
+const root = () => page.getByRole('region', { name: '资料总览', exact: true });
 async function ready() { await page.waitForFunction(() => document.querySelector('.master-overview .mo-table tbody tr')); await page.evaluate(() => document.fonts.ready); }
 async function mount(spec = {}) { harness.state.spec = spec; harness.state.requests = []; await page.evaluate(spec => mountOverview(spec), { theme: state.theme, ...spec }); }
 async function shot(name) { const file = path.join(output, state.id + '-' + name + '.png'); await page.screenshot({ path: file }); report.screenshots.push(file); }
@@ -16,8 +16,8 @@ async function run(name, action) {
   console.log(state.id + ' / ' + name + ': ' + (result.passed ? 'passed' : result.error));
 }
 async function entityView(domain) {
-  await root().getByRole('tab', { name: /^实体清单/ }).click();
-  if (domain) await root().getByLabel('筛选数据域', { exact: true }).selectOption(domain);
+  await root().getByRole('tab', { name: /^资料清单/ }).click();
+  if (domain) await root().getByLabel('筛选资料类别', { exact: true }).selectOption(domain);
   await ready();
 }
 async function geometry() {
@@ -36,14 +36,14 @@ async function geometry() {
 }
 async function mainCases() {
   await run('detail-focus-close-and-sticky-actions', async () => {
-    await mount(); await ready(); await root().getByRole('heading', { name: '主数据实体详情', exact: true }).waitFor();
+    await mount(); await ready(); await root().getByRole('heading', { name: '资料详情', exact: true }).waitFor();
     const initialPreview = await page.evaluate(() => ({ scroll: window.scrollY, headingTop: document.querySelector('.mo-heading h2').getBoundingClientRect().top,
       focused: document.activeElement === document.querySelector('.wb-detail-heading h2') }));
-    assert.equal(initialPreview.scroll, 0, '自动首条预览保留主数据总览首屏'); assert(initialPreview.headingTop >= 0); assert.equal(initialPreview.focused, false);
-    await root().getByRole('button', { name: '关闭主数据实体详情', exact: true }).click();
+    assert.equal(initialPreview.scroll, 0, '自动首条预览保留资料总览首屏'); assert(initialPreview.headingTop >= 0); assert.equal(initialPreview.focused, false);
+    await root().getByRole('button', { name: '关闭资料详情', exact: true }).click();
     const opener = root().locator('.mo-table tbody tr').first().getByRole('button', { name: /^查看 / });
     await opener.click();
-    await page.waitForFunction(() => document.activeElement && document.activeElement.textContent === '主数据实体详情');
+    await page.waitForFunction(() => document.activeElement && document.activeElement.textContent === '资料详情');
     const visible = await page.evaluate(() => {
       const heading = document.querySelector('.wb-detail-heading h2').getBoundingClientRect(), frame = document.querySelector('.mo-list .wb-table-frame');
       const action = frame.querySelector('tbody .wb-col-actions').getBoundingClientRect(), bounds = frame.getBoundingClientRect();
@@ -51,7 +51,7 @@ async function mainCases() {
         sticky: getComputedStyle(frame.querySelector('tbody .wb-col-actions')).position, caption: frame.querySelector('caption').textContent,
         scopes: Array.from(frame.querySelectorAll('thead th')).every(th => th.scope === 'col') };
     });
-    assert(visible.top >= 0 && visible.bottom <= visible.height); assert(visible.action <= visible.right + 1); assert.equal(visible.sticky, 'sticky'); assert(visible.scopes); assert.equal(visible.caption, '主数据清单');
+    assert(visible.top >= 0 && visible.bottom <= visible.height); assert(visible.action <= visible.right + 1); assert.equal(visible.sticky, 'sticky'); assert(visible.scopes); assert.equal(visible.caption, '资料清单');
     await page.keyboard.press('Escape'); await page.waitForFunction(() => !document.querySelector('.master-overview .wb-detail'));
     assert(await opener.evaluate(node => node === document.activeElement));
   });
@@ -63,8 +63,8 @@ async function mainCases() {
   });
   await run('all-pages-column-filter-and-full-csv', async () => {
     await mount(); await ready(); await entityView('part');
-    await root().getByLabel('主数据排序', { exact: true }).selectOption('business_code'); await ready();
-    await root().getByRole('button', { name: '主数据下一页', exact: true }).click();
+    await root().getByLabel('基础资料排序', { exact: true }).selectOption('business_code'); await ready();
+    await root().getByRole('button', { name: '基础资料下一页', exact: true }).click();
     await root().getByRole('button', { name: '查看 P020', exact: true }).waitFor();
     await root().getByRole('button', { name: '筛选列 编号', exact: true }).click();
     await root().getByLabel('列包含文字').fill('P0'); await root().getByRole('button', { name: '应用列筛选', exact: true }).click(); await ready();
@@ -83,50 +83,50 @@ async function mainCases() {
     await root().getByRole('button', { name: /^M030 ·/ }).click();
     await root().getByRole('button', { name: '查看 M030', exact: true }).waitFor();
     const locate = harness.state.requests.filter(row => row.path.includes('/locate/')).pop(); assert(locate.path.endsWith('/' + harness.fixture.entities.find(row => row.business_code === 'M030').ref));
-    await root().getByRole('button', { name: '定位当前实体', exact: true }).click();
+    await root().getByRole('button', { name: '定位当前资料', exact: true }).click();
     const navigated = await page.evaluate(() => fixtureState.navigations.at(-1));
     assert.equal(navigated.view, 'process'); assert.equal(navigated.context.kind, 'machine'); assert.equal(navigated.context.source, 'production'); assert(!('business_code' in navigated.context));
-    await root().getByRole('button', { name: '刷新主数据', exact: true }).click(); await ready();
-    assert.equal(await root().getByLabel('筛选数据域', { exact: true }).inputValue(), 'equipment');
+    await root().getByRole('button', { name: '刷新资料', exact: true }).click(); await ready();
+    assert.equal(await root().getByLabel('筛选资料类别', { exact: true }).inputValue(), 'equipment');
     await shot('relation-located');
   });
   await run('zero-versus-unknown-and-batch-navigation', async () => {
     const zero = harness.fixture.entities.find(row => row.business_code === 'MAT0');
     await mount({ initialContext: { domain: 'material', entity_ref: zero.ref } }); await ready();
-    await root().getByRole('tab', { name: /^字段/ }).click(); await root().locator('.mo-field').first().waitFor();
+    await root().getByRole('tab', { name: /^资料项/ }).click(); await root().locator('.mo-field').first().waitFor();
     const stock = root().locator('.mo-field').filter({ has: page.locator('dt', { hasText: /^库存数量$/ }) });
     assert.equal(await stock.locator('dd').first().textContent(), '0');
     await root().getByRole('tab', { name: /^相关项/ }).click(); await root().getByRole('button', { name: /^B000 ·/ }).click();
     const navigated = await page.evaluate(() => fixtureState.navigations.at(-1)); assert.equal(navigated.view, 'batches'); assert.deepEqual(Object.keys(navigated.context), ['entity_ref']);
     const unknown = harness.fixture.entities.find(row => row.business_code === 'MAT-UNKNOWN');
     await mount({ initialContext: { domain: 'material', entity_ref: unknown.ref } }); await ready();
-    await root().getByRole('tab', { name: /^字段/ }).click(); await root().locator('.mo-field').first().waitFor();
-    assert.equal(await root().locator('.mo-field').filter({ has: page.locator('dt', { hasText: /^库存数量$/ }) }).locator('dd').first().textContent(), '未填');
+    await root().getByRole('tab', { name: /^资料项/ }).click(); await root().locator('.mo-field').first().waitFor();
+    assert.equal(await root().locator('.mo-field').filter({ has: page.locator('dt', { hasText: /^库存数量$/ }) }).locator('dd').first().textContent(), '未填写');
   });
   await run('long-chinese-route-stage-exact-ref', async () => {
     const route = harness.fixture.entities.find(row => row.domain === 'route');
     await mount({ initialContext: { domain: 'route', entity_ref: route.ref } }); await ready();
     await root().getByRole('tab', { name: /^待维护项/ }).last().waitFor();
-    const item = root().locator('.mo-detail-list li').filter({ hasText: '单件工时0待复核' }); await item.getByRole('button').click();
+    const item = root().locator('.mo-detail-list li').filter({ hasText: '单件工时 0 待复核' }); await item.getByRole('button').click();
     const value = await page.evaluate(() => fixtureState.navigations.at(-1)); assert.equal(value.context.stage, 'hours'); assert.equal(value.context.kind, 'part');
     assert.equal(value.context.entity_ref, route.ref); assert(/^[0-9a-f]{48}$/.test(value.context.template_operation_ref));
     await geometry(); await shot('long-chinese-route');
   });
   await run('missing-source-and-empty-filter', async () => {
     await mount({ gaps: true }); await ready();
-    assert.equal(await root().locator('.mo-domains .mo-domain').last().locator('.wb-metric-value').textContent(), '未加载');
-    await root().getByRole('tab', { name: /^实体清单/ }).click(); await ready();
-    await root().getByRole('searchbox', { name: '搜索主数据' }).fill('查不到的很长中文');
-    await root().getByRole('button', { name: '执行主数据搜索', exact: true }).click();
+    assert.equal(await root().locator('.mo-domains .mo-domain').last().locator('.wb-metric-value').textContent(), '未读取');
+    await root().getByRole('tab', { name: /^资料清单/ }).click(); await ready();
+    await root().getByRole('searchbox', { name: '搜索基础资料' }).fill('查不到的很长中文');
+    await root().getByRole('button', { name: '执行基础资料搜索', exact: true }).click();
     await root().getByText('当前范围没有记录', { exact: true }).waitFor();
     assert(await root().getByRole('button', { name: '导出筛选结果', exact: true }).isDisabled());
-    await root().getByRole('button', { name: '清除主数据筛选', exact: true }).click(); await ready();
+    await root().getByRole('button', { name: '清除基础资料筛选', exact: true }).click(); await ready();
   });
   await run('failed-read-no-stale-or-fake-results', async () => {
     await mount({ failure: true }); await root().getByRole('alert').waitFor();
     assert.equal(await root().locator('.mo-table tbody tr').count(), 0);
     assert(await root().getByRole('button', { name: '导出筛选结果', exact: true }).isDisabled());
-    harness.state.spec = {}; await root().getByRole('button', { name: '刷新主数据', exact: true }).click(); await ready();
+    harness.state.spec = {}; await root().getByRole('button', { name: '刷新资料', exact: true }).click(); await ready();
   });
 }
 async function failureCases() {
@@ -142,16 +142,16 @@ async function failureCases() {
     await root().getByRole('button', { name: '导出筛选结果', exact: true }).click(); await root().getByRole('alert').waitFor(); assert.equal(downloaded, false); page.off('download', listener);
   });
   await run('bad-export-snapshot-rejected', async () => {
-    await mount({ badExport: true }); await ready(); await root().getByRole('button', { name: '导出筛选结果', exact: true }).click(); await root().getByRole('alert').waitFor(); assert((await root().getByRole('alert').textContent()).includes('快照无法核实'));
+    await mount({ badExport: true }); await ready(); await root().getByRole('button', { name: '导出筛选结果', exact: true }).click(); await root().getByRole('alert').waitFor(); assert((await root().getByRole('alert').textContent()).includes('数据版本对不上'));
   });
   await run('no-navigation-and-missing-initial-ref', async () => {
     await mount({ noNavigation: true }); await ready(); assert(await root().getByRole('button', { name: /^维护基础资料/ }).isDisabled());
-    await mount({ initialContext: { domain: 'part', entity_ref: 'f'.repeat(48) } }); await root().getByRole('alert').waitFor(); assert((await root().getByRole('alert').textContent()).includes('未按同号替代'));
+    await mount({ initialContext: { domain: 'part', entity_ref: 'f'.repeat(48) } }); await root().getByRole('alert').waitFor(); assert((await root().getByRole('alert').textContent()).includes('没有换成同号的其他记录'));
   });
   await run('rapid-filter-response-cannot-replace-new-scope', async () => {
     await mount({ delay: 180 }); await ready();
-    await root().getByLabel('筛选数据域', { exact: true }).selectOption('equipment'); await root().getByLabel('筛选数据域', { exact: true }).selectOption('material');
-    await ready(); assert.equal(await root().getByLabel('筛选数据域', { exact: true }).inputValue(), 'material');
+    await root().getByLabel('筛选资料类别', { exact: true }).selectOption('equipment'); await root().getByLabel('筛选资料类别', { exact: true }).selectOption('material');
+    await ready(); assert.equal(await root().getByLabel('筛选资料类别', { exact: true }).inputValue(), 'material');
     assert((await root().locator('.mo-table tbody').textContent()).includes('MAT0'));
   });
 }

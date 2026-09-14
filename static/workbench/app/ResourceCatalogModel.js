@@ -53,7 +53,7 @@
         message: '第 ' + (index + 1) + ' 天：' + message
       });
       if (row.day_offset !== index || typeof row.is_rest !== 'boolean') bad('请明确选择工作或休息。');
-      if (!clockValid(row.shift_start) || !clockValid(row.shift_end)) bad('开始和结束必须是完整的 HH:MM。');
+      if (!clockValid(row.shift_start) || !clockValid(row.shift_end)) bad('开始和结束请按 08:30 这样填。');
       const next = pattern[(index + 1) % pattern.length];
       if (row.is_rest === false && next.is_rest === false && clockValid(row.shift_start) && clockValid(row.shift_end) && clockValid(next.shift_start)) {
         const start = minutes(row.shift_start),
@@ -64,7 +64,7 @@
     return errors;
   }
   function input(kind, value, original) {
-    if (!names[kind]) throw C.failure('不支持此类资源目录。');
+    if (!names[kind]) throw C.failure('不支持这类基础资料。');
     const base = draft(original),
       creating = !original,
       result = {},
@@ -100,7 +100,7 @@
       fields.cycle_days = length;
       fields.pattern = clone(value.pattern);
     }
-    if (errors.length) throw C.failure('请核对目录资料。', errors);
+    if (errors.length) throw C.failure('请核对标红的项。', errors);
     if (Object.keys(fields).length) result.fields = fields;
     return result;
   }

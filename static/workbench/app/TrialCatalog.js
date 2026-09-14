@@ -49,14 +49,14 @@
       refresh();
     }
     return /*#__PURE__*/React.createElement("section", {
-      "aria-label": "\u6301\u4E45\u8BD5\u8C03\u76EE\u5F55",
+      "aria-label": "\u8BD5\u8C03\u8349\u7A3F\u4E0E\u8BD5\u8C03\u65B9\u6848",
       className: "tt-directory"
     }, /*#__PURE__*/React.createElement("div", {
       className: "tt-heading"
     }, /*#__PURE__*/React.createElement(U.Tabs, {
       value: collection,
-      label: "\u8BD5\u8C03\u76EE\u5F55\u7C7B\u522B",
-      options: [["drafts", '试调草稿'], ['scenarios', '已存场景']],
+      label: "\u8BD5\u8C03\u5217\u8868\u7C7B\u522B",
+      options: [["drafts", '试调草稿'], ['scenarios', '试调方案']],
       onChange: value => {
         setCollection(value);
         reset({
@@ -66,7 +66,7 @@
     }), /*#__PURE__*/React.createElement("div", {
       className: "tt-tools"
     }, /*#__PURE__*/React.createElement("label", null, "\u72B6\u6001 ", /*#__PURE__*/React.createElement("select", {
-      "aria-label": "\u76EE\u5F55\u72B6\u6001",
+      "aria-label": "\u5217\u8868\u72B6\u6001",
       value: query.status,
       onChange: e => reset({
         status: e.target.value
@@ -75,7 +75,7 @@
       key: s,
       value: s
     }, s === 'all' ? '全部' : U.statusLabel(s))))), /*#__PURE__*/React.createElement("label", null, "\u6BCF\u9875 ", /*#__PURE__*/React.createElement("select", {
-      "aria-label": "\u76EE\u5F55\u6BCF\u9875\u6570\u91CF",
+      "aria-label": "\u5217\u8868\u6BCF\u9875\u6570\u91CF",
       value: query.size,
       onChange: e => reset({
         size: Number(e.target.value)
@@ -94,21 +94,21 @@
       }
     }), "\u4EC5\u6B64\u539F\u6765\u6E90"), /*#__PURE__*/React.createElement(U.Button, {
       icon: "refresh-cw",
-      "aria-label": "\u91CD\u65B0\u8BFB\u53D6\u8BD5\u8C03\u76EE\u5F55",
+      "aria-label": "\u5237\u65B0\u8BD5\u8C03\u5217\u8868",
       busy: read.busy,
       onClick: () => reset()
     }))), /*#__PURE__*/React.createElement(U.ErrorBox, {
       error: read.error
     }), read.busy && /*#__PURE__*/React.createElement("p", {
       role: "status"
-    }, "\u6B63\u5728\u8BFB\u53D6\u76EE\u5F55\u2026"), read.result && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+    }, "\u6B63\u5728\u8BFB\u53D6\u5217\u8868\u2026"), read.result && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
       className: "tt-directory-scroll"
     }, /*#__PURE__*/React.createElement("table", {
       className: "tt-table",
-      "aria-label": "\u8BD5\u8C03\u76EE\u5F55"
+      "aria-label": "\u8BD5\u8C03\u5217\u8868"
     }, /*#__PURE__*/React.createElement("caption", {
       className: "wb-visually-hidden"
-    }, "试调目录"), /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
+    }, "试调列表"), /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
       scope: "col"
     }, "\u540D\u79F0"), /*#__PURE__*/React.createElement("th", {
       scope: "col"
@@ -120,7 +120,7 @@
       scope: "col"
     }, "\u66F4\u65B0\u65F6\u95F4"), /*#__PURE__*/React.createElement("th", {
       scope: "col"
-    }, "\u672C\u673A\u64CD\u4F5C\u8005"), /*#__PURE__*/React.createElement("th", {
+    }, "\u8BB0\u5F55\u4EBA"), /*#__PURE__*/React.createElement("th", {
       scope: "col"
     }, "\u64CD\u4F5C"))), /*#__PURE__*/React.createElement("tbody", null, read.result.data.items.map(r => /*#__PURE__*/React.createElement("tr", {
       key: r.detail_target,
@@ -130,9 +130,9 @@
       onClick: () => onOpen(r.open_target)
     }, "\u6253\u5F00")))))), !read.result.data.items.length && /*#__PURE__*/React.createElement("div", {
       className: "tt-empty"
-    }, "\u6B64\u8303\u56F4\u6682\u65E0", collection === 'drafts' ? '草稿' : '场景')), /*#__PURE__*/React.createElement(U.Pager, {
+    }, "\u6B64\u8303\u56F4\u6682\u65E0", collection === 'drafts' ? '试调草稿' : '试调方案')), /*#__PURE__*/React.createElement(U.Pager, {
       page: read.result.data.page,
-      label: "\u76EE\u5F55",
+      label: "\u5217\u8868",
       onPage: page => setQuery({
         ...query,
         page,
@@ -140,7 +140,7 @@
       })
     }), /*#__PURE__*/React.createElement("div", {
       className: "tt-muted"
-    }, "\u76EE\u5F55\u672A\u6267\u884C\u7EA6\u675F\u6821\u9A8C\uFF1B\u6253\u5F00\u8349\u7A3F\u540E\u8BFB\u53D6\u5F53\u524D\u68C0\u67E5\uFF0C\u573A\u666F\u4E3A\u4FDD\u5B58\u65F6\u5FEB\u7167\u3002")));
+    }, "\u5217\u8868\u4E0D\u505A\u7EA6\u675F\u68C0\u67E5\uFF1B\u6253\u5F00\u8349\u7A3F\u4F1A\u8BFB\u5F53\u524D\u7684\u68C0\u67E5\u7ED3\u679C\uFF0C\u8BD5\u8C03\u65B9\u6848\u663E\u793A\u7684\u662F\u4FDD\u5B58\u65F6\u7684\u5185\u5BB9\u3002")));
   }
   function SourceCatalog({
     onSelect,
@@ -187,7 +187,7 @@
       }
     }), /*#__PURE__*/React.createElement("div", {
       className: "tt-heading"
-    }, /*#__PURE__*/React.createElement("span", null, run ? '候选来源：' + U.timeLabel(run.accepted_at) : kind === 'plan' ? '正式计划目录' : '运行目录'), /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("span", null, run ? '候选来源：' + U.timeLabel(run.accepted_at) : kind === 'plan' ? '正式计划列表' : '排产记录列表'), /*#__PURE__*/React.createElement("div", {
       className: "tt-tools"
     }, run && /*#__PURE__*/React.createElement(U.Button, {
       icon: "chevron-left",
@@ -195,9 +195,9 @@
         setRun(null);
         setQ({});
       }
-    }, "\u8FD0\u884C\u76EE\u5F55"), /*#__PURE__*/React.createElement(U.Button, {
+    }, "\u6392\u4EA7\u8BB0\u5F55\u5217\u8868"), /*#__PURE__*/React.createElement(U.Button, {
       icon: "refresh-cw",
-      "aria-label": "\u91CD\u8BFB\u539F\u6765\u6E90\u76EE\u5F55",
+      "aria-label": "\u5237\u65B0\u539F\u6765\u6E90\u5217\u8868",
       busy: read.busy,
       onClick: () => {
         setQ({});
@@ -281,7 +281,7 @@
     const guardOwner = window.WorkbenchGuards.useDirtyGuard({
       dirty: JSON.stringify(base) !== JSON.stringify(baseline.current),
       locked: commands.busy || !!commands.key,
-      message: '新建试调的来源选择或确认尚未提交。'
+      message: '新增试调的来源选择或确认还没提交。'
     });
     async function close(detail) {
       if (detail && detail.guardConfirmed === true && detail.guardOwner === guardOwner || (await window.WorkbenchGuards.confirmLeave({
@@ -297,7 +297,7 @@
     }
     const d = read.result && read.result.data;
     return /*#__PURE__*/React.createElement(U.Modal, {
-      title: "\u4ECE\u539F\u6765\u6E90\u521B\u5EFA\u8BD5\u8C03",
+      title: "\u4ECE\u539F\u6765\u6E90\u65B0\u589E\u8BD5\u8C03",
       icon: "square-pen",
       onClose: close,
       guardOwner: guardOwner,
@@ -331,7 +331,7 @@
           action: 'create',
           input
         }, d.write_context.write_token)
-      }, "\u786E\u8BA4\u521B\u5EFA\u8349\u7A3F"))
+      }, "\u786E\u8BA4\u65B0\u589E\u8349\u7A3F"))
     }, /*#__PURE__*/React.createElement("div", {
       className: "trial-modal-body"
     }, !fixedBase && /*#__PURE__*/React.createElement(SourceCatalog, {
@@ -351,7 +351,7 @@
       type: "checkbox",
       checked: agreed,
       onChange: e => setAgreed(e.target.checked)
-    }), "\u786E\u8BA4\u57FA\u4E8E\u6B64\u6765\u6E90\u521B\u5EFA\u72EC\u7ACB\u8349\u7A3F\uFF0C\u6B63\u5F0F\u8BA1\u5212\u4FDD\u6301\u4E0D\u53D8"))));
+    }), "\u786E\u8BA4\u57FA\u4E8E\u6B64\u6765\u6E90\u65B0\u589E\u72EC\u7ACB\u8349\u7A3F\uFF0C\u6B63\u5F0F\u8BA1\u5212\u4FDD\u6301\u4E0D\u53D8"))));
   }
   window.TrialCatalog = {
     Directory,

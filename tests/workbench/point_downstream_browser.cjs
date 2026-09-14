@@ -69,21 +69,21 @@ async function main() {
       // The default plan window can exclude later reports; inspect the entire axis for all-report assertions.
       await page.getByRole('button', { name: '适应全部', exact: true }).click();
       await point.hover();
-      assert.ok((await page.getByRole('tooltip').innerText()).includes('原计划点基线'));
+      assert.ok((await page.getByRole('tooltip').innerText()).includes('原计划 · 零工时工序'));
       await point.click();
       await page.getByRole('checkbox', { name: '详情', exact: true }).check();
-      assert.ok((await page.getByLabel('工序详情').innerText()).includes('计划点 · 0 秒'));
+      assert.ok((await page.getByLabel('工序详情').innerText()).includes('零工时工序，不占设备人员'));
       await point.focus(); await page.keyboard.press('Enter');
       assert.equal(await point.getAttribute('aria-pressed'), 'true');
       assert.equal(await page.locator('[data-actual-mark=actual]').count(), input.reports ? 1 : 0);
       assert.equal(await page.locator('[data-actual-mark=point]').count(), input.reports ? 2 : 0);
       assert.equal(await page.getByText('待续排', { exact: true }).count(), 0);
-      assert.ok((await page.locator('[data-actual-gantt]').innerText()).includes('计划点已安排 · 完成待确认'));
+      assert.ok((await page.locator('[data-actual-gantt]').innerText()).includes('零工时工序已安排 · 完成待确认'));
       if (input.reports) {
         const actual = page.locator('[data-actual-mark=actual]'); assert.ok((await actual.boundingBox()).width > 0);
         const reportPoint = page.locator('[data-actual-mark=point]').first();
         await reportPoint.hover();
-        assert.ok((await page.getByRole('tooltip').innerText()).includes('报工时点'));
+        assert.ok((await page.getByRole('tooltip').innerText()).includes('报工时刻'));
         const reportRef = await reportPoint.getAttribute('data-report-ref');
         assert.equal(await reportPoint.getAttribute('data-point-ref'), reportRef);
         await reportPoint.focus(); await page.keyboard.press('Enter');
@@ -101,7 +101,7 @@ async function main() {
       const originContext = await page.evaluate(() => history.state.workbench.context);
       const [fieldRead] = await Promise.all([
         page.waitForResponse(response => new URL(response.url()).pathname === '/api/workbench/v1/execution/tasks'),
-        page.getByRole('button', { name: '现场报工', exact: true }).click(),
+        page.getByRole('button', { name: '现场记录', exact: true }).click(),
       ]);
       const fieldPayload = await fieldRead.json();
       evidence.navigation_scopes.push({ width, theme, origin: originContext, url: fieldRead.url(), status: fieldRead.status(), payload: fieldPayload });
@@ -118,7 +118,7 @@ async function main() {
       if (returnContext.context.scope.batch_ids !== undefined) assert.deepEqual(returnContext.context.scope.batch_ids, []);
       assert.equal(await fieldPoint.getAttribute('data-point-ref'), input.identity.task.task_ref);
       assert.equal((await fieldPoint.boundingBox()).width, 24);
-      await fieldPoint.hover(); assert.ok((await page.getByRole('tooltip').innerText()).includes('不占用排产资源'));
+      await fieldPoint.hover(); assert.ok((await page.getByRole('tooltip').innerText()).includes('零工时工序，不占设备人员'));
       await fieldPoint.focus(); await page.keyboard.press('Space');
       assert.equal(await fieldPoint.getAttribute('aria-pressed'), 'true');
       assert.equal(await page.locator('[data-field-point=report]').count(), input.reports ? 2 : 0);
@@ -137,7 +137,7 @@ async function main() {
     await page.locator('[data-actual-scroll]').waitFor();
     const [scopedField] = await Promise.all([
       page.waitForResponse(response => new URL(response.url()).pathname === '/api/workbench/v1/execution/tasks'),
-      page.getByRole('button', { name: '现场报工', exact: true }).click(),
+      page.getByRole('button', { name: '现场记录', exact: true }).click(),
     ]);
     const scopedPayload = await scopedField.json();
     evidence.nonempty_batch_navigation = { url: scopedField.url(), status: scopedField.status(), payload: scopedPayload };

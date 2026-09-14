@@ -125,7 +125,7 @@ def test_changed_protection_cannot_authorize_rollback(restore_host, monkeypatch)
     assert result["state"] == "rollback_failed" and not result["terminal"]
     assert case.marker() == "selected"
     assert result["protection_sha256"] != file_fingerprint(str(case.backups / result["protection_filename"]))
-    with pytest.raises(ValueError, match="未核实"):
+    with pytest.raises(ValueError, match="还没有确认结果"):
         assert_system_maintenance_ready(case.path, case.journal.directory)
 
 
@@ -137,7 +137,7 @@ def test_unknown_runner_result_remains_pending_across_restart(restore_host, monk
     monkeypatch.setattr("web.routes.workbench.system_actions._restore_runner", unknown)
     result = case.client.post(BASE + "/backups/restore", json=body, buffered=True).get_json()["data"]["operation"]
     assert result["state"] == "recovery_required" and result["terminal"] is False
-    with pytest.raises(ValueError, match="未核实"):
+    with pytest.raises(ValueError, match="还没有确认结果"):
         assert_system_maintenance_ready(case.path, case.journal.directory)
     assert case.marker() == "current"
 

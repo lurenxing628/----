@@ -12,7 +12,7 @@
         <td className="wb-col-actions"><Button icon={opened === task.task_ref ? 'chevron-up' : 'chevron-down'} aria-label={'查看报工 ' + task.batch_id + ' ' + task.operation_label + ' · ' + C.pieceLabel(task)} disabled={disabled} onClick={() => onOpen(task.task_ref)} /> <span>{task.execution.reports.length} 次</span></td>
       </tr></React.Fragment>)}
         {!tasks.length && <tr><td colSpan="7"><window.WorkbenchListControls.EmptyState kind={loading ? 'loading' : error ? 'error' : filtered ? 'filtered' : 'empty'} title={loading ? '正在读取现场任务…' : loaded ? '当前范围没有任务' : '现场任务尚未读取'}
-          hint={loaded ? '可调整报工状态、批次或计划完工日期后重新查询。' : undefined} action={error ? <Button onClick={onRetry}>重读现场任务</Button> : filtered ? <Button onClick={onClear} disabled={disabled}>清除筛选</Button> : undefined} /></td></tr>}</tbody></table></div>;
+          hint={loaded ? '可调整报工状态、批次或计划完工日期后重新查询。' : undefined} action={error ? <Button onClick={onRetry}>刷新现场任务</Button> : filtered ? <Button onClick={onClear} disabled={disabled}>清除筛选</Button> : undefined} /></td></tr>}</tbody></table></div>;
   }
   window.FieldTable = FieldTable;
 })();

@@ -38,7 +38,7 @@ async function actionCapabilities(result){
     await page.route(pattern,handler);
     try{
       await list(()=>workspace().getByRole('button',{name:'刷新工艺列表',exact:true}).click());
-      if(mode==='invalid-source')await workspace().getByText('本机资源数据协议不匹配，未使用样例替代。',{exact:true}).waitFor();
+      if(mode==='invalid-source')await workspace().getByText('读到的数据不完整，请刷新重试。',{exact:true}).waitFor();
       assert(await create().isDisabled());assert(await importRoute().isDisabled());assert.equal(await page.getByRole('dialog').count(),0);assert.equal(posts(),0);
     }finally{await page.unroute(pattern,handler);}
     const restored=await list(()=>workspace().getByRole('button',{name:'刷新工艺列表',exact:true}).click());
@@ -98,8 +98,8 @@ async function cases(){
     const found=await search('热处理');assert.equal(found.data.page.total,1);await search('');
   });
   await run('stage-sort-empty-and-explicit-unavailable-actions',async()=>{
-    const result=await list(()=>workspace().getByRole('tab',{name:/^待分拣/}).click());assert.equal(result.data.page.total,3);
-    await list(()=>workspace().getByRole('tab',{name:/^已就绪/}).click());await workspace().getByText('当前条件下没有零件。',{exact:true}).waitFor();
+    const result=await list(()=>workspace().getByRole('tab',{name:/^待定归属/}).click());assert.equal(result.data.page.total,3);
+    await list(()=>workspace().getByRole('tab',{name:/^已就绪/}).click());await workspace().getByText('当前筛选没有匹配的零件',{exact:true}).waitFor();
     await list(()=>workspace().getByRole('tab',{name:/^全部/}).click());
     let current;for(const order of ['ascending','descending','none']){current=await list(()=>workspace().getByRole('button',{name:'图号排序',exact:true}).click());assert.equal(await workspace().locator('th').filter({has:page.getByRole('button',{name:'图号排序',exact:true})}).getAttribute('aria-sort'),order);}
     await actionCapabilities(current);
@@ -108,7 +108,7 @@ async function cases(){
     await search('PROC-001');await open('PROC-001');
     assert(await page.getByRole('tab',{name:/^1 工艺路线/,selected:true}).isVisible());
     assert(await page.getByRole('table',{name:'路线工序明细',exact:true}).isVisible());
-    assert.equal(await page.getByRole('table',{name:'工序归属明细',exact:true}).count(),0);
+    assert.equal(await page.getByRole('table',{name:'归属明细',exact:true}).count(),0);
     await page.getByRole('tab',{name:/^3 工时定额/}).click();
     assert.equal(await page.getByLabel('工序 10 单件工时',{exact:true}).inputValue(),'0.125');
     assert.equal(await page.getByLabel('工序 30 单件工时',{exact:true}).inputValue(),'0');
@@ -131,14 +131,14 @@ async function cases(){
   });
   await run('row-input-duplicate-validation-and-cancel',async()=>{
     await search('PROC-002');await open('PROC-002');await routeEntry();await page.getByRole('tab',{name:'逐行表格',exact:true}).click();
-    await type(page.getByRole('textbox',{name:'第 1 行工序号',exact:true}),'10');await type(page.getByRole('textbox',{name:'第 1 行工种',exact:true}),'车削');
-    await page.getByRole('button',{name:'添加工序',exact:true}).click();await type(page.getByRole('textbox',{name:'第 2 行工序号',exact:true}),'10');await type(page.getByRole('textbox',{name:'第 2 行工种',exact:true}),'检验');
+    await type(page.getByRole('textbox',{name:'第 1 行工序号',exact:true}),'10');await type(page.getByRole('combobox',{name:'第 1 行工种',exact:true}),'车削');
+    await page.getByRole('button',{name:'新增工序',exact:true}).click();await type(page.getByRole('textbox',{name:'第 2 行工序号',exact:true}),'10');await type(page.getByRole('combobox',{name:'第 2 行工种',exact:true}),'检验');
     let result=await preflight();assert(!result.data.can_confirm_route);assert(result.data.diagnostics.some(x=>x.code==='duplicate_sequence'));
     await type(page.getByRole('textbox',{name:'第 2 行工序号',exact:true}),'30');result=await preflight();assert(result.data.can_confirm_route);assert.deepEqual(result.data.changes.added,[10,30]);
     await shot('row-preview');await page.getByRole('button',{name:'删除第 2 行',exact:true}).click();assert.equal(await page.locator('[data-process-preview]').count(),0);
     await page.keyboard.press('Escape');await routeEntry();
     assert.equal(await page.getByRole('textbox',{name:'第 1 行工序号',exact:true}).inputValue(),'10');
-    assert.equal(await page.getByRole('textbox',{name:'第 1 行工种',exact:true}).inputValue(),'车削');
+    assert.equal(await page.getByRole('combobox',{name:'第 1 行工种',exact:true}).inputValue(),'车削');
     assert.equal(await page.getByRole('table',{name:'逐行路线录入',exact:true}).locator('tbody tr').count(),1);
     await page.getByRole('button',{name:'取消',exact:true}).click();await closeDetail(true);
     await open('PROC-002');await page.getByRole('tab',{name:/^1 工艺路线/}).click();
@@ -157,7 +157,7 @@ async function cases(){
   await run('two-thousand-operation-detail-and-reload',async()=>{
     await search('PROC-LARGE');const begin=Date.now();await open('PROC-LARGE');
     const expected=Array.from({length:2000},(_,index)=>String(index+1));
-    for(const [stage,name] of [[/^1 工艺路线/,'路线工序明细'],[/^2 工序归属/,'工序归属明细'],[/^3 工时定额/,'工时定额明细']]){
+    for(const [stage,name] of [[/^1 工艺路线/,'路线工序明细'],[/^2 归属/,'归属明细'],[/^3 工时定额/,'工时定额明细']]){
       await page.getByRole('tab',{name:stage}).click();await readAllOperations(name,expected);
     }
     report.timings.push({state,action:'2000-operation-detail',milliseconds:Date.now()-begin});await shot('large-detail');await closeDetail();

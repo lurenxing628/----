@@ -34,7 +34,7 @@
     const facts = value => value === null || C.object(value) && Object.keys(value).every(key => keys.has(key) && scalar(value[key]));
     if (data.rows.some(row => !facts(row.before) || !facts(row.after) || Object.keys(row.changes).some(key => !keys.has(key)
         || !C.object(row.changes[key]) || !C.own(row.changes[key], 'before') || !C.own(row.changes[key], 'after')
-        || !scalar(row.changes[key].before) || !scalar(row.changes[key].after)))) throw C.failure('文件预检含有未说明的字段或不完整修改，未允许确认。');
+        || !scalar(row.changes[key].before) || !scalar(row.changes[key].after)))) throw C.failure('文件预检里有没说明的列或不完整的修改，不能确认。');
   }
   const skipFields = ['code', 'template_operation_ref', 'adoption_ref', 'reason', 'message'];
   function quotaSkips(data) {
@@ -50,10 +50,10 @@
             || data.skipped_refs[index] !== skip.template_operation_ref || !C.object(row.skip_reason)
             || skipFields.some(key => row.skip_reason[key] !== skip[key]);
         }))
-      throw C.failure('工时锁定跳过的数量、工序或原因不完整，请重新核实，未认定全部导入。');
+      throw C.failure('工时锁定跳过的数量、工序或原因不完整，没有按全部导入处理。请重新预检。');
     const skips = new Map(data.skipped_rows.map(skip => [skip.row, skip]));
     if (data.rows.some(row => C.own(row, 'skip_reason') && !skips.has(row.row)))
-      throw C.failure('工时锁定跳过明细有遗漏，请重新核实。');
+      throw C.failure('工时锁定跳过明细有遗漏，请重新预检。');
     return skips;
   }
   function hoursCounts(data) {
@@ -100,7 +100,7 @@
     if (!['all', 'filtered', 'explicit'].includes(selection) || !['csv', 'xlsx'].includes(format)) throw C.failure('请先选择导出范围和文件格式。');
     if (request.target_ref) {
       if (selection !== 'explicit' || !A.ref(request.target_ref) || !A.token(request.snapshot_ref) || !Number.isSafeInteger(request.page_size)
-          || request.page_size < 1 || request.page_size > 200) throw C.failure('当前详情只导出原零件，请重读详情后再试。');
+          || request.page_size < 1 || request.page_size > 200) throw C.failure('当前详情只导出这条零件，请刷新详情后再试。');
       return { format, selection, scope: {}, snapshot_ref: request.snapshot_ref, page_size: request.page_size, target_ref: request.target_ref, refs: [request.target_ref] };
     }
     return { ...A.listContext(request), format, selection, ...(selection === 'explicit' ? { refs: A.selection(request.refs, true) } : {}) };
@@ -129,11 +129,11 @@
         || result.data.affected_refs.some(ref => !result.data.rows.some(row => row.entity_ref === ref))
         || result.result === 'unchanged' && (result.data.summary.new !== 0 || result.data.summary.update !== 0 || result.data.rows.some(row => row.result !== 'unchanged'))
         || targetRef && result.data.affected_refs.some(ref => ref !== targetRef))
-      throw C.failure('导入回执没有完整确认本次文件，请继续查询原请求。');
+      throw C.failure(window.WorkbenchTerms.outcomes.pending('导入'));
     if (previewData && (result.data.rows.length !== previewData.rows.length || result.data.rows.some((row, index) => row.row !== previewData.rows[index].row
         || row.business_code !== previewData.rows[index].business_code || previewData.rows[index].entity_ref !== null && row.entity_ref !== previewData.rows[index].entity_ref
         || C.own(previewData.rows[index], 'sequence') && row.sequence !== previewData.rows[index].sequence)))
-      throw C.failure('导入回执与预检的完整文件行不一致，请继续核实原请求。');
+      throw C.failure('导入结果和预检的文件行不一致。请点「查询结果」核对，不要重复提交。');
     if (requestedKind === 'hours') {
       const skips = quotaSkips(result.data), counts = hoursCounts(result.data);
       if (result.data.summary.new !== 0 || result.data.rows.some(row => !sequence(row.sequence))
@@ -141,7 +141,7 @@
           || (result.result === 'committed') !== (counts.changed > 0)
           || previewData && (skips.size !== previewData.skipped_count || previewData.skipped_rows.some(skip =>
             !skips.has(skip.row) || skipFields.some(key => skip[key] !== skips.get(skip.row)[key]))))
-        throw C.failure('实际导入数量或锁定跳过原因与原文件不一致，请继续查询原请求。');
+        throw C.failure('实际导入数量或锁定跳过原因和文件不一致。请点「查询结果」核对，不要重复提交。');
     }
     return result.data;
   }

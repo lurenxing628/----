@@ -107,7 +107,7 @@
         left,
         width: viewport
       },
-      "aria-label": row.label + '，' + row.items.length + '道' + (row.before ? '基线' : '安排'),
+      "aria-label": row.label + '，' + row.items.length + ' 道' + (row.before ? '初始计划' : '安排'),
       onMouseMove: event => {
         const item = hit(event);
         onHover(item ? {

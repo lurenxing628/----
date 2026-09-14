@@ -38,10 +38,10 @@
     if (!hideMessage) messages.push(message && !technical(message) ? message : fallback);
     const labels = {
       code: '错误编号',
-      status: '响应状态',
-      request_key: '请求编号',
-      request_ref: '请求引用',
-      request_id: '请求标记',
+      status: '状态码',
+      request_key: '操作编号',
+      request_ref: '结果编号',
+      request_id: '操作标记',
       trace_id: '诊断编号'
     };
     Object.entries(labels).forEach(([key, label]) => {
@@ -53,10 +53,10 @@
       const detail = typeof field.message === 'string' ? field.message : '';
       if (!detail) return;
       if (technical(detail)) {
-        entries['字段说明 ' + (index + 1)] = detail;
+        entries['填写项说明 ' + (index + 1)] = detail;
         if (!messages.length) messages.push(fallback);
       } else if (!messages.includes(detail)) messages.push(detail);
-      if (present(field.code)) entries['字段编号 ' + (index + 1)] = field.code;
+      if (present(field.code)) entries['填写项编号 ' + (index + 1)] = field.code;
     });
     if (!messages.length && !Object.keys(entries).length) return null;
     return /*#__PURE__*/React.createElement("div", {

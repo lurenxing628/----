@@ -21,7 +21,7 @@ const make = (kind, fields, relationships = {}, extra = {}) => ({ kind, ref: ref
   business_code: kind.toUpperCase() + '-001', label: '布局夹具名称', status: kind === 'op_type' ? null : 'active',
   fields, relationships, issues: [], write_context: null, ...extra });
 const material = (name, fields, extra = {}) => ({ name, entity: make('material', fields, {}, extra),
-  facts: ['spec', 'stock_qty'], expected: { spec: fields.spec == null || fields.spec === '' ? '未填写 / 未知' : fields.spec } });
+  facts: ['spec', 'stock_qty'], expected: { spec: fields.spec == null || fields.spec === '' ? '未填写' : fields.spec } });
 const typical = { remark: '按炉号区分，领用前核对规格。', stock_qty: 1234.875, unit: 'kg', spec: '45 钢 / 直径 30 mm' };
 const details = [
   material('material-typical-shuffled', typical),
@@ -48,10 +48,10 @@ const details = [
   texts: ['技能工种', '精加工技能', '装配技能', '班次', '旧早班', '既有设备授权（只读）', '旧设备授权甲（历史授权）', '旧设备授权乙', '技能登记不改变既有设备授权。'] },
   { name: 'internal-op-type-capacity-and-relations', entity: make('op_type', { remark: '旧产能说明', category: 'internal' }, {},
     { availability: { basis: 'enabled_authorized_matching', machines: 1, operators: 1 } }), facts: ['category'], expected: { category: '自制' },
-  texts: ['产能备注', '排产口径', '工时（换型＋单件）', '工种绑定', '技能与设备授权'], relations: ['machines', 'operators'] },
+  texts: ['产能备注', '排产方式', '工时（换型＋单件）', '工种绑定', '技能与设备授权'], relations: ['machines', 'operators'] },
   { name: 'external-op-type-policy-and-suppliers', entity: make('op_type', { default_merge_mode: 'merged', remark: '外协旧备注', category: 'external' }),
   facts: ['category', 'default_merge_mode'], expected: { category: '外协', default_merge_mode: '合并设置' },
-  texts: ['默认周期策略', '排产口径', '周期（天）', '旧单工种关联'], relations: ['suppliers'] },
+  texts: ['默认周期规则', '排产方式', '周期（天）', '旧单工种关联'], relations: ['suppliers'] },
   { name: 'supplier-legacy-fields-and-relations', entity: make('supplier', {
     default_days: 2.75, remark: '供应商旧备注', inactive_reason: 'unknown', legacy_status: 'inactive'
   }, { op_type_refs: [ref(7), ref(8)], op_types: [{ ref: ref(7), label: '旧热处理关联', legacy: true }, { ref: ref(8), label: '表面处理关联' }] }, { status: 'unknown' }),
@@ -256,7 +256,7 @@ async function detailCase(page, spec) {
     for (const fact of g.facts) { assert.equal(fact.align, 'left'); assert(near(fact.box.left, fact.label.left)); assert(near(fact.box.left, fact.valueBox.left)); }
   });
   const remark = await dialog.locator('.wb-resource-remark dd').textContent();
-  check('remark-content-preserved', () => assert.equal(remark, entity.fields.remark == null || entity.fields.remark === '' ? '未填写 / 未知' : entity.fields.remark));
+  check('remark-content-preserved', () => assert.equal(remark, entity.fields.remark == null || entity.fields.remark === '' ? '未填写' : entity.fields.remark));
   check('remark-full-width-after-facts', () => {
     assert(near(g.remark.left, g.content.left) && near(g.remark.right, g.content.right));
     assert(g.remark.top >= g.factsBox.bottom - 1);
@@ -297,7 +297,7 @@ async function reviewCase(page, kind) {
   for (const [name, value] of Object.entries(values)) await dialog.locator('[name="' + name + '"]').fill(value);
   const draft = () => dialog.locator('input[name],textarea[name],select[name]').evaluateAll(nodes => Object.fromEntries(nodes.map(node => [node.name, node.value])));
   const before = await draft();
-  await dialog.getByRole('button', { name: '重新读取最新资料', exact: true }).click();
+  await dialog.getByRole('button', { name: '刷新最新资料', exact: true }).click();
   const review = dialog.locator('.wb-resource-review'); await review.waitFor();
   await review.getByText('最新资料已读取，已填写的内容保持不变。请核对后继续编辑。', { exact: true }).waitFor();
   await review.getByText('当前资料总数：7', { exact: true }).waitFor();

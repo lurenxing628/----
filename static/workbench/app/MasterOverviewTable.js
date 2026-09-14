@@ -49,7 +49,7 @@
       onSize: onSize,
       disabled: disabled,
       unit: "\u6761",
-      label: detail ? '详情' : '主数据'
+      label: detail ? '详情' : '基础资料'
     });
   }
   function Table({
@@ -73,14 +73,14 @@
       "data-sticky-actions": true
     }, /*#__PURE__*/React.createElement("table", {
       className: "wb-table mo-table",
-      "aria-label": "\u4E3B\u6570\u636E\u6E05\u5355",
+      "aria-label": "\u8D44\u6599\u6E05\u5355",
       "aria-busy": loading,
       style: {
         minWidth: columns.reduce((sum, item) => sum + item[2], 64)
       }
     }, /*#__PURE__*/React.createElement("caption", {
       className: "wb-sr-only"
-    }, "\u4E3B\u6570\u636E\u6E05\u5355"), /*#__PURE__*/React.createElement("colgroup", null, columns.map(([key,, width]) => /*#__PURE__*/React.createElement("col", {
+    }, "\u8D44\u6599\u6E05\u5355"), /*#__PURE__*/React.createElement("colgroup", null, columns.map(([key,, width]) => /*#__PURE__*/React.createElement("col", {
       key: key,
       style: {
         width
@@ -129,15 +129,15 @@
       icon: "arrow-right",
       "aria-label": '维护 ' + item.business_code,
       reasonDisplay: "inline",
-      reason: item.target.unavailable_reason || (!navigation ? '维护导航尚未接入。' : ''),
+      reason: item.target.unavailable_reason || (!navigation ? window.WorkbenchTerms.outcomes.unavailable : ''),
       disabled: loading,
       onClick: () => onMaintain(item.target)
     })))))), !rows.length && /*#__PURE__*/React.createElement(window.WorkbenchListControls.EmptyState, {
       kind: loading ? 'loading' : error ? 'error' : filtered ? 'filtered' : 'empty',
-      title: loading ? '正在读取主数据' : error ? '主数据读取失败' : '当前范围没有记录',
+      title: loading ? '正在读取基础资料' : error ? '基础资料读取失败' : '当前范围没有记录',
       action: error ? /*#__PURE__*/React.createElement(Button, {
         onClick: onRetry
-      }, "\u91CD\u8BD5\u8BFB\u53D6\u4E3B\u6570\u636E") : filtered ? /*#__PURE__*/React.createElement(Button, {
+      }, "\u5237\u65B0\u57FA\u7840\u8D44\u6599") : filtered ? /*#__PURE__*/React.createElement(Button, {
         onClick: onClear
       }, "\u6E05\u9664\u7B5B\u9009\u5E76\u67E5\u770B\u6E05\u5355") : null
     }));

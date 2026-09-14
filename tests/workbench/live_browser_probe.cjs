@@ -8,9 +8,9 @@ if(!readyFile) throw new Error('Usage: node live_browser_probe.cjs <isolated-roo
 const ready=JSON.parse(fs.readFileSync(readyFile,'utf8'));
 const root=path.resolve(ready.root),origin=new URL(ready.url).origin,record=new Recorder(root);
 const executablePath=process.env.WORKBENCH_BROWSER || '/tmp/aps-chromium109-assessment/runtime/chrome-mac/Chromium.app/Contents/MacOS/Chromium';
-const nav=[['process','基础资料'],['batches','批次管理'],['run','执行排产'],['analysis','选择排产方案'],['trial','方案试调'],
-  ['gantt','设备 / 人员 / 批次甘特'],['field','现场记录'],['fieldgantt','现场实际甘特'],['review','执行复盘'],
-  ['reports','报表中心'],['calib','工时定额校准'],['dashboard','值班台'],['basedata','主数据总览']];
+const nav=[['process','基础资料'],['batches','批次管理'],['run','执行排产'],['analysis','选择排产方案'],['trial','试调'],
+  ['gantt','计划甘特'],['field','现场记录'],['fieldgantt','现场实际甘特'],['review','执行复盘'],
+  ['reports','报表中心'],['calib','工时定额校准'],['dashboard','值班台'],['basedata','资料总览']];
 
 async function scenario(browser,viewport,theme) {
   const state=viewport.width+'x'+viewport.height+'-'+theme;
@@ -89,11 +89,11 @@ async function scenario(browser,viewport,theme) {
         await settleReads(page);
       }
     });
-    for(const [kind,name] of [['backups',ready.expected.backup_names[0]],['logs','launcher.log']]) await record.run(page,state,'detail-escape-'+kind,async()=>{
+    for(const [kind,name,option] of [['backups',ready.expected.backup_names[0],null],['logs','launcher.log','启动日志（launcher.log）']]) await record.run(page,state,'detail-escape-'+kind,async()=>{
       await tab(page,kind,record);
       if(kind==='logs'){
         await page.getByLabel('日志来源',{exact:true}).click();
-        await page.locator('.wb-control-popup').getByRole('option',{name,exact:true}).click();
+        await page.locator('.wb-control-popup').getByRole('option',{name:option,exact:true}).click();
         const wait=page.waitForResponse(response=>new URL(response.url()).pathname==='/api/workbench/v1/system/logs');
         await page.getByRole('button',{name:'查询',exact:true}).click();const response=await wait;
         record.equal(response.status(),200);const data=(await response.json()).data;
@@ -190,7 +190,7 @@ async function scenario(browser,viewport,theme) {
           await page.locator('[data-resource-workspace="true"] .wb-empty-empty').getByText('暂无记录',{exact:true}).waitFor();
           record.ok(await page.getByRole('button',{name:'新增物料',exact:true}).isEnabled(),'Resources have real create context');
         } else {
-          record.equal(await page.locator('main [role="status"]').filter({hasText:'尚未接入真实数据'}).count(),0,'Current workspace must not regress to a legacy unavailable placeholder: '+id);
+          record.equal(await page.locator('main [role="status"]').filter({hasText:'此功能尚未开通。'}).count(),0,'Current workspace must not regress to a legacy unavailable placeholder: '+id);
         }
         const url=new URL(page.url());record.equal(id==='trial'?url.pathname:url.searchParams.get('view'),id==='trial'?'/workbench/trial':id);
         await layout(page,record);
@@ -199,7 +199,7 @@ async function scenario(browser,viewport,theme) {
       await page.goto(origin+'/workbench/trial');
       await page.locator('main .trial-workspace').waitFor({state:'visible'});
       await page.evaluate(()=>document.fonts.ready);
-      record.equal(await page.locator('.top-title').innerText(),'方案试调');
+      record.equal(await page.locator('.top-title').innerText(),'试调');
       await settleReads(page);
       await page.goto(origin+'/workbench?view=delay');
       await page.locator('main [data-plan-workspace]').waitFor({state:'visible'});

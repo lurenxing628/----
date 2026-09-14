@@ -26,14 +26,14 @@
         || data.entities.length !== Math.min(page.size, Math.max(0, page.total - (page.number - 1) * page.size))
         || !Array.isArray(page.sort) || page.sort.length !== 1 || page.sort[0].field !== 'business_code' || page.sort[0].direction !== 'asc'
         || scope.snapshot_ref && meta.snapshot_ref !== scope.snapshot_ref)
-      throw C.failure('关联资料或分页范围不一致，请重新读取。');
+      throw C.failure('读到的关联记录或翻页位置不对，请回到第 1 页重新查询。');
     return result;
   }
   function Association({ adapter, entity, relation, onOpen }) {
     const [scope, setScope] = React.useState({ relation, query: '', page: 1, size: 5 });
     const [search, setSearch] = React.useState('');
     const read = S.useQuery(async signal => {
-      if (!adapter || typeof adapter.relations !== 'function') throw C.failure('关联资料读取接口尚未接入。');
+      if (!adapter || typeof adapter.relations !== 'function') throw C.failure('dependency not wired: adapter.relations');
       return query(await adapter.relations(entity.ref, scope, signal), entity.ref, scope);
     }, [adapter, entity.ref, scope]);
     const data = read.result && read.result.data, title = names[relation];
@@ -47,7 +47,7 @@
         <Button icon="refresh-cw" aria-label={'刷新' + title} busy={read.loading} onClick={refresh} />
       </form>
       {read.loading && <window.WorkbenchControls.EmptyState kind="loading" title={'正在读取' + title + '…'} />}
-      {read.error && <window.WorkbenchControls.EmptyState kind="error" error={read.error} action={<Button icon="refresh-cw" onClick={refresh}>重新读取{title}</Button>} />}
+      {read.error && <window.WorkbenchControls.EmptyState kind="error" error={read.error} action={<Button icon="refresh-cw" onClick={refresh}>刷新{title}</Button>} />}
       {data && <><p className="muted wb-resource-association-basis">{data.basis.message}</p>
         <div className="wb-resource-association-list">{data.entities.map(item => <div key={item.ref}>
           <button type="button" className="wb-resource-relation" onClick={() => onOpen(item.kind, item.ref)} aria-label={'查看' + C.resourceName(item.kind) + ' ' + item.business_code + ' ' + item.label} disabled={!onOpen}>
@@ -67,7 +67,7 @@
     const relations = entity.fields.category === 'internal' ? ['machines', 'operators'] : ['suppliers'];
     return <div className="wb-resource-relations">
       {null}
-      {entity.fields.category === 'internal' && <p className="muted">静态可用数量：设备 {C.availability(entity.availability) ? entity.availability.machines : '未知'} 台 · 人员 {C.availability(entity.availability) ? entity.availability.operators : '未知'} 人。关联记录包括停用或资格待核对资源，不代表当前时段可排。</p>}
+      {entity.fields.category === 'internal' && <p className="muted">当前可用数量：设备 {C.availability(entity.availability) ? entity.availability.machines : '未知'} 台 · 人员 {C.availability(entity.availability) ? entity.availability.operators : '未知'} 人。下面的关联记录含停用和资格待核对的，不代表这个时段能排。</p>}
       {relations.map(relation => <Association key={relation} adapter={adapter} entity={entity} relation={relation} onOpen={onOpen} />)}
     </div>;
   }

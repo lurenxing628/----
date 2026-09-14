@@ -179,11 +179,11 @@
         <TimeFields time={time} units={units} initial={type === 'time'} onChange={nextTime => { setTime(nextTime); setEdited(true); }} /></>}
       {(yearError || edited && !check.valid && hasTime) && <div role="status" className="wb-picker-error" style={{ color: 'var(--ui-danger-text)', overflowWrap: 'anywhere', marginTop: 8 }}>{yearError || check.message}</div>}
       <div className="wb-popup-footer" style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
-        <button type="button" className="btn" onClick={() => onCommit('')}>清空</button>
+        <button type="button" className="btn" onClick={() => onCommit('')}>清除</button>
         {hasDate && <button type="button" className="btn" disabled={!shortcutAllowed} onClick={() => choose(shortcut)}>{type === 'month' ? '当前月份' : '今天'}</button>}
         <span style={{ flex: '1 1 auto' }} />
         <button type="button" className="btn" onClick={onClose}>取消</button>
-        {hasTime && <button type="button" className="btn primary wb-action wb-primary" disabled={!check.valid || !!yearError || !yearApplied} onClick={confirm}><Icon name="check" />确定</button>}
+        {hasTime && <button type="button" className="btn primary wb-action wb-primary" disabled={!check.valid || !!yearError || !yearApplied} onClick={confirm}><Icon name="check" />确认</button>}
       </div>
     </div>;
   }

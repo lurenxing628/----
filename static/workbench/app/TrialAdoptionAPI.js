@@ -10,7 +10,7 @@
     key = v => text(v) && /^trial-adoption-[a-f0-9]{48}$/.test(v);
   const token = v => text(v) && /^[A-Za-z0-9_-]{32}$/.test(v),
     positive = v => Number.isSafeInteger(v) && v > 0;
-  function check(v, message = '场景采用响应不完整或身份不一致，尚未确认采用。') {
+  function check(v, message = '读到的采用数据不完整或对不上，这次没有确认采用。请刷新重试。') {
     if (!v) throw new Error(message);
   }
   function shape(v, required, optional = []) {
@@ -42,7 +42,7 @@
     };
   }
   function source(scenarioRef, data) {
-    check(ref(scenarioRef) && object(data) && data.scenario_ref === scenarioRef && data.status === 'saved' && data.tasks_complete === true && Array.isArray(data.tasks) && data.tasks.length === data.task_count, '请先读取所选场景的完整原快照，不能采用另一对象或不完整内容。');
+    check(ref(scenarioRef) && object(data) && data.scenario_ref === scenarioRef && data.status === 'saved' && data.tasks_complete === true && Array.isArray(data.tasks) && data.tasks.length === data.task_count, '请先完整读取所选的试调方案；不能采用其他记录或不完整的内容。');
     return overview({
       ...data,
       scope_complete: true
@@ -64,7 +64,7 @@
   }
   function input(v) {
     check(shape(v, ['confirm', 'reason', 'declared_operator']) && v.confirm === true, '请勾选确认正式采用。');
-    for (const [name, limit] of [['reason', 1000], ['declared_operator', 100]]) check(text(v[name]) && v[name].trim() && Array.from(v[name].trim()).length <= limit && !v[name].includes('\0'), '请填写有效的采用原因（1至1000字）和声明人（1至100字）。');
+    for (const [name, limit] of [['reason', 1000], ['declared_operator', 100]]) check(text(v[name]) && v[name].trim() && Array.from(v[name].trim()).length <= limit && !v[name].includes('\0'), '请填写采用原因（1 至 1000 字）和经办人（1 至 100 字）。');
     return {
       confirm: true,
       reason: v.reason.trim(),
@@ -96,7 +96,7 @@
   function failure(v, status, intent) {
     const e = v && v.error,
       valid = shape(v, ['ok', 'committed', 'error']) && v.ok === false && [false, 'unknown'].includes(v.committed) && shape(e, ['code', 'message', 'fields', 'retryable', 'request_ref'], ['request_key', 'result_target']) && text(e.code) && text(e.message) && Array.isArray(e.fields) && e.fields.every(f => shape(f, ['path', 'message']) && text(f.path) && text(f.message)) && typeof e.retryable === 'boolean' && text(e.request_ref) && /^[a-f0-9]{32}$/.test(e.request_ref) && (e.request_key === undefined && e.result_target === undefined || intent && e.request_key === intent.request_key && e.result_target === BASE + intent.scenario_ref + '/adoption-commands/' + intent.request_key);
-    const error = new Error(valid ? e.message : '场景采用结果尚未核实，请保留原请求并查询回执。');
+    const error = new Error(valid ? e.message : window.WorkbenchTerms.outcomes.pending('采用'));
     error.code = valid ? e.code : 'invalid_response';
     if (valid && v.committed === false && [400, 404, 409, 422, 503].includes(status) && e.code !== 'request_key_conflict') rejections.add(error);
     return error;

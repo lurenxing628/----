@@ -60,7 +60,7 @@ def test_run_history_widgets_chromium109_four_combinations(history_case, monkeyp
     for entry in report["directEntrypoints"]:
         assert entry["host"] == "direct-component-without-renderers" and entry["requests_after_clicks"] == 0
         assert [row["name"] for row in entry["blocked"]] == ["采用方案", "试调"]
-        assert all(row["disabled"] and "入口未接入" in row["reason"] for row in entry["blocked"])
+        assert all(row["disabled"] and row["reason"] == "此功能尚未开通。" for row in entry["blocked"])
     assert len(report["variants"]) == 4 and all(row["passed"] for row in report["variants"])
     assert {(r["width"], r["height"]) for r in report["variants"]} == {(1920, 1080), (1392, 924)}
     assert proof["schema_version"] == CURRENT_SCHEMA_VERSION and proof["source_data_retained"]

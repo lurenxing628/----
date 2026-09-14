@@ -31,7 +31,7 @@
       <window.TrialDetails data={data} selected={selected} onSelect={setSelected} commands={commands} onEditing={() => {}} onRecheck={() => {}} /></div></div>;
     return <><window.WorkbenchControlStyles /><window.WorkbenchControls /><window.WorkbenchNumberControls /><window.WorkbenchGuardHost />
       <AppShell active="gantt" onNav={() => {}} theme={theme} onToggleTheme={() => setTheme(t => t === 'light' ? 'dark' : 'light')}
-        operations showCapsule={false} title={spec.kind === 'trial' ? '计划试调' : spec.kind === 'candidate' ? '候选排产结果' : '设备 / 人员 / 批次甘特'}>{body}</AppShell></>;
+        operations showCapsule={false} title={spec.kind === 'trial' ? '计划试调' : spec.kind === 'candidate' ? '候选排产结果' : '计划甘特'}>{body}</AppShell></>;
   }
   window.openPoint = async spec => {
     const response = await fetch(spec.path, {cache: 'no-store'}), payload = await response.json();

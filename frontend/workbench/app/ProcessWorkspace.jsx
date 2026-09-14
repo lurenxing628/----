@@ -6,11 +6,11 @@
   const emptyAdapter = {};
   const readScopeKeys = window.APSProcessReadView.scopeKeys;
   async function readList(adapter, scope, signal) {
-    if (!adapter || typeof adapter.list !== 'function') throw C.failure('工艺列表接口尚未接入。');
+    if (!adapter || typeof adapter.list !== 'function') throw C.failure('dependency not wired: window.APSProcessAPI.list');
     let request = scope;
     if (scope.page > 1 && !scope.snapshot_ref) {
       const firstScope = { ...scope, page: 1 }, first = P.list(await adapter.list('part', firstScope, signal), firstScope);
-      if (first.meta.source !== 'production') throw C.failure('未取得原范围的生产快照，不能恢复后续页。');
+      if (first.meta.source !== 'production') throw C.failure('翻页位置已失效，请回到第 1 页重新查询。');
       request = { ...scope, snapshot_ref: first.meta.snapshot_ref };
     }
     return P.list(await adapter.list('part', request, signal), request);
@@ -22,7 +22,14 @@
         {({ route: '路线', source: '归属', hours: '工时' })[key]} · {w[key].state === 'confirmed' ? '已确认' : w[key].state === 'locked' ? key === 'source' ? '待路线' : '待归属' : w[key].state === 'present' ? '已有记录' : w[key].state === 'missing' ? '待录入' : '未确认'}</span></React.Fragment>)}
     </div>;
   }
-  function ProcessTable({ entities, selected, setSelected, onOpen, onDelete, disabled, loading, error, scope, adapter, onSort, onFilter, matchingCount, deleteReason }) {
+  function TableEmpty({ loading, error, filtered, onClear, onRetry }) {
+    const { EmptyState } = window.WorkbenchListControls;
+    if (loading) return <EmptyState kind="loading" title="正在读取零件工艺" />;
+    if (error) return <EmptyState kind="error" action={<Button icon="refresh-cw" onClick={onRetry}>刷新</Button>} />;
+    if (filtered) return <EmptyState kind="filtered" title="当前筛选没有匹配的零件" action={<Button icon="x" onClick={onClear}>清除筛选</Button>} />;
+    return <EmptyState kind="empty" title="暂无零件工艺" />;
+  }
+  function ProcessTable({ entities, selected, setSelected, onOpen, onDelete, disabled, loading, error, scope, adapter, onSort, onFilter, matchingCount, deleteReason, onClear, onRetry }) {
     const allRef = React.useRef(null), visible = entities.map(row => row.ref);
     const table = React.useRef(null), [widths, setWidths] = React.useState(null);
     const selectedSet = new Set(selected), all = !!visible.length && visible.every(ref => selectedSet.has(ref));
@@ -50,7 +57,8 @@
         <td>{row.label}{row.issues.length > 0 && <Issues issues={row.issues} />}</td><td className="r">{row.relationships.operation_count}</td><td><Pipeline entity={row} /></td>
         <td><div className="wb-actions" style={{ flexWrap: 'wrap' }}><Button className="linkbtn" icon="arrow-right" disabled={disabled || loading} aria-label={'浏览步骤 ' + row.business_code} onClick={() => onOpen(row.ref)}>{row.workflow.route.state !== 'confirmed' ? '确认路线' : ({ source: '确认归属', hours: '填写工时', ready: '已就绪 · 汇总' })[row.workflow.stage]}</Button>
           <Button className="mini" icon="minus" disabled={disabled || loading} reasonDisplay="tooltip" reason={deleteReason} aria-label={'删除 ' + row.business_code} onClick={() => onDelete([row.ref])} /></div></td>
-      </tr>)}{!entities.length && <tr><td colSpan={6} style={{ padding: 28, textAlign: 'center' }} className="muted">{loading ? '正在读取工艺…' : error ? '工艺读取失败。' : '当前条件下没有零件。'}</td></tr>}</tbody>
+      </tr>)}{!entities.length && <tr><td colSpan={P.columns.length + 2}><TableEmpty loading={loading} error={error} onClear={onClear} onRetry={onRetry}
+        filtered={!!(scope.query || scope.stage || Object.keys(scope.column_filters || {}).length)} /></td></tr>}</tbody>
     </table></div></div>;
   }
   function ProcessWorkspace({ adapter = emptyAdapter, onCommitted, disabled = false, initialContext, onNavigationReady, rememberEnabled = true }) {
@@ -70,7 +78,7 @@
     const [search, setSearch] = React.useState(() => restored ? restored.scope.query : '');
     const [selected, setSelected] = React.useState(() => restored ? restored.selected_refs : []), [dialog, setDialog] = React.useState(() => !deferred && target.context ? navigationDialog() : null);
     const previousAdapter = React.useRef(adapter);
-    window.WorkbenchGuards.useDirtyGuard({ dirty: false, locked: !dialog && command.locked, message: '工艺原请求尚未核实，请保留当前页面。' });
+    window.WorkbenchGuards.useDirtyGuard({ dirty: false, locked: !dialog && command.locked, message: '上次操作的结果还没查到，请先留在本页。' });
     React.useEffect(() => {
       if (previousAdapter.current === adapter) return;
       previousAdapter.current = adapter; setSelected([]); setDialog(null); setScope(current => ({ ...current, page: 1, snapshot_ref: undefined }));
@@ -98,6 +106,7 @@
       rememberEnabled && !!data && !list.loading && !list.error && !navigationError && !deferred && !recoveryError && command.phase === 'idle'
       && list.result.meta.source === 'production' && (!dialog || !dialog.mode && !dialog.fileKind && data.entities.some(row => row.ref === dialog.ref)));
     const filter = patch => { if (!disabled) setScope(current => ({ ...current, ...patch, page: 1, snapshot_ref: undefined })); };
+    const clearFilters = () => { setSearch(''); filter({ query: '', stage: undefined, column_filters: {} }); };
     function sortBy(key, direction) {
       const ordering = P.ordering(scope), next = ordering.filter(item => item.field !== key);
       if (direction) { const index = ordering.findIndex(item => item.field === key); next.splice(index < 0 ? next.length : index, 0, { field: key, direction }); }
@@ -124,14 +133,14 @@
     const deleteReason = P.reason(data && data.capabilities, 'delete', typeof adapter.bulkPreview === 'function' && typeof adapter.command === 'function');
     const blocked = disabled || !!dialog || command.locked || !!recoveryError;
     function continueNavigation() {
-      if (blocked || command.phase !== 'idle') { setNavigationError(C.failure('请先处理原请求并关闭原工艺详情，再继续导航。')); return; }
+      if (blocked || command.phase !== 'idle') { setNavigationError(C.failure('请先处理完上次操作并关闭工艺详情，再继续。')); return; }
       setDeferred(false); setNavigationError(null); setDialog(navigationDialog());
     }
-    return <div className="process-workspace" data-process-workspace>
-      <ErrorBox error={navigationError} />{deferred && <div role="status"><p>原工艺请求优先处理，精确导航暂缓。</p><Button icon="arrow-right" onClick={continueNavigation}>继续原导航</Button></div>}
+    return <div className="process-workspace wb-fill-viewport" data-process-workspace>
+      <ErrorBox error={navigationError} />{deferred && <div role="status"><p>上次操作还没处理完，暂时没有跳转到指定零件。</p><Button icon="arrow-right" onClick={continueNavigation}>继续跳转</Button></div>}
       <div className="statline wb-metrics" style={{ '--wb-columns': 4 }}>
-        {[['total', '零件总数', 'primary'], ['source', '待分拣', 'warn'], ['hours', '待填工时', 'warn'], ['ready', '已就绪', 'ok']].map(([key, label, tone]) =>
-          <div key={key} className="stat wb-metric" data-tone={tone}><span className="sl wb-metric-label">{label}</span><span className="sv wb-metric-value">{counts ? counts[key] : '待读取'}</span></div>)}
+        {[['total', '零件总数', 'primary'], ['source', '待定归属', 'warn'], ['hours', '待填工时', 'warn'], ['ready', '已就绪', 'ok']].map(([key, label, tone]) =>
+          <div key={key} className="stat wb-metric" data-tone={tone}><span className="sl wb-metric-label">{label}</span><span className="sv wb-metric-value">{counts ? counts[key] : '未读取'}</span></div>)}
       </div>
       <div className="subtabs" role="tablist" aria-label="工艺阶段">{P.stages.map(([stage, label, key]) => <Button key={key} className={'subtab' + ((scope.stage || '') === stage ? ' on' : '')}
         role="tab" aria-selected={(scope.stage || '') === stage} disabled={blocked} onClick={() => filter({ stage: stage || undefined })}>{label} <span className="cnt">{counts ? counts[key] : '…'}</span></Button>)}</div>
@@ -148,11 +157,12 @@
         <Button icon="x" aria-label="清除所有选择" disabled={blocked || !selected.length} onClick={() => setSelected([])}>清除选择</Button>
         <Button icon="minus" className="btn danger" disabled={blocked || list.loading || !selected.length} reasonDisplay="tooltip" reason={deleteReason} onClick={() => action('bulk')}>批量删除</Button>
       </div>
-      <ErrorBox error={list.error} />{list.error && <Button icon="refresh-cw" disabled={blocked} onClick={() => filter({})}>重试读取工艺</Button>}
+      <ErrorBox error={list.error} />{list.error && <Button icon="refresh-cw" disabled={blocked} onClick={() => filter({})}>刷新列表</Button>}
       <ErrorBox error={recoveryError} />{!dialog && command.locked && <window.ResourceForms.Feedback command={command} />}
       {list.result && <Issues issues={list.result.warnings} />}
       <ProcessTable entities={data ? data.entities : []} selected={selected} setSelected={setSelected} onOpen={ref => setDialog({ ref, adapter })} onDelete={refs => action('bulk', refs)} deleteReason={deleteReason}
-        disabled={blocked} loading={list.loading} error={list.error} scope={scope} adapter={adapter} onSort={sortBy} onFilter={columnFilter} matchingCount={data && data.page.total} />
+        disabled={blocked} loading={list.loading} error={list.error} scope={scope} adapter={adapter} onSort={sortBy} onFilter={columnFilter} matchingCount={data && data.page.total}
+        onClear={clearFilters} onRetry={() => filter({})} />
       {data && <window.ResourceTables.Pager page={data.page} disabled={blocked || list.loading} onSize={size => filter({ size })}
         onPage={page => setScope(current => ({ ...current, page, snapshot_ref: list.result.meta.snapshot_ref }))} />}
       {dialog && dialog.adapter === adapter && (dialog.fileKind ? <window.ProcessFileActions adapter={adapter} kind={dialog.fileKind} mode={dialog.mode} request={dialog} disabled={disabled} onCommitted={committed} onClose={() => setDialog(null)} /> :

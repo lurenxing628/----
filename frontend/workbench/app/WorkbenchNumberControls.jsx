@@ -15,7 +15,7 @@
     const value = input.getAttribute('data-wb-step');
     if (value !== null) {
       const amount = numberValue(input.ownerDocument, value);
-      if (!Number.isFinite(amount) || amount <= 0) throw new Error('数字控件微调幅度必须是有限正数。');
+      if (!Number.isFinite(amount) || amount <= 0) throw new Error('wb_step_must_be_finite_positive');
     }
     return value;
   }

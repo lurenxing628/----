@@ -8,7 +8,7 @@ async function analysisMetrics(page, report, h, flush) {
   assert.equal(data.run_ref, report.candidate.candidate.run_ref);
   assert.deepEqual(data.operations.operation_refs.slice().sort(), report.candidate.tasks.map(row => row.operation_ref).sort());
   const section = page.getByRole('region', { name: '完整候选比较摘要', exact: true });
-  const labels = { overdue_count: '预计超期批次', total_tardiness_hours: '总拖期 h', changed_operation_count: '调整工序', machine_change_count: '换设备数' };
+  const labels = { overdue_count: '预计超期批次', total_tardiness_hours: '总拖期（小时）', changed_operation_count: '调整工序', machine_change_count: '换设备数' };
   assert.equal(await section.locator('[data-analysis-metric]').count(), 4);
   for (const [key, label] of Object.entries(labels)) {
     const metric = data.metrics[key], cell = section.locator('[data-analysis-metric="' + key + '"]');
@@ -16,7 +16,7 @@ async function analysisMetrics(page, report, h, flush) {
     if (metric.value === null) {
       assert(metric.reason && metric.unknown_count > 0);
       assert((await cell.innerText()).includes('已知小计 ' + metric.known_subtotal));
-      assert((await cell.innerText()).includes('待核实 ' + metric.unknown_count + ' / ' + metric.total_count));
+      assert((await cell.innerText()).includes('待确认 ' + metric.unknown_count + ' / ' + metric.total_count));
       await cell.getByText('依据不足', { exact: true }).click();
       assert((await cell.innerText()).includes(metric.reason.message));
     } else assert((await cell.locator('dd').innerText()).includes(String(metric.value)));
@@ -35,7 +35,7 @@ async function cancelAnalysisRead(page, report, h, flush, expected) {
   try {
     await session.send('Network.enable');
     await session.send('Network.emulateNetworkConditions', { offline: false, latency: 800, downloadThroughput: -1, uploadThroughput: -1 });
-    await h.button('刷新指定候选来源').click();
+    await h.button('刷新候选方案').click();
     await h.button('取消候选比较读取').click();
     await page.getByText('候选比较读取已取消，未显示上次比较。', { exact: true }).waitFor(); await flush();
     assert.equal(await page.locator('[data-candidate-analysis]').count(), 0);
@@ -47,7 +47,7 @@ async function cancelAnalysisRead(page, report, h, flush, expected) {
     await session.send('Network.emulateNetworkConditions', { offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
     await session.detach();
   }
-  await h.button('重新读取候选比较').click();
+  await h.button('刷新候选比较').click();
   await page.locator('[data-candidate-analysis]').waitFor(); await flush();
   assert.deepEqual(h.last((_data, row) => row.url.endsWith('/analysis')), expected);
 }
@@ -68,7 +68,7 @@ async function candidateAnalysis(page, report, h, flush) {
       assert.equal(await cells.nth(1).innerText(), batch.after.due_date || '未记录');
       for (const [index, side] of [[2, 'before'], [3, 'after']]) {
         const expected = batch[side].planned_finish;
-        assert((await cells.nth(index).innerText()).includes(expected ? expected.slice(0, 16).replace('T', ' ') : '无法核实'));
+        assert((await cells.nth(index).innerText()).includes(expected ? expected.slice(0, 16).replace('T', ' ') : '暂无数据'));
       }
       assert((await cells.nth(4).innerText()).includes(batch.delay_delta_hours === null ? '未知' : batch.delay_delta_hours === 0 ? '不变' : batch.delay_delta_hours > 0 ? '增加' : '减少'));
     }
@@ -81,7 +81,7 @@ async function candidateAnalysis(page, report, h, flush) {
     assert.equal(shown.time_scope.range_start, null); assert.equal(shown.time_scope.range_end, null);
     assert.deepEqual(shown.tasks, report.candidate.tasks.filter(task => task.batch_ref === batch.batch_ref));
     assert.deepEqual(last((_data, row) => row.url.endsWith('/analysis')), data);
-    await h.caption(data.candidate_ref, '候选预览'); await shot('candidate-batch-exact-gantt');
+    await h.caption(data.candidate_ref, '候选方案'); await shot('candidate-batch-exact-gantt');
     await page.reload(); await page.getByRole('heading', { name: '候选甘特', exact: true }).waitFor(); await flush();
     const refreshed = last(value => value.candidate && value.tasks);
     assert.equal(refreshed.batch_ref, batch.batch_ref); assert.deepEqual(refreshed.tasks, shown.tasks);
@@ -94,7 +94,7 @@ async function candidateAnalysis(page, report, h, flush) {
     report.analysis_delivery_recovery = { candidate_ref: data.candidate_ref, batch_refs: data.batch_refs, tab: 'delivery', actual_reload: true };
     await shot('candidate-batch-tab-refreshed');
     await page.getByRole('tab', { name: '采用记录', exact: true }).click();
-    await page.getByText('此候选尚无已持久保存的采用记录。', { exact: true }).waitFor(); await flush();
+    await page.getByText('这个候选方案还没有采用记录。', { exact: true }).waitFor(); await flush();
     assert.deepEqual(last((_data, row) => row.url.endsWith('/adoptions')).items, []);
     await shot('candidate-adoption-history-empty');
     await page.getByRole('tab', { name: '任务安排', exact: true }).click();
@@ -134,9 +134,9 @@ async function restartCandidateAnalysis(page, original, report, h, flush) {
   await h.action(['WBP-ANA-001.metrics', 'WBP-ANA-003.history'], async () => {
     const ref = original.candidate.candidate.candidate_ref, run = original.candidate.candidate.run_ref;
     await h.button('排产记录', page.locator('.scheduling-navigation')).click();
-    const runRow = page.getByRole('table', { name: '排产历史', exact: true }).locator('[data-run-ref="' + run + '"]');
+    const runRow = page.getByRole('table', { name: '排产记录', exact: true }).locator('[data-run-ref="' + run + '"]');
     await runRow.waitFor(); assert.equal(await runRow.count(), 1);
-    await runRow.getByRole('button', { name: /^查看 .* 受理的排产运行$/ }).click();
+    await runRow.getByRole('button', { name: /^查看 .* 提交的排产记录$/ }).click();
     const candidateRow = page.getByRole('table', { name: '候选比较', exact: true }).locator('[data-candidate-ref="' + ref + '"]');
     await candidateRow.waitFor(); assert.equal(await candidateRow.count(), 1);
     await h.button('查看候选 ' + original.candidate.candidate.label, candidateRow).click(); await page.locator('[data-candidate-analysis]').waitFor(); await flush();

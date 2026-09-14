@@ -76,11 +76,11 @@
       const issue = entity.issues.find(item => item.code === 'resource_availability_unavailable');
       return /*#__PURE__*/React.createElement("span", {
         className: "muted",
-        title: issue ? issue.message : '可用数量尚未读取，不能以引用总数代替。'
-      }, issue ? '无法核实' : '待读取');
+        title: issue ? issue.message : '可用数量还没读取，不会用关联总数代替。'
+      }, issue ? '暂无数据' : '未读取');
     }
     return /*#__PURE__*/React.createElement("span", {
-      title: key === 'machines' ? '启用且绑定此工种的设备；不代表当日日历空闲。' : '启用、具有匹配设备授权且工种资格合格的去重人数；不代表当日日历空闲。'
+      title: key === 'machines' ? '启用并绑定此工种的设备；不代表当天班表有空。' : '启用、有匹配设备授权、工种资格合格的人数（不重复计数）；不代表当天班表有空。'
     }, entity.availability[key]);
   }
   function opColumns(category) {
@@ -103,7 +103,7 @@
     }];
     if (category === 'external') return [{
       key: 'default_merge_mode',
-      title: '默认周期策略',
+      title: '默认周期规则',
       width: 150,
       render: entity => C.fieldValue('op_type', 'default_merge_mode', entity.fields.default_merge_mode)
     }, {
@@ -312,7 +312,7 @@
       error: error,
       action: error ? /*#__PURE__*/React.createElement(Button, {
         onClick: onRetry
-      }, "\u91CD\u65B0\u8BFB\u53D6") : filtered ? /*#__PURE__*/React.createElement(Button, {
+      }, "\u5237\u65B0") : filtered ? /*#__PURE__*/React.createElement(Button, {
         onClick: onClear
       }, "\u6E05\u9664\u7B5B\u9009") : undefined
     })))))));

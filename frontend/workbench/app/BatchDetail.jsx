@@ -8,7 +8,7 @@
     const read = S.useQuery(async signal => B.detail(await adapter.detail('batch', batchRef, signal), batchRef), [adapter, batchRef, revision]);
     const [strict, setStrict] = React.useState(false), entity = read.result && read.result.data;
     if (!entity) return <section className="batch-band"><Button icon="arrow-left" onClick={onBack} disabled={disabled}>返回列表</Button>
-      {read.loading && <p role="status">正在读取批次详情…</p>}<ErrorBox error={read.error} />{read.error && <Button icon="refresh-cw" onClick={read.reload}>重试读取详情</Button>}</section>;
+      {read.loading && <p role="status">正在读取批次详情…</p>}<ErrorBox error={read.error} />{read.error && <Button icon="refresh-cw" onClick={read.reload}>刷新详情</Button>}</section>;
     const reason = action => B.reason(entity.write_context, action, read.result.meta.source);
     return <div data-batch-detail={entity.ref}>
       <section className="batch-band"><div className="toolbar"><h2>批次详情 · {entity.business_code}</h2><span className="tb-spacer" />

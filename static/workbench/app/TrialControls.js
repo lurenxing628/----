@@ -9,17 +9,17 @@
   const timeLabel = v => v ? window.WorkbenchFormat.dateTime(v, {
     seconds: true
   }) : '未记录';
-  const number = v => v === null || v === undefined ? '不可评估' : typeof v === 'number' ? window.WorkbenchFormat.number(v, {
+  const number = v => v === null || v === undefined ? '暂无数据' : typeof v === 'number' ? window.WorkbenchFormat.number(v, {
     digits: Number.isInteger(v) ? 0 : 2
   }) : String(v);
-  const sourceLabel = identity => (identity.display_name || '原排产候选') + (identity.plan_ref && identity.version ? ' · v' + identity.version : '');
+  const sourceLabel = identity => (identity.display_name || '上次排产的候选方案') + (identity.plan_ref && identity.version ? ' · v' + identity.version : '');
   const statusLabel = v => ({
     editing: '可继续试调',
     saved: '已保存',
     discarded: '已放弃',
     valid: '通过',
     warning: '有提示',
-    blocked: '有阻断',
+    blocked: '有冲突，不能采用',
     complete: '已完成',
     partial: '部分完成',
     failed: '失败',
@@ -129,7 +129,7 @@
       rows: rows,
       size: 10,
       label: "\u7EA6\u675F\u95EE\u9898",
-      columns: [['级别', r => r.severity === 'warning' ? '提示' : '阻断'], ['问题', r => r.message], ['关联', r => r.task_ref && onSelect ? /*#__PURE__*/React.createElement(Button, {
+      columns: [['级别', r => r.severity === 'warning' ? '提示' : '冲突'], ['问题', r => r.message], ['关联', r => r.task_ref && onSelect ? /*#__PURE__*/React.createElement(Button, {
         icon: "arrow-right",
         "aria-label": "\u5B9A\u4F4D\u95EE\u9898\u5DE5\u5E8F",
         onClick: () => onSelect(r.task_ref)

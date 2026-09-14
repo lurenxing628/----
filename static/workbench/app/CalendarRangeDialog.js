@@ -43,7 +43,7 @@
       weekend: '仅周六、周日'
     }[data.request.scope]), /*#__PURE__*/React.createElement("div", null, "\u786E\u8BA4\u4F5C\u7528\u4E8E\u5168\u90E8 ", data.counts.selected, " \u5929\uFF0C\u5305\u542B\u5176\u4ED6\u5206\u9875\u65E5\u671F\u3002"), /*#__PURE__*/React.createElement("div", {
       className: "muted"
-    }, "\u9884\u89C8\u6709\u6548\u81F3 ", window.WorkbenchFormat.dateTime(data.expires_at))), /*#__PURE__*/React.createElement(Pager, {
+    }, "\u9884\u89C8\u53D8\u66F4\u6709\u6548\u81F3 ", window.WorkbenchFormat.dateTime(data.expires_at))), /*#__PURE__*/React.createElement(Pager, {
       page: {
         number: page,
         pages,
@@ -52,13 +52,13 @@
       },
       sizes: [size],
       unit: "\u5929",
-      label: "\u9884\u89C8",
+      label: "\u9884\u89C8\u53D8\u66F4",
       onPage: setPage,
       showPageSelect: true
     }), !data.days.length && /*#__PURE__*/React.createElement(EmptyState, {
       kind: "filtered",
       title: "\u5F53\u524D\u8303\u56F4\u6CA1\u6709\u547D\u4E2D\u65E5\u671F",
-      hint: "\u8FD4\u56DE\u4FEE\u6539\u65E5\u671F\u8303\u56F4\u6216\u9002\u7528\u65E5\u671F\u540E\uFF0C\u518D\u9884\u89C8\u3002",
+      hint: "\u8FD4\u56DE\u4FEE\u6539\u65E5\u671F\u8303\u56F4\u6216\u300C\u5E94\u7528\u5230\u300D\u540E\uFF0C\u518D\u9884\u89C8\u53D8\u66F4\u3002",
       action: /*#__PURE__*/React.createElement(Button, {
         disabled: disabled,
         onClick: onBack
@@ -71,7 +71,7 @@
       className: "tbl wb-table cal-preview-table"
     }, /*#__PURE__*/React.createElement("caption", {
       className: "wb-visually-hidden"
-    }, "\u5DE5\u4F5C\u65E5\u5386\u6279\u91CF\u7EF4\u62A4\u9884\u89C8\uFF1A\u7B2C ", page, " \u9875\uFF0C\u786E\u8BA4\u5C06\u4F5C\u7528\u4E8E\u5168\u90E8 ", data.counts.selected, " \u5929"), /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
+    }, "\u5DE5\u4F5C\u65E5\u5386\u6279\u91CF\u7EF4\u62A4\u9884\u89C8\u53D8\u66F4\uFF1A\u7B2C ", page, " \u9875\uFF0C\u786E\u8BA4\u5C06\u4F5C\u7528\u4E8E\u5168\u90E8 ", data.counts.selected, " \u5929"), /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
       scope: "col",
       className: "wb-col-key",
       style: {
@@ -157,7 +157,7 @@
     React.useEffect(() => {
       if (error) focusFirstInvalid(formRef.current);
     }, [error]);
-    const reason = K.stale(command) ? '预览已失效，请重新预览并核对全部日期。' : !result ? '请先预览全部命中日期。' : !result.data.counts.selected ? '当前范围没有命中日期。' : C.blocked(result.data.write_context, 'calendar', 'confirm', result.meta.source);
+    const reason = K.stale(command) ? '预览变更已过期，没有写入。请点「重新预览变更」。' : !result ? '请先点「预览变更」查看全部命中日期。' : !result.data.counts.selected ? '当前范围没有命中日期。' : C.blocked(result.data.write_context, 'calendar', 'confirm', result.meta.source);
     async function preview(event) {
       if (event) event.preventDefault();
       if (disabled) return;
@@ -216,7 +216,7 @@
         icon: "list-checks",
         className: "btn primary",
         busy: disabled
-      }, K.stale(command) ? '重新预览' : '预览全部日期'), !done && result && /*#__PURE__*/React.createElement(Button, {
+      }, K.stale(command) ? '重新预览变更' : '预览变更'), !done && result && /*#__PURE__*/React.createElement(Button, {
         icon: "check",
         className: "btn primary",
         busy: disabled,

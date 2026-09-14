@@ -485,7 +485,7 @@
       "path": "tokens/dark.css",
       "source": "前端设计/tokens/dark.css",
       "target": "frontend/workbench/prototype/tokens/dark.css",
-      "sha256": "50fd4c680fdda634bb9e3c07f9e2838ad0dab7894dc79c83fb035d107b671570",
+      "sha256": "55c412dc995b5c200b042d1c2b6310b4f5b48786d63bcf2c7a68f15eef769019",
       "size": 2243
     },
     {
@@ -499,8 +499,8 @@
       "path": "tokens/typography.css",
       "source": "前端设计/tokens/typography.css",
       "target": "frontend/workbench/prototype/tokens/typography.css",
-      "sha256": "1ad5b5be7def746212c9268979bde8d6ad74c2cf5aca9bae64cf77ea3599d867",
-      "size": 2547
+      "sha256": "5d252dea26e7beea2400afe003d5050ee19e6f64514dd696d2b330cb0fe67e99",
+      "size": 2368
     },
     {
       "path": "ui_kits/workbench/AnalysisScreen.jsx",
@@ -716,8 +716,8 @@
       "path": "ui_kits/workbench/SystemManagementScreen.jsx",
       "source": "前端设计/ui_kits/workbench/SystemManagementScreen.jsx",
       "target": "frontend/workbench/prototype/ui_kits/workbench/SystemManagementScreen.jsx",
-      "sha256": "d602082a6419ee4b4a7dc52fe9032ef7aa982ab1831285042f9f6ec570650238",
-      "size": 26593
+      "sha256": "cbf1e3f90c48b704d6ebba667cf89aad3ac691f536a03302ba487a405de7a969",
+      "size": 26791
     },
     {
       "path": "ui_kits/workbench/app.jsx",
@@ -814,8 +814,8 @@
       "path": "ui_kits/workbench/batch-workbench.css",
       "source": "前端设计/ui_kits/workbench/batch-workbench.css",
       "target": "frontend/workbench/prototype/ui_kits/workbench/batch-workbench.css",
-      "sha256": "24034052c219684264cdb836e1aae3ae4a37542b7f9b514827129088cf843c94",
-      "size": 9434
+      "sha256": "3e4b7e51c6ac5075189d5a8a3143ac347450039f396bd1f7777b68193d349f4d",
+      "size": 8961
     },
     {
       "path": "ui_kits/workbench/dashboard-markup.js",
@@ -842,8 +842,8 @@
       "path": "ui_kits/workbench/dashboard-workbench.css",
       "source": "前端设计/ui_kits/workbench/dashboard-workbench.css",
       "target": "frontend/workbench/prototype/ui_kits/workbench/dashboard-workbench.css",
-      "sha256": "78191ef1a5ec8b4c558f7f037d356895c9519dd89f026bd3b6cffd6406d2d565",
-      "size": 24104
+      "sha256": "a08b4850fd729850af2a6c5025184c36abc32004ce6decf1c7ef663b5e9c7f3e",
+      "size": 23920
     },
     {
       "path": "ui_kits/workbench/dashboard-workbench.js",
@@ -1010,8 +1010,8 @@
       "path": "ui_kits/workbench/field-reporting.css",
       "source": "前端设计/ui_kits/workbench/field-reporting.css",
       "target": "frontend/workbench/prototype/ui_kits/workbench/field-reporting.css",
-      "sha256": "2e797ba0a4557e44f0e552d2a92badb62addb4f67cd04ade74578d68afbd8706",
-      "size": 41135
+      "sha256": "5df463749d4ab6840d0a9cf0fd214b7d4a8e391708d1ca55b0d257f08902f9ee",
+      "size": 40945
     },
     {
       "path": "ui_kits/workbench/field-reporting.js",
@@ -1115,8 +1115,8 @@
       "path": "ui_kits/workbench/system-workbench-model.js",
       "source": "前端设计/ui_kits/workbench/system-workbench-model.js",
       "target": "frontend/workbench/prototype/ui_kits/workbench/system-workbench-model.js",
-      "sha256": "494043835b02c1b856dadc32c960fc34f22a293982200f6a9ead04b61b2459d3",
-      "size": 14478
+      "sha256": "b872e4618956eee11fd02f5d4014ba61b084a82fb23467b943dabd7f85d15366",
+      "size": 14975
     },
     {
       "path": "ui_kits/workbench/system-workbench.css",
@@ -1150,8 +1150,8 @@
       "path": "ui_kits/workbench/trial-sample.css",
       "source": "前端设计/ui_kits/workbench/trial-sample.css",
       "target": "frontend/workbench/prototype/ui_kits/workbench/trial-sample.css",
-      "sha256": "3212ce5357ce592709264f158f57d35b9d8146ebe5516c6bb40135c20b2c9cba",
-      "size": 21713
+      "sha256": "7545469c02e0acc96e0a6610855f4c696cb39ac2f2115676d6e7398cc1edddf8",
+      "size": 21567
     },
     {
       "path": "ui_kits/workbench/trial-sample.html",

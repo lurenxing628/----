@@ -41,7 +41,7 @@ async function actual(p) {
     const chain = await work.locator('[role=status]').allTextContents();
     p.report.critical_chain_state = chain;
     if (!(await page.getByRole('checkbox', { name: '关键链', exact: true }).count())) {
-      assert(chain.some(text => text.includes('共同工序与分件之间的跨组依赖')));
+      assert(chain.some(text => text.includes('共同工序和分件之间有跨组依赖')));
       p.report.chain_boundary = 'Mixed common/piece predecessor scope is explicitly unsupported by the legacy read-only chain engine. Positive engine/target coverage is a separate real full-main chain fixture.';
     }
   });

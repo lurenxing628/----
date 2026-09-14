@@ -8,7 +8,7 @@
   const taskLabel = t => t.batch_id + ' · ' + t.sequence + ' ' + t.process_label + ' · ' + pieceLabel(t);
   function resourceNames(data) {
     const names = new Map();
-    ['machines', 'operators'].forEach(k => data.resources[k].forEach(r => names.set(r.ref, r.business_code + ' · ' + (r.label || '名称未记录'))));
+    ['machines', 'operators'].forEach(k => data.resources[k].forEach(r => names.set(r.ref, r.business_code + ' · ' + (r.label || '名称未填写'))));
     return ref => ref === null ? '无内部资源' : names.get(ref) || '原资源名称不可读';
   }
   function matching(data, scope, query, changed) {
@@ -85,7 +85,7 @@
       left: (wall(t.start) - bounds.start) / (bounds.end - bounds.start) * 100 + '%',
       width: (wall(t.end) - wall(t.start)) / (bounds.end - bounds.start) * 100 + '%'
     });
-    const pointTitle = (t, original) => (original ? '原安排 · ' : '') + taskLabel(t) + '\n' + U.timeLabel((original ? t.original : t).start) + '\n时间点 · 0 h · 不占用资源';
+    const pointTitle = (t, original) => (original ? '原安排 · ' : '') + taskLabel(t) + '\n' + U.timeLabel((original ? t.original : t).start) + '\n零工时工序 · 0 小时 · 不占设备人员';
     function pointMarker(t, original) {
       const value = original ? t.original : t,
         title = pointTitle(t, original);
@@ -141,9 +141,9 @@
       label: "\u8BD5\u8C03\u7518\u7279\u67E5\u770B\u504F\u597D"
     }), /*#__PURE__*/React.createElement("div", {
       className: "tt-heading"
-    }, /*#__PURE__*/React.createElement("h3", null, "\u6392\u7A0B\u9884\u89C8"), /*#__PURE__*/React.createElement("span", {
+    }, /*#__PURE__*/React.createElement("h3", null, "\u8BD5\u8C03\u6392\u7A0B\u56FE"), /*#__PURE__*/React.createElement("span", {
       className: "tt-muted"
-    }, "\u5DE5\u5382\u672C\u5730\u65F6\u95F4 \xB7 \u542B\u591C\u95F4")), /*#__PURE__*/React.createElement("div", {
+    }, "\u542B\u591C\u95F4")), /*#__PURE__*/React.createElement("div", {
       className: "tt-tools tt-gantt-tools"
     }, /*#__PURE__*/React.createElement(U.Tabs, {
       value: view,
@@ -222,7 +222,7 @@
       key: r.t.task_ref + ':' + r.ghost
     }, (i === 0 || visible[i - 1].group !== r.group) && /*#__PURE__*/React.createElement("div", {
       className: "tt-group"
-    }, view === 'batch' ? r.t.batch_id + ' · ' + (r.t.part_name || '零件名称未记录') : name(r.group)), /*#__PURE__*/React.createElement("div", {
+    }, view === 'batch' ? r.t.batch_id + ' · ' + (r.t.part_name || '零件名称未填写') : name(r.group)), /*#__PURE__*/React.createElement("div", {
       className: 'tt-gantt-row' + (selected === r.t.task_ref ? ' selected' : ''),
       "data-trial-task": r.t.task_ref
     }, /*#__PURE__*/React.createElement("button", {
@@ -258,7 +258,9 @@
       className: "baseline"
     }), "\u539F\u8BD5\u8C03\u57FA\u7840"), /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("i", {
       className: "conflict"
-    }), "\u7EA6\u675F\u95EE\u9898")), /*#__PURE__*/React.createElement("span", {
+    }), "\u7EA6\u675F\u95EE\u9898"), /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("i", {
+      className: "locked"
+    }), "\u5DF2\u9501\u5B9A\uFF0C\u4E0D\u80FD\u8C03\u6574")), /*#__PURE__*/React.createElement("span", {
       className: "tt-muted"
     }, "\u5339\u914D ", filtered.length, " / \u5B8C\u6574 ", data.task_count, " \u9053 \xB7 ", zoom, "\xD7")), /*#__PURE__*/React.createElement(U.Pager, {
       page: {

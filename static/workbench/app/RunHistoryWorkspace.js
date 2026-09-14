@@ -54,7 +54,6 @@
     const read = useRead(adapter, query, revision),
       result = read.result,
       data = result && result.data;
-    const stale = read.error && read.error.code === 'snapshot_stale';
     function reload() {
       setQuery(q => {
         const next = {
@@ -96,17 +95,17 @@
       className: "rh-heading"
     }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h2", {
       className: "wb-page-title"
-    }, "\u6392\u4EA7\u5386\u53F2"), /*#__PURE__*/React.createElement("span", {
+    }, "\u6392\u4EA7\u8BB0\u5F55"), /*#__PURE__*/React.createElement("span", {
       className: "rh-muted wb-page-context"
-    }, "\u8FD0\u884C\u8BB0\u5F55 \xB7 \u53EA\u8BFB")), /*#__PURE__*/React.createElement("div", {
+    }, "\u5386\u6B21\u6392\u4EA7 \xB7 \u53EA\u8BFB")), /*#__PURE__*/React.createElement("div", {
       className: "rh-tools"
     }, typeof onNavigate === 'function' && /*#__PURE__*/React.createElement(C.Button, {
       icon: "chevron-left",
-      "aria-label": "\u8FD4\u56DE\u65B9\u6848\u9875",
+      "aria-label": "\u8FD4\u56DE\u6B63\u5F0F\u8BA1\u5212",
       onClick: () => onNavigate('analysis', start.returnPlan)
-    }, "\u8FD4\u56DE\u65B9\u6848"), /*#__PURE__*/React.createElement(C.Button, {
+    }, "\u8FD4\u56DE\u6B63\u5F0F\u8BA1\u5212"), /*#__PURE__*/React.createElement(C.Button, {
       icon: "refresh-cw",
-      "aria-label": "\u5237\u65B0\u6392\u4EA7\u5386\u53F2",
+      "aria-label": "\u5237\u65B0\u6392\u4EA7\u8BB0\u5F55",
       busy: read.busy,
       onClick: reload
     }))), /*#__PURE__*/React.createElement(C.Filters, {
@@ -118,15 +117,15 @@
     }), read.error && /*#__PURE__*/React.createElement(C.Button, {
       icon: "refresh-cw",
       onClick: reload
-    }, stale ? '明确重读历史' : '重新读取历史'), read.busy && /*#__PURE__*/React.createElement(window.WorkbenchListControls.EmptyState, {
+    }, "\u91CD\u65B0\u67E5\u8BE2"), read.busy && /*#__PURE__*/React.createElement(window.WorkbenchListControls.EmptyState, {
       kind: "loading",
-      title: "\u6B63\u5728\u8BFB\u53D6\u6392\u4EA7\u5386\u53F2",
-      hint: "\u5F53\u524D\u7B5B\u9009\u7ED3\u679C\u5C1A\u672A\u8FD4\u56DE"
+      title: "\u6B63\u5728\u8BFB\u53D6\u6392\u4EA7\u8BB0\u5F55",
+      hint: "\u5F53\u524D\u7B5B\u9009\u7684\u7ED3\u679C\u8FD8\u6CA1\u8BFB\u5230"
     }), data && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
       className: "rh-source"
-    }, /*#__PURE__*/React.createElement("span", null, "\u76EE\u5F55\u5171 ", window.WorkbenchFormat.number(data.run_count, {
+    }, /*#__PURE__*/React.createElement("span", null, "\u5171 ", window.WorkbenchFormat.number(data.run_count, {
       digits: 0
-    }), " \u6B21 \xB7 \u53D7\u7406\u65E5\u671F\u6309\u5DE5\u5382\u672C\u5730\u65F6\u95F4\uFF0C\u542B\u8D77\u6B62\u65E5"), /*#__PURE__*/React.createElement("span", null, "\u8BFB\u53D6\u4E8E ", C.timeLabel(result.meta.as_of))), result.warnings.map((w, i) => /*#__PURE__*/React.createElement("div", {
+    }), " \u6B21\u6392\u4EA7 \xB7 \u63D0\u4EA4\u65E5\u671F\u542B\u8D77\u6B62\u65E5"), /*#__PURE__*/React.createElement("span", null, "\u8BFB\u53D6\u4E8E ", C.timeLabel(result.meta.as_of))), result.warnings.map((w, i) => /*#__PURE__*/React.createElement("div", {
       key: i,
       className: "rh-notice",
       role: "status"
@@ -136,8 +135,8 @@
       onOpen: open
     }) : /*#__PURE__*/React.createElement(window.WorkbenchListControls.EmptyState, {
       kind: data.run_count === 0 ? 'empty' : 'filtered',
-      title: data.run_count === 0 ? '尚无排产运行记录' : data.page.total === 0 ? '当前筛选没有匹配的运行记录' : '当前页没有运行记录',
-      hint: data.run_count === 0 ? '排产运行受理后会保留在此目录。' : data.page.total === 0 ? '其他运行未包含在当前筛选中。' : '当前页超出结果范围。',
+      title: data.run_count === 0 ? '尚无排产记录' : data.page.total === 0 ? '当前筛选没有匹配的排产记录' : '当前页没有排产记录',
+      hint: data.run_count === 0 ? '排产提交后会保留在这个列表里。' : data.page.total === 0 ? '其他排产没有包含在当前筛选里。' : '翻页位置已失效，请回到第 1 页重新查询。',
       action: data.run_count > 0 && /*#__PURE__*/React.createElement(C.Button, {
         icon: "chevron-left",
         onClick: () => data.page.total > 0 ? change({
@@ -145,14 +144,14 @@
         }, true) : apply(A.scope({
           size: query.size
         }))
-      }, data.page.total > 0 ? '返回第一页' : '清除历史筛选')
+      }, data.page.total > 0 ? '返回第 1 页' : '清除全部筛选')
     }), /*#__PURE__*/React.createElement(C.Pager, {
       page: data.page,
       busy: read.busy,
       onChange: change
     }), /*#__PURE__*/React.createElement("div", {
       className: "rh-muted"
-    }, "\u5B89\u6392\u884C\u6570\u662F\u5404\u5019\u9009\u5DF2\u4FDD\u5B58\u884C\u7684\u5408\u8BA1\uFF0C\u4E0D\u662F\u53BB\u91CD\u5DE5\u5E8F\u6570\u3002\u8BA1\u7B97\u5B8C\u6210\u4EC5\u8868\u793A\u8FD0\u884C\u7ED3\u675F\uFF1B\u7EA6\u675F\u4E0E\u4EFB\u52A1\u5185\u5BB9\u987B\u5728\u5019\u9009\u4E2D\u6838\u5BF9\u3002")));
+    }, "\u5B89\u6392\u884C\u6570\u662F\u5404\u5019\u9009\u65B9\u6848\u5DF2\u4FDD\u5B58\u884C\u7684\u5408\u8BA1\uFF0C\u4E0D\u662F\u4E0D\u91CD\u590D\u7684\u5DE5\u5E8F\u9053\u6570\u3002\u8BA1\u7B97\u5B8C\u6210\u53EA\u8868\u793A\u6392\u4EA7\u7ED3\u675F\uFF1B\u7EA6\u675F\u548C\u4EFB\u52A1\u5185\u5BB9\u8981\u5728\u5019\u9009\u65B9\u6848\u91CC\u6838\u5BF9\u3002")));
   }
   function RunHistoryWorkspace({
     initialContext = {},
@@ -164,14 +163,14 @@
     let start;
     try {
       start = A.context(initialContext);
-      A.check(active && typeof active.catalog === 'function', '排产历史读取适配器不可用。');
+      A.check(active && typeof active.catalog === 'function', 'dependency not wired: adapter.catalog');
     } catch (error) {
       return /*#__PURE__*/React.createElement("div", {
         className: "plana run-history-workspace",
         "data-run-history-workspace": true
       }, /*#__PURE__*/React.createElement(C.Styles, null), /*#__PURE__*/React.createElement("h2", {
         className: "wb-page-title"
-      }, "\u6392\u4EA7\u5386\u53F2"), /*#__PURE__*/React.createElement(C.ErrorBox, {
+      }, "\u6392\u4EA7\u8BB0\u5F55"), /*#__PURE__*/React.createElement(C.ErrorBox, {
         error: error
       }));
     }

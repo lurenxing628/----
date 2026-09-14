@@ -48,14 +48,14 @@ async function caption(page, state, reference, record) {
   record.equal(await node.locator('.wb-current-name').innerText(), plan.display_name);
   record.equal(await node.locator('.wb-current-name').getAttribute('title'), plan.display_name);
   record.ok((await node.innerText()).includes(plan.is_current_official ? '当前正式' : '历史正式'));
-  record.ok((await node.innerText()).includes('正式 v' + plan.version));
+  record.ok((await node.innerText()).includes('第 ' + plan.version + ' 版'));
   record.ok((await node.locator('.wb-current-range').innerText()).includes('计划时间'));
   return {plan, caption: await node.innerText(), workspace_response: response.file};
 }
 async function chooseOfficial(entry, record) {
   const {page, state} = entry;
   await navigate(page, 'analysis', record);
-  await page.getByRole('button', {name: '展开计划目录', exact: true}).click();
+  await page.getByRole('button', {name: '展开计划列表', exact: true}).click();
   const table = page.locator('table[aria-label="可选排产方案"][aria-busy="false"]');
   await table.waitFor();
   const current = table.getByRole('row').filter({hasText: '当前正式'});
@@ -64,7 +64,7 @@ async function chooseOfficial(entry, record) {
   const label = await radio.getAttribute('aria-label');
   const alreadySelected = await radio.isChecked();
   await radio.check(); await settle(page, record);
-  const collapse = page.getByRole('button', {name: '收起计划目录', exact: true});
+  const collapse = page.getByRole('button', {name: '收起计划列表', exact: true});
   if (await collapse.count()) await collapse.click();
   record.equal(await page.locator('.plan-catalog').getAttribute('data-collapsed'), 'true');
   await page.locator('.wb-current-plan[data-plan-ref]').waitFor();
@@ -163,7 +163,7 @@ async function navigationChain(entry, record) {
     return {title: actual.title, parent_active: 'analysis', reference: selected.reference, caption: current.caption, layout};
   });
   await record.run(page, state, 'interaction', 'real-typing-navigation-back-reload', async () => {
-    await page.getByRole('tablist', {name: '计划中心视图', exact: true}).getByRole('tab', {name: '设备 / 人员 / 批次甘特', exact: true}).click(); await settle(page, record);
+    await page.getByRole('tablist', {name: '计划中心视图', exact: true}).getByRole('tab', {name: '计划甘特', exact: true}).click(); await settle(page, record);
     await shell(page, 'gantt', record); await caption(page, state, selected.reference, record);
     const input = page.getByRole('searchbox', {name: '搜索批次、工序、设备、人员', exact: true});
     await input.click(); await input.press('Meta+A'); await input.press('Backspace');
@@ -185,7 +185,7 @@ async function navigationChain(entry, record) {
     const sidebarSaved = await userScroll(page, record);
     await navigate(page, 'basedata', record); await navigate(page, 'analysis', record);
     await assertRestored(entry, sidebarSaved, record, 'analysis');
-    await page.getByRole('tablist', {name: '计划中心视图', exact: true}).getByRole('tab', {name: '设备 / 人员 / 批次甘特', exact: true}).click();
+    await page.getByRole('tablist', {name: '计划中心视图', exact: true}).getByRole('tab', {name: '计划甘特', exact: true}).click();
     await settle(page, record); await shell(page, 'gantt', record); await caption(page, state, selected.reference, record);
     record.equal((await remembered(page)).route.context, saved.route.context, 'Returning through the real plan-center entry preserves the object and query');
     return {reference: selected.reference, typed, saved, reloaded, sidebar_saved: sidebarSaved};

@@ -1,10 +1,8 @@
 (function () {
   'use strict';
   const { Button, Icon } = window.ResourceControls, M = window.ActualGanttModel;
-  function describe(item, labels, report) {
-    const wording = { '执行投影不可用': '执行记录不可用', '完成依据：逐次执行投影': '完成依据：逐次报工记录' };
-    return M.describe(item, labels, report).map(line => wording[line] || line);
-  }
+  // 工序说明只有 ActualGanttModel 那一份写法，这里不再改写措辞。
+  const describe = M.describe;
   function Styles() {
     return <window.PointGantt.Styles />;
   }
@@ -19,7 +17,7 @@
         <label className="fg-late-filter">晚期<select aria-label="晚期筛选" value={view.late} onChange={e => patch({ late: e.target.value })}>{Object.entries(M.lateLabels).map(([key, label]) => <option key={key} value={key}>{label} ({counts[key]})</option>)}</select></label>
         <Button transfer="export" busy={busy} disabled={!model.items.length || data.availability.state !== 'available'} onClick={onExport}>导出 CSV</Button>
       </div>
-      <div className="fg-toolbar-chart"><div className="fg-legend"><span className="fg-lg"><i className="fg-sw-plan" />原计划基线</span><span className="fg-lg"><i className="fg-sw-act" />实际报工</span><span className="fg-lg"><i className="fg-sw-remaining" />已有剩余安排</span>
+      <div className="fg-toolbar-chart"><div className="fg-legend"><span className="fg-lg"><i className="fg-sw-plan" />原计划</span><span className="fg-lg"><i className="fg-sw-act" />实际报工</span><span className="fg-lg"><i className="fg-sw-remaining" />已有剩余安排</span>
         {data.critical_chain.state === 'available' && <label className="fg-chain-toggle"><input type="checkbox" checked={view.chain} onChange={e => patch({ chain: e.target.checked })} />关键链</label>}</div>
         <div className="fg-toolbar-chart-actions">
           <Button className="fg-icon-button" icon={allCollapsed ? 'unfold-vertical' : 'fold-vertical'} aria-label={allCollapsed ? '全部展开' : '全部折叠'} disabled={!model.groups.length} onClick={() => patch({ collapsed: allCollapsed ? {} : Object.fromEntries(model.groups.map(g => [g.id, true])) })} />
@@ -38,8 +36,8 @@
   function Chain({ chain, model, onLocate }) {
     const visible = new Set(model.items.map(item => item.task.task_ref));
     return <div className="fg-chain-strip" aria-label="所选计划关键链" data-chain-context={chain.mode} data-chain-target={chain.target_task_ref || ''}>
-      <div className="fg-chain-heading"><strong>{chain.mode === 'related' ? '当前对象目标的控制前驱链' : '整版计划控制前驱链'}</strong> · 原算法近似 · {chain.mode === 'related' ? '目标计划结束' : '计划最晚结束'} {M.time(chain.makespan_end)}
-        {chain.partial && <span role="status"> · 部分结果：原算法不含 {chain.omitted_point_count} 个零时长点</span>}</div>
+      <div className="fg-chain-heading"><strong>{chain.mode === 'related' ? '所选工序的控制前驱链' : '整版计划控制前驱链'}</strong> · 原算法近似 · {chain.mode === 'related' ? '目标计划结束' : '计划最晚结束'} {M.time(chain.makespan_end)}
+        {chain.partial && <span role="status"> · 部分结果：不含 {chain.omitted_point_count} 道零工时工序</span>}</div>
       {chain.state === 'unavailable' ? <span role="status">关联链不可用：{chain.reason}</span> : chain.nodes.map((node, index) => <React.Fragment key={node.task_ref}>
         {index > 0 && <span className="fg-chain-edge-label" title={chain.edges[index - 1].reason} data-chain-edge-reason>{chain.edges[index - 1].reason} · 间隔 {chain.edges[index - 1].gap_minutes} 分钟</span>}
         <Button className="fg-chain-node" icon="search" disabled={!visible.has(node.task_ref)} data-chain-node={node.task_ref}
@@ -58,7 +56,7 @@
       if (batches.trim()) next.batch_ids = batches.split(',').map(v => v.trim()); else delete next.batch_ids;
       delete next.snapshot_ref; onApply(next);
     }}>
-      {scope.range_start && <span className="fg-muted" title="按原计划时段相交选择工序；入选工序保留全部有效报工">原计划时段 {M.time(scope.range_start)} 至 {M.time(scope.range_end)}</span>}
+      {scope.range_start && <span className="fg-muted" title="按原计划时段有重叠来挑工序；选中的工序保留全部有效报工">原计划时段 {M.time(scope.range_start)} 至 {M.time(scope.range_end)}</span>}
       <label>计划完工日<input type="date" aria-label="计划完工开始日" value={draft.plan_finish_date_from || ''} onChange={e => patch({ plan_finish_date_from: e.target.value })} /></label>
       <label>至<input type="date" aria-label="计划完工结束日" value={draft.plan_finish_date_to || ''} onChange={e => patch({ plan_finish_date_to: e.target.value })} /></label>
       <label>资源<select aria-label="资源范围" value={draft.resource_ref || ''} onChange={e => { const row = resources.find(r => r.ref === e.target.value); patch({ resource_ref: e.target.value, resource_type: row ? row.kind : '' }); }}>

@@ -32,13 +32,13 @@
   function parameters(scope, allowed) {
     if (!object(scope) || Object.prototype.toString.call(scope) !== '[object Object]'
         || Reflect.ownKeys(scope).some(key => !allowed.includes(key) || !Object.prototype.propertyIsEnumerable.call(scope, key)))
-      throw C.failure('计划读取含未知参数或无效范围，未忽略筛选条件。');
+      throw C.failure('查询条件不对，这次没有读取计划。筛选条件没有变，请点「刷新」重试。');
     for (const key in scope) {
-      if (!own(scope, key)) throw C.failure('计划范围含继承的参数，未忽略筛选条件。');
+      if (!own(scope, key)) throw C.failure('查询条件不对，这次没有读取计划。筛选条件没有变，请点「刷新」重试。');
     }
     const query = { ...scope };
     for (const key of ['cursor', 'snapshot_ref']) {
-      if (own(query, key) && !token(query[key])) throw C.failure('计划游标和快照必须是非空原始令牌。');
+      if (own(query, key) && !token(query[key])) throw C.failure('翻页位置已失效，请回到第 1 页重新查询。');
     }
     return query;
   }
@@ -47,21 +47,21 @@
     if (!own(query, 'collection')) query.collection = 'history';
     if (!own(query, 'size')) query.size = 20;
     if (!['history', 'scenario'].includes(query.collection) || !Number.isSafeInteger(query.size) || query.size < 1 || query.size > 50)
-      throw C.failure('计划目录必须选择历史或场景，每页为 1 至 50 个版本或场景。');
+      throw C.failure('计划列表只能按历史版本或试调方案查看，每页 1 至 50 条。这次没有读取，请点「刷新」重试。');
     return query;
   }
   function workspaceScope(planRef, scope = {}) {
-    if (!ref(planRef)) throw C.failure('所选计划引用无效，请返回目录重新选择。');
+    if (!ref(planRef)) throw C.failure('这条计划记录已失效，请回到计划列表重新选择。');
     const query = parameters(scope, ['range_start', 'range_end', 'snapshot_ref']);
     const start = own(query, 'range_start'), end = own(query, 'range_end');
     if (start !== end || start && (!localTime(query.range_start) || !localTime(query.range_end) || query.range_start >= query.range_end))
-      throw C.failure('计划起止时间必须同时提供有效的工厂本地时间，且起点早于终点。');
+      throw C.failure('读取的开始时间和结束时间要一起填，开始必须早于结束。请按 2026-09-13 08:30 这样填。');
     return query;
   }
   function exportScope(planRef, scope) {
     const query = parameters(scope, ['format', 'range_start', 'range_end', 'snapshot_ref']);
     if (!['csv', 'xlsx'].includes(query.format) || !own(query, 'snapshot_ref'))
-      throw C.failure('导出必须提供格式和当前工作区的读取快照。');
+      throw C.failure('导出没有拿到文件格式或当前数据版本，这次没有导出。请刷新后重新点「导出」。');
     const {format, ...read} = query;
     return {format, ...workspaceScope(planRef, read)};
   }
@@ -69,7 +69,7 @@
     const expected = format === 'csv' ? 'text/csv' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
     if (!exact(value, ['blob', 'contentType', 'disposition']) || !value.blob || !(value.blob.size > 0)
         || typeof value.contentType !== 'string' || value.contentType.split(';')[0] !== expected
-        || !/^attachment;/i.test(value.disposition)) throw C.failure('计划导出响应不是所选格式的附件。');
+        || !/^attachment;/i.test(value.disposition)) throw C.failure('导出的文件和所选格式不一致，没有保存。请重新点「导出」。');
     return value;
   }
   function envelope(result, query) {
@@ -77,9 +77,9 @@
         || !exact(result.meta, ['request_ref', 'source', 'time_basis', 'snapshot_ref', 'as_of'])
         || result.meta.source !== 'production' || result.meta.time_basis !== 'factory_local'
         || !token(result.meta.snapshot_ref) || !token(result.meta.request_ref) || !localTime(result.meta.as_of) || !issues(result.warnings))
-      throw C.failure('计划读取协议不完整或不是生产数据，未使用样例替代。');
+      throw C.failure('读到的计划数据不完整或不是真实数据，没有用示例数据代替。请点「刷新」重试。');
     if (own(query, 'snapshot_ref') && result.meta.snapshot_ref !== query.snapshot_ref)
-      throw C.failure('计划快照与请求不一致，未自动切换到新数据。');
+      throw C.failure(window.WorkbenchTerms.outcomes.stale);
   }
   function plan(value) {
     if (!exact(value, ['plan_ref', 'version', 'kind', 'is_current_official', 'display_name', 'completeness', 'capabilities', 'blocked_reasons'])
@@ -108,11 +108,11 @@
         || (p.has_more ? !token(p.next_cursor) || !d.plans.length || p.next_cursor === query.cursor : p.next_cursor !== null)
         || d.plans.some(row => (row.kind === 'scenario') !== (query.collection === 'scenario'))
         || d.plans.filter(row => row.is_current_official).length > 1)
-      throw C.failure('计划目录、身份或分页与请求不一致，未作为完整目录使用。');
+      throw C.failure('读到的计划列表、类型或分页跟这次查询不一致，没有当作完整列表使用。请点「刷新」重试。');
     // A history page counts versions, not role entries; null versions cannot be grouped by guessed identity.
     const units = query.collection === 'scenario' ? d.plans.length : new Set(d.plans.filter(row => row.version !== null).map(row => String(row.version))).size
       + d.plans.filter(row => row.version === null).length;
-    if (units > query.size) throw C.failure('计划目录超过请求页范围，未忽略分页协议。');
+    if (units > query.size) throw C.failure('读到的计划条数超过了每页上限，没有当作完整列表使用。请点「刷新」重试。');
     return result;
   }
   function task(row, planRef, planSpan, timeScope) {
@@ -344,7 +344,7 @@
         || !baseline(d.projections.baseline, d) || !calendar(d.projections.calendar, d)
         || !occupancy(d.projections.occupancy, d) || !delivery(d.projections.delivery_risks, d)
         || !window.PlanProcessOrder.validate(d.projections.process_order, d))
-      throw C.failure('计划任务、范围或投影协议不完整或串源，未作为完整结果使用。');
+      throw C.failure('读到的工序安排、时间范围或分析数据不完整或来源对不上，没有当作完整结果使用。请点「刷新」重试。');
     return result;
   }
   window.APSPlanContract = { catalogScope, workspaceScope, exportScope, catalog, workspace, download };

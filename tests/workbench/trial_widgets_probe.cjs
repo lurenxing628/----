@@ -80,9 +80,9 @@ async function exportsFor(data, entry) {
 async function exportRoundTrip() {
   await reset(); await create(); await editor(); await fill();
   const changed = await saveChange(); await exportsFor(changed, 'editing');
-  await button('保存场景').click(); await page.getByLabel('场景名称', { exact: true }).fill('CN 导出逐字段核对 ' + variant);
-  await page.getByLabel('确认保存完整场景，冲突和未排工序一并保留').check();
-  await button('确认保存场景').click(); await page.getByRole('dialog').waitFor({ state: 'hidden' }); await ready();
+  await button('保存试调方案').click(); await page.getByLabel('试调方案名称', { exact: true }).fill('CN 导出逐字段核对 ' + variant);
+  await page.getByLabel('确认保存完整试调方案，冲突和未排工序一并保留').check();
+  await button('确认保存试调方案').click(); await page.getByRole('dialog').waitFor({ state: 'hidden' }); await ready();
   const scenario = await active(); assert.equal(scenario.draft_ref, changed.draft_ref); assert.equal(scenario.status, 'saved');
   await exportsFor(scenario, 'saved');
 }
@@ -91,23 +91,23 @@ async function active() {
   assert(ref); const v = await (await page.request.get(origin + '/api/workbench/v1/trial/' + (kind === 'scenario' ? 'scenarios/' : 'drafts/') + ref)).json();
   assert(v.ok, JSON.stringify(v)); return v.data;
 }
-async function ready() { await page.locator('.tt-bar').first().waitFor(); await page.waitForFunction(() => !document.querySelector('[aria-label="重读当前试调"]')?.disabled); }
+async function ready() { await page.locator('.tt-bar').first().waitFor(); await page.waitForFunction(() => !document.querySelector('[aria-label="刷新当前试调"]')?.disabled); }
 async function reset() {
   refs = await (await page.request.post(origin + '/fixture/reset')).json();
   await page.goto(origin); await page.locator('[data-trial-ref]').first().waitFor();
 }
 async function create(kind = 'plan') {
-  await button('新建试调').click();
+  await button('新增试调').click();
   if (kind === 'candidate') {
     await page.getByRole('tab', { name: '排产候选', exact: true }).click();
     await page.locator('.tt-source-row button:not(:disabled)').first().click();
   }
   await page.locator('.tt-source-row input[type=radio]:not(:disabled)').first().check();
   await button('核对原来源').click();
-  await page.getByLabel('确认基于此来源创建独立草稿，正式计划保持不变').check();
+  await page.getByLabel('确认基于此来源新增独立草稿，正式计划保持不变').check();
   assert.equal(await state(), null);
   const before = (await evidence()).drafts.length;
-  await button('确认创建草稿').click(); await page.getByRole('dialog').waitFor({ state: 'hidden' }); await ready();
+  await button('确认新增草稿').click(); await page.getByRole('dialog').waitFor({ state: 'hidden' }); await ready();
   const data = await active(), e = await evidence(); assert.equal(e.drafts.length, before + 1); assert.equal(data.task_count, kind === 'plan' ? 5 : 4);
   assert.equal(data.tasks.length, data.task_count); assert(data.tasks.every(t => e.rows.some(r => r.task_ref === t.task_ref && r.draft_ref === data.draft_ref)));
   assert.equal(await state(), null); return data;
@@ -201,7 +201,7 @@ async function shortTaskCoverage(draft, name, layout) {
 }
 async function basic() {
   await reset(); assert.equal(await page.locator('.tt-bar').count(), 0); done('mount-does-not-select-latest-draft');
-  await page.getByLabel('目录每页数量').selectOption('10'); await button('目录下一页').click(); await page.locator('[data-trial-ref]').first().waitFor();
+  await page.getByLabel('列表每页数量').selectOption('10'); await button('列表下一页').click(); await page.locator('[data-trial-ref]').first().waitFor();
   let e = await evidence(); assert(e.journal.some(r => r.query.page === '2' && r.query.snapshot_ref)); done('bounded-directory-snapshot-pagination');
   const draft = await create(); assert.equal(draft.base.plan_ref, refs.plan_ref); assert.equal(draft.base_identity.kind, 'official');
   const layout = await geometry('gantt-original'); assert(layout.shortBars >= 2); await shot('original-gantt');
@@ -225,19 +225,19 @@ async function basic() {
   await page.getByRole('tab', { name: '调整记录', exact: true }).click(); await page.getByRole('table', { name: '调整记录', exact: true }).waitFor();
   assert((await page.getByRole('table', { name: '调整记录', exact: true }).innerText()).includes('13:00:00'));
   await page.getByRole('tab', { name: '资源占用', exact: true }).click(); await page.getByRole('table', { name: '资源占用', exact: true }).waitFor(); await geometry('capacity'); await shot('capacity');
-  await page.getByRole('tab', { name: '约束问题', exact: true }).click(); await page.getByText('完整试调场景的正式采用尚未接入；保存仅保留场景，不改变正式计划。', { exact: true }).first().waitFor();
+  await page.getByRole('tab', { name: '约束问题', exact: true }).click(); await page.getByText('此功能尚未开通：保存只留下试调方案，不会改变正式计划。', { exact: true }).first().waitFor();
   await page.getByRole('tab', { name: '完整任务', exact: true }).click(); assert.equal(await page.getByRole('table', { name: '完整任务明细' }).locator('tbody tr').count(), 5);
   await exportsFor(changed, 'editing'); done('complete-comparison-capacity-history-and-export');
-  await button('保存场景').click(); assert(await button('确认保存场景').isDisabled()); await page.getByLabel('场景名称', { exact: true }).fill('现场手工试调 CN ' + variant);
-  await page.getByLabel('确认保存完整场景，冲突和未排工序一并保留').check(); await geometry('save-confirm'); await shot('save-confirm');
-  await button('确认保存场景').click(); await page.getByRole('dialog').waitFor({ state: 'hidden' }); await ready();
+  await button('保存试调方案').click(); assert(await button('确认保存试调方案').isDisabled()); await page.getByLabel('试调方案名称', { exact: true }).fill('现场手工试调 CN ' + variant);
+  await page.getByLabel('确认保存完整试调方案，冲突和未排工序一并保留').check(); await geometry('save-confirm'); await shot('save-confirm');
+  await button('确认保存试调方案').click(); await page.getByRole('dialog').waitFor({ state: 'hidden' }); await ready();
   const scenario = await active(); assert(scenario.scenario_ref); assert.equal(scenario.draft_ref, draft.draft_ref); assert.equal(scenario.status, 'saved');
   assert(scenario.tasks.every(t => !t.edit_context.can_change)); assert(scenario.tasks.every(t => !draft.tasks.some(old => old.task_ref === t.task_ref)));
-  assert(await button('保存场景').isDisabled()); assert(await button('正式采用').isDisabled());
-  assert((await button('正式采用').getAttribute('data-wb-disabled-reason')).includes('尚未接入'));
+  assert(await button('保存试调方案').isDisabled()); assert(await button('采用方案').isDisabled());
+  assert.equal(await button('采用方案').getAttribute('data-wb-disabled-reason'), '此功能尚未开通。');
   await exportsFor(scenario, 'saved');
   e = await evidence(); assert(e.scenarios.some(s => s.scenario_ref === scenario.scenario_ref && s.name === scenario.name)); done('named-scenario-saved-readonly-and-adoption-blocked');
-  await page.reload(); await page.getByRole('tab', { name: '已存场景', exact: true }).click();
+  await page.reload(); await page.getByRole('tab', { name: '试调方案', exact: true }).click();
   await page.locator('[data-trial-ref="' + scenario.scenario_ref + '"]').getByRole('button', { name: '打开', exact: true }).click(); await ready();
   assert.deepEqual((await active()).tasks, scenario.tasks); assert.equal(await state(), null); done('cold-page-catalog-reopens-original-scenario-without-cache');
 }
@@ -247,52 +247,52 @@ async function candidateAndDiscard() {
   await button('放弃草稿').click(); assert(await button('确认放弃').isDisabled()); await button('取消').click();
   assert.equal((await active()).status, 'editing'); await button('放弃草稿').click(); await page.getByLabel('确认放弃当前指定草稿').check(); await geometry('discard-confirm'); await shot('discard-confirm');
   await button('确认放弃').click(); await page.getByRole('dialog').waitFor({ state: 'hidden' }); await ready();
-  const after = await active(); assert.equal(after.status, 'discarded'); assert.equal(after.task_count, draft.task_count); assert(await button('保存场景').isDisabled());
+  const after = await active(); assert.equal(after.status, 'discarded'); assert.equal(after.task_count, draft.task_count); assert(await button('保存试调方案').isDisabled());
   const e = await evidence(); assert.equal(e.scenarios.length, 2); assert.equal(e.rows.filter(r => r.draft_ref === draft.draft_ref).length, draft.task_count);
   done('real-candidate-identity-and-confirmed-discard-retains-all-rows');
 }
 async function uncertain() {
   await reset(); await create(); await editor(); await fill();
   await page.request.post(origin + '/probe/drop-next-write-reply'); await button('保存调整').click();
-  await page.getByRole('region', { name: '待核实试调请求' }).waitFor(); const key = await state(); assert(/^trial-/.test(key));
-  await page.getByText('结果尚未核实；只能查询原请求，不能重做。', { exact: true }).waitFor();
+  await page.getByRole('region', { name: '待确认的试调提交' }).waitFor(); const key = await state(); assert(/^trial-/.test(key));
+  await page.getByText('上次提交的结果还没查到，可能已经生效。请点「查询结果」，不要重复提交。', { exact: true }).waitFor();
   await page.waitForFunction(async key => (await (await fetch('/fixture/evidence')).json()).receipts.some(r => r.request_key === key), key);
   const before = (await evidence()).journal.filter(r => r.request_key === key).length;
-  await page.reload(); await page.getByRole('region', { name: '待核实试调请求' }).waitFor(); assert(await button('新建试调').isDisabled()); await shot('unknown-restored');
-  assert.equal(await state(), key); await button('查询原请求').click(); await ready(); assert.equal(await state(), null);
+  await page.reload(); await page.getByRole('region', { name: '待确认的试调提交' }).waitFor(); assert(await button('新增试调').isDisabled()); await shot('unknown-restored');
+  assert.equal(await state(), key); await button('查询结果').click(); await ready(); assert.equal(await state(), null);
   assert.equal((await evidence()).journal.filter(r => r.request_key === key).length, before); done('lost-real-commit-reply-reloaded-key-only-and-no-rewrite');
   await reset(); await create(); await editor(); await fill(); await control('pause'); await button('保存调整').click();
   await page.waitForFunction(async () => (await (await fetch('/fixture/evidence')).json()).started);
-  const paused = await state(); await page.reload(); await button('查询原请求').click(); await page.getByText('尚未观察到原请求回执；在途请求仍可能完成，未重新执行。', { exact: true }).waitFor();
-  assert.equal(await state(), paused); assert(await button('新建试调').isDisabled()); await control('release');
+  const paused = await state(); await page.reload(); await button('查询结果').click(); await page.getByText('上次提交的结果还没查到，可能已经生效。请点「查询结果」，不要重复提交。', { exact: true }).waitFor();
+  assert.equal(await state(), paused); assert(await button('新增试调').isDisabled()); await control('release');
   await page.waitForFunction(async key => (await (await fetch('/fixture/evidence')).json()).receipts.some(r => r.request_key === key), paused);
-  await button('查询原请求').click(); await ready(); assert.equal((await evidence()).journal.filter(r => r.request_key === paused).length, 1);
+  await button('查询结果').click(); await ready(); assert.equal((await evidence()).journal.filter(r => r.request_key === paused).length, 1);
   done('not-observed-does-not-retry-inflight-command');
 }
 async function staleAndScope() {
   await reset(); await create(); await editor(); await fill(); await control('expire'); await button('保存调整').click();
   await page.getByRole('alert').first().waitFor(); assert.equal(await page.getByLabel('调整开工', { exact: true }).inputValue(), '2026-09-09T13:00');
   assert.equal(await state(), null); assert.equal((await evidence()).receipts.filter(r => r.action === 'trial.change').length, 0);
-  await button('重读工序').click(); await ready(); assert.equal(await page.getByLabel('调整开工', { exact: true }).inputValue(), '2026-09-09T13:00');
+  await button('刷新工序').click(); await ready(); assert.equal(await page.getByLabel('调整开工', { exact: true }).inputValue(), '2026-09-09T13:00');
   await page.getByLabel('已核对当前工序与保留输入').check(); await saveChange(); done('expired-write-context-rejected-input-preserved-explicit-recheck');
   await reset(); await page.evaluate(ref => mountTrial({ base: { plan_ref: ref }, scope: { range_start: '2026-09-10T08:00:00', range_end: '2026-09-10T09:00:00' } }), refs.plan_ref);
-  await button('核对原来源').click(); await page.getByLabel('确认基于此来源创建独立草稿，正式计划保持不变').check(); await button('确认创建草稿').click();
+  await button('核对原来源').click(); await page.getByLabel('确认基于此来源新增独立草稿，正式计划保持不变').check(); await button('确认新增草稿').click();
   await page.getByRole('dialog').waitFor({ state: 'hidden' }); await page.getByText('当前显示范围没有匹配工序', { exact: true }).waitFor(); assert.equal((await active()).task_count, 5);
   await page.getByLabel('原显示范围', { exact: true }).uncheck(); await ready(); assert.equal(await page.locator('.tt-bar').count(), 5); done('initial-target-display-scope-does-not-truncate-full-dto');
   await editor(); await fill();
   await page.evaluate(() => { window.originalSetItem = Storage.prototype.setItem; Storage.prototype.setItem = function(k, v) { if (k === TrialAPI.PENDING_KEY) throw Error('fixture storage full'); return originalSetItem.call(this, k, v); }; });
-  const count = (await evidence()).receipts.length; await button('保存调整').click(); await page.getByText('无法保存试调请求恢复记录，本次未发送。', { exact: true }).first().waitFor();
+  const count = (await evidence()).receipts.length; await button('保存调整').click(); await page.getByText('存不下上次操作记录，这次没有提交。请重新打开页面。', { exact: true }).first().waitFor();
   assert.equal((await evidence()).receipts.length, count); await page.evaluate(() => { Storage.prototype.setItem = originalSetItem; });
   await button('取消编辑').click(); await page.getByRole('dialog', { name: '离开前确认', exact: true }).waitFor();
-  await button('放弃未保存内容并继续').click(); await button('重读恢复记录与当前内容').click(); await ready(); done('storage-unavailable-fails-before-write');
-  await control('drift'); await button('重读当前试调').click(); await ready(); assert((await active()).validation.issues.some(i => i.code === 'trial_facts_changed'));
-  await page.getByRole('tab', { name: '约束问题', exact: true }).click(); await page.getByText('创建后生产事实已变化；原任务和基线保持不变，不能据旧快照正式采用。', { exact: true }).first().waitFor(); done('live-facts-drift-keeps-original-base-and-reports-blocker');
+  await button('放弃未保存内容并继续').click(); await button('刷新试调内容和操作记录').click(); await ready(); done('storage-unavailable-fails-before-write');
+  await control('drift'); await button('刷新当前试调').click(); await ready(); assert((await active()).validation.issues.some(i => i.code === 'trial_facts_changed'));
+  await page.getByRole('tab', { name: '约束问题', exact: true }).click(); await page.getByText('建草稿之后现场数据变了；草稿里的工序和对比基准没变，不能按旧数据正式采用。', { exact: true }).first().waitFor(); done('live-facts-drift-keeps-original-base-and-reports-blocker');
   await page.evaluate(() => mountTrial({ draft_ref: 'invalid' })); await page.getByRole('alert').waitFor(); assert.equal(await page.locator('.tt-bar').count(), 0); done('invalid-initial-identity-does-not-fallback');
 }
 async function large() {
   refs = await (await page.request.post(origin + '/fixture/reset', { data: { large: true } })).json(); await page.goto(origin);
-  await button('新建试调').click(); await page.locator('.tt-source-row input[type=radio]:not(:disabled)').first().check(); await button('核对原来源').click();
-  await page.getByLabel('确认基于此来源创建独立草稿，正式计划保持不变').check(); await button('确认创建草稿').click();
+  await button('新增试调').click(); await page.locator('.tt-source-row input[type=radio]:not(:disabled)').first().check(); await button('核对原来源').click();
+  await page.getByLabel('确认基于此来源新增独立草稿，正式计划保持不变').check(); await button('确认新增草稿').click();
   await page.getByRole('dialog').waitFor({ state: 'hidden' }); await ready();
   const data = await active(); assert.equal(data.task_count, 1000); assert.equal(data.tasks.length, 1000); assert.equal(await page.locator('.tt-bar').count(), 30);
   await page.getByLabel('甘特页码', { exact: true }).fill('34'); await button('跳转甘特页').click(); await selectTask('CN-LARGE', 1000);
@@ -309,7 +309,7 @@ async function large() {
 async function targetHistory() {
   await reset(); await page.goto(origin + '/?history=1');
   await page.evaluate(ref => { history.replaceState({ trialTarget: { base: { plan_ref: ref } } }, '', location.href); mountTrial(history.state.trialTarget); }, refs.plan_ref);
-  await button('核对原来源').click(); await page.getByLabel('确认基于此来源创建独立草稿，正式计划保持不变').check(); await button('确认创建草稿').click();
+  await button('核对原来源').click(); await page.getByLabel('确认基于此来源新增独立草稿，正式计划保持不变').check(); await button('确认新增草稿').click();
   await page.getByRole('dialog').waitFor({ state: 'hidden' }); await ready(); const draft = await active();
   await selectTask('B1', 1);
   const details = await page.getByRole('complementary', { name: '工序详情', exact: true }).innerText();
@@ -326,13 +326,13 @@ async function targetHistory() {
   await page.locator('[data-trial-ref="' + refs.drafts[3] + '"]').getByRole('button', { name: '打开', exact: true }).click(); await ready();
   assert.deepEqual(await page.evaluate(() => history.state.trialTarget), { draft_ref: refs.drafts[3] }); await page.reload(); await ready();
   assert.equal((await active()).draft_ref, refs.drafts[3]); done('base-create-and-directory-open-replace-history-with-original-draft');
-  await button('保存场景').click(); await page.getByLabel('场景名称', { exact: true }).fill('刷新后仍为原场景'); await page.getByLabel('确认保存完整场景，冲突和未排工序一并保留').check();
-  await button('确认保存场景').click(); await page.getByRole('dialog').waitFor({ state: 'hidden' }); await ready(); const scenario = await active();
+  await button('保存试调方案').click(); await page.getByLabel('试调方案名称', { exact: true }).fill('刷新后仍为原场景'); await page.getByLabel('确认保存完整试调方案，冲突和未排工序一并保留').check();
+  await button('确认保存试调方案').click(); await page.getByRole('dialog').waitFor({ state: 'hidden' }); await ready(); const scenario = await active();
   assert.deepEqual(await page.evaluate(() => history.state.trialTarget), { scenario_ref: scenario.scenario_ref }); await page.reload(); await ready();
   assert.equal((await active()).scenario_ref, scenario.scenario_ref); done('saved-scenario-refresh-retains-exact-scenario-ref');
-  await page.evaluate(() => { window.failTargetChange = true; }); await button('新建试调').click(); await button('核对原来源').click();
-  await page.getByLabel('确认基于此来源创建独立草稿，正式计划保持不变').check(); await button('确认创建草稿').click(); await page.getByRole('dialog').waitFor({ state: 'hidden' }); await ready();
-  await page.getByText('试调对象已定位，但页面恢复地址更新失败。原记录仍在目录中，未重复写入。', { exact: true }).waitFor();
+  await page.evaluate(() => { window.failTargetChange = true; }); await button('新增试调').click(); await button('核对原来源').click();
+  await page.getByLabel('确认基于此来源新增独立草稿，正式计划保持不变').check(); await button('确认新增草稿').click(); await page.getByRole('dialog').waitFor({ state: 'hidden' }); await ready();
+  await page.getByText('试调记录已定位，但页面地址没有更新成功。记录还在试调列表里，没有重复写入。', { exact: true }).waitFor();
   assert.equal(await state(), null); assert.equal((await evidence()).receipts.filter(r => r.action === 'trial.create').length, creates + 1); done('target-callback-failure-does-not-erase-commit-or-reissue');
 }
 (async () => {

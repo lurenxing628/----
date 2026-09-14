@@ -62,3 +62,16 @@ body.aps-workbench .operations-shell .wb-render-failure { padding: var(--space-5
   body.aps-workbench .operations-shell .top-header { padding: 10px; }
   body.aps-workbench .operations-shell .top-title { font-size: var(--font-size-3); }
 }
+
+/* 矮屏应用式布局（issue 2026-09-14-wbui-double-scroll-1366 方案 B）：带 .wb-fill-viewport 的工作区把主内容区撑成一列，
+   页面不再随窗口滚动，只有表格滚；表格之外的内容超过视口时 .page-content 仍可滚动兜底。阈值与 --wb-short-screen-max 同步。
+   填满链：.page-content 到 .wb-fill-viewport 之间的每一层祖先（包括未命名的包装 div）都变成弹性列，链外兄弟不伸缩，
+   链尾 .wb-fill-viewport > .wb-table-frame 吃掉剩余高度（见 21-table-frame.css）。 */
+@media (max-height: 820px) {
+  body.aps-workbench .main-content:has(.wb-fill-viewport) { height: 100vh; max-height: 100vh; overflow: hidden; }
+  body.aps-workbench .main-content:has(.wb-fill-viewport) > .page-content { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: auto; padding-top: 12px; padding-bottom: 12px; }
+  body.aps-workbench .page-content :has(.wb-fill-viewport),
+  body.aps-workbench .page-content .wb-fill-viewport { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+  body.aps-workbench .page-content :has(.wb-fill-viewport) > :not(:has(.wb-fill-viewport), .wb-fill-viewport),
+  body.aps-workbench .wb-fill-viewport > * { flex: none; }
+}

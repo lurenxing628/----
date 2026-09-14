@@ -13,7 +13,7 @@ async function edges(h) {
   await request('/dashboard/items/' + item.item_ref + '/history', () => history.getByRole('button', { name: '历史上一页', exact: true }).click());
   await shot('history-real-second-page-and-refresh');
   await page.locator('.sidebar-nav').getByRole('link', { name: '系统管理', exact: true }).click();
-  await page.getByRole('button', { name: '查看自动维护策略', exact: true }).waitFor();
+  await page.getByRole('button', { name: '查看自动维护规则', exact: true }).waitFor();
   await request('/system/config', () => page.getByRole('tab', { name: '配置', exact: true }).click());
   await mark('WBP-SYS-016.unknown-values', async () => {
     await page.getByText(/旧配置异常：.*原值：invalid-F-stored/).waitFor();
@@ -22,20 +22,20 @@ async function edges(h) {
   await shot('invalid-stored-config-is-not-silently-saved');
   await mark('WBP-SYS-001.tab-overview', () => page.getByRole('tab', { name: '概况', exact: true }).click());
   await request('/system/backups', () => page.getByRole('tab', { name: '备份恢复', exact: true }).click());
-  await page.getByRole('button', { name: '创建备份', exact: true }).click();
+  await page.getByRole('button', { name: '新增备份', exact: true }).click();
   const originalMode = fs.statSync(h.config.backup_dir).mode & 0o777;
   try {
     fs.chmodSync(h.config.backup_dir, 0o555);
-    const failed = await mark('WBP-SYS-008.failure', () => request('/system/backups/create', () => page.getByRole('dialog').getByRole('button', { name: '确认创建', exact: true }).click(), 200, 'POST'));
+    const failed = await mark('WBP-SYS-008.failure', () => request('/system/backups/create', () => page.getByRole('dialog').getByRole('button', { name: '确认新增', exact: true }).click(), 200, 'POST'));
     assert.equal(failed.data.operation.state, 'recovery_required'); assert.equal(failed.data.operation.code, 'storage_failure');
     // The in-page outcome section only shows "需人工恢复核查" for the few milliseconds before the host re-check
     // lands; the maintenance screen then takes over the page. Assert that durable state instead of racing it.
     const screen = page.locator('[data-restore-maintenance]');
-    await screen.getByRole('region', { name: '维护结果', exact: true }).getByRole('heading', { name: '结果未知，需人工核查', exact: true }).waitFor();
+    await screen.getByRole('region', { name: '维护结果', exact: true }).getByRole('heading', { name: '结果不确定，需人工核对', exact: true }).waitFor();
     await screen.getByText(failed.data.operation.message, { exact: true }).waitFor();
     await mark(['WBP-SYS-019.failure', 'WBP-SYS-019.pending'], async () => {
       assert.equal(await page.getByRole('button', { name: '确认结果', exact: true }).count(), 0);
-      assert.equal(await screen.getByRole('button', { name: '核实原请求', exact: true }).count(), 1);
+      assert.equal(await screen.getByRole('button', { name: '查询结果', exact: true }).count(), 1);
     });
     report.failed_create = failed;
     await shot('real-backup-storage-failure-retains-original-request');

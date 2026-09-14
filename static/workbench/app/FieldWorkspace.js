@@ -50,9 +50,9 @@
     if (data && !read.loading && !read.error) readPlan.current = data.scope.plan_ref;
     const captionPlan = !read.loading && !read.error && data && data.plan;
     const captionStatus = captionPlan && {
-      official: captionPlan.is_current_official ? '当前正式采用' : '历史正式方案',
+      official: captionPlan.is_current_official ? '当前正式采用' : '历史正式计划',
       candidate: window.WorkbenchTerms.candidate,
-      scenario: window.WorkbenchTerms.trial + '场景'
+      scenario: window.WorkbenchTerms.trial_scenario
     }[captionPlan.kind];
     window.WorkbenchCaption.useCaption(captionStatus ? {
       reference: captionPlan.plan_ref,
@@ -118,7 +118,7 @@
       if (command.phase !== 'done' || !command.reset()) return;
       if (editor) drafts.current.delete(editor.taskRef);
       setNextDraft(options.continueAfter ? options : null);
-      setNotice('已保存，正在自动重读最新报工。');
+      setNotice('已保存，正在自动刷新最新报工。');
       setEditor(null);
       setFiles(false);
       setScope(current => ({
@@ -181,7 +181,7 @@
     }), notice && /*#__PURE__*/React.createElement("p", {
       className: "field-note field-save-status",
       role: "status"
-    }, read.error ? '报工已保存，但重读失败；请重试读取，未再次写入。' : read.loading ? notice : nextDraft ? '已保存，正在核对最新写入上下文…' : notice === '已保存，正在自动重读最新报工。' ? '已保存并重读最新报工。' : notice), /*#__PURE__*/React.createElement(window.FieldFilters, {
+    }, read.error ? '报工已保存，但刷新失败；请再点「刷新现场记录」，没有重复写入。' : read.loading ? notice : nextDraft ? '已保存，正在核对最新数据…' : notice === '已保存，正在自动刷新最新报工。' ? '已保存并刷新最新报工。' : notice), /*#__PURE__*/React.createElement(window.FieldFilters, {
       scope: effectiveScope,
       onChange: filter,
       disabled: blocked || read.loading,

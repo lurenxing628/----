@@ -6,7 +6,7 @@
   const text = v => typeof v === 'string', count = v => Number.isSafeInteger(v) && v >= 0;
   const ref = v => text(v) && /^[a-f0-9]{48}$/.test(v), token = v => text(v) && /^[A-Za-z0-9_-]{32}$/.test(v);
   const key = v => text(v) && /^adoption-[a-f0-9]{48}$/.test(v), rejections = new WeakSet();
-  function check(valid, message = '采用响应不完整或不一致，暂时不能确认结果。') { if (!valid) throw new Error(message); }
+  function check(valid, message = '读到的采用数据不完整，请刷新重试。') { if (!valid) throw new Error(message); }
   function shape(v, required, optional = []) {
     return object(v) && required.every(k => Object.prototype.hasOwnProperty.call(v, k)) && Object.keys(v).every(k => required.concat(optional).includes(k));
   }
@@ -40,9 +40,9 @@
     return d;
   }
   function input(v) {
-    check(shape(v, ['confirm', 'reason', 'declared_operator']) && v.confirm === true, '请明确确认正式采用。');
+    check(shape(v, ['confirm', 'reason', 'declared_operator']) && v.confirm === true, '请勾选确认后再正式采用。');
     for (const [name, limit] of [['reason', 1000], ['declared_operator', 100]]) {
-      check(text(v[name]) && v[name].trim().length > 0 && Array.from(v[name]).length <= limit && !v[name].includes('\x00'), '请填写有效的采用原因和声明人。');
+      check(text(v[name]) && v[name].trim().length > 0 && Array.from(v[name]).length <= limit && !v[name].includes('\x00'), '请填写采用原因和经办人。');
     }
     return { confirm: true, reason: v.reason.trim(), declared_operator: v.declared_operator.trim() };
   }
@@ -70,7 +70,7 @@
       && Array.isArray(e.fields) && e.fields.every(f => shape(f, ['path', 'message']) && text(f.path) && text(f.message))
       && typeof e.retryable === 'boolean' && text(e.request_ref) && /^[a-f0-9]{32}$/.test(e.request_ref)
       && (e.request_key === undefined && e.result_target === undefined || key(requestKey) && e.request_key === requestKey && e.result_target === BASE + 'commands/' + requestKey);
-    const error = new Error(valid ? e.message : '采用结果尚未核实，请查询原请求。'); error.code = valid ? e.code : 'invalid_response';
+    const error = new Error(valid ? e.message : window.WorkbenchTerms.outcomes.pending('采用')); error.code = valid ? e.code : 'invalid_response';
     if (valid && v.committed === false && [400, 409, 422, 503].includes(status) && e.code !== 'request_key_conflict') rejections.add(error);
     return error;
   }
@@ -80,31 +80,31 @@
     try { return JSON.stringify(input(v.input)) === JSON.stringify(v.input); } catch (_) { return false; }
   }
   function pending(storage) {
-    if (storage === undefined) { try { storage = window.localStorage; } catch (_) { throw new Error('无法读取采用恢复记录，请检查浏览器存储设置。'); } }
+    if (storage === undefined) { try { storage = window.localStorage; } catch (_) { throw new Error('读不到上次采用的操作记录，请重新打开页面。'); } }
     function read() {
-      let raw; try { raw = storage.getItem(PENDING_KEY); } catch (_) { throw new Error('无法读取采用恢复记录，暂勿重新采用。'); }
+      let raw; try { raw = storage.getItem(PENDING_KEY); } catch (_) { throw new Error('读不到上次采用的操作记录，不要重新采用。'); }
       if (raw === null) return null;
-      let value; try { value = JSON.parse(raw); } catch (_) { throw new Error('采用恢复记录损坏，已阻止新采用，请保留现场。'); }
-      check(validIntent(value), '采用恢复记录不完整，已阻止新采用，请保留现场。'); return value;
+      let value; try { value = JSON.parse(raw); } catch (_) { throw new Error('本机存的采用操作记录已损坏，已拦下新采用。请不要再操作，联系维护人员。'); }
+      check(validIntent(value), '本机存的采用操作记录不完整，已拦下新采用。请不要再操作，联系维护人员。'); return value;
     }
     const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
     function save(value, previous) {
-      check(same(read(), previous), '原采用记录已变化，未覆盖其他请求。');
+      check(same(read(), previous), '上次采用记录已变化，没有覆盖其他操作。');
       try { if (value === null) storage.removeItem(PENDING_KEY); else storage.setItem(PENDING_KEY, JSON.stringify(value)); }
-      catch (_) { throw new Error('无法保存采用恢复记录，未开始新的采用，请保留当前页面。'); }
-      check(same(read(), value), '采用恢复记录未保存，暂勿重新采用。');
+      catch (_) { throw new Error('存不下采用的操作记录，没有开始新的采用。请重新打开页面。'); }
+      check(same(read(), value), '采用的操作记录没有保存，不要重新采用。');
       window.dispatchEvent(new Event(EVENT)); return value;
     }
     return { read,
       begin(value, values, previous = null) {
-        check(!previous || validIntent(previous) && previous.phase === 'rejected' && previous.candidate_ref === value.candidate_ref, '原采用请求尚未核实，不能重新提交。');
+        check(!previous || validIntent(previous) && previous.phase === 'rejected' && previous.candidate_ref === value.candidate_ref, '上次采用还没确认结果，不能重新提交。');
         const bytes = new Uint8Array(24); window.crypto.getRandomValues(bytes);
         return save({ schema_version: 1, candidate_ref: value.candidate_ref,
           request_key: previous ? previous.request_key : 'adoption-' + Array.from(bytes, n => n.toString(16).padStart(2, '0')).join(''),
           input: input(values), preview: overview(value), phase: 'pending' }, previous);
       },
-      reject(intent, error) { check(rejections.has(error), '未核实拒绝结果，保留原请求。'); return save({ ...intent, phase: 'rejected' }, intent); },
-      cancelRejected(intent) { check(validIntent(intent) && intent.phase === 'rejected', '结果尚未核实，不能丢弃原请求。'); return save(null, intent); },
+      reject(intent, error) { check(rejections.has(error), '没有确认拒绝结果，已保留上次操作。'); return save({ ...intent, phase: 'rejected' }, intent); },
+      cancelRejected(intent) { check(validIntent(intent) && intent.phase === 'rejected', '结果还没确认，不能丢弃上次操作。'); return save(null, intent); },
       finish(intent, result) { receipt(result, intent); return save(null, intent); }
     };
   }

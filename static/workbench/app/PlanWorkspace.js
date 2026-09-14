@@ -75,7 +75,7 @@
         ...(relatedRef ? {
           locate: true
         } : {})
-      });else setRangeError(C.failure(relatedRef ? '同一完整计划中未找到该关系任务，未定位到替代任务。' : '指定恢复任务不在当前计划读取范围内，未选择替代任务。'));
+      });else setRangeError(C.failure(relatedRef ? '这份完整计划里没找到相关的工序，没有改选其他工序。' : '要恢复的工序不在当前读取范围内，没有改选其他工序。'));
       if (relatedRef) setRelatedRef(null);
     }, [relatedRef, result, read.loading, read.error]);
     const remembered = {
@@ -173,14 +173,14 @@
     const risks = data && data.projections.delivery_risks.items;
     const ready = !!data && !disabled;
     const includesPlanEnd = data && data.scope.range_start === null && data.plan_span.end_inclusive === true;
-    const scopeCaption = !data ? '' : includesPlanEnd && data.plan_span.start === data.plan_span.end ? `计划时间点：${M.timeLabel(data.plan_span.start)}` : `计划时间范围：${M.timeLabel(data.time_scope.range_start)} → ${M.timeLabel(data.time_scope.range_end)}（${includesPlanEnd ? '包含末端计划点' : '不含结束时刻'}）`;
+    const scopeCaption = !data ? '' : includesPlanEnd && data.plan_span.start === data.plan_span.end ? `计划时刻：${M.timeLabel(data.plan_span.start)}` : `计划时间范围：${M.timeLabel(data.time_scope.range_start)} → ${M.timeLabel(data.time_scope.range_end)}（${includesPlanEnd ? '包含末端零工时工序' : '不含结束时刻'}）`;
     window.WorkbenchCaption.useCaption(data && !read.loading && !read.error && !paused ? {
       reference: data.plan.plan_ref,
-      label: '当前方案',
+      label: '正式计划',
       name: data.plan.display_name,
-      status: data.plan.is_current_official ? '当前正式' : data.plan.kind === 'official' ? '历史正式' : data.plan.kind === 'candidate' ? '候选预览' : '场景预览',
+      status: data.plan.is_current_official ? '当前正式' : data.plan.kind === 'official' ? '历史正式' : data.plan.kind === 'candidate' ? '候选方案' : '试调方案',
       ...(data.plan.kind === 'official' && data.plan.version !== null ? {
-        version: '正式 v' + data.plan.version
+        version: '第 ' + data.plan.version + ' 版'
       } : {}),
       range: scopeCaption
     } : null);
@@ -189,7 +189,7 @@
       "data-plan-workspace": true
     }, /*#__PURE__*/React.createElement(window.PlanLayout, null), /*#__PURE__*/React.createElement("div", {
       className: "plan-heading"
-    }, /*#__PURE__*/React.createElement("div", null, !data && /*#__PURE__*/React.createElement("h2", null, view === 'gantt' ? '设备 / 人员 / 批次甘特' : view === 'delay' ? '交付风险' : '选择排产方案'), /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("div", null, !data && /*#__PURE__*/React.createElement("h2", null, view === 'gantt' ? '计划甘特' : view === 'delay' ? '交付风险' : '选择排产方案'), /*#__PURE__*/React.createElement("div", {
       className: "plan-muted"
     }, data ? data.plan.display_name : selection ? selection.display_name : '尚未选择计划', data && /*#__PURE__*/React.createElement(React.Fragment, null, " \xB7 ", /*#__PURE__*/React.createElement(Identity, {
       plan: data.plan
@@ -217,7 +217,7 @@
       className: "plan-heading plan-read-heading"
     }, /*#__PURE__*/React.createElement("div", null, data && /*#__PURE__*/React.createElement("div", {
       className: "plan-muted"
-    }, "\u8BFB\u53D6\u4E8E ", M.timeLabel(result.meta.as_of), " \xB7 \u5DE5\u5382\u672C\u5730\u65F6\u95F4")), /*#__PURE__*/React.createElement("div", {
+    }, "\u8BFB\u53D6\u4E8E ", M.timeLabel(result.meta.as_of))), /*#__PURE__*/React.createElement("div", {
       className: "plan-actions"
     }, /*#__PURE__*/React.createElement(Button, {
       icon: "calendar-days",
@@ -286,17 +286,17 @@
       issues: result.warnings
     }), !data && /*#__PURE__*/React.createElement(window.WorkbenchControls.EmptyState, {
       kind: read.loading ? 'loading' : 'empty',
-      title: read.loading ? '正在读取所选计划、工序安排和分析结果…' : paused ? '计划读取已取消，未显示上次读取的内容。' : read.error ? '所选计划未读取成功，没有替换成其他计划。' : '从目录中选择一个可查看的计划。'
+      title: read.loading ? '正在读取所选计划、工序安排和分析结果…' : paused ? '计划读取已取消，未显示上次读取的内容。' : read.error ? '所选计划未读取成功，没有替换成其他计划。' : '请在计划列表里选一个可查看的计划。'
     }), (read.error || paused) && /*#__PURE__*/React.createElement(Button, {
       icon: "refresh-cw",
       onClick: refresh
-    }, "\u91CD\u65B0\u8BFB\u53D6\u6240\u9009\u8BA1\u5212"), data && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+    }, "\u5237\u65B0\u91CD\u8BD5"), data && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
       className: "statline wb-metrics",
       style: {
         '--wb-columns': 4,
         marginBottom: 8
       }
-    }, [[data.task_count, '范围内安排', 'primary'], [risks.length, '关联批次', 'primary'], [risks.filter(row => row.risk === 'overdue').length, '已核实预计超期', 'warn'], [risks.filter(row => row.risk === 'unknown').length, '交付风险待核实', 'warn']].map(([value, label, tone]) => /*#__PURE__*/React.createElement("div", {
+    }, [[data.task_count, '范围内安排', 'primary'], [risks.length, '关联批次', 'primary'], [risks.filter(row => row.risk === 'overdue').length, '已确认预计超期', 'warn'], [risks.filter(row => row.risk === 'unknown').length, '交付风险暂无数据', 'warn']].map(([value, label, tone]) => /*#__PURE__*/React.createElement("div", {
       className: "stat wb-metric",
       key: label,
       "data-tone": tone === 'warn' && value === 0 ? 'neutral' : tone

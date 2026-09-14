@@ -19,7 +19,7 @@ async function readControls(h) {
     await shot('config-restarted-process-readback'); return;
   }
   const all = await request('/system/backups', () => page.getByRole('tab', { name: '备份恢复', exact: true }).click());
-  const region = page.getByRole('region', { name: '备份与恢复记录', exact: true });
+  const region = page.getByRole('region', { name: '备份与维护记录', exact: true });
   const query = () => request('/system/backups', () => region.getByRole('button', { name: '查询', exact: true }).click());
   const clear = () => request('/system/backups', () => region.getByRole('button', { name: '清除筛选', exact: true }).click());
   if (h.config.restored_job_ref) {
@@ -91,7 +91,7 @@ async function readControls(h) {
   await mark('WBP-SYS-006.clear', clear);
   const logsRead = await request('/system/logs', () => page.getByRole('tab', { name: '运行日志', exact: true }).click());
   const logs = page.getByRole('region', { name: '运行日志与操作记录', exact: true });
-  await select('记录类型', '运行日志', logs); await select('日志来源', 'aps.log', logs); await select('日志级别', 'INFO', logs);
+  await select('记录类型', '运行日志', logs); await select('日志来源', '主日志（aps.log）', logs); await select('日志级别', '信息', logs);
   const logQuery = () => request('/system/logs', () => logs.getByRole('button', { name: '查询', exact: true }).click());
   const runtime = await mark(['WBP-SYS-011.runtime-source', 'WBP-SYS-012.type-runtime', 'WBP-SYS-012.search-file'], logQuery);
   assert(runtime.data.rows.length > 0 && runtime.data.rows.every(row => row.type === 'runtime' && row.file === 'aps.log' && row.level === 'INFO'));
@@ -110,7 +110,7 @@ async function readControls(h) {
   const original = await page.locator('#sm-maintenance-auto_backup_interval_minutes').inputValue();
   await page.locator('#sm-maintenance-auto_backup_interval_minutes').fill('57');
   await page.getByRole('button', { name: '放弃草稿', exact: true }).click();
-  await mark('WBP-SYS-017.discard-confirm', () => request('/system/config', () => page.getByRole('dialog').getByRole('button', { name: '放弃并重读', exact: true }).click()));
+  await mark('WBP-SYS-017.discard-confirm', () => request('/system/config', () => page.getByRole('dialog').getByRole('button', { name: '放弃并刷新', exact: true }).click()));
   assert.equal(await page.locator('#sm-maintenance-auto_backup_interval_minutes').inputValue(), original);
   await page.getByRole('radio', { name: '管理样例', exact: true }).check();
   await page.locator('#sm-auto_backup_interval_minutes').fill('53');
@@ -118,7 +118,7 @@ async function readControls(h) {
   await mark('WBP-SYS-017.unsaved-preview', async () => { await page.getByText('样例草稿检查通过 · 未保存', { exact: true }).waitFor(); });
   assert.equal(await page.locator('.sm-preview dd').count(), 8);
   await page.locator('.sm-maintenance-config:visible').getByText('生效范围与自动维护规则', { exact: true }).click();
-  await mark('WBP-SYS-019.skipped', async () => { await page.getByText(/备份失败时跳过本轮备份清理，保留策略不能删除全部近期副本。/).waitFor(); });
+  await mark('WBP-SYS-019.skipped', async () => { await page.getByText(/备份失败时会跳过本轮备份清理，保底规则不会删掉全部近期副本。/).waitFor(); });
   await shot('sample-validation-is-explicitly-unsaved');
 }
 module.exports = { readControls };

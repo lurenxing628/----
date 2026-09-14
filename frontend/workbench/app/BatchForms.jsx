@@ -23,7 +23,7 @@
     }
     const choices = S.useQuery(async signal => {
       const result = await adapter.choices(signal);
-      if (!result || !result.data || !Array.isArray(result.data.parts) || !result.data.parts.every(row => B.ref(row.ref))) throw C.failure('图号目录未能正确读取。');
+      if (!result || !result.data || !Array.isArray(result.data.parts) || !result.data.parts.every(row => B.ref(row.ref))) throw C.failure('图号列表没有读到，请刷新后重试。');
       return result;
     }, [adapter], !entity);
     React.useEffect(() => {
@@ -54,14 +54,14 @@
     return <Modal title={entity ? '编辑批次基础信息' : '新增批次'} icon="box" guardOwner={guardOwner} locked={command.locked} onClose={close} footer={<>
       <Button onClick={close} disabled={command.locked}>{command.phase === 'done' ? '关闭' : '取消'}</Button>
       {command.phase !== 'done' && <Button type="submit" form={form} icon="check" className="btn primary" disabled={locked || !!review || !entity && !choices.result}
-        reasonDisplay="inline" reason={B.reason(context, action, source)}>{entity ? '保存基础信息' : '创建批次'}</Button>}</>}>
+        reasonDisplay="inline" reason={B.reason(context, action, source)}>{entity ? '保存基础信息' : '确认新增'}</Button>}</>}>
       <form id={form} ref={formElement} className="modal-b form" onSubmit={submit} noValidate>
         <BaseFields value={value} setValue={next => { setValue(next); setError(null); }} entity={entity} disabled={locked} choices={choices.result && choices.result.data} error={currentError} errors={fieldErrors} />
         <ErrorBox error={error} excludePaths={paths} /><ErrorBox error={choices.error} /><window.ResourceForms.Feedback command={command} excludePaths={error ? [] : paths} />
-        {command.phase !== 'done' && <Button icon="refresh-cw" disabled={locked} onClick={reload}>重新读取并核对</Button>}
-        {review && <div className="batch-band"><Issues issues={[{ message: '最新资料已读回，未覆盖已填写内容。' }]} />
+        {command.phase !== 'done' && <Button icon="refresh-cw" disabled={locked} onClick={reload}>刷新并核对</Button>}
+        {review && <div className="batch-band"><Issues issues={[{ message: '已读到最新资料，您填写的内容没有被覆盖。' }]} />
           {entity && <dl>{B.fields.map(key => <React.Fragment key={key}><dt>{B.fieldNames[key]}</dt><dd>{window.BatchControls.display(key, review.data.fields[key])}</dd></React.Fragment>)}</dl>}
-          <Button onClick={acceptReview} disabled={locked}>采用最新资料继续编辑</Button></div>}
+          <Button onClick={acceptReview} disabled={locked}>采用最新资料</Button></div>}
       </form>
     </Modal>;
   }
@@ -84,7 +84,7 @@
         {action === 'bulk_confirm' ? preview.rows.map(row => <tr key={row.entity_ref}><td>{value(row.before)}</td><td>{value(row.after)}</td></tr>)
           : <tr><td>{preview.before.map(row => <div key={row.ref}>{row.sequence} · {row.label} · {B.label('status', row.status)}</div>)}</td>
             <td>{preview.after.map((row, index) => <div key={index}>{row.sequence} · {row.label} · 换型 {window.WorkbenchFormat.hours(row.setup_hours, ENTERED_HOURS)} / 单件 {window.WorkbenchFormat.hours(row.unit_hours, ENTERED_HOURS)} / 周期 {window.WorkbenchFormat.number(row.external_days, ENTERED_DAYS)}</div>)}</td></tr>}
-      </tbody></table></div>{action === 'sync_confirm' && <p>刷新会替换现有工序及资源补充；缺失工时保留未填写，已有计划或执行引用时不能刷新。</p>}
+      </tbody></table></div>{action === 'sync_confirm' && <p>刷新会替换现有工序和资源补充；缺失工时保留未填写。已被计划或报工记录用到的批次不能刷新。</p>}
         <Issues issues={preview.warnings || []} /><ErrorBox error={error} /><window.ResourceForms.Feedback command={command} /></div>
     </Modal>;
   }

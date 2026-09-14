@@ -10,7 +10,7 @@ const base = '/api/workbench/v1/master-overview';
 const ids = (family, numbers) => numbers.map(number => 'WBP-MD-' + family + '-A' + String(number).padStart(2, '0'));
 const b = (scope, name) => name === '关闭' ? scope.locator('.modal-f').getByRole('button', {name, exact: true}) : scope.getByRole('button', {name, exact: true});
 let page;
-const area = () => page.getByRole('region', {name: '主数据总览', exact: true});
+const area = () => page.getByRole('region', {name: '资料总览', exact: true});
 async function settled() {
   await page.waitForFunction(() => {
     const table = document.querySelector('.master-overview .mo-table');
@@ -21,9 +21,9 @@ async function query(action) {
   const result = await p.response(base, action); await settled(); return result;
 }
 async function search(text, sequential = true) {
-  if (sequential) await p.type(area().getByRole('searchbox', {name: '搜索主数据'}), text);
-  else await p.fill(area().getByRole('searchbox', {name: '搜索主数据'}), text);
-  return query(() => p.click(b(area(), '执行主数据搜索')));
+  if (sequential) await p.type(area().getByRole('searchbox', {name: '搜索基础资料'}), text);
+  else await p.fill(area().getByRole('searchbox', {name: '搜索基础资料'}), text);
+  return query(() => p.click(b(area(), '执行基础资料搜索')));
 }
 async function open() {
   await page.goto(ready.url + '/workbench'); await page.locator('.sidebar').waitFor();
@@ -33,21 +33,21 @@ async function open() {
   return data;
 }
 async function entity(domain, code) {
-  await query(() => p.click(area().getByRole('tab', {name: /^实体清单/})));
-  await query(() => p.select(area().getByLabel('筛选数据域'), domain));
+  await query(() => p.click(area().getByRole('tab', {name: /^资料清单/})));
+  await query(() => p.select(area().getByLabel('筛选资料类别'), domain));
   await search(code);
   await p.click(b(area(), '查看 ' + code));
   await area().locator('.mo-detail h3').waitFor();
 }
 async function detail(section) {
-  const key = section === '字段' ? 'fields' : section === '相关项' ? 'relations' : 'issues';
+  const key = section === '资料项' ? 'fields' : section === '相关项' ? 'relations' : 'issues';
   const tab = area().locator('.mo-detail').getByRole('tab', {name: new RegExp('^' + section)});
   const selected = await tab.getAttribute('aria-selected') === 'true';
   const waiting = selected ? null : page.waitForResponse(row => row.url().includes(base + '/entities/') && new URL(row.url()).searchParams.get('section') === key);
   await p.click(tab);
   assert.equal(await tab.getAttribute('aria-selected'), 'true');
   if (waiting) { const response = await waiting; assert.equal(response.status(), 200); }
-  await page.getByRole('tabpanel', {name: section === '字段' ? '实体字段' : section === '相关项' ? '实体相关项' : '实体待维护项', exact: true}).waitFor();
+  await page.getByRole('tabpanel', {name: section === '资料项' ? '资料项' : section === '相关项' ? '资料相关项' : '资料待维护项', exact: true}).waitFor();
 }
 async function main() {
   const browser = await chromium.launch({executablePath: process.env.WORKBENCH_BROWSER, headless: true});
@@ -68,7 +68,7 @@ async function main() {
         await context.close(); continue;
       }
       await p.run(ids('001', [1, 4, 5, 6, 7]), 'actual-counts-refresh', async () => {
-        const data = await query(() => p.click(b(area(), '刷新主数据')));
+        const data = await query(() => p.click(b(area(), '刷新资料')));
         const table = p.snapshot().tables;
         assert.equal(data.data.overview.domains.find(row => row.id === 'part').count, table.Parts.length);
         assert.equal(data.data.overview.domains.find(row => row.id === 'material').count, table.Materials.length);
@@ -81,22 +81,22 @@ async function main() {
       });
       if (phase === 'restart') {
         await p.run(ids('002', [2, 3, 5]), 'restart-original-entity', async () => {
-          await entity('material', 'MAT-011'); await detail('字段');
+          await entity('material', 'MAT-011'); await detail('资料项');
           const stock = area().locator('.mo-field').filter({has: page.locator('dt', {hasText: /^库存数量$/})});
-          assert.equal(await stock.locator('dd').first().innerText(), '未填');
+          assert.equal(await stock.locator('dd').first().innerText(), '未填写');
         });
         await context.close(); continue;
       }
       await p.run([...ids('002', [2, 3, 5, 6, 7]), ...ids('003', [2, 3, 4, 5, 6, 7, 8])], 'entity-query-pages', async () => {
-        await query(() => p.click(area().getByRole('tab', {name: /^实体清单/})));
-        await query(() => p.select(area().getByLabel('筛选数据域'), 'part'));
+        await query(() => p.click(area().getByRole('tab', {name: /^资料清单/})));
+        await query(() => p.select(area().getByLabel('筛选资料类别'), 'part'));
         const data = await search('FC-P-'); assert.equal(data.data.page.total, 43);
-        await query(() => p.select(area().getByLabel('主数据排序'), 'business_code'));
+        await query(() => p.select(area().getByLabel('基础资料排序'), 'business_code'));
         assert.equal(await area().locator('.mo-table tbody tr').count(), 20);
-        await query(() => p.click(b(area(), '主数据下一页'))); await b(area(), '查看 FC-P-021').waitFor();
-        await query(() => p.click(b(area(), '主数据上一页'))); await b(area(), '查看 FC-P-001').waitFor();
+        await query(() => p.click(b(area(), '基础资料下一页'))); await b(area(), '查看 FC-P-021').waitFor();
+        await query(() => p.click(b(area(), '基础资料上一页'))); await b(area(), '查看 FC-P-001').waitFor();
         for (const size of [50, 100, 20]) {
-          const next = await query(() => p.select(area().getByLabel('主数据每页条数'), size));
+          const next = await query(() => p.select(area().getByLabel('基础资料每页条数'), size));
           assert.equal(next.data.page.size, size);
           assert.equal(await area().locator('.mo-table tbody tr').count(), Math.min(43, size));
         }
@@ -109,18 +109,19 @@ async function main() {
         assert(data.rows.some(row => row.includes('FC-P-001')) && data.rows.some(row => row.includes('FC-P-043')));
       });
       await p.run([...ids('004', [1, 2, 4, 5, 6]), ...ids('005', [3, 7])], 'original-fields-and-focus', async () => {
-        await entity('material', 'MAT-011'); await detail('字段');
-        const panel = page.getByRole('complementary', {name: '主数据实体详情', exact: true});
+        await entity('material', 'MAT-011'); await detail('资料项');
+        const panel = page.getByRole('complementary', {name: '资料详情', exact: true});
         const stock = area().locator('.mo-field').filter({has: page.locator('dt', {hasText: /^库存数量$/})});
-        assert.equal(await stock.locator('dd').first().innerText(), '未填');
-        assert((await area().locator('.mo-source').allTextContents()).some(text => text.includes('Materials.')));
-        assert((await panel.innerText()).includes('个检查字段'));
+        assert.equal(await stock.locator('dd').first().innerText(), '未填写');
+        assert((await area().locator('.mo-field .wb-ref dd code').allTextContents()).some(text => text.includes('Materials.')));
+        assert.equal((await area().locator('.mo-field > dd').first().innerText()).includes('Materials.'), false);
+        assert((await panel.innerText()).includes('个检查项'));
         await p.click(b(panel, '返回清单'));
         assert.equal(await b(area(), '查看 MAT-011').evaluate(node => node === document.activeElement), true);
       });
       await p.run(ids('005', [2, 4, 5, 6, 7]), 'relations-cross-page-exact-locate', async () => {
         await entity('opType', 'RT-IN'); await detail('相关项');
-        const list = page.getByRole('tabpanel', {name: '实体相关项', exact: true});
+        const list = page.getByRole('tabpanel', {name: '资料相关项', exact: true});
         assert.equal(await list.locator('li').count(), 10);
         async function turn(number, label) {
           const waiting = page.waitForResponse(row => row.url().includes(base + '/entities/') && new URL(row.url()).searchParams.get('detail_page') === String(number));
@@ -134,13 +135,13 @@ async function main() {
         const target = list.getByRole('button', {name: item.business_code + ' · ' + item.label, exact: true});
         const code = item.business_code;
         await p.click(target); await b(area(), '查看 ' + code).waitFor();
-        assert.equal(await area().getByLabel('筛选数据域').inputValue(), 'equipment');
+        assert.equal(await area().getByLabel('筛选资料类别').inputValue(), 'equipment');
         await area().locator('.mo-detail h3').waitFor();
         assert((await area().locator('.mo-detail').innerText()).includes(code));
       });
       await p.run(ids('006', [1, 3]), 'maintenance-real-resource-deep-link', async () => {
         await entity('material', 'MAT-011');
-        await p.click(b(area(), '定位当前实体'));
+        await p.click(b(area(), '定位当前资料'));
         const dialog = page.getByRole('dialog', {name: '物料详情', exact: true});
         await dialog.getByText('MAT-011', {exact: true}).waitFor(); assert((await dialog.innerText()).includes('MAT-011'));
         assert.equal(new URL(page.url()).searchParams.get('view'), 'process');
@@ -148,7 +149,7 @@ async function main() {
       });
       await open();
       await p.run([...ids('002', [1, 4]), ...ids('003', [1]), ...ids('004', [3]), ...ids('005', [1]), ...ids('007', [1])], 'issue-records-filter-csv', async () => {
-        await query(() => p.select(area().getByLabel('筛选数据域'), 'part'));
+        await query(() => p.select(area().getByLabel('筛选资料类别'), 'part'));
         const rows = await search('FC-P-'); assert(rows.data.page.total >= 43);
         assert(rows.data.rows.every(row => row.rule && row.evidence && row.issue_ref));
         const status = await query(() => p.select(area().getByLabel('筛选检查状态'), 'attention'));
@@ -163,18 +164,18 @@ async function main() {
         await area().getByText('当前范围没有记录', {exact: true}).waitFor();
         assert(await b(area(), '导出筛选结果').isDisabled());
         assert.equal(await area().locator('.mo-table tbody tr').count(), 0);
-        await query(() => p.click(b(area(), '清除主数据筛选')));
+        await query(() => p.click(b(area(), '清除基础资料筛选')));
       });
       await p.run(ids('008', [3]), 'actual-network-failure-and-retry', async () => {
         p.expectedFailure = true;
         await context.setOffline(true);
-        await p.click(b(area(), '刷新主数据'));
+        await p.click(b(area(), '刷新资料'));
         await area().getByRole('alert').waitFor();
         assert.equal(await area().locator('.mo-table tbody tr').count(), 0);
         assert(await b(area(), '导出筛选结果').isDisabled());
         await p.shot('network-failure');
         await context.setOffline(false);
-        await query(() => p.click(b(area(), '刷新主数据')));
+        await query(() => p.click(b(area(), '刷新资料')));
         p.expectedFailure = false;
       });
       await p.run(ids('006', [4]), 'maintenance-whole-entry-and-reload', async () => {
