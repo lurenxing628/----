@@ -1,14 +1,8 @@
 from __future__ import annotations
 
-"""
-贪心排产算法（Phase 7 / P7-02, P7-06）。
+"""贪心排产算法（Phase 7 / P7-02, P7-06）。
 
-要点（对齐开发文档.md）：
-- 内部工序：设备 + 人员 双重资源约束
-- 外部工序：不占内部资源，仅按自然日（天）推进
-- 前后约束：同一批次按工序顺序串行推进
-- 工作日历：使用 CalendarService 的 adjust_to_working_time / add_working_hours / get_efficiency / add_calendar_days
-- 外部组合并周期（merged）：整组作为一个时间块，组内每道外部工序落同一 start/end
+协调内部工序的设备、人员、工作日历与批次前后约束；外部工序按自然日推进，merged 组共享时间块。
 """
 
 import logging
