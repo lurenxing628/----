@@ -4,7 +4,7 @@
 
 本项目是面向 Win7 x64 离线单机与共享数据场景的本地 APS 智能排产系统。它的目标是在目标机不安装 Python、不依赖外网的前提下，完成基础资料维护、Excel 导入导出、批次排产、结果查看、报表导出、备份/恢复以及现场交付。
 
-当前开发与打包基线保持在 Python 3.8，并继续服从 Win7 兼容边界。正式交付时，目标机通过安装包和本地浏览器运行时访问 APS 页面。
+当前开发与打包基线保持在 Python 3.8，并继续服从 Win7 兼容边界。正式交付采用绿色便携 ZIP，内含主程序和专用浏览器；解压后即可使用。
 
 ## 主要能力
 
@@ -40,13 +40,15 @@ py -3.8 -m venv .venv
 
 系统使用统一的侧栏布局界面（2026-06 双轨退役后唯一界面），模板在 `templates/` 下。
 
-### 正式交付与直拷交付
+### 绿色便携版交付
 
-- 正式交付优先使用双包：`APS_Main_Setup.exe` 与 `APS_Chrome109_Runtime.exe`。
-- 双包口径是管理员统一安装、共享同一套数据、仅允许单活用户。
+- Win7 x64 / Python 3.8 / Windows PowerShell 5.1 打包机运行 `build_win7_portable.bat`，生成 `dist/APS_Portable_Win7_x64.zip` 及 SHA-256 校验文件，无需 Inno Setup。
+- 目标机完整解压后双击 `启动_排产系统_Chrome.bat`；无需管理员安装，也无需选择本地账户或域账户。
+- 数据库、备份、日志和浏览器配置统一放在便携目录内的 `user-data/`；目录必须对当前账户可写，同一份数据一次只允许一个实例使用。
+- `aps-portable.txt` 标记阻止便携版读取旧安装的注册表目录及数据路径环境变量；旧数据通过系统备份/恢复转入，首次启动不会自动迁移旧库。
 - Chrome109 运行时只保证打开 APS 本地页面，不承诺完整桌面 Chrome 能力。
-- 最小直拷与 legacy 应急交付说明见 `DELIVERY_WIN7.md`。
-- 安装包构建、安装、卸载、强制清理和启动排障说明见 `installer/README_WIN7_INSTALLER.md`。
+- 构建、升级、数据迁移与 PowerShell 5.1 编码约定见 `DELIVERY_WIN7.md`。
+- 原双安装包保留为显式 `-Installer` 维护入口，历史安装版说明见 `installer/README_WIN7_INSTALLER.md`。
 
 ## 开发与质量门禁
 
@@ -147,7 +149,7 @@ full-test-debt proof 的意思是：当前没有未登记的 full pytest 失败�
 | `开发文档/系统速查表.md` | 术语、枚举、接口、数据库字段、Excel 模板、打包交付关键点 |
 | `开发文档/面板与接口清单.md` | 页面、路由、参数、按钮、提示文案与用户可见入口 |
 | `installer/README_WIN7_INSTALLER.md` | Win7 双包构建、安装、卸载、强制清理与启动排障 |
-| `DELIVERY_WIN7.md` | Win7 离线交付、直拷目录与 legacy 应急交付说明 |
+| `DELIVERY_WIN7.md` | Win7 绿色便携版构建、使用、升级、数据迁移和 PowerShell 5.1 约定 |
 | `ORTOOLS_WIN7_SPIKE.md` | OR-Tools 在 Win7 / Python 3.8 离线环境下的可行性结论 |
 | `plugins/README.md` | 自研插件约定与当前插件清单 |
 

@@ -1,0 +1,4 @@
+# Preserve the tested script bytes on Windows checkouts, including autocrlf=true.
+/assets/*.bat text eol=lf
+/build_win7_portable.bat text eol=lf
+/.limcode/skills/aps-package-win7/scripts/package_win7.ps1 text eol=lf

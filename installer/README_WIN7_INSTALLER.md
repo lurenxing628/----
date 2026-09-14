@@ -1,5 +1,7 @@
 # Win7 安装包构建说明（双包）
 
+> **历史安装版维护说明。** 当前默认交付已改为绿色便携 ZIP，请先看 [DELIVERY_WIN7.md](../DELIVERY_WIN7.md)，或执行 `build_win7_portable.bat`。下文的管理员安装、账户目录、注册表和卸载规则仅适用于显式构建的安装版；便携版不执行安装器，也不触发其中的旧数据清理。
+
 > 目标：在 **Win7 x64 离线打包机** 上，生成两个正式交付安装包：
 > 1. `APS_Main_Setup.exe`（主程序包）
 > 2. `APS_Chrome109_Runtime.exe`（浏览器运行时包）
@@ -48,7 +50,7 @@ python -m pip install --no-index --find-links C:\wheelhouse -r requirements.txt 
 在仓库根目录运行：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .limcode/skills/aps-package-win7/scripts/package_win7.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .limcode/skills/aps-package-win7/scripts/package_win7.ps1 -Installer
 ```
 
 默认会：
@@ -62,7 +64,7 @@ powershell -ExecutionPolicy Bypass -File .limcode/skills/aps-package-win7/script
 7. 对 `build\chrome109_runtime_payload\chrome.exe` 执行浏览器最小冒烟，验证 `--app=http://127.0.0.1:{port}/` 可拉起且短时存活
 8. 生成 `APS_Chrome109_Runtime.exe`
 
-正式双包交付请始终以 `package_win7.ps1` 为主入口；它同时串联主程序冷启动验收与浏览器运行时最小冒烟，任一失败都会阻断出包。
+维护原双包时请以 `package_win7.ps1 -Installer` 为主入口；它同时串联主程序冷启动验收与浏览器运行时最小冒烟，任一失败都会阻断出包。不带模式参数时生成绿色便携 ZIP。
 
 内部应急回退：
 

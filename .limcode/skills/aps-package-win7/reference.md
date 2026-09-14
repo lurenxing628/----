@@ -1,4 +1,6 @@
-# 关键经验（双包口径）
+# 历史安装版经验（双包口径）
+
+> 当前默认交付为绿色便携 ZIP，以仓库 `DELIVERY_WIN7.md` 和本技能 `SKILL.md` 为准。本文件的机器级目录、注册表和用户 profile 约定仅适用于显式安装版模式。
 
 ## 1) 主程序包与浏览器运行时包的职责已经拆开
 
@@ -68,7 +70,7 @@
 - 规避建议（择一即可）：
   - 最稳：保持 `package_win7.ps1` **ASCII-only**
   - 若必须写中文：用 **UTF-8 with BOM** 保存该 `.ps1`
-  - 或用 PowerShell 7 执行（`pwsh`）
+  - 本项目继续以 Windows PowerShell 5.1 为目标，不以升级到 PowerShell 7 解决编码问题
 
 ---
 

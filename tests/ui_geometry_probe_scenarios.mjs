@@ -85,8 +85,8 @@ async function prepareCurrentScenario(expected) {
   }
   async function planCatalog() {
     await present('.plan-catalog');
-    if (document.querySelector('.plan-catalog button[aria-label="展开计划目录"]'))
-      await button('展开计划目录', '.plan-catalog');
+    if (document.querySelector('.plan-catalog button[aria-label="展开计划列表"]'))
+      await button('展开计划列表', '.plan-catalog');
     await tableReady('table[aria-label="可选排产方案"]');
   }
   async function gantt() {
@@ -152,16 +152,17 @@ async function prepareCurrentScenario(expected) {
   async function catalog() {
     await present('.rw-workbench[data-ready="true"]');
     await openDetails('其他报表');
+    await present('[aria-label="其他报表列表"]');
     await value('select[aria-label="其他报表"]', expected.catalog);
     if (['utilization', 'downtime'].includes(expected.catalog)) {
-      await value('input[aria-label="统计窗口起日"]', '2026-05-06');
-      await value('input[aria-label="统计窗口止日"]', '2026-05-06');
-      await click('button[aria-label="读取目录范围"]');
-      await until(() => document.querySelector('[aria-label="其他报表目录"]').textContent
-        .includes('统计窗口：2026-05-06 至 2026-05-06'), 'exact catalog date window');
+      await value('input[aria-label="统计起日"]', '2026-05-06');
+      await value('input[aria-label="统计止日"]', '2026-05-06');
+      await click('button[aria-label="读取报表范围"]');
+      await until(() => document.querySelector('[aria-label="其他报表列表"]').textContent
+        .includes('统计范围：2026-05-06 至 2026-05-06'), 'exact catalog date window');
     }
-    await until(() => !document.querySelector('[aria-label="其他报表目录"]').textContent.includes('正在读取目录报表'), 'catalog read completion');
-    await tableReady('[aria-label="其他报表目录"] table');
+    await until(() => !document.querySelector('[aria-label="其他报表列表"]').textContent.includes('正在读取报表'), 'catalog read completion');
+    await tableReady('[aria-label="其他报表列表"] table');
     if (document.querySelector('select[aria-label="其他报表"]').value !== expected.catalog) throw new Error('Wrong report catalog kind');
   }
   await until(() => document.querySelector('#root')?.dataset.workbenchBoot === 'ready', 'React boot ready');

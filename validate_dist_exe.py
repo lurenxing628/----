@@ -244,6 +244,9 @@ def _assert_runtime_db_path(db_path: str) -> None:
 
 
 def main() -> int:
+    # Runtime path resolution is needed by the CLI only, not its reusable probes.
+    from web.bootstrap.launcher_paths import resolve_prelaunch_log_dir, resolve_runtime_db_path
+
     if len(sys.argv) < 2:
         print("用法：python validate_dist_exe.py \"dist\\\\排产系统\\\\排产系统.exe\"")
         return 2
@@ -255,7 +258,7 @@ def main() -> int:
 
     print(f"[validate] 启动：{exe_path}")
     cwd = os.path.dirname(exe_path)
-    log_dir = os.path.join(cwd, "logs")
+    log_dir = resolve_prelaunch_log_dir(cwd, frozen=True)
 
     try:
         _assert_networkx_bundled(cwd)
@@ -281,6 +284,9 @@ def main() -> int:
     try:
         host, port, db_path = _wait_for_runtime_contract(log_dir, p, timeout_s=20.0)
         _assert_runtime_db_path(db_path)
+        expected_db_path = _normalize_db_path(resolve_runtime_db_path(cwd, frozen=True))
+        if _normalize_db_path(db_path) != expected_db_path:
+            raise RuntimeError(f"运行时数据库偏离交付目录配置：expected={expected_db_path} actual={db_path}")
         _wait_port_open(host, port, p, timeout_s=20.0)
         _assert_process_running(p, f"运行时端口就绪后进程已退出：{host}:{port}")
 

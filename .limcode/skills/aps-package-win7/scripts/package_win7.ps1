@@ -1,5 +1,7 @@
+#Requires -Version 5.1
 # APS Win7 packaging pipeline:
-# default -> build main installer + browser runtime installer + validate dist exe
+# default -> build self-contained portable ZIP, no Inno Setup required
+# -Installer -> build the previous main + browser runtime installers
 # legacy  -> build self-contained full installer for internal fallback only
 #
 # Run:
@@ -12,13 +14,20 @@
 # Keep this script ASCII-only to avoid ParserError when saved as UTF-8 without BOM.
 
 param(
+    [switch]$Installer,
     [switch]$MainOnly,
     [switch]$ChromeOnly,
     [switch]$Legacy
 )
 
-chcp 65001 | Out-Null
 $ErrorActionPreference = "Stop"
+# Console/native-process encoding is separate from the .ps1 source encoding.
+chcp 65001 | Out-Null
+$utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+[Console]::InputEncoding = $utf8NoBom
+[Console]::OutputEncoding = $utf8NoBom
+$OutputEncoding = $utf8NoBom
+$env:PYTHONIOENCODING = "utf-8"
 
 function Resolve-RepoRoot {
     # This script lives in: <repo>/.limcode/skills/aps-package-win7/scripts/package_win7.ps1
@@ -382,7 +391,9 @@ function Invoke-ChromeRuntimeSmoke([string]$chromeExe, [string]$label) {
     Test-PathOrThrow $chromeExe "Missing Chrome executable for smoke: $chromeExe"
 
     $pythonExe = Resolve-PythonExe
-    $smokeRoot = Join-Path $env:TEMP ("aps_chrome_smoke_" + [guid]::NewGuid().ToString("N"))
+    # Exercise non-ASCII paths and spaces in every real Windows browser smoke.
+    $unicodeProbe = -join ([char[]](25490, 20135))
+    $smokeRoot = Join-Path $env:TEMP ("aps chrome smoke " + $unicodeProbe + " " + [guid]::NewGuid().ToString("N"))
     $siteDir = Join-Path $smokeRoot "site"
     $profileDir = Join-Path $smokeRoot "profile"
     $serverProc = $null
@@ -399,20 +410,14 @@ function Invoke-ChromeRuntimeSmoke([string]$chromeExe, [string]$label) {
         Set-Content -Path (Join-Path $siteDir "index.html") -Value "<html><body>aps chrome smoke</body></html>" -Encoding ASCII
 
         $marker = (Resolve-Path $profileDir).Path
-        $serverArgs = @("-m", "http.server", "$port", "--bind", "127.0.0.1", "--directory", $siteDir)
+        $serverArgs = '-m http.server {0} --bind 127.0.0.1 --directory "{1}"' -f $port, $siteDir
         $serverProc = Start-Process -FilePath $pythonExe -ArgumentList $serverArgs -WorkingDirectory $siteDir -PassThru -WindowStyle Hidden
         if (-not (Wait-HttpReady $url 15)) {
             throw "Local smoke HTTP server did not become ready."
         }
 
-        $chromeArgs = @(
-            "--user-data-dir=$marker",
-            "--app=$url",
-            "--no-first-run",
-            "--disable-default-apps",
-            "--no-default-browser-check",
-            "--disable-background-networking"
-        )
+        # Start-Process joins arrays with spaces; quote path arguments explicitly.
+        $chromeArgs = '--user-data-dir="{0}" --app="{1}" --no-first-run --disable-default-apps --no-default-browser-check --disable-background-networking' -f $marker, $url
         $null = Start-Process -FilePath $chromeExe -ArgumentList $chromeArgs -WorkingDirectory (Split-Path $chromeExe -Parent) -PassThru
 
         $deadline = (Get-Date).AddSeconds(15)
@@ -568,6 +573,31 @@ function Invoke-MainPackageBuild([string]$iscc) {
     }
 }
 
+function Invoke-PortablePackageBuild {
+    Set-HostPortDefaults
+    Test-OnedirToolchain
+    $chrome = "tools\Chrome.109.0.5414.120.x64\chrome.exe"
+    Initialize-OfflineChrome109 $chrome
+    Test-PathOrThrow $chrome "Missing offline Chrome109 before portable build."
+
+    Invoke-CmdBat "build_win7_onedir.bat"
+    $distDir = Resolve-DistDir
+    $browserDir = Join-Path $distDir "tools\chrome109"
+    New-Item -ItemType Directory -Path (Split-Path $browserDir -Parent) -Force | Out-Null
+    New-ChromeRuntimePayload (Split-Path $chrome -Parent) $browserDir
+    python scripts/portable_release.py prepare "$distDir"
+    if ($LASTEXITCODE -ne 0) { throw "Portable payload preparation failed." }
+
+    Test-DistExeStartup $distDir
+    Invoke-ChromeRuntimeSmoke (Join-Path $browserDir "chrome.exe") "portable browser"
+    # Only the fresh build's validation state is removed. No installed data is touched.
+    Remove-PathWithRetry (Join-Path $distDir "user-data")
+    $output = "dist\APS_Portable_Win7_x64.zip"
+    python scripts/portable_release.py archive "$distDir" "$output"
+    if ($LASTEXITCODE -ne 0) { throw "Portable archive validation failed." }
+    Write-Host ("DONE: " + $output + " + .sha256")
+}
+
 function Invoke-ChromeRuntimeBuild([string]$iscc) {
     $chrome = "tools\Chrome.109.0.5414.120.x64\chrome.exe"
     Initialize-OfflineChrome109 $chrome
@@ -613,21 +643,24 @@ if ($MainOnly -and $ChromeOnly) {
     throw "MainOnly and ChromeOnly cannot be used together."
 }
 
-if ($Legacy -and ($MainOnly -or $ChromeOnly)) {
-    throw "Legacy cannot be combined with MainOnly or ChromeOnly."
+if ($Legacy -and ($Installer -or $MainOnly -or $ChromeOnly)) {
+    throw "Legacy cannot be combined with Installer, MainOnly or ChromeOnly."
 }
 
 $buildMain = -not $ChromeOnly
 $buildChrome = -not $MainOnly
-$iscc = Resolve-Iscc
-
-if (-not $iscc) {
-    throw "ISCC.exe not found. Install Inno Setup 6 or set ISCC_EXE/INNO_HOME."
-}
-
 $repoRoot = Resolve-RepoRoot
 Push-Location $repoRoot
 try {
+    if (-not ($Installer -or $MainOnly -or $ChromeOnly -or $Legacy)) {
+        Invoke-PortablePackageBuild
+        return
+    }
+
+    $iscc = Resolve-Iscc
+    if (-not $iscc) {
+        throw "ISCC.exe not found. Install Inno Setup 6 or set ISCC_EXE/INNO_HOME."
+    }
     $outputs = New-Object System.Collections.Generic.List[string]
 
     if ($Legacy) {

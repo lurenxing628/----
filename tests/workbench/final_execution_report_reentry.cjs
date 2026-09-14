@@ -3,28 +3,60 @@ const assert = require('node:assert/strict'), fs = require('node:fs'), path = re
 const { run } = require('./final_execution_browser_support.cjs');
 
 async function exercise(p, view) {
-  const { page } = p, events = [];
-  page.on('response', async response => {
-    const url = new URL(response.url());
-    if (!url.pathname.includes('/analytics') || url.pathname.endsWith('/export')) return;
-    const payload = await response.json();
-    events.push({ url: response.url(), status: response.status(), payload });
+  const { page } = p, events = [], pending = new Set(), requests = new Map(), readErrors = [];
+  const owns = value => {
+    const pathname = new URL(value.url()).pathname;
+    return pathname.includes('/analytics') && !pathname.endsWith('/export');
+  };
+  function track(reading) { pending.add(reading); reading.then(() => pending.delete(reading)); }
+  page.on('request', request => {
+    if (owns(request)) track(new Promise(resolve => requests.set(request, resolve)));
   });
-  p.report.read_events = events;
+  const finishRequest = request => {
+    const finish = requests.get(request);
+    if (finish) { requests.delete(request); finish(); }
+  };
+  page.on('requestfinished', finishRequest);
+  page.on('requestfailed', request => {
+    if (owns(request)) readErrors.push({ url: request.url(), failure: request.failure() });
+    finishRequest(request);
+  });
+  page.on('response', response => {
+    if (!owns(response)) return;
+    // Reserve the response's position before asynchronously retrieving its body.
+    const event = { url: response.url(), status: response.status() };
+    events.push(event);
+    track(response.json().then(payload => { event.payload = payload; }, error => {
+      readErrors.push({ url: response.url(), error: error.message });
+    }));
+  });
+  p.report.read_events = events; p.report.read_errors = readErrors;
+  async function drain() {
+    let timer;
+    const timeout = new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error('Analytics requests and response bodies did not finish')), 15000);
+    });
+    try { while (pending.size) await Promise.race([Promise.all([...pending]), timeout]); }
+    finally { clearTimeout(timer); }
+    assert.deepEqual(readErrors, [], 'Every analytics response body must be retained before sampling or navigation');
+  }
+  async function checkpoint() { await drain(); return events.length; }
+  async function readsSince(start) { await drain(); return events.slice(start); }
   async function restart(number, context) {
+    await drain();
     fs.writeFileSync(path.join(p.ready.root, 'report-reentry-restart-request-' + number + '.json'), JSON.stringify({ context, origin: p.ready.url }));
     const resumed = path.join(p.ready.root, 'report-reentry-restart-complete-' + number + '.json'), deadline = Date.now() + 100000;
     while (!fs.existsSync(resumed)) { assert(Date.now() < deadline, 'Owned server restart timed out'); await new Promise(resolve => setTimeout(resolve, 50)); }
     assert.equal(JSON.parse(fs.readFileSync(resumed, 'utf8')).url, p.ready.url);
   }
   async function openView() {
-    const first = events.length;
+    const first = await checkpoint();
     await p.read(() => page.locator('.sidebar a[href$="?view=reports"]').click(), '/analytics');
     if (view === 'reports') return first;
     await page.locator('.rw-workbench[data-ready="true"]').waitFor();
     const reviewTab = page.getByRole('tablist', { name: '统计分析视图', exact: true }).getByRole('tab', { name: '执行复盘', exact: true });
     if (await reviewTab.getAttribute('aria-selected') === 'true') return first;
-    const targetStart = events.length;
+    const targetStart = await checkpoint();
     await p.read(() => reviewTab.click(), '/analytics');
     p.report.view_entries = (p.report.view_entries || []).concat({ view, transit: events.slice(first, targetStart) });
     return targetStart;
@@ -58,7 +90,7 @@ async function exercise(p, view) {
     await page.locator('.rw-primary-table').waitFor();
     await page.getByRole('region', { name: '报表结果表格' }).locator('tbody tr').first().waitFor();
     await page.waitForFunction(ref => document.querySelector('.rw-detail .rw-detail-facts') && history.state.workbench.context.selected === ref, operationRef);
-    const reads = events.slice(startIndex), lists = reads.filter(event => new URL(event.url).pathname.endsWith('/analytics'));
+    const reads = await readsSince(startIndex), lists = reads.filter(event => new URL(event.url).pathname.endsWith('/analytics'));
     assert.equal(lists[0].status, 200); assert.equal(lists[0].payload.data.page.number, 1, label + ' starts a new page-one read');
     assert.equal(new URL(lists[0].url).searchParams.has('snapshot_ref'), false, label + ' does not replay an old token');
     const final = lists[lists.length - 1];
@@ -85,6 +117,7 @@ async function exercise(p, view) {
   }
 
   await p.step(['WBP-SCOPE-005', 'WBP-REPORT-010'], view + '-same-pid-sidebar-return-restores-page-two-original-detail', async () => {
+    await drain();
     await p.read(() => page.locator('.sidebar a[href$="?view=field"]').click(), '/execution/tasks');
     const start = await openView(); result = await assertRestored('same-pid-return', start);
   });
@@ -93,14 +126,14 @@ async function exercise(p, view) {
     const legacy = { ...current, snapshot_ref: result.meta.snapshot_ref, table: { ...current.table, snapshot_ref: result.meta.snapshot_ref } };
     p.report.legacy_history = legacy;
     await page.evaluate(value => history.replaceState({ ...history.state, workbench: { ...history.state.workbench, context: value } }, '', location.href), legacy);
-    const start = events.length; await page.reload(); result = await assertRestored('same-pid-legacy-F5', start);
+    const start = await checkpoint(); await page.reload(); result = await assertRestored('same-pid-legacy-F5', start);
   });
   await p.step(['WBP-SCOPE-005', 'WBP-REPORT-008', 'WBP-REPORT-010'], view + '-same-port-new-pid-read-detail-and-real-export', async () => {
     const legacy = { ...(await page.evaluate(() => history.state.workbench.context)), snapshot_ref: result.meta.snapshot_ref };
     legacy.table = { ...legacy.table, snapshot_ref: result.meta.snapshot_ref };
     await page.evaluate(value => history.replaceState({ ...history.state, workbench: { ...history.state.workbench, context: value } }, '', location.href), legacy);
     await restart(1, legacy);
-    const start = events.length; await page.reload(); result = await assertRestored('new-pid-original-read-view', start);
+    const start = await checkpoint(); await page.reload(); result = await assertRestored('new-pid-original-read-view', start);
     assert.notEqual(result.meta.snapshot_ref, legacy.snapshot_ref);
     const waiting = page.waitForResponse(response => new URL(response.url()).pathname.endsWith('/analytics/export'));
     const downloaded = await p.download(() => page.getByRole('button', { name: '导出范围', exact: true }).click(), view + '-page2-fullscope');
@@ -112,9 +145,10 @@ async function exercise(p, view) {
   });
   await p.step(['WBP-SCOPE-005.A005', 'WBP-REPORT-008.A004'], view + '-live-expired-export-detail-page-errors-never-auto-rebind', async () => {
     await restart(2, await page.evaluate(() => history.state.workbench.context));
-    const first = events.length;
+    const first = await checkpoint();
     const downloadError = await p.read(() => page.getByRole('button', { name: '导出范围', exact: true }).click(), '/analytics/export', 409);
     assert.equal(downloadError.error.code, 'snapshot_stale');
+    await drain();
     assert.equal(events.length, first, 'Export failure must not refresh the list automatically');
     await page.locator('.rw-detail').getByRole('button', { name: /^关闭/ }).click();
     const detailError = await p.read(() => page.locator('.rw-primary-table').getByRole('button', { name: /^查看工序 / }).first().click(), '/analytics/operations/' + operationRef, 409);
@@ -123,15 +157,15 @@ async function exercise(p, view) {
     await page.locator('.rw-detail').getByRole('button', { name: /^关闭/ }).click();
     const pageError = await p.read(() => page.locator('#report-topic-panel .rw-list-pane > .wb-pager').getByRole('button', { name: '下一页', exact: true }).click(), '/analytics', 409);
     assert.equal(pageError.error.code, 'snapshot_stale'); await page.getByRole('button', { name: '刷新报表数据', exact: true }).waitFor();
-    const failed = events.slice(first);
+    const failed = await readsSince(first);
     assert.equal(failed.length, 2); assert(failed.every(event => event.status === 409));
     assert(failed.every(event => new URL(event.url).searchParams.get('snapshot_ref') === result.meta.snapshot_ref));
     await p.shot('live-stale-explicit-error');
     p.report.live_stale = { export: downloadError, reads: failed };
-    const recovery = events.length;
+    const recovery = await checkpoint();
     await page.getByRole('button', { name: '刷新报表数据', exact: true }).click();
     await page.waitForFunction(() => { const node = document.querySelector('#report-topic-panel .rw-list-pane > .wb-pager'); return node && node.textContent.includes('第 3 /'); });
-    const recovered = events.slice(recovery).filter(event => new URL(event.url).pathname.endsWith('/analytics'));
+    const recovered = (await readsSince(recovery)).filter(event => new URL(event.url).pathname.endsWith('/analytics'));
     assert.equal(recovered.length, 2); assert.equal(recovered[0].payload.data.page.number, 1); assert.equal(recovered[1].payload.data.page.number, 3);
     assert.equal(new URL(recovered[0].url).searchParams.has('snapshot_ref'), false);
     assert.equal(new URL(recovered[1].url).searchParams.get('snapshot_ref'), recovered[0].payload.meta.snapshot_ref);
@@ -139,15 +173,16 @@ async function exercise(p, view) {
     p.report.explicit_recovery = recovered;
   });
   await p.step(['WBP-REPORT-010', 'WBP-REPORT-012'], view + '-unknown-original-detail-ref-stays-explicit-not-replaced', async () => {
-    const absent = '0'.repeat(48), start = events.length;
+    const absent = '0'.repeat(48), start = await checkpoint();
     await page.evaluate(ref => history.replaceState({ ...history.state, workbench: { ...history.state.workbench,
       context: { ...history.state.workbench.context, selected: ref } } }, '', location.href), absent);
     await page.reload(); await page.locator('.rw-detail').getByRole('alert').waitFor();
-    const queried = events.slice(start).filter(event => new URL(event.url).pathname.includes('/analytics/operations/'));
+    const queried = (await readsSince(start)).filter(event => new URL(event.url).pathname.includes('/analytics/operations/'));
     assert.equal(queried.length, 1); assert(queried[0].url.includes('/operations/' + absent)); assert.equal(queried[0].status, 404);
     assert.equal(await page.evaluate(() => history.state.workbench.context.selected), absent);
     assert.equal(await page.locator('.rw-detail-facts').count(), 0);
     p.report.unknown_detail = queried[0]; await p.shot('unknown-original-ref');
   });
+  await drain();
 }
 run('report-reentry', exercise, { once: true });

@@ -13,6 +13,12 @@ RUNTIME_SHUTDOWN_PATH = "/system/runtime/shutdown"
 RUNTIME_LOCK_FILE = "aps_runtime.lock"
 RUNTIME_ERROR_FILE = "aps_launch_error.txt"
 RUNTIME_DB_LOCK_SUFFIX = ".lock"
+PORTABLE_MARKER_FILE = "aps-portable.txt"
+
+
+def is_portable_runtime(base_dir: str) -> bool:
+    """随交付目录携带的标记优先于旧安装记录和账户环境变量。"""
+    return os.path.isfile(os.path.join(base_dir, PORTABLE_MARKER_FILE))
 
 
 def _normalize_db_path_for_runtime(db_path: Optional[str]) -> str:
@@ -86,6 +92,8 @@ def read_shared_data_root_from_registry() -> str:
 
 
 def resolve_shared_data_root(base_dir: str, *, frozen: Optional[bool] = None) -> str:
+    if is_portable_runtime(base_dir):
+        return os.path.abspath(os.path.join(base_dir, "user-data"))
     explicit_root = _normalize_abs_dir(os.environ.get("APS_SHARED_DATA_ROOT"))
     if explicit_root:
         return explicit_root
@@ -105,7 +113,7 @@ def resolve_shared_data_root(base_dir: str, *, frozen: Optional[bool] = None) ->
 
 
 def resolve_prelaunch_log_dir(runtime_dir: str, *, frozen: Optional[bool] = None) -> str:
-    explicit_log_dir = _normalize_abs_dir(os.environ.get("APS_LOG_DIR"))
+    explicit_log_dir = "" if is_portable_runtime(runtime_dir) else _normalize_abs_dir(os.environ.get("APS_LOG_DIR"))
     if explicit_log_dir:
         return explicit_log_dir
     return os.path.join(resolve_shared_data_root(runtime_dir, frozen=frozen), "logs")
@@ -119,7 +127,8 @@ def resolve_runtime_db_path(base_dir: str, *, frozen: Optional[bool] = None) -> 
     两处一旦分叉就回到"锁锚定 A、库锚定 B"的同库双开缺口
     （tests/app_runtime/test_runtime_db_scope_lock.py 以合同测试锁定同源性）。
     """
-    return os.environ.get("APS_DB_PATH") or os.path.join(
+    explicit_db_path = "" if is_portable_runtime(base_dir) else os.environ.get("APS_DB_PATH")
+    return explicit_db_path or os.path.join(
         resolve_shared_data_root(base_dir, frozen=frozen), "db", "aps.db"
     )
 
@@ -138,6 +147,8 @@ def db_scope_lock_path(db_path: str) -> str:
 
 
 def runtime_log_dir(runtime_dir: str) -> str:
+    if is_portable_runtime(runtime_dir):
+        return os.path.join(str(runtime_dir), "user-data", "logs")
     return os.path.join(str(runtime_dir), "logs")
 
 
@@ -155,6 +166,8 @@ def resolve_runtime_state_dir(runtime_dir: str, cfg_log_dir: Optional[str] = Non
 
 def resolve_runtime_state_dir_for_read(runtime_dir_or_state_dir: str) -> str:
     base = os.path.abspath(str(runtime_dir_or_state_dir))
+    if is_portable_runtime(base):
+        return runtime_log_dir(base)
     if os.path.basename(base).strip().lower() == "logs":
         return base
     direct_files = [
@@ -175,6 +188,9 @@ def runtime_dir_from_state_dir(state_dir: str) -> str:
     if os.path.basename(state_dir_abs).strip().lower() == "logs":
         parent_dir = os.path.dirname(state_dir_abs)
         if parent_dir:
+            portable_dir = os.path.dirname(parent_dir)
+            if os.path.basename(parent_dir) == "user-data" and is_portable_runtime(portable_dir):
+                return portable_dir
             return parent_dir
     return state_dir_abs
 
@@ -235,6 +251,8 @@ def resolve_runtime_state_paths(runtime_dir_or_state_dir: str) -> Dict[str, str]
 
 
 def default_chrome_profile_dir(runtime_dir: str) -> str:
+    if is_portable_runtime(runtime_dir):
+        return os.path.abspath(os.path.join(runtime_dir, "user-data", "chrome109_profile"))
     local_appdata = str(os.environ.get("LOCALAPPDATA") or "").strip()
     if local_appdata:
         if "\\" in local_appdata and "/" not in local_appdata:

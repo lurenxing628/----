@@ -40,6 +40,7 @@ from web.routes.workbench.legacy_dispatch import install_legacy_retirement
 from web.routes.workbench.registration import bp as workbench_bp
 
 from .launcher import resolve_shared_data_root
+from .launcher_paths import is_portable_runtime, resolve_runtime_db_path
 from .launcher_shutdown import (
     RuntimeExitBackupManager,
     RuntimeHostStopTransport,
@@ -96,11 +97,12 @@ def _app_log_once(app: Flask, key: str, level: str, message: str, *args: Any) ->
 def _apply_runtime_config(app: Flask, *, base_dir: str) -> None:
     app.config["BASE_DIR"] = base_dir
     data_root = resolve_shared_data_root(base_dir)
-    app.config["DATABASE_PATH"] = (os.environ.get("APS_DB_PATH") or os.path.join(data_root, "db", "aps.db"))
-    app.config["LOG_DIR"] = (os.environ.get("APS_LOG_DIR") or os.path.join(data_root, "logs"))
-    app.config["BACKUP_DIR"] = (os.environ.get("APS_BACKUP_DIR") or os.path.join(data_root, "backups"))
+    overrides = {} if is_portable_runtime(base_dir) else os.environ
+    app.config["DATABASE_PATH"] = resolve_runtime_db_path(base_dir)
+    app.config["LOG_DIR"] = (overrides.get("APS_LOG_DIR") or os.path.join(data_root, "logs"))
+    app.config["BACKUP_DIR"] = (overrides.get("APS_BACKUP_DIR") or os.path.join(data_root, "backups"))
     app.config["EXCEL_TEMPLATE_DIR"] = (
-        os.environ.get("APS_EXCEL_TEMPLATE_DIR") or os.path.join(data_root, "templates_excel")
+        overrides.get("APS_EXCEL_TEMPLATE_DIR") or os.path.join(data_root, "templates_excel")
     )
 
 

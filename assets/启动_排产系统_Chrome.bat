@@ -7,6 +7,8 @@ setlocal EnableExtensions EnableDelayedExpansion
 
 cd /d "%~dp0"
 set "APP_DIR=%CD%"
+set "PORTABLE="
+if exist "%APP_DIR%\aps-portable.txt" set "PORTABLE=1"
 set "HOST=127.0.0.1"
 set "PORT=5000"
 if defined APS_HOST set "HOST=%APS_HOST%"
@@ -24,6 +26,7 @@ for %%F in (*.exe) do (
   if /I not "!CANDIDATE_STEM:~0,5!"=="unins" if /I not "!CANDIDATE_NAME!"=="chrome.exe" if not defined APP_EXE set "APP_EXE=%APP_DIR%\%%~nxF"
 )
 
+if defined PORTABLE call :configure_portable_data
 call :resolve_shared_data_root
 if not defined APS_SHARED_DATA_ROOT set "APS_SHARED_DATA_ROOT=%SHARED_DATA_ROOT%"
 if not defined APS_DB_PATH set "APS_DB_PATH=%SHARED_DATA_ROOT%\db\aps.db"
@@ -60,6 +63,7 @@ set "DEFAULT_USER_CHROME_DIR=%LOCALAPPDATA%\APS\Chrome109"
 set "CHROME_PROFILE_DIR=%LOCALAPPDATA%\APS\Chrome109Profile"
 if not defined LOCALAPPDATA set "DEFAULT_USER_CHROME_DIR=%APP_DIR%\chrome109_runtime"
 if not defined LOCALAPPDATA set "CHROME_PROFILE_DIR=%APP_DIR%\chrome109_profile"
+if defined PORTABLE set "CHROME_PROFILE_DIR=%APP_DIR%\user-data\chrome109_profile"
 
 call :log launcher_begin
 call :log app_dir="%APP_DIR%"
@@ -76,6 +80,12 @@ if not defined APP_EXE (
 call :log app_exe="%APP_EXE%"
 for %%I in ("%APP_EXE%") do set "APP_EXE_NAME=%%~nxI"
 call :log app_exe_name="%APP_EXE_NAME%"
+
+if defined PORTABLE (
+  set "CHROME_EXE=%APP_DIR%\tools\chrome109\chrome.exe"
+  set "CHROME_SOURCE=portable tools\chrome109"
+  goto :CHROME_RESOLVED
+)
 
 if defined APS_CHROME_DIR set "ENV_CHROME_DIR=%APS_CHROME_DIR:"=%"
 if defined ENV_CHROME_DIR (
@@ -129,6 +139,13 @@ if not defined CHROME_SOURCE if defined ProgramFiles(x86) call :try_chrome_dir "
 if not defined CHROME_SOURCE call :try_chrome_dir "%DEFAULT_USER_CHROME_DIR%" "default user Chrome109 dir"
 if not defined CHROME_SOURCE call :try_chrome_dir "%APP_DIR%\tools\chrome109" "legacy tools\chrome109"
 
+:CHROME_RESOLVED
+if defined PORTABLE if not exist "%CHROME_EXE%" (
+  call :log portable_chrome_missing="%CHROME_EXE%"
+  echo [launcher] Portable browser is missing. Extract the complete APS portable ZIP again.
+  pause
+  exit /b 2
+)
 if not defined CHROME_SOURCE (
   call :log chrome_runtime_not_found
   echo [launcher] Chrome runtime not found.
@@ -290,6 +307,14 @@ if not defined CHROME_ALIVE (
   pause
   exit /b 11
 )
+exit /b 0
+
+:configure_portable_data
+set "APS_SHARED_DATA_ROOT=%APP_DIR%\user-data"
+set "APS_DB_PATH=%APP_DIR%\user-data\db\aps.db"
+set "APS_LOG_DIR=%APP_DIR%\user-data\logs"
+set "APS_BACKUP_DIR=%APP_DIR%\user-data\backups"
+set "APS_EXCEL_TEMPLATE_DIR=%APP_DIR%\user-data\templates_excel"
 exit /b 0
 
 :resolve_shared_data_root

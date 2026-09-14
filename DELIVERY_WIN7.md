@@ -1,181 +1,98 @@
-# Win7 离线交付与直拷说明（V2）
+# Win7 绿色便携版交付
 
-> 目标：把“打包机（Win7）→ 生成 onedir 交付目录 → 冷启动验收 → 交付给目标机”的流程固化，同时与双包安装器口径保持一致。
+默认交付 `APS_Portable_Win7_x64.zip`：完整解压后，双击 `启动_排产系统_Chrome.bat` 即可使用。主程序、Python 运行时和 APS 专用 Chrome109 都在包内，目标机不需要安装这些组件，也不需要管理员安装或区分本地账户与域账户。
 
-## 0) 先明确三种交付口径
+## 使用与数据位置
 
-### A. 正式安装包交付（推荐）
+解压到当前账户可读写的本机目录，例如 `D:\APS`。不要在 ZIP 内直接启动，也不要放到当前账户不可写的 `Program Files`。Windows 文件夹权限仍然生效；同一目录供其他账户使用时，也须允许其读写。
 
-- `APS_Main_Setup.exe`
-- `APS_Chrome109_Runtime.exe`
+也可以直接把打包机上构建完成的整个 `dist/排产系统/` 文件夹复制到目标机，保留全部文件和便携标记。
 
-说明：这是对外正式交付口径。详见 `installer/README_WIN7_INSTALLER.md`。
+如果解压后的中文文件名异常，可在 ZIP 所在目录打开 Windows PowerShell 5.1，解压到一个新的可写目录：
 
-补充说明：
+```powershell
+Expand-Archive -LiteralPath '.\APS_Portable_Win7_x64.zip' -DestinationPath 'D:\APS_new'
+```
 
-- 正式双包交付请以 `.limcode/skills/aps-package-win7/scripts/package_win7.ps1` 为完整入口
-- 该入口会同时执行：
-  - 主程序 `validate_dist_exe.py` 冷启动验收
-  - 浏览器运行时最小冒烟（`chrome.exe --app=http://127.0.0.1:{port}/`）
-- 任一验收失败都会直接阻断出包
-- `APS_Chrome109_Runtime.exe` 是 **APS 专用浏览器运行时**，目标是打开本机 APS 页面，不是完整桌面 Chrome 交付
-- 正式运行时包仅保留 `locales\zh-CN.pak` 与 `locales\en-US.pak`
-- 正式运行时包会移除 `chrome_proxy.exe`、`chrome_pwa_launcher.exe`、`notification_helper.exe`、`elevation_service.exe`
-- 正式运行时包继续保留 `chrome_wer.dll` 与 `First Run`，兼顾崩溃诊断与首启稳定性
-- 正式安装口径为：**管理员统一安装 + 共享数据目录 + 仅允许单活用户**
-- 若目标机已存在旧 APS 安装或残留目录，`APS_Main_Setup.exe` / `APS_Legacy_Full_Setup.exe` 会在复制文件前弹出一次“强制清理”确认框
-- 你确认后，安装器会删除旧主程序安装目录、`C:\ProgramData\APS\shared-data`、当前安装账户 `%LOCALAPPDATA%\APS\排产系统`
-- 上述强制清理**不会**删除 `%LOCALAPPDATA%\APS\Chrome109Profile`，也不会删除独立 Chrome109 运行时目录；`APS_Chrome109_Runtime.exe` 仍保持独立安装/卸载边界
-- 如果你取消确认，安装器会退出且不执行清理
+本包采用 ZIP 标准的 UTF-8 文件名；PowerShell 5.1 的解压接口支持该编码。微软曾记录 Win7 自带解压组件的文件名乱码问题，因此不能把旧系统解压器的行为当作已验收。[Expand-Archive 5.1](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.archive/expand-archive?view=powershell-5.1) · [Win7 解压组件问题](https://support.microsoft.com/en-us/topic/japanese-characters-in-file-names-are-displayed-as-garbled-text-after-you-decompress-a-zip-file-in-windows-7-or-in-windows-server-2008-r2-a8dab642-4dc7-0872-4ee7-86cfd430a929)
 
-安装后启动与排障：
+```text
+APS_Portable/
+  启动_排产系统_Chrome.bat    日常启动入口
+  排产系统.exe              后台服务
+  aps-portable.txt           便携标记，必须保留
+  README_PORTABLE.txt        随包使用说明
+  tools/chrome109/           专用浏览器
+  static/、templates/…      程序资源
+  user-data/                首次启动自动生成
+    db/aps.db               业务数据库
+    backups/                备份
+    logs/                   日志、密钥和运行状态
+    templates_excel/        Excel 模板
+    chrome109_profile/      APS 浏览器配置
+```
 
-- 主程序 `排产系统.exe` 只负责在后台启动本地服务；双击它时如果没有弹出窗口，不代表启动失败。
-- 正常入口是开始菜单或桌面快捷方式 **“排产系统”**，其实际执行安装目录根下的 `启动_排产系统_Chrome.bat`。
-- 若快捷方式只闪一下且未打开 Chrome，请先查看共享数据目录下的 `logs\launcher.log`
-  - 默认安装时通常是：`C:\ProgramData\APS\shared-data\logs\launcher.log`
-  - 如果共享数据目录被自定义，应到该共享目录下查看 `logs\launcher.log`
-- 若后端刚启动就失败，还应查看同目录下的 `aps_launch_error.txt`
-- `launcher.log` 会记录 `contract_owner_normalized`、`app_spawn_probe`、`env_APS_CHROME_DIR`、`reg_HKLM_ChromeDir`、`reg_HKCU_APS_CHROME_DIR`、`chrome_source`、`chrome_exe`、`chrome_run_dir`、`chrome_profile_probe`、`chrome_alive_probe` 与 `chrome_cmd`
-- 启动器在拉起浏览器后，只会把当前 `CHROME_PROFILE_DIR` 对应的 APS 专用 `--user-data-dir` 进程视为成功；系统里普通 Chrome 共存不会被当成 APS 已拉起
-- 现场排障时，可把 `launcher.log` 里的 `chrome_cmd` 整行复制到 `cmd` 中执行，用于继续区分 profile 不可写、Chrome 瞬退、路径缺件与纯 bat 拉起问题
-- 启动器的浏览器查找顺序是：`APS_CHROME_EXE` → 当前进程 `APS_CHROME_DIR` → 机器级注册表 `HKLM\SOFTWARE\APS\ChromeDir` → 兼容旧版注册表 `HKCU\Environment\APS_CHROME_DIR` → 默认 `C:\Program Files\APS\Chrome109` / `%LOCALAPPDATA%\APS\Chrome109` → legacy `tools\chrome109`
-- 若另一账户正在使用共享数据目录，启动器会直接阻止第二个账户进入，而不是复用已有实例
-- 卸载 `APS_Chrome109_Runtime.exe` 时，会尝试关闭任意账户下使用 APS 标准 profile 目录的 APS Chrome；如果无法确认已关闭，silent uninstall 会失败闭合，且仍不会自动删除任何账户的 `%LOCALAPPDATA%\APS\Chrome109Profile`
+程序检测到 `aps-portable.txt` 后，数据库、日志、备份、模板和浏览器配置固定随目录走。旧安装注册表、`ProgramData`、`LOCALAPPDATA` 及 `APS_*` 数据路径覆盖不会把便携版引向其他目录；启动器只使用包内浏览器。路径不可写时明确失败，不换地方建库。
 
-### B. 最小直拷交付（支持）
+同一份数据一次只允许一个实例使用；重复启动和另一账户占用时仍执行现有的运行锁保护。使用系统页面退出功能，等待程序正常退出后再复制、移动、升级或拔出存储设备。专用浏览器只用于本机 APS 页面。
 
-- 只复制 `dist/排产系统/`
-- 允许直接运行 `排产系统.exe`
-- **不承诺** 内置浏览器运行时
+## 构建
 
-### C. legacy 自包含直拷（仅内部/应急）
+打包机基线：**Win7 SP1 x64、Python 3.8.x x64、PyInstaller 4.10、Windows PowerShell 5.1**。目标机按本次确认的 Windows PowerShell 5.1 环境使用，不依赖 PowerShell 7。
 
-- `dist/排产系统/` 内额外带 `tools/chrome109/`
-- 并放入 `启动_排产系统_Chrome.bat`
-- 只用于现场应急或回退，不作为常规交付
-
-## 1) 前置条件（打包机）
-
-- **Windows 7 x64**（建议 Win7 SP1）
-- **Python 3.8.x x64**
-- **PyInstaller 4.10**（必须严格 4.10，不是任意 4.x，也不要用 5.x/6.x）
-- **离线依赖准备**（无网环境）：
-  - 推荐方式：提前在有网环境下载 wheel 到本地，再拷贝到打包机安装
-  - 打包前必须安装三份依赖：`requirements.txt`、`requirements-dev.txt`、`requirements-optimizer-lite-win7.txt`
-  - 当前图分析默认开启，`requirements-optimizer-lite-win7.txt` 里的 `networkx==3.1` 必须已经装进 Python 3.8 环境；打包脚本里的 `--hidden-import networkx` 只会收集已安装模块，不会自动下载缺失依赖
-  - 或者：使用已经安装好依赖的 Python 环境直接打包
-
-离线安装示例：
+先离线安装三份依赖，并准备 Chrome109：
 
 ```bat
 python -m pip install --no-index --find-links C:\wheelhouse -r requirements.txt -r requirements-dev.txt -r requirements-optimizer-lite-win7.txt
 ```
 
-## 2) 生成最小直拷目录（支持）
+- 浏览器源目录：`tools\Chrome.109.0.5414.120.x64\chrome.exe`，或离线 `tools\ungoogled-chromium_109*.zip`。
+- 默认图分析需要 `networkx==3.1`；`build_win7_onedir.bat` 会从 `vendor/wheels` 离线安装并核对版本。
+- 不需要 Inno Setup、注册表写入或安装器权限配置。
 
-在仓库根目录执行：
-
-```bat
-build_win7_onedir.bat
-```
-
-成功后产物在：
-
-- `dist/排产系统/排产系统.exe`
-- `dist/排产系统/templates/`
-- `dist/排产系统/static/`
-- `dist/排产系统/templates_excel/`
-- `dist/排产系统/plugins/`（可选：自研插件投放目录）
-- `dist/排产系统/vendor/`（可选：离线依赖投放目录，会在启动时注入 `sys.path`）
-- `dist/排产系统/schema.sql`
-
-> 说明：`db/ logs/ backups/ templates_excel/` 等目录会在首次运行时自动创建（见 `app.py` / `config.py` 的运行目录逻辑）。
-
-## 3) 冷启动验收（强烈建议）
-
-在打包机执行：
+仓库根目录执行：
 
 ```bat
-python validate_dist_exe.py "dist\排产系统\排产系统.exe"
+build_win7_portable.bat
 ```
 
-正式双包交付时，还应使用 `package_win7.ps1` 追加浏览器运行时最小冒烟；`build_win7_installer.bat` 或单独执行 `validate_dist_exe.py` 都不能替代这一步。
+等价命令：
 
-若失败，请优先查看：
-
-- `dist/排产系统/logs/aps_error.log`
-
-> 注意：`validate_dist_exe.py` 只验证主程序 `exe` 冷启动与 HTTP 页面，不覆盖快捷方式、批处理脚本、环境变量刷新时序或 Chrome 启动链路。
-
-## 4) 最小直拷交付怎么用
-
-将整个 `dist/排产系统/` 目录复制到目标机即可运行（目标机无需 Python、无需联网）。
-
-目标机运行后会生成（或更新）：
-
-- `db/aps.db`
-- `logs/aps.log`、`logs/aps_error.log`
-- `backups/*`（退出自动备份、手动备份、恢复前备份等）
-
-### 浏览器怎么打开
-
-最小直拷目录默认有两种方式：
-
-1. 直接双击 `排产系统.exe` 启动程序，再手工打开浏览器访问实际 URL
-2. 如果目标机已经安装过 `APS_Chrome109_Runtime.exe`，可额外把 `assets/启动_排产系统_Chrome.bat` 复制到 `dist` 目录旁边，使用启动器打开
-
-> 注意：实际 URL 不一定是 `http://127.0.0.1:5000/`，应以 `logs/aps_host.txt` 与 `logs/aps_port.txt` 为准。
->
-> 该运行时包只保证 `chrome.exe --app=http://{HOST}:{PORT}/` 这条 APS 启动链路，不承诺 PWA/系统通知/文件关联等完整桌面浏览器能力。
-
-## 5) legacy 自包含直拷（仅内部/应急）
-
-如果确实需要“目录一拷就能用启动器 + 浏览器运行时”的 self-contained 交付，只能走 legacy 路线：
-
-```bat
-build_win7_onedir.bat
-stage_chrome109_to_dist.bat
-copy /y "assets\启动_排产系统_Chrome.bat" "dist\排产系统\启动_排产系统_Chrome.bat"
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .limcode/skills/aps-package-win7/scripts/package_win7.ps1
 ```
 
-此时 `dist/排产系统/` 内会包含：
+流程会核对工具链和浏览器源，重新生成 `build/`、`dist/` 中的构建产物，复制裁剪后的 Chrome109、启动器、使用说明和便携标记，执行主程序冷启动及浏览器最小冒烟，然后清理**本次新构建的测试数据**，最后生成 ZIP 并检查完整性。不要把生产数据保存在仓库的构建目录里。
 
-- `排产系统.exe`
-- `启动_排产系统_Chrome.bat`
-- `tools/chrome109/`
+输出：`dist/APS_Portable_Win7_x64.zip` 和 `dist/APS_Portable_Win7_x64.zip.sha256`。压缩包必须包含一个完整的 `APS_Portable/` 目录。打包器发现数据库、日志、备份或浏览器用户数据混入时会拒绝出包，不会静默删掉这些数据。
 
-> 该路线仅用于内部应急，不是常规交付方案。
+单独执行 `build_win7_onedir.bat` 只生成开发用主程序目录，尚未组成便携交付包。
 
-## 6) 建议的直拷交付验收清单（人工）
+## PowerShell 5.1 与中文路径
 
-- [ ] 双击 `排产系统.exe` 可启动
-- [ ] `logs/aps_host.txt` / `logs/aps_port.txt` 已生成且可读
-- [ ] 关键页面可访问：人员 / 设备 / 工艺 / 排产 / 系统管理
-- [ ] 报表中心可访问：超期 / 利用率 / 停机影响，且可导出 Excel
-- [ ] 导入一份 Excel → 预览 → 确认导入（写入留痕）
-- [ ] 执行一次排产，查看甘特图与周计划导出
-- [ ] 关闭程序后：若已启用“自动备份”，`backups/` 出现 `*_exit.db`；未启用时不生成退出备份
+微软说明：Windows PowerShell 可能把无 BOM 的非 ASCII 脚本按旧 ANSI 代码页解析；5.1 的文件编码默认值也不统一。[字符编码文档](https://learn.microsoft.com/zh-cn/powershell/module/microsoft.powershell.core/about/about_character_encoding?view=powershell-7.5)
 
-## 7) 与安装包口径的关系
+- 打包 `.ps1` 保持纯 ASCII，并使用 `#Requires -Version 5.1`。不使用 `utf8NoBOM` 编码参数、PowerShell 7 语法或要求升级到 7 的回退方案。
+- 控制台、PowerShell 原生命令管道与 Python 输出显式设置 UTF-8；设置作用于本次进程，不改机器或账户的全局配置。
+- 启动 `.bat` 保持项目既有 UTF-8 无 BOM、LF 与第二行 `chcp 65001` 合同；中文使用说明在出包时写成 UTF-8 带 BOM，供 Win7 记事本读取。
+- `.gitattributes` 为这些启动文件固定 `text eol=lf`，避免 Windows 的 `core.autocrlf` 改变既有换行合同；不更改用户全局 Git 设置。[Git 换行属性文档](https://git-scm.com/docs/gitattributes)
+- 浏览器验收对路径参数显式加双引号，并在含中文、空格的临时目录里执行。微软说明 `Start-Process` 会把参数数组拼为字符串，外层字符串引号不会自动传给子进程。[Start-Process 5.1 文档](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.management/start-process?view=powershell-5.1)
 
-- 正式对外交付优先使用双包安装器
-- 双包安装器与最小直拷的运行边界不同：
-  - 双包安装器：共享同一套数据，要求只允许单活用户
-  - 最小直拷：目录自包含，仍按当前目录生成 `db/logs/backups`
-- `dist/排产系统/` 的价值主要是：
-  - 冷启动验收
-  - 内部直拷调试
-  - 现场应急回退
-- `build_win7_installer.bat` 只负责主程序包构建，不是正式双包交付的完整验收入口
-- 不要再默认把“直拷目录”理解成“天然自带浏览器运行时的自包含安装包”
-- 不要把 `APS_Chrome109_Runtime.exe` 理解成完整 Chrome 安装器；它是为 APS 本地页面访问裁剪过的运行时
+5.1 是本次现场基线，不能仅凭“Win7”推断版本；微软将其作为 WMF 5.1 更新提供给 Win7。[微软 WMF 5.1 发布说明](https://devblogs.microsoft.com/powershell/windows-management-framework-wmf-5-1-released/)
 
-## 8) 残余问题收口验收
+## 升级、搬迁与旧安装数据
 
-- 普通 Chrome 共存场景：先手工打开一个普通 Chrome 窗口，再制造 APS 专用浏览器启动后立即退出的坏现场，随后点击 APS 快捷方式；预期脚本必须报告“未能确认 APS 专用浏览器已拉起”或等价错误，不能因为系统里已有普通 Chrome 就直接返回成功。
-- 双账户卸载场景：账户 A 先通过 APS 快捷方式打开 APS 专用浏览器窗口，不关闭账户 A 的 APS Chrome，切换到账户 B 或管理员账户后发起 `APS_Chrome109_Runtime.exe` 卸载；预期卸载器要么成功关闭账户 A 的 APS Chrome 后继续，要么明确失败闭合，不能出现目标进程仍在但卸载器声称已关闭的假成功。
-- 需要检查的日志键：`chrome_alive_probe`、`chrome_cmd`
+- **升级**：新 ZIP 解压到新的空目录；正常退出旧程序后，把旧 `user-data/` 完整复制到新目录，再从新目录启动。保留旧目录作为副本，避免边运行边覆盖程序文件。
+- **换目录或电脑**：正常退出后，复制整个 `APS_Portable/` 目录。
+- **安装版转便携版**：先在旧系统导出备份，再进入新便携版的系统维护页面恢复。新包首次启动为空库，不自动读取、迁移或清理旧安装数据。
+- **移除便携版**：正常退出并确认业务数据已备份后，删除其整个目录即可。
 
-- 浏览器运行时卸载只匹配命令行里带 APS 标准 `--user-data-dir` 的 APS Chrome，不会把普通 Chrome 当成卸载目标。
-- 卸载器仍不会自动删除任何账户的 `%LOCALAPPDATA%\APS\Chrome109Profile`。
+## 验收与排障
+
+- `validate_dist_exe.py` 核对实际数据库路径、运行时身份、HTTP 页面与静态载荷；绿色版应生成 `user-data/logs/` 和 `user-data/db/aps.db`。
+- 浏览器最小冒烟只证明 APS 专用浏览器可以拉起并短时存活；不能代替目标机完整使用验收。
+- Win7 / PowerShell 5.1 现场还须验证：中文＋空格目录解压、双击启动、再次启动、正常退出、备份恢复、关闭后整目录搬迁、存在旧安装记录及切换账户后的路径隔离。
+- 启动失败先看 `user-data/logs/launcher.log`，再看同目录 `aps_launch_error.txt`；不要通过删除运行锁来强行开启第二个实例。
+- macOS 上的路径、打包合同、静态编码测试不等于 Windows EXE 或 PowerShell 5.1 真机通过。
+
+原双安装包仅保留为维护入口：`package_win7.ps1 -Installer`；`-MainOnly`、`-ChromeOnly`、`-Legacy` 继续显式可用，详见 [历史安装版说明](installer/README_WIN7_INSTALLER.md)。
