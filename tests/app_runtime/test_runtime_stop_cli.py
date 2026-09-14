@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Dict, Tuple
 
 from tests._support.paths import REPO_ROOT_STR as REPO_ROOT
-from tests.app_runtime.runtime_cleanup_helper import assert_repo_runtime_stopped
+from tests.app_runtime.runtime_cleanup_helper import REAL_RUNTIME_STARTUP_TIMEOUT_S, assert_repo_runtime_stopped
 
 
 def _contract_paths(log_dir: str) -> Tuple[str, str, str, str, str, str]:
@@ -139,7 +139,7 @@ def test_runtime_stop_cli() -> None:
     )
 
     try:
-        host, port, _db_path = _wait_for_runtime_contract(log_dir, p, timeout_s=20.0)
+        host, port, _db_path = _wait_for_runtime_contract(log_dir, p, timeout_s=REAL_RUNTIME_STARTUP_TIMEOUT_S)
         if not _probe_health(host, port, timeout=2.0):
             raise RuntimeError(f"应用启动后健康检查未通过：{host}:{port}")
 

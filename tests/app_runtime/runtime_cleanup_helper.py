@@ -11,6 +11,7 @@ import urllib.request
 from pathlib import Path
 from typing import Dict, Iterable, Optional, Tuple
 
+REAL_RUNTIME_STARTUP_TIMEOUT_S = 45.0
 _RUNTIME_STATE_FILENAMES = (
     "aps_host.txt",
     "aps_port.txt",

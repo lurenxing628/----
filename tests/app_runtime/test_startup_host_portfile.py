@@ -27,6 +27,7 @@ from pathlib import Path
 from typing import Dict
 
 from tests.app_runtime.runtime_cleanup_helper import (
+    REAL_RUNTIME_STARTUP_TIMEOUT_S,
     assert_repo_runtime_stopped,
     cleanup_runtime_process,
     clear_repo_runtime_state,
@@ -228,7 +229,7 @@ def _run_case(repo_root: str, aps_host: str) -> None:
             p,
             expected_pid=p.pid,
             expected_ui_mode="default",
-            timeout_s=15.0,
+            timeout_s=REAL_RUNTIME_STARTUP_TIMEOUT_S,
         )
         port = _wait_for_port_file(port_file, p, timeout_s=15.0)
         if port <= 0:
