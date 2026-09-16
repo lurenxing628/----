@@ -55,7 +55,7 @@ async function selectionLifecycle(page) {
       assert(after.calls.every(call => ['catalog', 'workspace'].includes(call.type)), 'Selection navigation may only read');
       assert.deepEqual(after.selected_refs, related && !missing ? [previous] : [], 'Full read must honor the new intent and never replay the old initial task');
       if (!related) assert(before.alerts.some(text => /工序|任务|定位/.test(text) && /范围|未找到|不存在|没找到/.test(text)), 'Missing initial target must be explicitly reported without expanding its range');
-      if (missing) assert(after.alerts.some(text => text.includes('这份完整计划里没找到相关的工序，没有改选其他工序。')), 'Missing relation must expose its exact failure');
+      if (missing) assert(after.alerts.some(text => text.includes('此计划中未找到相关工序。')), 'Missing relation must expose its exact failure');
       else if (related) assert.deepEqual(after.alerts, []);
       item.passed = true;
     } catch (error) {

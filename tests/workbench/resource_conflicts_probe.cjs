@@ -18,7 +18,7 @@ async function conflicts(page,context,state,helpers,report,origin){
     }finally{await other.close();}
     const rejected=await save(page,'material','update',409);assert.equal(rejected.error.code,'stale_write');
     assert.equal(await page.getByRole('dialog').locator('input[name="label"]').inputValue(),'Primary reviewed name');
-    await page.getByRole('button',{name:'刷新最新资料',exact:true}).click();await page.getByRole('button',{name:'已核对，继续编辑',exact:true}).click();
+    await page.getByRole('button',{name:'刷新最新资料',exact:true}).click();await page.locator('.wb-resource-review').waitFor();
     assert.equal(await page.getByRole('dialog').locator('input[name="spec"]').inputValue(),'Other window spec');
     assert.equal(await page.getByRole('dialog').locator('input[name="unit"]').inputValue(),'件');
     assert.equal(await page.getByRole('dialog').locator('input[name="label"]').inputValue(),'Primary reviewed name');

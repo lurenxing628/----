@@ -69,7 +69,7 @@ async function commit(page, mode, wait = true) {
 async function inspect(page) {
   const value = await page.evaluate(() => {
     const rail = document.querySelector('.rail');
-    const nodes = Array.from(rail.querySelectorAll('.hb-tmeta,.hb-tname,.hb-r-tag,.hb-rl2,.hb-cl2'));
+    const nodes = Array.from(rail.querySelectorAll('.hb-tmeta,.hb-tname,.hb-r-tag'));
     const overflow = nodes.filter(node => node.scrollWidth > node.clientWidth + 1).map(node => node.textContent);
     const boxes = Array.from(rail.querySelectorAll('.hb-hub > .hb-block')).map(node => {
       const r = node.getBoundingClientRect(); return { left:r.left, right:r.right, top:r.top, bottom:r.bottom };
@@ -112,9 +112,9 @@ async function inspect(page) {
           check(text.includes('待路线 ' + counts.route + ' / 待归属 ' + counts.source + ' / 待工时 ' + counts.hours), mode);
           check(text.includes('已确认：路线 ' + counts.route_confirmed + ' / 归属 ' + counts.source_confirmed + ' / 工时 ' + counts.hours_confirmed), mode);
         }
-        check(await page.locator('.hb-rl2').innerText() === '暂无数据', 'Process confirmation is not scheduling readiness');
+        check(await page.locator('.hb-ready, .hb-rl1, .hb-rl2, .hb-r-floor, .rail-foot .hb-cl2').count() === 0, 'Process confirmation is not scheduling readiness: the fixed overall readiness block stays removed');
         check((await page.locator('.rail-foot').innerText()).includes('下一步 · 批次管理'), 'Next-step entry must remain visible');
-        check(await page.locator('.hb-r-floor i').count() === 0, 'No invented percentage');
+        check(!/\d+(\.\d+)?\s*%/.test(await page.locator('.rail-foot').innerText()), 'No invented percentage');
         check(!text.includes('阶段未知') && !text.includes('100%'), 'No obsolete placeholder or vacuous ratio');
         if (mode === 'ready' || mode === 'mixed') {
           const geometry = await inspect(page);

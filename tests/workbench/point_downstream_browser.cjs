@@ -72,7 +72,7 @@ async function main() {
       assert.ok((await page.getByRole('tooltip').innerText()).includes('原计划 · 零工时工序'));
       await point.click();
       await page.getByRole('checkbox', { name: '详情', exact: true }).check();
-      assert.ok((await page.getByLabel('工序详情').innerText()).includes('零工时工序，不占设备人员'));
+      assert.ok((await page.getByLabel('工序详情').innerText()).includes('零工时工序，无资源占用。'));
       await point.focus(); await page.keyboard.press('Enter');
       assert.equal(await point.getAttribute('aria-pressed'), 'true');
       assert.equal(await page.locator('[data-actual-mark=actual]').count(), input.reports ? 1 : 0);
@@ -118,7 +118,7 @@ async function main() {
       if (returnContext.context.scope.batch_ids !== undefined) assert.deepEqual(returnContext.context.scope.batch_ids, []);
       assert.equal(await fieldPoint.getAttribute('data-point-ref'), input.identity.task.task_ref);
       assert.equal((await fieldPoint.boundingBox()).width, 24);
-      await fieldPoint.hover(); assert.ok((await page.getByRole('tooltip').innerText()).includes('零工时工序，不占设备人员'));
+      await fieldPoint.hover(); assert.ok((await page.getByRole('tooltip').innerText()).includes('零工时工序，无资源占用。'));
       await fieldPoint.focus(); await page.keyboard.press('Space');
       assert.equal(await fieldPoint.getAttribute('aria-pressed'), 'true');
       assert.equal(await page.locator('[data-field-point=report]').count(), input.reports ? 2 : 0);

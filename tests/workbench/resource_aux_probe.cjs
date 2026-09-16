@@ -6,9 +6,10 @@ async function post(page,suffix,click,status=200){
   const pending=page.waitForResponse(response=>new URL(response.url()).pathname.endsWith(suffix)&&response.request().method()==='POST');
   await click();const response=await pending;assert.equal(response.status(),status,await response.text());return response.json();
 }
-async function receipt(page,suffix,name){
+async function receipt(page,suffix,name,verb='保存'){
+  // Feedback names the finished action (ResourceForms.Feedback verb mapping): 保存 / 删除 / 清除日历配置 / 导入.
   const value=await post(page,suffix,()=>page.getByRole('dialog').getByRole('button',{name,exact:true}).click());
-  assert(['committed','unchanged'].includes(value.result));await page.getByRole('dialog').getByText('保存已完成。',{exact:true}).waitFor();return value;
+  assert(['committed','unchanged'].includes(value.result));await page.getByRole('dialog').getByText(verb+'已完成。',{exact:true}).waitFor();return value;
 }
 async function calendar(page,state,helpers){
   const {run,close,type,shot,layout,recordExpected}=helpers;
@@ -43,12 +44,12 @@ async function calendar(page,state,helpers){
     recordExpected({path:'/api/workbench/v1/calendar/upsert',status:409,code:conflict.error.code,kind:'retained-shift-window-protected'});
     await close(page,{discard:true});await page.getByRole('button',{name:/^2026-09-10 单独设置/}).click();
     assert.equal(await page.getByRole('dialog').getByLabel('可排工时（小时）',{exact:true}).inputValue(),'8.4');
-    await page.getByRole('button',{name:'清除配置',exact:true}).click();await receipt(page,'/calendar/delete','确认清除，恢复默认');await close(page);
+    await page.getByRole('button',{name:'清除配置',exact:true}).click();await receipt(page,'/calendar/delete','确认清除，恢复默认','清除日历配置');await close(page);
     await page.getByRole('button',{name:/^2026-09-10 默认规则/}).click();await page.getByRole('dialog').getByRole('button',{name:'休息日',exact:true}).click();
     await shot(page,state+'-calendar-rest-draft');await receipt(page,'/calendar/upsert','保存配置');
     await page.getByText('已刷新，显示最新工作日历。',{exact:true}).waitFor();await close(page);
     await page.getByRole('button',{name:/^2026-09-10 单独设置/}).click();await page.getByRole('button',{name:'清除配置',exact:true}).click();
-    await receipt(page,'/calendar/delete','确认清除，恢复默认');await close(page);
+    await receipt(page,'/calendar/delete','确认清除，恢复默认','清除日历配置');await close(page);
     await page.getByRole('button',{name:/^2026-09-10 默认规则/}).waitFor();await layout(page);
   });
   await run(page,state,'calendar-range-preview-confirm-clear',async()=>{
@@ -97,7 +98,7 @@ async function catalog(page,state,helpers){
       await shot(page,state+'-catalog-filled-'+kind);await receipt(page,'/entities/'+kind+'/create','保存');
       await modal.getByRole('button',{name:'继续维护',exact:true}).click();await modal.getByRole('button',{name:'删除 '+code,exact:true}).click();
       await modal.getByRole('checkbox',{name:'我已核对要删除的资料及其关联关系',exact:true}).check();
-      const deleted=await receipt(page,'/delete','确认删除');assert(deleted.data.entity_ref);
+      const deleted=await receipt(page,'/delete','确认删除','删除');assert(deleted.data.entity_ref);
       await modal.getByRole('button',{name:'完成并返回',exact:true}).click();await page.locator('.resource-catalog').waitFor({state:'detached'});
       await page.getByRole('dialog',{name:'新增'+node,exact:true}).waitFor();await close(page);
     });
@@ -128,7 +129,7 @@ async function files(page,state,helpers,root,report){
     await page.getByRole('button',{name:'批量删除',exact:true}).click();
     const remove=await post(page,'/entities/material/bulk-preview',()=>page.getByRole('dialog').getByRole('button',{name:'开始预检',exact:true}).click());assert.equal(remove.data.rows.length,1);assert.equal(remove.data.summary.delete,1);
     await page.getByRole('checkbox',{name:'已核对完整删除范围及明细，确认删除这些物料。',exact:true}).check();
-    const saved=await receipt(page,'/entities/material/bulk-confirm','确认删除');assert.equal(saved.data.deleted_count,1);
+    const saved=await receipt(page,'/entities/material/bulk-confirm','确认删除','删除');assert.equal(saved.data.deleted_count,1);
     await page.getByRole('dialog').getByRole('button',{name:'完成',exact:true}).click();await page.getByRole('dialog').waitFor({state:'detached'});
     await empty(page);
   });

@@ -109,7 +109,7 @@ async function resourceTableControls(page,state,helpers,root,report){
     assert.equal(response.status(),200,await response.text());const receipt=await response.json();
     report.commands.push({state,path:new URL(endpoint).pathname+'/update',request_key,result:receipt.result,receipt_ref:receipt.receipt_ref,status:200,evidence:'external-fixture-maintenance-not-a-prototype-control'});
     await save(page,'op_type','update',409);
-    await page.getByRole('button',{name:'刷新最新资料',exact:true}).click();await page.getByRole('button',{name:'已核对，继续编辑',exact:true}).click();
+    await page.getByRole('button',{name:'刷新最新资料',exact:true}).click();await page.locator('.wb-resource-review').waitFor();
     await page.getByRole('dialog',{name:'编辑外协工种',exact:true}).waitFor();assert.equal(await page.getByRole('dialog').locator('textarea[name="remark"]').inputValue(),'Reviewed category remark');
     await save(page,'op_type','update');await close(page);await helpers.empty(page);
     await rail(page,'外协工种');await search(page,code);await row(page,code).getByRole('button',{name:'删除',exact:true}).click();await save(page,'op_type','delete');await close(page);

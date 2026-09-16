@@ -8,7 +8,7 @@ if(!readyFile) throw new Error('Usage: node live_browser_probe.cjs <isolated-roo
 const ready=JSON.parse(fs.readFileSync(readyFile,'utf8'));
 const root=path.resolve(ready.root),origin=new URL(ready.url).origin,record=new Recorder(root);
 const executablePath=process.env.WORKBENCH_BROWSER || '/tmp/aps-chromium109-assessment/runtime/chrome-mac/Chromium.app/Contents/MacOS/Chromium';
-const nav=[['process','基础资料'],['batches','批次管理'],['run','执行排产'],['analysis','选择排产方案'],['trial','试调'],
+const nav=[['process','基础资料'],['batches','批次管理'],['run','执行排产'],['analysis','选择排产方案'],['trial','试调排产方案'],
   ['gantt','计划甘特'],['field','现场记录'],['fieldgantt','现场实际甘特'],['review','执行复盘'],
   ['reports','报表中心'],['calib','工时定额校准'],['dashboard','值班台'],['basedata','资料总览']];
 
@@ -199,7 +199,7 @@ async function scenario(browser,viewport,theme) {
       await page.goto(origin+'/workbench/trial');
       await page.locator('main .trial-workspace').waitFor({state:'visible'});
       await page.evaluate(()=>document.fonts.ready);
-      record.equal(await page.locator('.top-title').innerText(),'试调');
+      record.equal(await page.locator('.top-title').innerText(),'试调排产方案');
       await settleReads(page);
       await page.goto(origin+'/workbench?view=delay');
       await page.locator('main [data-plan-workspace]').waitFor({state:'visible'});
