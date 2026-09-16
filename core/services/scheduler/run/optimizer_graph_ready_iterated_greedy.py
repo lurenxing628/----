@@ -218,7 +218,8 @@ class _IteratedGreedySearch:
 
     def _reference_for_iteration(self) -> PoolEntry:
         reference = self.reference
-        assert reference is not None
+        if reference is None:
+            raise RuntimeError("Iterated greedy iteration started without a reference solution.")
         if self.non_improving >= self.limits.stagnation_iterations:
             self.non_improving = 0
             self._seed_solution_pool()

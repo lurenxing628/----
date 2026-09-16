@@ -173,7 +173,8 @@ _GENERATOR_TYPES = {
     ResourceWindowGenerator.name: ResourceWindowGenerator,
     TardyRandomGenerator.name: TardyRandomGenerator,
 }
-assert tuple(_GENERATOR_TYPES) == IG_GENERATORS
+if tuple(_GENERATOR_TYPES) != IG_GENERATORS:
+    raise RuntimeError("Destroy generator registry must list exactly IG_GENERATORS in order.")
 
 
 def build_generators(names: Sequence[str], *, initial_size: int, max_size: int) -> List[DestroyGenerator]:

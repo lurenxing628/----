@@ -106,7 +106,8 @@ class IteratedGreedyRun:
 
     def _advance(self) -> None:
         search = self.search
-        assert search is not None
+        if search is None:
+            raise RuntimeError("Iterated greedy trial advanced before its search was created.")
         if self.state.best is not search.best:
             # Share the improved incumbent immediately, but finish the trial's fixed decode context.
             self.pending_adoption = self.state.best
