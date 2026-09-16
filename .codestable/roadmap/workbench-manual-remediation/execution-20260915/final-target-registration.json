@@ -1,0 +1,38 @@
+{
+  "mode": "static_only",
+  "tests_executed": false,
+  "quality_gate_executed": false,
+  "targets": [
+    {
+      "target": "tests/workbench/test_file_reference_roundtrip.py",
+      "owner": "workbench_resources",
+      "direct_local_imports_covered": [
+        "core/errors.py",
+        "core/models/workbench_batch_file.py",
+        "core/models/workbench_material.py",
+        "core/models/workbench_resource_file.py",
+        "core/services/material/material_service.py",
+        "core/services/workbench/material_files.py",
+        "core/services/workbench/resource_entities.py",
+        "core/services/workbench/resource_files.py",
+        "tests/workbench/batch_support.py",
+        "tests/workbench/material_actions_api_support.py",
+        "tests/workbench/material_file_support.py",
+        "tests/workbench/material_support.py",
+        "tests/workbench/resource_file_support.py",
+        "tests/workbench/test_batch_files.py"
+      ],
+      "required": true
+    },
+    {
+      "target": "tests/workbench/test_field_scope_navigation_browser.py",
+      "owner": "workbench_browser",
+      "direct_local_imports_covered": [
+        "tests/workbench/test_live_browser.py"
+      ],
+      "required": false
+    }
+  ],
+  "helper_input_only": "tests/workbench/field_scope_navigation_browser.cjs",
+  "algorithm_review_record_unchanged": true
+}

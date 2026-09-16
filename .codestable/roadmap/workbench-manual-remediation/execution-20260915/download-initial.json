@@ -1,0 +1,34 @@
+{
+  "files": [
+    {
+      "path": "/Users/lurenxing/Downloads/数据完整性-2026-09-15T202634.csv",
+      "bytes": 14581,
+      "sha256": "1160a454be4e0cd07629a39e729a975a37dd983b3578f50ac6fff9e4c65b87f1"
+    },
+    {
+      "path": "/Users/lurenxing/Downloads/数据完整性-2026-09-15T202634.xlsx",
+      "bytes": 8135,
+      "sha256": "7d419966ae38c020ed9a8c18bd0936c957c39fd198acaad780bb0daa3522e14f"
+    }
+  ],
+  "browser_csv": {
+    "http": 200,
+    "download_state": "completed",
+    "bytes": 14581
+  },
+  "browser_xlsx": {
+    "http": 200,
+    "received_bytes": 8135,
+    "disk_present": true,
+    "download_state": "completed"
+  },
+  "data_rows": 18,
+  "domain_columns": 11,
+  "domain_cells_equal": true,
+  "metadata_matches": true,
+  "xlsx_zip_crc": "pass",
+  "duplicate_csv_headers": [
+    "数据缺口"
+  ],
+  "defect": "CSV global notes header masks per-operation gaps for header-keyed readers; fixing metadata label."
+}

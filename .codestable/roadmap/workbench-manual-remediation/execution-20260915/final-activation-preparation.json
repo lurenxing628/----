@@ -1,0 +1,20 @@
+{
+  "recorded_at": "2026-09-16T00:06:54.891369+08:00",
+  "build_id": "b71675b473558cbcac9021d7ba63d9ab55988774f6a7d22ef4b60e09e4b7db35",
+  "inputs_verified": 355,
+  "assets_verified": 263,
+  "asset_size_and_sha256_matched": true,
+  "declared_asset_dependencies_resolve": true,
+  "head_before": "7034b87303ec10e5d2f40ea704aee0b98770cf9c",
+  "head_after": "7034b87303ec10e5d2f40ea704aee0b98770cf9c",
+  "head_unchanged": true,
+  "baseline_source_count": 2447,
+  "changed_existing_count": 234,
+  "unchanged_existing_count": 2213,
+  "missing_existing_files": [],
+  "activation_prepared_snapshot": "production-last-before-activation.json",
+  "services_restarted": false,
+  "build_executed": false,
+  "tests_executed": false,
+  "quality_gate_executed": false
+}

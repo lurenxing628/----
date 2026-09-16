@@ -1,0 +1,29 @@
+{
+  "mode": "static_only",
+  "target": "tests/workbench/test_trial_adoption_execution_anchors.py",
+  "owner": "workbench_trial_adoption",
+  "required": true,
+  "reviewed": true,
+  "helper_input_only": "core/services/workbench/trial_execution_anchors.py",
+  "helper_browser_dependency": true,
+  "dependencies": [
+    "core/errors.py",
+    "core/models/workbench_command.py",
+    "core/models/workbench_trial.py",
+    "core/models/workbench_trial_codec.py",
+    "core/services/scheduler/run/schedule_execution_guardrails.py",
+    "core/services/scheduler/run/schedule_execution_resource_facts.py",
+    "core/services/scheduler/schedule_service.py",
+    "core/services/workbench/run_input_projection_codec.py",
+    "core/services/workbench/trial_execution_anchors.py",
+    "data/repositories/workbench_trial_repo.py",
+    "tests/workbench/run_candidate_support.py",
+    "tests/workbench/trial_adoption_support.py",
+    "tests/workbench/trial_support.py"
+  ],
+  "source_freeze_claimed": false,
+  "tests_executed": false,
+  "build_executed": false,
+  "quality_gate_executed": false,
+  "services_restarted": false
+}

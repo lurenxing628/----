@@ -1,0 +1,88 @@
+{
+  "build_id": "b71675b473558cbcac9021d7ba63d9ab55988774f6a7d22ef4b60e09e4b7db35",
+  "dependency_check": "bounded latest changes only",
+  "checks": [
+    {
+      "target": "tests/workbench/test_file_reference_roundtrip.py",
+      "owner": "workbench_resources",
+      "dependencies_covered": [
+        "core/models/workbench_batch_file.py",
+        "tests/workbench/test_batch_files.py"
+      ]
+    },
+    {
+      "target": "tests/workbench/test_field_scope_navigation_browser.py",
+      "owner": "workbench_browser",
+      "dependencies_covered": [
+        "tests/workbench/field_scope_navigation_browser.cjs",
+        "frontend/workbench/app/FieldWorkspace.jsx"
+      ]
+    },
+    {
+      "target": "tests/workbench/test_resource_context_refresh.py",
+      "owner": "workbench_browser",
+      "dependencies_covered": [
+        "tests/workbench/resource_context_refresh_probe.cjs",
+        "frontend/workbench/app/ResourceWorkspace.jsx",
+        "frontend/workbench/app/ResourceForms.jsx"
+      ]
+    },
+    {
+      "target": "tests/workbench/test_trial_adoption_execution_anchors.py",
+      "owner": "workbench_trial_adoption",
+      "dependencies_covered": [
+        "core/services/workbench/trial_execution_anchors.py",
+        "core/services/workbench/trial_adoption_validation.py"
+      ]
+    },
+    {
+      "target": "tests/workbench/test_system_maintenance_api.py",
+      "owner": "workbench_system",
+      "dependencies_covered": [
+        "web/routes/workbench/system_log_snapshots.py",
+        "core/services/workbench/run_data_context.py"
+      ]
+    },
+    {
+      "target": "tests/workbench/test_plan_ui.py",
+      "owner": "workbench_browser",
+      "dependencies_covered": [
+        "tests/workbench/plan_utilization_display_probe.cjs",
+        "frontend/workbench/app/PlanDetailsUI.jsx",
+        "frontend/workbench/app/TrialResults.jsx",
+        "frontend/workbench/app/PlanContract.js",
+        "frontend/workbench/app/TrialContract.js"
+      ]
+    },
+    {
+      "target": "tests/workbench/test_field_report_void_browser.py",
+      "owner": "workbench_browser",
+      "dependencies_covered": [
+        "frontend/workbench/app/styles/35-field.css",
+        "frontend/workbench/app/FieldFiles.jsx",
+        "tests/workbench/field_report_void_browser.cjs"
+      ]
+    }
+  ],
+  "http_assets_match_disk": [
+    {
+      "url": "/static/workbench/app/PlanDetailsUI.js?v=1789487927",
+      "sha256": "ef50eb29bf4595510a4d53e453113613cb89780abf1bcad75d9044945df0a489",
+      "bytes": 27085
+    },
+    {
+      "url": "/static/workbench/app/TrialResults.js?v=1789487927",
+      "sha256": "81ac393e2d5f5b0da5e5157834b94c021895ed5b60ff8512b6d01a4cbe608421",
+      "bytes": 11806
+    },
+    {
+      "url": "/static/workbench/app/styles/35-field.css?v=1789487927",
+      "sha256": "6fa025abcadcb3e027565f5150c9e5eb3f4612fac8469aae43eed4251438a71f",
+      "bytes": 10758
+    }
+  ],
+  "quality_gate_executed": false,
+  "tests_executed": false,
+  "services_restarted": false,
+  "algorithm_review_audited": false
+}

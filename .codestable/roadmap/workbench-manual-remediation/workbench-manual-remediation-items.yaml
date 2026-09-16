@@ -1,0 +1,86 @@
+roadmap: workbench-manual-remediation
+created: 2026-09-15
+items:
+- slug: wbfix-run-recovery
+  description: 修复数据库恢复后的旧排产请求查询及空范围提示，完成恢复后继续排产的最小闭环。
+  depends_on: []
+  status: completed
+  feature: null
+  minimal_loop: true
+  notes: 覆盖批注20及B6；原5000旧请求识别及5001手动恢复后原标签新排产通过，专项锁住空范围与未知请求。保留真正未知请求的幂等边界，见execution-20260915/implementation-and-coverage.md。
+- slug: wbfix-shared-controls
+  description: 统一图标、按钮、搜索、筛选和表格容器，修复空图标、错位与删除含义不清。
+  depends_on: []
+  status: completed
+  feature: null
+  notes: 覆盖批注1、2、4、6、13；全部可达删除声明统一trash-2与文字，组件/AST专项及资源、工艺、批次、目录、备份/样例目视通过；目录真实删除反馈已手动复验。
+- slug: wbfix-process-flow
+  description: 重排工艺三步编辑，合并保存与确认，拆分自制工时和外协周期并改为条件性零值提示。
+  depends_on:
+  - wbfix-shared-controls
+  status: completed
+  feature: null
+  notes: 覆盖批注3、5、7、8、9、10、11、12；保存归属、自制/外协工时、空值/新0/原0、原批次保持及路线/工时XLSX往返通过；追加51道工艺在第2页完成三阶段全范围保存、窄窗口页脚可达。
+- slug: wbfix-batch-template
+  description: 重排批次详情并将从模板更新改为必要资料完整性检查和明确影响预览。
+  depends_on:
+  - wbfix-shared-controls
+  - wbfix-process-flow
+  status: completed
+  feature: null
+  notes: 覆盖批注14至18；详情布局、已有引用保护、新批次2道自制/2道外协模板预览确认及刷新通过；必要字段、清除指定、过期和原子失败专项通过，不修改已有计划和报工保护规则。
+- slug: wbfix-run-panel
+  description: 根据真实查询和计算状态重排候选排产区及结果操作。
+  depends_on:
+  - wbfix-run-recovery
+  - wbfix-shared-controls
+  status: completed
+  feature: null
+  notes: 覆盖批注19；高压部分/完整结果、查询终态、编号折叠及恢复后重新排产已实际使用；当前状态与恢复协议专项通过。
+- slug: wbfix-operator-machine
+  description: 在人员详情补齐可操作设备的增删改并打通排产资格验证。
+  depends_on:
+  - wbfix-shared-controls
+  status: completed
+  feature: null
+  notes: 覆盖B1；设备授权熟练/主操保存刷新及改姓名保持关系通过，原资格和关系集合专项通过；目录维护后父表单刷新缺陷已另修并手动复验。
+- slug: wbfix-outsourcing-existing-source
+  description: 在普通外协登记事务内核实现存旧工序的当前来源并保留原历史记录。
+  depends_on: []
+  status: completed
+  feature: null
+  notes: 覆盖B2；旧单道登记、回厂更正、两次历史刷新、跨批次合并禁止及UI新建同批两道合并登记成功均通过；来源/事务/迁移专项通过，不回填旧出生空值。
+- slug: wbfix-utilization
+  description: 统一工作台、报表与导出的资源可用时长和占用率计算口径。
+  depends_on: []
+  status: completed
+  feature: null
+  notes: 覆盖B3；同窗网页/XLSX整窗与单日单设备数值真实一致，重叠/非工作时间另列，CSV及各日历边界由相关专项核验；不声称现有界面提供未开放的导出格式。
+- slug: wbfix-report-void
+  description: 增加单次报工显式撤销与统一有效事实投影。
+  depends_on: []
+  status: completed
+  feature: null
+  notes: 覆盖B4；真实5件1小时新增→更正0/0仍有效→撤销→历史保留→刷新及甘特有效事实排除通过，相关读取方及事务专项通过；不删除原报工。
+- slug: wbfix-export-delivery
+  description: 核实真实下载交付并修复有证据的文件生成或浏览器交付问题。
+  depends_on: []
+  status: completed
+  feature: null
+  notes: 覆盖B5；报表/报工/校准CSV与XLSX真实文件及范围、行数、逐格值、CRC核实；全局说明重名及参考列合同已修。物料原XLSX新增回导、五资源11条不变回导、23批次九列往返一致均通过，不扩大为所有格式与输入全覆盖。
+- slug: wbfix-manual-acceptance
+  description: 对最终组合版本完成逐动作手动功能、高压排产、视觉、文件和恢复后继续使用验收。
+  depends_on:
+  - wbfix-run-recovery
+  - wbfix-shared-controls
+  - wbfix-process-flow
+  - wbfix-batch-template
+  - wbfix-run-panel
+  - wbfix-operator-machine
+  - wbfix-outsourcing-existing-source
+  - wbfix-utilization
+  - wbfix-report-void
+  - wbfix-export-delivery
+  status: in-progress
+  feature: null
+  notes: 原主线/文件轨/51道跨页/视觉/处置及G3库存、G4批次维护、G5批删、G7独立导出均完成；G1草稿放弃完成，正向试调采用继续。G2/G6已回报成功待详细归档；231723备份按用户要求保留、删除未执行，不是阻塞。等试调正向与最终5000激活保留证明再收口；旧build/环境记录为历史阶段，不跑全门禁、未提交。

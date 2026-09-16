@@ -1,0 +1,14 @@
+{
+  "Batches": {
+    "count": 23,
+    "sha256": "ecf4e5397deea2ed8d6855da5a70170197a0d3c77c2cdcf4f17b2ba1733ea53d"
+  },
+  "BatchOperations": {
+    "count": 66,
+    "sha256": "4efa40c33e6ff4e5aef880253201e3e08650179b4c6f85ccffbc520a193c77ad"
+  },
+  "BatchMaterials": {
+    "count": 0,
+    "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+  }
+}

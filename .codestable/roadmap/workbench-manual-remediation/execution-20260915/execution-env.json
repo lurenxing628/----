@@ -1,0 +1,14 @@
+{
+  "test_root": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-manual-remediation-20260915-m5q25mau",
+  "database": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-manual-remediation-20260915-m5q25mau/db/aps.db",
+  "source_backup": "/Users/lurenxing/GitHub/----/backups/aps_backup_20260915_183234_manual_5aec6fc5e1a9.db",
+  "source_sha256": "a7e2c932d6b22db64fa9dffe0311e6b1c385017baba6345b975b19aa528f5cfc",
+  "schema_before": 31,
+  "port": 5001,
+  "production_database_untouched": true,
+  "launcher": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-manual-remediation-20260915-m5q25mau/manual_app.py",
+  "setup_notes": [
+    "Repository CLI lock respected; isolated launcher anchors own runtime directory.",
+    "Canonical /private/var paths required by existing runtime ownership proof."
+  ]
+}

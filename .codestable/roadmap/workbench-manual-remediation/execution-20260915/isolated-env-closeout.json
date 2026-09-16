@@ -1,0 +1,196 @@
+{
+  "main": {
+    "url": "http://127.0.0.1:5000/workbench",
+    "pid": 19236,
+    "exec_session": 6442,
+    "restarted_in_this_stage": false
+  },
+  "acceptance": {
+    "url": "http://127.0.0.1:5005/workbench",
+    "pid": 30081,
+    "exec_session": 36919,
+    "previous_pid": 13155,
+    "started_at": "2026-09-15T15:01:34Z",
+    "batches": 27,
+    "batch_operations": 74,
+    "formal_version": 15,
+    "formal_tasks": 74,
+    "production_reports": 5,
+    "calibration_template_revision": 2,
+    "calibration_adoptions": [
+      [
+        "b70aa43ec55331a4abf737bd25715d8ff28b54044258be42",
+        1,
+        2,
+        0.05,
+        0.09,
+        5
+      ]
+    ]
+  },
+  "stopped_ports": [
+    5001,
+    5002,
+    5003,
+    5004
+  ],
+  "retained_environments": [
+    {
+      "port": 5001,
+      "root": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-manual-remediation-20260915-m5q25mau",
+      "database": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-manual-remediation-20260915-m5q25mau/db/aps.db",
+      "launcher": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-manual-remediation-20260915-m5q25mau/manual_app.py",
+      "launcher_unchanged": true,
+      "database_bytes": 202883072,
+      "database_sha256": "2731a99c607081a65e77f7141236dc1888230924a53ebbf59584f09639a86257",
+      "backups": [
+        {
+          "path": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-manual-remediation-20260915-m5q25mau/backups/aps_backup_20260915_204634_before_migrate_v31_to_v32.db",
+          "bytes": 16412672,
+          "sha256": "a7e2c932d6b22db64fa9dffe0311e6b1c385017baba6345b975b19aa528f5cfc"
+        },
+        {
+          "path": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-manual-remediation-20260915-m5q25mau/backups/aps_backup_20260915_220937_manual_04b42d4368a9.db",
+          "bytes": 98803712,
+          "sha256": "804655e80ad9f47719ab39d75d94a5ce0854a36da5e544842863e2488ab34fed"
+        },
+        {
+          "path": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-manual-remediation-20260915-m5q25mau/backups/aps_backup_20260915_221215_a71d766e0fb3413fb898642805ff9748_before_restore.db",
+          "bytes": 98803712,
+          "sha256": "38daf8f07580ba9fd11925d9fe7e97b1001f5e27926cdfd9f9354f14da8fd4ae"
+        }
+      ],
+      "listening": false
+    },
+    {
+      "port": 5002,
+      "root": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-manual-outsourcing-20260915-1lytmyfn",
+      "database": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-manual-outsourcing-20260915-1lytmyfn/db/aps.db",
+      "launcher": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-manual-outsourcing-20260915-1lytmyfn/manual_app.py",
+      "launcher_unchanged": true,
+      "database_bytes": 16646144,
+      "database_sha256": "06d38ff47de8936e92387d196b35f0d185a86c5f17f1fc410cedecbe8b75cd54",
+      "backups": [
+        {
+          "path": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-manual-outsourcing-20260915-1lytmyfn/backups/aps_backup_20260915_204937_before_migrate_v31_to_v32.db",
+          "bytes": 16412672,
+          "sha256": "a7e2c932d6b22db64fa9dffe0311e6b1c385017baba6345b975b19aa528f5cfc"
+        }
+      ],
+      "listening": false
+    },
+    {
+      "port": 5003,
+      "root": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-manual-resources-20260915-494scls2",
+      "database": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-manual-resources-20260915-494scls2/db/aps.db",
+      "launcher": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-manual-resources-20260915-494scls2/manual_app.py",
+      "launcher_unchanged": true,
+      "database_bytes": 16465920,
+      "database_sha256": "5e0aa603185cedfdf88a8a612d9c13fccca232bb30b48996502283dbd0c6a21c",
+      "backups": [
+        {
+          "path": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-manual-resources-20260915-494scls2/backups/aps_backup_20260915_204956_before_migrate_v31_to_v32.db",
+          "bytes": 16412672,
+          "sha256": "a7e2c932d6b22db64fa9dffe0311e6b1c385017baba6345b975b19aa528f5cfc"
+        },
+        {
+          "path": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-manual-resources-20260915-494scls2/backups/aps_backup_20260915_210246_manual_35dda0faaac1.db",
+          "bytes": 16457728,
+          "sha256": "1c3586f061104f267ddf8e95a420366cfb9bca049e1d92250819f98cbd3e07a7"
+        },
+        {
+          "path": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-manual-resources-20260915-494scls2/backups/aps_backup_20260915_221803_manual_d9f7c6564f77.db",
+          "bytes": 16461824,
+          "sha256": "fd4b8f0cd7f5b167b10342865f02c51f0bba1a78a8e685ab76435331b49eb125"
+        },
+        {
+          "path": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-manual-resources-20260915-494scls2/backups/aps_backup_20260915_224200_manual_7cfc8ba535ee.db",
+          "bytes": 16465920,
+          "sha256": "17ba69d1cdde78f4a829305f8f9e12f90807a8df6ffea799670b9e449815064c"
+        }
+      ],
+      "listening": false
+    },
+    {
+      "port": 5004,
+      "root": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-manual-process-batches-vizr_h36",
+      "database": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-manual-process-batches-vizr_h36/db/aps.db",
+      "launcher": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-manual-process-batches-vizr_h36/manual_app.py",
+      "launcher_unchanged": true,
+      "database_bytes": 16449536,
+      "database_sha256": "f0ed2a433890c8c8da3a72f45cc101c5eece6f296723fae8e49fd55f763136d8",
+      "backups": [
+        {
+          "path": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-manual-process-batches-vizr_h36/backups/aps_backup_20260915_205007_before_migrate_v31_to_v32.db",
+          "bytes": 16412672,
+          "sha256": "a7e2c932d6b22db64fa9dffe0311e6b1c385017baba6345b975b19aa528f5cfc"
+        }
+      ],
+      "listening": false
+    },
+    {
+      "port": 5005,
+      "root": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-manual-reports-5005-mas98q0a",
+      "database": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-manual-reports-5005-mas98q0a/db/aps.db",
+      "launcher": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-manual-reports-5005-mas98q0a/manual_app.py",
+      "launcher_unchanged": true,
+      "database_bytes": 76722176,
+      "database_sha256": "25ffb6d5b10556aeb01a4840d6fd5f43c5978846d7a2a524128695059bb95bab",
+      "backups": [
+        {
+          "path": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-manual-reports-5005-mas98q0a/backups/aps_backup_20260915_205104_before_migrate_v31_to_v32.db",
+          "bytes": 16412672,
+          "sha256": "a7e2c932d6b22db64fa9dffe0311e6b1c385017baba6345b975b19aa528f5cfc"
+        }
+      ],
+      "listening": true
+    }
+  ],
+  "unchanged_table_count": 77,
+  "changed_tables": [
+    {
+      "table": "OperationLogs",
+      "before_rows": 13401,
+      "after_rows": 13402,
+      "lost_or_changed_rows": 0,
+      "added_rows": 1
+    },
+    {
+      "table": "sqlite_sequence",
+      "before_rows": 12,
+      "after_rows": 12,
+      "lost_or_changed_rows": 1,
+      "added_rows": 1
+    }
+  ],
+  "lost_or_changed_original_business_rows": [],
+  "sqlite_sequence_change": {
+    "OperationLogs": [
+      13401,
+      13402
+    ]
+  },
+  "ddl_unchanged": true,
+  "schema_unchanged": true,
+  "integrity_check": [
+    "ok"
+  ],
+  "foreign_key_check": [],
+  "http_read_checks": [
+    {
+      "port": 5000,
+      "status": 200,
+      "cache_control": "no-store"
+    },
+    {
+      "port": 5005,
+      "status": 200,
+      "cache_control": "no-store"
+    }
+  ],
+  "files_deleted": false,
+  "business_writes_issued": false,
+  "build_executed": false,
+  "tests_executed": false,
+  "quality_gate_executed": false
+}

@@ -1,0 +1,27 @@
+{
+  "captured_at": "2026-09-16T00:06:51.570652+08:00",
+  "db": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-manual-remediation-20260915-m5q25mau/db/aps.db",
+  "counts": {
+    "Batches": 23,
+    "BatchOperations": 66,
+    "Materials": 1,
+    "Parts": 4
+  },
+  "report_tables": [
+    [
+      "WorkbenchProductionReports"
+    ],
+    [
+      "WorkbenchProductionReportRevisions"
+    ],
+    [
+      "WorkbenchProductionReportVoids"
+    ]
+  ],
+  "integrity": [
+    [
+      "ok"
+    ]
+  ],
+  "foreign_keys": []
+}

@@ -1,0 +1,142 @@
+[
+  {
+    "port": 5001,
+    "pid": 18857,
+    "root": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-manual-remediation-20260915-m5q25mau",
+    "launcher": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-manual-remediation-20260915-m5q25mau/manual_app.py",
+    "launcher_sha256": "a8b66f241a840dfec2d7090fa4843844d519d6534cfd7e04bf5fded5c42cd1e3",
+    "database": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-manual-remediation-20260915-m5q25mau/db/aps.db",
+    "database_bytes": 202883072,
+    "runtime": {
+      "pid": 18857,
+      "host": "127.0.0.1",
+      "port": 5001,
+      "started_at": "2026-09-15T14:23:25Z",
+      "runtime_dir": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-manual-remediation-20260915-m5q25mau",
+      "db_path": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-manual-remediation-20260915-m5q25mau/db/aps.db",
+      "exe_path": "/Users/lurenxing/GitHub/----/.venv/bin/python"
+    },
+    "backups": [
+      {
+        "path": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-manual-remediation-20260915-m5q25mau/backups/aps_backup_20260915_204634_before_migrate_v31_to_v32.db",
+        "bytes": 16412672
+      },
+      {
+        "path": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-manual-remediation-20260915-m5q25mau/backups/aps_backup_20260915_220937_manual_04b42d4368a9.db",
+        "bytes": 98803712
+      },
+      {
+        "path": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-manual-remediation-20260915-m5q25mau/backups/aps_backup_20260915_221215_a71d766e0fb3413fb898642805ff9748_before_restore.db",
+        "bytes": 98803712
+      }
+    ]
+  },
+  {
+    "port": 5002,
+    "pid": 91606,
+    "root": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-manual-outsourcing-20260915-1lytmyfn",
+    "launcher": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-manual-outsourcing-20260915-1lytmyfn/manual_app.py",
+    "launcher_sha256": "8116c58652246689058235e0948439a841edd2bdd8aef70bde149bfd9c1b0253",
+    "database": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-manual-outsourcing-20260915-1lytmyfn/db/aps.db",
+    "database_bytes": 16646144,
+    "runtime": {
+      "pid": 91606,
+      "host": "127.0.0.1",
+      "port": 5002,
+      "started_at": "2026-09-15T12:49:37Z",
+      "runtime_dir": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-manual-outsourcing-20260915-1lytmyfn",
+      "db_path": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-manual-outsourcing-20260915-1lytmyfn/db/aps.db",
+      "exe_path": "/Users/lurenxing/GitHub/----/.venv/bin/python"
+    },
+    "backups": [
+      {
+        "path": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-manual-outsourcing-20260915-1lytmyfn/backups/aps_backup_20260915_204937_before_migrate_v31_to_v32.db",
+        "bytes": 16412672
+      }
+    ]
+  },
+  {
+    "port": 5003,
+    "pid": 91706,
+    "root": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-manual-resources-20260915-494scls2",
+    "launcher": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-manual-resources-20260915-494scls2/manual_app.py",
+    "launcher_sha256": "c826d971ed39065422ef1fc3950f8c235a11cda994d42893f521f45daa95aa9e",
+    "database": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-manual-resources-20260915-494scls2/db/aps.db",
+    "database_bytes": 16465920,
+    "runtime": {
+      "pid": 91706,
+      "host": "127.0.0.1",
+      "port": 5003,
+      "started_at": "2026-09-15T12:49:57Z",
+      "runtime_dir": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-manual-resources-20260915-494scls2",
+      "db_path": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-manual-resources-20260915-494scls2/db/aps.db",
+      "exe_path": "/Users/lurenxing/GitHub/----/.venv/bin/python"
+    },
+    "backups": [
+      {
+        "path": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-manual-resources-20260915-494scls2/backups/aps_backup_20260915_204956_before_migrate_v31_to_v32.db",
+        "bytes": 16412672
+      },
+      {
+        "path": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-manual-resources-20260915-494scls2/backups/aps_backup_20260915_210246_manual_35dda0faaac1.db",
+        "bytes": 16457728
+      },
+      {
+        "path": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-manual-resources-20260915-494scls2/backups/aps_backup_20260915_221803_manual_d9f7c6564f77.db",
+        "bytes": 16461824
+      },
+      {
+        "path": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-manual-resources-20260915-494scls2/backups/aps_backup_20260915_224200_manual_7cfc8ba535ee.db",
+        "bytes": 16465920
+      }
+    ]
+  },
+  {
+    "port": 5004,
+    "pid": 91786,
+    "root": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-manual-process-batches-vizr_h36",
+    "launcher": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-manual-process-batches-vizr_h36/manual_app.py",
+    "launcher_sha256": "bc688084fc3f4f685818e2e284ddbc7cb3fcfc4565dffca671e4a537e4c6fe7e",
+    "database": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-manual-process-batches-vizr_h36/db/aps.db",
+    "database_bytes": 16449536,
+    "runtime": {
+      "pid": 91786,
+      "host": "127.0.0.1",
+      "port": 5004,
+      "started_at": "2026-09-15T12:50:07Z",
+      "runtime_dir": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-manual-process-batches-vizr_h36",
+      "db_path": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-manual-process-batches-vizr_h36/db/aps.db",
+      "exe_path": "/Users/lurenxing/GitHub/----/.venv/bin/python"
+    },
+    "backups": [
+      {
+        "path": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-manual-process-batches-vizr_h36/backups/aps_backup_20260915_205007_before_migrate_v31_to_v32.db",
+        "bytes": 16412672
+      }
+    ]
+  },
+  {
+    "port": 5005,
+    "pid": 13155,
+    "root": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-manual-reports-5005-mas98q0a",
+    "launcher": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-manual-reports-5005-mas98q0a/manual_app.py",
+    "launcher_sha256": "82e2aa9898e6e86261f2e2f0fb7e61c493b2e1f0295bc36eca14e45610852d07",
+    "database": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-manual-reports-5005-mas98q0a/db/aps.db",
+    "database_bytes": 76722176,
+    "runtime": {
+      "pid": 13155,
+      "host": "127.0.0.1",
+      "port": 5005,
+      "started_at": "2026-09-15T14:08:39Z",
+      "runtime_dir": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-manual-reports-5005-mas98q0a",
+      "db_path": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-manual-reports-5005-mas98q0a/db/aps.db",
+      "exe_path": "/Users/lurenxing/GitHub/----/.venv/bin/python"
+    },
+    "backups": [
+      {
+        "path": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-manual-reports-5005-mas98q0a/backups/aps_backup_20260915_205104_before_migrate_v31_to_v32.db",
+        "bytes": 16412672
+      }
+    ]
+  }
+]

@@ -1,0 +1,20 @@
+{
+  "mode": "static_only",
+  "existing_target": "tests/workbench/test_system_maintenance_api.py",
+  "owner": "workbench_system",
+  "new_target_files": [],
+  "module_input_only": "web/routes/workbench/system_log_snapshots.py",
+  "covered_groups": [
+    "workbench_system",
+    "workbench_browser"
+  ],
+  "covered_dependencies": [
+    "core/models/workbench_command.py",
+    "core/services/workbench/messages.py",
+    "core/services/workbench/run_data_context.py",
+    "web/routes/workbench/read_context.py",
+    "web/routes/workbench/system_context.py",
+    "web/routes/workbench/system_log_snapshots.py"
+  ],
+  "tests_executed": false
+}

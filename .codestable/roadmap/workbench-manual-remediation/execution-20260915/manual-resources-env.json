@@ -1,0 +1,29 @@
+{
+  "root": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-manual-resources-20260915-494scls2",
+  "database": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-manual-resources-20260915-494scls2/db/aps.db",
+  "source_backup": "/Users/lurenxing/GitHub/----/backups/aps_backup_20260915_183234_manual_5aec6fc5e1a9.db",
+  "source_sha256": "a7e2c932d6b22db64fa9dffe0311e6b1c385017baba6345b975b19aa528f5cfc",
+  "port": 5003,
+  "launcher": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-manual-resources-20260915-494scls2/manual_app.py",
+  "production_database_untouched": true,
+  "ui_backup": {
+    "path": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-manual-resources-20260915-494scls2/backups/aps_backup_20260915_210246_manual_35dda0faaac1.db",
+    "bytes": 16457728,
+    "sha256": "1c3586f061104f267ddf8e95a420366cfb9bca049e1d92250819f98cbd3e07a7",
+    "created_through_ui": true,
+    "contains_six_test_resource_families": true
+  },
+  "asset_manifest_sha256_at_report": "6a05bd5f58800d7c1a237937695d4a08a11f469dfe1b21230c0dff0eb0398f94",
+  "manual_window": "2026-09-15 20:49:56–21:10 Asia/Shanghai",
+  "current_resource_counts_from_ui": {
+    "material": 0,
+    "internal_op_type": 3,
+    "external_op_type": 1,
+    "machine": 3,
+    "operator": 3,
+    "supplier": 1
+  },
+  "pid": 91706,
+  "exec_session": 89906,
+  "chrome_released_to": "utilization_impl"
+}

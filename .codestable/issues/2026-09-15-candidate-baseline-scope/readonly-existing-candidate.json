@@ -1,0 +1,14 @@
+{
+  "database": "/private/var/folders/cz/6c_ysj195sbcytsy44zttdbc0000gn/T/aps-manual-reports-5005-mas98q0a/db/aps.db",
+  "connection": "mode=ro; PRAGMA query_only=ON",
+  "candidate_ref": "dc31eb312fb33ef3dd1be44afd8fb408ac3320d7a07bfcad",
+  "candidate_task_count": 62,
+  "captured_execution_count": 68,
+  "captured_baseline_version": 14,
+  "captured_baseline_task_count": 18,
+  "selected_batch_count": 23,
+  "comparison_available": true,
+  "analysis_fingerprint": "7f6cf937177819f7fbce47adc7de4a355780d52d4ee5153cc5e8d62c899d292b",
+  "current_entities_consulted": false,
+  "total_changes": 0
+}

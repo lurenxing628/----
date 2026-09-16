@@ -5,7 +5,7 @@ scope: 工作台离线外壳、领域服务、受管运行及恢复边界
 summary: 真实业务工作区已挂载，逐项终验与旧入口退役仍在收口
 status: current
 created: 2026-09-09
-last_reviewed: 2026-09-13
+last_reviewed: 2026-09-16
 tags: [workbench, flask, offline, win7]
 depends_on: [ARCHITECTURE]
 implements: [workbench-foundation-read-loop, workbench-production-workflows]
@@ -66,6 +66,35 @@ HTML -> 提前应用主题 -> manifest本地脚本/样式 -> React宿主 -> 同�
 - 分次报工与更正走追加台账，旧事件保留原义，未知数量和工时不补零。实际甘特、复盘、报表及工时校准消费同一已核实事实，交付风险不把缺工序或局部完工当作完整批次完成。
 - 值班处理状态与业务风险分开。系统备份下载只解析已登记公开引用，文件存在不等于可恢复；`workbench_system_restore*.py`与`workbench_request_lifecycle*.py`负责排空连接、停止worker、恢复状态及冷启动核对，恢复不走普通行命令。
 
+## 2026-09-15 手动整改实现
+
+- `ResourceControls.jsx`统一本地 `trash-2`、展开/收起与搜索图标，`20-controls.css`统一按钮图文和筛选对齐，`21-table-frame.css`提供单层表格框及编辑列分隔。所有可达删除动作使用垃圾桶和可见文字。可达管理样例的三项共享组件移至 `SystemSampleControls.jsx`，由 build-order 放在资源控件之后、SystemLive 之前，冻结原型不改。
+- 工艺归属保存继续走 `stagePreview` 与 `process.source_confirm`；明确保存时提交全部有效工序的确认内容，实际解除外协组关系仍单独列出影响。`ProcessHoursEditor.jsx`拆分自制/外协表，`process_zero_hours.py`在事务内按内容绑定的确认记录决定是否要求零值确认，工时文件读写复用相同规则。既有批次不随模板修改自动变化。
+- `batch_template_validation.py`提供必要资料完整性结果，详情与更新预览共用；`batch_template_preview.py`生成逐工序前后变化及设备/人员指定清除列表。更新确认重新检查模板与批次快照并原子替换。旧 `strict_mode: false` 返回 `template_validation_required`，不再允许宽松复制缺项资料；旧模板缺少确认记录与资料实际缺项分开判断。
+- `run_data_context.py`由数据库 scope 与数据库外已成功恢复的 journal 集合生成 `data_context_ref`，普通重启及备份创建/删除不改变它。预览、受理和查询绑定同一数据上下文；查找先核对当前任务和回执。旧 v1 pending 只有在 journal 登记的受保护备份中按原请求找到匹配任务/回执并核对文件 SHA 后才判为恢复前记录。v2 pending保存最小身份和数据上下文；未知查询满60秒暂停自动查询，保留同号重查，真实计算继续查询，不自动重新受理。
+- `OperatorMachinePermissions.jsx`在人员详情维护既有设备资格集合，后端复用 `OperatorMachineService` 与原资格检查，无新授权表；界面以预览/确认保存全量关系，保留未展示的旧字段，不从工种技能推导全部设备权限。
+- v32 在同一可回滚迁移中安装两项追加扩展：`WorkbenchOutsourcingSourceConfirmations`与`WorkbenchProductionReportVoids`，共2表10触发器。只安装空结构，旧来源空值、旧出生事件、报工修订和回执不改写。`migration_state.py`严格校验两项结构，缺表/错误触发器不能以空数据继续读取；原 v25/v30 安装器及冻结历史 schema 保持原合同。
+- `workbench_outsourcing_source_binding.py`按出生记录、首次登记确认、当前完整关系解析来源；已有证据与当前实例冲突仍拒绝。`source_resolution`用于说明与快照，不改变稳定的 `source.identity`。普通外协登记事务同时追加外协单、成员、事实、来源确认和回执；首次登记后来源解析方式变化不会使更正误认成新对象。
+- `production_report_void.py`负责撤销预览及事务重查，`FieldVoidEditor.jsx`沿普通命令回执恢复链确认。中立的 `ExecutionLedgerReader`只把有效报工放进 `reports`，`voided_reports`保留完整历史用于审计；现场、实际甘特、风险、复盘、报表和校准共用该事实集合。候选基线从受理归档内的撤销表重投影，不用当前库事实污染历史基线。
+- `resource_utilization_metrics.py`以 `available_occupancy_v1`共用区间运算，`utilization_calendars.py`读取逐资源日历和停机。班表内占用取并集与可用区间交集，分母不乘效率；累计负荷、重叠与班表外占用另列。已有严格计划 DTO 的历史 `occupied_hours`仍是自然跨度并集，显示层使用 `available_occupied_hours/inside_available_hours`；报表、值班台和计划占用读取同一内核。已有资源占用率入口仍为 planned，未新增独立 actual 占用率页面。
+- `TrialCatalog`以实际 candidate/plan来源初始化，`preview_create`投影原 `admission.source.identity`为只读 `base_identity`。草稿验证仅报告真实约束，正式采用仍由独立预检授权；UI/对比CSV只过滤已识别的历史能力说明码，原始JSON与保存历史不重写。`report_exports.py`区分行级“数据缺口”和全局“统计说明与待补资料”，下载结果显示实际文件名和范围。
+- 采用完整性检查复用`preflight_checks.stored_date`处理正式SQLite连接的DATE对象和规范文本，保留齐套日与其他约束。`run_jobs_facts.run_facts_unchanged`先核对完整归档SHA，再比较业务输入：仅排除`OperationLogs`行内容及其自增计数对新旧判断的影响，全部Schema、其他计数及未知业务表仍严格比较；Worker计算前/保存前和采用检查共用，旧归档保持原样。
+- `AdmissionBaseline._execution`从SHA校验后的入场归档Schedule恢复截至基准版本曾有正式安排的工序，与所选工序合成捕获执行集合；投影必须完全相等，归档报工、当前任务身份和数值继续逐项核验。最新版本对照行不混入旧版本工序，也不读取当前库补历史。
+- 校准样本明确区分没有逐次报工与已有报工字段缺失；无报工的派生缺口合并，独立的来源/历史异常检查保留。导出说明反映已接入的预检采用入口；采用仍要求至少5条合格样本并更新/锁定模板，旧批次不反写。
+- 文件导出清单中已声明的参考列不进入导入写DTO：物料创建时间和资源原始只读资料在预检`reference_fields`中明确列示，批次兼容原八列模板和包含状态的九列清单，状态只供参考。未知列、公式、必要字段、文件指纹、并发和原子确认仍按原合同检查；导入文件不能恢复人员原设备权限或覆盖系统时间。
+- `FieldWorkspace.done`保存后同时更新当前`task_ref/operation_ref`，没有任务时一起清除；原计划、搜索和日期范围保留。任务切换不复用入口工序引用，后端继续拒绝真正错配；已成功保存后的读取失败不自动重复提交。
+- `ResourceWorkspace`读取父表单最新资料后同时更新保存上下文，借既有`acceptedEntity/rebaseDraft`保留用户已改字段、更新未改字段。从父表单自己完成班次/设备组维护后统一刷新选项及父版本，不再额外要求“已核对”；未知维护结果和后续并发变化仍不自动放行或重提。
+
+### 独立功能补验中的接续修复
+
+- `trial_execution_anchors.py`在新草稿创建与验证时复用`build_execution_guardrails_from_projections`：已完工工序固定为真实起止和资源，已支持的开工工序固定实际开工/资源并沿用原计划时长推算预计结束。`original.execution_anchor`保留依据，`original.arrangement`仍保存原计划对比；公开DTO校验固定安排一致且不可编辑。旧保存场景不重写，旧计划时段与真实固定冲突时返回`scenario_execution_anchor_outdated`。齐套、前后序及最终采用保护不放宽，预计结束不充当可信实际释放。
+- `TrialAdoptionBlocked`复制实际阻止采用的问题并统一为blocker级别，保留其code、消息与任务引用；草稿warning和原保存快照不变，避免采用预检把真实业务原因误判为响应损坏。
+- `system_log_snapshots.py`在进程内保存已脱敏、不可变的读取窗口。日志翻页/CSV/ZIP沿原token和范围读取相同内容，主动刷新才读新日志；15分钟、最多32份/64MiB，过期/淘汰/重启/恢复数据代次变化均要求刷新。原完整日志、慢请求写入、公共快照设施及备份写操作不变，不用浏览器回传内容拼导出。
+- `PlanDetailsUI`任务详情/计划负荷及`TrialResults`资源表统一使用班表内占用分子，完整安排与班表外占用另列，保留后端旧跨度字段兼容语义；`TrialContract`拒绝缺失班表内分子的响应。`material_actions_context`只对公开预览副本转换UTC创建时间，私有快照与库内UTC不动。
+- `master_overview_process`按实际路线/归属/工时阶段给出下一步指引，零值说明只用于真实未确认0。现场直接子弹窗在`35-field.css`设置一致高度预算、固定头尾及可滚动正文，长文件预检不再将确认按钮推出矮屏；不改文件与事务协议。
+
+以上描述源码职责与合同；本轮程序专项、真实UI结果、迁移保留证据及未覆盖动作分别记录在[执行盘点](../roadmap/workbench-manual-remediation/execution-20260915/implementation-and-coverage.md)，不作为整系统手动通过声明。
+
 ## 页面状态与故障
 
 - `templates/workbench/index.html`先给可读启动状态，并由独立watchdog显示资源错误或启动超时，不依赖末尾主脚本自己报告缺失。
@@ -95,6 +124,6 @@ HTML -> 提前应用主题 -> manifest本地脚本/样式 -> React宿主 -> 同�
 - `WorkbenchDensity`只保存本机显示偏好。计划默认选择不覆盖明确来源，实际甘特显示窗口与服务器数据范围分离；报工继续操作只在原回执确认并取得新写入上下文后启动。
 - 独立工作台截图/几何/交互工具通过daily gate显式参数运行；默认旧浏览器manual/CI政策保留。每份证据绑定实际源码与build_id，不借用旧截图为新版本作证。
 
-前期专项测试及双尺寸双主题浏览器证据继续保留，当前最终全站逐动作验收仍在进行，不能将旧局部通过重记为最终快照通过。5000同资源工序、四个完整候选的正式隔离测量已通过，受理到终态122.728285375秒低于原180秒目标，重启后引用及结果相同；该证据只绑定当时冻结快照，不自动覆盖最终HEAD。
+前期专项测试及双尺寸双主题浏览器证据继续保留，不能将旧局部通过重记为最终快照通过。2026-09-16接续时G3/G4/G5/G7与G1放弃已闭环，正向试调采用和最新主实例激活继续收口，具体状态见执行盘点。270587be…的355输入hash及导航92/92只属于22:41冻结阶段，后续已有新修复与b71675b…页面回验，不再把旧构建称为当前最终证明。历史5000同资源工序、四个完整候选的正式隔离测量为122.728285375秒，只绑定当时冻结快照，不自动覆盖最终HEAD。
 
-完整门禁仍为`scripts/run_quality_gate.py`。分批本地归档、最终干净检出完整门禁和旧UI退役由本轮继续完成，Win7打包、真机与最终发布排除。代码归档不是业务数据库备份；代码回退与新数据保全分别核对，不用旧库覆盖新增事实。最新状态见`../roadmap/workbench-prototype-migration/round2-progress-20260910.md`，退役矩阵在同目录`legacy-retirement/`，未应用的决定不作为已实现能力。
+完整门禁的仓库入口仍为`scripts/run_quality_gate.py`，这是工具事实，不是本轮执行授权。2026-09-15用户明确禁止全门禁，本轮不调用该入口任何模式、不运行整仓测试，仅执行相关专项、构建与手动浏览器验证；未提交工作区不声称clean-worktree proof。历史迁移路线的归档、旧UI退役状态见`../roadmap/workbench-prototype-migration/round2-progress-20260910.md`及同目录`legacy-retirement/`；本轮最新覆盖见上述执行盘点。Win7打包、真机与最终发布仍排除。代码归档不是业务数据库备份，代码回退与新数据保全分别核对，不用旧库覆盖新增事实，未应用的决定不作为已实现能力。
