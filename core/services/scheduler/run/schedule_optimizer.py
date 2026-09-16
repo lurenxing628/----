@@ -76,6 +76,100 @@ def _default_runtime() -> OptimizerRuntime:
     )
 
 
+def _resolve_runtime(runtime: Optional[OptimizerRuntime], search_budget: Optional[SearchBudget]) -> OptimizerRuntime:
+    """未显式注入 runtime 时用默认 runtime；有共享搜索预算时改用预算时钟，让各阶段读同一只表。"""
+    resolved = runtime or _default_runtime()
+    if search_budget is not None:
+        resolved = replace(resolved, clock=search_budget.clock)
+    return resolved
+
+
+def _resolve_dispatch_modes(
+    optimizer_cfg: Any,
+    *,
+    graph_ready_context: Optional[Any],
+    graph_dispatch_mode_override: Optional[str],
+) -> Tuple[bool, str, List[str]]:
+    """带图就绪上下文或显式覆盖为 sgs 时只跑 sgs，否则沿用配置；返回 (是否强制 sgs, 主派工模式, 待尝试模式列表)。"""
+    graph_sgs_required = graph_ready_context is not None or graph_dispatch_mode_override == "sgs"
+    dispatch_mode_cfg = "sgs" if graph_sgs_required else optimizer_cfg.dispatch_mode
+    dispatch_modes = ["sgs"] if graph_sgs_required else optimizer_cfg.dispatch_modes()
+    return graph_sgs_required, dispatch_mode_cfg, dispatch_modes
+
+
+def _resolve_deadline(optimizer_cfg: Any, *, t_begin: float, search_budget: Optional[SearchBudget]) -> float:
+    """improve 模式按配置预算算截止时刻，其他模式不设限；有共享预算时以预算裁定的截止时刻为准。"""
+    improve = optimizer_cfg.algo_mode == "improve"
+    deadline = (t_begin + float(optimizer_cfg.time_budget_seconds)) if improve else float("inf")
+    if search_budget is not None:
+        deadline = search_budget.optimizer_deadline(
+            started_at=t_begin, configured_seconds=optimizer_cfg.time_budget_seconds, improve=improve,
+        )
+    return deadline
+
+
+def _merge_best_algo_stats(best: Dict[str, Any], optimizer_algo_stats: Dict[str, Any]) -> Dict[str, Any]:
+    """最优解自带 algo_stats 时以它为准，否则合并优化器层累计的统计。"""
+    best_algo_stats = best.get("algo_stats") if isinstance(best, dict) else None
+    if isinstance(best_algo_stats, dict):
+        return merge_algo_stats(best_algo_stats)
+    return merge_algo_stats(optimizer_algo_stats)
+
+
+def _best_outcome(
+    *,
+    runtime: OptimizerRuntime,
+    optimizer_cfg: Any,
+    optimizer_algo_stats: Dict[str, Any],
+    state: OptimizerSearchState,
+    best: Dict[str, Any],
+    search_report_state: OptimizationSearchReportState,
+    scheduler: Any,
+    dispatch_mode_cfg: str,
+    t_begin: float,
+    search_budget: Optional[SearchBudget],
+    phases: OptimizerPhaseBudget,
+) -> OptimizationOutcome:
+    """搜索已产出最优解：发布最终预算、压缩尝试与改进轨迹、定稿搜索报告并封装为 OptimizationOutcome。"""
+    results = best["results"]
+    summary = best["summary"]
+    used_strategy = best["strategy"]
+    used_params = best["params"]
+    best_metrics = best["metrics"]
+    best_score = best["score"]
+    best_order = best["order"]
+    algo_stats = _merge_best_algo_stats(best, optimizer_algo_stats)
+    publish_search_budget(
+        report_state=search_report_state, attempts=state.attempts, budget=search_budget,
+        phases=phases, started_at=t_begin, finished_at=runtime.clock(),
+    )
+    compacted_attempts = state.compact_attempts(limit=12)
+    compacted_trace = state.compact_trace(limit=200)
+    search_report = search_report_state.finalize(
+        runtime_ms=_runtime_ms(runtime, t_begin=t_begin),
+        attempts=compacted_attempts,
+        improvement_trace=compacted_trace,
+    )
+    _record_decoder_invocations(search_report, scheduler)
+    return OptimizationOutcome(
+        results=results,
+        summary=summary,
+        used_strategy=used_strategy,
+        used_params=used_params,
+        metrics=best_metrics,
+        best_score=best_score,
+        best_order=list(best_order or []),
+        attempts=compacted_attempts,
+        improvement_trace=compacted_trace,
+        algo_mode=optimizer_cfg.algo_mode,
+        objective_name=optimizer_cfg.objective_name,
+        time_budget_seconds=optimizer_cfg.time_budget_seconds,
+        algo_stats=algo_stats,
+        search_report=search_report,
+        dispatch_mode=str(best.get("dispatch_mode") or dispatch_mode_cfg),
+        dispatch_rule=str(best.get("dispatch_rule") or optimizer_cfg.dispatch_rule),
+    )
+
 
 def optimize_schedule(
     *,
@@ -103,9 +197,7 @@ def optimize_schedule(
 
     说明：本入口仍是服务主链到算法核心的合同保护层；配置、seed 与搜索执行已拆到窄职责模块。
     """
-    runtime = _runtime or _default_runtime()
-    if search_budget is not None:
-        runtime = replace(runtime, clock=search_budget.clock)
+    runtime = _resolve_runtime(_runtime, search_budget)
     optimizer_algo_stats: Dict[str, Any] = {"fallback_counts": {}, "param_fallbacks": {}}
     cfg = ensure_optimizer_config_snapshot(cfg, strict_mode=bool(strict_mode))
     if graph_dispatch_mode_override not in (None, "sgs"):
@@ -120,9 +212,11 @@ def optimize_schedule(
         optimizer_algo_stats=optimizer_algo_stats,
         strict_mode=bool(strict_mode),
     )
-    graph_sgs_required = graph_ready_context is not None or graph_dispatch_mode_override == "sgs"
-    dispatch_mode_cfg = "sgs" if graph_sgs_required else optimizer_cfg.dispatch_mode
-    dispatch_modes = ["sgs"] if graph_sgs_required else optimizer_cfg.dispatch_modes()
+    graph_sgs_required, dispatch_mode_cfg, dispatch_modes = _resolve_dispatch_modes(
+        optimizer_cfg,
+        graph_ready_context=graph_ready_context,
+        graph_dispatch_mode_override=graph_dispatch_mode_override,
+    )
     candidate_profile = build_candidate_profile(
         algo_mode=optimizer_cfg.algo_mode,
         dispatch_mode=optimizer_cfg.dispatch_mode,
@@ -148,12 +242,7 @@ def optimize_schedule(
 
     state = OptimizerSearchState()
     t_begin = runtime.clock()
-    deadline = (t_begin + float(optimizer_cfg.time_budget_seconds)) if optimizer_cfg.algo_mode == "improve" else float("inf")
-    if search_budget is not None:
-        deadline = search_budget.optimizer_deadline(
-            started_at=t_begin, configured_seconds=optimizer_cfg.time_budget_seconds,
-            improve=optimizer_cfg.algo_mode == "improve",
-        )
+    deadline = _resolve_deadline(optimizer_cfg, t_begin=t_begin, search_budget=search_budget)
     phases = OptimizerPhaseBudget.create(
         started_at=t_begin, deadline=deadline, improve=optimizer_cfg.algo_mode == "improve",
         graph_ready=graph_ready_context is not None,
@@ -307,44 +396,16 @@ def optimize_schedule(
             schedule_fn=_schedule_with_optional_strict_mode,
         )
 
-    best = state.best
-    results = best["results"]
-    summary = best["summary"]
-    used_strategy = best["strategy"]
-    used_params = best["params"]
-    best_metrics = best["metrics"]
-    best_score = best["score"]
-    best_order = best["order"]
-    best_algo_stats = best.get("algo_stats") if isinstance(best, dict) else None
-    algo_stats = merge_algo_stats(best_algo_stats) if isinstance(best_algo_stats, dict) else merge_algo_stats(optimizer_algo_stats)
-    publish_search_budget(
-        report_state=search_report_state, attempts=state.attempts, budget=search_budget,
-        phases=phases, started_at=t_begin, finished_at=runtime.clock(),
-    )
-    compacted_attempts = state.compact_attempts(limit=12)
-    compacted_trace = state.compact_trace(limit=200)
-    search_report = search_report_state.finalize(
-        runtime_ms=_runtime_ms(runtime, t_begin=t_begin),
-        attempts=compacted_attempts,
-        improvement_trace=compacted_trace,
-    )
-    _record_decoder_invocations(search_report, scheduler)
-
-    return OptimizationOutcome(
-        results=results,
-        summary=summary,
-        used_strategy=used_strategy,
-        used_params=used_params,
-        metrics=best_metrics,
-        best_score=best_score,
-        best_order=list(best_order or []),
-        attempts=compacted_attempts,
-        improvement_trace=compacted_trace,
-        algo_mode=optimizer_cfg.algo_mode,
-        objective_name=optimizer_cfg.objective_name,
-        time_budget_seconds=optimizer_cfg.time_budget_seconds,
-        algo_stats=algo_stats,
-        search_report=search_report,
-        dispatch_mode=str(best.get("dispatch_mode") or dispatch_mode_cfg),
-        dispatch_rule=str(best.get("dispatch_rule") or optimizer_cfg.dispatch_rule),
+    return _best_outcome(
+        runtime=runtime,
+        optimizer_cfg=optimizer_cfg,
+        optimizer_algo_stats=optimizer_algo_stats,
+        state=state,
+        best=state.best,
+        search_report_state=search_report_state,
+        scheduler=scheduler,
+        dispatch_mode_cfg=dispatch_mode_cfg,
+        t_begin=t_begin,
+        search_budget=search_budget,
+        phases=phases,
     )

@@ -11,9 +11,28 @@ from .report_degradation import record_report_bad_time_row, record_report_zero_c
 
 
 def compute_utilization(*, schedule_rows, start_dt, end_dt_excl, calendars, degradation_collector=None):
+    groups = _group_operation_intervals(schedule_rows, start_dt, end_dt_excl, degradation_collector)
+    result = {"machine": [], "operator": []}
+    zero = {"machine": 0, "operator": 0}
+    for (kind, key), item in groups.items():
+        row = _utilization_row(kind, key, item, calendars.get((kind, key)), start_dt, end_dt_excl)
+        result[kind].append(row)
+        zero[kind] += row["available_hours"] == 0
+        if row["available_hours"] is None and degradation_collector is not None:
+            degradation_collector.add(code="resource_load_capacity_failed", scope="report.utilization",
+                field="可用工时", message="资源日历资料不完整，占用率无法计算。", sample=kind + "=" + key)
+    record_report_zero_capacity_window(degradation_collector, scope="report.utilization",
+                                      machine_row_count=zero["machine"], operator_row_count=zero["operator"])
+    for kind in result:
+        result[kind].sort(key=lambda row: (row["hours"] is None, -(row["hours"] or 0.0), row[kind + "_id"]))
+    return result["machine"], result["operator"]
+
+
+def _group_operation_intervals(schedule_rows, start, end, collector):
+    """Clip internal rows to the window and group their intervals per resource, then per operation."""
     groups = defaultdict(lambda: {"operations": defaultdict(list), "task_count": 0, "label": None})
     for index, row in enumerate(schedule_rows):
-        interval = _row_interval(row, start_dt, end_dt_excl, degradation_collector)
+        interval = _row_interval(row, start, end, collector)
         if interval is None:
             continue
         for kind in ("machine", "operator"):
@@ -26,26 +45,17 @@ def compute_utilization(*, schedule_rows, start_dt, end_dt_excl, calendars, degr
             item["operations"][op].append(interval)
             item["task_count"] += 1
             item["label"] = row.get(kind + "_name")
-    result = {"machine": [], "operator": []}
-    zero = {"machine": 0, "operator": 0}
-    for (kind, key), item in groups.items():
-        calendar = calendars.get((kind, key))
-        available = available_intervals(calendar) if calendar is not None else None
-        intervals = [span for values in item["operations"].values() for span in union(values)]
-        metrics = ResourceUtilizationMetrics(intervals, available).window(start_dt, end_dt_excl)
-        row = {kind + "_id": key, kind + "_name": item["label"], "task_count": item["task_count"], **metrics,
-               "hours": metrics["occupied_hours"], "capacity_hours": metrics["available_hours"],
-               "utilization": metrics["utilization_ratio"], "calendar_issues": calendar["issues"] if calendar else []}
-        result[kind].append(row)
-        zero[kind] += metrics["available_hours"] == 0
-        if metrics["available_hours"] is None and degradation_collector is not None:
-            degradation_collector.add(code="resource_load_capacity_failed", scope="report.utilization",
-                field="可用工时", message="资源日历资料不完整，占用率无法计算。", sample=kind + "=" + key)
-    record_report_zero_capacity_window(degradation_collector, scope="report.utilization",
-                                      machine_row_count=zero["machine"], operator_row_count=zero["operator"])
-    for kind in result:
-        result[kind].sort(key=lambda row: (row["hours"] is None, -(row["hours"] or 0.0), row[kind + "_id"]))
-    return result["machine"], result["operator"]
+    return groups
+
+
+def _utilization_row(kind, key, item, calendar, start, end):
+    """One report row: a resource's unioned occupancy measured against its own calendar."""
+    available = available_intervals(calendar) if calendar is not None else None
+    intervals = [span for values in item["operations"].values() for span in union(values)]
+    metrics = ResourceUtilizationMetrics(intervals, available).window(start, end)
+    return {kind + "_id": key, kind + "_name": item["label"], "task_count": item["task_count"], **metrics,
+            "hours": metrics["occupied_hours"], "capacity_hours": metrics["available_hours"],
+            "utilization": metrics["utilization_ratio"], "calendar_issues": calendar["issues"] if calendar else []}
 
 
 def _row_interval(row, start, end, collector):

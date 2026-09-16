@@ -25,26 +25,47 @@ def template_after(rows, facts, projection):
     return result
 
 
+def _compared_fields(current):
+    """Internal rows compare hour quotas; external rows compare days and supplier."""
+    quota_fields = ("setup_hours", "unit_hours") if current["source"] == "internal" else ("external_days", "supplier_ref")
+    return ("label", "source", "op_type_ref") + quota_fields
+
+
+def _row_updated(previous, current):
+    """A matched before/after pair is updated when any compared field or its external group differs."""
+    changed = any(previous[field] != current[field] for field in _compared_fields(current))
+    previous_group, current_group = previous["external_group"], current["external_group"]
+    changed |= any((previous_group or {}).get(field) != (current_group or {}).get(field) for field in ("merge_mode", "total_days"))
+    return changed
+
+
+def _change_state(previous, current):
+    if previous is None:
+        return "added"
+    if current is None:
+        return "removed"
+    return "updated" if _row_updated(previous, current) else "unchanged"
+
+
+def _change_counts(changes):
+    return {state: sum(row["change"] == state for row in changes) for state in ("added", "removed", "updated", "unchanged")}
+
+
+def _cleared_resources(before):
+    """Manual machine/operator picks on the old rows are dropped together with the piece instances."""
+    return [{"operation_ref": row["ref"], "sequence": row["sequence"], "business_code": row["business_code"],
+             "machine": row["resources"]["machine"], "operator": row["resources"]["operator"]}
+            for row in before if row["machine_ref"] is not None or row["operator_ref"] is not None]
+
+
 def template_changes(before, after):
     """Piece instances are removed; the template creates one unsplit operation."""
     old = {(row["sequence"], row["piece_id"]): row for row in before}
     new = {(row["sequence"], None): row for row in after}
-    fields = ("label", "source", "op_type_ref")
     changes = []
     for key in sorted(set(old) | set(new), key=lambda value: (value[0], value[1] or "")):
         previous, current = old.get(key), new.get(key)
-        state = "added" if previous is None else "removed" if current is None else "unchanged"
-        if previous is not None and current is not None:
-            quota_fields = ("setup_hours", "unit_hours") if current["source"] == "internal" else ("external_days", "supplier_ref")
-            changed = any(previous[field] != current[field] for field in fields + quota_fields)
-            previous_group, current_group = previous["external_group"], current["external_group"]
-            changed |= any((previous_group or {}).get(field) != (current_group or {}).get(field) for field in ("merge_mode", "total_days"))
-            if changed:
-                state = "updated"
-        changes.append({"sequence": key[0], "piece_id": key[1], "change": state,
+        changes.append({"sequence": key[0], "piece_id": key[1], "change": _change_state(previous, current),
                         "before": previous, "after": current})
-    cleared = [{"operation_ref": row["ref"], "sequence": row["sequence"], "business_code": row["business_code"],
-                "machine": row["resources"]["machine"], "operator": row["resources"]["operator"]}
-               for row in before if row["machine_ref"] is not None or row["operator_ref"] is not None]
-    return {"changes": changes, "change_counts": {state: sum(row["change"] == state for row in changes)
-            for state in ("added", "removed", "updated", "unchanged")}, "cleared_resources": cleared}
+    cleared = _cleared_resources(before)
+    return {"changes": changes, "change_counts": _change_counts(changes), "cleared_resources": cleared}

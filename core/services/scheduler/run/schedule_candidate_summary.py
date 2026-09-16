@@ -114,21 +114,49 @@ def _public_failure_reason(value: Any) -> Optional[str]:
     return "candidate_failed"
 
 
+def _candidate_text(candidate: Any, name: str) -> str:
+    """读取候选的文本属性；缺失或空值统一按空字符串对外。"""
+    return str(getattr(candidate, name, "") or "")
+
+
+def _candidate_weight(candidate: Any, name: str) -> int:
+    """读取候选的图权重属性；缺失或空值按 0 对外。"""
+    return int(getattr(candidate, name, 0) or 0)
+
+
+def _candidate_elapsed_ms(candidate: Any) -> int:
+    """候选耗时（秒）换算成整毫秒。"""
+    return int(round(float(getattr(candidate, "elapsed_seconds", 0.0) or 0.0) * 1000))
+
+
+def _candidate_dispatch_rule_fields(candidate: Any) -> Dict[str, str]:
+    """公开视图的派工规则字段：实际采用的规则，以及与之不同时的配置规则。"""
+    # The optimizer searches the whole rule pool; say which rule the plan really uses.
+    fields: Dict[str, str] = {}
+    adopted_rule = _candidate_text(candidate, "adopted_dispatch_rule")
+    if adopted_rule:
+        fields["adopted_dispatch_rule"] = adopted_rule
+        configured_rule = _candidate_text(candidate, "dispatch_rule")
+        if configured_rule and configured_rule != adopted_rule:
+            fields["configured_dispatch_rule"] = configured_rule
+    return fields
+
+
 def candidate_public_summary(candidate: Any, *, roles: Optional[List[str]] = None) -> Dict[str, Any]:
     role_list = list(roles or [])
     health = candidate_health_summary(candidate)
-    summary = {
-        "label": str(getattr(candidate, "label", "") or ""),
-        "kind": str(getattr(candidate, "kind", "") or ""),
-        "status": str(getattr(candidate, "status", "") or ""),
+    summary: Dict[str, Any] = {
+        "label": _candidate_text(candidate, "label"),
+        "kind": _candidate_text(candidate, "kind"),
+        "status": _candidate_text(candidate, "status"),
         "score": _score_list(candidate),
         "metrics": candidate_metrics_summary(candidate),
         "health": health,
-        "graph_enabled": str(getattr(candidate, "kind", "") or "") == CANDIDATE_KIND_CRITICAL_CHAIN,
-        "critical_weight": int(getattr(candidate, "graph_critical_weight", 0) or 0),
-        "impact_weight": int(getattr(candidate, "graph_impact_weight", 0) or 0),
-        "downstream_weight": int(getattr(candidate, "graph_downstream_weight", 0) or 0),
-        "elapsed_ms": int(round(float(getattr(candidate, "elapsed_seconds", 0.0) or 0.0) * 1000)),
+        "graph_enabled": _candidate_text(candidate, "kind") == CANDIDATE_KIND_CRITICAL_CHAIN,
+        "critical_weight": _candidate_weight(candidate, "graph_critical_weight"),
+        "impact_weight": _candidate_weight(candidate, "graph_impact_weight"),
+        "downstream_weight": _candidate_weight(candidate, "graph_downstream_weight"),
+        "elapsed_ms": _candidate_elapsed_ms(candidate),
         "detail_saved": candidate_detail_saved(candidate, role_list),
         "roles": role_list,
     }
@@ -136,16 +164,10 @@ def candidate_public_summary(candidate: Any, *, roles: Optional[List[str]] = Non
     if failure_reason:
         summary["failure_reason"] = failure_reason
     # Public views name the sibling by label only; candidate keys stay internal.
-    reused_from_label = str(getattr(candidate, "reused_from_label", "") or "")
+    reused_from_label = _candidate_text(candidate, "reused_from_label")
     if reused_from_label:
         summary["reused_from_label"] = reused_from_label
-    # The optimizer searches the whole rule pool; say which rule the plan really uses.
-    adopted_rule = str(getattr(candidate, "adopted_dispatch_rule", "") or "")
-    if adopted_rule:
-        summary["adopted_dispatch_rule"] = adopted_rule
-        configured_rule = str(getattr(candidate, "dispatch_rule", "") or "")
-        if configured_rule and configured_rule != adopted_rule:
-            summary["configured_dispatch_rule"] = configured_rule
+    summary.update(_candidate_dispatch_rule_fields(candidate))
     return summary
 
 

@@ -19,6 +19,23 @@ def permission_rows(state):
             for row in state["machine_authorizations"]]
 
 
+def _row_result(old, target):
+    return "new" if old is None else "delete" if target is None else "unchanged" if old == target else "update"
+
+
+def _field_changes(old, target):
+    return {key: [old.get(key) if old else None, target.get(key) if target else None]
+            for key in ("skill_level", "is_primary")
+            if (old or {}).get(key) != (target or {}).get(key)}
+
+
+def _permission_row(number, ref, machine, previous, target):
+    old = {key: previous[key] for key in ("machine_ref", "skill_level", "is_primary")} if previous else None
+    return {"row": number, "entity_ref": ref, "business_code": machine["record"]["machine_id"],
+            "label": machine["record"]["name"], "result": _row_result(old, target), "before": old, "after": target,
+            "changes": _field_changes(old, target), "errors": []}
+
+
 class WorkbenchOperatorMachinePermissions:
     def __init__(self, conn, logger=None):
         self.conn = conn
@@ -35,26 +52,22 @@ class WorkbenchOperatorMachinePermissions:
             old_rows = {row["machine_ref"]: row for row in permission_rows(before)}
             requested = self._normalize(permissions, old_rows)
             requested_by_ref = {row["machine_ref"]: row for row in requested}
-            machines = {}
-            for ref in sorted(set(old_rows) | set(requested_by_ref)):
-                machine, machine_raw = self.state.by_ref("machine", ref)
-                if machine.entity_key != machine.entity_key.strip():
-                    raise WorkbenchCommandRejected("constraint_conflict", "设备编号前后含空格，请先修正设备编号。")
-                machines[ref] = self.state.snapshot(machine)
-            rows = []
-            for number, ref in enumerate(sorted(machines), 1):
-                previous, target = old_rows.get(ref), requested_by_ref.get(ref)
-                old = {key: previous[key] for key in ("machine_ref", "skill_level", "is_primary")} if previous else None
-                result = "new" if old is None else "delete" if target is None else "unchanged" if old == target else "update"
-                rows.append({"row": number, "entity_ref": ref, "business_code": machines[ref]["record"]["machine_id"],
-                             "label": machines[ref]["record"]["name"], "result": result, "before": old, "after": target,
-                             "changes": {key: [old.get(key) if old else None, target.get(key) if target else None]
-                                         for key in ("skill_level", "is_primary")
-                                         if (old or {}).get(key) != (target or {}).get(key)}, "errors": []})
+            machines = self._machine_snapshots(sorted(set(old_rows) | set(requested_by_ref)))
+            rows = [_permission_row(number, ref, machines[ref], old_rows.get(ref), requested_by_ref.get(ref))
+                    for number, ref in enumerate(sorted(machines), 1)]
             # The full operator and machine facts fence rename/recreation, skill changes and hidden links.
             request = {"operator_ref": operator_ref, "machine_permissions": requested,
                        "expected_operator": before, "expected_machines": machines}
             return ResourceActionPreview.build(OPERATION, request, rows)
+
+    def _machine_snapshots(self, refs):
+        machines = {}
+        for ref in refs:
+            machine, _ = self.state.by_ref("machine", ref)
+            if machine.entity_key != machine.entity_key.strip():
+                raise WorkbenchCommandRejected("constraint_conflict", "设备编号前后含空格，请先修正设备编号。")
+            machines[ref] = self.state.snapshot(machine)
+        return machines
 
     def _normalize(self, permissions, old):
         if type(permissions) is not list:

@@ -50,16 +50,11 @@ def _occupancy_groups(rows, start, end, constraints):
 def _resource_occupancy(kind, key, operations, calendar, resources, label):
     intervals = [interval for fragments in operations.values() for interval in union(fragments)]
     swept = segments(intervals)
-    occupied = union(intervals)
-    arranged_hours, occupied_hours = hours(intervals), hours(occupied)
-    overlap_hours = hours([(low, high) for low, high, count in swept if count > 1])
+    arranged_hours, occupied_hours, overlap_hours = _occupancy_hours(intervals, swept)
     row = public_resource(kind, key, resources, None)
     row["label"] = calendar["label"] if calendar is not None else label
     available = available_intervals(calendar) if calendar is not None else None
-    bounds = intervals + (available or [])
-    first = min((low for low, _ in bounds), default=datetime.min)
-    last = max((high for _, high in bounds), default=first)
-    metrics = ResourceUtilizationMetrics(intervals, available).window(first, last)
+    metrics = _bounding_window_metrics(intervals, available)
     capacity_measures, utilization, insufficient = _capacity_measures(metrics, arranged_hours)
     measures = {"arranged_hours": arranged_hours, "occupied_hours": occupied_hours,
                 "overlap_hours": overlap_hours, "excess_arranged_hours": arranged_hours - occupied_hours,
@@ -74,6 +69,22 @@ def _resource_occupancy(kind, key, operations, calendar, resources, label):
                segments=[{"start": wire(low), "end": wire(high), "concurrent_operations": count}
                          for low, high, count in swept])
     return row
+
+
+def _occupancy_hours(intervals, swept):
+    """Arranged hours, unioned occupied hours and hours where operations run concurrently."""
+    occupied = union(intervals)
+    arranged_hours, occupied_hours = hours(intervals), hours(occupied)
+    overlap_hours = hours([(low, high) for low, high, count in swept if count > 1])
+    return arranged_hours, occupied_hours, overlap_hours
+
+
+def _bounding_window_metrics(intervals, available):
+    """Utilization metrics over the span that covers every arranged and available interval."""
+    bounds = intervals + (available or [])
+    first = min((low for low, _ in bounds), default=datetime.min)
+    last = max((high for _, high in bounds), default=first)
+    return ResourceUtilizationMetrics(intervals, available).window(first, last)
 
 
 def _capacity_measures(metrics, arranged_hours):

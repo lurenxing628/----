@@ -119,25 +119,39 @@ def resolve_preview(ref, action, write_token):
     return preview, content
 
 
-def public_row(row):
-    expected = row["expected"]
+# Stored material column -> public field name shown in preview rows.
+_PUBLIC_FIELD_NAMES = {"material_id": "business_code", "name": "label", "spec": "spec", "unit": "unit",
+                       "stock_qty": "stock_qty", "status": "status", "remark": "remark", "created_at": "created_at"}
+
+
+def _public_before(expected):
     raw = expected["material"] if expected else None
-    names = {"material_id": "business_code", "name": "label", "spec": "spec", "unit": "unit",
-             "stock_qty": "stock_qty", "status": "status", "remark": "remark", "created_at": "created_at"}
-    before = {public: raw[key] for key, public in names.items()} if raw else None
+    before = {public: raw[key] for key, public in _PUBLIC_FIELD_NAMES.items()} if raw else None
     if before is not None and before["created_at"] is not None:
         before["created_at"] = messages.stored_utc_text(str(before["created_at"]))
-    after = None
+    return before
+
+
+def _public_after(row, before):
     if row["action"] != "delete" and row["input"] is not None:
         payload = row["input"]
         after = dict(before or {})
         after.update(payload.get("fields", {}))
         after.update({key: payload[key] for key in ("business_code", "label") if key in payload})
+        return after
+    return None
+
+
+def public_row(row):
+    expected = row["expected"]
+    before = _public_before(expected)
+    after = _public_after(row, before)
     identity = expected["identity"] if expected else None
     return {"row": row["row"], "business_code": row["business_code"],
             "entity_ref": row.get("entity_ref") or (identity["ref"] if identity else None),
             "action": row["action"], "result": row["result"], "before": before, "after": after,
-            "changes": {names[key]: value for key, value in row["changes"].items() if key in names},
+            "changes": {_PUBLIC_FIELD_NAMES[key]: value
+                        for key, value in row["changes"].items() if key in _PUBLIC_FIELD_NAMES},
             "errors": row["errors"], "requires_confirmation": row["requires_confirmation"],
             "reference_fields": row.get("reference_fields", []),
             "reference_count": len(expected["requirements"]) if expected else 0}
