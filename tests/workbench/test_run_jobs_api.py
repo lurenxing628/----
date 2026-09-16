@@ -11,7 +11,7 @@ from web.routes.workbench.scheduling_jobs import register_scheduling_job_routes
 BASE = "/api/workbench/v1/scheduling"
 
 
-@pytest.fixture
+@pytest.fixture(name="jobs_api")
 def jobs_api(job_case):
     case = job_case
     bp = Blueprint("av_jobs", __name__)

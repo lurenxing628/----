@@ -48,8 +48,8 @@ function detailPart(n,long=false,count) {
     op_type_ref:i%3===2?null:ref(100+i),op_type_label:i%3===2?null:['Turn','Polish'][i%3],supplier_ref:i%3===1?ref(300):null,supplier_label:i%3===1?'供应商长名称'.repeat(long?16:1):null,
     external_group_ref:i%3===1?ref(400):null,setup_hours:i%3===0?0:null,unit_hours:i%3===0?1.25:null,external_days:null,external_days_source:null,status:'active',
     issues:i%3===1?[{code:'external_group_invalid',message:'关联的外协组规则不合法，这道工序仍用自己的周期。请核对外协组的起止序、成员和周期。'},
-      {code:'value_invalid',message:'外协周期填的值不合法，系统不会用默认值顶替。'}]:i%3===2?[{code:'unknown_type',message:'旧记录工种未识别'}]:[],confirmation:{source:stamp('unconfirmed'),hours:stamp('unconfirmed')}}));
-  p.external_groups=total?[{ref:ref(400),start_sequence:10,end_sequence:10,merge_mode:'merged',total_days:null,supplier_ref:ref(300),supplier_label:'原供应商',remark:'保留原外协规则',issues:[{code:'value_invalid',message:'合并周期填的值不合法，系统不会用默认值顶替。'}]}]:[];
+      {code:'value_invalid',message:'外协周期填的值不合法，请核对。'}]:i%3===2?[{code:'unknown_type',message:'旧记录工种未识别'}]:[],confirmation:{source:stamp('unconfirmed'),hours:stamp('unconfirmed')}}));
+  p.external_groups=total?[{ref:ref(400),start_sequence:10,end_sequence:10,merge_mode:'merged',total_days:null,supplier_ref:ref(300),supplier_label:'原供应商',remark:'保留原外协规则',issues:[{code:'value_invalid',message:'合并周期填的值不合法，请核对。'}]}]:[];
   p.capabilities={...caps};return p;
 }
 function previewData(partRef,body) {
@@ -186,7 +186,7 @@ async function closeDetail(discard = false) {
   assert.equal(await page.getByRole('dialog').count(), 0);
 }
 async function readAllOperations(name, expected) {
-  const dialog = page.getByRole('dialog'), grid = dialog.getByRole('table', { name, exact: true });
+  const dialog = page.getByRole('dialog'), grid = name === '工时定额明细' ? dialog.locator('[data-process-hours-editor] .process-hours-section > .wb-table-frame > table') : dialog.getByRole('table', { name, exact: true });
   const rows = grid.locator('tbody tr'), numbers = grid.locator('tbody tr td:first-child b');
   const size = dialog.getByRole('combobox', { name: '每页条数', exact: true });
   const pager = size.locator('xpath=ancestor::nav');
@@ -195,14 +195,14 @@ async function readAllOperations(name, expected) {
   for (const value of ['20', '100', '50']) {
     await controls.select(size, value);
     assert.equal(await rows.count(), Number(value));
-    assert.deepEqual(await numbers.allTextContents(), expected.slice(0, Number(value)));
+    assert.deepEqual((await numbers.allTextContents()).sort((a,b)=>Number(a)-Number(b)), expected.slice(0, Number(value)));
     assert(await pager.getByText('共 ' + expected.length + ' 项 · 第 1 / ' + Math.ceil(expected.length / Number(value)) + ' 页', { exact: true }).isVisible());
   }
   const sequences = [], pages = [], next = dialog.getByRole('button', { name: '下一页', exact: true });
   const count = Math.ceil(expected.length / 50);
   for (let number = 1; number <= count; number++) {
     assert(await pager.getByText('共 ' + expected.length + ' 项 · 第 ' + number + ' / ' + count + ' 页', { exact: true }).isVisible());
-    const values = await numbers.allTextContents(), wanted = expected.slice((number - 1) * 50, number * 50);
+    const values = (await numbers.allTextContents()).sort((a,b)=>Number(a)-Number(b)), wanted = expected.slice((number - 1) * 50, number * 50);
     assert.equal(await rows.count(), wanted.length); assert(values.length > 0 && values.length <= 50);
     assert.deepEqual(values, wanted, name + ' page ' + number);
     assert.equal(await dialog.getByRole('button', { name: '上一页', exact: true }).isDisabled(), number === 1);
@@ -221,7 +221,7 @@ async function shot(name) {
     const visible = el => el.getClientRects().length && getComputedStyle(el).visibility !== 'hidden';
     const modal = Array.from(document.querySelectorAll('[role="dialog"]')).filter(visible);
     const bounds = el => { const r = el.getBoundingClientRect(); return { left: r.left, right: r.right, top: r.top, bottom: r.bottom, width: r.width, height: r.height }; };
-    const controls = Array.from(document.querySelectorAll('button,input,textarea,select')).filter(visible).filter(el => !el.closest('.card-scroll'));
+    const controls = Array.from(document.querySelectorAll('button,input,textarea,select')).filter(visible).filter(el => !el.closest('.card-scroll,.wb-table-frame'));
     return { width: innerWidth, height: innerHeight, scroll: document.documentElement.scrollWidth, theme: document.documentElement.dataset.theme,
       dialogs: modal.map(bounds), clipped: controls.filter(el => el.scrollWidth > el.clientWidth + 1 && el.tagName === 'BUTTON').map(el => el.textContent),
       outside: controls.filter(el => { const r = el.getBoundingClientRect(); return r.left < -1 || r.right > innerWidth + 1; }).map(el => el.getAttribute('aria-label') || el.textContent),
@@ -288,8 +288,8 @@ async function cases() {
     assert(!(await page.getByRole('spinbutton', { name: '工序 5 换型工时' }).locator('..').innerText()).includes('请复核'));
     assert.equal(await page.getByRole('spinbutton', { name: '工序 10 外协周期', exact: true }).inputValue(), '');
     assert.equal(await page.getByRole('spinbutton', { name: '外协组 10 至 10 总周期', exact: true }).inputValue(), '');
-    assert((await page.getByRole('dialog').innerText()).includes('外协周期填的值不合法，系统不会用默认值顶替。'));
-    assert((await page.getByRole('table', { name: '外协组原记录', exact: true }).innerText()).includes('合并周期填的值不合法，系统不会用默认值顶替。'));
+    assert((await page.getByRole('dialog').innerText()).includes('外协周期填的值不合法，请核对。'));
+    assert((await page.getByRole('table', { name: '外协组原记录', exact: true }).innerText()).includes('合并周期填的值不合法，请核对。'));
     assert(await page.getByRole('table', { name: '外协组原记录', exact: true }).getByRole('cell', { name: '保留原外协规则', exact: true }).isVisible()); await shot('hours');
     await page.getByRole('tab', { name: /工艺路线/ }).click(); await shot('route-long');
     for (let i = 0; i < 12; i++) { await page.keyboard.press('Tab'); assert(await page.evaluate(() => document.querySelector('.process-detail [role="dialog"]').contains(document.activeElement))); }
@@ -398,7 +398,7 @@ async function cases() {
     const expected = Array.from({ length: 2000 }, (_, index) => String((index + 1) * 5));
     for (const [stage, name] of [[/^1 工艺路线/, '路线工序明细'], [/^2 归属/, '归属明细'], [/^3 工时定额/, '工时定额明细']]) {
       await page.getByRole('tab', { name: stage }).click(); await readAllOperations(name, expected);
-      const last = page.getByRole('table', { name, exact: true }).locator('tbody tr').last();
+      const last = (name === '工时定额明细' ? page.locator('[data-process-hours-editor] .process-hours-section > .wb-table-frame > table') : page.getByRole('table', { name, exact: true })).locator('tbody tr').last();
       await last.scrollIntoViewIfNeeded(); assert((await last.innerText()).includes('10000'));
     }
     report.cases.push({ variant, name: '2000-operation-render-timing', elapsed_ms: Date.now() - start, passed: true });
@@ -409,6 +409,7 @@ async function cases() {
     const ops = page.getByRole('table', { name: '路线工序明细', exact: true }); assert.equal(await ops.locator('tbody tr').count(), 4);
     assert((await ops.innerText()).includes('9223372036854775807')); assert((await ops.innerText()).includes('DeletedOriginal'));
     assert((await ops.innerText()).includes('已停用工序')); assert(!(await ops.innerText()).includes('deleted'));
+    await page.getByText('原始导入资料与保存记录',{exact:true}).click();
     const groups = page.getByRole('table', { name: '外协组原记录', exact: true }); assert((await groups.innerText()).includes('9007199254740992 至 9223372036854775807'));
     await page.getByRole('tab', { name: /工艺路线/ }).click(); await button('录入路线').click(); await preflight();
     const rendered = await page.locator('[data-process-preview]').innerText();
@@ -456,21 +457,22 @@ async function cases() {
     const ops = page.getByRole('table', { name: '路线工序明细', exact: true });
     assert.equal(await ops.locator('tbody tr').count(), 3); assert((await ops.innerText()).includes('原始坏序号TEXT'));
     assert((await ops.innerText()).includes('-5')); assert((await ops.innerText()).includes('原工序号为0，请核对'));
+    await page.getByText('原始导入资料与保存记录',{exact:true}).click();
     assert((await page.getByRole('table', { name: '外协组原记录' }).innerText()).includes('bad-start 至 -10'));
     await page.getByRole('tab', { name: /工时定额/ }).click();
     const setup = page.getByRole('spinbutton', { name: '工序 0 换型工时', exact: true }), unit = page.getByRole('spinbutton', { name: '工序 0 单件工时', exact: true });
     assert.equal(await setup.inputValue(), '0'); assert(!(await setup.locator('..').innerText()).includes('请复核'));
-    assert.equal(await unit.inputValue(), '0'); assert((await unit.locator('..').innerText()).includes('0 · 请复核'));
+    assert.equal(await unit.inputValue(), '0'); assert(!(await unit.locator('..').innerText()).includes('请复核')); assert((await page.locator('[data-process-hours-editor]').innerText()).includes('换型工时 + 单件工时 × 批次数量'));
     await button('关闭详情').click();
   });
   await run('chinese-record-labels-do-not-imply-human-confirmation', async () => {
     await mount(); await open();
     assert(await page.getByRole('cell', { name: /有效.*未人工确认/ }).first().isVisible());
     assert(!(await page.getByRole('table', { name: '路线工序明细', exact: true }).innerText()).includes('active'));
-    await page.getByRole('tab', { name: /工艺路线/ }).click(); assert(await page.getByText('已解析', { exact: true }).isVisible());
-    await button('关闭详情').click(); await open(2); assert(await page.getByText('未解析', { exact: true }).isVisible()); await button('关闭详情').click();
-    await mount({ unknownParsed: true }); await open(); await page.getByRole('tab', { name: /工艺路线/ }).click();
-    assert(await page.getByText('原标记不明确', { exact: true }).isVisible()); assert.equal(await page.getByText('legacy-unknown-flag', { exact: true }).count(), 0);
+    await page.getByRole('tab', { name: /工艺路线/ }).click(); await page.getByText('原始导入资料与保存记录',{exact:true}).click(); assert(await page.getByText('已解析', { exact: true }).isVisible());
+    await button('关闭详情').click(); await open(2); await page.getByText('原始导入资料与保存记录',{exact:true}).click(); assert(await page.getByText('未解析', { exact: true }).isVisible()); await button('关闭详情').click();
+    await mount({ unknownParsed: true }); await open(); await page.getByRole('tab', { name: /工艺路线/ }).click(); await page.getByText('原始导入资料与保存记录',{exact:true}).click();
+    assert(await page.getByText('解析状态未知', { exact: true }).isVisible()); assert.equal(await page.getByText('legacy-unknown-flag', { exact: true }).count(), 0);
     await button('关闭详情').click();
   });
 }

@@ -10,9 +10,8 @@ async function recoverReceipt({p, page, processArea, kind, file}) {
   await p.click(b(dialog(), file.endsWith('.csv') ? 'CSV (.csv)' : 'Excel (.xlsx)'));
   p.step('setInputFiles', 'input[type=file]', file);
   await dialog().locator('input[type=file]').setInputFiles(path.join(p.root, 'uploads', file));
-  await p.response('/process-files/' + kind + '/preview', () => p.click(b(dialog(), '开始预检')));
-  const ack = dialog().getByRole('checkbox', {name: /已核对全部修改前后内容/});
-  if (await ack.count()) await p.click(ack);
+  const preview = await p.response('/process-files/' + kind + '/preview', () => p.click(b(dialog(), '开始预检')));
+  assert.equal(await dialog().getByRole('checkbox', {name: /已核对全部修改前后内容/}).count(), 0);
   const endpoint = '/api/workbench/v1/process-files/' + kind + '/confirm';
   const writePattern = '**' + endpoint, lookupPattern = '**/api/workbench/v1/commands/**';
   const context = page.context(), started = p.report.network.length;
@@ -36,7 +35,7 @@ async function recoverReceipt({p, page, processArea, kind, file}) {
   try {
     p.intentionalNetworkFault = true;
     await context.route(lookupPattern, lookupFault); await context.route(writePattern, responseFault);
-    await p.click(b(dialog(), '确认导入'));
+    await p.click(b(dialog(), preview.data.zero_review_required ? '按 0 导入' : '确认导入'));
     await b(dialog(), '查询原请求回执').waitFor();
     if (injectionError) throw injectionError;
     assert(observed && dropped);
@@ -48,8 +47,8 @@ async function recoverReceipt({p, page, processArea, kind, file}) {
     p.step('restore-receipt-network', lookupPattern, {request_key: observed.request_key});
     const receipt = await p.response('/commands/' + observed.request_key, () => p.click(b(dialog(), '查询原请求回执')));
     assert.equal(receipt.receipt_ref, observed.stored.receipt_ref); assert(['committed', 'unchanged'].includes(receipt.result));
-    await dialog().getByText(kind === 'hours' ? '已查到文件导入结果；导入不代替工时阶段的人工确认。'
-      : '文件导入已完成；工艺确认状态以刷新后的详情为准。', {exact: true}).waitFor();
+    await dialog().getByText(kind === 'hours' ? '导入已完成，请继续确认工时。'
+      : '导入已完成，请刷新资料。', {exact: true}).waitFor();
     await p.shot('recovered-original-' + kind + '-receipt');
     const writes = p.report.network.slice(started).filter(row => row.event === 'request' && new URL(row.url).pathname === endpoint);
     assert.equal(writes.length, 1); assert.equal(JSON.parse(writes[0].post).request_key, observed.request_key);

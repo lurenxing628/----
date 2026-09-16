@@ -61,8 +61,10 @@ from tests.workbench.legacy_migration_current_support import (
     V30_EMPTY_TABLES,
     V30_TABLES,
     V31_TABLES,
+    V32_TABLES,
     assert_v30_source_maps_only,
     assert_v31_receipt_maps_only,
+    assert_v32_empty,
 )
 from tests.workbench.plan_identity_support import IDENTITY_TABLES, LEDGER_TABLES, load_v24_schema, table_snapshot
 from tests.workbench.schema29_regression_support import V29_EMPTY_TABLES, V29_TABLES, assert_v29_source_maps_only
@@ -95,13 +97,14 @@ def test_full_schema_and_v19_upgrade_have_identical_structure_and_keep_every_fie
         assert {name: actual_business[name] for name in before} == before
         from core.infrastructure.workbench_process_workflow_schema import WORKFLOW_TABLES
         empty_tables = set(RESOURCE_TABLE_NAMES + WORKFLOW_TABLES + LEDGER_TABLES[1:] + RUN_TABLES + V27_TABLES
-                           + V29_EMPTY_TABLES + V30_EMPTY_TABLES + V31_TABLES)
+                           + V29_EMPTY_TABLES + V30_EMPTY_TABLES + V31_TABLES + V32_TABLES)
         added_tables = empty_tables | set(IDENTITY_TABLES + LEDGER_TABLES + V29_TABLES + V30_TABLES)
         assert set(actual_business) - set(before) == added_tables
         assert all(not table_rows(upgraded, table) for table in empty_tables)
         assert_v29_source_maps_only(upgraded)
         assert_v30_source_maps_only(upgraded)
         assert_v31_receipt_maps_only(upgraded)
+        assert_v32_empty(upgraded)
         assert [tuple(row) for row in upgraded.execute("SELECT kind,source_key FROM WorkbenchPlanSourceRefs ORDER BY kind")] == [
             ("operation", "31"), ("schedule_row", "41")]
         assert table_rows(upgraded, "WorkbenchTaskRefs") == []

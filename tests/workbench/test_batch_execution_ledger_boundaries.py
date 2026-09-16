@@ -3,6 +3,7 @@
 import pytest
 
 from core.infrastructure.workbench_execution_ledger_schema import install_execution_ledger
+from core.infrastructure.workbench_execution_void_schema import install_execution_voids
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.workbench.batch_operations import WorkbenchBatchOperationService
 from core.services.workbench.batches import WorkbenchBatchService
@@ -36,6 +37,7 @@ def test_damaged_ledger_never_falls_back_or_writes_on_get(request, damage):
     if damage == "partial_v24":
         case.conn.execute("BEGIN")
         install_execution_ledger(case.conn)
+        install_execution_voids(case.conn)
         case.conn.commit()
     old_context = detail(case.client)["data"]["write_context"]
     if damage == "all_v25":
@@ -115,7 +117,7 @@ def test_invalid_scope_keeps_protection_without_claiming_finished(batch_ledger):
     for index, action in enumerate(("delete", "quantity", "sync")):
         def mutate(_):
             if action == "sync":
-                return WorkbenchBatchOperationService(case.conn).sync(case.batch_ref, {"strict_mode": False})
+                return WorkbenchBatchOperationService(case.conn).sync(case.batch_ref, {})
             return WorkbenchBatchService(case.conn).apply("delete" if action == "delete" else "update",
                 {} if action == "delete" else {"fields": {"quantity": 6}}, case.batch_ref)
         with pytest.raises(WorkbenchCommandRejected):

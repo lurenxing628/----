@@ -76,6 +76,7 @@ def run_graph_ready_v2_real_sgs_case(*, seed: int = 0, with_repair: bool = False
             "repair_scope": "production_core",
             "runtime_ms": production["runtime_ms"],
             "max_candidates": production["max_candidates"],
+            "iterated_greedy_decodes": int(production.get("iterated_greedy", {}).get("decodes", 0) or 0),
         }
     )
     row.update(repair_info)
@@ -98,7 +99,8 @@ def _benchmark_row(
     baseline_failed_ops = int(getattr(baseline.get("summary"), "failed_ops", 0) or 0)
     graph_profile = state.candidate_profile["graph_ready_optimization"]
     efficiency = graph_profile["profile_efficiency"]
-    profile_attempts = [attempt for attempt in graph_attempts if attempt["candidate_origin"] != GRAPH_READY_V2_REPAIRED_ORIGIN]
+    profile_attempts = [attempt for attempt in graph_attempts
+                        if attempt["candidate_origin"] not in (GRAPH_READY_V2_REPAIRED_ORIGIN, "graph_ready_v2_iterated_greedy")]
     covered_slugs = {attempt["weight_profile_slug"] for attempt in profile_attempts}
     covered_slugs.update(item["profile_slug"] for item in efficiency["equivalent_profiles"])
     return {
@@ -151,7 +153,7 @@ def _v2_row_passes(row: Dict[str, Any]) -> bool:
         and bool(row.get("objective_score_matched"))
         and _profile_coverage_passes(row)
         and int(row.get("distinct_candidates") or 0) >= 3
-        and best_origin in {"graph_ready_v2_generated", GRAPH_READY_V2_REPAIRED_ORIGIN}
+        and best_origin in {"graph_ready_v2_generated", GRAPH_READY_V2_REPAIRED_ORIGIN, "graph_ready_v2_iterated_greedy"}
         and isinstance(comparison_to_v1, dict)
         and comparison_to_v1.get("status") == "improved"
         and tuple(_score_list(row.get("objective_score"))) <= tuple(_score_list(row.get("baseline_objective_score")))
@@ -168,6 +170,8 @@ def _profile_coverage_passes(row: Dict[str, Any]) -> bool:
     decoded = int(efficiency["profile_decodes"])
     unrun = sum(int(efficiency[key]) for key in ("construction_rejected_profiles", "skipped_before_decode", "unvisited_profiles"))
     actual_decodes = int(row["decoded_profile_count"]) + int(row["repair_evaluated_candidates"])
+    # The iterated greedy stage decodes outside the profile/repair cap but inside the evaluated count.
+    ig_decodes = int(row.get("iterated_greedy_decodes") or 0)
     configured_slugs = set(row["configured_profile_slugs"])
     expected = graph_ready_v2_profile_summary(
         max_candidate_profiles=60, seed=int(row["seed"]), objective_name=row["objective_name"],
@@ -183,7 +187,7 @@ def _profile_coverage_passes(row: Dict[str, Any]) -> bool:
         and 0 < decoded == int(row["decoded_profile_count"])
         and decoded + int(efficiency["predecode_pruned_profiles"]) == considered
         and configured_slugs == set(row["covered_profile_slugs"])
-        and int(row["evaluated_candidates"]) == actual_decodes + 1
+        and int(row["evaluated_candidates"]) == actual_decodes + ig_decodes + 1
         and actual_decodes <= int(row["max_candidates"])
     )
 

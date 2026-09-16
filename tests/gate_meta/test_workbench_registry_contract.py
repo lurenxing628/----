@@ -15,6 +15,7 @@ from tests.gate_meta.workbench_round1_registry_support import (
     FINAL_CANDIDATE_READONLY_FILES,
     FINAL_CANDIDATE_READONLY_INPUTS,
     FINAL_INTEGRATION_SUPPLEMENTAL_FILES,
+    MANUAL_REMEDIATION_TARGET_OWNERS,
     POST_ROUND1_TARGETS,
     ROUND1_ALGORITHM_TESTS,
     ROUND1_CANDIDATE_SCHEMA_TESTS,
@@ -24,6 +25,7 @@ from tests.gate_meta.workbench_round1_registry_support import (
     ROUND1_SUPPLEMENTAL_FILES,
     UI_REQUIRED_TARGETS,
     assert_reviewed_algorithm_registration,
+    before_manual_remediation_targets,
     round1_targets,
 )
 from tools import quality_gate_shared, test_registry
@@ -475,9 +477,18 @@ def test_discovery_reports_unregistered_real_tests_without_expanding_targets():
     assert not missing, "Unregistered real tests (review and register explicitly):\n" + "\n".join(missing)
 
 
+def test_manual_remediation_additions_have_reviewed_existing_owners():
+    groups = test_registry.iter_required_regression_groups()
+    for path, owner in MANUAL_REMEDIATION_TARGET_OWNERS.items():
+        assert (ROOT / path).is_file() and _has_test_definition(ROOT / path)
+        assert [row["group_id"] for row in groups if path in row["target_paths"]] == [owner]
+        assert quality_gate_shared.quality_gate_required_test_nodeid_matches(path + "::test_contract")
+        assert path in POST_ROUND1_TARGETS
+
+
 def test_all_eight_ledger_domains_are_required_and_main_migration_is_separate():
     groups = _groups()
-    assert groups["workbench_execution_ledger"]["target_paths"] == [PREFIX + name for name in LEDGER_FILES]
+    assert before_manual_remediation_targets(groups["workbench_execution_ledger"]) == [PREFIX + name for name in LEDGER_FILES]
     migration = PREFIX + "test_execution_ledger_migration.py"
     assert migration in groups["workbench_mainmigration"]["target_paths"]
     assert migration not in groups["workbench_execution_ledger"]["target_paths"]
@@ -504,7 +515,7 @@ def test_run_targets_keep_fixed_owners_order_and_gate_classification(group_id, f
 def test_run_job_extension_preserves_all_previous_targets_in_order():
     original = ("test_run_jobs.py", "test_run_jobs_schema.py", "test_run_jobs_api.py", "test_run_jobs_atomic.py",
                 "test_run_jobs_concurrency.py", "test_run_jobs_recovery.py", "test_run_jobs_restart.py")
-    assert _groups()["workbench_run_jobs"]["target_paths"] == [
+    assert before_manual_remediation_targets(_groups()["workbench_run_jobs"]) == [
         PREFIX + name for name in (*original, *RUN_REQUIRED_FILES["workbench_run_jobs"], *FINAL_CANDIDATE_READONLY_FILES)]
     all_groups = (*test_registry.REQUIRED_REGRESSION_GROUPS, *WORKBENCH_SUPPLEMENTAL_REGRESSION_GROUPS)
     for name in FINAL_CANDIDATE_READONLY_FILES:
@@ -522,7 +533,7 @@ def test_run_job_extension_preserves_all_previous_targets_in_order():
 @pytest.mark.parametrize("group_id,filenames", NEW_REQUIRED_FILES.items())
 def test_trial_lineage_and_request_groups_have_fixed_order_and_required_owners(group_id, filenames):
     expected = [PREFIX + name for name in filenames]
-    assert _groups()[group_id]["target_paths"] == expected
+    assert before_manual_remediation_targets(_groups()[group_id]) == expected
     for path in expected:
         assert [row["group_id"] for row in WORKBENCH_REQUIRED_REGRESSION_GROUPS
                 if path in row["target_paths"]] == [group_id]
@@ -579,6 +590,7 @@ def test_mainmigration_extension_preserves_previous_owners_and_order():
         "test_calibration_dashboard_migration.py",
         "test_outsourcing_identity_migration.py",
         "test_dashboard_external_migration.py",
+        "test_manual_remediation_schema_migration.py",
     )
     assert _groups()["workbench_mainmigration"]["target_paths"] == [PREFIX + name for name in expected]
     assert hashlib.sha256((ROOT / "tests/workbench/fixtures/schema-v28.sql").read_bytes()).hexdigest() == (
@@ -590,12 +602,15 @@ def test_mainmigration_extension_preserves_previous_owners_and_order():
     assert hashlib.sha256((ROOT / "tests/workbench/fixtures/schema-v30.sql").read_bytes()).hexdigest() == (
         "16460ac6d0f95373eca466b101cfcc46097187760e2438fb3a8c292c28761b2e")
     assert PREFIX + "dashboard_external_migration_support.py" not in test_registry.iter_required_tests()
+    assert hashlib.sha256((ROOT / "tests/workbench/fixtures/schema-v31.sql").read_bytes()).hexdigest() == (
+        "b939a2d6516925863e6f7f0fb3db32ea83a94e4204a8df8c1f6574953bb17b47")
+    assert PREFIX + "schema32_migration_support.py" not in test_registry.iter_required_tests()
 
 
 @pytest.mark.parametrize("group_id,filenames", COMPLETED_REQUIRED_EXTENSIONS.items())
 def test_completed_extensions_keep_exact_required_owner_and_append_order(group_id, filenames):
     expected = [PREFIX + name for name in filenames]
-    assert _groups()[group_id]["target_paths"][-len(expected):] == expected
+    assert before_manual_remediation_targets(_groups()[group_id])[-len(expected):] == expected
     for path in expected:
         assert [row["group_id"] for row in WORKBENCH_REQUIRED_REGRESSION_GROUPS
                 if path in row["target_paths"]] == [group_id]
@@ -630,6 +645,11 @@ def test_completed_extensions_keep_exact_required_owner_and_append_order(group_i
     ("tests/workbench/outsourcing_identity_migration_support.py", "workbench_mainmigration"),
     ("tests/workbench/fixtures/schema-v29.sql", "workbench_mainmigration"),
     ("core/infrastructure/migrations/v31.py", "workbench_mainmigration"),
+    ("core/infrastructure/migrations/v32.py", "workbench_mainmigration"),
+    ("core/infrastructure/workbench_execution_void_schema.py", "workbench_mainmigration"),
+    ("core/infrastructure/workbench_outsourcing_source_schema.py", "workbench_mainmigration"),
+    ("tests/workbench/schema32_migration_support.py", "workbench_mainmigration"),
+    ("tests/workbench/fixtures/schema-v31.sql", "workbench_mainmigration"),
     ("core/infrastructure/workbench_dashboard_external_schema.py", "workbench_mainmigration"),
     ("tests/workbench/dashboard_external_migration_support.py", "workbench_mainmigration"),
     ("tests/workbench/fixtures/schema-v30.sql", "workbench_mainmigration"),
@@ -701,6 +721,7 @@ def test_new_browser_and_capacity_inventory_never_enters_daily_required_targets(
     ("workbench_mainmigration", "test_calibration_dashboard_migration.py"),
     ("workbench_mainmigration", "test_outsourcing_identity_migration.py"),
     ("workbench_mainmigration", "test_dashboard_external_migration.py"),
+    ("workbench_mainmigration", "test_manual_remediation_schema_migration.py"),
     ("workbench_system", "test_system_restore_entrypoint.py"),
     ("workbench_system", "test_system_restore_entrypoint_fail_closed.py"),
     ("workbench_system", "test_system_restore_entrypoint_recovery.py"),

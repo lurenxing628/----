@@ -58,9 +58,10 @@ function setup(report, output) {
       const scope = { ...defaults, ...JSON.parse(url.searchParams.get('scope') || '{}') }, token = url.searchParams.get('snapshot_ref');
       const request = { method: req.method, path: url.pathname, scope: clone(scope), token }; state.requests.push(request); report.requests.push(request);
       const spec = state.spec;
-      const send = (value, status = 200) => { res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(value)); };
+      const send = (value, status = 200) => { res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(value)); request.completed = true; };
       const failure = message => send({ ok: false, committed: false, error: { code: 'snapshot_stale', message } }, 409);
       if (spec.delay && url.pathname === base) await new Promise(resolve => setTimeout(resolve, spec.delay));
+      if (spec.listGate && url.pathname === base) await spec.listGate(request);
       if (spec.failure) { failure('本机读取失败，未使用样例替代。'); return; }
       if (spec.stale && token || token && token !== snapshot(scope)) { failure('数据已更新，请刷新后重试。刚才的选择已保留。'); return; }
       if (url.pathname === base) { send(envelope(pageResult(fixture, scope, Number(url.searchParams.get('page') || 1), spec), snapshot(scope))); return; }

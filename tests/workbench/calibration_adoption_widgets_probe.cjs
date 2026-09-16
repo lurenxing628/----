@@ -80,7 +80,7 @@ async function startPreview(page, reason = '核对已完成批次和加工小时
   const dialog = page.getByRole('dialog'); await dialog.waitFor();
   await dialog.getByLabel('采用原因', { exact: true }).fill(reason); await dialog.getByLabel('经办人', { exact: true }).fill(declared);
   const wait = page.waitForResponse(r => r.url().endsWith('/adopt-preview'));
-  await dialog.getByRole('button', { name: '读取真实预检', exact: true }).click(); const response = await wait; return { response, dialog, reason, declared };
+  await dialog.getByRole('button', { name: '检查是否可采用', exact: true }).click(); const response = await wait; return { response, dialog, reason, declared };
 }
 async function validated(page, preview, original, intent, receipt, stored) {
   return page.evaluate(({ preview, original, intent, receipt, stored }) => {
@@ -125,7 +125,7 @@ async function happyCase(viewport, theme) {
   const inspected = await startPreview(page, reason, declared), preview = await inspected.response.json();
   assert.equal(inspected.response.status(), 200); assert.equal(preview.data.validation.can_adopt, true);
   assert.equal(preview.data.suggestion.old_unit_hours, 2); assert.equal(preview.data.suggestion.suggested_unit_hours, 3);
-  await inspected.dialog.getByText('当前预检可以采用：来源、原定额和可用完工记录已核对。', { exact: true }).waitFor();
+  await inspected.dialog.getByText('检查通过，可以采用。', { exact: true }).waitFor();
   assert(await inspected.dialog.getByRole('button', { name: '确认采用并锁定', exact: true }).isDisabled());
   const layout = await geometry(page, viewport); assert.equal(layout.theme, theme); await screenshot(page, name + '-preview');
   await inspected.dialog.getByRole('checkbox').check();
@@ -175,7 +175,7 @@ async function boundaries() {
   const confirm = page.waitForResponse(r => r.url().endsWith('/adopt')); await inspected.dialog.getByRole('button', { name: '确认采用并锁定', exact: true }).click();
   assert.equal((await confirm).status(), 409); await inspected.dialog.getByText(/本次没有采用；请点「刷新所选模板」/).waitFor();
   assert(await inspected.dialog.getByRole('button', { name: '确认采用并锁定', exact: true }).isDisabled());
-  const changed = page.waitForResponse(r => r.url().endsWith('/adopt-preview')); await inspected.dialog.getByRole('button', { name: '读取真实预检', exact: true }).click();
+  const changed = page.waitForResponse(r => r.url().endsWith('/adopt-preview')); await inspected.dialog.getByRole('button', { name: '检查是否可采用', exact: true }).click();
   assert.equal((await changed).status(), 200); await inspected.dialog.getByText('模板、原定额或完工记录已变化，请点「刷新所选模板」后重新预检。', { exact: true }).waitFor();
   const refreshed = page.waitForResponse(r => new URL(r.url()).pathname.endsWith('/calibration/' + config.template_ref));
   await inspected.dialog.getByRole('button', { name: '刷新所选模板', exact: true }).click(); assert.equal((await refreshed).status(), 200);

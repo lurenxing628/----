@@ -1,9 +1,15 @@
 """Standalone registration, JSON boundaries and existing receipt lookup route."""
 
 import sqlite3
+import subprocess
+import sys
+from datetime import date, datetime, timedelta
 
+import pytest
 from flask import g, request
 
+from core.infrastructure.database import get_connection
+from core.infrastructure.logging import OperationLogger
 from core.services.workbench.run_candidate_adoption import WorkbenchRunCandidateAdoptionService
 from tests.workbench.run_candidate_adoption_support import (
     BASE,
@@ -12,6 +18,7 @@ from tests.workbench.run_candidate_adoption_support import (
     CommitFailureConnection,
     api,
     candidate,
+    rewrite_candidate,
     snapshot,
 )
 from tests.workbench.run_candidate_adoption_support import candidate_case as _case  # noqa: F401
@@ -35,6 +42,67 @@ def test_preview_and_adopt_independent_post_routes(candidate_case):
     assert receipt.status_code == 200
     assert receipt.get_json()["receipt_ref"] == result.get_json()["receipt_ref"]
     assert client.get(BASE + ref + "/adopt").status_code == 405
+
+
+@pytest.mark.parametrize("ready_day,earlier", [("2026-09-08", False), ("2026-09-09", False), ("2026-09-10", True)])
+def test_sqlite_date_conversion_preserves_adoption_ready_date_constraint(candidate_case, ready_day, earlier):
+    case = candidate_case
+    case.conn.execute("UPDATE Batches SET ready_date=?", (ready_day,))
+    case.conn.commit()
+    ref = candidate(case)
+    if earlier:
+        def move_before_ready(row):
+            for field in ("start_time", "end_time"):
+                row[field] = (datetime.fromisoformat(row[field]) - timedelta(days=1)).isoformat()
+        rewrite_candidate(case, ref, move_before_ready)
+    # Use the same DECLTYPES connection factory as the running application.
+    conn = get_connection(str(case.path))
+    try:
+        assert type(conn.execute("SELECT ready_date FROM Batches").fetchone()[0]) is date
+    finally:
+        conn.close()
+    client = api(case, connection_factory=get_connection)
+    before = snapshot(case.conn)
+    response = client.post(BASE + ref + "/adopt-preview", json={})
+    assert response.status_code == 200, response.get_data(as_text=True)
+    data = response.get_json()["data"]
+    assert snapshot(case.conn) == before
+    assert data["validation"]["can_adopt"] is (not earlier), data
+    if earlier:
+        assert data["validation"]["issues"][0]["code"] == "candidate_before_ready_date"
+        assert data["write_context"]["write_token"] is None
+    else:
+        response = client.post(BASE + ref + "/adopt", json={"request_key": KEY,
+            "write_token": data["write_context"]["write_token"], "input": INTENT})
+        assert response.status_code == 200, response.get_data(as_text=True)
+        assert response.get_json()["data"]["official_plan"]["kind"] == "official"
+
+
+def test_restart_startup_and_audit_logs_do_not_expire_completed_candidate(candidate_case):
+    case = candidate_case
+    ref = candidate(case)
+    archive = tuple(case.conn.execute("SELECT facts_json,facts_hash FROM WorkbenchRunJobs").fetchone())
+    script = """
+import sys
+from core.infrastructure.database import get_connection
+from core.infrastructure.logging import OperationLogger
+conn = get_connection(sys.argv[1])
+assert OperationLogger(conn).info('plugins', 'load', target_type='runtime', target_id='plugins', detail={'loaded_at': 'restart'})
+conn.close()
+"""
+    completed = subprocess.run([sys.executable, "-c", script, str(case.path)], capture_output=True, text=True, timeout=20)
+    assert completed.returncode == 0, completed.stderr
+    client = api(case, connection_factory=get_connection)
+    response = client.post(BASE + ref + "/adopt-preview", json={})
+    assert response.status_code == 200, response.get_data(as_text=True)
+    data = response.get_json()["data"]
+    assert data["validation"]["can_adopt"] is True, data
+    assert OperationLogger(case.conn).info("system", "backup", detail={"filename": "audit-only.db"})
+    result = client.post(BASE + ref + "/adopt", json={"request_key": KEY,
+        "write_token": data["write_context"]["write_token"], "input": INTENT})
+    assert result.status_code == 200, result.get_data(as_text=True)
+    assert tuple(case.conn.execute("SELECT facts_json,facts_hash FROM WorkbenchRunJobs").fetchone()) == archive
+    assert case.conn.execute("SELECT COUNT(*) FROM OperationLogs WHERE action IN ('load','backup')").fetchone()[0] == 2
 
 
 def test_default_capability_remains_disabled(candidate_case):

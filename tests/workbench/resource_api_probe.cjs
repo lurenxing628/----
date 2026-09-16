@@ -70,6 +70,15 @@ async function main() {
   const reloaded=runtime(async()=>response(receipt()),{storage:pending.storage});
   assert.equal(reloaded.api.readPending().request_key,key);assert.deepEqual(await reloaded.api.lookup(key),receipt());checks++;
   reloaded.api.clearPending();assert.equal(pending.api.readPending(),null);checks++;
+  const permission=runtime(async(url,options)=>{
+    assert(url.endsWith('/entities/operator/'+ref+'/machine-permissions/confirm'));
+    assert.deepEqual(JSON.parse(options.body).input,{preview_ref:'permission-preview'});return response(receipt());
+  });
+  permission.api.savePending({kind:'operator',action:'machine_permissions',ref,request_key:key,input:{preview_ref:'permission-preview'},write_token:'never-store'});
+  const restoredPermission=runtime(async()=>response(receipt()),{storage:permission.storage});
+  assert.equal(restoredPermission.api.readPending().action,'machine_permissions');
+  assert.equal(restoredPermission.api.readPending().ref,ref);assert(![...permission.storage.values()].join('').includes('never-store'));checks++;
+  await permission.api.command('operator','machine_permissions',ref,{...payload,input:{preview_ref:'permission-preview'}});checks++;
   for(const kind of ['material','op_type','machine','operator','supplier'])for(const action of ['import','bulk']){
     const isolated=runtime(async()=>response(receipt())),api=isolated.create(kind+'_files');
     const intent={kind:kind+'_'+action,action:'confirm',ref:'p'.repeat(32),request_key:key,

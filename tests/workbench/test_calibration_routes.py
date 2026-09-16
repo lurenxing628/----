@@ -122,12 +122,25 @@ def test_export_full_scope_snapshot_injection_and_unknown(calibration_api, forma
         workbook = openpyxl.load_workbook(io.BytesIO(response.data), data_only=False)
         assert all(cell.data_type != "f" for sheet in workbook for row in sheet for cell in row)
         rows = list(workbook["校准建议"].values)
+        metadata = dict(workbook["范围与计算方式"].values)
+        assert metadata["采用与锁定"] == "请在工时校准页面预检并采用；采用后更新并锁定模板定额，已有批次不随之更改。"
         workbook.close()
     assert len(rows) == 3
     assert all(row[1].startswith("'") and row[3].startswith("'") for row in rows[1:])
     assert {str(row[7]) for row in rows[1:]} == {"0" if format_name == "xlsx" else "0.0", "暂无数据"}
     assert all(row[-2].lstrip("'") == token and json.loads(row[-1])["size"] == 1 for row in rows[1:])
     assert_no_writes(case)
+
+
+def test_read_requires_preflight_instead_of_claiming_adoption_unavailable(calibration_api):
+    data = scope_token(calibration_api)["data"]
+    expected = {"code": "adoption_preflight_required", "message": "请先预检所选模板；通过后可采用建议定额并锁定。"}
+    assert data["blocked_reasons"] == [expected]
+    row = data["items"][0]
+    assert expected in row["blocked_reasons"]
+    assert row["write_context"]["blocked_reasons"] == row["blocked_reasons"]
+    assert data["capabilities"]["adopt"] is False and row["capabilities"]["adopt"] is False
+    assert row["write_context"]["write_token"] is None
 
 
 def test_repeated_snapshot_keeps_generated_at_and_data(calibration_api):

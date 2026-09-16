@@ -7,7 +7,8 @@ const root = path.resolve(__dirname, '../..'), output = process.argv[2];
 if (!output || path.resolve(output).startsWith(root + path.sep)) throw new Error('Pass an artifact directory outside the checkout');
 fs.mkdirSync(output, { recursive: true });
 const names = ['resource-contract.js', 'WorkbenchReferences.jsx', 'WorkbenchGuards.js', 'ResourceControls.jsx', 'WorkbenchGuardHost.jsx',
-  'WorkbenchControlBridge.js', 'WorkbenchControls.jsx', 'WorkbenchListControls.jsx', 'WorkbenchDetailPanel.jsx'];
+  'WorkbenchControlBridge.js', 'WorkbenchControls.jsx', 'WorkbenchControlStyles.jsx', 'WorkbenchListControls.jsx', 'WorkbenchDetailPanel.jsx',
+  'ProcessContract.js', 'ProcessStageEditor.jsx', 'PreflightContract.js', 'PreflightControls.jsx', 'PreflightBatchPicker.jsx', 'SystemMaintenanceControls.jsx', 'SystemSampleControls.jsx'];
 const sources = names.map(name => ({ path: 'frontend/workbench/app/' + name, code: fs.readFileSync(path.join(root, 'frontend/workbench/app', name), 'utf8') }));
 const compiled = compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'), sources, check_combined: true });
 const styles = fs.readdirSync(path.join(root, 'frontend/workbench/app/styles')).filter(name => /^(00|20|21|22)-/.test(name))
@@ -34,6 +35,13 @@ function Guarded(){const [opened,setOpened]=React.useState(false);const owner=Wo
 function Readonly(){const [opened,setOpened]=React.useState(true);WorkbenchGuards.useDirtyGuard({owner:'other-editor',dirty:true,message:'别处草稿'});
  return opened&&h(R.Modal,{title:'只读详情',onClose:()=>{probe.closed++;setOpened(false);}},h('div',{className:'modal-b'},'只读记录'));}
 const cases={fields:()=>h(Fields),duplicate:()=>h(DuplicateSummary),detail:()=>h(Detail),guard:()=>h(Guarded),readonly:()=>h(Readonly),
+ icons:()=>h('div',null,['chevron-up','chevron-down','trash-2','arrow-left','copy','filter'].map(icon=>h(R.Button,{icon,key:icon},icon)),
+   h(R.Button,{icon:'arrow-right',className:'linkbtn'},h('span',null,'确认路线')),
+   h(SystemMaintenanceControls.Button,{icon:'trash-2'},'删除备份'),h(R.Button,{icon:'x','aria-label':'关闭'}),h(R.Button,{icon:'minus','aria-label':'缩小'})),
+ sample:()=>h(SMRecords,{kind:'backups',source:'sample',pageSize:20,onPageSize:()=>{},exportLogs:()=>{},downloadReady:true}),
+ search:()=>h(ProcessStageEditor.Search,{paging:{query:'',setQuery:query=>probe.calls.push(query)}}),
+ filters:()=>h('div',{className:'preflight-workspace'},h(PreflightBatchPicker,{adapter:{list:async scope=>({data:{entities:[],page:{number:1,size:20,total:0,pages:0}},meta:{snapshot_ref:'snapshot'}})},selected:[],onChange:()=>{}})),
+ editor:()=>h(ProcessStageEditor.Groups,{rows:[{ref:'group',start_sequence:5,end_sequence:20,merge_mode:'merged',supplier_label:'表处理厂',remark:'',issues:[]}],totals:{group:'2'},onTotal:()=>{}}),
  autoDetail:()=>h('div',{style:{marginTop:1000}},h(WorkbenchDetailPanel,{title:'自动首条预览',autoFocus:false},'初始概览')),
  pager:()=>h(L.Pager,{page:{number:2,pages:3,total:64,size:25},sizes:[10,25,50],unit:'条',label:'系统',sizeLabel:'每页数量',showPageJump:true,jumpActionLabel:'跳转系统页',onPage:page=>probe.calls.push({page}),onSize:size=>probe.calls.push({size})}),
  cursor:()=>h(L.Pager,{mode:'cursor',label:'计划目录',hasPrevious:false,hasNext:true,onPrevious:()=>probe.calls.push('previous'),onNext:()=>probe.calls.push('next')}),
@@ -41,7 +49,7 @@ const cases={fields:()=>h(Fields),duplicate:()=>h(DuplicateSummary),detail:()=>h
  reason:()=>h('div',null,h(R.Button,{reason:'请先选择记录。'},'导出'),h(R.Button,{reason:'既有可见说明。',reasonDisplay:'tooltip'},'旧入口')),
  reasonNarrow:()=>h('div',{id:'reason-cell',style:{width:110,whiteSpace:'nowrap'}},h(R.Button,{reason:'批次已有计划或执行事实，不能删除；请先核实当前记录。'},'删除'))};
 window.mount=name=>{if(host)host.unmount();probe.calls=[];probe.closed=0;host=ReactDOM.createRoot(document.getElementById('fixture'));
- host.render(h(React.Fragment,null,h(WorkbenchGuardHost),cases[name]()));};
+ host.render(h(React.Fragment,null,h(WorkbenchControlStyles),h(WorkbenchGuardHost),cases[name]()));};
 `;
 const html = '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
   '<link rel="icon" href="/static/' + manifest.icon + '">' + manifest.styles.map(name => '<link rel="stylesheet" href="/static/' + name + '">').join('') +
@@ -72,6 +80,54 @@ async function mount(name) { await page.evaluate(name => window.mount(name), nam
     page.on('pageerror', error => report.errors.push(error.message));
     await page.route('**/*', route => { if (route.request().url().startsWith(origin)) return route.continue(); report.external.push(route.request().url()); return route.abort(); });
     await page.goto(origin);
+    await check('missing-icons-and-system-delete-stay-visible', async () => {
+      await mount('icons');
+      for (const name of ['chevron-up','chevron-down','trash-2','arrow-left','copy','filter']) {
+        assert(await page.locator('svg[data-wb-icon="' + name + '"]').first().evaluate(node => { const box=node.getBBox(); return box.width>0 && box.height>0; }),name);
+      }
+      assert.equal(await page.getByRole('button',{name:'删除备份',exact:true}).locator('svg').getAttribute('data-wb-icon'),'trash-2');
+      assert.equal(await page.getByRole('button',{name:'关闭',exact:true}).locator('svg').getAttribute('data-wb-icon'),'x');
+      assert.equal(await page.getByRole('button',{name:'缩小',exact:true}).locator('svg').getAttribute('data-wb-icon'),'minus');
+      const geometry=await page.getByRole('button',{name:'确认路线',exact:true}).evaluate(node=>{
+        const icon=node.querySelector('svg').getBoundingClientRect(),label=node.querySelector('span').getBoundingClientRect();
+        return {gap:label.left-icon.right,offset:Math.abs((icon.top+icon.bottom-label.top-label.bottom)/2)};
+      });
+      assert(geometry.gap>=4 && geometry.offset<=1,JSON.stringify(geometry));
+      await mount('sample');
+      const deletion=page.getByRole('button',{name:/^删除备份：/});
+      assert(await deletion.isDisabled());assert.equal(await deletion.locator('svg').getAttribute('data-wb-icon'),'trash-2');
+      assert.equal((await deletion.textContent()).trim(),'删除备份');
+    });
+    await check('process-search-icon-stays-inside-padding',async()=>{
+      await mount('search');
+      const geometry=await page.locator('.search').evaluate(node=>{
+        const input=node.querySelector('input'),a=input.getBoundingClientRect(),b=node.querySelector('svg').getBoundingClientRect();
+        return {inside:b.left>=a.left&&b.right<=a.left+parseFloat(getComputedStyle(input).paddingLeft)&&b.top>=a.top&&b.bottom<=a.bottom};
+      });
+      assert(geometry.inside);await page.getByLabel('搜索工序、工种',{exact:true}).fill('数铣');assert.deepEqual(await page.evaluate(()=>probe.calls),['数铣']);
+    });
+    await check('kit-filter-label-keeps-gap-at-user-and-short-viewports',async()=>{
+      for(const theme of ['light','dark']) for(const [width,height] of [[1392,924],[1366,768],[1280,720]]) {
+        await page.evaluate(theme=>document.documentElement.dataset.theme=theme,theme);
+        await page.setViewportSize({width,height});await mount('filters');await page.getByRole('button',{name:'刷新批次范围',exact:true}).waitFor();
+        const geometry=await page.locator('.wb-inline-filter').evaluate(node=>{
+          const a=node.querySelector('span').getBoundingClientRect(),b=node.querySelector('select').getBoundingClientRect();
+          return {gap:b.left-a.right,offset:Math.abs((a.top+a.bottom-b.top-b.bottom)/2),within:b.right<=document.documentElement.clientWidth};
+        });
+        assert(geometry.gap>=4&&geometry.offset<=1&&geometry.within,JSON.stringify(geometry));
+        await page.screenshot({path:path.join(output,'shared-remediation-filter-'+width+'-'+theme+'.png')});
+      }
+      await page.evaluate(()=>document.documentElement.dataset.theme='light');
+    });
+    await check('editable-table-has-one-scroll-frame-and-column-separators',async()=>{
+      await mount('editor');
+      assert.equal(await page.locator('.wb-table-frame > table.wb-table--editable').count(),1);
+      assert.equal(await page.locator('.wb-table-frame .wb-table-shell').count(),0);
+      assert(await page.locator('tbody td').nth(1).evaluate(node=>parseFloat(getComputedStyle(node).borderLeftWidth)>=1));
+      assert.equal(await page.locator('thead th').first().evaluate(node=>getComputedStyle(node).position),'sticky');
+      assert(await page.getByRole('spinbutton').evaluate(node=>node.getBoundingClientRect().height>=36));
+      await page.screenshot({path:path.join(output,'shared-remediation-table.png')});
+    });
     await check('field-aria-error-dedup-and-focus', async () => {
       await mount('fields'); const input = page.getByLabel('数量', { exact: true });
       assert.equal(await input.getAttribute('id'), 'stable-amount'); assert.equal(await input.getAttribute('aria-invalid'), 'true');

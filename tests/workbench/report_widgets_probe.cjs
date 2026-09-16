@@ -179,7 +179,8 @@ async function shot(page, name) {
       await work.locator('[role="tabpanel"] table tbody tr').first().waitFor();
       await work.locator('.rw-catalog > summary').click();
       await work.getByLabel('其他报表', { exact: true }).selectOption('downtime');
-      await work.getByText('停机只认已登记的停机记录，不把报工空档当成停机。', { exact: false }).waitFor();
+      await work.getByText('按已登记的停机记录统计。', { exact: false }).waitFor();
+      await work.getByRole('columnheader', { name: '停机工时（小时）', exact: true }).waitFor();
       await work.locator('.rw-catalog > summary').evaluate(node => node.scrollIntoView({ block: 'start' }));
       await shot(page, prefix + '-catalog');
       await work.getByRole('tab', { name: '执行复盘', exact: true }).click();

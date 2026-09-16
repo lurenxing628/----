@@ -37,7 +37,7 @@ def test_capacity_exact_and_extra_column():
         encode_reports([{} for _ in range(5001)])
     book = load_workbook(BytesIO(encode_reports([{}]))); book.active['K2'] = 'hidden extra'
     out = BytesIO(); book.save(out); book.close()
-    with pytest.raises(WorkbenchCommandRejected, match='10 列或 13 列'):
+    with pytest.raises(WorkbenchCommandRejected, match='单元格超出表头范围'):
         decode_reports(out.getvalue())
 
 

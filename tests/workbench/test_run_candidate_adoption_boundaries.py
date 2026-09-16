@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 
 import pytest
 
+from core.infrastructure.logging import OperationLogger
 from core.models.workbench_command import WorkbenchCommandRejected
 from tests.workbench.run_candidate_adoption_support import (
     INTENT,
@@ -38,6 +39,28 @@ def test_admission_facts_drift_rejected_even_with_unexpired_token(candidate_case
         service(case.conn).adopt(ref, token, KEY, INTENT)
     assert error.value.code == "snapshot_stale" and error.value.status == 409
     assert snapshot(case.conn) == before
+
+
+@pytest.mark.parametrize("sql", [
+    "UPDATE ScheduleConfig SET config_value='yes' WHERE config_key='freeze_window_enabled'",
+    "UPDATE sqlite_sequence SET seq=seq+1 WHERE name='BatchOperations'",
+    "CREATE INDEX candidate_business_schema_probe ON Machines(name)",
+    "UPDATE FutureSchedulingInput SET value='changed'",
+])
+def test_audit_exception_still_checks_business_schema_counters_and_unknown_tables(candidate_case, sql):
+    case = candidate_case
+    case.conn.execute("CREATE TABLE FutureSchedulingInput(value)")
+    case.conn.execute("INSERT INTO FutureSchedulingInput VALUES ('original')")
+    case.conn.commit()
+    ref = candidate(case)
+    token = preview(case, ref)
+    assert OperationLogger(case.conn).info("plugins", "load", detail={"startup": True})
+    case.conn.execute(sql)
+    case.conn.commit()
+    before = snapshot(case.conn)
+    with pytest.raises(WorkbenchCommandRejected) as error:
+        service(case.conn).adopt(ref, token, KEY, INTENT)
+    assert error.value.code == "snapshot_stale" and snapshot(case.conn) == before
 
 
 @pytest.mark.parametrize("change", ["baseline", "execution", "lock"])

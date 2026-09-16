@@ -207,6 +207,6 @@ def test_read_transaction_does_not_mix_concurrent_ledger_commit(actual_api):
 def test_unresolved_legacy_resource_is_not_silently_excluded(actual_api):
     item = read(actual_api)["data"]["items"][0]
     item["execution"]["data_gaps"].append({"code": "legacy_resource_identity_unresolved", "message": "旧资源身份不明确", "fields": ["actual_machine_ref"]})
-    with pytest.raises(WorkbenchCommandRejected, match="不会把可能符合"):
+    with pytest.raises(WorkbenchCommandRejected, match="历史报工的设备或人员资料无法对应"):
         cohort_match(item, ActualGanttScope(actual_api.ref(), resource_type="machine", resource_ref="f" * 48))
     assert cohort_match(item, ActualGanttScope(actual_api.ref(), resource_type="machine", resource_ref=item["task"]["machine_ref"]))

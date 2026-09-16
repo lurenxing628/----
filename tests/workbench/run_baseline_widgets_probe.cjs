@@ -135,7 +135,7 @@ async function small() {
   await button('初始计划对照 ' + multiRef).click(); assert.equal(await page.locator('[data-baseline-segment]').count(), 2);
   await page.getByText('初始计划里这道工序分成了几段，这里不合并也不任选一段来对照。', { exact: true }).waitFor(); await shot('multi-segment-detail'); done('multiple-segments-not-merged');
   const unplannedRef = await page.evaluate(() => baselineEnvelope.data.comparisons.find(r => r.status === 'unscheduled').operation_ref);
-  await button('初始计划对照 ' + unplannedRef).click(); await page.getByText('候选没有安排此工序；未排不代表改善。', { exact: true }).waitFor(); done('unscheduled-is-not-improvement');
+  await button('初始计划对照 ' + unplannedRef).click(); await page.getByText('此候选方案未安排该工序。', { exact: true }).waitFor(); done('unscheduled-is-not-improvement');
   const onlyRef = await page.evaluate(() => baselineEnvelope.data.comparisons.find(r => r.status === 'baseline_only').operation_ref);
   await button('初始计划对照 ' + onlyRef).click(); await page.getByText('这道工序只在排产时的正式计划里，不在这次选择的范围内。', { exact: true }).waitFor(); done('baseline-only-detail-retained');
   for (const name of ['人员', '批次', '设备']) { await button(name).click(); await proportions(); await layout(); }

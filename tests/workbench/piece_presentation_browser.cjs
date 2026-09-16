@@ -47,7 +47,7 @@ async function candidateHit(page, piece) {
         if (kind === 'old') {
           await page.locator('[data-plan-task]').first().click();
           const detail = await page.locator('[data-plan-inspector]').innerText();
-          assert(detail.includes('本工序目标量') && detail.includes('未知') && detail.includes('没有拿当前批次数量代替'));
+          assert(detail.includes('本工序目标量') && detail.includes('未知') && detail.includes('原计划未记录目标量'));
         } else for (const piece of input.pieces) {
           const name = kind === 'candidate' ? '搜索候选工序' : kind === 'plan' ? '搜索批次、工序、设备、人员' : '搜索试调工序';
           await page.getByRole('searchbox', { name, exact: true }).fill(piece); await settled(page);

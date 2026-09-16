@@ -43,12 +43,12 @@ def test_real_export_null_na_roundtrip_preserves_hidden_facts_and_stamps(hours_c
     before = snapshot(hours_conn)
     service = WorkbenchProcessFileService(hours_conn)
     preview, extra = service.preview_import("hours", content, file_format=fmt, target_ref=part_ref(hours_conn))
-    assert extra == {"affected_groups": [], "zero_review_required": True,
+    assert extra == {"affected_groups": [], "zero_review_required": False,
                      "skipped_count": 0, "skipped_refs": [], "skipped_rows": []}
     assert all(row["result"] == "unchanged" and row["route_summary"] is None for row in preview.as_dict()["rows"])
     assert all(row["entity_ref"] == part_ref(hours_conn) for row in preview.as_dict()["rows"])
     with TransactionManager(hours_conn).transaction(begin_immediate=True):
-        outcome = service.confirm_import(preview, content, discard_group_refs=[], confirm_zero_unit_hours=True)
+        outcome = service.confirm_import(preview, content, discard_group_refs=[], confirm_zero_unit_hours=False)
     assert outcome.result == "unchanged" and snapshot(hours_conn) == before
 
     # Editing one applicable value in that same export still cannot erase N/A data.
@@ -59,7 +59,7 @@ def test_real_export_null_na_roundtrip_preserves_hidden_facts_and_stamps(hours_c
     operations, original_groups, stamps = op_rows(hours_conn), groups(hours_conn), confirmations(hours_conn)
     preview, _ = service.preview_import("hours", content, file_format=fmt, target_ref=part_ref(hours_conn))
     with TransactionManager(hours_conn).transaction(begin_immediate=True):
-        outcome = service.confirm_import(preview, content, discard_group_refs=[], confirm_zero_unit_hours=True)
+        outcome = service.confirm_import(preview, content, discard_group_refs=[], confirm_zero_unit_hours=False)
     assert outcome.result == "committed"
     assert op_rows(hours_conn) == {**operations, 3: {**operations[3], "ext_days": 12.5}}
     assert groups(hours_conn) == original_groups and confirmations(hours_conn) == stamps

@@ -171,7 +171,7 @@ def test_json_numbers_are_strict_and_fail_without_any_write(stage_api, field, ba
     assert stage_api.snapshot() == before
 
 
-@pytest.mark.parametrize("change,code,status", (("zero", "zero_unit_hours_review", 422),
+@pytest.mark.parametrize("change,code,status", (("zero", "zero_unit_hours_confirmation_required", 422),
     ("zero_period", "invalid_input", 422), ("zero_total", "invalid_input", 422), ("bool_review", "invalid_input", 422),
     ("missing_group", "group_set_mismatch", 409), ("foreign_group", "group_set_mismatch", 409),
     ("duplicate_group", "invalid_input", 422), ("source_shape", "hours_source_mismatch", 422)))
@@ -193,7 +193,12 @@ def test_hours_review_groups_and_source_specific_fields(stage_api, change, code,
     else:
         payload["operations"][0] = {"ref": payload["operations"][0]["ref"], "external_days": 2}
     before = stage_api.snapshot()
-    rejected(stage_api.post("hours_confirm", body), code, status)
+    response = stage_api.post("hours_confirm", body)
+    rejected(response, code, status)
+    if change == "zero":
+        expected = {"operations." + row["ref"] + ".unit_hours" for row in payload["operations"]
+                    if row.get("unit_hours") == 0}
+        assert {row["path"] for row in response.get_json()["error"]["fields"]} == expected
     assert stage_api.snapshot() == before
 
 

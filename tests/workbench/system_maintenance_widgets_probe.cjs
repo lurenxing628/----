@@ -311,7 +311,7 @@ async function newPage(browser, viewport, theme, intent) {
     assert.equal(await overview.locator('details.sm-environment').getAttribute('open'), null);
     assert.equal(await overview.locator('.sm-check-table').isVisible(), false);
     await overview.locator('details.sm-environment > summary').click();
-    await overview.getByText('检查时间 2026-09-12 08:30 · 不代表数据库或备份健康', {exact:true}).waitFor();
+    await overview.getByText('检查时间 2026-09-12 08:30', {exact:true}).waitFor();
     assert(await overview.locator('.sm-check-table').isVisible());
     assert.equal(await overview.locator('.sm-check-table caption').count(), 1);
     assert.equal(await overview.locator('.sm-check-table thead th[scope="col"]').count(), 3);

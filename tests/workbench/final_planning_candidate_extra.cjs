@@ -29,7 +29,10 @@ async function candidateTrialSource(page, ready, report, h, flush) {
     const before = report.requests.length;
     await button('试调', heading()).click();
     const dialog = page.getByRole('dialog', { name: '从原来源新增试调', exact: true });
+    await dialog.getByText('来源类型：排产候选', { exact: true }).waitFor();
+    assert.equal(await dialog.getByText('正式计划列表', { exact: true }).count(), 0);
     await button('核对原来源', dialog).click();
+    await dialog.getByText('已选择：' + original.candidate.label, { exact: true }).waitFor();
     await dialog.getByRole('checkbox', { name: '确认基于此来源新增独立草稿，正式计划保持不变', exact: true }).check();
     await button('确认新增草稿', dialog).click();
     await page.locator('[data-trial-workspace] .tt-main').waitFor(); await flush();

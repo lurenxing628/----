@@ -104,8 +104,8 @@ async function inspect(page, viewport) {
       await page.evaluate(()=>document.fonts.ready);
       const rail=page.locator('.rail');
       assert((await rail.innerText()).includes('工厂日期 2026-09-09'),'Server factory date, not browser timezone');
-      assert.equal(await page.locator('.hb-rl2').innerText(),'暂无数据');
-      assert.equal(await page.locator('.hb-r-floor i').count(),0,'No invented ratio bar');
+      assert.equal(await page.locator('.hb-rl2, .hb-r-floor').count(),0,'No empty overall-readiness module');
+      assert.equal(await page.getByRole('button',{name:'下一步 · 批次管理'}).count(),1,'Keep the batch navigation action');
       assert((await page.locator('[data-rail-node="process"]').innerText()).includes('0 项'));
       assert((await page.locator('[data-rail-node="process"]').innerText()).includes('暂无零件'));
       assert((await page.locator('[data-rail-node="machine"]').innerText()).includes('停用 1'));
@@ -138,14 +138,14 @@ async function inspect(page, viewport) {
       assert((await page.locator('[data-rail-node="machine"]').innerText()).includes('6 台'),'Backward compatible count envelope');
       await mode(page,'malformed');assert((await page.locator('.hb-cal-block').innerText()).includes('读到的班表汇总不完整'));
       assert((await page.locator('[data-rail-node="machine"]').innerText()).includes('6 台'));
-      await mode(page,'false-ready');assert.equal(await page.locator('.hb-rl2').innerText(),'暂无数据');
+      await mode(page,'false-ready');assert.equal(await page.locator('.hb-rl2').count(),0);
       assert(!(await rail.innerText()).includes('100%'));
       await mode(page,'failed');assert((await rail.innerText()).includes('Fixture summary read failed'));
-      assert.equal(await page.locator('.hb-rl2').innerText(),'暂无数据');
+      assert.equal(await page.locator('.hb-rl2').count(),0);
       assert(!(await page.locator('[data-rail-node="machine"]').innerText()).includes('6 台'),'Failed refresh clears stale totals');
       await page.evaluate(()=>{railFixture.mode='delayed';railFixture.refresh();});
       await page.waitForFunction(()=>railFixture.deferred.length===1);
-      assert.equal(await page.locator('.hb-rl2').innerText(),'未读取');
+      assert((await page.locator('.rail-status').innerText()).includes('读取中'));
       await mode(page,'changed');
       await page.evaluate(()=>railFixture.deferred.splice(0).forEach(resolve=>resolve()));
       assert((await page.locator('[data-rail-node="machine"]').innerText()).includes('停用 2'),'Late old response cannot overwrite new summary');

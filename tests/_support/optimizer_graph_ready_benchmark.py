@@ -5,6 +5,7 @@ from time import perf_counter
 from types import SimpleNamespace
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
+from core.algorithm_runtime.checkpoint_calendar import register_stateless_checkpoint_calendar
 from core.algorithms import GreedyScheduler, ScheduleResult, SortStrategy
 from core.algorithms.evaluation import compute_metrics, objective_score
 from core.algorithms.greedy.algo_stats import snapshot_algo_stats
@@ -59,6 +60,9 @@ class ContinuousCalendar:
 
     def add_calendar_days(self, dt: datetime, days: float, machine_id: Any = None, operator_id: Any = None) -> datetime:
         return dt + timedelta(days=float(days or 0.0))
+
+
+register_stateless_checkpoint_calendar(ContinuousCalendar)
 
 
 def graph_ready_benchmark_operations() -> List[Any]:

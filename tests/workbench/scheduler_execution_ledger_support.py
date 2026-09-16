@@ -6,6 +6,7 @@ import pytest
 
 from core.infrastructure.migration_state import set_schema_version
 from core.infrastructure.workbench_execution_ledger_schema import install_execution_ledger
+from core.infrastructure.workbench_execution_void_schema import install_execution_voids
 from core.infrastructure.workbench_metadata_schema import install_metadata
 from core.infrastructure.workbench_plan_identity_schema import install_plan_identity
 from core.services.scheduler.execution_fact_provider import ExecutionFactProvider
@@ -55,6 +56,7 @@ def install_case(conn):
     install_metadata(conn)
     install_plan_identity(conn)
     install_execution_ledger(conn)
+    install_execution_voids(conn)
     conn.commit()
     return LedgerCase(conn)
 

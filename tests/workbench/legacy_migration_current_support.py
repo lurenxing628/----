@@ -1,7 +1,9 @@
 """Exact additive metadata allowed by historical-fixture upgrades to current."""
 
 from core.infrastructure.workbench_dashboard_external_schema import objects as dashboard_external_objects
+from core.infrastructure.workbench_execution_void_schema import execution_void_objects
 from core.infrastructure.workbench_outsourcing_schema import workbench_outsourcing_objects
+from core.infrastructure.workbench_outsourcing_source_schema import objects as source_objects
 from core.infrastructure.workbench_plan_identity_write_guard import objects as guard_objects
 
 V30_EMPTY_TABLES = (
@@ -9,6 +11,17 @@ V30_EMPTY_TABLES = (
 )
 V30_TABLES = ("WorkbenchOutsourcingOperationOrigins",) + V30_EMPTY_TABLES
 V31_TABLES = ("WorkbenchDashboardExternalItems", "WorkbenchDashboardExternalStates", "WorkbenchDashboardExternalHistory")
+V32_TABLES = ("WorkbenchOutsourcingSourceConfirmations", "WorkbenchProductionReportVoids")
+
+
+def missing_v32_issues():
+    return ({"missing_outsourcing_source_schema:" + name for name in source_objects()} |
+            {"missing_execution_void:" + name for name in execution_void_objects()})
+
+
+def assert_v32_empty(conn):
+    for table in V32_TABLES:
+        assert not conn.execute('SELECT * FROM "' + table + '"').fetchall(), table
 
 
 def missing_v30_issues():

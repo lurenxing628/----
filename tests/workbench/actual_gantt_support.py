@@ -11,6 +11,7 @@ from flask import Blueprint, Flask, g
 
 from core.infrastructure.database import get_connection
 from core.infrastructure.workbench_execution_ledger_schema import execution_ledger_objects, install_execution_ledger
+from core.infrastructure.workbench_execution_void_schema import install_execution_voids
 from core.infrastructure.workbench_plan_identity_schema import install_plan_identity
 from core.models.workbench_plan_reference import WorkbenchPlanLocator
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
@@ -85,6 +86,7 @@ def seed_database(path, ledger=True):
         assert type(conn.execute("SELECT due_date FROM Batches").fetchone()[0]) is date
         if ledger:
             install_execution_ledger(conn)
+            install_execution_voids(conn)
         conn.commit()
     finally:
         conn.close()

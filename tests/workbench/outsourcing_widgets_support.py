@@ -13,6 +13,7 @@ from flask import Blueprint, Flask, g, jsonify, request
 from werkzeug.serving import make_server
 
 from core.infrastructure.workbench_outsourcing_schema import contract_issues, install
+from core.infrastructure.workbench_outsourcing_source_schema import install as install_sources
 from core.models.workbench_outsourcing import raw_facts
 from core.services.workbench.outsourcing import WorkbenchOutsourcingService
 from core.services.workbench.outsourcing_commands import WorkbenchOutsourcingCommandService
@@ -56,7 +57,7 @@ def seed(conn):
     conn.commit()
 
 
-def prepare(root):
+def prepare(root, legacy_source=False):
     base = root / "dn-base.sqlite"
     current = os.environ.get("OUTSOURCING_UI_SCHEMA") == "current"
     if current:
@@ -68,9 +69,13 @@ def prepare(root):
             conn.execute("UPDATE SchemaVersion SET version=29 WHERE id=1")
             conn.commit()
         seed(conn)
+        if legacy_source:
+            from tests.workbench.outsourcing_legacy_source_support import erase_fixture_birth_evidence
+            erase_fixture_birth_evidence(conn)
         source = tables(conn)
         conn.execute("BEGIN")
         install(conn)
+        install_sources(conn)
         conn.commit()
         after = tables(conn)
         assert all(after[k] == v for k, v in source.items())
@@ -90,7 +95,7 @@ def prepare(root):
             paths[name] = path
     with connect(paths["missing"]) as conn:
         conn.execute("DROP TRIGGER wb_outsourcing_fact_sequence")
-    return paths, {"schema_mode": "current" if current else "v29-plus-real-DI-DDL", "schema_version": version,
+    return paths, {"schema_mode": "current" if current else "v29-plus-real-DI-DDL", "schema_version": version, "legacy_source": legacy_source,
                    "baseline_database": str(base), "baseline_sha256": hashlib.sha256(base.read_bytes()).hexdigest()}
 
 
@@ -98,7 +103,8 @@ def proof(name, path, before):
     with connect(path) as conn:
         after = tables(conn)
         changed = [t for t in before if before[t] != after[t]]
-        allowed = {"WorkbenchOutsourcingReceipts", "WorkbenchOutsourcingMembers", "WorkbenchOutsourcingFacts", "WorkbenchCommandReceipts"}
+        allowed = {"WorkbenchOutsourcingReceipts", "WorkbenchOutsourcingMembers", "WorkbenchOutsourcingFacts", "WorkbenchCommandReceipts",
+                   "WorkbenchOutsourcingSourceConfirmations"}
         if name == "drift":
             allowed |= {"Suppliers", "WorkbenchEntityRefs"}
         assert set(changed) <= allowed, (name, changed)
@@ -108,12 +114,13 @@ def proof(name, path, before):
                 "table_proofs": {t: {"before_sha256": digest(before[t]), "after_sha256": digest(after[t])} for t in before},
                 "facts": [dict(r) for r in conn.execute("SELECT * FROM WorkbenchOutsourcingFacts ORDER BY outsourcing_ref,sequence")],
                 "headers": [dict(r) for r in conn.execute("SELECT * FROM WorkbenchOutsourcingReceipts")],
+                "source_confirmations": [dict(r) for r in conn.execute("SELECT * FROM WorkbenchOutsourcingSourceConfirmations")],
                 "receipts": [dict(r) for r in conn.execute("SELECT * FROM WorkbenchCommandReceipts WHERE action='outsourcing.confirm'")],
                 "plan_rows": len(after["Schedule"]), "execution_rows": len(after["OperationExecutionEvents"])}
 
 
 @contextmanager
-def serve(root, output, monkeypatch):
+def serve(root, output, monkeypatch, legacy_source=False):
     import web.routes.workbench.outsourcing as module
 
     class Clock(datetime):
@@ -129,7 +136,7 @@ def serve(root, output, monkeypatch):
     import web.routes.workbench.dashboard as dashboard_route
     monkeypatch.setattr(dashboard_service, "datetime", Clock)
     monkeypatch.setattr(dashboard_route, "datetime", Clock)
-    paths, config = prepare(root)
+    paths, config = prepare(root, legacy_source=legacy_source)
     before = {}
     for name, path in paths.items():
         with connect(path) as conn:

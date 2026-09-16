@@ -108,7 +108,7 @@ def test_partial_file_does_not_default_or_validate_unprovided_missing_hours(hour
     before = snapshot(hours_conn)
     with pytest.raises(WorkbenchCommandRejected) as exc:
         apply(hours_conn, rows)
-    assert exc.value.code == "zero_unit_hours_review" and snapshot(hours_conn) == before
+    assert exc.value.code == "zero_unit_hours_confirmation_required" and snapshot(hours_conn) == before
     apply(hours_conn, rows, ack=True)
     assert op_rows(hours_conn)[1]["setup_hours"] is None and op_rows(hours_conn)[1]["unit_hours"] == 0
     assert not read_workflow(hours_conn, "P1")["ready"]

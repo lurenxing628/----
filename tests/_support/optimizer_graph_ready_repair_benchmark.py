@@ -22,7 +22,7 @@ from tests._support.optimizer_graph_ready_benchmark import (
 
 def run_production_repair_case(*, seed: int = 0, enabled: bool = True, limits=None, max_candidates: int = 60,
                                time_budget_seconds: float = 1.0, clock=perf_counter, schedule_fn=None,
-                               case=None, strict_mode=True, keep_report=True, v2=True) -> Dict[str, Any]:
+                               case=None, strict_mode=True, keep_report=True, v2=True, iterated_greedy=None) -> Dict[str, Any]:
     started = clock()
     start_dt = START_DT
     base_order = list(BASE_BATCH_ORDER)
@@ -51,6 +51,8 @@ def run_production_repair_case(*, seed: int = 0, enabled: bool = True, limits=No
 
     optimization = {"candidate_policy": "objective_aware_portfolio" if v2 else "weight_grid", "max_candidate_profiles": max_candidates,
                     "elite_repair": dict({"enabled": enabled}, **(limits or {}))}
+    if iterated_greedy is not None:
+        optimization["iterated_greedy"] = dict(iterated_greedy)
     best = run_graph_ready_candidates(
         algo_mode="improve", best=baseline, version=seed, scheduler=scheduler,
         algo_ops_to_schedule=operations, batches=batches, start_dt=start_dt, end_date=None,
@@ -65,9 +67,15 @@ def run_production_repair_case(*, seed: int = 0, enabled: bool = True, limits=No
     runtime_ms = (clock() - started) * 1000.0
     if keep_report:
         report = state.candidate_profile["graph_ready_optimization"].get("elite_repair", {})
+        ig_report = state.candidate_profile["graph_ready_optimization"].get("iterated_greedy", {})
     else:
         report = next((attempt["elite_repair"] for attempt in attempts if "elite_repair" in attempt), {})
-    return {"best": best, "baseline": baseline, "state": state, "repair": report, "attempts": attempts,
+        ig_report = next((attempt["iterated_greedy"] for attempt in attempts if "iterated_greedy" in attempt), {})
+    ig_calls = [call for call in calls
+                if call["strategy_params"]["graph_ready_profile"]["candidate_origin"] == "graph_ready_v2_iterated_greedy"]
+    phase_calls = [call for call in calls if call not in ig_calls]
+    return {"best": best, "baseline": baseline, "state": state, "repair": report, "iterated_greedy": ig_report, "attempts": attempts,
+            "phase_calls": phase_calls, "ig_calls": ig_calls,
             "calls": calls, "trace": trace, "runtime_ms": runtime_ms, "profile": profile, "seed": seed,
             "time_budget_seconds": time_budget_seconds, "max_candidates": max_candidates,
             "clock_scope": "time.perf_counter" if clock is perf_counter else "test_injected_clock"}

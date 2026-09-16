@@ -40,7 +40,8 @@ async function delayConflictDetails(page, ready, report, h, flush) {
     Array.from(row.querySelectorAll('td'), cell => cell.textContent.trim())));
   assert.deepEqual(await cells(), expectedCells);
   const detail = workspace.getByRole('region', { name: '资源重叠明细', exact: true });
-  assert((await detail.innerText()).includes('不代表等待、停机、缺料或超期原因'));
+  assert((await detail.innerText()).includes('资源重叠明细'));
+  assert(!(await detail.innerText()).includes('不代表等待、停机、缺料或超期原因'));
   await page.reload(); await table.waitFor(); await flush();
   const restored = h.last(value => value.plan && value.tasks);
   assert.equal(restored.plan.plan_ref, data.plan.plan_ref);

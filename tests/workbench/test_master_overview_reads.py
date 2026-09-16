@@ -6,6 +6,7 @@ import json
 
 import pytest
 
+from core.services.process.workflow_state import record_confirmation, start_workflow
 from tests.workbench.master_overview_support import BASE, args, detail, query, ref_for, stored
 from tests.workbench.master_overview_support import overview_client as _overview_client
 
@@ -23,7 +24,7 @@ def test_eight_domains_are_real_counts_and_get_is_readonly(overview_client):
     assert overview["stats"]["entities"] == 104
     assert overview["complete"] is True
     assert overview["stats"]["relations"] > 50
-    assert "不代表可以排产" in overview["basis"]
+    assert overview["basis"] == "基础资料与关联检查"
     assert client.get(BASE + "/export", query_string=args(result)).status_code == 200
     assert before == stored(client)
     assert not any(line.lstrip().upper().startswith(("INSERT", "UPDATE", "DELETE", "CREATE", "DROP", "ALTER")) for line in traces)
@@ -64,6 +65,37 @@ def test_zero_unknown_and_existing_confirmation_are_not_conflated(overview_clien
     zero_issue = next(row for row in route["data"]["rows"] if row["rule"] == "operation.zero_review")
     assert zero_issue["target"]["context"]["template_operation_ref"] == ref_for(client, "template_operation", 1)
     assert zero_issue["target"]["context"]["stage"] == "hours"
+    assert zero_issue["evidence"].endswith("请核对单件工时；确实为 0 时，在工时定额页按 0 保存。")
+
+
+@pytest.mark.parametrize("unit_hours", [0, .25])
+@pytest.mark.parametrize("stage,confirmed,expected", [
+    ("legacy", None, "请保存工艺路线，完成后再保存工序归属和工时定额。"),
+    ("route", (), "请保存工艺路线，完成后再保存工序归属和工时定额。"),
+    ("source", ("route",), "请保存工序归属，完成后再保存工时定额。"),
+    ("hours", ("route", "source"), "请填写并保存工时定额。"),
+])
+def test_workflow_pending_explains_next_save_without_assuming_zero(overview_client, unit_hours, stage, confirmed, expected):
+    client = overview_client
+    client.conn.execute("UPDATE PartOperations SET unit_hours=? WHERE source='internal'", (unit_hours,))
+    if confirmed is not None:
+        start_workflow(client.conn, "P000")
+        for completed in confirmed:
+            record_confirmation(client.conn, "P000", completed)
+    client.conn.commit()
+    before = stored(client)
+    result = query(client)
+    route_ref = ref_for(client, "part", "P000")
+    route = detail(client, result, "route", route_ref, "issues")
+    pending = next(row for row in route["data"]["rows"] if row["rule"] == "workflow.pending")
+    assert pending["evidence"] == expected
+    assert pending["target"]["context"]["stage"] == ("route" if stage == "legacy" else stage)
+    assert pending["action"] == {"legacy": "保存工艺路线", "route": "保存工艺路线", "source": "保存工序归属", "hours": "填写工时定额"}[stage]
+    fields = detail(client, result, "route", route_ref)["data"]["rows"]
+    states = {row["label"]: row["value"] for row in fields if row["label"].endswith("确认")}
+    assert set(states.values()) <= {"已确认", "待保存"}
+    assert "待保存" in states.values()
+    assert stored(client) == before
 
 
 def test_relations_are_paginated_real_refs_and_exact_locate(overview_client):

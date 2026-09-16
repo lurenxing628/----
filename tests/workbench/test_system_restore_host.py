@@ -7,6 +7,7 @@ import pytest
 
 from core.infrastructure.backup import BackupManager, RestoreResult
 from core.infrastructure.database import get_connection
+from core.services.workbench.run_data_context import RunDataContext
 from core.services.workbench.system_journal import assert_system_maintenance_ready, file_fingerprint
 from core.services.workbench.system_restore import restore_outcome
 from tests.workbench.system_restore_host_support import BASE, KEY, http_json, http_server
@@ -17,6 +18,8 @@ from web.routes.system_backup_actions import RestoreBackupOutcome
 
 def test_real_http_verified_restore_requires_process_restart_and_external_receipt(restore_host, monkeypatch):
     case = restore_host
+    with closing(get_connection(case.path)) as conn:
+        before_context = RunDataContext(conn, case.journal.directory, str(case.backups)).ref()
     body = case.intent()
     config = case.client.get(BASE + "/config", buffered=True).get_json()["data"]
     saved = case.client.post(BASE + "/config/save", json={"request_key": "dh-config-before-restore-000001",
@@ -67,6 +70,11 @@ def test_real_http_verified_restore_requires_process_restart_and_external_receip
     with closing(get_connection(case.path)) as conn:
         assert conn.execute("SELECT COUNT(*) FROM WorkbenchCommandReceipts").fetchone()[0] == 0
         assert conn.execute("SELECT COUNT(*) FROM OperationLogs WHERE action='workbench_restore'").fetchone()[0] == 1
+        context = RunDataContext(conn, case.journal.directory, str(case.backups))
+        assert context.ref() != before_context
+        assert context.resolve_missing("restore-context-lost-run-000001", before_context) == "context_replaced"
+    record = case.journal.lookup(KEY)
+    assert record["data_context_before"] == before_context
     assert_system_maintenance_ready(case.path, case.journal.directory)
 
 

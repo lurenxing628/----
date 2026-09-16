@@ -5,6 +5,12 @@ from datetime import datetime
 from types import SimpleNamespace
 
 
+def _full_day_calendars():
+    calendar = {"state": "available", "issues": [], "windows": [{"start": "2026-01-01T00:00:00",
+        "end": "2026-01-02T00:00:00", "allow_normal": True, "allow_urgent": True}]}
+    return {("machine", "M1"): calendar, ("operator", "O1"): calendar}
+
+
 def test_report_source_case_insensitive() -> None:
 
     from core.services.report.calculations import compute_downtime_impact, compute_utilization
@@ -26,13 +32,13 @@ def test_report_source_case_insensitive() -> None:
         schedule_rows=[upper_row],
         start_dt=start_dt,
         end_dt_excl=end_dt_excl,
-        cap_hours=24.0,
+        calendars=_full_day_calendars(),
     )
     lower_machine, lower_operator = compute_utilization(
         schedule_rows=[lower_row],
         start_dt=start_dt,
         end_dt_excl=end_dt_excl,
-        cap_hours=24.0,
+        calendars=_full_day_calendars(),
     )
     assert upper_machine == lower_machine, "compute_utilization 应对 source 大小写不敏感（machine）"
     assert upper_operator == lower_operator, "compute_utilization 应对 source 大小写不敏感（operator）"
@@ -84,7 +90,7 @@ def test_report_calculations_record_bad_time_degradation() -> None:
         schedule_rows=[good_row, bad_schedule_row],
         start_dt=start_dt,
         end_dt_excl=end_dt_excl,
-        cap_hours=24.0,
+        calendars=_full_day_calendars(),
         degradation_collector=util_collector,
     )
 
@@ -280,7 +286,7 @@ def _report_engine_test_conn() -> sqlite3.Connection:
     return conn
 
 
-def test_report_engine_records_bad_time_rows_that_sql_range_cannot_classify() -> None:
+def test_report_engine_records_bad_time_rows_that_sql_range_cannot_classify(monkeypatch) -> None:
     from core.services.report.report_engine import ReportEngine
     from core.services.scheduler.calendar_engine import DayPolicy
 
@@ -290,6 +296,9 @@ def test_report_engine_records_bad_time_rows_that_sql_range_cannot_classify() ->
         date_str=dt.date().isoformat(), day_type="workday", shift_hours=8.0,
         efficiency=1.0, allow_normal="yes", allow_urgent="yes",
     ))
+    # This fixture isolates legacy malformed-time SQL; resource calendar contracts
+    # have separate real-schema tests and must not assume missing resources exist.
+    monkeypatch.setattr("core.services.report.report_engine.resource_calendars", lambda *args: _full_day_calendars())
 
     utilization = engine.utilization(1, "2026-01-01", "2026-01-01")
     downtime = engine.downtime_impact(1, "2026-01-01", "2026-01-01")

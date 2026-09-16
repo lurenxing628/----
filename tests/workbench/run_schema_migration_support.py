@@ -3,8 +3,7 @@
 import sqlite3
 from pathlib import Path
 
-from core.infrastructure.migration_state import set_schema_version
-from tests.workbench.execution_ledger_support import LedgerCase
+from tests.workbench.frozen_business_seed_support import seed_frozen_business
 
 FIXTURE_V25 = Path(__file__).parent / "fixtures" / "schema-v25.sql"
 
@@ -31,25 +30,4 @@ def source_ddl(conn):
 
 
 def seed_v25(path):
-    conn = connect(path)
-    conn.executescript(FIXTURE_V25.read_text(encoding="utf-8"))
-    set_schema_version(conn, 25)
-    conn.execute("INSERT INTO OpTypes(op_type_id,name) VALUES ('T1','Turning')")
-    conn.execute("INSERT INTO Machines(machine_id,name,op_type_id) VALUES ('M1','Lathe','T1')")
-    conn.execute("INSERT INTO Operators(operator_id,name) VALUES ('O1','Operator')")
-    conn.execute("INSERT INTO OperatorMachine(operator_id,machine_id) VALUES ('O1','M1')")
-    conn.execute("INSERT INTO Parts(part_no,part_name,remark) VALUES ('P1','Part','unchanged private note')")
-    conn.execute("INSERT INTO Batches(batch_id,part_no,quantity) VALUES ('B1','P1',10)")
-    case = LedgerCase(conn)
-    case.op_id = case.op()
-    case.plan(1, [case.op_id])
-    case.event(case.op_id, "start")
-    event_id = case.event(case.op_id, "finish")
-    legacy = conn.execute("SELECT legacy_fact_ref FROM WorkbenchExecutionLegacyFacts WHERE id=?", (event_id,)).fetchone()[0]
-    case.command("create", case.task(1, case.op_id), {
-        **case.values(10), "legacy_fact_ref": legacy, "reason": "Preserve supplemented legacy facts",
-        "remark": "retained report", "declared_operator": "fixture operator",
-    }, key="v25-preserved-report-0001")
-    conn.execute("UPDATE Parts SET remark=? WHERE part_no='P1'", (sqlite3.Binary(b"retained\x00metadata\xff"),))
-    conn.commit()
-    return conn
+    return seed_frozen_business(path, 25)

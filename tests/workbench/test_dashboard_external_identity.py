@@ -38,9 +38,9 @@ def test_same_number_replacement_does_not_inherit_risk_or_return(external_case, 
                    for row in summary["evaluation_gaps"])
 
 
-def test_operation_without_birth_mapping_stays_gap(external_case):
+def test_operation_without_birth_mapping_is_unregistered_not_a_source_gap(external_case):
     case = external_case
-    case.conn.execute("UPDATE BatchOperations SET source='external',supplier_id='XS1' WHERE op_code='DOP1'")
+    case.conn.execute("UPDATE BatchOperations SET source='external',supplier_id='XS1',op_type_name='QA表处理' WHERE op_code='DOP1'")
     case.conn.commit()
     ref = case.shipments.operation_ref("DOP1")
     # Seed a retained unknown origin, then restore the exact installed contract.
@@ -53,8 +53,14 @@ def test_operation_without_birth_mapping_stays_gap(external_case):
     before = storage(case.conn)
     summary = case.read()[0]["categories"]["external"]
     assert summary["risk_count"] is None and summary["unknown_count"] == summary["unregistered_count"] == 4
-    assert summary["source_gap_count"] == 1
-    assert next(row for row in summary["evaluation_gaps"] if row["source_ref"] == ref)["code"] == "identity_missing"
+    assert summary["source_gap_count"] == 0
+    missing = next(row for row in summary["evaluation_gaps"] if row["source_ref"] == ref)
+    assert missing["code"] == "outsourcing_unregistered"
+    assert missing["subject"] == "QA表处理（DOP1）"
+    assert missing["operation"] == {"code": "DOP1", "name": "QA表处理"}
+    with case.shipments.reader.read_snapshot():
+        target = next(row for row in case.shipments.reader.targets()["items"] if row["operation_ref"] == ref)
+    assert target["can_register"] is True and target["source_resolution"]["basis"] == "current_relation"
     assert storage(case.conn) == before
 
 

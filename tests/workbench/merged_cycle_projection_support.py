@@ -1,8 +1,8 @@
-"""Schema-31 SQLite fixtures and full-row oracles for merged cycle reads."""
+"""Current-schema SQLite fixtures and full-row oracles for merged cycle reads."""
 
 import pytest
 
-from core.infrastructure.migration_state import get_schema_version
+from core.infrastructure.migration_state import CURRENT_SCHEMA_VERSION, get_schema_version
 from core.services.process.workflow_state import operation_confirmations, read_workflow
 from core.services.workbench.process_queries import WorkbenchProcessQueryService
 from tests.workbench.process_query_support import ref_for, seed_process
@@ -13,7 +13,7 @@ from tests.workbench.process_stage_api_support import PART, StageAPI, seed_histo
 def merged_cycle_application(app_client):
     api = StageAPI(app_client)
     with api.database() as conn:
-        assert get_schema_version(conn) == 31
+        assert get_schema_version(conn) == CURRENT_SCHEMA_VERSION
         seed_process(conn)
         seed_history(conn)
         conn.execute("UPDATE PartOperations SET ext_days=NULL WHERE part_no=? AND seq=20", (PART,))

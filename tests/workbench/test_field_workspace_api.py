@@ -113,6 +113,26 @@ def test_initial_cross_page_focus_and_common_gantt_scope(field_api):
     assert wrong.status_code == 404
 
 
+def test_selected_task_operation_pair_is_checked_without_losing_plan_scope(field_api):
+    api = field_api
+    second_id = api.case.op('SECOND-FOCUS', seq=2)
+    api.case.plan(2, [api.case.op_id, second_id])
+    first = api.read(plan_ref=api.case.plan_ref(2), batch_ids='["B1"]', query='Turning')
+    one, two = first['data']['tasks']
+    query = {**first['data']['scope'], 'batch_ids': '["B1"]', 'snapshot_ref': first['meta']['snapshot_ref']}
+    before = all_rows(api.case.conn)
+    valid = api.read(**query, task_ref=two['task_ref'], operation_ref=two['operation_ref'])
+    assert valid['data']['scope'] == first['data']['scope']
+    assert any(row['task_ref'] == two['task_ref'] for row in valid['data']['tasks'])
+    wrong = api.client.get(BASE + '/tasks', query_string={
+        **query, 'task_ref': two['task_ref'], 'operation_ref': one['operation_ref'],
+    })
+    assert wrong.status_code == 409
+    assert wrong.get_json()['error']['code'] == 'constraint_conflict'
+    assert wrong.get_json()['committed'] is False
+    assert all_rows(api.case.conn) == before
+
+
 def test_legacy_finish_explicit_supplement_and_preserved_events(field_api):
     api = field_api
     api.case.event(api.case.op_id, 'start')

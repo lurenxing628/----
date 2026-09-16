@@ -25,7 +25,7 @@ def test_content_confirmed_zero_no_longer_flagged_but_no_health_claim(overview_c
     route = detail(client, result, "route", ref_for(client, "part", "P000"), "issues")
     assert route["data"]["page"]["total"] == 0
     assert route["data"]["entity"]["status"] == "checked"
-    assert "不代表可以排产" in result["data"]["overview"]["basis"]
+    assert result["data"]["overview"]["basis"] == "基础资料与关联检查"
     assert stored(client) == before
     assert client.get(BASE + "/export", query_string=args(old)).status_code == 409
 

@@ -58,7 +58,7 @@ def test_export_preserves_values_and_real_parser_patch(monkeypatch, write_only):
         try:
             assert wb.sheetnames == ["设备负荷", "人员负荷"]
             rows = list(wb.worksheets[0].iter_rows(values_only=True))
-            assert rows[1] == ("M1", "Machine", 1.25, 2, 4, 31.25)
+            assert rows[1] == ("M1", "Machine", 1.25, 2, 4, 31.25, None, None, None, None, None)
         finally:
             wb.close()
     finally:

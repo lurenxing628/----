@@ -72,6 +72,7 @@ UI_REQUIRED_TARGETS = (
     # run progress ledger that feeds the run-job progress bar (pure Python).
     "tests/workbench/test_handler_memory.py",
     "tests/workbench/test_run_progress_ledger.py",
+    "tests/workbench/test_workbench_delete_icons.py",
 )
 UI_SUPPLEMENTAL_TARGETS = (
     "tests/workbench/test_ui_refinement_geometry.py",
@@ -85,6 +86,8 @@ UI_SUPPLEMENTAL_TARGETS = (
     "tests/workbench/test_wbui_plan_gantt_models.py",
     # 2026-09-14 reviewed addition: short-screen application layout (only the table scrolls) on a real Flask + Chromium 109 loop.
     "tests/workbench/test_short_screen_layout.py",
+    "tests/workbench/test_workbench_visual_controls.py",
+    "tests/workbench/test_operator_machine_permissions_widgets.py",
 )
 UI_GROUP_IDS = ("workbench_ui_refinement", "workbench_ui_refinement_browser")
 
@@ -180,7 +183,32 @@ FINAL_CANDIDATE_READONLY_INPUTS = (
 )
 
 
+MANUAL_REMEDIATION_TARGET_OWNERS = {
+    "tests/workbench/test_manual_remediation_schema_migration.py": "workbench_mainmigration",
+    "tests/workbench/test_batch_template_updates.py": "workbench_batches",
+    "tests/workbench/test_operator_machine_permissions.py": "workbench_resources",
+    "tests/workbench/test_outsourcing_legacy_source.py": "workbench_outsourcing",
+    "tests/workbench/test_resource_utilization_shared.py": "workbench_reports",
+    "tests/workbench/test_run_data_context.py": "workbench_run_jobs",
+    "tests/workbench/test_execution_report_void.py": "workbench_execution_ledger",
+    "tests/workbench/test_field_report_void_api.py": "workbench_field",
+    "tests/workbench/test_report_void_projections.py": "workbench_reports",
+    "tests/workbench/test_trial_source_presentation.py": "workbench_trial",
+    "tests/workbench/test_resource_feedback.py": "workbench_resources",
+    "tests/workbench/test_file_reference_roundtrip.py": "workbench_resources",
+    "tests/workbench/test_trial_adoption_execution_anchors.py": "workbench_trial_adoption",
+}
+
+
+def before_manual_remediation_targets(group):
+    return [path for path in group["target_paths"] if path not in MANUAL_REMEDIATION_TARGET_OWNERS]
+
+
 POST_ROUND1_TARGETS = frozenset((
+    *MANUAL_REMEDIATION_TARGET_OWNERS,
+    "tests/workbench/test_field_report_void_browser.py",
+    "tests/workbench/test_field_scope_navigation_browser.py",
+    "tests/workbench/test_resource_context_refresh.py",
     *UI_REQUIRED_TARGETS,
     *UI_SUPPLEMENTAL_TARGETS,
     "tests/gate_meta/test_quality_gate_output_normalization.py",

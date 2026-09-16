@@ -116,7 +116,7 @@ async function cases(){
     assert.equal(await page.getByLabel('工序 20 单件工时',{exact:true}).count(),0);assert.equal(await page.getByLabel('工序 10 外协周期',{exact:true}).count(),0);
     const colors=await page.locator('.process-detail .stp[aria-selected="false"] .stp-t').evaluateAll(nodes=>nodes.map(node=>({label:node.textContent,color:getComputedStyle(node).color,expected:getComputedStyle(node.closest('.modal').querySelector('.modal-h2')).color})));
     assert(colors.length===2&&colors.every(row=>row.color===row.expected),'Inactive steps must use readable theme text');report.step_colors=(report.step_colors||[]).concat({state,colors});
-    assert(await page.getByRole('table',{name:'工时定额明细',exact:true}).evaluate(table=>table.getBoundingClientRect().width<=table.parentElement.clientWidth+1),'Hour columns must fit the normal desktop dialog');
+    for(const name of ['自制工时明细','外协周期明细']) assert(await page.getByRole('table',{name,exact:true}).evaluate(table=>table.getBoundingClientRect().width<=table.parentElement.clientWidth+1),'Hour columns must fit the normal desktop dialog: '+name);
     const group=page.getByRole('table',{name:'外协组原记录',exact:true}).getByRole('spinbutton');
     assert.equal(await group.inputValue(),'6.75');assert(await group.isDisabled());
     await shot('hours-and-group');await closeDetail();
@@ -157,7 +157,7 @@ async function cases(){
   await run('two-thousand-operation-detail-and-reload',async()=>{
     await search('PROC-LARGE');const begin=Date.now();await open('PROC-LARGE');
     const expected=Array.from({length:2000},(_,index)=>String(index+1));
-    for(const [stage,name] of [[/^1 工艺路线/,'路线工序明细'],[/^2 归属/,'归属明细'],[/^3 工时定额/,'工时定额明细']]){
+    for(const [stage,name] of [[/^1 工艺路线/,'路线工序明细'],[/^2 归属/,'归属明细'],[/^3 工时定额/,'自制工时明细']]){
       await page.getByRole('tab',{name:stage}).click();await readAllOperations(name,expected);
     }
     report.timings.push({state,action:'2000-operation-detail',milliseconds:Date.now()-begin});await shot('large-detail');await closeDetail();

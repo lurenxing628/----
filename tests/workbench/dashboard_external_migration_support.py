@@ -71,62 +71,33 @@ def external_v30_case(tmp_path):
 
 
 def seed_v30(path):
-    conn = seed_v29(path)
-    with TransactionManager(conn).transaction():
-        v30.run(conn)
-        set_schema_version(conn, 30)
-    assert hashlib.sha256(FIXTURE_V30.read_bytes()).hexdigest() == FIXTURE_V30_SHA
-    with closing(connect(":memory:")) as expected:
-        expected.executescript(FIXTURE_V30.read_text(encoding="utf-8"))
-        assert list(map(canonical_object, source_ddl(conn))) == list(map(canonical_object, source_ddl(expected)))
-    seed_external_sources(conn)
-    unknown = conn.execute("SELECT o.id FROM BatchOperations o JOIN WorkbenchPlanSourceRefs r ON r.source_key=CAST(o.id AS TEXT) "
-                           "JOIN WorkbenchOutsourcingOperationOrigins x ON x.operation_ref=r.ref "
-                           "WHERE r.kind='operation' AND r.active=1 AND x.batch_ref IS NULL LIMIT 1").fetchone()
-    assert unknown is not None
-    conn.execute("UPDATE BatchOperations SET source='external',supplier_id='XS1' WHERE id=?", (unknown[0],))
-    conn.execute("UPDATE Batches SET due_date='2026-09-09' WHERE batch_id='B3'")
-    conn.execute("UPDATE BatchOperations SET op_type_id='T1' WHERE batch_id='B3'")
-    conn.commit()
-    case = external_case_for(path, conn)
-    with case.app.app_context():
-        ledger = LedgerCase(conn)
-        op_id = conn.execute("SELECT id FROM BatchOperations WHERE batch_id='B3'").fetchone()[0]
-        assert ledger.command("create", ledger.task(2, op_id), ledger.values(1),
-                              key="v30-preserved-report-0001")["result"] == "committed"
-        case.register()
-        case.register(2, confirmedState="awaiting_confirmation")
-        returned = case.register(3)
-        case.returned(returned)
-        item = case.item("delivery")
-        assert case.command(item, follow(), key="v30-preserved-generic-0001")["result"] == "committed"
-        assert case.command(case.item("delivery"), follow(owner="Second planner"),
-                            key="v30-preserved-generic-0002")["result"] == "committed"
-    assert get_schema_version(conn) == 30
-    assert not set(objects()) & {row[1] for row in source_ddl(conn)}
-    return conn
+    from tests.workbench.frozen_business_seed_support import seed_frozen_business
+
+    return seed_frozen_business(path, 30)
 
 
 def write_migration_evidence(directory):
     """New disposable fixture only; retain full raw/DDL snapshots and real backup."""
     from core.infrastructure.database import ensure_schema
-    from core.infrastructure.migration_state import current_schema_contract_issues
+    from core.infrastructure.migration_state import CURRENT_SCHEMA_VERSION, current_schema_contract_issues
+    from tests.workbench.legacy_migration_current_support import V32_TABLES, assert_v32_empty
 
     directory = Path(directory)
     directory.mkdir(parents=True, exist_ok=False)
-    path, backups = directory / "fixture-v31.db", directory / "backups"
+    path, backups = directory / "fixture-current.db", directory / "backups"
     with closing(seed_v30(path)) as conn:
         before, old_ddl = snapshot(conn), source_ddl(conn)
     ensure_schema(str(path), schema_path=str(Path(__file__).resolve().parents[2] / "schema.sql"), backup_dir=str(backups))
     with closing(connect(path)) as conn:
         after, new_ddl = snapshot(conn), source_ddl(conn)
-        assert get_schema_version(conn) == 31 and not current_schema_contract_issues(conn)
+        assert get_schema_version(conn) == CURRENT_SCHEMA_VERSION and not current_schema_contract_issues(conn)
         assert_v31_receipt_maps_only(conn)
-        assert set(after) - set(before) == set(V31_TABLES)
+        assert set(after) - set(before) == set(V31_TABLES + V32_TABLES)
+        assert_v32_empty(conn)
         assert {key: rows for key, rows in before.items() if key != "SchemaVersion"} == {
             key: after[key] for key in before if key != "SchemaVersion"}
         assert [row for row in new_ddl if row[1] in {old[1] for old in old_ddl}] == old_ddl
-    copies = list(backups.glob("*before_migrate_v30_to_v31*.db"))
+    copies = list(backups.glob(f"*before_migrate_v30_to_v{CURRENT_SCHEMA_VERSION}*.db"))
     assert len(copies) == 1
     with closing(connect(copies[0])) as conn:
         backup, backup_ddl = snapshot(conn), source_ddl(conn)

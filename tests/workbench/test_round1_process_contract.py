@@ -71,9 +71,11 @@ def test_hours_references_do_not_accept_boolean_or_numeric_identity(value):
     assert caught.value.code == "invalid_input" and caught.value.status == 422
 
 
-def test_zero_unit_hours_still_require_explicit_boolean_confirmation():
+def test_zero_confirmation_type_is_checked_before_content_bound_business_validation():
     payload = _payload([{"ref": REF, "setup_hours": 0, "unit_hours": 0}])
-    for value, code in [(False, "zero_unit_hours_review"), (1, "invalid_input")]:
+    payload["confirm_zero_unit_hours"] = False
+    assert normalize_process_input("hours_confirm", payload)["confirm_zero_unit_hours"] is False
+    for value, code in [(1, "invalid_input"), (None, "invalid_input")]:
         payload["confirm_zero_unit_hours"] = value
         with pytest.raises(WorkbenchCommandRejected) as caught:
             normalize_process_input("hours_confirm", payload)

@@ -11,6 +11,7 @@ from core.infrastructure.migration_state import (
     ensure_current_schema_contract,
     get_schema_version,
 )
+from core.infrastructure.workbench_outsourcing_source_schema import install as install_sources
 from core.models.workbench_outsourcing import raw_facts
 from tests.workbench.outsourcing_support import OutsourcingCase
 
@@ -23,6 +24,9 @@ def targets_case(tmp_path):
     try:
         assert get_schema_version(conn) == CURRENT_SCHEMA_VERSION
         ensure_current_schema_contract(conn)
+        conn.execute("BEGIN")
+        install_sources(conn)
+        conn.commit()
         conn.execute("INSERT INTO OpTypes(op_type_id,name,category) VALUES ('XT1','Heat treatment','external')")
         conn.execute("INSERT INTO Suppliers(supplier_id,name,op_type_id,default_days) VALUES ('XS1','Supplier','XT1',2)")
         conn.execute("INSERT INTO Parts(part_no,part_name,remark) VALUES ('XP1','Part',?)", (b"original\x00\xff",))

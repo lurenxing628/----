@@ -7,6 +7,8 @@ import os
 import subprocess
 from pathlib import Path
 
+import pytest
+
 from tests.workbench.outsourcing_widgets_support import serve
 from tests.workbench.test_live_browser import runtime_tools
 
@@ -14,13 +16,14 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 
 
-def test_outsourcing_widgets(tmp_path, monkeypatch):
+@pytest.mark.parametrize("legacy_source", [False, True])
+def test_outsourcing_widgets(tmp_path, monkeypatch, legacy_source):
     output = Path(os.environ.get("OUTSOURCING_UI_OUTPUT", str(tmp_path / "outsourcing-ui"))).resolve()
     assert output != ROOT and ROOT not in output.parents
     output.mkdir(parents=True, exist_ok=True)
     print("OUTSOURCING_UI_ARTIFACTS " + str(output), flush=True)
     node, browser, modules = runtime_tools()
-    with serve(tmp_path, output, monkeypatch) as config:
+    with serve(tmp_path, output, monkeypatch, legacy_source=legacy_source) as config:
         run = subprocess.run([node, str(HERE / "outsourcing_widgets_probe.cjs"), str(output)], input=json.dumps(config),
                              text=True, capture_output=True, timeout=500,
                              env=dict(os.environ, NODE_PATH=modules, WORKBENCH_BROWSER=browser))
@@ -43,6 +46,10 @@ def verify(report, server):
     for case in report["cases"]:
         proof = next(p for p in server["proofs"] if p["case"] == case["name"])
         assert len(proof["headers"]) == 3 and len(proof["facts"]) == len(proof["receipts"]) == 8
+        expected = sum(len(json.loads(h["origin_json"])["operation_refs"]) for h in proof["headers"]) if report["legacy_source"] else 0
+        assert len(proof["source_confirmations"]) == expected
+        assert "WorkbenchOutsourcingOperationOrigins" in proof["preserved_tables"]
+        assert "WorkbenchTemplateLineageEvents" in proof["preserved_tables"]
         facts = [r for r in proof["facts"] if r["outsourcing_ref"] == case["merged_ref"]]
         assert [r["confirmed_state"] for r in facts] == ["in_transit", "returned", "returned", "returned", "awaiting_confirmation", "returned"]
         assert facts[-1]["request_key"] == case["unknown_key"]

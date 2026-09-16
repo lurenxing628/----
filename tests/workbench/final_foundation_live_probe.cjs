@@ -4,7 +4,7 @@ const {PNG} = require('pngjs');
 
 const NAV = [
   ['process', '基础资料'], ['batches', '批次管理'], ['run', '执行排产'], ['analysis', '选择排产方案'],
-  ['trial', '试调'], ['gantt', '计划甘特'], ['field', '现场记录'], ['fieldgantt', '现场实际甘特'],
+  ['trial', '试调排产方案'], ['gantt', '计划甘特'], ['field', '现场记录'], ['fieldgantt', '现场实际甘特'],
   ['review', '执行复盘'], ['reports', '报表中心'], ['calib', '工时定额校准'], ['dashboard', '值班台'],
   ['basedata', '资料总览'], ['system', '系统管理'],
 ];
@@ -175,6 +175,9 @@ async function shell(page, view, record) {
     text: node.innerText.trim(), title: node.title, href: node.href, active: node.classList.contains('active'), current: node.getAttribute('aria-current')})));
   record.equal(links.map(row => row.text), SIDEBAR.map(row => row[1]), 'All 12 consolidated sidebar entries in approved order');
   record.equal(links.map(row => row.title), SIDEBAR.map(row => row[1]), 'All sidebar tooltips retain full titles');
+  record.ok(await page.locator('.sidebar-nav a.nav-item').evaluateAll(nodes => nodes.every(node =>
+    node.querySelector('svg.nav-ico path, svg.nav-ico rect, svg.nav-ico circle, svg.nav-ico ellipse'))),
+  'Every sidebar entry renders an SVG shape, including trial');
   record.equal(links.filter(row => row.active).map(row => row.text), [NAV.find(row => row[0] === active)[1]]);
   record.equal(links.filter(row => row.current === 'page').map(row => row.text), [NAV.find(row => row[0] === active)[1]]);
   for (let index = 0; index < links.length; index++) {

@@ -103,7 +103,7 @@ async function inspect(page) {
       await page.waitForFunction(() => document.querySelector('.rail').getAttribute('aria-busy') === 'false');
       await page.evaluate(() => document.fonts.ready);
       const tile = page.locator('[data-rail-node="process"]');
-      check((await tile.innerText()).includes('存量 1 项未确认；含路线资料 1 项'), 'Legacy evidence must not become confirmation');
+      check((await tile.innerText()).includes('1 项暂无确认记录，其中 1 项已有路线资料'), 'Legacy evidence must not become confirmation');
       for (const mode of ['route','source','hours','ready','mixed','stale','empty','unavailable']) {
         await commit(page, mode);
         const item = facts[mode].readiness.items.process, counts = item.counts, text = await tile.innerText();

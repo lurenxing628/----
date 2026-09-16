@@ -111,12 +111,22 @@ async function operator(page, reason) {
   await dialog(page).getByLabel('外协经办人', { exact: true }).fill('物流员张工'); await dialog(page).getByLabel('外协核实原因', { exact: true }).fill(reason);
 }
 async function preview(page, status = 200) {
-  return action(page, '/receipts/preview', () => dialog(page).getByRole('button', { name: '预检核对', exact: true }).click(), status, 'POST');
+  const result = await action(page, '/receipts/preview', () => dialog(page).getByRole('button', { name: '预检核对', exact: true }).click(), status, 'POST');
+  if (status === 200) {
+    await dialog(page).getByText('图号：DN-P · 精密传动轴', { exact: true }).waitFor();
+    assert.equal(await dialog(page).getByRole('checkbox').count(), 0);
+    if (config.legacy_source && result.data.input.target) {
+      assert.equal(result.data.target.source_resolution.basis, 'current_relation');
+      await dialog(page).getByText('这批旧工序按本页列出的批次登记。', { exact: true }).waitFor();
+    }
+    report.boundaries.source_identity_visible_without_extra_confirmation = true;
+  }
+  return result;
 }
 async function send(page, status = 200) {
   return action(page, '/receipts', () => dialog(page).getByRole('button', { name: '确认保存外协登记', exact: true }).click(), status, 'POST');
 }
-async function confirmed(page) { await dialog(page).getByText('外协登记已完成。回厂不等于工序完工。', { exact: true }).waitFor(); }
+async function confirmed(page) { await dialog(page).getByText('外协登记已完成。', { exact: true }).waitFor(); }
 async function finish(page) { await action(page, '/receipts', () => dialog(page).getByRole('button', { name: '完成', exact: true }).click()); }
 async function edit(page, ref) {
   if (!await page.locator('[data-outsourcing-detail="' + ref + '"]').count()) await action(page, '/receipts/' + ref + '/history', () => page.locator('[data-outsourcing-ref="' + ref + '"]').getByRole('button').click());

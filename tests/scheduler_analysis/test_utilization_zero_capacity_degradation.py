@@ -29,20 +29,28 @@ def _schedule_rows():
     ]
 
 
+
+def _calendars(working):
+    calendar = {"state": "available", "issues": [], "windows": [{"start": "2026-07-01T08:00:00",
+        "end": "2026-07-01T16:00:00", "allow_normal": True, "allow_urgent": True}] if working else []}
+    return {("machine", "M1"): calendar, ("operator", "P1"): calendar}
+
+
 def test_zero_capacity_window_keeps_none_and_leaves_trace() -> None:
     collector = DegradationCollector()
     machine_rows, operator_rows = compute_utilization(
         schedule_rows=_schedule_rows(),
         start_dt=datetime(2026, 7, 1),
         end_dt_excl=datetime(2026, 7, 2),
-        cap_hours=0.0,
+        calendars=_calendars(False),
         degradation_collector=collector,
     )
 
     # None 语义保留：除零不适用，不许改成 0 之类的错数。
     assert machine_rows[0]["utilization"] is None
     assert operator_rows[0]["utilization"] is None
-    assert machine_rows[0]["hours"] == 2.0
+    assert machine_rows[0]["hours"] == 0.0
+    assert machine_rows[0]["outside_calendar_hours"] == 2.0
 
     counters = collector.to_counters()
     assert counters.get("zero_capacity_window") == 2, "设备行+人员行各 1 行都要计数留痕"
@@ -63,7 +71,7 @@ def test_positive_capacity_window_unaffected() -> None:
         schedule_rows=_schedule_rows(),
         start_dt=datetime(2026, 7, 1),
         end_dt_excl=datetime(2026, 7, 2),
-        cap_hours=8.0,
+        calendars=_calendars(True),
         degradation_collector=collector,
     )
     assert machine_rows[0]["utilization"] == 0.25
@@ -82,7 +90,7 @@ def test_zero_capacity_window_without_rows_leaves_no_trace() -> None:
         schedule_rows=[],
         start_dt=datetime(2026, 7, 1),
         end_dt_excl=datetime(2026, 7, 2),
-        cap_hours=0.0,
+        calendars=_calendars(False),
         degradation_collector=collector,
     )
     assert machine_rows == [] and operator_rows == []
@@ -94,6 +102,6 @@ def test_zero_capacity_window_without_collector_does_not_raise() -> None:
         schedule_rows=_schedule_rows(),
         start_dt=datetime(2026, 7, 1),
         end_dt_excl=datetime(2026, 7, 2),
-        cap_hours=0.0,
+        calendars=_calendars(False),
     )
     assert machine_rows[0]["utilization"] is None

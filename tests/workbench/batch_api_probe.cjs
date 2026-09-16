@@ -22,7 +22,7 @@ for (const file of ['resource-contract.js', 'resource-api.js', 'BatchContract.js
   assert.equal(new URL(requests.at(-1).url).pathname, '/api/workbench/v1/entities/batch/query');
   assert.deepEqual(JSON.parse(requests.at(-1).options.body).column_filters.quantity, [0, null]);
   await api.detail('batch', ref); await api.choices();
-  await api.preview('sync', ref, { strict_mode: false }, {}, 'snapshot');
+  await api.preview('sync', ref, {}, {}, 'snapshot');
   assert.equal(new URL(requests.at(-1).url).pathname, '/api/workbench/v1/entities/batch/' + ref + '/sync-preview');
   await api.preview('bulk', null, { action: 'delete', refs: [ref] }, {}, 'snapshot');
   assert.equal(JSON.parse(requests.at(-1).options.body).snapshot_ref, 'snapshot');

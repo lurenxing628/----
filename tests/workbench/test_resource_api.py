@@ -99,6 +99,35 @@ def test_shared_references_disable_delete_and_snapshot_pages_detect_changes(app_
     assert stale.status_code == 409 and stale.get_json()["error"]["code"] == "snapshot_stale"
 
 
+def test_catalog_rename_requires_current_parent_context_and_preserves_unrelated_facts(app_client):
+    shift, _ = _create(app_client, "shift_profile", "REFRESH-SHIFT", fields={
+        "anchor_date": "2026-09-15", "cycle_days": 2, "pattern": [
+            {"day_offset": 0, "is_rest": False, "shift_start": "22:00", "shift_end": "06:00"},
+            {"day_offset": 1, "is_rest": True, "shift_start": "22:00", "shift_end": "06:00"},
+        ]})
+    person, _ = _create(app_client, "operator", "REFRESH-OP", relationships={"shift_profile_ref": shift})
+    stale = _detail(app_client, "operator", person)["write_context"]
+    with sqlite3.connect(app_client.application.config["DATABASE_PATH"]) as conn:
+        tables = ("Schedule", "ScheduleHistory", "OperatorMachine", "OperatorSkill", "WorkbenchShiftPatternDays")
+        before = {table: list(conn.execute('SELECT * FROM "' + table + '"')) for table in tables}
+    assert _command(app_client, "shift_profile", shift, "update", {"label": "Renamed shift"}, key="catalog-refresh-rename-1").status_code == 200
+    payload = {"label": "Preserved user draft", "relationships": {"shift_profile_ref": None}}
+    rejected = _command(app_client, "operator", person, "update", payload, context=stale, key="catalog-refresh-old-parent")
+    assert rejected.status_code == 409 and rejected.get_json()["error"]["code"] == "stale_write"
+    refreshed = _detail(app_client, "operator", person)["write_context"]
+    assert _command(app_client, "shift_profile", shift, "update", {"label": "Concurrent shift change"}, key="catalog-refresh-rename-2").status_code == 200
+    concurrent = _command(app_client, "operator", person, "update", payload, context=refreshed, key="catalog-refresh-concurrent")
+    assert concurrent.status_code == 409 and concurrent.get_json()["error"]["code"] == "stale_write"
+    for _ in range(2):
+        refreshed = _detail(app_client, "operator", person)["write_context"]
+    saved = _command(app_client, "operator", person, "update", payload, context=refreshed, key="catalog-refresh-final")
+    assert saved.status_code == 200 and saved.get_json()["result"] == "committed"
+    current = _detail(app_client, "operator", person)
+    assert current["label"] == payload["label"] and current["relationships"]["shift_profile_ref"] is None
+    with sqlite3.connect(app_client.application.config["DATABASE_PATH"]) as conn:
+        assert {table: list(conn.execute('SELECT * FROM "' + table + '"')) for table in tables} == before
+
+
 def test_legacy_inactive_reason_is_visible_without_guessing(app_client):
     with sqlite3.connect(app_client.application.config["DATABASE_PATH"]) as conn:
         conn.execute("INSERT INTO Operators(operator_id,name,status) VALUES ('OLD-O','Old','inactive')")

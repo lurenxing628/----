@@ -39,7 +39,7 @@ R.operation(op);
 for(const mutation of [{database_origin:'unconfirmed'},{restart_scope:'browser'},{target_sha256:null,protection_sha256:'bad'},{references_require_reload:false}])
   assert.throws(()=>R.operation({...op,...mutation}));
 const stopped={...host,state:'restart_required',restart_required:true,operations_available:false,request_key:op.request_key};
-assert(R.describe(stopped,op).guidance.includes('只刷新或关闭浏览器不算重启'));
+assert(R.describe(stopped,op).guidance.includes('请关闭整个 APS 软件后重新启动'));
 assert(R.describe({...stopped,state:'recovery_required'},op).uncertain);
 assert(R.describe({...stopped,request_key:'different-request-key'},op).uncertain);
 assert(!R.describe(host,null).title.includes('已核实'));

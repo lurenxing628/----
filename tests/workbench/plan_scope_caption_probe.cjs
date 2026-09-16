@@ -37,10 +37,10 @@ async function main() {
         dispatchEvent(new PopStateEvent('popstate'));
       }, { planRef: input.plan_ref, scope: fixture.scope, key: ++key });
       await page.waitForFunction(() => window.faCaptionDTO !== null);
-      const note = page.locator('[data-plan-workspace] > .plan-note');
+      const note = page.locator('[data-plan-workspace] .plan-scope-caption');
       await note.waitFor();
       const text = (await note.innerText()).trim();
-      const suffix = fixture.scope.range_start ? ' · 只列出与此时间段有重叠的工序安排，每道安排的起止时间完整保留，不代表整份计划' : '';
+      const suffix = fixture.scope.range_start ? ' · 显示所选时间段内的工序安排' : '';
       assert.equal(text, fixture.caption + suffix);
       const actual = await page.evaluate(() => {
         if (JSON.stringify(faCaptionDTO) !== faCaptionBefore) throw new Error('UI mutated the source DTO');
@@ -48,7 +48,7 @@ async function main() {
       });
       assert.deepEqual(actual, fixture.payload.data, 'Business span, scope, hours and task refs stay unchanged');
       assert.equal(await page.locator('[role=alert]').count(), 0);
-      const metrics = await page.locator('[data-plan-workspace] > .wb-metrics > .wb-metric').evaluateAll(nodes => nodes.map(node => ({
+      const metrics = await page.locator('[data-plan-workspace] .plan-scope > .wb-metrics > .wb-metric').evaluateAll(nodes => nodes.map(node => ({
         label: node.querySelector('.wb-metric-label').textContent, value: node.querySelector('.wb-metric-value').textContent,
         tone: node.dataset.tone, color: getComputedStyle(node.querySelector('.wb-metric-value')).color, neutral: getComputedStyle(node).color,
         background: getComputedStyle(node).backgroundColor, font: getComputedStyle(node.querySelector('.wb-metric-value')).font
@@ -65,7 +65,7 @@ async function main() {
       evidence.metrics.push({ name: fixture.name, metrics });
       await page.setViewportSize({ width: 1392, height: 900 });
       const metricFile = path.join(input.output, fixture.name + '-' + key + '-metrics-dark.png');
-      await page.locator('[data-plan-workspace] > .wb-metrics').screenshot({ path: metricFile }); evidence.screenshots.push(metricFile);
+      await page.locator('[data-plan-workspace] .plan-scope > .wb-metrics').screenshot({ path: metricFile }); evidence.screenshots.push(metricFile);
       for (const width of [1392, 390]) {
         await page.setViewportSize({ width, height: 900 });
         assert.ok(await note.evaluate(node => node.scrollWidth <= node.clientWidth + 1), 'Caption fits its container');

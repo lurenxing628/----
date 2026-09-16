@@ -1,5 +1,11 @@
 """HTTP method/input boundaries, original-key recovery and unknown ACK response."""
 
+import json
+import os
+import shutil
+import subprocess
+from pathlib import Path
+
 import pytest
 from flask import g, request
 
@@ -29,6 +35,46 @@ def test_real_http_preview_confirm_and_receipt(trial_case):
     assert client.get(path + "/adopt").status_code == 405
     unknown = client.get(path + "/adoption-commands/not-yet-seen-request").get_json()["data"]
     assert unknown == {"state": "not_observed", "receipt": None, "may_be_in_flight": True, "can_retry_automatically": False}
+
+
+@pytest.mark.parametrize("ready_status", ["no", "partial"])
+def test_readiness_warning_becomes_visible_adoption_blocker(trial_case, ready_status):
+    case = trial_case
+    case.conn.execute("UPDATE Batches SET ready_status=?", (ready_status,))
+    case.conn.commit()
+    saved = saved_scenario(case, changed=False)
+    original_issues = saved["validation"]["issues"]
+    assert original_issues and all(row["severity"] == "warning" for row in original_issues)
+    client = api(case)
+    before = snapshot(case.conn)
+    response = client.post(BASE + saved["scenario_ref"] + "/adopt-preview", json={})
+    assert response.status_code == 200, response.get_json()
+    envelope = response.get_json()
+    # Exercise the actual strict frontend parser against the real HTTP DTO.
+    node = os.environ.get("WORKBENCH_NODE") or shutil.which("node")
+    assert node, "Node is required for the TrialAdoptionAPI source contract"
+    source = Path(__file__).resolve().parents[2] / "frontend/workbench/app/TrialAdoptionAPI.js"
+    script = """
+const fs = require('fs'), assert = require('assert');
+global.window = {};
+require(process.argv[1]);
+const value = JSON.parse(fs.readFileSync(0, 'utf8')), api = window.TrialAdoptionAPI;
+const parsed = api.preview(value.response, api.source(value.saved.scenario_ref, value.saved));
+assert.equal(parsed.validation.can_adopt, false);
+assert.equal(parsed.validation.issues[0].code, 'batch_not_ready');
+assert(parsed.validation.issues[0].message.includes('齐套'));
+assert.equal(parsed.write_context.write_token, null);
+"""
+    result = subprocess.run([node, "-e", script, str(source)],
+                            input=json.dumps({"response": envelope, "saved": saved}),
+                            text=True, capture_output=True, timeout=20)
+    assert result.returncode == 0, result.stdout + result.stderr
+    data = envelope["data"]
+    assert data["validation"]["issues"] == data["write_context"]["blocked_reasons"]
+    assert all(row["severity"] == "blocker" for row in data["validation"]["issues"])
+    assert data["write_context"]["capabilities"]["trial.scenario.adopt"] is False
+    assert snapshot(case.conn) == before
+    assert saved["validation"]["issues"] == original_issues
 
 
 @pytest.mark.parametrize("suffix,body", [
@@ -81,4 +127,3 @@ def test_http_ack_unknown_points_to_original_scenario_and_key(trial_case):
     receipt = client.get(value["error"]["result_target"]).get_json()["data"]
     assert receipt["state"] == "committed" and receipt["receipt"]["data"]["scenario_ref"] == saved["scenario_ref"]
     assert case.conn.execute("SELECT COUNT(*) FROM ScheduleHistory").fetchone()[0] == 2
-

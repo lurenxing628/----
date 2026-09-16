@@ -4,6 +4,7 @@ import json
 
 import pytest
 
+from core.infrastructure.logging import OperationLogger
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.workbench.run_jobs_facts import capture_run_facts
 from core.services.workbench.run_worker import WorkbenchRunWorker
@@ -127,3 +128,24 @@ def test_actual_excluded_batch_produces_persisted_partial_result(job_case):
     payload = json.loads(case.conn.execute("SELECT result_json FROM WorkbenchRunReceipts").fetchone()[0])
     assert any(row["status"] == "skipped" for row in payload["dispositions"])
     assert capture_run_facts(case.conn) == before
+
+
+def test_audit_writes_before_compute_and_before_persist_preserve_run(job_case, monkeypatch):
+    from core.services.workbench import run_worker
+
+    case = job_case
+    accepted = case.accept()
+    captured = tuple(case.conn.execute("SELECT facts_json,facts_hash FROM WorkbenchRunJobs").fetchone())
+    assert OperationLogger(case.conn).info("plugins", "load", detail={"startup": True})
+    real_compute = run_worker.compute_candidate_run
+
+    def compute_with_audit(*args, **kwargs):
+        result = real_compute(*args, **kwargs)
+        assert OperationLogger(case.conn).info("system", "backup", detail={"complete": True})
+        return result
+
+    monkeypatch.setattr(run_worker, "compute_candidate_run", compute_with_audit)
+    result = WorkbenchRunWorker(case.conn).execute(accepted["run_ref"])
+    assert result["state"] == "complete" and result["result_persisted"] is True
+    assert tuple(case.conn.execute("SELECT facts_json,facts_hash FROM WorkbenchRunJobs").fetchone()) == captured
+    assert case.conn.execute("SELECT COUNT(*) FROM OperationLogs WHERE action IN ('load','backup')").fetchone()[0] == 2

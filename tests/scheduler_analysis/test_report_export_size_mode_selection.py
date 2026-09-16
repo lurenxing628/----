@@ -45,7 +45,7 @@ def _assert_utilization_xlsx_percent(resp) -> None:
     wb = openpyxl.load_workbook(BytesIO(resp.data), data_only=True)
     try:
         ws = wb["设备负荷"]
-        if ws["F1"].value != "利用率(%)":
+        if ws["F1"].value != "整窗占用率(%)":
             raise RuntimeError(f"利用率表头异常：{ws['F1'].value!r}")
         if ws["F2"].value != 50.0:
             raise RuntimeError(f"利用率应以百分比数值导出：{ws['F2'].value!r}")

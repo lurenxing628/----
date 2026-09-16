@@ -141,7 +141,7 @@ async function cases() {
     await focused(ref(53069)); assert.equal(await page.locator('[data-process-location="' + ref(51116) + '"]:visible').count(), 1);
   });
   await run('readonly-navigation-enters-original-editor-only-explicitly', async () => { await mount({ context: ctx('part', 5, { stage: 'hours' }) }); await button('开始维护').waitFor();
-    assert.equal(await page.getByRole('dialog').getByRole('checkbox').count(), 0); await button('开始维护').click(); await page.getByRole('table', { name: '工时定额明细', exact: true }).waitFor();
+    assert.equal(await page.getByRole('dialog').getByRole('checkbox').count(), 0); await button('开始维护').click(); await page.getByRole('table', { name: '自制工时明细', exact: true }).waitFor();
     assert.equal(await page.locator('[data-process-navigation-stage]').count(), 0); await page.getByRole('dialog').getByRole('button', { name: '导入工时定额', exact: true }).waitFor();
     assert(await page.evaluate(() => fixture.reads.filter(row => row.type === 'detail').every(row => row.ref === '5'.padStart(48, '0'))));
   });

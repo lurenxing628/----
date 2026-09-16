@@ -3,7 +3,7 @@ const fs = require('node:fs'), path = require('node:path'), http = require('node
 const { compile } = require('../../scripts/workbench/compile.cjs');
 const root = path.resolve(__dirname, '../..');
 const files = ['WorkbenchCaption.jsx', 'WorkbenchPageContext.jsx', 'WorkbenchFormat.js', 'WorkbenchTerms.js', 'WorkbenchReferences.jsx', 'resource-contract.js', 'resource-api.js', 'resource-session.js', 'WorkbenchGuards.js', 'ResourceControls.jsx', 'WorkbenchGuardHost.jsx', 'PointContract.js', 'PointGanttModel.js', 'PointGantt.jsx',
-  'FieldContract.js', 'FieldDraftModel.js', 'FieldAPI.js', 'FieldControls.jsx', 'FieldFilters.jsx', 'FieldEditorFields.jsx', 'FieldEditor.jsx', 'FieldDetail.jsx', 'FieldTable.jsx', 'FieldFiles.jsx', 'FieldWorkspace.jsx',
+  'FieldContract.js', 'FieldDraftModel.js', 'FieldAPI.js', 'FieldControls.jsx', 'FieldFilters.jsx', 'FieldEditorFields.jsx', 'FieldEditor.jsx', 'FieldVoidEditor.jsx', 'FieldDetail.jsx', 'FieldTable.jsx', 'FieldFiles.jsx', 'FieldWorkspace.jsx',
   'WorkbenchControlBridge.js', 'WorkbenchControlStyles.jsx', 'WorkbenchSelectMenu.jsx', 'WorkbenchDatePickerModel.js', 'WorkbenchDatePicker.jsx', 'WorkbenchControls.jsx', 'WorkbenchListControls.jsx', 'WorkbenchNumberControls.jsx'];
 const script = `
 let mounted;
@@ -19,7 +19,7 @@ async function mountField(spec={}) {
     lookup:async(key)=>{probe.lookups.push(key);return window.mockReceipt||{ok:true,state:'not_recorded',receipt:null,may_be_in_flight:true};}
   }:base;
   function Harness(){
-    const [view,setView]=React.useState('field'),[context,setContext]=React.useState({return_to:'analysis'}),[theme,setTheme]=React.useState(spec.theme||'light');
+    const [view,setView]=React.useState('field'),[context,setContext]=React.useState(spec.initialContext||{return_to:'analysis'}),[theme,setTheme]=React.useState(spec.theme||'light');
     React.useLayoutEffect(()=>{document.documentElement.dataset.theme=theme;},[theme]);
     function navigate(view,context){probe.nav.push({view,context});setContext(context||{});setView(view);}
     return React.createElement(React.Fragment,null,React.createElement(WorkbenchControlStyles),React.createElement(WorkbenchControls),React.createElement(WorkbenchNumberControls),React.createElement(WorkbenchGuardHost),

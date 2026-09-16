@@ -11,6 +11,25 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 from test_live_browser import runtime_tools
 
+from tests.workbench.trial_support import trial_case as trial_case  # noqa: F401
+
+
+def test_utilization_details_use_calendar_intersection(trial_case, tmp_path):
+    from tests.workbench.trial_support import create, official
+
+    draft = create(trial_case, official(trial_case, start="2026-09-09T08:00:00", end="2026-09-10T10:00:00"))
+    row = draft["capacity"]["resources"][0]
+    assert row["occupied_hours"] == 26
+    assert row["available_occupied_hours"] == row["available_hours"] == 10
+    assert row["outside_available_hours"] == 16
+    fixture = tmp_path / "trial-capacity.json"
+    fixture.write_text(json.dumps(draft), encoding="utf-8")
+    node, _, modules = runtime_tools()
+    result = subprocess.run([node, str(HERE / "plan_utilization_display_probe.cjs"), str(fixture)],
+                            env=dict(os.environ, NODE_PATH=modules), capture_output=True, text=True, timeout=60)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert json.loads(result.stdout)["cases"] == 11
+
 
 def test_plan_ui_model():
     node, _, modules = runtime_tools()

@@ -29,12 +29,15 @@ from tests.workbench.dashboard_external_migration_support import (
     seed_v30,
 )
 from tests.workbench.dashboard_support import api, follow
+from tests.workbench.frozen_business_seed_support import append_v31_handling_fact
+from tests.workbench.legacy_migration_current_support import V32_TABLES, assert_v32_empty, missing_v32_issues
 from tests.workbench.run_schema_migration_support import connect, snapshot, source_ddl
+from tests.workbench.schema32_migration_support import objects as v32_objects
 
 
 def test_frozen_v30_and_fresh_current_share_exact_thirteen_object_extension(tmp_path, schema_path, monkeypatch):
     assert hashlib.sha256(FIXTURE_V30.read_bytes()).hexdigest() == FIXTURE_V30_SHA
-    assert CURRENT_SCHEMA_VERSION == 31 and MIGRATIONS[31] is v31.run
+    assert CURRENT_SCHEMA_VERSION == 32 and MIGRATIONS[31] is v31.run
     definitions = objects()
     assert len(definitions) == 13
     assert {name for name, sql in definitions.items() if sql.startswith("CREATE TABLE")} == set(V31_TABLES)
@@ -45,10 +48,10 @@ def test_frozen_v30_and_fresh_current_share_exact_thirteen_object_extension(tmp_
     path = tmp_path / "fresh.db"
     database.ensure_schema(str(path), schema_path=schema_path)
     with closing(connect(path)) as fresh, closing(fixed_v30_connection(tmp_path / "old.db")) as old:
-        assert get_schema_version(fresh) == 31 and not current_schema_contract_issues(fresh)
-        assert set(current_schema_contract_issues(old)) == missing_v31_issues()
+        assert get_schema_version(fresh) == CURRENT_SCHEMA_VERSION and not current_schema_contract_issues(fresh)
+        assert set(current_schema_contract_issues(old)) == missing_v31_issues() | missing_v32_issues()
         assert v31.run(old) == MigrationOutcome.APPLIED and get_schema_version(old) == 30
-        assert list(map(canonical_object, source_ddl(fresh))) == list(map(canonical_object, source_ddl(old)))
+        assert list(map(canonical_object, [row for row in source_ddl(fresh) if row[1] not in set(v32_objects()) and row[2] not in V32_TABLES])) == list(map(canonical_object, source_ddl(old)))
         assert_v31_receipt_maps_only(fresh)
         assert not any(snapshot(fresh)[name] for name in V31_TABLES)
         before, changes = snapshot(fresh), fresh.total_changes
@@ -71,12 +74,13 @@ def test_real_nonempty_v30_upgrade_preserves_every_typed_row_ddl_backup_and_rest
         case = external_case_for(path, conn)
         with case.app.app_context():
             summary = case.read()[0]["categories"]["external"]
-            assert summary["handling_supported"] is False and summary["source_gap_count"] > 0
+            assert summary["handling_supported"] is False and summary["state"] == "unavailable"
+            assert summary["source_gap_count"] is None
     database.ensure_schema(str(path), schema_path=schema_path, backup_dir=str(backups))
     with closing(connect(path)) as conn:
         after = snapshot(conn)
-        assert get_schema_version(conn) == 31 and not current_schema_contract_issues(conn)
-        assert set(after) - set(before) == set(V31_TABLES)
+        assert get_schema_version(conn) == CURRENT_SCHEMA_VERSION and not current_schema_contract_issues(conn)
+        assert set(after) - set(before) == set(V31_TABLES + V32_TABLES)
         assert {key: after[key] for key in before if key != "SchemaVersion"} == {
             key: rows for key, rows in before.items() if key != "SchemaVersion"}
         assert [row for row in source_ddl(conn) if row[1] in {old[1] for old in ddl}] == ddl
@@ -85,14 +89,14 @@ def test_real_nonempty_v30_upgrade_preserves_every_typed_row_ddl_backup_and_rest
         with case.app.app_context():
             workspace = case.read()[0]
             current = workspace["categories"]["external"]
-            for key in ("risk_count", "known_risk_count", "unknown_count", "evaluation_gaps", "source_gap_count",
-                        "overdue_count", "returned_count", "unregistered_count", "receipt_count"):
-                assert current[key] == summary[key], key
+            assert current["state"] == "loaded" and current["handling_supported"] is True
+            assert current["receipt_count"] == 3 and current["returned_count"] == 1
+            assert current["overdue_count"] == 2
             items = [row for row in workspace["items"] if row["category"] == "external"]
             assert len(items) == 2 and all(row["handling"]["status"] == "new" for row in items)
             assert all(case.history(row["item_ref"]) == [] for row in items)
         assert snapshot(conn) == after
-    copies = list(backups.glob("*before_migrate_v30_to_v31*.db"))
+    copies = list(backups.glob(f"*before_migrate_v30_to_v{CURRENT_SCHEMA_VERSION}*.db"))
     assert len(copies) == 1
     with closing(connect(copies[0])) as conn:
         assert get_schema_version(conn) == 30 and snapshot(conn) == before and source_ddl(conn) == ddl
@@ -182,25 +186,24 @@ def test_explicit_v30_extension_and_recorded_handling_survive_real_upgrade_exact
         conn.execute("BEGIN")
         v31.install(conn)
         conn.commit()
-        case = external_case_for(path, conn)
-        with case.app.app_context():
-            assert case.command(case.item("external"), follow(), key="v30-existing-external-0001")["result"] == "committed"
+        append_v31_handling_fact(conn)
         before, ddl = snapshot(conn), source_ddl(conn)
         assert get_schema_version(conn) == 30 and before[V31_TABLES[1]] and before[V31_TABLES[2]]
     database.ensure_schema(str(path), schema_path=schema_path, backup_dir=str(backups))
     with closing(connect(path)) as conn:
         after = snapshot(conn)
-        assert get_schema_version(conn) == 31 and not current_schema_contract_issues(conn)
-        assert source_ddl(conn) == ddl
-        assert {key: rows for key, rows in after.items() if key != "SchemaVersion"} == {
+        assert get_schema_version(conn) == CURRENT_SCHEMA_VERSION and not current_schema_contract_issues(conn)
+        assert [row for row in source_ddl(conn) if row[1] in {old[1] for old in ddl}] == ddl
+        assert_v32_empty(conn)
+        assert {key: rows for key, rows in after.items() if key != "SchemaVersion" and key not in V32_TABLES} == {
             key: rows for key, rows in before.items() if key != "SchemaVersion"}
-    copies = list(backups.glob("*before_migrate_v30_to_v31*.db"))
+    copies = list(backups.glob(f"*before_migrate_v30_to_v{CURRENT_SCHEMA_VERSION}*.db"))
     assert len(copies) == 1
     with closing(connect(copies[0])) as conn:
         assert snapshot(conn) == before and source_ddl(conn) == ddl
     database.ensure_schema(str(path), schema_path=schema_path, backup_dir=str(backups))
     with closing(connect(path)) as conn:
-        assert snapshot(conn) == after and source_ddl(conn) == ddl
+        assert snapshot(conn) == after and [row for row in source_ddl(conn) if row[1] in {old[1] for old in ddl}] == ddl
     assert len(list(backups.glob("*.db"))) == 1
 
 
@@ -219,9 +222,7 @@ def test_v30_partial_extension_is_never_repaired_or_remapped(tmp_path, schema_pa
             conn.execute("DELETE FROM WorkbenchDashboardExternalItems WHERE item_ref=(SELECT MIN(item_ref) FROM WorkbenchDashboardExternalItems)")
             conn.execute(guard)
         else:
-            case = external_case_for(path, conn)
-            with case.app.app_context():
-                case.command(case.item("external"), follow(), key="v30-lost-external-0001")
+            append_v31_handling_fact(conn)
             for name, sql in objects().items():
                 if sql.startswith("CREATE TRIGGER"):
                     conn.execute('DROP TRIGGER "' + name + '"')
@@ -306,7 +307,12 @@ def test_dashboard_get_never_installs_helper_or_seeds_handling(tmp_path, schema_
         data = response.get_json()["data"]
         query = {"snapshot_ref": response.get_json()["meta"]["snapshot_ref"]}
         assert data["categories"]["external"]["handling_supported"] is upgraded
-        assert data["categories"]["external"]["source_gap_count"] > 0
+        if upgraded:
+            assert data["categories"]["external"]["state"] == "loaded"
+            assert data["categories"]["external"]["receipt_count"] == 3
+        else:
+            assert data["categories"]["external"]["state"] == "unavailable"
+            assert data["categories"]["external"]["source_gap_count"] is None
         for item in data["items"]:
             if item["category"] == "external":
                 assert client.get("/api/workbench/v1/dashboard/items/" + item["item_ref"], query_string=query).status_code == 200

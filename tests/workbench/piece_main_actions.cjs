@@ -42,7 +42,7 @@ async function trialChain(page, ready, report, screenshot, record, flush) {
     message: 'Official workspace DTO lacks piece identity; same-batch same-sequence bars cannot identify a piece', sample: pieces, screenshot: report.screenshots.at(-1) });
   if (pieces.some(task => task.quantity !== 1 || task.batch_quantity !== 3 || task.quantity_basis !== 'run_admission')) report.findings.push({
     id: 'EQ-FORMAL-PIECE-QUANTITY', message: 'Official per-piece and batch quantities must retain original run-admission evidence', sample: pieces, screenshot: report.screenshots.at(-1) });
-  await page.locator('[data-plan-workspace] .plan-heading').first().getByRole('button', { name: '试调', exact: true }).click();
+  await page.locator('[data-plan-workspace] .plan-catalog').getByRole('button', { name: '试调', exact: true }).click();
   let dialog = page.getByRole('dialog');
   await dialog.getByRole('button', { name: '核对原来源', exact: true }).click();
   await dialog.getByRole('checkbox', { name: '确认基于此来源新增独立草稿，正式计划保持不变', exact: true }).check();

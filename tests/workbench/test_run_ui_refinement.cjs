@@ -22,4 +22,32 @@ for (const name of ['WorkbenchFormat.js', 'WorkbenchTerms.js', 'RunCandidateMode
 }
 assert.equal(context.window.RunCandidateModel.number('9007199254740993'), '9,007,199,254,740,993');
 assert.equal(context.window.RunCandidateModel.percent('9007199254740993'), '900,719,925,474,099,300%');
+vm.runInContext(fs.readFileSync(path.join(root, 'frontend/workbench/app/RunJobAPI.js'), 'utf8'), context);
+const A = context.window.RunJobAPI, memory = new Map([['unrelated-command', 'keep']]);
+let serial = 0;
+context.window.crypto = { getRandomValues: bytes => bytes.fill(++serial) };
+const store = A.pending({ getItem: key => memory.has(key) ? memory.get(key) : null,
+  setItem: (key, value) => memory.set(key, value), removeItem: key => memory.delete(key) });
+const first = store.begin('a'.repeat(32), null, 'b'.repeat(64));
+assert.equal(first.schema_version, 2);
+assert.equal(first.data_context_ref, 'b'.repeat(64));
+const attached = store.attach(first, 'c'.repeat(48));
+store.finish(attached, 'found');
+assert.equal(store.read(), null);
+assert.equal(store.recent().intent.request_key, first.request_key);
+assert.equal(memory.get('unrelated-command'), 'keep');
+const second = store.begin('a'.repeat(32), null, 'd'.repeat(64));
+assert.throws(() => store.finish(attached, 'found'));
+assert.equal(store.read().request_key, second.request_key);
+store.finish(second, 'context_replaced');
+assert.equal(store.read(), null);
+assert.equal(store.recent().resolution, 'context_replaced');
+const legacy = { input_ref: 'a'.repeat(32), request_key: 'run-' + 'f'.repeat(48), run_ref: null };
+memory.set(A.PENDING_KEY, JSON.stringify(legacy));
+assert.equal(store.read().request_key, legacy.request_key);
+store.finish(legacy, 'context_replaced');
+assert.equal(memory.get('unrelated-command'), 'keep');
+assert.equal(A.previewMessage({ code: 'storage_failure' }), '排产条件没有读出来，请重新检查。');
+assert.equal(A.previewMessage({ code: 'no_eligible_tasks' }), '当前范围没有可排工序。请调整批次、齐套条件或补齐工序资料后重新检查。');
+assert(!A.previewMessage({ code: 'unknown_preview_error' }).includes('不确定'));
 console.log('run UI step and elapsed contracts passed');

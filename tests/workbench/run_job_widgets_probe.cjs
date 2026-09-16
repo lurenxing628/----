@@ -14,7 +14,7 @@ const staticScripts = manifest.scripts.filter(file => file.startsWith('workbench
 const report = { browser: null, variants: [], cases: [], screenshots: [], errors: [], external: [], dialogs: [], requests: [], injected: [],
   compile: { global_build: false, target: 'chrome109' }, sources: sources.map(row => ({ path: row.path, sha256: crypto.createHash('sha256').update(row.code).digest('hex') })) };
 const boot = `let fixtureRoot;window.mountRun=(preflight,adapter)=>{if(fixtureRoot)fixtureRoot.unmount();fixtureRoot=ReactDOM.createRoot(document.getElementById('fixture-root'));
-fixtureRoot.render(React.createElement(RunJobPanel,{preflight,adapter,onNavigate:(...args)=>{window.navigation=args;window.unmountRun();}}));};
+fixtureRoot.render(React.createElement(React.Fragment,null,React.createElement(WorkbenchControlStyles),React.createElement(RunJobPanel,{preflight,adapter,onNavigate:(...args)=>{window.navigation=args;window.unmountRun();}})));};
 window.unmountRun=()=>{if(fixtureRoot){fixtureRoot.unmount();fixtureRoot=null;}};window.mountRun(null);`;
 const html = '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
   '<script src="/static/' + manifest.theme_script + '"></script>' + manifest.styles.map(file => '<link rel="stylesheet" href="/static/' + file + '">').join('') +
@@ -37,12 +37,12 @@ let page, origin, variant;
 const button = name => UI.button(page, name);
 const startButton = () => page.getByRole('button', { name: /^核对并开始排产/ });
 const state = (value, stage) => page.locator('[data-run-state="' + value + '"]' + (stage ? '[data-run-stage="' + stage + '"]' : ''));
-const local = () => page.evaluate(() => RunJobAPI.pending().read());
+const local = () => page.evaluate(() => RunJobAPI.pending().read() || RunJobAPI.pending().recent()?.intent || null);
 const caseDone = name => report.cases.push({ variant, name, passed: true });
 async function shot(name) { const file = path.join(output, variant + '-' + name + '.png'); await page.screenshot({ path: file, fullPage: true, animations: 'disabled' }); report.screenshots.push(file); }
 async function control(action, extra = {}) { const r = await page.request.post(origin + '/fixture/control', { data: { action, ...extra } }); assert(r.ok(), await r.text()); return r.json(); }
 async function reset(mode = 'complete') {
-  await page.evaluate(() => { window.unmountRun(); localStorage.removeItem(RunJobAPI.PENDING_KEY); });
+  await page.evaluate(() => { window.unmountRun(); localStorage.removeItem(RunJobAPI.PENDING_KEY); localStorage.removeItem(RunJobAPI.RECENT_KEY); });
   const response = await page.request.post(origin + '/fixture/reset', { data: { mode } }); assert(response.ok(), await response.text());
   const settings = await response.json(), checked = await page.request.post(origin + '/api/workbench/v1/scheduling/preflight', { data: settings });
   assert.equal(checked.status(), 200, await checked.text()); const result = (await checked.json()).data;
@@ -68,7 +68,7 @@ async function accepted() {
   await state('queued').waitFor(); const intent = await local(); assert(intent.run_ref);
   const progress = await page.locator('[data-run-progress]').innerText(); assert(progress.includes('等待计算') && progress.includes('已耗时'));
   await page.evaluate(v => { window.fixtureAcceptance = v; }, await response.json());
-  assert.deepEqual(Object.keys(intent).sort(), ['input_ref', 'request_key', 'run_ref']); return intent;
+  assert.deepEqual(Object.keys(intent).sort(), ['data_context_ref', 'input_ref', 'request_key', 'run_ref', 'schema_version']); return intent;
 }
 async function refresh() { await button('查询结果').waitFor({ state: 'visible' }); await button('查询结果').click(); }
 async function layout() {
@@ -79,7 +79,7 @@ async function layout() {
 }
 async function contracts() {
   const result = await page.evaluate(async () => {
-    const A = RunJobAPI, api = A.create(), intent = A.pending().read(), actual = await api.get(intent.run_ref);
+    const A = RunJobAPI, api = A.create(), intent = A.pending().read() || A.pending().recent().intent, actual = await api.get(intent.run_ref);
     const directory = await api.catalog(intent.run_ref), failures = [], passed = [];
     function reject(name, value, mutate, read) {
       const copy = JSON.parse(JSON.stringify(value)); mutate(copy);
@@ -146,7 +146,7 @@ async function variants() {
   await page.getByRole('alert').waitFor();
   assert((await page.getByRole('alert').innerText()).includes('排产记录还没准备好，暂时不能开始排产。请联系维护人员升级数据库。'));
   assert((await page.getByRole('alert').locator('.wb-ref').textContent()).includes('v26'));
-  assert((await page.locator('.wb-reason').first().innerText()).includes('排产记录还没准备好'));
+  assert((await page.locator('.rj-action-reason').innerText()).includes('排产记录还没准备好'));
   assert(await startButton().isDisabled()); await shot('schema-fault-disabled'); caseDone('v26-disabled-with-reason');
   await reset(); const first = await accepted();
   assert(await startButton().isDisabled()); assert.equal((await control('release')).calls.length, 1);
@@ -168,11 +168,12 @@ async function variants() {
   assert.equal(await page.locator('[data-candidate-ref] button:not(:disabled)').count(), 0);
   assert.equal(await page.locator('progress,[role="progressbar"]').count(), 0); await layout(); await shot('complete'); caseDone('real-persisted-candidates-no-fake-plans-or-percent');
   await contracts();
-  const terminalLookup = '**/scheduling/requests/' + first.request_key;
+  const terminalLookup = '**/scheduling/requests/' + first.request_key + '*';
   await page.route(terminalLookup, route => route.fulfill({ status: 500, contentType: 'text/html', body: '<h1>Unavailable</h1>' }));
-  await refresh(); await page.getByRole('alert').waitFor(); assert(await startButton().isDisabled());
+  await refresh(); await page.getByRole('alert').waitFor(); assert.equal(await startButton().isDisabled(), false);
+  assert.equal(await page.evaluate(() => RunJobAPI.pending().read()), null);
   await page.getByText('下面是上次查到的结果，这次查询还没确认。', { exact: true }).waitFor();
-  await page.unroute(terminalLookup); await refresh(); await page.getByText('下面是上次查到的结果，这次查询还没确认。', { exact: true }).waitFor({ state: 'hidden' }); caseDone('old-terminal-recheck-failure-blocks-new-run');
+  await page.unroute(terminalLookup); await refresh(); await page.getByText('下面是上次查到的结果，这次查询还没确认。', { exact: true }).waitFor({ state: 'hidden' }); caseDone('terminal-pending-released-recent-lookup-failure-does-not-block-new-run');
   await page.evaluate(() => window.mountRun(window.currentPreflight, { ...RunJobAPI.create(), openCandidate: value => { window.candidateLink = value; } }));
   await page.locator('[data-candidate-ref] button:not(:disabled)').first().waitFor();
   await page.locator('[data-candidate-ref] button').first().click();
@@ -222,8 +223,8 @@ async function variants() {
   assert.equal((await control('release')).calls.length, 1); caseDone('lost-response-recovers-same-request-without-post');
   await reset();
   await page.route(acceptPattern, route => route.abort('failed')); report.injected.push({ variant, kind: 'disconnected-before-admission' });
-  await confirm(); await page.getByText(/上次排产的结果还没查到/).waitFor(); const unknown = await local(); assert.equal(unknown.run_ref, null);
-  await page.unroute(acceptPattern); await page.reload(); await page.getByText(/上次排产的结果还没查到/).waitFor();
+  await confirm(); await page.getByText('暂未查到这次排产记录', { exact: true }).waitFor(); const unknown = await local(); assert.equal(unknown.run_ref, null);
+  await page.unroute(acceptPattern); await page.reload(); await page.getByText('暂未查到这次排产记录', { exact: true }).waitFor();
   assert(await startButton().isDisabled()); assert.equal((await local()).request_key, unknown.request_key); assert.equal((await control('release')).calls.length, 0);
   const lookupPattern = '**/scheduling/requests/*';
   await page.route(lookupPattern, route => route.fulfill({ status: 404, contentType: 'text/html', body: '<h1>Missing</h1>' }));
@@ -245,6 +246,7 @@ async function variants() {
   assert((await page.getByRole('alert').innerText()).includes('存不下这次排产的操作记录')); assert.equal((await control('release')).calls.length, 0);
   await page.evaluate(() => { Storage.prototype.setItem = window.fixtureStorageSet; }); await button('刷新上次操作记录').click();
   await page.getByRole('alert').waitFor({ state: 'hidden' }); assert.equal(await local(), null); caseDone('storage-quota-no-post-friendly-retry');
+  await require('./run_recovery_widgets_cases.cjs')({ page, reset, accepted, control, refresh, startButton, state, local, report, caseDone });
   await layout();
 }
 async function capacity() {

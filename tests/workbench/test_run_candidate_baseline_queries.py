@@ -6,6 +6,7 @@ from datetime import timedelta
 import pytest
 
 from core.models.workbench_run_candidate import local_time
+from core.services.workbench.run_candidate_analysis import read_candidate_analysis
 from core.services.workbench.run_worker import WorkbenchRunWorker
 from tests.workbench.run_candidate_baseline_support import baseline, original_plan
 from tests.workbench.run_candidate_support import candidate_case as _candidate_case
@@ -37,13 +38,43 @@ def test_real_four_candidates_compare_only_captured_official_rows(candidate_case
             assert item["improvement_assessment"] is None
 
 
+@pytest.mark.parametrize("select_old", [False, True])
+def test_older_official_execution_scope_does_not_become_latest_baseline(candidate_case, select_old):
+    case = candidate_case
+    case.batch("OLDER")
+    old_op = case.operation("OLDER")
+    case.plan(6, [old_op])
+    latest_ref = original_plan(case)
+    settings = case.settings("B1", "OLDER") if select_old else case.settings("B1")
+    _, refs = compute(case, settings)
+    with retained(case.conn):
+        data, _ = baseline(case, refs[0])
+        analysis, _ = read_candidate_analysis(case.conn, refs[0])
+    assert data["baseline"]["baseline_ref"] == latest_ref
+    assert data["baseline"]["captured_task_count"] == 1
+    rows = {row["batch_label"]: row for row in data["comparisons"]}
+    assert set(rows) == ({"B1", "OLDER"} if select_old else {"B1"})
+    assert rows["B1"]["status"] == "matched"
+    if select_old:
+        assert rows["OLDER"]["status"] == "newly_scheduled"
+        assert rows["OLDER"]["baseline_segments"] == []
+    assert analysis["basis"]["current_entities_consulted"] is False
+    # The archived scope remains authoritative after live history changes.
+    case.plan(8, [old_op])
+    case.conn.execute("DELETE FROM Schedule WHERE version=6")
+    case.conn.commit()
+    with retained(case.conn):
+        assert baseline(case, refs[0])[0] == data
+        assert read_candidate_analysis(case.conn, refs[0])[0] == analysis
+
+
 def test_no_original_plan_is_explicit_and_not_a_zero_baseline(candidate_case):
     case = candidate_case
     _, refs = compute(case)
     data, _ = baseline(case, refs[0])
     assert data["baseline"] == {"baseline_ref": None, "kind": "admission_official", "available": False,
                                 "captured_task_count": 0, "comparison_available": False,
-                                "reason": {"code": "no_admission_baseline", "message": "排产时没有正式的初始计划，算不出相对改善。"}}
+                                "reason": {"code": "no_admission_baseline", "message": "排产时没有正式计划可供对比。"}}
     item = data["comparisons"][0]
     assert item["status"] == "newly_scheduled" and item["baseline_segments"] == []
     assert all(value is None for value in item["delta"].values())

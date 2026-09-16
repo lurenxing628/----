@@ -29,7 +29,7 @@ async function lifecycle(h, kind = 'delivery', label = '交期风险') {
   await finish(); await open(); await select('目标处置状态', '已关闭');
   await mark('WBP-DASH-004.reject-incomplete', async () => { await modal().getByRole('button', { name: '提交处置', exact: true }).click(); await modal().getByRole('alert').waitFor(); });
   for (const [label, value, id] of [['完成时间', '2026-09-10T11:00:17', 'edit-completed-at'],
-    ['具体完成结果', 'F production supervisor signed coordination result', 'edit-completion-result'], ['可核对凭据', 'F-20260910-acceptance-record', 'edit-evidence-ref']]) {
+    ['具体完成结果', 'F production supervisor signed coordination result', 'edit-completion-result'], ['凭据说明', 'F-20260910-acceptance-record', 'edit-evidence-ref']]) {
     await mark('WBP-DASH-004.' + id, () => modal().getByLabel(label, { exact: true }).fill(value));
   }
   const closed = await mark('WBP-DASH-004.close', submit); assert.equal(closed.data.handling.status, 'closed');

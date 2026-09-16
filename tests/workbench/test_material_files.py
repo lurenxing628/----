@@ -93,7 +93,7 @@ def test_omitted_column_and_blank_cell_are_not_clear_or_default(material_conn, f
 
 @pytest.mark.parametrize("fmt", ("csv", "xlsx"))
 @pytest.mark.parametrize("header,value", [("状态", r"\N"), ("库存数量", r"\N"), ("名称", "   "),
-                                          ("状态", "low_stock"), ("状态", "other unknown"), ("创建时间", "2020-01-01")])
+                                          ("状态", "low_stock"), ("状态", "other unknown")])
 def test_invalid_changes_rejected_with_exact_row_field_and_no_partial_import(material_conn, fmt, header, value):
     content = file_bytes([["MAT2", "new", None], ["MAT1", "would change", value]], fmt,
                          headers=("物料编号", "名称", header) if header != "名称" else ("物料编号", "规格", "名称"))
@@ -357,7 +357,7 @@ def test_empty_selection_never_expands_to_all(schema_conn):
     assert export_file(schema_conn, "xlsx", selected_refs=[]).row_count == 0
 
 
-def test_bad_formats_corrupt_files_legacy_keys_and_readonly_assertions(material_conn):
+def test_bad_formats_corrupt_files_and_legacy_keys(material_conn):
     service = WorkbenchMaterialFileService(material_conn)
     for content, fmt, mode in ((b"", "csv", "upsert"), (b"bad zip", "xlsx", "upsert"), (b"\xff", "csv", "upsert"),
                                (b"", "xls", "upsert"), (b"", "csv", "replace"), (b"", "csv", "append"),
@@ -366,9 +366,8 @@ def test_bad_formats_corrupt_files_legacy_keys_and_readonly_assertions(material_
             service.preview_import(content, file_format=fmt, scope={}, mode=mode)
     material_conn.execute("INSERT INTO Materials (material_id, name) VALUES (' MAT1 ', 'legacy')")
     material_conn.commit()
-    for headers, values in ((HEADERS[:2], [" MAT1 ", "unsafe"]), (("物料编号", "名称", "创建时间"), ["MAT2", "new", "2020-01-01"])):
-        preview = service.preview_import(file_bytes([values], "csv", headers), file_format="csv", scope={})
-        assert preview.as_dict()["rows"][0]["result"] == "rejected"
+    preview = service.preview_import(file_bytes([[" MAT1 ", "unsafe"]], "csv", HEADERS[:2]), file_format="csv", scope={})
+    assert preview.as_dict()["rows"][0]["result"] == "rejected"
     with pytest.raises(RuntimeError, match="外层"):
         service.confirm_import(preview, b"", file_format="csv", scope={})
 

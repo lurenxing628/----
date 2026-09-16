@@ -107,14 +107,14 @@ async function exercise(p, phase) {
     const dialog = page.getByRole('dialog');
     await dialog.getByLabel('采用原因', { exact: true }).fill('最终全站逐项核对后采用');
     await dialog.getByLabel('经办人', { exact: true }).fill('现场验收员');
-    const preview = await p.read(() => dialog.getByRole('button', { name: '读取真实预检', exact: true }).click(), part + '/adopt-preview');
+    const preview = await p.read(() => dialog.getByRole('button', { name: '检查是否可采用', exact: true }).click(), part + '/adopt-preview');
     assert.equal(preview.data.validation.can_adopt, true); assert.equal(preview.data.suggestion.sample_count, 5);
     assert.equal(preview.data.suggestion.suggested_unit_hours, 3);
     await p.shot('calibration-preview-before-cancel');
     await dialog.locator('.modal-f').getByRole('button', { name: '关闭', exact: true }).click();
     assert.equal(p.report.requests.filter(row => row.method === 'POST' && new URL(row.url).pathname.endsWith('/adopt')).length, 0);
     await page.getByRole('button', { name: '预检采用', exact: true }).click();
-    await p.read(() => dialog.getByRole('button', { name: '读取真实预检', exact: true }).click(), part + '/adopt-preview');
+    await p.read(() => dialog.getByRole('button', { name: '检查是否可采用', exact: true }).click(), part + '/adopt-preview');
     await dialog.getByRole('checkbox').check();
     const receipt = await p.read(() => dialog.getByRole('button', { name: '确认采用并锁定', exact: true }).click(), part + '/adopt');
     assert.equal(receipt.data.new_unit_hours, 3); assert.equal(receipt.data.locked, true);

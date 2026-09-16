@@ -28,7 +28,7 @@ async function navigate(page, planRef, view = 'analysis') {
 }
 async function check(page, fixture, variant) {
   await navigate(page, fixture.plan_ref);
-  const workspace = page.locator('[data-plan-workspace]'), heading = workspace.locator(':scope > .plan-heading').first();
+  const workspace = page.locator('[data-plan-workspace]'), heading = workspace.locator('.plan-catalog > .plan-toolbar');
   await workspace.waitFor();
   if (fixture.plan_ref) await workspace.locator('[data-plan-gantt]').waitFor();
   else await workspace.getByText('请在计划列表里选一个可查看的计划。', { exact: true }).waitFor();
@@ -56,7 +56,7 @@ async function check(page, fixture, variant) {
   assert.equal(await heading.getByRole('button', { name: '查看甘特', exact: true }).count(), 0, 'The shell owns plan view tabs');
   assert.equal(await page.getByRole('tab', { name: '计划甘特', exact: true }).isEnabled(), true);
   if (ready) {
-    assert.equal(await heading.locator('.plan-state').innerText(), fixture.identity);
+    assert.equal(await workspace.locator('.plan-scope-heading .plan-state').innerText(), fixture.identity);
     await download.click(); await page.getByRole('dialog').waitFor();
     await page.getByRole('dialog').getByRole('button', { name: '取消', exact: true }).click();
     await page.getByRole('tab', { name: '计划甘特', exact: true }).click();
@@ -71,11 +71,11 @@ async function check(page, fixture, variant) {
     const inclusive = data.plan_span.end_inclusive === true;
     const caption = inclusive && data.plan_span.start === data.plan_span.end ? '计划时刻：' + label(data.plan_span.start)
       : '计划时间范围：' + label(data.time_scope.range_start) + ' → ' + label(data.time_scope.range_end) + (inclusive ? '（包含末端零工时工序）' : '（不含结束时刻）');
-    assert.equal(await workspace.locator(':scope > .plan-note').innerText(), caption, 'Keep FA scope caption');
-    const metrics = await workspace.locator(':scope > .wb-metrics > .wb-metric').evaluateAll(nodes => nodes.slice(2).map(node => ({
+    assert.equal(await workspace.locator('.plan-scope-caption').innerText(), caption, 'Keep FA scope caption');
+    const metrics = await workspace.locator('.plan-scope > .wb-metrics > .wb-metric').evaluateAll(nodes => nodes.slice(2).map(node => ({
       value: Number(node.querySelector('.wb-metric-value').textContent), tone: node.dataset.tone })));
     assert(metrics.every(row => row.tone === (row.value === 0 ? 'neutral' : 'warn')), 'Keep FA risk-zero tones');
-  } else assert.equal(await heading.locator('.plan-state').count(), 0);
+  } else assert.equal(await workspace.locator('.plan-scope-heading .plan-state').count(), 0);
   await settle(page);
   const geometry = await heading.evaluate(node => {
     const title = node.firstElementChild.getBoundingClientRect(), actions = node.lastElementChild.getBoundingClientRect();

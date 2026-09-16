@@ -25,9 +25,9 @@ def preview(client, action="update", refs=None, patch=None):
     return response.get_json()["data"]
 
 
-def sync_preview(client, strict=False):
+def sync_preview(client, strict=None):
     ref = ref_for(client)
-    return client.post(BASE + "/" + ref + "/sync-preview", json={"snapshot_ref": detail(client)["meta"]["snapshot_ref"], "input": {"strict_mode": strict}})
+    return client.post(BASE + "/" + ref + "/sync-preview", json={"snapshot_ref": detail(client)["meta"]["snapshot_ref"], "input": {} if strict is None else {"strict_mode": strict}})
 
 
 def confirm(client, data, path="/bulk-confirm", key="batch-preview-confirm-001"):
@@ -80,21 +80,29 @@ def test_preview_drift_and_injected_second_write_rollback(batch_client, monkeypa
     assert len(calls) == 2 and state(client) == before
 
 
-def test_sync_managed_gate_strict_missing_fields_and_null_preservation(batch_client):
+def test_sync_requires_complete_template_preserves_zero_and_managed_gate(batch_client):
     client = batch_client
     conn = client.batch_conn
     conn.execute("UPDATE PartOperations SET source='internal',setup_hours=NULL,unit_hours=0,ext_group_id=NULL,ext_days=NULL,supplier_id=NULL")
     conn.commit()
     before = state(client)
+    assert_error(sync_preview(client, strict=False), "template_validation_required")
+    rejected = assert_error(sync_preview(client), "constraint_conflict")
+    assert "工序 1 的换型工时未填写" in rejected["error"]["message"]
     assert_error(sync_preview(client, strict=True), "constraint_conflict")
     assert state(client) == before
+    template = detail(client)["data"]["template"]
+    assert not template["complete"] and template["operation_count"] == 1
+    assert template["diagnostics"][0]["message"] in rejected["error"]["message"]
+    conn.execute("UPDATE PartOperations SET setup_hours=0")
+    conn.commit()
     response = sync_preview(client)
     assert response.status_code == 200, response.get_json()
     p = response.get_json()["data"]
     old = detail(client)["data"]["operations"][0]["ref"]
     assert confirm(client, p, "/" + ref_for(client) + "/sync-confirm").status_code == 200
     op = detail(client)["data"]["operations"][0]
-    assert op["setup_hours"] is None and op["unit_hours"] == 0 and op["ref"] != old
+    assert op["setup_hours"] == 0 and op["unit_hours"] == 0 and op["ref"] != old
     assert client.batch_conn.execute("SELECT active FROM WorkbenchPlanSourceRefs WHERE ref=?", (old,)).fetchone()[0] == 0
     with TransactionManager(conn).transaction():
         start_workflow(conn, "P1")

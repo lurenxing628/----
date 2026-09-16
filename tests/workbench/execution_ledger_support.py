@@ -7,6 +7,7 @@ import pytest
 
 from core.infrastructure.migration_state import set_schema_version
 from core.infrastructure.workbench_execution_ledger_schema import install_execution_ledger
+from core.infrastructure.workbench_execution_void_schema import install_execution_voids
 from core.infrastructure.workbench_metadata_schema import install_metadata
 from core.infrastructure.workbench_plan_identity_schema import install_plan_identity
 from core.services.workbench.execution_ledger import ExecutionLedgerService
@@ -28,6 +29,7 @@ class LedgerCase:
         self.conn.commit()
         self.conn.execute("BEGIN")
         install_execution_ledger(self.conn)
+        install_execution_voids(self.conn)
         self.conn.commit()
 
     def op(self, code="OP1", *, seq=1, piece=None, batch="B1"):

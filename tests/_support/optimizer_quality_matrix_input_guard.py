@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from copy import deepcopy
 
+_DECISION_STAGES = {("graph_ready_v2_repaired", "elite_repair"), ("graph_ready_v2_iterated_greedy", "iterated_greedy")}
+
 
 class MatrixInputGuard:
     def __init__(self, scheduler, env, shared):
@@ -30,7 +32,8 @@ class MatrixInputGuard:
         if any(key not in kwargs or kwargs[key] != value for key, value in self.expected.items() if key != "operations"):
             raise ValueError("same-environment schedule inputs changed")
         profile = kwargs.get("strategy_params", {}).get("graph_ready_profile", {})
-        repair = profile.get("candidate_origin") == "graph_ready_v2_repaired" and profile.get("candidate_policy") == "elite_repair"
+        # Explicit-decision stages may carry qualified resource overrides; plain profiles may not.
+        repair = (profile.get("candidate_origin"), profile.get("candidate_policy")) in _DECISION_STAGES
         _check_operations(kwargs.get("operations"), self.expected["operations"], repair, self.expected["resource_pool"])
 
 

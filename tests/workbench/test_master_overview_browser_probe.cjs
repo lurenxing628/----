@@ -130,6 +130,60 @@ async function mainCases() {
   });
 }
 async function failureCases() {
+  await run('domain-switch-retains-summary-and-latest-selection', async () => {
+    await mount(); await ready();
+    const summary = () => page.evaluate(() => ({
+      title: document.querySelector('.mo-heading .wb-page-context').textContent,
+      counts: [...document.querySelectorAll('.mo-metrics .wb-metric-value,.mo-domains .wb-metric-value,.mo-domains .wb-metric-helper')].map(node => node.textContent),
+      cards: [...document.querySelectorAll('.mo-domains .mo-domain')].map(node => { const box = node.getBoundingClientRect(); return [box.x, box.y, box.width, box.height]; })
+    }));
+    const before = await summary(), pending = new Map();
+    const beforeHeight = await root().locator('.mo-workspace').evaluate(node => node.getBoundingClientRect().height);
+    const listGate = request => new Promise(resolve => pending.set(request.scope.domain, { request, resolve }));
+    const waiting = async domain => { const until = Date.now() + 5000; while (!pending.has(domain) && Date.now() < until) await new Promise(resolve => setTimeout(resolve, 10)); assert(pending.has(domain)); return pending.get(domain); };
+    const category = label => root().getByRole('button', { name: '查看资料类别 ' + label, exact: true });
+    try {
+      harness.state.spec = { listGate };
+      await category('设备').click(); const equipment = await waiting('equipment');
+      assert.equal(await category('设备').getAttribute('aria-pressed'), 'true');
+      assert.equal(await root().getByLabel('筛选资料类别', { exact: true }).inputValue(), 'equipment');
+      assert.equal(await root().locator('.mo-table').getAttribute('aria-busy'), 'true');
+      assert.equal(await root().locator('.mo-table tbody tr').count(), 0);
+      assert(await root().locator('.mo-list').evaluate(node => node.getBoundingClientRect().height) >= beforeHeight, '加载时保留原清单区域高度');
+      assert.deepEqual(await summary(), before, '加载清单时保留已读取的全局统计、卡片尺寸及时间');
+      assert(await category('物料').isEnabled(), '加载时仍可立即切换另一个类别');
+      harness.state.spec = { listGate, gaps: true };
+      await category('物料').click(); const material = await waiting('material');
+      assert.equal(await category('物料').getAttribute('aria-pressed'), 'true');
+      assert.equal(await category('设备').getAttribute('aria-pressed'), 'false');
+      assert.deepEqual(await summary(), before);
+      material.resolve(); await ready();
+      await page.waitForFunction(() => document.querySelector('.mo-table').getAttribute('aria-busy') === 'false');
+      assert.equal(await category('物料').getAttribute('aria-pressed'), 'true');
+      const refs = await root().locator('.mo-table tbody tr').evaluateAll(rows => rows.map(row => row.dataset.masterRef));
+      assert(refs.length && refs.every(ref => harness.fixture.entities.some(row => row.ref === ref && row.domain === 'material')));
+      assert.equal(await category('日历配置').locator('.wb-metric-value').textContent(), '未读取', '新响应中的真实统计变化正常更新');
+      const latest = await summary();
+      equipment.resolve(); const until = Date.now() + 5000;
+      while (!equipment.request.completed && Date.now() < until) await new Promise(resolve => setTimeout(resolve, 10));
+      assert(equipment.request.completed, '较早请求在新结果之后才返回');
+      await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+      assert.equal(await root().getByLabel('筛选资料类别', { exact: true }).inputValue(), 'material');
+      assert.deepEqual(await summary(), latest, '较早响应不得覆盖当前类别或新的全局统计');
+      harness.state.spec = { failure: true }; await category('人员').click(); await root().getByRole('alert').waitFor();
+      assert.equal(await category('人员').getAttribute('aria-pressed'), 'true');
+      assert.equal(await root().locator('.mo-table tbody tr').count(), 0);
+      assert.equal(await root().locator('.mo-table').getAttribute('aria-busy'), 'false');
+      assert(await root().getByRole('button', { name: '导出筛选结果', exact: true }).isDisabled());
+      assert.deepEqual(await summary(), latest, '读取失败保留上次成功统计，同时清单明确报错');
+      assert.equal(await root().getByText('当前范围没有记录', { exact: true }).count(), 0);
+      harness.state.spec = { empty: true }; await category('设备').click();
+      await root().getByText('当前范围没有记录', { exact: true }).waitFor();
+      assert.equal(await root().getByRole('alert').count(), 0);
+      assert.equal(await root().locator('.mo-table tbody tr').count(), 0);
+      assert.equal(await category('设备').getAttribute('aria-pressed'), 'true');
+    } finally { pending.forEach(item => item.resolve()); }
+  });
   await run('strict-column-scope-contract', async () => {
     const rejected = await page.evaluate(() => [null, 1, [], ''].map(column_filters => {
       try { APSMasterOverviewContract.scope({ column_filters }); return false; } catch (error) { return true; }

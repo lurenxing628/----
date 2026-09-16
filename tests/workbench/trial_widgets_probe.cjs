@@ -225,7 +225,8 @@ async function basic() {
   await page.getByRole('tab', { name: '调整记录', exact: true }).click(); await page.getByRole('table', { name: '调整记录', exact: true }).waitFor();
   assert((await page.getByRole('table', { name: '调整记录', exact: true }).innerText()).includes('13:00:00'));
   await page.getByRole('tab', { name: '资源占用', exact: true }).click(); await page.getByRole('table', { name: '资源占用', exact: true }).waitFor(); await geometry('capacity'); await shot('capacity');
-  await page.getByRole('tab', { name: '约束问题', exact: true }).click(); await page.getByText('此功能尚未开通：保存只留下试调方案，不会改变正式计划。', { exact: true }).first().waitFor();
+  await page.getByRole('tab', { name: '约束问题', exact: true }).click();
+  assert.equal(await page.getByText('此功能尚未开通：保存只留下试调方案，不会改变正式计划。', { exact: true }).count(), 0);
   await page.getByRole('tab', { name: '完整任务', exact: true }).click(); assert.equal(await page.getByRole('table', { name: '完整任务明细' }).locator('tbody tr').count(), 5);
   await exportsFor(changed, 'editing'); done('complete-comparison-capacity-history-and-export');
   await button('保存试调方案').click(); assert(await button('确认保存试调方案').isDisabled()); await page.getByLabel('试调方案名称', { exact: true }).fill('现场手工试调 CN ' + variant);
@@ -332,7 +333,7 @@ async function targetHistory() {
   assert.equal((await active()).scenario_ref, scenario.scenario_ref); done('saved-scenario-refresh-retains-exact-scenario-ref');
   await page.evaluate(() => { window.failTargetChange = true; }); await button('新增试调').click(); await button('核对原来源').click();
   await page.getByLabel('确认基于此来源新增独立草稿，正式计划保持不变').check(); await button('确认新增草稿').click(); await page.getByRole('dialog').waitFor({ state: 'hidden' }); await ready();
-  await page.getByText('试调记录已定位，但页面地址没有更新成功。记录还在试调列表里，没有重复写入。', { exact: true }).waitFor();
+  await page.getByText('试调记录已定位，但页面地址更新失败。可从试调列表重新打开。', { exact: true }).waitFor();
   assert.equal(await state(), null); assert.equal((await evidence()).receipts.filter(r => r.action === 'trial.create').length, creates + 1); done('target-callback-failure-does-not-erase-commit-or-reissue');
 }
 (async () => {

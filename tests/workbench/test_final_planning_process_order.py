@@ -94,6 +94,7 @@ def test_uncaptured_legacy_plan_is_explicit_unavailable(trial_case):
     order = data["projections"]["process_order"]
     assert order["state"] == "unavailable" and order["basis"] is None and order["items"] == []
     assert order["issues"][0]["code"] == "process_order_not_recorded"
+    assert order["issues"][0]["message"] == "此计划未记录工序顺序。"
 
 
 def test_invalid_adoption_evidence_disables_order_and_changes_fingerprint(trial_case):
@@ -108,6 +109,7 @@ def test_invalid_adoption_evidence_disables_order_and_changes_fingerprint(trial_
     assert after["projections"]["process_order"]["state"] == "unavailable"
     assert after["projections"]["process_order"]["items"] == []
     assert after["projections"]["process_order"]["issues"]
+    assert after["projections"]["process_order"]["issues"][0]["message"] == "工序顺序数据不完整。"
     assert updated != stamp
 
 

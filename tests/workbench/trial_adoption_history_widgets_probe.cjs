@@ -78,7 +78,7 @@ async function basic() {
   await ready(); await tab('调整记录').click(); await page.getByRole('table', { name: '调整记录', exact: true }).waitFor();
   await tab('采用记录').click(); await historyReady(); await page.getByText('这个试调方案还没有正式采用记录。', { exact: true }).waitFor(); done('original-adjustments-and-empty-history');
   await button('采用方案').click(); await page.getByLabel('采用原因', { exact: true }).fill('核对完整场景与现场记录，保留原基线和全部调整依据。');
-  await page.getByLabel('经办人', { exact: true }).fill('计划员 张三'); await page.getByRole('checkbox', { name: /^我已核对试调方案/ }).check();
+  await page.getByLabel('经办人', { exact: true }).fill('计划员 张三'); await page.getByRole('checkbox', { name: /^确认将完整试调方案正式采用/ }).check();
   await button('确认正式采用').click(); await page.getByRole('dialog', { name: '试调方案采用结果', exact: true }).waitFor();
   await button('完成').click(); await ready(); await button('刷新采用记录').click(); await historyReady();
   await page.locator('[data-adoption-receipt]').waitFor(); assert.equal(await page.locator('[data-adoption-receipt]').count(), 1);

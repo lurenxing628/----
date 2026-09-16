@@ -159,17 +159,31 @@ check('Known empty, no overlap, partial and unavailable stay distinct', () => {
   assert(text(render(context.PlanDetailsUI.Conflicts, { data: plan('available', 1) })).includes('未发现资源安排重叠'));
   for (const state of ['partial', 'unavailable']) {
     const missing = plan(state, 1), label = text(render(context.PlanDetailsUI.Conflicts, { data: missing }));
-    assert(label.includes('不能认定为没有重叠')); assert(!label.includes('未发现资源安排重叠'));
-    assert(text(render(context.PlanDetailsUI.Conflicts, { data: plan(state) })).includes('未知部分不计为零'));
+    assert(label.includes('资料不完整，暂无法核对资源重叠')); assert(!label.includes('未发现资源安排重叠'));
+    assert(text(render(context.PlanDetailsUI.Conflicts, { data: plan(state) })).includes('资料不完整，以下为已读取的重叠时段'));
   }
 });
-check('Only the delay caller renders conflict details, with explicit slice and non-cause wording', () => {
+check('Delivery notes distinguish fully arranged operations from missing operations', () => {
+  const data = plan();
+  data.projections.delivery_risks = { state: 'available', issues: [], items: [{ batch_ref: ref(22), batch_id: 'B1', part_label: '零件A',
+    risk: 'overdue', due_date: '2026-09-08', planned_finish: '2026-09-09T09:00:00', delay_hours: 24,
+    unscheduled_operation_count: 0, issues: [] }] };
+  const note = () => {
+    const tree = render(context.PlanDetailsUI.ProjectionTables, { data, onBatch: () => {}, onResource: () => {} });
+    return text(nodes(tree, node => node.type === 'tbody')[0]);
+  };
+  assert(note().includes('全部工序已安排'));
+  data.projections.delivery_risks.items[0].unscheduled_operation_count = 1;
+  data.projections.delivery_risks.items[0].issues = ['operations_unscheduled'];
+  assert(note().includes('尚有工序未安排')); assert(!note().includes('全部工序已安排'));
+});
+check('Only the delay caller renders conflict details, with explicit time scope', () => {
   const workspace = sources.find(row => row.path.endsWith('/PlanWorkspace.jsx')).code;
   assert.equal((workspace.match(/<Conflicts\b/g) || []).length, 1);
   assert(workspace.includes("{view === 'delay' && <Conflicts"));
   const data = plan(); data.scope.range_start = data.time_scope.range_start;
   const rendered = text(render(context.PlanDetailsUI.Conflicts, { data }));
-  assert(rendered.includes('当前读取切片，不代表整份计划')); assert(rendered.includes('不代表等待、停机、缺料或超期原因'));
+  assert(rendered.includes('所选时间范围')); assert(!rendered.includes('不代表等待、停机、缺料或超期原因'));
 });
 const evidence = sources.map(row => ({ path: row.path, sha256: hash(Buffer.from(row.code)) }));
 assert(evidence.every(row => hash(fs.readFileSync(path.join(root, row.path))) === row.sha256));

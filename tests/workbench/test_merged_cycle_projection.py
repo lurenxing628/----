@@ -28,7 +28,7 @@ def test_valid_null_cycles_preserve_legacy_and_managed_confirmations(merged_cycl
         assert operation(entity, seq)["confirmation"]["hours"]["state"] == (
             "confirmed" if state == "ready" else "unconfirmed")
     if state == "legacy":
-        assert "legacy_confirmation_unknown" in issue_codes(entity)
+        assert "legacy_confirmation_unknown" not in issue_codes(entity)
 
 
 @pytest.mark.parametrize("change,group_code,member_code", [

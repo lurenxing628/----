@@ -99,7 +99,7 @@ async function register(page) {
 async function saveLogistics(page, dashboard = false) {
   await action(page, logistics + '/preview', () => dialog(page).getByRole('button', { name: '预检核对', exact: true }).click(), 'POST');
   const result = await action(page, logistics, () => dialog(page).getByRole('button', { name: '确认保存外协登记', exact: true }).click(), 'POST');
-  await dialog(page).getByText('外协登记已完成。回厂不等于工序完工。', { exact: true }).waitFor();
+  await dialog(page).getByText('外协登记已完成。', { exact: true }).waitFor();
   await action(page, dashboard ? base : logistics, () => dialog(page).getByRole('button', { name: '完成', exact: true }).click());
   return result.data.outsourcing_ref;
 }
@@ -123,7 +123,7 @@ async function fillHandling(page, status, complete) {
   if (complete) {
     await dialog(page).getByLabel('完成时间', { exact: true }).fill('2026-09-10T11:00:17');
     await dialog(page).getByLabel('具体完成结果', { exact: true }).fill(complete.result);
-    await dialog(page).getByLabel('可核对凭据', { exact: true }).fill(complete.evidence);
+    await dialog(page).getByLabel('凭据说明', { exact: true }).fill(complete.evidence);
   }
 }
 async function submit(page, ref, reopen = false, status = 200) {
@@ -225,7 +225,7 @@ async function happy(viewport, theme) {
 async function boundaries() {
   for (const name of ['current30', 'missing']) {
     const { context, page, data } = await fresh(name); assert.equal(data.data.categories.external.handling_supported, false);
-    await page.getByText(/处置数量未知，这里不会按零显示/).waitFor(); assert.equal(await page.getByRole('tab', { name:'处置历史', exact:true }).count(), 0);
+    await page.getByText(/外协处置记录读不到|外协风险处置尚未开通/).waitFor(); assert.equal(await page.getByRole('tab', { name:'处置历史', exact:true }).count(), 0);
     await register(page); assert.equal(await page.locator('tr[data-category="external"]').count(), 0);
     if (name === 'missing') { assert.equal(data.data.categories.external.handling_state, 'unavailable'); assert.equal(data.data.categories.external.handling_count, null); }
     await geometry(page); await shot(page, name + '-unsupported'); report.boundaries[name] = true; await context.close();

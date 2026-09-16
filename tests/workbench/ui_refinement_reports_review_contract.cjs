@@ -7,7 +7,9 @@ const context = { React, window: { React, ResourceControls: {}, ReportControls: 
   number: (value) => value == null ? '未知' : String(value), dateTime: value => value == null ? '未知' : value.replace('T', ' ')
 } } };
 vm.createContext(context);
-const files = ['ReportEvidence.jsx', 'ReportTable.jsx', 'ReportControls.jsx', 'CalibrationControls.jsx'];
+context.window.DashboardContract = { categories: { external: '外协', actual: '现场' } };
+context.window.ResourceControls.Issues = function Issues() {};
+const files = ['ReportEvidence.jsx', 'ReportTable.jsx', 'ReportControls.jsx', 'CalibrationControls.jsx', 'DashboardPanels.jsx'];
 const built = compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'),
   sources: files.map(file => ({ path: file, code: fs.readFileSync(path.join(base, file), 'utf8') })), check_combined: true });
 for (const output of built.outputs) vm.runInContext(output.code, context);
@@ -69,4 +71,51 @@ const workspace = fs.readFileSync(path.join(base, 'ReportWorkspace.jsx'), 'utf8'
 assert(workspace.includes('role="tablist"')); assert(workspace.includes('onClick={() => target !== mode && go(target, true)}'));
 assert(!workspace.includes('if (target === mode) return;'), 'Returning to a source in the same workspace must remain possible');
 assert(workspace.includes('returnTo: { view: mode, context: currentContext() }'));
+const categories = {
+  external: { issues: [], unknown_count: 4, evaluation_gaps: [
+    { source_ref: 'a', subject: '批次 A · 工序 10', code: 'association_missing', message: '关联资料缺失，请联系维护人员。' },
+    { source_ref: 'b', subject: '批次 B · 工序 20', code: 'association_missing', message: '关联资料缺失，请联系维护人员。' },
+    { source_ref: 'c', subject: '批次 C · 工序 30', code: 'unregistered', message: '请补充物流登记。' },
+    { source_ref: 'd', subject: '批次 D · 工序 40', code: 'other_missing', message: '关联资料缺失，请联系维护人员。' }
+  ] },
+  actual: { issues: [], unknown_count: 1, evaluation_gaps: [
+    { source_ref: 'e', subject: '批次 E · 工序 50', code: 'unreported', message: '暂无报工记录。' }
+  ] }
+};
+const before = JSON.stringify(categories);
+const grouped = context.window.DashboardPanels.Gaps({ categories, selected: 'external' });
+const groupNodes = nodes(grouped), groupText = visibleText(grouped);
+assert.equal(groupNodes.filter(node => node.props && node.props['data-gap-source']).length, 4, 'Every affected record remains in the table');
+assert.equal(groupNodes.filter(node => node.type === 'p').length, 3, 'Only matching code and message share one explanation');
+for (const gap of categories.external.evaluation_gaps) assert(groupText.includes(gap.subject));
+assert(!groupText.includes('批次 E')); assert(groupText.includes('暂无法评估 · 4 项'));
+assert.equal((groupText.match(/关联资料缺失，请联系维护人员。/g) || []).length, 2);
+assert.equal(JSON.stringify(categories), before, 'Grouping must not alter source facts or counts');
+assert.equal(nodes(context.window.DashboardPanels.Gaps({ categories, selected: 'all' })).filter(node => node.props && node.props['data-gap-source']).length, 5);
+const operationCategories = JSON.parse(before);
+operationCategories.external.evaluation_gaps.forEach((gap, index) => { gap.operation = {code:'OP（2026）_' + index, name:'表处理（外协）'}; });
+const operationTree = context.window.DashboardPanels.Gaps({categories:operationCategories, selected:'external'});
+const operationNodes = nodes(operationTree), operationText = visibleText(operationTree);
+assert(operationText.includes('工序编号') && operationText.includes('工序名称'));
+assert(operationText.includes('暂无法评估 · 4 道工序'));
+assert(operationText.includes('OP（2026）_0') && operationText.includes('表处理（外协）'), 'Use separate source fields without parsing display punctuation');
+assert(!operationText.includes('批次 A · 工序 10'), 'Structured rows do not repeat the combined subject');
+assert(operationNodes.filter(node => node.type === 'details').every(node => !node.props.open), 'Start collapsed');
+React.useState = value => [value, () => {}];
+React.useEffect = () => {};
+const reportScope = context.window.ReportControls.Scope({value:{source:'production'}, onChange() {}});
+const sourceField = nodes(reportScope).find(node => node.props['aria-label'] === '数据来源');
+assert.equal(sourceField.type, 'output');
+assert.equal(visibleText(sourceField), '当前正式计划');
+context.window.APSWorkbenchUI = {MetricStrip:function MetricStrip(){}, Metric:function Metric(){}};
+context.window.WorkbenchFormat.percent = value => String(value);
+for (const count of [0, 18]) {
+  const metrics = T.Metrics({topic:'delivery',summary:{records:0,completion_rate:0,on_time_rate:0,
+    confirmed_due:0,due:18,due_on_time:0,late_open:count,median_finish_minutes:null,finish_sample:0}});
+  const late = nodes(metrics).find(node => node.props.label === '超时未确认完成');
+  assert.equal(late.props.value, count);
+  assert.equal(late.props.unit, '道');
+  assert.equal(late.props.helper, '超过计划完工时间 10 分钟');
+  assert.equal(late.props.tone, count ? 'warning' : undefined);
+}
 process.stdout.write('reports-review display contracts passed\n');

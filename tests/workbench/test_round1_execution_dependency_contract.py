@@ -148,7 +148,7 @@ def test_workbench_alone_issues_write_contexts(ledger_case):
         opened = service.project_loaded(facts)
     assert len(issued) == 2
     assert opened[0].write_context["capabilities"] == ["create"]
-    assert opened[0].reports[0].write_context["capabilities"] == ["supplement", "correct"]
+    assert opened[0].reports[0].write_context["capabilities"] == ["supplement", "correct", "report_void"]
     assert closed[0].write_context["capabilities"] == []
     assert closed[0].reports[0].write_context["capabilities"] == []
     assert all_rows(case.conn) == before

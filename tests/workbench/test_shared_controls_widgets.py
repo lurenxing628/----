@@ -20,7 +20,7 @@ def test_shared_controls_widgets():
     assert result.returncode == 0, result.stdout + result.stderr + "\nArtifacts: " + str(output)
     report = json.loads((output / "shared-controls-result.json").read_text(encoding="utf-8"))
     assert report["browser"].startswith("109.")
-    assert len(report["cases"]) == 11
+    assert len(report["cases"]) == 15
     assert report["errors"] == report["external"] == []
     assert all(row["passed"] for row in report["cases"])
     print("SHARED_CONTROLS_ARTIFACTS " + str(output), flush=True)

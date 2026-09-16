@@ -73,7 +73,7 @@ def test_real_registration_public_preview_and_committed_restart_replay(client, k
     if category:
         assert preview["category"] == category
     row = preview["rows"][0]
-    assert set(row) == {"row", "business_code", "entity_ref", "action", "result", "before", "after", "changes", "errors", "requires_confirmation", "reference_count"}
+    assert set(row) == {"row", "business_code", "entity_ref", "action", "result", "before", "after", "changes", "errors", "requires_confirmation", "reference_count", "reference_fields"}
     assert set(row["after"]) <= {item["key"] for item in preview["columns"]}
     assert "entity_key" not in json.dumps(preview) and "revision" not in json.dumps(preview)
     first = command(client, kind, preview)

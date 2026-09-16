@@ -34,7 +34,7 @@ def test_execution_protects_without_old_status_events_or_plan_rows(batch_ledger,
     before = state(case.client)
     mutations = [lambda: WorkbenchBatchService(case.conn).apply("delete", {}, case.batch_ref),
                  lambda: WorkbenchBatchService(case.conn).apply("update", {"fields": {"quantity": 6}}, case.batch_ref),
-                 lambda: WorkbenchBatchOperationService(case.conn).sync(case.batch_ref, {"strict_mode": False}),
+                 lambda: WorkbenchBatchOperationService(case.conn).sync(case.batch_ref, {}),
                  lambda: WorkbenchBatchOperationService(case.conn).update(case.batch_ref,
                      {"operation_ref": case.operation_ref, "fields": {"unit_hours": 2}})]
     for index, mutate in enumerate(mutations):
@@ -72,7 +72,7 @@ def test_sync_preview_drift_when_reporting_other_current_operation(batch_ledger)
     case.conn.commit()
     source = detail(case.client)
     response = case.client.post(BASE + "/" + case.batch_ref + "/sync-preview", json={
-        "snapshot_ref": source["meta"]["snapshot_ref"], "input": {"strict_mode": False}})
+        "snapshot_ref": source["meta"]["snapshot_ref"], "input": {}})
     assert response.status_code == 200, response.get_json()
     payload = response.get_json()["data"]
     case.command("create", case.task(7, 31), case.values(1))

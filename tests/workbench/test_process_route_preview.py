@@ -41,6 +41,11 @@ def test_text_variants_use_real_op_types_and_v21_capabilities(route_conn, text):
             assert op["supplier_ref"] == raw_ref(route_conn, "supplier", "SUP-Z")
             assert op["supplier_label"] == "多能力供应商"
     assert "multiple_supplier_candidates" in {d["code"] for d in result["diagnostics"]}
+    assert result["operations"][0]["basis"] == "按工种类别匹配；可在归属步骤修改。"
+    assert result["operations"][1]["basis"] == "按工种类别匹配；可在归属步骤修改。供应商按编号排序选择最后一家。"
+    assert result["operations"][2]["basis"] == "按工种类别匹配；可在归属步骤修改。"
+    multiple = next(item for item in result["operations"][1]["issues"] if item["code"] == "multiple_supplier_candidates")
+    assert multiple["message"] == "有 2 家供应商可承接，可在归属步骤改选。"
     json.dumps(result, allow_nan=False)
 
 

@@ -73,19 +73,23 @@ function writeReport() {
   fs.writeFileSync(path.join(root, 'process-stage-probe-results.json'), JSON.stringify(report, null, 2) + '\n');
 }
 async function confirmSource() {
-  await responseTo('/stage-preview', () => source().getByRole('button', {name: '检查归属', exact: true}).click());
-  return saved('source_confirm', () => source().getByRole('button', {name: '完成归属 · 解锁工时', exact: true}).click());
+  const preview = page.waitForResponse(r => new URL(r.url()).pathname.endsWith('/stage-preview'));
+  const detail = await saved('source_confirm', () => source().getByRole('button', {name: '保存归属并继续', exact: true}).click());
+  const checked = await preview; assert.equal(checked.status(), 200); assert.deepEqual((await checked.json()).data.affected_groups, []);
+  assert(detail.data.operations.filter(row => row.status === 'active').every(row => row.confirmation.source.state === 'confirmed'));
+  return detail;
 }
-async function walkPages(scope, checkName, edit) {
+async function walkPages(scope, edit) {
   let pages = 0, edited = 0;
   while (true) {
     if (edit) edited += await edit(scope);
-    await scope.getByRole('checkbox', {name: checkName, exact: true}).check(); pages++;
+    assert.equal(await scope.getByRole('checkbox', {name: /^确认(本页|工序)/}).count(), 0); pages++;
     const next = scope.getByRole('button', {name: '下一页', exact: true});
     if (!(await next.count()) || await next.isDisabled()) break;
-    const previous = await scope.getByRole('checkbox', {name: /^确认工序 /}).first().getAttribute('aria-label');
-    await next.click();
-    await scope.getByRole('checkbox', {name: previous, exact: true}).waitFor({state: 'detached'});
+    const isSource = await scope.getAttribute('data-process-source-editor') !== null;
+    const selector = '[data-process-' + (isSource ? 'source' : 'hours') + '-editor] table[aria-label="' + (isSource ? '归属明细' : '自制工时明细') + '"] tbody tr';
+    const previous = await page.locator(selector).first().innerText(); await next.click();
+    await page.waitForFunction(({selector, previous}) => document.querySelector(selector).innerText !== previous, {selector, previous});
   }
   return {pages, edited};
 }
@@ -113,9 +117,9 @@ async function smallWorkflow() {
   await type(picker.getByRole('searchbox', {name: '搜索自制工种', exact: true}), '车削');
   await responseTo('/entities/op_type', () => picker.getByRole('button', {name: '搜索', exact: true}).click());
   await picker.getByRole('button', {name: '采用 车削', exact: true}).click();
-  await source().getByRole('checkbox', {name: '确认本页已核对工序', exact: true}).check();
   await reloadDraft(source());
-  assert(await source().getByRole('checkbox', {name: '确认工序 10 归属', exact: true}).isChecked());
+  assert.equal(await source().getByRole('checkbox', {name: /^确认(本页|工序)/}).count(), 0);
+  assert.match(await source().getByRole('button', {name: '选择工序 10 工种', exact: true}).locator('xpath=ancestor::td').innerText(), /车削/);
   await snapshot('source-reviewed'); detail = await confirmSource();
   assert.equal(detail.data.workflow.source.state, 'confirmed'); await hours().waitFor();
   await type(hours().getByLabel('工序 10 单件工时', {exact: true}), '2.125');
@@ -123,12 +127,11 @@ async function smallWorkflow() {
   await type(hours().getByLabel('外协组 20 至 20 总周期', {exact: true}), '9.5');
   await reloadDraft(hours());
   assert.equal(await hours().getByLabel('工序 10 单件工时', {exact: true}).inputValue(), '2.125');
-  await hours().getByRole('checkbox', {name: '确认本页已核对工时', exact: true}).check();
   await hours().getByRole('button', {name: '保存工时', exact: true}).click();
-  await hours().getByText('单件工时为 0，需要明确勾选复核。', {exact: true}).waitFor();
-  await hours().getByRole('checkbox', {name: '已复核单件工时为0', exact: true}).check();
+  await page.getByRole('dialog', {name: '按零单件工时保存', exact: true}).waitFor();
+  assert.equal(await page.getByRole('dialog', {name: '按零单件工时保存', exact: true}).getByRole('checkbox').count(), 0);
   await snapshot('hours-reviewed');
-  detail = await saved('hours_confirm', () => hours().getByRole('button', {name: '保存工时', exact: true}).click());
+  detail = await saved('hours_confirm', () => page.getByRole('button', {name: '按 0 保存', exact: true}).click());
   assert(detail.data.workflow.ready); await snapshot('ready'); await close();
   detail = await open('STAGE-' + state);
   assert(detail.data.workflow.ready); assert.equal(detail.data.operations[0].unit_hours, 2.125);
@@ -147,9 +150,9 @@ async function scaleWorkflow(count) {
   }
   await tab(2);
   await source().waitFor(); await snapshot(count + '-source-dom');
-  const review = await walkPages(source(), '确认本页已核对工序'); assert.equal(review.pages, count / 50);
+  const review = await walkPages(source()); assert.equal(review.pages, count / 50);
   const sourceSaved = await confirmSource(); assert.equal(sourceSaved.data.operations.length, count); await tab(3); await hours().waitFor();
-  const filled = await walkPages(hours(), '确认本页已核对工时', count === 2000 ? async scope => {
+  const filled = await walkPages(hours(), count === 2000 ? async scope => {
     const fields = scope.locator('input[aria-label$=" 单件工时"]'); const size = await fields.count();
     for (let i = 0; i < size; i++) {
       const field = fields.nth(i), label = await field.getAttribute('aria-label'), seq = Number(label.match(/^工序 (\d+)/)[1]);

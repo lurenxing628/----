@@ -96,13 +96,20 @@ def run_case(scenario, objective, config=None):
 
 
 def _improve(scheduler, env, baseline, shared, objective, config, guard):
+    # The snapshot schema (exact keys, saved baselines) records profile and repair decodes; the
+    # iterated greedy stage is counted separately for the consistency check below only.
     counts = {"baseline_decode_count": 1, "graph_decode_count": 0, "repair_decode_count": 0}
+    stage_decodes = {"iterated_greedy": 0}
+    counters = {"elite_repair": "repair_decode_count"}
 
     def decode(actual_scheduler, **kwargs):
         guard.check_decode(actual_scheduler, kwargs)
         profile = kwargs["strategy_params"]["graph_ready_profile"]
-        counter = "repair_decode_count" if profile["candidate_policy"] == "elite_repair" else "graph_decode_count"
-        counts[counter] += 1
+        policy = profile["candidate_policy"]
+        if policy in stage_decodes:
+            stage_decodes[policy] += 1
+        else:
+            counts[counters.get(policy, "graph_decode_count")] += 1
         result = scheduler.schedule(**kwargs)
         guard.check_source()
         return result
@@ -131,8 +138,12 @@ def _improve(scheduler, env, baseline, shared, objective, config, guard):
         raise ValueError("production optimizer returned no schedule")
     report = state.candidate_profile["graph_ready_optimization"]["elite_repair"]
     repair = {key: report[key] for key in ("repair_scope", "repair_status", "repair_evaluated_candidates")}
+    iterated_greedy = state.candidate_profile["graph_ready_optimization"].get("iterated_greedy", {})
     if repair["repair_evaluated_candidates"] != counts["repair_decode_count"]:
         raise ValueError("production repair decode counter mismatch")
+    if int(iterated_greedy.get("decodes", 0) or 0) != stage_decodes["iterated_greedy"]:
+        raise ValueError("production iterated greedy decode counter mismatch")
+    # The profile cap bounds profile and repair decodes; the iterated greedy stage has its own cap.
     if counts["graph_decode_count"] + counts["repair_decode_count"] > config["max_candidates"]:
         raise ValueError("candidate decode budget exceeded")
     return best, counts, repair, runtime_ms

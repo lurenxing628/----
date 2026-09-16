@@ -67,6 +67,23 @@ def test_missing_zero_and_partial_are_not_samples(calibration_case, patch, code)
     assert code in {row["code"] for row in sample["exclusion_reasons"]}
 
 
+@pytest.mark.parametrize("legacy_complete", [False, True])
+def test_no_reports_has_one_actionable_reason_not_missing_report_fields(calibration_case, legacy_complete):
+    case = calibration_case
+    case.plan(2, [case.op_id])
+    if legacy_complete:
+        case.event(case.op_id, "start", version=2)
+        case.event(case.op_id, "finish", version=2, time="2026-09-09T10:00:00")
+    sample = reviewed(case, [case.op_id])[0]
+    assert sample["reports"] == []
+    assert sample["exclusion_reasons"] == [{
+        "code": "production_reports_missing", "message": "尚无逐次报工记录，暂不能计算单件工时。"}]
+    assert not sample["eligible"] and sample["unit_hours"] is None
+    assert sample["effective_processing_hours"] is None
+    assert summarize_samples([sample])["sample_count"] == 0
+    assert bool(sample["legacy_facts"]) is legacy_complete
+
+
 @pytest.mark.parametrize("kind", ["missing", "revision", "operation", "unconfirmed", "external"])
 def test_no_guessed_template_binding(calibration_case, kind):
     case = calibration_case

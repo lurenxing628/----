@@ -11,6 +11,7 @@ WORKBENCH_UI_REQUIRED_TESTS = (
     "tests/workbench/test_ui_copy_glossary.py",
     "tests/workbench/test_handler_memory.py",
     "tests/workbench/test_run_progress_ledger.py",
+    "tests/workbench/test_workbench_delete_icons.py",
 )
 
 WORKBENCH_UI_BROWSER_TARGETS = (
@@ -29,6 +30,8 @@ WORKBENCH_UI_SUPPLEMENTAL_TESTS = (
     "tests/workbench/test_wbui_plan_first_screen.py",
     "tests/workbench/test_wbui_plan_gantt_models.py",
     "tests/workbench/test_short_screen_layout.py",
+    "tests/workbench/test_workbench_visual_controls.py",
+    "tests/workbench/test_operator_machine_permissions_widgets.py",
 )
 
 WORKBENCH_UI_REQUIRED_REGRESSION_GROUPS = ({
@@ -42,7 +45,7 @@ WORKBENCH_UI_REQUIRED_REGRESSION_GROUPS = ({
         "tests/workbench-*.cjs", "tests/workbench/ui_refinement_*.py", "tests/workbench/ui_refinement_*.cjs",
         "tests/workbench/analysis_ui_contract.cjs",
         "tests/_support/workbench_browser_contract.py", "tests/_support/workbench_browser_probe.cjs",
-        "tests/workbench/handler_memory_probe.cjs",
+        "tests/workbench/handler_memory_probe.cjs", "tests/workbench/deletion_icon_contract.cjs",
         "core/services/workbench/run_progress.py", "core/services/workbench/run_jobs.py", "core/services/workbench/run_worker.py",
         "core/services/scheduler/run/schedule_candidate_runner.py",
     ),
@@ -66,6 +69,7 @@ WORKBENCH_UI_SUPPLEMENTAL_REGRESSION_GROUPS = ({
         "tests/workbench/dashboard_widgets_probe.cjs", "tests/workbench/*_support.py",
         "tests/workbench/test_live_browser.py", "tests/workbench/live_environment.py",
         "tests/workbench/short_screen_layout_probe.cjs",
+        "tests/workbench/operator_machine_permissions_probe.cjs",
         "tests/conftest.py", "tests/workbench/fixtures/schema-v28.sql", "schema.sql",
         "tests/_support/workbench_browser_contract.py", "tests/_support/workbench_browser_probe.cjs",
         "tests/_support/workbench_web_contract.py", "tests/_support/excel_templates.py",

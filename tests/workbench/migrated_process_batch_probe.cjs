@@ -127,10 +127,10 @@ async function processStages(code, legacy = false) {
   await p.click(button(source, '选择工序 10 工种'));
   const picker = dialog('选择自制工种 · 工序 10'); await p.type(picker.getByRole('searchbox'), '车削');
   await p.response('/entities/op_type', () => p.click(button(picker, '搜索'))); await p.click(button(picker, '采用 车削'));
-  await p.click(source.getByRole('checkbox', {name: '确认本页已核对工序', exact: true}));
-  const checked = await p.response('/stage-preview', () => p.click(button(source, '检查归属')));
-  if (legacy) assert.equal(checked.data.affected_groups.length, 0);
-  await p.shot('source-confirm-' + (legacy ? 'legacy' : 'new')); await saved('source_confirm', button(source, '完成归属 · 解锁工时'));
+  const previewResponse = page.waitForResponse(row => new URL(row.url()).pathname.endsWith('/stage-preview'));
+  await saved('source_confirm', button(source, '保存归属并继续'));
+  const checked = await (await previewResponse).json(); if (legacy) assert.equal(checked.data.affected_groups.length, 0);
+  await p.shot('source-confirm-' + (legacy ? 'legacy' : 'new'));
   const hours = page.locator('[data-process-hours-editor]:visible'); await hours.waitFor();
   if (!legacy) {
     await p.type(hours.getByLabel('工序 10 换型工时', {exact: true}), '0');
@@ -138,16 +138,14 @@ async function processStages(code, legacy = false) {
     await p.type(hours.getByLabel('工序 20 单件工时', {exact: true}), '1.25');
   }
   await p.type(hours.getByLabel('工序 10 单件工时', {exact: true}), '');
-  await p.click(hours.getByRole('checkbox', {name: '确认本页已核对工时', exact: true}));
   const beforeBlank = p.oracle(); await p.click(button(hours, '保存工时'));
-  await hours.getByText(/留空不会按 0 保存/).waitFor(); assert.deepEqual(p.diff(beforeBlank, p.oracle()), []);
+  await hours.getByText('工序 10 单件工时必须填写大于等于 0 的数。', {exact: true}).waitFor(); assert.deepEqual(p.diff(beforeBlank, p.oracle()), []);
   await p.shot('hours-blank-rejected');
   await p.type(hours.getByLabel('工序 10 单件工时', {exact: true}), legacy ? '0.25' : '0');
-  await p.click(hours.getByRole('checkbox', {name: '确认本页已核对工时', exact: true}));
   const beforeZero = p.oracle(); await p.click(button(hours, '保存工时'));
-  await hours.getByText('单件工时为 0，需要明确勾选复核。', {exact: true}).waitFor(); assert.deepEqual(p.diff(beforeZero, p.oracle()), []);
-  await p.click(hours.getByRole('checkbox', {name: '已复核单件工时为0', exact: true}));
-  await saved('hours_confirm', button(hours, '保存工时'));
+  await page.getByRole('dialog', {name: '按零单件工时保存', exact: true}).waitFor(); assert.deepEqual(p.diff(beforeZero, p.oracle()), []);
+  assert.equal(await page.getByRole('dialog', {name: '按零单件工时保存', exact: true}).getByRole('checkbox').count(), 0);
+  await saved('hours_confirm', button(page, '按 0 保存'));
   await page.getByText('三阶段已确认 · 已就绪', {exact: true}).waitFor(); await p.shot('ready-' + (legacy ? 'legacy' : 'new'));
   await closeProcess(); const fresh = await openProcess(code); assert(fresh.data.workflow.ready);
   if (legacy) { assert.deepEqual(fresh.data.external_groups, detail.data.external_groups); assert.equal(fresh.data.operations[0].unit_hours, .25); }
@@ -162,9 +160,9 @@ async function importProcess(kind, file, {cancel = false, rejected = false} = {}
     if (rejected) assert(await d.getByRole('button', {name: /^确认导入/}).isDisabled());
     await p.click(button(d, '取消')); await p.click(button(dialog('放弃本次文件导入？'), '放弃导入并关闭')); return preview;
   }
-  for (const label of [/已复核单件工时为 0 的记录/, /已核对全部修改前后内容/]) { const check = d.getByRole('checkbox', {name: label}); if (await check.count()) await p.click(check); }
-  const receipt = await saved('confirm', button(d, '确认导入'));
-  await d.getByText(/文件导入已完成|已查到文件导入结果/).waitFor(); await p.shot('import-' + kind + '-receipt');
+  assert.equal(await d.getByRole('checkbox', {name: /已复核单件工时|已核对全部修改前后内容/}).count(), 0);
+  const receipt = await saved('confirm', button(d, preview.data.zero_review_required ? '按 0 导入' : '确认导入'));
+  await d.getByText(/导入已完成/).waitFor(); await p.shot('import-' + kind + '-receipt');
   await p.click(button(d, '完成')); return receipt;
 }
 async function searchBatch(code) { await p.type(batchArea().getByRole('searchbox'), code); return p.response('/entities/batch', () => batchArea().getByRole('searchbox').press('Enter')); }
@@ -187,8 +185,8 @@ async function batchEditSync() {
   await openBatch('AN-B-' + state + '-001'); await p.click(button(batchArea(), '编辑基础信息')); let d = dialog('编辑批次基础信息');
   const beforeNoop = p.oracle(); await p.click(button(d, '保存基础信息')); await d.getByText('没有需要保存的变更。', {exact: true}).waitFor(); assert.deepEqual(p.diff(beforeNoop, p.oracle()), []);
   await p.type(d.getByLabel('数量', {exact: true}), '9'); await saved('update', button(d, '保存基础信息')); await p.click(button(d, '关闭'));
-  await p.response('/sync-preview', () => p.click(button(batchArea(), '按最新工艺模板刷新本批次工序')));
-  d = dialog('确认刷新批次工序'); await p.shot('batch-sync-preview'); await saved('sync_confirm', button(d, '确认变更')); await p.click(button(d, '关闭'));
+  await p.response('/sync-preview', () => p.click(button(batchArea(), '预览工序更新')));
+  d = dialog('确认更新批次工序'); await p.shot('batch-sync-preview'); await saved('sync_confirm', button(d, '确认更新工序')); await p.click(button(d, '关闭'));
   const first = page.getByRole('table', {name: '批次工序', exact: true}).locator('tbody tr').first(); await p.click(button(first, '补充资料'));
   d = page.getByRole('dialog', {name: /^工序 10 · /}); await p.type(d.getByLabel('单件工时（小时）', {exact: true}), '1.375');
   await saved('operation_update', button(d, '保存工序')); await p.click(button(d, '关闭'));
@@ -228,7 +226,7 @@ async function batchMulti() {
   await p.click(button(batchArea(), '清除选择')); await searchBatch(copy);
   await p.click(batchArea().getByRole('checkbox', {name: '选择 ' + copy, exact: true}));
   await p.response('/bulk-preview', () => p.click(button(batchArea(), '删除所选')));
-  await saved('bulk_confirm', button(dialog('确认批量删除'), '确认变更')); await p.click(button(dialog('确认批量删除'), '关闭'));
+  await saved('bulk_confirm', button(dialog('确认批量删除'), '确认删除')); await p.click(button(dialog('确认批量删除'), '关闭'));
   await page.reload(); const fresh = await searchBatch('AN-MULTI-'); assert.equal(fresh.data.page.total, 43);
   assert.equal(await batchArea().getByRole('table', {name: '批次列表', exact: true}).locator('tbody tr').count(), 20);
 }

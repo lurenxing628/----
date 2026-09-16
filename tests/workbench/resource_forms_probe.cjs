@@ -51,8 +51,8 @@ function Harness({spec}) {
   const command=APSResourceSession.useCommand(adapter);
   const source=spec.source || 'production';
   const props={adapter,kind,action:spec.create?'create':'update',entity:original,category:spec.category,writeContext:context,source,command,onClose:()=>{fixture.closed=true;},
-    onReloadContext:()=>setReview(envelope(entity(kind,{label:'服务器当前名称',fields:{stock_qty:17,remark:'active'}}),'production')),
-    contextReview:review,onAcceptContext:()=>{setContext(wc('reviewed-token'));setReview(null);},refreshState:{}};
+    onReloadContext:()=>{setReview(envelope(entity(kind,{label:'服务器当前名称',fields:{stock_qty:17,remark:'active'}}),'production'));setContext(wc('reviewed-token'));command.reset();},
+    contextReview:review,refreshState:{}};
   if(spec.detail)return React.createElement(ResourceForms.Detail,{kind,result:envelope(original),onClose:()=>{},onEdit:()=>{},onDelete:()=>{}});
   if(spec.table)return React.createElement(ResourceTables,{kind,category:spec.category,entities:spec.empty?[]:[original],source,selected:[],onSelect:()=>{},onOpen:()=>{fixture.opened=true;},onEdit:()=>{fixture.edited=true;},onDelete:()=>{fixture.deleted=true;}});
   return React.createElement(ResourceForms,props);
@@ -117,7 +117,7 @@ async function cases() {
     assert(!(await page.locator('tbody').innerText()).includes('99'));
     await mount({kind:'op_type',table:true,category:'internal',patch:{availability:{machines:3,operators:0,basis:'enabled_authorized_matching'}}});
     assert.deepEqual(await page.locator('tbody td.r').allTextContents(),['3','0']);
-    assert(await page.getByTitle('启用并绑定此工种的设备；不代表当天班表有空。',{exact:true}).isVisible());
+    assert(await page.getByTitle('已启用且关联此工种的设备数。',{exact:true}).isVisible());
     result.cases.push({variant,name:'self-made-visual',...await shot('self-made-table')});
     await mount({kind:'op_type',table:true,category:'internal',empty:true});
     assert.equal(await page.getByRole('columnheader').filter({has:page.locator('.wb-th-title').getByText('可用设备',{exact:true})}).count(),1);
@@ -198,7 +198,7 @@ async function cases() {
   });
   await run('operator-new-no-guessed-authorization',async()=>{
     await mount({kind:'operator',create:true});
-    assert(await page.getByText('新人员尚无设备操作授权；登记工种技能不会自动增加授权。',{exact:true}).isVisible());
+    assert(await page.getByText('请在人员详情中设置可操作设备。',{exact:true}).isVisible());
     assert.equal(await page.getByLabel('班次',{exact:true}).inputValue(),'');
     await page.getByLabel('工号',{exact:false}).fill('P-NEW');await page.getByLabel('姓名',{exact:false}).fill('新人员');
     await page.getByLabel('状态',{exact:false}).selectOption('active');await save();
@@ -269,14 +269,15 @@ async function cases() {
     await page.getByRole('alert').filter({hasText:'资料已变化'}).waitFor();
     assert.equal(await page.getByLabel('名称',{exact:false}).inputValue(),'未提交的草稿');
     await page.getByRole('button',{name:'刷新最新资料',exact:true}).click();
-    await page.getByRole('button',{name:'已核对，继续编辑',exact:true}).waitFor();
+    await page.getByText('最新资料已刷新。你修改的内容已保留，未修改的字段已更新；下方显示当前已保存的资料。',{exact:true}).waitFor();
+    assert.equal(await page.getByRole('button',{name:'已核对，继续编辑',exact:true}).count(),0);
     assert(await page.getByText('服务器当前名称',{exact:false}).isVisible());
     assert.equal(await page.getByLabel('库存数量',{exact:true}).inputValue(),'');
-    const review=await page.getByRole('status').filter({has:page.getByRole('button',{name:'已核对，继续编辑',exact:true})}).innerText();
+    const review=await page.locator('.wb-resource-review').innerText();
     assert(review.includes('库存数量')&&review.includes('17')&&review.includes('active'));
     assert(!review.includes('stock_qty')&&!review.includes('hidden_legacy'));
     result.cases.push({variant,name:'stale-visual',...await shot('stale-review')});
-    await page.getByRole('button',{name:'已核对，继续编辑',exact:true}).click();await save();
+    await save();
     assert.deepEqual(await lastInput(2),{label:'未提交的草稿'});
     const calls=await page.evaluate(()=>fixture.calls);assert.equal(calls[1].body.write_token,'reviewed-token');
     assert.notEqual(calls[0].body.request_key,calls[1].body.request_key);

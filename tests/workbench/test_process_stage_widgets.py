@@ -32,7 +32,7 @@ class ProcessStageWidgetsTest(unittest.TestCase):
         self.assertEqual(report["compile"]["target"], {"chrome": "109"})
         self.assertTrue(report["browser"].startswith("109."))
         self.assertTrue(all(row["passed"] for row in report["cases"]))
-        self.assertEqual(len(report["cases"]), 84)
+        self.assertEqual(len(report["cases"]), 92)
         self.assertEqual(len({row["variant"] for row in report["cases"]}), 4)
         self.assertEqual(len(report["screenshots"]), 24)
         self.assertEqual(report["errors"], [])

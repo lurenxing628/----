@@ -94,7 +94,7 @@ async function fillHandling(page, status, remark, complete) {
   await dialog.getByLabel('责任人', { exact: true }).fill('计划员李工'); await dialog.getByLabel('责任期限', { exact: true }).fill('2026-09-11');
   await dialog.getByLabel('处置行动', { exact: true }).fill('核对精车安排及齐套，协调设备检修后复核交期');
   await dialog.getByLabel('原因说明', { exact: true }).fill(remark);
-  if (complete) { await dialog.getByLabel('完成时间', { exact: true }).fill('2026-09-10T11:00:17'); await dialog.getByLabel('具体完成结果', { exact: true }).fill(complete.result); await dialog.getByLabel('可核对凭据', { exact: true }).fill(complete.evidence); }
+  if (complete) { await dialog.getByLabel('完成时间', { exact: true }).fill('2026-09-10T11:00:17'); await dialog.getByLabel('具体完成结果', { exact: true }).fill(complete.result); await dialog.getByLabel('凭据说明', { exact: true }).fill(complete.evidence); }
 }
 async function send(page, reopen = false) {
   const wait = page.waitForResponse(r => commandPath(new URL(r.url()).pathname));
@@ -220,7 +220,7 @@ async function boundaries() {
   await page.getByRole('tab', { name: '方案对比', exact: true }).click(); assert.equal(await page.locator('[data-run-ref]').count(), 1); report.boundaries.no_official_not_candidate = true; await shot(page, 'no-official'); await context.close();
   ({ context, page, data } = await fresh('unknown')); assert.equal(data.data.categories.material.risk_count, null);
   assert.equal(data.data.categories.material.unknown_count, 1); assert.equal(await page.locator('.dy-metric').filter({ hasText: '齐套缺口' }).locator('strong').innerText(), '未知');
-  await category(page, '齐套缺口'); await page.getByText(/齐套缺口 · 无法评估 1 项/).click(); await page.getByText(/齐套数据读不完整/).waitFor();
+  await category(page, '齐套缺口'); await page.getByText(/齐套缺口暂无法评估 · 1 项/).click(); await page.getByText(/齐套数据读不完整/).waitFor();
   assert(!await page.locator('[data-item-ref]').filter({ hasText: '精密轴套' }).count()); report.boundaries.unknown_not_alarm = true; await shot(page, 'unknown-source'); await context.close();
   ({ context, page } = await fresh('no-data')); await page.getByRole('tab', { name: '方案对比', exact: true }).click(); await page.getByText('还没有排产记录。', { exact: true }).waitFor();
   report.boundaries.no_data_not_unloaded = true; await shot(page, 'no-data'); await context.close();

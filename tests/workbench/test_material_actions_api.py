@@ -1,7 +1,8 @@
 """Material action HTTP contracts against new temporary Flask/SQLite databases."""
 
+import csv
 import json
-from io import BytesIO
+from io import BytesIO, StringIO
 
 import pytest
 from werkzeug.datastructures import MultiDict
@@ -34,6 +35,57 @@ from tests.workbench.material_actions_api_support import material_actions_client
 from tests.workbench.material_file_support import file_bytes
 
 material_actions_client = _material_actions_client
+
+
+@pytest.mark.parametrize("operation", ("bulk", "import"))
+@pytest.mark.parametrize("stored,local", (("2026-09-15 15:16:13", "2026-09-15 23:16:13"),
+                                         ("2026-09-15 19:05:07", "2026-09-16 03:05:07"), (None, None)))
+def test_preview_times_match_export_without_changing_original_facts(material_actions_client, operation, stored, local):
+    client = material_actions_client
+    refs = seed(client, 1)
+    with database(client) as conn:
+        conn.execute("UPDATE Materials SET created_at=?", (stored,))
+        conn.commit()
+    original = snapshot(client)
+    preview = (bulk_preview(client, [refs["MAT00000"]]) if operation == "bulk"
+               else import_preview(client, [["MAT00000", "改名"]]))
+    row = preview["rows"][0]
+    assert row["before"]["created_at"] == local
+    assert row["after"] is None if operation == "bulk" else row["after"]["created_at"] == local
+    assert "created_at" not in row["changes"]
+    with client.application.app_context():
+        retained = list(client.application.extensions["workbench_material_previews_v1"].values())
+        assert len(retained) == 1
+        canonical = retained[0].preview.document
+        assert retained[0].preview.as_dict()["rows"][0]["expected"]["material"]["created_at"] == stored
+        from web.routes.workbench.material_actions_context import public_row
+        public_row(retained[0].preview.as_dict()["rows"][0])
+        assert retained[0].preview.document == canonical
+    downloaded = download(client, export_preview(client, "all"), "csv")
+    assert downloaded.status_code == 200
+    cells = list(csv.reader(StringIO(downloaded.data.decode("utf-8-sig"))))
+    assert cells[1][cells[0].index("创建时间")] == ("'" + local if local is not None else "")
+    assert snapshot(client) == original
+    assert confirm(client, preview).status_code == 200
+    if operation == "import":
+        with database(client) as conn:
+            saved = conn.execute("SELECT name,created_at FROM Materials WHERE material_id='MAT00000'").fetchone()
+            assert tuple(saved) == ("改名", stored)
+
+
+@pytest.mark.parametrize("operation", ("bulk", "import"))
+def test_invalid_stored_preview_time_is_explicit_error_without_writes(material_actions_client, operation):
+    client = material_actions_client
+    refs = seed(client, 1)
+    with database(client) as conn:
+        conn.execute("UPDATE Materials SET created_at='invalid stored time'")
+        conn.commit()
+    before = snapshot(client)
+    response = (client.post(BASE + "/entities/material/bulk-preview", json={"action": "delete",
+                "refs": [refs["MAT00000"]], **list_context(client)}) if operation == "bulk"
+                else upload(client, file_bytes([["MAT00000", "改名"]], "csv", headers=("物料编号", "名称"))))
+    assert_failure(response, "storage_failure")
+    assert response.status_code == 500 and snapshot(client) == before
 
 
 def test_bulk_hidden_selection_cancel_and_atomic_confirmation(material_actions_client):

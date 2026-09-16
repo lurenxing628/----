@@ -2,13 +2,16 @@
 
 import secrets
 import threading
+from contextlib import closing
 from pathlib import Path
 
 from flask import Blueprint, Flask, g, jsonify, request
 
+from core.services.workbench.run_data_context import RunDataContext
 from core.services.workbench.run_jobs import WorkbenchRunService
 from core.services.workbench.run_jobs_facts import capture_run_facts
 from core.services.workbench.run_worker import WorkbenchRunWorker
+from core.services.workbench.system_journal import SystemMaintenanceJournal, file_fingerprint
 from data.repositories.workbench_run_repo import WorkbenchRunRepository
 from tests.workbench.run_jobs_support import JobCase, connection
 from web.routes.workbench.preflight import register_preflight_routes
@@ -97,8 +100,28 @@ class WidgetServer:
         self.calls = []
         self.app.extensions["workbench_run_dispatcher"] = self.calls.append
         self.app.config["WORKBENCH_RUN_JOBS_ENABLED"] = True
+        self.app.config["BACKUP_DIR"] = str(self.root / "restore-backups")
         self.app.extensions.pop("aps_public_opaque_tokens", None)
         return self.settings
+
+    def restore_scope(self):
+        """Fixture-only controlled replacement, using a real registered protection copy."""
+        self.join()
+        backups = Path(self.app.config["BACKUP_DIR"])
+        backups.mkdir(exist_ok=True)
+        path = backups / ("aps_backup_" + secrets.token_hex(8) + "_before_restore.db")
+        with closing(self.connect()) as conn:
+            context = RunDataContext(conn)
+            before = context.ref()
+            journal = SystemMaintenanceJournal(str(self.path) + ".system-journal", str(self.path))
+            row, _ = journal.begin("restore-fixture-" + secrets.token_hex(12), "restore", {})
+            with closing(connection(path)) as protection:
+                conn.backup(protection)
+            with closing(connection(self.seed)) as source:
+                source.backup(conn)
+            journal.record(row, "succeeded", code="verified", data_context_before=before,
+                protection={"filename": path.name, "sha256": file_fingerprint(str(path))})
+        self.app.extensions.pop("aps_public_opaque_tokens", None)
 
     def start(self, run_ref):
         self.join()
@@ -172,6 +195,8 @@ class WidgetServer:
             elif action == "restart":
                 self.join()
                 self.app.extensions.pop("aps_public_opaque_tokens", None)
+            elif action == "restore_scope":
+                self.restore_scope()
             elif action == "reconcile_unknown":
                 with self.connect() as conn:
                     WorkbenchRunRepository(conn).claim(value["run_ref"], "e" * 48, "2026-09-10T12:00:00")

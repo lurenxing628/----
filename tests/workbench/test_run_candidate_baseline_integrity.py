@@ -76,6 +76,42 @@ def test_tampered_execution_and_receipt_cannot_override_archived_evidence(candid
     assert error.value.code == "candidate_baseline_invalid"
 
 
+@pytest.mark.parametrize("change", ["missing", "extra", "duplicate", "quantity", "current_task"])
+def test_older_official_execution_projection_still_requires_exact_archived_evidence(candidate_case, change):
+    case = candidate_case
+    case.batch("OLDER")
+    old_op = case.operation("OLDER")
+    case.plan(6, [old_op])
+    old_task = case.task(6, old_op)
+    old_ref = case.conn.execute("SELECT ref FROM WorkbenchPlanSourceRefs WHERE kind='operation' AND source_key=?",
+                               (str(old_op),)).fetchone()[0]
+    case.batch("UNPLANNED")
+    unplanned = case.operation("UNPLANNED")
+    unplanned_ref = case.conn.execute("SELECT ref FROM WorkbenchPlanSourceRefs WHERE kind='operation' AND source_key=?",
+                                     (str(unplanned),)).fetchone()[0]
+    original_plan(case)
+    _, refs = compute(case)
+
+    def alter(rows):
+        old = next(row for row in rows if row["operation_ref"] == old_ref)
+        assert old["current_task_ref"] is None
+        if change == "missing":
+            rows.remove(old)
+        elif change == "extra":
+            rows.append({**deepcopy(old), "operation_ref": unplanned_ref})
+        elif change == "duplicate":
+            rows.append(deepcopy(old))
+        elif change == "quantity":
+            old["known_completed_quantity"] = 1
+        else:
+            old["current_task_ref"] = old_task
+
+    edit_capture(case, "execution_json", alter)
+    with retained(case.conn), pytest.raises(WorkbenchCommandRejected) as error:
+        baseline(case, refs[0])
+    assert error.value.code in ("candidate_baseline_invalid", "candidate_artifact_invalid")
+
+
 @pytest.mark.parametrize("field", ["facts_json", "execution_json", "baseline_json", "normalized_input_json"])
 def test_oversized_capture_rejected_before_loading(candidate_case, monkeypatch, field):
     import core.services.workbench.run_candidate_storage as storage

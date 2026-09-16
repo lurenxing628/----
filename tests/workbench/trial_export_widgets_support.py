@@ -107,7 +107,7 @@ def public_snapshot(value):
     return value
 
 
-HEADERS = ['方案', '方案状态', '约束说明（非取舍评估）', '对比基准方案', '换型次数（次）',
+HEADERS = ['方案', '方案状态', '约束检查', '对比基准方案', '换型次数（次）',
            '批次', '产品', '数量（件）', '优先级', '交期（截至日）', '对比基准完工', '方案完工',
            '超期（小时）', '完工提前（小时，负数为延后）', '工序调整', '换设备', '交付风险',
            '草稿编号', '试调方案编号', '原来源编号', '试调方案保存时间', '核对提示']
@@ -122,18 +122,17 @@ def translated(value, labels):
 
 
 def expected_note(data):
-    return ('完整{}批次、{}道安排、{}道未排；不受分页或显示筛选限制。'.format(
-        len(data['comparison']['batches']), data['task_count'], len(data['unplanned_operations'])) +
-        '对比基准是原试调来源；交期截至日次日零点不含；时间与工厂现场一致；负数提前量表示延后。' +
-        ('数据是试调方案保存时的内容。' if data.get('scenario_ref') else '数据是本次页面读到的内容，导出时不刷新。') +
-        '未知不等于 0，空白表示不适用；数值保留原精度。' + data['comparison']['changeover_reason'] +
-        '文字统一加一个单引号，防止表格把它当公式或改写编号；按标准 CSV 解码后只去掉开头这一个引号。完整任务、资源变更、班表、报工和调整记录见“导出原始数据”（不含系统内部数据）。')
+    updated = (data.get('saved_at') if data.get('scenario_ref') else data.get('updated_at')) or '未记录'
+    return '对比方案：{}；更新时间：{}；导出 {} 批次、{} 道安排、{} 道未排工序。'.format(
+        data['base_identity'].get('display_name') or '原试调来源', updated,
+        len(data['comparison']['batches']), data['task_count'], len(data['unplanned_operations']))
 
 
 def expected_rows(data):
     validation, comparison = data['validation'], data['comparison']
-    constraints = ('试调约束：{}；整体状态：{}；问题{}项，完整原因见原始数据；未评估方案取舍。'.format(
-        STATES[validation['constraints_status']], STATES[validation['status']], len(validation['issues'])))
+    constraints = ('约束检查：{}；整体状态：{}；问题 {} 项'.format(
+        STATES[validation['constraints_status']], STATES[validation['constraints_status']],
+        sum(row['code'] != 'scenario_adoption_not_connected' for row in validation['issues'])))
     source = ('计划：' + data['base']['plan_ref'] if 'plan_ref' in data['base'] else '排产候选：' + data['base']['candidate_ref'])
     for batch in comparison['batches']:
         yield [data.get('name') or '未命名试调草稿', STATES[data['status']], constraints,

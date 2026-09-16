@@ -5,8 +5,8 @@ async function recoverReceipt({p, page, processArea, kind, file}) {
   await p.click(b(processArea(), '导入' + label)); const d = page.getByRole('dialog', {name: '导入' + label, exact: true});
   await p.click(b(d, file.endsWith('.csv') ? 'CSV (.csv)' : 'Excel (.xlsx)'));
   p.step('setInputFiles', 'input[type=file]', file); await d.locator('input[type=file]').setInputFiles(path.join(p.root, 'uploads', file));
-  await p.response('/process-files/' + kind + '/preview', () => p.click(b(d, '开始预检')));
-  const ack = d.getByRole('checkbox', {name: /已核对全部修改前后内容/}); if (await ack.count()) await p.click(ack);
+  const preview = await p.response('/process-files/' + kind + '/preview', () => p.click(b(d, '开始预检')));
+  assert.equal(await d.getByRole('checkbox', {name: /已核对全部修改前后内容/}).count(), 0);
   const session = await page.context().newCDPSession(page), endpoint = '/process-files/' + kind + '/confirm';
   const started = p.report.network.length;
   try {
@@ -16,7 +16,7 @@ async function recoverReceipt({p, page, processArea, kind, file}) {
     await session.send('Network.enable');
     await session.send('Fetch.enable', {patterns: [{urlPattern: '*' + endpoint, requestStage: 'Response'}]});
     const paused = new Promise(resolve => session.once('Fetch.requestPaused', resolve));
-    await p.click(b(d, '确认导入')); const response = await paused;
+    await p.click(b(d, preview.data.zero_review_required ? '按 0 导入' : '确认导入')); const response = await paused;
     assert.equal(response.responseStatusCode, 200);
     const key = JSON.parse(response.request.postData).request_key;
     p.step('browser-only-offline-after-real-200-headers', 'CDP Network', {request_key: key});
@@ -33,7 +33,7 @@ async function recoverReceipt({p, page, processArea, kind, file}) {
     assert.equal(receipt.receipt_ref, receiptBefore.receipt_ref);
     assert(['committed', 'unchanged'].includes(receipt.result));
     // Completion copy after the recovered receipt (ProcessFileActions.jsx done status; glossary wording, 2026-09).
-    await d.getByText(kind === 'hours' ? '已查到文件导入结果；导入不代替工时阶段的人工确认。' : '文件导入已完成；工艺确认状态以刷新后的详情为准。', {exact: true}).waitFor();
+    await d.getByText(kind === 'hours' ? '导入已完成，请继续确认工时。' : '导入已完成，请刷新资料。', {exact: true}).waitFor();
     await p.shot('recovered-original-' + kind + '-receipt');
     const writes = p.report.network.slice(started).filter(r => r.event === 'request' && new URL(r.url).pathname.endsWith(endpoint));
     assert.equal(writes.length, 1, 'Recovery queried the original receipt without replaying the write');

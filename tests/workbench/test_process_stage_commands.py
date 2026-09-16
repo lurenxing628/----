@@ -99,9 +99,12 @@ def test_invalid_numbers_cannot_be_normalized(stage_conn, field, bad):
 def test_zero_hours_need_explicit_unit_review_but_setup_zero_is_normal(stage_conn):
     payload = hours_input(stage_conn)
     payload["confirm_zero_unit_hours"] = False
+    prepare_stages(stage_conn)
+    before = storage(stage_conn)
     with pytest.raises(WorkbenchCommandRejected) as exc:
-        WorkbenchProcessMutationService.normalize("hours_confirm", payload)
-    assert exc.value.code == "zero_unit_hours_review"
+        run_stage(stage_conn, "hours_confirm", payload)
+    assert exc.value.code == "zero_unit_hours_confirmation_required"
+    assert exc.value.operation_refs and storage(stage_conn) == before
     for row in payload["operations"]:
         if "unit_hours" in row:
             row.update(setup_hours=0, unit_hours=1)
@@ -463,3 +466,23 @@ def test_noop_skips_reconfirmation_but_first_and_invalidated_stages_record(stage
     stage_conn.commit()
     assert run_stage(stage_conn, action, make_input(stage_conn), key=KEY + "-changed-facts")["result"] == "committed"
     assert calls == [action[:-len("_confirm")]] * 2
+
+
+def test_unchanged_confirmed_zero_does_not_require_another_acknowledgement(stage_conn):
+    prepare_stages(stage_conn)
+    payload = hours_input(stage_conn)
+    run_stage(stage_conn, "hours_confirm", payload, key=KEY + "-zero-first")
+    payload["confirm_zero_unit_hours"] = False
+    before = storage(stage_conn)
+    with TransactionManager(stage_conn).transaction(begin_immediate=True):
+        outcome = WorkbenchProcessMutationService(stage_conn).apply("hours_confirm", payload, identity_for(stage_conn))
+    assert outcome.result == "unchanged" and storage(stage_conn) == before
+    zero = next(row for row in payload["operations"] if row.get("unit_hours") == 0)
+    zero["setup_hours"] += 1
+    with pytest.raises(WorkbenchCommandRejected) as exc:
+        run_stage(stage_conn, "hours_confirm", payload, key=KEY + "-changed-zero")
+    assert exc.value.code == "zero_unit_hours_confirmation_required"
+    assert storage(stage_conn) == before
+    payload["confirm_zero_unit_hours"] = True
+    run_stage(stage_conn, "hours_confirm", payload, key=KEY + "-changed-zero-ack")
+    assert read_workflow(stage_conn, "PROC-001")["ready"]

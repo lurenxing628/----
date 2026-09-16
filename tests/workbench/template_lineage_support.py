@@ -89,7 +89,7 @@ def lineage(case, op_id):
 def sync(case, code="COPY-001", *, key="template-sync-request-0001"):
     ref = case.ref("batch", code)
     service = WorkbenchBatchOperationService(case.conn)
-    payload = {"strict_mode": False}
+    payload = {}
     return WorkbenchCommandService(case.conn).execute(request_key=key, action="batch.sync_confirm", context_ref=ref,
         normalized_input=payload, guard=lambda: service.sync_preview(ref, payload), mutate=lambda _: service.sync(ref, payload))
 

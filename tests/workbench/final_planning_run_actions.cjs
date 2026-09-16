@@ -14,9 +14,9 @@ async function runActions(page, ready, report, h, flush) {
   await action(['WBP-RUN-001.open-picker', 'WBP-RUN-002.empty-guard'], async () => {
     await button('开始排产检查').click();
     await page.locator('[data-reason-group="no_eligible_tasks"]').waitFor();
-    await button('核对并开始排产').click(); await flush();
-    const empty = last((_data, row) => row.url.endsWith('/scheduling/runs/preview'));
-    assert.equal(empty.write_context.capabilities['scheduling.run'], false);
+    assert.equal(await button('核对并开始排产').isDisabled(), true);
+    await page.getByText('请先选择要排产的批次。', { exact: true }).waitFor();
+    await flush();
     assert.equal(await page.getByRole('button', { name: '确认开始排产', exact: true }).count(), 0);
     assert(!report.requests.some(row => row.method === 'POST' && row.url.endsWith('/scheduling/runs')));
     await button('选择批次').click();

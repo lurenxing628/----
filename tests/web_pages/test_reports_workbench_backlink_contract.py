@@ -140,7 +140,7 @@ def _assert_utilization_export(client, export_href: str) -> None:
     operator_rows = _xlsx_sheet_rows(export_resp.data, "人员负荷")
     machine_row = next(row for row in machine_rows if row and row[0] == "M-RPT")
     operator_row = next(row for row in operator_rows if row and row[0] == "O-RPT")
-    assert float(machine_row[2]) == 4.0
+    assert float(machine_row[2]) == 3.0  # 一小时设备停机不算可工作占用。
     assert int(machine_row[3]) == 1
     assert float(operator_row[2]) == 4.0
     assert int(operator_row[3]) == 1
@@ -480,7 +480,7 @@ def test_report_reversed_time_rows_surface_degradation() -> None:
         ],
         start_dt=datetime(2026, 5, 6, 0, 0, 0),
         end_dt_excl=datetime(2026, 5, 7, 0, 0, 0),
-        cap_hours=8.0,
+        calendars={},
         degradation_collector=collector,
     )
 

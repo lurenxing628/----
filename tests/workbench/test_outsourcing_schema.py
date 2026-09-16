@@ -126,10 +126,9 @@ def test_install_never_guesses_missing_legacy_birth(outsourcing_case):
     install(case.conn)
     case.conn.commit()
     assert case.conn.execute("SELECT batch_ref FROM WorkbenchOutsourcingOperationOrigins WHERE operation_ref=?", (ref,)).fetchone()[0] is None
-    from core.models.workbench_command import WorkbenchCommandRejected
-
-    with pytest.raises(WorkbenchCommandRejected, match="映射缺失"):
-        case.preview(case.payload())
+    preview = case.preview(case.payload())
+    assert preview["target"]["source_resolution"] == {"basis": "current_relation", "confirmation_ref": None}
+    assert case.conn.execute("SELECT COUNT(*) FROM WorkbenchOutsourcingSourceConfirmations").fetchone()[0] == 0
     assert original_rows(case.conn) == source
     assert get_schema_version(case.conn) == 29
 

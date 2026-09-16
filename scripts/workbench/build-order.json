@@ -30,14 +30,11 @@
         "SMIcon",
         "SMStatus",
         "SMUnavailable",
-        "SMDisabled",
         "SMExport",
         "SMOverview",
         "SMFilters",
         "SMPager",
-        "SMRecordDetail",
-        "SMRecords",
-        "SMConfiguration"
+        "SMRecordDetail"
       ]
     }
   ],
@@ -77,6 +74,7 @@
     "ResourceTableFilter.jsx",
     "ResourceTableHeader.jsx",
     "ResourceDetailRelations.jsx",
+    "OperatorMachinePermissions.jsx",
     "ResourceForms.jsx",
     "ResourceTables.jsx",
     "ResourceMetrics.jsx",
@@ -138,6 +136,7 @@
     "FieldFilters.jsx",
     "FieldEditorFields.jsx",
     "FieldEditor.jsx",
+    "FieldVoidEditor.jsx",
     "FieldDetail.jsx",
     "FieldTable.jsx",
     "FieldFiles.jsx",
@@ -227,6 +226,7 @@
     "SystemMaintenanceRecords.jsx",
     "SystemMaintenanceConfig.jsx",
     "SystemMaintenanceWorkspace.jsx",
+    "SystemSampleControls.jsx",
     "SystemLive.jsx",
     "OutsourcingContract.js",
     "OutsourcingSession.js",

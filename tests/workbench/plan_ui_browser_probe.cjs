@@ -138,7 +138,7 @@ async function interactive(page) {
     await mount(page); await choose(page); await page.getByRole('searchbox').fill('D2609-001');
     for (const format of ['csv', 'xlsx']) {
       await page.getByRole('button', { name: '导出', exact: true }).click();
-      const dialog = page.getByRole('dialog'); ok((await dialog.textContent()).includes('本次导出仍包含此时间范围内的全部 36 道安排，不是搜索结果。'));
+      const dialog = page.getByRole('dialog'); ok((await dialog.textContent()).includes('本次导出包含所选时间范围的全部 36 道安排。'));
       await dialog.getByRole('button', { name: format.toUpperCase(), exact: true }).click();
       const pending = page.waitForEvent('download'); await dialog.getByRole('button', { name: '下载 ' + format.toUpperCase(), exact: true }).click();
       const download = await pending, filename = path.join(output, state.id + '-plan.' + format); await download.saveAs(filename); report.downloads.push(filename);
@@ -234,7 +234,7 @@ async function failures(page) {
     await choose(page, '候选排产方案 2');
     await page.evaluate(() => { fixture.held.splice(0).forEach(resolve => resolve()); }); await settle(page);
     equal(await page.evaluate(() => fixture.calls.find(row => row.type === 'workspace' && row.ref === PlanUIFixtures.ref(1)).aborted), true);
-    ok((await page.locator('.plan-heading').first().textContent()).includes('候选排产方案 2'));
+    ok((await page.locator('.plan-catalog select option:checked').textContent()).includes('候选排产方案 2'));
     await page.evaluate(() => { fixture.spec.hold = 'workspace'; }); await page.getByRole('button', { name: '刷新所选计划' }).click();
     await page.getByRole('button', { name: '取消计划读取' }).click();
     ok((await page.locator('[data-plan-workspace]').textContent()).includes('计划读取已取消'));

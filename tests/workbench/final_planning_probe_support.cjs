@@ -68,7 +68,7 @@ function support(page, ready, report, save, flush) {
     return last(data => data.plan && data.tasks);
   }
   async function createTrial(fromTask = false) {
-    await (fromTask ? button('调整此工序', page.locator('[data-plan-inspector]')) : button('试调', page.locator('.plan-heading').first())).click();
+    await (fromTask ? button('调整此工序', page.locator('[data-plan-inspector]')) : button('试调', page.locator('.plan-scope .plan-catalog'))).click();
     const dialog = page.getByRole('dialog');
     await button('核对原来源', dialog).click();
     await dialog.getByRole('checkbox', { name: '确认基于此来源新增独立草稿，正式计划保持不变', exact: true }).check();

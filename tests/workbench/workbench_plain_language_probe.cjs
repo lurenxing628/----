@@ -108,7 +108,7 @@ async function plans(page) {
     await mountPlan(page, { hold: 'workspace' });
     await page.getByText('正在读取所选计划、工序安排和分析结果…', { exact: true }).waitFor();
     await page.getByRole('button', { name: '取消计划读取', exact: true }).click();
-    await page.getByText('计划读取已取消，未显示上次读取的内容。', { exact: true }).waitFor();
+    await page.getByText('计划读取已取消。', { exact: true }).waitFor();
     await page.evaluate(() => { fixture.held.splice(0).forEach(resolve => resolve()); });
     assert.equal(await page.locator('[data-plan-gantt]').count(), 0);
     await mountPlan(page, { workspaceFailure: '所选计划读取失败。' });
@@ -121,14 +121,14 @@ async function plans(page) {
   await check('plan-scope-export-not-search-no-json-change', async () => {
     await mountPlan(page, { context: { plan_ref: F.ref(1), range_start: '2026-09-09T23:00:00', range_end: '2026-09-10T01:00:00' } });
     await page.locator('[data-plan-gantt]').waitFor();
-    await page.getByText(/每道安排的起止时间完整保留/).waitFor();
+    await page.getByText(/显示所选时间段内的工序安排/).waitFor();
     await page.getByRole('searchbox').fill('钻孔');
-    await page.getByText(/只影响甘特图显示；分析表和导出仍包含/).waitFor();
+    await page.getByText(/甘特搜索 1 \/ 5 道；分析和导出共 5 道/).waitFor();
     await page.getByRole('button', { name: '导出', exact: true }).click();
     const dialog = page.getByRole('dialog', { name: '导出计划', exact: true }); await dialog.waitFor();
     const text = await dialog.innerText();
-    assert(text.includes('共 5 道工序安排')); assert(text.includes('找到 1 道安排')); assert(text.includes('全部 5 道安排，不是搜索结果'));
-    assert(text.includes('不会自动更换计划或继续下载')); assert(!/serverScope|服务端|快照|投影/.test(text));
+    assert(text.includes('共 5 道工序安排')); assert(text.includes('找到 1 道安排')); assert(text.includes('本次导出包含所选时间范围的全部 5 道安排'));
+    assert(!text.includes('不会自动更换计划或继续下载')); assert(!/serverScope|服务端|快照|投影/.test(text));
     await shot(page, 'plan-export');
     const download = page.waitForEvent('download'); await dialog.getByRole('button', { name: '下载 CSV', exact: true }).click();
     assert.equal((await download).suggestedFilename(), '计划读取范围.csv');
@@ -151,9 +151,9 @@ async function plans(page) {
     const table = page.getByRole('table', { name: '交付风险列表' });
     assert((await table.innerText()).includes('暂无数据')); assert((await table.innerText()).includes('已安排部分结束于'));
     await selectFirstPlanTask(page);
-    assert((await page.locator('[data-plan-inspector]').innerText()).includes('不代表批次完工'));
+    assert((await page.locator('[data-plan-inspector]').innerText()).includes('已排工序结束时间：'));
     await page.getByRole('button', { name: '资源负荷', exact: true }).click();
-    assert((await page.getByRole('region', { name: '计划分析', exact: true }).innerText()).includes('设备有空闲时间不代表人员已就绪'));
+    assert((await page.getByRole('region', { name: '计划分析', exact: true }).innerText()).includes('占用率 = 班表内已占时间 ÷ 可用时间'));
     assert((await page.getByRole('table', { name: '资源负荷列表' }).innerText()).includes('无法核实'));
     await shot(page, 'plan-unknown-analysis');
   });
@@ -163,8 +163,8 @@ async function plans(page) {
     await page.getByRole('button', { name: '查看初始安排', exact: true }).click();
     const detail = page.locator('[data-plan-inspector]');
     assert((await detail.innerText()).includes('初始计划安排'));
-    assert((await detail.innerText()).includes('初始计划的交付风险没有单独查询'));
-    assert((await detail.innerText()).includes('初始计划的班表和占用没有单独查询'));
+    assert((await detail.innerText()).includes('暂无初始计划的交付风险数据'));
+    assert((await detail.innerText()).includes('暂无初始计划的班表和资源占用数据'));
     assert(await detail.getByRole('button', { name: /^调整此工序(?:：|$)/ }).isDisabled());
     assert.equal(await detail.getByRole('button', { name: /^保存(?:试调)?(?:：|$)/ }).count(), 0);
     assert.equal(await detail.locator('.plan-actions button:not(:disabled)').count(), 0);

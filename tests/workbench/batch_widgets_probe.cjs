@@ -4,7 +4,7 @@ const assert = require('node:assert/strict'), fs = require('node:fs'), http = re
 const { chromium } = require('playwright'), { compile } = require('../../scripts/workbench/compile.cjs');
 const root = path.resolve(__dirname, '../..'), output = process.argv[2];
 fs.mkdirSync(output, { recursive: true });
-const files = ['WorkbenchPageContext.jsx', 'WorkbenchGuards.js', 'WorkbenchFormat.js', 'WorkbenchTerms.js', 'WorkbenchReferences.jsx', 'WorkbenchControls.jsx',
+const files = ['WorkbenchPageContext.jsx', 'WorkbenchGuards.js', 'WorkbenchControlStyles.jsx', 'WorkbenchFormat.js', 'WorkbenchTerms.js', 'WorkbenchReferences.jsx', 'WorkbenchControls.jsx',
   'resource-contract.js', 'resource-session.js', 'ResourceControls.jsx', 'WorkbenchGuardHost.jsx', 'WorkbenchListControls.jsx', 'ResourceTables.jsx', 'ResourceForms.jsx',
   'BatchContract.js', 'BatchControls.jsx', 'BatchForms.jsx', 'BatchOperationEditor.jsx', 'BatchDetail.jsx', 'BatchTable.jsx', 'BatchFiles.jsx', 'BatchWorkspace.jsx'];
 const sources = files.map(file => ({ path: 'frontend/workbench/app/' + file, code: fs.readFileSync(path.join(root, 'frontend/workbench/app', file), 'utf8') }));
@@ -24,12 +24,12 @@ function record(n){ const op={ref:ref(1000+n),operation_ref:ref(1000+n),business
   setup_hours:null,unit_hours:0,external_days:null,machine_ref:null,operator_ref:null,supplier_ref:null,op_type_ref:ref(400),resources:{machine:null,operator:null,supplier:null,op_type:resource(400,'TYPE','精加工')},external_group:null,issues:[{code:'data_gap',message:'换型工时未填写。'}],editable:true};
   return {ref:ref(n),business_code:'B'+String(n).padStart(3,'0'),label:'零件 '+n,status:'pending',fields:{quantity:n,due_date:'2026-10-01',priority:n%2?'normal':'urgent',ready_status:n%2?'no':'yes',ready_date:null,remark:null},
     relationships:{part_ref:ref(300),part_no:'PART-01',part_name:'零件 '+n,operation_count:1,completed_count:0,gap_count:1,plan_reference_count:0,execution_reference_count:0,material_requirement_count:0},operations:[op],all_operations_complete:false,issues:[],protected:false,write_context:wc(),
-    materials:{requirements:[],count:0},template:{origin:'legacy',ready:false}};}
+    materials:{requirements:[],count:0},template:{origin:'legacy',ready:false,complete:true,operation_count:1,diagnostics:[]}};}
 function matching(scope){return f.rows.filter(r=>(!scope.query||r.business_code.includes(scope.query))&&(!scope.status||r.status===scope.status)&&(!scope.ready_status||r.fields.ready_status===scope.ready_status)&&Object.entries(scope.column_filters||{}).every(([key,values])=>values.includes(key==='business_code'?r.business_code:key==='part_no'?r.relationships.part_no:key==='status'?r.status:r.fields[key])));}
 function pageData(scope){const rows=matching(scope).slice();const cell=r=>scope.sort==='business_code'?r.business_code:scope.sort==='part_no'?r.relationships.part_no:scope.sort==='status'?r.status:r.fields[scope.sort];rows.sort((a,b)=>(cell(a)>cell(b)?1:cell(a)<cell(b)?-1:0)*(scope.direction==='desc'?-1:1));return envelope({entities:clone(rows.slice((scope.page-1)*scope.size,scope.page*scope.size)).map(r=>({...r,write_context:wc()})),page:{number:scope.page,size:scope.size,total:rows.length,pages:Math.max(1,Math.ceil(rows.length/scope.size)),sort:[{field:scope.sort,direction:scope.direction}]},create_context:wc(),metrics:{total:rows.length}});}
 function adapter(){return {
  list:async(kind,scope)=>{f.reads.push(clone(scope));if(f.spec.failList)throw APSResourceContract.failure('MOCK 列表失败');const result=pageData(scope);if(f.spec.badList)result.data.entities[0].all_operations_complete=true;return result;},
- detail:async(kind,id)=>{if(f.spec.failDetail)throw APSResourceContract.failure('MOCK 详情失败');const row=f.rows.find(r=>r.ref===id);if(!row)throw APSResourceContract.failure('MOCK 已删除');return envelope({...clone(row),write_context:wc()});},
+ detail:async(kind,id)=>{if(f.spec.failDetail)throw APSResourceContract.failure('MOCK 详情失败');const row=f.rows.find(r=>r.ref===id);if(!row)throw APSResourceContract.failure('MOCK 已删除');const context=wc();if(row.protected)for(const action of ['delete','sync_confirm','operation_update']){context.capabilities['batch.'+action]=false;context.blocked_reasons.push({action:'batch.'+action,message:'已有排产、报工或执行状态记录，暂不能删除、替换或编辑工序。'});}return envelope({...clone(row),write_context:context});},
  choices:async()=>envelope({parts:[{ref:ref(300),business_code:'PART-01',label:'当前零件'}],machines:[resource(100,'M-01','数控设备')],operators:[resource(200,'O-01','人员甲')],suppliers:[],authorizations:[{machine_ref:ref(100),operator_ref:ref(200)}]}),
  selection:async scope=>{f.selections.push(clone(scope));const rows=matching(scope);return envelope({refs:rows.map(r=>r.ref),count:rows.length});},
  facets:async(scope,field)=>envelope({field,values:field==='quantity'?[1,2,3]:['normal','urgent'],count:3}),
@@ -37,7 +37,7 @@ function adapter(){return {
  exportPreview:async(selection,scope,refs)=>{f.exports.push({selection,scope:clone(scope),refs:clone(refs)});return envelope({export_ref:'e'.repeat(32),count:selection==='selected'?refs.length:matching(scope).length,selection});},
  downloadTemplate:async()=>({blob:new Blob(['explicit component mock download'],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'})}),
  downloadExport:async()=>({blob:new Blob(['explicit component mock download'],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'})}),
- preview:async(action,id,input,scope,snapshot)=>{f.previews.push({action,id,input:clone(input),scope:clone(scope),snapshot});const token='a'.repeat(31)+(f.previews.length%10);f.tokens[token]={action,id,input:clone(input)};return envelope(action==='bulk'?{operation:'batch.bulk_confirm',action:input.action,preview_ref:token,write_context:wc(),rows:input.refs.map(ref=>{const before=clone(f.rows.find(r=>r.ref===ref));return {entity_ref:ref,before,after:input.action==='delete'?null:{...before,fields:{...before.fields,...input.patch}}};}),count:input.refs.length,commit_policy:'atomic',warnings:[]}:{operation:'batch.sync_confirm',entity_ref:id,strict_mode:input.strict_mode,preview_ref:token,write_context:wc(),before:f.rows.find(r=>r.ref===id).operations,after:[{sequence:1,label:'精加工',setup_hours:null,unit_hours:0,external_days:null}],commit_policy:'atomic',warnings:[]});},
+ preview:async(action,id,input,scope,snapshot)=>{f.previews.push({action,id,input:clone(input),scope:clone(scope),snapshot});const token='a'.repeat(31)+(f.previews.length%10);f.tokens[token]={action,id,input:clone(input)};return envelope(action==='bulk'?{operation:'batch.bulk_confirm',action:input.action,preview_ref:token,write_context:wc(),rows:input.refs.map(ref=>{const before=clone(f.rows.find(r=>r.ref===ref));return {entity_ref:ref,before,after:input.action==='delete'?null:{...before,fields:{...before.fields,...input.patch}}};}),count:input.refs.length,commit_policy:'atomic',warnings:[]}:{operation:'batch.sync_confirm',entity_ref:id,completeness_checked:true,change_counts:{added:0,removed:0,updated:1,unchanged:0},changes:[{sequence:1,piece_id:null,change:'updated',before:f.rows.find(r=>r.ref===id).operations[0],after:{sequence:1,label:'精加工',source:'internal',setup_hours:0,unit_hours:0,external_days:null}}],cleared_resources:[{operation_ref:f.rows.find(r=>r.ref===id).operations[0].ref,business_code:'B001_01',sequence:1,machine:resource(100,'M-01','数控设备'),operator:resource(200,'O-01','人员甲')}],preview_ref:token,write_context:wc(),before:f.rows.find(r=>r.ref===id).operations,after:[{sequence:1,label:'精加工',setup_hours:null,unit_hours:0,external_days:null}],commit_policy:'atomic',warnings:[]});},
  command:async(kind,action,id,body)=>{f.commands.push({kind,action,id,body:clone(body)});if(f.spec.stale){const e=APSResourceContract.failure('MOCK stale：资料已变化');e.committed=false;throw e;}let data={entity_ref:id};
    if(action==='create'){const row=record(f.rows.length+1);row.business_code=body.input.business_code;row.fields=clone(body.input.fields);row.operations=[];row.relationships.operation_count=0;row.relationships.gap_count=0;f.rows.push(row);data.entity_ref=row.ref;}
    if(action==='update')Object.assign(f.rows.find(r=>r.ref===id).fields,body.input.fields);
@@ -49,7 +49,7 @@ function adapter(){return {
  readPending:()=>null,savePending:intent=>{f.pending=clone(intent);},clearPending:()=>{f.pending=null;}
 };}
 let root;
-window.mountFixture=(spec={})=>{if(root)root.unmount();window.f={spec,revision:1,rows:[],commands:[],reads:[],previews:[],tokens:{},receipts:{},selections:[],files:[],exports:[]};f.rows=Array.from({length:25},(_,i)=>record(i+1));root=ReactDOM.createRoot(document.getElementById('fixture-root'));root.render(React.createElement('section',{className:'plana',style:{padding:16,width:'calc(100vw - 289px)'}},React.createElement(BatchWorkspace,{adapter:adapter()}),React.createElement(WorkbenchGuardHost)));};
+window.mountFixture=(spec={})=>{if(root)root.unmount();window.f={spec,revision:1,rows:[],commands:[],reads:[],previews:[],tokens:{},receipts:{},selections:[],files:[],exports:[]};f.rows=Array.from({length:25},(_,i)=>record(i+1));root=ReactDOM.createRoot(document.getElementById('fixture-root'));root.render(React.createElement('section',{className:'plana',style:{padding:16,width:'calc(100vw - 289px)'}},React.createElement(WorkbenchControlStyles),React.createElement(BatchWorkspace,{adapter:adapter()}),React.createElement(WorkbenchGuardHost)));};
 `;
 const styleSources = ['00-tokens.css', '20-controls.css', '21-table-frame.css', '22-shared-controls.css', '31-batches-resources.css']
   .map(name => ({ path: 'frontend/workbench/app/styles/' + name, code: fs.readFileSync(path.join(root, 'frontend/workbench/app/styles', name), 'utf8') }));
@@ -134,9 +134,21 @@ async function cases() {
     await page.getByRole('combobox', { name: '人员' }).selectOption('c8'.padStart(48,'0')); await type('换型工时（小时）', '0'); await shot('operation');
     await button('保存工序').click(); await page.getByText('保存已完成。', { exact: true }).waitFor();
     const input = await page.evaluate(() => f.commands[0].body.input); assert.equal(input.fields.setup_hours, 0); assert(!('unit_hours' in input.fields)); assert(/^[0-9a-f]{48}$/.test(input.operation_ref));
-    await button('关闭').last().click(); await button('按最新工艺模板刷新本批次工序').click(); await page.getByRole('dialog', { name: '确认刷新批次工序' }).waitFor();
-    assert.equal(await page.evaluate(() => f.commands.length), 1); await shot('sync-preview'); await button('确认变更').click(); await page.getByText('保存已完成。', { exact: true }).waitFor();
+    await button('关闭').last().click(); await button('预览工序更新').click(); await page.getByRole('dialog', { name: '确认更新批次工序' }).waitFor();
+    assert.equal(await page.evaluate(() => f.commands.length), 1); assert.deepEqual(await page.evaluate(() => f.previews[0].input), {}); assert.equal(await page.getByText('以下 1 道工序的指定将被清除，更新后可重新指定。').count(), 1); await shot('sync-preview'); await button('确认更新工序').click(); await page.getByText('保存已完成。', { exact: true }).waitFor();
     assert.equal(await page.evaluate(() => f.commands[1].action), 'sync_confirm'); await button('关闭').last().click(); await button('返回列表').click(); await button('B001').waitFor();
+  });
+  await run('detail-long-fields-blocked-reasons-and-template-gaps', async () => {
+    await mount(); await page.evaluate(() => { const row=f.rows[0]; row.business_code='批次编号-'+('LONG-'.repeat(16));row.fields.remark='备注内容保持完整，不能挤占其他字段。'.repeat(8);row.protected=true;row.relationships.plan_reference_count=2;row.template.complete=false;row.template.diagnostics=[{code:'data_gap',message:'工序 10 的单件工时未填写，请先补齐工艺。'}]; });
+    await button('B001').click(); await page.locator('[data-batch-detail]').waitFor();
+    assert(await button('删除批次').isDisabled()); assert(await button('预览工序更新').isDisabled());
+    assert.equal(await page.getByRole('checkbox', { name: '资料不完整时停止刷新' }).count(),0);
+    assert.equal(await page.getByText('工序 10 的单件工时未填写，请先补齐工艺。',{exact:true}).count(),1);
+    const geometry=await page.locator('.batch-section-head').first().evaluate(node=>{const h=node.querySelector('h2').getBoundingClientRect(),a=node.querySelector('.batch-section-actions').getBoundingClientRect();return {heading:{right:h.right,bottom:h.bottom},actions:{left:a.left,top:a.top},overlap:h.right>a.left+1&&h.bottom>a.top+1};});
+    assert.equal(geometry.overlap,false,JSON.stringify(geometry));
+    const remark=page.locator('.batch-fact-full').filter({has:page.getByText('备注',{exact:true})});
+    assert((await remark.innerText()).includes('备注内容保持完整'));
+    await shot('detail-long-fields-blocked');
   });
   await run('stale-edit-keeps-draft-explicit-review', async () => {
     await mount({ stale: true }); await button('B001').click(); await button('编辑基础信息').click(); await type('备注', '不能丢失的草稿'); await button('保存基础信息').click();
@@ -148,7 +160,7 @@ async function cases() {
   await run('bulk-preview-cancel-and-confirm', async () => {
     await mount(); await page.getByRole('checkbox', { name: '选择 B001', exact: true }).check(); await button('批量修改').click(); await type('批量备注', '批量实际输入');
     await button('预览变更').click(); await page.getByRole('dialog', { name: '确认批量修改' }).waitFor(); assert.equal(await page.evaluate(() => f.commands.length), 0); await shot('bulk-preview');
-    await button('取消').click(); assert.equal(await page.evaluate(() => f.commands.length), 0); await button('删除所选').click(); await button('确认变更').click();
+    await button('取消').click(); assert.equal(await page.evaluate(() => f.commands.length), 0); await button('删除所选').click(); await button('确认删除').click();
     await page.getByText('保存已完成。', { exact: true }).waitFor(); assert.equal(await page.evaluate(() => f.rows.some(r => r.business_code === 'B001')), false); await button('关闭').last().click();
   });
   await run('uncertain-receipt-locks-writes', async () => {
@@ -179,7 +191,7 @@ async function cases() {
   try {
     browser = await chromium.launch({ executablePath: process.env.WORKBENCH_BROWSER, headless: true, args: ['--disable-background-networking'] }); report.browser = browser.version(); assert(report.browser.startsWith('109.'));
     const origin = 'http://127.0.0.1:' + server.address().port;
-    for (const viewport of [{ width: 1366, height: 768 }, { width: 1280, height: 720 }]) for (const theme of ['light', 'dark']) {
+    for (const viewport of [{ width: 1392, height: 924 }, { width: 1366, height: 768 }, { width: 1280, height: 720 }]) for (const theme of ['light', 'dark']) {
       const context = await browser.newContext({ viewport });
       await context.addInitScript(theme => { localStorage.setItem('aps_theme', theme); localStorage.setItem('aps_kit_theme', theme); }, theme);
       page = await context.newPage(); variant = viewport.width + 'x' + viewport.height + '-' + theme; page.setDefaultTimeout(12000);

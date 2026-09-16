@@ -14,7 +14,7 @@ from core.infrastructure.migration_state import (
     is_truly_empty_db,
     set_schema_version,
 )
-from core.infrastructure.migrations import MIGRATIONS, v26, v27, v28, v29, v30, v31
+from core.infrastructure.migrations import MIGRATIONS, v26, v27, v28, v29, v30, v31, v32
 from core.infrastructure.workbench_lineage_lookup_schema import lineage_lookup_objects
 from core.infrastructure.workbench_metadata_schema import _canonical_sql
 from core.infrastructure.workbench_run_schema import RUN_TABLES, install_workbench_run_schema, workbench_run_objects
@@ -26,7 +26,14 @@ from tests.workbench.dashboard_external_migration_support import (
     missing_v31_issues,
 )
 from tests.workbench.execution_ledger_migration_support import V27_TABLES
-from tests.workbench.legacy_migration_current_support import V30_TABLES, assert_v30_source_maps_only, missing_v30_issues
+from tests.workbench.legacy_migration_current_support import (
+    V30_TABLES,
+    V32_TABLES,
+    assert_v30_source_maps_only,
+    assert_v32_empty,
+    missing_v30_issues,
+    missing_v32_issues,
+)
 from tests.workbench.run_schema_migration_support import FIXTURE_V25, connect, seed_v25, snapshot, source_ddl
 from tests.workbench.schema29_regression_support import V29_TABLES, assert_v29_source_maps_only, missing_v29_issues
 
@@ -73,10 +80,11 @@ def test_real_upgrade_backs_up_and_retains_all_v25_facts_and_refs(tmp_path, sche
         assert get_schema_version(conn) == CURRENT_SCHEMA_VERSION and current_schema_contract_issues(conn) == []
         assert {name: after[name] for name in before if name != "SchemaVersion"} == {
             name: values for name, values in before.items() if name != "SchemaVersion"}
-        assert set(after) - set(before) == set(RUN_TABLES + V27_TABLES + V29_TABLES + V30_TABLES + V31_TABLES)
+        assert set(after) - set(before) == set(RUN_TABLES + V27_TABLES + V29_TABLES + V30_TABLES + V31_TABLES + V32_TABLES)
         assert_v29_source_maps_only(conn)
         assert_v30_source_maps_only(conn)
         assert_v31_receipt_maps_only(conn)
+        assert_v32_empty(conn)
         assert all(after[name] == [] for name in RUN_TABLES + V27_TABLES)
         assert [row for row in source_ddl(conn) if row[1] in {old[1] for old in ddl_before}] == ddl_before
         assert not conn.execute("PRAGMA foreign_key_check").fetchall()
@@ -103,6 +111,7 @@ def test_frozen_v25_and_current_schema_share_identical_old_objects(tmp_path, sch
         assert v29.run(old) == MigrationOutcome.APPLIED
         assert v30.run(old) == MigrationOutcome.APPLIED
         assert v31.run(old) == MigrationOutcome.APPLIED
+        assert v32.run(old) == MigrationOutcome.APPLIED
         assert get_schema_version(old) == 25
         actual = {row[1]: row[3] for row in source_ddl(fresh)}
         expected = {row[1]: row[3] for row in source_ddl(old)}
@@ -125,7 +134,7 @@ def test_v26_step_preserves_v25_and_installs_only_empty_run_tables(tmp_path):
             {"missing_template_lineage:" + name for name in template_lineage_objects()} |
             {"missing_trial_schema:" + name for name in workbench_trial_objects()} |
             {"missing_lineage_lookup:" + name for name in lineage_lookup_objects()} |
-            missing_v29_issues() | missing_v30_issues() | missing_v31_issues())
+            missing_v29_issues() | missing_v30_issues() | missing_v31_issues() | missing_v32_issues())
         assert not conn.execute("PRAGMA foreign_key_check").fetchall()
         assert v26.run(conn) == MigrationOutcome.APPLIED
         assert snapshot(conn) == after

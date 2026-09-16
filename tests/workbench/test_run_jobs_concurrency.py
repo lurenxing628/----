@@ -67,12 +67,12 @@ def test_two_workers_and_legacy_run_share_one_lock(job_case, monkeypatch):
     calls = []
     real_compute = run_worker.compute_candidate_run
 
-    def delayed(conn, settings, projections):
+    def delayed(conn, settings, projections, *, on_progress=None):
         calls.append(ref)
         assert conn.execute("PRAGMA query_only").fetchone()[0] == 1
         entered.set()
         assert release.wait(timeout=15)
-        return real_compute(conn, settings, projections)
+        return real_compute(conn, settings, projections, on_progress=on_progress)
 
     def execute():
         conn = connection(case.path)
@@ -109,14 +109,14 @@ def test_calculation_allows_other_writer_and_rejects_late_fact_drift(job_case, m
     compute = run_worker.compute_candidate_run
     changes = []
 
-    def concurrent_write(conn, settings, projections):
+    def concurrent_write(conn, settings, projections, *, on_progress=None):
         assert conn is not case.conn and not case.conn.in_transaction
         # Even a rollback-journal writer commits: the original DB has no pinned reader.
         with connection(case.path) as writer:
             writer.execute("UPDATE Machines SET name='changed during actual computation'")
             writer.commit()
         changes.append(True)
-        return compute(conn, settings, projections)
+        return compute(conn, settings, projections, on_progress=on_progress)
 
     monkeypatch.setattr(run_worker, "compute_candidate_run", concurrent_write)
     with pytest.raises(WorkbenchCommandRejected) as error:
@@ -134,7 +134,7 @@ def test_actual_maintenance_backup_and_reads_respond_during_computation(job_case
     compute = run_worker.compute_candidate_run
     backup_paths = []
 
-    def maintenance_while_computing(snapshot, settings, projections):
+    def maintenance_while_computing(snapshot, settings, projections, *, on_progress=None):
         assert snapshot is not case.conn and not case.conn.in_transaction
         path = BackupManager(str(case.path), str(tmp_path / "maintenance-backups")).backup("running")
         backup_paths.append(path)
@@ -142,7 +142,7 @@ def test_actual_maintenance_backup_and_reads_respond_during_computation(job_case
             assert service(backup).get(ref)["state"] == "running"
             assert backup.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
         assert service(case.conn).get(ref)["state"] == "running"
-        return compute(snapshot, settings, projections)
+        return compute(snapshot, settings, projections, on_progress=on_progress)
 
     monkeypatch.setattr(run_worker, "compute_candidate_run", maintenance_while_computing)
     result = run_worker.WorkbenchRunWorker(case.conn).execute(ref)

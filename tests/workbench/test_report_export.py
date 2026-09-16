@@ -22,6 +22,7 @@ def test_entire_filtered_cohort_export_and_bytes(report_api, topic, format_name)
     assert response.headers["X-Workbench-As-Of"] == first["meta"]["as_of"]
     if format_name == "csv":
         rows = list(csv.reader(io.StringIO(response.data.decode("utf-8-sig"))))
+        assert len(rows[0]) == len(set(rows[0])), "CSV headers must preserve distinct row and scope fields"
     else:
         assert response.data[:2] == b"PK"
         workbook = openpyxl.load_workbook(io.BytesIO(response.data), read_only=True)
@@ -31,6 +32,19 @@ def test_entire_filtered_cohort_export_and_bytes(report_api, topic, format_name)
         workbook.close()
     assert len(rows) - 1 == first["data"]["page"]["total"]
     assert report_api.state() == before
+
+
+def test_csv_scope_notes_do_not_overwrite_operation_gaps(report_api):
+    first = report_api.read(topic="quality", size=50)
+    response = report_api.get("/export", topic="quality", size=50,
+                              snapshot_ref=first["meta"]["snapshot_ref"], format="csv")
+    assert response.status_code == 200
+    rows = list(csv.DictReader(io.StringIO(response.data.decode("utf-8-sig"))))
+    by_ref = {row["工序编号"]: row for row in rows}
+    for operation in first["data"]["rows"]:
+        exported = by_ref[operation["operation_ref"]]
+        assert exported["数据缺口"] == "；".join(operation["data_gaps"])
+        assert exported["统计说明与待补资料"] == "；".join(first["data"]["data_gaps"])
 
 
 def test_export_stale_and_range_changes_rejected(report_api):

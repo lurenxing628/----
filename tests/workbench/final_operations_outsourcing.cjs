@@ -31,7 +31,7 @@ async function outsourcing(h) {
     await shot(id + '-preview');
     const receipt = await mark('WBP-DASH-010.' + (id === 'create' ? 'save' : 'correct'), () => request('/outsourcing/receipts', () => dialog().getByRole('button', { name: '确认保存外协登记', exact: true }).click(), 200, 'POST'));
     assert.equal(receipt.data.execution.automatically_reported, false);
-    await dialog().getByText('外协登记已完成。回厂不等于工序完工。', { exact: true }).waitFor();
+    await dialog().getByText('外协登记已完成。', { exact: true }).waitFor();
     await mark('WBP-DASH-010.original-receipt', () => request('/outsourcing/receipts', () => dialog().getByRole('button', { name: '完成', exact: true }).click()));
     report.outsourcing.push({ preview, receipt }); return receipt.data.outsourcing_ref;
   }

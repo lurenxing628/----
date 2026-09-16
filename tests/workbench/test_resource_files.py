@@ -80,15 +80,16 @@ def test_readonly_export_roundtrip_keeps_unknown_and_original_relations(resource
 @pytest.mark.parametrize("kind,field,code", [("machine", "category", "M1"), ("machine", "remark", "M1"),
                                             ("operator", "remark", "O1"), ("supplier", "remark", "S1"),
                                             ("op_type", "default_hours", "OT1"), ("machine", "created_at", "M1")])
-def test_readonly_columns_cannot_be_written_or_created(resource_conn, kind, field, code):
-    values = [[code, "forbidden"], ["new-code", "forbidden"]]
-    content = file_bytes(values, headers=("business_code", field))
+def test_readonly_columns_are_reference_values_not_changes(resource_conn, kind, field, code):
+    value = 99 if field == "default_hours" else "reference only"
+    content = file_bytes([[code, value]], headers=("business_code", field))
     preview = WorkbenchResourceFileService(resource_conn, kind).preview_import(content, file_format="csv", scope=scope("internal" if kind == "op_type" else None))
-    assert preview.as_dict()["summary"]["rejected"] == 2
-    before = snapshot(resource_conn)
-    with pytest.raises(WorkbenchCommandRejected):
-        confirm(resource_conn, kind, preview, content)
-    assert snapshot(resource_conn) == before
+    row = preview.as_dict()["rows"][0]
+    assert row["result"] == "unchanged" and row["reference_fields"] == [field]
+    assert row["input"]["fields"] == {} and not row["input"].get("relationships")
+    before = business_snapshot(resource_conn)
+    assert confirm(resource_conn, kind, preview, content)["result"] == "unchanged"
+    assert business_snapshot(resource_conn) == before
 
 
 @pytest.mark.parametrize("kind,code,field,value", [

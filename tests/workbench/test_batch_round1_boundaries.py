@@ -3,7 +3,6 @@
 import pytest
 from flask import Flask
 
-from core.errors import ValidationError
 from core.models.workbench_batch_query import batch_scope
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.workbench.batch_template_validation import template_diagnostics
@@ -103,11 +102,16 @@ def test_later_file_insert_failure_restores_all_rows_and_receipts(batch_client, 
     assert ref_for(client) == original_ref and not conn.in_transaction
 
 
+def template_facts(groups=()):
+    return {"ExternalGroups": list(groups), "OpTypes": [{"op_type_id": "T"}],
+            "Suppliers": [{"supplier_id": "S", "status": "active"}]}
+
+
 def test_template_missing_hours_remain_missing_and_hidden_external_values_are_not_normalized():
     rows = [dict(seq=1, source="internal", op_type_id="T", setup_hours=None, unit_hours=0),
             dict(seq=2, source="external", op_type_id="T", ext_group_id=None, ext_days=None,
                  supplier_id=None, setup_hours=b"raw", unit_hours="unknown")]
-    assert len(template_diagnostics(rows, {"ExternalGroups": []}, {"part_no": "P"})) == 3
+    assert len(template_diagnostics(rows, template_facts(), {"part_no": "P"})) == 3
     assert rows[0]["setup_hours"] is None and rows[0]["unit_hours"] == 0
     assert rows[1]["setup_hours"] == b"raw" and rows[1]["unit_hours"] == "unknown"
 
@@ -116,26 +120,22 @@ def test_template_missing_hours_remain_missing_and_hidden_external_values_are_no
 def test_template_identity_and_source_are_not_guessed(changes):
     row = dict(seq=1, source="internal", op_type_id="T", setup_hours=0, unit_hours=0)
     row.update(changes)
-    with pytest.raises(WorkbenchCommandRejected) as error:
-        template_diagnostics([row], {"ExternalGroups": []}, {"part_no": "P"})
-    assert error.value.code == "constraint_conflict"
+    diagnostics = template_diagnostics([row], template_facts(), {"part_no": "P"})
+    assert len(diagnostics) == 1 and ("工序号" in diagnostics[0]["message"] or "归属" in diagnostics[0]["message"])
 
 
 @pytest.mark.parametrize("group", (None, {"group_id": "G", "part_no": "OTHER", "merge_mode": "merged", "total_days": 3},
                                    {"group_id": "G", "part_no": "P", "merge_mode": "unknown", "total_days": 3}))
 def test_external_group_link_must_be_complete(group):
     row = dict(seq=1, source="external", op_type_id="T", ext_group_id="G", ext_days=2, supplier_id="S")
-    facts = {"ExternalGroups": [] if group is None else [group]}
-    with pytest.raises(WorkbenchCommandRejected) as error:
-        template_diagnostics([row], facts, {"part_no": "P"})
-    assert error.value.code == "constraint_conflict"
+    diagnostics = template_diagnostics([row], template_facts([] if group is None else [group]), {"part_no": "P"})
+    assert len(diagnostics) == 1 and "外协组关系不完整" in diagnostics[0]["message"]
 
 
 def test_merged_external_period_is_validated_instead_of_hidden_per_operation_value():
     row = dict(seq=1, source="external", op_type_id="T", ext_group_id="G", ext_days="legacy", supplier_id="S")
     group = dict(group_id="G", part_no="P", merge_mode="merged", total_days=3)
-    assert template_diagnostics([row], {"ExternalGroups": [group]}, {"part_no": "P"}) == []
+    assert template_diagnostics([row], template_facts([group]), {"part_no": "P"}) == []
     group["total_days"] = -1
-    with pytest.raises(ValidationError) as error:
-        template_diagnostics([row], {"ExternalGroups": [group]}, {"part_no": "P"})
-    assert error.value.field == "external_days"
+    diagnostics = template_diagnostics([row], template_facts([group]), {"part_no": "P"})
+    assert len(diagnostics) == 1 and "整组外协周期必须大于 0" in diagnostics[0]["message"]

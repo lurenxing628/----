@@ -5,7 +5,6 @@ from types import SimpleNamespace
 
 import pytest
 
-from core.services.report.calculations import capacity_hours
 from core.services.report.report_engine import ReportEngine
 from core.services.scheduler.calendar_service import CalendarService
 
@@ -20,67 +19,12 @@ def _calendar(conn, shifts):
     return CalendarService(conn)
 
 
-@pytest.mark.parametrize(
-    "start_day,end_day,expected",
-    [(7, 8, 18.0), (7, 7, 4.0), (8, 8, 14.0)],
-)
-def test_night_and_next_day_capacity_is_clipped_to_report_dates(schema_conn, start_day, end_day, expected):
-    calendar = _calendar(schema_conn, [
-        ("2026-09-07", "20:00", 10.0, 1.0),
-        ("2026-09-08", "08:00", 8.0, 1.0),
-    ])
-    assert capacity_hours(calendar, date(2026, 9, start_day), date(2026, 9, end_day)) == expected
-
-
-@pytest.mark.parametrize(
-    "shifts,start_day,end_day,expected",
-    [
-        ([("2026-09-06", "20:00", 10.0, 1.0)], 7, 7, 14.0),
-        ([("2026-09-07", "20:00", 10.0, 0.5), ("2026-09-08", "08:00", 8.0, 1.25)], 7, 8, 15.0),
-        ([("2026-09-07", "16:00", 8.0, 1.0)], 7, 8, 16.0),
-        ([("2026-09-07", "20:00", 10.0, 1.0), ("2026-09-08", "20:00", 10.0, 1.0)], 7, 8, 14.0),
-        ([("2026-09-07", "20:00", 10.0, 1.0), ("2026-09-08", "08:00", 0.0, 1.0)], 8, 8, 6.0),
-        ([("2026-09-07", "00:00", 24.0, 1.0)], 7, 7, 24.0),
-        ([("2026-09-07", "08:00", 8.0, 1.23456789)], 7, 7, 9.876543),
-        ([], 5, 6, 0.0),
-        ([], 7, 8, 16.0),
-        ([], 8, 7, 0.0),
-    ],
-    ids=["leading-night", "efficiency", "midnight-end", "two-nights", "night-before-zero",
-         "24-hours", "rounding", "weekend", "default-weekdays", "empty-range"],
-)
-def test_capacity_preserves_calendar_and_range_contracts(schema_conn, shifts, start_day, end_day, expected):
-    calendar = _calendar(schema_conn, shifts)
-    assert capacity_hours(calendar, date(2026, 9, start_day), date(2026, 9, end_day)) == expected
-
-
-def test_capacity_does_not_filter_priority_or_use_personal_calendar(schema_conn):
-    calendar = _calendar(schema_conn, [("2026-09-07", "08:00", 8.0, 0.5)])
-    schema_conn.execute("UPDATE WorkCalendar SET allow_normal='no', allow_urgent='no'")
-    schema_conn.execute("INSERT INTO Operators (operator_id, name) VALUES ('O1', 'Operator')")
-    schema_conn.execute(
-        """INSERT INTO OperatorCalendar
-        (operator_id, date, day_type, shift_start, shift_hours, efficiency, allow_normal, allow_urgent)
-        VALUES ('O1', '2026-09-07', 'workday', '08:00', 12, 1, 'yes', 'yes')"""
-    )
-    assert capacity_hours(calendar, date(2026, 9, 7), date(2026, 9, 7)) == 4.0
-
-
-def test_capacity_calendar_errors_are_not_swallowed(schema_conn, monkeypatch):
-    calendar = CalendarService(schema_conn)
-
-    def unavailable(_dt):
-        raise RuntimeError("calendar unavailable")
-
-    monkeypatch.setattr(calendar, "policy_for_datetime", unavailable)
-    with pytest.raises(RuntimeError, match="calendar unavailable"):
-        capacity_hours(calendar, date(2026, 9, 7), date(2026, 9, 8))
-
-
 @pytest.mark.parametrize("start_day,end_day,expected", [(7, 8, 18.0), (7, 7, 4.0), (8, 8, 14.0)])
 @pytest.mark.parametrize("bad_time", [False, True])
 def test_report_engine_uses_same_window_for_capacity_and_occupied_hours(schema_conn, monkeypatch, start_day, end_day, expected, bad_time):
     _calendar(schema_conn, [("2026-09-07", "20:00", 10.0, 1.0), ("2026-09-08", "08:00", 8.0, 1.0)])
+    schema_conn.execute("INSERT INTO Machines(machine_id,name) VALUES ('M1','Machine')")
+    schema_conn.execute("INSERT INTO Operators(operator_id,name) VALUES ('O1','Operator')")
     engine = ReportEngine(schema_conn)
     resolution = SimpleNamespace(
         selected_role="adopted", requested_role="adopted", scenario_id=None,

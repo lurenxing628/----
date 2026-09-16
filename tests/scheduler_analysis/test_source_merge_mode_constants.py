@@ -38,7 +38,7 @@ def test_compute_utilization_only_counts_internal_source() -> None:
         schedule_rows=schedule_rows,
         start_dt=start_dt,
         end_dt_excl=end_dt_excl,
-        cap_hours=24.0,
+        calendars={},
     )
 
     assert [r["machine_id"] for r in by_machine] == ["MC1"]

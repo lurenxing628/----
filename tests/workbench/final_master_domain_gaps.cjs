@@ -54,13 +54,14 @@ async function prerequisiteLocks() {
   await p.click(parent.getByRole('tab', {name: /工序归属/}));
   const source = parent.locator('[data-process-source-editor]:visible');
   await source.waitFor();
-  assert(await source.getByRole('button', {name: /^检查归属/}).isDisabled());
-  assert(await source.getByRole('checkbox', {name: '确认本页已核对工序', exact: true}).isDisabled());
+  assert(await source.getByRole('button', {name: /^保存归属并继续/}).isDisabled());
+  assert.equal(await source.getByRole('checkbox', {name: '确认本页已核对工序', exact: true}).count(), 0);
+  assert(await source.getByRole('button', {name: '选择工序 10 工种', exact: true}).isDisabled());
   await p.shot('source-prerequisite-locked');
   await p.click(parent.getByRole('tab', {name: /工时定额/}));
   const hours = parent.locator('[data-process-hours-editor]:visible'); await hours.waitFor();
   assert(await hours.getByRole('button', {name: /^保存工时/}).isDisabled());
-  assert(await hours.getByRole('checkbox', {name: '确认本页已核对工时', exact: true}).isDisabled());
+  assert.equal(await hours.getByRole('checkbox', {name: '确认本页已核对工时', exact: true}).count(), 0);
   assert(await hours.getByLabel('工序 10 单件工时', {exact: true}).isDisabled());
   await p.shot('hours-prerequisite-locked'); await p.click(b(parent, '关闭详情'));
 }

@@ -107,6 +107,14 @@ async function main() {
       await page.evaluate(spec => mountActual(spec), { theme, key: size + theme }); await wait(page);
       const originalDTO = await page.evaluate(() => JSON.stringify(liveResponse.data));
       await action(size + '-' + theme + '-layout', async () => {
+        assert.ok(await page.evaluate(() => {
+          const search = document.querySelector('.fg-search'), input = search.querySelector('input'), icon = search.querySelector('svg');
+          const a = input.getBoundingClientRect(), b = icon.getBoundingClientRect(), group = document.querySelector('.fg-toolbar .seg');
+          return getComputedStyle(search).borderLeftWidth === '0px' && getComputedStyle(input).borderLeftWidth === '1px'
+            && b.right <= a.left + parseFloat(getComputedStyle(input).paddingLeft)
+            && getComputedStyle(group).borderLeftWidth === '0px'
+            && Array.from(group.querySelectorAll('button')).every(button => Math.abs(button.getBoundingClientRect().height - group.getBoundingClientRect().height) < 1);
+        }), 'Search and view switch have one border and aligned contents');
         assert.equal(await page.locator('[data-actual-mark=point]').count(), 1);
         assert.equal(await page.locator('[data-actual-mark=plan]').count(), 1);
         assert.ok(await page.getByText('待续排', { exact: false }).count());
@@ -213,7 +221,7 @@ async function main() {
       await page.evaluate(() => mountActual({ noPlan: true, key: 'default' })); await wait(page);
       await page.evaluate(() => mountActual({ context: { scope: { source: 'demo' } } }));
       await page.getByRole('alert').waitFor(); assert.equal(await page.locator('[data-actual-scroll]').count(), 0);
-      assert.ok((await page.getByRole('alert').innerText()).includes('未将演示范围替换为生产范围'));
+      assert.ok((await page.getByRole('alert').innerText()).includes('数据来源无效，请重新打开现场实际甘特。'));
     });
     await action('field-producer-only-normalizes-empty-batches-with-original-return-context', async () => {
       for (const batches of [[], ['CAT-B']]) {

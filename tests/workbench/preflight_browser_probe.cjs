@@ -48,10 +48,17 @@ async function layout() {
     const rects = selector => Array.from(document.querySelectorAll(selector), row => { const r = row.getBoundingClientRect(); return { y: r.y, height: r.height }; });
     return { overflow: document.documentElement.scrollWidth > innerWidth, padding: style.padding, maxWidth: style.maxWidth,
       ancestor: !!node.parentElement.closest('.plana'), left: rects('.pf-rule'), right: rects('.pf-check'),
-      controls: Array.from(document.querySelectorAll('.pf-segment'), row => row.getBoundingClientRect().width) };
+      controls: Array.from(document.querySelectorAll('.pf-segment'), row => row.getBoundingClientRect().width),
+      clipped: Array.from(node.querySelectorAll('.pf-rule strong,.pf-check strong,.pf-check p,.pf-segment span'))
+        .filter(row => row.scrollWidth > row.clientWidth + 1 || row.scrollHeight > row.clientHeight + 1).map(row => row.textContent) };
   });
   assert.equal(result.overflow, false); assert.equal(result.padding, '0px'); assert.equal(result.maxWidth, 'none'); assert.equal(result.ancestor, false);
-  result.left.forEach((row, i) => { assert(Math.abs(row.y - result.right[i].y) <= 1, JSON.stringify(result)); assert(Math.abs(row.height - result.right[i].height) <= 1); });
+  assert(Math.abs(result.left[0].y - result.right[0].y) <= 1, JSON.stringify(result));
+  // Independent rule and check columns can use different row heights; their content must remain readable.
+  [result.left, result.right].forEach(rows => rows.forEach((row, i) => {
+    if (i) assert(row.y >= rows[i - 1].y + rows[i - 1].height - 1, JSON.stringify(result));
+  }));
+  assert.deepEqual(result.clipped, []);
   assert.equal(new Set(result.controls).size, 1);
 }
 async function cases() {

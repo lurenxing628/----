@@ -49,7 +49,7 @@ def test_field_all_batch_omission_and_explicit_nonempty_scope_keep_original_iden
 def test_real_adoption_services_keep_identity_quantities_and_state(trial_case, setup, unit, quantity, point):
     case = trial_case
     identity = adopted(case, setup=setup, unit=unit, quantity=quantity)
-    assert CURRENT_SCHEMA_VERSION == 31
+    assert CURRENT_SCHEMA_VERSION == 32
     before = snapshot(case.conn)
     for service in (ActualGanttService(case.conn), FieldWorkspaceService(case.conn)):
         with service.read_snapshot():

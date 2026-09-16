@@ -21,20 +21,20 @@ def test_current_http_labels_preserve_old_fields_and_all_storage(targets_case, m
     for item in data["items"]:
         assert item["batch"] == {"ref": case.entity_ref("batch", "XB1"), "business_code": "XB1", "label": "Part"}
         assert item["supplier"] == {"ref": case.entity_ref("supplier", "XS1"), "business_code": "XS1", "label": "Supplier"}
-        assert {key: value for key, value in item.items() if key not in ("batch", "supplier")} == {
+        assert item["part"] == {"ref": case.entity_ref("part", "XP1"), "business_code": "XP1", "label": "Part"}
+        assert item["source_resolution"] == {"basis": "birth_record", "confirmation_ref": None}
+        assert {key: value for key, value in item.items() if key not in ("batch", "supplier", "part", "source_resolution")} == {
             "operation_ref": case.operation_ref(item["business_code"]), "business_code": item["business_code"],
             "label": "Heat treatment", "batch_ref": item["batch"]["ref"], "supplier_ref": item["supplier"]["ref"],
             "outsourcing_ref": None, "can_register": True, "issues": []}
     assert storage(case.conn) == before
 
 
-@pytest.mark.parametrize("kind", ["batch", "supplier", "operation", "origin"])
+@pytest.mark.parametrize("kind", ["batch", "supplier", "operation"])
 def test_missing_or_retired_identity_never_fills_labels(targets_case, kind):
     case = targets_case
     ref = case.operation_ref("XO1")
-    if kind == "origin":
-        change_origin(case, ref, None)
-    elif kind == "operation":
+    if kind == "operation":
         case.conn.execute("UPDATE WorkbenchPlanSourceRefs SET active=0 WHERE ref=?", (ref,))
     else:
         case.conn.execute("UPDATE WorkbenchEntityRefs SET active=0 WHERE kind=?", (kind,))
@@ -43,6 +43,17 @@ def test_missing_or_retired_identity_never_fills_labels(targets_case, kind):
     item = next(row for row in target_rows(case) if row["business_code"] == "XO1")
     assert item["batch"] is None and item["supplier"] is None
     assert item["can_register"] is False and item["issues"]
+    assert storage(case.conn) == before
+
+
+def test_unknown_birth_can_preview_current_relation_without_writing_labels(targets_case):
+    case = targets_case
+    change_origin(case, case.operation_ref("XO1"), None)
+    before = storage(case.conn)
+    item = next(row for row in target_rows(case) if row["business_code"] == "XO1")
+    assert item["can_register"] is True and item["issues"] == []
+    assert item["batch"]["ref"] == case.entity_ref("batch", "XB1")
+    assert item["source_resolution"] == {"basis": "current_relation", "confirmation_ref": None}
     assert storage(case.conn) == before
 
 

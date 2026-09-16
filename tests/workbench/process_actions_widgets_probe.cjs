@@ -148,17 +148,17 @@ async function cases() {
     await page.getByLabel('选择工艺路线文件', { exact: true }).setInputFiles({ name: 'route.csv', mimeType: 'text/csv', buffer: Buffer.from('图号,路线\nPART-001,5Polish\n') });
     await button('开始预检').click(); await page.getByRole('table', { name: '原外协组规则', exact: true }).waitFor();
     assert(await page.getByRole('button', { name: /^确认导入/ }).isDisabled()); assert((await page.getByRole('table', { name: '原外协组规则', exact: true }).innerText()).includes('6.75 天'));
-    await page.getByRole('checkbox', { name: '已核对全部 1 组，同意解除这些原外协组。', exact: true }).check(); await page.getByRole('checkbox', { name: '已核对全部修改前后内容，确认这些更新。', exact: true }).check();
-    await shot('file-route'); await button('确认导入').click(); await page.getByText('文件导入已完成；工艺确认状态以刷新后的详情为准。', { exact: true }).waitFor();
+    await page.getByRole('checkbox', { name: '已核对全部 1 组，同意解除这些原外协组。', exact: true }).check(); assert.equal(await page.getByRole('checkbox', { name: '已核对全部修改前后内容，确认这些更新。', exact: true }).count(), 0);
+    await shot('file-route'); await button('确认导入').click(); await page.getByText('导入已完成，请刷新资料。', { exact: true }).waitFor();
     const input = await page.evaluate(() => fixture.commands.at(-1).body.input);
     assert.deepEqual(input, { preview_ref: 'p'.repeat(32), discard_group_refs: [(450).toString(16).padStart(48, '0')], confirm_zero_unit_hours: false }); await button('完成').click();
     await button('导入工时定额').click(); await button('CSV (.csv)').click();
     await page.getByLabel('选择工时定额文件', { exact: true }).setInputFiles({ name: 'hours.csv', mimeType: 'text/csv', buffer: Buffer.from('图号,工序,单件工时(h)\nPART-001,5,0\n') });
-    await button('开始预检').click(); await page.getByRole('checkbox', { name: '已复核单件工时为 0 的记录，确认保留 0。', exact: true }).waitFor();
-    await page.getByRole('checkbox', { name: '已核对全部修改前后内容，确认这些更新。', exact: true }).check(); assert(await page.getByRole('button', { name: /^确认导入/ }).isDisabled());
-    await page.getByRole('checkbox', { name: '已复核单件工时为 0 的记录，确认保留 0。', exact: true }).check();
+    await button('开始预检').click(); await button('按 0 导入').waitFor();
+    assert.equal(await page.getByRole('checkbox', { name: '已核对全部修改前后内容，确认这些更新。', exact: true }).count(), 0); assert(await button('按 0 导入').isEnabled());
+    assert.equal(await page.getByRole('checkbox', { name: /已复核单件工时/ }).count(), 0);
     const beforeHours = await page.evaluate(() => ({committed:fixture.committed.length,reads:fixture.reads.length}));
-    await button('确认导入').click(); await page.getByRole('table', {name:'工时导入结果明细',exact:true}).waitFor();
+    await button('按 0 导入').click(); await page.getByRole('table', {name:'工时导入结果明细',exact:true}).waitFor();
     assert.match(await page.getByRole('region', {name:'工时导入结果',exact:true}).innerText(), /已导入\s+1\s+行[\s\S]*锁定跳过\s+0\s+行/);
     assert.equal(await page.evaluate(() => fixture.committed.length), beforeHours.committed);
     assert.equal(await page.evaluate(() => fixture.reads.length), beforeHours.reads);
@@ -183,8 +183,8 @@ async function cases() {
   await run('file-pending-remount-and-wrong-kind-receipt', async () => {
     await mount({ files: true, pending: true, notRecorded: true }); await button('导入工时定额').click(); await button('CSV (.csv)').click();
     await page.getByLabel('选择工时定额文件', { exact: true }).setInputFiles({ name: 'hours.csv', mimeType: 'text/csv', buffer: Buffer.from('图号,工序\nPART-001,5\n') });
-    await button('开始预检').click(); await page.getByRole('checkbox', { name: '已复核单件工时为 0 的记录，确认保留 0。', exact: true }).check();
-    await page.getByRole('checkbox', { name: '已核对全部修改前后内容，确认这些更新。', exact: true }).check(); await button('确认导入').click(); await button('查询结果').waitFor();
+    await button('开始预检').click(); await button('按 0 导入').waitFor();
+    assert.equal(await page.getByRole('checkbox', { name: '已核对全部修改前后内容，确认这些更新。', exact: true }).count(), 0); await button('按 0 导入').click(); await button('查询结果').waitFor();
     const pending = await page.evaluate(() => fixture.pending); assert.equal(pending.kind, 'process_hours_import'); assert.equal(pending.action, 'confirm'); assert(!pending.input);
     await page.evaluate(() => remountFixture()); await button('查询结果').waitFor(); assert.equal(await page.evaluate(() => fixture.commands.length), 1);
     await page.evaluate(() => { fixture.spec.notRecorded = false; fixture.receipt.data.kind = 'route'; }); await button('查询结果').click();

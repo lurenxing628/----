@@ -33,7 +33,12 @@ from tests.workbench.execution_ledger_migration_support import (
     snapshot,
     without_version,
 )
-from tests.workbench.legacy_migration_current_support import V30_TABLES, assert_v30_source_maps_only
+from tests.workbench.legacy_migration_current_support import (
+    V30_TABLES,
+    V32_TABLES,
+    assert_v30_source_maps_only,
+    assert_v32_empty,
+)
 from tests.workbench.plan_identity_support import LEDGER_TABLES
 from tests.workbench.run_schema_migration_support import source_ddl
 from tests.workbench.schema29_regression_support import V29_TABLES, assert_v29_source_maps_only
@@ -78,10 +83,11 @@ def test_real_upgrade_preserves_every_old_row_type_identity_and_backup(tmp_path,
         assert get_schema_version(conn) == CURRENT_SCHEMA_VERSION and current_schema_contract_issues(conn) == []
         after = snapshot(conn)
         assert without_version({name: after[name] for name in before}) == without_version(before)
-        assert set(after) - set(before) == set(LEDGER_TABLES + RUN_TABLES + V27_TABLES + V29_TABLES + V30_TABLES + V31_TABLES)
+        assert set(after) - set(before) == set(LEDGER_TABLES + RUN_TABLES + V27_TABLES + V29_TABLES + V30_TABLES + V31_TABLES + V32_TABLES)
         assert_v29_source_maps_only(conn)
         assert_v30_source_maps_only(conn)
         assert_v31_receipt_maps_only(conn)
+        assert_v32_empty(conn)
         assert all(after[table] == [] for table in RUN_TABLES + V27_TABLES + LEDGER_TABLES[2:])
         assert [row for row in source_ddl(conn) if row[1] in {old[1] for old in ddl_before}] == ddl_before
         assert tuple(conn.execute("SELECT * FROM WorkbenchExecutionLedgerClock").fetchone()) == (1, 1 + len(original), 1)

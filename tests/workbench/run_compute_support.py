@@ -5,6 +5,7 @@ from datetime import datetime
 import pytest
 
 from core.infrastructure.workbench_execution_ledger_schema import install_execution_ledger
+from core.infrastructure.workbench_execution_void_schema import install_execution_voids
 from core.infrastructure.workbench_metadata_schema import install_metadata
 from core.infrastructure.workbench_plan_identity_schema import install_plan_identity
 from core.services.scheduler.config.config_field_spec import default_snapshot_values
@@ -56,6 +57,7 @@ def run_case(schema_conn):
     install_metadata(conn)
     install_plan_identity(conn)
     install_execution_ledger(conn)
+    install_execution_voids(conn)
     conn.commit()
     conn.execute("INSERT INTO OpTypes(op_type_id,name) VALUES ('T1','Turning')")
     conn.execute("INSERT INTO Machines(machine_id,name,op_type_id) VALUES ('M1','Lathe','T1')")

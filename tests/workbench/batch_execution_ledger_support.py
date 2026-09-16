@@ -4,6 +4,7 @@ import pytest
 
 from core.infrastructure.migration_state import get_schema_version, set_schema_version
 from core.infrastructure.workbench_execution_ledger_schema import install_execution_ledger
+from core.infrastructure.workbench_execution_void_schema import install_execution_voids
 from tests.workbench.batch_support import batch_database, create_batch_client, detail, ref_for
 from tests.workbench.execution_ledger_support import LedgerCase
 from tests.workbench.plan_identity_support import load_v24_schema
@@ -17,6 +18,7 @@ def batch_ledger_fixture(batch_client):
     conn = client.batch_conn
     conn.execute("BEGIN")
     install_execution_ledger(conn)
+    install_execution_voids(conn)
     conn.commit()
     return build_case(client)
 

@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from core.infrastructure.workbench_execution_ledger_schema import install_execution_ledger
+from core.infrastructure.workbench_execution_void_schema import install_execution_voids
 from tests.workbench.batch_execution_ledger_support import batch_ledger_fixture, report
 from tests.workbench.batch_support import BASE, batch_database, detail, list_data, post, state
 
@@ -92,6 +93,7 @@ def test_real_combined_fixture_returns_two_of_twenty_three(app_client, monkeypat
         conn.row_factory = sqlite3.Row
         conn.execute("BEGIN")
         install_execution_ledger(conn)
+        install_execution_voids(conn)
         conn.commit()
         assert conn.execute("SELECT count(*) FROM OperationExecutionEvents WHERE batch_id='CAT-B' AND event_type='finish'").fetchone()[0] == 2
         assert conn.execute("SELECT count(*) FROM BatchOperations WHERE batch_id='CAT-B' AND status='completed'").fetchone()[0] == 0

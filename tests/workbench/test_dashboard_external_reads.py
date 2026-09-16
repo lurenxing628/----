@@ -15,6 +15,13 @@ def test_unregistered_operations_are_visible_unknown_not_zero(request, fixture, 
     external_case = request.getfixturevalue(fixture)
     data, _ = external_case.read()
     summary = data["categories"]["external"]
+    if fixture == "external_v30_case":
+        # Historical DDL is deliberately frozen; current reads require the v32 source extension.
+        assert summary["state"] == "unavailable" and summary["entry"]["enabled"] is False
+        assert summary["risk_count"] is None and summary["receipt_count"] is None
+        assert summary["issues"][0]["code"] == "outsourcing_unavailable"
+        assert not external_case.conn.execute("SELECT 1 FROM sqlite_master WHERE name='WorkbenchOutsourcingSourceConfirmations'").fetchone()
+        return
     assert summary["state"] == "loaded" and summary["entry"]["enabled"] is True
     assert summary["kind"] == "outsourcing_receipts" and summary["tracking_basis"] == "manual_receipt_facts"
     assert summary["receipt_count"] == summary["assessed_count"] == summary["known_risk_count"] == 0
@@ -24,6 +31,10 @@ def test_unregistered_operations_are_visible_unknown_not_zero(request, fixture, 
     assert {row["code"] for row in summary["evaluation_gaps"]} == {"outsourcing_unregistered"}
     assert {row["source_ref"] for row in summary["evaluation_gaps"]} == {
         external_case.shipments.operation_ref("XO" + str(index)) for index in range(1, 4)}
+    assert {row["subject"] for row in summary["evaluation_gaps"]} == {
+        "Heat treatment（XO" + str(index) + "）" for index in range(1, 4)}
+    assert {tuple(row["operation"][field] for field in ("code", "name")) for row in summary["evaluation_gaps"]} == {
+        ("XO" + str(index), "Heat treatment") for index in range(1, 4)}
     assert summary["handling_supported"] is handling_supported and summary["handling_count"] == summary["closed_count"] == 0
     assert not any(row["category"] == "external" for row in data["items"])
 
