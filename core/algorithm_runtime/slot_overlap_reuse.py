@@ -5,8 +5,8 @@ from datetime import datetime
 from typing import Any, Dict, Iterator, List, Optional, Sequence, Tuple
 
 from .downtime import SegmentOverlapIndex
-
-Segment = Tuple[datetime, datetime]
+from .owned_timeline import owned_segment_certificate
+from .slot_reuse_timeline import Segment, SlotReuseTimeline
 
 
 def _segment_snapshot(segments: Optional[Sequence[Segment]]) -> Tuple[Segment, ...]:
@@ -17,9 +17,6 @@ class SlotOverlapReuse:
     """One latest, exact segment snapshot per resource, owned by one SGS run."""
 
     def __init__(self) -> None:
-        # OwnedTimeline imports this module; resolve its certificate after both modules are loaded.
-        from .owned_timeline import owned_segment_certificate
-
         self._owned_certificate = owned_segment_certificate
         self._entries: Dict[Tuple[str, str], Tuple[Tuple[Segment, ...], SegmentOverlapIndex]] = {}
         self._certificates: Dict[Tuple[str, str], Any] = {}
@@ -64,14 +61,6 @@ class _ShortSlotOverlapReuse(SlotOverlapReuse):
             index = entry[1]
         index.begin_estimate()
         return index
-
-
-class SlotReuseTimeline(Dict[str, List[Segment]]):
-    """Run-owned dict; all timeline reads and writes retain ordinary dict semantics."""
-
-    def __init__(self) -> None:
-        super().__init__()
-        self.overlap_reuse: Optional[SlotOverlapReuse] = None
 
 
 def overlap_reuse_for(timeline: Dict[str, List[Segment]]) -> Optional[SlotOverlapReuse]:

@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Any
 
 from .native_snapshot import make_class_guard
-from .slot_overlap_reuse import SlotReuseTimeline
+from .slot_reuse_timeline import SlotReuseTimeline
 
 
 class OwnedSegments(MutableSequence):
