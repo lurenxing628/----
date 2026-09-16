@@ -37,15 +37,15 @@ for (const eff of ['', '0', '-1', 'bad', '201']) {
 }
 const node = await render(React.createElement(window.PreflightControls.Rules,
   {value:{ready_check:true,missing_resource_policy:'auto_assign'},onChange:()=>{},disabled:false}));
-expect(node.textContent.includes('工时、工种、外协资料仍为必填项'));
-expect(node.textContent.includes('本次参数，不改全局配置'));
-expect(node.textContent.includes('已开工和已完工的工序不能解除保护'));
+expect(node.textContent.includes('缺资源工序'));
+expect(node.textContent.includes('自动分配') && node.textContent.includes('暂不排'));
+expect(node.textContent.includes('已开工工序：保留记录（不可修改）'));
 expect(!node.textContent.includes('missing_resource_policy') && !node.textContent.includes('strict_mode'));
 return true;
 """, scripts=("static/workbench/app/resource-contract.js", "static/workbench/app/ResourceControls.js",
               "static/workbench/app/CalendarContract.js", "static/workbench/app/PreflightControls.js"))
     batch = _read("frontend/workbench/app/BatchDetail.jsx")
-    assert "资料不完整时停止刷新" in batch
+    assert "刷新详情" in batch
     assert "B.label('status', entity.status)" in batch
     assert "解析器不支持 strict_mode" not in batch
     calendar = _read("frontend/workbench/app/CalendarFields.jsx")
@@ -163,8 +163,8 @@ def test_process_excel_current_tables_render_chinese_display_fields() -> None:
     assert "{{ field.label }}" in template and "{{ field.value }}" in template
     assert "{{ field.before }}" in template and "{{ field.after }}" in template
     assert "r.data | tojson_zh" not in template
-    hours = _read("frontend/workbench/app/ProcessHoursEditor.jsx")
-    assert "window.APSProcessContract.sourceLabel(row.source)" in hours
+    detail = _read("frontend/workbench/app/ProcessDetail.jsx")
+    assert "P = window.APSProcessContract" in detail and "P.sourceLabel(row.source)" in detail
     browser_contract("""
 expect(window.APSProcessContract.sourceLabel('internal') === '自制');
 expect(window.APSProcessContract.sourceLabel('external') === '外协');
@@ -638,16 +638,17 @@ def test_frontend_scripts_keep_internal_details_out_of_user_messages() -> None:
         assert term not in detail
     manual = _read("static/docs/scheduler_manual.md")
     manual_viewmodel = _read("web/viewmodels/page_manuals_scheduler_outputs.py")
+    # 手册整改后，缩放档位和查看模式的细节收进页面说明；总说明书只保留操作要点。
     for phrase in (
-        "计划甘特现在是",
+        "当前为查看模式",
         "月、周、日",
         "12小时 / 6小时",
         "1分钟",
         "范围太大",
-        "保留方便点击的区域",
         "拖拽调整功能尚未开放",
     ):
-        assert phrase in manual
+        assert phrase in manual_viewmodel
+    assert "便于点击的命中区域" in manual
     assert "后续页面入口接好并放行后再开放" not in manual
     assert "后续草稿和校验链路完成后再开放" not in manual
     for phrase in (
@@ -700,11 +701,11 @@ def test_scheduler_analysis_hides_internal_schema_and_attempt_tags() -> None:
 
 def test_reports_and_v2_batch_templates_match_public_manual_contracts() -> None:
     catalog = _read("core/services/workbench/report_catalog.py")
-    assert '("utilization_percent", "计划利用率（%）")' in catalog
+    assert '("utilization_percent", "整窗占用率（%）")' in catalog
     assert 'None if row.get("utilization") is None else round(row["utilization"] * 100, 2)' in catalog
     exporter = _read("core/services/report/exporters/xlsx.py")
     assert '["类别", "批次号", "图号", "名称", "数量", "交期", "完工/截至时间", "超期(天)", "超期(小时)"]' in exporter
-    assert '"利用率(%)"' in exporter and "_utilization_percent" in exporter
+    assert '"整窗占用率(%)"' in exporter and "_utilization_percent" in exporter
     batches = _read("frontend/workbench/app/BatchWorkspace.jsx")
     assert "删除所选" in batches and "preview('bulk', { action: 'delete', refs: selected" in batches
     assert "scope, token || snapshot" in batches

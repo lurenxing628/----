@@ -212,7 +212,7 @@ def test_excel_import_component_renders_strict_mode_toggle_fields() -> None:
         assert 'name="preview_baseline" value="fixed-original-preview"' in html
         assert 'name="raw_rows_json" hidden' in html
     current = _read("frontend/workbench/app/BatchFiles.jsx")
-    assert "新增批次不自动生成工序" in current
+    assert "新批次导入后需生成工序" in current
     assert "adapter.importPreview(file, mode, scope, snapshot)" in current
     assert "strict_mode" not in current
 
@@ -232,7 +232,8 @@ def test_process_pages_render_strict_mode_toggle_fields(tmp_path, monkeypatch) -
         finally:
             detail.close()
         current = _read("frontend/workbench/app/ProcessCollectionActions.jsx")
-        assert "这里只登记零件和路线原文，不会自动确认工艺。" in current
+        # 整改后新增零件的提示改为“新增后，请继续确认工艺。”，仍表达“登记不等于自动确认工艺”。
+        assert "新增后，请继续确认工艺。" in current
         assert "processCreateStrictMode" not in current
         assert _business_rows(db_path) == before
     finally:
@@ -254,10 +255,10 @@ def test_scheduler_batch_pages_render_strict_mode_toggle_fields(tmp_path, monkey
             response.close()
         detail = _read("frontend/workbench/app/BatchDetail.jsx")
         workspace = _read("frontend/workbench/app/BatchWorkspace.jsx")
-        assert 'type="checkbox" checked={strict}' in detail
-        assert "onChange={event => setStrict(event.target.checked)}" in detail
-        assert "资料不完整时停止刷新" in detail
-        assert "preview('sync', { strict_mode: strict }, entity, snapshot)" in workspace
+        # 整改后批次详情不再提供逐批的“资料不完整就停下”勾选框：工序更新统一走预检，再确认。
+        assert 'type="checkbox"' not in detail and "strict_mode" not in detail + workspace
+        assert "预检工序更新" in detail and "先查看工序变化和设备、人员指定的清除情况，再确认更新。" in detail
+        assert "preview('sync', {}, entity, snapshot)" in workspace
         assert _business_rows(db_path) == before
     finally:
         _close_app(app)
@@ -269,8 +270,9 @@ def test_process_excel_page_renders_strict_mode_toggle_fields(tmp_path, monkeypa
         before = _business_rows(_db_path)
         _retired_list_and_current_boot(app.test_client(), "/process/excel/routes", "process")
         current = _read("frontend/workbench/app/ProcessFileActions.jsx")
-        assert "checked={ack}" in current and "onChange={event => setAck(event.target.checked)}" in current
-        assert "已核对全部修改前后内容，确认这些更新。" in current
+        # 整改后文件导入不再要求先勾选“已核对”，预检结果下直接用主按钮确认导入。
+        assert 'type="checkbox"' not in current and "onClick={importing ? confirm" in current
+        assert "'确认导入'" in current and "'按 0 导入'" in current
         assert "本批整体确认；任何一行不能提交，本批全部不修改。" in current
         assert "body.append('mode', 'upsert')" in current and "strict_mode" not in current
         assert _business_rows(_db_path) == before

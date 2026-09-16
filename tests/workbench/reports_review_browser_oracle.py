@@ -155,8 +155,11 @@ def verify(root):
         elif "停机影响" in sheets:
             assert sheets["停机影响"][1][2:] == (.5, 1, 33, 66)
         elif "设备负荷" in sheets:
-            assert sheets["设备负荷"][1][2:] == (132, 66, 8, 1650)
-            assert sheets["人员负荷"][1][2:] == (132, 66, 8, 1650)
+            # available_occupancy_v1：66 条任务叠放在同一 2 小时里。设备扣掉 0.5 小时登记停机后可用 7.5 小时，
+            # 班表内占用 1.5、落在停机里的 0.5 单列为班表外；累计负荷按每条任务班表内小时逐条相加，
+            # 重叠负荷 = 累计负荷 - 班表内占用。人员没有停机，可用 8 小时、班表内占用 2 小时。
+            assert sheets["设备负荷"][1][2:] == (1.5, 66, 7.5, 20, 99, 97.5, 0.5, "available_occupancy_v1", None)
+            assert sheets["人员负荷"][1][2:] == (2, 66, 8, 25, 132, 130, 0, "available_occupancy_v1", None)
         elif "超期清单" in sheets:
             assert sheets["超期清单"][1][1] == "B1" and sheets["超期清单"][1][-1] == 10
         else:

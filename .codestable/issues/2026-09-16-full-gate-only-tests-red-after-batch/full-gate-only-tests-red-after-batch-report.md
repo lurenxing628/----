@@ -1,7 +1,8 @@
 ---
 doc_type: issue-report
 issue: 2026-09-16-full-gate-only-tests-red-after-batch
-status: open
+status: resolved
+resolved: 2026-09-16
 severity: P2
 created: 2026-09-16
 source: 2026-09-16 提交批次收尾时，拆分高复杂度函数的子代理按 grep 扩跑相关测试顺带发现
@@ -43,3 +44,23 @@ tags: [gate, full-gate, frontend-copy, manual, utilization, report]
 3. 浏览器类（2 个）：先按 `~/.cache/aps-chromium109-assessment` 恢复运行时再跑，排除运行时原因后再归因。
 4. 处理完成后考虑把 `test_frontend_ui_language_polish.py`、`test_page_manual_registry.py` 登进对应必跑组，
    避免文案整改再次只在全量门禁里暴露。
+
+## 处理（2026-09-16，用户裁决“先修这 10 个，再开 PR”）
+
+实跑发现同一文件里还有 3 个同因失败（`test_form_run_option_checkbox_layout_contract.py` 的三个 strict 开关用例，
+基线 5 passed、HEAD 4 failed），一并处理，共 13 个用例、8 个测试文件：
+
+- 文案 / 手册 / 前端重写类：`test_frontend_ui_language_polish.py`（预检规则、批次详情刷新、工艺来源标签移到
+  ProcessDetail、缩放档位收进页面说明、报表列名）、`test_page_manual_registry.py`（4 条总说明书语义片段改为
+  手册现行措辞；“系统不会自动跳过这些批次继续排其它批次”是两个合同都要求的原句，改为补回手册两处齐套说明）、
+  `test_gantt_load_strip_js_contract.py`（负荷页说明改为“占用率 = 班表内已占时间 ÷ 可用时间”）、
+  `test_form_run_option_checkbox_layout_contract.py`（批次详情不再有逐批 strict 勾选框、文件导入直接确认、
+  新增零件提示）、`ui_geometry_contract_data.py`（批次导入提示、批次详情勾选框数 0）。
+- 利用率口径类：`test_reports_export_version_default_latest.py` 改为断言班表内 + 班表外两列之和（v7 排在默认休息的
+  周六，班表内为 0）；`reports_review_browser_oracle.py` 的设备/人员负荷行按 available_occupancy_v1 实际值重写，
+  并在注释里写清 66 条任务同窗叠放、设备扣 0.5 小时停机的推导。
+- 浏览器类：几何 smoke 在真 Chrome 上复跑，失败点是过期文案与已移除的勾选框，不是运行时问题。
+- 顺带修正：导出表头“计算口径版本”含词表禁词“口径”（导出模块不在扫描器范围内所以此前没被扫到），改为
+  “计算方式版本”；手册 9.2 的设备/人员负荷列表仍写旧口径列名，按新导出列重写。
+
+验证：8 个测试文件 71 passed；`test_final_execution_reports` 与浏览器几何 smoke 各 1 passed；文案扫描器 0 命中；全仓 ruff 通过。

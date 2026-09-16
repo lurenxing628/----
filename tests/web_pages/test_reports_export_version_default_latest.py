@@ -61,7 +61,9 @@ def _assert_utilization_export(resp, name: str, expect_version: int, expect_mach
         _assert_single_data_row(ws, name)
         if ws["A2"].value != "MC_REPORT":
             raise RuntimeError(f"{name} 设备编号异常：{ws['A2'].value!r}")
-        _assert_number(ws["C2"].value, expect_machine_hours, f"{name} 设备负荷小时")
+        # available_occupancy_v1 把占用拆成班表内(C)、班表外(I)两列；两列相加就是这台设备在该版本里的
+        # 实际占用小时，与日历是否覆盖无关（v7 排在默认休息的周六），仍能区分版本。
+        _assert_number(float(ws["C2"].value or 0) + float(ws["I2"].value or 0), expect_machine_hours, f"{name} 设备占用小时")
     finally:
         wb.close()
 

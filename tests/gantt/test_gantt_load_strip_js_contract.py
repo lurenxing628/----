@@ -96,7 +96,7 @@ for(const page of [0,1]) {
  const tree=h.render(h.runtime.PlanDetailsUI.ProjectionTables,{data,onResource:()=>{}},{ProjectionTables:{0:'load',1:page}});
  const rows=h.walk(tree).filter(n=>n.type==='tbody').flatMap(n=>h.walk(n).filter(row=>row.type==='tr'));
  assert.strictEqual(rows.length,page===0?20:5);seen.push(...rows.map(row=>h.text(h.walk(row).find(n=>n.type==='button'))));
- assert(h.text(tree).includes('25 项'));assert(h.text(tree).includes('只统计所选计划在此时间范围内的安排'));
+ assert(h.text(tree).includes('25 项'));assert(h.text(tree).includes('占用率 = 班表内已占时间 ÷ 可用时间'));
  const next=h.walk(tree).find(n=>n.props['aria-label']==='分析下一页');assert.strictEqual(next.props.disabled,page===1);
  if(!page){next.props.onClick();assert(h.updates().some(row=>row.name==='ProjectionTables'&&row.index===1&&row.value===1));}
 }
