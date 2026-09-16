@@ -1469,3 +1469,52 @@ CREATE TRIGGER wb_dashboard_external_states_no_replace BEFORE INSERT ON Workbenc
 CREATE TRIGGER wb_dashboard_external_history_no_update BEFORE UPDATE ON WorkbenchDashboardExternalHistory BEGIN SELECT RAISE(ABORT,'dashboard evidence is permanent'); END;
 CREATE TRIGGER wb_dashboard_external_history_no_delete BEFORE DELETE ON WorkbenchDashboardExternalHistory BEGIN SELECT RAISE(ABORT,'dashboard evidence is permanent'); END;
 CREATE TRIGGER wb_dashboard_external_history_no_replace BEFORE INSERT ON WorkbenchDashboardExternalHistory WHEN EXISTS(SELECT 1 FROM WorkbenchDashboardExternalHistory WHERE history_ref=NEW.history_ref OR request_key=NEW.request_key OR (item_ref=NEW.item_ref AND sequence=NEW.sequence)) BEGIN SELECT RAISE(ABORT,'dashboard evidence cannot be replaced'); END;
+
+-- Version 32: explicit source confirmations and report revocation facts.
+CREATE TABLE WorkbenchOutsourcingSourceConfirmations (
+            operation_ref TEXT PRIMARY KEY NOT NULL, batch_ref TEXT NOT NULL, fact_ref TEXT NOT NULL,
+            FOREIGN KEY(operation_ref) REFERENCES WorkbenchOutsourcingOperationOrigins(operation_ref),
+            FOREIGN KEY(batch_ref) REFERENCES WorkbenchEntityRefs(ref),
+            FOREIGN KEY(fact_ref) REFERENCES WorkbenchOutsourcingFacts(fact_ref));
+CREATE TRIGGER wb_outsourcing_source_confirmation_guard
+            BEFORE INSERT ON WorkbenchOutsourcingSourceConfirmations BEGIN
+            SELECT CASE WHEN NOT EXISTS (
+                SELECT 1 FROM WorkbenchOutsourcingOperationOrigins o
+                JOIN WorkbenchOutsourcingMembers m ON m.operation_ref=o.operation_ref
+                JOIN WorkbenchOutsourcingReceipts r ON r.outsourcing_ref=m.outsourcing_ref
+                JOIN WorkbenchOutsourcingFacts f ON f.outsourcing_ref=r.outsourcing_ref
+                WHERE o.operation_ref=NEW.operation_ref AND o.batch_ref IS NULL
+                AND r.batch_ref=NEW.batch_ref AND f.fact_ref=NEW.fact_ref AND f.sequence=1)
+                THEN RAISE(ABORT,'outsourcing source confirmation must reference its first registration') END; END;
+CREATE TRIGGER wb_outsourcing_source_confirmation_no_update BEFORE UPDATE ON WorkbenchOutsourcingSourceConfirmations BEGIN SELECT RAISE(ABORT,'outsourcing source confirmation is permanent'); END;
+CREATE TRIGGER wb_outsourcing_source_confirmation_no_delete BEFORE DELETE ON WorkbenchOutsourcingSourceConfirmations BEGIN SELECT RAISE(ABORT,'outsourcing source confirmation is permanent'); END;
+CREATE TRIGGER wb_outsourcing_source_confirmation_no_replace BEFORE INSERT ON WorkbenchOutsourcingSourceConfirmations WHEN EXISTS(SELECT 1 FROM WorkbenchOutsourcingSourceConfirmations WHERE operation_ref=NEW.operation_ref) BEGIN SELECT RAISE(ABORT,'outsourcing source confirmation cannot be replaced'); END;
+CREATE TABLE WorkbenchProductionReportVoids (
+            void_fact_ref TEXT PRIMARY KEY NOT NULL CHECK(length(void_fact_ref)=48 AND void_fact_ref NOT GLOB '*[^0-9a-f]*'),
+            report_ref TEXT NOT NULL UNIQUE,
+            original_revision_ref TEXT NOT NULL UNIQUE,
+            reason TEXT NOT NULL CHECK(length(trim(reason)) BETWEEN 1 AND 2000),
+            local_operator TEXT NOT NULL CHECK(length(trim(local_operator)) > 0),
+            declared_operator TEXT NOT NULL, recorded_at TEXT NOT NULL,
+            request_key TEXT NOT NULL UNIQUE,
+            FOREIGN KEY(report_ref) REFERENCES WorkbenchProductionReports(report_ref),
+            FOREIGN KEY(original_revision_ref) REFERENCES WorkbenchProductionReportRevisions(revision_ref),
+            FOREIGN KEY(request_key) REFERENCES WorkbenchCommandReceipts(request_key) DEFERRABLE INITIALLY DEFERRED
+        );
+CREATE TRIGGER wb_execution_voids_clock AFTER INSERT ON WorkbenchProductionReportVoids
+            BEGIN UPDATE WorkbenchExecutionLedgerClock SET revision=revision+1 WHERE singleton=1; END;
+CREATE TRIGGER wb_execution_voids_current_revision BEFORE INSERT ON WorkbenchProductionReportVoids
+            WHEN NOT EXISTS (SELECT 1 FROM WorkbenchProductionReportRevisions r
+                WHERE r.report_ref=NEW.report_ref AND r.revision_ref=NEW.original_revision_ref
+                AND NOT EXISTS (SELECT 1 FROM WorkbenchProductionReportRevisions later
+                    WHERE later.report_ref=r.report_ref AND later.sequence>r.sequence))
+            BEGIN SELECT RAISE(ABORT, 'report void requires current revision'); END;
+CREATE TRIGGER wb_execution_voided_no_revision BEFORE INSERT ON WorkbenchProductionReportRevisions
+            WHEN EXISTS (SELECT 1 FROM WorkbenchProductionReportVoids v WHERE v.report_ref=NEW.report_ref)
+            BEGIN SELECT RAISE(ABORT, 'voided report cannot be revised'); END;
+CREATE TRIGGER wb_execution_voids_no_replace BEFORE INSERT ON WorkbenchProductionReportVoids
+            WHEN EXISTS (SELECT 1 FROM WorkbenchProductionReportVoids v WHERE v.void_fact_ref=NEW.void_fact_ref
+                OR v.report_ref=NEW.report_ref OR v.original_revision_ref=NEW.original_revision_ref OR v.request_key=NEW.request_key)
+            BEGIN SELECT RAISE(ABORT, 'execution void cannot be replaced'); END;
+CREATE TRIGGER wb_execution_voids_no_update BEFORE UPDATE ON WorkbenchProductionReportVoids BEGIN SELECT RAISE(ABORT, 'execution ledger is append-only'); END;
+CREATE TRIGGER wb_execution_voids_no_delete BEFORE DELETE ON WorkbenchProductionReportVoids BEGIN SELECT RAISE(ABORT, 'execution ledger is append-only'); END;

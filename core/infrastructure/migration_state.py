@@ -9,9 +9,11 @@ from .workbench_calibration_adoption_schema import contract_issues as calibratio
 from .workbench_dashboard_external_schema import contract_issues as dashboard_external_contract_issues
 from .workbench_dashboard_schema import workbench_dashboard_contract_issues
 from .workbench_execution_ledger_schema import execution_ledger_contract_issues
+from .workbench_execution_void_schema import execution_void_contract_issues
 from .workbench_lineage_lookup_schema import lineage_lookup_contract_issues
 from .workbench_metadata_schema import workbench_metadata_contract_issues
 from .workbench_outsourcing_schema import workbench_outsourcing_contract_issues
+from .workbench_outsourcing_source_schema import workbench_outsourcing_source_contract_issues
 from .workbench_plan_identity_schema import workbench_plan_identity_contract_issues
 from .workbench_plan_identity_write_guard import plan_identity_write_guard_contract_issues
 from .workbench_process_schema import workbench_process_contract_issues
@@ -21,7 +23,7 @@ from .workbench_run_schema import workbench_run_contract_issues
 from .workbench_template_lineage_schema import template_lineage_contract_issues
 from .workbench_trial_schema import workbench_trial_contract_issues
 
-CURRENT_SCHEMA_VERSION = 31
+CURRENT_SCHEMA_VERSION = 32
 
 
 class MigrationContractError(RuntimeError):
@@ -293,6 +295,8 @@ def current_schema_contract_issues(conn: sqlite3.Connection) -> List[str]:
     issues.extend(plan_identity_write_guard_contract_issues(conn))
     issues.extend(workbench_outsourcing_contract_issues(conn))
     issues.extend(dashboard_external_contract_issues(conn))
+    issues.extend(workbench_outsourcing_source_contract_issues(conn))
+    issues.extend(execution_void_contract_issues(conn))
     return issues
 
 
