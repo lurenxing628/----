@@ -177,8 +177,16 @@ class WorkbenchAssetsBuildTest(unittest.TestCase):
             self.assertNotIn("development", row["path"])
             self.assertFalse(row["path"].endswith((".jsx", ".html")))
         foundation = self.asset(self.manifest["scripts"][2]).read_text(encoding="utf-8")
-        for name in ("SMIcon", "SMStatus", "SMFilters", "SMRecordDetail", "SMOverview", "SMRecords", "SMConfiguration", "AppShell"):
+        declared = [name for item in load_json(TOOLS / "build-order.json")["foundation"] for name in item.get("declarations", [])]
+        self.assertEqual(declared, ["SM_TOOL_ICONS", "SMIcon", "SMStatus", "SMUnavailable", "SMExport", "SMOverview",
+                                    "SMFilters", "SMPager", "SMRecordDetail"])
+        for name in [name for name in declared if name != "SM_TOOL_ICONS"] + ["AppShell"]:
             self.assertIn("function " + name + "(", foundation)
+        # The record table and configuration panel are maintained live components now, not prototype projections.
+        sample_controls = self.asset("workbench/app/SystemSampleControls.js").read_text(encoding="utf-8")
+        for name in ("SMRecords", "SMConfiguration"):
+            self.assertNotIn("function " + name + "(", foundation)
+            self.assertIn("function " + name + "(", sample_controls)
         self.assertNotIn("function SMWorkbench(", foundation)
         self.assertNotIn("function SystemManagementScreen(", foundation)
         self.assertFalse("function App(" in foundation, "Old app is embedded in the live foundation")
