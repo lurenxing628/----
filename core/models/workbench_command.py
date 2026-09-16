@@ -6,15 +6,17 @@ import hashlib
 import json
 import re
 from dataclasses import dataclass, field
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 
 class WorkbenchCommandRejected(ValueError):
-    def __init__(self, code: str, message: str, status: int = 409):
+    def __init__(self, code: str, message: str, status: int = 409, *, operation_refs: Optional[List[str]] = None):
         super().__init__(message)
         self.code = code
         self.status = status
         self.committed = False
+        # Operations a field-level rejection points at; empty for whole-command rejections.
+        self.operation_refs: List[str] = [] if operation_refs is None else operation_refs
 
 
 class WorkbenchCommandUncertain(RuntimeError):

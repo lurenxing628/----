@@ -45,6 +45,20 @@ def _available_segments(swept, available):
     return result
 
 
+class _CalendarIndexes:
+    """Calendar-bound views of one resource; they exist together or not at all."""
+
+    def __init__(self, available, occupied, swept):
+        self.available = IntervalIndex(available)
+        self.occupied = IntervalIndex(intersection(occupied, self.available.intervals))
+        self.load = _WeightedIndex(_available_segments(swept, self.available.intervals))
+
+    def hours_between(self, start, end):
+        """(capacity, occupied, summed load) hours inside the window."""
+        return (self.available.hours_between(start, end), self.occupied.hours_between(start, end),
+                self.load.hours_between(start, end))
+
+
 class ResourceUtilizationMetrics:
     """Build once; whole-window and daily queries use the same indexed intervals."""
 
@@ -59,23 +73,25 @@ class ResourceUtilizationMetrics:
         self.span = IntervalIndex(occupied)
         self.span_load = _WeightedIndex(swept)
         self.span_overlap = IntervalIndex([(start, end) for start, end, count in swept if count > 1])
-        self.available = IntervalIndex(available) if available is not None else None
-        self.occupied = IntervalIndex(intersection(occupied, self.available.intervals)) if self.available is not None else None
-        self.load = _WeightedIndex(_available_segments(swept, self.available.intervals)) if self.available is not None else None
+        # None means the resource's calendar is unknown, never that it has zero capacity.
+        self.calendar = _CalendarIndexes(available, occupied, swept) if available is not None else None
 
     def window(self, start, end):
         if start > end:
             raise ValueError("Invalid utilization window")
-        capacity = self.available.hours_between(start, end) if self.available is not None else None
-        occupied = self.occupied.hours_between(start, end) if self.occupied is not None else None
-        load = self.load.hours_between(start, end) if self.load is not None else None
         span = self.span.hours_between(start, end)
+        if self.calendar is None:
+            capacity = occupied = load = overlap = outside = ratio = None
+        else:
+            capacity, occupied, load = self.calendar.hours_between(start, end)
+            overlap, outside = load - occupied, span - occupied
+            ratio = occupied / capacity if capacity > 0 else None
         result = {
             "available_hours": capacity, "occupied_hours": occupied,
             "summed_load_hours": load,
-            "overlap_hours": load - occupied if load is not None else None,
-            "outside_calendar_hours": span - occupied if occupied is not None else None,
-            "utilization_ratio": occupied / capacity if capacity is not None and capacity > 0 else None,
+            "overlap_hours": overlap,
+            "outside_calendar_hours": outside,
+            "utilization_ratio": ratio,
             "span_occupied_hours": span, "span_summed_hours": self.span_load.hours_between(start, end),
             "span_overlap_hours": self.span_overlap.hours_between(start, end),
         }

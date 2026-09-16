@@ -25,8 +25,7 @@ def require_zero_confirmation(conn, proposals, acknowledged):
             pending.append(before)
     if pending:
         operations = "、".join(str(row["seq"]) for row in pending)
-        error = WorkbenchCommandRejected(
+        raise WorkbenchCommandRejected(
             "zero_unit_hours_confirmation_required",
-            "工序 " + operations + " 的单件工时为 0，排产只计算换型工时，数量增加不会增加加工时长。请按 0 保存。", 422)
-        error.operation_refs = [row["ref"] for row in pending]
-        raise error
+            "工序 " + operations + " 的单件工时为 0，排产只计算换型工时，数量增加不会增加加工时长。请按 0 保存。", 422,
+            operation_refs=[row["ref"] for row in pending])

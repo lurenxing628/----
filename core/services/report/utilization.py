@@ -1,6 +1,8 @@
 """Resource wall-clock occupancy; calendar capacity is never a shared scalar."""
 
 from collections import defaultdict
+from datetime import datetime
+from typing import Any, DefaultDict, List, Tuple, TypedDict
 
 from core.services.capacity.plan_calendar_intervals import union
 from core.services.capacity.plan_calendar_windows import available_intervals
@@ -8,6 +10,14 @@ from core.services.capacity.resource_utilization_metrics import ResourceUtilizat
 
 from .calculation_helpers import is_internal_source, is_valid_interval, parse_dt
 from .report_degradation import record_report_bad_time_row, record_report_zero_capacity_window
+
+
+class _ResourceGroup(TypedDict):
+    """One resource's clipped intervals keyed per operation, plus its task count and last seen label."""
+
+    operations: DefaultDict[Tuple[str, Any], List[Tuple[datetime, datetime]]]
+    task_count: int
+    label: Any
 
 
 def compute_utilization(*, schedule_rows, start_dt, end_dt_excl, calendars, degradation_collector=None):
@@ -30,7 +40,8 @@ def compute_utilization(*, schedule_rows, start_dt, end_dt_excl, calendars, degr
 
 def _group_operation_intervals(schedule_rows, start, end, collector):
     """Clip internal rows to the window and group their intervals per resource, then per operation."""
-    groups = defaultdict(lambda: {"operations": defaultdict(list), "task_count": 0, "label": None})
+    groups: DefaultDict[Tuple[str, str], _ResourceGroup] = defaultdict(
+        lambda: {"operations": defaultdict(list), "task_count": 0, "label": None})
     for index, row in enumerate(schedule_rows):
         interval = _row_interval(row, start, end, collector)
         if interval is None:
@@ -48,7 +59,7 @@ def _group_operation_intervals(schedule_rows, start, end, collector):
     return groups
 
 
-def _utilization_row(kind, key, item, calendar, start, end):
+def _utilization_row(kind, key, item: _ResourceGroup, calendar, start, end):
     """One report row: a resource's unioned occupancy measured against its own calendar."""
     available = available_intervals(calendar) if calendar is not None else None
     intervals = [span for values in item["operations"].values() for span in union(values)]

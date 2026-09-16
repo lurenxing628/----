@@ -5,6 +5,7 @@ import re
 import sqlite3
 from contextlib import closing
 from pathlib import Path
+from typing import Optional, Set
 
 from core.models.workbench_command import input_fingerprint
 from core.services.workbench.system_journal import SystemMaintenanceJournal, file_fingerprint
@@ -41,7 +42,9 @@ class RunDataContext:
             return "unresolved"
         current = restored_context_ref(self.journal.database_scope, restores)
         if previous_context is not None:
-            known = {restored_context_ref(self.journal.database_scope, [])}
+            # Older browser records carry no data_context_before; None stays a member so
+            # membership tests keep the same answer as before.
+            known: Set[Optional[str]] = {restored_context_ref(self.journal.database_scope, [])}
             for row in restores:
                 known.add(row.get("data_context_before"))
                 known.add(restored_context_ref(self.journal.database_scope,

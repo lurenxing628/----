@@ -2,6 +2,7 @@
 
 from dataclasses import fields
 from datetime import datetime
+from typing import Any, Dict
 
 from core.models.workbench_execution import ExecutionProjection, ProductionReport
 from core.models.workbench_execution_input import MAX_OPERATIONS
@@ -11,7 +12,7 @@ from core.services.workbench.preflight_checks import number
 from .run_input_rows import fail
 
 
-def _exact_fields(value, cls):
+def _exact_fields(value, cls) -> Dict[str, Any]:
     if not isinstance(value, dict) or set(value) != {field.name for field in fields(cls)}:
         fail("execution_snapshot_invalid", "存下来的报工记录内容不完整，这次排产没有开始。请刷新重试；仍不行请联系维护人员。")
     return dict(value)
