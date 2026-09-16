@@ -2,8 +2,8 @@
 doc_type: refactor-design
 refactor: 2026-09-14-scheduler-decode-speed-and-candidate-dedup
 status: approved
-scope: SGS 候选评分见证缓存、自动派工机人对试算备忘、评分结果交接正式放置、外层候选同输入去重与预算按需分配
-summary: 行为等价地砍掉 SGS 解码里的重复试算，并让工作台外层图权重档在优化器输入完全相同时复用兄弟方案，把预算留给真正需要搜索的候选。
+scope: SGS 候选评分见证缓存、自动派工机人对试算备忘与再验证、评分结果交接正式放置、解码内日历纯函数备忘、忙块跳过认证税、外层候选同输入去重与预算按需分配
+summary: 行为等价地砍掉 SGS 解码里的重复试算、重复日历问答和逐跳反射开销，并让工作台外层图权重档在优化器输入完全相同时复用兄弟方案，把预算留给真正需要搜索的候选。
 ---
 
 # 排产解码提速与外层候选去重
@@ -37,7 +37,26 @@ summary: 行为等价地砍掉 SGS 解码里的重复试算，并让工作台外
 - 有已完成同指纹兄弟的候选直接复用其方案：`CandidatePlan.reused_from_candidate_key`（内部）与 `reused_from_label`（公开视图）如实标记，`CandidateComparisonOutcome.reused_count` 与公开汇总 `reused_candidate_count` 计数；复用候选不给预算反馈喂假信号；失败或跳过的兄弟不被复用，下一档自己搜索。
 - 端到端基准支持（`tests/_support/optimizer_end_to_end_*`）把 `optimizer_call_count` 的口径改为“完成且未复用”的候选数，复用行必须 0 解码、0 优化器耗时且质量向量等于兄弟。
 
+## 5. 解码内日历纯函数备忘（finding-02，第二阶段）
+
+- 先测量再定方案：1000 工序自动派工一次解码里 `adjust_to_working_time` 231 万次调用只有 9,366 组不同参数（重复 99.6%），`add_working_hours` 重复 96.5%，`get_efficiency` 重复 99.3%。瓶颈不是按天循环本身，而是同一个问题被反复问；审计里"累计工时索引"的方向在测量后放弃——备忘收益更大，且不碰 `CalendarEngine` 的任何算术，零语义风险。
+- 新模块 `core/algorithm_runtime/calendar_timing_memo.py`：`MemoizedTimingCalendar` 只暴露估算器用到的四个纯函数（adjust / get_efficiency / add_working_hours / certified_slot_window），按精确参数元组备忘，异常不备忘，非朴素参数（`datetime` 子类、非 `str` 优先级）直接透传，单表上限 32768 条、超限清空。
+- 只对"时序方法可证明原生"的日历启用：`register_calendar_timing_guard` 按类型谱系注册守卫。`CalendarEngine` 谱系守卫允许只改 `_resolve_calendar_row` 的子类（基准用的 `MemoryCalendar`），`CalendarService` 守卫在原证书守卫上加 `certified_slot_window`；`ExecutionResourceCalendar` 覆盖层与任何类级/实例级覆写都不启用。守卫每轮 SGS 在 `begin_round` 重查。
+- 接入点只有一处：`estimate_internal_slot` 开头向 handoff 换取备忘日历；没有 handoff 的路径（直接调用、件级采纳等）行为与调用轨迹不变。
+
+## 6. 忙块跳过的认证税（finding-03）
+
+- `busy_block_skip._certified_window` 每跳一次 `inspect.getattr_static`，1000 工序自动派工里 101 万次、约 4.3 秒（19%）。新模块 `core/algorithm_runtime/static_attribute.py` 在普通元类实例上给出与 `inspect.getattr_static` 逐项相同的结果（实例字典优先级、数据描述符、`__dict__` 遮蔽、谱系变更后失效），只按类谱系记住"实例字典可信"这一件事；类对象、自定义元类回落到 `inspect`。`resource_quality._plain_operation_type` 同步切换。
+- 不改认证粒度（每跳仍认证），对运行中 monkeypatch 的检测语义不变。
+
+## 7. 机人对试算再验证（finding-01 自动派工部分，第二阶段）
+
+- 见证不同不等于结果不同。一次试算是被"扫描区间"内忙块决定的确定性路径：`estimate_internal_slot` 记录首个调整后的开工点与每次尝试的结束/跳转上界（`note_scan`），`occupy_resource` 把每次段插入报给 handoff（`observe_occupation`，带递增序号）。
+- `pair_estimate` 见证失配时，若前道完工不变、两条时间线的增长恰好等于备忘之后记录的插入数、且新增段全部落在扫描区间之外（右端按闭区间判，因为认证跳过在触碰处仍会延伸），旧试算就仍然精确；只有机台工种历史变了时才用 `refresh_changeover_penalty` 重算换型罚分（与 `estimate_internal_slot` 尾部完全相同的调用）。
+- 任何未记录的变异（直接改列表、整体替换、缩短）都让再验证失效，回到完整试算；缓存关闭时 `estimate_internal_slot` 不记录任何东西。
+
 ## 明确不做
 
 - 不改内层 GraphReady 组合、局搜邻域与目标函数；不引入并行；不改候选列表合同（仍是 1 基线 + N 档）。
-- 忙块跳过的认证税（finding-03）与日历热路径（finding-02）实测在共享负载上收益不明，本轮不动。
+- 不做跨班次的忙块跳过：认证窗口保证窗内效率恒定、结束时刻随开工单调，跨窗跳过在按日效率变化的日历下不再与逐跳扫描等价。
+- 不改 `CalendarEngine` 的按天循环：重复率测量表明解码内备忘已吃掉绝大部分日历成本，改算术只剩语义风险。

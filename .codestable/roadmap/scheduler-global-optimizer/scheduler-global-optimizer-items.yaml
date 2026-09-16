@@ -177,6 +177,10 @@ items:
       - graph_ready_optimization.elite_repair.neighbor_generators: adjacent_swap / single_insert / tardy_boundary_move
       - graph_ready_optimization.elite_repair.pruning_strategy: elite_top_k + duplicate_decision + budget_guard
 
+      2026-09-14 接续实现：profiles、elite repair、IG 以同一截止轮转，取消图阶段固定 repair 25% 预留；60 仅限制 profiles + repair，IG 独立计数。IG 分成每试解可暂停的工作单元，父解接力同步批序、资源与 profile；续排候选通过全量业务摘要和 score 等价核对后才可发布。旧 time_share/time_ceiling 草案已被本日技术决定取代。历史实测仍保留于 ff-note，新版质量验收另存，不能沿用旧版“无退化”结论。见 .codestable/features/2026-09-14-graph-ready-iterated-greedy/。
+
+      本次接手快照对照已完成：SMTWT250的3s为208好42平0差，5s为207好43平0差；e2e20为2好18平0差，完整分数逐例比较。最佳分数层起点和独立随机流之外，符合单工序/同资源条件的min_overdue新增经正式SGS验证的有界交期起点。计时源码、最终收尾等价拆分与定向回归分开绑定，见本功能acceptance；按用户要求未跑全门禁，不构成整条路线图或clean proof。
+
       候选空间口径：
       - candidate_space_total = top_k 精英候选在启用 neighbor_generators 后理论邻居数；无法精确时写 upper_bound 或 unknown。
       - generated_candidates = 实际生成的 repair 邻居数。
@@ -306,6 +310,10 @@ items:
       - 桥接层不得重新解释 GraphReady 剪枝为数学证明。
       - 桥接层不得把 graph_ready_v2_repaired 的胜出结果拆成单个剪枝规则的独立算法胜利。
       - 进入 ALNS 的只应是脱敏后的候选摘要、rank、scope 和统计字段，不传 raw graph 对象或 public 禁止 id。
+
+      2026-09-14 接续实现：图阶段 IG 已有时间窗、资源窗、迟到/随机三种生成器，规模随原位、拒绝、变差与中断调整，成功续用；有界多样性解池、停滞换起点和指数退火已接入。前缀复用采用输入绑定的 SGS 状态检查点，不向 seed_results 注入可变工序时间；最终候选仍走严格正式择优。该实现是此桥接的可复用基础，不代表通用 ALNS operator/reward 和整条路线图已经验收完成。
+
+      千工序已测真实IG：同一源码和seed、声明末尾100工序局部时间窗、30秒预算，checkpoint关闭完成0轮，开启完成3轮（2轮非idle），两臂完整score相同且无超时。分母为0不报告迭代倍数；此前含捕获1.86倍为续排相对全排的组件测量，新版检查较旧checkpoint多约4%成本，两种口径均不能外推为默认全局IG的一般提速。
 
   - slug: alns-partial-repair-contract
     description: 定义自适应大邻域拆修搜索的局部拆修 allowed-op、payload validation 和执行态保护复用合同

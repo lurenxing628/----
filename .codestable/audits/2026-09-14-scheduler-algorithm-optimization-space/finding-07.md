@@ -6,7 +6,7 @@ nature: quality
 severity: P1
 confidence: high
 suggested_action: cs-issue
-status: open
+status: fixed
 ---
 
 # Finding 07：候选对比 allowlist 收窄使多起点退化为 1 起点、SGS 规则邻域必 noop
@@ -35,3 +35,7 @@ status: open
 ## 建议动作
 
 `cs-issue`，需要先裁决产品意图再改合同。
+
+## 处理结果
+
+2026-09-14 用户裁决后落地（决定见 `.codestable/compound/2026-09-14-decision-candidate-comparability-lock-vs-rule-pool.md`，修复见 `.codestable/issues/2026-09-14-candidate-trial-rule-pool/`）：把 PR7b 的合同拆成"候选间锁排序策略、派工模式、目标函数、算法模式"与"候选内规则池不收窄"两条；`_CandidateTrialConfigService` 不再改写 `VALID_DISPATCH_RULES`，派工模式保持锁定（图档强制 sgs）。优化结果与候选方案新增"采用的派工规则"，公开汇总里与配置不同时同时给出 `adopted_dispatch_rule` 与 `configured_dispatch_rule`。真实候选对比入口的实测：shift_pool 基线候选 3 个起点全部解码、换规则邻域 174 次尝试 10 次有效（此前 200 次全部空转），基线采用 atc；端到端 20 例选中方案 1 例更好、19 例相同、0 例更差，基线候选在 tiny_improving 与 shift_pool 上明显变好。合同测试改为 `tests/candidate/test_scheduler_candidate_rule_pool_end_to_end.py` 与运行器合同里的"锁策略与模式、保留规则池"。

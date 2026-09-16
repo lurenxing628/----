@@ -1,0 +1,28 @@
+feature: graph-ready-iterated-greedy
+steps:
+  - id: takeover-baseline
+    description: 冻结接手源码和已有改动，记录已授权预算与检查点决定
+    status: done
+  - id: algorithm-components
+    description: 修接力与检查点合同，补齐阶段调度、生成器及多样化解池
+    status: done
+  - id: focused-verification
+    description: 整合短回归、Python3.8和结构检查，检查最终候选验证时序
+    status: done
+  - id: comparative-benchmarks
+    description: 同源SMTWT250在3s及5s、e2e20和千工序实际性能对照
+    status: done
+  - id: acceptance
+    description: 按用户明确要求不跑全门禁；完成本次定点验证并如实回写验收、架构和路线图
+    status: done
+checks:
+  - id: budget-and-neighborhood-contracts
+    status: passed
+  - id: parent-context-and-checkpoint-equivalence
+    status: passed
+  - id: source-bound-quality-and-performance
+    status: passed
+    note: SMTWT3s为208好42平0差，5s为207好43平0差；e2e为2好18平0差。千工序真实IG局部窗口30秒为关闭0轮、开启3轮，不报告无分母倍数。
+  - id: python38-and-scoped-structure
+    status: passed
+    note: 265项定向测试通过；收尾等价拆分后另128项回归通过，非独立累加。44个Python文件语法及Ruff通过，28个产品文件无复杂度/体量超限。用户明确要求不跑全门禁，不声明clean proof。

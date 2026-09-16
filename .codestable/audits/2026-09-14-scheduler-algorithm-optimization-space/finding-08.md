@@ -6,7 +6,7 @@ nature: quality
 severity: P1
 confidence: high
 suggested_action: cs-feat
-status: open
+status: fixed
 ---
 
 # Finding 08：SGS 起点搜索空间只有 3 个离散派工规则，达最优率 17.6% 是结构上限
@@ -33,3 +33,7 @@ SGS 是图候选与 sgs 配置的唯一解码器，其可搜索维度一个都�
 ## 建议动作
 
 `cs-feat`，属于新增搜索维度，应挂到 `scheduler-global-optimizer` roadmap。
+
+## 处理结果
+
+2026-09-14 落地（记录见 `.codestable/features/2026-09-14-sgs-atc-k-ladder/`）：ATC 的 k 从写死 2.0 变成优化器可搜的离散梯子（0.5、1、2、4、8、16，默认仍 2.0），规则以 `atc:k=<值>` 令牌贯通参数解析、SGS 评分、多起点、换规则邻域与决策去重，采用的令牌如实上报为 `adopted_dispatch_rule`。用户配置页仍只在三条规则之间选。SMTWT 250 实例：单值扫描 k=6 达最优 50/250（k=2 为 44），每实例取梯子最优 57/250、gap 4.50；真实局搜基准 gap 16.16 → 4.14（此前 6.82）。端到端 20 例选中方案 1 例更好、19 例相同、0 例更差。接线时发现多起点决策缓存把 `atc:k=16.0` 与 `atc` 当同一决策剪掉，已改用规范令牌作键。图候选的多起点不展开梯子（图键在规则键之前，梯子起点多为重复决策），只靠换规则邻域触达。

@@ -6,7 +6,7 @@ nature: performance
 severity: P0
 confidence: high
 suggested_action: cs-refactor
-status: open
+status: fixed
 ---
 
 # Finding 02：日历算术按天循环并重复解析同一时刻的策略，占解码 35–40%
@@ -34,3 +34,7 @@ status: open
 ## 建议动作
 
 `cs-refactor`，行为等价的热路径重写，用属性测试对比旧实现。
+
+## 处理结果
+
+2026-09-14 同日落地（第二阶段）。先测量：一次 1000 工序自动派工解码里 `adjust_to_working_time` 231 万次调用只有 9,366 组不同参数，`add_working_hours` 重复 96.5%，`get_efficiency` 重复 99.3%。因此不改 `CalendarEngine` 的按天算术，而是在 `core/algorithm_runtime/calendar_timing_memo.py` 做解码内纯函数备忘，只对时序方法可证明原生的日历启用（`CalendarEngine` 谱系守卫、`CalendarService` 守卫，覆盖层与任何覆写不启用）。1000 工序自动派工日历侧约 7.2s 降到约 1s，解码整体 23.5s → 4.94s，结果哈希不变。设计与证据见 `.codestable/refactors/2026-09-14-scheduler-decode-speed-and-candidate-dedup/` §5。

@@ -207,7 +207,7 @@ core/services/scheduler/
 
 ### 10.1 候选总预算与搜索阶段
 
-`run_candidate_comparison` 的所有候选共用同一个 monotonic 总截止时间。每个未运行方案从剩余总时间中取得显式份额；图准备也消耗该份额，未使用时间继续留在总池。预算组件仅用同目标、完整成功方案的实际改善和有限耗时调整下一份额，并为其他未试候选保留至少半个均分份额；未知观测保持中性，不预测下一候选收益。SGS 不能自行延长截止时间。`SearchBudget` 是冻结的候选预算合同，`optimize_schedule(..., search_budget=None)` 接受它，并同时受配置的单次优化上限约束。首次正式基线先于可选搜索；多起点、warm-start、非图构造具有阶段截点，给后续阶段保留机会，图阶段沿用自身 repair 预留。
+`run_candidate_comparison` 的所有候选共用同一个 monotonic 总截止时间。每个未运行方案从剩余总时间中取得显式份额；图准备也消耗该份额，未使用时间继续留在总池。预算组件仅用同目标、完整成功方案的实际改善和有限耗时调整下一份额，并为其他未试候选保留至少半个均分份额；未知观测保持中性，不预测下一候选收益。SGS 不能自行延长截止时间。`SearchBudget` 是冻结的候选预算合同，`optimize_schedule(..., search_budget=None)` 接受它，并同时受配置的单次优化上限约束。首次正式基线先于可选搜索；多起点、warm-start、非图构造具有阶段截点，给后续阶段保留机会。2026-09-14 图阶段的固定 repair 预留由三阶段轮转取代，见 §10.6；外层预算不变。
 
 每次启动可选正式解码前检查 `now >= deadline`。已开始的 SGS 允许完成，下一次解码停止，准备耗尽份额的方案记录为 skipped。阶段份额耗尽记录 `reserved_for_later_phases`，不冒充整个优化超时。公开 `assigned_time_budget_ms` 与配置预算分开；预算诊断只通过白名单投影准备耗时、优化额度和超时等聚合字段。原生真实解码计数留在内部 search report，不进入该公共投影。
 
@@ -243,7 +243,27 @@ GraphReady profile显式接收四个正式目标，保留既有v1基线；batch_
 
 代码锚点：`graph/impact_counts.py:10`、`graph/scoring.py:107`、`run/schedule_graph_cached_projection.py:40`、`core/services/workbench/run_compute.py:22`、`core/services/workbench/run_compute.py:70`、`core/services/workbench/run_compute.py:83`、`core/services/workbench/run_worker.py:64`。
 
+### 10.6 图阶段轮转与经过验证的 IG 续排（2026-09-14）
+
+2026-09-15 补充：从 128 道工序起，图 IG 采用位置预筛、独立邻域预算和状态收敛后的尾段复用。先完成一道工序的最小邻域，再根据实测成本控制规模；全局截止与局部超时分别处理，保留完整验证预算。尾段必须证明未来资源、依赖和优先键一致后才能回放，采用前仍独立完整解码。唯一图键的大实例使用 ready 堆，其首项罚分不为零时恢复完整评分。小实例保留原求解器；详见 [局部任务决定](../compound/2026-09-15-decision-ig-local-tasks-and-tail-reuse.md) 和 [最终验收](../issues/2026-09-15-ig-local-search/ig-local-search-fix-note.md)。以下为共用基础行为，具体大实例预算和反馈以补充决定为准。
+
+本节描述当前工作区实现；同条件质量验收单独记录于 `.codestable/features/2026-09-14-graph-ready-iterated-greedy/`。三个阶段共享最好已验证方案；尚未启动且实际可用的阶段优先获得机会，之后以累计调度用时和最近 8 个任务的严格改进率排队，收益最多带来 25% 优势。每任务至少记 1ms 公平排队用量，真实耗时不填造。IG 首次等待可修补的 v2 父解，profiles 无法继续时允许合法 baseline 起步；保留 v1 anchor 的初始化解码成本。因此极短预算不能无条件保证三个阶段都解码。
+
+IG 每个试解及其必要全量验证后交回控制权，原位插回、拒绝、变差和预算中断都进入生成器统计。暂停期间共享 incumbent 立即更新，父解上下文只在完整迭代边界切换。成功生成器续用；停滞后从有界解池换起点并重置规模；指数退火仅控制搜索行走。解池、评分缓存按批序、工序顺序、资源覆盖和 profile 区分，已验证参考检查点缓存按解池容量淘汰。
+
+启动选择限于解池的最佳分数层，等分时随机；解池与邻域使用独立随机流，避免选择起点改变随后邻域序列。`min_overdue` 下，若每批单工序、无图依赖/固定工序、已成功排在同一内部机人组合，默认启用额外交期起点。它以观察工时构造 Moore/Hodgson 队列并作有界探测，最多 2048 次，仍受真实截止限制；只返回顺序，不产生排程时间或正式分数。返回顺序必须重新经 SGS 验算，实际分数较差时仍从原起点搜索。`due_date_seed=false` 可关闭此构造；经典单机模型的结论不扩大为带日历、释放时间、权重和资源变化的 APS 最优性保证。
+
+前缀加速通过 SGS 状态检查点恢复，继续禁止经 `seed_results` 注入可变工序时间。签名覆盖原生工序、批次、资源、种子、日历及解码参数；日历证书绑定业务表和执行态资源释放，SQLite 可写事务不缓存未提交内容。未知日历不能恢复旧检查点；仅在捕获开始前缺少日历证书时，IG 明确上报禁用该加速器并使用全量解码。输入不一致、读取失败和哈希不等价仍明确报错。
+
+续排试解计入实际工作，但不能占用已验证指纹集合或成为公开最好方案；严格改善必须先在同一预算内全量解码并核对业务输出摘要和完整 score。预算不足保留此前已验证方案。profiles + repair 共用原 60 候选安全上限，IG 有独立上限；验证、参考检查点重捕获和首 pick 前拒绝分别记账，不能把三阶段合计描述成最多 60。
+
+`initial_seed` 的构造耗时和探测数与 SGS 解码分开，`selected` 表示用作行走参考，`incumbent_improved` 才表示严格改善全局最好方案。`parent_order_consistent` 记录实际参考分数是否等于原父方案分数；采用更优交期起点时可以为 false，不能独立用它判定同序重解码失败，需结合 `initial_seed.selected` 和完整等价核对结果。
+
+代码锚点：`run/optimizer_graph_ready_stage_scheduler.py`、`run/optimizer_graph_ready_iterated_greedy_iteration.py`、`run/optimizer_graph_ready_iterated_greedy_incumbent.py`、`core/algorithms/greedy/dispatch/sgs_checkpoint.py`、`calendar_checkpoint_certificate.py`。技术决定见 `.codestable/compound/2026-09-14-decision-graph-search-rotation-and-checkpoint.md`。
+
 ## 变更日志
+
+- 2026-09-14：补齐 §10.6 三阶段用时轮转、完整上下文接力、检查点验证与有界交期起点；验收采用本次定向测试和同条件算法对照，按用户要求不跑全门禁。
 
 - 2026-09-13：归并最终共享parent/basis额度、基础与增强特征、全剥夺提示及原生回调边界；实施和定向验收完成，最终整仓门禁未完成，见统一验收。未更新历史规模/SCC统计。
 

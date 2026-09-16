@@ -6,7 +6,7 @@ nature: performance
 severity: P1
 confidence: high
 suggested_action: cs-refactor
-status: open
+status: fixed
 ---
 
 # Finding 03：忙段闭包的"每跳认证税"远大于闭包收益，且对自动派工探测基本不生效
@@ -33,3 +33,7 @@ status: open
 ## 建议动作
 
 `cs-refactor`，结果不变，只改变对运行中 monkeypatch 的检测粒度。
+
+## 处理结果
+
+2026-09-14 同日落地（第二阶段）。没有改认证粒度，而是把每跳的 `inspect.getattr_static` 换成 `core/algorithm_runtime/static_attribute.py` 的逐项等价快速读取（实例字典优先级、数据描述符、`__dict__` 遮蔽、谱系变更后失效均与 `inspect` 相同，类对象与自定义元类回落 `inspect`），`resource_quality._plain_operation_type` 同步切换。1000 工序自动派工里 101 万次调用约 4.3s 的反射开销降到约 0.4s。"带 `abort_after` 的探测绕过闭包"一节已被机人对备忘取代：SGS 轮次内探针只做无早停的完整试算并备忘，早停语义按开工时刻复现。设计与证据见 `.codestable/refactors/2026-09-14-scheduler-decode-speed-and-candidate-dedup/` §6。
