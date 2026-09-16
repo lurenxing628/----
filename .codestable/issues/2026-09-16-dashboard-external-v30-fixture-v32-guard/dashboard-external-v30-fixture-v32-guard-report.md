@@ -1,7 +1,8 @@
 ---
 doc_type: issue-report
 issue: 2026-09-16-dashboard-external-v30-fixture-v32-guard
-status: open
+status: resolved
+resolved: 2026-09-16
 severity: P2
 created: 2026-09-16
 source: 日常门禁 daily-fast-gate（2026-09-16 提交批次收尾时的 44 个失败之一）
@@ -50,4 +51,17 @@ core.models.workbench_command.WorkbenchCommandRejected: 真实外协登记结构
 2. 把 `require_schema` 拆成读/写两级：仪表盘只读路径不要求来源确认表。代价是外协来源合同的覆盖面变窄。
 3. 用 `pytest.mark.xfail(strict=True, reason=<本 issue>)` 显式挂起该用例，直到 1 或 2 落地。
 
-用户于 2026-09-16 选择先搁置、只记录。
+用户于 2026-09-16 先选择搁置、只记录；同日在推送前收尾时听取解释后改选选项 1。
+
+## 处理（2026-09-16，选项 1）
+
+- `tests/workbench/dashboard_external_migration_support.py` 新增 `install_v32_read_guards(conn)`：在调用方的
+  事务里补装 `WorkbenchOutsourcingSourceConfirmations` 与 `WorkbenchProductionReportVoids` 两组对象，
+  分别走 `workbench_outsourcing_source_schema.install` 和 `workbench_execution_void_schema.install_execution_voids`。
+- `test_explicit_helper_backfills_only_mapping_and_is_idempotent` 在 `case.register()` 之前调用一次；
+  被测的回填助手、`production_storage` 前后相等与原对象 DDL 相等的断言全部不动。
+- 没有改共享夹具 `external_v30_case`：`tests/workbench/test_dashboard_external_reads.py:18-24` 明确锁住
+  「冻结 v30 库缺 v32 表时外协类目读取为 unavailable 且表不存在」，把补装放进夹具会让它失败。
+  两个用例对同一夹具的诉求不同，所以由需要「loaded」读取的用例自己补装。
+- 验证：`test_dashboard_external_handling_schema`、`test_dashboard_external_reads`、
+  `test_dashboard_external_migration` 三个文件 56 passed；ruff 通过。

@@ -8,7 +8,7 @@ from core.infrastructure.workbench_dashboard_schema import objects as original_o
 from tests.workbench.dashboard_external_handling_support import external_handling_case as _handling_case  # noqa: F401
 from tests.workbench.dashboard_external_handling_support import production_storage
 from tests.workbench.dashboard_external_migration_support import external_v30_case as _external_v30_case  # noqa: F401
-from tests.workbench.dashboard_external_migration_support import fixed_v30_connection
+from tests.workbench.dashboard_external_migration_support import fixed_v30_connection, install_v32_read_guards
 from tests.workbench.dashboard_external_support import external_case as _external_case  # noqa: F401
 from tests.workbench.dashboard_support import dashboard_case as _dashboard_case  # noqa: F401
 from tests.workbench.dashboard_support import follow
@@ -32,6 +32,7 @@ def test_current30_accepts_explicit_extension_without_version_or_original_data_c
 
 def test_explicit_helper_backfills_only_mapping_and_is_idempotent(external_v30_case):
     case = external_v30_case
+    install_v32_read_guards(case.conn)
     ref = case.register()
     assert case.read()[0]["categories"]["external"]["handling_supported"] is False
     before = production_storage(case.conn)

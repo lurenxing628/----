@@ -11,6 +11,8 @@ from core.infrastructure.migration_state import get_schema_version, set_schema_v
 from core.infrastructure.migrations import v30
 from core.infrastructure.transaction import TransactionManager
 from core.infrastructure.workbench_dashboard_external_schema import objects
+from core.infrastructure.workbench_execution_void_schema import install_execution_voids
+from core.infrastructure.workbench_outsourcing_source_schema import install as install_sources
 from tests.workbench.calibration_dashboard_migration_support import canonical_object
 from tests.workbench.dashboard_external_support import ExternalCase
 from tests.workbench.dashboard_support import follow
@@ -54,6 +56,16 @@ def seed_external_sources(conn, count=4):
     for index in range(1, count + 1):
         conn.execute("INSERT INTO BatchOperations(op_code,batch_id,seq,op_type_id,op_type_name,source,supplier_id,ext_days) "
                      "VALUES (?,'XB1',?,'XT1','Heat treatment','external','XS1',2)", ("XO" + str(index), index))
+    conn.commit()
+
+
+def install_v32_read_guards(conn):
+    """Opt-in for tests that read the external category after the v31 helper: current reads
+    require the v32 source-confirmation and report-void facts every production database has.
+    The external_v30_case fixture itself stays frozen; test_dashboard_external_reads locks that."""
+    conn.execute("BEGIN")
+    install_sources(conn)
+    install_execution_voids(conn)
     conn.commit()
 
 
