@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Set
 
+from core.algorithm_runtime.checkpoint_calendar import checkpoint_calendar_signature, register_checkpoint_calendar
 from core.models.enums import SourceType
 from core.models.operation_execution_event import EXECUTION_STATUS_PAUSED, EXECUTION_STATUS_PROCESSING
 from core.services.scheduler.execution.execution_fact_provider import ExecutionFact
@@ -92,3 +93,9 @@ class ExecutionResourceCalendar:
             max(dt, release) if release is not None else dt,
             priority=priority, machine_id=machine_id, operator_id=operator_id,
         )
+
+    def certified_decode_checkpoint_snapshot(self):
+        return "execution-release-v1", checkpoint_calendar_signature(self._calendar), tuple(sorted(self._release_by_operator.items()))
+
+
+register_checkpoint_calendar(ExecutionResourceCalendar, ExecutionResourceCalendar.certified_decode_checkpoint_snapshot)

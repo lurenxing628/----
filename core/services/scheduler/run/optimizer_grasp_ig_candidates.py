@@ -11,7 +11,7 @@ from core.infrastructure.errors import ValidationError
 from .optimizer_attempt_records import validation_error_origin
 from .optimizer_candidate_comparison import candidate_is_preferred
 from .optimizer_candidate_fingerprint import stable_fingerprint
-from .optimizer_deadline_guard import guard_decoder
+from .optimizer_deadline_guard import can_afford_decode, guard_decoder, observed_decode_seconds
 from .optimizer_grasp_ig_specs import GRASP_ORIGIN, IG_ORIGIN, build_grasp_ig_candidate_specs
 from .optimizer_search_budget import SearchBudgetExhausted
 from .optimizer_search_state import append_unique_rejected_attempt
@@ -451,7 +451,11 @@ def run_grasp_ig_candidates(
     if specs is None:
         return best
 
-    schedule_fn = guard_decoder(schedule_fn, clock=clock, deadline=deadline, search_report_state=search_report_state)
+    if not can_afford_decode(best, clock=clock, deadline=deadline, search_report_state=search_report_state,
+                             phase=GRASP_IG_PHASE):
+        return best
+    schedule_fn = guard_decoder(schedule_fn, clock=clock, deadline=deadline, search_report_state=search_report_state,
+                                minimum_decode_seconds=observed_decode_seconds(best))
     for spec in specs:
         if _deadline_reached(clock, deadline, search_report_state):
             break

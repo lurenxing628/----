@@ -6,6 +6,7 @@ from datetime import date, datetime
 from functools import partial
 from typing import TYPE_CHECKING, Any, Callable, Dict, Iterator, List, Optional, Tuple
 
+from core.algorithm_contracts.dispatch_rules import dispatch_rule_search_pool
 from core.algorithms import ScheduleResult, SortStrategy
 from core.algorithms.evaluation import compute_metrics, objective_score
 from core.algorithms.greedy.algo_stats import merge_algo_stats, snapshot_algo_stats
@@ -21,10 +22,16 @@ if TYPE_CHECKING:
     from .schedule_optimizer_steps import SchedulerLike
 
 
-def _dispatch_rules_for_mode(dispatch_mode: str, dispatch_rule_cfg: str, valid_dispatch_rules: List[str]) -> List[str]:
+def _dispatch_rules_for_mode(dispatch_mode: str, dispatch_rule_cfg: str, valid_dispatch_rules: List[str],
+                             *, graph_ready: bool = False) -> List[str]:
     if dispatch_mode != "sgs":
         return [dispatch_rule_cfg]
-    return [dispatch_rule_cfg] + [rule for rule in valid_dispatch_rules if rule != dispatch_rule_cfg]
+    # Configured rule first, then the registry rules, then the ATC k ladder nearest-first; the
+    # phase slice truncates from the far end when decodes are expensive. Graph candidates put the
+    # graph key ahead of the rule key, so the ladder starts would mostly repeat the same decision;
+    # they keep the registry rules only and reach the ladder through the rule neighborhood.
+    pool = valid_dispatch_rules if graph_ready else dispatch_rule_search_pool(valid_dispatch_rules)
+    return [dispatch_rule_cfg] + [rule for rule in pool if rule != dispatch_rule_cfg]
 
 
 def _resolve_multi_start_strategy_params(
@@ -118,11 +125,12 @@ def _evaluate_multi_start_candidate(
 def _iter_multi_start_specs(
     *, keys: List[str], dispatch_modes: List[str], dispatch_rule_cfg: str, valid_dispatch_rules: List[str],
     snapshot: Any, strict_mode: bool, optimizer_algo_stats: Optional[Dict[str, Any]], deadline_reached: Callable[[], bool],
+    graph_ready: bool = False,
 ) -> Iterator[Tuple[str, str, str, SortStrategy, Dict[str, Any]]]:
     for dm in dispatch_modes:
         if deadline_reached():
             break
-        dispatch_rules = _dispatch_rules_for_mode(dm, dispatch_rule_cfg, valid_dispatch_rules)
+        dispatch_rules = _dispatch_rules_for_mode(dm, dispatch_rule_cfg, valid_dispatch_rules, graph_ready=graph_ready)
         for key in keys:
             if deadline_reached():
                 break
@@ -183,7 +191,8 @@ def _run_multi_start(
     )
     efficiency: Dict[str, Any] = {
         "proof": "native_complete_override_same_snapshot_v1",
-        "configured_candidates": sum(len(keys) * len(_dispatch_rules_for_mode(dm, dispatch_rule_cfg, valid_dispatch_rules)) for dm in dispatch_modes),
+        "configured_candidates": sum(len(keys) * len(_dispatch_rules_for_mode(
+            dm, dispatch_rule_cfg, valid_dispatch_rules, graph_ready=graph_ready_context is not None)) for dm in dispatch_modes),
         "eligible_candidates": 0, "decoded_candidates": 0, "predecode_pruned_candidates": 0, "skipped_by_budget": 0,
     }
 
@@ -197,6 +206,7 @@ def _run_multi_start(
         keys=keys, dispatch_modes=dispatch_modes, dispatch_rule_cfg=dispatch_rule_cfg,
         valid_dispatch_rules=valid_dispatch_rules, snapshot=snapshot, strict_mode=bool(strict_mode),
         optimizer_algo_stats=optimizer_algo_stats, deadline_reached=deadline_reached,
+        graph_ready=graph_ready_context is not None,
     ):
         order = _get_cached_multi_start_order(
             strategy=strat,
@@ -218,6 +228,7 @@ def _run_multi_start(
             })
             continue
         efficiency["decoded_candidates"] += 1
+        decode_started = now()
         cand = evaluate_optional_start_candidate(
             evaluate=partial(
                 _evaluate_multi_start_candidate,
@@ -250,6 +261,7 @@ def _run_multi_start(
         )
         if cand is None:
             continue
+        cand["initial_decode_runtime_ms"] = max((now() - decode_started) * 1000.0, 0.0)
         decisions.remember(decision_key, cand)
         best = _record_multi_start_candidate(
             best=best,

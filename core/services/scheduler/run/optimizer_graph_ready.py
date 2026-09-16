@@ -7,8 +7,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 from core.algorithms import ScheduleResult, SortStrategy
 from core.infrastructure.errors import ValidationError
 
-from .optimizer_candidate_comparison import candidate_is_preferred
-from .optimizer_graph_ready_acceptance import build_graph_ready_improve_only_acceptance_event
+from .optimizer_deadline_guard import observed_decode_seconds, prefer_ig_startup
 from .optimizer_graph_ready_budget import GraphReadySearchBudget
 from .optimizer_graph_ready_candidates import build_v2_common_rank_cache, evaluate_graph_ready_candidate
 from .optimizer_graph_ready_context import (
@@ -16,6 +15,8 @@ from .optimizer_graph_ready_context import (
     reason_from_validation,
     validate_graph_ready_context,
 )
+from .optimizer_graph_ready_iterated_greedy_contract import IteratedGreedyLimits, resolve_iterated_greedy_limits
+from .optimizer_graph_ready_iterated_greedy_run import IteratedGreedyRun
 from .optimizer_graph_ready_predecode import GraphReadyProfileSearch
 from .optimizer_graph_ready_profile_selection import resolve_graph_ready_profiles_and_metrics
 from .optimizer_graph_ready_profiles import (
@@ -29,13 +30,16 @@ from .optimizer_graph_ready_profiles import (
     graph_ready_v2_profile_summary,
     graph_ready_weight_profile_summary,
 )
-from .optimizer_graph_ready_repair import EliteRepairPool, run_graph_ready_elite_repair
+from .optimizer_graph_ready_repair import EliteRepairPool, EliteRepairRun
 from .optimizer_graph_ready_repair_contract import EliteRepairLimits, resolve_elite_repair_limits
-from .optimizer_graph_ready_reporting import (
-    append_graph_attempt,
-    append_graph_trace,
-    mark_phase_skipped,
-    record_rejected_attempt,
+from .optimizer_graph_ready_reporting import mark_phase_skipped, record_rejected_attempt
+from .optimizer_graph_ready_stage_scheduler import StageScheduler
+from .optimizer_graph_ready_stages import (
+    GraphSearchState,
+    IteratedGreedyStage,
+    ProfileStage,
+    RepairStage,
+    iterated_greedy_parent_profile,
 )
 from .optimizer_graph_ready_v2_contract import is_graph_ready_v2_contract_error
 
@@ -50,6 +54,7 @@ class _GraphReadyDeadlineExhausted(RuntimeError):
 def _before_graph_metrics(*, construction: Optional[Dict[str, Any]], deadline: float, clock: Callable[[], float]) -> None:
     # Configuration errors retain fail-loud behavior even with no search time.
     resolve_elite_repair_limits(construction, enabled=False)
+    resolve_iterated_greedy_limits(construction, enabled=False)
     if clock() >= deadline:
         raise _GraphReadyDeadlineExhausted()
 
@@ -150,6 +155,8 @@ def run_graph_ready_candidates(
         enabled=profile_summary.get("candidate_policy") == "objective_aware_portfolio"
         and (profiles_override is None or candidate_construction is not None),
     )
+    # Iterated greedy shares the incumbent during rotation and follows the repair switch.
+    iterated_greedy_limits = resolve_iterated_greedy_limits(candidate_construction, enabled=repair_limits.enabled)
     return _run_weight_profiles(
         profiles=profiles,
         best=best,
@@ -180,6 +187,7 @@ def run_graph_ready_candidates(
         search_report_state=search_report_state,
         order=order,
         repair_limits=repair_limits,
+        iterated_greedy_limits=iterated_greedy_limits,
     )
 
 
@@ -283,7 +291,9 @@ def _run_weight_profiles(
     search_report_state: Optional[OptimizationSearchReportState],
     order: List[str],
     repair_limits: EliteRepairLimits,
+    iterated_greedy_limits: Optional[IteratedGreedyLimits] = None,
 ) -> Optional[Dict[str, Any]]:
+    """Profiles, repair and IG share the phase through startup opportunities and bounded time feedback."""
     budget = GraphReadySearchBudget(limits=repair_limits, deadline=deadline, clock=clock)
     v2_common_rank_cache = build_v2_common_rank_cache(metrics_by_op_id) if _has_v2_profile(profiles) else None
     evaluate = partial(
@@ -300,145 +310,43 @@ def _run_weight_profiles(
                            metrics_by_op_id=metrics_by_op_id, start_dt=start_dt, seed=version,
                            best=best, report_state=search_report_state, graph_context=graph_ready_context,
                            resource_pool=resource_pool, clock=clock, deadline=deadline)
-    search = GraphReadyProfileSearch(evaluate=evaluate, pool=pool, budget=budget, profile_count=len(profiles))
-    for profile in profiles:
-        if not search.can_start():
-            break
-        candidate = _evaluate_profile(evaluate=search.evaluate, profile=profile, order=order, strict_mode=bool(strict_mode),
-                                      base_strategy=base_strategy, dispatch_rule_cfg=dispatch_rule_cfg,
-                                      attempts=attempts, search_report_state=search_report_state)
-        if candidate is None:
-            continue
-        pool.observe(candidate, profile)
-        if not _candidate_should_replace_best(candidate, profile=profile, best=best, attempts=attempts, search_report_state=search_report_state):
-            continue
-        incumbent = best
-        _accept_candidate(
-            candidate,
-            profile=profile,
-            incumbent=incumbent,
-            version=version,
-            search_report_state=search_report_state,
-        )
-        append_graph_trace(improvement_trace=improvement_trace, candidate=candidate, profile=profile, clock=clock, t_begin=t_begin)
-        best = candidate
-    search.publish(attempts=attempts, report_state=search_report_state)
-    if not _has_v2_profile(profiles) and not repair_limits.enabled:
-        return best
-    return run_graph_ready_elite_repair(
-        pool, best=best, evaluate=evaluate, profile_evaluations=budget.profile_decodes,
-        deadline=deadline, clock=clock, t_begin=t_begin, attempts=attempts,
-        improvement_trace=improvement_trace, report_state=search_report_state, strict_mode=bool(strict_mode),
-    )
-
-
-def _evaluate_profile(
-    *,
-    evaluate: Callable[..., Optional[Dict[str, Any]]],
-    profile: GraphReadyWeightProfile,
-    strict_mode: bool,
-    base_strategy: SortStrategy,
-    order: List[str],
-    dispatch_rule_cfg: str,
-    attempts: List[Dict[str, Any]],
-    search_report_state: Optional[OptimizationSearchReportState],
-) -> Optional[Dict[str, Any]]:
-    try:
-        return evaluate(profile=profile, order=order)
-    except ValidationError as exc:
-        if strict_mode or is_graph_ready_v2_contract_error(exc):
-            raise
-        _record_profile_rejection(
-            exc,
-            profile=profile,
-            attempts=attempts,
-            base_strategy=base_strategy,
-            dispatch_rule_cfg=dispatch_rule_cfg,
-            search_report_state=search_report_state,
-        )
-        return None
+    search = GraphReadyProfileSearch(evaluate=evaluate, pool=pool, budget=budget, profile_count=len(profiles),
+                                     initial_decode_seconds=observed_decode_seconds(best))
+    state = GraphSearchState(best)
+    stages: List[Any] = [ProfileStage(
+        profiles=profiles, search=search, pool=pool, state=state, order=order, strict_mode=bool(strict_mode),
+        base_strategy=base_strategy, dispatch_rule_cfg=dispatch_rule_cfg, version=int(version), attempts=attempts,
+        improvement_trace=improvement_trace, search_report_state=search_report_state, clock=clock, t_begin=t_begin)]
+    profile_stage = stages[0]
+    early_ig = prefer_ig_startup(best, clock=clock, deadline=deadline)
+    if _has_v2_profile(profiles) or repair_limits.enabled:
+        repair = EliteRepairRun(pool, state=state, evaluate=evaluate, budget=budget, deadline=deadline, clock=clock,
+                                t_begin=t_begin, attempts=attempts, improvement_trace=improvement_trace,
+                                report_state=search_report_state, strict_mode=bool(strict_mode))
+        stages.append(RepairStage(repair))
+        if iterated_greedy_limits is not None:
+            greedy = IteratedGreedyRun(
+                limits=iterated_greedy_limits, state=state,
+                parent_profile=partial(iterated_greedy_parent_profile, pool=pool, profiles=profiles),
+                pool=pool, evaluate=evaluate, operations=algo_ops_to_schedule, graph_context=graph_ready_context,
+                metrics_by_op_id=metrics_by_op_id, objective_name=objective_name, start_dt=start_dt, seed=int(version),
+                deadline=deadline, clock=clock, t_begin=t_begin, attempts=attempts, improvement_trace=improvement_trace,
+                report_state=search_report_state, strict_mode=bool(strict_mode))
+            # Only expensive initial decodes need an early IG slot. Small instances keep
+            # their established profile/repair starting pool; every IG reference still uses SGS.
+            stage = IteratedGreedyStage(greedy, startup_ready=lambda: early_ig or bool(pool.elites) or not profile_stage.available())
+            if early_ig:
+                stages.insert(0, stage)
+            else:
+                stages.append(stage)
+    rotation = StageScheduler(stages, clock=clock, deadline=deadline)
+    profile_stage.extra_summary = rotation.summary
+    rotation.run()
+    return state.best
 
 
 def _has_v2_profile(profiles: List[GraphReadyWeightProfile]) -> bool:
     return any(str(profile.formula_version or "").startswith("graph_ready_v2") for profile in list(profiles or []))
-
-
-def _record_profile_rejection(
-    exc: ValidationError,
-    *,
-    profile: GraphReadyWeightProfile,
-    attempts: List[Dict[str, Any]],
-    base_strategy: SortStrategy,
-    dispatch_rule_cfg: str,
-    search_report_state: Optional[OptimizationSearchReportState],
-) -> None:
-    reason = reason_from_validation(exc)
-    record_rejected_attempt(
-        attempts=attempts,
-        strategy=base_strategy,
-        dispatch_rule=dispatch_rule_cfg,
-        reason=reason,
-        message=str(exc),
-        profile_slug=profile.slug,
-    )
-    if search_report_state is not None:
-        search_report_state.mark_candidate_rejected(reason=reason)
-
-
-def _candidate_should_replace_best(
-    candidate: Dict[str, Any],
-    *,
-    profile: GraphReadyWeightProfile,
-    best: Optional[Dict[str, Any]],
-    attempts: List[Dict[str, Any]],
-    search_report_state: Optional[OptimizationSearchReportState],
-) -> bool:
-    fingerprint = None
-    if search_report_state is not None:
-        fingerprint = search_report_state.mark_candidate_evaluated(candidate, origin=profile.candidate_origin)
-    append_graph_attempt(attempts=attempts, candidate=candidate, profile=profile)
-    if fingerprint is not None and (fingerprint.same_as_parent or fingerprint.same_as_seen):
-        return False
-    return candidate_is_preferred(
-        candidate=candidate,
-        incumbent=best,
-        candidate_origin=profile.candidate_origin,
-        incumbent_origin=_incumbent_origin(best, search_report_state),
-        candidate_fingerprint=fingerprint,
-        incumbent_fingerprint_changed=bool(search_report_state and search_report_state.best_fingerprint_changed()),
-    )
-
-
-def _incumbent_origin(
-    best: Optional[Dict[str, Any]],
-    search_report_state: Optional[OptimizationSearchReportState],
-) -> str:
-    if search_report_state is not None:
-        return str(search_report_state.best_origin or "baseline")
-    return str((best or {}).get("candidate_origin") or "baseline")
-
-
-def _accept_candidate(
-    candidate: Dict[str, Any],
-    *,
-    profile: GraphReadyWeightProfile,
-    incumbent: Optional[Dict[str, Any]],
-    version: int,
-    search_report_state: Optional[OptimizationSearchReportState],
-) -> None:
-    if search_report_state is not None:
-        event = None
-        if incumbent is not None:
-            event = build_graph_ready_improve_only_acceptance_event(
-                candidate_score=candidate.get("score"),
-                incumbent_score=incumbent.get("score"),
-                seed=int(version),
-            )
-        search_report_state.mark_candidate_accepted(
-            candidate,
-            origin=profile.candidate_origin,
-            acceptance_event=event,
-        )
 
 
 def _candidate_order(

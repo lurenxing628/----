@@ -4,11 +4,17 @@ from datetime import date, datetime
 from functools import partial
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, cast
 
+from core.algorithm_contracts.dispatch_rules import dispatch_rule_search_pool
 from core.algorithms import ScheduleResult
 
 from .optimizer_acceptance import ACCEPTANCE_IMPROVE_ONLY
 from .optimizer_candidate_profile import derive_iteration_limits
-from .optimizer_deadline_guard import evaluate_optional_local_with_budget, guard_decoder
+from .optimizer_deadline_guard import (
+    can_afford_decode,
+    evaluate_optional_local_with_budget,
+    guard_decoder,
+    observed_decode_seconds,
+)
 from .optimizer_local_search_candidate_eval import evaluate_local_search_candidate
 from .optimizer_local_search_fingerprints import LocalSearchFingerprintTracker
 from .optimizer_local_search_round import run_local_search_candidate_round
@@ -299,6 +305,8 @@ def run_local_search(
         _mark_local_search_skipped(search_report_state, "graph_ready_uses_graph_candidate_phase", {})
         return best
     best = cast(Dict[str, Any], best)
+    if not can_afford_decode(best, clock=clock, deadline=deadline, search_report_state=search_report_state, phase="local_search"):
+        return best
 
     rnd = rng_factory(int(version))
     _mark_local_search_entered(search_report_state)
@@ -319,7 +327,8 @@ def run_local_search(
     no_improve = 0
     seen_hashes = init_seen_hashes(local_state.current_order, best)
 
-    schedule_fn = guard_decoder(schedule_fn, clock=clock, deadline=deadline, search_report_state=search_report_state)
+    schedule_fn = guard_decoder(schedule_fn, clock=clock, deadline=deadline, search_report_state=search_report_state,
+                                minimum_decode_seconds=observed_decode_seconds(best))
     while True:
         now_value = clock()
         stop_reason = _local_search_stop_reason(
@@ -413,14 +422,10 @@ def run_local_search(
 
 
 def _resolve_sgs_dispatch_rules(valid_dispatch_rules: Optional[List[str]], current_dispatch_rule: str) -> List[str]:
-    out: List[str] = []
-    for item in list(valid_dispatch_rules or DEFAULT_SGS_DISPATCH_RULES):
-        text = str(item or "").strip().lower()
-        if text and text not in out:
-            out.append(text)
+    # The rule neighborhood searches the registry rules plus the ATC k ladder; the
+    # current rule may already be a ladder token adopted by an earlier phase.
+    out = list(dispatch_rule_search_pool(valid_dispatch_rules or DEFAULT_SGS_DISPATCH_RULES))
     current = str(current_dispatch_rule or "").strip().lower()
     if current and current not in out:
         out.insert(0, current)
-    if not out:
-        out.extend(DEFAULT_SGS_DISPATCH_RULES)
     return out

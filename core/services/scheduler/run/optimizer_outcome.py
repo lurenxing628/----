@@ -31,6 +31,10 @@ class OptimizationOutcome:
     time_budget_seconds: int
     algo_stats: Dict[str, Any] = field(default_factory=dict)
     search_report: Dict[str, Any] = field(default_factory=dict)
+    # Dispatch mode and rule of the adopted plan; the rule may differ from the configured one
+    # because multi-start and the rule neighborhood search the whole rule pool.
+    dispatch_mode: str = ""
+    dispatch_rule: str = ""
 
 
 def _runtime_ms(runtime: OptimizerRuntime, *, t_begin: float) -> int:
@@ -163,6 +167,8 @@ def _baseline_outcome(
         time_budget_seconds=optimizer_cfg.time_budget_seconds,
         algo_stats=algo_stats,
         search_report=search_report,
+        dispatch_mode=str(dispatch_mode_cfg),
+        dispatch_rule=str(optimizer_cfg.dispatch_rule),
     )
 
 

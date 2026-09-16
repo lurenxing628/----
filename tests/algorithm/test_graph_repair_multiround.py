@@ -33,9 +33,10 @@ def test_new_round_decodes_from_accepted_elites_and_improves_known_small_case(mo
         return original(self, candidate, profile)
 
     monkeypatch.setattr(repair.EliteRepairPool, "make_elite", check_no_unused_next_round)
-    once = run_production_repair_case(case=context, clock=lambda: 0.0, limits={"max_rounds": 1})
+    # Repair-round contracts: a frozen clock would let the iterated greedy stage run to its decode cap.
+    once = run_production_repair_case(case=context, clock=lambda: 0.0, limits={"max_rounds": 1}, iterated_greedy={"enabled": False})
     monkeypatch.setattr(repair.EliteRepairPool, "make_elite", original)
-    repeated = run_production_repair_case(case=context, clock=lambda: 0.0, limits={"max_rounds": 3})
+    repeated = run_production_repair_case(case=context, clock=lambda: 0.0, limits={"max_rounds": 3}, iterated_greedy={"enabled": False})
     assert once["repair"]["repair_stop_reason"] == "max_rounds"
     assert once["repair"]["repair_rounds_completed"] == 1
     assert repeated["repair"]["repair_rounds_completed"] > 1
@@ -47,12 +48,16 @@ def test_new_round_decodes_from_accepted_elites_and_improves_known_small_case(mo
     assert repeated["state"].best_acceptance_passed
 
 
-@pytest.mark.parametrize("neighbors,stop,rounds", [(8, "max_rounds", 3), (32, "no_improvement", 1)])
-def test_no_improvement_means_all_selected_parent_tails_are_exhausted(neighbors, stop, rounds):
-    result = run_production_repair_case(clock=lambda: 0.0, limits={"max_neighbors_per_elite": neighbors})
+@pytest.mark.parametrize("neighbors,stop,cap", [(8, "max_rounds", 60), (32, "no_improvement", 200)])
+def test_no_improvement_means_all_selected_parent_tails_are_exhausted(neighbors, stop, cap):
+    # The exhaustion case gives late profile parents room; cap=60 has separate conservation tests.
+    result = run_production_repair_case(clock=lambda: 0.0, max_candidates=cap, limits={"max_neighbors_per_elite": neighbors},
+                                        iterated_greedy={"enabled": False})
     report = result["repair"]
     assert report["repair_stop_reason"] == stop
-    assert report["repair_rounds_completed"] == rounds
+    # Profiles can supply a new parent between repair tasks, requiring another bounded round.
+    rounds = report["repair_rounds_completed"]
+    assert 1 <= rounds <= report["repair_max_rounds"]
     assert report["repair_round_improvements"] == [0] * rounds
     pruning = report["repair_pruning_report"]
     unvisited = pruning["skipped_by_budget"] - report["skipped_neighbors_by_top_k"]
@@ -66,13 +71,16 @@ def test_real_improvement_gets_next_round_before_older_elites(monkeypatch):
 
     def observe(pool, **kwargs):
         before = len(kwargs["improved_elites"])
-        result = original(pool, **kwargs)
-        calls.append((pool.report["repair_rounds_completed"], kwargs["elite"]["profile"].candidate_origin,
-                      len(kwargs["improved_elites"]) > before))
-        return result
+        round_index = pool.report["repair_rounds_completed"]
+        try:
+            yield from original(pool, **kwargs)
+        finally:
+            calls.append((round_index, kwargs["elite"]["profile"].candidate_origin,
+                          len(kwargs["improved_elites"]) > before))
 
     monkeypatch.setattr(repair, "_repair_one_elite", observe)
-    result = run_production_repair_case(case=smtwt_repair_context(), clock=lambda: 0.0, limits={"max_rounds": 3})
+    result = run_production_repair_case(case=smtwt_repair_context(), clock=lambda: 0.0, limits={"max_rounds": 3},
+                                        iterated_greedy={"enabled": False})
     transitions = [(previous, following) for previous, following in zip(calls, calls[1:])
                    if previous[2] and previous[0] < 2]
     assert transitions, "the real fixture must exercise an improving round"
@@ -97,10 +105,12 @@ def test_improving_elite_retains_its_unvisited_tail_with_bounded_visits(monkeypa
     def observe(pool, **kwargs):
         elite = kwargs["elite"]
         start = elite.get("decision_offset", 0)
-        result = original(pool, **kwargs)
-        visits.append((pool, elite, start, elite["decision_offset"], pool.report["repair_rounds_completed"]))
+        round_index = pool.report["repair_rounds_completed"]
         assert kwargs["elite_index"] < pool.limits.top_k
-        return result
+        try:
+            yield from original(pool, **kwargs)
+        finally:
+            visits.append((pool, elite, start, elite["decision_offset"], round_index))
 
     monkeypatch.setattr(repair, "_repair_one_elite", observe)
     # This is a deterministic production-path contract, not a runtime benchmark.
@@ -130,6 +140,30 @@ def test_improving_elite_retains_its_unvisited_tail_with_bounded_visits(monkeypa
                                                 + pruning["candidate_space_total"] - pruning["generated_candidates"])
 
 
+def test_profile_improvement_supersedes_an_older_repair_round_priority():
+    from core.services.scheduler.run.optimizer_graph_ready_repair_rotation import (
+        _current_improvements,
+        _fill_round_slots,
+    )
+
+    old = {"candidate": {"score": (0, 216)}, "neighborhood": SimpleNamespace(candidate_count=12), "decision_offset": 8}
+    fresh = {"candidate": {"score": (0, 171)}, "neighborhood": SimpleNamespace(candidate_count=10), "decision_offset": 0}
+    events = [old]
+    pool = SimpleNamespace(limits=EliteRepairLimits(top_k=2), elites=[fresh], report={"repair_deferred_by_improvement": 0})
+    current = _current_improvements(events, fresh["candidate"])
+    assert not repair._defer_to_improved_elites(pool, [old], 0, 0, current)
+    assert pool.report["repair_deferred_by_improvement"] == 0
+    assert events == [old], "the historical strict improvement still belongs in the round report"
+    active, queued = [old], []
+    _fill_round_slots(active, queued, [old], pool)
+    assert active == [old, fresh] and queued == []
+    # Once the active cap is filled, another new parent waits instead of extending the round.
+    later = {"candidate": {"score": (0, 170)}, "neighborhood": SimpleNamespace(candidate_count=4), "decision_offset": 0}
+    pool.elites = [later]
+    _fill_round_slots(active, queued, [old], pool)
+    assert active == [old, fresh] and queued == [later]
+
+
 def test_tiny_changeover_keeps_distinct_parents_and_consumes_shared_variant_tails(monkeypatch):
     from tests._support.optimizer_quality_matrix import run_case
 
@@ -140,9 +174,11 @@ def test_tiny_changeover_keeps_distinct_parents_and_consumes_shared_variant_tail
     def visit(pool, **kwargs):
         elite = kwargs["elite"]
         start = elite["decision_offset"]
-        result = original_visit(pool, **kwargs)
-        visits.append((pool, elite, pool.report["repair_rounds_completed"], start, elite["decision_offset"]))
-        return result
+        round_index = pool.report["repair_rounds_completed"]
+        try:
+            yield from original_visit(pool, **kwargs)
+        finally:
+            visits.append((pool, elite, round_index, start, elite["decision_offset"]))
 
     def evaluate(*args, **kwargs):
         result = original_evaluate(*args, **kwargs)
@@ -154,13 +190,13 @@ def test_tiny_changeover_keeps_distinct_parents_and_consumes_shared_variant_tail
     monkeypatch.setattr(repair, "_evaluate_neighbor", evaluate)
     result = run_case("tiny", "min_changeover")
     assert result["status"] == "passed"
-    assert result["improved"]["objective_score"] == [0.0, 4.0, 2.0, 12.0, 12.0, 26.0]
+    # Keep the measured two-changeover quality floor while repair and IG share the phase by time.
+    assert result["improved"]["objective_score"] == [0.0, 2.0, 2.0, 15.5, 35.5, 26.0]
     assert result["counts"]["graph_decode_count"] + result["counts"]["repair_decode_count"] <= 60
     pool = visits[0][0]
     assert len(pool.elites) == len({elite["fingerprint"].output_fingerprint for elite in pool.elites}) == 3
     assert any(len(elite["neighborhood"].variants) > 1 for elite in pool.elites)
-    assert pool.report["repair_round_improvements"][0] == 0
-    assert any(value > 0 for value in pool.report["repair_round_improvements"][1:])
+    assert any(value > 0 for value in pool.report["repair_round_improvements"])
     per_round = {}
     for _pool, elite, round_index, start, end in visits:
         assert 0 <= end - start <= 8, "the eight-item cap covers all basis variants together"

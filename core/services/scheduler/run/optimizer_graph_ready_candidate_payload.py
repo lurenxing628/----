@@ -8,7 +8,12 @@ from core.algorithms import ScheduleResult
 from core.algorithms.evaluation import objective_score
 from core.algorithms.greedy.algo_stats import merge_algo_stats, snapshot_algo_stats
 
-from .optimizer_graph_ready_profiles import GRAPH_READY_V2_REPAIRED_ORIGIN, GraphReadyWeightProfile, profile_payload
+from .optimizer_graph_ready_profiles import (
+    GRAPH_READY_V2_ITERATED_GREEDY_ORIGIN,
+    GRAPH_READY_V2_REPAIRED_ORIGIN,
+    GraphReadyWeightProfile,
+    profile_payload,
+)
 from .optimizer_graph_ready_reporting import public_params
 
 
@@ -69,6 +74,10 @@ def _decoded_batch_order(results: List[ScheduleResult]) -> List[str]:
     return order
 
 
+# Public name for stages that rebuild a decision from decoded results (elite repair, iterated greedy).
+decoded_batch_order = _decoded_batch_order
+
+
 def _result_batch_order(decoded_batch_order: List[str], *, decision_order: List[str]) -> List[str]:
     out = list(decoded_batch_order or [])
     seen = set(out)
@@ -80,9 +89,13 @@ def _result_batch_order(decoded_batch_order: List[str], *, decision_order: List[
     return out
 
 
+_SCOPE_BY_ORIGIN = {GRAPH_READY_V2_REPAIRED_ORIGIN: "graph_ready_elite_repair",
+                    GRAPH_READY_V2_ITERATED_GREEDY_ORIGIN: "graph_ready_iterated_greedy"}
+
+
 def _mutable_scope(profile: GraphReadyWeightProfile, *, version: int) -> Dict[str, Any]:
     return {
-        "scope": "graph_ready_elite_repair" if profile.candidate_origin == GRAPH_READY_V2_REPAIRED_ORIGIN else "graph_ready_priority",
+        "scope": _SCOPE_BY_ORIGIN.get(profile.candidate_origin, "graph_ready_priority"),
         "weight_profile_slug": profile.slug,
         "raw_weights": dict(profile.raw_weights),
         "candidate_policy": profile.candidate_policy,

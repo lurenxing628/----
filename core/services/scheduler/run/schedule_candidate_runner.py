@@ -13,7 +13,7 @@ from .optimizer_search_budget import (
     SearchBudgetExhausted,
     allocate_candidate_budget,
 )
-from .schedule_candidate_dedup import CandidateInputLedger, reused_candidate_plan
+from .schedule_candidate_dedup import CandidateInputLedger
 from .schedule_candidate_health import CandidateHealth
 from .schedule_candidate_runtime_helpers import (
     _candidate_cfg,
@@ -76,6 +76,9 @@ class CandidatePlan:
     dispatch_mode: str = ""
     dispatch_rule: str = ""
     objective: str = ""
+    # Dispatch rule of the plan the optimizer finally adopted; may differ from the configured
+    # ``dispatch_rule`` because the rule pool is an optimizer-internal search dimension.
+    adopted_dispatch_rule: str = ""
     failure_reason: Optional[str] = None
     elapsed_seconds: float = 0.0
     # Set when this plan is a completed sibling's plan under this candidate's identity: the two
@@ -108,11 +111,18 @@ class _CandidateRunArtifacts:
 
 
 class _CandidateTrialConfigService:
+    """Config view of one candidate trial: comparability locks only, never the optimizer's rule pool.
+
+    Candidates must differ in graph weights alone, so the sort strategy, dispatch mode, objective
+    and algorithm mode are pinned to the configured values. The SGS dispatch rule pool is the
+    optimizer's own search dimension (multi-start rules and the rule neighborhood) and stays the
+    registry pool; the rule a plan finally adopts is reported on the plan itself.
+    """
+
     def __init__(self, base_cfg_svc: Any, cfg: Any) -> None:
         self._base_cfg_svc = base_cfg_svc
         self.VALID_STRATEGIES = (str(cfg.sort_strategy).strip().lower(),)
         self.VALID_DISPATCH_MODES = (str(cfg.dispatch_mode).strip().lower(),)
-        self.VALID_DISPATCH_RULES = (str(cfg.dispatch_rule).strip().lower(),)
         self.VALID_OBJECTIVES = (str(cfg.objective).strip().lower(),)
         self.VALID_ALGO_MODES = (str(cfg.algo_mode).strip().lower(),)
 
@@ -199,23 +209,24 @@ def _run_candidate_plans(
     report = on_progress if callable(on_progress) else (lambda done, total: None)
     for index, spec in enumerate(specs):
         candidate_started = now()
+        # A previously certified twin needs no preparation or decoder budget. Finish publishing
+        # those already-computed plans even when the last non-preemptible decode crossed the deadline.
+        twin = ledger.completed_twin(spec)
         if candidate_started >= deadline:
             time_budget_reached = True
-            candidates.append(_skipped_plan(spec, failure_reason="candidate_time_budget_reached"))
-            report(len(candidates), len(specs))
-            continue
-        if spec.graph_enabled:
+            if twin is None:
+                candidates.append(_skipped_plan(spec, failure_reason="candidate_time_budget_reached"))
+                report(len(candidates), len(specs))
+                continue
+        if spec.graph_enabled and twin is None:
             # Prepare every remaining graph plan inside the first graph plan's slice: the weight-independent
             # core is shared and each projection is cheap, and knowing which tiers have identical optimizer
             # inputs lets duplicates reuse a sibling while the budget is split among plans needing a search.
             ledger.prepare_graph_specs(specs[index:])
-        twin = ledger.completed_twin(spec)
+            twin = ledger.completed_twin(spec)
         if twin is not None:
-            prepared = ledger.prepared(spec)
-            if prepared is None:
-                raise RuntimeError("Candidate reuse requires prepared optimizer inputs.")
-            plan = reused_candidate_plan(
-                spec, twin, prepared=prepared, baseline_results=baseline_results,
+            plan = ledger.reuse(
+                spec, twin, baseline_results=baseline_results,
                 elapsed_seconds=now() - candidate_started,
             )
         else:
@@ -449,6 +460,7 @@ def _candidate_plan_from_artifacts(
         dispatch_mode=str(candidate_cfg.dispatch_mode),
         dispatch_rule=str(candidate_cfg.dispatch_rule),
         objective=str(candidate_cfg.objective),
+        adopted_dispatch_rule=str(getattr(outcome, "dispatch_rule", None) or ""),
     )
 
 

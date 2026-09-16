@@ -139,6 +139,13 @@ def candidate_public_summary(candidate: Any, *, roles: Optional[List[str]] = Non
     reused_from_label = str(getattr(candidate, "reused_from_label", "") or "")
     if reused_from_label:
         summary["reused_from_label"] = reused_from_label
+    # The optimizer searches the whole rule pool; say which rule the plan really uses.
+    adopted_rule = str(getattr(candidate, "adopted_dispatch_rule", "") or "")
+    if adopted_rule:
+        summary["adopted_dispatch_rule"] = adopted_rule
+        configured_rule = str(getattr(candidate, "dispatch_rule", "") or "")
+        if configured_rule and configured_rule != adopted_rule:
+            summary["configured_dispatch_rule"] = configured_rule
     return summary
 
 

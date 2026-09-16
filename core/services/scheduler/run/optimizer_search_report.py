@@ -94,10 +94,13 @@ class OptimizationSearchReportState:
     def best_fingerprint_changed(self) -> bool:
         return has_fingerprint_changed(self.initial_fingerprint, self.best_fingerprint)
 
-    def mark_candidate_evaluated(self, candidate: Dict[str, Any], *, origin: str) -> CandidateFingerprint:
+    def mark_candidate_evaluated(self, candidate: Dict[str, Any], *, origin: str,
+                                 remember_fingerprint: bool = True) -> CandidateFingerprint:
+        """Count real work; an unverified checkpoint trial must not occupy the validated duplicate set."""
         self.evaluated_candidates += 1
         fingerprint = self._candidate_fingerprint(candidate, seen=self.candidate_fingerprints)
-        self.candidate_fingerprints.add(fingerprint.output_fingerprint)
+        if remember_fingerprint:
+            self.candidate_fingerprints.add(fingerprint.output_fingerprint)
         append_fingerprint_event(self.fingerprint_events, origin=origin, status="evaluated", fingerprint=fingerprint)
         if fingerprint.same_as_parent or fingerprint.same_as_seen:
             self._record_rejection_reason("same_fingerprint")

@@ -110,6 +110,13 @@ class CandidateInputLedger:
         fingerprint = self._fingerprints.get(int(spec.sequence))
         return None if fingerprint is None else self._completed.get(fingerprint)
 
+    def reuse(self, spec: Any, twin: Any, *, baseline_results: Any, elapsed_seconds: float) -> Any:
+        prepared = self.prepared(spec)
+        if prepared is None:
+            raise RuntimeError("Candidate reuse requires prepared optimizer inputs.")
+        return reused_candidate_plan(spec, twin, prepared=prepared, baseline_results=baseline_results,
+                                     elapsed_seconds=elapsed_seconds)
+
     def observe(self, spec: Any, plan: Any, *, completed: bool) -> None:
         fingerprint = self._fingerprints.get(int(spec.sequence))
         if completed and fingerprint is not None and fingerprint not in self._completed:

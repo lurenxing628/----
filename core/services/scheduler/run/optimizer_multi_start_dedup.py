@@ -198,7 +198,8 @@ class MultiStartDecisionCache:
             dispatch_rule=dispatch_rule, resource_pool=self.resource_pool, strict_mode=True,
         )
         StrategyFactory.create(resolved.strategy, **resolved.used_params).get_name()
-        decision = (resolved.dispatch_mode_key, resolved.dispatch_rule_enum.value,
+        # The canonical token keeps ATC k variants apart; the bare enum would dedup them away.
+        decision = (resolved.dispatch_mode_key, resolved.dispatch_rule_spec.token,
                     resolved.base_time, resolved.end_dt_exclusive, resolved.auto_assign_enabled, tuple(order))
         return context, decision
 

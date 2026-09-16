@@ -345,4 +345,6 @@ def optimize_schedule(
         time_budget_seconds=optimizer_cfg.time_budget_seconds,
         algo_stats=algo_stats,
         search_report=search_report,
+        dispatch_mode=str(best.get("dispatch_mode") or dispatch_mode_cfg),
+        dispatch_rule=str(best.get("dispatch_rule") or optimizer_cfg.dispatch_rule),
     )

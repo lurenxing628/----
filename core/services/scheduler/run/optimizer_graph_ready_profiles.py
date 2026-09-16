@@ -16,6 +16,7 @@ GRAPH_READY_WEIGHT_GRID_ORIGIN = "graph_ready_weight_grid"
 GRAPH_READY_LOCAL_SEARCH_ORIGIN = "graph_ready_local_search"
 GRAPH_READY_V2_GENERATED_ORIGIN = "graph_ready_v2_generated"
 GRAPH_READY_V2_REPAIRED_ORIGIN = "graph_ready_v2_repaired"
+GRAPH_READY_V2_ITERATED_GREEDY_ORIGIN = "graph_ready_v2_iterated_greedy"
 
 GRAPH_READY_REQUIRED_CONTEXT_FIELDS = (
     "schedulable_op_ids",

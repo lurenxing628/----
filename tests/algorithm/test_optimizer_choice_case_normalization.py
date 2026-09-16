@@ -1,8 +1,10 @@
-"""回归测试：optimize_schedule 对带空格/大小写的算法选项（algo_mode=' IMPROVE '、objective、dispatch_mode=' SGS '、dispatch_rule=' CR '）做归一化——outcome 字段归一为小写无空格，multi-start 据归一化值生成且去重出 {(batch_order,cr),(sgs,cr),(sgs,slack),(sgs,atc)} 共 4 个组合，attempts 留痕同样规范化。"""
+"""回归测试：optimize_schedule 对带空格/大小写的算法选项（algo_mode=' IMPROVE '、objective、dispatch_mode=' SGS '、dispatch_rule=' CR '）做归一化——outcome 字段归一为小写无空格，multi-start 据归一化值生成且去重出 (batch_order,cr) 加上 sgs 规则池（注册表三规则 + ATC k 梯子）的组合，attempts 留痕同样规范化。"""
 
 from datetime import date, datetime, timedelta
 from types import SimpleNamespace
 from typing import Any, Dict, List, Tuple
+
+from core.algorithm_contracts.dispatch_rules import dispatch_rule_search_pool
 
 
 class _StubCalendar:
@@ -138,12 +140,9 @@ def test_optimizer_choice_case_normalization() -> None:
         schedule_optimizer._run_local_search = original_local_search
         schedule_optimizer._run_ortools_warmstart = original_ortools
 
-    expected_pairs = {
-        ("batch_order", "cr"),
-        ("sgs", "cr"),
-        ("sgs", "slack"),
-        ("sgs", "atc"),
-    }
+    # batch_order keeps the configured rule; sgs starts cover the whole search pool (registry
+    # rules plus the ATC k ladder), all normalized to canonical lowercase tokens.
+    expected_pairs = {("batch_order", "cr")} | {("sgs", rule) for rule in dispatch_rule_search_pool(("slack", "cr", "atc"))}
     actual_pairs = set(_RecordingScheduler.calls)
     assert outcome.algo_mode == "improve", f"outcome.algo_mode 未归一化：{outcome.algo_mode!r}"
     assert outcome.objective_name == "min_weighted_tardiness", (

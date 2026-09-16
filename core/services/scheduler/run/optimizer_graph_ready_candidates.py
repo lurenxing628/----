@@ -21,6 +21,7 @@ from .optimizer_graph_ready_feature_basis import (
     select_profile_metrics,
 )
 from .optimizer_graph_ready_profiles import (
+    GRAPH_READY_V2_ITERATED_GREEDY_ORIGIN,
     GRAPH_READY_V2_REPAIRED_ORIGIN,
     GraphReadyWeightProfile,
     finite_number,
@@ -73,6 +74,8 @@ def evaluate_graph_ready_candidate(
     repair_decision: Optional[Any] = None,
     before_decode: Optional[Callable[[], None]] = None,
     inspect_decision: Optional[Callable[[Dict[str, Any]], None]] = None,
+    decode_resume: Optional[Any] = None,
+    decode_checkpoints: Optional[Any] = None,
 ) -> Dict[str, Any]:
     # runtime_ms 合同语义是"该候选自身的构造+解码+评估耗时"(同分 tie-break 偏好更快候选,
     # 见 optimizer_candidate_comparison.candidate_runtime_ms 与 GRAPH_READY_SELECTION_TIEBREAKER)。
@@ -104,6 +107,12 @@ def evaluate_graph_ready_candidate(
         inspect_decision(candidate_context)
     if before_decode is not None:
         before_decode()
+    # Decode checkpoints are an optimizer-internal trial accelerator; only forwarded when a stage asks.
+    decode_kwargs: Dict[str, Any] = {}
+    if decode_resume is not None:
+        decode_kwargs["decode_resume"] = decode_resume
+    if decode_checkpoints is not None:
+        decode_kwargs["decode_checkpoints"] = decode_checkpoints
     res, summ, used_strat, used_params = schedule_fn(
         scheduler,
         strict_mode=bool(strict_mode),
@@ -121,6 +130,7 @@ def evaluate_graph_ready_candidate(
         resource_pool=resource_pool,
         readiness_gate_enabled=bool(readiness_gate_enabled),
         graph_ready_context=candidate_context,
+        **decode_kwargs,
     )
     metrics = compute_metrics(
         res, batches, expected_operations=algo_ops_to_schedule, seed_results=seed_sr_list,
@@ -146,9 +156,14 @@ def evaluate_graph_ready_candidate(
     )
 
 
+# Origins that decode an explicit priority decision, with the policy each one must declare.
+_DECISION_ORIGIN_POLICIES = {GRAPH_READY_V2_REPAIRED_ORIGIN: "elite_repair", GRAPH_READY_V2_ITERATED_GREEDY_ORIGIN: "iterated_greedy"}
+
+
 def _validate_repair_decision(profile: GraphReadyWeightProfile, *, order: List[str], repair_order: Optional[List[str]]) -> None:
-    repaired = profile.candidate_origin == GRAPH_READY_V2_REPAIRED_ORIGIN
-    if repaired != (repair_order is not None) or (repaired and (profile.candidate_policy != "elite_repair" or order != repair_order)):
+    expected_policy = _DECISION_ORIGIN_POLICIES.get(profile.candidate_origin)
+    repaired = expected_policy is not None
+    if repaired != (repair_order is not None) or (repaired and (profile.candidate_policy != expected_policy or order != repair_order)):
         raise ValidationError(
             "GraphReady 修补来源必须对应同一份显式优先决策。", field="graph_ready_elite_repair",
             details={"reason": "graph_ready_bad_repair_decision"},

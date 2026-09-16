@@ -318,7 +318,9 @@ def test_candidate_report_pages_receive_plan_role_and_keep_export_links_on_same_
                 sheet = workbook["设备负荷"]
                 assert sheet["A2"].value == "MC_CANDIDATE"
                 assert sheet["B2"].value == "候选方案设备"
-                _assert_number(sheet["C2"].value, 4.0)
+                _assert_number(sheet["C2"].value, 0.0)  # 默认周六休息，4 小时自然跨度单列。
+                _assert_number(sheet["I2"].value, 4.0)
+                assert sheet["F2"].value is None
                 assert "MC_ADOPTED" not in _workbook_text(exported)
             else:
                 assert workbook["停机影响"]["A2"].value == "MC_CANDIDATE"
@@ -361,7 +363,9 @@ def test_candidate_report_exports_use_selected_plan_rows_and_filename_label(tmp_
     try:
         ws = wb["设备负荷"]
         assert ws["A2"].value == "MC_CANDIDATE"
-        _assert_number(ws["C2"].value, 4.0)
+        _assert_number(ws["C2"].value, 0.0)
+        _assert_number(ws["I2"].value, 4.0)
+        assert ws["F2"].value is None
     finally:
         wb.close()
     _assert_export_public_text(utilization_resp)

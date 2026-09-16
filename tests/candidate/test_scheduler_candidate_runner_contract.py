@@ -1,4 +1,4 @@
-"""回归测试：run_candidate_comparison 候选对比 runner 的契约——先跑 baseline（graph off）再跑 N 个重点工序优先候选并传入图 ready/health 上下文；试跑时把 sort/dispatch_mode/dispatch_rule/algo_mode 锁死为当前值、内部 downstream 权重在可见权重为零时仍保留；critical 健康只用私有 health_context 不回退诊断样本；超全局 deadline 的未启动候选标记 skipped；仅显式 CandidateTrialFailure 算候选级失败可继续，ValidationError/RuntimeError/TypeError 必须上抛，全部失败时抛 ValidationError(field="candidate_selection")；并标记缺失/失败的 baseline。"""
+"""回归测试：run_candidate_comparison 候选对比 runner 的契约——先跑 baseline（graph off）再跑 N 个重点工序优先候选并传入图 ready/health 上下文；试跑时把 sort/dispatch_mode/objective/algo_mode 锁死为当前值但保留完整派工规则池、内部 downstream 权重在可见权重为零时仍保留；critical 健康只用私有 health_context 不回退诊断样本；超全局 deadline 的未启动候选标记 skipped；仅显式 CandidateTrialFailure 算候选级失败可继续，ValidationError/RuntimeError/TypeError 必须上抛，全部失败时抛 ValidationError(field="candidate_selection")；并标记缺失/失败的 baseline。"""
 
 from __future__ import annotations
 
@@ -379,7 +379,7 @@ def test_candidate_runner_health_does_not_fall_back_to_diagnostics_sample() -> N
     assert critical.health.top_impact_op_count == 0
 
 
-def test_candidate_trial_mode_locks_sort_dispatch_mode_and_dispatch_rule_to_current_values() -> None:
+def test_candidate_trial_mode_locks_sort_and_dispatch_mode_but_keeps_the_dispatch_rule_pool() -> None:
     seen = []
 
     def prepare_graph(schedule_input):
@@ -414,12 +414,14 @@ def test_candidate_trial_mode_locks_sort_dispatch_mode_and_dispatch_rule_to_curr
     )
 
     assert seen
+    # Comparability locks pin strategy and mode; the rule pool stays the registry pool so the
+    # optimizer's multi-start rules and the rule neighborhood can really search it.
     assert set(seen) == {
         (
             "improve",
             ("priority_first",),
             ("sgs",),
-            ("cr",),
+            ("cr", "atc", "slack"),
             ("improve",),
         )
     }

@@ -47,22 +47,23 @@ class GraphReadyProfileSearch:
     """
 
     def __init__(self, *, evaluate: Callable[..., Dict[str, Any]], pool: Any,
-                 budget: GraphReadySearchBudget, profile_count: int) -> None:
+                 budget: GraphReadySearchBudget, profile_count: int, initial_decode_seconds: float = 0.0) -> None:
         self._evaluate = evaluate
         self.pool = pool
         self.budget = budget
+        self.initial_decode_seconds = initial_decode_seconds
+        self.cost_stopped = False
         self._decoded: Dict[Tuple[Any, ...], Dict[str, Any]] = {}
         self.report: Dict[str, Any] = {
             "proof": "exact_graph_key_weak_order_v1", "cache_scope": "single_fixed_evaluator",
             "configured_profiles": profile_count, "considered_profiles": 0,
             "predecode_pruned_profiles": 0, "construction_rejected_profiles": 0,
             "skipped_before_decode": 0, "equivalent_profiles": [],
+            "skipped_by_estimated_decode_cost": 0,
         }
 
     def can_start(self) -> bool:
-        family_count = (self.pool.elites[0]["neighborhood"].batch_family_representative_count
-                        if self.pool.elites else 0)
-        return self.budget.available(has_elite=bool(self.pool.elites), repair_family_count=family_count)
+        return not self.cost_stopped and self.budget.available()
 
     def evaluate(self, *, profile: GraphReadyWeightProfile, order: List[str]) -> Optional[Dict[str, Any]]:
         self.report["considered_profiles"] += 1
@@ -76,6 +77,10 @@ class GraphReadyProfileSearch:
                 raise _EquivalentDecision(self._decoded[key])
             # Construction and proof computation consume the SAME wall-clock budget.
             if not self.can_start():
+                raise _ProfileBudgetExhausted()
+            if self.initial_decode_seconds > max(self.budget.deadline - self.budget.clock(), 0.0):
+                self.cost_stopped = True
+                self.report["skipped_by_estimated_decode_cost"] += 1
                 raise _ProfileBudgetExhausted()
             decision.append(key)
             self.budget.profile_decodes += 1

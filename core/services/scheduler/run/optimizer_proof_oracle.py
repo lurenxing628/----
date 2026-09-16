@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 from types import SimpleNamespace
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
+from core.algorithm_runtime.checkpoint_calendar import register_stateless_checkpoint_calendar
 from core.algorithms import GreedyScheduler, ScheduleResult
 from core.algorithms.evaluation import ScheduleMetrics, compute_metrics, objective_score
 from core.algorithms.sort_strategies import SortStrategy
@@ -44,6 +45,9 @@ class _ContinuousCalendar:
 
     def add_calendar_days(self, dt: datetime, days: float, machine_id: Any = None, operator_id: Any = None) -> datetime:
         return dt + timedelta(days=float(days or 0.0))
+
+
+register_stateless_checkpoint_calendar(_ContinuousCalendar)
 
 
 def run_exact_oracle(case: TinyBenchmarkCase, *, objective_name: str) -> ExactOracleResult:

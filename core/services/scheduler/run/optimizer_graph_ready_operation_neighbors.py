@@ -83,6 +83,10 @@ def _decoded_topological_order(rows: Dict[int, Any], predecessors: Dict[int, set
     return tuple(order)
 
 
+# Public names for other decision stages; the internal helpers stay patchable under their old names.
+decoded_topological_order = _decoded_topological_order
+
+
 def _resource_timelines(results: List[Any]) -> List[List[Any]]:
     timelines: Dict[Tuple[str, str], List[Any]] = defaultdict(list)
     for row in results:

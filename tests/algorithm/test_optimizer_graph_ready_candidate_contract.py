@@ -1918,8 +1918,8 @@ def test_graph_ready_v2_runs_real_sgs_and_keeps_repair_attribution_separate() ->
         assert efficiency["considered_profiles"] == sum(efficiency[key] for key in (
             "profile_decodes", "predecode_pruned_profiles", "construction_rejected_profiles", "skipped_before_decode"))
         assert row["decoded_profile_count"] == efficiency["profile_decodes"]
-        assert row["evaluated_candidates"] == 1 + row["decoded_profile_count"] + row["repair_evaluated_candidates"]
-        assert row["evaluated_candidates"] - 1 <= row["max_candidates"]
+        assert row["evaluated_candidates"] == 1 + row["decoded_profile_count"] + row["repair_evaluated_candidates"] + row["iterated_greedy_decodes"]
+        assert row["decoded_profile_count"] + row["repair_evaluated_candidates"] <= row["max_candidates"]
         assert set(row["covered_profile_slugs"]) == set(row["configured_profile_slugs"])
     assert tuple(no_repair["objective_score"]) < tuple(v1["objective_score"])
     assert tuple(with_repair["objective_score"]) <= tuple(no_repair["objective_score"])
@@ -1960,7 +1960,8 @@ def test_graph_ready_v2_row_status_requires_family_coverage_and_total_budget() -
         replaced_identity[field] = ["v2_successor_unknown" if slug == "v2_successor_edd" else slug for slug in row[field]]
     assert not _v2_row_passes(replaced_identity)
     assert not _v2_row_passes(dict(row, formula_versions=_FORMULA_VERSIONS[:-1]))
-    overspent = dict(row, max_candidates=row["evaluated_candidates"] - 2)
+    # The cap covers profile and repair decodes; the iterated greedy stage decodes under its own cap.
+    overspent = dict(row, max_candidates=row["decoded_profile_count"] + row["repair_evaluated_candidates"] - 1)
     assert not _v2_row_passes(overspent)
 
 

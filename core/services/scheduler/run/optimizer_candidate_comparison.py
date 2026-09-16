@@ -17,6 +17,7 @@ CANDIDATE_ORIGIN_ORDER = (
     "graph_ready_weight_grid",
     "graph_ready_v2_generated",
     "graph_ready_v2_repaired",
+    "graph_ready_v2_iterated_greedy",
     "graph_ready_local_search",
     "alns",
 )

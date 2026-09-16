@@ -21,20 +21,24 @@ def _is_repair(kwargs):
     return kwargs["strategy_params"]["graph_ready_profile"]["candidate_origin"] == "graph_ready_v2_repaired"
 
 
-def _assert_complete_profile_coverage(result):
+def _assert_complete_profile_coverage(result, *, require_complete=True):
     expected = graph_ready_v2_profile_summary(max_candidate_profiles=result["max_candidates"], seed=result["seed"])
     profile = result["state"].candidate_profile["graph_ready_optimization"]
     efficiency = profile["profile_efficiency"]
+    # Profile decodes exclude both explicit-decision stages (elite repair, iterated greedy).
     decoded = {call["strategy_params"]["graph_ready_profile"]["weight_profile_slug"]
-               for call in result["calls"] if not _is_repair(call)}
+               for call in result["phase_calls"] if not _is_repair(call)}
     pruned = {item["profile_slug"] for item in efficiency["equivalent_profiles"]}
     assert profile["weight_profile_slugs"] == expected["weight_profile_slugs"]
-    assert efficiency["configured_profiles"] == efficiency["considered_profiles"] == expected["effective_candidate_profile_count"]
+    assert efficiency["configured_profiles"] == expected["effective_candidate_profile_count"]
+    assert efficiency["considered_profiles"] + efficiency["unvisited_profiles"] == efficiency["configured_profiles"]
     assert efficiency["profile_decodes"] == len(decoded)
     assert efficiency["predecode_pruned_profiles"] == len(pruned)
     assert not decoded.intersection(pruned)
-    assert decoded.union(pruned) == set(expected["weight_profile_slugs"])
-    assert efficiency["unvisited_profiles"] == efficiency["construction_rejected_profiles"] == efficiency["skipped_before_decode"] == 0
+    assert decoded.union(pruned) == set(expected["weight_profile_slugs"][:efficiency["considered_profiles"]])
+    assert efficiency["construction_rejected_profiles"] == efficiency["skipped_before_decode"] == 0
+    if require_complete:
+        assert efficiency["unvisited_profiles"] == 0
     return efficiency
 
 
@@ -61,7 +65,7 @@ def test_production_repair_uses_formal_decode_metrics_objective_and_search_repor
     assert report["repair_scope"] == "production_core"
     assert all(call["dispatch_mode"] == "sgs" and call["graph_ready_context"]["enabled"] for call in actual)
     assert all(call["seed_results"] == [] for call in actual)
-    assert len(result["calls"]) <= result["max_candidates"]
+    assert len(result["phase_calls"]) <= result["max_candidates"]
     pruning = report["repair_pruning_report"]
     assert pruning["generated_candidates"] == pruning["evaluated_candidates"] + pruning["pruned_candidates"]
     assert pruning["pruned_by_bound"] == pruning["pruned_by_dominance"] == 0
@@ -72,23 +76,24 @@ def test_production_repair_uses_formal_decode_metrics_objective_and_search_repor
 def test_top_k_and_neighbor_caps_are_reported():
     result = run_production_repair_case(limits={"top_k": 1, "max_neighbors_per_elite": 2, "max_rounds": 1})
     report = result["repair"]
-    assert report["selected_elites"] == 1
+    assert report["repair_top_k"] == 1
+    assert report["repair_visited_portfolios"] == 1
+    assert report["selected_elites_scope"] == "cumulative_profile_parents_admitted_during_rotation"
     assert report["eligible_elites"] > 1
-    assert report["skipped_elites_by_top_k"] == report["eligible_elites"] - 1
+    assert report["skipped_elites_by_top_k"] == report["eligible_elites"] - report["selected_elites"]
     assert report["repair_generated_candidates"] == 2
     assert report["repair_skipped_by_budget"] > 0
 
 
-def test_remaining_candidate_budget_is_shared_with_reserved_repair():
+def test_candidate_cap_is_shared_while_profiles_and_repair_interleave():
     result = run_production_repair_case(max_candidates=19, clock=lambda: 0.0)
-    assert len(result["calls"]) == 19
-    efficiency = _assert_complete_profile_coverage(result)
+    assert len(result["phase_calls"]) == 19
+    efficiency = _assert_complete_profile_coverage(result, require_complete=False)
     report = result["repair"]
-    assert efficiency["configured_profiles"] == efficiency["considered_profiles"] == 19
-    assert efficiency["profile_decodes"] + efficiency["predecode_pruned_profiles"] == 19
-    assert report["repair_candidate_budget"] == result["max_candidates"] - efficiency["profile_decodes"] > 0
-    assert report["repair_evaluated_candidates"] == report["repair_candidate_budget"]
-    assert len(result["calls"]) == efficiency["profile_decodes"] + report["repair_evaluated_candidates"] <= result["max_candidates"]
+    assert efficiency["configured_profiles"] == 19
+    assert efficiency["profile_decodes"] + efficiency["predecode_pruned_profiles"] == efficiency["considered_profiles"]
+    assert 0 < report["repair_evaluated_candidates"] <= report["repair_candidate_budget"] <= result["max_candidates"]
+    assert len(result["phase_calls"]) == efficiency["profile_decodes"] + report["repair_evaluated_candidates"] <= result["max_candidates"]
     assert report["repair_generated_candidates"] > 0
     assert result["repair"]["repair_skipped_by_budget"] > 0
     assert result["best"]["score"] <= result["baseline"]["score"]
@@ -97,13 +102,13 @@ def test_remaining_candidate_budget_is_shared_with_reserved_repair():
 @pytest.mark.parametrize("cap", [1, 9])
 def test_profile_cap_keeps_family_coverage_or_reports_no_elite(cap):
     result = run_production_repair_case(max_candidates=cap, clock=lambda: 0.0)
-    assert len(result["calls"]) == cap
+    assert len(result["phase_calls"]) == cap
     report = result["repair"]
     if cap == 1:
         assert report["repair_status"] == "skipped_no_elite"
         assert report["selected_elites"] == report["repair_evaluated_candidates"] == 0
     else:
-        profiles = [call["strategy_params"]["graph_ready_profile"] for call in result["calls"] if not _is_repair(call)]
+        profiles = [call["strategy_params"]["graph_ready_profile"] for call in result["phase_calls"] if not _is_repair(call)]
         assert (profiles[0]["weight_profile_slug"], profiles[0]["formula_version"]) == ("balanced", "graph_ready_v1")
         assert (profiles[1]["weight_profile_slug"], profiles[1]["formula_version"], profiles[1]["feature_basis"]) == (
             "v2_seeded_micro_perturbation", "graph_ready_v2_objective_features_v2", "batch_workload_v1",
@@ -141,7 +146,7 @@ def test_global_deadline_blocks_all_repairs():
             now[0] = 1.0
         return result
 
-    result = run_production_repair_case(clock=lambda: now[0], schedule_fn=schedule)
+    result = run_production_repair_case(clock=lambda: now[0], schedule_fn=schedule, iterated_greedy={"enabled": False})
     assert result["repair"]["repair_status"] == "skipped_by_budget"
     assert result["repair"]["repair_time_budget_ms"] == 0
     assert result["repair"]["repair_evaluated_candidates"] == 0
@@ -150,7 +155,7 @@ def test_global_deadline_blocks_all_repairs():
     assert result["repair"]["selected_elites"] == 0
     assert result["repair"]["repair_stop_reason"] == "time_budget"
     assert all(not _is_repair(call) for call in result["calls"])
-    assert len(result["calls"]) <= result["max_candidates"]
+    assert len(result["phase_calls"]) <= result["max_candidates"]
     assert result["best"]["score"] <= result["baseline"]["score"]
 
 
@@ -199,13 +204,19 @@ def test_duplicate_decisions_pruned_before_decode():
 
 
 def test_same_decoded_output_rejected_even_without_report_state():
-    captured = []
+    verified_profile_output = []
 
     def schedule(scheduler, **kwargs):
         if _is_repair(kwargs):
-            return captured[-1]
+            assert verified_profile_output, "repair must repeat a previously completed profile output"
+            return verified_profile_output[0]
         decoded = _schedule_with_scheduler(scheduler, **kwargs)
-        captured.append(decoded)
+        origin = kwargs["strategy_params"]["graph_ready_profile"]["candidate_origin"]
+        if not verified_profile_output and origin != "graph_ready_v2_iterated_greedy":
+            assert kwargs.get("decode_resume") is None
+            # This profile task completes and pool.observe() records it before repair can start.
+            # An arbitrary previous IG trial may still be unverified and must not be in seen_outputs.
+            verified_profile_output.append(decoded)
         return decoded
 
     result = run_production_repair_case(schedule_fn=schedule, keep_report=False)
@@ -249,8 +260,10 @@ def test_disabled_repair_keeps_production_profile_search():
     assert efficiency["configured_profiles"] == efficiency["considered_profiles"] == 29
     assert efficiency["profile_decodes"] + efficiency["predecode_pruned_profiles"] == 29
     assert efficiency["profile_decodes"] == len(result["calls"]) < 29
-    assert len(result["calls"]) <= result["max_candidates"]
-    assert efficiency["reserved_repair_candidates"] == efficiency["reserved_repair_time_ms"] == 0
+    assert len(result["phase_calls"]) <= result["max_candidates"]
+    assert efficiency["candidate_cap_scope"] == "profiles_and_elite_repair"
+    assert efficiency["stage_tasks"]["elite_repair"] == 0
+    assert efficiency["stage_startup"]["elite_repair"] == {"status": "skipped", "reason": "disabled"}
     assert result["repair"]["repair_status"] == "not_run"
     assert result["repair"]["repair_evaluated_candidates"] == 0
     assert not any(_is_repair(call) for call in result["calls"])
@@ -287,7 +300,8 @@ def test_real_production_strict_improvement_has_fingerprint_and_acceptance_event
     from tests._support.optimizer_graph_ready_repair_benchmark import smtwt_repair_context
     context = smtwt_repair_context()
     before = run_production_repair_case(case=context, enabled=False, clock=lambda: 0.0)
-    after = run_production_repair_case(case=context, clock=lambda: 0.0)
+    # Repair-only contract: a frozen clock would let the iterated greedy stage run to its decode cap.
+    after = run_production_repair_case(case=context, clock=lambda: 0.0, iterated_greedy={"enabled": False})
     assert after["best"]["score"] < before["best"]["score"]
     assert after["repair"]["repair_accepted"]
     assert after["repair"]["repair_status"] == "strict_improvement"

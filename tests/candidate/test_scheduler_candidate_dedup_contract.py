@@ -138,6 +138,32 @@ def test_budget_is_split_among_plans_that_still_need_a_search():
     assert outcome.reused_count == 4 and not outcome.time_budget_reached
 
 
+@pytest.mark.parametrize("finished_at", [9.999, 10.0, 11.0])
+def test_completed_twins_are_published_even_when_the_last_decode_reaches_deadline(finished_at):
+    now, calls, preparations = [0.0], [], []
+
+    def prepare(schedule_input):
+        preparations.append(now[0])
+        return _same_order_prepare(schedule_input)
+
+    def optimize(**kwargs):
+        calls.append(kwargs["cfg"].graph_analysis_mode)
+        now[0] = 1.0 if len(calls) == 1 else finished_at
+        return _outcome("x", score=(0, 0, 10), tardiness=10.0)
+
+    outcome = run_candidate_comparison(
+        schedule_input=_schedule_input(), prepare_graph_fn=prepare, optimize_schedule_fn=optimize,
+        clock=lambda: now[0], weight_count=3, run_time_budget_seconds=10.0, selection_policy="score_only",
+    )
+    assert len(calls) == 2
+    assert all(started < 10.0 for started in preparations)
+    assert outcome.completed_count == 4 and outcome.skipped_count == 0 and outcome.reused_count == 2
+    assert [candidate.reused_from_candidate_key for candidate in outcome.candidates] == [
+        None, None, "graph_w1_of_3", "graph_w1_of_3",
+    ]
+    assert outcome.time_budget_reached is (finished_at >= 10.0)
+
+
 def test_fingerprint_ignores_raw_weights_but_not_other_inputs():
     keys = {1: (250.0, 5.0), 2: (500.0, 5.0)}
     scaled = {1: (500.0, 10.0), 2: (1000.0, 10.0)}
