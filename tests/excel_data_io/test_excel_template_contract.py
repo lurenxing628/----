@@ -223,7 +223,7 @@ def _extract_markdown_section(markdown_text: str, heading: str) -> str:
 def _is_allowed_legacy_op_type_note(section_text: str, phrase: str) -> bool:
     return (
         phrase == "内部/外部"
-        and "旧模板中已有数据行不会被系统擅自改写" in section_text
+        and "刷新模板时保留已有数据行" in section_text
         and "新填数据请使用 `自制`/`外协`" in section_text
     )
 

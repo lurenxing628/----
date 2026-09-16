@@ -464,7 +464,7 @@ def _assert_resource_dispatch_site_record_section(markdown_text: str, label: str
 def _assert_scheduler_manual_closeout_contracts(markdown_text: str, label: str) -> None:
     for needle in (
         "**本页说明**",
-        "只打开操作说明",
+        "只打开当前页面的速览卡片",
         "设备 Excel 真实模板只有这 5 列：设备编号、设备名称、工种、班组、状态",
     ):
         assert needle in markdown_text, f"{label} 缺少本轮说明书收口内容：{needle}"
@@ -509,11 +509,11 @@ def _assert_scheduler_manual_closeout_contracts(markdown_text: str, label: str) 
 
 def _assert_scheduler_manual_required_content(markdown_text: str, label: str) -> None:
     for needle in (
-        "旧模板中已有数据行不会被系统擅自改写",
+        "刷新模板时保留已有数据行",
         "新填数据请使用 `自制`/`外协`",
-        "批次自动生成工序时的模板提醒，是当前页局部提醒",
-        "正式排产或试调成功后的排产结果提醒",
-        "可以到排产记录查看这次排产的详细提醒",
+        # 2026-09 手册整改删掉了“提醒去向要分清”整段，改由排产记录与结果状态表两处说明提醒去哪里看。
+        "只看版本摘要、提醒和结果概况",
+        "先看页面展示的提醒，再去排产记录看完整摘要",
         "版本留空或版本为空字符串，都表示看最新排产记录",
         "输入不存在的数字版本时",
         "输入 `abc` 这类不是数字的版本号",
@@ -575,9 +575,9 @@ def _assert_scheduler_manual_required_content(markdown_text: str, label: str) ->
     _assert_scheduler_manual_closeout_contracts(markdown_text, label)
     _assert_resource_dispatch_site_record_section(markdown_text, label)
 
-    batch_warning_paragraph = _extract_paragraph_containing(markdown_text, "自动生成批次工序时产生提醒")
-    assert "当前页面确认写入后只会展示合并重复后的前 3 条提醒" in batch_warning_paragraph
-    assert "另有 X 条提醒" in batch_warning_paragraph or "剩余提醒" in batch_warning_paragraph
+    # 2026-09 手册整改后，提醒条数的截断说明只保留在排产记录的版本详情里。
+    batch_warning_paragraph = _extract_paragraph_containing(markdown_text, "如果提醒或错误很多，当前页可能只展开前几条")
+    assert "另有多少条未展开" in batch_warning_paragraph
     assert "系统历史" not in batch_warning_paragraph, f"{label} 的批次剩余提醒口径不应再要求去系统历史：{batch_warning_paragraph}"
 
     full_flow_section = _extract_section(markdown_text, "## 6. 排产操作：完整指南")
