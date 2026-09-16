@@ -54,7 +54,9 @@ def _critical_chain_results(latest_batch_id: str = "B1"):
 
 
 def _run_case(monkeypatch, *, order_length: int):
-    fake_time = _FakeTime()
+    # The affordability guard reads the clock once before the first round; start one step early so
+    # the 0.05 s window still leaves room for the second (duplicate) decode this file measures.
+    fake_time = _FakeTime(start=1000.0 - 0.01)
     monkeypatch.setattr(schedule_optimizer_module.time, "time", fake_time.time)
     monkeypatch.setattr(schedule_optimizer_module.random, "Random", lambda seed: _DeterministicRandom())
 
