@@ -261,7 +261,7 @@ def export_utilization_xlsx(
                 raise RuntimeError("无法创建资源负荷工作表")
             sheet.title = title
             header = labels + ["班表内占用(小时)", "任务数", "可用工时(小时)", "整窗占用率(%)",
-                               "累计负荷(小时)", "重叠负荷(小时)", "班表外占用(小时)", "计算口径版本", "计算说明"]
+                               "累计负荷(小时)", "重叠负荷(小时)", "班表外占用(小时)", "计算方式版本", "计算说明"]
             if write_only:
                 _append_write_only_row(sheet, header, is_header=True)
             else:
