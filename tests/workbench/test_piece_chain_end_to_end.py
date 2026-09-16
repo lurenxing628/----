@@ -80,7 +80,7 @@ def test_real_complete_chain_preserves_raw_source_old_scene_and_receipts(trial_c
         after = workspace(final_connection, next_plan["plan_ref"])
         assert {row["operation_ref"] for row in after["tasks"]} == {row["operation_ref"] for row in read["tasks"]}
         assert any(row["start"] == "2026-09-09T13:00:00" for row in after["tasks"])
-        assert final_connection.execute("SELECT version FROM SchemaVersion WHERE id=1").fetchone()[0] == 31
+        assert final_connection.execute("SELECT version FROM SchemaVersion WHERE id=1").fetchone()[0] == 32
     finally:
         final_connection.close()
 

@@ -233,7 +233,7 @@ def test_secondary_output_services_read_scenario_rows_and_do_not_fallback(tmp_pa
             plan_role="adopted",
             scenario_id=scenario_id,
         )
-        assert any(row["machine_id"] == "M2" and row["hours"] == 1.0 for row in utilization["machines"])
+        assert any(row["machine_id"] == "M2" and row["hours"] == 0.5 and row["span_occupied_hours"] == 1.0 for row in utilization["machines"])
 
         downtime = engine.downtime_impact(
             VERSION,
@@ -330,7 +330,7 @@ def test_secondary_output_pages_keep_scenario_context(tmp_path: Path, monkeypatc
     utilization = _retired_preview(
         client, f"/reports/utilization?start_date=2026-05-06&end_date=2026-05-06&{scenario_query}",
         scenario_id, "二级页模拟")
-    assert any(row["machine_id"] == "M2" and row["hours"] == 1.0 for row in utilization["machine_rows"])
+    assert any(row["machine_id"] == "M2" and row["hours"] == 0.5 for row in utilization["machine_rows"])
     downtime = _retired_preview(
         client, f"/reports/downtime?start_date=2026-05-06&end_date=2026-05-06&{scenario_query}",
         scenario_id, "二级页模拟")

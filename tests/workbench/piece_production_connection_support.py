@@ -113,7 +113,7 @@ def assert_official_rows(case, ids, rival):
     assert case.conn.execute("SELECT start_time FROM Schedule WHERE version=6 AND op_id=?",
                              (ids[None, 40],)).fetchone()[0] == "2026-09-09 13:00:00"
     assert {row[0] for row in case.conn.execute("SELECT op_id FROM Schedule WHERE version=6")} == set(ids.values()) | {rival}
-    assert case.conn.execute("SELECT version FROM SchemaVersion").fetchone()[0] == 31
+    assert case.conn.execute("SELECT version FROM SchemaVersion").fetchone()[0] == 32
     assert not case.conn.execute("PRAGMA foreign_key_check").fetchall()
 
 

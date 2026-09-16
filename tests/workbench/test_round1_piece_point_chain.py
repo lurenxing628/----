@@ -62,5 +62,5 @@ def test_managed_mixed_piece_points_adopt_move_save_read_and_recover(point_case)
             replay = svc(reopened).adopt(source, "expired", key, INTENT)
             assert replay["replayed"] and replay["receipt_ref"] == receipt["receipt_ref"]
         assert snapshot(reopened) == before
-        assert reopened.execute("SELECT version FROM SchemaVersion").fetchone()[0] == 31
+        assert reopened.execute("SELECT version FROM SchemaVersion").fetchone()[0] == 32
         assert not reopened.execute("PRAGMA foreign_key_check").fetchall()
