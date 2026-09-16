@@ -163,20 +163,38 @@ def test_required_groups_cover_required_registry():
         ("tests/workbench/test_final_planning_analysis_contract.py", "workbench_run_jobs"),
     )
     ui_required = tuple((path, "workbench_ui_refinement") for path in UI_REQUIRED_TARGETS)
+    # 2026-09-16 manual remediation batch: reviewed additions, each owned by the workbench group it exercises.
+    manual_remediation_required = (
+        ("tests/workbench/test_file_reference_roundtrip.py", "workbench_resources"),
+        ("tests/workbench/test_operator_machine_permissions.py", "workbench_resources"),
+        ("tests/workbench/test_resource_feedback.py", "workbench_resources"),
+        ("tests/workbench/test_batch_template_updates.py", "workbench_batches"),
+        ("tests/workbench/test_resource_utilization_shared.py", "workbench_reports"),
+        ("tests/workbench/test_report_void_projections.py", "workbench_reports"),
+        ("tests/workbench/test_execution_report_void.py", "workbench_execution_ledger"),
+        ("tests/workbench/test_field_report_void_api.py", "workbench_field"),
+        ("tests/workbench/test_manual_remediation_schema_migration.py", "workbench_mainmigration"),
+        ("tests/workbench/test_run_data_context.py", "workbench_run_jobs"),
+        ("tests/workbench/test_trial_source_presentation.py", "workbench_trial"),
+        ("tests/workbench/test_trial_adoption_execution_anchors.py", "workbench_trial_adoption"),
+        ("tests/workbench/test_outsourcing_legacy_source.py", "workbench_outsourcing"),
+    )
     reviewed_post_round1 = (
         ("tests/gate_meta/test_quality_gate_output_normalization.py", "quality_gate"),
-        *final_required, *ui_required,
+        *final_required, *manual_remediation_required, *ui_required,
     )
     algorithm_required = dict.fromkeys(ALGORITHM_EFFICIENCY_REQUIRED_TESTS, "scheduler_run_core")
     algorithm_required.update({
         "tests/workbench/test_run_snapshot_reuse.py": "workbench_run_compute",
         "tests/gate_meta/test_quality_gate_output_normalization.py": "quality_gate",
     })
-    assert [path for path in required if path in POST_ROUND1_TARGETS] == [path for path, _owner in reviewed_post_round1]
+    # The registry yields targets in group order, so compare membership; owners are asserted per path below.
+    assert sorted(path for path in required if path in POST_ROUND1_TARGETS) == sorted(path for path, _owner in reviewed_post_round1)
     assert set(algorithm_required).issubset(required)
     assert len([path for path in required if path not in POST_ROUND1_TARGETS and path not in algorithm_required]) == 582
-    assert coverage["required_target_count"] == 582 + len(final_required) + len(algorithm_required) + len(ui_required)
-    for path, owner in (*final_required, *algorithm_required.items(), *ui_required):
+    assert coverage["required_target_count"] == (582 + len(final_required) + len(algorithm_required) + len(ui_required)
+                                                 + len(manual_remediation_required))
+    for path, owner in (*final_required, *algorithm_required.items(), *ui_required, *manual_remediation_required):
         assert [group["group_id"] for group in groups if path in group["target_paths"]] == [owner]
     domain_ledger = "tests/workbench/test_final_master_domain_ledger.py"
     assert domain_ledger not in required
