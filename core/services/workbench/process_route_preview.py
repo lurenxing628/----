@@ -101,7 +101,7 @@ def _persisted_refs(repo, kind, keys, cached=None):
     identities = repo.active_map(kind, keys) if cached is None else cached
     if any(key not in identities or type(identities[key].ref) is not str or
            re.fullmatch(r"[0-9a-f]{48}", identities[key].ref) is None for key in keys):
-        raise WorkbenchCommandRejected("storage_failure", "工艺参考资料找不到编号，或者编号无效，系统不会自动补建。请刷新重试；仍不行请联系维护人员。", 500)
+        raise WorkbenchCommandRejected("storage_failure", "工艺参考资料找不到编号，或者编号无效，请联系维护人员核对资料。", 500)
     return {key: identities[key].ref for key in keys}
 
 
@@ -218,7 +218,7 @@ class ProcessRoutePreviewService:
             result["issues"].append({"code": "invalid_op_type_category", "message": "工种类别既不是自制也不是外协，归属还要核对。"})
             return result
         result["source_suggestion"] = ot.category
-        result["basis"] = "这是按已登记的工种类别给出的归属建议，还不算人工确认。"
+        result["basis"] = "按工种类别匹配；可在归属步骤修改。"
         if ot.category == "external":
             ProcessRoutePreviewService._supplier_suggestion(result, context, candidates, suppliers, supplier_refs)
         return result
@@ -236,8 +236,9 @@ class ProcessRoutePreviewService:
             raise WorkbenchCommandRejected("storage_failure", "建议的供应商名称缺失或无效。请到资料总览核对。", 500)
         result.update(supplier_ref=supplier_refs[key], supplier_label=suppliers[key]["name"],
                       external_days=_positive_days(raw["default_days"]))
-        result["basis"] += "供应商从当前能承接这个工种的记录里选；有多家时按编号排序取最后一家，仅供核对。"
         if len(candidates[name]) > 1:
-            result["issues"].append({"code": "multiple_supplier_candidates", "message": "有多家供应商能承接，这里按系统既有规则给了一家建议，仍要人工确认。"})
+            result["basis"] += "供应商按编号排序选择最后一家。"
+            result["issues"].append({"code": "multiple_supplier_candidates",
+                                     "message": f"有 {len(candidates[name])} 家供应商可承接，可在归属步骤改选。"})
         if result["external_days"] is None:
-            result["issues"].append({"code": "external_days_missing_or_invalid", "message": "外协周期没填，或者不是正数，系统不会补成 1 天。请到基础资料补填周期。"})
+            result["issues"].append({"code": "external_days_missing_or_invalid", "message": "外协周期未填写或无效。请到基础资料补填周期。"})

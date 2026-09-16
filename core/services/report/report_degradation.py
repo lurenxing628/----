@@ -130,6 +130,7 @@ def report_degradation_payload(collector: DegradationCollector) -> Dict[str, Any
     missing_machine_count = int(counters.get("missing_machine_row_skipped") or 0)
     overlap_merged_count = int(counters.get("downtime_overlap_merged") or 0)
     zero_capacity_count = int(counters.get("zero_capacity_window") or 0)
+    unknown_capacity_count = int(counters.get("resource_load_capacity_failed") or 0)
     samples = [str(event.sample) for event in collector.to_list() if event.code == "bad_time_row_skipped" and event.sample]
     messages: List[str] = []
     if bad_time_count > 0:
@@ -140,6 +141,8 @@ def report_degradation_payload(collector: DegradationCollector) -> Dict[str, Any
         messages.append(f"发现 {overlap_merged_count} 处同设备停机时间重叠，停机工时已按合并后时间段计算，不重复计时。")
     if zero_capacity_count > 0:
         messages.append(f"窗口内产能为 0，共 {zero_capacity_count} 行资源负荷的利用率不适用，利用率列显示为空。")
+    if unknown_capacity_count > 0:
+        messages.append(f"共 {unknown_capacity_count} 行资源的日历资料不完整，占用率无法计算；具体原因见计算说明。")
     return {
         "report_degraded": bool(collector),
         "report_degradation_events": degradation_events_to_dicts(collector.to_list()),

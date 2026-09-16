@@ -37,7 +37,7 @@ def check_capacity(count, fmt):
     if type(fmt) is not str or fmt not in ("csv", "xlsx"):
         raise file_error("只能下载 CSV 或 XLSX，没有开始下载。请重新选择格式。", field="format")
     if fmt == "xlsx" and count + 1 > XLSX_MAX_ROWS:
-        raise file_error("行数超过 XLSX 能放的 1048576 行（含表头），没有开始下载。请改用 CSV，内容不会被截断。", count + 1)
+        raise file_error("行数超过 XLSX 能放的 1048576 行（含表头），请改用 CSV。", count + 1)
 
 
 def _value(value, field, row, fmt):
@@ -50,7 +50,7 @@ def _value(value, field, row, fmt):
             raise file_error("这个格子里存的数字不合法，没有导出，系统也没有替你改成 0。请到资料总览修正后重试。", row, field)
         return value
     elif type(value) is not str:
-        raise file_error("这个格子里存的内容不是文字，没有导出，系统不猜着转换。请到资料总览修正后重试。", row, field)
+        raise file_error("这个格子里存的内容不是文字，没有导出。请到资料总览修正后重试。", row, field)
     if value.startswith("\\"):
         value = "\\" + value
     if fmt == "xlsx" and (ILLEGAL.search(value) or len(value) > XLSX_MAX_CELL_CHARACTERS):

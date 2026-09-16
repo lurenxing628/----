@@ -48,7 +48,7 @@ class WorkbenchReportFacts:
         _, entry, span = self.plans._selected(ref)
         plan = project_plan(entry, ref)
         if not plan["is_current_official"]:
-            raise WorkbenchCommandRejected("plan_not_current_official", "所选计划不是当前正式计划，分析没有生成，也没有替你换成别的版本。请到计划列表选正式计划后重试。")
+            raise WorkbenchCommandRejected("plan_not_current_official", "请选择当前正式计划后重新分析。")
         return replace(scope, plan_ref=ref), plan, locator.version, span
 
     def _resource_maps(self, rows):

@@ -17,6 +17,7 @@ from core.services.scheduler.schedule_plan_query_service import (
     SchedulePlanQueryService,
     SchedulePlanResolution,
 )
+from core.services.workbench.resource_utilization_metrics import METRIC_VERSION
 from data.repositories import MachineDowntimeRepository, ScheduleHistoryRepository, ScheduleRepository
 
 from . import calculations
@@ -30,6 +31,7 @@ from .exporters import (
 from .report_context_filters import filter_downtime_rows_for_report_context, normalize_report_resource_filter
 from .report_degradation import report_degradation_payload
 from .report_plan_helpers import ReportPlanMixin
+from .utilization_calendars import resource_calendars
 from .values.number_parsing import parse_report_nonnegative_int
 
 
@@ -383,26 +385,26 @@ class ReportEngine(ReportPlanMixin, ExecutionReviewMixin):
             batch_id=batch_id,
         )
 
-        cap_hours = calculations.capacity_hours(self.calendar, sd, ed)
-        if cap_hours <= 0:
-            cap_hours = 0.0
-
+        calendars = resource_calendars(self.conn, schedule_rows, start_dt, end_dt_excl)
         degradation_collector = DegradationCollector()
         machine_rows, operator_rows = calculations.compute_utilization(
             schedule_rows=schedule_rows,
             start_dt=start_dt,
             end_dt_excl=end_dt_excl,
-            cap_hours=float(cap_hours),
+            calendars=calendars,
             degradation_collector=degradation_collector,
         )
         degradation = report_degradation_payload(degradation_collector)
+        capacities = {row["capacity_hours"] for row in machine_rows + operator_rows}
 
         return {
             "version": v,
             **self._plan_meta(resolution),
             "start_date": sd.isoformat(),
             "end_date": ed.isoformat(),
-            "capacity_hours_per_resource": round(float(cap_hours), 2),
+            "capacity_hours_per_resource": next(iter(capacities)) if len(capacities) == 1 else None,
+            "metric_version": METRIC_VERSION, "metric_source": "planned",
+            "window_start": start_dt.isoformat(), "window_end": end_dt_excl.isoformat(),
             "machines": machine_rows,
             "operators": operator_rows,
             **degradation,

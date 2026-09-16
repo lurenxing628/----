@@ -18,7 +18,7 @@ def _holiday_efficiency(conn, logger):
     key = "holiday_default_efficiency"
     row = ConfigRepository(conn, logger=logger).get(key)
     result = {"status": "not_configured", "value": None, "source": "ScheduleConfig." + key,
-              "basis": "只有录了假期又没填效率时才用这个值；已经设过的班表和没设过的日期都不会被它覆盖。", "issues": []}
+              "basis": "假期未填写效率时使用此值。", "issues": []}
     if row is None:
         return result
     try:
@@ -107,5 +107,5 @@ def resource_calendar_summary(conn, logger=None, *, clock=None):
             "basis": "全局班次按起始日期归到那一天；有效工时 = 班次时长 × 效率，普通件和急件按许可分别算。"
                      "跨夜不拆成两天；不算人员专属班表、班次、设备停机和当前占用；外协周期仍按自然日算。",
             "standard_hours": {"status": "not_configured", "value": None, "source": None,
-                               "message": "当前设置里没有「每天标准工时」这一项；系统不会拿班表默认值或本周平均值去凑。"},
+                               "message": "尚未设置每天标准工时。"},
             "holiday_default_efficiency": _holiday_efficiency(conn, logger), "days": days, "stats": stats}

@@ -4,6 +4,7 @@ from core.models.workbench_batch_query import batch_scope
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.workbench.batch_facts import BatchFacts
 from core.services.workbench.batch_projection import BatchProjection
+from core.services.workbench.batch_template_validation import template_status
 
 
 def cell(entity, key):
@@ -57,7 +58,7 @@ class WorkbenchBatchQueryService(BatchFacts):
         projection = BatchProjection(self.load())
         entity = projection.entity(row)
         entity["materials"] = projection.materials(row)
-        entity["template"] = self.load()["workflow"][row["part_no"]]["workflow"]
+        entity["template"] = template_status(self.load(), row)
         return entity
 
     def choices(self):

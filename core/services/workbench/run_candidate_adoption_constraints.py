@@ -7,7 +7,7 @@ from datetime import datetime
 from core.algorithm_runtime.internal_slot import estimate_internal_slot
 from core.models.workbench_run_adoption import CandidateAdoptionBlocked
 
-from .preflight_checks import PreflightChecks
+from .preflight_checks import PreflightChecks, stored_date
 from .zero_duration import candidate_point_validator
 
 _TABLES = ("Machines", "Operators", "Suppliers", "OpTypes", "OperatorMachine", "OperatorSkill",
@@ -74,7 +74,10 @@ def validate_adoption_constraints(conn, prepared, payload):
             continue
         if checks.readiness(asdict(batch), prepared.readiness_gate_enabled):
             _block("candidate_material_not_ready", "候选仍有未齐套物料，不能正式采用。")
-        if batch.ready_date and row.start_time < datetime.fromisoformat(batch.ready_date):
+        # SQLite DECLTYPES returns date objects in the application; snapshots use ISO text.
+        # batch_model has already rejected invalid dates using the same parser.
+        ready_day = stored_date(batch.ready_date)
+        if ready_day is not None and row.start_time < datetime.fromisoformat(ready_day):
             _block("candidate_before_ready_date", "候选安排早于实际可开工日期。")
         if row.source == "internal":
             _internal(prepared, row, algo_ops[row.op_id], batch, validate_point)

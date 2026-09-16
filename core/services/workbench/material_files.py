@@ -5,7 +5,7 @@ MaterialPreview. scope={} binds the material collection; filtered imports and
 replace/append-only modes are unsupported by the prototype. Blank cells/columns
 are omitted, \\N clears only nullable fields. Headers and escaping are documented
 in material_file_codec. Existing unknown statuses may be retained, never invented.
-Nonempty created_at asserts an existing timestamp; it never overwrites history.
+created_at is exported for reference and is never part of imported changes.
 
 confirm_import(preview, content, *, file_format, scope, mode='upsert') requires an
 outer CommandService write transaction. Bind the original in-memory preview to
@@ -57,7 +57,7 @@ from data.repositories.workbench_material_query_repo import WorkbenchMaterialQue
 
 
 def _local_created_at(value):
-    """Materials.created_at 由数据库按 UTC 写入；导出文件和导入回读比对都用 messages.stored_utc_text 换算后的值。"""
+    """Materials.created_at 由数据库按 UTC 写入；导出时换算为工厂本地时间。"""
     if value is None:
         return None
     try:
@@ -95,11 +95,12 @@ class WorkbenchMaterialFileService:
         row = preview_row(source["row"])
         values = source["values"]
         row["errors"] = list(source["errors"])
+        row["reference_fields"] = ["created_at"] if "created_at" in values else []
         try:
             code = normalize_material_input("create", {"business_code": values.get("business_code"), "label": "_"})["business_code"]
             row["business_code"] = code
             if values["business_code"] != code and self.repo.raw_material(values["business_code"]) is not None:
-                raise ValidationError("原来的物料编号首尾有空格，系统不会按去掉空格后的编号去新增或改另一条物料。", field="business_code")
+                raise ValidationError("物料编号不能有首尾空格，请修正。", field="business_code")
             raw = self.query.get_raw(code)
             row["action"] = "create" if raw is None else "update"
             if raw is None:
@@ -108,7 +109,7 @@ class WorkbenchMaterialFileService:
             else:
                 identity = self.identities.get(raw["ref"]) if raw["ref"] else None
                 if identity is None:
-                    raise WorkbenchCommandRejected("storage_failure", "这条物料缺少系统编号，系统不会自动补。请刷新重试；仍不行请联系维护人员。", 500)
+                    raise WorkbenchCommandRejected("storage_failure", "这条物料缺少系统编号，请联系维护人员核对资料。", 500)
                 row["expected"] = full_material_snapshot(self.adapter, self.repo, identity)
                 if code != raw["material_id"] or raw["material_id"] != raw["material_id"].strip():
                     raise ValidationError("原来的物料编号首尾有空格，不能安全更新。请先核对原记录。", field="business_code")
@@ -122,12 +123,6 @@ class WorkbenchMaterialFileService:
         return row
 
     @staticmethod
-    def _check_created_at(values, raw):
-        if "created_at" in values and (raw is None or type(values["created_at"]) is not str
-                                       or values["created_at"] != _local_created_at(raw["created_at"])):
-            raise ValidationError("创建时间只能看不能改，导入不会新增也不会覆盖它。", field="created_at")
-
-    @staticmethod
     def _changed_input(normalized, values, raw):
         if raw is None:
             return normalized
@@ -138,7 +133,6 @@ class WorkbenchMaterialFileService:
 
     @staticmethod
     def _normalize_values(action, code, values, raw):
-        WorkbenchMaterialFileService._check_created_at(values, raw)
         payload = {"fields": {key: value for key, value in values.items() if key not in ("business_code", "label", "created_at")}}
         if action == "create":
             payload["business_code"] = code
@@ -202,10 +196,10 @@ class WorkbenchMaterialFileService:
     def _export_rows(self, rows):
         for raw in rows:
             if raw is None:
-                raise WorkbenchCommandRejected("entity_not_found", "勾选的物料已经删除了，系统不会为它重建一条再导出。请刷新后重新勾选。", 404)
+                raise WorkbenchCommandRejected("entity_not_found", "勾选的物料已经删除了。请刷新后重新勾选。", 404)
             identity = self.identities.get(raw["ref"]) if raw["ref"] else None
             if identity is None:
-                raise WorkbenchCommandRejected("storage_failure", "要导出的物料缺少系统编号，系统不会自动补。请刷新重试；仍不行请联系维护人员。", 500)
+                raise WorkbenchCommandRejected("storage_failure", "要导出的物料缺少系统编号，请联系维护人员核对资料。", 500)
             self.adapter.snapshot(identity)
             row = dict(zip(COLUMNS, (raw[key] for key in MATERIAL_COLUMNS)))
             row["created_at"] = _local_created_at(raw["created_at"])

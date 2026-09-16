@@ -1,6 +1,7 @@
 """Explicit registration only. The host must connect and enable its worker dispatcher."""
 
 import json
+import re
 from functools import wraps
 
 from flask import current_app, g, jsonify, request
@@ -12,6 +13,7 @@ from core.models.workbench_command import (
     input_fingerprint,
     validate_request_key,
 )
+from core.services.workbench.run_data_context import RunDataContext
 from core.services.workbench.run_jobs import WorkbenchRunService
 
 from .api_responses import failure, query_success
@@ -24,7 +26,9 @@ def _service():
     dispatcher = current_app.extensions.get("workbench_run_dispatcher")
     enabled = current_app.config.get("WORKBENCH_RUN_JOBS_ENABLED") is True and callable(dispatcher)
     return WorkbenchRunService(g.db, integration_enabled=enabled, input_resolver=resolve_preflight_input,
-                               context_factory=issue_write_context, context_validator=validate_write_context)
+                               context_factory=issue_write_context, context_validator=validate_write_context,
+                               data_context=RunDataContext(g.db, current_app.config.get("WORKBENCH_SYSTEM_JOURNAL_DIR"),
+                                                           current_app.config.get("BACKUP_DIR")))
 
 
 def _boundary(function):
@@ -96,10 +100,16 @@ def get_scheduling_run(run_ref):
 
 @_boundary
 def get_scheduling_request(request_key):
-    if request.args:
+    previous = request.args.get("data_context_ref")
+    if (set(request.args) - {"data_context_ref"} or len(request.args.getlist("data_context_ref")) > 1
+            or previous is not None and not re.fullmatch(r"[a-f0-9]{64}", previous)):
         raise WorkbenchCommandRejected("invalid_input", "查询这次排产不需要其他条件。请直接点「刷新」。", 400)
-    data = _service().lookup(request_key)
-    return _query({"found": data is not None, "run": data}, {"kind": "scheduling-request", "request_key": request_key})
+    service = _service()
+    data = service.lookup(request_key)
+    resolution = "found" if data is not None else service.data_context.resolve_missing(request_key, previous)
+    return _query({"found": data is not None, "run": data, "resolution": resolution,
+                   "data_context_ref": service.data_context.ref()},
+                  {"kind": "scheduling-request", "request_key": request_key})
 
 
 def register_scheduling_job_routes(bp):

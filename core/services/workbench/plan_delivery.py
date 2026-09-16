@@ -44,7 +44,7 @@ def read_plan_delivery(
     batches, operations = repo.batch_facts(keys)
     references = WorkbenchIdentityRepository(conn, logger=logger).active_map("batch", keys)
     if set(references) != set(keys):
-        raise WorkbenchCommandRejected("identity_missing", "有批次找不到编号，交付风险读不出来，系统也不会改绑别的批次。请到批次管理核对。")
+        raise WorkbenchCommandRejected("identity_missing", "批次编号缺失，无法评估交付风险。请到批次管理核对。")
     record = repo.completion_record(identity, scenario)
     items = _delivery_items(rows, operations, batches, intervals, references, record)
     public = {"state": "loaded", "plan_ref": scope.plan_ref, "scope": scope.scope(), "items": items,
@@ -55,7 +55,7 @@ def read_plan_delivery(
                         "due_boundary": "next_day_exclusive", "actual_completion": "not_evaluated",
                         "actual_delivery": "not_evaluated"}}
     if len(canonical_json(public).encode("utf-8")) > MAX_PLAN_RESPONSE_BYTES:
-        raise WorkbenchCommandRejected("query_too_large", "交付风险查询结果超过 8 MB 上限，没有读取，也不会只给一部分。请缩小时间范围后重试。", 413)
+        raise WorkbenchCommandRejected("query_too_large", "交付风险查询结果超过 8 MB 上限。请缩小时间范围后重试。", 413)
     facts = {"identity": {"version": identity.version, "role": identity.effective_plan_role,
                           "source_table": identity.source_table, "candidate_id": identity.candidate_id,
                           "candidate_key": identity.candidate_key, "scenario_id": identity.scenario_id},

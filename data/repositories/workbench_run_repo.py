@@ -14,7 +14,7 @@ class WorkbenchRunRepository:
     def require_schema(self):
         issues = workbench_run_contract_issues(self.conn)
         if issues:
-            raise WorkbenchCommandRejected("run_schema_unavailable", "排产记录用的结构还没装好，读不出来，系统也不会自动补。请联系维护人员。", 503)
+            raise WorkbenchCommandRejected("run_schema_unavailable", "排产记录结构不完整，请联系维护人员。", 503)
 
     def get(self, run_ref):
         row = self.conn.execute("SELECT * FROM WorkbenchRunJobs WHERE run_ref=?", (run_ref,)).fetchone()

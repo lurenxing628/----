@@ -92,5 +92,5 @@ def log_records(conn, log_dir, logger):
     except Exception:
         logger.exception("系统工作区操作日志读取失败")
         sources.append({"source": "OperationLogs", "state": "error", "window": 500, "count": None,
-                        "truncated": False, "message": "操作日志读不到，这里不代表没有日志。请刷新重试。"})
+                        "truncated": False, "message": "操作日志读取失败，请刷新重试。"})
     return rows, sources

@@ -105,6 +105,22 @@ def normalize_report_input(action, payload):
     return result
 
 
+def normalize_report_void_input(report_ref, payload):
+    public_ref(report_ref)
+    fields = {"original_revision_ref", "reason", "declared_operator"}
+    if type(payload) is not dict or set(payload) - fields:
+        reject("撤销报工的输入格式不正确。", status=400)
+    public_ref(payload.get("original_revision_ref"))
+    result = dict(payload, report_ref=report_ref)
+    for key in ("reason", "declared_operator"):
+        value = result.get(key, "")
+        _validate_field(key, value)
+        result[key] = value.strip()
+    if not result["reason"]:
+        reject("请填写撤销原因，原报工和更正记录会保留。")
+    return result
+
+
 def validate_actual_values(values, now):
     if not isinstance(now, datetime) or now.tzinfo is not None:
         raise ValueError("Ledger clock must return naive factory-local datetime.")

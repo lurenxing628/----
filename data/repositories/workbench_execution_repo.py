@@ -3,6 +3,7 @@
 import json
 
 from core.infrastructure.workbench_execution_ledger_schema import execution_ledger_contract_issues
+from core.infrastructure.workbench_execution_void_schema import execution_void_contract_issues
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_execution_input import MAX_FACT_ROWS, MAX_OPERATIONS, public_ref, reject
 from data.repositories.base_repo import BaseRepository
@@ -15,14 +16,14 @@ def chunks(values, size=300):
 
 class WorkbenchExecutionRepository(BaseRepository):
     def require_schema(self):
-        if execution_ledger_contract_issues(self.conn):
-            raise WorkbenchCommandRejected("execution_ledger_unavailable", "执行台账未安装或结构不完整，请先完成明确迁移；本次没有补表。")
+        if execution_ledger_contract_issues(self.conn) or execution_void_contract_issues(self.conn):
+            raise WorkbenchCommandRejected("execution_ledger_unavailable", "报工数据库结构不完整，请联系维护人员升级数据库。")
 
     def clock(self):
         row = self.fetchone("SELECT revision FROM WorkbenchExecutionLedgerClock WHERE singleton=1")
         plan = self.fetchone("SELECT revision FROM WorkbenchPlanIdentityClock WHERE singleton=1")
         if row is None or plan is None:
-            reject("执行或计划快照状态缺失，不能补建。", "execution_ledger_unavailable", 409)
+            reject("报工或计划状态资料缺失，请联系维护人员核对。", "execution_ledger_unavailable", 409)
         return {"ledger_revision": row["revision"], "plan_revision": plan["revision"]}
 
     def operation_rows(self, refs):
@@ -40,14 +41,14 @@ class WorkbenchExecutionRepository(BaseRepository):
                 WHERE o.kind='operation' AND o.ref IN ({marks})""", chunk))
         result = {row["operation_ref"]: row for row in rows}
         if set(result) != set(values):
-            reject("工序永久引用不存在，不会按同号对象补配。", "entity_not_found", 404)
+            reject("工序关联资料缺失，请刷新重选；仍无法打开时请联系维护人员。", "entity_not_found", 404)
         return result
 
     def task(self, task_ref):
         public_ref(task_ref)
         row = self.task_headers([task_ref]).get(task_ref)
         if row is None or row["operation_ref"] is None:
-            reject("任务不存在或执行身份缺失，不会改指其他安排。", "entity_not_found", 404)
+            reject("任务不存在或报工关联资料缺失，请刷新重选。", "entity_not_found", 404)
         return row
 
     def task_headers(self, refs):
@@ -105,7 +106,7 @@ class WorkbenchExecutionRepository(BaseRepository):
                                  chunk + [MAX_FACT_ROWS + 1 - count])
             count += len(rows)
             if count > MAX_FACT_ROWS:
-                reject("执行报工及修订历史超过本次读取上限，未返回截断结果。", "query_too_large", 413)
+                reject("报工及更正历史超过读取上限，请缩小范围。", "query_too_large", 413)
             for row in rows:
                 row["values"] = json.loads(row.pop("values_json"))
                 result.setdefault(row["operation_ref"], {}).setdefault(row["report_ref"], []).append(row)
@@ -119,9 +120,23 @@ class WorkbenchExecutionRepository(BaseRepository):
                                  chunk + [MAX_FACT_ROWS + 1 - count])
             count += len(rows)
             if count > MAX_FACT_ROWS:
-                reject("旧执行事实超过本次读取上限，未返回截断结果。", "query_too_large", 413)
+                reject("历史现场记录超过读取上限，请缩小范围。", "query_too_large", 413)
             for row in rows:
                 result.setdefault(row["operation_ref"], []).append(row)
+        return result
+
+    def report_voids(self, refs):
+        result, count = {}, 0
+        for chunk in chunks(list(refs)):
+            marks = ",".join("?" for _ in chunk)
+            rows = self.fetchall(f"""SELECT v.*, c.receipt_ref FROM WorkbenchProductionReportVoids v
+                JOIN WorkbenchProductionReports p ON p.report_ref=v.report_ref
+                LEFT JOIN WorkbenchCommandReceipts c ON c.request_key=v.request_key
+                WHERE p.operation_ref IN ({marks}) ORDER BY v.report_ref LIMIT ?""", chunk + [MAX_FACT_ROWS + 1 - count])
+            count += len(rows)
+            if count > MAX_FACT_ROWS:
+                reject("报工撤销历史超过读取上限，请缩小范围。", "query_too_large", 413)
+            result.update((row["report_ref"], row) for row in rows)
         return result
 
     def unresolved_operations(self, operations):

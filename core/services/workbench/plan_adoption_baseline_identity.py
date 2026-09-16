@@ -24,7 +24,7 @@ def verify_capture(baseline, tables):
         require(baseline["plan_ref"] is None and not baseline["rows"], "empty_baseline")
         return
     if len(archived) > MAX_PLAN_TASKS:
-        raise WorkbenchCommandRejected("query_too_large", "采用时的完整初始计划超过 10000 条上限，没有读取，也不会只给一部分。请缩小时间范围后重试。", 413)
+        raise WorkbenchCommandRejected("query_too_large", "采用时的完整初始计划超过 10000 条上限。请缩小时间范围后重试。", 413)
     require(bool(archived), "baseline_complete_row_count")
     _captured_official(baseline, tables)
 

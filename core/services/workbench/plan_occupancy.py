@@ -15,13 +15,15 @@ hours remain visible. DB/schema errors propagate. Caller owns the read snapshot.
 """
 
 from collections import defaultdict
+from datetime import datetime
 
 from core.models.workbench_command import WorkbenchCommandRejected
 
 from .plan_calendar_context import issue, public_resource, selected_context
-from .plan_calendar_intervals import hours, instant, intersection, segments, union, wire
+from .plan_calendar_intervals import hours, instant, segments, union, wire
 from .plan_calendar_windows import available_intervals
 from .plan_occupancy_constraints import TaskConstraints
+from .resource_utilization_metrics import ResourceUtilizationMetrics
 
 
 def _occupancy_groups(rows, start, end, constraints):
@@ -54,7 +56,11 @@ def _resource_occupancy(kind, key, operations, calendar, resources, label):
     row = public_resource(kind, key, resources, None)
     row["label"] = calendar["label"] if calendar is not None else label
     available = available_intervals(calendar) if calendar is not None else None
-    capacity_measures, utilization, insufficient = _capacity_measures(available, occupied, arranged_hours, occupied_hours)
+    bounds = intervals + (available or [])
+    first = min((low for low, _ in bounds), default=datetime.min)
+    last = max((high for _, high in bounds), default=first)
+    metrics = ResourceUtilizationMetrics(intervals, available).window(first, last)
+    capacity_measures, utilization, insufficient = _capacity_measures(metrics, arranged_hours)
     measures = {"arranged_hours": arranged_hours, "occupied_hours": occupied_hours,
                 "overlap_hours": overlap_hours, "excess_arranged_hours": arranged_hours - occupied_hours,
                 **capacity_measures}
@@ -70,15 +76,15 @@ def _resource_occupancy(kind, key, operations, calendar, resources, label):
     return row
 
 
-def _capacity_measures(available, occupied, arranged_hours, occupied_hours):
-    if available is None:
+def _capacity_measures(metrics, arranged_hours):
+    if metrics["available_hours"] is None:
         return {"available_hours": None, "available_occupied_hours": None,
                 "outside_available_hours": None, "capacity_shortfall_hours": None}, None, None
-    capacity = hours(available)
-    in_calendar = hours(intersection(occupied, available))
-    outside = max(0.0, occupied_hours - in_calendar)
+    capacity = metrics["available_hours"]
+    in_calendar = metrics["occupied_hours"]
+    outside = metrics["outside_calendar_hours"]
     shortage = max(0.0, arranged_hours - capacity)
-    utilization = round(in_calendar / capacity, 6) if capacity > 0 else None
+    utilization = metrics["utilization_ratio"]
     return {"available_hours": capacity, "available_occupied_hours": in_calendar,
             "outside_available_hours": outside, "capacity_shortfall_hours": shortage}, utilization, outside > 1e-9 or shortage > 1e-9
 
@@ -87,7 +93,7 @@ def project_plan_occupancy(conn, *, entry, scope, rows, resources, plan_span, ca
     """calendar_facts is the private result of project_plan_calendar in this read."""
     rows, start, end, time_scope, context = selected_context(conn, entry, scope, rows, resources, plan_span)
     if calendar_facts["context"] != context:
-        raise WorkbenchCommandRejected("snapshot_stale", "班表和安排不是同一个计划或同一个时间范围，系统不会把两份数据硬拼在一起。请刷新后重试。")
+        raise WorkbenchCommandRejected("snapshot_stale", "班表和安排的计划或时间范围不一致，请刷新后重试。")
     constraints = TaskConstraints(calendar_facts)
     groups, unknown = _occupancy_groups(rows, start, end, constraints)
     calendars = calendar_facts["resources"]

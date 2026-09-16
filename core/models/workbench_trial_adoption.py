@@ -11,7 +11,10 @@ ADOPT_ACTION = "trial.scenario.adopt"
 class TrialAdoptionBlocked(WorkbenchCommandRejected):
     def __init__(self, code, message, issues=None):
         super().__init__(code, message, 409)
-        self.issues = issues or [{"code": code, "message": message, "severity": "blocker"}]
+        # A draft warning can prohibit formal adoption. Describe that decision
+        # as a blocker without changing the saved draft's warning severity.
+        self.issues = [dict(item, severity="blocker") for item in issues] if issues else [
+            {"code": code, "message": message, "severity": "blocker"}]
 
 
 @dataclass(frozen=True)
@@ -22,4 +25,3 @@ class TrialAdoptionEvidence:
     snapshot: Dict[str, Any]
     prepared: Any
     payload: Any
-

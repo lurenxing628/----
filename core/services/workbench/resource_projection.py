@@ -67,13 +67,16 @@ def _operator(entity, raw, state):
     relations["shift_profile"] = _related(state["shift"])
     relations["shift_profile_ref"] = relations["shift_profile"]["ref"] if relations["shift_profile"] else None
     relations["machine_authorization_count"] = len(state["machine_authorizations"])
+    if "authorized_machines" in state:
+        from .operator_machine_permissions import permission_rows
+        relations["machine_permissions"] = permission_rows(state)
     entity["issues"].extend(_authorization_issues(state["machine_authorizations"]))
     if any(item["record"]["category"] != "internal" for item in state["skill_types"]):
         entity["issues"].append({"code": "operator_skill_invalid", "message": "这个人登记的技能里有不是自制的工种，没有算成自制资格。请核对技能登记。"})
     if relations["skills_declared"] and not relations["skill_refs"]:
         entity["issues"].append({"code": "skills_empty", "message": "这个人的技能登记是空的，现在没有任何自制工种资格。"})
     if not state["machine_authorizations"]:
-        entity["issues"].append({"code": "machine_authorization_missing", "message": "这个人还没有任何设备操作授权；登记技能不会自动加上授权。"})
+        entity["issues"].append({"code": "machine_authorization_missing", "message": "请在人员详情中设置可操作设备。"})
 
 
 def _machine_group(entity, raw, state):

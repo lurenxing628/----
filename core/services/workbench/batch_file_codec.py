@@ -28,8 +28,10 @@ def read_batch_file(content):
             if sum(item.file_size for item in archive.infolist()) > 64 * 1024 * 1024:
                 raise ValidationError("Excel展开后超过64MB，请拆分文件。", field="file")
         workbook = openpyxl.load_workbook(BytesIO(content), read_only=True, data_only=False, keep_links=False)
-        rows = _read_first_sheet(workbook)
-        warnings = ([{"code": "first_sheet_only", "message": "只读第一张工作表；其他工作表不会导入。"}] if len(workbook.worksheets) > 1 else [])
+        rows, reference_status = _read_first_sheet(workbook)
+        warnings = ([{"code": "first_sheet_only", "message": "仅导入第一张工作表。"}] if len(workbook.worksheets) > 1 else [])
+        if reference_status:
+            warnings.append({"code": "reference_column_ignored", "message": "文件中的“状态”仅供参考，不导入；已有批次保留当前状态，新批次从待排开始。"})
         return rows, warnings
     except ValidationError:
         raise
@@ -49,8 +51,10 @@ def _read_first_sheet(workbook):
     headers = [cell.value for cell in next(iterator, ())]
     while headers and headers[-1] is None:
         headers.pop()
-    if len(headers) != len(HEADERS) or set(headers) != set(HEADERS):
-        raise ValidationError("请使用批次信息模板的八列表头；不接受多余列或缺列。", field="headers")
+    reference_status = "状态" in headers
+    expected = HEADERS + (("状态",) if reference_status else ())
+    if len(headers) != len(expected) or set(headers) != set(expected):
+        raise ValidationError("请使用批次信息模板的八列，或系统导出清单的九列（含只读状态）；不接受其他列或缺列。", field="headers")
     rows = []
     for line, cells in enumerate(iterator, 2):
         if not any(cell.value is not None for cell in cells):
@@ -58,7 +62,7 @@ def _read_first_sheet(workbook):
         if len(rows) == MAX_ROWS:
             raise ValidationError("一次最多导入 5000 行；这次一行都没有写入。", field="file")
         rows.append(_read_data_row(line, cells, headers))
-    return rows
+    return rows, reference_status
 
 
 def _read_data_row(line, cells, headers):
@@ -67,7 +71,7 @@ def _read_data_row(line, cells, headers):
         errors.append("不能导入公式或错误单元格，请提供实际值。")
     if any(cell.value is not None for cell in cells[len(headers):]):
         errors.append("数据行里有表头之外的多余列。")
-    values = {key: cells[index].value if index < len(cells) else None for index, key in enumerate(headers)}
+    values = {key: cells[index].value if index < len(cells) else None for index, key in enumerate(headers) if key in HEADERS}
     return {"row": line, "values": values, "errors": errors}
 
 

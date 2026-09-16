@@ -10,7 +10,6 @@ from core.models.workbench_resource_file import (
     MULTI_CODES,
     NULLABLE,
     NUMERIC_FIELDS,
-    READONLY,
     RELATIONS,
     WRITABLE,
 )
@@ -63,9 +62,6 @@ class ResourceFileInput:
         return normalized, related
 
     def _changes(self, values, before, scope):
-        for key in READONLY[self.kind]:
-            if key in values and (before is None or not _same_column(key, values[key], before[key])):
-                raise ValidationError(_column(key) + "是只读列，只能照原样填写，不能改也不能新增，这一行没有导入。请把它改回原值。", field=key)
         if self.kind == "op_type" and "category" in values and values["category"] != scope["category"]:
             raise ValidationError("文件里的归属和这次导入选的归属不一样，这一行没有导入。请分开导入自制和外协工种。", field="category")
         changes = {key: value for key, value in values.items() if key in WRITABLE[self.kind]
@@ -75,7 +71,8 @@ class ResourceFileInput:
         return changes
 
     def _declares_empty_skills(self, values, before):
-        # An exported false assertion preserves undeclared provenance; a bare [] declares no skills.
+        # An exported provenance column keeps an unchanged empty skill list unchanged.
+        # A bare writable [] remains an explicit request to declare no skills.
         return (self.kind == "operator" and before is not None and not before["skills_declared"]
                 and values.get("skill_codes") == [] and "skills_declared" not in values)
 

@@ -90,10 +90,8 @@ def normalize_process_input(action, payload):
     if action == "hours_confirm":
         process_object(payload, {"operations", "groups", "confirm_zero_unit_hours"})
         if type(payload["confirm_zero_unit_hours"]) is not bool:
-            raise WorkbenchCommandRejected("invalid_input", "请明确勾选是否已复核零单件工时。", 422)
+            raise WorkbenchCommandRejected("invalid_input", "零单件工时的保存选项必须是明确的是或否。", 422)
         operations = _hours_operations(payload["operations"])
-        if any(row.get("unit_hours") == 0 for row in operations) and not payload["confirm_zero_unit_hours"]:
-            raise WorkbenchCommandRejected("zero_unit_hours_review", "单件工时为0，必须明确复核后确认。", 422)
         groups = []
         for row in _list(payload["groups"]):
             process_object(row, {"ref", "total_days"})

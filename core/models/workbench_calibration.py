@@ -52,7 +52,7 @@ def closed_capabilities():
 
 
 def write_blockers():
-    return [issue("adoption_schema_unavailable", "此功能尚未开通，暂时不能采用或锁定定额。")]
+    return [issue("adoption_preflight_required", "请先预检所选模板；通过后可采用建议定额并锁定。")]
 
 
 @dataclass(frozen=True)

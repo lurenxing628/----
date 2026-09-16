@@ -59,7 +59,7 @@ def write_xlsx(kind, rows):
         ws.append(headers)
         for count, row in enumerate(rows, 1):
             if count + 1 > XLSX_MAX_ROWS:
-                raise file_error("行数超过 XLSX 单表 1048576 行上限（算上表头），没有导出，也不会只导一部分。请改用 CSV 导出。", count + 1)
+                raise file_error("行数超过 XLSX 单表 1048576 行上限（算上表头）。请改用 CSV 导出。", count + 1)
             cells = []
             for value in _row_values(kind, row, count + 1, "xlsx"):
                 cell = WriteOnlyCell(ws, value=value)

@@ -26,7 +26,7 @@ def _sheet(archive):
     relationships = ElementTree.fromstring(archive.read('xl/_rels/workbook.xml.rels'))
     links = [node for node in relationships if node.get('Id') == target_id]
     if len(links) != 1 or links[0].get('TargetMode') == 'External' or not links[0].get('Type', '').endswith('/worksheet'):
-        invalid('第一张工作表的链接坏了，系统不会改去读别的工作表。')
+        invalid('第一张工作表损坏，请重新保存文件后导入。')
     target = links[0].get('Target', '')
     return posixpath.normpath(target.lstrip('/') if target.startswith('/') else posixpath.join('xl', target))
 
@@ -66,7 +66,7 @@ def _rows(stream):
                 continue
             match = re.fullmatch(r'([A-M])([1-9][0-9]*)', cell.get('r', ''))
             if match is None or int(match[2]) != number or match[1] <= column:
-                invalid('有单元格超出 13 列、重复或错位，系统不会覆盖或忽略原来的值。')
+                invalid('文件存在超出 13 列、重复或错位的单元格，请按模板修正。')
             column = match[1]
             columns = max(columns, ord(column) - ord('A') + 1)
         node.clear()

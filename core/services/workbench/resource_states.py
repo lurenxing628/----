@@ -19,7 +19,7 @@ class WorkbenchResourceStateService:
             raise WorkbenchCommandRejected("entity_not_found", "这条资源记录已失效，或者不属于当前这一类资料，操作没有执行。请从列表重新选择。", 404)
         current = self.identities.get(identity.ref)
         if current is None or not current.active or current.kind != kind:
-            raise WorkbenchCommandRejected("entity_not_found", "这条资源已经删除了，操作没有执行；就算有同编号的新记录，也不会自动指过去。请从列表重新选择。", 404)
+            raise WorkbenchCommandRejected("entity_not_found", "这条资源已经删除了，操作未执行。请从列表重新选择。", 404)
         if current != identity:
             raise WorkbenchCommandRejected("stale_write", "资源或相关资料已经变了，操作没有执行。请刷新后重新核对。")
         raw = self.repo.get_raw(kind, current.entity_key)
@@ -57,6 +57,8 @@ class WorkbenchResourceStateService:
             result["skills"] = self.repo.skills(code)
             result["skill_types"] = [self.related("op_type", row["op_type_id"]) for row in result["skills"]]
             result["machine_authorizations"] = self.repo.authorizations(code)
+            result["authorized_machines"] = [self.related("machine", row["machine_id"])
+                                             for row in result["machine_authorizations"]]
             profile_id = result["profile"]["shift_profile_id"] if result["profile"] else None
             result["shift"] = self.related("shift_profile", profile_id)
             result["shift_pattern"] = self.repo.pattern(profile_id) if profile_id else []

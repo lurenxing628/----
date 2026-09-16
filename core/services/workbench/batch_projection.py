@@ -63,7 +63,7 @@ class BatchProjection:
             return None
         value = self.refs.get((kind, str(key)))
         if value is None:
-            raise WorkbenchCommandRejected("storage_failure", "有资料缺少系统编号，系统不会拿业务编号顶替，也不会自动补建。请刷新重试；仍不行请联系维护人员。", 500)
+            raise WorkbenchCommandRejected("storage_failure", "有资料缺少系统编号，请联系维护人员核对资料。", 500)
         return value
 
     def resource(self, kind, key):

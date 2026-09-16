@@ -10,6 +10,7 @@ from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_process_commands import process_number
 from core.services.workbench.process_file_hours_preview import HoursFilePreview, protect_hours_preview
 from core.services.workbench.process_quota_protection import ProcessQuotaProtection, quota_skip
+from core.services.workbench.process_zero_hours import require_zero_confirmation
 
 
 class ProcessHoursFileOperations:
@@ -33,9 +34,8 @@ class ProcessHoursFileOperations:
                 [row["expected"]["operation_ref"] for row in rows])
             skipped = self._skipped_rows(rows, current, locks)
             writable = [row for row in rows if row["row"] not in skipped]
-            if any(row["after"]["source"] == "internal" and row["after"]["unit_hours"] == 0
-                   for row in writable) and not confirm_zero_unit_hours:
-                raise WorkbenchCommandRejected("zero_unit_hours_review", "有单件工时是 0 的工序。请勾选确认已复核后再导入。", 422)
+            require_zero_confirmation(self.conn, [(current[row["expected"]["operation_ref"]], row["after"])
+                                                 for row in writable], confirm_zero_unit_hours)
             groups = self._group_updates(writable)
             results, affected = [], set()
             for row in rows:
@@ -73,7 +73,7 @@ class ProcessHoursFileOperations:
             old = row["expected"]["operation"]
             live = current[ref]
             if old["id"] != live["id"] or old["part_no"] != live["part_no"] or old["seq"] != live["seq"]:
-                raise WorkbenchCommandRejected("stale_write", "工序的归属或序号在预检之后变了，系统不会自动重新对应。请重新预检。")
+                raise WorkbenchCommandRejected("stale_write", "工序的归属或序号在预检之后变了。请重新预检。")
             values = row["input"]["hours"]
             if ref in locks and "unit_hours" in values and values["unit_hours"] != live["unit_hours"]:
                 skipped[row["row"]] = quota_skip(ref, locks[ref])

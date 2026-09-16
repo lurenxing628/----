@@ -19,7 +19,7 @@ def add_process(graph):
         for column, label in (("part_no", "图号"), ("part_name", "名称")):
             graph.field(part, label, row[column], "Parts." + column)
             if not isinstance(row[column], str) or not row[column].strip():
-                graph.issue(part, column + ".missing", "零件基本信息不完整", "这个零件的" + label + "是空的，系统不会自动补。")
+                graph.issue(part, column + ".missing", "零件基本信息不完整", "这个零件的" + label + "未填写，请补充。")
         graph.field(part, "备注", row.get("remark"), "Parts.remark", required=False)
         if not facts.available("PartOperations", "ExternalGroups"):
             graph.unknown(part, "工艺路线", "PartOperations / ExternalGroups", relation=True)
@@ -28,7 +28,7 @@ def add_process(graph):
         active = [op for op in operations if op["status"] == "active"]
         graph.field(part, "有效模板工序数", len(active), "PartOperations.status=active")
         if not active:
-            graph.issue(part, "part.route_missing", "零件无有效模板工序", "这个零件一道有效工序都没有，系统不会把路线文字直接当成确认过的模板。",
+            graph.issue(part, "part.route_missing", "零件无有效模板工序", "请为该零件建立并确认工序。",
                         stage="route", action="录入或核对路线")
         if operations or isinstance(row["route_raw"], str) and row["route_raw"].strip():
             route = graph.add("route", key, key, (row["part_name"] or key) + " · 工艺路线")
@@ -72,12 +72,17 @@ def _workflow_confirmation(graph, route, state):
     labels = {"route": "路线", "source": "归属", "hours": "工时"}
     for stage, label in labels.items():
         confirmed = workflow[stage]["state"] == "confirmed"
-        graph.field(route, label + "确认", "已确认" if confirmed else "老数据，未确认" if workflow["origin"] == "legacy" else "未确认",
+        graph.field(route, label + "确认", "已确认" if confirmed else "待保存",
                     "process.workflow_snapshot." + stage, valid=confirmed)
     if not workflow["ready"]:
+        stage = "route" if workflow["route"]["state"] != "confirmed" else workflow["stage"]
+        message, action = {
+            "route": ("请保存工艺路线，完成后再保存工序归属和工时定额。", "保存工艺路线"),
+            "source": ("请保存工序归属，完成后再保存工时定额。", "保存工序归属"),
+            "hours": ("请填写并保存工时定额。", "填写工时定额"),
+        }[stage]
         graph.issue(route, "workflow.pending", "工艺确认尚未完成",
-                    "现在卡在" + labels[workflow["stage"]] + "这一步；已有的归属和 0 工时都不算人工确认过。",
-                    stage="route" if workflow["origin"] == "legacy" else workflow["stage"], action="核对并确认工艺阶段")
+                    message, stage=stage, action=action)
 
 
 def _operation(graph, route, op, ref, groups, state):
@@ -101,9 +106,9 @@ def _operation(graph, route, op, ref, groups, state):
                       label + "填的是" + text(value) + "，要填 0 或大于 0 的数字。", "hours")
         confirmation = state["operations"].get(ref) if state else None
         if op["unit_hours"] == 0 and (not confirmation or confirmation["hours"]["state"] != "confirmed"):
-            issue("operation.zero_review", "单件工时 0 待复核", "单件工时是 0，系统保留原值；现在这版内容还没有人工确认过工时。", "hours")
+            issue("operation.zero_review", "单件工时 0 待复核", "请核对单件工时；确实为 0 时，在工时定额页按 0 保存。", "hours")
         if op["supplier_id"] is not None or op["ext_group_id"] is not None:
-            issue("operation.internal_external", "自制工序保留外协绑定", "这是自制工序，但还挂着供应商或外协组，系统不会替你清除。")
+            issue("operation.internal_external", "自制工序保留外协绑定", "自制工序关联了供应商或外协组，请核对工序归属。")
     if source == "external":
         _external(graph, route, op, ref, groups, prefix, issue)
 
@@ -116,7 +121,7 @@ def _external(graph, route, op, ref, groups, prefix, issue):
     label = "整组周期" if merged else "逐序周期"
     graph.field(route, prefix + label + "（天）", value, "ExternalGroups.total_days" if merged else "PartOperations.ext_days", valid=number(value, True))
     if not number(value, True):
-        issue("operation.days", "外协周期待维护", label + "填的是" + text(value) + "，系统不会默认补 1 天。", "hours")
+        issue("operation.days", "外协周期待维护", label + "填的是" + text(value) + "，请填写大于 0 的周期。", "hours")
     if merged and op["ext_days"] is not None and not number(op["ext_days"], True):
         issue("operation.retained_days", "合并组保留的逐序周期无效", "逐序周期填的是" + text(op["ext_days"]) + "，不是大于 0 的天数。", "hours")
 
@@ -135,7 +140,7 @@ def _external_supplier(graph, route, op, ref, issue):
 def _external_group(graph, route, op, ref, groups, prefix, issue):
     group = groups.get(op["ext_group_id"])
     if op["ext_group_id"] is not None and (group is None or group["part_no"] != op["part_no"]):
-        issue("operation.group", "外协组缺失或不属于本零件", "找不到这个外协组，或者它属于别的零件；系统不会拿同号工序或别的零件的外协组顶替。")
+        issue("operation.group", "外协组缺失或不属于本零件", "外协组不存在或所属零件不符，请重新选择。")
         group = None
     if group:
         group_ref = graph.facts.ref("template_external_group", group["group_id"])
@@ -154,4 +159,4 @@ def _orphan_operations(graph, grouped):
     count = sum(len(rows) for key, rows in grouped.items() if key not in parts)
     if count:
         graph.facts.gaps.append({"code": "orphan_operations", "source": "PartOperations.part_no",
-                                 "message": f"有 {count} 条模板工序找不到对应零件，系统不会凭空补一条零件资料。"})
+                                 "message": f"有 {count} 条模板工序缺少对应零件，请核对。"})

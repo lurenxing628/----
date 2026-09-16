@@ -27,9 +27,9 @@ def operation_gaps(checks, batch, op, projection):
     if batch["ready_date"] is not None and stored_date(batch["ready_date"]) is None:
         gaps.append(issue("ready_date_invalid", "批次的齐套日期格式不对。请到批次管理改正。"))
     if batch["status"] not in ("pending", "scheduled", "processing", "completed", "cancelled"):
-        gaps.append(issue("batch_status_invalid", "批次状态读不出来，不能当成待排产。请到批次管理核对批次状态。"))
+        gaps.append(issue("batch_status_invalid", "批次状态无效，请到批次管理核对。"))
     if op["status"] not in ("pending", "scheduled"):
-        gaps.append(issue("operation_status_invalid", "工序状态读不出来，不能当成待排产。请到批次管理核对工序状态。"))
+        gaps.append(issue("operation_status_invalid", "工序状态无效，请到批次管理核对。"))
     return gaps
 
 

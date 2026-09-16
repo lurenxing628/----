@@ -21,7 +21,7 @@ def add_resources(graph):
             for name, label in ((key, "编号"), ("name", "名称")):
                 graph.field(entity, label, row[name], table + "." + name)
                 if not isinstance(row[name], str) or not row[name].strip():
-                    graph.issue(entity, name + ".missing", label + "未填写", "这条资料的" + label + "是空的，系统不会自动补。")
+                    graph.issue(entity, name + ".missing", label + "未填写", "这条资料的" + label + "未填写，请补充。")
             graph.field(entity, "备注", row.get("remark"), table + ".remark", required=False)
             if domain == "opType":
                 _op_type(graph, entity, row)
@@ -81,18 +81,18 @@ def _op_type(graph, entity, row):
         label = {"separate": "分别设置", "merged": "合并设置"}.get(mode, mode) if mode is not None else None
         graph.field(entity, "周期算法", label, "WorkbenchOpTypePolicies.default_merge_mode")
         if mode not in ("separate", "merged"):
-            graph.issue(entity, "policy.missing", "外协周期算法未设置", "这个工种没有单独设置外协周期算法，系统不会替你套默认值。")
+            graph.issue(entity, "policy.missing", "外协周期算法未设置", "请设置该工种的外协周期算法。")
 
 
 def _material(graph, entity, row):
     for name, label in (("spec", "规格"), ("unit", "库存单位")):
         graph.field(entity, label, row[name], "Materials." + name)
         if not isinstance(row[name], str) or not row[name].strip():
-            graph.issue(entity, "material." + name, label + "未填写", "这条物料的" + label + "是空的，系统不会自动补。")
+            graph.issue(entity, "material." + name, label + "未填写", "这条物料的" + label + "未填写，请补充。")
     value = row["stock_qty"]
     graph.field(entity, "库存数量", value, "Materials.stock_qty", valid=number(value))
     if not number(value):
-        graph.issue(entity, "material.stock", "库存数量待核对", "库存数量现在是" + text(value) + "，填 0 可以，空着系统不会当成 0。")
+        graph.issue(entity, "material.stock", "库存数量待核对", "库存数量现在是" + text(value) + "，请填写有效数量，可填 0。")
 
 
 def resource_links(graph):
@@ -143,12 +143,12 @@ def _qualification_fields(graph):
                 graph.field(entity, "登记工种数", len(bound), "OperatorSkill" if domain == "personnel" else "Suppliers + WorkbenchSupplierOpTypes")
                 if not bound:
                     graph.issue(entity, "qualification.empty", "人员未登记技能" if domain == "personnel" else "供应商未选外协工种",
-                                "没有给这个人单独登记任何技能工种，设备操作授权不等于会做这道工序。" if domain == "personnel"
+                                "请登记该人员具备的技能工种。" if domain == "personnel"
                                 else "这家供应商没有登记任何可做的外协工种。")
             expected = "internal" if domain == "personnel" else "external"
             if any(types[item["business_code"]]["category"] != expected for item in bound):
                 graph.issue(entity, "qualification.category", "绑定工种类别不符",
-                            "人员的技能工种应该是自制，供应商的能力工种应该是外协；系统不会替你改工种归属。")
+                            "人员请选择自制工种，供应商请选择外协工种。")
             if domain == "personnel":
                 _person_fields(graph, entity, row, profiles, shifts)
 
@@ -159,7 +159,7 @@ def _person_fields(graph, entity, row, profiles, shifts):
         shift = shifts.get(profile["shift_profile_id"]) if profile else None
         graph.field(entity, "班次", shift["name"] if shift else None, "WorkbenchOperatorProfiles.shift_profile_id -> WorkbenchShiftProfiles.name")
         if shift is None:
-            graph.issue(entity, "shift.missing", "人员班次未登记或已缺失", "这个人没有单独配班次，系统不会拿班组或个人日历顶替。")
+            graph.issue(entity, "shift.missing", "人员班次待设置", "请为该人员选择有效班次。")
         else:
             graph.field(entity, "班次状态", _shown(shift["status"], STATUS_TEXT), "WorkbenchShiftProfiles.status")
             if shift["status"] != "active":
@@ -175,7 +175,7 @@ def _person_fields(graph, entity, row, profiles, shifts):
         graph.field(entity, "设备授权数", count, "OperatorMachine")
         if not count:
             graph.issue(entity, "authorization.empty", "人员未获设备操作授权",
-                        "没有单独授权这个人操作任何设备，会做这道工序不等于有设备操作权。")
+                        "请为该人员设置可操作设备。")
 
 
 def _op_resources(graph):
@@ -191,4 +191,4 @@ def _op_resources(graph):
                 graph.field(entity, label + "关联数", count, source)
                 if count == 0:
                     graph.issue(entity, "op.resources." + source, "未找到关联" + label,
-                                "这个工种下没有登记任何" + label + "，系统不会按名称去凑。")
+                                "这个工种下没有登记任何" + label + "，请补充关联。")

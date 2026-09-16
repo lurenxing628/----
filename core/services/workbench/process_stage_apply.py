@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.workbench.process_quota_protection import ProcessQuotaProtection
+from core.services.workbench.process_zero_hours import require_zero_confirmation
 from data.repositories.base_repo import BaseRepository
 from data.repositories.supplier_repo import SupplierRepository
 
@@ -92,8 +93,10 @@ def apply_hours(conn, payload, operations, groups):
         {row["ref"]: row.get("unit_hours", active[row["ref"]]["unit_hours"]) for row in payload["operations"]})
     if any(current[ref]["id"] != row["id"] or current[ref]["part_no"] != row["part_no"] or
            current[ref]["seq"] != row["seq"] for ref, row in active.items()):
-        raise WorkbenchCommandRejected("stale_write", "原模板工序已经变了，系统不会改到同号的新工序。请刷新后重新操作。")
+        raise WorkbenchCommandRejected("stale_write", "原模板工序已经变了。请刷新后重新操作。")
     updates = _hours_updates(payload, active, merged)
+    require_zero_confirmation(conn, [(active[row["ref"]], row) for row in payload["operations"]],
+                              payload["confirm_zero_unit_hours"])
     changed = bool(updates)
     for key, fields in updates:
         assignments = ",".join(name + "=?" for name in fields)

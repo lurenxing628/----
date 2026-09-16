@@ -54,6 +54,10 @@ def _task_projection(row, draft_ref, by_operation, protected_rows, by_task, live
         "edit_context": {"can_change": editable, "blocked_reasons": [value for value in (blocked, duration_reason) if value]},
         "issues": by_task[row["task_ref"]]}
     _display_fields(task)
+    anchor = original.get("execution_anchor")
+    if anchor is not None:
+        task["execution_anchor"] = {key: anchor["arrangement"][key] for key in ("machine_ref", "operator_ref", "start", "end")}
+        task["execution_anchor"].update(basis=anchor["basis"], message=anchor["message"])
     if current["start"] == current["end"] and duration_reason is None:
         witness = trial_point_evidence(original, current)
         task.update(point_event_dto(witness.at, witness.at))
@@ -108,7 +112,7 @@ def comparison(tasks, checked):
             "moved_operations": sum(row["machine_ref"] != row["original"]["machine_ref"] for row in tasks),
             "late_count": sum(row["risk"] == "overdue" for row in deliveries) if measurable else None,
             "total_delay_hours": sum(row["late_hours"] for row in deliveries) if measurable else None,
-            "changeovers": None, "changeover_reason": "未对试调执行真实换型成本评估。"}
+            "changeovers": None, "changeover_reason": "未计算换型次数。"}
 
 
 def _delivery_risk(value, finish, checked):
@@ -137,7 +141,7 @@ def _display_fields(task):
     for key in ("part_no", "part_name", "process_label", "sequence", "piece_id", "source", "quantity", "priority", "due_date"):
         value = _public_value(task[key])
         if value is None and task[key] is not None:
-            task["data_gaps"].append({"field": key, "storage_type": type(task[key]).__name__, "message": "这一项的原始内容格式不对，不能直接显示；原始数据没有改动。"})
+            task["data_gaps"].append({"field": key, "storage_type": type(task[key]).__name__, "message": "原始内容格式无效，暂无法显示。"})
         task[key] = value
 
 

@@ -14,19 +14,19 @@ class RunCandidateBaselineScope(RunCandidateReadScope):
 
 def baseline_reason(code):
     messages = {
-        "no_admission_baseline": "排产时没有正式的初始计划，算不出相对改善。",
-        "no_baseline_operation": "排产时的正式计划里没有这道工序，新排上不算改善。",
-        "candidate_operation_unscheduled": "该候选没有安排此工序，不能把未排当作工期缩短。",
+        "no_admission_baseline": "排产时没有正式计划可供对比。",
+        "no_baseline_operation": "此工序在初始计划中未安排。",
+        "candidate_operation_unscheduled": "此候选方案未安排该工序。",
         "outside_selected_batches": "这道工序只在排产时的正式计划里，不在这次选择的范围内。",
-        "baseline_multiple_segments": "初始计划里这道工序分成了几段，这里不合并也不任选一段来对照。",
-        "baseline_interval_unavailable": "初始计划的起止时间不对或时长为 0，没有推算工时。",
-        "execution_affected": "排产时这道工序已经开工或数量不明，时间差不能算成排产优化。",
-        "effective_hours_not_recorded": "初始计划没有记有效加工小时，起止时长不等于有效工时。",
-        "historical_supplier_not_recorded": "初始计划没有保存供应商安排，这里不用排产时的工艺设置代替。",
-        "not_an_optimization_score": "仅描述已保存安排的变化，不评价收益或把未排视为改善。",
+        "baseline_multiple_segments": "此工序在初始计划中有多段安排，请逐段查看。",
+        "baseline_interval_unavailable": "初始计划的起止时间无效或时长为 0，无法比较时长。",
+        "execution_affected": "排产时此工序已开工或数量不明。",
+        "effective_hours_not_recorded": "初始计划未记录有效加工工时。",
+        "historical_supplier_not_recorded": "初始计划未记录供应商安排。",
+        "not_an_optimization_score": "安排变动对比。",
         "no_comparable_operations": "这次范围里没有能一一对上的有工时安排。",
         "resource_identity_unavailable": "有一边没有可核对的设备人员编号，资源有没有变不清楚。",
-        "input_digest_not_recorded": "排产时的输入没有单独存摘要；这里只核对了结构、编号范围和明细，不算完整独立核对。",
+        "input_digest_not_recorded": "排产输入摘要未记录。",
     }
     return {"code": code, "message": messages[code]}
 

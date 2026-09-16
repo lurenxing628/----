@@ -24,7 +24,7 @@ class TrialProtection:
         op_id = original["operation"]["id"]
         identity = self.identities.get(row["operation_ref"])
         if identity is None or identity["active"] != 1 or identity["source_key"] != str(op_id):
-            return issue("operation_identity_changed", "这道工序已删除或被替换，草稿不会自动改指同号的新工序。", ref)
+            return issue("operation_identity_changed", "该工序已删除或被替换，无法继续调整。", ref)
         if not original["lock_known"]:
             return issue("lock_state_unknown", "这道工序是不是已固定读不到，这里不当成未固定处理。", ref)
         latest = self.latest.get(op_id)

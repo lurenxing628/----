@@ -12,7 +12,7 @@ def number(value):
     if value is None:
         return None
     if type(value) not in (float, int) or not math.isfinite(value) or value < 0:
-        raise WorkbenchCommandRejected("storage_failure", "校准读到的数量或工时不是有效数字，系统不会把坏数据当成 0 或未知。请核对报工记录。", 500)
+        raise WorkbenchCommandRejected("storage_failure", "报工数量或工时无效，请核对报工记录。", 500)
     return Decimal(str(value))
 
 
@@ -22,7 +22,7 @@ def _lineage_reasons(lineage, template):
     if not lineage.evidence_ref or type(lineage.template_revision) is not int or lineage.template_revision < 1:
         return [issue("template_lineage_unconfirmed", "模板来源或版本还没确认。")]
     if template is None or lineage.template_operation_ref != template.operation_ref:
-        return [issue("template_operation_mismatch", "来源模板的编号和当前模板不是同一条，系统不会按名称或工序号替代。")]
+        return [issue("template_operation_mismatch", "来源模板与当前模板不一致。")]
     if lineage.template_revision != template.revision:
         return [issue("template_revision_mismatch", "来源模板的版本和当前版本不同，不能混用。")]
     if template.source != "internal":
@@ -32,9 +32,12 @@ def _lineage_reasons(lineage, template):
 
 def _execution_reasons(candidate, as_of):
     projection = candidate.execution
+    if not projection.reports:
+        # One missing-report reason already explains the derived quantity/time gaps.
+        return _legacy_reasons(projection)
     reasons = []
     if candidate.operation_source != "internal" or projection.completion_basis != "complete_reports":
-        reasons.append(issue("processing_basis_unconfirmed", "这道工序不能确认是按自制逐次报工算的，系统不会用事件时长或外协周期倒推加工小时。"))
+        reasons.append(issue("processing_basis_unconfirmed", "尚未确认该工序按自制逐次报工核算加工工时。"))
     if projection.execution_state != "complete" or not projection.quantity_complete:
         reasons.append(issue("operation_not_complete", "累计报工数量还证明不了这道工序已经全部完工。"))
     if projection.unknown_record_count or projection.target_quantity is None:
@@ -52,7 +55,7 @@ def _execution_reasons(candidate, as_of):
 
 def _legacy_reasons(projection):
     if any(row["code"] == "legacy_source_changed" for row in projection.data_gaps):
-        raise WorkbenchCommandRejected("calibration_source_changed", "历史报工数据和归档不一致。请先核对来源再刷新，系统不会沿用上一次的校准结果。")
+        raise WorkbenchCommandRejected("calibration_source_changed", "历史报工与归档不一致，请核对来源后刷新。")
     reasons = []
     for kind, code, message in (("pause", "pause_contamination", "这条记录中间有暂停，已知会影响工时，没有算进完工记录。"),
                                 ("exception", "known_exception", "这条记录报过异常，没有算进完工记录。")):
@@ -81,12 +84,14 @@ def _processing_values(projection):
     reported_quantity = _known_sum([report.completed_quantity for report in projection.reports])
     quantity = number(projection.known_completed_quantity)
     reasons = []
-    if total is None:
-        reasons.append(issue("processing_hours_unknown", "有报工没填有效加工小时，系统不会把没填的当成 0。"))
-    if reported_quantity is None:
+    if not projection.reports:
+        reasons.append(issue("production_reports_missing", "尚无逐次报工记录，暂不能计算单件工时。"))
+    elif total is None:
+        reasons.append(issue("processing_hours_unknown", "部分报工未填写有效加工工时。"))
+    if projection.reports and reported_quantity is None:
         reasons.append(issue("quantity_unknown", "至少有一次报工的数量暂无数据。"))
-    elif reported_quantity != quantity:
-        reasons.append(issue("processing_basis_unconfirmed", "逐次报工数量和累计完工数量对不上，系统不会把历史累计完工的工时重复算一遍。"))
+    elif reported_quantity is not None and reported_quantity != quantity:
+        reasons.append(issue("processing_basis_unconfirmed", "逐次报工数量与累计完工数量不一致。"))
     ratio = total / quantity if total is not None and quantity else None
     return {"completed_quantity": projection.known_completed_quantity, "unknown_record_count": projection.unknown_record_count,
             "effective_processing_hours": float(total) if total is not None else None,

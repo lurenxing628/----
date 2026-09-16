@@ -17,7 +17,7 @@ class WorkbenchTrialRepository:
 
     def require_schema(self):
         if workbench_trial_contract_issues(self.conn):
-            reject("trial_schema_unavailable", "试调持久结构未安装或不完整；请由统一迁移接入，本次不会补表。", 503)
+            reject("trial_schema_unavailable", "试调记录结构不完整，请联系维护人员。", 503)
 
     def get(self, draft_ref):
         self.require_schema()

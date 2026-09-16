@@ -8,7 +8,7 @@ from core.models.workbench_command import WorkbenchCommandRejected, input_finger
 from core.services.workbench.commands import WorkbenchCommandService
 from core.services.workbench.process_queries import WorkbenchProcessQueryService
 
-from .api_responses import api_endpoint, query_success
+from .api_responses import api_endpoint, failure, query_success
 from .process_json import read_process_json
 from .read_context import bind_read_snapshot
 from .write_context import issue_write_context, validate_write_context
@@ -27,7 +27,7 @@ def process_stage_preview(ref):
     try:
         body = read_process_json("归属检查", 4 * 1024 * 1024)
         if set(body) != {"action", "input", "snapshot_ref"} or body["action"] != "source_confirm":
-            raise WorkbenchCommandRejected("invalid_input", "提交的内容不完整或有多余项，归属没有保存。请刷新页面后重新点「检查归属」。", 400)
+            raise WorkbenchCommandRejected("invalid_input", "提交的内容不完整或有多余项，归属没有保存。请刷新页面后重新点「保存归属并继续」。", 400)
         domain = WorkbenchProcessMutationService(g.db, current_app.logger)
         normalized = domain.normalize(body["action"], body["input"])
         reader = WorkbenchProcessQueryService(g.db, current_app.logger)
@@ -35,7 +35,7 @@ def process_stage_preview(ref):
             entity = reader.detail(ref)
             bind_read_snapshot({"kind": "part", "entity_ref": ref}, state, body["snapshot_ref"])
             if entity["workflow"]["route"]["state"] != "confirmed":
-                raise WorkbenchCommandRejected("stage_locked", "工艺路线还没有确认，归属没有保存。请先点「确认保存路线」，再点「检查归属」。")
+                raise WorkbenchCommandRejected("stage_locked", "工艺路线还没有确认，归属没有保存。请先点「确认保存路线」，再点「保存归属并继续」。")
             affected = set(domain.affected_groups("source_confirm", normalized, reader.resolve(ref)))
             binding = {"state": state, "input": reviewed_input("source_confirm", normalized)}
             data = {"part_ref": ref, "action": "source_confirm",
@@ -76,9 +76,16 @@ def process_stage_command(ref, action):
             validate_write_context(body["write_token"], ref, "process." + action, binding)
             return identity
 
-    outcome = WorkbenchCommandService(g.db, current_app.logger).execute(
-        request_key=body["request_key"], action="process." + action, context_ref=ref,
-        normalized_input=normalized, guard=guard, mutate=lambda identity: domain.apply(action, normalized, identity))
+    try:
+        outcome = WorkbenchCommandService(g.db, current_app.logger).execute(
+            request_key=body["request_key"], action="process." + action, context_ref=ref,
+            normalized_input=normalized, guard=guard, mutate=lambda identity: domain.apply(action, normalized, identity))
+    except WorkbenchCommandRejected as exc:
+        if exc.code != "zero_unit_hours_confirmation_required":
+            raise
+        return failure(exc.code, str(exc), exc.status, fields=[
+            {"path": "operations." + operation_ref + ".unit_hours", "message": str(exc)}
+            for operation_ref in exc.operation_refs])
     return jsonify(outcome)
 
 

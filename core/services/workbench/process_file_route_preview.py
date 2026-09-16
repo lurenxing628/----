@@ -78,7 +78,7 @@ class RouteFilePreview:
             typed_value(code, "business_code", row["row"], "csv")
             row["business_code"] = code
             if values["business_code"] != code and values["business_code"] in self.parts:
-                raise ValidationError("原图号前后有空格，系统不会当成别的同号零件。请到基础资料改正图号。", field="business_code")
+                raise ValidationError("原图号前后有空格。请到基础资料改正图号。", field="business_code")
             part = self._resolve(row)
             if not row["errors"]:
                 self._propose(row, values, part)
@@ -98,7 +98,7 @@ class RouteFilePreview:
             ref = require_ref(part["ref"], "零件")
             identity = self.identities.get(ref)
             if identity is None or not identity["active"] or identity["kind"] != "part" or identity["entity_key"] != part["part_no"]:
-                raise WorkbenchCommandRejected("storage_failure", "零件和它的编号对不上，系统不会替你改资料。请刷新重试；仍不行请联系维护人员。", 500)
+                raise WorkbenchCommandRejected("storage_failure", "零件和它的编号对不上，请联系维护人员核对资料。", 500)
             row.update(entity_ref=ref, before=canonical_part(part), reference_count=part["batch_count"],
                        expected={"revision": part["revision"], "part": {
                            key: part[key] for key in ("part_no", "route_raw", "route_parsed")}, "operations": []})
@@ -154,7 +154,7 @@ class RouteFilePreview:
         for row in operations:
             require_ref(row["ref"], "模板工序")
             if row["status"] not in ("active", "deleted") or type(row["seq"]) is not int or row["seq"] <= 0:
-                raise WorkbenchCommandRejected("template_invalid", "原工序的序号或状态无效，系统不会自动恢复或删除。请到基础资料核对工序。", 422)
+                raise WorkbenchCommandRejected("template_invalid", "原工序的序号或状态无效。请到基础资料核对工序。", 422)
             if row["ext_group_id"] is not None and row["ext_group_id"] not in keys:
                 raise WorkbenchCommandRejected("group_invalid", "原工序关联的外协组不存在，或者属于别的零件。请到基础资料核对外协组。", 422)
         for row in groups:

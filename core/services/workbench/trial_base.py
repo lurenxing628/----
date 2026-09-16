@@ -15,6 +15,7 @@ from data.repositories.workbench_trial_repo import new_ref
 
 from .piece_adoption_trial import trial_piece_predecessors
 from .plan_point_evidence import official_point_work
+from .trial_execution_anchors import attach_execution_anchors
 from .trial_facts import entity_maps, live_context
 from .zero_duration_evidence import CandidatePointReader, point_basis
 
@@ -37,7 +38,7 @@ def _arrangement(payload, refs):
         result[kind + "_id"] = key
         result[kind + "_ref"] = refs.get((kind, key)) if key is not None else None
         if key is not None and result[kind + "_ref"] is None:
-            reject("identity_missing", "原安排里的设备或人员没有编号，这里不会用同号的顶替。")
+            reject("identity_missing", "原安排的设备或人员编号缺失。")
     return result
 
 
@@ -86,7 +87,7 @@ def _plan(conn, ref):
         _attach_parts(conn, result)
         operations = {int(row["source_key"]): row["ref"] for row in conn.execute(
             "SELECT source_key,ref FROM WorkbenchPlanSourceRefs WHERE kind='operation' AND active=1")}
-        issues = [] if entry.completeness == "complete" else [issue("trial_base_incomplete", "基础方案完整性尚未证明，不能把未排完算作按期。")]
+        issues = [] if entry.completeness == "complete" else [issue("trial_base_incomplete", "基础方案不完整，暂无法评估交期。")]
         return result, {"identity": project_plan(entry, ref), "source_table": table}, tables["BatchOperations"], operations, issues
 
 
@@ -136,7 +137,7 @@ def _candidate(conn, ref):
             op = facts.operation(item["operation_ref"], item["payload"], gaps)
             batch = facts.tables["Batches"].get(op.get("batch_id"))
             if gaps or not op or batch is None:
-                reject("trial_base_incomplete", "生成候选方案时的工序或批次数据缺失，这里不会改用当前的同号记录。")
+                reject("trial_base_incomplete", "生成候选时的工序或批次资料缺失。")
             result.append(_row(item["payload"], op, batch, facts.entity_refs, source_task_ref=None,
                                source_row_ref=item["row_ref"], operation_ref=item["operation_ref"]))
             if result[-1]["current"]["start"] == result[-1]["current"]["end"]:
@@ -166,6 +167,7 @@ def prepare_base(conn, intent):
     admission = {"input": intent, "source": source, "facts": live["facts"], "facts_hash": live["facts_hash"],
                  "baseline": live["baseline"], "execution": live["execution"], "base_issues": issues}
     _attach_original_context(rows, source, key, live)
+    issues.extend(attach_execution_anchors(conn, rows, live))
     return admission, rows, live
 
 
@@ -177,7 +179,7 @@ def _attach_original_context(rows, source, key, live):
     templates = _table(original_tables, "PartOperations") if original_tables is not None else live["facts"]["tables"]["PartOperations"]
     groups = _table(original_tables, "ExternalGroups") if original_tables is not None else live["facts"]["tables"]["ExternalGroups"]
     if templates is None or groups is None:
-        reject("trial_base_incomplete", "生成候选方案时的工艺或外协组数据缺失，这里不会改用当前数据。")
+        reject("trial_base_incomplete", "生成候选时的工艺或外协组资料缺失。")
     template_by_key = {(item["part_no"], item["seq"]): item for item in templates if item["status"] == "active"}
     group_by_key = {item["group_id"]: item for item in groups}
     for row in rows:
@@ -212,7 +214,7 @@ def _predecessors(rows, all_ops, operation_refs, issues):
         key = row["original"]["operation"]["id"]
         if key in previous:
             if previous[key] is None:
-                issues.append(issue("dependency_identity_missing", "前序永久身份缺失，不能按序号猜替代任务。", row["task_ref"]))
+                issues.append(issue("dependency_identity_missing", "前序工序编号缺失，无法核对工序顺序。", row["task_ref"]))
             else:
                 row["original"]["predecessor_operation_refs"] = [previous[key]]
 

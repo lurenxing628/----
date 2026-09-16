@@ -71,7 +71,7 @@ class MasterOverviewFacts:
     def ref(self, kind, key):
         row = self.identities.get((kind, str(plain(key))))
         if row is None or not public_ref(row["ref"]):
-            raise WorkbenchCommandRejected("storage_failure", "基础资料缺少有效的系统编号，读不出来。资料没有改动，请刷新重试；仍不行请联系维护人员。", 500)
+            raise WorkbenchCommandRejected("storage_failure", "基础资料缺少有效的系统编号，请联系维护人员核对资料。", 500)
         return row["ref"]
 
     def _load(self):
@@ -90,7 +90,7 @@ class MasterOverviewFacts:
             if row["active"] == 1:
                 key = (row["kind"], row["entity_key"])
                 if key in self.identities:
-                    raise WorkbenchCommandRejected("storage_failure", "同一条基础资料有多个有效的系统编号，系统不会自己挑一个。资料没有改动，请联系维护人员处理。", 500)
+                    raise WorkbenchCommandRejected("storage_failure", "基础资料存在重复关联，请联系维护人员核对。", 500)
                 self.identities[key] = row
         required = ("Parts", "PartOperations", "ExternalGroups", "OpTypes", "Suppliers", "WorkbenchEntityRefs") + WORKFLOW
         metadata_sources = {table for table, _ in RESOURCE_TABLES.values()}
@@ -98,7 +98,7 @@ class MasterOverviewFacts:
             try:
                 self.workflow = workflow_snapshot(self.conn)
             except RuntimeError as exc:
-                raise WorkbenchCommandRejected("storage_failure", "工艺确认的数据读得不完整，系统不会自动补。请刷新重试；仍不行请联系维护人员。", 500) from exc
+                raise WorkbenchCommandRejected("storage_failure", "工艺确认的数据读得不完整，请联系维护人员核对资料。", 500) from exc
         else:
             self.gaps.append({"code": "workflow_unavailable", "source": "process.workflow_snapshot",
                               "message": "工艺确认的来源读不完整，已有路线、归属或 0 工时都不能当成人工确认过。"})

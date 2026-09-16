@@ -101,7 +101,7 @@ class WorkbenchProcessPartActionService:
     @staticmethod
     def _check_delete(expected, code):
         if not code.strip() or code != code.strip():
-            raise WorkbenchCommandRejected("constraint_conflict", "原图号是空的或前后有空格，系统不会去删同号的其他零件。请到基础资料核对图号。")
+            raise WorkbenchCommandRejected("constraint_conflict", "原图号是空的或前后有空格。请到基础资料核对图号。")
         if expected["batches"]:
             raise WorkbenchCommandRejected("constraint_conflict", "该零件已被批次使用，不能删除。")
         if expected["foreign_group_members"]:

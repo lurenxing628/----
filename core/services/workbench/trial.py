@@ -52,7 +52,8 @@ class WorkbenchTrialService:
             admission, rows, live = prepare_base(self.conn, intent)
             checked = TrialValidator(self.conn, admission, rows, live).evaluate()
             context = self.context_factory(next(iter(intent["base"].values())), [CREATE], self._create_snapshot(admission, rows))
-            return {"base": intent["base"], "scope": intent["scope"], "task_count": len(rows),
+            return {"base": intent["base"], "base_identity": admission["source"]["identity"],
+                    "scope": intent["scope"], "task_count": len(rows),
                     "tasks_complete": True, "validation": checked, "write_context": context}
 
     def create(self, value, write_token, request_key):

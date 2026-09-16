@@ -59,7 +59,7 @@ def prepare_candidate_run_input(conn, normalized_input: Dict[str, Any],
     """
     settings = normalize_preflight_input(normalized_input)
     if not settings["batch_refs"]:
-        fail("empty_scope", "还没有选批次，这次排产没有开始；不选不等于排全部批次。请先勾选要排的批次。")
+        fail("empty_scope", "请先勾选要排产的批次。")
     with candidate_read_snapshot(conn):
         facts = PreflightFacts(conn)
         with facts.snapshot() as fingerprint:

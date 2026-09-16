@@ -36,7 +36,8 @@ class FieldWorkspaceService:
         return WorkbenchPlanIdentityRepository(self.conn).get_plan_ref(WorkbenchPlanLocator(version, 'adopted'))
 
     def _labels(self, projections, plan):
-        refs = {row[key] for p in projections.values() for row in p['reports'] for key in ('actual_machine_ref', 'actual_operator_ref') if row[key]}
+        refs = {row[key] for p in projections.values() for row in p['reports'] + [item['report'] for item in p['voided_reports']]
+                for key in ('actual_machine_ref', 'actual_operator_ref') if row[key]}
         refs.update(task[key] for task in plan['tasks'] for key in ('machine_ref', 'operator_ref') if task[key])
         return {row['ref']: row['label'] for row in self.repo.resources(refs)}
 
@@ -74,7 +75,7 @@ class FieldWorkspaceService:
         if projection['current_task_ref'] != row['task_ref']:
             projection['write_context'] = {'write_token': None, 'expires_at': None, 'capabilities': {'create': False},
                 'blocked_reasons': [{'code': 'plan_not_writable', 'message': '这条安排属于旧计划，不能在旧任务上新增报工。'}]}
-        for report in projection['reports']:
+        for report in projection['reports'] + [item['report'] for item in projection['voided_reports']]:
             for kind in ('machine', 'operator'):
                 report['actual_' + kind + '_label'] = labels.get(report['actual_' + kind + '_ref'])
         name = names.get(row['batch_id'])
@@ -128,4 +129,4 @@ class FieldWorkspaceService:
         for task in cohort['tasks']:
             if task['task_ref'] == task_ref:
                 return {'task': task, 'scope': cohort['scope'], 'plan': cohort['plan']}
-        raise WorkbenchCommandRejected('entity_not_found', '选中的任务不在当前查询范围里，系统不会换成别的安排。请刷新后重新选择。', 404)
+        raise WorkbenchCommandRejected('entity_not_found', '所选任务不在当前范围，请刷新后重选。', 404)

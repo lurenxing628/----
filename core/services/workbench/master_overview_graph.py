@@ -96,7 +96,7 @@ class MasterOverviewGraph:
     def related(self, entity, domain, key, label, source, reverse, *, required=False, operation_ref=None, stage=None):
         if key is None or key == "":
             if required:
-                self.issue(entity, source + ".unbound", label + "未选", "这一项在资料里是空的，系统不会按名称去猜该连到哪条记录。", operation_ref=operation_ref, stage=stage)
+                self.issue(entity, source + ".unbound", label + "未选", "尚未设置关联，请选择对应记录。", operation_ref=operation_ref, stage=stage)
             return None
         target = self.by_key.get((domain, key))
         if target is None:
@@ -105,7 +105,7 @@ class MasterOverviewGraph:
             if not self.facts.available(*SOURCES[domain]):
                 self.unknown(entity, label, source, relation=True)
             else:
-                self.issue(entity, source + ".missing", label + "指向的记录不存在", "这一项填的编号在系统里找不到对应记录，系统不会拿编号相同或名称相同的记录顶替。", operation_ref=operation_ref, stage=stage)
+                self.issue(entity, source + ".missing", label + "指向的记录不存在", "关联记录已不存在，请重新选择。", operation_ref=operation_ref, stage=stage)
                 entity["relations_complete"] = False
             return None
         self.link(entity, target, label, source, reverse)
@@ -121,5 +121,5 @@ class MasterOverviewGraph:
                           issue_count=len(entity["issues"]), known_relation_count=len(entity["relations"]),
                           relation_count=len(entity["relations"]) if entity["relations_complete"] else None)
             entity["status"] = "inactive" if entity.pop("inactive") else "attention" if entity["issues"] else "checked" if entity["checks_complete"] else "unknown"
-            entity["summary"] = (entity["issues"][0]["title"] + (" 等 {} 项".format(len(entity["issues"])) if len(entity["issues"]) > 1 else "")) if entity["issues"] else "已检查的项里没有发现待维护项。" if entity["checks_complete"] else "部分来源或检查没有完成，结果可能不全。"
+            entity["summary"] = (entity["issues"][0]["title"] + (" 等 {} 项".format(len(entity["issues"])) if len(entity["issues"]) > 1 else "")) if entity["issues"] else "暂无待维护项。" if entity["checks_complete"] else "部分检查尚未完成，请核对资料项。"
         return self.entities

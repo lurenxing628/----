@@ -74,7 +74,7 @@ def _material_batch(batch, checks, refs, by_material, material_refs):
               "requirements": [row for row, _ in projected], "readiness_issues": reasons, "basis": "batch_material_requirements_not_stock"}
     code, message = {None: ("readiness_unknown", "齐套数据读不完整，算不出缺多少，也不能认定已齐套。"),
                      True: ("not_ready", "批次或已登记物料需求尚未确认齐套。"),
-                     False: ("ready", "当前齐套检查无缺口（不等于排产就绪）。")}[active]
+                     False: ("ready", "当前齐套检查无缺口。")}[active]
     label = batch["part_name"] if type(batch["part_name"]) is str else "未填写名称"
     return observation("material", ref, batch["batch_id"] + " · " + label, source, active, code, message,
                        {"batch": batch, "requirements": rows, "identity": refs[batch["batch_id"]],

@@ -29,7 +29,7 @@ def load_saved_scenario(conn, scenario_ref):
     for task in saved["tasks"]:
         source = sources.get(task["source_row_ref"])
         if source is None or source["row_ref"] in seen:
-            _invalid("试调方案没有逐条对上草稿里的工序，缺的工序不会自动补。请刷新后重试。")
+            _invalid("试调方案与草稿工序不一致，请刷新后重试。")
         seen.add(source["row_ref"])
         rows.append(_saved_row(task, source))
     if seen != set(sources):
@@ -69,7 +69,7 @@ def _require_receipts(conn, saved, header, head):
         _invalid("找不到建草稿或保存试调方案的结果记录，来源无法确认。请刷新后重试。")
     result = repo.public_result(persisted, replayed=True)
     if result["result"] != "committed" or fingerprint(result["data"]) != fingerprint(saved):
-        _invalid("试调方案的内容和保存结果对不上，这里不会重新生成。请刷新后重试。")
+        _invalid("试调方案与保存结果不一致，请刷新后重试。")
 
 
 def _saved_row(task, source):
@@ -90,7 +90,7 @@ def _saved_row(task, source):
     for kind in ("machine", "operator"):
         current[kind + "_id"] = source["current"][kind + "_id"]
     if fingerprint(current) != fingerprint(source["current"]):
-        _invalid("试调方案保存的安排和草稿不一致，这里不会用当前安排顶替。请刷新后重试。")
+        _invalid("试调方案与草稿安排不一致，请刷新后重试。")
     for name in ("start", "end"):
         raw = current[name]
         parsed = datetime.fromisoformat(raw)

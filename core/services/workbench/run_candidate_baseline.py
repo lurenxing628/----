@@ -7,6 +7,7 @@ from collections import Counter, defaultdict
 from typing import NoReturn
 
 from core.infrastructure.workbench_execution_ledger_schema import execution_ledger_objects
+from core.infrastructure.workbench_execution_void_schema import execution_void_objects
 from core.infrastructure.workbench_metadata_schema import _canonical_sql
 from core.models.workbench_command import WorkbenchCommandRejected, canonical_json, input_fingerprint
 from core.models.workbench_preflight import normalize_preflight_input, preflight_window
@@ -24,7 +25,7 @@ from .run_input_projection_codec import restore_execution_projections
 
 
 def _invalid() -> NoReturn:
-    reject("candidate_baseline_invalid", "排产时记下的对照计划、排产范围或报工记录有缺失或对不上，对比没有生成，系统也没有拿当前数据顶替。请重新排产后再看。", 500)
+    reject("candidate_baseline_invalid", "排产时的对照资料不完整，无法对比。请重新排产后查看。", 500)
 
 
 class AdmissionBaseline:
@@ -135,17 +136,41 @@ class AdmissionBaseline:
                 _invalid()
             self.by_operation[ref].append({**row, "row_ref": row_ref})
 
+    def _execution_scope(self, archive):
+        # Admission also captures each operation's last official execution,
+        # including operations absent from the latest (possibly partial) plan.
+        # These rows validate execution evidence; they do not extend the latest
+        # plan's comparison baseline or become its current task bindings.
+        version = self.baseline["version"]
+        if version is None:
+            return self.selected
+        scheduled = set()
+        for row in self._required(archive, "Schedule"):
+            if type(row.get("version")) is not int or type(row.get("op_id")) is not int:
+                _invalid()
+            if row["version"] <= version:
+                scheduled.add(row["op_id"])
+        identities = {key: ref for ref, key in self.facts.operations.items()}
+        if not scheduled <= set(identities):
+            _invalid()
+        return self.selected | {identities[key] for key in scheduled}
+
     def _execution(self, capture, disposition, archive, accepted_at):
         try:
             projections = restore_execution_projections(capture["execution"])
         except (CandidateRunInputError, TypeError, ValueError):
             _invalid()
-        if {row.operation_ref for row in projections} != self.selected | set(self.by_operation):
+        if {row.operation_ref for row in projections} != self._execution_scope(archive):
             _invalid()
         for projection in projections:
             ref = projection.operation_ref
-            if ref in disposition and input_fingerprint(disposition[ref].get("execution")) != input_fingerprint(projection.to_dict()):
-                _invalid()
+            if ref in disposition:
+                try:
+                    original = restore_execution_projections([disposition[ref].get("execution")])[0]
+                except (CandidateRunInputError, TypeError, ValueError):
+                    _invalid()
+                if input_fingerprint(original.to_dict()) != input_fingerprint(projection.to_dict()):
+                    _invalid()
             current = projection.current_task_ref
             if ref in self.by_operation:
                 task = self.tasks.get(current)
@@ -211,9 +236,8 @@ def _blob(value):
         _invalid()
 
 
-def _report_revisions(archive):
-    name = "WorkbenchProductionReportRevisions"
-    sql = execution_ledger_objects()[name]
+def _report_revisions(archive, name="WorkbenchProductionReportRevisions"):
+    sql = {**execution_ledger_objects(), **execution_void_objects()}[name]
     ddl = [row[3] for row in archive["schema"] if type(row) is list and len(row) == 4 and row[0:2] == ["table", name]]
     if len(ddl) != 1 or type(ddl[0]) is not str or _canonical_sql(ddl[0]) != _canonical_sql(sql):
         _invalid()
@@ -221,7 +245,7 @@ def _report_revisions(archive):
     conn = sqlite3.connect(":memory:")
     try:
         conn.execute(sql)
-        columns = [row[1] for row in conn.execute("PRAGMA table_info(WorkbenchProductionReportRevisions)")]
+        columns = [row[1] for row in conn.execute('PRAGMA table_info("' + name + '")')]
     finally:
         conn.close()
     rows = archive["tables"].get(name)
@@ -234,6 +258,12 @@ def _archived_reports(archive):
     headers = _index(AdmissionBaseline._required(archive, "WorkbenchProductionReports"), "report_ref")
     receipts = _index(AdmissionBaseline._required(archive, "WorkbenchCommandReceipts"), "request_key")
     histories, result = defaultdict(list), defaultdict(list)
+    # A historical capture without this table predates explicit withdrawals.
+    # Once the table is present its known DDL and every binding are mandatory.
+    void_rows = _report_revisions(archive, "WorkbenchProductionReportVoids") if "WorkbenchProductionReportVoids" in archive["tables"] else []
+    voids = _index(void_rows, "report_ref")
+    if not set(voids) <= set(headers):
+        _invalid()
     for row in AdmissionBaseline._required(archive, "WorkbenchProductionReportRevisions"):
         histories[row.get("report_ref")].append(row)
     if set(histories) != set(headers):
@@ -247,6 +277,10 @@ def _archived_reports(archive):
                             "revision_at": revision["recorded_at"], "values": stored_json(revision["values_json"]),
                             "receipt_ref": receipts.get(revision["request_key"], {}).get("receipt_ref")})
         try:
+            if ref in voids:
+                if voids[ref]["original_revision_ref"] != history[-1]["revision_ref"]:
+                    _invalid()
+                continue
             result[header["operation_ref"]].append(report_dto(history))
         except (KeyError, TypeError, ValueError):
             _invalid()
@@ -334,7 +368,7 @@ def _in_time(row, start, end):
 def _scope_rows(rows, scope):
     if scope.batch_ref is not None:
         if scope.batch_ref not in {row["batch_ref"] for row in rows}:
-            reject("entity_not_found", "这个批次不在排产时的对照范围里，没有查询；就算现在有同编号的批次，也不会替你查。请重新选择批次。", 404)
+            reject("entity_not_found", "该批次不在排产时的对照范围内，请重新选择。", 404)
         rows = [row for row in rows if row["batch_ref"] == scope.batch_ref]
     if scope.range_start is not None:
         start, end = local_time(scope.range_start), local_time(scope.range_end)

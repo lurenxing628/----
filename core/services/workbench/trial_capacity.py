@@ -18,12 +18,12 @@ def trial_capacity(rows, live):
     days = (end.date() - start.date()).days + 2
     if days < 1 or days * max(len(groups), 1) > 50000:
         return {**scope, "state": "unavailable", "resources": [],
-                "reason": "完整日历计算范围超过50000个资源日；任务仍完整保留，未截断或采用固定容量。"}
+                "reason": "日历计算范围超过 50000 个资源日，暂无法计算资源占用率。"}
     try:
         engine = calendar_engine(live["facts"]["tables"])
         first = start.date() - timedelta(days=1)
     except (AppError, ValueError, TypeError, OverflowError):
-        return {**scope, "state": "unavailable", "resources": [], "reason": "真实日历无效，未按默认容量计算。"}
+        return {**scope, "state": "unavailable", "resources": [], "reason": "日历数据无效，暂无法计算资源占用率。"}
     output = _projections(engine, groups, live["facts"]["tables"], first, start, end)
     return {**scope, "state": "available" if all(row["state"] == "available" for row in output) else "partial",
             "resources": output, "reason": None}

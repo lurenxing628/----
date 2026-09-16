@@ -13,6 +13,7 @@ from core.services.workbench.system_redaction import public_system_text
 from .api_responses import query_success
 from .read_context import bind_read_snapshot
 from .system_context import issue_context, journal, system_endpoint
+from .system_log_snapshots import resolve_log_snapshot, retain_log_snapshot
 
 
 def restore_available():
@@ -34,14 +35,19 @@ def collection(kind):
     if any(len(request.args.getlist(key)) != 1 for key in request.args):
         raise WorkbenchCommandRejected("invalid_input", "筛选条件有重复项，当前筛选没有变化。请刷新页面后重新选择。", 400)
     query = query_input(request.args.to_dict(), kind)
+    scope = {"kind": "system." + kind, **{key: value for key, value in query.items() if key not in ("page", "page_size")}}
+    token = request.args.get("snapshot_ref")
+    if kind == "logs" and token:
+        rows, sources, snapshot = resolve_log_snapshot(scope, token)
+        return rows, sources, query, snapshot
     if kind == "backups":
         event_journal = journal() if current_app.config.get("WORKBENCH_SYSTEM_JOURNAL_DIR") else None
         rows, sources = maintenance_records(g.db, current_app.config["BACKUP_DIR"], event_journal)
     else:
         rows, sources = log_records(g.db, current_app.config["LOG_DIR"], current_app.logger)
     filtered = filter_records(rows, query)
-    scope = {key: value for key, value in query.items() if key not in ("page", "page_size")}
-    snapshot = bind_read_snapshot({"kind": "system." + kind, **scope}, input_fingerprint({"rows": filtered, "sources": sources}), request.args.get("snapshot_ref"))
+    snapshot = (retain_log_snapshot(scope, filtered, sources) if kind == "logs" else
+                bind_read_snapshot(scope, input_fingerprint({"rows": filtered, "sources": sources}), token))
     return filtered, sources, query, snapshot
 
 

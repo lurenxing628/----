@@ -45,7 +45,7 @@ def _merge_resources(planned, actual):
                 if previous["label"] is None and public["label"] == public["business_code"]:
                     public["label"] = None
                 if previous != public:
-                    raise WorkbenchCommandRejected("projection_invalid", "计划里和现场记录里的设备人员名称对不上，系统不会把两边合成一条。")
+                    raise WorkbenchCommandRejected("projection_invalid", "计划与报工中的设备或人员名称不一致，请核对资料。")
             resources[row["ref"]] = public
     return [resources[key] for key in sorted(resources)]
 
@@ -53,7 +53,7 @@ def _merge_resources(planned, actual):
 def _items(tasks, projection):
     by_operation = {row["operation_ref"]: row for row in projection["projections"]}
     if len(by_operation) != len(projection["projections"]) or set(by_operation) != {t["operation_ref"] for t in tasks}:
-        raise WorkbenchCommandRejected("projection_invalid", "报工记录和计划工序对不上，系统不会按批次和工序号去猜该配哪一条。请刷新后重试。")
+        raise WorkbenchCommandRejected("projection_invalid", "报工记录与计划工序不匹配，请刷新重试。")
     items = []
     for task in tasks:
         execution = by_operation[task["operation_ref"]]

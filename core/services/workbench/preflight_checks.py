@@ -48,7 +48,7 @@ class PreflightChecks:
     def fields(self, batch, op):
         gaps = []
         if not number(batch["quantity"], integer=True):
-            gaps.append(issue("quantity_unknown", "批次数量没填或无效，系统不会按 0 处理。请到批次管理补填数量。"))
+            gaps.append(issue("quantity_unknown", "批次数量未填写或无效，请到批次管理补填。"))
         if not number(op["seq"], integer=True, positive=True):
             gaps.append(issue("sequence_invalid", "工序顺序号不合法，排不出前后关系。请到批次管理核对工序号。"))
         if op["op_type_id"] not in self.catalogs["op_type"]:

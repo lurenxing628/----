@@ -1,105 +1,59 @@
-from __future__ import annotations
+"""Resource wall-clock occupancy; calendar capacity is never a shared scalar."""
 
-from datetime import datetime
-from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
+from collections import defaultdict
 
-from core.services.common.degradation import DegradationCollector
+from core.services.workbench.plan_calendar_intervals import union
+from core.services.workbench.plan_calendar_windows import available_intervals
+from core.services.workbench.resource_utilization_metrics import ResourceUtilizationMetrics
 
-from .calculation_helpers import is_internal_source, is_valid_interval, overlap_seconds, parse_dt
+from .calculation_helpers import is_internal_source, is_valid_interval, parse_dt
 from .report_degradation import record_report_bad_time_row, record_report_zero_capacity_window
 
 
-def compute_utilization(
-    *,
-    schedule_rows: Sequence[Mapping[str, Any]],
-    start_dt: datetime,
-    end_dt_excl: datetime,
-    cap_hours: float,
-    degradation_collector: Optional[DegradationCollector] = None,
-) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
-    by_machine: Dict[str, Dict[str, Any]] = {}
-    by_operator: Dict[str, Dict[str, Any]] = {}
-
-    for r in schedule_rows:
-        hours = _row_hours_in_window(r, start_dt, end_dt_excl, degradation_collector=degradation_collector)
-        if hours is None:
+def compute_utilization(*, schedule_rows, start_dt, end_dt_excl, calendars, degradation_collector=None):
+    groups = defaultdict(lambda: {"operations": defaultdict(list), "task_count": 0, "label": None})
+    for index, row in enumerate(schedule_rows):
+        interval = _row_interval(row, start_dt, end_dt_excl, degradation_collector)
+        if interval is None:
             continue
-        _add_machine_hours(by_machine, r, hours)
-        _add_operator_hours(by_operator, r, hours)
+        for kind in ("machine", "operator"):
+            key = str(row.get(kind + "_id") or "").strip()
+            if not key:
+                continue
+            item = groups[kind, key]
+            # Multiple fragments of one operation do not become simultaneous jobs.
+            op = ("operation", row["op_id"]) if row.get("op_id") is not None else ("row", index)
+            item["operations"][op].append(interval)
+            item["task_count"] += 1
+            item["label"] = row.get(kind + "_name")
+    result = {"machine": [], "operator": []}
+    zero = {"machine": 0, "operator": 0}
+    for (kind, key), item in groups.items():
+        calendar = calendars.get((kind, key))
+        available = available_intervals(calendar) if calendar is not None else None
+        intervals = [span for values in item["operations"].values() for span in union(values)]
+        metrics = ResourceUtilizationMetrics(intervals, available).window(start_dt, end_dt_excl)
+        row = {kind + "_id": key, kind + "_name": item["label"], "task_count": item["task_count"], **metrics,
+               "hours": metrics["occupied_hours"], "capacity_hours": metrics["available_hours"],
+               "utilization": metrics["utilization_ratio"], "calendar_issues": calendar["issues"] if calendar else []}
+        result[kind].append(row)
+        zero[kind] += metrics["available_hours"] == 0
+        if metrics["available_hours"] is None and degradation_collector is not None:
+            degradation_collector.add(code="resource_load_capacity_failed", scope="report.utilization",
+                field="可用工时", message="资源日历资料不完整，占用率无法计算。", sample=kind + "=" + key)
+    record_report_zero_capacity_window(degradation_collector, scope="report.utilization",
+                                      machine_row_count=zero["machine"], operator_row_count=zero["operator"])
+    for kind in result:
+        result[kind].sort(key=lambda row: (row["hours"] is None, -(row["hours"] or 0.0), row[kind + "_id"]))
+    return result["machine"], result["operator"]
 
-    machine_rows = _build_utilization_rows(by_machine.values(), cap_hours, "machine_id")
-    operator_rows = _build_utilization_rows(by_operator.values(), cap_hours, "operator_id")
-    if cap_hours <= 0 and (machine_rows or operator_rows):
-        # 零产能窗口（如整周节假日）下利用率整列 None 是合法语义（除零不适用），
-        # 但不许静默空白：必须降级留痕，payload/导出摘要给出可读提示。不许把 None 改成 0 之类的错数。
-        record_report_zero_capacity_window(
-            degradation_collector,
-            scope="report.utilization",
-            machine_row_count=len(machine_rows),
-            operator_row_count=len(operator_rows),
-        )
-    return machine_rows, operator_rows
 
-
-def _row_hours_in_window(
-    row: Mapping[str, Any],
-    start_dt: datetime,
-    end_dt_excl: datetime,
-    *,
-    degradation_collector: Optional[DegradationCollector] = None,
-) -> Optional[float]:
+def _row_interval(row, start, end, collector):
     if not is_internal_source(row.get("source")):
         return None
-    s_dt = parse_dt(row.get("start_time"))
-    e_dt = parse_dt(row.get("end_time"))
-    if not s_dt or not e_dt or not is_valid_interval(s_dt, e_dt):
-        record_report_bad_time_row(degradation_collector, scope="report.utilization.schedule", row=row)
+    low, high = parse_dt(row.get("start_time")), parse_dt(row.get("end_time"))
+    if not low or not high or not is_valid_interval(low, high):
+        record_report_bad_time_row(collector, scope="report.utilization.schedule", row=row)
         return None
-    sec = overlap_seconds(s_dt, e_dt, start_dt, end_dt_excl)
-    if sec <= 0:
-        return None
-    return sec / 3600.0
-
-
-def _add_machine_hours(items: Dict[str, Dict[str, Any]], row: Mapping[str, Any], hours: float) -> None:
-    machine_id = str(row.get("machine_id") or "").strip()
-    if not machine_id:
-        return
-    item = items.setdefault(
-        machine_id,
-        {"machine_id": machine_id, "machine_name": row.get("machine_name"), "hours": 0.0, "task_count": 0},
-    )
-    _add_hours(item, hours)
-
-
-def _add_operator_hours(items: Dict[str, Dict[str, Any]], row: Mapping[str, Any], hours: float) -> None:
-    operator_id = str(row.get("operator_id") or "").strip()
-    if not operator_id:
-        return
-    item = items.setdefault(
-        operator_id,
-        {"operator_id": operator_id, "operator_name": row.get("operator_name"), "hours": 0.0, "task_count": 0},
-    )
-    _add_hours(item, hours)
-
-
-def _add_hours(item: Dict[str, Any], hours: float) -> None:
-    item["hours"] = float(item["hours"]) + float(hours)
-    item["task_count"] = int(item["task_count"]) + 1
-
-
-def _build_utilization_rows(items: Iterable[Dict[str, Any]], cap_hours: float, id_key: str) -> List[Dict[str, Any]]:
-    rows = []
-    for it in items:
-        h = float(it["hours"])
-        util = (h / cap_hours) if cap_hours > 0 else None
-        rows.append(
-            {
-                **it,
-                "hours": round(h, 2),
-                "capacity_hours": round(cap_hours, 2),
-                "utilization": round(util, 4) if util is not None else None,
-            }
-        )
-    rows.sort(key=lambda x: (-(x.get("hours") or 0.0), x.get(id_key) or ""))
-    return rows
+    low, high = max(low, start), min(high, end)
+    return (low, high) if low < high else None

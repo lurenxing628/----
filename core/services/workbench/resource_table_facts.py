@@ -51,7 +51,7 @@ class ResourceTableFacts:
         identity = self.identity(kind, code)
         raw = self.records(kind).get(code)
         if raw is None:
-            raise WorkbenchCommandRejected("storage_failure", "这条资源的关联指向一条已经不存在的记录，列表没有打开，系统也不会当成没选。请到资料总览核对后重试。", 500)
+            raise WorkbenchCommandRejected("storage_failure", "这条资源的关联指向一条已经不存在的记录。请到资料总览核对后重试。", 500)
         return {"identity": asdict(identity), "record": raw}
 
     def supplier_types(self, code):
@@ -84,7 +84,7 @@ class ResourceTableFacts:
                 for key in codes:
                     related = self.related(related_kind, key)
                     if related is None:
-                        raise WorkbenchCommandRejected("storage_failure", "这条资源的关联缺少编号，列表没有打开，系统也不会当成没选。请到资料总览核对后重试。", 500)
+                        raise WorkbenchCommandRejected("storage_failure", "这条资源的关联缺少编号。请到资料总览核对后重试。", 500)
                     labels.append(related["record"]["name"])
                 result[column] = relation_cell(labels)
             if kind == "supplier":

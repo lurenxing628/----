@@ -94,7 +94,7 @@ class WorkbenchResourceQueryService:
             raise WorkbenchCommandRejected("entity_not_found", "这条资源记录已失效，页面没有打开。请从列表重新选择。", 404)
         identity = self.identities.get(ref)
         if identity is None or identity.kind != self.kind or not identity.active:
-            raise WorkbenchCommandRejected("entity_not_found", "这条资源已经删除了，页面没有打开；就算有同编号的新记录，也不会自动指过去。请从列表重新选择。", 404)
+            raise WorkbenchCommandRejected("entity_not_found", "这条资源已经删除了。请从列表重新选择。", 404)
         return identity
 
     def detail(self, ref):

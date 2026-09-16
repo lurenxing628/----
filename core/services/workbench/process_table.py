@@ -99,6 +99,6 @@ class ProcessTable:
         validate_process_facet_request(column, search, 1, size)
         options, _ = self._facet_options(query, column, search)
         if len(options) > MAX_FACET_KEYS:
-            raise WorkbenchCommandRejected("capacity_exceeded", "搜索命中的不同值超过 50000 个，没有返回结果，也不会只给一部分。请缩小范围后重试。", 413)
+            raise WorkbenchCommandRejected("capacity_exceeded", "搜索命中的不同值超过 50000 个。请缩小范围后重试。", 413)
         keys = [row["key"] for row in options]
         return {"column": column, "basis": "toolbar_scope", "keys": keys, "total": len(keys)}

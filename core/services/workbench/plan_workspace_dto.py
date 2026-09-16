@@ -19,7 +19,7 @@ def resource_directory(rows, resources):
             identity = resources[kind][str(key)]
             label = row[kind + "_name"]
             if label is not None and (type(label) is not str or not label.strip()):
-                raise WorkbenchCommandRejected("plan_unavailable", "设备或人员的名称无效，系统不会拿编号当名称显示。请到资料总览补填名称。")
+                raise WorkbenchCommandRejected("plan_unavailable", "设备或人员名称无效，请到资料总览补填。")
             value = {"kind": kind, "ref": identity.ref, "business_code": identity.entity_key, "label": label}
             previous = directory.setdefault((kind, identity.ref), value)
             if previous != value:

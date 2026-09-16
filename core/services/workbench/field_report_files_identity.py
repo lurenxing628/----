@@ -22,7 +22,7 @@ def matched_task(row, by_scope, by_ref):
     if row['format_version'] == 1:
         candidates = by_scope.get((value['batch_id'], value['operation_label']), [])
         if len(candidates) != 1:
-            raise WorkbenchCommandRejected('invalid_input', '批次和工序在当前范围里没有唯一对应的一条；分件重名时系统不会猜该配哪一条。', 422)
+            raise WorkbenchCommandRejected('invalid_input', '无法唯一确定批次工序，请使用下载模板中的任务编号。', 422)
         return candidates[0]
     candidates = by_ref.get(value['task_ref'], [])
     if len(candidates) != 1:

@@ -50,7 +50,7 @@ def _task(task, raw_task, resource_rows, index):
               "overlap_hours": amount if not bad else None, "known_overlap_hours": amount,
               "delay_after_reschedule_hours": None, "basis": "union_of_registered_downtime_intersections"}
     active = True if amount else None if bad else False
-    code, message = {True: ("downtime_overlap", "正式安排和已登记的停机时段有重叠；重叠时长不等于最后一定超期。"),
+    code, message = {True: ("downtime_overlap", "计划安排与停机时段重叠。"),
                      None: ("downtime_unknown", "停机记录或设备资料填得不对，还判断不了。"),
                      False: ("no_overlap", "正式安排与已登记有效停机无重叠。")}[active]
     result = observation("downtime", task["task_ref"], task["batch_id"] + " · " + task["process_label"], source, active, code, message,

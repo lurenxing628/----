@@ -84,7 +84,7 @@ def _resources(facts, tasks, scope):
 
 def _downtime_record(raw, ref, machine_ref):
     if ref is None:
-        raise WorkbenchCommandRejected("identity_missing", "这条停机登记没有系统编号，画不出来。系统不会拿别的记录顶替，请刷新后重试。")
+        raise WorkbenchCommandRejected("identity_missing", "停机登记编号缺失，请刷新重试。")
     start, end = _time(raw["start_time"]), _time(raw["end_time"])
     valid = raw["status"] == "active" and start is not None and end is not None and start < end
     return {"downtime_ref": ref, "machine_ref": machine_ref, "start": start, "end": end,

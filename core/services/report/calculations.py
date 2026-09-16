@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from typing import Any, Dict, List
 
 from core.infrastructure.errors import ValidationError
@@ -39,14 +39,14 @@ def compute_utilization(
     schedule_rows,
     start_dt: datetime,
     end_dt_excl: datetime,
-    cap_hours: float,
+    calendars,
     degradation_collector=None,
 ):
     return _compute_utilization(
         schedule_rows=schedule_rows,
         start_dt=start_dt,
         end_dt_excl=end_dt_excl,
-        cap_hours=cap_hours,
+        calendars=calendars,
         degradation_collector=degradation_collector,
     )
 
@@ -61,24 +61,3 @@ def parse_date(value: Any, field: str) -> date:
         return datetime.strptime(s, "%Y-%m-%d").date()
     except Exception as e:
         raise ValidationError("日期格式不合法（期望：YYYY-MM-DD）", field=field) from e
-
-
-def capacity_hours(calendar: Any, start_d: date, end_d: date) -> float:
-    """
-    累计工作窗与自然日范围的交集 * efficiency（仍不区分设备/人员差异）。
-    """
-    total = 0.0
-    cur = datetime.combine(start_d, datetime.min.time())
-    end_dt_excl = datetime.combine(end_d, datetime.min.time()) + timedelta(days=1)
-    while cur < end_dt_excl:
-        p = calendar.policy_for_datetime(cur)
-        window_start, window_end = p.work_window()
-        if float(getattr(p, "shift_hours", 0.0) or 0.0) > 0:
-            hours = overlap_seconds(window_start, window_end, cur, end_dt_excl) / 3600.0
-            total += hours * float(getattr(p, "efficiency", 1.0) or 1.0)
-        # 跨夜窗结束后重新取策略，不能直接跳到次日而漏掉同日后续班次。
-        if window_end > cur:
-            cur = window_end
-        else:
-            cur = datetime.combine(cur.date() + timedelta(days=1), datetime.min.time())
-    return float(round(total, 6))

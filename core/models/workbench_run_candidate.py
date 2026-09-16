@@ -87,9 +87,9 @@ def read_capabilities():
 def blocked_reasons():
     return [
         {"capability": "adopt", "code": "candidate_adoption_preview_required",
-         "message": "看候选方案不等于可以采用；要采用请单独点「预检」并重新核对完整安排。"},
+         "message": "正式采用前，请先检查完整候选方案。"},
         {"capability": "edit_draft", "code": "candidate_draft_not_connected",
-         "message": "候选方案只能查看不能改；要调整请另建试调草稿。"},
+         "message": "调整候选方案需先创建试调草稿。"},
         {"capability": "report_actual", "code": "candidate_execution_write_not_connected",
-         "message": "候选不是正式执行安排，不能据此写入报工或改变唯一执行状态。"},
+         "message": "正式采用方案后，才能按计划报工。"},
     ]

@@ -29,7 +29,12 @@ def entity_context(entity, fingerprint):
         else:
             blocked.append({"action": "batch.delete", "message": "批次还挂着物料需求，不能删除。请先清除这个批次的物料需求，再删除批次。"})
     else:
-        blocked.append({"action": "batch.delete", "message": "批次已经有计划或报工记录，不能删除，也不能重建工序。要改工序请先处理已有的计划和报工。"})
+        for action in ("delete", "sync_confirm", "operation_update"):
+            blocked.append({"action": "batch." + action, "message": "已有排产、报工或执行状态记录，暂不能删除、替换或编辑工序。"})
+    template = entity.get("template")
+    if not entity["protected"] and template is not None and not template["complete"]:
+        actions.remove("batch.sync_confirm")
+        blocked.append({"action": "batch.sync_confirm", "message": "；".join(row["message"].rstrip("。") for row in template["diagnostics"]) + "。"})
     context = issue_write_context(entity["ref"], actions, fingerprint)
     for action in ("delete", "sync_confirm", "operation_update"):
         context["capabilities"]["batch." + action] = "batch." + action in actions

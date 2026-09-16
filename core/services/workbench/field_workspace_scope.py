@@ -68,7 +68,7 @@ def _batches(result):
 
 def normalize_scope(value):
     if type(value) is not dict or set(value) - set(PARAMETERS):
-        invalid('查询条件里有认不出的参数，系统不会忽略它继续筛。')
+        invalid('查询条件无效，请清除筛选后重试。')
     if value.get('source', 'production') != 'production':
         invalid('现场记录仅接受真实生产来源。')
     if value.get('operation_ref') and not value.get('task_ref'):

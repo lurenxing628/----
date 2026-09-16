@@ -59,7 +59,7 @@ def operation_metrics(baseline, batch_refs):
             machines.append(ref)
         if reasons:
             issues.append({"operation_ref": ref, "reasons": reasons})
-    reason = {"code": "operation_comparison_incomplete", "message": "部分工序缺少可一一核对的初始安排或资源永久身份；已知小计不代表完整调整数。"}
+    reason = {"code": "operation_comparison_incomplete", "message": "部分工序的初始安排或资源编号缺失，调整数量暂无法完整统计。"}
     metrics = {
         "changed_operation_count": metric(None if unknown else len(changed), len(changed), len(unknown), len(rows), reason),
         "machine_change_count": metric(None if machine_unknown else len(machines), len(machines), len(machine_unknown), len(rows), reason),

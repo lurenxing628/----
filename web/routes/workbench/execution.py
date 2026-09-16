@@ -2,7 +2,7 @@
 
 from flask import g, jsonify, request
 
-from core.models.workbench_command import WorkbenchCommandRejected
+from core.models.workbench_command import WorkbenchCommandRejected, input_fingerprint
 from core.services.workbench.field_workspace import FieldWorkspaceService
 from core.services.workbench.field_workspace_scope import PARAMETERS, normalize_scope, page_input
 from core.services.workbench.plan_fact_serialization import plain_plan_facts
@@ -93,6 +93,26 @@ def field_report_correct(report_ref):
     return save_report('correct', report_ref)
 
 
+@api_endpoint
+def field_report_void(report_ref):
+    return save_report('report_void', report_ref)
+
+
+@api_endpoint
+def field_report_void_preview(report_ref):
+    from core.services.workbench.production_report import WorkbenchProductionReportService
+
+    body = request.get_json(silent=True)
+    if request.args or type(body) is not dict or set(body) != {'input'} or type(body['input']) is not dict:
+        raise WorkbenchCommandRejected('invalid_input', '请填写撤销原因后重新查看影响。', 400)
+    service = WorkbenchProductionReportService(g.db, context_factory=field_context)
+    preview = service.preview('report_void', report_ref, body['input'])
+    snapshot = bind_read_snapshot({'kind': 'report_void', 'report_ref': report_ref}, input_fingerprint(preview.pop('snapshot')))
+    response = query_success(preview, snapshot)
+    response.headers['Cache-Control'] = 'no-store'
+    return response
+
+
 def register_execution_routes(bp):
     from .execution_files import register_execution_file_routes
 
@@ -100,6 +120,8 @@ def register_execution_routes(bp):
     for path, view, method in [('/tasks', field_tasks, 'GET'), ('/tasks/<task_ref>', field_task, 'GET'),
                                ('/tasks/<task_ref>/reports', field_report_create, 'POST'),
                                ('/reports/<report_ref>/supplement', field_report_supplement, 'POST'),
-                               ('/reports/<report_ref>/correct', field_report_correct, 'POST')]:
+                               ('/reports/<report_ref>/correct', field_report_correct, 'POST'),
+                               ('/reports/<report_ref>/void-preview', field_report_void_preview, 'POST'),
+                               ('/reports/<report_ref>/void', field_report_void, 'POST')]:
         bp.add_url_rule(root + path, view_func=view, methods=[method])
     register_execution_file_routes(bp)

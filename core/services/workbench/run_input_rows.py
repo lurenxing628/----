@@ -37,7 +37,7 @@ def batch_model(row):
     if row["ready_status"] not in ("yes", "no", "partial"):
         fail("invalid_ready_status", "有批次的齐套情况读不出来，这次排产没有开始。请到批次管理核对齐套状态。", batch_id=row["batch_id"])
     if not number(row["quantity"], integer=True):
-        fail("quantity_unknown", "有批次的数量读不出来，这次排产没有开始，系统不会把它当成 0。请到批次管理补上数量。", batch_id=row["batch_id"])
+        fail("quantity_unknown", "批次数量缺失，本次未开始排产。请到批次管理补填。", batch_id=row["batch_id"])
     for key in ("due_date", "ready_date"):
         if row[key] is not None and stored_date(row[key]) is None:
             fail("invalid_batch_date", "有批次的交期或齐套日期填得不对，这次排产没有开始。请到批次管理按 2026-09-13 这样改好。", batch_id=row["batch_id"], field=key)
@@ -55,7 +55,7 @@ def operation_model(row):
         fail("invalid_operation_state", "有工序的状态或来源资料不完整，这次排产没有开始。请到批次管理核对。", op_id=row["id"])
     for key in ("setup_hours", "unit_hours"):
         if not number(row[key]):
-            fail("hours_missing", "有工序的换型工时或单件工时读不出来，这次排产没有开始，系统不会把它当成 0。请到工艺资料补上工时。", op_id=row["id"], field=key)
+            fail("hours_missing", "工序工时缺失，本次未开始排产。请到工艺资料补填。", op_id=row["id"], field=key)
     if row["ext_days"] is not None and not number(row["ext_days"], positive=True):
         fail("external_days_invalid", "有外协工序单独设置的周期不是正数，这次排产没有开始。请把周期改成大于 0 的天数。", op_id=row["id"])
     return BatchOperation(**{item.name: row[item.name] for item in fields(BatchOperation)})
@@ -117,7 +117,7 @@ def _link_dispositions(rows, batches, piece_scope):
 
 def _classification(checks, batch, op, projection, settings, guarded_ids):
     if op["id"] in guarded_ids:
-        return "protected", [issue("actuals_preserved", "已开工的工序保持原安排，这次排产不会改动它们。")]
+        return "protected", [issue("actuals_preserved", "已开工工序保留原安排。")]
     if (op["status"] in ("processing", "completed") or projection.execution_state != "unreported"
             or projection.reports or projection.legacy_facts or projection.first_actual_start or projection.confirmed_finish):
         return "blocked", [issue("execution_protection_unresolved", "这道工序已经有报工记录，这次排产保不住它的原安排，排产没有开始。请把它移出排产范围。")]

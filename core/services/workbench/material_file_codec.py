@@ -7,7 +7,7 @@ CSV is UTF-8 (optional BOM); exported text has one reversible apostrophe prefix
 to prevent formula execution and automatic identifier/date coercion. XLSX text
 is explicitly typed as text, never formulas. Numeric XLSX IDs are rejected by
 the input contract, since any lost leading zeros cannot be recovered reliably.
-created_at is an optional read-only assertion, not an importable timestamp.
+created_at is an optional reference column, not an importable timestamp.
 """
 
 from __future__ import annotations
@@ -66,7 +66,7 @@ def _csv_rows(content):
                 break
             yield number, row, {}
     except UnicodeDecodeError as exc:
-        raise _file_error("CSV 要存成 UTF-8 编码；系统不会猜着替换看不懂的字符。") from exc
+        raise _file_error("请将 CSV 保存为 UTF-8 编码。") from exc
     except csv.Error as exc:
         raise _file_error("CSV 格式错误，请核对引号和分隔符。", reader.line_num) from exc
 
@@ -76,7 +76,7 @@ def _xlsx_rows(content):
     try:
         wb = openpyxl.load_workbook(BytesIO(content), read_only=True, data_only=False, keep_links=False)
         if len(wb.sheetnames) != 1 or len(wb.worksheets) != 1:
-            raise _file_error("物料文件只能有一张数据工作表；系统不会悄悄忽略其他表。")
+            raise _file_error("物料文件只能有一张数据工作表。")
         ws = wb.worksheets[0]
         # Do not trust a producer's cached dimensions to hide later rows/columns.
         ws.reset_dimensions()
@@ -148,12 +148,12 @@ def read_material_file(content: bytes, file_format: str):
 def _export_value(value, field, number, file_format):
     if field == "stock_qty":
         if value is not None and (type(value) not in (int, float) or not math.isfinite(value) or value < 0):
-            raise _file_error("存着的库存数量不是 0 或大于 0 的有效数字，系统不会当成 0。", number, field)
+            raise _file_error("存着的库存数量不是 0 或大于 0 的有效数字，请核对数量。", number, field)
         return value
     if value is None:
         return r"\N" if field in _CLEARABLE else None
     if type(value) is not str:
-        raise _file_error("这一项存的不是文字，系统不会猜着转换。", number, field)
+        raise _file_error("此项必须为文字，请修正。", number, field)
     value = "\\" + value if value.startswith("\\") else value
     _check_export_text(value, field, number, file_format)
     return value
@@ -199,13 +199,13 @@ def _write_csv(rows, filename):
 
 
 def _xlsx_headers(ws, template):
-    examples = ("000123", "45# 圆钢", "D25", "kg", "12.375", "active / inactive", "采购备注", "只读原始时间")
+    examples = ("000123", "45# 圆钢", "D25", "kg", "12.375", "active / inactive", "采购备注", "参考时间，不导入")
     headers = []
     for index, value in enumerate(HEADERS):
         cell = WriteOnlyCell(ws, value=value)
         cell.font = Font(bold=True)
         if template:
-            cell.comment = Comment("示例：" + examples[index] + "。编号必须为文本；缺列/空格子不改；\\N 仅清规格、单位或备注；创建时间只读。", "APS")
+            cell.comment = Comment("示例：" + examples[index] + "。编号必须为文本；缺列/空格子不改；\\N 仅清规格、单位或备注；创建时间仅供参考，不导入。", "APS")
         headers.append(cell)
     return headers
 

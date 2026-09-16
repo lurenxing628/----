@@ -6,7 +6,8 @@ from core.services.personnel.operator_qualification import OperatorQualification
 from core.services.process.workflow_state import require_template_ready
 from core.services.workbench.batch_facts import BatchFacts, require_unreferenced
 from core.services.workbench.batch_projection import BatchProjection
-from core.services.workbench.batch_template_validation import template_diagnostics
+from core.services.workbench.batch_template_preview import template_after, template_changes
+from core.services.workbench.batch_template_validation import template_status
 from core.services.workbench.template_lineage import TemplateLineageWriter
 from data.repositories.batch_operation_repo import BatchOperationRepository
 from data.repositories.supplier_repo import SupplierRepository
@@ -30,30 +31,30 @@ class WorkbenchBatchOperationService:
 
     @staticmethod
     def normalize_sync(payload):
-        object_fields(payload, ("strict_mode",), ("strict_mode",))
-        if type(payload["strict_mode"]) is not bool:
-            raise WorkbenchCommandRejected("invalid_input", "资料不完整时停止刷新必须为明确开关。", 400)
-        return dict(payload)
+        object_fields(payload, ("strict_mode",))
+        if "strict_mode" in payload and type(payload["strict_mode"]) is not bool:
+            raise WorkbenchCommandRejected("invalid_input", "更新选项无效，请刷新页面后重试。", 400)
+        if payload.get("strict_mode") is False:
+            raise WorkbenchCommandRejected("template_validation_required", "更新工序前必须检查工艺资料。请刷新页面后重新预览更新。")
+        # Older strict clients remain valid; replacement always checks completeness.
+        return {}
 
     def sync_preview(self, ref, payload):
-        payload = self.normalize_sync(payload)
+        self.normalize_sync(payload)
         batch = self.reader.batch(ref)
         facts = self.reader.load()
         require_unreferenced(facts, batch)
+        status = template_status(facts, batch)
+        if status["diagnostics"]:
+            raise WorkbenchCommandRejected("constraint_conflict", "\n".join(row["message"] for row in status["diagnostics"]))
         require_template_ready(self.conn, batch["part_no"])
         rows = [row for row in facts["PartOperations"] if row["part_no"] == batch["part_no"] and row["status"] == "active"]
-        if not rows:
-            raise WorkbenchCommandRejected("constraint_conflict", "这个零件还没有有效的模板工序；系统不会自动解析路线，也不会覆盖原工序。")
-        diagnostics = template_diagnostics(rows, facts, batch)
-        if payload["strict_mode"] and diagnostics:
-            raise WorkbenchCommandRejected("constraint_conflict", "模板资料不完整，已按严格选项停止刷新。")
         projection = BatchProjection(facts)
         before = projection.entity(batch)
-        return {"entity_ref": ref, "business_code": batch["batch_id"], "operation": "batch.sync_confirm", "strict_mode": payload["strict_mode"],
-                "before": before["operations"], "after": [{"sequence": row["seq"], "label": row["op_type_name"],
-                    "source": row["source"], "setup_hours": row["setup_hours"], "unit_hours": row["unit_hours"], "external_days": row["ext_days"],
-                    "machine_ref": None, "operator_ref": None, "supplier_ref": projection.ref("supplier", row["supplier_id"])} for row in rows],
-                "warnings": diagnostics, "commit_policy": "atomic"}
+        after = template_after(rows, facts, projection)
+        return {"entity_ref": ref, "business_code": batch["batch_id"], "operation": "batch.sync_confirm", "completeness_checked": True,
+                "before": before["operations"], "after": after, **template_changes(before["operations"], after),
+                "warnings": [], "commit_policy": "atomic"}
 
     def sync(self, ref, payload):
         if not self.conn.in_transaction:

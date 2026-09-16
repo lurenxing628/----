@@ -29,7 +29,7 @@ def _validate_projection_quantities(projection):
 
 
 def _validate_projection_collections(projection):
-    for field in ("reports", "legacy_facts", "data_gaps"):
+    for field in ("reports", "legacy_facts", "data_gaps", "voided_reports"):
         value = getattr(projection, field)
         expected = ProductionReport if field == "reports" else dict
         if not isinstance(value, list) or not all(isinstance(item, expected) for item in value):
@@ -72,6 +72,11 @@ def restore_execution_projections(payload):
     projections = []
     refs = set()
     for value in payload:
+        # The sole pre-void DTO shape predates this additive audit collection.
+        # Its effective reports retain their captured meaning, without querying
+        # current facts or changing any persisted snapshot.
+        if isinstance(value, dict) and "voided_reports" not in value:
+            value = dict(value, voided_reports=[])
         row = _exact_fields(value, ExecutionProjection)
         if not isinstance(row["reports"], list):
             fail("execution_snapshot_invalid", "存下来的逐次报工格式不对，这次排产没有开始。请刷新重试；仍不行请联系维护人员。")

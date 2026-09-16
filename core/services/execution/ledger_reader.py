@@ -53,7 +53,7 @@ class ExecutionLedgerReader:
             WorkbenchPlanIdentityRepository(self.conn).resolve_plan(comparison_plan_ref)
         legacy = self.repo.legacy(operations)
         source = WorkbenchExecutionSourceRepository(self.conn).read(legacy)
-        return {"operations": operations, "reports": self.repo.reports(operations), "legacy": legacy, "legacy_source": source,
+        return {"operations": operations, "reports": self.repo.reports(operations), "voids": self.repo.report_voids(operations), "legacy": legacy, "legacy_source": source,
                 "current_tasks": self.repo.task_map(operations, plan["plan_ref"] if plan else None),
                 "comparison_tasks": self.repo.task_map(operations, comparison_plan_ref), "plan": plan,
                 "unresolved": self.repo.unresolved_operations(operations), "clock": self.repo.clock()}
@@ -66,10 +66,14 @@ class ExecutionLedgerReader:
         for ref, op in facts["operations"].items():
             histories = facts["reports"].get(ref, {})
             reports = sorted((report_dto(rows) for rows in histories.values()), key=lambda row: (row.recorded_at, row.report_no))
+            voids = facts["voids"]
+            voided = [{"report": report.to_dict(), "void_fact": {key: value for key, value in voids[report.report_ref].items()
+                       if key != "request_key"}} for report in reports if report.report_ref in voids]
+            reports = [report for report in reports if report.report_ref not in voids]
             projection = project_execution(op, reports, facts["legacy"].get(ref, []),
                 current_task=facts["current_tasks"].get(ref), comparison_task=facts["comparison_tasks"].get(ref),
                 plan_identity=facts["plan"], now=now, unresolved=ref in facts["unresolved"])
-            result.append(_attach_source_changes(projection, facts["legacy_source"]))
+            result.append(_attach_source_changes(replace(projection, voided_reports=voided), facts["legacy_source"]))
         if len(canonical_json([row.to_dict() for row in result]).encode("utf-8")) > MAX_REPORT_BYTES:
             reject("执行投影超过本次响应大小上限，未截断历史。", "query_too_large", 413)
         return result

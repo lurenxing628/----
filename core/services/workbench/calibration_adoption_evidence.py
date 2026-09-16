@@ -23,7 +23,7 @@ def read_evidence(conn, repo, template_ref, intent, clock: Callable[[], datetime
         facts = facts_reader.read(CalibrationQuery(part_ref=template["part_ref"]))
         row = next((row for row in facts["rows"] if row["template_operation_ref"] == template_ref), None)
         if row is None:
-            raise WorkbenchCommandRejected("entity_not_found", "这条模板的建议已经不能用了，系统不会换成编号相同的另一条模板。请刷新后重新选择。", 404)
+            raise WorkbenchCommandRejected("entity_not_found", "所选模板建议已失效，请刷新后重新选择。", 404)
         locks = repo.read_locks([template_ref])
         suggestion = {key: value for key, value in row.items() if key not in
                       ("generated_at", "capabilities", "blocked_reasons", "write_context")}

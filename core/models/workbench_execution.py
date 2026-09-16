@@ -54,6 +54,7 @@ class ExecutionProjection:
     remaining_plan: Optional[Dict[str, Any]] = None
     data_gaps: List[Dict[str, Any]] = field(default_factory=list)
     write_context: Dict[str, Any] = field(default_factory=dict)
+    voided_reports: List[Dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)

@@ -95,7 +95,10 @@ def resource_action_confirm(kind, action):
 
 
 def register_resource_action_routes(bp):
+    from .operator_machine_permissions import register_operator_machine_routes
     from .resource_file_exports import resource_export, resource_export_preview, resource_template
+
+    register_operator_machine_routes(bp)
 
     base = "/api/workbench/v1"
     bp.add_url_rule(base + "/entities/<kind>/bulk-preview", view_func=resource_bulk_preview, methods=["POST"])

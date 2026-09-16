@@ -9,7 +9,7 @@ from core.services.process.workflow_state import workflow_snapshot
 _STAGES = ("route", "source", "hours")
 _PROCESS_COUNTS = _STAGES + ("ready", "legacy", "managed", "legacy_route_present",
                             "route_confirmed", "source_confirmed", "hours_confirmed")
-_PROCESS_BASIS = "统计的是当前模板上的工艺确认。老资料里有路线不等于有人确认过，工艺全部确认完也不等于能排产。"
+_PROCESS_BASIS = "零件工艺确认进度。"
 
 
 def _checked_workflow(record):
@@ -71,7 +71,7 @@ def process_readiness(conn, total, logger=None):
     except (RuntimeError, sqlite3.DatabaseError):
         (logger or logging.getLogger(__name__)).exception("Process readiness could not verify the workflow snapshot; no records were repaired.")
         return {"status": "unavailable", "counts": counts, "basis": _PROCESS_BASIS,
-                "issues": [{"code": "process_workflow_unavailable", "message": "工艺确认情况读不出来，这一项按暂无数据显示，资料没有被改动。请刷新页面；仍不行请联系维护人员。"}]}
+                "issues": [{"code": "process_workflow_unavailable", "message": "工艺确认记录读取失败，请联系维护人员核对。"}]}
     counts.update(verified)
     return {"status": "zero" if total == 0 else "ready" if counts["ready"] == total else "pending",
             "counts": counts, "issues": [], "basis": _PROCESS_BASIS}
@@ -96,4 +96,4 @@ def resource_readiness(counts, metrics, calendar, process):
                          "counts": dict(calendar["stats"]), "basis": calendar["basis"],
                          "issues": calendar["stats"]["issues"] + [issue for day in calendar["days"] for issue in day["issues"]]}
     return {"status": "unknown", "ratio": None, "basis": "static_resource_facts_not_schedule_precheck",
-            "message": "整体就绪度暂无数据：静态资料不是排产检查；工艺确认完成也不代表物料齐套、设备人员有空。", "items": items}
+            "message": "整体就绪度尚未提供。", "items": items}

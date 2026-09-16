@@ -40,7 +40,7 @@ def add_calendar(graph):
             valid_number = number(value, positive=key == "efficiency") and (key != "shift_hours" or value <= 24)
             graph.field(entity, label, value, "WorkCalendar." + key, valid=valid_number)
             if not valid_number:
-                graph.issue(entity, "calendar." + key, label + "待核对", "资料里记的是" + text(value) + "，系统不会拿默认值盖过去。")
+                graph.issue(entity, "calendar." + key, label + "待核对", "资料里记的是" + text(value) + "，请核对。")
         _window(graph, entity, row)
         graph.field(entity, "备注", row.get("remark"), "WorkCalendar.remark", required=False)
 
@@ -50,7 +50,7 @@ def _window(graph, entity, row):
     for key in ("shift_start", "shift_end"):
         graph.field(entity, "班次开始" if key == "shift_start" else "班次结束", row[key], "WorkCalendar." + key, required=False)
     if row["shift_start"] is not None and start is None or row["shift_end"] is not None and end is None:
-        graph.issue(entity, "calendar.window_invalid", "班次时间格式无效", "起止时间请按 08:30 这样填；跨夜的班次系统不会自己改。")
+        graph.issue(entity, "calendar.window_invalid", "班次时间格式无效", "请按 08:30 格式填写有效的班次起止时间。")
     elif start is not None and end is not None:
         hours = ((end - start) if end > start else end - start + 24 * 60) / 60.0
         graph.field(entity, "按起止算出的工时（小时）", hours, "WorkCalendar.shift_start + shift_end", required=False)
@@ -58,4 +58,4 @@ def _window(graph, entity, row):
             graph.issue(entity, "calendar.window_conflict", "班次起止与记录工时冲突",
                         "按起止算出 " + text(hours) + " 小时，资料里记的是 " + text(row["shift_hours"]) + " 小时，系统没有改写原值。")
     else:
-        graph.field(entity, "没填起止时间时怎么算", "这一天没填班次起止时间，总览不会补默认时间", "WorkCalendar.shift_start / shift_end", required=False)
+        graph.field(entity, "班次起止时间", "未填写", "WorkCalendar.shift_start / shift_end", required=False)

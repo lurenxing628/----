@@ -4,9 +4,9 @@ from .resource_metrics import _status
 
 RELATION_KINDS = {"machines": "machine", "operators": "operator", "suppliers": "supplier"}
 RELATION_BASIS = {
-    "machines": {"code": "machine_op_type_binding", "message": "这个自制工种实际绑定的全部设备，含停机、停用和状态读不出来的；不代表现在就能排上。"},
-    "operators": {"code": "recorded_skills_and_machine_authorizations", "message": "这个工种的技能记录，加上有对应设备授权的人；含停用的、没授权的和技能对不上的。旧授权不算技能登记，能对上也不代表现在就能排上。"},
-    "suppliers": {"code": "legacy_and_explicit_capabilities", "message": "旧的单工种能力和单独设置的多工种能力合在一起，同一家只算一次；含停用和状态读不出来的，不代表现在就能接活。"},
+    "machines": {"code": "machine_op_type_binding", "message": "与此工种关联的全部设备，含停机、停用及状态未知的设备。"},
+    "operators": {"code": "recorded_skills_and_machine_authorizations", "message": "与此工种关联的技能人员及设备授权人员，包含停用和资格待核对的人员。"},
+    "suppliers": {"code": "legacy_and_explicit_capabilities", "message": "关联供应商去重统计，包含停用和状态未知的供应商。"},
 }
 _SOURCE_LABELS = {"op_type_binding": "设备实际工种绑定", "legacy": "旧单工种", "explicit": "单独设置的多工种", "mixed": "旧单工种和单独设置的多工种"}
 _PERSON_SOURCES = {"skill": "工种技能记录", "machine_authorization": "匹配设备的操作授权", "mixed": "工种技能记录及匹配设备授权"}
@@ -57,12 +57,12 @@ def _person_fields(entity, row, parent_code, skills, authorizations):
                    "qualification_basis": qualification,
                    "qualification_matches": skills is None or parent_code in skills})
     issues = entity["issues"]
-    issues.append({"code": "qualification_scope", "message": "匹配授权数里含停机、停用和状态读不出来的设备。资格对上只说明技能门槛或旧授权规则通过，不代表人员启用、设备有授权、班表和占用都没问题。"})
+    issues.append({"code": "qualification_scope", "message": "匹配授权数包含停机、停用及状态未知的设备。"})
     if qualification in ("explicit_empty", "explicit_mismatch"):
-        issues.append({"code": "operator_skill_not_qualified", "message": "单独设置的技能里没有这个工种；留着的设备授权不能顶替技能。"})
+        issues.append({"code": "operator_skill_not_qualified", "message": "请为该人员登记此工种的技能。"})
     if skills is None:
         issues.append({"code": "legacy_authorization_fallback", "message": "还没单独登记技能，资格暂时按设备授权算；系统没有替你补技能记录。"})
     if not matching:
-        issues.append({"code": "matching_machine_authorization_missing", "message": "这个人没有该工种设备的操作授权；登记技能不会自动加上设备授权。"})
+        issues.append({"code": "matching_machine_authorization_missing", "message": "请为该人员设置此工种设备的操作授权。"})
     elif not enabled:
         issues.append({"code": "enabled_matching_machine_missing", "message": "有授权的匹配设备都没有启用，不算当前可用。"})

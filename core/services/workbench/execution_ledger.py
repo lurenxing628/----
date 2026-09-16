@@ -82,7 +82,13 @@ class ExecutionLedgerService(ExecutionLedgerReader):
             if row is None:
                 reject("报工不存在，旧单号不会改指其他记录。", "entity_not_found", 404)
             projections = self.project_operations([row["operation_ref"]])
-            return next(report for report in projections[0].reports if report.report_ref == report_ref)
+            projection = projections[0]
+            active = next((report for report in projection.reports if report.report_ref == report_ref), None)
+            if active is not None:
+                return active
+            from core.models.workbench_execution import ProductionReport
+            archived = next(row["report"] for row in projection.voided_reports if row["report"]["report_ref"] == report_ref)
+            return ProductionReport(**archived)
 
     def find_report(self, report_no):
         with self.read_snapshot():

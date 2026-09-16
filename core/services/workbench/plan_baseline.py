@@ -35,8 +35,8 @@ from .plan_projection import check_payload_size, project_plan, project_tasks, pu
 _CHANGE_FIELDS = ("start", "end", "machine_ref", "operator_ref")
 _REASONS = {
     **ADOPTION_REASONS,
-    "not_recorded": "这一版正式计划没有单独记下初始计划，这里不显示对比；系统不会拿当前安排顶替。",
-    "baseline_binding_invalid": "试调方案或它依据的那份计划编号已失效，这里不显示对比；系统不会自动换成别的计划。",
+    "not_recorded": "此版本未记录初始计划，无法对比。",
+    "baseline_binding_invalid": "试调方案或初始计划编号已失效，无法对比。",
     "baseline_unavailable": "试调依据的那份计划摘要或明细无效，对不全，这里不显示对比。",
     "scenario_unavailable": "所选试调方案不是有效的已保存方案，做不了初始计划对比。请回「试调」重新选一个。",
     "baseline_task_invalid": "对比工序的时间、批次信息或编号不完整，给不出完整对比。请刷新后重试。",
@@ -56,7 +56,7 @@ def _complete_rows(repo, *, version, source, candidate_id=None, scenario_id=None
     ids = repo.fetchall("SELECT id FROM (" + sql + ") LIMIT ?", params + [MAX_PLAN_TASKS + 1])
     if len(ids) > MAX_PLAN_TASKS:
         raise WorkbenchCommandRejected(
-            "query_too_large", "完整的初始计划或对比计划超过 10000 条上限，没有读取，也不会只给屏幕上这一段。请缩小时间范围后重试。", 413,
+            "query_too_large", "完整的初始计划或对比计划超过 10000 条上限。请缩小时间范围后重试。", 413,
         )
     detail = build_schedule_detail_sql(where_clauses=["1 = 1"], plan_rows_cte_sql=sql)
     rows = repo.fetchall(detail + " LIMIT ?", params + [MAX_PLAN_TASKS + 1])

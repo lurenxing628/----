@@ -10,12 +10,12 @@ from data.repositories.workbench_run_repo import WorkbenchRunRepository
 
 from .run_candidate_projection import candidate_summary, dispositions, scheduled_ids, validate_manifest
 from .run_candidate_storage import CandidateStore
-from .run_jobs_facts import capture_run_facts, run_baseline, run_execution_projections
+from .run_jobs_facts import run_baseline, run_execution_projections, run_facts_unchanged
 
 
 def require_adoption_schema(conn):
     if workbench_plan_identity_contract_issues(conn):
-        raise WorkbenchCommandRejected("adoption_schema_unavailable", "正式计划的编号结构不完整，不能采用，系统也不会自动修。请联系维护人员。", 503)
+        raise WorkbenchCommandRejected("adoption_schema_unavailable", "正式计划编号结构不完整，无法采用。请联系维护人员。", 503)
     # The legacy allocator's CREATE IF NOT EXISTS must never become a repair path.
     row = conn.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='ScheduleVersionSeq'").fetchone()
     if row is None or "AUTOINCREMENT" not in row[0].upper():
@@ -70,8 +70,7 @@ def check_admission_current(conn, capture):
     if conn.execute("SELECT 1 FROM Schedule s WHERE NOT EXISTS "
                     "(SELECT 1 FROM ScheduleHistory h WHERE h.version=s.version) LIMIT 1").fetchone():
         raise CandidateAdoptionBlocked("official_history_inconsistent", "有正式安排找不到所属的版本记录，不能采用。请联系维护人员核对。")
-    fingerprint, _ = capture_run_facts(conn)
-    if fingerprint != capture["facts_hash"]:
+    if not run_facts_unchanged(conn, text, capture["facts_hash"]):
         raise WorkbenchCommandRejected("snapshot_stale", "排产之后，排产范围、报工记录、设备人员或班表有变化，这次没有采用，正式计划没有改动。请重新排产后再试。")
     projections = run_execution_projections(conn, capture["input"])
     _require_official_baseline(baseline, projections)

@@ -252,72 +252,34 @@ def export_utilization_xlsx(
     wb = openpyxl.Workbook(write_only=write_only)
     try:
         _append_summary_sheet(wb, summary_rows, write_only=write_only)
-        if write_only:
-            ws1 = wb.create_sheet("设备负荷")
-            _append_write_only_row(ws1, ["设备编号", "设备名称", "负荷(小时)", "任务数", "可用工时(小时)", "利用率(%)"], is_header=True)
-            for r in machines:
-                _append_write_only_row(
-                    ws1,
-                    [
-                        r.get("machine_id"),
-                        r.get("machine_name"),
-                        r.get("hours"),
-                        r.get("task_count"),
-                        r.get("capacity_hours"),
-                        _utilization_percent(r.get("utilization")),
-                    ],
-                )
-
-            ws2 = wb.create_sheet("人员负荷")
-            _append_write_only_row(ws2, ["工号", "姓名", "负荷(小时)", "任务数", "可用工时(小时)", "利用率(%)"], is_header=True)
-            for r in operators:
-                _append_write_only_row(
-                    ws2,
-                    [
-                        r.get("operator_id"),
-                        r.get("operator_name"),
-                        r.get("hours"),
-                        r.get("task_count"),
-                        r.get("capacity_hours"),
-                        _utilization_percent(r.get("utilization")),
-                    ],
-                )
-        else:
-            ws1 = wb.create_sheet("设备负荷") if summary_rows else wb.active
-            if ws1 is None:
-                raise RuntimeError("无法创建设备负荷工作表")
-            ws1.title = "设备负荷"
-            _append_row(ws1, ["设备编号", "设备名称", "负荷(小时)", "任务数", "可用工时(小时)", "利用率(%)"])
-            for r in machines:
-                _append_row(
-                    ws1,
-                    [
-                        r.get("machine_id"),
-                        r.get("machine_name"),
-                        r.get("hours"),
-                        r.get("task_count"),
-                        r.get("capacity_hours"),
-                        _utilization_percent(r.get("utilization")),
-                    ],
-                )
-            _format_sheet(ws1)
-
-            ws2 = wb.create_sheet("人员负荷")
-            _append_row(ws2, ["工号", "姓名", "负荷(小时)", "任务数", "可用工时(小时)", "利用率(%)"])
-            for r in operators:
-                _append_row(
-                    ws2,
-                    [
-                        r.get("operator_id"),
-                        r.get("operator_name"),
-                        r.get("hours"),
-                        r.get("task_count"),
-                        r.get("capacity_hours"),
-                        _utilization_percent(r.get("utilization")),
-                    ],
-                )
-            _format_sheet(ws2)
-
+        for kind, title, labels, rows in (
+            ("machine", "设备负荷", ["设备编号", "设备名称"], machines),
+            ("operator", "人员负荷", ["工号", "姓名"], operators),
+        ):
+            sheet = wb.create_sheet(title) if write_only or summary_rows or kind == "operator" else wb.active
+            if sheet is None:
+                raise RuntimeError("无法创建资源负荷工作表")
+            sheet.title = title
+            header = labels + ["班表内占用(小时)", "任务数", "可用工时(小时)", "整窗占用率(%)",
+                               "累计负荷(小时)", "重叠负荷(小时)", "班表外占用(小时)", "计算口径版本", "计算说明"]
+            if write_only:
+                _append_write_only_row(sheet, header, is_header=True)
+            else:
+                _append_row(sheet, header)
+            for row in rows:
+                note = "此范围无可用工时" if row.get("reason") == "zero_available_capacity" else (
+                    "；".join(issue["message"] for issue in row.get("calendar_issues", [])) or "日历资料不完整"
+                    if row.get("reason") == "calendar_unavailable" else "")
+                values = [row.get(kind + "_id"), row.get(kind + "_name"), row.get("hours"),
+                          row.get("task_count"), row.get("capacity_hours"), _utilization_percent(row.get("utilization")),
+                          row.get("summed_load_hours"), row.get("overlap_hours"), row.get("outside_calendar_hours"),
+                          row.get("metric_version"), note]
+                if write_only:
+                    _append_write_only_row(sheet, values)
+                else:
+                    _append_row(sheet, values)
+            if not write_only:
+                _format_sheet(sheet)
         buf = _make_output_buffer(write_only=write_only)
         wb.save(buf)
         buf.seek(0)

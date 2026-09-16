@@ -55,7 +55,7 @@ def _operation(facts, task, raw_task):
     source = _source(task, p, hours, codes, late)
     item = observation("actual", task["task_ref"], task["batch_id"] + " · " + task["process_label"], source,
                                  active, codes[0] if codes else "execution_unknown" if uncertain else "no_deviation",
-                                 "现场还没反馈，不等于没干。" if missing else "报工记录显示有偏差或异常。" if codes else
+                                 "暂无报工记录。" if missing else "报工记录显示有偏差或异常。" if codes else
                                  "报工或有效工时的数据不够，还评估不全。" if uncertain else "已读取报工记录，这次检查没发现偏差。",
                                  {"task": raw_task, "operation": operation, "projection": p,
                                   "reports": facts.execution_facts["reports"].get(ref),

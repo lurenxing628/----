@@ -59,7 +59,7 @@ def _issue(row, field, message, code="invalid_input"):
 def _parse_row(kind, number, values, cell_errors, fields, file_format):
     row = {"row": number, "values": {}, "errors": []}
     if len(values) > len(fields):
-        _issue(row, "columns", "这一行有表头里没有的多余列，系统不会忽略。请删掉多余的列后重新导入。")
+        _issue(row, "columns", "这一行有表头里没有的多余列。请删掉多余的列后重新导入。")
     for index, field in enumerate(fields):
         value = values[index] if index < len(values) else None
         if index in cell_errors:
@@ -76,7 +76,7 @@ def _parse_row(kind, number, values, cell_errors, fields, file_format):
     for field in REQUIRED[kind]:
         value = row["values"].get(field)
         if (value is None or type(value) is str and not value.strip()) and not any(e["field"] == field for e in row["errors"]):
-            _issue(row, field, LABELS[field] + "不能留空，系统不会跳过这一行。请补填后重新导入。")
+            _issue(row, field, LABELS[field] + "不能留空。请补填后重新导入。")
     return row
 
 
@@ -108,7 +108,7 @@ def decode_process_file(kind, content, fmt):
         rows = []
         for number, values, errors in source:
             if len(rows) == IMPORT_ROW_LIMIT:
-                raise file_error("一次最多导入 2000 行，这次没有导入，也不会只导前面一部分。请拆分文件后重新导入。", number)
+                raise file_error("一次最多导入 2000 行。请拆分文件后重新导入。", number)
             rows.append(_parse_row(kind, number, values, errors, fields, fmt))
         _duplicates(kind, rows)
         return rows

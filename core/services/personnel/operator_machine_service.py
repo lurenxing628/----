@@ -299,6 +299,8 @@ class OperatorMachineService:
         machine_id: Any,
         skill_level: str = "normal",
         is_primary: str = "no",
+        *,
+        preserve_unchanged: bool = False,
     ) -> OperatorMachine:
         op_id = self._normalize_text(operator_id)
         mc_id = self._normalize_text(machine_id)
@@ -320,8 +322,16 @@ class OperatorMachineService:
         with self.tx_manager.transaction():
             if primary_norm == YesNo.YES.value:
                 # 主操设备约束：同一人员仅允许 1 台主操设备
-                self.repo.clear_primary_for_operator(op_id)
+                self._clear_primary(op_id, preserve_unchanged)
             return self.repo.add(op_id, mc_id, skill_level=skill_norm, is_primary=primary_norm)
+
+    def _clear_primary(self, operator_id, preserve_unchanged):
+        if not preserve_unchanged:
+            self.repo.clear_primary_for_operator(operator_id)
+            return
+        for row in self.repo.list_simple_rows_for_operators([operator_id]):
+            if self._normalize_yes_no_stored(row["is_primary"]) == YesNo.YES.value:
+                self.repo.update_fields(operator_id, row["machine_id"], skill_level=row["skill_level"], is_primary=YesNo.NO.value)
 
     def remove_link(self, operator_id: Any, machine_id: Any) -> None:
         op_id = self._normalize_text(operator_id)
@@ -340,6 +350,7 @@ class OperatorMachineService:
         *,
         skill_level: Any,
         is_primary: Any,
+        preserve_unchanged: bool = False,
     ) -> None:
         """
         更新关联字段（技能等级/主操设备）。
@@ -358,12 +369,14 @@ class OperatorMachineService:
         if not self.repo.exists(op_id, mc_id):
             raise BusinessError(ErrorCode.NOT_FOUND, "未找到该人员与该设备的关联记录。")
 
-        skill_norm = self._normalize_skill_level_optional(skill_level) or "normal"
-        primary_norm = self._normalize_yes_no_optional(is_primary, field="主操设备") or YesNo.NO.value
+        current = next((row for row in self.repo.list_simple_rows_for_operators([op_id])
+                        if row["machine_id"] == mc_id), {}) if preserve_unchanged else {}
+        skill_norm = current["skill_level"] if preserve_unchanged and skill_level == current.get("skill_level") else self._normalize_skill_level_optional(skill_level) or "normal"
+        primary_norm = current["is_primary"] if preserve_unchanged and is_primary == current.get("is_primary") else self._normalize_yes_no_optional(is_primary, field="主操设备") or YesNo.NO.value
 
         with self.tx_manager.transaction():
             if primary_norm == YesNo.YES.value:
-                self.repo.clear_primary_for_operator(op_id)
+                self._clear_primary(op_id, preserve_unchanged)
             self.repo.update_fields(op_id, mc_id, skill_level=skill_norm, is_primary=primary_norm)
 
     # -------------------------

@@ -55,6 +55,9 @@ def validate_trial_adoption(conn, scenario_ref):
     except TrialAdoptionBlocked:
         raise
     except CandidateAdoptionBlocked as exc:
+        if exc.code == "official_scope_not_covered":
+            raise TrialAdoptionBlocked(exc.code,
+                "试调方案没有覆盖当前正式计划的全部工序。请将相关批次一起排产后再试调。") from exc
         raise TrialAdoptionBlocked(
             exc.code, "试调方案没有通过采用前的核对，正式计划没有改变。请回到试调列表重新预检。") from exc
     except WorkbenchCommandRejected:
@@ -69,7 +72,7 @@ def validate_trial_adoption(conn, scenario_ref):
 
 def _current_baseline(conn, admission, live):
     if fingerprint(admission["baseline"]) != fingerprint(live["baseline"]):
-        raise TrialAdoptionBlocked("snapshot_stale", "建草稿时的正式计划已经不是当前正式计划了，这里不会自动切到最新计划。")
+        raise TrialAdoptionBlocked("snapshot_stale", "正式计划已更新，请基于当前正式计划重新试调。")
     if conn.execute("SELECT 1 FROM Schedule s WHERE NOT EXISTS "
                     "(SELECT 1 FROM ScheduleHistory h WHERE h.version=s.version) LIMIT 1").fetchone():
         raise TrialAdoptionBlocked("official_history_inconsistent", "正式安排缺少所属历史版本，不能采用。")
@@ -104,7 +107,7 @@ def _original_work(rows, live):
             current = row["current"]
             key, ref = current[kind + "_id"], current[kind + "_ref"]
             if (key is None) != (ref is None) or (key is not None and refs.get((kind, key)) != ref):
-                raise TrialAdoptionBlocked("scenario_resource_identity_changed", "试调方案里的设备或人员已删除或被替换，这里不会用同号的顶替。")
+                raise TrialAdoptionBlocked("scenario_resource_identity_changed", "试调方案中的设备或人员已删除或被替换。")
 
 
 def _settings(rows):
@@ -117,7 +120,7 @@ def _settings(rows):
 def _complete_scope(rows, prepared):
     saved = {row["operation_ref"]: row for row in rows}
     if set(saved) != {item["operation_ref"] for item in prepared.dispositions}:
-        raise TrialAdoptionBlocked("scenario_scope_incomplete", "试调方案没有覆盖批次现在的全部工序，不能只采用看到的这部分。")
+        raise TrialAdoptionBlocked("scenario_scope_incomplete", "试调方案未覆盖批次的全部工序，无法正式采用。")
     for item in prepared.dispositions:
         original = saved[item["operation_ref"]]["original"]
         if (original["operation"]["id"] != item["op_id"]

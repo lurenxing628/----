@@ -62,7 +62,7 @@ class ActualGanttScope:
     def __post_init__(self):
         PlanReadScope(self.plan_ref, self.range_start, self.range_end)
         if self.source != "production":
-            invalid("现场实际甘特只读真实生产数据，不会拿演示数据凑。")
+            invalid("数据来源无效，请重新打开现场实际甘特。")
         _validate_finish_dates(self.plan_finish_date_from, self.plan_finish_date_to)
         _validate_resource(self.resource_type, self.resource_ref)
         _validate_batches(self.batch_ids)
@@ -87,7 +87,7 @@ class ActualGanttScope:
                 invalid("批次范围必须是数组。")
             args["batch_ids"] = tuple(batches)
         if "plan_ref" not in args:
-            invalid("请先选一份计划；系统不会自动换成最新的那份。")
+            invalid("请先选择计划。")
         return cls(**args)
 
 
@@ -117,7 +117,7 @@ def _resource_match(task, execution, scope):
            for report in execution["reports"] + execution["legacy_facts"]):
         return True
     if _resource_unresolved(execution["data_gaps"], "actual_" + field):
-        raise WorkbenchCommandRejected("execution_resource_unavailable", "历史记录里的实际设备或人员对不上具体资料，系统不会把可能符合的工序当成不符合排除掉。")
+        raise WorkbenchCommandRejected("execution_resource_unavailable", "历史报工的设备或人员资料无法对应，请核对资源资料。")
     return False
 
 
@@ -164,7 +164,7 @@ def _view_arguments(data, values):
     if selected is not None:
         plan_reference(selected)
         if not any(item["task"]["task_ref"] == selected for item in data["items"]):
-            invalid("勾选的工序不在当前查询范围里，系统不会扩大导出范围。请刷新后重新勾选。")
+            invalid("所选工序不在当前范围，请刷新后重选。")
     return query.strip().lower(), late, selected
 
 

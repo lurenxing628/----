@@ -9,9 +9,9 @@ from .review_projection import project_cohort, validate_selected_refs
 from .review_records import resource_directory
 from .review_summary import charts, resource_rows, summary
 
-GAPS = ["执行情况和累计数量都只认报工记录；旧系统的整道完工记录照样保留，它登记的数量不会再按逐次报工累加一遍。",
-        "暂无反馈不等于没生产；工时未知和零工时分开算。已知工时小计不是完整总工时，缺记录的部分没算进去。",
-        "实际时段和新报工的登记时间都按车间挂钟；旧系统登记的时间按原样显示，系统不猜着换算。"]
+GAPS = ["执行状态与累计数量按报工记录统计，历史完工记录单独列示。",
+        "晚完成指实际完工比计划晚超过 10 分钟。工时缺项在明细中标注为待补。",
+        "新报工使用工厂当地时间；历史记录保留原时间。"]
 SORTS = {"delivery": ("batch_label", "planned_end", "finish_deviation_minutes", "effective_processing_hours"),
          "quality": ("batch_label", "event_count", "data_quality"),
          "records": ("event_time", "batch_label", "quantity_done", "effective_processing_hours"),

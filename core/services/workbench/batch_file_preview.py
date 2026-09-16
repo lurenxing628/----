@@ -50,7 +50,7 @@ class BatchImportPreview:
     @staticmethod
     def _source(values):
         if any(type(values[key]) is not str or not values[key].strip() for key in ("批次号", "图号")):
-            raise ValidationError("批次号和图号要填文字，系统不会替你补丢掉的前导零。")
+            raise ValidationError("请将批次号和图号设为文本格式，保留前导零。")
         if type(values["数量"]) is bool:
             raise ValidationError("数量要填数字，不能填「是/否」。")
         source = dict(values)

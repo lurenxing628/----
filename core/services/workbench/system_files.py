@@ -6,6 +6,7 @@ import uuid
 from core.infrastructure.backup import BackupManager, maintenance_window
 from core.infrastructure.safe_files import remove_fixed_file
 from core.models.workbench_command import WorkbenchCommandRejected
+from core.services.workbench.run_data_context import restored_context_ref
 from core.services.workbench.system_journal import SystemMaintenanceJournal, file_fingerprint
 from core.services.workbench.system_reads import backup_signature
 from core.services.workbench.system_restore import SystemRestoreManager, restore_outcome
@@ -93,6 +94,8 @@ class SystemFileWorkspace:
             evidence["database_origin"] = origin.get(state, "unconfirmed")
             if state in origin:
                 evidence["database_after_sha256"] = file_fingerprint(self.database_path)
+            if state == "succeeded":
+                evidence["data_context_before"] = restored_context_ref(self.journal.database_scope, self.journal.records())
         if confirm_host is not None:
             confirm_host()
         self.journal.record(row, state, code=code, message=message, audit_persisted=persisted, **evidence)

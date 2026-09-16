@@ -15,8 +15,7 @@ from .master_overview_relations import batch_relations, resource_profile_fields
 from .master_overview_resources import add_resources, resource_links
 
 LABELS = dict(DOMAINS)
-BASIS = ("这里只核对已读取的资料项和单独登记的关联，不代表可以排产。日历只算全局工作日历；"
-         "会做工序不等于有设备授权，有库存不等于批次已到料。")
+BASIS = "基础资料与关联检查"
 
 
 def cell(row, column):

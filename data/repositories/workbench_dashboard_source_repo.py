@@ -49,8 +49,8 @@ class DashboardSourceRepository:
                             ",".join("?" for _ in chunk) + ")", [kind] + chunk)
             for row in selected:
                 if row["entity_key"] in result:
-                    raise WorkbenchCommandRejected("identity_missing", "来源永久身份重复，未选择任意引用。")
+                    raise WorkbenchCommandRejected("identity_missing", "来源关联资料重复，暂时无法评估，请联系维护人员核对。")
                 result[row["entity_key"]] = row
         if set(result) != set(keys):
-            raise WorkbenchCommandRejected("identity_missing", "来源永久身份缺失，读取不会补建或替换。")
+            raise WorkbenchCommandRejected("identity_missing", "来源关联资料缺失，暂时无法评估，请联系维护人员核对。")
         return result

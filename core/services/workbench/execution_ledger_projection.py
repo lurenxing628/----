@@ -18,6 +18,6 @@ def attach_context(projection, factory, snapshot):
                     projection.plan_identity["capabilities"]["report_actual"] and projection.data_quality != "invalid")
     if factory is None or not writable:
         return projection
-    reports = [replace(report, write_context=factory(report.report_ref, ["supplement", "correct"], snapshot))
+    reports = [replace(report, write_context=factory(report.report_ref, ["supplement", "correct", "report_void"], snapshot))
                for report in projection.reports]
     return replace(projection, reports=reports, write_context=factory(projection.current_task_ref, ["create"], snapshot))

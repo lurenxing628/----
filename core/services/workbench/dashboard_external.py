@@ -42,7 +42,7 @@ def _receipts(reader, now, result):
         except WorkbenchCommandRejected as exc:
             if exc.code != "invalid_input":
                 raise
-            issues = [source_issue("outsourcing_fact_invalid", "原外协登记的时间或确认状态无效，未推定未回厂或已回厂。")]
+            issues = [source_issue("outsourcing_fact_invalid", "外协登记的时间或状态无效，请核对物流登记。")]
             result["evaluation_gaps"].append(gap(ref, "外协原登记", issues))
             snapshots.append({"latest": latest, "issues": issues})
             continue
@@ -73,13 +73,19 @@ def _targets(reader, result):
         source, issues = target_source(reader, item)
         snapshots.append({"target": item, "source": source, "issues": issues})
         if not issues:
-            issues = [source_issue("outsourcing_unregistered", "这道外协工序还没有发出和回厂登记，系统不会按默认周期或正式计划推算风险。")]
-        result["evaluation_gaps"].append(gap(item["operation_ref"], subject(item["business_code"], "外协工序"), issues))
+            issues = [source_issue("outsourcing_unregistered", "尚未登记外协发出或回厂信息，请补充物流登记。")]
+        title = subject(item["label"], "外协工序")
+        code = subject(item["business_code"], "")
+        if code:
+            title += "（" + code + "）"
+        detail = gap(item["operation_ref"], title, issues)
+        detail["operation"] = {"code": item["business_code"], "name": item["label"]}
+        result["evaluation_gaps"].append(detail)
     invalid = unknown_sources(reader.conn)
     for item in invalid:
         if item["outsourcing_ref"] is None:
             result["evaluation_gaps"].append(gap(item["operation_ref"], subject(item["business_code"], "来源未知工序"),
-                [source_issue("external_source_unknown", "这道工序的归属没填自制或外协；系统不会当它不是外协，也不会假定已经发出。")]))
+                [source_issue("external_source_unknown", "工序归属未填写，请确认自制或外协。")]))
     return {"targets": targets, "unregistered_sources": snapshots, "unknown_sources": invalid}
 
 

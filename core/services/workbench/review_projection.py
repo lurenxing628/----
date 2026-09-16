@@ -95,4 +95,4 @@ def validate_selected_refs(scope, facts):
             identity = facts["reader"].plans.entities.get(ref)
             historical = kind in directory and ref in directory[kind]
             if identity is None or identity.kind != kind or (not identity.active and not historical):
-                raise WorkbenchCommandRejected("entity_not_found", "筛选条件里选的记录不存在或者类型不对，没有查询，条件也没有被悄悄忽略。请重新选择后再查。", 404)
+                raise WorkbenchCommandRejected("entity_not_found", "筛选记录已失效或类型不符，请重新选择。", 404)

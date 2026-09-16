@@ -5,6 +5,7 @@ import secrets
 
 from core.infrastructure.workbench_metadata_schema import workbench_metadata_contract_issues
 from core.infrastructure.workbench_outsourcing_schema import contract_issues
+from core.infrastructure.workbench_outsourcing_source_schema import contract_issues as source_contract_issues
 from core.infrastructure.workbench_plan_identity_schema import workbench_plan_identity_contract_issues
 from core.models.workbench_command import canonical_json
 from core.models.workbench_outsourcing import MAX_ROWS, bounded, reject
@@ -15,7 +16,8 @@ class WorkbenchOutsourcingRepository:
         self.conn = conn
 
     def require_schema(self):
-        issues = contract_issues(self.conn) + workbench_metadata_contract_issues(self.conn) + workbench_plan_identity_contract_issues(self.conn)
+        issues = (contract_issues(self.conn) + source_contract_issues(self.conn) +
+                  workbench_metadata_contract_issues(self.conn) + workbench_plan_identity_contract_issues(self.conn))
         if issues:
             reject("真实外协登记结构尚未完整接入；未补表或改动原资料。", "outsourcing_unavailable", 503)
 
@@ -79,4 +81,7 @@ class WorkbenchOutsourcingRepository:
              values["sent"], values["planned"], values["returned"], values["confirmedState"],
              prepared["input"]["declared_operator"], local_operator, prepared["input"]["reason"], now,
              canonical_json(prepared["before"]), canonical_json(source["facts"]), request_key))
+        if previous is None:
+            self.conn.executemany("INSERT INTO WorkbenchOutsourcingSourceConfirmations(operation_ref,batch_ref,fact_ref) VALUES (?,?,?)",
+                                  [(op, target["batch_ref"], fact_ref) for op in source["source_confirmations"]])
         return {"outsourcing_ref": ref, "fact_ref": fact_ref}

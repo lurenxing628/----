@@ -113,7 +113,7 @@ def decode_reports(content):
         source = sheet.iter_rows()
         version, fields, order = _column_order(next(source, ()))
         if columns > len(fields):
-            reject('有单元格超出了 10 列或 13 列的表头范围，系统不会覆盖或忽略原来的值。')
+            reject('有单元格超出表头范围，请按模板修正。')
         result = []
         for number, cells in enumerate(source, 2):
             if number > ROW_LIMIT + 1:
@@ -128,13 +128,13 @@ def _instructions(book):
     help_sheet = book.create_sheet('填写说明')
     help_sheet.append(['项目', '说明'])
     for row in [('数据范围', '只读第一张报工记录表，最多 5000 行；预检只看不保存。'),
-                    ('逐次报工', '数量和有效工时为本次值，不是累计值；未知留空，0 为已知零。'),
+                    ('逐次报工', '填写本次完成数量和有效工时；未填写请留空，确为零时填 0。'),
                     ('编号', '请保留报工编号。任务编号、工序范围和单件编号由当前范围预填，不要改；不用手抄任务编号。'),
                     ('单件与共同工序', '工序范围为单件时，单件编号必须与预填值一致；共同工序的单件编号必须留空。原来的 10 列格式只支持批次和工序都唯一的情况；重名分不清会被拒绝。'),
                     ('目标数量', '实际甘特 CSV 里的目标数量按报工统计；计划应做数量、计划批次数量和依据另外列出，不知道就留空。'),
                     ('设备人员', '实际设备和人员要按现场核对后填写，不能拿计划里的当实际。'),
-                    ('重复与更正', '重复导入不会累加，只补没填的；和已填内容对不上时请走更正并写原因。'),
-                    ('时间', '按 2026-09-13 08:30 这样填；系统不会按开工到完工的时长自动算加工工时。')]:
+                    ('重复与更正', '重复导入仅补空项；修改已有内容请使用更正并填写原因。'),
+                    ('时间', '时间格式：2026-09-13 08:30；有效加工工时单独填写。')]:
         help_sheet.append(row)
 
 
@@ -170,7 +170,7 @@ def encode_reports(rows, *, template=False, summaries=(), metadata=(), format_ve
     sheet.append(headers)
     for number, row in enumerate(rows, 1):
         if number > ROW_LIMIT:
-            reject('报工文件超过 5000 行上限，请缩小筛选范围；系统不会只导当前页。')
+            reject('导出超过 5000 行，请缩小筛选范围。')
         sheet.append([row.get(field) for field in fields])
     if template:
         _instructions(book)

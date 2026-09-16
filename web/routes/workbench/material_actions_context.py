@@ -14,6 +14,7 @@ from core.errors import AppError, ValidationError
 from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
 from core.models.workbench_material_file import normalize_scope
 from core.models.workbench_material_query import MaterialPageRequest
+from core.services.workbench import messages
 from web.public_token_registry import issue_public_token_with_expiry, resolve_public_token
 
 from .api_responses import api_endpoint
@@ -124,6 +125,8 @@ def public_row(row):
     names = {"material_id": "business_code", "name": "label", "spec": "spec", "unit": "unit",
              "stock_qty": "stock_qty", "status": "status", "remark": "remark", "created_at": "created_at"}
     before = {public: raw[key] for key, public in names.items()} if raw else None
+    if before is not None and before["created_at"] is not None:
+        before["created_at"] = messages.stored_utc_text(str(before["created_at"]))
     after = None
     if row["action"] != "delete" and row["input"] is not None:
         payload = row["input"]
@@ -136,6 +139,7 @@ def public_row(row):
             "action": row["action"], "result": row["result"], "before": before, "after": after,
             "changes": {names[key]: value for key, value in row["changes"].items() if key in names},
             "errors": row["errors"], "requires_confirmation": row["requires_confirmation"],
+            "reference_fields": row.get("reference_fields", []),
             "reference_count": len(expected["requirements"]) if expected else 0}
 
 

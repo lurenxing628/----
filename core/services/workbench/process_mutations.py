@@ -53,7 +53,7 @@ class WorkbenchProcessMutationService:
         for row in operations:
             require_ref(row["ref"], "模板工序")
             if row["status"] not in ("active", "deleted") or type(row["seq"]) is not int or row["seq"] <= 0:
-                raise WorkbenchCommandRejected("template_invalid", "原工序的序号或状态说不清，系统不会猜着恢复或删除。请到基础资料核对工序。", 422)
+                raise WorkbenchCommandRejected("template_invalid", "原工序的序号或状态说不清。请到基础资料核对工序。", 422)
             if row["ext_group_id"] is not None and row["ext_group_id"] not in group_keys:
                 raise WorkbenchCommandRejected("group_invalid", "原工序关联外协组不存在或属于其他零件，请先核对资料。", 422)
         for row in groups:

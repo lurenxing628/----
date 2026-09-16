@@ -18,6 +18,7 @@ from core.services.workbench.process_file_hours_values import (
 from core.services.workbench.process_projection import public_sequence, require_ref
 from core.services.workbench.process_queries import _plain
 from core.services.workbench.process_quota_protection import quota_skip, quota_skip_summary
+from core.services.workbench.process_zero_hours import zero_confirmation_required
 
 
 def protect_hours_preview(rows, locks):
@@ -26,7 +27,7 @@ def protect_hours_preview(rows, locks):
             continue
         ref = row["expected"]["operation_ref"]
         if ref in locks and row["expected"]["operation"]["unit_hours"] != locks[ref]["locked_unit_hours"]:
-            raise WorkbenchCommandRejected("calibration_lock_corrupt", "工艺模板的工时定额和定额已锁定的记录（来自工时校准）对不上，系统不会当成没锁定。请刷新重试；仍不行请联系维护人员。", 500)
+            raise WorkbenchCommandRejected("calibration_lock_corrupt", "工艺模板的工时定额和定额已锁定的记录（来自工时校准）对不上，请联系维护人员核对定额锁定记录。", 500)
         if ref in locks and "unit_hours" in row["changes"]:
             row.update(result="skipped", after=deepcopy(row["before"]), changes={}, requires_confirmation=False,
                        warnings=[], skip_reason=quota_skip(ref, locks[ref]))
@@ -54,7 +55,7 @@ class HoursFilePreview:
         ref = require_ref(row["ref"], "工艺")
         current = self.identities.get(ref)
         if not current or not current["active"] or current["kind"] != kind or current["entity_key"] != str(key):
-            raise WorkbenchCommandRejected("storage_failure", "工艺编号和原记录对不上，系统不会替你改资料。请刷新重试；仍不行请联系维护人员。", 500)
+            raise WorkbenchCommandRejected("storage_failure", "工艺编号和原记录对不上，请联系维护人员核对资料。", 500)
         return ref
 
     def resolve(self, values):
@@ -67,7 +68,7 @@ class HoursFilePreview:
             raise ValidationError("这一行不属于当前零件。请只导入当前零件的工序。", field="business_code")
         found = self.operations.get((code, sequence), [])
         if len(found) != 1 or found[0]["status"] != "active":
-            raise ValidationError("这道工序不存在、已停用或有重复，系统不会新增、恢复或猜着对应。请到基础资料核对工序。", field="sequence")
+            raise ValidationError("这道工序不存在、已停用或有重复。请到基础资料核对工序。", field="sequence")
         operation = found[0]
         self.identity(operation, "template_operation", operation["id"])
         return part_ref, operation
@@ -78,7 +79,7 @@ class HoursFilePreview:
             return None
         group = self.groups.get(key)
         if group is None or group["part_no"] != operation["part_no"]:
-            raise WorkbenchCommandRejected("group_invalid", "这道工序原来的外协组关系缺失或跨了零件，系统不会解除或替你改。请到基础资料核对外协组。", 422)
+            raise WorkbenchCommandRejected("group_invalid", "这道工序原来的外协组关系缺失或跨了零件。请到基础资料核对外协组。", 422)
         self.identity(group, "template_external_group", key)
         if group["merge_mode"] not in ("separate", "merged"):
             raise WorkbenchCommandRejected("group_invalid", "原外协组用哪种周期算法说不清。请到基础资料核对外协组。", 422)
@@ -159,8 +160,7 @@ class HoursFilePreview:
                    and type(member["seq"]) is int and group["start_seq"] <= member["seq"] <= group["end_seq"]
                    for member in self.members[group["group_id"]])
 
-    @staticmethod
-    def finish(row, proposals):
+    def finish(self, row, proposals):
         if row["input"] is None:
             return
         group, updates = row["expected"]["group"], row["input"]["hours"]
@@ -180,10 +180,12 @@ class HoursFilePreview:
         if row["errors"]:
             return
         row["result"] = "update" if row["changes"] else "unchanged"
-        row["requires_confirmation"] = after["source"] == "internal" and after["unit_hours"] == 0
+        operation = row["expected"]["operation"]
+        confirmation = self.facts["workflow"][operation["part_no"]]["operations"].get(operation["ref"], {})
+        row["requires_confirmation"] = zero_confirmation_required(row["before"], after, confirmation)
         if row["requires_confirmation"]:
             row["warnings"] = [{"row": row["row"], "field": "unit_hours", "code": "zero_unit_hours_review",
-                                "message": "单件工时是 0，请明确复核；导入不会把工时阶段标成已确认。"}]
+                                "message": "单件工时为 0，排产只计算换型工时，数量增加不会增加加工时长。"}]
 
     def build(self, decoded_rows):
         rows = [self.row(decoded) for decoded in decoded_rows]

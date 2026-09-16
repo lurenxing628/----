@@ -16,7 +16,7 @@ def _template_model(row, op) -> PartOperation:
         fail("external_template_mismatch", "这道外协工序的工种和模板里的不一样，这次排产没有开始。请到工艺资料核对工种。", op_id=op.id)
     for field in ("setup_hours", "unit_hours"):
         if not number(row[field]):
-            fail("external_template_invalid", "模板工序的工时读不出来，这次排产没有开始，系统不会替你按默认值算。请到工艺资料补上工时。", op_id=op.id, field=field)
+            fail("external_template_invalid", "模板工序工时缺失，本次未开始排产。请到工艺资料补填。", op_id=op.id, field=field)
     return PartOperation(**{field.name: row[field.name] for field in fields(PartOperation)})
 
 

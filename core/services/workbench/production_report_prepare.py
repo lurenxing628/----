@@ -147,6 +147,8 @@ class ReportBatchPreparation:
         task = require_current(self.facts, operation_ref, item["ref"] if item["action"] == "create" else None)
         history, action = self._history(item, operation_ref)
         old = history[-1] if history else None
+        if old and old["report_ref"] in self.facts["voids"]:
+            reject("这条报工已经撤销，不能再补齐、更正或用原单号导入。需要登记实际生产时请新增报工。", "report_voided", 409)
         if old is None:
             if self.before_projections[operation_ref].completion_basis == "complete_reports":
                 reject("这道工序已经报完工，用「新增」不能把完工撤掉。请改用「更正」并填写原因。", "constraint_conflict", 409)
@@ -187,7 +189,7 @@ class ReportBatchPreparation:
             if item["payload"]["source"] != "excel":
                 reject("这个报工单号已经有了。请改用「补齐」或「更正」。", "constraint_conflict", 409)
             if row["legacy_fact_ref"] != item["payload"].get("legacy_fact_ref"):
-                reject("重复导入把历史记录的关联改掉了，系统不会自动重新对应来源。请核对后重新提交。", "constraint_conflict", 409)
+                reject("导入记录与原历史记录的关联不一致，请核对后重试。", "constraint_conflict", 409)
             return group[row["report_ref"]], "supplement"
         return [], "create"
 

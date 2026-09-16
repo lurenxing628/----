@@ -1,4 +1,4 @@
-"""Versioned file columns. Read-only columns assert facts, never write them."""
+"""Versioned file columns. Read-only columns are reference data, never written."""
 
 import hashlib
 from dataclasses import dataclass
@@ -43,7 +43,9 @@ RELATIONS = {
 }
 INSTRUCTIONS = ("编号必须是文本；缺列或空单元格不修改；\\N 只清除允许清除的项，数组用 [] 表示清除。"
                 "多值必须是JSON字符串数组，例如[\"OT1\",\"OT2\"]，不接受逗号猜分。"
-                "只读列只用来核对原记录；技能不会授予设备权限。CSV 文字有一层可逆单引号，文字开头的反斜线要写两个。")
+                "只读列仅供参考，不导入；已有记录的原信息保留，新记录按系统规则生成。"
+                "设备权限需在人员详情设置，文件中的原设备授权不会导入；技能不会授予设备权限。"
+                "CSV 文字有一层可逆单引号，文字开头的反斜线要写两个。")
 
 
 def file_columns(kind):

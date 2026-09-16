@@ -33,7 +33,7 @@ class ReportResourceValidator:
             self.entities[ref] = self.identities.get(ref)
         entity = self.entities[ref]
         if entity is None or not entity.active or entity.kind != kind:
-            reject("填的设备或人员不存在，或者记录已失效；旧编号不会指到同号的新设备人员。请刷新后重新选择。", "constraint_conflict", 409)
+            reject("设备或人员已失效，请刷新重选。", "constraint_conflict", 409)
         return entity.entity_key
 
     def validate(self, operation, values):
@@ -58,15 +58,15 @@ def require_current(facts, operation_ref, task_ref=None):
     current = facts["current_tasks"].get(operation_ref)
     plan = facts["plan"]
     if not operation["identity_active"] or operation["id"] is None:
-        reject("这道工序已经被删除，旧报工不会改到同号的新工序。请刷新后重新选择。", "entity_not_found", 404)
+        reject("工序已删除，请刷新重选。", "entity_not_found", 404)
     if operation["source"] not in ("internal", "external"):
-        reject("这道工序是自制还是外协读不出来，系统不猜要填哪些设备人员。请到基础资料确认归属。", "constraint_conflict", 409)
+        reject("工序归属无法读取，请到基础资料确认自制或外协。", "constraint_conflict", 409)
     if operation_ref in facts["unresolved"]:
-        reject("历史报工记录的编号分不清是哪一条，系统不猜。请先复核后再登记。", "constraint_conflict", 409)
+        reject("历史报工关联记录不明确，请核对后再登记。", "constraint_conflict", 409)
     if not current or not plan or not plan["capabilities"]["report_actual"]:
         reject("这道工序在正式计划里没有可登记的安排。请先排产。", "plan_not_writable", 409)
     if task_ref is not None and task_ref != current["task_ref"]:
-        reject("只能按当前正式计划登记；原来的安排不会自动跟到新版本。请刷新后重新选择工序。", "plan_not_writable", 409)
+        reject("请刷新后选择当前正式计划的工序报工。", "plan_not_writable", 409)
     return current
 
 
@@ -79,7 +79,7 @@ def validate_legacy_link(legacy, legacy_fact_ref, values):
     known = {"actual_end": row["event_time"].replace(" ", "T"), "completed_quantity": row["quantity_done"]}
     for field, value in known.items():
         if value is not None and values.get(field) is not None and values[field] != value:
-            reject("补齐的内容和原来的完工记录冲突，系统不会覆盖原记录。请核对后重新提交。", "constraint_conflict", 409)
+            reject("补填内容与原完工记录冲突，请核对后重试。", "constraint_conflict", 409)
 
 
 def validate_projection_change(before, after):
@@ -103,7 +103,7 @@ def _successor_refs(conn, op):
         WHERE bo.batch_id=? AND bo.piece_id IS ? AND bo.seq>? ORDER BY bo.seq LIMIT 10001""",
         (op["batch_id"], op["piece_id"], op["seq"])).fetchall()
     if len(rows) > 10000:
-        reject("要检查的后道工序太多，超过上限，系统不会跳过检查。请缩小这次报工的范围后重试。", "query_too_large", 413)
+        reject("本次报工涉及工序过多，请缩小范围。", "query_too_large", 413)
     return [row["operation_ref"] for row in rows]
 
 

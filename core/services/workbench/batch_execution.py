@@ -15,7 +15,7 @@ def read_execution(conn, operation_refs):
         version = conn.execute("SELECT version FROM SchemaVersion WHERE id=1").fetchone()
         receipts = conn.execute("SELECT 1 FROM WorkbenchCommandReceipts WHERE action GLOB 'execution.*' LIMIT 1").fetchone()
         if version is None or type(version[0]) is not int or not 0 <= version[0] < 25 or receipts:
-            raise WorkbenchCommandRejected("execution_ledger_unavailable", "报工记录表缺失，读不出现场进度。系统不会退回旧的状态标记，请先恢复完整数据。")
+            raise WorkbenchCommandRejected("execution_ledger_unavailable", "报工记录表缺失，无法读取现场进度，请联系维护人员恢复数据。")
         return {"available": False, "projections": {}, "snapshot_facts": {"schema_version": version[0]},
                 "issues": [{"code": "execution_ledger_not_installed", "message": "这个数据库还没装报工记录表；现在只保留旧的状态标记和删除保护，逐次进度暂无数据。"}]}
     ledger = ExecutionLedgerService(conn)
@@ -25,7 +25,7 @@ def read_execution(conn, operation_refs):
             for row in ledger.project_operations(refs[start:start + MAX_OPERATIONS]):
                 projections[row.operation_ref] = row.to_dict()
         if set(projections) != set(refs):
-            raise WorkbenchCommandRejected("execution_ledger_unavailable", "有工序读不到报工记录，系统不会按编号或旧状态补齐。请刷新后重试。")
+            raise WorkbenchCommandRejected("execution_ledger_unavailable", "有工序的报工记录读取失败，请联系维护人员核对。")
         return {"available": True, "projections": projections, "issues": [],
                 "snapshot_facts": {**clock, "projection_hash": input_fingerprint(_plain(projections))}}
 

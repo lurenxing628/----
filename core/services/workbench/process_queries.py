@@ -54,7 +54,7 @@ class WorkbenchProcessQueryService:
         try:
             workflow = workflow_snapshot(self.conn)
         except RuntimeError as exc:
-            raise WorkbenchCommandRejected("storage_failure", "工艺确认记录或它的编号不完整，系统不会自动补资料。请刷新重试；仍不行请联系维护人员。", 500) from exc
+            raise WorkbenchCommandRejected("storage_failure", "工艺确认记录或它的编号不完整，请联系维护人员核对资料。", 500) from exc
         return {"parts": self.repo.parts(), "operations": self.repo.operations(), "groups": self.repo.groups(),
                 "references": self.repo.references(), "identities": self.repo.identities(),
                 "workflow": workflow}
@@ -93,7 +93,7 @@ class WorkbenchProcessQueryService:
             raise WorkbenchCommandRejected("entity_not_found", "零件记录不存在，请返回列表重新选择。", 404)
         identity = self.identities.get(ref)
         if identity is None or identity.kind != "part" or not identity.active:
-            raise WorkbenchCommandRejected("entity_not_found", "这个零件已经不在了，旧编号不会指到同号的新零件。请刷新列表后重新选择。", 404)
+            raise WorkbenchCommandRejected("entity_not_found", "这个零件已经不在了。请刷新列表后重新选择。", 404)
         return identity
 
     def page(self, query):
@@ -161,6 +161,6 @@ class WorkbenchProcessQueryService:
         if invalid:
             result["can_confirm_route"] = False
             result["diagnostics"].append({"code": "legacy_sequence_invalid", "severity": "error",
-                                          "message": "现有模板里有不合法的工序号，系统不会自动改号，也不会悄悄删掉。请到基础资料核对工序号。"})
+                                          "message": "现有模板里有不合法的工序号。请到基础资料核对工序号。"})
         result["changes"] = {key: [public_sequence(seq) for seq in values] for key, values in result["changes"].items()}
         return result

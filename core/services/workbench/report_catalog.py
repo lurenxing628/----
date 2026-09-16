@@ -21,15 +21,17 @@ from .report_exports import TOPIC_TITLES, ensure_export_size, metadata
 CATALOG_COLUMNS = {
     "overdue": [("batch_label", "批次"), ("part_name", "零件"), ("bucket_label", "风险类别"),
                 ("due_date", "交期"), ("finish_time", "计划完工"), ("delay_hours", "预计超期（小时）")],
-    "utilization": [("resource_label", "资源"), ("resource_kind_label", "类型"), ("hours", "计划负荷（小时）"),
-                    ("task_count", "计划任务数"), ("capacity_hours", "可用工时（小时）"), ("utilization_percent", "计划利用率（%）")],
+    "utilization": [("resource_label", "资源"), ("resource_kind_label", "类型"), ("hours", "班表内占用（小时）"),
+                    ("task_count", "计划任务数"), ("capacity_hours", "可用工时（小时）"), ("utilization_percent", "整窗占用率（%）"),
+                    ("summed_load_hours", "累计负荷（小时）"), ("overlap_hours", "重叠负荷（小时）"),
+                    ("outside_calendar_hours", "班表外占用（小时）"), ("availability_note", "计算说明")],
     "downtime": [("resource_label", "设备"), ("downtime_hours", "停机工时（小时）"), ("downtime_count", "停机次数"),
                  ("schedule_overlap_hours", "计划重叠（小时）"), ("schedule_overlap_count", "计划重叠次数")],
 }
 CATALOG_CONTEXT = {
-    "overdue": ("当前正式计划与批次交期", "这里看的是计划交付风险，不是实际晚完成记录；没排上的批次和交期填得不对的批次分开列。"),
-    "utilization": ("当前正式计划与班表产能", "计划负荷不是实际加工工时；只统计落在计划时段里的部分。"),
-    "downtime": ("当前正式计划与有效停机记录", "停机只认已登记的停机记录，不把报工空档当成停机。"),
+    "overdue": ("当前正式计划与批次交期", "按正式计划评估交付风险，未排产和交期异常批次单列。"),
+    "utilization": ("当前正式计划与逐资源工作日历", "整窗占用率按班表内占用并集 ÷ 可用工时计算；设备扣除停机，人员使用个人日历。重叠负荷与班表外占用单列，班表效率不改变时间轴占用。"),
+    "downtime": ("当前正式计划与有效停机记录", "按已登记的停机记录统计。"),
 }
 
 
@@ -87,6 +89,9 @@ def _resource_rows(facts):
                 "resource_kind_label": "设备" if kind == "machine" else "人员"})
             if scope.kind == "utilization":
                 public["utilization_percent"] = None if row.get("utilization") is None else round(row["utilization"] * 100, 2)
+                public["availability_note"] = "此范围无可用工时" if row.get("reason") == "zero_available_capacity" else (
+                    "；".join(issue["message"] for issue in row.get("calendar_issues", [])) or "日历资料不完整"
+                    if row.get("reason") == "calendar_unavailable" else "")
             rows.append(public)
             source_rows.append({**row, "resource_kind": kind})
     return rows, source_rows
@@ -107,6 +112,8 @@ def catalog_workspace(reader, facts, snapshot, page):
             "rows": visible, "columns": [{"key": key, "label": label} for key, label in CATALOG_COLUMNS[scope.kind]],
             "summary": {"rows": len(ordered)}, "page": pagination,
             "provenance": provenance, "data_gaps": [gap]}
+    if scope.kind == "utilization":
+        data["scope"].update(metric_source=rep.get("metric_source", "planned"), metric_version=rep.get("metric_version"))
     if rep and rep.get("report_degraded"):
         data["data_gaps"].append("有一部分原始数据不可用，没有参与本表计算，请核对原始记录。")
     return data, ordered, selected

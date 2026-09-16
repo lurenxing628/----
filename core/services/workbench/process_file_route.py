@@ -77,7 +77,7 @@ class ProcessRouteFileOperations:
             ref = row["entity_ref"]
             identity = self.identities.get(ref)
             if identity is None or not identity.active or identity.kind != "part" or identity.entity_key != row["business_code"]:
-                raise WorkbenchCommandRejected("stale_write", "这个零件已失效，系统不会改到同号的新零件。请刷新列表后重新选择。")
+                raise WorkbenchCommandRejected("stale_write", "这个零件已失效。请刷新列表后重新选择。")
             if identity.revision != row["expected"]["revision"]:
                 raise WorkbenchCommandRejected("stale_write", "零件资料已变化，请重新预检。")
             part, operations = row["expected"]["part"], row["expected"]["operations"]

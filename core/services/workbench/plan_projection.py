@@ -18,9 +18,9 @@ _REASONS = {
     "scenario_unavailable": "这个试调方案依据的计划关系或明细无效，暂时看不了。",
     "plan_capacity_exceeded": "这个计划或它依据的计划明细超过本次读取上限，还确认不了是否完整。请缩小时间范围后重试。",
     "plan_binding_invalid": "这个计划的类型或它依据的计划已经变了，暂时看不了。请刷新计划列表后重试。",
-    "identity_missing": "这个计划找不到编号，系统不会自动补建。请刷新计划列表后重试。",
+    "identity_missing": "计划编号缺失，请刷新计划列表。",
     "identity_invalid": "这个计划的编号和当前记录对不上，暂时看不了。请刷新计划列表后重试。",
-    "source_missing": "这个计划的来源记录已经不在了，系统不会自动换成别的计划。请刷新计划列表后重试。",
+    "source_missing": "计划来源记录已不存在，请刷新列表后重新选择。",
 }
 
 
@@ -66,7 +66,7 @@ def project_capacity_blocked_plan(locator, plan_ref, display_name):
 def public_time(value):
     parsed = parse_dt_for_sql(value)
     if parsed is None:
-        raise WorkbenchCommandRejected("plan_unavailable", "计划里有安排的时间无效，系统不会跳过，也不会用别的时间顶替。请到计划甘特核对。")
+        raise WorkbenchCommandRejected("plan_unavailable", "工序安排的起止时间无效，请核对计划资料。")
     return parsed.replace(" ", "T")
 
 
@@ -86,7 +86,7 @@ def _required_text(value):
 def _sequence(value):
     wire = _wire_positive_int64(value)
     if wire is None:
-        raise WorkbenchCommandRejected("plan_unavailable", "有安排的工序号无效，系统不会替你改号。请到批次管理核对工序号。")
+        raise WorkbenchCommandRejected("plan_unavailable", "工序号无效，请到批次管理核对。")
     return wire
 
 
@@ -96,7 +96,7 @@ def _resource_ref(row, kind, identities):
         return None
     identity = identities[kind].get(str(key))
     if identity is None:
-        raise WorkbenchCommandRejected("identity_missing", "有安排关联的设备或人员找不到编号，系统不会自动补建。请到资料总览核对。")
+        raise WorkbenchCommandRejected("identity_missing", "安排关联的设备或人员编号缺失，请到资料总览核对。")
     return identity.ref
 
 
@@ -195,9 +195,9 @@ def project_tasks(plan_ref, rows, task_refs, operation_refs, resources, *, conn=
     for row in rows:
         start, end = public_time(row["start_time"]), public_time(row["end_time"])
         if start > end or (start == end and not row.get("_point_work")):
-            raise WorkbenchCommandRejected("plan_unavailable", "有安排的起止时间无效，系统不会用别的时间顶替。请到计划甘特核对。")
+            raise WorkbenchCommandRejected("plan_unavailable", "工序安排的起止时间无效，请核对计划资料。")
         if row["schedule_id"] not in task_refs or row["op_id"] not in operation_refs:
-            raise WorkbenchCommandRejected("identity_missing", "有安排找不到编号，系统不会自动补建。请刷新后重试。")
+            raise WorkbenchCommandRejected("identity_missing", "安排编号缺失，请刷新后重试。")
         piece = row.get("piece_id")
         if piece is not None:
             piece = _required_text(piece)
@@ -220,5 +220,5 @@ def project_tasks(plan_ref, rows, task_refs, operation_refs, resources, *, conn=
 
 def check_payload_size(data):
     if len(canonical_json(data).encode("utf-8")) > MAX_PLAN_RESPONSE_BYTES:
-        raise WorkbenchCommandRejected("query_too_large", "计划查询结果超过本次读取大小上限，没有读取，也不会只给一部分。请缩小时间范围后重试。", 413)
+        raise WorkbenchCommandRejected("query_too_large", "计划查询结果超过本次读取大小上限。请缩小时间范围后重试。", 413)
     return data

@@ -53,7 +53,7 @@ class BatchFacts:
         public_ref(ref)
         identity = self.identities.get(ref)
         if identity is None or not identity.active or identity.kind != kind:
-            raise WorkbenchCommandRejected("entity_not_found", "这条记录已经不在了，系统不会换成编号相同的新记录。请刷新后重新选择。", 404)
+            raise WorkbenchCommandRejected("entity_not_found", "这条记录已经不在了，请重新选择。请刷新后重新选择。", 404)
         return identity
 
     def batch(self, ref):
@@ -64,7 +64,7 @@ class BatchFacts:
         else:
             row = next((item for item in self._facts["Batches"] if item["batch_id"] == identity.entity_key), None)
         if row is None:
-            raise WorkbenchCommandRejected("storage_failure", "批次和系统编号对不上，系统不会自动修补。请刷新重试；仍不行请联系维护人员。", 500)
+            raise WorkbenchCommandRejected("storage_failure", "批次和系统编号对不上，请联系维护人员核对资料。", 500)
         if identity.entity_key != identity.entity_key.strip():
             raise WorkbenchCommandRejected("constraint_conflict", "批次号存在首尾空格，请先核对原记录。")
         return row

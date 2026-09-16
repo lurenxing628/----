@@ -30,6 +30,8 @@ def _resource_state(facts, kind, code, counts, patterns):
         result["skills"] = facts.grouped("skills", "operator_id")[code]
         result["skill_types"] = [facts.related("op_type", row["op_type_id"]) for row in result["skills"]]
         result["machine_authorizations"] = facts.grouped("authorizations", "operator_id")[code]
+        result["authorized_machines"] = [facts.related("machine", row["machine_id"])
+                                         for row in result["machine_authorizations"]]
         shift = profile["shift_profile_id"] if profile else None
         result["shift"] = facts.related("shift_profile", shift)
         result["shift_pattern"] = patterns.get(shift, [])

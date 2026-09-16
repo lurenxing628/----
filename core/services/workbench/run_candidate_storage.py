@@ -26,7 +26,7 @@ class CandidateStore:
     def snapshot(self):
         with candidate_read_snapshot(self.conn):
             if workbench_run_contract_issues(self.conn):
-                reject("candidate_schema_unavailable", "排产记录用的结构还没装好或不完整，读不出来，系统也不会自动修。请联系维护人员。", 503)
+                reject("candidate_schema_unavailable", "排产记录结构不完整，请联系维护人员。", 503)
             yield
 
     def run(self, run_ref):

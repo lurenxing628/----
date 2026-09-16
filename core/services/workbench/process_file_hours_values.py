@@ -22,7 +22,7 @@ def row_key(values):
     if type(code) is not str or not code.strip():
         raise ValidationError("图号必须填文本，不能留空。", field="business_code")
     if type(sequence) is not int or not 1 <= sequence <= INT64_MAX:
-        raise ValidationError("工序号必须是正整数，系统不会猜，也不会四舍五入。", field="sequence")
+        raise ValidationError("工序号必须是正整数。", field="sequence")
     return code, sequence
 
 
@@ -65,7 +65,7 @@ def hours_values(values, operation, group):
         value = values[field]
         if field not in applicable:
             if value is not None:
-                raise ValidationError("这一列不适用于当前归属或现有外协组，系统不会偷偷写值，也不会新增合并组。", field=field)
+                raise ValidationError("这一列不适用于当前归属或现有外协组，请核对列值。", field=field)
         elif field == "external_days" and value is None and merged:
             result[field] = None
         else:

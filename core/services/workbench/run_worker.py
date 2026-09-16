@@ -14,7 +14,7 @@ from data.repositories.workbench_run_result_repo import WorkbenchRunResultReposi
 from .run_compute import compute_candidate_run
 from .run_input_projection_codec import restore_execution_projections
 from .run_input_readonly import candidate_read_snapshot
-from .run_jobs_facts import capture_run_facts
+from .run_jobs_facts import run_facts_unchanged
 from .run_progress import clear_progress, report_progress
 from .run_worker_snapshot import computation_database
 
@@ -30,7 +30,7 @@ class WorkbenchRunWorker:
         return self.clock().isoformat(timespec="seconds")
 
     def _check_facts(self, row, conn=None):
-        if capture_run_facts(self.conn if conn is None else conn)[0] != row["facts_hash"]:
+        if not run_facts_unchanged(self.conn if conn is None else conn, row["facts_json"], row["facts_hash"]):
             raise WorkbenchCommandRejected("snapshot_stale", "排产之后现场数据有变化，这次的候选方案没有保存。请重新做一次排产检查。")
 
     def execute(self, run_ref):

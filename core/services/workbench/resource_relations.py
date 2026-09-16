@@ -52,7 +52,7 @@ class WorkbenchResourceRelationService:
             raise WorkbenchCommandRejected("entity_not_found", "这个工种记录已失效，列表没有打开。请从工种列表重新选择。", 404)
         identity = self.identities.get(ref)
         if identity is None or identity.kind != kind or not identity.active:
-            raise WorkbenchCommandRejected("entity_not_found", "这个工种已经删除了，列表没有打开；就算有同编号的新记录，也不会自动指过去。请从工种列表重新选择。", 404)
+            raise WorkbenchCommandRejected("entity_not_found", "这个工种已经删除了。请从工种列表重新选择。", 404)
         parent = self.repo.parent(identity.entity_key)
         if parent is None:
             raise WorkbenchCommandRejected("entity_not_found", "这个工种记录已经不存在，列表没有打开。请从工种列表重新选择。", 404)
@@ -112,7 +112,7 @@ class WorkbenchResourceRelationService:
         try:
             return OperatorQualificationService(self.conn, logger=self.logger).load(codes)
         except OperatorQualificationError as exc:
-            raise WorkbenchCommandRejected("storage_failure", "人员资格资料读不出来，列表没有打开，系统也不会退回按旧授权算。请到资料总览核对后重试。", 500) from exc
+            raise WorkbenchCommandRejected("storage_failure", "人员资格资料读不出来。请到资料总览核对后重试。", 500) from exc
 
     def _page(self, parent, query, records, qualifications, facts):
         codes, total = self.repo.page(parent.entity_key, query.relation, query)

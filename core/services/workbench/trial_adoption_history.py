@@ -92,4 +92,4 @@ class WorkbenchTrialAdoptionHistoryService:
                 raise ValueError("Receipt plan ref mismatch")
             return identity, identity["blocked_reasons"]
         except WorkbenchPlanReferenceError:
-            return None, [gap("official_identity_unavailable", "这次采用的结果还在，但它生成的正式计划编号已失效，不能打开，也不能当成当前正式计划。")]
+            return None, [gap("official_identity_unavailable", "此次采用生成的正式计划编号已失效，暂无法打开。")]

@@ -16,13 +16,13 @@ from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentity
 
 
 def _binding_error() -> NoReturn:
-    raise WorkbenchCommandRejected("plan_binding_invalid", "交付风险查询和指定的计划对不上，系统不会自动换计划。请刷新后重新选择计划。")
+    raise WorkbenchCommandRejected("plan_binding_invalid", "交付风险数据与所选计划不一致，请重新选择计划。")
 
 
 def _bounded(rows):
     if len(rows) > MAX_PLAN_TASKS:
         raise WorkbenchCommandRejected(
-            "query_too_large", "整个计划或相关批次工序超过 10000 条上限，没有读取，也不会只给一部分。请缩小时间范围后重试。", 413,
+            "query_too_large", "整个计划或相关批次工序超过 10000 条上限。请缩小时间范围后重试。", 413,
         )
     return rows
 
@@ -46,7 +46,7 @@ class PlanDeliveryRepository(SchedulePlanQueryRepository):
                                      "issues_json FROM ScheduleAdjustmentScenario WHERE scenario_id = ?",
                                      (locator.scenario_id,))
             if scenario is None or scenario["status"] != "active":
-                raise WorkbenchCommandRejected("plan_unavailable", "所选试调方案无效，系统不会改去读别的计划。请回「试调」重新选一个。")
+                raise WorkbenchCommandRejected("plan_unavailable", "所选试调方案无效，请到「试调排产方案」重新选择。")
             if expected != (scenario["base_source_table"], scenario["base_candidate_id"], scenario["base_candidate_key"]):
                 _binding_error()
             expected = (SOURCE_ADJUSTMENT_SCENARIO_ROWS, None, expected[2])
@@ -90,7 +90,7 @@ class PlanDeliveryRepository(SchedulePlanQueryRepository):
             ))
             _bounded(operations)
         if {row["batch_id"] for row in batches} != set(keys):
-            raise WorkbenchCommandRejected("plan_unavailable", "计划涉及的批次已经不在了，系统不会拿别的批次凑数。请到批次管理核对。")
+            raise WorkbenchCommandRejected("plan_unavailable", "计划涉及的批次已不存在，请到批次管理核对。")
         return batches, operations
 
     def completion_record(self, identity, scenario):

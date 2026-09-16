@@ -29,7 +29,7 @@ def result_blockers(rows, no_route, counts):
 
 
 def result_warnings(settings, counts):
-    warnings = [issue("calendar_not_evaluated", "还没核对设备、人员、夜班、停机和产能班表，所以这一步通过不等于一定排得出来。")]
+    warnings = [issue("calendar_not_evaluated", "基础资料检查通过后，排产计算将继续核对资源和班表。")]
     if not settings["ready_check"]:
         warnings.append(issue("ready_check_disabled", "这次没有检查齐套状态；原来的齐套记录不变。"))
     if counts["auto_assign_required"]:

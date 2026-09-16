@@ -23,6 +23,13 @@ class WorkbenchExecutionReportRepository:
         self.conn.execute("UPDATE WorkbenchExecutionLedgerClock SET next_report_no=? WHERE singleton=1", (number,))
         return value
 
+    def append_void(self, fact, *, request_key):
+        if not self.conn.in_transaction:
+            raise RuntimeError("Report void persistence requires the outer command transaction.")
+        fields = ("void_fact_ref", "report_ref", "original_revision_ref", "reason", "local_operator", "declared_operator", "recorded_at")
+        self.conn.execute("INSERT INTO WorkbenchProductionReportVoids (" + ",".join(fields) + ",request_key) VALUES (" +
+                          ",".join("?" for _ in fields) + ",?)", [fact[key] for key in fields] + [request_key])
+
     def append(self, row, *, request_key):
         if not self.conn.in_transaction:
             raise RuntimeError("Report persistence requires the outer command transaction.")

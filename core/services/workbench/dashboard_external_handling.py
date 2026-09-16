@@ -15,7 +15,7 @@ def _source(header):
 def _navigation(ref, current):
     return [{"view": "outsourcing", "context": {"outsourcing_ref": ref}, "enabled": current,
              "query_target": "/api/workbench/v1/outsourcing/receipts/" + ref,
-             "reason": None if current else "这条外协来源现在核对不了；系统保留原来的登记和处置记录，不会换成编号相同的另一条。"}]
+             "reason": None if current else "外协来源暂时无法核对，请刷新重试。"}]
 
 
 def _observation(reader, ref, now, gap):
@@ -54,7 +54,7 @@ class DashboardExternalHandling:
         if state != "loaded" or summary["state"] not in ("loaded", "no_data"):
             summary.update(handling_supported=False, handling_count=None, closed_count=None,
                            handling_state="unavailable", handling_issues=[{"code": "dashboard_external_unavailable",
-                           "message": "外协处置数据或登记来源读不完整，系统不会猜处置状态；请先恢复完整的处置记录。"}])
+                           "message": "外协处置记录不完整，请核对登记来源和处置历史。"}])
             return [], {}, {"state": "unavailable"}
         reader = WorkbenchOutsourcingService(self.conn, clock=lambda: now)
         refs = reader.repo.refs()

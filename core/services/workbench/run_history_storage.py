@@ -14,7 +14,7 @@ def _bounded(value, limit):
     if type(value) is not int or value < 0:
         inconsistent()
     if value > limit:
-        reject("run_history_capacity_exceeded", "排产记录条数超出一次能读的上限，列表没有显示，也没有只给你看最新的几条。请缩小查询范围后重试。", 413)
+        reject("run_history_capacity_exceeded", "排产记录超过读取上限，请缩小查询范围后重试。", 413)
 
 
 class RunHistoryStore:
@@ -23,7 +23,7 @@ class RunHistoryStore:
 
     def require_schema(self):
         if workbench_run_contract_issues(self.conn):
-            reject("run_schema_unavailable", "排产记录用的结构还没装好，读不出来，系统也不会自动补。请联系维护人员。", 503)
+            reject("run_schema_unavailable", "排产记录结构不完整，请联系维护人员。", 503)
 
     def _capacity(self):
         total = 0

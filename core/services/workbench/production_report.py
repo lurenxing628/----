@@ -27,7 +27,13 @@ class WorkbenchProductionReportService:
         return ReportBatchPreparation(self.ledger, items, actor).prepare()
 
     def preview(self, action, ref, payload):
+        if action == "report_void":
+            return self._void_service().preview(ref, payload)
         return self.preview_batch([{"action": action, "ref": ref, "payload": payload}])
+
+    def _void_service(self):
+        from .production_report_void import WorkbenchReportVoidService
+        return WorkbenchReportVoidService(self.ledger, self.commands, self.actor_provider)
 
     def preview_batch(self, items):
         normalized = normalize_items(items)
@@ -35,6 +41,8 @@ class WorkbenchProductionReportService:
             return self._prepare(normalized).public()
 
     def execute(self, action, ref, payload, *, request_key, validate_context):
+        if action == "report_void":
+            return self._void_service().execute(ref, payload, request_key=request_key, validate_context=validate_context)
         items = normalize_items([{"action": action, "ref": ref, "payload": payload}])
 
         def guard():

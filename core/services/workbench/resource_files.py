@@ -16,7 +16,7 @@ from core.models.workbench_resource_action import (
     resource_refs,
     resource_scope,
 )
-from core.models.workbench_resource_file import WRITABLE, import_request
+from core.models.workbench_resource_file import READONLY, WRITABLE, import_request
 from core.models.workbench_resource_input import resource_text
 from core.models.workbench_resource_query import ResourcePageRequest
 from core.services.workbench.resource_file_codec import read_resource_file
@@ -63,11 +63,12 @@ class WorkbenchResourceFileService:
         row = action_row(source["row"])
         row["errors"] = list(source["errors"])
         values = source["values"]
+        row["reference_fields"] = [key for key in READONLY[self.kind] if key in values]
         try:
             code = cast(str, resource_text(values.get("business_code"), "business_code"))
             row["business_code"] = code
             if values["business_code"] != code and self.repo.raw(self.kind, values["business_code"]) is not None:
-                raise ValidationError("这个编号前后带空格，这一行没有导入，系统不会猜成另一个编号。请去掉前后的空格。", field="business_code")
+                raise ValidationError("编号不能有首尾空格，请修正后重新导入。", field="business_code")
             raw = self.repo.raw(self.kind, code)
             row["action"] = "create" if raw is None else "update"
             if raw is None:

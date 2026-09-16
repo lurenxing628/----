@@ -15,6 +15,7 @@ from core.services.workbench.commands import WorkbenchCommandService
 from core.services.workbench.preflight import PreflightService
 from data.repositories.workbench_run_repo import WorkbenchRunRepository
 
+from .run_data_context import RunDataContext
 from .run_input_admission import piece_admission_issues
 from .run_jobs_facts import capture_run_facts, run_baseline, run_execution_projections
 from .run_progress import read_progress
@@ -29,7 +30,7 @@ def _with_progress(payload):
 
 class WorkbenchRunService:
     def __init__(self, conn, *, integration_enabled=False, input_resolver=None, context_factory=None,
-                 context_validator=None, clock=None):
+                 context_validator=None, clock=None, data_context=None):
         self.conn = conn
         self.repo = WorkbenchRunRepository(conn)
         self.integration_enabled = integration_enabled is True
@@ -37,6 +38,7 @@ class WorkbenchRunService:
         self.context_factory = context_factory
         self.context_validator = context_validator
         self.clock = clock or datetime.now
+        self.data_context = data_context or RunDataContext(conn)
 
     def _require_outer(self):
         if self.conn.in_transaction:
@@ -48,7 +50,8 @@ class WorkbenchRunService:
         settings = self.input_resolver(self.conn, input_ref)
         data, fingerprint = PreflightService(self.conn).evaluate(settings)
         data["blockers"].extend(piece_admission_issues(self.conn, settings))
-        snapshot = {"input_ref": input_ref, "normalized_input": settings, "fingerprint": fingerprint}
+        snapshot = {"input_ref": input_ref, "normalized_input": settings, "fingerprint": fingerprint,
+                    "data_context_ref": self.data_context.ref()}
         return settings, data, snapshot
 
     def _reasons(self, data):
@@ -73,6 +76,7 @@ class WorkbenchRunService:
                     raise RuntimeError("Run authorization callbacks are not connected")
                 context = self.context_factory(input_ref, ["scheduling.run"], snapshot)
             return {"input_ref": input_ref, "normalized_input": settings, "write_context": context,
+                    "data_context_ref": snapshot["data_context_ref"],
                     "calendar_check": data["calendar_check"], "warnings": data["warnings"]}
 
     def accept(self, input_ref, write_token, request_key):
@@ -110,6 +114,7 @@ class WorkbenchRunService:
         except Exception as exc:
             raise WorkbenchCommandUncertain(request_key) from exc
         return {"ok": True, "result": "accepted", "job_ref": ref, "run_ref": ref,
+                "data_context_ref": self.data_context.ref(),
                 "status_target": "/api/workbench/v1/scheduling/runs/" + ref,
                 "receipt_ref": result["receipt_ref"], "replayed": result["replayed"], "data": state}
 

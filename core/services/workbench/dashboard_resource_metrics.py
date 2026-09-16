@@ -6,8 +6,9 @@ from datetime import date, datetime, time, timedelta
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_run_candidate import local_time
 
-from .plan_calendar_intervals import IntervalIndex, intersection, segments, union
+from .plan_calendar_intervals import union
 from .plan_calendar_windows import available_intervals
+from .resource_utilization_metrics import ResourceUtilizationMetrics
 
 MAX_DAYS = 3660
 MAX_RESOURCE_DAYS = 40000
@@ -36,28 +37,23 @@ def _occupied(tasks, low, high):
     for task in tasks:
         start, end = local_time(task["start"]), local_time(task["end"])
         if start > end:
-            raise WorkbenchCommandRejected("invalid_task_interval", "这条任务的时间填得不对，系统不会另算一个占用值。", 422)
+            raise WorkbenchCommandRejected("invalid_task_interval", "任务起止时间无效，请核对计划安排。", 422)
         if start == end:
             continue
         if start < high and end > low:
             operations[task["operation_ref"]].append((max(start, low), min(end, high)))
     intervals = [value for values in operations.values() for value in union(values)]
-    overlap = [(start, end) for start, end, count in segments(intervals) if count > 1]
-    return union(intervals), union(overlap)
+    return intervals
 
 
-def _day_pressure(first, last, occupied, overlap, available, inside_available):
-    amount = available.hours_between(first, last) if available is not None else None
-    used = occupied.hours_between(first, last)
-    inside = inside_available.hours_between(first, last) if inside_available is not None else None
-    utilization = inside / amount if inside is not None and amount is not None and amount > 0 else None
-    reason = "calendar_unavailable" if amount is None else "zero_available_capacity" if amount == 0 else None
+def _day_pressure(first, last, metrics):
+    row = metrics.window(first, last)
+    # Preserve the established daily DTO aliases; canonical metrics are explicit.
     return {"date": first.date().isoformat(), "start": first.isoformat(), "end": last.isoformat(),
-            "available_hours": None if amount is None else round(amount, 6), "occupied_hours": round(used, 6),
-            "inside_available_hours": None if inside is None else round(inside, 6),
-            "outside_available_hours": None if inside is None else round(max(0.0, used - inside), 6),
-            "overlap_hours": round(overlap.hours_between(first, last), 6),
-            "utilization": None if utilization is None else round(utilization, 6), "reason": reason}
+            "available_hours": row["available_hours"], "occupied_hours": row["span_occupied_hours"],
+            "inside_available_hours": row["occupied_hours"], "outside_available_hours": row["outside_calendar_hours"],
+            "overlap_hours": row["span_overlap_hours"],
+            "utilization": row["utilization_ratio"], "reason": row["reason"]}
 
 
 def _pressure_totals(days):
@@ -74,14 +70,10 @@ def daily_resource_pressure(tasks, calendar, start, end):
     if day_count > MAX_DAYS:
         return {"state": "unavailable", "days": [], "peak_utilization": None,
                 "reason": "calendar_range_limit", "zero_capacity_days": 0, "unknown_days": day_count}
-    occupied, overlap = _occupied(tasks, low, high)
-    occupied_index, overlap_index = IntervalIndex(occupied), IntervalIndex(overlap)
     available = available_intervals(calendar) if calendar is not None else None
-    available_index = IntervalIndex(available) if available is not None else None
-    inside_index = IntervalIndex(intersection(occupied, available)) if available is not None else None
-    days = [_day_pressure(first, last, occupied_index, overlap_index, available_index, inside_index)
-            for first, last in _days(low, high)]
-    return _pressure_totals(days)
+    metrics = ResourceUtilizationMetrics(_occupied(tasks, low, high), available)
+    days = [_day_pressure(first, last, metrics) for first, last in _days(low, high)]
+    return {**_pressure_totals(days), "window_metrics": metrics.window(low, high)}
 
 
 def pressure_summary(resources):

@@ -5,7 +5,7 @@ VIEW_TITLES = {
     "analysis": "选择排产方案", "gantt": "计划甘特", "delay": "交付风险",
     "field": "现场记录", "fieldgantt": "现场实际甘特", "review": "执行复盘",
     "reports": "报表中心", "calib": "工时定额校准", "basedata": "资料总览", "system": "系统管理",
-    "trial": "试调",
+    "trial": "试调排产方案",
 }
 
 NAV_GROUPS = (

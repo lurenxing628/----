@@ -54,7 +54,7 @@ def metadata(data, snapshot):
     return [["数据来源", data["provenance"]], ["计划", data["plan"]["display_name"]],
             [IDENTITY_LABELS[0], data["plan"]["plan_ref"]], ["数据截至", snapshot["as_of"]],
             [IDENTITY_LABELS[1], snapshot["snapshot_ref"]], ["筛选范围", canonical_json(data["scope"])],
-            ["数据缺口", "；".join(data["data_gaps"])]]
+            ["统计说明与待补资料", "；".join(data["data_gaps"])]]
 
 
 def ensure_export_size(engine, count):
@@ -67,7 +67,7 @@ def ensure_export_size(engine, count):
 def _export_values(columns, rows, format_name):
     values = [[_cell(column["key"], row.get(column["key"])) for column in columns] for row in rows]
     if format_name == "xlsx" and any(isinstance(value, str) and len(value) > 32767 for row in values for value in row):
-        raise WorkbenchCommandRejected("export_too_large", "有格子里的内容太长，XLSX 放不下，没有开始下载。请改用 CSV 导出，内容不会被截断。", 413)
+        raise WorkbenchCommandRejected("export_too_large", "单元格内容超过 XLSX 上限，请改用 CSV 导出。", 413)
     return values
 
 
@@ -96,7 +96,7 @@ def export_table(engine, data, rows, snapshot, format_name):
     if format_name == "csv":
         output = io.StringIO(newline="")
         writer = csv.writer(output)
-        writer.writerow([column["label"] for column in columns] + ["数据截至", IDENTITY_LABELS[1], "筛选范围", "数据来源", "数据缺口"])
+        writer.writerow([column["label"] for column in columns] + ["数据截至", IDENTITY_LABELS[1], "筛选范围", "数据来源", "统计说明与待补资料"])
         for row in values:
             writer.writerow([_sanitize_export_cell(value) for value in row + [snapshot["as_of"], snapshot["snapshot_ref"], canonical_json(data["scope"]), data["provenance"], "；".join(data["data_gaps"])]])
         return ReportExport(filename + ".csv", "text/csv;charset=utf-8", io.BytesIO(output.getvalue().encode("utf-8-sig")), estimated_rows=len(rows))

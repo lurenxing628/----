@@ -51,7 +51,7 @@ def _number(value, field, number):
     if not math.isfinite(result):
         raise file_error(LABELS[field] + "必须是有限数字，不能填 TRUE、FALSE、单位、公式或带千分位逗号。", number, field)
     if result == 0 and type(value) is str and not Decimal(value).is_zero():
-        raise file_error(LABELS[field] + "的数字太小，存不住这个精度，系统也不会当 0 处理。请填大一些的数。", number, field)
+        raise file_error(LABELS[field] + "的数值精度超出支持范围，请调整数值。", number, field)
     return result
 
 
@@ -87,22 +87,22 @@ def numeric_diagnostic(field, value):
     if value is None or field not in NUMBER_FIELDS:
         return None
     if field in ("setup_hours", "unit_hours") and value < 0:
-        return LABELS[field] + "不能填负数，系统不会改成 0。"
+        return LABELS[field] + "不能填负数。"
     if field in ("external_days", "group_total_days") and value <= 0:
-        return LABELS[field] + "必须填正数，系统不会替你补周期。"
+        return LABELS[field] + "必须填正数。"
     return None
 
 
 def _check_text(value, field, number, file_format):
     if file_format == "xlsx" and (_ILLEGAL_XML.search(value) or len(value) > XLSX_MAX_CELL_CHARACTERS):
-        raise file_error("这段文字含 XLSX 不支持的字符，或者超过单元格 32767 字上限，系统不会截掉一部分。请缩短后重新导入。", number, field)
+        raise file_error("这段文字含 XLSX 不支持的字符，或者超过单元格 32767 字上限。请缩短后重新导入。", number, field)
     if file_format == "csv":
         try:
             value.encode("utf-8")
         except UnicodeEncodeError as exc:
-            raise file_error("这段文字存不成 UTF-8，系统不会替换原文。请改掉特殊字符后重新导入。", number, field) from exc
+            raise file_error("这段文字存不成 UTF-8。请改掉特殊字符后重新导入。", number, field) from exc
         if "\x00" in value:
-            raise file_error("这段文字含 CSV 不支持的空字符，系统不会删掉原文。请改掉后重新导入。", number, field)
+            raise file_error("这段文字含 CSV 不支持的空字符。请改掉后重新导入。", number, field)
 
 
 def export_value(value, field, number, file_format) -> str:

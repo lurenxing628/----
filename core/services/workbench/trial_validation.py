@@ -12,6 +12,7 @@ from core.services.workbench.preflight_checks import PreflightChecks
 from .piece_adoption_trial import trial_piece_issues
 from .trial_calendar import calendar_engine, estimate
 from .trial_constraints import interval, relation_issues, resource_issues
+from .trial_execution_anchors import anchor_issue, execution_anchors
 from .trial_protection import TrialProtection
 from .zero_duration_evidence import trial_point_evidence
 
@@ -26,11 +27,16 @@ class TrialValidator:
             self.engine = calendar_engine(self.tables)
         except (AppError, ValueError, TypeError, OverflowError):
             self.engine = None
-            self.calendar_issue = issue("calendar_unproven", "当前日历数据无法验证，原草稿仍保留，未回退默认日历。")
+            self.calendar_issue = issue("calendar_unproven", "日历数据无效，请核对工作日历。")
         self.qualification = OperatorQualificationService(conn)
         self.qualification_cache = {}
         self.ops = {row["id"]: row for row in self.tables["BatchOperations"]}
         self.protection = TrialProtection(live)
+        self.anchors, self.anchor_error = {}, None
+        try:
+            self.anchors = execution_anchors(conn, rows, live)
+        except (AppError, ValueError, TypeError, KeyError, OverflowError) as exc:
+            self.anchor_error = anchor_issue(exc)
         self.downtime = {}
         for row in self.tables["MachineDowntimes"]:
             self.downtime.setdefault(row["machine_id"], []).append(row)
@@ -39,6 +45,8 @@ class TrialValidator:
         issues = list(self.admission["base_issues"])
         if self.calendar_issue:
             issues.append(self.calendar_issue)
+        if self.anchor_error:
+            issues.append(self.anchor_error)
         if any(row["operation_ref"] is None or row["recorded_against_task_ref"] is None
                for row in self.tables["WorkbenchExecutionLegacyFacts"]):
             issues.append(issue("execution_scope_unproven", "保留的历史报工记录里有对不上工序的记录，这里没有忽略它们。"))
@@ -58,8 +66,13 @@ class TrialValidator:
         original, current = row["original"], row["current"]
         issues = []
         protected = self.protection.check(row)
-        if protected and (protected["code"] not in ("task_locked", "execution_protected") or current != original["arrangement"]):
-            issues.append(protected)
+        anchor = self.anchors.get(original["operation"]["id"])
+        if anchor is not None and current != anchor["arrangement"]:
+            issues.append(issue("scenario_execution_anchor_outdated", "这份试调保留的时间或资源与实际报工不同，请从当前正式计划重新建立试调。", row["task_ref"]))
+        if protected:
+            expected = anchor["arrangement"] if anchor is not None else original["arrangement"]
+            if protected["code"] not in ("task_locked", "execution_protected") or (anchor is None and current != expected):
+                issues.append(protected)
         issues.extend(self._resources(row))
         issues.extend(self._times(row, protected))
         return issues
@@ -70,7 +83,7 @@ class TrialValidator:
         batch = original["batch"]
         issues = [dict(item, task_ref=ref, severity="blocker") for item in self.checks.fields(batch, op) + self.checks.resources(op)]
         if batch["priority"] not in ("normal", "urgent", "critical"):
-            issues.append(issue("priority_unknown", "原批次优先级无效，不能按普通件推测日历权限。", ref))
+            issues.append(issue("priority_unknown", "原批次优先级无效，请核对批次资料。", ref))
         issues.extend(self._qualification(op, ref))
         if op["source"] == "external" and (current["machine_ref"] is not None or current["operator_ref"] is not None):
             issues.append(issue("external_internal_resource", "外协工序不能带内部设备人员安排。", ref))

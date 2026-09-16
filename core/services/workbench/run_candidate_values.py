@@ -39,8 +39,8 @@ def stored_json(value, expected: Type[Any] = dict) -> Any:
 def gap(field, code="not_recorded"):
     texts = {"not_recorded": "排产时没有记下这一项。", "invalid_stored_value": "排产时记下的这一项格式不对。",
              "blob_metadata": "排产时这一项存的是二进制内容，系统不猜着解读。",
-             "source_missing": "排产时的原始记录已经没有了，系统不会拿当前同编号的资料顶替。",
-             "undefined_metric": "排产时这个指标没有算出来，占位数字不能当成真实结果。"}
+             "source_missing": "排产时的原始记录已不存在。",
+             "undefined_metric": "排产时未计算此指标。"}
     return {"field": field, "code": code, "message": texts[code]}
 
 

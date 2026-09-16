@@ -27,11 +27,11 @@ def batch_relations(graph):
         batch = batches.get(row["batch_id"])
         if material is None or batch is None:
             if material:
-                graph.issue(material, "batch_material.orphan", "物料需求批次不存在", "这条物料需求指向的批次已经不在了，系统不会按相同编号重建。")
+                graph.issue(material, "batch_material.orphan", "物料需求批次不存在", "关联批次已不存在，请核对这条物料需求。")
                 material["relations_complete"] = False
             else:
                 facts.gaps.append({"code": "material_requirement_orphan", "source": "BatchMaterials.material_id",
-                                   "message": "有批次的物料需求指向读不到或已删除的物料，系统不会凭空补一条物料资料。"})
+                                   "message": "有物料需求关联的物料无法读取，请核对物料资料。"})
             continue
         graph.link(material, batch, "需求批次", "BatchMaterials.batch_id")
         part = graph.by_key.get(("part", raw_batches[row["batch_id"]]["part_no"]))
@@ -71,4 +71,4 @@ def resource_profile_fields(graph):
         graph.field(entity, "设备组", group["name"] if group else None,
                     "WorkbenchMachineGroupMembers -> WorkbenchMachineGroups.name", required=False)
         if member and group is None:
-            graph.issue(entity, "machine.group_missing", "设备组记录缺失", "这台设备单独选了设备组，但那条设备组记录已经不在了，系统不会拿旧班组顶替。")
+            graph.issue(entity, "machine.group_missing", "设备组记录缺失", "设备组已不存在，请重新选择。")

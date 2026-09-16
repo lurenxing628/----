@@ -12,10 +12,10 @@ _MESSAGES = {
     "calendar_invalid": "工作日历或人员班表有误，这部分产能算不出来。请到工作日历核对。",
     "calendar_range_limit": "查询的日期范围太大，班表读不完。请缩小时间范围后重试。",
     "calendar_cell_limit": "设备人员和日期的组合太多，算不完。请缩小时间范围后重试。",
-    "calendar_fact_limit": "要读的班表或设备人员记录超过上限，没有读取，也不会只给一部分产能。请缩小时间范围后重试。",
+    "calendar_fact_limit": "要读的班表或设备人员记录超过上限。请缩小时间范围后重试。",
     "calendar_window_limit": "班次时长超过 24 小时，这部分产能算不出来。请到工作日历核对班次。",
     "resource_missing": "这条安排关联的设备或人员记录找不到，产能算不出来。请到资料总览核对。",
-    "resource_status_unknown": "设备或人员是启用还是停用读不出来，系统不会替你猜。请到资料总览核对。",
+    "resource_status_unknown": "设备或人员状态无效，请到资料总览核对。",
     "downtime_invalid": "设备停机时间或状态有误，产能算不出来。请到资料总览核对设备停机。",
     "calendar_unavailable": "工作日历产能算不出来；工时和时间冲突还是照常显示。",
     "assignment_source_unknown": "这条安排是自制还是外协分不清，系统不猜设备人员占用。请到基础资料核对工序归属。",
@@ -27,7 +27,7 @@ _MESSAGES = {
     "assignment_qualification_invalid": "人员的技能或设备授权资料有误，确认不了能不能干这道工序。请到资料总览核对。",
     "assignment_not_authorized": "这个人员没有该设备的操作授权。请改派人员，或到资料总览补授权。",
     "assignment_not_qualified": "这个人员没有登记该自制工种的资格。请改派人员，或到资料总览补资格。",
-    "assignment_calendar_unavailable": "这条安排要用的班表产能算不出来，系统不会把缺的工时当 0。请到工作日历核对。",
+    "assignment_calendar_unavailable": "无法计算此安排的班表产能，请到工作日历核对。",
     "assignment_outside_calendar": "这条安排有时段落在设备人员的班表外，或者撞上设备停机。请到工作日历和资料总览核对。",
     "assignment_machine_downtime": "这条安排和设备的停机时段重叠。请改期，或到资料总览核对设备停机。",
 }
@@ -45,9 +45,9 @@ def require_snapshot(conn):
 def selected_context(conn, entry, scope, rows, resources, plan_span):
     require_snapshot(conn)
     if len(rows) > MAX_PLAN_TASKS:
-        raise WorkbenchCommandRejected("query_too_large", "这个计划超过 10000 条安排上限，没有读取，也不会只给一部分。请缩小时间范围后重试。", 413)
+        raise WorkbenchCommandRejected("query_too_large", "这个计划超过 10000 条安排上限。请缩小时间范围后重试。", 413)
     if not entry.can_view or entry.plan_identity is None:
-        raise WorkbenchCommandRejected("plan_unavailable", "所选计划现在不能查看，系统不会自动换成别的计划。请刷新计划列表后重新选择。")
+        raise WorkbenchCommandRejected("plan_unavailable", "所选计划暂不可用，请刷新列表后重新选择。")
     time_scope = scope.time_scope(plan_span)
     start, end = instant(time_scope["range_start"]), instant(time_scope["range_end"])
     if start > end or (start == end and scope.range_start is not None):
@@ -76,7 +76,7 @@ def _validated_row(original, version):
         raise WorkbenchCommandRejected("plan_unavailable", "这条安排不属于所选计划的这一版。请刷新后重试。")
     low, high = instant(row["start_time"]), instant(row["end_time"])
     if low > high or (low == high and not row.get("_point_work")):
-        raise WorkbenchCommandRejected("plan_unavailable", "这条安排的时间无效，系统不会用别的时间顶替。请到计划甘特核对。")
+        raise WorkbenchCommandRejected("plan_unavailable", "工序安排的起止时间无效，请核对计划资料。")
     return row, low, high
 
 
@@ -99,5 +99,5 @@ def resource_ids(rows, kind):
 def public_resource(kind, key, identities, raw):
     identity = identities.get(kind, {}).get(key)
     if identity is None:
-        raise WorkbenchCommandRejected("identity_missing", "这条安排的设备或人员找不到编号，系统不会自动补建。请到资料总览核对。")
+        raise WorkbenchCommandRejected("identity_missing", "安排关联的设备或人员编号缺失，请到资料总览核对。")
     return {"kind": kind, "resource_ref": identity.ref, "label": raw["name"] if raw is not None else None}

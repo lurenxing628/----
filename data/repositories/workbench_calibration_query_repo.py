@@ -18,7 +18,7 @@ class WorkbenchCalibrationQueryRepository(BaseRepository):
     def templates(self, query):
         if query.part_ref is not None and self.fetchone(
                 "SELECT 1 FROM WorkbenchEntityRefs WHERE ref=? AND kind='part' AND active=1", (query.part_ref,)) is None:
-            raise WorkbenchCommandRejected("entity_not_found", "零件永久引用已失效，不会改指同号零件。", 404)
+            raise WorkbenchCommandRejected("entity_not_found", "所选零件已失效，请重新选择。", 404)
         rows = self.fetchall("""SELECT o.*, r.ref AS operation_ref, r.revision, p.part_name,
             pr.ref AS part_ref FROM PartOperations o LEFT JOIN Parts p ON p.part_no=o.part_no
             LEFT JOIN WorkbenchEntityRefs r ON r.kind='template_operation' AND r.active=1

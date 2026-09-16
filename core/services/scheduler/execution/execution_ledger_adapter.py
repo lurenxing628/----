@@ -89,7 +89,8 @@ def _scope_tasks(conn, scopes):
 def _require_reported_operation_scopes(conn):
     row = conn.execute("""SELECT o.source_key FROM WorkbenchPlanSourceRefs o
         WHERE o.kind='operation' AND o.active=1
-          AND EXISTS (SELECT 1 FROM WorkbenchProductionReports p WHERE p.operation_ref=o.ref)
+          AND EXISTS (SELECT 1 FROM WorkbenchProductionReports p WHERE p.operation_ref=o.ref
+              AND NOT EXISTS (SELECT 1 FROM WorkbenchProductionReportVoids v WHERE v.report_ref=p.report_ref))
           AND NOT EXISTS (
             SELECT 1 FROM WorkbenchPlanSourceRefs r JOIN Schedule s
               ON s.id=CAST(r.source_key AS INTEGER) AND r.source_key=CAST(s.id AS TEXT)

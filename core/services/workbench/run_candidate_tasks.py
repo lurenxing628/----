@@ -159,7 +159,7 @@ def filter_workspace(tasks, unplanned, scope):
         known = {row["batch_ref"] for row in tasks + (unplanned or [])}
         if scope.batch_ref not in known:
             from core.models.workbench_run_candidate import reject
-            reject("entity_not_found", "这个批次不在这个候选方案的范围里，没有查询；系统也不会改去查当前的同编号批次。请重新选择批次。", 404)
+            reject("entity_not_found", "该批次不在候选方案中，请重新选择。", 404)
         tasks = [row for row in tasks if row["batch_ref"] == scope.batch_ref]
         if unplanned is not None:
             unplanned = [row for row in unplanned if row["batch_ref"] == scope.batch_ref]

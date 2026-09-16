@@ -107,6 +107,6 @@ class TrialValidation:
 
 def validation(issues):
     state = "blocked" if any(row["severity"] == "blocker" for row in issues) else "warning" if issues else "valid"
-    blocked = issue("scenario_adoption_not_connected", "此功能尚未开通：保存只留下试调方案，不会改变正式计划。")
-    return TrialValidation("blocked", False, issues + [blocked], state,
-                           {"available": False, "blocked_reasons": [blocked]}).to_dict()
+    review = issue("scenario_adoption_preview_required", "保存试调方案后，正式采用前需要单独预检。", severity="warning")
+    return TrialValidation(state, False, list(issues), state,
+                           {"available": False, "blocked_reasons": [review]}).to_dict()

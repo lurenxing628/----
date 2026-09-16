@@ -36,7 +36,7 @@ def original_duration(original, *, allow_point=False):
     if op["source"] != "internal":
         reject("duration_source_unknown", "这道工序是自制还是外协读不到，算不出时长。", 422)
     if not number(op["setup_hours"]) or not number(op["unit_hours"]):
-        reject("hours_missing", "原换型工时或单件工时缺失，不能按零或最小时长补齐。", 422)
+        reject("hours_missing", "原换型工时或单件工时缺失。", 422)
     quantity = _original_target(op, batch, execution)
     try:
         total = internal_duration_hours(op["setup_hours"], op["unit_hours"], quantity)
@@ -46,7 +46,7 @@ def original_duration(original, *, allow_point=False):
         try:
             trial_point_evidence(original)
         except PointEventError:
-            reject("zero_or_invalid_duration", "这道零工时工序没有可核对的存档依据，这里不会自己补一个最小时长。", 422)
+            reject("zero_or_invalid_duration", "零工时工序的归档依据缺失。", 422)
     return {"basis": "effective_processing_hours", "setup_hours": op["setup_hours"],
             "unit_hours": op["unit_hours"], "quantity": quantity, "total_hours": total}
 
@@ -57,7 +57,7 @@ def _original_target(op, batch, execution):
     target = 1 if op["piece_id"] is not None else batch["quantity"]
     if not number(quantity, integer=True) or quantity != target or execution.get("target_basis") != basis:
         reject("piece_quantity_unknown" if op["piece_id"] is not None else "quantity_unknown",
-               "原分件或批次目标量不明确，不能用整个批次数量代替分件。", 422)
+               "原分件或批次目标量缺失。", 422)
     return quantity
 
 
@@ -68,7 +68,7 @@ def estimate(engine, original, arrangement, *, allow_point=False):
     if duration["basis"] == "calendar_days":
         return start, _second_precision(engine.add_calendar_days(start, duration["days"]))
     if arrangement["machine_ref"] is None or arrangement["operator_ref"] is None:
-        reject("resource_required", "必须明确指定设备和人员；设备不会自动推测默认人员。", 422)
+        reject("resource_required", "请选择设备和人员。", 422)
     if duration["total_hours"] == 0:
         try:
             return estimate_point_event(engine, setup_hours=duration["setup_hours"],
@@ -84,7 +84,7 @@ def estimate(engine, original, arrangement, *, allow_point=False):
         end_dt_exclusive=None, last_op_type_by_machine=None, abort_after=None,
         total_hours_base=duration["total_hours"])
     if slot.efficiency_fallback_used:
-        reject("calendar_efficiency_unknown", "班表效率读不到，这里不会改用默认效率。", 422)
+        reject("calendar_efficiency_unknown", "班表效率缺失，请核对工作日历。", 422)
     if slot.end_time <= slot.start_time:
         reject("duration_precision_unsupported", "这道工序有实际工时，但算出来不足 1 秒，不能按零工时工序保存。", 422)
     return slot.start_time, _second_precision(slot.end_time)
@@ -92,5 +92,5 @@ def estimate(engine, original, arrangement, *, allow_point=False):
 
 def _second_precision(value):
     if value.microsecond:
-        reject("duration_precision_unsupported", "算出来的时间带了秒以下的零头，不能保存，这里也不四舍五入。", 422)
+        reject("duration_precision_unsupported", "计算结果包含不足一秒的部分，无法按整秒精度保存。", 422)
     return value
