@@ -67,7 +67,7 @@
     const relations = entity.fields.category === 'internal' ? ['machines', 'operators'] : ['suppliers'];
     return <div className="wb-resource-relations">
       {null}
-      {entity.fields.category === 'internal' && <p className="muted">当前可用数量：设备 {C.availability(entity.availability) ? entity.availability.machines : '未知'} 台 · 人员 {C.availability(entity.availability) ? entity.availability.operators : '未知'} 人。下面的关联记录含停用和资格待核对的，不代表这个时段能排。</p>}
+      {entity.fields.category === 'internal' && <p className="muted">当前可用数量：设备 {C.availability(entity.availability) ? entity.availability.machines : '未知'} 台 · 人员 {C.availability(entity.availability) ? entity.availability.operators : '未知'} 人。关联列表包含停用及资格待核对的记录。</p>}
       {relations.map(relation => <Association key={relation} adapter={adapter} entity={entity} relation={relation} onOpen={onOpen} />)}
     </div>;
   }

@@ -16,7 +16,7 @@
         disabled={!confirm || save && !name.trim() || commands.blocked || !data.write_context || data.write_context.capabilities['trial.' + kind] !== true}
         onClick={() => commands.execute({ action: kind, draft_ref: data.draft_ref, input: save ? { name } : { confirm: true } }, data.write_context.write_token)}>
         {save ? '确认保存试调方案' : '确认放弃'}</U.Button></>}><div className="trial-modal-body">
-        <p>{save ? '保存后草稿关闭，试调方案保留全部原任务和调整记录，不改变正式计划。' : '仅关闭此草稿，不删除原计划、草稿记录和调整历史。此草稿将不能继续调整。'}</p>
+        <p>{save ? '保存后草稿关闭，可继续查看试调方案和调整记录。' : '放弃后草稿不可继续调整，可查看历史记录。'}</p>
         <p>原来源：{U.sourceLabel(data.base_identity)} · 完整 {data.task_count} 道安排 · 当前约束 {U.statusLabel(data.validation.constraints_status)}</p>
         {save && <label className="tt-naming">试调方案名称<input aria-label="试调方案名称" maxLength={120} value={name} onChange={e => { setName(e.target.value); setConfirm(false); }} autoComplete="off" /></label>}
         <label className="tt-check"><input type="checkbox" checked={confirm} onChange={e => setConfirm(e.target.checked)} />{save ? '确认保存完整试调方案，冲突和未排工序一并保留' : '确认放弃当前指定草稿'}</label>
@@ -48,7 +48,7 @@
     const [origin, setOrigin] = React.useState(initialTarget.task_origin || null), locatedOrigin = React.useRef(null);
     function notifyTarget(next) {
       if (typeof onTargetChange !== 'function') return;
-      const failed = () => setError(new Error('试调记录已定位，但页面地址没有更新成功。记录还在试调列表里，没有重复写入。'));
+      const failed = () => setError(new Error('试调记录已定位，但页面地址更新失败。可从试调列表重新打开。'));
       try { Promise.resolve(onTargetChange({ ...next, ...(origin && next.draft_ref ? { task_origin: origin } : {}) })).catch(failed); } catch (_) { failed(); }
     }
     const key = target.scenario_ref || target.draft_ref || '', isScenario = !!target.scenario_ref;
@@ -75,7 +75,7 @@
     const commands = S.useCommands(receipt => {
       const d = receipt.data, next = d.scenario_ref ? { scenario_ref: d.scenario_ref } : { draft_ref: d.draft_ref };
       setModal(null); setEditing(false); setTarget(next); setDirectory(false); if (d.scenario_ref) { setSelected(null); setOrigin(null); } refresh();
-      setNotice(d.scenario_ref ? '试调方案已保存，正在刷新；正式计划没有改变。' : d.status === 'discarded' ? '指定草稿已放弃，原记录与历史仍保留。' : '试调已保存，正式计划没有改变。');
+      setNotice(d.scenario_ref ? '试调方案已保存，正在刷新。' : d.status === 'discarded' ? '草稿已放弃。' : '试调已保存。');
       notifyTarget(next);
     });
     const actions = { ...commands, blocked: commands.blocked || !!key && (!read.result || !!read.error || read.busy || !!origin && !originalTask.task) };
@@ -101,12 +101,12 @@
       <header className="tt-heading"><div><h2 className="wb-page-title">排产方案试调</h2><span className="tt-muted wb-page-context">{title}{data && ' · ' + U.statusLabel(data.status)}</span></div><div className="tt-tools">
         {onNavigate && <U.Button icon="chevron-left" onClick={() => onNavigate('analysis', base || {})}>返回方案</U.Button>}
         <U.Button icon="folder-open" onClick={() => setDirectory(!directory)} aria-expanded={directory}>草稿 / 试调方案列表</U.Button>
-        <U.Button icon="plus" disabled={commands.blocked} onClick={async () => { if (await guard()) setModal('create'); }}>新增试调</U.Button>
+        <U.Button icon="plus" className="btn primary" disabled={commands.blocked} onClick={async () => { if (await guard()) setModal('create'); }}>新增试调</U.Button>
       </div></header>
       <U.ErrorBox error={error} /><U.ErrorBox error={commands.error} /><U.ErrorBox error={originalTask.error} />
       {!commands.key && commands.note && <p role="status">{commands.note}</p>}
       {commands.error && !commands.key && <U.Button icon="refresh-cw" onClick={reload} disabled={commands.busy}>刷新试调内容和操作记录</U.Button>}
-      {commands.key && <section className="tt-notice" aria-label="待确认的试调提交"><strong>上次试调提交待确认</strong><p>{commands.note || '本机只存了操作编号，还没读到结果。'}</p>
+      {commands.key && <section className="tt-notice" aria-label="待确认的试调提交"><strong>上次试调提交待确认</strong><p>{commands.note || '上次提交结果尚未确认。'}</p>
         <div className="tt-tools"><U.Button icon="refresh-cw" onClick={commands.lookup} busy={commands.busy}>查询结果</U.Button><window.WorkbenchReference value={commands.key} /></div></section>}
       {notice && <p role="status" className="tt-notice">{notice}</p>}
       {directory && <window.TrialCatalog.Directory revision={revision} onOpen={open} filterBase={base}
@@ -119,11 +119,11 @@
         <window.TrialResults.Summary data={data} /><div className="tt-main"><div><window.TrialGantt key={key} data={data} selected={selected} onSelect={select} />
           <window.TrialResults.Results key={key} data={data} onSelect={select} /></div>
           <window.TrialDetails data={data} selected={selected} commands={actions} onSelect={select} onEditing={setEditing} onRecheck={reload} guardOwner={guardOwner} editorRevision={editorRevision} /></div>
-        <footer className="tt-footer"><div><strong>整体约束：{U.statusLabel(data.validation.constraints_status)}</strong><div className="tt-muted">{typeof renderAdoption === 'function' ? '保存试调不代表正式采用' : window.WorkbenchTerms.outcomes.unavailable}</div></div>
+        <footer className="tt-footer"><div><strong>整体约束：{U.statusLabel(data.validation.constraints_status)}</strong><div className="tt-muted">{typeof renderAdoption === 'function' ? '保存后可正式采用' : window.WorkbenchTerms.outcomes.unavailable}</div></div>
           <div className="tt-tools"><U.Button icon="x" disabled={data.status !== 'editing' || actions.blocked || !data.write_context || data.write_context.capabilities['trial.discard'] !== true} onClick={async () => { if (await guard()) setModal('discard'); }}>放弃草稿</U.Button>
             <U.Button icon="check" className="btn primary" disabled={data.status !== 'editing' || actions.blocked || !data.write_context || data.write_context.capabilities['trial.save'] !== true} onClick={async () => { if (await guard()) setModal('save'); }}>保存试调方案</U.Button>
             {data.scenario_ref && typeof renderAdoption === 'function' ? renderAdoption({ scenarioRef: data.scenario_ref, data, onNavigate, disabled: actions.blocked,
-              onAdopted: () => { setNotice('采用结果在采用面板里确认；这里显示的还是上次读取的试调方案内容。'); refresh(); } }) :
+              onAdopted: () => { setNotice('采用结果已更新，请在采用面板查看。'); refresh(); } }) :
               <U.Button icon="check" reason={data.scenario_ref ? window.WorkbenchTerms.outcomes.unavailable : '请先保存试调方案，再做正式采用。'}>采用方案</U.Button>}</div></footer>
         <details className="tt-refs wb-ref"><summary>编号与读取范围</summary><div>草稿编号：<span className="tt-ref">{data.draft_ref}</span></div>
           {data.scenario_ref && <div>试调方案编号：<span className="tt-ref">{data.scenario_ref}</span></div>}<div>原来源编号：<span className="tt-ref">{Object.values(data.base)[0]}</span></div>

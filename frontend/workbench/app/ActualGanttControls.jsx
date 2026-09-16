@@ -36,14 +36,18 @@
   function Chain({ chain, model, onLocate }) {
     const visible = new Set(model.items.map(item => item.task.task_ref));
     return <div className="fg-chain-strip" aria-label="所选计划关键链" data-chain-context={chain.mode} data-chain-target={chain.target_task_ref || ''}>
-      <div className="fg-chain-heading"><strong>{chain.mode === 'related' ? '所选工序的控制前驱链' : '整版计划控制前驱链'}</strong> · 原算法近似 · {chain.mode === 'related' ? '目标计划结束' : '计划最晚结束'} {M.time(chain.makespan_end)}
-        {chain.partial && <span role="status"> · 部分结果：不含 {chain.omitted_point_count} 道零工时工序</span>}</div>
-      {chain.state === 'unavailable' ? <span role="status">关联链不可用：{chain.reason}</span> : chain.nodes.map((node, index) => <React.Fragment key={node.task_ref}>
-        {index > 0 && <span className="fg-chain-edge-label" title={chain.edges[index - 1].reason} data-chain-edge-reason>{chain.edges[index - 1].reason} · 间隔 {chain.edges[index - 1].gap_minutes} 分钟</span>}
-        <Button className="fg-chain-node" icon="search" disabled={!visible.has(node.task_ref)} data-chain-node={node.task_ref}
-          title={M.taskLabel(node)} onClick={() => onLocate(node.task_ref)}>{node.batch_id} · {node.sequence} {node.process_label}</Button>
-      </React.Fragment>)}
-      <span className="fg-muted">筛选内 {chain.task_refs.filter(ref => visible.has(ref)).length} / {chain.task_refs.length} 个节点 · 工艺实线，资源虚线 · 不是实际工时或剩余预测</span>
+      <div className="fg-chain-heading"><strong>{chain.mode === 'related' ? '所选工序前驱链（近似）' : '计划关键链（近似）'}</strong> · {chain.mode === 'related' ? '计划结束' : '最晚结束'} {M.time(chain.makespan_end)}
+        {chain.partial && <span role="status"> · 已略去 {chain.omitted_point_count} 道零工时工序</span>}</div>
+      {chain.state === 'unavailable' ? <span role="status">关联链不可用：{chain.reason}</span> : <div className="fg-chain-flow" tabIndex={0} role="group" aria-label="关键链工序，可横向滚动">
+        {chain.nodes.map((node, index) => <div className="fg-chain-step" key={node.task_ref}>
+          {index > 0 && <span className="fg-chain-edge-label" data-edge-type={chain.edges[index - 1].edge_type} data-chain-edge-reason>
+            <span>{chain.edges[index - 1].reason}</span><small>间隔 {chain.edges[index - 1].gap_minutes} 分钟</small>
+            <svg viewBox="0 0 120 12" aria-hidden="true"><path d="M0 6h117m-5-4 5 4-5 4" /></svg>
+          </span>}
+          <Button className="fg-chain-node" icon="search" disabled={!visible.has(node.task_ref)} data-chain-node={node.task_ref}
+            title={M.taskLabel(node)} onClick={() => onLocate(node.task_ref)}><span className="fg-chain-node-label"><span>{node.batch_id}</span><small>{node.sequence} {node.process_label}</small></span></Button>
+        </div>)}</div>}
+      <span className="fg-muted">当前显示 {chain.task_refs.filter(ref => visible.has(ref)).length} / {chain.task_refs.length} 道工序 · 工艺依赖：实线 · 资源依赖：虚线</span>
     </div>;
   }
   function Range({ scope, resources, onApply, busy }) {

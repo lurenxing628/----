@@ -82,7 +82,7 @@
     }, "\u6570\u636E\u622A\u81F3 ", P.when(result.meta.as_of)), /*#__PURE__*/React.createElement(Button, {
       icon: "square-pen",
       disabled: blocked,
-      reason: !item.can_preview ? '来源已经变化，历史仍然保留，不能改绑到其他工序。' : '',
+      reason: !item.can_preview ? '来源资料已变化，请重新核对工序。' : '',
       onClick: () => onEdit(item)
     }, "\u6838\u5B9E / \u66F4\u6B63\u767B\u8BB0")), data.history.items.map((h, i) => /*#__PURE__*/React.createElement("details", {
       className: "os-history",

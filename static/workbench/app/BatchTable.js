@@ -222,14 +222,14 @@
       onClick: () => onOpen(row.ref),
       disabled: disabled
     }, "\u67E5\u770B/\u7F16\u8F91"), /*#__PURE__*/React.createElement(Button, {
-      icon: "x",
+      icon: "trash-2",
       className: "btn danger",
       "aria-label": '删除批次 ' + row.business_code,
       onClick: () => onDelete(row),
       disabled: disabled,
       reasonDisplay: "tooltip",
       reason: B.reason(row.write_context, 'delete', 'production')
-    }))))), !rows.length && /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", {
+    }, "\u5220\u9664"))))), !rows.length && /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", {
       colSpan: 10
     }, /*#__PURE__*/React.createElement(window.WorkbenchControls.EmptyState, {
       kind: loading ? 'loading' : error ? 'error' : filtered ? 'filtered' : 'empty',

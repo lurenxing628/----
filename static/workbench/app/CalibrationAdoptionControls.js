@@ -11,7 +11,7 @@
   const time = value => value ? window.WorkbenchFormat.dateTime(value, {
     seconds: true
   }) : '未知';
-  const scope = '已有批次工时、历史计划和现场记录保持原样。新批次使用前，要在基础资料里重新确认模板工时。';
+  const scope = '采用后更新模板定额并锁定；已有批次保持不变。新批次使用前请重新确认模板工时。';
   function Facts({
     row
   }) {
@@ -57,9 +57,7 @@
       className: "cad-facts"
     }, [['原定额', hours(d.old_unit_hours)], ['新定额', hours(d.new_unit_hours)], ['版本变化', '第 ' + d.template_revision_before + ' 版 → 第 ' + d.template_revision_after + ' 版'], ['采用时间', time(d.adopted_at)], ['经办人', d.declared_operator], ['记录人', d.application_operator], ['采用原因', d.reason], ['用户确认', d.confirmed ? '已确认' : '未确认']].map(([label, value]) => /*#__PURE__*/React.createElement("div", {
       key: label
-    }, /*#__PURE__*/React.createElement("dt", null, label), /*#__PURE__*/React.createElement("dd", null, value)))), /*#__PURE__*/React.createElement("p", {
-      className: "ca-muted"
-    }, "\u8FD9\u662F\u672C\u6B21\u63D0\u4EA4\u7559\u4E0B\u7684\u7ED3\u679C\u8BB0\u5F55\u3002", scope), /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("dt", null, label), /*#__PURE__*/React.createElement("dd", null, value)))), /*#__PURE__*/React.createElement("div", {
       className: "cad-records"
     }, /*#__PURE__*/React.createElement(window.WorkbenchReference, {
       entries: {
@@ -113,7 +111,7 @@
         busy: s.busy,
         disabled: blocked,
         onClick: s.inspect
-      }, "\u8BFB\u53D6\u771F\u5B9E\u9884\u68C0"), /*#__PURE__*/React.createElement(Button, {
+      }, "\u68C0\u67E5\u662F\u5426\u53EF\u91C7\u7528"), /*#__PURE__*/React.createElement(Button, {
         icon: "check",
         className: "btn primary",
         busy: s.busy,
@@ -133,7 +131,7 @@
       role: "status"
     }, s.notice), other && /*#__PURE__*/React.createElement("p", {
       className: "cad-notice"
-    }, "\u4E0A\u6B21\u64CD\u4F5C\u5C5E\u4E8E\u53E6\u4E00\u4E2A\u6A21\u677F\uFF0C\u5F53\u524D\u9009\u62E9\u4E0D\u4F1A\u6539\u52A8\u5B83\u3002\u8BF7\u5148\u70B9\u300C\u67E5\u8BE2\u7ED3\u679C\u300D\u786E\u8BA4\u4E0A\u6B21\u7ED3\u679C\u3002"), stale && !pending && !result && /*#__PURE__*/React.createElement("p", {
+    }, "\u53E6\u4E00\u4E2A\u6A21\u677F\u7684\u91C7\u7528\u7ED3\u679C\u5F85\u786E\u8BA4\uFF0C\u8BF7\u5148\u67E5\u8BE2\u7ED3\u679C\u3002"), stale && !pending && !result && /*#__PURE__*/React.createElement("p", {
       className: "cad-notice"
     }, window.WorkbenchTerms.outcomes.stale), /*#__PURE__*/React.createElement("p", {
       className: "ca-muted"
@@ -165,10 +163,10 @@
         ...s.draft,
         declared_operator: e.target.value
       })
-    }), /*#__PURE__*/React.createElement("small", null, "\u7ECF\u529E\u4EBA\u5355\u72EC\u7559\u75D5\uFF0C\u4E0D\u4EE3\u8868\u767B\u5F55\u8EAB\u4EFD\uFF1B\u8BB0\u5F55\u4EBA\u7531\u7CFB\u7EDF\u53E6\u884C\u8BB0\u5F55\u3002"))), preview && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", {
+    }))), preview && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", {
       className: preview.validation.can_adopt ? 'cad-success' : 'cad-notice',
       role: "status"
-    }, preview.validation.can_adopt ? '当前预检可以采用：来源、原定额和可用完工记录已核对。' : '当前不能采用。'), preview.validation.issues.map(item => /*#__PURE__*/React.createElement("p", {
+    }, preview.validation.can_adopt ? '检查通过，可以采用。' : '当前不能采用。'), preview.validation.issues.map(item => /*#__PURE__*/React.createElement("p", {
       className: "cad-notice",
       key: item.code
     }, item.message)), preview.quota_lock && /*#__PURE__*/React.createElement("p", {
@@ -183,7 +181,7 @@
       checked: s.consent,
       disabled: s.busy || blocked,
       onChange: e => s.setConsent(e.target.checked)
-    }), /*#__PURE__*/React.createElement("span", null, "\u6211\u5DF2\u6838\u5BF9\u5B8C\u5DE5\u8BB0\u5F55\u3001\u539F\u5B9A\u989D\u4E0E\u5EFA\u8BAE\u503C\uFF0C\u786E\u8BA4\u91C7\u7528\u5E76\u9501\u5B9A\uFF0C\u53EA\u7528\u4E8E\u4EE5\u540E\u65B0\u589E\u7684\u5DE5\u5E8F\u3002")), /*#__PURE__*/React.createElement("p", {
+    }), /*#__PURE__*/React.createElement("span", null, "\u786E\u8BA4\u91C7\u7528\u5E76\u9501\u5B9A\u65B0\u5B9A\u989D\uFF0C\u7528\u4E8E\u4EE5\u540E\u65B0\u589E\u7684\u5DE5\u5E8F\u3002")), /*#__PURE__*/React.createElement("p", {
       className: "ca-muted"
     }, "\u9884\u68C0\u65F6\u95F4\uFF1A", time(preview.generated_at), preview.write_context.expires_at && ' · 有效至 ' + time(preview.write_context.expires_at)))), /*#__PURE__*/React.createElement("div", {
       className: "cad-records",

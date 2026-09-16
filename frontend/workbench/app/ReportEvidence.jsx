@@ -40,7 +40,7 @@
     </React.Fragment>)}</dl>{!!Object.keys(refs).length && <window.WorkbenchReference entries={refs} />}</div>;
   }
   function NoFeedback({ summary }) {
-    return noFeedback(summary) ? <p className="rw-no-feedback" role="status">当前范围暂无现场数据。实际值以“—”表示；计划值与已知的 0 保留。暂无反馈不等于尚未生产。</p> : null;
+    return noFeedback(summary) ? <p className="rw-no-feedback" role="status">当前范围暂无报工记录。</p> : null;
   }
   function TableFrame({ caption, children, className = '', actionColumn = -1, ...props }) {
     const frame = React.useRef(null);

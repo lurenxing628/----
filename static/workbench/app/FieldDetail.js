@@ -52,7 +52,7 @@
     }, /*#__PURE__*/React.createElement(window.PointGantt.Styles, null), /*#__PURE__*/React.createElement("div", {
       className: "field-timeline-axis"
     }, /*#__PURE__*/React.createElement("span", null, C.date(new Date(Math.min(...points)).toISOString().slice(0, 19))), /*#__PURE__*/React.createElement("span", null, C.date(new Date(Math.max(...points)).toISOString().slice(0, 19)))), rows.map(row => {
-      const title = (row.key === 'plan' ? row.point ? '零工时工序，不占设备人员；完成状态以实际记录为准' : '计划安排' : row.point ? '报工时刻' : '实际报工时段') + '\n' + row.label + '\n' + C.date(row.start) + ' 至 ' + (row.end ? C.date(row.end) : '结束未填写');
+      const title = (row.key === 'plan' ? row.point ? '零工时工序，无资源占用。' : '计划安排' : row.point ? '报工时刻' : '实际报工时段') + '\n' + row.label + '\n' + C.date(row.start) + ' 至 ' + (row.end ? C.date(row.end) : '结束未填写');
       const left = (parse(row.start) - axis.start) / (axis.end - axis.start) * 100 + '%';
       return /*#__PURE__*/React.createElement("div", {
         key: row.key,
@@ -225,7 +225,7 @@
       task: task
     }), p.completion_basis === 'legacy_finish_event' && /*#__PURE__*/React.createElement("div", {
       className: "field-note"
-    }, "\u5DF2\u6709\u5386\u53F2\u5B8C\u5DE5\u8BB0\u5F55\uFF0C\u5DE5\u5E8F\u4ECD\u7B97\u5DF2\u5B8C\u5DE5\uFF1B\u7F3A\u7684\u6570\u91CF\u548C\u6709\u6548\u5DE5\u65F6\u6CA1\u6709\u8865\u9020\u3002"), /*#__PURE__*/React.createElement(Issues, {
+    }, "\u5B8C\u5DE5\u72B6\u6001\u6765\u81EA\u5386\u53F2\u5B8C\u5DE5\u8BB0\u5F55\u3002"), /*#__PURE__*/React.createElement(Issues, {
       issues: p.data_gaps
     }), /*#__PURE__*/React.createElement("div", {
       className: "field-scroll wb-table-frame",
@@ -240,23 +240,23 @@
       className: "wb-visually-hidden"
     }, "\u672C\u5DE5\u5E8F\u6BCF\u6B21\u62A5\u5DE5\u7684\u6570\u91CF\u3001\u5B9E\u9645\u8D77\u6B62\u3001\u6709\u6548\u5DE5\u65F6\u3001\u8D44\u6E90\u548C\u66F4\u6B63\u64CD\u4F5C"), /*#__PURE__*/React.createElement("colgroup", null, /*#__PURE__*/React.createElement("col", {
       style: {
+        width: '14%'
+      }
+    }), /*#__PURE__*/React.createElement("col", {
+      style: {
+        width: '8%'
+      }
+    }), /*#__PURE__*/React.createElement("col", {
+      style: {
         width: '15%'
       }
     }), /*#__PURE__*/React.createElement("col", {
       style: {
-        width: '9%'
+        width: '15%'
       }
     }), /*#__PURE__*/React.createElement("col", {
       style: {
-        width: '16%'
-      }
-    }), /*#__PURE__*/React.createElement("col", {
-      style: {
-        width: '16%'
-      }
-    }), /*#__PURE__*/React.createElement("col", {
-      style: {
-        width: '9%'
+        width: '8%'
       }
     }), /*#__PURE__*/React.createElement("col", {
       style: {
@@ -264,11 +264,11 @@
       }
     }), /*#__PURE__*/React.createElement("col", {
       style: {
-        width: '12%'
+        width: '8%'
       }
     }), /*#__PURE__*/React.createElement("col", {
       style: {
-        width: '11%'
+        width: 190
       }
     })), /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, ['报工编号', '本次数量', '实际开工', '本次完工', '有效工时（小时）', '实际设备 / 人员', '备注', '操作'].map((name, index) => /*#__PURE__*/React.createElement("th", {
       key: name,
@@ -283,6 +283,8 @@
       onClick: () => setHistoryRef(historyRef === record.report_ref ? null : record.report_ref)
     })), /*#__PURE__*/React.createElement("td", null, C.display(record.completed_quantity)), /*#__PURE__*/React.createElement("td", null, C.date(record.actual_start)), /*#__PURE__*/React.createElement("td", null, C.date(record.actual_end)), /*#__PURE__*/React.createElement("td", null, C.display(record.effective_processing_hours)), /*#__PURE__*/React.createElement("td", null, C.display(record.actual_machine_label), /*#__PURE__*/React.createElement("small", null, C.display(record.actual_operator_label))), /*#__PURE__*/React.createElement("td", null, C.display(record.remark)), /*#__PURE__*/React.createElement("td", {
       className: "wb-col-actions"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "field-report-actions"
     }, /*#__PURE__*/React.createElement(Button, {
       icon: "file-plus",
       "aria-label": '补齐 ' + record.report_no,
@@ -305,7 +307,18 @@
         reportRef: record.report_ref,
         action: 'correct'
       })
-    }))), historyRef === record.report_ref && /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", {
+    }), /*#__PURE__*/React.createElement(Button, {
+      icon: "rotate-ccw",
+      "aria-label": '撤销 ' + record.report_no,
+      reasonDisplay: "tooltip",
+      reason: C.blocked(record.write_context, 'report_void'),
+      disabled: command.locked || !!editor,
+      onClick: () => onEdit({
+        taskRef,
+        reportRef: record.report_ref,
+        action: 'report_void'
+      })
+    }, "\u64A4\u9500")))), historyRef === record.report_ref && /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", {
       colSpan: "8"
     }, /*#__PURE__*/React.createElement(History, {
       record: record
@@ -313,15 +326,25 @@
       colSpan: "8"
     }, /*#__PURE__*/React.createElement(window.WorkbenchListControls.EmptyState, {
       title: "\u6682\u65E0\u9010\u6B21\u62A5\u5DE5",
-      hint: "\u53EF\u65B0\u589E\u672C\u6B21\u62A5\u5DE5\uFF1B\u5386\u53F2\u8BB0\u5F55\u91CC\u7684\u672A\u77E5\u503C\u4ECD\u4FDD\u6301\u672A\u77E5\u3002"
+      hint: "\u53EF\u65B0\u589E\u672C\u6B21\u62A5\u5DE5\u3002"
     })))))), missingOriginal && /*#__PURE__*/React.createElement("div", {
       className: "field-note"
     }, /*#__PURE__*/React.createElement("p", {
       role: "alert"
-    }, "\u539F\u8BB0\u5F55\u5DF2\u4E0D\u5728\u5F53\u524D\u4EFB\u52A1\u4E2D\uFF0C\u6682\u5B58\u5185\u5BB9\u672A\u5199\u5165\uFF0C\u672A\u6539\u6307\u5176\u4ED6\u8BB0\u5F55\u3002"), /*#__PURE__*/React.createElement(Button, {
+    }, "\u539F\u8BB0\u5F55\u5DF2\u5931\u6548\uFF0C\u6682\u5B58\u7F16\u8F91\u65E0\u6CD5\u4FDD\u5B58\u3002\u8BF7\u5237\u65B0\u540E\u91CD\u9009\u3002"), /*#__PURE__*/React.createElement(Button, {
       onClick: onCloseEditor,
       disabled: command.locked
-    }, "\u53D6\u6D88\u6682\u5B58\u7F16\u8F91")), editor && !missingOriginal && (editor.action === 'create' || report) && /*#__PURE__*/React.createElement(window.FieldEditor, {
+    }, "\u53D6\u6D88\u6682\u5B58\u7F16\u8F91")), editor && !missingOriginal && editor.action === 'report_void' && report && /*#__PURE__*/React.createElement(window.FieldVoidEditor, {
+      key: 'void:' + editor.reportRef,
+      task: task,
+      record: report,
+      adapter: adapter,
+      command: command,
+      retained: retained,
+      onDraft: onDraft,
+      onClose: onCloseEditor,
+      onDone: onDone
+    }), editor && editor.action !== 'report_void' && !missingOriginal && (editor.action === 'create' || report) && /*#__PURE__*/React.createElement(window.FieldEditor, {
       key: editor.action + ':' + (editor.reportRef || editor.legacyRef || taskRef),
       task: task,
       record: report,
@@ -333,7 +356,15 @@
       onDraft: onDraft,
       onClose: onCloseEditor,
       onDone: onDone
-    }), p.legacy_facts.length > 0 && /*#__PURE__*/React.createElement("details", {
+    }), (p.voided_reports || []).length > 0 && /*#__PURE__*/React.createElement("details", {
+      className: "field-note"
+    }, /*#__PURE__*/React.createElement("summary", null, "\u5DF2\u64A4\u9500\u62A5\u5DE5 \xB7 ", p.voided_reports.length, " \u6761"), p.voided_reports.map(item => /*#__PURE__*/React.createElement("section", {
+      key: item.void_fact.void_fact_ref
+    }, /*#__PURE__*/React.createElement("h4", null, item.report.report_no, " \xB7 \u5DF2\u64A4\u9500"), /*#__PURE__*/React.createElement("p", null, C.date(item.void_fact.recorded_at), " \xB7 ", item.void_fact.local_operator, item.void_fact.declared_operator ? ' · 经办人 ' + item.void_fact.declared_operator : '', " \xB7 ", item.void_fact.reason), /*#__PURE__*/React.createElement("p", null, "\u539F\u6570\u91CF ", C.display(item.report.completed_quantity), " \u4EF6 \xB7 \u539F\u6709\u6548\u5DE5\u65F6 ", C.display(item.report.effective_processing_hours), " \u5C0F\u65F6"), /*#__PURE__*/React.createElement("div", {
+      className: "field-history"
+    }, /*#__PURE__*/React.createElement("dl", null, /*#__PURE__*/React.createElement("dt", null, "\u539F\u5B9E\u9645\u8D77\u6B62"), /*#__PURE__*/React.createElement("dd", null, C.date(item.report.actual_start), " \u81F3 ", C.date(item.report.actual_end)), /*#__PURE__*/React.createElement("dt", null, "\u539F\u8BBE\u5907 / \u4EBA\u5458"), /*#__PURE__*/React.createElement("dd", null, C.display(item.report.actual_machine_label), " / ", C.display(item.report.actual_operator_label)), /*#__PURE__*/React.createElement("dt", null, "\u539F\u5907\u6CE8"), /*#__PURE__*/React.createElement("dd", null, C.display(item.report.remark)))), /*#__PURE__*/React.createElement(History, {
+      record: item.report
+    })))), p.legacy_facts.length > 0 && /*#__PURE__*/React.createElement("details", {
       className: "field-note"
     }, /*#__PURE__*/React.createElement("summary", null, "\u5386\u53F2\u73B0\u573A\u8BB0\u5F55 \xB7 ", p.legacy_facts.length, " \u6761"), p.legacy_facts.map((fact, index) => /*#__PURE__*/React.createElement("div", {
       key: fact.legacy_fact_ref || index

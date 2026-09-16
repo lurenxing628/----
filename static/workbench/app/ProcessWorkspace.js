@@ -131,9 +131,9 @@
       minWidth: 234 + P.columns.reduce((total, column) => total + column.width, 0)
     };
     return /*#__PURE__*/React.createElement("div", {
-      className: "wb-table-frame"
-    }, /*#__PURE__*/React.createElement("div", {
-      className: "card-scroll wb-table-shell"
+      className: "wb-table-frame",
+      "data-sticky-head": "true",
+      "data-sticky-actions": "true"
     }, /*#__PURE__*/React.createElement("table", {
       ref: table,
       className: "tbl wb-table",
@@ -234,13 +234,13 @@
       ready: '已就绪 · 汇总'
     }[row.workflow.stage]), /*#__PURE__*/React.createElement(Button, {
       className: "mini",
-      icon: "minus",
+      icon: "trash-2",
       disabled: disabled || loading,
       reasonDisplay: "tooltip",
       reason: deleteReason,
       "aria-label": '删除 ' + row.business_code,
       onClick: () => onDelete([row.ref])
-    }))))), !entities.length && /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", {
+    }, "\u5220\u9664"))))), !entities.length && /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", {
       colSpan: P.columns.length + 2
     }, /*#__PURE__*/React.createElement(TableEmpty, {
       loading: loading,
@@ -248,7 +248,7 @@
       onClear: onClear,
       onRetry: onRetry,
       filtered: !!(scope.query || scope.stage || Object.keys(scope.column_filters || {}).length)
-    })))))));
+    }))))));
   }
   function ProcessWorkspace({
     adapter = emptyAdapter,
@@ -441,6 +441,8 @@
     }, label), /*#__PURE__*/React.createElement("span", {
       className: "sv wb-metric-value"
     }, counts ? counts[key] : '未读取')))), /*#__PURE__*/React.createElement("div", {
+      className: "process-list-controls"
+    }, /*#__PURE__*/React.createElement("div", {
       className: "subtabs",
       role: "tablist",
       "aria-label": "\u5DE5\u827A\u9636\u6BB5"
@@ -516,13 +518,13 @@
       disabled: blocked || !selected.length,
       onClick: () => setSelected([])
     }, "\u6E05\u9664\u9009\u62E9"), /*#__PURE__*/React.createElement(Button, {
-      icon: "minus",
+      icon: "trash-2",
       className: "btn danger",
       disabled: blocked || list.loading || !selected.length,
       reasonDisplay: "tooltip",
       reason: deleteReason,
       onClick: () => action('bulk')
-    }, "\u6279\u91CF\u5220\u9664")), /*#__PURE__*/React.createElement(ErrorBox, {
+    }, "\u6279\u91CF\u5220\u9664"))), /*#__PURE__*/React.createElement(ErrorBox, {
       error: list.error
     }), list.error && /*#__PURE__*/React.createElement(Button, {
       icon: "refresh-cw",

@@ -164,14 +164,15 @@
     async function download() {
       setDownloading(true);
       setError(null);
+      setNotice('');
       try {
-        await api.download(data.exports.url, {
+        const result = await api.download(data.exports.url, {
           ...window.ReportAPI.scope(data.scope),
           ...window.ReportAPI.table(state, data.topic),
           snapshot_ref: response.meta.snapshot_ref,
           format
         });
-        setNotice('已导出当前筛选全部 ' + data.page.total + ' 项，文件已交给浏览器下载。');
+        setNotice('已交给浏览器下载：' + result.filename + '（当前筛选全部 ' + data.page.total + ' 项）。');
       } catch (failure) {
         setError(failure);
       } finally {
@@ -288,6 +289,8 @@
       busy: request.busy,
       onClick: reload
     }))), /*#__PURE__*/React.createElement("div", {
+      className: "rw-query wb-surface"
+    }, /*#__PURE__*/React.createElement("div", {
       className: "wb-view-tabs",
       role: "tablist",
       "aria-label": "\u7EDF\u8BA1\u5206\u6790\u89C6\u56FE"
@@ -315,15 +318,20 @@
           }
         }
       }
-    }, label))), /*#__PURE__*/React.createElement("div", {
-      id: "analytics-view-panel",
-      role: "tabpanel",
-      "aria-labelledby": 'analytics-view-' + mode
-    }, /*#__PURE__*/React.createElement(Scope, {
+    }, label))), /*#__PURE__*/React.createElement(Scope, {
       value: scope,
       onChange: changeScope,
       choices: lastChoices,
       busy: request.busy
+    })), /*#__PURE__*/React.createElement("div", {
+      id: "analytics-view-panel",
+      role: "tabpanel",
+      "aria-labelledby": 'analytics-view-' + mode
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "rw-results wb-surface"
+    }, mode !== 'review' && /*#__PURE__*/React.createElement(Tabs, {
+      topic: state.topic,
+      onChange: changeTopic
     }), /*#__PURE__*/React.createElement(ErrorBox, {
       error: request.error || error
     }), request.error && /*#__PURE__*/React.createElement(Button, {
@@ -332,25 +340,22 @@
     }, "\u5237\u65B0\u62A5\u8868\u6570\u636E"), notice && /*#__PURE__*/React.createElement("p", {
       className: "rw-notice",
       role: "status"
-    }, notice), mode !== 'review' && /*#__PURE__*/React.createElement(Tabs, {
-      topic: state.topic,
-      onChange: changeTopic
-    }), request.busy && /*#__PURE__*/React.createElement(window.WorkbenchListControls.EmptyState, {
+    }, notice), request.busy && /*#__PURE__*/React.createElement(window.WorkbenchListControls.EmptyState, {
       kind: "loading",
       title: "\u6B63\u5728\u8BFB\u53D6\u5F53\u524D\u8303\u56F4"
     }), data && /*#__PURE__*/React.createElement("div", {
       id: "report-topic-panel",
       role: mode === 'review' ? undefined : 'tabpanel',
       "aria-labelledby": mode === 'review' ? undefined : 'report-tab-' + state.topic
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "rw-summary"
     }, /*#__PURE__*/React.createElement(Metrics, {
       summary: data.summary,
       topic: state.topic
     }), /*#__PURE__*/React.createElement(window.ReportEvidence.NoFeedback, {
       summary: data.summary
-    }), /*#__PURE__*/React.createElement("p", {
-      className: "rw-basis"
-    }, "\u6309\u8BA1\u5212\u5B8C\u5DE5\u65E5\u6311\u5DE5\u5E8F \xB7 \u665A 10 \u5206\u949F\u4EE5\u4E0A\u624D\u7B97\u665A\u5B8C\u6210 \xB7 \u672A\u786E\u8BA4\u5B8C\u6210\u4E0D\u7B49\u4E8E\u6CA1\u751F\u4EA7\u3002"), /*#__PURE__*/React.createElement("div", {
-      className: "rw-table-heading"
+    })), /*#__PURE__*/React.createElement("div", {
+      className: "rw-table-heading wb-surface-row wb-surface-divider"
     }, /*#__PURE__*/React.createElement("div", {
       className: "rw-table-title"
     }, /*#__PURE__*/React.createElement("h3", null, state.topic === 'records' ? '逐次报工与旧现场事件' : ['machines', 'people'].includes(state.topic) ? '实际资源记录' : '范围内工序'), /*#__PURE__*/React.createElement("span", null, data.page.total, " \u9879")), /*#__PURE__*/React.createElement("div", {
@@ -375,7 +380,7 @@
       reason: !data.page.total ? '当前范围没有可导出的结果。' : '',
       onClick: download
     }, "\u5BFC\u51FA\u8303\u56F4"))), /*#__PURE__*/React.createElement("div", {
-      className: selected ? 'wb-detail-layout' : ''
+      className: 'rw-result-content' + (selected ? ' wb-detail-layout' : '')
     }, /*#__PURE__*/React.createElement("div", {
       className: "rw-list-pane"
     }, /*#__PURE__*/React.createElement(Table, {
@@ -405,16 +410,18 @@
       initialView: detailView,
       onView: setDetailView,
       onOpenOperation: onOpenOperation || (typeof onNav === 'function' ? navigateOperation : undefined)
-    })), /*#__PURE__*/React.createElement(window.ReviewCharts, {
+    })))), data && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(window.ReviewCharts, {
       data: data,
       open: chartsOpen,
       onChange: setChartsOpen,
       resourceView: resourceView,
       onResourceView: setResourceView,
       onDrill: typeof onNav === 'function' ? drill : undefined
-    }), /*#__PURE__*/React.createElement("details", {
+    }), /*#__PURE__*/React.createElement("div", {
+      className: "rw-support"
+    }, /*#__PURE__*/React.createElement("details", {
       className: "rw-limitations"
-    }, /*#__PURE__*/React.createElement("summary", null, "\u6570\u636E\u8303\u56F4\u4E0E\u7F3A\u53E3"), /*#__PURE__*/React.createElement("ul", null, data.data_gaps.map(text => /*#__PURE__*/React.createElement("li", {
+    }, /*#__PURE__*/React.createElement("summary", null, "\u7EDF\u8BA1\u8BF4\u660E\u4E0E\u5F85\u8865\u8D44\u6599"), /*#__PURE__*/React.createElement("ul", null, data.data_gaps.map(text => /*#__PURE__*/React.createElement("li", {
       key: text
     }, text)))), /*#__PURE__*/React.createElement("details", {
       className: "rw-catalog",
@@ -424,7 +431,7 @@
       api: api,
       scope: data.scope,
       snapshot: response.meta.snapshot_ref
-    })))));
+    }))))));
   }
   function GuardedWorkspace(props) {
     try {

@@ -12,7 +12,7 @@
       <div className="pf-rule"><strong>齐套检查</strong><Segment label="齐套检查" value={value.ready_check} choices={[[true, '开启'], [false, '关闭']]} disabled={disabled} onChange={ready_check => onChange({ ready_check })} /></div>
       <div className="pf-rule"><strong>缺资源工序</strong><Segment label="缺资源工序" value={value.missing_resource_policy} choices={[["auto_assign", '自动分配'], ['exclude', '暂不排']]} disabled={disabled} onChange={missing_resource_policy => onChange({ missing_resource_policy })} /></div>
       <div className="pf-rule"><span className="pf-fixed">已开工工序：保留记录（不可修改）</span></div>
-      <div className="pf-rule pf-note">本次参数，不改全局配置。工时、工种、外协资料仍为必填项；已开工和已完工的工序不能解除保护。</div>
+      <div className="pf-rule pf-note">规则仅用于本次排产。</div>
     </div></section>;
   }
   function Metrics({ counts }) {

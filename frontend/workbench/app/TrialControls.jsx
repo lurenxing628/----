@@ -29,8 +29,11 @@
       {rows.length > size && <Pager page={{ number: page, size, total: rows.length }} onPage={set} label={label} />}</>;
   }
   function Issues({ rows, onSelect }) {
-    if (!rows.length) return null;
-    return <Table rows={rows} size={10} label="约束问题" columns={[
+    // Older saved snapshots include an adoption capability note as a blocker.
+    // Adoption has its own preview/guard; this note is not a task constraint.
+    const constraints = rows.filter(row => row.code !== 'scenario_adoption_not_connected');
+    if (!constraints.length) return <p className="tt-muted">未发现约束问题。</p>;
+    return <Table rows={constraints} size={10} label="约束问题" columns={[
       ['级别', r => r.severity === 'warning' ? '提示' : '冲突'], ['问题', r => r.message],
       ['关联', r => r.task_ref && onSelect ? <Button icon="arrow-right" aria-label="定位问题工序" onClick={() => onSelect(r.task_ref)}>工序</Button> : '整体']]} />;
   }
@@ -46,7 +49,9 @@
       } catch (e) { setError(e); } finally { if (a) a.remove(); if (url) setTimeout(() => URL.revokeObjectURL(url), 1000); }
     }
     return <><span className="tt-tools"><Button icon="download" onClick={() => save()}>导出对比</Button>
-      <Button icon="file-down" onClick={() => save(true)}>导出原始数据</Button></span><ErrorBox error={error} /></>;
+      <Button icon="file-down" onClick={() => save(true)}>导出原始数据</Button>
+      <details><summary>导出说明</summary><p>导出当前读取的完整试调方案。空白表示不适用；提前量为负数表示延后。原始数据包含任务、资源、班表、报工和调整记录。</p>
+        <p>CSV 文本列带一个前置单引号。用程序读取时，按 CSV 格式解析，再移除文本列开头的一个单引号。</p></details></span><ErrorBox error={error} /></>;
   }
   window.TrialControls = { Button, Icon, Modal, ErrorBox, Pager, Tabs, Table, Issues, Download, timeLabel, number, statusLabel, sourceLabel };
 })();

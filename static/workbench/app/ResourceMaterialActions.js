@@ -201,7 +201,7 @@
       }
       try {
         if (M.category) M.category(original);
-        if (effectiveMode === 'bulk' && !M.selection(original).length) throw C.failure('未选中' + label + '，本次不会删除任何记录。');
+        if (effectiveMode === 'bulk' && !M.selection(original).length) throw C.failure('未选中' + label + '，请选择后重试。');
         if (effectiveMode !== 'import') M.requestBody(effectiveMode, original, selection);
         setJob({
           file,
@@ -280,7 +280,7 @@
       className: 'plana rm-actions' + (data && !isExport ? ' rm-wide' : '')
     }, /*#__PURE__*/React.createElement(Preview.Styles, null), /*#__PURE__*/React.createElement(Modal, {
       title: title,
-      icon: effectiveMode === 'bulk' ? 'minus' : isExport ? 'file-output' : 'file-input',
+      icon: effectiveMode === 'bulk' ? 'trash-2' : isExport ? 'file-output' : 'file-input',
       onClose: close,
       locked: command.locked,
       footer: /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Button, {
@@ -298,7 +298,7 @@
         reason: expired ? '预检结果已过期，请重新预检。' : '',
         onClick: () => downloadFile(false)
       }, "\u4E0B\u8F7D\u6587\u4EF6"), !isExport && !done && data && /*#__PURE__*/React.createElement(Button, {
-        icon: effectiveMode === 'bulk' ? 'minus' : 'check',
+        icon: effectiveMode === 'bulk' ? 'trash-2' : 'check',
         className: 'btn ' + (effectiveMode === 'bulk' ? 'danger' : 'primary wb-action wb-primary'),
         busy: command.locked,
         disabled: controlsDisabled,
@@ -393,7 +393,7 @@
       value: format,
       onChange: chooseFormat,
       disabled: controlsDisabled
-    })), !done && effectiveMode === 'bulk' && (!recovery || command.intent) && (recovery || command.intent && !job ? /*#__PURE__*/React.createElement("p", null, "\u6B63\u5728\u67E5\u8BE2\u4E0A\u6B21\u6279\u91CF\u5220\u9664\u7684\u7ED3\u679C\uFF0C\u5F53\u524D\u5217\u8868\u91CC\u65B0\u52FE\u9009\u7684\u8FD8\u6CA1\u63D0\u4EA4\u3002") : /*#__PURE__*/React.createElement("p", null, "\u672C\u6B21\u52FE\u9009\u4E86 ", /*#__PURE__*/React.createElement("b", null, refs.length), " \u6761", label, "\uFF0C\u542B\u975E\u5F53\u524D\u9875\u548C\u5F53\u524D\u7B5B\u9009\u5916\u7684\u52FE\u9009\u9879\u3002\u4E0D\u4F1A\u6269\u5927\u6210\u6574\u4E2A\u7B5B\u9009\u7ED3\u679C\u6216\u5168\u90E8\u8BB0\u5F55\u3002")), activeRead && /*#__PURE__*/React.createElement("p", {
+    })), !done && effectiveMode === 'bulk' && (!recovery || command.intent) && (recovery || command.intent && !job ? /*#__PURE__*/React.createElement("p", null, "\u6B63\u5728\u67E5\u8BE2\u4E0A\u6B21\u6279\u91CF\u5220\u9664\u7684\u7ED3\u679C\uFF0C\u5F53\u524D\u5217\u8868\u91CC\u65B0\u52FE\u9009\u7684\u8FD8\u6CA1\u63D0\u4EA4\u3002") : /*#__PURE__*/React.createElement("p", null, "\u672C\u6B21\u52FE\u9009\u4E86 ", /*#__PURE__*/React.createElement("b", null, refs.length), " \u6761", label, "\uFF0C\u542B\u975E\u5F53\u524D\u9875\u548C\u5F53\u524D\u7B5B\u9009\u5916\u7684\u52FE\u9009\u9879\u3002")), activeRead && /*#__PURE__*/React.createElement("p", {
       role: "status"
     }, "\u6B63\u5728\u8BFB\u53D6\u5B8C\u6574\u9884\u68C0\u7ED3\u679C\uFF0C\u5C1A\u672A\u5199\u5165\u6570\u636E\u2026"), /*#__PURE__*/React.createElement(ErrorBox, {
       error: error

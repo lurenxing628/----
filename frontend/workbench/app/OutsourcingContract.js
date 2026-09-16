@@ -34,13 +34,17 @@
     if (publicData) {
       check(t.grouping_basis === 'explicit_receipt_membership' && object(t.batch) && t.batch.ref === t.batch_ref && object(t.supplier) && t.supplier.ref === t.supplier_ref
         && Array.isArray(t.operations) && t.operations.length === t.operation_refs.length && equal(t.operations.map(o => o.operation_ref).sort(), t.operation_refs.slice().sort()));
+      if (t.part !== undefined) { check(object(t.part) && ref(t.part.ref)); entityLabel(t.part, t.part.ref); }
+      if (t.source_resolution !== undefined) resolution(t.source_resolution);
     }
     return { kind: t.kind, batch_ref: t.batch_ref, supplier_ref: t.supplier_ref, operation_refs: t.operation_refs.slice().sort() };
   }
   function boundary(e, t) { check(object(e) && e.automatically_reported === false && equal(e.operation_refs.slice().sort(), t.operation_refs.slice().sort())
-    && e.service === 'WorkbenchProductionReportService' && text(e.reason), '读到的回厂数据不对：外协回厂不会自动报工。请刷新后重试。'); }
+    && e.service === 'WorkbenchProductionReportService' && text(e.reason), '回厂登记数据无效，请刷新重试。'); }
   function entityLabel(entity, expected) { check(entity === null || object(entity) && entity.ref === expected && ref(expected)
     && ['business_code', 'label'].every(k => entity[k] === null || text(entity[k]) && entity[k].trim().length > 0), '外协工序的名称和编号对不上，这里不显示猜测的名称。请刷新后重试。'); }
+  function resolution(v) { check(object(v) && ['birth_record', 'current_relation', 'registration_confirmation'].includes(v.basis)
+    && (v.basis === 'registration_confirmation' ? ref(v.confirmation_ref) : v.confirmation_ref === null)); }
   function row(v) {
     check(object(v) && ref(v.outsourcing_ref) && ref(v.latest_fact_ref) && count(v.history_count) && v.history_count >= 1 && typeof v.can_preview === 'boolean'
       && ['current', 'identity_drift', 'source_unavailable'].includes(v.source_state) && Array.isArray(v.issues) && v.tracking_basis === 'manual_receipt_facts'
@@ -69,7 +73,9 @@
       check(d.grouping_basis === 'explicit_receipt_membership' && d.dates_inferred === false); page(d.page, d.items, q);
       d.items.forEach(r => { check(object(r) && ['operation_ref', 'batch_ref', 'supplier_ref', 'outsourcing_ref'].every(k => r[k] === null || ref(r[k]))
         && typeof r.can_register === 'boolean' && Array.isArray(r.issues) && (!r.can_register || r.outsourcing_ref === null && [r.operation_ref, r.batch_ref, r.supplier_ref].every(ref))
-        && (!q.batch_ref || r.batch_ref === q.batch_ref)); entityLabel(r.batch, r.batch_ref); entityLabel(r.supplier, r.supplier_ref); });
+        && (!q.batch_ref || r.batch_ref === q.batch_ref)); entityLabel(r.batch, r.batch_ref); entityLabel(r.supplier, r.supplier_ref);
+        if (r.part !== undefined && r.part !== null) { check(object(r.part) && ref(r.part.ref)); entityLabel(r.part, r.part.ref); }
+        if (r.source_resolution !== undefined && r.source_resolution !== null) resolution(r.source_resolution); });
       check(new Set(d.items.filter(r => r.operation_ref).map(r => r.operation_ref)).size === d.items.filter(r => r.operation_ref).length);
     } else if (kind === 'receipts') {
       check(d.as_of === v.meta.as_of && d.tracking_basis === 'manual_receipt_facts'); page(d.page, d.items, q);

@@ -61,7 +61,7 @@
       api.lookup(saved, controller.signal).then(value => {
         if (disposed) return;
         if (value) accept(value, saved);
-        else setNotice('还没有查到上次采用的结果。查不到不代表没有执行，系统不会换个编号重新提交；请稍后再点「查询结果」。');
+        else setNotice('上次采用结果尚未确认，请稍后再次查询。');
       }).catch(e => { if (!disposed) setError('上次操作的结果还没确认。' + e.message); }).finally(() => { if (!disposed) setBusy(false); });
       return () => { disposed = true; controller.abort(); };
     }, [saved, api, revision, storageError]);

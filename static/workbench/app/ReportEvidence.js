@@ -99,7 +99,7 @@
     return noFeedback(summary) ? /*#__PURE__*/React.createElement("p", {
       className: "rw-no-feedback",
       role: "status"
-    }, "\u5F53\u524D\u8303\u56F4\u6682\u65E0\u73B0\u573A\u6570\u636E\u3002\u5B9E\u9645\u503C\u4EE5\u201C\u2014\u201D\u8868\u793A\uFF1B\u8BA1\u5212\u503C\u4E0E\u5DF2\u77E5\u7684 0 \u4FDD\u7559\u3002\u6682\u65E0\u53CD\u9988\u4E0D\u7B49\u4E8E\u5C1A\u672A\u751F\u4EA7\u3002") : null;
+    }, "\u5F53\u524D\u8303\u56F4\u6682\u65E0\u62A5\u5DE5\u8BB0\u5F55\u3002") : null;
   }
   function TableFrame({
     caption,

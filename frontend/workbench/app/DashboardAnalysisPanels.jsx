@@ -21,7 +21,7 @@
       <tbody>{data.overlaps.map(row => <tr key={row.task_ref} data-overlap-task={row.task_ref} data-selected={selected === row.batch_ref}>
         <td><Batch row={row} selected={selected} onSelect={onSelect} /><small>{row.process_label}</small></td><td>{M.timeLabel(row.source.planned_start)}</td>
         <td>{M.timeLabel(row.source.planned_end)}</td><td>{value(row.source.overlap_hours)} 小时</td></tr>)}</tbody></table></div>
-      {!data.overlaps.length && <window.WorkbenchListControls.EmptyState kind="empty" title="当前时间范围内没有确认到直接重叠。来源读不到的部分另行列出。" />}
+      {!data.overlaps.length && <window.WorkbenchListControls.EmptyState kind="empty" title="当前时间范围内没有计划与停机重叠。" />}
     </section>
     <section aria-label="停机登记依据"><h3>登记依据</h3>{data.downtimes.map(row => <dl className="dy-facts" key={row.downtime_ref}>
       <div><dt>设备</dt><dd>{value((data.resources.find(r => r.resource_ref === row.machine_ref) || {}).label)}</dd></div><div><dt>原因</dt><dd>{value(row.reason)}</dd></div>

@@ -43,7 +43,7 @@
     }
     const sizing = widths ? { width: Object.values(widths).reduce((total, value) => total + value, 0), minWidth: 0 } :
       { minWidth: 234 + P.columns.reduce((total, column) => total + column.width, 0) };
-    return <div className="wb-table-frame"><div className="card-scroll wb-table-shell"><table ref={table} className="tbl wb-table" aria-label="零件工艺列表" aria-busy={loading} style={{ ...sizing, tableLayout: 'fixed' }}><caption className="wb-visually-hidden">{"零件工艺列表"}</caption>
+    return <div className="wb-table-frame" data-sticky-head="true" data-sticky-actions="true"><table ref={table} className="tbl wb-table" aria-label="零件工艺列表" aria-busy={loading} style={{ ...sizing, tableLayout: 'fixed' }}><caption className="wb-visually-hidden">{"零件工艺列表"}</caption>
       <thead><tr><th scope="col" data-column="__selection" style={{ width: widths ? widths.__selection : 44 }}><input ref={allRef} type="checkbox" aria-label="全选当前页" checked={all} disabled={disabled || loading || !visible.length}
         onChange={event => setSelected(event.target.checked ? Array.from(new Set(selected.concat(visible))) : selected.filter(ref => !visible.includes(ref)))} /></th>
         {P.columns.map(column => { const sorted = ordering.find(row => row.field === column.key); return <th scope="col" key={column.key} data-column={column.key} style={{ width: width(column) }} aria-sort={sorted ? sorted.direction === 'asc' ? 'ascending' : 'descending' : 'none'}>
@@ -56,10 +56,10 @@
         <td><Button className="lnk" disabled={disabled || loading} aria-label={'查看 ' + row.business_code} onClick={() => onOpen(row.ref)} style={{ whiteSpace: 'normal', overflowWrap: 'anywhere', textAlign: 'left' }}>{row.business_code}</Button></td>
         <td>{row.label}{row.issues.length > 0 && <Issues issues={row.issues} />}</td><td className="r">{row.relationships.operation_count}</td><td><Pipeline entity={row} /></td>
         <td><div className="wb-actions" style={{ flexWrap: 'wrap' }}><Button className="linkbtn" icon="arrow-right" disabled={disabled || loading} aria-label={'浏览步骤 ' + row.business_code} onClick={() => onOpen(row.ref)}>{row.workflow.route.state !== 'confirmed' ? '确认路线' : ({ source: '确认归属', hours: '填写工时', ready: '已就绪 · 汇总' })[row.workflow.stage]}</Button>
-          <Button className="mini" icon="minus" disabled={disabled || loading} reasonDisplay="tooltip" reason={deleteReason} aria-label={'删除 ' + row.business_code} onClick={() => onDelete([row.ref])} /></div></td>
+          <Button className="mini" icon="trash-2" disabled={disabled || loading} reasonDisplay="tooltip" reason={deleteReason} aria-label={'删除 ' + row.business_code} onClick={() => onDelete([row.ref])}>删除</Button></div></td>
       </tr>)}{!entities.length && <tr><td colSpan={P.columns.length + 2}><TableEmpty loading={loading} error={error} onClear={onClear} onRetry={onRetry}
         filtered={!!(scope.query || scope.stage || Object.keys(scope.column_filters || {}).length)} /></td></tr>}</tbody>
-    </table></div></div>;
+    </table></div>;
   }
   function ProcessWorkspace({ adapter = emptyAdapter, onCommitted, disabled = false, initialContext, onNavigationReady, rememberEnabled = true }) {
     const command = S.useCommand(adapter);
@@ -142,7 +142,7 @@
         {[['total', '零件总数', 'primary'], ['source', '待定归属', 'warn'], ['hours', '待填工时', 'warn'], ['ready', '已就绪', 'ok']].map(([key, label, tone]) =>
           <div key={key} className="stat wb-metric" data-tone={tone}><span className="sl wb-metric-label">{label}</span><span className="sv wb-metric-value">{counts ? counts[key] : '未读取'}</span></div>)}
       </div>
-      <div className="subtabs" role="tablist" aria-label="工艺阶段">{P.stages.map(([stage, label, key]) => <Button key={key} className={'subtab' + ((scope.stage || '') === stage ? ' on' : '')}
+      <div className="process-list-controls"><div className="subtabs" role="tablist" aria-label="工艺阶段">{P.stages.map(([stage, label, key]) => <Button key={key} className={'subtab' + ((scope.stage || '') === stage ? ' on' : '')}
         role="tab" aria-selected={(scope.stage || '') === stage} disabled={blocked} onClick={() => filter({ stage: stage || undefined })}>{label} <span className="cnt">{counts ? counts[key] : '…'}</span></Button>)}</div>
       <form className="toolbar" onSubmit={event => { event.preventDefault(); if (!blocked) filter({ query: search }); }}>
         <label className="search"><span className="ic"><Icon name="search" /></span><input type="search" aria-label="搜索图号、名称、路线" placeholder="搜索图号、名称、路线…" value={search} disabled={blocked} onChange={event => setSearch(event.target.value)} /></label>
@@ -155,8 +155,8 @@
       </form>
       <div className="toolbar"><span className="muted" aria-live="polite">已选 <b data-process-selection-count>{selected.length}</b> 项{selected.some(ref => !data || !data.entities.some(row => row.ref === ref)) ? ' · 含非当前页记录' : ''}</span>
         <Button icon="x" aria-label="清除所有选择" disabled={blocked || !selected.length} onClick={() => setSelected([])}>清除选择</Button>
-        <Button icon="minus" className="btn danger" disabled={blocked || list.loading || !selected.length} reasonDisplay="tooltip" reason={deleteReason} onClick={() => action('bulk')}>批量删除</Button>
-      </div>
+        <Button icon="trash-2" className="btn danger" disabled={blocked || list.loading || !selected.length} reasonDisplay="tooltip" reason={deleteReason} onClick={() => action('bulk')}>批量删除</Button>
+      </div></div>
       <ErrorBox error={list.error} />{list.error && <Button icon="refresh-cw" disabled={blocked} onClick={() => filter({})}>刷新列表</Button>}
       <ErrorBox error={recoveryError} />{!dialog && command.locked && <window.ResourceForms.Feedback command={command} />}
       {list.result && <Issues issues={list.result.warnings} />}

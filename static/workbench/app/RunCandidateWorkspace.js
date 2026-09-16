@@ -197,7 +197,7 @@
         });
         setPendingRow(null);
       } else if (!scope.range_start && !scope.batch_ref) {
-        setRangeError(new Error('这道末端工序不在完整候选方案里，没有换成其他工序。'));
+        setRangeError(new Error('此候选方案中未找到末端工序。'));
         setPendingRow(null);
       }
     }, [result, pendingRow]);
@@ -326,7 +326,7 @@
       busy: read.busy || directory.busy,
       onClick: reload
     })))), invalid && /*#__PURE__*/React.createElement(C.ErrorBox, {
-      error: new Error('记录编号无效，没有改查其他排产或最新候选方案。请从排产记录里重新打开。')
+      error: new Error('记录编号无效，请从排产记录重新打开。')
     }), !runRef && !candidateRef && /*#__PURE__*/React.createElement("div", {
       className: "rc-empty",
       role: "status"
@@ -363,7 +363,7 @@
       className: "rc-tools"
     }, /*#__PURE__*/React.createElement("span", {
       role: "status"
-    }, "\u5019\u9009\u6BD4\u8F83\u8BFB\u53D6\u5DF2\u53D6\u6D88\uFF0C\u672A\u663E\u793A\u4E0A\u6B21\u6BD4\u8F83\u3002"), /*#__PURE__*/React.createElement(C.Button, {
+    }, "\u5019\u9009\u6BD4\u8F83\u8BFB\u53D6\u5DF2\u53D6\u6D88\u3002"), /*#__PURE__*/React.createElement(C.Button, {
       icon: "refresh-cw",
       onClick: reload
     }, "\u5237\u65B0\u5019\u9009\u6BD4\u8F83")), runRef && !candidateRef && /*#__PURE__*/React.createElement("div", {
@@ -499,7 +499,7 @@
       }))
     }) : tab === 'unplanned' && shown.unplanned_operations === null ? /*#__PURE__*/React.createElement("div", {
       className: "rc-notice"
-    }, "\u751F\u6210\u65F6\u6CA1\u6709\u4FDD\u7559\u672A\u5B89\u6392\u660E\u7EC6\uFF0C\u4E0D\u80FD\u5F53\u6210\u96F6\u9879\u3002") : /*#__PURE__*/React.createElement(window.RunCandidateGantt.TaskList, {
+    }, "\u672A\u8BB0\u5F55\u6392\u4EA7\u65F6\u7684\u672A\u6392\u5DE5\u5E8F\u660E\u7EC6\u3002") : /*#__PURE__*/React.createElement(window.RunCandidateGantt.TaskList, {
       key: tab + ':' + query + ':' + result.meta.snapshot_ref,
       tasks: tab === 'tasks' ? tasks : unplanned,
       selected: chosen,

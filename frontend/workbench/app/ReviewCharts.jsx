@@ -20,7 +20,7 @@
       </div>)}{!rows.length && <window.WorkbenchListControls.EmptyState kind="empty" title="当前范围没有资源工时记录" />}</div>
       <window.WorkbenchListControls.Pager page={current} pages={pages} total={rows.length} size={6} unit="组" label="资源工时"
         onPage={number => onChange({ kind, page: number })} />
-      <p className="er-method">这里是实际加工工时，不代表利用率；点进去会保留关联工序的全部记录。</p>
+      <p className="er-method">点击资源查看报工明细。</p>
       <window.ReportTable.Table data={{ topic: kind === 'machine' ? 'machines' : 'people', rows: visible, columns: window.ReviewChartViews.resourceColumns }} />
     </section>;
   }
@@ -38,7 +38,7 @@
             <window.ResourceControls.Button key={label} icon="arrow-right" disabled={!onDrill} onClick={() => onDrill('delivery', { focus })}>{label}</window.ResourceControls.Button>)}</div></section></div>
       <div className="er-distribution-grid"><DistributionChart items={items(data.charts.finish, 'info')} label="已确认整道完工偏差" />
         <DistributionChart items={items(data.charts.aging, 'warning')} label="到期未确认已过时长" /></div>
-      <p className="er-method">实际曲线按已记录的整道完工回算，不是当时那一刻的数据；到期未确认已过时长不是实际晚完成偏差。</p>
+      <p className="er-method">按当前完工记录汇总每日累计完工数；待确认时长从计划完工时间起计算。</p>
       <ResourceHours data={data} onDrill={onDrill} view={resourceView} onChange={onResourceView} />
     </details>;
   }

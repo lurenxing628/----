@@ -25,7 +25,7 @@
     React.useEffect(() => {
       if (!target.context || deferred || located.current || !data || command.phase !== 'idle') return;
       located.current = true;
-      if (source !== 'production') { setNavigationError(window.APSResourceContract.failure('没有读到这个月的生产数据，不会用示例代替。')); return; }
+      if (source !== 'production') { setNavigationError(window.APSResourceContract.failure('本月日历读取失败，请重新打开工作日历。')); return; }
       if (target.context.date) {
         const day = data.days.find(row => row.date === target.context.date);
         if (!day || !day.explicit) { setNavigationError(window.APSResourceContract.failure('这一天的单独设置已经不存在了，没有新增，也没有用默认规则代替。')); return; }
@@ -87,7 +87,7 @@
         <div className="cal-panel cal-side"><h3>图例</h3><div className="cal-leg"><div><span className="sw cfg" />已单独设置工时</div>
           <div><span className="sw rest" />调休 / 加班</div><div><span className="sw we" />周末（默认非工作）</div></div>
           <h3>默认规则</h3><p>未单独设置的日期：周一至周五按 8 小时、效率 100%，普通件和急件都可排产；周末默认不排产。</p>
-          <h3>规则来源</h3><p>本页维护全局工作日历。人员专属班表和班次仍单独生效，不会在这里清除。</p>
+          <h3>规则来源</h3><p>本页维护全局工作日历；人员班表和班次单独设置。</p>
           {data && <p>本机数据截至 {window.WorkbenchFormat.dateTime(data.as_of)}</p>}</div>
       </div>
       {dialog && dialog.mode === 'view' && <Modal title={dialog.day.date + ' · 日历详情'} icon="calendar-days" onClose={close}

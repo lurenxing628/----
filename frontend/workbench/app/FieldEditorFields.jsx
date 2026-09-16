@@ -23,10 +23,10 @@
           {action === 'create' && <Button disabled={disabled || task.execution.remaining_quantity === null} onClick={() => change('completed_quantity', String(task.execution.remaining_quantity))}>最大</Button>}</div>
         <p className="field-note">已知累计 <output aria-label="已知累计">{cumulative === null ? '未核对' : cumulative}</output> / 执行目标 {C.quantity(task.execution.target_quantity)} 件
           {task.execution.unknown_record_count > 0 && <small> · 原记录数量待补 {task.execution.unknown_record_count} 条</small>}</p></section>
-      <section><h4>实际起止</h4>{timeHints && <p className="field-suggestion" role="status">以下时间为建议值，保存后会登记成实际记录。请核对；不确定时请清除，保持未知。</p>}
+      <section><h4>实际起止</h4>{timeHints && <p className="field-suggestion" role="status">请核对预填时间；不确定的时间请清空。</p>}
         <div className="field-time-grid">{[['actual_start', '实际开工'], ['actual_end', '本次实际完工']].map(([key, label]) => <div key={key}>
           <Field label={label} path={key} error={error} hint={suggestions[key] ? '建议来源：' + suggestions[key] : undefined}><input type="datetime-local" step="1" aria-label={label} value={draft[key]} disabled={readonly(key)} onChange={event => change(key, event.target.value)} /></Field>
-          <Button disabled={readonly(key) || !draft[key]} aria-label={'清除' + label} onClick={() => change(key, '')}>清除，记为未知</Button></div>)}</div></section>
+          <Button disabled={readonly(key) || !draft[key]} aria-label={'清除' + label} onClick={() => change(key, '')}>清除</Button></div>)}</div></section>
       <section><h4>工时核对</h4><Field label="有效工时（小时）" path="effective_processing_hours" error={error}><input type="number" min="0" step="any" data-wb-step="0.1" aria-label="有效工时（小时）" value={draft.effective_processing_hours} disabled={readonly('effective_processing_hours')} onChange={event => change('effective_processing_hours', event.target.value)} /></Field>
         <p className="field-note">作业时长 <output aria-label="作业时长">{hours(span)}</output></p>
         <p className={'field-note' + (difference !== null && difference < 0 ? ' field-hours-warning' : '')}>工时差额 <output aria-label="工时差额">{hours(difference)}</output></p></section>

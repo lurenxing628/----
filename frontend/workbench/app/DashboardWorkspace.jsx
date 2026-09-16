@@ -45,7 +45,7 @@
       const context = { ...(overview ? {} : n.context), return_to: { view: 'dashboard', context: current } };
       if (n.view === 'outsourcing') { setOutsourcing(context); return; }
       if (n.view === 'batches' && context.batch_ref) context.entity_ref = context.batch_ref;
-      C.check(onNavigate(n.view, context) !== false, '目标页面没有打开，这条记录仍然保留。请刷新后重试。');
+      C.check(onNavigate(n.view, context) !== false, '目标页面未能打开，请刷新重试。');
     }
     function navigate(n, origin) {
       try {
@@ -78,7 +78,7 @@
     window.WorkbenchCaption.useCaption(caption);
     if (outsourcing) return <div className="plana dashboard-live" data-dashboard-outsourcing data-return-item={outsourcing.return_to.context.item_ref}><window.DashboardStyles />
       <header className="dy-heading"><h2>外协物流登记</h2><Button icon="arrow-left" onClick={() => setOutsourcing(null)}>返回值班台条目</Button></header>
-      <div className="dy-note">外协物流登记概览 · 物流登记不替代风险处置。</div><window.WorkbenchReference entries={{ '登记编号': outsourcing.outsourcing_ref }} />
+      <div className="dy-note">外协物流登记概览</div><window.WorkbenchReference entries={{ '登记编号': outsourcing.outsourcing_ref }} />
       {typeof window.OutsourcingWorkspace === 'function' ? <window.OutsourcingWorkspace outsourcingRef={outsourcing.outsourcing_ref} onUpdated={() => setRegistrationChanged(true)} /> : <div className="dy-note warning" role="status">{window.WorkbenchTerms.outcomes.unavailable}</div>}
     </div>;
     return <div className="plana dashboard-live" data-dashboard-workspace data-ready={!!data} data-analysis-ready={!!analysisData && !analysisRead.loading && !analysisRead.error} aria-busy={list.loading}><window.DashboardStyles />
@@ -121,11 +121,11 @@
               <window.DashboardCandidates key={q.category} catalog={data.candidate_catalog} initialContext={comparisonState.context} onState={onComparisonState}
                 selectedBatch={analysisBatch} onSelectBatch={setAnalysisBatch} issueBatchRef={q.category === 'delivery' ? analysisBatch || item && item.source.batch_ref || null : null} />
               <P.Candidates data={data} navigate={navigate} canNavigate={typeof onNavigate === 'function'} />
-            </> : <section aria-label="本问题候选状态"><h3>这个问题还没有单独的候选方案</h3><p>这里不会拿其他问题的候选方案当成本问题的结论。</p>
+            </> : <section aria-label="本问题候选状态"><h3>这个问题还没有单独的候选方案</h3>
               <Button icon="git-compare-arrows" onClick={() => category('candidate')}>查看现有候选方案</Button></section>)}
             {handlingAvailable && activeTab === 'records' && <window.DashboardHistory read={history} selected={selected} rows={data.items} historyPage={historyPage} onPage={setHistoryPage} onSelect={choose} onHandle={() => setDialog(true)} />}
           </>}
-        </div></div></div><footer className="dy-footer"><span>正式计划 / 报工记录 / 资源班表 / 齐套记录 / 外协登记</span><span>风险与处置独立 · 外协回厂不等于工序完工</span></footer>
+        </div></div></div><footer className="dy-footer"><span>正式计划 / 报工记录 / 资源班表 / 齐套记录 / 外协登记</span></footer>
       {dialog && (command.saved || item) && <window.DashboardHandling key={command.saved ? command.saved.request_key : item.item_ref} item={item} command={command} onClose={() => setDialog(false)} onFinish={finish} />}
       {navigationConfirmation && <P.NavigationConfirmation entry={navigationConfirmation} error={navError}
         onClose={() => setNavigationConfirmation(null)} onConfirm={confirmNavigation} />}

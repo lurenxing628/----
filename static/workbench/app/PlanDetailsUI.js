@@ -100,7 +100,7 @@
       }, prefix, "\u672A\u5728\u672C\u8BA1\u5212\u5B89\u6392");
     })))) : /*#__PURE__*/React.createElement("p", {
       className: "plan-muted"
-    }, !selected ? '尚未选中任务' : selected.before ? '这里的前后序只属于所选计划，初始安排的前后序没有单独查询。' : order.issues.map(row => row.message).join('；') || '这道工序的冻结工艺关系暂无数据。'));
+    }, !selected ? '尚未选中任务' : selected.before ? '这里的前后序只属于所选计划，初始安排的前后序没有单独查询。' : order.issues.map(row => row.message).join('；') || '暂无该工序的前后序信息。'));
   }
   function TaskDetail({
     data,
@@ -188,13 +188,13 @@
       className: "plan-muted"
     }, "\u5C1A\u672A\u9009\u4E2D\u4EFB\u52A1") : selected.before ? /*#__PURE__*/React.createElement("p", {
       className: "plan-muted"
-    }, "\u8FD9\u91CC\u7684\u4EA4\u4ED8\u98CE\u9669\u53EA\u5C5E\u4E8E\u6240\u9009\u8BA1\u5212\uFF0C\u521D\u59CB\u8BA1\u5212\u7684\u4EA4\u4ED8\u98CE\u9669\u6CA1\u6709\u5355\u72EC\u67E5\u8BE2\u3002") : risk ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Facts, {
+    }, "\u6682\u65E0\u521D\u59CB\u8BA1\u5212\u7684\u4EA4\u4ED8\u98CE\u9669\u6570\u636E\u3002") : risk ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Facts, {
       items: [['判定', /*#__PURE__*/React.createElement("span", {
         className: risk.risk === 'overdue' ? 'plan-danger' : ''
       }, riskLabel[risk.risk])], ['交期', risk.due_date || '未记录'], ['计划完工', M.timeLabel(risk.planned_finish)], [window.WorkbenchTerms.delay_hours, risk.delay_hours === null ? '未知' : window.WorkbenchFormat.hours(risk.delay_hours, 2)], ['未排工序', M.number(risk.unscheduled_operation_count)]]
     }), risk.partial_planned_finish && /*#__PURE__*/React.createElement("p", {
       className: "plan-muted"
-    }, "\u5DF2\u5B89\u6392\u90E8\u5206\u7684\u7ED3\u675F\u65F6\u95F4\uFF1A", M.timeLabel(risk.partial_planned_finish), "\uFF0C\u4E0D\u4EE3\u8868\u6279\u6B21\u5B8C\u5DE5\u3002"), risk.issues.length > 0 && /*#__PURE__*/React.createElement("p", {
+    }, "\u5DF2\u6392\u5DE5\u5E8F\u7ED3\u675F\u65F6\u95F4\uFF1A", M.timeLabel(risk.partial_planned_finish)), risk.issues.length > 0 && /*#__PURE__*/React.createElement("p", {
       className: "plan-muted"
     }, issueText(risk.issues))) : /*#__PURE__*/React.createElement("p", {
       className: "plan-muted"
@@ -202,14 +202,14 @@
       className: "plan-muted"
     }, "\u96F6\u5DE5\u65F6\u5DE5\u5E8F\uFF0C\u4E0D\u5360\u8BBE\u5907\u4EBA\u5458\u3002") : selected && selected.before ? /*#__PURE__*/React.createElement("p", {
       className: "plan-muted"
-    }, "\u521D\u59CB\u8BA1\u5212\u7684\u73ED\u8868\u548C\u5360\u7528\u6CA1\u6709\u5355\u72EC\u67E5\u8BE2\u3002") : !resources.length ? /*#__PURE__*/React.createElement("p", {
+    }, "\u6682\u65E0\u521D\u59CB\u8BA1\u5212\u7684\u73ED\u8868\u548C\u8D44\u6E90\u5360\u7528\u6570\u636E\u3002") : !resources.length ? /*#__PURE__*/React.createElement("p", {
       className: "plan-muted"
     }, "\u6682\u65E0\u8D44\u6E90\u5360\u7528\u6570\u636E") : resources.map(row => /*#__PURE__*/React.createElement("div", {
       key: row.resource_ref
     }, /*#__PURE__*/React.createElement("strong", null, row.label || labels.get(row.resource_ref) || '资源名称未填写'), /*#__PURE__*/React.createElement(Facts, {
-      items: [['已占时间', window.WorkbenchFormat.hours(row.occupied_hours, 2)], ['可用时间', row.available_hours === null ? '暂无数据' : window.WorkbenchFormat.hours(row.available_hours, 2)], ['班表内占用', row.utilization === null ? '暂无数据' : M.number(row.utilization * 100) + '%'], ['重叠时间', /*#__PURE__*/React.createElement("span", {
+      items: [['班表内占用', row.available_occupied_hours === null ? '暂无数据' : window.WorkbenchFormat.hours(row.available_occupied_hours, 2)], ['可用时间', row.available_hours === null ? '暂无数据' : window.WorkbenchFormat.hours(row.available_hours, 2)], ['占用率', row.utilization === null ? '暂无数据' : M.number(row.utilization * 100) + '%'], ['重叠时间', /*#__PURE__*/React.createElement("span", {
         className: row.has_overlap ? 'plan-danger' : ''
-      }, window.WorkbenchFormat.hours(row.overlap_hours, 2))]]
+      }, window.WorkbenchFormat.hours(row.overlap_hours, 2))], ['班表外占用', row.outside_available_hours === null ? '暂无数据' : window.WorkbenchFormat.hours(row.outside_available_hours, 2)]]
     }), /*#__PURE__*/React.createElement(Issues, {
       issues: row.issues
     }))))));
@@ -218,7 +218,7 @@
     const projection = data.projections.occupancy,
       scope = data.time_scope;
     const require = value => {
-      if (!value) throw new Error('资源重叠明细的时间范围或重叠依据读不到，没有按零重叠显示。请点「刷新」重试。');
+      if (!value) throw new Error('资源重叠数据不完整，请刷新后重试。');
     };
     require(projection && projection.basis === 'selected_plan_only' && projection.plan_ref === data.plan.plan_ref && ['available', 'partial', 'unavailable'].includes(projection.state) && Array.isArray(projection.resources) && Array.isArray(projection.issues) && projection.time_scope && scope && ['range_start', 'range_end', 'selection', 'boundary', 'time_basis'].every(key => projection.time_scope[key] === scope[key]));
     const start = M.instant(scope.range_start),
@@ -280,13 +280,13 @@
       labels = M.names(data);
     const known = projection.state === 'available',
       scope = projection.time_scope;
-    const empty = !known ? '当前范围还有资料读不到，不能认定为没有重叠。' : !projection.resources.length ? '当前读取范围没有资源占用记录。' : '当前读取范围未发现资源安排重叠。';
+    const empty = !known ? '资料不完整，暂无法核对资源重叠。' : !projection.resources.length ? '当前读取范围没有资源占用记录。' : '当前读取范围未发现资源安排重叠。';
     return /*#__PURE__*/React.createElement("section", {
       className: "plan-projections",
       "aria-label": "\u8D44\u6E90\u91CD\u53E0\u660E\u7EC6"
     }, /*#__PURE__*/React.createElement("h3", null, "\u8D44\u6E90\u91CD\u53E0\u660E\u7EC6"), /*#__PURE__*/React.createElement("div", {
       className: "plan-note"
-    }, M.timeLabel(scope.range_start), " \u81F3 ", M.timeLabel(scope.range_end), "\uFF08\u4E0D\u542B\u7ED3\u675F\uFF09", data.scope.range_start !== null ? ' · 当前读取切片，不代表整份计划' : ' · 完整计划读取范围', /*#__PURE__*/React.createElement("div", null, "\u4EC5\u5217\u6240\u9009\u8BA1\u5212\u5728\u8BE5\u8303\u56F4\u7684\u8D44\u6E90\u5B89\u6392\u91CD\u53E0\uFF0C\u4E0D\u4EE3\u8868\u7B49\u5F85\u3001\u505C\u673A\u3001\u7F3A\u6599\u6216\u8D85\u671F\u539F\u56E0\u3002"), !known && /*#__PURE__*/React.createElement("div", null, projection.state === 'partial' ? '部分资料读不到。' : '资源依据读不全。', "\u4EE5\u4E0B\u53EA\u5217\u5DF2\u786E\u8BA4\u7684\u7247\u6BB5\uFF0C\u672A\u77E5\u90E8\u5206\u4E0D\u8BA1\u4E3A\u96F6\u3002")), /*#__PURE__*/React.createElement(Issues, {
+    }, M.timeLabel(scope.range_start), " \u81F3 ", M.timeLabel(scope.range_end), "\uFF08\u4E0D\u542B\u7ED3\u675F\uFF09", data.scope.range_start !== null ? ' · 所选时间范围' : ' · 完整计划读取范围', !known && /*#__PURE__*/React.createElement("div", null, "\u8D44\u6599\u4E0D\u5B8C\u6574\uFF0C\u4EE5\u4E0B\u4E3A\u5DF2\u8BFB\u53D6\u7684\u91CD\u53E0\u65F6\u6BB5\u3002")), /*#__PURE__*/React.createElement(Issues, {
       issues: projection.issues
     }), rows.length ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
       className: "plan-projection-table wb-table-frame",
@@ -347,7 +347,7 @@
       }
     }), /*#__PURE__*/React.createElement("div", {
       className: "plan-note"
-    }, tab === 'risk' ? '按所选计划的完整批次安排判定，不代表实际完工或发货。' : tab === 'load' ? '只统计所选计划在此时间范围内的安排；占用率 = 班表内已占时间 / 可用时间。设备有空闲时间不代表人员已就绪。' : '只列出所选时间范围内的可工作时段；普通件、急件能否安排及效率分别记录。', projection.state !== 'available' && /*#__PURE__*/React.createElement("span", null, " \xB7 ", projection.state === 'partial' ? '部分资料读不到' : '暂无数据')), /*#__PURE__*/React.createElement(Issues, {
+    }, tab === 'risk' ? '按所选计划的批次安排评估交付风险。' : tab === 'load' ? '占用率 = 班表内已占时间 ÷ 可用时间' : '所选时间范围内的可工作时段。', projection.state !== 'available' && /*#__PURE__*/React.createElement("span", null, " \xB7 ", projection.state === 'partial' ? '部分资料读不到' : '暂无数据')), /*#__PURE__*/React.createElement(Issues, {
       issues: projection.issues || []
     }), /*#__PURE__*/React.createElement("div", {
       className: "plan-projection-table wb-table-frame",
@@ -359,7 +359,7 @@
       "aria-label": tab === 'risk' ? '交付风险列表' : tab === 'load' ? '资源负荷列表' : '资源班表列表'
     }, /*#__PURE__*/React.createElement("caption", {
       className: "wb-visually-hidden"
-    }, tab === 'risk' ? '交付风险列表' : tab === 'load' ? '资源负荷列表' : '资源班表列表'), /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, (tab === 'risk' ? ['批次 / 零件', '交期', '计划完工', '交付风险', '未排工序', '说明'] : tab === 'load' ? ['资源', '安排（小时）', '已占（小时）', '可用（小时）', '重叠（小时）', '班表内占用率'] : ['资源', '可用（小时）', '普通有效（小时）', '急件有效（小时）', '可工作时段', '说明']).map((label, index) => /*#__PURE__*/React.createElement("th", {
+    }, tab === 'risk' ? '交付风险列表' : tab === 'load' ? '资源负荷列表' : '资源班表列表'), /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, (tab === 'risk' ? ['批次 / 零件', '交期', '计划完工', '交付风险', '未排工序', '说明'] : tab === 'load' ? ['资源', '安排（小时）', '班表内占用（小时）', '可用（小时）', '重叠（小时）', '班表内占用率', '班表外占用（小时）'] : ['资源', '可用（小时）', '普通有效（小时）', '急件有效（小时）', '可工作时段', '说明']).map((label, index) => /*#__PURE__*/React.createElement("th", {
       scope: "col",
       className: index === 0 ? 'wb-col-key' : undefined,
       key: label
@@ -376,7 +376,7 @@
       className: "plan-muted"
     }, "\u5DF2\u5B89\u6392\u90E8\u5206\u7ED3\u675F\u4E8E\uFF1A", M.timeLabel(row.partial_planned_finish))), /*#__PURE__*/React.createElement("td", {
       className: row.risk === 'overdue' ? 'plan-danger' : ''
-    }, riskLabel[row.risk], row.delay_hours !== null && /*#__PURE__*/React.createElement("div", null, window.WorkbenchFormat.hours(row.delay_hours, 2))), /*#__PURE__*/React.createElement("td", null, row.unscheduled_operation_count), /*#__PURE__*/React.createElement("td", null, issueText(row.issues) || '当前工序安排已覆盖')) : /*#__PURE__*/React.createElement("tr", {
+    }, riskLabel[row.risk], row.delay_hours !== null && /*#__PURE__*/React.createElement("div", null, window.WorkbenchFormat.hours(row.delay_hours, 2))), /*#__PURE__*/React.createElement("td", null, row.unscheduled_operation_count), /*#__PURE__*/React.createElement("td", null, issueText(row.issues) || '全部工序已安排')) : /*#__PURE__*/React.createElement("tr", {
       key: row.resource_ref
     }, /*#__PURE__*/React.createElement("td", {
       className: "wb-col-key"
@@ -385,9 +385,9 @@
       onClick: () => onResource(labels.get(row.resource_ref) || '')
     }, row.label || labels.get(row.resource_ref) || '名称未填写'), /*#__PURE__*/React.createElement("div", {
       className: "plan-muted"
-    }, M.kindLabels[row.kind])), tab === 'load' ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("td", null, M.number(row.arranged_hours)), /*#__PURE__*/React.createElement("td", null, M.number(row.occupied_hours)), /*#__PURE__*/React.createElement("td", null, M.number(row.available_hours)), /*#__PURE__*/React.createElement("td", {
+    }, M.kindLabels[row.kind])), tab === 'load' ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("td", null, M.number(row.arranged_hours)), /*#__PURE__*/React.createElement("td", null, M.number(row.available_occupied_hours)), /*#__PURE__*/React.createElement("td", null, M.number(row.available_hours)), /*#__PURE__*/React.createElement("td", {
       className: row.has_overlap ? 'plan-danger' : ''
-    }, M.number(row.overlap_hours)), /*#__PURE__*/React.createElement("td", null, row.utilization === null ? '未知' : /*#__PURE__*/React.createElement(React.Fragment, null, window.WorkbenchFormat.percent(row.utilization), /*#__PURE__*/React.createElement("span", {
+    }, M.number(row.overlap_hours)), /*#__PURE__*/React.createElement("td", null, row.utilization === null ? '未知' : /*#__PURE__*/React.createElement(React.Fragment, null, window.WorkbenchFormat.percent(row.utilization, 2), /*#__PURE__*/React.createElement("span", {
       className: "plan-meter"
     }, /*#__PURE__*/React.createElement("i", {
       style: {
@@ -395,10 +395,10 @@
       }
     }))), /*#__PURE__*/React.createElement("div", {
       className: "plan-muted"
-    }, issueText(row.issues)))) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("td", null, M.number(row.available_hours)), /*#__PURE__*/React.createElement("td", null, M.number(row.normal_effective_hours)), /*#__PURE__*/React.createElement("td", null, M.number(row.urgent_effective_hours)), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(CalendarWindows, {
+    }, issueText(row.issues))), /*#__PURE__*/React.createElement("td", null, M.number(row.outside_available_hours))) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("td", null, M.number(row.available_hours)), /*#__PURE__*/React.createElement("td", null, M.number(row.normal_effective_hours)), /*#__PURE__*/React.createElement("td", null, M.number(row.urgent_effective_hours)), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(CalendarWindows, {
       windows: row.windows
-    })), /*#__PURE__*/React.createElement("td", null, issueText(row.issues) || '已读取真实班表')))), !visible.length && /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", {
-      colSpan: 6
+    })), /*#__PURE__*/React.createElement("td", null, issueText(row.issues) || '班表已读取')))), !visible.length && /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", {
+      colSpan: tab === 'load' ? 7 : 6
     }, /*#__PURE__*/React.createElement(window.WorkbenchControls.EmptyState, {
       kind: "empty",
       title: projection.state === 'available' ? '所选时间范围内没有记录。' : '资料未记录或读不到，暂无数据。'

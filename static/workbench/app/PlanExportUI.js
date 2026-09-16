@@ -113,11 +113,9 @@
       label: "\u8BA1\u5212\u5BFC\u51FA\u683C\u5F0F",
       disabled: busy,
       onChange: setFormat
-    }), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("strong", null, result.data.plan.display_name)), /*#__PURE__*/React.createElement("p", null, "\u5BFC\u51FA\u65F6\u95F4\u8303\u56F4\uFF1A", M.timeLabel(result.data.time_scope.range_start), " \u2192 ", M.timeLabel(result.data.time_scope.range_end), "\uFF08\u4E0D\u542B\u7ED3\u675F\u65F6\u523B\uFF09"), /*#__PURE__*/React.createElement("p", null, "\u5171 ", result.data.task_count, " \u9053\u5DE5\u5E8F\u5B89\u6392\uFF0C\u6309\u5F53\u524D\u8BFB\u53D6\u7684\u8BA1\u5212\u5185\u5BB9\u5BFC\u51FA\u3002CSV \u4E3A\u5DE5\u5E8F\u5B89\u6392\u8868\uFF0CXLSX \u53E6\u542B\u8BA1\u5212\u5206\u6790\u8868\u3002"), query.trim() && /*#__PURE__*/React.createElement("p", {
+    }), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("strong", null, result.data.plan.display_name)), /*#__PURE__*/React.createElement("p", null, "\u5BFC\u51FA\u65F6\u95F4\u8303\u56F4\uFF1A", M.timeLabel(result.data.time_scope.range_start), " \u2192 ", M.timeLabel(result.data.time_scope.range_end), "\uFF08\u4E0D\u542B\u7ED3\u675F\u65F6\u523B\uFF09"), /*#__PURE__*/React.createElement("p", null, "\u5171 ", result.data.task_count, " \u9053\u5DE5\u5E8F\u5B89\u6392\uFF0C\u6309\u5F53\u524D\u8BFB\u53D6\u7684\u8BA1\u5212\u5185\u5BB9\u5BFC\u51FA\u3002"), query.trim() && /*#__PURE__*/React.createElement("p", {
       className: "plan-danger"
-    }, "\u641C\u7D22\u201C", query, "\u201D\u627E\u5230 ", matched, " \u9053\u5B89\u6392\uFF0C\u53EA\u5F71\u54CD\u7518\u7279\u56FE\u663E\u793A\u3002\u672C\u6B21\u5BFC\u51FA\u4ECD\u5305\u542B\u6B64\u65F6\u95F4\u8303\u56F4\u5185\u7684\u5168\u90E8 ", result.data.task_count, " \u9053\u5B89\u6392\uFF0C\u4E0D\u662F\u641C\u7D22\u7ED3\u679C\u3002"), /*#__PURE__*/React.createElement("p", {
-      className: "plan-muted"
-    }, "\u5F53\u524D\u8BFB\u53D6\u7684\u8BA1\u5212\u5185\u5BB9\u65E0\u6CD5\u6838\u5BF9\u65F6\u4F1A\u505C\u6B62\u4E0B\u8F7D\uFF0C\u8BF7\u5237\u65B0\u540E\u91CD\u65B0\u786E\u8BA4\u5BFC\u51FA\uFF1B\u4E0D\u4F1A\u81EA\u52A8\u66F4\u6362\u8BA1\u5212\u6216\u7EE7\u7EED\u4E0B\u8F7D\u3002"), /*#__PURE__*/React.createElement(ErrorBox, {
+    }, "\u641C\u7D22\u201C", query, "\u201D\u627E\u5230 ", matched, " \u9053\u5B89\u6392\uFF1B\u672C\u6B21\u5BFC\u51FA\u5305\u542B\u6240\u9009\u65F6\u95F4\u8303\u56F4\u7684\u5168\u90E8 ", result.data.task_count, " \u9053\u5B89\u6392\u3002"), /*#__PURE__*/React.createElement(ErrorBox, {
       error: error
     }))));
   }

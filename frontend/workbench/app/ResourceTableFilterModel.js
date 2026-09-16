@@ -56,7 +56,7 @@
       || !C.object(data) || data.column !== request.column || data.basis !== 'toolbar_scope';
     if (invalid) throw C.failure('读到的列值不完整，没有当成空列表。请回到第 1 页重新查询。');
     if (request.snapshot_ref && meta.snapshot_ref !== request.snapshot_ref)
-      throw C.failure('列值已经更新，没有混用不同页的数据。请回到第 1 页重新查询。');
+      throw C.failure('数据已更新，请回到第 1 页重新查询。');
     return data;
   }
   function facets(raw, request) {

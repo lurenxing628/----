@@ -59,7 +59,7 @@ function SystemLive({ boot, theme, initialContext }) {
     <MetricStrip columns={4} className="sm-metrics"><Metric label="当前页面检查" value={ready + ' / ' + local.checks.length} helper="仅页面依赖与资源" />
       <Metric label="本机数据读取" value={!current ? '演示模式' : readSuspended ? '读取已暂停' : loading ? '读取中' : error ? '读取失败' : payload ? '已连接' : '未读取'} helper={current ? readSuspended ? '请先查询上次维护操作的结果' : '来自本机服务' : '独立固定样例'} tone={error && current ? 'danger' : undefined} />
       <Metric label="数据库状态" value={current && data ? stateLabel(data.database.state) : '未知'} helper="尚未执行完整性检查" tone={current && data && data.database.state === 'error' ? 'danger' : undefined} />
-      <Metric label="备份健康" value="未校验" helper={current && data && data.backups.count != null ? data.backups.count + ' 个备份文件' : '文件存在不代表可恢复'} />
+      <Metric label="备份校验" value="未校验" helper={current && data && data.backups.count != null ? data.backups.count + ' 个备份文件' : '尚未校验'} />
     </MetricStrip>
     {notice && <p className="sm-notice" role="status">{notice}</p>}
     {current && error && <div className="sm-notice sm-tone-danger" role="alert">{error}<ControlButton size="sm" onClick={refresh}>重试</ControlButton></div>}
@@ -100,9 +100,9 @@ function SystemLiveOverview({ data, report, onTab }) {
       {job.last_run_time ? window.WorkbenchFormat.dateTime(job.last_run_time) : '暂无可确认的执行时间'} · {job.result ? ({ completed: '已记录完成', failed: '失败', partial: '部分异常', skipped: '已跳过', invalid: '结果异常', unknown: '结果待核对', not_recorded: '未留存结果' }[job.result.status]) : '未读取结果'}
     </p>)}</details>
   </section><details className="sm-section sm-environment"><summary>页面环境自检<span className="sm-meta">{report.checks.filter(item => item.status === 'available').length} / {report.checks.length} 项可用</span></summary>
-    <p className="sm-meta">检查时间 {window.WorkbenchFormat.instant(report.checkedAt)} · 不代表数据库或备份健康</p>
+    <p className="sm-meta">检查时间 {window.WorkbenchFormat.instant(report.checkedAt)}</p>
     <div className="wb-table-shell wb-table-frame" data-sticky-head><table className="wb-table sm-table sm-check-table">
-      <caption className="wb-visually-hidden">当前页面环境自检，不代表数据库或备份健康</caption>
+      <caption className="wb-visually-hidden">当前页面环境检查</caption>
       <thead><tr><th scope="col">检查项</th><th scope="col">结果</th><th scope="col">检查范围</th></tr></thead>
       <tbody>{report.checks.map(item => <tr key={item.id}><th scope="row">{item.label}</th><td><SMStatus state={item.status} /></td><td>{item.detail}</td></tr>)}</tbody>
     </table></div></details></div>;
@@ -152,6 +152,6 @@ function SystemLiveConfig({ data }) {
           {data.dirty_fields.includes(field.key) ? <small className="sm-error">{data.dirty_reasons[field.key]}</small> : data.defaulted_fields.includes(field.key) ? <small className="sm-meta">默认值，尚未保存</small> : <small className="sm-meta">已存配置</small>}</div>
         </div>)}</fieldset>)}
     </div></div>}
-    <details className="sm-rules"><summary>生效范围与自动维护规则</summary><p>打开页面时系统才会检查一次自动维护，不保证在指定时刻执行。看概况不会触发备份或清理。</p></details>
+    <details className="sm-rules"><summary>生效范围与自动维护规则</summary><p>自动维护在打开页面时检查是否到期。</p></details>
   </section></div>;
 }

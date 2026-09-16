@@ -179,9 +179,9 @@ function SystemLive({
     helper: "\u5C1A\u672A\u6267\u884C\u5B8C\u6574\u6027\u68C0\u67E5",
     tone: current && data && data.database.state === 'error' ? 'danger' : undefined
   }), /*#__PURE__*/React.createElement(Metric, {
-    label: "\u5907\u4EFD\u5065\u5EB7",
+    label: "\u5907\u4EFD\u6821\u9A8C",
     value: "\u672A\u6821\u9A8C",
-    helper: current && data && data.backups.count != null ? data.backups.count + ' 个备份文件' : '文件存在不代表可恢复'
+    helper: current && data && data.backups.count != null ? data.backups.count + ' 个备份文件' : '尚未校验'
   })), notice && /*#__PURE__*/React.createElement("p", {
     className: "sm-notice",
     role: "status"
@@ -352,14 +352,14 @@ function SystemLiveOverview({
     className: "sm-meta"
   }, report.checks.filter(item => item.status === 'available').length, " / ", report.checks.length, " \u9879\u53EF\u7528")), /*#__PURE__*/React.createElement("p", {
     className: "sm-meta"
-  }, "\u68C0\u67E5\u65F6\u95F4 ", window.WorkbenchFormat.instant(report.checkedAt), " \xB7 \u4E0D\u4EE3\u8868\u6570\u636E\u5E93\u6216\u5907\u4EFD\u5065\u5EB7"), /*#__PURE__*/React.createElement("div", {
+  }, "\u68C0\u67E5\u65F6\u95F4 ", window.WorkbenchFormat.instant(report.checkedAt)), /*#__PURE__*/React.createElement("div", {
     className: "wb-table-shell wb-table-frame",
     "data-sticky-head": true
   }, /*#__PURE__*/React.createElement("table", {
     className: "wb-table sm-table sm-check-table"
   }, /*#__PURE__*/React.createElement("caption", {
     className: "wb-visually-hidden"
-  }, "\u5F53\u524D\u9875\u9762\u73AF\u5883\u81EA\u68C0\uFF0C\u4E0D\u4EE3\u8868\u6570\u636E\u5E93\u6216\u5907\u4EFD\u5065\u5EB7"), /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
+  }, "\u5F53\u524D\u9875\u9762\u73AF\u5883\u68C0\u67E5"), /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
     scope: "col"
   }, "\u68C0\u67E5\u9879"), /*#__PURE__*/React.createElement("th", {
     scope: "col"
@@ -586,5 +586,5 @@ function SystemLiveConfig({
     className: "sm-meta"
   }, "\u5DF2\u5B58\u914D\u7F6E")))))))), /*#__PURE__*/React.createElement("details", {
     className: "sm-rules"
-  }, /*#__PURE__*/React.createElement("summary", null, "\u751F\u6548\u8303\u56F4\u4E0E\u81EA\u52A8\u7EF4\u62A4\u89C4\u5219"), /*#__PURE__*/React.createElement("p", null, "\u6253\u5F00\u9875\u9762\u65F6\u7CFB\u7EDF\u624D\u4F1A\u68C0\u67E5\u4E00\u6B21\u81EA\u52A8\u7EF4\u62A4\uFF0C\u4E0D\u4FDD\u8BC1\u5728\u6307\u5B9A\u65F6\u523B\u6267\u884C\u3002\u770B\u6982\u51B5\u4E0D\u4F1A\u89E6\u53D1\u5907\u4EFD\u6216\u6E05\u7406\u3002"))));
+  }, /*#__PURE__*/React.createElement("summary", null, "\u751F\u6548\u8303\u56F4\u4E0E\u81EA\u52A8\u7EF4\u62A4\u89C4\u5219"), /*#__PURE__*/React.createElement("p", null, "\u81EA\u52A8\u7EF4\u62A4\u5728\u6253\u5F00\u9875\u9762\u65F6\u68C0\u67E5\u662F\u5426\u5230\u671F\u3002"))));
 }

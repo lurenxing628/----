@@ -113,7 +113,7 @@
     return {
       read() {
         const raw = storage.getItem(PENDING_KEY); if (raw === null) return null;
-        let value; try { value = JSON.parse(raw); } catch (_) { throw new Error('本机存的上次操作记录已损坏，没有清除也没有重新提交。请不要再操作，联系维护人员。'); }
+        let value; try { value = JSON.parse(raw); } catch (_) { throw new Error('上次操作记录损坏，请联系维护人员核对。'); }
         check(validIntent(value), '本机存的上次操作记录不完整，已停止新的操作。请不要再操作，联系维护人员。'); return value;
       },
       begin(action) {

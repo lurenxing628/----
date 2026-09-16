@@ -44,11 +44,15 @@
       "aria-label": "\u672C\u6B21\u5916\u534F\u6210\u5458"
     }, /*#__PURE__*/React.createElement("div", {
       className: "os-heading"
-    }, /*#__PURE__*/React.createElement("b", null, value(target.batch.business_code), " \xB7 ", value(target.batch.label)), /*#__PURE__*/React.createElement("span", null, value(target.supplier.label), " \xB7 ", target.kind === 'merged' ? '合并发出' : '单工序', " \xB7 ", target.operations.length, " \u9053\u5DE5\u5E8F")), /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("b", null, value(target.batch.business_code), " \xB7 ", value(target.batch.label)), /*#__PURE__*/React.createElement("span", null, value(target.supplier.label), " \xB7 ", target.kind === 'merged' ? '合并发出' : '单工序', " \xB7 ", target.operations.length, " \u9053\u5DE5\u5E8F")), target.part && /*#__PURE__*/React.createElement("div", {
+      className: "os-muted"
+    }, "\u56FE\u53F7\uFF1A", value(target.part.business_code), " \xB7 ", value(target.part.label)), /*#__PURE__*/React.createElement("div", {
       className: "os-members"
     }, target.operations.map(o => /*#__PURE__*/React.createElement("span", {
       key: o.operation_ref
-    }, value(o.business_code), " \xB7 ", value(o.label), o.piece !== null ? ' · 分件 ' + value(o.piece) : ''))));
+    }, value(o.business_code), " \xB7 ", value(o.label), o.piece !== null ? ' · 分件 ' + value(o.piece) : ''))), target.source_resolution && target.source_resolution.basis === 'current_relation' && /*#__PURE__*/React.createElement("div", {
+      className: "os-muted"
+    }, "\u8FD9\u6279\u65E7\u5DE5\u5E8F\u6309\u672C\u9875\u5217\u51FA\u7684\u6279\u6B21\u767B\u8BB0\u3002"));
   }
   function Facts({
     facts,
@@ -286,7 +290,7 @@
     }), /*#__PURE__*/React.createElement("div", {
       className: 'os-note ' + (done ? 'success' : 'warning'),
       role: "status"
-    }, done ? window.WorkbenchTerms.outcomes.done('外协登记', '回厂不等于工序完工') : v.phase === 'rejected' ? '上次外协登记没有生效，填写内容已保留。改好后重新提交。' : window.WorkbenchTerms.outcomes.pending('外协登记')), /*#__PURE__*/React.createElement("div", {
+    }, done ? window.WorkbenchTerms.outcomes.done('外协登记') : v.phase === 'rejected' ? '上次外协登记没有生效，填写内容已保留。改好后重新提交。' : window.WorkbenchTerms.outcomes.pending('外协登记')), /*#__PURE__*/React.createElement("div", {
       "data-original-key": true
     }, /*#__PURE__*/React.createElement(window.WorkbenchReference, {
       entries: {

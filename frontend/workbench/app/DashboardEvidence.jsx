@@ -50,7 +50,7 @@
     const e = source.evaluation;
     const timeline = Object.fromEntries(['planned_start', 'planned_end', 'first_actual_start', 'confirmed_finish', 'finish_deviation_minutes', 'overlap_hours', 'delay_after_reschedule_hours'].filter(key => Object.prototype.hasOwnProperty.call(source, key)).map(key => [key, source[key]]));
     return <><window.WorkbenchReference entries={{ '正式计划编号': source.plan_ref, '批次编号': source.batch_ref }} />
-      {source.kind === 'outsourcing_receipt' && <><h4>物流登记记录</h4>{source.receipt && window.OutsourcingControls ? <div className="outsourcing-live"><window.OutsourcingStyles /><window.OutsourcingControls.Facts facts={source.receipt} /></div> : <div className="dy-note warning">这条物流登记现在读不到，发出和回厂时间都按未知处理。</div>}</>}
+      {source.kind === 'outsourcing_receipt' && <><h4>物流登记记录</h4>{source.receipt && window.OutsourcingControls ? <div className="outsourcing-live"><window.OutsourcingStyles /><window.OutsourcingControls.Facts facts={source.receipt} /></div> : <div className="dy-note warning">物流登记读取失败，请刷新重试。</div>}</>}
       {source.requirements && <Structure title="物料需求" value={source.requirements} />}
       {e && <Structure title="交付评估" value={e} />}
       {source.execution_state && <div className="dy-note">执行状态：{display(source.execution_state)} · {display(source.data_quality)}</div>}

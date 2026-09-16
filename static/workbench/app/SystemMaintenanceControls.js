@@ -11,7 +11,7 @@
     const label = typeof children === 'string' ? children : props['aria-label'];
     return /*#__PURE__*/React.createElement(window.ResourceControls.Button, {
       ...props,
-      icon: icon === 'rotate-ccw' ? undefined : icon === 'save' ? 'check' : icon === 'trash-2' ? 'x' : icon,
+      icon: icon === 'rotate-ccw' ? undefined : icon === 'save' ? 'check' : icon,
       title: props.reason || props.title || label,
       "aria-label": props['aria-label'] || (props.reason && label ? label + '：' + props.reason : undefined),
       reasonDisplay: props.reason ? 'inline' : props.reasonDisplay,
@@ -82,13 +82,13 @@
       ready = !destructive || checked && (action !== 'restore' || typed === '恢复');
     return /*#__PURE__*/React.createElement(window.ResourceControls.Modal, {
       title: A.actions[action],
-      icon: action === 'create' ? 'plus' : action === 'delete' ? 'x' : 'history',
+      icon: action === 'create' ? 'plus' : action === 'delete' ? 'trash-2' : 'history',
       onClose: onClose,
       footer: /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Button, {
         onClick: onClose
       }, "\u53D6\u6D88"), /*#__PURE__*/React.createElement(Button, {
-        icon: "check",
-        className: "btn primary",
+        icon: action === 'delete' ? 'trash-2' : 'check',
+        className: 'btn ' + (action === 'delete' ? 'danger' : 'primary'),
         reason: reason,
         disabled: !ready,
         onClick: onConfirm
@@ -98,7 +98,7 @@
       style: {
         overflowWrap: 'anywhere'
       }
-    }, row && /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("strong", null, row.filename), /*#__PURE__*/React.createElement("br", null), "\u6587\u4EF6\u4FEE\u6539\u65F6\u95F4 ", window.WorkbenchFormat.dateTime(row.time), " \xB7 ", row.size_bytes, " \u5B57\u8282", /*#__PURE__*/React.createElement("br", null), "\u6587\u4EF6\u5B58\u5728\uFF0C\u5C1A\u65E0\u672C\u6B21\u5B8C\u6574\u6027\u6821\u9A8C\u8BC1\u636E\u3002"), /*#__PURE__*/React.createElement("p", null, action === 'create' ? '新增一份本机数据库备份。结果以维护记录为准。' : action === 'delete' ? '仅删除此备份文件，删除后不能撤销。' : '将用所选备份替换当前数据库。系统会先生成保护副本；完整性检查不通过时自动还原。'), action === 'restore' && /*#__PURE__*/React.createElement("p", {
+    }, row && /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("strong", null, row.filename), /*#__PURE__*/React.createElement("br", null), "\u6587\u4EF6\u4FEE\u6539\u65F6\u95F4 ", window.WorkbenchFormat.dateTime(row.time), " \xB7 ", row.size_bytes, " \u5B57\u8282", /*#__PURE__*/React.createElement("br", null), "\u6587\u4EF6\u5B58\u5728\uFF0C\u5C1A\u65E0\u672C\u6B21\u5B8C\u6574\u6027\u6821\u9A8C\u8BC1\u636E\u3002"), /*#__PURE__*/React.createElement("p", null, action === 'create' ? '备份当前数据库。' : action === 'delete' ? '仅删除此备份文件，删除后不能撤销。' : '将用所选备份替换当前数据库。系统会先生成保护副本；完整性检查不通过时自动还原。'), action === 'restore' && /*#__PURE__*/React.createElement("p", {
       className: "sm-notice"
     }, "\u4E00\u65E6\u63D0\u4EA4\u6062\u590D\uFF0C\u4E1A\u52A1\u64CD\u4F5C\u4F1A\u505C\u7528\u3002\u65E0\u8BBA\u6062\u590D\u6210\u529F\u8FD8\u662F\u5DF2\u8FD8\u539F\uFF0C\u90FD\u8981\u5173\u95ED\u6574\u4E2A\u8F6F\u4EF6\u518D\u542F\u52A8\uFF1B\u53EA\u5237\u65B0\u6D4F\u89C8\u5668\u4E0D\u7B97\u91CD\u542F\u3002"), destructive && /*#__PURE__*/React.createElement("label", {
       className: "sm-inline-label"
@@ -194,7 +194,7 @@
       role: "status"
     }, "\u7CFB\u7EDF\u62D2\u7EDD\u4E86\u8FD9\u6B21\u63D0\u4EA4\uFF0C\u914D\u7F6E\u6CA1\u6709\u6539\u52A8\u3002\u8BF7\u6309\u4E0A\u9762\u7684\u63D0\u793A\u6539\u597D\u540E\u91CD\u65B0\u63D0\u4EA4\u3002") : null, intent && !(result && result.terminal) && /*#__PURE__*/React.createElement("p", {
       className: "sm-note"
-    }, result && result.kind === 'not_recorded' ? result.message : '上次操作还没有确认结果。', " \u67E5\u4E0D\u5230\u7ED3\u679C\u4E0D\u4EE3\u8868\u6CA1\u6709\u6267\u884C\uFF0C\u7CFB\u7EDF\u4E0D\u4F1A\u6362\u4E2A\u7F16\u53F7\u91CD\u505A\u3002", intent.action === 'restore' ? ' 恢复的结果确认前，暂停读取数据库里的其他信息。' : ''));
+    }, result && result.kind === 'not_recorded' ? result.message : '上次操作还没有确认结果。', " \u8BF7\u70B9\u300C\u67E5\u8BE2\u7ED3\u679C\u300D\uFF0C\u52FF\u91CD\u590D\u63D0\u4EA4\u3002", intent.action === 'restore' ? ' 确认恢复结果前，业务操作暂停。' : ''));
   }
   function Preferences({
     theme,

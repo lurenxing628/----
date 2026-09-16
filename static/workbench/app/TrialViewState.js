@@ -51,7 +51,7 @@
     try {
       raw = storage(store).getItem(name);
     } catch (_) {
-      throw problem('read_unavailable', '本机试调查看偏好无法读取，原记录未替换。');
+      throw problem('read_unavailable', '本机试调查看偏好读取失败。');
     }
     if (raw === null) return null;
     let value;
@@ -103,7 +103,7 @@
       targetStorage.removeItem(name);
       if (targetStorage.getItem(name) !== null) throw new Error('not removed');
     } catch (_) {
-      throw problem('clear_unavailable', '不能确认这条记录的查看偏好已清除，没有清理其他记录。');
+      throw problem('clear_unavailable', '查看偏好清除失败，请重试。');
     }
   }
   function useView(data) {

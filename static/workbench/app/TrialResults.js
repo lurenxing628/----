@@ -10,7 +10,9 @@
       className: "tt-summary"
     }, [[c.late_count, window.WorkbenchTerms.overdue_count], [c.total_delay_hours, window.WorkbenchTerms.total_tardiness_hours + '（小时）'], [c.changed_operations, '调整工序'], [c.moved_operations, '换设备工序']].map(([value, label]) => /*#__PURE__*/React.createElement("div", {
       key: label
-    }, /*#__PURE__*/React.createElement("span", null, label), /*#__PURE__*/React.createElement("strong", null, U.number(value)))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", null, "\u6362\u578B\u6B21\u6570"), /*#__PURE__*/React.createElement("strong", null, c.changeovers === null ? '未评估' : U.number(c.changeovers))));
+    }, /*#__PURE__*/React.createElement("span", null, label), /*#__PURE__*/React.createElement("strong", null, U.number(value)))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", null, "\u6362\u578B\u6B21\u6570"), /*#__PURE__*/React.createElement("strong", {
+      title: c.changeovers === null ? c.changeover_reason : undefined
+    }, c.changeovers === null ? '未评估' : U.number(c.changeovers))));
   }
   function Calendar({
     resource
@@ -22,7 +24,7 @@
       rows: resource.segments,
       size: 10,
       columns: [["开始", r => U.timeLabel(r.start)], ['结束', r => U.timeLabel(r.end)], ['并行工序', r => r.concurrent_operations]]
-    }), /*#__PURE__*/React.createElement("h4", null, "\u53EF\u5DE5\u4F5C\u65F6\u6BB5"), resource.calendar.windows === null ? /*#__PURE__*/React.createElement("p", null, "\u771F\u5B9E\u73ED\u8868\u4E0D\u53EF\u7528") : /*#__PURE__*/React.createElement(U.Table, {
+    }), /*#__PURE__*/React.createElement("h4", null, "\u53EF\u5DE5\u4F5C\u65F6\u6BB5"), resource.calendar.windows === null ? /*#__PURE__*/React.createElement("p", null, "\u73ED\u8868\u6682\u4E0D\u53EF\u7528") : /*#__PURE__*/React.createElement(U.Table, {
       label: "\u53EF\u5DE5\u4F5C\u65F6\u6BB5",
       rows: resource.calendar.windows,
       size: 10,
@@ -57,7 +59,7 @@
       } catch (_) {
         return {
           tab: null,
-          error: new Error('本页试调页签记录无法恢复，未用默认页签覆盖。')
+          error: new Error('试调页签记录无法恢复，请刷新或清除本页页签记录。')
         };
       }
     }
@@ -80,7 +82,7 @@
       } catch (_) {
         setEntry({
           ...entry,
-          error: new Error('本页试调页签记录未能清除，未清理其他页面。')
+          error: new Error('本页试调页签记录清除失败，请重试。')
         });
       }
     }
@@ -139,10 +141,12 @@
       role: "alert"
     }, window.WorkbenchTerms.outcomes.unavailable)), tab === 'delivery' && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", {
       className: "tt-muted"
-    }, "\u5BF9\u6BD4\u57FA\u7840\uFF1A\u539F\u8BD5\u8C03\u6765\u6E90\u3002\u4EA4\u671F\u622A\u6B62\u4E3A\u622A\u81F3\u65E5\u6B21\u65E5\u96F6\u70B9\uFF08\u4E0D\u542B\uFF09\uFF1B", c.changeover_reason), /*#__PURE__*/React.createElement(U.Table, {
+    }, "\u5BF9\u6BD4\u65B9\u6848\uFF1A", data.base_identity.display_name || '原试调来源'), /*#__PURE__*/React.createElement(U.Table, {
       rows: c.batches,
       label: "\u6279\u6B21\u4EA4\u4ED8\u5BF9\u6BD4",
-      columns: [['批次 / 零件', r => /*#__PURE__*/React.createElement(React.Fragment, null, r.batch_id, /*#__PURE__*/React.createElement("br", null), r.part_name)], ['批次数量', r => U.number(r.quantity)], ['交付截至日', r => r.due_date || '未知'], ['原完工', r => U.timeLabel(r.baseline_finish)], ['试调完工', r => U.timeLabel(r.finish)], ['提前（小时）', r => U.number(r.improvement_hours)], ['预计交付', r => ({
+      columns: [['批次 / 零件', r => /*#__PURE__*/React.createElement(React.Fragment, null, r.batch_id, /*#__PURE__*/React.createElement("br", null), r.part_name)], ['批次数量', r => U.number(r.quantity)], ['交付截至日', r => /*#__PURE__*/React.createElement("span", {
+        title: "\u4EA4\u671F\u622A\u81F3\u5F53\u65E5\u7ED3\u675F\uFF0C\u6B21\u65E5\u96F6\u70B9\u8D77\u8BA1\u4E3A\u8D85\u671F\u3002"
+      }, r.due_date || '未知')], ['原完工', r => U.timeLabel(r.baseline_finish)], ['试调完工', r => U.timeLabel(r.finish)], ['提前（小时）', r => U.number(r.improvement_hours)], ['预计交付', r => ({
         on_time: '可按期',
         overdue: '预计超期',
         unavailable: '有冲突，不能评估',
@@ -150,17 +154,15 @@
       })[r.risk] || '未知'], ['超期（小时）', r => U.number(r.late_hours)]]
     })), tab === 'capacity' && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", {
       className: "tt-muted"
-    }, "\u4EC5\u6B64\u8BD5\u8C03\u5360\u7528\uFF0C\u975E\u5168\u5382\u5229\u7528\u7387\u3002", U.timeLabel(data.capacity.start), " \u81F3 ", U.timeLabel(data.capacity.end)), data.capacity.reason && /*#__PURE__*/React.createElement("p", {
+    }, "\u8BD5\u8C03\u65B9\u6848\u8D44\u6E90\u5360\u7528 \xB7 ", U.timeLabel(data.capacity.start), " \u81F3 ", U.timeLabel(data.capacity.end)), data.capacity.reason && /*#__PURE__*/React.createElement("p", {
       className: "tt-notice"
     }, data.capacity.reason), /*#__PURE__*/React.createElement(U.Table, {
       label: "\u8D44\u6E90\u5360\u7528",
       rows: data.capacity.resources,
-      columns: [['资源', r => (r.resource_type === 'machine' ? '设备 ' : '人员 ') + name(r.resource_ref)], ['安排（小时）', r => U.number(r.arranged_hours)], ['实际占用（小时）', r => U.number(r.occupied_hours)], ['重叠时间（小时）', r => U.number(r.overlap_hours)], ['可用（小时）', r => U.number(r.available_hours)], ['班表外时间（小时）', r => U.number(r.outside_available_hours)], ['本范围占用率', r => r.utilization === null ? '暂无数据' : U.number(r.utilization * 100) + '%'], ['依据', r => /*#__PURE__*/React.createElement(Calendar, {
+      columns: [['资源', r => (r.resource_type === 'machine' ? '设备 ' : '人员 ') + name(r.resource_ref)], ['安排（小时）', r => U.number(r.arranged_hours)], ['班表内占用（小时）', r => U.number(r.available_occupied_hours)], ['重叠时间（小时）', r => U.number(r.overlap_hours)], ['可用（小时）', r => U.number(r.available_hours)], ['班表外占用（小时）', r => U.number(r.outside_available_hours)], ['班表内占用率', r => r.utilization === null ? '暂无数据' : U.number(r.utilization * 100) + '%'], ['依据', r => /*#__PURE__*/React.createElement(Calendar, {
         resource: r
       })]]
-    })), tab === 'history' && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", {
-      className: "tt-muted"
-    }, "\u672C\u8349\u7A3F\u7684\u6BCF\u6B21\u8C03\u6574\u8BB0\u5F55\uFF0C\u4E0D\u662F\u6B63\u5F0F\u91C7\u7528\u8BB0\u5F55\u3002"), /*#__PURE__*/React.createElement(U.Table, {
+    })), tab === 'history' && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(U.Table, {
       label: "\u8C03\u6574\u8BB0\u5F55",
       rows: data.change_history.slice().reverse(),
       columns: [['记录时间', r => U.timeLabel(r.recorded_at)], ['记录人', r => r.local_operator], ['调整前', r => arrangement(r.before)], ['调整后', r => arrangement(r.after)], ['当时约束', r => U.statusLabel(r.validation.constraints_status)], ['记录依据', r => /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "\u7F16\u53F7"), /*#__PURE__*/React.createElement("div", {
@@ -181,7 +183,7 @@
       }, t.batch_id + ' · ' + t.process_label + ' ' + t.sequence)], ['分件', t => t.piece_id || '整批'], ['目标量', t => U.number(t.quantity)], ['设备 / 人员', t => /*#__PURE__*/React.createElement(React.Fragment, null, name(t.machine_ref), /*#__PURE__*/React.createElement("br", null), name(t.operator_ref))], ['开始', t => U.timeLabel(t.start)], ['结束', t => U.timeLabel(t.end)], ['变更', t => t.changed ? '已调整' : '未变']]
     }), tab === 'unplanned' && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", {
       className: "tt-muted"
-    }, "\u5B8C\u6574\u57FA\u7840\u672A\u6392\u5DE5\u5E8F ", data.unplanned_operations.length, " \u9053\uFF1B\u672A\u6392\u5B8C\u6574\u4E0D\u80FD\u5F53\u4F5C\u53EF\u6309\u671F\u3002"), /*#__PURE__*/React.createElement(U.Table, {
+    }, "\u672A\u6392\u5DE5\u5E8F ", data.unplanned_operations.length, " \u9053"), /*#__PURE__*/React.createElement(U.Table, {
       label: "\u672A\u6392\u5DE5\u5E8F",
       rows: data.unplanned_operations,
       columns: [['工序顺序', r => r.sequence], ['分件', r => r.piece_id || '整批'], ['原因', r => r.reason.message], ['工序编号', r => /*#__PURE__*/React.createElement("span", {

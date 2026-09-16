@@ -39,7 +39,7 @@
             <label>完成时间<input aria-label="完成时间" type="datetime-local" step="1" value={draft.completed_at} onChange={e => update('completed_at', e.target.value)} disabled={command.busy} /></label>
             {['action', 'remark', 'completion_evidence', 'evidence_reference_text'].map(k => <label key={k} className="wide">{C.labels[k]}<textarea aria-label={C.labels[k]} value={draft[k]} maxLength={4000} onChange={e => update(k, e.target.value)} disabled={command.busy} /></label>)}
           </form>}
-          <div className="dy-note">凭据这里只存文字说明，还没有当成附件核验。处置状态不会改动报工记录，关闭也不会删掉风险。</div></>}
+          </>}
       </div></Modal>;
   }
   window.DashboardHandling = Handling;

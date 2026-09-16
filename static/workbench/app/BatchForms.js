@@ -183,6 +183,45 @@
       disabled: locked
     }, "\u91C7\u7528\u6700\u65B0\u8D44\u6599"))));
   }
+  function SyncPreview({
+    preview
+  }) {
+    const changeNames = {
+      added: '新增',
+      removed: '删除',
+      updated: '修改',
+      unchanged: '内容不变'
+    };
+    const operation = row => row ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", null, row.label, " \xB7 ", row.source === 'external' ? '外协' : '自制'), row.source === 'internal' ? /*#__PURE__*/React.createElement("div", null, "\u6362\u578B ", window.WorkbenchFormat.hours(row.setup_hours, ENTERED_HOURS), " / \u5355\u4EF6 ", window.WorkbenchFormat.hours(row.unit_hours, ENTERED_HOURS)) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", null, row.external_group && row.external_group.merge_mode === 'merged' ? '整组周期 ' + window.WorkbenchFormat.number(row.external_group.total_days, ENTERED_DAYS) : '本序周期 ' + window.WorkbenchFormat.number(row.external_days, ENTERED_DAYS), " \u5929"), /*#__PURE__*/React.createElement("div", null, "\u4F9B\u5E94\u5546\uFF1A", (row.supplier || row.resources && row.resources.supplier || {}).label || '未填写'))) : '—';
+    return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+      className: "batch-sync-summary"
+    }, Object.entries(changeNames).map(([key, label]) => /*#__PURE__*/React.createElement("span", {
+      key: key
+    }, label, " ", /*#__PURE__*/React.createElement("b", null, preview.change_counts[key]), " \u9053"))), /*#__PURE__*/React.createElement("div", {
+      className: "batch-preview wb-table-frame",
+      "data-sticky-head": true
+    }, /*#__PURE__*/React.createElement("table", {
+      className: "tbl wb-table batch-sync-table",
+      "aria-label": "\u5DE5\u5E8F\u66F4\u65B0\u524D\u540E\u5BF9\u7167"
+    }, /*#__PURE__*/React.createElement("caption", {
+      className: "wb-visually-hidden"
+    }, "\u5DE5\u5E8F\u66F4\u65B0\u524D\u540E\u5BF9\u7167"), /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
+      scope: "col",
+      style: {
+        width: 90
+      }
+    }, "\u5DE5\u5E8F / \u53D8\u5316"), /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u5F53\u524D\u6279\u6B21\u5DE5\u5E8F"), /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u66F4\u65B0\u540E"))), /*#__PURE__*/React.createElement("tbody", null, preview.changes.map((row, index) => /*#__PURE__*/React.createElement("tr", {
+      key: index
+    }, /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("div", null, row.sequence, row.piece_id ? ' · ' + row.piece_id : ''), /*#__PURE__*/React.createElement("div", null, changeNames[row.change])), /*#__PURE__*/React.createElement("td", null, operation(row.before)), /*#__PURE__*/React.createElement("td", null, operation(row.after))))))), /*#__PURE__*/React.createElement("div", {
+      className: "batch-sync-resources"
+    }, /*#__PURE__*/React.createElement("h3", null, "\u8BBE\u5907\u548C\u4EBA\u5458\u6307\u5B9A"), preview.cleared_resources.length ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", null, "\u4EE5\u4E0B ", preview.cleared_resources.length, " \u9053\u5DE5\u5E8F\u7684\u6307\u5B9A\u5C06\u88AB\u6E05\u9664\uFF0C\u66F4\u65B0\u540E\u53EF\u91CD\u65B0\u6307\u5B9A\u3002"), /*#__PURE__*/React.createElement("ul", null, preview.cleared_resources.map(row => /*#__PURE__*/React.createElement("li", {
+      key: row.operation_ref
+    }, row.business_code, "\uFF1A", [row.machine && '设备 ' + row.machine.label, row.operator && '人员 ' + row.operator.label].filter(Boolean).join('；'))))) : /*#__PURE__*/React.createElement("p", null, "\u5F53\u524D\u5DE5\u5E8F\u6CA1\u6709\u8BBE\u5907\u6216\u4EBA\u5458\u6307\u5B9A\uFF0C\u65E0\u9700\u6E05\u9664\u3002")), /*#__PURE__*/React.createElement("p", null, "\u786E\u8BA4\u540E\uFF0C\u5C06\u7528\u4E0A\u8868\u4E2D\u7684\u5DE5\u827A\u5DE5\u5E8F\u66FF\u6362\u672C\u6279\u6B21\u73B0\u6709\u5DE5\u5E8F\u3002"));
+  }
   function Preview({
     preview,
     command,
@@ -207,29 +246,32 @@
     const value = row => row ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", null, [row.business_code, row.relationships.part_no, ...B.fields.map(key => window.BatchControls.display(key, row.fields[key]))].join(' · ')), row.operations.map((op, index) => /*#__PURE__*/React.createElement("div", {
       key: index
     }, op.business_code, " \xB7 ", op.sequence, " \xB7 ", op.label, " \xB7 ", op.source === 'external' ? '外协' : '自制', " \xB7", Object.values(op.resources).filter(Boolean).map(resource => resource.label).join(' / '), " \xB7 \u6362\u578B ", window.WorkbenchFormat.hours(op.setup_hours, ENTERED_HOURS), " / \u5355\u4EF6 ", window.WorkbenchFormat.hours(op.unit_hours, ENTERED_HOURS), " / \u5468\u671F ", window.WorkbenchFormat.number(op.external_days, ENTERED_DAYS), " \xB7 ", B.label('status', op.status))), /*#__PURE__*/React.createElement("div", null, "\u7269\u6599\u9700\u6C42 ", row.relationships.material_requirement_count, " \u9879")) : '删除';
+    const deleting = action === 'bulk_confirm' && preview.action === 'delete';
     return /*#__PURE__*/React.createElement(Modal, {
-      title: action === 'sync_confirm' ? '确认刷新批次工序' : '确认批量' + {
+      title: action === 'sync_confirm' ? '确认更新批次工序' : '确认批量' + {
         update: '修改',
         delete: '删除',
         copy: '复制'
       }[preview.action],
-      icon: "check",
+      icon: deleting ? 'trash-2' : 'check',
       locked: command.locked,
       onClose: onClose,
       footer: /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Button, {
         onClick: onClose,
         disabled: command.locked
       }, command.phase === 'done' ? '关闭' : '取消'), command.phase !== 'done' && /*#__PURE__*/React.createElement(Button, {
-        icon: "check",
+        icon: deleting ? 'trash-2' : 'check',
         className: "btn primary",
         disabled: disabled || command.locked,
         onClick: () => command.submit('batch', action, subject, preview.write_context, {
           preview_ref: preview.preview_ref
         })
-      }, "\u786E\u8BA4\u53D8\u66F4"))
+      }, action === 'sync_confirm' ? '确认更新工序' : deleting ? '确认删除' : '确认变更'))
     }, /*#__PURE__*/React.createElement("div", {
       className: "modal-b"
-    }, /*#__PURE__*/React.createElement("div", {
+    }, action === 'sync_confirm' ? /*#__PURE__*/React.createElement(SyncPreview, {
+      preview: preview
+    }) : /*#__PURE__*/React.createElement("div", {
       className: "batch-preview wb-table-frame",
       "data-sticky-head": true
     }, /*#__PURE__*/React.createElement("table", {
@@ -240,18 +282,15 @@
       scope: "col"
     }, "\u539F\u8BB0\u5F55"), /*#__PURE__*/React.createElement("th", {
       scope: "col"
-    }, "\u786E\u8BA4\u540E"))), /*#__PURE__*/React.createElement("tbody", null, action === 'bulk_confirm' ? preview.rows.map(row => /*#__PURE__*/React.createElement("tr", {
+    }, "\u786E\u8BA4\u540E"))), /*#__PURE__*/React.createElement("tbody", null, preview.rows.map(row => /*#__PURE__*/React.createElement("tr", {
       key: row.entity_ref
-    }, /*#__PURE__*/React.createElement("td", null, value(row.before)), /*#__PURE__*/React.createElement("td", null, value(row.after)))) : /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", null, preview.before.map(row => /*#__PURE__*/React.createElement("div", {
-      key: row.ref
-    }, row.sequence, " \xB7 ", row.label, " \xB7 ", B.label('status', row.status)))), /*#__PURE__*/React.createElement("td", null, preview.after.map((row, index) => /*#__PURE__*/React.createElement("div", {
-      key: index
-    }, row.sequence, " \xB7 ", row.label, " \xB7 \u6362\u578B ", window.WorkbenchFormat.hours(row.setup_hours, ENTERED_HOURS), " / \u5355\u4EF6 ", window.WorkbenchFormat.hours(row.unit_hours, ENTERED_HOURS), " / \u5468\u671F ", window.WorkbenchFormat.number(row.external_days, ENTERED_DAYS)))))))), action === 'sync_confirm' && /*#__PURE__*/React.createElement("p", null, "\u5237\u65B0\u4F1A\u66FF\u6362\u73B0\u6709\u5DE5\u5E8F\u548C\u8D44\u6E90\u8865\u5145\uFF1B\u7F3A\u5931\u5DE5\u65F6\u4FDD\u7559\u672A\u586B\u5199\u3002\u5DF2\u88AB\u8BA1\u5212\u6216\u62A5\u5DE5\u8BB0\u5F55\u7528\u5230\u7684\u6279\u6B21\u4E0D\u80FD\u5237\u65B0\u3002"), /*#__PURE__*/React.createElement(Issues, {
+    }, /*#__PURE__*/React.createElement("td", null, value(row.before)), /*#__PURE__*/React.createElement("td", null, value(row.after))))))), /*#__PURE__*/React.createElement(Issues, {
       issues: preview.warnings || []
     }), /*#__PURE__*/React.createElement(ErrorBox, {
       error: error
     }), /*#__PURE__*/React.createElement(window.ResourceForms.Feedback, {
-      command: command
+      command: command,
+      action: deleting ? 'delete' : 'save'
     })));
   }
   window.BatchForms = {

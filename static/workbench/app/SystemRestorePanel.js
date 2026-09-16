@@ -79,7 +79,7 @@
         setBusy(false);
       }
     }
-    const fields = [['结果来源', '来自本机数据库以外的维护记录，不是数据库里的业务结果'], ['该次维护记录的数据库来源', description.origin], ['选定备份', op && op.filename || (!query && command.selection ? command.selection.filename + '（页面上选的，还没有确认）' : '维护记录尚未确认')], ['恢复前保护副本', op && op.protection_filename || '没有查到留存证据，不能认为保护副本已经生成'], ['业务审计', op && op.audit_persisted ? '维护记录报告已留存；当前数据库内容仍需重启后读取' : '未确认留存'], ['软件状态', command.hostError || !host ? '无法读取维护状态，当前页面已暂停业务读写' : host.restart_required ? '业务操作已停用，须重启整个软件' : '维护状态还没有确认，当前页面已暂停业务读写']];
+    const fields = [['结果来源', '来自本机数据库以外的维护记录，不是数据库里的业务结果'], ['该次维护记录的数据库来源', description.origin], ['选定备份', op && op.filename || (!query && command.selection ? command.selection.filename + '（页面上选的，还没有确认）' : '维护记录尚未确认')], ['恢复前保护副本', op && op.protection_filename || '保护副本状态待确认'], ['业务审计', op && op.audit_persisted ? '维护记录报告已留存；当前数据库内容仍需重启后读取' : '未确认留存'], ['软件状态', command.hostError || !host ? '无法读取维护状态，当前页面已暂停业务读写' : host.restart_required ? '业务操作已停用，须重启整个软件' : '维护状态还没有确认，当前页面已暂停业务读写']];
     return ReactDOM.createPortal(/*#__PURE__*/React.createElement("div", {
       className: "sm-workbench sm-maintenance-workspace plana sm-restore-screen",
       "data-restore-maintenance": "warm",
@@ -100,7 +100,7 @@
       className: "sm-restore-content"
     }, /*#__PURE__*/React.createElement("h1", null, command.hostError ? '无法读取维护状态' : description.title), /*#__PURE__*/React.createElement("p", {
       className: "sm-meta"
-    }, "\u53EA\u8BFB\u7EF4\u62A4\u72B6\u6001 \xB7 \u4E0D\u8BFB\u53D6\u4E1A\u52A1\u6570\u636E\u5E93"), /*#__PURE__*/React.createElement("section", {
+    }, "\u7EF4\u62A4\u72B6\u6001"), /*#__PURE__*/React.createElement("section", {
       "aria-label": "\u7EF4\u62A4\u7ED3\u679C"
     }, /*#__PURE__*/React.createElement("h2", {
       className: op && op.state === 'succeeded' && !description.uncertain ? 'sm-tone-success' : 'sm-tone-warning'
@@ -114,7 +114,7 @@
       role: "status"
     }, notice), op && /*#__PURE__*/React.createElement("p", null, op.message), result && result.kind === 'not_recorded' && /*#__PURE__*/React.createElement("p", {
       role: "status"
-    }, result.message, " \u67E5\u4E0D\u5230\u4E0D\u4EE3\u8868\u6CA1\u6709\u6267\u884C\u3002"), /*#__PURE__*/React.createElement("dl", {
+    }, result.message, " \u8BF7\u67E5\u8BE2\u7ED3\u679C\uFF0C\u52FF\u91CD\u590D\u63D0\u4EA4\u3002"), /*#__PURE__*/React.createElement("dl", {
       className: "sm-restore-facts"
     }, fields.map(([label, value]) => /*#__PURE__*/React.createElement("div", {
       key: label
@@ -125,7 +125,7 @@
       className: "sm-meta"
     }, "\u6CA1\u6709\u8BFB\u5230\u64CD\u4F5C\u7F16\u53F7\uFF0C\u53EF\u4EE5\u5728\u4E0B\u9762\u8F93\u5165\u3002"), op && (!host || host.request_key !== op.request_key) && /*#__PURE__*/React.createElement("p", {
       className: "sm-note"
-    }, "\u8FD9\u6761\u8BB0\u5F55\u4E0D\u80FD\u4EE3\u8868\u5F53\u524D\u6570\u636E\u5E93\u72B6\u6001\uFF0C\u4E5F\u4E0D\u4F1A\u89E3\u9664\u8F6F\u4EF6\u7684\u7EF4\u62A4\u505C\u6B62\u72B6\u6001\u3002"), op && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(window.WorkbenchReference, {
+    }, "\u5F53\u524D\u663E\u793A\u5386\u53F2\u7EF4\u62A4\u8BB0\u5F55\uFF1B\u8F6F\u4EF6\u4ECD\u5904\u4E8E\u7EF4\u62A4\u505C\u6B62\u72B6\u6001\u3002"), op && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(window.WorkbenchReference, {
       label: "\u8FD9\u6761\u7ED3\u679C\u7684\u64CD\u4F5C\u7F16\u53F7",
       value: op.request_key
     }), /*#__PURE__*/React.createElement("p", {

@@ -97,7 +97,7 @@
       {current && current.loading && <p role="status">正在核对所选候选方案、排产时的正式计划和共同范围。</p>}
       {data && <><div className="dy-context"><span>{window.WorkbenchFormat.dateTime(data.time_scope.range_start)} 至 {window.WorkbenchFormat.dateTime(data.time_scope.range_end)} · 含起日，不含止日</span>
         <span>{data.batch_refs.length} 个排产时的批次 · 完工按完整工序计算</span></div>
-        {!data.baseline.available && <p className="dy-note warning">排产时没有正式计划，变化量按未知显示。</p>}
+        {!data.baseline.available && <p className="dy-note warning">缺少排产时的正式计划，无法比较变化量。</p>}
         <P.Metrics data={data} /><P.Batches data={data} selected={selectedBatch} onSelect={onSelectBatch} />
         <div className="dy-heading"><h3>{data.candidate.label || '候选方案名称未填写'}</h3><Button reasonDisplay="inline" icon="chart-gantt" onClick={() => setSummary(true)}>查看方案摘要</Button></div>
         <details className="dy-evidence"><summary>排产时的约束</summary><dl className="dy-facts"><div><dt>齐套检查</dt><dd>{data.generation.input.ready_check ? '开启' : '关闭'}</dd></div>

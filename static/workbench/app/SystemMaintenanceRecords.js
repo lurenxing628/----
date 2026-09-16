@@ -154,7 +154,7 @@
       }
     }, /*#__PURE__*/React.createElement("p", {
       className: "sm-note"
-    }, "\u5148\u8BFB\u53D6\u5404\u6765\u6E90\u6700\u8FD1\u7684\u4E00\u6BB5\u65E5\u5FD7\uFF0C\u518D\u6309\u6761\u4EF6\u7B5B\u9009\uFF0C\u4E0D\u662F\u5168\u90E8\u5386\u53F2\u65E5\u5FD7\u3002\u8BB0\u5F55\u5DF2\u5199\u4E0B\u4E0D\u7B49\u4E8E\u4E1A\u52A1\u505A\u6210\u4E86\u3002"), /*#__PURE__*/React.createElement("div", {
+    }, "\u6309\u6761\u4EF6\u7B5B\u9009\u6700\u8FD1\u8BFB\u53D6\u7684\u65E5\u5FD7\u3002"), /*#__PURE__*/React.createElement("div", {
       style: {
         display: 'flex',
         flexWrap: 'wrap',
@@ -239,7 +239,7 @@
       className: "sm-tone-warning"
     }, "\u672C\u6761\u8BE6\u60C5\u5DF2\u622A\u65AD\uFF0C\u4E0D\u662F\u5B8C\u6574\u539F\u59CB\u5185\u5BB9\u3002"), file && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", {
       className: "sm-note"
-    }, "\u5907\u4EFD\u6587\u4EF6\u5B58\u5728\u4E0D\u4EE3\u8868\u5DF2\u6821\u9A8C\u901A\u8FC7\u6216\u53EF\u4EE5\u6062\u590D\u3002"), /*#__PURE__*/React.createElement("div", {
+    }, "\u6821\u9A8C\u72B6\u6001\uFF1A\u672A\u6821\u9A8C\u3002"), /*#__PURE__*/React.createElement("div", {
       className: "sm-actions"
     }, /*#__PURE__*/React.createElement(C.Button, {
       transfer: "export",

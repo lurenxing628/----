@@ -22,24 +22,34 @@
   };
   function Feedback({
     command,
+    action,
     excludePaths = []
   }) {
     if (!command) return null;
-    const phase = command.phase;
+    const phase = command.phase,
+      intent = command.intent || {},
+      operation = action || intent.action;
+    const bulkDelete = operation === 'confirm' && ['material_bulk', 'op_type_bulk', 'machine_bulk', 'operator_bulk', 'supplier_bulk', 'process_bulk'].includes(intent.kind);
+    const batchAction = command.result && command.result.data && command.result.data.action;
+    const verb = intent.kind === 'calendar' && operation === 'delete' ? '清除日历配置' : operation === 'delete' || bulkDelete ? '删除' : operation === 'unlink' ? '解除关联' : intent.kind === 'batch' && operation === 'bulk_confirm' ? ['delete', 'update', 'copy'].includes(batchAction) ? {
+      delete: '删除',
+      update: '保存',
+      copy: '复制'
+    }[batchAction] : '批次操作' : operation === 'machine_permissions' ? '设备关联保存' : operation === 'import' ? '导入' : '保存';
     return /*#__PURE__*/React.createElement(React.Fragment, null, ['sending', 'checking'].includes(phase) && /*#__PURE__*/React.createElement("p", {
       role: "status"
-    }, phase === 'sending' ? '正在提交，请勿重复保存…' : '正在查询上次操作的结果…'), phase === 'pending' && /*#__PURE__*/React.createElement("div", {
+    }, phase === 'sending' ? '正在提交' + verb + '，请勿重复操作…' : '正在查询上次' + verb + '的结果…'), phase === 'pending' && /*#__PURE__*/React.createElement("div", {
       role: "status",
       className: "match-note",
       style: {
         display: 'block'
       }
-    }, /*#__PURE__*/React.createElement("p", null, window.WorkbenchTerms.outcomes.pending('保存')), /*#__PURE__*/React.createElement(Button, {
+    }, /*#__PURE__*/React.createElement("p", null, window.WorkbenchTerms.outcomes.pending(verb)), /*#__PURE__*/React.createElement(Button, {
       icon: "history",
       onClick: command.check
     }, window.WorkbenchTerms.actions.query_result)), phase === 'done' && /*#__PURE__*/React.createElement("p", {
       role: "status"
-    }, command.result.result === 'partial' ? '部分操作完成，请核对逐项结果。' : command.result.result === 'unchanged' ? '内容没有变化，已确认。' : window.WorkbenchTerms.outcomes.done('保存')), /*#__PURE__*/React.createElement(ErrorBox, {
+    }, command.result.result === 'partial' ? '部分' + verb + '已完成，请核对逐项结果。' : command.result.result === 'unchanged' ? '内容没有变化，已确认。' : window.WorkbenchTerms.outcomes.done(verb)), /*#__PURE__*/React.createElement(ErrorBox, {
       error: command.error,
       excludePaths: excludePaths
     }), /*#__PURE__*/React.createElement(Issues, {
@@ -62,7 +72,23 @@
       className: "field full"
     }, /*#__PURE__*/React.createElement("span", {
       className: "fhint"
-    }, "\u65B0\u4EBA\u5458\u5C1A\u65E0\u8BBE\u5907\u64CD\u4F5C\u6388\u6743\uFF1B\u767B\u8BB0\u5DE5\u79CD\u6280\u80FD\u4E0D\u4F1A\u81EA\u52A8\u589E\u52A0\u6388\u6743\u3002"));
+    }, "\u8BF7\u5728\u4EBA\u5458\u8BE6\u60C5\u4E2D\u8BBE\u7F6E\u53EF\u64CD\u4F5C\u8BBE\u5907\u3002"));
+    const permissions = entity.relationships.machine_permissions;
+    if (Array.isArray(permissions)) return /*#__PURE__*/React.createElement("div", {
+      className: "field full"
+    }, /*#__PURE__*/React.createElement("label", null, "\u53EF\u64CD\u4F5C\u8BBE\u5907"), permissions.length ? /*#__PURE__*/React.createElement("div", {
+      className: "chipline"
+    }, permissions.map(item => /*#__PURE__*/React.createElement("span", {
+      className: "chip",
+      key: item.machine_ref,
+      style: {
+        whiteSpace: 'normal'
+      }
+    }, item.business_code, " \xB7 ", item.label, item.is_primary === 'yes' ? '（主操）' : ''))) : /*#__PURE__*/React.createElement("span", {
+      className: "fhint"
+    }, "\u5C1A\u672A\u8BBE\u7F6E\u53EF\u64CD\u4F5C\u8BBE\u5907\u3002"), /*#__PURE__*/React.createElement("span", {
+      className: "fhint"
+    }, "\u5728\u4EBA\u5458\u8BE6\u60C5\u4E2D\u70B9\u201C\u7F16\u8F91\u53EF\u64CD\u4F5C\u8BBE\u5907\u201D\u7EF4\u62A4\u8BBE\u5907\u5173\u8054\u3002"));
     const facts = entity.relationships.legacy_machine_authorizations;
     return /*#__PURE__*/React.createElement("div", {
       className: "field full"
@@ -83,7 +109,7 @@
       field: "machine_refs"
     }) : /*#__PURE__*/React.createElement("span", {
       className: "fhint"
-    }, "\u65E2\u6709\u8BBE\u5907\u6388\u6743\u8FD8\u6CA1\u8BFB\u53D6\uFF0C\u4E0D\u4F1A\u6309\u6280\u80FD\u63A8\u7B97\u3002"), /*#__PURE__*/React.createElement("span", {
+    }, "\u8BBE\u5907\u6388\u6743\u5C1A\u672A\u8BFB\u53D6\u3002"), /*#__PURE__*/React.createElement("span", {
       className: "fhint"
     }, "\u6280\u80FD\u767B\u8BB0\u4E0D\u6539\u53D8\u65E2\u6709\u8BBE\u5907\u6388\u6743\u3002"));
   }
@@ -147,7 +173,6 @@
     onRefresh,
     contextError,
     contextReview,
-    onAcceptContext,
     contextBusy,
     stockOnly = false
   }) {
@@ -214,7 +239,7 @@
         const invalidNumbers = Array.from(event.currentTarget.elements).filter(element => element.type === 'number' && element.validity.badInput);
         if (invalidNumbers.length) throw C.failure('请核对标红的数字。', invalidNumbers.map(element => ({
           path: 'fields.' + element.name,
-          message: '请输入有效数字，无效内容不会当成未填写提交。'
+          message: '请输入有效数字。'
         })));
         const inputDraft = adjustingStock ? C.draft(kind, entity, category) : draft;
         if (adjustingStock) inputDraft.fields.stock_qty = draft.fields.stock_qty;
@@ -229,10 +254,14 @@
       setCatalogBusy(true);
       setError(null);
       let opened = false;
+      const refreshParent = () => {
+        reload();
+        if (onReloadContext) onReloadContext();
+      };
       const completed = result => {
         setCatalogBusy(false);
         if (C.receipt(result) === 'terminal') {
-          reload();
+          refreshParent();
           if (result.result === 'partial') setError(C.failure(field.label + '只完成了一部分，请点「维护' + field.label + '」核对逐项结果。'));
         } else setError(C.failure(field.label + '的维护结果还没确认，没有当成保存成功。'));
       };
@@ -251,7 +280,7 @@
         }
         if (result && result.state === 'cancelled') return;
         if (C.receipt(result) === 'terminal' && result.result !== 'partial') {
-          reload();
+          refreshParent();
           return;
         }
         throw C.failure(field.label + '维护没有返回明确结果，没有当成保存成功。');
@@ -308,7 +337,7 @@
     }, "\u65E7\u72B6\u6001 / \u539F\u56E0\u672A\u77E5\uFF08\u4FDD\u6301\u539F\u503C\uFF09")));
     return /*#__PURE__*/React.createElement(Modal, {
       title: adjustingStock ? '调整库存' : (action === 'create' ? '新增' : action === 'delete' ? '删除' : '编辑') + C.resourceName(kind, opCategory),
-      icon: icons[kind],
+      icon: action === 'delete' ? 'trash-2' : icons[kind],
       onClose: close,
       guardOwner: guardOwner,
       locked: command.locked || catalogBusy || contextBusy,
@@ -320,7 +349,7 @@
       }, done ? '关闭' : '取消'), !done && /*#__PURE__*/React.createElement(Button, {
         form: formId,
         type: "submit",
-        icon: action === 'delete' ? 'minus' : 'check',
+        icon: action === 'delete' ? 'trash-2' : 'check',
         className: 'btn primary wb-action wb-primary',
         reason: reason || confirmReason,
         busy: disabled
@@ -429,6 +458,7 @@
       excludePaths: fieldPaths
     }), /*#__PURE__*/React.createElement(Feedback, {
       command: command,
+      action: action,
       excludePaths: error ? [] : fieldPaths
     }), /*#__PURE__*/React.createElement(ErrorBox, {
       error: contextError
@@ -442,7 +472,7 @@
     }, "\u5237\u65B0\u6700\u65B0\u8D44\u6599"), contextReview && !done && /*#__PURE__*/React.createElement("div", {
       className: "wb-resource-review",
       role: "status"
-    }, /*#__PURE__*/React.createElement("p", null, "\u6700\u65B0\u8D44\u6599\u5DF2\u8BFB\u53D6\uFF0C\u5DF2\u586B\u5199\u7684\u5185\u5BB9\u4FDD\u6301\u4E0D\u53D8\u3002\u8BF7\u6838\u5BF9\u540E\u7EE7\u7EED\u7F16\u8F91\u3002"), contextReview.data.ref ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("p", null, "\u6700\u65B0\u8D44\u6599\u5DF2\u5237\u65B0\u3002\u4F60\u4FEE\u6539\u7684\u5185\u5BB9\u5DF2\u4FDD\u7559\uFF0C\u672A\u4FEE\u6539\u7684\u5B57\u6BB5\u5DF2\u66F4\u65B0\uFF1B\u4E0B\u65B9\u663E\u793A\u5F53\u524D\u5DF2\u4FDD\u5B58\u7684\u8D44\u6599\u3002"), contextReview.data.ref ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
       className: "wb-resource-review-identity"
     }, /*#__PURE__*/React.createElement("strong", null, contextReview.data.business_code, " \xB7 ", contextReview.data.label), kind !== 'op_type' && /*#__PURE__*/React.createElement(Status, {
       kind: kind,
@@ -455,10 +485,7 @@
     }, field.label, "\uFF1A", /*#__PURE__*/React.createElement(Relation, {
       entity: contextReview.data,
       field: field.key
-    })))) : /*#__PURE__*/React.createElement("p", null, "\u5F53\u524D\u8D44\u6599\u603B\u6570\uFF1A", contextReview.data.page.total), /*#__PURE__*/React.createElement(Button, {
-      disabled: disabled,
-      onClick: onAcceptContext
-    }, "\u5DF2\u6838\u5BF9\uFF0C\u7EE7\u7EED\u7F16\u8F91")), done && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", {
+    })))) : /*#__PURE__*/React.createElement("p", null, "\u5F53\u524D\u8D44\u6599\u603B\u6570\uFF1A", contextReview.data.page.total)), done && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", {
       role: "status"
     }, refreshState.loading ? '正在刷新列表和详情…' : refreshState.done ? '已刷新到最新数据。' : '最新数据还没确认。请点「刷新保存结果」。'), /*#__PURE__*/React.createElement(ErrorBox, {
       error: refreshState.error
@@ -477,6 +504,7 @@
     onEdit,
     onDelete,
     onAdjustStock,
+    onMachinePermissions,
     onRelated,
     onBack,
     busy,
@@ -494,7 +522,7 @@
       }, "\u8FD4\u56DE\u4E0A\u4E00\u6761\u8BE6\u60C5"), /*#__PURE__*/React.createElement(Button, {
         onClick: onClose
       }, "\u5173\u95ED"), entity && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Button, {
-        icon: "minus",
+        icon: "trash-2",
         reason: C.blocked(entity.write_context, kind, 'delete', result.meta.source),
         onClick: onDelete
       }, "\u5220\u9664"), kind === 'material' && /*#__PURE__*/React.createElement(Button, {
@@ -544,7 +572,11 @@
       entity: entity
     }), /*#__PURE__*/React.createElement(Issues, {
       issues: entity.issues
-    }), kind === 'op_type' && ['internal', 'external'].includes(entity.fields.category) && /*#__PURE__*/React.createElement(window.ResourceDetailRelations, {
+    }), kind === 'operator' && /*#__PURE__*/React.createElement(Button, {
+      icon: "machine",
+      reason: C.blocked(entity.write_context, kind, 'update', result.meta.source) || (typeof onMachinePermissions !== 'function' ? '设备关联编辑未连接。' : ''),
+      onClick: onMachinePermissions
+    }, "\u7F16\u8F91\u53EF\u64CD\u4F5C\u8BBE\u5907"), kind === 'op_type' && ['internal', 'external'].includes(entity.fields.category) && /*#__PURE__*/React.createElement(window.ResourceDetailRelations, {
       key: entity.ref + ':' + result.meta.snapshot_ref,
       adapter: adapter,
       entity: entity,

@@ -15,12 +15,12 @@
       <p>原模板：工序 {d.baseline.operation_count} · 外协组 {d.baseline.external_group_count} · {d.baseline.has_published_template ? '已有发布模板' : '无发布模板'}</p>
       <dl className="process-fields">{[['added', '新增序号'], ['removed', '移除序号'], ['retained', '保留序号'], ['same_sequence_changed', '同序号内容变化']].map(([key, label]) =>
         <React.Fragment key={key}><dt>{label}</dt><dd>{d.changes[key].length ? d.changes[key].join('、') : '无'}</dd></React.Fragment>)}</dl>
-      <div className="wb-table-frame"><div className="card-scroll wb-table-shell"><table className="tbl wb-table" aria-label="路线预检工序" style={{ minWidth: 900, tableLayout: 'fixed' }}><caption className="wb-visually-hidden">{"路线预检工序"}</caption>
+      <div className="wb-table-frame wb-table-shell" data-sticky-head><table className="tbl wb-table" aria-label="路线预检工序" style={{ minWidth: 900, tableLayout: 'fixed' }}><caption className="wb-visually-hidden">{"路线预检工序"}</caption>
         <thead><tr><th scope="col" style={{ width: 90 }}>工序号</th><th scope="col" style={{ width: 160 }}>工种</th><th scope="col" style={{ width: 110 }}>建议归属</th><th scope="col" style={{ width: 150 }}>供应商</th><th scope="col" style={{ width: 130 }}>周期（天）</th><th scope="col">依据 / 问题</th></tr></thead>
         <tbody>{paging.rows.map((row, index) => <tr key={index}><td>{row.sequence}</td><td>{row.op_type_name}<div className="muted">{row.op_type_ref === null ? '未识别' : '已识别'}</div></td>
           <td>{P.sourceLabel(row.source_suggestion)}</td><td>{row.supplier_label === null ? '未选' : row.supplier_label}</td><td>{P.valueText(row.external_days)}</td>
           <td>{typeof row.basis === 'string' ? row.basis : JSON.stringify(row.basis)}<Issues issues={row.issues} /></td></tr>)}</tbody>
-      </table></div></div><E.Pager paging={paging} />
+      </table></div><E.Pager paging={paging} />
     </section>;
   }
   function ProcessRouteEntry({ adapter, result, command, onClose, onDirty, refreshState = {}, onRefresh, active = true, disabled = false }) {
@@ -93,12 +93,12 @@
         {mode === 'text' ? <label className="field full">路线文字<textarea aria-label="路线文字" className="re-text" rows={5} value={routeRaw} disabled={blocked} onChange={event => { edited(); setRouteRaw(event.target.value); }} style={{ width: '100%', resize: 'vertical' }} /></label> : <>
           {opTypeNames.length > 0 && <datalist id={opTypeListId}>{opTypeNames.map(name => <option key={name} value={name} />)}</datalist>}
           {opTypeNames.length > 0 && <p className="muted">工种输入会提示已登记的工种{opTypes.result.data.page.total > opTypeNames.length ? '，现有工种较多，只提示前 ' + opTypeNames.length + ' 个' : ''}；未登记的工种也可以直接输入。</p>}
-          <div className="wb-table-frame"><div className="card-scroll wb-table-shell"><table className="tbl wb-table" aria-label="逐行路线录入" style={{ minWidth: 580, tableLayout: 'fixed' }}><caption className="wb-visually-hidden">{"逐行路线录入"}</caption>
-            <thead><tr><th scope="col" style={{ width: 125 }}>工序号</th><th scope="col">工种</th><th scope="col" style={{ width: 140 }}>归属</th><th scope="col" style={{ width: 70 }}>操作</th></tr></thead><tbody>
+          <div className="wb-table-frame wb-table-shell" data-sticky-head><table className="tbl wb-table wb-table--editable" aria-label="逐行路线录入" style={{ minWidth: 620, tableLayout: 'fixed' }}><caption className="wb-visually-hidden">{"逐行路线录入"}</caption>
+            <thead><tr><th scope="col" style={{ width: 125 }}>工序号</th><th scope="col">工种</th><th scope="col" style={{ width: 140 }}>归属</th><th scope="col" style={{ width: 100 }}>操作</th></tr></thead><tbody>
               {paging.rows.map((row, index) => <tr key={row.key}><td><input type="text" inputMode="numeric" aria-label={'第 ' + ((paging.page.number - 1) * paging.page.size + index + 1) + ' 行工序号'} value={row.seq} disabled={blocked} className="wt-in" style={{ width: '100%' }} onChange={event => changeRow(row.key, { seq: event.target.value })} /></td>
                 <td><input type="text" list={opTypeNames.length ? opTypeListId : undefined} aria-label={'第 ' + ((paging.page.number - 1) * paging.page.size + index + 1) + ' 行工种'} value={row.op_type_name} disabled={blocked} className="wt-in" style={{ width: '100%' }} onChange={event => changeRow(row.key, { op_type_name: event.target.value })} /></td>
-                <td className="muted">待服务预检</td><td><Button className="mini danger" icon="minus" aria-label={'删除第 ' + ((paging.page.number - 1) * paging.page.size + index + 1) + ' 行'} disabled={blocked} onClick={() => { edited(); setRows(current => current.filter(item => item.key !== row.key)); }} /></td></tr>)}
-            </tbody></table></div></div>
+                <td className="muted">待服务预检</td><td><Button className="mini danger" icon="trash-2" aria-label={'删除第 ' + ((paging.page.number - 1) * paging.page.size + index + 1) + ' 行'} disabled={blocked} onClick={() => { edited(); setRows(current => current.filter(item => item.key !== row.key)); }}>删除</Button></td></tr>)}
+            </tbody></table></div>
           <E.Pager paging={paging} disabled={blocked} /><Button icon="plus" disabled={blocked} onClick={() => { edited(); setRows(current => current.concat({ key: ++sequence.current, seq: '', op_type_name: '' })); paging.setNumber(Math.ceil((rows.length + 1) / paging.page.size)); }}>新增工序</Button>
         </>}
         {state.busy && <p role="status">{state.reading ? '正在刷新详情…' : '正在预检路线…'}</p>}<ErrorBox error={state.error} /><ErrorBox error={opTypes.error} />

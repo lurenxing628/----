@@ -1,10 +1,11 @@
 (function () {
   'use strict';
-  const BASE = '/api/workbench/v1/scheduling', PENDING_KEY = 'aps_workbench_run_pending_v1';
+  const BASE = '/api/workbench/v1/scheduling', PENDING_KEY = 'aps_workbench_run_pending_v1', RECENT_KEY = 'aps_workbench_run_recent_v1';
   const object = v => v !== null && typeof v === 'object' && !Array.isArray(v);
   const text = v => typeof v === 'string', count = v => Number.isSafeInteger(v) && v >= 0;
   const ref = v => text(v) && /^[a-f0-9]{48}$/.test(v), token = v => text(v) && /^[A-Za-z0-9_-]{32}$/.test(v);
   const key = v => text(v) && /^run-[a-f0-9]{48}$/.test(v);
+  const contextRef = v => text(v) && /^[a-f0-9]{64}$/.test(v);
   const rejections = new WeakSet();
   const terminal = run => !!run && ['complete', 'partial', 'failed', 'interrupted'].includes(run.state);
   function check(valid, message = '读到的排产数据不完整，请刷新重试。') { if (!valid) throw new Error(message); }
@@ -37,7 +38,7 @@
   }
   function preview(v, inputRef) {
     const d = envelope(v);
-    check(shape(d, ['input_ref', 'normalized_input', 'write_context', 'calendar_check', 'warnings']) && token(inputRef) && d.input_ref === inputRef
+    check(shape(d, ['input_ref', 'normalized_input', 'write_context', 'calendar_check', 'warnings', 'data_context_ref']) && contextRef(d.data_context_ref) && token(inputRef) && d.input_ref === inputRef
       && d.calendar_check === 'not_evaluated' && issues(d.warnings));
     input(d.normalized_input);
     const c = d.write_context;
@@ -68,14 +69,15 @@
     return v;
   }
   function accepted(v) {
-    check(shape(v, ['ok', 'result', 'job_ref', 'run_ref', 'status_target', 'receipt_ref', 'replayed', 'data'], ['dispatch_pending'])
+    check(shape(v, ['ok', 'result', 'job_ref', 'run_ref', 'status_target', 'receipt_ref', 'replayed', 'data', 'data_context_ref'], ['dispatch_pending']) && contextRef(v.data_context_ref)
       && v.ok === true && v.result === 'accepted' && ref(v.run_ref) && v.job_ref === v.run_ref && text(v.receipt_ref) && /^[a-f0-9]{32}$/.test(v.receipt_ref)
       && v.status_target === BASE + '/runs/' + v.run_ref && typeof v.replayed === 'boolean' && (v.dispatch_pending === undefined || v.dispatch_pending === true));
     run(v.data, v.run_ref); return v;
   }
   function lookup(v, expectedRef) {
     const d = envelope(v);
-    check(shape(d, ['found', 'run']) && typeof d.found === 'boolean');
+    check(shape(d, ['found', 'run', 'data_context_ref', 'resolution']) && typeof d.found === 'boolean' && contextRef(d.data_context_ref)
+      && ['found', 'context_replaced', 'unresolved'].includes(d.resolution) && d.found === (d.resolution === 'found'));
     if (d.found) run(d.run, expectedRef); else check(d.run === null);
     return d;
   }
@@ -127,11 +129,12 @@
     snapshot_stale: '资料已更新或排产检查已过期，请重新做排产检查。刚才的选择已保留。',
     stale_write: '本页数据已过期，请重新做排产检查。',
     constraint_conflict: '排产检查发现缺资料，请补齐后再开始排产。', invalid_input: '排产条件不完整，请重新做排产检查。',
-    entity_not_found: '暂时查不到这次排产的记录，还不能算失败。请点「查询结果」，不要重复提交。',
+    no_eligible_tasks: '当前范围没有可排工序。请调整批次、齐套条件或补齐工序资料后重新检查。',
+    entity_not_found: '暂未查到这次排产记录，请点「查询结果」再次核对。',
     run_result_inconsistent: '这次排产的记录和保存结果不一致。请不要重做，联系维护人员。',
     storage_failure: OUTCOMES.pending('排产'), scheduling_busy: '已有排产正在计算，请稍后再点「查询结果」。',
-    candidate_artifact_invalid: '候选方案的记录不完整，没有显示替代结果。请联系维护人员。',
-    candidate_capacity_exceeded: '候选方案数量超出本次能读的上限，没有截断，也没有当成完整结果。',
+    candidate_artifact_invalid: '候选方案记录不完整，请联系维护人员。',
+    candidate_capacity_exceeded: '候选方案数量超过读取上限。',
     zero_duration_candidate_unsupported: '本次有零工时工序，候选计算还不支持。请核对工时资料。',
     candidate_computation_failed: '本次候选计算失败。请查看系统日志，再重新做排产检查。',
     run_interrupted: '这次排产已中断，没有自动重跑。',
@@ -140,6 +143,10 @@
   // Internal version numbers belong in the collapsed reference block, never in the sentence users read.
   const messageDetails = { run_schema_unavailable: { '需要的数据库版本': 'v26' } };
   function message(error) { return messages[error && error.code] || OUTCOMES.unknown('排产'); }
+  function previewMessage(error) {
+    return error && messages[error.code] && !['storage_failure', 'entity_not_found', 'run_result_inconsistent'].includes(error.code)
+      ? messages[error.code] : '排产条件没有读出来，请重新检查。';
+  }
   function details(error) { return messageDetails[error && error.code] || null; }
   function errorResponse(v, status, requestKey) {
     const e = v && v.error;
@@ -156,12 +163,13 @@
     if (error.rejected) rejections.add(error);
     return error;
   }
-  function validIntent(v) { return shape(v, ['input_ref', 'request_key', 'run_ref']) && token(v.input_ref) && key(v.request_key) && (v.run_ref === null || ref(v.run_ref)); }
+  function validIntent(v) { return (shape(v, ['input_ref', 'request_key', 'run_ref']) || shape(v, ['schema_version', 'input_ref', 'request_key', 'run_ref', 'data_context_ref']) && v.schema_version === 2 && contextRef(v.data_context_ref))
+    && token(v.input_ref) && key(v.request_key) && (v.run_ref === null || ref(v.run_ref)); }
   function pending(storage) {
     if (storage === undefined) {
       try { storage = window.localStorage; } catch (_) { throw new Error('读不到上次排产的操作记录，请重新打开页面，不要重做。'); }
     }
-    const same = (a, b) => validIntent(a) && validIntent(b) && a.input_ref === b.input_ref && a.request_key === b.request_key && a.run_ref === b.run_ref;
+    const same = (a, b) => validIntent(a) && validIntent(b) && a.input_ref === b.input_ref && a.request_key === b.request_key && a.run_ref === b.run_ref && a.data_context_ref === b.data_context_ref;
     function save(v) {
       try { storage.setItem(PENDING_KEY, JSON.stringify(v)); } catch (_) { throw new Error('存不下这次排产的操作记录，没有开始排产。请重新打开页面。'); }
       check(same(read(), v), '上次操作记录没能保存，这次不能开始排产。'); return v;
@@ -172,19 +180,39 @@
       let value; try { value = JSON.parse(raw); } catch (_) { throw new Error('本机存的排产操作记录已损坏，已拦下新排产。请不要再操作，联系维护人员。'); }
       check(validIntent(value), '本机存的排产操作记录不完整，已拦下新排产。请不要再操作，联系维护人员。'); return value;
     }
-    return { read,
-      begin(inputRef, previous = null) {
+    function recent() {
+      const raw = storage.getItem(RECENT_KEY);
+      if (raw === null) return null;
+      let value; try { value = JSON.parse(raw); } catch (_) { throw new Error('最近排产记录读不到，请到排产记录页查看。'); }
+      check(shape(value, ['intent', 'resolution']) && validIntent(value.intent) && ['found', 'context_replaced'].includes(value.resolution), '最近排产记录不完整，请到排产记录页查看。');
+      return value;
+    }
+    return { read, recent,
+      begin(inputRef, previous = null, dataContext = null) {
         check(token(inputRef), '排产检查已失效，请重新做排产检查。'); const current = read();
         check(previous ? same(current, previous) : current === null, '上次排产还没确认结果，不能重做。请先点「查询结果」。');
         const bytes = new Uint8Array(24); window.crypto.getRandomValues(bytes);
-        return save({ input_ref: inputRef, request_key: 'run-' + Array.from(bytes, n => n.toString(16).padStart(2, '0')).join(''), run_ref: null });
+        check(dataContext === null || contextRef(dataContext));
+        return save({ input_ref: inputRef, request_key: 'run-' + Array.from(bytes, n => n.toString(16).padStart(2, '0')).join(''), run_ref: null,
+          ...(dataContext === null ? {} : { schema_version: 2, data_context_ref: dataContext }) });
       },
       attach(intent, runRef) {
         const current = read();
         check(validIntent(intent) && validIntent(current) && ref(runRef) && current.request_key === intent.request_key && current.input_ref === intent.input_ref
           && (!intent.run_ref || intent.run_ref === runRef) && (!current.run_ref || current.run_ref === runRef), '上次操作记录已变化，没有覆盖其他排产记录。');
         if (current.run_ref === runRef) return current;
-        return save({ input_ref: intent.input_ref, request_key: intent.request_key, run_ref: runRef });
+        return save({ ...intent, run_ref: runRef });
+      },
+      finish(intent, resolution) {
+        const current = read();
+        check(['found', 'context_replaced'].includes(resolution) && validIntent(intent));
+        // A completed lookup in an older tab must never erase a newer submission.
+        if (current === null) return;
+        check(same(current, intent), '上次操作记录已变化，没有删除其他记录。');
+        storage.setItem(RECENT_KEY, JSON.stringify({ intent, resolution }));
+        check(same(recent().intent, intent), '最近排产记录没能保存。');
+        storage.removeItem(PENDING_KEY);
+        check(read() === null, '本机无法更新上次操作记录。');
       },
       reject(intent) {
         check(same(read(), intent), '上次操作记录已变化，没有删除其他记录。');
@@ -201,7 +229,7 @@
       try {
         const response = await fetcher(BASE + path, { method: body ? 'POST' : 'GET', credentials: 'same-origin', cache: 'no-store', redirect: 'error', signal: controller.signal,
           ...(body ? { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : {}) });
-        check((response.headers.get('Content-Type') || '').split(';')[0].trim().toLowerCase() === 'application/json', '没读到有效的排产数据。请点「查询结果」，不要重复提交。');
+        check((response.headers.get('Content-Type') || '').split(';')[0].trim().toLowerCase() === 'application/json', '没有读到有效的排产数据，请重试。');
         const payload = await response.json();
         if (!response.ok || payload.ok !== true) throw errorResponse(payload, response.status, requestKey);
         check(response.status === (path === '/runs' ? 202 : 200)); return payload;
@@ -214,7 +242,8 @@
         return accepted(await request('/runs', { input_ref: intent.input_ref, write_token: writeToken, request_key: intent.request_key }, null, intent.request_key));
       },
       async get(runRef, signal) { check(ref(runRef)); const v = await request('/runs/' + runRef, null, signal); run(envelope(v), runRef); return v; },
-      async lookup(requestKey, signal) { check(key(requestKey)); const v = await request('/requests/' + requestKey, null, signal, requestKey); lookup(v); return v; },
+      async lookup(requestKey, signal, dataContext) { check(key(requestKey) && (dataContext === undefined || contextRef(dataContext)));
+        const v = await request('/requests/' + requestKey + (dataContext ? '?data_context_ref=' + encodeURIComponent(dataContext) : ''), null, signal, requestKey); lookup(v); return v; },
       async catalog(runRef, query, signal) {
         check(ref(runRef)); const scope = catalogScope(query);
         const v = await request('/runs/' + runRef + '/candidates?' + new URLSearchParams(scope), null, signal);
@@ -222,6 +251,6 @@
       }
     };
   }
-  window.RunJobAPI = { create, pending, PENDING_KEY, token, ref, validIntent, terminal, preview, run, accepted, lookup, catalog, envelope, message, details, isRejected: e => rejections.has(e),
+  window.RunJobAPI = { create, pending, PENDING_KEY, RECENT_KEY, token, ref, validIntent, terminal, preview, run, accepted, lookup, catalog, envelope, message, previewMessage, details, isRejected: e => rejections.has(e),
     pollDelay: attempt => Math.min(30000, 2000 * Math.pow(2, Math.min(4, Math.max(0, attempt)))) };
 })();

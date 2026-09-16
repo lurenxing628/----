@@ -14,7 +14,7 @@
       <ErrorBox error={read.error} />{read.loading && <EmptyState kind="loading" title="正在读取这条登记和它的历史" />}
       {item && <div data-outsourcing-detail={item.outsourcing_ref}><P.Target target={item.target} /><Issues issues={item.issues} /><P.Facts facts={item} />
         <div className="os-heading"><span className="os-muted">数据截至 {P.when(result.meta.as_of)}</span>
-          <Button icon="square-pen" disabled={blocked} reason={!item.can_preview ? '来源已经变化，历史仍然保留，不能改绑到其他工序。' : ''} onClick={() => onEdit(item)}>核实 / 更正登记</Button></div>
+          <Button icon="square-pen" disabled={blocked} reason={!item.can_preview ? '来源资料已变化，请重新核对工序。' : ''} onClick={() => onEdit(item)}>核实 / 更正登记</Button></div>
         {data.history.items.map((h, i) => <details className="os-history" key={h.fact_ref} data-fact-ref={h.fact_ref}>
           <summary>第 {data.history.page.total - (q.page - 1) * q.size - i} 次 · {P.when(h.confirmed_at)} · {h.declared_operator} · {C.states[h.after.confirmedState]}</summary>
           <P.Facts facts={h.after} before={h.before} /><p>{h.reason}</p><div className="os-muted">记录人 {h.local_operator}</div><window.WorkbenchReference entries={{ '历史编号': h.fact_ref }} />

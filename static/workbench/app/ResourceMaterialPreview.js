@@ -51,6 +51,7 @@
       setPage(1);
     }, [data.preview_ref]);
     const rows = data.rows.filter(row => filter === 'all' || (filter === 'rejected' ? row.result === 'rejected' : row.requires_confirmation));
+    const referenceFields = Array.from(new Set(data.rows.flatMap(row => row.reference_fields || [])));
     const pages = Math.max(1, Math.ceil(rows.length / size)),
       current = Math.min(page, pages);
     return /*#__PURE__*/React.createElement("section", {
@@ -63,7 +64,9 @@
       key: key
     }, M.results[key], " ", /*#__PURE__*/React.createElement("b", {
       className: key === 'rejected' && data.summary[key] ? 'rm-danger' : ''
-    }, data.summary[key])))), /*#__PURE__*/React.createElement("div", {
+    }, data.summary[key])))), mode === 'import' && referenceFields.length > 0 && /*#__PURE__*/React.createElement("p", {
+      role: "status"
+    }, "\u4EE5\u4E0B\u6587\u4EF6\u5217\u4EC5\u4F9B\u53C2\u8003\uFF0C\u672C\u6B21\u4E0D\u5BFC\u5165\uFF1A", referenceFields.map(key => fields[key]).join('、'), "\u3002 \u5DF2\u6709\u8BB0\u5F55\u7684\u8FD9\u4E9B\u4FE1\u606F\u4FDD\u6301\u539F\u503C\uFF1B\u65B0\u8BB0\u5F55\u6309\u7CFB\u7EDF\u89C4\u5219\u751F\u6210\u3002", referenceFields.includes('machine_authorizations') && '设备权限需在人员详情设置。'), /*#__PURE__*/React.createElement("div", {
       className: "rm-preview-toolbar"
     }, /*#__PURE__*/React.createElement("h3", null, "\u9010\u884C\u9884\u68C0"), /*#__PURE__*/React.createElement("label", null, "\u663E\u793A ", /*#__PURE__*/React.createElement("select", {
       "aria-label": "\u9884\u68C0\u660E\u7EC6\u7B5B\u9009",

@@ -27,7 +27,7 @@
     const allowed = cohortKeys.concat(['snapshot_ref'], exporting ? ['format', 'local_query', 'late_filter', 'selected_task_ref'] : []);
     if (!object(input) || Reflect.ownKeys(input).some(key => !allowed.includes(key))) fail('现场实际甘特的查询范围里有不认识的项，没有忽略来源条件。');
     const value = { ...input };
-    if (!ref(value.plan_ref) || own(value, 'source') && value.source !== 'production') fail('请明确选择生产计划，未使用样例或最新版本替代。');
+    if (!ref(value.plan_ref) || own(value, 'source') && value.source !== 'production') fail('请选择有效的生产计划。');
     for (const [start, end, dateOnly] of [['range_start', 'range_end', false], ['plan_finish_date_from', 'plan_finish_date_to', true]]) {
       const hasStart = own(value, start), hasEnd = own(value, end);
       if (hasStart !== hasEnd || hasStart && (!local(value[start] + (dateOnly ? 'T00:00:00' : '')) || !local(value[end] + (dateOnly ? 'T00:00:00' : '')) || (dateOnly ? value[start] > value[end] : value[start] >= value[end]))) fail('起止范围不完整或时间无效。');

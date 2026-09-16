@@ -34,8 +34,6 @@
       [error, setError] = React.useState(null),
       [discard, setDiscard] = React.useState(false);
     const [groups, setGroups] = React.useState([]),
-      [zero, setZero] = React.useState(false),
-      [ack, setAck] = React.useState(false),
       [now, setNow] = React.useState(Date.now());
     const [download, setDownload] = React.useState({
         busy: false
@@ -111,8 +109,6 @@
       checkedPreview.current = null;
       setJob(null);
       setGroups([]);
-      setZero(false);
-      setAck(false);
       setError(null);
       setDownload({
         busy: false
@@ -166,17 +162,16 @@
     if (data && now >= Date.parse(data.expires_at)) reason = '预检已过期，请重新预检。';
     if (data && importing && !reason) {
       try {
-        F.confirmInput(data, groups, zero);
+        F.confirmInput(data, groups, data.zero_review_required);
       } catch (failure) {
         reason = C.message(failure);
       }
     }
-    if (data && importing && !reason && data.rows.some(row => row.requires_confirmation) && !ack) reason = '请核对修改前后内容并勾选确认。';
     if (command.phase === 'rejected') reason = '本次未导入，请重新预检后再确认。';
     function confirm() {
       if (!importing || controlsDisabled || recovery || !data || reason) return;
       try {
-        command.submit('process_' + kind + '_import', 'confirm', data.preview_ref, data.write_context, F.confirmInput(data, groups, zero));
+        command.submit('process_' + kind + '_import', 'confirm', data.preview_ref, data.write_context, F.confirmInput(data, groups, data.zero_review_required));
       } catch (failure) {
         setError(failure);
       }
@@ -244,10 +239,10 @@
         disabled: controlsDisabled,
         reason: reason,
         onClick: importing ? confirm : () => downloadFile(false)
-      }, importing ? allSkipped ? '确认跳过并记录结果' : '确认导入' : '下载文件'))
+      }, importing ? allSkipped ? '确认跳过并记录结果' : data.zero_review_required ? '按 0 导入' : '确认导入' : '下载文件'))
     }, /*#__PURE__*/React.createElement("div", {
       className: "modal-b scroll rm-body"
-    }, recovery && !done && /*#__PURE__*/React.createElement("p", null, "\u6B63\u5728\u67E5\u8BE2\u4E0A\u6B21\u6587\u4EF6\u64CD\u4F5C\u7684\u7ED3\u679C\uFF0C\u4E0D\u4F1A\u91CD\u65B0\u4E0A\u4F20\u6216\u518D\u6B21\u5BFC\u5165\u3002"), !recovery && !done && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+    }, recovery && !done && /*#__PURE__*/React.createElement("p", null, "\u6B63\u5728\u67E5\u8BE2\u4E0A\u6B21\u5BFC\u5165\u7ED3\u679C\uFF0C\u8BF7\u7A0D\u5019\u3002"), !recovery && !done && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
       className: "rm-format"
     }, /*#__PURE__*/React.createElement("span", {
       className: "seclabel"
@@ -290,7 +285,7 @@
       }
     })), file && /*#__PURE__*/React.createElement("span", {
       className: "fhint"
-    }, file.name, " \xB7 ", file.size, " \u5B57\u8282")), original.target_ref && /*#__PURE__*/React.createElement("p", null, "\u53EA\u6838\u5BF9\u5E76\u4FEE\u6539\u5F53\u524D\u96F6\u4EF6\uFF0C\u4E0D\u63A5\u53D7\u6587\u4EF6\u4E2D\u7684\u5176\u4ED6\u96F6\u4EF6\u3002")) : /*#__PURE__*/React.createElement("fieldset", {
+    }, file.name, " \xB7 ", file.size, " \u5B57\u8282")), original.target_ref && /*#__PURE__*/React.createElement("p", null, "\u5BFC\u5165\u8303\u56F4\uFF1A\u5F53\u524D\u96F6\u4EF6\u3002")) : /*#__PURE__*/React.createElement("fieldset", {
       disabled: controlsDisabled,
       style: {
         border: 0,
@@ -327,21 +322,10 @@
       groups: groups,
       onGroups: setGroups,
       disabled: controlsDisabled
-    }), !done && data.zero_review_required && /*#__PURE__*/React.createElement("label", {
-      className: "rm-check"
-    }, /*#__PURE__*/React.createElement("input", {
-      type: "checkbox",
-      checked: zero,
-      disabled: controlsDisabled,
-      onChange: event => setZero(event.target.checked)
-    }), "\u5DF2\u590D\u6838\u5355\u4EF6\u5DE5\u65F6\u4E3A 0 \u7684\u8BB0\u5F55\uFF0C\u786E\u8BA4\u4FDD\u7559 0\u3002"), !done && data.rows.some(row => row.requires_confirmation) && /*#__PURE__*/React.createElement("label", {
-      className: "rm-check"
-    }, /*#__PURE__*/React.createElement("input", {
-      type: "checkbox",
-      checked: ack,
-      disabled: controlsDisabled,
-      onChange: event => setAck(event.target.checked)
-    }), "\u5DF2\u6838\u5BF9\u5168\u90E8\u4FEE\u6539\u524D\u540E\u5185\u5BB9\uFF0C\u786E\u8BA4\u8FD9\u4E9B\u66F4\u65B0\u3002"), /*#__PURE__*/React.createElement("p", null, kind === 'hours' ? '锁定跳过行不参与写入；其余行整体确认，任何一行不能提交，本批全部不修改。' : '本批整体确认；任何一行不能提交，本批全部不修改。')), data && !importing && /*#__PURE__*/React.createElement("p", {
+    }), data.zero_review_required && /*#__PURE__*/React.createElement("p", {
+      className: "process-zero-impact",
+      role: "status"
+    }, "\u4EE5\u4E0B\u5DE5\u5E8F\u7684\u5355\u4EF6\u5DE5\u65F6\u4E3A 0\uFF0C\u6392\u4EA7\u53EA\u8BA1\u7B97\u6362\u578B\u5DE5\u65F6\uFF0C\u6570\u91CF\u589E\u52A0\u4E0D\u4F1A\u589E\u52A0\u52A0\u5DE5\u65F6\u957F\uFF1A", data.rows.filter(row => row.requires_confirmation && row.after && row.after.unit_hours === 0).map(row => row.business_code + ' / 工序 ' + row.sequence).join('、'), "\u3002\u70B9\u51FB\u201C\u6309 0 \u5BFC\u5165\u201D\u4FDD\u5B58\u8FD9\u4E9B\u6570\u503C\u3002"), /*#__PURE__*/React.createElement("p", null, kind === 'hours' ? '锁定跳过行不参与写入；其余行整体确认，任何一行不能提交，本批全部不修改。' : '本批整体确认；任何一行不能提交，本批全部不修改。')), data && !importing && /*#__PURE__*/React.createElement("p", {
       role: "status"
     }, "\u5DF2\u6838\u5BF9 ", data.part_count, " \u4E2A\u96F6\u4EF6\uFF0C\u5BFC\u51FA ", data.row_count, " \u884C", kind === 'hours' ? '工序记录' : '零件记录', "\uFF0C\u4E0D\u9650\u5F53\u524D\u663E\u793A\u9875\u3002"), reason && data && !done && /*#__PURE__*/React.createElement("p", {
       role: "status"
@@ -356,7 +340,7 @@
       data: saved
     }), done && /*#__PURE__*/React.createElement("p", {
       role: "status"
-    }, kind === 'hours' ? '已查到文件导入结果；导入不代替工时阶段的人工确认。' : '文件导入已完成；工艺确认状态以刷新后的详情为准。'))), discard && /*#__PURE__*/React.createElement(Modal, {
+    }, kind === 'hours' ? '导入已完成，请继续确认工时。' : '导入已完成，请刷新资料。'))), discard && /*#__PURE__*/React.createElement(Modal, {
       title: "\u653E\u5F03\u672C\u6B21\u6587\u4EF6\u5BFC\u5165\uFF1F",
       icon: "file-input",
       onClose: () => setDiscard(false),
@@ -368,7 +352,7 @@
       }, "\u653E\u5F03\u5BFC\u5165\u5E76\u5173\u95ED"))
     }, /*#__PURE__*/React.createElement("div", {
       className: "modal-b"
-    }, "\u5F53\u524D\u9009\u62E9\u7684\u6587\u4EF6\u4E0E\u672A\u63D0\u4EA4\u7684\u786E\u8BA4\u9879\u5C06\u88AB\u4E22\u5F03\uFF0C\u4E0D\u4F1A\u4FEE\u6539\u96F6\u4EF6\u3002")));
+    }, "\u5F53\u524D\u9009\u62E9\u7684\u6587\u4EF6\u4E0E\u672A\u63D0\u4EA4\u7684\u786E\u8BA4\u9879\u5C06\u88AB\u4E22\u5F03\u3002")));
   }
   window.ProcessFileActions = ProcessFileActions;
 })();

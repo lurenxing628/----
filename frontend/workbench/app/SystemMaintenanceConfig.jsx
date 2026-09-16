@@ -41,10 +41,10 @@
             <C.Button icon="rotate-ccw" disabled={!!reason || !changed} onClick={() => setReplace(true)}>放弃草稿</C.Button><C.Button icon="save" type="submit" className="btn primary" reason={reason}>保存维护配置</C.Button>
           </div></div>{validated && !validation.valid && <p className="sm-error" role="alert">有几项填得不对，配置没有保存。请修正标红的项。</p>}
         </form>}
-        <details className="sm-rules sm-config-help"><summary>生效范围与自动维护规则</summary><p>打开页面时系统才会检查一次自动维护，检查间隔不保证在指定时刻执行。清理操作日志不会清除运行日志文件。</p><p>主题、每页条数、紧凑行距属于页面偏好，不写入业务配置。</p></details>
+        <details className="sm-rules sm-config-help"><summary>生效范围与自动维护规则</summary><p>自动维护在打开页面时检查是否到期；操作日志与运行日志分别清理。</p></details>
       </section>
       {replace && <window.ResourceControls.Modal title="放弃当前草稿并刷新？" icon="history" onClose={() => setReplace(false)}
-        footer={<><C.Button onClick={() => setReplace(false)}>保留草稿</C.Button><C.Button icon="refresh-cw" onClick={refreshNow}>放弃并刷新</C.Button></>}><div className="modal-b form"><p>未保存修改将被丢弃，不会写入业务配置。</p></div></window.ResourceControls.Modal>}
+        footer={<><C.Button onClick={() => setReplace(false)}>保留草稿</C.Button><C.Button icon="refresh-cw" onClick={refreshNow}>放弃并刷新</C.Button></>}><div className="modal-b form"><p>未保存修改将被丢弃。</p></div></window.ResourceControls.Modal>}
     </div>;
   }
   window.SystemMaintenanceConfig = Config;

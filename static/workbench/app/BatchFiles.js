@@ -176,7 +176,7 @@
         setError(null);
         serial.current++;
       }
-    }))), /*#__PURE__*/React.createElement("p", null, "\u65B0\u589E\u6279\u6B21\u4E0D\u81EA\u52A8\u751F\u6210\u5DE5\u5E8F\uFF1B\u5DF2\u6709\u6279\u6B21\u7684\u7A7A\u5355\u5143\u683C\u4E0D\u8986\u76D6\u3002\u786E\u8BA4\u524D\u4E0D\u4F1A\u65B0\u589E\u3001\u66F4\u65B0\u6216\u5220\u9664\u6279\u6B21\u3002"), preview && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", null, preview.count, " \u884C \xB7 ", preview.can_confirm ? '全部核对通过，一起保存' : '存在拒绝行，本批不会写入'), /*#__PURE__*/React.createElement("div", {
+    }))), /*#__PURE__*/React.createElement("p", null, "\u65B0\u6279\u6B21\u5BFC\u5165\u540E\u9700\u751F\u6210\u5DE5\u5E8F\uFF1B\u66F4\u65B0\u65F6\u7A7A\u767D\u5355\u5143\u683C\u4FDD\u7559\u539F\u503C\u3002"), preview && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", null, preview.count, " \u884C \xB7 ", preview.can_confirm ? '全部核对通过，一起保存' : '存在未通过检查的行，请修正'), /*#__PURE__*/React.createElement("div", {
       className: "batch-preview wb-table-frame",
       "data-sticky-head": true
     }, /*#__PURE__*/React.createElement("table", {

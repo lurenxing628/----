@@ -1,4 +1,11 @@
 /* System maintenance presentation. The recovery state machine stays in SystemMaintenanceWorkspace. */
+body.aps-workbench .sm-workbench .sm-source-bar {padding:var(--space-3);margin-bottom:0;background:var(--ui-card-bg);border:1px solid var(--ui-border);border-bottom:0;}
+/* override: workbench-ui.css resets metric borders; close the source-and-status panel at its sides. */
+body.aps-workbench .sm-workbench .sm-metrics {margin-bottom:var(--space-3);border-left:1px solid var(--ui-border)!important;border-right:1px solid var(--ui-border)!important;}
+body.aps-workbench .sm-workbench .sm-tabs {padding:0 var(--space-4);border:1px solid var(--ui-border);}
+body.aps-workbench .sm-workbench .sm-tab-panel {padding:var(--space-4);border:1px solid var(--ui-border);border-top:0;}
+body.aps-workbench .sm-workbench .sm-section-head {margin-bottom:var(--space-3);padding-bottom:var(--space-2);}
+body.aps-workbench .sm-workbench .sm-config-groups {gap:var(--space-4);}
 body.aps-workbench .sm-maintenance-workspace :is(.sm-field,.sm-meta,.sm-note) { font-size: var(--font-size-2); }
 body.aps-workbench .sm-maintenance-workspace .sm-record-table tbody tr:hover { background: var(--ui-surface-muted); }
 body.aps-workbench .sm-maintenance-workspace .sm-record-table tbody tr:focus-visible { outline: 2px solid var(--ui-info-text); outline-offset: -2px; }

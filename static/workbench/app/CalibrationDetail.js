@@ -179,7 +179,7 @@
       error: error
     }), stale && /*#__PURE__*/React.createElement("p", {
       className: "ca-note"
-    }, "\u6570\u636E\u5DF2\u66F4\u65B0\uFF0C\u8BF7\u70B9\u300C\u5237\u65B0\u6240\u9009\u8BB0\u5F55\u300D\u540E\u91CD\u8BD5\u3002\u5DF2\u9009\u8BB0\u5F55\u548C\u5B8C\u5DE5\u8BB0\u5F55\u6765\u6E90\u5DF2\u4FDD\u7559\uFF0C\u4E0D\u4F1A\u81EA\u52A8\u6362\u5230\u5176\u4ED6\u8BB0\u5F55\u3002"), (error || stale) && /*#__PURE__*/React.createElement(Button, {
+    }, "\u6570\u636E\u5DF2\u66F4\u65B0\uFF0C\u8BF7\u5237\u65B0\u6240\u9009\u8BB0\u5F55\u3002"), (error || stale) && /*#__PURE__*/React.createElement(Button, {
       icon: "refresh-cw",
       onClick: onRefresh
     }, "\u5237\u65B0\u6240\u9009\u8BB0\u5F55"), busy && /*#__PURE__*/React.createElement(window.WorkbenchListControls.EmptyState, {
@@ -197,7 +197,7 @@
       key: reason.code + ':' + index
     }, reason.message, "\uFF08", reason.count, " \u6761\u8BB0\u5F55\uFF09")))), /*#__PURE__*/React.createElement("h3", null, "\u5B8C\u5DE5\u8BB0\u5F55\u4E0E\u6765\u6E90\u6838\u5BF9"), sampleRef && !data.samples.some(sample => sample.sample_ref === sampleRef) && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", {
       className: "ca-note"
-    }, "\u539F\u6765\u9009\u4E2D\u7684\u5B8C\u5DE5\u8BB0\u5F55\u5DF2\u4E0D\u5728\u7ED3\u679C\u91CC\uFF0C\u6CA1\u6709\u6539\u9009\u5176\u4ED6\u6765\u6E90\u3002"), /*#__PURE__*/React.createElement(window.WorkbenchReference, {
+    }, "\u6240\u9009\u5B8C\u5DE5\u8BB0\u5F55\u5DF2\u4E0D\u5728\u5F53\u524D\u7ED3\u679C\u4E2D\u3002"), /*#__PURE__*/React.createElement(window.WorkbenchReference, {
       value: sampleRef,
       label: "\u539F\u9009\u5B8C\u5DE5\u8BB0\u5F55\u7F16\u53F7"
     })), groups.map(([label, kind, samples]) => /*#__PURE__*/React.createElement(SampleGroup, {

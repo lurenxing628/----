@@ -25,13 +25,13 @@
       return rows.map(row => <option value={row.ref} key={row.ref}>{row.label}{row.available === false ? '（原资料不可用）' : ''}</option>);
     }
     return <form className="aw-scope" aria-label="执行分析筛选" onSubmit={event => { event.preventDefault(); onChange(window.ReportAPI.scope(draft)); }}>
+      <p className="rw-source-line"><span>数据来源</span><output className="rw-source-value" aria-label="数据来源">当前正式计划</output></p>
       <div className="aw-scope-main">
-        <label>数据来源<select aria-label="数据来源" value="production" disabled><option value="production">当前正式计划</option></select></label>
         <label>计划完工起日<input type="date" aria-label="计划完工起日" value={draft.plan_finish_date_from || ''} onChange={event => set({ plan_finish_date_from: event.target.value })} /></label>
         <label>计划完工止日<input type="date" aria-label="计划完工止日" value={draft.plan_finish_date_to || ''} onChange={event => set({ plan_finish_date_to: event.target.value })} /></label>
         <label>批次<select aria-label="批次筛选" value={draft.batch_ref || ''} onChange={event => set({ batch_ref: event.target.value })}><option value="">全部批次</option>{selectOptions('batch', draft.batch_ref)}</select></label>
         <label>搜索<input type="search" aria-label="搜索批次或工序" value={draft.query || ''} onChange={event => set({ query: event.target.value })} /></label>
-        <div className="aw-scope-tools"><Button icon="search" type="submit" busy={busy} aria-label="查询范围" className="btn" />
+        <div className="aw-scope-tools"><Button icon="search" type="submit" busy={busy} aria-label="查询范围" className="primary" />
           <Button icon="chevron-down" aria-label="更多筛选" aria-expanded={more} onClick={() => setMore(old => !old)} />
           <Button icon="x" aria-label="清除筛选" onClick={() => onChange({ source: 'production', ...(value.plan_ref ? { plan_ref: value.plan_ref } : {}) })} /></div>
       </div>

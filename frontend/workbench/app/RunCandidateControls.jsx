@@ -1,7 +1,7 @@
 (function () {
   'use strict';
   const { Button, Icon } = window.ResourceControls;
-  function ErrorBox({ error }) { return error ? <div className="rc-notice rc-error" role="alert">{error.message || '候选方案读取失败，没有显示替代结果。请刷新后重试。'}</div> : null; }
+  function ErrorBox({ error }) { return error ? <div className="rc-notice rc-error" role="alert">{error.message || '候选方案读取失败，请刷新后重试。'}</div> : null; }
   function Reasons({ rows = [] }) {
     const groups = new Map();
     rows.forEach(r => { const key = [r.field, r.code, r.message].join('\n'); if (!groups.has(key)) groups.set(key, { ...r, count: 0 }); groups.get(key).count++; });
@@ -58,7 +58,7 @@
         <div><dt>齐套检查 / 缺资源</dt><dd>{input.ready_check === null ? '未记录' : input.ready_check ? '开启' : '关闭'} / {{ auto_assign: '自动分配', exclude: '暂不排' }[input.missing_resource_policy] || '未记录'}</dd></div>
         <div><dt>已有执行 / 当时的正式计划</dt><dd>{input.completed_policy === 'preserve_actuals' ? '保留已有开工和完工记录' : '执行规则未记录'}<small>{g.baseline.captured_task_count === null ? '正式计划安排数未知' : '已保留 ' + g.baseline.captured_task_count + ' 道正式计划安排'}</small></dd></div></dl>
       <div className="rc-muted">名称、资源、交期和执行状态来自生成时保存的资料，未读取后来的修改。{analysis ? analysis.baseline.reason && analysis.baseline.reason.message : g.baseline.reason.message}</div>
-      <div className="rc-muted">{analysis ? '排产时选批：' + analysis.batches.map(row => row.batch_id).join(' / ') : '原始选批清单尚未核对，不能用可见安排反推生成时的完整选批范围。'}</div>
+      <div className="rc-muted">{analysis ? '排产时选批：' + analysis.batches.map(row => row.batch_id).join(' / ') : '排产时的批次清单暂不可用。'}</div>
       <div>排产记录编号：<code>{g.run_ref}</code></div><div>候选记录编号：<code>{data.candidate.candidate_ref}</code></div>
         <dl className="rc-meta">{window.RunCandidateAPI.metricKeys.map(k => <div key={k}><dt>{M.metricLabels[k]}</dt><dd><Metric metric={data.candidate.metrics[k]} kind={k} /></dd></div>)}
           <div><dt>实际工时 / 成本</dt><dd>暂无数据<small>系统还没有实际工时和成本记录。</small></dd></div></dl></details>
@@ -77,8 +77,8 @@
           ['外协商', task.supplier && task.supplier.label], ['来源', task.source === 'internal' ? '内部' : task.source === 'external' ? '外协' : null],
           ['生成时锁定', typeof task.locked === 'boolean' ? task.locked ? '是' : '否' : null], ['安排状态', task.reason ? task.reason.message : '已保存候选安排']].map(([k, v]) => <div key={k}><dt>{k}</dt><dd>{v == null ? '未记录' : v}</dd></div>)}</dl>
         <window.WorkbenchReference entries={{ '安排编号': task.row_ref, '工序编号': task.operation_ref, '批次编号': task.batch_ref }} />
-        <h4>生成时的开工和完工记录</h4>{task.execution_at_generation ? <dl>{Object.entries(task.execution_at_generation).map(([k, v]) => <div key={k}><dt>{M.executionLabels[k]}</dt><dd>{v === null ? '未知' : M.executionValue(v)}</dd></div>)}</dl> : <p className="rc-muted">未保留生成时的开工和完工记录，不能推断为未开工。</p>}
-        <p className="rc-muted">实际工时和成本：暂无数据。系统还没有这些记录，安排时长不等于实际工时。</p><Reasons rows={task.data_gaps} /></>}
+        <h4>生成时的开工和完工记录</h4>{task.execution_at_generation ? <dl>{Object.entries(task.execution_at_generation).map(([k, v]) => <div key={k}><dt>{M.executionLabels[k]}</dt><dd>{v === null ? '未知' : M.executionValue(v)}</dd></div>)}</dl> : <p className="rc-muted">未记录排产时的开工和完工状态。</p>}
+        <Reasons rows={task.data_gaps} /></>}
     </aside>;
   }
   function Styles() {
@@ -101,13 +101,13 @@
           <td>{row.batch_id}<small>{row.part_no || '图号未记录'} · {row.part_label || '名称未填写'}</small></td>
           <td>{M.number(row.quantity)} 件<small>{row.scheduled_operation_count} / {row.operation_count} 道</small></td>
           <td>{row.due_date || '未记录'}</td><td>{row.planned_finish ? M.timeLabel(row.planned_finish) : '暂无数据'}
-            {row.partial_planned_finish && <small>已安排部分：{M.timeLabel(row.partial_planned_finish)}，非全批完工</small>}</td>
+            {row.partial_planned_finish && <small>已排工序结束时间：{M.timeLabel(row.partial_planned_finish)}</small>}</td>
           <td>{({ overdue: '预计超期', on_time: '预计按期', unknown: '暂无数据' })[row.risk]}<small>{M.number(row.delay_hours)} 小时</small></td>
           <td>{row.last_operations.map(task => <Button key={task.row_ref} icon="search" className="mini" onClick={() => onLast(task)}
             aria-label={'定位末端工序 ' + row.batch_id + ' ' + task.sequence + (task.piece_id ? ' ' + task.piece_id : '')}>
             {M.number(task.sequence)} {task.process_label || '工序未记录'}{task.piece_id && ' · ' + task.piece_id}</Button>)}
             {row.issues.map((code, index) => <small key={index}>{reasons[code] || '排产时依据不完整，交付结论待确认'}</small>)}</td>
-        </tr>)}{!data.items.length && <tr><td colSpan={6}>{data.items_complete ? '当前读取范围没有批次。' : '交付依据未完整记录，不能认定为零风险。'}</td></tr>}</tbody></table></div>
+        </tr>)}{!data.items.length && <tr><td colSpan={6}>{data.items_complete ? '当前读取范围没有批次。' : '交付资料不完整，暂无法评估。'}</td></tr>}</tbody></table></div>
       <Pager page={current} pages={pages} onPage={setPage} label="候选交付风险" />
     </section>;
   }

@@ -61,7 +61,7 @@
       }, save ? '确认保存试调方案' : '确认放弃'))
     }, /*#__PURE__*/React.createElement("div", {
       className: "trial-modal-body"
-    }, /*#__PURE__*/React.createElement("p", null, save ? '保存后草稿关闭，试调方案保留全部原任务和调整记录，不改变正式计划。' : '仅关闭此草稿，不删除原计划、草稿记录和调整历史。此草稿将不能继续调整。'), /*#__PURE__*/React.createElement("p", null, "\u539F\u6765\u6E90\uFF1A", U.sourceLabel(data.base_identity), " \xB7 \u5B8C\u6574 ", data.task_count, " \u9053\u5B89\u6392 \xB7 \u5F53\u524D\u7EA6\u675F ", U.statusLabel(data.validation.constraints_status)), save && /*#__PURE__*/React.createElement("label", {
+    }, /*#__PURE__*/React.createElement("p", null, save ? '保存后草稿关闭，可继续查看试调方案和调整记录。' : '放弃后草稿不可继续调整，可查看历史记录。'), /*#__PURE__*/React.createElement("p", null, "\u539F\u6765\u6E90\uFF1A", U.sourceLabel(data.base_identity), " \xB7 \u5B8C\u6574 ", data.task_count, " \u9053\u5B89\u6392 \xB7 \u5F53\u524D\u7EA6\u675F ", U.statusLabel(data.validation.constraints_status)), save && /*#__PURE__*/React.createElement("label", {
       className: "tt-naming"
     }, "\u8BD5\u8C03\u65B9\u6848\u540D\u79F0", /*#__PURE__*/React.createElement("input", {
       "aria-label": "\u8BD5\u8C03\u65B9\u6848\u540D\u79F0",
@@ -126,7 +126,7 @@
       locatedOrigin = React.useRef(null);
     function notifyTarget(next) {
       if (typeof onTargetChange !== 'function') return;
-      const failed = () => setError(new Error('试调记录已定位，但页面地址没有更新成功。记录还在试调列表里，没有重复写入。'));
+      const failed = () => setError(new Error('试调记录已定位，但页面地址更新失败。可从试调列表重新打开。'));
       try {
         Promise.resolve(onTargetChange({
           ...next,
@@ -205,7 +205,7 @@
         setOrigin(null);
       }
       refresh();
-      setNotice(d.scenario_ref ? '试调方案已保存，正在刷新；正式计划没有改变。' : d.status === 'discarded' ? '指定草稿已放弃，原记录与历史仍保留。' : '试调已保存，正式计划没有改变。');
+      setNotice(d.scenario_ref ? '试调方案已保存，正在刷新。' : d.status === 'discarded' ? '草稿已放弃。' : '试调已保存。');
       notifyTarget(next);
     });
     const actions = {
@@ -281,6 +281,7 @@
       "aria-expanded": directory
     }, "\u8349\u7A3F / \u8BD5\u8C03\u65B9\u6848\u5217\u8868"), /*#__PURE__*/React.createElement(U.Button, {
       icon: "plus",
+      className: "btn primary",
       disabled: commands.blocked,
       onClick: async () => {
         if (await guard()) setModal('create');
@@ -300,7 +301,7 @@
     }, "\u5237\u65B0\u8BD5\u8C03\u5185\u5BB9\u548C\u64CD\u4F5C\u8BB0\u5F55"), commands.key && /*#__PURE__*/React.createElement("section", {
       className: "tt-notice",
       "aria-label": "\u5F85\u786E\u8BA4\u7684\u8BD5\u8C03\u63D0\u4EA4"
-    }, /*#__PURE__*/React.createElement("strong", null, "\u4E0A\u6B21\u8BD5\u8C03\u63D0\u4EA4\u5F85\u786E\u8BA4"), /*#__PURE__*/React.createElement("p", null, commands.note || '本机只存了操作编号，还没读到结果。'), /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("strong", null, "\u4E0A\u6B21\u8BD5\u8C03\u63D0\u4EA4\u5F85\u786E\u8BA4"), /*#__PURE__*/React.createElement("p", null, commands.note || '上次提交结果尚未确认。'), /*#__PURE__*/React.createElement("div", {
       className: "tt-tools"
     }, /*#__PURE__*/React.createElement(U.Button, {
       icon: "refresh-cw",
@@ -365,7 +366,7 @@
       className: "tt-footer"
     }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("strong", null, "\u6574\u4F53\u7EA6\u675F\uFF1A", U.statusLabel(data.validation.constraints_status)), /*#__PURE__*/React.createElement("div", {
       className: "tt-muted"
-    }, typeof renderAdoption === 'function' ? '保存试调不代表正式采用' : window.WorkbenchTerms.outcomes.unavailable)), /*#__PURE__*/React.createElement("div", {
+    }, typeof renderAdoption === 'function' ? '保存后可正式采用' : window.WorkbenchTerms.outcomes.unavailable)), /*#__PURE__*/React.createElement("div", {
       className: "tt-tools"
     }, /*#__PURE__*/React.createElement(U.Button, {
       icon: "x",
@@ -386,7 +387,7 @@
       onNavigate,
       disabled: actions.blocked,
       onAdopted: () => {
-        setNotice('采用结果在采用面板里确认；这里显示的还是上次读取的试调方案内容。');
+        setNotice('采用结果已更新，请在采用面板查看。');
         refresh();
       }
     }) : /*#__PURE__*/React.createElement(U.Button, {

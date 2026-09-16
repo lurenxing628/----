@@ -205,7 +205,10 @@
       className: "pf-muted wb-page-context"
     }, "\u5F53\u524D\u751F\u4EA7\u8D44\u6599 \xB7 \u5355\u6B21\u6392\u4EA7\u8303\u56F4"), actions && /*#__PURE__*/React.createElement("div", {
       className: "pf-tools"
-    }, actions)), /*#__PURE__*/React.createElement("ol", {
+    }, actions)), /*#__PURE__*/React.createElement("section", {
+      className: "pf-scope",
+      "aria-label": "\u6392\u4EA7\u8303\u56F4"
+    }, /*#__PURE__*/React.createElement("ol", {
       className: "pf-stepper",
       "aria-label": "\u6267\u884C\u6392\u4EA7\u6B65\u9AA4"
     }, ['选批次和日期', '检查', '计算'].map((label, index) => /*#__PURE__*/React.createElement("li", {
@@ -261,7 +264,10 @@
       disabled: busy
     }), /*#__PURE__*/React.createElement(Metrics, {
       counts: counts
-    }), /*#__PURE__*/React.createElement("div", {
+    })), /*#__PURE__*/React.createElement("section", {
+      className: "pf-review",
+      "aria-label": "\u6392\u4EA7\u89C4\u5219\u4E0E\u68C0\u67E5"
+    }, /*#__PURE__*/React.createElement("div", {
       className: "pf-body"
     }, /*#__PURE__*/React.createElement(Rules, {
       value: value,
@@ -314,7 +320,7 @@
       className: currentStep === 3 ? 'btn primary' : 'btn',
       disabled: runBlocked,
       reason: runReason
-    }, "\u5F00\u59CB\u6392\u4EA7"))), renderRunPanel && renderRunPanel(data));
+    }, "\u5F00\u59CB\u6392\u4EA7")))), renderRunPanel && renderRunPanel(data));
   }
   window.PreflightWorkspace = PreflightWorkspace;
 })();

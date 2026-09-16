@@ -33,7 +33,7 @@
           disabled={!onRelated} onClick={() => onRelated(row.task_ref)} style={{ height: 'auto', minHeight: 32, whiteSpace: 'normal', textAlign: 'left', overflowWrap: 'anywhere' }}>
           {task ? label : '读取完整计划并定位' + prefix}</Button> : <span key={'unplanned:' + index} className="plan-muted">{prefix}未在本计划安排</span>;
       })}</div>
-    </div>) : <p className="plan-muted">{!selected ? '尚未选中任务' : selected.before ? '这里的前后序只属于所选计划，初始安排的前后序没有单独查询。' : order.issues.map(row => row.message).join('；') || '这道工序的冻结工艺关系暂无数据。'}</p>}</section>;
+    </div>) : <p className="plan-muted">{!selected ? '尚未选中任务' : selected.before ? '这里的前后序只属于所选计划，初始安排的前后序没有单独查询。' : order.issues.map(row => row.message).join('；') || '暂无该工序的前后序信息。'}</p>}</section>;
   }
   function TaskDetail({ data, selected, onSelect, onRelated, renderTrial, scope = {}, query = '', disabled = false }) {
     const task = selected && selected.task, labels = React.useMemo(() => M.names(data), [data]);
@@ -72,22 +72,23 @@
         {comparison.before && !selected.before && <Button icon="arrow-right" onClick={() => onSelect(comparison.before, true)}>查看初始安排</Button>}
         {comparison.after && selected.before && <Button icon="arrow-right" onClick={() => onSelect(comparison.after, false)}>查看当前安排</Button>}
       </> : <p className="plan-muted">{baseline.reason || (task ? '未找到对应对照记录' : '尚未选中任务')}</p>}</section>
-      <section><h3>交付风险</h3>{!task ? <p className="plan-muted">尚未选中任务</p> : selected.before ? <p className="plan-muted">这里的交付风险只属于所选计划，初始计划的交付风险没有单独查询。</p> : risk ? <>
+      <section><h3>交付风险</h3>{!task ? <p className="plan-muted">尚未选中任务</p> : selected.before ? <p className="plan-muted">暂无初始计划的交付风险数据。</p> : risk ? <>
         <Facts items={[
           ['判定', <span className={risk.risk === 'overdue' ? 'plan-danger' : ''}>{riskLabel[risk.risk]}</span>],
           ['交期', risk.due_date || '未记录'], ['计划完工', M.timeLabel(risk.planned_finish)],
           [window.WorkbenchTerms.delay_hours, risk.delay_hours === null ? '未知' : window.WorkbenchFormat.hours(risk.delay_hours, 2)],
           ['未排工序', M.number(risk.unscheduled_operation_count)]
         ]} />
-        {risk.partial_planned_finish && <p className="plan-muted">已安排部分的结束时间：{M.timeLabel(risk.partial_planned_finish)}，不代表批次完工。</p>}
+        {risk.partial_planned_finish && <p className="plan-muted">已排工序结束时间：{M.timeLabel(risk.partial_planned_finish)}</p>}
         {risk.issues.length > 0 && <p className="plan-muted">{issueText(risk.issues)}</p>}
       </> : <p className="plan-muted">暂无数据</p>}</section>
-      <section><h3>资源占用</h3>{window.PointContract.isPoint(task) ? <p className="plan-muted">零工时工序，不占设备人员。</p> : selected && selected.before ? <p className="plan-muted">初始计划的班表和占用没有单独查询。</p> : !resources.length ? <p className="plan-muted">暂无资源占用数据</p> : resources.map(row => <div key={row.resource_ref}>
+      <section><h3>资源占用</h3>{window.PointContract.isPoint(task) ? <p className="plan-muted">零工时工序，不占设备人员。</p> : selected && selected.before ? <p className="plan-muted">暂无初始计划的班表和资源占用数据。</p> : !resources.length ? <p className="plan-muted">暂无资源占用数据</p> : resources.map(row => <div key={row.resource_ref}>
         <strong>{row.label || labels.get(row.resource_ref) || '资源名称未填写'}</strong>
         <Facts items={[
-          ['已占时间', window.WorkbenchFormat.hours(row.occupied_hours, 2)], ['可用时间', row.available_hours === null ? '暂无数据' : window.WorkbenchFormat.hours(row.available_hours, 2)],
-          ['班表内占用', row.utilization === null ? '暂无数据' : M.number(row.utilization * 100) + '%'],
-          ['重叠时间', <span className={row.has_overlap ? 'plan-danger' : ''}>{window.WorkbenchFormat.hours(row.overlap_hours, 2)}</span>]
+          ['班表内占用', row.available_occupied_hours === null ? '暂无数据' : window.WorkbenchFormat.hours(row.available_occupied_hours, 2)], ['可用时间', row.available_hours === null ? '暂无数据' : window.WorkbenchFormat.hours(row.available_hours, 2)],
+          ['占用率', row.utilization === null ? '暂无数据' : M.number(row.utilization * 100) + '%'],
+          ['重叠时间', <span className={row.has_overlap ? 'plan-danger' : ''}>{window.WorkbenchFormat.hours(row.overlap_hours, 2)}</span>],
+          ['班表外占用', row.outside_available_hours === null ? '暂无数据' : window.WorkbenchFormat.hours(row.outside_available_hours, 2)]
         ]} />
         <Issues issues={row.issues} />
       </div>)}</section></>}
@@ -95,7 +96,7 @@
   }
   function conflictRows(data) {
     const projection = data.projections.occupancy, scope = data.time_scope;
-    const require = value => { if (!value) throw new Error('资源重叠明细的时间范围或重叠依据读不到，没有按零重叠显示。请点「刷新」重试。'); };
+    const require = value => { if (!value) throw new Error('资源重叠数据不完整，请刷新后重试。'); };
     require(projection && projection.basis === 'selected_plan_only' && projection.plan_ref === data.plan.plan_ref
       && ['available', 'partial', 'unavailable'].includes(projection.state) && Array.isArray(projection.resources)
       && Array.isArray(projection.issues) && projection.time_scope && scope
@@ -127,13 +128,12 @@
     if (read.error) return <section className="plan-projections" aria-label="资源重叠明细"><h3>资源重叠明细</h3><window.ResourceControls.ErrorBox error={read.error} /></section>;
     const { rows, projection } = read, current = Math.min(page, Math.max(0, Math.ceil(rows.length / 20) - 1)), labels = M.names(data);
     const known = projection.state === 'available', scope = projection.time_scope;
-    const empty = !known ? '当前范围还有资料读不到，不能认定为没有重叠。'
+    const empty = !known ? '资料不完整，暂无法核对资源重叠。'
       : !projection.resources.length ? '当前读取范围没有资源占用记录。' : '当前读取范围未发现资源安排重叠。';
     return <section className="plan-projections" aria-label="资源重叠明细"><h3>资源重叠明细</h3>
       <div className="plan-note">{M.timeLabel(scope.range_start)} 至 {M.timeLabel(scope.range_end)}（不含结束）
-        {data.scope.range_start !== null ? ' · 当前读取切片，不代表整份计划' : ' · 完整计划读取范围'}
-        <div>仅列所选计划在该范围的资源安排重叠，不代表等待、停机、缺料或超期原因。</div>
-        {!known && <div>{projection.state === 'partial' ? '部分资料读不到。' : '资源依据读不全。'}以下只列已确认的片段，未知部分不计为零。</div>}</div>
+        {data.scope.range_start !== null ? ' · 所选时间范围' : ' · 完整计划读取范围'}
+        {!known && <div>资料不完整，以下为已读取的重叠时段。</div>}</div>
       <Issues issues={projection.issues} />
       {rows.length ? <><div className="plan-projection-table wb-table-frame" data-wb-scroll-key="plan-conflict-table" data-sticky-head data-sticky-actions><table className="wb-table" aria-label="资源重叠明细"><caption className="wb-visually-hidden">资源重叠明细</caption><thead><tr>
         {['资源', '开始（含）', '结束（不含）', '并行工序'].map((label, index) => <th scope="col" className={index === 0 ? 'wb-col-key' : undefined} key={label}>{label}</th>)}
@@ -151,23 +151,23 @@
     const projection = tab === 'risk' ? projections.delivery_risks : tab === 'load' ? projections.occupancy : projections.calendar;
     return <section className="plan-projections" aria-label="计划分析">
       <window.PlanSegmentUI value={tab} options={[["risk", "交付风险"], ["load", "资源负荷"], ["calendar", "资源班表"]]} label="计划分析视图" onChange={value => { setTab(value); setPage(0); }} />
-      <div className="plan-note">{tab === 'risk' ? '按所选计划的完整批次安排判定，不代表实际完工或发货。' : tab === 'load' ? '只统计所选计划在此时间范围内的安排；占用率 = 班表内已占时间 / 可用时间。设备有空闲时间不代表人员已就绪。' : '只列出所选时间范围内的可工作时段；普通件、急件能否安排及效率分别记录。'}
+      <div className="plan-note">{tab === 'risk' ? '按所选计划的批次安排评估交付风险。' : tab === 'load' ? '占用率 = 班表内已占时间 ÷ 可用时间' : '所选时间范围内的可工作时段。'}
         {projection.state !== 'available' && <span> · {projection.state === 'partial' ? '部分资料读不到' : '暂无数据'}</span>}</div>
       <Issues issues={projection.issues || []} />
       <div className="plan-projection-table wb-table-frame" data-wb-scroll-key="plan-projection-table" data-sticky-head data-sticky-actions><table className="wb-table" aria-label={tab === 'risk' ? '交付风险列表' : tab === 'load' ? '资源负荷列表' : '资源班表列表'}>
         <caption className="wb-visually-hidden">{tab === 'risk' ? '交付风险列表' : tab === 'load' ? '资源负荷列表' : '资源班表列表'}</caption>
-        <thead><tr>{(tab === 'risk' ? ['批次 / 零件', '交期', '计划完工', '交付风险', '未排工序', '说明'] : tab === 'load' ? ['资源', '安排（小时）', '已占（小时）', '可用（小时）', '重叠（小时）', '班表内占用率'] : ['资源', '可用（小时）', '普通有效（小时）', '急件有效（小时）', '可工作时段', '说明']).map((label, index) => <th scope="col" className={index === 0 ? 'wb-col-key' : undefined} key={label}>{label}</th>)}</tr></thead>
+        <thead><tr>{(tab === 'risk' ? ['批次 / 零件', '交期', '计划完工', '交付风险', '未排工序', '说明'] : tab === 'load' ? ['资源', '安排（小时）', '班表内占用（小时）', '可用（小时）', '重叠（小时）', '班表内占用率', '班表外占用（小时）'] : ['资源', '可用（小时）', '普通有效（小时）', '急件有效（小时）', '可工作时段', '说明']).map((label, index) => <th scope="col" className={index === 0 ? 'wb-col-key' : undefined} key={label}>{label}</th>)}</tr></thead>
         <tbody>{visible.map(row => tab === 'risk' ? <tr key={row.batch_ref}>
           <td className="wb-col-key"><Button className="linkbtn" onClick={() => onBatch(row.batch_id)}>{row.batch_id}</Button><div className="plan-muted">{row.part_no || '图号未填写'} · {row.part_label || '名称未填写'}</div></td>
           <td>{window.WorkbenchFormat.date(row.due_date)}</td><td>{M.timeLabel(row.planned_finish)}{row.partial_planned_finish && <div className="plan-muted">已安排部分结束于：{M.timeLabel(row.partial_planned_finish)}</div>}</td>
           <td className={row.risk === 'overdue' ? 'plan-danger' : ''}>{riskLabel[row.risk]}{row.delay_hours !== null && <div>{window.WorkbenchFormat.hours(row.delay_hours, 2)}</div>}</td>
-          <td>{row.unscheduled_operation_count}</td><td>{issueText(row.issues) || '当前工序安排已覆盖'}</td>
+          <td>{row.unscheduled_operation_count}</td><td>{issueText(row.issues) || '全部工序已安排'}</td>
         </tr> : <tr key={row.resource_ref}><td className="wb-col-key"><Button className="linkbtn" onClick={() => onResource(labels.get(row.resource_ref) || '')}>{row.label || labels.get(row.resource_ref) || '名称未填写'}</Button><div className="plan-muted">{M.kindLabels[row.kind]}</div></td>
-          {tab === 'load' ? <><td>{M.number(row.arranged_hours)}</td><td>{M.number(row.occupied_hours)}</td><td>{M.number(row.available_hours)}</td><td className={row.has_overlap ? 'plan-danger' : ''}>{M.number(row.overlap_hours)}</td>
-            <td>{row.utilization === null ? '未知' : <>{window.WorkbenchFormat.percent(row.utilization)}<span className="plan-meter"><i style={{ width: row.utilization * 100 + '%' }} /></span></>}<div className="plan-muted">{issueText(row.issues)}</div></td></> :
+          {tab === 'load' ? <><td>{M.number(row.arranged_hours)}</td><td>{M.number(row.available_occupied_hours)}</td><td>{M.number(row.available_hours)}</td><td className={row.has_overlap ? 'plan-danger' : ''}>{M.number(row.overlap_hours)}</td>
+            <td>{row.utilization === null ? '未知' : <>{window.WorkbenchFormat.percent(row.utilization, 2)}<span className="plan-meter"><i style={{ width: row.utilization * 100 + '%' }} /></span></>}<div className="plan-muted">{issueText(row.issues)}</div></td><td>{M.number(row.outside_available_hours)}</td></> :
             <><td>{M.number(row.available_hours)}</td><td>{M.number(row.normal_effective_hours)}</td><td>{M.number(row.urgent_effective_hours)}</td><td><CalendarWindows windows={row.windows} /></td>
-              <td>{issueText(row.issues) || '已读取真实班表'}</td></>}
-        </tr>)}{!visible.length && <tr><td colSpan={6}><window.WorkbenchControls.EmptyState kind="empty" title={projection.state === 'available' ? '所选时间范围内没有记录。' : '资料未记录或读不到，暂无数据。'} /></td></tr>}</tbody>
+              <td>{issueText(row.issues) || '班表已读取'}</td></>}
+        </tr>)}{!visible.length && <tr><td colSpan={tab === 'load' ? 7 : 6}><window.WorkbenchControls.EmptyState kind="empty" title={projection.state === 'available' ? '所选时间范围内没有记录。' : '资料未记录或读不到，暂无数据。'} /></td></tr>}</tbody>
       </table></div>
       <window.WorkbenchControls.Pager label="分析" page={page + 1} pages={Math.max(1, Math.ceil(rows.length / 20))} total={rows.length} size={20} sizes={[20]} onPage={next => setPage(next - 1)} />
     </section>;

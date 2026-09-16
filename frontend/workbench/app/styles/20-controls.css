@@ -148,6 +148,10 @@ body.aps-workbench th > button:not([class]) {
   border: 0; background: transparent; color: var(--ui-info-text);
   font: inherit; line-height: inherit; letter-spacing: 0; text-align: left;
 }
+body.aps-workbench :is(button.lnk,button.linkbtn) {
+  display: inline-flex; align-items: center; gap: var(--space-2); vertical-align: middle;
+}
+body.aps-workbench :is(button.lnk,button.linkbtn) > svg { flex: none; }
 body.aps-workbench :is(button.lnk,button.linkbtn):hover:not(:disabled) { text-decoration: underline; text-underline-offset: 3px; }
 /* override: body.aps-workbench :is(button.lnk,button.linkbtn,th > button):disabled; preserve shared control geometry against legacy inline and prototype declarations. */
 body.aps-workbench :is(button.lnk,button.linkbtn,th > button):disabled { color: var(--ui-info-muted) !important; text-decoration: none; }
@@ -174,6 +178,12 @@ body.aps-workbench :is(.toolbar,.pager,.sm-filters,.sm-pager,.sm-session-setting
 body.aps-workbench :is(.modal-f,.sm-form-footer) :is(button.btn,button.wb-action,button.sm-button) { min-height: var(--wb-control-edit-height) !important; padding-top: 7px !important; padding-bottom: 7px !important; }
 body.aps-workbench .search input { padding-left: 34px; }
 body.aps-workbench .rc-toolbar .search input { padding-left: 10px; }
+body.aps-workbench .wb-search { position: relative; display: inline-flex; align-items: center; min-width: 0; max-width: 100%; }
+body.aps-workbench .wb-search > svg { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); pointer-events: none; color: var(--ui-info-muted); }
+body.aps-workbench .wb-search > input { width: 100%; padding-left: 34px; }
+body.aps-workbench .wb-inline-filter { display: inline-flex; align-items: center; gap: var(--space-2); min-width: 0; max-width: 100%; }
+body.aps-workbench .wb-inline-filter > span { flex: none; white-space: nowrap; }
+body.aps-workbench .wb-inline-filter > select { flex: 1; width: auto; min-width: 112px; }
 body.aps-workbench :is(input:not([type]),input[type="text"],input[type="search"],input[type="number"],input[type="email"],input[type="url"],input[type="tel"],input[type="password"],input[type="date"],input[type="datetime-local"],input[type="time"],input[type="month"],input[type="week"],select,textarea):hover:not(:disabled):not([readonly]) { border-color: var(--wb-control-edge-hover); }
 /* override: body.aps-workbench :is(input:not([type]),input[type="text"],input[type="search"],input[type="number"],input[type="email"],input[type="url"],input[type="tel"],input[type="password"],input[type="date"],input[type="datetime-local"],input[type="time"],input[type="month"],input[type="week"],select,textarea):focus-visible; preserve shared control geometry against legacy inline and prototype declarations. */
 body.aps-workbench :is(input:not([type]),input[type="text"],input[type="search"],input[type="number"],input[type="email"],input[type="url"],input[type="tel"],input[type="password"],input[type="date"],input[type="datetime-local"],input[type="time"],input[type="month"],input[type="week"],select,textarea):focus-visible { border-color: var(--wb-control-focus) !important; outline-width: 1px !important; outline-offset: 0; transition-property: background-color; }

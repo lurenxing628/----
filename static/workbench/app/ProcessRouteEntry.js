@@ -39,9 +39,8 @@
     }, [['added', '新增序号'], ['removed', '移除序号'], ['retained', '保留序号'], ['same_sequence_changed', '同序号内容变化']].map(([key, label]) => /*#__PURE__*/React.createElement(React.Fragment, {
       key: key
     }, /*#__PURE__*/React.createElement("dt", null, label), /*#__PURE__*/React.createElement("dd", null, d.changes[key].length ? d.changes[key].join('、') : '无')))), /*#__PURE__*/React.createElement("div", {
-      className: "wb-table-frame"
-    }, /*#__PURE__*/React.createElement("div", {
-      className: "card-scroll wb-table-shell"
+      className: "wb-table-frame wb-table-shell",
+      "data-sticky-head": true
     }, /*#__PURE__*/React.createElement("table", {
       className: "tbl wb-table",
       "aria-label": "\u8DEF\u7EBF\u9884\u68C0\u5DE5\u5E8F",
@@ -84,7 +83,7 @@
       className: "muted"
     }, row.op_type_ref === null ? '未识别' : '已识别')), /*#__PURE__*/React.createElement("td", null, P.sourceLabel(row.source_suggestion)), /*#__PURE__*/React.createElement("td", null, row.supplier_label === null ? '未选' : row.supplier_label), /*#__PURE__*/React.createElement("td", null, P.valueText(row.external_days)), /*#__PURE__*/React.createElement("td", null, typeof row.basis === 'string' ? row.basis : JSON.stringify(row.basis), /*#__PURE__*/React.createElement(Issues, {
       issues: row.issues
-    })))))))), /*#__PURE__*/React.createElement(E.Pager, {
+    }))))))), /*#__PURE__*/React.createElement(E.Pager, {
       paging: paging
     }));
   }
@@ -325,14 +324,13 @@
     }))), opTypeNames.length > 0 && /*#__PURE__*/React.createElement("p", {
       className: "muted"
     }, "\u5DE5\u79CD\u8F93\u5165\u4F1A\u63D0\u793A\u5DF2\u767B\u8BB0\u7684\u5DE5\u79CD", opTypes.result.data.page.total > opTypeNames.length ? '，现有工种较多，只提示前 ' + opTypeNames.length + ' 个' : '', "\uFF1B\u672A\u767B\u8BB0\u7684\u5DE5\u79CD\u4E5F\u53EF\u4EE5\u76F4\u63A5\u8F93\u5165\u3002"), /*#__PURE__*/React.createElement("div", {
-      className: "wb-table-frame"
-    }, /*#__PURE__*/React.createElement("div", {
-      className: "card-scroll wb-table-shell"
+      className: "wb-table-frame wb-table-shell",
+      "data-sticky-head": true
     }, /*#__PURE__*/React.createElement("table", {
-      className: "tbl wb-table",
+      className: "tbl wb-table wb-table--editable",
       "aria-label": "\u9010\u884C\u8DEF\u7EBF\u5F55\u5165",
       style: {
-        minWidth: 580,
+        minWidth: 620,
         tableLayout: 'fixed'
       }
     }, /*#__PURE__*/React.createElement("caption", {
@@ -352,7 +350,7 @@
     }, "\u5F52\u5C5E"), /*#__PURE__*/React.createElement("th", {
       scope: "col",
       style: {
-        width: 70
+        width: 100
       }
     }, "\u64CD\u4F5C"))), /*#__PURE__*/React.createElement("tbody", null, paging.rows.map((row, index) => /*#__PURE__*/React.createElement("tr", {
       key: row.key
@@ -386,14 +384,14 @@
       className: "muted"
     }, "\u5F85\u670D\u52A1\u9884\u68C0"), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Button, {
       className: "mini danger",
-      icon: "minus",
+      icon: "trash-2",
       "aria-label": '删除第 ' + ((paging.page.number - 1) * paging.page.size + index + 1) + ' 行',
       disabled: blocked,
       onClick: () => {
         edited();
         setRows(current => current.filter(item => item.key !== row.key));
       }
-    })))))))), /*#__PURE__*/React.createElement(E.Pager, {
+    }, "\u5220\u9664"))))))), /*#__PURE__*/React.createElement(E.Pager, {
       paging: paging,
       disabled: blocked
     }), /*#__PURE__*/React.createElement(Button, {

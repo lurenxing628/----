@@ -16,7 +16,7 @@
   function location(stage, operationRef, groupRef) {
     const ref = item => typeof item === 'string' && /^[0-9a-f]{48}$/.test(item);
     if (stage != null && !['route', 'source', 'hours'].includes(stage) || operationRef != null && !ref(operationRef) || groupRef != null && !ref(groupRef))
-      throw C.failure('要定位的阶段或工序已失效，不会按序号或名称找相近的替代。');
+      throw C.failure('所选阶段或工序已失效，请重新选择。');
     return { stage: stage || null, operationRef: operationRef || null, groupRef: groupRef || null };
   }
   function locate(entity, target) {
@@ -53,14 +53,14 @@
     return paging.page.total > 50 || paging.page.pages > 1 ? <window.ResourceTables.Pager page={paging.page} disabled={disabled} onPage={paging.setNumber} onSize={paging.setSize} /> : null;
   }
   function Search({ paging, disabled }) {
-    return <label className="search"><input type="search" aria-label="搜索工序、工种" placeholder="搜索工序、工种…" value={paging.query} disabled={disabled} onChange={event => paging.setQuery(event.target.value)} /></label>;
+    return <window.ResourceControls.Search aria-label="搜索工序、工种" placeholder="搜索工序、工种…" value={paging.query} disabled={disabled} onChange={event => paging.setQuery(event.target.value)} />;
   }
   function Groups({ rows, affected = [], discarded = [], onDiscard, totals, onTotal, disabled, title = '外协组原记录', empty = '尚无外协组记录。', focusRef = null }) {
     const selected = new Set(discarded), changed = new Set(affected);
     const paging = usePage(rows, focusRef), root = React.useRef(null);
     useFocus(root, focusRef, paging.page.number);
     return <section ref={root}><h3>{title}</h3>{!rows.length ? <p className="muted">{empty}</p> : <>
-      <div className="wb-table-frame"><div className="card-scroll wb-table-shell"><table className="tbl wb-table" aria-label={title} style={{ minWidth: 850, tableLayout: 'fixed' }}><caption className="wb-visually-hidden">{title}</caption>
+      <div className="wb-table-frame wb-table-shell" data-sticky-head><table className={'tbl wb-table' + (onTotal || onDiscard ? ' wb-table--editable' : '')} aria-label={title} style={{ minWidth: 850, tableLayout: 'fixed' }}><caption className="wb-visually-hidden">{title}</caption>
         <thead><tr><th scope="col">工序范围</th><th scope="col">周期算法</th><th scope="col">总周期（天）</th><th scope="col">供应商</th><th scope="col">备注 / 问题</th>{onDiscard && <th scope="col">解除原组</th>}</tr></thead>
         <tbody>{paging.rows.map(row => <tr key={row.ref} data-process-location={row.ref} tabIndex={row.ref === focusRef ? -1 : undefined} aria-current={row.ref === focusRef ? 'true' : undefined}>
           <td>{row.start_sequence} 至 {row.end_sequence}{row.ref === focusRef && <window.WorkbenchReference value={row.ref} />}</td><td>{({ merged: '合并设置', separate: '分别设置' })[row.merge_mode] || value(row.merge_mode)}</td>
@@ -68,7 +68,7 @@
           <td>{value(row.supplier_label)}</td><td style={{ whiteSpace: 'pre-wrap' }}>{value(row.remark)}<Issues issues={row.issues || []} /></td>
           {onDiscard && <td>{changed.has(row.ref) ? <label><input type="checkbox" aria-label={'解除外协组 ' + row.start_sequence + ' 至 ' + row.end_sequence} checked={selected.has(row.ref)} disabled={disabled}
             onChange={event => onDiscard(event.target.checked ? discarded.concat(row.ref) : discarded.filter(ref => ref !== row.ref))} />明确解除</label> : '保持原组'}</td>}</tr>)}</tbody>
-      </table></div></div><Pager paging={paging} disabled={disabled} /></> }</section>;
+      </table></div><Pager paging={paging} disabled={disabled} /></> }</section>;
   }
   function changes(before, after) {
     const result = [], old = new Map(before.operations.map(row => [row.ref, row]));
@@ -167,14 +167,6 @@
   }
   // Unconfirmed operations are reported with the page they sit on (unfiltered order, current page size),
   // so a 120-operation part can be fixed without paging blind; the first offending page rides on the error.
-  function unconfirmed(rows, all, size, label) {
-    const pages = new Map();
-    rows.forEach(row => { const page = Math.floor(all.indexOf(row) / size) + 1; pages.set(page, (pages.get(page) || []).concat(row.sequence)); });
-    const ordered = Array.from(pages.entries()).sort((a, b) => a[0] - b[0]);
-    const error = C.failure('还有 ' + rows.length + ' 道工序的' + label + '没有勾选确认：' + ordered.map(([page, sequences]) => '第 ' + page + ' 页工序 ' + sequences.join('、')).join('；') + '。');
-    error.locate_page = ordered[0][0];
-    return error;
-  }
   function reason(model, adapter, stage) {
     const entity = model.base.data;
     return model.review ? '请先核对最新资料。' : model.busy ? '正在读取最新资料。' :
@@ -182,5 +174,5 @@
       (entity.workflow[stage === 'source' ? 'route' : 'source'].state !== 'confirmed' ? stage === 'source' ? '请先确认路线。' : '请先确认归属。' : '') ||
       (stage === 'source' ? model.base.meta.source !== 'production' ? '当前不是生产数据，不能保存。' : '' : C.blocked(entity.write_context, 'process', stage + '_confirm', model.base.meta.source));
   }
-  window.ProcessStageEditor = { active, same, value, confirmationTime, Confirmation, usePage, Pager, Search, Groups, Review, useDraft, Feedback, reason, location, locate, useFocus, unconfirmed };
+  window.ProcessStageEditor = { active, same, value, confirmationTime, Confirmation, usePage, Pager, Search, Groups, Review, useDraft, Feedback, reason, location, locate, useFocus };
 })();

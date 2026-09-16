@@ -303,10 +303,10 @@
           operation
         });
       },
-      onSync: (entity, strict, snapshot) => preview('sync', {
-        strict_mode: strict
-      }, entity, snapshot)
-    }) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("form", {
+      onSync: (entity, snapshot) => preview('sync', {}, entity, snapshot)
+    }) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+      className: "batch-list-controls"
+    }, /*#__PURE__*/React.createElement("form", {
       className: "toolbar",
       onSubmit: event => {
         event.preventDefault();
@@ -318,7 +318,9 @@
       className: "wb-page-title"
     }, "\u6279\u6B21\u5217\u8868"), /*#__PURE__*/React.createElement("label", {
       className: "search"
-    }, /*#__PURE__*/React.createElement("input", {
+    }, /*#__PURE__*/React.createElement(window.ResourceControls.Icon, {
+      name: "search"
+    }), /*#__PURE__*/React.createElement("input", {
       type: "search",
       "aria-label": "\u641C\u7D22\u6279\u6B21\u53F7\u3001\u56FE\u53F7\u3001\u96F6\u4EF6\u540D",
       placeholder: "\u641C\u7D22\u6279\u6B21\u53F7\u3001\u56FE\u53F7\u3001\u96F6\u4EF6\u540D\u2026",
@@ -387,7 +389,7 @@
       icon: returnSource ? 'arrow-left' : 'arrow-right',
       disabled: blocked,
       onClick: () => typeof returnTarget === 'string' ? onNav(returnTarget) : onNav(returnTarget.view, returnTarget.context)
-    }, !returnSource ? '下一步 · 去排产' : returnView === 'dashboard' ? '返回值班台' : '返回排产')), data && data.entities.length > 0 && /*#__PURE__*/React.createElement(ErrorBox, {
+    }, !returnSource ? '下一步 · 去排产' : returnView === 'dashboard' ? '返回值班台' : '返回排产'))), data && data.entities.length > 0 && /*#__PURE__*/React.createElement(ErrorBox, {
       error: list.error
     }), /*#__PURE__*/React.createElement(window.BatchTable, {
       rows: data ? data.entities : [],
@@ -427,7 +429,7 @@
         snapshot_ref: snapshot
       }))
     }), /*#__PURE__*/React.createElement("div", {
-      className: "toolbar"
+      className: "toolbar batch-selection"
     }, /*#__PURE__*/React.createElement("span", null, "\u5DF2\u9009 ", selected.length, " \u4E2A\u6279\u6B21", selected.some(ref => !data || !data.entities.some(row => row.ref === ref)) ? ' · 含非当前页记录' : ''), /*#__PURE__*/React.createElement(Button, {
       onClick: selectFiltered,
       disabled: blocked || !snapshot
@@ -450,7 +452,8 @@
         patch: {}
       })
     }, "\u590D\u5236\u6240\u9009"), /*#__PURE__*/React.createElement(Button, {
-      icon: "x",
+      icon: "trash-2",
+      className: "btn danger",
       disabled: blocked || !selected.length,
       onClick: () => preview('bulk', {
         action: 'delete',

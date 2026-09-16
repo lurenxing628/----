@@ -43,11 +43,11 @@
           <option value="">{external ? '外协，无内部资源' : '请选择'}</option>{form[kind + '_ref'] && !data.resources[listKey].some(r => r.ref === form[kind + '_ref']) && <option value={form[kind + '_ref']}>原资源（已不可读）</option>}
           {data.resources[listKey].map(r => <option key={r.ref} value={r.ref} disabled={r.status !== 'active'}>{r.business_code} · {r.label || '名称未填写'}{r.status !== 'active' ? '（不可用）' : ''}</option>)}</select></label>)}
         <label>调整开工<input type="datetime-local" step="1" aria-label="调整开工" required value={form.start} disabled={commands.busy} onChange={e => setForm({ ...form, start: e.target.value })} /></label>
-        <div className="tt-muted">原工时不变；完工按真实班表计算，前后序不自动移动。</div>
-        {!external && !data.resources.authorizations.some(r => r.machine_ref === form.machine_ref && r.operator_ref === form.operator_ref) && <p className="tt-notice">当前设备与人员未登记操作授权，提交后以真实约束检查为准。</p>}
+        <div className="tt-muted">按班表计算完工时间；其他工序需分别调整。</div>
+        {!external && !data.resources.authorizations.some(r => r.machine_ref === form.machine_ref && r.operator_ref === form.operator_ref) && <p className="tt-notice">所选人员尚未取得该设备的操作授权。</p>}
         <U.ErrorBox error={error} /><U.ErrorBox error={commands.error} />
         <label className="tt-check"><input type="checkbox" checked={reviewed} onChange={e => setReviewed(e.target.checked)} />已核对当前工序与保留输入</label>
-        <div className="tt-tools"><U.Button icon="check" type="submit" disabled={!editable || !reviewed || commands.blocked}>保存调整</U.Button>
+        <div className="tt-tools"><U.Button icon="check" className="btn primary" type="submit" disabled={!editable || !reviewed || commands.blocked}>保存调整</U.Button>
           <U.Button icon="x" disabled={commands.busy || !!commands.key} onClick={cancel}>取消编辑</U.Button><U.Button icon="refresh-cw" disabled={commands.busy || !!commands.key} onClick={onRecheck}>刷新工序</U.Button></div>
       </form>}</>;
   }
@@ -57,6 +57,7 @@
     return <aside className="tt-detail" aria-label="工序详情"><div className="tt-heading"><h3>工序详情</h3><U.Button icon="x" aria-label="关闭工序详情" onClick={() => onSelect(null)} /></div>
       <h4>{task.batch_id} · {task.process_label}</h4><p>{task.part_no} · {task.part_name || '零件名称未填写'}</p>
       <Editor key={task.task_ref} {...{ data, task, commands, onEditing, onRecheck, guardOwner, editorRevision }} />
+      {task.execution_anchor && <p className="tt-notice">{task.execution_anchor.message}</p>}
       <dl className="tt-facts">{[['分件', task.piece_id || '整批'], ['原目标量', U.number(task.quantity)], ['批次数量', U.number(task.batch_quantity)],
         ...(window.PointContract.isPoint(task) ? [['安排类型', '零工时工序'], ['本工序占用', '0 小时 · 不占设备人员']] : []),
         ['优先级', { normal: '普通', urgent: '急件', critical: '特急' }[task.priority] || '未知'], ['交付截至日', task.due_date || '未记录'],

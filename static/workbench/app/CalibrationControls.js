@@ -13,7 +13,7 @@
     external: '外协',
     unknown: '未确认'
   })[value] || '未确认';
-  const writeReason = '采用与锁定前要先读取真实预检并确认；只影响以后新增的工序模板，不改已有批次、历史计划和现场记录。';
+  const writeReason = '请先检查所选模板是否可采用。';
   function useRead(load, identity, adapter, enabled = true) {
     const [state, setState] = React.useState({
       result: null,
@@ -89,6 +89,7 @@
       icon: "search",
       type: "submit",
       "aria-label": "\u641C\u7D22",
+      className: "primary",
       disabled: disabled
     }), /*#__PURE__*/React.createElement("label", null, "\u5DE5\u5E8F\u6765\u6E90", /*#__PURE__*/React.createElement("select", {
       "aria-label": "\u5DE5\u5E8F\u6765\u6E90",

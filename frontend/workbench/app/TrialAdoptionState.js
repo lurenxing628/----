@@ -134,7 +134,7 @@
       try {
         A.check(saved && saved.phase !== 'pending', '结果还不确定，不能丢弃这次操作记录。'); save(null, saved);
         setOpen(false); setPreview(null); setConsent(false); setDraft(empty());
-        setError(''); setNotice(saved.phase === 'committed' ? '这次采用结果已确认完成。' : '已结束这次没有采用的操作，正式计划没有因此改变。');
+        setError(''); setNotice(saved.phase === 'committed' ? '这次采用结果已确认完成。' : '本次操作已结束，未采用。');
       } catch (e) { setStorageError(e.message); }
     }
     function close() { if (request.current) request.current.abort(); setOpen(false); setPreview(null); setConsent(false); }

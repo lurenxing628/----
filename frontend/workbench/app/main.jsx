@@ -56,7 +56,7 @@
           aria-current={active === item.id ? 'page' : undefined} onClick={event => {
             if (event.button || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
             event.preventDefault(); navigate(item.id);
-          }}><Ico name={item.icon} /><span className="nav-label">{item.label}</span></a>)}
+          }}><window.ResourceControls.Icon name={item.icon} className="nav-ico" /><span className="nav-label">{item.label}</span></a>)}
       </div>)}</nav></aside>
       <div className="main-content" ref={content}><header className="top-header"><h2 className="top-title">{window.WorkbenchNavigation.title(boot, page)}</h2>
         <window.WorkbenchCaption.Caption /><div className="header-controls">
@@ -76,7 +76,7 @@
             <p>{value.message}</p><button type="button" aria-label="关闭消息" title="关闭消息" onClick={() => dismissMessage(index)}><Ico name="x" /></button>
           </div>)}</section>}
         {navigationError && <p className="wb-navigation-error" role="alert">{navigationError}</p>}
-        {showPlanTabs && <div className="wb-view-tabs" role="tablist" aria-label="计划中心视图" onKeyDown={event => {
+        {showPlanTabs && <div className="wb-view-tabs wb-surface plan-view-tabs" role="tablist" aria-label="计划中心视图" onKeyDown={event => {
           if (event.altKey || event.ctrlKey || event.metaKey) return;
           const tabs = Array.from(event.currentTarget.querySelectorAll('[role="tab"]')), index = tabs.indexOf(document.activeElement);
           const target = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1

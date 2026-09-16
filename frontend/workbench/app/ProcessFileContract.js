@@ -93,7 +93,7 @@
   function confirmInput(data, groupRefs, zero) {
     if (!Array.isArray(groupRefs) || new Set(groupRefs).size !== groupRefs.length || groupRefs.length !== data.affected_groups.length
         || data.affected_groups.some(group => !groupRefs.includes(group.ref))) throw C.failure('请逐项核对并勾选全部受影响的外协组，未自动解除任何组。');
-    if (typeof zero !== 'boolean' || data.zero_review_required && !zero) throw C.failure('存在单件工时为 0 的记录，请明确复核。');
+    if (typeof zero !== 'boolean' || data.zero_review_required && !zero) throw C.failure('单件工时为 0，排产只计算换型工时。请按 0 导入。');
     return { preview_ref: data.preview_ref, discard_group_refs: groupRefs.slice(), confirm_zero_unit_hours: zero };
   }
   function exportBody(request, selection, format) {

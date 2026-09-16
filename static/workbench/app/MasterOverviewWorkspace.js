@@ -85,6 +85,8 @@
     const [result, setResult] = useState(null),
       [loading, setLoading] = useState(true),
       [error, setError] = useState(null);
+    const [summary, setSummary] = useState(null),
+      [completedRequest, setCompletedRequest] = useState(null);
     const [selected, setSelected] = useState(null),
       [section, setSection] = useState('issues'),
       [detailPage, setDetailPage] = useState(1);
@@ -100,13 +102,19 @@
       [stale, setStale] = useState(false);
     const opener = useRef(null),
       listRef = useRef(null),
+      listHeight = useRef(0),
       exportController = useRef(null),
       alive = useRef(true);
     const detailFocus = useRef(!!(initial.initial || initial.selected));
-    const data = result && result.data,
+    const pending = loading || completedRequest !== request,
+      readError = completedRequest === request ? error : null;
+    const data = result && (completedRequest === request || request.keep) ? result.data : null,
       scope = data ? data.scope : request.scope;
     const currentScope = useRef(scope);
     currentScope.current = scope;
+    React.useLayoutEffect(() => {
+      if (!pending && listRef.current) listHeight.current = Math.ceil(listRef.current.parentElement.getBoundingClientRect().height);
+    }, [pending, data, selected, detail, detailLoading]);
     const refresh = () => {
       detailFocus.current = false;
       setActionError(null);
@@ -191,6 +199,10 @@
           const row = kept ? next.data.rows.find(item => same(item, kept)) : restored ? next.data.rows.find(item => same(item, restored)) : focus ? next.data.rows.find(item => item.ref === focus.entity_ref && item.domain === focus.domain) : next.data.rows[0];
           if (restored && !row) C.fail('原来选中的资料已不在当前范围，这里没有自动换成其他记录。请刷新后重试。');
           setResult(next);
+          setSummary({
+            overview: next.data.overview,
+            asOf: next.meta.as_of
+          });
           setSelected(row ? selection(row) : null);
           if (!request.keep) {
             setSection(request.restore ? request.restore.section : 'issues');
@@ -199,7 +211,10 @@
         } catch (failure) {
           if (active && failure.name !== 'AbortError') setError(failure);
         } finally {
-          if (active) setLoading(false);
+          if (active) {
+            setCompletedRequest(request);
+            setLoading(false);
+          }
         }
       }
       read();
@@ -246,7 +261,7 @@
         section,
         detail_page: detailPage
       }
-    }, !!data && !loading && !error && !initial.error && !detailLoading && !detailError && (!selected || !!detail));
+    }, !!data && !pending && !readError && !initial.error && !detailLoading && !detailError && (!selected || !!detail));
     function selection(row) {
       return {
         ...row,
@@ -329,7 +344,7 @@
         if (alive.current) setExporting(false);
       }
     }
-    const overview = data && data.overview,
+    const overview = summary && summary.overview,
       metrics = overview && overview.stats;
     const empty = {
       scope,
@@ -350,7 +365,7 @@
       className: "wb-page-title"
     }, "\u8D44\u6599\u603B\u89C8"), /*#__PURE__*/React.createElement("p", {
       className: "wb-page-context"
-    }, result ? '基础资料 · 本机记录 · ' + window.WorkbenchFormat.dateTime(result.meta.as_of) : '基础资料 · 未读取')), /*#__PURE__*/React.createElement("div", {
+    }, summary ? '基础资料 · 本机记录 · ' + window.WorkbenchFormat.dateTime(summary.asOf) : '基础资料 · 未读取')), /*#__PURE__*/React.createElement("div", {
       className: "mo-actions"
     }, /*#__PURE__*/React.createElement(Button, {
       reasonDisplay: "inline",
@@ -361,7 +376,7 @@
     }), /*#__PURE__*/React.createElement(Button, {
       reasonDisplay: "inline",
       transfer: "export",
-      disabled: !data || !data.page.total || loading || exporting,
+      disabled: !data || !data.page.total || pending || exporting,
       onClick: exportRows
     }, "\u5BFC\u51FA\u7B5B\u9009\u7ED3\u679C"), /*#__PURE__*/React.createElement(Button, {
       reasonDisplay: "inline",
@@ -400,8 +415,7 @@
         "aria-label": '查看资料类别 ' + label,
         onClick: () => filter({
           domain: scope.domain === id ? 'all' : id
-        }),
-        disabled: loading
+        })
       }, /*#__PURE__*/React.createElement("span", {
         className: "wb-metric-label"
       }, label), /*#__PURE__*/React.createElement("strong", {
@@ -409,26 +423,27 @@
       }, domain && domain.loaded ? domain.count : '未读取'), /*#__PURE__*/React.createElement("span", {
         className: "wb-metric-helper"
       }, domain && domain.loaded ? domain.attention + ' 条需维护' + (domain.unknown ? ' · ' + domain.unknown + ' 条未确认' : '') : '来源未读取'));
-    })), overview && /*#__PURE__*/React.createElement("p", {
-      className: "mo-basis"
-    }, overview.basis), overview && overview.gaps.length > 0 && /*#__PURE__*/React.createElement("details", {
+    })), overview && overview.gaps.length > 0 && /*#__PURE__*/React.createElement("details", {
       className: "mo-gaps",
       open: true
     }, /*#__PURE__*/React.createElement("summary", null, "\u539F\u59CB\u6570\u636E\u7F3A\u53E3 ", overview.gaps.length, " \u9879"), /*#__PURE__*/React.createElement("ul", null, overview.gaps.map((gap, index) => /*#__PURE__*/React.createElement("li", {
       key: index
     }, gap.message)))), /*#__PURE__*/React.createElement(ErrorBox, {
-      error: error || actionError
+      error: readError || actionError
     }), message && /*#__PURE__*/React.createElement("div", {
       className: "mo-message",
       role: "status"
-    }, message), stale && !loading && data && /*#__PURE__*/React.createElement("div", {
+    }, message), stale && !pending && data && /*#__PURE__*/React.createElement("div", {
       className: "mo-message mo-stale",
       role: "status",
       "data-master-stale": true
     }, /*#__PURE__*/React.createElement("span", null, "\u5207\u56DE\u672C\u9875\u540E\u8D44\u6599\u53EF\u80FD\u5DF2\u66F4\u65B0\uFF0C\u5F53\u524D\u9875\u3001\u9009\u4E2D\u9879\u548C\u8BE6\u60C5\u90FD\u8FD8\u4FDD\u7559\u7740\u3002"), /*#__PURE__*/React.createElement(Button, {
       icon: "refresh-cw",
       onClick: refreshInPlace
-    }, "\u5237\u65B0\u672C\u9875")), /*#__PURE__*/React.createElement(Tabs, {
+    }, "\u5237\u65B0\u672C\u9875")), /*#__PURE__*/React.createElement("section", {
+      className: "mo-controls",
+      "aria-label": "\u8D44\u6599\u6E05\u5355\u7B5B\u9009"
+    }, /*#__PURE__*/React.createElement(Tabs, {
       label: "\u6E05\u5355\u7C7B\u578B",
       value: scope.view,
       onChange: view => filter({
@@ -540,12 +555,15 @@
       onClick: () => setColumn(null)
     })), Object.keys(scope.column_filters).length > 0 && /*#__PURE__*/React.createElement("p", {
       className: "mo-muted"
-    }, "\u5DF2\u542F\u7528 ", Object.keys(scope.column_filters).length, " \u9879\u5217\u7B5B\u9009"), /*#__PURE__*/React.createElement("div", {
+    }, "\u5DF2\u542F\u7528 ", Object.keys(scope.column_filters).length, " \u9879\u5217\u7B5B\u9009")), /*#__PURE__*/React.createElement("div", {
       className: selected ? 'mo-workspace wb-detail-layout' : 'mo-workspace'
     }, /*#__PURE__*/React.createElement("div", {
       className: "mo-list",
       ref: listRef,
-      tabIndex: -1
+      tabIndex: -1,
+      style: pending && listHeight.current ? {
+        minHeight: listHeight.current
+      } : undefined
     }, /*#__PURE__*/React.createElement(Table, {
       data: data || empty,
       selected: selected,
@@ -554,15 +572,15 @@
       onClear: clearFilters,
       onRetry: refresh,
       navigation: typeof onNavigate === 'function',
-      loading: loading,
-      error: error,
+      loading: pending,
+      error: readError,
       onFilter: key => {
         setColumn(key);
         setColumnText(scope.column_filters[key] || '');
       }
     }), data && /*#__PURE__*/React.createElement(Pager, {
       page: data.page,
-      disabled: loading,
+      disabled: pending,
       onSize: size => filter({
         size
       }),

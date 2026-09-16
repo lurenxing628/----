@@ -30,7 +30,7 @@
     const value = {
       ...input
     };
-    if (!ref(value.plan_ref) || own(value, 'source') && value.source !== 'production') fail('请明确选择生产计划，未使用样例或最新版本替代。');
+    if (!ref(value.plan_ref) || own(value, 'source') && value.source !== 'production') fail('请选择有效的生产计划。');
     for (const [start, end, dateOnly] of [['range_start', 'range_end', false], ['plan_finish_date_from', 'plan_finish_date_to', true]]) {
       const hasStart = own(value, start),
         hasEnd = own(value, end);

@@ -1,12 +1,35 @@
 /* Plan and actual Gantt views: layout only; business spans remain untouched. */
+body.aps-workbench .plan-view-tabs {margin-bottom:0;padding:0 var(--wb-section-padding);border-bottom:1px solid var(--ui-border);border-radius:var(--wb-radius-control) var(--wb-radius-control) 0 0;}
+body.aps-workbench .plan-view-tabs + #wb-view-panel .plan-scope {border-top:0;border-radius:0 0 var(--wb-radius-control) var(--wb-radius-control);}
+.plan-workspace .plan-scope {margin-bottom:var(--wb-section-gap);}
+.plan-workspace .plan-scope-heading>div:first-child {display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap;}
+.plan-workspace .plan-scope-heading h3 {margin:0;font-size:var(--font-size-3);}
+.plan-workspace .plan-scope-heading .scheduling-navigation {margin:0;}
+.plan-workspace .plan-scope>.plan-catalog {margin:0;border:0;border-top:1px solid var(--ui-border);border-radius:0;}
+.plan-workspace .plan-scope .plan-catalog>.plan-toolbar {padding:var(--space-3) var(--wb-section-padding);}
+.plan-workspace .plan-scope>.plan-read-heading {margin:0;border-top:1px solid var(--ui-border);}
+.plan-workspace .plan-scope-meta {display:flex;flex-direction:column;gap:var(--space-1);flex:1 1 360px;min-width:0;color:var(--ui-info-muted);font-size:var(--font-size-1);line-height:20px;overflow-wrap:anywhere;}
+.plan-workspace .plan-scope>.plan-range {margin:0;border:0;border-top:1px solid var(--ui-border);border-radius:0;}
+.plan-workspace .plan-read-state {border-top:1px solid var(--ui-border);}
+/* override: the shared metric strip owns its cells; the containing surface supplies the outer border. */
+body.aps-workbench .plan-scope>.wb-metrics {margin:0;border-inline:0!important;border-bottom:0!important;border-radius:0!important;}
 .plan-workspace .plan-heading { margin-bottom: var(--space-1); gap: var(--space-2) var(--space-2); }
-.plan-workspace .plan-catalog { margin-bottom: var(--space-1); }
+.plan-workspace .plan-catalog { margin-bottom: var(--space-3); border: 1px solid var(--ui-border); border-radius: var(--wb-radius-control); background: var(--ui-card-bg); }
+.plan-workspace .plan-catalog[data-collapsed=true] > .plan-toolbar { border-bottom: 0; }
 .plan-workspace .plan-catalog-picker { display: flex; align-items: center; gap: var(--space-2); min-width: 220px; max-width: 100%; }
 .plan-workspace .plan-catalog-picker select { width: 280px; max-width: 100%; min-width: 0; }
 .plan-workspace .plan-catalog-scroll.wb-table-frame { height: 180px; min-height: 0; }
 .plan-workspace .plan-read-heading { margin-bottom: 2px; }
 .plan-workspace .plan-main { grid-template-columns: minmax(0, 1fr) 260px; gap: var(--space-3); }
-.plan-workspace .plan-toolbar { gap: var(--space-2) var(--space-2); padding: var(--space-1) var(--space-2); }
+.plan-workspace .plan-toolbar { gap: var(--space-2) var(--space-2); padding: var(--space-2) var(--space-3); background: var(--ui-card-bg); }
+.plan-workspace .plan-range { margin-bottom: var(--space-3); padding: var(--space-3); border: 1px solid var(--ui-border); border-radius: var(--wb-radius-control); background: var(--ui-card-bg); }
+.plan-workspace .plan-gantt,.plan-workspace .plan-projections,.plan-workspace .plan-inspector { border: 1px solid var(--ui-border); border-radius: var(--wb-radius-control); background: var(--ui-card-bg); }
+.plan-workspace .plan-gantt > .plan-board-frame { border: 0; }
+.plan-workspace .plan-inspector { padding: var(--space-3); }
+.plan-workspace .plan-projections > .plan-segment { display: flex; padding: var(--space-1) var(--space-3) 0; border-bottom: 1px solid var(--ui-border); }
+.plan-workspace .plan-projections > h3 { padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--ui-border); }
+.plan-workspace .plan-projections > .plan-projection-table,.plan-workspace .plan-catalog > .plan-catalog-scroll { border-inline: 0; }
+body.aps-workbench .plan-workspace .plan-projections > .wb-pager { padding: var(--space-2) var(--space-3); }
 .plan-workspace .plan-toolbar .plan-search { width: 170px; }
 .plan-workspace .plan-board { height: auto; max-height: 410px; }
 .plan-workspace .plan-global { padding-block: 3px; }
@@ -29,6 +52,10 @@ body.aps-workbench .plan-workspace .plan-global input[type="range"] { display: b
 .aps-workbench .fg-live .fg-mark[aria-pressed=true] { outline: 0; }
 .aps-workbench .fg-live .fg-mark[aria-pressed=true] > .fg-mark-face { outline: 1px solid var(--wb-gantt-gold); outline-offset: -1px; }
 .aps-workbench .fg-live .fg-mark:focus-visible { outline: 2px solid var(--wb-gantt-gold); outline-offset: 1px; }
+.fg-live .fg-range,.fg-live .fg-metrics { border: 1px solid var(--ui-border); border-radius: var(--wb-radius-control); }
+.fg-live .fg-range { padding: var(--space-3); }
+.fg-live .fg-metrics { margin: var(--space-3) 0; }
+.fg-live .fg-workspace { border-radius: var(--wb-radius-control); }
 @media (max-width:1366px) {
   .plan-workspace .plan-main { grid-template-columns: minmax(0, 1fr); }
   .plan-workspace .plan-inspector { max-height: 400px; overflow: auto; }

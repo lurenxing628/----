@@ -39,7 +39,7 @@
         data = result.data;
       if (!token(data.preview_ref) || data.operation !== kind + (mode === 'import' ? '.import' : '.bulk_delete') || data.commit_policy !== 'atomic' || typeof data.can_confirm !== 'boolean' || !C.object(data.summary) || !Array.isArray(data.rows) || !C.object(data.write_context) || !C.object(data.write_context.capabilities) || !token(data.write_context.write_token) || !Number.isFinite(Date.parse(data.expires_at))) throw C.failure('预检结果不完整，本批没有提交。请重新预检。');
       if (!Object.keys(results).every(key => count(data.summary[key])) || Object.keys(results).reduce((sum, key) => sum + data.summary[key], 0) !== data.rows.length) throw C.failure('预检统计与明细不一致，本批没有提交。');
-      const validRow = row => C.object(row) && count(row.row) && row.row > 0 && C.own(results, row.result) && (row.business_code === null || typeof row.business_code === 'string') && (row.before === null || C.object(row.before)) && (row.after === null || C.object(row.after)) && C.object(row.changes) && Array.isArray(row.errors) && row.errors.every(error => C.object(error) && typeof error.message === 'string') && typeof row.requires_confirmation === 'boolean' && count(row.reference_count);
+      const validRow = row => C.object(row) && count(row.row) && row.row > 0 && C.own(results, row.result) && (row.business_code === null || typeof row.business_code === 'string') && (row.before === null || C.object(row.before)) && (row.after === null || C.object(row.after)) && C.object(row.changes) && Array.isArray(row.errors) && row.errors.every(error => C.object(error) && typeof error.message === 'string') && (row.reference_fields === undefined || Array.isArray(row.reference_fields) && row.reference_fields.every(key => typeof key === 'string' && (kind !== 'material' || key === 'created_at')) && new Set(row.reference_fields).size === row.reference_fields.length) && typeof row.requires_confirmation === 'boolean' && count(row.reference_count);
       if (!data.rows.every(validRow) || new Set(data.rows.map(row => row.row)).size !== data.rows.length || !Object.keys(results).every(key => data.rows.filter(row => row.result === key).length === data.summary[key]) || data.can_confirm && data.summary.rejected !== 0) throw C.failure('预检行内容不完整或统计不一致，本批没有提交。');
       if (mode === 'import' && (data.format !== expected || data.mode !== 'upsert' || data.template_version !== 1 || typeof data.file_sha256 !== 'string' || !/^[0-9a-f]{64}$/.test(data.file_sha256))) throw C.failure('导入预检的文件格式或增量方式不一致，本批没有提交。');
       if (mode === 'bulk' && (!Array.isArray(expected) || data.rows.length !== expected.length || !data.rows.every((row, index) => row.entity_ref === expected[index]))) throw C.failure('删除预检与勾选的' + label + '不一致，本批没有提交。');
@@ -55,7 +55,7 @@
       return request.source || request.scope && request.scope.source;
     }
     function selection(request) {
-      if (!Array.isArray(request.refs) || request.refs.some(ref => typeof ref !== 'string' || !/^[0-9a-f]{48}$/.test(ref)) || new Set(request.refs).size !== request.refs.length) throw C.failure('缺少明确勾选的' + label + '，不会按页面内容推算。');
+      if (!Array.isArray(request.refs) || request.refs.some(ref => typeof ref !== 'string' || !/^[0-9a-f]{48}$/.test(ref)) || new Set(request.refs).size !== request.refs.length) throw C.failure('缺少明确勾选的' + label + '，请重新勾选。');
       return request.refs.slice();
     }
     function listContext(request) {
@@ -101,7 +101,7 @@
       if (requestedSource !== 'production' || result.meta.source !== 'production') return '当前不是生产数据，不能提交。';
       const data = result.data,
         context = data.write_context;
-      if (!data.can_confirm || data.summary.rejected) return '预检里有拒绝行，本批不能提交。错误行不会跳过。';
+      if (!data.can_confirm || data.summary.rejected) return '存在未通过检查的行，请修正后重新预检。';
       if (context.capabilities[data.operation] !== true) {
         const reasons = context.blocked_reasons || [];
         const reason = reasons.find(item => item.action === data.operation);

@@ -37,7 +37,7 @@
       "aria-label": "\u5019\u9009\u53D8\u5316\u4E0E\u53D6\u820D"
     }, Object.keys(data.delivery_deltas).map(key => /*#__PURE__*/React.createElement("span", {
       key: key
-    }, labels[key], "\uFF1A", data.delivery_deltas[key] === null ? '对比基准或候选依据不足，变化未知' : M.signedChange(data.delivery_deltas[key]))), /*#__PURE__*/React.createElement("span", null, "\u8C03\u6574\u5DE5\u5E8F\uFF1A", data.metrics.changed_operation_count.value === null ? '完整数量待确认' : data.metrics.changed_operation_count.value + ' 道'), /*#__PURE__*/React.createElement("span", null, "\u6362\u8BBE\u5907\uFF1A", data.metrics.machine_change_count.value === null ? '完整数量待确认' : data.metrics.machine_change_count.value + ' 道'), /*#__PURE__*/React.createElement("span", null, "\u4EC5\u9648\u8FF0\u5DF2\u4FDD\u5B58\u5B89\u6392\u7684\u53D8\u5316\uFF0C\u672A\u8BC4\u4F30\u4F18\u5316\u6536\u76CA\u3001\u5B9E\u9645\u5DE5\u65F6\u6216\u6210\u672C\u3002")), !data.baseline.comparison_available && /*#__PURE__*/React.createElement("p", {
+    }, labels[key], "\uFF1A", data.delivery_deltas[key] === null ? '对比基准或候选依据不足，变化未知' : M.signedChange(data.delivery_deltas[key]))), /*#__PURE__*/React.createElement("span", null, "\u8C03\u6574\u5DE5\u5E8F\uFF1A", data.metrics.changed_operation_count.value === null ? '完整数量待确认' : data.metrics.changed_operation_count.value + ' 道'), /*#__PURE__*/React.createElement("span", null, "\u6362\u8BBE\u5907\uFF1A", data.metrics.machine_change_count.value === null ? '完整数量待确认' : data.metrics.machine_change_count.value + ' 道')), !data.baseline.comparison_available && /*#__PURE__*/React.createElement("p", {
       className: "rc-notice"
     }, data.baseline.reason.message), /*#__PURE__*/React.createElement(C.Reasons, {
       rows: data.operations.issues.flatMap(row => row.reasons)
@@ -46,7 +46,7 @@
   function Finish({
     row
   }) {
-    return /*#__PURE__*/React.createElement(React.Fragment, null, row.planned_finish ? M.timeLabel(row.planned_finish) : '暂无数据', !row.planned_finish && row.partial_planned_finish && /*#__PURE__*/React.createElement("small", null, "\u5DF2\u5B89\u6392\u90E8\u5206\uFF1A", M.timeLabel(row.partial_planned_finish), "\uFF0C\u975E\u5168\u6279\u5B8C\u5DE5"));
+    return /*#__PURE__*/React.createElement(React.Fragment, null, row.planned_finish ? M.timeLabel(row.planned_finish) : '暂无数据', !row.planned_finish && row.partial_planned_finish && /*#__PURE__*/React.createElement("small", null, "\u5DF2\u6392\u5DE5\u5E8F\u7ED3\u675F\u65F6\u95F4\uFF1A", M.timeLabel(row.partial_planned_finish)));
   }
   function Batches({
     data,

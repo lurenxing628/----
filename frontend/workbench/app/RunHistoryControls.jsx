@@ -8,7 +8,7 @@
   const number = v => window.WorkbenchFormat.number(v, { digits: 0 });
   function ErrorBox({ error }) {
     return error ? <div className="rh-notice rh-error" role="alert">{error.code === 'snapshot_stale' && <strong>数据已更新。 </strong>}
-      {error.message || '排产记录读取失败，没有显示替代结果。请点「重新查询」。'}</div> : null;
+      {error.message || '排产记录读取失败，请重新查询。'}</div> : null;
   }
   function Filters({ value, busy, onApply }) {
     const [draft, setDraft] = React.useState(value), [error, setError] = React.useState(null);

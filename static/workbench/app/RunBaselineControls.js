@@ -36,7 +36,7 @@
         if (!controller.signal.aborted) setState({
           identity,
           result: null,
-          error: new Error(error.name === 'AbortError' ? '初始计划读取超时，没有显示上次结果。请点「刷新初始计划」。' : error.message),
+          error: new Error(error.name === 'AbortError' ? '初始计划读取超时，请刷新初始计划。' : error.message),
           busy: false
         });
       });
@@ -127,7 +127,7 @@
       entries: {
         '候选安排编号': c.row_ref
       }
-    }), !workspace.tasks.some(t => t.row_ref === c.row_ref) && /*#__PURE__*/React.createElement("div", null, "\u8BE5\u5019\u9009\u5B89\u6392\u4E0D\u5728\u5F53\u524D\u8BFB\u53D6\u8303\u56F4\uFF1B\u6B64\u5904\u4FDD\u7559\u5B8C\u6574\u5BF9\u7167\u3002")) : /*#__PURE__*/React.createElement("div", null, "\u5019\u9009\u6CA1\u6709\u5B89\u6392\u6B64\u5DE5\u5E8F\uFF1B\u672A\u6392\u4E0D\u4EE3\u8868\u6539\u5584\u3002"), /*#__PURE__*/React.createElement(Segments, {
+    }), !workspace.tasks.some(t => t.row_ref === c.row_ref) && /*#__PURE__*/React.createElement("div", null, "\u8BE5\u5019\u9009\u5B89\u6392\u5728\u6240\u9009\u65F6\u95F4\u8303\u56F4\u5916\u3002")) : /*#__PURE__*/React.createElement("div", null, "\u6B64\u5019\u9009\u65B9\u6848\u672A\u5B89\u6392\u8BE5\u5DE5\u5E8F\u3002"), /*#__PURE__*/React.createElement(Segments, {
       key: row.operation_ref,
       row: row,
       chosen: segment
@@ -216,7 +216,7 @@
       className: "rb-panel",
       open: open,
       onToggle: e => setOpen(e.currentTarget.open)
-    }, /*#__PURE__*/React.createElement("summary", null, "\u521D\u59CB\u8BA1\u5212\u5BF9\u7167\u660E\u7EC6\uFF08", rows.length, "\uFF09 \xB7 \u8BF4\u660E"), open && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", null, "\u63D0\u4EA4\u4E8E ", M.timeLabel(d.generation.accepted_at), " \xB7 ", d.baseline.captured_task_count, " \u6BB5\u521D\u59CB\u5B89\u6392 \xB7 \u6709\u62A5\u5DE5\u5F71\u54CD ", d.execution_affected_count, " \u9053"), /*#__PURE__*/React.createElement("div", null, "\u5B89\u6392\u53D8\u52A8\u4E0D\u7B49\u4E8E\u6536\u76CA\uFF1B\u672A\u6392\u4E0D\u4EE3\u8868\u6539\u5584\u3002"), d.baseline.reason && /*#__PURE__*/React.createElement("div", null, d.baseline.reason.message), d.data_gaps.concat(state.result.warnings).map((g, i) => /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("summary", null, "\u521D\u59CB\u8BA1\u5212\u5BF9\u7167\u660E\u7EC6\uFF08", rows.length, "\uFF09 \xB7 \u8BF4\u660E"), open && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", null, "\u63D0\u4EA4\u4E8E ", M.timeLabel(d.generation.accepted_at), " \xB7 ", d.baseline.captured_task_count, " \u6BB5\u521D\u59CB\u5B89\u6392 \xB7 \u6709\u62A5\u5DE5\u5F71\u54CD ", d.execution_affected_count, " \u9053"), d.baseline.reason && /*#__PURE__*/React.createElement("div", null, d.baseline.reason.message), d.data_gaps.concat(state.result.warnings).filter(g => !['not_an_optimization_score', 'input_digest_not_recorded'].includes(g.code)).map((g, i) => /*#__PURE__*/React.createElement("div", {
       key: i
     }, g.message)), /*#__PURE__*/React.createElement(ComparisonList, {
       rows: rows,

@@ -63,7 +63,7 @@
       if (C.own(context, 'read_view') && ['entity_ref', 'stage', 'template_operation_ref', 'template_external_group_ref'].some(key => C.own(context, key))) throw C.failure('单条定位和记住的浏览位置不能混用。');
       if (kind === 'calendar') {
         if (typeof context.month !== 'string' || !/^\d{4}-(0[1-9]|1[0-2])$/.test(context.month) || Number(context.month.slice(0, 4)) < 1 || C.own(context, 'date') && (!window.APSCalendarContract.isDate(context.date) || context.date.slice(0, 7) !== context.month)) throw C.failure('定位的月份或日期不正确，日期必须属于指定月份。');
-      } else if ((!C.own(context, 'read_view') || C.own(context, 'entity_ref')) && !ref(context.entity_ref)) throw C.failure('定位缺少有效的记录编号，不会按同编号或同名替代。');
+      } else if ((!C.own(context, 'read_view') || C.own(context, 'entity_ref')) && !ref(context.entity_ref)) throw C.failure('无法定位所选记录，请从列表重新选择。');
       if (kind === 'op_type' && !['internal', 'external'].includes(context.category)) throw C.failure('定位缺少自制或外协类别，不做猜测。');
       if (kind === 'part' && (C.own(context, 'stage') && !['route', 'source', 'hours'].includes(context.stage) || ['template_operation_ref', 'template_external_group_ref'].some(key => C.own(context, key) && !ref(context[key])))) throw C.failure('工艺阶段或模板记录编号不正确。');
       const node = kind === 'part' ? 'process' : kind === 'op_type' ? context.category === 'internal' ? 'op_int' : 'op_ext' : kind;
@@ -197,7 +197,7 @@
       className: "tb-spacer"
     }), /*#__PURE__*/React.createElement("div", {
       className: "wb-actions"
-    }, [['openImport', 'file-input', '导入'], ['openExport', 'file-output', '导出'], ['openBulk', 'minus', '批量删除']].map(([name, icon, label]) => /*#__PURE__*/React.createElement(Button, {
+    }, [['openImport', 'file-input', '导入'], ['openExport', 'file-output', '导出'], ['openBulk', 'trash-2', '批量删除']].map(([name, icon, label]) => /*#__PURE__*/React.createElement(Button, {
       key: name,
       icon: icon,
       transfer: name === 'openImport' ? 'import' : name === 'openExport' ? 'export' : undefined,
@@ -478,25 +478,22 @@
           snapshot_ref: undefined
         }, new AbortController().signal), 'list');
         if (dialog.ref && result.data.ref !== dialog.ref) throw C.failure('读到的资料与所选记录不一致，请刷新后核对。');
+        if (!command.reset()) return;
+        setEditContext({
+          context: dialog.ref ? result.data.write_context : result.data.create_context,
+          source: result.meta.source,
+          entity: dialog.ref ? result.data : null
+        });
+        if (dialog.ref && dialog.kind === 'op_type') setDialog(current => ({
+          ...current,
+          category: result.data.fields.category
+        }));
         setContextReview(result);
       } catch (error) {
         setContextError(error);
       } finally {
         setContextBusy(false);
       }
-    }
-    function acceptContext() {
-      setEditContext({
-        context: dialog.ref ? contextReview.data.write_context : contextReview.data.create_context,
-        source: contextReview.meta.source,
-        entity: dialog.ref ? contextReview.data : null
-      });
-      if (dialog.ref && dialog.kind === 'op_type') setDialog(current => ({
-        ...current,
-        category: contextReview.data.fields.category
-      }));
-      setContextReview(null);
-      setContextError(null);
     }
     async function readAfterCommand() {
       if (command.phase !== 'done') return;
@@ -567,7 +564,8 @@
         setExternal({
           busy: false,
           error: null,
-          result
+          result,
+          action: name === 'openBulk' ? 'delete' : name === 'openImport' ? 'import' : 'save'
         });
       };
       try {
@@ -646,7 +644,8 @@
       command: {
         phase: 'done',
         result: external.result
-      }
+      },
+      action: external.action
     }), node === 'process' ? typeof renderPart === 'function' ? renderPart({
       adapter,
       onNavigate,
@@ -743,8 +742,18 @@
       onBack: dialog.history && dialog.history.length ? back : null,
       onEdit: () => edit('update'),
       onAdjustStock: () => edit('update', true),
+      onMachinePermissions: () => edit('machine_permissions'),
       onDelete: () => edit('delete')
-    }), editorReady && dialog.action !== 'view' && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Forms, {
+    }), editorReady && dialog.action === 'machine_permissions' && /*#__PURE__*/React.createElement(window.OperatorMachinePermissions, {
+      adapter: adapter,
+      entity: editorEntity,
+      source: detail.result.meta.source,
+      command: command,
+      onClose: close,
+      refreshState: refreshState,
+      onRefresh: readAfterCommand,
+      Feedback: Forms.Feedback
+    }), editorReady && !['view', 'machine_permissions'].includes(dialog.action) && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Forms, {
       key: dialog.kind + ':' + (dialog.ref || 'create') + ':' + dialog.action,
       adapter: adapter,
       kind: dialog.kind,
@@ -762,8 +771,7 @@
       onRefresh: readAfterCommand,
       contextError: contextError,
       contextBusy: contextBusy,
-      contextReview: contextReview,
-      onAcceptContext: acceptContext
+      contextReview: contextReview
     })), !dialog && (command.locked || command.phase === 'done') && /*#__PURE__*/React.createElement(Modal, {
       title: "\u4E0A\u6B21\u64CD\u4F5C\u7ED3\u679C",
       icon: "history",

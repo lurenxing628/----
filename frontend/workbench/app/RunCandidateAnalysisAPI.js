@@ -107,7 +107,7 @@
         const value = json ? await response.json() : null;
         if (!response.ok) {
           const error = value && value.error;
-          throw Object.assign(new Error(error && text(error.message) ? error.message : '候选方案依据读取失败，没有换用其他来源。请刷新后重试。'), { code: error && error.code || 'invalid_response', status: response.status });
+          throw Object.assign(new Error(error && text(error.message) ? error.message : '候选方案资料读取失败，请刷新后重试。'), { code: error && error.code || 'invalid_response', status: response.status });
         }
         check(response.status === 200 && json); validate(value, candidateRef, runRef); return value;
       } finally { clearTimeout(timer); if (signal) signal.removeEventListener('abort', abort); }

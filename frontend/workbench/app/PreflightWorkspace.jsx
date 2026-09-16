@@ -72,13 +72,15 @@
     ];
     return <div className="plana preflight-workspace" data-preflight-workspace><Styles />
       <div className="pf-heading"><h2 className="wb-page-title">执行排产</h2><span className="pf-muted wb-page-context">当前生产资料 · 单次排产范围</span>{actions && <div className="pf-tools">{actions}</div>}</div>
+      <section className="pf-scope" aria-label="排产范围">
       <ol className="pf-stepper" aria-label="执行排产步骤">{['选批次和日期', '检查', '计算'].map((label, index) => <li key={label} aria-current={currentStep === index + 1 ? 'step' : undefined} data-step-state={currentStep > index + 1 ? 'complete' : currentStep === index + 1 ? 'current' : 'upcoming'}><span aria-hidden="true">{index + 1}</span>{label}</li>)}</ol>
       <ErrorBox error={initial.error} />{initial.error && <Button icon="refresh-cw" onClick={() => { const next = contextState(undefined); invalidate(); setInitial(next); setValue(next.value); }}>重新选择范围</Button>}
       <div className="pf-window"><strong>排产日期范围</strong><label>开始日期<input type="date" aria-label="计划开始日期" min="1900-01-01" max="9999-12-30" value={value.start_date} disabled={!!initial.error} onChange={event => change({ start_date: event.target.value })} /></label>
         <label>结束日期<input type="date" aria-label="计划结束日期" min="1900-01-01" max="9999-12-30" value={value.end_date} disabled={!!initial.error} onChange={event => change({ end_date: event.target.value })} /></label>
         <span>已选 {value.batch_refs.length} 批</span><Button icon={expanded ? 'chevron-up' : 'chevron-down'} className={currentStep === 1 ? 'btn primary' : 'btn'} disabled={!!initial.error} aria-expanded={expanded} onClick={() => setExpanded(old => !old)}>{expanded ? '收起范围' : '选择批次'}</Button></div>
       {expanded && !initial.error && <window.PreflightBatchPicker adapter={adapter} selected={value.batch_refs} onChange={batch_refs => change({ batch_refs })} disabled={busy} />}
-      <Metrics counts={counts} /><div className="pf-body"><Rules value={value} onChange={change} disabled={!!initial.error} />
+      <Metrics counts={counts} /></section>
+      <section className="pf-review" aria-label="排产规则与检查"><div className="pf-body"><Rules value={value} onChange={change} disabled={!!initial.error} />
         <section aria-labelledby="pf-check-title"><h3 id="pf-check-title">排产检查</h3><div className="pf-rows">{checks.map(([title, description, kind, action]) => <div className="pf-check" key={title}>
           <div><strong>{title}</strong><p>{description}</p></div>{kind && <Button disabled={!data || !onNavigate || busy || !(kind === 'resources' ? counts.missing_resource_tasks : kind === 'unready' ? counts.unready_batches : counts.blocked_tasks + counts.no_route_batches)} onClick={() => navigate(kind)}>{action}</Button>}
         </div>)}</div></section></div>
@@ -89,7 +91,7 @@
         <Reasons data={data} /></>}
       <div className="pf-footer"><span className="pf-muted">{data ? '排产检查不生成版本、不写入业务或审计数据。' : renderRunPanel ? '请先选择批次和排产日期范围，再点「开始排产检查」。' : window.WorkbenchTerms.outcomes.unavailable}</span>
         <div className="pf-tools"><Button icon="search" className={currentStep === 2 ? 'btn primary' : 'btn'} busy={busy} disabled={!!initial.error} onClick={check}>{data ? '重新检查' : '开始排产检查'}</Button>
-          {!renderRunPanel && <Button icon="play" className={currentStep === 3 ? 'btn primary' : 'btn'} disabled={runBlocked} reason={runReason}>开始排产</Button>}</div></div>
+          {!renderRunPanel && <Button icon="play" className={currentStep === 3 ? 'btn primary' : 'btn'} disabled={runBlocked} reason={runReason}>开始排产</Button>}</div></div></section>
       {renderRunPanel && renderRunPanel(data)}
     </div>;
   }

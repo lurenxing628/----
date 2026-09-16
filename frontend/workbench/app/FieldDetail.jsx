@@ -17,7 +17,7 @@
     }
     return <div className="field-timeline" aria-label="作业时间线"><window.PointGantt.Styles /><div className="field-timeline-axis"><span>{C.date(new Date(Math.min(...points)).toISOString().slice(0, 19))}</span><span>{C.date(new Date(Math.max(...points)).toISOString().slice(0, 19))}</span></div>
       {rows.map(row => {
-        const title = (row.key === 'plan' ? row.point ? '零工时工序，不占设备人员；完成状态以实际记录为准' : '计划安排' : row.point ? '报工时刻' : '实际报工时段')
+        const title = (row.key === 'plan' ? row.point ? '零工时工序，无资源占用。' : '计划安排' : row.point ? '报工时刻' : '实际报工时段')
           + '\n' + row.label + '\n' + C.date(row.start) + ' 至 ' + (row.end ? C.date(row.end) : '结束未填写');
         const left = ((parse(row.start) - axis.start) / (axis.end - axis.start)) * 100 + '%';
         return <div key={row.key} className="field-timeline-row"><span>{row.label}</span><div className="field-timeline-track" title={title}>
@@ -62,18 +62,26 @@
             return_to: { view: 'field', context: { plan_ref: task.plan_ref, task_ref: taskRef, scope } } });
         }}>实际甘特</Button>}</div>
       {timeline && <Timeline task={task} />}
-      {p.completion_basis === 'legacy_finish_event' && <div className="field-note">已有历史完工记录，工序仍算已完工；缺的数量和有效工时没有补造。</div>}
+      {p.completion_basis === 'legacy_finish_event' && <div className="field-note">完工状态来自历史完工记录。</div>}
       <Issues issues={p.data_gaps} />
-      <div className="field-scroll wb-table-frame" data-sticky-head data-sticky-actions tabIndex="0" aria-label="逐次报工表格滚动区"><table className="field-table wb-table" aria-label="逐次报工记录"><caption className="wb-visually-hidden">本工序每次报工的数量、实际起止、有效工时、资源和更正操作</caption><colgroup><col style={{ width: '15%' }} /><col style={{ width: '9%' }} /><col style={{ width: '16%' }} /><col style={{ width: '16%' }} /><col style={{ width: '9%' }} /><col style={{ width: '12%' }} /><col style={{ width: '12%' }} /><col style={{ width: '11%' }} /></colgroup>
+      <div className="field-scroll wb-table-frame" data-sticky-head data-sticky-actions tabIndex="0" aria-label="逐次报工表格滚动区"><table className="field-table wb-table" aria-label="逐次报工记录"><caption className="wb-visually-hidden">本工序每次报工的数量、实际起止、有效工时、资源和更正操作</caption><colgroup><col style={{ width: '14%' }} /><col style={{ width: '8%' }} /><col style={{ width: '15%' }} /><col style={{ width: '15%' }} /><col style={{ width: '8%' }} /><col style={{ width: '12%' }} /><col style={{ width: '8%' }} /><col style={{ width: 190 }} /></colgroup>
         <thead><tr>{['报工编号', '本次数量', '实际开工', '本次完工', '有效工时（小时）', '实际设备 / 人员', '备注', '操作'].map((name, index) => <th key={name} scope="col" className={index === 7 ? 'wb-col-actions' : undefined}>{name}</th>)}</tr></thead>
         <tbody>{p.reports.map(record => <React.Fragment key={record.report_ref}><tr><td>{record.report_no}<small>{record.recorded_against_plan_ref !== task.plan_ref ? '按旧计划录入' : '按本计划录入'}</small><Button icon="history" aria-label={'录入信息 ' + record.report_no} aria-expanded={historyRef === record.report_ref} onClick={() => setHistoryRef(historyRef === record.report_ref ? null : record.report_ref)} /></td>
           <td>{C.display(record.completed_quantity)}</td><td>{C.date(record.actual_start)}</td><td>{C.date(record.actual_end)}</td><td>{C.display(record.effective_processing_hours)}</td>
-          <td>{C.display(record.actual_machine_label)}<small>{C.display(record.actual_operator_label)}</small></td><td>{C.display(record.remark)}</td><td className="wb-col-actions">
+          <td>{C.display(record.actual_machine_label)}<small>{C.display(record.actual_operator_label)}</small></td><td>{C.display(record.remark)}</td><td className="wb-col-actions"><div className="field-report-actions">
             <Button icon="file-plus" aria-label={'补齐 ' + record.report_no} reasonDisplay="tooltip" reason={C.blocked(record.write_context, 'supplement')} disabled={command.locked || !!editor} onClick={() => onEdit({ taskRef, reportRef: record.report_ref, action: 'supplement' })} />
-            <Button icon="square-pen" aria-label={'更正 ' + record.report_no} reasonDisplay="tooltip" reason={C.blocked(record.write_context, 'correct')} disabled={command.locked || !!editor} onClick={() => onEdit({ taskRef, reportRef: record.report_ref, action: 'correct' })} /></td></tr>{historyRef === record.report_ref && <tr><td colSpan="8"><History record={record} /></td></tr>}</React.Fragment>)}
-          {!p.reports.length && <tr><td colSpan="8"><window.WorkbenchListControls.EmptyState title="暂无逐次报工" hint="可新增本次报工；历史记录里的未知值仍保持未知。" /></td></tr>}</tbody></table></div>
-      {missingOriginal && <div className="field-note"><p role="alert">原记录已不在当前任务中，暂存内容未写入，未改指其他记录。</p><Button onClick={onCloseEditor} disabled={command.locked}>取消暂存编辑</Button></div>}
-      {editor && !missingOriginal && (editor.action === 'create' || report) && <window.FieldEditor key={editor.action + ':' + (editor.reportRef || editor.legacyRef || taskRef)} task={task} record={report} legacy={legacy} action={editor.action} adapter={adapter} command={command} retained={retained} onDraft={onDraft} onClose={onCloseEditor} onDone={onDone} />}
+            <Button icon="square-pen" aria-label={'更正 ' + record.report_no} reasonDisplay="tooltip" reason={C.blocked(record.write_context, 'correct')} disabled={command.locked || !!editor} onClick={() => onEdit({ taskRef, reportRef: record.report_ref, action: 'correct' })} />
+            <Button icon="rotate-ccw" aria-label={'撤销 ' + record.report_no} reasonDisplay="tooltip" reason={C.blocked(record.write_context, 'report_void')} disabled={command.locked || !!editor} onClick={() => onEdit({ taskRef, reportRef: record.report_ref, action: 'report_void' })}>撤销</Button></div></td></tr>{historyRef === record.report_ref && <tr><td colSpan="8"><History record={record} /></td></tr>}</React.Fragment>)}
+          {!p.reports.length && <tr><td colSpan="8"><window.WorkbenchListControls.EmptyState title="暂无逐次报工" hint="可新增本次报工。" /></td></tr>}</tbody></table></div>
+      {missingOriginal && <div className="field-note"><p role="alert">原记录已失效，暂存编辑无法保存。请刷新后重选。</p><Button onClick={onCloseEditor} disabled={command.locked}>取消暂存编辑</Button></div>}
+      {editor && !missingOriginal && editor.action === 'report_void' && report && <window.FieldVoidEditor key={'void:' + editor.reportRef} task={task} record={report} adapter={adapter} command={command} retained={retained} onDraft={onDraft} onClose={onCloseEditor} onDone={onDone} />}
+      {editor && editor.action !== 'report_void' && !missingOriginal && (editor.action === 'create' || report) && <window.FieldEditor key={editor.action + ':' + (editor.reportRef || editor.legacyRef || taskRef)} task={task} record={report} legacy={legacy} action={editor.action} adapter={adapter} command={command} retained={retained} onDraft={onDraft} onClose={onCloseEditor} onDone={onDone} />}
+      {(p.voided_reports || []).length > 0 && <details className="field-note"><summary>已撤销报工 · {p.voided_reports.length} 条</summary>{p.voided_reports.map(item => <section key={item.void_fact.void_fact_ref}>
+        <h4>{item.report.report_no} · 已撤销</h4><p>{C.date(item.void_fact.recorded_at)} · {item.void_fact.local_operator}{item.void_fact.declared_operator ? ' · 经办人 ' + item.void_fact.declared_operator : ''} · {item.void_fact.reason}</p>
+        <p>原数量 {C.display(item.report.completed_quantity)} 件 · 原有效工时 {C.display(item.report.effective_processing_hours)} 小时</p>
+        <div className="field-history"><dl><dt>原实际起止</dt><dd>{C.date(item.report.actual_start)} 至 {C.date(item.report.actual_end)}</dd>
+          <dt>原设备 / 人员</dt><dd>{C.display(item.report.actual_machine_label)} / {C.display(item.report.actual_operator_label)}</dd><dt>原备注</dt><dd>{C.display(item.report.remark)}</dd></dl></div><History record={item.report} />
+      </section>)}</details>}
       {p.legacy_facts.length > 0 && <details className="field-note"><summary>历史现场记录 · {p.legacy_facts.length} 条</summary>{p.legacy_facts.map((fact, index) => <div key={fact.legacy_fact_ref || index}>{C.date(fact.event_time)} · {({ start: '开工', finish: '完工', pause: '暂停', resume: '恢复', exception: '异常' })[fact.event_type] || '历史记录'} · {C.display(fact.remark)}
         {fact.event_type === 'finish' && !p.reports.some(row => row.legacy_fact_ref === fact.legacy_fact_ref) && <Button icon="plus" disabled={command.locked || !!editor} reason={C.blocked(p.write_context, 'create')} onClick={() => onEdit({ taskRef, legacyRef: fact.legacy_fact_ref, action: 'create' })}>补齐原始完工记录</Button>}</div>)}</details>}
     </section>;

@@ -55,8 +55,8 @@
         <div className="batch-fields" style={{ marginTop: 16 }}><window.BatchControls.Field label="导入模式"><select value={mode} disabled={locked} onChange={event => changeMode(event.target.value)}>
           <option value="overwrite">已有批次就更新，没有的就新增</option><option value="append">只新增没有的批次（已有的跳过）</option><option value="replace">先清除全部批次，再按表格重导</option>
         </select></window.BatchControls.Field><window.BatchControls.Field label="选择 Excel 文件"><input type="file" accept=".xlsx" disabled={locked} onChange={event => { setFile(event.target.files[0] || null); setPreview(null); setError(null); serial.current++; }} /></window.BatchControls.Field></div>
-        <p>新增批次不自动生成工序；已有批次的空单元格不覆盖。确认前不会新增、更新或删除批次。</p>
-        {preview && <><p>{preview.count} 行 · {preview.can_confirm ? '全部核对通过，一起保存' : '存在拒绝行，本批不会写入'}</p><div className="batch-preview wb-table-frame" data-sticky-head><table className="tbl wb-table" aria-label="批次导入预检"><caption className="wb-visually-hidden">批次导入预检</caption><thead><tr><th scope="col">行号 / 批次</th><th scope="col">操作</th><th scope="col">核对内容</th></tr></thead><tbody>
+        <p>新批次导入后需生成工序；更新时空白单元格保留原值。</p>
+        {preview && <><p>{preview.count} 行 · {preview.can_confirm ? '全部核对通过，一起保存' : '存在未通过检查的行，请修正'}</p><div className="batch-preview wb-table-frame" data-sticky-head><table className="tbl wb-table" aria-label="批次导入预检"><caption className="wb-visually-hidden">批次导入预检</caption><thead><tr><th scope="col">行号 / 批次</th><th scope="col">操作</th><th scope="col">核对内容</th></tr></thead><tbody>
           {preview.rows.map(row => <PreviewRow key={row.row} row={row} />)}
         </tbody></table></div>{preview.deleted.length > 0 && <div><h3>将删除的全部批次</h3>{preview.deleted.map(row => <div key={row.entity_ref}>{row.before.business_code} · {row.before.operations.length} 道工序{row.errors.length ? ' · ' + row.errors.join('；') : ''}</div>)}</div>}
           <Issues issues={preview.warnings} /><Button onClick={() => setPreview(null)} disabled={locked}>返回核对文件</Button></>}

@@ -11,9 +11,9 @@
         const unbound = execution.reports.some(report => !report[field]);
         return '本' + resource + '暂无报工；报工在' + (bound ? '其他' + resource + (unbound ? '及' : '') : '') + (unbound ? '“' + resource + '未填写”分组' : '下');
       }
-      return '本' + resource + '暂无报工' + (execution.legacy_facts.length ? '；工序有历史现场记录，不是逐次报工' : '');
+      return '本' + resource + '暂无报工' + (execution.legacy_facts.length ? '；有历史现场记录' : '');
     }
-    return execution.legacy_facts.length ? '历史现场记录保留，不是逐次报工' : '暂无实际报工';
+    return execution.legacy_facts.length ? '仅有历史现场记录' : '暂无实际报工';
   }
   function Bar({ mark, row, model, width, selected, onSelect, onHover, canvasPainted = false }) {
     const box = window.ActualGanttWindow.markBox(mark, model, width), { x, size } = box;

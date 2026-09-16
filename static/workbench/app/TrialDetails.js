@@ -143,9 +143,9 @@
       })
     })), /*#__PURE__*/React.createElement("div", {
       className: "tt-muted"
-    }, "\u539F\u5DE5\u65F6\u4E0D\u53D8\uFF1B\u5B8C\u5DE5\u6309\u771F\u5B9E\u73ED\u8868\u8BA1\u7B97\uFF0C\u524D\u540E\u5E8F\u4E0D\u81EA\u52A8\u79FB\u52A8\u3002"), !external && !data.resources.authorizations.some(r => r.machine_ref === form.machine_ref && r.operator_ref === form.operator_ref) && /*#__PURE__*/React.createElement("p", {
+    }, "\u6309\u73ED\u8868\u8BA1\u7B97\u5B8C\u5DE5\u65F6\u95F4\uFF1B\u5176\u4ED6\u5DE5\u5E8F\u9700\u5206\u522B\u8C03\u6574\u3002"), !external && !data.resources.authorizations.some(r => r.machine_ref === form.machine_ref && r.operator_ref === form.operator_ref) && /*#__PURE__*/React.createElement("p", {
       className: "tt-notice"
-    }, "\u5F53\u524D\u8BBE\u5907\u4E0E\u4EBA\u5458\u672A\u767B\u8BB0\u64CD\u4F5C\u6388\u6743\uFF0C\u63D0\u4EA4\u540E\u4EE5\u771F\u5B9E\u7EA6\u675F\u68C0\u67E5\u4E3A\u51C6\u3002"), /*#__PURE__*/React.createElement(U.ErrorBox, {
+    }, "\u6240\u9009\u4EBA\u5458\u5C1A\u672A\u53D6\u5F97\u8BE5\u8BBE\u5907\u7684\u64CD\u4F5C\u6388\u6743\u3002"), /*#__PURE__*/React.createElement(U.ErrorBox, {
       error: error
     }), /*#__PURE__*/React.createElement(U.ErrorBox, {
       error: commands.error
@@ -159,6 +159,7 @@
       className: "tt-tools"
     }, /*#__PURE__*/React.createElement(U.Button, {
       icon: "check",
+      className: "btn primary",
       type: "submit",
       disabled: !editable || !reviewed || commands.blocked
     }, "\u4FDD\u5B58\u8C03\u6574"), /*#__PURE__*/React.createElement(U.Button, {
@@ -206,7 +207,9 @@
       onRecheck,
       guardOwner,
       editorRevision
-    }), /*#__PURE__*/React.createElement("dl", {
+    }), task.execution_anchor && /*#__PURE__*/React.createElement("p", {
+      className: "tt-notice"
+    }, task.execution_anchor.message), /*#__PURE__*/React.createElement("dl", {
       className: "tt-facts"
     }, [['分件', task.piece_id || '整批'], ['原目标量', U.number(task.quantity)], ['批次数量', U.number(task.batch_quantity)], ...(window.PointContract.isPoint(task) ? [['安排类型', '零工时工序'], ['本工序占用', '0 小时 · 不占设备人员']] : []), ['优先级', {
       normal: '普通',

@@ -154,7 +154,7 @@
     const result = [taskLabel(t), '计划应做：' + number(t.quantity) + ' 件 · 批次：' + number(t.batch_quantity) + ' 件',
       '原计划：' + time(t.start) + ' → ' + time(t.end),
       '计划资源：' + (labels.get(t.machine_ref) || '设备未填写') + ' / ' + (labels.get(t.operator_ref) || '人员未填写')];
-    if (window.PointContract.isPoint(t)) result.push('零工时工序，不占设备人员；完成状态以实际记录为准');
+    if (window.PointContract.isPoint(t)) result.push('零工时工序，无资源占用。');
     if (t.quantity_reason) result.push(quantityReasons[t.quantity_reason]);
     if (!e) return result.concat('报工记录不可用');
     result.push(states[e.execution_state] + ' · 已知完成 ' + number(e.known_completed_quantity) + ' 件',

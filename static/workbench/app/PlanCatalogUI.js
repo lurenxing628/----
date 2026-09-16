@@ -23,7 +23,8 @@
     selectedRef,
     onSelect,
     autoSelect = false,
-    disabled = false
+    disabled = false,
+    actions
   }) {
     const [collection, setCollection] = React.useState('history'),
       [pages, setPages] = React.useState([{}]),
@@ -117,7 +118,7 @@
       disabled: disabled
     }), /*#__PURE__*/React.createElement("div", {
       className: "plan-actions"
-    }, /*#__PURE__*/React.createElement(Button, {
+    }, actions, /*#__PURE__*/React.createElement(Button, {
       className: "btn plan-icon",
       icon: "refresh-cw",
       "aria-label": "\u5237\u65B0\u8BA1\u5212\u5217\u8868",

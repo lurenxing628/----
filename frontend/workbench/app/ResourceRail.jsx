@@ -40,7 +40,7 @@
     return { lead: '工艺已确认 ' + counts.ready + ' / ' + total + ' 项', lines: [
       '待路线 ' + counts.route + ' / 待归属 ' + counts.source + ' / 待工时 ' + counts.hours,
       '已确认：路线 ' + counts.route_confirmed + ' / 归属 ' + counts.source_confirmed + ' / 工时 ' + counts.hours_confirmed,
-      ...(counts.legacy ? ['存量 ' + counts.legacy + ' 项未确认；含路线资料 ' + counts.legacy_route_present + ' 项'] : [])] };
+      ...(counts.legacy ? [counts.legacy + ' 项暂无确认记录，其中 ' + counts.legacy_route_present + ' 项已有路线资料'] : [])] };
   }
   function itemText(item, key) {
     if (!item) return '';
@@ -147,12 +147,10 @@
         <div className="hb-flowarr"><Icon name="arrow-right" /></div>
         <CalendarSummary value={value.calendar} loading={summary.loading} error={summary.error || value.calendar_error} node={node} disabled={disabled} onNode={onNode} />
       </div></div>
-      <div className="rail-foot"><div className="hb-ready"><div className="hb-r-top" style={{ flexWrap: 'wrap' }}>
-        <span className="hb-rl1">产能就绪度</span><span className="hb-rl2">{summary.loading ? '未读取' : '暂无数据'}</span>
-        <span className="hb-r-tag" style={{ whiteSpace: 'normal', flexShrink: 1 }}>{summary.error || value.readiness_error || process.lead}</span><span className="hb-r-spacer" />
+      <div className="rail-foot"><div className="hb-r-top" style={{ flexWrap: 'wrap' }}>
+        <span className="hb-r-spacer" />
         <Button className="hb-r-next" icon="arrow-right" disabled={disabled} reason={typeof onNavigate !== 'function' ? '批次管理尚未开通。' : ''} onClick={() => onNavigate('batches')}>下一步 · 批次管理</Button>
-      </div><div className="hb-cl2" style={{ padding: '0 18px 12px' }} role="status">{readiness ? readiness.message : '系统没有给出整体就绪度，不做推算。'}</div>
-      <div className="hb-r-floor" aria-label="整体就绪度暂无数据" /></div></div></>}
+      </div></div></>}
     </section>;
   }
   window.ResourceRail = ResourceRail;

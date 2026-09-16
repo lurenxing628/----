@@ -13,15 +13,14 @@
       <div className="rc-scope" aria-label="候选变化与取舍">{Object.keys(data.delivery_deltas).map(key => <span key={key}>
         {labels[key]}：{data.delivery_deltas[key] === null ? '对比基准或候选依据不足，变化未知' : M.signedChange(data.delivery_deltas[key])}</span>)}
         <span>调整工序：{data.metrics.changed_operation_count.value === null ? '完整数量待确认' : data.metrics.changed_operation_count.value + ' 道'}</span>
-        <span>换设备：{data.metrics.machine_change_count.value === null ? '完整数量待确认' : data.metrics.machine_change_count.value + ' 道'}</span>
-        <span>仅陈述已保存安排的变化，未评估优化收益、实际工时或成本。</span></div>
+        <span>换设备：{data.metrics.machine_change_count.value === null ? '完整数量待确认' : data.metrics.machine_change_count.value + ' 道'}</span></div>
       {!data.baseline.comparison_available && <p className="rc-notice">{data.baseline.reason.message}</p>}
       <C.Reasons rows={data.operations.issues.flatMap(row => row.reasons)} />
     </section>;
   }
   function Finish({ row }) {
     return <>{row.planned_finish ? M.timeLabel(row.planned_finish) : '暂无数据'}{!row.planned_finish && row.partial_planned_finish
-      && <small>已安排部分：{M.timeLabel(row.partial_planned_finish)}，非全批完工</small>}</>;
+      && <small>已排工序结束时间：{M.timeLabel(row.partial_planned_finish)}</small>}</>;
   }
   function Batches({ data, onBatch, onLast }) {
     const [page, setPage] = React.useState(1), pages = Math.max(1, Math.ceil(data.batches.length / 20)), current = Math.min(page, pages);

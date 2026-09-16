@@ -172,7 +172,7 @@
       className: "wb-resource-relations"
     }, null, entity.fields.category === 'internal' && /*#__PURE__*/React.createElement("p", {
       className: "muted"
-    }, "\u5F53\u524D\u53EF\u7528\u6570\u91CF\uFF1A\u8BBE\u5907 ", C.availability(entity.availability) ? entity.availability.machines : '未知', " \u53F0 \xB7 \u4EBA\u5458 ", C.availability(entity.availability) ? entity.availability.operators : '未知', " \u4EBA\u3002\u4E0B\u9762\u7684\u5173\u8054\u8BB0\u5F55\u542B\u505C\u7528\u548C\u8D44\u683C\u5F85\u6838\u5BF9\u7684\uFF0C\u4E0D\u4EE3\u8868\u8FD9\u4E2A\u65F6\u6BB5\u80FD\u6392\u3002"), relations.map(relation => /*#__PURE__*/React.createElement(Association, {
+    }, "\u5F53\u524D\u53EF\u7528\u6570\u91CF\uFF1A\u8BBE\u5907 ", C.availability(entity.availability) ? entity.availability.machines : '未知', " \u53F0 \xB7 \u4EBA\u5458 ", C.availability(entity.availability) ? entity.availability.operators : '未知', " \u4EBA\u3002\u5173\u8054\u5217\u8868\u5305\u542B\u505C\u7528\u53CA\u8D44\u683C\u5F85\u6838\u5BF9\u7684\u8BB0\u5F55\u3002"), relations.map(relation => /*#__PURE__*/React.createElement(Association, {
       key: relation,
       adapter: adapter,
       entity: entity,

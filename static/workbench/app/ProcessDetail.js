@@ -17,7 +17,7 @@
     onStage,
     disabled
   }) {
-    const subtitle = key => entity.workflow[key].state === 'confirmed' ? '已确认' : entity.workflow[key].state === 'locked' ? key === 'source' ? '待路线确认' : '待归属确认' : key === 'route' ? entity.workflow.route.state === 'present' ? '已有记录 · 待人工确认' : '待录入路线' : '未人工确认';
+    const subtitle = key => entity.workflow[key].state === 'confirmed' ? '已确认' : entity.workflow[key].state === 'locked' ? key === 'source' ? '待路线确认' : '待归属确认' : key === 'route' ? entity.workflow.route.state === 'present' ? '已有路线 · 待保存' : '待录入路线' : '待保存';
     return /*#__PURE__*/React.createElement("div", {
       className: "stepper",
       role: "tablist",
@@ -56,8 +56,6 @@
       paging: paging
     }), /*#__PURE__*/React.createElement("span", null, "\u5168\u90E8\u8BB0\u5F55 ", entity.operations.length, " \xB7 \u6709\u6548\u5DE5\u5E8F ", entity.relationships.operation_count)), /*#__PURE__*/React.createElement("div", {
       className: "wb-table-frame"
-    }, /*#__PURE__*/React.createElement("div", {
-      className: "card-scroll wb-table-shell"
     }, /*#__PURE__*/React.createElement("table", {
       className: "tbl wb-table",
       "aria-label": hours ? '已就绪工序汇总' : '路线工序明细',
@@ -108,7 +106,7 @@
       })));
     }), !paging.rows.length && /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", {
       colSpan: hours ? 8 : 5
-    }, entity.operations.length ? '没有匹配的工序。' : '尚无工序记录。')))))), /*#__PURE__*/React.createElement(E.Pager, {
+    }, entity.operations.length ? '没有匹配的工序。' : '尚无工序记录。'))))), /*#__PURE__*/React.createElement(E.Pager, {
       paging: paging
     }));
   }
@@ -119,9 +117,13 @@
     onFileAction,
     previewAvailable
   }) {
-    return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+    return /*#__PURE__*/React.createElement("section", {
+      className: "process-route-section"
+    }, /*#__PURE__*/React.createElement("div", {
       className: "toolbar"
-    }, /*#__PURE__*/React.createElement(Button, {
+    }, /*#__PURE__*/React.createElement("h3", null, "\u5DE5\u827A\u8DEF\u7EBF"), /*#__PURE__*/React.createElement("span", {
+      className: "tb-spacer"
+    }), /*#__PURE__*/React.createElement(Button, {
       icon: "square-pen",
       className: "btn primary",
       disabled: disabled,
@@ -130,19 +132,22 @@
     }, "\u5F55\u5165\u8DEF\u7EBF"), /*#__PURE__*/React.createElement(window.ProcessFileButtons, {
       capabilities: entity.capabilities,
       disabled: disabled,
+      routeOnly: true,
       onAction: onFileAction
-    })), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement(E.Confirmation, {
-      record: entity.workflow.route
-    })), /*#__PURE__*/React.createElement("dl", {
-      className: "process-fields"
-    }, [['route_raw', '原始路线'], ['route_parsed', '原路线解析标记'], ['remark', '零件备注']].map(([key, label]) => /*#__PURE__*/React.createElement(React.Fragment, {
-      key: key
-    }, /*#__PURE__*/React.createElement("dt", null, label), /*#__PURE__*/React.createElement("dd", null, key === 'route_parsed' ? entity.fields[key] === 'yes' ? '已解析' : entity.fields[key] === 'no' ? '未解析' : '原标记不明确' : E.value(entity.fields[key]))))), /*#__PURE__*/React.createElement(Operations, {
+    })), /*#__PURE__*/React.createElement(Operations, {
       entity: entity,
       hours: false
+    }), /*#__PURE__*/React.createElement("details", {
+      className: "process-original"
+    }, /*#__PURE__*/React.createElement("summary", null, "\u539F\u59CB\u5BFC\u5165\u8D44\u6599\u4E0E\u4FDD\u5B58\u8BB0\u5F55"), /*#__PURE__*/React.createElement("dl", {
+      className: "process-fields"
+    }, [['route_raw', '原始路线'], ['route_parsed', '解析状态'], ['remark', '零件备注']].map(([key, label]) => /*#__PURE__*/React.createElement("div", {
+      key: key
+    }, /*#__PURE__*/React.createElement("dt", null, label), /*#__PURE__*/React.createElement("dd", null, key === 'route_parsed' ? entity.fields[key] === 'yes' ? '已解析' : entity.fields[key] === 'no' ? '未解析' : '解析状态未知' : E.value(entity.fields[key]))))), /*#__PURE__*/React.createElement(E.Confirmation, {
+      record: entity.workflow.route
     }), /*#__PURE__*/React.createElement(E.Groups, {
       rows: entity.external_groups
-    }));
+    })));
   }
   function DetailSession({
     adapter,
@@ -419,7 +424,7 @@
         style: {
           marginRight: 'auto'
         }
-      }, entity ? '关联批次 ' + entity.relationships.batch_count + ' · 本次不反写已有批次' : ''), /*#__PURE__*/React.createElement(Button, {
+      }, entity ? '此工艺已用于 ' + entity.relationships.batch_count + ' 个批次。修改后，已有批次工序不会自动更新。' : ''), /*#__PURE__*/React.createElement(Button, {
         disabled: locked,
         onClick: close
       }, "\u5173\u95ED\u8BE6\u60C5"))
@@ -443,7 +448,7 @@
       onClick: fileReceipt ? () => readFileSaved(fileReceipt) : readSaved
     }, "\u67E5\u8BE2\u7ED3\u679C"), fileReceipt && !refresh.done && !refresh.loading && /*#__PURE__*/React.createElement("p", {
       role: "status"
-    }, "\u4EE5\u4E0B\u4ECD\u662F\u4FDD\u5B58\u524D\u7684\u8D44\u6599\uFF0C\u6682\u65F6\u4E0D\u80FD\u7EE7\u7EED\u7F16\u8F91\uFF1B\u5237\u65B0\u4E0D\u4F1A\u518D\u6B21\u5BFC\u5165\u6587\u4EF6\u3002"), receipt && refresh.done && command.phase === 'idle' && /*#__PURE__*/React.createElement("p", {
+    }, "\u8D44\u6599\u5C1A\u672A\u5237\u65B0\uFF0C\u8BF7\u5237\u65B0\u540E\u7EE7\u7EED\u7F16\u8F91\u3002"), receipt && refresh.done && command.phase === 'idle' && /*#__PURE__*/React.createElement("p", {
       role: "status"
     }, "\u63D0\u4EA4\u5DF2\u786E\u8BA4\uFF0C\u5DE5\u827A\u8BE6\u60C5\u5DF2\u5237\u65B0\u3002"), entity && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Issues, {
       issues: result.warnings
@@ -526,6 +531,7 @@
       disabled: editorDisabled,
       saved: saved.hours,
       onDirty: onDirty,
+      onOverlay: setOverlay,
       onFileAction: openFile
     })), selected === 'ready' && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Operations, {
       entity: entity,

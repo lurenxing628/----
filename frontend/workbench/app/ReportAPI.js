@@ -47,7 +47,7 @@
     if (!totals(data.summary) || !data.resources || !['machines', 'people'].every(kind => Array.isArray(data.resources[kind]) && data.resources[kind].every(totals))
       || !data.rows.every(data.topic === 'records' ? record : ['machines', 'people'].includes(data.topic) ? totals : operation)
       || data.detail && (!operation(data.detail.operation) || !Array.isArray(data.detail.records) || !data.detail.records.every(record)))
-      throw new Error('报工记录缺列或计数不一致，没有把历史事件当成逐次报工，也没有把未知量按 0 处理。');
+      throw new Error('报工数据缺项或计数不一致，请刷新重试。');
   }
   function validate(result) {
     const data = result && result.data;

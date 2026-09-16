@@ -76,11 +76,11 @@
       const issue = entity.issues.find(item => item.code === 'resource_availability_unavailable');
       return /*#__PURE__*/React.createElement("span", {
         className: "muted",
-        title: issue ? issue.message : '可用数量还没读取，不会用关联总数代替。'
+        title: issue ? issue.message : '可用数量尚未读取。'
       }, issue ? '暂无数据' : '未读取');
     }
     return /*#__PURE__*/React.createElement("span", {
-      title: key === 'machines' ? '启用并绑定此工种的设备；不代表当天班表有空。' : '启用、有匹配设备授权、工种资格合格的人数（不重复计数）；不代表当天班表有空。'
+      title: key === 'machines' ? '已启用且关联此工种的设备数。' : '具备对应技能和设备授权的在岗人数（去重）。'
     }, entity.availability[key]);
   }
   function opColumns(category) {
@@ -301,7 +301,7 @@
       onClick: () => onOpen(entity.ref)
     }, kind === 'op_type' ? entity.fields.category === 'internal' ? '查看绑定' : entity.fields.category === 'external' ? '查看供应商' : '查看/编辑' : '查看/编辑'), /*#__PURE__*/React.createElement(Button, {
       className: "mini danger",
-      icon: "minus",
+      icon: "trash-2",
       reasonDisplay: "inline",
       reason: disabled ? '正在处理，请稍候。' : C.blocked(entity.write_context, kind, 'delete', source),
       onClick: () => onDelete(entity.ref)

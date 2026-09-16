@@ -11,7 +11,7 @@
       if (enabled) window.RunBaselineAPI.create().read(data, controller.signal).then(result => {
         if (!controller.signal.aborted) setState({ identity, result, error: null, busy: false });
       }).catch(error => {
-        if (!controller.signal.aborted) setState({ identity, result: null, error: new Error(error.name === 'AbortError' ? '初始计划读取超时，没有显示上次结果。请点「刷新初始计划」。' : error.message), busy: false });
+        if (!controller.signal.aborted) setState({ identity, result: null, error: new Error(error.name === 'AbortError' ? '初始计划读取超时，请刷新初始计划。' : error.message), busy: false });
       });
       return () => controller.abort();
     }, [identity]);
@@ -44,7 +44,7 @@
       <window.WorkbenchReference entries={{ '工序编号': row.operation_ref }} />
       {c ? <><div>候选安排：{M.timeLabel(c.start)} 至 {M.timeLabel(c.end)} · 设备 {c.machine && c.machine.label || '未记录'} · 人员 {c.operator && c.operator.label || '未记录'}</div>
         <window.WorkbenchReference entries={{ '候选安排编号': c.row_ref }} />
-        {!workspace.tasks.some(t => t.row_ref === c.row_ref) && <div>该候选安排不在当前读取范围；此处保留完整对照。</div>}</> : <div>候选没有安排此工序；未排不代表改善。</div>}
+        {!workspace.tasks.some(t => t.row_ref === c.row_ref) && <div>该候选安排在所选时间范围外。</div>}</> : <div>此候选方案未安排该工序。</div>}
       <Segments key={row.operation_ref} row={row} chosen={segment} />
       {row.comparison_available && <div>安排变动（候选减初始计划）：开始 {M.number(delta.start_hours)} 小时 · 结束 {M.number(delta.end_hours)} 小时 · 起止时长 {M.number(delta.elapsed_hours)} 小时
         <small>设备变化 {delta.machine_changed === null ? '未知' : delta.machine_changed ? '有' : '无'} · 人员变化 {delta.operator_changed === null ? '未知' : delta.operator_changed ? '有' : '无'}</small></div>}
@@ -76,8 +76,8 @@
       {d && <><div className="rb-legend"><span><i />候选安排</span><span><i className="rb-before" />初始计划</span><span><i className="rb-selected" />已选工序</span></div>
         <details className="rb-panel" open={open} onToggle={e => setOpen(e.currentTarget.open)}><summary>初始计划对照明细（{rows.length}） · 说明</summary>
           {open && <><div>提交于 {M.timeLabel(d.generation.accepted_at)} · {d.baseline.captured_task_count} 段初始安排 · 有报工影响 {d.execution_affected_count} 道</div>
-            <div>安排变动不等于收益；未排不代表改善。</div>{d.baseline.reason && <div>{d.baseline.reason.message}</div>}
-            {d.data_gaps.concat(state.result.warnings).map((g, i) => <div key={i}>{g.message}</div>)}
+            {d.baseline.reason && <div>{d.baseline.reason.message}</div>}
+            {d.data_gaps.concat(state.result.warnings).filter(g => !['not_an_optimization_score', 'input_digest_not_recorded'].includes(g.code)).map((g, i) => <div key={i}>{g.message}</div>)}
             <ComparisonList rows={rows} chosen={chosen} onChoose={onChoose} />
             {chosen && <><div className="rc-tools"><Button icon="x" aria-label="关闭初始计划工序对照" onClick={() => onChoose(null)} /></div>
               <Detail row={chosen.comparison} segment={chosen.segment} workspace={workspace} /></>}</>}

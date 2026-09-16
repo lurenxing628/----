@@ -65,7 +65,7 @@
     return <window.WorkbenchDetailPanel className="ca-detail" detailKey={selected} title={row ? row.part_no + ' · ' + row.sequence + ' ' + row.operation_label : '已选校准记录'}
       subtitle="校准详情" actions={actions} onClose={onClose}>
       {!row && <Refs rows={[["已选记录编号", selected], ["已选完工记录编号", sampleRef]]} />}
-      <ErrorBox error={error} />{stale && <p className="ca-note">数据已更新，请点「刷新所选记录」后重试。已选记录和完工记录来源已保留，不会自动换到其他记录。</p>}
+      <ErrorBox error={error} />{stale && <p className="ca-note">数据已更新，请刷新所选记录。</p>}
       {(error || stale) && <Button icon="refresh-cw" onClick={onRefresh}>刷新所选记录</Button>}
       {busy && <window.WorkbenchListControls.EmptyState kind="loading" title="正在读取完工记录来源" />}
       {row && <><dl className="ca-facts"><div><dt>原定额</dt><dd>{hours(row.old_unit_hours)} / 件</dd></div><div><dt>建议定额</dt><dd>{hours(row.suggested_unit_hours, '暂无建议')}</dd></div>
@@ -78,7 +78,7 @@
           <ul>{row.exclusion_reasons.map((reason, index) => <li key={reason.code + ':' + index}>{reason.message}（{reason.count} 条记录）</li>)}</ul>
         </details>
         <h3>完工记录与来源核对</h3>
-        {sampleRef && !data.samples.some(sample => sample.sample_ref === sampleRef) && <><p className="ca-note">原来选中的完工记录已不在结果里，没有改选其他来源。</p><window.WorkbenchReference value={sampleRef} label="原选完工记录编号" /></>}
+        {sampleRef && !data.samples.some(sample => sample.sample_ref === sampleRef) && <><p className="ca-note">所选完工记录已不在当前结果中。</p><window.WorkbenchReference value={sampleRef} label="原选完工记录编号" /></>}
         {groups.map(([label, kind, samples]) => <SampleGroup key={selected + kind} label={label} kind={kind} samples={samples} sampleRef={sampleRef} onSample={onSample} />)}
       </>}
     </window.WorkbenchDetailPanel>;

@@ -172,9 +172,7 @@
       maxLength: 4000,
       onChange: e => update(k, e.target.value),
       disabled: command.busy
-    })))), /*#__PURE__*/React.createElement("div", {
-      className: "dy-note"
-    }, "\u51ED\u636E\u8FD9\u91CC\u53EA\u5B58\u6587\u5B57\u8BF4\u660E\uFF0C\u8FD8\u6CA1\u6709\u5F53\u6210\u9644\u4EF6\u6838\u9A8C\u3002\u5904\u7F6E\u72B6\u6001\u4E0D\u4F1A\u6539\u52A8\u62A5\u5DE5\u8BB0\u5F55\uFF0C\u5173\u95ED\u4E5F\u4E0D\u4F1A\u5220\u6389\u98CE\u9669\u3002"))));
+    })))))));
   }
   window.DashboardHandling = Handling;
 })();

@@ -138,15 +138,13 @@
         page,
         snapshot_ref: read.result.meta.snapshot_ref
       })
-    }), /*#__PURE__*/React.createElement("div", {
-      className: "tt-muted"
-    }, "\u5217\u8868\u4E0D\u505A\u7EA6\u675F\u68C0\u67E5\uFF1B\u6253\u5F00\u8349\u7A3F\u4F1A\u8BFB\u5F53\u524D\u7684\u68C0\u67E5\u7ED3\u679C\uFF0C\u8BD5\u8C03\u65B9\u6848\u663E\u793A\u7684\u662F\u4FDD\u5B58\u65F6\u7684\u5185\u5BB9\u3002")));
+    })));
   }
   function SourceCatalog({
     onSelect,
     selected
   }) {
-    const [kind, setKind] = React.useState('plan'),
+    const [kind, setKind] = React.useState(selected && selected.candidate_ref ? 'candidate' : 'plan'),
       [run, setRun] = React.useState(null),
       [q, setQ] = React.useState({}),
       [epoch, refresh] = React.useReducer(n => n + 1, 0);
@@ -269,8 +267,9 @@
     onExisting
   }) {
     const [base, setBase] = React.useState(initialBase || null),
-      [label, setLabel] = React.useState(initialBase ? '指定原来源' : ''),
+      [label, setLabel] = React.useState(''),
       [epoch, refresh] = React.useReducer(n => n + 1, 0);
+    const [choosing, setChoosing] = React.useState(!initialBase);
     const [inspect, setInspect] = React.useState(false),
       [agreed, setAgreed] = React.useState(false);
     const input = {
@@ -292,10 +291,13 @@
     function select(value, title) {
       setBase(value);
       setLabel(title);
+      setChoosing(false);
       setInspect(false);
       setAgreed(false);
     }
     const d = read.result && read.result.data;
+    const sourceType = base && base.candidate_ref ? '排产候选' : '正式计划';
+    const sourceName = d ? U.sourceLabel(d.base_identity) : label || (base ? '已带入' + sourceType + '，请核对来源' : '尚未选择');
     return /*#__PURE__*/React.createElement(U.Modal, {
       title: "\u4ECE\u539F\u6765\u6E90\u65B0\u589E\u8BD5\u8C03",
       icon: "square-pen",
@@ -334,16 +336,26 @@
       }, "\u786E\u8BA4\u65B0\u589E\u8349\u7A3F"))
     }, /*#__PURE__*/React.createElement("div", {
       className: "trial-modal-body"
-    }, !fixedBase && /*#__PURE__*/React.createElement(SourceCatalog, {
+    }, !fixedBase && choosing && /*#__PURE__*/React.createElement(SourceCatalog, {
       selected: base,
       onSelect: select
-    }), /*#__PURE__*/React.createElement("p", null, "\u5DF2\u9009\u62E9\uFF1A", label || '尚未选择'), /*#__PURE__*/React.createElement(U.ErrorBox, {
+    }), /*#__PURE__*/React.createElement("section", {
+      "aria-label": "\u5DF2\u9009\u62E9\u7684\u8BD5\u8C03\u6765\u6E90"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "tt-heading"
+    }, /*#__PURE__*/React.createElement("strong", null, base ? '来源类型：' + sourceType : '请选择试调来源'), !fixedBase && base && !choosing && /*#__PURE__*/React.createElement(U.Button, {
+      icon: "refresh-cw",
+      disabled: commands.busy || !!commands.key,
+      onClick: () => setChoosing(true)
+    }, "\u66F4\u6362\u6765\u6E90")), /*#__PURE__*/React.createElement("p", null, "\u5DF2\u9009\u62E9\uFF1A", sourceName), base && /*#__PURE__*/React.createElement(window.WorkbenchReference, {
+      value: Object.values(base)[0]
+    })), /*#__PURE__*/React.createElement(U.ErrorBox, {
       error: read.error
     }), /*#__PURE__*/React.createElement(U.ErrorBox, {
       error: commands.error
     }), read.busy && /*#__PURE__*/React.createElement("p", {
       role: "status"
-    }, "\u6B63\u5728\u6838\u5BF9\u5B8C\u6574\u539F\u6765\u6E90\u2026"), d && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", null, "\u539F\u6765\u6E90\u5171 ", d.task_count, " \u9053\u5B89\u6392\uFF0C\u5B8C\u6574\u590D\u5236\uFF1B\u663E\u793A\u8303\u56F4\u4E0D\u622A\u65AD\u8349\u7A3F\u3002"), /*#__PURE__*/React.createElement(U.Issues, {
+    }, "\u6B63\u5728\u6838\u5BF9\u5B8C\u6574\u539F\u6765\u6E90\u2026"), d && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", null, "\u5C06\u5B8C\u6574\u590D\u5236\u539F\u65B9\u6848\u7684 ", d.task_count, " \u9053\u5B89\u6392\u3002"), /*#__PURE__*/React.createElement(U.Issues, {
       rows: d.validation.issues
     }), /*#__PURE__*/React.createElement("label", {
       className: "tt-check"

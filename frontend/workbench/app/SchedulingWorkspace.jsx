@@ -66,15 +66,16 @@
         ...(taskOrigin ? { task_origin: taskOrigin } : {}),
       })}>{label}</U.Button>;
     }
-    return <><Navigation>
+    const navigation = <Navigation>
       <U.Button icon="files" aria-pressed={!candidate && !history} onClick={() => onNavigate(view, {})}>计划版本</U.Button>
       <U.Button icon="history" aria-pressed={history} onClick={() => onNavigate('analysis', { source: 'run_history', ...(historyQuery ? { history_query: historyQuery } : {}) })}>排产记录</U.Button>
       {candidate && <U.Button icon="chart" aria-pressed={true} aria-current="page">候选方案</U.Button>}
       {candidate && <span className="scheduling-source">不是正式计划</span>}
-    </Navigation>{candidate ? <window.RunCandidateWorkspace view={view} initialContext={initialContext} onNavigate={onNavigate}
+    </Navigation>;
+    return <>{(candidate || history) && navigation}{candidate ? <window.RunCandidateWorkspace view={view} initialContext={initialContext} onNavigate={onNavigate}
       renderAdoption={candidateRef => <window.RunAdoptionAction candidateRef={candidateRef} onNavigate={onNavigate} />} renderTrial={renderTrial} /> : history ?
       <window.RunHistoryWorkspace initialContext={context.history_query} onNavigate={onNavigate} /> :
-      <window.PlanWorkspace view={view} initialContext={initialContext} onNavigate={onNavigate} renderTrial={renderTrial} />}</>;
+      <window.PlanWorkspace view={view} initialContext={initialContext} onNavigate={onNavigate} renderTrial={renderTrial} navigation={navigation} />}</>;
   }
   window.RunWorkspace = RunWorkspace;
   window.PlanCenterWorkspace = PlanCenterWorkspace;

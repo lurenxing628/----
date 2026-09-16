@@ -13,7 +13,7 @@
         <div className="modal-b">
           {prompt.locked && <p role="status">上次操作的结果还没查到，请留在本页点「查询结果」，不要放弃或重复提交。</p>}
           <ul>{prompt.messages.map(message => <li key={message}>{message}</li>)}</ul>
-          {!prompt.locked && <p>继续后，这些尚未保存的输入将丢失。已经保存的记录不会删除。</p>}
+          {!prompt.locked && <p>继续将放弃尚未保存的输入。</p>}
         </div>
       </Modal>
     </div>, document.body);

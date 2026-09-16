@@ -124,9 +124,14 @@
     rows,
     onSelect
   }) {
-    if (!rows.length) return null;
+    // Older saved snapshots include an adoption capability note as a blocker.
+    // Adoption has its own preview/guard; this note is not a task constraint.
+    const constraints = rows.filter(row => row.code !== 'scenario_adoption_not_connected');
+    if (!constraints.length) return /*#__PURE__*/React.createElement("p", {
+      className: "tt-muted"
+    }, "\u672A\u53D1\u73B0\u7EA6\u675F\u95EE\u9898\u3002");
     return /*#__PURE__*/React.createElement(Table, {
-      rows: rows,
+      rows: constraints,
       size: 10,
       label: "\u7EA6\u675F\u95EE\u9898",
       columns: [['级别', r => r.severity === 'warning' ? '提示' : '冲突'], ['问题', r => r.message], ['关联', r => r.task_ref && onSelect ? /*#__PURE__*/React.createElement(Button, {
@@ -169,7 +174,7 @@
     }, "\u5BFC\u51FA\u5BF9\u6BD4"), /*#__PURE__*/React.createElement(Button, {
       icon: "file-down",
       onClick: () => save(true)
-    }, "\u5BFC\u51FA\u539F\u59CB\u6570\u636E")), /*#__PURE__*/React.createElement(ErrorBox, {
+    }, "\u5BFC\u51FA\u539F\u59CB\u6570\u636E"), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "\u5BFC\u51FA\u8BF4\u660E"), /*#__PURE__*/React.createElement("p", null, "\u5BFC\u51FA\u5F53\u524D\u8BFB\u53D6\u7684\u5B8C\u6574\u8BD5\u8C03\u65B9\u6848\u3002\u7A7A\u767D\u8868\u793A\u4E0D\u9002\u7528\uFF1B\u63D0\u524D\u91CF\u4E3A\u8D1F\u6570\u8868\u793A\u5EF6\u540E\u3002\u539F\u59CB\u6570\u636E\u5305\u542B\u4EFB\u52A1\u3001\u8D44\u6E90\u3001\u73ED\u8868\u3001\u62A5\u5DE5\u548C\u8C03\u6574\u8BB0\u5F55\u3002"), /*#__PURE__*/React.createElement("p", null, "CSV \u6587\u672C\u5217\u5E26\u4E00\u4E2A\u524D\u7F6E\u5355\u5F15\u53F7\u3002\u7528\u7A0B\u5E8F\u8BFB\u53D6\u65F6\uFF0C\u6309 CSV \u683C\u5F0F\u89E3\u6790\uFF0C\u518D\u79FB\u9664\u6587\u672C\u5217\u5F00\u5934\u7684\u4E00\u4E2A\u5355\u5F15\u53F7\u3002"))), /*#__PURE__*/React.createElement(ErrorBox, {
       error: error
     }));
   }

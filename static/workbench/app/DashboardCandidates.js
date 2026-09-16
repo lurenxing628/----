@@ -306,7 +306,7 @@
       className: "dy-context"
     }, /*#__PURE__*/React.createElement("span", null, window.WorkbenchFormat.dateTime(data.time_scope.range_start), " \u81F3 ", window.WorkbenchFormat.dateTime(data.time_scope.range_end), " \xB7 \u542B\u8D77\u65E5\uFF0C\u4E0D\u542B\u6B62\u65E5"), /*#__PURE__*/React.createElement("span", null, data.batch_refs.length, " \u4E2A\u6392\u4EA7\u65F6\u7684\u6279\u6B21 \xB7 \u5B8C\u5DE5\u6309\u5B8C\u6574\u5DE5\u5E8F\u8BA1\u7B97")), !data.baseline.available && /*#__PURE__*/React.createElement("p", {
       className: "dy-note warning"
-    }, "\u6392\u4EA7\u65F6\u6CA1\u6709\u6B63\u5F0F\u8BA1\u5212\uFF0C\u53D8\u5316\u91CF\u6309\u672A\u77E5\u663E\u793A\u3002"), /*#__PURE__*/React.createElement(P.Metrics, {
+    }, "\u7F3A\u5C11\u6392\u4EA7\u65F6\u7684\u6B63\u5F0F\u8BA1\u5212\uFF0C\u65E0\u6CD5\u6BD4\u8F83\u53D8\u5316\u91CF\u3002"), /*#__PURE__*/React.createElement(P.Metrics, {
       data: data
     }), /*#__PURE__*/React.createElement(P.Batches, {
       data: data,

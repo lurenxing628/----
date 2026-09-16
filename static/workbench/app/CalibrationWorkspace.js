@@ -98,8 +98,8 @@
       try {
         const receipt = await api.download(result, bound, format, controller.signal);
         if (!controller.signal.aborted) {
-          if (!receipt || receipt.rows !== data.summary.total || receipt.snapshot_ref !== result.meta.snapshot_ref) throw A.failure('导出结果没有通过核对，没有按成功处理。');
-          setNotice('已核对数据版本和数量，导出当前筛选全部 ' + receipt.rows + ' 项。');
+          if (!receipt || receipt.rows !== data.summary.total || receipt.snapshot_ref !== result.meta.snapshot_ref) throw A.failure('导出结果不完整，请重新导出。');
+          setNotice('已导出 ' + receipt.rows + ' 项。');
         }
       } catch (failure) {
         if (!controller.signal.aborted) {
@@ -162,7 +162,9 @@
           }
         }
       })
-    }, "\u6267\u884C\u590D\u76D8"))), /*#__PURE__*/React.createElement(C.Filters, {
+    }, "\u6267\u884C\u590D\u76D8"))), /*#__PURE__*/React.createElement("div", {
+      className: "ca-overview"
+    }, /*#__PURE__*/React.createElement(C.Filters, {
       value: input,
       onChange: change,
       disabled: disabled
@@ -175,12 +177,17 @@
       onClick: () => change({
         part_ref: null
       })
-    })), /*#__PURE__*/React.createElement(ErrorBox, {
+    })), data && /*#__PURE__*/React.createElement("div", {
+      className: "ca-metrics"
+    }, [['模板工序', 'total'], ['偏差 > 20%', 'over_20_percent'], ['已有建议', 'suggested'], ['数据不足', 'insufficient_data']].map(([label, key]) => /*#__PURE__*/React.createElement("div", {
+      className: "ca-metric",
+      key: key
+    }, /*#__PURE__*/React.createElement("span", null, label), /*#__PURE__*/React.createElement("strong", null, data.summary[key]))))), /*#__PURE__*/React.createElement(ErrorBox, {
       error: staleOnly ? null : shownError
     }), stale && /*#__PURE__*/React.createElement("p", {
       className: "ca-note",
       role: "alert"
-    }, "\u6570\u636E\u5DF2\u66F4\u65B0\uFF0C\u8BF7\u70B9\u300C\u5237\u65B0\u300D\u540E\u91CD\u8BD5\u3002\u5DF2\u9009\u8BB0\u5F55\u548C\u5B8C\u5DE5\u8BB0\u5F55\u6765\u6E90\u5DF2\u4FDD\u7559\uFF0C\u4E0D\u4F1A\u81EA\u52A8\u8DF3\u5230\u6700\u65B0\u8BB0\u5F55\u3002"), (stale || request.error) && /*#__PURE__*/React.createElement(Button, {
+    }, "\u6570\u636E\u5DF2\u66F4\u65B0\uFF0C\u8BF7\u5237\u65B0\u540E\u91CD\u8BD5\u3002"), (stale || request.error) && /*#__PURE__*/React.createElement(Button, {
       icon: "refresh-cw",
       disabled: downloading,
       onClick: reload
@@ -193,12 +200,7 @@
       className: selected ? 'wb-detail-layout' : ''
     }, /*#__PURE__*/React.createElement("div", {
       className: "ca-list-pane"
-    }, data && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
-      className: "ca-metrics"
-    }, [['模板工序', 'total'], ['偏差 > 20%', 'over_20_percent'], ['已有建议', 'suggested'], ['数据不足', 'insufficient_data']].map(([label, key]) => /*#__PURE__*/React.createElement("div", {
-      className: "ca-metric",
-      key: key
-    }, /*#__PURE__*/React.createElement("span", null, label), /*#__PURE__*/React.createElement("strong", null, data.summary[key])))), data.source_constraints.map(item => /*#__PURE__*/React.createElement("p", {
+    }, data && /*#__PURE__*/React.createElement(React.Fragment, null, data.source_constraints.map(item => /*#__PURE__*/React.createElement("p", {
       className: "ca-note",
       key: item.code
     }, item.message)), /*#__PURE__*/React.createElement("div", {
@@ -280,9 +282,7 @@
       page: data.page,
       onChange: page,
       disabled: disabled
-    }), /*#__PURE__*/React.createElement("p", {
-      className: "ca-muted"
-    }, C.writeReason))), selected && /*#__PURE__*/React.createElement(window.CalibrationDetail, {
+    }))), selected && /*#__PURE__*/React.createElement(window.CalibrationDetail, {
       result: detail.result,
       busy: detail.busy,
       error: detail.error || viewError,

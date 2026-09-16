@@ -111,8 +111,9 @@
         event.preventDefault();
         navigate(item.id);
       }
-    }, /*#__PURE__*/React.createElement(Ico, {
-      name: item.icon
+    }, /*#__PURE__*/React.createElement(window.ResourceControls.Icon, {
+      name: item.icon,
+      className: "nav-ico"
     }), /*#__PURE__*/React.createElement("span", {
       className: "nav-label"
     }, item.label))))))), /*#__PURE__*/React.createElement("div", {
@@ -175,7 +176,7 @@
       className: "wb-navigation-error",
       role: "alert"
     }, navigationError), showPlanTabs && /*#__PURE__*/React.createElement("div", {
-      className: "wb-view-tabs",
+      className: "wb-view-tabs wb-surface plan-view-tabs",
       role: "tablist",
       "aria-label": "\u8BA1\u5212\u4E2D\u5FC3\u89C6\u56FE",
       onKeyDown: event => {

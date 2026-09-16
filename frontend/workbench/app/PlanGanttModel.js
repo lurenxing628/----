@@ -7,8 +7,8 @@
   const number = value => window.WorkbenchFormat.number(value, { digits: 2 });
   const quantityLabel = value => value === null ? '未知' : typeof value === 'string' ? value : number(value);
   const pieceLabel = task => task.piece_id === null ? '共同工序' : '分件 ' + task.piece_id;
-  const quantityReasons = { plan_target_not_recorded: '这份计划没有记录原来的目标量，没有拿当前批次数量代替。',
-    plan_target_unavailable: '采用记录或来源依据缺失、对不上，没有拿当前批次数量代替。',
+  const quantityReasons = { plan_target_not_recorded: '原计划未记录目标量。',
+    plan_target_unavailable: '采用记录或来源资料不完整，原计划目标量暂不可用。',
     plan_target_invalid: '原来的数量依据无效或缺失，没有推算目标量。' };
   const kindLabels = { machine: '设备', operator: '人员', batch: '批次' };
   function names(data) {

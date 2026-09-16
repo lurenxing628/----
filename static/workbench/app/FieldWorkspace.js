@@ -126,6 +126,7 @@
         plan_ref: current.plan_ref || readPlan.current,
         page: undefined,
         task_ref: opened || undefined,
+        operation_ref: selectedTask ? selectedTask.operation_ref : undefined,
         snapshot_ref: undefined
       }));
       setRevision(value => value + 1);
@@ -181,7 +182,7 @@
     }), notice && /*#__PURE__*/React.createElement("p", {
       className: "field-note field-save-status",
       role: "status"
-    }, read.error ? '报工已保存，但刷新失败；请再点「刷新现场记录」，没有重复写入。' : read.loading ? notice : nextDraft ? '已保存，正在核对最新数据…' : notice === '已保存，正在自动刷新最新报工。' ? '已保存并刷新最新报工。' : notice), /*#__PURE__*/React.createElement(window.FieldFilters, {
+    }, read.error ? '报工已保存，页面刷新失败。请刷新现场记录。' : read.loading ? notice : nextDraft ? '已保存，正在核对最新数据…' : notice === '已保存，正在自动刷新最新报工。' ? '已保存并刷新最新报工。' : notice), /*#__PURE__*/React.createElement(window.FieldFilters, {
       scope: effectiveScope,
       onChange: filter,
       disabled: blocked || read.loading,

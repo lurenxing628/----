@@ -5,7 +5,7 @@
   const count = v => Number.isSafeInteger(v) && v >= 0;
   const measure = v => v === null || typeof v === 'number' && Number.isFinite(v);
   const fields = (v, keys) => object(v) && keys.every(k => Object.prototype.hasOwnProperty.call(v, k));
-  function check(value, message = '读到的试调数据不完整或对不上，没有显示其他结果代替。请点「刷新」重试。') { if (!value) throw new Error(message); }
+  function check(value, message = '试调数据不完整或不一致，请刷新后重试。') { if (!value) throw new Error(message); }
   function time(v) {
     return typeof v === 'string' && /^(?!0000)\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(v)
       && Number.isFinite(Date.parse(v + 'Z')) && new Date(v + 'Z').toISOString().slice(0, 19) === v;
@@ -22,7 +22,7 @@
   }
   // A navigation target is an identity, never an instruction to pick the latest record.
   function target(v = {}) {
-    check(object(v) && Object.keys(v).every(k => ['kind', 'draft_ref', 'scenario_ref', 'base', 'scope', 'task_origin'].includes(k)), '试调入口含未知的项，没有猜测来源。');
+    check(object(v) && Object.keys(v).every(k => ['kind', 'draft_ref', 'scenario_ref', 'base', 'scope', 'task_origin'].includes(k)), '试调入口参数无效。');
     const keys = ['draft_ref', 'scenario_ref', 'base'].filter(k => v[k] !== undefined);
     check(keys.length <= 1, '只能指定一份试调草稿、试调方案或原来源。');
     if (v.kind !== undefined) check(v.kind === (v.draft_ref ? 'draft' : v.scenario_ref ? 'scenario' : 'base'));
@@ -31,7 +31,7 @@
     if (Object.prototype.hasOwnProperty.call(v, 'task_origin')) {
       origin(v.task_origin);
       check(keys.length === 1 && keys[0] !== 'scenario_ref', '原任务定位只能指向原正式计划或指定草稿。');
-      if (v.base) check(v.base.plan_ref === v.task_origin.plan_ref, '原任务与试调原计划不一致，未替换来源。');
+      if (v.base) check(v.base.plan_ref === v.task_origin.plan_ref, '原任务与试调原计划不一致。');
     }
     return v;
   }
@@ -42,9 +42,9 @@
   }
   function originTask(data, value) {
     origin(value);
-    check(!data.scenario_ref && data.base && data.base.plan_ref === value.plan_ref, '当前草稿与原任务来源不一致，未定位或开放写入。');
+    check(!data.scenario_ref && data.base && data.base.plan_ref === value.plan_ref, '当前草稿与原任务来源不一致，无法调整。');
     const tasks = data.tasks.filter(task => task.source_task_ref === value.task_ref && task.operation_ref === value.operation_ref);
-    check(tasks.length === 1, tasks.length ? '原任务对应多份草稿安排，无法唯一定位，未开放写入。' : '当前草稿没有对应的原任务，未选择同号工序或其他任务。');
+    check(tasks.length === 1, tasks.length ? '原任务对应多份草稿安排，无法定位。' : '当前草稿中未找到原任务。');
     return tasks[0];
   }
   function issues(v) { check(Array.isArray(v) && v.every(r => fields(r, ['code', 'message']) && typeof r.message === 'string')); }
@@ -80,6 +80,13 @@
       check(ref(t.task_ref) && ref(t.row_ref) && ref(t.operation_ref) && ref(t.source_row_ref) && (t.source_task_ref === null || ref(t.source_task_ref))
         && !seen.has(t.task_ref) && !rows.has(t.row_ref) && t.draft_ref === d.draft_ref);
       seen.add(t.task_ref); rows.add(t.row_ref); arrangement(t); arrangement(t.original, t);
+      if (t.execution_anchor !== undefined) {
+        arrangement(t.execution_anchor, t);
+        check(['completed_actuals', 'started_actuals'].includes(t.execution_anchor.basis)
+          && typeof t.execution_anchor.message === 'string' && t.execution_anchor.message.length > 0
+          && ['machine_ref', 'operator_ref', 'start', 'end'].every(k => t.execution_anchor[k] === t[k])
+          && t.edit_context.can_change === false, '实际执行固定安排不完整，请刷新试调。');
+      }
       if (d.base.candidate_ref && !d.scenario_ref) check(t.source_task_ref === null);
       check(['internal', 'external'].includes(t.source) && object(t.hours) && typeof t.changed === 'boolean'
         && Array.isArray(t.predecessor_refs) && t.predecessor_refs.every(ref) && Array.isArray(t.predecessor_operation_refs)
@@ -99,7 +106,7 @@
     check(['available', 'partial', 'unavailable'].includes(d.capacity.state));
     d.capacity.resources.forEach(r => {
       check(ref(r.resource_ref) && ['machine', 'operator'].includes(r.resource_type) && Array.isArray(r.segments)
-        && ['arranged_hours', 'occupied_hours', 'overlap_hours', 'available_hours', 'outside_available_hours', 'utilization'].every(k => measure(r[k])));
+        && ['arranged_hours', 'occupied_hours', 'overlap_hours', 'available_hours', 'available_occupied_hours', 'outside_available_hours', 'utilization'].every(k => measure(r[k])));
       r.segments.forEach(s => check(time(s.start) && time(s.end) && s.start < s.end && count(s.concurrent_operations) && s.concurrent_operations > 0));
       check(object(r.calendar) && (r.calendar.windows === null || Array.isArray(r.calendar.windows))); issues(r.calendar.issues);
     });

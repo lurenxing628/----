@@ -16,7 +16,7 @@
       {computing && <div className={'rj-bar' + (percent === null ? ' rj-bar-indeterminate' : '')} role="progressbar" aria-label="排产计算进度"
         aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent === null ? undefined : percent} aria-valuetext={percent === null ? '正在计算，进度未知' : '已算完 ' + progress.done + ' / ' + progress.total + ' 个候选方案'}>
         <i className="rj-bar-fill" style={percent === null ? undefined : { width: percent + '%' }} /></div>}
-      {computing && <p className="rj-notice" role="status">计算还没结束，请不要关闭或刷新本页；切到别的页面会暂停查询，回来后自动续查。</p>}</div>;
+      {computing && <p className="rj-muted">计算在本机继续进行；返回本页可查看最新结果。</p>}</div>;
   }
   function Status({ run }) {
     return <span className={'pill ' + (run.state === 'complete' ? 'ok' : ['failed', 'partial', 'interrupted'].includes(run.state) ? 'warn' : 'off')} data-run-state={run.state} data-run-stage={run.stage}>
@@ -43,7 +43,7 @@
     return <Modal title="确认本次候选排产" icon="play" onClose={onClose} locked={busy} footer={<>
       <Button onClick={onClose} disabled={busy}>取消</Button><Button icon="play" className="btn primary" busy={busy} onClick={onConfirm}>确认开始排产</Button></>}>
       <div className="modal-body run-job-panel rj-confirm"><Scope preview={preview} />
-        <div className="rj-notice">只计算并保存候选方案，不替换正式计划。班表是否排得下还没核对，最终结果看这次排产记录。</div>
+        <p className="rj-muted">计算完成后可比较候选方案，再选择是否采用为正式计划。</p>
         <details className="wb-ref"><summary>批次内部编号 · {values.length} 批</summary><ol className="rj-refs" start={(page - 1) * 20 + 1}>
           {values.slice((page - 1) * 20, page * 20).map(value => <li key={value}>{value}</li>)}</ol>
           <window.WorkbenchListControls.Pager page={page} pages={pages} total={values.length} size={20} unit="批" label="范围" onPage={setPage} /></details>
@@ -73,7 +73,7 @@
     if (!run.candidates.length) return <p className="rj-muted">{A.terminal(run) ? '这次排产没有保存候选方案。' : '候选方案还没保存。'}</p>;
     const canOpen = typeof api.openCandidate === 'function', selected = new Set(run.candidates.filter(c => c.selected).map(c => c.candidate_ref));
     return <section aria-label="已保存候选方案"><div className="rj-heading"><h3>已保存候选方案 · {run.candidates.length} 项</h3>
-      <Button icon="refresh-cw" aria-label="刷新候选方案列表" busy={busy} onClick={() => { setQuery({}); refresh(); }} /></div>
+      <Button icon="refresh-cw" busy={busy} onClick={() => { setQuery({}); refresh(); }}>刷新候选方案列表</Button></div>
       {!canOpen && <p className="rj-muted">{window.WorkbenchTerms.outcomes.unavailable}</p>}
       {error && <div className="rj-notice" role="alert">{error}</div>}{busy && <p className="rj-muted" role="status">正在读取已保存候选方案。</p>}
       {catalog && <>
@@ -86,8 +86,11 @@
       {catalog.page.total > 20 && <window.WorkbenchListControls.Pager page={catalog.page} size={20} unit="项" label="候选" busy={busy}
         onPage={page => setQuery({ page, snapshot_ref: catalog.snapshot_ref })} />}</>}</section>;
   }
-  function Record({ run, intent, paused, checking, verified, api }) {
-    return <section aria-label="这次排产记录" className="rj-record"><div className="rj-heading"><h3>排产记录</h3>{run ? <Status run={run} /> : <span role="status">正在查询上次排产的结果</span>}</div>
+  function Record({ run, intent, paused, retryPaused, lastChecked, resolution, checking, verified, api }) {
+    const replaced = resolution === 'context_replaced';
+    const queryLabel = checking ? '正在查询结果' : replaced ? '数据库已恢复' : resolution === 'lookup_failed' ? '查询失败' : '暂未查到这次排产记录';
+    return <section aria-label="这次排产记录" className="rj-record"><div className="rj-heading"><h3>最近排产记录</h3>{run ? <Status run={run} /> : <span role="status" data-query-state={checking ? 'querying' : resolution}>{queryLabel}</span>}</div>
+      {replaced && <p className="rj-muted" role="status">数据库已恢复，上次排产结果不在当前数据中。请重新检查当前批次后开始排产。</p>}
       {(intent || run) && <window.WorkbenchReference entries={{ ...(intent ? { '操作编号': intent.request_key } : {}), ...(run ? { '排产编号': run.run_ref } : {}) }} />}
       {run && !verified && <p className="rj-muted">下面是上次查到的结果，这次查询还没确认。</p>}
       {run && <><Progress run={run} /><div className="rj-tools rj-muted">
@@ -95,7 +98,10 @@
         {run.finished_at && <span>结束：{window.WorkbenchFormat.dateTime(run.finished_at)}</span>}</div>
         {run.recovery_required && <p className="rj-notice">正在核对上次的排产记录，结果还没确认，没有重新计算。</p>}
         {run.error && <div className="rj-notice" role="alert">{A.message(run.error)}</div>}<Candidates key={run.run_ref} run={run} api={api} /></>}
-      {!A.terminal(run) && <p className={paused ? 'rj-notice' : 'rj-muted'} role="status">{paused ? '页面切走了，已暂停查询；回到本页会继续查上次排产的结果。' : checking ? '正在查询上次排产的记录。' : '等待下一次查询，不会重复提交排产。'}</p>}
+      {!replaced && <p className="rj-muted rj-query-summary" role="status">
+        {lastChecked && <span>最近查询：{window.WorkbenchFormat.dateTime(new Date(lastChecked).toLocaleString('sv-SE').replace(' ', 'T'))}</span>}
+        {retryPaused ? <span>已暂停自动查询。可点「查询结果」再次核对原记录。</span> : !A.terminal(run) && <span>{paused ? '页面已切走，返回后继续查询。' : checking ? '正在读取排产记录。' : '等待下次查询。'}</span>}
+      </p>}
     </section>;
   }
   function Styles() {

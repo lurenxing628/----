@@ -11,7 +11,9 @@
   }
   function Target({ target }) { return <section className="os-target" aria-label="本次外协成员"><div className="os-heading"><b>{value(target.batch.business_code)} · {value(target.batch.label)}</b>
     <span>{value(target.supplier.label)} · {target.kind === 'merged' ? '合并发出' : '单工序'} · {target.operations.length} 道工序</span></div>
-    <div className="os-members">{target.operations.map(o => <span key={o.operation_ref}>{value(o.business_code)} · {value(o.label)}{o.piece !== null ? ' · 分件 ' + value(o.piece) : ''}</span>)}</div></section>; }
+    {target.part && <div className="os-muted">图号：{value(target.part.business_code)} · {value(target.part.label)}</div>}
+    <div className="os-members">{target.operations.map(o => <span key={o.operation_ref}>{value(o.business_code)} · {value(o.label)}{o.piece !== null ? ' · 分件 ' + value(o.piece) : ''}</span>)}</div>
+    {target.source_resolution && target.source_resolution.basis === 'current_relation' && <div className="os-muted">这批旧工序按本页列出的批次登记。</div>}</section>; }
   function Facts({ facts, before }) { return <dl className="os-facts">{C.fields.map(k => <div key={k}><dt>{C.labels[k]}</dt><dd>
     {before && before[k] !== facts[k] && <del>{k === 'confirmedState' ? C.states[before[k]] : k === 'returned' && before[k] === null ? '未回厂' : when(before[k])}</del>}
     <span>{k === 'confirmedState' ? C.states[facts[k]] : k === 'returned' && facts[k] === null ? '未回厂' : when(facts[k])}</span></dd></div>)}</dl>; }
@@ -51,7 +53,7 @@
   function Pending({ command }) {
     const v = command.saved, done = v.phase === 'confirmed';
     return <><Target target={v.target} /><Facts facts={v.after} /><div className={'os-note ' + (done ? 'success' : 'warning')} role="status">
-      {done ? window.WorkbenchTerms.outcomes.done('外协登记', '回厂不等于工序完工') : v.phase === 'rejected' ? '上次外协登记没有生效，填写内容已保留。改好后重新提交。' : window.WorkbenchTerms.outcomes.pending('外协登记')}</div>
+      {done ? window.WorkbenchTerms.outcomes.done('外协登记') : v.phase === 'rejected' ? '上次外协登记没有生效，填写内容已保留。改好后重新提交。' : window.WorkbenchTerms.outcomes.pending('外协登记')}</div>
       <div data-original-key><window.WorkbenchReference entries={{ '操作编号': v.request_key }} /></div>
       <dl className="os-facts"><div><dt>经办人</dt><dd>{v.input.declared_operator}</dd></div>
         <div><dt>核实原因</dt><dd>{v.input.reason}</dd></div>{done && <><div><dt>记录人</dt><dd>{v.receipt.data.local_operator}</dd></div><div><dt>确认时间</dt><dd>{when(v.receipt.data.confirmed_at)}</dd></div></>}</dl></>;

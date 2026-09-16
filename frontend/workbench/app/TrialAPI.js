@@ -50,6 +50,7 @@
     C.base(input.base); C.scope(input.scope || {});
     const v = await request(BASE + '/drafts/preview', { body: input, signal }), d = C.envelope(v);
     C.check(JSON.stringify(d.base) === JSON.stringify(input.base) && d.tasks_complete === true && C.count(d.task_count)
+      && C.object(d.base_identity) && (input.base.candidate_ref ? d.base_identity.candidate_ref === input.base.candidate_ref : d.base_identity.plan_ref === input.base.plan_ref)
       && d.write_context && d.write_context.capabilities['trial.create'] === true && typeof d.write_context.write_token === 'string');
     C.validation(d.validation); return v;
   }

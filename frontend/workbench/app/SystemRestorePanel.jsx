@@ -36,7 +36,7 @@
       ['结果来源', '来自本机数据库以外的维护记录，不是数据库里的业务结果'],
       ['该次维护记录的数据库来源', description.origin],
       ['选定备份', op && op.filename || (!query && command.selection ? command.selection.filename + '（页面上选的，还没有确认）' : '维护记录尚未确认')],
-      ['恢复前保护副本', op && op.protection_filename || '没有查到留存证据，不能认为保护副本已经生成'],
+      ['恢复前保护副本', op && op.protection_filename || '保护副本状态待确认'],
       ['业务审计', op && op.audit_persisted ? '维护记录报告已留存；当前数据库内容仍需重启后读取' : '未确认留存'],
       ['软件状态', command.hostError || !host ? '无法读取维护状态，当前页面已暂停业务读写' : host.restart_required ? '业务操作已停用，须重启整个软件' : '维护状态还没有确认，当前页面已暂停业务读写']
     ];
@@ -44,15 +44,15 @@
       <Styles /><C.Styles />
       <header className="sm-restore-bar"><strong>APS 智能排产 · 系统维护</strong><fieldset className="sm-choice"><legend>主题</legend>{[['light', '浅色'], ['dark', '深色']].map(([value, label]) =>
         <label key={value}><input type="radio" name="restore-theme" checked={theme === value} onChange={() => onSetTheme(value)} />{label}</label>)}</fieldset></header>
-      <main className="sm-restore-content"><h1>{command.hostError ? '无法读取维护状态' : description.title}</h1><p className="sm-meta">只读维护状态 · 不读取业务数据库</p>
+      <main className="sm-restore-content"><h1>{command.hostError ? '无法读取维护状态' : description.title}</h1><p className="sm-meta">维护状态</p>
         <section aria-label="维护结果"><h2 className={op && op.state === 'succeeded' && !description.uncertain ? 'sm-tone-success' : 'sm-tone-warning'}>{description.state}</h2>
           <p className="sm-notice">{description.guidance}</p>
           <C.ErrorBox error={problem} />{waiting && <p role="status">正在查询维护状态，没有重新提交恢复。</p>}
           {notice && <p role="status">{notice}</p>}
-          {op && <p>{op.message}</p>}{result && result.kind === 'not_recorded' && <p role="status">{result.message} 查不到不代表没有执行。</p>}
+          {op && <p>{op.message}</p>}{result && result.kind === 'not_recorded' && <p role="status">{result.message} 请查询结果，勿重复提交。</p>}
           <dl className="sm-restore-facts">{fields.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
           {original ? <window.WorkbenchReference label="本机保留的操作编号" value={original} /> : <p className="sm-meta">没有读到操作编号，可以在下面输入。</p>}
-          {op && (!host || host.request_key !== op.request_key) && <p className="sm-note">这条记录不能代表当前数据库状态，也不会解除软件的维护停止状态。</p>}
+          {op && (!host || host.request_key !== op.request_key) && <p className="sm-note">当前显示历史维护记录；软件仍处于维护停止状态。</p>}
           {op && <><window.WorkbenchReference label="这条结果的操作编号" value={op.request_key} /><p className="sm-meta">更新时间 {window.WorkbenchFormat.dateTime(op.updated_at)}</p></>}
           <div className="sm-actions"><C.Button icon="refresh-cw" busy={waiting} onClick={() => { setQuery(null); setError(null); intent ? command.lookup() : command.inspectHost(); }}>{window.WorkbenchTerms.actions.query_result}</C.Button>
             <C.Button transfer="export" onClick={() => { try { R.download(host, result, problem); setNotice('已导出本次维护诊断，不含数据库或完整业务日志。'); } catch (problem) { setError(problem); } }}>导出维护诊断</C.Button>

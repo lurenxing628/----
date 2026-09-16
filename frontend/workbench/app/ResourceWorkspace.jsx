@@ -51,7 +51,7 @@
         if (typeof context.month !== 'string' || !/^\d{4}-(0[1-9]|1[0-2])$/.test(context.month) || Number(context.month.slice(0, 4)) < 1
             || C.own(context, 'date') && (!window.APSCalendarContract.isDate(context.date) || context.date.slice(0, 7) !== context.month))
           throw C.failure('定位的月份或日期不正确，日期必须属于指定月份。');
-      } else if ((!C.own(context, 'read_view') || C.own(context, 'entity_ref')) && !ref(context.entity_ref)) throw C.failure('定位缺少有效的记录编号，不会按同编号或同名替代。');
+      } else if ((!C.own(context, 'read_view') || C.own(context, 'entity_ref')) && !ref(context.entity_ref)) throw C.failure('无法定位所选记录，请从列表重新选择。');
       if (kind === 'op_type' && !['internal', 'external'].includes(context.category)) throw C.failure('定位缺少自制或外协类别，不做猜测。');
       if (kind === 'part' && (C.own(context, 'stage') && !['route', 'source', 'hours'].includes(context.stage)
           || ['template_operation_ref', 'template_external_group_ref'].some(key => C.own(context, key) && !ref(context[key]))))
@@ -92,7 +92,7 @@
       <Button icon="refresh-cw" aria-label="刷新列表" onClick={onRefresh} disabled={disabled} busy={loading} />
       {selected.length > 0 && <Button icon="x" aria-label="清除所有选择" onClick={onClearSelection} disabled={disabled}>清除选择</Button>}
       <span className="tb-spacer" /><div className="wb-actions">
-      {[['openImport', 'file-input', '导入'], ['openExport', 'file-output', '导出'], ['openBulk', 'minus', '批量删除']].map(([name, icon, label]) => <Button key={name} icon={icon} transfer={name === 'openImport' ? 'import' : name === 'openExport' ? 'export' : undefined}
+      {[['openImport', 'file-input', '导入'], ['openExport', 'file-output', '导出'], ['openBulk', 'trash-2', '批量删除']].map(([name, icon, label]) => <Button key={name} icon={icon} transfer={name === 'openImport' ? 'import' : name === 'openExport' ? 'export' : undefined}
         disabled={disabled || loading} reasonDisplay="tooltip" reason={typeof adapter[name] !== 'function' || typeof adapter.supports === 'function' && !adapter.supports(name, config.kind) ? label + '尚未开通。' : !ready ? '请先读取当前列表。' : name === 'openBulk' && !selected.length ? '请先勾选记录。' : ''}
         onClick={() => onExternal(name)}>{label}</Button>)}
       <Button icon="plus" className="btn primary wb-action wb-primary" reason={createReason} disabled={disabled} onClick={onCreate}>新增{config.label}</Button></div>
@@ -208,15 +208,13 @@
         if (dialog.ref) result = C.query(await adapter.detail(dialog.kind, dialog.ref, new AbortController().signal), 'entity');
         else result = C.query(await adapter.list(dialog.kind, { ...scope, page: 1, snapshot_ref: undefined }, new AbortController().signal), 'list');
         if (dialog.ref && result.data.ref !== dialog.ref) throw C.failure('读到的资料与所选记录不一致，请刷新后核对。');
+        if (!command.reset()) return;
+        setEditContext({ context: dialog.ref ? result.data.write_context : result.data.create_context,
+          source: result.meta.source, entity: dialog.ref ? result.data : null });
+        if (dialog.ref && dialog.kind === 'op_type') setDialog(current => ({ ...current, category: result.data.fields.category }));
         setContextReview(result);
       } catch (error) { setContextError(error); }
       finally { setContextBusy(false); }
-    }
-    function acceptContext() {
-      setEditContext({ context: dialog.ref ? contextReview.data.write_context : contextReview.data.create_context,
-        source: contextReview.meta.source, entity: dialog.ref ? contextReview.data : null });
-      if (dialog.ref && dialog.kind === 'op_type') setDialog(current => ({ ...current, category: contextReview.data.fields.category }));
-      setContextReview(null); setContextError(null);
     }
     async function readAfterCommand() {
       if (command.phase !== 'done') return;
@@ -254,7 +252,7 @@
           const removed = new Set(result.data.rows.map(row => row.entity_ref));
           setSelected(current => current.filter(ref => !removed.has(ref)));
         }
-        refresh(); setExternal({ busy: false, error: null, result });
+        refresh(); setExternal({ busy: false, error: null, result, action: name === 'openBulk' ? 'delete' : name === 'openImport' ? 'import' : 'save' });
       };
       try {
         const result = await adapter[name](config.kind, { refs: selected.slice(), scope: { ...scope, source: list.result && list.result.meta.source, snapshot_ref: list.result && list.result.meta.snapshot_ref }, ...extra, onCommitted }, new AbortController().signal);
@@ -275,7 +273,7 @@
           {!(node === 'calendar' && renderCalendar) && <><div className="crumb"><span>产能链</span><span className="sep">/</span><span>{({ input: '输入', internal: '自制链', external: '外协链', global: '全局' })[config.chain]}</span><span className="sep">/</span><span className="cur">{config.label}</span></div>
           <div className="chead wb-page-heading"><h2>{config.label}{node === 'material' ? ' · 基础资料' : ''}</h2></div></>}
           <ErrorBox error={external.error} />{external.busy && <p role="status">正在打开维护向导…</p>}
-          {external.result && <Forms.Feedback command={{ phase: 'done', result: external.result }} />}
+          {external.result && <Forms.Feedback command={{ phase: 'done', result: external.result }} action={external.action} />}
           {node === 'process' ? typeof renderPart === 'function' ? renderPart({ adapter, onNavigate, onRefresh: refresh, rememberEnabled: rememberEnabled && !navigationError && !deferred, initialContext: !deferred && target.context && target.context.kind === 'part' ? target.context : undefined }) : <p role="status" className="muted">工艺工作区尚未开通。</p> : node === 'calendar' ? typeof renderCalendar === 'function' ? renderCalendar({ onCommitted: refresh, rememberEnabled: rememberEnabled && !navigationError && !deferred, initialContext: !deferred && target.context && target.context.kind === 'calendar' ? target.context : undefined }) : <Calendar adapter={adapter} disabled={blocked} onExternal={openExternal} /> : <>
             <window.ResourceMetrics node={node} data={data} />
             {selected.length > 0 && <p className="muted" aria-live="polite">已选择 <b data-resource-selection-count>{selected.length}</b> 条{data && selected.some(ref => !data.entities.some(row => row.ref === ref)) && <> · <span>含非当前页记录</span></>}</p>}
@@ -293,12 +291,14 @@
       </section>
       {dialog && (dialog.action === 'view' || !editorReady) && <Forms.Detail key={dialog.kind + ':' + dialog.ref} adapter={adapter} kind={dialog.kind} result={detail.result} busy={detail.loading} error={detail.error} onRetry={detail.reload} onClose={close}
         onRelated={(kind, ref, category) => open('view', ref, { kind, category })} onBack={dialog.history && dialog.history.length ? back : null}
-        onEdit={() => edit('update')} onAdjustStock={() => edit('update', true)} onDelete={() => edit('delete')} />}
-      {editorReady && dialog.action !== 'view' && <><Forms key={dialog.kind + ':' + (dialog.ref || 'create') + ':' + dialog.action} adapter={adapter} kind={dialog.kind} action={dialog.action} entity={editorEntity} category={dialog.category} stockOnly={!!dialog.stockOnly}
+        onEdit={() => edit('update')} onAdjustStock={() => edit('update', true)} onMachinePermissions={() => edit('machine_permissions')} onDelete={() => edit('delete')} />}
+      {editorReady && dialog.action === 'machine_permissions' && <window.OperatorMachinePermissions adapter={adapter} entity={editorEntity} source={detail.result.meta.source}
+        command={command} onClose={close} refreshState={refreshState} onRefresh={readAfterCommand} Feedback={Forms.Feedback} />}
+      {editorReady && !['view', 'machine_permissions'].includes(dialog.action) && <><Forms key={dialog.kind + ':' + (dialog.ref || 'create') + ':' + dialog.action} adapter={adapter} kind={dialog.kind} action={dialog.action} entity={editorEntity} category={dialog.category} stockOnly={!!dialog.stockOnly}
         acceptedEntity={editContext && editContext.entity}
         writeContext={editContext ? editContext.context : editorEntity ? editorEntity.write_context : dialog.createContext} source={editContext ? editContext.source : editorEntity ? detail.result.meta.source : dialog.source}
         command={command} onClose={close} onReloadContext={reloadContext} refreshState={refreshState} onRefresh={readAfterCommand}
-        contextError={contextError} contextBusy={contextBusy} contextReview={contextReview} onAcceptContext={acceptContext} /></>}
+        contextError={contextError} contextBusy={contextBusy} contextReview={contextReview} /></>}
       {!dialog && (command.locked || command.phase === 'done') && <Modal title="上次操作结果" icon="history" onClose={close} locked={command.locked} footer={<Button onClick={close} reason={command.locked ? '上次操作的结果还没确认。' : ''}>关闭</Button>}>
         <div className="modal-b"><Forms.Feedback command={command} /><ErrorBox error={refreshState.error} /></div></Modal>}
     </div>;

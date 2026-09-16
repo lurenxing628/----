@@ -38,7 +38,7 @@
     return error ? /*#__PURE__*/React.createElement("div", {
       className: "rh-notice rh-error",
       role: "alert"
-    }, error.code === 'snapshot_stale' && /*#__PURE__*/React.createElement("strong", null, "\u6570\u636E\u5DF2\u66F4\u65B0\u3002 "), error.message || '排产记录读取失败，没有显示替代结果。请点「重新查询」。') : null;
+    }, error.code === 'snapshot_stale' && /*#__PURE__*/React.createElement("strong", null, "\u6570\u636E\u5DF2\u66F4\u65B0\u3002 "), error.message || '排产记录读取失败，请重新查询。') : null;
   }
   function Filters({
     value,

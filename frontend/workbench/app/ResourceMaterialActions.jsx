@@ -83,7 +83,7 @@
       if (isExport && !selection) { setError(C.failure('请先选择导出范围。')); return; }
       try {
         if (M.category) M.category(original);
-        if (effectiveMode === 'bulk' && !M.selection(original).length) throw C.failure('未选中' + label + '，本次不会删除任何记录。');
+        if (effectiveMode === 'bulk' && !M.selection(original).length) throw C.failure('未选中' + label + '，请选择后重试。');
         if (effectiveMode !== 'import') M.requestBody(effectiveMode, original, selection);
         setJob({ file, format, selection }); setNow(Date.now());
       } catch (failure) { setJob(null); setError(failure); }
@@ -118,11 +118,11 @@
     const title = ({ import: '批量导入', export: '批量导出', bulk: '批量删除' }[effectiveMode] || '操作') + ' · ' + label;
     const refs = Array.isArray(original.refs) ? original.refs : [];
     return <div className={'plana rm-actions' + (data && !isExport ? ' rm-wide' : '')}><Preview.Styles />
-      <Modal title={title} icon={effectiveMode === 'bulk' ? 'minus' : isExport ? 'file-output' : 'file-input'} onClose={close} locked={command.locked}
+      <Modal title={title} icon={effectiveMode === 'bulk' ? 'trash-2' : isExport ? 'file-output' : 'file-input'} onClose={close} locked={command.locked}
         footer={<><Button onClick={close} reason={command.locked ? '结果还没确认，暂时不能关闭。' : ''}>{done || download.name ? '完成' : '取消'}</Button>
           {!done && !command.locked && !recovery && <Button icon="check" onClick={preflight} busy={activeRead} disabled={download.busy}>{data || query.error || command.phase === 'rejected' ? '重新预检' : '开始预检'}</Button>}
           {isExport && data && <Button transfer="export" className="btn primary wb-action wb-primary" disabled={controlsDisabled} reason={expired ? '预检结果已过期，请重新预检。' : ''} onClick={() => downloadFile(false)}>下载文件</Button>}
-          {!isExport && !done && data && <Button icon={effectiveMode === 'bulk' ? 'minus' : 'check'} className={'btn ' + (effectiveMode === 'bulk' ? 'danger' : 'primary wb-action wb-primary')} busy={command.locked} disabled={controlsDisabled} reason={reason} onClick={confirm}>{effectiveMode === 'bulk' ? '确认删除' : '确认导入'}</Button>}</>}>
+          {!isExport && !done && data && <Button icon={effectiveMode === 'bulk' ? 'trash-2' : 'check'} className={'btn ' + (effectiveMode === 'bulk' ? 'danger' : 'primary wb-action wb-primary')} busy={command.locked} disabled={controlsDisabled} reason={reason} onClick={confirm}>{effectiveMode === 'bulk' ? '确认删除' : '确认导入'}</Button>}</>}>
         <div className="modal-b scroll rm-body">
           {!recovery && !command.intent && M.source(original) === 'demo' && <p role="status">当前为示例数据，不允许提交{label}变更。</p>}
           {!recovery && !command.intent && !M.source(original) && <p role="status">尚未读取生产资料，不能提交{label}变更。</p>}
@@ -139,7 +139,7 @@
             <div><div className="tmpl-t">{file && file.name}</div><div className="tmpl-s">{format.toUpperCase()} · 按编号增量更新 · {data.rows.length} 行</div></div><Button icon="file-input" disabled={controlsDisabled} onClick={invalidate}>更换文件</Button></div>}
           {!recovery && !done && !command.locked && isExport && <div className="iopane on"><ExportOptions selection={selection} setSelection={value => { invalidate(); setSelection(value); }} refs={refs} disabled={controlsDisabled} label={label} kind={M.kind} /><Format value={format} onChange={chooseFormat} disabled={controlsDisabled} /></div>}
           {!done && effectiveMode === 'bulk' && (!recovery || command.intent) && (recovery || command.intent && !job ? <p>正在查询上次批量删除的结果，当前列表里新勾选的还没提交。</p> :
-            <p>本次勾选了 <b>{refs.length}</b> 条{label}，含非当前页和当前筛选外的勾选项。不会扩大成整个筛选结果或全部记录。</p>)}
+            <p>本次勾选了 <b>{refs.length}</b> 条{label}，含非当前页和当前筛选外的勾选项。</p>)}
           {activeRead && <p role="status">正在读取完整预检结果，尚未写入数据…</p>}
           <ErrorBox error={error} /><ErrorBox error={query.error} /><Issues issues={result && result.warnings || []} />
           {data && !isExport && <><Preview data={data} mode={effectiveMode} contract={M} label={label} /><p className="iohint">本批整体确认；任意一行校验不通过，全部不写入。</p>

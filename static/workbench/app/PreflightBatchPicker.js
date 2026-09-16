@@ -135,8 +135,7 @@
           query
         });
       }
-    }, /*#__PURE__*/React.createElement("input", {
-      type: "search",
+    }, /*#__PURE__*/React.createElement(window.ResourceControls.Search, {
       "aria-label": "\u641C\u7D22\u6392\u4EA7\u6279\u6B21",
       placeholder: "\u6279\u6B21\u53F7\u3001\u56FE\u53F7\u3001\u96F6\u4EF6\u540D",
       value: query,
@@ -146,7 +145,9 @@
       icon: "search",
       type: "submit",
       disabled: busy
-    }, "\u641C\u7D22"), /*#__PURE__*/React.createElement("label", null, "\u9F50\u5957", /*#__PURE__*/React.createElement("select", {
+    }, "\u641C\u7D22"), /*#__PURE__*/React.createElement("label", {
+      className: "wb-inline-filter"
+    }, /*#__PURE__*/React.createElement("span", null, "\u9F50\u5957"), /*#__PURE__*/React.createElement("select", {
       "aria-label": "\u6279\u6B21\u9F50\u5957\u7B5B\u9009",
       disabled: busy,
       value: scope.ready_status || '',
@@ -166,7 +167,7 @@
       "aria-label": "\u5237\u65B0\u6279\u6B21\u8303\u56F4",
       disabled: busy,
       onClick: () => filter({})
-    })), /*#__PURE__*/React.createElement("div", {
+    }, "\u5237\u65B0\u8303\u56F4")), /*#__PURE__*/React.createElement("div", {
       className: "pf-tools"
     }, /*#__PURE__*/React.createElement(Button, {
       disabled: busy,

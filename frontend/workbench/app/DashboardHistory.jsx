@@ -7,7 +7,7 @@
     const options = rows.slice(); if (item && !options.some(r => r.item_ref === item.item_ref)) options.push(item);
     return <section aria-label="处置历史"><div className="dy-filters"><label className="dy-search">历史条目<select aria-label="选择历史条目" value={selected || ''} onChange={e => onSelect(e.target.value || null)}><option value="">请选择条目</option>{options.map(row => <option key={row.item_ref} value={row.item_ref}>{row.subject} · {C.categories[row.category]}</option>)}</select></label>
       {item && <Button reasonDisplay="inline" icon={item.handling.status === 'closed' ? 'refresh-cw' : 'square-pen'} onClick={onHandle}>{item.handling.status === 'closed' ? '独立重开' : '调整当前处置'}</Button>}</div>
-      {item && <div className="dy-tools"><P.Risk risk={item.risk} /><P.Status handling={item.handling} /><span>这里是当前状态，不是历史状态</span></div>}
+      {item && <div className="dy-tools"><P.Risk risk={item.risk} /><P.Status handling={item.handling} /><span>当前状态</span></div>}
       <ErrorBox error={read.error} />{read.loading && <window.WorkbenchListControls.EmptyState kind="loading" title="正在读取这条记录的处置历史" />}
       {!selected && <window.WorkbenchListControls.EmptyState kind="empty" title="还没有选择条目。" />}
       {history && <>{!history.items.length && <window.WorkbenchListControls.EmptyState kind="empty" title="该条目尚无处置历史。" />}{history.items.map(h => <article className="dy-history" key={h.history_ref} data-history-sequence={h.sequence}>

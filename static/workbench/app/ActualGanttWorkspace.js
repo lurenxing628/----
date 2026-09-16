@@ -34,12 +34,12 @@
       scope = {};
     for (const key of ['source', 'range_start', 'range_end', 'plan_finish_date_from', 'plan_finish_date_to', 'resource_type', 'resource_ref', 'batch_ids']) if (context[key] !== undefined && input[key] === undefined) input[key] = context[key];
     const allowed = ['plan_ref', 'source', 'range_start', 'range_end', 'plan_finish_date_from', 'plan_finish_date_to', 'resource_type', 'resource_ref', 'batch_ids', 'query', 'focus', 'as_of', 'snapshot_ref', 'kind', 'baseline_ref'];
-    let issue = Object.keys(input).some(key => !allowed.includes(key)) ? '来源范围含未知条件，未忽略筛选。' : null;
+    let issue = Object.keys(input).some(key => !allowed.includes(key)) ? '查询条件无效，请清除筛选后重试。' : null;
     if (input.baseline_ref && input.baseline_ref !== (context.plan_ref || input.plan_ref)) issue = '现场实际甘特以所选计划为对比基准，没有换成另一个计划版本。';
     if (input.query !== undefined && (typeof input.query !== 'string' || input.query.length > 200)) issue = '来源搜索条件无效。';
     if (context.return_to && !['gantt', 'field', 'analysis', 'reports', 'review', 'dashboard'].includes(context.return_to.view)) issue = '返回来源不是已登记的工作台页面。';
     if (context.report_ref !== undefined && !C.ref(context.report_ref)) issue = '来源报工编号无效，没有改指其他记录。';
-    if (context.report_ref !== undefined && !C.ref(context.task_ref || context.entity_ref)) issue = '来源报工必须绑定明确任务，未猜测其他任务。';
+    if (context.report_ref !== undefined && !C.ref(context.task_ref || context.entity_ref)) issue = '报工关联的任务资料缺失，请刷新后重选。';
     for (const key of ['plan_ref', 'source', 'range_start', 'range_end', 'plan_finish_date_from', 'plan_finish_date_to', 'resource_type', 'resource_ref', 'batch_ids']) if (input[key] !== undefined && input[key] !== null && input[key] !== '') scope[key] = input[key];
     if (context.plan_ref) scope.plan_ref = context.plan_ref;
     let persisted = null;
@@ -126,7 +126,7 @@
         try {
           if (seed.issue) throw window.APSResourceContract.failure(seed.issue);
           let input = scope;
-          if (input.source && input.source !== 'production') throw window.APSResourceContract.failure('现场实际甘特只读取生产数据，未将演示范围替换为生产范围。');
+          if (input.source && input.source !== 'production') throw window.APSResourceContract.failure('数据来源无效，请重新打开现场实际甘特。');
           if (!input.plan_ref) {
             if (Object.keys(input).some(k => k !== 'source')) throw window.APSResourceContract.failure('来源范围缺少明确计划，未自动扩大范围。');
             const catalog = await window.APSPlanAPI.create().catalog({
@@ -677,7 +677,7 @@
       style: {
         padding: 16
       }
-    }, /*#__PURE__*/React.createElement("p", null, "\u6309\u5F53\u524D\u67E5\u8BE2\u8303\u56F4\u548C\u672C\u6B21\u8BFB\u53D6\u7684\u6570\u636E\u5BFC\u51FA\u5168\u90E8 ", model.items.length, " \u9053\u5339\u914D\u5DE5\u5E8F\u53CA\u5176\u9010\u6B21\u62A5\u5DE5\uFF0C\u4E0D\u53D7\u6EDA\u52A8\u3001\u6298\u53E0\u548C\u8BE6\u60C5\u5F00\u5173\u5F71\u54CD\u3002"), /*#__PURE__*/React.createElement("p", null, "\u672C\u5730\u641C\u7D22\uFF1A", view.query.trim() || '无', "\uFF1B\u665A\u671F\uFF1A", M.lateLabels[view.late], "\uFF1B\u4EC5\u9009\u4E2D\uFF1A", view.onlySelected ? '是' : '否', "\u3002\u672A\u77E5\u6570\u91CF\u548C\u5DE5\u65F6\u4FDD\u6301\u672A\u586B\u5199\uFF0C\u5386\u53F2\u73B0\u573A\u8BB0\u5F55\u53E6\u5217\u3002"), /*#__PURE__*/React.createElement("p", null, "\u8BA1\u5212\u5B8C\u5DE5\u65E5\u671F\uFF1A", scope.plan_finish_date_from || '不限', " \u81F3 ", scope.plan_finish_date_to || '不限', "\uFF1B\u6570\u636E\u622A\u81F3 ", M.time(result.meta.as_of), "\u3002\u6570\u636E\u53D8\u5316\u65F6\u4E0B\u8F7D\u4F1A\u8981\u6C42\u5237\u65B0\u3002"), /*#__PURE__*/React.createElement(ErrorBox, {
+    }, /*#__PURE__*/React.createElement("p", null, "\u6309\u5F53\u524D\u67E5\u8BE2\u8303\u56F4\u548C\u672C\u6B21\u8BFB\u53D6\u7684\u6570\u636E\u5BFC\u51FA\u5168\u90E8 ", model.items.length, " \u9053\u5339\u914D\u5DE5\u5E8F\u53CA\u5176\u9010\u6B21\u62A5\u5DE5\uFF0C\u4E0D\u53D7\u6EDA\u52A8\u3001\u6298\u53E0\u548C\u8BE6\u60C5\u5F00\u5173\u5F71\u54CD\u3002"), /*#__PURE__*/React.createElement("p", null, "\u672C\u5730\u641C\u7D22\uFF1A", view.query.trim() || '无', "\uFF1B\u665A\u671F\uFF1A", M.lateLabels[view.late], "\uFF1B\u4EC5\u9009\u4E2D\uFF1A", view.onlySelected ? '是' : '否', "\u3002"), /*#__PURE__*/React.createElement("p", null, "\u8BA1\u5212\u5B8C\u5DE5\u65E5\u671F\uFF1A", scope.plan_finish_date_from || '不限', " \u81F3 ", scope.plan_finish_date_to || '不限', "\uFF1B\u6570\u636E\u622A\u81F3 ", M.time(result.meta.as_of), "\u3002\u6570\u636E\u53D8\u5316\u65F6\u4E0B\u8F7D\u4F1A\u8981\u6C42\u5237\u65B0\u3002"), /*#__PURE__*/React.createElement(ErrorBox, {
       error: exportError
     }))));
   }

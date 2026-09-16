@@ -81,7 +81,7 @@
       if (!shown || !pendingRow) return;
       const task = shown.tasks.find(row => row.row_ref === pendingRow);
       if (task) { setSelected({ task, result }); setPendingRow(null); }
-      else if (!scope.range_start && !scope.batch_ref) { setRangeError(new Error('这道末端工序不在完整候选方案里，没有换成其他工序。')); setPendingRow(null); }
+      else if (!scope.range_start && !scope.batch_ref) { setRangeError(new Error('此候选方案中未找到末端工序。')); setPendingRow(null); }
     }, [result, pendingRow]);
     const remembered = { ...initialContext, ...(runRef ? { run_ref: runRef } : {}), ...(candidateRef ? { candidate_ref: candidateRef } : {}), query, candidate_tab: tab };
     for (const key of ['range_start', 'range_end', 'batch_ref', 'sort', 'order', 'snapshot_ref', 'selected_row_ref']) delete remembered[key];
@@ -115,14 +115,14 @@
             <C.Button icon="square-pen" reason={window.WorkbenchTerms.outcomes.unavailable}>试调</C.Button>}
           <small className="rc-muted">试调不影响正式计划</small>
           <C.Button icon="refresh-cw" aria-label="刷新候选方案" disabled={invalid || !runRef && !candidateRef} busy={read.busy || directory.busy} onClick={reload} /></div></div></div>
-      {invalid && <C.ErrorBox error={new Error('记录编号无效，没有改查其他排产或最新候选方案。请从排产记录里重新打开。')} />}
+      {invalid && <C.ErrorBox error={new Error('记录编号无效，请从排产记录重新打开。')} />}
       {!runRef && !candidateRef && <div className="rc-empty" role="status">尚未指定排产或候选方案。请从排产记录里打开候选方案，没有自动选最新的排产。</div>}
       {runRef && <><C.ErrorBox error={directory.error} /><C.Catalog result={directory.result} selectedRef={candidateRef} busy={directory.busy} query={catalogQuery}
         onQuery={(change, paging) => setCatalogQuery(q => ({ ...q, ...change, page: paging ? change.page : 1, snapshot_ref: paging ? directory.result.meta.snapshot_ref : undefined }))} onSelect={choose} /></>}
       <C.ErrorBox error={read.error} />{(read.busy || directory.busy) && <p className="rc-muted" role="status">正在读取这个候选方案。</p>}
       {read.error && <div className="rc-empty">这个候选方案没读到，没有显示其他候选方案或上次内容。请刷新后重试。</div>}
       {(analysisRead.busy || historyRead.busy) && <div className="rc-tools"><span role="status">正在核对这个候选方案的完整依据。</span><C.Button icon="x" aria-label="取消候选比较读取" onClick={() => setAnalysisPaused(true)}>取消读取</C.Button></div>}
-      {analysisPaused && <div className="rc-tools"><span role="status">候选比较读取已取消，未显示上次比较。</span><C.Button icon="refresh-cw" onClick={reload}>刷新候选比较</C.Button></div>}
+      {analysisPaused && <div className="rc-tools"><span role="status">候选比较读取已取消。</span><C.Button icon="refresh-cw" onClick={reload}>刷新候选比较</C.Button></div>}
       {runRef && !candidateRef && <div className="rc-empty">尚未选择这次排产里的候选方案。</div>}
       {data && !shown && <div className="rc-notice">当前不能查看这个候选方案。<C.Reasons rows={data.blocked_reasons} /></div>}
       {shown && <><C.Generation key={shown.candidate.candidate_ref} data={shown} analysis={analysis} /><C.Reasons rows={result.warnings} />
@@ -146,7 +146,7 @@
             {tab === 'history' ? <><C.ErrorBox error={historyRead.error} />{historyRead.result && <Analysis.History data={historyRead.result.data}
               onPlan={onNavigate && (plan => onNavigate('analysis', { plan_ref: plan.plan_ref }))} />}</> :
               tab === 'delivery' ? analysis && <Analysis.Batches key={analysis.candidate_ref} data={analysis} onLast={task => { lastOperation(task); setTab('tasks'); }}
-                onBatch={onNavigate && (row => onNavigate('gantt', { run_ref: analysis.run_ref, candidate_ref: analysis.candidate_ref, batch_ref: row.batch_ref, candidate_tab: 'tasks' }))} /> : tab === 'unplanned' && shown.unplanned_operations === null ? <div className="rc-notice">生成时没有保留未安排明细，不能当成零项。</div> :
+                onBatch={onNavigate && (row => onNavigate('gantt', { run_ref: analysis.run_ref, candidate_ref: analysis.candidate_ref, batch_ref: row.batch_ref, candidate_tab: 'tasks' }))} /> : tab === 'unplanned' && shown.unplanned_operations === null ? <div className="rc-notice">未记录排产时的未排工序明细。</div> :
               <window.RunCandidateGantt.TaskList key={tab + ':' + query + ':' + result.meta.snapshot_ref} tasks={tab === 'tasks' ? tasks : unplanned} selected={chosen} onSelect={select} planned={tab === 'tasks'} />}</section>
         </div>{!['delivery', 'history'].includes(tab) && <C.Detail task={chosen} onClose={() => setSelected(null)} />}</div>
         {analysis && <Analysis.Overview data={analysis} />}</>}

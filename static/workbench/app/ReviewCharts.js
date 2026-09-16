@@ -81,7 +81,7 @@
       })
     }), /*#__PURE__*/React.createElement("p", {
       className: "er-method"
-    }, "\u8FD9\u91CC\u662F\u5B9E\u9645\u52A0\u5DE5\u5DE5\u65F6\uFF0C\u4E0D\u4EE3\u8868\u5229\u7528\u7387\uFF1B\u70B9\u8FDB\u53BB\u4F1A\u4FDD\u7559\u5173\u8054\u5DE5\u5E8F\u7684\u5168\u90E8\u8BB0\u5F55\u3002"), /*#__PURE__*/React.createElement(window.ReportTable.Table, {
+    }, "\u70B9\u51FB\u8D44\u6E90\u67E5\u770B\u62A5\u5DE5\u660E\u7EC6\u3002"), /*#__PURE__*/React.createElement(window.ReportTable.Table, {
       data: {
         topic: kind === 'machine' ? 'machines' : 'people',
         rows: visible,
@@ -145,7 +145,7 @@
       label: "\u5230\u671F\u672A\u786E\u8BA4\u5DF2\u8FC7\u65F6\u957F"
     })), /*#__PURE__*/React.createElement("p", {
       className: "er-method"
-    }, "\u5B9E\u9645\u66F2\u7EBF\u6309\u5DF2\u8BB0\u5F55\u7684\u6574\u9053\u5B8C\u5DE5\u56DE\u7B97\uFF0C\u4E0D\u662F\u5F53\u65F6\u90A3\u4E00\u523B\u7684\u6570\u636E\uFF1B\u5230\u671F\u672A\u786E\u8BA4\u5DF2\u8FC7\u65F6\u957F\u4E0D\u662F\u5B9E\u9645\u665A\u5B8C\u6210\u504F\u5DEE\u3002"), /*#__PURE__*/React.createElement(ResourceHours, {
+    }, "\u6309\u5F53\u524D\u5B8C\u5DE5\u8BB0\u5F55\u6C47\u603B\u6BCF\u65E5\u7D2F\u8BA1\u5B8C\u5DE5\u6570\uFF1B\u5F85\u786E\u8BA4\u65F6\u957F\u4ECE\u8BA1\u5212\u5B8C\u5DE5\u65F6\u95F4\u8D77\u8BA1\u7B97\u3002"), /*#__PURE__*/React.createElement(ResourceHours, {
       data: data,
       onDrill: onDrill,
       view: resourceView,

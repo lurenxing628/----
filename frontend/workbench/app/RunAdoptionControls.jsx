@@ -5,7 +5,7 @@
     return <><dl className="ra-scope"><div><dt>{saved ? '上次提交时核对的正式计划' : '当前正式计划（本次预检）'}</dt><dd>{value.baseline.version === null ? '尚无正式计划' : 'v' + value.baseline.version}</dd></div>
       <div><dt>目标候选方案</dt><dd>当前核对的完整候选方案<window.WorkbenchReference value={value.candidate_ref} /></dd></div><div><dt>采用工序</dt><dd>{value.task_count} 道</dd></div>
       <div><dt>采用范围</dt><dd>完整候选方案及全部当前正式安排</dd></div></dl>
-      <p className="ra-note">采用会新增一版正式计划；不是只采用当前筛选出的工序。旧版本和报工记录都会保留，可在计划列表查看和导出；如需恢复旧安排，需要重新排产并再采用一版。</p></>;
+      <p className="ra-note">将完整候选方案采用为新一版正式计划，保留历史版本。恢复旧安排需重新排产并采用。</p></>;
   }
   function Records({ value, intent, result }) {
     return <details className="ra-records wb-ref"><summary>编号</summary>
@@ -21,9 +21,9 @@
         onChange={e => onChange({ ...draft, reason: e.target.value })} /></div>
       <div className="field"><label htmlFor={id + '-operator'}>{window.WorkbenchTerms.handler}</label><input id={id + '-operator'} maxLength={100} value={draft.declared_operator}
         readOnly={readOnly} disabled={busy} onChange={e => onChange({ ...draft, declared_operator: e.target.value })} />
-        <small>填写这次由谁经办，不是登录账号。{!readOnly && memoryHint && ' ' + memoryHint}</small></div>
+        {!readOnly && memoryHint && <small>{memoryHint}</small>}</div>
       {!readOnly && <label className="ra-consent"><input type="checkbox" checked={consent} disabled={busy} onChange={e => onConsent(e.target.checked)} />
-        <span>我已核对正式计划、目标候选方案和完整范围，确认正式采用。</span></label>}</div>;
+        <span>确认将完整候选方案正式采用。</span></label>}</div>;
   }
   function Dialog({ value, intent, result, preview, draft, consent, busy, error, storageError, notice, onReadStorage, onChange, onConsent, onClose, onPreview, onConfirm, onLookup, onFinish, onCancelRejected, onNavigate }) {
     const pending = intent && intent.phase === 'pending' && !result, valid = preview && preview.validation.can_adopt === true;
@@ -40,7 +40,7 @@
         {error && <div className="ra-notice" role="alert">{error}</div>}{notice && <div className="ra-notice" role="status">{notice}</div>}
         {storageError && <Button icon="refresh-cw" disabled={busy} onClick={onReadStorage}>刷新上次操作记录</Button>}
         {result && <div className="ra-result" role="status">已确认：本次生成第 {result.data.official_plan.version} 版正式计划，共 {result.data.row_count} 道工序。
-          <p>这是提交时的结果；当前状态请重新打开正式计划核对。</p></div>}
+          <p>当前正式计划可在计划列表查看。</p></div>}
         {value.baseline && <Scope value={value} saved={!!intent && !valid} />}
         {preview && !valid && <div className="ra-notice" role="status">{preview.validation.issues.map((item, index) => <div key={index}>{item.message}</div>)}</div>}
         {!result && <Fields draft={draft} onChange={onChange} consent={consent} onConsent={onConsent} readOnly={!!pending} busy={busy} />}

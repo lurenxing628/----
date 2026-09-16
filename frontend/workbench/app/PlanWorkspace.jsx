@@ -5,7 +5,7 @@
   const M = window.PlanGanttModel, { TaskDetail, ProjectionTables, Conflicts } = window.PlanDetailsUI;
   const adapterIds = new WeakMap(); let nextAdapter = 0;
   function adapterId(adapter) { if (!adapterIds.has(adapter)) adapterIds.set(adapter, ++nextAdapter); return adapterIds.get(adapter); }
-  function WorkspaceSession({ adapter, view, planRef, initialContext = {}, disabled = false, renderTrial }) {
+  function WorkspaceSession({ adapter, view, planRef, initialContext = {}, disabled = false, renderTrial, navigation }) {
     const [selection, setSelection] = React.useState(() => planRef || initialContext.plan_ref ? { plan_ref: planRef || initialContext.plan_ref, display_name: '指定计划' } : null);
     const [scope, setScope] = React.useState(() => {
       const result = {};
@@ -32,8 +32,8 @@
       if (!target) return;
       const task = data.tasks.find(row => row.task_ref === target);
       if (task) setSelected({ task, before: false, result, ...(relatedRef ? { locate: true } : {}) });
-      else setRangeError(C.failure(relatedRef ? '这份完整计划里没找到相关的工序，没有改选其他工序。'
-        : '要恢复的工序不在当前读取范围内，没有改选其他工序。'));
+      else setRangeError(C.failure(relatedRef ? '此计划中未找到相关工序。'
+        : '要恢复的工序不在当前范围内。'));
       if (relatedRef) setRelatedRef(null);
     }, [relatedRef, result, read.loading, read.error]);
     const remembered = { ...initialContext, ...(selection ? { plan_ref: selection.plan_ref } : {}), query };
@@ -84,42 +84,41 @@
     } : null);
     return <div className="plana plan-workspace" data-plan-workspace>
       <window.PlanLayout />
-      <div className="plan-heading"><div>{!data && <h2>{view === 'gantt' ? '计划甘特' : view === 'delay' ? '交付风险' : '选择排产方案'}</h2>}
-        <div className="plan-muted">{data ? data.plan.display_name : selection ? selection.display_name : '尚未选择计划'}{data && <> · <Identity plan={data.plan} /></>}</div></div>
-        <div className="plan-actions">
+      <section className="plan-scope wb-surface" aria-label="方案与范围">
+      <div className="wb-surface-row plan-scope-heading"><div><h3>方案与范围</h3>{data && <Identity plan={data.plan} />}</div>{navigation}</div>
+      <Catalog adapter={adapter} selectedRef={selection && selection.plan_ref} onSelect={choose} autoSelect={!planRef && Object.keys(initialContext).length === 0} disabled={disabled}
+        actions={<>
           {typeof renderTrial === 'function' && renderTrial({ planRef: selection && selection.plan_ref, scope, query, disabled: !ready || read.loading })}
           <window.PlanExportUI key={result ? result.meta.snapshot_ref : 'unavailable'} adapter={adapter} result={result} query={query} matched={matches.length} disabled={!ready} />
-        </div>
-      </div>
-      <Catalog adapter={adapter} selectedRef={selection && selection.plan_ref} onSelect={choose} autoSelect={!planRef && Object.keys(initialContext).length === 0} disabled={disabled} />
-      <div className="plan-heading plan-read-heading"><div>{data && <div className="plan-muted">读取于 {M.timeLabel(result.meta.as_of)}</div>}</div>
+        </>} />
+      <div className="wb-surface-row plan-read-heading"><div className="plan-scope-meta">{data && <>
+        <span className="plan-scope-caption">{scopeCaption}{data.scope.range_start !== null && ' · 显示所选时间段内的工序安排'}</span>
+        <span>读取于 {M.timeLabel(result.meta.as_of)}{query.trim() && ` · 甘特搜索 ${matches.length} / ${data.task_count} 道；分析和导出共 ${data.task_count} 道`}</span>
+      </>}</div>
         <div className="plan-actions"><Button icon="calendar-days" aria-expanded={rangeOpen} onClick={() => setRangeOpen(!rangeOpen)} disabled={!selection}>读取范围</Button>
           <Button icon="refresh-cw" className="btn plan-icon" aria-label="刷新所选计划" disabled={!selection || disabled} busy={read.loading} onClick={refresh} />
           {read.loading && <Button icon="x" aria-label="取消计划读取" onClick={() => setPaused(true)}>取消读取</Button>}</div>
       </div>
-      {rangeOpen && <form className="plan-range" onSubmit={applyRange}>
+      {rangeOpen && <form className="plan-range wb-surface-body wb-surface-divider" onSubmit={applyRange}>
         <label className="field"><span>开始（包含）</span><input type="datetime-local" step="1" aria-label="读取开始时间" value={range.start} onChange={event => setRange({ ...range, start: event.target.value })} /></label>
         <label className="field"><span>结束（不含）</span><input type="datetime-local" step="1" aria-label="读取结束时间" value={range.end} onChange={event => setRange({ ...range, end: event.target.value })} /></label>
         <Button type="submit" icon="check" disabled={disabled || read.loading}>应用范围</Button><Button icon="chart-gantt" disabled={disabled || read.loading} onClick={() => { initialTaskRef.current = null; setScope({}); setRange({ start: '', end: '' }); setRangeError(null); setPaused(false); read.reload(); }}>完整计划</Button>
       </form>}
+      {(rangeError || read.error || result && result.warnings.length > 0 || !data || paused) && <div className="wb-surface-body plan-read-state">
       <ErrorBox error={rangeError} /><ErrorBox error={read.error} />
       {result && <Issues issues={result.warnings} />}
-      {!data && <window.WorkbenchControls.EmptyState kind={read.loading ? 'loading' : 'empty'} title={read.loading ? '正在读取所选计划、工序安排和分析结果…' : paused ? '计划读取已取消，未显示上次读取的内容。' : read.error ? '所选计划未读取成功，没有替换成其他计划。' : '请在计划列表里选一个可查看的计划。'} />}
-      {(read.error || paused) && <Button icon="refresh-cw" onClick={refresh}>刷新重试</Button>}
-      {data && <>
-        <div className="statline wb-metrics" style={{ '--wb-columns': 4, marginBottom: 8 }}>
+      {!data && !read.error && <window.WorkbenchControls.EmptyState kind={read.loading ? 'loading' : 'empty'} title={read.loading ? '正在读取所选计划、工序安排和分析结果…' : paused ? '计划读取已取消。' : '请在计划列表里选一个可查看的计划。'} />}
+      {(read.error || paused) && <Button icon="refresh-cw" onClick={refresh}>刷新重试</Button>}</div>}
+      {data && <div className="statline wb-metrics" style={{ '--wb-columns': 4 }}>
           {[[data.task_count, '范围内安排', 'primary'], [risks.length, '关联批次', 'primary'], [risks.filter(row => row.risk === 'overdue').length, '已确认预计超期', 'warn'], [risks.filter(row => row.risk === 'unknown').length, '交付风险暂无数据', 'warn']].map(([value, label, tone]) =>
             <div className="stat wb-metric" key={label} data-tone={tone === 'warn' && value === 0 ? 'neutral' : tone}><span className="sl wb-metric-label">{label}</span><span className="sv wb-metric-value">{value}</span></div>)}
-        </div>
-        <div className="plan-note" style={{ marginBottom: 10 }}>{scopeCaption}
-          {data.scope.range_start !== null && <span> · 只列出与此时间段有重叠的工序安排，每道安排的起止时间完整保留，不代表整份计划</span>}{query.trim() && <span> · 搜索找到 {matches.length} / {data.task_count} 道工序安排，只影响甘特图显示；分析表和导出仍包含此时间范围内的全部 {data.task_count} 道安排</span>}</div>
-        <div className="plan-main"><div>
+        </div>}</section>
+      {data && <div className="plan-main"><div>
           <window.PlanGantt key={'gantt:' + result.meta.snapshot_ref} data={data} asOf={result.meta.as_of} selected={chosen} onSelect={selectTask} query={query} onQuery={setQuery} disabled={disabled} />
           <ProjectionTables key={'risk:' + result.meta.snapshot_ref} data={data} onResource={setQuery} onBatch={batch => { setQuery(batch); const task = data.tasks.find(row => row.batch_id === batch); if (task) selectTask(task); }} />
           {view === 'delay' && <Conflicts key={'conflicts:' + result.meta.snapshot_ref} data={data} />}
         </div><TaskDetail data={data} selected={chosen} onSelect={selectTask} onRelated={selectRelated}
-          renderTrial={renderTrial} scope={scope} query={query} disabled={!ready || read.loading || !!read.error} /></div>
-      </>}
+          renderTrial={renderTrial} scope={scope} query={query} disabled={!ready || read.loading || !!read.error} /></div>}
     </div>;
   }
   function PlanWorkspace(props) {

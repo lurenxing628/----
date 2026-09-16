@@ -45,7 +45,8 @@
     C.query(result, 'entity'); const d = result.data;
     if (!entity(d) || d.ref !== expected || !object(d.materials) || !Array.isArray(d.materials.requirements)
         || !d.materials.requirements.every(row => object(row) && ref(row.material_ref) && finite(row.required_quantity) && finite(row.available_quantity))
-        || !object(d.template)) throw C.failure('读到的批次详情不完整或不是这个批次，请刷新后重试。');
+        || !object(d.template) || typeof d.template.complete !== 'boolean' || !count(d.template.operation_count)
+        || !issueRows(d.template.diagnostics)) throw C.failure('读到的批次详情不完整或不是这个批次，请刷新后重试。');
     return result;
   }
   function receipt(result, action, expected) {
@@ -64,8 +65,11 @@
     if (valid && action === 'bulk') valid = data.action === input.action && Array.isArray(data.rows) && data.count === input.refs.length && data.rows.length === data.count
       && new Set(data.rows.map(row => row.entity_ref)).size === data.count && data.rows.every(row => input.refs.includes(row.entity_ref)
         && entity(row.before) && row.before.ref === row.entity_ref && (input.action === 'delete' ? row.after === null : object(row.after) && object(row.after.fields) && Array.isArray(row.after.operations)));
-    if (valid && action === 'sync') valid = data.entity_ref === expectedRef && data.strict_mode === input.strict_mode && Array.isArray(data.before) && data.before.every(operation)
-      && Array.isArray(data.after) && data.after.every(row => object(row) && text(row.label) && ['setup_hours', 'unit_hours', 'external_days'].every(key => finite(row[key])));
+    if (valid && action === 'sync') valid = data.entity_ref === expectedRef && data.completeness_checked === true && Array.isArray(data.before) && data.before.every(operation)
+      && Array.isArray(data.after) && data.after.every(row => object(row) && text(row.label) && ['setup_hours', 'unit_hours', 'external_days'].every(key => finite(row[key])))
+      && object(data.change_counts) && ['added', 'removed', 'updated', 'unchanged'].every(key => count(data.change_counts[key]))
+      && Array.isArray(data.changes) && data.changes.every(row => object(row) && ['added', 'removed', 'updated', 'unchanged'].includes(row.change))
+      && Array.isArray(data.cleared_resources) && data.cleared_resources.every(row => object(row) && ref(row.operation_ref) && text(row.business_code));
     if (!valid) throw C.failure('读到的预检结果和所选批次或操作不一致，没有确认。请重新预检。');
     return data;
   }

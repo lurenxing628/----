@@ -5,7 +5,7 @@
   const object = v => v !== null && typeof v === 'object' && !Array.isArray(v);
   const text = v => typeof v === 'string', count = v => Number.isSafeInteger(v) && v >= 0;
   const ref = v => text(v) && /^[a-f0-9]{48}$/.test(v), token = v => text(v) && /^[A-Za-z0-9_-]{32}$/.test(v);
-  function check(value, message = '候选数据不完整或不一致，未显示替代结果。') { if (!value) throw new Error(message); }
+  function check(value, message = '候选数据不完整或不一致，请刷新后重试。') { if (!value) throw new Error(message); }
   function shape(v, required, optional = []) {
     return object(v) && required.every(k => Object.prototype.hasOwnProperty.call(v, k)) && Object.keys(v).every(k => required.concat(optional).includes(k));
   }
@@ -65,7 +65,7 @@
     check(new Set(d.candidates.map(c => c.candidate_ref)).size === d.candidates.length); return d;
   }
   function workspaceScope(candidateRef, query = {}) {
-    check(ref(candidateRef), '没有指定有效的候选方案，没有改查最新候选。');
+    check(ref(candidateRef), '请选择有效的候选方案。');
     check(shape(query, [], ['range_start', 'range_end', 'batch_ref', 'sort', 'order', 'snapshot_ref']));
     const q = { sort: 'sequence', order: 'asc', ...query };
     check(['sequence', 'start', 'end'].includes(q.sort) && ['asc', 'desc'].includes(q.order)
@@ -199,7 +199,7 @@
   }
   function failure(payload, status) {
     const e = payload && payload.error;
-    const error = new Error(e && text(e.message) ? e.message : '没读到有效的候选数据，没有显示替代结果。请刷新后重试。');
+    const error = new Error(e && text(e.message) ? e.message : '候选方案数据无效，请刷新后重试。');
     error.code = e && e.code || 'invalid_response'; error.status = status; return error;
   }
   function download(value, result, fmt) {

@@ -67,7 +67,7 @@
       if (!target.context || deferred || located.current || !data || command.phase !== 'idle') return;
       located.current = true;
       if (source !== 'production') {
-        setNavigationError(window.APSResourceContract.failure('没有读到这个月的生产数据，不会用示例代替。'));
+        setNavigationError(window.APSResourceContract.failure('本月日历读取失败，请重新打开工作日历。'));
         return;
       }
       if (target.context.date) {
@@ -290,7 +290,7 @@
       className: "sw rest"
     }), "\u8C03\u4F11 / \u52A0\u73ED"), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", {
       className: "sw we"
-    }), "\u5468\u672B\uFF08\u9ED8\u8BA4\u975E\u5DE5\u4F5C\uFF09")), /*#__PURE__*/React.createElement("h3", null, "\u9ED8\u8BA4\u89C4\u5219"), /*#__PURE__*/React.createElement("p", null, "\u672A\u5355\u72EC\u8BBE\u7F6E\u7684\u65E5\u671F\uFF1A\u5468\u4E00\u81F3\u5468\u4E94\u6309 8 \u5C0F\u65F6\u3001\u6548\u7387 100%\uFF0C\u666E\u901A\u4EF6\u548C\u6025\u4EF6\u90FD\u53EF\u6392\u4EA7\uFF1B\u5468\u672B\u9ED8\u8BA4\u4E0D\u6392\u4EA7\u3002"), /*#__PURE__*/React.createElement("h3", null, "\u89C4\u5219\u6765\u6E90"), /*#__PURE__*/React.createElement("p", null, "\u672C\u9875\u7EF4\u62A4\u5168\u5C40\u5DE5\u4F5C\u65E5\u5386\u3002\u4EBA\u5458\u4E13\u5C5E\u73ED\u8868\u548C\u73ED\u6B21\u4ECD\u5355\u72EC\u751F\u6548\uFF0C\u4E0D\u4F1A\u5728\u8FD9\u91CC\u6E05\u9664\u3002"), data && /*#__PURE__*/React.createElement("p", null, "\u672C\u673A\u6570\u636E\u622A\u81F3 ", window.WorkbenchFormat.dateTime(data.as_of)))), dialog && dialog.mode === 'view' && /*#__PURE__*/React.createElement(Modal, {
+    }), "\u5468\u672B\uFF08\u9ED8\u8BA4\u975E\u5DE5\u4F5C\uFF09")), /*#__PURE__*/React.createElement("h3", null, "\u9ED8\u8BA4\u89C4\u5219"), /*#__PURE__*/React.createElement("p", null, "\u672A\u5355\u72EC\u8BBE\u7F6E\u7684\u65E5\u671F\uFF1A\u5468\u4E00\u81F3\u5468\u4E94\u6309 8 \u5C0F\u65F6\u3001\u6548\u7387 100%\uFF0C\u666E\u901A\u4EF6\u548C\u6025\u4EF6\u90FD\u53EF\u6392\u4EA7\uFF1B\u5468\u672B\u9ED8\u8BA4\u4E0D\u6392\u4EA7\u3002"), /*#__PURE__*/React.createElement("h3", null, "\u89C4\u5219\u6765\u6E90"), /*#__PURE__*/React.createElement("p", null, "\u672C\u9875\u7EF4\u62A4\u5168\u5C40\u5DE5\u4F5C\u65E5\u5386\uFF1B\u4EBA\u5458\u73ED\u8868\u548C\u73ED\u6B21\u5355\u72EC\u8BBE\u7F6E\u3002"), data && /*#__PURE__*/React.createElement("p", null, "\u672C\u673A\u6570\u636E\u622A\u81F3 ", window.WorkbenchFormat.dateTime(data.as_of)))), dialog && dialog.mode === 'view' && /*#__PURE__*/React.createElement(Modal, {
       title: dialog.day.date + ' · 日历详情',
       icon: "calendar-days",
       onClose: close,

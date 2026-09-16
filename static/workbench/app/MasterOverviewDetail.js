@@ -63,7 +63,7 @@
       "data-status": entity.status
     }, C.statuses[entity.status]), " \xB7 \u5DF2\u586B ", entity.filled_fields, " / ", entity.checked_fields, " \u4E2A\u68C0\u67E5\u9879"), !entity.checks_complete && /*#__PURE__*/React.createElement("p", {
       className: "mo-muted"
-    }, "\u90E8\u5206\u6765\u6E90\u6216\u68C0\u67E5\u6CA1\u6709\u5B8C\u6210\uFF0C\u7ED3\u679C\u53EF\u80FD\u4E0D\u5168\u3002"), selected && selected.title && /*#__PURE__*/React.createElement("div", {
+    }, "\u90E8\u5206\u68C0\u67E5\u5C1A\u672A\u5B8C\u6210\uFF0C\u8BF7\u67E5\u770B\u5F85\u7EF4\u62A4\u9879\u548C\u8D44\u6599\u9879\u3002"), selected && selected.title && /*#__PURE__*/React.createElement("div", {
       className: "mo-focus"
     }, /*#__PURE__*/React.createElement("strong", null, selected.title), /*#__PURE__*/React.createElement("p", null, selected.evidence)), /*#__PURE__*/React.createElement(Tabs, {
       label: "\u8D44\u6599\u660E\u7EC6\u7C7B\u578B",
@@ -75,7 +75,7 @@
       "aria-label": section === 'fields' ? '资料项' : section === 'relations' ? '资料相关项' : '资料待维护项'
     }, !data.rows.length && /*#__PURE__*/React.createElement("p", {
       className: "mo-muted"
-    }, section === 'relations' ? entity.relations_complete ? '已读取记录中没有可确认的关联项。' : '关联来源不完整，不能断定没有关联。' : entity.checks_complete ? '已检查的项里没有发现待维护项。' : '检查来源不完整，结果未知。'), section === 'fields' ? data.rows.map((field, index) => /*#__PURE__*/React.createElement("dl", {
+    }, section === 'relations' ? entity.relations_complete ? '暂无关联项。' : '关联资料尚未完成核对。' : entity.checks_complete ? '暂无待维护项。' : '检查尚未完成，请核对资料项。'), section === 'fields' ? data.rows.map((field, index) => /*#__PURE__*/React.createElement("dl", {
       className: "mo-field",
       key: index
     }, /*#__PURE__*/React.createElement("dt", null, field.label), /*#__PURE__*/React.createElement("dd", null, field.state === 'unknown' ? '未知' : field.state === 'missing' ? '未填写' : C.value(field.value), field.state === 'invalid' ? '（原值待核对）' : ''), /*#__PURE__*/React.createElement("dd", null, /*#__PURE__*/React.createElement(window.WorkbenchReference, {

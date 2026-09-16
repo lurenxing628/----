@@ -188,7 +188,7 @@
         })
       }, label);
     }
-    return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Navigation, null, /*#__PURE__*/React.createElement(U.Button, {
+    const navigation = /*#__PURE__*/React.createElement(Navigation, null, /*#__PURE__*/React.createElement(U.Button, {
       icon: "files",
       "aria-pressed": !candidate && !history,
       onClick: () => onNavigate(view, {})
@@ -207,7 +207,8 @@
       "aria-current": "page"
     }, "\u5019\u9009\u65B9\u6848"), candidate && /*#__PURE__*/React.createElement("span", {
       className: "scheduling-source"
-    }, "\u4E0D\u662F\u6B63\u5F0F\u8BA1\u5212")), candidate ? /*#__PURE__*/React.createElement(window.RunCandidateWorkspace, {
+    }, "\u4E0D\u662F\u6B63\u5F0F\u8BA1\u5212"));
+    return /*#__PURE__*/React.createElement(React.Fragment, null, (candidate || history) && navigation, candidate ? /*#__PURE__*/React.createElement(window.RunCandidateWorkspace, {
       view: view,
       initialContext: initialContext,
       onNavigate: onNavigate,
@@ -223,7 +224,8 @@
       view: view,
       initialContext: initialContext,
       onNavigate: onNavigate,
-      renderTrial: renderTrial
+      renderTrial: renderTrial,
+      navigation: navigation
     }));
   }
   window.RunWorkspace = RunWorkspace;

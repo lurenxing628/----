@@ -109,7 +109,7 @@
       onSelect: onSelect
     }), /*#__PURE__*/React.createElement("small", null, row.process_label)), /*#__PURE__*/React.createElement("td", null, M.timeLabel(row.source.planned_start)), /*#__PURE__*/React.createElement("td", null, M.timeLabel(row.source.planned_end)), /*#__PURE__*/React.createElement("td", null, value(row.source.overlap_hours), " \u5C0F\u65F6")))))), !data.overlaps.length && /*#__PURE__*/React.createElement(window.WorkbenchListControls.EmptyState, {
       kind: "empty",
-      title: "\u5F53\u524D\u65F6\u95F4\u8303\u56F4\u5185\u6CA1\u6709\u786E\u8BA4\u5230\u76F4\u63A5\u91CD\u53E0\u3002\u6765\u6E90\u8BFB\u4E0D\u5230\u7684\u90E8\u5206\u53E6\u884C\u5217\u51FA\u3002"
+      title: "\u5F53\u524D\u65F6\u95F4\u8303\u56F4\u5185\u6CA1\u6709\u8BA1\u5212\u4E0E\u505C\u673A\u91CD\u53E0\u3002"
     })), /*#__PURE__*/React.createElement("section", {
       "aria-label": "\u505C\u673A\u767B\u8BB0\u4F9D\u636E"
     }, /*#__PURE__*/React.createElement("h3", null, "\u767B\u8BB0\u4F9D\u636E"), data.downtimes.map(row => /*#__PURE__*/React.createElement("dl", {

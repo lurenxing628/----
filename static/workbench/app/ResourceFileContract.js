@@ -56,7 +56,7 @@
     if (!Array.isArray(data.columns) || !data.columns.length || !data.columns.every(item => C.object(item) && typeof item.key === 'string' && /^[a-z][a-z0-9_]*$/.test(item.key) && !['id', 'entity_key', 'revision', 'entity_ref', 'write_token'].includes(item.key) && typeof item.label === 'string' && item.label.trim() && item.label !== item.key) || new Set(data.columns.map(item => item.key)).size !== data.columns.length) throw C.failure('预检缺少完整的业务列名，本批没有提交。');
     const keys = new Set(data.columns.map(item => item.key));
     const facts = value => value === null || C.object(value) && Object.keys(value).every(key => keys.has(key) && publicValue(key, value[key]));
-    if (!data.rows.every(row => facts(row.before) && facts(row.after) && Object.keys(row.changes).every(key => keys.has(key) && C.object(row.changes[key]) && C.own(row.changes[key], 'before') && C.own(row.changes[key], 'after') && publicValue(key, row.changes[key].before) && publicValue(key, row.changes[key].after)))) throw C.failure('预检明细里有未说明的列或不对外的关联内容，本批没有提交。');
+    if (!data.rows.every(row => facts(row.before) && facts(row.after) && (row.reference_fields || []).every(key => keys.has(key)) && Object.keys(row.changes).every(key => keys.has(key) && C.object(row.changes[key]) && C.own(row.changes[key], 'before') && C.own(row.changes[key], 'after') && publicValue(key, row.changes[key].before) && publicValue(key, row.changes[key].after)))) throw C.failure('预检明细里有未说明的列或不对外的关联内容，本批没有提交。');
   }
   function create(kind) {
     if (!C.own(labels, kind)) throw C.failure('不支持这类基础资料的文件操作。');
@@ -67,7 +67,7 @@
       resourceLabel: value => C.resourceName(kind, value),
       category: request => category(kind, request),
       templateHint: '空白表头模板，不含示例数据。空列不改动；要清除某一项，请在格子里填 \\N（大写）。',
-      importHint: '按业务编号增量更新：编号已有的更新，没有的新增，文件以外的记录不会删除。空列或缺列保持原值；要清除某一项，请在格子里填 \\N（大写）。关联列填业务编号；要填多个，请按 ["OT1","OT2"] 这样用方括号和引号写，填 [] 表示清除全部关联。只读列只核对，不覆盖。',
+      importHint: '按业务编号增量更新：编号已有的更新，没有的新增，文件以外的记录不会删除。空列或缺列保持原值；要清除某一项，请在格子里填 \\N（大写）。关联列填业务编号；要填多个，请按 ["OT1","OT2"] 这样用方括号和引号写，填 [] 表示清除全部关联。只读列仅供参考，不导入；设备权限需在人员详情设置。',
       preview(raw, mode, expected, request) {
         const result = shared.preview(raw, mode, expected);
         columns(result.data);

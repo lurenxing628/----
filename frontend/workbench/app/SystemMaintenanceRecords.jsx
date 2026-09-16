@@ -30,7 +30,7 @@
     if (kind === 'backups') return data.sources.map((item, index) => <div key={index}><p className="sm-note">{item.message}</p>{item.code && <window.WorkbenchReference label="来源核对代码" value={item.code} />}</div>);
     const labels = { available: '可读取', empty: '这段范围内暂无记录', missing: '来源不存在', error: '来源读取失败' };
     return <div className="sm-log-sources" aria-label="日志读取范围" style={{ borderBottom: '1px solid var(--ui-border)', paddingBottom: 12, marginBottom: 12 }}>
-      <p className="sm-note">先读取各来源最近的一段日志，再按条件筛选，不是全部历史日志。记录已写下不等于业务做成了。</p>
+      <p className="sm-note">按条件筛选最近读取的日志。</p>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 24px' }}>{data.sources.map(item => <div key={item.source} style={{ flex: '1 1 210px', minWidth: 0, overflowWrap: 'anywhere', fontSize: 13 }}>
         <strong>{sourceText(item.source)}</strong><span className={['error', 'missing'].includes(item.state) ? 'sm-tone-warning' : 'sm-meta'}> · {labels[item.state]}</span>
         <div>最近 {item.window} 条 · {item.count === null ? '数量未知' : '读取 ' + item.count + ' 条'}{item.truncated ? ' · 已截断' : ' · 没有截断'}</div>
@@ -48,7 +48,7 @@
       {event && <><p className="sm-note">{{ external_maintenance_journal: '维护记录', operation_audit: '操作审计', latest_job_state_only: '仅最近一次维护状态' }[row.event_source]}</p><window.WorkbenchReference label="维护事件编号" value={row.event_ref} /></>}
       <p style={{ overflowWrap: 'anywhere' }}>{row.summary}</p><pre style={{ fontSize: 13 }}>{row.body}</pre>
       {row.content_truncated && <p className="sm-tone-warning">本条详情已截断，不是完整原始内容。</p>}
-      {file && <><p className="sm-note">备份文件存在不代表已校验通过或可以恢复。</p><div className="sm-actions">
+      {file && <><p className="sm-note">校验状态：未校验。</p><div className="sm-actions">
         <C.Button transfer="export" disabled={!!reason} busy={downloadBusy} onClick={() => onDownload(row)}>下载备份</C.Button>
         <C.Button icon="rotate-ccw" reason={reason || A.blocked(data, 'restore')} onClick={() => onAction('restore', row)}>恢复备份</C.Button>
         <C.Button icon="trash-2" reason={reason || A.blocked(data, 'delete')} onClick={() => onAction('delete', row)}>删除备份</C.Button>

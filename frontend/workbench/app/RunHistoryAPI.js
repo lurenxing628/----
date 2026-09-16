@@ -35,7 +35,7 @@
     return result;
   }
   function context(value = {}) {
-    check(shape(value, [], queryKeys.concat(['source', 'return_plan_context'])) && (value.source === undefined || value.source === 'production'), '排产记录的来源或返回范围无效，没有切换来源。请从侧栏重新打开。');
+    check(shape(value, [], queryKeys.concat(['source', 'return_plan_context'])) && (value.source === undefined || value.source === 'production'), '排产记录来源或返回范围无效，请从侧栏重新打开。');
     const q = {}; queryKeys.forEach(k => { if (own(value, k)) q[k] = value[k]; });
     return { query: scope(q), returnPlan: planContext(value.return_plan_context) };
   }
@@ -112,7 +112,7 @@
         const json = (response.headers.get('Content-Type') || '').split(';')[0].trim().toLowerCase() === 'application/json';
         if (!response.ok) {
           const value = json ? await response.json() : null, e = value && value.error;
-          const error = new Error(e && text(e.message) ? e.message : '排产记录读取失败，没有显示替代结果。请点「重新查询」。');
+          const error = new Error(e && text(e.message) ? e.message : '排产记录读取失败，请重新查询。');
           error.code = e && text(e.code) ? e.code : 'invalid_response'; error.status = response.status; throw error;
         }
         check(response.status === 200 && json); const value = await response.json(); catalog(value, q); return value;

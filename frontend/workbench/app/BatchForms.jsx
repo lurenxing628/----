@@ -65,6 +65,22 @@
       </form>
     </Modal>;
   }
+  function SyncPreview({ preview }) {
+    const changeNames = { added: '新增', removed: '删除', updated: '修改', unchanged: '内容不变' };
+    const operation = row => row ? <><div>{row.label} · {row.source === 'external' ? '外协' : '自制'}</div>
+      {row.source === 'internal' ? <div>换型 {window.WorkbenchFormat.hours(row.setup_hours, ENTERED_HOURS)} / 单件 {window.WorkbenchFormat.hours(row.unit_hours, ENTERED_HOURS)}</div>
+        : <><div>{row.external_group && row.external_group.merge_mode === 'merged' ? '整组周期 ' + window.WorkbenchFormat.number(row.external_group.total_days, ENTERED_DAYS) : '本序周期 ' + window.WorkbenchFormat.number(row.external_days, ENTERED_DAYS)} 天</div>
+          <div>供应商：{(row.supplier || row.resources && row.resources.supplier || {}).label || '未填写'}</div></>}</> : '—';
+    return <><div className="batch-sync-summary">{Object.entries(changeNames).map(([key, label]) => <span key={key}>{label} <b>{preview.change_counts[key]}</b> 道</span>)}</div>
+      <div className="batch-preview wb-table-frame" data-sticky-head><table className="tbl wb-table batch-sync-table" aria-label="工序更新前后对照"><caption className="wb-visually-hidden">工序更新前后对照</caption>
+        <thead><tr><th scope="col" style={{ width: 90 }}>工序 / 变化</th><th scope="col">当前批次工序</th><th scope="col">更新后</th></tr></thead><tbody>
+          {preview.changes.map((row, index) => <tr key={index}><td><div>{row.sequence}{row.piece_id ? ' · ' + row.piece_id : ''}</div><div>{changeNames[row.change]}</div></td><td>{operation(row.before)}</td><td>{operation(row.after)}</td></tr>)}
+        </tbody></table></div>
+      <div className="batch-sync-resources"><h3>设备和人员指定</h3>{preview.cleared_resources.length ? <><p>以下 {preview.cleared_resources.length} 道工序的指定将被清除，更新后可重新指定。</p>
+        <ul>{preview.cleared_resources.map(row => <li key={row.operation_ref}>{row.business_code}：{[row.machine && '设备 ' + row.machine.label, row.operator && '人员 ' + row.operator.label].filter(Boolean).join('；')}</li>)}</ul></>
+        : <p>当前工序没有设备或人员指定，无需清除。</p>}</div>
+      <p>确认后，将用上表中的工艺工序替换本批次现有工序。</p></>;
+  }
   function Preview({ preview, command, onClose, onCommitted, disabled }) {
     const seen = React.useRef(null), [error, setError] = React.useState(null);
     const action = preview.operation.split('.')[1], subject = action === 'bulk_confirm' ? preview.preview_ref : preview.entity_ref;
@@ -77,15 +93,14 @@
       {row.operations.map((op, index) => <div key={index}>{op.business_code} · {op.sequence} · {op.label} · {op.source === 'external' ? '外协' : '自制'} ·
         {Object.values(op.resources).filter(Boolean).map(resource => resource.label).join(' / ')} · 换型 {window.WorkbenchFormat.hours(op.setup_hours, ENTERED_HOURS)} / 单件 {window.WorkbenchFormat.hours(op.unit_hours, ENTERED_HOURS)} / 周期 {window.WorkbenchFormat.number(op.external_days, ENTERED_DAYS)} · {B.label('status', op.status)}</div>)}
       <div>物料需求 {row.relationships.material_requirement_count} 项</div></> : '删除';
-    return <Modal title={action === 'sync_confirm' ? '确认刷新批次工序' : '确认批量' + ({ update: '修改', delete: '删除', copy: '复制' })[preview.action]} icon="check" locked={command.locked} onClose={onClose}
-      footer={<><Button onClick={onClose} disabled={command.locked}>{command.phase === 'done' ? '关闭' : '取消'}</Button>{command.phase !== 'done' && <Button icon="check" className="btn primary" disabled={disabled || command.locked}
-        onClick={() => command.submit('batch', action, subject, preview.write_context, { preview_ref: preview.preview_ref })}>确认变更</Button>}</>}>
-      <div className="modal-b"><div className="batch-preview wb-table-frame" data-sticky-head><table className="tbl wb-table"><caption className="wb-visually-hidden">批次变更前后对照</caption><thead><tr><th scope="col">原记录</th><th scope="col">确认后</th></tr></thead><tbody>
-        {action === 'bulk_confirm' ? preview.rows.map(row => <tr key={row.entity_ref}><td>{value(row.before)}</td><td>{value(row.after)}</td></tr>)
-          : <tr><td>{preview.before.map(row => <div key={row.ref}>{row.sequence} · {row.label} · {B.label('status', row.status)}</div>)}</td>
-            <td>{preview.after.map((row, index) => <div key={index}>{row.sequence} · {row.label} · 换型 {window.WorkbenchFormat.hours(row.setup_hours, ENTERED_HOURS)} / 单件 {window.WorkbenchFormat.hours(row.unit_hours, ENTERED_HOURS)} / 周期 {window.WorkbenchFormat.number(row.external_days, ENTERED_DAYS)}</div>)}</td></tr>}
-      </tbody></table></div>{action === 'sync_confirm' && <p>刷新会替换现有工序和资源补充；缺失工时保留未填写。已被计划或报工记录用到的批次不能刷新。</p>}
-        <Issues issues={preview.warnings || []} /><ErrorBox error={error} /><window.ResourceForms.Feedback command={command} /></div>
+    const deleting = action === 'bulk_confirm' && preview.action === 'delete';
+    return <Modal title={action === 'sync_confirm' ? '确认更新批次工序' : '确认批量' + ({ update: '修改', delete: '删除', copy: '复制' })[preview.action]} icon={deleting ? 'trash-2' : 'check'} locked={command.locked} onClose={onClose}
+      footer={<><Button onClick={onClose} disabled={command.locked}>{command.phase === 'done' ? '关闭' : '取消'}</Button>{command.phase !== 'done' && <Button icon={deleting ? 'trash-2' : 'check'} className="btn primary" disabled={disabled || command.locked}
+        onClick={() => command.submit('batch', action, subject, preview.write_context, { preview_ref: preview.preview_ref })}>{action === 'sync_confirm' ? '确认更新工序' : deleting ? '确认删除' : '确认变更'}</Button>}</>}>
+      <div className="modal-b">{action === 'sync_confirm' ? <SyncPreview preview={preview} /> : <div className="batch-preview wb-table-frame" data-sticky-head><table className="tbl wb-table"><caption className="wb-visually-hidden">批次变更前后对照</caption><thead><tr><th scope="col">原记录</th><th scope="col">确认后</th></tr></thead><tbody>
+        {preview.rows.map(row => <tr key={row.entity_ref}><td>{value(row.before)}</td><td>{value(row.after)}</td></tr>)}
+      </tbody></table></div>}
+        <Issues issues={preview.warnings || []} /><ErrorBox error={error} /><window.ResourceForms.Feedback command={command} action={deleting ? 'delete' : 'save'} /></div>
     </Modal>;
   }
   window.BatchForms = { BaseEditor, Preview };

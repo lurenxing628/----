@@ -145,7 +145,7 @@
       role: "alert"
     }, "\u6709\u51E0\u9879\u586B\u5F97\u4E0D\u5BF9\uFF0C\u914D\u7F6E\u6CA1\u6709\u4FDD\u5B58\u3002\u8BF7\u4FEE\u6B63\u6807\u7EA2\u7684\u9879\u3002")), /*#__PURE__*/React.createElement("details", {
       className: "sm-rules sm-config-help"
-    }, /*#__PURE__*/React.createElement("summary", null, "\u751F\u6548\u8303\u56F4\u4E0E\u81EA\u52A8\u7EF4\u62A4\u89C4\u5219"), /*#__PURE__*/React.createElement("p", null, "\u6253\u5F00\u9875\u9762\u65F6\u7CFB\u7EDF\u624D\u4F1A\u68C0\u67E5\u4E00\u6B21\u81EA\u52A8\u7EF4\u62A4\uFF0C\u68C0\u67E5\u95F4\u9694\u4E0D\u4FDD\u8BC1\u5728\u6307\u5B9A\u65F6\u523B\u6267\u884C\u3002\u6E05\u7406\u64CD\u4F5C\u65E5\u5FD7\u4E0D\u4F1A\u6E05\u9664\u8FD0\u884C\u65E5\u5FD7\u6587\u4EF6\u3002"), /*#__PURE__*/React.createElement("p", null, "\u4E3B\u9898\u3001\u6BCF\u9875\u6761\u6570\u3001\u7D27\u51D1\u884C\u8DDD\u5C5E\u4E8E\u9875\u9762\u504F\u597D\uFF0C\u4E0D\u5199\u5165\u4E1A\u52A1\u914D\u7F6E\u3002"))), replace && /*#__PURE__*/React.createElement(window.ResourceControls.Modal, {
+    }, /*#__PURE__*/React.createElement("summary", null, "\u751F\u6548\u8303\u56F4\u4E0E\u81EA\u52A8\u7EF4\u62A4\u89C4\u5219"), /*#__PURE__*/React.createElement("p", null, "\u81EA\u52A8\u7EF4\u62A4\u5728\u6253\u5F00\u9875\u9762\u65F6\u68C0\u67E5\u662F\u5426\u5230\u671F\uFF1B\u64CD\u4F5C\u65E5\u5FD7\u4E0E\u8FD0\u884C\u65E5\u5FD7\u5206\u522B\u6E05\u7406\u3002"))), replace && /*#__PURE__*/React.createElement(window.ResourceControls.Modal, {
       title: "\u653E\u5F03\u5F53\u524D\u8349\u7A3F\u5E76\u5237\u65B0\uFF1F",
       icon: "history",
       onClose: () => setReplace(false),
@@ -157,7 +157,7 @@
       }, "\u653E\u5F03\u5E76\u5237\u65B0"))
     }, /*#__PURE__*/React.createElement("div", {
       className: "modal-b form"
-    }, /*#__PURE__*/React.createElement("p", null, "\u672A\u4FDD\u5B58\u4FEE\u6539\u5C06\u88AB\u4E22\u5F03\uFF0C\u4E0D\u4F1A\u5199\u5165\u4E1A\u52A1\u914D\u7F6E\u3002"))));
+    }, /*#__PURE__*/React.createElement("p", null, "\u672A\u4FDD\u5B58\u4FEE\u6539\u5C06\u88AB\u4E22\u5F03\u3002"))));
   }
   window.SystemMaintenanceConfig = Config;
 })();

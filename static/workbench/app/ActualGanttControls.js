@@ -179,26 +179,39 @@
       "data-chain-target": chain.target_task_ref || ''
     }, /*#__PURE__*/React.createElement("div", {
       className: "fg-chain-heading"
-    }, /*#__PURE__*/React.createElement("strong", null, chain.mode === 'related' ? '所选工序的控制前驱链' : '整版计划控制前驱链'), " \xB7 \u539F\u7B97\u6CD5\u8FD1\u4F3C \xB7 ", chain.mode === 'related' ? '目标计划结束' : '计划最晚结束', " ", M.time(chain.makespan_end), chain.partial && /*#__PURE__*/React.createElement("span", {
+    }, /*#__PURE__*/React.createElement("strong", null, chain.mode === 'related' ? '所选工序前驱链（近似）' : '计划关键链（近似）'), " \xB7 ", chain.mode === 'related' ? '计划结束' : '最晚结束', " ", M.time(chain.makespan_end), chain.partial && /*#__PURE__*/React.createElement("span", {
       role: "status"
-    }, " \xB7 \u90E8\u5206\u7ED3\u679C\uFF1A\u4E0D\u542B ", chain.omitted_point_count, " \u9053\u96F6\u5DE5\u65F6\u5DE5\u5E8F")), chain.state === 'unavailable' ? /*#__PURE__*/React.createElement("span", {
+    }, " \xB7 \u5DF2\u7565\u53BB ", chain.omitted_point_count, " \u9053\u96F6\u5DE5\u65F6\u5DE5\u5E8F")), chain.state === 'unavailable' ? /*#__PURE__*/React.createElement("span", {
       role: "status"
-    }, "\u5173\u8054\u94FE\u4E0D\u53EF\u7528\uFF1A", chain.reason) : chain.nodes.map((node, index) => /*#__PURE__*/React.createElement(React.Fragment, {
+    }, "\u5173\u8054\u94FE\u4E0D\u53EF\u7528\uFF1A", chain.reason) : /*#__PURE__*/React.createElement("div", {
+      className: "fg-chain-flow",
+      tabIndex: 0,
+      role: "group",
+      "aria-label": "\u5173\u952E\u94FE\u5DE5\u5E8F\uFF0C\u53EF\u6A2A\u5411\u6EDA\u52A8"
+    }, chain.nodes.map((node, index) => /*#__PURE__*/React.createElement("div", {
+      className: "fg-chain-step",
       key: node.task_ref
     }, index > 0 && /*#__PURE__*/React.createElement("span", {
       className: "fg-chain-edge-label",
-      title: chain.edges[index - 1].reason,
+      "data-edge-type": chain.edges[index - 1].edge_type,
       "data-chain-edge-reason": true
-    }, chain.edges[index - 1].reason, " \xB7 \u95F4\u9694 ", chain.edges[index - 1].gap_minutes, " \u5206\u949F"), /*#__PURE__*/React.createElement(Button, {
+    }, /*#__PURE__*/React.createElement("span", null, chain.edges[index - 1].reason), /*#__PURE__*/React.createElement("small", null, "\u95F4\u9694 ", chain.edges[index - 1].gap_minutes, " \u5206\u949F"), /*#__PURE__*/React.createElement("svg", {
+      viewBox: "0 0 120 12",
+      "aria-hidden": "true"
+    }, /*#__PURE__*/React.createElement("path", {
+      d: "M0 6h117m-5-4 5 4-5 4"
+    }))), /*#__PURE__*/React.createElement(Button, {
       className: "fg-chain-node",
       icon: "search",
       disabled: !visible.has(node.task_ref),
       "data-chain-node": node.task_ref,
       title: M.taskLabel(node),
       onClick: () => onLocate(node.task_ref)
-    }, node.batch_id, " \xB7 ", node.sequence, " ", node.process_label))), /*#__PURE__*/React.createElement("span", {
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "fg-chain-node-label"
+    }, /*#__PURE__*/React.createElement("span", null, node.batch_id), /*#__PURE__*/React.createElement("small", null, node.sequence, " ", node.process_label)))))), /*#__PURE__*/React.createElement("span", {
       className: "fg-muted"
-    }, "\u7B5B\u9009\u5185 ", chain.task_refs.filter(ref => visible.has(ref)).length, " / ", chain.task_refs.length, " \u4E2A\u8282\u70B9 \xB7 \u5DE5\u827A\u5B9E\u7EBF\uFF0C\u8D44\u6E90\u865A\u7EBF \xB7 \u4E0D\u662F\u5B9E\u9645\u5DE5\u65F6\u6216\u5269\u4F59\u9884\u6D4B"));
+    }, "\u5F53\u524D\u663E\u793A ", chain.task_refs.filter(ref => visible.has(ref)).length, " / ", chain.task_refs.length, " \u9053\u5DE5\u5E8F \xB7 \u5DE5\u827A\u4F9D\u8D56\uFF1A\u5B9E\u7EBF \xB7 \u8D44\u6E90\u4F9D\u8D56\uFF1A\u865A\u7EBF"));
   }
   function Range({
     scope,

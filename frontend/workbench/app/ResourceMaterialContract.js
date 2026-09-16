@@ -32,6 +32,8 @@
       && (row.business_code === null || typeof row.business_code === 'string')
       && (row.before === null || C.object(row.before)) && (row.after === null || C.object(row.after))
       && C.object(row.changes) && Array.isArray(row.errors) && row.errors.every(error => C.object(error) && typeof error.message === 'string')
+      && (row.reference_fields === undefined || Array.isArray(row.reference_fields) && row.reference_fields.every(key => typeof key === 'string'
+        && (kind !== 'material' || key === 'created_at')) && new Set(row.reference_fields).size === row.reference_fields.length)
       && typeof row.requires_confirmation === 'boolean' && count(row.reference_count);
     if (!data.rows.every(validRow) || new Set(data.rows.map(row => row.row)).size !== data.rows.length
         || !Object.keys(results).every(key => data.rows.filter(row => row.result === key).length === data.summary[key])
@@ -55,7 +57,7 @@
   function source(request) { return request.source || request.scope && request.scope.source; }
   function selection(request) {
     if (!Array.isArray(request.refs) || request.refs.some(ref => typeof ref !== 'string' || !/^[0-9a-f]{48}$/.test(ref))
-        || new Set(request.refs).size !== request.refs.length) throw C.failure('缺少明确勾选的' + label + '，不会按页面内容推算。');
+        || new Set(request.refs).size !== request.refs.length) throw C.failure('缺少明确勾选的' + label + '，请重新勾选。');
     return request.refs.slice();
   }
   function listContext(request) {
@@ -86,7 +88,7 @@
     if (!result) return '请先完成预检。';
     if (requestedSource !== 'production' || result.meta.source !== 'production') return '当前不是生产数据，不能提交。';
     const data = result.data, context = data.write_context;
-    if (!data.can_confirm || data.summary.rejected) return '预检里有拒绝行，本批不能提交。错误行不会跳过。';
+    if (!data.can_confirm || data.summary.rejected) return '存在未通过检查的行，请修正后重新预检。';
     if (context.capabilities[data.operation] !== true) {
       const reasons = context.blocked_reasons || [];
       const reason = reasons.find(item => item.action === data.operation);

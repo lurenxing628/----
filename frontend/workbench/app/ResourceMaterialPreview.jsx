@@ -26,10 +26,13 @@
     const [filter, setFilter] = React.useState('all'), [page, setPage] = React.useState(1), [size, setSize] = React.useState(20);
     React.useEffect(() => { setFilter('all'); setPage(1); }, [data.preview_ref]);
     const rows = data.rows.filter(row => filter === 'all' || (filter === 'rejected' ? row.result === 'rejected' : row.requires_confirmation));
+    const referenceFields = Array.from(new Set(data.rows.flatMap(row => row.reference_fields || [])));
     const pages = Math.max(1, Math.ceil(rows.length / size)), current = Math.min(page, pages);
     return <section className="rm-preview" aria-label={label + '预检明细'}>
       <div className="rm-summary" role="status">{Object.keys(M.results).filter(key => key !== (mode === 'bulk' ? 'new' : 'delete') && (mode !== 'bulk' || !['update', 'unchanged'].includes(key))).map(key =>
         <span key={key}>{M.results[key]} <b className={key === 'rejected' && data.summary[key] ? 'rm-danger' : ''}>{data.summary[key]}</b></span>)}</div>
+      {mode === 'import' && referenceFields.length > 0 && <p role="status">以下文件列仅供参考，本次不导入：{referenceFields.map(key => fields[key]).join('、')}。
+        已有记录的这些信息保持原值；新记录按系统规则生成。{referenceFields.includes('machine_authorizations') && '设备权限需在人员详情设置。'}</p>}
       <div className="rm-preview-toolbar"><h3>逐行预检</h3><label>显示 <select aria-label="预检明细筛选" value={filter} onChange={event => { setFilter(event.target.value); setPage(1); }}>
         <option value="all">全部 {data.rows.length} 行</option><option value="rejected">拒绝行 {data.summary.rejected}</option>
         {mode === 'import' && <option value="confirmation">涉及关联的更新 {data.rows.filter(row => row.requires_confirmation).length}</option>}</select></label></div>

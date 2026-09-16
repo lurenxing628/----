@@ -22,7 +22,7 @@
           <td><span className={'pill ' + (entity.status === 'active' ? 'ok' : entity.status === 'inactive' ? 'off' : 'warn')}><span className="dot" />{entity.status === 'active' ? '启用' : entity.status === 'inactive' ? '停用' : '旧状态未知'}</span></td>
           <td>{M.memberCount(kind, entity) === null ? '未读取' : M.memberCount(kind, entity)}</td>{kind === 'shift_profile' && <td>{entity.fields.cycle_days}</td>}
           <td className="wb-col-actions"><div className="rowact"><Button className="mini" icon="square-pen" aria-label={'编辑 ' + entity.business_code} disabled={disabled} reasonDisplay="tooltip" reason={C.blocked(entity.write_context, kind, 'update', list.result.meta.source)} onClick={() => onOpen('update', entity.ref)} />
-            <Button className="mini" icon="minus" aria-label={'删除 ' + entity.business_code} disabled={disabled} reasonDisplay="tooltip" reason={C.blocked(entity.write_context, kind, 'delete', list.result.meta.source)} onClick={() => onOpen('delete', entity.ref)} /></div></td></tr>)}
+            <Button className="mini danger" icon="trash-2" aria-label={'删除 ' + entity.business_code} disabled={disabled} reasonDisplay="tooltip" reason={C.blocked(entity.write_context, kind, 'delete', list.result.meta.source)} onClick={() => onOpen('delete', entity.ref)}>删除</Button></div></td></tr>)}
         </tbody></table></div>
         {!data.entities.length && <EmptyState kind={scope.query || scope.status ? 'filtered' : 'empty'} title="当前范围没有记录"
           hint="可清除搜索和状态筛选后查看全部记录。" action={scope.query || scope.status ? <Button disabled={disabled} onClick={() => { setSearch(''); filter({ query: '', status: '' }); }}>清除筛选</Button> : undefined} />}
@@ -109,9 +109,9 @@
     }
     const title = (editor && !done ? ({ create: '新增', update: '编辑', delete: '删除' })[editor.action] : '维护') + (M.names[kind] || '基础资料');
     return <div className="plana resource-catalog" data-resource-catalog={kind} ref={root}>
-      <Modal title={title} icon={kind === 'shift_profile' ? 'clock-3' : 'folder-open'} locked={locked} guardOwner={guardOwner} onClose={options => requestClose('close', options)}
+      <Modal title={title} icon={editor && editor.action === 'delete' ? 'trash-2' : kind === 'shift_profile' ? 'clock-3' : 'folder-open'} locked={locked} guardOwner={guardOwner} onClose={options => requestClose('close', options)}
         footer={<><Button onClick={() => requestClose()} reason={locked ? '操作结果还没确认，请保留当前页面。' : ''}>{lastReceipt || done ? '完成并返回' : '关闭'}</Button>
-            {editor && !done && <><Button onClick={() => requestClose('list')} disabled={locked}>返回列表</Button><Button type="submit" form={formId} className="btn primary" icon={editor.action === 'delete' ? 'minus' : 'check'} reason={reason || confirmReason} disabled={locked}>
+            {editor && !done && <><Button onClick={() => requestClose('list')} disabled={locked}>返回列表</Button><Button type="submit" form={formId} className={'btn ' + (editor.action === 'delete' ? 'danger' : 'primary')} icon={editor.action === 'delete' ? 'trash-2' : 'check'} reason={reason || confirmReason} disabled={locked}>
               {editor.action === 'delete' ? '确认删除' : '保存'}</Button></>}
             {done && <Button icon="folder-open" onClick={() => back('list')}>继续维护</Button>}</>}>
         <div className="modal-b form scroll">

@@ -9,9 +9,10 @@
     capabilities,
     disabled,
     hoursOnly = false,
+    routeOnly = false,
     onAction
   }) {
-    return /*#__PURE__*/React.createElement(React.Fragment, null, (hoursOnly ? [['hours', '工时定额']] : [['route', '工艺路线'], ['hours', '工时定额']]).map(([kind, label]) => /*#__PURE__*/React.createElement(React.Fragment, {
+    return /*#__PURE__*/React.createElement(React.Fragment, null, (hoursOnly ? [['hours', '工时定额']] : routeOnly ? [['route', '工艺路线']] : [['route', '工艺路线'], ['hours', '工时定额']]).map(([kind, label]) => /*#__PURE__*/React.createElement(React.Fragment, {
       key: kind
     }, /*#__PURE__*/React.createElement(Button, {
       transfer: "import",

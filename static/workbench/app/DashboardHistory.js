@@ -48,7 +48,7 @@
       risk: item.risk
     }), /*#__PURE__*/React.createElement(P.Status, {
       handling: item.handling
-    }), /*#__PURE__*/React.createElement("span", null, "\u8FD9\u91CC\u662F\u5F53\u524D\u72B6\u6001\uFF0C\u4E0D\u662F\u5386\u53F2\u72B6\u6001")), /*#__PURE__*/React.createElement(ErrorBox, {
+    }), /*#__PURE__*/React.createElement("span", null, "\u5F53\u524D\u72B6\u6001")), /*#__PURE__*/React.createElement(ErrorBox, {
       error: read.error
     }), read.loading && /*#__PURE__*/React.createElement(window.WorkbenchListControls.EmptyState, {
       kind: "loading",

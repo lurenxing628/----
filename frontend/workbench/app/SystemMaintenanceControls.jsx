@@ -3,7 +3,7 @@
   const A = window.SystemMaintenanceAPI;
   function Button({ children, icon, className = 'btn', ...props }) {
     const label = typeof children === 'string' ? children : props['aria-label'];
-    return <window.ResourceControls.Button {...props} icon={icon === 'rotate-ccw' ? undefined : icon === 'save' ? 'check' : icon === 'trash-2' ? 'x' : icon}
+    return <window.ResourceControls.Button {...props} icon={icon === 'rotate-ccw' ? undefined : icon === 'save' ? 'check' : icon}
       title={props.reason || props.title || label} aria-label={props['aria-label'] || (props.reason && label ? label + '：' + props.reason : undefined)}
       reasonDisplay={props.reason ? 'inline' : props.reasonDisplay} className={className + ' sm-button' + (children ? '' : ' sm-icon-button')}>{icon === 'rotate-ccw' && <SMIcon name="rotate-ccw" />}{children}</window.ResourceControls.Button>;
   }
@@ -28,11 +28,11 @@
   function Confirm({ action, row, reason, onClose, onConfirm }) {
     const [checked, setChecked] = React.useState(false), [typed, setTyped] = React.useState('');
     const destructive = action !== 'create', ready = !destructive || checked && (action !== 'restore' || typed === '恢复');
-    return <window.ResourceControls.Modal title={A.actions[action]} icon={action === 'create' ? 'plus' : action === 'delete' ? 'x' : 'history'} onClose={onClose}
-      footer={<><Button onClick={onClose}>取消</Button><Button icon="check" className="btn primary" reason={reason} disabled={!ready} onClick={onConfirm}>确认{action === 'create' ? '新增' : action === 'delete' ? '删除' : '恢复'}</Button></>}>
+    return <window.ResourceControls.Modal title={A.actions[action]} icon={action === 'create' ? 'plus' : action === 'delete' ? 'trash-2' : 'history'} onClose={onClose}
+      footer={<><Button onClick={onClose}>取消</Button><Button icon={action === 'delete' ? 'trash-2' : 'check'} className={'btn ' + (action === 'delete' ? 'danger' : 'primary')} reason={reason} disabled={!ready} onClick={onConfirm}>确认{action === 'create' ? '新增' : action === 'delete' ? '删除' : '恢复'}</Button></>}>
       <div className="modal-b form scroll" style={{ overflowWrap: 'anywhere' }}>
         {row && <p><strong>{row.filename}</strong><br />文件修改时间 {window.WorkbenchFormat.dateTime(row.time)} · {row.size_bytes} 字节<br />文件存在，尚无本次完整性校验证据。</p>}
-        <p>{action === 'create' ? '新增一份本机数据库备份。结果以维护记录为准。' : action === 'delete' ? '仅删除此备份文件，删除后不能撤销。' : '将用所选备份替换当前数据库。系统会先生成保护副本；完整性检查不通过时自动还原。'}</p>
+        <p>{action === 'create' ? '备份当前数据库。' : action === 'delete' ? '仅删除此备份文件，删除后不能撤销。' : '将用所选备份替换当前数据库。系统会先生成保护副本；完整性检查不通过时自动还原。'}</p>
         {action === 'restore' && <p className="sm-notice">一旦提交恢复，业务操作会停用。无论恢复成功还是已还原，都要关闭整个软件再启动；只刷新浏览器不算重启。</p>}
         {destructive && <label className="sm-inline-label"><input type="checkbox" checked={checked} onChange={event => setChecked(event.target.checked)} />我已核对所选文件与操作影响</label>}
         {action === 'restore' && <label className="field" style={{ marginTop: 16 }}><span>输入“恢复”确认</span><input value={typed} onChange={event => setTyped(event.target.value)} /></label>}
@@ -61,7 +61,7 @@
         <details className="sm-rules"><summary>维护阶段</summary>{op.history.map((step, index) => <p key={index}>{window.WorkbenchFormat.dateTime(step.time)} · {labels[step.state]}</p>)}</details>
       </div> : result && result.kind === 'config' ? <div role="status"><p>{result.command.result === 'committed' ? '八项维护配置已保存，操作记录已留存。' : '配置没有变化，没有写入新的操作记录。'}</p>
         <window.WorkbenchReference label="保存结果编号" value={result.command.receipt_ref} />{result.command.replayed && <p>查询上次结果</p>}</div> : result && result.kind === 'rejected' ? <p role="status">系统拒绝了这次提交，配置没有改动。请按上面的提示改好后重新提交。</p> : null}
-      {intent && !(result && result.terminal) && <p className="sm-note">{result && result.kind === 'not_recorded' ? result.message : '上次操作还没有确认结果。'} 查不到结果不代表没有执行，系统不会换个编号重做。{intent.action === 'restore' ? ' 恢复的结果确认前，暂停读取数据库里的其他信息。' : ''}</p>}
+      {intent && !(result && result.terminal) && <p className="sm-note">{result && result.kind === 'not_recorded' ? result.message : '上次操作还没有确认结果。'} 请点「查询结果」，勿重复提交。{intent.action === 'restore' ? ' 确认恢复结果前，业务操作暂停。' : ''}</p>}
     </section>;
   }
   function Preferences({ theme, onSetTheme, pageSize, onPageSize, compact, onCompact }) {

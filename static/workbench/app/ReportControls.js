@@ -72,15 +72,14 @@
         event.preventDefault();
         onChange(window.ReportAPI.scope(draft));
       }
-    }, /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("p", {
+      className: "rw-source-line"
+    }, /*#__PURE__*/React.createElement("span", null, "\u6570\u636E\u6765\u6E90"), /*#__PURE__*/React.createElement("output", {
+      className: "rw-source-value",
+      "aria-label": "\u6570\u636E\u6765\u6E90"
+    }, "\u5F53\u524D\u6B63\u5F0F\u8BA1\u5212")), /*#__PURE__*/React.createElement("div", {
       className: "aw-scope-main"
-    }, /*#__PURE__*/React.createElement("label", null, "\u6570\u636E\u6765\u6E90", /*#__PURE__*/React.createElement("select", {
-      "aria-label": "\u6570\u636E\u6765\u6E90",
-      value: "production",
-      disabled: true
-    }, /*#__PURE__*/React.createElement("option", {
-      value: "production"
-    }, "\u5F53\u524D\u6B63\u5F0F\u8BA1\u5212"))), /*#__PURE__*/React.createElement("label", null, "\u8BA1\u5212\u5B8C\u5DE5\u8D77\u65E5", /*#__PURE__*/React.createElement("input", {
+    }, /*#__PURE__*/React.createElement("label", null, "\u8BA1\u5212\u5B8C\u5DE5\u8D77\u65E5", /*#__PURE__*/React.createElement("input", {
       type: "date",
       "aria-label": "\u8BA1\u5212\u5B8C\u5DE5\u8D77\u65E5",
       value: draft.plan_finish_date_from || '',
@@ -116,7 +115,7 @@
       type: "submit",
       busy: busy,
       "aria-label": "\u67E5\u8BE2\u8303\u56F4",
-      className: "btn"
+      className: "primary"
     }), /*#__PURE__*/React.createElement(Button, {
       icon: "chevron-down",
       "aria-label": "\u66F4\u591A\u7B5B\u9009",

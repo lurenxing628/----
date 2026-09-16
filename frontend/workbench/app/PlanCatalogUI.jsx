@@ -7,7 +7,7 @@
     const text = plan.is_current_official ? '当前正式' : plan.kind === 'official' ? '历史正式' : plan.kind === 'candidate' ? '候选方案' : '试调方案';
     return <span className={'plan-state ' + (unavailable ? 'unavailable' : plan.is_current_official ? 'official' : '')}>{text}{unavailable ? ' · 不可查看' : ''}</span>;
   }
-  function Catalog({ adapter, selectedRef, onSelect, autoSelect = false, disabled = false }) {
+  function Catalog({ adapter, selectedRef, onSelect, autoSelect = false, disabled = false, actions }) {
     const [collection, setCollection] = React.useState('history'), [pages, setPages] = React.useState([{}]), [index, setIndex] = React.useState(0);
     const [paused, setPaused] = React.useState(false), [collapsed, setCollapsed] = React.useState(!!selectedRef);
     const attempted = React.useRef(false), section = React.useRef(null), restoreFocus = React.useRef(false);
@@ -44,7 +44,7 @@
       }}><option value="" disabled>请选择计划</option>{selectedRef && (!data || !data.plans.some(plan => plan.plan_ref === selectedRef)) && <option value={selectedRef}>已选计划（在其他页）</option>}
         {data && data.plans.filter(plan => plan.plan_ref).map(plan => <option key={plan.plan_ref} value={plan.plan_ref} disabled={!plan.capabilities.view}>{plan.display_name}{plan.is_current_official ? ' · 当前正式' : ''}</option>)}</select></label>
         {!collapsed && <window.PlanSegmentUI value={collection} options={[["history", "历史版本"], ["scenario", "试调方案"]]} label="计划列表范围" onChange={refresh} disabled={disabled} />}
-        <div className="plan-actions"><Button className="btn plan-icon" icon="refresh-cw" aria-label="刷新计划列表" disabled={disabled} busy={read.loading} onClick={() => refresh()} />
+        <div className="plan-actions">{actions}<Button className="btn plan-icon" icon="refresh-cw" aria-label="刷新计划列表" disabled={disabled} busy={read.loading} onClick={() => refresh()} />
           {read.loading && <Button icon="x" className="btn plan-icon" aria-label="取消列表读取" onClick={() => setPaused(true)} />}
           <Button icon="chevron-down" className={'btn plan-icon' + (collapsed ? '' : ' plan-up')} aria-label={collapsed ? '展开计划列表' : '收起计划列表'} aria-expanded={!collapsed} onClick={() => setCollapsed(!collapsed)} /></div>
       </div>

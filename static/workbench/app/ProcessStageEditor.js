@@ -31,7 +31,7 @@
   }
   function location(stage, operationRef, groupRef) {
     const ref = item => typeof item === 'string' && /^[0-9a-f]{48}$/.test(item);
-    if (stage != null && !['route', 'source', 'hours'].includes(stage) || operationRef != null && !ref(operationRef) || groupRef != null && !ref(groupRef)) throw C.failure('要定位的阶段或工序已失效，不会按序号或名称找相近的替代。');
+    if (stage != null && !['route', 'source', 'hours'].includes(stage) || operationRef != null && !ref(operationRef) || groupRef != null && !ref(groupRef)) throw C.failure('所选阶段或工序已失效，请重新选择。');
     return {
       stage: stage || null,
       operationRef: operationRef || null,
@@ -115,16 +115,13 @@
     paging,
     disabled
   }) {
-    return /*#__PURE__*/React.createElement("label", {
-      className: "search"
-    }, /*#__PURE__*/React.createElement("input", {
-      type: "search",
+    return /*#__PURE__*/React.createElement(window.ResourceControls.Search, {
       "aria-label": "\u641C\u7D22\u5DE5\u5E8F\u3001\u5DE5\u79CD",
       placeholder: "\u641C\u7D22\u5DE5\u5E8F\u3001\u5DE5\u79CD\u2026",
       value: paging.query,
       disabled: disabled,
       onChange: event => paging.setQuery(event.target.value)
-    }));
+    });
   }
   function Groups({
     rows,
@@ -148,11 +145,10 @@
     }, /*#__PURE__*/React.createElement("h3", null, title), !rows.length ? /*#__PURE__*/React.createElement("p", {
       className: "muted"
     }, empty) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
-      className: "wb-table-frame"
-    }, /*#__PURE__*/React.createElement("div", {
-      className: "card-scroll wb-table-shell"
+      className: "wb-table-frame wb-table-shell",
+      "data-sticky-head": true
     }, /*#__PURE__*/React.createElement("table", {
-      className: "tbl wb-table",
+      className: 'tbl wb-table' + (onTotal || onDiscard ? ' wb-table--editable' : ''),
       "aria-label": title,
       style: {
         minWidth: 850,
@@ -206,7 +202,7 @@
       checked: selected.has(row.ref),
       disabled: disabled,
       onChange: event => onDiscard(event.target.checked ? discarded.concat(row.ref) : discarded.filter(ref => ref !== row.ref))
-    }), "\u660E\u786E\u89E3\u9664") : '保持原组'))))))), /*#__PURE__*/React.createElement(Pager, {
+    }), "\u660E\u786E\u89E3\u9664") : '保持原组')))))), /*#__PURE__*/React.createElement(Pager, {
       paging: paging,
       disabled: disabled
     })));
@@ -463,17 +459,6 @@
   }
   // Unconfirmed operations are reported with the page they sit on (unfiltered order, current page size),
   // so a 120-operation part can be fixed without paging blind; the first offending page rides on the error.
-  function unconfirmed(rows, all, size, label) {
-    const pages = new Map();
-    rows.forEach(row => {
-      const page = Math.floor(all.indexOf(row) / size) + 1;
-      pages.set(page, (pages.get(page) || []).concat(row.sequence));
-    });
-    const ordered = Array.from(pages.entries()).sort((a, b) => a[0] - b[0]);
-    const error = C.failure('还有 ' + rows.length + ' 道工序的' + label + '没有勾选确认：' + ordered.map(([page, sequences]) => '第 ' + page + ' 页工序 ' + sequences.join('、')).join('；') + '。');
-    error.locate_page = ordered[0][0];
-    return error;
-  }
   function reason(model, adapter, stage) {
     const entity = model.base.data;
     return model.review ? '请先核对最新资料。' : model.busy ? '正在读取最新资料。' : P.reason(entity.capabilities, 'stage_confirm', typeof adapter.command === 'function') || (entity.workflow[stage === 'source' ? 'route' : 'source'].state !== 'confirmed' ? stage === 'source' ? '请先确认路线。' : '请先确认归属。' : '') || (stage === 'source' ? model.base.meta.source !== 'production' ? '当前不是生产数据，不能保存。' : '' : C.blocked(entity.write_context, 'process', stage + '_confirm', model.base.meta.source));
@@ -494,7 +479,6 @@
     reason,
     location,
     locate,
-    useFocus,
-    unconfirmed
+    useFocus
   };
 })();

@@ -46,7 +46,7 @@
     const d = result.data;
     if (mode === 'list' && (!Array.isArray(d.tasks) || !d.tasks.every(task) || !C.object(d.page) || !Number.isInteger(d.page.total) || !C.object(d.summary))) throw C.failure('读到的现场任务列表不完整，请刷新重试。');
     if (mode === 'list' && d.tasks.some(row => !d.plan || row.plan_ref !== d.plan.plan_ref)) throw C.failure('现场任务与所选计划不一致。');
-    if (mode === 'detail' && (!task(d.task) || d.task.task_ref !== expected)) throw C.failure('现场任务详情不匹配，未替换所选任务。');
+    if (mode === 'detail' && (!task(d.task) || d.task.task_ref !== expected)) throw C.failure('现场任务详情不匹配，请刷新后重选。');
     if (mode === 'preview' && (!/^[A-Za-z0-9_-]{32}$/.test(d.preview_ref) || !Array.isArray(d.rows) || typeof d.can_confirm !== 'boolean' || d.commit_policy !== 'atomic' || !C.object(d.write_context))) throw C.failure('读到的文件预检结果不完整，请刷新重试。');
     return result;
   }

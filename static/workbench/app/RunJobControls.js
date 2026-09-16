@@ -47,9 +47,8 @@
         width: percent + '%'
       }
     })), computing && /*#__PURE__*/React.createElement("p", {
-      className: "rj-notice",
-      role: "status"
-    }, "\u8BA1\u7B97\u8FD8\u6CA1\u7ED3\u675F\uFF0C\u8BF7\u4E0D\u8981\u5173\u95ED\u6216\u5237\u65B0\u672C\u9875\uFF1B\u5207\u5230\u522B\u7684\u9875\u9762\u4F1A\u6682\u505C\u67E5\u8BE2\uFF0C\u56DE\u6765\u540E\u81EA\u52A8\u7EED\u67E5\u3002"));
+      className: "rj-muted"
+    }, "\u8BA1\u7B97\u5728\u672C\u673A\u7EE7\u7EED\u8FDB\u884C\uFF1B\u8FD4\u56DE\u672C\u9875\u53EF\u67E5\u770B\u6700\u65B0\u7ED3\u679C\u3002"));
   }
   function Status({
     run
@@ -118,9 +117,9 @@
       className: "modal-body run-job-panel rj-confirm"
     }, /*#__PURE__*/React.createElement(Scope, {
       preview: preview
-    }), /*#__PURE__*/React.createElement("div", {
-      className: "rj-notice"
-    }, "\u53EA\u8BA1\u7B97\u5E76\u4FDD\u5B58\u5019\u9009\u65B9\u6848\uFF0C\u4E0D\u66FF\u6362\u6B63\u5F0F\u8BA1\u5212\u3002\u73ED\u8868\u662F\u5426\u6392\u5F97\u4E0B\u8FD8\u6CA1\u6838\u5BF9\uFF0C\u6700\u7EC8\u7ED3\u679C\u770B\u8FD9\u6B21\u6392\u4EA7\u8BB0\u5F55\u3002"), /*#__PURE__*/React.createElement("details", {
+    }), /*#__PURE__*/React.createElement("p", {
+      className: "rj-muted"
+    }, "\u8BA1\u7B97\u5B8C\u6210\u540E\u53EF\u6BD4\u8F83\u5019\u9009\u65B9\u6848\uFF0C\u518D\u9009\u62E9\u662F\u5426\u91C7\u7528\u4E3A\u6B63\u5F0F\u8BA1\u5212\u3002"), /*#__PURE__*/React.createElement("details", {
       className: "wb-ref"
     }, /*#__PURE__*/React.createElement("summary", null, "\u6279\u6B21\u5185\u90E8\u7F16\u53F7 \xB7 ", values.length, " \u6279"), /*#__PURE__*/React.createElement("ol", {
       className: "rj-refs",
@@ -189,13 +188,12 @@
       className: "rj-heading"
     }, /*#__PURE__*/React.createElement("h3", null, "\u5DF2\u4FDD\u5B58\u5019\u9009\u65B9\u6848 \xB7 ", run.candidates.length, " \u9879"), /*#__PURE__*/React.createElement(Button, {
       icon: "refresh-cw",
-      "aria-label": "\u5237\u65B0\u5019\u9009\u65B9\u6848\u5217\u8868",
       busy: busy,
       onClick: () => {
         setQuery({});
         refresh();
       }
-    })), !canOpen && /*#__PURE__*/React.createElement("p", {
+    }, "\u5237\u65B0\u5019\u9009\u65B9\u6848\u5217\u8868")), !canOpen && /*#__PURE__*/React.createElement("p", {
       className: "rj-muted"
     }, window.WorkbenchTerms.outcomes.unavailable), error && /*#__PURE__*/React.createElement("div", {
       className: "rj-notice",
@@ -265,20 +263,29 @@
     run,
     intent,
     paused,
+    retryPaused,
+    lastChecked,
+    resolution,
     checking,
     verified,
     api
   }) {
+    const replaced = resolution === 'context_replaced';
+    const queryLabel = checking ? '正在查询结果' : replaced ? '数据库已恢复' : resolution === 'lookup_failed' ? '查询失败' : '暂未查到这次排产记录';
     return /*#__PURE__*/React.createElement("section", {
       "aria-label": "\u8FD9\u6B21\u6392\u4EA7\u8BB0\u5F55",
       className: "rj-record"
     }, /*#__PURE__*/React.createElement("div", {
       className: "rj-heading"
-    }, /*#__PURE__*/React.createElement("h3", null, "\u6392\u4EA7\u8BB0\u5F55"), run ? /*#__PURE__*/React.createElement(Status, {
+    }, /*#__PURE__*/React.createElement("h3", null, "\u6700\u8FD1\u6392\u4EA7\u8BB0\u5F55"), run ? /*#__PURE__*/React.createElement(Status, {
       run: run
     }) : /*#__PURE__*/React.createElement("span", {
+      role: "status",
+      "data-query-state": checking ? 'querying' : resolution
+    }, queryLabel)), replaced && /*#__PURE__*/React.createElement("p", {
+      className: "rj-muted",
       role: "status"
-    }, "\u6B63\u5728\u67E5\u8BE2\u4E0A\u6B21\u6392\u4EA7\u7684\u7ED3\u679C")), (intent || run) && /*#__PURE__*/React.createElement(window.WorkbenchReference, {
+    }, "\u6570\u636E\u5E93\u5DF2\u6062\u590D\uFF0C\u4E0A\u6B21\u6392\u4EA7\u7ED3\u679C\u4E0D\u5728\u5F53\u524D\u6570\u636E\u4E2D\u3002\u8BF7\u91CD\u65B0\u68C0\u67E5\u5F53\u524D\u6279\u6B21\u540E\u5F00\u59CB\u6392\u4EA7\u3002"), (intent || run) && /*#__PURE__*/React.createElement(window.WorkbenchReference, {
       entries: {
         ...(intent ? {
           '操作编号': intent.request_key
@@ -302,10 +309,10 @@
       key: run.run_ref,
       run: run,
       api: api
-    })), !A.terminal(run) && /*#__PURE__*/React.createElement("p", {
-      className: paused ? 'rj-notice' : 'rj-muted',
+    })), !replaced && /*#__PURE__*/React.createElement("p", {
+      className: "rj-muted rj-query-summary",
       role: "status"
-    }, paused ? '页面切走了，已暂停查询；回到本页会继续查上次排产的结果。' : checking ? '正在查询上次排产的记录。' : '等待下一次查询，不会重复提交排产。'));
+    }, lastChecked && /*#__PURE__*/React.createElement("span", null, "\u6700\u8FD1\u67E5\u8BE2\uFF1A", window.WorkbenchFormat.dateTime(new Date(lastChecked).toLocaleString('sv-SE').replace(' ', 'T'))), retryPaused ? /*#__PURE__*/React.createElement("span", null, "\u5DF2\u6682\u505C\u81EA\u52A8\u67E5\u8BE2\u3002\u53EF\u70B9\u300C\u67E5\u8BE2\u7ED3\u679C\u300D\u518D\u6B21\u6838\u5BF9\u539F\u8BB0\u5F55\u3002") : !A.terminal(run) && /*#__PURE__*/React.createElement("span", null, paused ? '页面已切走，返回后继续查询。' : checking ? '正在读取排产记录。' : '等待下次查询。')));
   }
   function Styles() {
     return null;

@@ -25,9 +25,9 @@
   function available(entity, key) {
     if (!C.availability(entity.availability)) {
       const issue = entity.issues.find(item => item.code === 'resource_availability_unavailable');
-      return <span className="muted" title={issue ? issue.message : '可用数量还没读取，不会用关联总数代替。'}>{issue ? '暂无数据' : '未读取'}</span>;
+      return <span className="muted" title={issue ? issue.message : '可用数量尚未读取。'}>{issue ? '暂无数据' : '未读取'}</span>;
     }
-    return <span title={key === 'machines' ? '启用并绑定此工种的设备；不代表当天班表有空。' : '启用、有匹配设备授权、工种资格合格的人数（不重复计数）；不代表当天班表有空。'}>{entity.availability[key]}</span>;
+    return <span title={key === 'machines' ? '已启用且关联此工种的设备数。' : '具备对应技能和设备授权的在岗人数（去重）。'}>{entity.availability[key]}</span>;
   }
   function opColumns(category) {
     if (category === 'internal') return [
@@ -82,7 +82,7 @@
           {col.key === 'label' && entity.issues.some(issue => issue.scope !== 'collection') && <span className="muted" style={{ display: 'block', fontSize: 12 }}>待核对 {entity.issues.filter(issue => issue.scope !== 'collection').length} 项</span>}</td>)}
         <td className="actcol wb-col-actions"><div className="rowact">
           <Button className="mini" icon="search" disabled={disabled} onClick={() => onOpen(entity.ref)}>{kind === 'op_type' ? entity.fields.category === 'internal' ? '查看绑定' : entity.fields.category === 'external' ? '查看供应商' : '查看/编辑' : '查看/编辑'}</Button>
-          <Button className="mini danger" icon="minus" reasonDisplay="inline" reason={disabled ? '正在处理，请稍候。' : C.blocked(entity.write_context, kind, 'delete', source)} onClick={() => onDelete(entity.ref)}>删除</Button>
+          <Button className="mini danger" icon="trash-2" reasonDisplay="inline" reason={disabled ? '正在处理，请稍候。' : C.blocked(entity.write_context, kind, 'delete', source)} onClick={() => onDelete(entity.ref)}>删除</Button>
         </div></td></tr>)}{!entities.length && <tr><td colSpan={cols.length + 2}><window.WorkbenchControls.EmptyState kind={loading ? 'loading' : error ? 'error' : filtered ? 'filtered' : 'empty'} error={error}
           action={error ? <Button onClick={onRetry}>刷新</Button> : filtered ? <Button onClick={onClear}>清除筛选</Button> : undefined} /></td></tr>}</tbody>
     </table></div></div>;

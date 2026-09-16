@@ -138,7 +138,7 @@
         return;
       }
       if (n.view === 'batches' && context.batch_ref) context.entity_ref = context.batch_ref;
-      C.check(onNavigate(n.view, context) !== false, '目标页面没有打开，这条记录仍然保留。请刷新后重试。');
+      C.check(onNavigate(n.view, context) !== false, '目标页面未能打开，请刷新重试。');
     }
     function navigate(n, origin) {
       try {
@@ -207,7 +207,7 @@
       onClick: () => setOutsourcing(null)
     }, "\u8FD4\u56DE\u503C\u73ED\u53F0\u6761\u76EE")), /*#__PURE__*/React.createElement("div", {
       className: "dy-note"
-    }, "\u5916\u534F\u7269\u6D41\u767B\u8BB0\u6982\u89C8 \xB7 \u7269\u6D41\u767B\u8BB0\u4E0D\u66FF\u4EE3\u98CE\u9669\u5904\u7F6E\u3002"), /*#__PURE__*/React.createElement(window.WorkbenchReference, {
+    }, "\u5916\u534F\u7269\u6D41\u767B\u8BB0\u6982\u89C8"), /*#__PURE__*/React.createElement(window.WorkbenchReference, {
       entries: {
         '登记编号': outsourcing.outsourcing_ref
       }
@@ -404,7 +404,7 @@
       canNavigate: typeof onNavigate === 'function'
     })) : /*#__PURE__*/React.createElement("section", {
       "aria-label": "\u672C\u95EE\u9898\u5019\u9009\u72B6\u6001"
-    }, /*#__PURE__*/React.createElement("h3", null, "\u8FD9\u4E2A\u95EE\u9898\u8FD8\u6CA1\u6709\u5355\u72EC\u7684\u5019\u9009\u65B9\u6848"), /*#__PURE__*/React.createElement("p", null, "\u8FD9\u91CC\u4E0D\u4F1A\u62FF\u5176\u4ED6\u95EE\u9898\u7684\u5019\u9009\u65B9\u6848\u5F53\u6210\u672C\u95EE\u9898\u7684\u7ED3\u8BBA\u3002"), /*#__PURE__*/React.createElement(Button, {
+    }, /*#__PURE__*/React.createElement("h3", null, "\u8FD9\u4E2A\u95EE\u9898\u8FD8\u6CA1\u6709\u5355\u72EC\u7684\u5019\u9009\u65B9\u6848"), /*#__PURE__*/React.createElement(Button, {
       icon: "git-compare-arrows",
       onClick: () => category('candidate')
     }, "\u67E5\u770B\u73B0\u6709\u5019\u9009\u65B9\u6848"))), handlingAvailable && activeTab === 'records' && /*#__PURE__*/React.createElement(window.DashboardHistory, {
@@ -417,7 +417,7 @@
       onHandle: () => setDialog(true)
     }))))), /*#__PURE__*/React.createElement("footer", {
       className: "dy-footer"
-    }, /*#__PURE__*/React.createElement("span", null, "\u6B63\u5F0F\u8BA1\u5212 / \u62A5\u5DE5\u8BB0\u5F55 / \u8D44\u6E90\u73ED\u8868 / \u9F50\u5957\u8BB0\u5F55 / \u5916\u534F\u767B\u8BB0"), /*#__PURE__*/React.createElement("span", null, "\u98CE\u9669\u4E0E\u5904\u7F6E\u72EC\u7ACB \xB7 \u5916\u534F\u56DE\u5382\u4E0D\u7B49\u4E8E\u5DE5\u5E8F\u5B8C\u5DE5")), dialog && (command.saved || item) && /*#__PURE__*/React.createElement(window.DashboardHandling, {
+    }, /*#__PURE__*/React.createElement("span", null, "\u6B63\u5F0F\u8BA1\u5212 / \u62A5\u5DE5\u8BB0\u5F55 / \u8D44\u6E90\u73ED\u8868 / \u9F50\u5957\u8BB0\u5F55 / \u5916\u534F\u767B\u8BB0")), dialog && (command.saved || item) && /*#__PURE__*/React.createElement(window.DashboardHandling, {
       key: command.saved ? command.saved.request_key : item.item_ref,
       item: item,
       command: command,

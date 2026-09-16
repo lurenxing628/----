@@ -59,7 +59,7 @@
     };
     return {
       lead: '工艺已确认 ' + counts.ready + ' / ' + total + ' 项',
-      lines: ['待路线 ' + counts.route + ' / 待归属 ' + counts.source + ' / 待工时 ' + counts.hours, '已确认：路线 ' + counts.route_confirmed + ' / 归属 ' + counts.source_confirmed + ' / 工时 ' + counts.hours_confirmed, ...(counts.legacy ? ['存量 ' + counts.legacy + ' 项未确认；含路线资料 ' + counts.legacy_route_present + ' 项'] : [])]
+      lines: ['待路线 ' + counts.route + ' / 待归属 ' + counts.source + ' / 待工时 ' + counts.hours, '已确认：路线 ' + counts.route_confirmed + ' / 归属 ' + counts.source_confirmed + ' / 工时 ' + counts.hours_confirmed, ...(counts.legacy ? [counts.legacy + ' 项暂无确认记录，其中 ' + counts.legacy_route_present + ' 项已有路线资料'] : [])]
     };
   }
   function itemText(item, key) {
@@ -363,23 +363,11 @@
     }))), /*#__PURE__*/React.createElement("div", {
       className: "rail-foot"
     }, /*#__PURE__*/React.createElement("div", {
-      className: "hb-ready"
-    }, /*#__PURE__*/React.createElement("div", {
       className: "hb-r-top",
       style: {
         flexWrap: 'wrap'
       }
     }, /*#__PURE__*/React.createElement("span", {
-      className: "hb-rl1"
-    }, "\u4EA7\u80FD\u5C31\u7EEA\u5EA6"), /*#__PURE__*/React.createElement("span", {
-      className: "hb-rl2"
-    }, summary.loading ? '未读取' : '暂无数据'), /*#__PURE__*/React.createElement("span", {
-      className: "hb-r-tag",
-      style: {
-        whiteSpace: 'normal',
-        flexShrink: 1
-      }
-    }, summary.error || value.readiness_error || process.lead), /*#__PURE__*/React.createElement("span", {
       className: "hb-r-spacer"
     }), /*#__PURE__*/React.createElement(Button, {
       className: "hb-r-next",
@@ -387,16 +375,7 @@
       disabled: disabled,
       reason: typeof onNavigate !== 'function' ? '批次管理尚未开通。' : '',
       onClick: () => onNavigate('batches')
-    }, "\u4E0B\u4E00\u6B65 \xB7 \u6279\u6B21\u7BA1\u7406")), /*#__PURE__*/React.createElement("div", {
-      className: "hb-cl2",
-      style: {
-        padding: '0 18px 12px'
-      },
-      role: "status"
-    }, readiness ? readiness.message : '系统没有给出整体就绪度，不做推算。'), /*#__PURE__*/React.createElement("div", {
-      className: "hb-r-floor",
-      "aria-label": "\u6574\u4F53\u5C31\u7EEA\u5EA6\u6682\u65E0\u6570\u636E"
-    })))));
+    }, "\u4E0B\u4E00\u6B65 \xB7 \u6279\u6B21\u7BA1\u7406")))));
   }
   window.ResourceRail = ResourceRail;
 })();

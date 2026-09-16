@@ -73,18 +73,18 @@
       } catch (failure) { setError(failure); }
     }
     return <div className={'plana rm-actions' + (data ? ' rm-wide' : '')}><window.ResourceMaterialPreview.Styles />
-      <Modal title={create ? '新增零件' : original.refs && original.refs.length === 1 ? '删除零件' : '批量删除零件'} icon={create ? 'plus' : 'minus'} locked={locked} suspended={discard} onClose={() => close()}
+      <Modal title={create ? '新增零件' : original.refs && original.refs.length === 1 ? '删除零件' : '批量删除零件'} icon={create ? 'plus' : 'trash-2'} locked={locked} suspended={discard} onClose={() => close()}
         footer={<><Button disabled={locked} onClick={() => close()}>{done ? '完成' : '取消'}</Button>
           {!create && !recovery && !done && <Button icon="check" disabled={disabled || locked} busy={!!job && preview.loading} onClick={preflight}>{job ? '重新预检' : '检查删除范围'}</Button>}
-          {!recovery && !done && (create || data) && <Button icon={create ? 'plus' : 'minus'} className={'btn ' + (create ? 'primary' : 'danger')} disabled={disabled || locked || preview.loading} reason={reason} onClick={confirm}>{create ? '保存零件' : '确认删除'}</Button>}
+          {!recovery && !done && (create || data) && <Button icon={create ? 'plus' : 'trash-2'} className={'btn ' + (create ? 'primary' : 'danger')} disabled={disabled || locked || preview.loading} reason={reason} onClick={confirm}>{create ? '保存零件' : '确认删除'}</Button>}
           {done && create && <Button icon="arrow-right" className="btn primary" busy={opening} disabled={disabled || locked} onClick={openCreated}>打开工艺详情</Button>}</>}>
         <div className="modal-b scroll rm-body">
           {create && !recovery && !done && <div className="fgrid">{[['business_code', '图号'], ['label', '零件名称'], ['route_raw', '路线文字（选填）'], ['remark', '备注（选填）']].map(([key, label]) => <label className={'field' + (['route_raw', 'remark'].includes(key) ? ' full' : '')} key={key}>{label}
             {['route_raw', 'remark'].includes(key) ? <textarea aria-label={label} rows={key === 'route_raw' ? 4 : 2} disabled={disabled || locked} value={draft[key]} onChange={event => setDraft({ ...draft, [key]: event.target.value })} /> : <input aria-label={label} required disabled={disabled || locked} value={draft[key]} onChange={event => setDraft({ ...draft, [key]: event.target.value })} />}</label>)}</div>}
-          {create && !done && !recovery && <><p>这里只登记零件和路线原文，不会自动确认工艺。</p><Button icon="refresh-cw" disabled={disabled || locked} onClick={readCurrent}>刷新资料</Button></>}
+          {create && !done && !recovery && <><p>新增后，请继续确认工艺。</p><Button icon="refresh-cw" disabled={disabled || locked} onClick={readCurrent}>刷新资料</Button></>}
           {review && <div role="status"><p>已读取最新资料，填写内容未改。请核对后继续保存。</p><Button disabled={locked} onClick={() => { if (command.reset()) { setContext(review); setReview(null); } }}>已核对，继续编辑</Button></div>}
           {!create && !recovery && <p>本次选中 {original.refs.length} 个零件，包含其他页的选择；已被批次使用的零件不能删除。有一项不能删，本次就一项也不删。</p>}
-          {recovery && <p>正在查询上次操作的结果；不会按当前列表或同图号的新零件重新提交。</p>}
+          {recovery && <p>正在查询上次操作结果，请稍候。</p>}
           {!!job && preview.loading && <p role="status">正在检查完整删除范围，尚未删除…</p>}
           <ErrorBox error={error} /><ErrorBox error={preview.error} /><Issues issues={result && result.warnings || []} />
           {data && <><window.ProcessActionPreview data={data} />{!done && <label className="rm-check"><input type="checkbox" checked={ack} disabled={disabled || locked} onChange={event => setAck(event.target.checked)} />已核对全部明细，确认删除这些零件。</label>}</>}

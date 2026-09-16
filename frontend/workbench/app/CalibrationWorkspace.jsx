@@ -44,8 +44,8 @@
       try {
         const receipt = await api.download(result, bound, format, controller.signal);
         if (!controller.signal.aborted) {
-          if (!receipt || receipt.rows !== data.summary.total || receipt.snapshot_ref !== result.meta.snapshot_ref) throw A.failure('导出结果没有通过核对，没有按成功处理。');
-          setNotice('已核对数据版本和数量，导出当前筛选全部 ' + receipt.rows + ' 项。');
+          if (!receipt || receipt.rows !== data.summary.total || receipt.snapshot_ref !== result.meta.snapshot_ref) throw A.failure('导出结果不完整，请重新导出。');
+          setNotice('已导出 ' + receipt.rows + ' 项。');
         }
       } catch (failure) { if (!controller.signal.aborted) { setError(failure); if (isStale(failure)) setStale(true); } }
       finally { if (downloadAbort.current === controller) { downloadAbort.current = null; setDownloading(false); } }
@@ -61,15 +61,18 @@
           {typeof onNavigate === 'function' && <Button icon="arrow-right" disabled={!data || disabled} onClick={() => onNavigate('review', { returnTo: { view: 'calib', context: {
             scope: Object.fromEntries(Object.entries(input).filter(([key]) => !['page', 'size', 'sort', 'direction', 'snapshot_ref'].includes(key))),
             table: { page: input.page, size: input.size, sort: input.sort, direction: input.direction }, selected, sample_ref: sampleRef, table_widths: widths } } })}>执行复盘</Button>}</div></header>
+      <div className="ca-overview">
       <C.Filters value={input} onChange={change} disabled={disabled} />
       {input.part_ref && <p className="ca-muted">已限定零件来源 <Button icon="x" aria-label="清除零件限定" disabled={disabled} onClick={() => change({ part_ref: null })} /></p>}
+      {data && <div className="ca-metrics">{[['模板工序', 'total'], ['偏差 > 20%', 'over_20_percent'], ['已有建议', 'suggested'], ['数据不足', 'insufficient_data']].map(([label, key]) =>
+        <div className="ca-metric" key={key}><span>{label}</span><strong>{data.summary[key]}</strong></div>)}</div>}
+      </div>
       <ErrorBox error={staleOnly ? null : shownError} />
-      {stale && <p className="ca-note" role="alert">数据已更新，请点「刷新」后重试。已选记录和完工记录来源已保留，不会自动跳到最新记录。</p>}
+      {stale && <p className="ca-note" role="alert">数据已更新，请刷新后重试。</p>}
       {(stale || request.error) && <Button icon="refresh-cw" disabled={downloading} onClick={reload}>刷新</Button>}
       {request.busy && <window.WorkbenchListControls.EmptyState kind="loading" title="正在读取校准记录" />}{notice && <p role="status">{notice}</p>}
       <div className={selected ? 'wb-detail-layout' : ''}><div className="ca-list-pane">
-      {data && <><div className="ca-metrics">{[['模板工序', 'total'], ['偏差 > 20%', 'over_20_percent'], ['已有建议', 'suggested'], ['数据不足', 'insufficient_data']].map(([label, key]) =>
-        <div className="ca-metric" key={key}><span>{label}</span><strong>{data.summary[key]}</strong></div>)}</div>
+      {data && <>
         {data.source_constraints.map(item => <p className="ca-note" key={item.code}>{item.message}</p>)}
         <div className="ca-tools"><h3>校准明细</h3><label>排序<select aria-label="排序列" disabled={disabled} value={input.sort} onChange={event => change({ sort: event.target.value })}>
           {Object.entries(A.sorts).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
@@ -81,7 +84,6 @@
           onSort={(sort, direction) => change({ sort: direction ? sort : 'part_no', direction: direction || 'asc' })}
           onFilter={(key, rule) => { const filters = { ...input.column_filters }; if (rule === null) delete filters[key]; else filters[key] = rule; change({ column_filters: filters }); }} />
         <C.Page page={data.page} onChange={page} disabled={disabled} />
-        <p className="ca-muted">{C.writeReason}</p>
       </>}
       </div>{selected && <window.CalibrationDetail result={detail.result} busy={detail.busy} error={detail.error || viewError} stale={stale} selected={selected} sampleRef={sampleRef} onSample={setSample}
         onClose={() => { setSelected(null); setSample(null); }} onRefresh={reload} />}</div>

@@ -5,7 +5,7 @@
   const statuses = { new: '待分析', following: '跟进中', awaiting_verification: '待验证', closed: '已关闭' };
   const states = { loaded: '已读取', no_data: '无数据', no_official_plan: '无正式计划', unavailable: '暂无数据', not_connected: '尚未开通' };
   const fields = ['owner', 'deadline', 'action', 'remark', 'completed_at', 'completion_evidence', 'evidence_reference_text', 'evidence_ref'];
-  const labels = { status: '处置状态', owner: '责任人', deadline: '责任期限', action: '处置行动', remark: '原因说明', completed_at: '完成时间', completion_evidence: '具体完成结果', evidence_reference_text: '可核对凭据', evidence_ref: '已核验附件编号' };
+  const labels = { status: '处置状态', owner: '责任人', deadline: '责任期限', action: '处置行动', remark: '原因说明', completed_at: '完成时间', completion_evidence: '具体完成结果', evidence_reference_text: '凭据说明', evidence_ref: '已核验附件编号' };
   const object = v => v !== null && typeof v === 'object' && !Array.isArray(v);
   const ref = v => typeof v === 'string' && /^[a-f0-9]{48}$/.test(v);
   const text = v => typeof v === 'string' && v.length > 0;
@@ -65,7 +65,7 @@
       && Array.isArray(s.handling_issues) && s.handling_issues.length > 0 && s.handling_issues.every(i => object(i) && text(i.code) && text(i.message));
     const supported = connected && s.handling_supported === true && count(s.handling_count) && s.handling_count <= s.receipt_count && count(s.closed_count) && s.closed_count <= s.handling_count
       && (s.handling_state === undefined || s.handling_state === 'loaded') && (s.handling_issues === undefined || Array.isArray(s.handling_issues) && s.handling_issues.length === 0);
-    check(supported || s.handling_supported === false && (legacyUnsupported || explicitUnsupported), '外协处置数量读不完整，这里不会按零显示。请刷新后重试。');
+    check(supported || s.handling_supported === false && (legacyUnsupported || explicitUnsupported), '外协处置统计读取失败，请刷新重试。');
     check(s.kind === 'outsourcing_receipts' && s.tracking_basis === 'manual_receipt_facts'
       && object(s.entry) && s.entry.view === 'outsourcing' && s.entry.target === '/api/workbench/v1/outsourcing/receipts' && s.entry.enabled === connected
       && keys.every(k => connected ? count(s[k]) : s[k] === null), '外协汇总数据读不完整，请刷新后重试。');
@@ -84,6 +84,11 @@
         && count(s.known_risk_count) && count(s.unknown_count) && Array.isArray(s.issues) && Array.isArray(s.evaluation_gaps)
         && (s.risk_count === null || s.risk_count === s.known_risk_count && s.unknown_count === 0));
       if (['not_connected', 'unavailable', 'no_official_plan'].includes(s.state) || k === 'candidate') check(s.risk_count === null);
+      s.evaluation_gaps.forEach(gap => {
+        if (Object.prototype.hasOwnProperty.call(gap, 'operation')) check(object(gap.operation)
+          && ['code', 'name'].every(field => gap.operation[field] === null || text(gap.operation[field])),
+        '工序明细不完整，请刷新重试。');
+      });
     });
     external(d.categories.external); check(d.categories.external.handling_supported || d.items.every(row => row.category !== 'external'), '外协风险处置尚未开通，这里不显示处置清单。');
     d.items.forEach(row => { item(row); check((q.category === 'all' || row.category === q.category) && (q.status === 'all' || q.status === 'open' && row.handling.status !== 'closed' || q.status === row.handling.status)); });

@@ -15,7 +15,7 @@
       value: value.candidate_ref
     }))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u91C7\u7528\u5DE5\u5E8F"), /*#__PURE__*/React.createElement("dd", null, value.task_count, " \u9053")), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u91C7\u7528\u8303\u56F4"), /*#__PURE__*/React.createElement("dd", null, "\u5B8C\u6574\u5019\u9009\u65B9\u6848\u53CA\u5168\u90E8\u5F53\u524D\u6B63\u5F0F\u5B89\u6392"))), /*#__PURE__*/React.createElement("p", {
       className: "ra-note"
-    }, "\u91C7\u7528\u4F1A\u65B0\u589E\u4E00\u7248\u6B63\u5F0F\u8BA1\u5212\uFF1B\u4E0D\u662F\u53EA\u91C7\u7528\u5F53\u524D\u7B5B\u9009\u51FA\u7684\u5DE5\u5E8F\u3002\u65E7\u7248\u672C\u548C\u62A5\u5DE5\u8BB0\u5F55\u90FD\u4F1A\u4FDD\u7559\uFF0C\u53EF\u5728\u8BA1\u5212\u5217\u8868\u67E5\u770B\u548C\u5BFC\u51FA\uFF1B\u5982\u9700\u6062\u590D\u65E7\u5B89\u6392\uFF0C\u9700\u8981\u91CD\u65B0\u6392\u4EA7\u5E76\u518D\u91C7\u7528\u4E00\u7248\u3002"));
+    }, "\u5C06\u5B8C\u6574\u5019\u9009\u65B9\u6848\u91C7\u7528\u4E3A\u65B0\u4E00\u7248\u6B63\u5F0F\u8BA1\u5212\uFF0C\u4FDD\u7559\u5386\u53F2\u7248\u672C\u3002\u6062\u590D\u65E7\u5B89\u6392\u9700\u91CD\u65B0\u6392\u4EA7\u5E76\u91C7\u7528\u3002"));
   }
   function Records({
     value,
@@ -67,14 +67,14 @@
         ...draft,
         declared_operator: e.target.value
       })
-    }), /*#__PURE__*/React.createElement("small", null, "\u586B\u5199\u8FD9\u6B21\u7531\u8C01\u7ECF\u529E\uFF0C\u4E0D\u662F\u767B\u5F55\u8D26\u53F7\u3002", !readOnly && memoryHint && ' ' + memoryHint)), !readOnly && /*#__PURE__*/React.createElement("label", {
+    }), !readOnly && memoryHint && /*#__PURE__*/React.createElement("small", null, memoryHint)), !readOnly && /*#__PURE__*/React.createElement("label", {
       className: "ra-consent"
     }, /*#__PURE__*/React.createElement("input", {
       type: "checkbox",
       checked: consent,
       disabled: busy,
       onChange: e => onConsent(e.target.checked)
-    }), /*#__PURE__*/React.createElement("span", null, "\u6211\u5DF2\u6838\u5BF9\u6B63\u5F0F\u8BA1\u5212\u3001\u76EE\u6807\u5019\u9009\u65B9\u6848\u548C\u5B8C\u6574\u8303\u56F4\uFF0C\u786E\u8BA4\u6B63\u5F0F\u91C7\u7528\u3002")));
+    }), /*#__PURE__*/React.createElement("span", null, "\u786E\u8BA4\u5C06\u5B8C\u6574\u5019\u9009\u65B9\u6848\u6B63\u5F0F\u91C7\u7528\u3002")));
   }
   function Dialog({
     value,
@@ -151,7 +151,7 @@
     }, "\u5237\u65B0\u4E0A\u6B21\u64CD\u4F5C\u8BB0\u5F55"), result && /*#__PURE__*/React.createElement("div", {
       className: "ra-result",
       role: "status"
-    }, "\u5DF2\u786E\u8BA4\uFF1A\u672C\u6B21\u751F\u6210\u7B2C ", result.data.official_plan.version, " \u7248\u6B63\u5F0F\u8BA1\u5212\uFF0C\u5171 ", result.data.row_count, " \u9053\u5DE5\u5E8F\u3002", /*#__PURE__*/React.createElement("p", null, "\u8FD9\u662F\u63D0\u4EA4\u65F6\u7684\u7ED3\u679C\uFF1B\u5F53\u524D\u72B6\u6001\u8BF7\u91CD\u65B0\u6253\u5F00\u6B63\u5F0F\u8BA1\u5212\u6838\u5BF9\u3002")), value.baseline && /*#__PURE__*/React.createElement(Scope, {
+    }, "\u5DF2\u786E\u8BA4\uFF1A\u672C\u6B21\u751F\u6210\u7B2C ", result.data.official_plan.version, " \u7248\u6B63\u5F0F\u8BA1\u5212\uFF0C\u5171 ", result.data.row_count, " \u9053\u5DE5\u5E8F\u3002", /*#__PURE__*/React.createElement("p", null, "\u5F53\u524D\u6B63\u5F0F\u8BA1\u5212\u53EF\u5728\u8BA1\u5212\u5217\u8868\u67E5\u770B\u3002")), value.baseline && /*#__PURE__*/React.createElement(Scope, {
       value: value,
       saved: !!intent && !valid
     }), preview && !valid && /*#__PURE__*/React.createElement("div", {

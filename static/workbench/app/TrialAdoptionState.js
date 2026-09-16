@@ -307,7 +307,7 @@
         setConsent(false);
         setDraft(empty());
         setError('');
-        setNotice(saved.phase === 'committed' ? '这次采用结果已确认完成。' : '已结束这次没有采用的操作，正式计划没有因此改变。');
+        setNotice(saved.phase === 'committed' ? '这次采用结果已确认完成。' : '本次操作已结束，未采用。');
       } catch (e) {
         setStorageError(e.message);
       }

@@ -28,12 +28,12 @@
     for (const key of ['source', 'range_start', 'range_end', 'plan_finish_date_from', 'plan_finish_date_to', 'resource_type', 'resource_ref', 'batch_ids'])
       if (context[key] !== undefined && input[key] === undefined) input[key] = context[key];
     const allowed = ['plan_ref', 'source', 'range_start', 'range_end', 'plan_finish_date_from', 'plan_finish_date_to', 'resource_type', 'resource_ref', 'batch_ids', 'query', 'focus', 'as_of', 'snapshot_ref', 'kind', 'baseline_ref'];
-    let issue = Object.keys(input).some(key => !allowed.includes(key)) ? '来源范围含未知条件，未忽略筛选。' : null;
+    let issue = Object.keys(input).some(key => !allowed.includes(key)) ? '查询条件无效，请清除筛选后重试。' : null;
     if (input.baseline_ref && input.baseline_ref !== (context.plan_ref || input.plan_ref)) issue = '现场实际甘特以所选计划为对比基准，没有换成另一个计划版本。';
     if (input.query !== undefined && (typeof input.query !== 'string' || input.query.length > 200)) issue = '来源搜索条件无效。';
     if (context.return_to && !['gantt', 'field', 'analysis', 'reports', 'review', 'dashboard'].includes(context.return_to.view)) issue = '返回来源不是已登记的工作台页面。';
     if (context.report_ref !== undefined && !C.ref(context.report_ref)) issue = '来源报工编号无效，没有改指其他记录。';
-    if (context.report_ref !== undefined && !C.ref(context.task_ref || context.entity_ref)) issue = '来源报工必须绑定明确任务，未猜测其他任务。';
+    if (context.report_ref !== undefined && !C.ref(context.task_ref || context.entity_ref)) issue = '报工关联的任务资料缺失，请刷新后重选。';
     for (const key of ['plan_ref', 'source', 'range_start', 'range_end', 'plan_finish_date_from', 'plan_finish_date_to', 'resource_type', 'resource_ref', 'batch_ids'])
       if (input[key] !== undefined && input[key] !== null && input[key] !== '') scope[key] = input[key];
     if (context.plan_ref) scope.plan_ref = context.plan_ref;
@@ -67,7 +67,7 @@
         try {
           if (seed.issue) throw window.APSResourceContract.failure(seed.issue);
           let input = scope;
-          if (input.source && input.source !== 'production') throw window.APSResourceContract.failure('现场实际甘特只读取生产数据，未将演示范围替换为生产范围。');
+          if (input.source && input.source !== 'production') throw window.APSResourceContract.failure('数据来源无效，请重新打开现场实际甘特。');
           if (!input.plan_ref) {
             if (Object.keys(input).some(k => k !== 'source')) throw window.APSResourceContract.failure('来源范围缺少明确计划，未自动扩大范围。');
             const catalog = await window.APSPlanAPI.create().catalog({ collection: 'history', size: 20 }, controller.signal);
@@ -261,7 +261,7 @@
       {hover && model && <div className="fg-tip" role="tooltip" style={{ left: Math.max(8, Math.min(hover.x + 12, window.innerWidth - 368)), top: Math.max(8, Math.min(hover.y + 12, window.innerHeight - 360)) }}>{hover.title || describe(hover.item, model.labels, hover.report).join('\n')}</div>}
       {exporting && data && <Modal title="导出现场实际甘特" icon="download" onClose={() => { if (downloadController.current) downloadController.current.abort(); setExporting(false); }} footer={<><Button onClick={() => setExporting(false)} disabled={exportBusy}>取消</Button><Button transfer="export" busy={exportBusy} onClick={download}>下载 CSV</Button></>}>
         <div style={{ padding: 16 }}><p>按当前查询范围和本次读取的数据导出全部 {model.items.length} 道匹配工序及其逐次报工，不受滚动、折叠和详情开关影响。</p>
-          <p>本地搜索：{view.query.trim() || '无'}；晚期：{M.lateLabels[view.late]}；仅选中：{view.onlySelected ? '是' : '否'}。未知数量和工时保持未填写，历史现场记录另列。</p>
+          <p>本地搜索：{view.query.trim() || '无'}；晚期：{M.lateLabels[view.late]}；仅选中：{view.onlySelected ? '是' : '否'}。</p>
           <p>计划完工日期：{scope.plan_finish_date_from || '不限'} 至 {scope.plan_finish_date_to || '不限'}；数据截至 {M.time(result.meta.as_of)}。数据变化时下载会要求刷新。</p><ErrorBox error={exportError} /></div></Modal>}
     </div>;
   }

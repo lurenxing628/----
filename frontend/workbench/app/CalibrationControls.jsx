@@ -4,7 +4,7 @@
   const text = (value, missing = '未知') => value === null || value === undefined ? missing : String(value);
   const hours = (value, missing = '未填写') => value === null ? missing : text(value) + ' 小时';
   const source = value => ({ internal: '自制', external: '外协', unknown: '未确认' })[value] || '未确认';
-  const writeReason = '采用与锁定前要先读取真实预检并确认；只影响以后新增的工序模板，不改已有批次、历史计划和现场记录。';
+  const writeReason = '请先检查所选模板是否可采用。';
   function useRead(load, identity, adapter, enabled = true) {
     const [state, setState] = React.useState({ result: null, error: null, busy: true, identity });
     React.useEffect(() => {
@@ -25,7 +25,7 @@
     React.useEffect(() => setQuery(value.query), [value.query]);
     return <form className="ca-tools" aria-label="校准筛选" onSubmit={event => { event.preventDefault(); onChange({ query }); }}>
       <label className="ca-search"><input type="search" aria-label="搜索校准明细" placeholder="搜索图号、零件名、工序或序号" maxLength={200} value={query} disabled={disabled} onChange={event => setQuery(event.target.value)} /></label>
-      <Button icon="search" type="submit" aria-label="搜索" disabled={disabled} />
+      <Button icon="search" type="submit" aria-label="搜索" className="primary" disabled={disabled} />
       <label>工序来源<select aria-label="工序来源" disabled={disabled} value={value.source || ''} onChange={event => onChange({ source: event.target.value || null, query })}>
         <option value="">全部来源</option><option value="internal">自制</option><option value="external">外协</option><option value="unknown">未确认</option></select></label>
       <label>状态<select aria-label="建议状态" disabled={disabled} value={value.status} onChange={event => onChange({ status: event.target.value, query })}>

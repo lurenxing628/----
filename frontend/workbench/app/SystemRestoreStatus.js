@@ -47,16 +47,16 @@
       state: op ? labels[op.state] : '尚未查到可确认的维护结果',
       origin: op ? origins[op.database_origin] : origins.unconfirmed,
       guidance: !host ? '还不能确认软件维护状态，当前页面已暂停业务读写。请点「查询结果」重试，保留已有记录，不要重复恢复。'
-        : !stopped ? op && op.terminal ? '软件现在可以正常使用。确认这条结果后请刷新页面，旧页面上的编号不能再用。' : '上次维护操作还没有确认结果。请等待结果或点「查询结果」，不要重复提交。'
-        : uncertain ? '请保留操作编号、备份和保护副本，交给维护人员核对。没有确认的记录会继续挡住启动；不要重复恢复，也不要自己改维护标记。'
-          : '请先关闭整个 APS 软件，再重新启动。只刷新或关闭浏览器不算重启；重新启动后再读取本机资料。',
+        : !stopped ? op && op.terminal ? '维护已完成，请刷新页面后继续使用。' : '上次维护操作还没有确认结果。请等待结果或点「查询结果」，不要重复提交。'
+        : uncertain ? '恢复结果待核对，请保留操作编号和备份，联系维护人员；勿重复恢复。'
+          : '请关闭整个 APS 软件后重新启动。',
       uncertain
     };
   }
   function download(host, result, error) {
     const payload = { scope: 'read_only_maintenance', result_source: source, host, result,
       query_error: error ? error.message : null, database_checked_by_page: false,
-      note: '只含本次读取的维护状态，不含数据库或完整日志；导出不会改动维护标记。' };
+      note: '导出当前维护状态。' };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' });
     const url = URL.createObjectURL(blob), link = document.createElement('a');
     link.href = url; link.download = '恢复维护诊断.json';

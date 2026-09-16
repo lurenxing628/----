@@ -101,6 +101,8 @@
   }
   function validIntent(value) {
     if (!object(value) || typeof value.request_key !== 'string' || !/^resource-[0-9a-f]{48}$/.test(value.request_key)) return false;
+    if (value.kind === 'operator' && value.action === 'machine_permissions') return value.category === undefined
+      && typeof value.ref === 'string' && /^[0-9a-f]{48}$/.test(value.ref);
     if (value.kind === 'calendar') return typeof value.ref === 'string' && (
       ['upsert', 'delete'].includes(value.action) && /^\d{4}-\d{2}-\d{2}$/.test(value.ref)
       || value.action === 'confirm' && /^[0-9a-f]{32}$/.test(value.ref));
@@ -112,7 +114,7 @@
       || ['update', 'delete', 'operation_update', 'sync_confirm'].includes(value.action) && typeof value.ref === 'string' && /^[0-9a-f]{48}$/.test(value.ref)
       || ['bulk_confirm', 'import_confirm'].includes(value.action) && typeof value.ref === 'string' && /^[A-Za-z0-9_-]{32}$/.test(value.ref));
     if (value.kind === 'execution') return value.category === undefined && typeof value.ref === 'string'
-      && (['create', 'supplement', 'correct'].includes(value.action) && /^[0-9a-f]{48}$/.test(value.ref)
+      && (['create', 'supplement', 'correct', 'report_void'].includes(value.action) && /^[0-9a-f]{48}$/.test(value.ref)
         || value.action === 'import_confirm' && /^[A-Za-z0-9_-]{32}$/.test(value.ref));
     const file = typeof value.kind === 'string' && /^(material|op_type|machine|operator|supplier)_(import|bulk)$/.exec(value.kind);
     if (file) return value.action === 'confirm' && typeof value.ref === 'string' && /^[A-Za-z0-9_-]{32}$/.test(value.ref)
@@ -153,6 +155,8 @@
       relations(ref, scope, signal) { return api.query(resource('op_type', ref) + '/relations', scope, signal); },
       summary(signal) { return api.query('resources/summary', {}, signal); },
       command(kind, action, ref, body, signal) {
+        if (kind === 'operator' && action === 'machine_permissions' && ref !== null)
+          return api.execute(resource(kind, ref) + '/machine-permissions/confirm', body, signal);
         if (!['create', 'update', 'delete'].includes(action) || (action === 'create') !== (ref === null))
           throw problem('保存操作与所选记录不一致。', false);
         return api.execute(resource(kind, ref) + '/' + action, body, signal);

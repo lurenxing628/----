@@ -169,7 +169,7 @@
       className: 'plana rm-actions' + (data ? ' rm-wide' : '')
     }, /*#__PURE__*/React.createElement(window.ResourceMaterialPreview.Styles, null), /*#__PURE__*/React.createElement(Modal, {
       title: create ? '新增零件' : original.refs && original.refs.length === 1 ? '删除零件' : '批量删除零件',
-      icon: create ? 'plus' : 'minus',
+      icon: create ? 'plus' : 'trash-2',
       locked: locked,
       suspended: discard,
       onClose: () => close(),
@@ -182,7 +182,7 @@
         busy: !!job && preview.loading,
         onClick: preflight
       }, job ? '重新预检' : '检查删除范围'), !recovery && !done && (create || data) && /*#__PURE__*/React.createElement(Button, {
-        icon: create ? 'plus' : 'minus',
+        icon: create ? 'plus' : 'trash-2',
         className: 'btn ' + (create ? 'primary' : 'danger'),
         disabled: disabled || locked || preview.loading,
         reason: reason,
@@ -219,7 +219,7 @@
         ...draft,
         [key]: event.target.value
       })
-    })))), create && !done && !recovery && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", null, "\u8FD9\u91CC\u53EA\u767B\u8BB0\u96F6\u4EF6\u548C\u8DEF\u7EBF\u539F\u6587\uFF0C\u4E0D\u4F1A\u81EA\u52A8\u786E\u8BA4\u5DE5\u827A\u3002"), /*#__PURE__*/React.createElement(Button, {
+    })))), create && !done && !recovery && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", null, "\u65B0\u589E\u540E\uFF0C\u8BF7\u7EE7\u7EED\u786E\u8BA4\u5DE5\u827A\u3002"), /*#__PURE__*/React.createElement(Button, {
       icon: "refresh-cw",
       disabled: disabled || locked,
       onClick: readCurrent
@@ -233,7 +233,7 @@
           setReview(null);
         }
       }
-    }, "\u5DF2\u6838\u5BF9\uFF0C\u7EE7\u7EED\u7F16\u8F91")), !create && !recovery && /*#__PURE__*/React.createElement("p", null, "\u672C\u6B21\u9009\u4E2D ", original.refs.length, " \u4E2A\u96F6\u4EF6\uFF0C\u5305\u542B\u5176\u4ED6\u9875\u7684\u9009\u62E9\uFF1B\u5DF2\u88AB\u6279\u6B21\u4F7F\u7528\u7684\u96F6\u4EF6\u4E0D\u80FD\u5220\u9664\u3002\u6709\u4E00\u9879\u4E0D\u80FD\u5220\uFF0C\u672C\u6B21\u5C31\u4E00\u9879\u4E5F\u4E0D\u5220\u3002"), recovery && /*#__PURE__*/React.createElement("p", null, "\u6B63\u5728\u67E5\u8BE2\u4E0A\u6B21\u64CD\u4F5C\u7684\u7ED3\u679C\uFF1B\u4E0D\u4F1A\u6309\u5F53\u524D\u5217\u8868\u6216\u540C\u56FE\u53F7\u7684\u65B0\u96F6\u4EF6\u91CD\u65B0\u63D0\u4EA4\u3002"), !!job && preview.loading && /*#__PURE__*/React.createElement("p", {
+    }, "\u5DF2\u6838\u5BF9\uFF0C\u7EE7\u7EED\u7F16\u8F91")), !create && !recovery && /*#__PURE__*/React.createElement("p", null, "\u672C\u6B21\u9009\u4E2D ", original.refs.length, " \u4E2A\u96F6\u4EF6\uFF0C\u5305\u542B\u5176\u4ED6\u9875\u7684\u9009\u62E9\uFF1B\u5DF2\u88AB\u6279\u6B21\u4F7F\u7528\u7684\u96F6\u4EF6\u4E0D\u80FD\u5220\u9664\u3002\u6709\u4E00\u9879\u4E0D\u80FD\u5220\uFF0C\u672C\u6B21\u5C31\u4E00\u9879\u4E5F\u4E0D\u5220\u3002"), recovery && /*#__PURE__*/React.createElement("p", null, "\u6B63\u5728\u67E5\u8BE2\u4E0A\u6B21\u64CD\u4F5C\u7ED3\u679C\uFF0C\u8BF7\u7A0D\u5019\u3002"), !!job && preview.loading && /*#__PURE__*/React.createElement("p", {
       role: "status"
     }, "\u6B63\u5728\u68C0\u67E5\u5B8C\u6574\u5220\u9664\u8303\u56F4\uFF0C\u5C1A\u672A\u5220\u9664\u2026"), /*#__PURE__*/React.createElement(ErrorBox, {
       error: error

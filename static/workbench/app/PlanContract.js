@@ -73,7 +73,7 @@
     return value;
   }
   function envelope(result, query) {
-    if (!exact(result, ['ok', 'schema_version', 'data', 'meta', 'warnings']) || result.ok !== true || result.schema_version !== 1 || !exact(result.meta, ['request_ref', 'source', 'time_basis', 'snapshot_ref', 'as_of']) || result.meta.source !== 'production' || result.meta.time_basis !== 'factory_local' || !token(result.meta.snapshot_ref) || !token(result.meta.request_ref) || !localTime(result.meta.as_of) || !issues(result.warnings)) throw C.failure('读到的计划数据不完整或不是真实数据，没有用示例数据代替。请点「刷新」重试。');
+    if (!exact(result, ['ok', 'schema_version', 'data', 'meta', 'warnings']) || result.ok !== true || result.schema_version !== 1 || !exact(result.meta, ['request_ref', 'source', 'time_basis', 'snapshot_ref', 'as_of']) || result.meta.source !== 'production' || result.meta.time_basis !== 'factory_local' || !token(result.meta.snapshot_ref) || !token(result.meta.request_ref) || !localTime(result.meta.as_of) || !issues(result.warnings)) throw C.failure('计划数据不完整或数据源无效，请刷新后重试。');
     if (own(query, 'snapshot_ref') && result.meta.snapshot_ref !== query.snapshot_ref) throw C.failure(window.WorkbenchTerms.outcomes.stale);
   }
   function plan(value) {

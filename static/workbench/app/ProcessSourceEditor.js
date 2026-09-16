@@ -18,21 +18,16 @@
       op_type_ref: row.op_type_ref,
       op_type_label: row.op_type_label,
       supplier_ref: row.supplier_ref,
-      supplier_label: row.supplier_label,
-      confirmed: !!(row.confirmation && row.confirmation.source.state === 'confirmed')
+      supplier_label: row.supplier_label
     }]));
   }
   function reconcile(draft, before, after) {
     const next = build(after),
-      original = build(before),
-      old = new Map(before.operations.map(row => [row.ref, row]));
-    const oldGroups = new Map(before.external_groups.map(row => [row.ref, row])),
-      newGroups = new Map(after.external_groups.map(row => [row.ref, row]));
+      original = build(before);
     E.active(after).forEach(row => {
       const current = draft[row.ref],
         previous = original[row.ref],
         fresh = next[row.ref];
-      fresh.confirmed = false;
       if (!current || !previous) return;
       if (current.source !== previous.source) fresh.source = current.source;
       [['op_type_ref', 'op_type_label'], ['supplier_ref', 'supplier_label']].forEach(([ref, label]) => {
@@ -40,20 +35,21 @@
         if (current[ref] !== fresh[ref]) fresh[label] = current[label];
         fresh[ref] = current[ref];
       });
-      fresh.confirmed = E.same(old.get(row.ref), row) && E.same(oldGroups.get(row.external_group_ref), newGroups.get(row.external_group_ref)) && current.confirmed;
     });
     return next;
   }
   const complete = row => ['internal', 'external'].includes(row.source) && !!row.op_type_ref && (row.source === 'internal' || !!row.supplier_ref);
   function input(entity, draft, pageSize) {
-    const pending = E.active(entity).filter(row => !draft[row.ref].confirmed);
-    if (pending.length) throw E.unconfirmed(pending, entity.operations, pageSize, '归属');
     const operations = E.active(entity).map(row => {
       const current = draft[row.ref];
-      if (!current.confirmed || !['internal', 'external'].includes(current.source) || !current.op_type_ref || current.source === 'external' && !current.supplier_ref) throw C.failure('请逐序核对归属、绑定真实工种及外协供应商，并明确勾选确认。', [{
-        path: 'operations.' + row.sequence,
-        message: '工序 ' + row.sequence + ' 尚未完整确认。'
-      }]);
+      if (!complete(current)) {
+        const error = C.failure('工序 ' + row.sequence + ' 请补齐归属、工种和外协供应商。', [{
+          path: 'operations.' + row.sequence,
+          message: '工序 ' + row.sequence + ' 资料未填完整。'
+        }]);
+        error.locate_page = Math.floor(entity.operations.indexOf(row) / pageSize) + 1;
+        throw error;
+      }
       return {
         ref: row.ref,
         source: current.source,
@@ -115,7 +111,9 @@
       }
     }, /*#__PURE__*/React.createElement("label", {
       className: "search"
-    }, /*#__PURE__*/React.createElement("input", {
+    }, /*#__PURE__*/React.createElement(window.ResourceControls.Icon, {
+      name: "search"
+    }), /*#__PURE__*/React.createElement("input", {
       type: "search",
       "aria-label": '搜索' + title,
       value: search,
@@ -251,16 +249,14 @@
     function choose(row) {
       change(picker.ref, picker.kind === 'op_type' ? {
         op_type_ref: row.ref,
-        op_type_label: row.label,
-        confirmed: false
+        op_type_label: row.label
       } : {
         supplier_ref: row.ref,
-        supplier_label: row.label,
-        confirmed: false
+        supplier_label: row.label
       });
       closePicker();
     }
-    async function preflight() {
+    async function preflight(commit = false) {
       if (blocked || stageReason || checking) return;
       invalidate();
       model.setError(null);
@@ -279,6 +275,7 @@
             draft
           });
           setChecking(false);
+          if (commit && !response.data.affected_groups.length) await command.submit('process', 'source_confirm', entity.ref, response.data.write_context, body);
         }
       } catch (error) {
         if (!controller.signal.aborted && request.current === controller) {
@@ -292,35 +289,19 @@
     const affected = preview ? preview.response.data.affected_groups : [],
       acknowledgement = affected.every(row => discarded.includes(row.ref));
     const displayGroups = Array.from(new Map(entity.external_groups.concat(affected).map(row => [row.ref, row])).values());
-    const saveReason = stageReason || (!preview ? '请先检查当前归属。' : !acknowledgement ? '请明确勾选解除所有受影响的外协组。' : C.blocked(preview.response.data.write_context, 'process', 'source_confirm', preview.response.meta.source));
+    const saveReason = stageReason || preview && (!acknowledgement ? '请确认解除下方受影响的外协组。' : C.blocked(preview.response.data.write_context, 'process', 'source_confirm', preview.response.meta.source));
     async function save() {
-      if (blocked || saveReason) return;
+      if (blocked || checking || saveReason) return;
+      if (!preview) {
+        await preflight(true);
+        return;
+      }
       await command.submit('process', 'source_confirm', entity.ref, preview.response.data.write_context, {
         ...preview.body,
         discard_group_refs: discarded
       });
     }
-    const confirmed = Object.values(draft).filter(row => row.confirmed).length,
-      active = E.active(entity),
-      ready = active.filter(row => complete(draft[row.ref]));
-    const [confirmAll, setConfirmAll] = React.useState(false);
-    // Only rows that already carry a source, a real op type and (for external work) a supplier can be confirmed in bulk; the rest are listed back.
-    function confirmEverything() {
-      invalidate();
-      model.edit(current => {
-        const next = {
-          ...current
-        };
-        ready.forEach(row => {
-          next[row.ref] = {
-            ...next[row.ref],
-            confirmed: true
-          };
-        });
-        return next;
-      });
-      setConfirmAll(false);
-    }
+    const active = E.active(entity);
     return /*#__PURE__*/React.createElement("section", {
       "data-process-source-editor": true
     }, /*#__PURE__*/React.createElement("div", {
@@ -328,7 +309,7 @@
     }, /*#__PURE__*/React.createElement(E.Search, {
       paging: paging,
       disabled: blocked
-    }), /*#__PURE__*/React.createElement("span", null, "\u6709\u6548\u5DE5\u5E8F ", active.length, " \xB7 \u5DF2\u6838\u5BF9 ", confirmed), /*#__PURE__*/React.createElement("span", {
+    }), /*#__PURE__*/React.createElement("span", null, "\u5171 ", active.length, " \u9053\u6709\u6548\u5DE5\u5E8F"), /*#__PURE__*/React.createElement("span", {
       className: "tb-spacer"
     }), /*#__PURE__*/React.createElement(Button, {
       icon: "plus",
@@ -339,52 +320,10 @@
         setCreate({});
         onOverlay(true);
       }
-    }, "\u5F85\u5EFA\u5DE5\u79CD")), /*#__PURE__*/React.createElement("div", {
-      className: "toolbar"
-    }, /*#__PURE__*/React.createElement("label", null, /*#__PURE__*/React.createElement("input", {
-      type: "checkbox",
-      "aria-label": "\u786E\u8BA4\u672C\u9875\u5DF2\u6838\u5BF9\u5DE5\u5E8F",
-      disabled: editBlocked || !paging.rows.some(row => row.status === 'active'),
-      checked: paging.rows.some(row => row.status === 'active') && paging.rows.filter(row => row.status === 'active').every(row => draft[row.ref].confirmed),
-      onChange: event => {
-        const checked = event.target.checked;
-        invalidate();
-        model.edit(current => {
-          const next = {
-            ...current
-          };
-          paging.rows.filter(row => row.status === 'active').forEach(row => {
-            next[row.ref] = {
-              ...next[row.ref],
-              confirmed: checked
-            };
-          });
-          return next;
-        });
-      }
-    }), "\u786E\u8BA4\u672C\u9875\u5DF2\u6838\u5BF9\u5DE5\u5E8F"), paging.page.pages > 1 && /*#__PURE__*/React.createElement(Button, {
-      icon: "check",
-      disabled: editBlocked || !ready.length,
-      onClick: () => setConfirmAll(true)
-    }, "\u786E\u8BA4\u5168\u90E8 ", ready.length, " \u9053\u5DF2\u6838\u5BF9")), confirmAll && /*#__PURE__*/React.createElement(Modal, {
-      title: "\u786E\u8BA4\u5168\u90E8\u5DE5\u5E8F\u5DF2\u6838\u5BF9\u5F52\u5C5E",
-      icon: "check",
-      onClose: () => setConfirmAll(false),
-      footer: /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Button, {
-        onClick: () => setConfirmAll(false)
-      }, "\u53D6\u6D88"), /*#__PURE__*/React.createElement(Button, {
-        className: "btn primary",
-        icon: "check",
-        onClick: confirmEverything
-      }, "\u786E\u8BA4\u5168\u90E8 ", ready.length, " \u9053"))
-    }, /*#__PURE__*/React.createElement("div", {
-      className: "modal-b"
-    }, /*#__PURE__*/React.createElement("p", null, "\u4F1A\u628A\u5DF2\u9009\u597D\u5F52\u5C5E\u548C\u5DE5\u79CD\u7684 ", ready.length, " \u9053\u6709\u6548\u5DE5\u5E8F\uFF08\u5305\u62EC\u6CA1\u7FFB\u5230\u7684\u9875\uFF09\u5168\u90E8\u6807\u8BB0\u4E3A\u5DF2\u6838\u5BF9\u3002", active.length - ready.length > 0 ? '另有 ' + (active.length - ready.length) + ' 道还没选归属、工种或外协供应商，不会被标记，检查时会按页列出。' : '所有有效工序都已选好，可以整体确认。'))), /*#__PURE__*/React.createElement("div", {
+    }, "\u65B0\u589E\u5DE5\u79CD")), /*#__PURE__*/React.createElement("div", {
       className: "wb-table-frame"
-    }, /*#__PURE__*/React.createElement("div", {
-      className: "card-scroll wb-table-shell"
     }, /*#__PURE__*/React.createElement("table", {
-      className: "tbl wb-table",
+      className: "tbl wb-table wb-table--editable",
       "aria-label": "\u5F52\u5C5E\u660E\u7EC6",
       style: {
         minWidth: 950,
@@ -414,7 +353,7 @@
       }
     }, "\u4F9B\u5E94\u5546"), /*#__PURE__*/React.createElement("th", {
       scope: "col"
-    }, "\u6838\u5BF9 / \u786E\u8BA4\u8BB0\u5F55"))), /*#__PURE__*/React.createElement("tbody", null, paging.rows.map(row => {
+    }, "\u4FDD\u5B58\u8BB0\u5F55"))), /*#__PURE__*/React.createElement("tbody", null, paging.rows.map(row => {
       const current = draft[row.ref] || row,
         inactive = row.status !== 'active',
         cycle = current.source === row.source && P.groupCycle(row, entity.external_groups);
@@ -443,8 +382,7 @@
             op_type_ref: null,
             op_type_label: null,
             supplier_ref: null,
-            supplier_label: null,
-            confirmed: false
+            supplier_label: null
           });
         }
       }, P.sourceLabel(source)))), !current.source && /*#__PURE__*/React.createElement("div", null, "\u672A\u5F52\u7C7B")), /*#__PURE__*/React.createElement("td", null, current.source === 'internal' ? '不适用' : /*#__PURE__*/React.createElement(React.Fragment, null, current.supplier_label || '未选供应商', /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(Button, {
@@ -458,18 +396,9 @@
         disabled: editBlocked || inactive,
         onClick: () => change(row.ref, {
           supplier_ref: null,
-          supplier_label: null,
-          confirmed: false
+          supplier_label: null
         })
-      })))), /*#__PURE__*/React.createElement("td", null, inactive ? '已停用工序' : /*#__PURE__*/React.createElement("label", null, /*#__PURE__*/React.createElement("input", {
-        type: "checkbox",
-        "aria-label": '确认工序 ' + row.sequence + ' 归属',
-        checked: !!current.confirmed,
-        disabled: editBlocked,
-        onChange: event => change(row.ref, {
-          confirmed: event.target.checked
-        })
-      }), "\u5DF2\u6838\u5BF9"), /*#__PURE__*/React.createElement("div", {
+      })))), /*#__PURE__*/React.createElement("td", null, inactive ? '已停用工序' : /*#__PURE__*/React.createElement("div", {
         className: "muted"
       }, /*#__PURE__*/React.createElement(E.Confirmation, {
         record: row.confirmation && row.confirmation.source
@@ -478,7 +407,7 @@
       })));
     }), !paging.rows.length && /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", {
       colSpan: 5
-    }, rows.length ? '没有匹配的工序。' : '尚无工序记录。')))))), /*#__PURE__*/React.createElement(E.Pager, {
+    }, rows.length ? '没有匹配的工序。' : '尚无工序记录。'))))), /*#__PURE__*/React.createElement(E.Pager, {
       paging: paging,
       disabled: blocked
     }), /*#__PURE__*/React.createElement(E.Groups, {
@@ -487,11 +416,11 @@
       discarded: discarded,
       onDiscard: preview ? setDiscarded : undefined,
       disabled: blocked
-    }), preview && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Issues, {
+    }), preview && affected.length > 0 && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Issues, {
       issues: preview.response.warnings
     }), /*#__PURE__*/React.createElement("p", {
       role: "status"
-    }, "\u5F53\u524D\u5F52\u5C5E\u5DF2\u68C0\u67E5\uFF1B\u53D7\u5F71\u54CD\u5916\u534F\u7EC4 ", affected.length, " \u4E2A\uFF0C\u5C1A\u672A\u63D0\u4EA4\u3002")), /*#__PURE__*/React.createElement(E.Feedback, {
+    }, "\u672C\u6B21\u4FEE\u6539\u5C06\u89E3\u9664 ", affected.length, " \u4E2A\u5916\u534F\u7EC4\uFF0C\u8BF7\u786E\u8BA4\u4E0B\u65B9\u5217\u51FA\u7684\u53D8\u5316\u3002")), /*#__PURE__*/React.createElement(E.Feedback, {
       model: model,
       disabled: blocked || checking,
       paging: paging
@@ -499,19 +428,14 @@
       className: "pd-foot"
     }, /*#__PURE__*/React.createElement("span", {
       className: "muted"
-    }, "\u73B0\u6709\u5F52\u5C5E\u4EC5\u4F5C\u5EFA\u8BAE\uFF1B\u4EC5\u63D0\u4EA4\u6709\u6548\u5DE5\u5E8F\uFF0C\u4E0D\u4FEE\u6539\u5DF2\u6709\u6279\u6B21\u3002"), /*#__PURE__*/React.createElement(Button, {
-      icon: "search",
-      busy: checking,
-      disabled: blocked,
-      reason: stageReason,
-      onClick: preflight
-    }, "\u68C0\u67E5\u5F52\u5C5E"), /*#__PURE__*/React.createElement(Button, {
+    }, "\u4FDD\u5B58\u5168\u90E8 ", active.length, " \u9053\u6709\u6548\u5DE5\u5E8F\uFF0C\u5305\u542B\u5176\u4ED6\u9875\u548C\u7B5B\u9009\u9690\u85CF\u7684\u5DE5\u5E8F\u3002"), /*#__PURE__*/React.createElement(Button, {
       icon: "check",
       className: "btn primary",
+      busy: checking,
       disabled: blocked,
       reason: saveReason,
       onClick: save
-    }, "\u5B8C\u6210\u5F52\u5C5E \xB7 \u89E3\u9501\u5DE5\u65F6")), picker && ReactDOM.createPortal(/*#__PURE__*/React.createElement("div", {
+    }, "\u4FDD\u5B58\u5F52\u5C5E\u5E76\u7EE7\u7EED")), picker && ReactDOM.createPortal(/*#__PURE__*/React.createElement("div", {
       className: "plana process-detail"
     }, /*#__PURE__*/React.createElement(Picker, {
       adapter: adapter,

@@ -145,7 +145,7 @@
       facts: source.receipt
     })) : /*#__PURE__*/React.createElement("div", {
       className: "dy-note warning"
-    }, "\u8FD9\u6761\u7269\u6D41\u767B\u8BB0\u73B0\u5728\u8BFB\u4E0D\u5230\uFF0C\u53D1\u51FA\u548C\u56DE\u5382\u65F6\u95F4\u90FD\u6309\u672A\u77E5\u5904\u7406\u3002")), source.requirements && /*#__PURE__*/React.createElement(Structure, {
+    }, "\u7269\u6D41\u767B\u8BB0\u8BFB\u53D6\u5931\u8D25\uFF0C\u8BF7\u5237\u65B0\u91CD\u8BD5\u3002")), source.requirements && /*#__PURE__*/React.createElement(Structure, {
       title: "\u7269\u6599\u9700\u6C42",
       value: source.requirements
     }), e && /*#__PURE__*/React.createElement(Structure, {

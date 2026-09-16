@@ -48,11 +48,11 @@
     const visible = data ? data.entities : [], hidden = selected.filter(ref => !visible.some(row => row.ref === ref)).length;
     return <section className="pf-picker" aria-label="选择排产批次">
       <form className="pf-tools" onSubmit={event => { event.preventDefault(); if (!busy) filter({ query }); }}>
-        <input type="search" aria-label="搜索排产批次" placeholder="批次号、图号、零件名" value={query} disabled={busy} onChange={event => setQuery(event.target.value)} />
+        <window.ResourceControls.Search aria-label="搜索排产批次" placeholder="批次号、图号、零件名" value={query} disabled={busy} onChange={event => setQuery(event.target.value)} />
         <Button icon="search" type="submit" disabled={busy}>搜索</Button>
-        <label>齐套<select aria-label="批次齐套筛选" disabled={busy} value={scope.ready_status || ''} onChange={event => filter({ ready_status: event.target.value || undefined })}>
+        <label className="wb-inline-filter"><span>齐套</span><select aria-label="批次齐套筛选" disabled={busy} value={scope.ready_status || ''} onChange={event => filter({ ready_status: event.target.value || undefined })}>
           <option value="">全部</option><option value="yes">已齐套</option><option value="partial">部分齐套</option><option value="no">未齐套</option>
-        </select></label><Button icon="refresh-cw" aria-label="刷新批次范围" disabled={busy} onClick={() => filter({})} />
+        </select></label><Button icon="refresh-cw" aria-label="刷新批次范围" disabled={busy} onClick={() => filter({})}>刷新范围</Button>
       </form>
       <div className="pf-tools"><Button disabled={busy} onClick={() => select('all')}>全部待排</Button><Button disabled={busy} onClick={() => select('ready')}>仅已齐套</Button>
         <Button disabled={busy || !snapshot} onClick={() => select('filtered')}>全选当前筛选</Button><Button icon="x" disabled={disabled || selecting || !selected.length} onClick={() => onChange([])}>清除选择</Button>

@@ -129,9 +129,9 @@
       {!dialog && (command.locked || command.phase === 'done') && <div className="batch-band"><window.ResourceForms.Feedback command={command} />
         {command.phase === 'done' && <Button onClick={() => { committed(command.result); command.reset(); }}>刷新列表</Button>}</div>}
       {opened ? <window.BatchDetail adapter={adapter} batchRef={opened} revision={revision} onBack={() => setOpened(null)} onEdit={openEditor} onDelete={deletion} disabled={blocked}
-        onOperation={(entity, operation) => { command.reset(); setDialog({ type: 'operation', entity, operation }); }} onSync={(entity, strict, snapshot) => preview('sync', { strict_mode: strict }, entity, snapshot)} /> : <>
-        <form className="toolbar" onSubmit={event => { event.preventDefault(); if (!blocked) filter({ query }); }}><h2 className="wb-page-title">批次列表</h2>
-          <label className="search"><input type="search" aria-label="搜索批次号、图号、零件名" placeholder="搜索批次号、图号、零件名…" value={query} disabled={blocked} onChange={event => setQuery(event.target.value)} /></label>
+        onOperation={(entity, operation) => { command.reset(); setDialog({ type: 'operation', entity, operation }); }} onSync={(entity, snapshot) => preview('sync', {}, entity, snapshot)} /> : <>
+        <div className="batch-list-controls"><form className="toolbar" onSubmit={event => { event.preventDefault(); if (!blocked) filter({ query }); }}><h2 className="wb-page-title">批次列表</h2>
+          <label className="search"><window.ResourceControls.Icon name="search" /><input type="search" aria-label="搜索批次号、图号、零件名" placeholder="搜索批次号、图号、零件名…" value={query} disabled={blocked} onChange={event => setQuery(event.target.value)} /></label>
           <Button type="submit" icon="search" disabled={blocked}>搜索</Button><Button icon="filter" disabled={blocked} onClick={() => setDialog({ type: 'filters' })}>筛选</Button>
           <Button icon="refresh-cw" aria-label="刷新批次列表" disabled={blocked} onClick={() => filter({})} /><span className="tb-spacer" />
           <Button transfer="import" disabled={blocked || !snapshot} reason={typeof adapter.importPreview !== 'function' ? window.WorkbenchTerms.outcomes.unavailable : ''} onClick={() => { command.reset(); setDialog({ type: 'files', mode: 'import', scope, snapshot }); }}>批量导入</Button>
@@ -142,16 +142,16 @@
           {Object.keys(scope.column_filters).length > 0 && <span>列筛选 {Object.keys(scope.column_filters).length} 项</span>}
           {(scope.focus || scope.batch_ids) && <span>已定位{scope.focus === 'gaps' ? '工序缺项' : scope.focus === 'unready' ? '未齐套' : '指定批次'}</span>}
           <Button icon="x" disabled={blocked} onClick={clearFilters}>清除全部筛选</Button>
-          {onNav && <Button icon={returnSource ? 'arrow-left' : 'arrow-right'} disabled={blocked} onClick={() => typeof returnTarget === 'string' ? onNav(returnTarget) : onNav(returnTarget.view, returnTarget.context)}>{!returnSource ? '下一步 · 去排产' : returnView === 'dashboard' ? '返回值班台' : '返回排产'}</Button>}</div>
+          {onNav && <Button icon={returnSource ? 'arrow-left' : 'arrow-right'} disabled={blocked} onClick={() => typeof returnTarget === 'string' ? onNav(returnTarget) : onNav(returnTarget.view, returnTarget.context)}>{!returnSource ? '下一步 · 去排产' : returnView === 'dashboard' ? '返回值班台' : '返回排产'}</Button>}</div></div>
         {data && data.entities.length > 0 && <ErrorBox error={list.error} />}
         <window.BatchTable rows={data ? data.entities : []} scope={scope} selected={selected} setSelected={setSelected} onOpen={setOpened} onDelete={deletion}
           onSort={sortBy} onFilter={field => setDialog({ type: 'column', field, scope: { ...scope, snapshot_ref: snapshot } })} onClear={clearFilters} onRetry={() => filter({})} error={list.error} loading={list.loading} disabled={blocked || list.loading} />
         {data && <window.WorkbenchControls.Pager page={data.page} sizes={Array.from(new Set([20, 50, 100, data.page.size])).sort((a, b) => a - b)} unit="个批次" label="" sizeLabel="每页条数" showPageJump disabled={blocked || list.loading} onSize={size => filter({ size })} onPage={page => setScope(current => ({ ...current, page, snapshot_ref: snapshot }))} />}
-        <div className="toolbar"><span>已选 {selected.length} 个批次{selected.some(ref => !data || !data.entities.some(row => row.ref === ref)) ? ' · 含非当前页记录' : ''}</span>
+        <div className="toolbar batch-selection"><span>已选 {selected.length} 个批次{selected.some(ref => !data || !data.entities.some(row => row.ref === ref)) ? ' · 含非当前页记录' : ''}</span>
           <Button onClick={selectFiltered} disabled={blocked || !snapshot}>全选当前筛选</Button><Button icon="x" disabled={blocked || !selected.length} onClick={() => setSelected([])}>清除选择</Button>
           <Button icon="square-pen" disabled={blocked || !selected.length} onClick={() => setDialog({ type: 'bulk' })}>批量修改</Button>
           <Button icon="copy" disabled={blocked || !selected.length} onClick={() => preview('bulk', { action: 'copy', refs: selected, patch: {} })}>复制所选</Button>
-          <Button icon="x" disabled={blocked || !selected.length} onClick={() => preview('bulk', { action: 'delete', refs: selected, patch: {} })}>删除所选</Button></div>
+          <Button icon="trash-2" className="btn danger" disabled={blocked || !selected.length} onClick={() => preview('bulk', { action: 'delete', refs: selected, patch: {} })}>删除所选</Button></div>
       </>}
       {dialog && dialog.type === 'base' && <window.BatchForms.BaseEditor adapter={adapter} entity={dialog.entity} createContext={data && data.create_context} source={list.result && list.result.meta.source}
         command={command} onClose={close} onCommitted={committed} disabled={disabled} />}

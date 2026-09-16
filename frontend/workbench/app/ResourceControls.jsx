@@ -1,22 +1,36 @@
 (function () {
   'use strict';
   const C = window.APSResourceContract;
-  // Existing Plan A rail paths; action icons use the bundled Lucide subset.
+  // Local SVG paths supplement the bundled action and navigation icons.
   const railPaths = {
     machine: ['M3 20h18', 'M5 20V9l5 3V9l5 3V6l4 2v12'],
     wrench: ['M15 5.2a3.6 3.6 0 00-4.7 4.6L4 16.1 7.9 20l6.3-6.3A3.6 3.6 0 0018.8 9l-2.2 2.2-2-2L16.8 7z'],
     truck: ['M3 6h11v9H3z', 'M14 9h3.5L21 12.2V15h-7z'],
-    'arrow-right': ['M5 12h13M13 6l6 6-6 6']
+    'arrow-right': ['M5 12h13M13 6l6 6-6 6'],
+    'arrow-left': ['M19 12H5M11 6l-6 6 6 6'],
+    copy: ['M9 9h12v12H9Z', 'M5 15H3V3h12v2'],
+    filter: ['M4 4h16l-6 7v8l-4 2V11Z'],
+    'chevron-up': ['m6 15 6-6 6 6'],
+    'trash-2': ['M3 6h18', 'M19 6v14a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6', 'M8 6V3h8v3', 'M10 10v7M14 10v7'],
+    files: ['M15 3H8a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2V7l-4-4Z', 'M15 3v4h4M3 8v11a2 2 0 0 0 2 2h9'],
+    'list-checks': ['m3 6 2 2 3-4M11 6h10m-18 8 2 2 3-4M11 14h10M11 21h10'],
+    lock: ['M5 10h14v11H5Z', 'M8 10V6a4 4 0 0 1 8 0v4M12 14v3'],
+    'git-compare-arrows': ['M3 3h5v5H3Zm13 13h5v5h-5Z', 'M8 5h8a3 3 0 0 1 3 3v4m-3-3 3 3 3-3M16 19H8a3 3 0 0 1-3-3v-4m-3 3 3-3 3 3'],
+    eye: ['M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12Z', 'M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0'],
+    'rotate-ccw': ['M3 3v6h6', 'M3 9a9 9 0 1 1 .7 8']
   };
-  function Icon({ name }) {
+  function Icon({ name, className }) {
     const nodes = window.APSFieldReports && window.APSFieldReports.iconNodes[name];
-    if (nodes) return <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    if (nodes) return <svg className={className} data-wb-icon={name} viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       {nodes.map(([tag, attrs], index) => React.createElement(tag, { ...attrs, key: index }))}</svg>;
     if (name === 'refresh-cw' && typeof SMIcon === 'function') return <SMIcon name={name} />;
-    if (railPaths[name]) return <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    if (railPaths[name]) return <svg className={className} data-wb-icon={name} viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       {railPaths[name].map((d, index) => <path key={index} d={d} />)}
       {name === 'truck' && <><circle cx="7" cy="18" r="1.9" /><circle cx="17" cy="18" r="1.9" /></>}</svg>;
     return typeof Ico === 'function' ? <Ico name={name} /> : null;
+  }
+  function Search({ className = '', ...props }) {
+    return <label className={'search wb-search ' + className}><Icon name="search" /><input {...props} type="search" /></label>;
   }
   // reasonDisplay: 'inline' shows the reason next to the control; 'tooltip' keeps it in the title and a hidden description (table cells, toolbars).
   function Button({ icon, transfer, children, reason, reasonDisplay = 'inline', busy, className = 'btn', ...props }) {
@@ -357,5 +371,5 @@
       <Button icon="plus" className={className} aria-label={'放大' + axis} title={'放大' + axis + ' (+)'} disabled={disabled || zoom >= max} onClick={() => onZoom(timelineZoomStep(zoom, 1, max))} />
       <Button icon="unfold-vertical" className={(fitClassName || className) + ' wb-zoom-fit'} aria-label={'显示完整' + range} title={'显示完整' + range + ' (F)'} disabled={disabled || zoom <= 1} onClick={onFit} /></>;
   }
-  window.ResourceControls = { Icon, Button, ErrorBox, Issues, Status, Modal, Relation, relationLabels, Choice, Field, focusFirstInvalid, EmptyState, Pager, TimelineZoom, timelineZoomKey, timelineZoomStep };
+  window.ResourceControls = { Icon, Button, Search, ErrorBox, Issues, Status, Modal, Relation, relationLabels, Choice, Field, focusFirstInvalid, EmptyState, Pager, TimelineZoom, timelineZoomKey, timelineZoomStep };
 })();

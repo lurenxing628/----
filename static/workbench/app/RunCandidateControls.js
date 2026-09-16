@@ -11,7 +11,7 @@
     return error ? /*#__PURE__*/React.createElement("div", {
       className: "rc-notice rc-error",
       role: "alert"
-    }, error.message || '候选方案读取失败，没有显示替代结果。请刷新后重试。') : null;
+    }, error.message || '候选方案读取失败，请刷新后重试。') : null;
   }
   function Reasons({
     rows = []
@@ -235,7 +235,7 @@
       className: "rc-muted"
     }, "\u540D\u79F0\u3001\u8D44\u6E90\u3001\u4EA4\u671F\u548C\u6267\u884C\u72B6\u6001\u6765\u81EA\u751F\u6210\u65F6\u4FDD\u5B58\u7684\u8D44\u6599\uFF0C\u672A\u8BFB\u53D6\u540E\u6765\u7684\u4FEE\u6539\u3002", analysis ? analysis.baseline.reason && analysis.baseline.reason.message : g.baseline.reason.message), /*#__PURE__*/React.createElement("div", {
       className: "rc-muted"
-    }, analysis ? '排产时选批：' + analysis.batches.map(row => row.batch_id).join(' / ') : '原始选批清单尚未核对，不能用可见安排反推生成时的完整选批范围。'), /*#__PURE__*/React.createElement("div", null, "\u6392\u4EA7\u8BB0\u5F55\u7F16\u53F7\uFF1A", /*#__PURE__*/React.createElement("code", null, g.run_ref)), /*#__PURE__*/React.createElement("div", null, "\u5019\u9009\u8BB0\u5F55\u7F16\u53F7\uFF1A", /*#__PURE__*/React.createElement("code", null, data.candidate.candidate_ref)), /*#__PURE__*/React.createElement("dl", {
+    }, analysis ? '排产时选批：' + analysis.batches.map(row => row.batch_id).join(' / ') : '排产时的批次清单暂不可用。'), /*#__PURE__*/React.createElement("div", null, "\u6392\u4EA7\u8BB0\u5F55\u7F16\u53F7\uFF1A", /*#__PURE__*/React.createElement("code", null, g.run_ref)), /*#__PURE__*/React.createElement("div", null, "\u5019\u9009\u8BB0\u5F55\u7F16\u53F7\uFF1A", /*#__PURE__*/React.createElement("code", null, data.candidate.candidate_ref)), /*#__PURE__*/React.createElement("dl", {
       className: "rc-meta"
     }, window.RunCandidateAPI.metricKeys.map(k => /*#__PURE__*/React.createElement("div", {
       key: k
@@ -276,9 +276,7 @@
       key: k
     }, /*#__PURE__*/React.createElement("dt", null, M.executionLabels[k]), /*#__PURE__*/React.createElement("dd", null, v === null ? '未知' : M.executionValue(v))))) : /*#__PURE__*/React.createElement("p", {
       className: "rc-muted"
-    }, "\u672A\u4FDD\u7559\u751F\u6210\u65F6\u7684\u5F00\u5DE5\u548C\u5B8C\u5DE5\u8BB0\u5F55\uFF0C\u4E0D\u80FD\u63A8\u65AD\u4E3A\u672A\u5F00\u5DE5\u3002"), /*#__PURE__*/React.createElement("p", {
-      className: "rc-muted"
-    }, "\u5B9E\u9645\u5DE5\u65F6\u548C\u6210\u672C\uFF1A\u6682\u65E0\u6570\u636E\u3002\u7CFB\u7EDF\u8FD8\u6CA1\u6709\u8FD9\u4E9B\u8BB0\u5F55\uFF0C\u5B89\u6392\u65F6\u957F\u4E0D\u7B49\u4E8E\u5B9E\u9645\u5DE5\u65F6\u3002"), /*#__PURE__*/React.createElement(Reasons, {
+    }, "\u672A\u8BB0\u5F55\u6392\u4EA7\u65F6\u7684\u5F00\u5DE5\u548C\u5B8C\u5DE5\u72B6\u6001\u3002"), /*#__PURE__*/React.createElement(Reasons, {
       rows: task.data_gaps
     })));
   }
@@ -329,7 +327,7 @@
       key: label
     }, label)))), /*#__PURE__*/React.createElement("tbody", null, data.items.slice((current - 1) * 20, current * 20).map(row => /*#__PURE__*/React.createElement("tr", {
       key: row.batch_ref
-    }, /*#__PURE__*/React.createElement("td", null, row.batch_id, /*#__PURE__*/React.createElement("small", null, row.part_no || '图号未记录', " \xB7 ", row.part_label || '名称未填写')), /*#__PURE__*/React.createElement("td", null, M.number(row.quantity), " \u4EF6", /*#__PURE__*/React.createElement("small", null, row.scheduled_operation_count, " / ", row.operation_count, " \u9053")), /*#__PURE__*/React.createElement("td", null, row.due_date || '未记录'), /*#__PURE__*/React.createElement("td", null, row.planned_finish ? M.timeLabel(row.planned_finish) : '暂无数据', row.partial_planned_finish && /*#__PURE__*/React.createElement("small", null, "\u5DF2\u5B89\u6392\u90E8\u5206\uFF1A", M.timeLabel(row.partial_planned_finish), "\uFF0C\u975E\u5168\u6279\u5B8C\u5DE5")), /*#__PURE__*/React.createElement("td", null, {
+    }, /*#__PURE__*/React.createElement("td", null, row.batch_id, /*#__PURE__*/React.createElement("small", null, row.part_no || '图号未记录', " \xB7 ", row.part_label || '名称未填写')), /*#__PURE__*/React.createElement("td", null, M.number(row.quantity), " \u4EF6", /*#__PURE__*/React.createElement("small", null, row.scheduled_operation_count, " / ", row.operation_count, " \u9053")), /*#__PURE__*/React.createElement("td", null, row.due_date || '未记录'), /*#__PURE__*/React.createElement("td", null, row.planned_finish ? M.timeLabel(row.planned_finish) : '暂无数据', row.partial_planned_finish && /*#__PURE__*/React.createElement("small", null, "\u5DF2\u6392\u5DE5\u5E8F\u7ED3\u675F\u65F6\u95F4\uFF1A", M.timeLabel(row.partial_planned_finish))), /*#__PURE__*/React.createElement("td", null, {
       overdue: '预计超期',
       on_time: '预计按期',
       unknown: '暂无数据'
@@ -343,7 +341,7 @@
       key: index
     }, reasons[code] || '排产时依据不完整，交付结论待确认'))))), !data.items.length && /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", {
       colSpan: 6
-    }, data.items_complete ? '当前读取范围没有批次。' : '交付依据未完整记录，不能认定为零风险。'))))), /*#__PURE__*/React.createElement(Pager, {
+    }, data.items_complete ? '当前读取范围没有批次。' : '交付资料不完整，暂无法评估。'))))), /*#__PURE__*/React.createElement(Pager, {
       page: current,
       pages: pages,
       onPage: setPage,

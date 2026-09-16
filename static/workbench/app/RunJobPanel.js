@@ -3,6 +3,17 @@
 
   const A = window.RunJobAPI,
     U = window.RunJobControls;
+  function savedRecord() {
+    const store = A.pending(),
+      pending = store.read(),
+      recent = pending ? null : store.recent();
+    return {
+      intent: pending || recent && recent.intent,
+      pending: !!pending,
+      resolution: recent && recent.resolution,
+      error: ''
+    };
+  }
   function RunJobPanel({
     preflight,
     onNavigate,
@@ -11,19 +22,21 @@
     const api = React.useMemo(() => adapter || A.create(), [adapter]);
     const [initial] = React.useState(() => {
       try {
-        return {
-          intent: A.pending().read(),
-          error: ''
-        };
+        return savedRecord();
       } catch (e) {
         return {
           intent: null,
+          pending: false,
           error: e.message
         };
       }
     });
     const [intent, setIntent] = React.useState(initial.intent),
       [storageError, setStorageError] = React.useState(initial.error);
+    const [pendingActive, setPendingActive] = React.useState(initial.pending),
+      [resolution, setResolution] = React.useState(initial.resolution || 'unresolved');
+    const [retryPaused, setRetryPaused] = React.useState(false),
+      [lastChecked, setLastChecked] = React.useState(null);
     const [run, setRun] = React.useState(null),
       [preview, setPreview] = React.useState(null),
       [confirming, setConfirming] = React.useState(false);
@@ -68,10 +81,12 @@
     }, [inputRef, api]);
     React.useEffect(() => {
       function changed(event) {
-        if (event.key !== A.PENDING_KEY && event.key !== null) return;
+        if (![A.PENDING_KEY, A.RECENT_KEY, null].includes(event.key)) return;
         try {
-          const saved = A.pending().read();
-          setIntent(saved);
+          const saved = savedRecord();
+          setIntent(saved.intent);
+          setPendingActive(saved.pending);
+          setResolution(saved.resolution || 'unresolved');
           setRun(null);
           setVerified(false);
           setPreview(null);
@@ -87,41 +102,54 @@
     }, []);
     React.useEffect(() => {
       if (!intent || storageError) return undefined;
+      if (!pendingActive && resolution === 'context_replaced') return undefined;
       setVerified(false);
+      setRetryPaused(false);
       let disposed = false,
         timer,
         controller,
         attempt = 0,
         querying = false,
-        boundRef = null,
-        done = false;
+        done = false,
+        unsettledSince = null;
       const current = () => !disposed && alive.current && activeIntent.current && activeIntent.current.request_key === intent.request_key;
       function schedule() {
         if (current() && !done && !document.hidden) timer = setTimeout(query, A.pollDelay(attempt++));
+      }
+      function unresolved(started) {
+        if (unsettledSince === null) unsettledSince = started;
+        if (Date.now() - unsettledSince >= 60000) {
+          done = true;
+          setRetryPaused(true);
+        }
       }
       async function query() {
         if (!current() || querying || document.hidden || done) return;
         querying = true;
         controller = new AbortController();
         setChecking(true);
+        const started = Date.now();
         try {
-          let result;
-          if (!boundRef) {
-            const found = A.lookup(await api.lookup(intent.request_key, controller.signal), intent.run_ref);
-            if (!current() || controller.signal.aborted) return;
-            if (!found.found) {
-              setVerified(false);
-              setNotice(window.WorkbenchTerms.outcomes.pending('排产'));
-              clearError();
-              return;
-            }
-            result = found.run;
-            boundRef = result.run_ref;
-          } else result = A.run(A.envelope(await api.get(boundRef, controller.signal)), boundRef);
+          const found = A.lookup(await api.lookup(intent.request_key, controller.signal, intent.data_context_ref), intent.run_ref);
           if (!current() || controller.signal.aborted) return;
-          if (!intent.run_ref) {
+          setLastChecked(Date.now());
+          setResolution(found.resolution);
+          clearError();
+          setNotice('');
+          if (!found.found) {
+            setVerified(false);
+            if (found.resolution === 'context_replaced') {
+              A.pending().finish(activeIntent.current, 'context_replaced');
+              setPendingActive(false);
+              setRun(null);
+              done = true;
+            } else unresolved(started);
+            return;
+          }
+          const result = found.run;
+          if (pendingActive && !activeIntent.current.run_ref) {
             try {
-              const saved = A.pending().attach(intent, result.run_ref);
+              const saved = A.pending().attach(activeIntent.current, result.run_ref);
               activeIntent.current = saved;
               setIntent(saved);
             } catch (e) {
@@ -131,13 +159,19 @@
           }
           setRun(result);
           setVerified(true);
-          clearError();
-          setNotice('');
+          unsettledSince = null;
           done = A.terminal(result);
+          if (done && pendingActive) {
+            A.pending().finish(activeIntent.current, 'found');
+            setPendingActive(false);
+          }
         } catch (e) {
           if (current() && !controller.signal.aborted) {
+            setLastChecked(Date.now());
+            setResolution('lookup_failed');
             setVerified(false);
-            fail(e);
+            fail(e, e.code === 'run_result_inconsistent' ? A.message(e) : '查询暂未成功，请点「查询结果」重试。');
+            unresolved(started);
           }
         } finally {
           querying = false;
@@ -165,9 +199,9 @@
         if (controller) controller.abort();
         document.removeEventListener('visibilitychange', visibility);
       };
-    }, [api, intent, revision, storageError]);
+    }, [api, intent && intent.request_key, revision, storageError]);
     async function inspect() {
-      if (locked.current || storageError || !inputRef || intent && (!A.terminal(run) || !verified)) return;
+      if (locked.current || storageError || !inputRef || pendingActive) return;
       locked.current = true;
       setBusy(true);
       clearError();
@@ -182,10 +216,10 @@
         if (!alive.current || controller.signal.aborted || activeInput.current !== original) return;
         setPreview(value);
         setConfirming(value.write_context.capabilities['scheduling.run']);
-        if (!value.write_context.capabilities['scheduling.run']) setUnavailable(A.message(value.write_context.blocked_reasons[0]));
+        if (!value.write_context.capabilities['scheduling.run']) setUnavailable(value.write_context.blocked_reasons[0].message || A.message(value.write_context.blocked_reasons[0]));
       } catch (e) {
         if (alive.current && !controller.signal.aborted) {
-          fail(e);
+          fail(e, A.previewMessage(e));
           if (['run_schema_unavailable', 'run_worker_not_connected'].includes(e.code)) setUnavailable(A.message(e));
         }
       } finally {
@@ -207,11 +241,12 @@
         }, async lock => {
           if (!lock) throw new Error('另一个页面正在提交排产，请稍后点「查询结果」。');
           if (!alive.current || preview.input_ref !== activeInput.current) return;
-          const previous = activeIntent.current;
-          if (previous && (!A.terminal(run) || !verified)) throw new Error('上次排产还没确认结果，不能开始下一次排产。');
-          original = A.pending().begin(preview.input_ref, previous);
+          if (pendingActive) throw new Error('上次排产还没确认结果，不能开始下一次排产。');
+          original = A.pending().begin(preview.input_ref, null, preview.data_context_ref);
           activeIntent.current = original;
           setIntent(original);
+          setPendingActive(true);
+          setResolution('unresolved');
           setRun(null);
           setVerified(false);
           setConfirming(false);
@@ -231,6 +266,7 @@
               if (alive.current) {
                 activeIntent.current = null;
                 setIntent(null);
+                setPendingActive(false);
                 setRun(null);
                 fail(e);
               }
@@ -251,7 +287,10 @@
     }
     function rereadStorage() {
       try {
-        setIntent(A.pending().read());
+        const saved = savedRecord();
+        setIntent(saved.intent);
+        setPendingActive(saved.pending);
+        setResolution(saved.resolution || 'unresolved');
         setStorageError('');
         setVerified(false);
         setRun(null);
@@ -260,40 +299,44 @@
         setStorageError(e.message);
       }
     }
-    const reason = storageError || (!inputRef ? '请先完成排产检查，再确认本次计算。' : intent && (!A.terminal(run) || !verified) ? '上次排产还没结束或结果未知，请先点「查询结果」。' : unavailable);
     const selected = preflight && preflight.normalized_input && preflight.normalized_input.batch_refs;
+    const reason = storageError || (!inputRef ? '请先完成排产检查。' : selected && !selected.length ? '请先选择要排产的批次。' : pendingActive ? '上次排产尚未确认结果，请先查询。' : unavailable);
     return /*#__PURE__*/React.createElement("section", {
       className: "plana run-job-panel",
       "data-run-job-panel": "true",
       "aria-label": "\u5019\u9009\u6392\u4EA7"
     }, /*#__PURE__*/React.createElement(U.Styles, null), /*#__PURE__*/React.createElement("div", {
       className: "rj-heading"
-    }, /*#__PURE__*/React.createElement("h2", null, "\u5019\u9009\u6392\u4EA7"), /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h2", null, "\u5019\u9009\u6392\u4EA7"), /*#__PURE__*/React.createElement("p", {
+      className: "rj-muted"
+    }, "\u9009\u62E9\u8303\u56F4\u5E76\u5B8C\u6210\u68C0\u67E5\u540E\uFF0C\u8BA1\u7B97\u672C\u6B21\u5019\u9009\u65B9\u6848\u3002"))), /*#__PURE__*/React.createElement("div", {
+      className: "rj-actions"
+    }, /*#__PURE__*/React.createElement("div", {
       className: "rj-tools"
     }, /*#__PURE__*/React.createElement(U.Button, {
       icon: "play",
       className: inputRef && selected && selected.length ? 'btn primary' : 'btn',
       reason: reason,
-      reasonDisplay: "inline",
+      reasonDisplay: "tooltip",
       busy: busy,
       onClick: inspect
     }, "\u6838\u5BF9\u5E76\u5F00\u59CB\u6392\u4EA7"), unavailable && /*#__PURE__*/React.createElement(U.Button, {
       icon: "refresh-cw",
-      "aria-label": "\u91CD\u65B0\u6838\u5BF9\u6392\u4EA7\u6761\u4EF6",
       busy: busy,
       onClick: inspect
-    }), intent && /*#__PURE__*/React.createElement(U.Button, {
+    }, "\u91CD\u65B0\u6838\u5BF9\u6392\u4EA7\u6761\u4EF6"), intent && resolution !== 'context_replaced' && /*#__PURE__*/React.createElement(U.Button, {
       icon: "refresh-cw",
-      "aria-label": window.WorkbenchTerms.actions.query_result,
       busy: checking || busy,
       onClick: () => {
         setNotice('');
         refresh();
       }
-    }), typeof onNavigate === 'function' && /*#__PURE__*/React.createElement(U.Button, {
+    }, "\u67E5\u8BE2\u7ED3\u679C"), typeof onNavigate === 'function' && /*#__PURE__*/React.createElement(U.Button, {
       icon: "arrow-left",
       onClick: () => onNavigate('run')
-    }, "\u8FD4\u56DE\u6392\u4EA7\u68C0\u67E5"))), storageError && /*#__PURE__*/React.createElement("div", {
+    }, "\u8FD4\u56DE\u6392\u4EA7\u68C0\u67E5")), reason && /*#__PURE__*/React.createElement("p", {
+      className: "rj-muted rj-action-reason"
+    }, reason)), storageError && /*#__PURE__*/React.createElement("div", {
       className: "rj-notice",
       role: "alert"
     }, storageError, /*#__PURE__*/React.createElement("div", {
@@ -318,6 +361,9 @@
       run: run,
       intent: intent,
       paused: paused,
+      retryPaused: retryPaused,
+      lastChecked: lastChecked,
+      resolution: resolution,
       checking: checking,
       verified: verified,
       api: api
