@@ -195,7 +195,7 @@ def test_real_window_scores_exercise_both_dynamic_penalties(monkeypatch):
 
 
 def test_distinct_graph_decisions_still_use_output_fingerprint_rejection():
-    from core.services.scheduler.run.optimizer_graph_ready import _candidate_should_replace_best
+    from core.services.scheduler.run.optimizer_graph_ready_stages import _candidate_should_replace_best
     from core.services.scheduler.run.optimizer_search_report import OptimizationSearchReportState
     inputs = _inputs()
     context = inputs["graph_ready_context"]

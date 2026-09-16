@@ -288,6 +288,26 @@
     "strict_slashes": true
   },
   {
+    "rule": "/api/workbench/v1/entities/operator/<ref>/machine-permissions/preview",
+    "endpoint": "workbench.operator_machine_preview",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/entities/operator/<ref>/machine-permissions/confirm",
+    "endpoint": "workbench.operator_machine_confirm",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
     "rule": "/api/workbench/v1/entities/<kind>/bulk-preview",
     "endpoint": "workbench.resource_bulk_preview",
     "methods": [
@@ -876,6 +896,26 @@
   {
     "rule": "/api/workbench/v1/execution/reports/<report_ref>/correct",
     "endpoint": "workbench.field_report_correct",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/execution/reports/<report_ref>/void-preview",
+    "endpoint": "workbench.field_report_void_preview",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/execution/reports/<report_ref>/void",
+    "endpoint": "workbench.field_report_void",
     "methods": [
       "OPTIONS",
       "POST"
