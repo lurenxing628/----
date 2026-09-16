@@ -87,7 +87,7 @@ def test_real_piece_candidate_official_trial_and_old_plans_retain_evidence(trial
         assert after[table] == original[table], table
     for table in ("Schedule", "WorkbenchPlanSourceRefs", "WorkbenchEntityRefs", "WorkbenchTaskRefs", "WorkbenchCommandReceipts"):
         assert {row[0]: row for row in after[table]}.items() >= {row[0]: row for row in original[table]}.items(), table
-    assert case.conn.execute("SELECT version FROM SchemaVersion WHERE id=1").fetchone()[0] == 31
+    assert case.conn.execute("SELECT version FROM SchemaVersion WHERE id=1").fetchone()[0] == 32
 
 
 def test_formal_target_never_follows_current_batch_quantity(trial_case):

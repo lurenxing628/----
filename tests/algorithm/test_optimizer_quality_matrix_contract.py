@@ -69,23 +69,24 @@ def test_real_matrix_does_not_regress_against_formal_historical_baseline(matrix)
 def test_real_production_repair_and_sgs_are_called_without_test_clock():
     from core.algorithms.greedy import scheduler as production_scheduler
 
-    original_iterated_greedy = production_graph.run_graph_ready_iterated_greedy
-    iterated_greedy_decodes = []
+    # Repair and iterated greedy are resumable stage objects now; the phase builds each exactly once
+    # and rotates them, so the production hooks are their constructors rather than one-shot runners.
+    greedy_report_states = []
 
-    def iterated_greedy(**kwargs):
-        best = original_iterated_greedy(**kwargs)
-        report = kwargs["report_state"].candidate_profile["graph_ready_optimization"]["iterated_greedy"]
-        iterated_greedy_decodes.append(int(report["decodes"]))
-        return best
+    class RecordingIteratedGreedyRun(production_graph.IteratedGreedyRun):
+        def __init__(self, **kwargs):
+            greedy_report_states.append(kwargs["report_state"])
+            super().__init__(**kwargs)
 
-    with patch.object(production_graph, "run_graph_ready_elite_repair", wraps=production_graph.run_graph_ready_elite_repair) as repair, patch.object(
-            production_graph, "run_graph_ready_iterated_greedy", side_effect=iterated_greedy), patch.object(
+    with patch.object(production_graph, "EliteRepairRun", wraps=production_graph.EliteRepairRun) as repair, patch.object(
+            production_graph, "IteratedGreedyRun", RecordingIteratedGreedyRun), patch.object(
             production_scheduler, "dispatch_sgs", wraps=production_scheduler.dispatch_sgs) as sgs:
         row = run_case("tiny", "min_overdue")
     assert repair.call_count == 1
+    assert len(greedy_report_states) == 1
     # Snapshot counts cover baseline, profile and repair decodes; the iterated greedy stage decodes on top.
-    assert len(iterated_greedy_decodes) == 1
-    assert sgs.call_count == sum(row["counts"].values()) + iterated_greedy_decodes[0]
+    greedy_decodes = int(greedy_report_states[0].candidate_profile["graph_ready_optimization"]["iterated_greedy"]["decodes"])
+    assert sgs.call_count == sum(row["counts"].values()) + greedy_decodes
     assert repair.call_args.kwargs["clock"].__name__ == "perf_counter"
     assert row["status"] == "passed"
 
