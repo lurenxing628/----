@@ -3,9 +3,9 @@
 from collections import defaultdict
 
 from core.models.workbench_dashboard import MAX_FACT_ROWS, bounded
+from core.services.capacity.plan_calendar_intervals import IntervalIndex, instant, union
 from core.services.workbench.dashboard_facts import source_issue
 from core.services.workbench.dashboard_projection import category, observation
-from core.services.workbench.plan_calendar_intervals import IntervalIndex, instant, union
 
 
 def _index(raw, refs):

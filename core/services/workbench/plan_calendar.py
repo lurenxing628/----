@@ -17,13 +17,12 @@ facts; sparse enormous spans return explicit unavailable, never a shortened rang
 from collections import defaultdict
 from datetime import date, timedelta
 
-from .plan_calendar_context import public_resource, resource_ids, selected_context
-from .plan_calendar_engine import SnapshotCalendarEngine
-from .plan_calendar_io import CalendarFacts, ProjectionLimit, snapshot_values
-from .plan_calendar_windows import apply_resource, policy_projection, unavailable
+from core.services.capacity.plan_calendar_engine import SnapshotCalendarEngine
+from core.services.capacity.plan_calendar_io import CalendarFacts, ProjectionLimit, snapshot_values
+from core.services.capacity.plan_calendar_limits import MAX_CALENDAR_DATES, MAX_POLICY_CELLS
+from core.services.capacity.plan_calendar_windows import apply_resource, policy_projection, unavailable
 
-MAX_CALENDAR_DATES = 3660
-MAX_POLICY_CELLS = 40000
+from .plan_calendar_context import public_resource, resource_ids, selected_context
 
 
 def _range_days(start, end):

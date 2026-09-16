@@ -3,10 +3,10 @@
 from collections import defaultdict
 from datetime import date, timedelta
 
-from core.services.workbench.plan_calendar import MAX_CALENDAR_DATES, MAX_POLICY_CELLS
-from core.services.workbench.plan_calendar_engine import SnapshotCalendarEngine
-from core.services.workbench.plan_calendar_io import CalendarFacts, ProjectionLimit
-from core.services.workbench.plan_calendar_windows import apply_resource, policy_projection, unavailable
+from core.services.capacity.plan_calendar_engine import SnapshotCalendarEngine
+from core.services.capacity.plan_calendar_io import CalendarFacts, ProjectionLimit
+from core.services.capacity.plan_calendar_limits import MAX_CALENDAR_DATES, MAX_POLICY_CELLS
+from core.services.capacity.plan_calendar_windows import apply_resource, policy_projection, unavailable
 from data.repositories.schedule_time_sql import overlap_or_bad_time_sql
 
 

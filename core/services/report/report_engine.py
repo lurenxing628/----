@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from typing import Any, BinaryIO, Callable, ClassVar, Dict, Iterable, List, Optional
 
 from core.infrastructure.errors import AppError, ErrorCode, ValidationError
+from core.services.capacity.resource_utilization_metrics import METRIC_VERSION
 from core.services.common.degradation import DegradationCollector
 from core.services.report.delay_diagnosis_presentation import (
     build_delay_diagnosis_export_rows,
@@ -17,7 +18,6 @@ from core.services.scheduler.schedule_plan_query_service import (
     SchedulePlanQueryService,
     SchedulePlanResolution,
 )
-from core.services.workbench.resource_utilization_metrics import METRIC_VERSION
 from data.repositories import MachineDowntimeRepository, ScheduleHistoryRepository, ScheduleRepository
 
 from . import calculations

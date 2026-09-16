@@ -5,10 +5,9 @@ from datetime import date, datetime, time, timedelta
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_run_candidate import local_time
-
-from .plan_calendar_intervals import union
-from .plan_calendar_windows import available_intervals
-from .resource_utilization_metrics import ResourceUtilizationMetrics
+from core.services.capacity.plan_calendar_intervals import union
+from core.services.capacity.plan_calendar_windows import available_intervals
+from core.services.capacity.resource_utilization_metrics import ResourceUtilizationMetrics
 
 MAX_DAYS = 3660
 MAX_RESOURCE_DAYS = 40000

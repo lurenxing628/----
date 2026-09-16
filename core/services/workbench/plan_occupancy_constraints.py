@@ -2,14 +2,14 @@
 
 from collections import defaultdict
 
+from core.services.capacity.plan_calendar_engine import SnapshotCalendarEngine
+from core.services.capacity.plan_calendar_intervals import IntervalIndex, instant
+from core.services.capacity.plan_calendar_windows import available_intervals
 from core.services.personnel.operator_qualification import OperatorQualificationError, OperatorQualificationService
 from data.repositories.operator_machine_repo import OperatorMachineRepository
 from data.repositories.operator_qualification_repo import OperatorQualificationRepository
 
 from .plan_calendar_context import issue
-from .plan_calendar_engine import SnapshotCalendarEngine
-from .plan_calendar_intervals import IntervalIndex, instant
-from .plan_calendar_windows import available_intervals
 from .zero_duration import estimate_point_event
 
 

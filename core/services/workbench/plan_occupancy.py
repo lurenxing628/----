@@ -18,12 +18,12 @@ from collections import defaultdict
 from datetime import datetime
 
 from core.models.workbench_command import WorkbenchCommandRejected
+from core.services.capacity.plan_calendar_intervals import hours, instant, segments, union, wire
+from core.services.capacity.plan_calendar_windows import available_intervals
+from core.services.capacity.resource_utilization_metrics import ResourceUtilizationMetrics
 
 from .plan_calendar_context import issue, public_resource, selected_context
-from .plan_calendar_intervals import hours, instant, segments, union, wire
-from .plan_calendar_windows import available_intervals
 from .plan_occupancy_constraints import TaskConstraints
-from .resource_utilization_metrics import ResourceUtilizationMetrics
 
 
 def _occupancy_groups(rows, start, end, constraints):

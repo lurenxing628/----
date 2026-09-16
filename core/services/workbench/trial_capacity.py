@@ -4,8 +4,8 @@ from collections import defaultdict
 from datetime import datetime, timedelta
 
 from core.errors import AppError
-from core.services.workbench.plan_calendar_intervals import hours, intersection, segments, union
-from core.services.workbench.plan_calendar_windows import apply_resource, available_intervals, policy_projection
+from core.services.capacity.plan_calendar_intervals import hours, intersection, segments, union
+from core.services.capacity.plan_calendar_windows import apply_resource, available_intervals, policy_projection
 
 from .trial_calendar import calendar_engine
 

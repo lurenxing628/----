@@ -8,8 +8,8 @@ from typing import Any, Dict
 
 from core.infrastructure.errors import ValidationError
 
-from .plan_calendar_context import issue
 from .plan_calendar_intervals import IntervalIndex, hours, instant, public_intervals, union, wire
+from .plan_calendar_issues import issue
 
 _MEASURES = ("available_hours", "effective_hours", "normal_available_hours", "normal_effective_hours",
              "urgent_available_hours", "urgent_effective_hours")

@@ -7,11 +7,11 @@ from core.algorithms.evaluation import _count_changeovers
 from core.algorithms.types import ScheduleResult
 from core.infrastructure.errors import ValidationError
 from core.models.workbench_run_candidate import local_time
+from core.services.capacity.plan_calendar_engine import SnapshotCalendarEngine
+from core.services.capacity.plan_calendar_intervals import instant
+from core.services.capacity.plan_calendar_windows import apply_resource, policy_projection, unavailable
 
 from .dashboard_resource_metrics import MAX_RESOURCE_DAYS, daily_resource_pressure, range_days
-from .plan_calendar_engine import SnapshotCalendarEngine
-from .plan_calendar_intervals import instant
-from .plan_calendar_windows import apply_resource, policy_projection, unavailable
 from .run_candidate_facts import _table
 from .run_candidate_values import stored_json
 

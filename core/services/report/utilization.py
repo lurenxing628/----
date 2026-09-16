@@ -2,9 +2,9 @@
 
 from collections import defaultdict
 
-from core.services.workbench.plan_calendar_intervals import union
-from core.services.workbench.plan_calendar_windows import available_intervals
-from core.services.workbench.resource_utilization_metrics import ResourceUtilizationMetrics
+from core.services.capacity.plan_calendar_intervals import union
+from core.services.capacity.plan_calendar_windows import available_intervals
+from core.services.capacity.resource_utilization_metrics import ResourceUtilizationMetrics
 
 from .calculation_helpers import is_internal_source, is_valid_interval, parse_dt
 from .report_degradation import record_report_bad_time_row, record_report_zero_capacity_window

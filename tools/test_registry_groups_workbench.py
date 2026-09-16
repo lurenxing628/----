@@ -375,7 +375,7 @@ WORKBENCH_REQUIRED_REGRESSION_GROUPS = (
         "core/services/scheduler/**/*.py",
         *_PLAN_READ_SCOPES,
         "core/services/workbench/review*.py", "core/services/workbench/plan*.py",
-        "core/services/workbench/resource_utilization_metrics.py", "core/services/workbench/dashboard_resource_metrics.py",
+        "core/services/capacity/**/*.py", "core/services/workbench/dashboard_resource_metrics.py",
         "core/services/workbench/execution_ledger*.py",
         "core/services/execution/**/*.py",
         "core/services/workbench/production_report*.py",

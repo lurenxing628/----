@@ -15,8 +15,8 @@ from core.infrastructure.errors import ValidationError
 from core.models.workbench_command import input_fingerprint
 from core.models.workbench_plan_reference import WorkbenchPlanLocator
 from core.models.workbench_plan_scope import PlanReadScope
+from core.services.capacity.plan_calendar_engine import SnapshotCalendarEngine
 from core.services.scheduler.calendar_engine import CalendarEngine
-from core.services.workbench.plan_calendar_engine import SnapshotCalendarEngine
 from core.services.workbench.plan_fact_serialization import plain_plan_facts
 from core.services.workbench.plan_queries import WorkbenchPlanQueryService
 from tests.workbench.plan_calendar_support import CalendarCase, codes, resource

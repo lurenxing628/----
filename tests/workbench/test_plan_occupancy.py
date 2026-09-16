@@ -7,9 +7,10 @@ from datetime import datetime, timedelta
 import pytest
 
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.services.workbench import plan_calendar, plan_calendar_io
+from core.services.capacity import plan_calendar_io
+from core.services.capacity.plan_calendar_intervals import IntervalIndex, hours, intersection, segments, union
+from core.services.workbench import plan_calendar
 from core.services.workbench.plan_calendar import project_plan_calendar
-from core.services.workbench.plan_calendar_intervals import IntervalIndex, hours, intersection, segments, union
 from core.services.workbench.plan_occupancy import project_plan_occupancy
 from tests.workbench.plan_calendar_support import codes, measured, plan_calendar_case, resource
 from tests.workbench.plan_catalog_support import candidate, history, scenario
