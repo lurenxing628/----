@@ -31,6 +31,7 @@ from core.algorithm_runtime.run_state import ScheduleRunState
 from core.algorithm_runtime.sgs_estimate_reuse import sgs_reuse_scope
 from core.infrastructure.errors import ValidationError
 
+from . import internal_operation
 from .auto_assign import (
     auto_assign_internal_resources,
     auto_assign_internal_resources_attempt,
@@ -40,7 +41,7 @@ from .auto_assign import (
 from .dispatch import dispatch_batch_order, dispatch_sgs
 from .dispatch.route import dispatch_run
 from .dispatch.sgs_checkpoint import DecodeCheckpoint, DecodeCheckpointRequest, decode_input_signature
-from .dispatch.sgs_decode_acceleration import dispatch_certificate
+from .dispatch.sgs_decode_acceleration import dispatch_certificate, pristine_functions
 from .dispatch.sgs_reuse import can_skip_native_sgs_reuse, create_native_sgs_reuse
 from .dispatch.sgs_score_cache import AutoAssignProbeContract, attach_sgs_score_cache, sgs_score_cache_stats
 from .external_groups import schedule_external
@@ -155,7 +156,8 @@ class GreedyScheduler:
         ctx = ScheduleRunContext.from_legacy_scheduler(self)
         ctx.algo_stats = algo_stats
         if getattr(decode_checkpoints, "tail_reuse", None) is not None:
-            ctx.checkpoint_dispatch_guard = dispatch_certificate(self, ctx, _NATIVE_SGS_SCHEDULER_GUARD, _NATIVE_SGS_CONTEXT_GUARD)
+            ctx.checkpoint_dispatch_guard = dispatch_certificate(self, ctx, _NATIVE_SGS_SCHEDULER_GUARD, _NATIVE_SGS_CONTEXT_GUARD,
+                                                                 internal_operation, _NATIVE_INTERNAL_OPERATION_FUNCTIONS)
         initialize_resource_quality(state, sorted_ops, resource_pool)
         if decode_resume is not None:
             replay_resumed_demand(state)
@@ -439,3 +441,5 @@ _SGS_AUTO_ASSIGN_PROBE = AutoAssignProbeContract(eligible_auto_assign_resources,
 # Freeze the imported context's original methods during module initialization;
 # the dispatch child never imports its parent or certifies a caller-supplied type.
 _NATIVE_SGS_CONTEXT_GUARD = make_class_guard(ScheduleRunContext)
+# 派工见证只在 internal_operation 的函数仍是导入时的同一批对象时才有效；快照由本包持有，dispatch 子包不反向 import。
+_NATIVE_INTERNAL_OPERATION_FUNCTIONS = pristine_functions(internal_operation)

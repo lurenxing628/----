@@ -2,16 +2,20 @@
 
 from types import FunctionType, MethodType
 
-from .. import internal_operation
 from . import sgs_dispatch_step
 from .sgs_checkpoint import plan_decode_checkpoints
 from .sgs_priority_frontier import make_priority_queue
 
-_INTERNAL_FUNCTIONS = {name: value for name, value in vars(internal_operation).items() if type(value) is FunctionType}
 _SCHEDULE_OPERATION = sgs_dispatch_step._schedule_op
 
 
-def dispatch_certificate(scheduler, context, scheduler_guard, context_guard):
+def pristine_functions(module):
+    """Snapshot a module's plain functions at import time so the certificate can spot replacements later."""
+    return {name: value for name, value in vars(module).items() if type(value) is FunctionType}
+
+
+def dispatch_certificate(scheduler, context, scheduler_guard, context_guard, guarded_module, guarded_functions):
+    """The caller names the module whose functions must stay pristine; dispatch never imports its parent package."""
     def current():
         if not scheduler_guard(scheduler) or not context_guard(context):
             return False
@@ -20,10 +24,10 @@ def dispatch_certificate(scheduler, context, scheduler_guard, context_guard):
             return False
         if callback.__func__ is not vars(type(scheduler)).get("_schedule_internal"):
             return False
-        if callback.__func__.__globals__.get("schedule_internal_operation") is not _INTERNAL_FUNCTIONS["schedule_internal_operation"]:
+        if callback.__func__.__globals__.get("schedule_internal_operation") is not guarded_functions["schedule_internal_operation"]:
             return False
         return (sgs_dispatch_step._schedule_op is _SCHEDULE_OPERATION
-                and all(vars(internal_operation).get(name) is function for name, function in _INTERNAL_FUNCTIONS.items()))
+                and all(vars(guarded_module).get(name) is function for name, function in guarded_functions.items()))
 
     return current
 
