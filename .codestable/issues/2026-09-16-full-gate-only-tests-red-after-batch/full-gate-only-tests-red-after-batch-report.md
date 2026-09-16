@@ -9,7 +9,7 @@ source: 2026-09-16 提交批次收尾时，拆分高复杂度函数的子代理�
 tags: [gate, full-gate, frontend-copy, manual, utilization, report]
 ---
 
-# 日常门禁之外的 10 个用例随本批转红
+# 日常门禁之外的用例随本批转红（初报 10 个，累计 14 个）
 
 ## 现象
 
@@ -64,3 +64,12 @@ tags: [gate, full-gate, frontend-copy, manual, utilization, report]
   “计算方式版本”；手册 9.2 的设备/人员负荷列表仍写旧口径列名，按新导出列重写。
 
 验证：8 个测试文件 71 passed；`test_final_execution_reports` 与浏览器几何 smoke 各 1 passed；文案扫描器 0 命中；全仓 ruff 通过。
+
+### 补记：pyright 门禁复查时再发现 1 个文件（6 个用例）
+
+`tests/algorithm/test_sgs_graph_failure_bookkeeping_contract.py` 的 6 个用例在 HEAD 上全部报
+`AttributeError: core.algorithms.greedy.dispatch.sgs has no attribute '_schedule_op'`。根因是本批
+0350742b「SGS 解码提速」把 `_schedule_op` 移到 `batch_order.py`，由 `sgs_dispatch_step.py` 再导入并在
+派工时从自己的模块全局读取；测试仍打桩旧模块名 `sgs._schedule_op`。基线 7034b873 上 6 passed，属本批引入。
+处理：打桩目标改到 `sgs_dispatch_step._schedule_op`（与运行时读取点一致），并在测试里注明原因；
+产品代码不动。累计 14 个用例、9 个测试文件。验证：该文件 6 passed。

@@ -127,7 +127,9 @@ def _install_schedule_stub(monkeypatch: pytest.MonkeyPatch, *, fail_op_ids: set 
         )
         return result, False
 
-    monkeypatch.setattr("core.algorithms.greedy.dispatch.sgs._schedule_op", _stub_schedule_op)
+    # ``_schedule_op`` is read from ``sgs_dispatch_step``'s globals at call time (moved there by the SGS
+    # decode-acceleration split); patching the old ``sgs`` name would no longer intercept anything.
+    monkeypatch.setattr("core.algorithms.greedy.dispatch.sgs_dispatch_step._schedule_op", _stub_schedule_op)
     monkeypatch.setattr(
         "core.algorithms.greedy.dispatch.sgs._score_internal_candidate",
         lambda **kwargs: (0.0,),
