@@ -4,7 +4,7 @@ from __future__ import annotations
 from bisect import bisect_left, insort
 from datetime import datetime
 from types import SimpleNamespace
-from typing import Any, Dict, List, Mapping, Optional, Tuple
+from typing import Any, Dict, List, Mapping, MutableSequence, Optional, Tuple
 
 from .owned_timeline import OwnedTypeEntries, owned_type_certificate
 from .resource_demand import ResourceDemand
@@ -18,7 +18,8 @@ class MachineTypeState(Dict[str, str]):
 
     def __init__(self) -> None:
         super().__init__()
-        self._entries: Dict[str, List[TypeEntry]] = {}
+        # Rows live in run-owned ``OwnedTypeEntries`` (a MutableSequence, deliberately not a list subclass).
+        self._entries: Dict[str, MutableSequence[TypeEntry]] = {}
         self.demand: Optional[ResourceDemand] = None
         # Lifecycle events already applied to ``demand``: ("complete", op_id) / ("block_batch", batch_id).
         # A decode resumed from a checkpoint rebuilds the demand for its own operation objects and
@@ -48,8 +49,7 @@ class MachineTypeState(Dict[str, str]):
 
     def record(self, machine_id: str, start: Optional[datetime], end: datetime, op_id: Optional[int], op_type: str) -> None:
         if type(start) is datetime and type(end) is datetime and type(op_id) is int and op_id > 0 and op_type and end >= start:
-            owned: Any = OwnedTypeEntries()
-            insort(self._entries.setdefault(machine_id, owned), (start, end, op_id, op_type))
+            insort(self._entries.setdefault(machine_id, OwnedTypeEntries()), (start, end, op_id, op_type))
 
     def neighbor_witness(self, machine_id: str) -> Tuple[int, Optional[str]]:
         """O(1) change witness for one machine: recorded neighbor count plus the tail type."""

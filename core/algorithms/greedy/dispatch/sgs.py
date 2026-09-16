@@ -279,11 +279,18 @@ def _run_sgs_loop(
             position += 1
             if acceleration.record(_op_id(op), position, state=state, next_idx=next_idx, graph=graph_state,
                                    native_dispatch=_dispatch_selected is _NATIVE_DISPATCH_SELECTED):
-                _ensure_graph_ready_complete(graph_state=graph_state, ops_by_batch=ops_by_batch,
-                                             blocked_batches=state.blocked_batches)
+                _complete_reused_tail(graph_state, ops_by_batch=ops_by_batch, blocked_batches=state.blocked_batches)
                 return
             if score_cache is not None:
                 score_cache.forget(op)
+
+
+def _complete_reused_tail(graph_state: Optional[Dict[str, Any]], *, ops_by_batch: Dict[str, List[Any]],
+                          blocked_batches: set) -> None:
+    """A reused tail only exists in graph-mode decoding, so a missing graph state means the guard chain broke."""
+    if graph_state is None:
+        raise RuntimeError("尾段复用只在图模式派工中成立，图状态不能为空")
+    _ensure_graph_ready_complete(graph_state=graph_state, ops_by_batch=ops_by_batch, blocked_batches=blocked_batches)
 
 
 def _prepare_scoring_round(ctx, state, candidates, priority_pruning):
@@ -361,6 +368,8 @@ def _score_candidates(
         scored.append((key, batch_id, op))
     if remainder:
         if any(item[0][0] == 0.0 for item in scored):
+            if cache is None:
+                raise RuntimeError("图优先剪枝只在评分缓存在位时启用，评分缓存不能为空")
             cache.graph_candidates_pruned += len(remainder)
         else:
             scored.extend(_score_candidates(

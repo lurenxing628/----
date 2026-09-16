@@ -138,6 +138,8 @@ class GreedyScheduler:
                 warnings=warnings)
         if decode_resume is not None:
             # Resumed decode: the checkpoint already holds seeds, readiness progress and the prefix picks.
+            if checkpoint_signature is None:
+                raise RuntimeError("断点续排缺少解码输入签名")
             state = resume_run_state(decode_resume, signature=checkpoint_signature, warnings=warnings,
                                      dispatch_mode_key=params.dispatch_mode_key, graph_ready_context=graph_ready_context)
         else:
@@ -162,6 +164,8 @@ class GreedyScheduler:
         if decode_resume is not None:
             replay_resumed_demand(state)
         if decode_checkpoints is not None:
+            if checkpoint_signature is None:
+                raise RuntimeError("解码断点缺少解码输入签名")
             decode_checkpoints.arm(signature=checkpoint_signature, warnings=warnings)
         attach_sgs_score_cache(ctx, self, GreedyScheduler, state=state, params=params, resource_pool=resource_pool, probe=_SGS_AUTO_ASSIGN_PROBE)
 

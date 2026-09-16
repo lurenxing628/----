@@ -9,11 +9,15 @@ An optimizer must still validate an adopted trial with a separate full decode.
 from __future__ import annotations
 
 from datetime import datetime
+from typing import TYPE_CHECKING, Sequence
 
 from core.algorithm_runtime.resource_quality import MachineTypeState
 from core.infrastructure.errors import ValidationError
 
 from .sgs_checkpoint_tail_bulk import install_reconverged_tail
+
+if TYPE_CHECKING:
+    from .sgs_checkpoint import DecodeCheckpoint
 
 _STATE_FIELDS = ("base_time", "external_group_cache", "machine_timeline", "operator_timeline",
                  "machine_busy_hours", "operator_busy_hours", "last_end_by_machine", "errors",
@@ -82,7 +86,7 @@ def _same_dependency_ends(remaining, graph, progress):
 
 
 class DecodeTailReuse:
-    def __init__(self, checkpoints, *, check_budget=None):
+    def __init__(self, checkpoints: Sequence[DecodeCheckpoint], *, check_budget=None):
         self.checkpoints = {item.position: item for item in checkpoints}
         self.final = max(checkpoints, key=lambda item: item.position) if checkpoints else None
         self.check_budget = check_budget

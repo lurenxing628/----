@@ -274,12 +274,13 @@ class SgsScoreCache:
         changeover penalty reads the machine's type history and is recomputed when that changed.
         """
         old = entry.witness
-        if entry.scan is None or old[0] != witness[0]:
+        scan = entry.scan
+        if scan is None or old[0] != witness[0]:
             return None
         for timeline, resource_id, before, after in (
             (machine_timeline, machine_id, old[1], witness[1]), (operator_timeline, operator_id, old[2], witness[2]),
         ):
-            if before != after and not self._new_segments_outside_scan(timeline, resource_id, before, after, entry):
+            if before != after and not self._new_segments_outside_scan(timeline, resource_id, before, after, entry, scan):
                 return None
         estimate = entry.estimate
         if old[3] != witness[3]:
@@ -288,8 +289,10 @@ class SgsScoreCache:
             )
         return estimate
 
-    def _new_segments_outside_scan(self, timeline: Any, resource_id: str, before: Any, after: Any, entry: _PairEntry) -> bool:
-        """Every segment that grew ``timeline[resource_id]`` since the memo is known and misses the scan span."""
+    def _new_segments_outside_scan(
+        self, timeline: Any, resource_id: str, before: Any, after: Any, entry: _PairEntry, scan: Tuple[Any, Any],
+    ) -> bool:
+        """Every segment that grew ``timeline[resource_id]`` since the memo is known and misses ``scan``, the entry's span."""
         if after is None or (before is not None and before[0] != after[0]):
             return False
         grown = after[1] - (before[1] if before is not None else 0)
@@ -300,7 +303,7 @@ class SgsScoreCache:
         # Exactly ``grown`` occupations newer than the memo account for the growth; anything else is an unknown mutation.
         if recent[0][0] <= entry.seq or (len(log) > grown and log[-grown - 1][0] > entry.seq):
             return False
-        scan_start, scan_end = entry.scan
+        scan_start, scan_end = scan
         # A block touching the end of a certified skip still extends the skip, so the end is closed here.
         return all(start > scan_end or end <= scan_start for _seq, start, end in recent)
 

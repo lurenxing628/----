@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 from core.algorithm_runtime.algo_stats import ensure_algo_stats, increment_counter
 from core.algorithm_runtime.auto_assign_contract import auto_assign_attempt_from_result
@@ -29,6 +29,9 @@ class ScheduleRunContext:
     auto_assign_attempt_callback: Optional[AutoAssignAttemptCallback] = None
     # Per-decode SGS dispatch-key cache owned by the scheduler; None keeps every candidate re-scored.
     sgs_score_cache: Any = None
+    # Certificate that dispatch still runs the native scheduler/context/internal-operation code;
+    # the scheduler arms it only for tail-reuse decodes, so it stays None everywhere else.
+    checkpoint_dispatch_guard: Optional[Callable[[], bool]] = None
 
     @classmethod
     def from_legacy_scheduler(cls, scheduler: Any) -> ScheduleRunContext:

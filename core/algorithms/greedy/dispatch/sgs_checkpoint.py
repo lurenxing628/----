@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import hashlib
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, FrozenSet, Iterable, List, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, FrozenSet, Iterable, List, NoReturn, Optional, Sequence, Tuple
 
 from core.algorithm_runtime.run_state import ScheduleRunState
 from core.infrastructure.errors import ValidationError
@@ -28,7 +28,7 @@ _STATIC_CONTEXT_KEYS = ("enabled", "schedulable_op_ids", "fixed_op_ids", "fixed_
                         "piece_scope", "score_enabled")
 
 
-def _invalid(message: str, *, reason: str) -> None:
+def _invalid(message: str, *, reason: str) -> NoReturn:
     raise ValidationError(message, field=CHECKPOINT_FIELD, details={"reason": reason})
 
 

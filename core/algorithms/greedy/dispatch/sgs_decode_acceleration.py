@@ -46,8 +46,11 @@ class DecodeAcceleration:
     def before_pick(self, position):
         # Once every pick finished, preserve the completed result for summary
         # and formal validation even if the local slice just expired.
-        if self.check is not None and position < len(self.plan.order):
-            self.check(position)
+        if self.check is not None:
+            if self.plan is None:
+                raise RuntimeError("解码预算检查只随已规划的断点计划出现，断点计划不能为空")
+            if position < len(self.plan.order):
+                self.check(position)
 
     def record(self, op_id, position, *, state, next_idx, graph, native_dispatch):
         if self.frontier is not None:
@@ -56,9 +59,11 @@ class DecodeAcceleration:
             self.plan.record(op_id, position, state=state, next_idx=next_idx, graph_state=graph)
         if self.tail is None:
             return False
-        eligible = self.tail_eligible and native_dispatch and self.dispatch_guard is not None
-        if eligible and position in self.tail.checkpoints:
-            eligible = self.dispatch_guard() and all(self.pruning.guards[kind](record) for kind, record in self.pruning.examples.items())
+        guard = self.dispatch_guard
+        eligible = self.tail_eligible and native_dispatch and guard is not None
+        # ``eligible`` already implies a guard; the explicit test only makes that visible to the type checker.
+        if eligible and guard is not None and position in self.tail.checkpoints:
+            eligible = guard() and all(self.pruning.guards[kind](record) for kind, record in self.pruning.examples.items())
         return self.tail.try_complete(position, state=state, next_idx=next_idx, graph_state=graph, eligible=eligible)
 
 

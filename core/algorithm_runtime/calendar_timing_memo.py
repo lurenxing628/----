@@ -14,13 +14,21 @@ those methods, so an instrumented calendar keeps receiving every call. The guard
 re-checked every SGS round by the owner of the memo.
 """
 
+import enum
 import operator
 from datetime import datetime
 from typing import Any, Callable, Dict, Optional, Sequence, Tuple
 
 from .static_attribute import static_attribute
 
-_MISSING = object()
+
+class _Sentinel(enum.Enum):
+    """Single-member enum: ``found is not _MISSING`` then narrows to the memoized value type."""
+
+    MISSING = 0
+
+
+_MISSING = _Sentinel.MISSING
 _LIMIT = 32768
 _GUARDS: Dict[type, Callable[[Any], bool]] = {}
 TIMING_METHODS = ("get_efficiency", "adjust_to_working_time", "add_working_hours", "certified_slot_window")

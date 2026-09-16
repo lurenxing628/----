@@ -9,6 +9,7 @@ from bisect import bisect_left
 from collections import deque
 from copy import copy, deepcopy
 from datetime import datetime
+from typing import Any, Dict
 
 from core.algorithm_contracts.types import ScheduleResult
 from core.algorithm_runtime.native_snapshot import make_class_guard
@@ -96,7 +97,7 @@ def _prepare_types(state, checkpoint, prepared, suffix):
 
 
 def _prepare_progress(final, graph, suffix):
-    progress = {key: set(final.graph_progress[key]) for key in _GRAPH_SETS}
+    progress: Dict[str, Any] = {key: set(final.graph_progress[key]) for key in _GRAPH_SETS}
     remaining = set(graph["op_by_id"]) - graph["completed_or_fixed_op_ids"]
     suffix_ids = {row.op_id for row in suffix}
     if (len(suffix_ids) != len(suffix) or suffix_ids != remaining

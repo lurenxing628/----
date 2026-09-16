@@ -1,6 +1,8 @@
 """Explicit native calendar evidence for checkpoint decodes; ordinary decodes do not require it."""
 from __future__ import annotations
 
+from typing import NoReturn
+
 from core.infrastructure.errors import ValidationError
 
 from .native_snapshot import UNSUPPORTED, content_snapshot, make_class_guard
@@ -28,6 +30,6 @@ def checkpoint_calendar_signature(calendar):
     return value
 
 
-def unsupported_calendar():
+def unsupported_calendar() -> NoReturn:
     raise ValidationError("当前日历缺少可靠的断点输入证书，请使用全量解码。", field="decode_checkpoint",
                           details={"reason": "decode_checkpoint_unsupported_calendar"})

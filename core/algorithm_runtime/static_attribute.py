@@ -12,11 +12,13 @@ may be consulted. Anything unusual (classes as subjects, custom metaclasses, sha
 
 import inspect
 import types
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, Mapping, Tuple, cast
 
 _MISSING = object()
-_TYPE_DICT = type.__dict__["__dict__"]
-_TYPE_MRO = type.__dict__["__mro__"]
+# ``type`` is its own metaclass: at runtime ``type.__dict__`` / ``type.__mro__`` evaluate to the
+# namespace mappingproxy and the lineage tuple, not to the ``property`` objects pyright models.
+_TYPE_DICT = cast(Mapping[str, Any], type.__dict__)["__dict__"]
+_TYPE_MRO = cast(Mapping[str, Any], type.__dict__)["__mro__"]
 # class -> (its MRO when inspected, instance dictionaries are honoured)
 _LINEAGES: Dict[type, Tuple[Tuple[type, ...], bool]] = {}
 
@@ -95,7 +97,7 @@ def static_class_attribute(klass: Any, name: str, default: Any = None) -> Any:
         entry_dict = entry.__dict__
         if name in entry_dict:
             return entry_dict[name]
-    for entry in type.__mro__:
+    for entry in cast(Tuple[type, ...], type.__mro__):
         if name in entry.__dict__:
             return entry.__dict__[name]
     return default
