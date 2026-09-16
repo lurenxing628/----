@@ -54,23 +54,49 @@ def test_deadline_is_rechecked_after_operation_resource_decision_construction(mo
                    for call in result["calls"])
 
 
+class _Budget:
+    """Shared decode cap as the rotation sees it: remaining = cap - decodes charged by before_decode()."""
+
+    def __init__(self, cap):
+        self.cap = cap
+        self.repair_decodes = 0
+
+    def remaining_candidates(self):
+        return self.cap - self.repair_decodes
+
+
+def _drive(pool, *, best, clock, cap):
+    """Run elite repair the way the stage rotation does: one evaluated neighbour per task until unavailable."""
+    state = SimpleNamespace(best=best)
+    run = repair.EliteRepairRun(pool, state=state, evaluate=lambda **_kwargs: {}, budget=_Budget(cap), deadline=1.0,
+                                clock=clock, t_begin=0.0, attempts=[], improvement_trace=[], report_state=None,
+                                strict_mode=True)
+    while run.available():
+        run.step()
+    run.finish()
+    return state.best
+
+
 @pytest.mark.parametrize("boundary", ["candidate_budget", "time_budget", "next_round_construction"])
 def test_terminal_budget_counts_unvisited_deferred_elites_once(monkeypatch, boundary):
     limits = EliteRepairLimits(top_k=2, max_neighbors_per_elite=1, max_rounds=3)
     report = new_repair_report(limits, objective_name="min_overdue")
-    report["repair_candidate_budget"] = 1 if boundary == "candidate_budget" else 10
     pruning = report["repair_pruning_report"]
-    pruning["candidate_space_total"] = 8
     elites = [{"neighborhood": SimpleNamespace(candidate_count=size)} for size in (3, 5)]
-    pool = cast(repair.EliteRepairPool, SimpleNamespace(limits=limits, report=report, elites=elites))
+    pool = cast(repair.EliteRepairPool, SimpleNamespace(
+        limits=limits, report=report, elites=elites,
+        parents_by_fingerprint={"first": elites[0], "second": elites[1]}))
     improved = {"score": (0, 1)}
     visited = []
-    after_improvement_reads = []
+    late_reads = []
+    # Clock readings after the improving decode, in rotation order: task end, availability check,
+    # next task start, the generator's round-end deadline check (4th), then next-round construction (5th).
+    deadline_read = {"time_budget": 4, "next_round_construction": 5}.get(boundary)
 
     def clock():
         if visited:
-            after_improvement_reads.append(None)
-            if boundary == "time_budget" or (boundary == "next_round_construction" and len(after_improvement_reads) >= 2):
+            late_reads.append(None)
+            if deadline_read is not None and len(late_reads) >= deadline_read:
                 return 1.0
         return 0.0
 
@@ -80,18 +106,20 @@ def test_terminal_budget_counts_unvisited_deferred_elites_once(monkeypatch, boun
         visited.append(kwargs["elite"])
         kwargs["elite"]["decision_offset"] = 1
         pruning["generated_candidates"] += 1
-        pruning["skipped_by_budget"] += kwargs["elite"]["neighborhood"].candidate_count - 1
         kwargs["improved_elites"].append({"candidate": improved, "profile": None})
-        return improved
+        kwargs["state"].best = improved
+        report["repair_accepted"] = True
+        yield
 
     monkeypatch.setattr(repair, "_repair_one_elite", bounded_improving_elite)
-    best = repair._repair_elites(
-        pool, best=None, evaluate=lambda **_kwargs: {}, repair_deadline=1.0, clock=clock, t_begin=0.0,
-        attempts=[], improvement_trace=[], report_state=None, strict_mode=True,
-    )
+    best = _drive(pool, best=None, clock=clock, cap=1 if boundary == "candidate_budget" else 10)
     assert best is improved and visited == [elites[0]]
     assert report["repair_stop_reason"] == ("candidate_budget" if boundary == "candidate_budget" else "time_budget")
-    assert report["repair_deferred_by_improvement"] == 7
+    # The rotation checks the shared candidate cap between tasks, so a cap that ends exactly on the
+    # improving decode never reaches the improvement-first deferral bookkeeping; the unvisited work is
+    # still reported exactly once through skipped_by_budget. A deadline observed by the generator itself
+    # (at the round end or while constructing the next round) keeps the deferral count.
+    assert report["repair_deferred_by_improvement"] == (0 if boundary == "candidate_budget" else 7)
     assert pruning["evaluated_candidates"] == pruning["generated_candidates"] == 1
     assert pruning["skipped_by_budget"] == 7
     assert pruning["candidate_space_total"] == pruning["generated_candidates"] + pruning["skipped_by_budget"]
@@ -103,17 +131,19 @@ def test_pending_tail_survives_a_quiet_full_active_round(monkeypatch, boundary, 
     limits = EliteRepairLimits(top_k=1, max_neighbors_per_elite=1,
                                max_rounds=2 if boundary == "max_rounds" else tail_size + 1)
     report = new_repair_report(limits, objective_name="min_overdue")
-    report["repair_candidate_budget"] = 2 if boundary == "candidate_budget" else 60
     pruning = report["repair_pruning_report"]
-    pruning["candidate_space_total"] = tail_size
     elite = {"label": "original", "decision_offset": 0, "neighborhood": SimpleNamespace(candidate_count=tail_size)}
+    parents = {"original": elite}
     visited = []
+    late_reads = []
 
     def make_elite(candidate, profile):
         assert candidate["score"] == (0, 5)
-        return {"label": "improved", "decision_offset": 0, "neighborhood": SimpleNamespace(candidate_count=1)}
+        parents["improved"] = {"label": "improved", "decision_offset": 0, "neighborhood": SimpleNamespace(candidate_count=1)}
+        return parents["improved"]
 
-    pool = cast(repair.EliteRepairPool, SimpleNamespace(limits=limits, report=report, elites=[elite], make_elite=make_elite))
+    pool = cast(repair.EliteRepairPool, SimpleNamespace(
+        limits=limits, report=report, elites=[elite], parents_by_fingerprint=parents, make_elite=make_elite))
 
     def visit(_pool, **kwargs):
         current = kwargs["elite"]
@@ -123,24 +153,27 @@ def test_pending_tail_survives_a_quiet_full_active_round(monkeypatch, boundary, 
         visited.append((current["label"], offset))
         current["decision_offset"] += 1
         pruning["generated_candidates"] += 1
-        pruning["skipped_by_budget"] += current["neighborhood"].candidate_count - current["decision_offset"]
         score = 6
         if current["label"] == "original":
             score = 5 if offset == 0 else (1 if offset == tail_size - 1 else 6)
         candidate = {"score": (0, score)}
-        if candidate["score"] < kwargs["best"]["score"]:
+        if candidate["score"] < kwargs["state"].best["score"]:
             kwargs["improved_elites"].append({"candidate": candidate, "profile": None})
-            return candidate
-        return kwargs["best"]
+            kwargs["state"].best = candidate
+            report["repair_accepted"] = True
+        yield
 
     def clock():
-        return 1.0 if boundary == "time_budget" and len(visited) >= 2 else 0.0
+        # After the second visit the rotation reads the clock at task end, availability check and task
+        # start before the generator's own round-end deadline check; only that 4th reading may hit.
+        if boundary == "time_budget" and len(visited) >= 2:
+            late_reads.append(None)
+            if len(late_reads) >= 4:
+                return 1.0
+        return 0.0
 
     monkeypatch.setattr(repair, "_repair_one_elite", visit)
-    best = repair._repair_elites(
-        pool, best={"score": (0, 10)}, evaluate=lambda **_kwargs: {}, repair_deadline=1.0,
-        clock=clock, t_begin=0.0, attempts=[], improvement_trace=[], report_state=None, strict_mode=True,
-    )
+    best = _drive(pool, best={"score": (0, 10)}, clock=clock, cap=2 if boundary == "candidate_budget" else 60)
     expected = [("original", 0), ("improved", 0)]
     if boundary == "continue":
         expected.extend(("original", offset) for offset in range(1, tail_size))
@@ -148,7 +181,9 @@ def test_pending_tail_survives_a_quiet_full_active_round(monkeypatch, boundary, 
     assert best is not None
     assert best["score"] == (0, 1 if boundary == "continue" else 5)
     assert report["repair_stop_reason"] == ("max_rounds" if boundary == "continue" else boundary)
-    assert report["repair_round_improvements"][:2] == [1, 0]
+    # A candidate cap that runs out on the quiet round's only task is seen by the rotation between
+    # tasks, so that round is never closed and not recorded; the sequential engine recorded it as 0.
+    assert report["repair_round_improvements"][:2] == ([1] if boundary == "candidate_budget" else [1, 0])
     assert pruning["candidate_space_total"] == tail_size + 1
     assert pruning["generated_candidates"] == pruning["evaluated_candidates"] == len(visited)
     assert pruning["skipped_by_budget"] == tail_size + 1 - len(visited)
