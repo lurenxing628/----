@@ -24,6 +24,11 @@ def _payload(rows, summary, strategy, params):
     return [(r.op_id, r.machine_id, r.operator_id, r.start_time, r.end_time, r.source) for r in rows], fields, str(strategy), params
 
 
+def _core(stats):
+    """The witness and pair counters; calendar memo counters are covered by their own contract."""
+    return {name: stats[name] for name in ("hits", "misses", "pair_hits", "pair_misses")}
+
+
 def _run(kwargs, *, cache_enabled, scheduler_factory=make_scheduler):
     attach = scheduler_module.attach_sgs_score_cache if cache_enabled else (lambda *args, **kw: None)
     with patch.object(scheduler_module, "attach_sgs_score_cache", attach):
@@ -39,7 +44,7 @@ def test_witness_cache_matches_full_rescoring_on_shared_workloads(auto, graph, w
     expected, off = _run(make_case(24, 6, auto=auto, graph=graph, window=window), cache_enabled=False)
     actual, on = _run(make_case(24, 6, auto=auto, graph=graph, window=window), cache_enabled=True)
     assert actual == expected
-    assert off == {"hits": 0, "misses": 0, "pair_hits": 0, "pair_misses": 0}
+    assert not any(off.values())
     assert on["hits"] > 0 and on["misses"] > 0
     assert (on["pair_hits"] > 0) is auto and (on["pair_misses"] > 0) is auto
 
@@ -69,11 +74,11 @@ def _disjoint_case(count, *, machine=None, cls=BatchOperation):
 
 def test_only_candidates_reading_a_changed_cell_are_rescored():
     _, disjoint = _run(_disjoint_case(3), cache_enabled=True)
-    assert disjoint == {"hits": 3, "misses": 3, "pair_hits": 0, "pair_misses": 0}
+    assert _core(disjoint) == {"hits": 3, "misses": 3, "pair_hits": 0, "pair_misses": 0}
     kwargs = _disjoint_case(3)
     kwargs["operations"][1].machine_id = "M1"
     _, shared = _run(kwargs, cache_enabled=True)
-    assert shared == {"hits": 2, "misses": 4, "pair_hits": 0, "pair_misses": 0}
+    assert _core(shared) == {"hits": 2, "misses": 4, "pair_hits": 0, "pair_misses": 0}
 
 
 def test_hooked_model_classes_are_scored_every_round():
@@ -86,7 +91,7 @@ def test_hooked_model_classes_are_scored_every_round():
     expected, _ = _run(_disjoint_case(3), cache_enabled=True)
     actual, stats = _run(_disjoint_case(3, cls=Hooked), cache_enabled=True)
     assert actual == expected
-    assert stats == {"hits": 0, "misses": 6, "pair_hits": 0, "pair_misses": 0}
+    assert _core(stats) == {"hits": 0, "misses": 6, "pair_hits": 0, "pair_misses": 0}
 
 
 def test_native_auto_assign_context_requires_untouched_scheduler_methods():

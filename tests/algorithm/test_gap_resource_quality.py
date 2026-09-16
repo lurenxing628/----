@@ -209,8 +209,10 @@ def test_native_operation_identity_reads_current_fields_without_reflection():
     op = SimpleNamespace(id=1, op_type_name=" A ")
     # These instance keys do not replace the exact builtin's access protocol.
     op.__dict__.update({"__dict__": {}, "__getattribute__": object(), "__class__": object()})
-    with mock.patch("core.algorithm_runtime.resource_quality.inspect.getattr_static",
-                    side_effect=AssertionError("native operation should not require reflection")):
+    with mock.patch("core.algorithm_runtime.resource_quality.static_attribute",
+                    side_effect=AssertionError("native operation should not require reflection")), \
+            mock.patch("core.algorithm_runtime.resource_quality.static_class_attribute",
+                       side_effect=AssertionError("native operation should not require reflection")):
         assert _plain_operation_type(op) == (1, "A")
         op.id, op.op_type_name = 2, " B "
         assert _plain_operation_type(op) == (2, "B")

@@ -6,6 +6,7 @@ from datetime import date, datetime, time, timedelta
 from functools import lru_cache
 from typing import Any, Dict, Optional, Tuple
 
+from core.algorithm_runtime.calendar_timing_memo import make_lineage_timing_guard, register_calendar_timing_guard
 from core.infrastructure.errors import BusinessError, ErrorCode, ValidationError
 from core.models import OperatorCalendar, WorkCalendar
 from core.models.enums import BATCH_PRIORITY_VALUES, BatchPriority, CalendarDayType, YesNo
@@ -20,6 +21,9 @@ from .operator_shift_calendar import OperatorShiftCalendar
 # 约 291 万天（datetime.max）处会抛裸 OverflowError，isfinite/非负守卫拦不住有限
 # 正巨值（如录入笔误 9999999），故与既有 NaN/Inf/负数守卫对称地补一条量级上界。
 MAX_CALENDAR_DAYS = 36500.0
+# Engine members whose identity certifies native timing; certificates and the per-decode memo both rely on it.
+NATIVE_TIMING_METHODS = ("get_efficiency", "adjust_to_working_time", "add_working_hours", "policy_for_datetime",
+                         "_policy_for_datetime", "_policy_for_date", "certified_slot_window")
 _NORMAL_PRIORITY = BatchPriority.NORMAL.value
 _ALLOWED_FLAG = YesNo.YES.value
 
@@ -386,3 +390,7 @@ class CalendarEngine:
                 field="days",
             )
         return start + timedelta(days=d)
+
+
+# Subclasses that only change how calendar rows are resolved keep the engine's pure timing surface.
+register_calendar_timing_guard(CalendarEngine, make_lineage_timing_guard(CalendarEngine, NATIVE_TIMING_METHODS))

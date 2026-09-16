@@ -1,10 +1,16 @@
 from __future__ import annotations
 
 from datetime import date, datetime
-from typing import Any, Callable, Dict, List, NamedTuple, Optional, Tuple
+from typing import Any, Callable, Dict, List, NamedTuple, Optional, Tuple, Union
 
 from core.algorithm_contracts.date_parsers import parse_date
-from core.algorithm_contracts.dispatch_rules import DispatchInputs, DispatchRule, build_dispatch_key
+from core.algorithm_contracts.dispatch_rules import (
+    DispatchInputs,
+    DispatchRule,
+    DispatchRuleSpec,
+    as_dispatch_rule_spec,
+    build_dispatch_key,
+)
 from core.algorithm_contracts.value_domains import MERGED
 from core.algorithm_runtime.auto_assign_contract import (
     AUTO_ASSIGN_REASON_WINDOW_BLOCKED,
@@ -70,7 +76,7 @@ def _parse_due_date(value: Any, *, strict_mode: bool = False) -> Optional[date]:
 def _dispatch_key(
     *,
     dispatch_key_builder: Callable[[DispatchInputs], Tuple[float, ...]] = build_dispatch_key,
-    dispatch_rule: DispatchRule,
+    dispatch_rule: Union[DispatchRule, DispatchRuleSpec],
     priority: Any,
     due_date: Optional[date],
     est_start: datetime,
@@ -84,9 +90,11 @@ def _dispatch_key(
     op_id: int,
     score_penalty: float,
 ) -> Tuple[float, ...]:
+    # Internal callers may still hand over the bare enum; both are explicit contract values.
+    spec = as_dispatch_rule_spec(dispatch_rule)
     base_key = dispatch_key_builder(
         DispatchInputs(
-            rule=dispatch_rule,
+            rule=spec.rule,
             priority=str(priority or "normal"),
             due_date=due_date,
             est_start=est_start,
@@ -98,6 +106,7 @@ def _dispatch_key(
             batch_id=batch_id,
             seq=int(seq),
             op_id=int(op_id),
+            atc_k=spec.atc_k,
         )
     )
     return (float(score_penalty),) + tuple(base_key)
@@ -141,7 +150,7 @@ def _score_external_candidate(
     batch: Any,
     batch_id: str,
     batch_order: Dict[str, int],
-    dispatch_rule: DispatchRule,
+    dispatch_rule: Union[DispatchRule, DispatchRuleSpec],
     end_dt_exclusive: Optional[datetime],
     avg_proc_hours: float,
     strict_mode: bool,
@@ -177,7 +186,7 @@ def _score_internal_candidate(
     batch: Any,
     batch_id: str,
     batch_order: Dict[str, int],
-    dispatch_rule: DispatchRule,
+    dispatch_rule: Union[DispatchRule, DispatchRuleSpec],
     end_dt_exclusive: Optional[datetime],
     machine_downtimes: Optional[Dict[str, List[Tuple[datetime, datetime]]]],
     auto_assign_enabled: bool,
@@ -441,13 +450,23 @@ def _estimate_scoring_slot(
 
     handoff = current_sgs_handoff()
     estimate = None
+    compute = estimate_selected
     if handoff is not None and estimate_slot is estimate_internal_slot:
+        if handoff._timing is not None:
+            def shared_selected():
+                return handoff.shared_slot_estimate(
+                    calendar=ctx.calendar, op=op, batch=batch, machine_id=machine_id, operator_id=operator_id,
+                    prev_end=meta["prev_end"], total_hours=total_hours, end_dt_exclusive=end_dt_exclusive,
+                    machine_downtimes=(machine_downtimes.get(machine_id) or []) if machine_downtimes else [],
+                    compute=estimate_selected)
+
+            compute = shared_selected
         estimate = handoff.pair_estimate(
             op=op, machine_id=machine_id, operator_id=operator_id, prev_end=meta["prev_end"],
-            machine_timeline=state.machine_timeline, operator_timeline=state.operator_timeline, compute=estimate_selected,
+            machine_timeline=state.machine_timeline, operator_timeline=state.operator_timeline, compute=compute,
         )
     if estimate is None:
-        estimate = estimate_selected()
+        estimate = compute()
     if estimate.abort_after_hit:
         raise RuntimeError("SGS 评分不应命中 abort_after 早停")
     reuse = current_sgs_reuse()

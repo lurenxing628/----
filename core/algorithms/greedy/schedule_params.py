@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 from core.algorithm_contracts.date_parsers import due_exclusive, parse_date, parse_datetime
-from core.algorithm_contracts.dispatch_rules import DispatchRule
+from core.algorithm_contracts.dispatch_rules import DispatchRule, DispatchRuleSpec, parse_dispatch_rule_token
 from core.algorithm_contracts.sort_strategies import SortStrategy
 from core.algorithm_runtime.algo_stats import increment_counter
 from core.infrastructure.errors import ValidationError
@@ -51,6 +51,7 @@ class ScheduleParams:
     used_params: Dict[str, Any]
     dispatch_mode_key: str
     dispatch_rule_enum: DispatchRule
+    dispatch_rule_spec: DispatchRuleSpec
     auto_assign_enabled: bool
     warnings: List[str]
 
@@ -336,16 +337,19 @@ def _resolve_dispatch_mode_key(dispatch_mode: Optional[str], *, snapshot_value: 
     )
 
 
-def _resolve_dispatch_rule_enum(dispatch_rule: Optional[str], *, snapshot_value: Callable[..., Any]) -> DispatchRule:
+def _resolve_dispatch_rule_spec(dispatch_rule: Optional[str], *, snapshot_value: Callable[..., Any]) -> DispatchRuleSpec:
     resolved_rule = dispatch_rule
     if resolved_rule is None:
         resolved_rule = snapshot_value("dispatch_rule", counter_key="dispatch_rule_defaulted_count")
-    rule_key = _require_choice(
-        resolved_rule,
-        field="dispatch_rule",
-        valid_values={item.value for item in DispatchRule},
-    )
-    return DispatchRule(rule_key)
+    label = _field_label("dispatch_rule")
+    text = str("" if resolved_rule is None else resolved_rule).strip().lower()
+    if not text:
+        raise ValidationError(f"“{label}”不能为空。", field="dispatch_rule")
+    try:
+        # 配置页只给三条规则；优化器搜索时还会传带 k 参数的 atc 令牌，同一语法一处解析。
+        return parse_dispatch_rule_token(text)
+    except ValueError:
+        raise ValidationError(f"“{label}”这项设置现在不能直接用，请返回排产参数页重新选择。", field="dispatch_rule") from None
 
 
 def _resolve_auto_assign_enabled(*, snapshot_value: Callable[..., Any]) -> bool:
@@ -445,14 +449,14 @@ def resolve_schedule_params(
         snapshot_value=_snapshot_value,
     )
     dispatch_mode_key = _resolve_dispatch_mode_key(dispatch_mode, snapshot_value=_snapshot_value)
-    dispatch_rule_enum = _resolve_dispatch_rule_enum(dispatch_rule, snapshot_value=_snapshot_value)
+    dispatch_rule_spec = _resolve_dispatch_rule_spec(dispatch_rule, snapshot_value=_snapshot_value)
     auto_assign_enabled = _resolve_auto_assign_enabled(snapshot_value=_snapshot_value)
 
     if auto_assign_enabled and resource_pool is None:
         warnings.append("自动分配已启用，但可用设备或人员资料缺失，自制工序无法自动分配设备或人员。")
 
     used_params["dispatch_mode"] = dispatch_mode_key
-    used_params["dispatch_rule"] = dispatch_rule_enum.value
+    used_params["dispatch_rule"] = dispatch_rule_spec.token
     used_params["auto_assign_enabled"] = "yes" if auto_assign_enabled else "no"
 
     return ScheduleParams(
@@ -461,7 +465,8 @@ def resolve_schedule_params(
         strategy=resolved_strategy,
         used_params=used_params,
         dispatch_mode_key=dispatch_mode_key,
-        dispatch_rule_enum=dispatch_rule_enum,
+        dispatch_rule_enum=dispatch_rule_spec.rule,
+        dispatch_rule_spec=dispatch_rule_spec,
         auto_assign_enabled=auto_assign_enabled,
         warnings=warnings,
     )

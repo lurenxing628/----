@@ -3,6 +3,8 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Set
 
+from core.algorithm_runtime.calendar_timing_memo import register_calendar_timing_guard
+from core.algorithm_runtime.checkpoint_calendar import register_checkpoint_calendar
 from core.algorithm_runtime.native_snapshot import make_class_guard
 from core.algorithm_runtime.sgs_estimate_reuse import (
     register_multi_start_calendar_certificate,
@@ -14,9 +16,10 @@ from core.services.common.excel_service import ImportMode
 from core.services.common.normalize import to_str_or_blank
 
 from .calendar_admin import CalendarAdmin
+from .calendar_checkpoint_certificate import calendar_checkpoint_snapshot
 from .calendar_engine import CalendarEngine, DayPolicy
 from .calendar_multi_start_certificate import multi_start_calendar_snapshot
-from .calendar_native_timing import make_native_method_guard
+from .calendar_native_timing import make_native_method_guard, make_timing_memo_guard
 from .calendar_sgs_certificate import policy_snapshot
 
 
@@ -279,6 +282,10 @@ class CalendarService:
         """Independent complete native evidence for one multi-start read transaction."""
         return multi_start_calendar_snapshot(self, _SGS_SERVICE_GUARD)
 
+    def certified_decode_checkpoint_snapshot(self):
+        """Business calendar contents, unchanged by ordinary policy-cache population."""
+        return calendar_checkpoint_snapshot(self)
+
 
 _NATIVE_SERVICE_TIMING = {name: getattr(CalendarService, name) for name in
                           ("get_efficiency", "adjust_to_working_time", "add_working_hours")}
@@ -289,3 +296,5 @@ _NATIVE_METHODS_UNCHANGED = make_native_method_guard(CalendarService)
 _SGS_SERVICE_GUARD = make_class_guard(CalendarService)
 register_sgs_calendar_certificate(CalendarService, CalendarService.certified_sgs_policy_snapshot)
 register_multi_start_calendar_certificate(CalendarService, CalendarService.certified_multi_start_snapshot)
+register_calendar_timing_guard(CalendarService, make_timing_memo_guard(CalendarService))
+register_checkpoint_calendar(CalendarService, CalendarService.certified_decode_checkpoint_snapshot)

@@ -121,10 +121,57 @@ class OwnedTimeline(SlotReuseTimeline):
             self[key] = value
 
 
+_SEGMENTS_GUARD = make_class_guard(OwnedSegments)
 _TYPE_ENTRIES_GUARD = make_class_guard(OwnedTypeEntries)
+_SEGMENT_PROTOCOL_NAMES = frozenset(
+    key for base in OwnedSegments.__mro__ for key, value in vars(base).items()
+    if callable(value) or isinstance(value, (property, staticmethod, classmethod))
+    or key in ("__getattribute__", "__getattr__", "__dict__"))
+_NATIVE_SEGMENT_CERTIFICATE = OwnedSegments.certificate
+
+
+def owned_segment_certificate(values):
+    """Only unchanged native owners may replace a content comparison by a revision."""
+    if type(values) is not OwnedSegments or not _SEGMENTS_GUARD(values):
+        return None
+    return values.certificate()
+
+
+def owned_segment_round_reader(values):
+    """Certify the protocol once for a closed native SGS scoring round.
+
+    The owner must discard this reader at the next round. Every public data mutation
+    still changes its revision, and new instance-level method overrides invalidate it.
+    """
+    if type(values) is not OwnedSegments or not _SEGMENTS_GUARD(values):
+        return None
+
+    def read():
+        if type(values) is not OwnedSegments or not vars(values).keys().isdisjoint(_SEGMENT_PROTOCOL_NAMES):
+            return None
+        return _NATIVE_SEGMENT_CERTIFICATE(values)
+
+    return read
 
 
 def owned_type_certificate(values):
     if type(values) is not OwnedTypeEntries or not _TYPE_ENTRIES_GUARD(values):
         return None
     return values.certificate()
+
+
+def clone_timeline(mapping):
+    """Independent copy of a resource timeline with the same container type.
+
+    Segment rows are immutable tuples and are shared; every list is copied, so
+    later occupations on either side never leak across. Owned containers re-wrap
+    their lists through ``__setitem__`` and therefore start with fresh identities.
+    """
+    if type(mapping) is dict:
+        return {key: list(values) for key, values in mapping.items()}
+    if not isinstance(mapping, SlotReuseTimeline):
+        raise TypeError("clone_timeline only accepts dict, SlotReuseTimeline or OwnedTimeline")
+    clone = type(mapping)()
+    for key, values in mapping.items():
+        clone[key] = list(values)
+    return clone

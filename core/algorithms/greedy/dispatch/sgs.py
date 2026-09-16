@@ -1,12 +1,17 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
-from core.algorithm_contracts.dispatch_rules import DispatchRule, build_dispatch_key
+from core.algorithm_contracts.dispatch_rules import (
+    DispatchRule,
+    DispatchRuleSpec,
+    as_dispatch_rule_spec,
+    build_dispatch_key,
+)
 from core.algorithm_contracts.types import ScheduleResult
 from core.algorithm_contracts.value_domains import EXTERNAL, INTERNAL
-from core.algorithm_runtime.dispatch_context import DispatchContextContractError, ensure_dispatch_context
+from core.algorithm_runtime.dispatch_context import ensure_dispatch_context
 from core.algorithm_runtime.internal_slot import estimate_internal_slot, validate_internal_hours_for_mode
 from core.algorithm_runtime.piece_input import operation_batch, operation_dispatch_state
 from core.algorithm_runtime.run_state import ScheduleRunState
@@ -15,15 +20,22 @@ from core.algorithm_runtime.slot_overlap_reuse import sgs_overlap_reuse
 from core.infrastructure.errors import ValidationError
 from core.shared.strict_parse import parse_required_int
 
-from .batch_order import _coerce_state, _schedule_op
+from .batch_order import _coerce_state
+from .sgs_checkpoint import (
+    DecodeCheckpoint,
+    DecodeCheckpointRequest,
+    resume_graph_progress,
+)
+from .sgs_decode_acceleration import DecodeAcceleration
+from .sgs_dispatch_step import _dispatch_selected
 from .sgs_graph import (
-    _apply_graph_failure_bookkeeping,
     _collect_candidates,
     _ensure_graph_ready_complete,
-    _mark_graph_operation_completed,
     _op_id,
     _prepare_graph_ready_state,
 )
+from .sgs_priority_frontier import score_next_ready
+from .sgs_priority_pruning import GraphPriorityPruning
 from .sgs_scoring import (
     _positive_op_id,
     _score_external_candidate,
@@ -33,6 +45,8 @@ from .sgs_scoring import (
 from .sgs_scoring import (
     _score_internal_candidate as _score_internal_candidate_impl,
 )
+
+_NATIVE_DISPATCH_SELECTED = _dispatch_selected
 
 
 def _score_internal_candidate(**kwargs: Any) -> Tuple[float, ...]:
@@ -56,7 +70,7 @@ def dispatch_sgs(
     sorted_ops: List[Any],
     batches: Dict[str, Any],
     batch_order: Dict[str, int],
-    dispatch_rule: DispatchRule,
+    dispatch_rule: Union[DispatchRule, DispatchRuleSpec],
     base_time: datetime,
     end_dt_exclusive: Optional[datetime],
     machine_downtimes: Optional[Dict[str, List[Tuple[datetime, datetime]]]],
@@ -78,8 +92,11 @@ def dispatch_sgs(
     scheduled_count: int = 0,
     failed_count: int = 0,
     strict_mode: bool = False,
+    decode_resume: Optional[DecodeCheckpoint] = None,
+    decode_checkpoints: Optional[DecodeCheckpointRequest] = None,
 ) -> Tuple[int, int]:
     ctx = ensure_dispatch_context(context)
+    rule_spec = as_dispatch_rule_spec(dispatch_rule)
     run_state = _coerce_state(
         state=state,
         base_time=base_time,
@@ -106,7 +123,7 @@ def dispatch_sgs(
         batches=batches,
         strict_mode=bool(strict_mode),
     )
-    with sgs_overlap_reuse(run_state.machine_timeline):
+    with sgs_overlap_reuse(run_state.machine_timeline, expected_operations=len(sorted_ops) + len(run_state.results)):
         _run_sgs_loop(
             ctx,
             run_state,
@@ -115,7 +132,7 @@ def dispatch_sgs(
             next_idx,
             batches,
             batch_order,
-            dispatch_rule,
+            rule_spec,
             end_dt_exclusive,
             machine_downtimes,
             auto_assign_enabled,
@@ -124,6 +141,8 @@ def dispatch_sgs(
             avg_proc_hours,
             total_hours_by_op_id,
             graph_ready_context,
+            decode_resume=decode_resume,
+            decode_checkpoints=decode_checkpoints,
         )
     _ = scheduled_count
     return run_state.scheduled_count, run_state.failed_count
@@ -190,7 +209,7 @@ def _run_sgs_loop(
     next_idx: Dict[str, int],
     batches: Dict[str, Any],
     batch_order: Dict[str, int],
-    dispatch_rule: DispatchRule,
+    dispatch_rule: DispatchRuleSpec,
     end_dt_exclusive: Optional[datetime],
     machine_downtimes: Optional[Dict[str, List[Tuple[datetime, datetime]]]],
     auto_assign_enabled: bool,
@@ -199,25 +218,41 @@ def _run_sgs_loop(
     avg_proc_hours: float,
     total_hours_by_op_id: Dict[int, float],
     graph_ready_context: Optional[Any],
+    *,
+    decode_resume: Optional[DecodeCheckpoint] = None,
+    decode_checkpoints: Optional[DecodeCheckpointRequest] = None,
 ) -> None:
     graph_state = _prepare_graph_ready_state(graph_ready_context, ops_by_batch=ops_by_batch)
     if graph_state is not None and isinstance(graph_ready_context, dict) and graph_ready_context.get("piece_scope"):
         graph_state["end_time_by_op_id"] = {row.op_id: row.end_time for row in state.results}
+    # Picks completed so far; a resumed decode continues from the checkpoint's count and progress.
+    position = 0
+    if decode_resume is not None:
+        position = resume_graph_progress(decode_resume, graph_state=graph_state, next_idx=next_idx)
     score_cache = getattr(ctx, "sgs_score_cache", None)
     if score_cache is not None and score_cache.state is not state:
         raise RuntimeError("SGS 评分缓存绑定的运行状态与本次派工不一致")
+    pruning = (GraphPriorityPruning.for_cache(score_cache, graph_state, batches, total_hours_by_op_id, strict_mode=strict_mode)
+               if _native_score_functions_unchanged() else None)
+    acceleration = DecodeAcceleration(decode_checkpoints, graph_state, pruning, total_hours_by_op_id, ctx)
+
+    def collect():
+        return _collect_candidates(graph_state=graph_state, batch_ids=batch_ids, ops_by_batch=ops_by_batch,
+                                   next_idx=next_idx, blocked_batches=state.blocked_batches)
+
+    def score(candidates):
+        return _score_candidates(ctx, state, candidates, batches, batch_order, dispatch_rule, end_dt_exclusive,
+                                 machine_downtimes, auto_assign_enabled, resource_pool, strict_mode, avg_proc_hours,
+                                 total_hours_by_op_id, graph_state, priority_pruning=pruning)
+
     with sgs_handoff_scope(score_cache):
         while True:
+            acceleration.before_pick(position)
             if score_cache is not None:
                 score_cache.next_round()
-            candidates = _collect_candidates(
-                graph_state=graph_state,
-                batch_ids=batch_ids,
-                ops_by_batch=ops_by_batch,
-                next_idx=next_idx,
-                blocked_batches=state.blocked_batches,
-            )
-            if not candidates:
+            scored = score_next_ready(acceleration.frontier, collect=collect, score=score, native=_native_score_functions_unchanged,
+                                      blocked_batches=state.blocked_batches, cache=score_cache)
+            if not scored:
                 if graph_state is not None:
                     _ensure_graph_ready_complete(
                         graph_state=graph_state,
@@ -225,24 +260,7 @@ def _run_sgs_loop(
                         blocked_batches=state.blocked_batches,
                     )
                 return
-            batch_id, op = _pick_best_candidate(
-                _score_candidates(
-                    ctx,
-                    state,
-                    candidates,
-                    batches,
-                    batch_order,
-                    dispatch_rule,
-                    end_dt_exclusive,
-                    machine_downtimes,
-                    auto_assign_enabled,
-                    resource_pool,
-                    strict_mode,
-                    avg_proc_hours,
-                    total_hours_by_op_id,
-                    graph_state,
-                )
-            )
+            batch_id, op = _pick_best_candidate(scored)
             _dispatch_selected(
                 ctx,
                 state,
@@ -258,26 +276,17 @@ def _run_sgs_loop(
                 strict_mode,
                 graph_state=graph_state,
             )
+            position += 1
+            if acceleration.record(_op_id(op), position, state=state, next_idx=next_idx, graph=graph_state,
+                                   native_dispatch=_dispatch_selected is _NATIVE_DISPATCH_SELECTED):
+                _ensure_graph_ready_complete(graph_state=graph_state, ops_by_batch=ops_by_batch,
+                                             blocked_batches=state.blocked_batches)
+                return
             if score_cache is not None:
                 score_cache.forget(op)
 
 
-def _score_candidates(
-    ctx: Any,
-    state: ScheduleRunState,
-    candidates: List[Tuple[str, Any]],
-    batches: Dict[str, Any],
-    batch_order: Dict[str, int],
-    dispatch_rule: DispatchRule,
-    end_dt_exclusive: Optional[datetime],
-    machine_downtimes: Optional[Dict[str, List[Tuple[datetime, datetime]]]],
-    auto_assign_enabled: bool,
-    resource_pool: Optional[Dict[str, Any]],
-    strict_mode: bool,
-    avg_proc_hours: float,
-    total_hours_by_op_id: Dict[int, float],
-    graph_state: Optional[Dict[str, Any]],
-) -> List[Tuple[Tuple[float, ...], str, Any]]:
+def _prepare_scoring_round(ctx, state, candidates, priority_pruning):
     natives_intact = _native_score_functions_unchanged()
     reuse = current_sgs_reuse()
     if reuse is not None and (reuse.state is not state or not natives_intact):
@@ -287,6 +296,32 @@ def _score_candidates(
     cache = getattr(ctx, "sgs_score_cache", None) if natives_intact else None
     if cache is not None and not cache.begin_round():
         cache = None
+    if reuse is not None or cache is None or cache._timing is None:
+        priority_pruning = None
+    return reuse, cache, priority_pruning
+
+
+def _score_candidates(
+    ctx: Any,
+    state: ScheduleRunState,
+    candidates: List[Tuple[str, Any]],
+    batches: Dict[str, Any],
+    batch_order: Dict[str, int],
+    dispatch_rule: DispatchRuleSpec,
+    end_dt_exclusive: Optional[datetime],
+    machine_downtimes: Optional[Dict[str, List[Tuple[datetime, datetime]]]],
+    auto_assign_enabled: bool,
+    resource_pool: Optional[Dict[str, Any]],
+    strict_mode: bool,
+    avg_proc_hours: float,
+    total_hours_by_op_id: Dict[int, float],
+    graph_state: Optional[Dict[str, Any]],
+    *,
+    priority_pruning: Optional[GraphPriorityPruning] = None,
+) -> List[Tuple[Tuple[float, ...], str, Any]]:
+    reuse, cache, priority_pruning = _prepare_scoring_round(ctx, state, candidates, priority_pruning)
+    candidates, remainder = (priority_pruning.partition(candidates, graph_state)
+                             if priority_pruning is not None else (candidates, []))
     attempt_sink = cache.record_attempt if cache is not None else None
     scored = []
     for batch_id, op in candidates:
@@ -324,6 +359,14 @@ def _score_candidates(
         else:
             key = fallback() if fallback is not None else score()
         scored.append((key, batch_id, op))
+    if remainder:
+        if any(item[0][0] == 0.0 for item in scored):
+            cache.graph_candidates_pruned += len(remainder)
+        else:
+            scored.extend(_score_candidates(
+                ctx, state, remainder, batches, batch_order, dispatch_rule, end_dt_exclusive,
+                machine_downtimes, auto_assign_enabled, resource_pool, strict_mode,
+                avg_proc_hours, total_hours_by_op_id, graph_state))
     return scored
 
 
@@ -334,7 +377,7 @@ def _score_candidate(
     batch: Any,
     batch_id: str,
     batch_order: Dict[str, int],
-    dispatch_rule: DispatchRule,
+    dispatch_rule: DispatchRuleSpec,
     end_dt_exclusive: Optional[datetime],
     machine_downtimes: Optional[Dict[str, List[Tuple[datetime, datetime]]]],
     auto_assign_enabled: bool,
@@ -388,91 +431,6 @@ def _score_candidate(
     if graph_key is None:
         raise ValidationError(f"图评分上下文缺少待排工序 {op_id} 的评分 key。", field="graph_ready_context")
     return with_graph_priority_key(base_key, graph_key)
-
-
-def _dispatch_selected(
-    ctx: Any,
-    state: ScheduleRunState,
-    op: Any,
-    batch_id: str,
-    batches: Dict[str, Any],
-    next_idx: Dict[str, int],
-    ops_by_batch: Dict[str, List[Any]],
-    end_dt_exclusive: Optional[datetime],
-    machine_downtimes: Optional[Dict[str, List[Tuple[datetime, datetime]]]],
-    auto_assign_enabled: bool,
-    resource_pool: Optional[Dict[str, Any]],
-    strict_mode: bool,
-    graph_state: Optional[Dict[str, Any]] = None,
-) -> None:
-    try:
-        result, _blocked = _schedule_op(
-            ctx,
-            op=op,
-            batch=operation_batch(op, batches[batch_id]),
-            state=operation_dispatch_state(state, graph_state, op, batches[batch_id]),
-            base_time=state.base_time,
-            end_dt_exclusive=end_dt_exclusive,
-            machine_downtimes=machine_downtimes,
-            auto_assign_enabled=auto_assign_enabled,
-            resource_pool=resource_pool,
-            strict_mode=strict_mode,
-        )
-        if result and result.start_time and result.end_time:
-            state.record_dispatch_success(result)
-            next_idx[batch_id] = int(next_idx.get(batch_id, 0) or 0) + 1
-            if graph_state is not None:
-                if "end_time_by_op_id" in graph_state:
-                    graph_state["end_time_by_op_id"][_op_id(op)] = result.end_time
-                _mark_graph_operation_completed(graph_state, _op_id(op))
-        else:
-            extra_failed_count = 0
-            if graph_state is None:
-                # 非图模式：批内派工顺序就是列表顺序，按位置切片仍是正确口径（A04 保持不变）。
-                skipped_ops = _remaining_ops_after(batch_id, next_idx, ops_by_batch)
-            else:
-                # 图模式：派工顺序跟随图链而非列表位置，被牵连集合按图状态推导（审计 A04）。
-                skipped_ops, extra_failed_count = _apply_graph_failure_bookkeeping(
-                    state,
-                    graph_state=graph_state,
-                    batch_id=batch_id,
-                    failed_op_id=_op_id(op),
-                    ops_by_batch=ops_by_batch,
-                )
-            state.record_dispatch_failure(
-                batch_id,
-                block=True,
-                remaining_failed=len(skipped_ops) + extra_failed_count,
-                failed_op=op,
-                skipped_ops=skipped_ops,
-            )
-    except (ValidationError, DispatchContextContractError):
-        raise
-    except Exception:
-        extra_failed_count = 0
-        state.record_dispatch_exception(op, batch_id, dispatch_mode="sgs")
-        if graph_state is None:
-            skipped_ops = _remaining_ops_after(batch_id, next_idx, ops_by_batch)
-        else:
-            skipped_ops, extra_failed_count = _apply_graph_failure_bookkeeping(
-                state,
-                graph_state=graph_state,
-                batch_id=batch_id,
-                failed_op_id=_op_id(op),
-                ops_by_batch=ops_by_batch,
-            )
-        for skipped_op in skipped_ops:
-            state.record_skipped_after_batch_failure(skipped_op, batch_id)
-        state.failed_count += extra_failed_count
-        op_code = state._safe_text_attr(op, "op_code", "-") or "-"
-        ctx.log_exception(f"工序 {op_code} 排产异常")
-        state.blocked_batches.add(batch_id)
-
-
-def _remaining_ops_after(batch_id: str, next_idx: Dict[str, int], ops_by_batch: Dict[str, List[Any]]) -> List[Any]:
-    operations = list(ops_by_batch.get(batch_id) or [])
-    idx0 = int(next_idx.get(batch_id, 0) or 0)
-    return operations[idx0 + 1 :]
 
 
 _NATIVE_SCORE_FUNCTIONS = {name: globals()[name] for name in (

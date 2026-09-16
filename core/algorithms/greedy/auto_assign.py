@@ -305,6 +305,7 @@ def _choose_best_pair(
     window_blocked_pairs = 0
     non_window_infeasible_pairs = 0
     prev_end = batch_progress.get(str(getattr(op, "batch_id", "") or "").strip(), base_time)
+    handoff = current_sgs_handoff()
     for machine_id in machine_candidates:
         operator_candidates = _operator_candidates_for_machine(machine_id, fixed_operator=fixed_operator, pool=pool)
         if not operator_candidates:
@@ -329,6 +330,7 @@ def _choose_best_pair(
                 total_hours_base=total_hours_base,
                 pool=pool,
                 abort_after=best[0] if best is not None else None,
+                handoff=handoff,
             )
             if probe.score is not None:
                 if best is not None and probe.score[:2] == best[:2]:
@@ -408,6 +410,7 @@ def _pair_score(
     total_hours_base: float,
     pool: Dict[str, Any],
     abort_after: Optional[datetime],
+    handoff: Any = None,
 ) -> _PairProbe:
     def estimate_pair(abort_at: Optional[datetime]):
         return estimate_internal_slot(
@@ -428,7 +431,6 @@ def _pair_score(
             overlap_reuse=overlap_reuse_for(machine_timeline),
         )
 
-    handoff = current_sgs_handoff()
     estimate = None
     if handoff is not None:
         # The SGS witness cache keeps abort-free estimates per pair. An abort-free estimate starting after

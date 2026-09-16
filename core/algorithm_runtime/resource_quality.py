@@ -1,7 +1,6 @@
 """Run-owned resource quality evidence; borrowed legacy maps keep their semantics."""
 from __future__ import annotations
 
-import inspect
 from bisect import bisect_left, insort
 from datetime import datetime
 from types import SimpleNamespace
@@ -9,6 +8,7 @@ from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 from .owned_timeline import OwnedTypeEntries, owned_type_certificate
 from .resource_demand import ResourceDemand
+from .static_attribute import static_attribute, static_class_attribute
 
 TypeEntry = Tuple[datetime, datetime, int, str]
 
@@ -20,6 +20,31 @@ class MachineTypeState(Dict[str, str]):
         super().__init__()
         self._entries: Dict[str, List[TypeEntry]] = {}
         self.demand: Optional[ResourceDemand] = None
+        # Lifecycle events already applied to ``demand``: ("complete", op_id) / ("block_batch", batch_id).
+        # A decode resumed from a checkpoint rebuilds the demand for its own operation objects and
+        # replays these, because demand records are keyed by operation identity, not op_id.
+        self.demand_events: List[Tuple[str, Any]] = []
+
+    def clone(self) -> MachineTypeState:
+        """Snapshot for a decode checkpoint: tail map, neighbour rows and demand events; no live demand."""
+        clone = MachineTypeState()
+        clone.update(self)
+        for machine_id, entries in self._entries.items():
+            clone._entries[machine_id] = OwnedTypeEntries(entries)
+        clone.demand_events = list(self.demand_events)
+        return clone
+
+    def replay_demand_events(self) -> None:
+        """Bring a freshly initialised demand up to the recorded lifecycle point."""
+        if self.demand is None:
+            return
+        for kind, key in list(self.demand_events):
+            if kind == "complete":
+                self.demand.complete(key)
+            elif kind == "block_batch":
+                self.demand.block_batch(key)
+            else:
+                raise ValueError("unknown demand event: " + str(kind))
 
     def record(self, machine_id: str, start: Optional[datetime], end: datetime, op_id: Optional[int], op_type: str) -> None:
         if type(start) is datetime and type(end) is datetime and type(op_id) is int and op_id > 0 and op_type and end >= start:
@@ -52,10 +77,12 @@ class MachineTypeState(Dict[str, str]):
 
     def complete(self, op_id: int) -> None:
         if self.demand is not None:
+            self.demand_events.append(("complete", op_id))
             self.demand.complete(op_id)
 
     def block_batch(self, batch_id: str) -> None:
         if self.demand is not None:
+            self.demand_events.append(("block_batch", batch_id))
             self.demand.block_batch(batch_id)
 
 
@@ -67,11 +94,11 @@ def _plain_operation_type(op: Any) -> Optional[Tuple[int, str]]:
         fields = op.__dict__
         op_id, op_type = fields.get("id"), fields.get("op_type_name")
     else:
-        accessor = inspect.getattr_static(type(op), "__getattribute__", None)
+        accessor = static_class_attribute(type(op), "__getattribute__")
         if accessor is not object.__getattribute__ and accessor is not SimpleNamespace.__getattribute__:
             return None
-        op_id = inspect.getattr_static(op, "id", None)
-        op_type = inspect.getattr_static(op, "op_type_name", None)
+        op_id = static_attribute(op, "id")
+        op_type = static_attribute(op, "op_type_name")
     if type(op_id) is not int or op_id <= 0 or type(op_type) is not str:
         return None
     return op_id, op_type.strip()

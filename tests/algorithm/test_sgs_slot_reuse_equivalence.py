@@ -20,7 +20,7 @@ def run(*, enabled, auto=True, graph=False, window=False, rule="slack", schedule
         kwargs["operations"][0].unit_hours = 0
     if window:
         kwargs["operations"][5].setup_hours = 100
-    context = nullcontext() if enabled else patch.object(sgs, "sgs_overlap_reuse", lambda timeline: nullcontext())
+    context = nullcontext() if enabled else patch.object(sgs, "sgs_overlap_reuse", lambda timeline, **_kwargs: nullcontext())
     with context, patch("sqlite3.connect", side_effect=AssertionError("no database")):
         results, summary, strategy, params = scheduler.schedule(**kwargs)
     summary_data = asdict(summary)

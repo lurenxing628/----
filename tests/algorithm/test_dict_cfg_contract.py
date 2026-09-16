@@ -7,6 +7,8 @@ from datetime import date, datetime, timedelta
 from types import SimpleNamespace
 from typing import Any, Dict, List, Tuple
 
+from core.algorithm_contracts.dispatch_rules import dispatch_rule_search_pool
+
 
 class _StubCalendar:
     @staticmethod
@@ -289,10 +291,10 @@ def test_dict_cfg_contract() -> None:
 
     dict_algo_mode, dict_objective_name, dict_calls = _run_optimizer_case(dict_cfg)
     object_algo_mode, object_objective_name, object_calls = _run_optimizer_case(object_cfg)
-    expected_calls = [
-        ("weighted", "sgs", "cr"),
-        ("weighted", "sgs", "slack"),
-        ("weighted", "sgs", "atc"),
+    # Configured rule first, then the rest of the SGS search pool (registry rules plus the
+    # ATC k ladder), then the batch_order start with the configured rule.
+    pool = dispatch_rule_search_pool(("slack", "cr", "atc"))
+    expected_calls = [("weighted", "sgs", "cr")] + [("weighted", "sgs", rule) for rule in pool if rule != "cr"] + [
         ("weighted", "batch_order", "cr"),
     ]
     assert dict_algo_mode == "improve", f"dict cfg algo_mode 未归一化：{dict_algo_mode!r}"

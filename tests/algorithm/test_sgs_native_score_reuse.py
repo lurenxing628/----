@@ -78,9 +78,10 @@ def test_shared_resource_scores_invalidate_and_results_match(machine, operator):
     actual, new = _run(operations, batches, enabled=True)
     assert actual == legacy
     assert new["_score_candidate"] == old["_score_candidate"] == 36
-    # Shared resources invalidate every peer each round; the selected candidate's scoring estimate is
-    # still handed to formal placement, so no extra estimate is spent there.
-    assert new["estimate_internal_slot"] == old["estimate_internal_slot"] == 36
+    # Scores still invalidate every round. With the same resource pair, the shared-slot
+    # proof now estimates once per round; formal placement reuses that exact estimate.
+    expected_estimates = 8 if machine and operator else 36
+    assert new["estimate_internal_slot"] == old["estimate_internal_slot"] == expected_estimates
 
 
 def test_scheduler_subclass_keeps_results_and_falls_back_to_the_witness_cache():

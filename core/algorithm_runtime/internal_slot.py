@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import inspect
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from typing import Any, Mapping, NoReturn, Optional, Sequence, Tuple
 
@@ -12,6 +12,7 @@ from core.shared.field_labels import display_field_label
 from .busy_block_skip import advance_busy_block
 from .downtime import SegmentOverlapIndex
 from .resource_quality import slot_changeover_penalty
+from .sgs_estimate_reuse import current_sgs_handoff
 from .slot_overlap_reuse import SlotOverlapReuse
 
 _MISSING = object()
@@ -290,6 +291,15 @@ def _build_slot_estimate(
     )
 
 
+def refresh_changeover_penalty(estimate: InternalSlotEstimate, *, op: Any, machine_id: str, last_op_type_by_machine: Any) -> InternalSlotEstimate:
+    """``estimate`` with the changeover penalty a fresh scan ending at the same slot would report now."""
+    penalty = slot_changeover_penalty(
+        last_op_type_by_machine, op=op, machine_id=machine_id, start=estimate.start_time, end=estimate.end_time,
+        legacy_penalty=_changeover_penalty(op, machine_id, last_op_type_by_machine),
+    )
+    return estimate if penalty == estimate.changeover_penalty else replace(estimate, changeover_penalty=penalty)
+
+
 def estimate_internal_slot(
     *,
     calendar: Any,
@@ -308,6 +318,10 @@ def estimate_internal_slot(
     total_hours_base: Optional[float] = None,
     overlap_reuse: Optional[SlotOverlapReuse] = None,
 ) -> InternalSlotEstimate:
+    handoff = current_sgs_handoff()
+    if handoff is not None:
+        # Inside one SGS decode the calendar is constant; its certified timing answers are memoized per decode.
+        calendar = handoff.timing_calendar(calendar)
     total_base = _resolve_total_base(op, batch, total_hours_base)
     priority = getattr(batch, "priority", None)
     changeover_penalty = _changeover_penalty(op, machine_id, last_op_type_by_machine)
@@ -336,11 +350,15 @@ def estimate_internal_slot(
 
     shift_count = 0
     efficiency_fallback_used = False
+    # Busy blocks outside [scan_start, scan_end] never steered this walk; the SGS pair memo relies on that.
+    scan_start = scan_end = earliest
     while True:
         attempt = _estimate_attempt(calendar, earliest=earliest, total_base=total_base, priority=priority, operator_id=operator_id)
         efficiency_fallback_used = bool(efficiency_fallback_used or attempt.efficiency_fallback_used)
         shift_to = _latest_overlap_shift_end(segment_groups, earliest, attempt.end_time)
         if shift_to is None:
+            if handoff is not None:
+                handoff.note_scan(scan_start, max(scan_end, attempt.end_time))
             return _build_slot_estimate(
                 machine_id=machine_id,
                 operator_id=operator_id,
@@ -357,6 +375,7 @@ def estimate_internal_slot(
             shift_to = advance_busy_block(calendar, earliest=earliest, shift_to=shift_to,
                 segment_groups=segment_groups, total_base=total_base, priority=priority,
                 operator_id=operator_id, abort_after=abort_after)
+        scan_end = max(scan_end, attempt.end_time, shift_to)
 
         shift_count += 1
         if shift_count > max_shifts:

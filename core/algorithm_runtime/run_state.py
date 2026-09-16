@@ -8,7 +8,7 @@ from core.algorithm_contracts.ordering import normalize_text_id
 from core.algorithm_contracts.types import ScheduleResult
 from core.algorithm_contracts.value_domains import INTERNAL
 
-from .owned_timeline import OwnedTimeline
+from .owned_timeline import OwnedTimeline, clone_timeline
 from .resource_quality import MachineTypeState
 from .runtime_state import accumulate_busy_hours, update_machine_last_state
 
@@ -77,6 +77,39 @@ class ScheduleRunState:
     @property
     def scheduled_count(self) -> int:
         return int(self.initial_scheduled_count or 0) + len(self.results)
+
+    def clone(self) -> ScheduleRunState:
+        """Independent snapshot for a decode checkpoint.
+
+        Result rows and failure detail dicts are never mutated after they are
+        recorded, so they are shared; every container that dispatch appends to
+        is copied. A run-owned type state is cloned without its live demand; the
+        resumed decode rebuilds and replays it for its own operation objects.
+        """
+        types = self.last_op_type_by_machine
+        return ScheduleRunState(
+            base_time=self.base_time,
+            batch_progress=dict(self.batch_progress),
+            external_group_cache=dict(self.external_group_cache),
+            machine_timeline=clone_timeline(self.machine_timeline),
+            operator_timeline=clone_timeline(self.operator_timeline),
+            machine_busy_hours=dict(self.machine_busy_hours),
+            operator_busy_hours=dict(self.operator_busy_hours),
+            last_op_type_by_machine=types.clone() if isinstance(types, MachineTypeState) else dict(types),
+            last_end_by_machine=dict(self.last_end_by_machine),
+            results=list(self.results),
+            errors=list(self.errors),
+            blocked_batches=set(self.blocked_batches),
+            initial_scheduled_count=int(self.initial_scheduled_count or 0),
+            failed_count=int(self.failed_count or 0),
+            seed_count=int(self.seed_count or 0),
+            missing_seed_machine_count=int(self.missing_seed_machine_count or 0),
+            missing_seed_operator_count=int(self.missing_seed_operator_count or 0),
+            missing_seed_machine_samples=list(self.missing_seed_machine_samples),
+            missing_seed_operator_samples=list(self.missing_seed_operator_samples),
+            failure_details=list(self.failure_details),
+            batch_failure_sources=dict(self.batch_failure_sources),
+        )
 
     def prev_end(self, batch_id: str) -> datetime:
         return self.batch_progress.get(batch_id, self.base_time)

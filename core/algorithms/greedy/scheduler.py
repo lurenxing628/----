@@ -23,14 +23,12 @@ from core.algorithm_contracts.ordering import (
 )
 from core.algorithm_contracts.sort_strategies import SortStrategy, StrategyFactory
 from core.algorithm_contracts.types import ScheduleResult, ScheduleSummary
-from core.algorithm_contracts.value_domains import INTERNAL
 from core.algorithm_runtime.algo_stats import ensure_algo_stats, increment_counter, make_algo_stats
-from core.algorithm_runtime.downtime import occupy_resource
+from core.algorithm_runtime.checkpoint_calendar import checkpoint_calendar_signature
 from core.algorithm_runtime.native_snapshot import make_class_guard
 from core.algorithm_runtime.resource_quality import initialize_resource_quality
 from core.algorithm_runtime.run_state import ScheduleRunState
 from core.algorithm_runtime.sgs_estimate_reuse import sgs_reuse_scope
-from core.algorithm_runtime.slot_overlap_reuse import SlotReuseTimeline
 from core.infrastructure.errors import ValidationError
 
 from .auto_assign import (
@@ -41,13 +39,16 @@ from .auto_assign import (
 )
 from .dispatch import dispatch_batch_order, dispatch_sgs
 from .dispatch.route import dispatch_run
+from .dispatch.sgs_checkpoint import DecodeCheckpoint, DecodeCheckpointRequest, decode_input_signature
+from .dispatch.sgs_decode_acceleration import dispatch_certificate
 from .dispatch.sgs_reuse import can_skip_native_sgs_reuse, create_native_sgs_reuse
 from .dispatch.sgs_score_cache import AutoAssignProbeContract, attach_sgs_score_cache, sgs_score_cache_stats
-from .external_groups import rebuild_external_group_cache_from_seeds, schedule_external
+from .external_groups import schedule_external
 from .internal_operation import schedule_internal_operation
 from .run_context import ScheduleRunContext
+from .run_state_setup import _prepare_run_state, replay_resumed_demand, resume_run_state
 from .schedule_params import resolve_schedule_params
-from .seed import _identity_int, normalize_seed_results, seed_external_group_keys, seed_result_for_output
+from .seed import _identity_int, normalize_seed_results
 
 __all__ = [
     "GreedyScheduler",
@@ -93,6 +94,8 @@ class GreedyScheduler:
         readiness_gate_enabled: bool = False,
         strict_mode: bool = False,
         graph_ready_context: Optional[Any] = None,
+        decode_resume: Optional[DecodeCheckpoint] = None,
+        decode_checkpoints: Optional[DecodeCheckpointRequest] = None,
     ) -> Tuple[List[ScheduleResult], ScheduleSummary, SortStrategy, Dict[str, Any]]:
         self._decode_invocations += 1
         self._last_sgs_reuse_stats = {"hits": 0, "misses": 0}
@@ -124,21 +127,40 @@ class GreedyScheduler:
         seed_results, seed_op_ids = _normalize_seed_inputs(seed_results, operations, warnings=warnings, algo_stats=algo_stats)
         sorted_ops = _sorted_unseeded_operations(operations, seed_op_ids=seed_op_ids, batch_order=batch_order, warnings=warnings, algo_stats=algo_stats)
         skip_score_reuse = params.dispatch_mode_key == "sgs" and can_skip_native_sgs_reuse(sorted_ops)
-        state = _prepare_run_state(
-            self.calendar,
-            batches=batches,
-            operations=operations,
-            seed_results=seed_results,
-            params=params,
-            warnings=warnings,
-            algo_stats=algo_stats,
-            readiness_gate_enabled=bool(readiness_gate_enabled),
-            strict_mode=bool(strict_mode),
-            owned_timelines=not skip_score_reuse,
-        )
+        checkpoint_signature = None
+        if decode_resume is not None or decode_checkpoints is not None:
+            checkpoint_signature = decode_input_signature(
+                operations=sorted_ops, batches=batches, batch_order=batch_order, params=params,
+                machine_downtimes=machine_downtimes, resource_pool=resource_pool, seed_results=seed_results,
+                graph_ready_context=graph_ready_context, readiness_gate_enabled=bool(readiness_gate_enabled),
+                strict_mode=bool(strict_mode), calendar_signature=checkpoint_calendar_signature(self.calendar),
+                warnings=warnings)
+        if decode_resume is not None:
+            # Resumed decode: the checkpoint already holds seeds, readiness progress and the prefix picks.
+            state = resume_run_state(decode_resume, signature=checkpoint_signature, warnings=warnings,
+                                     dispatch_mode_key=params.dispatch_mode_key, graph_ready_context=graph_ready_context)
+        else:
+            state = _prepare_run_state(
+                self.calendar,
+                batches=batches,
+                operations=operations,
+                seed_results=seed_results,
+                params=params,
+                warnings=warnings,
+                algo_stats=algo_stats,
+                readiness_gate_enabled=bool(readiness_gate_enabled),
+                strict_mode=bool(strict_mode),
+                owned_timelines=not skip_score_reuse,
+            )
         ctx = ScheduleRunContext.from_legacy_scheduler(self)
         ctx.algo_stats = algo_stats
+        if getattr(decode_checkpoints, "tail_reuse", None) is not None:
+            ctx.checkpoint_dispatch_guard = dispatch_certificate(self, ctx, _NATIVE_SGS_SCHEDULER_GUARD, _NATIVE_SGS_CONTEXT_GUARD)
         initialize_resource_quality(state, sorted_ops, resource_pool)
+        if decode_resume is not None:
+            replay_resumed_demand(state)
+        if decode_checkpoints is not None:
+            decode_checkpoints.arm(signature=checkpoint_signature, warnings=warnings)
         attach_sgs_score_cache(ctx, self, GreedyScheduler, state=state, params=params, resource_pool=resource_pool, probe=_SGS_AUTO_ASSIGN_PROBE)
 
         self._log_start(batches=batches, sorted_ops=sorted_ops, params=params)
@@ -157,6 +179,8 @@ class GreedyScheduler:
                 resource_pool=resource_pool,
                 graph_ready_context=graph_ready_context,
                 strict_mode=bool(strict_mode),
+                decode_resume=decode_resume,
+                decode_checkpoints=decode_checkpoints,
             )
         if reuse is not None:
             self._last_sgs_reuse_stats = {"hits": reuse.hits, "misses": reuse.misses}
@@ -176,7 +200,7 @@ class GreedyScheduler:
 
     def _log_start(self, *, batches: Dict[str, Any], sorted_ops: List[Any], params: Any) -> None:
         sorter = StrategyFactory.create(params.strategy, **params.used_params)
-        extra = f" 派工=sgs({params.dispatch_rule_enum.value})" if params.dispatch_mode_key == "sgs" else ""
+        extra = f" 派工=sgs({params.dispatch_rule_spec.token})" if params.dispatch_mode_key == "sgs" else ""
         self.logger.info(f"排产开始：批次数={len(batches)} 工序数={len(sorted_ops)} 策略={sorter.get_name()}{extra}")
 
     def _schedule_external(
@@ -386,93 +410,13 @@ def _operation_op_id(op: Any) -> int:
     return op_id
 
 
-def _prepare_run_state(
-    calendar: Any,
-    *,
-    batches: Dict[str, Any],
-    operations: List[Any],
-    seed_results: Optional[List[ScheduleResult]],
-    params: Any,
-    warnings: List[str],
-    algo_stats: Dict[str, Any],
-    readiness_gate_enabled: bool,
-    strict_mode: bool,
-    owned_timelines: bool = True,
-) -> ScheduleRunState:
-    state = (ScheduleRunState(base_time=params.base_time) if owned_timelines else
-             ScheduleRunState(base_time=params.base_time, machine_timeline=SlotReuseTimeline(), operator_timeline={}))
-    if bool(readiness_gate_enabled):
-        _initialize_ready_progress(calendar, state=state, batches=batches, strict_mode=strict_mode)
-    if seed_results:
-        _apply_seed_results(state=state, seed_results=seed_results)
-        # audit 2026-07-20 A14：seed 注入除资源占用/批次进度外，还要按组键重建外部组缓存，
-        # 否则 merged 外协组被部分种入时，未种成员会另起一整段全长组块且零留痕。
-        rebuild_external_group_cache_from_seeds(
-            seed_results=seed_results,
-            seed_group_keys=seed_external_group_keys(seed_results),
-            operations=operations,
-            external_group_cache=state.external_group_cache,
-            warnings=warnings,
-            algo_stats=algo_stats,
-        )
-        warnings.extend(state.seed_resource_warnings())
-        increment_counter(algo_stats, "seed_missing_machine_id_count", state.missing_seed_machine_count)
-        increment_counter(algo_stats, "seed_missing_operator_id_count", state.missing_seed_operator_count)
-    return state
-
-
-def _initialize_ready_progress(calendar: Any, *, state: ScheduleRunState, batches: Dict[str, Any], strict_mode: bool) -> None:
-    for batch_id, batch in batches.items():
-        ready_date = parse_ready_date_for_sort(getattr(batch, "ready_date", None), strict_mode=bool(strict_mode))
-        if batch_id and ready_date is not None:
-            ready_start = datetime(ready_date.year, ready_date.month, ready_date.day, 0, 0, 0)
-            # 齐套只设时间下界；日历校验留给实际资源排槽，外协仍按自然日推进。
-            state.advance_batch(batch_id, ready_start)
-
-
-def _apply_seed_results(*, state: ScheduleRunState, seed_results: List[ScheduleResult]) -> None:
-    for result in seed_results:
-        _validate_seed_result(result)
-        _freeze_seed_resources(state, result)
-        state.record_seed_result(seed_result_for_output(result))
-
-
-def _validate_seed_result(result: ScheduleResult) -> None:
-    from core.algorithm_contracts.schedule_point_evidence import point_seed_valid
-    if not result:
-        raise ValidationError("已有排产记录无效，系统已停止排产。", field="seed_results")
-    if not isinstance(result.start_time, datetime) or not isinstance(result.end_time, datetime):
-        raise ValidationError("已有排产记录的开始时间和结束时间必须是有效时间。", field="seed_results")
-    if result.end_time <= result.start_time and not point_seed_valid(result):
-        raise ValidationError("已有排产记录的开始时间必须早于结束时间。", field="seed_results")
-    op_id = _identity_int(getattr(result, "op_id", 0))
-    if op_id <= 0:
-        raise ValidationError("已有排产记录缺少有效工序编号，系统已停止排产。", field="seed_results")
-
-
-def _freeze_seed_resources(state: ScheduleRunState, result: ScheduleResult) -> None:
-    from core.algorithm_contracts.schedule_point_evidence import point_seed_valid
-
-    if point_seed_valid(result):
-        return
-    if (result.source or "").strip().lower() != INTERNAL:
-        return
-    if not isinstance(result.start_time, datetime) or not isinstance(result.end_time, datetime):
-        return
-    machine_id = normalize_text_id(result.machine_id)
-    operator_id = normalize_text_id(result.operator_id)
-    if machine_id:
-        occupy_resource(state.machine_timeline, machine_id, result.start_time, result.end_time)
-    if operator_id:
-        occupy_resource(state.operator_timeline, operator_id, result.start_time, result.end_time)
-
-
-def _run_dispatch(ctx: ScheduleRunContext, *, state: ScheduleRunState, sorted_ops: List[Any], batches: Dict[str, Any], batch_order: Dict[str, int], params: Any, machine_downtimes: Optional[Dict[str, List[Tuple[datetime, datetime]]]], resource_pool: Optional[Dict[str, Any]], graph_ready_context: Optional[Any], strict_mode: bool) -> None:
+def _run_dispatch(ctx: ScheduleRunContext, *, state: ScheduleRunState, sorted_ops: List[Any], batches: Dict[str, Any], batch_order: Dict[str, int], params: Any, machine_downtimes: Optional[Dict[str, List[Tuple[datetime, datetime]]]], resource_pool: Optional[Dict[str, Any]], graph_ready_context: Optional[Any], strict_mode: bool, decode_resume: Optional[DecodeCheckpoint] = None, decode_checkpoints: Optional[DecodeCheckpointRequest] = None) -> None:
     dispatch_run(
         ctx, state=state, sorted_ops=sorted_ops, batches=batches, batch_order=batch_order,
         params=params, machine_downtimes=machine_downtimes, resource_pool=resource_pool,
         graph_ready_context=graph_ready_context, strict_mode=strict_mode,
         batch_dispatch=dispatch_batch_order, sgs_dispatch=dispatch_sgs,
+        decode_resume=decode_resume, decode_checkpoints=decode_checkpoints,
     )
 
 
