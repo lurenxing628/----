@@ -193,7 +193,7 @@ def test_zero_quantity_point_has_no_occupancy_but_setup_work_still_conflicts(tri
     assert task["operation_ref"] == draft["tasks"][index]["operation_ref"]
     assert (task["start"] == task["end"]) is (setup == 0)
     assert changed["validation"]["constraints_status"] == ("valid" if setup == 0 else "blocked")
-    expected_issues = {"scenario_adoption_not_connected"}
+    expected_issues = set()  # 试调采纳已接通，开发期守卫问题码不再出现在校验结果里
     if setup:
         expected_issues.update({"machine_overlap", "operator_overlap"})
     assert {row["code"] for row in changed["validation"]["issues"]} == expected_issues
