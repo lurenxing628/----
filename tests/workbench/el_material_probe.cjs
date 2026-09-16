@@ -45,13 +45,13 @@ class ELProbe extends Probe {
 }
 const p = new ELProbe(ready);
 p.report.mutation_policy = {business: 'Only each EL state target material name/spec/stock/remark, NULL material name, one explicit last-page deletion and one explicit create',
-  preserved: 'All 77 tables checked, every other row and field exact, schema unchanged, existing receipts append-only',
+  preserved: 'All 79 tables checked, every other row and field exact, schema unchanged, existing receipts append-only',
   interactions: 'Real /workbench with type/click; no injected API write or mocked response; CDP only drops actual responses for original-key recovery',
   boundary: 'Pending reload verifies original key and receipt; full page reload is not a saved list-preference feature'};
 
 async function main() {
   const initial = p.oracle(); p.json('el-business-before.json', initial);
-  assert.equal(Object.keys(initial.tables).length, 77);
+  assert.equal(Object.keys(initial.tables).length, 79);
   const browser = await chromium.launch({executablePath: process.env.WORKBENCH_BROWSER, headless: true});
   p.report.browser = browser.version(); assert(p.report.browser.startsWith('109.'));
   try {
@@ -81,12 +81,12 @@ async function main() {
       ];
       for (const [name, policy, fn] of cases) assert(await p.run(name, policy, fn), 'Case failed: ' + name);
       const stateAfter = p.oracle(); p.lastAfter = stateAfter; p.validate(p.diff(stateBefore, stateAfter), 'write');
-      p.report.state_preservation = (p.report.state_preservation || []).concat({state, tables: 77, passed: true});
+      p.report.state_preservation = (p.report.state_preservation || []).concat({state, tables: 79, passed: true});
       await context.close();
     }
     const final = p.oracle(); p.json('el-business-after.json', final);
     const changes = p.diff(initial, final);
-    p.report.preservation = {passed: true, tables_checked: 77, schema_unchanged: true,
+    p.report.preservation = {passed: true, tables_checked: 79, schema_unchanged: true,
       changed_tables: [...new Set(changes.map(c => c.table))], changed_rows: changes.length,
       detail: 'Each state independently checked against its exact allowed material IDs; all other rows and fields identical'};
     assert.equal(p.report.summary.failed, 0); assert.deepEqual(p.report.pageerrors, []); assert.deepEqual(p.report.external, []);

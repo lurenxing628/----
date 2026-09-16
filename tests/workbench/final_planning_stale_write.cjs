@@ -30,7 +30,7 @@ async function trialStaleWrite(page, ready, report, h, flush) {
       assert.equal(await page.getByLabel('调整开工', { exact: true }).inputValue(), '2026-09-09T13:30');
       assert(await h.button('保存调整').isDisabled());
       const after = snapshot('stale-write-after');
-      assert.equal(after.sha256, before.sha256); assert.equal(after.tables, 77);
+      assert.equal(after.sha256, before.sha256); assert.equal(after.tables, 79);
       report.trial_stale_write = { draft_ref: report.draft_ref, task_ref: original.task_ref, other_tab_start: changed.start,
         retained_input: '2026-09-09T13:30', status: 409, code: body.error.code, before, after, all_tables_byte_equal: true };
       await h.shot('trial-real-two-tab-stale-write');

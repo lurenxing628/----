@@ -6,6 +6,7 @@ import pytest
 
 from core.infrastructure.migration_common import MigrationOutcome
 from core.infrastructure.migrations import v28
+from core.infrastructure.workbench_execution_void_schema import install_execution_voids
 from core.infrastructure.workbench_lineage_lookup_schema import (
     LINEAGE_LOOKUP_INDEX,
     install_lineage_lookup,
@@ -221,6 +222,9 @@ def test_five_thousand_real_sources_and_calibration_have_bounded_sql(v27_conn):
     conn = v27_conn
     conn.execute("BEGIN")
     v28.run(conn)
+    # The calibration read goes through the execution ledger, which now requires the v32
+    # report-void facts every production database carries.
+    install_execution_voids(conn)
     conn.execute("INSERT INTO Parts(part_no,part_name) VALUES ('SCALE-P','Scale')")
     template_id = conn.execute("INSERT INTO PartOperations(part_no,seq,op_type_name,source,unit_hours) "
                                "VALUES ('SCALE-P',1,'Scale','internal',1)").lastrowid
