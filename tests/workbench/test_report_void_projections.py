@@ -56,7 +56,9 @@ def test_all_actual_consumers_use_effective_reports_after_void(ledger_case):
     assert _hours(p.to_dict(), {'unit_hours': .1})['effective_processing_hours'] is None
     reviewed = sample(p)
     assert not reviewed['eligible'] and reviewed['report_refs'] == [] and reviewed['effective_processing_hours'] is None
-    assert 'operation_not_complete' in {reason['code'] for reason in reviewed['exclusion_reasons']}
+    codes = {reason['code'] for reason in reviewed['exclusion_reasons']}
+    # 没有有效报工时只给一条缺报工原因，不再叠加 operation_not_complete（见 calibration_samples._execution_reasons）。
+    assert 'production_reports_missing' in codes and 'operation_not_complete' not in codes
     assert restore_execution_projections([p.to_dict()])[0] == p
 
 

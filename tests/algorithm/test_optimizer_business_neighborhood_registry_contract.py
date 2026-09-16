@@ -62,8 +62,8 @@ class _Rnd:
 
 
 class _Clock:
-    def __init__(self) -> None:
-        self._now = 1000.0
+    def __init__(self, start: float = 1000.0) -> None:
+        self._now = float(start)
 
     def __call__(self) -> float:
         current = self._now
@@ -419,7 +419,7 @@ def test_local_search_sgs_path_uses_dispatch_rule_move_and_report() -> None:
         t_begin=1000.0,
         readiness_gate_enabled=False,
         strict_mode=False,
-        clock=_Clock(),
+        clock=_Clock(start=1000.0 - 0.02),  # first reading feeds the decode-affordability guard
         rng_factory=lambda _seed: _Rnd(),
         schedule_fn=_schedule_fn,
         search_report_state=state,

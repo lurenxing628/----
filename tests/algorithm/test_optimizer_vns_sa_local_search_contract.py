@@ -266,7 +266,8 @@ def _run_local_search_once(
         best=best,
         version=42,
         time_budget_seconds=1,
-        # One round reads the clock on entry and immediately before decoding.
+        # The decode-affordability guard takes one reading before the first round; after that,
+        # one round reads the clock on entry and immediately before decoding.
         deadline=1000.015,
         scheduler=SimpleNamespace(_last_algo_stats={"fallback_counts": {}, "param_fallbacks": {}}),
         algo_ops_to_schedule=[
@@ -290,7 +291,7 @@ def _run_local_search_once(
         t_begin=1000.0,
         readiness_gate_enabled=False,
         strict_mode=False,
-        clock=_Clock(start=1000.0, step=0.01),
+        clock=_Clock(start=1000.0 - 0.01, step=0.01),
         rng_factory=lambda _seed: _DeterministicRandom(),
         schedule_fn=schedule_fn,
         search_report_state=report_state,
@@ -515,7 +516,7 @@ def test_vns_switches_neighborhood_even_without_search_report_state() -> None:
         t_begin=1000.0,
         readiness_gate_enabled=False,
         strict_mode=False,
-        clock=_Clock(start=1000.0, step=0.001),
+        clock=_Clock(start=1000.0 - 0.001, step=0.001),  # first reading feeds the affordability guard
         rng_factory=lambda _seed: _DeterministicRandom(),
         schedule_fn=_same_schedule,
         search_report_state=None,

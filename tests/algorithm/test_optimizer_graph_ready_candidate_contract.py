@@ -1379,7 +1379,8 @@ def test_graph_ready_v2_bad_formula_fails_loud_even_when_not_strict_with_profile
 
     assert exc_info.value.field == "graph_ready_v2_formula"
     assert exc_info.value.details["reason"] == "graph_ready_bad_v2_formula"
-    assert attempts == []
+    # 三阶段轮转在中止时仍会发布阶段摘要；配置错误下不允许出现任何真实候选。
+    assert all(row.get("candidate_status") == "phase_summary" for row in attempts)
 
 
 def test_graph_ready_v2_bad_formula_strict_fails_loud() -> None:
