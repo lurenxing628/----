@@ -181,19 +181,20 @@ class EliteRepairRun:
 
     def step(self) -> None:
         started = self.clock()
-        if self._tasks is None:
-            self._start(started)
+        tasks = self._tasks
+        if tasks is None:
+            tasks = self._start(started)
         elif self.exhausted:
-            self._resume_tasks()
+            tasks = self._resume_tasks()
         try:
-            next(self._tasks)
+            next(tasks)
         except StopIteration:
             self.exhausted = True
         finished = self.clock()
         self.task_seconds += max(finished - started, 0.0)
         self.last_task_end = finished
 
-    def _start(self, started: float) -> None:
+    def _start(self, started: float) -> Generator[None, None, None]:
         report, pruning = self.report, self.report["repair_pruning_report"]
         limits = self.pool.limits
         self.started_at = started
@@ -205,9 +206,9 @@ class EliteRepairRun:
         self.accounting.observe(self.pool.elites)
         report["repair_best_origin"] = (self.state.best or {}).get("candidate_origin")
 
-        self._resume_tasks()
+        return self._resume_tasks()
 
-    def _resume_tasks(self) -> None:
+    def _resume_tasks(self) -> Generator[None, None, None]:
         self.exhausted = False
         self.report["repair_stop_reason"] = None
         self._tasks = _repair_tasks(self.pool, state=self.state, evaluate=self.evaluate, budget=self.budget,
@@ -215,6 +216,7 @@ class EliteRepairRun:
                                     attempts=self.attempts, improvement_trace=self.improvement_trace,
                                     report_state=self.report_state, strict_mode=self.strict_mode, accounting=self.accounting,
                                     start_round=self.report["repair_rounds_completed"], seen_decisions=self.seen_decisions)
+        return self._tasks
 
     def finish(self) -> None:
         if self.finished:

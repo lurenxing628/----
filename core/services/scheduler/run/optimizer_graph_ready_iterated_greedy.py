@@ -16,6 +16,7 @@ import random
 from collections import OrderedDict
 from dataclasses import replace
 from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import OrderedDict as OrderedDictType
 
 from core.algorithms.greedy.dispatch.sgs_checkpoint import DecodeCheckpoint, decode_output_digest
 from core.infrastructure.errors import ValidationError
@@ -115,8 +116,9 @@ class _IteratedGreedySearch:
         # Output digests of resumed trial decodes, consumed by the full decode of the same order.
         self.digests: Dict[Tuple[int, ...], Tuple[str, Tuple[float, ...]]] = {}
         self.scored_decodes = 0
-        self.candidates: OrderedDict[Tuple[int, ...], Dict[str, Any]] = OrderedDict()
-        self.decoded_entries: OrderedDict[Tuple[int, ...], PoolEntry] = OrderedDict()
+        # Annotate with typing.OrderedDict: subscripting collections.OrderedDict needs Python 3.9 (PEP 585).
+        self.candidates: OrderedDictType[Tuple[int, ...], Dict[str, Any]] = OrderedDict()
+        self.decoded_entries: OrderedDictType[Tuple[int, ...], PoolEntry] = OrderedDict()
         self.decode_seconds: List[float] = []
         self.incumbent = IGIncumbentTracker(pool=pool, report_state=report_state, report=report, seed=seed,
                                              clock=clock, t_begin=t_begin, improvement_trace=improvement_trace)
@@ -135,6 +137,13 @@ class _IteratedGreedySearch:
     @best.setter
     def best(self, candidate: Optional[Dict[str, Any]]) -> None:
         self.incumbent.best = candidate
+
+    def _require_best(self) -> Dict[str, Any]:
+        """run()/adopt_incumbent() install the incumbent before any pool seeding or decode."""
+        best = self.best
+        if best is None:
+            raise RuntimeError("Iterated greedy has no incumbent candidate.")
+        return best
 
     # ---- driver -------------------------------------------------------------------------------------------------------
     def run(self, best: Dict[str, Any]) -> Dict[str, Any]:
@@ -196,8 +205,9 @@ class _IteratedGreedySearch:
     def _seed_solution_pool(self) -> None:
         if self.operations is None or self.graph_context is None:
             return
-        incumbent_elite = self.pool.parents_by_fingerprint.get(self.pool.fingerprint(self.best).output_fingerprint)
-        sources = [(self.best, incumbent_elite["profile"] if incumbent_elite is not None else self.profile)]
+        best = self._require_best()
+        incumbent_elite = self.pool.parents_by_fingerprint.get(self.pool.fingerprint(best).output_fingerprint)
+        sources = [(best, incumbent_elite["profile"] if incumbent_elite is not None else self.profile)]
         sources.extend((elite["candidate"], elite["profile"]) for elite in self.pool.elites)
         for candidate, profile in sources:
             parent = _parent_from_candidate(candidate, operations=self.operations, graph_context=self.graph_context)
@@ -393,7 +403,8 @@ class _IteratedGreedySearch:
                 raise
             reason = reason_from_validation(exc)
             self._reject(reason)
-            record_rejected_attempt(attempts=self.attempts, strategy=self.best["strategy"], dispatch_rule=self.best["dispatch_rule"],
+            best = self._require_best()
+            record_rejected_attempt(attempts=self.attempts, strategy=best["strategy"], dispatch_rule=best["dispatch_rule"],
                                     reason=reason, message=str(exc), profile_slug=self.profile.slug)
             return None
         self.decode_seconds.append(max(self.clock() - decode_started, 0.0))

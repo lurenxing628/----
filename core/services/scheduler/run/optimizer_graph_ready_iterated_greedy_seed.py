@@ -148,7 +148,7 @@ def _observed_jobs(order: Tuple[int, ...], candidate: Dict[str, Any], metrics: D
 def _due_deadline(metrics: Any, op_id: int) -> float:
     metric = metrics.get(op_id) if isinstance(metrics, dict) else None
     due = metric.get("due_deadline_hours") if isinstance(metric, dict) else None
-    if not _finite_number(due):
+    if due is None or not _finite_number(due):
         raise _NotApplicable("missing_or_nonfinite_due_deadline_hours")
     return float(due)
 
@@ -156,10 +156,11 @@ def _due_deadline(metrics: Any, op_id: int) -> float:
 def _resource_pair(row: Any) -> Tuple[str, str]:
     if getattr(row, "source", None) != "internal":
         raise _NotApplicable("non_internal_result")
-    pair = (getattr(row, "machine_id", None), getattr(row, "operator_id", None))
-    if any(not isinstance(value, str) or not value.strip() for value in pair):
+    machine_id, operator_id = getattr(row, "machine_id", None), getattr(row, "operator_id", None)
+    if (not isinstance(machine_id, str) or not machine_id.strip()
+            or not isinstance(operator_id, str) or not operator_id.strip()):
         raise _NotApplicable("missing_resource_pair")
-    return pair
+    return machine_id, operator_id
 
 
 def _observed_duration(row: Any) -> float:

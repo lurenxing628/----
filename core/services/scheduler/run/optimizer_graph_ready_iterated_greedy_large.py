@@ -7,9 +7,11 @@ These are duration estimates, not hard upper bounds: one started decode may over
 and the existing report records that overrun and retains only verified incumbents.
 """
 
+from typing import Optional
+
 from .optimizer_graph_ready_iterated_greedy import _BudgetExhausted, _IteratedGreedySearch
 from .optimizer_graph_ready_iterated_greedy_diversify import BudgetStagnation, LargeGeneratorRotation
-from .optimizer_graph_ready_iterated_greedy_local import LargeIGIteration
+from .optimizer_graph_ready_iterated_greedy_local import LargeIGIteration, NeighborhoodBudget
 from .optimizer_graph_ready_iterated_greedy_tail import TailCheckpointStore, trial_request
 
 LARGE_ORDER_MINIMUM = 128
@@ -29,7 +31,7 @@ class LargeIteratedGreedySearch(_IteratedGreedySearch):
         self._cost_samples = []
         self._sampled_count = 0
         self._work_fraction = 1.0
-        self.local_budget = None
+        self.local_budget: Optional[NeighborhoodBudget] = None
         self._trial_reference = None
         self._active_tail = None
         self._trial_seconds = []
@@ -91,8 +93,10 @@ class LargeIteratedGreedySearch(_IteratedGreedySearch):
     def _require_budget(self):
         # Cheap neighbourhood and duplicate checks must not pay for an unknown full decode.
         self._hard_budget_now()
-        if getattr(self, "local_budget", None) is not None:
-            self.local_budget.check()
+        # Bind before narrowing: callers that skip __init__ have no local_budget attribute yet.
+        local_budget = getattr(self, "local_budget", None)
+        if local_budget is not None:
+            local_budget.check()
 
     def _decode(self, order, *, resume=None, checkpoints=None):
         previous = self._work_fraction
@@ -150,8 +154,9 @@ class LargeIteratedGreedySearch(_IteratedGreedySearch):
     def _before_decode(self):
         try:
             now = self._hard_budget_now()
-            if getattr(self, "local_budget", None) is not None:
-                self.local_budget.check()
+            local_budget = getattr(self, "local_budget", None)
+            if local_budget is not None:
+                local_budget.check()
             expected = self._expected_decode_seconds()
             self.report["decode_admission"] = {
                 "policy": "observed_checkpoint_suffix_cost_v1", "remaining_pick_fraction": self._work_fraction,
