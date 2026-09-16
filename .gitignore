@@ -26,11 +26,17 @@ aps_test.db*
 *.sqlite-journal
 *.maintenance.lock
 
+# 运行期占用锁和系统日志目录:换机器后无意义,且会互相覆盖
+db/*.lock
+db/*.system-journal/
+
 logs/*.log
 logs/*.log.*
 !logs/.gitkeep
 
 backups/*.db
+# 迁移/启用演练留下的备份子目录,内含整库副本(单个 15MB 以上)
+backups/*/
 !backups/.gitkeep
 
 # IDE
@@ -321,3 +327,12 @@ htmlcov/
 /.codestable/issues/2026-09-08-workbench-visual-language/evidence/*.png
 /.codestable/issues/2026-09-09-system-maintenance-navigation/evidence/*.png
 /.codestable/issues/2026-09-10-ee-zero-duration/browser/*/*.png
+
+# 工作台手册整改的原始快照(单个 100KB 至 27MB,合计约 36MB):保留 manual-*.md、
+# implementation-and-coverage.md 等叙述和小体积复现输入,不把整库/整树 dump 入库。
+# existing-worktree.diff 尤其冗余,它就是本批提交本身的工作区快照。
+/.codestable/roadmap/workbench-manual-remediation/execution-20260915/existing-worktree.diff
+/.codestable/roadmap/workbench-manual-remediation/execution-20260915/baseline.json
+/.codestable/roadmap/workbench-manual-remediation/execution-20260915/final-worktree-incremental.json
+/.codestable/roadmap/workbench-manual-remediation/execution-20260915/isolated5005-*.json
+/.codestable/roadmap/workbench-manual-remediation/execution-20260915/production-*.json
