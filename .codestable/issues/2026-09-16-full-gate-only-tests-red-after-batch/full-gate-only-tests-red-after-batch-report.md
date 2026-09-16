@@ -9,7 +9,7 @@ source: 2026-09-16 提交批次收尾时，拆分高复杂度函数的子代理�
 tags: [gate, full-gate, frontend-copy, manual, utilization, report]
 ---
 
-# 日常门禁之外的用例随本批转红（初报 10 个，累计 14 个）
+# 日常门禁之外的用例随本批转红（初报 10 个，累计 74 个）
 
 ## 现象
 
@@ -73,3 +73,19 @@ tags: [gate, full-gate, frontend-copy, manual, utilization, report]
 派工时从自己的模块全局读取；测试仍打桩旧模块名 `sgs._schedule_op`。基线 7034b873 上 6 passed，属本批引入。
 处理：打桩目标改到 `sgs_dispatch_step._schedule_op`（与运行时读取点一致），并在测试里注明原因；
 产品代码不动。累计 14 个用例、9 个测试文件。验证：该文件 6 passed。
+
+## 补集通道（2026-09-16 下午）：再挖出 60 个
+
+用 `tools.test_registry.iter_required_regression_groups()` 的 target_paths 对 collect-only 清单取补集，得到日常门禁
+从未跑过的 603 个文件 / 4412 个用例，分并行（xdist 6 进程）、串行、优化器重载三份后台跑：串行 4 失败 / 1161 通过，
+并行 55 失败 + 1 错误 / 3110 通过，重载 57 通过。按文件归并 38 个文件，分四类处理：
+
+| 类别 | 用例数 | 处理 |
+|---|---:|---|
+| 合同/钉子随本批 by-design 变化 | 8 | a3 签名与环成员钉子、long gate 覆盖合同补登 13 个必跑测试、资产构建合同按 build-order、手册与模板合同措辞、lineage 补 v32 表、业务表数 77→79 |
+| 产品侧真实回归 | 3 处（含 1 处运行态导入环） | owned_timeline⇄slot_overlap_reuse 环下沉叶子模块；前端三处回归见 issue 2026-09-16-workbench-frontend-remediation-regressions |
+| 浏览器探针过期文案/选择器/交互 | 约 45 | 三位复审代理按“以本轮整改为准，改旧测试”逐个核对源码后改写，逐个单跑通过 |
+| xdist 并发争用 | 1 | test_final_execution_backend 单跑通过，未改 |
+
+补充观察：`run_adoption_widgets_probe.cjs` 仍用“正式采用”按钮名但该用例是 opt-in 未执行；
+`final_execution_rejections.cjs:49` 的字面量在现行源码里找不到，负责人需另核。
