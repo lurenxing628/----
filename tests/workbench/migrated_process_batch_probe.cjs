@@ -185,7 +185,7 @@ async function batchEditSync() {
   await openBatch('AN-B-' + state + '-001'); await p.click(button(batchArea(), '编辑基础信息')); let d = dialog('编辑批次基础信息');
   const beforeNoop = p.oracle(); await p.click(button(d, '保存基础信息')); await d.getByText('没有需要保存的变更。', {exact: true}).waitFor(); assert.deepEqual(p.diff(beforeNoop, p.oracle()), []);
   await p.type(d.getByLabel('数量', {exact: true}), '9'); await saved('update', button(d, '保存基础信息')); await p.click(button(d, '关闭'));
-  await p.response('/sync-preview', () => p.click(button(batchArea(), '预览工序更新')));
+  await p.response('/sync-preview', () => p.click(button(batchArea(), '预检工序更新')));
   d = dialog('确认更新批次工序'); await p.shot('batch-sync-preview'); await saved('sync_confirm', button(d, '确认更新工序')); await p.click(button(d, '关闭'));
   const first = page.getByRole('table', {name: '批次工序', exact: true}).locator('tbody tr').first(); await p.click(button(first, '补充资料'));
   d = page.getByRole('dialog', {name: /^工序 10 · /}); await p.type(d.getByLabel('单件工时（小时）', {exact: true}), '1.375');

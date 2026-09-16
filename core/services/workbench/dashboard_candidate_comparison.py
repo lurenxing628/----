@@ -85,7 +85,7 @@ def _delivery_rows(before, after, refs):
     for ref in refs:
         previous, current = old[ref], new[ref]
         if previous["batch_id"] != current["batch_id"] or previous["due_date"] != current["due_date"]:
-            reject("candidate_comparison_inconsistent", "候选方案与比较基准的批次资料不一致，请重新排产。", 500)
+            reject("candidate_comparison_inconsistent", "候选方案与对比基准的批次资料不一致，请重新排产。", 500)
         first, second = previous["delay_hours"], current["delay_hours"]
         result.append({"batch_ref": ref, "batch_id": current["batch_id"], "part_label": current["part_label"],
                        "before": previous, "after": current,

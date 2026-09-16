@@ -106,7 +106,7 @@ def test_render_guard_blocks_too_many_tasks_before_new_gantt(app_client) -> None
     with pytest.raises(WorkbenchCommandRejected) as caught:
         _admit_rows(Rows(MAX_PLAN_TASKS + 1), 5, SOURCE_SCHEDULE)
     assert (caught.value.code, caught.value.status, caught.value.committed) == ("query_too_large", 413, False)
-    assert "也不会只给一部分" in str(caught.value)
+    assert "条上限" in str(caught.value)
     _, _, payload, before = plan_fixture(app_client)
     run_current_js(r"""
 const C=h.runtime.APSPlanContract, ref=sourceData.data.plan.plan_ref;C.workspace(sourceData,ref);

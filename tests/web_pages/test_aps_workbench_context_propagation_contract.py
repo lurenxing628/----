@@ -78,8 +78,8 @@ def _export(client, parser, path, expected, *, scenario=False):
         book = openpyxl.load_workbook(BytesIO(response.data), read_only=True, data_only=True)
         try:
             rows = list(book["设备负荷"].iter_rows(values_only=True))
-            assert rows[0][:4] == ("设备编号", "设备名称", "负荷(小时)", "任务数")
-            assert len(rows) == 2 and rows[1][:4] == ("M-RPT", "一号设备", 4, 1)
+            assert rows[0][:4] == ("设备编号", "设备名称", "班表内占用(小时)", "任务数")
+            assert len(rows) == 2 and rows[1][:4] == ("M-RPT", "一号设备", 3, 1) and rows[1][8] == 1
         finally:
             book.close()
     return text

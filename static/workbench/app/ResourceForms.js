@@ -472,7 +472,7 @@
     }, "\u5237\u65B0\u6700\u65B0\u8D44\u6599"), contextReview && !done && /*#__PURE__*/React.createElement("div", {
       className: "wb-resource-review",
       role: "status"
-    }, /*#__PURE__*/React.createElement("p", null, "\u6700\u65B0\u8D44\u6599\u5DF2\u5237\u65B0\u3002\u4F60\u4FEE\u6539\u7684\u5185\u5BB9\u5DF2\u4FDD\u7559\uFF0C\u672A\u4FEE\u6539\u7684\u5B57\u6BB5\u5DF2\u66F4\u65B0\uFF1B\u4E0B\u65B9\u663E\u793A\u5F53\u524D\u5DF2\u4FDD\u5B58\u7684\u8D44\u6599\u3002"), contextReview.data.ref ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("p", null, "\u6700\u65B0\u8D44\u6599\u5DF2\u5237\u65B0\u3002\u4F60\u4FEE\u6539\u7684\u5185\u5BB9\u5DF2\u4FDD\u7559\uFF0C\u672A\u4FEE\u6539\u7684\u9879\u5DF2\u66F4\u65B0\uFF1B\u4E0B\u65B9\u663E\u793A\u5F53\u524D\u5DF2\u4FDD\u5B58\u7684\u8D44\u6599\u3002"), contextReview.data.ref ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
       className: "wb-resource-review-identity"
     }, /*#__PURE__*/React.createElement("strong", null, contextReview.data.business_code, " \xB7 ", contextReview.data.label), kind !== 'op_type' && /*#__PURE__*/React.createElement(Status, {
       kind: kind,

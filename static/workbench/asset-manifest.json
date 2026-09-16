@@ -984,7 +984,7 @@
     },
     {
       "path": "workbench/app/BatchDetail.js",
-      "sha256": "b8a1ebe58a5c95a39a94803a616dccfa35dc3574ebe1c43952d27949a7c05ac1",
+      "sha256": "81780f361091460075d0e8216222e2071102004a2a8df214c11a2738acf238bf",
       "bytes": 14483,
       "mime": "application/javascript",
       "dependencies": [
@@ -1044,7 +1044,7 @@
           "source_files": [
             {
               "path": "frontend/workbench/app/BatchDetail.jsx",
-              "sha256": "450163c7a00576801ef44cba72591e8197225ef42f7ad27efd37fbe53d158d6c"
+              "sha256": "c82cc4892f75041114f79e8b0dcbc8b828f967c58d23233348f5729367d81797"
             }
           ],
           "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
@@ -1053,7 +1053,7 @@
       "source_files": [
         {
           "path": "frontend/workbench/app/BatchDetail.jsx",
-          "sha256": "450163c7a00576801ef44cba72591e8197225ef42f7ad27efd37fbe53d158d6c"
+          "sha256": "c82cc4892f75041114f79e8b0dcbc8b828f967c58d23233348f5729367d81797"
         }
       ]
     },
@@ -3014,7 +3014,7 @@
     },
     {
       "path": "workbench/app/DashboardPanels.js",
-      "sha256": "3d6f342301bb9c720f1aa782b9550650895c404c2d4c9613915fae84ea84a828",
+      "sha256": "958b99f642986a0b9bb9aa740a959d99548114693a5c9e601ff4b199bdce0b67",
       "bytes": 32069,
       "mime": "application/javascript",
       "dependencies": [
@@ -3102,7 +3102,7 @@
           "source_files": [
             {
               "path": "frontend/workbench/app/DashboardPanels.jsx",
-              "sha256": "58a72d2eab0fa56585acdf62cd2bc80d219c76781ed3a641cd4214ced2138d7d"
+              "sha256": "9115f0d79f41481499c090ca602b5b66db5873fb9abac6d86bf366f78b2cd639"
             }
           ],
           "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
@@ -3111,7 +3111,7 @@
       "source_files": [
         {
           "path": "frontend/workbench/app/DashboardPanels.jsx",
-          "sha256": "58a72d2eab0fa56585acdf62cd2bc80d219c76781ed3a641cd4214ced2138d7d"
+          "sha256": "9115f0d79f41481499c090ca602b5b66db5873fb9abac6d86bf366f78b2cd639"
         }
       ]
     },
@@ -3905,7 +3905,7 @@
     },
     {
       "path": "workbench/app/FieldEditorFields.js",
-      "sha256": "6ea159a9c1b2befa3f25c26fcb54d2976202ccb62e574b6b38ef3058dc92e2b4",
+      "sha256": "64fd674cf4e5311c9334ef92319bc8433aa73856d7f84e86ef8c9b2b3a8ab735",
       "bytes": 8263,
       "mime": "application/javascript",
       "dependencies": [
@@ -3958,7 +3958,7 @@
           "source_files": [
             {
               "path": "frontend/workbench/app/FieldEditorFields.jsx",
-              "sha256": "141de3abb84742f1eaa47f9a7b6405c9b5cb1f7e48c6a9a259597c8083777dd0"
+              "sha256": "68974c420b00d0c5c24140857ad6a931565f2edde49eb4f6c35af8f0bf4d51e6"
             }
           ],
           "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
@@ -3967,7 +3967,7 @@
       "source_files": [
         {
           "path": "frontend/workbench/app/FieldEditorFields.jsx",
-          "sha256": "141de3abb84742f1eaa47f9a7b6405c9b5cb1f7e48c6a9a259597c8083777dd0"
+          "sha256": "68974c420b00d0c5c24140857ad6a931565f2edde49eb4f6c35af8f0bf4d51e6"
         }
       ]
     },
@@ -4156,7 +4156,7 @@
     },
     {
       "path": "workbench/app/FieldVoidEditor.js",
-      "sha256": "97e036ee469faeca203fa9059114fb94ec87b44184c039bae2ff468877aab30f",
+      "sha256": "57b71aaa066325208c8308bfdd88cb7347f8f057063cd206d9897767ae149b16",
       "bytes": 7553,
       "mime": "application/javascript",
       "dependencies": [
@@ -4209,7 +4209,7 @@
           "source_files": [
             {
               "path": "frontend/workbench/app/FieldVoidEditor.jsx",
-              "sha256": "915144423829d6d9c5242d162ad5ee8fe352c0c851c74dd2c627ef41b2bc3030"
+              "sha256": "6660d1ddd4a2e8a89da61309e1c8f494b80568c63315df568a4c23384540b8dd"
             }
           ],
           "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
@@ -4218,7 +4218,7 @@
       "source_files": [
         {
           "path": "frontend/workbench/app/FieldVoidEditor.jsx",
-          "sha256": "915144423829d6d9c5242d162ad5ee8fe352c0c851c74dd2c627ef41b2bc3030"
+          "sha256": "6660d1ddd4a2e8a89da61309e1c8f494b80568c63315df568a4c23384540b8dd"
         }
       ]
     },
@@ -4724,8 +4724,8 @@
     },
     {
       "path": "workbench/app/OperatorMachinePermissions.js",
-      "sha256": "3d46397b285de4cd051e8dd8eb76634e5300d42a50e9062adb8816693c9dea26",
-      "bytes": 13552,
+      "sha256": "ef8e817133185895cb925f327bbe96cd9212bf3969f6d5c985779d2e7d3ae0c0",
+      "bytes": 13528,
       "mime": "application/javascript",
       "dependencies": [
         "workbench/app/ResourceControls.js",
@@ -4777,7 +4777,7 @@
           "source_files": [
             {
               "path": "frontend/workbench/app/OperatorMachinePermissions.jsx",
-              "sha256": "3a2b203088283ef6e713b36dbaad460a396038de4a8b5e669386b604fba9225b"
+              "sha256": "23bb90d04681dd4ddc0a5bf0fab8124bfcbe1ed6deb1e3b7142088cf332ce74c"
             }
           ],
           "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
@@ -4786,7 +4786,7 @@
       "source_files": [
         {
           "path": "frontend/workbench/app/OperatorMachinePermissions.jsx",
-          "sha256": "3a2b203088283ef6e713b36dbaad460a396038de4a8b5e669386b604fba9225b"
+          "sha256": "23bb90d04681dd4ddc0a5bf0fab8124bfcbe1ed6deb1e3b7142088cf332ce74c"
         }
       ]
     },
@@ -8896,8 +8896,8 @@
     },
     {
       "path": "workbench/app/ResourceForms.js",
-      "sha256": "0e6bcd3b11f21b7d319ed628510d86bae90a51fb66885b83bf7b44bba7561644",
-      "bytes": 31280,
+      "sha256": "bb7a94596ac26ae96be5501527451da12604577d2aee1307c408867baedb76b4",
+      "bytes": 31274,
       "mime": "application/javascript",
       "dependencies": [
         "workbench/app/ResourceControls.js",
@@ -8963,7 +8963,7 @@
           "source_files": [
             {
               "path": "frontend/workbench/app/ResourceForms.jsx",
-              "sha256": "a26561c7a84097daa2b5422b92dc93f648cfcf37884ec56f520d60cee9cc77b7"
+              "sha256": "f4ea860d1311fb827d3ef29aca9bb65c1344d071e13f97c8466455bb881f3aa5"
             }
           ],
           "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
@@ -8972,7 +8972,7 @@
       "source_files": [
         {
           "path": "frontend/workbench/app/ResourceForms.jsx",
-          "sha256": "a26561c7a84097daa2b5422b92dc93f648cfcf37884ec56f520d60cee9cc77b7"
+          "sha256": "f4ea860d1311fb827d3ef29aca9bb65c1344d071e13f97c8466455bb881f3aa5"
         }
       ]
     },
@@ -9569,8 +9569,8 @@
     },
     {
       "path": "workbench/app/ResourceTables.js",
-      "sha256": "8b4bdf0a2efbd80298106a4023c0e637b7e1af469cdcf0ec8c55ef7055603552",
-      "bytes": 12211,
+      "sha256": "515cdef833136e8f276594ae0eca53052c67c6cafe36cafbae6a19e5fdc6db62",
+      "bytes": 12226,
       "mime": "application/javascript",
       "dependencies": [
         "workbench/app/ResourceControls.js",
@@ -9629,7 +9629,7 @@
           "source_files": [
             {
               "path": "frontend/workbench/app/ResourceTables.jsx",
-              "sha256": "0ac4c0a24f6852da403a80f29537e4c9451877cefd717c2c5296f7b1abd6d571"
+              "sha256": "b246954ef7d758dc83fba68633b9cbc87684fcd020a03b21e736dc781fa75a17"
             }
           ],
           "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
@@ -9638,7 +9638,7 @@
       "source_files": [
         {
           "path": "frontend/workbench/app/ResourceTables.jsx",
-          "sha256": "0ac4c0a24f6852da403a80f29537e4c9451877cefd717c2c5296f7b1abd6d571"
+          "sha256": "b246954ef7d758dc83fba68633b9cbc87684fcd020a03b21e736dc781fa75a17"
         }
       ]
     },
@@ -14641,8 +14641,8 @@
     },
     {
       "path": "workbench/app/styles/20-controls.css",
-      "sha256": "42bd3f9cf65a814875051f96e7a6a2e9599e09abbd6094335634d3c83b07b6e1",
-      "bytes": 55985,
+      "sha256": "585bd562c10c132ebadb835b167d0bbbb3eeb49283c1837ef019ef8837a591bc",
+      "bytes": 58054,
       "mime": "text/css",
       "dependencies": [],
       "dependency_symbols": [],
@@ -14657,7 +14657,7 @@
           "source_files": [
             {
               "path": "frontend/workbench/app/styles/20-controls.css",
-              "sha256": "42bd3f9cf65a814875051f96e7a6a2e9599e09abbd6094335634d3c83b07b6e1"
+              "sha256": "585bd562c10c132ebadb835b167d0bbbb3eeb49283c1837ef019ef8837a591bc"
             }
           ],
           "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
@@ -14666,7 +14666,7 @@
       "source_files": [
         {
           "path": "frontend/workbench/app/styles/20-controls.css",
-          "sha256": "42bd3f9cf65a814875051f96e7a6a2e9599e09abbd6094335634d3c83b07b6e1"
+          "sha256": "585bd562c10c132ebadb835b167d0bbbb3eeb49283c1837ef019ef8837a591bc"
         }
       ]
     },
@@ -14858,8 +14858,8 @@
     },
     {
       "path": "workbench/app/styles/33-gantt-foundation.css",
-      "sha256": "dfb49b3a2157467e3bccde92fb9980350acab886abae4e1d9c1ad9da6daac59b",
-      "bytes": 25565,
+      "sha256": "9815e49c4f11adce71433dab23ea2406a0a21d2935be88b83f2ec156f3cec664",
+      "bytes": 25611,
       "mime": "text/css",
       "dependencies": [],
       "dependency_symbols": [],
@@ -14874,7 +14874,7 @@
           "source_files": [
             {
               "path": "frontend/workbench/app/styles/33-gantt-foundation.css",
-              "sha256": "dfb49b3a2157467e3bccde92fb9980350acab886abae4e1d9c1ad9da6daac59b"
+              "sha256": "9815e49c4f11adce71433dab23ea2406a0a21d2935be88b83f2ec156f3cec664"
             }
           ],
           "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
@@ -14883,14 +14883,14 @@
       "source_files": [
         {
           "path": "frontend/workbench/app/styles/33-gantt-foundation.css",
-          "sha256": "dfb49b3a2157467e3bccde92fb9980350acab886abae4e1d9c1ad9da6daac59b"
+          "sha256": "9815e49c4f11adce71433dab23ea2406a0a21d2935be88b83f2ec156f3cec664"
         }
       ]
     },
     {
       "path": "workbench/app/styles/33-plan-gantt.css",
-      "sha256": "d05a93e1e4184da5bfbbcea831e8e9eb6495fff8966719bf43ba0a2560bb8a97",
-      "bytes": 6731,
+      "sha256": "714e31e994fee5173577aaaa91cfd1b7e4cbe7bc55fd8c85138cffbcbfc78b43",
+      "bytes": 6646,
       "mime": "text/css",
       "dependencies": [],
       "dependency_symbols": [],
@@ -14905,7 +14905,7 @@
           "source_files": [
             {
               "path": "frontend/workbench/app/styles/33-plan-gantt.css",
-              "sha256": "d05a93e1e4184da5bfbbcea831e8e9eb6495fff8966719bf43ba0a2560bb8a97"
+              "sha256": "714e31e994fee5173577aaaa91cfd1b7e4cbe7bc55fd8c85138cffbcbfc78b43"
             }
           ],
           "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
@@ -14914,7 +14914,7 @@
       "source_files": [
         {
           "path": "frontend/workbench/app/styles/33-plan-gantt.css",
-          "sha256": "d05a93e1e4184da5bfbbcea831e8e9eb6495fff8966719bf43ba0a2560bb8a97"
+          "sha256": "714e31e994fee5173577aaaa91cfd1b7e4cbe7bc55fd8c85138cffbcbfc78b43"
         }
       ]
     },
@@ -14951,8 +14951,8 @@
     },
     {
       "path": "workbench/app/styles/35-field.css",
-      "sha256": "6fa025abcadcb3e027565f5150c9e5eb3f4612fac8469aae43eed4251438a71f",
-      "bytes": 10758,
+      "sha256": "8c7764a0c1e0f260f00130d9dd14e48026c6a71e58d3d7ab9e946d6c8fbb09ec",
+      "bytes": 10721,
       "mime": "text/css",
       "dependencies": [],
       "dependency_symbols": [],
@@ -14967,7 +14967,7 @@
           "source_files": [
             {
               "path": "frontend/workbench/app/styles/35-field.css",
-              "sha256": "6fa025abcadcb3e027565f5150c9e5eb3f4612fac8469aae43eed4251438a71f"
+              "sha256": "8c7764a0c1e0f260f00130d9dd14e48026c6a71e58d3d7ab9e946d6c8fbb09ec"
             }
           ],
           "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
@@ -14976,14 +14976,14 @@
       "source_files": [
         {
           "path": "frontend/workbench/app/styles/35-field.css",
-          "sha256": "6fa025abcadcb3e027565f5150c9e5eb3f4612fac8469aae43eed4251438a71f"
+          "sha256": "8c7764a0c1e0f260f00130d9dd14e48026c6a71e58d3d7ab9e946d6c8fbb09ec"
         }
       ]
     },
     {
       "path": "workbench/app/styles/36-analysis.css",
-      "sha256": "a74e2b5540532193e1be7bc5d3988e36eb10ce87385277c9bf746b622bc5696c",
-      "bytes": 26797,
+      "sha256": "7ccdf6c9386420367b8ddae581bf91070c3c48ba2ace1c0f96e508ee48e6f5ac",
+      "bytes": 26423,
       "mime": "text/css",
       "dependencies": [],
       "dependency_symbols": [],
@@ -14998,7 +14998,7 @@
           "source_files": [
             {
               "path": "frontend/workbench/app/styles/36-analysis.css",
-              "sha256": "a74e2b5540532193e1be7bc5d3988e36eb10ce87385277c9bf746b622bc5696c"
+              "sha256": "7ccdf6c9386420367b8ddae581bf91070c3c48ba2ace1c0f96e508ee48e6f5ac"
             }
           ],
           "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
@@ -15007,7 +15007,7 @@
       "source_files": [
         {
           "path": "frontend/workbench/app/styles/36-analysis.css",
-          "sha256": "a74e2b5540532193e1be7bc5d3988e36eb10ce87385277c9bf746b622bc5696c"
+          "sha256": "7ccdf6c9386420367b8ddae581bf91070c3c48ba2ace1c0f96e508ee48e6f5ac"
         }
       ]
     },
@@ -15044,8 +15044,8 @@
     },
     {
       "path": "workbench/app/styles/37-system.css",
-      "sha256": "b9faac5cfe74d5b56ec16afdd6b43e8323be631db01d6c7290b9e5c183769d29",
-      "bytes": 4659,
+      "sha256": "dc1219c132c165ce696c7366d9c921fac396d412691e7be34e7c16620831558a",
+      "bytes": 4562,
       "mime": "text/css",
       "dependencies": [],
       "dependency_symbols": [],
@@ -15060,7 +15060,7 @@
           "source_files": [
             {
               "path": "frontend/workbench/app/styles/37-system.css",
-              "sha256": "b9faac5cfe74d5b56ec16afdd6b43e8323be631db01d6c7290b9e5c183769d29"
+              "sha256": "dc1219c132c165ce696c7366d9c921fac396d412691e7be34e7c16620831558a"
             }
           ],
           "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
@@ -15069,7 +15069,7 @@
       "source_files": [
         {
           "path": "frontend/workbench/app/styles/37-system.css",
-          "sha256": "b9faac5cfe74d5b56ec16afdd6b43e8323be631db01d6c7290b9e5c183769d29"
+          "sha256": "dc1219c132c165ce696c7366d9c921fac396d412691e7be34e7c16620831558a"
         }
       ]
     },
@@ -16901,15 +16901,15 @@
     },
     {
       "path": "frontend/workbench/app/OperatorMachinePermissions.jsx",
-      "sha256": "3a2b203088283ef6e713b36dbaad460a396038de4a8b5e669386b604fba9225b"
+      "sha256": "23bb90d04681dd4ddc0a5bf0fab8124bfcbe1ed6deb1e3b7142088cf332ce74c"
     },
     {
       "path": "frontend/workbench/app/ResourceForms.jsx",
-      "sha256": "a26561c7a84097daa2b5422b92dc93f648cfcf37884ec56f520d60cee9cc77b7"
+      "sha256": "f4ea860d1311fb827d3ef29aca9bb65c1344d071e13f97c8466455bb881f3aa5"
     },
     {
       "path": "frontend/workbench/app/ResourceTables.jsx",
-      "sha256": "0ac4c0a24f6852da403a80f29537e4c9451877cefd717c2c5296f7b1abd6d571"
+      "sha256": "b246954ef7d758dc83fba68633b9cbc87684fcd020a03b21e736dc781fa75a17"
     },
     {
       "path": "frontend/workbench/app/ResourceMetrics.jsx",
@@ -17061,7 +17061,7 @@
     },
     {
       "path": "frontend/workbench/app/BatchDetail.jsx",
-      "sha256": "450163c7a00576801ef44cba72591e8197225ef42f7ad27efd37fbe53d158d6c"
+      "sha256": "c82cc4892f75041114f79e8b0dcbc8b828f967c58d23233348f5729367d81797"
     },
     {
       "path": "frontend/workbench/app/BatchTable.jsx",
@@ -17141,7 +17141,7 @@
     },
     {
       "path": "frontend/workbench/app/FieldEditorFields.jsx",
-      "sha256": "141de3abb84742f1eaa47f9a7b6405c9b5cb1f7e48c6a9a259597c8083777dd0"
+      "sha256": "68974c420b00d0c5c24140857ad6a931565f2edde49eb4f6c35af8f0bf4d51e6"
     },
     {
       "path": "frontend/workbench/app/FieldEditor.jsx",
@@ -17149,7 +17149,7 @@
     },
     {
       "path": "frontend/workbench/app/FieldVoidEditor.jsx",
-      "sha256": "915144423829d6d9c5242d162ad5ee8fe352c0c851c74dd2c627ef41b2bc3030"
+      "sha256": "6660d1ddd4a2e8a89da61309e1c8f494b80568c63315df568a4c23384540b8dd"
     },
     {
       "path": "frontend/workbench/app/FieldDetail.jsx",
@@ -17581,7 +17581,7 @@
     },
     {
       "path": "frontend/workbench/app/DashboardPanels.jsx",
-      "sha256": "58a72d2eab0fa56585acdf62cd2bc80d219c76781ed3a641cd4214ced2138d7d"
+      "sha256": "9115f0d79f41481499c090ca602b5b66db5873fb9abac6d86bf366f78b2cd639"
     },
     {
       "path": "frontend/workbench/app/DashboardHandling.jsx",
@@ -17625,7 +17625,7 @@
     },
     {
       "path": "frontend/workbench/app/styles/20-controls.css",
-      "sha256": "42bd3f9cf65a814875051f96e7a6a2e9599e09abbd6094335634d3c83b07b6e1"
+      "sha256": "585bd562c10c132ebadb835b167d0bbbb3eeb49283c1837ef019ef8837a591bc"
     },
     {
       "path": "frontend/workbench/app/styles/21-table-frame.css",
@@ -17653,11 +17653,11 @@
     },
     {
       "path": "frontend/workbench/app/styles/33-gantt-foundation.css",
-      "sha256": "dfb49b3a2157467e3bccde92fb9980350acab886abae4e1d9c1ad9da6daac59b"
+      "sha256": "9815e49c4f11adce71433dab23ea2406a0a21d2935be88b83f2ec156f3cec664"
     },
     {
       "path": "frontend/workbench/app/styles/33-plan-gantt.css",
-      "sha256": "d05a93e1e4184da5bfbbcea831e8e9eb6495fff8966719bf43ba0a2560bb8a97"
+      "sha256": "714e31e994fee5173577aaaa91cfd1b7e4cbe7bc55fd8c85138cffbcbfc78b43"
     },
     {
       "path": "frontend/workbench/app/styles/34-run.css",
@@ -17665,11 +17665,11 @@
     },
     {
       "path": "frontend/workbench/app/styles/35-field.css",
-      "sha256": "6fa025abcadcb3e027565f5150c9e5eb3f4612fac8469aae43eed4251438a71f"
+      "sha256": "8c7764a0c1e0f260f00130d9dd14e48026c6a71e58d3d7ab9e946d6c8fbb09ec"
     },
     {
       "path": "frontend/workbench/app/styles/36-analysis.css",
-      "sha256": "a74e2b5540532193e1be7bc5d3988e36eb10ce87385277c9bf746b622bc5696c"
+      "sha256": "7ccdf6c9386420367b8ddae581bf91070c3c48ba2ace1c0f96e508ee48e6f5ac"
     },
     {
       "path": "frontend/workbench/app/styles/37-reports.css",
@@ -17677,7 +17677,7 @@
     },
     {
       "path": "frontend/workbench/app/styles/37-system.css",
-      "sha256": "b9faac5cfe74d5b56ec16afdd6b43e8323be631db01d6c7290b9e5c183769d29"
+      "sha256": "dc1219c132c165ce696c7366d9c921fac396d412691e7be34e7c16620831558a"
     },
     {
       "path": "frontend/workbench/vendor/react-18.3.1.production.min.js",
@@ -18257,5 +18257,5 @@
       "workbench/prototype/ui_kits/workbench/workbench-ui.css"
     ]
   },
-  "build_id": "b71675b473558cbcac9021d7ba63d9ab55988774f6a7d22ef4b60e09e4b7db35"
+  "build_id": "6ff511e1832a11c90b21c21c431ea2a200b2f56fc88eb33209f400818e478aa1"
 }

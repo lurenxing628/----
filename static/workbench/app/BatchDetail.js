@@ -128,18 +128,18 @@
       className: "batch-fact-wide"
     }, /*#__PURE__*/React.createElement("dt", null, "\u6765\u6E90\u5DE5\u827A"), /*#__PURE__*/React.createElement("dd", null, entity.relationships.part_no, " \xB7 ", entity.relationships.part_name)), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u6709\u6548\u5DE5\u5E8F"), /*#__PURE__*/React.createElement("dd", null, template.operation_count, " \u9053")), /*#__PURE__*/React.createElement("div", {
       className: "batch-fact-full"
-    }, /*#__PURE__*/React.createElement("dt", null, "\u66F4\u65B0\u6761\u4EF6"), /*#__PURE__*/React.createElement("dd", null, entity.protected ? '已有排产或执行记录，暂不能替换工序。' : template.complete ? '工艺资料齐全，可以预览本次更新。' : '请先补齐下列工艺资料。'))), /*#__PURE__*/React.createElement(Issues, {
+    }, /*#__PURE__*/React.createElement("dt", null, "\u66F4\u65B0\u6761\u4EF6"), /*#__PURE__*/React.createElement("dd", null, entity.protected ? '已有排产或执行记录，暂不能替换工序。' : template.complete ? '工艺资料齐全，可以预检本次更新。' : '请先补齐下列工艺资料。'))), /*#__PURE__*/React.createElement(Issues, {
       issues: template.diagnostics
     }), /*#__PURE__*/React.createElement("div", {
       className: "batch-template-action"
     }, /*#__PURE__*/React.createElement(Button, {
       icon: "refresh-cw",
-      "aria-label": "\u9884\u89C8\u5DE5\u5E8F\u66F4\u65B0",
+      "aria-label": "\u9884\u68C0\u5DE5\u5E8F\u66F4\u65B0",
       disabled: disabled,
       reasonDisplay: "tooltip",
       reason: reason('sync_confirm'),
       onClick: () => onSync(entity, read.result.meta.snapshot_ref)
-    }, "\u9884\u89C8\u5DE5\u5E8F\u66F4\u65B0"), /*#__PURE__*/React.createElement("span", {
+    }, "\u9884\u68C0\u5DE5\u5E8F\u66F4\u65B0"), /*#__PURE__*/React.createElement("span", {
       className: "muted"
     }, "\u5148\u67E5\u770B\u5DE5\u5E8F\u53D8\u5316\u548C\u8BBE\u5907\u3001\u4EBA\u5458\u6307\u5B9A\u7684\u6E05\u9664\u60C5\u51B5\uFF0C\u518D\u786E\u8BA4\u66F4\u65B0\u3002"))), /*#__PURE__*/React.createElement("section", {
       className: "batch-band"

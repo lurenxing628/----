@@ -91,9 +91,8 @@
       .master-overview .mo-heading {justify-content:space-between;margin-bottom:var(--space-4);gap:var(--space-3);}
       .master-overview .mo-heading p,.master-overview .mo-muted {font-size:var(--font-size-1);color:var(--ui-info-muted);}
       .master-overview .mo-metrics {--wb-columns:4;display:grid;margin-bottom:0;}
-      /* override: workbench-ui.css forces metric borders; retain one shared boundary between the two groups. */
-      .master-overview .mo-domains {--wb-columns:8;display:grid;border-top:0!important;}
-      .master-overview :is(.mo-metrics,.mo-domains) {border-left:1px solid var(--ui-border)!important;border-right:1px solid var(--ui-border)!important;}
+      /* metric border overrides for .mo-domains / .mo-metrics live in 20-controls.css per the style contract. */
+      .master-overview .mo-domains {--wb-columns:8;display:grid;}
       .master-overview .mo-controls {margin:var(--space-3) 0;padding:0 var(--space-3);background:var(--ui-card-bg);border:1px solid var(--ui-border);border-radius:var(--wb-radius-control);}
       .master-overview .mo-domains .wb-metric {padding:var(--space-2) 10px;min-height:72px;}
       .master-overview .mo-domains .wb-metric-value {font-size:var(--font-size-5);line-height:28px;}
@@ -151,8 +150,7 @@
       .master-overview button:focus-visible,.master-overview input:focus-visible,.master-overview select:focus-visible,.master-overview .mo-detail:focus-visible {outline:2px solid var(--ui-info-text);outline-offset:2px;}
       @media(max-width:1280px){.master-overview .mo-workspace {grid-template-columns:minmax(0,1fr);}.master-overview .mo-detail {border-left:0;border-top:1px solid var(--ui-border);padding:var(--space-4) 0 0;}.master-overview .mo-domains {--wb-columns:4;}}
       @media(max-width:1280px){.master-overview .mo-heading>.mo-actions {width:100%;}.master-overview .mo-filter-band input {width:100%;}}
-      /* override: the shared metric reset removes row borders; the overview uses four columns in this range. */
-      @media(min-width:901px) and (max-width:1280px){.master-overview .mo-domains>.wb-metric:nth-child(n+5) {border-top:1px solid var(--ui-border)!important;}.master-overview .mo-domains>.wb-metric:nth-child(4n){border-right:0!important;}}
+      /* four-column row border overrides for .mo-domains>.wb-metric (901px to 1280px) live in 20-controls.css per the style contract. */
 
 /* Supported workbench viewports: allow the detail panel to share the row without truncating actions. */
 .dashboard-live .dy-work {grid-template-columns:190px minmax(0,1fr);}
@@ -202,7 +200,7 @@ body.aps-workbench .wb-sr-only {position:absolute;width:1px;height:1px;overflow:
 .dashboard-live .dy-gap-table-scroll { --dy-gap-row-height:32px; position:relative; isolation:isolate; max-height:calc(6 * var(--dy-gap-row-height)); overflow:auto; }
 .dashboard-live .dy-gap-table { width:100%; table-layout:fixed; border-collapse:separate; border-spacing:0; font-size:var(--font-size-1); }
 .dashboard-live .dy-gap-table :is(th,td) { height:var(--dy-gap-row-height); box-sizing:border-box; padding:6px 10px; line-height:18px; border:0; border-bottom:1px solid var(--ui-border); text-align:left; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.dashboard-live .dy-gap-table th { position:sticky; top:0; z-index:1; background:var(--ui-surface-muted); color:var(--ui-info-muted); font-weight:500; }
+.dashboard-live .dy-gap-table th { position:sticky; top:0; z-index:var(--wb-z-sticky); background:var(--ui-surface-muted); color:var(--ui-info-muted); font-weight:500; }
 .dashboard-live .dy-gap-table td { background:var(--ui-card-bg); }
 .dashboard-live .dy-gap-table th:first-child:not(:last-child) { width:60%; }
 .dashboard-live .dy-gap-table tbody tr:last-child td { border-bottom:0; }

@@ -20,8 +20,8 @@
 .field-workspace > .field-toolbar .field-note { padding: 0; }
 .field-workspace > .field-filters { padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--wb-radius-control); background: var(--surface); margin-bottom: var(--space-3); }
 .field-workspace > .field-metrics { padding: var(--space-2) var(--space-3); border: 1px solid var(--border); border-bottom: 0; background: var(--surface); border-radius: var(--wb-radius-control) var(--wb-radius-control) 0 0; }
-/* override: prototype .wb-table-frame border:0!important; close only the main field results surface. */
-body.aps-workbench .field-workspace > .field-scroll { border: 1px solid var(--border) !important; background: var(--surface); }
+/* the border override for .field-workspace > .field-scroll lives in 20-controls.css per the style contract. */
+body.aps-workbench .field-workspace > .field-scroll { background: var(--surface); }
 body.aps-workbench .field-workspace > .wb-pager { margin: 0; padding: var(--space-2) var(--space-3); border: 1px solid var(--border); border-top: 0; background: var(--surface); border-radius: 0 0 var(--wb-radius-control) var(--wb-radius-control); }
 .field-workspace > .field-detail { margin-top: var(--space-3); border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: var(--wb-radius-control); padding-inline: var(--space-3); }
 .field-workspace > .field-detail .field-detail-heading { padding-block: var(--space-2); }

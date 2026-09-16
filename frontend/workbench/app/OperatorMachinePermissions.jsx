@@ -63,7 +63,7 @@
         const data = result && result.data;
         if (!data || data.operator_ref !== entity.ref || !Array.isArray(data.rows) || !data.write_context
             || data.write_context.capabilities['operator.machine_permissions'] !== true || typeof data.preview_ref !== 'string')
-          throw C.failure('设备关联预览不完整，请重新预览。');
+          throw C.failure('设备关联预检不完整，请重新预检。');
         setPreview(data);
       } catch (failure) { setError(failure); }
       finally { setBusy(false); }
@@ -82,7 +82,7 @@
           <Button icon="search" type="submit" disabled={disabled} busy={read.loading}>搜索设备</Button>
           <select aria-label="选择关联设备" value={selected} disabled={disabled || read.loading} onChange={event => setSelected(event.target.value)}>
             <option value="">请选择设备</option>{choices.filter(item => !rows.some(row => row.machine_ref === item.ref)).map(item => <option key={item.ref} value={item.ref}>{item.business_code} · {item.label}</option>)}
-          </select><Button icon="plus" disabled={disabled || !selected} onClick={add}>添加关联</Button>
+          </select><Button icon="plus" disabled={disabled || !selected} onClick={add}>新增关联</Button>
           {read.result && read.result.data.page.total > 20 && <span className="muted">显示前 20 台，请输入编号或名称缩小范围。</span>}
         </form>}
         <ErrorBox error={read.error} />
@@ -92,13 +92,13 @@
             <td><Button disabled={disabled} onClick={() => change(rows.filter(item => item.machine_ref !== row.machine_ref))}>解除关联</Button></td></tr>)}</tbody></table>
           {!rows.length && <p className="muted">尚未设置可操作设备。</p>}
         </div>
-        {preview && !done && <section className="wb-permission-preview" aria-label="设备关联变更预览"><h3>本次变更</h3>
+        {preview && !done && <section className="wb-permission-preview" aria-label="设备关联变更预检"><h3>本次变更</h3>
           {changed.length ? <ul>{changed.map(row => <li key={row.entity_ref}><strong>{({ new: '新增关联', delete: '解除关联', update: '修改关联' })[row.result]}</strong>：{row.business_code} · {row.label}
             {row.result === 'update' && Object.entries(row.changes).map(([key, pair]) => <span key={key}>；{key === 'skill_level' ? '技能等级' : '主操设备'}：{display(key, pair[0])} → {display(key, pair[1])}</span>)}</li>)}</ul> : <p>设备关联没有变化。</p>}
           <p className="muted">保存后，新的资源分配按这份设备关联判断；已保存的计划和报工记录保留。</p></section>}
         <ErrorBox error={error} /><Feedback command={command} />
-        {!done && (error || command.error) && <Button icon="refresh-cw" disabled={disabled} onClick={reload}>重新读取设备关联</Button>}
-        {done && <><p role="status">{refreshState.done ? '已重新读取人员资料，设备关联已保存。' : refreshState.loading ? '正在重新读取人员资料…' : '请刷新保存结果，核对人员资料。'}</p>
+        {!done && (error || command.error) && <Button icon="refresh-cw" disabled={disabled} onClick={reload}>刷新设备关联</Button>}
+        {done && <><p role="status">{refreshState.done ? '已刷新人员资料，设备关联已保存。' : refreshState.loading ? '正在刷新人员资料…' : '请刷新保存结果，核对人员资料。'}</p>
           <ErrorBox error={refreshState.error} />{refreshState.error && <Button icon="refresh-cw" onClick={onRefresh}>刷新保存结果</Button>}</>}
       </div>
     </Modal></div>;

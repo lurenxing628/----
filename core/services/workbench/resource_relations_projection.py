@@ -6,7 +6,7 @@ RELATION_KINDS = {"machines": "machine", "operators": "operator", "suppliers": "
 RELATION_BASIS = {
     "machines": {"code": "machine_op_type_binding", "message": "与此工种关联的全部设备，含停机、停用及状态未知的设备。"},
     "operators": {"code": "recorded_skills_and_machine_authorizations", "message": "与此工种关联的技能人员及设备授权人员，包含停用和资格待核对的人员。"},
-    "suppliers": {"code": "legacy_and_explicit_capabilities", "message": "关联供应商去重统计，包含停用和状态未知的供应商。"},
+    "suppliers": {"code": "legacy_and_explicit_capabilities", "message": "关联供应商按供应商计数（同一供应商只计一次），包含停用和状态未知的供应商。"},
 }
 _SOURCE_LABELS = {"op_type_binding": "设备实际工种绑定", "legacy": "旧单工种", "explicit": "单独设置的多工种", "mixed": "旧单工种和单独设置的多工种"}
 _PERSON_SOURCES = {"skill": "工种技能记录", "machine_authorization": "匹配设备的操作授权", "mixed": "工种技能记录及匹配设备授权"}

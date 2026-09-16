@@ -27,7 +27,7 @@ def _downstream_impacts(conn, ledger, facts, before, after, report):
     messages = {"downstream_execution_exists": "后道工序已有开工或报工记录",
                 "downstream_requires_completion": "后道工序的执行或正式安排依赖本工序完工",
                 "downstream_time_conflict": "后道工序时间与撤销后的完工记录冲突",
-                "adopted_execution_basis_changed": "当前正式计划使用了这次报工的数量或开工事实",
+                "adopted_execution_basis_changed": "当前正式计划使用了这次报工的数量或开工记录",
                 "adopted_completion_required": "当前正式计划依赖这次完工记录",
                 "adopted_actual_resource_changed": "当前正式计划使用了这次报工的实际资源"}
     return [dict(item, operation_label=str(labels[item["operation_ref"]]["seq"]) + " " +

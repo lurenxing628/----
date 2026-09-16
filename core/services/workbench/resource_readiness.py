@@ -96,4 +96,4 @@ def resource_readiness(counts, metrics, calendar, process):
                          "counts": dict(calendar["stats"]), "basis": calendar["basis"],
                          "issues": calendar["stats"]["issues"] + [issue for day in calendar["days"] for issue in day["issues"]]}
     return {"status": "unknown", "ratio": None, "basis": "static_resource_facts_not_schedule_precheck",
-            "message": "整体就绪度尚未提供。", "items": items}
+            "message": "整体就绪度暂无数据；这里只汇总静态资料，不代表排产检查结果。", "items": items}

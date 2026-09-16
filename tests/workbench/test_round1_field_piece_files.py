@@ -93,7 +93,7 @@ def test_common_requires_empty_piece_and_legacy_ambiguity_stays_rejected(piece_f
     preview = success(api.upload(old))
     assert not preview['data']['can_confirm']
     rejected = next(row for row in preview['data']['rows'] if row['errors'])
-    assert '系统不会猜该配哪一条' in rejected['errors'][0]['message']
+    assert '无法唯一对应到批次工序' in rejected['errors'][0]['message']
     assert all_rows(api.case.conn) == before
 
 

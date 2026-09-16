@@ -474,3 +474,17 @@ body.aps-workbench .wb-select-tools .wb-select-typed { flex: none; margin: 0; fo
   /* override: plana.css .stat .sv font-size; compact metric numbers on short screens. */
   body.aps-workbench .wb-fill-viewport .statline .wb-metric-value { font-size: var(--font-size-4) !important; line-height: 22px !important; }
 }
+
+/* 各工作区对原型样式的显式覆盖集中在这里：样式合同只允许本文件保留 !important，每条前一行写明被覆盖的选择器与原因。 */
+/* override: body.aps-workbench .plan-scope>.wb-metrics; workbench-ui.css gives the shared metric strip its own outer border and radius, but inside .plan-scope the containing surface supplies them. */
+body.aps-workbench .plan-scope>.wb-metrics { border-inline: 0 !important; border-bottom: 0 !important; border-radius: 0 !important; }
+/* override: body.aps-workbench .field-workspace > .field-scroll; the prototype .wb-table-frame removes borders, but the main field results surface must stay closed. */
+body.aps-workbench .field-workspace > .field-scroll { border: 1px solid var(--border) !important; }
+/* override: .master-overview .mo-domains; workbench-ui.css forces a metric top border, but the two overview metric groups share one boundary. */
+.master-overview .mo-domains { border-top: 0 !important; }
+/* override: .master-overview :is(.mo-metrics,.mo-domains); workbench-ui.css resets metric side borders, but both overview groups must be closed at their sides. */
+.master-overview :is(.mo-metrics,.mo-domains) { border-left: 1px solid var(--ui-border) !important; border-right: 1px solid var(--ui-border) !important; }
+/* override: .master-overview .mo-domains>.wb-metric:nth-child(n+5) and :nth-child(4n); the shared metric reset removes row borders, but the overview uses four columns between 901px and 1280px. */
+@media (min-width: 901px) and (max-width: 1280px) { .master-overview .mo-domains>.wb-metric:nth-child(n+5) { border-top: 1px solid var(--ui-border) !important; } .master-overview .mo-domains>.wb-metric:nth-child(4n) { border-right: 0 !important; } }
+/* override: body.aps-workbench .sm-workbench .sm-metrics; workbench-ui.css resets metric side borders, but the source-and-status panel must be closed at its sides. */
+body.aps-workbench .sm-workbench .sm-metrics { border-left: 1px solid var(--ui-border) !important; border-right: 1px solid var(--ui-border) !important; }

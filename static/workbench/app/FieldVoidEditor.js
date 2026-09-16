@@ -82,7 +82,7 @@
       try {
         const result = await adapter.previewVoid(record.report_ref, input(), controller.signal),
           value = result.data;
-        if (!value || !value.target_report || value.target_report.report_ref !== record.report_ref || value.target_report.original_revision_ref !== baseline.revision_ref || !value.before || !value.after || !Array.isArray(value.downstream_impacts) || typeof value.can_confirm !== 'boolean' || !value.write_context) throw window.APSResourceContract.failure('撤销预览与原报工不一致，请刷新后重试。');
+        if (!value || !value.target_report || value.target_report.report_ref !== record.report_ref || value.target_report.original_revision_ref !== baseline.revision_ref || !value.before || !value.after || !Array.isArray(value.downstream_impacts) || typeof value.can_confirm !== 'boolean' || !value.write_context) throw window.APSResourceContract.failure('撤销预检与原报工不一致，请刷新后重试。');
         setPreview(value);
       } catch (failure) {
         if (!controller.signal.aborted) setError(failure);

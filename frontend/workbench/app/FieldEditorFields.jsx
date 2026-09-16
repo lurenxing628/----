@@ -23,7 +23,7 @@
           {action === 'create' && <Button disabled={disabled || task.execution.remaining_quantity === null} onClick={() => change('completed_quantity', String(task.execution.remaining_quantity))}>最大</Button>}</div>
         <p className="field-note">已知累计 <output aria-label="已知累计">{cumulative === null ? '未核对' : cumulative}</output> / 执行目标 {C.quantity(task.execution.target_quantity)} 件
           {task.execution.unknown_record_count > 0 && <small> · 原记录数量待补 {task.execution.unknown_record_count} 条</small>}</p></section>
-      <section><h4>实际起止</h4>{timeHints && <p className="field-suggestion" role="status">请核对预填时间；不确定的时间请清空。</p>}
+      <section><h4>实际起止</h4>{timeHints && <p className="field-suggestion" role="status">请核对预填时间；不确定的时间请清除。</p>}
         <div className="field-time-grid">{[['actual_start', '实际开工'], ['actual_end', '本次实际完工']].map(([key, label]) => <div key={key}>
           <Field label={label} path={key} error={error} hint={suggestions[key] ? '建议来源：' + suggestions[key] : undefined}><input type="datetime-local" step="1" aria-label={label} value={draft[key]} disabled={readonly(key)} onChange={event => change(key, event.target.value)} /></Field>
           <Button disabled={readonly(key) || !draft[key]} aria-label={'清除' + label} onClick={() => change(key, '')}>清除</Button></div>)}</div></section>

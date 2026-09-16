@@ -80,7 +80,7 @@
       }, issue ? '暂无数据' : '未读取');
     }
     return /*#__PURE__*/React.createElement("span", {
-      title: key === 'machines' ? '已启用且关联此工种的设备数。' : '具备对应技能和设备授权的在岗人数（去重）。'
+      title: key === 'machines' ? '已启用且关联此工种的设备数。' : '具备对应技能和设备授权的在岗人数（同一人只计一次）。'
     }, entity.availability[key]);
   }
   function opColumns(category) {

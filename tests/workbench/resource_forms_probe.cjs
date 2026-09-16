@@ -269,7 +269,7 @@ async function cases() {
     await page.getByRole('alert').filter({hasText:'资料已变化'}).waitFor();
     assert.equal(await page.getByLabel('名称',{exact:false}).inputValue(),'未提交的草稿');
     await page.getByRole('button',{name:'刷新最新资料',exact:true}).click();
-    await page.getByText('最新资料已刷新。你修改的内容已保留，未修改的字段已更新；下方显示当前已保存的资料。',{exact:true}).waitFor();
+    await page.getByText('最新资料已刷新。你修改的内容已保留，未修改的项已更新；下方显示当前已保存的资料。',{exact:true}).waitFor();
     assert.equal(await page.getByRole('button',{name:'已核对，继续编辑',exact:true}).count(),0);
     assert(await page.getByText('服务器当前名称',{exact:false}).isVisible());
     assert.equal(await page.getByLabel('库存数量',{exact:true}).inputValue(),'');

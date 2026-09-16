@@ -1,6 +1,7 @@
 /* Local Gantt drawing order: marks < connections < frozen labels < axis < corner.
    These values stay within the isolated board; overlays use the shared surface tokens. */
 .plan-workspace .plan-board,.fg-live .fg-board {
+  --wb-z-gantt-track:0;
   --wb-z-gantt-mark:3;
   --wb-z-gantt-chain:4;
   --wb-z-gantt-frozen:5;
@@ -163,7 +164,7 @@ body.aps-workbench .fg-live .fg-search input { padding-left:32px; }
 .fg-live .fg-group-row { background:var(--ui-surface-muted); }.fg-live .fg-group-row .fg-frozen { background:var(--ui-surface-muted); display:flex; align-items:center; gap:7px; }
 .fg-live .fg-resource-label { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; overflow-wrap:anywhere; line-height:19px; min-width:0; font-size:var(--font-size-1); }
 .fg-live .fg-group-summary { padding:var(--space-4) var(--space-3); font-size:var(--font-size-1); color:var(--ui-info-muted); white-space:nowrap; }
-.fg-live .fg-track { position:relative; z-index:0; flex:none; height:100%; min-height:0; background:var(--ui-card-bg); overflow:hidden; }
+.fg-live .fg-track { position:relative; z-index:var(--wb-z-gantt-track); flex:none; height:100%; min-height:0; background:var(--ui-card-bg); overflow:hidden; }
 .fg-live .fg-gridline { position:absolute; top:0; bottom:0; border-left:1px solid var(--ui-border); pointer-events:none; }
 .fg-live .fg-mark { position:absolute; min-width:0; margin:0; padding:0; transform:none; border:0; overflow:hidden; box-shadow:none; border-radius:var(--wb-gantt-radius-bar); cursor:pointer; }
 .fg-live .fg-mark.fg-act { background:var(--wb-gantt-primary-fill); color:var(--wb-gantt-primary-ink); box-shadow:inset 0 0 0 1px var(--wb-gantt-primary-edge); }

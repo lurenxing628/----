@@ -80,7 +80,7 @@ class WorkbenchOperatorMachinePermissions:
         try:
             current = self.preview(request["operator_ref"], request["machine_permissions"])
         except (ValidationError, WorkbenchCommandRejected) as exc:
-            raise WorkbenchCommandRejected("stale_write", "人员、设备或关联已变化，请重新预览。") from exc
+            raise WorkbenchCommandRejected("stale_write", "人员、设备或关联已变化，请重新预检。") from exc
         check_resource_preview(preview, current)
         body = current.as_dict()
         code = body["request"]["expected_operator"]["record"]["operator_id"]

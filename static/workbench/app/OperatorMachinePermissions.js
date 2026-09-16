@@ -143,7 +143,7 @@
           write_token: current.write_context.write_token
         }, new AbortController().signal);
         const data = result && result.data;
-        if (!data || data.operator_ref !== entity.ref || !Array.isArray(data.rows) || !data.write_context || data.write_context.capabilities['operator.machine_permissions'] !== true || typeof data.preview_ref !== 'string') throw C.failure('设备关联预览不完整，请重新预览。');
+        if (!data || data.operator_ref !== entity.ref || !Array.isArray(data.rows) || !data.write_context || data.write_context.capabilities['operator.machine_permissions'] !== true || typeof data.preview_ref !== 'string') throw C.failure('设备关联预检不完整，请重新预检。');
         setPreview(data);
       } catch (failure) {
         setError(failure);
@@ -219,7 +219,7 @@
       icon: "plus",
       disabled: disabled || !selected,
       onClick: add
-    }, "\u6DFB\u52A0\u5173\u8054"), read.result && read.result.data.page.total > 20 && /*#__PURE__*/React.createElement("span", {
+    }, "\u65B0\u589E\u5173\u8054"), read.result && read.result.data.page.total > 20 && /*#__PURE__*/React.createElement("span", {
       className: "muted"
     }, "\u663E\u793A\u524D 20 \u53F0\uFF0C\u8BF7\u8F93\u5165\u7F16\u53F7\u6216\u540D\u79F0\u7F29\u5C0F\u8303\u56F4\u3002")), /*#__PURE__*/React.createElement(ErrorBox, {
       error: read.error
@@ -248,7 +248,7 @@
       className: "muted"
     }, "\u5C1A\u672A\u8BBE\u7F6E\u53EF\u64CD\u4F5C\u8BBE\u5907\u3002")), preview && !done && /*#__PURE__*/React.createElement("section", {
       className: "wb-permission-preview",
-      "aria-label": "\u8BBE\u5907\u5173\u8054\u53D8\u66F4\u9884\u89C8"
+      "aria-label": "\u8BBE\u5907\u5173\u8054\u53D8\u66F4\u9884\u68C0"
     }, /*#__PURE__*/React.createElement("h3", null, "\u672C\u6B21\u53D8\u66F4"), changed.length ? /*#__PURE__*/React.createElement("ul", null, changed.map(row => /*#__PURE__*/React.createElement("li", {
       key: row.entity_ref
     }, /*#__PURE__*/React.createElement("strong", null, {
@@ -267,9 +267,9 @@
       icon: "refresh-cw",
       disabled: disabled,
       onClick: reload
-    }, "\u91CD\u65B0\u8BFB\u53D6\u8BBE\u5907\u5173\u8054"), done && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", {
+    }, "\u5237\u65B0\u8BBE\u5907\u5173\u8054"), done && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", {
       role: "status"
-    }, refreshState.done ? '已重新读取人员资料，设备关联已保存。' : refreshState.loading ? '正在重新读取人员资料…' : '请刷新保存结果，核对人员资料。'), /*#__PURE__*/React.createElement(ErrorBox, {
+    }, refreshState.done ? '已刷新人员资料，设备关联已保存。' : refreshState.loading ? '正在刷新人员资料…' : '请刷新保存结果，核对人员资料。'), /*#__PURE__*/React.createElement(ErrorBox, {
       error: refreshState.error
     }), refreshState.error && /*#__PURE__*/React.createElement(Button, {
       icon: "refresh-cw",

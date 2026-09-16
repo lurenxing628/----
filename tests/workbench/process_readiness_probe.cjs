@@ -113,7 +113,7 @@ async function inspect(page) {
           check(text.includes('已确认：路线 ' + counts.route_confirmed + ' / 归属 ' + counts.source_confirmed + ' / 工时 ' + counts.hours_confirmed), mode);
         }
         check(await page.locator('.hb-rl2').innerText() === '暂无数据', 'Process confirmation is not scheduling readiness');
-        check((await page.locator('.rail-foot').innerText()).includes('静态资料不是排产检查'), 'Static boundary must remain visible');
+        check((await page.locator('.rail-foot').innerText()).includes('下一步 · 批次管理'), 'Next-step entry must remain visible');
         check(await page.locator('.hb-r-floor i').count() === 0, 'No invented percentage');
         check(!text.includes('阶段未知') && !text.includes('100%'), 'No obsolete placeholder or vacuous ratio');
         if (mode === 'ready' || mode === 'mixed') {

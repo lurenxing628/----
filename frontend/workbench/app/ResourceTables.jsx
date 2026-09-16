@@ -27,7 +27,7 @@
       const issue = entity.issues.find(item => item.code === 'resource_availability_unavailable');
       return <span className="muted" title={issue ? issue.message : '可用数量尚未读取。'}>{issue ? '暂无数据' : '未读取'}</span>;
     }
-    return <span title={key === 'machines' ? '已启用且关联此工种的设备数。' : '具备对应技能和设备授权的在岗人数（去重）。'}>{entity.availability[key]}</span>;
+    return <span title={key === 'machines' ? '已启用且关联此工种的设备数。' : '具备对应技能和设备授权的在岗人数（同一人只计一次）。'}>{entity.availability[key]}</span>;
   }
   function opColumns(category) {
     if (category === 'internal') return [

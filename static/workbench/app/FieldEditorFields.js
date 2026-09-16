@@ -83,7 +83,7 @@
     }, cumulative === null ? '未核对' : cumulative), " / \u6267\u884C\u76EE\u6807 ", C.quantity(task.execution.target_quantity), " \u4EF6", task.execution.unknown_record_count > 0 && /*#__PURE__*/React.createElement("small", null, " \xB7 \u539F\u8BB0\u5F55\u6570\u91CF\u5F85\u8865 ", task.execution.unknown_record_count, " \u6761"))), /*#__PURE__*/React.createElement("section", null, /*#__PURE__*/React.createElement("h4", null, "\u5B9E\u9645\u8D77\u6B62"), timeHints && /*#__PURE__*/React.createElement("p", {
       className: "field-suggestion",
       role: "status"
-    }, "\u8BF7\u6838\u5BF9\u9884\u586B\u65F6\u95F4\uFF1B\u4E0D\u786E\u5B9A\u7684\u65F6\u95F4\u8BF7\u6E05\u7A7A\u3002"), /*#__PURE__*/React.createElement("div", {
+    }, "\u8BF7\u6838\u5BF9\u9884\u586B\u65F6\u95F4\uFF1B\u4E0D\u786E\u5B9A\u7684\u65F6\u95F4\u8BF7\u6E05\u9664\u3002"), /*#__PURE__*/React.createElement("div", {
       className: "field-time-grid"
     }, [['actual_start', '实际开工'], ['actual_end', '本次实际完工']].map(([key, label]) => /*#__PURE__*/React.createElement("div", {
       key: key

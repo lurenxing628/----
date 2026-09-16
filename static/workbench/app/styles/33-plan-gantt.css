@@ -11,8 +11,8 @@ body.aps-workbench .plan-view-tabs + #wb-view-panel .plan-scope {border-top:0;bo
 .plan-workspace .plan-scope-meta {display:flex;flex-direction:column;gap:var(--space-1);flex:1 1 360px;min-width:0;color:var(--ui-info-muted);font-size:var(--font-size-1);line-height:20px;overflow-wrap:anywhere;}
 .plan-workspace .plan-scope>.plan-range {margin:0;border:0;border-top:1px solid var(--ui-border);border-radius:0;}
 .plan-workspace .plan-read-state {border-top:1px solid var(--ui-border);}
-/* override: the shared metric strip owns its cells; the containing surface supplies the outer border. */
-body.aps-workbench .plan-scope>.wb-metrics {margin:0;border-inline:0!important;border-bottom:0!important;border-radius:0!important;}
+/* border overrides for .plan-scope>.wb-metrics live in 20-controls.css per the style contract. */
+body.aps-workbench .plan-scope>.wb-metrics {margin:0;}
 .plan-workspace .plan-heading { margin-bottom: var(--space-1); gap: var(--space-2) var(--space-2); }
 .plan-workspace .plan-catalog { margin-bottom: var(--space-3); border: 1px solid var(--ui-border); border-radius: var(--wb-radius-control); background: var(--ui-card-bg); }
 .plan-workspace .plan-catalog[data-collapsed=true] > .plan-toolbar { border-bottom: 0; }

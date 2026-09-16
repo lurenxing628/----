@@ -198,7 +198,7 @@
     if (!data.items.length) return /*#__PURE__*/React.createElement(window.WorkbenchListControls.EmptyState, {
       kind: filtered ? 'filtered' : 'empty',
       title: data.page.total === 0 ? '当前筛选没有条目。' : '当前页没有条目。',
-      hint: data.categories.external.state === 'not_connected' ? '外协风险功能尚未启用。' : undefined,
+      hint: data.categories.external.state === 'not_connected' ? '外协风险功能尚未开通。' : undefined,
       action: filtered ? /*#__PURE__*/React.createElement(Button, {
         reasonDisplay: "inline",
         icon: "x",

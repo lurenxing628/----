@@ -134,14 +134,14 @@ async function cases() {
     await page.getByRole('combobox', { name: '人员' }).selectOption('c8'.padStart(48,'0')); await type('换型工时（小时）', '0'); await shot('operation');
     await button('保存工序').click(); await page.getByText('保存已完成。', { exact: true }).waitFor();
     const input = await page.evaluate(() => f.commands[0].body.input); assert.equal(input.fields.setup_hours, 0); assert(!('unit_hours' in input.fields)); assert(/^[0-9a-f]{48}$/.test(input.operation_ref));
-    await button('关闭').last().click(); await button('预览工序更新').click(); await page.getByRole('dialog', { name: '确认更新批次工序' }).waitFor();
+    await button('关闭').last().click(); await button('预检工序更新').click(); await page.getByRole('dialog', { name: '确认更新批次工序' }).waitFor();
     assert.equal(await page.evaluate(() => f.commands.length), 1); assert.deepEqual(await page.evaluate(() => f.previews[0].input), {}); assert.equal(await page.getByText('以下 1 道工序的指定将被清除，更新后可重新指定。').count(), 1); await shot('sync-preview'); await button('确认更新工序').click(); await page.getByText('保存已完成。', { exact: true }).waitFor();
     assert.equal(await page.evaluate(() => f.commands[1].action), 'sync_confirm'); await button('关闭').last().click(); await button('返回列表').click(); await button('B001').waitFor();
   });
   await run('detail-long-fields-blocked-reasons-and-template-gaps', async () => {
     await mount(); await page.evaluate(() => { const row=f.rows[0]; row.business_code='批次编号-'+('LONG-'.repeat(16));row.fields.remark='备注内容保持完整，不能挤占其他字段。'.repeat(8);row.protected=true;row.relationships.plan_reference_count=2;row.template.complete=false;row.template.diagnostics=[{code:'data_gap',message:'工序 10 的单件工时未填写，请先补齐工艺。'}]; });
     await button('B001').click(); await page.locator('[data-batch-detail]').waitFor();
-    assert(await button('删除批次').isDisabled()); assert(await button('预览工序更新').isDisabled());
+    assert(await button('删除批次').isDisabled()); assert(await button('预检工序更新').isDisabled());
     assert.equal(await page.getByRole('checkbox', { name: '资料不完整时停止刷新' }).count(),0);
     assert.equal(await page.getByText('工序 10 的单件工时未填写，请先补齐工艺。',{exact:true}).count(),1);
     const geometry=await page.locator('.batch-section-head').first().evaluate(node=>{const h=node.querySelector('h2').getBoundingClientRect(),a=node.querySelector('.batch-section-actions').getBoundingClientRect();return {heading:{right:h.right,bottom:h.bottom},actions:{left:a.left,top:a.top},overlap:h.right>a.left+1&&h.bottom>a.top+1};});

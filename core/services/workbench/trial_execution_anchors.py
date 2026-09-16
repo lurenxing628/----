@@ -45,7 +45,7 @@ def execution_anchors(conn, rows, live):
 
 
 def anchor_issue(exc):
-    message = str(exc) if isinstance(exc, AppError) else "已开工工序的实际时间或资源不完整，请检查现场记录后重新建立试调。"
+    message = str(exc) if isinstance(exc, AppError) else "已开工工序的实际时间或资源不完整，请检查现场记录后重新发起试调。"
     return issue("execution_anchor_unproven", message)
 
 

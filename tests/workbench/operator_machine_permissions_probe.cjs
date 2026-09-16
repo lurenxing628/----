@@ -49,7 +49,7 @@ const report = { scope: 'component-mock-current-sources', cases: [], errors: [] 
       await page.getByRole('button', { name: '预览变更', exact: true }).waitFor();
       assert.equal(await page.getByRole('combobox', { name: '技能等级 M1', exact: true }).inputValue(), JSON.stringify('旧等级'));
       await page.getByRole('combobox', { name: '选择关联设备', exact: true }).selectOption('3'.padStart(48, '0'));
-      await page.getByRole('button', { name: '添加关联', exact: true }).click();
+      await page.getByRole('button', { name: '新增关联', exact: true }).click();
       await page.getByRole('combobox', { name: '主操设备 M3', exact: true }).selectOption(JSON.stringify('yes'));
       assert.equal(await page.getByRole('combobox', { name: '主操设备 M2', exact: true }).inputValue(), JSON.stringify('no'));
       assert.equal(await page.getByRole('combobox', { name: '主操设备 M1', exact: true }).inputValue(), JSON.stringify('非主操'));
@@ -62,7 +62,7 @@ const report = { scope: 'component-mock-current-sources', cases: [], errors: [] 
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), true);
       await page.screenshot({ path: path.join(output, width + '-' + theme + '.png') });
       await page.getByRole('button', { name: '确认保存设备关联', exact: true }).click();
-      await page.getByText('已重新读取人员资料，设备关联已保存。', { exact: true }).waitFor();
+      await page.getByText('已刷新人员资料，设备关联已保存。', { exact: true }).waitFor();
       const command = await page.evaluate(() => permissionFixture.command);
       assert.equal(command.kind, 'operator'); assert.equal(command.action, 'machine_permissions');
       assert.deepEqual(command.body.input, { preview_ref: 'preview' });

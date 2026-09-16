@@ -68,7 +68,7 @@ class TrialValidator:
         protected = self.protection.check(row)
         anchor = self.anchors.get(original["operation"]["id"])
         if anchor is not None and current != anchor["arrangement"]:
-            issues.append(issue("scenario_execution_anchor_outdated", "这份试调保留的时间或资源与实际报工不同，请从当前正式计划重新建立试调。", row["task_ref"]))
+            issues.append(issue("scenario_execution_anchor_outdated", "这份试调保留的时间或资源与实际报工不同，请从当前正式计划重新发起试调。", row["task_ref"]))
         if protected:
             expected = anchor["arrangement"] if anchor is not None else original["arrangement"]
             if protected["code"] not in ("task_locked", "execution_protected") or (anchor is None and current != expected):

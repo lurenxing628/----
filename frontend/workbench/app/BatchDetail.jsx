@@ -27,9 +27,9 @@
         </tbody></table></div></details>}</section>
       <section className="batch-band batch-template"><div className="batch-section-head"><h3>从工艺模板更新工序</h3></div>
         <dl className="batch-facts-grid"><div className="batch-fact-wide"><dt>来源工艺</dt><dd>{entity.relationships.part_no} · {entity.relationships.part_name}</dd></div><div><dt>有效工序</dt><dd>{template.operation_count} 道</dd></div>
-          <div className="batch-fact-full"><dt>更新条件</dt><dd>{entity.protected ? '已有排产或执行记录，暂不能替换工序。' : template.complete ? '工艺资料齐全，可以预览本次更新。' : '请先补齐下列工艺资料。'}</dd></div></dl>
+          <div className="batch-fact-full"><dt>更新条件</dt><dd>{entity.protected ? '已有排产或执行记录，暂不能替换工序。' : template.complete ? '工艺资料齐全，可以预检本次更新。' : '请先补齐下列工艺资料。'}</dd></div></dl>
         <Issues issues={template.diagnostics} />
-        <div className="batch-template-action"><Button icon="refresh-cw" aria-label="预览工序更新" disabled={disabled} reasonDisplay="tooltip" reason={reason('sync_confirm')} onClick={() => onSync(entity, read.result.meta.snapshot_ref)}>预览工序更新</Button>
+        <div className="batch-template-action"><Button icon="refresh-cw" aria-label="预检工序更新" disabled={disabled} reasonDisplay="tooltip" reason={reason('sync_confirm')} onClick={() => onSync(entity, read.result.meta.snapshot_ref)}>预检工序更新</Button>
           <span className="muted">先查看工序变化和设备、人员指定的清除情况，再确认更新。</span></div></section>
       <section className="batch-band"><h3>工序概况</h3><div className="batch-readiness"><span>工序总数：{entity.operations.length}</span>
         <span>自制：{entity.operations.filter(op => op.source === 'internal').length}</span><span>外协：{entity.operations.filter(op => op.source === 'external').length}</span>

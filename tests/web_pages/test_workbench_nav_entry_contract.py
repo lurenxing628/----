@@ -25,7 +25,7 @@ NAV_INPUTS = ("static/workbench/app/WorkbenchNavigation.js",)
 DESTINATIONS = [
     ("dashboard", "值班台"), ("process", "基础资料"), ("basedata", "资料总览"),
     ("batches", "批次管理"), ("run", "执行排产"), ("analysis", "选择排产方案"),
-    ("trial", "试调"), ("field", "现场记录"), ("fieldgantt", "现场实际甘特"),
+    ("trial", "试调排产方案"), ("field", "现场记录"), ("fieldgantt", "现场实际甘特"),
     ("reports", "报表中心"), ("calib", "工时定额校准"), ("system", "系统管理"),
 ]
 SUPPORTED_VIEWS = {"dashboard", "process", "batches", "run", "analysis", "gantt", "delay", "field",
@@ -289,7 +289,7 @@ def test_workbench_menu_is_readonly_and_hides_internal_fields(db_env) -> None:
             "script", "select", "style", "textarea"}.isdisjoint(parser.tags)
     expected = {"/workbench/trial" if key == "trial" else "/workbench?view=" + key for key, _ in DESTINATIONS}
     for tag, name, value in parser.attrs:
-        assert not name.startswith("on") and not name.startswith("data-")
+        assert not name.startswith("on") and (name == "data-wb-icon" or not name.startswith("data-"))
         assert name not in {"download", "method", "formaction"}
         assert "javascript:" not in value.lower()
         if tag == "a" and name == "href":

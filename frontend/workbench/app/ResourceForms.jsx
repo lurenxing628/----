@@ -169,7 +169,7 @@
         {reason && <p role="status">{reason}</p>}
         {!done && !command.locked && onReloadContext && <Button icon="refresh-cw" busy={contextBusy} disabled={catalogBusy} onClick={onReloadContext}>刷新最新资料</Button>}
         {contextReview && !done && <div className="wb-resource-review" role="status">
-          <p>最新资料已刷新。你修改的内容已保留，未修改的字段已更新；下方显示当前已保存的资料。</p>
+          <p>最新资料已刷新。你修改的内容已保留，未修改的项已更新；下方显示当前已保存的资料。</p>
           {contextReview.data.ref ? <><div className="wb-resource-review-identity"><strong>{contextReview.data.business_code} · {contextReview.data.label}</strong>{kind !== 'op_type' && <Status kind={kind} entity={contextReview.data} />}</div>
             <CurrentFields kind={kind} entity={contextReview.data} />
             {(C.relations[kind] || []).map(field => <p key={field.key}>{field.label}：<Relation entity={contextReview.data} field={field.key} /></p>)}</> : <p>当前资料总数：{contextReview.data.page.total}</p>}

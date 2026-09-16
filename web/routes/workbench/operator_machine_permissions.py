@@ -38,7 +38,7 @@ def _resolve(ref, preview_ref, write_token):
     preview = ResourceActionPreview(document)
     body = preview.as_dict()
     if body["operation"] != OPERATION or body["request"]["operator_ref"] != ref:
-        raise WorkbenchCommandRejected("stale_write", "预览与所选人员不一致，请重新预览。")
+        raise WorkbenchCommandRejected("stale_write", "预检与所选人员不一致，请重新预检。")
     validate_write_context(write_token, ref, OPERATION, preview.intent())
     return preview
 
@@ -49,7 +49,7 @@ def operator_machine_confirm(ref):
     validate_request_key(body["request_key"])
     g.workbench_request_key = body["request_key"]
     if type(body["input"]) is not dict or set(body["input"]) != {"preview_ref"}:
-        raise WorkbenchCommandRejected("invalid_input", "请选择刚才预览的设备关联。", 400)
+        raise WorkbenchCommandRejected("invalid_input", "请选择刚才预检的设备关联。", 400)
     preview_ref = opaque_ref(body["input"]["preview_ref"], "preview_ref")
     outcome = WorkbenchCommandService(g.db, current_app.logger).execute(
         request_key=body["request_key"], action=OPERATION, context_ref=ref, normalized_input={"preview_ref": preview_ref},

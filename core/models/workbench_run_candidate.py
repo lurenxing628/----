@@ -89,7 +89,7 @@ def blocked_reasons():
         {"capability": "adopt", "code": "candidate_adoption_preview_required",
          "message": "正式采用前，请先检查完整候选方案。"},
         {"capability": "edit_draft", "code": "candidate_draft_not_connected",
-         "message": "调整候选方案需先创建试调草稿。"},
+         "message": "调整候选方案需先新增试调草稿。"},
         {"capability": "report_actual", "code": "candidate_execution_write_not_connected",
          "message": "正式采用方案后，才能按计划报工。"},
     ]
