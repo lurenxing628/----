@@ -102,7 +102,8 @@ async function create(kind = 'plan') {
     await page.getByRole('tab', { name: '排产候选', exact: true }).click();
     await page.locator('.tt-source-row button:not(:disabled)').first().click();
   }
-  await page.locator('.tt-source-row input[type=radio]:not(:disabled)').first().check();
+  // 选中来源后来源列表收起为「已选择」摘要（TrialCatalog.jsx Create.select 置 choosing=false），radio 随之卸载，只能 click 再等「更换来源」出现。
+  await page.locator('.tt-source-row input[type=radio]:not(:disabled)').first().click(); await button('更换来源').waitFor();
   await button('核对原来源').click();
   await page.getByLabel('确认基于此来源新增独立草稿，正式计划保持不变').check();
   assert.equal(await state(), null);
@@ -292,7 +293,7 @@ async function staleAndScope() {
 }
 async function large() {
   refs = await (await page.request.post(origin + '/fixture/reset', { data: { large: true } })).json(); await page.goto(origin);
-  await button('新增试调').click(); await page.locator('.tt-source-row input[type=radio]:not(:disabled)').first().check(); await button('核对原来源').click();
+  await button('新增试调').click(); await page.locator('.tt-source-row input[type=radio]:not(:disabled)').first().click(); await button('更换来源').waitFor(); await button('核对原来源').click();
   await page.getByLabel('确认基于此来源新增独立草稿，正式计划保持不变').check(); await button('确认新增草稿').click();
   await page.getByRole('dialog').waitFor({ state: 'hidden' }); await ready();
   const data = await active(); assert.equal(data.task_count, 1000); assert.equal(data.tasks.length, 1000); assert.equal(await page.locator('.tt-bar').count(), 30);

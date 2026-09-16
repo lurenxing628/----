@@ -105,7 +105,7 @@ async function adopt(page, reason) {
   await button(page, '预检采用').click();
   const dialog = page.getByRole('dialog'); await dialog.getByLabel('采用原因', { exact: true }).fill(reason);
   await dialog.getByLabel('经办人', { exact: true }).fill('DG工时复核员'); await button(page, '检查是否可采用').click();
-  await dialog.getByText('当前预检可以采用：来源、原定额和可用完工记录已核对。', { exact: true }).waitFor();
+  await dialog.getByText('检查通过，可以采用。', { exact: true }).waitFor();
   await dialog.getByRole('checkbox').check(); const saved = page.waitForResponse(response => response.url().endsWith('/adopt'));
   await button(page, '确认采用并锁定').click(); const receipt = await (await saved).json();
   assert.equal(receipt.result, 'committed'); assert.equal(receipt.data.new_unit_hours, 3); assert(receipt.data.locked);

@@ -202,7 +202,7 @@ async function resources(page) {
   await check('resource-sending-success-refresh-failure-keeps-receipt', async () => {
     const response = terminal(); response.warnings = [{ code: 'raw_warning', message: raw }];
     await open(response); api.hold = true; await save(); await phase('sending');
-    await page.getByText('正在提交，请勿重复保存…', { exact: true }).waitFor(); await noSuccess();
+    await page.getByText('正在提交保存，请勿重复操作…', { exact: true }).waitFor(); await noSuccess();
     const before = await page.evaluate(key => sessionStorage.getItem(key), pendingKey);
     assert(!before.includes(raw)); assert(!before.includes('write_token')); api.release(); await phase('done');
     assert(await page.getByText(/^(已保存。?|保存已完成。)$/).isVisible());
@@ -230,7 +230,7 @@ async function resources(page) {
   });
   await check('resource-partial-preserves-item-failures-and-raw-values', async () => {
     await open(terminal('partial', { items: [{ label: raw, result: 'failed', error: { message: raw } }, { label: '第二项', result: 'skipped' }] }));
-    await save(); await phase('done'); await page.getByText('部分操作完成，请核对逐项结果。', { exact: true }).waitFor();
+    await save(); await phase('done'); await page.getByText('部分保存已完成，请核对逐项结果。', { exact: true }).waitFor();
     assert((await page.locator('li').allTextContents()).some(text => text.includes(raw + '：失败；' + raw)));
     assert((await page.locator('li').allTextContents()).some(text => text.includes('第二项：未执行')));
     assert.equal(await page.getByText(/^(已保存。?|保存已完成。)$/).count(), 0);
@@ -259,7 +259,7 @@ async function resources(page) {
     assert(api.lookups.every(url => url.endsWith('/' + stored.request_key)));
     assert.deepEqual(await page.evaluate(key => JSON.parse(sessionStorage.getItem(key)), pendingKey), stored);
     api.holdLookup = true; await page.getByRole('button', { name: '查询结果', exact: true }).click(); await phase('checking');
-    await page.getByText('正在查询上次操作的结果…', { exact: true }).waitFor(); await noSuccess();
+    await page.getByText('正在查询上次保存的结果…', { exact: true }).waitFor(); await noSuccess();
     await page.waitForFunction(() => resourceFixture.command.phase === 'checking');
     while (!api.releaseLookup) await new Promise(resolve => setTimeout(resolve, 5));
     api.lookup = { ...terminal(), replayed: true }; api.releaseLookup(); await phase('done');

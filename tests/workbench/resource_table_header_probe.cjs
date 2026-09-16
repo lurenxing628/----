@@ -185,7 +185,7 @@ async function cases() {
     await mount({ failFacets: true, filter: { mode: 'include', values: [key(2)] } }); await open(); await ready(); assert(await button('回到第 1 页重新查询').isVisible()); assert.equal(await popup().locator('[data-facet-key]').count(), 0);
     assert.equal(await popup().getByText('正在读取全部匹配值…').count(), 0); assert.deepEqual(await filterValue(), { mode: 'include', values: [key(2)] });
     await page.evaluate(() => fixture.spec.failFacets = false); await button('回到第 1 页重新查询').click(); await ready(); assert.equal(await popup().locator('[data-facet-key]').count(), 100);
-    await mount({ stalePage: true }); await open(); await ready(); await button('列值下一页').click(); await ready(); assert(await popup().getByText(/列值已经更新/).isVisible());
+    await mount({ stalePage: true }); await open(); await ready(); await button('列值下一页').click(); await ready(); assert(await popup().getByText(/数据已更新，请回到第 1 页重新查询/).isVisible());
     await button('回到第 1 页重新查询').click(); await ready(); assert.equal(await page.evaluate(() => fixture.facets[fixture.facets.length - 1].query.page), 1);
     assert(await page.evaluate(() => !('snapshot_ref' in fixture.facets[fixture.facets.length - 1].query)));
     await mount({ badKey: true }); await open(); await ready(); assert(await popup().getByText(/列值编号、文字或数量/).isVisible());

@@ -14,6 +14,7 @@ from core.infrastructure.migration_state import get_schema_version, set_schema_v
 from core.infrastructure.migrations.v30 import run as migrate_v30
 from core.infrastructure.workbench_dashboard_external_schema import contract_issues, install
 from core.infrastructure.workbench_outsourcing_schema import contract_issues as outsourcing_issues
+from core.infrastructure.workbench_outsourcing_source_schema import install as install_sources
 from core.infrastructure.workbench_plan_identity_write_guard import contract_issues as identity_issues
 from core.services.workbench.outsourcing import WorkbenchOutsourcingService
 from core.services.workbench.outsourcing_commands import WorkbenchOutsourcingCommandService
@@ -68,6 +69,11 @@ def prepare(root):
             path = root / ("dx-" + name + ".sqlite")
             with connect(path) as conn:
                 source.backup(conn)
+                # v32 起外协读取守卫（WorkbenchOutsourcingRepository.require_schema）要求来源确认表齐全；冻结 v30 夹具没有这张表，
+                # 浏览器要读外协登记的每个库都补装。current30 只是不装仪表盘外协处置助手，仍锁住 handling_supported=False。
+                conn.execute("BEGIN")
+                install_sources(conn)
+                conn.commit()
                 if name != "current30":
                     conn.execute("BEGIN")
                     install(conn)
@@ -76,7 +82,7 @@ def prepare(root):
                 if name == "missing":
                     conn.execute("DROP TRIGGER wb_dashboard_external_history_no_update")
             paths[name] = path
-    return paths, {"schema_mode": "frozen-v29 + real-v30-migration + explicit-DT-helper (except current30)",
+    return paths, {"schema_mode": "frozen-v29 + real-v30-migration + explicit-DT-helper + v32-source-confirmations (except current30)",
                    "schema_version": 30, "baseline_database": str(baseline),
                    "baseline_sha256": hashlib.sha256(baseline.read_bytes()).hexdigest()}
 

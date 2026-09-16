@@ -168,7 +168,7 @@ async function browse() {
   await button('清除筛选').click(); await loaded();
   await select('排产记录排序项', '开始时间'); await select('排产记录排序方向', '从旧到新'); await query(); assert.equal(await page.getByLabel('排产记录排序项').inputValue(), 'started_at'); done('sort-input-click-apply');
   await mount({ size: 50 }); await rows().first().waitFor(); const missing = page.locator('[data-run-ref="' + fixtures.missing.run_ref + '"]');
-  await missing.getByText('排产时资料缺项 6', { exact: true }).click(); await missing.getByText(/所选批次：排产时没有记下这一项的有效值/).waitFor(); done('missing-admission-values-and-reasons');
+  await missing.getByText('排产时资料缺项 6', { exact: true }).click(); await missing.getByText(/所选批次：排产时未记录此项/).waitFor(); done('missing-admission-values-and-reasons');
   await mount({ state: 'complete', size: 10, order: 'asc', return_plan_context: { plan_ref: 'f'.repeat(48), snapshot_ref: 'not-carried' } });
   await button('查看运行 ' + fixtures.real.run_ref).click(); const nav = await page.evaluate(() => navigation);
   assert.equal(nav[0], 'analysis'); assert.equal(nav[1].run_ref, fixtures.real.run_ref); assert(!nav[1].candidate_ref && !nav[1].plan_ref);

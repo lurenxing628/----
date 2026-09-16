@@ -134,7 +134,7 @@ async function basic() {
   const advanced = await control('advance'); assert.equal(advanced.data.official_plan.version, 42);
   const writes = (await evidence()).journal.filter(r => r.request_key === intent.request_key && r.path.endsWith('/adopt')).length;
   await page.reload(); await ready(); await button('查看采用结果').click(); await success(); await button('查询结果').click();
-  await page.getByText('按同一个操作编号读到的是上次的结果，没有新增正式计划版本。', { exact: true }).waitFor();
+  await page.getByText('已查询到上次采用结果。', { exact: true }).waitFor();
   assert.equal((await state()).request_key, intent.request_key); assert.equal((await evidence()).journal.filter(r => r.request_key === intent.request_key && r.path.endsWith('/adopt')).length, writes);
   const replay = await page.request.post(origin + '/api/workbench/v1/trial/scenarios/' + refs.scenario_ref + '/adopt', {
     data: { write_token: 'expired-replay-token', request_key: intent.request_key, input: intent.input } });
@@ -168,11 +168,11 @@ async function uncertainCases() {
   await eventually(async () => (await evidence()).started); const original = await state();
   const peer = await page.context().newPage(); peer.on('pageerror', e => report.errors.push(e.message));
   await peer.goto(origin); await peer.evaluate(ref => mountTrial(ref), refs.other_ref); await peer.getByRole('button', { name: '查询采用结果', exact: true }).click();
-  await peer.getByText('上次操作属于另一个试调方案，请先查询那条记录的结果；不能用在当前试调方案上。', { exact: true }).waitFor();
+  await peer.getByText('另一个试调方案的采用结果待确认，请先查询结果。', { exact: true }).waitFor();
   assert.equal((await peer.evaluate(() => TrialAdoptionState.read())).request_key, original.request_key);
   assert.equal(await peer.getByRole('button', { name: '确认正式采用', exact: true }).count(), 0); await peer.close(); done('another-tab-recovers-same-key-no-adoption-for-other-scenario');
   await button('关闭并保留这次操作').click(); await page.evaluate(ref => mountTrial(ref), refs.other_ref); await ready(); await button('查询采用结果').click();
-  await page.getByText('上次操作属于另一个试调方案，请先查询那条记录的结果；不能用在当前试调方案上。', { exact: true }).waitFor();
+  await page.getByText('另一个试调方案的采用结果待确认，请先查询结果。', { exact: true }).waitFor();
   await page.reload(); await ready(); await button('查询采用结果').click(); await page.getByText('上次采用的结果还没查到', { exact: false }).waitFor();
   assert.equal((await state()).request_key, original.request_key); assert.equal(await button('确认正式采用').count(), 0); assert.equal((await evidence()).receipts.length, 0);
   await shot('inflight-other-scenario'); await control('release');

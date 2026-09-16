@@ -116,7 +116,7 @@ async function states(page, H) {
   await page.locator('.sm-maintenance-outcome [role="alert"]').waitFor(); await page.unroute(endpoint);
   const notRecorded = await pending(page), noWrite = report.requests.filter(row => row.method === 'POST').length;
   await page.getByRole('button', { name: '查询结果', exact: true }).click();
-  await page.waitForFunction(() => document.querySelector('.sm-maintenance-outcome').textContent.includes('查不到结果不代表没有执行'));
+  await page.waitForFunction(() => document.querySelector('.sm-maintenance-outcome').textContent.includes('请点「查询结果」，勿重复提交'));
   await revision(page); await conflict(page, 121); assert(await page.getByRole('button', { name: '核对后沿用草稿', exact: true }).isDisabled());
   assert.equal(await page.getByRole('button', { name: '确认结果', exact: true }).count(), 0);
   await page.reload(); await settled(page); await flush(page);

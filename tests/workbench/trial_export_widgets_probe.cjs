@@ -141,7 +141,7 @@ async function boundaries(real) {
   const downloads = [];
   const listener = file => downloads.push(file.suggestedFilename()); page.on('download', listener);
   await page.evaluate(() => { const d = structuredClone(czSynthetic); d.comparison.batches.pop(); mountExport(d); });
-  await button('导出对比').click(); await page.getByRole('alert').getByText('批次对比未覆盖完整任务，未导出部分结果。', { exact: true }).waitFor();
+  await button('导出对比').click(); await page.getByRole('alert').getByText('批次对比不完整，无法导出。', { exact: true }).waitFor();
   assert.deepEqual(downloads, []);
   await page.evaluate(() => { window.czClick = HTMLAnchorElement.prototype.click; HTMLAnchorElement.prototype.click = function () { throw Error('CZ simulated anchor failure'); }; mountExport(czSynthetic); });
   try { await button('导出对比').click(); await page.getByText('CZ simulated anchor failure', { exact: true }).waitFor(); }

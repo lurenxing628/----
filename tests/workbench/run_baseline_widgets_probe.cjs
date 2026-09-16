@@ -133,9 +133,9 @@ async function small() {
   const gold = await baselineLane.evaluate(n => n.__strokes.some(s => s.color === getComputedStyle(n).getPropertyValue('--wb-gantt-gold').trim() && s.lineWidth === 2)); assert(gold); done('selected-baseline-gold-border');
   const multiRef = await page.evaluate(() => baselineEnvelope.data.comparisons.find(r => r.baseline_segments.length > 1).operation_ref);
   await button('初始计划对照 ' + multiRef).click(); assert.equal(await page.locator('[data-baseline-segment]').count(), 2);
-  await page.getByText('初始计划里这道工序分成了几段，这里不合并也不任选一段来对照。', { exact: true }).waitFor(); await shot('multi-segment-detail'); done('multiple-segments-not-merged');
+  await page.getByText('此工序在初始计划中有多段安排，请逐段查看。', { exact: true }).waitFor(); await shot('multi-segment-detail'); done('multiple-segments-not-merged');
   const unplannedRef = await page.evaluate(() => baselineEnvelope.data.comparisons.find(r => r.status === 'unscheduled').operation_ref);
-  await button('初始计划对照 ' + unplannedRef).click(); await page.getByText('此候选方案未安排该工序。', { exact: true }).waitFor(); done('unscheduled-is-not-improvement');
+  await button('初始计划对照 ' + unplannedRef).click(); await page.getByText('此候选方案未安排该工序。', { exact: true }).first().waitFor(); done('unscheduled-is-not-improvement');
   const onlyRef = await page.evaluate(() => baselineEnvelope.data.comparisons.find(r => r.status === 'baseline_only').operation_ref);
   await button('初始计划对照 ' + onlyRef).click(); await page.getByText('这道工序只在排产时的正式计划里，不在这次选择的范围内。', { exact: true }).waitFor(); done('baseline-only-detail-retained');
   for (const name of ['人员', '批次', '设备']) { await button(name).click(); await proportions(); await layout(); }
@@ -149,17 +149,17 @@ async function small() {
   assert.equal(await page.locator('[data-candidate-track]').count(), initial.rows); assert.equal(await page.locator('.rb-panel').count(), 0); await layout(); done('close-restores-candidate-only-geometry');
   await toggle().check(); await loaded(); await toggle().uncheck(); done('close-and-reopen-fresh-read');
   await mount('no_baseline'); await toggle().check(); await loaded(); await page.locator('.rb-panel summary').click();
-  await page.getByText('排产时没有正式的初始计划，算不出相对改善。', { exact: true }).waitFor(); assert.equal(await page.locator('[data-baseline-lane]').count(), 0); done('no-baseline-not-zero-improvement');
+  await page.getByText('排产时没有正式计划可供对比。', { exact: true }).waitFor(); assert.equal(await page.locator('[data-baseline-lane]').count(), 0); done('no-baseline-not-zero-improvement');
   await mount('execution'); await toggle().check(); await loaded(); await readBaseline(); await page.locator('.rb-panel summary').click();
   const execRef = await page.evaluate(() => baselineEnvelope.data.comparisons.find(r => r.execution_affected).operation_ref);
-  await button('初始计划对照 ' + execRef).click(); await page.getByText('排产时这道工序已经开工或数量不明，时间差不能算成排产优化。', { exact: true }).waitFor(); done('real-execution-evidence-no-benefit-attribution');
+  await button('初始计划对照 ' + execRef).click(); await page.getByText('排产时此工序已开工或数量不明。', { exact: true }).waitFor(); done('real-execution-evidence-no-benefit-attribution');
 }
 async function scopes() {
   await mount('mixed', { range_start: '2026-09-12T08:01:00', range_end: '2026-09-12T08:02:00' });
   assert.equal(await page.locator('[data-candidate-lane]').count(), 0); await toggle().check(); await loaded(); await readBaseline();
   assert(await page.locator('[data-baseline-lane]').count() > 0); await page.locator('.rb-panel summary').click();
   const ref = await page.evaluate(() => baselineEnvelope.data.comparisons.find(r => r.candidate).operation_ref);
-  await button('初始计划对照 ' + ref).click(); await page.getByText('该候选安排不在当前读取范围；此处保留完整对照。', { exact: true }).waitFor();
+  await button('初始计划对照 ' + ref).click(); await page.getByText('该候选安排在所选时间范围外。', { exact: true }).waitFor();
   assert.equal(await page.locator('[data-candidate-lane]').count(), 0); await layout(); done('baseline-side-only-scope-no-fabricated-candidate-row');
   const result = await page.evaluate(async ref => {
     const all = await RunCandidateAPI.create().workspace(ref), batch = all.data.tasks[0].batch_ref;

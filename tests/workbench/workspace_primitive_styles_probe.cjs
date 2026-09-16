@@ -39,7 +39,7 @@ function batch(n) {
   return {ref:ref(n),business_code:'AH-'+String(n).padStart(3,'0'),label:'传动轴组件',status:'pending',
     fields:{quantity:10,due_date:'2026-10-01',priority:'normal',ready_status:'no',ready_date:null,remark:null},
     relationships:{part_ref:ref(300),part_no:'PART-20066',part_name:'传动轴组件',operation_count:0,completed_count:0,gap_count:0,plan_reference_count:0,execution_reference_count:0,material_requirement_count:0},
-    operations:[],all_operations_complete:false,issues:[],protected:false,write_context:context(),materials:{requirements:[],count:0},template:{origin:'legacy',ready:false}};
+    operations:[],all_operations_complete:false,issues:[],protected:false,write_context:context(),materials:{requirements:[],count:0},template:{origin:'legacy',ready:false,complete:true,operation_count:0,diagnostics:[]}};
 }
 function batchAdapter() {
   return {

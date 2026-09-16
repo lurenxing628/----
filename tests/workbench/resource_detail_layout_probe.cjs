@@ -61,7 +61,7 @@ const details = [
 const fixture = `
 const h = React.createElement;
 const envelope = data => ({ok:true,schema_version:1,data,meta:{source:'production',time_basis:'factory_local',snapshot_ref:'layout-fixture',request_ref:'memory-only',as_of:${JSON.stringify(AS_OF)}},warnings:[]});
-window.layoutFixture = {writes:0,reads:[],reloads:0,accepted:0};
+window.layoutFixture = {writes:0,reads:[],reloads:0};
 function rejectWrite(){layoutFixture.writes++;throw new Error('Read-only layout fixture must not submit');}
 const adapter = {command:rejectWrite,relations:async(parent,scope)=>{
   layoutFixture.reads.push(scope.relation);
@@ -76,13 +76,12 @@ function CreateReview({kind}){
   const [review,setReview]=React.useState(null);
   return h(ResourceForms,{adapter,kind,category:kind==='op_type'?'internal':undefined,action:'create',source:'production',
     writeContext:null,command:{phase:'idle',locked:false,submit:rejectWrite},onClose:()=>{},contextReview:review,
-    onReloadContext:()=>{layoutFixture.reloads++;setReview(envelope({entities:[],page:{number:1,size:20,total:7,pages:1,sort:[]},create_context:null}));},
-    onAcceptContext:()=>{layoutFixture.accepted++;setReview(null);}});
+    onReloadContext:()=>{layoutFixture.reloads++;setReview(envelope({entities:[],page:{number:1,size:20,total:7,pages:1,sort:[]},create_context:null}));}});
 }
 let fixtureRoot;
 window.mountLayout = spec => {
   if(fixtureRoot)fixtureRoot.unmount();
-  layoutFixture.reads=[];layoutFixture.reloads=0;layoutFixture.accepted=0;
+  layoutFixture.reads=[];layoutFixture.reloads=0;
   fixtureRoot=ReactDOM.createRoot(document.getElementById('fixture-root'));
   fixtureRoot.render(spec.create?h(CreateReview,{kind:spec.kind}):h(ResourceForms.Detail,{adapter,kind:spec.entity.kind,
     result:envelope(spec.entity),onClose:()=>{},onEdit:rejectWrite,onDelete:rejectWrite,onAdjustStock:rejectWrite,onRelated:()=>{}}));
@@ -298,23 +297,27 @@ async function reviewCase(page, kind) {
   const draft = () => dialog.locator('input[name],textarea[name],select[name]').evaluateAll(nodes => Object.fromEntries(nodes.map(node => [node.name, node.value])));
   const before = await draft();
   await dialog.getByRole('button', { name: '刷新最新资料', exact: true }).click();
+  // 本轮整改后（ResourceForms.jsx contextReview 区块）：刷新即采用最新资料，复核区只展示当前已保存的资料，不再有「已核对，继续编辑」按钮。
   const review = dialog.locator('.wb-resource-review'); await review.waitFor();
-  await review.getByText('最新资料已读取，已填写的内容保持不变。请核对后继续编辑。', { exact: true }).waitFor();
+  await review.getByText('最新资料已刷新。你修改的内容已保留，未修改的项已更新；下方显示当前已保存的资料。', { exact: true }).waitFor();
   await review.getByText('当前资料总数：7', { exact: true }).waitFor();
-  const accept = review.getByRole('button', { name: '已核对，继续编辑', exact: true });
-  await accept.scrollIntoViewIfNeeded(); await commonLayout(page);
-  const usable = await accept.evaluate(node => {
+  const notice = review.locator('p').first();
+  await notice.scrollIntoViewIfNeeded(); await commonLayout(page);
+  const usable = await notice.evaluate(node => {
     const r = node.getBoundingClientRect(), body = node.closest('.modal-b').getBoundingClientRect();
     const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
-    return !node.disabled && r.top >= body.top && r.bottom <= body.bottom && (hit === node || node.contains(hit));
+    return r.top >= body.top && r.bottom <= body.bottom && (hit === node || node.contains(hit));
   });
-  check('new-review-button-visible-uncovered-and-enabled', () => assert(usable));
+  check('review-notice-visible-and-uncovered', () => assert(usable));
+  const reviewButtons = await review.getByRole('button').count();
+  check('review-has-no-accept-button', () => assert.equal(reviewButtons, 0));
   const during = await draft(); check('reload-and-review-preserve-all-inputs', () => assert.deepEqual(during, before));
-  await shot(page, 'review'); await accept.click(); await review.waitFor({ state: 'detached' });
-  const after = await draft(); check('accept-review-preserves-all-inputs', () => assert.deepEqual(after, before));
-  current.draft = { before, during, after };
-  const events = await page.evaluate(() => ({ reloads: layoutFixture.reloads, accepted: layoutFixture.accepted, writes: layoutFixture.writes }));
-  check('review-callbacks-once-without-submit', () => assert.deepEqual(events, { reloads: 1, accepted: 1, writes: 0 }));
+  await shot(page, 'review');
+  const totals = await review.getByText('当前资料总数：7', { exact: true }).count();
+  check('review-shows-current-total-once', () => assert.equal(totals, 1));
+  current.draft = { before, during };
+  const events = await page.evaluate(() => ({ reloads: layoutFixture.reloads, writes: layoutFixture.writes }));
+  check('review-callbacks-once-without-submit', () => assert.deepEqual(events, { reloads: 1, writes: 0 }));
   await dialog.locator('input[name="business_code"]').scrollIntoViewIfNeeded(); await shot(page, 'retained-inputs');
 }
 async function runCase(page, state, name, fn) {

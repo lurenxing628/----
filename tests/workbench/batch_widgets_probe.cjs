@@ -161,7 +161,7 @@ async function cases() {
     await mount(); await page.getByRole('checkbox', { name: '选择 B001', exact: true }).check(); await button('批量修改').click(); await type('批量备注', '批量实际输入');
     await button('预览变更').click(); await page.getByRole('dialog', { name: '确认批量修改' }).waitFor(); assert.equal(await page.evaluate(() => f.commands.length), 0); await shot('bulk-preview');
     await button('取消').click(); assert.equal(await page.evaluate(() => f.commands.length), 0); await button('删除所选').click(); await button('确认删除').click();
-    await page.getByText('保存已完成。', { exact: true }).waitFor(); assert.equal(await page.evaluate(() => f.rows.some(r => r.business_code === 'B001')), false); await button('关闭').last().click();
+    await page.getByText('删除已完成。', { exact: true }).waitFor(); assert.equal(await page.evaluate(() => f.rows.some(r => r.business_code === 'B001')), false); await button('关闭').last().click();
   });
   await run('uncertain-receipt-locks-writes', async () => {
     await mount({ pending: true }); await button('B001').click(); await button('编辑基础信息').click(); await type('备注', '待核实'); await button('保存基础信息').click();

@@ -186,7 +186,7 @@ async function boundaries() {
   await inspected.dialog.getByText(/上次采用的结果还没查到/).waitFor(); const stored = await page.evaluate(() => window.CalibrationAdoptionState.read());
   await inspected.dialog.getByRole('button', { name: '关闭并保留上次操作', exact: true }).click(); await selectDetail(page, config.other_ref);
   await page.getByRole('button', { name: '查询上次采用结果', exact: true }).click();
-  await page.getByRole('dialog').getByText('上次操作属于另一个模板，当前选择不会改动它。请先点「查询结果」确认上次结果。', { exact: true }).waitFor();
+  await page.getByRole('dialog').getByText('另一个模板的采用结果待确认，请先查询结果。', { exact: true }).waitFor();
   assert.equal((await page.evaluate(() => window.CalibrationAdoptionState.read())).request_key, stored.request_key);
   assert.equal(await page.getByRole('button', { name: '确认采用并锁定', exact: true }).count(), 0);
   record.not_found_retained = true; await screenshot(page, 'not-found-retained'); await context.close();
