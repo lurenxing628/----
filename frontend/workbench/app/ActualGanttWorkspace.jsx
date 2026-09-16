@@ -53,6 +53,7 @@
     const [hover, setHover] = React.useState(null), [exporting, setExporting] = React.useState(false), [exportBusy, setExportBusy] = React.useState(false);
     const [chainTarget, setChainTarget] = React.useState(null);
     const [relatedChain, setRelatedChain] = React.useState(null);
+    const lastChain = React.useRef(null);
     const [exportError, setExportError] = React.useState(null), [restore, setRestore] = React.useState(saved ? saved.position : seed.persisted ? seed.persisted.position : null);
     const board = React.useRef(null), frame = React.useRef(null), pending = React.useRef(!saved && !seed.persisted && seed.report && seed.selected ? { task: seed.selected } : null), downloadController = React.useRef(null);
     const defaultWindowApplied = React.useRef(!!saved || !!seed.persisted);
@@ -191,6 +192,11 @@
     const chain = view.chain && data && data.critical_chain.state === 'available'
       ? targetRef ? relatedChain && relatedChain.target === targetRef && relatedChain.result : data.critical_chain : null;
     const visibleChain = chain && chain.state === 'available' ? chain : null;
+    // Keep the previous strip mounted while a hovered target's chain loads: swapping it for the status note
+    // collapsed the slot, moved the rows under the pointer and restarted the hover in a loop.
+    if (chain) lastChain.current = chain;
+    const loadingRelated = !!(targetRef && (!relatedChain || relatedChain.target !== targetRef || relatedChain.busy));
+    const shownChain = chain || (loadingRelated ? lastChain.current : null);
     const hoverMark = value => { setHover(value); setChainTarget(value && value.item ? [value.item.task.task_ref] : null); };
     const viewScope = () => ({ ...scope, snapshot_ref: result.meta.snapshot_ref, format: 'csv', local_query: view.query.trim(), late_filter: view.late,
       ...(view.onlySelected ? { selected_task_ref: view.selected } : {}) });
@@ -236,8 +242,8 @@
           onFit={() => { pending.current = { center: .5 }; setZoom(1); pan(0); }} onLocate={() => locate()} onExport={() => { setExportError(null); setExporting(true); }} busy={exportBusy} />
           {data.critical_chain.state === 'unavailable' && <div className="fg-note" role="status">关键链不可用：{data.critical_chain.reason}</div>}
           {view.chain && data.critical_chain.state === 'available' && <div className="fg-chain-slot">
-            {chain && <Chain chain={chain} model={model} onLocate={locate} />}
-            {targetRef && (!relatedChain || relatedChain.target !== targetRef || relatedChain.busy) && <div className="fg-note" role="status">正在读取所选工序的关联链…</div>}
+            {shownChain && <Chain chain={shownChain} model={model} onLocate={locate} />}
+            {loadingRelated && <div className="fg-note" role="status">正在读取所选工序的关联链…</div>}
             {targetRef && relatedChain && relatedChain.target === targetRef && <ErrorBox error={relatedChain.error} />}
           </div>}
           {view.selected && !model.items.some(i => i.task.task_ref === view.selected) && <div role="status" className="fg-note">选中工序不在当前筛选范围，未扩大来源条件。</div>}

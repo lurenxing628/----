@@ -56,6 +56,13 @@
 .process-workspace .process-list-controls > .subtabs { margin:0 0 var(--space-3); }
 .process-workspace .process-list-controls > .toolbar { margin:0; }
 .process-workspace .process-list-controls > .toolbar + .toolbar { margin-top:var(--space-2); padding-top:var(--space-2); border-top:1px solid var(--ui-border); }
+/* 矮屏（issue 2026-09-14-wbui-double-scroll-1366）：控件卡片的内外距与分隔线要跟着收紧，否则上面 0,2,0 的压缩规则被
+   卡片自身 0,3,0 的间距压过，1366×640 下零件工艺的分页器会被推到折叠线以下。 */
+@media (max-height: 820px) {
+  .process-workspace.wb-fill-viewport .process-list-controls { margin-bottom:var(--space-2); padding:0 var(--space-3) var(--space-2); }
+  .process-workspace.wb-fill-viewport .process-list-controls > .subtabs { margin:0 0 var(--space-2); }
+  .process-workspace.wb-fill-viewport .process-list-controls > .toolbar + .toolbar { margin-top:var(--space-1); padding-top:var(--space-1); }
+}
 
 /* TrialStyles.jsx */
 .plana.trial-workspace{width:100%;max-width:none;padding:0}

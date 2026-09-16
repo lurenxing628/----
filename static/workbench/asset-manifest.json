@@ -677,8 +677,8 @@
     },
     {
       "path": "workbench/app/ActualGanttWorkspace.js",
-      "sha256": "de42dc2bcd2269e7b62fbd422bba86515a0c8c85f02bc4b7c94b87c46da91668",
-      "bytes": 33255,
+      "sha256": "e5559dfb5da751ccbecdaadeb219adc36f0e04ce4d76916b9d8ea3bba1e549aa",
+      "bytes": 33677,
       "mime": "application/javascript",
       "dependencies": [
         "workbench/app/ActualGanttAPI.js",
@@ -800,7 +800,7 @@
           "source_files": [
             {
               "path": "frontend/workbench/app/ActualGanttWorkspace.jsx",
-              "sha256": "01054dbbaf873e6f3e4678418baadef580c354fc7d70fd2e506f991da044bd0b"
+              "sha256": "7a1b9db259ee0944329b2bf34ffda2c8037f2f2b9b11212d3bf26acf8ebf8c01"
             }
           ],
           "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
@@ -809,7 +809,7 @@
       "source_files": [
         {
           "path": "frontend/workbench/app/ActualGanttWorkspace.jsx",
-          "sha256": "01054dbbaf873e6f3e4678418baadef580c354fc7d70fd2e506f991da044bd0b"
+          "sha256": "7a1b9db259ee0944329b2bf34ffda2c8037f2f2b9b11212d3bf26acf8ebf8c01"
         }
       ]
     },
@@ -14548,8 +14548,8 @@
     },
     {
       "path": "workbench/app/styles/00-tokens.css",
-      "sha256": "828ec8e3430d503a4280be7fd34c00cef45a74d129f6ef135d8a2300c6130b4d",
-      "bytes": 2153,
+      "sha256": "473863c891333d75bff95214f859ff59e34e0f6589de135e230d83df9756c468",
+      "bytes": 2372,
       "mime": "text/css",
       "dependencies": [],
       "dependency_symbols": [],
@@ -14564,7 +14564,7 @@
           "source_files": [
             {
               "path": "frontend/workbench/app/styles/00-tokens.css",
-              "sha256": "828ec8e3430d503a4280be7fd34c00cef45a74d129f6ef135d8a2300c6130b4d"
+              "sha256": "473863c891333d75bff95214f859ff59e34e0f6589de135e230d83df9756c468"
             }
           ],
           "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
@@ -14573,7 +14573,7 @@
       "source_files": [
         {
           "path": "frontend/workbench/app/styles/00-tokens.css",
-          "sha256": "828ec8e3430d503a4280be7fd34c00cef45a74d129f6ef135d8a2300c6130b4d"
+          "sha256": "473863c891333d75bff95214f859ff59e34e0f6589de135e230d83df9756c468"
         }
       ]
     },
@@ -14610,8 +14610,8 @@
     },
     {
       "path": "workbench/app/styles/11-navigation.css",
-      "sha256": "a0323d123e1f0e10e86307a321c83f5709e95ce36a989bda2488f410e5305f56",
-      "bytes": 2466,
+      "sha256": "c98649c8ebc7b3019765a0e60396dcaeeb30733d6334e224f241b00cbf834219",
+      "bytes": 2476,
       "mime": "text/css",
       "dependencies": [],
       "dependency_symbols": [],
@@ -14626,7 +14626,7 @@
           "source_files": [
             {
               "path": "frontend/workbench/app/styles/11-navigation.css",
-              "sha256": "a0323d123e1f0e10e86307a321c83f5709e95ce36a989bda2488f410e5305f56"
+              "sha256": "c98649c8ebc7b3019765a0e60396dcaeeb30733d6334e224f241b00cbf834219"
             }
           ],
           "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
@@ -14635,7 +14635,7 @@
       "source_files": [
         {
           "path": "frontend/workbench/app/styles/11-navigation.css",
-          "sha256": "a0323d123e1f0e10e86307a321c83f5709e95ce36a989bda2488f410e5305f56"
+          "sha256": "c98649c8ebc7b3019765a0e60396dcaeeb30733d6334e224f241b00cbf834219"
         }
       ]
     },
@@ -14827,8 +14827,8 @@
     },
     {
       "path": "workbench/app/styles/32-process-trial.css",
-      "sha256": "e71194967c74c80c28ce384b8e63847aea19c9c94e999aca4f1b74624c625208",
-      "bytes": 20742,
+      "sha256": "979fd2368cc968e6175d62a047c3533b8d27bdfeb909718efa8bfb0883593dbb",
+      "bytes": 21415,
       "mime": "text/css",
       "dependencies": [],
       "dependency_symbols": [],
@@ -14843,7 +14843,7 @@
           "source_files": [
             {
               "path": "frontend/workbench/app/styles/32-process-trial.css",
-              "sha256": "e71194967c74c80c28ce384b8e63847aea19c9c94e999aca4f1b74624c625208"
+              "sha256": "979fd2368cc968e6175d62a047c3533b8d27bdfeb909718efa8bfb0883593dbb"
             }
           ],
           "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
@@ -14852,14 +14852,14 @@
       "source_files": [
         {
           "path": "frontend/workbench/app/styles/32-process-trial.css",
-          "sha256": "e71194967c74c80c28ce384b8e63847aea19c9c94e999aca4f1b74624c625208"
+          "sha256": "979fd2368cc968e6175d62a047c3533b8d27bdfeb909718efa8bfb0883593dbb"
         }
       ]
     },
     {
       "path": "workbench/app/styles/33-gantt-foundation.css",
-      "sha256": "9815e49c4f11adce71433dab23ea2406a0a21d2935be88b83f2ec156f3cec664",
-      "bytes": 25611,
+      "sha256": "5cb787c70f7c135ac8268a1c9823f9570735eb69fc44f2e6446969b637bd61c7",
+      "bytes": 25903,
       "mime": "text/css",
       "dependencies": [],
       "dependency_symbols": [],
@@ -14874,7 +14874,7 @@
           "source_files": [
             {
               "path": "frontend/workbench/app/styles/33-gantt-foundation.css",
-              "sha256": "9815e49c4f11adce71433dab23ea2406a0a21d2935be88b83f2ec156f3cec664"
+              "sha256": "5cb787c70f7c135ac8268a1c9823f9570735eb69fc44f2e6446969b637bd61c7"
             }
           ],
           "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
@@ -14883,7 +14883,7 @@
       "source_files": [
         {
           "path": "frontend/workbench/app/styles/33-gantt-foundation.css",
-          "sha256": "9815e49c4f11adce71433dab23ea2406a0a21d2935be88b83f2ec156f3cec664"
+          "sha256": "5cb787c70f7c135ac8268a1c9823f9570735eb69fc44f2e6446969b637bd61c7"
         }
       ]
     },
@@ -17197,7 +17197,7 @@
     },
     {
       "path": "frontend/workbench/app/ActualGanttWorkspace.jsx",
-      "sha256": "01054dbbaf873e6f3e4678418baadef580c354fc7d70fd2e506f991da044bd0b"
+      "sha256": "7a1b9db259ee0944329b2bf34ffda2c8037f2f2b9b11212d3bf26acf8ebf8c01"
     },
     {
       "path": "frontend/workbench/app/RunPresentation.js",
@@ -17613,7 +17613,7 @@
     },
     {
       "path": "frontend/workbench/app/styles/00-tokens.css",
-      "sha256": "828ec8e3430d503a4280be7fd34c00cef45a74d129f6ef135d8a2300c6130b4d"
+      "sha256": "473863c891333d75bff95214f859ff59e34e0f6589de135e230d83df9756c468"
     },
     {
       "path": "frontend/workbench/app/styles/10-shell.css",
@@ -17621,7 +17621,7 @@
     },
     {
       "path": "frontend/workbench/app/styles/11-navigation.css",
-      "sha256": "a0323d123e1f0e10e86307a321c83f5709e95ce36a989bda2488f410e5305f56"
+      "sha256": "c98649c8ebc7b3019765a0e60396dcaeeb30733d6334e224f241b00cbf834219"
     },
     {
       "path": "frontend/workbench/app/styles/20-controls.css",
@@ -17649,11 +17649,11 @@
     },
     {
       "path": "frontend/workbench/app/styles/32-process-trial.css",
-      "sha256": "e71194967c74c80c28ce384b8e63847aea19c9c94e999aca4f1b74624c625208"
+      "sha256": "979fd2368cc968e6175d62a047c3533b8d27bdfeb909718efa8bfb0883593dbb"
     },
     {
       "path": "frontend/workbench/app/styles/33-gantt-foundation.css",
-      "sha256": "9815e49c4f11adce71433dab23ea2406a0a21d2935be88b83f2ec156f3cec664"
+      "sha256": "5cb787c70f7c135ac8268a1c9823f9570735eb69fc44f2e6446969b637bd61c7"
     },
     {
       "path": "frontend/workbench/app/styles/33-plan-gantt.css",
@@ -18257,5 +18257,5 @@
       "workbench/prototype/ui_kits/workbench/workbench-ui.css"
     ]
   },
-  "build_id": "6ff511e1832a11c90b21c21c431ea2a200b2f56fc88eb33209f400818e478aa1"
+  "build_id": "bd034ed89f542831f29f197d94ccf4568484adf3a986000dfc0a282688ad22d0"
 }

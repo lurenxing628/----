@@ -94,6 +94,7 @@
       [exportBusy, setExportBusy] = React.useState(false);
     const [chainTarget, setChainTarget] = React.useState(null);
     const [relatedChain, setRelatedChain] = React.useState(null);
+    const lastChain = React.useRef(null);
     const [exportError, setExportError] = React.useState(null),
       [restore, setRestore] = React.useState(saved ? saved.position : seed.persisted ? seed.persisted.position : null);
     const board = React.useRef(null),
@@ -370,6 +371,11 @@
     }, [api, data, scope, targetRef, view.chain]);
     const chain = view.chain && data && data.critical_chain.state === 'available' ? targetRef ? relatedChain && relatedChain.target === targetRef && relatedChain.result : data.critical_chain : null;
     const visibleChain = chain && chain.state === 'available' ? chain : null;
+    // Keep the previous strip mounted while a hovered target's chain loads: swapping it for the status note
+    // collapsed the slot, moved the rows under the pointer and restarted the hover in a loop.
+    if (chain) lastChain.current = chain;
+    const loadingRelated = !!(targetRef && (!relatedChain || relatedChain.target !== targetRef || relatedChain.busy));
+    const shownChain = chain || (loadingRelated ? lastChain.current : null);
     const hoverMark = value => {
       setHover(value);
       setChainTarget(value && value.item ? [value.item.task.task_ref] : null);
@@ -526,11 +532,11 @@
       role: "status"
     }, "\u5173\u952E\u94FE\u4E0D\u53EF\u7528\uFF1A", data.critical_chain.reason), view.chain && data.critical_chain.state === 'available' && /*#__PURE__*/React.createElement("div", {
       className: "fg-chain-slot"
-    }, chain && /*#__PURE__*/React.createElement(Chain, {
-      chain: chain,
+    }, shownChain && /*#__PURE__*/React.createElement(Chain, {
+      chain: shownChain,
       model: model,
       onLocate: locate
-    }), targetRef && (!relatedChain || relatedChain.target !== targetRef || relatedChain.busy) && /*#__PURE__*/React.createElement("div", {
+    }), loadingRelated && /*#__PURE__*/React.createElement("div", {
       className: "fg-note",
       role: "status"
     }, "\u6B63\u5728\u8BFB\u53D6\u6240\u9009\u5DE5\u5E8F\u7684\u5173\u8054\u94FE\u2026"), targetRef && relatedChain && relatedChain.target === targetRef && /*#__PURE__*/React.createElement(ErrorBox, {

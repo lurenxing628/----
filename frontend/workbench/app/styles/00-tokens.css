@@ -39,6 +39,8 @@
   --wb-sev-danger-bg: var(--ui-danger-bg);
   --wb-secondary-copy: var(--ui-info-muted);
   --wb-scroll-shadow: var(--ui-info-muted);
+  /* 选中页签落在 .wb-surface 卡片上时的强调色；深色卡底上 --ui-primary 只有 3.98:1，要换更亮一档。 */
+  --wb-tab-selected: var(--ui-primary);
 }
 
 html[data-theme="dark"] {
@@ -48,6 +50,7 @@ html[data-theme="dark"] {
   --wb-sev-danger: var(--ui-danger);
   --wb-secondary-copy: var(--ui-muted);
   --wb-scroll-shadow: var(--ui-bg);
+  --wb-tab-selected: var(--ui-primary-hover);
 }
 
 html[data-density="compact"] {

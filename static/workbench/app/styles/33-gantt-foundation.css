@@ -183,7 +183,9 @@ body.aps-workbench .fg-live .fg-search input { padding-left:32px; }
 .fg-live .fg-zoom-value { display:inline-block; width:42px; text-align:center; }
 .fg-live .fg-empty { padding:28px 10px; }.fg-live .fg-error { white-space:normal; overflow-wrap:anywhere; }
 .fg-live .fg-tip { position:fixed; z-index:var(--wb-z-popup); max-width:360px; padding:10px; font-size:var(--font-size-1); white-space:pre-line; background:var(--ui-card-bg); color:var(--ui-text); border:1px solid var(--ui-border); pointer-events:none; overflow-wrap:anywhere; }
-.fg-live .fg-chain-slot { min-width:0; border-bottom:1px solid var(--ui-border); }
+.fg-live .fg-chain-slot { position:relative; min-width:0; border-bottom:1px solid var(--ui-border); }
+/* While a strip is showing, the loading note overlays it instead of resizing the slot under the pointer. */
+.fg-live .fg-chain-strip + .fg-note { position:absolute; top:var(--space-2); right:var(--space-2); z-index:var(--wb-z-sticky); border:1px solid var(--ui-border); }
 .fg-live .fg-chain-strip { display:flex; flex-direction:column; gap:var(--space-2); padding:var(--space-2); min-width:0; }
 .fg-live .fg-chain-heading { font-size:var(--font-size-1); }
 .fg-live .fg-chain-flow { display:flex; flex-wrap:nowrap; overflow-x:auto; min-width:0; gap:var(--space-2); padding:2px 2px 6px; }

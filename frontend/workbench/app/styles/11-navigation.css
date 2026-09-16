@@ -35,8 +35,8 @@
   cursor: pointer;
 }
 .wb-view-tabs > [role="tab"][aria-selected="true"] {
-  color: var(--ui-primary);
-  border-bottom-color: var(--ui-primary);
+  color: var(--wb-tab-selected);
+  border-bottom-color: var(--wb-tab-selected);
   font-weight: 600;
 }
 .wb-view-tabs > [role="tab"]:focus-visible,
