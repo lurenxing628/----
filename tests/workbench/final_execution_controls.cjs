@@ -8,7 +8,7 @@ async function assertSuggestedTimes(page, start, end, since) {
   const time = await page.evaluate(value => ({ suggested: Date.parse(value), now: Date.now() }), actualStart);
   assert(time.suggested >= Math.floor(since / 1000) * 1000 && time.suggested <= time.now,
     'New report times must be current suggestions, not retained manual draft values');
-  assert(await page.getByText('以下时间为建议值，保存后会登记成实际记录。请核对；不确定时请清除，保持未知。', { exact: true }).isVisible());
+  assert(await page.getByText('请核对预填时间；不确定的时间请清除。', { exact: true }).isVisible());
 }
 
 async function exercise(p) {

@@ -83,7 +83,7 @@ async function renderFault(browser, state, record) {
     record.equal(hits, 1, 'Workspace render injection must hit the real versioned response');
     await page.getByRole('region', {name: '工作区读取失败', exact: true}).waitFor();
     record.equal(await page.locator('.sidebar-nav a.nav-item').count(), SIDEBAR.length);
-    record.ok((await page.getByRole('alert').innerText()).includes('数据没有改动'));
+    record.ok((await page.getByRole('alert').innerText()).includes('页面显示出错。请点「重新打开此工作区」；仍不行请刷新页面。'));
     record.equal((await remembered(page)).route.context.plan_ref, selected.reference);
     const faultShot = await record.shot(page, state, 'workspace-render-throw-injected', 'fault');
     await navigate(page, 'basedata', record);

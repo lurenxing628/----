@@ -14,8 +14,8 @@ async function runActions(page, ready, report, h, flush) {
   await action(['WBP-RUN-001.open-picker', 'WBP-RUN-002.empty-guard'], async () => {
     await button('开始排产检查').click();
     await page.locator('[data-reason-group="no_eligible_tasks"]').waitFor();
-    assert.equal(await button('核对并开始排产').isDisabled(), true);
-    await page.getByText('请先选择要排产的批次。', { exact: true }).waitFor();
+    assert.equal(await button('核对并开始排产：请先选择要排产的批次。').isDisabled(), true);
+    await page.locator('.rj-action-reason').getByText('请先选择要排产的批次。', { exact: true }).waitFor();
     await flush();
     assert.equal(await page.getByRole('button', { name: '确认开始排产', exact: true }).count(), 0);
     assert(!report.requests.some(row => row.method === 'POST' && row.url.endsWith('/scheduling/runs')));
@@ -84,11 +84,11 @@ async function runActions(page, ready, report, h, flush) {
   });
   await action(['WBP-RUN-006.recover-run'], async () => {
     await flush();
-    const original = last(data => data.run_ref && data.state === 'complete');
+    const original = last(data => data.found === true && data.run && data.run.state === 'complete').run;
     const writes = report.requests.filter(row => row.method === 'POST' && row.url.endsWith('/scheduling/runs')).length;
     await page.reload();
     await page.getByRole('table', { name: '已保存候选', exact: true }).waitFor(); await flush();
-    const restored = last(data => data.run_ref && data.state === 'complete');
+    const restored = last(data => data.found === true && data.run && data.run.state === 'complete').run;
     assert.equal(restored.run_ref, original.run_ref); assert.deepEqual(restored.candidates, original.candidates);
     assert.equal(report.requests.filter(row => row.method === 'POST' && row.url.endsWith('/scheduling/runs')).length, writes);
     report.restored_run_ref = restored.run_ref; await shot('run-recovered');

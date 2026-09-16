@@ -84,7 +84,7 @@ async function readControls(h) {
   const detail = page.getByRole('region', { name: '备份详情', exact: true });
   await mark(['WBP-SYS-007.full-body', 'WBP-SYS-007.validation-details'], async () => {
     await detail.waitFor(); assert.equal(await detail.locator('pre').innerText(), file.body);
-    await detail.getByText('备份文件存在不代表已校验通过或可以恢复。', { exact: true }).waitFor();
+    await detail.getByText('校验状态：未校验。', { exact: true }).waitFor();
   });
   await mark('WBP-SYS-007.close-x', () => detail.getByRole('button', { name: '关闭详情', exact: true }).click());
   await row.click(); await mark('WBP-SYS-007.close-escape', () => detail.press('Escape'));

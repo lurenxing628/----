@@ -117,7 +117,7 @@ async function unlocatable(h) {
   await mark('WBP-DASH-014.navigation-confirm', async () => {
     await dialog.getByRole('button', { name: '打开计划甘特概览', exact: true }).click();
     await page.waitForURL('**view=gantt');
-    await page.getByText('尚未选择计划', { exact: true }).waitFor();
+    await page.locator('[data-plan-workspace] .wb-empty-title').getByText('请在计划列表里选一个可查看的计划。', { exact: true }).waitFor();
     const target = await page.evaluate(() => history.state.workbench);
     assert.deepEqual(target.context, { return_to: { view: 'dashboard', context: original } });
     assert.equal(await page.locator('.wb-current-plan').count(), 0);

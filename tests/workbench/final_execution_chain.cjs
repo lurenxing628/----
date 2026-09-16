@@ -69,7 +69,7 @@ async function exercise(p, phase) {
     assert.equal(related.plan_task_count, 5); assert.equal(related.snapshot_ref, chain.snapshot_ref);
     await page.waitForFunction(ref => document.querySelector('.fg-chain-strip')?.dataset.chainTarget === ref, seed.task_refs[2]);
     assert(await strip.locator('[data-chain-node="' + seed.task_refs[0] + '"]').isDisabled());
-    assert((await strip.innerText()).includes('筛选内 2 / 3 个节点'));
+    assert((await strip.innerText()).includes('当前显示 2 / 3 道工序'));
     p.report.resource_related = response; await p.shot('resource-full-input-related-chain');
     await page.getByLabel('搜索现场甘特', { exact: true }).fill('');
     await page.mouse.move(10, 10);

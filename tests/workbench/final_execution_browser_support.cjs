@@ -48,7 +48,7 @@ class Probe {
     const file = path.join(this.ready.root, 'downloads', this.state + '-' + name + '-' + download.suggestedFilename());
     await download.saveAs(file); assert.equal(await download.failure(), null);
     const bytes = fs.readFileSync(file);
-    this.report.downloads.push({ state: this.state, name, path: file, sha256: hash(bytes), bytes: bytes.length });
+    this.report.downloads.push({ state: this.state, name, path: file, filename: download.suggestedFilename(), sha256: hash(bytes), bytes: bytes.length });
     return file;
   }
   async nav(label, suffix) {

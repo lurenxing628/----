@@ -128,7 +128,7 @@ async function exercise(p, phase) {
     const stale = await p.read(() => page.getByRole('button', { name: '导出全部筛选', exact: true }).click(), list + '/export', 409);
     assert.equal(stale.error.code, 'snapshot_stale');
     assert.equal(p.report.requests.slice(activeRequests).filter(row => new URL(row.url).pathname.endsWith(list)).length, 0);
-    await page.getByText('数据已更新，请点「刷新」后重试。已选记录和完工记录来源已保留，不会自动跳到最新记录。', { exact: true }).waitFor();
+    await page.locator('.ca-note[role=alert]').getByText('数据已更新，请刷新后重试。', { exact: true }).waitFor();
     await p.shot('adopted-active-old-snapshot-rejected');
     await p.nav('报表中心', '/analytics');
     await p.read(() => page.getByRole('tablist', { name: '统计分析视图', exact: true })

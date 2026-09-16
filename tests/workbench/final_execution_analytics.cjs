@@ -72,7 +72,8 @@ async function exercise(p) {
     result = await p.read(() => work.locator('#report-topic-panel .rw-list-pane > .wb-pager').getByRole('button', { name: '下一页', exact: true }).click(), suffix);
     assert.equal(result.data.rows.length, 16); p.report.export_source = [first, result];
     await p.download(() => work.getByRole('button', { name: '导出范围', exact: true }).click(), 'review-complete-csv');
-    await work.getByText('已导出当前筛选全部 66 项，文件已交给浏览器下载。', { exact: true }).waitFor();
+    const exported = p.report.downloads[p.report.downloads.length - 1];
+    await work.getByText('已交给浏览器下载：' + exported.filename + '（当前筛选全部 66 项）。', { exact: true }).waitFor();
     result = await p.read(() => p.choose('每页条数', '20'), suffix);
   });
   await p.step(['WBP-SCOPE-006', 'WBP-REVIEW-006', 'WBP-REVIEW-007', 'WBP-REVIEW-008', 'WBP-REVIEW-009'], 'real-trend-title-table-distribution-and-current-drill-affordances', async () => {
@@ -119,7 +120,7 @@ async function exercise(p) {
       }
     }
     p.report.resource_pagination_case = 'test_full_main_resource_tabs_six_group_pages_drill_and_restart uses nine real groups; this two-group case does not claim pagination coverage.';
-    await work.locator('#report-topic-panel > .rw-limitations > summary').click();
+    await work.locator('.rw-support > .rw-limitations > summary', { hasText: '统计说明与待补资料' }).click();
     await p.shot('all-review-evidence');
   });
   await p.step(['WBP-REPORT-001.A002', 'WBP-REPORT-010'], 'report-keyboard-topics-and-original-task-report-navigation-return', async () => {

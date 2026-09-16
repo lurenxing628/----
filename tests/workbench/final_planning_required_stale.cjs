@@ -17,7 +17,7 @@ async function competingCandidate(other, ready, report, flush) {
   await h.button('确认开始排产', page.getByRole('dialog')).click();
   const table = page.getByRole('table', { name: '已保存候选', exact: true });
   await table.waitFor({ timeout: 120000 }); await flush();
-  const run = h.last(data => data.run_ref && data.state === 'complete' && Array.isArray(data.candidates));
+  const run = h.last(data => data.found === true && data.run && data.run.state === 'complete' && Array.isArray(data.run.candidates)).run;
   assert.notEqual(run.run_ref, ready.expected.required.run_ref);
   await table.getByRole('button', { name: '详情', exact: true }).first().click();
   await page.getByRole('table', { name: '候选任务安排', exact: true }).waitFor(); await flush();
@@ -39,7 +39,7 @@ async function requiredStale(page, ready, report, h, flush) {
     const original = h.last(value => value.scenario_ref === expected.scenario_ref && value.tasks);
     assert.equal(original.task_count, ready.expected.task_count);
     const previewing = page.waitForResponse(row => row.request().method() === 'POST' && row.url().endsWith('/adopt-preview'));
-    await h.button('正式采用', page.locator('.trial-adoption-action')).click();
+    await h.button('采用方案', page.locator('.trial-adoption-action')).click();
     const preview = (await (await previewing).json()).data;
     assert.equal(preview.validation.can_adopt, true); assert.equal(preview.baseline.plan_ref, expected.baseline.plan_ref);
     let dialog = page.getByRole('dialog', { name: '确认正式采用试调方案', exact: true });

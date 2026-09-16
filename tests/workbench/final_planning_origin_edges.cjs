@@ -24,9 +24,9 @@ async function originEdges(page, report, h, flush, draft, mapped, canonical) {
   assert(other && other.source_task_ref && otherPlan.plan_ref !== origin.plan_ref);
   report.task_origin.negative_cases = [];
   for (const [key, value, message] of [
-    ['plan_ref', otherPlan.plan_ref, '当前草稿与原任务来源不一致，未定位或开放写入。'],
-    ['operation_ref', other.operation_ref, '当前草稿没有对应的原任务，未选择同号工序或其他任务。'],
-    ['task_ref', other.source_task_ref, '当前草稿没有对应的原任务，未选择同号工序或其他任务。'],
+    ['plan_ref', otherPlan.plan_ref, '当前草稿与原任务来源不一致，无法调整。'],
+    ['operation_ref', other.operation_ref, '当前草稿中未找到原任务。'],
+    ['task_ref', other.source_task_ref, '当前草稿中未找到原任务。'],
   ]) {
     const context = { draft_ref: draft.draft_ref, task_origin: { ...origin, [key]: value } }, target = new URL(canonical);
     target.searchParams.set('nav', JSON.stringify({ version: 1, view: 'trial', context }));

@@ -25,7 +25,9 @@ async function analysisMetrics(page, report, h, flush) {
   assert.equal(data.basis.scope, 'full_candidate_and_full_admission_baseline');
   assert.equal(data.basis.current_entities_consulted, false);
   assert(Object.values(data.metrics).some(metric => metric.value === null), 'This legacy fixture must expose missing whole-baseline evidence');
-  assert((await page.getByLabel('候选变化与取舍', { exact: true }).innerText()).includes('未评估优化收益'));
+  const scopeText = await page.getByLabel('候选变化与取舍', { exact: true }).innerText();
+  assert(scopeText.includes('调整工序：') && scopeText.includes('换设备：'), scopeText);
+  assert(!scopeText.includes('优化收益'), 'The scope block states saved-arrangement changes only');
   await section.scrollIntoViewIfNeeded(); await h.shot('candidate-four-metrics-and-unknown');
   return data;
 }
@@ -37,7 +39,7 @@ async function cancelAnalysisRead(page, report, h, flush, expected) {
     await session.send('Network.emulateNetworkConditions', { offline: false, latency: 800, downloadThroughput: -1, uploadThroughput: -1 });
     await h.button('刷新候选方案').click();
     await h.button('取消候选比较读取').click();
-    await page.getByText('候选比较读取已取消，未显示上次比较。', { exact: true }).waitFor(); await flush();
+    await page.getByText('候选比较读取已取消。', { exact: true }).waitFor(); await flush();
     assert.equal(await page.locator('[data-candidate-analysis]').count(), 0);
     assert(report.requests.slice(start).every(row => row.method === 'GET'));
     report.analysis_cancel = { physical_fault: 'Chromium network latency 800ms; no response replacement',

@@ -34,7 +34,11 @@ async function lifecycle(h, kind = 'delivery', label = '交期风险') {
   }
   const closed = await mark('WBP-DASH-004.close', submit); assert.equal(closed.data.handling.status, 'closed');
   assert.deepEqual(closed.data.risk, followed.data.risk); await finish();
-  await mark(['WBP-DASH-004.view-closed', 'WBP-DASH-004.retain-risk-facts'], async () => { await region.getByText('处置已关闭，风险仍按最新数据继续评估。', { exact: true }).waitFor(); assert.equal(item.risk.active, true); });
+  await mark(['WBP-DASH-004.view-closed', 'WBP-DASH-004.retain-risk-facts'], async () => {
+    await region.locator('.dy-tools .dy-badge').filter({ hasText: /^已关闭$/ }).waitFor();
+    await region.locator('.dy-tools .dy-badge').filter({ hasText: /^风险仍在$/ }).waitFor();
+    assert.equal(item.risk.active, true);
+  });
   await shot(kind + '-closed-risk-still-active');
   await mark('WBP-DASH-005.open-reopen', () => region.getByRole('button', { name: '独立重开', exact: true }).click());
   await mark('WBP-DASH-005.require-reason', async () => { await modal().getByRole('button', { name: '确认独立重开', exact: true }).click(); await modal().getByRole('alert').waitFor(); });
