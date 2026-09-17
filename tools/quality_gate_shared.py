@@ -96,7 +96,9 @@ QUALITY_GATE_QUICKREF_VS_ROUTES_REL = os.path.join(
     "QualityGate",
     "quickref_vs_routes.md",
 )
-FORMAL_FULL_TEST_PYTEST_ARGS = ["tests", "-q", "--tb=short", "-ra", "-p", "no:cacheprovider"]
+# 2026-09-17: the formal full run deselects perf (performance guards + the browser acceptance lane in
+# tools/browser_lane_files.py). scripts/run_browser_test_lane.py runs that lane on purpose.
+FORMAL_FULL_TEST_PYTEST_ARGS = ["tests", "-q", "--tb=short", "-ra", "-p", "no:cacheprovider", "-m", "not perf"]
 REQUIRED_BROWSER_ENV_OVERLAY = {
     "APS_BROWSER_SMOKE_REQUIRED": "1",
     "PYTHONDONTWRITEBYTECODE": "1",

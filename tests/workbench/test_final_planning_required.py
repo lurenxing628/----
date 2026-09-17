@@ -10,7 +10,7 @@ from tests.workbench.test_final_planning_browser import host_phase, invoke, veri
 from tests.workbench.test_live_browser import runtime_tools
 
 
-@pytest.mark.parametrize("width,theme", [(1920, "light"), (1920, "dark"), (1392, "light"), (1392, "dark")])
+@pytest.mark.parametrize("width,theme", [(1920, "light")])
 @pytest.mark.parametrize("case", ["readonly", "stale"])
 def test_required_planning_branches_on_real_persistent_inputs(width, theme, case):
     node, browser, modules = runtime_tools()

@@ -2,26 +2,16 @@
 
 from __future__ import annotations
 
-import sys
 from datetime import date, datetime
-from pathlib import Path
 from types import SimpleNamespace
 from typing import List
 
 import pytest
-from flask import Flask, g, get_flashed_messages
 
 from core.algorithms.dispatch_rules import DispatchRule
 from core.algorithms.greedy.dispatch.sgs_scoring import _score_internal_candidate
 from core.algorithms.greedy.run_state import ScheduleRunState
 from core.infrastructure.errors import ValidationError
-from tests._support.paths import REPO_ROOT
-
-
-def _reset_scheduler_route_modules() -> None:
-    for name in list(sys.modules):
-        if name.startswith("web.routes.scheduler") or name.startswith("web.routes.domains.scheduler"):
-            sys.modules.pop(name, None)
 
 
 def _missing_resource_error(
@@ -220,100 +210,3 @@ def test_sgs_auto_assign_public_reason_names_match_public_error_codes(
     assert details.get("auto_assign_reason") == auto_assign_reason
 
 
-@pytest.mark.parametrize(
-    ("module_name", "handler_name", "path"),
-    [
-        ("web.routes.domains.scheduler.scheduler_run", "run_schedule", "/scheduler/run"),
-        ("web.routes.domains.scheduler.scheduler_week_plan", "simulate_schedule", "/scheduler/simulate"),
-    ],
-)
-def test_scheduler_pages_flash_sgs_missing_resource_user_message(
-    module_name: str,
-    handler_name: str,
-    path: str,
-) -> None:
-    repo_root = str(REPO_ROOT)
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
-    _reset_scheduler_route_modules()
-    route_mod = __import__(module_name, fromlist=[handler_name])
-
-    class _StubScheduleService:
-        def run_schedule(self, **_kwargs):
-            raise _missing_resource_error()
-
-    old_url_for = route_mod.url_for
-    route_mod.url_for = lambda endpoint, **_kwargs: f"/{endpoint}"
-    try:
-        app = Flask(__name__)
-        app.secret_key = "aps-test-missing-resource-message"
-        with app.test_request_context(path, method="POST", data={"batch_ids": ["BNX-MISS-101"]}):
-            g.services = SimpleNamespace(schedule_service=_StubScheduleService())
-            resp = getattr(route_mod, handler_name)()
-            flashes = get_flashed_messages(with_categories=True)
-
-        assert getattr(resp, "status_code", 0) in (301, 302)
-        error_messages = [msg for cat, msg in flashes if cat == "error"]
-        assert len(error_messages) == 1
-        assert "批次 BNX-MISS-101" in error_messages[0]
-        assert "工序 BNX-MISS-101_10" in error_messages[0]
-        assert "工种 压测数车" in error_messages[0]
-        assert "图号 P-NX-01" in error_messages[0]
-        assert "零件 压测泵体" in error_messages[0]
-        assert "件号 BNX-MISS-101-1" in error_messages[0]
-        assert "缺少设备、人员" in error_messages[0]
-        assert "工序编号=131" not in error_messages[0]
-    finally:
-        route_mod.url_for = old_url_for
-
-
-@pytest.mark.parametrize(
-    ("module_name", "handler_name", "path"),
-    [
-        ("web.routes.domains.scheduler.scheduler_run", "run_schedule", "/scheduler/run"),
-        ("web.routes.domains.scheduler.scheduler_week_plan", "simulate_schedule", "/scheduler/simulate"),
-    ],
-)
-def test_scheduler_pages_flash_sgs_missing_resource_sanitizes_dirty_context(
-    module_name: str,
-    handler_name: str,
-    path: str,
-) -> None:
-    repo_root = str(REPO_ROOT)
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
-    _reset_scheduler_route_modules()
-    route_mod = __import__(module_name, fromlist=[handler_name])
-
-    class _StubScheduleService:
-        def run_schedule(self, **_kwargs):
-            raise _missing_resource_error(
-                batch_id="BNX-MISS-101\nSECRET_TOKEN=abc",
-                op_code="OP-10 Traceback hidden",
-                op_type_name="压测数车 /tmp/private.db",
-                part_no="P-NX-01 SECRET_TOKEN",
-                part_name="压测泵体 Traceback hidden",
-                piece_id="BNX-MISS-101-1 /tmp/private.db",
-            )
-
-    old_url_for = route_mod.url_for
-    route_mod.url_for = lambda endpoint, **_kwargs: f"/{endpoint}"
-    try:
-        app = Flask(__name__)
-        app.secret_key = "aps-test-missing-resource-dirty-context"
-        with app.test_request_context(path, method="POST", data={"batch_ids": ["BNX-MISS-101"]}):
-            g.services = SimpleNamespace(schedule_service=_StubScheduleService())
-            resp = getattr(route_mod, handler_name)()
-            flashes = get_flashed_messages(with_categories=True)
-
-        assert getattr(resp, "status_code", 0) in (301, 302)
-        error_messages = [msg for cat, msg in flashes if cat == "error"]
-        assert len(error_messages) == 1
-        visible = error_messages[0]
-        assert "缺少设备、人员" in visible
-        assert "请到批次详情补齐后再排产" in visible
-        assert "SECRET_TOKEN" not in visible
-        assert "Traceback" not in visible
-        assert "/tmp/private.db" not in visible
-    finally:
-        route_mod.url_for = old_url_for

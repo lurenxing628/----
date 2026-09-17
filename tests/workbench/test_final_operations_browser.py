@@ -1,4 +1,4 @@
-"""Whole main page, four real Chromium variants, SQL and downloaded payloads."""
+"""Whole main page in one real Chromium variant, SQL and downloaded payloads; width/theme visuals live in the style probes."""
 
 import csv
 import io
@@ -68,7 +68,7 @@ class Page extends EventEmitter {
 """
 
 
-@pytest.mark.parametrize("width,theme", [(1920, "light"), (1920, "dark"), (1392, "light"), (1392, "dark")])
+@pytest.mark.parametrize("width,theme", [(1392, "dark")])
 def test_final_operations_main_controls_and_persistence(tmp_path, width, theme):
     binding = subprocess.run([runtime_tools()[0], "-e", REQUEST_BINDING_PROBE,
                               str(REPO / "tests/workbench/final_operations_browser_support.cjs")],

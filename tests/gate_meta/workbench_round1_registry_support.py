@@ -289,7 +289,6 @@ ROUND1_SUPPLEMENTAL_FILES = {
     "workbench_browser": ("test_round1_field_piece_files_browser.py",),
 }
 
-ROUND1_GATE_TESTS = ("tests/gate_meta/test_workbench_round1_registry_contract.py",)
 ROUND1_ALGORITHM_TESTS = ("tests/algorithm/test_sgs_explicit_piece_scope.py",)
 ROUND1_CANDIDATE_SCHEMA_TESTS = ("tests/candidate/test_scheduler_candidate_schema_contract.py",)
 CANDIDATE_V9_FIXTURE = "tests/migration_db/fixtures/schema-v9.sql"

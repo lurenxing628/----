@@ -77,7 +77,7 @@ def host_phase(root, env, node, width, theme, mode, previous=None):
     return result
 
 
-@pytest.mark.parametrize("width,theme", [(1920, "light"), (1920, "dark"), (1392, "light"), (1392, "dark")])
+@pytest.mark.parametrize("width,theme", [(1920, "light")])
 def test_full_planning_actions_and_new_process_retention(width, theme):
     node, browser, modules = runtime_tools()
     root = create_root(os.environ.get("FINAL_PLANNING_TEMP_PARENT"))

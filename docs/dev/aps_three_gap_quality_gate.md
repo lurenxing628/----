@@ -17,16 +17,16 @@
 | 序号 | roadmap item | feature | 主要测试 |
 |---:|---|---|---|
 | 1 | shared-plan-identity-evidence-contract | 2026-05-27-shared-plan-identity-evidence-contract | `tests/schedule/route_view/test_scheduler_plan_identity_evidence_contract.py`、`tests/gantt/test_scheduler_candidate_gantt_plan_role_contract.py` |
-| 2 | delay-diagnosis-core-service | 2026-05-27-delay-diagnosis-core-service | `tests/scheduler_analysis/test_scheduler_delay_diagnosis_contract.py`、`tests/algorithm/test_due_exclusive_consistency.py`、`tests/gantt/test_gantt_adjustment_validate_simulate.py` |
+| 2 | delay-diagnosis-core-service | 2026-05-27-delay-diagnosis-core-service | `tests/scheduler_analysis/test_scheduler_delay_diagnosis_contract.py`、`tests/algorithm/test_due_exclusive_consistency.py` |
 | 3 | delay-diagnosis-overdue-report-entry | 2026-05-27-delay-diagnosis-overdue-report-entry | `tests/scheduler_analysis/test_report_delay_diagnosis_plain_language.py`、`tests/app_runtime/test_frontend_offline_static_assets.py`、`tests/gantt/test_gantt_degradation_surface.py`、`tests/web_pages/test_dashboard_overdue_count_tolerance.py` |
-| 4 | candidate-recommendation-card | 2026-05-27-candidate-recommendation-card | `tests/candidate/test_scheduler_candidate_analysis_contract.py`、`tests/candidate/test_scheduler_analysis_candidate_links_and_roles.py`、`tests/candidate/test_scheduler_candidate_plain_language.py` |
-| 5 | candidate-summary-delta-cards | 2026-05-27-candidate-summary-delta-cards | `tests/candidate/test_scheduler_candidate_summary_contract.py`、`tests/scheduler_graph/test_scheduler_graph_auto_selection_contract.py`、`tests/candidate/test_scheduler_candidate_plain_language.py` |
-| 6 | candidate-drilldown-empty-states | 2026-05-27-candidate-drilldown-empty-states | `tests/candidate/test_scheduler_candidate_week_plan_contract.py`、`tests/candidate/test_scheduler_candidate_plan_query_contract.py`、`tests/candidate/test_scheduler_candidate_reports_contract.py`、`tests/web_pages/test_scenario_preview_secondary_outputs.py` |
-| 7 | dispatch-plan-identity-guardrails | 2026-05-27-dispatch-plan-identity-guardrails | `tests/resource_dispatch/test_scheduler_dispatch_plan_identity_guard.py`、`tests/resource_dispatch/test_scheduler_dispatch_plan_identity_deep_review_contract.py`、`tests/resource_dispatch/test_scheduler_candidate_resource_dispatch_contract.py`、`tests/resource_dispatch/test_resource_dispatch_public_output_contract.py` |
+| 4 | candidate-recommendation-card | 2026-05-27-candidate-recommendation-card | 旧分析页测试已于 2026-09-18 删除（见附录）；工作台候选对比由 `tests/workbench/test_run_compute.py` 等覆盖 |
+| 5 | candidate-summary-delta-cards | 2026-05-27-candidate-summary-delta-cards | `tests/candidate/test_scheduler_candidate_summary_contract.py`、`tests/scheduler_graph/test_scheduler_graph_auto_selection_contract.py` |
+| 6 | candidate-drilldown-empty-states | 2026-05-27-candidate-drilldown-empty-states | `tests/candidate/test_scheduler_candidate_week_plan_contract.py`、`tests/candidate/test_scheduler_candidate_plan_query_contract.py` |
+| 7 | dispatch-plan-identity-guardrails | 2026-05-27-dispatch-plan-identity-guardrails | `tests/resource_dispatch/test_resource_dispatch_public_output_contract.py` |
 | 8 | operation-execution-event-foundation | 2026-05-27-operation-execution-event-foundation | `tests/operation_execution/test_operation_execution_event_foundation.py`、`tests/operation_execution/test_operation_execution_state_revision.py`、`tests/migration_db/test_migrations.py` |
-| 9 | resource-dispatch-start-finish-feedback | 2026-05-27-resource-dispatch-start-finish-feedback | `tests/operation_execution/test_operation_execution_feedback_routes.py`、`tests/resource_dispatch/test_scheduler_candidate_resource_dispatch_contract.py`、`tests/gate_meta/test_architecture_fitness.py::test_viewmodels_do_not_import_flask_or_services_or_repositories_or_routes` |
-| 10 | reschedule-minimum-execution-guardrails | 2026-05-27-reschedule-minimum-execution-guardrails | `tests/schedule/service/test_scheduler_reschedule_execution_minimum_guard.py`、`tests/operation_execution/test_operation_execution_feedback_routes.py`、`tests/operation_execution/test_operation_execution_state_revision.py` |
-| 11 | shop-exception-feedback | 2026-05-27-shop-exception-feedback | `tests/operation_execution/test_operation_execution_exception_feedback.py`、`tests/schedule/service/test_scheduler_exception_blocks_auto_reschedule.py`、`tests/operation_execution/test_operation_execution_feedback_routes.py` |
+| 9 | resource-dispatch-start-finish-feedback | 2026-05-27-resource-dispatch-start-finish-feedback | `tests/gate_meta/test_architecture_fitness.py::test_viewmodels_do_not_import_flask_or_services_or_repositories_or_routes` |
+| 10 | reschedule-minimum-execution-guardrails | 2026-05-27-reschedule-minimum-execution-guardrails | `tests/schedule/service/test_scheduler_reschedule_execution_minimum_guard.py`、`tests/operation_execution/test_operation_execution_state_revision.py` |
+| 11 | shop-exception-feedback | 2026-05-27-shop-exception-feedback | `tests/schedule/service/test_scheduler_exception_blocks_auto_reschedule.py` |
 | 12 | plan-vs-actual-review | 2026-05-27-plan-vs-actual-review | `tests/scheduler_analysis/test_plan_vs_actual_review.py`、`tests/scheduler_analysis/test_report_delay_diagnosis_plain_language.py` |
 | 13 | reschedule-respects-execution-facts | 2026-05-27-reschedule-respects-execution-facts | `tests/operation_execution/test_scheduler_reschedule_execution_facts.py`、`tests/schedule/service/test_scheduler_reschedule_execution_minimum_guard.py`、`tests/gantt/test_gantt_adjustment_publish_execution_revision.py` |
 
@@ -37,16 +37,16 @@
 | 序号 | roadmap item | items.yaml test_commands |
 |---:|---|---|
 | 1 | shared-plan-identity-evidence-contract | `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/schedule/route_view/test_scheduler_plan_identity_evidence_contract.py tests/gantt/test_scheduler_candidate_gantt_plan_role_contract.py` |
-| 2 | delay-diagnosis-core-service | `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/scheduler_analysis/test_scheduler_delay_diagnosis_contract.py tests/algorithm/test_due_exclusive_consistency.py tests/gantt/test_gantt_adjustment_validate_simulate.py` |
+| 2 | delay-diagnosis-core-service | `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/scheduler_analysis/test_scheduler_delay_diagnosis_contract.py tests/algorithm/test_due_exclusive_consistency.py` |
 | 3 | delay-diagnosis-overdue-report-entry | `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/scheduler_analysis/test_scheduler_delay_diagnosis_contract.py tests/scheduler_analysis/test_report_delay_diagnosis_plain_language.py tests/app_runtime/test_frontend_offline_static_assets.py tests/gantt/test_gantt_degradation_surface.py tests/web_pages/test_dashboard_overdue_count_tolerance.py` |
-| 4 | candidate-recommendation-card | `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/candidate/test_scheduler_candidate_analysis_contract.py tests/candidate/test_scheduler_analysis_candidate_links_and_roles.py tests/candidate/test_scheduler_candidate_plain_language.py tests/app_runtime/test_frontend_offline_static_assets.py` |
-| 5 | candidate-summary-delta-cards | `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/candidate/test_scheduler_candidate_analysis_contract.py tests/candidate/test_scheduler_candidate_plain_language.py tests/app_runtime/test_frontend_offline_static_assets.py tests/candidate/test_scheduler_candidate_summary_contract.py tests/scheduler_graph/test_scheduler_graph_auto_selection_contract.py` |
-| 6 | candidate-drilldown-empty-states | `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/candidate/test_scheduler_analysis_candidate_links_and_roles.py tests/candidate/test_scheduler_candidate_week_plan_contract.py tests/candidate/test_scheduler_candidate_plan_query_contract.py tests/candidate/test_scheduler_candidate_reports_contract.py tests/candidate/test_scheduler_candidate_plain_language.py tests/app_runtime/test_frontend_offline_static_assets.py tests/web_pages/test_scenario_preview_secondary_outputs.py tests/scheduler_analysis/test_report_export_size_mode_selection.py tests/gantt/test_scheduler_candidate_gantt_plan_role_contract.py tests/resource_dispatch/test_scheduler_candidate_resource_dispatch_contract.py tests/scheduler_analysis/test_report_delay_diagnosis_plain_language.py` |
-| 7 | dispatch-plan-identity-guardrails | `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/resource_dispatch/test_scheduler_candidate_resource_dispatch_contract.py tests/resource_dispatch/test_scheduler_dispatch_plan_identity_guard.py tests/resource_dispatch/test_scheduler_dispatch_plan_identity_deep_review_contract.py tests/app_runtime/test_frontend_offline_static_assets.py` |
+| 4 | candidate-recommendation-card | `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/app_runtime/test_frontend_offline_static_assets.py` |
+| 5 | candidate-summary-delta-cards | `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/app_runtime/test_frontend_offline_static_assets.py tests/candidate/test_scheduler_candidate_summary_contract.py tests/scheduler_graph/test_scheduler_graph_auto_selection_contract.py` |
+| 6 | candidate-drilldown-empty-states | `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/candidate/test_scheduler_candidate_week_plan_contract.py tests/candidate/test_scheduler_candidate_plan_query_contract.py tests/app_runtime/test_frontend_offline_static_assets.py tests/scheduler_analysis/test_report_export_size_mode_selection.py tests/gantt/test_scheduler_candidate_gantt_plan_role_contract.py tests/scheduler_analysis/test_report_delay_diagnosis_plain_language.py` |
+| 7 | dispatch-plan-identity-guardrails | `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/app_runtime/test_frontend_offline_static_assets.py` |
 | 8 | operation-execution-event-foundation | `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/operation_execution/test_operation_execution_event_foundation.py tests/operation_execution/test_operation_execution_event_time_contract.py tests/operation_execution/test_operation_execution_state_revision.py tests/migration_db/test_migrations.py` |
-| 9 | resource-dispatch-start-finish-feedback | `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/resource_dispatch/test_scheduler_candidate_resource_dispatch_contract.py tests/operation_execution/test_operation_execution_feedback_routes.py tests/app_runtime/test_frontend_offline_static_assets.py tests/resource_dispatch/test_resource_dispatch_invalid_summary_surfaces_overdue_degraded.py` |
-| 10 | reschedule-minimum-execution-guardrails | `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/schedule/service/test_scheduler_reschedule_execution_minimum_guard.py tests/operation_execution/test_operation_execution_feedback_routes.py tests/app_runtime/test_frontend_offline_static_assets.py tests/schedule/route_view/test_scheduler_run_surfaces_resource_pool_warning.py` |
-| 11 | shop-exception-feedback | `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/operation_execution/test_operation_execution_exception_feedback.py tests/operation_execution/test_operation_execution_feedback_routes.py tests/schedule/service/test_scheduler_exception_blocks_auto_reschedule.py tests/app_runtime/test_frontend_offline_static_assets.py` |
+| 9 | resource-dispatch-start-finish-feedback | `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/app_runtime/test_frontend_offline_static_assets.py tests/resource_dispatch/test_resource_dispatch_invalid_summary_surfaces_overdue_degraded.py` |
+| 10 | reschedule-minimum-execution-guardrails | `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/schedule/service/test_scheduler_reschedule_execution_minimum_guard.py tests/app_runtime/test_frontend_offline_static_assets.py` |
+| 11 | shop-exception-feedback | `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/schedule/service/test_scheduler_exception_blocks_auto_reschedule.py tests/app_runtime/test_frontend_offline_static_assets.py` |
 | 12 | plan-vs-actual-review | `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/scheduler_analysis/test_plan_vs_actual_review.py tests/operation_execution/test_operation_execution_event_foundation.py tests/app_runtime/test_frontend_offline_static_assets.py` |
 | 13 | reschedule-respects-execution-facts | `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/operation_execution/test_scheduler_reschedule_execution_facts.py tests/schedule/service/test_scheduler_reschedule_execution_minimum_guard.py tests/gantt/test_gantt_adjustment_publish_execution_revision.py` |
 
@@ -56,7 +56,7 @@
 |---|---|
 | 精准功能测试 | 上表每条 feature 的 `test_commands` |
 | 迁移测试 | `tests/migration_db/test_migrations.py`、`tests/gantt/test_gantt_adjustment_publish_execution_revision.py` |
-| 页面大白话测试 | `tests/candidate/test_scheduler_candidate_plain_language.py`、`tests/scheduler_analysis/test_report_delay_diagnosis_plain_language.py`、`tests/gate_meta/test_aps_three_gap_docs_quality_gate.py` |
+| 页面大白话测试 | `tests/scheduler_analysis/test_report_delay_diagnosis_plain_language.py`、`tests/gate_meta/test_aps_three_gap_docs_quality_gate.py` |
 | Win7/offline 测试 | `tests/app_runtime/test_frontend_offline_static_assets.py`、`tests/gate_meta/test_scan_py38plus_syntax.py` |
 | CodeStable YAML 测试 | `.codestable/tools/validate-yaml.py` 命令和 `tests/gate_meta/test_codestable_tools_contract.py` |
 | 长门禁 | `scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache`，其中命令计划已包含 roadmap YAML 校验和 Python 3.8 扫描 |
@@ -70,24 +70,16 @@
 - `tests/migration_db/test_migrations.py`
 - `tests/operation_execution/test_operation_execution_event_foundation.py`
 - `tests/operation_execution/test_operation_execution_event_time_contract.py`
-- `tests/operation_execution/test_operation_execution_exception_feedback.py`
-- `tests/operation_execution/test_operation_execution_feedback_routes.py`
 - `tests/operation_execution/test_operation_execution_state_revision.py`
 - `tests/web_pages/test_page_manual_registry.py`
 - `tests/scheduler_analysis/test_plan_vs_actual_review.py`
 - `tests/scheduler_analysis/test_report_delay_diagnosis_plain_language.py`
 - `tests/scheduler_analysis/test_report_export_large_scope_rejects_need_async.py`
 - `tests/scheduler_analysis/test_report_export_size_mode_selection.py`
-- `tests/web_pages/test_scenario_preview_secondary_outputs.py`
 - `tests/schedule/service/test_schedule_input_collector_contract.py`
-- `tests/candidate/test_scheduler_analysis_candidate_links_and_roles.py`
-- `tests/candidate/test_scheduler_candidate_analysis_contract.py`
 - `tests/gantt/test_scheduler_candidate_gantt_plan_role_contract.py`
 - `tests/candidate/test_scheduler_candidate_summary_contract.py`
-- `tests/candidate/test_scheduler_candidate_plain_language.py`
 - `tests/candidate/test_scheduler_candidate_plan_query_contract.py`
-- `tests/candidate/test_scheduler_candidate_reports_contract.py`
-- `tests/resource_dispatch/test_scheduler_candidate_resource_dispatch_contract.py`
 - `tests/candidate/test_scheduler_candidate_week_plan_contract.py`
 - `tests/scheduler_graph/test_scheduler_graph_auto_selection_contract.py`
 - `tests/web_pages/test_dashboard_overdue_count_tolerance.py`
@@ -96,19 +88,15 @@
 - `tests/app_runtime/test_frontend_offline_static_assets.py`
 - `tests/web_pages/test_frontend_ui_language_polish.py`
 - `tests/config/test_config_manual_markdown.py`
-- `tests/gantt/test_gantt_adjustment_validate_simulate.py`
 - `tests/gantt/test_gantt_degradation_surface.py`
 - `tests/resource_dispatch/test_resource_dispatch_invalid_summary_surfaces_overdue_degraded.py`
 - `tests/schedule/service/test_schedule_input_collector_legacy_compat.py`
 - `tests/schedule/service/test_schedule_service_missing_resource_source_case_insensitive.py`
 - `tests/schedule/service/test_schedule_service_reschedulable_contract.py`
 - `tests/scheduler_analysis/test_scheduler_delay_diagnosis_contract.py`
-- `tests/resource_dispatch/test_scheduler_dispatch_plan_identity_guard.py`
-- `tests/resource_dispatch/test_scheduler_dispatch_plan_identity_deep_review_contract.py`
 - `tests/schedule/route_view/test_scheduler_workbench_link_execution_review_contract.py`
 - `tests/schedule/route_view/test_scheduler_workbench_link_guardrails_contract.py`
 - `tests/schedule/route_view/test_scheduler_workbench_link_matrix_contract.py`
-- `tests/schedule/route_view/test_scheduler_workbench_link_targets_contract.py`
 - `tests/web_pages/test_web_silent_fallback_contract.py`
 - `tests/schedule/service/test_scheduler_exception_blocks_auto_reschedule.py`
 - `tests/scheduler_graph/test_scheduler_graph_report_mode_service_contract.py`
@@ -118,7 +106,6 @@
 - `tests/gate_meta/test_scheduler_data_route_error_contract.py`
 - `tests/scheduler_analysis/test_scheduler_analysis_diagnostic_graph_score_contract.py`
 - `tests/resource_dispatch/test_scheduler_resource_dispatch_invalid_query_cleanup.py`
-- `tests/schedule/route_view/test_scheduler_run_surfaces_resource_pool_warning.py`
 - `tests/algorithm/test_skill_rank_mapping.py`
 - `tests/gate_meta/test_architecture_fitness.py`
 - `tests/gate_meta/test_codestable_tools_contract.py`
@@ -213,3 +200,21 @@ PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/scan_aps_three_gap_py38_scope.p
 PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/scan_py38plus_syntax.py --fail-on-hit scripts/run_quality_gate.py tools/quality_gate_shared.py tools/scan_aps_three_gap_py38_scope.py tests/app_runtime/test_frontend_offline_static_assets.py tests/web_pages/test_frontend_ui_language_polish.py tests/config/test_config_manual_markdown.py tests/web_pages/test_page_manual_registry.py tests/operation_execution/test_operation_execution_event_time_contract.py tests/gate_meta/test_scheduler_data_route_error_contract.py tests/resource_dispatch/test_scheduler_resource_dispatch_invalid_query_cleanup.py tests/gate_meta/test_aps_three_gap_docs_quality_gate.py tests/gate_meta/test_run_quality_gate.py
 git diff --check
 ```
+
+## 附录：2026-09-18 随旧页面测试删除的回归测试
+
+旧页面（templates/ 路由层）已退役，工作台只调 `/api/workbench`。下列文件只测旧页面本身的 HTML/flash/重定向或旧视图模型，已于 2026-09-18 删除；核心行为的回归由 `tests/workbench/` 与各核心层测试承担。roadmap YAML 里的历史 `test_commands` 仍引用它们，仅作历史记录。
+
+- `tests/candidate/test_scheduler_analysis_candidate_links_and_roles.py`
+- `tests/candidate/test_scheduler_candidate_analysis_contract.py`
+- `tests/candidate/test_scheduler_candidate_plain_language.py`
+- `tests/candidate/test_scheduler_candidate_reports_contract.py`
+- `tests/gantt/test_gantt_adjustment_validate_simulate.py`
+- `tests/operation_execution/test_operation_execution_exception_feedback.py`
+- `tests/operation_execution/test_operation_execution_feedback_routes.py`
+- `tests/resource_dispatch/test_scheduler_candidate_resource_dispatch_contract.py`
+- `tests/resource_dispatch/test_scheduler_dispatch_plan_identity_deep_review_contract.py`
+- `tests/resource_dispatch/test_scheduler_dispatch_plan_identity_guard.py`
+- `tests/schedule/route_view/test_scheduler_run_surfaces_resource_pool_warning.py`
+- `tests/schedule/route_view/test_scheduler_workbench_link_targets_contract.py`
+- `tests/web_pages/test_scenario_preview_secondary_outputs.py`

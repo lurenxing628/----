@@ -4,11 +4,7 @@ from __future__ import annotations
 
 import ast
 import importlib
-import json
-import subprocess
-import sys
-from pathlib import Path
-from typing import Dict, List, Optional, Set, Tuple
+from typing import List, Optional, Set, Tuple
 
 from flask import Flask
 
@@ -63,8 +59,6 @@ ROUTE_COMPAT_MODULES = {}
 
 ROUTE_BEHAVIOR_COMPAT_SYMBOLS = {}
 
-ROUTE_BEHAVIOR_COMPAT_PUBLIC_SYMBOLS = {}
-
 LEGACY_COMPAT_MODULES = frozenset(
     set(SERVICE_STRONG_COMPAT_MODULES)
     | set(SERVICE_BEHAVIOR_COMPAT_SYMBOLS)
@@ -81,46 +75,6 @@ PRODUCTION_LEGACY_IMPORT_SCAN_ROOTS = (
     "core",
     "web",
 )
-
-ROUTE_ROOTS_REMOVED = (
-    "web/routes/scheduler_bp.py",
-    "web/routes/scheduler_calendar_pages.py",
-    "web/routes/scheduler_excel_batches_baseline.py",
-    "web/routes/scheduler_gantt.py",
-    "web/routes/scheduler_pages.py",
-    "web/routes/scheduler_resource_dispatch.py",
-    "web/routes/scheduler_utils.py",
-)
-
-SCHEDULER_REAL_ROUTE_FILES = (
-    "scheduler_analysis.py",
-    "scheduler_batch_detail.py",
-    "scheduler_batches.py",
-    "scheduler_bp.py",
-    "scheduler_calendar_pages.py",
-    "scheduler_config.py",
-    "scheduler_excel_batches.py",
-    "scheduler_excel_batches_baseline.py",
-    "scheduler_excel_calendar.py",
-    "scheduler_gantt.py",
-    "scheduler_gantt_adjustments.py",
-    "scheduler_ops.py",
-    "scheduler_pages.py",
-    "scheduler_route_registrar.py",
-    "scheduler_resource_dispatch.py",
-    "scheduler_resource_dispatch_execution_routes.py",
-    "scheduler_run.py",
-    "scheduler_utils.py",
-    "scheduler_week_plan.py",
-    "scheduler_week_plan_print.py",
-)
-
-
-def _assert_init_has_no_imports(path: Path) -> None:
-    module_ast = ast.parse(path.read_text(encoding="utf-8"))
-    imports = [node for node in module_ast.body if isinstance(node, (ast.Import, ast.ImportFrom))]
-    assert imports == []
-
 
 def _module_context_from_rel_path(rel: str) -> Tuple[str, bool]:
     module_name = rel[:-3].replace("/", ".")
@@ -220,38 +174,6 @@ def _legacy_import_violations_for_source(rel: str, source: str) -> List[str]:
     return violations
 
 
-def _import_module_isolation_probe(module_name: str) -> Dict[str, object]:
-    probe = """
-import importlib
-import json
-import sys
-
-target = sys.argv[1]
-module = importlib.import_module(target)
-print(json.dumps({
-    "resolved_name": module.__name__,
-    "loaded_scheduler": "web.routes.scheduler" in sys.modules,
-    "loaded_scheduler_pages": "web.routes.domains.scheduler.scheduler_pages" in sys.modules,
-    "loaded_scheduler_registrar": "web.routes.domains.scheduler.scheduler_route_registrar" in sys.modules,
-}, sort_keys=True))
-"""
-    completed = subprocess.run(
-        [sys.executable, "-c", probe, module_name],
-        check=True,
-        capture_output=True,
-        cwd=str(REPO_ROOT),
-        text=True,
-    )
-    output_lines = [line for line in completed.stdout.splitlines() if line.strip()]
-    return json.loads(output_lines[-1])
-
-
-def _reset_scheduler_route_modules() -> None:
-    for name in list(sys.modules):
-        if name.startswith("web.routes.scheduler") or name.startswith("web.routes.domains.scheduler"):
-            sys.modules.pop(name, None)
-
-
 def test_sp05_service_topology_and_strong_compatibility() -> None:
     for package_name in ("config", "run", "summary"):
         package_dir = REPO_ROOT / "core/services/scheduler" / package_name
@@ -319,186 +241,6 @@ def test_sp05_production_code_does_not_grow_legacy_wrapper_imports() -> None:
             violations.extend(_legacy_import_violations_for_source(rel, path.read_text(encoding="utf-8")))
 
     assert violations == [], "未登记的生产代码旧兼容模块导入：\n" + "\n".join(violations)
-
-
-def test_sp05_route_topology_and_compatibility_matrix() -> None:
-    _reset_scheduler_route_modules()
-    for domain_name in ("scheduler", "process", "personnel", "equipment", "system"):
-        domain_dir = REPO_ROOT / "web/routes/domains" / domain_name
-        assert domain_dir.is_dir()
-        assert (domain_dir / "__init__.py").is_file()
-
-    for empty_domain in ("scheduler", "process", "personnel", "equipment", "system"):
-        _assert_init_has_no_imports(REPO_ROOT / "web/routes/domains" / empty_domain / "__init__.py")
-
-    scheduler_domain = REPO_ROOT / "web/routes/domains/scheduler"
-    missing_real_files = [name for name in SCHEDULER_REAL_ROUTE_FILES if not (scheduler_domain / name).is_file()]
-    assert missing_real_files == []
-
-    lingering_root_files = [path for path in ROUTE_ROOTS_REMOVED if (REPO_ROOT / path).exists()]
-    assert lingering_root_files == []
-
-    root_domain_hijacks: List[str] = []
-    for root_name in ("process.py", "personnel.py", "equipment.py", "system.py"):
-        root_path = REPO_ROOT / "web/routes" / root_name
-        if not root_path.exists():
-            continue
-        text = root_path.read_text(encoding="utf-8")
-        for domain_name in ("process", "personnel", "equipment", "system"):
-            needle = f".domains.{domain_name}"
-            if needle in text:
-                root_domain_hijacks.append(f"{root_path.relative_to(REPO_ROOT).as_posix()}:{needle}")
-    assert root_domain_hijacks == []
-
-    for old_name, new_name in ROUTE_COMPAT_MODULES.items():
-        old_module = importlib.import_module(old_name)
-        new_module = importlib.import_module(new_name)
-        assert old_module is new_module, f"{old_name} must be a strong alias of {new_name}"
-
-    for old_name, new_name in ROUTE_BEHAVIOR_COMPAT_SYMBOLS.items():
-        old_module = importlib.import_module(old_name)
-        new_module = importlib.import_module(new_name)
-        assert old_module is not new_module, f"{old_name} is behavior-compatible, not a patch alias"
-        for symbol in ROUTE_BEHAVIOR_COMPAT_PUBLIC_SYMBOLS[old_name]:
-            assert getattr(old_module, symbol) is getattr(new_module, symbol), f"{old_name}:{symbol}"
-
-    root_entrypoint = ast.parse((REPO_ROOT / "web/routes/scheduler.py").read_text(encoding="utf-8"))
-    root_import_modules = {
-        node.module
-        for node in root_entrypoint.body
-        if isinstance(node, ast.ImportFrom) and node.level == 1
-    }
-    assert root_import_modules == {
-        "domains.scheduler.scheduler_bp",
-        "domains.scheduler.scheduler_route_registrar",
-    }
-    root_top_level_register_calls = [
-        node
-        for node in root_entrypoint.body
-        if isinstance(node, ast.Expr)
-        and isinstance(node.value, ast.Call)
-        and isinstance(node.value.func, ast.Name)
-        and node.value.func.id == "register_scheduler_routes"
-    ]
-    assert root_top_level_register_calls == []
-
-    scheduler_pages = ast.parse(
-        (REPO_ROOT / "web/routes/domains/scheduler/scheduler_pages.py").read_text(encoding="utf-8")
-    )
-    page_relative_imports = {
-        (node.module, tuple(alias.name for alias in node.names))
-        for node in scheduler_pages.body
-        if isinstance(node, ast.ImportFrom) and node.level == 1
-    }
-    assert page_relative_imports == {
-        (None, ("scheduler_route_registrar",)),
-        ("scheduler_bp", ("bp",)),
-    }
-    page_top_level_register_calls = [
-        node
-        for node in scheduler_pages.body
-        if isinstance(node, ast.Expr)
-        and isinstance(node.value, ast.Call)
-        and isinstance(node.value.func, ast.Name)
-        and node.value.func.id == "register_scheduler_routes"
-    ]
-    assert page_top_level_register_calls == []
-
-    scheduler_registrar = ast.parse(
-        (REPO_ROOT / "web/routes/domains/scheduler/scheduler_route_registrar.py").read_text(encoding="utf-8")
-    )
-    registrar_side_effect_imports = [
-        alias.name
-        for node in scheduler_registrar.body
-        if isinstance(node, ast.ImportFrom) and node.level == 1 and node.module is None
-        for alias in node.names
-    ]
-    assert registrar_side_effect_imports == []
-
-    registrar_assignments = {
-        target.id: node.value
-        for node in scheduler_registrar.body
-        if isinstance(node, ast.Assign)
-        for target in node.targets
-        if isinstance(target, ast.Name)
-    }
-    route_module_tuple = registrar_assignments.get("_ROUTE_MODULES")
-    assert isinstance(route_module_tuple, ast.Tuple)
-    assert {elt.value for elt in route_module_tuple.elts if isinstance(elt, ast.Constant)} == {
-        "scheduler_analysis",
-        "scheduler_batch_detail",
-        "scheduler_batches",
-        "scheduler_calendar_pages",
-        "scheduler_config",
-        "scheduler_excel_batches",
-        "scheduler_excel_calendar",
-        "scheduler_gantt",
-        "scheduler_gantt_adjustments",
-        "scheduler_ops",
-        "scheduler_resource_dispatch",
-        "scheduler_resource_dispatch_execution_routes",
-        "scheduler_run",
-        "scheduler_week_plan",
-        "scheduler_week_plan_print",
-    }
-    registered_flag = registrar_assignments.get("_REGISTERED")
-    assert isinstance(registered_flag, ast.Constant)
-    assert registered_flag.value is False
-
-    registrar_functions = {
-        node.name: node
-        for node in scheduler_registrar.body
-        if isinstance(node, ast.FunctionDef)
-    }
-    assert "register_scheduler_routes" in registrar_functions
-
-
-def test_sp05_route_wrapper_imports_only_requested_scheduler_leaf() -> None:
-    _reset_scheduler_route_modules()
-    for old_name, new_name in ROUTE_COMPAT_MODULES.items():
-        payload = _import_module_isolation_probe(old_name)
-        assert payload["resolved_name"] == new_name
-        assert payload["loaded_scheduler"] is False, old_name
-        assert payload["loaded_scheduler_pages"] is False, old_name
-        assert payload["loaded_scheduler_registrar"] is False, old_name
-
-
-def test_sp05_scheduler_domain_package_import_stays_passive() -> None:
-    payload = _import_module_isolation_probe("web.routes.domains.scheduler")
-    assert payload["resolved_name"] == "web.routes.domains.scheduler"
-    assert payload["loaded_scheduler"] is False
-    assert payload["loaded_scheduler_pages"] is False
-    assert payload["loaded_scheduler_registrar"] is False
-
-
-def test_sp05_scheduler_leaf_imports_do_not_pull_registrar_side_effects() -> None:
-    for module_name in (
-        "web.routes.domains.scheduler.scheduler_analysis",
-        "web.routes.domains.scheduler.scheduler_batches",
-        "web.routes.domains.scheduler.scheduler_config",
-        "web.routes.domains.scheduler.scheduler_run",
-        "web.routes.domains.scheduler.scheduler_week_plan",
-    ):
-        payload = _import_module_isolation_probe(module_name)
-        assert payload["resolved_name"] == module_name
-        assert payload["loaded_scheduler_pages"] is False, module_name
-        assert payload["loaded_scheduler_registrar"] is False, module_name
-
-
-def test_sp05_safe_next_url_has_one_policy_module() -> None:
-    navigation_utils = importlib.import_module("web.routes.navigation_utils")
-    system_utils = importlib.import_module("web.routes.system_utils")
-    assert hasattr(navigation_utils, "_safe_next_url_core")
-    assert system_utils._safe_next_url("/scheduler/config") == "/scheduler/config"
-
-    consumers = (
-        REPO_ROOT / "web/routes/domains/scheduler/scheduler_batches.py",
-        REPO_ROOT / "web/routes/domains/scheduler/scheduler_config.py",
-    )
-    for path in consumers:
-        source = path.read_text(encoding="utf-8")
-        assert "navigation_utils import _safe_next_url" in source
-        assert "system_utils import _safe_next_url" not in source
 
 
 def test_sp05_scheduler_manual_path_uses_single_base_dir_fact_source(tmp_path) -> None:

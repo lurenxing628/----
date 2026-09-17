@@ -107,6 +107,8 @@ def collect_current_test_debt_payload() -> Dict[str, object]:
             "-ra",
             "-p",
             "no:cacheprovider",
+            "-m",
+            "not perf",
         ],
         cwd=REPO_ROOT,
         check=False,

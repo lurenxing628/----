@@ -26,13 +26,11 @@ from tools.test_registry import (
     iter_required_regression_groups,
 )
 
-# 每次 push 无条件跑的冒烟用例。只保留真业务冒烟（批次页 viewmodel + UI 页面 HTML 契约）。
+# 每次 push 无条件跑的冒烟用例。只保留真业务冒烟（UI 页面 HTML 契约）；旧批次页 viewmodel 用例随旧页面测试于 2026-09-18 删除。
 # P0.1（test-gate-cleanup）：移除 4 个 test_long_gate_*_cache 与 test_architecture_fitness 等
 # 门禁自指用例——它们已在各自 required regression group 的 target_paths 与 CI 全量门禁里覆盖，
 # 无需在每次 push 的 focused 冒烟里重复支付（这几个又慢，是最慢榜常客）。
 FOCUSED_PYTEST_NODEIDS: Tuple[str, ...] = (
-    "tests/schedule/route_view/test_scheduler_batches_page_viewmodel.py::test_batches_filter_state_preserves_default_and_empty_status_contract",
-    "tests/schedule/route_view/test_scheduler_batches_page_viewmodel.py::test_batch_rows_filter_ready_and_add_public_labels",
     "tests/app_runtime/test_ui_geometry_html_contract.py::test_ui_smoke_pages_render_expected_html_contract",
 )
 

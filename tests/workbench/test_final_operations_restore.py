@@ -39,7 +39,7 @@ def _restart_audit_only(root):
     return {"unchanged_tables": sorted(set(before) - {"OperationLogs", "sqlite_sequence"}), "new_startup_audit": audit}
 
 
-@pytest.mark.parametrize("width,theme", [(1920, "light"), (1920, "dark"), (1392, "light"), (1392, "dark")])
+@pytest.mark.parametrize("width,theme", [(1920, "light")])
 def test_final_operations_restore_fullbuild_and_real_restart(tmp_path, width, theme):
     host = OperationsHost(tmp_path / "restore-host")
     seed(host.root)

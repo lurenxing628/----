@@ -134,7 +134,7 @@ def _payload(
         "python_executable": sys.executable,
         "python_version": sys.version.splitlines()[0],
         "pytest_version": "8.0.0",
-        "pytest_args": ["tests", "-q", "--tb=short", "-ra", "-p", "no:cacheprovider"],
+        "pytest_args": ["tests", "-q", "--tb=short", "-ra", "-p", "no:cacheprovider", "-m", "not perf"],
         "exitstatus": exitstatus,
         "collected_nodeids": list(collected_nodeids),
         "collection_errors": errors,

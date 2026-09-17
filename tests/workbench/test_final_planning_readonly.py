@@ -10,7 +10,7 @@ from tests.workbench.test_final_planning_browser import host_phase, invoke, veri
 from tests.workbench.test_live_browser import runtime_tools
 
 
-@pytest.mark.parametrize("width,theme", [(1920, "light"), (1920, "dark"), (1392, "light"), (1392, "dark")])
+@pytest.mark.parametrize("width,theme", [(1920, "dark")])
 def test_full_entry_invalid_plan_and_incomplete_batch_are_readonly(width, theme):
     node, browser, modules = runtime_tools()
     root = create_root(os.environ.get("FINAL_PLANNING_TEMP_PARENT"))

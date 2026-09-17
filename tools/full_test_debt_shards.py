@@ -4,6 +4,7 @@ import fnmatch
 import os
 from typing import Dict, List, Literal, Sequence, Tuple
 
+from tools.browser_lane_files import is_browser_lane_file
 from tools.test_registry import iter_startup_regressions
 
 ShardKind = Literal["serial", "parallel"]
@@ -77,8 +78,9 @@ def classify_nodeid(nodeid: str) -> ShardKind:
 
 # P5.3 ISOLATE_PERF：性能/重 E2E 用例的单一真相源（口径同 SERIAL_FILE_PATTERNS）。
 # conftest.pytest_collection_modifyitems 据此给被收集的 perf 用例自动打 @pytest.mark.perf；
-# daily 门禁据此 -m "not perf" 把它们剔出每次 push 的快速路径。full gate 不 deselect、仍全量
-# 覆盖（perf marker 对其惰性，sharding 只看文件名/nodeid 不看 marker，正交无误伤）。
+# daily 门禁与正式 full gate（FORMAL_FULL_TEST_PYTEST_ARGS）都用 -m "not perf" 把它们剔出。
+# 2026-09-17 起 tools/browser_lane_files.py 里的浏览器验收车道同样按 perf 处理，
+# 由 scripts/run_browser_test_lane.py 单独实跑（sharding 只看文件名/nodeid 不看 marker）。
 # 注：regression_ui_browser_geometry_smoke 同时属 SERIAL（真浏览器 ~19s，见上 :12），perf 标记
 # 与其 serial 归属并存、不改 serial 分片。
 PERF_FILE_PATTERNS: Tuple[str, ...] = (
@@ -90,6 +92,8 @@ PERF_FILE_PATTERNS: Tuple[str, ...] = (
 
 def is_perf_nodeid(nodeid: str) -> bool:
     path = nodeid_file(nodeid)
+    if is_browser_lane_file(path):
+        return True
     return any(fnmatch.fnmatch(path, pattern) for pattern in PERF_FILE_PATTERNS)
 
 

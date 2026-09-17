@@ -28,7 +28,7 @@ from tools.test_debt_registry import (  # noqa: E402
 )
 
 CHECK_SCHEMA_VERSION = 1
-COLLECTOR_DISPLAY = "python tools/collect_full_test_debt.py --baseline-kind after_main_style_isolation -- tests -q --tb=short -ra -p no:cacheprovider"
+COLLECTOR_DISPLAY = "python tools/collect_full_test_debt.py --baseline-kind after_main_style_isolation -- tests -q --tb=short -ra -p no:cacheprovider -m \"not perf\""
 COLLECTOR_ARGS = [
     "tools/collect_full_test_debt.py",
     "--baseline-kind",
@@ -484,7 +484,7 @@ def collect_current_payload(
         ]
         collector_display = (
             "python tools/collect_full_test_debt.py --baseline-kind after_main_style_isolation "
-            f"--sharded --shard-count {resolved_shard_count} -- tests -q --tb=short -ra -p no:cacheprovider"
+            f"--sharded --shard-count {resolved_shard_count} -- tests -q --tb=short -ra -p no:cacheprovider -m \"not perf\""
         )
     _progress(f"开始收集 full pytest 结果：{collector_display}")
     stderr_chunks: List[str] = []

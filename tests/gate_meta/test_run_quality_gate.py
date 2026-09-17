@@ -495,7 +495,6 @@ def test_full_test_debt_proof_is_in_shared_quality_gate_plan() -> None:
         "tools/long_gate_summary.py",
         "tests/conftest.py",
         "tests/gate_meta/test_check_full_test_debt.py",
-        "tests/gate_meta/test_full_test_debt_registry_contract.py",
         "tests/gate_meta/test_architecture_fitness.py",
         "tests/gate_meta/check_quickref_vs_routes.py",
         "pyproject.toml",
@@ -683,7 +682,6 @@ def test_required_suite_comes_from_shared_registry_and_covers_high_risk_regressi
     assert "tests/app_runtime/test_launcher_observability.py" in module.STARTUP_REGRESSION_ARGS
     for high_value_path in (
         "tests/scheduler_analysis/test_scheduler_analysis_observability.py",
-        "tests/web_pages/test_system_history_route_contract.py",
         "tests/resource_dispatch/test_scheduler_resource_dispatch_invalid_query_cleanup.py",
         "tests/schedule/summary/test_schedule_summary_input_fallback_contract.py",
         "tests/web_pages/test_error_boundary_contract.py",
@@ -691,11 +689,8 @@ def test_required_suite_comes_from_shared_registry_and_covers_high_risk_regressi
         "tests/gantt/test_gantt_page_version_default_latest.py",
         "tests/gantt/test_gantt_default_version_span.py",
         "tests/gantt/test_gantt_adjustment_draft_model.py",
-        "tests/gantt/test_gantt_adjustment_validate_simulate.py",
         "tests/gantt/test_gantt_draft_save_and_preview.py",
         "tests/gantt/test_gantt_scenario_publish.py",
-        "tests/web_pages/test_scenario_preview_secondary_outputs.py",
-        "tests/web_pages/test_reports_page_version_default_latest.py",
         "tests/gantt/test_gantt_degradation_surface.py",
         "tests/gantt/test_gantt_frontend_error_boundary.py",
         "tests/schedule/route_view/test_scheduler_result_navigation_contract.py",
@@ -705,8 +700,6 @@ def test_required_suite_comes_from_shared_registry_and_covers_high_risk_regressi
         "tests/gantt/test_scheduler_candidate_gantt_plan_role_contract.py",
         "tests/gate_meta/test_quality_gate_scan_contract.py",
         "tests/gate_meta/test_codestable_architecture_contract.py",
-        "tests/schedule/route_view/test_scheduler_batch_template_warning_surface.py",
-        "tests/schedule/route_view/test_scheduler_run_view_result_contract.py",
         "tests/resource_dispatch/test_resource_dispatch_bad_time_rows_surface_degraded.py",
         "tests/resource_dispatch/test_resource_dispatch_export_surfaces_degraded.py",
         "tests/resource_dispatch/test_resource_dispatch_public_output_contract.py",
@@ -715,7 +708,6 @@ def test_required_suite_comes_from_shared_registry_and_covers_high_risk_regressi
         "tests/resource_dispatch/test_resource_dispatch_invalid_summary_surfaces_overdue_degraded.py",
         "tests/app_runtime/test_ui_browser_geometry_env.py",
         "tests/app_runtime/test_ui_geometry_html_contract.py",
-        "tests/schedule/route_view/test_scheduler_route_enforce_ready_tristate.py",
         "tests/gate_meta/test_run_full_selftest_report_metadata.py",
         "tests/gate_meta/test_callgraph_receiver_resolution.py",
         "tests/gate_meta/test_import_cycle_scanner.py",
@@ -724,12 +716,8 @@ def test_required_suite_comes_from_shared_registry_and_covers_high_risk_regressi
         "tests/excel_data_io/test_excel_import_hardening.py",
         "tests/excel_data_io/test_excel_utils_compare_digest_guard.py",
         "tests/excel_data_io/test_excel_conversion_output_contract.py",
-        "tests/excel_data_io/test_excel_hidden_payload_contract.py",
         "tests/app_runtime/test_frontend_offline_static_assets.py",
-        "tests/excel_data_io/test_excel_renamed_column_conflicts.py",
-        "tests/excel_data_io/test_scheduler_excel_batches_preview_baseline_precision.py",
         "tests/gate_meta/test_check_full_test_debt.py",
-        "tests/gate_meta/test_full_test_debt_registry_contract.py",
         "tests/web_pages/test_request_services_contract.py",
         "tests/web_pages/test_factory_request_lifecycle_observability.py",
         "tests/calendar_maintenance/test_maintenance_window_mutex.py",
@@ -754,13 +742,11 @@ def test_required_suite_comes_from_shared_registry_and_covers_high_risk_regressi
         "tests/app_runtime/test_ui_browser_geometry_smoke.py",
         "tests/gate_meta/test_long_gate_required_regression_cache.py",
         "tests/gate_meta/test_sync_debt_ledger.py",
-        "tests/schedule/route_view/test_scheduler_batches_page_viewmodel.py",
         "tests/config/test_config_manual_markdown.py",
         "tests/web_pages/test_frontend_ui_language_polish.py",
         "tests/web_pages/test_manual_entry_scope.py",
         "tests/web_pages/test_page_manual_registry.py",
         "tests/excel_data_io/test_excel_template_contract.py",
-        "tests/web_pages/test_reports_export_version_default_latest.py",
     ):
         assert lower_frequency_path not in module.REQUIRED_TEST_ARGS
 
@@ -1272,7 +1258,7 @@ def test_main_writes_quality_gate_manifest_with_git_and_collection_proof(monkeyp
                 [
                     "tests/gate_meta/test_run_quality_gate.py::test_main_runs_guard_preflight_before_static_and_startup_checks",
                     "tests/gate_meta/test_sp05_path_topology_contract.py::test_scheduler_route_topology",
-                    "tests/web_pages/test_system_history_route_contract.py::test_system_history_route_uses_request_services",
+                    "tests/web_pages/test_error_boundary_contract.py::test_error_handler_maps_business_error_codes_to_http_status_for_json",
                 ]
             )
         return ""
@@ -1351,7 +1337,7 @@ def test_main_writes_quality_gate_manifest_with_git_and_collection_proof(monkeyp
     regression_entry = next(
         item
         for item in manifest["collection_proof"]["key_tests"]
-        if item["path"] == "tests/web_pages/test_system_history_route_contract.py"
+        if item["path"] == "tests/web_pages/test_error_boundary_contract.py"
     )
     assert regression_entry["execution_mode"] == "default_collect"
 
@@ -1412,7 +1398,7 @@ def test_guard_collect_only_keeps_analysis_and_history_in_default_collect() -> N
 
     output = result.stdout
     assert "tests/scheduler_analysis/test_scheduler_analysis_observability.py::test_scheduler_analysis_observability" in output
-    assert "tests/web_pages/test_system_history_route_contract.py::test_system_history_route_uses_request_services" in output
+    assert "tests/web_pages/test_error_boundary_contract.py::test_error_handler_maps_business_error_codes_to_http_status_for_json" in output
     assert (
         "tests/algorithm/test_auto_assign_persist_truthy_variants.py::"
         "test_auto_assign_persist_truthy_variant_is_normalized_before_persistence"

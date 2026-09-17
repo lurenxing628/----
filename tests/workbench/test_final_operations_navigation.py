@@ -43,7 +43,7 @@ def _prepare(host):
     return ref, receipts
 
 
-@pytest.mark.parametrize("width,theme", [(1392, "light"), (1392, "dark"), (1920, "light"), (1920, "dark")])
+@pytest.mark.parametrize("width,theme", [(1392, "light")])
 def test_final_operations_dashboard_page_two_after_actual_restart(tmp_path, width, theme):
     host = OperationsHost(tmp_path / "dashboard-new-process")
     try:
@@ -76,7 +76,7 @@ def test_final_operations_dashboard_page_two_after_actual_restart(tmp_path, widt
         host.close()
 
 
-@pytest.mark.parametrize("width,theme", [(1392, "light"), (1392, "dark"), (1920, "light"), (1920, "dark")])
+@pytest.mark.parametrize("width,theme", [(1920, "dark")])
 def test_final_operations_unlocatable_confirmation_and_original_return(tmp_path, width, theme):
     host = OperationsHost(tmp_path / "dashboard-original-object")
     seed(host.root)

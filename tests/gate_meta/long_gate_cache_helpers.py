@@ -211,7 +211,7 @@ def _write_full_test_debt_outputs(repo_root: Path, token: str = "ok") -> None:
                 "python_executable": sys.executable,
                 "python_version": sys.version.splitlines()[0],
                 "pytest_version": "8.3.5",
-                "pytest_args": ["tests", "-q", "--tb=short", "-ra", "-p", "no:cacheprovider"],
+                "pytest_args": ["tests", "-q", "--tb=short", "-ra", "-p", "no:cacheprovider", "-m", "not perf"],
                 "exitstatus": 0,
                 "collected_nodeids": ["tests/test_cached_collect.py::test_cached_collect"],
                 "collection_errors": [],

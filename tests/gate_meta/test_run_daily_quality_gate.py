@@ -208,7 +208,7 @@ def test_impact_plan_selects_matching_required_group(monkeypatch) -> None:
             },
             {
                 "group_id": "frontend_manual_excel",
-                "target_paths": ["tests/excel_data_io/test_excel_hidden_payload_contract.py"],
+                "target_paths": ["tests/excel_data_io/test_excel_import_hardening.py"],
                 "input_file_scopes": ["templates_excel/**/*"],
                 "config_file_scopes": [],
                 "tool_file_scopes": [],
@@ -240,7 +240,7 @@ def test_impact_plan_runs_all_required_groups_for_common_scope(monkeypatch) -> N
             },
             {
                 "group_id": "scheduler_config",
-                "target_paths": ["tests/config/test_scheduler_config_route_contract.py"],
+                "target_paths": ["tests/config/test_scheduler_config_manual_url_normalization.py"],
                 "input_file_scopes": ["web/routes/domains/scheduler/scheduler_config.py"],
                 "config_file_scopes": [],
                 "tool_file_scopes": [],
@@ -262,7 +262,7 @@ def test_impact_plan_runs_all_required_groups_for_common_scope(monkeypatch) -> N
     assert plan.selected_group_ids == ["quality_gate", "scheduler_config"]
     assert plan.target_paths == [
         "tests/gate_meta/test_run_quality_gate.py",
-        "tests/config/test_scheduler_config_route_contract.py",
+        "tests/config/test_scheduler_config_manual_url_normalization.py",
     ]
     assert "common quality gate scope changed" in plan.reason
 

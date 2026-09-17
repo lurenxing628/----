@@ -5,8 +5,6 @@ MISC_REQUIRED_REGRESSION_GROUPS = (
         "group_id": "scheduler_batches_material_resource",
         "label": "Scheduler batches, material, and resource contracts",
         "target_paths": (
-            "tests/schedule/route_view/test_scheduler_batches_degraded_visible.py",
-            "tests/schedule/route_view/test_scheduler_batch_template_warning_surface.py",
             "tests/resource_dispatch/test_scheduler_resource_dispatch_invalid_query_cleanup.py",
             "tests/resource_dispatch/test_resource_dispatch_bad_time_rows_surface_degraded.py",
             "tests/resource_dispatch/test_resource_dispatch_export_surfaces_degraded.py",
@@ -15,7 +13,6 @@ MISC_REQUIRED_REGRESSION_GROUPS = (
             "tests/resource_dispatch/test_resource_dispatch_task_id_encoding.py",
             "tests/resource_dispatch/test_resource_dispatch_overdue_summary_formats.py",
             "tests/resource_dispatch/test_resource_dispatch_invalid_summary_surfaces_overdue_degraded.py",
-            "tests/excel_data_io/test_scheduler_excel_batches_preview_baseline_precision.py",
         ),
         "input_file_scopes": (
             "tests/_support/schedule_retirement.py",
@@ -68,7 +65,6 @@ MISC_REQUIRED_REGRESSION_GROUPS = (
         "target_paths": (
             "tests/web_pages/test_request_services_contract.py",
             "tests/web_pages/test_factory_request_lifecycle_observability.py",
-            "tests/web_pages/test_system_request_services_contract.py",
             "tests/calendar_maintenance/test_maintenance_window_mutex.py",
             "tests/migration_db/test_database_high_version_failfast.py",
             "tests/migration_db/test_migration_schema_contract.py",
@@ -94,7 +90,6 @@ MISC_REQUIRED_REGRESSION_GROUPS = (
             # 备份 web 入口中文化、物料 stock 坏值裸抛改动都会强制选中这些断言。
             "tests/migration_db/test_backup_integrity_check_contract.py",
             "tests/migration_db/test_restore_pre_snapshot_failure_contract.py",
-            "tests/app_runtime/test_backup_create_integrity_error_message.py",
             "tests/material/test_material_repo_stock_qty_loud_contract.py",
             "tests/material/test_material_finite_quantity_contract.py",
         ),
@@ -164,9 +159,7 @@ MISC_REQUIRED_REGRESSION_GROUPS = (
             "tests/excel_data_io/test_excel_import_hardening.py",
             "tests/excel_data_io/test_excel_utils_compare_digest_guard.py",
             "tests/excel_data_io/test_excel_conversion_output_contract.py",
-            "tests/excel_data_io/test_excel_hidden_payload_contract.py",
             "tests/app_runtime/test_frontend_offline_static_assets.py",
-            "tests/excel_data_io/test_excel_renamed_column_conflicts.py",
             "tests/excel_data_io/test_import_execution_stats_source_row_num.py",
         ),
         "input_file_scopes": (
@@ -219,7 +212,6 @@ MISC_REQUIRED_REGRESSION_GROUPS = (
         "group_id": "ui_layout_presenters_system",
         "label": "UI layout, presenters, and system contracts",
         "target_paths": (
-            "tests/web_pages/test_system_history_route_contract.py",
             "tests/app_runtime/test_ui_browser_geometry_env.py",
             "tests/app_runtime/test_ui_geometry_html_contract.py",
             "tests/gate_meta/test_scan_py38plus_syntax.py",

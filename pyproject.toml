@@ -8,7 +8,7 @@ python_files = ["test_*.py", "*_test.py", "regression_*.py"]
 markers = [
     "required: 门禁必跑回归(按 tools.test_registry 分组登记自动打标)；人用入口 pytest -m required",
     "serial: 需独占进程态、不进 xdist 并行集的测试(口径同 tools.full_test_debt_shards.classify_nodeid 的 serial 清单)；人用入口 pytest -m serial",
-    "perf: 性能基准/重 E2E 用例(口径同 tools.full_test_debt_shards.PERF_FILE_PATTERNS)，daily 门禁 -m \"not perf\" 剔出 push 快速路径、full gate 仍全量覆盖；人用入口 pytest -m perf",
+    "perf: 性能基准/重 E2E 用例(口径同 tools.full_test_debt_shards.PERF_FILE_PATTERNS + tools.browser_lane_files.BROWSER_LANE_FILES)，daily 与正式 full gate 都用 -m \"not perf\" 剔出；浏览器车道用 scripts/run_browser_test_lane.py 单独跑，人用入口 pytest -m perf",
 ]
 
 [tool.coverage.run]

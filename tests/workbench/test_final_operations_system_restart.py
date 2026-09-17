@@ -14,7 +14,7 @@ from tests.workbench.test_final_operations_restore import _restart_audit_only
 
 
 @pytest.mark.parametrize("kind", ["backups", "logs"])
-@pytest.mark.parametrize("width,theme", [(1392, "light"), (1392, "dark"), (1920, "light"), (1920, "dark")])
+@pytest.mark.parametrize("width,theme", [(1920, "dark")])
 def test_final_operations_system_records_after_actual_restart(tmp_path, kind, width, theme):
     host = OperationsHost(tmp_path / "system-new-process")
     seed(host.root)

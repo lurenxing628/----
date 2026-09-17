@@ -191,9 +191,10 @@ def test_required_groups_cover_required_registry():
     # The registry yields targets in group order, so compare membership; owners are asserted per path below.
     assert sorted(path for path in required if path in POST_ROUND1_TARGETS) == sorted(path for path, _owner in reviewed_post_round1)
     assert set(algorithm_required).issubset(required)
-    assert len([path for path in required if path not in POST_ROUND1_TARGETS and path not in algorithm_required]) == 582
-    assert coverage["required_target_count"] == (582 + len(final_required) + len(algorithm_required) + len(ui_required)
-                                                 + len(manual_remediation_required))
+    # Count structure, not a frozen total: every required path is owned exactly once across the partitions.
+    base_required = [path for path in required if path not in POST_ROUND1_TARGETS and path not in algorithm_required]
+    assert coverage["required_target_count"] == (len(base_required) + len(final_required) + len(algorithm_required)
+                                                 + len(ui_required) + len(manual_remediation_required))
     for path, owner in (*final_required, *algorithm_required.items(), *ui_required, *manual_remediation_required):
         assert [group["group_id"] for group in groups if path in group["target_paths"]] == [owner]
     domain_ledger = "tests/workbench/test_final_master_domain_ledger.py"
@@ -312,7 +313,7 @@ def test_required_parent_fingerprint_tracks_group_specific_scope_union(tmp_path)
     "core/services/scheduler/template_lineage_query.py", "tests/_support/dependency_boundaries.py",
     "tests/workbench/test_fe04_shared_service_dependency_contract.py",
     "tools/long_gate_manifest_environment.py", "tools/long_gate_fingerprint.py",
-    "tests/gate_meta/workbench_cache_environment_support.py", "tests/gate_meta/test_workbench_cache_environment.py",
+    "tests/gate_meta/workbench_cache_environment_support.py",
     "core/algorithm_contracts/schedule_point_evidence.py",
     "core/services/workbench/zero_duration_evidence.py", "core/services/workbench/plan_point_evidence.py",
     "core/services/workbench/piece_adoption_scope.py", "core/models/workbench_piece_adoption.py",

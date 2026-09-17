@@ -139,10 +139,7 @@ WORKBENCH_REQUIRED_REGRESSION_GROUPS = (
         "group_id": "workbench_registry",
         "label": "Workbench registry and changed-source selection contracts",
         "target_paths": (
-            "tests/gate_meta/test_workbench_registry_contract.py",
-            "tests/gate_meta/test_workbench_cache_environment.py",
             "tests/workbench/test_fe04_shared_service_dependency_contract.py",
-            "tests/gate_meta/test_workbench_round1_registry_contract.py",
             "tests/workbench/test_round1_execution_dependency_contract.py",
             "tests/workbench/test_round1_plan_query_dependency_contract.py",
         ),

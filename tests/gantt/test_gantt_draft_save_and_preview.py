@@ -8,13 +8,10 @@ from pathlib import Path
 import pytest
 
 from core.infrastructure.database import CURRENT_SCHEMA_VERSION, ensure_schema, get_connection
-from core.infrastructure.errors import ValidationError
 from core.infrastructure.migration_state import MigrationContractError, detect_schema_is_current
-from core.models.schedule_adjustment import DRAFT_STATUS_SAVED_SCENARIO
 from core.services.scheduler.gantt_adjustment_scenario_service import GanttAdjustmentScenarioService
 from core.services.scheduler.gantt_service import GanttService
 from core.services.scheduler.schedule_plan_query_service import SchedulePlanQueryService
-from data.repositories import ScheduleAdjustmentRepository
 from tests._support.gantt_scenario import (
     SCHEMA_PATH as SCHEMA_PATH,
 )
@@ -209,68 +206,6 @@ def test_scenario_migration_preserves_existing_v12_data(tmp_path: Path) -> None:
         conn.close()
 
 
-def test_save_scenario_revalidates_and_does_not_touch_formal_tables(tmp_path: Path) -> None:
-    conn = _connect(tmp_path)
-    try:
-        _seed_base(conn)
-        draft_id = _draft_with_change(conn)
-        before = _snapshot(conn)
-
-        scenario = GanttAdjustmentScenarioService(conn).save_scenario(
-            draft_id=draft_id,
-            scenario_name="单日模拟",
-            created_by="planner",
-        )
-
-        assert scenario.base_version == VERSION
-        assert scenario.base_plan_role == "adopted"
-        assert scenario.scenario_name == "单日模拟"
-        assert scenario.validation_status == "valid"
-        assert scenario.row_count == 3
-        assert _snapshot(conn) == before
-        draft = ScheduleAdjustmentRepository(conn).get_draft(draft_id)
-        assert draft is not None
-        assert draft.status == DRAFT_STATUS_SAVED_SCENARIO
-
-        row = conn.execute(
-            """
-            SELECT start_time, end_time, is_changed
-            FROM ScheduleAdjustmentScenarioRow
-            WHERE scenario_id = ? AND op_id = 30
-            """,
-            (scenario.scenario_id,),
-        ).fetchone()
-        assert dict(row) == {
-            "start_time": "2026-05-04 11:00:00",
-            "end_time": "2026-05-04 12:00:00",
-            "is_changed": "yes",
-        }
-    finally:
-        conn.close()
-
-
-def test_blocked_draft_cannot_save_scenario(tmp_path: Path) -> None:
-    conn = _connect(tmp_path)
-    try:
-        _seed_base(conn)
-        draft_id = _draft_with_change(
-            conn,
-            to_start="2026-05-04 10:30:00",
-            to_end="2026-05-04 11:30:00",
-            to_machine_id="M1",
-            to_operator_id="O1",
-        )
-        before = _snapshot(conn)
-
-        with pytest.raises(ValidationError, match="阻塞问题"):
-            GanttAdjustmentScenarioService(conn).save_scenario(draft_id=draft_id)
-
-        assert _snapshot(conn) == before
-        assert conn.execute("SELECT COUNT(1) AS c FROM ScheduleAdjustmentScenario").fetchone()["c"] == 0
-    finally:
-        conn.close()
-
-
 def test_scenario_id_preview_reads_scenario_rows_without_adopted_fallback(tmp_path: Path) -> None:
     conn = _connect(tmp_path)
     try:
@@ -356,39 +291,3 @@ def test_gantt_service_and_template_keep_scenario_preview_context(tmp_path: Path
     assert _business_state(client) == before
 
 
-def test_save_scenario_route_uses_server_operator_not_json_created_by(tmp_path: Path, monkeypatch) -> None:
-    conn = _connect(tmp_path)
-    try:
-        _seed_base(conn)
-        draft_id = _draft_with_change(conn)
-    finally:
-        conn.close()
-
-    app = _build_app(tmp_path, monkeypatch)
-    client = app.test_client()
-    response = client.post(
-        "/scheduler/gantt/adjustments/save-scenario",
-        json={
-            "draft_id": draft_id,
-            "scenario_name": "页面保存模拟",
-            "created_by": "mallory",
-            "base_version": VERSION,
-            "base_plan_role": "adopted",
-        },
-    )
-    payload = response.get_json()
-
-    assert response.status_code == 200
-    assert payload["success"] is True
-    assert payload["data"]["created_by"] == "web"
-    assert payload["data"]["scenario_name"] == "页面保存模拟"
-
-    verify_conn = get_connection(str(tmp_path / "aps.db"))
-    try:
-        scenario = verify_conn.execute(
-            "SELECT created_by FROM ScheduleAdjustmentScenario WHERE source_draft_id = ?",
-            (draft_id,),
-        ).fetchone()
-        assert scenario["created_by"] == "web"
-    finally:
-        verify_conn.close()

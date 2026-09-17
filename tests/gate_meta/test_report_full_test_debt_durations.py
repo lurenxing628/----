@@ -20,7 +20,7 @@ def test_duration_report_groups_call_file_and_category_totals() -> None:
                 "duration": 9.0,
             },
             {
-                "nodeid": "tests/schedule/route_view/test_scheduler_batches_page_viewmodel.py::test_page",
+                "nodeid": "tests/schedule/route_view/test_scheduler_missing_resource_message.py::test_page",
                 "when": "call",
                 "duration": 2.0,
             },
@@ -46,14 +46,14 @@ def test_duration_report_groups_call_file_and_category_totals() -> None:
     assert "reports: 5" in report
     assert "tests/app_runtime/test_ui_browser_geometry_smoke.py::test_browser" in call_section
     assert "tests/gate_meta/test_architecture_fitness.py::test_arch" in call_section
-    assert "tests/schedule/route_view/test_scheduler_batches_page_viewmodel.py::test_page" not in call_section
+    assert "tests/schedule/route_view/test_scheduler_missing_resource_message.py::test_page" not in call_section
     assert "tests/gate_meta/test_architecture_fitness.py" in report
-    assert "tests/schedule/route_view/test_scheduler_batches_page_viewmodel.py" in report
+    assert "tests/schedule/route_view/test_scheduler_missing_resource_message.py" in report
     assert "9.500s  tests/app_runtime/test_ui_browser_geometry_smoke.py" in report
     assert "9.000s  tests/app_runtime/test_ui_browser_geometry_smoke.py" in report
     assert "9.500s  browser" in report
     assert "1.000s  long_gate" in report
     assert "browser" in report
     assert "long_gate" in report
-    assert "scheduler_batches" in report
+    assert "scheduler_missing_resource" in report
     assert "architecture" in report
