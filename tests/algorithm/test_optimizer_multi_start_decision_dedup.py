@@ -325,3 +325,29 @@ def test_denied_optional_pragma_disables_cache_without_hiding_native_decode(sche
         assert _evaluate(inputs)["summary"].success is True
     finally:
         schema_conn.set_authorizer(None)
+
+
+def test_copy_and_pickle_bookkeeping_on_native_classes_keeps_certification(schema_conn):
+    # CPython's copyreg stores ``__slotnames__`` on a class the first time an instance is copied or
+    # pickled (a real schedule run does this). Interpreter bookkeeping must not disable the cache
+    # for the rest of the process; it used to, which only showed up in whole-directory test runs.
+    import copy
+    import pickle
+
+    schema_conn.execute("BEGIN")
+    inputs = _inputs(schema_conn)
+    cache = MultiStartDecisionCache(**inputs)
+    copy.deepcopy(inputs["operations"][0])
+    pickle.dumps(inputs["batches"]["B1"])
+    assert "__slotnames__" in vars(OpForScheduleAlgo)
+    key = _key(cache)
+    assert key is not None
+    cache.remember(key, _evaluate(inputs))
+    assert cache.has(_key(cache))
+    OpForScheduleAlgo.extra_member = 1
+    try:
+        assert _key(cache) is None
+    finally:
+        del OpForScheduleAlgo.extra_member
+    assert _key(cache) is not None
+

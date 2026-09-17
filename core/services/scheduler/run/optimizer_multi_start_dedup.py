@@ -31,14 +31,23 @@ _RECORD_TYPES = (SimpleNamespace, Batch, BatchOperation, OpForScheduleAlgo,
                  ScheduleResult, ScheduleConfigSnapshot, RuntimeSnapshot)
 _STRATEGIES = dict(StrategyFactory._strategies)
 _NATIVE_TYPES = _RECORD_TYPES + tuple(_STRATEGIES.values()) + (GreedyScheduler, StrategyFactory)
-_CLASS_MEMBERS = {cls: tuple(cls.__dict__.items()) for cls in _NATIVE_TYPES}
+# copyreg caches ``__slotnames__`` on a class the first time one of its instances is copied or
+# pickled. That is interpreter bookkeeping, not a user override, so it never counts as a change.
+_INTERPRETER_MANAGED_MEMBERS = frozenset(("__slotnames__",))
+
+
+def _class_members(cls: type) -> Tuple[Tuple[str, Any], ...]:
+    return tuple(item for item in cls.__dict__.items() if item[0] not in _INTERPRETER_MANAGED_MEMBERS)
+
+
+_CLASS_MEMBERS = {cls: _class_members(cls) for cls in _NATIVE_TYPES}
 _CLASS_LINEAGES = {cls: cls.__mro__ for cls in _NATIVE_TYPES}
 DecisionKey = Optional[Tuple[Any, ...]]
 
 
 def _native_class(cls: type) -> bool:
     members = _CLASS_MEMBERS[cls]
-    return (cls.__mro__ is _CLASS_LINEAGES[cls] and len(cls.__dict__) == len(members)
+    return (cls.__mro__ is _CLASS_LINEAGES[cls] and len(_class_members(cls)) == len(members)
             and all(cls.__dict__.get(key) is value for key, value in members))
 
 
