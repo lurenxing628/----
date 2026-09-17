@@ -1,10 +1,8 @@
 name: quality
 
+# 2026-09-18 起停用自动触发：GitHub 托管机 45 分钟跑不完全量门禁（2026-06 起从未通过），
+# 门禁改由本机 pre-push 日常快门禁 + 手动跑 scripts/run_quality_gate.py 承担；需要时可在 Actions 页手动触发。
 on:
-  pull_request:
-  push:
-    branches:
-      - main
   workflow_dispatch:
 
 jobs:
