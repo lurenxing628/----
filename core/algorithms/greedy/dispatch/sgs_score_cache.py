@@ -177,8 +177,10 @@ class SgsScoreCache:
         self.round = 0
         self.pair_hits = 0
         self.pair_misses = 0
-        # (op identity, machine, operator) -> abort-free estimate with its witness; one probe pair reads only these cells.
-        self._pairs: Dict[Tuple[int, str, str], _PairEntry] = {}
+        # op identity -> (machine, operator) -> abort-free estimate with its witness; one probe pair reads only these cells.
+        self._pairs: Dict[int, Dict[Tuple[str, str], _PairEntry]] = {}
+        # Set for a round whose scoring internals are instrumented: nothing is handed back until a native round begins.
+        self._suspended = False
         self._scoring_op: Any = None
         self._pending_tie: Optional[bool] = None
         self._pending_resources: Optional[Tuple[str, str]] = None
@@ -197,7 +199,8 @@ class SgsScoreCache:
 
     def shared_slot_estimate(self, *, calendar, op, batch, machine_id, operator_id, prev_end, total_hours,
                              end_dt_exclusive, machine_downtimes, compute):
-        if self._timing is None or self._shared_slots is None or not self._plain(op) or not self._plain(batch):
+        if (self._suspended or self._timing is None or self._shared_slots is None
+                or not self._plain(op) or not self._plain(batch)):
             return compute()
         return self._shared_slots.resolve(
             state=self.state, calendar=self.timing_calendar(calendar), op=op, priority=getattr(batch, "priority", None),
@@ -208,7 +211,9 @@ class SgsScoreCache:
     def timing_calendar(self, calendar: Any) -> Any:
         """The per-decode memo of ``calendar``'s pure timing calls, or ``calendar`` itself when it is not certified."""
         timing = self._timing
-        return timing if timing is not None and timing.calendar is calendar else calendar
+        if self._suspended or timing is None or timing.calendar is not calendar:
+            return calendar
+        return timing
 
     def note_scan(self, scan_start: Any, scan_end: Any) -> None:
         """Span of busy blocks that steered the estimate just computed inside ``pair_estimate``."""
@@ -223,9 +228,7 @@ class SgsScoreCache:
         """A dispatched operation never becomes a candidate again."""
         identity = id(op)
         self._entries.pop(identity, None)
-        if self._pairs:
-            for key in [key for key in self._pairs if key[0] == identity]:
-                del self._pairs[key]
+        self._pairs.pop(identity, None)
 
     def pair_estimate(
         self, *, op: Any, machine_id: str, operator_id: str, prev_end: Any, machine_timeline: Any, operator_timeline: Any,
@@ -237,7 +240,7 @@ class SgsScoreCache:
         must estimate the very same pair against the same timelines with ``abort_after=None``.
         """
         state = self.state
-        if (not self._reuse_keys or self._pool is None
+        if (self._suspended or not self._reuse_keys or self._pool is None
                 or machine_timeline is not state.machine_timeline or operator_timeline is not state.operator_timeline):
             return None
         witness = (
@@ -246,8 +249,9 @@ class SgsScoreCache:
             _segments_witness(operator_timeline, operator_id),
             _type_witness(state.last_op_type_by_machine, machine_id),
         )
-        key = (id(op), machine_id, operator_id)
-        entry = self._pairs.get(key)
+        pairs = self._pairs.setdefault(id(op), {})
+        pair = (machine_id, operator_id)
+        entry = pairs.get(pair)
         if entry is not None:
             if entry.witness == witness:
                 self.pair_hits += 1
@@ -260,7 +264,7 @@ class SgsScoreCache:
         self._last_scan = None
         estimate = compute()
         self.pair_misses += 1
-        self._pairs[key] = _PairEntry(witness, estimate, self._last_scan, self._occupation_seq)
+        pairs[pair] = _PairEntry(witness, estimate, self._last_scan, self._occupation_seq)
         return estimate
 
     def _revalidated(
@@ -319,8 +323,17 @@ class SgsScoreCache:
             self._shared_slots.clear()
         self._plain_classes.clear()
 
+    def suspend_round(self) -> None:
+        """The scoring loop is not running its own code this round: serve no memo, hand nothing to placement.
+
+        The handoff scope stays installed for the whole decode, so without this the probe memo and
+        the calendar memo would keep answering behind an instrumented scorer's back.
+        """
+        self._suspended = True
+
     def begin_round(self) -> bool:
         """Auto-assign keys may only be reused while the probe still runs the module's own code."""
+        self._suspended = False
         if self._pool is not None and not self._probe.natives_intact():
             self._pool = None
             self._eligible = {}
@@ -349,7 +362,7 @@ class SgsScoreCache:
     def selected_estimate(self, inputs: Dict[str, Any]) -> Optional[Tuple[Any, float]]:
         """(estimate, total_hours_base) proved current this round for exactly these placement inputs."""
         entry = self._entries.get(id(inputs.get("op")))
-        if entry is None or entry.round != self.round or entry.estimate is None:
+        if self._suspended or entry is None or entry.round != self.round or entry.estimate is None:
             return None
         estimate, total_hours_base, machine_id, operator_id, prev_end, calendar, end_dt_exclusive = entry.estimate
         if (inputs.get("machine_id"), inputs.get("operator_id")) != (machine_id, operator_id):
@@ -363,7 +376,7 @@ class SgsScoreCache:
     def selected_resources(self, op: Any) -> Optional[Tuple[str, str]]:
         """Auto-assign pair the scoring probe chose for ``op``, valid only within the same round."""
         entry = self._entries.get(id(op))
-        if entry is None or entry.round != self.round or entry.witness[0] != _AUTO:
+        if self._suspended or entry is None or entry.round != self.round or entry.witness[0] != _AUTO:
             return None
         return entry.resources
 

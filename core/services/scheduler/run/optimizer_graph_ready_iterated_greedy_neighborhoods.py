@@ -22,6 +22,10 @@ from core.infrastructure.errors import ValidationError
 
 from .optimizer_graph_ready_iterated_greedy_contract import IG_GENERATORS
 
+# Beyond this many changes the OR-Tools step factor would keep shrinking towards 1: a run of failures
+# then needs dozens of successes to grow the destroy size back. The factor stays at least 1 + 1/3.
+_FACTOR_CHANGE_CAP = 8
+
 
 class AdaptiveValue:
     def __init__(self, initial: float) -> None:
@@ -32,7 +36,10 @@ class AdaptiveValue:
 
     def _factor(self) -> float:
         self.num_changes += 1
-        return 1.0 + 1.0 / math.sqrt(self.num_changes + 1)
+        return 1.0 + 1.0 / math.sqrt(min(self.num_changes, _FACTOR_CHANGE_CAP) + 1)
+
+    def clamp(self, low: float, high: float) -> None:
+        self.value = min(max(self.value, float(low)), float(high))
 
     def increase(self) -> None:
         factor = self._factor()
@@ -61,15 +68,19 @@ class DestroyGenerator:
         self.last_improved = False
         self.completion_feedback = False
 
+    def _bounds(self) -> Tuple[float, float]:
+        # AdaptiveValue's 0/1 endpoints are absorbing. Stay inside the same integer-size bin so both
+        # minimum and maximum sizes can adapt: one success at the minimum size grows it by at least one.
+        if self.max_size <= 1:
+            return 0.0, 0.0
+        inset = 0.5 / self.max_size
+        return inset, 1.0 - inset
+
     def reset(self) -> None:
         """Restore the configured size without losing this run's generator statistics."""
         value = (self.initial_size - 1) / (self.max_size - 1) if self.max_size > 1 else 0.0
-        if self.max_size > 1:
-            # AdaptiveValue's 0/1 endpoints are absorbing. Stay inside the same integer-size bin
-            # so both minimum and maximum initial sizes can adapt after their first iterations.
-            inset = 0.5 / self.max_size
-            value = min(max(value, inset), 1.0 - inset)
-        self.difficulty = AdaptiveValue(value)
+        low, high = self._bounds()
+        self.difficulty = AdaptiveValue(min(max(value, low), high))
 
     def size(self) -> int:
         return 1 + int(round(self.difficulty.value * (self.max_size - 1)))
@@ -91,6 +102,7 @@ class DestroyGenerator:
             self.difficulty.decrease()
         elif idle or self.completion_feedback:
             self.difficulty.increase()
+        self.difficulty.clamp(*self._bounds())
 
     def summary(self) -> Dict[str, Any]:
         return {"calls": self.calls, "improving": self.improving, "fully_solved": self.fully_solved, "idle": self.idle,

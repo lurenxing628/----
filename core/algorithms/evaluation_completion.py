@@ -7,10 +7,15 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict, Iterable, Optional, Set, Tuple
 
+from core.algorithm_contracts.priority_constants import PRIORITY_WEIGHT, normalize_priority
+
 OperationKey = Tuple[str, int]
 # This is an ordering sentinel, never a datetime or an estimated metric. Every
 # finite float (including a negated maximization metric) is <= this value.
 UNKNOWN_OBJECTIVE_VALUE = sys.float_info.max
+OBJECTIVE_SCOPE_ALL = "all_batches"
+OBJECTIVE_SCOPE_COMPLETED = "completed_batches_only"
+OBJECTIVE_SCOPE_UNKNOWN = "unknown"
 
 
 @dataclass(frozen=True)
@@ -23,17 +28,41 @@ class BatchCompletion:
     partial_batch_ids: Tuple[str, ...]
     failure_detail_count: int
     failure_batch_ids: Tuple[str, ...]
+    # Every incomplete batch is explained by recorded failure evidence and no result is unexpected:
+    # then the completed-subset components are trustworthy comparison keys behind ``failed_ops``.
+    explained: bool = False
+    # Priority weight of the dropped batches (critical 3 / urgent 2 / normal 1): reported, not fabricated tardiness.
+    incomplete_work_weight: float = 0.0
 
     @property
     def objective_defined(self) -> bool:
         return not self.incomplete_batch_ids
 
+    @property
+    def components_known(self) -> bool:
+        """The objective components describe real batches: all of them, or the explained completed subset."""
+        return self.objective_defined or self.explained
+
+    @property
+    def objective_scope(self) -> str:
+        if self.objective_defined:
+            return OBJECTIVE_SCOPE_ALL
+        return OBJECTIVE_SCOPE_COMPLETED if self.explained else OBJECTIVE_SCOPE_UNKNOWN
+
+    @property
+    def objective_score_policy(self) -> str:
+        if self.objective_defined:
+            return "original"
+        return "completed_batches_only" if self.explained else "unknown_all_components"
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "contract": "expected_operations_complete_only_v1",
             "objective_defined": self.objective_defined,
-            "objective_score_policy": "original" if self.objective_defined else "unknown_all_components",
-            "unknown_objective_value": None if self.objective_defined else UNKNOWN_OBJECTIVE_VALUE,
+            "objective_score_policy": self.objective_score_policy,
+            "objective_scope": self.objective_scope,
+            "unknown_objective_value": None if self.components_known else UNKNOWN_OBJECTIVE_VALUE,
+            "incomplete_work_weight": float(self.incomplete_work_weight),
             "due_metrics_scope": "completed_batches_only",
             "resource_metrics_scope": "scheduled_results_only",
             "expected_operation_count": self.expected_operation_count,
@@ -81,7 +110,18 @@ def collect_batch_completion(
         partial_batch_ids=tuple(sorted(incomplete & {key[0] for key in scheduled})),
         failure_detail_count=len(failed),
         failure_batch_ids=tuple(sorted(failure_batches)),
+        explained=bool(incomplete) and not unexpected and incomplete <= failure_batches,
+        incomplete_work_weight=_priority_weight_sum(batches, incomplete),
     )
+
+
+def _priority_weight_sum(batches: Dict[str, Any], batch_ids: Set[str]) -> float:
+    by_id = {str(bid).strip(): batch for bid, batch in batches.items() if str(bid or "").strip()}
+    total = 0.0
+    for bid in batch_ids:
+        priority = normalize_priority(getattr(by_id.get(bid), "priority", None), default="normal")
+        total += float(PRIORITY_WEIGHT.get(priority, 1.0))
+    return total
 
 
 def _incomplete_batch_ids(

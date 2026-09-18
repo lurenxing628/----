@@ -375,8 +375,16 @@ def _cv(values: List[float]) -> float:
 
 
 def objective_score(objective: str, metrics: ScheduleMetrics) -> Tuple[float, ...]:
+    """Objective components; callers prepend ``failed_ops``.
+
+    Complete candidates keep their original components. An incomplete candidate whose every
+    missing batch carries recorded failure evidence scores its completed batches only (the
+    metric fields already carry that scope), so equal-``failed_ops`` incomplete candidates
+    order by real numbers. Incompleteness without failure evidence stays unknown: every
+    component is the sentinel, which no finite complete score can lose to.
+    """
     keys = objective_metric_keys(objective)
-    if metrics.completion is not None and not metrics.completion.objective_defined:
+    if metrics.completion is not None and not metrics.completion.components_known:
         return (UNKNOWN_OBJECTIVE_VALUE,) * len(keys)
     score = tuple(float(getattr(metrics, key)) for key in keys)
     if not all(math.isfinite(value) for value in score):

@@ -42,13 +42,15 @@ def _run(kwargs, *, cache_enabled=True, scheduler_factory=make_scheduler):
 # Calendar timing guard and memo
 # ---------------------------------------------------------------------------
 
-def test_guard_accepts_native_engine_subclass_and_service_but_not_overlay_or_overrides():
+def test_guard_accepts_native_engine_subclass_service_and_overlay_but_not_overrides():
     assert native_timing_calendar(MemoryCalendar())
     with native_calendar() as calendar:
         assert native_timing_calendar(calendar)
-        assert not native_timing_calendar(ExecutionResourceCalendar(calendar, []))
+        # The execution overlay defines its timing surface explicitly and is certified over a native calendar.
+        assert native_timing_calendar(ExecutionResourceCalendar(calendar, []))
         calendar.add_working_hours = MethodType(lambda self, *a, **k: None, calendar)
         assert not native_timing_calendar(calendar)
+        assert not native_timing_calendar(ExecutionResourceCalendar(calendar, []))
 
     class Instrumented(MemoryCalendar):
         def adjust_to_working_time(self, dt, priority=None, machine_id=None, operator_id=None):
@@ -248,7 +250,7 @@ def test_changed_predecessor_end_or_missing_scan_span_requires_a_new_scan():
         inputs = dict(_pair_inputs(cache, op), prev_end=BASE + timedelta(hours=1))
         cache.pair_estimate(**inputs, compute=compute)
         assert cache.stats()["pair_revalidated"] == 0 and cache.stats()["pair_misses"] == 2
-        entry = cache._pairs[(id(op), "M1", "W01")]
+        entry = cache._pairs[id(op)][("M1", "W01")]
         entry.scan = None
         _occupy(cache, "machine", "M1", BASE + timedelta(days=3), BASE + timedelta(days=3, hours=1))
         cache.pair_estimate(**inputs, compute=compute)

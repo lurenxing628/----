@@ -59,7 +59,7 @@ class GraphReadyProfileSearch:
             "configured_profiles": profile_count, "considered_profiles": 0,
             "predecode_pruned_profiles": 0, "construction_rejected_profiles": 0,
             "skipped_before_decode": 0, "equivalent_profiles": [],
-            "skipped_by_estimated_decode_cost": 0,
+            "skipped_by_estimated_decode_cost": 0, "stagnation_stop": None,
         }
 
     def can_start(self) -> bool:
@@ -122,4 +122,6 @@ class GraphReadyProfileSearch:
         report_state.update_candidate_profile(graph_ready_optimization=graph)
         if self.budget.stop_reason == "time_budget":
             report_state.mark_deadline_reached()
-            report_state.mark_phase_skipped(GRAPH_READY_PHASE, "time_budget")
+            # The phase ran once any profile was decoded; only a phase without decodes was skipped for time.
+            if self.budget.profile_decodes == 0:
+                report_state.mark_phase_skipped(GRAPH_READY_PHASE, "time_budget")

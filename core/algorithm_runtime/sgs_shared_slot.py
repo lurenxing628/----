@@ -1,10 +1,16 @@
-"""Share earliest slots between operations only inside a certified constant work window.
+"""Share earliest slots between operations released inside one constant-efficiency span.
 
 For fixed resource occupancy and constant positive processing time, let T be the earliest
-feasible start at release S. Any release in [S, T] has the same earliest feasible start:
-its feasible set is a subset of the first one and still contains T. A native constant
-work-window certificate must cover S through the entire result, excluding efficiency
-changes and work breaks. Operation-specific changeover penalties are always recomputed.
+feasible start found for release S. Every release r with S <= adjust(r) <= T has the same
+earliest feasible start: its feasible set is a subset of the first one and still contains
+T. The native walk finds that minimum only while the attempt end is monotone in the attempt
+start, which holds when every certified work window the walk can touch, from S up to the
+result's end, reports the same efficiency (shift lengths and non-working gaps never break
+monotonicity; a faster later day would). A single window is the smallest such span; a
+chain of same-efficiency windows extends the proof across days, so saturated resources
+whose slots land days later can still share. Walks that carry attempt-path flags (early
+stop, efficiency fallback) are never shared. Operation-specific changeover penalties are
+always recomputed.
 """
 
 import math
@@ -15,7 +21,9 @@ from .calendar_timing_memo import MemoizedTimingCalendar
 from .owned_timeline import owned_segment_certificate, owned_segment_round_reader
 
 _UNSUPPORTED = object()
-_LIMIT = 256
+_LIMIT = 1024
+# Certified windows a span proof may chain; one per calendar day is the practical maximum.
+_MAX_SPAN_WINDOWS = 64
 _NATIVE_FUNCTIONS = tuple(
     (module, name, value)
     for module in (internal_slot, busy_block_skip)
@@ -56,6 +64,30 @@ def _native_slot_inputs(prev_end, base_time, cutoff, hours, priority, machine_id
             and type(hours) is float and math.isfinite(hours) and hours > 0
             and (priority is None or type(priority) is str)
             and type(machine_id) is str and type(operator_id) is str)
+
+
+def constant_efficiency_span(calendar, start, end, priority, operator_id):
+    """True when certified work windows chain from ``start`` past ``end`` with one efficiency throughout.
+
+    Each window certifies a constant policy; the next one starts at the first working instant
+    after the previous window ends. A cross-midnight window, a non-certified instant or a
+    change of efficiency ends the proof.
+    """
+    efficiency = None
+    cursor = start
+    for _ in range(_MAX_SPAN_WINDOWS):
+        window = busy_block_skip._certified_window(calendar, cursor, priority, operator_id)
+        if window is None:
+            return False
+        current = calendar.get_efficiency(cursor, operator_id=operator_id)
+        if efficiency is None:
+            efficiency = current
+        elif current != efficiency:
+            return False
+        if end <= window[1]:
+            return True
+        cursor = calendar.adjust_to_working_time(window[1], priority=priority, operator_id=operator_id)
+    return False
 
 
 class SharedSlotEstimateCache:
@@ -110,10 +142,12 @@ class SharedSlotEstimateCache:
         scan = read_scan()
         if scan is None or estimate.abort_after_hit or estimate.efficiency_fallback_used:
             return estimate
-        window = busy_block_skip._certified_window(calendar, earliest, priority, operator_id)
-        if window is not None and earliest <= estimate.start_time < estimate.end_time <= window[1]:
+        if not earliest <= estimate.start_time < estimate.end_time:
+            return estimate
+        if constant_efficiency_span(calendar, earliest, estimate.end_time, priority, operator_id):
             if len(self._entries) >= _LIMIT:
-                self._entries.clear()
+                # Evict the oldest entry of the round instead of dropping every proof at once.
+                del self._entries[next(iter(self._entries))]
             self._entries[key] = (earliest, estimate, scan)
         return estimate
 

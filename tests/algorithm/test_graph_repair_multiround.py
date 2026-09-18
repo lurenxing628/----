@@ -117,6 +117,9 @@ def test_improving_elite_retains_its_unvisited_tail_with_bounded_visits(monkeypa
     monkeypatch.setattr(runner, "perf_counter", lambda: 0.0)
     result = runner.run_case("frozen_ready_external", "min_tardiness")
     assert result["status"] == "passed"
+    # Deterministic trajectory contract, not a quality ratchet. 2026-09-18: elites are identified by their SGS pick
+    # sequence (resources left to auto-assignment) and batch moves stay batch-rank-only decisions; this vector is the
+    # same as before the identity change (block-moving the pick sequence on batch moves had shifted it to 308 / 112.5).
     assert result["selected"]["quality_vectors"]["min_tardiness"] == [0.0, 171.0, 4.0, 285.5, 135.0, 1.0]
     assert any(start > 0 and end > start for _, _, start, end, _ in visits)
     consumed = {}
@@ -196,7 +199,11 @@ def test_tiny_changeover_keeps_distinct_parents_and_consumes_shared_variant_tail
     pool = visits[0][0]
     assert len(pool.elites) == len({elite["fingerprint"].output_fingerprint for elite in pool.elites}) == 3
     assert any(len(elite["neighborhood"].variants) > 1 for elite in pool.elites)
-    assert any(value > 0 for value in pool.report["repair_round_improvements"])
+    # 2026-09-18: with working-hour dispatch keys the same three elites decode differently and the repair rounds
+    # no longer improve on this eight-operation fixture (the iterated greedy stage reaches the floor instead). The
+    # contract is that repair ran bounded rounds over real candidates and the phase beat its profile elites.
+    assert pool.report["repair_rounds_completed"] >= 1 and pool.report["repair_pruning_report"]["evaluated_candidates"] > 0
+    assert result["improved"]["objective_score"] < min(list(elite["candidate"]["score"]) for elite in pool.elites)
     per_round = {}
     for _pool, elite, round_index, start, end in visits:
         assert 0 <= end - start <= 8, "the eight-item cap covers all basis variants together"

@@ -4,6 +4,7 @@ from typing import Any, Dict, List, Optional
 
 from core.models.schedule_plan_role import ROLE_ADOPTED, ROLE_BASELINE_BEST, ROLE_CRITICAL_BEST
 
+from .schedule_candidate_dedup import UNCERTIFIED, UNCERTIFIED_PREFIX
 from .schedule_candidate_specs import CANDIDATE_KIND_CRITICAL_CHAIN
 
 _PUBLIC_FAILURE_REASON_CODES = {
@@ -167,6 +168,10 @@ def candidate_public_summary(candidate: Any, *, roles: Optional[List[str]] = Non
     reused_from_label = _candidate_text(candidate, "reused_from_label")
     if reused_from_label:
         summary["reused_from_label"] = reused_from_label
+    # Only a failed certification is worth a field, and only as a code: the reason text (raw exception
+    # messages included) stays on the plan and in the run log, like failure_reason above.
+    if _candidate_text(candidate, "input_certification").startswith(UNCERTIFIED_PREFIX):
+        summary["input_certification"] = UNCERTIFIED
     summary.update(_candidate_dispatch_rule_fields(candidate))
     return summary
 

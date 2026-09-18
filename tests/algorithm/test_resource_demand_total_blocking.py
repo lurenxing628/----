@@ -66,6 +66,10 @@ def test_same_pair_queries_exclude_their_own_head_and_retire_completed_claims():
 def test_shift_pool_baseline_restores_the_complete_historical_schedule_and_vectors():
     # Source afc0551 historical end-to-end acceptance, shift_pool baseline.
     # This fingerprint checks all rows/resources/times, not only a relaxed score.
+    # 2026-09-18 revision (decision dispatch-rule-working-hour-slack-and-priority-weight): the slack key
+    # now scales by priority weight, so critical/urgent batches go first. Same 12 overdue batches,
+    # weighted tardiness 3136.5 -> 2972.5 and makespan 288.5 -> 268.0, plain tardiness 1489.5 -> 1544.0.
+    # The working-hour span alone (item 10) reproduces the afc0551 fingerprint 7c8ba505... on this fixture.
     with case_environment(fixture_data("shift_pool"), "min_overdue", {"seed": 0, "time_budget_seconds": 1}) as env:
         scheduler = GreedyScheduler(env.cal_svc, env.cfg)
         results, summary, *_ = scheduler.schedule(
@@ -75,10 +79,10 @@ def test_shift_pool_baseline_restores_the_complete_historical_schedule_and_vecto
         )
         payload = schedule_payload(SimpleNamespace(results=results, summary=summary), env)
     fingerprint = hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
-    assert fingerprint == "7c8ba505b8cc36e9b35fabc91aa939e5560037e872f0458c45b67cf4b8b1c3ec"
+    assert fingerprint == "c2936a9539d52ad93554c22b7c9858ca2297204ee06c880e4cc19c709e3ad58f"
     assert payload["quality_vectors"] == {
-        "min_overdue": [0.0, 12.0, 3136.5, 1489.5, 288.5, 0.0],
-        "min_tardiness": [0.0, 1489.5, 12.0, 3136.5, 288.5, 0.0],
-        "min_weighted_tardiness": [0.0, 3136.5, 1489.5, 288.5, 0.0],
-        "min_changeover": [0.0, 0.0, 12.0, 1489.5, 3136.5, 288.5],
+        "min_overdue": [0.0, 12.0, 2972.5, 1544.0, 268.0, 0.0],
+        "min_tardiness": [0.0, 1544.0, 12.0, 2972.5, 268.0, 0.0],
+        "min_weighted_tardiness": [0.0, 2972.5, 1544.0, 268.0, 0.0],
+        "min_changeover": [0.0, 0.0, 12.0, 1544.0, 2972.5, 268.0],
     }

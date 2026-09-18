@@ -40,12 +40,15 @@ class ExponentialCooling:
 
 
 class TemperatureScale:
-    """Fix the scale at the first usable delta; retain sample counts for reporting."""
+    """Fix the primary scale at the first usable primary delta, and the secondary scale at the first
+    usable secondary delta observed between equal primaries; retain sample counts for reporting."""
 
     def __init__(self) -> None:
         self.count = 0
         self.total = 0.0
         self._value = 0.0
+        self.secondary_count = 0
+        self._secondary = 0.0
 
     def observe(self, candidate: Sequence[float], reference: Sequence[float]) -> None:
         if len(candidate) < 2 or len(reference) < 2 or candidate[0] != reference[0]:
@@ -56,13 +59,34 @@ class TemperatureScale:
                 self._value = delta
             self.count += 1
             self.total += delta
+            return
+        if delta == 0.0 and len(candidate) > 2 and len(reference) > 2:
+            secondary = abs(float(candidate[2]) - float(reference[2]))
+            if secondary > 0.0 and math.isfinite(secondary):
+                if not self.secondary_count:
+                    self._secondary = secondary
+                self.secondary_count += 1
 
     @property
     def value(self) -> float:
         return self._value
 
+    @property
+    def secondary(self) -> float:
+        return self._secondary
 
-def sa_accept(candidate: Sequence[float], reference: Sequence[float], *, temperature: float, u: float) -> bool:
+
+def _anneal(candidate_value: float, reference_value: float, *, temperature: float, u: float) -> bool:
+    if temperature <= 0.0:
+        return candidate_value < reference_value
+    u = min(max(float(u), 1e-12), 1.0)
+    return float(candidate_value) + float(temperature) * math.log(u) < float(reference_value)
+
+
+def sa_accept(candidate: Sequence[float], reference: Sequence[float], *, temperature: float, u: float,
+              secondary_temperature: float = 0.0) -> bool:
+    """Failed operations are never traded; the primary anneals with ``temperature``; equal primaries anneal the
+    secondary component with ``secondary_temperature`` (0 keeps the plain lexicographic order)."""
     candidate, reference = tuple(candidate), tuple(reference)
     if not candidate or not reference:
         raise ValueError("scores must be non-empty tuples")
@@ -71,10 +95,9 @@ def sa_accept(candidate: Sequence[float], reference: Sequence[float], *, tempera
     if len(candidate) < 2 or len(reference) < 2:
         return candidate <= reference
     if candidate[1] != reference[1]:
-        if temperature <= 0.0:
-            return candidate[1] < reference[1]
-        u = min(max(float(u), 1e-12), 1.0)
-        return float(candidate[1]) + float(temperature) * math.log(u) < float(reference[1])
+        return _anneal(candidate[1], reference[1], temperature=temperature, u=u)
+    if len(candidate) > 2 and len(reference) > 2 and candidate[2] != reference[2] and secondary_temperature > 0.0:
+        return _anneal(candidate[2], reference[2], temperature=secondary_temperature, u=u)
     return candidate[2:] <= reference[2:]
 
 

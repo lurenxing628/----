@@ -300,7 +300,11 @@ def _prepare_scoring_round(ctx, state, candidates, priority_pruning):
         reuse = None
     if reuse is not None and not reuse.begin_round(candidates):
         reuse = None
-    cache = getattr(ctx, "sgs_score_cache", None) if natives_intact else None
+    cache = getattr(ctx, "sgs_score_cache", None)
+    if cache is not None and not natives_intact:
+        # The handoff scope still holds this cache; an instrumented scorer must see every estimate itself.
+        cache.suspend_round()
+        cache = None
     if cache is not None and not cache.begin_round():
         cache = None
     if reuse is not None or cache is None or cache._timing is None:

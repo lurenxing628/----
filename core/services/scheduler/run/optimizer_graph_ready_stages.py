@@ -10,6 +10,7 @@ from .optimizer_candidate_comparison import candidate_is_preferred
 from .optimizer_candidate_fingerprint import score_strictly_better
 from .optimizer_graph_ready_acceptance import build_graph_ready_improve_only_acceptance_event
 from .optimizer_graph_ready_context import reason_from_validation
+from .optimizer_graph_ready_iterated_greedy_incumbent import incumbent_events
 from .optimizer_graph_ready_iterated_greedy_run import IteratedGreedyRun
 from .optimizer_graph_ready_predecode import GraphReadyProfileSearch
 from .optimizer_graph_ready_profiles import GraphReadyWeightProfile
@@ -17,6 +18,9 @@ from .optimizer_graph_ready_repair import EliteRepairPool, EliteRepairRun
 from .optimizer_graph_ready_reporting import append_graph_attempt, append_graph_trace, record_rejected_attempt
 from .optimizer_graph_ready_stage_scheduler import SearchStage
 from .optimizer_graph_ready_v2_contract import is_graph_ready_v2_contract_error
+
+# Consecutive decoded profiles whose schedules were all seen before end the profile stage early.
+PROFILE_STAGNATION_REPEATED_OUTPUTS = 6
 
 
 class GraphSearchState:
@@ -51,14 +55,28 @@ class ProfileStage(SearchStage):
         self.extra_summary = extra_summary
         self.index = 0
         self.finished = False
+        self.repeated_outputs = 0
+        self.stagnated = False
 
     def available(self) -> bool:
-        return self.index < len(self.profiles) and self.search.can_start()
+        return self.index < len(self.profiles) and not self.stagnated and self.search.can_start()
 
     def unavailable_reason(self) -> Optional[str]:
         if self.index >= len(self.profiles):
             return "profiles_exhausted"
+        if self.stagnated:
+            return "profiles_stagnated"
+        if self.search.cost_stopped:
+            return "skipped_by_estimated_decode_cost"
         return None if self.search.can_start() else self.search.budget.stop_reason
+
+    def _note_output(self, same_as_seen: bool) -> None:
+        """Stop decoding profiles once a run of them only reproduced schedules already seen."""
+        self.repeated_outputs = self.repeated_outputs + 1 if same_as_seen else 0
+        if self.repeated_outputs >= PROFILE_STAGNATION_REPEATED_OUTPUTS and not self.stagnated:
+            self.stagnated = True
+            self.search.report["stagnation_stop"] = {"consecutive_repeated_outputs": self.repeated_outputs,
+                                                     "unvisited_profiles": len(self.profiles) - self.index}
 
     def run_task(self) -> int:
         profile = self.profiles[self.index]
@@ -68,7 +86,7 @@ class ProfileStage(SearchStage):
                                       attempts=self.attempts, search_report_state=self.search_report_state)
         if candidate is None:
             return 0
-        self.pool.observe(candidate, profile)
+        self._note_output(self.pool.observe(candidate, profile).same_as_seen)
         if not _candidate_should_replace_best(candidate, profile=profile, best=self.state.best, attempts=self.attempts,
                                               search_report_state=self.search_report_state):
             return 0
@@ -143,9 +161,9 @@ class IteratedGreedyStage(SearchStage):
         return None
 
     def run_task(self) -> int:
-        before = self.run.report["improvements"]
+        before = incumbent_events(self.run.report)
         self.run.step()
-        return self.run.report["improvements"] - before
+        return incumbent_events(self.run.report) - before
 
     def finish(self) -> None:
         self.run.finish()

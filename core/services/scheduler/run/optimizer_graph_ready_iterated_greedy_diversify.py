@@ -6,6 +6,7 @@ thresholds adapt that idea to a SGS run that may complete only a few tasks.
 from __future__ import annotations
 
 from .optimizer_graph_ready_iterated_greedy_neighborhoods import GeneratorRotation
+from .optimizer_graph_ready_iterated_greedy_reference import capture_reference
 
 
 class LargeGeneratorRotation(GeneratorRotation):
@@ -56,13 +57,15 @@ class BudgetStagnation:
         if restart is None or restart.decision_key() == reference.decision_key():
             return reference
         search._activate_entry(restart)
-        if not restart.decoded_order:
-            decoded = search._decode_entry(restart.order)
-            if decoded is None:
-                search._activate_entry(reference)
-                return reference
-            restart = decoded
-            search.solution_pool.refresh(restart)
+        # A known solution's full decode is a reference capture, accounted as such (never as a rejection).
+        decoded = capture_reference(search, restart)
+        if decoded is None:
+            search.report["pool"]["restart_captures_failed"] += 1
+            search._activate_entry(reference)
+            return reference
+        if decoded is not restart:
+            search.solution_pool.refresh(decoded)
+        restart = decoded
         search.report["pool"]["restarts"] += 1
         search.rotation.reset_sizes()
         search.idle_iterations = search.rejected_iterations = 0

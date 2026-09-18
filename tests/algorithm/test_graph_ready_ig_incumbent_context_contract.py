@@ -19,7 +19,10 @@ from core.services.scheduler.run.optimizer_graph_ready_iterated_greedy import (
 )
 from core.services.scheduler.run.optimizer_graph_ready_iterated_greedy_acceptance import profile_identity
 from core.services.scheduler.run.optimizer_graph_ready_iterated_greedy_contract import (
+    IG_DECODE_FORMULA_SLUG,
+    IG_DECODE_FORMULA_VERSION,
     IteratedGreedyLimits,
+    ig_decode_profile,
     new_iterated_greedy_report,
 )
 from core.services.scheduler.run.optimizer_graph_ready_profiles import (
@@ -31,108 +34,9 @@ from core.services.scheduler.run.optimizer_graph_ready_repair_contract import El
 from core.services.scheduler.run.optimizer_graph_ready_repair_decisions import RepairDecision
 from core.services.scheduler.run.optimizer_graph_ready_v2_features import enrich_graph_ready_v2_metrics
 from core.services.scheduler.run.optimizer_search_report import OptimizationSearchReportState
-from tests._support.optimizer_graph_ready_benchmark import (
-    BASE_BATCH_ORDER,
-    OBJECTIVE_NAME,
-    START_DT,
-    ContinuousCalendar,
-    _scheduler,
-    graph_ready_benchmark_batches,
-    graph_ready_benchmark_context,
-    graph_ready_benchmark_operations,
-)
-
-
-class _UncertifiedCalendar(ContinuousCalendar):
-    """Same valid full-decode behaviour, deliberately without a checkpoint certificate."""
-
-
-def _ig_profile(profile):
-    return replace(profile, slug=IG_PROFILE_SLUG, candidate_origin=GRAPH_READY_V2_ITERATED_GREEDY_ORIGIN,
-                   candidate_policy=IG_CANDIDATE_POLICY)
-
-
-class _Harness:
-    def __init__(self, *, flexible=False, uncertified_calendar=False, strict_mode=True):
-        self.now = 0.0
-        self.scheduler = _scheduler()
-        if uncertified_calendar:
-            self.scheduler.calendar = _UncertifiedCalendar()
-        self.operations = graph_ready_benchmark_operations()
-        self.batches = graph_ready_benchmark_batches()
-        self.context = graph_ready_benchmark_context()
-        self.resource_pool = None
-        if flexible:
-            for operation in self.operations:
-                operation.machine_id = operation.operator_id = None
-            self.resource_pool = {"machines_by_op_type": {"OT-BENCH": ["M1", "M2"]},
-                                  "operators_by_machine": {"M1": ["P1"], "M2": ["P2"]},
-                                  "machines_by_operator": {"P1": ["M1"], "P2": ["M2"]}, "pair_rank": {}}
-        self.metrics = enrich_graph_ready_v2_metrics(self.context["node_metrics_by_op_id"], operations=self.operations,
-                                                     batches=self.batches, start_dt=START_DT, seed_results=[])
-        profiles = graph_ready_v2_profiles(max_candidate_profiles=60)[0]
-        self.profile = _ig_profile(next(item for item in profiles if item.slug == "v2_edd"))
-        self.other_profile = next(item for item in profiles if item.formula_slug != self.profile.formula_slug)
-        self.evaluations, self.schedule_calls = [], []
-        self.before_evaluate = self.after_evaluate = None
-        self.formal_evaluate = partial(
-            evaluate_graph_ready_candidate, graph_ready_context=self.context, metrics_by_op_id=self.metrics,
-            scheduler=self.scheduler, strict_mode=strict_mode, algo_ops_to_schedule=self.operations, batches=self.batches,
-            strategy=SortStrategy.PRIORITY_FIRST, params={}, start_dt=START_DT, end_date=None, downtime_map={},
-            seed_sr_list=[], dispatch_rule="slack", resource_pool=self.resource_pool, objective_name=OBJECTIVE_NAME,
-            optimizer_algo_stats=None, schedule_fn=self.schedule, readiness_gate_enabled=False, version=0, clock=lambda: self.now)
-        overrides = self.overrides("M1", "P1") if flexible else ()
-        self.baseline = self.candidate((1, 2, 3, 4), overrides=overrides)
-        self.state = OptimizationSearchReportState(algorithm_profile="graph_ready_v2_with_repair", seed=0,
-                                                  time_budget_seconds=100, objective_name=OBJECTIVE_NAME,
-                                                  started_at=0.0, strict_mode=strict_mode)
-        self.state.mark_candidate_accepted(self.baseline, origin="baseline")
-        self.pool = EliteRepairPool(limits=EliteRepairLimits(enabled=False), objective_name=OBJECTIVE_NAME,
-                                   operations=self.operations, metrics_by_op_id=self.metrics, start_dt=START_DT, seed=0,
-                                   best=self.baseline, report_state=self.state, graph_context=self.context,
-                                   resource_pool=self.resource_pool)
-        # Context/verification contracts keep a controlled incumbent; constructive starts are tested separately.
-        limits = IteratedGreedyLimits(max_decodes=30, checkpoint_count=3, due_date_seed=False)
-        self.report, self.attempts, self.trace = new_iterated_greedy_report(limits, objective_name=OBJECTIVE_NAME), [], []
-        self.search = _IteratedGreedySearch(
-            limits=limits, parent=_parent_from_candidate(self.baseline, operations=self.operations, graph_context=self.context),
-            profile=self.profile, pool=self.pool, evaluate=self.evaluate, metrics_by_op_id=self.metrics,
-            start_dt=START_DT, seed=0, deadline=100.0, clock=lambda: self.now, t_begin=0.0, attempts=self.attempts,
-            improvement_trace=self.trace, report_state=self.state, strict_mode=strict_mode, report=self.report,
-            operations=self.operations, graph_context=self.context)
-        self.search.best = self.baseline
-
-    def overrides(self, machine, operator):
-        return tuple((operation.id, machine, operator) for operation in self.operations)
-
-    def schedule(self, scheduler, **kwargs):
-        self.schedule_calls.append(kwargs)
-        return scheduler.schedule(**kwargs)
-
-    def evaluate(self, **kwargs):
-        if self.before_evaluate is not None:
-            self.before_evaluate(kwargs)
-        candidate = self.formal_evaluate(**kwargs)
-        if self.after_evaluate is not None:
-            candidate = self.after_evaluate(kwargs, candidate)
-        self.evaluations.append((kwargs, candidate))
-        return candidate
-
-    def candidate(self, order, *, overrides=(), batch_order=tuple(BASE_BATCH_ORDER), profile=None):
-        return self.formal_evaluate(profile=profile or self.profile, order=list(batch_order), repair_order=list(batch_order),
-                                    repair_decision=RepairDecision(batch_order, tuple(order), overrides))
-
-    def start(self):
-        self.search._start_reference()
-        assert self.search.reference is not None
-        self.evaluations.clear()
-        self.schedule_calls.clear()
-        return self.search.reference
-
-    def assert_initial_incumbent(self):
-        assert self.search.best is self.baseline
-        assert self.state.accepted_candidates == 1 and self.report["improvements"] == 0
-        assert self.report["accepted"] is False and self.trace == []
+from tests._support.optimizer_graph_ready_benchmark import BASE_BATCH_ORDER
+from tests._support.optimizer_graph_ready_ig_harness import IGHarness as _Harness
+from tests._support.optimizer_graph_ready_ig_harness import ig_profile as _ig_profile
 
 
 def test_adoption_uses_new_batch_resources_and_profile_and_does_not_reuse_old_context_caches():
@@ -149,7 +53,8 @@ def test_adoption_uses_new_batch_resources_and_profile_and_does_not_reuse_old_co
     harness.search.adopt_incumbent(incoming, harness.other_profile)
     assert harness.search.parent.batch_order == new_batch_order
     assert harness.search.parent.inherited == new_overrides
-    assert profile_identity(harness.search.profile) == profile_identity(new_profile)
+    # The decoder ignores the profile: every IG decode carries the canonical IG profile whatever the parent's was.
+    assert profile_identity(harness.search.profile) == profile_identity(ig_decode_profile(new_profile))
     decision = harness.evaluations[-1][0]["repair_decision"]
     assert decision.batch_order == new_batch_order and decision.resource_overrides == new_overrides
     assert old_trial not in harness.search.digests
@@ -164,9 +69,9 @@ def test_adoption_uses_new_batch_resources_and_profile_and_does_not_reuse_old_co
     actual_input = harness.schedule_calls[-1]
     assert actual_input["batch_order_override"] == list(new_batch_order)
     actual_profile = actual_input["strategy_params"]["graph_ready_profile"]
-    assert actual_profile["formula_slug"] == new_profile.formula_slug
-    assert actual_profile["formula_version"] == new_profile.formula_version
-    assert actual_profile["feature_basis"] == new_profile.feature_basis
+    assert actual_profile["formula_slug"] == IG_DECODE_FORMULA_SLUG
+    assert actual_profile["formula_version"] == IG_DECODE_FORMULA_VERSION
+    assert actual_profile["weight_profile_slug"] == IG_PROFILE_SLUG
 
 
 def test_resumed_improvement_is_published_only_after_the_formal_full_decode_matches():
@@ -258,21 +163,40 @@ def test_unsupported_calendar_capture_reports_reason_and_continues_with_real_ful
     assert harness.report["decodes"] == harness.search.checkpoints.full_decodes == 2
 
 
-@pytest.mark.parametrize("failure", ["unsupported_input", "signature_mismatch"])
-def test_other_checkpoint_failures_are_not_silently_retried_as_full_decodes(failure):
+def test_capture_refusal_degrades_to_full_decodes_with_reason_and_count():
+    """An input the checkpoint capture cannot snapshot costs the acceleration, never the whole stage."""
     harness = _Harness(strict_mode=False)
-    if failure == "unsupported_input":
-        harness.batches[BASE_BATCH_ORDER[0]].unsupported_value = object()
-        action = harness.search._start_reference
-    else:
-        reference = harness.start()
-        harness.batches[BASE_BATCH_ORDER[0]].quantity = 2
-        action = lambda: harness.search._score_trial((1, 3, 4, 2), reference)
+    harness.batches[BASE_BATCH_ORDER[0]].unsupported_value = object()
+    harness.schedule_calls.clear()
+    harness.search._start_reference()
+    reference = harness.search.reference
+    assert reference is not None and reference.decoded_order and reference.checkpoints == []
+    assert harness.report["reference_basis"] == "parent_order" and harness.report["parent_order_consistent"] is True
+    assert harness.search.checkpoints.disabled_reason == "decode_checkpoint_unsupported_input"
+    assert harness.search.checkpoints.summary()["disabled_reason"] == "decode_checkpoint_unsupported_input"
+    assert harness.report["checkpoint_capture_rejections"] == 1
+    # The refused capture and its plain retry are one logical decode; the retry asked for no capture at all.
+    assert len(harness.schedule_calls) == 2 and harness.report["decodes"] == 1
+    assert harness.schedule_calls[0].get("decode_checkpoints") is not None
+    assert harness.schedule_calls[1].get("decode_checkpoints") is None
+    harness.assert_initial_incumbent()
+    # The walk goes on with plain full decodes: the improving trial is decoded once and published directly.
+    score, feasible = harness.search._score_trial((1, 3, 4, 2), reference)
+    assert feasible and score < reference.score
+    assert all(call.get("decode_resume") is None for call in harness.schedule_calls)
+    assert len(harness.schedule_calls) == 3 and harness.report["decodes"] == 2
+    assert harness.report["improvements"] == 1 and harness.report["validation_decodes"] == 0
+
+
+def test_resume_mismatches_stay_fail_loud():
+    harness = _Harness(strict_mode=False)
+    reference = harness.start()
+    harness.batches[BASE_BATCH_ORDER[0]].quantity = 2
     harness.schedule_calls.clear()
     with pytest.raises(ValidationError) as excinfo:
-        action()
+        harness.search._score_trial((1, 3, 4, 2), reference)
     assert excinfo.value.field == "decode_checkpoint"
-    assert excinfo.value.details["reason"] == "decode_checkpoint_" + failure
+    assert excinfo.value.details["reason"] == "decode_checkpoint_signature_mismatch"
     assert len(harness.schedule_calls) == 1
     assert harness.search.checkpoints.disabled_reason is None
     assert harness.report["checkpoint_capture_rejections"] == 0

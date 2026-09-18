@@ -65,9 +65,11 @@ class CandidateBudgetFeedback:
     """One observed trial adjusts the next slice; no future improvement is inferred.
 
     Reserve half an equal share for every untried plan. A measured strict
-    improvement earns a bounded bonus, scaled by improvements per second;
-    a measured non-improvement leaves more time for the untried plans. Baseline,
-    incomplete scores, different objectives and unknown elapsed time earn no signal.
+    improvement earns a bounded bonus, scaled by improvements per second. A measured
+    non-improvement is neutral: whether the previous tier improved says nothing about
+    the next tier, and halving its slice starved the middle tiers (2026-09-18 decision).
+    Baseline, incomplete scores, different objectives and unknown elapsed time earn no
+    signal; a reused sibling plan carries no new measurement and clears the last signal.
     """
 
     def __init__(self, objective_name: str) -> None:
@@ -77,6 +79,12 @@ class CandidateBudgetFeedback:
         self._last: Dict[str, Any] = {}
         self.observed_completed_count = 0
         self.observed_improvement_count = 0
+        self.reused_count = 0
+
+    def observe_reused(self, plan: Any) -> None:
+        """A plan reused from a sibling spent no search; the previous signal must not carry over."""
+        self.reused_count += 1
+        self._last = {"candidate_sequence": int(plan.sequence), "reused_from": str(getattr(plan, "reused_from_candidate_key", "") or "")}
 
     def observe(self, plan: Any) -> None:
         score = _completed_feedback_score(plan, objective_name=self.objective_name, score_keys=self._score_keys)
@@ -106,7 +114,7 @@ class CandidateBudgetFeedback:
         report: Dict[str, Any] = {
             "policy": "observed_strict_improvement_per_second_v1",
             "reason": reason, "observed_completed_count": self.observed_completed_count,
-            "observed_improvement_count": self.observed_improvement_count,
+            "observed_improvement_count": self.observed_improvement_count, "reused_count": self.reused_count,
             "feedback_applied": factor != 1.0,
             "allocation_factor": assigned / equal_slice if equal_slice > 0 and math.isfinite(equal_slice) else 1.0,
             "equal_slice_ms": _milliseconds(equal_slice),
@@ -121,13 +129,15 @@ class CandidateBudgetFeedback:
             return 1.0, "last_candidate_uses_remaining"
         if not math.isfinite(equal_slice) or equal_slice <= 0:
             return 1.0, "no_finite_remaining_budget"
+        if self._last.get("reused_from"):
+            return 1.0, "reused_sibling_no_new_signal"
         improved = self._last.get("strict_improvement")
         if improved is None:
             return 1.0, "no_measured_comparable_improvement"
         if self._last.get("improvements_per_second") is None:
             return 1.0, "unrepresentable_improvement_rate"
         if not improved:
-            return 0.5, "observed_no_improvement_reserve_untried"
+            return 1.0, "observed_no_improvement_neutral"
         # Equivalent to 1 + (equal_slice * observed_rate) / (1 + equal_slice * observed_rate),
         # written this way so a very large rate cannot overflow the product.
         return 1.0 + 1.0 / (1.0 + self._last["elapsed_seconds"] / equal_slice), "observed_strict_improvement_bonus"

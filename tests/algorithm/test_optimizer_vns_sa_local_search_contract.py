@@ -498,7 +498,9 @@ def test_vns_switches_neighborhood_even_without_search_report_state() -> None:
         best=best,
         version=42,
         time_budget_seconds=1,
-        deadline=1000.0035,
+        # Readings: affordability guard, one per round on entry, the decoder guard and the decode
+        # runtime stamp per decode; two decodes need seven readings.
+        deadline=1000.0055,
         scheduler=SimpleNamespace(_last_algo_stats={"fallback_counts": {}, "param_fallbacks": {}}),
         algo_ops_to_schedule=[],
         batches=batches,

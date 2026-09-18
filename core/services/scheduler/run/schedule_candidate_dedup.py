@@ -59,10 +59,12 @@ def _weight_free_cfg(cfg: Any) -> Dict[str, Any]:
     return {name: getattr(cfg, name) for name in names if name not in _WEIGHT_FIELDS and name not in _BOOKKEEPING_FIELDS}
 
 
-def optimizer_input_fingerprint(candidate_cfg: Any, graph_preparation: Any) -> Optional[Fingerprint]:
-    """Everything the optimizer sees, with raw graph weights replaced by the order they induce.
+def certify_optimizer_inputs(candidate_cfg: Any, graph_preparation: Any) -> Tuple[Optional[Fingerprint], Optional[str]]:
+    """``(fingerprint, None)`` when everything the optimizer sees can be fingerprinted, with raw graph
+    weights replaced by the order they induce; ``(None, reason)`` when it cannot.
 
-    Returns None when the inputs cannot be certified, in which case the candidate always runs.
+    An uncertified candidate always runs its own search; the reason is reported on the plan so a
+    silent loss of sibling reuse stays visible.
     """
     try:
         cfg_part = _canonical(_weight_free_cfg(candidate_cfg))
@@ -75,11 +77,21 @@ def optimizer_input_fingerprint(candidate_cfg: Any, graph_preparation: Any) -> O
             rest = {key: item for key, item in context.items() if key not in _ORDER_ONLY_CONTEXT_KEYS}
             context_part = (_canonical(rest), preorder)
         else:
-            return None
+            return None, "graph_ready_context_not_mapping: " + type(context).__name__
         override = getattr(graph_preparation, "graph_dispatch_mode_override", None)
-        return cfg_part, context_part, (None if override is None else str(override))
-    except (TypeError, ValueError, ValidationError):
-        return None
+        return (cfg_part, context_part, (None if override is None else str(override))), None
+    except (TypeError, ValueError, ValidationError) as exc:
+        return None, f"{type(exc).__name__}: {exc}"
+
+
+def optimizer_input_fingerprint(candidate_cfg: Any, graph_preparation: Any) -> Optional[Fingerprint]:
+    """The certified fingerprint, or None when the inputs cannot be certified."""
+    return certify_optimizer_inputs(candidate_cfg, graph_preparation)[0]
+
+
+CERTIFIED = "certified"
+UNCERTIFIED = "uncertified"
+UNCERTIFIED_PREFIX = UNCERTIFIED + ": "
 
 
 class CandidateInputLedger:
@@ -91,6 +103,7 @@ class CandidateInputLedger:
         self._prepare = prepare_graph_fn
         self._prepared: Dict[int, Tuple[Any, Any]] = {}
         self._fingerprints: Dict[int, Optional[Fingerprint]] = {}
+        self._uncertified: Dict[int, str] = {}
         self._completed: Dict[Fingerprint, Any] = {}
 
     def prepare_graph_specs(self, specs: Sequence[Any]) -> None:
@@ -101,10 +114,20 @@ class CandidateInputLedger:
                 cfg = _candidate_cfg(self._base_cfg, spec)
                 preparation = self._prepare(_replace_schedule_input_cfg(self._schedule_input, cfg=cfg))
                 self._prepared[sequence] = (cfg, preparation)
-                self._fingerprints[sequence] = optimizer_input_fingerprint(cfg, preparation)
+                fingerprint, reason = certify_optimizer_inputs(cfg, preparation)
+                self._fingerprints[sequence] = fingerprint
+                if reason is not None:
+                    self._uncertified[sequence] = reason
 
     def prepared(self, spec: Any) -> Optional[Tuple[Any, Any]]:
         return self._prepared.get(int(spec.sequence))
+
+    def certification(self, spec: Any) -> Optional[str]:
+        """``certified``, ``uncertified: <reason>``, or None for a plan this ledger never prepared."""
+        sequence = int(spec.sequence)
+        if sequence in self._uncertified:
+            return UNCERTIFIED_PREFIX + self._uncertified[sequence]
+        return CERTIFIED if self._fingerprints.get(sequence) is not None else None
 
     def completed_twin(self, spec: Any) -> Any:
         fingerprint = self._fingerprints.get(int(spec.sequence))
@@ -162,7 +185,7 @@ def reused_candidate_plan(spec: Any, twin: Any, *, prepared: Tuple[Any, Any], ba
         algo_stats=dict(twin.algo_stats or {}),
         search_report=dict(twin.search_report or {}),
         sort_strategy=str(candidate_cfg.sort_strategy),
-        dispatch_mode=str(candidate_cfg.dispatch_mode),
+        # The twin's adopted dispatch mode is this plan's mode too: identical inputs, identical decode.
         dispatch_rule=str(candidate_cfg.dispatch_rule),
         objective=str(candidate_cfg.objective),
         failure_reason=None,
@@ -172,4 +195,12 @@ def reused_candidate_plan(spec: Any, twin: Any, *, prepared: Tuple[Any, Any], ba
     )
 
 
-__all__ = ["CandidateInputLedger", "optimizer_input_fingerprint", "reused_candidate_plan"]
+__all__ = [
+    "CERTIFIED",
+    "UNCERTIFIED",
+    "UNCERTIFIED_PREFIX",
+    "CandidateInputLedger",
+    "certify_optimizer_inputs",
+    "optimizer_input_fingerprint",
+    "reused_candidate_plan",
+]

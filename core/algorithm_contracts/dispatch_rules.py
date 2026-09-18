@@ -126,6 +126,52 @@ class DispatchInputs:
     seq: int
     op_id: int
     atc_k: float = DEFAULT_ATC_K
+    # 工作小时口径的交期余量（由评分层按日历折算，两项必须同时给）：
+    # slack_hours = 交期 - 预计完工，time_left_hours = 交期 - 预计开工。缺省时按裸交期的墙钟小时差算，
+    # 供纯合同调用与连续日历使用。
+    slack_hours: Optional[float] = None
+    time_left_hours: Optional[float] = None
+
+
+def _safe_positive(value: Any) -> float:
+    # proc_hours <=0（或无法解析）时不能使用极小值兜底，否则 ATC 会出现极端值（错误地把不可估算候选排到最前）。
+    # 同时过滤非有限值（NaN/Inf），避免出现 -0.0 / inf 传播导致的错误优先级。
+    try:
+        number = float(value)
+    except (TypeError, ValueError, OverflowError):
+        return 0.0
+    if (not math.isfinite(number)) or number <= 0:
+        return 0.0
+    return number
+
+
+def _finite_hours(value: Any, name: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(f"{name} must be a finite number")
+    number = float(value)
+    if not math.isfinite(number):
+        raise ValueError(f"{name} must be a finite number")
+    return number
+
+
+def _due_spans(inp: DispatchInputs) -> Tuple[float, float]:
+    """(slack, time_left) in hours: the caller's working-hour spans, else wall-clock spans to the exclusive due instant."""
+    provided = (inp.slack_hours is not None, inp.time_left_hours is not None)
+    if provided == (False, False):
+        due_dt_exclusive = due_exclusive(inp.due_date)
+        return (
+            (due_dt_exclusive - inp.est_end).total_seconds() / 3600.0,
+            (due_dt_exclusive - inp.est_start).total_seconds() / 3600.0,
+        )
+    if provided != (True, True):
+        raise ValueError("slack_hours and time_left_hours must be supplied together")
+    return _finite_hours(inp.slack_hours, "slack_hours"), _finite_hours(inp.time_left_hours, "time_left_hours")
+
+
+def _weighted_urgency(value: float, weight: float) -> float:
+    # Order-preserving priority scaling: a heavier batch looks tighter both while it still has room (divide)
+    # and once it is late (multiply). weight 1.0 (normal) leaves the value untouched.
+    return value / weight if value >= 0.0 else value * weight
 
 
 def build_dispatch_key(inp: DispatchInputs) -> Tuple[float, ...]:
@@ -133,27 +179,14 @@ def build_dispatch_key(inp: DispatchInputs) -> Tuple[float, ...]:
     生成可排序 key（越小越优先）。
 
     说明：
-    - primary：由 rule 决定
+    - primary：由 rule 决定；slack / CR 按优先级权重做保序缩放，ATC 本身带权重
     - tie-break：优先避免换型 -> 更高优先级 -> 更早交期 -> 更早开始 -> 更稳定批次顺序
     """
     pr = normalize_priority(inp.priority, default="normal")
     pr_rank = float(PRIORITY_RANK.get(pr, 99))
     w = float(PRIORITY_WEIGHT.get(pr, 1.0))
 
-    due_dt_exclusive = due_exclusive(inp.due_date)
-    slack_h = (due_dt_exclusive - inp.est_end).total_seconds() / 3600.0
-    time_left_h = (due_dt_exclusive - inp.est_start).total_seconds() / 3600.0
-
-    # proc_hours <=0（或无法解析）时不能使用极小值兜底，否则 ATC 会出现极端值（错误地把不可估算候选排到最前）。
-    # 同时过滤非有限值（NaN/Inf），避免出现 -0.0 / inf 传播导致的错误优先级。
-    def _safe_positive(v: Any) -> float:
-        try:
-            fv = float(v)
-        except (TypeError, ValueError, OverflowError):
-            return 0.0
-        if (not math.isfinite(fv)) or fv <= 0:
-            return 0.0
-        return fv
+    slack_h, time_left_h = _due_spans(inp)
 
     p = _safe_positive(inp.proc_hours)
     if not p or p <= 0:
@@ -163,8 +196,7 @@ def build_dispatch_key(inp: DispatchInputs) -> Tuple[float, ...]:
     avg_p = _safe_positive(inp.avg_proc_hours) or p
 
     if inp.rule == DispatchRule.CR:
-        cr = time_left_h / p
-        primary = float(cr)
+        primary = _weighted_urgency(float(time_left_h / p), w)
     elif inp.rule == DispatchRule.ATC:
         # ATC 越大越优；这里用 -ATC 使其“越小越好”。k 来自规则规格，不再写死。
         k = _finite_positive(inp.atc_k)
@@ -174,7 +206,7 @@ def build_dispatch_key(inp: DispatchInputs) -> Tuple[float, ...]:
         primary = float(-atc)
     else:
         # SLACK
-        primary = float(slack_h)
+        primary = _weighted_urgency(float(slack_h), w)
 
     return (
         primary,

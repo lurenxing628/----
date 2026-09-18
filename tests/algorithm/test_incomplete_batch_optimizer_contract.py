@@ -44,7 +44,9 @@ def _scheduler():
 
 
 @pytest.mark.parametrize("mode", ["batch_order", "sgs"])
-def test_real_scheduler_partial_output_does_not_look_like_zero_tardiness(mode):
+def test_real_scheduler_partial_output_scores_its_completed_batches_behind_failed_ops(mode):
+    # 2026-09-18 revision: the window failure is recorded evidence, so the components describe the
+    # completed batches (none here) and ``failed_ops`` keeps this candidate behind any complete one.
     operations, batches = _operations(), _batches()
     results, summary, _strategy, _params = _scheduler().schedule(
         operations=operations, batches=batches, strategy=SortStrategy.PRIORITY_FIRST,
@@ -58,7 +60,9 @@ def test_real_scheduler_partial_output_does_not_look_like_zero_tardiness(mode):
     )
     assert metrics.completion.missing_operation_count == 1
     assert metrics.completion.failure_batch_ids == ("B1",)
-    assert objective_score("min_tardiness", metrics) == (UNKNOWN_OBJECTIVE_VALUE,) * 5
+    assert metrics.completion.explained
+    assert objective_score("min_tardiness", metrics) == (0.0, 0.0, 0.0, 1.0, 0.0)
+    assert (1.0,) + objective_score("min_tardiness", metrics) > (0.0,) + (UNKNOWN_OBJECTIVE_VALUE,) * 5
 
 
 def test_real_merged_external_scheduler_keeps_all_member_identities():

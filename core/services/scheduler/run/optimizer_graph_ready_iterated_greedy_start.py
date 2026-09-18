@@ -5,34 +5,61 @@ the incumbent, fingerprints, or final score: the ordinary SGS evaluator remains 
 """
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any, List, Optional
 
 from .optimizer_graph_ready_iterated_greedy_acceptance import PoolEntry
 from .optimizer_graph_ready_iterated_greedy_contract import _BudgetExhausted
+from .optimizer_graph_ready_iterated_greedy_reference import activate_entry, capture_reference, seed_solution_pool
 
 
 def start_reference(search: Any) -> None:
+    """Start from the best pool tier; a pool entry whose capture fails yields to the next one (bounded by the pool)."""
     report = search.report
     report["starting_incumbent_origin"] = str(search.best.get("candidate_origin") or "baseline")
     report["starting_incumbent_score"] = list(search.best["score"])
-    search._seed_solution_pool()
+    seed_solution_pool(search)
+    for index, entry in enumerate(_start_attempts(search)):
+        activate_entry(search, entry)
+        source = entry.candidate
+        _describe_parent(search, source)
+        search._require_budget()
+        reference = _due_date_reference(search, source) if index == 0 else None
+        if reference is not None:
+            report["reference_basis"] = "due_date_seed"
+            break
+        divergences = report["reference_capture_divergences"]
+        reference = capture_reference(search, entry)
+        if reference is not None:
+            report["reference_basis"] = "parent_order"
+            report["parent_order_score"] = list(reference.score)
+            # Consistent means the capture reproduced the parent's schedule, not merely its score.
+            report["parent_order_consistent"] = (report["reference_capture_divergences"] == divergences
+                                                 and reference.score == tuple(source["score"]))
+            break
+        report["pool"]["start_captures_failed"] += 1
+    else:
+        raise _BudgetExhausted("parent_order_rejected")
+    search.reference = reference
+    search.solution_pool.refresh(reference)
+    report["pool"]["initial_entries"] = len(search.solution_pool.entries)
+
+
+def _start_attempts(search: Any) -> List[PoolEntry]:
+    """The pool's random best-tier pick first, then the remaining entries by score."""
     selected = search.solution_pool.pick(search.pool_rnd)
-    if selected is not None:
-        search._activate_entry(selected)
-    source = selected.candidate if selected is not None else search.best
+    if selected is None:
+        return []
+    rest = sorted((entry for entry in search.solution_pool.entries if entry is not selected),
+                  key=lambda entry: (entry.score, entry.sequence))
+    return [selected] + rest
+
+
+def _describe_parent(search: Any, source: Any) -> None:
+    report = search.report
     report["parent_origin"] = str(source.get("candidate_origin") or "baseline")
     report["parent_score"] = list(source["score"])
-    search._require_budget()
-    entry = _due_date_reference(search, source)
-    if entry is None:
-        entry = search._decode_entry(search.parent.order)
-    if entry is None:
-        raise _BudgetExhausted("parent_order_rejected")
-    report["parent_order_score"] = list(entry.score)
-    report["parent_order_consistent"] = entry.score == tuple(source["score"])
-    search.reference = entry
-    search.solution_pool.refresh(entry)
-    report["pool"]["initial_entries"] = len(search.solution_pool.entries)
+    profile = (source.get("graph_ready_profile") or {}) if isinstance(source, dict) else {}
+    report["parent_profile_slug"] = profile.get("weight_profile_slug")
 
 
 def _due_date_reference(search: Any, source: Any) -> Optional[PoolEntry]:

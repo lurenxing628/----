@@ -64,7 +64,8 @@ def test_queue_stops_before_a_trial_that_would_spend_validation_room():
 
 def _stagnant_search(now, *, same_entry=False):
     reference = SimpleNamespace(order=(1, 2), decision_key=lambda: (1, 2))
-    alternate = SimpleNamespace(order=(2, 1), decision_key=lambda: (2, 1), decoded_order=True)
+    # A decoded pool entry with checkpoints is a ready reference: the restart needs no capture decode.
+    alternate = SimpleNamespace(order=(2, 1), decision_key=lambda: (2, 1), decoded_order=True, checkpoints=[object()])
     selected = reference if same_entry else alternate
     best = {"score": (1,)}
     actions = []

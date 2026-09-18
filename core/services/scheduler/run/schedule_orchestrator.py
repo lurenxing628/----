@@ -4,6 +4,7 @@ import logging
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
+from core.errors import ValidationError
 from core.services.scheduler.contracts.schedule_summary_types import SummaryBuildContext
 
 from .schedule_candidate_runner import run_candidate_comparison
@@ -120,27 +121,35 @@ def _normalize_candidate_plan(candidate_plan: Any) -> _NormalizedOptimizerOutcom
     )
 
 
+def _required_candidate_setting(cfg: Any, name: str) -> Any:
+    """The config snapshot owns every default; a missing or blank value here is a defect, not a fallback."""
+    try:
+        value = getattr(cfg, name)
+    except AttributeError:
+        raise ValidationError(f"排产配置缺少候选对比参数 {name}", field=name) from None
+    if value is None or str(value).strip() == "":
+        raise ValidationError(f"候选对比参数 {name} 不能为空", field=name)
+    return value
+
+
 def _candidate_comparison_enabled(cfg: Any) -> bool:
-    return str(getattr(cfg, "graph_analysis_mode", "off") or "off").strip().lower() == "on"
+    return str(_required_candidate_setting(cfg, "graph_analysis_mode")).strip().lower() == "on"
 
 
 def _candidate_weight_count(cfg: Any) -> int:
-    value = getattr(cfg, "graph_candidate_weight_count", 5)
-    return 5 if value is None or str(value).strip() == "" else int(value)
+    return int(_required_candidate_setting(cfg, "graph_candidate_weight_count"))
 
 
 def _candidate_selection_policy(cfg: Any) -> str:
-    return str(getattr(cfg, "graph_selection_policy", "balanced") or "balanced").strip().lower()
+    return str(_required_candidate_setting(cfg, "graph_selection_policy")).strip().lower()
 
 
 def _candidate_overdue_tolerance_count(cfg: Any) -> int:
-    value = getattr(cfg, "graph_overdue_tolerance_count", 1)
-    return 1 if value is None or str(value).strip() == "" else int(value)
+    return int(_required_candidate_setting(cfg, "graph_overdue_tolerance_count"))
 
 
 def _candidate_tardiness_tolerance_ratio(cfg: Any) -> float:
-    value = getattr(cfg, "graph_tardiness_tolerance_ratio", 0.10)
-    return 0.10 if value is None or str(value).strip() == "" else float(value)
+    return float(_required_candidate_setting(cfg, "graph_tardiness_tolerance_ratio"))
 
 
 def _run_optimizer_once(

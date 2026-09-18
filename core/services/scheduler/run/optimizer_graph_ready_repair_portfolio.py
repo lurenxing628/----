@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from itertools import zip_longest
+from itertools import islice, zip_longest
 from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 from .optimizer_graph_ready_operation_neighbors import operation_repair_decisions
@@ -45,7 +45,10 @@ class RepairPortfolio:
                     yield item
 
     def _batch_decision(self, index: int) -> Tuple[str, RepairDecision]:
-        # Expand only a consumed move; do not materialize all batch permutations.
+        # Expand only a consumed move; do not materialize all batch permutations. A batch move stays a
+        # batch-rank-only decision on purpose: re-picking the operations under the new ranks is this
+        # neighbourhood's search freedom. Block-moving the parent's pick sequence instead (2026-09-18)
+        # lost 7 of 20 end-to-end cases against this baseline and was withdrawn.
         neighbor = RepairNeighborhood(self.batches.order, (self.batches.moves[index],))
         kind, order = next(neighbor.neighbors())
         return kind, RepairDecision(tuple(order), resource_overrides=self.inherited_resources)
@@ -74,8 +77,15 @@ class ParentRepairPortfolio:
             return self
         return ParentRepairPortfolio(self.variants + ((profile, portfolio),))
 
-    def profiled_decisions(self) -> Iterator[Tuple[str, RepairDecision, GraphReadyWeightProfile]]:
-        streams = [portfolio.decisions() for _profile, portfolio in self.variants]
+    def profiled_decisions(self, skip_by_basis: Optional[Dict[str, int]] = None
+                           ) -> Iterator[Tuple[str, RepairDecision, GraphReadyWeightProfile]]:
+        """Round-robin over the variants; each variant's stream resumes after its own consumed prefix.
+
+        Resuming per basis keeps a variant added mid-visit from reshuffling what the other streams yield next.
+        """
+        consumed = skip_by_basis or {}
+        streams = [islice(portfolio.decisions(), consumed.get(profile.feature_basis, 0), None)
+                   for profile, portfolio in self.variants]
         for group in zip_longest(*streams):
             for (profile, _portfolio), item in zip(self.variants, group):
                 if item is not None:
@@ -88,8 +98,11 @@ class ParentRepairPortfolio:
 
 
 def build_repair_portfolio(candidate: Dict[str, Any], *, operations: List[Any], metrics_by_op_id: Dict[int, Dict[str, Any]],
-                           start_dt: Any, seed: int, objective_name: str,
-                           graph_context: Optional[Dict[str, Any]], resource_pool: Optional[Dict[str, Any]]) -> RepairPortfolio:
+                           start_dt: Any, seed: int, objective_name: str, graph_context: Optional[Dict[str, Any]],
+                           resource_pool: Optional[Dict[str, Any]]) -> RepairPortfolio:
+    """Neighbourhoods of one decoded parent: batch moves on its batch order, bounded operation moves on its
+    start-time order, resource moves on its explicit decision. The parent's own pick sequence is not used as a
+    basis on purpose (2026-09-18: it cost 6% weighted tardiness on medium_shift_pool and helped nowhere)."""
     batches = build_repair_neighborhood(candidate, operations=operations, metrics_by_op_id=metrics_by_op_id,
                                         start_dt=start_dt, seed=seed, objective_name=objective_name)
     inherited = tuple(tuple(item) for item in candidate.get("repair_decision", {}).get("resource_overrides", ()))

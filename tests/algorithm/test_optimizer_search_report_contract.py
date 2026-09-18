@@ -16,7 +16,9 @@ import pytest
 
 from core.algorithms.sort_strategies import SortStrategy
 from core.infrastructure.errors import ValidationError
+from core.services.scheduler.run import optimizer_local_search
 from core.services.scheduler.run.optimizer_local_search import run_local_search
+from core.services.scheduler.run.optimizer_local_search_limits import LocalSearchLimits
 from core.services.scheduler.run.optimizer_runtime import OptimizerRuntime
 from core.services.scheduler.run.optimizer_search_report import OptimizationSearchReportState
 from core.services.scheduler.run.schedule_candidate_persistence_models import operation_log_algo_summary
@@ -315,7 +317,7 @@ def _non_improving_schedule(*args: Any, **kwargs: Any):
     return [], summary, kwargs.get("strategy"), dict(kwargs.get("strategy_params") or {})
 
 
-def test_local_search_time_budget_and_iteration_limit_are_reported() -> None:
+def test_local_search_time_budget_and_search_exhaustion_are_reported() -> None:
     best = _best_candidate()
     time_state = OptimizationSearchReportState(
         algorithm_profile="multi_start_local_search",
@@ -392,8 +394,65 @@ def test_local_search_time_budget_and_iteration_limit_are_reported() -> None:
         search_report_state=iteration_state,
     )
     report = iteration_state.finalize(runtime_ms=50, attempts=[], improvement_trace=[])
+    # Iterations count decoder invocations, never no-op or duplicate rounds. With a frozen clock the
+    # search must still end on its own: once every proposal repeats a decoded decision it is exhausted.
+    assert report["stop_reason"] == "search_exhausted"
+    assert iteration_state.candidate_profile is not None
+    stop = iteration_state.candidate_profile["local_search_stop"]
+    assert stop["reason"] == "search_exhausted"
+    assert report["iterations"] == stop["decodes"] >= 2
+    assert stop["duplicate_rounds"] >= stop["limits"]["idle_round_limit"]
+    assert stop["limits"]["source"] == "decode_cost_unknown"
+
+
+def test_local_search_decode_limit_is_reported_as_iteration_limit(monkeypatch) -> None:
+    best = _best_candidate()
+    state = OptimizationSearchReportState(
+        algorithm_profile="multi_start_local_search",
+        seed=9,
+        time_budget_seconds=1,
+        objective_name="min_overdue",
+        started_at=1000.0,
+    )
+    state.mark_candidate_accepted(best, origin="multi_start")
+    limits = LocalSearchLimits(
+        decode_limit=3, restart_after=50, idle_round_limit=101, source="measured_decode_cost",
+        remaining_ms=None, decode_cost_ms=None, affordable_decodes=3,
+    )
+    monkeypatch.setattr(optimizer_local_search, "derive_local_search_limits", lambda **_kwargs: limits)
+    run_local_search(
+        algo_mode="improve",
+        best=best,
+        version=9,
+        time_budget_seconds=1,
+        deadline=2000.0,
+        scheduler=SimpleNamespace(_last_algo_stats={"fallback_counts": {}, "param_fallbacks": {}}),
+        algo_ops_to_schedule=[],
+        batches={},
+        start_dt=datetime(2026, 1, 1, 8, 0, 0),
+        end_date=None,
+        downtime_map={},
+        seed_sr_list=[],
+        dispatch_mode_cfg="sgs",
+        dispatch_rule_cfg="slack",
+        resource_pool=None,
+        objective_name="min_overdue",
+        attempts=[],
+        improvement_trace=[],
+        optimizer_algo_stats={"fallback_counts": {}, "param_fallbacks": {}},
+        t_begin=1000.0,
+        readiness_gate_enabled=False,
+        strict_mode=False,
+        clock=_ConstantClock(),
+        rng_factory=lambda _seed: _DeterministicRandom(),
+        schedule_fn=_non_improving_schedule,
+        search_report_state=state,
+    )
+    report = state.finalize(runtime_ms=50, attempts=[], improvement_trace=[])
     assert report["stop_reason"] == "iteration_limit"
-    assert report["iterations"] == 200
+    assert report["iterations"] == 3
+    assert state.candidate_profile is not None
+    assert state.candidate_profile["local_search_limits"]["decode_limit"] == 3
 
 
 def test_no_improvement_stop_reason_when_local_search_entered_without_gain() -> None:

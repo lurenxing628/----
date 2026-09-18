@@ -14,6 +14,7 @@ from core.services.common.datetime_normalize import normalize_hhmm
 from core.services.common.normalize import normalize_text
 from data.repositories import CalendarRepository, OperatorCalendarRepository
 
+from .calendar_working_hours import Window, WorkingHoursPrefix
 from .operator_shift_calendar import OperatorShiftCalendar
 
 # add_calendar_days 的业务量级上界：100 年（365 天 × 100）。
@@ -23,7 +24,7 @@ from .operator_shift_calendar import OperatorShiftCalendar
 MAX_CALENDAR_DAYS = 36500.0
 # Engine members whose identity certifies native timing; certificates and the per-decode memo both rely on it.
 NATIVE_TIMING_METHODS = ("get_efficiency", "adjust_to_working_time", "add_working_hours", "policy_for_datetime",
-                         "_policy_for_datetime", "_policy_for_date", "certified_slot_window")
+                         "_policy_for_datetime", "_policy_for_date", "certified_slot_window", "working_hours_between")
 _NORMAL_PRIORITY = BatchPriority.NORMAL.value
 _ALLOWED_FLAG = YesNo.YES.value
 
@@ -104,6 +105,8 @@ class CalendarEngine:
         self.operator_shift_calendar = OperatorShiftCalendar(conn, logger=logger)
         # 每次排产会对同一日期重复查询多次；按 (operator_id, date_str) 做轻量缓存可显著减少 DB 访问
         self._policy_cache: Dict[Tuple[str, str], DayPolicy] = {}
+        # 工作小时差按 (operator_id, 优先级类别) 维护逐日窗口前缀，与策略缓存同生命周期。
+        self._working_hours_prefix: Dict[Tuple[str, str], WorkingHoursPrefix] = {}
 
     def clear_policy_cache(self) -> None:
         """
@@ -113,6 +116,7 @@ class CalendarEngine:
         必须清空缓存以保证“立即生效”（回归用例依赖该语义）。
         """
         self._policy_cache.clear()
+        self._working_hours_prefix.clear()
 
     @staticmethod
     def _normalize_text(value: Any) -> Optional[str]:
@@ -366,6 +370,40 @@ class CalendarEngine:
             cur = self.adjust_to_working_time(cur, priority=priority, operator_id=operator_id)
 
         return cur
+
+    @staticmethod
+    def _priority_class(priority: Optional[str]) -> str:
+        # Mirrors DayPolicy.is_priority_allowed: urgent and critical share the urgent flag, everything else is normal.
+        text = str(priority or _NORMAL_PRIORITY).strip().lower()
+        return "urgent" if text in ("urgent", "critical") else _NORMAL_PRIORITY
+
+    def _allowed_window(self, day: date, *, priority: Optional[str], operator_id: Optional[str]) -> Window:
+        policy = self._policy_for_date(day.isoformat(), operator_id=operator_id)
+        if not policy.is_priority_allowed(priority) or policy.shift_hours <= 0:
+            return None
+        return policy.work_window()
+
+    def working_hours_between(
+        self,
+        start: datetime,
+        end: datetime,
+        priority: Optional[str] = None,
+        machine_id: Optional[str] = None,
+        operator_id: Optional[str] = None,
+    ) -> float:
+        """
+        start 到 end 之间允许该优先级排产的工作小时数（end 早于 start 时为负）。
+
+        与 add_working_hours 同一套 DayPolicy 口径：不可排产日、不允许该优先级的日子贡献 0；
+        跨午夜班次按“班次开始日”归属，最多延伸到次日。
+        """
+        op_id = self._normalize_text(operator_id) if operator_id is not None else None
+        key = ((op_id or ""), self._priority_class(priority))
+        prefix = self._working_hours_prefix.get(key)
+        if prefix is None:
+            prefix = WorkingHoursPrefix(lambda day: self._allowed_window(day, priority=priority, operator_id=op_id))
+            self._working_hours_prefix[key] = prefix
+        return prefix.between(start, end)
 
     def add_calendar_days(self, start: datetime, days: float, machine_id: Optional[str] = None, operator_id: Optional[str] = None) -> datetime:
         """

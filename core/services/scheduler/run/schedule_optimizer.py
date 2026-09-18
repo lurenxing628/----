@@ -151,6 +151,7 @@ def _best_outcome(
         improvement_trace=compacted_trace,
     )
     _record_decoder_invocations(search_report, scheduler)
+    adopted_mode = str(best.get("dispatch_mode") or dispatch_mode_cfg)
     return OptimizationOutcome(
         results=results,
         summary=summary,
@@ -166,9 +167,16 @@ def _best_outcome(
         time_budget_seconds=optimizer_cfg.time_budget_seconds,
         algo_stats=algo_stats,
         search_report=search_report,
-        dispatch_mode=str(best.get("dispatch_mode") or dispatch_mode_cfg),
-        dispatch_rule=str(best.get("dispatch_rule") or optimizer_cfg.dispatch_rule),
+        dispatch_mode=adopted_mode,
+        dispatch_rule=_adopted_dispatch_rule(best, adopted_mode=adopted_mode, configured_rule=optimizer_cfg.dispatch_rule),
     )
+
+
+def _adopted_dispatch_rule(best: Dict[str, Any], *, adopted_mode: str, configured_rule: str) -> str:
+    """Only an sgs decode consumes the rule; any other mode adopted exactly the configured rule."""
+    if adopted_mode != "sgs":
+        return str(configured_rule)
+    return str(best.get("dispatch_rule") or configured_rule)
 
 
 def optimize_schedule(

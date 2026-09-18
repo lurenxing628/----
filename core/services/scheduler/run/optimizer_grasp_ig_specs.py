@@ -19,13 +19,18 @@ def _positive_int(value: Any, *, default: int) -> int:
     return number if number > 0 else int(default)
 
 
-def _dispatch_rules(dispatch_rule_cfg: str, valid_dispatch_rules: List[str]) -> List[str]:
+def _dispatch_rules(dispatch_rule_cfg: str, valid_dispatch_rules: List[str], *, dispatch_mode: str) -> List[str]:
+    """Rules a start may carry. Only ``sgs`` consumes the rule; batch_order decodes ignore it, so a
+    non-sgs start keeps the configured rule and never reports a rotated one as adopted."""
+    configured = str(dispatch_rule_cfg or "").strip().lower()
+    if str(dispatch_mode or "").strip().lower() != "sgs":
+        return [configured]
     out: List[str] = []
     for item in [dispatch_rule_cfg] + list(valid_dispatch_rules or []):
         text = str(item or "").strip().lower()
         if text and text not in out:
             out.append(text)
-    return out or [str(dispatch_rule_cfg or "").strip().lower()]
+    return out or [configured]
 
 
 def _grasp_order(base_order: List[str], *, rnd: Any, rcl_size: int) -> List[str]:
@@ -62,6 +67,7 @@ def build_grasp_ig_candidate_specs(
     dispatch_rule_cfg: str,
     valid_dispatch_rules: List[str],
     rng_factory: Callable[[int], Any],
+    dispatch_mode: str = "batch_order",
 ) -> List[Dict[str, Any]]:
     grasp_limits = _construction_limits(candidate_construction, "grasp")
     ig_limits = _construction_limits(candidate_construction, "iterated_greedy")
@@ -69,7 +75,8 @@ def build_grasp_ig_candidate_specs(
     ig_restarts = _positive_int(ig_limits.get("effective_restarts"), default=0)
     rcl_size = _positive_int(grasp_limits.get("effective_rcl_size"), default=3)
     destruction_size = _positive_int(ig_limits.get("effective_destruction_size"), default=3)
-    rules = _dispatch_rules(dispatch_rule_cfg, valid_dispatch_rules)
+    mode = str(dispatch_mode or "batch_order").strip().lower()
+    rules = _dispatch_rules(dispatch_rule_cfg, valid_dispatch_rules, dispatch_mode=mode)
     specs: List[Dict[str, Any]] = []
 
     for index in range(grasp_restarts):
@@ -78,6 +85,7 @@ def build_grasp_ig_candidate_specs(
             {
                 "origin": GRASP_ORIGIN,
                 "restart_index": index,
+                "dispatch_mode": mode,
                 "dispatch_rule": rules[index % len(rules)],
                 "order": _grasp_order(base_order, rnd=rnd, rcl_size=rcl_size),
                 "construction": {"family": GRASP_ORIGIN, "restart_index": index, "rcl_size": rcl_size},
@@ -90,6 +98,7 @@ def build_grasp_ig_candidate_specs(
             {
                 "origin": IG_ORIGIN,
                 "restart_index": index,
+                "dispatch_mode": mode,
                 "dispatch_rule": rules[index % len(rules)],
                 "order": _ig_order(parent_order, rnd=rnd, destruction_size=destruction_size),
                 "construction": {

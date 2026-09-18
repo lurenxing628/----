@@ -281,12 +281,11 @@ def _candidate_specs_for_run(
         dispatch_rule_cfg=dispatch_rule_cfg,
         valid_dispatch_rules=valid_dispatch_rules,
         rng_factory=rng_factory,
+        dispatch_mode="batch_order",
     )
     if not specs:
         _mark_phase_skipped(search_report_state, "candidate_budget_empty")
         return None
-    for spec in specs:
-        spec["dispatch_mode"] = "batch_order"
     return _dedupe_candidate_specs(specs)
 
 
@@ -344,6 +343,7 @@ def _run_candidate_spec(
     index = int(spec["restart_index"])
     dispatch_mode = str(spec.get("dispatch_mode") or "batch_order")
     dispatch_rule = str(spec["dispatch_rule"])
+    decode_started = clock()
     try:
         candidate = _evaluate_candidate(
             scheduler=scheduler,
@@ -384,6 +384,9 @@ def _run_candidate_spec(
         if search_report_state is not None:
             search_report_state.mark_candidate_rejected(reason="validation_error")
         return best
+    # Measured decode time travels with the candidate so a GRASP/IG incumbent can still budget
+    # the local search and later guards (the key name is shared with multi-start starts).
+    candidate["initial_decode_runtime_ms"] = max((clock() - decode_started) * 1000.0, 0.0)
     return _record_candidate(
         best=best,
         candidate=candidate,

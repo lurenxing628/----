@@ -263,7 +263,8 @@ def test_outer_runner_uses_completed_results_to_adapt_the_next_slice(improved):
     assert outcome.completed_count == outcome.planned_count == 4
     assert outcome.skipped_count == 0 and not outcome.time_budget_reached
     assert [item.assigned_seconds for item in allocations[:2]] == pytest.approx([3.0, 11.0 / 3.0])
-    assert allocations[2].assigned_seconds == pytest.approx(7.5 if improved else 2.5)
+    # A non-improvement is neutral (2026-09-18): the next tier keeps its equal slice instead of half.
+    assert allocations[2].assigned_seconds == pytest.approx(7.5 if improved else 5.0)
     assert allocations[3].assigned_seconds == 9.0
     feedback = allocations[2].allocation_feedback
     assert feedback is not None and feedback["candidate_sequence"] == 1

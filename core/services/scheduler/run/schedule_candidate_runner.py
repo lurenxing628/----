@@ -14,7 +14,19 @@ from .optimizer_search_budget import (
     allocate_candidate_budget,
 )
 from .schedule_candidate_dedup import CandidateInputLedger
-from .schedule_candidate_health import CandidateHealth
+from .schedule_candidate_plan import (
+    CANDIDATE_STATUS_COMPLETED,
+    CANDIDATE_STATUS_FAILED,
+    CANDIDATE_STATUS_SKIPPED,
+    CandidateComparisonOutcome,
+    CandidatePlan,
+    CandidateRunArtifacts,
+    CandidateTrialFailure,
+    candidate_plan_from_artifacts,
+    failed_plan,
+    skipped_plan,
+    with_input_certification,
+)
 from .schedule_candidate_runtime_helpers import (
     _candidate_cfg,
     _candidate_health,
@@ -34,80 +46,6 @@ from .schedule_candidate_specs import (
 )
 from .schedule_graph_report import make_cached_graph_preparation_fn
 from .schedule_optimizer import optimize_schedule
-
-CANDIDATE_STATUS_COMPLETED = "completed"
-# O25 裁定保留：FAILED 态生产不可达（生产零 raise 点）但属已落库 status 枚举契约，裸删破坏持久化兼容。
-CANDIDATE_STATUS_FAILED = "failed"
-CANDIDATE_STATUS_SKIPPED = "skipped"
-
-
-class CandidateTrialFailure(RuntimeError):
-    """单个候选方案可记录为 failed 的运行失败。"""
-
-
-@dataclass(frozen=True)
-class CandidatePlan:
-    sequence: int
-    candidate_key: str
-    kind: str
-    label: str
-    status: str
-    score: Optional[Tuple[float, ...]]
-    graph_critical_weight: int
-    graph_impact_weight: int
-    graph_downstream_weight: int
-    results: List[Any] = field(default_factory=list)
-    summary: Any = None
-    metrics: Any = None
-    health: Optional[CandidateHealth] = None
-    graph_analysis_public: Optional[Dict[str, Any]] = None
-    graph_analysis_diagnostics: Optional[Dict[str, Any]] = None
-    used_strategy: Any = None
-    used_params: Dict[str, Any] = field(default_factory=dict)
-    best_order: List[str] = field(default_factory=list)
-    attempts: List[Dict[str, Any]] = field(default_factory=list)
-    improvement_trace: List[Dict[str, Any]] = field(default_factory=list)
-    algo_mode: str = ""
-    objective_name: str = ""
-    algo_stats: Dict[str, Any] = field(default_factory=dict)
-    time_budget_seconds: int = 0
-    search_report: Dict[str, Any] = field(default_factory=dict)
-    sort_strategy: str = ""
-    dispatch_mode: str = ""
-    dispatch_rule: str = ""
-    objective: str = ""
-    # Dispatch rule of the plan the optimizer finally adopted; may differ from the configured
-    # ``dispatch_rule`` because the rule pool is an optimizer-internal search dimension.
-    adopted_dispatch_rule: str = ""
-    failure_reason: Optional[str] = None
-    elapsed_seconds: float = 0.0
-    # Set when this plan is a completed sibling's plan under this candidate's identity: the two
-    # candidates had identical optimizer inputs, so no search of its own was spent on it.
-    reused_from_candidate_key: Optional[str] = None
-    reused_from_label: Optional[str] = None
-
-
-@dataclass(frozen=True)
-class CandidateComparisonOutcome:
-    candidates: List[CandidatePlan]
-    selection: CandidateSelectionResult
-    planned_count: int
-    completed_count: int
-    failed_count: int
-    skipped_count: int
-    time_budget_reached: bool
-    selection_policy: str
-    run_time_budget_seconds: Optional[float]
-    skipped_candidate_labels: List[str]
-    baseline_missing_or_failed: bool
-    reused_count: int = 0
-
-
-@dataclass(frozen=True)
-class _CandidateRunArtifacts:
-    candidate_cfg: Any
-    graph_preparation: Any
-    outcome: Any
 
 
 class _CandidateTrialConfigService:
@@ -215,7 +153,7 @@ def _run_candidate_plans(
         if candidate_started >= deadline:
             time_budget_reached = True
             if twin is None:
-                candidates.append(_skipped_plan(spec, failure_reason="candidate_time_budget_reached"))
+                candidates.append(skipped_plan(spec, failure_reason="candidate_time_budget_reached"))
                 report(len(candidates), len(specs))
                 continue
         if spec.graph_enabled and twin is None:
@@ -229,6 +167,7 @@ def _run_candidate_plans(
                 spec, twin, baseline_results=baseline_results,
                 elapsed_seconds=now() - candidate_started,
             )
+            feedback.observe_reused(plan)
         else:
             plan = _run_candidate_with_failure_capture(
                 spec,
@@ -246,6 +185,8 @@ def _run_candidate_plans(
                     remaining_candidates=ledger.distinct_remaining(specs[index:]), feedback=feedback,
                 ),
             )
+            # Certify before the ledger keeps the plan: a reused sibling inherits the twin's record.
+            plan = with_input_certification(plan, ledger.certification(spec), logger=logger)
             ledger.observe(spec, plan, completed=plan.status == CANDIDATE_STATUS_COMPLETED)
             feedback.observe(plan)
         candidates.append(plan)
@@ -286,10 +227,10 @@ def _run_candidate_with_failure_capture(
     # 这是 b81f8b3f 收窄后的护栏:绝不能以"统一/简化"名义改回 except Exception,
     # 否则复活被治理掉的"未知异常静默转 failed candidate"静默吞错(踩灵魂线)。
     except CandidateTrialFailure as exc:
-        return _failed_plan(spec, exc, elapsed_seconds=now() - candidate_started)
+        return failed_plan(spec, exc, elapsed_seconds=now() - candidate_started)
     except SearchBudgetExhausted:
         return replace(
-            _skipped_plan(spec, failure_reason="candidate_time_budget_reached"),
+            skipped_plan(spec, failure_reason="candidate_time_budget_reached"),
             elapsed_seconds=max(now() - candidate_started, 0.0),
         )
     return replace(plan, elapsed_seconds=now() - candidate_started)
@@ -377,7 +318,7 @@ def _run_single_candidate(
         outcome=artifacts.outcome,
         graph_preparation=artifacts.graph_preparation,
     )
-    return _candidate_plan_from_artifacts(spec, artifacts=artifacts, health=health)
+    return candidate_plan_from_artifacts(spec, artifacts=artifacts, health=health)
 
 
 def _run_candidate_optimization(
@@ -391,7 +332,7 @@ def _run_candidate_optimization(
     logger: Any,
     search_budget: SearchBudget,
     prepared: Any = None,
-) -> _CandidateRunArtifacts:
+) -> CandidateRunArtifacts:
     if prepared is None:
         candidate_cfg = _candidate_cfg(base_cfg, spec)
         graph_preparation = prepare_graph_fn(_replace_schedule_input_cfg(schedule_input, cfg=candidate_cfg))
@@ -418,81 +359,7 @@ def _run_candidate_optimization(
         graph_dispatch_mode_override=graph_preparation.graph_dispatch_mode_override,
         search_budget=search_budget,
     )
-    return _CandidateRunArtifacts(candidate_cfg=candidate_cfg, graph_preparation=graph_preparation, outcome=outcome)
-
-
-def _candidate_plan_from_artifacts(
-    spec: CandidateRunSpec,
-    *,
-    artifacts: _CandidateRunArtifacts,
-    health: CandidateHealth,
-) -> CandidatePlan:
-    candidate_cfg = artifacts.candidate_cfg
-    graph_preparation = artifacts.graph_preparation
-    outcome = artifacts.outcome
-    return CandidatePlan(
-        sequence=int(spec.sequence),
-        candidate_key=spec.candidate_key,
-        kind=spec.kind,
-        label=spec.label,
-        status=CANDIDATE_STATUS_COMPLETED,
-        score=_candidate_score(outcome),
-        graph_critical_weight=int(spec.graph_critical_weight),
-        graph_impact_weight=int(spec.graph_impact_weight),
-        graph_downstream_weight=int(spec.graph_downstream_weight),
-        results=list(outcome.results or []),
-        summary=getattr(outcome, "summary", None),
-        metrics=getattr(outcome, "metrics", None),
-        health=health,
-        graph_analysis_public=_dict_or_none(getattr(graph_preparation, "graph_analysis_public", None)),
-        graph_analysis_diagnostics=_dict_or_none(getattr(graph_preparation, "graph_analysis_diagnostics", None)),
-        used_strategy=getattr(outcome, "used_strategy", None),
-        used_params=dict(getattr(outcome, "used_params", None) or {}),
-        best_order=_string_list(getattr(outcome, "best_order", None)),
-        attempts=_dict_list(getattr(outcome, "attempts", None)),
-        improvement_trace=_dict_list(getattr(outcome, "improvement_trace", None)),
-        algo_mode=str(getattr(outcome, "algo_mode", None) or ""),
-        objective_name=str(getattr(outcome, "objective_name", None) or ""),
-        algo_stats=dict(getattr(outcome, "algo_stats", None) or {}),
-        time_budget_seconds=int(getattr(outcome, "time_budget_seconds", None) or 0),
-        search_report=dict(getattr(outcome, "search_report", None) or {}),
-        sort_strategy=str(candidate_cfg.sort_strategy),
-        dispatch_mode=str(candidate_cfg.dispatch_mode),
-        dispatch_rule=str(candidate_cfg.dispatch_rule),
-        objective=str(candidate_cfg.objective),
-        adopted_dispatch_rule=str(getattr(outcome, "dispatch_rule", None) or ""),
-    )
-
-
-def _skipped_plan(spec: CandidateRunSpec, *, failure_reason: str) -> CandidatePlan:
-    return CandidatePlan(
-        sequence=int(spec.sequence),
-        candidate_key=spec.candidate_key,
-        kind=spec.kind,
-        label=spec.label,
-        status=CANDIDATE_STATUS_SKIPPED,
-        score=None,
-        graph_critical_weight=int(spec.graph_critical_weight),
-        graph_impact_weight=int(spec.graph_impact_weight),
-        graph_downstream_weight=int(spec.graph_downstream_weight),
-        failure_reason=failure_reason,
-    )
-
-
-def _failed_plan(spec: CandidateRunSpec, exc: Exception, *, elapsed_seconds: float) -> CandidatePlan:
-    return CandidatePlan(
-        sequence=int(spec.sequence),
-        candidate_key=spec.candidate_key,
-        kind=spec.kind,
-        label=spec.label,
-        status=CANDIDATE_STATUS_FAILED,
-        score=None,
-        graph_critical_weight=int(spec.graph_critical_weight),
-        graph_impact_weight=int(spec.graph_impact_weight),
-        graph_downstream_weight=int(spec.graph_downstream_weight),
-        failure_reason=str(exc),
-        elapsed_seconds=float(elapsed_seconds),
-    )
+    return CandidateRunArtifacts(candidate_cfg=candidate_cfg, graph_preparation=graph_preparation, outcome=outcome)
 
 
 __all__ = ["CANDIDATE_STATUS_COMPLETED", "CANDIDATE_STATUS_FAILED", "CANDIDATE_STATUS_SKIPPED", "CandidateComparisonOutcome", "CandidatePlan", "CandidateTrialFailure", "run_candidate_comparison"]

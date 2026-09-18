@@ -58,9 +58,19 @@ def guard_decoder(schedule_fn, *, clock, deadline, search_report_state, minimum_
     return schedule
 
 
-def evaluate_optional_local_with_budget(**kwargs):
+def evaluate_optional_local_or_exhausted(**kwargs):
+    """``(candidate, None)`` after an evaluation, ``(None, reason)`` when the guard refused to start it.
+
+    A refusal is not a rejected candidate: no decoder ran, and every later attempt in the
+    same slice would be refused too, so the caller must stop instead of looping on it.
+    """
     try:
-        return evaluate_optional_local_candidate(**kwargs)
-    except SearchBudgetExhausted:
-        # The decoder guard already records the deadline. No candidate was run.
-        return None
+        return evaluate_optional_local_candidate(**kwargs), None
+    except SearchBudgetExhausted as exc:
+        # The decoder guard already records a reached deadline. No candidate was run.
+        return None, str(exc) or "candidate_time_budget_reached"
+
+
+def evaluate_optional_local_with_budget(**kwargs):
+    candidate, _budget_exhausted = evaluate_optional_local_or_exhausted(**kwargs)
+    return candidate

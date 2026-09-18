@@ -15,21 +15,23 @@ from typing import Any, Dict, List, Tuple
 from core.algorithms.evaluation import ScheduleMetrics
 from core.algorithms.sort_strategies import SortStrategy
 from core.algorithms.types import ScheduleResult, ScheduleSummary
-from core.services.scheduler.run.optimizer_local_search import _restart_after_stall, run_local_search
+from core.services.scheduler.run.optimizer_local_search import run_local_search
+from core.services.scheduler.run.optimizer_local_search_restart import restart_after_stall
 from core.services.scheduler.run.optimizer_local_search_state import LocalSearchState
 from core.services.scheduler.run.optimizer_neighborhood_moves import CRITICAL_CHAIN
 from core.services.scheduler.run.optimizer_search_report import OptimizationSearchReportState
 from core.services.scheduler.run.optimizer_vns import VnsState
 
 _START = datetime(2026, 1, 1, 8, 0, 0)
-_BEST_ORDER = ("B0", "B1", "B2")
-# _DeterministicRandom 下 _shake_order 对 3 个批次固定产出 swap(0,1) 三次的结果。
-_SHAKEN_ORDER = ("B1", "B0", "B2")
-# 扰动点 results（latest=B0）上 critical_chain 把 B0 前提得到的候选顺序。
-_POST_RESTART_ORDER = ("B0", "B1", "B2")
-# 若邻域仍用 best 的陈旧 results（latest=B2）在扰动顺序上选靶，会产出这个错位顺序。
-_STALE_TARGET_ORDER = ("B2", "B1", "B0")
-_PRE_RESTART_ORDER = ("B2", "B0", "B1")
+_BEST_ORDER = ("B0", "B1", "B2", "B3")
+# _DeterministicRandom 下 _shake_order 对 best 顺序固定产出 swap(0,1) 三次的结果。
+_SHAKEN_ORDER = ("B1", "B0", "B2", "B3")
+# critical_chain 把 latest 批次往前挪一位。扰动点 results（latest=B2）上得到的候选顺序；四个批次
+# 保证它既不是 best 顺序（已解码过，去重后不会再解码）也不是错位顺序。
+_POST_RESTART_ORDER = ("B2", "B1", "B0", "B3")
+# 若邻域仍用 best 的陈旧 results（latest=B3）在扰动顺序上选靶，会产出这个错位顺序。
+_STALE_TARGET_ORDER = ("B1", "B3", "B0", "B2")
+_PRE_RESTART_ORDER = ("B0", "B3", "B1", "B2")
 
 
 class _Clock:
@@ -102,7 +104,7 @@ def _results_latest(batch_id: str, *, other: str) -> List[ScheduleResult]:
 
 def _best_candidate() -> Dict[str, Any]:
     return {
-        "results": _results_latest("B2", other="B0"),
+        "results": _results_latest("B3", other="B0"),
         "summary": _summary(failed_ops=1),
         "strategy": SortStrategy.PRIORITY_FIRST,
         "params": {},
@@ -116,29 +118,30 @@ def _best_candidate() -> Dict[str, Any]:
     }
 
 
-# 每个可达顺序 -> (failed_ops, latest 批次, 另一批次)。failed_ops 驱动分数：
-# best=1 < 候选(2) < 扰动点(3)=预重启候选(3)，makespan 全部相同不干扰比较。
+# 每个关键顺序 -> (failed_ops, latest 批次, 另一批次)。failed_ops 驱动分数：
+# best=1 < 候选(2) < 扰动点(3)=预重启候选(3) < 其余顺序(4)，makespan 全部相同不干扰比较。
 _SCHEDULE_MAP: Dict[Tuple[str, ...], Tuple[int, str, str]] = {
     _PRE_RESTART_ORDER: (3, "B0", "B2"),
-    _SHAKEN_ORDER: (3, "B0", "B1"),
+    _SHAKEN_ORDER: (3, "B2", "B1"),
     _POST_RESTART_ORDER: (2, "B1", "B0"),
 }
+_OTHER_ORDER_RESULT = (4, "B0", "B1")
 
 
 def _make_schedule_fn(calls: List[Tuple[str, ...]]):
     def _schedule(scheduler: Any, **kwargs: Any):
         order = tuple(kwargs.get("batch_order_override") or ())
         calls.append(order)
-        if order not in _SCHEDULE_MAP:
-            raise AssertionError(f"unexpected decode order (stale-results targeting?): {order}")
-        failed_ops, latest, other = _SCHEDULE_MAP[order]
+        if order == _STALE_TARGET_ORDER:
+            raise AssertionError(f"stale-results targeting after restart: {order}")
+        failed_ops, latest, other = _SCHEDULE_MAP.get(order, _OTHER_ORDER_RESULT)
         results = _results_latest(latest, other=other)
         return results, _summary(failed_ops=failed_ops), kwargs.get("strategy"), dict(kwargs.get("strategy_params") or {})
 
     return _schedule
 
 
-def _run_to_iteration_limit(best: Dict[str, Any], calls: List[Tuple[str, ...]]) -> Tuple[Any, Dict[str, Any]]:
+def _run_until_exhausted(best: Dict[str, Any], calls: List[Tuple[str, ...]]) -> Tuple[Any, Dict[str, Any]]:
     report_state = OptimizationSearchReportState(
         algorithm_profile="vns_sa",
         seed=42,
@@ -152,7 +155,9 @@ def _run_to_iteration_limit(best: Dict[str, Any], calls: List[Tuple[str, ...]]) 
         algo_mode="improve",
         best=best,
         version=42,
-        time_budget_seconds=1,  # -> it_limit=200, restart_after=50
+        time_budget_seconds=1,
+        # No measured decode cost on this stub incumbent: the decode limit is the ceiling and the
+        # search ends as exhausted once every reachable neighbor has been decoded.
         deadline=1005.0,
         scheduler=SimpleNamespace(_last_algo_stats={"fallback_counts": {}, "param_fallbacks": {}}),
         algo_ops_to_schedule=[],
@@ -183,16 +188,21 @@ def _run_to_iteration_limit(best: Dict[str, Any], calls: List[Tuple[str, ...]]) 
 
 def test_restart_evaluates_shaken_order_and_neighborhood_targets_aligned_results() -> None:
     calls: List[Tuple[str, ...]] = []
-    returned, report = _run_to_iteration_limit(_best_candidate(), calls)
+    returned, report = _run_until_exhausted(_best_candidate(), calls)
 
-    # 前 50 轮：从 best（latest=B2）选靶的同一候选被 improve_only 连续拒绝。
-    assert calls[:50] == [_PRE_RESTART_ORDER] * 50
-    # 第 51 次调用是 restart 对扰动顺序的真实评估——扰动顺序不允许不打分就当 current。
-    assert calls[50] == _SHAKEN_ORDER
+    # 第 1 次解码：从 best（latest=B2）选靶的候选被 improve_only 拒绝；之后同一决策只算空转，
+    # 不再重复解码（2026-09-18 局搜迭代语义：迭代 = 解码，重复决策不占解码）。
+    assert calls[0] == _PRE_RESTART_ORDER
+    # 空转累计到 restart 阈值后，restart 对扰动顺序做真实评估——扰动顺序不允许不打分就当 current。
+    assert calls[1] == _SHAKEN_ORDER
     # restart 后的邻域必须用对齐后的 results（latest=B0）选靶：陈旧 results（latest=B2）
     # 会产出 _STALE_TARGET_ORDER，被 stub 直接 AssertionError 拒绝。
-    assert calls[51] == _POST_RESTART_ORDER
+    assert calls[2] == _POST_RESTART_ORDER
     assert _STALE_TARGET_ORDER not in calls
+    # 每个顺序只解码一次；可达顺序解完后搜索见底，而不是靠迭代计数或时间预算收场。
+    assert len(calls) == len(set(calls))
+    assert report["stop_reason"] == "search_exhausted"
+    assert report["iterations"] == len(calls)
     # best 棘轮语义不变：没有候选优于 best（failed_ops=1），返回值仍是 best。
     assert returned is not None
     assert returned["score"] == (1.0, 0.0, 0.0, 2.0, 0.0)
@@ -201,7 +211,7 @@ def test_restart_evaluates_shaken_order_and_neighborhood_targets_aligned_results
 
 def test_restart_acceptance_compares_against_aligned_current_score_not_best() -> None:
     calls: List[Tuple[str, ...]] = []
-    _returned, report = _run_to_iteration_limit(_best_candidate(), calls)
+    _returned, report = _run_until_exhausted(_best_candidate(), calls)
 
     # 候选 failed_ops=2：劣于 best(1)、优于扰动点真实分(3)。improve_only 参照对齐后的
     # current 分数必须接受为 current；旧缺陷参照 best 分数会全程拒绝（该计数为 0）。
@@ -224,19 +234,21 @@ def test_restart_state_keeps_current_triplet_from_evaluated_candidate() -> None:
     state = LocalSearchState.from_best(best, resource_pool=None)
     seen_args: List[Tuple[Any, ...]] = []
 
-    def _evaluator(shaken_order: List[str], strategy: Any, params: Dict[str, Any], dispatch_mode: str, dispatch_rule: str):
+    def _evaluator(shaken_order: List[str], move: Any, strategy: Any, params: Dict[str, Any], dispatch_mode: str, dispatch_rule: str):
         seen_args.append((list(shaken_order), strategy, dict(params), dispatch_mode, dispatch_rule))
-        return _aligned_candidate(shaken_order)
+        return _aligned_candidate(shaken_order), None
 
-    _restart_after_stall(
+    outcome = restart_after_stall(
         local_state=state,
         rnd=_DeterministicRandom(),
         dispatch_mode_cfg="batch_order",
         dispatch_rule_cfg="slack",
         vns_state=VnsState((CRITICAL_CHAIN,)),
+        seen_hashes=set(),
         evaluate_shaken_order=_evaluator,
     )
 
+    assert outcome.decode_attempted is True and outcome.budget_exhausted is None
     assert seen_args and seen_args[0][0] == list(_SHAKEN_ORDER)
     # 扰动顺序用 best 的策略状态评估。
     assert seen_args[0][1] is best["strategy"]
@@ -256,16 +268,54 @@ def test_restart_state_falls_back_to_best_when_shaken_evaluation_fails() -> None
     best = _best_candidate()
     state = LocalSearchState.from_best(best, resource_pool=None)
 
-    _restart_after_stall(
+    restart_after_stall(
         local_state=state,
         rnd=_DeterministicRandom(),
         dispatch_mode_cfg="batch_order",
         dispatch_rule_cfg="slack",
         vns_state=VnsState((CRITICAL_CHAIN,)),
-        evaluate_shaken_order=lambda *args: None,
+        seen_hashes=set(),
+        evaluate_shaken_order=lambda *args: (None, None),
     )
 
     # 评估失败：放弃扰动，current 整体退回 best——顺序也必须退回，不允许留下未评估顺序。
     assert state.current is best
     assert state.current_order == list(_BEST_ORDER)
     assert state.best is best
+
+
+def test_restart_skips_shaken_order_already_decoded_in_this_search() -> None:
+    best = _best_candidate()
+    state = LocalSearchState.from_best(best, resource_pool=None)
+    vns_state = VnsState((CRITICAL_CHAIN,))
+    calls: List[List[str]] = []
+
+    def _evaluator(shaken_order: List[str], *_args: Any):
+        calls.append(list(shaken_order))
+        return _aligned_candidate(shaken_order), None
+
+    seen = {tuple(_SHAKEN_ORDER)}
+    outcome = restart_after_stall(
+        local_state=state, rnd=_DeterministicRandom(), dispatch_mode_cfg="batch_order", dispatch_rule_cfg="slack",
+        vns_state=vns_state, seen_hashes=seen, evaluate_shaken_order=_evaluator,
+    )
+
+    # 扰动顺序本轮已解码过：不再解码，current 退回 best，shake 仍计入 vns 事件，并如实标记为重复。
+    assert calls == []
+    assert outcome.decode_attempted is False and outcome.duplicate is True and outcome.budget_exhausted is None
+    assert state.current is best and state.current_order == list(_BEST_ORDER)
+    assert vns_state.shake_count == 1
+
+
+def test_restart_refused_by_the_budget_guard_is_not_a_duplicate_round() -> None:
+    best = _best_candidate()
+    state = LocalSearchState.from_best(best, resource_pool=None)
+
+    outcome = restart_after_stall(
+        local_state=state, rnd=_DeterministicRandom(), dispatch_mode_cfg="batch_order", dispatch_rule_cfg="slack",
+        vns_state=VnsState((CRITICAL_CHAIN,)), seen_hashes=set(), evaluate_shaken_order=lambda *args: (None, "time_budget"),
+    )
+
+    # 预算守卫拒绝解码：既不是解码轮也不是重复轮，停止原因由 budget_exhausted 直接给出。
+    assert outcome.decode_attempted is False and outcome.duplicate is False and outcome.budget_exhausted == "time_budget"
+    assert state.current is best and state.current_order == list(_BEST_ORDER)

@@ -122,10 +122,10 @@ def test_local_search_dedups_duplicate_neighbors_when_order_large(monkeypatch):
     assert schedule_calls == [_first_critical_chain_order(10)]
 
 
-def test_local_search_keeps_retrying_duplicates_when_order_small(monkeypatch):
+def test_local_search_dedups_duplicate_neighbors_when_order_small(monkeypatch):
+    # The old ``< 10`` exemption let small instances decode the same neighbor every round.
     schedule_calls = _run_case(monkeypatch, order_length=5)
-    assert len(schedule_calls) >= 2
-    assert set(schedule_calls) == {_first_critical_chain_order(5)}
+    assert schedule_calls == [_first_critical_chain_order(5)]
 
 
 def test_local_search_records_rejected_neighbor_and_keeps_existing_best(monkeypatch):
@@ -335,7 +335,8 @@ def test_local_search_records_rejected_neighbor_after_existing_attempt_cap(monke
 
 
 def test_local_search_keeps_distinct_rejected_neighbor_origins(monkeypatch):
-    fake_time = _FakeTime()
+    # A frozen clock: the search must end on its own once every reachable decision was decoded.
+    fake_time = _FakeTime(step=0.0)
     monkeypatch.setattr(schedule_optimizer_module.time, "time", fake_time.time)
     monkeypatch.setattr(schedule_optimizer_module.random, "Random", lambda seed: _DeterministicRandom())
 
@@ -356,13 +357,13 @@ def test_local_search_keeps_distinct_rejected_neighbor_origins(monkeypatch):
     monkeypatch.setattr(schedule_optimizer_module, "_schedule_with_optional_strict_mode", _recording_rejecting_schedule)
 
     best = {
-        "results": _critical_chain_results("B2"),
+        "results": _critical_chain_results("B3"),
         "summary": SimpleNamespace(success=True, total_ops=0, scheduled_ops=0, failed_ops=0, warnings=[], errors=[], duration_seconds=0.0),
         "strategy": SortStrategy.PRIORITY_FIRST,
         "params": {},
         "dispatch_mode": "batch_order",
         "dispatch_rule": "slack",
-        "order": ["B1", "B2"],
+        "order": ["B1", "B2", "B3"],
         "metrics": SimpleNamespace(to_dict=lambda: {}),
         "score": (0.0, 0.0, 0.0),
         "algo_stats": {"fallback_counts": {}, "param_fallbacks": {}},
@@ -374,7 +375,6 @@ def test_local_search_keeps_distinct_rejected_neighbor_origins(monkeypatch):
         best=best,
         version=1,
         time_budget_seconds=1,
-        # Leave room for repeated rejections plus the pre-decode clock checks.
         deadline=1000.08,
         scheduler=cast(Any, SimpleNamespace(_last_algo_stats={"fallback_counts": {}, "param_fallbacks": {}})),
         algo_ops_to_schedule=[],
@@ -396,7 +396,9 @@ def test_local_search_keeps_distinct_rejected_neighbor_origins(monkeypatch):
     )
 
     rejected_attempts = [attempt for attempt in attempts if attempt.get("source") == "candidate_rejected"]
-    assert len(schedule_calls) > len(rejected_attempts)
+    # The critical-chain neighbor (B3 first) is decoded once and rejected; the same decision is never
+    # retried, and the restart shake after the stall brings the second distinct order (one swap).
+    assert schedule_calls == [("B3", "B1", "B2"), ("B2", "B1", "B3")]
     assert rejected_attempts == [
         {
             "tag": "local:critical_chain",
@@ -411,7 +413,7 @@ def test_local_search_keeps_distinct_rejected_neighbor_origins(monkeypatch):
             },
         },
         {
-            "tag": "local:critical_chain",
+            "tag": "local:restart_shake",
             "strategy": SortStrategy.PRIORITY_FIRST.value,
             "dispatch_mode": "batch_order",
             "dispatch_rule": "slack",

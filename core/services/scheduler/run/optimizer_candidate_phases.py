@@ -84,12 +84,30 @@ def run_heuristic_candidate_phases(
     )
 
 
+def graph_phase_dispatch_rule(best: Optional[Dict[str, Any]], *, configured_rule: str) -> Tuple[str, str]:
+    """The rule the graph stages decode with: the incumbent's adopted sgs rule, else the configured one.
+
+    Multi-start may have found a better registry or ladder rule; the graph stages build on the incumbent
+    and must not silently fall back to the configured rule. Returns ``(rule_token, source)``."""
+    if isinstance(best, dict) and str(best.get("dispatch_mode") or "").strip().lower() == "sgs":
+        token = str(best.get("dispatch_rule") or "").strip().lower()
+        if token:
+            return token, "incumbent"
+    return str(configured_rule).strip().lower(), "configured"
+
+
 def _run_graph_ready_candidate_phase(**kwargs: Any) -> Optional[Dict[str, Any]]:
     runtime = kwargs["runtime"]
     if runtime.run_graph_ready_candidates is None:
         return kwargs["state"].best
     optimizer_cfg = kwargs["optimizer_cfg"]
     candidate_profile = kwargs["candidate_profile"]
+    dispatch_rule, rule_source = graph_phase_dispatch_rule(kwargs["state"].best, configured_rule=optimizer_cfg.dispatch_rule)
+    report_state = kwargs["search_report_state"]
+    if report_state is not None:
+        report_state.update_candidate_profile(
+            graph_phase_dispatch_rule=dispatch_rule, graph_phase_dispatch_rule_source=rule_source,
+        )
     return runtime.run_graph_ready_candidates(
         algo_mode=optimizer_cfg.algo_mode,
         best=kwargs["state"].best,
@@ -104,7 +122,7 @@ def _run_graph_ready_candidate_phase(**kwargs: Any) -> Optional[Dict[str, Any]]:
         base_strategy=optimizer_cfg.strategy_enum,
         base_params=dict(optimizer_cfg.strategy_params or {}),
         build_order=kwargs["build_order"],
-        dispatch_rule_cfg=optimizer_cfg.dispatch_rule,
+        dispatch_rule_cfg=dispatch_rule,
         resource_pool=kwargs["resource_pool"],
         objective_name=optimizer_cfg.objective_name,
         deadline=kwargs["deadline"],
@@ -117,7 +135,7 @@ def _run_graph_ready_candidate_phase(**kwargs: Any) -> Optional[Dict[str, Any]]:
         graph_ready_context=kwargs["graph_ready_context"],
         clock=runtime.clock,
         schedule_fn=kwargs["schedule_fn"],
-        search_report_state=kwargs["search_report_state"],
+        search_report_state=report_state,
         candidate_construction=dict(candidate_profile.candidate_construction or {}),
     )
 

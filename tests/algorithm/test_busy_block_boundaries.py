@@ -175,21 +175,23 @@ def test_native_service_with_custom_engine_retains_legacy_attempts():
     assert outputs[0][1] == 4
 
 
-def test_execution_getattr_overlay_does_not_borrow_native_certificate():
+def test_execution_overlay_certificate_is_its_own_and_never_reaches_below_the_release():
     outputs = []
     for legacy in (True, False):
         with native_calendar() as native:
             overlay = ExecutionResourceCalendar(native, [
                 ExecutionResourceReservation(99, "M2", "O1", at(), at(0.5)),
             ])
-            assert overlay.certified_slot_window(at(0.5), operator_id="O1") is not None
+            assert overlay.certified_slot_window(at(0.25), operator_id="O1") is None
+            assert overlay.certified_slot_window(at(0.5), operator_id="O1") == (at(0.5), at(8))
             outputs.append(run_estimate(overlay, slot_case(
                 machine=spans((0.5, 1), (1, 2), (2, 3)),
             ), legacy=legacy))
             assert overlay._release_by_operator == {"O1": at(0.5)}
-    assert outputs[0] == outputs[1]
+    assert outputs[0][0] == outputs[1][0]
     assert outputs[0][0].start_time == at(3)
-    assert outputs[0][1] == 4
+    # The overlay now certifies the constant window itself, so the busy-block closure skips the touching blocks.
+    assert outputs[0][1] == 4 and outputs[1][1] < 4
 
 
 @pytest.mark.parametrize("target,name", [

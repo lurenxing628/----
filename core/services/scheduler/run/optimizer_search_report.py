@@ -71,6 +71,7 @@ class OptimizationSearchReportState:
     best_acceptance_event_count: int = 0
     deadline_reached: bool = False
     iteration_limit_reached: bool = False
+    search_exhausted: bool = False
     local_search_entered: bool = False
     local_search_improved: bool = False
     optional_warmstart_failed: bool = False
@@ -246,6 +247,10 @@ class OptimizationSearchReportState:
     def mark_iteration_limit_reached(self) -> None:
         self.iteration_limit_reached = True
 
+    def mark_search_exhausted(self) -> None:
+        """Every neighbor the search could still propose had already been decoded."""
+        self.search_exhausted = True
+
     def set_iterations(self, value: int) -> None:
         self.iterations = max(int(self.iterations), int(value or 0))
 
@@ -311,6 +316,8 @@ class OptimizationSearchReportState:
             return "time_budget"
         if self.iteration_limit_reached:
             return "iteration_limit"
+        if self.search_exhausted:
+            return "search_exhausted"
         if self.best_origin == "baseline":
             return "baseline_scheduled"
         if self.rejected_candidates and self.accepted_candidates == 0:

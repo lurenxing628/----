@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import date, datetime
 from functools import partial
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
@@ -8,7 +9,7 @@ from core.algorithms import ScheduleResult
 
 from .optimizer_acceptance import AcceptanceDecision, decide_acceptance
 from .optimizer_attempt_records import append_rejected_reason_attempt
-from .optimizer_deadline_guard import evaluate_optional_local_with_budget
+from .optimizer_deadline_guard import evaluate_optional_local_or_exhausted
 from .optimizer_local_search_candidate_eval import evaluate_local_search_candidate
 from .optimizer_local_search_fingerprints import (
     LocalSearchFingerprintTracker,
@@ -27,6 +28,26 @@ from .optimizer_vns import VnsState
 
 if TYPE_CHECKING:
     from .optimizer_search_report import OptimizationSearchReportState
+
+
+@dataclass(frozen=True)
+class LocalSearchRoundResult:
+    """``decode_attempted`` is False for no-op and duplicate rounds, which cost no decoder call;
+    ``budget_exhausted`` names the guard refusal that stopped the round before any decode."""
+
+    no_improve: int
+    accepted_current: bool
+    best_improved: bool
+    move: NeighborhoodMove
+    decode_attempted: bool = False
+    duplicate: bool = False
+    budget_exhausted: Optional[str] = None
+
+
+def stamp_decode_runtime(candidate: Optional[Dict[str, Any]], *, started_at: float, clock: Callable[[], float]) -> None:
+    """Every decoded candidate carries its measured decode time so later phases can budget on it."""
+    if candidate is not None:
+        candidate["initial_decode_runtime_ms"] = max((clock() - started_at) * 1000.0, 0.0)
 
 
 def _record_improvement(
@@ -57,20 +78,21 @@ def _record_improvement(
                 "metrics": metrics.to_dict(),
             }
         )
-    if len(attempts) < 12:
-        attempts.append(
-            {
-                "tag": move_tag,
-                "strategy": used_strat.value,
-                "dispatch_mode": dispatch_mode,
-                "dispatch_rule": dispatch_rule,
-                "used_params": dict(used_params or {}),
-                "score": list(score),
-                "failed_ops": int(candidate["summary"].failed_ops),
-                "algo_stats": candidate["algo_stats"],
-                "metrics": metrics.to_dict(),
-            }
-        )
+    # Every best improvement is recorded; the final compaction keeps the best per dispatch mode,
+    # so a cap here could drop the adopted plan's own attempt from the report.
+    attempts.append(
+        {
+            "tag": move_tag,
+            "strategy": used_strat.value,
+            "dispatch_mode": dispatch_mode,
+            "dispatch_rule": dispatch_rule,
+            "used_params": dict(used_params or {}),
+            "score": list(score),
+            "failed_ops": int(candidate["summary"].failed_ops),
+            "algo_stats": candidate["algo_stats"],
+            "metrics": metrics.to_dict(),
+        }
+    )
 
 
 def _record_noop_neighbor(
@@ -97,7 +119,7 @@ def _record_noop_neighbor(
     search_report_state.mark_candidate_rejected(reason=reason)
 
 
-def _mark_neighborhood_move(
+def mark_neighborhood_move(
     search_report_state: Optional[OptimizationSearchReportState],
     move: NeighborhoodMove,
     *,
@@ -168,7 +190,7 @@ def run_local_search_candidate_round(
     cur_params: Dict[str, Any],
     cur_dispatch_mode: str,
     cur_dispatch_rule: str,
-    seen_hashes: Optional[set],
+    seen_hashes: set,
     rnd: Any,
     attempts: List[Dict[str, Any]],
     improvement_trace: List[Dict[str, Any]],
@@ -196,7 +218,8 @@ def run_local_search_candidate_round(
     fingerprint_tracker: LocalSearchFingerprintTracker,
     clock: Callable[[], float],
     t_begin: float,
-) -> Tuple[int, bool, bool, NeighborhoodMove]:
+    started_at: float,
+) -> LocalSearchRoundResult:
     move = choose_neighborhood_move(
         order=local_state.current_order,
         neighborhoods=vns_state.current_choice(),
@@ -208,7 +231,7 @@ def run_local_search_candidate_round(
         valid_dispatch_rules=valid_dispatch_rules,
     )
     if move.noop:
-        _mark_neighborhood_move(search_report_state, move)
+        mark_neighborhood_move(search_report_state, move)
         _record_noop_neighbor(
             attempts=attempts,
             search_report_state=search_report_state,
@@ -217,9 +240,9 @@ def run_local_search_candidate_round(
             dispatch_rule=cur_dispatch_rule,
             move=move,
         )
-        return no_improve + 1, False, False, move
+        return LocalSearchRoundResult(no_improve + 1, False, False, move)
     if should_skip_seen(move, seen_hashes):
-        _mark_neighborhood_move(
+        mark_neighborhood_move(
             search_report_state,
             move,
             noop=True,
@@ -234,14 +257,16 @@ def run_local_search_candidate_round(
             dispatch_rule=cur_dispatch_rule,
             move=move,
         )
-        return no_improve + 1, False, False, move
+        return LocalSearchRoundResult(no_improve + 1, False, False, move, duplicate=True)
 
-    _mark_neighborhood_move(search_report_state, move)
+    mark_neighborhood_move(search_report_state, move)
     cand_order = list(move.batch_order or local_state.current_order)
     candidate_resource_pool = move.resource_pool if move.resource_pool is not None else (local_state.current_resource_pool or resource_pool)
     candidate_mode = str(move.dispatch_mode or cur_dispatch_mode)
     candidate_rule = str(move.dispatch_rule or cur_dispatch_rule)
-    candidate = evaluate_optional_local_with_budget(
+    # ``started_at`` is the loop's reading taken just before this round; choosing the move costs
+    # microseconds, so the decode time is measured from it without another clock call.
+    candidate, budget_exhausted = evaluate_optional_local_or_exhausted(
         evaluate=partial(
             evaluate_local_search_candidate,
             scheduler=scheduler,
@@ -273,13 +298,16 @@ def run_local_search_candidate_round(
         strict_mode=bool(strict_mode),
         search_report_state=search_report_state,
     )
+    stamp_decode_runtime(candidate, started_at=started_at, clock=clock)
     candidate_fingerprint = local_candidate_fingerprint(
         search_report_state=search_report_state,
         fingerprint_tracker=fingerprint_tracker,
         candidate=candidate,
     )
     if candidate is None:
-        return no_improve + 1, False, False, move
+        return LocalSearchRoundResult(
+            no_improve + 1, False, False, move, decode_attempted=budget_exhausted is None, budget_exhausted=budget_exhausted,
+        )
     acceptance_decision = decide_acceptance(
         acceptance_name=acceptance,
         candidate_score=candidate.get("score"),
@@ -313,7 +341,7 @@ def run_local_search_candidate_round(
         candidate=candidate,
         acceptance_decision=acceptance_decision,
     )
-    return no_improve, accepted_current, best_improved, move
+    return LocalSearchRoundResult(no_improve, accepted_current, best_improved, move, decode_attempted=True)
 
 
 def _incumbent_origin(
@@ -357,4 +385,4 @@ def _record_acceptance_result(
     )
 
 
-__all__ = ["run_local_search_candidate_round"]
+__all__ = ["LocalSearchRoundResult", "mark_neighborhood_move", "run_local_search_candidate_round", "stamp_decode_runtime"]

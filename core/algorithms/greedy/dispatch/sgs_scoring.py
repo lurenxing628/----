@@ -11,7 +11,6 @@ from core.algorithm_contracts.dispatch_rules import (
     as_dispatch_rule_spec,
     build_dispatch_key,
 )
-from core.algorithm_contracts.value_domains import MERGED
 from core.algorithm_runtime.auto_assign_contract import (
     AUTO_ASSIGN_REASON_WINDOW_BLOCKED,
     auto_assign_attempt_from_result,
@@ -21,12 +20,11 @@ from core.algorithm_runtime.internal_slot import (
     raise_strict_internal_hours_validation,
     validate_internal_hours_for_mode,
 )
-from core.algorithm_runtime.piece_input import external_group_key
 from core.algorithm_runtime.run_state import ScheduleRunState
 from core.algorithm_runtime.sgs_estimate_reuse import current_sgs_handoff, current_sgs_reuse, remember_sgs_estimate
 from core.algorithm_runtime.slot_overlap_reuse import overlap_reuse_for
 from core.infrastructure.errors import ValidationError
-from core.shared.strict_parse import is_blank_input, parse_optional_date, parse_required_float, parse_required_int
+from core.shared.strict_parse import parse_optional_date, parse_required_int
 
 from .resource_validation import (
     RESOURCE_REASON_AUTO_ASSIGN_UNAVAILABLE,
@@ -34,6 +32,10 @@ from .resource_validation import (
     RESOURCE_REASON_MANUAL_MISSING,
     internal_resource_validation_message,
 )
+from .sgs_due_span import _external_candidate_window, _parse_external_days, due_span_inputs
+
+# Keep the historical import surface: callers still read the external window helpers from this module.
+__all__ = ["_external_candidate_window", "_parse_external_days"]
 
 
 class _ScoringResources(NamedTuple):
@@ -89,6 +91,8 @@ def _dispatch_key(
     seq: int,
     op_id: int,
     score_penalty: float,
+    slack_hours: float,
+    time_left_hours: float,
 ) -> Tuple[float, ...]:
     # Internal callers may still hand over the bare enum; both are explicit contract values.
     spec = as_dispatch_rule_spec(dispatch_rule)
@@ -107,6 +111,8 @@ def _dispatch_key(
             seq=int(seq),
             op_id=int(op_id),
             atc_k=spec.atc_k,
+            slack_hours=float(slack_hours),
+            time_left_hours=float(time_left_hours),
         )
     )
     return (float(score_penalty),) + tuple(base_key)
@@ -160,6 +166,10 @@ def _score_external_candidate(
     window = _external_candidate_window(ctx, state, op=op, batch_id=batch_id, prev_end=meta["prev_end"], strict_mode=strict_mode)
     est_start, est_end = window
     proc_hours = max((est_end - est_start).total_seconds() / 3600.0, 0.0)
+    slack_hours, time_left_hours = due_span_inputs(
+        ctx.calendar, due_date=meta["due_date"], est_start=est_start, est_end=est_end,
+        priority=meta["priority"], operator_id="", horizon=end_dt_exclusive,
+    )
     return _dispatch_key(
         dispatch_key_builder=dispatch_key_builder,
         dispatch_rule=dispatch_rule,
@@ -175,6 +185,8 @@ def _score_external_candidate(
         seq=meta["seq"],
         op_id=meta["op_id"],
         score_penalty=(1.0 if end_dt_exclusive is not None and est_end >= end_dt_exclusive else 0.0),
+        slack_hours=slack_hours,
+        time_left_hours=time_left_hours,
     )
 
 
@@ -225,6 +237,10 @@ def _score_internal_candidate(
             # 的垫底排序 key——可行候选（penalty=0）永远优先；该候选真被选中时会在放置层
             # （internal_operation._resolve_internal_resources）按 WINDOW_BLOCKED 记单批失败
             # 并留下截止日期文案，其余批次继续。
+            slack_hours, time_left_hours = due_span_inputs(
+                ctx.calendar, due_date=meta["due_date"], est_start=meta["prev_end"], est_end=meta["prev_end"],
+                priority=meta["priority"], operator_id="", horizon=end_dt_exclusive,
+            )
             return _dispatch_key(
                 dispatch_key_builder=dispatch_key_builder,
                 dispatch_rule=dispatch_rule,
@@ -240,6 +256,8 @@ def _score_internal_candidate(
                 seq=meta["seq"],
                 op_id=meta["op_id"],
                 score_penalty=1.0,
+                slack_hours=slack_hours,
+                time_left_hours=time_left_hours,
             )
         message, details = internal_resource_validation_message(
             batch=batch,
@@ -264,6 +282,10 @@ def _score_internal_candidate(
         total_hours,
         estimate_slot=estimate_slot,
     )
+    slack_hours, time_left_hours = due_span_inputs(
+        ctx.calendar, due_date=meta["due_date"], est_start=estimate.start_time, est_end=estimate.end_time,
+        priority=meta["priority"], operator_id=resources.operator_id, horizon=end_dt_exclusive,
+    )
     return _dispatch_key(
         dispatch_key_builder=dispatch_key_builder,
         dispatch_rule=dispatch_rule,
@@ -279,6 +301,8 @@ def _score_internal_candidate(
         seq=meta["seq"],
         op_id=meta["op_id"],
         score_penalty=(1.0 if estimate.blocked_by_window else 0.0),
+        slack_hours=slack_hours,
+        time_left_hours=time_left_hours,
     )
 
 
@@ -291,42 +315,6 @@ def _candidate_meta(*, op: Any, batch: Any, batch_id: str, state: ScheduleRunSta
         "batch_id": batch_id,
         "prev_end": state.prev_end(batch_id),
     }
-
-
-def _external_candidate_window(
-    ctx: Any,
-    state: ScheduleRunState,
-    *,
-    op: Any,
-    batch_id: str,
-    prev_end: datetime,
-    strict_mode: bool,
-) -> Tuple[datetime, datetime]:
-    merge_mode = str(getattr(op, "ext_merge_mode", None) or "").strip().lower()
-    ext_group_id = str(getattr(op, "ext_group_id", None) or "").strip()
-    if merge_mode == MERGED and ext_group_id:
-        cached = state.external_group_cache.get(external_group_key(op))
-        if cached:
-            return cached
-        total_days = _parse_external_days(
-            getattr(op, "ext_group_total_days", None),
-            field="ext_group_total_days",
-            strict_mode=strict_mode,
-        )
-        return prev_end, ctx.calendar.add_calendar_days(prev_end, total_days)
-    ext_days = _parse_external_days(
-        getattr(op, "ext_days", None),
-        field="ext_days",
-        strict_mode=strict_mode,
-        default_days=1.0,
-    )
-    return prev_end, ctx.calendar.add_calendar_days(prev_end, ext_days)
-
-
-def _parse_external_days(value: Any, *, field: str, strict_mode: bool, default_days: Optional[float] = None) -> float:
-    if not strict_mode and is_blank_input(value) and default_days is not None:
-        return float(default_days)
-    return parse_required_float(value, field=field, min_value=0.0, min_inclusive=False)
 
 
 def _scoring_total_hours(
@@ -486,6 +474,7 @@ def _estimate_scoring_slot(
 _NATIVE_SCORING_HELPERS = {name: globals()[name] for name in (
     "_candidate_meta", "_scoring_total_hours", "_scoring_resources", "_estimate_scoring_slot", "_dispatch_key",
     "_parse_due_date", "parse_optional_date", "parse_date", "_score_internal_candidate", "_score_external_candidate",
+    "due_span_inputs", "_external_candidate_window",
 )}
 
 

@@ -75,11 +75,15 @@ class EliteRepairPool:
         return build_candidate_fingerprint(candidate, objective_name=self.objective_name,
                                            parent_fingerprint=parent, seen_output_fingerprints=self.seen_outputs)
 
-    def observe(self, candidate: Dict[str, Any], profile: GraphReadyWeightProfile) -> None:
+    def observe(self, candidate: Dict[str, Any], profile: GraphReadyWeightProfile) -> Any:
+        """Record the decoded output and maybe adopt it as an elite; returns its fingerprint against earlier outputs."""
         fingerprint = self.fingerprint(candidate)
         self.seen_outputs.add(fingerprint.output_fingerprint)
-        if not self.limits.enabled or not profile.formula_version.startswith("graph_ready_v2"):
-            return
+        if self.limits.enabled and profile.formula_version.startswith("graph_ready_v2"):
+            self._observe_elite(candidate, profile, fingerprint)
+        return fingerprint
+
+    def _observe_elite(self, candidate: Dict[str, Any], profile: GraphReadyWeightProfile, fingerprint: Any) -> None:
         if candidate["summary"].failed_ops or not candidate["summary"].success:
             return
         elite_identity = (profile.feature_basis, fingerprint.output_fingerprint)
@@ -102,7 +106,7 @@ class EliteRepairPool:
     def make_elite(self, candidate: Dict[str, Any], profile: GraphReadyWeightProfile) -> Dict[str, Any]:
         neighborhood = ParentRepairPortfolio(((profile, self._build_variant(candidate, profile)),))
         return {"candidate": candidate, "profile": profile, "fingerprint": self.fingerprint(candidate),
-                "neighborhood": neighborhood, "decision_offset": 0}
+                "neighborhood": neighborhood, "decision_offset": 0, "stream_offsets": {}}
 
     def _build_variant(self, candidate: Dict[str, Any], profile: GraphReadyWeightProfile) -> RepairPortfolio:
         return build_repair_portfolio(
@@ -331,12 +335,16 @@ def _repair_one_elite(pool: EliteRepairPool, *, elite: Dict[str, Any], elite_ind
     neighborhood = elite["neighborhood"]
     generated = 0
     offset = elite.get("decision_offset", 0)
-    for kind, decision, variant_profile in islice(neighborhood.profiled_decisions(), offset, None):
+    # Each basis variant resumes after its own consumed prefix: a variant added between visits must not
+    # re-yield decisions this elite already generated nor skip ones it has not.
+    consumed: Dict[str, int] = elite.setdefault("stream_offsets", {})
+    for kind, decision, variant_profile in neighborhood.profiled_decisions(skip_by_basis=consumed):
         if (generated >= pool.limits.max_neighbors_per_elite
                 or budget.remaining_candidates() <= 0
                 or clock() >= repair_deadline):
             break
         generated += 1
+        consumed[variant_profile.feature_basis] = consumed.get(variant_profile.feature_basis, 0) + 1
         elite["decision_offset"] = offset + generated
         pruning["generated_candidates"] += 1
         decision_identity = (variant_profile.feature_basis, decision)

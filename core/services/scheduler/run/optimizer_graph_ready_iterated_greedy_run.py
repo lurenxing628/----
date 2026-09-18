@@ -9,6 +9,7 @@ from .optimizer_graph_ready_iterated_greedy import (
     _parent_from_candidate,
     _publish,
     _stage_deadline,
+    admit_parent_decode,
 )
 from .optimizer_graph_ready_iterated_greedy_contract import IteratedGreedyLimits, new_iterated_greedy_report
 from .optimizer_graph_ready_iterated_greedy_iteration import IGIteration
@@ -99,9 +100,7 @@ class IteratedGreedyRun:
             report_state=self.report_state, strict_mode=self.strict_mode, report=self.report,
             operations=self.operations, graph_context=self.graph_context)
         self.search.best = best
-        parent_cost = float(best.get("runtime_ms") or 0) / 1000.0
-        if self.clock() >= self.search.deadline or (parent_cost and self.clock() + parent_cost > self.search.deadline):
-            raise _BudgetExhausted("time_budget")
+        admit_parent_decode(best, clock=self.clock, deadline=self.search.deadline, report=self.report)
         self.search._start_reference()
 
     def _advance(self) -> None:

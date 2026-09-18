@@ -41,7 +41,7 @@ def test_limits_follow_the_repair_switch_and_keep_independent_hard_caps():
     assert limits == IteratedGreedyLimits(
         enabled=True, destruction_size=3, max_destruction_size=6, insertion_window=6, max_iterations=200,
         max_decodes=400, time_budget_ms=None, generators=("time_window", "resource_window", "tardy_random"),
-        checkpoint_count=8, pool_size=3, stagnation_iterations=10, temperature_ratio_start=0.1, temperature_ratio_end=0.001)
+        checkpoint_count=8, pool_size=3, stagnation_iterations=10, temperature_ratio_start=1.0, temperature_ratio_end=0.01)
     assert resolve_iterated_greedy_limits(None, enabled=False).enabled is False
     assert resolve_iterated_greedy_limits({"graph_ready_optimization": {"iterated_greedy": {"enabled": True}}}, enabled=False).enabled is False
     custom = resolve_iterated_greedy_limits({"graph_ready_optimization": {"iterated_greedy": {
@@ -62,14 +62,14 @@ def test_limits_follow_the_repair_switch_and_keep_independent_hard_caps():
     {"generators": ["unknown"]}, {"checkpoint_count": -1}, {"checkpoint_count": True}, {"pool_size": 0},
     {"stagnation_iterations": 0}, {"temperature_ratio_start": 0.0}, {"temperature_ratio_start": 1.5},
     {"due_date_seed": "yes"},
-    {"temperature_ratio_end": 0.5}, {"temperature_ratio_end": 0.0},
+    {"temperature_ratio_start": 0.2, "temperature_ratio_end": 0.5}, {"temperature_ratio_end": 0.0},
     "not-a-dict",
 ])
 def test_invalid_config_fails_loud(raw):
     with pytest.raises(ValidationError) as excinfo:
         resolve_iterated_greedy_limits({"graph_ready_optimization": {"iterated_greedy": raw}}, enabled=True)
     assert excinfo.value.field == "graph_ready_iterated_greedy"
-    assert excinfo.value.details["reason"] == "graph_ready_bad_iterated_greedy_config"
+    assert (excinfo.value.details or {})["reason"] == "graph_ready_bad_iterated_greedy_config"
 
 
 def test_report_and_public_message_cover_every_status():
@@ -102,7 +102,7 @@ def test_insertion_positions_stay_inside_the_precedence_window_nearest_first():
     cyclic = _parent(range(1, 10), predecessors={5: {8}}, successors={5: {2}})
     with pytest.raises(ValidationError) as excinfo:
         ig._insertion_positions(without, 5, parent=cyclic, anchor=4, window=6)
-    assert excinfo.value.details["reason"] == "graph_ready_ig_cyclic_order"
+    assert (excinfo.value.details or {})["reason"] == "graph_ready_ig_cyclic_order"
 
 
 def test_parking_puts_a_removed_operation_just_before_its_first_successor():
@@ -202,7 +202,12 @@ def test_rotation_starts_no_decode_after_the_shared_deadline():
     assert all(start < 1.0 for start in starts)
     assert report["decodes"] == len(_ig_calls(result))
     assert tuple(result["best"]["score"]) <= tuple(result["baseline"]["score"])
-    assert report["stop_reason"] == "time_budget"
+    # The stage was admitted before the deadline but the parent's own decode would not fit: say so, not "time_budget".
+    assert report["stop_reason"] == "decode_would_overrun" and report["status"] == "skipped_by_budget"
+    admission = report["decode_admission"]
+    assert admission["policy"] == "observed_parent_candidate_runtime"
+    assert admission["estimated_decode_ms"] > admission["remaining_ms"] >= 0
+    assert "预计一次完整解码放不进剩余预算" in result["state"].candidate_profile["message"]
     assert _ig_calls(result) == []
 
 
@@ -243,7 +248,12 @@ def test_real_decode_walk_on_smtwt_graph_case_is_complete_topological_and_accoun
     resumed = [call for call in calls if call.get("decode_resume") is not None]
     assert len(resumed) == checkpoints["resumed_decodes"]
     assert all(call.get("decode_checkpoints") is None for call in resumed)
-    assert report["parent_order_score"] is not None and report["parent_order_consistent"] in (True, False)
+    # Parent fields describe the parent's own capture only; a due-date seed reference leaves them empty.
+    if report["reference_basis"] == "parent_order":
+        assert report["parent_order_score"] == report["parent_score"] and report["parent_order_consistent"] is True
+    else:
+        assert report["reference_basis"] == "due_date_seed" and report["initial_seed"]["status"] == "used_as_reference"
+        assert report["parent_order_score"] is None and report["parent_order_consistent"] is None
     assert sum(item["calls"] for item in report["generators"].values()) == report["iterations"] + report["interrupted_iterations"]
     assert report["interrupted_iterations"] <= 1
     # Accounting: every IG decode is one evaluated candidate; repair and profile counts are untouched.

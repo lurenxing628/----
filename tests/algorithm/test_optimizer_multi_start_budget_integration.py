@@ -7,14 +7,16 @@ from core.services.scheduler.run import optimizer_multi_start as multi
 from core.services.scheduler.run.optimizer_search_report import OptimizationSearchReportState
 from tests.algorithm.test_optimizer_multi_start_decision_dedup import _fingerprint, _inputs, _order
 
-# Four sort strategies times the SGS rule pool: registry rules plus the ATC k ladder without a
-# graph context; graph candidates keep the registry rules only (the graph key outranks the rule).
+# Four sort strategies times the SGS rule pool: registry rules plus the ATC k ladder. The graph
+# fixture carries no graph score (``score_enabled`` absent), so the decoder ignores its keys and
+# the rule decides every pick: the whole pool is worth a start there too. Rule scoping by graph
+# key ties is covered in test_optimizer_graph_rule_scope_contract.py.
 KEYS = ["priority_first", "due_date_first", "weighted", "fifo"]
 REGISTRY = ["slack", "cr", "atc"]
 
 
 def _pool_size(graph):
-    return len(REGISTRY) if graph else len(dispatch_rule_search_pool(REGISTRY))
+    return len(dispatch_rule_search_pool(REGISTRY))
 
 
 def _run(inputs, *, build_order=None, clock=lambda: 0.0, deadline=5.0, phase_deadline=None):

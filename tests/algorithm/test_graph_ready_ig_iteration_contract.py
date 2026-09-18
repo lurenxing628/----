@@ -66,6 +66,8 @@ def test_each_trial_yields_and_feedback_excludes_other_stages_wall_time():
 
 def test_closing_a_paused_iteration_accounts_and_shrinks_it_once():
     iteration, search, generator, now = _iteration_fixture()
+    # Start above the size floor so the shrink is observable (the floor keeps size 1 recoverable).
+    generator.difficulty.value = 0.4
     previous_difficulty = generator.difficulty.value
     assert iteration.step()
     now[0] += 500.0

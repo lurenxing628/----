@@ -115,9 +115,9 @@ def compact_attempts(attempts: List[Dict[str, Any]], *, limit: int = 12) -> List
     return selected_scored[: limit - len(selected_rejected)] + selected_rejected
 
 
-def init_seen_hashes(cur_order: List[str], best: Optional[Dict[str, Any]]) -> Optional[set]:
-    if len(cur_order) < 10:
-        return None
+def init_seen_hashes(cur_order: List[str], best: Optional[Dict[str, Any]]) -> set:
+    """Decisions already decoded: the current and best orders. Every order length is tracked;
+    the old ``< 10`` exemption let small instances decode the same neighbor round after round."""
     seen_hashes = {tuple(cur_order)}
     if isinstance(best, dict):
         best_order = tuple(best.get("order") or [])

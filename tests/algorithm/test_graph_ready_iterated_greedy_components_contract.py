@@ -29,6 +29,7 @@ from core.services.scheduler.run.optimizer_graph_ready_iterated_greedy_checkpoin
     common_prefix_length,
 )
 from core.services.scheduler.run.optimizer_graph_ready_iterated_greedy_neighborhoods import (
+    _FACTOR_CHANGE_CAP,
     AdaptiveValue,
     GeneratorRotation,
     ResourceWindowGenerator,
@@ -371,3 +372,57 @@ def test_checkpoint_positions_and_prefix_selection():
     store.note_decode(10, resumed_from=checkpoints[1])
     assert store.summary() == {"count": 8, "full_decodes": 1, "resumed_decodes": 1, "picks_total": 20, "picks_saved": 6,
                                "equivalence_checks": 0}
+
+
+def test_generator_size_recovers_from_the_floor_and_step_shrinkage_is_capped():
+    generator = build_generators(("tardy_random",), initial_size=1, max_size=6)[0]
+    for _ in range(30):
+        generator.record(0.1, improved=False, fully_solved=False, idle=False, worse=True)
+    assert generator.size() == 1 and generator.difficulty.value == pytest.approx(0.5 / 6)
+    generator.record(0.1, improved=True, fully_solved=True, idle=True)
+    assert generator.size() == 2, "one success at the minimum size must grow it by one"
+    ceiling = build_generators(("tardy_random",), initial_size=6, max_size=6)[0]
+    ceiling.record(0.1, improved=False, fully_solved=False, idle=False)
+    assert ceiling.size() == 5, "one failure at the maximum size must shrink it by one"
+    value = AdaptiveValue(0.5)
+    for _ in range(50):
+        value.increase()
+        value.decrease()
+    assert value._factor() == pytest.approx(1.0 + 1.0 / math.sqrt(_FACTOR_CHANGE_CAP + 1))
+
+
+def test_sa_accept_anneals_the_secondary_component_only_between_equal_primaries():
+    reference = (0.0, 10.0, 5.0)
+    assert not sa_accept((0.0, 10.0, 6.0), reference, temperature=100.0, u=0.5)
+    # 6 + 2 * log(0.5) = 4.61 < 5 accepts; u = 0.9 does not; the primary temperature never reaches the secondary.
+    assert sa_accept((0.0, 10.0, 6.0), reference, temperature=0.0, u=0.5, secondary_temperature=2.0)
+    assert not sa_accept((0.0, 10.0, 6.0), reference, temperature=0.0, u=0.9, secondary_temperature=2.0)
+    assert sa_accept((0.0, 10.0, 4.0), reference, temperature=0.0, u=0.999, secondary_temperature=2.0)
+    assert not sa_accept((0.0, 11.0, 0.0), reference, temperature=0.0, u=0.5, secondary_temperature=100.0)
+    assert not sa_accept((1.0, 0.0, 0.0), reference, temperature=1e9, u=0.5, secondary_temperature=1e9)
+    scale = TemperatureScale()
+    scale.observe((0.0, 10.0, 9.0), (0.0, 10.0, 5.0))
+    scale.observe((0.0, 10.0, 105.0), (0.0, 10.0, 5.0))
+    assert scale.count == 0 and scale.value == 0.0
+    assert scale.secondary_count == 2 and scale.secondary == pytest.approx(4.0), "the first secondary delta fixes the scale"
+    scale.observe((0.0, 12.0, 0.0), (0.0, 10.0, 5.0))
+    assert scale.count == 1 and scale.value == pytest.approx(2.0)
+
+
+def test_default_annealing_can_accept_a_slightly_worse_integer_primary_early_on():
+    from core.services.scheduler.run.optimizer_graph_ready_iterated_greedy_contract import (
+        resolve_iterated_greedy_limits,
+    )
+
+    limits = resolve_iterated_greedy_limits({"graph_ready_optimization": {}}, enabled=True)
+    cooling = ExponentialCooling(limits.temperature_ratio_start, limits.temperature_ratio_end)
+    scale = TemperatureScale()
+    scale.observe((0.0, 4.0, 100.0), (0.0, 3.0, 100.0))  # integer overdue counts: the typical delta is 1
+    early = cooling.temperature(scale.value, 0.0)
+    late = cooling.temperature(scale.value, 1.0)
+    # Early, one more overdue batch is accepted with probability e^-1 (u < 0.368); at the end practically never.
+    assert early == pytest.approx(1.0) and late == pytest.approx(0.01)
+    assert sa_accept((0.0, 4.0, 0.0), (0.0, 3.0, 0.0), temperature=early, u=0.3)
+    assert not sa_accept((0.0, 4.0, 0.0), (0.0, 3.0, 0.0), temperature=early, u=0.4)
+    assert not sa_accept((0.0, 4.0, 0.0), (0.0, 3.0, 0.0), temperature=late, u=0.5)
+    assert not sa_accept((0.0, 4.0, 0.0), (0.0, 3.0, 0.0), temperature=late, u=0.99)

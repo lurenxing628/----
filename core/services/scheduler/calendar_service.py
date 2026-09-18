@@ -251,6 +251,16 @@ class CalendarService:
     def add_calendar_days(self, start: datetime, days: float, machine_id: Optional[str] = None, operator_id: Optional[str] = None) -> datetime:
         return self._engine.add_calendar_days(start, days, machine_id=machine_id, operator_id=operator_id)
 
+    def working_hours_between(
+        self,
+        start: datetime,
+        end: datetime,
+        priority: Optional[str] = None,
+        machine_id: Optional[str] = None,
+        operator_id: Optional[str] = None,
+    ) -> float:
+        return self._engine.working_hours_between(start, end, priority=priority, machine_id=machine_id, operator_id=operator_id)
+
     def certified_slot_window(self, dt: datetime, *, priority=None, operator_id=None):
         """Constant native policy span; adapted or instrumented timing stays legacy."""
         if type(self) is not CalendarService or type(self._engine) is not CalendarEngine:
