@@ -38,3 +38,8 @@ summary: 第一步（剪枝开放自动派工）已实施并通过等价收据�
 
 剪枝后 192 道工序单次图模式解码 0.08 s，其中约 0.10 s（含 profiler）在最小组那一个候选的 6 个机人对估算，每步只评 1 个候选，见证/机人对备忘没有复用对象；基线解码（score_enabled=False）每次 improve 只跑 1 次。台账/机人对分数备忘/派工键跳过预估只对基线解码给 1.5–2 倍，对整轮预算的贡献不到 20%，本轮不实施；记录于设计文档第二步。
 
+
+## 推送与正式基线合同（2026-09-19 晚）
+
+- 三笔提交：98fe552b（19 项修复）、642ec804（剪枝开放自动派工）、034e4d86（干净 HEAD 92ef3524 第 5 次运行、噪声下限那次晋升为正式基线夹具）。
+- 直连推送触发 pre-push 日常门禁：并行车道通过，串行车道 942 passed + 2 failed（`test_real_matrix_does_not_regress_against_formal_historical_baseline`：`medium_shift_pool/min_changeover: improved objective regressed`；`test_quality_uses_lexicographic_target_order_not_componentwise_non_degradation`：构造不出权衡候选）。根因是全向量字典序非回归对真实时钟搜索结果不成立，任何一次夹具都挡不住尾部分量更差的运行；处理见 `.codestable/compound/2026-09-19-decision-quality-matrix-improved-primary-floor.md`：baseline 仍逐位，improved 只比罚分与主目标并保留 3/4 历史改进量。

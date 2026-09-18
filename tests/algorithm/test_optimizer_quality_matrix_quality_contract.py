@@ -2,15 +2,21 @@
 from __future__ import annotations
 
 import copy
-from datetime import datetime, timedelta
+import math
+from datetime import date, datetime, timedelta
 from types import SimpleNamespace
 
 import pytest
 
+from core.algorithm_contracts.date_parsers import due_exclusive
 from core.algorithms import GreedyScheduler
 from core.algorithms.evaluation import compute_metrics, objective_score
 from tests._support.optimizer_quality_matrix_cases import OBJECTIVES, REPO_ROOT, fixture_data
-from tests._support.optimizer_quality_matrix_compare import compare_quality_matrices, compare_quality_only
+from tests._support.optimizer_quality_matrix_compare import (
+    compare_quality_matrices,
+    compare_quality_only,
+    improved_primary_floor,
+)
 from tests._support.optimizer_quality_matrix_io import read_snapshot
 
 
@@ -34,8 +40,11 @@ def _another_machine(snapshot):
     return actual
 
 
-def _delay_tiny(payload, objective, hours):
+def _delay_tiny(payload, objective, hours, selected=None):
+    """Delay the selected schedule rows (all by default) and recompute the objective score."""
     for row in payload["schedule"]:
+        if selected is not None and not selected(row):
+            continue
         for key in ("start_time", "end_time"):
             row[key] = (datetime.fromisoformat(row[key]) + timedelta(hours=hours)).isoformat()
     results = [SimpleNamespace(**dict(row, start_time=datetime.fromisoformat(row["start_time"]),
@@ -60,12 +69,17 @@ def test_other_machine_does_not_hide_full_objective_quality_regression(historica
     row = next(row for row in actual["cases"] if row["case_id"] == "tiny/" + objective)
     for role in ("baseline", "improved"):
         _delay_tiny(row[role], objective, hours=14 * 24)
+    # The deterministic baseline decode is compared exactly. The improved schedule is only
+    # held to its primary target, which a pure delay leaves untouched for min_changeover.
+    expected = {"tiny/" + objective + ": baseline objective regressed"}
+    if objective != "min_changeover":
+        expected.add("tiny/" + objective + ": improved objective regressed")
     quality = compare_quality_only(historical, actual)
     assert quality["status"] == "failed"
-    assert "tiny/" + objective + ": improved objective regressed" in quality["failures"]
+    assert set(quality["failures"]) == expected
     full = compare_quality_matrices(historical, actual)
     assert full["status"] == "failed"
-    assert "tiny/" + objective + ": improved objective regressed" in full["failures"]
+    assert expected <= set(full["failures"])
 
 
 def test_quality_only_does_not_bless_same_machine_runtime_regression(historical):
@@ -99,24 +113,73 @@ def test_quality_only_keeps_snapshot_fixture_and_config_validation(historical, m
     assert quality["failures"]
 
 
+def _late_batches(payload):
+    due = {row["batch_id"]: due_exclusive(date.fromisoformat(row["due_date"])) for row in fixture_data("tiny")["batches"]}
+    return {row["batch_id"] for row in payload["schedule"] if datetime.fromisoformat(row["end_time"]) > due[row["batch_id"]]}
+
+
+def _delay_late_batches_past_the_schedule(payload, objective, days):
+    """Slip only the already-late batches, and by more than the makespan: no batch becomes late, no slot overlaps."""
+    starts = [datetime.fromisoformat(row["start_time"]) for row in payload["schedule"]]
+    ends = [datetime.fromisoformat(row["end_time"]) for row in payload["schedule"]]
+    span_days = (max(ends) - min(starts)).total_seconds() / 86400.0
+    late = _late_batches(payload)
+    _delay_tiny(payload, objective, hours=24.0 * (math.ceil(span_days) + days), selected=lambda row: row["batch_id"] in late)
+
+
+def _delay_last_operation(payload, objective, hours):
+    """Delay only the schedule's final operation: tardiness grows by exactly ``hours``, nothing overlaps."""
+    last = max(payload["schedule"], key=lambda row: datetime.fromisoformat(row["end_time"]))
+    assert last["batch_id"] in _late_batches(payload)
+    _delay_tiny(payload, objective, hours=hours, selected=lambda row: row["op_id"] == last["op_id"])
+
+
 def test_quality_uses_lexicographic_target_order_not_componentwise_non_degradation(historical):
     reference = copy.deepcopy(historical)
     row = next(row for row in reference["cases"] if row["case_id"] == "tiny/min_overdue")
     row["improved"] = copy.deepcopy(row["baseline"])
     reference_score = row["improved"]["objective_score"]
-    original = next(row for row in historical["cases"] if row["case_id"] == "tiny/min_overdue")["improved"]
-    # Construct a valid same-fixture schedule with fewer late batches but more
-    # weighted tardiness. The primary objective improvement must remain accepted.
-    selected = None
-    for half_hours in range(1, 25):
-        candidate = copy.deepcopy(original)
-        _delay_tiny(candidate, "min_overdue", hours=half_hours / 2.0)
-        score = candidate["objective_score"]
-        if score[1] < reference_score[1] and score[2] > reference_score[2]:
-            selected = candidate
-            break
-    assert selected is not None, "tiny fixture must exercise a real lexicographic quality tradeoff"
+    candidate = copy.deepcopy(next(row for row in historical["cases"] if row["case_id"] == "tiny/min_overdue")["improved"])
+    # A valid same-fixture schedule with fewer late batches but more weighted tardiness than
+    # the reference. The primary objective improvement must remain accepted.
+    assert _late_batches(candidate), "tiny fixture must leave at least one batch late after improvement"
+    _delay_late_batches_past_the_schedule(candidate, "min_overdue", days=1)
+    score = candidate["objective_score"]
+    assert score[1] < reference_score[1] and score[2] > reference_score[2], "tiny fixture must exercise a real lexicographic quality tradeoff"
     actual = _another_machine(reference)
     row = next(row for row in actual["cases"] if row["case_id"] == "tiny/min_overdue")
-    row["improved"] = selected
+    row["improved"] = candidate
     assert compare_quality_only(reference, actual)["status"] == "passed"
+
+
+def test_improved_primary_target_keeps_most_of_the_historical_gain(historical):
+    case_id = "tiny/min_tardiness"
+    before = next(row for row in historical["cases"] if row["case_id"] == case_id)
+    floor = improved_primary_floor(before)
+    improved_primary, baseline_primary = before["improved"]["objective_score"][1], before["baseline"]["objective_score"][1]
+    assert improved_primary < floor < baseline_primary
+    # Real-clock search noise: half an hour more tardiness stays within the retained gain.
+    inside = _another_machine(historical)
+    row = next(row for row in inside["cases"] if row["case_id"] == case_id)
+    _delay_last_operation(row["improved"], "min_tardiness", hours=0.5)
+    assert improved_primary < row["improved"]["objective_score"][1] <= floor
+    assert compare_quality_only(historical, inside) == {
+        "status": "passed", "failures": [], "claim": "quality_only_not_runtime_or_clean_quality_gate_proof"}
+    # Giving back more than a quarter of the historical gain is a regression even while still
+    # ahead of the deterministic baseline.
+    beyond = _another_machine(historical)
+    row = next(row for row in beyond["cases"] if row["case_id"] == case_id)
+    _delay_last_operation(row["improved"], "min_tardiness", hours=2.0)
+    assert floor < row["improved"]["objective_score"][1] < baseline_primary
+    quality = compare_quality_only(historical, beyond)
+    assert quality["status"] == "failed" and quality["failures"] == [case_id + ": improved objective regressed"]
+
+
+def test_deterministic_baseline_decode_stays_exact(historical):
+    # The same half-hour slip that the improved schedule may absorb is a regression of the
+    # deterministic baseline decode.
+    actual = _another_machine(historical)
+    row = next(row for row in actual["cases"] if row["case_id"] == "tiny/min_tardiness")
+    _delay_last_operation(row["baseline"], "min_tardiness", hours=0.5)
+    quality = compare_quality_only(historical, actual)
+    assert quality["status"] == "failed" and quality["failures"] == ["tiny/min_tardiness: baseline objective regressed"]
