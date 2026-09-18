@@ -46,6 +46,11 @@ class _ContinuousCalendar:
     def add_calendar_days(self, dt: datetime, days: float, machine_id: Any = None, operator_id: Any = None) -> datetime:
         return dt + timedelta(days=float(days or 0.0))
 
+    def working_hours_between(self, start: datetime, end: datetime, priority: Any = None, machine_id: Any = None,
+                              operator_id: Any = None) -> float:
+        # Every hour is a working hour on the continuous benchmark calendar.
+        return (end - start).total_seconds() / 3600.0
+
 
 register_stateless_checkpoint_calendar(_ContinuousCalendar)
 

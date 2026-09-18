@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from typing import Any, Dict, List
 
 from core.models.public_identifier_redaction import contains_internal_identifier
@@ -128,13 +129,17 @@ def _add_metric_completion(out: Dict[str, Any], metrics: Dict[str, Any]) -> None
             completion[key] = count
     allowed_labels = {
         "contract": ("expected_operations_complete_only_v1",),
-        "objective_score_policy": ("original", "unknown_all_components"),
+        "objective_score_policy": ("original", "unknown_all_components", "completed_batches_only"),
+        "objective_scope": ("all_batches", "completed_batches_only", "unknown"),
         "due_metrics_scope": ("completed_batches_only",),
         "resource_metrics_scope": ("scheduled_results_only",),
     }
     for key, labels in allowed_labels.items():
         if raw.get(key) in labels:
             completion[key] = raw[key]
+    weight = raw.get("incomplete_work_weight")
+    if isinstance(weight, (int, float)) and not isinstance(weight, bool) and math.isfinite(weight) and weight >= 0:
+        completion["incomplete_work_weight"] = float(weight)
     if completion:
         out["completion"] = completion
 
