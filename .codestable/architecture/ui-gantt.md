@@ -11,6 +11,8 @@ tags: [scheduler, gantt, frontend, readonly, vendor, scenario-preview, task-deta
 
 ## 1. 页面入口
 
+> 2026-09-18：下文的旧甘特页面路由、`/scheduler/gantt/data` 接口与经典模板已随旧路由层删除，`/scheduler/gantt` 只剩跳转到工作台的策略占位规则；现行甘特界面是工作台的 `PlanGanttCanvas`（`frontend/workbench/app`），数据来自 `/api/workbench/v1/plans`。以下内容保留为历史现状记录。
+
 - 页面路由：`web/routes/domains/scheduler/scheduler_gantt.py` 的 `/scheduler/gantt`。
 - 数据接口：`/scheduler/gantt/data`。
 - 经典模板：`templates/scheduler/gantt.html`。

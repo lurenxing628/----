@@ -15,7 +15,7 @@ from core.services.report.report_context_filters import (
 )
 from core.services.scheduler.gantt_plan_query import resolve_gantt_range_for_version
 from core.services.scheduler.version_resolution import resolve_version_or_latest
-from web.routes.domains.scheduler.scheduler_plan_context_token import request_scenario_id_from_args
+from web.plan_context_token import request_scenario_id_from_args
 
 from .legacy_page_contract import LegacyNavigationInvalid
 

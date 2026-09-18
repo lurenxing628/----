@@ -70,23 +70,6 @@ def test_distinct_values_and_scopes_get_distinct_tokens(app, monkeypatch):
         assert _resolve("scope-b", t3) == "op-1"
 
 
-def test_operation_update_token_idempotent_per_op(app):
-    """op-update 签发点合同：同一工序重复渲染拿到同一 token，且能解析回原 op_id。"""
-    from web.routes.domains.scheduler.scheduler_ops import (
-        _operation_id_from_token,
-        operation_update_token,
-    )
-
-    with app.app_context():
-        t1 = operation_update_token(42)
-        t2 = operation_update_token(42)
-        t_other = operation_update_token(43)
-        assert t1 == t2
-        assert t_other != t1
-        assert _operation_id_from_token(t1) == 42
-        assert _operation_id_from_token(t_other) == 43
-
-
 # ---------------------------------------------------------------------------
 # 合同 2：TTL 语义保持——复用不延长寿命，过期即拒，过期后重签
 # ---------------------------------------------------------------------------

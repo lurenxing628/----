@@ -6,6 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from core.algorithms.greedy.dispatch.ready_queue import ReadyQueueContractError, get_ready_operation_ids
 from core.algorithms.greedy.dispatch.sgs_graph import (
     _block_graph_operation,
     _collect_candidates,
@@ -15,7 +16,6 @@ from core.algorithms.greedy.dispatch.sgs_graph import (
     _prepare_graph_ready_state,
 )
 from core.infrastructure.errors import ValidationError
-from core.services.scheduler.graph.ready_queue import ReadyQueueContractError, get_ready_operation_ids
 
 
 def _sort_key_by_op_id(*op_ids: int) -> dict:

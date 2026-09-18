@@ -1,4 +1,4 @@
-"""回归测试：build_result_summary 的 v1.2 结果摘要契约——summary_schema_version=1.2、comparison_metric 与 best_score_schema 随 objective 落盘、analysis_context 用 comparison_metric 选 objective_key 且兼容旧 summary 回退；超大 warnings/trace 截断到 512KB 内并标 summary_truncated；指标/计数解析失败时标 metrics_state.parse_failed 与 degraded_success 而非伪装成 0；停机坏 meta 一律标 downtime_avoid 降级并进入顶层 degradation_events，停机真实读取部分失败直接阻断排程。"""
+"""回归测试：build_result_summary 的 v1.2 结果摘要契约——summary_schema_version=1.2、comparison_metric 与 best_score_schema 随 objective 落盘、超大 warnings/trace 截断到 512KB 内并标 summary_truncated；指标/计数解析失败时标 metrics_state.parse_failed 与 degraded_success 而非伪装成 0；停机坏 meta 一律标 downtime_avoid 降级并进入顶层 degradation_events，停机真实读取部分失败直接阻断排程。"""
 
 import json
 import sys
@@ -331,8 +331,6 @@ def main() -> None:
     if repo_root not in sys.path:
         sys.path.insert(0, repo_root)
 
-    from web.viewmodels.scheduler_analysis_vm import build_analysis_context
-
     _overdue, _status, result_summary_obj, result_summary_json, _ms = _build_summary(
         objective_name="min_weighted_tardiness",
         warnings=[],
@@ -350,33 +348,6 @@ def main() -> None:
     ], f"best_score_schema 错误：{schema_keys}"
     config_snapshot = algo.get("config_snapshot") or {}
     assert config_snapshot.get("objective") == "min_weighted_tardiness", f"config_snapshot 未落盘 objective：{config_snapshot}"
-
-    ctx = build_analysis_context(
-        selected_ver=1,
-        raw_hist=[{"version": 1, "result_summary": result_summary_json}],
-        selected_item={"version": 1, "result_summary": result_summary_json},
-    )
-    assert ctx.get("objective_key") == "weighted_tardiness_hours", f"analysis_context 未使用 comparison_metric：{ctx.get('objective_key')!r}"
-
-    old_summary_json = json.dumps(
-        {
-            "version": 1,
-            "algo": {
-                "objective": "min_tardiness",
-                "metrics": {
-                    "total_tardiness_hours": 12.0,
-                    "overdue_count": 1,
-                },
-            },
-        },
-        ensure_ascii=False,
-    )
-    old_ctx = build_analysis_context(
-        selected_ver=1,
-        raw_hist=[{"version": 1, "result_summary": old_summary_json}],
-        selected_item={"version": 1, "result_summary": old_summary_json},
-    )
-    assert old_ctx.get("objective_key") == "total_tardiness_hours", f"旧 summary 兼容回退异常：{old_ctx.get('objective_key')!r}"
 
     huge_warnings = [f"W{i}:" + ("x" * 6000) for i in range(120)]
     huge_trace = [{"tag": "T" + ("y" * 4000), "elapsed_ms": i, "metrics": {"weighted_tardiness_hours": float(i)}} for i in range(200)]

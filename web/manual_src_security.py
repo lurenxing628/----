@@ -161,7 +161,7 @@ def _rewrite_manual_src_query(parts: Any) -> Tuple[List[Tuple[str, str]], bool]:
             continue
         query.append(query_item)
     if scenario_for_token and not has_plan_context_token:
-        from web.routes.domains.scheduler.scheduler_plan_context_token import plan_context_token
+        from web.plan_context_token import plan_context_token
 
         token = plan_context_token(scenario_for_token)
         if token:

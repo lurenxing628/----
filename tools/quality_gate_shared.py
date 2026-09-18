@@ -193,8 +193,6 @@ QUALITY_GATE_TOOL_PATHS = [
     "tests/web_pages/test_page_manual_registry.py",
     "tests/gate_meta/test_aps_three_gap_docs_quality_gate.py",
     "tests/operation_execution/test_operation_execution_event_time_contract.py",
-    "tests/gate_meta/test_scheduler_data_route_error_contract.py",
-    "tests/resource_dispatch/test_scheduler_resource_dispatch_invalid_query_cleanup.py",
 ]
 QUALITY_GATE_SOURCE_FILES = tuple(
     dict.fromkeys(
@@ -255,26 +253,6 @@ REQUEST_SERVICE_SCAN_SCOPE_PATTERNS = [
     "tests/_scripts_e2e/run_complex_excel_cases_e2e.py",
 ]
 REQUEST_SERVICE_TARGET_FILES = [
-    "web/routes/domains/scheduler/scheduler_run.py",
-    "web/routes/dashboard.py",
-    "web/routes/domains/scheduler/scheduler_analysis.py",
-    "web/routes/domains/scheduler/scheduler_analysis_read.py",
-    "web/routes/material.py",
-    "web/routes/domains/scheduler/scheduler_batches.py",
-    "web/routes/domains/scheduler/scheduler_batch_detail.py",
-    "web/routes/domains/scheduler/scheduler_ops.py",
-    "web/routes/domains/scheduler/scheduler_gantt.py",
-    "web/routes/domains/scheduler/scheduler_week_plan.py",
-    "web/routes/domains/scheduler/scheduler_config.py",
-    "web/routes/domains/scheduler/scheduler_resource_dispatch.py",
-    "web/routes/domains/scheduler/scheduler_calendar_pages.py",
-    "web/routes/domains/scheduler/scheduler_excel_batches.py",
-    "web/routes/domains/scheduler/scheduler_excel_calendar.py",
-    "web/routes/system_backup.py",
-    "web/routes/system_history.py",
-    "web/routes/system_logs.py",
-    "web/routes/system_plugins.py",
-    "web/routes/system_utils.py",
     "web/error_handlers.py",
     "web/error_boundary.py",
     "web/manual_src_security.py",
@@ -801,7 +779,7 @@ def build_quality_gate_command_plan() -> List[Dict[str, Any]]:
             "output_policy": "normalized",
         },
         {
-            "display": "python tools/scan_py38plus_syntax.py --fail-on-hit scripts/run_quality_gate.py tools/quality_gate_shared.py tools/scan_aps_three_gap_py38_scope.py tests/app_runtime/test_frontend_offline_static_assets.py tests/web_pages/test_frontend_ui_language_polish.py tests/config/test_config_manual_markdown.py tests/web_pages/test_page_manual_registry.py tests/resource_dispatch/test_scheduler_resource_dispatch_invalid_query_cleanup.py tests/gate_meta/test_aps_three_gap_docs_quality_gate.py tests/gate_meta/test_run_quality_gate.py",
+            "display": "python tools/scan_py38plus_syntax.py --fail-on-hit scripts/run_quality_gate.py tools/quality_gate_shared.py tools/scan_aps_three_gap_py38_scope.py tests/app_runtime/test_frontend_offline_static_assets.py tests/web_pages/test_frontend_ui_language_polish.py tests/config/test_config_manual_markdown.py tests/web_pages/test_page_manual_registry.py tests/gate_meta/test_aps_three_gap_docs_quality_gate.py tests/gate_meta/test_run_quality_gate.py",
             "args": [
                 "python",
                 "tools/scan_py38plus_syntax.py",
@@ -813,7 +791,6 @@ def build_quality_gate_command_plan() -> List[Dict[str, Any]]:
                 "tests/web_pages/test_frontend_ui_language_polish.py",
                 "tests/config/test_config_manual_markdown.py",
                 "tests/web_pages/test_page_manual_registry.py",
-                "tests/resource_dispatch/test_scheduler_resource_dispatch_invalid_query_cleanup.py",
                 "tests/gate_meta/test_aps_three_gap_docs_quality_gate.py",
                 "tests/gate_meta/test_run_quality_gate.py",
             ],

@@ -365,7 +365,7 @@ def test_main_runs_guard_preflight_before_static_and_startup_checks(monkeypatch,
         "python .codestable/tools/validate-yaml.py --file .codestable/roadmap/aps-three-gap-directions/aps-three-gap-directions-items.yaml --yaml-only --require roadmap --require created --require items"
     )
     assert displays.index(
-        "python tools/scan_py38plus_syntax.py --fail-on-hit scripts/run_quality_gate.py tools/quality_gate_shared.py tools/scan_aps_three_gap_py38_scope.py tests/app_runtime/test_frontend_offline_static_assets.py tests/web_pages/test_frontend_ui_language_polish.py tests/config/test_config_manual_markdown.py tests/web_pages/test_page_manual_registry.py tests/resource_dispatch/test_scheduler_resource_dispatch_invalid_query_cleanup.py tests/gate_meta/test_aps_three_gap_docs_quality_gate.py tests/gate_meta/test_run_quality_gate.py"
+        "python tools/scan_py38plus_syntax.py --fail-on-hit scripts/run_quality_gate.py tools/quality_gate_shared.py tools/scan_aps_three_gap_py38_scope.py tests/app_runtime/test_frontend_offline_static_assets.py tests/web_pages/test_frontend_ui_language_polish.py tests/config/test_config_manual_markdown.py tests/web_pages/test_page_manual_registry.py tests/gate_meta/test_aps_three_gap_docs_quality_gate.py tests/gate_meta/test_run_quality_gate.py"
     ) < displays.index("python tests/gate_meta/check_quickref_vs_routes.py")
     assert displays.index("python tools/scan_anti_regression_gate.py --base-ref d4589d77") < displays.index(
         "python -m pyright -p pyrightconfig.gate.json"
@@ -681,44 +681,28 @@ def test_required_suite_comes_from_shared_registry_and_covers_high_risk_regressi
     assert "tests/app_runtime/test_entrypoint_meta_failure_visible.py" in module.STARTUP_REGRESSION_ARGS
     assert "tests/app_runtime/test_launcher_observability.py" in module.STARTUP_REGRESSION_ARGS
     for high_value_path in (
-        "tests/scheduler_analysis/test_scheduler_analysis_observability.py",
-        "tests/resource_dispatch/test_scheduler_resource_dispatch_invalid_query_cleanup.py",
         "tests/schedule/summary/test_schedule_summary_input_fallback_contract.py",
         "tests/web_pages/test_error_boundary_contract.py",
-        "tests/schedule/route_view/test_route_version_normalizers_contract.py",
-        "tests/gantt/test_gantt_page_version_default_latest.py",
-        "tests/gantt/test_gantt_default_version_span.py",
         "tests/gantt/test_gantt_adjustment_draft_model.py",
         "tests/gantt/test_gantt_draft_save_and_preview.py",
         "tests/gantt/test_gantt_scenario_publish.py",
-        "tests/gantt/test_gantt_degradation_surface.py",
         "tests/gantt/test_gantt_frontend_error_boundary.py",
-        "tests/schedule/route_view/test_scheduler_result_navigation_contract.py",
-        "tests/gantt/test_gantt_contract_snapshot.py",
         "tests/gantt/test_gantt_critical_chain_unavailable.py",
         "tests/gantt/test_gantt_critical_chain_provider.py",
         "tests/gantt/test_scheduler_candidate_gantt_plan_role_contract.py",
         "tests/gate_meta/test_quality_gate_scan_contract.py",
         "tests/gate_meta/test_codestable_architecture_contract.py",
         "tests/resource_dispatch/test_resource_dispatch_bad_time_rows_surface_degraded.py",
-        "tests/resource_dispatch/test_resource_dispatch_export_surfaces_degraded.py",
-        "tests/resource_dispatch/test_resource_dispatch_public_output_contract.py",
-        "tests/resource_dispatch/test_resource_dispatch_viewmodel_public_output_contract.py",
         "tests/resource_dispatch/test_resource_dispatch_overdue_summary_formats.py",
-        "tests/resource_dispatch/test_resource_dispatch_invalid_summary_surfaces_overdue_degraded.py",
         "tests/app_runtime/test_ui_browser_geometry_env.py",
         "tests/app_runtime/test_ui_geometry_html_contract.py",
         "tests/gate_meta/test_run_full_selftest_report_metadata.py",
         "tests/gate_meta/test_callgraph_receiver_resolution.py",
         "tests/gate_meta/test_import_cycle_scanner.py",
         "tests/gate_meta/test_import_cycle_baseline.py",
-        "tests/calendar_maintenance/test_holiday_default_efficiency_read_guard.py",
         "tests/excel_data_io/test_excel_import_hardening.py",
-        "tests/excel_data_io/test_excel_utils_compare_digest_guard.py",
-        "tests/excel_data_io/test_excel_conversion_output_contract.py",
         "tests/app_runtime/test_frontend_offline_static_assets.py",
         "tests/gate_meta/test_check_full_test_debt.py",
-        "tests/web_pages/test_request_services_contract.py",
         "tests/web_pages/test_factory_request_lifecycle_observability.py",
         "tests/calendar_maintenance/test_maintenance_window_mutex.py",
         "tests/migration_db/test_database_high_version_failfast.py",
@@ -1397,7 +1381,7 @@ def test_guard_collect_only_keeps_analysis_and_history_in_default_collect() -> N
     )
 
     output = result.stdout
-    assert "tests/scheduler_analysis/test_scheduler_analysis_observability.py::test_scheduler_analysis_observability" in output
+    assert "tests/scheduler_analysis/test_scheduler_delay_diagnosis_contract.py::test_delay_diagnosis_clue_data_is_prefetched_in_batch_not_per_overdue_batch" in output
     assert "tests/web_pages/test_error_boundary_contract.py::test_error_handler_maps_business_error_codes_to_http_status_for_json" in output
     assert (
         "tests/algorithm/test_auto_assign_persist_truthy_variants.py::"

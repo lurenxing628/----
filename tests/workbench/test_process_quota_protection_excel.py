@@ -4,8 +4,6 @@ from copy import deepcopy
 
 import pytest
 
-from core.services.common.excel_service import ImportMode, ImportPreviewRow, RowStatus
-from core.services.process.part_operation_hours_excel_import_service import PartOperationHoursExcelImportService
 from core.services.workbench.process_file_codec import decode_process_file, encode_process_file
 from core.services.workbench.process_file_hours import ProcessHoursFileOperations
 from core.services.workbench.process_queries import WorkbenchProcessQueryService
@@ -15,7 +13,6 @@ from tests.workbench.process_quota_protection_support import (
     assert_rejected,
     file_apply,
     file_preview,
-    legacy_preview,
     preserved,
     snapshot,
     templates,
@@ -93,53 +90,3 @@ def test_duplicate_or_invalid_locked_rows_remain_errors_not_silent_skips(locked_
     assert snapshot(case.conn) == before
 
 
-def test_old_excel_partial_rows_keep_original_counts_and_source_locations(locked_quota_case):
-    case = locked_quota_case
-    rows = legacy_preview(case.conn, {"工序": 1, "换型时间(h)": 9, "单件工时(h)": 99},
-        {"工序": 2, "换型时间(h)": 0.5, "单件工时(h)": 8}, {"工序": 999, "单件工时(h)": 2})
-    rows[0].source_row_num, rows[0].source_sheet_name = 17, "original hours"
-    rows.append(ImportPreviewRow(20, RowStatus.UNCHANGED, {}, "unchanged legacy input"))
-    assert [row.status for row in rows] == [RowStatus.SKIP, RowStatus.UPDATE, RowStatus.ERROR, RowStatus.UNCHANGED]
-    before, old = snapshot(case.conn), templates(case.conn)
-    result = PartOperationHoursExcelImportService(case.conn).apply_preview_rows(rows)
-    assert {key: result[key] for key in ("total_rows", "new_count", "update_count", "skip_count", "error_count")} == {
-        "total_rows": 4, "new_count": 0, "update_count": 1, "skip_count": 2, "error_count": 1}
-    assert result["skipped_count"] == 1 and result["skipped_refs"] == [case.template_ref]
-    assert result["skipped_rows"][0]["row"] == 17 and result["skipped_rows"][0]["source_sheet_name"] == "original hours"
-    assert result["errors_sample"][0]["row"] == 4
-    assert templates(case.conn) == {1: old[1], 2: {**old[2], "unit_hours": 8}}
-    preserved(before, snapshot(case.conn))
-
-
-def test_old_excel_setup_only_change_is_allowed_without_lock_misreport(locked_quota_case):
-    case = locked_quota_case
-    rows = legacy_preview(case.conn, {"工序": 1, "换型时间(h)": 9, "单件工时(h)": 3})
-    assert rows[0].status == RowStatus.UPDATE
-    result = PartOperationHoursExcelImportService(case.conn).apply_preview_rows(rows)
-    assert result["update_count"] == 1 and result["skipped_count"] == result["skip_count"] == 0
-    assert templates(case.conn)[1]["setup_hours"] == 9 and templates(case.conn)[1]["unit_hours"] == 3
-
-
-def test_old_excel_append_semantics_are_not_restored_or_overridden(locked_quota_case):
-    case = locked_quota_case
-    rows = legacy_preview(case.conn, {"工序": 1, "换型时间(h)": 9, "单件工时(h)": 3}, mode=ImportMode.APPEND)
-    before = snapshot(case.conn)
-    result = PartOperationHoursExcelImportService(case.conn).apply_preview_rows(rows)
-    assert result["skip_count"] == 1 and result["skipped_count"] == 0 and snapshot(case.conn) == before
-
-
-def test_old_excel_apply_rechecks_new_adoption_inside_transaction(quota_case):
-    case = quota_case
-    rows = legacy_preview(case.conn, {"工序": 1, "单件工时(h)": 99}, {"工序": 2, "单件工时(h)": 8})
-    adopt(case)
-    result = PartOperationHoursExcelImportService(case.conn).apply_preview_rows(rows)
-    assert result["skipped_count"] == 1 and result["update_count"] == 1
-    assert templates(case.conn)[1]["unit_hours"] == 3 and templates(case.conn)[2]["unit_hours"] == 8
-
-
-def test_old_excel_unbound_write_rows_fail_closed_without_new_same_number_binding(locked_quota_case):
-    case = locked_quota_case
-    before = snapshot(case.conn)
-    rows = [ImportPreviewRow(2, RowStatus.UPDATE, {"图号": "P1", "工序": 2, "单件工时(h)": 8})]
-    assert_rejected("stale_write", lambda: PartOperationHoursExcelImportService(case.conn).apply_preview_rows(rows))
-    assert snapshot(case.conn) == before

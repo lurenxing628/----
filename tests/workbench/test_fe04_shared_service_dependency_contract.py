@@ -8,10 +8,6 @@ import sys
 
 import pytest
 
-from core.services.process import part_operation_hours_excel_import_service, part_service
-from core.services.process.quota_protection import ProcessQuotaProtection
-from core.services.scheduler import batch_copy, batch_template_ops
-from core.services.scheduler.template_lineage import TemplateLineageWriter
 from tests._support.dependency_boundaries import assert_import_orders, assert_no_import_prefixes
 from tests._support.paths import REPO_ROOT
 
@@ -26,16 +22,15 @@ _ADAPTERS = (
 _ENTRIES = (
     "core.services.process.quota_protection",
     "core.services.process.part_service",
-    "core.services.process.part_operation_hours_excel_import_service",
     "core.services.scheduler.batch_copy",
     "core.services.scheduler.batch_template_ops",
     "core.services.scheduler.template_lineage",
     "core.services.scheduler.template_lineage_query",
 )
 _PROCESS_EXPORTS = {
-    "OpTypeService", "SupplierService", "PartService", "ExternalGroupService",
+    "OpTypeService", "SupplierService", "PartService",
     "RouteParser", "ParseResult", "ParseStatus", "DeletionValidator",
-    "DeletionCheckResult", "ValidationResult", "UnitExcelConverter", "ConvertedTemplates",
+    "DeletionCheckResult", "ValidationResult",
 }
 
 
@@ -51,15 +46,6 @@ def _run(script):
 @pytest.mark.parametrize("adapter,owner,names", _ADAPTERS)
 def test_adapters_reexport_the_same_objects_in_both_cold_import_orders(adapter, owner, names):
     assert_import_orders(adapter, owner, names)
-
-
-def test_legacy_writers_bind_to_shared_owners_without_wrapping_business_methods():
-    assert part_service.ProcessQuotaProtection is ProcessQuotaProtection
-    assert part_operation_hours_excel_import_service.ProcessQuotaProtection is ProcessQuotaProtection
-    assert batch_copy.TemplateLineageWriter is TemplateLineageWriter
-    assert batch_template_ops.TemplateLineageWriter is TemplateLineageWriter
-    assert ProcessQuotaProtection.__module__ == "core.services.process.quota_protection"
-    assert TemplateLineageWriter.__module__ == "core.services.scheduler.template_lineage"
 
 
 @pytest.mark.parametrize("module", _ENTRIES)
@@ -82,12 +68,10 @@ def test_process_package_is_lightweight_without_dynamic_export_fallbacks():
 def test_all_former_process_exports_remain_available_at_explicit_module_paths():
     _run("from core.services.process.deletion_validator import "
          "DeletionCheckResult, DeletionValidator, ValidationResult\n"
-         "from core.services.process.external_group_service import ExternalGroupService\n"
          "from core.services.process.op_type_service import OpTypeService\n"
          "from core.services.process.part_service import PartService\n"
          "from core.services.process.route_parser import ParseResult, ParseStatus, RouteParser\n"
          "from core.services.process.supplier_service import SupplierService\n"
-         "from core.services.process.unit_excel_converter import ConvertedTemplates, UnitExcelConverter\n"
          "assert all(callable(globals()[name]) for name in " + repr(sorted(_PROCESS_EXPORTS)) + ")\n")
 
 

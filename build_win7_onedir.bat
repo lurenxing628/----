@@ -69,22 +69,7 @@ if exist vendor (
     --add-data "plugins;plugins" ^
     --add-data "vendor;vendor" ^
     --add-data "schema.sql;." ^
-    --hidden-import web.routes.domains.scheduler.scheduler_analysis ^
-    --hidden-import web.routes.domains.scheduler.scheduler_batch_detail ^
-    --hidden-import web.routes.domains.scheduler.scheduler_batches ^
-    --hidden-import web.routes.domains.scheduler.scheduler_calendar_pages ^
-    --hidden-import web.routes.domains.scheduler.scheduler_config ^
-    --hidden-import web.routes.domains.scheduler.scheduler_excel_batches ^
-    --hidden-import web.routes.domains.scheduler.scheduler_excel_calendar ^
-    --hidden-import web.routes.domains.scheduler.scheduler_gantt ^
-    --hidden-import web.routes.domains.scheduler.scheduler_gantt_adjustments ^
     --hidden-import networkx ^
-    --hidden-import web.routes.domains.scheduler.scheduler_ops ^
-    --hidden-import web.routes.domains.scheduler.scheduler_resource_dispatch ^
-    --hidden-import web.routes.domains.scheduler.scheduler_resource_dispatch_execution_routes ^
-    --hidden-import web.routes.domains.scheduler.scheduler_run ^
-    --hidden-import web.routes.domains.scheduler.scheduler_week_plan ^
-    --hidden-import web.routes.domains.scheduler.scheduler_week_plan_print ^
     --name "排产系统" ^
     app.py
 ) else (
@@ -95,22 +80,7 @@ if exist vendor (
     --add-data "templates_excel;templates_excel" ^
     --add-data "plugins;plugins" ^
     --add-data "schema.sql;." ^
-    --hidden-import web.routes.domains.scheduler.scheduler_analysis ^
-    --hidden-import web.routes.domains.scheduler.scheduler_batch_detail ^
-    --hidden-import web.routes.domains.scheduler.scheduler_batches ^
-    --hidden-import web.routes.domains.scheduler.scheduler_calendar_pages ^
-    --hidden-import web.routes.domains.scheduler.scheduler_config ^
-    --hidden-import web.routes.domains.scheduler.scheduler_excel_batches ^
-    --hidden-import web.routes.domains.scheduler.scheduler_excel_calendar ^
-    --hidden-import web.routes.domains.scheduler.scheduler_gantt ^
-    --hidden-import web.routes.domains.scheduler.scheduler_gantt_adjustments ^
     --hidden-import networkx ^
-    --hidden-import web.routes.domains.scheduler.scheduler_ops ^
-    --hidden-import web.routes.domains.scheduler.scheduler_resource_dispatch ^
-    --hidden-import web.routes.domains.scheduler.scheduler_resource_dispatch_execution_routes ^
-    --hidden-import web.routes.domains.scheduler.scheduler_run ^
-    --hidden-import web.routes.domains.scheduler.scheduler_week_plan ^
-    --hidden-import web.routes.domains.scheduler.scheduler_week_plan_print ^
     --name "排产系统" ^
     app.py
 )

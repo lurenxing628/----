@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import io
-from pathlib import Path
 from typing import Tuple
 
 import openpyxl
@@ -669,13 +668,6 @@ def test_process_and_scheduler_errors_use_chinese_terms() -> None:
     assert "strict_mode 已拒绝" not in route_parser
     assert "默认周期无法解析（{raw_default_days!r}）" not in route_parser
     assert "默认周期无效（{raw_default_days!r}）" not in route_parser
-
-    external_group_service = _read("core/services/process/external_group_service.py")
-    assert "系统先临时按 1 天保存" not in external_group_service
-    assert "周期输入无效，本次会先按 1 天记录，请尽快补成真实周期。" in external_group_service
-    assert "compatible mode" not in external_group_service.split("user_warning_text", 1)[-1]
-    assert "append_unique_text_messages(user_warnings, user_warning_text)" in external_group_service
-    assert "safe_warning(self.logger, log_warning_text)" in external_group_service
 
     batch_template_ops = _read("core/services/scheduler/batch_template_ops.py")
     assert "不支持“资料不完整就停下”" in batch_template_ops

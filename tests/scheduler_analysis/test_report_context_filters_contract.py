@@ -17,7 +17,6 @@ from core.services.report.report_context_filters import (
 from core.services.scheduler.schedule_delay_diagnosis_service import ScheduleDelayDiagnosisService
 from core.services.scheduler.schedule_plan_query_service import SchedulePlanQueryService
 from data.repositories.schedule_plan_query_repo import SchedulePlanQueryRepository
-from tests.web_pages.reports_workbench_backlink_helpers import _client, _xlsx_text
 
 
 def test_downtime_batch_filter_keeps_only_real_schedule_overlap() -> None:
@@ -103,66 +102,6 @@ def test_report_core_filter_rejects_conflicting_resource_aliases() -> None:
             scope_type="machine",
             scope_id="M-OTHER",
         )
-
-
-def test_report_request_rejects_resource_type_without_resource_id() -> None:
-    client = _client()
-
-    page_response = client.get(
-        "/reports/utilization?version=12&plan_role=adopted"
-        "&start_date=2026-05-06&end_date=2026-05-06&resource_type=machine"
-    )
-    export_response = client.get(
-        "/reports/utilization/export?version=12&plan_role=adopted"
-        "&start_date=2026-05-06&end_date=2026-05-06&resource_type=machine"
-    )
-
-    assert page_response.status_code == 400
-    assert export_response.status_code == 400
-    # 退役页面拒绝非法范围；原解析错误的逐字合同仍由保留导出覆盖。
-    assert "地址里的计划编号、日期或筛选不对" in page_response.get_data(as_text=True)
-    assert "没有替你换记录或放宽范围" in page_response.get_data(as_text=True)
-    assert "缺少设备编号" in export_response.get_data(as_text=True)
-
-
-def test_report_request_rejects_conflicting_resource_aliases() -> None:
-    client = _client()
-
-    page_response = client.get(
-        "/reports/utilization?version=12&plan_role=adopted"
-        "&start_date=2026-05-06&end_date=2026-05-06"
-        "&resource_type=machine&resource_id=M-RPT&operator_id=O-RPT"
-    )
-    export_response = client.get(
-        "/reports/utilization/export?version=12&plan_role=adopted"
-        "&start_date=2026-05-06&end_date=2026-05-06"
-        "&resource_type=machine&resource_id=M-RPT&machine_id=M-OTHER"
-    )
-
-    assert page_response.status_code == 400
-    assert export_response.status_code == 400
-    assert "地址里的计划编号、日期或筛选不对" in page_response.get_data(as_text=True)
-    same_conflict_export = client.get(
-        "/reports/utilization/export?version=12&plan_role=adopted"
-        "&start_date=2026-05-06&end_date=2026-05-06"
-        "&resource_type=machine&resource_id=M-RPT&operator_id=O-RPT"
-    )
-    assert same_conflict_export.status_code == 400
-    assert "同时收到了人员编号" in same_conflict_export.get_data(as_text=True)
-    assert "设备编号冲突" in export_response.get_data(as_text=True)
-
-
-def test_report_request_infers_machine_resource_without_silent_broad_export() -> None:
-    client = _client()
-    response = client.get(
-        "/reports/utilization/export?version=12&plan_role=adopted"
-        "&start_date=2026-05-06&end_date=2026-05-06&machine_id=M-RPT"
-    )
-
-    assert response.status_code == 200
-    export_text = _xlsx_text(response.data)
-    assert "M-RPT" in export_text
-    assert "M-OTHER" not in export_text
 
 
 def test_overdue_query_service_rejects_unsupported_or_half_resource_filter() -> None:

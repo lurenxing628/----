@@ -23,10 +23,7 @@ KEY = "cf-request-lifecycle-000001"
 PATHS = ("/api/workbench/v1/scheduling/candidates/example/adopt",
          "/api/workbench/v1/execution/tasks/example/reports",
          "/api/workbench/v1/execution/files/confirm",
-         "/api/workbench/v1/entities/batch/import-confirm",
-         "/scheduler/resource-dispatch/execution/1/actual",
-         "/scheduler/resource-dispatch/execution/import/confirm",
-         "/scheduler/excel/batches/confirm", "/material/materials/create", "/workbench")
+         "/api/workbench/v1/entities/batch/import-confirm", "/workbench")
 
 
 class LifecycleCase:

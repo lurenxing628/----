@@ -1,61 +1,7 @@
-"""Public fields, rendered manual blocks and anchors; never dump arbitrary row data."""
+"""Rendered manual blocks and anchors for the restyled manual page; never dump arbitrary row data."""
 
 import html
 import re
-
-from core.services.common.excel_template_defaults import get_default_templates
-
-_RESULT_TEMPLATES = {
-    "excel_demo": "人员基本信息.xlsx",
-    "personnel.excel_link": "人员设备关联.xlsx",
-    "personnel.excel_operator_calendar": "人员专属工作日历.xlsx",
-    "personnel.excel_operator": "人员基本信息.xlsx",
-    "equipment.excel_link": "设备人员关联.xlsx",
-    "equipment.excel_machine": "设备信息.xlsx",
-    "process.excel_op_type": "工种配置.xlsx",
-    "process.excel_part_op_hours": "零件工序工时.xlsx",
-    "process.excel_routes": "零件工艺路线.xlsx",
-    "process.excel_supplier": "供应商配置.xlsx",
-    "scheduler.excel_batches": "批次信息.xlsx",
-    "scheduler.excel_calendar": "工作日历.xlsx",
-}
-RESULT_ENDPOINTS = {prefix + separator + suffix: filename
-                    for prefix, filename in _RESULT_TEMPLATES.items()
-                    for separator in ("." if prefix == "excel_demo" else "_",)
-                    for suffix in ("preview", "confirm")}
-
-
-def _public_scalar(value):
-    if value is None:
-        return ""
-    if type(value) in (str, int, float, bool):
-        return str(value)
-    return "这一项不是能直接显示的单个值，请核对原文件。"
-
-
-def preview_fields(row, endpoint):
-    filename = RESULT_ENDPOINTS.get(endpoint)
-    if filename is None:
-        raise ValueError("Legacy result endpoint has no approved public template fields.")
-    definition = next(item for item in get_default_templates() if item["filename"] == filename)
-    headers = list(definition["headers"])
-    for aliases in definition.get("legacy_headers", ()):
-        headers.extend(key for key in aliases if key not in headers)
-    data = getattr(row, "display_data", getattr(row, "data", {})) or {}
-    changes = getattr(row, "display_changes", getattr(row, "changes", {})) or {}
-    fields = []
-    for key in headers:
-        if key not in data and key not in changes:
-            continue
-        item = {"label": key, "value": _public_scalar(data.get(key)), "changed": key in changes}
-        if key in changes:
-            pair = changes[key]
-            if not isinstance(pair, (tuple, list)) or len(pair) != 2:
-                raise ValueError("Legacy field change must retain its before/after pair.")
-            item.update(before=_public_scalar(pair[0]), after=_public_scalar(pair[1]))
-        fields.append(item)
-    return fields
-
 
 _BOLD = re.compile(r"\*\*([^*]+)\*\*")
 _CODE_SPAN = re.compile(r"(`[^`]+`)")
@@ -240,7 +186,7 @@ def manual_blocks(text):
 
 
 def install_legacy_presentation(app):
-    filters = {"legacy_preview_fields": preview_fields, "legacy_manual_blocks": manual_blocks,
+    filters = {"legacy_manual_blocks": manual_blocks,
                "legacy_manual_outline": manual_outline, "legacy_manual_markdown": render_manual_markdown}
     if any(name in app.jinja_env.filters and app.jinja_env.filters[name] is not fn for name, fn in filters.items()):
         raise RuntimeError("Legacy presentation filter is already bound to another implementation.")

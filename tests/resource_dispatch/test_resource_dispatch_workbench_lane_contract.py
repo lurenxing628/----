@@ -35,10 +35,7 @@ def test_resource_dispatch_keeps_execution_inside_existing_page() -> None:
 
     assert PAGE_POLICIES["scheduler.resource_dispatch_page"] == "retired"
     assert not RESOURCE_DISPATCH_TEMPLATE.exists()
-    for relative in ("web/routes/domains/scheduler/scheduler_resource_dispatch.py",
-                     "web/routes/domains/scheduler/scheduler_resource_dispatch_execution_routes.py",
-                     "frontend/workbench/app/FieldWorkspace.jsx"):
-        assert "/scheduler/resource-execution" not in _source(REPO_ROOT / relative)
+    assert "/scheduler/resource-execution" not in _source(REPO_ROOT / "frontend/workbench/app/FieldWorkspace.jsx")
     workspace = _source(REPO_ROOT / "frontend/workbench/app/FieldWorkspace.jsx")
     assert "<window.FieldTable " in workspace and "<window.FieldDetail " in workspace
     assert "<window.FieldFiles " in workspace

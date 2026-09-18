@@ -8,15 +8,10 @@
 
 from __future__ import annotations
 
-from datetime import datetime, time
 from types import SimpleNamespace
 
 from core.services.scheduler.gantt_range import resolve_week_range
 from core.services.scheduler.gantt_week_plan import build_week_plan_rows
-from core.services.scheduler.week_plan_daily_summary import (
-    LOAD_UNAVAILABLE_LABEL,
-    build_week_plan_daily_summary,
-)
 
 _WR = resolve_week_range(week_start="2026-06-01")
 
@@ -97,60 +92,3 @@ def test_minutes_by_date_accumulates_per_day():
 # ---------- 每日合计（4.6 容量口径） ----------
 
 
-class _CalendarStub:
-    """policy_for_datetime 最小桩：按 (date, hour) 返回 policy，记录采样时刻。"""
-
-    def __init__(self, policies):
-        self._policies = policies
-        self.sampled = []
-
-    def policy_for_datetime(self, dt):
-        self.sampled.append(dt)
-        return self._policies[dt.date().isoformat()]
-
-
-def _policy(shift_hours, efficiency=1.0):
-    return SimpleNamespace(shift_hours=shift_hours, efficiency=efficiency)
-
-
-def test_daily_summary_noon_sampling_and_load():
-    cal = _CalendarStub({"2026-06-01": _policy(8, 0.9)})
-    out = build_week_plan_daily_summary(
-        {"2026-06-01": 540}, calendar=cal, week_start=None, week_end=None
-    )
-    assert out == [
-        {
-            "date": "2026-06-01",
-            "planned_hours_label": "9 小时",
-            "capacity_hours_label": "7.2 小时",
-            "load_label": "125%",
-        }
-    ]
-    # 4.6 钉死：采样时刻必须是正午（midnight 采样在跨午夜班次归属错日）
-    assert cal.sampled == [datetime(2026, 6, 1, 12, 0)]
-    assert cal.sampled[0].time() == time(12, 0)
-
-
-def test_daily_summary_rest_day_capacity_zero_honest_label():
-    cal = _CalendarStub({"2026-06-01": _policy(0)})
-    out = build_week_plan_daily_summary(
-        {"2026-06-01": 120}, calendar=cal, week_start=None, week_end=None
-    )
-    assert out[0]["capacity_hours_label"] == "0 小时"
-    assert out[0]["load_label"] == LOAD_UNAVAILABLE_LABEL
-
-
-def test_daily_summary_policy_failure_degrades_honestly():
-    class _Boom:
-        def policy_for_datetime(self, dt):
-            raise ValueError("calendar broken")
-
-    out = build_week_plan_daily_summary(
-        {"2026-06-01": 60}, calendar=_Boom(), week_start=None, week_end=None
-    )
-    assert out[0]["capacity_hours_label"] == "-"
-    assert out[0]["load_label"] == LOAD_UNAVAILABLE_LABEL
-
-
-def test_daily_summary_empty_input_returns_empty():
-    assert build_week_plan_daily_summary({}, calendar=_CalendarStub({}), week_start=None, week_end=None) == []

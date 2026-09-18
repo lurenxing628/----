@@ -602,7 +602,7 @@ def test_config_manual_markdown_contract(app_client, monkeypatch, tmp_path) -> N
 
     from flask import template_rendered
 
-    import web.routes.domains.scheduler.scheduler_config as route_mod
+    import web.routes.workbench.manual_page as route_mod
 
     class Manual(HTMLParser):
         def __init__(self, text):

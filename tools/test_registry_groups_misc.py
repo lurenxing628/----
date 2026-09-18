@@ -5,28 +5,13 @@ MISC_REQUIRED_REGRESSION_GROUPS = (
         "group_id": "scheduler_batches_material_resource",
         "label": "Scheduler batches, material, and resource contracts",
         "target_paths": (
-            "tests/resource_dispatch/test_scheduler_resource_dispatch_invalid_query_cleanup.py",
             "tests/resource_dispatch/test_resource_dispatch_bad_time_rows_surface_degraded.py",
-            "tests/resource_dispatch/test_resource_dispatch_export_surfaces_degraded.py",
-            "tests/resource_dispatch/test_resource_dispatch_public_output_contract.py",
-            "tests/resource_dispatch/test_resource_dispatch_viewmodel_public_output_contract.py",
             "tests/resource_dispatch/test_resource_dispatch_task_id_encoding.py",
             "tests/resource_dispatch/test_resource_dispatch_overdue_summary_formats.py",
-            "tests/resource_dispatch/test_resource_dispatch_invalid_summary_surfaces_overdue_degraded.py",
         ),
         "input_file_scopes": (
             "tests/_support/schedule_retirement.py",
-            "tests/_support/legacy_report_contract.py",
-            "web/routes/domains/scheduler/scheduler_batches.py",
-            "web/routes/domains/scheduler/scheduler_batch_detail.py",
             "web/routes/domains/scheduler/scheduler_excel_batches*.py",
-            "web/routes/domains/scheduler/scheduler_resource_dispatch.py",
-            "web/routes/domains/scheduler/scheduler_resource_dispatch_query.py",
-            "web/routes/material.py",
-            "web/routes/scheduler_batches.py",
-            "web/routes/scheduler_batch_detail.py",
-            "web/routes/scheduler_excel_batches.py",
-            "web/routes/scheduler.py",
             "core/services/scheduler/**/*.py",
             "core/services/common/plan_identity.py",
             "core/services/common/plan_query.py",
@@ -63,7 +48,6 @@ MISC_REQUIRED_REGRESSION_GROUPS = (
         "group_id": "request_services_runtime_error_boundary",
         "label": "Request services, runtime, and error boundary contracts",
         "target_paths": (
-            "tests/web_pages/test_request_services_contract.py",
             "tests/web_pages/test_factory_request_lifecycle_observability.py",
             "tests/calendar_maintenance/test_maintenance_window_mutex.py",
             "tests/migration_db/test_database_high_version_failfast.py",
@@ -73,9 +57,7 @@ MISC_REQUIRED_REGRESSION_GROUPS = (
             "tests/operation_execution/test_operation_execution_migration_v18_contract.py",
             "tests/operation_execution/test_operation_execution_migration_v19_contract.py",
             "tests/web_pages/test_error_field_label_source.py",
-            "tests/gate_meta/test_scheduler_data_route_error_contract.py",
             "tests/app_runtime/test_safe_next_url_hardening.py",
-            "tests/app_runtime/test_safe_next_url_observability.py",
             "tests/app_runtime/test_fixed_file_security.py",
             "tests/app_runtime/test_validate_dist_runtime_identity.py",
             "tests/gate_meta/test_win7_networkx_package_contract.py",
@@ -84,7 +66,6 @@ MISC_REQUIRED_REGRESSION_GROUPS = (
             "tests/web_pages/test_error_boundary_contract.py",
             # 诊断包安全红线守卫（fusion-runtime-log-viewer）：本组是 web/routes/**、
             # core/services/system/**、templates/system/** 的 owner，恰为该 feature 全部落点
-            "tests/web_pages/test_diagnostic_package_security.py",
             # F6（2026-06-10）：备份/恢复/物料 loud 契约旁证——本组 scope 覆盖 core/infrastructure、
             # web/routes/system_backup.py、data/**，故 backup() 完整性硬抛、restore 前快照失败区分、
             # 备份 web 入口中文化、物料 stock 坏值裸抛改动都会强制选中这些断言。
@@ -100,21 +81,10 @@ MISC_REQUIRED_REGRESSION_GROUPS = (
             "web/manual_src_security.py",
             # P0.2：登记 web/ 顶层请求基础设施文件，避免改它们时因「不属任何组」升全量（从 4 降到 1）。
             "web/__init__.py",
-            "web/navigation_context.py",
             "web/public_token_registry.py",
-            "web/request_resource_context.py",
             "web/routes/**/*.py",
             "web/bootstrap/*.py",
             "web/routes/__init__.py",
-            "web/routes/navigation_utils.py",
-            "web/routes/normalizers.py",
-            "web/routes/system_utils.py",
-            "web/routes/system_backup.py",
-            "web/routes/system_history.py",
-            "web/routes/system_logs.py",
-            "web/routes/system_plugins.py",
-            "web/routes/domains/scheduler/scheduler_config.py",
-            "web/routes/domains/scheduler/scheduler_batches.py",
             # P0.3 收窄：core 收窄到 request/runtime/migration 相关子域（其余 core 由 run_core owner 覆盖）。
             # data/** 保留——迁移测试承重，本组是 data 的第二 owner。web/routes/** 与 plugins/** 保留
             # （本组是其 owner，且 web/routes/** 被契约 :171 PIN）。templates 收窄到 system 页面；
@@ -157,8 +127,6 @@ MISC_REQUIRED_REGRESSION_GROUPS = (
         "label": "Frontend manual and Excel contracts",
         "target_paths": (
             "tests/excel_data_io/test_excel_import_hardening.py",
-            "tests/excel_data_io/test_excel_utils_compare_digest_guard.py",
-            "tests/excel_data_io/test_excel_conversion_output_contract.py",
             "tests/app_runtime/test_frontend_offline_static_assets.py",
             "tests/excel_data_io/test_import_execution_stats_source_row_num.py",
         ),
@@ -179,10 +147,8 @@ MISC_REQUIRED_REGRESSION_GROUPS = (
             "web/routes/personnel_excel_*.py",
             "web/routes/equipment_excel_*.py",
             "web/routes/domains/scheduler/scheduler_excel*.py",
-            "web/routes/domains/scheduler/scheduler_config_display_state.py",
             "web/routes/scheduler_excel*.py",
             "web/manual_src_security.py",
-            "web/viewmodels/excel_entry_cards.py",
             "web/viewmodels/page_manuals*.py",
             "core/services/process/**/*.py",
             "core/services/common/**/*.py",
@@ -219,16 +185,13 @@ MISC_REQUIRED_REGRESSION_GROUPS = (
             "tests/web_pages/test_workbench_nav_entry_contract.py",
             # 打印介质契约（fusion-anchor-baseline-prep）：本组是 static/** 的 owner，
             # 改 print.css 必须触发 .sidebar 隐藏名单断言（防回潮）
-            "tests/web_pages/test_print_css_contract.py",
             # 设计令牌真相源契约（fusion-tokens-single-source）：改任何 CSS 触发裸 hex 冻结白名单
             "tests/web_pages/test_css_token_source_contract.py",
             # 排产词表唯一字源契约（fusion-label-single-source）：本组 owner templates/**
-            "tests/web_pages/test_label_single_source_contract.py",
         ),
         "input_file_scopes": (
             "tests/_support/gantt_retirement.py",
             "tests/_support/workbench_web_contract.py",
-            "tests/_support/legacy_report_contract.py",
             "tests/_support/workbench_browser_contract.py",
             "tests/_support/workbench_browser_probe.cjs",
             "tests/_support/paths.py",
@@ -266,24 +229,8 @@ MISC_REQUIRED_REGRESSION_GROUPS = (
             # viewmodel 影响，须随它们变动在 push 时触发（红队 item8）；本组是 templates/static 的 owner
             # （上方保留宽 glob），不再被无关 core/其他 viewmodel 逻辑改动拖入慢浏览器几何测试。
             "web/viewmodels/system_*.py",
-            "web/viewmodels/ui_presenters.py",
             "core/services/system/backup_restore.py",
             "web/routes/system_*.py",
-            "web/routes/system_backup.py",
-            "web/routes/system_history.py",
-            "web/routes/system_logs.py",
-            "web/routes/system.py",
-            "web/routes/system_bp.py",
-            "web/routes/system_health.py",
-            "web/routes/system_plugins.py",
-            "web/routes/excel_utils.py",
-            "web/routes/process_parts.py",
-            "web/routes/process_excel_routes.py",
-            "web/routes/domains/scheduler/scheduler_run.py",
-            "web/routes/domains/scheduler/scheduler_batches.py",
-            "web/routes/domains/scheduler/scheduler_batch_detail.py",
-            "web/routes/domains/scheduler/scheduler_excel_batches.py",
-            "web/routes/domains/scheduler/scheduler_week_plan.py",
             "app.py",
             "app_new_ui.py",
             "config.py",

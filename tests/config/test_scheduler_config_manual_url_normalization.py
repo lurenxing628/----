@@ -6,7 +6,7 @@ import pytest
 from flask import Flask
 
 import web.manual_src_security as manual_src_security_mod
-import web.routes.domains.scheduler.scheduler_config as route_mod
+import web.routes.workbench.manual_page as route_mod
 
 
 def test_get_full_manual_section_url_returns_empty_string_when_manual_missing(

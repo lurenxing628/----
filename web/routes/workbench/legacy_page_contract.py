@@ -52,7 +52,7 @@ PAGE_POLICIES = MappingProxyType({
     "scheduler.gantt_page": "redirect",
     "scheduler.resource_dispatch_page": "retired",
     "scheduler.week_plan_page": "retired",
-    "scheduler.week_plan_print_page": "restyle",
+    "scheduler.week_plan_print_page": "retired",
     "system.backup_page": "redirect",
     "system.history_page": "retired",
     "system.index": "redirect",

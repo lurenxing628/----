@@ -727,9 +727,6 @@ def _assert_page_manual_closeout_forbidden_phrases(page_manuals) -> None:
         "core/services/common/excel_validators.py": _read(
             os.path.join(repo_root, "core", "services", "common", "excel_validators.py")
         ),
-        "web/routes/domains/scheduler/scheduler_excel_calendar_rows.py": _read(
-            os.path.join(repo_root, "web", "routes", "domains", "scheduler", "scheduler_excel_calendar_rows.py")
-        ),
     }
     for source_name, text in visible_sources.items():
         for phrase in PAGE_MANUAL_CLOSEOUT_FORBIDDEN_TEMPLATE_PHRASES:
@@ -743,14 +740,8 @@ def _assert_page_manual_closeout_forbidden_phrases(page_manuals) -> None:
 def _assert_ready_check_visible_copy_contract(repo_root: str, page_manuals, manual_text: str) -> None:
     visible_sources = {
         "static/docs/scheduler_manual.md": manual_text,
-        "web/viewmodels/scheduler_run_options.py": _read(
-            os.path.join(repo_root, "web", "viewmodels", "scheduler_run_options.py")
-        ),
         "core/services/scheduler/config/config_field_spec.py": _read(
             os.path.join(repo_root, "core", "services", "scheduler", "config", "config_field_spec.py")
-        ),
-        "web/routes/domains/scheduler/scheduler_config_display_state.py": _read(
-            os.path.join(repo_root, "web", "routes", "domains", "scheduler", "scheduler_config_display_state.py")
         ),
         "frontend/workbench/app/BatchFiles.jsx": _read(
             os.path.join(repo_root, "frontend", "workbench", "app", "BatchFiles.jsx")
@@ -767,9 +758,7 @@ def _assert_ready_check_visible_copy_contract(repo_root: str, page_manuals, manu
 
     for source_name in (
         "static/docs/scheduler_manual.md",
-        "web/viewmodels/scheduler_run_options.py",
         "core/services/scheduler/config/config_field_spec.py",
-        "web/routes/domains/scheduler/scheduler_config_display_state.py",
     ):
         text = visible_sources[source_name]
         for phrase in READY_CHECK_REQUIRED_COPY:

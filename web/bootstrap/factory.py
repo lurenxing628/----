@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import atexit
-import importlib
 import json
 import os
 import sys
@@ -17,25 +16,15 @@ from config import config as _config_map
 from core.infrastructure.backup import BackupManager, is_maintenance_window_active
 from core.infrastructure.database import ensure_schema, get_connection
 from core.infrastructure.logging import AppLogger, OperationLogger, safe_log
-from core.services.common.excel_backend_factory import get_excel_backend
 from core.services.common.excel_templates import ExcelTemplateError, ensure_excel_templates
 from core.services.scheduler import _frozen_import_anchor as _scheduler_services_import_anchor
-from web.bootstrap.template_globals import install_template_globals
 from web.error_boundary import (
     render_error_template,
     render_minimal_error_page,
     wants_json_error_response_or_default,
 )
 from web.error_handlers import register_error_handlers
-from web.routes import scheduler as _scheduler_import_anchor
-from web.routes.dashboard import bp as dashboard_bp
-from web.routes.equipment import bp as equipment_bp
-from web.routes.excel_demo import bp as excel_demo_bp
-from web.routes.material import bp as material_bp
-from web.routes.personnel import bp as personnel_bp
-from web.routes.process import bp as process_bp
-from web.routes.reports import bp as reports_bp
-from web.routes.system import bp as system_bp
+from web.routes.workbench.legacy_blueprints import register_legacy_blueprints
 from web.routes.workbench.legacy_dispatch import install_legacy_retirement
 from web.routes.workbench.registration import bp as workbench_bp
 
@@ -49,7 +38,6 @@ from .launcher_shutdown import (
 )
 from .paths import runtime_base_dir
 from .plugins import bootstrap_plugins
-from .request_services import RequestServices
 from .security import apply_session_cookie_hardening, ensure_secret_key, register_security_headers
 from .startup_config import resolve_config_class
 from .static_versioning import install_versioned_url_for
@@ -68,7 +56,7 @@ _RUNTIME_SERVER: Any = None
 _RUNTIME_SERVER_LOCK = threading.Lock()
 _RUNTIME_SERVER_SHUTDOWN_REQUESTED = False
 _FACTORY_ONCE_FLAGS_KEY = "aps.factory.once_flags"
-_PYINSTALLER_IMPORT_ANCHORS = (_scheduler_import_anchor, _scheduler_services_import_anchor)
+_PYINSTALLER_IMPORT_ANCHORS = (_scheduler_services_import_anchor,)
 
 
 def _resolve_config_class():
@@ -240,18 +228,9 @@ def _init_excel_templates(app: Flask) -> None:
 
 
 def _register_all_blueprints(app: Flask) -> None:
-    # Preserve legacy registrations; the migrated workspace has an independent entry.
-    app.register_blueprint(dashboard_bp)
-    app.register_blueprint(excel_demo_bp, url_prefix="/excel-demo")
-    app.register_blueprint(personnel_bp, url_prefix="/personnel")
-    app.register_blueprint(equipment_bp, url_prefix="/equipment")
-    app.register_blueprint(process_bp, url_prefix="/process")
-    scheduler_routes = importlib.import_module("web.routes.scheduler")
-    scheduler_routes.register_scheduler_routes()
-    app.register_blueprint(scheduler_routes.bp, url_prefix="/scheduler")
-    app.register_blueprint(material_bp, url_prefix="/material")
-    app.register_blueprint(reports_bp, url_prefix="/reports")
-    app.register_blueprint(system_bp, url_prefix="/system")
+    # 旧 HTML 页面层已删除：旧命名空间只剩策略页占位规则、说明书页与运行时健康接口，
+    # 由 install_legacy_retirement 在启动期换成跳转/410 适配器；工作台是唯一的业务入口。
+    register_legacy_blueprints(app)
     app.register_blueprint(workbench_bp)
     install_legacy_retirement(app)
 
@@ -314,8 +293,6 @@ def create_app_core(
     if enable_session_cookie_hardening:
         apply_session_cookie_hardening(app)
 
-    install_template_globals(app)
-
     _ensure_runtime_dirs(app)
     _init_excel_templates(app)
 
@@ -346,7 +323,7 @@ def create_app_core(
         try:
             req_path = str(request.path or "")
             # 白名单短路路径只允许走“无业务依赖”的轻量请求：
-            # 不挂载 g.app_logger / g.db / g.op_logger / g.services，避免把静态资源与健康检查误带入请求级容器生命周期。
+            # 不挂载 g.app_logger / g.db / g.op_logger，避免把静态资源与健康检查误带入请求级连接生命周期。
             # 若未来某个中间件需要这些请求级对象，则不应复用该白名单短路路径。
             if req_path.startswith("/static") or req_path in {"/system/health", "/system/runtime/shutdown"}:
                 return
@@ -389,8 +366,6 @@ def create_app_core(
                 )
         g.app_logger = current_app.logger
 
-        if "db" in g and "services" not in g:
-            raise RuntimeError("请求上下文已有 g.db，但缺少 g.services。")
         if "db" not in g:
             conn = None
             try:
@@ -417,13 +392,6 @@ def create_app_core(
                         type(e).__name__,
                         e,
                     )
-
-                services = RequestServices(
-                    db=conn,
-                    app_logger=g.app_logger,
-                    op_logger=op_logger,
-                    get_excel_backend=get_excel_backend,
-                )
             except Exception:
                 if conn is not None:
                     try:
@@ -440,7 +408,6 @@ def create_app_core(
 
             g.db = conn
             g.op_logger = op_logger
-            g.services = services
 
     @app.teardown_appcontext
     def _close_db(_exc):

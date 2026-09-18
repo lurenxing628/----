@@ -156,7 +156,7 @@ def test_unknown_file_locations_never_become_label_edges(tmp_path: Path, body: s
 
 
 @pytest.mark.parametrize("rel,line,target", [
-    ("tests/gate_meta/test_frozen_bundle_contract.py", 198, "core.services.scheduler._frozen_import_anchor"),
+    ("tests/gate_meta/test_frozen_bundle_contract.py", 175, "core.services.scheduler._frozen_import_anchor"),
     ("tests/workbench/test_pending_build_sources.py", 22, "scripts.workbench.build"),
     ("tests/workbench/test_process_readiness.py", 133, "core.services.workbench.resource_readiness"),
 ])

@@ -33,13 +33,11 @@ from typing import Dict, List, Set, Tuple
 from tests._support.paths import REPO_ROOT
 
 _BAT_PATH = REPO_ROOT / "build_win7_onedir.bat"
-_REGISTRAR_PATH = REPO_ROOT / "web" / "routes" / "domains" / "scheduler" / "scheduler_route_registrar.py"
 _SCHEDULER_INIT_PATH = REPO_ROOT / "core" / "services" / "scheduler" / "__init__.py"
 _SCHEDULER_CONFIG_INIT_PATH = REPO_ROOT / "core" / "services" / "scheduler" / "config" / "__init__.py"
 _ANCHOR_PATH = REPO_ROOT / "core" / "services" / "scheduler" / "_frozen_import_anchor.py"
 _FACTORY_PATH = REPO_ROOT / "web" / "bootstrap" / "factory.py"
 
-_REGISTRAR_PACKAGE = "web.routes.domains.scheduler"
 _SCHEDULER_PACKAGE = "core.services.scheduler"
 _SCHEDULER_CONFIG_PACKAGE = "core.services.scheduler.config"
 _ANCHOR_MODULE = "core.services.scheduler._frozen_import_anchor"
@@ -63,15 +61,6 @@ def _module_level_assign_value(path: Path, name: str) -> ast.expr:
                 if isinstance(target, ast.Name) and target.id == name:
                     return node.value
     raise AssertionError(f"{path} 缺少模块级赋值：{name}")
-
-
-def _registrar_route_modules() -> Set[str]:
-    value = _module_level_assign_value(_REGISTRAR_PATH, "_ROUTE_MODULES")
-    assert isinstance(value, ast.Tuple)
-    names = {elt.value for elt in value.elts if isinstance(elt, ast.Constant) and isinstance(elt.value, str)}
-    assert len(names) == len(value.elts), "_ROUTE_MODULES 应全部是字符串常量"
-    assert names, "_ROUTE_MODULES 不应为空"
-    return {f"{_REGISTRAR_PACKAGE}.{name}" for name in names}
 
 
 def _lazy_exports_modules(path: Path, package: str) -> Set[str]:
@@ -131,18 +120,6 @@ def _factory_anchor_binding() -> Tuple[Dict[str, str], List[str]]:
                         assert isinstance(elt, ast.Name), "_PYINSTALLER_IMPORT_ANCHORS 元素必须是 import 别名"
                         tuple_names.append(elt.id)
     return alias_to_module, tuple_names
-
-
-def test_bat_hidden_imports_cover_all_scheduler_route_modules() -> None:
-    """(a) 两个打包分支的 hidden-import 都必须覆盖 registrar 动态导入的全部路由模块。"""
-    route_modules = _registrar_route_modules()
-    for index, hidden in enumerate(_bat_hidden_import_sets()):
-        missing = sorted(route_modules - hidden)
-        assert not missing, (
-            f"build_win7_onedir.bat 第 {index + 1} 个打包分支缺 hidden-import：{missing}；"
-            "registrar 用变量实参 import_module 动态导入，PyInstaller 看不见，"
-            "缺一个模块冻结 exe 就启动即死（B07）。"
-        )
 
 
 def test_bat_hidden_import_sets_are_identical_across_branches() -> None:

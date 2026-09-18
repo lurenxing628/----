@@ -2,28 +2,14 @@
 
 from __future__ import annotations
 
-import ast
 from io import BytesIO
 
 import openpyxl
 import pytest
 
 from core.infrastructure.errors import ValidationError
-from core.services.report import ReportEngine, report_number_parsing
 from core.services.report.exporters import xlsx
-from core.services.report.report_engine import ReportEngine as Engine
 from core.services.report.values import number_parsing
-from tests._support.dependency_boundaries import assert_import_orders, assert_no_import_prefixes
-from tests._support.paths import REPO_ROOT
-
-
-def test_report_public_identity_and_numeric_import_orders():
-    assert ReportEngine is Engine
-    assert report_number_parsing.__all__ == number_parsing.__all__
-    for name in number_parsing.__all__:
-        assert getattr(report_number_parsing, name) is getattr(number_parsing, name)
-    assert_import_orders(report_number_parsing.__name__, number_parsing.__name__, number_parsing.__all__)
-    assert_import_orders("core.services.report", "core.services.report.report_engine", ("ReportEngine",))
 
 
 def test_report_numeric_values_and_error_contracts():
@@ -66,8 +52,3 @@ def test_export_preserves_values_and_real_parser_patch(monkeypatch, write_only):
     assert calls == [("0.3125", {"field": "utilization", "label": "利用率", "source_label": "资源负荷导出数据"})]
 
 
-def test_numeric_leaf_does_not_depend_on_report_orchestrators():
-    root = REPO_ROOT / "core/services/report/values"
-    assert_no_import_prefixes(root / "number_parsing.py", ("core.services.report",))
-    assert not any(isinstance(node, (ast.Import, ast.ImportFrom)) for node in ast.parse((root / "__init__.py").read_text()).body)
-    assert "from core.services.report.report_number_parsing import" not in (REPO_ROOT / "core/services/report/exporters/xlsx.py").read_text()

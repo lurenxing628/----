@@ -15,8 +15,6 @@ from core.models.operation_execution_event import (
     OperationExecutionEvent,
     validate_operation_execution_event_sequence,
 )
-from core.models.resource_dispatch_execution_tokens import execution_task_key
-from core.services.scheduler.operation_execution_scope_read import scope_from_plan_row
 from data.repositories import OperationExecutionEventRepo
 from data.repositories.operation_execution_state_builder import build_operation_execution_state
 from tests.operation_execution.test_operation_execution_event_foundation import (
@@ -27,31 +25,6 @@ from tests.operation_execution.test_operation_execution_event_foundation import 
     _seed_plan,
     _seed_second_schedule,
 )
-
-
-def test_operation_execution_scope_identity_rejects_bool_and_fractional_integers() -> None:
-    with pytest.raises(ValueError, match="schedule_id"):
-        OperationExecutionEvent.from_row(
-            _event(
-                schedule_version=2,
-                schedule_id=True,
-            )
-        )
-    with pytest.raises(ValueError, match="op_id"):
-        OperationExecutionEvent.from_row(
-            _event(
-                schedule_version=2,
-                schedule_id=100,
-                op_id=10.9,
-            )
-        )
-    with pytest.raises(ValueError, match="schedule_id"):
-        execution_task_key({"schedule_id": 100.9, "op_id": 10, "batch_id": "B1"})
-    with pytest.raises(ValueError, match="计划行缺少现场执行身份字段"):
-        scope_from_plan_row(
-            {"schedule_id": True, "op_id": 10, "version": 2, "batch_id": "B1"},
-            {"source_table": "schedule", "effective_plan_role": "adopted"},
-        )
 
 
 def test_operation_execution_event_sequence_contract_rejects_invalid_flows() -> None:

@@ -6,30 +6,21 @@ import sys
 
 import pytest
 
-from core.services.execution import legacy as legacy_owner
 from core.services.execution import projection as projection_owner
-from core.services.execution import quality as quality_owner
-from core.services.execution import totals as totals_owner
 from core.services.execution.ledger_reader import ExecutionLedgerReader
 from core.services.scheduler.execution.execution_ledger_adapter import ledger_read_snapshot
 from core.services.scheduler.execution.execution_plan_identity import current_execution_plan
-from core.services.workbench import execution_ledger_legacy as legacy_adapter
 from core.services.workbench import execution_ledger_projection as projection_adapter
-from core.services.workbench import execution_ledger_quality as quality_adapter
-from core.services.workbench import execution_ledger_totals as totals_adapter
 from core.services.workbench.execution_ledger import ExecutionLedgerService
 from tests._support.dependency_boundaries import assert_no_import_prefixes
 from tests._support.paths import REPO_ROOT
 from tests.workbench.execution_ledger_support import NOW, all_rows
-from tests.workbench.execution_ledger_support import ledger_case as ledger_fixture
+from tests.workbench.execution_ledger_support import ledger_case as ledger_fixture  # noqa: F401
 from tests.workbench.scheduler_execution_ledger_support import read_facts
 
 
 @pytest.mark.parametrize("old,owner,symbols", [
     (projection_adapter, projection_owner, ("project_execution", "report_dto")),
-    (legacy_adapter, legacy_owner, ("LegacyEvidence", "legacy_evidence")),
-    (quality_adapter, quality_owner, ("INVALID_CODES", "classify_quality", "gap", "operation_target")),
-    (totals_adapter, totals_owner, ("ReportTotals", "merge_legacy_totals", "quantity_consistency", "report_totals")),
 ])
 def test_old_helper_paths_reexport_identical_neutral_objects(old, owner, symbols):
     for symbol in symbols:

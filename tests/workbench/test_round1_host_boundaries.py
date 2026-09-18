@@ -1,9 +1,6 @@
 """Round-one host boundaries keep real restore ownership and public behavior."""
 
-import json
 import sqlite3
-import subprocess
-import sys
 from contextlib import closing
 
 import pytest
@@ -11,16 +8,9 @@ import pytest
 from core.infrastructure.database import get_connection
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_system import log_level_label, normalize_log_level, query_input
-from core.services.system import backup_restore
 from tests.workbench.system_restore_host_support import BASE
 from tests.workbench.system_restore_host_support import restore_host as restore_host
 from web.bootstrap import workbench_system_restore as host_module
-from web.routes import system_backup_actions
-
-
-def test_legacy_restore_names_are_exact_shared_service_objects():
-    assert system_backup_actions.run_backup_restore is backup_restore.run_backup_restore
-    assert system_backup_actions.RestoreBackupOutcome is backup_restore.RestoreBackupOutcome
 
 
 def test_restore_audit_uses_a_fresh_tracked_connection_and_closes_it(restore_host, monkeypatch):
@@ -121,30 +111,6 @@ def test_query_rejections_keep_original_status(value, status):
     with pytest.raises(WorkbenchCommandRejected) as caught:
         query_input(value, "logs")
     assert caught.value.code == "invalid_input" and caught.value.status == status
-
-
-def test_unit_excel_leaf_import_does_not_eagerly_load_the_pipeline():
-    script = """
-import json, sys
-import core.services.process.unit_excel as package
-assert not hasattr(package, 'UnitExcelParser')
-prefix = 'core.services.process.unit_excel.'
-assert not any(prefix + name in sys.modules for name in ('exporter', 'parser', 'template_builder'))
-from core.services.process.unit_excel.builder_diagnostics import __name__
-assert not any(prefix + name in sys.modules for name in ('exporter', 'template_builder'))
-from core.services.process.unit_excel_converter import UnitExcelConverter
-from core.services.process.unit_excel.parser import UnitExcelParser
-from core.services.process.unit_excel.template_builder import UnitTemplateBuilder
-from core.services.process.unit_excel.exporter import UnitTemplateExporter
-converter = UnitExcelConverter()
-assert isinstance(converter._parser, UnitExcelParser)
-assert isinstance(converter._builder, UnitTemplateBuilder)
-assert isinstance(converter._exporter, UnitTemplateExporter)
-print(json.dumps({'pipeline': 'same concrete implementations'}))
-"""
-    result = subprocess.run([sys.executable, "-B", "-c", script], capture_output=True,
-                            text=True, check=True, timeout=30)
-    assert json.loads(result.stdout) == {"pipeline": "same concrete implementations"}
 
 
 def test_shared_sqlite_snapshots_keep_original_objects_rows_and_schema():

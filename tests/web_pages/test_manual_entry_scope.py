@@ -200,7 +200,7 @@ def main(monkeypatch) -> None:
     assert quote("系统使用说明.md", safe="") in download.headers["Content-Disposition"]
     assert download.data == (REPO_ROOT / "static/docs/scheduler_manual.md").read_bytes()
 
-    with patch("web.routes.domains.scheduler.scheduler_config._resolve_scheduler_manual_md_path", return_value=(None, [])):
+    with patch("web.routes.workbench.manual_page._resolve_scheduler_manual_md_path", return_value=(None, [])):
         response = client.get("/scheduler/config/manual/download", query_string={"page": "unknown.endpoint", "src": "http://evil.example/x"})
     assert response.status_code in (302, 303)
     assert "evil.example" not in response.headers["Location"] and "unknown.endpoint" not in response.headers["Location"]

@@ -105,11 +105,6 @@ _LOW_LEVEL_ERROR_CONSUMERS = (
 _ERROR_FUNCTION_CONSUMERS = (
     "web/error_boundary.py",
     "web/error_handlers.py",
-    "web/routes/domains/scheduler/scheduler_gantt.py",
-    "web/routes/domains/scheduler/scheduler_gantt_adjustments.py",
-    "web/routes/domains/scheduler/scheduler_resource_dispatch.py",
-    "web/routes/domains/scheduler/scheduler_resource_dispatch_execution_context.py",
-    "web/routes/domains/scheduler/scheduler_resource_dispatch_execution_routes.py",
 )
 
 

@@ -13,7 +13,7 @@ from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentity
 from tests.workbench.final_legacy_navigation_support import legacy, prepare_database, token_app
 from tests.workbench.plan_catalog_support import history
 from tests.workbench.plan_read_support import connect
-from web.routes.domains.scheduler.scheduler_plan_context_token import plan_context_token
+from web.plan_context_token import plan_context_token
 from web.routes.workbench.legacy_navigation import build_legacy_destination, resolve_legacy_get
 from web.routes.workbench.legacy_page_contract import PAGE_POLICIES, LegacyNavigationInvalid
 from web.routes.workbench.navigation_boot import read_navigation
@@ -181,14 +181,13 @@ class LegacyNavigationTests(unittest.TestCase):
         args = {"version": "3", "date_from": "2026/09/09", "date_to": "2026/09/10", "machine_id": "PRIVATE-M1"}
         result = self.decision("reports.execution_review_page", args)
         self.assertEqual(result.kind, "retired")
-        query = dict(parse_qsl(urlsplit(result.links[0].url).query))
-        self.assertEqual(query["date_from"], args["date_from"])
-        self.assertEqual(query["machine_id"], args["machine_id"])
+        # 旧报表导出接口已随旧路由层删除：退役页不再提供“按原条件下载旧报表”链接，也不得泄露私有条件。
+        self.assertEqual(result.links, ())
         self.assertNotIn("PRIVATE-", str(result.public_context))
         with token_app().app_context():
             result = self.decision("reports.overdue_page", {"version": "3", "scenario_id": "PRIVATE-ACTIVE"})
-            self.assertNotIn("PRIVATE-", result.links[0].url)
-            self.assertIn("plan_context_token=", result.links[0].url)
+            self.assertEqual(result.links, ())
+            self.assertNotIn("PRIVATE-", str(result.public_context) + str(result.message))
 
     def test_conflicting_date_and_resource_aliases_are_errors(self):
         for args in ({"date_from": "2026-09-09", "start_date": "2026-09-10", "date_to": "2026-09-11"},

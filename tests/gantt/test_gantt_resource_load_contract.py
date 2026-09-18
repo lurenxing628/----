@@ -171,7 +171,6 @@ def test_no_direct_capacity_hours_call_in_load_chain():
     for rel in (
         "core/services/scheduler/gantt_resource_load.py",
         "core/services/scheduler/gantt_service.py",
-        "web/routes/domains/scheduler/scheduler_gantt.py",
     ):
         text = (REPO_ROOT / rel).read_text(encoding="utf-8")
         assert "capacity_hours(" not in text.replace("capacity_hours_at_noon(", ""), rel

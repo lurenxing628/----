@@ -278,14 +278,6 @@ def test_gantt_service_and_template_keep_scenario_preview_context(tmp_path: Path
     assert current["end"] == "2026-05-04T12:00:00"
     assert _public_json_forbidden_key_paths(workspace["data"]) == []
     assert_plan_exports(client, context, workspace)
-    data_response = client.get(
-        f"/scheduler/gantt/data?view=machine&version={VERSION}&plan_role=adopted&scenario_id={scenario.scenario_id}"
-    )
-    payload = data_response.get_json() or {}
-    public_data = payload.get("data") or {}
-    assert data_response.status_code == 200
-    assert public_data.get("is_scenario_preview") is True
-    assert _public_json_forbidden_key_paths(public_data) == []
     zoom_html = assert_retired(client, dict(query, gantt_zoom="hour"))
     assert scenario.scenario_id not in zoom_html
     assert _business_state(client) == before

@@ -26,7 +26,6 @@ modules = [
     "core.services.scheduler.graph.precedence_builder",
     "core.services.scheduler.graph.validators",
     "core.services.scheduler.graph.metrics",
-    "core.services.scheduler.graph.ready_queue",
     "core.services.scheduler.graph.scoring",
     "core.services.scheduler.graph.resource_matching",
     "core.services.scheduler.graph.exporter",

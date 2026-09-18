@@ -4,10 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 
-from core.services.equipment.machine_downtime_query_service import MachineDowntimeQueryService
 from core.services.personnel.operator_machine_query_service import OperatorMachineQueryService
-from core.services.process.part_operation_query_service import PartOperationQueryService
-from core.services.scheduler.batch_query_service import BatchQueryService
 from core.services.scheduler.schedule_history_query_service import ScheduleHistoryQueryService
 
 
@@ -63,117 +60,6 @@ def _assert_operator_machine_link(row, *, skill_level, is_primary, dirty_skill):
     else:
         assert row.get("dirty_fields", []) == []
         assert row.get("dirty_reasons", {}) == {}
-
-
-def test_batch_query_service_has_any() -> None:
-    conn = _mem_conn()
-    conn.execute("CREATE TABLE Batches (batch_id TEXT PRIMARY KEY)")
-
-    q = BatchQueryService(conn)
-    assert q.has_any() is False
-
-    conn.execute("INSERT INTO Batches(batch_id) VALUES (?)", ("B1",))
-    assert q.has_any() is True
-
-
-def test_part_operation_query_service_lists_hours_and_details() -> None:
-    conn = _mem_conn()
-    conn.execute("CREATE TABLE Parts (part_no TEXT PRIMARY KEY)")
-    conn.execute("CREATE TABLE Suppliers (supplier_id TEXT PRIMARY KEY, name TEXT)")
-    conn.execute("CREATE TABLE ExternalGroups (group_id TEXT PRIMARY KEY, merge_mode TEXT, total_days REAL)")
-    conn.execute(
-        """
-        CREATE TABLE PartOperations (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          part_no TEXT,
-          seq INTEGER,
-          op_type_name TEXT,
-          source TEXT,
-          supplier_id TEXT,
-          ext_days REAL,
-          ext_group_id TEXT,
-          setup_hours REAL,
-          unit_hours REAL,
-          status TEXT
-        )
-        """
-    )
-
-    conn.execute("INSERT INTO Parts(part_no) VALUES (?)", ("P1",))
-    conn.execute("INSERT INTO Suppliers(supplier_id, name) VALUES (?, ?)", ("S1", "供应商1"))
-    conn.execute("INSERT INTO ExternalGroups(group_id, merge_mode, total_days) VALUES (?, ?, ?)", ("G1", "merged", 12))
-
-    conn.execute(
-        """
-        INSERT INTO PartOperations
-        (part_no, seq, op_type_name, source, supplier_id, ext_days, ext_group_id, setup_hours, unit_hours, status)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        ("P1", 1, "数铣", "internal", None, None, None, 1.0, 0.5, "active"),
-    )
-    conn.execute(
-        """
-        INSERT INTO PartOperations
-        (part_no, seq, op_type_name, source, supplier_id, ext_days, ext_group_id, setup_hours, unit_hours, status)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        ("P1", 2, "外协", "external", "S1", 3, "G1", 0.0, 0.0, "active"),
-    )
-    conn.commit()
-
-    q = PartOperationQueryService(conn)
-
-    hours = q.list_active_hours()
-    assert len(hours) == 2
-
-    internal_hours = q.list_internal_active_hours()
-    assert len(internal_hours) == 1
-    assert internal_hours[0]["part_no"] == "P1"
-    assert int(internal_hours[0]["seq"] or 0) == 1
-
-    details = q.list_all_active_with_details()
-    assert len(details) == 2
-
-    ext = [r for r in details if int(r["seq"] or 0) == 2][0]
-    assert ext["supplier_name"] == "供应商1"
-    assert ext["merge_mode"] == "merged"
-    assert float(ext["total_days"] or 0.0) == 12.0
-
-
-def test_machine_downtime_query_service_list_active_machine_ids_at() -> None:
-    conn = _mem_conn()
-    conn.execute(
-        """
-        CREATE TABLE MachineDowntimes (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          machine_id TEXT,
-          start_time TEXT,
-          end_time TEXT,
-          status TEXT
-        )
-        """
-    )
-
-    q = MachineDowntimeQueryService(conn)
-    now = "2026-03-01 10:00:00"
-
-    assert q.list_active_machine_ids_at(now) == set()
-
-    conn.executemany(
-        "INSERT INTO MachineDowntimes(machine_id, start_time, end_time, status) VALUES (?, ?, ?, ?)",
-        [
-            ("M1", "2026-03-01 09:00:00", "2026-03-01 11:00:00", "active"),
-            ("M1", "2026-03-01 09:30:00", "2026-03-01 10:30:00", "active"),
-            ("M2", "2026-03-01 10:00:00", "2026-03-01 10:00:01", "active"),
-            ("M3", "2026-03-01 08:00:00", "2026-03-01 10:00:00", "active"),
-            ("M4", "2026-03-01 08:00:00", "2026-03-01 12:00:00", "cancelled"),
-            ("   ", "2026-03-01 09:00:00", "2026-03-01 11:00:00", "active"),
-            (None, "2026-03-01 09:00:00", "2026-03-01 11:00:00", "active"),
-        ],
-    )
-    conn.commit()
-
-    assert q.list_active_machine_ids_at(now) == {"M1", "M2"}
 
 
 def test_operator_machine_query_service_normalizes_simple_rows() -> None:

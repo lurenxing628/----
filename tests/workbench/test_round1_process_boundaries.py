@@ -8,24 +8,21 @@ from pathlib import Path
 import pytest
 from flask import Blueprint, g
 
-from core.errors import AppError
 from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_master_overview import MasterOverviewScope
-from core.services.process.part_service import PartService
 from core.services.process.workflow_state import record_confirmation, workflow_snapshot
 from core.services.workbench.master_overview import MasterOverviewService
 from core.services.workbench.process_queries import WorkbenchProcessQueryService
 from core.services.workbench.process_route_preview import ProcessRoutePreviewService
 from core.services.workbench.resource_readiness import _checked_workflow, process_readiness
 from tests.workbench.process_query_support import ref_for, seed_process
-from tests.workbench.process_quota_protection_support import locked_quota_case as _locked_quota_case
-from tests.workbench.process_quota_protection_support import quota_case as _quota_case
+from tests.workbench.process_quota_protection_support import locked_quota_case as _locked_quota_case  # noqa: F401
+from tests.workbench.process_quota_protection_support import quota_case as _quota_case  # noqa: F401
 from tests.workbench.process_route_support import all_table_snapshot, read_only_probe
 from tests.workbench.process_stage_api_support import StageAPI, rejected
-from tests.workbench.template_lineage_support import ledger_fixture as _ledger_fixture
-from tests.workbench.template_lineage_support import lineage_case as _lineage_case
-from web.routes.process_parts import update_internal_hours
+from tests.workbench.template_lineage_support import ledger_fixture as _ledger_fixture  # noqa: F401
+from tests.workbench.template_lineage_support import lineage_case as _lineage_case  # noqa: F401
 from web.routes.workbench.process_reads import register_process_read_routes
 from web.routes.workbench.process_writes import register_process_write_routes
 
@@ -182,23 +179,6 @@ def test_external_group_evidence_and_original_days_survive(private_process_db, d
     assert all_table_snapshot(conn) == before
 
 
-def test_hours_failure_rolls_back_trigger_write_and_preserves_input(private_process_db):
-    conn = private_process_db
-    conn.execute("""CREATE TEMP TRIGGER r1_h_fail_hours AFTER UPDATE OF unit_hours ON PartOperations
-        BEGIN UPDATE Parts SET remark='must roll back' WHERE part_no=NEW.part_no;
-        SELECT RAISE(ABORT,'R1-H storage failure'); END""")
-    conn.commit()
-    before, statements = all_table_snapshot(conn), []
-    original = [" PROC-001 ", "10", " 0.5 ", " 2.5 "]
-    conn.set_trace_callback(statements.append)
-    with pytest.raises(AppError):
-        PartService(conn).update_internal_hours(*original)
-    conn.set_trace_callback(None)
-    assert "BEGIN IMMEDIATE" in statements and "ROLLBACK" in statements
-    assert original == [" PROC-001 ", "10", " 0.5 ", " 2.5 "]
-    assert all_table_snapshot(conn) == before and not conn.in_transaction
-
-
 @pytest.fixture
 def locked_process_api(locked_quota_case):
     case = locked_quota_case
@@ -207,36 +187,12 @@ def locked_process_api(locked_quota_case):
     register_process_read_routes(bp)
     register_process_write_routes(bp)
     case.app.register_blueprint(bp)
-    case.app.add_url_rule("/legacy/parts/<part_no>/ops/<int:seq>/hours",
-                          view_func=update_internal_hours, methods=["POST"])
-    case.app.add_url_rule("/legacy/parts/<part_no>", "process.part_detail", lambda part_no: part_no)
 
     @case.app.before_request
     def database():
         g.db = case.conn
 
     return case, StageAPI(case.app.test_client())
-
-
-def test_legacy_hours_request_preserves_lock_rejection_and_original_rows(locked_process_api):
-    case, api = locked_process_api
-    original = {"setup_hours": " 8 ", "unit_hours": " 99 "}
-    before = all_table_snapshot(case.conn)
-    # This legacy view propagates the domain error; it is not an api_endpoint.
-    with pytest.raises(WorkbenchCommandRejected) as caught:
-        api.client.post("/legacy/parts/P1/ops/1/hours", data=original)
-    assert caught.value.code == "calibration_quota_locked" and caught.value.status == 409
-    assert all_table_snapshot(case.conn) == before and not case.conn.in_transaction
-    assert original == {"setup_hours": " 8 ", "unit_hours": " 99 "}
-    response = api.client.post("/legacy/parts/P1/ops/1/hours", data={"setup_hours": " 8 ", "unit_hours": " 3 "})
-    assert response.status_code == 302
-    row = case.conn.execute("SELECT * FROM PartOperations WHERE part_no='P1' AND seq=1").fetchone()
-    assert row["setup_hours"] == 8 and row["unit_hours"] == 3 and row["cw_hidden"] == b"hidden\x00\xff"
-    after = all_table_snapshot(case.conn)
-    assert before[0] == after[0]
-    for table in before[1]:
-        if table not in ("PartOperations", "WorkbenchEntityRefs"):
-            assert before[1][table] == after[1][table], table
 
 
 def test_workbench_hours_api_rejects_locked_change_without_any_write(locked_process_api):

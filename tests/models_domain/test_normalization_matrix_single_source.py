@@ -4,8 +4,6 @@
 def test_normalization_matrix_single_source() -> None:
 
     import core.services.common.normalization_matrix as matrix
-    import web.routes.equipment_pages as equipment_pages
-    import web.routes.personnel_pages as personnel_pages
     from core.models.enums import SkillLevel
     from core.services.common.enum_normalizers import normalize_skill_level, skill_rank
     from core.services.common.excel_validators import (
@@ -24,23 +22,6 @@ def test_normalization_matrix_single_source() -> None:
         normalize_skill_level_optional,
         normalize_yes_no_optional,
     )
-    from web.routes.normalizers import (
-        _normalize_batch_priority as route_batch_priority,
-    )
-    from web.routes.normalizers import (
-        _normalize_day_type as route_day_type,
-    )
-    from web.routes.normalizers import (
-        _normalize_ready_status as route_ready_status,
-    )
-    from web.routes.normalizers import (
-        _normalize_yesno as route_yes_no,
-    )
-
-    if personnel_pages.skill_level_options is not matrix.skill_level_options:
-        raise RuntimeError("人员详情页未直接复用 normalization_matrix.skill_level_options")
-    if equipment_pages.skill_level_options is not matrix.skill_level_options:
-        raise RuntimeError("设备详情页未直接复用 normalization_matrix.skill_level_options")
 
     expected_options = [
         (SkillLevel.BEGINNER.value, "初级"),
@@ -55,32 +36,24 @@ def test_normalization_matrix_single_source() -> None:
     for raw, expected in (("普通", "normal"), ("urgent", "urgent"), ("特急", "critical")):
         if matrix.normalize_batch_priority_value(raw) != expected:
             raise RuntimeError(f"归一化矩阵批次优先级异常：raw={raw!r}")
-        if route_batch_priority(raw) != expected:
-            raise RuntimeError(f"路由批次优先级未对齐矩阵：raw={raw!r}")
         if excel_batch_priority(raw) != expected:
             raise RuntimeError(f"校验器批次优先级未对齐矩阵：raw={raw!r}")
 
     for raw, expected in (("齐套", "yes"), ("partial", "partial"), ("否", "no")):
         if matrix.normalize_ready_status_value(raw) != expected:
             raise RuntimeError(f"归一化矩阵齐套状态异常：raw={raw!r}")
-        if route_ready_status(raw) != expected:
-            raise RuntimeError(f"路由齐套状态未对齐矩阵：raw={raw!r}")
         if excel_ready_status(raw) != expected:
             raise RuntimeError(f"校验器齐套状态未对齐矩阵：raw={raw!r}")
 
     for raw, expected in (("工作日", "workday"), ("weekend", "holiday"), ("节假日", "holiday")):
         if matrix.normalize_calendar_day_type_value(raw) != expected:
             raise RuntimeError(f"归一化矩阵日历类型异常：raw={raw!r}")
-        if route_day_type(raw) != expected:
-            raise RuntimeError(f"路由日历类型未对齐矩阵：raw={raw!r}")
         if excel_day_type(raw) != expected:
             raise RuntimeError(f"校验器日历类型未对齐矩阵：raw={raw!r}")
 
     for raw, expected in ((None, "yes"), ("true", "yes"), ("0", "no"), ("是", "yes"), ("否", "no")):
         if matrix.normalize_yes_no_narrow_value(raw) != expected:
             raise RuntimeError(f"归一化矩阵 yes/no 异常：raw={raw!r}")
-        if route_yes_no(raw) != expected:
-            raise RuntimeError(f"路由 yes/no 未对齐矩阵：raw={raw!r}")
         if excel_yes_no(raw) != expected:
             raise RuntimeError(f"校验器 yes/no 未对齐矩阵：raw={raw!r}")
 

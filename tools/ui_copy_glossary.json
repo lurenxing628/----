@@ -17,8 +17,6 @@
     "backend": [
       "core/services/workbench",
       "web/routes/workbench",
-      "web/routes/domains/scheduler/scheduler_week_plan_print.py",
-      "web/routes/domains/scheduler/scheduler_config.py",
       "core/models/workbench_*.py",
       "web/error_boundary.py",
       "web/error_handlers.py",

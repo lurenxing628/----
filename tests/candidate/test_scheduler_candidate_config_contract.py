@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import sqlite3
 from datetime import datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
@@ -12,22 +11,18 @@ import pytest
 
 from core.infrastructure.database import ensure_schema, get_connection
 from core.infrastructure.errors import ValidationError
-from core.models.schedule_config_runtime_fields import list_runtime_config_fields
-from core.services.scheduler.config.config_constants import CONFIG_PAGE_FIELDS, CONFIG_PAGE_WRITE_FIELDS
 from core.services.scheduler.config.config_field_spec import (
     choices_for,
     coerce_config_field,
     default_for,
-    list_config_fields,
 )
 from core.services.scheduler.config.config_presets import missing_required_preset_fields
 from core.services.scheduler.config.config_service import ConfigService
-from core.services.scheduler.config.config_snapshot import ScheduleConfigSnapshot, ensure_schedule_config_snapshot
+from core.services.scheduler.config.config_snapshot import ScheduleConfigSnapshot
 from core.services.scheduler.config.config_validator import normalize_preset_snapshot
 from core.services.scheduler.run import schedule_orchestrator
 from core.services.scheduler.run.schedule_optimizer import OptimizationOutcome
 from tests._support.paths import REPO_ROOT
-from web.routes.domains.scheduler.scheduler_config import _collect_scheduler_config_form_payload
 
 SCHEMA_PATH = REPO_ROOT / "schema.sql"
 
@@ -270,49 +265,6 @@ def test_old_presets_may_omit_pr7e_fields_but_preserve_saved_values() -> None:
     assert normalized_saved.graph_selection_policy == "score_only"
     assert normalized_saved.graph_overdue_tolerance_count == 0
     assert normalized_saved.graph_tardiness_tolerance_ratio == 0.20
-
-
-def test_graph_downstream_weight_stays_internal_candidate_parameter() -> None:
-    field = "graph_downstream_weight"
-    service_config_keys = {spec.key for spec in list_config_fields()}
-    runtime_config_keys = {spec.key for spec in list_runtime_config_fields()}
-
-    assert field not in CONFIG_PAGE_FIELDS
-    assert field not in CONFIG_PAGE_WRITE_FIELDS
-    assert field not in service_config_keys
-    assert field not in runtime_config_keys
-    assert _collect_scheduler_config_form_payload({field: "3"}) == {}
-
-    external_payload = _base_snapshot().to_dict()
-    external_payload[field] = 3
-    normalized = ensure_schedule_config_snapshot(external_payload, strict_mode=True)
-    assert normalized.graph_downstream_weight == 1
-
-    zero_visible_payload = _base_snapshot(graph_critical_weight=0, graph_impact_weight=0).to_dict()
-    normalized_zero = ensure_schedule_config_snapshot(zero_visible_payload, strict_mode=True)
-    assert normalized_zero.graph_downstream_weight == 0
-
-
-def test_graph_analysis_mode_controls_candidate_comparison_without_user_visible_toggle() -> None:
-    assert schedule_orchestrator._candidate_comparison_enabled(_base_snapshot(graph_analysis_mode="on")) is True
-    assert schedule_orchestrator._candidate_comparison_enabled(_base_snapshot(graph_analysis_mode="off")) is False
-    assert schedule_orchestrator._candidate_comparison_enabled(_base_snapshot(graph_analysis_mode="report")) is False
-
-    assert schedule_orchestrator._candidate_weight_count(_base_snapshot(graph_candidate_weight_count=7)) == 7
-    assert schedule_orchestrator._candidate_selection_policy(_base_snapshot(graph_selection_policy="score_only")) == "score_only"
-    assert schedule_orchestrator._candidate_overdue_tolerance_count(_base_snapshot(graph_overdue_tolerance_count=0)) == 0
-    assert schedule_orchestrator._candidate_tardiness_tolerance_ratio(
-        _base_snapshot(graph_tardiness_tolerance_ratio=0.20)
-    ) == 0.20
-
-    payload = _collect_scheduler_config_form_payload(
-        {
-            "graph_analysis_mode": "on",
-            "graph_candidate_weight_count": "5",
-            "run_time_budget_seconds": "11",
-        }
-    )
-    assert payload == {"graph_analysis_mode": "on", "graph_candidate_weight_count": "5"}
 
 
 def test_orchestrator_passes_pr7e_runtime_fields_to_default_candidate_runner(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -139,7 +139,6 @@ def test_metrics_module_does_not_import_upper_graph_layers() -> None:
         "core.services.scheduler.graph.validators",
         "core.services.scheduler.graph.analysis_service",
         "core.services.scheduler.graph.exporter",
-        "core.services.scheduler.graph.ready_queue",
         "core.services.scheduler.graph.scoring",
         "core.services.scheduler.run.schedule_orchestrator",
     ]

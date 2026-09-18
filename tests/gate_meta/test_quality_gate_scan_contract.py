@@ -416,34 +416,6 @@ def test_request_service_architecture_filter_does_not_hide_registered_helper_deb
     assert received_paths == [[rel_path]]
 
 
-def test_request_service_target_files_cover_history_and_system_routes() -> None:
-    expected_targets = {
-        "web/routes/domains/scheduler/scheduler_analysis.py",
-        "web/routes/domains/scheduler/scheduler_analysis_read.py",
-        "web/routes/system_history.py",
-        "web/routes/system_backup.py",
-        "web/routes/system_logs.py",
-        "web/routes/system_plugins.py",
-        "web/routes/system_utils.py",
-        "web/error_handlers.py",
-        "web/error_boundary.py",
-    }
-
-    assert expected_targets.issubset(set(shared_mod.REQUEST_SERVICE_TARGET_FILES))
-
-
-def test_request_service_target_files_cover_scheduler_calendar_and_resource_residuals() -> None:
-    expected_targets = {
-        "web/routes/domains/scheduler/scheduler_resource_dispatch.py",
-        "web/routes/domains/scheduler/scheduler_calendar_pages.py",
-        "web/routes/domains/scheduler/scheduler_excel_calendar.py",
-    }
-
-    assert expected_targets.issubset(set(shared_mod.REQUEST_SERVICE_TARGET_FILES))
-    assert ops_mod.architecture_request_service_direct_assembly_entries() == []
-    assert shared_mod.REQUEST_SERVICE_TARGET_ALLOWED_HELPERS == []
-
-
 def test_request_service_scan_scope_covers_error_path_files() -> None:
     scanned = set(shared_mod.collect_globbed_files(shared_mod.REQUEST_SERVICE_SCAN_SCOPE_PATTERNS))
 

@@ -154,5 +154,5 @@ def test_system_health_route(module_name, expected_ui_mode, prod_env, monkeypatc
 def test_system_runtime_shutdown_route(module_name, prod_env, monkeypatch):
     app_mod = _load_module(module_name, monkeypatch)
     factory_mod = importlib.import_module("web.bootstrap.factory")
-    system_health_mod = importlib.import_module("web.routes.system_health")
+    system_health_mod = importlib.import_module("web.routes.workbench.system_runtime")
     _assert_runtime_shutdown(app_mod.create_app(), system_health_mod, factory_mod, monkeypatch)

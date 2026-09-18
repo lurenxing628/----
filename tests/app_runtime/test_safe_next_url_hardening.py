@@ -19,7 +19,7 @@ def test_manual_src_url_hardening(app_client) -> None:
     app = app_client.application
 
     manual_src_security = importlib.import_module("web.manual_src_security")
-    scheduler_config = importlib.import_module("web.routes.domains.scheduler.scheduler_config")
+    scheduler_config = importlib.import_module("web.routes.workbench.manual_page")
 
     with app.test_request_context("/scheduler/config"):
         valid_src_cases = [

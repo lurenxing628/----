@@ -1,6 +1,8 @@
-"""Dormant legacy GET adapter. No route mount, database open, write or ref repair."""
+"""Dormant legacy GET adapter. No route mount, database open, write or ref repair.
 
-from dataclasses import replace
+旧报表导出接口已随旧路由层删除（2026-09-18），退役页不再提供“按原条件下载旧报表”链接。
+"""
+
 from urllib.parse import urlencode
 
 from werkzeug.exceptions import NotFound
@@ -9,7 +11,6 @@ from core.errors import AppError
 from core.models.workbench_command import canonical_json
 from core.models.workbench_plan_reference import WorkbenchPlanReferenceError
 from core.services.workbench.legacy_navigation_queries import LegacyNavigationQueries, LegacyNavigationSourceMissing
-from web.routes.domains.scheduler.scheduler_plan_context_token import plan_context_token
 
 from .legacy_navigation_plan import (
     IDENTITY_KEYS,
@@ -22,7 +23,6 @@ from .legacy_navigation_plan import (
 )
 from .legacy_page_contract import (
     PAGE_POLICIES,
-    LegacyDownloadLink,
     LegacyGetDecision,
     LegacyGetRequest,
     LegacyNavigationInvalid,
@@ -39,12 +39,6 @@ _DETAILS = {
     "process.part_detail": ("part", "part_no"),
     "process.supplier_detail": ("supplier", "supplier_id"),
     "scheduler.batch_detail": ("batch", "batch_id"),
-}
-_REPORT_EXPORTS = {
-    "reports.overdue_page": "/reports/overdue/export",
-    "reports.utilization_page": "/reports/utilization/export",
-    "reports.downtime_page": "/reports/downtime/export",
-    "reports.execution_review_page": "/reports/execution-review/export",
 }
 _PLAN_PAGES = frozenset(("scheduler.gantt_page", "scheduler.analysis_page", "dashboard.index",
                          "scheduler.resource_dispatch_page", "scheduler.week_plan_page"))
@@ -67,7 +61,7 @@ def _redirect(view, context):
 
 
 def _unsupported(code="unsupported_scope", message=None, public=None):
-    return retired(code, message or "新页面装不下这组旧条件，没有跳转，也没有丢掉任何条件。原来的数据和下载都还在，请从侧栏进入对应页面重新筛选。",
+    return retired(code, message or "新页面装不下这组旧条件，没有跳转，也没有丢掉任何条件。原来的数据都还在，请从侧栏进入对应页面重新筛选。",
                    public_context=public)
 
 
@@ -95,19 +89,6 @@ def _detail(queries, legacy, args):
     return _redirect("process", context)
 
 
-def _download_links(endpoint, args, plan):
-    allowed = IDENTITY_KEYS | RESOURCE_KEYS | {"date_from", "date_to", "start_date", "end_date", "batch_id"}
-    if endpoint not in _REPORT_EXPORTS or set(args) - allowed or plan.fallback:
-        return ()
-    if endpoint == "reports.execution_review_page" and (plan.locator.plan_role != "adopted" or plan.locator.scenario_id is not None):
-        return ()
-    query = {key: value for key, value in args.items() if key not in ("scenario_id", "plan_context_token")}
-    query.update(version=str(plan.locator.version), plan_role=plan.locator.plan_role)
-    if plan.locator.scenario_id is not None:
-        query["plan_context_token"] = plan_context_token(plan.locator.scenario_id)
-    return (LegacyDownloadLink("按原条件下载旧报表", _REPORT_EXPORTS[endpoint] + "?" + urlencode(query)),)
-
-
 def _plan_page(queries, legacy, args):
     plan = resolve_legacy_plan(queries, args)
     public = dict(plan.public_context)
@@ -132,13 +113,15 @@ def _plan_page(queries, legacy, args):
         public["按什么统计"] = "设备" if resource[0] == "machine" else "人员"
     result = _unsupported("old_scope_not_equivalent",
                           "旧页面的统计范围、日期和设备人员条件，新报表装不下，页面没有打开；系统没有改用新报表的默认范围。请从侧栏进入「报表中心」重新筛选。", public)
-    return replace(result, links=_download_links(legacy.endpoint, args, plan))
+    return result
 
 
 def _resolve(queries, legacy, args):
     policy = PAGE_POLICIES[legacy.endpoint]
     if policy == "restyle":
         return LegacyGetDecision("restyle")
+    if legacy.endpoint == "scheduler.week_plan_print_page":
+        return retired("print_page_retired", "旧周派工单打印页已退役，页面没有打开。请从侧栏进入「选择排产方案」查看周计划。")
     if legacy.endpoint in _DETAILS:
         return _detail(queries, legacy, args)
     if legacy.path_values:

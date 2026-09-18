@@ -146,7 +146,6 @@ FINAL_INTEGRATION_SUPPLEMENTAL_FILES = {
         "test_final_legacy_navigation_layering.py", "test_final_planning_gantt.py",
         "test_final_operations_read_controls.py",
         "test_final_execution_calibration_table.py", "test_final_execution_resources.py",
-        "test_final_legacy_report_dates.py",
         "test_final_operations_edges.py", "test_final_operations_inflight.py",
         "test_final_master_action_ledger.py", "test_final_master_config_preservation.py",
         "test_final_master_resource_revisions.py",

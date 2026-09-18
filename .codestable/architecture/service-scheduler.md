@@ -86,7 +86,7 @@ core/services/scheduler/
 - **核心文件**:`summary/schedule_summary.py` `build_result_summary`(总入口)、`summary/schedule_summary_assembly.py:381` `_build_result_summary_obj`(组装枢纽)、`summary/optimizer_public_summary.py` `project_public_result_summary`(web 直连投影)、`summary/summary_size_guard.py:271` `apply_summary_size_guard`(体积护栏)。
 - **对外依赖**:`core.models.enums`、`core.services.common.build_outcome`；公开标识脱敏与 projection 实现在 contracts 叶子。
 - **对其它子包**:→ config(5 处)、→ contracts(22 处)、→ run(4 处)。summary→run 仍是现有 helper 调用，但 run→summary 已清零，因此是单向依赖，不再成环。
-- **web 直连**:`web/routes/domains/scheduler/scheduler_analysis.py:5`、`scheduler_week_plan.py:14`。
+- **web 直连**:无。原 `web/routes/domains/scheduler/scheduler_analysis.py`、`scheduler_week_plan.py` 已随旧路由层于 2026-09-18 删除，摘要只经 `core/services/workbench` 投影到工作台 API。
 
 ### config/ —— 排产策略配置
 - **职责**:配置读写、预设管理、字段校验/强转、活跃预设溯源。

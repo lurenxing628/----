@@ -244,7 +244,7 @@ def test_sp05_production_code_does_not_grow_legacy_wrapper_imports() -> None:
 
 
 def test_sp05_scheduler_manual_path_uses_single_base_dir_fact_source(tmp_path) -> None:
-    scheduler_config = importlib.import_module("web.routes.domains.scheduler.scheduler_config")
+    scheduler_config = importlib.import_module("web.routes.workbench.manual_page")
 
     base_dir = tmp_path / "repo"
     compat_static = tmp_path / "compat_static"
@@ -264,7 +264,7 @@ def test_sp05_scheduler_manual_path_uses_single_base_dir_fact_source(tmp_path) -
 
 
 def test_sp05_scheduler_manual_path_requires_base_dir_without_root_fallback(tmp_path) -> None:
-    scheduler_config = importlib.import_module("web.routes.domains.scheduler.scheduler_config")
+    scheduler_config = importlib.import_module("web.routes.workbench.manual_page")
 
     compat_static = tmp_path / "compat_static"
     compat_static.mkdir(parents=True, exist_ok=True)

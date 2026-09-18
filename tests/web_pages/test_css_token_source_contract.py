@@ -162,19 +162,3 @@ def test_count_retired_hex_helper_detects_six_and_eight_digit():
     assert _count_retired_hex("a{color:#ef4444}", "#10b981") == 0  # 别的退役色不串记
 
 
-def test_load_ratio_single_source():
-    from web.viewmodels import dashboard_workbench, dashboard_workbench_cards
-
-    assert dashboard_workbench.LOAD_WARNING_RATIO is dashboard_workbench_cards.LOAD_WARNING_RATIO
-    assert dashboard_workbench.LOAD_DANGER_RATIO is dashboard_workbench_cards.LOAD_DANGER_RATIO
-    assert dashboard_workbench_cards.LOAD_WARNING_RATIO == 0.75
-    assert dashboard_workbench_cards.LOAD_DANGER_RATIO == 0.90
-
-    # 唯一定义点：viewmodels 下不允许第二处负荷阈值字面量定义
-    viewmodels = Path(__file__).resolve().parents[2] / "web" / "viewmodels"
-    defining_files = [
-        py.name
-        for py in viewmodels.glob("*.py")
-        if re.search(r"^LOAD_WARNING_RATIO\s*=", py.read_text(encoding="utf-8"), re.M)
-    ]
-    assert defining_files == ["dashboard_workbench_cards.py"], defining_files
