@@ -1,6 +1,6 @@
 """Maintain unique graph priorities across picks instead of sorting the whole ready set.
 
-Only certified, fixed-resource large decodes use this path. The head still receives
+Only certified large decodes (fixed or statically eligible auto-assign resources) use this path. The head still receives
 the ordinary dynamic score. If it is penalized, score the full ready set, preserving
 the feasibility-first contract. Small, tied and callback-bearing inputs are unchanged.
 """

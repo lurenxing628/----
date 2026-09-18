@@ -38,13 +38,29 @@ def test_unique_ready_queue_matches_scanning_with_shared_resources(rule):
     assert new_scans < old_scans / 2
 
 
-@pytest.mark.parametrize("variant", ["horizon", "ties", "auto"])
-def test_infeasible_heads_and_unproven_inputs_keep_original_outcomes(variant):
-    case = make_case(batch_count=32, ops_per_batch=5, auto=variant == "auto", graph=True, window=variant == "horizon")
+@pytest.mark.parametrize("rule", ["slack", "atc"])
+def test_certified_auto_assign_operations_use_the_unique_ready_queue(rule):
+    # Auto-assign operations with a statically eligible pool are certified like fixed resources
+    # (decision 2026-09-19 graph-priority-pruning-auto-assign); the head still gets the real probe.
+    case = make_case(batch_count=32, ops_per_batch=5, auto=True, graph=True)
+    case["dispatch_rule"] = rule
     case["graph_ready_context"]["graph_priority_key_by_op_id"] = {
-        op.id: (0.0 if variant == "ties" else float(i),) for i, op in enumerate(case["operations"])}
+        op.id: (float(i), 0.0) for i, op in enumerate(case["operations"])}
     expected, old_scans = _run(case, False)
     actual, new_scans = _run(case, True)
     assert actual == expected
-    if variant in ("ties", "auto"):
+    assert new_scans < old_scans / 2
+
+
+@pytest.mark.parametrize("variant", ["horizon", "ties", "auto_ties"])
+def test_infeasible_heads_and_unproven_inputs_keep_original_outcomes(variant):
+    tied = variant in ("ties", "auto_ties")
+    case = make_case(batch_count=32, ops_per_batch=5, auto=variant == "auto_ties", graph=True, window=variant == "horizon")
+    case["graph_ready_context"]["graph_priority_key_by_op_id"] = {
+        op.id: (0.0 if tied else float(i),) for i, op in enumerate(case["operations"])}
+    expected, old_scans = _run(case, False)
+    actual, new_scans = _run(case, True)
+    assert actual == expected
+    if tied:
+        # Tied keys keep the whole-frontier scan for auto-assign operations too.
         assert new_scans == old_scans

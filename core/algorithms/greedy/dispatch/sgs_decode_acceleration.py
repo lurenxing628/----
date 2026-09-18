@@ -40,8 +40,10 @@ class DecodeAcceleration:
         self.check = getattr(request, "check_budget", None)
         self.pruning = pruning
         self.dispatch_guard = getattr(context, "checkpoint_dispatch_guard", None)
+        # Tail reuse compares run state only; the auto-assign demand window is not part of it, so
+        # the suffix is only proved for decodes where every operation names its resources.
         self.tail_eligible = (self.tail is not None and pruning is not None and pruning.supported
-                              and all(value > 0 for value in hours.values()))
+                              and pruning.fixed_resources and all(value > 0 for value in hours.values()))
 
     def before_pick(self, position):
         # Once every pick finished, preserve the completed result for summary

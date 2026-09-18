@@ -5,6 +5,14 @@ With fixed-width graph keys, score the entire lowest ready group first. Any pena
 member dominates every later group. IG/repair's explicit ranks are one such case. All selected operations
 still go through the normal scorer and formal placement. A blocked first rank falls
 back to scoring every other ready operation. Unknown/callback inputs keep full scoring.
+
+The dominance holds for automatically assigned operations too: their probe only chooses the
+machine/operator pair and the feasibility penalty, both of which sit behind the graph key.
+Scoring is read-only, so skipping a later group changes no state; it only changes how many
+times the auto-assign attempt counters in ``fallback_counts`` are charged. Static resource
+errors (no eligible machine or operator, assignment disabled) keep the full path so the
+first error stays the same. ``fixed_resources`` tells consumers that need the stricter
+fixed-resource proof (decode tail reuse) whether every operation names its machine and operator.
 """
 
 import math
@@ -21,17 +29,28 @@ _FIELDS = ("id", "seq", "batch_id", "piece_id", "source", "machine_id", "operato
            "setup_hours", "unit_hours", "quantity", "priority", "due_date", "ready_date", "ready_status")
 
 
+def _blank_or_text(value):
+    return value is None or type(value) is str
+
+
 class GraphPriorityPruning:
     @classmethod
     def for_cache(cls, cache, graph_state, batches, hours, *, strict_mode):
         if cache is None or cache._timing is None:
             return None
-        return cls(graph_state, batches, hours, strict_mode=strict_mode)
+        # The cache already certified the pool and the native probe; auto-assign operations
+        # are admitted only through that same certification.
+        return cls(graph_state, batches, hours, strict_mode=strict_mode,
+                   resource_pool=cache._pool, eligible_resources=cache._probe.eligible_resources)
 
-    def __init__(self, graph_state, batches, hours, *, strict_mode):
+    def __init__(self, graph_state, batches, hours, *, strict_mode, resource_pool=None, eligible_resources=None):
         self.examples = {}
         self.guards = {}
         self.key_width = 0
+        # True only when every schedulable operation names both resources; tail reuse requires it.
+        self.fixed_resources = True
+        self._pool = resource_pool if isinstance(resource_pool, dict) and eligible_resources is not None else None
+        self._eligible_resources = eligible_resources
         self.supported = self._prepare(graph_state, batches, hours, strict_mode)
 
     def _record(self, record):
@@ -66,20 +85,43 @@ class GraphPriorityPruning:
                 _parse_due_date(getattr(batch, "due_date", None), strict_mode=strict)
             except (ValidationError, ValueError, OverflowError):
                 return False
+        return self._certify_operations(graph, hours)
+
+    def _certify_operations(self, graph, hours):
         for op_id, (_batch_id, op) in graph["op_by_id"].items():
-            if not self._record(op) or not self._fixed_operation(op, op_id, hours):
+            if not self._record(op) or not self._certified_internal(op, op_id, hours):
                 return False
+            fixed = self._certified_resources(op)
+            if fixed is None:
+                return False
+            self.fixed_resources = self.fixed_resources and fixed
         return True
 
     @staticmethod
-    def _fixed_operation(op, op_id, hours):
-        machine, operator = getattr(op, "machine_id", None), getattr(op, "operator_id", None)
+    def _certified_internal(op, op_id, hours):
         source = getattr(op, "source", "internal")
         return (type(source) is str and source.strip().lower() == "internal"
-                and type(machine) is str and bool(machine.strip())
-                and type(operator) is str and bool(operator.strip())
                 and type(getattr(op, "id", None)) is int and type(getattr(op, "seq", None)) is int
                 and op_id in hours and type(hours[op_id]) is float and math.isfinite(hours[op_id]) and hours[op_id] >= 0)
+
+    def _certified_resources(self, op):
+        """True for a fixed machine/operator pair, False for a certified auto-assign operation, None otherwise.
+
+        An auto-assign operation is certified only when the native pool statically yields at least
+        one machine and one operator: the probe then always produces a feasibility penalty rather
+        than a validation error, so an unscored group can never hide a static input error.
+        """
+        machine, operator = getattr(op, "machine_id", None), getattr(op, "operator_id", None)
+        if not _blank_or_text(machine) or not _blank_or_text(operator):
+            return None
+        if machine and machine.strip() and operator and operator.strip():
+            return True
+        if self._pool is None or self._eligible_resources is None:
+            return None
+        eligible = self._eligible_resources(op, self._pool)
+        if eligible is None or not eligible[0] or not eligible[1]:
+            return None
+        return False
 
     def _key_valid(self, key):
         return (type(key) is tuple and len(key) == self.key_width
