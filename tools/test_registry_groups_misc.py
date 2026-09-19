@@ -53,6 +53,7 @@ MISC_REQUIRED_REGRESSION_GROUPS = (
             "tests/migration_db/test_database_high_version_failfast.py",
             "tests/migration_db/test_migration_schema_contract.py",
             "tests/migration_db/test_migrations.py",
+            "tests/migration_db/test_schema_parity.py",
             "tests/operation_execution/test_operation_execution_migration_v16_contract.py",
             "tests/operation_execution/test_operation_execution_migration_v18_contract.py",
             "tests/operation_execution/test_operation_execution_migration_v19_contract.py",

@@ -22,18 +22,18 @@ items:
   - slug: schema-parity-test
     description: 新库与 v4 起点迁移链的整库结构对账测试；发现差异按补迁移修
     depends_on: []
-    status: planned
+    status: done
     feature: null
     minimal_loop: false
-    notes: 修法方向固定为补迁移让迁移链追上 schema.sql
+    notes: 2026-09-20 完成（tests/migration_db/test_schema_parity.py）。实测两条路径表/列/外键/索引/CHECK/触发器全部一致，仅 Machines、Operators、ScheduleAdjustmentScenario 列物理顺序不同（ALTER TABLE 追加所致，不比较）
 
   - slug: gate-step-timing
     description: 门禁回执补分步耗时并在汇总里输出 Top 10
     depends_on: []
-    status: planned
+    status: dropped
     feature: null
     minimal_loop: false
-    notes: 字段只增不删，不影响回执恢复匹配
+    notes: 2026-09-20 drop。核实后发现机制已存在：scripts/run_quality_gate.py 回执已写 started_at/duration_s/duration_kind，tools/long_gate_summary.py 已输出 Slow entries 排名；评估时看到的清单是 environment_blocked 的空回执运行。按“进一退一”不再新增
 
   - slug: errors-path-consolidation
     description: core.infrastructure.errors 旧路径一次性 codemod 到 core.errors，删垫片，加禁用规则
@@ -141,7 +141,7 @@ items:
 
   - slug: boundary-policy-decisions
     description: schema 事实源、子包规则、门禁进退、测试往接缝收四条政策落 cs-decide
-    depends_on: [schema-sql-generated, workbench-subpackages, gate-step-timing]
+    depends_on: [schema-sql-generated, workbench-subpackages]
     status: planned
     feature: null
     minimal_loop: false

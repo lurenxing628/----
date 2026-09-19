@@ -164,6 +164,7 @@ QUALITY_GATE_GUARD_TESTS = (
     "tests/resource_dispatch/test_resource_dispatch_task_id_encoding.py",
     "tests/migration_db/test_migration_schema_contract.py",
     "tests/migration_db/test_migrations.py",
+    "tests/migration_db/test_schema_parity.py",
     "tests/operation_execution/test_operation_execution_event_foundation.py",
     "tests/operation_execution/test_operation_execution_event_sequence_contract.py",
     "tests/operation_execution/test_operation_execution_event_time_contract.py",

@@ -258,9 +258,11 @@ routes 只读 current_app.extensions，不 import web.bootstrap
 3. **schema-parity-test** — 新库与 v4 起点迁移链的整库结构对账测试；发现差异按“补迁移”修
    - 所属模块：G
    - 依赖：无
+   - 状态：done（2026-09-20）。实测两条路径结构完全一致，仅三张表列物理顺序不同，不比较
 4. **gate-step-timing** — 门禁回执补分步耗时并在汇总里输出 Top 10
    - 所属模块：G
    - 依赖：无
+   - 状态：dropped（2026-09-20）。机制已存在：回执已有 started_at/duration_s，`tools/long_gate_summary.py` 已有 Slow entries 排名；评估时看到的是 environment_blocked 的空回执运行
 5. **errors-path-consolidation** — `core.infrastructure.errors` 旧路径一次性 codemod 到 `core.errors`，删垫片，加禁用规则
    - 所属模块：T
    - 依赖：无（先做，避免后续新文件继续用旧路径）
@@ -302,7 +304,7 @@ routes 只读 current_app.extensions，不 import web.bootstrap
     - 依赖：无
 18. **boundary-policy-decisions** — 四条政策落 `cs-decide`
     - 所属模块：C
-    - 依赖：schema-sql-generated、workbench-subpackages、gate-step-timing
+    - 依赖：schema-sql-generated、workbench-subpackages
 
 **最小闭环**：第 1 条 `sql-boundary-ratchet` 做完后，任何新的服务层 SQL 或仓储内裁决在定向测试里立刻变红，止血生效。
 
@@ -312,6 +314,9 @@ routes 只读 current_app.extensions，不 import web.bootstrap
 
 ## 7. 观察项
 
+- 背景里“`database_bootstrap` 有非空库缺表按 schema.sql 补齐的修补逻辑”需更正：`bootstrap_missing_tables_from_schema` 及 `database._bootstrap_missing_tables_from_schema` 在生产代码里没有调用方，只有 `tests/migration_db/test_database_migration_runner_delegation.py` 的委托测试引用；迁移器只用 `missing_schema_tables` 组装错误信息，不做静默修补。该死代码在 schema-sql-generated 条目里一并删除。
+- 背景里“门禁清单没有分步耗时记录”需更正：回执已有 `duration_s`，长门禁汇总已有 Slow entries；gate-step-timing 因此 drop。
+
 - `.codestable/architecture/ARCHITECTURE.md` 与 `service-scheduler.md` 在分包落地后需要按 `cs-arch update` 刷新目录地图；本路线不改它们。
 - `2026-06-29-module-architecture-health` 审计里“数据层收口 ✅”只核了 web 层，未核服务层；本路线 G1 落地后该审计结论应加注。
 - 前端 `frontend/workbench/app` 分目录留待 aps-frontend-fusion 触碰构建脚本时一并处理。
@@ -320,3 +325,4 @@ routes 只读 current_app.extensions，不 import web.bootstrap
 ## 8. 变更日志
 
 - 2026-09-20：new 模式创建。
+- 2026-09-20：sql-boundary-ratchet、private-import-ratchet、schema-parity-test 完成；gate-step-timing 因机制已存在 drop；boundary-policy-decisions 依赖去掉 gate-step-timing；观察项补两条事实更正。
