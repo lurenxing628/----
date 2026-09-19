@@ -12,6 +12,7 @@ import sqlite3
 
 from core.algorithm_runtime.native_snapshot import make_class_guard
 from core.errors import ValidationError
+from core.infrastructure.connection_guards import connection_snapshot_metadata
 from data.repositories.calendar_repo import CalendarRepository
 from data.repositories.operator_calendar_repo import OperatorCalendarRepository
 from data.repositories.operator_shift_repo import OperatorShiftRepository
@@ -30,8 +31,6 @@ _BUSINESS_QUERIES = (
     "SELECT profile_id,anchor_date,cycle_days,status FROM WorkbenchShiftProfiles ORDER BY profile_id",
     "SELECT profile_id,day_offset,is_rest,shift_start,shift_end FROM WorkbenchShiftPatternDays ORDER BY profile_id,day_offset",
 )
-_METADATA_STATEMENTS = ("PRAGMA main.data_version", "PRAGMA main.schema_version",
-                        "PRAGMA temp.schema_version", "PRAGMA query_only")
 
 
 def calendar_checkpoint_snapshot(service):
@@ -69,14 +68,12 @@ def _native_connection(connection):
 
 
 def _metadata(connection):
-    values = []
-    for statement in _METADATA_STATEMENTS:
-        row = connection.execute(statement).fetchone()
-        if row is None or len(row) != 1 or type(row[0]) is not int:
-            raise ValidationError("日历数据库版本证据无效，请使用全量解码。", field="decode_checkpoint",
-                                  details={"reason": "decode_checkpoint_calendar_unavailable"})
-        values.append(row[0])
-    return connection.total_changes, connection.in_transaction, *values
+    try:
+        values = connection_snapshot_metadata(connection)
+    except ValueError:
+        raise ValidationError("日历数据库版本证据无效，请使用全量解码。", field="decode_checkpoint",
+                              details={"reason": "decode_checkpoint_calendar_unavailable"}) from None
+    return (connection.total_changes, connection.in_transaction) + values
 
 
 def _native_engine(engine, connection):

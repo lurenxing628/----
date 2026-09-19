@@ -12,6 +12,7 @@ from typing import Any, Dict
 
 from core.errors import AppError
 from core.infrastructure.safe_files import stat_regular_file
+from core.infrastructure.schema_probe import user_table_count
 from core.services.system.runtime_log_reader import (
     DIAGNOSTIC_EXTRA_FILES,
     ROTATED_LOG_RE,
@@ -69,10 +70,7 @@ def _database(conn, path: str) -> Dict[str, Any]:
     if conn is None:
         return result
     try:
-        count = conn.execute(
-            "SELECT COUNT(*) FROM sqlite_master "
-            "WHERE type = 'table' AND substr(name, 1, 7) != 'sqlite_'"
-        ).fetchone()[0]
+        count = user_table_count(conn)
     except _READ_ERRORS as exc:
         result.update(status="error", readable=False, error=_error(exc))
     else:

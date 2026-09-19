@@ -2,10 +2,10 @@
 
 import base64
 import binascii
-import sqlite3
 from collections import Counter, defaultdict
 from typing import NoReturn
 
+from core.infrastructure.snapshot_connection import ddl_columns
 from core.infrastructure.workbench_execution_ledger_schema import execution_ledger_objects
 from core.infrastructure.workbench_execution_void_schema import execution_void_objects
 from core.infrastructure.workbench_metadata_schema import _canonical_sql
@@ -242,12 +242,7 @@ def _report_revisions(archive, name="WorkbenchProductionReportRevisions"):
     if len(ddl) != 1 or type(ddl[0]) is not str or _canonical_sql(ddl[0]) != _canonical_sql(sql):
         _invalid()
     # Only the known application DDL is parsed; archived SQL is never executed here.
-    conn = sqlite3.connect(":memory:")
-    try:
-        conn.execute(sql)
-        columns = [row[1] for row in conn.execute('PRAGMA table_info("' + name + '")')]
-    finally:
-        conn.close()
+    columns = ddl_columns(sql, name)
     rows = archive["tables"].get(name)
     if type(rows) is not list or any(type(row) is not list or len(row) != len(columns) for row in rows):
         _invalid()

@@ -19,6 +19,7 @@ from core.algorithm_contracts.types import ScheduleResult, ScheduleSummary
 from core.algorithm_runtime.sgs_estimate_reuse import native_multi_start_calendar_snapshot
 from core.algorithms.greedy.schedule_params import resolve_schedule_params
 from core.algorithms.greedy.scheduler import GreedyScheduler
+from core.infrastructure.connection_guards import data_version
 from core.models.batch import Batch
 from core.models.batch_operation import BatchOperation
 from core.models.schedule_config_runtime_snapshot import ScheduleConfigSnapshot as RuntimeSnapshot
@@ -123,10 +124,10 @@ def _database_snapshot(conn: sqlite3.Connection) -> Any:
     try:
         if not conn.in_transaction:
             return _UNSUPPORTED
-        row = conn.execute("PRAGMA data_version").fetchone()
-        if row is None or type(row[0]) is not int:
+        version = data_version(conn)
+        if version is None:
             return _UNSUPPORTED
-        return id(conn), conn.total_changes, row[0]
+        return id(conn), conn.total_changes, version
     except sqlite3.Error:
         # A caller's SQLite authorizer may reject this optional cache probe.
         # Evaluate normally, preserving all errors from the real decoder.

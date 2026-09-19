@@ -3,6 +3,7 @@
 from functools import partial
 from typing import Callable, Optional
 
+from core.infrastructure.connection_guards import is_query_only
 from core.models.workbench_run_compute import CandidateRunComputation
 from core.services.scheduler.run.schedule_candidate_runner import run_candidate_comparison
 from core.services.scheduler.run.schedule_optimizer import optimize_schedule
@@ -91,7 +92,7 @@ def compute_prepared_candidate_run(conn, schedule_input: CandidateRunInput, *, v
 
 def _compute_in_read_snapshot(conn, schedule_input, version, on_progress: Optional[Callable[[int, int], None]] = None):
     """Private continuation after preparation or full freshness validation."""
-    if not conn.in_transaction or conn.execute("PRAGMA query_only").fetchone()[0] != 1:
+    if not conn.in_transaction or not is_query_only(conn):
         fail("candidate_read_snapshot_lost", "Candidate computation requires its active read-only snapshot.")
     svc = ScheduleService(conn)
     compare = run_candidate_comparison

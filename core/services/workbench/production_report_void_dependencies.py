@@ -2,13 +2,14 @@
 
 import json
 
+from core.infrastructure.schema_probe import table_exists
 from core.models.workbench_execution_input import MAX_REPORT_BYTES, reject
 
 
 def adopted_quota_impacts(conn, report_ref, operation_ref):
     # Pre-adoption isolated ledgers have no quota adoption capability. Production
     # startup separately requires the complete current migration contract.
-    if not conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='WorkbenchCalibrationAdoptions'").fetchone():
+    if not table_exists(conn, "WorkbenchCalibrationAdoptions"):
         return []
     rows = conn.execute("""SELECT adoption_ref, template_operation_ref, evidence_json
         FROM WorkbenchCalibrationAdoptions WHERE instr(evidence_json,?)>0 ORDER BY adoption_ref LIMIT 10001""", (report_ref,)).fetchall()

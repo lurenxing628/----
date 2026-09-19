@@ -3,6 +3,7 @@
 import json
 from typing import NoReturn
 
+from core.infrastructure.schema_probe import table_exists
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_plan_scope import MAX_PLAN_TASKS
 from core.models.workbench_trial_codec import fingerprint
@@ -57,7 +58,7 @@ def stored(text):
 
 
 def has_table(conn, name):
-    return conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (name,)).fetchone() is not None
+    return table_exists(conn, name)
 
 
 def raw_rows(conn, table, *, where="1=1", params=(), limit=None):

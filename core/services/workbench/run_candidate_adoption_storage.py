@@ -2,6 +2,7 @@
 
 import hashlib
 
+from core.infrastructure.schema_probe import object_sql
 from core.infrastructure.workbench_plan_identity_schema import workbench_plan_identity_contract_issues
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_run_adoption import CandidateAdoptionBlocked
@@ -17,8 +18,8 @@ def require_adoption_schema(conn):
     if workbench_plan_identity_contract_issues(conn):
         raise WorkbenchCommandRejected("adoption_schema_unavailable", "正式计划编号结构不完整，无法采用。请联系维护人员。", 503)
     # The legacy allocator's CREATE IF NOT EXISTS must never become a repair path.
-    row = conn.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='ScheduleVersionSeq'").fetchone()
-    if row is None or "AUTOINCREMENT" not in row[0].upper():
+    sql = object_sql(conn, "ScheduleVersionSeq")
+    if sql is None or "AUTOINCREMENT" not in sql.upper():
         raise WorkbenchCommandRejected("adoption_schema_unavailable", "排版本号用的结构还没装好，不能采用。请联系维护人员。", 503)
 
 

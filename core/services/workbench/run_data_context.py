@@ -3,13 +3,14 @@
 import os
 import re
 import sqlite3
-from contextlib import closing
-from pathlib import Path
 from typing import Optional, Set
 
+from core.infrastructure.connection_guards import main_database_path
+from core.infrastructure.snapshot_connection import open_readonly_immutable
 from core.models.workbench_command import input_fingerprint
 from core.services.workbench.system_journal import SystemMaintenanceJournal, file_fingerprint
 from core.services.workbench.system_reads import backup_signature
+from data.repositories.workbench_run_repo import WorkbenchRunRepository
 
 
 def restored_context_ref(database_scope, records):
@@ -21,8 +22,7 @@ def restored_context_ref(database_scope, records):
 
 class RunDataContext:
     def __init__(self, conn, journal_dir=None, backup_dir=None):
-        path = next(row[2] for row in conn.execute("PRAGMA database_list") if row[1] == "main")
-        self.database_path = os.path.realpath(path)
+        self.database_path = os.path.realpath(main_database_path(conn))
         self.journal = SystemMaintenanceJournal(journal_dir or self.database_path + ".system-journal", self.database_path)
         self.backup_dir = backup_dir
 
@@ -71,10 +71,8 @@ class RunDataContext:
                 return False
             # The file is journal-authorized and read-only. Never open a user path
             # or migrate a backup while answering a status lookup.
-            with closing(sqlite3.connect(Path(path).absolute().as_uri() + "?mode=ro&immutable=1", uri=True)) as conn:
-                found = conn.execute("""SELECT 1 FROM WorkbenchRunJobs j
-                    JOIN WorkbenchCommandReceipts r ON r.request_key=j.request_key
-                    WHERE j.request_key=? AND r.action='scheduling.run' LIMIT 1""", (request_key,)).fetchone()
+            with open_readonly_immutable(path) as conn:
+                found = WorkbenchRunRepository(conn).scheduling_run_admitted(request_key)
             return bool(found) and backup_signature(path) == before and file_fingerprint(path) == digest
         except (OSError, sqlite3.Error):
             # Missing/changed historical evidence does not prove non-execution.

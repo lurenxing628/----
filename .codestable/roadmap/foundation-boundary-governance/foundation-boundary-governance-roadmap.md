@@ -274,6 +274,7 @@ routes 只读 current_app.extensions，不 import web.bootstrap
 7. **sql-drain-introspection** — PRAGMA、sqlite_master、快照连接、内存库 DDL 解析归 `core/infrastructure`
    - 所属模块：S
    - 依赖：sql-boundary-ratchet
+   - 状态：done（2026-09-20）。三个基础设施模块 + 20 处调用点；sql_boundary 基线 297→242
 8. **sql-drain-storage-classes** — 14 个持 `self.conn` 的仓储形类整体下沉为查询仓储，服务层留裁决薄壳
    - 所属模块：S
    - 依赖：sql-drain-writes、sql-drain-introspection（避免同文件并发改动）

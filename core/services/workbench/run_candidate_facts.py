@@ -1,8 +1,8 @@
 """Interpret acceptance-time facts only; current replacement entities are irrelevant."""
 
 import hashlib
-import sqlite3
 
+from core.infrastructure.snapshot_connection import ddl_columns
 from core.models.workbench_run_candidate import reference
 
 from .run_candidate_values import corrupt, gap, stored_json
@@ -14,35 +14,11 @@ _TABLES = {"BatchOperations": "id", "Batches": "batch_id", "Parts": "part_no",
 def _columns(sql, name):
     if type(sql) is not str:
         corrupt()
-    # SQLite parses its own archived DDL in an empty isolated database. The
-    # authorizer permits only this table's schema, never data, attached DBs or SQL functions.
-    conn = sqlite3.connect(":memory:")
-
-    def authorize(action, first, second, database, source):
-        if action == sqlite3.SQLITE_CREATE_TABLE and first in (name, "sqlite_sequence") and database == "main":
-            return sqlite3.SQLITE_OK
-        if action == sqlite3.SQLITE_CREATE_INDEX and second == name and first.startswith("sqlite_autoindex_"):
-            return sqlite3.SQLITE_OK
-        if action in (sqlite3.SQLITE_INSERT, sqlite3.SQLITE_UPDATE, sqlite3.SQLITE_READ) and first == "sqlite_master":
-            return sqlite3.SQLITE_OK
-        if action == sqlite3.SQLITE_READ and first == name:
-            return sqlite3.SQLITE_OK
-        if action == sqlite3.SQLITE_REINDEX and first.startswith("sqlite_autoindex_"):
-            return sqlite3.SQLITE_OK
-        if action == sqlite3.SQLITE_FUNCTION and second in ("length", "typeof", "glob"):
-            return sqlite3.SQLITE_OK
-        if action == sqlite3.SQLITE_PRAGMA and first == "table_info" and second == name:
-            return sqlite3.SQLITE_OK
-        return sqlite3.SQLITE_DENY
-
+    # SQLite parses its own archived DDL in an empty isolated database with a deny-by-default authorizer.
     try:
-        conn.set_authorizer(authorize)
-        conn.execute(sql)
-        return [row[1] for row in conn.execute('PRAGMA table_info("' + name + '")')]
-    except (sqlite3.Error, sqlite3.Warning):
+        return ddl_columns(sql, name, restricted=True)
+    except ValueError:
         corrupt()
-    finally:
-        conn.close()
 
 
 def _table(facts, name):

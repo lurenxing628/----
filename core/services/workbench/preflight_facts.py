@@ -3,6 +3,7 @@
 import hashlib
 from contextlib import contextmanager
 
+from core.infrastructure.schema_probe import schema_objects
 from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_command import WorkbenchCommandRejected
 
@@ -19,7 +20,7 @@ def quote(name):
 def full_facts_fingerprint(conn):
     # Includes unselected execution/resources/calendars and all ledger revisions.
     digest = hashlib.sha256()
-    schema = list(conn.execute("SELECT type,name,tbl_name,sql FROM sqlite_master ORDER BY type,name"))
+    schema = schema_objects(conn)
     digest.update(repr([tuple(row) for row in schema]).encode("utf-8"))
     for row in schema:
         if row[0] != "table":

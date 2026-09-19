@@ -14,6 +14,7 @@ from typing import (
     OrderedDict as OrderedDictType,
 )
 
+from core.infrastructure.connection_guards import database_list
 from core.models.schedule_plan_role import SOURCE_SCHEDULE
 
 from .gantt_critical_chain import (
@@ -79,7 +80,7 @@ class GanttCriticalChainProvider:
 
     def _database_list_rows(self):
         try:
-            return list(self.conn.execute("PRAGMA database_list").fetchall() or [])
+            return database_list(self.conn)
         except (AttributeError, TypeError, RuntimeError, sqlite3.Error):
             return []
 

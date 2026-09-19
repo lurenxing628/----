@@ -7,6 +7,7 @@ All retained receipts count toward receipt_count; stale sources only produce gap
 An unregistered operation is unknown, not a dispatched shipment or zero risk.
 """
 
+from core.infrastructure.schema_probe import object_sql_map
 from core.infrastructure.workbench_outsourcing_schema import objects
 from core.models.workbench_command import WorkbenchCommandRejected, input_fingerprint
 from core.models.workbench_dashboard import bounded, payload_size
@@ -93,7 +94,7 @@ def external(conn, now):
     if not conn.in_transaction:
         raise RuntimeError("External dashboard reads require a caller-owned snapshot")
     definitions = objects()
-    schema = {row[0]: row[1] for row in conn.execute("SELECT name,sql FROM sqlite_master") if row[0] in definitions}
+    schema = object_sql_map(conn, definitions)
     reader = WorkbenchOutsourcingService(conn, clock=lambda: now)
     try:
         reader.repo.require_schema()

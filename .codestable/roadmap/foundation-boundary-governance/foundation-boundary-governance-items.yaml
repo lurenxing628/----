@@ -54,10 +54,10 @@ items:
   - slug: sql-drain-introspection
     description: PRAGMA、sqlite_master、快照连接、内存库 DDL 解析归 core/infrastructure
     depends_on: [sql-boundary-ratchet]
-    status: planned
+    status: done
     feature: null
     minimal_loop: false
-    notes: null
+    notes: 2026-09-20 完成。新增 core/infrastructure/connection_guards.py（query_only/foreign_keys/data_version/database_list/快照元数据）、schema_probe.py（对象名/表名/DDL/有序清单/列名）、snapshot_connection.py（只读 immutable 连接、隔离内存库 DDL 解析）；20 处调用点改走基础设施；备份快照里的 SELECT 改经 WorkbenchRunRepository.scheduling_run_admitted；sql_boundary 基线 297→242
 
   - slug: sql-drain-storage-classes
     description: 14 个持 self.conn 的仓储形类整体下沉为查询仓储，服务层留裁决薄壳

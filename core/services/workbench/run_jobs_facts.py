@@ -3,6 +3,7 @@
 import hashlib
 import json
 
+from core.infrastructure.schema_probe import schema_objects
 from core.infrastructure.workbench_run_schema import RUN_TABLES
 from core.models.workbench_command import canonical_json
 from core.models.workbench_run_job import durable_value
@@ -13,7 +14,7 @@ from core.services.workbench.preflight_facts import quote
 
 
 def capture_run_facts(conn):
-    schema = [tuple(row) for row in conn.execute("SELECT type,name,tbl_name,sql FROM sqlite_master ORDER BY type,name")]
+    schema = schema_objects(conn)
     tables = {}
     for kind, name, _, _ in schema:
         if kind != "table" or name in RUN_TABLES:

@@ -1,5 +1,6 @@
 """Complete production evidence, with no trial/command bookkeeping feedback loop."""
 
+from core.infrastructure.schema_probe import schema_objects
 from core.infrastructure.workbench_run_schema import RUN_TABLES
 from core.infrastructure.workbench_trial_schema import TRIAL_TABLES
 from core.models.workbench_trial import MAX_TRIAL_TASKS, reject
@@ -12,8 +13,7 @@ _BOOKKEEPING = set(TRIAL_TABLES + RUN_TABLES) | {"WorkbenchCommandReceipts", "Op
 
 
 def capture_facts(conn):
-    schema = [tuple(row) for row in conn.execute("SELECT type,name,tbl_name,sql FROM sqlite_master ORDER BY type,name")
-              if row[2] not in _BOOKKEEPING]
+    schema = schema_objects(conn, exclude_tbl_names=sorted(_BOOKKEEPING))
     tables, columns = {}, {}
     for kind, name, _, _ in schema:
         if kind != "table":

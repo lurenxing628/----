@@ -2,6 +2,7 @@
 
 from collections import defaultdict
 
+from core.infrastructure.schema_probe import object_names
 from core.infrastructure.workbench_execution_ledger_schema import execution_ledger_objects
 from core.models.workbench_command import WorkbenchCommandRejected, input_fingerprint
 from core.models.workbench_execution_input import MAX_OPERATIONS
@@ -10,7 +11,7 @@ from core.services.workbench.process_queries import _plain
 
 
 def read_execution(conn, operation_refs):
-    names = {row[0] for row in conn.execute("SELECT name FROM sqlite_master")}
+    names = object_names(conn)
     if not names.intersection(execution_ledger_objects()):
         version = conn.execute("SELECT version FROM SchemaVersion WHERE id=1").fetchone()
         receipts = conn.execute("SELECT 1 FROM WorkbenchCommandReceipts WHERE action GLOB 'execution.*' LIMIT 1").fetchone()

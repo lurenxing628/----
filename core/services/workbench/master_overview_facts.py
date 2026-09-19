@@ -4,6 +4,7 @@ import math
 from contextlib import contextmanager
 from datetime import date, datetime
 
+from core.infrastructure.schema_probe import table_names
 from core.infrastructure.transaction import TransactionManager
 from core.infrastructure.workbench_metadata_schema import RESOURCE_TABLES
 from core.models.workbench_command import WorkbenchCommandRejected, input_fingerprint
@@ -77,7 +78,7 @@ class MasterOverviewFacts:
     def _load(self):
         self.tables, self.identities, self._indexes, self._groups = {}, {}, {}, {}
         self.gaps, self.workflow = [], None
-        present = {row[0] for row in self.conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        present = table_names(self.conn)
         for name in TABLES:
             if name not in present:
                 self.gaps.append({"code": "source_unavailable", "source": name,

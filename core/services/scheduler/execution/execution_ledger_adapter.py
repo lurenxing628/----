@@ -4,6 +4,7 @@ from contextlib import contextmanager
 from dataclasses import replace
 
 from core.errors import AppError, ErrorCode
+from core.infrastructure.schema_probe import object_names
 from core.infrastructure.transaction import TransactionManager
 from core.infrastructure.workbench_execution_ledger_schema import execution_ledger_objects
 from core.models.schedule_plan_role import ROLE_ADOPTED, SOURCE_SCHEDULE
@@ -25,7 +26,7 @@ def _unavailable(reason, *, op_id=None):
 
 
 def _ledger_required(conn):
-    names = {row[0] for row in conn.execute("SELECT name FROM sqlite_master")}
+    names = object_names(conn)
     if "SchemaVersion" not in names:
         raise _unavailable("execution_ledger_schema_version_missing")
     row = conn.execute("SELECT version FROM SchemaVersion WHERE id=1").fetchone()

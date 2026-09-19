@@ -65,6 +65,12 @@ class WorkbenchRunRepository:
         self.conn.execute("UPDATE WorkbenchRunJobs SET state=?,stage='finished',finished_at=?,error_json=? WHERE run_ref=?",
                           (state, finished_at, error_json, run_ref))
 
+    def scheduling_run_admitted(self, request_key):
+        """该 request_key 是否有 scheduling.run 回执且对应作业行存在（只读证据核对）。"""
+        return self.conn.execute("""SELECT 1 FROM WorkbenchRunJobs j
+            JOIN WorkbenchCommandReceipts r ON r.request_key=j.request_key
+            WHERE j.request_key=? AND r.action='scheduling.run' LIMIT 1""", (request_key,)).fetchone() is not None
+
     def unfinished(self):
         return [dict(row) for row in self.conn.execute("SELECT * FROM WorkbenchRunJobs WHERE state IN ('queued','running') ORDER BY accepted_at,run_ref")]
 
