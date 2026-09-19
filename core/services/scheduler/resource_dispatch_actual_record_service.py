@@ -4,7 +4,7 @@ import io
 from dataclasses import replace
 from typing import Any, Dict, List, Mapping, Optional, Sequence
 
-from core.infrastructure.errors import AppError, ErrorCode, ValidationError
+from core.errors import AppError, ErrorCode, ValidationError
 from core.models.operation_execution_labels import REASON_LABELS, SEVERITY_LABELS
 from core.models.operation_execution_scope import operation_execution_scope_from_event
 from core.models.operation_execution_state import OperationExecutionState

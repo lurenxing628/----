@@ -6,7 +6,7 @@ import json
 
 import pytest
 
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.services.scheduler.run import optimizer_graph_ready_candidate_payload as payload
 from core.services.scheduler.run import optimizer_graph_ready_candidates as candidates
 from core.services.scheduler.run.optimizer_graph_ready_profiles import (

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 
 BATCH_WORKLOAD_BASIS = "batch_workload_v1"
 SUCCESSOR_WORKLOAD_BASIS = "operation_successor_v1"

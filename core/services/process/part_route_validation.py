@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.models.enums import MergeMode, PartOperationStatus, SourceType
 from core.services.common.normalize import normalize_text
 from core.services.common.safe_logging import safe_warning

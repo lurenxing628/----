@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
-from core.infrastructure.errors import BusinessError, ErrorCode, ValidationError
+from core.errors import BusinessError, ErrorCode, ValidationError
 from core.models.enums import BatchPriority, BatchStatus, ReadyStatus
 
 _MISSING = object()

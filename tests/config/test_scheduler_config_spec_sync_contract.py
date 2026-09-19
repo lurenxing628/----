@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.models import schedule_config_runtime_coercion as runtime_coercion
 from core.models import schedule_config_runtime_read as runtime_read
 from core.models.schedule_config_runtime import list_runtime_config_fields

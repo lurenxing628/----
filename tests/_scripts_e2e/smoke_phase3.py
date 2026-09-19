@@ -78,8 +78,8 @@ def main():
 
     sys.path.insert(0, repo_root)
 
+    from core.errors import AppError, ErrorCode
     from core.infrastructure.database import ensure_schema, get_connection
-    from core.infrastructure.errors import AppError, ErrorCode
     from core.services.common.excel_service import ExcelService, ImportMode, RowStatus
     from core.services.common.openpyxl_backend import OpenpyxlBackend
     from core.services.personnel import OperatorMachineService, OperatorService

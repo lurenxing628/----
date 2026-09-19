@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 
 from core.algorithms.objective_specs import objective_choice_labels
+from core.errors import ValidationError
 from core.infrastructure.database import ensure_schema, get_connection
-from core.infrastructure.errors import ValidationError
 from core.services.scheduler import ConfigService
 from core.services.scheduler.config.config_snapshot import (
     ScheduleConfigSnapshot,

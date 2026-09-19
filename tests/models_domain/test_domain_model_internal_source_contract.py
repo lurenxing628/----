@@ -7,7 +7,7 @@ from typing import Any, Iterator
 
 import pytest
 
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.models import BatchOperation, PartOperation
 from core.services.process.deletion_validator import (
     DeletionValidator,

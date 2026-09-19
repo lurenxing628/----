@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from core.algorithm_runtime.algo_stats import increment_counter
 from core.algorithms import SortStrategy
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.models.enums import YesNo
 from core.services.scheduler.config.config_field_spec import choices_for
 from core.services.scheduler.config.config_snapshot import ensure_schedule_config_snapshot

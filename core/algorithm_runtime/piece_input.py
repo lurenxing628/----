@@ -5,7 +5,7 @@ from dataclasses import replace
 from datetime import datetime
 from typing import Tuple
 
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.shared.strict_parse import parse_optional_date
 
 

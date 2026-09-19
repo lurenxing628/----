@@ -12,7 +12,7 @@ import pytest
 from core.algorithms.greedy import auto_assign as auto_assign_module
 from core.algorithms.greedy.internal_slot import estimate_internal_slot, validate_internal_hours
 from core.algorithms.greedy.scheduler import GreedyScheduler
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 
 
 @dataclass

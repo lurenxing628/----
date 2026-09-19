@@ -6,7 +6,7 @@ from datetime import datetime
 from itertools import zip_longest
 from typing import Any, Dict, Iterator, List, Tuple
 
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 
 
 @dataclass(frozen=True)

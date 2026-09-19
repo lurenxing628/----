@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, Iterable, List, Optional, Set
 
-from core.infrastructure.errors import AppError
+from core.errors import AppError
 from core.infrastructure.transaction import TransactionManager
 
 from .excel_service import ImportMode, RowStatus

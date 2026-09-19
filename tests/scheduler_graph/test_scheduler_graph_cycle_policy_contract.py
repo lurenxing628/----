@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Tuple
 
 import pytest
 
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.services.scheduler.config.config_snapshot import ScheduleConfigSnapshot
 from core.services.scheduler.run.schedule_optimizer import OptimizationOutcome
 from core.services.scheduler.schedule_orchestrator import orchestrate_schedule_run

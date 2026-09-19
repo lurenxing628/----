@@ -2,7 +2,7 @@
 
 import pytest
 
-from core.infrastructure.errors import AppError
+from core.errors import AppError
 from core.infrastructure.logging import OperationLogger
 from core.services.execution.ledger_reader import ExecutionLedgerReader
 from core.services.scheduler.gantt_adjustment_publish_service import GanttAdjustmentPublishService
@@ -20,7 +20,6 @@ from tests.workbench.scheduler_execution_ledger_support import (
     raw_connection,
     read_facts,
 )
-from tests.workbench.scheduler_execution_ledger_support import ledger_case as ledger_fixture
 
 
 @pytest.mark.parametrize("simulate", [False, True])

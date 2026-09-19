@@ -1,7 +1,7 @@
 """回归测试：execute_preview_rows_transactional 的错误样本以 source_row_num 作为 row（而非 row_num），保留预览阶段/应用阶段原始错误文案、为缺少主键的行套用统一文案，并正确统计 error/new/update/skip 数与实际写库调用。"""
 
 def test_import_execution_stats_source_row_num(mem_conn) -> None:
-    from core.infrastructure.errors import ValidationError
+    from core.errors import ValidationError
     from core.services.common.excel_import_executor import execute_preview_rows_transactional
     from core.services.common.excel_service import ImportMode, ImportPreviewRow, RowStatus
 

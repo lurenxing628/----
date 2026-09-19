@@ -25,7 +25,7 @@ class _StubCalendar:
 def test_scheduler_nonfinite_efficiency_fallback() -> None:
 
     from core.algorithms import GreedyScheduler
-    from core.infrastructure.errors import ValidationError
+    from core.errors import ValidationError
 
     sched = GreedyScheduler(calendar_service=_StubCalendar())
     op = SimpleNamespace(

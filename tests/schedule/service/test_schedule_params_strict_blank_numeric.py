@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import pytest
 
 from core.algorithms.greedy.schedule_params import resolve_schedule_params
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 
 
 def test_schedule_params_strict_blank_weight_rejected() -> None:

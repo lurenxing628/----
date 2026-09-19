@@ -8,7 +8,7 @@ from typing import Any, Dict
 
 import pytest
 
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.services.scheduler.graph import analysis_service, resource_matching, scoring
 from core.services.scheduler.run import schedule_graph_cached_projection as projections
 from core.services.scheduler.run.schedule_graph_report import (

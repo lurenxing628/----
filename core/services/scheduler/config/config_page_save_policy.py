@@ -2,12 +2,11 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Sequence, Tuple, cast
 
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 
 from .config_constants import (
     ACTIVE_PRESET_REASON_HIDDEN_REPAIR,
     ACTIVE_PRESET_REASON_VISIBLE_REPAIR,
-    CONFIG_PAGE_FIELDS,
     CONFIG_PAGE_HIDDEN_REPAIR_FIELDS,
     CONFIG_PAGE_VISIBLE_CHANGE_FIELDS,
     CONFIG_PAGE_WRITE_FIELDS,

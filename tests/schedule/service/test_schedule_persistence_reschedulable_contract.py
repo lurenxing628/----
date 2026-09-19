@@ -10,7 +10,7 @@ def _make_dt(hours: int) -> datetime:
 
 def test_schedule_persistence_reschedulable_contract(schema_conn) -> None:
 
-    from core.infrastructure.errors import ValidationError
+    from core.errors import ValidationError
     from core.services.scheduler.run.schedule_persistence import build_validated_schedule_payload
     from core.services.scheduler.schedule_persistence import persist_schedule
     from core.services.scheduler.schedule_service import ScheduleService

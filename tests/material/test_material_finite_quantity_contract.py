@@ -9,7 +9,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from core.infrastructure.errors import AppError, ErrorCode, ValidationError
+from core.errors import AppError, ErrorCode, ValidationError
 from core.models import Material
 from core.services.material.material_service import MaterialService
 from tests._support.legacy_http import canonical_navigation

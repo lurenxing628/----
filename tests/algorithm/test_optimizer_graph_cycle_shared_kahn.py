@@ -17,7 +17,7 @@ from typing import Dict
 
 import pytest
 
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.services.scheduler.run.optimizer_graph_ready_context import _detect_cycle
 
 CHAIN_GUARD_NODE_COUNT = 4000

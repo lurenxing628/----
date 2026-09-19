@@ -5,14 +5,13 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
-from pathlib import Path
 
 import pytest
 from flask import Flask, g
 from werkzeug.exceptions import RequestEntityTooLarge
 
 import web.error_boundary as error_boundary_mod
-from core.infrastructure.errors import BusinessError, ErrorCode
+from core.errors import BusinessError, ErrorCode
 from tests._support.paths import REPO_ROOT
 from web.error_handlers import register_error_handlers
 

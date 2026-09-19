@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 
+from core.errors import ValidationError
 from core.infrastructure.database import ensure_schema, get_connection
-from core.infrastructure.errors import ValidationError
 from core.services.scheduler.config.config_service import ConfigService
 from tests._support.paths import REPO_ROOT
 

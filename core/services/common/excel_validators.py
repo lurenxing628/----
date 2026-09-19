@@ -4,7 +4,7 @@ import re
 from datetime import date, datetime, timedelta
 from typing import Any, Callable, Dict, Optional
 
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.models.enums import (
     BATCH_PRIORITY_VALUES,
     CALENDAR_DAY_TYPE_STORED_VALUES,

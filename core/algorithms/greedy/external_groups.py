@@ -7,7 +7,7 @@ from core.algorithm_contracts.types import ScheduleResult
 from core.algorithm_contracts.value_domains import EXTERNAL, MERGED
 from core.algorithm_runtime.algo_stats import increment_counter
 from core.algorithm_runtime.piece_input import external_group_key
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.shared.degradation import DegradationCollector
 from core.shared.field_parse import parse_field_float
 

@@ -22,7 +22,7 @@ from core.algorithms.greedy.dispatch.sgs_checkpoint import (
     DecodeCheckpointRequest,
     decode_output_digest,
 )
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.services.scheduler.run.schedule_graph_report import prepare_schedule_graph_for_dispatch
 from tests._support.optimizer_end_to_end_cases import case_environment, fixture_data
 

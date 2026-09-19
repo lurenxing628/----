@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import Any, Callable, Dict, List, Optional
 
 from core.algorithms import SortStrategy
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 
 from .optimizer_candidate_comparison import candidate_is_preferred
 from .optimizer_candidate_fingerprint import score_strictly_better

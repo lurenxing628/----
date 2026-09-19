@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Tuple
 
-from core.infrastructure.errors import BusinessError, ErrorCode, ValidationError
+from core.errors import BusinessError, ErrorCode, ValidationError
 from core.services.common.normalize import normalize_text
 
 from . import config_presets

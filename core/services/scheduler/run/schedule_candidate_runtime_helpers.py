@@ -12,7 +12,7 @@ from dataclasses import is_dataclass, replace
 from types import SimpleNamespace
 from typing import Any, Dict, List, Optional, Tuple, cast
 
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 
 from .schedule_candidate_health import CandidateHealth, evaluate_candidate_health, unavailable_health
 from .schedule_candidate_specs import CANDIDATE_KIND_CRITICAL_CHAIN, CandidateRunSpec

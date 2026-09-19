@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date
 from typing import Any
 
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.services.scheduler.resource_dispatch_range import MAX_DISPATCH_RANGE_DAYS
 
 REPORT_EXPLICIT_DATE_RANGE_MAX_DAYS = MAX_DISPATCH_RANGE_DAYS

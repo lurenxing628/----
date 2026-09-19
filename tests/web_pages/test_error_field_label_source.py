@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 import importlib
-from pathlib import Path
 
+from core.errors import ValidationError
 from core.infrastructure.database import ensure_schema
-from core.infrastructure.errors import ValidationError
 from core.services.scheduler.config.config_field_spec import field_label_for
 from tests._support.excel_templates import point_env_at_shared
 from tests._support.paths import REPO_ROOT

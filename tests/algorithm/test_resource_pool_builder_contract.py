@@ -9,7 +9,7 @@ from typing import Any, List
 import pytest
 
 import core.services.scheduler.resource_pool_builder as builder_mod
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 
 
 class _StubSvc:

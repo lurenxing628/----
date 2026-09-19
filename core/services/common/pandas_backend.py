@@ -4,7 +4,7 @@ import importlib
 import os
 from typing import Any, Dict, Iterable, List, Optional, cast
 
-from core.infrastructure.errors import AppError, ErrorCode
+from core.errors import AppError, ErrorCode
 
 from .tabular_backend import SOURCE_ROW_NUM_KEY, SOURCE_SHEET_NAME_KEY, TabularBackend
 

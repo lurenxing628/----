@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Set, Tuple
 
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.models.scheduler_public_errors import public_safe_identifier, public_safe_label
 from core.services.scheduler.run.auto_assign_resource_errors import (
     first_auto_assign_resource_error,

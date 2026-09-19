@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, NoReturn, Optional, cast
 
 from core.algorithm_runtime.graph_cycle import kahn_unreachable_op_ids
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.shared.strict_parse import parse_required_int
 
 from .optimizer_graph_ready_profiles import GRAPH_READY_REQUIRED_CONTEXT_FIELDS, finite_number

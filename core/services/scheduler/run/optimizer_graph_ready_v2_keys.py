@@ -1,9 +1,9 @@
 """GraphReady v2 priority keys: rank-normalized feature tuples per candidate formula."""
 from __future__ import annotations
 
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Tuple
 
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 
 from .optimizer_graph_ready_profiles import GraphReadyWeightProfile, finite_number
 

@@ -20,7 +20,7 @@ from types import GetSetDescriptorType, MemberDescriptorType
 
 from core.algorithm_runtime.native_snapshot import UNSUPPORTED, make_class_guard, scalar_snapshot
 from core.algorithm_runtime.static_attribute import static_class_attribute
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 
 from .sgs_score_cache import plain_record_class
 from .sgs_scoring import _parse_due_date

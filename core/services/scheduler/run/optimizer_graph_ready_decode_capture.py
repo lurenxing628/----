@@ -8,7 +8,7 @@ rollback-safe adoption it can only mean a real bug.
 from __future__ import annotations
 
 from core.algorithms.greedy.dispatch.sgs_checkpoint import CHECKPOINT_FIELD
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 
 
 def is_capture_failure(exc: ValidationError, *, resumed: bool) -> bool:

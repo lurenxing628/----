@@ -1,6 +1,6 @@
 """Dispatch-mode routing with the scheduler's current callback bindings."""
 
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 
 
 def dispatch_run(ctx, *, state, sorted_ops, batches, batch_order, params, machine_downtimes,

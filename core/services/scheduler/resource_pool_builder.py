@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.models.enums import MachineStatus, OperatorStatus, SourceType, YesNo
 from core.services.common.enum_normalizers import skill_rank as _skill_rank_common
 from core.services.common.safe_logging import safe_warning

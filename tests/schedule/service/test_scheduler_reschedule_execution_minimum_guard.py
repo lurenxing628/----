@@ -9,8 +9,8 @@ import pytest
 
 import core.services.scheduler.run.schedule_persistence as schedule_persistence_mod
 import core.services.scheduler.schedule_service as schedule_service_mod
+from core.errors import AppError
 from core.infrastructure.database import ensure_schema, get_connection
-from core.infrastructure.errors import AppError
 from core.models.schedule_plan_role import ROLE_ADOPTED, SOURCE_SCHEDULE
 from core.services.scheduler.config.config_service import ConfigService
 from core.services.scheduler.operation_execution_feedback_service import (

@@ -15,7 +15,7 @@ from unittest import mock
 import pytest
 
 from core.algorithms.sort_strategies import SortStrategy
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.services.scheduler.run import optimizer_local_search
 from core.services.scheduler.run.optimizer_local_search import run_local_search
 from core.services.scheduler.run.optimizer_local_search_limits import LocalSearchLimits

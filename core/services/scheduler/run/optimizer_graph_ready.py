@@ -5,7 +5,7 @@ from functools import partial
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
 from core.algorithms import ScheduleResult, SortStrategy
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 
 from .optimizer_deadline_guard import observed_decode_seconds, prefer_ig_startup
 from .optimizer_graph_ready_budget import GraphReadySearchBudget

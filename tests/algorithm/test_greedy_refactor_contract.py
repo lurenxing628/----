@@ -489,7 +489,7 @@ def test_auto_assign_fixed_machine_respects_declared_op_type_pool() -> None:
 
 def test_auto_assign_existing_pair_rank_must_be_integer() -> None:
     from core.algorithms.greedy.auto_assign import auto_assign_internal_resources
-    from core.infrastructure.errors import ValidationError
+    from core.errors import ValidationError
 
     base_time = datetime(2026, 1, 1, 8, 0, 0)
     stats = {"fallback_counts": {}, "param_fallbacks": {}, "fallback_samples": {}}
@@ -633,7 +633,7 @@ def test_dispatch_sgs_main_loop_uses_legacy_scoring_wrapper() -> None:
 def test_run_context_enforces_strict_internal_input_before_legacy_callback() -> None:
     from core.algorithms.greedy.run_context import ScheduleRunContext
     from core.algorithms.types import ScheduleResult
-    from core.infrastructure.errors import ValidationError
+    from core.errors import ValidationError
 
     called = False
     base_time = datetime(2026, 1, 1, 8, 0, 0)
@@ -776,7 +776,7 @@ def test_sgs_strict_external_scoring_rejects_blank_ext_days_before_defaulting() 
     from core.algorithms.greedy.dispatch.sgs_scoring import _external_candidate_window
     from core.algorithms.greedy.run_context import ScheduleRunContext
     from core.algorithms.greedy.run_state import ScheduleRunState
-    from core.infrastructure.errors import ValidationError
+    from core.errors import ValidationError
 
     ctx = ScheduleRunContext(calendar=_Calendar(), logger=None, algo_stats={})
     state = ScheduleRunState(base_time=datetime(2026, 4, 2, 8, 0, 0))
@@ -793,7 +793,7 @@ def test_sgs_strict_external_scoring_rejects_blank_merged_total_days() -> None:
     from core.algorithms.greedy.run_context import ScheduleRunContext
     from core.algorithms.greedy.run_state import ScheduleRunState
     from core.algorithms.value_domains import MERGED
-    from core.infrastructure.errors import ValidationError
+    from core.errors import ValidationError
 
     ctx = ScheduleRunContext(calendar=_Calendar(), logger=None, algo_stats={})
     state = ScheduleRunState(base_time=datetime(2026, 4, 2, 8, 0, 0))
@@ -857,7 +857,7 @@ def test_dispatch_sgs_rejects_invalid_sequence_identity() -> None:
     from core.algorithms.dispatch_rules import DispatchRule
     from core.algorithms.greedy.dispatch.sgs import dispatch_sgs
     from core.algorithms.greedy.run_context import ScheduleRunContext
-    from core.infrastructure.errors import ValidationError
+    from core.errors import ValidationError
 
     ctx = ScheduleRunContext(calendar=_Calendar(), logger=None, algo_stats={})
     op = SimpleNamespace(id=1, op_code="OP1", batch_id="B1", seq="bad-seq", source="internal")
@@ -884,7 +884,7 @@ def test_dispatch_sgs_rejects_invalid_internal_hours_during_scoring_in_non_stric
     from core.algorithms.dispatch_rules import DispatchRule
     from core.algorithms.greedy.dispatch.sgs import dispatch_sgs
     from core.algorithms.greedy.run_context import ScheduleRunContext
-    from core.infrastructure.errors import ValidationError
+    from core.errors import ValidationError
 
     ctx = ScheduleRunContext(calendar=_Calendar(), logger=None, algo_stats={})
     op = SimpleNamespace(
@@ -960,7 +960,7 @@ def test_dispatch_sgs_rejects_malformed_auto_assign_probe_result() -> None:
 def test_dispatch_sgs_propagates_validation_error_from_legacy_internal_callback() -> None:
     from core.algorithms.dispatch_rules import DispatchRule
     from core.algorithms.greedy.dispatch.sgs import dispatch_sgs
-    from core.infrastructure.errors import ValidationError
+    from core.errors import ValidationError
 
     class LegacyScheduler:
         calendar = _Calendar()
@@ -1003,7 +1003,7 @@ def test_dispatch_sgs_propagates_validation_error_from_legacy_internal_callback(
 @pytest.mark.parametrize("dispatch_mode", ["batch_order", "sgs"])
 def test_strict_internal_nonfinite_hours_rejected_in_all_dispatch_modes(dispatch_mode: str) -> None:
     from core.algorithms.greedy.scheduler import GreedyScheduler
-    from core.infrastructure.errors import ValidationError
+    from core.errors import ValidationError
 
     scheduler = GreedyScheduler(calendar_service=_Calendar(), config_service=_default_config())
     batch = SimpleNamespace(batch_id="B1", priority="normal", due_date=None, ready_date=None, created_at=None, quantity=1)

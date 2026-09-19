@@ -8,7 +8,7 @@ from typing import List
 
 import pytest
 
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.services.scheduler.config.config_field_spec import default_snapshot_values, list_config_fields
 from core.services.scheduler.config.config_snapshot import (
     ScheduleConfigSnapshot,

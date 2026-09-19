@@ -24,7 +24,7 @@ def _snapshot(conn: sqlite3.Connection) -> dict:
 
 def test_schedule_history_not_created_for_empty_schedule(schema_conn) -> None:
 
-    from core.infrastructure.errors import ValidationError
+    from core.errors import ValidationError
     from core.infrastructure.logging import OperationLogger
     from core.services.scheduler.schedule_service import ScheduleService
 

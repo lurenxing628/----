@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from typing import Any, Optional
 
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.models.schedule_adjustment import (
     CHANGE_TYPE_CHANGE_RESOURCE,
     CHANGE_TYPE_MOVE_TIME,

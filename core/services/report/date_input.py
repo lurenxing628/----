@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.services.report.date_range_limits import ensure_report_date_range_within_limit
 
 

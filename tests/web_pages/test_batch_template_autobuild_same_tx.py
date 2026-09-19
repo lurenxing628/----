@@ -10,7 +10,7 @@ from tests._support.sqlite_snapshot import stored_state
 @pytest.mark.parametrize("conflicting_seq", (5, 10))
 def test_batch_template_autobuild_same_tx(schema_conn, conflicting_seq) -> None:
 
-    from core.infrastructure.errors import AppError, ErrorCode
+    from core.errors import AppError, ErrorCode
     from core.services.scheduler.batch_service import BatchService
 
     conn = schema_conn

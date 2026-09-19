@@ -6,7 +6,7 @@ from collections import defaultdict
 from datetime import datetime, time, timedelta
 from typing import Any, Dict
 
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 
 from .plan_calendar_intervals import IntervalIndex, hours, instant, public_intervals, union, wire
 from .plan_calendar_issues import issue

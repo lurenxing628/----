@@ -4,7 +4,7 @@ import sqlite3
 
 import pytest
 
-from core.infrastructure.errors import AppError, ErrorCode
+from core.errors import AppError, ErrorCode
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_resource_query import ResourcePageRequest
 from core.services.personnel.operator_qualification import OperatorQualificationError, OperatorQualificationService
@@ -12,7 +12,6 @@ from data.repositories.operator_qualification_repo import OperatorQualificationR
 from tests.workbench.resource_metrics_support import (
     detail,
     measured_read,
-    metrics_database,
     page,
     reader,
     seed_scale,

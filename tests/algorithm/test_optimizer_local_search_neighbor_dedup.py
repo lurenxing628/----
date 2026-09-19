@@ -10,7 +10,7 @@ import pytest
 
 import core.services.scheduler.schedule_optimizer as schedule_optimizer_module
 from core.algorithms.sort_strategies import SortStrategy
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.services.scheduler.run.optimizer_neighborhood_moves import CRITICAL_CHAIN
 from core.services.scheduler.run.optimizer_search_state import compact_attempts
 from core.services.scheduler.schedule_optimizer import _run_local_search

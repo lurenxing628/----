@@ -16,7 +16,7 @@ from core.algorithms.ordering import (
     operation_sort_key,
 )
 from core.algorithms.sort_strategies import SortStrategy
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 
 
 def test_normalized_batches_reject_duplicate_batch_id() -> None:

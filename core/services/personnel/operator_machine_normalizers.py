@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.models import OperatorMachine
 from core.models.enums import SkillLevel, YesNo
 from core.services.common.normalization_matrix import normalize_skill_level_value, normalize_yes_no_narrow_value

@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Set, Tuple
 
 from core.algorithm_runtime.internal_slot import validate_internal_hours
-from core.infrastructure.errors import AppError, ErrorCode, ValidationError
+from core.errors import AppError, ErrorCode, ValidationError
 from core.models import BatchOperation
 from core.models.enums import SourceType
 from core.services.personnel.operator_qualification import validate_fixed_operator_qualifications

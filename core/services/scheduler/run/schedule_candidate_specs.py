@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Dict, List, Tuple
 
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 
 CANDIDATE_KIND_BASELINE = "baseline"
 CANDIDATE_KIND_CRITICAL_CHAIN = "critical_chain"

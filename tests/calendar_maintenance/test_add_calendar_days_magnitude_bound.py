@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.services.scheduler.calendar_engine import MAX_CALENDAR_DAYS, CalendarEngine
 
 

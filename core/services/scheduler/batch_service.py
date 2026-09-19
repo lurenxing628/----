@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
-from core.infrastructure.errors import BusinessError, ErrorCode, ValidationError
+from core.errors import BusinessError, ErrorCode, ValidationError
 from core.infrastructure.transaction import TransactionManager
 from core.models import Batch, BatchOperation
 from core.models.enums import BatchPriority, BatchStatus, ReadyStatus

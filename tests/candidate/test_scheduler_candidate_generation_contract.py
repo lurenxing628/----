@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import pytest
 
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.services.scheduler.run.schedule_candidate_specs import (
     CANDIDATE_KIND_BASELINE,
     CANDIDATE_KIND_CRITICAL_CHAIN,

@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 def test_batch_excel_import_strict_mode_hardfail_atomic(schema_conn) -> None:
 
-    from core.infrastructure.errors import BusinessError, ErrorCode
+    from core.errors import BusinessError, ErrorCode
     from core.services.common.excel_service import ImportMode, ImportPreviewRow, RowStatus
     from core.services.scheduler.batch_service import BatchService
 

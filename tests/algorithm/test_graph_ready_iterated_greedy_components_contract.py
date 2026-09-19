@@ -13,7 +13,7 @@ from dataclasses import replace
 import pytest
 
 from core.algorithms.greedy.dispatch.sgs_checkpoint import DecodeCheckpoint
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.services.scheduler.run import optimizer_graph_ready_iterated_greedy_acceptance as acceptance
 from core.services.scheduler.run.optimizer_graph_ready_iterated_greedy_acceptance import (
     ExponentialCooling,

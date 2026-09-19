@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Tuple
 
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.shared.field_labels import display_field_label
 from core.shared.number_utils import parse_finite_float
 

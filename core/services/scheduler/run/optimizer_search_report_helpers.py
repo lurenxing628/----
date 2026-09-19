@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 
 from .optimizer_acceptance import ALLOWED_ACCEPTANCES
 from .optimizer_candidate_fingerprint import (

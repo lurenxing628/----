@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Dict, Set
 
-from core.infrastructure.errors import AppError, ErrorCode
+from core.errors import AppError, ErrorCode
 from core.models.operation_execution_event import EXECUTION_STATUS_PAUSED, EXECUTION_STATUS_PROCESSING
 from core.services.scheduler.execution.execution_fact_provider import ExecutionFact
 

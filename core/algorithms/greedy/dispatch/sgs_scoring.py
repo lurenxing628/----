@@ -23,7 +23,7 @@ from core.algorithm_runtime.internal_slot import (
 from core.algorithm_runtime.run_state import ScheduleRunState
 from core.algorithm_runtime.sgs_estimate_reuse import current_sgs_handoff, current_sgs_reuse, remember_sgs_estimate
 from core.algorithm_runtime.slot_overlap_reuse import overlap_reuse_for
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.shared.strict_parse import parse_optional_date, parse_required_int
 
 from .resource_validation import (

@@ -11,7 +11,7 @@ import hashlib
 import sqlite3
 
 from core.algorithm_runtime.native_snapshot import make_class_guard
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from data.repositories.calendar_repo import CalendarRepository
 from data.repositories.operator_calendar_repo import OperatorCalendarRepository
 from data.repositories.operator_shift_repo import OperatorShiftRepository

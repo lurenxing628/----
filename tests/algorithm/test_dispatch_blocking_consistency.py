@@ -136,7 +136,7 @@ def test_dispatch_blocking_consistency():
     assert summary.scheduled_ops + summary.failed_ops == summary.total_ops, "summary 统计不一致"
     assert len(results) == 0, f"不应产出排程结果，实际 results={len(results)}"
 
-    from core.infrastructure.errors import ValidationError
+    from core.errors import ValidationError
 
     # SGS 评分阶段必须能估算候选；缺资源不再生成不可评分兜底 key。
     try:

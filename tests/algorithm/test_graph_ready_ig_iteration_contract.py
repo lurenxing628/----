@@ -113,7 +113,7 @@ def test_shared_incumbent_is_visible_mid_iteration_but_context_adoption_waits(mo
 
 
 def test_failed_trials_are_not_decoded_again_as_the_final_iteration_order(monkeypatch):
-    from core.infrastructure.errors import ValidationError
+    from core.errors import ValidationError
     from tests.algorithm.test_graph_ready_ig_incumbent_context_contract import _Harness
 
     harness = _Harness(strict_mode=False)

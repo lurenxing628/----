@@ -5,7 +5,7 @@ from dataclasses import replace
 
 import pytest
 
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.services.scheduler.run.optimizer_graph_ready_iterated_greedy import _BudgetExhausted, admit_parent_decode
 from core.services.scheduler.run.optimizer_graph_ready_iterated_greedy_contract import (
     IteratedGreedyLimits,

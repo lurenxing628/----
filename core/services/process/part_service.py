@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 from typing import Any, Dict, List, Optional, Tuple
 
-from core.infrastructure.errors import BusinessError, ErrorCode, ValidationError
+from core.errors import BusinessError, ErrorCode, ValidationError
 from core.infrastructure.transaction import TransactionManager
 from core.models import Part
 from core.models.enums import YESNO_VALUES, SupplierStatus, YesNo

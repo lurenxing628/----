@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any, BinaryIO, Callable, ClassVar, Dict, Iterable, List, Optional
 
-from core.infrastructure.errors import AppError, ErrorCode, ValidationError
+from core.errors import AppError, ErrorCode, ValidationError
 from core.services.capacity.resource_utilization_metrics import METRIC_VERSION
 from core.services.common.degradation import DegradationCollector
 from core.services.report.delay_diagnosis_presentation import (

@@ -3,7 +3,7 @@ from __future__ import annotations
 import inspect
 from typing import Any, Callable, Dict, Optional
 
-from core.infrastructure.errors import BusinessError, ErrorCode, ValidationError
+from core.errors import BusinessError, ErrorCode, ValidationError
 from core.models.enums import BatchPriority, BatchStatus, ReadyStatus
 from core.services.common.normalize import append_unique_text_messages
 from core.services.process.workflow_state import require_template_ready

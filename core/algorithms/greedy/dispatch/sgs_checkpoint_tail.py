@@ -12,7 +12,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Sequence
 
 from core.algorithm_runtime.resource_quality import MachineTypeState
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 
 from .sgs_checkpoint_tail_bulk import install_reconverged_tail
 

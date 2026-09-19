@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, List, NoReturn, Optional, Set, Tuple
 
 from core.algorithm_runtime.piece_input import external_group_key
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.shared.strict_parse import parse_optional_date
 
 

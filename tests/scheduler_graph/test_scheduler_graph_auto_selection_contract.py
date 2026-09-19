@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.services.scheduler.run.schedule_candidate_health import (
     HEALTH_BETTER,
     HEALTH_UNAVAILABLE,

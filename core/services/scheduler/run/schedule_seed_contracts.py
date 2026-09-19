@@ -9,7 +9,7 @@ from core.algorithm_runtime.algo_stats import increment_counter
 from core.algorithms import ScheduleResult
 from core.algorithms.greedy.seed import _identity_int, _invalid_identity_supplied, with_seed_external_group_metadata
 from core.algorithms.value_domains import INTERNAL
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 
 
 def _raise_invalid_seed_results_error(*, invalid_seed_count: int, invalid_seed_samples: List[Dict[str, Any]]) -> None:

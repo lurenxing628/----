@@ -29,7 +29,7 @@ from datetime import datetime, timedelta
 from typing import Any, Dict
 
 from core.algorithms.evaluation import compute_metrics
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.services.scheduler.run.optimizer_proof_harness import (
     TinyBatchSpec,
     TinyBenchmarkCase,

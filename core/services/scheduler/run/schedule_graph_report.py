@@ -4,7 +4,7 @@ import time
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 
 from .schedule_graph_cached_projection import build_graph_dispatch_projections
 from .schedule_graph_dispatch_context import (

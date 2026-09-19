@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Mapping, Optional, Sequence
+from typing import Any, Dict, List, Mapping, Optional
 
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.models.operation_execution_state import OperationExecutionState
 
 from .operation_execution_feedback_support import _parse_feedback_datetime

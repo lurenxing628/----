@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from core.algorithm_runtime.dispatch_context import DispatchContextContractError
 from core.algorithm_runtime.piece_input import operation_batch, operation_dispatch_state
 from core.algorithm_runtime.run_state import ScheduleRunState
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 
 from .batch_order import _schedule_op
 from .sgs_graph import _apply_graph_failure_bookkeeping, _mark_graph_operation_completed, _op_id

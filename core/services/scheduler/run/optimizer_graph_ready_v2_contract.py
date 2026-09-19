@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 
 GRAPH_READY_V2_FEATURE_FIELD = "graph_ready_v2_features"
 GRAPH_READY_V2_FORMULA_FIELD = "graph_ready_v2_formula"

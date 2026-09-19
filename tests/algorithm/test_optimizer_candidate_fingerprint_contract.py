@@ -11,7 +11,7 @@ import pytest
 
 from core.algorithms.evaluation import ScheduleMetrics, objective_score
 from core.algorithms.types import ScheduleResult, ScheduleSummary
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.services.scheduler.run.optimizer_candidate_fingerprint import (
     DISTINCT_FINGERPRINT_DESCRIPTION,
     DISTINCT_FINGERPRINT_SCOPE,

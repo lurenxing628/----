@@ -22,7 +22,7 @@ from core.algorithm_contracts.dispatch_rules import (
     parse_dispatch_rule_token,
 )
 from core.algorithms import GreedyScheduler, SortStrategy
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.services.scheduler.run.optimizer_proof_oracle import (
     _ContinuousCalendar,
     _default_config,

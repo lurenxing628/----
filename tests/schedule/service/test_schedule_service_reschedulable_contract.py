@@ -141,7 +141,7 @@ def _batch_stub(batch_id: str, status: str) -> SimpleNamespace:
 def test_schedule_service_reschedulable_contract(schema_conn, monkeypatch) -> None:
 
     import core.services.scheduler.schedule_service as schedule_service_mod
-    from core.infrastructure.errors import ValidationError
+    from core.errors import ValidationError
     from core.services.scheduler.schedule_service import ScheduleService
 
     captured = {}

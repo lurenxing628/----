@@ -8,7 +8,7 @@ from core.algorithm_contracts.date_parsers import due_exclusive, parse_date, par
 from core.algorithm_contracts.dispatch_rules import DispatchRule, DispatchRuleSpec, parse_dispatch_rule_token
 from core.algorithm_contracts.sort_strategies import SortStrategy
 from core.algorithm_runtime.algo_stats import increment_counter
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.models.scheduler_degradation_messages import public_degradation_event_message
 from core.shared.degradation import DegradationCollector
 from core.shared.field_parse import parse_field_float

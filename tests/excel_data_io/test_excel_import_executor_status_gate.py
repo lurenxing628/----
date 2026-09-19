@@ -109,7 +109,7 @@ def test_excel_import_executor_status_gate(mem_conn) -> None:
         assert empty_stats.errors_sample and empty_stats.errors_sample[0].get("row") == 9, empty_stats.errors_sample
 
         # continue_on_app_error 语义：为 True 时按行降级计错继续；为 False 时遇到 AppError 直接中断
-        from core.infrastructure.errors import ValidationError
+        from core.errors import ValidationError
 
         app_err_calls = []
 

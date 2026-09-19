@@ -3,13 +3,12 @@
 from __future__ import annotations
 
 import sqlite3
-from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
 import core.services.scheduler.schedule_service as schedule_service_mod
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.services.common.build_outcome import BuildOutcome
 from core.services.scheduler.run.schedule_optimizer import OptimizationOutcome
 from core.services.scheduler.schedule_service import ScheduleService

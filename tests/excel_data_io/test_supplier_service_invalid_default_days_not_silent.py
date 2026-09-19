@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 import sqlite3
-from pathlib import Path
 
 import pytest
 
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.services.process.supplier_service import SupplierService
 from tests._support.paths import REPO_ROOT
 

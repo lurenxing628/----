@@ -15,13 +15,12 @@ from core.algorithm_runtime.auto_assign_contract import (
     AUTO_ASSIGN_REASON_SUCCESS,
     AUTO_ASSIGN_REASON_WINDOW_BLOCKED,
     AutoAssignAttempt,
-    auto_assign_attempt_from_result,
 )
 from core.algorithm_runtime.internal_slot import estimate_internal_slot, validate_internal_hours
 from core.algorithm_runtime.resource_quality import prefer_resource_pair
 from core.algorithm_runtime.sgs_estimate_reuse import current_sgs_handoff
 from core.algorithm_runtime.slot_overlap_reuse import overlap_reuse_for
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.shared.strict_parse import parse_required_int
 
 

@@ -10,8 +10,8 @@ from types import SimpleNamespace
 
 import pytest
 
+from core.errors import ValidationError
 from core.infrastructure.database import get_connection
-from core.infrastructure.errors import ValidationError
 from core.models.workbench_command import input_fingerprint
 from core.models.workbench_plan_reference import WorkbenchPlanLocator
 from core.models.workbench_plan_scope import PlanReadScope

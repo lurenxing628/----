@@ -10,8 +10,8 @@ from typing import Any, Dict, Iterable, List, Optional, Set
 
 import pytest
 
+from core.errors import ValidationError
 from core.infrastructure.database import CURRENT_SCHEMA_VERSION, ensure_schema
-from core.infrastructure.errors import ValidationError
 from core.services.scheduler.run.schedule_persistence import (
     ValidatedSchedulePayload,
     ValidatedScheduleRow,

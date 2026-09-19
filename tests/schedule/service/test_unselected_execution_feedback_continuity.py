@@ -5,7 +5,7 @@ from dataclasses import replace
 import pytest
 
 import core.services.scheduler.run.schedule_input_collector as collector_module
-from core.infrastructure.errors import AppError
+from core.errors import AppError
 from core.services.scheduler.operation_execution_feedback_service import OperationExecutionFeedbackService
 from core.services.scheduler.schedule_service import ScheduleService
 from tests.schedule.service.unselected_execution_guardrails_support import (

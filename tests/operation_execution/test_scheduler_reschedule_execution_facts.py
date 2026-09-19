@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 
 import core.services.scheduler.schedule_service as schedule_service_mod
-from core.infrastructure.errors import AppError, ValidationError
+from core.errors import AppError, ValidationError
 from core.models.operation_execution_scope import OperationExecutionScope
 from core.models.schedule_plan_role import ROLE_ADOPTED, ROLE_CRITICAL_BEST, SOURCE_CANDIDATE_ROWS, SOURCE_SCHEDULE
 from core.services.scheduler.execution_fact_provider import ExecutionFactProvider

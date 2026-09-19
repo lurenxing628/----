@@ -4,7 +4,7 @@ from datetime import datetime
 
 import pytest
 
-from core.infrastructure.errors import AppError
+from core.errors import AppError
 from core.models.workbench_run_compute import CandidateRunInputError
 from core.services.execution.ledger_reader import ExecutionLedgerReader
 from core.services.workbench.execution_ledger import ExecutionLedgerService

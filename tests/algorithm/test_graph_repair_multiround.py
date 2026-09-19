@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.services.scheduler.run import optimizer_graph_ready_repair as repair
 from core.services.scheduler.run.optimizer_graph_ready_feature_basis import select_profile_metrics
 from core.services.scheduler.run.optimizer_graph_ready_profiles import graph_ready_v2_profiles

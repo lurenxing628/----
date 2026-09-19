@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Union
 
-from core.infrastructure.errors import BusinessError, ErrorCode
+from core.errors import BusinessError, ErrorCode
 from core.infrastructure.logging import safe_log
 from core.models import ExternalGroup
 

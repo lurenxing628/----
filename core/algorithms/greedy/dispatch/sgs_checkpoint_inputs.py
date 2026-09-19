@@ -8,7 +8,7 @@ from types import SimpleNamespace
 from typing import Any
 
 from core.algorithm_runtime.static_attribute import static_attribute, static_class_attribute
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 
 
 def input_value(value: Any, *, field: str, depth: int = 0) -> Any:

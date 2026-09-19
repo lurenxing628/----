@@ -3,7 +3,7 @@
 from collections import defaultdict
 from datetime import date
 
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.models.calendar import OperatorCalendar, WorkCalendar
 from core.services.scheduler.calendar_engine import CalendarEngine
 from core.services.scheduler.operator_shift_calendar import OperatorShiftCalendar

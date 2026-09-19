@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, Iterable, List, Tuple
 
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 
 from .active_preset_service import ActivePresetService
 from .config_constants import (

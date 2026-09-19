@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional, Sequence, Tuple
 
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 
 from .gantt_range import WeekRange
 from .schedule_result_view_context import (

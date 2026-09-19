@@ -13,8 +13,8 @@ from tests._support.paths import REPO_ROOT
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from core.errors import ValidationError
 from core.infrastructure.database import ensure_schema, get_connection
-from core.infrastructure.errors import ValidationError
 from core.services.common.excel_templates import build_xlsx_bytes
 from core.services.common.excel_validators import (
     get_batch_row_validate_and_normalize,

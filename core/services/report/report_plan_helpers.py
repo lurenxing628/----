@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Protocol, cast
 
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.services.scheduler.schedule_plan_query_service import SchedulePlanResolution, plan_role_label
 
 from . import calculations

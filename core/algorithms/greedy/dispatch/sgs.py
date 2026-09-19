@@ -17,7 +17,7 @@ from core.algorithm_runtime.piece_input import operation_batch, operation_dispat
 from core.algorithm_runtime.run_state import ScheduleRunState
 from core.algorithm_runtime.sgs_estimate_reuse import current_sgs_reuse, sgs_handoff_scope
 from core.algorithm_runtime.slot_overlap_reuse import sgs_overlap_reuse
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.shared.strict_parse import parse_required_int
 
 from .batch_order import _coerce_state

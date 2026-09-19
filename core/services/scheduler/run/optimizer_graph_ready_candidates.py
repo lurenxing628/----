@@ -5,7 +5,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from core.algorithms import ScheduleResult, SortStrategy
 from core.algorithms.evaluation import compute_metrics
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 
 from .optimizer_graph_ready_candidate_payload import build_graph_ready_candidate_payload
 from .optimizer_graph_ready_context import (

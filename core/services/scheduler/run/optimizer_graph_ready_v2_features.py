@@ -9,7 +9,7 @@ from core.algorithm_contracts.date_parsers import parse_date
 from core.algorithm_contracts.priority_constants import PRIORITY_WEIGHT, normalize_priority
 from core.algorithm_runtime.piece_input import operation_batch
 from core.algorithms.value_domains import EXTERNAL, MERGED
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.models.objective import normalize_objective_name
 
 from .optimizer_graph_ready_feature_basis import BASELINE_ORDERING_FIELD, BATCH_WORKLOAD_BASIS, SUCCESSOR_WORKLOAD_BASIS

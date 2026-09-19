@@ -1,6 +1,5 @@
 """回归测试：GreedyScheduler 的 SGS 评分阶段对不可评分输入直接失败而非造兜底排序 key——外协工序 ext_days<=0 抛 ValidationError(field=ext_days)、缺资源内部工序自动分配 probe 失败抛 ValidationError(field=resource)，且 probe_only 探测不污染 fallback_counts 各计数。"""
 
-import os
 import sys
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -131,7 +130,7 @@ def test_sgs_probe_only_missing_resource_is_rejected_without_polluting_counters(
 
 
 def _assert_invalid_external_duration_rejected(GreedyScheduler):
-    from core.infrastructure.errors import ValidationError
+    from core.errors import ValidationError
 
     operations, batches, start_dt = _build_case()
 
@@ -177,7 +176,7 @@ def _test_probe_only_internal_ops(GreedyScheduler):
     评分阶段应走 probe_only=True → _count 为空操作 → 不累加计数；
     probe 失败后直接暴露资源合同错误，不再生成不可评分兜底 key。
     """
-    from core.infrastructure.errors import ValidationError
+    from core.errors import ValidationError
 
     class _StubConfigService:
         def __init__(self, values):

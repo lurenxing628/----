@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Set
 
 from core.algorithms.greedy.seed import _identity_int
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.models.enums import MergeMode, SourceType
 
 

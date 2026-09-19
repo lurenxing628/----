@@ -130,7 +130,7 @@ def _build_case():
 def test_batch_order_override_dedup():
 
     from core.algorithms import GreedyScheduler
-    from core.infrastructure.errors import ValidationError
+    from core.errors import ValidationError
 
     operations, batches, start_dt = _build_case()
     sched = GreedyScheduler(calendar_service=_StubCalendarService())

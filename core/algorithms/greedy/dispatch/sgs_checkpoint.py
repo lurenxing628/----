@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from typing import Any, Callable, Dict, FrozenSet, Iterable, List, NoReturn, Optional, Sequence, Tuple
 
 from core.algorithm_runtime.run_state import ScheduleRunState
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 
 from .sgs_checkpoint_inputs import input_record, input_value
 

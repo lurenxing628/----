@@ -2,7 +2,7 @@
 
 
 def _expect_validation(label, func, field: str) -> None:
-    from core.infrastructure.errors import ValidationError
+    from core.errors import ValidationError
 
     try:
         func()

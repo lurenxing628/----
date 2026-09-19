@@ -7,8 +7,8 @@ from io import BytesIO
 import openpyxl
 import pytest
 
+from core.errors import ValidationError
 from core.infrastructure.database import get_connection
-from core.infrastructure.errors import ValidationError
 from core.models.operation_execution_labels import action_to_event_type
 from core.services.report import ReportEngine
 from core.services.report.execution_review import _execution_scope

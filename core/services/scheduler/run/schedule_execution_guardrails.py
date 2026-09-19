@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import timedelta
 from typing import Any, Dict, List, Set, Tuple
 
-from core.infrastructure.errors import AppError, ErrorCode
+from core.errors import AppError, ErrorCode
 from core.models import BatchOperation
 from core.models.enums import SourceType
 from core.models.operation_execution_event import (

@@ -3,7 +3,7 @@ from __future__ import annotations
 import inspect
 from typing import Any, Dict, Iterable, Optional, Tuple
 
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 
 _NO_CACHE = object()
 _STRICT_MODE_SUPPORT_CACHE: Dict[Any, bool] = {}

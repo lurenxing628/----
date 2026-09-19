@@ -10,7 +10,7 @@ from openpyxl.cell.cell import Cell
 from openpyxl.styles import Alignment, Font
 from openpyxl.worksheet.worksheet import Worksheet
 
-from core.infrastructure.errors import AppError, ErrorCode, ValidationError
+from core.errors import AppError, ErrorCode, ValidationError
 from core.services.common.excel_templates import _sanitize_export_cell
 
 from .resource_dispatch_actual_records import (

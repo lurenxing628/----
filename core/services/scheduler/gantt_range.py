@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
-from typing import Any, Optional
+from typing import Optional
 
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 
 from ._sched_display_utils import fmt_dt as _fmt_dt
 

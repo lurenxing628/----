@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Any, Dict, Optional, Sequence, Tuple
 
 from core.algorithms.objective_specs import normalize_objective_name, objective_metric_keys
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 
 REFERENCE_SCHEMA_VERSION = 1
 

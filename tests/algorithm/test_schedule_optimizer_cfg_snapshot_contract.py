@@ -9,7 +9,7 @@ import pytest
 
 import core.services.scheduler.schedule_optimizer as schedule_optimizer
 from core.algorithms.greedy.schedule_params import resolve_schedule_params
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.services.scheduler.config.config_snapshot import ScheduleConfigSnapshot, ensure_schedule_config_snapshot
 
 

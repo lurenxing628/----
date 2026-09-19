@@ -6,8 +6,8 @@ import pytest
 
 import core.services.scheduler.run.schedule_persistence as persistence_module
 import core.services.scheduler.schedule_service as service_module
+from core.errors import AppError
 from core.infrastructure.database import get_connection
-from core.infrastructure.errors import AppError
 from core.services.scheduler.operation_execution_feedback_service import OperationExecutionFeedbackService
 from core.services.scheduler.schedule_service import ScheduleService
 from tests.schedule.service.unselected_execution_guardrails_support import (

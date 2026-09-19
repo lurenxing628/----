@@ -5,7 +5,7 @@ from datetime import timedelta
 
 import pytest
 
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.models.workbench_run_compute import CandidateRunInputError
 from core.services.scheduler.run.schedule_payload_contract import build_validated_schedule_payload
 from core.services.workbench.run_compute import compute_candidate_run, compute_prepared_candidate_run

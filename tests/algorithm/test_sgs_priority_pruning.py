@@ -10,7 +10,7 @@ from core.algorithms import GreedyScheduler
 from core.algorithms.greedy import scheduler as scheduler_module
 from core.algorithms.greedy.auto_assign import eligible_auto_assign_resources
 from core.algorithms.greedy.dispatch.sgs_priority_pruning import GraphPriorityPruning
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from tests._support.sgs_slot_reuse_case import MemoryCalendar, make_case, make_scheduler
 
 

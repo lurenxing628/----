@@ -10,7 +10,7 @@ import pytest
 
 from core.algorithms import GreedyScheduler, ScheduleResult, SortStrategy
 from core.algorithms.greedy.dispatch.sgs_scoring import with_graph_priority_key
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.services.scheduler.run.optimizer_graph_ready_budget import GraphReadySearchBudget
 from core.services.scheduler.run.optimizer_graph_ready_candidates import (
     context_for_profile,

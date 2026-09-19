@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 
 
 def test_report_numeric_helpers_keep_empty_values_but_reject_bad_service_numbers() -> None:

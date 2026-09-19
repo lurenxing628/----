@@ -7,7 +7,7 @@ from typing import cast
 import pytest
 
 import core.shared.field_parse as field_parse_mod
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.services.common.degradation import DegradationCollector
 
 

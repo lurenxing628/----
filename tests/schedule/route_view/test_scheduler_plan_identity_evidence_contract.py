@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 
+from core.errors import ValidationError
 from core.infrastructure.database import ensure_schema, get_connection
-from core.infrastructure.errors import ValidationError
 from core.models.schedule_candidate import ScheduleCandidate, ScheduleCandidateRows, ScheduleCandidateSelection
 from core.services.scheduler.schedule_plan_identity_builder import build_plan_identity
 from core.services.scheduler.schedule_plan_query_service import (

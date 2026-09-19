@@ -12,7 +12,7 @@ from __future__ import annotations
 import random
 import time
 from types import SimpleNamespace
-from typing import Dict, List
+from typing import Dict
 
 import pytest
 
@@ -20,7 +20,7 @@ from core.algorithms.greedy.dispatch.sgs_graph import (
     _detect_graph_ready_cycle,
     _prepare_graph_ready_state,
 )
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 
 CHAIN_GUARD_NODE_COUNT = 4000
 # 新 O(V+E) 实现单链实测 ~3ms；旧 O(V²) 实现同规模实测 >200ms。

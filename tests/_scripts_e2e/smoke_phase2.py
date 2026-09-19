@@ -60,8 +60,8 @@ def main():
     # 确保可以 import 项目模块
     sys.path.insert(0, repo_root)
 
+    from core.errors import AppError, ErrorCode
     from core.infrastructure.database import ensure_schema, get_connection
-    from core.infrastructure.errors import AppError, ErrorCode
     from core.infrastructure.transaction import TransactionManager
     from data.repositories import (
         CalendarRepository,

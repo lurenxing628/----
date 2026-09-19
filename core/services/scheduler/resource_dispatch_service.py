@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Tuple
 
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.models.schedule_resource_filter import SUPPORTED_DISPATCH_RESOURCE_TYPES
 from core.services.equipment.machine_service import MachineService
 from core.services.personnel import ResourceTeamService

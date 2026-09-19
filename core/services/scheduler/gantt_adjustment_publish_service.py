@@ -6,7 +6,7 @@ from datetime import datetime
 from types import SimpleNamespace
 from typing import Any, Dict, List, Sequence, Set
 
-from core.infrastructure.errors import AppError, ErrorCode, ValidationError
+from core.errors import AppError, ErrorCode, ValidationError
 from core.models import Schedule
 from core.models.enums import SourceType
 from core.models.operation_execution_event import (

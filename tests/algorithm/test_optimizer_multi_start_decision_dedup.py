@@ -14,7 +14,7 @@ from core.algorithm_contracts.sort_strategies import SortStrategy, StrategyFacto
 from core.algorithm_contracts.types import ScheduleSummary
 from core.algorithms.evaluation import compute_metrics, objective_score
 from core.algorithms.greedy.scheduler import GreedyScheduler
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.models.batch import Batch
 from core.services.scheduler.calendar_service import CalendarService
 from core.services.scheduler.config.config_field_spec import default_snapshot_values

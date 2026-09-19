@@ -4,7 +4,7 @@ import json
 import uuid
 from typing import Any, Dict, Optional
 
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.models.schedule_adjustment import (
     DRAFT_STATUS_SAVED_SCENARIO,
     SCENARIO_STATUS_ACTIVE,

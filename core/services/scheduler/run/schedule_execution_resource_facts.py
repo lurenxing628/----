@@ -5,7 +5,7 @@ import json
 from dataclasses import replace
 from typing import Any, Dict, Optional, Sequence, Tuple
 
-from core.infrastructure.errors import AppError, ErrorCode
+from core.errors import AppError, ErrorCode
 from core.models.schedule_plan_role import ROLE_ADOPTED, SOURCE_SCHEDULE
 from core.models.workbench_execution import ExecutionProjection
 from core.services.scheduler.execution.execution_fact_provider import ExecutionFact, ExecutionFactProvider

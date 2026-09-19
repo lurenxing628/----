@@ -10,7 +10,7 @@ import sqlite3
 import threading
 from pathlib import Path
 
-from core.infrastructure.errors import BusinessError
+from core.errors import BusinessError
 from core.services.equipment.machine_downtime_service import MachineDowntimeService
 
 SERVICE_PATH = Path(__file__).resolve().parents[2] / "core" / "services" / "equipment" / "machine_downtime_service.py"

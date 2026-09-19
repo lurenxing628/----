@@ -8,8 +8,8 @@ from typing import Set
 
 import pytest
 
+from core.errors import ValidationError
 from core.infrastructure.database import CURRENT_SCHEMA_VERSION, ensure_schema, get_connection
-from core.infrastructure.errors import ValidationError
 from core.infrastructure.migration_state import detect_schema_is_current
 from core.models.schedule_adjustment import DRAFT_STATUS_DISCARDED
 from core.services.scheduler.gantt_adjustment_draft_service import GanttAdjustmentDraftService

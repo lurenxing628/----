@@ -38,10 +38,10 @@ items:
   - slug: errors-path-consolidation
     description: core.infrastructure.errors 旧路径一次性 codemod 到 core.errors，删垫片，加禁用规则
     depends_on: []
-    status: planned
+    status: done
     feature: null
     minimal_loop: false
-    notes: 一个提交做完，工作区安静时执行
+    notes: 2026-09-20 完成。341 个文件 codemod 到 core.errors，删除 core/infrastructure/errors.py，A2 边界测试新增“退役路径不存在且全仓无引用”合同
 
   - slug: sql-drain-writes
     description: 11 条写语句进主数据仓储

@@ -12,7 +12,7 @@ from core.algorithms import GreedyScheduler, ScheduleResult
 from core.algorithms.evaluation import ScheduleMetrics, compute_metrics, objective_score
 from core.algorithms.sort_strategies import SortStrategy
 from core.algorithms.value_domains import INTERNAL
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.models.schedule_config_runtime import default_snapshot_values
 from core.services.scheduler.run.optimizer_proof_cases import TinyBenchmarkCase, TinyOperationSpec
 

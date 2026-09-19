@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.models.enums import MergeMode
 from core.services.scheduler.schedule_input_builder import build_algo_operations
 

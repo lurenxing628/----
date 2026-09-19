@@ -39,7 +39,7 @@ def main() -> None:
     if repo_root not in sys.path:
         sys.path.insert(0, repo_root)
 
-    from core.infrastructure.errors import ValidationError
+    from core.errors import ValidationError
     from core.infrastructure.logging import OperationLogger
     from core.services.scheduler.run.schedule_persistence import ValidatedSchedulePayload
     from core.services.scheduler.schedule_persistence import persist_schedule
@@ -148,7 +148,7 @@ def test_no_actionable_schedule_prefers_root_error_over_missing_resource_hint(
     root_error: str,
     expected_public_text: str,
 ) -> None:
-    from core.infrastructure.errors import ValidationError
+    from core.errors import ValidationError
     from core.services.scheduler.run.schedule_persistence_errors import raise_no_actionable_schedule_error
 
     op = SimpleNamespace(
@@ -175,7 +175,7 @@ def test_no_actionable_schedule_prefers_root_error_over_missing_resource_hint(
 
 
 def test_non_auto_assign_invalid_hours_error_keeps_missing_resource_hint() -> None:
-    from core.infrastructure.errors import ValidationError
+    from core.errors import ValidationError
     from core.services.scheduler.run.schedule_persistence_errors import raise_no_actionable_schedule_error
 
     op = SimpleNamespace(
@@ -290,7 +290,7 @@ def test_legacy_auto_assign_failed_op_ids_from_errors_does_not_guess_duplicate_o
 
 
 def test_no_actionable_schedule_does_not_expose_unsafe_auto_assign_root_error() -> None:
-    from core.infrastructure.errors import ValidationError
+    from core.errors import ValidationError
     from core.services.scheduler.run.schedule_persistence_errors import raise_no_actionable_schedule_error
 
     root_error = (
@@ -327,7 +327,7 @@ def test_no_actionable_schedule_does_not_expose_unsafe_auto_assign_root_error() 
 
 
 def test_no_actionable_schedule_uses_later_safe_auto_assign_error_after_unsafe_one() -> None:
-    from core.infrastructure.errors import ValidationError
+    from core.errors import ValidationError
     from core.services.scheduler.run.schedule_persistence_errors import raise_no_actionable_schedule_error
 
     unsafe_error = (
@@ -363,7 +363,7 @@ def test_no_actionable_schedule_uses_later_safe_auto_assign_error_after_unsafe_o
 
 
 def test_empty_payload_uses_schedule_errors_for_no_actionable_message() -> None:
-    from core.infrastructure.errors import ValidationError
+    from core.errors import ValidationError
     from core.services.scheduler.run.schedule_payload_contract import build_validated_schedule_payload
 
     op = SimpleNamespace(

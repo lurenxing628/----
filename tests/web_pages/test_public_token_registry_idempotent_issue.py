@@ -17,7 +17,7 @@ import pytest
 from flask import Flask
 
 import web.public_token_registry as registry
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 
 _MSG = "入口已失效，请刷新页面后重试。"
 

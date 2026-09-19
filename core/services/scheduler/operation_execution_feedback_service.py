@@ -5,7 +5,7 @@ import json
 import sqlite3
 from typing import Any, Dict, List, Optional, Sequence
 
-from core.infrastructure.errors import AppError, ErrorCode, ValidationError
+from core.errors import AppError, ErrorCode, ValidationError
 from core.infrastructure.transaction import TransactionManager
 from core.models.operation_execution_event import (
     EXECUTION_ACTION_REPORT_EXCEPTION,

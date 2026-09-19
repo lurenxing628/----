@@ -7,7 +7,7 @@ from io import BytesIO
 import openpyxl
 import pytest
 
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.services.report.exporters import xlsx
 from core.services.report.values import number_parsing
 

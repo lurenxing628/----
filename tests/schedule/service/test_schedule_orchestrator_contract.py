@@ -72,7 +72,7 @@ def _base_input() -> Any:
 
 def test_schedule_orchestrator_contract() -> None:
 
-    from core.infrastructure.errors import ValidationError
+    from core.errors import ValidationError
     from core.services.scheduler.run.schedule_optimizer import OptimizationOutcome
     from core.services.scheduler.run.schedule_orchestrator import _build_summary_contract
     from core.services.scheduler.schedule_orchestrator import orchestrate_schedule_run

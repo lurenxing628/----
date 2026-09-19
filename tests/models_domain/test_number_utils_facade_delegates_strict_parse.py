@@ -3,7 +3,7 @@
 
 def test_number_utils_facade_delegates_strict_parse() -> None:
 
-    from core.infrastructure.errors import ValidationError
+    from core.errors import ValidationError
     from core.services.common import number_utils
 
     calls = []

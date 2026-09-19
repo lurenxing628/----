@@ -13,7 +13,7 @@ import pytest
 from core.algorithms import GreedyScheduler, SortStrategy
 from core.algorithms.evaluation import compute_metrics, objective_score
 from core.algorithms.evaluation_completion import UNKNOWN_OBJECTIVE_VALUE
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.services.scheduler.run import optimizer_proof_harness as harness
 from core.services.scheduler.run import optimizer_proof_oracle as oracle
 from core.services.scheduler.run import schedule_optimizer_steps as steps

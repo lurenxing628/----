@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, Set, Tuple, cast
 
 from core.algorithm_contracts.schedule_point_evidence import verified_point
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.models.enums import SourceType
 from core.shared.strict_parse import parse_required_int
 

@@ -12,8 +12,8 @@ from pathlib import Path
 
 import pytest
 
+from core.errors import AppError, ErrorCode
 from core.infrastructure.database import ensure_schema, get_connection
-from core.infrastructure.errors import AppError, ErrorCode
 from core.services.scheduler.operation_execution_feedback_support import ExecutionFeedbackContext
 from core.services.scheduler.resource_dispatch_execution_service import ResourceDispatchExecutionService
 from tests._support.paths import REPO_ROOT

@@ -8,7 +8,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.services.scheduler.run.optimizer_graph_ready_repair_contract import resolve_elite_repair_limits
 from core.services.scheduler.run.optimizer_graph_ready_repair_neighbors import (
     build_repair_neighborhood,

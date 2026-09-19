@@ -13,7 +13,7 @@ from types import SimpleNamespace
 import pytest
 
 from core.algorithm_runtime.calendar_timing_memo import MemoizedTimingCalendar, native_timing_calendar
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.services.scheduler.calendar_engine import NATIVE_TIMING_METHODS, CalendarEngine
 from core.services.scheduler.calendar_service import CalendarService
 from core.services.scheduler.calendar_working_hours import MAX_SPAN_DAYS

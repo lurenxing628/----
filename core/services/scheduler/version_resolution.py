@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Optional
 
-from core.infrastructure.errors import BusinessError, ErrorCode, ValidationError
+from core.errors import BusinessError, ErrorCode, ValidationError
 
 VERSION_ERROR_MESSAGE = "版本号不对。请填写大于 0 的数字版本号；如果想看最新版本，可以不填版本。"
 

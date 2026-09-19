@@ -8,7 +8,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.services.common.build_outcome import BuildOutcome
 from core.services.scheduler.schedule_input_collector import collect_schedule_run_input
 

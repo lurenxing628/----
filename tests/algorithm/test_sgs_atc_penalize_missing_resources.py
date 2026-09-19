@@ -87,7 +87,7 @@ def test_sgs_atc_penalize_missing_resources() -> None:
 
     from core.algorithms.dispatch_rules import DispatchRule
     from core.algorithms.greedy.dispatch.sgs import dispatch_sgs
-    from core.infrastructure.errors import ValidationError
+    from core.errors import ValidationError
 
     base_time = datetime(2026, 1, 1, 8, 0, 0)
 

@@ -5,17 +5,14 @@ from typing import Any, Dict, List, Optional, Sequence
 
 from core.algorithms.evaluation import compute_metrics, objective_score
 from core.algorithms.objective_specs import objective_metric_keys
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.services.scheduler.run.optimizer_proof_cases import (
-    TinyBatchSpec,
     TinyBenchmarkCase,
-    TinyOperationSpec,
     build_default_tiny_cases,
 )
 from core.services.scheduler.run.optimizer_proof_contracts import (
     BOUND_SCOPE_FOLDED_FJSP,
     BOUND_SCOPE_SAME_MODEL,
-    FORBIDDEN_PUBLIC_TOKENS,
     REFERENCE_FOLDED_NOT_COMPARABLE,
     REFERENCE_LOWER_BOUND,
     REFERENCE_PROVEN_OPTIMUM,
@@ -25,7 +22,6 @@ from core.services.scheduler.run.optimizer_proof_contracts import (
     best_known_score,
     gap_pct,
     gap_to_score,
-    render_optimizer_proof_report,
     require_known_objective,
     score_equal,
 )

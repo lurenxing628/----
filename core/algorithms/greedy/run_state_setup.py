@@ -12,7 +12,7 @@ from core.algorithm_runtime.downtime import occupy_resource
 from core.algorithm_runtime.resource_quality import MachineTypeState
 from core.algorithm_runtime.run_state import ScheduleRunState
 from core.algorithm_runtime.slot_overlap_reuse import SlotReuseTimeline
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 
 from .dispatch.sgs_checkpoint import CHECKPOINT_FIELD, DecodeCheckpoint
 from .external_groups import rebuild_external_group_cache_from_seeds

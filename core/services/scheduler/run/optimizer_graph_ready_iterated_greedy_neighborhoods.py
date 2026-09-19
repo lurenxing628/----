@@ -18,7 +18,7 @@ import math
 import random
 from typing import Any, Dict, List, Sequence, Tuple
 
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 
 from .optimizer_graph_ready_iterated_greedy_contract import IG_GENERATORS
 

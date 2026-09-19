@@ -24,7 +24,7 @@ from core.algorithm_contracts.types import ScheduleResult
 from core.algorithms.greedy.external_groups import rebuild_external_group_cache_from_seeds
 from core.algorithms.greedy.scheduler import GreedyScheduler
 from core.algorithms.greedy.seed import seed_external_group_keys
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.services.scheduler.run.schedule_input_runtime_support import _merge_execution_and_freeze_seed_results
 from core.services.scheduler.run.schedule_input_seed_metadata import with_frozen_external_seed_metadata
 from core.services.scheduler.run.schedule_seed_contracts import coerce_seed_results

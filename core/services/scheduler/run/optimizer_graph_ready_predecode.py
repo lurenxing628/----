@@ -4,7 +4,7 @@ import math
 from itertools import groupby
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 
 from .optimizer_graph_ready_budget import GraphReadySearchBudget
 from .optimizer_graph_ready_profiles import GRAPH_READY_PHASE, GraphReadyWeightProfile

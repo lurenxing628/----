@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional
 
 import pytest
 
-from core.infrastructure.errors import BusinessError, ErrorCode, ValidationError
+from core.errors import BusinessError, ErrorCode, ValidationError
 from core.models.schedule_plan_role import VALID_PLAN_ROLES
 from core.services.scheduler.schedule_plan_identity_builder import build_plan_identity
 from core.services.scheduler.schedule_plan_query_service import (

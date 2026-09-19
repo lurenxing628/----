@@ -15,7 +15,7 @@ from core.algorithm_runtime.run_state import ScheduleRunState
 from core.algorithm_runtime.sgs_estimate_reuse import sgs_handoff_scope
 from core.algorithms.greedy import scheduler as scheduler_module
 from core.algorithms.greedy.dispatch.sgs_score_cache import AutoAssignProbeContract, SgsScoreCache
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.services.scheduler.calendar_engine import CalendarEngine
 from core.services.scheduler.calendar_service import CalendarService
 from core.services.scheduler.run.schedule_execution_reservations import ExecutionResourceCalendar

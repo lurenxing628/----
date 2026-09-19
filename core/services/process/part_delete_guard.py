@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List
 
-from core.infrastructure.errors import BusinessError, ErrorCode
+from core.errors import BusinessError, ErrorCode
 
 from .deletion_validator import DeletionValidator
 from .deletion_validator import Operation as DeleteOp

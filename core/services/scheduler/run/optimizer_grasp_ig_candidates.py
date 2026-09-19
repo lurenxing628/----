@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 from core.algorithms import ScheduleResult, SortStrategy
 from core.algorithms.evaluation import compute_metrics, objective_score
 from core.algorithms.greedy.algo_stats import merge_algo_stats, snapshot_algo_stats
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 
 from .optimizer_attempt_records import validation_error_origin
 from .optimizer_candidate_comparison import candidate_is_preferred

@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from itertools import zip_longest
 from typing import Any, Dict, List, Optional, Tuple
 
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.models.objective import normalize_objective_name
 
 from .optimizer_graph_ready_feature_basis import BATCH_WORKLOAD_BASIS, SUCCESSOR_WORKLOAD_BASIS

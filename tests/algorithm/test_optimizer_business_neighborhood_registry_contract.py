@@ -13,7 +13,7 @@ from core.algorithms import GreedyScheduler
 from core.algorithms.evaluation import ScheduleMetrics, compute_metrics, objective_score
 from core.algorithms.sort_strategies import SortStrategy
 from core.algorithms.types import ScheduleResult, ScheduleSummary
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.services.scheduler.run.optimizer_candidate_fingerprint import build_candidate_fingerprint
 from core.services.scheduler.run.optimizer_local_search import run_local_search
 from core.services.scheduler.run.optimizer_neighborhood_move_support import positive_count

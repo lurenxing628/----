@@ -51,7 +51,7 @@ def _assert_visible_read_failure(
 def test_schedule_params_read_failure_visible() -> None:
 
     from core.algorithms.greedy.schedule_params import resolve_schedule_params
-    from core.infrastructure.errors import ValidationError
+    from core.errors import ValidationError
 
     _assert_visible_read_failure(
         resolve_schedule_params,

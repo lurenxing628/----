@@ -24,7 +24,7 @@ from core.algorithm_runtime.internal_slot import validate_internal_hours
 from core.algorithms.evaluation import compute_metrics, objective_score
 from core.algorithms.sort_strategies import SortStrategy
 from core.algorithms.types import ScheduleResult, ScheduleSummary
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.services.scheduler.run.optimizer_candidate_profile import build_candidate_profile
 from core.services.scheduler.run.optimizer_graph_ready import run_graph_ready_candidates
 from core.services.scheduler.run.optimizer_graph_ready_candidates import context_for_profile

@@ -8,7 +8,7 @@ from core.algorithm_contracts.types import ScheduleResult
 from core.algorithm_contracts.value_domains import EXTERNAL, INTERNAL
 from core.algorithm_runtime.dispatch_context import DispatchContextContractError, ensure_dispatch_context
 from core.algorithm_runtime.run_state import ScheduleRunState
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 
 
 def dispatch_batch_order(

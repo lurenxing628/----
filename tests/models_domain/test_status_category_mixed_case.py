@@ -15,7 +15,7 @@ def assert_raises(exc_type, fn, *args, **kwargs):
 
 def test_status_category_mixed_case():
 
-    from core.infrastructure.errors import BusinessError, ValidationError
+    from core.errors import BusinessError, ValidationError
     from core.services.equipment.machine_service import MachineService
     from core.services.personnel.operator_service import OperatorService
     from core.services.process.op_type_service import OpTypeService

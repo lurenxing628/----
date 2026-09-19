@@ -11,7 +11,7 @@ import pytest
 
 from core.algorithms.dispatch_rules import DispatchRule
 from core.algorithms.greedy.dispatch.sgs import dispatch_sgs
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 
 
 @dataclass

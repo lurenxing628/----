@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple, cast
 
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.models import Batch, BatchOperation, ExternalGroup, PartOperation
 from core.models.enums import PartOperationStatus
 from core.shared.degradation import DegradationCollector, DegradationEvent

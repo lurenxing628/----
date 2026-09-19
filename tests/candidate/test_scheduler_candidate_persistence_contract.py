@@ -12,8 +12,8 @@ from typing import Any, Dict, List
 
 import pytest
 
+from core.errors import ValidationError
 from core.infrastructure.database import ensure_schema, get_connection
-from core.infrastructure.errors import ValidationError
 from core.services.scheduler.run.schedule_candidate_persistence import persist_candidate_comparison
 from core.services.scheduler.run.schedule_candidate_runner import CandidateComparisonOutcome, CandidatePlan
 from core.services.scheduler.run.schedule_candidate_selection import CandidateSelectionResult

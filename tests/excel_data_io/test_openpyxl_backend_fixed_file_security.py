@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 from openpyxl import load_workbook
 
-from core.infrastructure.errors import AppError
+from core.errors import AppError
 from core.services.common.openpyxl_backend import OpenpyxlBackend
 
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Optional, Tuple
 
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.shared.boolean_normalize import to_yes_no
 from core.shared.degradation import DegradationCollector
 from core.shared.field_labels import display_field_label

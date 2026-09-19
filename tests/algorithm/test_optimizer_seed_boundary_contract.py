@@ -8,7 +8,7 @@ from types import SimpleNamespace
 import pytest
 
 from core.algorithms.greedy.seed import normalize_seed_results
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.services.scheduler.run.schedule_seed_contracts import coerce_seed_results
 
 

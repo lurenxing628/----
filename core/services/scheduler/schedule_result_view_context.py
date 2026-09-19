@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional
 
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.models.schedule_plan_role import (
     ROLE_ADOPTED,
     VALID_PLAN_ROLES,

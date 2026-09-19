@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 import pytest
 
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.services.common.excel_service import ImportPreviewRow, RowStatus
 from core.services.personnel.operator_machine_query_service import OperatorMachineQueryService
 from core.services.personnel.operator_machine_service import OperatorMachineService

@@ -10,7 +10,7 @@ from typing import Dict, Optional
 import pytest
 
 from core.algorithms.sort_strategies import SortStrategy
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.services.scheduler.schedule_optimizer_steps import _run_multi_start, _run_ortools_warmstart
 
 

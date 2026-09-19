@@ -5,7 +5,7 @@ from datetime import date, datetime, time, timedelta
 
 from core.algorithms.evaluation import _count_changeovers
 from core.algorithms.types import ScheduleResult
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.models.workbench_run_candidate import local_time
 from core.services.capacity.plan_calendar_engine import SnapshotCalendarEngine
 from core.services.capacity.plan_calendar_intervals import instant

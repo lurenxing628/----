@@ -185,7 +185,7 @@ def test_ig_startup_waits_for_real_readiness_only_until_its_first_task():
 
 
 def test_profiles_all_rejected_still_allow_ig_to_decode_a_legal_baseline():
-    from core.infrastructure.errors import ValidationError
+    from core.errors import ValidationError
     from tests._support.optimizer_graph_ready_benchmark import _schedule_with_scheduler
     from tests._support.optimizer_graph_ready_repair_benchmark import run_production_repair_case
 

@@ -10,9 +10,9 @@ from dataclasses import asdict
 
 import pytest
 
+from core.errors import AppError
 from core.infrastructure import migration_runner
 from core.infrastructure.database import ensure_schema
-from core.infrastructure.errors import AppError
 from core.infrastructure.migration_common import MigrationOutcome
 from core.infrastructure.migration_state import (
     CURRENT_SCHEMA_VERSION,
@@ -46,9 +46,7 @@ from tests.workbench.identity_metadata_support import (
     business_snapshot,
     connect_temp,
     copy_to_temp,
-    identity_database,
     insert_row,
-    legacy_identity_database,
     remove_metadata_for_v19,
     resource_key,
     resource_payload,

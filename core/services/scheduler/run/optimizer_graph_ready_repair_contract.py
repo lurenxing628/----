@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 
 REPAIR_PHASE = "graph_ready_v2_elite_repair"
 REPAIR_GENERATORS = ("adjacent_swap", "single_insert", "tardy_boundary_move", "critical_block_swap",

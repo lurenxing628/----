@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-import sqlite3
 import sys
 from typing import Any, Dict, List, Optional
 
-from core.infrastructure.errors import AppError, ErrorCode
+from core.errors import AppError, ErrorCode
 from core.models import ScheduleHistory
 
 from .base_repo import BaseRepository

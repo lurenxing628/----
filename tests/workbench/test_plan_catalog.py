@@ -4,7 +4,7 @@ from dataclasses import FrozenInstanceError, fields
 
 import pytest
 
-from core.infrastructure.errors import AppError
+from core.errors import AppError
 from core.models.schedule_plan_identity import PlanIdentity
 from core.models.schedule_plan_resolution import SchedulePlanRoleOption
 from core.services.scheduler.workbench_plan_catalog import (

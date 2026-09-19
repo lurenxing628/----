@@ -130,7 +130,7 @@ def _build_summary(
 
 def _assert_downtime_partial_fail_contract() -> None:
     import core.services.scheduler.resource_pool_builder as builder_mod
-    from core.infrastructure.errors import ValidationError
+    from core.errors import ValidationError
 
     original_repo = builder_mod.MachineDowntimeRepository
 

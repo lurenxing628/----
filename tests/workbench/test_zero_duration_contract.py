@@ -6,7 +6,7 @@ from types import SimpleNamespace
 import pytest
 
 from core.algorithm_runtime.internal_slot import validate_internal_hours
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.services.scheduler.run.schedule_payload_contract import build_validated_schedule_payload
 from core.services.workbench.zero_duration import PointEventError, internal_duration_hours, point_event_dto
 

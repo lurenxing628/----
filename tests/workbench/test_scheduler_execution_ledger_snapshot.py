@@ -4,14 +4,13 @@ import sqlite3
 
 import pytest
 
-from core.infrastructure.errors import AppError
+from core.errors import AppError
 from core.services.execution.ledger_reader import ExecutionLedgerReader
 from core.services.scheduler.execution_fact_provider import ExecutionFactProvider
 from core.services.scheduler.execution_snapshot import build_execution_snapshot
 from core.services.scheduler.run.schedule_execution_persistence_guard import _validate_execution_snapshot
 from tests.workbench.execution_ledger_support import LedgerCase
 from tests.workbench.scheduler_execution_ledger_support import PLAN_FIELDS, plan_rows, read_facts, read_snapshot
-from tests.workbench.scheduler_execution_ledger_support import ledger_case as ledger_fixture
 
 
 def test_report_changes_between_preflight_and_persist_are_stale(ledger_case):

@@ -142,7 +142,7 @@ def test_profile_diagnostics_count_conservation_and_shared_paths(cap):
 
 
 def test_construction_validation_is_not_counted_as_a_decode(monkeypatch):
-    from core.infrastructure.errors import ValidationError
+    from core.errors import ValidationError
     from core.services.scheduler.run import optimizer_graph_ready_candidates as candidates
     original = candidates.context_for_profile
 
@@ -181,7 +181,7 @@ def test_real_same_output_baseline_cannot_become_a_fake_strict_improvement(decod
 
 
 def test_strict_and_nonstrict_decode_failures_count_started_sgs_only():
-    from core.infrastructure.errors import ValidationError
+    from core.errors import ValidationError
 
     def schedule(scheduler, **kwargs):
         raise ValidationError("controlled decode failure", field="schedule")

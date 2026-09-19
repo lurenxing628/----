@@ -5,7 +5,7 @@ from typing import Optional
 
 
 def _expect_validation_error(fn, title: str, field: Optional[str] = None) -> None:
-    from core.infrastructure.errors import ValidationError
+    from core.errors import ValidationError
 
     ok = False
     try:
@@ -28,7 +28,7 @@ def _save_preset_raw(cfg_svc, name: str, payload: dict) -> None:
 
 def test_scheduler_apply_preset_reject_invalid_numeric(db_path) -> None:
 
-    from core.infrastructure.database import ensure_schema, get_connection
+    from core.infrastructure.database import get_connection
     from core.services.scheduler import ConfigService
 
     conn = get_connection(db_path)

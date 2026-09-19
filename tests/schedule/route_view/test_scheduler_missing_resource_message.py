@@ -11,7 +11,7 @@ import pytest
 from core.algorithms.dispatch_rules import DispatchRule
 from core.algorithms.greedy.dispatch.sgs_scoring import _score_internal_candidate
 from core.algorithms.greedy.run_state import ScheduleRunState
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 
 
 def _missing_resource_error(

@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import sqlite3
 import sys
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, Union
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Union
 
-from core.infrastructure.errors import AppError, ErrorCode
+from core.errors import AppError, ErrorCode
 
 Params = Union[Sequence[Any], Dict[str, Any]]
 

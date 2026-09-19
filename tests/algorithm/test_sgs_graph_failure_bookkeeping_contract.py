@@ -27,7 +27,7 @@ import pytest
 
 from core.algorithm_contracts.types import ScheduleResult
 from core.algorithm_runtime.run_state import ScheduleRunState
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 
 _BASE_TIME = datetime(2026, 1, 1, 8, 0, 0)
 

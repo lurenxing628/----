@@ -2,7 +2,7 @@
 
 
 def _expect_validation_error(fn, title: str) -> None:
-    from core.infrastructure.errors import ValidationError
+    from core.errors import ValidationError
 
     ok = False
     try:
@@ -14,7 +14,7 @@ def _expect_validation_error(fn, title: str) -> None:
 
 def test_scheduler_reject_nonfinite_and_invalid_status(db_path) -> None:
 
-    from core.infrastructure.database import ensure_schema, get_connection
+    from core.infrastructure.database import get_connection
     from core.services.scheduler import BatchService, CalendarService, ConfigService, ScheduleService
 
     conn = get_connection(db_path)

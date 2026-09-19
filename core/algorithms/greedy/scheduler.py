@@ -29,7 +29,7 @@ from core.algorithm_runtime.native_snapshot import make_class_guard
 from core.algorithm_runtime.resource_quality import initialize_resource_quality
 from core.algorithm_runtime.run_state import ScheduleRunState
 from core.algorithm_runtime.sgs_estimate_reuse import sgs_reuse_scope
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 
 from . import internal_operation
 from .auto_assign import (

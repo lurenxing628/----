@@ -11,7 +11,7 @@ import pytest
 import core.services.scheduler.run.schedule_optimizer as schedule_optimizer_module
 from core.algorithms.greedy.scheduler import GreedyScheduler
 from core.algorithms.sort_strategies import SortStrategy
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.services.scheduler.config.config_field_spec import default_snapshot_values
 from core.services.scheduler.run.schedule_optimizer import optimize_schedule
 

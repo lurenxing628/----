@@ -19,12 +19,11 @@ from __future__ import annotations
 
 import random
 from collections import OrderedDict
-from dataclasses import replace
 from typing import Any, Callable, Dict, List, Optional, Tuple
 from typing import OrderedDict as OrderedDictType
 
 from core.algorithms.greedy.dispatch.sgs_checkpoint import DecodeCheckpoint, decode_output_digest
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 
 from .optimizer_graph_ready_context import reason_from_validation
 from .optimizer_graph_ready_decode_capture import capture_failure_reason, is_capture_failure
@@ -45,7 +44,6 @@ from .optimizer_graph_ready_iterated_greedy_contract import (
     _BudgetExhausted,
     ig_decode_profile,
     iterated_greedy_public_message,
-    new_iterated_greedy_report,
 )
 from .optimizer_graph_ready_iterated_greedy_features import entry_features, tardy_signals
 from .optimizer_graph_ready_iterated_greedy_incumbent import IGIncumbentTracker

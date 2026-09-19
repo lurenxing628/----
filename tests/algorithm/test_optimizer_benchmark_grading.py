@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from tests._support.optimizer_benchmark_grading import (
     build_jsp_folded_reference,
     grade_smtwt_overdue,

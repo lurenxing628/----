@@ -5,12 +5,12 @@ import sqlite3
 
 import pytest
 
-from core.infrastructure.errors import AppError
+from core.errors import AppError
 from core.models.workbench_command import input_fingerprint
 from core.services.capacity.plan_calendar_intervals import instant
 from core.services.scheduler.calendar_engine import CalendarEngine
 from core.services.workbench.plan_calendar import project_plan_calendar
-from tests.workbench.plan_calendar_support import codes, measured, plan_calendar_case, resource
+from tests.workbench.plan_calendar_support import codes, measured, resource
 
 
 def test_default_is_domain_policy_not_sample_capacity(calendar_case):

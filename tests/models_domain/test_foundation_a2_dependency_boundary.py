@@ -124,7 +124,7 @@ def _assert_same_exports(compat_module, canonical_module, names: Iterable[str]) 
 
 
 def test_existing_error_contract_is_characterized() -> None:
-    errors = importlib.import_module("core.infrastructure.errors")
+    errors = importlib.import_module("core.errors")
 
     assert tuple((item.name, item.value) for item in errors.ErrorCode) == _ERROR_CODE_VALUES
     assert {name: str(signature(getattr(errors, name))) for name in _ERROR_SIGNATURES} == _ERROR_SIGNATURES
@@ -201,12 +201,6 @@ def test_existing_migration_common_contract_is_characterized(capsys: pytest.Capt
     assert "迁移日志回退" in capsys.readouterr().err
 
 
-def test_error_compatibility_path_reexports_canonical_object_identity() -> None:
-    error_compat = importlib.import_module("core.infrastructure.errors")
-    error_canonical = importlib.import_module("core.errors")
-    _assert_same_exports(error_compat, error_canonical, _ERROR_EXPORTS)
-
-
 def test_migration_compatibility_path_reexports_canonical_object_identity() -> None:
     migration_compat = importlib.import_module("core.infrastructure.migrations.common")
     migration_canonical = importlib.import_module("core.infrastructure.migration_common")
@@ -218,7 +212,6 @@ def test_canonical_and_compatibility_modules_import_in_both_orders() -> None:
     env["PYTHONDONTWRITEBYTECODE"] = "1"
     module_orders = (
         (
-            "core.infrastructure.errors",
             "core.errors",
             "core.infrastructure.migrations.common",
             "core.infrastructure.migration_common",
@@ -227,7 +220,6 @@ def test_canonical_and_compatibility_modules_import_in_both_orders() -> None:
             "core.infrastructure.migration_common",
             "core.infrastructure.migrations.common",
             "core.errors",
-            "core.infrastructure.errors",
         ),
     )
     for module_names in module_orders:
@@ -242,6 +234,42 @@ def test_canonical_and_compatibility_modules_import_in_both_orders() -> None:
             text=True,
         )
         assert completed.returncode == 0, completed.stderr
+
+
+_RETIRED_ERROR_COMPAT_MODULE = "core.infrastructure.errors"
+_RETIRED_ERROR_COMPAT_SCAN_ROOTS = ("core", "web", "data", "tests", "tools", "scripts", "app.py", "config.py")
+
+
+def _iter_repo_python_files(roots: Iterable[str]) -> Iterable[str]:
+    for root in roots:
+        base = Path(REPO_ROOT) / root
+        if base.is_file():
+            yield base.relative_to(REPO_ROOT).as_posix()
+            continue
+        for path in sorted(base.rglob("*.py")):
+            if "__pycache__" in path.parts:
+                continue
+            yield path.relative_to(REPO_ROOT).as_posix()
+
+
+def test_retired_error_compat_path_is_gone_and_unreferenced() -> None:
+    """2026-09-20 起 core.infrastructure.errors 兼容垫片已删除：文件不存在，且全仓无人再 import 它。"""
+    assert not (Path(REPO_ROOT) / "core" / "infrastructure" / "errors.py").exists()
+    offenders = []
+    for rel_path in _iter_repo_python_files(_RETIRED_ERROR_COMPAT_SCAN_ROOTS):
+        if rel_path == Path(__file__).relative_to(REPO_ROOT).as_posix():
+            continue
+        source = (Path(REPO_ROOT) / rel_path).read_text(encoding="utf-8")
+        if _RETIRED_ERROR_COMPAT_MODULE not in source:
+            continue
+        for level, module, _names in _module_imports(rel_path):
+            if level == 0 and module == _RETIRED_ERROR_COMPAT_MODULE:
+                offenders.append(rel_path)
+                break
+        else:
+            if f'"{_RETIRED_ERROR_COMPAT_MODULE}"' in source or f"'{_RETIRED_ERROR_COMPAT_MODULE}'" in source:
+                offenders.append(rel_path)
+    assert not offenders, "仍引用已退役的 core.infrastructure.errors：" + ", ".join(offenders)
 
 
 def test_error_callers_use_the_approved_one_way_imports() -> None:

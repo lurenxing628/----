@@ -16,7 +16,7 @@ from datetime import date, datetime
 from types import SimpleNamespace
 from typing import Any, Callable, Dict, Optional, Sequence, Tuple
 
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 
 from .optimizer_graph_ready_predecode import graph_priority_preorder
 from .schedule_candidate_runtime_helpers import (

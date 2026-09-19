@@ -4,7 +4,7 @@ from copy import copy
 from dataclasses import dataclass
 from typing import Any, Dict, Iterator, List, Optional, Tuple, cast
 
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 
 from .optimizer_graph_ready_repair_neighbors import repair_priority_context
 

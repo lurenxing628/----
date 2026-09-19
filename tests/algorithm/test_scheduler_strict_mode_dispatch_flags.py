@@ -38,7 +38,7 @@ def _default_snapshot_kwargs():
 
 
 def _expect_validation(label, func, field):
-    from core.infrastructure.errors import ValidationError
+    from core.errors import ValidationError
 
     try:
         func()

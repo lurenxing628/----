@@ -3,7 +3,7 @@
 from contextlib import contextmanager
 from dataclasses import replace
 
-from core.infrastructure.errors import AppError, ErrorCode
+from core.errors import AppError, ErrorCode
 from core.infrastructure.transaction import TransactionManager
 from core.infrastructure.workbench_execution_ledger_schema import execution_ledger_objects
 from core.models.schedule_plan_role import ROLE_ADOPTED, SOURCE_SCHEDULE

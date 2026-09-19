@@ -4,11 +4,10 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from pathlib import Path
 
 import pytest
 
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.services.scheduler.config.config_service import ConfigService
 from tests._support.paths import REPO_ROOT
 
@@ -272,7 +271,7 @@ def test_config_service_rejects_reserved_custom_preset_name() -> None:
 
 
 def test_config_service_delete_missing_preset_raises_not_found() -> None:
-    from core.infrastructure.errors import BusinessError, ErrorCode
+    from core.errors import BusinessError, ErrorCode
 
     conn = sqlite3.connect(":memory:", check_same_thread=False)
     try:

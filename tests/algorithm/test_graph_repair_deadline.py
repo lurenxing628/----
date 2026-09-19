@@ -6,7 +6,7 @@ from typing import cast
 
 import pytest
 
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.services.scheduler.run import optimizer_graph_ready_profile_selection as selection
 from core.services.scheduler.run import optimizer_graph_ready_repair as repair
 from core.services.scheduler.run import optimizer_graph_ready_repair_decisions as decisions

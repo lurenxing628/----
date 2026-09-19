@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import Any, Callable, Dict, List, Optional, Protocol, cast
 
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.models.execution_review_identity import can_read_execution_review
 from core.models.operation_execution_scope import OperationExecutionScope
 from core.models.resource_identity import ResourceIdentity, build_resource_identity

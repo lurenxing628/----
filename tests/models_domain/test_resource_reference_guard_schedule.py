@@ -3,12 +3,11 @@
 from __future__ import annotations
 
 import os
-from pathlib import Path
 
 import pytest
 
+from core.errors import BusinessError, ErrorCode
 from core.infrastructure.database import ensure_schema, get_connection
-from core.infrastructure.errors import BusinessError, ErrorCode
 from core.services.equipment.machine_service import MachineService
 from core.services.personnel.operator_service import OperatorService
 from tests._support.paths import REPO_ROOT

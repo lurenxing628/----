@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional, Set, Tuple
 
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.models import Batch, BatchOperation
 from core.models.enums import BatchStatus, ReadyStatus, SourceType, YesNo
 from core.services.common.build_outcome import BuildOutcome

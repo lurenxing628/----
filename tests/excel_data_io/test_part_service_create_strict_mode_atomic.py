@@ -3,7 +3,7 @@
 
 def test_part_service_create_strict_mode_atomic(schema_conn) -> None:
 
-    from core.infrastructure.errors import BusinessError, ErrorCode
+    from core.errors import BusinessError, ErrorCode
     from core.services.process.part_service import PartService
 
     conn = schema_conn

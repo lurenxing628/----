@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Sequence, Set
 
-from core.infrastructure.errors import AppError, ValidationError
+from core.errors import AppError, ValidationError
 from data.repositories.operator_machine_repo import OperatorMachineRepository
 from data.repositories.operator_qualification_repo import OperatorQualificationRepository
 

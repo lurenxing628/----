@@ -67,7 +67,6 @@ def main():
     sys.path.insert(0, repo_root)
 
     from core.infrastructure.database import ensure_schema, get_connection
-    from core.infrastructure.errors import AppError
     from core.infrastructure.logging import OperationLogger
     from core.services.scheduler import BatchService, CalendarService, ConfigService, ScheduleService
 

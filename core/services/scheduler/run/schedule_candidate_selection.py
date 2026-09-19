@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 
 from .schedule_candidate_health import HEALTH_BETTER
 from .schedule_candidate_specs import CANDIDATE_KIND_BASELINE, CANDIDATE_KIND_CRITICAL_CHAIN

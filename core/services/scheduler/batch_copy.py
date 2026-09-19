@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from core.infrastructure.errors import BusinessError, ErrorCode, ValidationError
+from core.errors import BusinessError, ErrorCode, ValidationError
 from core.models import Batch
 from core.models.enums import BatchStatus
 

@@ -9,7 +9,7 @@ import pytest
 from core.algorithms.dispatch_rules import DispatchRule
 from core.algorithms.greedy.schedule_params import resolve_schedule_params
 from core.algorithms.sort_strategies import SortStrategy
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.services.scheduler.config.config_snapshot import ScheduleConfigSnapshot
 
 

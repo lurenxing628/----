@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.models.schedule_adjustment import ScheduleAdjustmentChange
 from core.shared.strict_parse import parse_optional_datetime, parse_required_datetime
 from data.repositories.schedule_rows import ScheduleDetailRow

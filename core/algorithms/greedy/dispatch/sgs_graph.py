@@ -4,7 +4,7 @@ import math
 from typing import Any, Dict, List, Optional, Tuple
 
 from core.algorithm_runtime.graph_cycle import kahn_unreachable_op_ids
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.shared.strict_parse import parse_required_int
 
 from .sgs_scoring import _collect_sgs_candidates

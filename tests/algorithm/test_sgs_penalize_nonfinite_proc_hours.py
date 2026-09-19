@@ -82,7 +82,7 @@ def test_sgs_penalize_nonfinite_proc_hours() -> None:
 
     from core.algorithms.dispatch_rules import DispatchRule
     from core.algorithms.greedy.dispatch.sgs import dispatch_sgs
-    from core.infrastructure.errors import ValidationError
+    from core.errors import ValidationError
 
     base_time = datetime(2026, 1, 1, 8, 0, 0)
 

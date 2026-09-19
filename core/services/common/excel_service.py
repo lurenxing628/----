@@ -7,7 +7,7 @@ from decimal import Decimal, InvalidOperation
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 
 from .tabular_backend import SOURCE_ROW_NUM_KEY, SOURCE_SHEET_NAME_KEY, TabularBackend
 

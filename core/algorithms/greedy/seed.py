@@ -8,7 +8,7 @@ from core.algorithm_contracts.schedule_point_evidence import PointSeedResult, po
 from core.algorithm_contracts.types import ScheduleResult
 from core.algorithm_contracts.value_domains import EXTERNAL
 from core.algorithm_runtime.algo_stats import increment_counter
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 
 
 class _SeedScheduleResult(ScheduleResult):

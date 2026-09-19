@@ -5,14 +5,13 @@ from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
+from core.errors import ValidationError
 from core.infrastructure.backup import BackupManager
-from core.infrastructure.errors import ValidationError
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.scheduler.schedule_service import ScheduleService
 from core.services.workbench import run_worker
 from core.services.workbench.run_jobs_facts import capture_run_facts
 from tests.workbench.run_jobs_support import connection, service  # noqa: F401
-from tests.workbench.run_jobs_support import job_case as _job_case
 
 
 def test_twelve_simultaneous_same_intents_commit_once(job_case):

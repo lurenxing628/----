@@ -6,7 +6,7 @@ from types import SimpleNamespace
 import pytest
 
 from core.algorithms import GreedyScheduler
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.services.scheduler.run.optimizer_search_budget import (
     CandidateBudgetFeedback,
     SearchBudget,

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import NoReturn
 
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 
 from .native_snapshot import UNSUPPORTED, content_snapshot, make_class_guard
 

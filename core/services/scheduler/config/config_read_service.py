@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Tuple
 
-from core.infrastructure.errors import ValidationError
 from core.services.common.safe_logging import safe_warning
 
 from . import config_presets as preset_ops
@@ -11,11 +10,9 @@ from .active_preset_state import BaselineResolution, CurrentConfigDisplayState, 
 from .config_bootstrap_service import ConfigBootstrapService
 from .config_constants import (
     ACTIVE_PRESET_CUSTOM,
-    ACTIVE_PRESET_META_KEY,
     ACTIVE_PRESET_REASON_BASELINE_DEGRADED,
     ACTIVE_PRESET_REASON_BASELINE_MISMATCH,
     ACTIVE_PRESET_REASON_CUSTOM_SELECTED,
-    ACTIVE_PRESET_REASON_HIDDEN_REPAIR,
     ACTIVE_PRESET_REASON_MANUAL,
     ACTIVE_PRESET_REASON_PRESET_ADJUSTED,
     ACTIVE_PRESET_REASON_PRESET_DELETED,
@@ -30,9 +27,7 @@ from .config_field_spec import (
     choice_label_map_for,
     choices_for,
     coerce_config_field,
-    default_snapshot_values,
     field_label_for,
-    list_config_fields,
     page_metadata_for,
 )
 from .config_page_outcome import (

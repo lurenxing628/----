@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.models.enums import MergeMode
 from core.services.scheduler.run.schedule_template_lookup import lookup_template_group_context_for_op
 

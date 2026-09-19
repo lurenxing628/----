@@ -11,7 +11,7 @@ import pytest
 
 from core.services.scheduler.calendar_service import CalendarService
 from core.services.workbench.resource_queries import WorkbenchResourceQueryService
-from tests.workbench.resource_metrics_support import metrics_database, stored_state
+from tests.workbench.resource_metrics_support import stored_state
 
 
 def project(conn):
@@ -135,7 +135,7 @@ def test_summary_route_is_readonly_with_sql_write_denied_and_no_metadata_repair(
 
 
 def test_summary_storage_error_is_explicit_not_demo_or_success(schema_conn):
-    from core.infrastructure.errors import AppError
+    from core.errors import AppError
 
     schema_conn.execute("DROP TABLE OperatorSkill")
     with pytest.raises(AppError):

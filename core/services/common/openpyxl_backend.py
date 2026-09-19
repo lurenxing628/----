@@ -7,7 +7,7 @@ from typing import Any, Dict, Iterable, List, Optional, cast
 
 import openpyxl
 
-from core.infrastructure.errors import AppError, ErrorCode
+from core.errors import AppError, ErrorCode
 from core.infrastructure.safe_files import write_fixed_bytes
 
 from .excel_templates import sanitize_export_cell

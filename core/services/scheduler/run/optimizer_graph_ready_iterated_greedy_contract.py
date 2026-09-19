@@ -5,7 +5,7 @@ import math
 from dataclasses import dataclass, replace
 from typing import Any, Dict, Optional, Tuple
 
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 
 from .optimizer_graph_ready_feature_basis import SUCCESSOR_WORKLOAD_BASIS
 from .optimizer_graph_ready_profiles import GRAPH_READY_V2_ITERATED_GREEDY_ORIGIN, GraphReadyWeightProfile

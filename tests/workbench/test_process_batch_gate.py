@@ -7,12 +7,12 @@ from unittest.mock import Mock
 
 import pytest
 
-from core.infrastructure.errors import BusinessError
+from core.errors import BusinessError
 from core.infrastructure.transaction import TransactionManager
 from core.services.process.workflow_state import record_confirmation, start_workflow
 from core.services.scheduler.batch_template_ops import ensure_template_ops_in_tx, probe_template_ops_readonly
 from data.repositories import PartOperationRepository, PartRepository
-from tests.workbench.process_workflow_support import confirm_all, stored_state, workflow_database
+from tests.workbench.process_workflow_support import confirm_all, stored_state
 
 
 def _service(conn):

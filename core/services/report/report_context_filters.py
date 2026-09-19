@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.models.schedule_resource_filter import (
     SUPPORTED_SCHEDULE_RESOURCE_TYPES,
     normalize_schedule_resource_filter,

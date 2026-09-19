@@ -73,7 +73,7 @@ def test_operation_logger_transaction_state_warning_falls_back_to_stderr(capsys)
 
 
 def test_app_error_preserves_args_and_rejects_non_exception_cause() -> None:
-    from core.infrastructure.errors import AppError, ErrorCode
+    from core.errors import AppError, ErrorCode
 
     cause = RuntimeError("root cause")
     err = AppError(ErrorCode.UNKNOWN_ERROR, "用户能看到的错误", cause=cause)

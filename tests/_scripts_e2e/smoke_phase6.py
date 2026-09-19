@@ -62,8 +62,8 @@ def main():
 
     sys.path.insert(0, repo_root)
 
+    from core.errors import AppError, ValidationError
     from core.infrastructure.database import ensure_schema, get_connection
-    from core.infrastructure.errors import AppError, ValidationError
     from core.services.scheduler import BatchService, CalendarService, ConfigService, ScheduleService
 
     ensure_schema(test_db, logger=None, schema_path=os.path.join(repo_root, "schema.sql"))

@@ -4,7 +4,7 @@ import sqlite3
 
 import pytest
 
-from core.infrastructure.errors import AppError, BusinessError, ErrorCode, ValidationError
+from core.errors import AppError, BusinessError, ErrorCode, ValidationError
 from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_template_lineage import restore_snapshot, state_snapshot

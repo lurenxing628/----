@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 
 _MAX_JOINT_SIZE = 3
 _INDEX_KEY = "joint_window_index"

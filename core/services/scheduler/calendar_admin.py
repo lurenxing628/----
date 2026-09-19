@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.infrastructure.transaction import TransactionManager
 from core.models import OperatorCalendar, WorkCalendar
 from core.models.enums import CALENDAR_DAY_TYPE_STORED_VALUES, CalendarDayType, YesNo

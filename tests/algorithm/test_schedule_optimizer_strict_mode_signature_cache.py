@@ -8,7 +8,7 @@ from typing import Any, List
 import pytest
 
 import core.services.scheduler.run.schedule_signature_support as signature_support
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.services.scheduler.run.schedule_optimizer_steps import _schedule_with_optional_strict_mode
 from core.services.scheduler.run.schedule_signature_support import clear_strict_mode_support_cache_for_tests
 

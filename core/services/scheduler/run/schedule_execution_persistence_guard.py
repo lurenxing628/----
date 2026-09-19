@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Set, Tuple
 
-from core.infrastructure.errors import AppError, ErrorCode
+from core.errors import AppError, ErrorCode
 from core.models.operation_execution_scope import OperationExecutionScope
 from core.services.scheduler.execution.execution_fact_provider import ExecutionFact, ExecutionFactProvider
 from core.services.scheduler.execution.execution_ledger_guard import ensure_ledger_execution_schedulable

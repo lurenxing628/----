@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.models.schedule_adjustment import DRAFT_STATUS_EDITING
 from data.repositories import BatchRepository, MachineDowntimeRepository, ScheduleAdjustmentRepository
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.models.schedule_resource_filter import (
     normalize_dispatch_resource_filter,
     normalize_schedule_resource_filter,

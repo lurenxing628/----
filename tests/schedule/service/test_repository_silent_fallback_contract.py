@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 import sqlite3
-from pathlib import Path
 
 import pytest
 
-from core.infrastructure.errors import AppError, BusinessError
+from core.errors import AppError, BusinessError
 from data.repositories.config_repo import ConfigRepository
 from data.repositories.external_group_repo import ExternalGroupRepository
 from data.repositories.schedule_history_repo import ScheduleHistoryRepository

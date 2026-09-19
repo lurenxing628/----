@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from core.algorithms import ScheduleResult
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.models.objective import normalize_objective_name
 
 from .optimizer_graph_ready_feature_basis import BATCH_WORKLOAD_BASIS

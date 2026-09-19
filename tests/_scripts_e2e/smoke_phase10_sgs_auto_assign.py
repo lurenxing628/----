@@ -53,8 +53,8 @@ def main():
     lines.append(f"- 测试 DB：`{test_db}`")
 
     sys.path.insert(0, repo_root)
+    from core.errors import ValidationError
     from core.infrastructure.database import ensure_schema, get_connection
-    from core.infrastructure.errors import ValidationError
     from core.infrastructure.logging import OperationLogger
     from core.services.scheduler import BatchService, ConfigService, ScheduleService
 

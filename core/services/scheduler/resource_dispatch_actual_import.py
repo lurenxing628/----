@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from datetime import timedelta
 from typing import Any, Dict, List, Mapping, Optional, Sequence, cast
 
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.models.operation_execution_labels import REASON_LABELS, SEVERITY_LABELS
 
 from .operation_execution_feedback_support import _parse_feedback_datetime

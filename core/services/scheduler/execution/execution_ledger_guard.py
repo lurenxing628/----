@@ -1,6 +1,6 @@
 """Represent only verified ledger intervals in the single-row scheduler contract."""
 
-from core.infrastructure.errors import AppError, ErrorCode
+from core.errors import AppError, ErrorCode
 from core.models.operation_execution_event import parse_operation_event_time
 
 _STATUSES = {"unreported": "not_started", "started": "processing", "partial": "processing",

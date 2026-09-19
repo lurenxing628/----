@@ -7,7 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.models.schedule_plan_identity import PlanIdentity
 from core.models.schedule_plan_role import SOURCE_SCHEDULE
 from core.services.report.report_context_filters import (

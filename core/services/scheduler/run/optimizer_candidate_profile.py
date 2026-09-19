@@ -22,7 +22,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, Optional, Tuple
 
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 
 from .optimizer_acceptance import ALLOWED_ACCEPTANCES
 from .optimizer_graph_ready_profiles import graph_ready_v2_profile_summary

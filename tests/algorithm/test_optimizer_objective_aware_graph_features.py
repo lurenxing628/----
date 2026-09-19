@@ -8,7 +8,7 @@ import pytest
 
 from core.algorithms import SortStrategy
 from core.algorithms.evaluation import objective_score
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.services.scheduler.run.optimizer_graph_ready_candidates import (
     build_v2_common_rank_cache,
     context_for_profile,

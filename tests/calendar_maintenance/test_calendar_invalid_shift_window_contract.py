@@ -7,7 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.models.calendar import OperatorCalendar, WorkCalendar
 from core.services.scheduler.calendar_engine import CalendarEngine
 

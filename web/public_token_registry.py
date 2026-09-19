@@ -26,7 +26,7 @@ from typing import Any, Dict, Tuple
 
 from flask import current_app
 
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 
 _EXTENSION_KEY = "aps_public_opaque_tokens"
 _DEFAULT_TTL_SECONDS = 12 * 60 * 60

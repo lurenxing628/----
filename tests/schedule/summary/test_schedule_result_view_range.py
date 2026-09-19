@@ -6,7 +6,7 @@ from typing import Optional
 
 import pytest
 
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.services.scheduler.gantt_range import resolve_week_range
 from core.services.scheduler.schedule_result_view_range import (
     get_plan_time_span_dates,

@@ -15,7 +15,7 @@ from core.algorithms import GreedyScheduler
 from core.algorithms.greedy.internal_slot import (
     validate_internal_hours_for_mode as original_validate_internal_hours_for_mode,
 )
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 
 
 @dataclass

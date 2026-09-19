@@ -7,7 +7,7 @@ from dataclasses import FrozenInstanceError, fields
 
 import pytest
 
-from core.infrastructure.errors import AppError
+from core.errors import AppError
 from core.services.scheduler import workbench_plan_catalog as catalog
 from core.services.scheduler.workbench_plan_page import (
     MAX_PLAN_PAGE_SIZE,

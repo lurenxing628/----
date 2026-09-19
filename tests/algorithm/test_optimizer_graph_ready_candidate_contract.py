@@ -14,7 +14,7 @@ from core.algorithms import GreedyScheduler
 from core.algorithms.evaluation import compute_metrics, objective_score
 from core.algorithms.sort_strategies import SortStrategy
 from core.algorithms.types import ScheduleResult, ScheduleSummary
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.services.scheduler.run.optimizer_candidate_profile import build_candidate_profile
 from core.services.scheduler.run.optimizer_graph_ready import run_graph_ready_candidates
 from core.services.scheduler.run.optimizer_graph_ready_candidates import (
@@ -29,7 +29,6 @@ from core.services.scheduler.run.optimizer_graph_ready_context import (
 )
 from core.services.scheduler.run.optimizer_graph_ready_profiles import (
     GRAPH_READY_V2_GENERATED_ORIGIN,
-    GRAPH_READY_WEIGHT_GRID_ORIGIN,
     GraphReadyWeightProfile,
     default_weight_profiles,
     graph_ready_v2_profile_summary,

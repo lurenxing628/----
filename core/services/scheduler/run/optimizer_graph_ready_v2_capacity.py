@@ -7,7 +7,7 @@ from inspect import Parameter, signature
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from core.algorithms.value_domains import INTERNAL
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 
 _RESIDUAL_CAPACITY_MAX_WINDOW_DAYS = 30
 

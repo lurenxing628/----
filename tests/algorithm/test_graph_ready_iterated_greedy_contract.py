@@ -13,7 +13,7 @@ import random
 
 import pytest
 
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.services.scheduler.run import optimizer_graph_ready_iterated_greedy as ig
 from core.services.scheduler.run.optimizer_graph_ready_iterated_greedy_contract import (
     IG_PHASE,
@@ -158,7 +158,6 @@ def test_disabled_stage_reports_not_run_and_adds_no_decode():
 
 
 def test_decoder_that_rejects_every_decision_stops_the_stage_without_retrying_orders():
-    from core.services.scheduler.run.optimizer_graph_ready_candidates import evaluate_graph_ready_candidate
 
     rejected = []
 

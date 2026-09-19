@@ -266,6 +266,7 @@ routes 只读 current_app.extensions，不 import web.bootstrap
 5. **errors-path-consolidation** — `core.infrastructure.errors` 旧路径一次性 codemod 到 `core.errors`，删垫片，加禁用规则
    - 所属模块：T
    - 依赖：无（先做，避免后续新文件继续用旧路径）
+   - 状态：done（2026-09-20）
 6. **sql-drain-writes** — 11 条写语句进主数据仓储
    - 所属模块：S
    - 依赖：sql-boundary-ratchet（基线存在才能退役条目）

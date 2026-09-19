@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from core.infrastructure.errors import AppError
+from core.errors import AppError
 from core.services.scheduler.operation_execution_feedback_service import OperationExecutionFeedbackService
 from tests.operation_execution.operation_execution_state_revision_support import (
     _connect,

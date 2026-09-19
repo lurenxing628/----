@@ -9,8 +9,8 @@ from typing import Any, Dict, List, cast
 
 import pytest
 
+from core.errors import ValidationError
 from core.infrastructure.database import ensure_schema, get_connection
-from core.infrastructure.errors import ValidationError
 from core.services.scheduler.config.config_field_spec import (
     choices_for,
     coerce_config_field,

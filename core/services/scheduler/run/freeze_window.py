@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Set, Tuple
 
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.models.enums import YesNo
 from core.models.scheduler_degradation_messages import (
     FREEZE_WINDOW_DEGRADED_MESSAGE,

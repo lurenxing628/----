@@ -16,7 +16,7 @@ def _row_to_dict(row: Any) -> dict:
 
 
 def _expect_validation_error(fn, expected_text: str) -> None:
-    from core.infrastructure.errors import ValidationError
+    from core.errors import ValidationError
 
     try:
         fn()
@@ -29,7 +29,7 @@ def _expect_validation_error(fn, expected_text: str) -> None:
 
 def test_calendar_no_tx_hardening(db_path) -> None:
 
-    from core.infrastructure.database import ensure_schema, get_connection
+    from core.infrastructure.database import get_connection
     from core.services.scheduler import CalendarService
 
 

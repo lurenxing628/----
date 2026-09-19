@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.infrastructure.transaction import TransactionManager
 from core.services.common.enum_normalizers import normalize_yes_no_wide
 from data.repositories import SystemConfigRepository

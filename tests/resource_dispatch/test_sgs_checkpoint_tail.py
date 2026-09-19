@@ -6,7 +6,7 @@ import pytest
 
 from core.algorithms.greedy.dispatch.sgs_checkpoint import DecodeCheckpointRequest
 from core.algorithms.greedy.dispatch.sgs_checkpoint_tail import DecodeTailReuse
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from tests._support.optimizer_end_to_end_cases import case_environment, fixture_data
 from tests.resource_dispatch.test_sgs_decode_checkpoint_contract import RUN_CONFIG, _Case
 

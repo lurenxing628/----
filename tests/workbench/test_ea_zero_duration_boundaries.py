@@ -6,7 +6,7 @@ from types import SimpleNamespace
 import pytest
 
 from core.algorithm_contracts.schedule_point_evidence import SchedulePointEvidence
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_plan_scope import PlanReadScope
 from core.models.workbench_run_candidate import RunCandidateReadScope

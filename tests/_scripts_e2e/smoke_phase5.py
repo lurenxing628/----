@@ -60,8 +60,8 @@ def main():
 
     sys.path.insert(0, repo_root)
 
+    from core.errors import AppError, ErrorCode
     from core.infrastructure.database import ensure_schema, get_connection
-    from core.infrastructure.errors import AppError, ErrorCode
     from core.services.process.external_group_service import ExternalGroupService
     from core.services.process.part_service import PartService
     from core.services.process.route_parser import RouteParser

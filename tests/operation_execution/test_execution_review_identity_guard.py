@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.models.execution_review_identity import can_read_execution_review
 from core.models.schedule_plan_role import ROLE_ADOPTED, SOURCE_SCHEDULE
 from core.services.report.execution_review import ExecutionReviewMixin

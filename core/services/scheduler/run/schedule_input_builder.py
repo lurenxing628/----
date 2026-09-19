@@ -8,7 +8,7 @@ try:
 except ImportError:  # pragma: no cover
     from typing_extensions import Literal
 
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.models.enums import MergeMode, SourceType
 from core.services.common.build_outcome import BuildOutcome
 from core.shared.degradation import DegradationCollector, degradation_events_to_dicts

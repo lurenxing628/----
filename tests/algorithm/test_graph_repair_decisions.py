@@ -7,7 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.models.batch_operation import BatchOperation
 from core.services.scheduler.run.optimizer_graph_ready_repair_decisions import (
     RepairDecision,

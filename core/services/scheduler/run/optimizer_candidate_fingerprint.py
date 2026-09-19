@@ -5,10 +5,10 @@ import json
 import math
 from dataclasses import dataclass
 from datetime import date, datetime
-from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from core.algorithms.objective_specs import objective_metric_keys
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 
 CANDIDATE_FINGERPRINT_SCHEMA_VERSION = 1
 DECISION_FINGERPRINT_SCOPE = "decision"
