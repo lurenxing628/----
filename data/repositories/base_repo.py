@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 import sys
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Union
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, Union
 
 from core.errors import AppError, ErrorCode
 

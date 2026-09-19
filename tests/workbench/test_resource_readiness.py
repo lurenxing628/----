@@ -11,7 +11,7 @@ import pytest
 
 from core.services.scheduler.calendar_service import CalendarService
 from core.services.workbench.resource_queries import WorkbenchResourceQueryService
-from tests.workbench.resource_metrics_support import stored_state
+from tests.workbench.resource_metrics_support import metrics_database, stored_state
 
 
 def project(conn):

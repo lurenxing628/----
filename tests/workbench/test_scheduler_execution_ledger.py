@@ -10,6 +10,7 @@ from core.services.scheduler.execution.operation_execution_scope_read import sco
 from core.services.scheduler.execution_fact_provider import ExecutionFactProvider
 from tests.workbench.execution_ledger_support import END, START, all_rows
 from tests.workbench.scheduler_execution_ledger_support import PLAN_FIELDS, plan_rows, read_facts, read_snapshot
+from tests.workbench.scheduler_execution_ledger_support import ledger_case as ledger_fixture
 
 
 def test_partial_report_is_processing_with_real_remaining_not_legacy_event(ledger_case):

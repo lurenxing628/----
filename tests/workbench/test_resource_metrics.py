@@ -12,6 +12,7 @@ from data.repositories.operator_qualification_repo import OperatorQualificationR
 from tests.workbench.resource_metrics_support import (
     detail,
     measured_read,
+    metrics_database,
     page,
     reader,
     seed_scale,

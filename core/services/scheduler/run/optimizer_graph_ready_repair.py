@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from itertools import islice
 from typing import Any, Callable, Dict, Generator, Iterator, List, Optional
 
 from core.errors import ValidationError

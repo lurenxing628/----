@@ -4,7 +4,7 @@
 def test_scheduler_enforce_ready_default_from_config(db_path) -> None:
 
     from core.errors import ValidationError
-    from core.infrastructure.database import get_connection
+    from core.infrastructure.database import ensure_schema, get_connection
     from core.services.scheduler import BatchService, ConfigService, ScheduleService
 
     conn = get_connection(db_path)

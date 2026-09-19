@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import random
 from collections import OrderedDict
+from dataclasses import replace
 from typing import Any, Callable, Dict, List, Optional, Tuple
 from typing import OrderedDict as OrderedDictType
 
@@ -44,6 +45,7 @@ from .optimizer_graph_ready_iterated_greedy_contract import (
     _BudgetExhausted,
     ig_decode_profile,
     iterated_greedy_public_message,
+    new_iterated_greedy_report,
 )
 from .optimizer_graph_ready_iterated_greedy_features import entry_features, tardy_signals
 from .optimizer_graph_ready_iterated_greedy_incumbent import IGIncumbentTracker

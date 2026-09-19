@@ -12,7 +12,7 @@ from __future__ import annotations
 import random
 import time
 from types import SimpleNamespace
-from typing import Dict
+from typing import Dict, List
 
 import pytest
 

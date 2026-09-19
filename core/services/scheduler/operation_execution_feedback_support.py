@@ -17,7 +17,12 @@ from core.models.operation_execution_event import (
     parse_operation_event_time,
 )
 from core.models.operation_execution_labels import (
+    HANDLING_STATUS_LABELS,
+    REASON_LABELS,
+    SEVERITY_LABELS,
     action_to_event_type,
+    event_type_to_action,
+    execution_action_label,
 )
 from core.models.operation_execution_scope import OperationExecutionScope
 from core.models.operation_execution_state import OperationExecutionState

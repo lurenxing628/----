@@ -17,7 +17,7 @@ import json
 from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 import pytest
 

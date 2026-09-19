@@ -7,7 +7,7 @@ from datetime import date, datetime
 from typing import Any, Dict, List, Optional, Tuple, cast
 
 from core.algorithm_contracts.ordering import build_batch_sort_inputs, build_normalized_batches_map
-from core.algorithms import GreedyScheduler, SortStrategy, StrategyFactory
+from core.algorithms import GreedyScheduler, ScheduleResult, SortStrategy, StrategyFactory
 from core.algorithms.greedy.algo_stats import merge_algo_stats
 from core.errors import ValidationError
 
@@ -30,6 +30,12 @@ from .optimizer_search_budget import (
 from .optimizer_search_report import OptimizationSearchReportState
 from .optimizer_search_state import (
     OptimizerSearchState,
+)
+from .optimizer_search_state import (
+    compact_attempts as _compact_attempts,
+)
+from .optimizer_search_state import (
+    score_tuple as _score_tuple,
 )
 from .schedule_optimizer_steps import (
     _run_multi_start,

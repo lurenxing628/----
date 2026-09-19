@@ -25,6 +25,7 @@ from tests.workbench.process_workflow_support import (
     seed_large_workflow,
     seed_workflow,
     stored_state,
+    workflow_database,
 )
 
 

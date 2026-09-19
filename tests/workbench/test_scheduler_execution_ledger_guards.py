@@ -20,6 +20,7 @@ from tests.workbench.scheduler_execution_ledger_support import (
     raw_connection,
     read_facts,
 )
+from tests.workbench.scheduler_execution_ledger_support import ledger_case as ledger_fixture
 
 
 @pytest.mark.parametrize("simulate", [False, True])

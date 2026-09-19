@@ -158,6 +158,7 @@ def test_disabled_stage_reports_not_run_and_adds_no_decode():
 
 
 def test_decoder_that_rejects_every_decision_stops_the_stage_without_retrying_orders():
+    from core.services.scheduler.run.optimizer_graph_ready_candidates import evaluate_graph_ready_candidate
 
     rejected = []
 

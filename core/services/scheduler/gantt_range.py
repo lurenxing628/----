@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
-from typing import Optional
+from typing import Any, Optional
 
 from core.errors import ValidationError
 

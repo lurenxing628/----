@@ -15,6 +15,7 @@ from core.algorithm_runtime.auto_assign_contract import (
     AUTO_ASSIGN_REASON_SUCCESS,
     AUTO_ASSIGN_REASON_WINDOW_BLOCKED,
     AutoAssignAttempt,
+    auto_assign_attempt_from_result,
 )
 from core.algorithm_runtime.internal_slot import estimate_internal_slot, validate_internal_hours
 from core.algorithm_runtime.resource_quality import prefer_resource_pair

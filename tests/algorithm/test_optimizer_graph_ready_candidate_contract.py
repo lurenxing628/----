@@ -29,6 +29,7 @@ from core.services.scheduler.run.optimizer_graph_ready_context import (
 )
 from core.services.scheduler.run.optimizer_graph_ready_profiles import (
     GRAPH_READY_V2_GENERATED_ORIGIN,
+    GRAPH_READY_WEIGHT_GRID_ORIGIN,
     GraphReadyWeightProfile,
     default_weight_profiles,
     graph_ready_v2_profile_summary,

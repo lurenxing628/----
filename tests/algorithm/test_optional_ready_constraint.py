@@ -10,7 +10,7 @@ def test_optional_ready_constraint(db_path):
 
 
     from core.errors import ValidationError
-    from core.infrastructure.database import get_connection
+    from core.infrastructure.database import ensure_schema, get_connection
     from core.services.scheduler import BatchService, ScheduleService
 
 
