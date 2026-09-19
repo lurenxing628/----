@@ -6,6 +6,7 @@ import sqlite3
 
 import pytest
 
+from core.errors import AppError
 from core.infrastructure.database import ensure_schema
 from core.infrastructure.migration_common import MigrationOutcome
 from core.infrastructure.migration_state import (
@@ -259,7 +260,7 @@ def test_confirmation_storage_failure_keeps_business_and_receipt_atomic(workflow
 
     conn.set_authorizer(deny_confirmation)
     try:
-        with pytest.raises(sqlite3.DatabaseError):
+        with pytest.raises(AppError) as failure:
             with TransactionManager(conn).transaction():
                 conn.execute("UPDATE PartOperations SET setup_hours=3 WHERE seq=1")
                 conn.execute("""INSERT INTO WorkbenchCommandReceipts
@@ -268,4 +269,6 @@ def test_confirmation_storage_failure_keeps_business_and_receipt_atomic(workflow
                 record_confirmation(conn, "P1", "source")
     finally:
         conn.set_authorizer(lambda *_: sqlite3.SQLITE_OK)
+    # 确认表写入经仓储执行，sqlite 错误翻译为 AppError 且保留 cause；业务行与回执仍整体回滚
+    assert isinstance(failure.value.cause, sqlite3.DatabaseError)
     assert stored_state(conn) == before

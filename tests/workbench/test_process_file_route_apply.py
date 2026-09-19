@@ -4,6 +4,7 @@ import sqlite3
 
 import pytest
 
+from core.errors import AppError
 from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.process.part_service import PartService
@@ -241,9 +242,12 @@ def test_late_apply_failure_rolls_back_all_rows_refs_groups_confirmations_but_no
     conn.execute("BEGIN IMMEDIATE")
     conn.execute("UPDATE Batches SET quantity=23 WHERE batch_id='PROC-B'")
     before = snapshot(conn)
-    with pytest.raises(sqlite3.IntegrityError, match="injected late route failure"):
+    with pytest.raises(AppError) as failure:
         ProcessRouteFileOperations(conn).apply_rows(rows, discard_group_refs=[row["ref"] for row in extra["affected_groups"]],
                                                    confirm_zero_unit_hours=False)
+    # 写语句经仓储执行后，sqlite 错误被翻译成 AppError，原始异常保留在 cause 上
+    assert isinstance(failure.value.cause, sqlite3.IntegrityError)
+    assert "injected late route failure" in str(failure.value.cause)
     assert conn.in_transaction and snapshot(conn) == before
     conn.commit()
     assert conn.execute("SELECT quantity FROM Batches WHERE batch_id='PROC-B'").fetchone()[0] == 23

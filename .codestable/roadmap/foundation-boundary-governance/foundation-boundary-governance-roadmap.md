@@ -270,6 +270,7 @@ routes 只读 current_app.extensions，不 import web.bootstrap
 6. **sql-drain-writes** — 11 条写语句进主数据仓储
    - 所属模块：S
    - 依赖：sql-boundary-ratchet（基线存在才能退役条目）
+   - 状态：done（2026-09-20）。实际 18 处（工艺工作流确认表另有 6 处），新增 WorkbenchProcessWorkflowRepository；写语句经仓储后 sqlite 错误统一翻译为 AppError 并保留 cause
 7. **sql-drain-introspection** — PRAGMA、sqlite_master、快照连接、内存库 DDL 解析归 `core/infrastructure`
    - 所属模块：S
    - 依赖：sql-boundary-ratchet

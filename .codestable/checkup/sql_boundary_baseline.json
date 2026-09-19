@@ -30,12 +30,12 @@
     {
       "path": "core/services/process/workflow_state.py",
       "kind": "conn_execute",
-      "count": 7
+      "count": 1
     },
     {
       "path": "core/services/process/workflow_state.py",
       "kind": "sql_literal",
-      "count": 16
+      "count": 9
     },
     {
       "path": "core/services/report/utilization_calendars.py",
@@ -388,16 +388,6 @@
       "count": 1
     },
     {
-      "path": "core/services/workbench/process_file_route.py",
-      "kind": "conn_execute",
-      "count": 1
-    },
-    {
-      "path": "core/services/workbench/process_file_route.py",
-      "kind": "sql_literal",
-      "count": 1
-    },
-    {
       "path": "core/services/workbench/process_mutations.py",
       "kind": "sql_literal",
       "count": 4
@@ -418,29 +408,14 @@
       "count": 9
     },
     {
-      "path": "core/services/workbench/process_route_apply.py",
-      "kind": "conn_execute",
-      "count": 6
-    },
-    {
-      "path": "core/services/workbench/process_route_apply.py",
-      "kind": "sql_literal",
-      "count": 6
-    },
-    {
       "path": "core/services/workbench/process_route_preview.py",
       "kind": "sql_literal",
       "count": 2
     },
     {
       "path": "core/services/workbench/process_stage_apply.py",
-      "kind": "conn_execute",
-      "count": 3
-    },
-    {
-      "path": "core/services/workbench/process_stage_apply.py",
       "kind": "sql_literal",
-      "count": 5
+      "count": 2
     },
     {
       "path": "core/services/workbench/production_report_validation.py",
@@ -665,12 +640,12 @@
     {
       "path": "core/services/workbench/run_worker_recovery.py",
       "kind": "conn_execute",
-      "count": 2
+      "count": 1
     },
     {
       "path": "core/services/workbench/run_worker_recovery.py",
       "kind": "sql_literal",
-      "count": 2
+      "count": 1
     },
     {
       "path": "core/services/workbench/system_maintenance_records.py",

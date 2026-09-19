@@ -14,6 +14,7 @@ from core.infrastructure.workbench_metadata_schema import workbench_metadata_con
 from core.infrastructure.workbench_process_schema import workbench_process_contract_issues
 from core.infrastructure.workbench_process_workflow_schema import workbench_process_workflow_contract_issues
 from core.infrastructure.workbench_resource_schema import workbench_resource_contract_issues
+from data.repositories.workbench_process_workflow_repo import WorkbenchProcessWorkflowRepository
 
 _STAGES = ("route", "source", "hours")
 
@@ -286,22 +287,22 @@ def start_workflow(conn, part_no) -> dict:
     with TransactionManager(conn).transaction():
         part, stored = _part(conn, part_no)
         if stored is None:
-            conn.execute("INSERT INTO WorkbenchProcessWorkflow(part_ref) VALUES (?)", (part["ref"],))
+            WorkbenchProcessWorkflowRepository(conn).insert_workflow(part["ref"])
         return read_workflow(conn, part_no)
 
 
 def _save_operations(conn, part_ref, stage, per_op, records, stamp, person):
+    repo = WorkbenchProcessWorkflowRepository(conn)
     for ref, values in per_op.items():
         old = records.get((ref, stage))
         if _confirmation(old, values[stage])["state"] == "confirmed":
             continue
         if old is None:
-            conn.execute("""INSERT INTO WorkbenchProcessOperationConfirmations
-                (part_ref,operation_ref,stage,signature,confirmed_at,confirmed_by) VALUES (?,?,?,?,?,?)""",
-                         (part_ref, ref, stage, values[stage], stamp, person))
+            repo.insert_confirmation(part_ref=part_ref, operation_ref=ref, stage=stage, signature=values[stage],
+                                     confirmed_at=stamp, confirmed_by=person)
         else:
-            conn.execute("""UPDATE WorkbenchProcessOperationConfirmations SET signature=?,confirmed_at=?,confirmed_by=?
-                WHERE part_ref=? AND operation_ref=? AND stage=?""", (values[stage], stamp, person, part_ref, ref, stage))
+            repo.update_confirmation(part_ref=part_ref, operation_ref=ref, stage=stage, signature=values[stage],
+                                     confirmed_at=stamp, confirmed_by=person)
 
 
 def record_confirmation(conn, part_no, stage, confirmed_by=None) -> dict:
@@ -321,20 +322,17 @@ def record_confirmation(conn, part_no, stage, confirmed_by=None) -> dict:
             raise ValidationError("请先确认上一工艺阶段的当前资料。", field="stage", details={"reason": "process_stage_locked"})
         if signatures[stage] is None:
             raise ValidationError("当前工艺资料不完整或不合法，不能确认。", field=stage, details={"reason": "process_facts_invalid"})
+        repo = WorkbenchProcessWorkflowRepository(conn)
         if stored is None:
-            conn.execute("INSERT INTO WorkbenchProcessWorkflow(part_ref) VALUES (?)", (part["ref"],))
+            repo.insert_workflow(part["ref"])
         stamp = datetime.now(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z")
         if stage == "route":
-            conn.execute("""DELETE FROM WorkbenchProcessOperationConfirmations WHERE part_ref=? AND operation_ref NOT IN (
-                SELECT r.ref FROM PartOperations o JOIN WorkbenchEntityRefs r ON r.entity_key=CAST(o.id AS TEXT)
-                WHERE r.kind='template_operation' AND r.active=1 AND o.part_no=? AND o.status='active')""",
-                         (part["ref"], part_no))
+            repo.delete_confirmations_outside_active_route(part["ref"], part_no)
         else:
             _save_operations(conn, part["ref"], stage, per_op, records, stamp, confirmed_by)
         if _confirmation(stored, signatures[stage], stage + "_")["state"] != "confirmed":
-            conn.execute(f"""UPDATE WorkbenchProcessWorkflow SET {stage}_signature=?,
-                {stage}_confirmed_at=?,{stage}_confirmed_by=? WHERE part_ref=?""",
-                         (signatures[stage], stamp, confirmed_by, part["ref"]))
+            repo.set_stage_confirmation(part_ref=part["ref"], stage=stage, signature=signatures[stage],
+                                        confirmed_at=stamp, confirmed_by=confirmed_by)
         return read_workflow(conn, part_no)
 
 

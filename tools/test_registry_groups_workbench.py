@@ -267,6 +267,7 @@ WORKBENCH_REQUIRED_REGRESSION_GROUPS = (
         "test_process_file_codec.py",
         "test_process_file_route.py",
         "test_process_file_route_apply.py",
+        "test_sql_drain_write_repositories.py",
         "test_process_file_hours_preview.py",
         "test_process_file_hours_apply.py",
         "test_process_file_hours_roundtrip.py",

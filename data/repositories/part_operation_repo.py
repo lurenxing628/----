@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
 from core.models import PartOperation
 
@@ -147,6 +147,63 @@ class PartOperationRepository(BaseRepository):
         params.extend([part_no, int(seq)])
         sql = f"UPDATE PartOperations SET {', '.join(set_parts)} WHERE part_no = ? AND seq = ?"
         self.execute(sql, tuple(params))
+
+    def clear_external_group(self, part_no: str, group_id: str) -> int:
+        """把某外协组下的工序全部解绑（ext_group_id 置 NULL）。"""
+        cursor = self.execute(
+            "UPDATE PartOperations SET ext_group_id=NULL WHERE part_no=? AND ext_group_id=?",
+            (part_no, group_id),
+        )
+        return int(cursor.rowcount)
+
+    def mark_deleted_by_id(self, op_id: int) -> int:
+        cursor = self.execute("UPDATE PartOperations SET status='deleted' WHERE id=?", (int(op_id),))
+        return int(cursor.rowcount)
+
+    def restore_with_op_type_name(self, op_id: int, op_type_name: str) -> int:
+        cursor = self.execute(
+            "UPDATE PartOperations SET op_type_name=?, status='active' WHERE id=?",
+            (op_type_name, int(op_id)),
+        )
+        return int(cursor.rowcount)
+
+    def insert_route_operation(
+        self,
+        *,
+        part_no: str,
+        seq: int,
+        op_type_name: str,
+        source: Any,
+        op_type_id: Any,
+        supplier_id: Any,
+        ext_days: Any,
+    ) -> None:
+        """路线确认新增的工序行：工时留空、状态 active。"""
+        self.execute(
+            """INSERT INTO PartOperations(part_no,seq,op_type_name,source,op_type_id,
+            supplier_id,ext_days,setup_hours,unit_hours,status)
+            VALUES (?,?,?,?,?,?,?,NULL,NULL,'active')""",
+            (part_no, seq, op_type_name, source, op_type_id, supplier_id, ext_days),
+        )
+
+    def update_sources_by_id(self, changes: Sequence[Tuple[Any, Any, Any, int]]) -> None:
+        """批量写回 (source, op_type_id, supplier_id, id)。"""
+        self.executemany("UPDATE PartOperations SET source=?,op_type_id=?,supplier_id=? WHERE id=?", list(changes))
+
+    def update_fields_by_id(self, op_id: int, fields: Dict[str, Any]) -> int:
+        """按 id 更新白名单列；列名不在白名单直接抛错，不静默跳过。"""
+        allowed = ("setup_hours", "unit_hours", "ext_days", "source", "op_type_id", "supplier_id", "status", "op_type_name")
+        unknown = [key for key in fields if key not in allowed]
+        if unknown:
+            raise ValueError(f"PartOperations 不允许按 id 更新的列：{unknown}")
+        if not fields:
+            return 0
+        assignments = ",".join(name + "=?" for name in fields)
+        cursor = self.execute(
+            "UPDATE PartOperations SET " + assignments + " WHERE id=?",
+            list(fields.values()) + [int(op_id)],
+        )
+        return int(cursor.rowcount)
 
     def mark_deleted(self, part_no: str, seq: int) -> None:
         """逻辑删除：status=deleted（符合文档“active/deleted”）。"""

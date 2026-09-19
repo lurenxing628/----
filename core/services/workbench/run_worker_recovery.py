@@ -70,6 +70,5 @@ def _reconcile_result(conn, repo, row):
     if result["state"] != receipt["state"] or not WorkbenchRunResultRepository(conn).consistent(row["run_ref"], result):
         repo.awaiting_reconciliation(row["run_ref"])
         return False
-    conn.execute("UPDATE WorkbenchRunJobs SET state=?,stage='finished',finished_at=?,error_json=? WHERE run_ref=?",
-                 (receipt["state"], receipt["recorded_at"], json.dumps(result.get("error")), row["run_ref"]))
+    repo.record_reconciled_finish(row["run_ref"], receipt["state"], receipt["recorded_at"], json.dumps(result.get("error")))
     return True

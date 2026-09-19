@@ -46,10 +46,10 @@ items:
   - slug: sql-drain-writes
     description: 11 条写语句进主数据仓储
     depends_on: [sql-boundary-ratchet]
-    status: planned
+    status: done
     feature: null
     minimal_loop: false
-    notes: null
+    notes: 2026-09-20 完成。18 处写语句（含 core/services/process/workflow_state.py 的 6 处）经 PartOperationRepository/PartRepository/ExternalGroupRepository/WorkbenchRunRepository 与新增 WorkbenchProcessWorkflowRepository 执行；sql_boundary 基线 332→297；两个注入失败测试改断言 AppError.cause
 
   - slug: sql-drain-introspection
     description: PRAGMA、sqlite_master、快照连接、内存库 DDL 解析归 core/infrastructure

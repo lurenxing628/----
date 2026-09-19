@@ -6,6 +6,8 @@ from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.workbench.process_quota_protection import ProcessQuotaProtection
 from core.services.workbench.process_zero_hours import require_zero_confirmation
 from data.repositories.base_repo import BaseRepository
+from data.repositories.external_group_repo import ExternalGroupRepository
+from data.repositories.part_operation_repo import PartOperationRepository
 from data.repositories.supplier_repo import SupplierRepository
 
 
@@ -54,7 +56,7 @@ def prepare_source(conn, logger, payload, operations, identities):
 
 
 def apply_source(conn, changes):
-    conn.executemany("UPDATE PartOperations SET source=?,op_type_id=?,supplier_id=? WHERE id=?", changes)
+    PartOperationRepository(conn).update_sources_by_id(changes)
 
 
 def _merged_hours_groups(payload, active, groups):
@@ -98,12 +100,13 @@ def apply_hours(conn, payload, operations, groups):
     require_zero_confirmation(conn, [(active[row["ref"]], row) for row in payload["operations"]],
                               payload["confirm_zero_unit_hours"])
     changed = bool(updates)
+    op_repo = PartOperationRepository(conn)
+    group_repo = ExternalGroupRepository(conn)
     for key, fields in updates:
-        assignments = ",".join(name + "=?" for name in fields)
-        conn.execute("UPDATE PartOperations SET " + assignments + " WHERE id=?", list(fields.values()) + [key])
+        op_repo.update_fields_by_id(key, fields)
     for row in payload["groups"]:
         old = merged[row["ref"]]
         if old["total_days"] != row["total_days"]:
-            conn.execute("UPDATE ExternalGroups SET total_days=? WHERE group_id=?", (row["total_days"], old["group_id"]))
+            group_repo.set_total_days(old["group_id"], row["total_days"])
             changed = True
     return changed

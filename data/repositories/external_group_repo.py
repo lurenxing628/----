@@ -86,6 +86,16 @@ class ExternalGroupRepository(BaseRepository):
         if int(getattr(cur, "rowcount", 0) or 0) == 0:
             raise BusinessError(ErrorCode.EXTERNAL_GROUP_ERROR, f"外协工序组“{group_id}”不存在或已被删除")
 
+    def delete_for_part(self, part_no: str, group_id: str) -> int:
+        """删除某零件下的指定外协组（part_no 作为额外防护条件）。"""
+        cursor = self.execute("DELETE FROM ExternalGroups WHERE part_no=? AND group_id=?", (part_no, group_id))
+        return int(cursor.rowcount)
+
+    def set_total_days(self, group_id: str, total_days: Any) -> int:
+        """只改合并组总周期，不触发 updated_at 与存在性裁决（工时确认场景原语义）。"""
+        cursor = self.execute("UPDATE ExternalGroups SET total_days=? WHERE group_id=?", (total_days, group_id))
+        return int(cursor.rowcount)
+
     def delete(self, group_id: str) -> None:
         self.execute("DELETE FROM ExternalGroups WHERE group_id = ?", (group_id,))
 

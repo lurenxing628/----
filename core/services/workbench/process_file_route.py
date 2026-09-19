@@ -19,6 +19,7 @@ from core.services.workbench.process_file_route_preview import RouteFilePreview,
 from core.services.workbench.process_part_actions import WorkbenchProcessPartActionService
 from core.services.workbench.process_part_actions_facts import check_part_action_storage
 from core.services.workbench.process_route_apply import apply_route, discard_groups, require_group_ack
+from data.repositories.part_repo import PartRepository
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
 
 
@@ -94,6 +95,4 @@ class ProcessRouteFileOperations:
         columns = {"label": "part_name", "remark": "remark"}
         fields = {column: row["after"][key] for key, column in columns.items() if key in row["changes"]}
         if fields:
-            self.conn.execute("UPDATE Parts SET " + ",".join(column + "=?" for column in fields)
-                              + ",updated_at=CURRENT_TIMESTAMP WHERE part_no=?",
-                              list(fields.values()) + [row["business_code"]])
+            PartRepository(self.conn).update(row["business_code"], fields)

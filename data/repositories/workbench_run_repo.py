@@ -60,6 +60,11 @@ class WorkbenchRunRepository:
         if cursor.rowcount != 1:
             raise ValueError("Run terminal update did not affect exactly one admission")
 
+    def record_reconciled_finish(self, run_ref, state, finished_at, error_json):
+        """按已存在的回执把作业行补写成 finished；对账场景不再校验 running/queued 前态。"""
+        self.conn.execute("UPDATE WorkbenchRunJobs SET state=?,stage='finished',finished_at=?,error_json=? WHERE run_ref=?",
+                          (state, finished_at, error_json, run_ref))
+
     def unfinished(self):
         return [dict(row) for row in self.conn.execute("SELECT * FROM WorkbenchRunJobs WHERE state IN ('queued','running') ORDER BY accepted_at,run_ref")]
 
