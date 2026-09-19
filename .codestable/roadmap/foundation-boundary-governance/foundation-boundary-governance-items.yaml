@@ -1,0 +1,148 @@
+roadmap: foundation-boundary-governance
+created: 2026-09-20
+last_reviewed: 2026-09-20
+
+items:
+  - slug: sql-boundary-ratchet
+    description: 服务层不写 SQL、仓储层不做裁决两条棘轮规则，含扫描器、基线、测试与门禁登记
+    depends_on: []
+    status: done
+    feature: null
+    minimal_loop: true
+    notes: 2026-09-20 按 roadmap 直接实施完成（tools/scan_sql_boundary.py、tools/scan_private_imports.py、tests/gate_meta/test_boundary_ratchets.py）
+
+  - slug: private-import-ratchet
+    description: 禁跨模块导入私有符号的棘轮规则
+    depends_on: []
+    status: done
+    feature: null
+    minimal_loop: false
+    notes: 2026-09-20 按 roadmap 直接实施完成（tools/scan_sql_boundary.py、tools/scan_private_imports.py、tests/gate_meta/test_boundary_ratchets.py）
+
+  - slug: schema-parity-test
+    description: 新库与 v4 起点迁移链的整库结构对账测试；发现差异按补迁移修
+    depends_on: []
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 修法方向固定为补迁移让迁移链追上 schema.sql
+
+  - slug: gate-step-timing
+    description: 门禁回执补分步耗时并在汇总里输出 Top 10
+    depends_on: []
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 字段只增不删，不影响回执恢复匹配
+
+  - slug: errors-path-consolidation
+    description: core.infrastructure.errors 旧路径一次性 codemod 到 core.errors，删垫片，加禁用规则
+    depends_on: []
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 一个提交做完，工作区安静时执行
+
+  - slug: sql-drain-writes
+    description: 11 条写语句进主数据仓储
+    depends_on: [sql-boundary-ratchet]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: null
+
+  - slug: sql-drain-introspection
+    description: PRAGMA、sqlite_master、快照连接、内存库 DDL 解析归 core/infrastructure
+    depends_on: [sql-boundary-ratchet]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: null
+
+  - slug: sql-drain-storage-classes
+    description: 14 个持 self.conn 的仓储形类整体下沉为查询仓储，服务层留裁决薄壳
+    depends_on: [sql-drain-writes, sql-drain-introspection]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: null
+
+  - slug: sql-drain-remaining-selects
+    description: 余下自由函数 SELECT 按 run、plan、trial、process 簇归入仓储
+    depends_on: [sql-drain-storage-classes]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: null
+
+  - slug: sql-drain-hatch-and-policy
+    description: 退役 read_raw_table，把 17 处仓储内裁决上提到服务层
+    depends_on: [sql-drain-remaining-selects]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: null
+
+  - slug: workbench-cluster-layering
+    description: 画 workbench 簇层次图，解五对双向依赖，共享件下沉 facts
+    depends_on: [private-import-ratchet, sql-drain-storage-classes]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: null
+
+  - slug: workbench-subpackages
+    description: 按簇分子包，一簇一提交，codemod 全部调用方
+    depends_on: [workbench-cluster-layering, sql-drain-hatch-and-policy]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 禁 __getattr__ 懒导出，不留垫片
+
+  - slug: scheduler-family-subpackages
+    description: run/optimizer/graph 子包、根目录业务族分包、批次族迁出、删 4 个根垫片与 analysis
+    depends_on: [private-import-ratchet]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: _frozen_import_anchor 同步
+
+  - slug: schema-sql-generated
+    description: schema.sql 生成化与 --check 门禁；current_schema_contract_issues 改为派生比对
+    depends_on: [schema-parity-test]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: null
+
+  - slug: web-dir-cycle-removal
+    description: 三条边改向，消除唯一生产目录环
+    depends_on: []
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: null
+
+  - slug: models-service-annotation-inversion
+    description: core/models/workbench_run_compute.py 去掉对服务层的注解依赖
+    depends_on: []
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: null
+
+  - slug: request-service-rule-fold
+    description: request_service 规则并入 web helper 规则，删容器专用清单
+    depends_on: []
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: null
+
+  - slug: boundary-policy-decisions
+    description: schema 事实源、子包规则、门禁进退、测试往接缝收四条政策落 cs-decide
+    depends_on: [schema-sql-generated, workbench-subpackages, gate-step-timing]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: null

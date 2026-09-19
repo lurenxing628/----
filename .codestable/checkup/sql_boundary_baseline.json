@@ -1,0 +1,736 @@
+{
+  "schema_version": 1,
+  "rule": "sql_boundary",
+  "scan_roots": [
+    "core",
+    "web"
+  ],
+  "note": "服务层不写 SQL 棘轮基线：SQL 文本只允许在 data/repositories 与 core/infrastructure；条目只减不增，刷新走 --refresh。",
+  "entries": [
+    {
+      "path": "core/services/capacity/plan_calendar_io.py",
+      "kind": "sql_literal",
+      "count": 12
+    },
+    {
+      "path": "core/services/process/part_service.py",
+      "kind": "conn_execute",
+      "count": 1
+    },
+    {
+      "path": "core/services/process/part_service.py",
+      "kind": "sql_literal",
+      "count": 1
+    },
+    {
+      "path": "core/services/process/quota_protection.py",
+      "kind": "sql_literal",
+      "count": 3
+    },
+    {
+      "path": "core/services/process/workflow_state.py",
+      "kind": "conn_execute",
+      "count": 7
+    },
+    {
+      "path": "core/services/process/workflow_state.py",
+      "kind": "sql_literal",
+      "count": 16
+    },
+    {
+      "path": "core/services/report/utilization_calendars.py",
+      "kind": "sql_literal",
+      "count": 1
+    },
+    {
+      "path": "core/services/scheduler/batch_copy.py",
+      "kind": "sql_literal",
+      "count": 1
+    },
+    {
+      "path": "core/services/scheduler/calendar_checkpoint_certificate.py",
+      "kind": "conn_execute",
+      "count": 2
+    },
+    {
+      "path": "core/services/scheduler/calendar_checkpoint_certificate.py",
+      "kind": "schema_probe",
+      "count": 4
+    },
+    {
+      "path": "core/services/scheduler/calendar_checkpoint_certificate.py",
+      "kind": "sql_literal",
+      "count": 5
+    },
+    {
+      "path": "core/services/scheduler/execution/execution_ledger_adapter.py",
+      "kind": "conn_execute",
+      "count": 5
+    },
+    {
+      "path": "core/services/scheduler/execution/execution_ledger_adapter.py",
+      "kind": "schema_probe",
+      "count": 1
+    },
+    {
+      "path": "core/services/scheduler/execution/execution_ledger_adapter.py",
+      "kind": "sql_literal",
+      "count": 5
+    },
+    {
+      "path": "core/services/scheduler/gantt_adjustment_publish_service.py",
+      "kind": "conn_execute",
+      "count": 1
+    },
+    {
+      "path": "core/services/scheduler/gantt_critical_chain_provider.py",
+      "kind": "conn_execute",
+      "count": 1
+    },
+    {
+      "path": "core/services/scheduler/gantt_critical_chain_provider.py",
+      "kind": "schema_probe",
+      "count": 1
+    },
+    {
+      "path": "core/services/scheduler/run/optimizer_multi_start_dedup.py",
+      "kind": "conn_execute",
+      "count": 1
+    },
+    {
+      "path": "core/services/scheduler/run/optimizer_multi_start_dedup.py",
+      "kind": "schema_probe",
+      "count": 1
+    },
+    {
+      "path": "core/services/scheduler/run/schedule_execution_resource_facts.py",
+      "kind": "conn_execute",
+      "count": 2
+    },
+    {
+      "path": "core/services/scheduler/run/schedule_execution_resource_facts.py",
+      "kind": "sql_literal",
+      "count": 2
+    },
+    {
+      "path": "core/services/scheduler/workbench_plan_catalog.py",
+      "kind": "sql_literal",
+      "count": 3
+    },
+    {
+      "path": "core/services/system/maintenance/cleanup_task.py",
+      "kind": "conn_execute",
+      "count": 3
+    },
+    {
+      "path": "core/services/system/maintenance/cleanup_task.py",
+      "kind": "sql_literal",
+      "count": 3
+    },
+    {
+      "path": "core/services/system/workbench_overview.py",
+      "kind": "conn_execute",
+      "count": 2
+    },
+    {
+      "path": "core/services/system/workbench_overview.py",
+      "kind": "schema_probe",
+      "count": 1
+    },
+    {
+      "path": "core/services/system/workbench_overview.py",
+      "kind": "sql_literal",
+      "count": 1
+    },
+    {
+      "path": "core/services/workbench/batch_execution.py",
+      "kind": "conn_execute",
+      "count": 3
+    },
+    {
+      "path": "core/services/workbench/batch_execution.py",
+      "kind": "schema_probe",
+      "count": 1
+    },
+    {
+      "path": "core/services/workbench/batch_execution.py",
+      "kind": "sql_literal",
+      "count": 2
+    },
+    {
+      "path": "core/services/workbench/batch_facts.py",
+      "kind": "conn_execute",
+      "count": 2
+    },
+    {
+      "path": "core/services/workbench/batch_facts.py",
+      "kind": "sql_literal",
+      "count": 2
+    },
+    {
+      "path": "core/services/workbench/dashboard_external.py",
+      "kind": "conn_execute",
+      "count": 2
+    },
+    {
+      "path": "core/services/workbench/dashboard_external.py",
+      "kind": "schema_probe",
+      "count": 1
+    },
+    {
+      "path": "core/services/workbench/dashboard_external.py",
+      "kind": "sql_literal",
+      "count": 1
+    },
+    {
+      "path": "core/services/workbench/dashboard_external_sources.py",
+      "kind": "sql_literal",
+      "count": 2
+    },
+    {
+      "path": "core/services/workbench/field_report_files.py",
+      "kind": "conn_execute",
+      "count": 1
+    },
+    {
+      "path": "core/services/workbench/field_report_files.py",
+      "kind": "sql_literal",
+      "count": 1
+    },
+    {
+      "path": "core/services/workbench/field_workspace.py",
+      "kind": "conn_execute",
+      "count": 2
+    },
+    {
+      "path": "core/services/workbench/field_workspace.py",
+      "kind": "sql_literal",
+      "count": 2
+    },
+    {
+      "path": "core/services/workbench/legacy_navigation_queries.py",
+      "kind": "conn_execute",
+      "count": 1
+    },
+    {
+      "path": "core/services/workbench/legacy_navigation_queries.py",
+      "kind": "sql_literal",
+      "count": 1
+    },
+    {
+      "path": "core/services/workbench/master_overview_facts.py",
+      "kind": "conn_execute",
+      "count": 2
+    },
+    {
+      "path": "core/services/workbench/master_overview_facts.py",
+      "kind": "schema_probe",
+      "count": 1
+    },
+    {
+      "path": "core/services/workbench/master_overview_facts.py",
+      "kind": "sql_literal",
+      "count": 1
+    },
+    {
+      "path": "core/services/workbench/official_plan_persistence.py",
+      "kind": "conn_execute",
+      "count": 1
+    },
+    {
+      "path": "core/services/workbench/official_plan_persistence.py",
+      "kind": "sql_literal",
+      "count": 1
+    },
+    {
+      "path": "core/services/workbench/outsourcing.py",
+      "kind": "conn_execute",
+      "count": 1
+    },
+    {
+      "path": "core/services/workbench/outsourcing.py",
+      "kind": "sql_literal",
+      "count": 1
+    },
+    {
+      "path": "core/services/workbench/piece_adoption.py",
+      "kind": "conn_execute",
+      "count": 2
+    },
+    {
+      "path": "core/services/workbench/piece_adoption.py",
+      "kind": "sql_literal",
+      "count": 2
+    },
+    {
+      "path": "core/services/workbench/piece_adoption_execution.py",
+      "kind": "conn_execute",
+      "count": 1
+    },
+    {
+      "path": "core/services/workbench/piece_adoption_execution.py",
+      "kind": "sql_literal",
+      "count": 1
+    },
+    {
+      "path": "core/services/workbench/piece_adoption_facts.py",
+      "kind": "conn_execute",
+      "count": 3
+    },
+    {
+      "path": "core/services/workbench/piece_adoption_facts.py",
+      "kind": "sql_literal",
+      "count": 3
+    },
+    {
+      "path": "core/services/workbench/plan_adoption_baseline_identity.py",
+      "kind": "conn_execute",
+      "count": 1
+    },
+    {
+      "path": "core/services/workbench/plan_adoption_baseline_identity.py",
+      "kind": "sql_literal",
+      "count": 1
+    },
+    {
+      "path": "core/services/workbench/plan_adoption_baseline_sources.py",
+      "kind": "conn_execute",
+      "count": 2
+    },
+    {
+      "path": "core/services/workbench/plan_adoption_baseline_sources.py",
+      "kind": "sql_literal",
+      "count": 2
+    },
+    {
+      "path": "core/services/workbench/plan_adoption_baseline_values.py",
+      "kind": "conn_execute",
+      "count": 3
+    },
+    {
+      "path": "core/services/workbench/plan_adoption_baseline_values.py",
+      "kind": "schema_probe",
+      "count": 1
+    },
+    {
+      "path": "core/services/workbench/plan_adoption_baseline_values.py",
+      "kind": "sql_literal",
+      "count": 1
+    },
+    {
+      "path": "core/services/workbench/plan_baseline.py",
+      "kind": "sql_literal",
+      "count": 1
+    },
+    {
+      "path": "core/services/workbench/plan_delivery_repository.py",
+      "kind": "sql_literal",
+      "count": 6
+    },
+    {
+      "path": "core/services/workbench/plan_point_evidence.py",
+      "kind": "conn_execute",
+      "count": 1
+    },
+    {
+      "path": "core/services/workbench/plan_point_evidence.py",
+      "kind": "sql_literal",
+      "count": 1
+    },
+    {
+      "path": "core/services/workbench/plan_process_order.py",
+      "kind": "conn_execute",
+      "count": 1
+    },
+    {
+      "path": "core/services/workbench/plan_process_order.py",
+      "kind": "sql_literal",
+      "count": 1
+    },
+    {
+      "path": "core/services/workbench/plan_projection.py",
+      "kind": "conn_execute",
+      "count": 1
+    },
+    {
+      "path": "core/services/workbench/plan_projection.py",
+      "kind": "sql_literal",
+      "count": 1
+    },
+    {
+      "path": "core/services/workbench/plan_queries.py",
+      "kind": "sql_literal",
+      "count": 1
+    },
+    {
+      "path": "core/services/workbench/point_plan_query.py",
+      "kind": "sql_literal",
+      "count": 1
+    },
+    {
+      "path": "core/services/workbench/preflight_facts.py",
+      "kind": "conn_execute",
+      "count": 3
+    },
+    {
+      "path": "core/services/workbench/preflight_facts.py",
+      "kind": "schema_probe",
+      "count": 1
+    },
+    {
+      "path": "core/services/workbench/preflight_facts.py",
+      "kind": "sql_literal",
+      "count": 2
+    },
+    {
+      "path": "core/services/workbench/process_file_hours.py",
+      "kind": "conn_execute",
+      "count": 1
+    },
+    {
+      "path": "core/services/workbench/process_file_route.py",
+      "kind": "conn_execute",
+      "count": 1
+    },
+    {
+      "path": "core/services/workbench/process_file_route.py",
+      "kind": "sql_literal",
+      "count": 1
+    },
+    {
+      "path": "core/services/workbench/process_mutations.py",
+      "kind": "sql_literal",
+      "count": 4
+    },
+    {
+      "path": "core/services/workbench/process_part_actions_facts.py",
+      "kind": "conn_execute",
+      "count": 1
+    },
+    {
+      "path": "core/services/workbench/process_part_actions_facts.py",
+      "kind": "schema_probe",
+      "count": 1
+    },
+    {
+      "path": "core/services/workbench/process_part_actions_facts.py",
+      "kind": "sql_literal",
+      "count": 9
+    },
+    {
+      "path": "core/services/workbench/process_route_apply.py",
+      "kind": "conn_execute",
+      "count": 6
+    },
+    {
+      "path": "core/services/workbench/process_route_apply.py",
+      "kind": "sql_literal",
+      "count": 6
+    },
+    {
+      "path": "core/services/workbench/process_route_preview.py",
+      "kind": "sql_literal",
+      "count": 2
+    },
+    {
+      "path": "core/services/workbench/process_stage_apply.py",
+      "kind": "conn_execute",
+      "count": 3
+    },
+    {
+      "path": "core/services/workbench/process_stage_apply.py",
+      "kind": "sql_literal",
+      "count": 5
+    },
+    {
+      "path": "core/services/workbench/production_report_validation.py",
+      "kind": "conn_execute",
+      "count": 2
+    },
+    {
+      "path": "core/services/workbench/production_report_validation.py",
+      "kind": "sql_literal",
+      "count": 3
+    },
+    {
+      "path": "core/services/workbench/production_report_void_dependencies.py",
+      "kind": "conn_execute",
+      "count": 2
+    },
+    {
+      "path": "core/services/workbench/production_report_void_dependencies.py",
+      "kind": "schema_probe",
+      "count": 1
+    },
+    {
+      "path": "core/services/workbench/production_report_void_dependencies.py",
+      "kind": "sql_literal",
+      "count": 1
+    },
+    {
+      "path": "core/services/workbench/report_facts.py",
+      "kind": "conn_execute",
+      "count": 2
+    },
+    {
+      "path": "core/services/workbench/report_facts.py",
+      "kind": "sql_literal",
+      "count": 1
+    },
+    {
+      "path": "core/services/workbench/run_candidate_adoption_constraints.py",
+      "kind": "conn_execute",
+      "count": 1
+    },
+    {
+      "path": "core/services/workbench/run_candidate_adoption_constraints.py",
+      "kind": "sql_literal",
+      "count": 1
+    },
+    {
+      "path": "core/services/workbench/run_candidate_adoption_storage.py",
+      "kind": "conn_execute",
+      "count": 3
+    },
+    {
+      "path": "core/services/workbench/run_candidate_adoption_storage.py",
+      "kind": "schema_probe",
+      "count": 1
+    },
+    {
+      "path": "core/services/workbench/run_candidate_adoption_storage.py",
+      "kind": "sql_literal",
+      "count": 2
+    },
+    {
+      "path": "core/services/workbench/run_candidate_baseline.py",
+      "kind": "conn_execute",
+      "count": 2
+    },
+    {
+      "path": "core/services/workbench/run_candidate_baseline.py",
+      "kind": "schema_probe",
+      "count": 1
+    },
+    {
+      "path": "core/services/workbench/run_candidate_baseline.py",
+      "kind": "sqlite_connect",
+      "count": 1
+    },
+    {
+      "path": "core/services/workbench/run_candidate_facts.py",
+      "kind": "conn_execute",
+      "count": 2
+    },
+    {
+      "path": "core/services/workbench/run_candidate_facts.py",
+      "kind": "schema_probe",
+      "count": 2
+    },
+    {
+      "path": "core/services/workbench/run_candidate_facts.py",
+      "kind": "sqlite_connect",
+      "count": 1
+    },
+    {
+      "path": "core/services/workbench/run_candidate_history.py",
+      "kind": "conn_execute",
+      "count": 3
+    },
+    {
+      "path": "core/services/workbench/run_candidate_history.py",
+      "kind": "sql_literal",
+      "count": 3
+    },
+    {
+      "path": "core/services/workbench/run_candidate_storage.py",
+      "kind": "conn_execute",
+      "count": 10
+    },
+    {
+      "path": "core/services/workbench/run_candidate_storage.py",
+      "kind": "sql_literal",
+      "count": 10
+    },
+    {
+      "path": "core/services/workbench/run_compute.py",
+      "kind": "conn_execute",
+      "count": 1
+    },
+    {
+      "path": "core/services/workbench/run_compute.py",
+      "kind": "schema_probe",
+      "count": 1
+    },
+    {
+      "path": "core/services/workbench/run_data_context.py",
+      "kind": "conn_execute",
+      "count": 2
+    },
+    {
+      "path": "core/services/workbench/run_data_context.py",
+      "kind": "schema_probe",
+      "count": 1
+    },
+    {
+      "path": "core/services/workbench/run_data_context.py",
+      "kind": "sql_literal",
+      "count": 1
+    },
+    {
+      "path": "core/services/workbench/run_data_context.py",
+      "kind": "sqlite_connect",
+      "count": 1
+    },
+    {
+      "path": "core/services/workbench/run_history_storage.py",
+      "kind": "conn_execute",
+      "count": 5
+    },
+    {
+      "path": "core/services/workbench/run_history_storage.py",
+      "kind": "sql_literal",
+      "count": 8
+    },
+    {
+      "path": "core/services/workbench/run_input_admission.py",
+      "kind": "conn_execute",
+      "count": 1
+    },
+    {
+      "path": "core/services/workbench/run_input_admission.py",
+      "kind": "sql_literal",
+      "count": 1
+    },
+    {
+      "path": "core/services/workbench/run_input_points.py",
+      "kind": "conn_execute",
+      "count": 1
+    },
+    {
+      "path": "core/services/workbench/run_input_points.py",
+      "kind": "sql_literal",
+      "count": 1
+    },
+    {
+      "path": "core/services/workbench/run_input_readonly.py",
+      "kind": "conn_execute",
+      "count": 3
+    },
+    {
+      "path": "core/services/workbench/run_input_readonly.py",
+      "kind": "schema_probe",
+      "count": 3
+    },
+    {
+      "path": "core/services/workbench/run_input_runtime.py",
+      "kind": "conn_execute",
+      "count": 3
+    },
+    {
+      "path": "core/services/workbench/run_input_runtime.py",
+      "kind": "sql_literal",
+      "count": 3
+    },
+    {
+      "path": "core/services/workbench/run_jobs.py",
+      "kind": "conn_execute",
+      "count": 1
+    },
+    {
+      "path": "core/services/workbench/run_jobs.py",
+      "kind": "sql_literal",
+      "count": 1
+    },
+    {
+      "path": "core/services/workbench/run_jobs_facts.py",
+      "kind": "conn_execute",
+      "count": 7
+    },
+    {
+      "path": "core/services/workbench/run_jobs_facts.py",
+      "kind": "schema_probe",
+      "count": 1
+    },
+    {
+      "path": "core/services/workbench/run_jobs_facts.py",
+      "kind": "sql_literal",
+      "count": 6
+    },
+    {
+      "path": "core/services/workbench/run_worker.py",
+      "kind": "sql_literal",
+      "count": 1
+    },
+    {
+      "path": "core/services/workbench/run_worker_recovery.py",
+      "kind": "conn_execute",
+      "count": 2
+    },
+    {
+      "path": "core/services/workbench/run_worker_recovery.py",
+      "kind": "sql_literal",
+      "count": 2
+    },
+    {
+      "path": "core/services/workbench/system_maintenance_records.py",
+      "kind": "conn_execute",
+      "count": 1
+    },
+    {
+      "path": "core/services/workbench/system_maintenance_records.py",
+      "kind": "sql_literal",
+      "count": 1
+    },
+    {
+      "path": "core/services/workbench/trial_adoption_history_evidence.py",
+      "kind": "conn_execute",
+      "count": 3
+    },
+    {
+      "path": "core/services/workbench/trial_adoption_history_evidence.py",
+      "kind": "sql_literal",
+      "count": 3
+    },
+    {
+      "path": "core/services/workbench/trial_adoption_storage.py",
+      "kind": "conn_execute",
+      "count": 1
+    },
+    {
+      "path": "core/services/workbench/trial_adoption_storage.py",
+      "kind": "sql_literal",
+      "count": 1
+    },
+    {
+      "path": "core/services/workbench/trial_adoption_validation.py",
+      "kind": "conn_execute",
+      "count": 1
+    },
+    {
+      "path": "core/services/workbench/trial_adoption_validation.py",
+      "kind": "sql_literal",
+      "count": 1
+    },
+    {
+      "path": "core/services/workbench/trial_base.py",
+      "kind": "conn_execute",
+      "count": 2
+    },
+    {
+      "path": "core/services/workbench/trial_base.py",
+      "kind": "sql_literal",
+      "count": 2
+    },
+    {
+      "path": "core/services/workbench/trial_facts.py",
+      "kind": "conn_execute",
+      "count": 1
+    },
+    {
+      "path": "core/services/workbench/trial_facts.py",
+      "kind": "schema_probe",
+      "count": 1
+    }
+  ]
+}
