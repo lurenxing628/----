@@ -25,7 +25,7 @@ class _StubSvc:
 
 def test_schedule_input_builder_safe_float_parse() -> None:
 
-    from core.services.scheduler.schedule_input_builder import build_algo_operations
+    from core.services.scheduler.run.schedule_input_builder import build_algo_operations
 
     svc = _StubSvc()
 

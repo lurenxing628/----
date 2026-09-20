@@ -74,8 +74,7 @@ def test_schedule_orchestrator_contract() -> None:
 
     from core.errors import ValidationError
     from core.services.scheduler.run.schedule_optimizer import OptimizationOutcome
-    from core.services.scheduler.run.schedule_orchestrator import _build_summary_contract
-    from core.services.scheduler.schedule_orchestrator import orchestrate_schedule_run
+    from core.services.scheduler.run.schedule_orchestrator import _build_summary_contract, orchestrate_schedule_run
     from core.services.scheduler.schedule_service import ScheduleService
     from core.services.scheduler.summary.schedule_summary_types import SummaryBuildContext
 
@@ -482,7 +481,7 @@ def test_schedule_orchestrator_contract() -> None:
 
 
 def test_orchestrator_rejects_persist_without_version_allocation() -> None:
-    from core.services.scheduler.schedule_orchestrator import orchestrate_schedule_run
+    from core.services.scheduler.run.schedule_orchestrator import orchestrate_schedule_run
 
     with pytest.raises(ValueError, match="allocate_version=False"):
         orchestrate_schedule_run(

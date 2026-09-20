@@ -8,7 +8,7 @@ import pytest
 
 from core.errors import ValidationError
 from core.models.enums import MergeMode
-from core.services.scheduler.schedule_input_builder import build_algo_operations
+from core.services.scheduler.run.schedule_input_builder import build_algo_operations
 
 
 class _Repo:

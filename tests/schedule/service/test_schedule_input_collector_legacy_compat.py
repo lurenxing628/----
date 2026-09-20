@@ -10,7 +10,7 @@ import pytest
 
 from core.errors import ValidationError
 from core.services.common.build_outcome import BuildOutcome
-from core.services.scheduler.schedule_input_collector import collect_schedule_run_input
+from core.services.scheduler.run.schedule_input_collector import collect_schedule_run_input
 
 # 说明：本文件保留原命名以延续审查上下文，
 # 但当前约束已经从“legacy compat”收紧为“legacy signature 必须显式拒绝”。

@@ -9,7 +9,7 @@ from tests._support.sqlite_snapshot import stored_state
 
 def test_schedule_input_collector_contract(schema_conn) -> None:
     from core.services.common.build_outcome import BuildOutcome
-    from core.services.scheduler.schedule_input_collector import collect_schedule_run_input
+    from core.services.scheduler.run.schedule_input_collector import collect_schedule_run_input
     from core.services.scheduler.schedule_service import ScheduleService
 
     conn = schema_conn

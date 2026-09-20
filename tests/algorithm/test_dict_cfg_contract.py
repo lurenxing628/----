@@ -55,8 +55,8 @@ class _StubSvc:
 
 
 def _run_optimizer_case(cfg: Any) -> Tuple[str, str, List[Tuple[str, str, str]]]:
-    import core.services.scheduler.schedule_optimizer as schedule_optimizer
-    import core.services.scheduler.schedule_optimizer_steps as schedule_optimizer_steps
+    import core.services.scheduler.run.schedule_optimizer as schedule_optimizer
+    import core.services.scheduler.run.schedule_optimizer_steps as schedule_optimizer_steps
 
     original_scheduler_cls = schedule_optimizer.GreedyScheduler
     original_time_optimizer = schedule_optimizer.time.monotonic
@@ -148,7 +148,7 @@ def _run_optimizer_case(cfg: Any) -> Tuple[str, str, List[Tuple[str, str, str]]]
 
 def _run_ortools_warmstart_case(cfg: Any) -> Tuple[bool, bool, bool]:
     import core.algorithms.ortools_bottleneck as ortools_bottleneck
-    import core.services.scheduler.schedule_optimizer_steps as schedule_optimizer_steps
+    import core.services.scheduler.run.schedule_optimizer_steps as schedule_optimizer_steps
     from core.algorithms import SortStrategy
 
     called = {"solve": False, "schedule": False}

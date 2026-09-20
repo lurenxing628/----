@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import pytest
 
 from core.errors import ValidationError
-from core.services.scheduler.schedule_input_builder import build_algo_operations
+from core.services.scheduler.run.schedule_input_builder import build_algo_operations
 
 
 class _NullRepo:

@@ -15,7 +15,6 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 PACKAGE = "core.services.scheduler"
-WRAPPER = PACKAGE + ".schedule_orchestrator"
 EXPECTED: Dict[str, Dict[str, str]] = {
     PACKAGE: {
         "BatchService": PACKAGE + ".batch_service",
@@ -32,15 +31,10 @@ EXPECTED: Dict[str, Dict[str, str]] = {
         "ResourceDispatchService": PACKAGE + ".resource_dispatch_service",
         "ScheduleService": PACKAGE + ".schedule_service",
     },
-    WRAPPER: {
-        "ScheduleOrchestrationOutcome": PACKAGE + ".run.schedule_orchestrator",
-        "orchestrate_schedule_run": PACKAGE + ".run.schedule_orchestrator",
-    },
 }
 CASES = [(module, name, target) for module, exports in EXPECTED.items() for name, target in exports.items()]
 SOURCES = {
     PACKAGE: ROOT / "core/services/scheduler/__init__.py",
-    WRAPPER: ROOT / "core/services/scheduler/schedule_orchestrator.py",
 }
 
 PROBE = r'''
@@ -79,8 +73,6 @@ unknown_is_rejected(module)
 if mode == "passive":
     assert all(target not in sys.modules for target in expected.values()), sorted(sys.modules)
     assert all(name not in vars(module) for name in expected), sorted(vars(module))
-    if module_name.endswith("schedule_orchestrator"):
-        assert set(expected).issubset(dir(module))
     result = {"passive": True, "exports": list(expected), "unknown_rejected": True}
 else:
     name = request["export"]
@@ -94,10 +86,7 @@ else:
     assert namespace[name] is value
     assert getattr(module, name) is value
     assert getattr(module, name) is value
-    if module_name == "core.services.scheduler":
-        assert vars(module)[name] is value
-    else:
-        assert name not in vars(module), "Compatibility wrapper unexpectedly cached the target"
+    assert vars(module)[name] is value
     unknown_is_rejected(module)
     result = {"identity": True, "module": module_name, "export": name,
               "target": request["target"], "order": mode, "unknown_rejected": True}
@@ -131,7 +120,7 @@ def run_probe(tmp_path: Path, mode: str, module: str, name: str = "", target: st
     return payload
 
 
-@pytest.mark.parametrize("module", (PACKAGE, WRAPPER))
+@pytest.mark.parametrize("module", (PACKAGE,))
 def test_typechecking_declarations_match_all_real_lazy_exports(module):
     tree = ast.parse(SOURCES[module].read_text(encoding="utf-8"))
     declarations = {}
@@ -150,7 +139,7 @@ def test_typechecking_declarations_match_all_real_lazy_exports(module):
     assert declarations == EXPECTED[module]
 
 
-@pytest.mark.parametrize("module", (PACKAGE, WRAPPER))
+@pytest.mark.parametrize("module", (PACKAGE,))
 def test_fresh_package_import_stays_passive_and_rejects_unknown(tmp_path, module):
     result = run_probe(tmp_path, "passive", module)
     assert result["passive"] is True and result["unknown_rejected"] is True

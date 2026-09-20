@@ -39,8 +39,8 @@ class _DeterministicClock:
 
 def test_improve_dispatch_modes() -> None:
 
-    import core.services.scheduler.schedule_optimizer as schedule_optimizer
-    import core.services.scheduler.schedule_optimizer_steps as schedule_optimizer_steps
+    import core.services.scheduler.run.schedule_optimizer as schedule_optimizer
+    import core.services.scheduler.run.schedule_optimizer_steps as schedule_optimizer_steps
 
     original_scheduler_cls = schedule_optimizer.GreedyScheduler
     original_time_optimizer = schedule_optimizer.time.monotonic

@@ -10,7 +10,7 @@ import pytest
 
 from core.errors import ValidationError
 from core.services.scheduler.degradation_messages import FREEZE_WINDOW_DEGRADED_MESSAGE
-from core.services.scheduler.freeze_window import build_freeze_window_seed
+from core.services.scheduler.run.freeze_window import build_freeze_window_seed
 from core.services.scheduler.run.freeze_window_prefixes import prefix_op_ids_for_batch
 
 

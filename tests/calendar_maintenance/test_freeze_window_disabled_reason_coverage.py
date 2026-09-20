@@ -16,7 +16,7 @@ from typing import Any, List
 
 import pytest
 
-from core.services.scheduler.freeze_window import build_freeze_window_seed
+from core.services.scheduler.run.freeze_window import build_freeze_window_seed
 
 
 class _RowsScheduleRepo:

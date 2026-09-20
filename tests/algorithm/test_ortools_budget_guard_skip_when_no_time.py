@@ -43,7 +43,7 @@ class _FakeTime:
 def test_ortools_budget_guard_skip_when_no_time() -> None:
 
     import core.algorithms.ortools_bottleneck as ob
-    import core.services.scheduler.schedule_optimizer as so
+    import core.services.scheduler.run.schedule_optimizer as so
 
     # 打桩：如果 OR-Tools warm-start 在 remaining<1 时仍被调用，这里直接失败
     orig_try_solve = ob.try_solve_bottleneck_batch_order

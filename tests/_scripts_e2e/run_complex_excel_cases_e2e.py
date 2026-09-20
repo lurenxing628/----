@@ -1645,7 +1645,7 @@ def run_one_case(*, case: CaseSpec, out_base: str, repeat_idx: int, base_seed: i
 
             # 冻结一致性：窗口内被冻结 op 的时间应与 v1 一致
             from core.services.scheduler.config.config_service import ConfigService
-            from core.services.scheduler.freeze_window import build_freeze_window_seed
+            from core.services.scheduler.run.freeze_window import build_freeze_window_seed
             from core.services.scheduler.schedule_service import ScheduleService
 
             cfg = ConfigService(conn).get_snapshot()

@@ -15,7 +15,7 @@ from core.services.scheduler.config.config_snapshot import ScheduleConfigSnapsho
 from core.services.scheduler.run.optimizer_runtime import OptimizerRuntime
 from core.services.scheduler.run.schedule_graph_report import prepare_schedule_graph_for_dispatch
 from core.services.scheduler.run.schedule_optimizer import OptimizationOutcome, optimize_schedule
-from core.services.scheduler.schedule_orchestrator import orchestrate_schedule_run
+from core.services.scheduler.run.schedule_orchestrator import orchestrate_schedule_run
 
 
 def _make_dt(hours: int) -> datetime:

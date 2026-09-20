@@ -4,46 +4,30 @@ from __future__ import annotations
 
 import ast
 import importlib
-from typing import List, Optional, Set, Tuple
+from typing import FrozenSet, List, Optional, Set, Tuple
 
 from flask import Flask
 
 from tests._support.paths import REPO_ROOT
 
-SERVICE_STRONG_COMPAT_MODULES = {
-    "core.services.scheduler.schedule_optimizer": "core.services.scheduler.run.schedule_optimizer",
-    "core.services.scheduler.schedule_optimizer_steps": "core.services.scheduler.run.schedule_optimizer_steps",
-}
+# 2026-09-20 基础边界治理 P3：run/ 的 7 个根目录转发垫片（含 sys.modules 强别名与 __getattr__ 门面）
+# 全部退役，调用方一次改到 run/ 真实路径。三表清空但保留结构（扫描器按本集合工作，
+# 集合空即 service 侧无 legacy 检测对象；旧路径误 import 即 loud ModuleNotFoundError）。
+SERVICE_STRONG_COMPAT_MODULES = {}
 
-SERVICE_BEHAVIOR_COMPAT_SYMBOLS = {
-    "core.services.scheduler.freeze_window": "core.services.scheduler.run.freeze_window",
-    "core.services.scheduler.schedule_input_builder": "core.services.scheduler.run.schedule_input_builder",
-    "core.services.scheduler.schedule_input_collector": "core.services.scheduler.run.schedule_input_collector",
-    "core.services.scheduler.schedule_orchestrator": "core.services.scheduler.run.schedule_orchestrator",
-    "core.services.scheduler.schedule_persistence": "core.services.scheduler.run.schedule_persistence",
-}
+SERVICE_BEHAVIOR_COMPAT_SYMBOLS = {}
 
-SERVICE_BEHAVIOR_COMPAT_PUBLIC_SYMBOLS = {
-    "core.services.scheduler.freeze_window": ("build_freeze_window_seed",),
-    "core.services.scheduler.schedule_input_builder": (
-        "OpForScheduleAlgo",
-        "build_algo_operations",
-    ),
-    "core.services.scheduler.schedule_input_collector": (
-        "ScheduleRunInput",
-        "collect_schedule_run_input",
-    ),
-    "core.services.scheduler.schedule_orchestrator": (
-        "ScheduleOrchestrationOutcome",
-        "orchestrate_schedule_run",
-    ),
-    "core.services.scheduler.schedule_persistence": (
-        "persist_schedule",
-    ),
-}
+SERVICE_BEHAVIOR_COMPAT_PUBLIC_SYMBOLS = {}
 
 SERVICE_ROOTS_WITHOUT_COMPAT = (
     "core/services/scheduler/config_presets.py",
+    "core/services/scheduler/freeze_window.py",
+    "core/services/scheduler/schedule_input_builder.py",
+    "core/services/scheduler/schedule_input_collector.py",
+    "core/services/scheduler/schedule_optimizer.py",
+    "core/services/scheduler/schedule_optimizer_steps.py",
+    "core/services/scheduler/schedule_orchestrator.py",
+    "core/services/scheduler/schedule_persistence.py",
     "core/services/scheduler/schedule_input_contracts.py",
     "core/services/scheduler/schedule_input_runtime_support.py",
     "core/services/scheduler/schedule_template_lookup.py",
@@ -65,6 +49,9 @@ LEGACY_COMPAT_MODULES = frozenset(
     | set(ROUTE_COMPAT_MODULES)
     | set(ROUTE_BEHAVIOR_COMPAT_SYMBOLS)
 )
+
+# 扫描机制自测用的合成 legacy 模块（真实集合已清空，机制仍要能抓相对导入与动态导入字符串）。
+_PROBE_LEGACY_MODULES = frozenset({"core.services.scheduler.schedule_orchestrator"})
 
 LEGACY_COMPAT_WRAPPER_FILES = {
     f"{module_name.replace('.', '/')}.py"
@@ -145,14 +132,16 @@ def _legacy_import_modules(
     return modules
 
 
-def _matches_legacy_compat_module(module_name: str) -> Optional[str]:
-    for legacy_module in sorted(LEGACY_COMPAT_MODULES):
+def _matches_legacy_compat_module(module_name: str, legacy_modules: FrozenSet[str] = LEGACY_COMPAT_MODULES) -> Optional[str]:
+    for legacy_module in sorted(legacy_modules):
         if module_name == legacy_module or module_name.startswith(f"{legacy_module}."):
             return legacy_module
     return None
 
 
-def _legacy_import_violations_for_source(rel: str, source: str) -> List[str]:
+def _legacy_import_violations_for_source(
+    rel: str, source: str, legacy_modules: FrozenSet[str] = LEGACY_COMPAT_MODULES,
+) -> List[str]:
     current_module, is_package = _module_context_from_rel_path(rel)
     module_ast = ast.parse(source, filename=rel)
     import_module_aliases = _import_module_aliases(module_ast)
@@ -165,7 +154,7 @@ def _legacy_import_violations_for_source(rel: str, source: str) -> List[str]:
             is_package=is_package,
             import_module_aliases=import_module_aliases,
         ):
-            legacy_module = _matches_legacy_compat_module(module_name)
+            legacy_module = _matches_legacy_compat_module(module_name, legacy_modules)
             if legacy_module:
                 matched_legacy_modules.add(legacy_module)
         for legacy_module in sorted(matched_legacy_modules):
@@ -210,9 +199,9 @@ def test_sp05_legacy_import_scan_catches_package_init_relative_imports() -> None
     service_violations = _legacy_import_violations_for_source(
         "core/services/scheduler/__init__.py",
         service_source,
+        _PROBE_LEGACY_MODULES,
     )
     assert service_violations == ["core/services/scheduler/__init__.py:1:core.services.scheduler.schedule_orchestrator"]
-
 
 
 def test_sp05_legacy_import_scan_catches_dynamic_import_strings() -> None:
@@ -220,6 +209,7 @@ def test_sp05_legacy_import_scan_catches_dynamic_import_strings() -> None:
     violations = _legacy_import_violations_for_source(
         "core/services/scheduler/dynamic_loader.py",
         source,
+        _PROBE_LEGACY_MODULES,
     )
     assert violations == ["core/services/scheduler/dynamic_loader.py:2:core.services.scheduler.schedule_orchestrator"]
 
@@ -227,8 +217,10 @@ def test_sp05_legacy_import_scan_catches_dynamic_import_strings() -> None:
     violations = _legacy_import_violations_for_source(
         "core/services/scheduler/dynamic_loader.py",
         source,
+        _PROBE_LEGACY_MODULES,
     )
     assert violations == ["core/services/scheduler/dynamic_loader.py:2:core.services.scheduler.schedule_orchestrator"]
+
 
 
 def test_sp05_production_code_does_not_grow_legacy_wrapper_imports() -> None:

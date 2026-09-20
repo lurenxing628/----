@@ -14,7 +14,7 @@ from core.services.scheduler.resource_pool_builder import (
     extend_downtime_map_for_resource_pool,
     load_machine_downtimes,
 )
-from core.services.scheduler.schedule_input_collector import collect_schedule_run_input
+from core.services.scheduler.run.schedule_input_collector import collect_schedule_run_input
 from core.services.scheduler.schedule_service import ScheduleService
 from tests._support.paths import REPO_ROOT, REPO_ROOT_STR
 

@@ -7,7 +7,7 @@
 - 冻结包的模块收集只有两条通道：build_win7_onedir.bat 的 --hidden-import 手工清单，
   以及 app.py 可达静态 import 覆盖的"冻结导入锚"
   （web/bootstrap/factory.py 的 _PYINSTALLER_IMPORT_ANCHORS，
-  core/services/scheduler/_frozen_import_anchor.py）。
+  web/bootstrap/_frozen_import_anchor.py）。
 
 本合同把动态导入清单与两条收集通道钉死对账：
   (a) bat 两个打包分支的 hidden-import 均须覆盖 registrar._ROUTE_MODULES 全集；
@@ -35,12 +35,12 @@ from tests._support.paths import REPO_ROOT
 _BAT_PATH = REPO_ROOT / "build_win7_onedir.bat"
 _SCHEDULER_INIT_PATH = REPO_ROOT / "core" / "services" / "scheduler" / "__init__.py"
 _SCHEDULER_CONFIG_INIT_PATH = REPO_ROOT / "core" / "services" / "scheduler" / "config" / "__init__.py"
-_ANCHOR_PATH = REPO_ROOT / "core" / "services" / "scheduler" / "_frozen_import_anchor.py"
+_ANCHOR_PATH = REPO_ROOT / "web" / "bootstrap" / "_frozen_import_anchor.py"
 _FACTORY_PATH = REPO_ROOT / "web" / "bootstrap" / "factory.py"
 
 _SCHEDULER_PACKAGE = "core.services.scheduler"
 _SCHEDULER_CONFIG_PACKAGE = "core.services.scheduler.config"
-_ANCHOR_MODULE = "core.services.scheduler._frozen_import_anchor"
+_ANCHOR_MODULE = "web.bootstrap._frozen_import_anchor"
 
 _FIRST_PARTY_PREFIXES = ("core.", "web.", "data.")
 
@@ -142,7 +142,7 @@ def test_scheduler_lazy_exports_are_collectible_into_frozen_bundle() -> None:
     missing = sorted(lazy_modules - anchored - hidden_everywhere)
     assert not missing, (
         f"lazy _EXPORTS 模块缺冻结收集通道：{missing}；"
-        "请同步 core/services/scheduler/_frozen_import_anchor.py（首选）"
+        "请同步 web/bootstrap/_frozen_import_anchor.py（首选）"
         "或 build_win7_onedir.bat 两个分支的 --hidden-import，"
         "否则冻结 exe 在 request_services 首次 from-import 时启动即死（B08）。"
     )

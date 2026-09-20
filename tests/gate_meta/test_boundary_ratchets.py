@@ -115,7 +115,7 @@ def test_private_import_scanner_flags_private_symbols_but_not_private_modules() 
         from core.services.workbench.process.queries import _plain, public_name
         from .plan_baseline import _complete_rows
         from core.services.scheduler import _frozen_import_anchor
-        from core.services.scheduler._frozen_import_anchor import _anything
+        from web.bootstrap._frozen_import_anchor import _anything
         """
     )
     hits = scan_private_imports.scan_private_imports_file("core/services/x.py", source)

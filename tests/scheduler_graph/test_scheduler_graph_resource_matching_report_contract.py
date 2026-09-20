@@ -13,7 +13,7 @@ import pytest
 from core.services.scheduler.config.config_field_spec import default_snapshot_values
 from core.services.scheduler.run.schedule_graph_report import prepare_schedule_graph_for_dispatch
 from core.services.scheduler.run.schedule_optimizer import OptimizationOutcome
-from core.services.scheduler.schedule_orchestrator import orchestrate_schedule_run
+from core.services.scheduler.run.schedule_orchestrator import orchestrate_schedule_run
 
 
 def _make_dt(hours: int) -> datetime:

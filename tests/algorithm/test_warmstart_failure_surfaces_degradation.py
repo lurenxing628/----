@@ -37,7 +37,7 @@ def test_warmstart_failure_surfaces_degradation() -> None:
 
     from core.algorithms import ScheduleResult, SortStrategy
     from core.algorithms.evaluation import compute_metrics
-    from core.services.scheduler.schedule_optimizer_steps import _run_ortools_warmstart
+    from core.services.scheduler.run.schedule_optimizer_steps import _run_ortools_warmstart
     from core.services.scheduler.summary.schedule_summary import build_result_summary
 
     logger = _Logger()

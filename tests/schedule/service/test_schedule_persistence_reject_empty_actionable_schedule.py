@@ -41,8 +41,7 @@ def main() -> None:
 
     from core.errors import ValidationError
     from core.infrastructure.logging import OperationLogger
-    from core.services.scheduler.run.schedule_persistence import ValidatedSchedulePayload
-    from core.services.scheduler.schedule_persistence import persist_schedule
+    from core.services.scheduler.run.schedule_persistence import ValidatedSchedulePayload, persist_schedule
     from core.services.scheduler.schedule_service import ScheduleService
 
     conn = sqlite3.connect(":memory:", check_same_thread=False)

@@ -9,7 +9,7 @@ import pytest
 
 from core.errors import ValidationError
 from core.services.scheduler.config.config_snapshot import ScheduleConfigSnapshot
-from core.services.scheduler.schedule_optimizer import optimize_schedule
+from core.services.scheduler.run.schedule_optimizer import optimize_schedule
 
 
 class _StubCalendar:

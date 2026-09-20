@@ -8,12 +8,12 @@ from typing import Any, Tuple, cast
 
 import pytest
 
-import core.services.scheduler.schedule_optimizer as schedule_optimizer_module
+import core.services.scheduler.run.schedule_optimizer as schedule_optimizer_module
 from core.algorithms.sort_strategies import SortStrategy
 from core.errors import ValidationError
 from core.services.scheduler.run.optimizer_neighborhood_moves import CRITICAL_CHAIN
 from core.services.scheduler.run.optimizer_search_state import compact_attempts
-from core.services.scheduler.schedule_optimizer import _run_local_search
+from core.services.scheduler.run.schedule_optimizer import _run_local_search
 from core.services.scheduler.summary.optimizer_public_summary import project_public_algo_summary
 
 

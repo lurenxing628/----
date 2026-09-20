@@ -16,7 +16,7 @@ from core.infrastructure.backup import BackupManager, is_maintenance_window_acti
 from core.infrastructure.database import ensure_schema, get_connection
 from core.infrastructure.logging import AppLogger, OperationLogger, safe_log
 from core.services.common.excel_templates import ExcelTemplateError, ensure_excel_templates
-from core.services.scheduler import _frozen_import_anchor as _scheduler_services_import_anchor
+from web.bootstrap import _frozen_import_anchor as _scheduler_services_import_anchor
 from web.error_boundary import (
     render_error_template,
     render_minimal_error_page,
