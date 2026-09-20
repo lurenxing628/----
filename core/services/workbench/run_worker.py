@@ -8,6 +8,7 @@ from core.models.workbench_command import WorkbenchCommandRejected, WorkbenchCom
 from core.models.workbench_run_compute import CandidateRunInputError
 from core.models.workbench_run_job import PROCESS_EXECUTOR_REF, validate_run_ref
 from core.services.scheduler import schedule_service
+from data.repositories.workbench_run_facts_repo import WorkbenchRunFactsRepository
 from data.repositories.workbench_run_repo import WorkbenchRunRepository
 from data.repositories.workbench_run_result_repo import WorkbenchRunResultRepository, prepare_run_result
 
@@ -71,8 +72,7 @@ class WorkbenchRunWorker:
             computation = compute_candidate_run(
                 snapshot, json.loads(row["normalized_input_json"]), projections,
                 on_progress=lambda done, total: report_progress(run_ref, done, total, self._now()))
-            identities = {int(item[0]): item[1] for item in snapshot.execute(
-                "SELECT source_key,ref FROM WorkbenchPlanSourceRefs WHERE kind='operation' AND active=1")}
+            identities = {int(item[0]): item[1] for item in WorkbenchRunFactsRepository(snapshot).operation_identity_refs()}
             return prepare_run_result(computation, identities)
 
     def _persist(self, row, candidates, result):

@@ -71,6 +71,14 @@ class WorkbenchRunRepository:
             JOIN WorkbenchCommandReceipts r ON r.request_key=j.request_key
             WHERE j.request_key=? AND r.action='scheduling.run' LIMIT 1""", (request_key,)).fetchone() is not None
 
+    def command_receipt_action(self, request_key):
+        """该 request_key 的命令回执 action；没有回执返回 None。"""
+        row = self.conn.execute("SELECT action FROM WorkbenchCommandReceipts WHERE request_key=?", (request_key,)).fetchone()
+        return row[0] if row else None
+
+    def has_candidates(self, run_ref):
+        return self.conn.execute("SELECT 1 FROM WorkbenchRunCandidates WHERE run_ref=? LIMIT 1", (run_ref,)).fetchone() is not None
+
     def unfinished(self):
         return [dict(row) for row in self.conn.execute("SELECT * FROM WorkbenchRunJobs WHERE state IN ('queued','running') ORDER BY accepted_at,run_ref")]
 

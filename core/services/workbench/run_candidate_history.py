@@ -6,6 +6,8 @@ from core.models.workbench_run_adoption import ADOPT_ACTION
 from core.models.workbench_run_candidate import MAX_RESPONSE_BYTES, reference, reject
 from data.repositories.workbench_command_repo import WorkbenchCommandRepository
 from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
+from data.repositories.workbench_run_candidate_repo import WorkbenchRunCandidateRepository
+from data.repositories.workbench_run_facts_repo import WorkbenchRunFactsRepository
 
 from .plan_adoption_baseline import read_adoption_baseline
 from .plan_adoption_baseline_values import REASONS, AdoptionBaselineUnavailable
@@ -18,13 +20,13 @@ def _invalid():
 
 
 def _adoption_evidence(conn, row, plan, candidate_ref, run_ref):
-    histories = list(conn.execute("SELECT result_summary FROM ScheduleHistory WHERE version=?", (plan["version"],)))
+    histories = WorkbenchRunFactsRepository(conn).history_result_summaries(plan["version"])
     issues, facts, audit = [], {}, None
     try:
         if len(histories) != 1:
             raise AdoptionBaselineUnavailable("adoption_evidence_missing", "ScheduleHistory")
         read_adoption_baseline(conn, plan_ref=plan["plan_ref"], version=plan["version"],
-                               history={"result_summary": histories[0][0]}, facts=facts)
+                               history={"result_summary": histories[0]}, facts=facts)
     except AdoptionBaselineUnavailable as exc:
         if exc.code != "no_adoption_baseline":
             issues.append({"code": exc.code, "message": REASONS[exc.code]})
@@ -67,14 +69,13 @@ def _entry(conn, row, candidate_ref, run_ref):
 def read_candidate_history(conn, candidate_ref):
     reference(candidate_ref)
     store = CandidateStore(conn)
+    receipts = WorkbenchRunCandidateRepository(conn)
     with store.snapshot():
         run_ref = store.candidate_run(candidate_ref)
-        sizes = conn.execute("SELECT COUNT(*),COALESCE(SUM(length(CAST(outcome_json AS BLOB))),0) "
-                             "FROM WorkbenchCommandReceipts WHERE action=? AND context_ref=?", (ADOPT_ACTION, candidate_ref)).fetchone()
+        sizes = receipts.adoption_receipt_capacity(ADOPT_ACTION, candidate_ref)
         bounded_size(sizes[0], 10000)
         bounded_size(sizes[1], MAX_RESPONSE_BYTES)
-        rows = [dict(row) for row in conn.execute("SELECT * FROM WorkbenchCommandReceipts WHERE action=? AND context_ref=? "
-                                                "ORDER BY committed_at_utc,request_key", (ADOPT_ACTION, candidate_ref))]
+        rows = receipts.adoption_receipts(ADOPT_ACTION, candidate_ref)
         try:
             items = [_entry(conn, row, candidate_ref, run_ref) for row in rows]
             if len({item["official_plan"]["plan_ref"] for item in items}) != len(items):

@@ -7,6 +7,7 @@ from core.infrastructure.workbench_plan_identity_schema import workbench_plan_id
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_run_adoption import CandidateAdoptionBlocked
 from core.models.workbench_run_job import durable_value
+from data.repositories.workbench_run_facts_repo import WorkbenchRunFactsRepository
 from data.repositories.workbench_run_repo import WorkbenchRunRepository
 
 from .run_candidate_projection import candidate_summary, dispositions, scheduled_ids, validate_manifest
@@ -66,10 +67,10 @@ def check_admission_current(conn, capture):
     baseline = run_baseline(conn)
     if baseline != capture["baseline"]:
         raise WorkbenchCommandRejected("snapshot_stale", "排产时的正式计划已经变了，这次没有采用，正式计划没有改动。请重新做排产检查。")
-    if baseline["version"] is None and conn.execute("SELECT 1 FROM Schedule LIMIT 1").fetchone():
+    facts = WorkbenchRunFactsRepository(conn)
+    if baseline["version"] is None and facts.schedule_has_rows():
         raise CandidateAdoptionBlocked("empty_baseline_inconsistent", "系统里还有找不到所属版本的正式安排，不能采用。请联系维护人员核对。")
-    if conn.execute("SELECT 1 FROM Schedule s WHERE NOT EXISTS "
-                    "(SELECT 1 FROM ScheduleHistory h WHERE h.version=s.version) LIMIT 1").fetchone():
+    if facts.schedule_has_rows_without_history():
         raise CandidateAdoptionBlocked("official_history_inconsistent", "有正式安排找不到所属的版本记录，不能采用。请联系维护人员核对。")
     if not run_facts_unchanged(conn, text, capture["facts_hash"]):
         raise WorkbenchCommandRejected("snapshot_stale", "排产之后，排产范围、报工记录、设备人员或班表有变化，这次没有采用，正式计划没有改动。请重新排产后再试。")

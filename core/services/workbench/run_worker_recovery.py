@@ -37,7 +37,7 @@ def recover_unfinished_runs(conn, *, executor_is_active=None, clock=None):
                     pending.append(row["run_ref"])
                     continue
                 active = _executor_evidence(row, executor_is_active)
-                if active is False and not conn.execute("SELECT 1 FROM WorkbenchRunCandidates WHERE run_ref=? LIMIT 1", (row["run_ref"],)).fetchone():
+                if active is False and not repo.has_candidates(row["run_ref"]):
                     result = {"state": "interrupted", "result_persisted": False, "candidates": [],
                               "error": {"code": "run_interrupted", "message": "本次排产已中断，未生成候选方案。请重新排产。"}}
                     repo.finish(row["run_ref"], "interrupted", result, now)

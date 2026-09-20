@@ -3,27 +3,18 @@
 import hashlib
 import json
 
-from core.infrastructure.schema_probe import schema_objects
-from core.infrastructure.workbench_run_schema import RUN_TABLES
 from core.models.workbench_command import canonical_json
 from core.models.workbench_run_job import durable_value
 from core.services.scheduler.run.schedule_execution_resource_facts import _latest_plan_rows
 from core.services.scheduler.schedule_service import ScheduleService
 from core.services.workbench.execution_ledger import ExecutionLedgerService
-from core.services.workbench.preflight_facts import quote
+from data.repositories.workbench_run_facts_repo import WorkbenchRunFactsRepository
 
 
 def capture_run_facts(conn):
-    schema = schema_objects(conn)
-    tables = {}
-    for kind, name, _, _ in schema:
-        if kind != "table" or name in RUN_TABLES:
-            continue
-        sql = "SELECT * FROM " + quote(name)
-        if name == "WorkbenchCommandReceipts":
-            sql += " WHERE action <> 'scheduling.run'"
-        tables[name] = [durable_value(tuple(row)) for row in conn.execute(sql + " ORDER BY rowid")]
-    facts = {"schema": durable_value(schema), "tables": tables}
+    schema, tables = WorkbenchRunFactsRepository(conn).admission_facts()
+    facts = {"schema": durable_value(schema),
+             "tables": {name: [durable_value(row) for row in rows] for name, rows in tables.items()}}
     text = canonical_json(facts)
     return hashlib.sha256(text.encode("utf-8")).hexdigest(), text
 
@@ -55,11 +46,10 @@ def run_facts_unchanged(conn, captured_text, captured_hash):
 
 
 def run_execution_projections(conn, settings):
-    identities = {int(row[0]): row[1] for row in conn.execute(
-        "SELECT source_key,ref FROM WorkbenchPlanSourceRefs WHERE kind='operation' AND active=1")}
+    facts = WorkbenchRunFactsRepository(conn)
+    identities = {int(row[0]): row[1] for row in facts.operation_identity_refs()}
     selected = set(settings["batch_refs"])
-    op_ids = {row[0] for row in conn.execute("""SELECT bo.id,r.ref FROM BatchOperations bo
-        JOIN WorkbenchEntityRefs r ON r.kind='batch' AND r.entity_key=bo.batch_id AND r.active=1""") if row[1] in selected}
+    op_ids = {row[0] for row in facts.batch_operation_batch_refs() if row[1] in selected}
     svc = ScheduleService(conn)
     op_ids.update(_latest_plan_rows(svc, svc.history_repo.get_latest_version()))
     if not op_ids <= set(identities):
@@ -69,12 +59,12 @@ def run_execution_projections(conn, settings):
 
 def run_baseline(conn):
     # Permanent official identities only. A new candidate is not registered here.
-    row = conn.execute("SELECT MAX(version) FROM ScheduleHistory").fetchone()
-    version = row[0]
+    facts = WorkbenchRunFactsRepository(conn)
+    version = facts.latest_history_version()
     if version is None:
         return {"plan_ref": None, "version": None, "rows": []}
-    identities = conn.execute("SELECT ref FROM WorkbenchPlanSourceRefs WHERE kind='official' AND active=1 AND version=?", (version,)).fetchall()
+    identities = facts.official_plan_refs(version)
     if len(identities) != 1:
         raise ValueError("Current official baseline identity is missing or ambiguous")
-    return {"plan_ref": identities[0][0], "version": version,
-            "rows": [durable_value(dict(item)) for item in conn.execute("SELECT * FROM Schedule WHERE version=? ORDER BY id", (version,))]}
+    return {"plan_ref": identities[0], "version": version,
+            "rows": [durable_value(item) for item in facts.schedule_rows_for_version(version)]}

@@ -132,8 +132,7 @@ class WorkbenchRunService:
         with TransactionManager(self.conn).transaction():
             self.repo.require_schema()
             row = self.repo.by_request(request_key)
-            receipt = self.conn.execute("SELECT action FROM WorkbenchCommandReceipts WHERE request_key=?", (request_key,)).fetchone()
-            if row is None and receipt is not None and receipt[0] == "scheduling.run":
+            if row is None and self.repo.command_receipt_action(request_key) == "scheduling.run":
                 raise WorkbenchCommandRejected("run_result_inconsistent", messages.unknown("排产"), 500)
             return _with_progress(self.repo.public(row)) if row else None
 

@@ -14,6 +14,7 @@ from core.services.scheduler.run.schedule_input_runtime_support import (
     _merge_execution_and_freeze_seed_results,
 )
 from core.services.workbench.preflight_checks import number, stored_date
+from data.repositories.workbench_run_input_repo import WorkbenchRunInputRepository
 
 from .plan_point_evidence import official_point_work
 from .run_input_points import read_point_freeze_rows
@@ -45,7 +46,7 @@ def _strict_pool(svc, *, cfg, algo_ops, meta):
 def _locked_seeds(svc, operations, prev_version):
     by_id = {op.id: op for op in operations}
     latest = {}
-    for row in svc.conn.execute("SELECT * FROM Schedule WHERE version<=? ORDER BY version,id", (prev_version,)):
+    for row in WorkbenchRunInputRepository(svc.conn).schedule_rows_through_version(prev_version):
         if row["op_id"] in by_id:
             latest[row["op_id"]] = row
     result = []
@@ -127,10 +128,11 @@ def _validate_downtime_row(row):
 
 
 def _validate_stored_runtime(conn):
-    for table in ("WorkCalendar", "OperatorCalendar"):
-        for row in conn.execute("SELECT * FROM " + table):
+    repo = WorkbenchRunInputRepository(conn)
+    for table, rows in repo.calendar_rows().items():
+        for row in rows:
             _validate_calendar_row(row, table)
-    for row in conn.execute("SELECT * FROM MachineDowntimes"):
+    for row in repo.machine_downtime_rows():
         _validate_downtime_row(row)
 
 

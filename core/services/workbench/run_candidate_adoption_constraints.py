@@ -6,12 +6,13 @@ from datetime import datetime
 
 from core.algorithm_runtime.internal_slot import estimate_internal_slot
 from core.models.workbench_run_adoption import CandidateAdoptionBlocked
+from data.repositories.workbench_run_input_repo import ADOPTION_CHECK_TABLES, WorkbenchRunInputRepository
 
 from .preflight_checks import PreflightChecks, stored_date
 from .zero_duration import candidate_point_validator
 
-_TABLES = ("Machines", "Operators", "Suppliers", "OpTypes", "OperatorMachine", "OperatorSkill",
-           "WorkbenchOperatorProfiles", "WorkbenchSupplierOpTypes", "PartOperations", "ExternalGroups", "BatchMaterials")
+# piece_adoption 仍按这份表清单读主数据；清单本体归输入仓储维护。
+_TABLES = ADOPTION_CHECK_TABLES
 
 
 def _block(code, message):
@@ -55,8 +56,7 @@ def _external(prepared, row, op):
 
 
 def validate_adoption_constraints(conn, prepared, payload):
-    checks = PreflightChecks({name: [dict(row) for row in conn.execute('SELECT * FROM "' + name + '"')]
-                              for name in _TABLES})
+    checks = PreflightChecks(WorkbenchRunInputRepository(conn).adoption_check_tables())
     ops = {op.id: op for op in prepared.operations}
     algo_ops = {op.id: op for op in prepared.algo_ops}
     actual_ids = prepared.execution_fixed_op_ids | prepared.execution_completed_op_ids
