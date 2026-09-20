@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 import pytest
 
+from core.errors import AppError
 from core.services.process.workflow_state import workflow_snapshot
 from core.services.workbench.resource.queries import WorkbenchResourceQueryService
 from tests.workbench.process_readiness_support import (
@@ -199,3 +200,28 @@ def test_three_real_stage_saves_refresh_summary_and_snapshot_without_read_writes
         assert current["meta"]["snapshot_ref"] != snapshots[-1]["meta"]["snapshot_ref"]
         snapshots.append(current)
     assert "不代表排产检查结果" in snapshots[-1]["data"]["readiness"]["message"]
+
+
+def test_repository_translated_database_error_degrades_instead_of_raising(workflow_conn, caplog):
+    """The repository turns sqlite failures into AppError; readiness must still degrade, never surface a 500."""
+    from data.repositories.workbench_process_workflow_repo import WorkbenchProcessWorkflowRepository
+
+    first = summary(workflow_conn)
+    before, changes = stored_state(workflow_conn), workflow_conn.total_changes
+
+    def broken(self):
+        return self._dict_rows("SELECT * FROM NoSuchProcessWorkflowTable")
+
+    with patch.object(WorkbenchProcessWorkflowRepository, "parts_with_refs", broken):
+        with pytest.raises(AppError) as exc_info:
+            workflow_snapshot(workflow_conn)
+        assert isinstance(exc_info.value.cause, sqlite3.OperationalError)
+        after = summary(workflow_conn)
+    item = after["readiness"]["items"]["process"]
+    assert item["status"] == "unavailable" and item["counts"]["total"] == 1
+    assert all(value is None for key, value in item["counts"].items() if key != "total")
+    assert item["issues"][0]["code"] == "process_workflow_unavailable"
+    assert "no records were repaired" in caplog.text
+    for key in ("counts", "metrics", "calendar"):
+        assert after[key] == first[key]
+    assert stored_state(workflow_conn) == before and workflow_conn.total_changes == changes
