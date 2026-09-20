@@ -145,7 +145,7 @@ scenario 后端能力已经比较完整：
 
 - `schema.sql:399` 已有 draft / scenario / scenario row 相关表。
 - `core/services/scheduler/gantt_adjustment_scenario_service.py:30` 保存 scenario 前会重新校验草稿。
-- `core/services/scheduler/gantt_adjustment_publish_service.py:91` 发布 scenario 会分配新正式版本，写 `Schedule` 和 `ScheduleHistory`。
+- `core/services/scheduler/gantt_adjustment_publish_service.py:91` 发布 scenario 会分配新正式版本，写 `Schedule` 和 `ScheduleHistory`。（2026-09-20 该服务已随旧路由层退役，正式采用统一走工作台试调采用。）
 
 发布 scenario 也是“生成新正式计划”的入口。车间执行事件落地后，scenario publish 必须和普通重排一样检查 `execution_snapshot_revision`：如果用户保存 scenario 后现场已经开工、完工或状态发生变化，发布必须返回 409，不写 `Schedule` 和 `ScheduleHistory`。
 

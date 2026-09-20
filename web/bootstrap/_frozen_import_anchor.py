@@ -22,7 +22,6 @@ import core.services.scheduler.calendar.service as _calendar_service
 import core.services.scheduler.config.config_page_outcome as _config_page_outcome
 import core.services.scheduler.config.config_service as _config_service
 import core.services.scheduler.gantt.adjustment_draft_service as _gantt_adjustment_draft_service
-import core.services.scheduler.gantt.adjustment_publish_service as _gantt_adjustment_publish_service
 import core.services.scheduler.gantt.adjustment_scenario_service as _gantt_adjustment_scenario_service
 import core.services.scheduler.gantt.adjustment_validation_service as _gantt_adjustment_validation_service
 import core.services.scheduler.gantt.service as _gantt_service
@@ -37,7 +36,6 @@ FROZEN_IMPORT_ANCHORS = (
     _config_page_outcome,
     _config_service,
     _gantt_adjustment_draft_service,
-    _gantt_adjustment_publish_service,
     _gantt_adjustment_scenario_service,
     _gantt_adjustment_validation_service,
     _gantt_service,

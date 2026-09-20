@@ -700,7 +700,6 @@ items:
       - core/models/schedule_adjustment.py
       - data/repositories/operation_execution_event_repo.py
       - core/services/scheduler/gantt_adjustment_scenario_service.py
-      - core/services/scheduler/gantt_adjustment_publish_service.py
       - data/repositories/schedule_adjustment_scenario_repo.py
       - schema.sql
       - core/infrastructure/migration_state.py
@@ -710,14 +709,13 @@ items:
       - core/algorithms/greedy/dispatch/sgs_graph.py
       - tests/operation_execution/test_scheduler_reschedule_execution_facts.py
       - tests/schedule/service/test_scheduler_reschedule_execution_minimum_guard.py
-      - tests/gantt/test_gantt_adjustment_publish_execution_revision.py
     entrypoints:
       - "从 schedule_input_collector.py 完整接入 ExecutionFactProvider"
       - "优化器、候选比较、多起点和局部搜索检查 schedule_optimizer.py、schedule_optimizer_steps.py、optimizer_local_search.py、schedule_candidate_runner.py"
       - "普通排程、图排程、scenario 保存和 scenario 发布都要读取同一批执行事实快照"
       - "异常中工序默认阻止普通自动重排，提示计划员先处理异常"
     test_commands:
-      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/operation_execution/test_scheduler_reschedule_execution_facts.py tests/schedule/service/test_scheduler_reschedule_execution_minimum_guard.py tests/gantt/test_gantt_adjustment_publish_execution_revision.py"
+      - "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/operation_execution/test_scheduler_reschedule_execution_facts.py tests/schedule/service/test_scheduler_reschedule_execution_minimum_guard.py"
     forbidden_paths:
       - installer/
       - vendor/
@@ -738,7 +736,7 @@ items:
       - persistence 不把 processing、paused、exception、completed 的现场状态覆盖成 scheduled
       - 图排程 fixed_op_ids 也尊重执行事实
       - 新增 Python 代码保持 Python 3.8 语法，不升级破坏 Win7 x64 的依赖
-      - 实施本条 feature 时必须新增或更新并通过这些测试：PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/operation_execution/test_scheduler_reschedule_execution_facts.py tests/schedule/service/test_scheduler_reschedule_execution_minimum_guard.py tests/gantt/test_gantt_adjustment_publish_execution_revision.py
+      - 实施本条 feature 时必须新增或更新并通过这些测试：PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/operation_execution/test_scheduler_reschedule_execution_facts.py tests/schedule/service/test_scheduler_reschedule_execution_minimum_guard.py
     notes: 已完成完整执行事实接入；普通重排、候选比较、多起点、局部搜索、图排程 ready queue、scenario 保存和 scenario 发布均使用执行事实快照，冲突时不写正式计划。
 
   - slug: aps-three-gap-docs-quality-gate

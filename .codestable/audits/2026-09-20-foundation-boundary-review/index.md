@@ -63,7 +63,9 @@ verified_by: 主代理定向测试（每个修复提交单独跑定向用例，�
 | C4 | `run/optimizer → run` 的 TYPE_CHECKING 反向边 | `SchedulerLike` 协议落到 `contracts/scheduler_like.py`；排产子包方向表立为 `test_scheduler_subpackage_layering.py`（登记进 scheduler_run_core 与守卫清单） |
 | C5 | R3-m2 说明书蓝图延迟导入无合同 | 冻结合同新增 (f)：`register_legacy_blueprints` 必须字面 import，全文件无 import_module |
 | C6 | 系统速查表 / 开发文档.md / .limcode ownership_matrix 旧路径 | 按搬迁计划映射逐条改到现行路径（14 处）；阶段留痕类文档不改 |
-| C7 | R2-m1 嵌套 `begin_immediate` 静默降级 | 未改：10 处生产调用方部分本就嵌套在外层事务里，改成拒绝属事务语义决策，留待另议 |
+| C7 | R2-m1 嵌套 `begin_immediate` 静默降级 | 用户裁决不改：一人一机，真正会嵌套的 `record_event` 外层本就是 IMMEDIATE，最坏后果是一次可见报错而非坏数据 |
+| C8 | 老 Excel 导入簇 | 用户裁决退役死的一半：删 `ExcelService` 类、两个 `build_existing_for_excel`、一份专测与三个开发期冒烟脚本；类型与 `excel_import_executor` 仍被批次 / 日历 / 人员设备导入使用，原地保留；`TabularBackend` 三件套是插件框架示例能力，是否连插件示例退役另议 |
+| C9 | `GanttAdjustmentPublishService.publish_scenario` 生产无调用方 | 退役：删服务与两份测试、账本守卫里 3 个驱动它的用例，门面 `_EXPORTS` / 冻结锚 / 懒导出合同 / 注册表 / 三缺口文档与路线图条目同步；同族 Draft / Scenario / Validation 三个服务同样无生产调用方（约 1.5k 行 + 46 份测试引用），整族退役另议 |
 
 ## 未做 / 证据不足
 

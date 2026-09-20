@@ -28,7 +28,7 @@
 | 10 | reschedule-minimum-execution-guardrails | 2026-05-27-reschedule-minimum-execution-guardrails | `tests/schedule/service/test_scheduler_reschedule_execution_minimum_guard.py`、`tests/operation_execution/test_operation_execution_state_revision.py` |
 | 11 | shop-exception-feedback | 2026-05-27-shop-exception-feedback | `tests/schedule/service/test_scheduler_exception_blocks_auto_reschedule.py` |
 | 12 | plan-vs-actual-review | 2026-05-27-plan-vs-actual-review | `tests/scheduler_analysis/test_plan_vs_actual_review.py`、`tests/scheduler_analysis/test_report_delay_diagnosis_plain_language.py` |
-| 13 | reschedule-respects-execution-facts | 2026-05-27-reschedule-respects-execution-facts | `tests/operation_execution/test_scheduler_reschedule_execution_facts.py`、`tests/schedule/service/test_scheduler_reschedule_execution_minimum_guard.py`、`tests/gantt/test_gantt_adjustment_publish_execution_revision.py` |
+| 13 | reschedule-respects-execution-facts | 2026-05-27-reschedule-respects-execution-facts | `tests/operation_execution/test_scheduler_reschedule_execution_facts.py`、`tests/schedule/service/test_scheduler_reschedule_execution_minimum_guard.py` |
 
 ### 2.1 items.yaml 精准测试命令
 
@@ -48,14 +48,14 @@
 | 10 | reschedule-minimum-execution-guardrails | `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/schedule/service/test_scheduler_reschedule_execution_minimum_guard.py tests/app_runtime/test_frontend_offline_static_assets.py` |
 | 11 | shop-exception-feedback | `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/schedule/service/test_scheduler_exception_blocks_auto_reschedule.py tests/app_runtime/test_frontend_offline_static_assets.py` |
 | 12 | plan-vs-actual-review | `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/scheduler_analysis/test_plan_vs_actual_review.py tests/operation_execution/test_operation_execution_event_foundation.py tests/app_runtime/test_frontend_offline_static_assets.py` |
-| 13 | reschedule-respects-execution-facts | `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/operation_execution/test_scheduler_reschedule_execution_facts.py tests/schedule/service/test_scheduler_reschedule_execution_minimum_guard.py tests/gantt/test_gantt_adjustment_publish_execution_revision.py` |
+| 13 | reschedule-respects-execution-facts | `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/operation_execution/test_scheduler_reschedule_execution_facts.py tests/schedule/service/test_scheduler_reschedule_execution_minimum_guard.py` |
 
 ### 2.2 回归类型对照
 
 | 类型 | 覆盖方式 |
 |---|---|
 | 精准功能测试 | 上表每条 feature 的 `test_commands` |
-| 迁移测试 | `tests/migration_db/test_migrations.py`、`tests/gantt/test_gantt_adjustment_publish_execution_revision.py` |
+| 迁移测试 | `tests/migration_db/test_migrations.py` |
 | 页面大白话测试 | `tests/scheduler_analysis/test_report_delay_diagnosis_plain_language.py`、`tests/gate_meta/test_aps_three_gap_docs_quality_gate.py` |
 | Win7/offline 测试 | `tests/app_runtime/test_frontend_offline_static_assets.py`、`tests/gate_meta/test_scan_py38plus_syntax.py` |
 | CodeStable YAML 测试 | `.codestable/tools/validate-yaml.py` 命令和 `tests/gate_meta/test_codestable_tools_contract.py` |
@@ -65,7 +65,6 @@
 
 收集方式：合并 `aps-three-gap-directions-items.yaml` 第 1-13 项 `test_commands` 和 `git diff --name-only d4589d77 -- 'tests/*.py'`。下面既包含本 roadmap 改过的测试，也包含第 1-13 项精准命令引用的既有测试。
 
-- `tests/gantt/test_gantt_adjustment_publish_execution_revision.py`
 - `tests/gantt/test_gantt_draft_save_and_preview.py`
 - `tests/migration_db/test_migrations.py`
 - `tests/operation_execution/test_operation_execution_event_foundation.py`
@@ -146,7 +145,6 @@
 - `core/services/scheduler/run/schedule_input_collector.py`
 - `core/services/scheduler/run/schedule_input_runtime_support.py`
 - `core/services/scheduler/run/schedule_persistence.py`
-- `core/services/scheduler/gantt/adjustment_publish_service.py`
 - `core/services/scheduler/gantt/adjustment_scenario_service.py`
 - `core/services/report/execution_review.py`
 - `core/services/report/report_plan_helpers.py`

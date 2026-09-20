@@ -3,16 +3,13 @@
 import pytest
 
 from core.errors import AppError
-from core.infrastructure.logging import OperationLogger
 from core.services.execution.ledger_reader import ExecutionLedgerReader
-from core.services.scheduler.gantt.adjustment_publish_service import GanttAdjustmentPublishService
 from core.services.scheduler.run.schedule_execution_guardrails import (
     _collect_execution_guardrails,
     build_execution_guardrails_from_projections,
 )
 from core.services.scheduler.schedule_service import ScheduleService
 from core.services.workbench.execution.ledger import ExecutionLedgerService
-from tests._support.gantt_scenario import _saved_scenario, _seed_base
 from tests.schedule.service.test_scheduler_reschedule_execution_minimum_guard import _seed_two_operation_plan
 from tests.workbench.scheduler_execution_ledger_support import (
     formal_rows,
@@ -57,78 +54,6 @@ def test_complete_report_is_fixed_seed_in_real_run(tmp_path):
         assert [tuple(r) for r in conn.execute("SELECT * FROM Schedule WHERE version=1 ORDER BY id")] == old["Schedule"]
         assert formal_rows(conn)["OperationExecutionEvents"] == []
         assert read_facts(conn, result["version"])[10].actual_status == "completed"
-    finally:
-        conn.close()
-
-
-@pytest.mark.parametrize("kind", ["partial", "complete", "corrected"])
-def test_adoption_protects_new_reports_even_when_saved_after_report(tmp_path, kind):
-    conn = raw_connection(tmp_path)
-    try:
-        _seed_base(conn)
-        case = install_case(conn)
-        payload = case.values(1, actual_start="2026-05-04T08:20:00", actual_end="2026-05-04T08:50:00",
-                              effective_processing_hours=0.5)
-        if kind == "partial":
-            payload["effective_processing_hours"] = None
-        saved = case.command("create", case.task(5, 10), payload)["data"]["rows"][0]
-        scenario = _saved_scenario(conn)
-        if kind == "corrected":
-            case.command("correct", saved["report_ref"], {"actual_end": "2026-05-04T08:55:00",
-                "original_revision_ref": saved["revision_ref"], "reason": "Correct clock"})
-        before = formal_rows(conn)
-        with pytest.raises(AppError) as error:
-            GanttAdjustmentPublishService(conn, op_logger=OperationLogger(conn)).publish_scenario(
-                scenario_id=scenario.scenario_id, confirm_text="正式采用", reason="Verified", published_by="pytest")
-        expected = {"partial": "execution_ledger_requires_reconciliation", "complete": "execution_completed_start_moved",
-                    "corrected": "execution_snapshot_changed"}
-        assert error.value.details["reason"] == expected[kind]
-        assert formal_rows(conn) == before
-        assert conn.execute("SELECT status FROM ScheduleAdjustmentScenario WHERE scenario_id=?", (scenario.scenario_id,)).fetchone()[0] == "active"
-        assert conn.execute("SELECT count(*) FROM OperationLogs WHERE action='publish_scenario'").fetchone()[0] == 0
-    finally:
-        conn.close()
-
-
-def test_reporting_after_real_adoption_never_rewrites_adopted_result(tmp_path):
-    conn = raw_connection(tmp_path)
-    try:
-        _seed_base(conn)
-        case = install_case(conn)
-        scenario = _saved_scenario(conn)
-        result = GanttAdjustmentPublishService(conn, op_logger=OperationLogger(conn)).publish_scenario(
-            scenario_id=scenario.scenario_id, confirm_text="正式采用", reason="Verified", published_by="pytest")
-        before = formal_rows(conn)
-        case.command("create", case.task(result.new_version, 10), {"completed_quantity": 0, "remark": "Observed"})
-        fact = read_facts(conn, result.new_version)[10]
-        assert fact.actual_status == "processing"
-        assert formal_rows(conn) == before
-    finally:
-        conn.close()
-
-
-@pytest.mark.parametrize("keep_actual_resource", [False, True])
-def test_completed_report_adoption_requires_exact_actual_resource(tmp_path, keep_actual_resource):
-    conn = raw_connection(tmp_path)
-    try:
-        _seed_base(conn)
-        case = install_case(conn)
-        machine, operator = ("M1", "O1") if keep_actual_resource else ("M2", "O2")
-        case.command("create", case.task(5, 10), case.values(1, actual_start="2026-05-04T08:00:00",
-            actual_end="2026-05-04T09:00:00", effective_processing_hours=1,
-            actual_machine_ref=case.ref("machine", machine), actual_operator_ref=case.ref("operator", operator)))
-        scenario = _saved_scenario(conn)
-        before = formal_rows(conn)
-        service = GanttAdjustmentPublishService(conn, op_logger=OperationLogger(conn))
-        arguments = {"scenario_id": scenario.scenario_id, "confirm_text": "正式采用", "reason": "Verified", "published_by": "pytest"}
-        if keep_actual_resource:
-            result = service.publish_scenario(**arguments)
-            assert read_facts(conn, result.new_version)[10].actual_status == "completed"
-        else:
-            with pytest.raises(AppError) as error:
-                service.publish_scenario(**arguments)
-            assert error.value.details["reason"] == "execution_completed_resource_moved"
-            assert formal_rows(conn) == before
     finally:
         conn.close()
 

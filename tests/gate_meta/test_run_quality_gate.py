@@ -685,7 +685,6 @@ def test_required_suite_comes_from_shared_registry_and_covers_high_risk_regressi
         "tests/web_pages/test_error_boundary_contract.py",
         "tests/gantt/test_gantt_adjustment_draft_model.py",
         "tests/gantt/test_gantt_draft_save_and_preview.py",
-        "tests/gantt/test_gantt_scenario_publish.py",
         "tests/gantt/test_gantt_frontend_error_boundary.py",
         "tests/gantt/test_gantt_critical_chain_unavailable.py",
         "tests/gantt/test_gantt_critical_chain_provider.py",

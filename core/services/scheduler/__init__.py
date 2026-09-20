@@ -20,7 +20,6 @@ _EXPORTS = {
     "ConfigService": ".config.config_service",
     "GanttAdjustmentDraftService": ".gantt.adjustment_draft_service",
     "GanttAdjustmentScenarioService": ".gantt.adjustment_scenario_service",
-    "GanttAdjustmentPublishService": ".gantt.adjustment_publish_service",
     "GanttAdjustmentValidationService": ".gantt.adjustment_validation_service",
     "GanttService": ".gantt.service",
     "OperationExecutionFeedbackService": ".operation_execution_feedback_service",
@@ -44,7 +43,6 @@ __all__ = [
     "ConfigService",
     "GanttAdjustmentDraftService",
     "GanttAdjustmentScenarioService",
-    "GanttAdjustmentPublishService",
     "GanttAdjustmentValidationService",
     "GanttService",
     "OperationExecutionFeedbackService",
@@ -61,7 +59,6 @@ if TYPE_CHECKING:
     from .calendar.service import CalendarService
     from .config.config_service import ConfigService
     from .gantt.adjustment_draft_service import GanttAdjustmentDraftService
-    from .gantt.adjustment_publish_service import GanttAdjustmentPublishService
     from .gantt.adjustment_scenario_service import GanttAdjustmentScenarioService
     from .gantt.adjustment_validation_service import GanttAdjustmentValidationService
     from .gantt.service import GanttService

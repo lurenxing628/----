@@ -137,7 +137,9 @@ tags: [scheduler, gantt, frontend, readonly, vendor, scenario-preview, task-deta
 
 ## 7. Scenario 正式采用
 
-后端现在已有 `GanttAdjustmentPublishService` 和 `POST /scheduler/gantt/adjustments/publish-scenario`。这条链路把已保存的 Scenario 正式采用为新的官方排产版本：
+> 2026-09-20 退役：`POST /scheduler/gantt/adjustments/publish-scenario` 已随旧路由层于 2026-09-18 删除，`GanttAdjustmentPublishService` 在生产代码里无调用方，同日删除；正式采用统一走工作台试调采用（`core/services/workbench/trial/adoption*`）。以下为历史链路描述：
+
+后端曾有 `GanttAdjustmentPublishService` 和 `POST /scheduler/gantt/adjustments/publish-scenario`。这条链路把已保存的 Scenario 正式采用为新的官方排产版本：
 
 - 必须传入二次确认文本 `正式采用`。
 - 必须填写正式采用原因。
