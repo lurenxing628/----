@@ -256,9 +256,6 @@ class ScheduleCandidateRepository(BaseRepository):
         )
         return ScheduleCandidateSelection.from_row(row) if row else None
 
-    def delete_by_version(self, version: int) -> None:
-        self.execute("DELETE FROM ScheduleCandidate WHERE version = ?", (int(version),))
-
     def delete_without_schedule_history(self) -> int:
         cur = self.execute(
             """

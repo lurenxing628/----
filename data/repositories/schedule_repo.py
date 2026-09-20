@@ -140,9 +140,3 @@ class ScheduleRepository(BaseRepository):
 
     def delete(self, schedule_id: int) -> None:
         self.execute("DELETE FROM Schedule WHERE id = ?", (int(schedule_id),))
-
-    def delete_by_version(self, version: int) -> None:
-        self.execute("DELETE FROM Schedule WHERE version = ?", (int(version),))
-
-    def delete_by_op(self, op_id: int) -> None:
-        self.execute("DELETE FROM Schedule WHERE op_id = ?", (int(op_id),))

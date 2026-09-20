@@ -18,15 +18,6 @@ class ResultSummaryParseResult:
     reason: str
     raw_type: str
 
-    def to_parse_state(self, *, user_message: Optional[str] = None) -> Dict[str, Any]:
-        return {
-            "payload": self.payload,
-            "parse_failed": bool(self.parse_failed),
-            "user_message": user_message if self.parse_failed else None,
-            "reason": self.reason,
-        }
-
-
 def _reject_json_non_finite_constant(value: str) -> None:
     raise NonFiniteSummaryNumber(f"排产摘要包含非有限数字：{value}")
 

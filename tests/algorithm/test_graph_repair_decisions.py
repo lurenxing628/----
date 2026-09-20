@@ -223,7 +223,7 @@ def test_portfolio_covers_batch_families_before_interleaving_extras_lazily(monke
 
     monkeypatch.setattr(RepairNeighborhood, "neighbors", observed)
     stream = portfolio.decisions()
-    assert portfolio.batch_family_representative_count == 3
+    assert len(portfolio.batch_family_representative_indices) == 3
     assert expanded == [], "metadata inspection must not expand batch permutations"
     prefix = list(islice(stream, 3))
     assert [kind for kind, _decision in prefix] == ["adjacent_swap", "single_insert", "tardy_boundary_move"]
@@ -243,6 +243,6 @@ def test_portfolio_missing_batch_families_leave_room_for_extras(moves):
     extra = ("critical_block_swap", RepairDecision(batches.order, (2, 1)))
     portfolio = RepairPortfolio(batches, (extra,), ())
     rows = list(portfolio.decisions())
-    assert portfolio.batch_family_representative_count == len(moves)
+    assert len(portfolio.batch_family_representative_indices) == len(moves)
     assert rows[-1] == extra
     assert len(rows) == portfolio.candidate_count == len(moves) + 1

@@ -62,11 +62,6 @@ SKILL_LEVEL_CANONICAL_VALUES: Tuple[str, ...] = (
     SkillLevel.NORMAL.value,
     SkillLevel.EXPERT.value,
 )
-SKILL_LEVEL_OPTION_LABELS: Dict[str, str] = {
-    SkillLevel.BEGINNER.value: "初级",
-    SkillLevel.NORMAL.value: "普通",
-    SkillLevel.EXPERT.value: "熟练",
-}
 
 
 def _text(value: Any) -> str:
@@ -243,9 +238,6 @@ def skill_level_rank(value: Any) -> int:
         return 2
     return 9
 
-
-def skill_level_options() -> Tuple[Tuple[str, str], ...]:
-    return tuple((value, SKILL_LEVEL_OPTION_LABELS[value]) for value in SKILL_LEVEL_CANONICAL_VALUES)
 
 
 def iter_skill_level_values() -> Iterable[str]:

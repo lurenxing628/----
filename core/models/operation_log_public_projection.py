@@ -52,17 +52,7 @@ def public_operation_log_error_message(message: Any) -> str:
     return redact_internal_text(message)
 
 
-def public_operation_log_target_id_text(target_id: Any) -> str:
-    if target_id is None:
-        return "-"
-    text = str(target_id or "").strip()
-    if not text:
-        return "-"
-    return REDACTED_INTERNAL_TEXT
-
-
 __all__ = [
     "public_operation_log_detail_text",
     "public_operation_log_error_message",
-    "public_operation_log_target_id_text",
 ]

@@ -119,10 +119,6 @@ class ScheduleAdjustmentRepository(BaseRepository):
             raise RuntimeError(f"调整草稿不存在：{draft_id}")
         return draft
 
-    def delete_draft(self, draft_id: str) -> int:
-        cur = self.execute("DELETE FROM ScheduleAdjustmentDraft WHERE draft_id = ?", (str(draft_id),))
-        return int(cur.rowcount or 0)
-
     def create_change(
         self, change: Union[ScheduleAdjustmentChange, Dict[str, Any]]
     ) -> ScheduleAdjustmentChange:

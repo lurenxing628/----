@@ -29,10 +29,6 @@ class RepairPortfolio:
             first_by_kind.setdefault(kind, index)
         return tuple(first_by_kind.values())
 
-    @property
-    def batch_family_representative_count(self) -> int:
-        return len(self.batch_family_representative_indices)
-
     def decisions(self) -> Iterator[Tuple[str, RepairDecision]]:
         representatives = self.batch_family_representative_indices
         for index in representatives:
@@ -68,10 +64,6 @@ class ParentRepairPortfolio:
     @property
     def feature_bases(self) -> Tuple[str, ...]:
         return tuple(profile.feature_basis for profile, _portfolio in self.variants)
-
-    @property
-    def batch_family_representative_count(self) -> int:
-        return len({kind for _profile, portfolio in self.variants for kind, _source, _target in portfolio.batches.moves})
 
     def with_variant(self, profile: GraphReadyWeightProfile, portfolio: RepairPortfolio) -> ParentRepairPortfolio:
         if profile.feature_basis in self.feature_bases:

@@ -1,4 +1,4 @@
-"""守护归一化单一真相源：批次优先级/齐套状态/日历日类型/是否(yes-no)/技能等级的取值口径由 normalization_matrix 统一裁定，路由 normalizers、excel_validators、personnel/operator_machine_normalizers、enum_normalizers 必须与之逐值对齐，且人员/设备详情页直接复用同一个 skill_level_options 函数对象。"""
+"""守护归一化单一真相源：批次优先级/齐套状态/日历日类型/是否(yes-no)/技能等级的取值口径由 normalization_matrix 统一裁定，路由 normalizers、excel_validators、personnel/operator_machine_normalizers、enum_normalizers 必须与之逐值对齐。"""
 
 
 def test_normalization_matrix_single_source() -> None:
@@ -23,13 +23,6 @@ def test_normalization_matrix_single_source() -> None:
         normalize_yes_no_optional,
     )
 
-    expected_options = [
-        (SkillLevel.BEGINNER.value, "初级"),
-        (SkillLevel.NORMAL.value, "普通"),
-        (SkillLevel.EXPERT.value, "熟练"),
-    ]
-    if list(matrix.skill_level_options()) != expected_options:
-        raise RuntimeError(f"技能等级选项口径异常：{list(matrix.skill_level_options())!r}")
     if list(matrix.iter_skill_level_values()) != [SkillLevel.BEGINNER.value, SkillLevel.NORMAL.value, SkillLevel.EXPERT.value]:
         raise RuntimeError(f"技能等级 canonical 值域异常：{list(matrix.iter_skill_level_values())!r}")
 

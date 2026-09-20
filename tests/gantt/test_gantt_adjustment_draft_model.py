@@ -272,20 +272,18 @@ def test_adjustment_draft_records_changes_without_touching_formal_schedule(tmp_p
         conn.close()
 
 
-def test_discard_and_delete_draft_do_not_remove_formal_schedule(tmp_path: Path) -> None:
+def test_discard_draft_keeps_its_change_record_and_the_formal_schedule(tmp_path: Path) -> None:
     conn = _connect_fresh_schema(tmp_path)
     try:
         _seed_formal_schedule(conn)
         service = GanttAdjustmentDraftService(conn)
-        repo = ScheduleAdjustmentRepository(conn)
         draft = service.create_draft(base_version=5, base_plan_role="adopted", created_by="planner")
         service.record_resource_change(draft_id=draft.draft_id, schedule_id=70, op_id=10, to_machine_id="M-NEW")
         before_versions = ScheduleHistoryRepository(conn).list_versions(limit=10)
 
         discarded = service.discard_draft(draft_id=draft.draft_id, reason="不采用")
         assert discarded.status == DRAFT_STATUS_DISCARDED
-        assert repo.delete_draft(draft.draft_id) == 1
-        assert _count(conn, "ScheduleAdjustmentChange") == 0
+        assert _count(conn, "ScheduleAdjustmentChange") == 1, "作废只改状态，不删除调整记录"
         assert _count(conn, "Schedule") == 1
         assert _count(conn, "ScheduleHistory") == 1
         assert _max_version_seq(conn) == 5
