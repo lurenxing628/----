@@ -4,8 +4,8 @@ from datetime import datetime, timedelta
 
 from core.services.scheduler.run.schedule_payload_contract import build_validated_schedule_payload
 
-from .run_input_rows import fail
-from .zero_duration import candidate_point_validator
+from .facts.run_input_rows import fail
+from .facts.zero_duration import candidate_point_validator
 
 
 def validate_candidate(schedule_input, results, errors):

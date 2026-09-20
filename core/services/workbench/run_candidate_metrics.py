@@ -11,9 +11,9 @@ from core.services.capacity.plan_calendar_engine import SnapshotCalendarEngine
 from core.services.capacity.plan_calendar_intervals import instant
 from core.services.capacity.plan_calendar_windows import apply_resource, policy_projection, unavailable
 
-from .dashboard_resource_metrics import MAX_RESOURCE_DAYS, daily_resource_pressure, range_days
-from .run_candidate_facts import _table
-from .run_candidate_values import stored_json
+from .facts.candidate_facts import _table
+from .facts.candidate_values import stored_json
+from .facts.resource_pressure import MAX_RESOURCE_DAYS, daily_resource_pressure, range_days
 
 
 def scoped_rows(rows, batch_refs, start, end):

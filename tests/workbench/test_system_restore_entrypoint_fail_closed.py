@@ -4,7 +4,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
-from core.services.workbench.system_journal import file_fingerprint
+from core.services.workbench.facts.system_journal import file_fingerprint
 from tests.workbench.system_restore_entrypoint_support import BASE, KEY, ProcessHost, seed_database, wait_for
 from tests.workbench.system_restore_host_support import restore_host as _restore_host  # noqa: F401
 from web.bootstrap import factory

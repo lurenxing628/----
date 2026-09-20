@@ -23,8 +23,10 @@ from core.services.scheduler.workbench_plan_page import _PagePlanQueryService
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
 from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
 
-from .plan_fact_serialization import plain_plan_facts
+from .facts.plan_serialization import plain_plan_facts
+from .facts.zero_duration_evidence import overlaps
 from .plan_point_evidence import annotate_plan_points
+from .plan_point_query import PointPlanCatalogRepository
 from .plan_projection import (
     check_payload_size,
     project_capacity_blocked_plan,
@@ -35,8 +37,6 @@ from .plan_projection import (
     task_span,
 )
 from .plan_workspace_dto import resource_directory, workspace_projections
-from .point_plan_query import PointPlanCatalogRepository
-from .zero_duration_evidence import overlaps
 
 
 def _admit_rows(repo, version, source, candidate_id=None, scenario_id=None):

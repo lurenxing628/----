@@ -23,7 +23,7 @@ class RecoveryJournal:
         self.directory, self.database_path = directory, database_path
 
     def _journal(self):
-        from core.services.workbench.system_journal import SystemMaintenanceJournal
+        from core.services.workbench.facts.system_journal import SystemMaintenanceJournal
         return SystemMaintenanceJournal(self.directory, self.database_path)
 
     def lookup(self, key):

@@ -229,7 +229,7 @@ def _json_read(app, path):
 
 def _fixture_identity(app, *, invalid_history):
     from core.models.operation_log_public_projection import public_operation_log_detail_text
-    from core.services.workbench.system_redaction import public_system_text
+    from core.services.workbench.facts.system_redaction import public_system_text
 
     plans = _json_read(app, "/api/workbench/v1/plans?collection=history&size=20")["plans"]
     valid = [row for row in plans if row["kind"] == "official" and row["version"] == 1]
@@ -271,7 +271,7 @@ def _fixture_identity(app, *, invalid_history):
 def managed_geometry_app(tmp_path, monkeypatch, *, invalid_history=True):
     from core.infrastructure.database import ensure_schema
     from core.plugins import PluginManager
-    from core.services.workbench.system_journal import assert_system_maintenance_ready
+    from core.services.workbench.facts.system_journal import assert_system_maintenance_ready
     from web.bootstrap.entrypoint import create_app_with_mode
     from web.bootstrap.launcher_paths import db_scope_lock_path
     from web.bootstrap.launcher_runtime_lock import acquire_runtime_lock, release_runtime_lock

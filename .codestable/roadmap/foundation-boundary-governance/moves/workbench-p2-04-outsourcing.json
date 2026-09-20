@@ -1,0 +1,13 @@
+{
+  "moves": {
+    "core.services.workbench.outsourcing": "core.services.workbench.outsourcing.service",
+    "core.services.workbench.outsourcing_commands": "core.services.workbench.outsourcing.commands",
+    "core.services.workbench.outsourcing_projection": "core.services.workbench.outsourcing.projection",
+    "core.services.workbench.outsourcing_source": "core.services.workbench.outsourcing.source"
+  },
+  "globs": {
+    "core/services/workbench/outsourcing*.py": [
+      "core/services/workbench/outsourcing/**/*.py"
+    ]
+  }
+}

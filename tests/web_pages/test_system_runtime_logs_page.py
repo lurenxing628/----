@@ -55,7 +55,7 @@ def test_default_file_shows_error_log_newest_first(app_client):
 
 
 def test_non_whitelist_file_redirects_with_warning_no_read(app_client, monkeypatch):
-    import core.services.workbench.system_reads as mod
+    import core.services.workbench.facts.system_reads as mod
     calls = []
     def forbidden(*args, **kwargs):
         calls.append(args)
@@ -99,7 +99,7 @@ def test_empty_and_missing_and_filtered_out_states(app_client):
 
 def test_read_failure_shown_not_500(app_client, monkeypatch):
     _seed_log(app_client, "aps_error.log", "2026-06-11 10:00:00 [ERROR] web [r.py:1]: x\n")
-    import core.services.workbench.system_reads as mod
+    import core.services.workbench.facts.system_reads as mod
     def boom(path, **kwargs):
         raise OSError("permission denied")
     monkeypatch.setattr(mod, "read_log_entries_tail", boom)

@@ -2,8 +2,8 @@
 
 from collections import defaultdict
 
+from .facts.candidate_values import corrupt
 from .plan_delivery_projection import project_delivery_batch, task_intervals
-from .run_candidate_values import corrupt
 
 
 def _group_tasks(tasks, facts):

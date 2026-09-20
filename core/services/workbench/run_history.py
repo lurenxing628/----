@@ -5,9 +5,9 @@ from collections import defaultdict
 from core.models.workbench_command import input_fingerprint
 from core.models.workbench_run_history import local_datetime
 
+from .facts.run_input_readonly import candidate_read_snapshot
 from .run_history_projection import public_run
 from .run_history_storage import RunHistoryStore
-from .run_input_readonly import candidate_read_snapshot
 
 
 class WorkbenchRunHistoryQueryService:

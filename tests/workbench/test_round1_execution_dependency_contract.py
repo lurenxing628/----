@@ -10,8 +10,8 @@ from core.services.execution import projection as projection_owner
 from core.services.execution.ledger_reader import ExecutionLedgerReader
 from core.services.scheduler.execution.execution_ledger_adapter import ledger_read_snapshot
 from core.services.scheduler.execution.execution_plan_identity import current_execution_plan
-from core.services.workbench import execution_ledger_projection as projection_adapter
 from core.services.workbench.execution_ledger import ExecutionLedgerService
+from core.services.workbench.facts import execution_projection as projection_adapter
 from tests._support.dependency_boundaries import assert_no_import_prefixes
 from tests._support.paths import REPO_ROOT
 from tests.workbench.execution_ledger_support import NOW, all_rows
@@ -151,9 +151,10 @@ def test_real_import_graph_has_no_execution_service_cycle():
     assert completed.returncode == 0, completed.stderr
     report = json.loads(completed.stdout)
     assert not report["parse_errors"]
-    owned = {"core/services/execution", "core/services/workbench", "core/services/scheduler", "core/services/report"}
+    owned = ("core/services/execution", "core/services/workbench", "core/services/scheduler", "core/services/report")
     for key in ("hard_dir_cycles", "delayed_dir_cycles"):
-        cycles = [row for row in report[key] if owned & set(row["members"])]
+        cycles = [row for row in report[key]
+                  if any(name == owner or name.startswith(owner + "/") for name in row["members"] for owner in owned)]
         assert not cycles, cycles
     prefixes = ("core.services.execution.", "core.services.workbench.execution_ledger",
                 "core.services.scheduler.execution.execution_ledger")

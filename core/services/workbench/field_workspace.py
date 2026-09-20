@@ -6,11 +6,12 @@ from core.models.workbench_command import WorkbenchCommandRejected, input_finger
 from core.models.workbench_plan_reference import WorkbenchPlanLocator
 from core.models.workbench_plan_scope import PlanReadScope
 from core.services.workbench.field_workspace_scope import STATES, matches
-from core.services.workbench.plan_fact_serialization import plain_plan_facts
 from core.services.workbench.plan_queries import WorkbenchPlanQueryService
 from data.repositories.workbench_execution_repo import WorkbenchExecutionRepository
 from data.repositories.workbench_field_query_repo import WorkbenchFieldQueryRepository
 from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
+
+from .facts.plan_serialization import plain_plan_facts
 
 
 class FieldWorkspaceService:

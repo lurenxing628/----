@@ -5,9 +5,9 @@ from dataclasses import asdict
 from data.repositories.workbench_piece_adoption_repo import WorkbenchPieceAdoptionRepository
 from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
 
-from .piece_adoption_scope import block, build_piece_adoption_scope
-from .preflight_checks import stored_date
-from .run_input_rows import batch_model, operation_model
+from .facts.piece_scope import block, build_piece_adoption_scope
+from .facts.preflight_checks import stored_date
+from .facts.run_input_rows import batch_model, operation_model
 
 
 def current_piece_scope(conn, prepared):

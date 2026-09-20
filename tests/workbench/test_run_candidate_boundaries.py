@@ -79,7 +79,7 @@ def test_missing_snapshot_source_and_blob_name_are_data_gaps(candidate_case):
     def change(facts):
         facts["tables"]["Parts"] = []
         sql = next(row[3] for row in facts["schema"] if row[0] == "table" and row[1] == "Machines")
-        from core.services.workbench.run_candidate_facts import _columns
+        from core.services.workbench.facts.candidate_facts import _columns
         index = _columns(sql, "Machines").index("name")
         facts["tables"]["Machines"][0][index] = {"sqlite_blob_base64": "c2VjcmV0"}
 
@@ -109,7 +109,7 @@ def test_captured_schema_is_not_an_executable_data_program(candidate_case, sql):
 
 @pytest.mark.parametrize("field", ["facts_json", "execution_json", "baseline_json", "normalized_input_json"])
 def test_oversized_history_checked_before_materialization(candidate_case, monkeypatch, field):
-    import core.services.workbench.run_candidate_storage as storage
+    import core.services.workbench.facts.candidate_store as storage
     case = candidate_case
     _, refs = compute(case)
     corrupt_update(case.conn, "WorkbenchRunJobs", "UPDATE WorkbenchRunJobs SET " + field + "=?", ('{"history":"' + "x" * 300000 + '"}',))

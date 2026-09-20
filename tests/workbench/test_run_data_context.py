@@ -10,8 +10,8 @@ from types import SimpleNamespace
 import pytest
 
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.services.workbench.run_data_context import RunDataContext
-from core.services.workbench.system_journal import SystemMaintenanceJournal, file_fingerprint
+from core.services.workbench.facts.run_data_context import RunDataContext
+from core.services.workbench.facts.system_journal import SystemMaintenanceJournal, file_fingerprint
 from tests.workbench.run_jobs_support import connection
 from tests.workbench.run_jobs_support import job_case as _job_case  # noqa: F401
 from tests.workbench.test_run_jobs_api import BASE, intent
@@ -33,7 +33,7 @@ def context_case(job_case, tmp_path, monkeypatch):
         def now():
             return datetime(2026, 9, 15, 12) + timedelta(seconds=next(ticks))
 
-    monkeypatch.setattr("core.services.workbench.system_journal.datetime", JournalClock)
+    monkeypatch.setattr("core.services.workbench.facts.system_journal.datetime", JournalClock)
     job_case.app.config.update(WORKBENCH_SYSTEM_JOURNAL_DIR=str(journal_dir), BACKUP_DIR=str(backup_dir))
     journal = SystemMaintenanceJournal(str(journal_dir), str(job_case.path))
     context = RunDataContext(job_case.conn, journal_dir=str(journal_dir), backup_dir=str(backup_dir))

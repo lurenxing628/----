@@ -5,8 +5,8 @@ import hashlib
 import pytest
 
 from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
-from core.services.workbench.run_candidate_facts import GenerationFacts
-from core.services.workbench.run_candidate_projection import scheduled_ids
+from core.services.workbench.facts.candidate_facts import GenerationFacts
+from core.services.workbench.facts.candidate_projection import scheduled_ids
 from tests.workbench.run_candidate_baseline_support import baseline
 from tests.workbench.run_candidate_support import api, compute, read, retained
 from tests.workbench.run_candidate_support import candidate_case as _candidate_case

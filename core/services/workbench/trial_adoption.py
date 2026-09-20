@@ -9,9 +9,9 @@ from core.models.workbench_trial_adoption import ADOPT_ACTION, TrialAdoptionBloc
 from core.services.scheduler import schedule_service
 
 from .commands import WorkbenchCommandService
+from .facts.run_input_readonly import candidate_read_snapshot
 from .messages import UNAVAILABLE
 from .run_candidate_adoption import _ADOPTION_LOCK
-from .run_input_readonly import candidate_read_snapshot
 from .trial_adoption_persistence import persist_trial_adoption_in_tx
 from .trial_adoption_validation import validate_trial_adoption
 

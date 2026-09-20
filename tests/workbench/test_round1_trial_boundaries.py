@@ -7,12 +7,12 @@ from datetime import datetime
 import pytest
 
 from core.models.workbench_command import WorkbenchCommandRejected
+from core.services.workbench.facts.trial_policy import load_draft
+from core.services.workbench.facts.zero_duration import PointEventError
 from core.services.workbench.trial_constraints import _outside_intervals, relation_issues
 from core.services.workbench.trial_facts import live_context
-from core.services.workbench.trial_policy import load_draft
 from core.services.workbench.trial_projection import tasks_projection
 from core.services.workbench.trial_validation import TrialValidator
-from core.services.workbench.zero_duration import PointEventError
 from data.repositories.workbench_trial_repo import WorkbenchTrialRepository
 from tests.workbench.ea_zero_duration_support import adopt, point_candidate
 from tests.workbench.trial_support import create, official, snapshot

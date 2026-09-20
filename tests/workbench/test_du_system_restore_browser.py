@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from core.services.workbench.system_journal import file_fingerprint
+from core.services.workbench.facts.system_journal import file_fingerprint
 from tests.workbench.system_restore_entrypoint_support import KEY, ProcessHost, marker, seed_database
 from tests.workbench.test_live_browser import runtime_tools
 

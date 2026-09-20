@@ -9,9 +9,9 @@ from core.models.workbench_identity import WorkbenchEntityIdentity
 from core.models.workbench_resource_table_query import table_columns
 from data.repositories.workbench_resource_table_repo import WorkbenchResourceTableRepository
 
+from .facts.table_cells import number_cell, relation_cell, status_cell, text_cell
+from .facts.table_index import ResourceTableIndex
 from .resource_metrics import _index, _status
-from .resource_table_cells import number_cell, relation_cell, status_cell, text_cell
-from .resource_table_index import ResourceTableIndex
 
 
 class ResourceTableFacts:

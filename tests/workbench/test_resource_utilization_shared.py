@@ -11,7 +11,7 @@ import pytest
 from core.services.capacity.resource_utilization_metrics import METRIC_VERSION, ResourceUtilizationMetrics
 from core.services.report.calculations import compute_utilization
 from core.services.report.utilization_calendars import resource_calendars
-from core.services.workbench.dashboard_resource_metrics import daily_resource_pressure
+from core.services.workbench.facts.resource_pressure import daily_resource_pressure
 from tests.workbench.report_api_support import report_api as _report_api
 
 

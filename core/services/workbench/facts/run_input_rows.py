@@ -8,8 +8,9 @@ from core.models.batch import Batch
 from core.models.batch_operation import BatchOperation
 from core.models.workbench_preflight import issue
 from core.models.workbench_run_compute import CandidateRunInputError
-from core.services.workbench.preflight_checks import PreflightChecks, number, stored_date
-from core.services.workbench.preflight_dependencies import link_predecessors
+
+from .preflight_checks import PreflightChecks, number, stored_date
+from .preflight_dependencies import link_predecessors
 
 _BATCH_STATES = {"pending", "scheduled", "processing", "completed", "cancelled"}
 _OP_STATES = {"pending", "scheduled", "processing", "completed", "skipped"}

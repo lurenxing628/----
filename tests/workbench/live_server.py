@@ -78,7 +78,7 @@ def seed_navigation_plan(app):
 
 @contextmanager
 def managed_app(root):
-    from core.services.workbench.system_journal import assert_system_maintenance_ready
+    from core.services.workbench.facts.system_journal import assert_system_maintenance_ready
     from web.bootstrap.entrypoint import create_app_with_mode
     from web.bootstrap.launcher_paths import db_scope_lock_path
     from web.bootstrap.launcher_runtime_lock import acquire_runtime_lock, release_runtime_lock

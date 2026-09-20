@@ -5,8 +5,8 @@ from dataclasses import replace
 import pytest
 
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.services.workbench.resource_table_cells import text_cell
-from core.services.workbench.resource_table_index import ResourceTableIndex
+from core.services.workbench.facts.table_cells import text_cell
+from core.services.workbench.facts.table_index import ResourceTableIndex
 from tests.workbench.resource_table_support import (
     conditions,
     measured_read,

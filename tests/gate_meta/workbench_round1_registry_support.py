@@ -340,7 +340,7 @@ ROUND1_INPUT_OWNERS = (
     ("web/bootstrap/workbench_run_runtime.py", "workbench_system"),
     ("core/services/process/unit_excel/__init__.py", "workbench_system"),
     ("core/services/process/unit_excel/builder_diagnostics.py", "workbench_system"),
-    ("core/services/workbench/system_journal.py", "workbench_system"),
+    ("core/services/workbench/facts/system_journal.py", "workbench_system"),
     ("core/models/workbench_master_overview.py", "workbench_process"),
     ("core/services/workbench/master_overview.py", "workbench_process"),
     ("core/services/workbench/resource_readiness.py", "workbench_process"),

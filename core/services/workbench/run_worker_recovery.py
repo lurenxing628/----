@@ -9,7 +9,7 @@ from core.services.scheduler import schedule_service
 from data.repositories.workbench_run_repo import WorkbenchRunRepository
 from data.repositories.workbench_run_result_repo import WorkbenchRunResultRepository
 
-from .run_policy import require_admission, require_run_schema
+from .facts.run_policy import require_admission, require_run_schema
 
 
 def recover_unfinished_runs(conn, *, executor_is_active=None, clock=None):

@@ -9,8 +9,8 @@ from core.services.personnel.operator_qualification import OperatorQualification
 from data.repositories.operator_machine_repo import OperatorMachineRepository
 from data.repositories.operator_qualification_repo import OperatorQualificationRepository
 
+from .facts.zero_duration import estimate_point_event
 from .plan_calendar_context import issue
-from .zero_duration import estimate_point_event
 
 
 class _SkillFacts(OperatorQualificationRepository):

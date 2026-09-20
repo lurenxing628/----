@@ -96,10 +96,14 @@ items:
   - slug: workbench-cluster-layering
     description: 画 workbench 簇层次图，解五对双向依赖，共享件下沉 facts
     depends_on: [private-import-ratchet, sql-drain-storage-classes]
-    status: planned
+    status: done
     feature: null
     minimal_loop: false
-    notes: null
+    notes: >-
+      2026-09-20 完成。层次设计见 workbench-cluster-layering.md（16 个簇、允许方向表、五对双向依赖的解法与全量模块分配表）。
+      落地：新建 facts/ 子包并下沉 30 个只读事实/叶子模块（含 run_candidate_adoption_storage 与 run_candidate_baseline 各拆出读取半部），
+      dashboard_candidate_* 搬回 run_candidate_*，point_plan_query 并入 plan；跨簇违规边 31→0，
+      适应度测试 tests/gate_meta/test_workbench_cluster_layering.py 登记门禁；搬迁用 tools/move_modules.py（合同测试 test_move_modules.py）一次改写 158 个文件 333 处引用，不留垫片。
 
   - slug: workbench-subpackages
     description: 按簇分子包，一簇一提交，codemod 全部调用方

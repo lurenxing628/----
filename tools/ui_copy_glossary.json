@@ -682,49 +682,49 @@
       "why": "自 data/repositories 仓储层逐字上提的既有对外文案（仓储不裁决分簇要求错误码与文案逐字不变）；仓储目录从未纳入词表扫描，改词属独立文案裁决，待另行处理"
     },
     {
-      "path": "core/services/workbench/trial_policy.py",
+      "path": "core/services/workbench/facts/trial_policy.py",
       "term": "场景",
       "text": "场景任务明细必须为带永久行引用的对象列表。",
       "why": "自 data/repositories 仓储层逐字上提的既有对外文案（仓储不裁决分簇要求错误码与文案逐字不变）；仓储目录从未纳入词表扫描，改词属独立文案裁决，待另行处理"
     },
     {
-      "path": "core/services/workbench/trial_policy.py",
+      "path": "core/services/workbench/facts/trial_policy.py",
       "term": "场景",
       "text": "场景快照与永久明细不一致。",
       "why": "自 data/repositories 仓储层逐字上提的既有对外文案（仓储不裁决分簇要求错误码与文案逐字不变）；仓储目录从未纳入词表扫描，改词属独立文案裁决，待另行处理"
     },
     {
-      "path": "core/services/workbench/trial_policy.py",
+      "path": "core/services/workbench/facts/trial_policy.py",
       "term": "场景",
       "text": "未找到指定试调场景。",
       "why": "自 data/repositories 仓储层逐字上提的既有对外文案（仓储不裁决分簇要求错误码与文案逐字不变）；仓储目录从未纳入词表扫描，改词属独立文案裁决，待另行处理"
     },
     {
-      "path": "core/services/workbench/trial_policy.py",
+      "path": "core/services/workbench/facts/trial_policy.py",
       "term": "字段",
       "text": "草稿安排字段不完整。",
       "why": "自 data/repositories 仓储层逐字上提的既有对外文案（仓储不裁决分簇要求错误码与文案逐字不变）；仓储目录从未纳入词表扫描，改词属独立文案裁决，待另行处理"
     },
     {
-      "path": "core/services/workbench/trial_policy.py",
+      "path": "core/services/workbench/facts/trial_policy.py",
       "term": "对象",
       "text": "场景任务明细必须为带永久行引用的对象列表。",
       "why": "自 data/repositories 仓储层逐字上提的既有对外文案（仓储不裁决分簇要求错误码与文案逐字不变）；仓储目录从未纳入词表扫描，改词属独立文案裁决，待另行处理"
     },
     {
-      "path": "core/services/workbench/trial_policy.py",
+      "path": "core/services/workbench/facts/trial_policy.py",
       "term": "引用",
       "text": "场景任务明细必须为带永久行引用的对象列表。",
       "why": "自 data/repositories 仓储层逐字上提的既有对外文案（仓储不裁决分簇要求错误码与文案逐字不变）；仓储目录从未纳入词表扫描，改词属独立文案裁决，待另行处理"
     },
     {
-      "path": "core/services/workbench/trial_policy.py",
+      "path": "core/services/workbench/facts/trial_policy.py",
       "term": "快照",
       "text": "场景快照与永久明细不一致。",
       "why": "自 data/repositories 仓储层逐字上提的既有对外文案（仓储不裁决分簇要求错误码与文案逐字不变）；仓储目录从未纳入词表扫描，改词属独立文案裁决，待另行处理"
     },
     {
-      "path": "core/services/workbench/trial_policy.py",
+      "path": "core/services/workbench/facts/trial_policy.py",
       "term": "重读",
       "text": "草稿已被其他操作保存或改变，请重新读取。",
       "why": "自 data/repositories 仓储层逐字上提的既有对外文案（仓储不裁决分簇要求错误码与文案逐字不变）；仓储目录从未纳入词表扫描，改词属独立文案裁决，待另行处理"

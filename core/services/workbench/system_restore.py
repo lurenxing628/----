@@ -3,7 +3,8 @@
 import os
 
 from core.infrastructure.backup import BackupManager
-from core.services.workbench.system_journal import file_fingerprint
+
+from .facts.system_journal import file_fingerprint
 
 
 class SystemRestoreManager(BackupManager):

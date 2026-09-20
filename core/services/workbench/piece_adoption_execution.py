@@ -11,8 +11,8 @@ from core.services.scheduler.run.schedule_execution_resource_facts import _lates
 from core.services.workbench.execution_ledger import ExecutionLedgerService
 from data.repositories.workbench_piece_adoption_repo import WorkbenchPieceAdoptionRepository
 
-from .piece_adoption_scope import block
-from .run_input_projection_codec import restore_execution_projections
+from .facts.piece_scope import block
+from .facts.run_input_codec import restore_execution_projections
 
 _FIELDS = ("start_time", "end_time", "machine_id", "operator_id", "source")
 

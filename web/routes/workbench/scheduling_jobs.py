@@ -13,7 +13,7 @@ from core.models.workbench_command import (
     input_fingerprint,
     validate_request_key,
 )
-from core.services.workbench.run_data_context import RunDataContext
+from core.services.workbench.facts.run_data_context import RunDataContext
 from core.services.workbench.run_jobs import WorkbenchRunService
 from web.api_responses import failure, query_success
 

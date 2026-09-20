@@ -4,7 +4,7 @@ from datetime import date
 
 from core.models.workbench_run_candidate import local_time
 
-from .run_candidate_values import corrupt, gap, number, text
+from .candidate_values import corrupt, gap, number, text
 from .zero_duration import point_event_dto
 from .zero_duration_evidence import CandidatePointReader, overlaps
 

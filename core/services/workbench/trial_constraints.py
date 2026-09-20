@@ -5,7 +5,7 @@ from datetime import datetime
 
 from core.models.workbench_trial import issue, reject
 
-from .zero_duration_evidence import trial_point_evidence
+from .facts.zero_duration_evidence import trial_point_evidence
 
 _MAX_ISSUES = 50000
 

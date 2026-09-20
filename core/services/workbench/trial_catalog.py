@@ -5,11 +5,11 @@ import hashlib
 from core.models.workbench_trial import reference, reject
 from core.models.workbench_trial_catalog import MAX_CATALOG_BYTES, MAX_CATALOG_ROWS, TrialCatalogScope
 from core.models.workbench_trial_codec import dump
-from core.services.workbench.run_input_readonly import candidate_read_snapshot
 from data.repositories.workbench_trial_catalog_repo import WorkbenchTrialCatalogRepository
 from data.repositories.workbench_trial_repo import WorkbenchTrialRepository
 
-from .trial_policy import require_trial_schema
+from .facts.run_input_readonly import candidate_read_snapshot
+from .facts.trial_policy import require_trial_schema
 
 
 class WorkbenchTrialCatalogService:

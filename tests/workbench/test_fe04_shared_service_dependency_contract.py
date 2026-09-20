@@ -96,6 +96,7 @@ def test_real_import_scanner_has_no_fe04_package_or_service_cycles():
     assert completed.returncode == 0, completed.stderr
     report = json.loads(completed.stdout)
     assert not report["parse_errors"]
-    members = {"core/services/process", "core/services/scheduler", "core/services/workbench"}
-    assert not [row for row in report["hard_dir_cycles"] if members & set(row["members"])]
+    members = ("core/services/process", "core/services/scheduler", "core/services/workbench")
+    assert not [row for row in report["hard_dir_cycles"]
+                if any(name == owner or name.startswith(owner + "/") for name in row["members"] for owner in members)]
     assert not [row for row in report["hard_file_cycles"] if "core.services.process" in row]

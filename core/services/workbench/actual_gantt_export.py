@@ -6,7 +6,7 @@ from io import StringIO
 from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
 
 from .actual_gantt_scope import view_items
-from .execution_ledger_projection import COMPLETION_BASIS_TEXT, DATA_QUALITY_TEXT, EXECUTION_STATE_TEXT
+from .facts.execution_projection import COMPLETION_BASIS_TEXT, DATA_QUALITY_TEXT, EXECUTION_STATE_TEXT
 
 HEADERS = ["计划编号", "任务编号", "工序编号", "批次", "工序", "计划开工", "计划完工", "计划设备", "计划人员",
            "目标数量", "整道状态", "完成依据", "已知完成数量", "未知记录数", "整道实际完工", "资料完整性",

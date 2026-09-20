@@ -10,7 +10,7 @@ import pytest
 
 from core.infrastructure.backup import BackupManager
 from core.infrastructure.database import get_connection
-from core.services.workbench.system_journal import SystemMaintenanceJournal, assert_system_maintenance_ready
+from core.services.workbench.facts.system_journal import SystemMaintenanceJournal, assert_system_maintenance_ready
 from tests.workbench.request_lifecycle_support import http_json, http_server  # noqa: F401
 from web.bootstrap import factory
 from web.bootstrap.launcher_paths import db_scope_lock_path

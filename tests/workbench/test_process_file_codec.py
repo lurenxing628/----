@@ -325,11 +325,11 @@ def test_no_database_access_and_python38_syntax(monkeypatch, fmt):
         "core.services.workbench.process_file_reader",
         "core.services.workbench.process_file_values",
         "core.services.workbench.process_file_writer",
-        "core.services.workbench.process_file_xml",
+        "core.services.workbench.facts.process_file_xml",
     }
     pure_services = codec_modules | {
-        "core.services.workbench.resource_file_codec",
-        "core.services.workbench.resource_file_writer",
+        "core.services.workbench.facts.file_codec",
+        "core.services.workbench.facts.file_writer",
     }
     paths = [root / (module.replace(".", "/") + ".py") for module in sorted(codec_modules)]
     for path in paths:

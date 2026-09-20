@@ -7,14 +7,14 @@ from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_trial import issue, reject, validation
 from core.models.workbench_trial_codec import fingerprint
 from core.services.personnel.operator_qualification import OperatorQualificationError, OperatorQualificationService
-from core.services.workbench.preflight_checks import PreflightChecks
 
+from .facts.preflight_checks import PreflightChecks
+from .facts.zero_duration_evidence import trial_point_evidence
 from .piece_adoption_trial import trial_piece_issues
 from .trial_calendar import calendar_engine, estimate
 from .trial_constraints import interval, relation_issues, resource_issues
 from .trial_execution_anchors import anchor_issue, execution_anchors
 from .trial_protection import TrialProtection
-from .zero_duration_evidence import trial_point_evidence
 
 
 class TrialValidator:

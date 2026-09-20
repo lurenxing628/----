@@ -12,7 +12,7 @@ import pytest
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_trial_codec import dump, fingerprint
-from core.services.workbench.trial_policy import load_draft
+from core.services.workbench.facts.trial_policy import load_draft
 from data.repositories.workbench_trial_repo import WorkbenchTrialRepository
 from tests.workbench.run_candidate_support import corrupt_update
 from tests.workbench.trial_adoption_support import BASE, INTENT, api, assert_retained, full_plan

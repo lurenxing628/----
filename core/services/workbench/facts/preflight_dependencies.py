@@ -3,7 +3,8 @@
 from collections import defaultdict
 
 from core.models.workbench_preflight import issue
-from core.services.workbench.preflight_checks import number
+
+from .preflight_checks import number
 
 
 def predecessor_satisfied(row):

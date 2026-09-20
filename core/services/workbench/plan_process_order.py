@@ -8,11 +8,11 @@ from core.models.workbench_plan_reference import WorkbenchPlanReferenceError
 from data.repositories.workbench_plan_baseline_repo import WorkbenchPlanBaselineRepository
 from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
 
-from .piece_adoption_scope import build_piece_adoption_scope
+from .facts.piece_scope import build_piece_adoption_scope
+from .facts.trial_scenario_archive import load_saved_scenario
 from .plan_adoption_baseline_identity import _live_sources
 from .plan_adoption_baseline_values import AdoptionBaselineUnavailable, indexed, require
 from .plan_projection import check_payload_size, read_adopted_source
-from .trial_adoption_storage import load_saved_scenario
 
 
 def _unavailable(facts, code, gap):

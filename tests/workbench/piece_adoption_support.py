@@ -16,10 +16,10 @@ from core.services.scheduler.run.schedule_input_builder import build_algo_operat
 from core.services.scheduler.run.schedule_payload_contract import build_validated_schedule_payload
 from core.services.scheduler.run.schedule_seed_contracts import coerce_seed_results
 from core.services.scheduler.schedule_service import ScheduleService
-from core.services.workbench.piece_adoption_scope import build_piece_adoption_scope
+from core.services.workbench.facts.piece_scope import build_piece_adoption_scope
+from core.services.workbench.facts.run_input_rows import batch_model, operation_model
 from core.services.workbench.run_input_config import candidate_config
 from core.services.workbench.run_input_external import prime_template_cache
-from core.services.workbench.run_input_rows import batch_model, operation_model
 from core.services.workbench.run_input_runtime import _locked_seeds
 from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
 from tests.workbench.run_candidate_adoption_support import snapshot

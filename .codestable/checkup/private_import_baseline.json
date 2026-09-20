@@ -384,14 +384,9 @@
       "count": 2
     },
     {
-      "path": "core/services/workbench/dashboard_candidate_comparison.py",
+      "path": "core/services/workbench/facts/candidate_baseline.py",
       "kind": "private_symbol",
-      "count": 1
-    },
-    {
-      "path": "core/services/workbench/dashboard_candidate_metrics.py",
-      "kind": "private_symbol",
-      "count": 2
+      "count": 4
     },
     {
       "path": "core/services/workbench/piece_adoption.py",
@@ -484,14 +479,19 @@
       "count": 3
     },
     {
-      "path": "core/services/workbench/run_candidate_baseline.py",
+      "path": "core/services/workbench/run_candidate_comparison.py",
       "kind": "private_symbol",
-      "count": 4
+      "count": 1
     },
     {
       "path": "core/services/workbench/run_candidate_export.py",
       "kind": "private_symbol",
       "count": 1
+    },
+    {
+      "path": "core/services/workbench/run_candidate_metrics.py",
+      "kind": "private_symbol",
+      "count": 2
     },
     {
       "path": "core/services/workbench/run_compute_graph.py",

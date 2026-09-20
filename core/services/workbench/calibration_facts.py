@@ -13,7 +13,7 @@ from data.repositories.workbench_calibration_query_repo import WorkbenchCalibrat
 
 from .calibration_integrity import validate_report_histories
 from .execution_ledger import ExecutionLedgerService
-from .plan_fact_serialization import plain_plan_facts
+from .facts.plan_serialization import plain_plan_facts
 from .template_lineage_calibration import project_lineage_calibration
 from .template_lineage_query import TemplateLineageQuery
 

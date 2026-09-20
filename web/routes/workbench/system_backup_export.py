@@ -8,7 +8,7 @@ from flask import Response, current_app, request
 from core.infrastructure.safe_files import read_fixed_bytes
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.workbench import messages
-from core.services.workbench.system_reads import backup_signature
+from core.services.workbench.facts.system_reads import backup_signature
 
 from .system_context import resolve_context, system_endpoint
 from .system_reads import collection

@@ -76,7 +76,7 @@ def test_export_formula_like_labels_and_control_characters_are_lossless(candidat
     label = '=SUM(1,2)\r\n"quoted" \\N'
 
     def change(facts):
-        from core.services.workbench.run_candidate_facts import _columns
+        from core.services.workbench.facts.candidate_facts import _columns
         sql = next(row[3] for row in facts["schema"] if row[0] == "table" and row[1] == "Machines")
         facts["tables"]["Machines"][0][_columns(sql, "Machines").index("name")] = label
 

@@ -9,10 +9,10 @@ from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentity
 from data.repositories.workbench_run_candidate_repo import WorkbenchRunCandidateRepository
 from data.repositories.workbench_run_facts_repo import WorkbenchRunFactsRepository
 
+from .facts.candidate_store import CandidateStore
+from .facts.candidate_values import bounded_size
 from .plan_adoption_baseline import read_adoption_baseline
 from .plan_adoption_baseline_values import REASONS, AdoptionBaselineUnavailable
-from .run_candidate_storage import CandidateStore
-from .run_candidate_values import bounded_size
 
 
 def _invalid():

@@ -15,7 +15,7 @@ from core.models.workbench_run_candidate import (
 )
 from data.repositories.workbench_run_candidate_repo import WorkbenchRunCandidateRepository
 
-from .run_candidate_values import bounded_size, corrupt, stored_json
+from .candidate_values import bounded_size, corrupt, stored_json
 from .run_input_readonly import candidate_read_snapshot
 
 

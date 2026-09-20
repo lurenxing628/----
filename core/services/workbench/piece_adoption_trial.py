@@ -5,7 +5,7 @@ from types import SimpleNamespace
 from core.models.workbench_piece_adoption import PieceAdoptionBlocked
 from core.models.workbench_trial import issue
 
-from .piece_adoption_scope import build_piece_adoption_scope
+from .facts.piece_scope import build_piece_adoption_scope
 
 
 def trial_piece_predecessors(rows, all_ops, operation_refs):

@@ -6,10 +6,10 @@ from types import SimpleNamespace
 from core.algorithm_runtime.internal_slot import estimate_internal_slot
 from core.models.workbench_trial import reject
 from core.services.capacity.plan_calendar_engine import SnapshotCalendarEngine
-from core.services.workbench.preflight_checks import number
 
-from .zero_duration import PointEventError, estimate_point_event, internal_duration_hours
-from .zero_duration_evidence import trial_point_evidence
+from .facts.preflight_checks import number
+from .facts.zero_duration import PointEventError, estimate_point_event, internal_duration_hours
+from .facts.zero_duration_evidence import trial_point_evidence
 
 
 def calendar_engine(tables):

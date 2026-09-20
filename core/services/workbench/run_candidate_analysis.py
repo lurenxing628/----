@@ -5,10 +5,11 @@ from core.models.workbench_run_analysis import delivery_deltas, delivery_metrics
 from core.models.workbench_run_baseline import RunCandidateBaselineScope
 from core.models.workbench_run_candidate import MAX_RESPONSE_BYTES, RunCandidateReadScope
 
-from .dashboard_candidate_comparison import _baseline_deliveries, _delivery_rows, _delivery_summary
-from .run_candidate_baseline import AdmissionBaseline, WorkbenchRunCandidateBaselineQueryService
-from .run_candidate_facts import GenerationFacts
-from .run_candidate_values import bounded_size
+from .facts.candidate_baseline import AdmissionBaseline
+from .facts.candidate_facts import GenerationFacts
+from .facts.candidate_values import bounded_size
+from .run_candidate_baseline import WorkbenchRunCandidateBaselineQueryService
+from .run_candidate_comparison import _baseline_deliveries, _delivery_rows, _delivery_summary
 from .run_candidates import WorkbenchRunCandidateQueryService
 
 

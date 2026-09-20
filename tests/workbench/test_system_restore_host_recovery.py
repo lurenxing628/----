@@ -9,7 +9,7 @@ from types import SimpleNamespace
 import pytest
 
 from core.infrastructure.backup import BackupManager, RestoreResult
-from core.services.workbench.system_journal import (
+from core.services.workbench.facts.system_journal import (
     SystemMaintenanceJournal,
     assert_system_maintenance_ready,
     file_fingerprint,
@@ -63,7 +63,7 @@ import json, logging, sqlite3, sys
 from werkzeug.test import Client
 from werkzeug.wrappers import Response
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.services.workbench.system_journal import assert_system_maintenance_ready
+from core.services.workbench.facts.system_journal import assert_system_maintenance_ready
 from core.services.workbench.system_files import SystemFileWorkspace
 from web.bootstrap.workbench_system_restore import make_workbench_system_restore_recovery_app
 database, journal, backups, key, intent = sys.argv[1:]
@@ -194,7 +194,7 @@ import atexit, json, os, sqlite3, sys
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 from core.infrastructure.backup import BackupManager
-from core.services.workbench.system_journal import assert_system_maintenance_ready
+from core.services.workbench.facts.system_journal import assert_system_maintenance_ready
 from web.bootstrap import factory
 from web.bootstrap.launcher_runtime_lock import acquire_runtime_lock, release_runtime_lock
 from web.bootstrap.workbench_run_runtime import install_workbench_run_runtime

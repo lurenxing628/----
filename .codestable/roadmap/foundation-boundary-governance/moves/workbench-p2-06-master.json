@@ -1,0 +1,16 @@
+{
+  "moves": {
+    "core.services.workbench.master_overview": "core.services.workbench.master.overview",
+    "core.services.workbench.master_overview_calendar": "core.services.workbench.master.overview_calendar",
+    "core.services.workbench.master_overview_facts": "core.services.workbench.master.overview_facts",
+    "core.services.workbench.master_overview_graph": "core.services.workbench.master.overview_graph",
+    "core.services.workbench.master_overview_process": "core.services.workbench.master.overview_process",
+    "core.services.workbench.master_overview_relations": "core.services.workbench.master.overview_relations",
+    "core.services.workbench.master_overview_resources": "core.services.workbench.master.overview_resources"
+  },
+  "globs": {
+    "core/services/workbench/master_overview*.py": [
+      "core/services/workbench/master/overview*.py"
+    ]
+  }
+}

@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from core.infrastructure.database import get_connection
-from core.services.workbench.system_journal import file_fingerprint
+from core.services.workbench.facts.system_journal import file_fingerprint
 from tests.workbench.final_operations_seed import seed
 from tests.workbench.final_operations_support import OperationsHost
 

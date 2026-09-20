@@ -10,7 +10,7 @@ from flask import Blueprint, Flask, g
 
 from core.infrastructure.backup import BackupManager
 from core.infrastructure.database import ensure_schema
-from core.services.workbench.system_journal import SystemMaintenanceJournal
+from core.services.workbench.facts.system_journal import SystemMaintenanceJournal
 from web.routes.workbench.system_routes import register_system_maintenance_routes
 
 ROOT = Path(__file__).resolve().parents[2]

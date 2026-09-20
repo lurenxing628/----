@@ -12,13 +12,13 @@ from core.services.scheduler.schedule_service import ScheduleService
 from core.services.scheduler.summary.schedule_summary import build_result_summary
 from core.services.workbench.preflight_facts import full_facts_fingerprint
 
+from .facts.run_input_readonly import candidate_read_snapshot
+from .facts.run_input_rows import fail
+from .facts.zero_duration import PointEventError, candidate_point_validator
 from .piece_adoption import validate_piece_adoption
 from .run_compute_graph import piece_graph_preparer
 from .run_compute_validation import validate_candidate
 from .run_input import CandidateRunInput, prepare_candidate_run_input
-from .run_input_readonly import candidate_read_snapshot
-from .run_input_rows import fail
-from .zero_duration import PointEventError, candidate_point_validator
 
 
 def compute_candidate_run(conn, normalized_input, execution_projections, *, version_override=None,

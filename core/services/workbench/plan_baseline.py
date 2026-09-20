@@ -76,7 +76,7 @@ def _resource_maps(conn, rows):
 
 
 def _overlaps(start, end, scope):
-    from .zero_duration_evidence import overlaps
+    from .facts.zero_duration_evidence import overlaps
     return scope.range_start is None or overlaps(start, end, scope.range_start, scope.range_end)
 
 
@@ -113,7 +113,7 @@ def _comparison_items(before_tasks, after_tasks, scope):
 
 class _BaselineReader:
     def __init__(self, conn, entry, scope, selected_rows):
-        from .point_plan_query import PointPlanCatalogRepository
+        from .plan_point_query import PointPlanCatalogRepository
         self.conn, self.entry, self.scope, self.selected_rows = conn, entry, scope, selected_rows
         self.repo = PointPlanCatalogRepository(conn)
         self.references = WorkbenchPlanIdentityRepository(conn)

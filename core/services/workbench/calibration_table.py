@@ -3,8 +3,8 @@
 from core.models.workbench_calibration import TABLE_COLUMNS
 from core.models.workbench_command import WorkbenchCommandRejected
 
-from .resource_table_cells import number_cell, text_cell
-from .resource_table_index import ResourceTableIndex
+from .facts.table_cells import number_cell, text_cell
+from .facts.table_index import ResourceTableIndex
 
 
 def cells(row):

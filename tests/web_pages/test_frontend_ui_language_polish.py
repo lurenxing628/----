@@ -93,7 +93,7 @@ def test_scheduler_analysis_gantt_and_logs_do_not_surface_internal_terms() -> No
     import sqlite3
     import tempfile
 
-    from core.services.workbench.system_reads import log_records
+    from core.services.workbench.facts.system_reads import log_records
 
     analysis = _read_analysis_template()
     for label in ("齐套检查", "缺设备人员时的规则", "任务详情", "前序", "后序", "计划开始", "计划结束"):

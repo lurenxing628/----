@@ -10,8 +10,8 @@ from core.services.scheduler.execution.execution_plan_identity import current_ex
 from data.repositories.workbench_execution_source_repo import EMPTY_SOURCE_HASH
 from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
 
-from .execution_ledger_projection import attach_context
-from .plan_fact_serialization import plain_plan_facts
+from .facts.execution_projection import attach_context
+from .facts.plan_serialization import plain_plan_facts
 
 
 def _check_workspace_tasks(tasks, facts, plan_ref):

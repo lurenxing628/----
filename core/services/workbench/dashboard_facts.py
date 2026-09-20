@@ -5,7 +5,6 @@ from core.models.workbench_plan_reference import WorkbenchPlanLocator, Workbench
 from core.models.workbench_plan_scope import PlanReadScope
 from core.services.workbench.execution_ledger import ExecutionLedgerService
 from core.services.workbench.plan_delivery import read_plan_delivery
-from core.services.workbench.plan_fact_serialization import plain_plan_facts
 from core.services.workbench.plan_projection import project_plan, project_tasks
 from core.services.workbench.plan_queries import WorkbenchPlanQueryService
 from data.repositories.workbench_dashboard_source_repo import DashboardSourceRepository
@@ -13,6 +12,7 @@ from data.repositories.workbench_plan_catalog_repo import WorkbenchPlanCatalogRe
 
 from .dashboard_catalogs import candidate_catalog, resource_pressure
 from .dashboard_policy import read_entity_refs
+from .facts.plan_serialization import plain_plan_facts
 
 UNAVAILABLE = {"identity_missing", "plan_binding_invalid", "task_binding_invalid", "plan_unavailable",
                "execution_ledger_unavailable", "constraint_conflict", "entity_not_found"}

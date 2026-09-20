@@ -6,8 +6,8 @@ from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_process_table_query import PROCESS_STAGES, validate_process_facet_request
 from core.models.workbench_resource_table_query import MAX_FACET_KEYS
 
-from .resource_table_cells import TableCell, number_cell, text_cell
-from .resource_table_index import ResourceTableIndex
+from .facts.table_cells import TableCell, number_cell, text_cell
+from .facts.table_index import ResourceTableIndex
 
 _STAGE_LABELS = dict(zip(PROCESS_STAGES, ("待导入路线", "待定归属", "待填工时", "已就绪")))
 

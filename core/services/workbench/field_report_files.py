@@ -6,14 +6,11 @@ from typing import List, Optional, Union
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_execution_input import REQUIRED_FIELDS
-from core.services.workbench.execution_ledger_projection import (
-    COMPLETION_BASIS_TEXT,
-    DATA_QUALITY_TEXT,
-    EXECUTION_STATE_TEXT,
-)
 from core.services.workbench.field_report_files_codec import decode_reports, encode_reports
 from core.services.workbench.field_report_files_identity import identity_values, matched_task, task_indexes
 from data.repositories.workbench_field_query_repo import WorkbenchFieldQueryRepository
+
+from .facts.execution_projection import COMPLETION_BASIS_TEXT, DATA_QUALITY_TEXT, EXECUTION_STATE_TEXT
 
 
 class FieldReportFileService:

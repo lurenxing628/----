@@ -20,12 +20,12 @@ from core.models.workbench_trial import (
 )
 from core.models.workbench_trial_codec import fingerprint
 from core.services.workbench.commands import WorkbenchCommandService
-from core.services.workbench.run_input_readonly import candidate_read_snapshot
 from data.repositories.workbench_trial_repo import WorkbenchTrialRepository, new_ref
 
+from .facts.run_input_readonly import candidate_read_snapshot
+from .facts.trial_policy import load_draft, load_scenario, require_advanced, require_trial_schema
 from .trial_base import prepare_base
 from .trial_facts import live_context
-from .trial_policy import load_draft, load_scenario, require_advanced, require_trial_schema
 from .trial_projection import draft_projection, write_snapshot
 from .trial_validation import TrialValidator
 

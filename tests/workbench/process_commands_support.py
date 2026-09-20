@@ -325,6 +325,7 @@ def profile_source_hashes():
              root / "core/infrastructure/migrations/__init__.py", root / "core/infrastructure/migrations/v24.py",
              root / "core/infrastructure/workbench_plan_identity_schema.py"]
     files.extend((root / "core/services/workbench").glob("process*.py"))
+    files.append(root / "core/services/workbench/facts/process_file_xml.py")
     return {str(path.relative_to(root)): hashlib.sha256(path.read_bytes()).hexdigest() for path in files}
 
 

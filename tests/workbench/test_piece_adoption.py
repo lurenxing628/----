@@ -6,8 +6,8 @@ from datetime import timedelta
 import pytest
 
 from core.models.workbench_piece_adoption import PieceAdoptionBlocked
+from core.services.workbench.facts.piece_scope import build_piece_adoption_scope
 from core.services.workbench.piece_adoption import validate_piece_adoption
-from core.services.workbench.piece_adoption_scope import build_piece_adoption_scope
 from core.services.workbench.run_input import prepare_candidate_run_input
 from tests.workbench.piece_adoption_support import candidate_case as candidate_case  # noqa: F401
 from tests.workbench.piece_adoption_support import (

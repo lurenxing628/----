@@ -11,6 +11,7 @@ from core.models.workbench_trial_codec import fingerprint, load_object, require_
 from data.repositories.workbench_trial_adoption_history import TrialAdoptionHistoryRepository
 from data.repositories.workbench_trial_repo import WorkbenchTrialRepository
 
+from .facts.trial_policy import load_scenario, require_trial_schema
 from .trial_adoption_history_policy import (
     MAX_SCENARIO_BYTES,
     bound,
@@ -18,7 +19,6 @@ from .trial_adoption_history_policy import (
     load_receipt,
     load_scenario_headers,
 )
-from .trial_policy import load_scenario, require_trial_schema
 
 
 def invalid() -> NoReturn:

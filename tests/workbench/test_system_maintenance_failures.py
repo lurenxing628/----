@@ -5,9 +5,9 @@ import json
 import pytest
 
 from core.infrastructure.logging import OperationLogger
+from core.services.workbench.facts.system_journal import SystemMaintenanceJournal, assert_system_maintenance_ready
+from core.services.workbench.facts.system_redaction import public_system_text
 from core.services.workbench.system_exports import logs_csv
-from core.services.workbench.system_journal import SystemMaintenanceJournal, assert_system_maintenance_ready
-from core.services.workbench.system_redaction import public_system_text
 from tests.workbench.system_maintenance_support import system_api as _system_api_fixture  # noqa: F401
 
 
@@ -38,7 +38,7 @@ def test_config_audit_failure_rolls_back_both_groups(system_api, monkeypatch):
 def test_intent_fsync_failure_prevents_file_work(system_api, monkeypatch):
     def fail(*args):
         raise OSError("injected fsync failure")
-    monkeypatch.setattr("core.services.workbench.system_journal.os.fsync", fail)
+    monkeypatch.setattr("core.services.workbench.facts.system_journal.os.fsync", fail)
     response = system_api.file_action("create")
     assert response.status_code == 500
     assert list(system_api.backups.glob("*.db")) == []
@@ -79,7 +79,7 @@ def test_log_read_failure_is_visible_and_not_zero(system_api, monkeypatch):
     (system_api.logs / "aps.log").write_text("2026-09-09 12:00:00 [INFO] text\n")
     def fail(*args, **kwargs):
         raise PermissionError("sensitive/path/not/public")
-    monkeypatch.setattr("core.services.workbench.system_reads.read_log_entries_tail", fail)
+    monkeypatch.setattr("core.services.workbench.facts.system_reads.read_log_entries_tail", fail)
     sources = system_api.read("/logs")["data"]["sources"]
     failed = next(item for item in sources if item["source"] == "aps.log")
     assert failed["state"] == "error" and failed["count"] is None

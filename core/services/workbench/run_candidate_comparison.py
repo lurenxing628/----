@@ -7,12 +7,13 @@ from core.models.workbench_command import canonical_json, input_fingerprint
 from core.models.workbench_run_baseline import RunCandidateBaselineScope
 from core.models.workbench_run_candidate import MAX_RESPONSE_BYTES, RunCandidateReadScope, reject
 
-from .dashboard_candidate_metrics import changeovers, resource_comparison, scoped_rows
+from .facts.candidate_baseline import AdmissionBaseline
+from .facts.candidate_facts import GenerationFacts, _table
+from .facts.candidate_values import bounded_size, stored_json
 from .plan_delivery_completeness import completion_evidence
 from .plan_delivery_projection import project_delivery_batch, task_intervals
-from .run_candidate_baseline import AdmissionBaseline, WorkbenchRunCandidateBaselineQueryService
-from .run_candidate_facts import GenerationFacts, _table
-from .run_candidate_values import bounded_size, stored_json
+from .run_candidate_baseline import WorkbenchRunCandidateBaselineQueryService
+from .run_candidate_metrics import changeovers, resource_comparison, scoped_rows
 from .run_candidates import WorkbenchRunCandidateQueryService
 
 

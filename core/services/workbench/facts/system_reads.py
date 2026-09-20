@@ -10,7 +10,8 @@ from core.models.workbench_command import input_fingerprint
 from core.models.workbench_system import normalize_log_level
 from core.services.system.operation_log_service import OperationLogService
 from core.services.system.runtime_log_reader import LOG_FILE_CHOICES, NO_ANCHOR_HEAD, read_log_entries_tail
-from core.services.workbench.system_redaction import public_system_text
+
+from .system_redaction import public_system_text
 
 
 def backup_signature(path):

@@ -5,7 +5,7 @@ import hashlib
 from core.infrastructure.snapshot_connection import ddl_columns
 from core.models.workbench_run_candidate import reference
 
-from .run_candidate_values import corrupt, gap, stored_json
+from .candidate_values import corrupt, gap, stored_json
 
 _TABLES = {"BatchOperations": "id", "Batches": "batch_id", "Parts": "part_no",
            "Machines": "machine_id", "Operators": "operator_id", "Suppliers": "supplier_id"}

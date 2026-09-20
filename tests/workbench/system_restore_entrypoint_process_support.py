@@ -66,7 +66,7 @@ def main():
             assert installer is not None
             runtime = installer(app, **kwargs)
             assert runtime.ready
-            from core.services.workbench.system_journal import SystemMaintenanceJournal, file_fingerprint
+            from core.services.workbench.facts.system_journal import SystemMaintenanceJournal, file_fingerprint
             from tests.workbench.system_restore_entrypoint_support import KEY
             journal = SystemMaintenanceJournal(app.config["WORKBENCH_SYSTEM_JOURNAL_DIR"], app.config["DATABASE_PATH"])
             (root / "before-maintenance.sha256").write_text(file_fingerprint(app.config["DATABASE_PATH"]), encoding="ascii")
@@ -81,7 +81,7 @@ def main():
 
 def install_fault(root, mode):
     from core.infrastructure.backup import BackupManager
-    from core.services.workbench.system_journal import SystemMaintenanceJournal
+    from core.services.workbench.facts.system_journal import SystemMaintenanceJournal
 
     if mode == "pause-backup":
         backup = BackupManager.backup

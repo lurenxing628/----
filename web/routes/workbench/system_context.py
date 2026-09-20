@@ -17,7 +17,7 @@ from core.models.workbench_command import (
 )
 from core.models.workbench_system import object_fields
 from core.services.workbench import messages
-from core.services.workbench.system_journal import SystemMaintenanceJournal
+from core.services.workbench.facts.system_journal import SystemMaintenanceJournal
 from web.api_responses import failure, query_success
 from web.public_token_registry import issue_public_token, resolve_public_token
 

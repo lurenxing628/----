@@ -6,7 +6,7 @@ from datetime import date
 
 from core.services.common.overdue_calculations import due_exclusive, parse_dt
 
-from .zero_duration_evidence import overlaps
+from .facts.zero_duration_evidence import overlaps
 
 
 def task_intervals(rows):

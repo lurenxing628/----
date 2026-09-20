@@ -7,7 +7,7 @@ from core.models.workbench_command import WorkbenchCommandRejected, canonical_js
 from core.models.workbench_plan_scope import MAX_PLAN_RESPONSE_BYTES
 from data.repositories.schedule_time_sql import parse_dt_for_sql
 
-from .zero_duration import point_event_dto
+from .facts.zero_duration import point_event_dto
 
 _REASONS = {
     "summary_invalid": "这次排产的摘要无效，确认不了计划是否完整。请刷新后重试。",
@@ -101,7 +101,7 @@ def _resource_ref(row, kind, identities):
 
 
 def _captured_quantities(operation, batch, execution, basis):
-    from .run_candidate_values import number
+    from .facts.candidate_values import number
 
     gaps = []
     piece = operation.get("piece_id")
@@ -170,9 +170,9 @@ def read_adopted_source(conn, plan_ref):
 
 
 def _source_quantities(conn, basis, audit, arranged):
-    from .run_candidate_facts import GenerationFacts
-    from .run_candidate_storage import CandidateStore
-    from .trial_adoption_storage import load_saved_scenario
+    from .facts.candidate_facts import GenerationFacts
+    from .facts.candidate_store import CandidateStore
+    from .facts.trial_scenario_archive import load_saved_scenario
 
     # Only the audited source can supply target work; current batch joins cannot.
     if basis == "candidate_adoption":

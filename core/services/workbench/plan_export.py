@@ -16,8 +16,8 @@ from openpyxl.styles import Font
 
 from core.models.workbench_resource_file import ResourceFileDownload
 
-from .process_file_xml import preserve_carriage_returns
-from .resource_file_writer import _value, check_capacity
+from .facts.file_writer import _value, check_capacity
+from .facts.process_file_xml import preserve_carriage_returns
 
 HEADERS = (
     "计划编号", "来源版本", "计划类型", "计划名称", "是否当前正式", "计划完整性", "数据版本", "读取时间",

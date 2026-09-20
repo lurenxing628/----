@@ -2,7 +2,7 @@
 
 from core.models.workbench_run_candidate import blocked_reasons, read_capabilities, reference
 
-from .run_candidate_values import corrupt, gap, number, text
+from .candidate_values import corrupt, gap, number, text
 
 _METRICS = ("overdue_count", "total_tardiness_hours", "makespan_hours", "changeover_count",
             "weighted_tardiness_hours", "machine_used_count", "operator_used_count",

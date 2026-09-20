@@ -27,7 +27,7 @@ from core.infrastructure.database import get_connection
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.scheduler import schedule_service
 from core.services.system.backup_restore import audit_backup_operation
-from core.services.workbench.system_journal import SystemMaintenanceJournal
+from core.services.workbench.facts.system_journal import SystemMaintenanceJournal
 from web.runtime_host import RESTORE_HOST_EXTENSION, RESTORE_HOST_GUARD, SystemRestoreHost
 
 from .launcher_paths import _normalize_db_path_for_runtime

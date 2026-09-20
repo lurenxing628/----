@@ -1,0 +1,62 @@
+{
+  "moves": {
+    "core.services.workbench.piece_adoption": "core.services.workbench.run.piece_adoption",
+    "core.services.workbench.piece_adoption_execution": "core.services.workbench.run.piece_adoption_execution",
+    "core.services.workbench.piece_adoption_facts": "core.services.workbench.run.piece_adoption_facts",
+    "core.services.workbench.piece_adoption_trial": "core.services.workbench.run.piece_adoption_trial",
+    "core.services.workbench.preflight": "core.services.workbench.run.preflight",
+    "core.services.workbench.preflight_execution": "core.services.workbench.run.preflight_execution",
+    "core.services.workbench.preflight_facts": "core.services.workbench.run.preflight_facts",
+    "core.services.workbench.preflight_result": "core.services.workbench.run.preflight_result",
+    "core.services.workbench.run_candidate_adoption": "core.services.workbench.run.candidate_adoption",
+    "core.services.workbench.run_candidate_adoption_constraints": "core.services.workbench.run.candidate_adoption_constraints",
+    "core.services.workbench.run_candidate_adoption_persistence": "core.services.workbench.run.candidate_adoption_persistence",
+    "core.services.workbench.run_candidate_adoption_storage": "core.services.workbench.run.candidate_adoption_storage",
+    "core.services.workbench.run_candidate_adoption_validation": "core.services.workbench.run.candidate_adoption_validation",
+    "core.services.workbench.run_candidate_analysis": "core.services.workbench.run.candidate_analysis",
+    "core.services.workbench.run_candidate_baseline": "core.services.workbench.run.candidate_baseline",
+    "core.services.workbench.run_candidate_comparison": "core.services.workbench.run.candidate_comparison",
+    "core.services.workbench.run_candidate_delivery": "core.services.workbench.run.candidate_delivery",
+    "core.services.workbench.run_candidate_export": "core.services.workbench.run.candidate_export",
+    "core.services.workbench.run_candidate_history": "core.services.workbench.run.candidate_history",
+    "core.services.workbench.run_candidate_metrics": "core.services.workbench.run.candidate_metrics",
+    "core.services.workbench.run_candidates": "core.services.workbench.run.candidates",
+    "core.services.workbench.run_compute": "core.services.workbench.run.compute",
+    "core.services.workbench.run_compute_graph": "core.services.workbench.run.compute_graph",
+    "core.services.workbench.run_compute_validation": "core.services.workbench.run.compute_validation",
+    "core.services.workbench.run_history": "core.services.workbench.run.history",
+    "core.services.workbench.run_history_projection": "core.services.workbench.run.history_projection",
+    "core.services.workbench.run_history_storage": "core.services.workbench.run.history_storage",
+    "core.services.workbench.run_input": "core.services.workbench.run.input",
+    "core.services.workbench.run_input_admission": "core.services.workbench.run.input_admission",
+    "core.services.workbench.run_input_config": "core.services.workbench.run.input_config",
+    "core.services.workbench.run_input_execution": "core.services.workbench.run.input_execution",
+    "core.services.workbench.run_input_external": "core.services.workbench.run.input_external",
+    "core.services.workbench.run_input_piece": "core.services.workbench.run.input_piece",
+    "core.services.workbench.run_input_points": "core.services.workbench.run.input_points",
+    "core.services.workbench.run_input_runtime": "core.services.workbench.run.input_runtime",
+    "core.services.workbench.run_jobs": "core.services.workbench.run.jobs",
+    "core.services.workbench.run_jobs_facts": "core.services.workbench.run.jobs_facts",
+    "core.services.workbench.run_progress": "core.services.workbench.run.progress",
+    "core.services.workbench.run_worker": "core.services.workbench.run.worker",
+    "core.services.workbench.run_worker_recovery": "core.services.workbench.run.worker_recovery",
+    "core.services.workbench.run_worker_snapshot": "core.services.workbench.run.worker_snapshot"
+  },
+  "globs": {
+    "core/services/workbench/piece_adoption*.py": [
+      "core/services/workbench/run/piece_adoption*.py"
+    ],
+    "core/services/workbench/preflight*.py": [
+      "core/services/workbench/run/preflight*.py"
+    ],
+    "core/services/workbench/run_*.py": [
+      "core/services/workbench/run/**/*.py"
+    ],
+    "core/services/workbench/run_compute*.py": [
+      "core/services/workbench/run/compute*.py"
+    ],
+    "core/services/workbench/run_input*.py": [
+      "core/services/workbench/run/input*.py"
+    ]
+  }
+}

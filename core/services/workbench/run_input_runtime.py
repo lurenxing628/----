@@ -13,12 +13,12 @@ from core.services.scheduler.run.schedule_input_runtime_support import (
     _build_runtime_support_inputs,
     _merge_execution_and_freeze_seed_results,
 )
-from core.services.workbench.preflight_checks import number, stored_date
 from data.repositories.workbench_run_input_repo import WorkbenchRunInputRepository
 
+from .facts.preflight_checks import number, stored_date
+from .facts.run_input_rows import fail
 from .plan_point_evidence import official_point_work
 from .run_input_points import read_point_freeze_rows
-from .run_input_rows import fail
 
 
 def stored_point_validator(conn, version):

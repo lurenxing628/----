@@ -4,9 +4,9 @@ from dataclasses import fields
 
 from core.models.external_group import ExternalGroup
 from core.models.part_operation import PartOperation
-from core.services.workbench.preflight_checks import number
 
-from .run_input_rows import fail
+from .facts.preflight_checks import number
+from .facts.run_input_rows import fail
 
 
 def _template_model(row, op) -> PartOperation:

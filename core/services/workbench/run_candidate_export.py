@@ -13,8 +13,8 @@ from openpyxl.utils import get_column_letter
 from core.models.workbench_command import canonical_json
 from core.models.workbench_resource_file import ResourceFileDownload
 
-from .process_file_xml import preserve_carriage_returns
-from .resource_file_writer import _value, check_capacity
+from .facts.file_writer import _value, check_capacity
+from .facts.process_file_xml import preserve_carriage_returns
 
 HEADERS = ("记录类型", "排产编号", "候选方案编号", "候选方案名称", "候选方案状态", "候选方案完整性", "排产时间",
            "数据版本编号", "读取时间", "范围起点（含）", "范围终点（不含）", "行编号", "工序编号", "批次编号",

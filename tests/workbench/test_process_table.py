@@ -21,9 +21,9 @@ from core.models.workbench_process_table_query import (
 )
 from core.models.workbench_resource_table_query import MAX_FACET_KEYS, normalize_column_filters
 from core.services.process.workflow_state import record_confirmation
+from core.services.workbench.facts.table_cells import number_cell, text_cell
 from core.services.workbench.process_queries import WorkbenchProcessQueryService
 from core.services.workbench.process_table import ProcessTable, process_table_cells
-from core.services.workbench.resource_table_cells import number_cell, text_cell
 from tests.workbench.process_query_support import process_read_database, stored
 from tests.workbench.process_table_support import (
     LONG_NAME,

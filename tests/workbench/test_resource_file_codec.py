@@ -8,9 +8,9 @@ import openpyxl
 import pytest
 
 from core.errors import ValidationError
-from core.services.workbench import resource_file_writer
-from core.services.workbench.resource_file_codec import read_resource_file
-from core.services.workbench.resource_file_writer import check_capacity
+from core.services.workbench.facts import file_writer as resource_file_writer
+from core.services.workbench.facts.file_codec import read_resource_file
+from core.services.workbench.facts.file_writer import check_capacity
 from core.services.workbench.resource_files import WorkbenchResourceFileService
 from tests.workbench.resource_file_support import (
     confirm,

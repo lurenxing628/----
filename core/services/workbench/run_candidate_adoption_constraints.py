@@ -8,8 +8,8 @@ from core.algorithm_runtime.internal_slot import estimate_internal_slot
 from core.models.workbench_run_adoption import CandidateAdoptionBlocked
 from data.repositories.workbench_run_input_repo import ADOPTION_CHECK_TABLES, WorkbenchRunInputRepository
 
-from .preflight_checks import PreflightChecks, stored_date
-from .zero_duration import candidate_point_validator
+from .facts.preflight_checks import PreflightChecks, stored_date
+from .facts.zero_duration import candidate_point_validator
 
 # piece_adoption 仍按这份表清单读主数据；清单本体归输入仓储维护。
 _TABLES = ADOPTION_CHECK_TABLES

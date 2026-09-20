@@ -1,0 +1,25 @@
+{
+  "moves": {
+    "core.services.workbench.calibration": "core.services.workbench.calibration.service",
+    "core.services.workbench.calibration_adoption": "core.services.workbench.calibration.adoption",
+    "core.services.workbench.calibration_adoption_evidence": "core.services.workbench.calibration.adoption_evidence",
+    "core.services.workbench.calibration_adoption_policy": "core.services.workbench.calibration.adoption_policy",
+    "core.services.workbench.calibration_export": "core.services.workbench.calibration.export",
+    "core.services.workbench.calibration_facts": "core.services.workbench.calibration.facts",
+    "core.services.workbench.calibration_integrity": "core.services.workbench.calibration.integrity",
+    "core.services.workbench.calibration_method": "core.services.workbench.calibration.method",
+    "core.services.workbench.calibration_samples": "core.services.workbench.calibration.samples",
+    "core.services.workbench.calibration_table": "core.services.workbench.calibration.table",
+    "core.services.workbench.template_lineage": "core.services.workbench.calibration.template_lineage",
+    "core.services.workbench.template_lineage_calibration": "core.services.workbench.calibration.template_lineage_calibration",
+    "core.services.workbench.template_lineage_query": "core.services.workbench.calibration.template_lineage_query"
+  },
+  "globs": {
+    "core/services/workbench/calibration*.py": [
+      "core/services/workbench/calibration/**/*.py"
+    ],
+    "core/services/workbench/template_lineage*.py": [
+      "core/services/workbench/calibration/template_lineage*.py"
+    ]
+  }
+}

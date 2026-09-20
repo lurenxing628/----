@@ -8,7 +8,7 @@ from core.services.scheduler.run.schedule_execution_guardrails import build_exec
 from core.services.scheduler.run.schedule_execution_resource_facts import _latest_plan_rows
 from core.services.scheduler.schedule_service import ScheduleService
 
-from .run_input_projection_codec import restore_execution_projections
+from .facts.run_input_codec import restore_execution_projections
 
 
 def _selected_has_actuals(rows, live):

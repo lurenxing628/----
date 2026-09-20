@@ -8,7 +8,7 @@ from contextlib import closing
 import pytest
 
 from core.services.system.system_config_service import SystemConfigService
-from core.services.workbench.run_data_context import RunDataContext
+from core.services.workbench.facts.run_data_context import RunDataContext
 from tests.workbench.system_maintenance_support import system_api as _system_api_fixture  # noqa: F401
 
 

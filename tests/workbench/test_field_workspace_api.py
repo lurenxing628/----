@@ -4,7 +4,7 @@ from datetime import date, datetime
 
 import pytest
 
-from core.services.workbench.plan_fact_serialization import plain_plan_facts
+from core.services.workbench.facts.plan_serialization import plain_plan_facts
 from tests.workbench.execution_ledger_support import all_rows
 from tests.workbench.field_workspace_support import BASE, FieldAPI, _ledger_fixture, success
 from tests.workbench.field_workspace_support import field_api as _field_api

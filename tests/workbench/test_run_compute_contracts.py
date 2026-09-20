@@ -8,9 +8,9 @@ import pytest
 from core.errors import ValidationError
 from core.models.workbench_run_compute import CandidateRunInputError
 from core.services.scheduler.run.schedule_payload_contract import build_validated_schedule_payload
+from core.services.workbench.facts.run_input_rows import batch_model
 from core.services.workbench.run_compute import compute_candidate_run, compute_prepared_candidate_run
 from core.services.workbench.run_input import prepare_candidate_run_input
-from core.services.workbench.run_input_rows import batch_model
 from tests.workbench.run_compute_support import run_case as _run_case  # noqa: F401
 from tests.workbench.run_compute_support import unchanged
 
@@ -172,7 +172,7 @@ def test_first_multi_piece_counterexample_rejects_cross_piece_edge(run_case):
     from core.services.scheduler.graph.precedence_builder import build_linear_edges_by_batch
     from core.services.scheduler.run.schedule_input_builder import build_algo_operations
     from core.services.scheduler.schedule_service import ScheduleService
-    from core.services.workbench.run_input_rows import operation_model
+    from core.services.workbench.facts.run_input_rows import operation_model
 
     case = run_case
     case.conn.execute("UPDATE BatchOperations SET piece_id='piece-a'")

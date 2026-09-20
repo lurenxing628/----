@@ -225,7 +225,7 @@ print(json.dumps({'denied': denied, 'sqlite_connections': evidence['sqlite_conne
 
 
 def test_pending_restore_refuses_fixture_seed_and_exit_backup_without_opening_database(tmp_path):
-    from core.services.workbench.system_journal import SystemMaintenanceJournal
+    from core.services.workbench.facts.system_journal import SystemMaintenanceJournal
 
     root = create_root(tmp_path)
     database = root / "db/aps-live.db"

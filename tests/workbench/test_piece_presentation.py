@@ -5,10 +5,10 @@ from copy import deepcopy
 import pytest
 
 from core.models.workbench_run_candidate import RunCandidateReadScope
+from core.services.workbench.facts.candidate_facts import GenerationFacts
+from core.services.workbench.facts.candidate_store import CandidateStore
+from core.services.workbench.facts.candidate_tasks import operation_labels
 from core.services.workbench.plan_projection import _captured_quantities
-from core.services.workbench.run_candidate_facts import GenerationFacts
-from core.services.workbench.run_candidate_storage import CandidateStore
-from core.services.workbench.run_candidate_tasks import operation_labels
 from core.services.workbench.run_candidates import WorkbenchRunCandidateQueryService
 from tests.workbench.piece_chain_support import adopt_candidate, adopt_trial, piece_layout, saved_trial
 from tests.workbench.piece_chain_support import trial_case as trial_case  # noqa: F401

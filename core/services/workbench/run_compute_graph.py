@@ -22,7 +22,7 @@ from core.services.scheduler.run.schedule_graph_score_projection import (
     graph_score_weights,
 )
 
-from .piece_adoption_scope import build_piece_adoption_scope
+from .facts.piece_scope import build_piece_adoption_scope
 
 
 def piece_graph_preparer(prepared):

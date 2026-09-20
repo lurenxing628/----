@@ -12,7 +12,7 @@ from core.infrastructure.database import get_connection
 from core.infrastructure.workbench_run_schema import RUN_TABLES
 from core.infrastructure.workbench_trial_schema import TRIAL_TABLES
 from core.models.workbench_run_job import durable_value
-from core.services.workbench.run_input_rows import batch_model, operation_model
+from core.services.workbench.facts.run_input_rows import batch_model, operation_model
 from tests.workbench.piece_chain_support import piece_layout
 from tests.workbench.plan_catalog_support import candidate, scenario
 from tests.workbench.run_jobs_support import JobCase

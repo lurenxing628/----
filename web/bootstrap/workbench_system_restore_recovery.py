@@ -2,7 +2,7 @@
 
 import os
 
-from core.services.workbench.system_journal import assert_system_maintenance_ready
+from core.services.workbench.facts.system_journal import assert_system_maintenance_ready
 
 from .launcher_paths import _normalize_db_path_for_runtime
 from .workbench_request_lifecycle import lookup_workbench_request_lifecycle

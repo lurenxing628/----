@@ -2,7 +2,7 @@
 
 import pytest
 
-from core.services.workbench.dashboard_resource_metrics import daily_resource_pressure, pressure_summary
+from core.services.workbench.facts.resource_pressure import daily_resource_pressure, pressure_summary
 
 
 def _calendar(start="2026-09-10T08:00:00", end="2026-09-10T16:00:00"):

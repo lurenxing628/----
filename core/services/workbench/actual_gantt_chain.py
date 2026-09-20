@@ -7,7 +7,7 @@ from core.models.workbench_plan_scope import PlanReadScope
 from core.services.scheduler.gantt_critical_chain import compute_critical_chain_from_rows
 from core.services.scheduler.resource_dispatch_task_ids import public_task_id
 
-from .plan_fact_serialization import plain_plan_facts
+from .facts.plan_serialization import plain_plan_facts
 from .plan_projection import public_time
 
 ENGINE = "core.services.scheduler.gantt_critical_chain.compute_critical_chain_from_rows"

@@ -2,9 +2,9 @@
 
 from core.models.workbench_preflight import normalize_preflight_input
 
+from .facts.run_input_rows import batch_model, operation_model
 from .preflight_facts import TABLES, PreflightFacts
 from .run_input import _prepare, _projection_map
-from .run_input_rows import batch_model, operation_model
 
 
 def prepare_trial_adoption_input(conn, settings, projections, live):

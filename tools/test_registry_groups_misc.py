@@ -216,7 +216,7 @@ MISC_REQUIRED_REGRESSION_GROUPS = (
             "core/services/workbench/report_facts.py",
             "core/models/workbench_report.py",
             "core/models/operation_log_labels.py",
-            "core/services/workbench/system_reads.py",
+            "core/services/workbench/facts/system_reads.py",
             "tests/app_runtime/ui_geometry_contract_data.py",
             "tests/app_runtime/ui_geometry_runtime_support.py",
             "tests/app_runtime/ui_geometry_browser_support.py",

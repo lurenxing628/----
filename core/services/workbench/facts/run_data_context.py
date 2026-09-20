@@ -8,9 +8,10 @@ from typing import Optional, Set
 from core.infrastructure.connection_guards import main_database_path
 from core.infrastructure.snapshot_connection import open_readonly_immutable
 from core.models.workbench_command import input_fingerprint
-from core.services.workbench.system_journal import SystemMaintenanceJournal, file_fingerprint
-from core.services.workbench.system_reads import backup_signature
 from data.repositories.workbench_run_repo import WorkbenchRunRepository
+
+from .system_journal import SystemMaintenanceJournal, file_fingerprint
+from .system_reads import backup_signature
 
 
 def restored_context_ref(database_scope, records):

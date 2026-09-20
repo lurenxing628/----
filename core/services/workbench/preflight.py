@@ -3,11 +3,12 @@
 from collections import defaultdict
 
 from core.models.workbench_preflight import issue, normalize_preflight_input
-from core.services.workbench.preflight_checks import PreflightChecks, stored_date
-from core.services.workbench.preflight_dependencies import link_predecessors
 from core.services.workbench.preflight_execution import execution_projections, is_protected
 from core.services.workbench.preflight_facts import PreflightFacts
 from core.services.workbench.preflight_result import summarize
+
+from .facts.preflight_checks import PreflightChecks, stored_date
+from .facts.preflight_dependencies import link_predecessors
 
 
 def task_row(facts, batch, op, projection):

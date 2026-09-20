@@ -23,7 +23,8 @@ from core.models.workbench_resource_file import (
     file_columns,
     public_columns,
 )
-from core.services.workbench.resource_file_codec import file_error
+
+from .file_codec import file_error
 
 XLSX_MAX_ROWS = 1048576
 XLSX_MAX_CELL_CHARACTERS = 32767

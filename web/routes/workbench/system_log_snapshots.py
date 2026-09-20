@@ -9,7 +9,7 @@ from flask import current_app
 
 from core.models.workbench_command import WorkbenchCommandRejected, canonical_json, input_fingerprint
 from core.services.workbench import messages
-from core.services.workbench.run_data_context import restored_context_ref
+from core.services.workbench.facts.run_data_context import restored_context_ref
 
 from .read_context import bind_read_snapshot
 from .system_context import database_scope, journal

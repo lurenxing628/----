@@ -1,0 +1,34 @@
+{
+  "moves": {
+    "core.services.workbench.actual_gantt": "core.services.workbench.execution.actual_gantt",
+    "core.services.workbench.actual_gantt_chain": "core.services.workbench.execution.actual_gantt_chain",
+    "core.services.workbench.actual_gantt_export": "core.services.workbench.execution.actual_gantt_export",
+    "core.services.workbench.actual_gantt_scope": "core.services.workbench.execution.actual_gantt_scope",
+    "core.services.workbench.execution_ledger": "core.services.workbench.execution.ledger",
+    "core.services.workbench.field_report_files": "core.services.workbench.execution.field_report_files",
+    "core.services.workbench.field_report_files_codec": "core.services.workbench.execution.field_report_files_codec",
+    "core.services.workbench.field_report_files_identity": "core.services.workbench.execution.field_report_files_identity",
+    "core.services.workbench.field_report_files_xml": "core.services.workbench.execution.field_report_files_xml",
+    "core.services.workbench.field_workspace": "core.services.workbench.execution.field_workspace",
+    "core.services.workbench.field_workspace_scope": "core.services.workbench.execution.field_workspace_scope",
+    "core.services.workbench.production_report": "core.services.workbench.execution.production_report",
+    "core.services.workbench.production_report_prepare": "core.services.workbench.execution.production_report_prepare",
+    "core.services.workbench.production_report_validation": "core.services.workbench.execution.production_report_validation",
+    "core.services.workbench.production_report_void": "core.services.workbench.execution.production_report_void",
+    "core.services.workbench.production_report_void_dependencies": "core.services.workbench.execution.production_report_void_dependencies"
+  },
+  "globs": {
+    "core/services/workbench/actual_gantt*.py": [
+      "core/services/workbench/execution/actual_gantt*.py"
+    ],
+    "core/services/workbench/execution_ledger*.py": [
+      "core/services/workbench/execution/ledger.py"
+    ],
+    "core/services/workbench/field*.py": [
+      "core/services/workbench/execution/field_*.py"
+    ],
+    "core/services/workbench/production_report*.py": [
+      "core/services/workbench/execution/production_report*.py"
+    ]
+  }
+}

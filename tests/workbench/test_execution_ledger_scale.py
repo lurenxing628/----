@@ -71,6 +71,7 @@ def test_new_runtime_sources_parse_as_python38():
     root = Path(__file__).resolve().parents[2]
     files = list(root.glob("core/models/workbench_execution*.py"))
     files += list(root.glob("core/services/workbench/execution_ledger*.py"))
+    files += [root / "core/services/workbench/facts/execution_projection.py"]
     files += list(root.glob("core/services/workbench/production_report*.py"))
     files += list(root.glob("data/repositories/workbench_execution*.py"))
     files += [root / "core/infrastructure/workbench_execution_ledger_schema.py"]

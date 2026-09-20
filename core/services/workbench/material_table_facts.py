@@ -1,7 +1,7 @@
 """Material cells reuse the same canonical cell and index logic as resources."""
 
-from .resource_table_cells import number_cell, status_cell, text_cell
-from .resource_table_index import ResourceTableIndex
+from .facts.table_cells import number_cell, status_cell, text_cell
+from .facts.table_index import ResourceTableIndex
 
 
 def material_table_index(rows, project):

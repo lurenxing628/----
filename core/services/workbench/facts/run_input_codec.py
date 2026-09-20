@@ -7,8 +7,8 @@ from typing import Any, Dict
 from core.models.workbench_execution import ExecutionProjection, ProductionReport
 from core.models.workbench_execution_input import MAX_OPERATIONS
 from core.models.workbench_preflight import public_ref
-from core.services.workbench.preflight_checks import number
 
+from .preflight_checks import number
 from .run_input_rows import fail
 
 

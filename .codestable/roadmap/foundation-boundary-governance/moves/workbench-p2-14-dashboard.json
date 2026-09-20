@@ -1,0 +1,21 @@
+{
+  "moves": {
+    "core.services.workbench.dashboard": "core.services.workbench.dashboard.service",
+    "core.services.workbench.dashboard_analysis": "core.services.workbench.dashboard.analysis",
+    "core.services.workbench.dashboard_catalogs": "core.services.workbench.dashboard.catalogs",
+    "core.services.workbench.dashboard_commands": "core.services.workbench.dashboard.commands",
+    "core.services.workbench.dashboard_downtime": "core.services.workbench.dashboard.downtime",
+    "core.services.workbench.dashboard_execution": "core.services.workbench.dashboard.execution",
+    "core.services.workbench.dashboard_external": "core.services.workbench.dashboard.external",
+    "core.services.workbench.dashboard_external_handling": "core.services.workbench.dashboard.external_handling",
+    "core.services.workbench.dashboard_external_sources": "core.services.workbench.dashboard.external_sources",
+    "core.services.workbench.dashboard_facts": "core.services.workbench.dashboard.facts",
+    "core.services.workbench.dashboard_policy": "core.services.workbench.dashboard.policy",
+    "core.services.workbench.dashboard_projection": "core.services.workbench.dashboard.projection"
+  },
+  "globs": {
+    "core/services/workbench/dashboard*.py": [
+      "core/services/workbench/dashboard/**/*.py"
+    ]
+  }
+}

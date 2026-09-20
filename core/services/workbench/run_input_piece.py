@@ -2,8 +2,8 @@
 
 from core.models.workbench_piece_adoption import PieceAdoptionBlocked
 
-from .piece_adoption_scope import build_piece_adoption_scope
-from .run_input_rows import fail
+from .facts.piece_scope import build_piece_adoption_scope
+from .facts.run_input_rows import fail
 
 
 def input_piece_scope(operations, batches):

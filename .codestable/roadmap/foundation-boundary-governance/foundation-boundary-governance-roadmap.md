@@ -295,6 +295,7 @@ web/bootstrap 里只有 factory.py 可 import web.routes（装配蓝图）；web
 11. **workbench-cluster-layering** — 画 workbench 簇层次图，解五对双向依赖，共享件下沉 `facts/`
     - 所属模块：P
     - 依赖：private-import-ratchet、sql-drain-storage-classes
+    - 状态：done（2026-09-20）。设计见 `workbench-cluster-layering.md`；`facts/` 落地 30 个模块，跨簇违规 31→0，适应度测试进门禁；搬迁工具 `tools/move_modules.py`
 12. **workbench-subpackages** — 按簇分子包，一簇一提交，codemod 全部调用方
     - 所属模块：P
     - 依赖：workbench-cluster-layering、sql-drain-hatch-and-policy

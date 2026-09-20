@@ -7,7 +7,7 @@ from copy import deepcopy
 import pytest
 
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.services.workbench.run_candidate_facts import _columns
+from core.services.workbench.facts.candidate_facts import _columns
 from tests.workbench.run_candidate_baseline_support import baseline, legacy_blob_events, original_plan
 from tests.workbench.run_candidate_support import candidate_case as _candidate_case
 from tests.workbench.run_candidate_support import compute, corrupt_update, edit_capture, retained
@@ -114,7 +114,7 @@ def test_older_official_execution_projection_still_requires_exact_archived_evide
 
 @pytest.mark.parametrize("field", ["facts_json", "execution_json", "baseline_json", "normalized_input_json"])
 def test_oversized_capture_rejected_before_loading(candidate_case, monkeypatch, field):
-    import core.services.workbench.run_candidate_storage as storage
+    import core.services.workbench.facts.candidate_store as storage
     case = candidate_case
     _, refs = compute(case)
     corrupt_update(case.conn, "WorkbenchRunJobs", "UPDATE WorkbenchRunJobs SET " + field + "=?", ('{"payload":"' + "x" * 300000 + '"}',))

@@ -10,7 +10,7 @@ import time
 from pathlib import Path
 from typing import Any, Tuple
 
-from core.services.workbench.system_journal import SystemMaintenanceJournal, file_fingerprint
+from core.services.workbench.facts.system_journal import SystemMaintenanceJournal, file_fingerprint
 from web.bootstrap.launcher_stop import _request_runtime_shutdown
 
 BASE = "/api/workbench/v1/system"

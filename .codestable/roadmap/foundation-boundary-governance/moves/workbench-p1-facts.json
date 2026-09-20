@@ -1,0 +1,88 @@
+{
+  "moves": {
+    "core.services.workbench.dashboard_candidate_comparison": "core.services.workbench.run_candidate_comparison",
+    "core.services.workbench.dashboard_candidate_metrics": "core.services.workbench.run_candidate_metrics",
+    "core.services.workbench.dashboard_resource_metrics": "core.services.workbench.facts.resource_pressure",
+    "core.services.workbench.execution_ledger_projection": "core.services.workbench.facts.execution_projection",
+    "core.services.workbench.piece_adoption_scope": "core.services.workbench.facts.piece_scope",
+    "core.services.workbench.plan_fact_serialization": "core.services.workbench.facts.plan_serialization",
+    "core.services.workbench.point_plan_query": "core.services.workbench.plan_point_query",
+    "core.services.workbench.preflight_checks": "core.services.workbench.facts.preflight_checks",
+    "core.services.workbench.preflight_dependencies": "core.services.workbench.facts.preflight_dependencies",
+    "core.services.workbench.process_file_xml": "core.services.workbench.facts.process_file_xml",
+    "core.services.workbench.resource_file_codec": "core.services.workbench.facts.file_codec",
+    "core.services.workbench.resource_file_writer": "core.services.workbench.facts.file_writer",
+    "core.services.workbench.resource_table_cells": "core.services.workbench.facts.table_cells",
+    "core.services.workbench.resource_table_index": "core.services.workbench.facts.table_index",
+    "core.services.workbench.run_candidate_facts": "core.services.workbench.facts.candidate_facts",
+    "core.services.workbench.run_candidate_projection": "core.services.workbench.facts.candidate_projection",
+    "core.services.workbench.run_candidate_storage": "core.services.workbench.facts.candidate_store",
+    "core.services.workbench.run_candidate_tasks": "core.services.workbench.facts.candidate_tasks",
+    "core.services.workbench.run_candidate_values": "core.services.workbench.facts.candidate_values",
+    "core.services.workbench.run_data_context": "core.services.workbench.facts.run_data_context",
+    "core.services.workbench.run_input_projection_codec": "core.services.workbench.facts.run_input_codec",
+    "core.services.workbench.run_input_readonly": "core.services.workbench.facts.run_input_readonly",
+    "core.services.workbench.run_input_rows": "core.services.workbench.facts.run_input_rows",
+    "core.services.workbench.run_policy": "core.services.workbench.facts.run_policy",
+    "core.services.workbench.system_journal": "core.services.workbench.facts.system_journal",
+    "core.services.workbench.system_reads": "core.services.workbench.facts.system_reads",
+    "core.services.workbench.system_redaction": "core.services.workbench.facts.system_redaction",
+    "core.services.workbench.trial_adoption_storage": "core.services.workbench.facts.trial_scenario_archive",
+    "core.services.workbench.trial_policy": "core.services.workbench.facts.trial_policy",
+    "core.services.workbench.zero_duration": "core.services.workbench.facts.zero_duration",
+    "core.services.workbench.zero_duration_evidence": "core.services.workbench.facts.zero_duration_evidence"
+  },
+  "globs": {
+    "core/services/workbench/run_*.py": [
+      "core/services/workbench/run_*.py",
+      "core/services/workbench/facts/**/*.py"
+    ],
+    "core/services/workbench/run_input*.py": [
+      "core/services/workbench/run_input*.py",
+      "core/services/workbench/facts/run_input_*.py"
+    ],
+    "core/services/workbench/preflight*.py": [
+      "core/services/workbench/preflight*.py",
+      "core/services/workbench/facts/preflight_*.py"
+    ],
+    "core/services/workbench/execution_ledger*.py": [
+      "core/services/workbench/execution_ledger*.py",
+      "core/services/workbench/facts/execution_projection.py"
+    ],
+    "core/services/workbench/trial*.py": [
+      "core/services/workbench/trial*.py",
+      "core/services/workbench/facts/trial_*.py"
+    ],
+    "core/services/workbench/zero_duration*.py": [
+      "core/services/workbench/facts/zero_duration*.py"
+    ],
+    "core/services/workbench/piece_adoption*.py": [
+      "core/services/workbench/piece_adoption*.py",
+      "core/services/workbench/facts/piece_scope.py"
+    ],
+    "core/services/workbench/plan*.py": [
+      "core/services/workbench/plan*.py",
+      "core/services/workbench/facts/plan_serialization.py"
+    ],
+    "core/services/workbench/dashboard*.py": [
+      "core/services/workbench/dashboard*.py",
+      "core/services/workbench/run_candidate_comparison.py",
+      "core/services/workbench/run_candidate_metrics.py",
+      "core/services/workbench/facts/resource_pressure.py"
+    ],
+    "core/services/workbench/resource*.py": [
+      "core/services/workbench/resource*.py",
+      "core/services/workbench/facts/table_*.py",
+      "core/services/workbench/facts/file_*.py"
+    ],
+    "core/services/workbench/process*.py": [
+      "core/services/workbench/process*.py",
+      "core/services/workbench/facts/process_file_xml.py"
+    ],
+    "core/services/workbench/system*.py": [
+      "core/services/workbench/system*.py",
+      "core/services/workbench/facts/system_*.py",
+      "core/services/workbench/facts/run_data_context.py"
+    ]
+  }
+}

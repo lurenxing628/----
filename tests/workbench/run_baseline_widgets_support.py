@@ -9,7 +9,7 @@ from pathlib import Path
 from flask import Blueprint, Flask, g, jsonify, request
 
 from core.infrastructure.migration_state import current_schema_contract_issues
-from core.services.workbench.run_candidate_facts import _columns
+from core.services.workbench.facts.candidate_facts import _columns
 from tests.workbench.run_candidate_baseline_support import original_plan
 from tests.workbench.run_candidate_support import connect, corrupt_update
 from tests.workbench.run_candidate_widgets_support import compute, digest

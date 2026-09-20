@@ -7,7 +7,7 @@ from concurrent.futures import ThreadPoolExecutor
 import pytest
 
 from core.infrastructure.backup import BackupManager
-from core.services.workbench.system_journal import SystemMaintenanceJournal
+from core.services.workbench.facts.system_journal import SystemMaintenanceJournal
 from tests.workbench.system_restore_entrypoint_support import BASE, KEY, REPO, ProcessHost
 from web.bootstrap import factory
 from web.bootstrap.launcher_shutdown import HOST_STOP_PATH

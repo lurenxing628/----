@@ -3,8 +3,8 @@
 from core.services.scheduler.run.schedule_execution_guardrails import build_execution_guardrails_from_projections
 from core.services.scheduler.run.schedule_execution_resource_facts import _latest_plan_rows
 
+from .facts.run_input_rows import fail
 from .piece_adoption_execution import _quantities
-from .run_input_rows import fail
 
 
 def _prior_operation_refs(facts, plan_rows):

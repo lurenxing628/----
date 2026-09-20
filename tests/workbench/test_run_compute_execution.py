@@ -8,8 +8,8 @@ from core.errors import AppError
 from core.models.workbench_run_compute import CandidateRunInputError
 from core.services.execution.ledger_reader import ExecutionLedgerReader
 from core.services.workbench.execution_ledger import ExecutionLedgerService
+from core.services.workbench.facts.run_input_codec import restore_execution_projections
 from core.services.workbench.run_compute import compute_candidate_run
-from core.services.workbench.run_input_projection_codec import restore_execution_projections
 from tests.workbench.run_compute_support import run_case as _run_case  # noqa: F401
 from tests.workbench.run_compute_support import unchanged
 
