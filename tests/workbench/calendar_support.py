@@ -10,8 +10,8 @@ from time import perf_counter
 import pytest
 
 from core.services.scheduler.calendar_service import CalendarService
-from core.services.workbench.calendars import WorkbenchCalendarService
 from core.services.workbench.commands import WorkbenchCommandService
+from core.services.workbench.resource.calendars import WorkbenchCalendarService
 from tests.workbench.identity_metadata_support import business_snapshot, table_rows
 
 KEY = "calendar-command-00000001"

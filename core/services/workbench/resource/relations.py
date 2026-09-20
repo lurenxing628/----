@@ -13,7 +13,7 @@ from core.services.personnel.operator_qualification import OperatorQualification
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
 from data.repositories.workbench_resource_relation_repo import WorkbenchResourceRelationRepository
 
-from .resource_relations_projection import RELATION_BASIS, RELATION_KINDS, relation_entity
+from .relations_projection import RELATION_BASIS, RELATION_KINDS, relation_entity
 
 
 def _valid_ref(ref):

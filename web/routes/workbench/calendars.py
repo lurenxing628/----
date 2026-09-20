@@ -18,8 +18,8 @@ from flask import current_app, g, jsonify, request
 
 from core.errors import AppError
 from core.models.workbench_command import WorkbenchCommandRejected, input_fingerprint
-from core.services.workbench.calendars import WorkbenchCalendarService
 from core.services.workbench.commands import WorkbenchCommandService
+from core.services.workbench.resource.calendars import WorkbenchCalendarService
 from web.api_responses import failure, query_success
 
 from .api_responses import api_endpoint

@@ -13,9 +13,10 @@ from core.models.workbench_resource_action import (
     resource_refs,
     resource_scope,
 )
-from core.services.workbench.resource_file_projection import flat_resource, reference_count, resource_file_state
-from core.services.workbench.resource_queries import WorkbenchResourceQueryService
 from data.repositories.workbench_resource_file_repo import WorkbenchResourceFileRepository
+
+from .file_projection import flat_resource, reference_count, resource_file_state
+from .queries import WorkbenchResourceQueryService
 
 
 class WorkbenchResourceBulkService:

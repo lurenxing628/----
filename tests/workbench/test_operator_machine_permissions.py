@@ -9,7 +9,7 @@ from core.models.workbench_command import WorkbenchCommandRejected, WorkbenchCom
 from core.services.personnel.operator_machine_service import OperatorMachineService
 from core.services.personnel.operator_qualification import OperatorQualificationError, OperatorQualificationService
 from core.services.workbench.commands import WorkbenchCommandService
-from core.services.workbench.operator_machine_permissions import OPERATION, WorkbenchOperatorMachinePermissions
+from core.services.workbench.resource.operator_machine_permissions import OPERATION, WorkbenchOperatorMachinePermissions
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
 from tests.workbench.identity_metadata_support import insert_row, table_rows
 from tests.workbench.operator_qualification_support import (

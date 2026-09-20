@@ -7,7 +7,7 @@ import pytest
 
 from core.infrastructure.migration_state import ensure_schema_version
 from core.models.workbench_resource_query import ResourcePageRequest
-from core.services.workbench.resource_queries import WorkbenchResourceQueryService
+from core.services.workbench.resource.queries import WorkbenchResourceQueryService
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
 from tests.workbench.identity_metadata_support import business_snapshot, schema_snapshot, table_rows
 

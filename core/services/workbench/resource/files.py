@@ -19,13 +19,13 @@ from core.models.workbench_resource_action import (
 from core.models.workbench_resource_file import READONLY, WRITABLE, import_request
 from core.models.workbench_resource_input import resource_text
 from core.models.workbench_resource_query import ResourcePageRequest
-from core.services.workbench.resource_file_input import ResourceFileInput, proposed_fields, same_value
-from core.services.workbench.resource_file_projection import flat_resource, reference_count, resource_file_state
-from core.services.workbench.resource_queries import WorkbenchResourceQueryService
+from core.services.workbench.facts.file_codec import read_resource_file
+from core.services.workbench.facts.file_writer import check_capacity, write_resource_file
 from data.repositories.workbench_resource_file_repo import WorkbenchResourceFileRepository
 
-from .facts.file_codec import read_resource_file
-from .facts.file_writer import check_capacity, write_resource_file
+from .file_input import ResourceFileInput, proposed_fields, same_value
+from .file_projection import flat_resource, reference_count, resource_file_state
+from .queries import WorkbenchResourceQueryService
 
 
 class WorkbenchResourceFileService:

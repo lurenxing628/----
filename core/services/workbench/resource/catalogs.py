@@ -4,7 +4,7 @@ from core.errors import ValidationError
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
 from core.models.workbench_resource_input import normalize_resource_input
 
-from .resource_states import WorkbenchResourceStateService
+from .states import WorkbenchResourceStateService
 
 # 提示里按界面上的叫法称呼这类资料，不写内部的“目录”。
 _KIND_NAMES = {"machine_group": "设备组", "shift_profile": "班次档"}

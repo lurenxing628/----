@@ -4,7 +4,7 @@ from datetime import datetime
 
 from core.infrastructure.transaction import TransactionManager
 from core.services.process.workflow_state import record_confirmation, start_workflow
-from core.services.workbench.resource_queries import WorkbenchResourceQueryService
+from core.services.workbench.resource.queries import WorkbenchResourceQueryService
 from tests.workbench.process_workflow_support import seed_workflow
 
 

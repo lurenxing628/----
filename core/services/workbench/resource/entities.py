@@ -6,7 +6,7 @@ from core.services.equipment.machine_service import MachineService
 from core.services.personnel.operator_service import OperatorService
 from core.services.process.op_type_service import OpTypeService
 
-from .resource_states import WorkbenchResourceStateService
+from .states import WorkbenchResourceStateService
 
 
 class WorkbenchResourceService:

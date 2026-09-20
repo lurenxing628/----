@@ -7,11 +7,11 @@ from dataclasses import asdict
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_identity import WorkbenchEntityIdentity
 from core.models.workbench_resource_table_query import table_columns
+from core.services.workbench.facts.table_cells import number_cell, relation_cell, status_cell, text_cell
+from core.services.workbench.facts.table_index import ResourceTableIndex
 from data.repositories.workbench_resource_table_repo import WorkbenchResourceTableRepository
 
-from .facts.table_cells import number_cell, relation_cell, status_cell, text_cell
-from .facts.table_index import ResourceTableIndex
-from .resource_metrics import _index, _status
+from .metrics import _index, _status
 
 
 class ResourceTableFacts:

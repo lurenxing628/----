@@ -7,7 +7,7 @@ from time import perf_counter
 import pytest
 from flask import Blueprint
 
-from core.services.workbench.resource_relations import ResourceRelationRequest, WorkbenchResourceRelationService
+from core.services.workbench.resource.relations import ResourceRelationRequest, WorkbenchResourceRelationService
 from tests.workbench.identity_metadata_support import business_snapshot, schema_snapshot, table_rows
 from web.routes.workbench.resource_relations import register_resource_relation_routes
 

@@ -449,12 +449,12 @@
       "count": 2
     },
     {
-      "path": "core/services/workbench/resource_relations_projection.py",
+      "path": "core/services/workbench/resource/relations_projection.py",
       "kind": "private_symbol",
       "count": 1
     },
     {
-      "path": "core/services/workbench/resource_table_facts.py",
+      "path": "core/services/workbench/resource/table_facts.py",
       "kind": "private_symbol",
       "count": 2
     },

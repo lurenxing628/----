@@ -5,7 +5,7 @@ import re
 from flask import current_app, g, request
 
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.services.workbench.resource_relations import ResourceRelationRequest, WorkbenchResourceRelationService
+from core.services.workbench.resource.relations import ResourceRelationRequest, WorkbenchResourceRelationService
 from web.api_responses import query_success
 
 from .api_responses import api_endpoint

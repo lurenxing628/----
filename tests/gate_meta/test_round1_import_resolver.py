@@ -158,7 +158,7 @@ def test_unknown_file_locations_never_become_label_edges(tmp_path: Path, body: s
 @pytest.mark.parametrize("rel,line,target", [
     ("tests/gate_meta/test_frozen_bundle_contract.py", 175, "core.services.scheduler._frozen_import_anchor"),
     ("tests/workbench/test_pending_build_sources.py", 22, "scripts.workbench.build"),
-    ("tests/workbench/test_process_readiness.py", 133, "core.services.workbench.resource_readiness"),
+    ("tests/workbench/test_process_readiness.py", 133, "core.services.workbench.resource.readiness"),
 ])
 def test_known_round1_sources_resolve_without_executing_or_editing_them(rel: str, line: int, target: str) -> None:
     roots = scan_import_cycles.PROD_ROOTS + scan_import_cycles.TEST_ROOTS

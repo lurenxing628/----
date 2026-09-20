@@ -9,7 +9,7 @@ from unittest.mock import patch
 import pytest
 
 from core.services.process.workflow_state import workflow_snapshot
-from core.services.workbench.resource_queries import WorkbenchResourceQueryService
+from core.services.workbench.resource.queries import WorkbenchResourceQueryService
 from tests.workbench.process_readiness_support import (
     enroll,
     process_item,
@@ -21,7 +21,7 @@ from tests.workbench.process_stage_api_support import BASE, stage_api_fixture, s
 from tests.workbench.process_workflow_support import confirm_all, stored_state, workflow_database
 from tests.workbench.resource_metrics_support import measured_read
 
-MODULE = "core.services.workbench.resource_readiness"
+MODULE = "core.services.workbench.resource.readiness"
 
 
 @pytest.mark.parametrize("managed,stages,expected", [

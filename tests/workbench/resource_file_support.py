@@ -10,8 +10,8 @@ import openpyxl
 
 from core.infrastructure.transaction import TransactionManager
 from core.services.workbench.commands import WorkbenchCommandService
-from core.services.workbench.resource_bulk import WorkbenchResourceBulkService
-from core.services.workbench.resource_files import WorkbenchResourceFileService
+from core.services.workbench.resource.bulk import WorkbenchResourceBulkService
+from core.services.workbench.resource.files import WorkbenchResourceFileService
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
 from tests.workbench.identity_metadata_support import business_snapshot
 from tests.workbench.resource_entity_support import resource_database  # noqa: F401

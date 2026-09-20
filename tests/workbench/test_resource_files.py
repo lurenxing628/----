@@ -9,7 +9,7 @@ from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_command import WorkbenchCommandRejected, WorkbenchCommandUncertain
 from core.models.workbench_resource_file import public_columns
 from core.services.workbench.commands import WorkbenchCommandService
-from core.services.workbench.resource_files import WorkbenchResourceFileService
+from core.services.workbench.resource.files import WorkbenchResourceFileService
 from tests.workbench.identity_metadata_support import business_snapshot
 from tests.workbench.resource_entity_support import create_catalog
 from tests.workbench.resource_file_support import (

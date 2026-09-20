@@ -5,9 +5,9 @@ from flask import current_app, g, jsonify, request
 from core.models.workbench_command import WorkbenchCommandRejected, validate_request_key
 from core.models.workbench_resource_action import action_kind, resource_refs
 from core.services.workbench.commands import WorkbenchCommandService
-from core.services.workbench.resource_bulk import WorkbenchResourceBulkService
-from core.services.workbench.resource_files import WorkbenchResourceFileService
-from core.services.workbench.resource_queries import WorkbenchResourceQueryService
+from core.services.workbench.resource.bulk import WorkbenchResourceBulkService
+from core.services.workbench.resource.files import WorkbenchResourceFileService
+from core.services.workbench.resource.queries import WorkbenchResourceQueryService
 from web.api_responses import query_success
 
 from .api_responses import api_endpoint

@@ -11,7 +11,7 @@ from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_command import WorkbenchCommandRejected, WorkbenchCommandUncertain, input_fingerprint
 from core.services.process.supplier_service import SupplierService
 from core.services.workbench.commands import WorkbenchCommandService
-from core.services.workbench.suppliers import WorkbenchSupplierService
+from core.services.workbench.resource.suppliers import WorkbenchSupplierService
 from data.repositories.workbench_supplier_state_repo import WorkbenchSupplierStateRepository
 from tests.workbench.supplier_support import (
     CREATE,

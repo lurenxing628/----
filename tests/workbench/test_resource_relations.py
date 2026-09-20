@@ -9,8 +9,8 @@ import pytest
 from core.infrastructure.database import get_connection
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.personnel.operator_qualification import OperatorQualificationService
-from core.services.workbench.resource_queries import WorkbenchResourceQueryService
-from core.services.workbench.resource_relations import ResourceRelationRequest, WorkbenchResourceRelationService
+from core.services.workbench.resource.queries import WorkbenchResourceQueryService
+from core.services.workbench.resource.relations import ResourceRelationRequest, WorkbenchResourceRelationService
 from data.repositories.workbench_resource_relation_repo import WorkbenchResourceRelationRepository
 from tests.workbench.resource_relations_support import (
     BASE,

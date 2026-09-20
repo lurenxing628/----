@@ -6,7 +6,7 @@ from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchComm
 from core.models.workbench_resource_action import ResourceActionPreview, check_resource_preview, resource_refs
 from core.services.personnel.operator_machine_service import OperatorMachineService
 
-from .resource_states import WorkbenchResourceStateService
+from .states import WorkbenchResourceStateService
 
 OPERATION = "operator.machine_permissions"
 

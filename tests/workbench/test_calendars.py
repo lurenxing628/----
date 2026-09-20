@@ -14,8 +14,8 @@ from core.models.workbench_calendar import CALENDAR_PREVIEW_TTL_SECONDS, MAX_CAL
 from core.models.workbench_command import WorkbenchCommandRejected, WorkbenchCommandUncertain, canonical_json
 from core.services.scheduler.calendar_engine import MAX_CALENDAR_DAYS
 from core.services.scheduler.calendar_service import CalendarService
-from core.services.workbench.calendars import WorkbenchCalendarService
 from core.services.workbench.commands import WorkbenchCommandService
+from core.services.workbench.resource.calendars import WorkbenchCalendarService
 from data.repositories.workbench_calendar_query_repo import WorkbenchCalendarQueryRepository
 from tests.workbench.calendar_support import (
     KEY,
@@ -534,7 +534,7 @@ def test_actual_recomputed_date_set_must_equal_preview(calendar_env):
     conn, adapter, _ = calendar_env
     preview = adapter.preview(range_input())
     before = stored_state(conn)
-    with patch("core.services.workbench.calendars.calendar_range_dates", return_value=preview.dates[:-1]):
+    with patch("core.services.workbench.resource.calendars.calendar_range_dates", return_value=preview.dates[:-1]):
         with pytest.raises(WorkbenchCommandRejected, match="命中的日期"):
             run_confirm(calendar_env, preview)
     assert stored_state(conn) == before

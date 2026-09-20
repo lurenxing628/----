@@ -12,7 +12,7 @@ from core.services.process.part_service import PartService
 from core.services.process.route_parser import ParseStatus, RouteParser
 from core.services.process.route_parser_constraints import SupplierConstraintResolver
 from core.services.process.supplier_service import SupplierService
-from core.services.workbench.suppliers import WorkbenchSupplierService
+from core.services.workbench.resource.suppliers import WorkbenchSupplierService
 from data.repositories.op_type_repo import OpTypeRepository
 from data.repositories.supplier_repo import SupplierRepository
 from tests.workbench.supplier_support import (

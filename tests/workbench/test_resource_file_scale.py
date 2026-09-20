@@ -3,8 +3,8 @@
 import pytest
 
 from core.errors import ValidationError
-from core.services.workbench.resource_bulk import WorkbenchResourceBulkService
-from core.services.workbench.resource_files import WorkbenchResourceFileService
+from core.services.workbench.resource.bulk import WorkbenchResourceBulkService
+from core.services.workbench.resource.files import WorkbenchResourceFileService
 from tests.workbench.resource_file_support import (
     KINDS,
     confirm,

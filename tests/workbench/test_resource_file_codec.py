@@ -11,7 +11,7 @@ from core.errors import ValidationError
 from core.services.workbench.facts import file_writer as resource_file_writer
 from core.services.workbench.facts.file_codec import read_resource_file
 from core.services.workbench.facts.file_writer import check_capacity
-from core.services.workbench.resource_files import WorkbenchResourceFileService
+from core.services.workbench.resource.files import WorkbenchResourceFileService
 from tests.workbench.resource_file_support import (
     confirm,
     exported,
@@ -58,7 +58,7 @@ def test_supplier_integer_days_roundtrip_does_not_rewrite_legacy_zero(resource_c
     ("skill_details", [{"level": 4}], [{"level": 4.0}], False),
 ])
 def test_numeric_equivalence_is_finite_field_scoped_and_excludes_bool(field, left, right, expected):
-    from core.services.workbench.resource_file_input import same_value
+    from core.services.workbench.resource.file_input import same_value
     assert same_value(left, right, field) is expected
 
 

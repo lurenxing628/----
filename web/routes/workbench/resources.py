@@ -7,7 +7,7 @@ from flask import current_app, g, jsonify, request
 from core.models.workbench_command import WorkbenchCommandRejected, input_fingerprint
 from core.models.workbench_resource_query import ResourcePageRequest
 from core.services.workbench.commands import WorkbenchCommandService
-from core.services.workbench.resource_queries import WorkbenchResourceQueryService
+from core.services.workbench.resource.queries import WorkbenchResourceQueryService
 from web.api_responses import query_success
 
 from .api_responses import api_endpoint

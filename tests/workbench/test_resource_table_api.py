@@ -7,7 +7,7 @@ import pytest
 from flask import g
 
 from core.infrastructure.database import get_connection
-from core.services.workbench.resource_table_facts import ResourceTableFacts
+from core.services.workbench.resource.table_facts import ResourceTableFacts
 from tests.workbench.resource_table_support import (
     BASE,
     VIEWS,

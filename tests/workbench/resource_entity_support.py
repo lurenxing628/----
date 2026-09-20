@@ -7,8 +7,8 @@ import pytest
 
 from core.infrastructure.migration_state import ensure_schema_version
 from core.services.workbench.commands import WorkbenchCommandService
-from core.services.workbench.resource_catalogs import WorkbenchResourceCatalogService
-from core.services.workbench.resource_entities import WorkbenchResourceService
+from core.services.workbench.resource.catalogs import WorkbenchResourceCatalogService
+from core.services.workbench.resource.entities import WorkbenchResourceService
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
 from tests.workbench.identity_metadata_support import (
     business_snapshot,

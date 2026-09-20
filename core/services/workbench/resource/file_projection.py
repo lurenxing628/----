@@ -4,7 +4,8 @@ import re
 
 from core.models.workbench_resource_file import file_columns
 from core.services.workbench import messages
-from core.services.workbench.resource_projection import project_resource
+
+from .projection import project_resource
 
 # 数据库里的创建/更新时间按 UTC 存，给用户看和写进文件前统一换算过来。
 _STORED_TIMES = ("created_at", "updated_at")

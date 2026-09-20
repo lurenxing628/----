@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 from core.services.scheduler.calendar_service import CalendarService
-from core.services.workbench.resource_queries import WorkbenchResourceQueryService
+from core.services.workbench.resource.queries import WorkbenchResourceQueryService
 from tests.workbench.resource_metrics_support import metrics_database, stored_state
 
 
@@ -147,7 +147,7 @@ def test_real_factory_api_keeps_all_tables_and_audit_unchanged_and_refreshes(app
 
     from core.infrastructure.database import get_connection
 
-    module = importlib.import_module("core.services.workbench.resource_calendar_summary")
+    module = importlib.import_module("core.services.workbench.resource.calendar_summary")
     monkeypatch.setattr(module, "factory_now", lambda: datetime(2026, 9, 9, 12))
     path = Path(app_client.application.config["DATABASE_PATH"])
     assert path.resolve().parent == tmp_path.resolve()

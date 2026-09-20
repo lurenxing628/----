@@ -13,7 +13,8 @@ from core.models.workbench_resource_file import (
     RELATIONS,
     WRITABLE,
 )
-from core.services.workbench.resource_states import WorkbenchResourceStateService
+
+from .states import WorkbenchResourceStateService
 
 
 def _column(field):

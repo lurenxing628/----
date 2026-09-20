@@ -12,7 +12,7 @@ def sample():
             for index, (key, value) in enumerate(expected_defaults().items(), 1)]
     request = {"method": "POST", "path": "/api/workbench/v1/calendar/upsert", "request_key": "actual-command"}
     stack = [{"path": "/sealed/" + path, "function": function} for path, function in (
-        ("core/services/workbench/calendars.py", "apply"),
+        ("core/services/workbench/resource/calendars.py", "apply"),
         ("core/services/scheduler/config/config_bootstrap_service.py", "ensure_defaults_if_pristine"),
         ("core/services/scheduler/config/config_bootstrap_service.py", "bootstrap_registered_defaults"),
         ("data/repositories/config_repo.py", "set_batch"))]

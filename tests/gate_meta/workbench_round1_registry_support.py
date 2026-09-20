@@ -343,7 +343,7 @@ ROUND1_INPUT_OWNERS = (
     ("core/services/workbench/facts/system_journal.py", "workbench_system"),
     ("core/models/workbench_master_overview.py", "workbench_process"),
     ("core/services/workbench/master/overview.py", "workbench_process"),
-    ("core/services/workbench/resource_readiness.py", "workbench_process"),
+    ("core/services/workbench/resource/readiness.py", "workbench_process"),
     ("web/routes/process_parts.py", "workbench_process"),
     ("core/models/workbench_run_adoption.py", "workbench_plans"),
     ("core/services/workbench/run/candidate_adoption.py", "workbench_plans"),

@@ -7,7 +7,7 @@ import pytest
 from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_command import WorkbenchCommandRejected, WorkbenchCommandUncertain
 from core.services.workbench.commands import WorkbenchCommandService
-from core.services.workbench.resource_bulk import WorkbenchResourceBulkService
+from core.services.workbench.resource.bulk import WorkbenchResourceBulkService
 from tests.workbench.resource_file_support import (
     KINDS,
     confirm,

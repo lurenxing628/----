@@ -514,7 +514,7 @@
       "why": "自 data/repositories 仓储层逐字上提的既有对外文案（仓储不裁决分簇要求错误码与文案逐字不变）；仓储目录从未纳入词表扫描，改词属独立文案裁决，待另行处理"
     },
     {
-      "path": "core/services/workbench/calendars.py",
+      "path": "core/services/workbench/resource/calendars.py",
       "term": "引用",
       "text": "日历与永久引用不一致，请检查数据后重试。",
       "why": "自 data/repositories 仓储层逐字上提的既有对外文案（仓储不裁决分簇要求错误码与文案逐字不变）；仓储目录从未纳入词表扫描，改词属独立文案裁决，待另行处理"

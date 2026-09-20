@@ -15,7 +15,7 @@ from core.services.process.workflow_state import record_confirmation, workflow_s
 from core.services.workbench.master.overview import MasterOverviewService
 from core.services.workbench.process.queries import WorkbenchProcessQueryService
 from core.services.workbench.process.route_preview import ProcessRoutePreviewService
-from core.services.workbench.resource_readiness import _checked_workflow, process_readiness
+from core.services.workbench.resource.readiness import _checked_workflow, process_readiness
 from tests.workbench.process_query_support import ref_for, seed_process
 from tests.workbench.process_quota_protection_support import locked_quota_case as _locked_quota_case  # noqa: F401
 from tests.workbench.process_quota_protection_support import quota_case as _quota_case  # noqa: F401

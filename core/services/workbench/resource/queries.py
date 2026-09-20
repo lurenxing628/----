@@ -12,15 +12,15 @@ from data.repositories.workbench_identity_repo import WorkbenchIdentityRepositor
 from data.repositories.workbench_resource_query_repo import WorkbenchResourceQueryRepository
 from data.repositories.workbench_resource_table_repo import WorkbenchResourceTableRepository
 
-from .resource_calendar_summary import resource_calendar_summary
-from .resource_catalogs import WorkbenchResourceCatalogService
-from .resource_entities import WorkbenchResourceService
-from .resource_metrics import WorkbenchResourceMetricsService
-from .resource_projection import project_resource
-from .resource_readiness import process_readiness, resource_readiness
-from .resource_table_facts import ResourceTableFacts
-from .resource_table_states import resource_table_states
+from .calendar_summary import resource_calendar_summary
+from .catalogs import WorkbenchResourceCatalogService
+from .entities import WorkbenchResourceService
+from .metrics import WorkbenchResourceMetricsService
+from .projection import project_resource
+from .readiness import process_readiness, resource_readiness
 from .suppliers import WorkbenchSupplierService
+from .table_facts import ResourceTableFacts
+from .table_states import resource_table_states
 
 
 @dataclass(frozen=True)

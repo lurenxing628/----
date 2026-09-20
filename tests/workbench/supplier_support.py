@@ -7,7 +7,7 @@ import pytest
 from core.infrastructure.migrations import v21
 from core.services.process.supplier_service import SupplierService
 from core.services.workbench.commands import WorkbenchCommandService
-from core.services.workbench.suppliers import WorkbenchSupplierService
+from core.services.workbench.resource.suppliers import WorkbenchSupplierService
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
 
 KEY = "supplier-command-00000001"

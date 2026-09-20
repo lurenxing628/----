@@ -7,7 +7,7 @@ import pytest
 
 from core.errors import AppError
 from core.services.scheduler.calendar_service import CalendarService
-from core.services.workbench.resource_calendar_summary import resource_calendar_summary
+from core.services.workbench.resource.calendar_summary import resource_calendar_summary
 from tests.workbench.resource_metrics_support import stored_state
 
 
@@ -51,7 +51,7 @@ def test_real_week_boundaries_leap_year_and_cross_year(schema_conn, now, start, 
 def test_default_clock_reads_factory_local_day_each_request(schema_conn, monkeypatch):
     import importlib
 
-    module = importlib.import_module("core.services.workbench.resource_calendar_summary")
+    module = importlib.import_module("core.services.workbench.resource.calendar_summary")
     now = [datetime(2026, 9, 13, 23, 59, 59)]
     monkeypatch.setattr(module, "factory_now", lambda: now[0])
     assert module.resource_calendar_summary(schema_conn)["week_start"] == "2026-09-07"

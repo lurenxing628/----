@@ -11,8 +11,8 @@ from core.models.workbench_material import normalize_material_input
 from core.models.workbench_resource_file import READONLY
 from core.services.material.material_service import MaterialService
 from core.services.workbench.material.files import WorkbenchMaterialFileService
-from core.services.workbench.resource_entities import WorkbenchResourceService
-from core.services.workbench.resource_files import WorkbenchResourceFileService
+from core.services.workbench.resource.entities import WorkbenchResourceService
+from core.services.workbench.resource.files import WorkbenchResourceFileService
 from tests.workbench.batch_support import batch_database, detail, ref_for, state
 from tests.workbench.material_actions_api_support import material_actions_client, upload
 from tests.workbench.material_file_support import confirm_import, export_file, file_bytes

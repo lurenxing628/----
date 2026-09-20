@@ -10,8 +10,8 @@ from unittest.mock import patch
 import pytest
 
 from core.services.scheduler.calendar_service import CalendarService
-from core.services.workbench.calendars import WorkbenchCalendarService
 from core.services.workbench.commands import WorkbenchCommandService
+from core.services.workbench.resource.calendars import WorkbenchCalendarService
 from data.repositories.workbench_command_repo import WorkbenchCommandRepository
 from tests.workbench.calendar_api_support import (
     BASE,
@@ -430,7 +430,7 @@ def test_preview_rejects_extra_context_and_nonobject_envelope(calendar_api, body
 
 def test_real_get_connection_date_converter_keeps_iso_snapshot_and_identity(calendar_api):
     from core.infrastructure.database import get_connection
-    from core.services.workbench.calendars import WorkbenchCalendarService
+    from core.services.workbench.resource.calendars import WorkbenchCalendarService
     from data.repositories.workbench_calendar_query_repo import WorkbenchCalendarQueryRepository
 
     conn = get_connection(calendar_api.client.application.config["DATABASE_PATH"])
@@ -449,7 +449,7 @@ def test_real_get_connection_date_converter_keeps_iso_snapshot_and_identity(cale
                                   "2026-09-09T00:00:00Z", "2026/09/09", "2026-02-30", None])
 def test_repository_rejects_timestamp_instead_of_silently_extracting_date(schema_conn, value):
     from core.models.workbench_command import WorkbenchCommandRejected
-    from core.services.workbench.calendars import WorkbenchCalendarService
+    from core.services.workbench.resource.calendars import WorkbenchCalendarService
     from data.repositories.workbench_calendar_query_repo import WorkbenchCalendarQueryRepository
 
     # The repository hands back the stored value untouched; the service refuses to treat it as a date key.

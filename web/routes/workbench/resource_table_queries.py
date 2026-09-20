@@ -13,7 +13,7 @@ from core.models.workbench_resource_query import ResourcePageRequest
 from core.models.workbench_resource_table_query import TABLE_KINDS, toolbar_scope, validate_facet_request
 from core.services.workbench.material.queries import WorkbenchMaterialQueryService
 from core.services.workbench.material.service import WorkbenchMaterialService
-from core.services.workbench.resource_queries import WorkbenchResourceQueryService
+from core.services.workbench.resource.queries import WorkbenchResourceQueryService
 from web.api_responses import query_success
 
 from .api_responses import api_endpoint

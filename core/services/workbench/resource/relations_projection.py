@@ -1,6 +1,6 @@
 """Small read-only relation DTOs, with provenance distinct from eligibility."""
 
-from .resource_metrics import _status
+from .metrics import _status
 
 RELATION_KINDS = {"machines": "machine", "operators": "operator", "suppliers": "supplier"}
 RELATION_BASIS = {
