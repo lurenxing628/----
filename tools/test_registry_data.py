@@ -166,6 +166,7 @@ QUALITY_GATE_GUARD_TESTS = (
     "tests/migration_db/test_migrations.py",
     "tests/migration_db/test_schema_parity.py",
     "tests/migration_db/test_infrastructure_probes.py",
+    "tests/schedule/service/test_sql_drain_scheduler_repositories.py",
     "tests/operation_execution/test_operation_execution_event_foundation.py",
     "tests/operation_execution/test_operation_execution_event_sequence_contract.py",
     "tests/operation_execution/test_operation_execution_event_time_contract.py",

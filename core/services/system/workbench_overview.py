@@ -21,6 +21,7 @@ from core.services.system.runtime_log_reader import (
 from core.services.system.system_config_service import SystemConfigService
 from core.services.system.system_job_state_query_service import SystemJobStateQueryService
 from core.services.system.system_maintenance_service import _parse_db_dt
+from data.repositories.operation_log_repo import OperationLogRepository
 
 _CONFIG_FIELDS = (
     "auto_backup_enabled", "auto_backup_interval_minutes",
@@ -128,7 +129,7 @@ def _logs(conn, path: str) -> Dict[str, Any]:
                   operation_records_error=None)
     if conn is not None:
         try:
-            count = int(conn.execute("SELECT COUNT(*) FROM OperationLogs").fetchone()[0])
+            count = int(OperationLogRepository(conn).count_all())
         except _READ_ERRORS as exc:
             result.update(operation_records_state="error", operation_records_error=_error(exc))
         else:

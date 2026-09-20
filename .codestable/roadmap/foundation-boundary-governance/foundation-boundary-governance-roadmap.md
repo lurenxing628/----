@@ -283,9 +283,11 @@ web/bootstrap 里只有 factory.py 可 import web.routes（装配蓝图）；web
 8. **sql-drain-storage-classes** — 14 个持 `self.conn` 的仓储形类整体下沉为查询仓储，服务层留裁决薄壳
    - 所属模块：S
    - 依赖：sql-drain-writes、sql-drain-introspection（避免同文件并发改动）
+   - 状态：done（2026-09-20）。14 个仓储形类改薄壳，SQL 原样进 data/repositories；与第 9 条合并为按业务簇的四批提交
 9. **sql-drain-remaining-selects** — 余下自由函数 SELECT 按 run、plan、trial、process 簇归入仓储
    - 所属模块：S
    - 依赖：sql-drain-storage-classes
+   - 状态：done（2026-09-20）。core+web 服务层 SQL 命中 332→0，基线收紧为空；新增仓储 24 个、扩方法 13 个，全部有合同测试并登记门禁
 10. **sql-drain-hatch-and-policy** — 退役 `read_raw_table`，把 17 处仓储内裁决上提到服务层
     - 所属模块：S
     - 依赖：sql-drain-remaining-selects

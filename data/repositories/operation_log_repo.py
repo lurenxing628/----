@@ -72,6 +72,28 @@ class OperationLogRepository(BaseRepository):
             ),
         )
 
+    def count_all(self) -> int:
+        return int(self.fetchvalue("SELECT COUNT(*) FROM OperationLogs"))
+
+    def count_before(self, cutoff: str) -> int:
+        return int(self.fetchvalue("SELECT COUNT(1) FROM OperationLogs WHERE log_time < ?", (cutoff,)))
+
+    def delete_oldest_before(self, cutoff: str, limit: int) -> int:
+        """删除 log_time 早于 cutoff 的最旧 limit 条（按 log_time、id 升序），返回影响行数。"""
+        cur = self.execute(
+            """
+            DELETE FROM OperationLogs
+            WHERE id IN (
+                SELECT id FROM OperationLogs
+                WHERE log_time < ?
+                ORDER BY log_time ASC, id ASC
+                LIMIT ?
+            )
+            """,
+            (cutoff, int(limit)),
+        )
+        return int(cur.rowcount or 0)
+
     def delete_by_id(self, log_id: int) -> int:
         cur = self.execute("DELETE FROM OperationLogs WHERE id = ?", (int(log_id),))
         return int(cur.rowcount or 0)

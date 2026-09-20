@@ -5,6 +5,7 @@ from typing import Any
 from core.errors import BusinessError, ErrorCode, ValidationError
 from core.models import Batch
 from core.models.enums import BatchStatus
+from data.repositories.schedule_batch_copy_repo import ScheduleBatchCopyRepository
 
 from .template_lineage import TemplateLineageWriter
 
@@ -32,11 +33,8 @@ def copy_batch(svc, source_batch_id: Any, new_batch_id: Any) -> Batch:
         raise BusinessError(ErrorCode.BATCH_ALREADY_EXISTS, f"批次号“{dst}”已存在，不能复制。")
 
     with svc.tx_manager.transaction():
-        # 只读原始 ID，避免 model 把未知值、NULL 或 BLOB 转成默认值。
-        ops = svc.batch_op_repo.fetchall(
-            "SELECT id FROM BatchOperations WHERE batch_id = ? ORDER BY seq, piece_id",
-            (src,),
-        )
+        # 只读原始 ID（仓储不经 model 转换），避免把未知值、NULL 或 BLOB 转成默认值。
+        source_ids = ScheduleBatchCopyRepository(svc.conn, logger=svc.logger).source_operation_ids(src)
         # 创建新批次
         svc.batch_repo.create(
             {
@@ -55,7 +53,7 @@ def copy_batch(svc, source_batch_id: Any, new_batch_id: Any) -> Batch:
 
         # 与批次共用事务，保留原始工序及复制时的来源版本。
         writer = TemplateLineageWriter(svc.conn)
-        for op in ops:
-            writer.copy_instance(dst, op["id"])
+        for source_id in source_ids:
+            writer.copy_instance(dst, source_id)
 
     return svc._get_or_raise(dst)

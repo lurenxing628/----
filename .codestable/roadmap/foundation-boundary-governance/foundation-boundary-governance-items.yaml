@@ -62,18 +62,20 @@ items:
   - slug: sql-drain-storage-classes
     description: 14 个持 self.conn 的仓储形类整体下沉为查询仓储，服务层留裁决薄壳
     depends_on: [sql-drain-writes, sql-drain-introspection]
-    status: planned
+    status: done
     feature: null
     minimal_loop: false
-    notes: null
+    notes: >-
+      2026-09-20 完成（与 sql-drain-remaining-selects 合并为按业务簇的四批提交：run / plan-trial-piece / 主数据-报表-看板 / 工作台之外）。14 个仓储形类（CandidateStore、RunHistoryStore、BatchFacts、FieldReportFileService、FieldWorkspaceService、LegacyNavigationQueries、MasterOverviewFacts、WorkbenchOutsourcingService、PreflightFacts、ProcessHoursFileOperations、ReportResourceValidator、ReportReadEngine、process_part_actions_facts 的 BaseRepository 子类、plan_delivery_repository）全部改成薄壳，SQL 原样搬进 data/repositories/workbench_*_repo.py；reject()/inconsistent()/上限判断留在服务层。
 
   - slug: sql-drain-remaining-selects
     description: 余下自由函数 SELECT 按 run、plan、trial、process 簇归入仓储
     depends_on: [sql-drain-storage-classes]
-    status: planned
+    status: done
     feature: null
     minimal_loop: false
-    notes: null
+    notes: >-
+      2026-09-20 完成。sql_boundary 扫描 core+web 955 个文件命中 0 处（评估时 332 处/107 文件），基线随之收紧为空；新增仓储 24 个、扩方法 13 个；每个新方法都有 SQLite 合同测试（tests/workbench/test_sql_drain_{run,plan_trial,master_report}_repositories.py、tests/schedule/service/test_sql_drain_scheduler_repositories.py）并登记门禁。按表名读表的助手统一改成固定表白名单或 sqlite_master 校验后的 read_whole_table。
 
   - slug: sql-drain-hatch-and-policy
     description: 退役 read_raw_table，把 17 处仓储内裁决上提到服务层

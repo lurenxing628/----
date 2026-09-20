@@ -212,6 +212,7 @@ SCHEDULER_REQUIRED_REGRESSION_GROUPS = (
             "tests/algorithm/test_sgs_slot_reuse_equivalence.py",
             "tests/schedule/service/test_unselected_execution_resource_guardrails.py",
             "tests/schedule/service/test_unselected_execution_resource_fail_closed.py",
+            "tests/schedule/service/test_sql_drain_scheduler_repositories.py",
             "tests/schedule/service/test_unselected_execution_resource_snapshot.py",
             "tests/schedule/service/test_unselected_execution_feedback_continuity.py",
             "tests/schedule/service/test_schedule_seed_metadata_helper_contract.py",

@@ -11,8 +11,9 @@ import hashlib
 import sqlite3
 
 from core.algorithm_runtime.native_snapshot import make_class_guard
-from core.errors import ValidationError
+from core.errors import AppError, ValidationError
 from core.infrastructure.connection_guards import connection_snapshot_metadata
+from data.repositories.calendar_checkpoint_repo import CalendarCheckpointRepository
 from data.repositories.calendar_repo import CalendarRepository
 from data.repositories.operator_calendar_repo import OperatorCalendarRepository
 from data.repositories.operator_shift_repo import OperatorShiftRepository
@@ -23,14 +24,6 @@ from .operator_shift_calendar import OperatorShiftCalendar
 _GUARDS = {kind: make_class_guard(kind) for kind in (
     CalendarEngine, OperatorShiftCalendar, CalendarRepository, OperatorCalendarRepository, OperatorShiftRepository,
 )}
-# Include every field read by CalendarEngine / OperatorShiftCalendar; names and remarks do not affect time.
-_BUSINESS_QUERIES = (
-    "SELECT date,day_type,shift_start,shift_end,shift_hours,efficiency,allow_normal,allow_urgent FROM WorkCalendar ORDER BY date",
-    "SELECT operator_id,date,day_type,shift_start,shift_end,shift_hours,efficiency,allow_normal,allow_urgent FROM OperatorCalendar ORDER BY operator_id,date",
-    "SELECT operator_id,shift_profile_id FROM WorkbenchOperatorProfiles ORDER BY operator_id",
-    "SELECT profile_id,anchor_date,cycle_days,status FROM WorkbenchShiftProfiles ORDER BY profile_id",
-    "SELECT profile_id,day_offset,is_rest,shift_start,shift_end FROM WorkbenchShiftPatternDays ORDER BY profile_id,day_offset",
-)
 
 
 def calendar_checkpoint_snapshot(service):
@@ -44,7 +37,8 @@ def calendar_checkpoint_snapshot(service):
         cached = fields.get("_decode_checkpoint_calendar_cache")
         if reusable and cached is not None and cached[0] is connection and cached[1] == metadata:
             return cached[2]
-        rows = tuple(tuple(tuple(row) for row in connection.execute(query).fetchall()) for query in _BUSINESS_QUERIES)
+        # The repository issues only the fixed business SELECTs; the certificate hashes their raw row tuples.
+        rows = CalendarCheckpointRepository(connection).calendar_signature_rows()
         after = _metadata(connection)
         if metadata != after:
             raise ValidationError("读取断点日历证书时日历输入发生变化，请重新排产。", field="decode_checkpoint",
@@ -56,7 +50,8 @@ def calendar_checkpoint_snapshot(service):
             # A later rollback+BEGIN may keep every SQLite counter unchanged.
             fields.pop("_decode_checkpoint_calendar_cache", None)
         return signature
-    except sqlite3.Error as exc:
+    except (sqlite3.Error, AppError) as exc:
+        # BaseRepository translates sqlite3 errors into AppError (cause kept); both mean the certificate is unreadable.
         raise ValidationError("无法读取断点所需的日历业务证书，请使用全量解码。", field="decode_checkpoint",
                               details={"reason": "decode_checkpoint_calendar_unavailable"}) from exc
 

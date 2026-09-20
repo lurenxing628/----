@@ -10,6 +10,7 @@ from core.infrastructure.backup import MIN_KEEP_BACKUPS, protected_recent_backup
 from core.infrastructure.logging import safe_log
 from core.infrastructure.safe_files import UnsafeFixedFileError, remove_fixed_file, stat_regular_file
 from core.infrastructure.transaction import TransactionManager
+from data.repositories.operation_log_repo import OperationLogRepository
 
 IsDueResult = Union[Tuple[bool, Any], Tuple[bool, Any, str, Any]]
 
@@ -155,15 +156,15 @@ def cleanup_operation_logs_with_limit(
     max_delete: int,
     fmt_db_dt_fn: Callable[[datetime], str],
 ) -> Tuple[int, Dict[str, Any]]:
-    total = conn.execute("SELECT COUNT(1) FROM OperationLogs").fetchone()[0]
+    log_repo = OperationLogRepository(conn)
+    total = log_repo.count_all()
     if int(total) <= int(min_keep_logs):
         return 0, {"total": int(total), "skipped": True, "reason": "total_le_min_keep"}
 
     cutoff_dt = datetime.now() - timedelta(days=int(keep_days))
     cutoff = fmt_db_dt_fn(cutoff_dt)
 
-    cand = conn.execute("SELECT COUNT(1) FROM OperationLogs WHERE log_time < ?", (cutoff,)).fetchone()[0]
-    cand = int(cand)
+    cand = int(log_repo.count_before(cutoff))
     if cand <= 0:
         return 0, {"total": int(total), "cutoff": cutoff, "candidates": 0, "skipped": True, "reason": "no_candidates"}
 
@@ -172,18 +173,7 @@ def cleanup_operation_logs_with_limit(
     if to_delete <= 0:
         return 0, {"total": int(total), "cutoff": cutoff, "candidates": cand, "skipped": True, "reason": "allow_le_0"}
 
-    conn.execute(
-        """
-        DELETE FROM OperationLogs
-        WHERE id IN (
-            SELECT id FROM OperationLogs
-            WHERE log_time < ?
-            ORDER BY log_time ASC, id ASC
-            LIMIT ?
-        )
-        """,
-        (cutoff, int(to_delete)),
-    )
+    log_repo.delete_oldest_before(cutoff, int(to_delete))
     return int(to_delete), {"total": int(total), "cutoff": cutoff, "candidates": cand, "allow": int(allow)}
 
 

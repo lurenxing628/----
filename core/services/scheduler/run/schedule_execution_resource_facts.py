@@ -10,6 +10,7 @@ from core.models.schedule_plan_role import ROLE_ADOPTED, SOURCE_SCHEDULE
 from core.models.workbench_execution import ExecutionProjection
 from core.services.scheduler.execution.execution_fact_provider import ExecutionFact, ExecutionFactProvider
 from core.services.scheduler.execution.execution_snapshot import ExecutionSnapshot, build_execution_snapshot
+from data.repositories.schedule_execution_facts_repo import ScheduleExecutionFactsRepository
 
 RESOURCE_SNAPSHOT_PREFIX = "execution-snapshot:resources-v1:"
 
@@ -23,25 +24,9 @@ def _conflict(reason: str) -> AppError:
 
 
 def _latest_plan_rows(svc: Any, version: int) -> Dict[int, Dict[str, Any]]:
-    # The latest version need not contain every batch. Select each operation's
-    # last official identity, never candidate/scenario rows or unscoped events.
-    cursor = svc.conn.execute(
-        """
-        SELECT s.id AS schedule_id, s.version, s.op_id, bo.batch_id,
-               bo.source, s.start_time, s.end_time
-        FROM Schedule s
-        LEFT JOIN BatchOperations bo ON bo.id = s.op_id
-        JOIN (SELECT op_id, MAX(version) AS version FROM Schedule
-              WHERE version <= ? GROUP BY op_id) latest
-          ON latest.op_id = s.op_id AND latest.version = s.version
-        ORDER BY s.op_id, s.id
-        """,
-        (int(version),),
-    )
-    columns = [item[0] for item in cursor.description]
+    # Each operation's last official identity; a duplicate per op_id is a plan-identity conflict.
     rows: Dict[int, Dict[str, Any]] = {}
-    for values in cursor:
-        row = dict(zip(columns, values))
+    for row in ScheduleExecutionFactsRepository(svc.conn).latest_plan_rows(version):
         op_id = int(row["op_id"])
         if op_id in rows:
             raise _conflict("duplicate_previous_schedule_rows")
@@ -50,19 +35,7 @@ def _latest_plan_rows(svc: Any, version: int) -> Dict[int, Dict[str, Any]]:
 
 
 def _validate_event_plan_identities(svc: Any) -> None:
-    invalid = svc.conn.execute(
-        """
-        SELECT e.op_id FROM OperationExecutionEvents e
-        LEFT JOIN Schedule s ON s.id = e.schedule_id
-        LEFT JOIN BatchOperations bo ON bo.id = e.op_id
-        WHERE e.source_table = ? AND e.effective_plan_role = ? AND e.scenario_id IS NULL
-          AND (s.id IS NULL OR bo.id IS NULL OR e.schedule_version != s.version
-               OR e.op_id != s.op_id OR e.batch_id != bo.batch_id)
-        LIMIT 1
-        """,
-        (SOURCE_SCHEDULE, ROLE_ADOPTED),
-    ).fetchone()
-    if invalid is not None:
+    if ScheduleExecutionFactsRepository(svc.conn).has_event_without_plan_identity(SOURCE_SCHEDULE, ROLE_ADOPTED):
         raise _conflict("execution_scope_missing")
 
 

@@ -19,12 +19,6 @@ from data.repositories.workbench_process_workflow_repo import WorkbenchProcessWo
 _STAGES = ("route", "source", "hours")
 
 
-def _rows(conn, sql, params=()):
-    cursor = conn.execute(sql, params)
-    names = [column[0] for column in cursor.description]
-    return [dict(zip(names, row)) for row in cursor]
-
-
 def _schema(conn):
     issues = (workbench_metadata_contract_issues(conn) + workbench_resource_contract_issues(conn)
               + workbench_process_contract_issues(conn) + workbench_process_workflow_contract_issues(conn))
@@ -40,13 +34,13 @@ def _ref(value):
 
 def _part(conn, part_no):
     _schema(conn)
-    rows = _rows(conn, """SELECT p.*, r.ref FROM Parts p LEFT JOIN WorkbenchEntityRefs r
-        ON r.kind='part' AND r.active=1 AND r.entity_key=p.part_no WHERE p.part_no=?""", (part_no,))
+    repo = WorkbenchProcessWorkflowRepository(conn)
+    rows = repo.part_with_ref(part_no)
     if not rows:
         raise BusinessError(ErrorCode.PART_NOT_FOUND, "零件不存在。")
     part = rows[0]
     _ref(part["ref"])
-    stored = _rows(conn, "SELECT * FROM WorkbenchProcessWorkflow WHERE part_ref=?", (part["ref"],))
+    stored = repo.stored_workflow(part["ref"])
     return part, stored[0] if stored else None
 
 
@@ -72,23 +66,8 @@ def _supplier(suppliers, supplier_id, op_type_id):
     return fact, fact["status"] == "active" and fact["capable"] and fact["inactive_reason"] is None
 
 
-def _operations(conn, part_no=None):
-    return _rows(conn, """SELECT o.*, r.ref, t.name AS type_name, t.category,
-        tr.ref AS type_ref, p.default_merge_mode FROM PartOperations o
-        LEFT JOIN WorkbenchEntityRefs r ON r.kind='template_operation' AND r.active=1
-            AND r.entity_key=CAST(o.id AS TEXT)
-        LEFT JOIN OpTypes t ON t.op_type_id=o.op_type_id
-        LEFT JOIN WorkbenchEntityRefs tr ON tr.kind='op_type' AND tr.active=1 AND tr.entity_key=t.op_type_id
-        LEFT JOIN WorkbenchOpTypePolicies p ON p.op_type_id=t.op_type_id
-        WHERE o.status='active'""" + (" AND o.part_no=?" if part_no is not None else "")
-                 + " ORDER BY o.part_no, o.seq, o.id", (part_no,) if part_no is not None else ())
-
-
-def _groups(conn, part_no, operations):
-    groups = _rows(conn, """SELECT g.*, r.ref FROM ExternalGroups g
-        LEFT JOIN WorkbenchEntityRefs r ON r.kind='template_external_group' AND r.active=1 AND r.entity_key=g.group_id
-        WHERE g.group_id IN (SELECT ext_group_id FROM PartOperations WHERE status='active'"""
-                   + (" AND part_no=?" if part_no is not None else "") + ")", (part_no,) if part_no is not None else ())
+def _groups(repo, part_no, operations):
+    groups = repo.active_external_groups(part_no)
     members = {}
     for op in operations:
         members.setdefault((op["part_no"], op["ext_group_id"]), []).append([op["ref"], op["seq"], op["source"]])
@@ -160,18 +139,14 @@ def _operation_facts(part, op, group, suppliers):
 
 def _load_facts(conn, part_no=None):
     """One bulk read per fact collection, regardless of the number of parts."""
-    operations = _operations(conn, part_no)
-    groups = _groups(conn, part_no, operations)
-    suppliers = {row["supplier_id"]: dict(row, capabilities={row["op_type_id"]}) for row in _rows(conn, """
-        SELECT s.supplier_id, s.op_type_id, s.status, r.ref, p.inactive_reason FROM Suppliers s
-        LEFT JOIN WorkbenchEntityRefs r ON r.kind='supplier' AND r.active=1 AND r.entity_key=s.supplier_id
-        LEFT JOIN WorkbenchSupplierProfiles p ON p.supplier_id=s.supplier_id""")}
-    for row in _rows(conn, "SELECT supplier_id, op_type_id FROM WorkbenchSupplierOpTypes"):
+    repo = WorkbenchProcessWorkflowRepository(conn)
+    operations = repo.active_operations(part_no)
+    groups = _groups(repo, part_no, operations)
+    suppliers = {row["supplier_id"]: dict(row, capabilities={row["op_type_id"]}) for row in repo.supplier_facts()}
+    for row in repo.supplier_op_types():
         if row["supplier_id"] in suppliers:
             suppliers[row["supplier_id"]]["capabilities"].add(row["op_type_id"])
-    records = _rows(conn, "SELECT c.* FROM WorkbenchProcessOperationConfirmations c" + (
-        " JOIN WorkbenchEntityRefs r ON r.ref=c.part_ref WHERE r.kind='part' AND r.active=1 AND r.entity_key=?"
-        if part_no is not None else ""), (part_no,) if part_no is not None else ())
+    records = repo.confirmations(part_no)
     by_part, by_ref = {}, {}
     for op in operations:
         by_part.setdefault(op["part_no"], []).append(op)
@@ -262,9 +237,9 @@ def workflow_snapshot(conn) -> dict:
     """Load JSON-safe workflow and per-operation states for the whole part catalog."""
     with TransactionManager(conn).transaction():
         _schema(conn)
-        parts = _rows(conn, """SELECT p.*, r.ref FROM Parts p LEFT JOIN WorkbenchEntityRefs r
-            ON r.kind='part' AND r.active=1 AND r.entity_key=p.part_no ORDER BY p.part_no""")
-        stored = {row["part_ref"]: row for row in _rows(conn, "SELECT * FROM WorkbenchProcessWorkflow")}
+        repo = WorkbenchProcessWorkflowRepository(conn)
+        parts = repo.parts_with_refs()
+        stored = {row["part_ref"]: row for row in repo.stored_workflows()}
         loaded = _load_facts(conn)
         result = {}
         for part in parts:

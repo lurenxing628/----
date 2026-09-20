@@ -42,7 +42,8 @@ from core.models.schedule_plan_identity import PlanIdentity
 from core.models.schedule_plan_resolution import SchedulePlanResolution, SchedulePlanRoleOption
 from core.models.schedule_plan_role import ROLE_ADOPTED, SOURCE_SCHEDULE, plan_role_label
 from core.models.scheduler_history_parser import parse_result_summary_payload
-from data.repositories.schedule_time_sql import valid_time_range_sql
+from data.repositories.schedule_adjustment_scenario_repo import ScheduleAdjustmentScenarioRepository
+from data.repositories.schedule_plan_detail_time_repo import SchedulePlanDetailTimeRepository
 
 from .schedule_plan_identity_builder import latest_official_version
 from .schedule_plan_query_service import SchedulePlanQueryService
@@ -107,15 +108,11 @@ def _check_detail_times(query: SchedulePlanQueryService, resolution: SchedulePla
     if callable(validate):
         validate(resolution)
         return
-    sql, params = query.repo._plan_rows_sql(
-        source_table=resolution.source_table, candidate_id=resolution.candidate_id,
-        scenario_id=resolution.scenario_id,
-    )
-    bad = query.repo.fetchone(
-        f"SELECT 1 FROM ({sql}) AS p WHERE NOT ({valid_time_range_sql('p')}) LIMIT 1",
-        [resolution.version] + params,
-    )
-    if bad is not None:
+    probe = SchedulePlanDetailTimeRepository(query.repo.conn, logger=query.repo.logger)
+    if probe.has_invalid_detail_times(
+        version=resolution.version, source_table=resolution.source_table,
+        candidate_id=resolution.candidate_id, scenario_id=resolution.scenario_id,
+    ):
         raise ValueError("方案包含无效时间明细，不能标记为完整可查看。")
 
 
@@ -230,9 +227,7 @@ def build_plan_catalog(conn: sqlite3.Connection, logger=None) -> List[PlanCatalo
             for row in rows if row["role"] != ROLE_ADOPTED
         )
     by_version = {int(row["version"]): row for row in histories}
-    scenarios = query.repo.fetchall(
-        "SELECT * FROM ScheduleAdjustmentScenario ORDER BY base_version DESC, created_at DESC, scenario_id"
-    )
+    scenarios = ScheduleAdjustmentScenarioRepository(conn, logger=logger).list_catalog_rows()
     for row in scenarios:
         scenario = ScheduleAdjustmentScenario.from_row(row)
         entries.append(_scenario_entry(query, scenario, by_version.get(scenario.base_version), latest))

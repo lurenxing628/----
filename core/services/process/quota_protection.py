@@ -1,9 +1,8 @@
 """Shared process quota protection; locks belong to the original template ref."""
 
 from core.models.workbench_command import WorkbenchCommandRejected
-from data.repositories.base_repo import BaseRepository
+from data.repositories.process_query_repo import ProcessQueryRepository
 from data.repositories.workbench_calibration_adoption_repo import WorkbenchCalibrationAdoptionRepository
-from data.repositories.workbench_execution_repo import chunks
 
 
 def quota_skip(ref, lock):
@@ -21,7 +20,7 @@ def quota_skip_summary(rows):
 class ProcessQuotaProtection:
     def __init__(self, conn):
         self.conn = conn
-        self.repo = BaseRepository(conn)
+        self.repo = ProcessQueryRepository(conn)
         self.locks = WorkbenchCalibrationAdoptionRepository(conn)
 
     def read_locks(self, refs):
@@ -30,9 +29,7 @@ class ProcessQuotaProtection:
 
     def bind(self, part_no, seq):
         self.read_locks([])
-        row = self.repo.fetchone("""SELECT r.ref FROM PartOperations o LEFT JOIN WorkbenchEntityRefs r
-            ON r.kind='template_operation' AND r.entity_key=CAST(o.id AS TEXT) AND r.active=1
-            WHERE o.part_no=? AND o.seq=? AND o.status='active'""", (part_no, seq))
+        row = self.repo.template_operation_ref(part_no, seq)
         if row is None or row["ref"] is None:
             raise WorkbenchCommandRejected("entity_not_found", "模板永久引用缺失或已失效，不能按同号新对象补配。", 404)
         return row["ref"]
@@ -40,13 +37,7 @@ class ProcessQuotaProtection:
     def current(self, refs):
         refs = sorted(set(refs))
         locks = self.read_locks(refs)
-        result = {}
-        for chunk in chunks(refs):
-            rows = self.repo.fetchall("""SELECT o.*,r.ref,r.revision FROM WorkbenchEntityRefs r
-                JOIN PartOperations o ON r.entity_key=CAST(o.id AS TEXT)
-                WHERE r.kind='template_operation' AND r.active=1 AND o.status='active'
-                AND r.ref IN (""" + ",".join("?" for _ in chunk) + ")", chunk)
-            result.update((row["ref"], row) for row in rows)
+        result = {row["ref"]: row for row in self.repo.template_operations_by_refs(refs)}
         if set(result) != set(refs):
             raise WorkbenchCommandRejected("stale_write", "原模板引用已失效，未重新绑定同图号同序号的新模板。")
         for ref, lock in locks.items():
@@ -64,9 +55,7 @@ class ProcessQuotaProtection:
         return current
 
     def legacy_metadata(self):
-        rows = self.repo.fetchall("""SELECT o.part_no,o.seq,o.unit_hours,r.ref FROM PartOperations o
-            LEFT JOIN WorkbenchEntityRefs r ON r.kind='template_operation' AND r.active=1
-            AND r.entity_key=CAST(o.id AS TEXT) WHERE o.status='active' ORDER BY o.part_no,o.seq""")
+        rows = self.repo.legacy_template_operations()
         locks = self.read_locks([row["ref"] for row in rows if row["ref"] is not None])
         if any(row["ref"] is None for row in rows):
             raise WorkbenchCommandRejected("storage_failure", "工时导入的原模板永久引用缺失，未按业务编号补配。", 500)

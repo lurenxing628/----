@@ -396,7 +396,7 @@
     {
       "path": "core/services/workbench/piece_adoption.py",
       "kind": "private_symbol",
-      "count": 3
+      "count": 2
     },
     {
       "path": "core/services/workbench/piece_adoption_execution.py",

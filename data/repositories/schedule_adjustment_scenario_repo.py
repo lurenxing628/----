@@ -126,6 +126,12 @@ class ScheduleAdjustmentScenarioRepository(BaseRepository):
             raise RuntimeError("模拟方案写入后没有返回记录")
         return created
 
+    def list_catalog_rows(self) -> List[Dict[str, Any]]:
+        """全部模拟方案原始行，按目录顺序：base_version 降序、created_at 降序、scenario_id。"""
+        return self.fetchall(
+            "SELECT * FROM ScheduleAdjustmentScenario ORDER BY base_version DESC, created_at DESC, scenario_id"
+        )
+
     def list_rows(self, scenario_id: str) -> List[ScheduleAdjustmentScenarioRow]:
         rows = self.fetchall(
             f"""

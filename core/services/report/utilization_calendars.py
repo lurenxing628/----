@@ -7,7 +7,6 @@ from core.services.capacity.plan_calendar_engine import SnapshotCalendarEngine
 from core.services.capacity.plan_calendar_io import CalendarFacts, ProjectionLimit
 from core.services.capacity.plan_calendar_limits import MAX_CALENDAR_DATES, MAX_POLICY_CELLS
 from core.services.capacity.plan_calendar_windows import apply_resource, policy_projection, unavailable
-from data.repositories.schedule_time_sql import overlap_or_bad_time_sql
 
 
 def resource_calendars(conn, rows, start, end):
@@ -51,14 +50,7 @@ def _projection_limit_reason(ids, first, last):
 def _read_calendar_facts(reader, ids, first, last, start, end):
     """Load calendar, resource and machine downtime facts for the projected dates into ``reader``."""
     reader.calendar(first.isoformat(), last.isoformat(), ids["operator"])
-    for kind in ids:
-        reader.keyed(kind + "s", "SELECT " + kind + "_id,name,status FROM " +
-                     ("Machines" if kind == "machine" else "Operators") +
-                     " WHERE " + kind + "_id IN ({marks}) ORDER BY " + kind + "_id", ids[kind])
-    reader.keyed("downtimes", "SELECT machine_id,start_time,end_time,status FROM MachineDowntimes md "
-                 "WHERE machine_id IN ({marks}) AND (status='active' OR status IS NULL OR status NOT IN ('active','cancelled')) "
-                 "AND " + overlap_or_bad_time_sql("md") + " ORDER BY machine_id,start_time,end_time",
-                 ids["machine"], (end, start))
+    reader.resource_states(ids["machine"], ids["operator"], start, end)
 
 
 def _project_resources(ids, facts, first, last, start, end):

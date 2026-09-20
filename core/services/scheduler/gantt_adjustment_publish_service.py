@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from typing import Any, Dict, List, Sequence, Set
 
 from core.errors import AppError, ErrorCode, ValidationError
+from core.infrastructure.transaction import TransactionManager
 from core.models import Schedule
 from core.models.enums import SourceType
 from core.models.operation_execution_event import (
@@ -104,8 +105,8 @@ class GanttAdjustmentPublishService:
         scenario_rows = self.scenario_repo.list_rows(scenario.scenario_id)
         _check_scenario_rows(scenario_rows, evaluation)
 
-        with self.conn:
-            self.conn.execute("BEGIN IMMEDIATE")
+        # BEGIN IMMEDIATE serializes writers before the latest-version recheck; commit/rollback at scope exit.
+        with TransactionManager(self.conn).transaction(begin_immediate=True):
             latest_version = self.history_repo.get_latest_version()
             if latest_version != scenario.base_version:
                 raise ValidationError("模拟方案的调整依据版本已经不是最新正式版本，请重新模拟后再正式采用。", field="base_version")

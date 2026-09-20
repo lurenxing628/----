@@ -16,6 +16,7 @@ from data.repositories import (
     PartRepository,
     SupplierRepository,
 )
+from data.repositories.process_query_repo import ProcessQueryRepository
 
 from .deletion_validator import DeletionValidator
 from .part_delete_guard import PartDeleteGuard
@@ -45,6 +46,7 @@ class PartService:
         self.group_repo = ExternalGroupRepository(conn, logger=logger)
         self.op_type_repo = OpTypeRepository(conn, logger=logger)
         self.supplier_repo = SupplierRepository(conn, logger=logger)
+        self.process_query_repo = ProcessQueryRepository(conn, logger=logger)
 
         self.route_parser = RouteParser(self.op_type_repo, self.supplier_repo, logger=logger)
         self.deletion_validator = DeletionValidator()
@@ -220,8 +222,7 @@ class PartService:
         self._get_or_raise(pn)
 
         # 若被批次引用则禁止删除（避免排产数据断链）
-        row = self.conn.execute("SELECT 1 FROM Batches WHERE part_no = ? LIMIT 1", (pn,)).fetchone()
-        if row is not None:
+        if self.process_query_repo.batch_references_part(pn):
             raise BusinessError(ErrorCode.PERMISSION_DENIED, "该零件已被批次引用，不能删除。")
 
         with self.tx_manager.transaction():
