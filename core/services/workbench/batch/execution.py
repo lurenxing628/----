@@ -7,9 +7,8 @@ from core.infrastructure.workbench_execution_ledger_schema import execution_ledg
 from core.models.workbench_command import WorkbenchCommandRejected, input_fingerprint
 from core.models.workbench_execution_input import MAX_OPERATIONS
 from core.services.workbench.execution_ledger import ExecutionLedgerService
+from core.services.workbench.process.queries import _plain
 from data.repositories.workbench_execution_repo import WorkbenchExecutionRepository
-
-from .process.queries import _plain
 
 
 def read_execution(conn, operation_refs):

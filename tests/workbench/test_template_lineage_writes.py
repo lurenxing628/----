@@ -6,7 +6,7 @@ from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.common.excel_service import ImportMode, ImportPreviewRow, RowStatus
 from core.services.scheduler.batch_excel_import import import_batches_from_preview_rows
-from core.services.workbench.batch_bulk import WorkbenchBatchBulkService
+from core.services.workbench.batch.bulk import WorkbenchBatchBulkService
 from core.services.workbench.commands import WorkbenchCommandService
 from core.services.workbench.template_lineage_query import TemplateLineageQuery
 from tests.workbench.execution_ledger_support import all_rows

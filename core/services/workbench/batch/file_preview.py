@@ -5,8 +5,9 @@ from core.models.workbench_batch import FIELDS, normalize_batch_input
 from core.models.workbench_batch_file import HEADER_FIELDS
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.common.excel_validators import get_batch_row_validate_and_normalize
-from core.services.workbench.batch_facts import related, require_unreferenced
-from core.services.workbench.batch_projection import BatchProjection
+
+from .facts import related, require_unreferenced
+from .projection import BatchProjection
 
 
 class BatchImportPreview:

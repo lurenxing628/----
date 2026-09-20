@@ -6,10 +6,10 @@ from datetime import date, datetime
 
 from core.models.workbench_batch import FIELDS, MAX_INTEGER, PRIORITIES, READY, STATUSES
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.services.workbench.batch_execution import batch_progress, operation_execution_fields
-from core.services.workbench.batch_facts import index_relations
+from core.services.workbench.process.projection import public_sequence
 
-from .process.projection import public_sequence
+from .execution import batch_progress, operation_execution_fields
+from .facts import index_relations
 
 
 def issue(message, code="data_gap"):

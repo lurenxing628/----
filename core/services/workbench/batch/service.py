@@ -3,7 +3,8 @@
 from core.models.workbench_batch import normalize_batch_input
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
 from core.services.scheduler.batch_service import BatchService
-from core.services.workbench.batch_facts import BatchFacts, related, require_unreferenced
+
+from .facts import BatchFacts, related, require_unreferenced
 
 
 class WorkbenchBatchService:

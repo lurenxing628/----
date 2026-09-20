@@ -369,12 +369,12 @@
       "count": 1
     },
     {
-      "path": "core/services/workbench/batch_execution.py",
+      "path": "core/services/workbench/batch/execution.py",
       "kind": "private_symbol",
       "count": 1
     },
     {
-      "path": "core/services/workbench/batch_facts.py",
+      "path": "core/services/workbench/batch/facts.py",
       "kind": "private_symbol",
       "count": 1
     },

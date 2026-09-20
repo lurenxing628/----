@@ -8,7 +8,7 @@ import openpyxl
 import pytest
 
 from core.models.workbench_batch_file import HEADERS
-from core.services.workbench.batch_file_codec import write_batch_file
+from core.services.workbench.batch.file_codec import write_batch_file
 from tests.workbench.batch_support import BASE, assert_error, batch_database, body, detail, list_data, ref_for, state
 from tests.workbench.legacy_batch_lineage_copy_support import assert_dashboard_copy_items
 

@@ -5,12 +5,12 @@ from contextlib import contextmanager
 from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_command import WorkbenchCommandRejected, input_fingerprint
 from core.services.process.workflow_state import workflow_snapshot
-from core.services.workbench.batch_execution import old_event_bindings, protects_execution, read_execution
+from core.services.workbench.process.queries import _plain
 from data.repositories.workbench_batch_facts_repo import WorkbenchBatchFactsRepository
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
 from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
 
-from .process.queries import _plain
+from .execution import old_event_bindings, protects_execution, read_execution
 
 PLAN_TABLES = ("Schedule", "ScheduleCandidateRows", "ScheduleAdjustmentChange", "ScheduleAdjustmentScenarioRow")
 

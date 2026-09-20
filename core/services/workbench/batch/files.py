@@ -5,10 +5,11 @@ import hashlib
 from core.errors import ValidationError
 from core.models.workbench_batch_file import COLUMNS
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
-from core.services.workbench.batch_facts import BatchFacts
-from core.services.workbench.batch_file_codec import read_batch_file, write_batch_file
-from core.services.workbench.batch_file_preview import BatchImportPreview
-from core.services.workbench.batches import WorkbenchBatchService
+
+from .facts import BatchFacts
+from .file_codec import read_batch_file, write_batch_file
+from .file_preview import BatchImportPreview
+from .service import WorkbenchBatchService
 
 
 class WorkbenchBatchFileService:

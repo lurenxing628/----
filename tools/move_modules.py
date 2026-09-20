@@ -6,8 +6,8 @@
   .venv/bin/python -m tools.move_modules plan.json --apply  # 真改：git mv + 改写文件 + ruff 排导入
 
 plan.json 形如：
-  {"moves": {"core.services.workbench.run_jobs": "core.services.workbench.run.jobs"},
-   "globs": {"core/services/workbench/run_*.py": ["core/services/workbench/run/**/*.py"]}}
+  {"moves": {"pkg.run_jobs": "pkg.run.jobs"},
+   "globs": {"pkg/run_*.py": ["pkg/run/**/*.py"]}}
   globs 可选：注册表等处的 glob 字面量按表原样替换成一串字面量（可含原 glob 本身）。
 
 规则：

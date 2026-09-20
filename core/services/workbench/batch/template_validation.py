@@ -2,7 +2,8 @@
 
 from core.errors import ValidationError
 from core.models.workbench_batch import number
-from core.services.workbench.batch_projection import issue
+
+from .projection import issue
 
 
 def template_diagnostics(rows, facts, batch):

@@ -3,7 +3,7 @@
 import pytest
 
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.services.workbench.batch_bulk import WorkbenchBatchBulkService
+from core.services.workbench.batch.bulk import WorkbenchBatchBulkService
 from core.services.workbench.commands import WorkbenchCommandService
 from tests.workbench.batch_execution_ledger_support import batch_ledger_fixture, report
 from tests.workbench.batch_support import BASE, assert_error, batch_database, body, detail, post, ref_for, state

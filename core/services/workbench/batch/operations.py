@@ -4,13 +4,14 @@ from core.models.workbench_batch import normalize_operation_input, object_fields
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
 from core.services.personnel.operator_qualification import OperatorQualificationService
 from core.services.process.workflow_state import require_template_ready
-from core.services.workbench.batch_facts import BatchFacts, require_unreferenced
-from core.services.workbench.batch_projection import BatchProjection
-from core.services.workbench.batch_template_preview import template_after, template_changes
-from core.services.workbench.batch_template_validation import template_status
 from core.services.workbench.template_lineage import TemplateLineageWriter
 from data.repositories.batch_operation_repo import BatchOperationRepository
 from data.repositories.supplier_repo import SupplierRepository
+
+from .facts import BatchFacts, require_unreferenced
+from .projection import BatchProjection
+from .template_preview import template_after, template_changes
+from .template_validation import template_status
 
 
 def operation_code(batch_id, sequence, piece):

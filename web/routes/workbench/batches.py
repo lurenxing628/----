@@ -5,10 +5,10 @@ from flask import current_app, g, jsonify, request
 from core.models.workbench_batch import normalize_operation_input, object_fields, public_ref
 from core.models.workbench_batch_query import batch_scope, snapshot_scope
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.services.workbench.batch_bulk import WorkbenchBatchBulkService, normalize_bulk
-from core.services.workbench.batch_operations import WorkbenchBatchOperationService
-from core.services.workbench.batch_queries import WorkbenchBatchQueryService
-from core.services.workbench.batches import WorkbenchBatchService
+from core.services.workbench.batch.bulk import WorkbenchBatchBulkService, normalize_bulk
+from core.services.workbench.batch.operations import WorkbenchBatchOperationService
+from core.services.workbench.batch.queries import WorkbenchBatchQueryService
+from core.services.workbench.batch.service import WorkbenchBatchService
 from core.services.workbench.commands import WorkbenchCommandService
 from web.api_responses import query_success
 
@@ -148,7 +148,7 @@ def batch_preview(action, ref=None):
 @api_endpoint
 def batch_facets():
     from core.models.workbench_batch import SORTS
-    from core.services.workbench.batch_queries import cell
+    from core.services.workbench.batch.queries import cell
 
     body = object_fields(json_body(), ("scope", "field"), ("scope", "field"))
     scope = batch_scope(body["scope"])

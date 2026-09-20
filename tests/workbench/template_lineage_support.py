@@ -13,7 +13,7 @@ from core.infrastructure.workbench_plan_identity_schema import install_plan_iden
 from core.infrastructure.workbench_template_lineage_schema import install, objects
 from core.models.workbench_calibration import CalibrationQuery
 from core.services.scheduler.batch_service import BatchService
-from core.services.workbench.batch_operations import WorkbenchBatchOperationService
+from core.services.workbench.batch.operations import WorkbenchBatchOperationService
 from core.services.workbench.calibration import WorkbenchCalibrationService
 from core.services.workbench.commands import WorkbenchCommandService
 from core.services.workbench.template_lineage import TemplateLineageWriter

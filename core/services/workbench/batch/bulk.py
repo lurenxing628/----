@@ -4,10 +4,11 @@ import re
 
 from core.models.workbench_batch import MAX_INTEGER, normalize_batch_input, object_fields, public_ref
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
-from core.services.workbench.batch_facts import BatchFacts, index_relations, related, require_unreferenced
-from core.services.workbench.batch_operations import insert_operation, operation_code
-from core.services.workbench.batch_projection import BatchProjection
-from core.services.workbench.batches import WorkbenchBatchService
+
+from .facts import BatchFacts, index_relations, related, require_unreferenced
+from .operations import insert_operation, operation_code
+from .projection import BatchProjection
+from .service import WorkbenchBatchService
 
 
 def normalize_bulk(payload):

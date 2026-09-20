@@ -5,8 +5,8 @@ import pytest
 from core.infrastructure.workbench_execution_ledger_schema import install_execution_ledger
 from core.infrastructure.workbench_execution_void_schema import install_execution_voids
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.services.workbench.batch_operations import WorkbenchBatchOperationService
-from core.services.workbench.batches import WorkbenchBatchService
+from core.services.workbench.batch.operations import WorkbenchBatchOperationService
+from core.services.workbench.batch.service import WorkbenchBatchService
 from core.services.workbench.commands import WorkbenchCommandService
 from tests.workbench.batch_execution_ledger_support import batch_ledger_fixture, report
 from tests.workbench.batch_execution_ledger_support import (

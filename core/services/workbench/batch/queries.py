@@ -2,9 +2,10 @@
 
 from core.models.workbench_batch_query import batch_scope
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.services.workbench.batch_facts import BatchFacts
-from core.services.workbench.batch_projection import BatchProjection
-from core.services.workbench.batch_template_validation import template_status
+
+from .facts import BatchFacts
+from .projection import BatchProjection
+from .template_validation import template_status
 
 
 def cell(entity, key):

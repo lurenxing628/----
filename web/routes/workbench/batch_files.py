@@ -9,9 +9,9 @@ from core.models.workbench_batch import object_fields, public_ref
 from core.models.workbench_batch_file import MAX_BYTES, MAX_ROWS, MIME
 from core.models.workbench_batch_query import batch_scope, snapshot_scope
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.services.workbench.batch_file_codec import TEMPLATE, write_batch_file
-from core.services.workbench.batch_files import WorkbenchBatchFileService
-from core.services.workbench.batch_queries import WorkbenchBatchQueryService
+from core.services.workbench.batch.file_codec import TEMPLATE, write_batch_file
+from core.services.workbench.batch.files import WorkbenchBatchFileService
+from core.services.workbench.batch.queries import WorkbenchBatchQueryService
 from core.services.workbench.commands import WorkbenchCommandService
 from web.api_responses import query_success
 

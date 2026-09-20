@@ -5,7 +5,7 @@ from flask import Flask
 
 from core.models.workbench_batch_query import batch_scope
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.services.workbench.batch_template_validation import template_diagnostics
+from core.services.workbench.batch.template_validation import template_diagnostics
 from tests.workbench.batch_support import batch_database, ref_for, state
 from tests.workbench.test_batch_files import confirm, uploaded
 from web.routes.workbench.batch_context import read_scope
