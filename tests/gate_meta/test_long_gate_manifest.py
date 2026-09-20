@@ -749,3 +749,27 @@ def test_version_probe_entries_are_not_marked_as_reusable_long_gate_items():
     assert ruff_probe["reuse_allowed"] is False
     assert pyright_probe["reuse_allowed"] is False
     assert radon_probe["reuse_allowed"] is False
+
+
+APP_CONFIG_TRIGGERED_GROUPS = frozenset({
+    "frontend_manual_excel", "request_services_runtime_error_boundary", "scheduler_analysis_gantt_reports_week_plan",
+    "scheduler_batches_material_resource", "scheduler_config", "scheduler_run_core", "ui_layout_presenters_system",
+    "workbench_batches", "workbench_calibration", "workbench_calibration_adoption", "workbench_dashboard",
+    "workbench_execution_ledger", "workbench_execution_scheduler", "workbench_field", "workbench_foundation",
+    "workbench_mainmigration", "workbench_outsourcing", "workbench_piece_adoption", "workbench_plans",
+    "workbench_preflight", "workbench_process", "workbench_reports", "workbench_request_lifecycle",
+    "workbench_resources", "workbench_run_compute", "workbench_run_jobs", "workbench_system",
+    "workbench_template_lineage", "workbench_trial", "workbench_trial_adoption", "workbench_zero_duration",
+})
+
+
+def test_required_group_scopes_follow_app_config_not_the_retired_root_config():
+    """config.py 已搬到 web/bootstrap/app_config.py；分组的 input_file_scopes 必须跟着走，否则日常门禁增量选组会静默漏掉这些分组。"""
+    triggered = set()
+    for row in iter_required_regression_groups():
+        scopes = row["input_file_scopes"]
+        assert "config.py" not in scopes, row["group_id"]
+        if "web/bootstrap/app_config.py" in scopes:
+            triggered.add(row["group_id"])
+    assert triggered == APP_CONFIG_TRIGGERED_GROUPS
+    assert os.path.exists("web/bootstrap/app_config.py") and not os.path.exists("config.py")

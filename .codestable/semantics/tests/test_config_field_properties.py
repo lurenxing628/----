@@ -2,7 +2,7 @@
 
 真 API(已核验)：core/services/scheduler/config/config_field_spec.py
   list_config_fields / get_field_spec / coerce_config_field(strict_mode=, source=)
-未知 enum 在 strict_mode 下 raise core.infrastructure.errors.ValidationError。
+未知 enum 在 strict_mode 下 raise core.errors.ValidationError。
 """
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from core.infrastructure.errors import ValidationError
+from core.errors import ValidationError
 from core.services.scheduler.config import config_field_spec as cfs
 
 

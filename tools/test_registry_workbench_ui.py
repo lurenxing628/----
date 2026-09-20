@@ -73,7 +73,7 @@ WORKBENCH_UI_SUPPLEMENTAL_REGRESSION_GROUPS = ({
         "tests/conftest.py", "tests/workbench/fixtures/schema-v28.sql", "schema.sql",
         "tests/_support/workbench_browser_contract.py", "tests/_support/workbench_browser_probe.cjs",
         "tests/_support/workbench_web_contract.py", "tests/_support/excel_templates.py",
-        "app.py", "config.py", "plugins/*.py", "core/plugins/manager.py", "web/bootstrap/**/*.py",
+        "app.py", "web/bootstrap/app_config.py", "plugins/*.py", "core/plugins/manager.py", "web/bootstrap/**/*.py",
         "web/routes/workbench/pages.py", "web/routes/workbench/assets.py", "web/routes/workbench/registration.py",
         "web/routes/workbench/navigation_boot.py", "web/routes/workbench/navigation_metadata.py",
         "templates/workbench/index.html",

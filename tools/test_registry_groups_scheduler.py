@@ -161,7 +161,7 @@ SCHEDULER_REQUIRED_REGRESSION_GROUPS = (
             "static/docs/**/*.md",
             "app.py",
             "app_new_ui.py",
-            "config.py",
+            "web/bootstrap/app_config.py",
             "schema.sql",
         ),
         "env_keys": (
@@ -295,7 +295,7 @@ SCHEDULER_REQUIRED_REGRESSION_GROUPS = (
             "tests/operation_execution/operation_execution_state_revision_support.py",
             "app.py",
             "app_new_ui.py",
-            "config.py",
+            "web/bootstrap/app_config.py",
             "schema.sql",
         ),
         "env_keys": (
@@ -402,7 +402,7 @@ SCHEDULER_REQUIRED_REGRESSION_GROUPS = (
             "static/css/resource_dispatch.css",
             "app.py",
             "app_new_ui.py",
-            "config.py",
+            "web/bootstrap/app_config.py",
             "schema.sql",
         ),
         "env_keys": (

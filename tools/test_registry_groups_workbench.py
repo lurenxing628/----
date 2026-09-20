@@ -27,7 +27,7 @@ _SHARED_INPUT_SCOPES = (
     "tests/workbench/fixtures/*",
     "app.py",
     "app_new_ui.py",
-    "config.py",
+    "web/bootstrap/app_config.py",
     "schema.sql",
 )
 _ENV_KEYS = (

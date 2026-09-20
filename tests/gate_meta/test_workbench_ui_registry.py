@@ -66,7 +66,7 @@ def test_ui_runtime_fixtures_and_dynamic_app_inputs_remain_scoped_without_becomi
         "tests/workbench/wbui_gantt_display_format.cjs",
         "tests/workbench/run_compute_support.py", "tests/workbench/dashboard_support.py",
         "tests/workbench/live_environment.py", "tests/workbench/fixtures/schema-v28.sql",
-        "tests/_support/excel_templates.py", "schema.sql", "app.py", "config.py",
+        "tests/_support/excel_templates.py", "schema.sql", "app.py", "web/bootstrap/app_config.py",
         "web/bootstrap/static_versioning.py", "web/routes/workbench/navigation_metadata.py",
         "plugins/example.py", "scripts/workbench/ds-projection.cjs",
         "frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js",

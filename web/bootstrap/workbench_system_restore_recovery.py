@@ -3,6 +3,7 @@
 import os
 
 from core.services.workbench.facts.system_journal import assert_system_maintenance_ready
+from web.runtime_host import RESTORE_HOST_EXTENSION
 
 from .launcher_paths import _normalize_db_path_for_runtime
 from .workbench_request_lifecycle import lookup_workbench_request_lifecycle
@@ -73,7 +74,7 @@ def assert_exit_system_restore_ready(manager):
     directory = system_journal_directory(manager.db_path)
     if app is not None:
         directory = app.config.get("WORKBENCH_SYSTEM_JOURNAL_DIR")
-        host = app.extensions.get("workbench_system_restore_host")
+        host = app.extensions.get(RESTORE_HOST_EXTENSION)
         if app.extensions.get(RECOVERY) or (host is not None and host.status["restart_required"]):
             raise RuntimeError("Restore requires process restart; exit backup must not open the database")
     assert_system_maintenance_ready(manager.db_path, directory)

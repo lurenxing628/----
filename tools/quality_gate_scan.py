@@ -978,7 +978,7 @@ def _production_inventory_paths() -> List[str]:
     paths: List[str] = []
     for root in roots:
         paths.extend(collect_globbed_files([f"{root}/**/*.py"]))
-    for path in ["app.py", "app_new_ui.py", "config.py"]:
+    for path in ["app.py", "app_new_ui.py"]:
         try:
             read_text_file(path)
         except QualityGateError:
