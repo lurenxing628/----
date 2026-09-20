@@ -14,8 +14,8 @@ import pytest
 
 from core.algorithms.greedy.dispatch.sgs_checkpoint import DecodeCheckpoint
 from core.errors import ValidationError
-from core.services.scheduler.run import optimizer_graph_ready_iterated_greedy_acceptance as acceptance
-from core.services.scheduler.run.optimizer_graph_ready_iterated_greedy_acceptance import (
+from core.services.scheduler.run.optimizer.graph import iterated_greedy_acceptance as acceptance
+from core.services.scheduler.run.optimizer.graph.iterated_greedy_acceptance import (
     ExponentialCooling,
     PoolEntry,
     SolutionPool,
@@ -23,12 +23,12 @@ from core.services.scheduler.run.optimizer_graph_ready_iterated_greedy_acceptanc
     profile_identity,
     sa_accept,
 )
-from core.services.scheduler.run.optimizer_graph_ready_iterated_greedy_checkpoints import (
+from core.services.scheduler.run.optimizer.graph.iterated_greedy_checkpoints import (
     CheckpointStore,
     checkpoint_positions,
     common_prefix_length,
 )
-from core.services.scheduler.run.optimizer_graph_ready_iterated_greedy_neighborhoods import (
+from core.services.scheduler.run.optimizer.graph.iterated_greedy_neighborhoods import (
     _FACTOR_CHANGE_CAP,
     AdaptiveValue,
     GeneratorRotation,
@@ -37,7 +37,7 @@ from core.services.scheduler.run.optimizer_graph_ready_iterated_greedy_neighborh
     TimeWindowGenerator,
     build_generators,
 )
-from core.services.scheduler.run.optimizer_graph_ready_profiles import GraphReadyWeightProfile
+from core.services.scheduler.run.optimizer.graph_ready_profiles import GraphReadyWeightProfile
 
 # ---- adaptive destroy size ------------------------------------------------------------------------------------------
 
@@ -410,9 +410,7 @@ def test_sa_accept_anneals_the_secondary_component_only_between_equal_primaries(
 
 
 def test_default_annealing_can_accept_a_slightly_worse_integer_primary_early_on():
-    from core.services.scheduler.run.optimizer_graph_ready_iterated_greedy_contract import (
-        resolve_iterated_greedy_limits,
-    )
+    from core.services.scheduler.run.optimizer.graph.iterated_greedy_contract import resolve_iterated_greedy_limits
 
     limits = resolve_iterated_greedy_limits({"graph_ready_optimization": {}}, enabled=True)
     cooling = ExponentialCooling(limits.temperature_ratio_start, limits.temperature_ratio_end)

@@ -6,18 +6,18 @@ from types import SimpleNamespace
 
 import pytest
 
-from core.services.scheduler.run.optimizer_graph_ready_iterated_greedy_acceptance import PoolEntry
-from core.services.scheduler.run.optimizer_graph_ready_iterated_greedy_contract import (
+from core.services.scheduler.run.optimizer.graph.iterated_greedy_acceptance import PoolEntry
+from core.services.scheduler.run.optimizer.graph.iterated_greedy_contract import (
     IteratedGreedyLimits,
     new_iterated_greedy_report,
 )
-from core.services.scheduler.run.optimizer_graph_ready_iterated_greedy_iteration import IGIteration
-from core.services.scheduler.run.optimizer_graph_ready_iterated_greedy_moves import _Parent
-from core.services.scheduler.run.optimizer_graph_ready_iterated_greedy_neighborhoods import (
+from core.services.scheduler.run.optimizer.graph.iterated_greedy_iteration import IGIteration
+from core.services.scheduler.run.optimizer.graph.iterated_greedy_moves import _Parent
+from core.services.scheduler.run.optimizer.graph.iterated_greedy_neighborhoods import (
     GeneratorRotation,
     build_generators,
 )
-from core.services.scheduler.run.optimizer_graph_ready_iterated_greedy_run import IteratedGreedyRun
+from core.services.scheduler.run.optimizer.graph.iterated_greedy_run import IteratedGreedyRun
 
 
 def _iteration_fixture():
@@ -101,7 +101,7 @@ def test_shared_incumbent_is_visible_mid_iteration_but_context_adoption_waits(mo
     run.stopped = False
     run._advance()
     assert observed == [improved] and adopted == [] and search.best is improved
-    from core.services.scheduler.run import optimizer_graph_ready_iterated_greedy_run as run_module
+    from core.services.scheduler.run.optimizer.graph import iterated_greedy_run as run_module
     monkeypatch.setattr(run_module, "IGIteration", lambda search: PendingIteration())
     run._advance()
     assert adopted == [(improved, "new-profile")]

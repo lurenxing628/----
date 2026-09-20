@@ -9,13 +9,13 @@ import pytest
 
 from core.errors import ValidationError
 from core.models.batch_operation import BatchOperation
-from core.services.scheduler.run.optimizer_graph_ready_repair_decisions import (
+from core.services.scheduler.run.optimizer.graph.repair_decisions import (
     RepairDecision,
     apply_repair_decision,
     iter_resource_decisions,
 )
-from core.services.scheduler.run.optimizer_graph_ready_repair_neighbors import RepairNeighborhood
-from core.services.scheduler.run.optimizer_graph_ready_repair_portfolio import RepairPortfolio
+from core.services.scheduler.run.optimizer.graph.repair_neighbors import RepairNeighborhood
+from core.services.scheduler.run.optimizer.graph.repair_portfolio import RepairPortfolio
 
 
 def _op(op_id=1, batch="A", **kwargs):

@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from time import perf_counter
 from unittest.mock import patch
 
-from core.services.scheduler.run.optimizer_search_report import OptimizationSearchReportState
+from core.services.scheduler.run.optimizer.search_report import OptimizationSearchReportState
 from core.services.scheduler.run.schedule_candidate_runner import run_candidate_comparison
 from core.services.scheduler.run.schedule_optimizer import optimize_schedule
 from tests._support.optimizer_end_to_end_cases import (

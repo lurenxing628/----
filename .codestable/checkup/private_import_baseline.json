@@ -219,57 +219,57 @@
       "count": 2
     },
     {
-      "path": "core/services/scheduler/run/optimizer_graph_ready_candidates.py",
+      "path": "core/services/scheduler/run/optimizer/graph/candidates.py",
       "kind": "private_symbol",
       "count": 4
     },
     {
-      "path": "core/services/scheduler/run/optimizer_graph_ready_iterated_greedy.py",
+      "path": "core/services/scheduler/run/optimizer/graph/iterated_greedy.py",
       "kind": "private_symbol",
       "count": 6
     },
     {
-      "path": "core/services/scheduler/run/optimizer_graph_ready_iterated_greedy_iteration.py",
+      "path": "core/services/scheduler/run/optimizer/graph/iterated_greedy_iteration.py",
       "kind": "private_symbol",
       "count": 3
     },
     {
-      "path": "core/services/scheduler/run/optimizer_graph_ready_iterated_greedy_large.py",
+      "path": "core/services/scheduler/run/optimizer/graph/iterated_greedy_large.py",
       "kind": "private_symbol",
       "count": 2
     },
     {
-      "path": "core/services/scheduler/run/optimizer_graph_ready_iterated_greedy_local.py",
+      "path": "core/services/scheduler/run/optimizer/graph/iterated_greedy_local.py",
       "kind": "private_symbol",
       "count": 3
     },
     {
-      "path": "core/services/scheduler/run/optimizer_graph_ready_iterated_greedy_reference.py",
+      "path": "core/services/scheduler/run/optimizer/graph/iterated_greedy_reference.py",
       "kind": "private_symbol",
       "count": 2
     },
     {
-      "path": "core/services/scheduler/run/optimizer_graph_ready_iterated_greedy_run.py",
+      "path": "core/services/scheduler/run/optimizer/graph/iterated_greedy_run.py",
       "kind": "private_symbol",
       "count": 5
     },
     {
-      "path": "core/services/scheduler/run/optimizer_graph_ready_iterated_greedy_start.py",
+      "path": "core/services/scheduler/run/optimizer/graph/iterated_greedy_start.py",
       "kind": "private_symbol",
       "count": 1
     },
     {
-      "path": "core/services/scheduler/run/optimizer_graph_ready_repair.py",
+      "path": "core/services/scheduler/run/optimizer/graph/repair.py",
       "kind": "private_symbol",
       "count": 8
     },
     {
-      "path": "core/services/scheduler/run/optimizer_local_search.py",
+      "path": "core/services/scheduler/run/optimizer/local_search.py",
       "kind": "private_symbol",
       "count": 1
     },
     {
-      "path": "core/services/scheduler/run/optimizer_multi_start.py",
+      "path": "core/services/scheduler/run/optimizer/multi_start.py",
       "kind": "private_symbol",
       "count": 2
     },

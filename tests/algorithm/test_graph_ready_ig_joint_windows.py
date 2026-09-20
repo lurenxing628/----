@@ -5,8 +5,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from core.services.scheduler.run.optimizer_graph_ready_iterated_greedy_joint import joint_orders, joint_removed
-from core.services.scheduler.run.optimizer_graph_ready_iterated_greedy_moves import _insertion_positions
+from core.services.scheduler.run.optimizer.graph.iterated_greedy_joint import joint_orders, joint_removed
+from core.services.scheduler.run.optimizer.graph.iterated_greedy_moves import _insertion_positions
 from tests._support.optimizer_end_to_end_cases import case_environment, fixture_data
 from tests.resource_dispatch.test_sgs_decode_checkpoint_contract import RUN_CONFIG, _Case
 

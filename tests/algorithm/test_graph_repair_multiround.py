@@ -7,14 +7,11 @@ from types import SimpleNamespace
 import pytest
 
 from core.errors import ValidationError
-from core.services.scheduler.run import optimizer_graph_ready_repair as repair
-from core.services.scheduler.run.optimizer_graph_ready_feature_basis import select_profile_metrics
-from core.services.scheduler.run.optimizer_graph_ready_profiles import graph_ready_v2_profiles
-from core.services.scheduler.run.optimizer_graph_ready_repair_contract import (
-    EliteRepairLimits,
-    resolve_elite_repair_limits,
-)
-from core.services.scheduler.run.optimizer_graph_ready_v2_features import enrich_graph_ready_v2_metrics
+from core.services.scheduler.run.optimizer.graph import repair
+from core.services.scheduler.run.optimizer.graph.repair_contract import EliteRepairLimits, resolve_elite_repair_limits
+from core.services.scheduler.run.optimizer.graph.v2_features import enrich_graph_ready_v2_metrics
+from core.services.scheduler.run.optimizer.graph_ready_feature_basis import select_profile_metrics
+from core.services.scheduler.run.optimizer.graph_ready_profiles import graph_ready_v2_profiles
 from tests._support.optimizer_graph_ready_benchmark import (
     START_DT,
     graph_ready_benchmark_batches,
@@ -144,10 +141,7 @@ def test_improving_elite_retains_its_unvisited_tail_with_bounded_visits(monkeypa
 
 
 def test_profile_improvement_supersedes_an_older_repair_round_priority():
-    from core.services.scheduler.run.optimizer_graph_ready_repair_rotation import (
-        _current_improvements,
-        _fill_round_slots,
-    )
+    from core.services.scheduler.run.optimizer.graph.repair_rotation import _current_improvements, _fill_round_slots
 
     old = {"candidate": {"score": (0, 216)}, "neighborhood": SimpleNamespace(candidate_count=12), "decision_offset": 8}
     fresh = {"candidate": {"score": (0, 171)}, "neighborhood": SimpleNamespace(candidate_count=10), "decision_offset": 0}

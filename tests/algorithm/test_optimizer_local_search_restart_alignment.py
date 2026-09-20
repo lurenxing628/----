@@ -15,12 +15,12 @@ from typing import Any, Dict, List, Tuple
 from core.algorithms.evaluation import ScheduleMetrics
 from core.algorithms.sort_strategies import SortStrategy
 from core.algorithms.types import ScheduleResult, ScheduleSummary
-from core.services.scheduler.run.optimizer_local_search import run_local_search
-from core.services.scheduler.run.optimizer_local_search_restart import restart_after_stall
-from core.services.scheduler.run.optimizer_local_search_state import LocalSearchState
-from core.services.scheduler.run.optimizer_neighborhood_moves import CRITICAL_CHAIN
-from core.services.scheduler.run.optimizer_search_report import OptimizationSearchReportState
-from core.services.scheduler.run.optimizer_vns import VnsState
+from core.services.scheduler.run.optimizer.local_search import run_local_search
+from core.services.scheduler.run.optimizer.local_search_restart import restart_after_stall
+from core.services.scheduler.run.optimizer.local_search_state import LocalSearchState
+from core.services.scheduler.run.optimizer.neighborhood_moves import CRITICAL_CHAIN
+from core.services.scheduler.run.optimizer.search_report import OptimizationSearchReportState
+from core.services.scheduler.run.optimizer.vns import VnsState
 
 _START = datetime(2026, 1, 1, 8, 0, 0)
 _BEST_ORDER = ("B0", "B1", "B2", "B3")

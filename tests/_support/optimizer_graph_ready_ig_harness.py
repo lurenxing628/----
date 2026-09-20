@@ -6,26 +6,26 @@ from functools import partial
 from typing import Any, Callable, Optional
 
 from core.algorithms import SortStrategy
-from core.services.scheduler.run.optimizer_graph_ready_candidates import evaluate_graph_ready_candidate
-from core.services.scheduler.run.optimizer_graph_ready_iterated_greedy import (
+from core.services.scheduler.run.optimizer.graph.candidates import evaluate_graph_ready_candidate
+from core.services.scheduler.run.optimizer.graph.iterated_greedy import (
     IG_CANDIDATE_POLICY,
     IG_PROFILE_SLUG,
     _IteratedGreedySearch,
     _parent_from_candidate,
 )
-from core.services.scheduler.run.optimizer_graph_ready_iterated_greedy_contract import (
+from core.services.scheduler.run.optimizer.graph.iterated_greedy_contract import (
     IteratedGreedyLimits,
     new_iterated_greedy_report,
 )
-from core.services.scheduler.run.optimizer_graph_ready_profiles import (
+from core.services.scheduler.run.optimizer.graph.repair import EliteRepairPool
+from core.services.scheduler.run.optimizer.graph.repair_contract import EliteRepairLimits
+from core.services.scheduler.run.optimizer.graph.repair_decisions import RepairDecision
+from core.services.scheduler.run.optimizer.graph.v2_features import enrich_graph_ready_v2_metrics
+from core.services.scheduler.run.optimizer.graph_ready_profiles import (
     GRAPH_READY_V2_ITERATED_GREEDY_ORIGIN,
     graph_ready_v2_profiles,
 )
-from core.services.scheduler.run.optimizer_graph_ready_repair import EliteRepairPool
-from core.services.scheduler.run.optimizer_graph_ready_repair_contract import EliteRepairLimits
-from core.services.scheduler.run.optimizer_graph_ready_repair_decisions import RepairDecision
-from core.services.scheduler.run.optimizer_graph_ready_v2_features import enrich_graph_ready_v2_metrics
-from core.services.scheduler.run.optimizer_search_report import OptimizationSearchReportState
+from core.services.scheduler.run.optimizer.search_report import OptimizationSearchReportState
 from tests._support.optimizer_graph_ready_benchmark import (
     BASE_BATCH_ORDER,
     OBJECTIVE_NAME,

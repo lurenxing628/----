@@ -65,7 +65,7 @@ def test_unproven_inputs_keep_the_full_scoring_path(kind):
 
 
 def test_normalized_production_dto_with_unused_merge_audit_metadata_is_supported():
-    from core.services.scheduler.run.schedule_input_builder import OpForScheduleAlgo
+    from core.services.scheduler.contracts.schedule_input_op import OpForScheduleAlgo
 
     case = make_case(batch_count=8, ops_per_batch=3, auto=False, graph=True)
     normalized = []
@@ -145,7 +145,7 @@ def test_auto_assign_piece_scope_prunes_against_predecessor_completion():
 
 
 def test_auto_assign_production_dto_is_supported():
-    from core.services.scheduler.run.schedule_input_builder import OpForScheduleAlgo
+    from core.services.scheduler.contracts.schedule_input_op import OpForScheduleAlgo
 
     case = _unique_keys(make_case(batch_count=8, ops_per_batch=3, auto=True, graph=True))
     normalized = []

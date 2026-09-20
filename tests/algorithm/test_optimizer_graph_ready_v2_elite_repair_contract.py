@@ -7,9 +7,9 @@ import json
 import pytest
 
 from core.errors import ValidationError
-from core.services.scheduler.run import optimizer_graph_ready_candidate_payload as payload
-from core.services.scheduler.run import optimizer_graph_ready_candidates as candidates
-from core.services.scheduler.run.optimizer_graph_ready_profiles import (
+from core.services.scheduler.run.optimizer.graph import candidate_payload as payload
+from core.services.scheduler.run.optimizer.graph import candidates
+from core.services.scheduler.run.optimizer.graph_ready_profiles import (
     graph_ready_v2_profile_summary,
     graph_ready_v2_profiles,
 )
@@ -227,7 +227,7 @@ def test_same_decoded_output_rejected_even_without_report_state():
 
 
 def test_equal_or_worse_score_never_accepted_even_if_comparator_prefers(monkeypatch):
-    from core.services.scheduler.run import optimizer_graph_ready_repair as repair
+    from core.services.scheduler.run.optimizer.graph import repair
     monkeypatch.setattr(repair, "candidate_is_preferred", lambda **kwargs: True)
     off = run_production_repair_case(enabled=False)
     on = run_production_repair_case()
@@ -332,7 +332,7 @@ def test_formal_repair_sgs_keeps_fixed_seed_and_precedence():
     from datetime import timedelta
 
     from core.algorithms import ScheduleResult, SortStrategy
-    from core.services.scheduler.run.optimizer_graph_ready_v2_features import enrich_graph_ready_v2_metrics
+    from core.services.scheduler.run.optimizer.graph.v2_features import enrich_graph_ready_v2_metrics
     from tests._support.optimizer_graph_ready_benchmark import (
         BASE_BATCH_ORDER,
         OBJECTIVE_NAME,

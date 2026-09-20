@@ -14,10 +14,10 @@ from core.algorithms.evaluation import ScheduleMetrics, compute_metrics, objecti
 from core.algorithms.sort_strategies import SortStrategy
 from core.algorithms.types import ScheduleResult, ScheduleSummary
 from core.errors import ValidationError
-from core.services.scheduler.run.optimizer_candidate_fingerprint import build_candidate_fingerprint
-from core.services.scheduler.run.optimizer_local_search import run_local_search
-from core.services.scheduler.run.optimizer_neighborhood_move_support import positive_count
-from core.services.scheduler.run.optimizer_neighborhood_moves import (
+from core.services.scheduler.run.optimizer.candidate_fingerprint import build_candidate_fingerprint
+from core.services.scheduler.run.optimizer.local_search import run_local_search
+from core.services.scheduler.run.optimizer.neighborhood_move_support import positive_count
+from core.services.scheduler.run.optimizer.neighborhood_moves import (
     BOTTLENECK_MACHINE,
     BUSINESS_NEIGHBORHOODS,
     CHANGEOVER_BLOCK,
@@ -28,19 +28,19 @@ from core.services.scheduler.run.optimizer_neighborhood_moves import (
     TIME_WINDOW,
     sgs_dispatch_rule_move,
 )
-from core.services.scheduler.run.optimizer_neighborhood_registry import (
+from core.services.scheduler.run.optimizer.neighborhood_registry import (
     build_neighborhood_move,
     registered_neighborhoods,
     validate_neighborhood_name,
 )
-from core.services.scheduler.run.optimizer_proof_cases import TinyBatchSpec, TinyBenchmarkCase, TinyOperationSpec
-from core.services.scheduler.run.optimizer_proof_oracle import (
+from core.services.scheduler.run.optimizer.proof_cases import TinyBatchSpec, TinyBenchmarkCase, TinyOperationSpec
+from core.services.scheduler.run.optimizer.proof_oracle import (
     _ContinuousCalendar,
     _default_config,
     _operation_object,
     batch_objects,
 )
-from core.services.scheduler.run.optimizer_search_report import OptimizationSearchReportState
+from core.services.scheduler.run.optimizer.search_report import OptimizationSearchReportState
 from core.services.scheduler.summary.optimizer_public_search_report import project_search_report
 
 _START = datetime(2026, 1, 1, 8, 0, 0)

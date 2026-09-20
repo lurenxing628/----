@@ -15,19 +15,20 @@ from core.algorithms.evaluation import compute_metrics, objective_score
 from core.algorithms.sort_strategies import SortStrategy
 from core.algorithms.types import ScheduleResult, ScheduleSummary
 from core.errors import ValidationError
-from core.services.scheduler.run.optimizer_candidate_profile import build_candidate_profile
-from core.services.scheduler.run.optimizer_graph_ready import run_graph_ready_candidates
-from core.services.scheduler.run.optimizer_graph_ready_candidates import (
+from core.services.scheduler.run.optimizer.candidate_profile import build_candidate_profile
+from core.services.scheduler.run.optimizer.graph.candidates import (
     build_v2_common_rank_cache,
     context_for_profile,
     evaluate_graph_ready_candidate,
     priority_key_for_metric,
 )
-from core.services.scheduler.run.optimizer_graph_ready_context import (
+from core.services.scheduler.run.optimizer.graph.context import (
     graph_node_metrics_by_op_id,
     validate_graph_ready_context,
 )
-from core.services.scheduler.run.optimizer_graph_ready_profiles import (
+from core.services.scheduler.run.optimizer.graph.ready import run_graph_ready_candidates
+from core.services.scheduler.run.optimizer.graph.v2_features import enrich_graph_ready_v2_metrics
+from core.services.scheduler.run.optimizer.graph_ready_profiles import (
     GRAPH_READY_V2_GENERATED_ORIGIN,
     GRAPH_READY_WEIGHT_GRID_ORIGIN,
     GraphReadyWeightProfile,
@@ -36,9 +37,8 @@ from core.services.scheduler.run.optimizer_graph_ready_profiles import (
     graph_ready_v2_profiles,
     graph_ready_weight_profile_summary,
 )
-from core.services.scheduler.run.optimizer_graph_ready_v2_features import enrich_graph_ready_v2_metrics
-from core.services.scheduler.run.optimizer_runtime import OptimizerRuntime
-from core.services.scheduler.run.optimizer_search_report import OptimizationSearchReportState
+from core.services.scheduler.run.optimizer.runtime import OptimizerRuntime
+from core.services.scheduler.run.optimizer.search_report import OptimizationSearchReportState
 from core.services.scheduler.run.schedule_optimizer import optimize_schedule
 from core.services.scheduler.summary.optimizer_public_search_report import project_search_report
 from tests._support.optimizer_graph_ready_benchmark import (

@@ -16,7 +16,7 @@ from core.algorithm_runtime.run_state import ScheduleRunState
 from core.algorithms.greedy.dispatch.batch_order import dispatch_batch_order
 from core.algorithms.greedy.dispatch.sgs import dispatch_sgs
 from core.algorithms.greedy.run_context import ScheduleRunContext
-from core.services.scheduler.run.schedule_signature_support import (
+from core.services.scheduler.run.optimizer.signature_support import (
     clear_strict_mode_support_cache_for_tests,
     schedule_with_optional_strict_mode,
 )
@@ -207,7 +207,7 @@ def test_callback_replacement_invalidates_warm_binding(legacy):
 @pytest.mark.parametrize("unknown_signature", [False, True])
 @pytest.mark.parametrize("source", ["internal", "external"])
 def test_upstream_schedule_wrapper_never_retries_contract_error(monkeypatch, unknown_signature, source):
-    import core.services.scheduler.run.schedule_signature_support as support
+    import core.services.scheduler.run.optimizer.signature_support as support
 
     context = _context(lambda *, op: None, legacy=False, source=source)
 

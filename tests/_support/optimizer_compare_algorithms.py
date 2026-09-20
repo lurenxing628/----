@@ -10,10 +10,10 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from core.algorithms import SortStrategy
 from core.algorithms.greedy.algo_stats import snapshot_algo_stats
-from core.services.scheduler.run.optimizer_candidate_profile import derive_grasp_ig_limits
-from core.services.scheduler.run.optimizer_grasp_ig_candidates import run_grasp_ig_candidates
-from core.services.scheduler.run.optimizer_local_search import run_local_search
-from core.services.scheduler.run.optimizer_search_report import OptimizationSearchReportState
+from core.services.scheduler.run.optimizer.candidate_profile import derive_grasp_ig_limits
+from core.services.scheduler.run.optimizer.grasp_ig_candidates import run_grasp_ig_candidates
+from core.services.scheduler.run.optimizer.local_search import run_local_search
+from core.services.scheduler.run.optimizer.search_report import OptimizationSearchReportState
 from tests._support.optimizer_compare_algorithms_provenance import (
     COMPARE_SCHEMA_VERSION,
     MEASUREMENT,

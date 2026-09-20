@@ -6,8 +6,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from core.services.scheduler.run.optimizer_graph_ready_profiles import graph_ready_weight_profile_summary
-from core.services.scheduler.run.optimizer_proof_harness import run_optimizer_proof_harness
+from core.services.scheduler.run.optimizer.graph_ready_profiles import graph_ready_weight_profile_summary
+from core.services.scheduler.run.optimizer.proof_harness import run_optimizer_proof_harness
 from tests._support.optimizer_benchmark_ratchet_io import (
     RATCHET_MEASUREMENT,
     RATCHET_SCHEMA_VERSION,

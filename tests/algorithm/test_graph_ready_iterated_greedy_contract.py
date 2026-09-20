@@ -14,15 +14,15 @@ import random
 import pytest
 
 from core.errors import ValidationError
-from core.services.scheduler.run import optimizer_graph_ready_iterated_greedy as ig
-from core.services.scheduler.run.optimizer_graph_ready_iterated_greedy_contract import (
+from core.services.scheduler.run.optimizer.graph import iterated_greedy as ig
+from core.services.scheduler.run.optimizer.graph.iterated_greedy_contract import (
     IG_PHASE,
     IteratedGreedyLimits,
     iterated_greedy_public_message,
     new_iterated_greedy_report,
     resolve_iterated_greedy_limits,
 )
-from core.services.scheduler.run.optimizer_graph_ready_stage_scheduler import ROTATION_POLICY
+from core.services.scheduler.run.optimizer.graph.stage_scheduler import ROTATION_POLICY
 from tests._support.optimizer_graph_ready_benchmark import BenchmarkClock
 from tests._support.optimizer_graph_ready_repair_benchmark import run_production_repair_case, smtwt_repair_context
 
@@ -158,7 +158,7 @@ def test_disabled_stage_reports_not_run_and_adds_no_decode():
 
 
 def test_decoder_that_rejects_every_decision_stops_the_stage_without_retrying_orders():
-    from core.services.scheduler.run.optimizer_graph_ready_candidates import evaluate_graph_ready_candidate
+    from core.services.scheduler.run.optimizer.graph.candidates import evaluate_graph_ready_candidate
 
     rejected = []
 

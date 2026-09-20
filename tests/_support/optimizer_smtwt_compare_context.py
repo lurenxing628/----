@@ -7,9 +7,9 @@ from typing import Any, Dict, List, Optional
 
 from core.algorithms import GreedyScheduler, SortStrategy
 from core.algorithms.evaluation import compute_metrics, objective_score
-from core.services.scheduler.run.optimizer_candidate_fingerprint import build_candidate_fingerprint
-from core.services.scheduler.run.optimizer_proof_oracle import _operation_object, batch_objects
-from core.services.scheduler.run.optimizer_search_report import OptimizationSearchReportState
+from core.services.scheduler.run.optimizer.candidate_fingerprint import build_candidate_fingerprint
+from core.services.scheduler.run.optimizer.proof_oracle import _operation_object, batch_objects
+from core.services.scheduler.run.optimizer.search_report import OptimizationSearchReportState
 from tests._support.optimizer_smtwt_compare_common import (
     SAME_BUDGET_SEMANTICS,
     SMTWT_COMPARE_SCHEMA_VERSION,

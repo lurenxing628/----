@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from typing import Any, Dict, List
 
-from core.services.scheduler.run.optimizer_graph_ready_profiles import (
+from core.services.scheduler.run.optimizer.graph.v2_features import enrich_graph_ready_v2_metrics
+from core.services.scheduler.run.optimizer.graph_ready_profiles import (
     GRAPH_READY_V2_REPAIRED_ORIGIN,
     graph_ready_v2_profile_summary,
 )
-from core.services.scheduler.run.optimizer_graph_ready_v2_features import enrich_graph_ready_v2_metrics
-from core.services.scheduler.run.optimizer_search_report import OptimizationSearchReportState
+from core.services.scheduler.run.optimizer.search_report import OptimizationSearchReportState
 from tests._support.optimizer_graph_ready_benchmark import (
     OBJECTIVE_NAME,
     START_DT,

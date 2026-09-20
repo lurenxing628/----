@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from core.services.scheduler.run.optimizer_graph_ready_stage_scheduler import SearchStage, StageScheduler
+from core.services.scheduler.run.optimizer.graph.stage_scheduler import SearchStage, StageScheduler
 
 
 class Clock:
@@ -167,7 +167,7 @@ def test_invalid_improvement_event_counts_fail_loud(events):
 
 
 def test_ig_startup_waits_for_real_readiness_only_until_its_first_task():
-    from core.services.scheduler.run.optimizer_graph_ready_stages import IteratedGreedyStage
+    from core.services.scheduler.run.optimizer.graph.stages import IteratedGreedyStage
 
     ready = [False]
     run = SimpleNamespace(available=lambda: True, started_at=None, limits=SimpleNamespace(enabled=True),

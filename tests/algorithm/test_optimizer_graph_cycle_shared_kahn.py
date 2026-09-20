@@ -18,7 +18,7 @@ from typing import Dict
 import pytest
 
 from core.errors import ValidationError
-from core.services.scheduler.run.optimizer_graph_ready_context import _detect_cycle
+from core.services.scheduler.run.optimizer.graph.context import _detect_cycle
 
 CHAIN_GUARD_NODE_COUNT = 4000
 # 共享 Kahn 实现单链实测 ~3ms；旧 O(V²) 实现同规模实测 >200ms。
@@ -90,7 +90,7 @@ def test_shared_kahn_is_single_implementation_across_both_validators() -> None:
     # "修一漏一"）；再新增第三处图校验时也应复用该实现。
     import core.algorithm_runtime.graph_cycle as shared
     import core.algorithms.greedy.dispatch.sgs_graph as sgs_graph
-    import core.services.scheduler.run.optimizer_graph_ready_context as optimizer_context
+    import core.services.scheduler.run.optimizer.graph.context as optimizer_context
 
     assert sgs_graph.kahn_unreachable_op_ids is shared.kahn_unreachable_op_ids
     assert optimizer_context.kahn_unreachable_op_ids is shared.kahn_unreachable_op_ids

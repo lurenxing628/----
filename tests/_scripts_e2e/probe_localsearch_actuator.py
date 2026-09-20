@@ -33,12 +33,8 @@ from core.algorithms import GreedyScheduler  # noqa: E402
 from core.algorithms.evaluation import compute_metrics, objective_score  # noqa: E402
 from core.algorithms.objective_specs import objective_metric_keys  # noqa: E402
 from core.algorithms.sort_strategies import SortStrategy  # noqa: E402
-from core.services.scheduler.run.optimizer_proof_cases import (  # noqa: E402
-    TinyBatchSpec,
-    TinyBenchmarkCase,
-    TinyOperationSpec,
-)
-from core.services.scheduler.run.optimizer_proof_oracle import (  # noqa: E402
+from core.services.scheduler.run.optimizer.proof_cases import TinyBatchSpec, TinyBenchmarkCase, TinyOperationSpec
+from core.services.scheduler.run.optimizer.proof_oracle import (
     _ContinuousCalendar,
     _default_config,
     _operation_object,

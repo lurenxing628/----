@@ -18,7 +18,7 @@ from typing import Any, Callable, Dict, Optional, Sequence, Tuple
 
 from core.errors import ValidationError
 
-from .optimizer_graph_ready_predecode import graph_priority_preorder
+from .optimizer.graph.predecode import graph_priority_preorder
 from .schedule_candidate_runtime_helpers import (
     _candidate_cfg,
     _candidate_health,

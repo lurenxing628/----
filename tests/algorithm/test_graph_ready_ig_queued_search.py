@@ -3,12 +3,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from core.services.scheduler.run import optimizer_graph_ready_iterated_greedy_local as local
-from core.services.scheduler.run.optimizer_graph_ready_iterated_greedy_diversify import (
-    BudgetStagnation,
-    extended_positions,
-)
-from core.services.scheduler.run.optimizer_graph_ready_iterated_greedy_local import LargeIGIteration, NeighborhoodBudget
+from core.services.scheduler.run.optimizer.graph import iterated_greedy_local as local
+from core.services.scheduler.run.optimizer.graph.iterated_greedy_diversify import BudgetStagnation, extended_positions
+from core.services.scheduler.run.optimizer.graph.iterated_greedy_local import LargeIGIteration, NeighborhoodBudget
 
 
 def _finish(generator):

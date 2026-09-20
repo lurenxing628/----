@@ -7,7 +7,7 @@ import pytest
 
 from core.algorithms import GreedyScheduler
 from core.errors import ValidationError
-from core.services.scheduler.run.optimizer_search_budget import (
+from core.services.scheduler.run.optimizer.search_budget import (
     CandidateBudgetFeedback,
     SearchBudget,
     SearchBudgetExhausted,
@@ -200,8 +200,8 @@ def test_fallback_baseline_reports_its_actual_native_decoder_count():
 
 
 def test_phase_reservation_does_not_claim_entire_budget_exhausted():
-    from core.services.scheduler.run.optimizer_search_budget import ReservedPhaseReport
-    from core.services.scheduler.run.optimizer_search_report import OptimizationSearchReportState
+    from core.services.scheduler.run.optimizer.search_budget import ReservedPhaseReport
+    from core.services.scheduler.run.optimizer.search_report import OptimizationSearchReportState
 
     state = OptimizationSearchReportState("test", 0, 5, "min_overdue", 0.0)
     report = ReservedPhaseReport(state, clock=lambda: 1.0, deadline=5.0, phase="heuristic_candidate_search")
@@ -301,7 +301,7 @@ def test_ineligible_observations_neither_earn_rewards_nor_penalize_untried_candi
 
 @pytest.mark.parametrize("remaining,count", [(1e-6, 2), (1.0, 3), (12.0, 6), (100.0, 8)])
 def test_feedback_always_reserves_a_minimum_share_and_keeps_the_outer_deadline(remaining, count):
-    from core.services.scheduler.run.optimizer_search_budget import allocate_candidate_budget
+    from core.services.scheduler.run.optimizer.search_budget import allocate_candidate_budget
 
     feedback = CandidateBudgetFeedback("min_overdue")
     feedback.observe(_feedback_observation())

@@ -25,22 +25,22 @@ from core.algorithms.evaluation import compute_metrics, objective_score
 from core.algorithms.sort_strategies import SortStrategy
 from core.algorithms.types import ScheduleResult, ScheduleSummary
 from core.errors import ValidationError
-from core.services.scheduler.run.optimizer_candidate_profile import build_candidate_profile
-from core.services.scheduler.run.optimizer_graph_ready import run_graph_ready_candidates
-from core.services.scheduler.run.optimizer_graph_ready_candidates import context_for_profile
-from core.services.scheduler.run.optimizer_graph_ready_profiles import (
-    GRAPH_READY_V2_GENERATED_ORIGIN,
-    GraphReadyWeightProfile,
-)
-from core.services.scheduler.run.optimizer_graph_ready_v2_features import (
+from core.services.scheduler.run.optimizer.candidate_profile import build_candidate_profile
+from core.services.scheduler.run.optimizer.graph.candidates import context_for_profile
+from core.services.scheduler.run.optimizer.graph.ready import run_graph_ready_candidates
+from core.services.scheduler.run.optimizer.graph.v2_features import (
     _ZERO_TOTAL_DURATION_EPSILON_HOURS,
     enrich_graph_ready_v2_metrics,
 )
-from core.services.scheduler.run.optimizer_search_report import OptimizationSearchReportState
+from core.services.scheduler.run.optimizer.graph_ready_profiles import (
+    GRAPH_READY_V2_GENERATED_ORIGIN,
+    GraphReadyWeightProfile,
+)
+from core.services.scheduler.run.optimizer.search_report import OptimizationSearchReportState
 
 _START = datetime(2026, 1, 1, 8, 0, 0)
 _OBJECTIVE = "min_overdue"
-_FEATURES_LOGGER = "core.services.scheduler.run.optimizer_graph_ready_v2_features"
+_FEATURES_LOGGER = "core.services.scheduler.run.optimizer.graph.v2_features"
 
 
 class _Clock:

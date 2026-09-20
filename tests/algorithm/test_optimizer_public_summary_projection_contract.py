@@ -7,7 +7,7 @@ from datetime import datetime
 from types import SimpleNamespace
 
 from core.algorithms.evaluation import ScheduleMetrics
-from core.services.scheduler.run.optimizer_search_state import compact_attempts
+from core.services.scheduler.run.optimizer.search_state import compact_attempts
 from core.services.scheduler.summary.optimizer_public_summary import (
     project_public_algo_summary,
     project_public_result_summary,

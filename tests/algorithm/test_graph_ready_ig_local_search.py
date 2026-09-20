@@ -4,15 +4,12 @@ from types import SimpleNamespace
 
 import pytest
 
-from core.services.scheduler.run.optimizer_graph_ready_iterated_greedy_contract import _BudgetExhausted
-from core.services.scheduler.run.optimizer_graph_ready_iterated_greedy_local import (
-    LOCAL_BUDGET_REASON,
-    NeighborhoodBudget,
-)
-from core.services.scheduler.run.optimizer_graph_ready_iterated_greedy_neighborhoods import build_generators
-from core.services.scheduler.run.optimizer_graph_ready_iterated_greedy_run import IteratedGreedyRun
-from core.services.scheduler.run.optimizer_graph_ready_iterated_greedy_screen import InsertionScreen
-from core.services.scheduler.run.optimizer_graph_ready_iterated_greedy_tail import trial_request
+from core.services.scheduler.run.optimizer.graph.iterated_greedy_contract import _BudgetExhausted
+from core.services.scheduler.run.optimizer.graph.iterated_greedy_local import LOCAL_BUDGET_REASON, NeighborhoodBudget
+from core.services.scheduler.run.optimizer.graph.iterated_greedy_neighborhoods import build_generators
+from core.services.scheduler.run.optimizer.graph.iterated_greedy_run import IteratedGreedyRun
+from core.services.scheduler.run.optimizer.graph.iterated_greedy_screen import InsertionScreen
+from core.services.scheduler.run.optimizer.graph.iterated_greedy_tail import trial_request
 
 
 def test_screen_prioritizes_an_urgent_short_job_without_publishing_its_estimate():

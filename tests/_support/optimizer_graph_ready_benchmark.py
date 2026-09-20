@@ -13,8 +13,8 @@ from core.models.schedule_config_runtime import default_snapshot_values
 from core.services.scheduler.graph.metrics import build_node_metrics
 from core.services.scheduler.graph.precedence_builder import build_precedence_graph
 from core.services.scheduler.graph.types import OperationGraphNode
-from core.services.scheduler.run.optimizer_graph_ready import run_graph_ready_candidates
-from core.services.scheduler.run.optimizer_search_report import OptimizationSearchReportState
+from core.services.scheduler.run.optimizer.graph.ready import run_graph_ready_candidates
+from core.services.scheduler.run.optimizer.search_report import OptimizationSearchReportState
 
 GRAPH_READY_REAL_SGS_CASE_SLUG = "graph-ready-weight-grid-real-sgs"
 GRAPH_READY_REAL_SGS_CASE_GROUP = "graph_ready"

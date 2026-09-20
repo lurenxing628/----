@@ -6,13 +6,13 @@ from dataclasses import replace
 import pytest
 
 from core.errors import ValidationError
-from core.services.scheduler.run.optimizer_graph_ready_iterated_greedy import _BudgetExhausted, admit_parent_decode
-from core.services.scheduler.run.optimizer_graph_ready_iterated_greedy_contract import (
+from core.services.scheduler.run.optimizer.graph.iterated_greedy import _BudgetExhausted, admit_parent_decode
+from core.services.scheduler.run.optimizer.graph.iterated_greedy_contract import (
     IteratedGreedyLimits,
     iterated_greedy_public_message,
     new_iterated_greedy_report,
 )
-from core.services.scheduler.run.optimizer_graph_ready_iterated_greedy_incumbent import incumbent_events
+from core.services.scheduler.run.optimizer.graph.iterated_greedy_incumbent import incumbent_events
 from tests._support.optimizer_graph_ready_benchmark import BASE_BATCH_ORDER
 from tests._support.optimizer_graph_ready_ig_harness import IGHarness
 
@@ -30,7 +30,7 @@ def test_start_capture_reproducing_the_parent_is_a_reference_capture_not_a_rejec
 
 
 def test_divergent_capture_is_counted_apart_and_marks_the_parent_order_inconsistent(monkeypatch):
-    from core.services.scheduler.run import optimizer_graph_ready_iterated_greedy_moves as moves
+    from core.services.scheduler.run.optimizer.graph import iterated_greedy_moves as moves
 
     harness = IGHarness()
     # A parent order that is not the parent's own (its decoded start-time order): its capture yields another schedule.

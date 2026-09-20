@@ -15,7 +15,7 @@ from core.services.scheduler.contracts.schedule_summary_types import (
     SummaryBuildContext,
 )
 from core.services.scheduler.run.auto_assign_resource_errors import auto_assign_failed_op_ids_from_errors
-from core.services.scheduler.run.optimizer_search_state import compact_attempts
+from core.services.scheduler.run.optimizer.search_state import compact_attempts
 from core.services.scheduler.run.schedule_persistence_errors import missing_internal_resource_samples
 
 from .due_risk_items import NEAR_DUE_WINDOW_DAYS, incomplete_batches_payload

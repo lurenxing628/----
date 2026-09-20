@@ -16,11 +16,11 @@ import pytest
 
 from core.algorithms.sort_strategies import SortStrategy
 from core.errors import ValidationError
-from core.services.scheduler.run import optimizer_local_search
-from core.services.scheduler.run.optimizer_local_search import run_local_search
-from core.services.scheduler.run.optimizer_local_search_limits import LocalSearchLimits
-from core.services.scheduler.run.optimizer_runtime import OptimizerRuntime
-from core.services.scheduler.run.optimizer_search_report import OptimizationSearchReportState
+from core.services.scheduler.run.optimizer import local_search as optimizer_local_search
+from core.services.scheduler.run.optimizer.local_search import run_local_search
+from core.services.scheduler.run.optimizer.local_search_limits import LocalSearchLimits
+from core.services.scheduler.run.optimizer.runtime import OptimizerRuntime
+from core.services.scheduler.run.optimizer.search_report import OptimizationSearchReportState
 from core.services.scheduler.run.schedule_candidate_persistence_models import operation_log_algo_summary
 from core.services.scheduler.run.schedule_optimizer import optimize_schedule
 from core.services.scheduler.run.schedule_optimizer_steps import _run_multi_start, _run_ortools_warmstart

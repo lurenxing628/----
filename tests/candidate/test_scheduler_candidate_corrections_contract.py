@@ -12,7 +12,7 @@ import pytest
 
 from core.errors import ValidationError
 from core.services.scheduler.run import schedule_orchestrator as orchestrator
-from core.services.scheduler.run.optimizer_search_budget import CandidateBudgetFeedback
+from core.services.scheduler.run.optimizer.search_budget import CandidateBudgetFeedback
 from core.services.scheduler.run.schedule_candidate_dedup import (
     CERTIFIED,
     UNCERTIFIED_PREFIX,

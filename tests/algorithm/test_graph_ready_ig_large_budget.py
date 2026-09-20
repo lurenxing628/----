@@ -4,11 +4,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from core.services.scheduler.run.optimizer_graph_ready_iterated_greedy import _BudgetExhausted, _IteratedGreedySearch
-from core.services.scheduler.run.optimizer_graph_ready_iterated_greedy_large import (
-    LargeIteratedGreedySearch,
-    search_type_for,
-)
+from core.services.scheduler.run.optimizer.graph.iterated_greedy import _BudgetExhausted, _IteratedGreedySearch
+from core.services.scheduler.run.optimizer.graph.iterated_greedy_large import LargeIteratedGreedySearch, search_type_for
 
 
 def _search(*, now=7.8, deadline=10.0, fraction=0.75, samples=((1.0, 2.8),)):

@@ -7,10 +7,10 @@ from typing import cast
 import pytest
 
 from core.errors import ValidationError
-from core.services.scheduler.run import optimizer_graph_ready_profile_selection as selection
-from core.services.scheduler.run import optimizer_graph_ready_repair as repair
-from core.services.scheduler.run import optimizer_graph_ready_repair_decisions as decisions
-from core.services.scheduler.run.optimizer_graph_ready_repair_contract import EliteRepairLimits, new_repair_report
+from core.services.scheduler.run.optimizer.graph import profile_selection as selection
+from core.services.scheduler.run.optimizer.graph import repair
+from core.services.scheduler.run.optimizer.graph import repair_decisions as decisions
+from core.services.scheduler.run.optimizer.graph.repair_contract import EliteRepairLimits, new_repair_report
 from tests._support.optimizer_graph_ready_repair_benchmark import run_production_repair_case
 
 

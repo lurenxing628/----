@@ -4,15 +4,15 @@ from unittest.mock import Mock
 
 import pytest
 
-from core.services.scheduler.run import optimizer_local_search_round as local_round
-from core.services.scheduler.run.optimizer_deadline_guard import (
+from core.services.scheduler.run.optimizer import local_search_round as local_round
+from core.services.scheduler.run.optimizer.deadline_guard import (
     can_afford_decode,
     guard_decoder,
     observed_decode_seconds,
 )
-from core.services.scheduler.run.optimizer_grasp_ig_candidates import _deadline_reached
-from core.services.scheduler.run.optimizer_local_search import _local_search_stop_reason
-from core.services.scheduler.run.optimizer_search_budget import SearchBudgetExhausted
+from core.services.scheduler.run.optimizer.grasp_ig_candidates import _deadline_reached
+from core.services.scheduler.run.optimizer.local_search import _local_search_stop_reason
+from core.services.scheduler.run.optimizer.search_budget import SearchBudgetExhausted
 from tests.algorithm import test_optimizer_vns_sa_local_search_contract as local_cases
 
 

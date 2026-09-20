@@ -17,14 +17,14 @@ from typing import Any, Dict, List
 import pytest
 
 from core.algorithms.sort_strategies import SortStrategy
-from core.services.scheduler.run.optimizer_candidate_profile import (
+from core.services.scheduler.run.optimizer.candidate_profile import (
     ITERATION_CEILING,
     ITERATION_FLOOR,
     RESTART_CEILING,
     RESTART_FLOOR,
 )
-from core.services.scheduler.run.optimizer_local_search import run_local_search
-from core.services.scheduler.run.optimizer_local_search_limits import (
+from core.services.scheduler.run.optimizer.local_search import run_local_search
+from core.services.scheduler.run.optimizer.local_search_limits import (
     LIMIT_SOURCE_DECODE_COST_UNKNOWN,
     LIMIT_SOURCE_MEASURED_DECODE_COST,
     LIMIT_SOURCE_NO_FINITE_DEADLINE,
@@ -35,10 +35,10 @@ from core.services.scheduler.run.optimizer_local_search_limits import (
     derive_local_search_limits,
     local_search_stop_reason,
 )
-from core.services.scheduler.run.optimizer_local_search_round import _record_improvement
-from core.services.scheduler.run.optimizer_neighborhood_moves import CRITICAL_CHAIN, NeighborhoodMove
-from core.services.scheduler.run.optimizer_search_report import OptimizationSearchReportState
-from core.services.scheduler.run.optimizer_search_state import compact_attempts, init_seen_hashes
+from core.services.scheduler.run.optimizer.local_search_round import _record_improvement
+from core.services.scheduler.run.optimizer.neighborhood_moves import CRITICAL_CHAIN, NeighborhoodMove
+from core.services.scheduler.run.optimizer.search_report import OptimizationSearchReportState
+from core.services.scheduler.run.optimizer.search_state import compact_attempts, init_seen_hashes
 from tests.algorithm.test_optimizer_grasp_ig_candidate_construction_contract import _recording_schedule, _run_phase
 from tests.algorithm.test_optimizer_vns_sa_local_search_contract import (
     _candidate,

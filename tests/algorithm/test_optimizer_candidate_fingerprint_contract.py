@@ -12,13 +12,13 @@ import pytest
 from core.algorithms.evaluation import ScheduleMetrics, objective_score
 from core.algorithms.types import ScheduleResult, ScheduleSummary
 from core.errors import ValidationError
-from core.services.scheduler.run.optimizer_candidate_fingerprint import (
+from core.services.scheduler.run.optimizer.candidate_fingerprint import (
     DISTINCT_FINGERPRINT_DESCRIPTION,
     DISTINCT_FINGERPRINT_SCOPE,
     OUTPUT_FINGERPRINT_SCOPE,
     build_candidate_fingerprint,
 )
-from core.services.scheduler.run.optimizer_search_report import OptimizationSearchReportState
+from core.services.scheduler.run.optimizer.search_report import OptimizationSearchReportState
 from core.services.scheduler.run.schedule_candidate_persistence_models import operation_log_algo_summary
 from core.services.scheduler.summary.optimizer_public_search_report import project_search_report
 from core.services.scheduler.summary.summary_size_guard_fields import minimal_summary_for_size_guard

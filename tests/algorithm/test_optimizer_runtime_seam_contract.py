@@ -6,7 +6,7 @@ from datetime import datetime
 from types import SimpleNamespace
 from typing import Any, Dict
 
-from core.services.scheduler.run.optimizer_runtime import OptimizerRuntime
+from core.services.scheduler.run.optimizer.runtime import OptimizerRuntime
 from core.services.scheduler.run.schedule_optimizer import optimize_schedule
 
 

@@ -5,10 +5,10 @@ from unittest.mock import Mock
 
 import pytest
 
-from core.services.scheduler.run.optimizer_deadline_guard import prefer_ig_startup
-from core.services.scheduler.run.optimizer_graph_ready_budget import GraphReadySearchBudget
-from core.services.scheduler.run.optimizer_graph_ready_predecode import GraphReadyProfileSearch
-from core.services.scheduler.run.optimizer_graph_ready_repair_contract import resolve_elite_repair_limits
+from core.services.scheduler.run.optimizer.deadline_guard import prefer_ig_startup
+from core.services.scheduler.run.optimizer.graph.budget import GraphReadySearchBudget
+from core.services.scheduler.run.optimizer.graph.predecode import GraphReadyProfileSearch
+from core.services.scheduler.run.optimizer.graph.repair_contract import resolve_elite_repair_limits
 
 
 def test_profile_constructs_its_decision_but_skips_an_unaffordable_new_decode():
@@ -66,8 +66,8 @@ def test_costly_incumbent_gets_ig_before_another_profile_in_the_real_stage_runne
 
 
 def test_seed_construction_cannot_spend_the_remaining_formal_decode_budget(monkeypatch):
-    from core.services.scheduler.run import optimizer_graph_ready_iterated_greedy_seed as seed_module
-    from core.services.scheduler.run.optimizer_graph_ready_iterated_greedy_start import _due_date_reference
+    from core.services.scheduler.run.optimizer.graph import iterated_greedy_seed as seed_module
+    from core.services.scheduler.run.optimizer.graph.iterated_greedy_start import _due_date_reference
 
     builder = Mock(return_value={"order": None, "construction_stop": "time_budget"})
     monkeypatch.setattr(seed_module, "build_due_date_seed", builder)

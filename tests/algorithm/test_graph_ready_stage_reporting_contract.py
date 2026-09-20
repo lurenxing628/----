@@ -3,15 +3,15 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from core.services.scheduler.run.optimizer_graph_ready_feature_basis import (
+from core.services.scheduler.run.optimizer.graph.predecode import GraphReadyProfileSearch
+from core.services.scheduler.run.optimizer.graph.repair_neighbors import RepairNeighborhood
+from core.services.scheduler.run.optimizer.graph.repair_portfolio import ParentRepairPortfolio, RepairPortfolio
+from core.services.scheduler.run.optimizer.graph.stages import PROFILE_STAGNATION_REPEATED_OUTPUTS, ProfileStage
+from core.services.scheduler.run.optimizer.graph_ready_feature_basis import (
     BATCH_WORKLOAD_BASIS,
     SUCCESSOR_WORKLOAD_BASIS,
 )
-from core.services.scheduler.run.optimizer_graph_ready_predecode import GraphReadyProfileSearch
-from core.services.scheduler.run.optimizer_graph_ready_profiles import GRAPH_READY_PHASE, GraphReadyWeightProfile
-from core.services.scheduler.run.optimizer_graph_ready_repair_neighbors import RepairNeighborhood
-from core.services.scheduler.run.optimizer_graph_ready_repair_portfolio import ParentRepairPortfolio, RepairPortfolio
-from core.services.scheduler.run.optimizer_graph_ready_stages import PROFILE_STAGNATION_REPEATED_OUTPUTS, ProfileStage
+from core.services.scheduler.run.optimizer.graph_ready_profiles import GRAPH_READY_PHASE, GraphReadyWeightProfile
 
 
 def _profile(basis):

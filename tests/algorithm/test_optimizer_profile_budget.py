@@ -3,10 +3,10 @@ from __future__ import annotations
 
 import pytest
 
-from core.services.scheduler.run.optimizer_graph_ready_budget import GraphReadySearchBudget
-from core.services.scheduler.run.optimizer_graph_ready_profiles import graph_ready_v2_profiles
-from core.services.scheduler.run.optimizer_graph_ready_repair_contract import EliteRepairLimits
-from core.services.scheduler.run.optimizer_graph_ready_stage_scheduler import ROTATION_POLICY
+from core.services.scheduler.run.optimizer.graph.budget import GraphReadySearchBudget
+from core.services.scheduler.run.optimizer.graph.repair_contract import EliteRepairLimits
+from core.services.scheduler.run.optimizer.graph.stage_scheduler import ROTATION_POLICY
+from core.services.scheduler.run.optimizer.graph_ready_profiles import graph_ready_v2_profiles
 from tests._support.optimizer_graph_ready_benchmark import _schedule_with_scheduler
 from tests._support.optimizer_graph_ready_repair_benchmark import run_production_repair_case
 
@@ -71,7 +71,7 @@ def test_rotation_reaches_available_stages_before_short_real_sgs_deadline():
 
 
 def test_profile_construction_crossing_deadline_never_starts_sgs(monkeypatch):
-    from core.services.scheduler.run import optimizer_graph_ready_candidates as candidates
+    from core.services.scheduler.run.optimizer.graph import candidates
     now = [0.0]
     original = candidates.context_for_profile
 
@@ -143,7 +143,7 @@ def test_profile_diagnostics_count_conservation_and_shared_paths(cap):
 
 def test_construction_validation_is_not_counted_as_a_decode(monkeypatch):
     from core.errors import ValidationError
-    from core.services.scheduler.run import optimizer_graph_ready_candidates as candidates
+    from core.services.scheduler.run.optimizer.graph import candidates
     original = candidates.context_for_profile
 
     def context(**kwargs):

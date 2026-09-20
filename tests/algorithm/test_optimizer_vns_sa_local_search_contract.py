@@ -11,25 +11,25 @@ from core.algorithms import GreedyScheduler
 from core.algorithms.evaluation import ScheduleMetrics, compute_metrics, objective_score
 from core.algorithms.sort_strategies import SortStrategy
 from core.algorithms.types import ScheduleResult, ScheduleSummary
-from core.services.scheduler.run.optimizer_acceptance import decide_acceptance
-from core.services.scheduler.run.optimizer_candidate_fingerprint import build_candidate_fingerprint
-from core.services.scheduler.run.optimizer_local_search import run_local_search
-from core.services.scheduler.run.optimizer_local_search_state import LocalSearchState, candidate_can_update_best
-from core.services.scheduler.run.optimizer_neighborhood_moves import (
+from core.services.scheduler.run.optimizer.acceptance import decide_acceptance
+from core.services.scheduler.run.optimizer.candidate_fingerprint import build_candidate_fingerprint
+from core.services.scheduler.run.optimizer.local_search import run_local_search
+from core.services.scheduler.run.optimizer.local_search_state import LocalSearchState, candidate_can_update_best
+from core.services.scheduler.run.optimizer.neighborhood_moves import (
     BUSINESS_NEIGHBORHOODS,
     CRITICAL_CHAIN,
     SGS_DISPATCH_RULE,
     TARDY_WINDOW,
 )
-from core.services.scheduler.run.optimizer_proof_cases import TinyBatchSpec, TinyBenchmarkCase, TinyOperationSpec
-from core.services.scheduler.run.optimizer_proof_oracle import (
+from core.services.scheduler.run.optimizer.proof_cases import TinyBatchSpec, TinyBenchmarkCase, TinyOperationSpec
+from core.services.scheduler.run.optimizer.proof_oracle import (
     _ContinuousCalendar,
     _default_config,
     _operation_object,
     batch_objects,
 )
-from core.services.scheduler.run.optimizer_search_report import OptimizationSearchReportState
-from core.services.scheduler.run.optimizer_vns import VnsState
+from core.services.scheduler.run.optimizer.search_report import OptimizationSearchReportState
+from core.services.scheduler.run.optimizer.vns import VnsState
 from core.services.scheduler.summary.optimizer_public_search_report import project_search_report
 from tests._support.optimizer_benchmark_grading import smtwt_overdue_case
 from tests._support.optimizer_benchmark_loaders import load_smtwt_instances

@@ -406,6 +406,9 @@ def test_web_layer_uses_config_facade_instead_of_config_leaves() -> None:
     violations: List[str] = []
     for path in sorted((REPO_ROOT / "web").rglob("*.py")):
         rel = path.relative_to(REPO_ROOT).as_posix()
+        if rel == "web/bootstrap/_frozen_import_anchor.py":
+            # PyInstaller 冻结锚是包懒导出的静态镜像，必须直接 import 叶子模块；它不是 web 层的业务调用方。
+            continue
         for imported in sorted(_module_imports(path)):
             if imported.startswith("core.services.scheduler.config.config_"):
                 violations.append(f"{rel}:{imported}")

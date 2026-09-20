@@ -9,20 +9,20 @@ import pytest
 from core.algorithms import SortStrategy
 from core.algorithms.evaluation import objective_score
 from core.errors import ValidationError
-from core.services.scheduler.run.optimizer_graph_ready_candidates import (
+from core.services.scheduler.run.optimizer.graph.candidates import (
     build_v2_common_rank_cache,
     context_for_profile,
     evaluate_graph_ready_candidate,
 )
-from core.services.scheduler.run.optimizer_graph_ready_feature_basis import (
+from core.services.scheduler.run.optimizer.graph.profile_selection import resolve_graph_ready_profiles_and_metrics
+from core.services.scheduler.run.optimizer.graph.v2_features import enrich_graph_ready_v2_metrics
+from core.services.scheduler.run.optimizer.graph_ready_feature_basis import (
     BASELINE_ORDERING_FIELD,
     BATCH_WORKLOAD_BASIS,
     SUCCESSOR_WORKLOAD_BASIS,
     select_profile_metrics,
 )
-from core.services.scheduler.run.optimizer_graph_ready_profile_selection import resolve_graph_ready_profiles_and_metrics
-from core.services.scheduler.run.optimizer_graph_ready_profiles import graph_ready_v2_profiles
-from core.services.scheduler.run.optimizer_graph_ready_v2_features import enrich_graph_ready_v2_metrics
+from core.services.scheduler.run.optimizer.graph_ready_profiles import graph_ready_v2_profiles
 from tests._support.optimizer_graph_ready_benchmark import (
     ContinuousCalendar,
     _operation,
@@ -308,8 +308,8 @@ def test_established_edd_parent_still_generates_recorded_tardy_boundary_decision
     from time import perf_counter
 
     from core.algorithms import GreedyScheduler
-    from core.services.scheduler.run.optimizer_graph_ready_profiles import GRAPH_READY_V2_REPAIRED_ORIGIN
-    from core.services.scheduler.run.optimizer_graph_ready_repair_neighbors import build_repair_neighborhood
+    from core.services.scheduler.run.optimizer.graph.repair_neighbors import build_repair_neighborhood
+    from core.services.scheduler.run.optimizer.graph_ready_profiles import GRAPH_READY_V2_REPAIRED_ORIGIN
     from tests._support.optimizer_end_to_end_cases import case_environment, fixture_data
     from tests._support.optimizer_quality_matrix_cases import graph_context
 

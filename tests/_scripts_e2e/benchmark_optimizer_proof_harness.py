@@ -23,7 +23,7 @@ REPO_ROOT = find_repo_root()
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from core.services.scheduler.run.optimizer_proof_harness import (  # noqa: E402
+from core.services.scheduler.run.optimizer.proof_harness import (
     render_optimizer_proof_report,
     run_optimizer_proof_harness,
 )

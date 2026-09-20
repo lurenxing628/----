@@ -30,7 +30,7 @@ from typing import Any, Dict
 
 from core.algorithms.evaluation import compute_metrics
 from core.errors import ValidationError
-from core.services.scheduler.run.optimizer_proof_harness import (
+from core.services.scheduler.run.optimizer.proof_harness import (
     TinyBatchSpec,
     TinyBenchmarkCase,
     TinyOperationSpec,

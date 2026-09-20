@@ -6,8 +6,8 @@ import math
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from core.algorithms import GreedyScheduler
-from core.services.scheduler.run.optimizer_proof_oracle import _ContinuousCalendar, _default_config
-from core.services.scheduler.run.optimizer_search_report import OptimizationSearchReportState
+from core.services.scheduler.run.optimizer.proof_oracle import _ContinuousCalendar, _default_config
+from core.services.scheduler.run.optimizer.search_report import OptimizationSearchReportState
 from tests._support.optimizer_compare_algorithms_provenance import COMPARE_SCHEMA_VERSION
 
 SMTWT_COMPARE_SCHEMA_VERSION = COMPARE_SCHEMA_VERSION

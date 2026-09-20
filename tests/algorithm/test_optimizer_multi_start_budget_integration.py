@@ -3,8 +3,8 @@
 import pytest
 
 from core.algorithm_contracts.dispatch_rules import dispatch_rule_search_pool
-from core.services.scheduler.run import optimizer_multi_start as multi
-from core.services.scheduler.run.optimizer_search_report import OptimizationSearchReportState
+from core.services.scheduler.run.optimizer import multi_start as multi
+from core.services.scheduler.run.optimizer.search_report import OptimizationSearchReportState
 from tests.algorithm.test_optimizer_multi_start_decision_dedup import _fingerprint, _inputs, _order
 
 # Four sort strategies times the SGS rule pool: registry rules plus the ATC k ladder. The graph

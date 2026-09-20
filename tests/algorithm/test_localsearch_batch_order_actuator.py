@@ -22,12 +22,8 @@ from typing import Dict, List, Tuple
 from core.algorithms import GreedyScheduler
 from core.algorithms.evaluation import compute_metrics, objective_score
 from core.algorithms.sort_strategies import SortStrategy
-from core.services.scheduler.run.optimizer_proof_cases import (
-    TinyBatchSpec,
-    TinyBenchmarkCase,
-    TinyOperationSpec,
-)
-from core.services.scheduler.run.optimizer_proof_oracle import (
+from core.services.scheduler.run.optimizer.proof_cases import TinyBatchSpec, TinyBenchmarkCase, TinyOperationSpec
+from core.services.scheduler.run.optimizer.proof_oracle import (
     _ContinuousCalendar,
     _default_config,
     _operation_object,

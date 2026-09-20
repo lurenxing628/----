@@ -6,8 +6,8 @@ from typing import Any, Dict, List, Sequence
 
 from core.algorithms import SortStrategy
 from core.algorithms.greedy.algo_stats import snapshot_algo_stats
-from core.services.scheduler.run.optimizer_graph_ready import run_graph_ready_candidates
-from core.services.scheduler.run.optimizer_graph_ready_profiles import GRAPH_READY_V2_REPAIRED_ORIGIN
+from core.services.scheduler.run.optimizer.graph.ready import run_graph_ready_candidates
+from core.services.scheduler.run.optimizer.graph_ready_profiles import GRAPH_READY_V2_REPAIRED_ORIGIN
 from tests._support.optimizer_smtwt_compare_common import (
     SMTWT_OBJECTIVE_NAME,
     make_report_state,

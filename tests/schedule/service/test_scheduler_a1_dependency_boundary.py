@@ -149,5 +149,6 @@ def test_a1_hard_directory_scc_is_absent() -> None:
     )
     report = json.loads(completed.stdout)
     cycles = [set(item["members"]) for item in report["hard_dir_cycles"]]
-    remaining = [members for members in cycles if members & _A1_MEMBERS]
+    remaining = [members for members in cycles
+                 if any(name == owner or name.startswith(owner + "/") for name in members for owner in _A1_MEMBERS)]
     assert not remaining, remaining

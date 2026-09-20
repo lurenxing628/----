@@ -17,7 +17,7 @@ from core.errors import ValidationError
 from core.services.scheduler.calendar_engine import NATIVE_TIMING_METHODS, CalendarEngine
 from core.services.scheduler.calendar_service import CalendarService
 from core.services.scheduler.calendar_working_hours import MAX_SPAN_DAYS
-from core.services.scheduler.run.optimizer_proof_oracle import _ContinuousCalendar
+from core.services.scheduler.run.optimizer.proof_oracle import _ContinuousCalendar
 from core.services.scheduler.run.schedule_execution_reservations import ExecutionResourceCalendar
 
 FRI_16 = datetime(2026, 1, 9, 16, 0)   # Friday

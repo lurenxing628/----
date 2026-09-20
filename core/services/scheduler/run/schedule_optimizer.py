@@ -11,32 +11,31 @@ from core.algorithms import GreedyScheduler, ScheduleResult, SortStrategy, Strat
 from core.algorithms.greedy.algo_stats import merge_algo_stats
 from core.errors import ValidationError
 
-from .optimizer_candidate_phases import run_heuristic_candidate_phases
-from .optimizer_candidate_profile import build_candidate_profile
-from .optimizer_config import ensure_optimizer_config_snapshot, is_ortools_enabled, resolve_optimizer_config
-from .optimizer_graph_ready import run_graph_ready_candidates as _run_graph_ready_candidates_impl
-from .optimizer_grasp_ig_candidates import run_grasp_ig_candidates as _run_grasp_ig_candidates_impl
-from .optimizer_local_search import run_local_search as _run_local_search_impl
-from .optimizer_outcome import OptimizationOutcome, _baseline_outcome, _record_decoder_invocations, _runtime_ms
-from .optimizer_outcome import _baseline_candidate as _baseline_candidate
-from .optimizer_runtime import OptimizerRuntime
-from .optimizer_search_budget import (
+from .optimizer.candidate_phases import run_heuristic_candidate_phases
+from .optimizer.candidate_profile import build_candidate_profile
+from .optimizer.config import ensure_optimizer_config_snapshot, is_ortools_enabled, resolve_optimizer_config
+from .optimizer.graph.ready import run_graph_ready_candidates as _run_graph_ready_candidates_impl
+from .optimizer.grasp_ig_candidates import run_grasp_ig_candidates as _run_grasp_ig_candidates_impl
+from .optimizer.local_search import run_local_search as _run_local_search_impl
+from .optimizer.outcome import (
+    OptimizationOutcome,
+    _baseline_candidate,
+    _baseline_outcome,
+    _record_decoder_invocations,
+    _runtime_ms,
+)
+from .optimizer.runtime import OptimizerRuntime
+from .optimizer.search_budget import (
     OptimizerPhaseBudget,
     ReservedPhaseReport,
     SearchBudget,
     SearchBudgetExhausted,
     publish_search_budget,
 )
-from .optimizer_search_report import OptimizationSearchReportState
-from .optimizer_search_state import (
-    OptimizerSearchState,
-)
-from .optimizer_search_state import (
-    compact_attempts as _compact_attempts,
-)
-from .optimizer_search_state import (
-    score_tuple as _score_tuple,
-)
+from .optimizer.search_report import OptimizationSearchReportState
+from .optimizer.search_state import OptimizerSearchState
+from .optimizer.search_state import compact_attempts as _compact_attempts
+from .optimizer.search_state import score_tuple as _score_tuple
 from .schedule_optimizer_steps import (
     _run_multi_start,
     _run_ortools_warmstart,

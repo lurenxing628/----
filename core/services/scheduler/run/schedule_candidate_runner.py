@@ -7,7 +7,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from core.services.scheduler.config.config_snapshot import ensure_schedule_config_snapshot
 
-from .optimizer_search_budget import (
+from .optimizer.search_budget import (
     CandidateBudgetFeedback,
     SearchBudget,
     SearchBudgetExhausted,

@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 
 from core.errors import ValidationError
-from core.services.scheduler.run.optimizer_proof_harness import (
+from core.services.scheduler.run.optimizer.proof_harness import (
     FORBIDDEN_PUBLIC_TOKENS,
     REFERENCE_FOLDED_NOT_COMPARABLE,
     REFERENCE_PROVEN_OPTIMUM,

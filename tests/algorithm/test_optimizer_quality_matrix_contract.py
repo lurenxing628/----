@@ -10,7 +10,7 @@ from unittest.mock import patch
 import pytest
 
 from core.algorithms.evaluation import compute_metrics, objective_score
-from core.services.scheduler.run import optimizer_graph_ready as production_graph
+from core.services.scheduler.run.optimizer.graph import ready as production_graph
 from tests._scripts_e2e.benchmark_optimizer_quality_matrix import main
 from tests._support.optimizer_quality_matrix import DEFAULT_RUN_CONFIG, build_quality_matrix, run_case
 from tests._support.optimizer_quality_matrix_cases import (

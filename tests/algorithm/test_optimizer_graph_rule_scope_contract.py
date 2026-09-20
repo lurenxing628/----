@@ -18,15 +18,15 @@ import pytest
 
 from core.algorithm_contracts.dispatch_rules import dispatch_rule_search_pool
 from core.algorithms.sort_strategies import SortStrategy
-from core.services.scheduler.run import optimizer_multi_start as multi
-from core.services.scheduler.run.optimizer_candidate_phases import (
+from core.services.scheduler.run.optimizer import multi_start as multi
+from core.services.scheduler.run.optimizer.candidate_phases import (
     graph_phase_dispatch_rule,
     run_heuristic_candidate_phases,
 )
-from core.services.scheduler.run.optimizer_grasp_ig_specs import build_grasp_ig_candidate_specs
-from core.services.scheduler.run.optimizer_runtime import OptimizerRuntime
-from core.services.scheduler.run.optimizer_search_report import OptimizationSearchReportState
-from core.services.scheduler.run.optimizer_search_state import OptimizerSearchState
+from core.services.scheduler.run.optimizer.grasp_ig_specs import build_grasp_ig_candidate_specs
+from core.services.scheduler.run.optimizer.runtime import OptimizerRuntime
+from core.services.scheduler.run.optimizer.search_report import OptimizationSearchReportState
+from core.services.scheduler.run.optimizer.search_state import OptimizerSearchState
 from core.services.scheduler.run.schedule_optimizer import _adopted_dispatch_rule
 from tests.algorithm.test_optimizer_multi_start_budget_integration import KEYS, REGISTRY, _run
 from tests.algorithm.test_optimizer_multi_start_decision_dedup import _inputs

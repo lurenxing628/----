@@ -5,8 +5,8 @@ from time import perf_counter
 from typing import Any, Dict
 
 from core.algorithms import SortStrategy
-from core.services.scheduler.run.optimizer_graph_ready import run_graph_ready_candidates
-from core.services.scheduler.run.optimizer_search_report import OptimizationSearchReportState
+from core.services.scheduler.run.optimizer.graph.ready import run_graph_ready_candidates
+from core.services.scheduler.run.optimizer.search_report import OptimizationSearchReportState
 from tests._support.optimizer_graph_ready_benchmark import (
     BASE_BATCH_ORDER,
     OBJECTIVE_NAME,

@@ -13,8 +13,8 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from core.algorithms.objective_specs import objective_metric_keys
-from core.services.scheduler.run.optimizer_proof_contracts import assert_public_payload_safe
-from core.services.scheduler.run.optimizer_proof_harness import run_optimizer_proof_harness
+from core.services.scheduler.run.optimizer.proof_contracts import assert_public_payload_safe
+from core.services.scheduler.run.optimizer.proof_harness import run_optimizer_proof_harness
 
 REFERENCE_DIAGNOSTICS_SCHEMA_VERSION = 1
 DEFAULT_REFERENCE_DIAGNOSTICS_OUTPUT = Path("evidence/QualityGate/long_gate/optimizer_benchmark/reference_diagnostics.json")

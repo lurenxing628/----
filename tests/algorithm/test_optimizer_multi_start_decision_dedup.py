@@ -19,9 +19,9 @@ from core.models.batch import Batch
 from core.services.scheduler.calendar_service import CalendarService
 from core.services.scheduler.config.config_field_spec import default_snapshot_values
 from core.services.scheduler.config.config_snapshot import ScheduleConfigSnapshot
-from core.services.scheduler.run.optimizer_candidate_fingerprint import build_candidate_fingerprint
-from core.services.scheduler.run.optimizer_multi_start_dedup import MultiStartDecisionCache
-from core.services.scheduler.run.schedule_input_builder import OpForScheduleAlgo
+from core.services.scheduler.contracts.schedule_input_op import OpForScheduleAlgo
+from core.services.scheduler.run.optimizer.candidate_fingerprint import build_candidate_fingerprint
+from core.services.scheduler.run.optimizer.multi_start_dedup import MultiStartDecisionCache
 
 _START = datetime(2026, 9, 7, 8)
 
@@ -249,7 +249,7 @@ def test_calendar_overrides_before_helper_reload_are_not_certified_native(schema
         "shift": (type(engine.operator_shift_calendar), "apply_policy"),
         "repository": (type(engine.repo), "get"),
     }[target]
-    module = importlib.import_module("core.services.scheduler.run.optimizer_multi_start_dedup")
+    module = importlib.import_module("core.services.scheduler.run.optimizer.multi_start_dedup")
 
     def changed(*args, **kwargs):
         raise RuntimeError("preloaded override")

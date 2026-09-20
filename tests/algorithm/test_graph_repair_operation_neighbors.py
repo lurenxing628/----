@@ -5,8 +5,8 @@ from copy import deepcopy
 from datetime import datetime, timedelta
 from types import SimpleNamespace
 
-from core.services.scheduler.run import optimizer_graph_ready_operation_neighbors as neighbors
-from core.services.scheduler.run.optimizer_graph_ready_operation_neighbors import operation_repair_decisions
+from core.services.scheduler.run.optimizer.graph import operation_neighbors as neighbors
+from core.services.scheduler.run.optimizer.graph.operation_neighbors import operation_repair_decisions
 
 START = datetime(2026, 9, 12, 8)
 

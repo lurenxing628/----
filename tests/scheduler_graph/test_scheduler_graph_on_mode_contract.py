@@ -12,7 +12,7 @@ import pytest
 from core.algorithms import GreedyScheduler, ScheduleResult, SortStrategy
 from core.errors import ValidationError
 from core.services.scheduler.config.config_snapshot import ScheduleConfigSnapshot, ensure_schedule_config_snapshot
-from core.services.scheduler.run.optimizer_runtime import OptimizerRuntime
+from core.services.scheduler.run.optimizer.runtime import OptimizerRuntime
 from core.services.scheduler.run.schedule_graph_report import prepare_schedule_graph_for_dispatch
 from core.services.scheduler.run.schedule_optimizer import OptimizationOutcome, optimize_schedule
 from core.services.scheduler.run.schedule_orchestrator import orchestrate_schedule_run

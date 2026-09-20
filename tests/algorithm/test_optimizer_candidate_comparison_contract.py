@@ -6,10 +6,7 @@
 
 from __future__ import annotations
 
-from core.services.scheduler.run.optimizer_candidate_comparison import (
-    candidate_is_preferred,
-    candidate_runtime_ms,
-)
+from core.services.scheduler.run.optimizer.candidate_comparison import candidate_is_preferred, candidate_runtime_ms
 
 
 def test_candidate_runtime_ms_treats_none_as_unknown_not_zero() -> None:

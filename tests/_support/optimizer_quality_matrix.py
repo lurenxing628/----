@@ -9,8 +9,8 @@ from types import SimpleNamespace
 
 from core.algorithms import GreedyScheduler, SortStrategy
 from core.algorithms.evaluation import compute_metrics, objective_score
-from core.services.scheduler.run.optimizer_graph_ready import run_graph_ready_candidates
-from core.services.scheduler.run.optimizer_search_report import OptimizationSearchReportState
+from core.services.scheduler.run.optimizer.graph.ready import run_graph_ready_candidates
+from core.services.scheduler.run.optimizer.search_report import OptimizationSearchReportState
 from tests._support.optimizer_quality_matrix_cases import (
     OBJECTIVES,
     REPO_ROOT,

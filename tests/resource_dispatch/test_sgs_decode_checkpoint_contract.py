@@ -353,7 +353,7 @@ def test_execution_release_floors_are_bound_along_with_the_underlying_calendar(c
 
 
 def test_declared_continuous_calendar_requires_unchanged_methods_and_empty_state(monkeypatch):
-    from core.services.scheduler.run.optimizer_proof_oracle import _ContinuousCalendar
+    from core.services.scheduler.run.optimizer.proof_oracle import _ContinuousCalendar
     from tests._support.optimizer_graph_ready_benchmark import ContinuousCalendar
 
     for kind in (_ContinuousCalendar, ContinuousCalendar):

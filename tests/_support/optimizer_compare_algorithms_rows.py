@@ -4,7 +4,7 @@ from __future__ import annotations
 import math
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
-from core.services.scheduler.run.optimizer_candidate_fingerprint import build_candidate_fingerprint
+from core.services.scheduler.run.optimizer.candidate_fingerprint import build_candidate_fingerprint
 from tests._support.optimizer_compare_algorithms_provenance import COMPARE_SCHEMA_VERSION
 from tests._support.optimizer_graph_ready_benchmark import OBJECTIVE_NAME, _result_order, _score_list
 

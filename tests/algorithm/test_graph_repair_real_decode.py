@@ -6,11 +6,11 @@ from dataclasses import replace
 from datetime import timedelta
 
 from core.algorithms import ScheduleResult, SortStrategy
-from core.services.scheduler.run.optimizer_candidate_fingerprint import build_candidate_fingerprint
-from core.services.scheduler.run.optimizer_graph_ready_candidates import evaluate_graph_ready_candidate
-from core.services.scheduler.run.optimizer_graph_ready_profiles import graph_ready_v2_profiles
-from core.services.scheduler.run.optimizer_graph_ready_repair_decisions import RepairDecision
-from core.services.scheduler.run.optimizer_graph_ready_v2_features import enrich_graph_ready_v2_metrics
+from core.services.scheduler.run.optimizer.candidate_fingerprint import build_candidate_fingerprint
+from core.services.scheduler.run.optimizer.graph.candidates import evaluate_graph_ready_candidate
+from core.services.scheduler.run.optimizer.graph.repair_decisions import RepairDecision
+from core.services.scheduler.run.optimizer.graph.v2_features import enrich_graph_ready_v2_metrics
+from core.services.scheduler.run.optimizer.graph_ready_profiles import graph_ready_v2_profiles
 from tests._support.optimizer_graph_ready_benchmark import (
     BASE_BATCH_ORDER,
     START_DT,

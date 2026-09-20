@@ -3,7 +3,7 @@ from dataclasses import replace
 
 import pytest
 
-from core.services.scheduler.run.optimizer_graph_ready_iterated_greedy import _BudgetExhausted, _parent_from_candidate
+from core.services.scheduler.run.optimizer.graph.iterated_greedy import _BudgetExhausted, _parent_from_candidate
 from tests.algorithm.test_graph_ready_ig_incumbent_context_contract import _Harness
 
 
@@ -35,7 +35,7 @@ def _pretend_proposal(order):
 
 
 def test_optimistic_model_cannot_replace_a_better_validated_start(monkeypatch):
-    from core.services.scheduler.run import optimizer_graph_ready_iterated_greedy_seed as seed_module
+    from core.services.scheduler.run.optimizer.graph import iterated_greedy_seed as seed_module
 
     harness = _enabled_harness()
     good = harness.candidate((1, 3, 4, 2))
@@ -57,7 +57,7 @@ def test_optimistic_model_cannot_replace_a_better_validated_start(monkeypatch):
 
 
 def test_time_exhausted_during_construction_does_not_publish_its_estimate(monkeypatch):
-    from core.services.scheduler.run import optimizer_graph_ready_iterated_greedy_seed as seed_module
+    from core.services.scheduler.run.optimizer.graph import iterated_greedy_seed as seed_module
 
     harness = _enabled_harness()
 
@@ -75,7 +75,7 @@ def test_time_exhausted_during_construction_does_not_publish_its_estimate(monkey
 
 
 def test_other_objectives_keep_the_existing_pool_start(monkeypatch):
-    from core.services.scheduler.run import optimizer_graph_ready_iterated_greedy_seed as seed_module
+    from core.services.scheduler.run.optimizer.graph import iterated_greedy_seed as seed_module
 
     harness = _enabled_harness()
     harness.report["objective_name"] = "min_tardiness"

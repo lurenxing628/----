@@ -14,12 +14,12 @@ from core.algorithms import GreedyScheduler, SortStrategy
 from core.algorithms.evaluation import compute_metrics, objective_score
 from core.algorithms.evaluation_completion import UNKNOWN_OBJECTIVE_VALUE
 from core.errors import ValidationError
-from core.services.scheduler.run import optimizer_proof_harness as harness
-from core.services.scheduler.run import optimizer_proof_oracle as oracle
 from core.services.scheduler.run import schedule_optimizer_steps as steps
-from core.services.scheduler.run.optimizer_grasp_ig_candidates import _evaluate_candidate
-from core.services.scheduler.run.optimizer_local_search_candidate_eval import evaluate_local_search_candidate
-from core.services.scheduler.run.optimizer_neighborhood_moves import NeighborhoodMove
+from core.services.scheduler.run.optimizer import proof_harness as harness
+from core.services.scheduler.run.optimizer import proof_oracle as oracle
+from core.services.scheduler.run.optimizer.grasp_ig_candidates import _evaluate_candidate
+from core.services.scheduler.run.optimizer.local_search_candidate_eval import evaluate_local_search_candidate
+from core.services.scheduler.run.optimizer.neighborhood_moves import NeighborhoodMove
 
 START = datetime(2026, 1, 1, 8)
 
@@ -130,13 +130,13 @@ def test_candidate_entry_uses_expected_operations_even_if_summary_drops_failures
 def test_every_production_metric_call_supplies_expected_universe_and_real_summary():
     root = Path(__file__).resolve().parents[2] / "core" / "services" / "scheduler" / "run"
     found = []
-    for path in sorted(root.glob("*.py")):
+    for path in sorted(root.rglob("*.py")):
         for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
             if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Name) or node.func.id != "compute_metrics":
                 continue
             names = {kw.arg for kw in node.keywords}
             assert "expected_operations" in names, (path.name, node.lineno)
-            if path.name not in {"optimizer_proof_oracle.py"}:
+            if path.name not in {"proof_oracle.py"}:
                 assert {"seed_results", "failure_details"} <= names, (path.name, node.lineno)
             found.append((path.name, node.lineno))
     assert len(found) == 8

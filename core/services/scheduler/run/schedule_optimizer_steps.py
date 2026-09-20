@@ -9,7 +9,7 @@ from core.algorithms.evaluation import compute_metrics, objective_score
 from core.algorithms.greedy.algo_stats import merge_algo_stats, snapshot_algo_stats
 from core.errors import ValidationError
 
-from .optimizer_config import (
+from .optimizer.config import (
     ensure_optimizer_config_snapshot,
     is_ortools_enabled,
     ortools_time_limit_seconds,
@@ -17,34 +17,24 @@ from .optimizer_config import (
 )
 
 # Preserve the historic step-module import surface after separating phase owners.
-from .optimizer_multi_start import (
-    _dispatch_rules_for_mode as _dispatch_rules_for_mode,
+from .optimizer.multi_start import (
+    _dispatch_rules_for_mode,
+    _evaluate_multi_start_candidate,
+    _get_cached_multi_start_order,
+    _resolve_multi_start_strategy_params,
+    _run_multi_start,
 )
-from .optimizer_multi_start import (
-    _evaluate_multi_start_candidate as _evaluate_multi_start_candidate,
-)
-from .optimizer_multi_start import (
-    _get_cached_multi_start_order as _get_cached_multi_start_order,
-)
-from .optimizer_multi_start import (
-    _resolve_multi_start_strategy_params as _resolve_multi_start_strategy_params,
-)
-from .optimizer_multi_start import (
-    _run_multi_start as _run_multi_start,
-)
-from .optimizer_step_report_hooks import (
+from .optimizer.signature_support import schedule_with_optional_strict_mode as _schedule_with_optional_strict_mode
+from .optimizer.step_report_hooks import (
     _mark_report_deadline_skip,
     _mark_report_phase_skipped,
     _record_ortools_candidate,
     _record_ortools_failure,
     _record_ortools_optional_failure,
 )
-from .schedule_signature_support import (
-    schedule_with_optional_strict_mode as _schedule_with_optional_strict_mode,
-)
 
 if TYPE_CHECKING:
-    from .optimizer_search_report import OptimizationSearchReportState
+    from .optimizer.search_report import OptimizationSearchReportState
 
 
 class SchedulerLike(Protocol):

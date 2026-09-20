@@ -3,9 +3,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from core.services.scheduler.run.optimizer_graph_ready_repair import EliteRepairRun
-from core.services.scheduler.run.optimizer_graph_ready_repair_accounting import RepairWorkAccounting
-from core.services.scheduler.run.optimizer_graph_ready_repair_contract import EliteRepairLimits, new_repair_report
+from core.services.scheduler.run.optimizer.graph.repair import EliteRepairRun
+from core.services.scheduler.run.optimizer.graph.repair_accounting import RepairWorkAccounting
+from core.services.scheduler.run.optimizer.graph.repair_contract import EliteRepairLimits, new_repair_report
 
 
 def _elite(total, consumed=0):

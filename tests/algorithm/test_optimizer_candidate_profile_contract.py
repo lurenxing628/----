@@ -22,15 +22,15 @@ from typing import Any, Dict, Optional
 import pytest
 
 from core.errors import ValidationError
-from core.services.scheduler.run.optimizer_candidate_profile import (
+from core.services.scheduler.run.optimizer.candidate_profile import (
     ITERATION_CEILING,
     ITERATION_FLOOR,
     build_candidate_profile,
     derive_grasp_ig_limits,
     derive_iteration_limits,
 )
-from core.services.scheduler.run.optimizer_neighborhood_moves import BUSINESS_NEIGHBORHOODS
-from core.services.scheduler.run.optimizer_runtime import OptimizerRuntime
+from core.services.scheduler.run.optimizer.neighborhood_moves import BUSINESS_NEIGHBORHOODS
+from core.services.scheduler.run.optimizer.runtime import OptimizerRuntime
 from core.services.scheduler.run.schedule_candidate_persistence_models import operation_log_algo_summary
 from core.services.scheduler.run.schedule_optimizer import optimize_schedule
 from core.services.scheduler.run.schedule_optimizer_steps import _run_multi_start

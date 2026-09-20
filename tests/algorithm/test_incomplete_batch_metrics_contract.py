@@ -16,7 +16,7 @@ from core.algorithms import ScheduleResult
 from core.algorithms.evaluation import ScheduleMetrics, compute_metrics, objective_score
 from core.algorithms.evaluation_completion import UNKNOWN_OBJECTIVE_VALUE
 from core.algorithms.objective_specs import objective_metric_keys
-from core.services.scheduler.run.optimizer_acceptance import decide_acceptance
+from core.services.scheduler.run.optimizer.acceptance import decide_acceptance
 
 OBJECTIVES = ("min_overdue", "min_tardiness", "min_weighted_tardiness", "min_changeover")
 START = datetime(2026, 1, 1, 8)

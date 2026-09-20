@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from core.services.scheduler.run.optimizer_graph_ready_iterated_greedy_seed import build_due_date_seed
+from core.services.scheduler.run.optimizer.graph.iterated_greedy_seed import build_due_date_seed
 
 START = datetime(2026, 1, 1)
 
@@ -95,7 +95,7 @@ def test_large_deferred_count_uses_only_bounded_single_exchanges():
 
 
 def test_single_exchange_uses_the_same_distinct_probe_cap_and_preserves_completed_best(monkeypatch):
-    from core.services.scheduler.run import optimizer_graph_ready_iterated_greedy_seed as module
+    from core.services.scheduler.run.optimizer.graph import iterated_greedy_seed as module
 
     monkeypatch.setattr(module, "_MAX_PROBES", 20)
     result = build_due_date_seed(**_input([1] * 12, [0] * 3 + [100] * 9, order=tuple(range(12, 0, -1))))

@@ -14,9 +14,9 @@ from typing import Any, Dict, List
 
 from core.algorithms.sort_strategies import SortStrategy
 from core.algorithms.types import ScheduleResult, ScheduleSummary
-from core.services.scheduler.run.optimizer_candidate_comparison import candidate_is_preferred
-from core.services.scheduler.run.optimizer_graph_ready_candidates import evaluate_graph_ready_candidate
-from core.services.scheduler.run.optimizer_graph_ready_profiles import (
+from core.services.scheduler.run.optimizer.candidate_comparison import candidate_is_preferred
+from core.services.scheduler.run.optimizer.graph.candidates import evaluate_graph_ready_candidate
+from core.services.scheduler.run.optimizer.graph_ready_profiles import (
     GRAPH_READY_WEIGHT_GRID_ORIGIN,
     GraphReadyWeightProfile,
 )

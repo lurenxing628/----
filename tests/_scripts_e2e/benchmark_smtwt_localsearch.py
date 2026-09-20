@@ -28,7 +28,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from core.algorithms import GreedyScheduler, SortStrategy  # noqa: E402
 from core.algorithms.evaluation import compute_metrics, objective_score  # noqa: E402
-from core.services.scheduler.run.optimizer_proof_oracle import (  # noqa: E402
+from core.services.scheduler.run.optimizer.proof_oracle import (
     _ContinuousCalendar,
     _default_config,
     _operation_object,

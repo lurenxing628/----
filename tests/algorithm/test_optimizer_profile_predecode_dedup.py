@@ -11,16 +11,13 @@ import pytest
 from core.algorithms import GreedyScheduler, ScheduleResult, SortStrategy
 from core.algorithms.greedy.dispatch.sgs_scoring import with_graph_priority_key
 from core.errors import ValidationError
-from core.services.scheduler.run.optimizer_graph_ready_budget import GraphReadySearchBudget
-from core.services.scheduler.run.optimizer_graph_ready_candidates import (
-    context_for_profile,
-    evaluate_graph_ready_candidate,
-)
-from core.services.scheduler.run.optimizer_graph_ready_predecode import GraphReadyProfileSearch, graph_priority_preorder
-from core.services.scheduler.run.optimizer_graph_ready_profiles import default_weight_profiles, graph_ready_v2_profiles
-from core.services.scheduler.run.optimizer_graph_ready_repair import EliteRepairPool
-from core.services.scheduler.run.optimizer_graph_ready_repair_contract import EliteRepairLimits
-from core.services.scheduler.run.optimizer_graph_ready_v2_features import enrich_graph_ready_v2_metrics
+from core.services.scheduler.run.optimizer.graph.budget import GraphReadySearchBudget
+from core.services.scheduler.run.optimizer.graph.candidates import context_for_profile, evaluate_graph_ready_candidate
+from core.services.scheduler.run.optimizer.graph.predecode import GraphReadyProfileSearch, graph_priority_preorder
+from core.services.scheduler.run.optimizer.graph.repair import EliteRepairPool
+from core.services.scheduler.run.optimizer.graph.repair_contract import EliteRepairLimits
+from core.services.scheduler.run.optimizer.graph.v2_features import enrich_graph_ready_v2_metrics
+from core.services.scheduler.run.optimizer.graph_ready_profiles import default_weight_profiles, graph_ready_v2_profiles
 from tests._support.optimizer_graph_ready_benchmark import (
     BASE_BATCH_ORDER,
     OBJECTIVE_NAME,
@@ -195,8 +192,8 @@ def test_real_window_scores_exercise_both_dynamic_penalties(monkeypatch):
 
 
 def test_distinct_graph_decisions_still_use_output_fingerprint_rejection():
-    from core.services.scheduler.run.optimizer_graph_ready_stages import _candidate_should_replace_best
-    from core.services.scheduler.run.optimizer_search_report import OptimizationSearchReportState
+    from core.services.scheduler.run.optimizer.graph.stages import _candidate_should_replace_best
+    from core.services.scheduler.run.optimizer.search_report import OptimizationSearchReportState
     inputs = _inputs()
     context = inputs["graph_ready_context"]
     context["predecessor_op_ids_by_op_id"] = {1: set(), 2: {1}, 3: {2}, 4: {3}}
@@ -277,7 +274,7 @@ def test_profile_cost_samples_exclude_equivalent_predecode_cache_hits():
 
 
 def test_a18_evaluation_receives_real_operations_seed_and_summary_details(monkeypatch):
-    from core.services.scheduler.run import optimizer_graph_ready_candidates as candidates
+    from core.services.scheduler.run.optimizer.graph import candidates
     original = candidates.compute_metrics
     inputs = _inputs("seed_dependency")
     received = []
