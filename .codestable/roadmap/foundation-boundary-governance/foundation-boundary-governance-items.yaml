@@ -108,10 +108,16 @@ items:
   - slug: workbench-subpackages
     description: 按簇分子包，一簇一提交，codemod 全部调用方
     depends_on: [workbench-cluster-layering, sql-drain-hatch-and-policy]
-    status: planned
+    status: done
     feature: null
     minimal_loop: false
-    notes: 禁 __getattr__ 懒导出，不留垫片
+    notes: >-
+      2026-09-20 完成。14 个簇全部进子包（plan/process/material/outsourcing/system/master/dashboard/report/trial/run/batch/
+      calibration/resource/execution），根只剩 commands.py 与 messages.py；每簇一提交（material～dashboard 五个小簇因过渡目录环合并为一提交），
+      合计搬 243 个模块、改写约 640 个调用方文件，不留垫片，子包 __init__ 只有 docstring。适应度测试改为按目录判簇并锁"根只允许协调件"。
+      搬迁工具 tools/move_modules.py 补 redirects（垫片退役）与 globs（注册表 glob 替换）能力并修字符串二次替换缺陷。
+      验证：tests/workbench 全目录 + gate_meta + web_pages + app_runtime 9906 passed；import-cycles / private_import 相对基线无新增。
+      架构文档 workbench-shell.md 新增"服务包结构"一节。未刷新 dead_code_islands 基线（其 2026-09-12 版本已因他人改动漂移 100+ 条，与本轮无关）。
 
   - slug: scheduler-family-subpackages
     description: run/optimizer/graph 子包、根目录业务族分包、批次族迁出、删 4 个根垫片与 analysis

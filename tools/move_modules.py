@@ -7,7 +7,9 @@
 
 plan.json 形如：
   {"moves": {"pkg.run_jobs": "pkg.run.jobs"},
+   "redirects": {"pkg.legacy_alias": "pkg.run.jobs"},
    "globs": {"pkg/run_*.py": ["pkg/run/**/*.py"]}}
+  redirects 可选：转发垫片退役——把对旧模块的全部引用改到已存在的目标模块，然后 git rm 旧文件。
   globs 可选：注册表等处的 glob 字面量按表原样替换成一串字面量（可含原 glob 本身）。
 
 规则：
@@ -67,11 +69,22 @@ def base_of(module: str) -> str:
 
 
 class Plan:
-    def __init__(self, moves: Dict[str, str], globs: Optional[Dict[str, List[str]]] = None):
+    def __init__(self, moves: Dict[str, str], globs: Optional[Dict[str, List[str]]] = None,
+                 redirects: Optional[Dict[str, str]] = None):
         self.moves = dict(moves)
+        self.redirects = dict(redirects or {})
         self.globs = {key: list(value) for key, value in (globs or {}).items()}
         targets = list(self.moves.values())
         problems = []
+        for old, target in self.redirects.items():
+            if old == target:
+                problems.append("垫片指向自己：" + old)
+            if not (ROOT / rel_path(old)).is_file():
+                problems.append("垫片不存在：" + old)
+            if not (ROOT / rel_path(target)).is_file():
+                problems.append("垫片目标不存在：" + target)
+            if old in self.moves:
+                problems.append("既搬又退役：" + old)
         for old, new in self.moves.items():
             if old == new:
                 problems.append("原地不动：" + old)
@@ -87,7 +100,12 @@ class Plan:
             raise SystemExit("plan 无效：\n  " + "\n  ".join(sorted(set(problems))))
 
     def new_module(self, module: str) -> Optional[str]:
-        return self.moves.get(module)
+        return self.moves.get(module, self.redirects.get(module))
+
+    def rewrites(self) -> Dict[str, str]:
+        merged = dict(self.moves)
+        merged.update(self.redirects)
+        return merged
 
     def new_packages(self) -> List[str]:
         seen = []
@@ -212,7 +230,7 @@ def _glob_regex(pattern: str) -> "re.Pattern":
 
 class StringRewriter:
     def __init__(self, plan: Plan):
-        ordered = sorted(plan.moves.items(), key=lambda item: -len(item[0]))
+        ordered = sorted(plan.rewrites().items(), key=lambda item: -len(item[0]))
         # 一次扫描、按最长优先的整体交替匹配：每个原始出现只替换一次，
         # 避免 a→a.service 之后又把已改写出来的 a.catalog 二次替换成 a.service.catalog。
         self.dotted = {old: new for old, new in ordered}
@@ -220,8 +238,8 @@ class StringRewriter:
         self.paths = {rel_path(old): rel_path(new) for old, new in ordered}
         self.paths_pattern = re.compile(r"(?<![\w/])(?:" + "|".join(re.escape(rel_path(old)) for old, _ in ordered) + r")(?!\w)")
         self.moved_paths = {rel_path(old): rel_path(new) for old, new in ordered}
-        self.package_dirs = sorted({parent_of(old).replace(".", "/") for old in plan.moves}
-                                   | {parent_of(old) for old in plan.moves})
+        self.package_dirs = sorted({parent_of(old).replace(".", "/") for old in plan.rewrites()}
+                                   | {parent_of(old) for old in plan.rewrites()})
         self.globs = plan.globs
 
     def apply(self, source: str, where: str) -> Tuple[str, List[str], List[str]]:
@@ -278,7 +296,7 @@ def run(plan: Plan, apply: bool) -> int:
         print(note)
     packages = plan.new_packages()
     print(f"\n改写 {len(changed)} 个文件，{len(all_notes)} 处引用；搬 {len(plan.moves)} 个模块，"
-          f"新建 {len(packages)} 个包：{', '.join(packages)}")
+          f"退役 {len(plan.redirects)} 个垫片，新建 {len(packages)} 个包：{', '.join(packages)}")
     if all_warnings:
         print("\n需要人工确认：")
         for warning in all_warnings:
@@ -291,6 +309,8 @@ def run(plan: Plan, apply: bool) -> int:
         directory.mkdir(parents=True, exist_ok=True)
         (directory / "__init__.py").write_text(INIT_DOC, encoding="utf-8")
         subprocess.run(["git", "add", str(directory / "__init__.py")], cwd=str(ROOT), check=True)
+    for old in plan.redirects:
+        subprocess.run(["git", "rm", "-q", "-f", rel_path(old)], cwd=str(ROOT), check=True)
     moved_paths = []
     for old, new in plan.moves.items():
         (ROOT / rel_path(new)).parent.mkdir(parents=True, exist_ok=True)
@@ -299,7 +319,9 @@ def run(plan: Plan, apply: bool) -> int:
     touched = []
     for path, text in changed.items():
         old_module, _ = module_of(path)
-        target = plan.new_module(old_module)
+        if old_module in plan.redirects:
+            continue
+        target = plan.moves.get(old_module)
         destination = ROOT / rel_path(target) if target else path
         destination.write_text(text, encoding="utf-8")
         touched.append(str(destination.relative_to(ROOT)))
@@ -307,7 +329,7 @@ def run(plan: Plan, apply: bool) -> int:
                           + sorted(set(touched) | set(moved_paths)), cwd=str(ROOT))
     if ruff.returncode != 0:
         print("ruff 导入排序返回非零，请检查上面的输出")
-    print(f"\n已执行：git mv {len(plan.moves)} 个模块，写回 {len(changed)} 个文件")
+    print(f"\n已执行：git mv {len(plan.moves)} 个模块，git rm {len(plan.redirects)} 个垫片，写回 {len(changed)} 个文件")
     return ruff.returncode
 
 
@@ -317,7 +339,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--apply", action="store_true", help="真正执行 git mv 与改写；默认只预演")
     args = parser.parse_args(argv)
     data = json.loads(Path(args.plan).read_text(encoding="utf-8"))
-    return run(Plan(data["moves"], data.get("globs")), args.apply)
+    return run(Plan(data.get("moves", {}), data.get("globs"), data.get("redirects")), args.apply)
 
 
 if __name__ == "__main__":

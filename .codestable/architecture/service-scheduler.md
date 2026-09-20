@@ -241,7 +241,7 @@ GraphReady profile显式接收四个正式目标，保留既有v1基线；batch_
 
 工作台组合入口在已有 `candidate_read_snapshot` 内连续 prepare 后立刻 compute，中间不向调用者暴露 prepared 对象，因此只扫描一次完整事实指纹。公开独立 `compute_prepared_candidate_run` 仍重新扫描全部事实并拒绝 stale 输入，共享计算体要求活动的 query_only 事务。原 worker 私有数据库快照、最终事实复核与持久化边界保留；每个候选和选中结果的 payload 校验也保留，没有加入结果缓存或可复用的新鲜度 token。
 
-代码锚点：`graph/impact_counts.py:10`、`graph/scoring.py:107`、`run/schedule_graph_cached_projection.py:40`、`core/services/workbench/run_compute.py:22`、`core/services/workbench/run_compute.py:70`、`core/services/workbench/run_compute.py:83`、`core/services/workbench/run_worker.py:64`。
+代码锚点：`graph/impact_counts.py:10`、`graph/scoring.py:107`、`run/schedule_graph_cached_projection.py:40`、`core/services/workbench/run/compute.py:22`、`core/services/workbench/run/compute.py:70`、`core/services/workbench/run/compute.py:83`、`core/services/workbench/run/worker.py:64`。
 
 ### 10.6 图阶段轮转与经过验证的 IG 续排（2026-09-14）
 

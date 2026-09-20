@@ -1,0 +1,14 @@
+{
+  "moves": {
+    "core.services.scheduler._frozen_import_anchor": "web.bootstrap._frozen_import_anchor"
+  },
+  "redirects": {
+    "core.services.scheduler.freeze_window": "core.services.scheduler.run.freeze_window",
+    "core.services.scheduler.schedule_input_builder": "core.services.scheduler.run.schedule_input_builder",
+    "core.services.scheduler.schedule_input_collector": "core.services.scheduler.run.schedule_input_collector",
+    "core.services.scheduler.schedule_optimizer": "core.services.scheduler.run.schedule_optimizer",
+    "core.services.scheduler.schedule_optimizer_steps": "core.services.scheduler.run.schedule_optimizer_steps",
+    "core.services.scheduler.schedule_orchestrator": "core.services.scheduler.run.schedule_orchestrator",
+    "core.services.scheduler.schedule_persistence": "core.services.scheduler.run.schedule_persistence"
+  }
+}

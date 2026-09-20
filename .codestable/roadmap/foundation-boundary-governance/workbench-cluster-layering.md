@@ -77,7 +77,8 @@
 - 调用方（含测试、注册表、monkeypatch 字符串）用 `tools/move_modules.py` 一次改完；模块改名时保留本地绑定名（`from ..run import jobs as run_jobs`），不留任何垫片或 `__getattr__`。
 - 子包 `__init__.py` 只有 docstring。
 - 搬迁计划落在 `moves/workbench-p1-facts.json` 与 `moves/workbench-p2-NN-<簇>.json`，一簇一提交。
-- 适应度测试 `tests/gate_meta/test_workbench_cluster_layering.py` 锁住 §2.2；P1 阶段按前缀+覆盖表判簇，P2 全部分包后改按目录判簇。
+- 适应度测试 `tests/gate_meta/test_workbench_cluster_layering.py` 锁住 §2.2；2026-09-20 P2 完成后按目录判簇，并断言根目录只有 `commands.py`、`messages.py`。
+- P2 执行顺序教训：多簇同批搬要按依赖自顶向下（先 dashboard 后 plan），否则会出现“根 ⇄ 子包”的过渡目录环让 import-cycles 门禁变红。
 
 ## 5. 核对方法
 

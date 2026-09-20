@@ -5,7 +5,7 @@ scope: 工作台离线外壳、领域服务、受管运行及恢复边界
 summary: 真实业务工作区已挂载，逐项终验与旧入口退役仍在收口
 status: current
 created: 2026-09-09
-last_reviewed: 2026-09-16
+last_reviewed: 2026-09-20
 tags: [workbench, flask, offline, win7]
 depends_on: [ARCHITECTURE]
 implements: [workbench-foundation-read-loop, workbench-production-workflows]
@@ -25,6 +25,12 @@ implements: [workbench-foundation-read-loop, workbench-production-workflows]
 - `frontend/workbench/app/` 负责呈现、正式主题键 `aps_theme`、请求时限/取消、响应校验及样例隔离；不计算或保存正式业务事实。
 - `frontend/workbench/prototype/` 是原型依赖的可追溯副本，不是开发时依赖的忽略目录。原始 `前端设计/` 不被构建改写。
 - `scripts/workbench/build.py` 在开发机将固定 React18、原有共享控件和 live 源预编译，发布到 `static/workbench/`。目标Chrome109不需要 Node、Babel现场编译或外网。
+
+## 服务包结构（2026-09-20 起）
+
+- `core/services/workbench/` 按业务簇分子包，根只留跨簇协调件 `commands.py`（命令事务框架）与 `messages.py`（共享文案）。簇：`facts/`（只读事实与叶子助手）、`plan/`、`execution/`、`run/`、`trial/`、`report/`、`dashboard/`、`process/`、`resource/`、`material/`、`batch/`、`calibration/`、`outsourcing/`、`system/`、`master/`。
+- 簇之间只允许单向依赖：结果侧 `facts ← plan ← execution ← run ← trial ← report ← dashboard`，主数据侧 `facts ← process ← resource`，`batch`、`calibration` 在其上，其余只依赖 `facts`。完整方向表、五对历史双向依赖的解法与模块分配表见 `.codestable/roadmap/foundation-boundary-governance/workbench-cluster-layering.md`；门禁 `tests/gate_meta/test_workbench_cluster_layering.py`。
+- 子包 `__init__.py` 只有 docstring，没有转发导入或懒导出；搬模块用 `tools/move_modules.py` 一次改完所有调用方。
 
 ## 请求与恢复
 
@@ -74,7 +80,7 @@ HTML -> 提前应用主题 -> manifest本地脚本/样式 -> React宿主 -> 同�
 - `run_data_context.py`由数据库 scope 与数据库外已成功恢复的 journal 集合生成 `data_context_ref`，普通重启及备份创建/删除不改变它。预览、受理和查询绑定同一数据上下文；查找先核对当前任务和回执。旧 v1 pending 只有在 journal 登记的受保护备份中按原请求找到匹配任务/回执并核对文件 SHA 后才判为恢复前记录。v2 pending保存最小身份和数据上下文；未知查询满60秒暂停自动查询，保留同号重查，真实计算继续查询，不自动重新受理。
 - `OperatorMachinePermissions.jsx`在人员详情维护既有设备资格集合，后端复用 `OperatorMachineService` 与原资格检查，无新授权表；界面以预览/确认保存全量关系，保留未展示的旧字段，不从工种技能推导全部设备权限。
 - v32 在同一可回滚迁移中安装两项追加扩展：`WorkbenchOutsourcingSourceConfirmations`与`WorkbenchProductionReportVoids`，共2表10触发器。只安装空结构，旧来源空值、旧出生事件、报工修订和回执不改写。`migration_state.py`严格校验两项结构，缺表/错误触发器不能以空数据继续读取；原 v25/v30 安装器及冻结历史 schema 保持原合同。
-- `core/services/workbench/outsourcing_source.py`（`resolve_source_binding`，仓储 `workbench_outsourcing_source_repo.py` 只读事实）按出生记录、首次登记确认、当前完整关系解析来源；已有证据与当前实例冲突仍拒绝。`source_resolution`用于说明与快照，不改变稳定的 `source.identity`。普通外协登记事务同时追加外协单、成员、事实、来源确认和回执；首次登记后来源解析方式变化不会使更正误认成新对象。
+- `core/services/workbench/outsourcing/source.py`（`resolve_source_binding`，仓储 `workbench_outsourcing_source_repo.py` 只读事实）按出生记录、首次登记确认、当前完整关系解析来源；已有证据与当前实例冲突仍拒绝。`source_resolution`用于说明与快照，不改变稳定的 `source.identity`。普通外协登记事务同时追加外协单、成员、事实、来源确认和回执；首次登记后来源解析方式变化不会使更正误认成新对象。
 - `production_report_void.py`负责撤销预览及事务重查，`FieldVoidEditor.jsx`沿普通命令回执恢复链确认。中立的 `ExecutionLedgerReader`只把有效报工放进 `reports`，`voided_reports`保留完整历史用于审计；现场、实际甘特、风险、复盘、报表和校准共用该事实集合。候选基线从受理归档内的撤销表重投影，不用当前库事实污染历史基线。
 - `resource_utilization_metrics.py`以 `available_occupancy_v1`共用区间运算，`utilization_calendars.py`读取逐资源日历和停机。班表内占用取并集与可用区间交集，分母不乘效率；累计负荷、重叠与班表外占用另列。已有严格计划 DTO 的历史 `occupied_hours`仍是自然跨度并集，显示层使用 `available_occupied_hours/inside_available_hours`；报表、值班台和计划占用读取同一内核。已有资源占用率入口仍为 planned，未新增独立 actual 占用率页面。
 - `TrialCatalog`以实际 candidate/plan来源初始化，`preview_create`投影原 `admission.source.identity`为只读 `base_identity`。草稿验证仅报告真实约束，正式采用仍由独立预检授权；UI/对比CSV只过滤已识别的历史能力说明码，原始JSON与保存历史不重写。`report_exports.py`区分行级“数据缺口”和全局“统计说明与待补资料”，下载结果显示实际文件名和范围。

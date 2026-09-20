@@ -6,7 +6,7 @@
 用法：
   python3 -m tools.scan_ui_copy                  # 明细 + 按词统计，有残留则退出码 1
   python3 -m tools.scan_ui_copy --summary        # 只看统计
-  python3 -m tools.scan_ui_copy --paths frontend/workbench/app/Run core/services/workbench/run_
+  python3 -m tools.scan_ui_copy --paths frontend/workbench/app/Run core/services/workbench/run
   python3 -m tools.scan_ui_copy --json           # 机器可读输出
 
 扫描范围（按词表 scan 段）：

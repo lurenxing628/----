@@ -130,6 +130,22 @@ def test_string_rewrite_never_reapplies_to_its_own_output(tmp_path, monkeypatch)
         'A = "pkg.trial.catalog"\nB = "pkg.trial.service.T"\nC = "pkg/trial/service.py"\nD = "pkg/trial/catalog.py"\n')
 
 
+def test_redirect_retires_a_forwarding_shim_and_points_callers_at_the_real_module(tmp_path, monkeypatch):
+    root = _repo(tmp_path, monkeypatch)
+    (root / "pkg/legacy_helper.py").write_text("from .helper import H  # noqa: F401\n", encoding="utf-8")
+    (root / "tests_dir/test_shim.py").write_text(
+        "import pkg.legacy_helper as shim\nfrom pkg.legacy_helper import H\nTARGET = \"pkg.legacy_helper.H\"\n",
+        encoding="utf-8")
+    subprocess.run(["git", "add", "."], cwd=str(root), check=True)
+    plan = move_modules.Plan({}, redirects={"pkg.legacy_helper": "pkg.helper"})
+    assert move_modules.run(plan, apply=True) == 0
+    assert not (root / "pkg/legacy_helper.py").exists()
+    assert _read(root, "tests_dir/test_shim.py") == (
+        "import pkg.helper as shim\nfrom pkg.helper import H\n\nTARGET = \"pkg.helper.H\"\n")
+    tracked = subprocess.run(["git", "ls-files"], cwd=str(root), capture_output=True, text=True).stdout
+    assert "pkg/legacy_helper.py" not in tracked
+
+
 @pytest.mark.parametrize("moves,message", [
     ({"pkg.missing": "pkg.run.missing"}, "源模块不存在"),
     ({"pkg.run_jobs": "pkg.commands"}, "目标已存在"),
@@ -140,3 +156,14 @@ def test_invalid_plans_fail_loudly(tmp_path, monkeypatch, moves, message):
     _repo(tmp_path, monkeypatch)
     with pytest.raises(SystemExit, match=message):
         move_modules.Plan(moves)
+
+
+@pytest.mark.parametrize("redirects,message", [
+    ({"pkg.missing": "pkg.helper"}, "垫片不存在"),
+    ({"pkg.run_jobs": "pkg.missing"}, "垫片目标不存在"),
+    ({"pkg.helper": "pkg.helper"}, "垫片指向自己"),
+])
+def test_invalid_redirects_fail_loudly(tmp_path, monkeypatch, redirects, message):
+    _repo(tmp_path, monkeypatch)
+    with pytest.raises(SystemExit, match=message):
+        move_modules.Plan({}, redirects=redirects)

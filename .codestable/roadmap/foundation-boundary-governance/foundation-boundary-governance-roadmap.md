@@ -299,6 +299,7 @@ web/bootstrap 里只有 factory.py 可 import web.routes（装配蓝图）；web
 12. **workbench-subpackages** — 按簇分子包，一簇一提交，codemod 全部调用方
     - 所属模块：P
     - 依赖：workbench-cluster-layering、sql-drain-hatch-and-policy
+    - 状态：done（2026-09-20）。14 簇全部进子包，根只剩 `commands.py`/`messages.py`；9 个提交、243 个模块、约 640 个调用方文件；适应度测试改按目录判簇
 13. **scheduler-family-subpackages** — `run/optimizer/graph` 子包、根目录业务族分包、批次族迁出、删 4 个根垫片与 `analysis/`
     - 所属模块：P
     - 依赖：private-import-ratchet

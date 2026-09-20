@@ -27,29 +27,13 @@ ALLOWED: Dict[str, Set[str]] = {
     "dashboard": {"facts", "plan", "execution", "run", "trial", "report", "outsourcing"},
 }
 ROOT_MODULES = {"commands", "messages"}
-# 尚未分包的根级模块按名字判簇；全部分包后这两张表应清空。
-ROOT_OVERRIDES = {
-    "suppliers": "resource", "calendars": "resource", "operator_machine_permissions": "resource",
-    "materials": "material", "batches": "batch",
-    "official_plan_persistence": "plan", "legacy_navigation_queries": "plan",
-    "execution_ledger": "execution",
-}
-ROOT_PREFIX_CLUSTER = {
-    "field": "execution", "production": "execution", "actual": "execution",
-    "template": "calibration", "piece": "run", "preflight": "run", "review": "report",
-}
 
 
 def _cluster(parts: Tuple[str, ...]) -> str:
     if len(parts) > 1:
         return parts[0]
-    name = parts[0]
-    if name in ROOT_MODULES:
-        return "root"
-    if name in ROOT_OVERRIDES:
-        return ROOT_OVERRIDES[name]
-    head = name.split("_")[0]
-    return ROOT_PREFIX_CLUSTER.get(head, head)
+    assert parts[0] in ROOT_MODULES, "根目录只允许跨簇协调件：" + parts[0]
+    return "root"
 
 
 def _modules() -> Dict[str, Path]:
@@ -105,6 +89,11 @@ def _violations() -> List[str]:
 def test_every_cluster_is_declared_in_the_layering_table():
     clusters = {_cluster(tuple(module.split("."))) for module in _modules()}
     assert clusters <= set(ALLOWED), sorted(clusters - set(ALLOWED))
+
+
+def test_root_only_holds_cross_cluster_coordination_modules():
+    root = {module for module in _modules() if "." not in module}
+    assert root == ROOT_MODULES
 
 
 def test_every_cross_cluster_import_follows_the_allowed_direction():
