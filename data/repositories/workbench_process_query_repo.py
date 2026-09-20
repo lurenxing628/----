@@ -42,3 +42,39 @@ class WorkbenchProcessQueryRepository(BaseRepository):
     def identities(self):
         return self.fetchall("""SELECT ref,kind,entity_key,alternate_key,revision,active FROM WorkbenchEntityRefs
             WHERE kind IN ('part','template_operation','template_external_group','op_type','supplier') ORDER BY ref""")
+
+    # ---- 单个零件模板（工艺动作快照） ----
+    def part_by_no(self, part_no):
+        return self.fetchone("SELECT * FROM Parts WHERE part_no=?", (part_no,))
+
+    def template_operations_with_refs(self, part_no):
+        """零件的全部工序（含停用）连有效模板工序编号，按 seq 排序。"""
+        return self.fetchall("""SELECT o.*,r.ref FROM PartOperations o LEFT JOIN WorkbenchEntityRefs r
+            ON r.kind='template_operation' AND r.entity_key=CAST(o.id AS TEXT) AND r.active=1
+            WHERE o.part_no=? ORDER BY o.seq""", (part_no,))
+
+    def template_groups_with_refs(self, part_no):
+        """零件的外协组连有效模板外协组编号，按起始序、组号排序。"""
+        return self.fetchall("""SELECT g.*,r.ref FROM ExternalGroups g LEFT JOIN WorkbenchEntityRefs r
+            ON r.kind='template_external_group' AND r.entity_key=g.group_id AND r.active=1
+            WHERE g.part_no=? ORDER BY g.start_seq,g.group_id""", (part_no,))
+
+    def foreign_group_use_exists(self, part_no):
+        """本零件的外协组是否还被别的零件工序引用。"""
+        return self.fetchone("""SELECT 1 FROM PartOperations o JOIN ExternalGroups g ON g.group_id=o.ext_group_id
+            WHERE g.part_no=? AND o.part_no<>? LIMIT 1""", (part_no, part_no)) is not None
+
+    # ---- 路线预览 / 归属确认的参考资料 ----
+    def op_type_reference_rows(self):
+        return self.fetchall("SELECT op_type_id, name, category FROM OpTypes")
+
+    def supplier_reference_rows(self):
+        return self.fetchall("SELECT supplier_id, name FROM Suppliers")
+
+    def op_type_categories(self):
+        return self.fetchall("SELECT op_type_id,category FROM OpTypes")
+
+    def supplier_status_rows(self):
+        """供应商状态连停用原因（WorkbenchSupplierProfiles.inactive_reason）。"""
+        return self.fetchall("""SELECT s.supplier_id,s.status,p.inactive_reason
+        FROM Suppliers s LEFT JOIN WorkbenchSupplierProfiles p ON p.supplier_id=s.supplier_id""")

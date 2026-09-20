@@ -53,6 +53,14 @@ class WorkbenchOutsourcingRepository:
             reject("外协登记超过10000项，请限定批次。", "query_too_large", 413)
         return [row[0] for row in rows]
 
+    def plan_identity_revision(self):
+        """计划身份时钟当前修订号（singleton=1 行的 revision）。"""
+        return self.conn.execute("SELECT revision FROM WorkbenchPlanIdentityClock WHERE singleton=1").fetchone()[0]
+
+    def has_confirm_receipts(self):
+        """是否已有任何 outsourcing.confirm 命令回执。"""
+        return self.conn.execute("SELECT 1 FROM WorkbenchCommandReceipts WHERE action='outsourcing.confirm' LIMIT 1").fetchone() is not None
+
     def history(self, ref, number, size):
         count = self.conn.execute("SELECT COUNT(*) FROM WorkbenchOutsourcingFacts WHERE outsourcing_ref=?", (ref,)).fetchone()[0]
         rows = self.conn.execute("SELECT * FROM WorkbenchOutsourcingFacts WHERE outsourcing_ref=? ORDER BY sequence DESC LIMIT ? OFFSET ?",

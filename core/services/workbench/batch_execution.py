@@ -8,16 +8,18 @@ from core.models.workbench_command import WorkbenchCommandRejected, input_finger
 from core.models.workbench_execution_input import MAX_OPERATIONS
 from core.services.workbench.execution_ledger import ExecutionLedgerService
 from core.services.workbench.process_queries import _plain
+from data.repositories.workbench_execution_repo import WorkbenchExecutionRepository
 
 
 def read_execution(conn, operation_refs):
     names = object_names(conn)
     if not names.intersection(execution_ledger_objects()):
-        version = conn.execute("SELECT version FROM SchemaVersion WHERE id=1").fetchone()
-        receipts = conn.execute("SELECT 1 FROM WorkbenchCommandReceipts WHERE action GLOB 'execution.*' LIMIT 1").fetchone()
-        if version is None or type(version[0]) is not int or not 0 <= version[0] < 25 or receipts:
+        repo = WorkbenchExecutionRepository(conn)
+        version = repo.schema_version_row()
+        receipts = repo.has_execution_receipts()
+        if version is None or type(version["version"]) is not int or not 0 <= version["version"] < 25 or receipts:
             raise WorkbenchCommandRejected("execution_ledger_unavailable", "报工记录表缺失，无法读取现场进度，请联系维护人员恢复数据。")
-        return {"available": False, "projections": {}, "snapshot_facts": {"schema_version": version[0]},
+        return {"available": False, "projections": {}, "snapshot_facts": {"schema_version": version["version"]},
                 "issues": [{"code": "execution_ledger_not_installed", "message": "这个数据库还没装报工记录表；现在只保留旧的状态标记和删除保护，逐次进度暂无数据。"}]}
     ledger = ExecutionLedgerService(conn)
     refs, projections = list(operation_refs), {}

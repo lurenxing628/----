@@ -4,12 +4,12 @@ import math
 from contextlib import contextmanager
 from datetime import date, datetime
 
-from core.infrastructure.schema_probe import table_names
 from core.infrastructure.transaction import TransactionManager
 from core.infrastructure.workbench_metadata_schema import RESOURCE_TABLES
 from core.models.workbench_command import WorkbenchCommandRejected, input_fingerprint
 from core.models.workbench_master_overview import public_ref
 from core.services.process.workflow_state import workflow_snapshot
+from data.repositories.workbench_master_query_repo import MASTER_OVERVIEW_TABLES, WorkbenchMasterQueryRepository
 
 SOURCES = {
     "part": ("Parts",), "route": ("Parts", "PartOperations", "ExternalGroups"),
@@ -21,7 +21,8 @@ RELATIONS = ("OperatorSkill", "OperatorMachine", "WorkbenchOperatorProfiles", "W
              "WorkbenchShiftProfiles", "WorkbenchShiftPatternDays", "WorkbenchOpTypePolicies",
              "Batches", "BatchMaterials", "OperatorCalendar")
 WORKFLOW = ("WorkbenchProcessWorkflow", "WorkbenchProcessOperationConfirmations")
-TABLES = tuple(dict.fromkeys(table for values in SOURCES.values() for table in values)) + RELATIONS + WORKFLOW + ("WorkbenchEntityRefs",)
+# 整表白名单归仓储所有；合同测试锁定它等于 SOURCES/RELATIONS/WORKFLOW 的展开顺序。
+TABLES = MASTER_OVERVIEW_TABLES
 
 
 def plain(value):
@@ -41,6 +42,7 @@ def plain(value):
 class MasterOverviewFacts:
     def __init__(self, conn):
         self.conn = conn
+        self.repo = WorkbenchMasterQueryRepository(conn)
         self.tables = {}
         self.workflow = None
         self.gaps = []
@@ -78,15 +80,11 @@ class MasterOverviewFacts:
     def _load(self):
         self.tables, self.identities, self._indexes, self._groups = {}, {}, {}, {}
         self.gaps, self.workflow = [], None
-        present = table_names(self.conn)
+        self.tables, present = self.repo.overview_tables()
         for name in TABLES:
             if name not in present:
                 self.gaps.append({"code": "source_unavailable", "source": name,
                                   "message": "数据来源 " + name + " 未读取，相关数量和检查结果都算不出来。"})
-                continue
-            cursor = self.conn.execute('SELECT * FROM "' + name + '" ORDER BY rowid')
-            keys = [column[0] for column in cursor.description]
-            self.tables[name] = [dict(zip(keys, row)) for row in cursor]
         for row in self.rows("WorkbenchEntityRefs"):
             if row["active"] == 1:
                 key = (row["kind"], row["entity_key"])

@@ -10,11 +10,8 @@ from core.models.workbench_plan_reference import WorkbenchPlanLocator, Workbench
 from core.services.common.plan_query import SchedulePlanQueryService
 from data.repositories.schedule_history_repo import ScheduleHistoryRepository
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
+from data.repositories.workbench_master_query_repo import LEGACY_ENTITY_KINDS, WorkbenchMasterQueryRepository
 from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
-
-_ENTITIES = {"machine": ("Machines", "machine_id"), "operator": ("Operators", "operator_id"),
-             "op_type": ("OpTypes", "op_type_id"), "part": ("Parts", "part_no"),
-             "supplier": ("Suppliers", "supplier_id"), "batch": ("Batches", "batch_id")}
 
 
 class LegacyNavigationSourceMissing(LookupError):
@@ -41,6 +38,7 @@ class LegacyNavigationQueries:
         self.plans = SchedulePlanQueryService(conn)
         self.references = WorkbenchPlanIdentityRepository(conn)
         self.entities = WorkbenchIdentityRepository(conn)
+        self.master = WorkbenchMasterQueryRepository(conn)
 
     @contextmanager
     def read_snapshot(self):
@@ -85,12 +83,11 @@ class LegacyNavigationQueries:
 
     def entity(self, kind: str, business_key: str):
         self._require_snapshot()
-        if type(kind) is not str or kind not in _ENTITIES:
+        if type(kind) is not str or kind not in LEGACY_ENTITY_KINDS:
             raise ValueError("Unsupported legacy entity kind.")
         if type(business_key) is not str or not business_key or "\x00" in business_key:
             raise ValueError("Legacy detail requires its exact business key.")
-        table, key = _ENTITIES[kind]
-        row = self.conn.execute("SELECT * FROM " + table + " WHERE " + key + " = ?", (business_key,)).fetchone()
+        row = self.master.legacy_entity_row(kind, business_key)
         if row is None:
             raise LegacyNavigationSourceMissing("所选明细记录已不存在。")
         identity = self.entities.find_active(kind, business_key)

@@ -6,11 +6,9 @@ from contextlib import contextmanager
 from core.infrastructure.schema_probe import schema_objects
 from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_command import WorkbenchCommandRejected
+from data.repositories.workbench_preflight_facts_repo import PREFLIGHT_TABLES, WorkbenchPreflightFactsRepository
 
-TABLES = ("Batches", "BatchOperations", "Parts", "PartOperations", "ExternalGroups", "BatchMaterials",
-          "Machines", "Operators", "OperatorMachine", "OperatorSkill", "OpTypes", "Suppliers",
-          "WorkbenchSupplierOpTypes", "WorkbenchOperatorProfiles", "OperationExecutionEvents", "Schedule",
-          "WorkbenchEntityRefs", "WorkbenchPlanSourceRefs", "ScheduleConfig")
+TABLES = PREFLIGHT_TABLES
 
 
 def quote(name):
@@ -21,13 +19,14 @@ def full_facts_fingerprint(conn):
     # Includes unselected execution/resources/calendars and all ledger revisions.
     digest = hashlib.sha256()
     schema = schema_objects(conn)
+    repo = WorkbenchPreflightFactsRepository(conn)
     digest.update(repr([tuple(row) for row in schema]).encode("utf-8"))
     for row in schema:
         if row[0] != "table":
             continue
         digest.update(row[1].encode("utf-8"))
-        for fact in conn.execute("SELECT * FROM " + quote(row[1]) + " ORDER BY rowid"):
-            encoded = repr(tuple(fact)).encode("utf-8")
+        for fact in repo.read_whole_table(row[1]):
+            encoded = repr(fact).encode("utf-8")
             digest.update(str(len(encoded)).encode("ascii") + b":" + encoded)
     return digest.hexdigest()
 
@@ -35,6 +34,7 @@ def full_facts_fingerprint(conn):
 class PreflightFacts:
     def __init__(self, conn):
         self.conn = conn
+        self.repo = WorkbenchPreflightFactsRepository(conn)
         self.tables = {}
         self.refs = {}
         self.operation_refs = {}
@@ -42,8 +42,7 @@ class PreflightFacts:
     @contextmanager
     def snapshot(self):
         with TransactionManager(self.conn).transaction():
-            self.tables = {name: [dict(row) for row in self.conn.execute("SELECT * FROM " + quote(name) + " ORDER BY rowid")]
-                           for name in TABLES}
+            self.tables = self.repo.preflight_tables()
             self.refs = {(row["kind"], row["entity_key"]): row["ref"] for row in self.tables["WorkbenchEntityRefs"] if row["active"]}
             self.operation_refs = {int(row["source_key"]): row["ref"] for row in self.tables["WorkbenchPlanSourceRefs"]
                                    if row["kind"] == "operation" and row["active"]}

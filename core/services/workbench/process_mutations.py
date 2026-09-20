@@ -14,14 +14,14 @@ from core.services.workbench.process_route_apply import (
     require_group_ack,
 )
 from core.services.workbench.process_stage_apply import apply_hours, apply_source, prepare_source
-from data.repositories.base_repo import BaseRepository
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
+from data.repositories.workbench_process_query_repo import WorkbenchProcessQueryRepository
 
 
 class WorkbenchProcessMutationService:
     def __init__(self, conn, logger=None):
         self.conn, self.logger = conn, logger
-        self.repo = BaseRepository(conn, logger)
+        self.repo = WorkbenchProcessQueryRepository(conn, logger)
         self.identities = WorkbenchIdentityRepository(conn, logger)
 
     @staticmethod
@@ -36,15 +36,11 @@ class WorkbenchProcessMutationService:
             raise WorkbenchCommandRejected("entity_not_found", "这条零件记录已失效。请刷新列表后重新选择。", 404)
         if current != identity:
             raise WorkbenchCommandRejected("stale_write", "零件资料已经变了。请刷新后重新核对。")
-        part = self.repo.fetchone("SELECT * FROM Parts WHERE part_no=?", (current.entity_key,))
+        part = self.repo.part_by_no(current.entity_key)
         if part is None:
             raise WorkbenchCommandRejected("entity_not_found", "这个零件不存在。请刷新列表后重新选择。", 404)
-        operations = self.repo.fetchall("""SELECT o.*,r.ref FROM PartOperations o LEFT JOIN WorkbenchEntityRefs r
-            ON r.kind='template_operation' AND r.entity_key=CAST(o.id AS TEXT) AND r.active=1
-            WHERE o.part_no=? ORDER BY o.seq""", (current.entity_key,))
-        groups = self.repo.fetchall("""SELECT g.*,r.ref FROM ExternalGroups g LEFT JOIN WorkbenchEntityRefs r
-            ON r.kind='template_external_group' AND r.entity_key=g.group_id AND r.active=1
-            WHERE g.part_no=? ORDER BY g.start_seq,g.group_id""", (current.entity_key,))
+        operations = self.repo.template_operations_with_refs(current.entity_key)
+        groups = self.repo.template_groups_with_refs(current.entity_key)
         self._check_template(operations, groups, current.entity_key)
         return part, operations, groups
 
@@ -60,8 +56,7 @@ class WorkbenchProcessMutationService:
             require_ref(row["ref"], "模板外协组")
             if type(row["start_seq"]) is not int or type(row["end_seq"]) is not int or not 0 < row["start_seq"] <= row["end_seq"]:
                 raise WorkbenchCommandRejected("group_invalid", "原外协组的工序范围说不清，算不准影响面。请到基础资料核对外协组起止序。", 422)
-        if self.repo.fetchone("""SELECT 1 FROM PartOperations o JOIN ExternalGroups g ON g.group_id=o.ext_group_id
-            WHERE g.part_no=? AND o.part_no<>? LIMIT 1""", (part_no, part_no)):
+        if self.repo.foreign_group_use_exists(part_no):
             raise WorkbenchCommandRejected("group_invalid", "这个外协组还被别的零件工序用着，不能在当前零件解除。请先到那些零件上解除。", 422)
 
     def _prepare(self, action, payload, operations, groups):

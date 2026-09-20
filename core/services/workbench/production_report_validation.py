@@ -3,28 +3,24 @@
 from core.models.workbench_execution_input import reject
 from core.models.workbench_identity import WorkbenchEntityIdentity
 from core.services.personnel.operator_qualification import OperatorQualificationError, OperatorQualificationService
-from data.repositories.workbench_execution_repo import chunks
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
+from data.repositories.workbench_report_validation_repo import WorkbenchReportValidationRepository
 
 
 class ReportResourceValidator:
     def __init__(self, conn):
         self.conn = conn
         self.identities = WorkbenchIdentityRepository(conn)
+        self.repo = WorkbenchReportValidationRepository(conn)
         self.entities = {}
         self.checked = set()
         self.machine_types = {}
 
     def preload(self, refs):
-        for chunk in chunks(sorted(set(refs))):
-            marks = ",".join("?" for _ in chunk)
-            rows = self.conn.execute(f"""SELECT e.*, m.op_type_id AS machine_type FROM WorkbenchEntityRefs e
-                LEFT JOIN Machines m ON e.kind='machine' AND e.active=1 AND m.machine_id=e.entity_key
-                WHERE e.ref IN ({marks})""", chunk).fetchall()
-            for row in rows:
-                self.entities[row["ref"]] = WorkbenchEntityIdentity(row["ref"], row["kind"], row["entity_key"], row["revision"], bool(row["active"]))
-                if row["kind"] == "machine":
-                    self.machine_types[row["entity_key"]] = row["machine_type"]
+        for row in self.repo.entity_rows_with_machine_type(refs):
+            self.entities[row["ref"]] = WorkbenchEntityIdentity(row["ref"], row["kind"], row["entity_key"], row["revision"], bool(row["active"]))
+            if row["kind"] == "machine":
+                self.machine_types[row["entity_key"]] = row["machine_type"]
 
     def resolve(self, ref, kind):
         if ref is None:
@@ -98,10 +94,7 @@ def _constraint_signature(projection):
 
 
 def _successor_refs(conn, op):
-    rows = conn.execute("""SELECT bo.id, bo.status, o.ref AS operation_ref FROM BatchOperations bo
-        JOIN WorkbenchPlanSourceRefs o ON o.kind='operation' AND o.active=1 AND o.source_key=CAST(bo.id AS TEXT)
-        WHERE bo.batch_id=? AND bo.piece_id IS ? AND bo.seq>? ORDER BY bo.seq LIMIT 10001""",
-        (op["batch_id"], op["piece_id"], op["seq"])).fetchall()
+    rows = WorkbenchReportValidationRepository(conn).successor_operation_rows(op["batch_id"], op["piece_id"], op["seq"])
     if len(rows) > 10000:
         reject("本次报工涉及工序过多，请缩小范围。", "query_too_large", 413)
     return [row["operation_ref"] for row in rows]

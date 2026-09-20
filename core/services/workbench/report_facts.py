@@ -15,6 +15,7 @@ from core.services.workbench.execution_ledger import ExecutionLedgerService
 from core.services.workbench.plan_fact_serialization import plain_plan_facts
 from core.services.workbench.plan_projection import project_plan
 from core.services.workbench.plan_queries import WorkbenchPlanQueryService
+from data.repositories.workbench_report_facts_repo import WorkbenchReportFactsRepository
 
 
 class ReportReadEngine(ReportEngine):
@@ -29,6 +30,7 @@ class ReportReadEngine(ReportEngine):
 class WorkbenchReportFacts:
     def __init__(self, conn, logger=None):
         self.conn = conn
+        self.repo = WorkbenchReportFactsRepository(conn, logger)
         self.plans = WorkbenchPlanQueryService(conn, logger)
         self.engine = ReportReadEngine(conn, logger)
 
@@ -53,19 +55,12 @@ class WorkbenchReportFacts:
 
     def _resource_maps(self, rows):
         maps = {}
-        for kind, table, key in (("machine", "Machines", "machine_id"), ("operator", "Operators", "operator_id"),
-                                 ("batch", "Batches", "batch_id")):
+        for kind, key in (("machine", "machine_id"), ("operator", "operator_id"), ("batch", "batch_id")):
             keys = {str(row[key]) for row in rows if row.get(key) not in (None, "")}
             identities = self.plans.entities.active_map(kind, sorted(keys))
             if set(identities) != keys:
                 raise WorkbenchCommandRejected("identity_missing", "有批次或实际用到的设备人员在资料里查不到编号，分析没有生成。请到资料总览核对后重试。")
-            labels = {}
-            if kind != "batch":
-                values = sorted(keys)
-                for start in range(0, len(values), 400):
-                    chunk = values[start:start + 400]
-                    sql = "SELECT " + key + ", name FROM " + table + " WHERE " + key + " IN (" + ",".join("?" for _ in chunk) + ")"
-                    labels.update((str(row[0]), row[1]) for row in self.conn.execute(sql, chunk))
+            labels = self.repo.resource_names(kind, sorted(keys)) if kind != "batch" else {}
             maps[kind] = {key: {"ref": identity.ref, "label": labels.get(key) or (key if kind == "batch" else "名称未填写")}
                           for key, identity in identities.items()}
         return maps
@@ -78,7 +73,7 @@ class WorkbenchReportFacts:
         if scope.plan_finish_date_from:
             ensure_report_date_range_within_limit(date.fromisoformat(scope.plan_finish_date_from), date.fromisoformat(scope.plan_finish_date_to))
         scope, plan, version, span = self.current_plan(scope)
-        count = self.conn.execute("SELECT COUNT(*) FROM Schedule WHERE version=?", (version,)).fetchone()[0]
+        count = self.repo.schedule_operation_count(version)
         if count > MAX_REPORT_OPERATIONS:
             raise WorkbenchCommandRejected("query_too_large", "这份正式计划的工序太多，一次读不完，没有生成结果。请缩小计划完工日期范围后重试。", 413)
         report = self.engine.execution_review(version)

@@ -18,6 +18,24 @@ def rows(conn, sql, params=()):
     return result
 
 
+def latest_outsourcing_fact_rows(conn, ref):
+    """某条外协登记最新一条确认事实（原始存储值，最多 1 行）。"""
+    return rows(conn, "SELECT * FROM WorkbenchOutsourcingFacts WHERE outsourcing_ref=? ORDER BY sequence DESC LIMIT 1", (ref,))
+
+
+def unknown_source_rows(conn, limit):
+    """归属未填或非法的批次工序，连其工序编号、批次编号与外协登记编号，按 id 取 limit 行。"""
+    return rows(conn, """SELECT r.ref AS operation_ref, b.ref AS batch_ref,
+        m.outsourcing_ref, CASE WHEN 1 THEN o.op_code END AS business_code,
+        CASE WHEN 1 THEN o.source END AS source
+        FROM BatchOperations o
+        LEFT JOIN WorkbenchPlanSourceRefs r ON r.kind='operation' AND r.active=1 AND r.source_key=CAST(o.id AS TEXT)
+        LEFT JOIN WorkbenchEntityRefs b ON b.kind='batch' AND b.active=1 AND b.entity_key=o.batch_id
+        LEFT JOIN WorkbenchOutsourcingMembers m ON m.operation_ref=r.ref
+        WHERE o.source IS NULL OR o.source NOT IN ('internal','external')
+        ORDER BY o.id LIMIT ?""", (limit,))
+
+
 class DashboardSourceRepository:
     def __init__(self, conn):
         self.conn = conn

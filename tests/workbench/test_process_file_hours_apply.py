@@ -4,6 +4,7 @@ import sqlite3
 
 import pytest
 
+from core.errors import AppError
 from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.process.workflow_state import operation_confirmations, read_workflow
@@ -146,8 +147,11 @@ def test_savepoint_rolls_back_partial_writes_even_when_outer_catches_error(hours
     with TransactionManager(hours_conn).transaction(begin_immediate=True):
         hours_conn.execute("UPDATE Parts SET remark='outer kept' WHERE part_no='P2'")
         before = snapshot(hours_conn)
-        with pytest.raises(sqlite3.IntegrityError, match="injected"):
+        with pytest.raises(AppError) as failure:
             service.apply_rows(rows, discard_group_refs=[], confirm_zero_unit_hours=False)
+        # 写语句经仓储执行后，sqlite 错误被翻译成 AppError，原始异常保留在 cause 上
+        assert isinstance(failure.value.cause, sqlite3.IntegrityError)
+        assert "injected" in str(failure.value.cause)
         assert hours_conn.in_transaction and snapshot(hours_conn) == before
     assert hours_conn.execute("SELECT remark FROM Parts WHERE part_no='P2'").fetchone()[0] == "outer kept"
 

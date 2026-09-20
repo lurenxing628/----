@@ -5,10 +5,10 @@ from __future__ import annotations
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.workbench.process_quota_protection import ProcessQuotaProtection
 from core.services.workbench.process_zero_hours import require_zero_confirmation
-from data.repositories.base_repo import BaseRepository
 from data.repositories.external_group_repo import ExternalGroupRepository
 from data.repositories.part_operation_repo import PartOperationRepository
 from data.repositories.supplier_repo import SupplierRepository
+from data.repositories.workbench_process_query_repo import WorkbenchProcessQueryRepository
 
 
 def exact_operations(payload, operations):
@@ -29,10 +29,9 @@ def _related(identities, ref, kind, cache):
 
 def prepare_source(conn, logger, payload, operations, identities):
     active = exact_operations(payload, operations)
-    repo = BaseRepository(conn, logger)
-    types = {row["op_type_id"]: row for row in repo.fetchall("SELECT op_type_id,category FROM OpTypes")}
-    suppliers = {row["supplier_id"]: row for row in repo.fetchall("""SELECT s.supplier_id,s.status,p.inactive_reason
-        FROM Suppliers s LEFT JOIN WorkbenchSupplierProfiles p ON p.supplier_id=s.supplier_id""")}
+    repo = WorkbenchProcessQueryRepository(conn, logger)
+    types = {row["op_type_id"]: row for row in repo.op_type_categories()}
+    suppliers = {row["supplier_id"]: row for row in repo.supplier_status_rows()}
     capabilities = {(row["supplier_id"], row["op_type_id"]) for row in
                     SupplierRepository(conn, logger).list_capabilities(status="active") if not row["missing_supplier"]}
     changes, affected, cache = [], set(), {}

@@ -88,6 +88,6 @@ class WorkbenchOutsourcingService:
         if not self.conn.in_transaction:
             raise RuntimeError("Outsourcing targets require a caller-owned snapshot")
         rows = self.sources.targets(batch_ref)
-        clock = self.conn.execute("SELECT revision FROM WorkbenchPlanIdentityClock WHERE singleton=1").fetchone()[0]
+        clock = self.repo.plan_identity_revision()
         return bounded({**page(rows, number, size), "fingerprint": input_fingerprint({"rows": rows, "clock": clock}),
                         "grouping_basis": "explicit_receipt_membership", "dates_inferred": False})

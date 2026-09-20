@@ -11,11 +11,13 @@ from core.models.workbench_process_commands import process_number
 from core.services.workbench.process_file_hours_preview import HoursFilePreview, protect_hours_preview
 from core.services.workbench.process_quota_protection import ProcessQuotaProtection, quota_skip
 from core.services.workbench.process_zero_hours import require_zero_confirmation
+from data.repositories.workbench_process_hours_repo import WorkbenchProcessHoursRepository
 
 
 class ProcessHoursFileOperations:
     def __init__(self, conn, logger=None):
         self.conn, self.logger = conn, logger
+        self.repo = WorkbenchProcessHoursRepository(conn, logger)
 
     def preview_rows(self, decoded_rows, facts, target_ref=None):
         rows, extra = HoursFilePreview(facts, target_ref).build(decoded_rows)
@@ -114,10 +116,11 @@ class ProcessHoursFileOperations:
             self._update("PartOperations", "id", old["id"], old, updates)
 
     def _update(self, table, key_column, key, expected, values):
-        assignments = ",".join(column + "=?" for column in values)
-        sql = ("UPDATE " + table + " SET " + assignments + " WHERE " + key_column + "=? AND EXISTS "
-               "(SELECT 1 FROM WorkbenchEntityRefs WHERE ref=? AND revision=? AND active=1 "
-               "AND entity_key=CAST(" + table + "." + key_column + " AS TEXT))")
-        cursor = self.conn.execute(sql, list(values.values()) + [key, expected["ref"], expected["revision"]])
-        if cursor.rowcount != 1:
+        if (table, key_column) == ("PartOperations", "id"):
+            count = self.repo.update_operation_hours(key, values, ref=expected["ref"], revision=expected["revision"])
+        elif (table, key_column) == ("ExternalGroups", "group_id"):
+            count = self.repo.update_group_cycle(key, values, ref=expected["ref"], revision=expected["revision"])
+        else:
+            raise ValueError("unsupported hours target: " + table + "." + key_column)
+        if count != 1:
             raise WorkbenchCommandRejected("stale_write", "预检时的工序或外协组已经变了，这批写入已经全部还原。请重新预检。")

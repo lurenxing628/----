@@ -6,6 +6,7 @@ from datetime import datetime
 
 from core.models.workbench_command import WorkbenchCommandRejected, input_fingerprint
 from data.repositories.system_job_state_repo import SystemJobStateRepository
+from data.repositories.workbench_system_maintenance_repo import WorkbenchSystemMaintenanceRepository
 
 from .system_reads import backup_records
 from .system_redaction import public_system_text
@@ -63,10 +64,7 @@ def _detail(value):
 
 
 def _cleanup_audits(conn):
-    records = [dict(row) for row in conn.execute(
-        "SELECT id,log_time,log_level,module,action,detail,error_message FROM OperationLogs "
-        "WHERE module='system' AND action IN ('cleanup','logs_cleanup') ORDER BY id DESC LIMIT ?",
-        (_AUDIT_LIMIT + 1,))]
+    records = WorkbenchSystemMaintenanceRepository(conn).cleanup_audit_rows(_AUDIT_LIMIT + 1)
     rows, present = [], set()
     for record in records[:_AUDIT_LIMIT]:
         present.add(record["action"])

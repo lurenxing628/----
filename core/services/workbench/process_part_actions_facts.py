@@ -8,7 +8,7 @@ from core.infrastructure.workbench_metadata_schema import workbench_metadata_con
 from core.infrastructure.workbench_process_schema import workbench_process_contract_issues
 from core.infrastructure.workbench_process_workflow_schema import workbench_process_workflow_contract_issues
 from core.models.workbench_command import WorkbenchCommandRejected
-from data.repositories.base_repo import BaseRepository
+from data.repositories.workbench_process_part_facts_repo import WorkbenchProcessPartFactsRepository
 
 
 def check_part_action_storage(conn):
@@ -32,30 +32,23 @@ def plain_part_action_facts(value):
     return value
 
 
-class ProcessPartActionFacts(BaseRepository):
+class ProcessPartActionFacts:
+    def __init__(self, conn, logger=None):
+        self.repo = WorkbenchProcessPartFactsRepository(conn, logger)
+
     def snapshot(self, identity):
         code = identity.entity_key
-        part = self.fetchone("SELECT * FROM Parts WHERE part_no=?", (code,))
+        part = self.repo.part(code)
         if part is None:
             raise WorkbenchCommandRejected("entity_not_found", "零件已不存在，请返回列表重新选择。", 404)
         return {
-            "identity": self.fetchone("SELECT * FROM WorkbenchEntityRefs WHERE ref=?", (identity.ref,)),
+            "identity": self.repo.identity(identity.ref),
             "part": part,
-            "operations": self.fetchall("SELECT * FROM PartOperations WHERE part_no=? ORDER BY id", (code,)),
-            "groups": self.fetchall("SELECT * FROM ExternalGroups WHERE part_no=? ORDER BY group_id", (code,)),
-            "batches": self.fetchall("SELECT * FROM Batches WHERE part_no=? ORDER BY batch_id", (code,)),
-            "foreign_group_members": self.fetchall("""SELECT o.* FROM PartOperations o
-                JOIN ExternalGroups g ON g.group_id=o.ext_group_id
-                WHERE g.part_no=? AND o.part_no<>? ORDER BY o.id""", (code, code)),
-            "template_identities": self._template_identities(code),
-            "workflow": self.fetchall("SELECT * FROM WorkbenchProcessWorkflow WHERE part_ref=?", (identity.ref,)),
-            "confirmations": self.fetchall("""SELECT * FROM WorkbenchProcessOperationConfirmations
-                WHERE part_ref=? ORDER BY operation_ref,stage""", (identity.ref,)),
+            "operations": self.repo.operations(code),
+            "groups": self.repo.groups(code),
+            "batches": self.repo.batches(code),
+            "foreign_group_members": self.repo.foreign_group_members(code),
+            "template_identities": self.repo.template_identities(code),
+            "workflow": self.repo.workflow(identity.ref),
+            "confirmations": self.repo.confirmations(identity.ref),
         }
-
-    def _template_identities(self, code):
-        return self.fetchall("""SELECT * FROM WorkbenchEntityRefs WHERE active=1 AND (
-            (kind='template_operation' AND entity_key IN (
-                SELECT CAST(id AS TEXT) FROM PartOperations WHERE part_no=?)) OR
-            (kind='template_external_group' AND entity_key IN (
-                SELECT group_id FROM ExternalGroups WHERE part_no=?))) ORDER BY ref""", (code, code))

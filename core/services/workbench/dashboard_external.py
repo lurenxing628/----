@@ -101,7 +101,7 @@ def external(conn, now):
     except WorkbenchCommandRejected as exc:
         if exc.code != "outsourcing_unavailable":
             raise
-        recorded = conn.execute("SELECT 1 FROM WorkbenchCommandReceipts WHERE action='outsourcing.confirm' LIMIT 1").fetchone() is not None
+        recorded = reader.repo.has_confirm_receipts()
         state = "unavailable" if schema or recorded else "not_connected"
         result = summary(state, [source_issue(exc.code, str(exc))])
         return result, input_fingerprint({"schema": schema, "recorded": recorded, "summary": result})

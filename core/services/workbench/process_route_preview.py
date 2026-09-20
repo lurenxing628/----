@@ -18,9 +18,9 @@ from core.models.workbench_process_route import (
 )
 from core.services.process.route_parser import RouteParser
 from core.services.process.route_parser_tokens import preprocess_route_string, route_format_errors, route_tokens
-from data.repositories.base_repo import BaseRepository
 from data.repositories.supplier_repo import SupplierRepository
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
+from data.repositories.workbench_process_query_repo import WorkbenchProcessQueryRepository
 
 
 class _OpTypeSnapshot:
@@ -149,12 +149,12 @@ class ProcessRoutePreviewService:
             self._batch = previous
 
     def _reference_facts(self):
-        repo = BaseRepository(self.conn, self.logger)
-        types = _OpTypeSnapshot(repo.fetchall("SELECT op_type_id, name, category FROM OpTypes"))
+        repo = WorkbenchProcessQueryRepository(self.conn, self.logger)
+        types = _OpTypeSnapshot(repo.op_type_reference_rows())
         capabilities = SupplierRepository(self.conn, self.logger).list_capabilities(status="active")
         parser = RouteParser(types, _CapabilitySnapshot(capabilities), logger=self.logger)
         context = parser.build_parse_context()
-        suppliers = {row["supplier_id"]: row for row in repo.fetchall("SELECT supplier_id, name FROM Suppliers")}
+        suppliers = {row["supplier_id"]: row for row in repo.supplier_reference_rows()}
         return types, capabilities, context, suppliers
 
     def preview(self, body):

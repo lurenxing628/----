@@ -7,19 +7,17 @@ from core.models.workbench_command import WorkbenchCommandRejected, input_finger
 from core.services.process.workflow_state import workflow_snapshot
 from core.services.workbench.batch_execution import old_event_bindings, protects_execution, read_execution
 from core.services.workbench.process_queries import _plain
+from data.repositories.workbench_batch_facts_repo import WorkbenchBatchFactsRepository
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
 from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
 
-TABLES = ("Batches", "BatchOperations", "Parts", "PartOperations", "ExternalGroups", "BatchMaterials", "Materials",
-          "Machines", "Operators", "OperatorMachine", "OperatorSkill", "OpTypes", "Suppliers", "WorkbenchSupplierOpTypes",
-          "WorkbenchSupplierProfiles", "WorkbenchOperatorProfiles", "Schedule", "ScheduleCandidateRows", "ScheduleAdjustmentChange",
-          "ScheduleAdjustmentScenarioRow", "OperationExecutionEvents", "WorkbenchEntityRefs", "WorkbenchPlanSourceRefs")
 PLAN_TABLES = ("Schedule", "ScheduleCandidateRows", "ScheduleAdjustmentChange", "ScheduleAdjustmentScenarioRow")
 
 
 class BatchFacts:
     def __init__(self, conn, logger=None):
         self.conn = conn
+        self.repo = WorkbenchBatchFactsRepository(conn, logger=logger)
         self.identities = WorkbenchIdentityRepository(conn, logger=logger)
         self.plan_refs = WorkbenchPlanIdentityRepository(conn, logger=logger)
         self._facts = None
@@ -28,7 +26,7 @@ class BatchFacts:
         if self._facts is not None:
             return self._facts
         with TransactionManager(self.conn).transaction():
-            tables = {table: [dict(row) for row in self.conn.execute('SELECT * FROM "' + table + '" ORDER BY rowid')] for table in TABLES}
+            tables = self.repo.whole_tables()
             workflow = workflow_snapshot(self.conn)
             operation_refs = self.plan_refs.get_operation_refs(row["id"] for row in tables["BatchOperations"])
             return {**tables, "workflow": workflow, "operation_refs": operation_refs,
@@ -59,8 +57,7 @@ class BatchFacts:
     def batch(self, ref):
         identity = self.resolve(ref)
         if self._facts is None:
-            stored = self.conn.execute("SELECT * FROM Batches WHERE batch_id=?", (identity.entity_key,)).fetchone()
-            row = dict(stored) if stored is not None else None
+            row = self.repo.batch_row(identity.entity_key)
         else:
             row = next((item for item in self._facts["Batches"] if item["batch_id"] == identity.entity_key), None)
         if row is None:

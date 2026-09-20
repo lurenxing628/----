@@ -4,6 +4,7 @@ import json
 
 from core.infrastructure.schema_probe import table_exists
 from core.models.workbench_execution_input import MAX_REPORT_BYTES, reject
+from data.repositories.workbench_report_validation_repo import WorkbenchReportValidationRepository
 
 
 def adopted_quota_impacts(conn, report_ref, operation_ref):
@@ -11,8 +12,7 @@ def adopted_quota_impacts(conn, report_ref, operation_ref):
     # startup separately requires the complete current migration contract.
     if not table_exists(conn, "WorkbenchCalibrationAdoptions"):
         return []
-    rows = conn.execute("""SELECT adoption_ref, template_operation_ref, evidence_json
-        FROM WorkbenchCalibrationAdoptions WHERE instr(evidence_json,?)>0 ORDER BY adoption_ref LIMIT 10001""", (report_ref,)).fetchall()
+    rows = WorkbenchReportValidationRepository(conn).calibration_adoptions_mentioning(report_ref)
     if len(rows) > 10000:
         reject("关联的定额采用记录超过读取上限，未执行撤销。", "query_too_large", 413)
     total, impacts = 0, []

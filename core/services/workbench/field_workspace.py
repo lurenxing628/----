@@ -9,6 +9,7 @@ from core.services.workbench.field_workspace_scope import STATES, matches
 from core.services.workbench.plan_fact_serialization import plain_plan_facts
 from core.services.workbench.plan_queries import WorkbenchPlanQueryService
 from data.repositories.workbench_execution_repo import WorkbenchExecutionRepository
+from data.repositories.workbench_field_query_repo import WorkbenchFieldQueryRepository
 from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
 
 
@@ -19,6 +20,7 @@ class FieldWorkspaceService:
         self.conn = conn
         self.ledger = ExecutionLedgerService(conn, context_factory=context_factory)
         self.repo = WorkbenchExecutionRepository(conn)
+        self.queries = WorkbenchFieldQueryRepository(conn)
         self.plans = WorkbenchPlanQueryService(conn)
 
     @contextmanager
@@ -30,7 +32,7 @@ class FieldWorkspaceService:
     def _plan_ref(self, scope):
         if scope.get('plan_ref'):
             return scope['plan_ref']
-        version = self.conn.execute('SELECT MAX(version) FROM ScheduleHistory').fetchone()[0]
+        version = self.queries.latest_schedule_version()
         if version is None:
             return None
         return WorkbenchPlanIdentityRepository(self.conn).get_plan_ref(WorkbenchPlanLocator(version, 'adopted'))
@@ -52,7 +54,7 @@ class FieldWorkspaceService:
         refs = [task['operation_ref'] for task in plan['tasks']]
         projections = {item.operation_ref: item.to_dict() for item in self.ledger.project_operations(refs, comparison_plan_ref=plan_ref)}
         labels = self._labels(projections, plan)
-        names = {row[0]: row[1] for row in self.conn.execute('SELECT b.batch_id,p.part_name FROM Batches b LEFT JOIN Parts p ON p.part_no=b.part_no')}
+        names = self.queries.batch_part_names()
         tasks, scope_tasks = [], []
         count_scope = {key: value for key, value in scope.items() if key != 'state'}
         for row in plan['tasks']:

@@ -19,6 +19,14 @@ class WorkbenchExecutionRepository(BaseRepository):
         if execution_ledger_contract_issues(self.conn) or execution_void_contract_issues(self.conn):
             raise WorkbenchCommandRejected("execution_ledger_unavailable", "报工数据库结构不完整，请联系维护人员升级数据库。")
 
+    def schema_version_row(self):
+        """SchemaVersion 单行（id=1）原始行；不存在时为 None。"""
+        return self.fetchone("SELECT version FROM SchemaVersion WHERE id=1")
+
+    def has_execution_receipts(self):
+        """是否已有任何 execution.* 命令回执。"""
+        return self.fetchone("SELECT 1 FROM WorkbenchCommandReceipts WHERE action GLOB 'execution.*' LIMIT 1") is not None
+
     def clock(self):
         row = self.fetchone("SELECT revision FROM WorkbenchExecutionLedgerClock WHERE singleton=1")
         plan = self.fetchone("SELECT revision FROM WorkbenchPlanIdentityClock WHERE singleton=1")

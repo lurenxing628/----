@@ -13,6 +13,7 @@ from core.services.workbench.execution_ledger_projection import (
 )
 from core.services.workbench.field_report_files_codec import decode_reports, encode_reports
 from core.services.workbench.field_report_files_identity import identity_values, matched_task, task_indexes
+from data.repositories.workbench_field_query_repo import WorkbenchFieldQueryRepository
 
 
 class FieldReportFileService:
@@ -20,20 +21,15 @@ class FieldReportFileService:
         from core.services.workbench.production_report import WorkbenchProductionReportService
 
         self.conn = conn
+        self.queries = WorkbenchFieldQueryRepository(conn)
         self.production = WorkbenchProductionReportService(conn, context_factory=context_factory)
 
     def _resource_index(self):
-        rows = self.conn.execute("""SELECT e.ref,e.kind,e.entity_key,
-            CASE WHEN e.kind='machine' THEN m.name ELSE o.name END AS label
-            FROM WorkbenchEntityRefs e
-            LEFT JOIN Machines m ON e.kind='machine' AND m.machine_id=e.entity_key
-            LEFT JOIN Operators o ON e.kind='operator' AND o.operator_id=e.entity_key
-            WHERE e.active=1 AND e.kind IN ('machine','operator')""")
         result = {}
-        for ref, kind, code, label in rows:
-            for value in (code, label):
+        for row in self.queries.active_resource_index_rows():
+            for value in (row["entity_key"], row["label"]):
                 if type(value) is str and value:
-                    result.setdefault((kind, value), set()).add(ref)
+                    result.setdefault((row["kind"], value), set()).add(row["ref"])
         return result
 
     @staticmethod
