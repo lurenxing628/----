@@ -67,6 +67,7 @@ verified_by: 主代理定向测试（每个修复提交单独跑定向用例，�
 | C8 | 老 Excel 导入簇 | 用户裁决退役死的一半：删 `ExcelService` 类、两个 `build_existing_for_excel`、一份专测与三个开发期冒烟脚本；类型与 `excel_import_executor` 仍被批次 / 日历 / 人员设备导入使用，原地保留；`TabularBackend` 三件套是插件框架示例能力，是否连插件示例退役另议 |
 | C9 | `GanttAdjustmentPublishService.publish_scenario` 生产无调用方 | 退役：删服务与两份测试、账本守卫里 3 个驱动它的用例，门面 `_EXPORTS` / 冻结锚 / 懒导出合同 / 注册表 / 三缺口文档与路线图条目同步；同族 Draft / Scenario / Validation 三个服务同样无生产调用方（约 1.5k 行 + 46 份测试引用），整族退役另议 |
 | C10 | 甘特调整族 Draft / Scenario / Validation + 投影 + 草稿仓储 | 用户裁决退役：删 3 服务、`adjustment_projection.py`、`ScheduleAdjustmentRepository`，模型只留 `ScheduleAdjustmentScenario`；`ScheduleAdjustmentScenarioRepository` 只留 `list_catalog_rows`（`build_plan_catalog` 仍调用，但该函数生产无调用方、只被两份工作台测试当私有目录合同使用，超出本次裁决未动）；`tests/_support/gantt_scenario.py` 的 `_saved_scenario` 改为按退役服务的真实产物直插两张方案表；`ScheduleAdjustmentDraft` / `ScheduleAdjustmentChange` 两张表不再有写入方，是否 drop 属数据裁决未动 |
+| C11 | `TabularBackend` / `OpenpyxlBackend` / `PandasBackend` / `excel_backend_factory` + `plugins/pandas_backend_plugin.py` | 用户裁决退役：`ExcelService` 删除后四个后端模块与 pandas 插件示例在生产里无消费方，整簇删除；`SOURCE_ROW_NUM_KEY` / `SOURCE_SHEET_NAME_KEY` 落回 `excel_service.py`；插件框架三份测试改用合成能力键（`probe.*` / `demo.*`）与仓内唯一真实插件 `ortools_probe`；`openpyxl` 后端专测覆盖的软 / 硬链接拒绝与公式清洗分别由 `tests/app_runtime/test_fixed_file_security.py` 与工作台导出测试保留；直接装配扫描器去掉两条只匹配已删符号的规则（`excel_service` / `get_excel_backend`）；pyright 两份配置去掉 pandas 后端排除项 |
 
 ## 未做 / 证据不足
 

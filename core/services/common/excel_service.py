@@ -9,7 +9,9 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from core.errors import ValidationError
 
-from .tabular_backend import SOURCE_ROW_NUM_KEY, SOURCE_SHEET_NAME_KEY
+# 保留在原始行数据中的导入元数据键（导入执行器读 Excel 时写入，预览 / 确认阶段据此保真源行号）。
+SOURCE_ROW_NUM_KEY = "__source_row_num"
+SOURCE_SHEET_NAME_KEY = "__source_sheet_name"
 
 SOURCE_METADATA_KEYS = frozenset((SOURCE_ROW_NUM_KEY, SOURCE_SHEET_NAME_KEY))
 

@@ -13,6 +13,5 @@
 
 ## 已提供插件
 
-- `pandas_backend_plugin.py`：可选 pandas/numpy Excel 后端（默认关闭，Win7 离线锁定版本）
 - `ortools_probe_plugin.py`：OR-Tools 探测插件（默认关闭，用于现场判断是否能 import）
 

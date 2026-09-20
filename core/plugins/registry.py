@@ -11,8 +11,7 @@ class PluginRegistry:
 
     约定：
     - key 使用 namespace 风格，例如：
-      - excel_backend.openpyxl
-      - excel_backend.pandas
+      - dependency.ortools
       - solver.greedy
       - solver.ortools
     - 冲突策略：首个成功注册者保留，后续冲突者不得静默覆盖。

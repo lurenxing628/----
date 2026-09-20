@@ -208,7 +208,7 @@ class PluginManager:
                         if hasattr(mod, "register"):
                             # register 前对 registry 三个可变面做快照：register() 中途失败时
                             # 必须整体回滚本次增量——loaded=no 的插件不得以半初始化 provider
-                            # 残留 registry 接管能力路由（如 excel_backend.pandas），也不得以
+                            # 残留 registry 接管能力路由，也不得以
                             # first_loaded_wins 残留 key 挡住后续同名健康插件。
                             before_capabilities = dict(registry.capabilities)
                             before_owners = dict(registry.capability_owners)

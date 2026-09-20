@@ -1,4 +1,4 @@
-"""回归测试：bootstrap_plugins 在数据库不可用、配置读取失败、单个插件 register 抛错、PluginManager 加载整体失败时，必须标记 degraded=True、给出可见的 config_source/degradation_counters/对外中文错误，且不泄露内部异常（如 PLUGIN_INTERNAL_SECRET），并在加载失败时不复用旧插件注册表快照、回退到 OpenpyxlBackend。"""
+"""回归测试：bootstrap_plugins 在数据库不可用、配置读取失败、单个插件 register 抛错、PluginManager 加载整体失败时，必须标记 degraded=True、给出可见的 config_source/degradation_counters/对外中文错误，且不泄露内部异常（如 PLUGIN_INTERNAL_SECRET），并在加载失败时不复用旧插件注册表快照（旧插件已注册的能力不再可取）。"""
 
 from __future__ import annotations
 
@@ -7,8 +7,6 @@ from unittest import mock
 
 from core.infrastructure.database import ensure_schema
 from core.plugins import PluginManager, get_plugin_registry
-from core.services.common.excel_backend_factory import get_excel_backend
-from core.services.common.openpyxl_backend import OpenpyxlBackend
 from tests._support.paths import REPO_ROOT
 from web.bootstrap.plugins import bootstrap_plugins
 
@@ -26,21 +24,15 @@ def _write_demo_plugin(base_dir: Path) -> None:
     )
 
 
-def _write_excel_backend_plugin(base_dir: Path) -> None:
+def _write_old_capability_plugin(base_dir: Path) -> None:
     plugins_dir = base_dir / "plugins"
     plugins_dir.mkdir(parents=True, exist_ok=True)
-    (plugins_dir / "excel_backend_plugin.py").write_text(
-        "from core.services.common.tabular_backend import TabularBackend\n"
-        "PLUGIN_ID = 'pandas_excel_backend'\n"
-        "PLUGIN_NAME = '演示 Excel 后端插件'\n"
+    (plugins_dir / "old_capability_plugin.py").write_text(
+        "PLUGIN_ID = 'old_capability_plugin'\n"
+        "PLUGIN_NAME = '演示旧能力插件'\n"
         "PLUGIN_DEFAULT_ENABLED = 'yes'\n"
-        "class DemoPandasBackend(TabularBackend):\n"
-        "    def read(self, file_path, sheet=None):\n"
-        "        return []\n"
-        "    def write(self, rows, file_path, sheet='Sheet1'):\n"
-        "        return None\n"
         "def register(registry):\n"
-        "    registry.register('excel_backend.pandas', lambda: DemoPandasBackend())\n",
+        "    registry.register('demo.old_capability', 'old-provider')\n",
         encoding="utf-8",
     )
 
@@ -131,11 +123,11 @@ def test_plugin_bootstrap_load_failure_does_not_reuse_old_snapshot(tmp_path: Pat
     db_path = tmp_path / "aps.db"
     old_base = tmp_path / "old"
     new_base = tmp_path / "new"
-    _write_excel_backend_plugin(old_base)
+    _write_old_capability_plugin(old_base)
     _write_demo_plugin(new_base)
     old_status = PluginManager.load_from_base_dir(str(old_base), logger=None)
-    assert dict(old_status.get("registry") or {}).get("capabilities") == ["excel_backend.pandas"], old_status
-    assert get_excel_backend().__class__.__name__ == "DemoPandasBackend"
+    assert dict(old_status.get("registry") or {}).get("capabilities") == ["demo.old_capability"], old_status
+    assert get_plugin_registry().get("demo.old_capability") == "old-provider"
 
     with mock.patch(
         "web.bootstrap.plugins.PluginManager.load_from_base_dir",
@@ -158,4 +150,4 @@ def test_plugin_bootstrap_load_failure_does_not_reuse_old_snapshot(tmp_path: Pat
     registry = dict(plugin_status.get("registry") or {})
     assert registry.get("capabilities") == [], plugin_status
     assert get_plugin_registry().to_dict().get("capabilities") == []
-    assert isinstance(get_excel_backend(), OpenpyxlBackend)
+    assert get_plugin_registry().get("demo.old_capability") is None

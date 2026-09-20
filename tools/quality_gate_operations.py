@@ -850,7 +850,7 @@ def architecture_complexity_scan_map() -> Dict[str, Dict[str, Any]]:
 
 
 def architecture_web_helper_direct_assembly_entries() -> List[Dict[str, Any]]:
-    """web/*.py 顶层辅助模块里的直接装配（Service/Repository(g.db|conn)、ExcelService、get_excel_backend）。"""
+    """web/*.py 顶层辅助模块里的直接装配（Service/Repository(g.db|conn)）。"""
     aggregate = _cached_architecture_aggregate(collect_globbed_files(WEB_HELPER_SCAN_SCOPE_PATTERNS), ("assembly",))
     return cast(List[Dict[str, Any]], aggregate.get("direct_assembly_entries") or [])
 

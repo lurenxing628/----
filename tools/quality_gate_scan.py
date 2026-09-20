@@ -650,7 +650,7 @@ def _resolve_assembly_alias(value: Any, aliases: Dict[str, str]) -> Optional[str
     else:
         target = _call_target_name(value)
     tail = target.split(".")[-1]
-    if tail.endswith(("Service", "Repository")) or tail in {"ExcelService", "get_excel_backend"}:
+    if tail.endswith(("Service", "Repository")):
         return target
     return None
 
@@ -689,10 +689,6 @@ def scan_direct_assembly_entries(
                 rule = "service_or_repository_g_db"
             elif tail.endswith(("Service", "Repository")) and (first_arg_source == "conn" or conn_keyword_source == "conn"):
                 rule = "service_or_repository_conn"
-            elif tail == "ExcelService":
-                rule = "excel_service"
-            elif tail == "get_excel_backend":
-                rule = "get_excel_backend"
             elif (
                 (first_arg_source == "g.db" or conn_keyword_source == "g.db")
                 and not tail.endswith(("Service", "Repository"))

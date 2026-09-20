@@ -222,11 +222,9 @@ def test_direct_assembly_scan_flags_import_from_as_alias(monkeypatch) -> None:
             rel_path: dedent(
                 """
                 from somewhere import BatchService as BS
-                from somewhere import get_excel_backend as build_backend
 
                 def build():
                     BS(g.db, logger=None)
-                    build_backend()
                 """
             ).strip(),
         },
@@ -235,8 +233,7 @@ def test_direct_assembly_scan_flags_import_from_as_alias(monkeypatch) -> None:
     entries = scan_mod.scan_direct_assembly_entries([rel_path])
 
     assert [(entry["rule"], entry["target"], entry["line"]) for entry in entries] == [
-        ("service_or_repository_g_db", "BatchService", 5),
-        ("get_excel_backend", "get_excel_backend", 6),
+        ("service_or_repository_g_db", "BatchService", 4),
     ]
 
 
