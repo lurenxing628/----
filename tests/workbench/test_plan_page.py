@@ -8,17 +8,16 @@ from dataclasses import FrozenInstanceError, fields
 import pytest
 
 from core.errors import AppError
-from core.services.scheduler import workbench_plan_catalog as catalog
-from core.services.scheduler.workbench_plan_page import (
-    MAX_PLAN_PAGE_SIZE,
+from data.repositories import schedule_time_sql
+from data.repositories.schedule_plan_query_repo import SchedulePlanQueryRepository
+from data.repositories.workbench_plan_catalog_repo import MAX_PLAN_PAGE_SIZE, MAX_PLAN_VERSION
+from tests.workbench.plan_catalog_harness import (
     HistoryPlanPage,
     ScenarioPlanPage,
     build_history_plan_page,
+    build_plan_catalog,
     build_scenario_plan_page,
 )
-from data.repositories import schedule_time_sql
-from data.repositories.schedule_plan_query_repo import SchedulePlanQueryRepository
-from data.repositories.workbench_plan_catalog_repo import MAX_PLAN_VERSION
 from tests.workbench.plan_catalog_support import candidate, history, scenario, seed_operation, selection
 from tests.workbench.plan_page_support import create_scale_database, measure_page
 
@@ -88,7 +87,7 @@ def test_history_paginates_versions_not_roles_with_deterministic_heads(page_db):
     assert len(first.entries) == 4 and first.entries[0].schedule_result_status == "failed"
     assert first.has_more and second.has_more and not last.has_more
     assert last.next_before_version is None
-    assert first.entries + second.entries + last.entries == tuple(catalog.build_plan_catalog(conn))
+    assert first.entries + second.entries + last.entries == tuple(build_plan_catalog(conn))
 
 
 def test_exact_page_boundary_and_missing_seek_positions_do_not_repeat_first_page(page_db):
@@ -147,7 +146,7 @@ def test_scenario_pages_use_binary_key_order_and_keep_retired_states(page_db):
     history(conn, 2, op_id=op)
     for key, status in (("z", "expired"), ("A", "active"), ("b", "published"), ("a", "discarded")):
         scenario(conn, key, 1, op_id=op, status=status, published_version=2 if status == "published" else None)
-    expected = {entry.locator.scenario_id: entry for entry in catalog.build_plan_catalog(conn) if entry.kind == "scenario"}
+    expected = {entry.locator.scenario_id: entry for entry in build_plan_catalog(conn) if entry.kind == "scenario"}
     first = build_scenario_plan_page(conn, page_size=2)
     last = build_scenario_plan_page(conn, page_size=2, after_scenario_id=first.next_after_scenario_id)
     assert first.scenario_ids == ("A", "a") and last.scenario_ids == ("b", "z")
@@ -179,7 +178,6 @@ def test_sql_limit_and_page_only_detail_validation(page_db, monkeypatch, kind):
         pytest.fail("Page read attempted full catalog/history access")
 
     monkeypatch.setattr(schedule_time_sql, "parse_dt_for_sql", track)
-    monkeypatch.setattr(catalog, "build_plan_catalog", forbidden)
     monkeypatch.setattr(SchedulePlanQueryRepository, "list_history_identity_rows", forbidden)
     statements = []
     conn.set_trace_callback(statements.append)

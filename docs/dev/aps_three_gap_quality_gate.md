@@ -152,7 +152,6 @@
 - `data/repositories/machine_downtime_repo.py`
 - `data/repositories/operation_execution_event_repo.py`
 - `data/repositories/operation_execution_state_builder.py`
-- `data/repositories/schedule_adjustment_scenario_repo.py`
 - `web/routes/reports.py`
 - `web/routes/report_plan_preview.py`
 - `web/routes/domains/scheduler/scheduler_resource_dispatch.py`

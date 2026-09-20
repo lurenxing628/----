@@ -3,10 +3,10 @@
 from core.models.workbench_command import WorkbenchCommandRejected, canonical_json, input_fingerprint
 from core.models.workbench_plan_reference import WorkbenchPlanLocator, WorkbenchPlanReferenceError
 from core.models.workbench_trial import reference, reject
-from core.services.scheduler.workbench_plan_page import _PagePlanQueryService
+from core.services.common.bounded_plan_query import _PagePlanQueryService
 from core.services.workbench.facts.run_input_readonly import candidate_read_snapshot
+from core.services.workbench.plan.point_query import PointPlanCatalogRepository
 from core.services.workbench.plan.queries import WorkbenchPlanQueryService
-from data.repositories.workbench_plan_catalog_repo import WorkbenchPlanCatalogRepository
 from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
 from data.repositories.workbench_trial_adoption_history import TrialAdoptionHistoryRepository
 
@@ -42,7 +42,8 @@ class WorkbenchTrialAdoptionHistoryService:
         repo = TrialAdoptionHistoryRepository(self.conn)
         refs = WorkbenchPlanIdentityRepository(self.conn)
         revision = refs.read_revision()
-        catalog = WorkbenchPlanCatalogRepository(self.conn)
+        # Same catalog repository as the public plan catalog, so detail validation cannot diverge.
+        catalog = PointPlanCatalogRepository(self.conn)
         # This is current-state evidence only. It never chooses the requested scene.
         current_version = catalog.latest_version()
         query = _PagePlanQueryService(catalog, current_version)

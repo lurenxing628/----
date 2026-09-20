@@ -11,7 +11,6 @@ from core.services.common.bounded_plan_query import _PagePlanQueryService
 from core.services.common.plan_query import SchedulePlanQueryService
 from core.services.scheduler import schedule_plan_identity_builder as identity_adapter
 from core.services.scheduler import schedule_plan_query_service as query_adapter
-from core.services.scheduler import workbench_plan_page
 from data.repositories.workbench_plan_catalog_repo import WorkbenchPlanCatalogRepository
 from tests._support.dependency_boundaries import assert_import_orders, assert_no_import_prefixes
 from tests._support.paths import REPO_ROOT
@@ -26,8 +25,6 @@ _ALIASES = (
       "ROLE_BASELINE_BEST", "ROLE_CRITICAL_BEST", "VALID_PLAN_ROLES", "plan_role_label", "_normalize_role")),
     ("core.services.scheduler.schedule_plan_identity_builder", "core.services.common.plan_identity",
      ("build_plan_identity", "latest_official_version")),
-    ("core.services.scheduler.workbench_plan_page", "core.services.common.bounded_plan_query",
-     ("_PagePlanQueryService",)),
 )
 
 
@@ -41,18 +38,6 @@ def test_every_original_public_name_is_the_same_owner_object(adapter, owner):
     expected = {name for name in vars(owner) if not name.startswith("_")}
     assert {name for name in vars(adapter) if not name.startswith("_")} == expected
     assert all(getattr(adapter, name) is getattr(owner, name) for name in expected)
-
-
-def test_page_retains_its_complete_original_public_surface():
-    expected = {"DEFAULT_PLAN_PAGE_SIZE", "HistoryPlanPage", "MAX_PLAN_PAGE_SIZE", "Optional", "PlanCatalogEntry",
-                "ROLE_ADOPTED", "ScenarioPlanPage", "ScheduleAdjustmentScenario", "SchedulePlanQueryService",
-                "SchedulePlanResolution", "Tuple", "WorkbenchPlanCatalogRepository", "annotations",
-                "build_history_plan_page", "build_plan_identity", "build_scenario_plan_page", "dataclass",
-                "replace", "sqlite3", "validate_after_scenario_id", "validate_before_version", "validate_page_size"}
-    assert {name for name in vars(workbench_plan_page) if not name.startswith("_")} == expected
-    assert workbench_plan_page.SchedulePlanQueryService is query_owner.SchedulePlanQueryService
-    assert workbench_plan_page.SchedulePlanResolution is query_owner.SchedulePlanResolution
-    assert workbench_plan_page.build_plan_identity is identity_owner.build_plan_identity
 
 
 def test_all_current_query_import_consumers_keep_their_original_exports():

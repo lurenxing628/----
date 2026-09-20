@@ -21,8 +21,8 @@ from core.models.schedule_plan_role import SOURCE_ADJUSTMENT_SCENARIO_ROWS
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_plan_reference import WorkbenchPlanLocator, WorkbenchPlanReferenceError
 from core.models.workbench_plan_scope import MAX_PLAN_TASKS, PlanReadScope
+from core.services.common.bounded_plan_query import _PagePlanQueryService
 from core.services.scheduler.workbench_plan_catalog import PlanCatalogEntry, _role_entry
-from core.services.scheduler.workbench_plan_page import _PagePlanQueryService
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
 from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
 

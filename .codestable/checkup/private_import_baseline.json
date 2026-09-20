@@ -354,11 +354,6 @@
       "count": 6
     },
     {
-      "path": "core/services/scheduler/workbench_plan_page.py",
-      "kind": "private_symbol",
-      "count": 3
-    },
-    {
       "path": "core/services/system/workbench_overview.py",
       "kind": "private_symbol",
       "count": 1

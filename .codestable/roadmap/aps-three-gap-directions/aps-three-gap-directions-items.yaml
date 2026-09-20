@@ -698,7 +698,6 @@ items:
       - core/services/scheduler/execution_fact_provider.py
       - core/models/schedule_adjustment.py
       - data/repositories/operation_execution_event_repo.py
-      - data/repositories/schedule_adjustment_scenario_repo.py
       - schema.sql
       - core/infrastructure/migration_state.py
       - core/infrastructure/migrations/__init__.py

@@ -18,10 +18,8 @@ from data.repositories.calendar_facts_repo import CalendarFactsRepository
 from data.repositories.execution_ledger_scope_repo import ExecutionLedgerScopeRepository
 from data.repositories.operation_log_repo import OperationLogRepository
 from data.repositories.process_query_repo import ProcessQueryRepository
-from data.repositories.schedule_adjustment_scenario_repo import ScheduleAdjustmentScenarioRepository
 from data.repositories.schedule_batch_copy_repo import ScheduleBatchCopyRepository
 from data.repositories.schedule_execution_facts_repo import ScheduleExecutionFactsRepository
-from data.repositories.schedule_plan_detail_time_repo import SchedulePlanDetailTimeRepository
 from data.repositories.workbench_plan_catalog_repo import WorkbenchPlanCatalogRepository
 from data.repositories.workbench_process_workflow_repo import WorkbenchProcessWorkflowRepository
 from tests.workbench.execution_ledger_support import ledger_case as ledger_case  # noqa: F401
@@ -187,20 +185,6 @@ def test_schedule_execution_facts_latest_rows_and_event_identity_probe(ledger_ca
     assert repo.has_event_without_plan_identity("schedule", "baseline_best") is False
 
 
-def test_schedule_plan_detail_time_probe_flags_empty_or_inverted_ranges(ledger_case) -> None:
-    case = ledger_case
-    repo = SchedulePlanDetailTimeRepository(case.conn)
-    scope = dict(source_table=SOURCE_SCHEDULE, candidate_id=None, scenario_id=None)
-    assert repo.has_invalid_detail_times(version=1, **scope) is False
-    case.conn.execute("UPDATE Schedule SET end_time=start_time WHERE version=1")
-    case.conn.commit()
-    assert repo.has_invalid_detail_times(version=1, **scope) is True
-    case.conn.execute("UPDATE Schedule SET end_time='' WHERE version=1")
-    case.conn.commit()
-    assert repo.has_invalid_detail_times(version=1, **scope) is True
-    assert repo.has_invalid_detail_times(version=2, **scope) is False
-
-
 # ---------------------------------------------------------------- 计划目录有界读取
 def test_plan_catalog_bounded_reads(ledger_case) -> None:
     case = ledger_case
@@ -227,18 +211,6 @@ def test_batch_copy_source_operation_ids_follow_seq_then_piece(schema_conn) -> N
     ids = {row["op_code"]: row["id"] for row in schema_conn.execute("SELECT op_code,id FROM BatchOperations")}
     assert ScheduleBatchCopyRepository(schema_conn).source_operation_ids("B1") == [ids["B1-10a"], ids["B1-10b"], ids["B1-20"]]
     assert ScheduleBatchCopyRepository(schema_conn).source_operation_ids("missing") == []
-
-
-def test_scenario_catalog_rows_order_by_base_version_then_created_at(schema_conn) -> None:
-    schema_conn.executemany(
-        "INSERT INTO ScheduleAdjustmentScenario(scenario_id,source_draft_id,base_version,base_plan_role,base_source_table,"
-        "validation_status,created_at) VALUES (?,?,?,?,?,?,?)",
-        [("S-old", "D-old", 1, "adopted", "schedule", "valid", "2026-09-01 00:00:00"),
-         ("S-new", "D-new", 2, "adopted", "schedule", "valid", "2026-09-01 00:00:00"),
-         ("S-late", "D-late", 1, "adopted", "schedule", "warning", "2026-09-02 00:00:00")])
-    rows = ScheduleAdjustmentScenarioRepository(schema_conn).list_catalog_rows()
-    assert [row["scenario_id"] for row in rows] == ["S-new", "S-late", "S-old"]
-    assert rows[0]["status"] == "active" and rows[2]["validation_status"] == "valid"
 
 
 def test_operation_log_counts_and_oldest_first_deletion(schema_conn) -> None:

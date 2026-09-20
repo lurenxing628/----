@@ -18,8 +18,8 @@ from core.models.schedule_plan_role import (
 from core.models.workbench_command import WorkbenchCommandRejected, input_fingerprint
 from core.models.workbench_plan_reference import WorkbenchPlanLocator, WorkbenchPlanReferenceError
 from core.models.workbench_plan_scope import MAX_PLAN_TASKS
+from core.services.common.bounded_plan_query import _PagePlanQueryService
 from core.services.scheduler.workbench_plan_catalog import _role_entry, _scenario_entry
-from core.services.scheduler.workbench_plan_page import _PagePlanQueryService
 from core.services.workbench.facts.plan_serialization import plain_plan_facts
 from core.services.workbench.facts.zero_duration_evidence import overlaps
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository

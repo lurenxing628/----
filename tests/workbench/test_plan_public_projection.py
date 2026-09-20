@@ -13,11 +13,11 @@ from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_plan_reference import WorkbenchPlanLocator
 from core.models.workbench_plan_scope import MAX_PLAN_TASKS
 from core.services.scheduler.workbench_plan_catalog import PlanCatalogIssue
-from core.services.scheduler.workbench_plan_page import build_history_plan_page
 from core.services.workbench.plan import projection as plan_projection
 from core.services.workbench.plan import queries as plan_queries
 from data.repositories import schedule_time_sql
 from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
+from tests.workbench.plan_catalog_harness import build_history_plan_page
 from tests.workbench.plan_catalog_support import history, scenario
 from tests.workbench.plan_page_support import create_scale_database
 from tests.workbench.plan_read_support import (

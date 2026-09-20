@@ -7,12 +7,8 @@ import pytest
 from core.errors import AppError
 from core.models.schedule_plan_identity import PlanIdentity
 from core.models.schedule_plan_resolution import SchedulePlanRoleOption
-from core.services.scheduler.workbench_plan_catalog import (
-    PlanCatalogEntry,
-    PlanCatalogIssue,
-    PlanCatalogLocator,
-    build_plan_catalog,
-)
+from core.services.scheduler.workbench_plan_catalog import PlanCatalogEntry, PlanCatalogIssue, PlanCatalogLocator
+from tests.workbench.plan_catalog_harness import build_plan_catalog
 from tests.workbench.plan_catalog_support import candidate, history, scenario, seed_operation, selection
 
 

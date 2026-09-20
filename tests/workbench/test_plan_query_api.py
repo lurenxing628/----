@@ -7,7 +7,6 @@ import pytest
 
 import web.public_token_registry as tokens
 from core.infrastructure.workbench_plan_identity_schema import install_plan_identity
-from core.services.scheduler import workbench_plan_catalog
 from data.repositories.schedule_plan_query_repo import SchedulePlanQueryRepository
 from tests.workbench.plan_catalog_support import history
 from tests.workbench.plan_read_support import BASE, NIGHT_END, NIGHT_START, assert_error, make_api, plan_read_api
@@ -17,7 +16,6 @@ def test_directory_has_exact_public_identity_and_seeks_versions(plan_api, monkey
     def forbidden(*args, **kwargs):
         pytest.fail("Public read must not scan full history/catalog")
 
-    monkeypatch.setattr(workbench_plan_catalog, "build_plan_catalog", forbidden)
     monkeypatch.setattr(SchedulePlanQueryRepository, "list_history_identity_rows", forbidden)
     first = plan_api.read(size=1)
     assert len(first["data"]["plans"]) == 3

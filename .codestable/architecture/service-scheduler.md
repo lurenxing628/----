@@ -126,7 +126,7 @@ core/services/scheduler/
 |---|---|---|---|
 | **plan_core 计划身份内核** | `schedule_plan_query_service.py`(in-deg **9**)、`schedule_result_view_context.py`(in-deg 7)、`schedule_plan_identity_builder.py`、`version_resolution.py`(in-deg 5) | 计划身份/版本/视图上下文最底层语义 | **全模块共享底座**,被 gantt/dispatch/adjustment/exec/delay_diag 五大族单向依赖 |
 | **gantt 甘特** | `gantt_service.py:44`(族内总装)、`gantt_range.py`(in-deg 6)、`gantt_tasks.py`、`gantt_critical_chain.py` | 甘特图渲染全链 | 族内自洽;纠缠点 `gantt_tasks`(被 dispatch 借)、`gantt_range`(被 plan_core 借) |
-| **gantt_adjustment 甘特调整** | （2026-09-20 整族退役：Draft / Validation / Scenario / Publish 四个服务、投影与草稿仓储随旧路由层删除；`ScheduleAdjustmentScenario*` 表、模型与方案仓储的 `list_catalog_rows` 保留供工作台计划目录读取） | 手工调整草稿→校验→投影→发布 | 已退役 |
+| **gantt_adjustment 甘特调整** | （2026-09-20 整族退役：Draft / Validation / Scenario / Publish 四个服务、投影与草稿仓储随旧路由层删除；`ScheduleAdjustmentScenario*` 表与模型保留，工作台计划目录经 `WorkbenchPlanCatalogRepository` 分页读取） | 手工调整草稿→校验→投影→发布 | 已退役 |
 | **resource_dispatch 资源派工** | `resource_dispatch_service.py:41`、`…rows.py`、`…execution_service.py` | 派工单(资源×工序)视图 | 与 gantt + exec_feedback 双向纠缠 |
 | **resource_dispatch_actual 实际派工** | `resource_dispatch_actual_record_service.py`、`…records.py`、`…import*.py` | 实际记录录入/校验/Excel 导入 | 内聚高(6 文件成链),dispatch 大族里相对独立子簇 |
 | **exec_feedback 现场事实** | `execution/` 实现、根目录四个兼容 wrapper、`operation_execution_feedback_*` | 现场执行事实采集/反馈(契约 4.10) | 共享服务叶子被 adjustment/dispatch/actual/run 单向依赖；provider→scope/enrichment、snapshot→provider，不再靠 `TYPE_CHECKING` 或函数内 import 拆环 |

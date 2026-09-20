@@ -1,8 +1,11 @@
-"""Private, SELECT-only plan catalog; never serialize this module directly to HTML/API.
+"""Private, SELECT-only plan catalog entry builders; never serialize this module directly to HTML/API.
 
-build_plan_catalog(conn, logger=None) -> List[PlanCatalogEntry]. The caller owns
-the connection (sqlite3.Row factory) and any read-snapshot transaction. No schema,
-configuration, app, token registry, or command service is initialized here.
+_role_entry(query, history, latest, role, raw_option) and _scenario_entry(query, scenario,
+history, latest) build one PlanCatalogEntry each for the workbench catalog
+(core/services/workbench/plan/queries.py). The caller owns the connection, the
+read snapshot and the paging; query.repo must provide validate_detail_times
+(PointPlanCatalogRepository in production), which raises ValueError for any
+empty, unparsable or non-positive detail time range.
 
 Shape is frozen dataclasses, not a public JSON contract:
 * locator: PlanCatalogLocator(version, plan_role, scenario_id); internal only.
@@ -22,31 +25,23 @@ Shape is frozen dataclasses, not a public JSON contract:
   discarded and expired scenarios remain listed but cannot preview; a published
   version is an internal navigation hint, never an automatic substitution.
 
-Order: history versions descending, adopted then stored representative roles;
-then scenarios by base_version descending, created_at descending, scenario_id.
-History deduplication and latest selection use the existing repository/builder:
-latest partial/failed never falls back to an older success. Unselected candidate
-attempts and editing drafts are not plans in this catalog. Missing tables or DB
-errors propagate; an initialized empty database returns []. Per-plan validation
-failures are reported without fabricating a healthy identity or hiding entries.
+Latest partial/failed never falls back to an older success. Unselected candidate
+attempts and editing drafts are not plans. Per-plan validation failures are
+reported without fabricating a healthy identity or hiding entries; DB errors and
+a repository without validate_detail_times propagate instead of degrading.
 """
 
 from __future__ import annotations
 
-import sqlite3
 from dataclasses import dataclass, replace
-from typing import Any, Dict, List, Literal, Optional, Tuple
+from typing import Any, Dict, Literal, Optional, Tuple
 
 from core.models.schedule_adjustment import ScheduleAdjustmentScenario
 from core.models.schedule_plan_identity import PlanIdentity
 from core.models.schedule_plan_resolution import SchedulePlanResolution, SchedulePlanRoleOption
 from core.models.schedule_plan_role import ROLE_ADOPTED, SOURCE_SCHEDULE, plan_role_label
 from core.models.scheduler_history_parser import parse_result_summary_payload
-from data.repositories.schedule_adjustment_scenario_repo import ScheduleAdjustmentScenarioRepository
-from data.repositories.schedule_plan_detail_time_repo import SchedulePlanDetailTimeRepository
-
-from .schedule_plan_identity_builder import latest_official_version
-from .schedule_plan_query_service import SchedulePlanQueryService
+from core.services.common.plan_query import SchedulePlanQueryService
 
 Completeness = Literal["complete", "partial", "invalid", "unknown"]
 
@@ -105,15 +100,9 @@ def _check_role_binding(resolution: SchedulePlanResolution, option: SchedulePlan
 
 def _check_detail_times(query: SchedulePlanQueryService, resolution: SchedulePlanResolution) -> None:
     validate = getattr(query.repo, "validate_detail_times", None)
-    if callable(validate):
-        validate(resolution)
-        return
-    probe = SchedulePlanDetailTimeRepository(query.repo.conn, logger=query.repo.logger)
-    if probe.has_invalid_detail_times(
-        version=resolution.version, source_table=resolution.source_table,
-        candidate_id=resolution.candidate_id, scenario_id=resolution.scenario_id,
-    ):
-        raise ValueError("方案包含无效时间明细，不能标记为完整可查看。")
+    if not callable(validate):
+        raise RuntimeError("计划目录条目需要能校验明细时间的目录仓储，收到 " + type(query.repo).__name__)
+    validate(resolution)
 
 
 def _role_entry(
@@ -210,25 +199,3 @@ def _scenario_entry(
         scenario_status=scenario.status,
         published_version=scenario.published_version,
     )
-
-
-def build_plan_catalog(conn: sqlite3.Connection, logger=None) -> List[PlanCatalogEntry]:
-    """List stored identities without fallback, mutation, or public references."""
-    query = SchedulePlanQueryService(conn, logger=logger)
-    histories = query.repo.list_history_identity_rows()
-    latest = latest_official_version(histories)
-    entries = []
-    for history in histories:
-        rows = query.repo.list_plan_role_options(int(history["version"]))
-        adopted = next((row for row in rows if row["role"] == ROLE_ADOPTED), None)
-        entries.append(_role_entry(query, history, latest, ROLE_ADOPTED, adopted))
-        entries.extend(
-            _role_entry(query, history, latest, str(row["role"]), row)
-            for row in rows if row["role"] != ROLE_ADOPTED
-        )
-    by_version = {int(row["version"]): row for row in histories}
-    scenarios = ScheduleAdjustmentScenarioRepository(conn, logger=logger).list_catalog_rows()
-    for row in scenarios:
-        scenario = ScheduleAdjustmentScenario.from_row(row)
-        entries.append(_scenario_entry(query, scenario, by_version.get(scenario.base_version), latest))
-    return entries

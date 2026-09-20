@@ -26,6 +26,24 @@ def test_empty_requires_exact_saved_scenario(trial_case):
         assert error.value.code == "entity_not_found"
 
 
+def test_official_plan_identity_validates_details_through_the_catalog_repository(trial_case, monkeypatch):
+    from core.services.workbench.plan.point_query import PointPlanCatalogRepository
+
+    saved, _ = seeded(trial_case)
+    current_version = trial_case.conn.execute("SELECT MAX(version) FROM ScheduleHistory").fetchone()[0]
+    validated = []
+    original = PointPlanCatalogRepository.validate_detail_times
+
+    def counted(self, resolution):
+        validated.append((resolution.version, resolution.source_table))
+        return original(self, resolution)
+
+    monkeypatch.setattr(PointPlanCatalogRepository, "validate_detail_times", counted)
+    data, _ = read(trial_case, saved)
+    assert data["items"][0]["official_plan"]["capabilities"]["view"] is True
+    assert validated == [(current_version, "schedule")]
+
+
 def test_real_receipt_audit_and_source_are_bound(trial_case):
     saved, committed = seeded(trial_case)
     before = snapshot(trial_case.conn)
