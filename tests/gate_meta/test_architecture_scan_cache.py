@@ -80,11 +80,11 @@ def test_scan_returns_valid_fact_and_never_writes_cache_file(tmp_path: Path, mon
     fact = facts[0]
     assert fact["schema_version"] == scan_cache.ARCHITECTURE_SCAN_FACT_SCHEMA_VERSION
     assert fact["path"] == "core/services/example.py"
-    assert sorted(fact["fact_kinds"]) == ["complexity", "repository", "request", "silent"]
+    assert sorted(fact["fact_kinds"]) == ["assembly", "complexity", "repository", "silent"]
     assert fact["line_count"] > 0
     assert fact["silent_fallback_handlers_without_global_id"]
     assert "id" not in fact["silent_fallback_handlers_without_global_id"][0]
-    assert fact["request_service_direct_assembly_entries"]
+    assert fact["direct_assembly_entries"]
     assert fact["repository_bundle_drift_entries"]
 
     # force=True 是塌缩前遗留参数：结果一致，也不产生缓存文件
@@ -169,7 +169,7 @@ def test_ledger_validation_and_refresh_use_architecture_scan(monkeypatch) -> Non
                 "line_count": 20,
                 "silent_fallback_handlers_without_global_id": [silent_handler],
                 "complexity_blocks_all": [],
-                "request_service_direct_assembly_entries": [],
+                "direct_assembly_entries": [],
                 "repository_bundle_drift_entries": [],
             }
         ]
@@ -242,7 +242,7 @@ def test_ledger_validation_and_refresh_use_architecture_scan(monkeypatch) -> Non
                     "rank": "C",
                 }
             ] if path == "sample_complex.py" else [],
-            "request_service_direct_assembly_entries": [],
+            "direct_assembly_entries": [],
             "repository_bundle_drift_entries": [],
         }
 

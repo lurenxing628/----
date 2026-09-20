@@ -29,8 +29,8 @@ from .quality_gate_scan import (
     ScanContext,
     _assign_silent_entry_ids,
     complexity_scan_map,
+    scan_direct_assembly_entries,
     scan_repository_bundle_drift_entries,
-    scan_request_service_direct_assembly_entries,
     scan_silent_fallback_fact_entries,
 )
 from .quality_gate_shared import (
@@ -54,7 +54,7 @@ ARCHITECTURE_SCAN_SCANNER_VERSION_PATHS = (
 _FACT_KIND_FIELDS = {
     "silent": "silent_fallback_handlers_without_global_id",
     "complexity": "complexity_blocks_all",
-    "request": "request_service_direct_assembly_entries",
+    "assembly": "direct_assembly_entries",
     "repository": "repository_bundle_drift_entries",
 }
 _ALL_FACT_KINDS = tuple(_FACT_KIND_FIELDS)
@@ -150,9 +150,9 @@ def scan_single_file_architecture_fact(
             dict(entry) for entry in scan_silent_fallback_fact_entries([normalized], context=scan_context)
         ] if "silent" in kinds else [],
         "complexity_blocks_all": complexity_blocks,
-        "request_service_direct_assembly_entries": [
-            dict(entry) for entry in scan_request_service_direct_assembly_entries([normalized], context=scan_context)
-        ] if "request" in kinds else [],
+        "direct_assembly_entries": [
+            dict(entry) for entry in scan_direct_assembly_entries([normalized], context=scan_context)
+        ] if "assembly" in kinds else [],
         "repository_bundle_drift_entries": [
             dict(entry) for entry in scan_repository_bundle_drift_entries([normalized], context=scan_context)
         ] if "repository" in kinds else [],
@@ -186,7 +186,7 @@ def aggregate_architecture_scan(
     silent_entries: List[Dict[str, Any]] = []
     oversize_entries: List[Dict[str, Any]] = []
     complexity_map: Dict[str, Dict[str, Any]] = {}
-    request_service_entries: List[Dict[str, Any]] = []
+    direct_assembly_entries: List[Dict[str, Any]] = []
     repository_bundle_entries: List[Dict[str, Any]] = []
 
     for raw_fact in sorted(list(file_facts or []), key=lambda fact: str(fact.get("path") or "")):
@@ -212,9 +212,9 @@ def aggregate_architecture_scan(
             key = "{}:{}".format(block.get("path"), block.get("symbol"))
             complexity_map[key] = block
 
-        for entry in list(fact.get("request_service_direct_assembly_entries") or []):
+        for entry in list(fact.get("direct_assembly_entries") or []):
             if isinstance(entry, dict):
-                request_service_entries.append(dict(entry))
+                direct_assembly_entries.append(dict(entry))
         for entry in list(fact.get("repository_bundle_drift_entries") or []):
             if isinstance(entry, dict):
                 repository_bundle_entries.append(dict(entry))
@@ -222,7 +222,7 @@ def aggregate_architecture_scan(
     _assign_silent_entry_ids(silent_entries)
     silent_entries = sorted(silent_entries, key=entry_sort_key)
     oversize_entries = sorted(oversize_entries, key=entry_sort_key)
-    request_service_entries = sorted(request_service_entries, key=entry_sort_key)
+    direct_assembly_entries = sorted(direct_assembly_entries, key=entry_sort_key)
     repository_bundle_entries = sorted(repository_bundle_entries, key=entry_sort_key)
     return {
         "silent_fallback_entries": silent_entries,
@@ -230,7 +230,7 @@ def aggregate_architecture_scan(
         "oversize_map": {str(entry.get("path")): dict(entry) for entry in oversize_entries},
         "complexity_map": complexity_map,
         "complexity_entries": [dict(item) for _key, item in sorted(complexity_map.items())],
-        "request_service_direct_assembly_entries": request_service_entries,
+        "direct_assembly_entries": direct_assembly_entries,
         "repository_bundle_drift_entries": repository_bundle_entries,
     }
 

@@ -16,13 +16,13 @@ def _architecture_fact(
     line_count=0,
     silent_entries=None,
     complexity_entries=None,
-    request_entries=None,
+    assembly_entries=None,
     repository_entries=None,
 ):
     return {
         "schema_version": 1,
         "path": path,
-        "fact_kinds": ["silent", "complexity", "request", "repository"],
+        "fact_kinds": ["silent", "complexity", "assembly", "repository"],
         "line_count": line_count,
         "silent_fallback_handlers_without_global_id": [
             {key: value for key, value in dict(entry).items() if key != "id"}
@@ -34,9 +34,9 @@ def _architecture_fact(
             for entry in list(complexity_entries or [])
             if str(entry.get("path")) == path
         ],
-        "request_service_direct_assembly_entries": [
+        "direct_assembly_entries": [
             dict(entry)
-            for entry in list(request_entries or [])
+            for entry in list(assembly_entries or [])
             if str(entry.get("path")) == path
         ],
         "repository_bundle_drift_entries": [
@@ -86,7 +86,7 @@ def test_scan_context_is_single_snapshot_for_one_scan_pass() -> None:
     )
 
 
-def test_request_service_scan_reads_each_source_once(monkeypatch) -> None:
+def test_direct_assembly_scan_reads_each_source_once(monkeypatch) -> None:
     rel_path = "tmp/request_gate_single_read_sample.py"
     source = dedent(
         """
@@ -99,7 +99,7 @@ def test_request_service_scan_reads_each_source_once(monkeypatch) -> None:
     reads = []
     monkeypatch.setattr(scan_mod, "read_text_file", lambda path: reads.append(str(path)) or source)
 
-    entries = scan_mod.scan_request_service_direct_assembly_entries([rel_path])
+    entries = scan_mod.scan_direct_assembly_entries([rel_path])
 
     assert [(entry["rule"], entry["target"], entry["line"]) for entry in entries] == [
         ("service_or_repository_g_db", "BatchService", 4)
@@ -125,10 +125,10 @@ def test_scan_context_can_be_shared_across_scanners_without_rereading(monkeypatc
     monkeypatch.setattr(scan_mod, "read_text_file", lambda path: reads.append(str(path)) or source)
     context = scan_mod.ScanContext()
 
-    request_entries = scan_mod.scan_request_service_direct_assembly_entries([rel_path], context=context)
+    assembly_entries = scan_mod.scan_direct_assembly_entries([rel_path], context=context)
     repository_entries = scan_mod.scan_repository_bundle_drift_entries([rel_path], context=context)
 
-    assert [(entry["rule"], entry["target"]) for entry in request_entries] == [
+    assert [(entry["rule"], entry["target"]) for entry in assembly_entries] == [
         ("service_or_repository_g_db", "BatchService")
     ]
     assert any(entry["chain"] == "self.repos.batch_repo" for entry in repository_entries)
@@ -184,7 +184,7 @@ def test_repository_bundle_scan_keeps_public_repos_chain_and_alias(monkeypatch) 
     assert any(entry["chain"] == "self.repos.machine_repo" for entry in entries)
 
 
-def test_request_service_scan_flags_keyword_conn_and_alias_calls(monkeypatch) -> None:
+def test_direct_assembly_scan_flags_keyword_conn_and_alias_calls(monkeypatch) -> None:
     rel_path = "tmp/request_gate_sample.py"
     _patch_sources(
         monkeypatch,
@@ -204,7 +204,7 @@ def test_request_service_scan_flags_keyword_conn_and_alias_calls(monkeypatch) ->
         },
     )
 
-    entries = scan_mod.scan_request_service_direct_assembly_entries([rel_path])
+    entries = scan_mod.scan_direct_assembly_entries([rel_path])
 
     assert [entry["rule"] for entry in entries] == [
         "service_or_repository_g_db",
@@ -214,7 +214,7 @@ def test_request_service_scan_flags_keyword_conn_and_alias_calls(monkeypatch) ->
     assert [entry["line"] for entry in entries] == [7, 8]
 
 
-def test_request_service_scan_flags_import_from_as_alias(monkeypatch) -> None:
+def test_direct_assembly_scan_flags_import_from_as_alias(monkeypatch) -> None:
     rel_path = "tmp/request_gate_import_from_as_sample.py"
     _patch_sources(
         monkeypatch,
@@ -232,7 +232,7 @@ def test_request_service_scan_flags_import_from_as_alias(monkeypatch) -> None:
         },
     )
 
-    entries = scan_mod.scan_request_service_direct_assembly_entries([rel_path])
+    entries = scan_mod.scan_direct_assembly_entries([rel_path])
 
     assert [(entry["rule"], entry["target"], entry["line"]) for entry in entries] == [
         ("service_or_repository_g_db", "BatchService", 5),
@@ -240,7 +240,7 @@ def test_request_service_scan_flags_import_from_as_alias(monkeypatch) -> None:
     ]
 
 
-def test_request_service_scan_keeps_module_import_alias_detection(monkeypatch) -> None:
+def test_direct_assembly_scan_keeps_module_import_alias_detection(monkeypatch) -> None:
     rel_path = "tmp/request_gate_import_module_alias_sample.py"
     _patch_sources(
         monkeypatch,
@@ -256,12 +256,12 @@ def test_request_service_scan_keeps_module_import_alias_detection(monkeypatch) -
         },
     )
 
-    entries = scan_mod.scan_request_service_direct_assembly_entries([rel_path])
+    entries = scan_mod.scan_direct_assembly_entries([rel_path])
 
     assert [(entry["rule"], entry["target"], entry["line"]) for entry in entries] == [("service_or_repository_g_db", "BatchService", 4)]
 
 
-def test_request_service_scan_flags_g_db_local_alias_for_service_and_helper(monkeypatch) -> None:
+def test_direct_assembly_scan_flags_g_db_local_alias_for_service_and_helper(monkeypatch) -> None:
     rel_path = "tmp/request_gate_local_db_alias_sample.py"
     _patch_sources(
         monkeypatch,
@@ -282,7 +282,7 @@ def test_request_service_scan_flags_g_db_local_alias_for_service_and_helper(monk
         },
     )
 
-    entries = scan_mod.scan_request_service_direct_assembly_entries([rel_path])
+    entries = scan_mod.scan_direct_assembly_entries([rel_path])
 
     assert [(entry["rule"], entry["target"], entry["line"]) for entry in entries] == [
         ("g_db_first_arg_helper", "helper_builder", 8),
@@ -290,7 +290,7 @@ def test_request_service_scan_flags_g_db_local_alias_for_service_and_helper(monk
     ]
 
 
-def test_request_service_scan_flags_private_helper_with_g_db_alias(monkeypatch) -> None:
+def test_direct_assembly_scan_flags_private_helper_with_g_db_alias(monkeypatch) -> None:
     rel_path = "tmp/request_gate_private_helper_alias_sample.py"
     _patch_sources(
         monkeypatch,
@@ -308,7 +308,7 @@ def test_request_service_scan_flags_private_helper_with_g_db_alias(monkeypatch) 
         },
     )
 
-    entries = scan_mod.scan_request_service_direct_assembly_entries([rel_path])
+    entries = scan_mod.scan_direct_assembly_entries([rel_path])
 
     assert [(entry["rule"], entry["target"], entry["line"]) for entry in entries] == [
         ("g_db_first_arg_helper", "_helper", 6),
@@ -363,65 +363,13 @@ def test_repository_bundle_scan_allows_schedule_service_proxy_assignment(monkeyp
     assert entries == []
 
 
-def test_request_service_architecture_filter_does_not_hide_registered_helper_debt(monkeypatch) -> None:
-    rel_path = "tmp/request_gate_architecture_sample.py"
-    monkeypatch.setattr(ops_mod, "REQUEST_SERVICE_TARGET_FILES", [rel_path])
-    monkeypatch.setattr(ops_mod, "REQUEST_SERVICE_TARGET_SYMBOLS", {})
-    monkeypatch.setattr(
-        ops_mod,
-        "REQUEST_SERVICE_TARGET_ALLOWED_HELPERS",
-        [
-            {
-                "path": rel_path,
-                "symbol": "preview",
-                "line": 10,
-                "rule": "g_db_first_arg_helper",
-                "target": "helper_builder",
-            },
-            {
-                "path": rel_path,
-                "symbol": "confirm",
-                "line": 20,
-                "rule": "g_db_first_arg_helper",
-                "target": "helper_builder",
-            },
-        ],
-        raising=False,
-    )
-    monkeypatch.setattr(ops_mod, "collect_globbed_files", lambda _patterns: [rel_path])
-    received_paths = []
-
-    request_entries = [
-        {"path": rel_path, "symbol": "preview", "line": 10, "rule": "g_db_first_arg_helper", "target": "helper_builder", "excerpt": "a"},
-        {"path": rel_path, "symbol": "confirm", "line": 20, "rule": "g_db_first_arg_helper", "target": "helper_builder", "excerpt": "b"},
-        {"path": rel_path, "symbol": "confirm", "line": 21, "rule": "g_db_first_arg_helper", "target": "helper_builder", "excerpt": "c"},
-        {"path": rel_path, "symbol": "confirm", "line": 30, "rule": "service_or_repository_g_db", "target": "BatchService", "excerpt": "d"},
-    ]
-
-    def _fake_scan_files(_paths, cache_path=None, force=False, context=None, fact_kinds=None):
-        del cache_path, force, context, fact_kinds
-        received_paths.append(list(_paths))
-        return [_architecture_fact(str(path), request_entries=request_entries) for path in _paths]
-
-    monkeypatch.setattr(ops_mod, "scan_files_with_cache", _fake_scan_files)
-
-    entries = ops_mod.architecture_request_service_direct_assembly_entries()
-
-    assert [(entry["symbol"], entry["line"], entry["rule"], entry["target"]) for entry in entries] == [
-        ("confirm", 20, "g_db_first_arg_helper", "helper_builder"),
-        ("confirm", 21, "g_db_first_arg_helper", "helper_builder"),
-        ("confirm", 30, "service_or_repository_g_db", "BatchService"),
-        ("preview", 10, "g_db_first_arg_helper", "helper_builder"),
-    ]
-    assert received_paths == [[rel_path]]
-
-
-def test_request_service_scan_scope_covers_error_path_files() -> None:
-    scanned = set(shared_mod.collect_globbed_files(shared_mod.REQUEST_SERVICE_SCAN_SCOPE_PATTERNS))
+def test_direct_assembly_scan_scope_is_exactly_web_top_level_helpers() -> None:
+    scanned = set(shared_mod.collect_globbed_files(shared_mod.WEB_HELPER_SCAN_SCOPE_PATTERNS))
 
     assert "web/error_handlers.py" in scanned
     assert "web/error_boundary.py" in scanned
-    assert set(shared_mod.UI_MODE_STARTUP_SCOPE_PATHS).issubset(scanned)
+    assert scanned == {path for path in scanned if path.startswith("web/") and path.count("/") == 1}
+    assert not any(path.startswith("web/routes/") for path in scanned)
 
 
 def test_startup_scope_patterns_cover_ui_mode_split_files() -> None:
@@ -567,53 +515,6 @@ def test_strict_silent_fallback_cli_reports_drift_to_stderr(monkeypatch, capsys)
     captured = capsys.readouterr()
     assert captured.out == ""
     assert "strict silent-fallback gate drift" in captured.err
-
-
-def test_request_service_target_symbols_include_nested_custom_test_factory_open_db() -> None:
-    assert "_open_db" in shared_mod.REQUEST_SERVICE_TARGET_SYMBOLS["tests/_scripts_e2e/run_real_db_replay_e2e.py"]
-    assert "_open_db" in shared_mod.REQUEST_SERVICE_TARGET_SYMBOLS["tests/_scripts_e2e/run_complex_excel_cases_e2e.py"]
-
-
-def test_request_service_architecture_filter_tracks_nested_open_db_in_custom_test_factory(monkeypatch) -> None:
-    rel_path = "tests/_scripts_e2e/run_real_db_replay_e2e.py"
-    monkeypatch.setattr(ops_mod, "REQUEST_SERVICE_TARGET_FILES", [])
-    monkeypatch.setattr(ops_mod, "REQUEST_SERVICE_TARGET_SYMBOLS", {rel_path: ["_create_test_app", "_open_db"]})
-    monkeypatch.setattr(ops_mod, "REQUEST_SERVICE_TARGET_ALLOWED_HELPERS", [], raising=False)
-    monkeypatch.setattr(ops_mod, "collect_globbed_files", lambda _patterns: [rel_path])
-    received_paths = []
-
-    request_entries = [
-        {
-            "path": rel_path,
-            "symbol": "_open_db",
-            "line": 230,
-            "rule": "service_or_repository_g_db",
-            "target": "BatchService",
-            "excerpt": "open",
-        },
-        {
-            "path": rel_path,
-            "symbol": "_close_db",
-            "line": 245,
-            "rule": "service_or_repository_g_db",
-            "target": "BatchService",
-            "excerpt": "close",
-        },
-    ]
-
-    def _fake_scan_files(_paths, cache_path=None, force=False, context=None, fact_kinds=None):
-        del cache_path, force, context, fact_kinds
-        received_paths.append(list(_paths))
-        return [_architecture_fact(str(path), request_entries=request_entries) for path in _paths]
-
-    monkeypatch.setattr(ops_mod, "scan_files_with_cache", _fake_scan_files)
-
-    entries = ops_mod.architecture_request_service_direct_assembly_entries()
-
-    assert [(entry["symbol"], entry["line"], entry["target"]) for entry in entries] == [
-        ("_open_db", 230, "BatchService"),
-    ]
-    assert received_paths == [[rel_path]]
 
 
 def test_architecture_scan_wrappers_pass_context_and_original_paths(monkeypatch) -> None:

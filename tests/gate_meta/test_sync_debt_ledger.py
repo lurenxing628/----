@@ -32,7 +32,7 @@ def _architecture_scan_fact(path, *, line_count=0, silent_entries=None, complexi
             for entry in list(complexity_entries or [])
             if str(entry.get("path")) == path
         ],
-        "request_service_direct_assembly_entries": [],
+        "direct_assembly_entries": [],
         "repository_bundle_drift_entries": [],
     }
 

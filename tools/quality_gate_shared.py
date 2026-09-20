@@ -244,24 +244,9 @@ UI_MODE_RENDER_BRIDGE_PATHS = {
 STARTUP_SCOPE_PATTERNS = ["web/bootstrap/**/*.py", *UI_MODE_STARTUP_SCOPE_PATHS]
 UI_MODE_STARTUP_GUARD_SYMBOLS: set = set()
 
-REQUEST_SERVICE_SCAN_SCOPE_PATTERNS = [
-    "web/routes/**/*.py",
-    "web/error_handlers.py",
-    "web/error_boundary.py",
-    "web/manual_src_security.py",
-    "tests/_scripts_e2e/run_real_db_replay_e2e.py",
-    "tests/_scripts_e2e/run_complex_excel_cases_e2e.py",
-]
-REQUEST_SERVICE_TARGET_FILES = [
-    "web/error_handlers.py",
-    "web/error_boundary.py",
-    "web/manual_src_security.py",
-]
-REQUEST_SERVICE_TARGET_SYMBOLS = {
-    "tests/_scripts_e2e/run_real_db_replay_e2e.py": ["_create_test_app", "_open_db"],
-    "tests/_scripts_e2e/run_complex_excel_cases_e2e.py": ["create_test_app", "_open_db"],
-}
-REQUEST_SERVICE_TARGET_ALLOWED_HELPERS: List[Dict[str, Any]] = []
+# web 顶层辅助模块（web/*.py）必须保持薄：不得直接装配 Service/Repository、不得自建 Excel 后端。
+# 路由层按 2026-09-18 旧路由退役后的设计直接装配服务，不在此规则范围内。
+WEB_HELPER_SCAN_SCOPE_PATTERNS = ["web/*.py"]
 REPOSITORY_BUNDLE_DRIFT_SCOPE_PATTERNS = ["core/services/scheduler/**/*.py", "tests/**/*.py", "tools/**/*.py", "web/routes/**/*.py"]
 
 FALLBACK_KIND_VALUES = {

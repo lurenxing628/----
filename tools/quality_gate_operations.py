@@ -26,11 +26,9 @@ from .quality_gate_shared import (
     COMPLEXITY_THRESHOLD,
     FILE_SIZE_LIMIT,
     REPOSITORY_BUNDLE_DRIFT_SCOPE_PATTERNS,
-    REQUEST_SERVICE_SCAN_SCOPE_PATTERNS,
-    REQUEST_SERVICE_TARGET_FILES,
-    REQUEST_SERVICE_TARGET_SYMBOLS,
     STARTUP_SCOPE_PATTERNS,
     UI_MODE_STARTUP_SCOPE_PATHS,
+    WEB_HELPER_SCAN_SCOPE_PATTERNS,
     QualityGateError,
     collect_globbed_files,
     collect_quality_rule_files,
@@ -851,26 +849,10 @@ def architecture_complexity_scan_map() -> Dict[str, Dict[str, Any]]:
     return {str(key): dict(entry) for key, entry in dict(aggregate.get("complexity_map") or {}).items()}
 
 
-def architecture_request_service_direct_assembly_entries() -> List[Dict[str, Any]]:
-    target_files = set(REQUEST_SERVICE_TARGET_FILES)
-    target_symbols = {
-        str(path): set(str(symbol) for symbol in symbols)
-        for path, symbols in REQUEST_SERVICE_TARGET_SYMBOLS.items()
-    }
-    aggregate = _cached_architecture_aggregate(collect_globbed_files(REQUEST_SERVICE_SCAN_SCOPE_PATTERNS), ("request",))
-    entries = cast(List[Dict[str, Any]], aggregate.get("request_service_direct_assembly_entries") or [])
-    return [
-        entry
-        for entry in entries
-        if (
-            str(entry.get("path")) in target_files
-            or str(entry.get("symbol")) in target_symbols.get(str(entry.get("path")), set())
-        )
-        and not (
-            str(entry.get("path")) in target_symbols
-            and str(entry.get("symbol")) not in target_symbols.get(str(entry.get("path")), set())
-        )
-    ]
+def architecture_web_helper_direct_assembly_entries() -> List[Dict[str, Any]]:
+    """web/*.py 顶层辅助模块里的直接装配（Service/Repository(g.db|conn)、ExcelService、get_excel_backend）。"""
+    aggregate = _cached_architecture_aggregate(collect_globbed_files(WEB_HELPER_SCAN_SCOPE_PATTERNS), ("assembly",))
+    return cast(List[Dict[str, Any]], aggregate.get("direct_assembly_entries") or [])
 
 
 def architecture_repository_bundle_drift_entries() -> List[Dict[str, Any]]:

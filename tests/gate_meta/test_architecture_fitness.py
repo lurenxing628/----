@@ -31,10 +31,10 @@ from tools.quality_gate_support import (
     architecture_oversize_allowlist_map,
     architecture_oversize_scan_map,
     architecture_repository_bundle_drift_entries,
-    architecture_request_service_direct_assembly_entries,
     architecture_silent_allowlist_map,
     architecture_silent_scan_entries,
     architecture_validate_startup_samples,
+    architecture_web_helper_direct_assembly_entries,
     load_ledger,
     scan_complexity_entries,
     scan_oversize_entries,
@@ -134,8 +134,17 @@ def test_routes_do_not_import_repository():
     )
 
 
-def test_web_helpers_do_not_import_repository():
-    """web/*.py 顶层辅助模块禁止直接导入 Repository。"""
+def test_web_helpers_do_not_import_or_assemble_repositories_and_services():
+    """web/*.py 顶层辅助模块必须保持薄：既不导入 Repository，也不直接装配 Service/Repository/Excel 后端。
+
+    2026-09-20 起原“请求级容器目标文件不得直接装配”规则并入此处：容器本体已随旧路由层删除，
+    路由层直接装配是现行设计，剩下需要守住的只有 web 顶层辅助模块。
+    """
+    assembly = architecture_web_helper_direct_assembly_entries()
+    assert not assembly, (
+        "web 顶层辅助模块出现了直接装配:\n"
+        + "\n".join(f"{entry.get('path')}:{entry.get('line')} {entry.get('rule')} {entry.get('target')}" for entry in assembly)
+    )
     known_imports = set()
     violations = []
     repo_re = re.compile(r"\b(\w+Repository)\b")
@@ -333,19 +342,6 @@ def test_startup_silent_fallback_samples():
     """启动链样本点必须持续命中既定分类与 scope。"""
 
     architecture_validate_startup_samples()
-
-
-def test_request_service_target_files_no_direct_assembly():
-    """请求级容器已接管的目标文件不得再出现直接装配。"""
-
-    entries = architecture_request_service_direct_assembly_entries()
-    assert not entries, (
-        "请求级容器目标文件仍存在直接装配:\n"
-        + "\n".join(
-            f"{entry.get('path')}:{entry.get('line')} {entry.get('rule')} {entry.get('target')}"
-            for entry in entries
-        )
-    )
 
 
 def test_repository_bundle_consumption_does_not_drift():

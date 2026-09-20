@@ -22,12 +22,12 @@ from .quality_gate_shared import (
     FALLBACK_KIND_VALUES,
     FILE_SIZE_LIMIT,
     REPOSITORY_BUNDLE_DRIFT_SCOPE_PATTERNS,
-    REQUEST_SERVICE_SCAN_SCOPE_PATTERNS,
     STARTUP_SAMPLE_EXPECTATIONS,
     UI_MODE_RENDER_BRIDGE_PATHS,
     UI_MODE_SCOPE_TAG_VALUES,
     UI_MODE_STARTUP_GUARD_PATHS,
     UI_MODE_STARTUP_GUARD_SYMBOLS,
+    WEB_HELPER_SCAN_SCOPE_PATTERNS,
     QualityGateError,
     collect_globbed_files,
     collect_startup_scope_files,
@@ -639,7 +639,7 @@ def _collect_scoped_aliases(
     return scoped_aliases
 
 
-def _resolve_request_service_alias(value: Any, aliases: Dict[str, str]) -> Optional[str]:
+def _resolve_assembly_alias(value: Any, aliases: Dict[str, str]) -> Optional[str]:
     if isinstance(value, str):
         target = value
     elif isinstance(value, ast.Name):
@@ -655,18 +655,18 @@ def _resolve_request_service_alias(value: Any, aliases: Dict[str, str]) -> Optio
     return None
 
 
-def scan_request_service_direct_assembly_entries(
+def scan_direct_assembly_entries(
     paths: Optional[Sequence[str]] = None,
     context: Optional[ScanContext] = None,
 ) -> List[Dict[str, Any]]:
     scan_context = context or ScanContext()
     if paths is None:
-        paths = scan_context.collect_globbed_files(REQUEST_SERVICE_SCAN_SCOPE_PATTERNS)
+        paths = scan_context.collect_globbed_files(WEB_HELPER_SCAN_SCOPE_PATTERNS)
     entries = []
     for rel_path in sorted(set([_normalized_scan_path(str(path)) for path in paths])):
         tree = _ast_tree_for_file(rel_path, context=scan_context)
         source_lines = scan_context.source_lines(rel_path)
-        scoped_aliases = _collect_scoped_aliases(tree, _resolve_request_service_alias)
+        scoped_aliases = _collect_scoped_aliases(tree, _resolve_assembly_alias)
         scoped_conn_aliases = _collect_scoped_aliases(tree, _resolve_request_conn_alias)
         for node in ast.walk(tree):
             if not isinstance(node, ast.Call):
@@ -1062,7 +1062,7 @@ __all__ = [
     "scan_oversize_entries",
     "scan_silent_fallback_fact_entries",
     "scan_silent_fallback_entries",
-    "scan_request_service_direct_assembly_entries",
+    "scan_direct_assembly_entries",
     "scan_repository_bundle_drift_entries",
     "ui_mode_scope_tag",
     "validate_startup_samples",
