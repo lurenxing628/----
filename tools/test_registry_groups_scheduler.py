@@ -140,7 +140,6 @@ SCHEDULER_REQUIRED_REGRESSION_GROUPS = (
             "tests/config/test_apply_preset_adjusted_marks_custom.py",
         ),
         "input_file_scopes": (
-            "core/services/scheduler/config*.py",
             "core/services/scheduler/config/*.py",
             "core/services/scheduler/config/**/*.py",
             "core/services/scheduler/calendar/**/*.py",
@@ -150,13 +149,9 @@ SCHEDULER_REQUIRED_REGRESSION_GROUPS = (
             "core/models/schedule_config_runtime*.py",
             "core/shared/*.py",
             "core/shared/**/*.py",
-            "web/routes/domains/scheduler/scheduler_config*.py",
             # P0.3 收窄：本组只测调度配置页/服务。viewmodels/templates/static 收窄到 config 页面域；
             # 整树 web/viewmodels、templates、static 由各自 owner 组（analysis / ui_layout）保留宽 glob
             # 兜底全覆盖，故此处不再列宽 glob——改任一无关前端文件不再误命中本组。data 由 run_core owner 覆盖。
-            "web/viewmodels/scheduler_config*.py",
-            "templates/scheduler/config*.html",
-            "static/js/config_manual.js",
             "docs/*manual*.md",
             "static/docs/**/*.md",
             "app.py",
@@ -289,8 +284,6 @@ SCHEDULER_REQUIRED_REGRESSION_GROUPS = (
             # P0.3 收窄：run_core 是 core/** 与 data/** 的 owner（上方 core/** 与此处 data/** 保留宽 glob，
             # 保证任一 core/data 文件至少命中本组、不升全量）。viewmodels 收窄到 run/summary 域；
             # templates/static/templates_excel 由 ui_layout / excel owner 组覆盖，本逻辑组不再随前端变动触发。
-            "web/viewmodels/scheduler_run*.py",
-            "web/viewmodels/scheduler_summary_*.py",
             "data/**/*.py",
             "tests/operation_execution/operation_execution_state_revision_support.py",
             "app.py",
@@ -382,24 +375,15 @@ SCHEDULER_REQUIRED_REGRESSION_GROUPS = (
             "core/services/common/plan_identity.py",
             "core/services/common/plan_query.py",
             "core/services/common/bounded_plan_query.py",
-            "web/routes/reports*.py",
             "core/services/report/**/*.py",
+            "web/routes/workbench/reports*.py",
+            "web/routes/workbench/actual_gantt.py",
+            "frontend/workbench/app/Report*.jsx",
+            "frontend/workbench/app/ActualGantt*",
             # P0.3 收窄：analysis 是 web/viewmodels/** 的 owner（保留宽 glob，且被
             # regression_quality_gate_registry_split_scope_contract.py:184 契约 PIN，不可收窄）。
             # templates/static 收窄到 scheduler/reports/gantt 前端域；data 由 run_core owner 覆盖故移除。
             "web/viewmodels/**/*.py",
-            "templates/scheduler/**/*.html",
-            "templates/reports/**/*.html",
-            "templates/components/**/*.html",
-            "static/js/gantt*.js",
-            "static/js/frappe-gantt.min.js",
-            "static/js/report_*.js",
-            "static/js/resource_dispatch*.js",
-            "static/js/resource_execution*.js",
-            "static/js/scheduler_run.js",
-            "static/css/aps_gantt*.css",
-            "static/css/frappe-gantt.css",
-            "static/css/resource_dispatch.css",
             "app.py",
             "app_new_ui.py",
             "web/bootstrap/app_config.py",

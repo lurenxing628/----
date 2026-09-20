@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import glob
 import json
 import os
 import subprocess
@@ -275,7 +276,7 @@ def test_required_parent_scope_includes_group_specific_scope_union():
     manifest = manifest_mod.build_manifest_from_quality_gate_plan(command_plan, repo_root=quality_gate_shared.REPO_ROOT)
     required_entry = _entry_by_id(manifest, "required_regressions")
 
-    assert "web/routes/domains/scheduler/scheduler_config*.py" in required_entry["input_file_scopes"]
+    assert "core/services/scheduler/config/**/*.py" in required_entry["input_file_scopes"]
     assert "tools/long_gate_cache.py" in required_entry["tool_file_scopes"]
     assert "node_version" in required_entry["env_keys"]
     assert "node_browser_runtime_capability" in required_entry["env_keys"]
@@ -773,3 +774,22 @@ def test_required_group_scopes_follow_app_config_not_the_retired_root_config():
             triggered.add(row["group_id"])
     assert triggered == APP_CONFIG_TRIGGERED_GROUPS
     assert os.path.exists("web/bootstrap/app_config.py") and not os.path.exists("config.py")
+
+
+# CodeStable 条目文件两种扩展名都合法，.yml 变体今天没有实例但要提前纳入指纹。
+FORWARD_COVERAGE_SCOPES = frozenset({".codestable/issues/**/*.yml", ".codestable/roadmap/**/*.yml"})
+
+
+def _scope_matches_something(scope):
+    if any(char in scope for char in "*?["):
+        return bool(glob.glob(scope, recursive=True))
+    return os.path.exists(scope)
+
+
+def test_every_required_group_input_scope_matches_an_existing_path():
+    """失效的 input_file_scopes 不会报错，只是永远不再触发分组；旧路由层删除留下的 49 条已清，之后一条都不许再进。"""
+    dead = [(row["group_id"], scope) for row in iter_required_regression_groups()
+            for scope in row["input_file_scopes"]
+            if scope not in FORWARD_COVERAGE_SCOPES and not _scope_matches_something(scope)]
+    assert dead == []
+    assert all(scope.endswith(".yml") and glob.glob(scope[:-4] + ".yaml", recursive=True) for scope in FORWARD_COVERAGE_SCOPES)

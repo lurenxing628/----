@@ -405,7 +405,7 @@ WORKBENCH_REQUIRED_REGRESSION_GROUPS = (
         "core/models/operation_log_labels.py",
         "core/services/system/**/*.py", "core/services/workbench/system/**/*.py", "core/services/workbench/facts/system_*.py", "core/services/workbench/facts/run_data_context.py",
         "core/services/system/backup_restore.py",
-        "core/services/process/unit_excel/**/*.py", "core/services/process/unit_excel_converter.py",
+        "core/services/process/unit_excel/**/*.py",
         "core/services/workbench/master/overview*.py",
         "core/services/workbench/resource/**/*.py", "core/services/workbench/facts/table_*.py", "core/services/workbench/facts/file_*.py", "core/services/workbench/process/**/*.py", "core/services/workbench/facts/process_file_xml.py",
         "core/services/workbench/material/**/*.py", "core/services/workbench/resource/calendars.py",

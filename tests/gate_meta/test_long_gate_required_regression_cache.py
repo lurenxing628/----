@@ -129,10 +129,8 @@ def test_required_scope_tracks_real_inputs_without_unrelated_markdown(tmp_path):
 
     for path in [
         "core/**/*.py",
-        "web/routes/domains/scheduler/scheduler_config*.py",
         "web/bootstrap/*.py",
         "web/bootstrap/**/*.py",
-        "web/routes/system_*.py",
         "data/**/*.py",
         "plugins/**/*.py",
         "app.py",
