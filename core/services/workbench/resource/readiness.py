@@ -4,7 +4,7 @@ import logging
 import sqlite3
 from typing import Dict, Optional
 
-from core.errors import AppError
+from core.errors import AppError, ErrorCode
 from core.services.process.workflow_state import workflow_snapshot
 
 _STAGES = ("route", "source", "hours")
@@ -69,7 +69,10 @@ def process_readiness(conn, total, logger=None):
             verified["legacy_route_present"] += workflow["origin"] == "legacy" and workflow["route"]["state"] == "present"
             for stage in _STAGES:
                 verified[stage + "_confirmed"] += workflow[stage]["state"] == "confirmed"
-    except (RuntimeError, sqlite3.DatabaseError, AppError):
+    except (RuntimeError, sqlite3.DatabaseError, AppError) as exc:
+        # Only the repository's translated read failure degrades; any other AppError is a caller bug and must surface.
+        if isinstance(exc, AppError) and exc.code is not ErrorCode.DB_QUERY_ERROR:
+            raise
         (logger or logging.getLogger(__name__)).exception("Process readiness could not verify the workflow snapshot; no records were repaired.")
         return {"status": "unavailable", "counts": counts, "basis": _PROCESS_BASIS,
                 "issues": [{"code": "process_workflow_unavailable", "message": "工艺确认记录读取失败，请联系维护人员核对。"}]}

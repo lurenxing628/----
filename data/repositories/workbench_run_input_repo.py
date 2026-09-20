@@ -26,10 +26,9 @@ class WorkbenchRunInputRepository(BaseRepository):
         return self.iter_rows("SELECT * FROM Schedule WHERE version<=? ORDER BY version,id", (prev_version,))
 
     def calendar_rows(self) -> Iterator[Tuple[str, Dict[str, Any]]]:
-        """流式产出 (表名, 行)，按 CALENDAR_TABLES 顺序逐表读取。"""
-        for table in CALENDAR_TABLES:
-            for row in self.iter_rows("SELECT * FROM " + table):
-                yield table, row
+        """流式产出 (表名, 行)，按 CALENDAR_TABLES 顺序逐表读取；两条语句都在调用时执行，错误立即翻译。"""
+        streams = [(table, self.iter_rows("SELECT * FROM " + table)) for table in CALENDAR_TABLES]
+        return ((table, row) for table, stream in streams for row in stream)
 
     def machine_downtime_rows(self) -> Iterator[Dict[str, Any]]:
         return self.iter_rows("SELECT * FROM MachineDowntimes")

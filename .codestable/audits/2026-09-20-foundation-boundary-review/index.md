@@ -4,8 +4,8 @@ audit: 2026-09-20-foundation-boundary-review
 scope: 基础边界治理路线图（97850695..b227f3a2，29 个提交）的对抗复审——仓储不裁决 / SQL 排水 / 工作台与排产分包 / schema 单一事实源 / 门禁基线；三条只读子代理轨 + 主代理修复与复验
 created: 2026-09-20
 status: closed
-total_findings: 21
-subagents_used: 3
+total_findings: 21 + R4 复审修复批次 5
+subagents_used: 4
 verified_by: 主代理定向测试（每个修复提交单独跑定向用例，累计约 4200 例）+ pyright 门禁 0 错 + sync_debt_ledger check 通过；未跑全量门禁（用户明令）
 ---
 
@@ -31,7 +31,7 @@ verified_by: 主代理定向测试（每个修复提交单独跑定向用例，�
 | 10 | R1 | major | move_modules globs 替换不看语法上下文，非列表位置会变元组 / SyntaxError | 只在 list/tuple 元素位置替换，其它位置阻断 --apply | 0351ab84 |
 | 11 | R1 | major | move_modules 新建子包会遮蔽同名未搬模块 | Plan 校验拒绝 | 0351ab84 |
 | 12 | R1 | major | 决策文档"facts/ 业务裁决一律不进"与代码相反 | 改为"只读事实 + 对事实的薄裁决 + 纯助手，写操作不进"并写明理由 | 文档提交 |
-| 13 | R3 | minor | 死代码孤岛基线漂移（含本轮搬迁 11 条 quick 误报） | 按 ratchet 决策受控 --refresh | 97ac0ae1 |
+| 13 | R3 | minor | 死代码孤岛基线漂移：本轮搬迁改名 9 条；另有 108 条 2026-09-18 旧路由层删除后长出的新条目（quick 口径，64 条有生产引用、25 条 dunder/协议、9 条全仓零引用、7 条仅测试引用） | 第一版 --refresh 把 108 条一并吸收（R4 判为违反 ratchet 决策），已改为只吸收 9 条改名、剔除 25 条已消失项（86→70）；108 条留给旧路由层删除的责任方分诊 | 97ac0ae1 → R4 收口提交 |
 | 14 | R3 | minor | 簇分层测试 `_targets` 不认 `import a.b as c` | 补分支 + 单测 | 0351ab84 |
 | 15 | R3 | minor | 排产子包间无方向表，已有少量反向边 | 路线图 §4.5 写明"暂不约束方向"，留待另立 | 文档提交 |
 | 16 | R1/R3 | minor/nit | 决策文档数字失真（141/385、233 模块、7 个垫片、database_bootstrap 措辞）；ARCHITECTURE / service-scheduler / desktop / .limcode / AGENTS 示例残留旧路径；冻结锚与冻结合同 docstring 过期；pyright gate include 根 config.py | 全部修正（AGENTS.md 为 skip-worktree，仅本地改） | 文档提交 / 97ac0ae1 |
@@ -40,6 +40,18 @@ verified_by: 主代理定向测试（每个修复提交单独跑定向用例，�
 | 19 | R1 | minor | 两处拒绝顺序边缘差异（read_events 先算字节再查行数；append_handling 先查大小） | 码 / 状态不变，仅极端场景文案先后不同，记录不改 | — |
 | 20 | R2 | minor | `gantt/adjustment_publish_service.py:109` 嵌套 begin_immediate 静默降级；写语句 rowcount 未核对 | 基线即如此、无生产调用方，不在本轮范围，记录 | — |
 | 21 | R3 | minor | `legacy_blueprints ⇄ manual_page ⇄ system_runtime` 新增一条延迟环（正向副作用：说明书页模块在冻结包里由不可达变可达） | 加载顺序正确、环基线只比硬环；未加合同，记录 | — |
+
+## R4：修复批次的定向复审（b227f3a2..6dd36682）
+
+只读复审 8 个修复提交；对 7 组新测试做了反向验证（临时撤销修复后全部变红），move_modules 在 /tmp 仓库实跑 `--apply`，3351 条真实 DDL 老/新规范化结果逐条相同，日常门禁 `_build_impact_plan` 干跑确认 app_config 改动选中 6 个无兜底分组。blocker 0。
+
+| # | 级别 | 发现 | 处置 |
+|---|---|---|---|
+| R4-1 | major | 死代码基线 --refresh 吸收 108 条与本轮无关的新条目，未按 ratchet 决策分诊 | 基线改为 b227f3a2 版只吸收 9 条改名、剔除已消失项（见 #13） |
+| R4-2 | minor | `.codestable/semantics/tests/test_semantic_snapshots.py` 两个快照的字源随旧路由层删除，套件 13/2 | 两个快照测试与快照文件退役，语义漂移账本记一条 |
+| R4-3 | minor | 就绪度 `except AppError` 结构上过宽（当前不可达） | 收窄为只吞 `DB_QUERY_ERROR`，其它 AppError 上抛 |
+| R4-4 | minor | `calendar_rows` 是生成器函数，错误在首次 next 才翻译 | 改为调用时执行两条语句 |
+| R4-5 | 记录 | `iter_rows` 迭代期 sqlite 错误不翻译（与原 fetchall 一致） | 不改 |
 
 ## 未做 / 证据不足
 

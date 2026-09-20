@@ -82,3 +82,8 @@ MDS/PFS 高分近似重复 top 15 待逐条判 consistent / refactor_debt / nami
   - `web/routes/system_backup.py`(commit `cd95b8b0`)：`os.remove`→`remove_fixed_file(allow_symlink=False)`，异常拆成显式 `FileNotFoundError`/`UnsafeFixedFileError`/`OSError`；`backup_create` 新增「完整性检查失败 loud 不静默」「磁盘满给具体提示、ProgrammingError 必须 loud 透 500」分支。
   - **判定 `consistent`**：ECM 仅机械检测到异常 profile 形状变化，实质是降级诚实灵魂线被**加固**，方向与漂移相反。**不登记为债**。
 - **运维副产(非语义)**：仓库从 `~/Documents/GitHub` 搬到 `~/GitHub` 后，`.venv-semantic/bin/drift` 控制台脚本 shebang 写死旧绝对路径 → exec FileNotFoundError 静默失效；已将 `run_drift_scan.py` 改走 `python -m drift`(对搬迁免疫)并验证跑通。
+
+### 2026-09-20 守卫套件修复：旧路由层删除后的两处 import 崩溃，结论 **无新增语义漂移债**
+
+- `tests/test_config_field_properties.py` 仍 import 已于 2026-09-20 删除的 `core.infrastructure.errors` 垫片，改为 `core.errors`（同对象）。
+- `tests/test_semantic_snapshots.py` 里 `result_status_labels` / `strategy_labels` 两个快照的字源 `web.viewmodels.scheduler_summary_result_state` / `scheduler_history_summary` 已随旧路由层于 2026-09-18 删除，全仓不再有对应字源；两个快照测试与 `__snapshots__` 文件一并退役。`result_status` / `strategy` 概念若仍在 `concept-registry.yaml` 登记字源，下次 `check_concept_registry.py` 复查时按现行工作台字源重登。
