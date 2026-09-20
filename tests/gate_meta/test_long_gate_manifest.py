@@ -318,7 +318,7 @@ def test_required_parent_fingerprint_tracks_group_specific_scope_union(tmp_path)
     "core/services/workbench/facts/zero_duration_evidence.py", "core/services/workbench/plan/point_evidence.py",
     "core/services/workbench/facts/piece_scope.py", "core/models/workbench_piece_adoption.py",
     "core/algorithms/greedy/piece_input.py", "core/algorithm_runtime/busy_block_skip.py",
-    "core/services/scheduler/calendar_engine.py", "core/services/scheduler/calendar_service.py",
+    "core/services/scheduler/calendar/engine.py", "core/services/scheduler/calendar/service.py",
     "tests/_support/busy_block_case.py", "tests/workbench/ea_zero_duration_support.py",
     "tests/workbench/piece_adoption_support.py",
     "tests/workbench/test_eu_process_fixture_contracts.py", "tests/workbench/process_detail_files_probe.cjs",

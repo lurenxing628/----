@@ -9,8 +9,8 @@ import pytest
 
 from core.infrastructure.database import CURRENT_SCHEMA_VERSION, ensure_schema, get_connection
 from core.infrastructure.migration_state import MigrationContractError, detect_schema_is_current
-from core.services.scheduler.gantt_adjustment_scenario_service import GanttAdjustmentScenarioService
-from core.services.scheduler.gantt_service import GanttService
+from core.services.scheduler.gantt.adjustment_scenario_service import GanttAdjustmentScenarioService
+from core.services.scheduler.gantt.service import GanttService
 from core.services.scheduler.schedule_plan_query_service import SchedulePlanQueryService
 from tests._support.gantt_scenario import (
     SCHEMA_PATH as SCHEMA_PATH,

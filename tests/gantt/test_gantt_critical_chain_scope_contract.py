@@ -5,8 +5,8 @@ scope=filtered；整版口径（provider/候选/空版本）经 _public_critical
 
 from __future__ import annotations
 
-from core.services.scheduler.gantt_contract import _public_critical_chain
-from core.services.scheduler.gantt_service_support import critical_chain_for_plan_detail_filter
+from core.services.scheduler.gantt.contract import _public_critical_chain
+from core.services.scheduler.gantt.service_support import critical_chain_for_plan_detail_filter
 
 
 def test_detail_filter_path_marks_scope_filtered() -> None:

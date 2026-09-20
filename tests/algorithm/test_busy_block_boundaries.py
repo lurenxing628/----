@@ -7,8 +7,8 @@ from unittest.mock import patch
 import pytest
 
 from core.algorithm_runtime.downtime import SegmentOverlapIndex, find_overlap_shift_end
-from core.services.scheduler.calendar_engine import CalendarEngine
-from core.services.scheduler.calendar_service import CalendarService
+from core.services.scheduler.calendar.engine import CalendarEngine
+from core.services.scheduler.calendar.service import CalendarService
 from core.services.scheduler.run.schedule_execution_reservations import (
     ExecutionResourceCalendar,
     ExecutionResourceReservation,

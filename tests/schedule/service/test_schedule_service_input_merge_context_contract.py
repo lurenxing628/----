@@ -84,7 +84,7 @@ def _external_op():
 
 
 def test_schedule_service_returns_merge_context_degraded_summary_without_input_fallback(monkeypatch) -> None:
-    import core.services.scheduler.calendar_service as calendar_service_mod
+    import core.services.scheduler.calendar.service as calendar_service_mod
     import core.services.scheduler.config.config_service as config_service_mod
     import core.services.scheduler.schedule_service as schedule_service_mod
     from core.services.scheduler.schedule_service import ScheduleService

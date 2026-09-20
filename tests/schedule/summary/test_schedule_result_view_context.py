@@ -369,7 +369,7 @@ def test_missing_history_can_fail_before_plan_role_validation_when_required() ->
 
 
 def test_gantt_plan_query_wrapper_keeps_legacy_bad_role_message() -> None:
-    from core.services.scheduler import gantt_plan_query
+    from core.services.scheduler.gantt import plan_query as gantt_plan_query
 
     with pytest.raises(ValidationError) as exc_info:
         gantt_plan_query.default_plan_resolution_dict("bad")

@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import pytest
 
-from core.services.scheduler.gantt_critical_chain import _normalize_critical_chain_result
+from core.services.scheduler.gantt.critical_chain import _normalize_critical_chain_result
 
 
 def _default_edge_type_stats() -> Dict[str, int]:

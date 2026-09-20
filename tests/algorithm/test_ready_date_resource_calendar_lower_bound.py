@@ -7,7 +7,7 @@ import pytest
 
 from core.algorithms.greedy.scheduler import GreedyScheduler
 from core.errors import BusinessError, ErrorCode
-from core.services.scheduler.calendar_service import CalendarService
+from core.services.scheduler.calendar.service import CalendarService
 from core.services.scheduler.config.config_field_spec import default_snapshot_values
 
 

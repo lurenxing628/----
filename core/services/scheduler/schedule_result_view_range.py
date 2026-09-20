@@ -4,7 +4,7 @@ from typing import Any, Dict, Optional, Tuple
 
 from core.errors import ValidationError
 
-from .gantt_range import WeekRange, resolve_week_range
+from .week_range import WeekRange, resolve_week_range
 
 
 def _has_text(value: Optional[str]) -> bool:

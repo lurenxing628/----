@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 import pytest
 
-from core.services.scheduler.calendar_service import CalendarService
+from core.services.scheduler.calendar.service import CalendarService
 from core.services.workbench.commands import WorkbenchCommandService
 from core.services.workbench.resource.calendars import WorkbenchCalendarService
 from data.repositories.workbench_command_repo import WorkbenchCommandRepository

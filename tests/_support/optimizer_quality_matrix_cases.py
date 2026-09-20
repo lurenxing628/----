@@ -10,7 +10,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from core.models.schedule_config_runtime import default_snapshot_values
-from core.services.scheduler.calendar_service import CalendarService
+from core.services.scheduler.calendar.service import CalendarService
 from core.services.scheduler.graph.metrics import build_node_metrics
 from core.services.scheduler.graph.precedence_builder import build_linear_edges_by_batch, build_precedence_graph
 from core.services.scheduler.graph.types import OperationGraphNode

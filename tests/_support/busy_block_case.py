@@ -9,7 +9,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from core.algorithm_runtime import internal_slot
-from core.services.scheduler.calendar_service import CalendarService
+from core.services.scheduler.calendar.service import CalendarService
 
 BASE = datetime(2026, 9, 8, 8)
 SCHEMA = (Path(__file__).resolve().parents[2] / "schema.sql").read_text(encoding="utf-8")

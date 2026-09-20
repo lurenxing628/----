@@ -11,7 +11,7 @@ from core.services.personnel.operator_qualification import (
     OperatorQualificationService,
     validate_fixed_operator_qualifications,
 )
-from core.services.scheduler.calendar_service import CalendarService
+from core.services.scheduler.calendar.service import CalendarService
 from core.services.scheduler.config.config_service import ConfigService
 from core.services.scheduler.resource_pool_builder import build_resource_pool
 from core.services.scheduler.schedule_service import ScheduleService

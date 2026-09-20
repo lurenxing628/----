@@ -7,7 +7,7 @@ from collections import OrderedDict
 from typing import Any, Dict, List
 from unittest.mock import Mock
 
-from core.services.scheduler.gantt_critical_chain_provider import GanttCriticalChainProvider
+from core.services.scheduler.gantt.critical_chain_provider import GanttCriticalChainProvider
 from core.services.scheduler.schedule_plan_query_service import ROLE_ADOPTED, ROLE_BASELINE_BEST, ROLE_CRITICAL_BEST
 from data.repositories.schedule_plan_query_repo import SOURCE_CANDIDATE_ROWS, SOURCE_SCHEDULE
 
@@ -96,7 +96,7 @@ def _plan_resolution(role: str, *, candidate_id=None, source_table: str = SOURCE
 
 
 def test_adopted_critical_chain_uses_schedule_repo(monkeypatch) -> None:
-    import core.services.scheduler.gantt_critical_chain_provider as provider_module
+    import core.services.scheduler.gantt.critical_chain_provider as provider_module
 
     _reset_provider_cache(monkeypatch)
     compute = Mock(wraps=provider_module.compute_critical_chain)
@@ -137,7 +137,7 @@ def test_adopted_critical_chain_uses_schedule_repo(monkeypatch) -> None:
 
 
 def test_candidate_critical_chain_uses_full_plan_detail_rows(monkeypatch) -> None:
-    import core.services.scheduler.gantt_critical_chain_provider as provider_module
+    import core.services.scheduler.gantt.critical_chain_provider as provider_module
 
     _reset_provider_cache(monkeypatch)
     rows_seen: List[List[Dict[str, Any]]] = []
@@ -184,7 +184,7 @@ def test_candidate_critical_chain_uses_full_plan_detail_rows(monkeypatch) -> Non
 
 
 def test_critical_best_critical_chain_uses_candidate_rows(monkeypatch) -> None:
-    import core.services.scheduler.gantt_critical_chain_provider as provider_module
+    import core.services.scheduler.gantt.critical_chain_provider as provider_module
 
     _reset_provider_cache(monkeypatch)
 
@@ -209,7 +209,7 @@ def test_critical_best_critical_chain_uses_candidate_rows(monkeypatch) -> None:
 
 
 def test_non_adopted_schedule_source_uses_resolved_source_table(monkeypatch) -> None:
-    import core.services.scheduler.gantt_critical_chain_provider as provider_module
+    import core.services.scheduler.gantt.critical_chain_provider as provider_module
 
     _reset_provider_cache(monkeypatch)
 
@@ -239,7 +239,7 @@ def test_non_adopted_schedule_source_uses_resolved_source_table(monkeypatch) -> 
 
 
 def test_candidate_rows_are_loaded_from_resolved_candidate_id_not_current_role_selection(monkeypatch) -> None:
-    import core.services.scheduler.gantt_critical_chain_provider as provider_module
+    import core.services.scheduler.gantt.critical_chain_provider as provider_module
 
     _reset_provider_cache(monkeypatch)
 
@@ -267,7 +267,7 @@ def test_candidate_rows_are_loaded_from_resolved_candidate_id_not_current_role_s
 
 
 def test_candidate_cache_key_keeps_candidate_ids_separate(monkeypatch) -> None:
-    import core.services.scheduler.gantt_critical_chain_provider as provider_module
+    import core.services.scheduler.gantt.critical_chain_provider as provider_module
 
     _reset_provider_cache(monkeypatch)
     compute_count = {"value": 0}
@@ -301,7 +301,7 @@ def test_candidate_cache_key_keeps_candidate_ids_separate(monkeypatch) -> None:
 
 
 def test_candidate_cache_key_keeps_roles_separate_even_when_candidate_matches(monkeypatch) -> None:
-    import core.services.scheduler.gantt_critical_chain_provider as provider_module
+    import core.services.scheduler.gantt.critical_chain_provider as provider_module
 
     _reset_provider_cache(monkeypatch)
     compute_count = {"value": 0}
@@ -330,7 +330,7 @@ def test_candidate_cache_key_keeps_roles_separate_even_when_candidate_matches(mo
 
 
 def test_candidate_cache_key_keeps_source_tables_separate(monkeypatch) -> None:
-    import core.services.scheduler.gantt_critical_chain_provider as provider_module
+    import core.services.scheduler.gantt.critical_chain_provider as provider_module
 
     _reset_provider_cache(monkeypatch)
 
@@ -381,7 +381,7 @@ def test_candidate_cache_key_keeps_source_tables_separate(monkeypatch) -> None:
 
 
 def test_candidate_cache_key_keeps_database_scopes_separate(monkeypatch) -> None:
-    import core.services.scheduler.gantt_critical_chain_provider as provider_module
+    import core.services.scheduler.gantt.critical_chain_provider as provider_module
 
     _reset_provider_cache(monkeypatch)
 
@@ -433,7 +433,7 @@ def test_candidate_cache_key_keeps_database_scopes_separate(monkeypatch) -> None
 
 
 def test_unavailable_candidate_result_is_not_cached(monkeypatch) -> None:
-    import core.services.scheduler.gantt_critical_chain_provider as provider_module
+    import core.services.scheduler.gantt.critical_chain_provider as provider_module
 
     _reset_provider_cache(monkeypatch)
     compute_count = {"value": 0}
@@ -465,7 +465,7 @@ def test_unavailable_candidate_result_is_not_cached(monkeypatch) -> None:
 
 
 def test_candidate_rows_load_failure_returns_unavailable_and_is_not_cached(monkeypatch) -> None:
-    import core.services.scheduler.gantt_critical_chain_provider as provider_module
+    import core.services.scheduler.gantt.critical_chain_provider as provider_module
 
     _reset_provider_cache(monkeypatch)
 
@@ -506,7 +506,7 @@ def test_candidate_rows_load_failure_returns_unavailable_and_is_not_cached(monke
 
 
 def test_cache_hit_result_is_isolated_from_caller_mutation(monkeypatch) -> None:
-    import core.services.scheduler.gantt_critical_chain_provider as provider_module
+    import core.services.scheduler.gantt.critical_chain_provider as provider_module
 
     _reset_provider_cache(monkeypatch)
 
@@ -550,7 +550,7 @@ def test_cache_hit_result_is_isolated_from_caller_mutation(monkeypatch) -> None:
 
 
 def test_clear_cache_blocks_in_flight_compute_from_repopulating_cache(monkeypatch) -> None:
-    import core.services.scheduler.gantt_critical_chain_provider as provider_module
+    import core.services.scheduler.gantt.critical_chain_provider as provider_module
 
     _reset_provider_cache(monkeypatch)
     compute_started = threading.Event()

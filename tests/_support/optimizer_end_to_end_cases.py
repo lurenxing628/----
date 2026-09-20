@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 from types import SimpleNamespace
 
 from core.models.schedule_config_runtime import default_snapshot_values
-from core.services.scheduler.calendar_service import CalendarService
+from core.services.scheduler.calendar.service import CalendarService
 from tests._support.optimizer_quality_matrix_cases import REPO_ROOT
 from tests._support.optimizer_quality_matrix_cases import fixture_data as core_fixture
 

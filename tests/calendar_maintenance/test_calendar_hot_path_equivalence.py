@@ -6,8 +6,8 @@ import pytest
 
 from core.models.enums import BATCH_PRIORITY_VALUES, BatchPriority, YesNo
 from core.services.common.normalize import normalize_text
-from core.services.scheduler import calendar_engine
-from core.services.scheduler.calendar_engine import CalendarEngine, DayPolicy
+from core.services.scheduler.calendar import engine as calendar_engine
+from core.services.scheduler.calendar.engine import CalendarEngine, DayPolicy
 
 
 class NonReflexiveText(str):

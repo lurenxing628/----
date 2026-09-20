@@ -16,7 +16,7 @@ from core.algorithms.evaluation import compute_metrics, objective_score
 from core.algorithms.greedy.scheduler import GreedyScheduler
 from core.errors import ValidationError
 from core.models.batch import Batch
-from core.services.scheduler.calendar_service import CalendarService
+from core.services.scheduler.calendar.service import CalendarService
 from core.services.scheduler.config.config_field_spec import default_snapshot_values
 from core.services.scheduler.config.config_snapshot import ScheduleConfigSnapshot
 from core.services.scheduler.contracts.schedule_input_op import OpForScheduleAlgo

@@ -8,7 +8,7 @@ import pytest
 from core.errors import AppError
 from core.models.workbench_command import input_fingerprint
 from core.services.capacity.plan_calendar_intervals import instant
-from core.services.scheduler.calendar_engine import CalendarEngine
+from core.services.scheduler.calendar.engine import CalendarEngine
 from core.services.workbench.plan.calendar import project_plan_calendar
 from tests.workbench.plan_calendar_support import codes, measured, plan_calendar_case, resource
 

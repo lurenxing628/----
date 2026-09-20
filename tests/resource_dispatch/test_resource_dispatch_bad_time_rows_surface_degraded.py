@@ -7,7 +7,7 @@ import sqlite3
 from pathlib import Path
 
 from core.services.scheduler._sched_display_utils import bad_time_row_sample
-from core.services.scheduler.resource_dispatch_service import ResourceDispatchService
+from core.services.scheduler.resource_dispatch.service import ResourceDispatchService
 from tests._support.paths import REPO_ROOT
 
 

@@ -15,7 +15,7 @@ from core.errors import AppError
 from core.models.workbench_piece_adoption import PieceAdoptionBlocked, PieceAdoptionEvidence
 from core.models.workbench_run_adoption import CandidateAdoptionBlocked
 from core.models.workbench_run_compute import CandidateRunInputError
-from core.services.scheduler.calendar_service import CalendarService
+from core.services.scheduler.calendar.service import CalendarService
 from core.services.scheduler.resource_pool_builder import load_machine_downtimes
 from core.services.scheduler.run.schedule_input_builder import build_algo_operations
 from core.services.scheduler.run.schedule_payload_contract import build_validated_schedule_payload

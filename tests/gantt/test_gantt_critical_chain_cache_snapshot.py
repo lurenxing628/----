@@ -6,9 +6,9 @@ from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
-import core.services.scheduler.gantt_critical_chain_provider as provider_module
-from core.services.scheduler.gantt_critical_chain_provider import GanttCriticalChainProvider
-from core.services.scheduler.gantt_critical_chain_snapshot import CriticalChainSnapshot
+import core.services.scheduler.gantt.critical_chain_provider as provider_module
+from core.services.scheduler.gantt.critical_chain_provider import GanttCriticalChainProvider
+from core.services.scheduler.gantt.critical_chain_snapshot import CriticalChainSnapshot
 from tests.gantt.gantt_critical_chain_cache_support import SOURCES, assert_matches_direct, cache_db, reset_cache
 
 

@@ -5,8 +5,8 @@ from datetime import date
 
 from core.errors import ValidationError
 from core.models.calendar import OperatorCalendar, WorkCalendar
-from core.services.scheduler.calendar_engine import CalendarEngine
-from core.services.scheduler.operator_shift_calendar import OperatorShiftCalendar
+from core.services.scheduler.calendar.engine import CalendarEngine
+from core.services.scheduler.calendar.operator_shift import OperatorShiftCalendar
 from data.repositories.operator_shift_repo import OperatorShiftRepository
 
 

@@ -108,7 +108,7 @@ def test_operation_alignment_stable_across_versions(baseline_case):
 
 
 def test_real_draft_save_and_connection_restart(baseline_case):
-    from core.services.scheduler.gantt_adjustment_scenario_service import GanttAdjustmentScenarioService
+    from core.services.scheduler.gantt.adjustment_scenario_service import GanttAdjustmentScenarioService
     from tests._support.gantt_scenario import _draft_with_change, _seed_base
     conn = baseline_case.conn
     _seed_base(conn)

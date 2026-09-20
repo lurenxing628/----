@@ -19,8 +19,8 @@ from core.models.workbench_calendar import (
     normalize_calendar_input,
 )
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected, input_fingerprint
-from core.services.scheduler.calendar_engine import CalendarEngine
-from core.services.scheduler.calendar_service import CalendarService
+from core.services.scheduler.calendar.engine import CalendarEngine
+from core.services.scheduler.calendar.service import CalendarService
 from data.repositories.workbench_calendar_query_repo import WorkbenchCalendarQueryRepository
 
 

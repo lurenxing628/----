@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from core.services.scheduler.resource_dispatch_support import (
+from core.services.scheduler.resource_dispatch.support import (
     extract_overdue_batch_ids,
     extract_overdue_batch_ids_with_meta,
 )

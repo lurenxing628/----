@@ -9,7 +9,7 @@ import pytest
 
 from core.errors import ValidationError
 from core.models.calendar import OperatorCalendar, WorkCalendar
-from core.services.scheduler.calendar_engine import CalendarEngine
+from core.services.scheduler.calendar.engine import CalendarEngine
 
 
 def _engine_with_calendar_row(row):

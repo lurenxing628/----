@@ -102,7 +102,7 @@ def test_whereis_at_success_uses_jedi_hit(monkeypatch, capsys):
     )
     monkeypatch.setattr(jedi_resolver, "available", lambda: True)
 
-    assert render.render_whereis("to_dict", index, as_json=True, at=("core/services/scheduler/calendar_admin.py", 306)) == 0
+    assert render.render_whereis("to_dict", index, as_json=True, at=("core/services/scheduler/calendar/admin.py", 306)) == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["resolved"] == [
         {"rel": "core/models/calendar.py", "line": 58, "full_name": "core.models.calendar.WorkCalendar.to_dict"}

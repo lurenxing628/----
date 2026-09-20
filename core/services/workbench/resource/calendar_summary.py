@@ -4,7 +4,7 @@ import math
 from datetime import datetime, timedelta
 
 from core.errors import ValidationError
-from core.services.scheduler.calendar_service import CalendarService
+from core.services.scheduler.calendar.service import CalendarService
 from core.services.scheduler.config.config_field_spec import MISSING_POLICY_ERROR, coerce_config_field
 from data.repositories.config_repo import ConfigRepository
 from data.repositories.workbench_resource_summary_repo import WorkbenchResourceSummaryRepository

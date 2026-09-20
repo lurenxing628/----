@@ -7,8 +7,8 @@ import sys
 from pathlib import Path
 
 from core.infrastructure.database import ensure_schema, get_connection
-from core.services.scheduler.gantt_adjustment_draft_service import GanttAdjustmentDraftService
-from core.services.scheduler.gantt_adjustment_scenario_service import GanttAdjustmentScenarioService
+from core.services.scheduler.gantt.adjustment_draft_service import GanttAdjustmentDraftService
+from core.services.scheduler.gantt.adjustment_scenario_service import GanttAdjustmentScenarioService
 from tests._support.excel_templates import point_env_at_shared
 from tests._support.paths import REPO_ROOT
 

@@ -6,7 +6,7 @@ import json
 import sqlite3
 from pathlib import Path
 
-from core.services.scheduler.gantt_service import GanttService
+from core.services.scheduler.gantt.service import GanttService
 from tests._support.paths import REPO_ROOT
 
 

@@ -8,11 +8,11 @@ from collections import OrderedDict
 from contextlib import contextmanager
 
 from core.models.schedule_plan_role import SOURCE_ADJUSTMENT_SCENARIO_ROWS, SOURCE_CANDIDATE_ROWS, SOURCE_SCHEDULE
-from core.services.scheduler.gantt_critical_chain import (
+from core.services.scheduler.gantt.critical_chain import (
     _normalize_critical_chain_result,
     compute_critical_chain_from_rows,
 )
-from core.services.scheduler.gantt_critical_chain_provider import GanttCriticalChainProvider
+from core.services.scheduler.gantt.critical_chain_provider import GanttCriticalChainProvider
 from core.services.scheduler.schedule_plan_query_service import SchedulePlanQueryService
 from data.repositories import ScheduleRepository
 from tests._support.paths import REPO_ROOT

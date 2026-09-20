@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from core.services.scheduler.gantt_task_labels import detail_operation_label, public_task_label
+from core.services.scheduler.gantt.task_labels import detail_operation_label, public_task_label
 
 
 def test_gantt_task_labels_preserve_zero_sequence_number() -> None:

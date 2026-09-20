@@ -6,10 +6,10 @@ import json
 
 import pytest
 
-from core.services.scheduler.resource_dispatch_range import resolve_dispatch_range
-from core.services.scheduler.resource_dispatch_rows import build_dispatch_detail_rows, build_dispatch_tasks
-from core.services.scheduler.resource_dispatch_support import build_single_scope_payload, build_team_scope_payload
-from core.services.scheduler.resource_dispatch_task_ids import row_identity
+from core.services.scheduler.dispatch_task_ids import row_identity
+from core.services.scheduler.resource_dispatch.range import resolve_dispatch_range
+from core.services.scheduler.resource_dispatch.rows import build_dispatch_detail_rows, build_dispatch_tasks
+from core.services.scheduler.resource_dispatch.support import build_single_scope_payload, build_team_scope_payload
 
 
 def test_resource_dispatch_task_id_rejects_invalid_unicode_in_hash_source() -> None:

@@ -5,7 +5,7 @@ from datetime import datetime
 import pytest
 
 from core.errors import AppError, ValidationError
-from core.services.scheduler.calendar_service import CalendarService
+from core.services.scheduler.calendar.service import CalendarService
 
 
 def _shift(conn, days, *, anchor="2026-09-09", status="active"):

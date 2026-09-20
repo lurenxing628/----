@@ -19,18 +19,18 @@ tests/gate_meta/test_frozen_bundle_contract.py 会做对账，漂移即红。
 from __future__ import annotations
 
 import core.services.scheduler.batch_service as _batch_service
-import core.services.scheduler.calendar_service as _calendar_service
+import core.services.scheduler.calendar.service as _calendar_service
 import core.services.scheduler.config.config_page_outcome as _config_page_outcome
 import core.services.scheduler.config.config_service as _config_service
-import core.services.scheduler.gantt_adjustment_draft_service as _gantt_adjustment_draft_service
-import core.services.scheduler.gantt_adjustment_publish_service as _gantt_adjustment_publish_service
-import core.services.scheduler.gantt_adjustment_scenario_service as _gantt_adjustment_scenario_service
-import core.services.scheduler.gantt_adjustment_validation_service as _gantt_adjustment_validation_service
-import core.services.scheduler.gantt_service as _gantt_service
+import core.services.scheduler.gantt.adjustment_draft_service as _gantt_adjustment_draft_service
+import core.services.scheduler.gantt.adjustment_publish_service as _gantt_adjustment_publish_service
+import core.services.scheduler.gantt.adjustment_scenario_service as _gantt_adjustment_scenario_service
+import core.services.scheduler.gantt.adjustment_validation_service as _gantt_adjustment_validation_service
+import core.services.scheduler.gantt.service as _gantt_service
 import core.services.scheduler.operation_execution_feedback_service as _operation_execution_feedback_service
-import core.services.scheduler.resource_dispatch_actual_record_service as _resource_dispatch_actual_record_service
-import core.services.scheduler.resource_dispatch_execution_service as _resource_dispatch_execution_service
-import core.services.scheduler.resource_dispatch_service as _resource_dispatch_service
+import core.services.scheduler.resource_dispatch.actual_record_service as _resource_dispatch_actual_record_service
+import core.services.scheduler.resource_dispatch.execution_service as _resource_dispatch_execution_service
+import core.services.scheduler.resource_dispatch.service as _resource_dispatch_service
 import core.services.scheduler.schedule_service as _schedule_service
 
 FROZEN_IMPORT_ANCHORS = (

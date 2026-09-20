@@ -114,7 +114,7 @@ def invalid_calendar_fixture(client):
 
 def legacy_payload(**changes):
     """Build retained backend/public Gantt metadata without a legacy UI claim."""
-    from core.services.scheduler.gantt_contract import build_gantt_contract
+    from core.services.scheduler.gantt.contract import build_gantt_contract
 
     inputs = dict(contract_version=2, view="machine", version=7, week_start="2026-01-26", week_end="2026-02-01",
                   tasks=[], calendar_days=[], critical_chain={"available": True, "ids": [], "edges": []})

@@ -12,8 +12,8 @@ from core.errors import ValidationError
 from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_calendar import CALENDAR_PREVIEW_TTL_SECONDS, MAX_CALENDAR_RANGE_DAYS
 from core.models.workbench_command import WorkbenchCommandRejected, WorkbenchCommandUncertain, canonical_json
-from core.services.scheduler.calendar_engine import MAX_CALENDAR_DAYS
-from core.services.scheduler.calendar_service import CalendarService
+from core.services.scheduler.calendar.engine import MAX_CALENDAR_DAYS
+from core.services.scheduler.calendar.service import CalendarService
 from core.services.workbench.commands import WorkbenchCommandService
 from core.services.workbench.resource.calendars import WorkbenchCalendarService
 from data.repositories.workbench_calendar_query_repo import WorkbenchCalendarQueryRepository

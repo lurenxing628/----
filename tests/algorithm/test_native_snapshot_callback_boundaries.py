@@ -15,7 +15,7 @@ from core.algorithm_runtime.sgs_estimate_reuse import (
     native_multi_start_calendar_snapshot,
     native_sgs_policy_snapshot,
 )
-from core.services.scheduler.calendar_service import CalendarService
+from core.services.scheduler.calendar.service import CalendarService
 from tests._support.busy_block_case import BASE, native_calendar
 
 

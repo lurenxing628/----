@@ -11,8 +11,8 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from core.services.scheduler.gantt_range import resolve_week_range
-from core.services.scheduler.gantt_resource_load import compute_gantt_resource_day_load
+from core.services.scheduler.gantt.resource_load import compute_gantt_resource_day_load
+from core.services.scheduler.week_range import resolve_week_range
 from tests._support.paths import REPO_ROOT
 
 
@@ -169,11 +169,11 @@ def test_no_direct_capacity_hours_call_in_load_chain():
     # 4.6 红线：负荷链路禁直调 calculations.capacity_hours（midnight 采样错归属）；
     # capacity_hours_at_noon( 是单源 helper 白名单
     for rel in (
-        "core/services/scheduler/gantt_resource_load.py",
-        "core/services/scheduler/gantt_service.py",
+        "core/services/scheduler/gantt/resource_load.py",
+        "core/services/scheduler/gantt/service.py",
     ):
         text = (REPO_ROOT / rel).read_text(encoding="utf-8")
         assert "capacity_hours(" not in text.replace("capacity_hours_at_noon(", ""), rel
     # 反向依赖断言：scheduler 新文件零 report 包 import
-    load_text = (REPO_ROOT / "core/services/scheduler/gantt_resource_load.py").read_text(encoding="utf-8")
+    load_text = (REPO_ROOT / "core/services/scheduler/gantt/resource_load.py").read_text(encoding="utf-8")
     assert "from core.services.report" not in load_text

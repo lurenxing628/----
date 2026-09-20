@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 import pytest
 
-from core.services.scheduler.calendar_engine import _native_date_isoformat
+from core.services.scheduler.calendar.engine import _native_date_isoformat
 from tests._support.busy_block_case import BASE, day_row, native_calendar
 
 
@@ -48,7 +48,7 @@ def test_datetime_date_reads_and_errors_match_uncached_formatter(aware):
     for cached in (False, True):
         with native_calendar() as calendar:
             formatter = _native_date_isoformat if cached else lambda value: value.isoformat()
-            with patch("core.services.scheduler.calendar_engine._native_date_isoformat", formatter):
+            with patch("core.services.scheduler.calendar.engine._native_date_isoformat", formatter):
                 try:
                     policy = calendar._engine.policy_for_datetime(instant, operator_id="O1")
                     outcomes.append(("value", policy))

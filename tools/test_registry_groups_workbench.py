@@ -227,7 +227,7 @@ WORKBENCH_REQUIRED_REGRESSION_GROUPS = (
         "core/services/workbench/resource/calendars.py", "core/services/workbench/resource/suppliers.py",
         "core/services/personnel/**/*.py", "core/services/equipment/**/*.py",
         "core/services/material/**/*.py", "core/services/process/**/*.py",
-        "core/services/scheduler/operator_shift_calendar.py",
+        "core/services/scheduler/calendar/operator_shift.py",
         "data/repositories/*.py",
         "web/routes/workbench/resource*.py", "web/routes/workbench/material*.py",
         "web/routes/workbench/calendars*.py",

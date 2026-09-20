@@ -13,7 +13,7 @@ from core.services.report.report_context_filters import (
     REPORT_RESOURCE_FILTER_ARG_KEYS,
     normalize_report_resource_filter,
 )
-from core.services.scheduler.gantt_plan_query import resolve_gantt_range_for_version
+from core.services.scheduler.gantt.plan_query import resolve_gantt_range_for_version
 from core.services.scheduler.version_resolution import resolve_version_or_latest
 from web.plan_context_token import request_scenario_id_from_args
 

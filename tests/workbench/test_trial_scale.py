@@ -5,7 +5,7 @@ from time import monotonic
 
 import pytest
 
-from core.services.scheduler.calendar_service import CalendarService
+from core.services.scheduler.calendar.service import CalendarService
 from tests.workbench.trial_support import change, connect, create, service
 from tests.workbench.trial_support import trial_case as trial_case
 

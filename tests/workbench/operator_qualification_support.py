@@ -6,7 +6,7 @@ import pytest
 
 from core.algorithms.greedy.auto_assign import auto_assign_internal_resources_attempt
 from core.infrastructure.migration_state import CURRENT_SCHEMA_VERSION, ensure_schema_version, get_schema_version
-from core.services.scheduler.calendar_service import CalendarService
+from core.services.scheduler.calendar.service import CalendarService
 from core.services.scheduler.config.config_service import ConfigService
 from core.services.scheduler.operation_execution_feedback_service import (
     ExecutionFeedbackContext,

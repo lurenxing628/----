@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from core.services.scheduler import gantt_critical_chain, gantt_tasks
 from core.services.scheduler._sched_utils import _safe_int
+from core.services.scheduler.gantt import critical_chain as gantt_critical_chain
+from core.services.scheduler.gantt import tasks as gantt_tasks
 
 
 def test_safe_int_parses_integer_float_forms() -> None:

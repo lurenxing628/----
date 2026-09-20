@@ -47,7 +47,7 @@ tags: [scheduler, gantt, frontend, readonly, vendor, scenario-preview, task-deta
 
 1. `/scheduler/gantt/data` 收到版本、方案和日期范围。
 2. `GanttService.get_gantt_tasks()` 读取排程明细行，并按明细里的 `op_id` 批量读取 `ExecutionFactProvider`。
-3. `core/services/scheduler/gantt_tasks.py` 把计划时间、公开任务标题、图号或物料、工序、资源、超期提示和现场实际小结整理到 task meta。
+3. `core/services/scheduler/gantt/tasks.py` 把计划时间、公开任务标题、图号或物料、工序、资源、超期提示和现场实际小结整理到 task meta。
 4. `web/viewmodels/scheduler_gantt_task_detail.py` 只在 Web 层追加下一步链接，包括资源派工、计划和现场实际、超期清单；非正式方案下“计划和现场实际”入口禁用并给中文原因。
 5. `static/js/gantt_render.js` 在用户点击任务条时保留原有批次聚焦，同时刷新 `#ganttTaskDetail`。
 6. `static/js/gantt_popup.js` 输出详情区 HTML，所有动态文本都先转义。

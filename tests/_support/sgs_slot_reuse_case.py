@@ -6,7 +6,7 @@ from typing import Any, Dict
 
 from core.algorithms import GreedyScheduler, ScheduleResult
 from core.models import WorkCalendar
-from core.services.scheduler.calendar_engine import CalendarEngine
+from core.services.scheduler.calendar.engine import CalendarEngine
 
 BASE = datetime(2026, 9, 8, 8)
 

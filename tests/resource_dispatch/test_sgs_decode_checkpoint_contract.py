@@ -324,7 +324,7 @@ def test_calendar_ddl_cannot_reuse_a_signature_just_because_total_changes_is_unc
 
 
 def test_unknown_calendar_remains_usable_for_full_decode_but_cannot_capture_checkpoints(case):
-    from core.services.scheduler.calendar_service import CalendarService
+    from core.services.scheduler.calendar.service import CalendarService
 
     class UncertifiedCalendar(CalendarService):
         pass
@@ -375,7 +375,7 @@ def test_declared_continuous_calendar_requires_unchanged_methods_and_empty_state
 def test_calendar_changes_from_another_connection_are_bound_to_the_visible_read_snapshot(case, tmp_path, read_only):
     import sqlite3
 
-    from core.services.scheduler.calendar_service import CalendarService
+    from core.services.scheduler.calendar.service import CalendarService
 
     path = str(tmp_path / "checkpoint-calendar.db")
     writer = sqlite3.connect(path)

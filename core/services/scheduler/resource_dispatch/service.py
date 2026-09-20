@@ -1,0 +1,472 @@
+from __future__ import annotations
+
+from typing import Any, Dict, List, Optional, Tuple
+
+from core.errors import ValidationError
+from core.models.schedule_resource_filter import SUPPORTED_DISPATCH_RESOURCE_TYPES
+from core.services.equipment.machine_service import MachineService
+from core.services.personnel import ResourceTeamService
+from core.services.personnel.operator_service import OperatorService
+from core.services.scheduler.execution.operation_execution_scope_read import apply_scoped_execution_state_to_rows
+from core.services.scheduler.operation_execution_feedback_service import OperationExecutionFeedbackService
+from core.services.scheduler.plan_overdue_markers import build_overdue_meta_for_plan
+from core.services.scheduler.schedule_history_query_service import ScheduleHistoryQueryService
+from core.services.scheduler.schedule_plan_option_display import public_plan_role_options
+from core.services.scheduler.schedule_plan_query_service import ROLE_ADOPTED, SchedulePlanQueryService
+from core.services.scheduler.schedule_result_view_context import (
+    normalize_plan_role,
+    plan_role_filter_fields,
+    plan_role_notice_from_fields,
+    resolve_schedule_result_view_context,
+)
+from core.services.scheduler.version_resolution import (
+    VersionResolution,
+    require_selected_version,
+    resolve_version_or_latest,
+)
+
+from .page_context import build_page_filters, can_query_page, latest_page_version, plan_role_context_for_page
+from .range import resolve_dispatch_range
+from .support import (
+    build_dispatch_filters,
+    build_empty_dispatch_message,
+    build_single_scope_payload,
+    build_team_scope_payload,
+    empty_dispatch_payload,
+    extract_overdue_batch_ids_with_meta,
+)
+
+
+class ResourceDispatchService:
+    def __init__(self, conn, logger=None, op_logger=None):
+        self.conn = conn
+        self.logger = logger
+        self.op_logger = op_logger
+        self.plan_query_service = SchedulePlanQueryService(conn, logger=logger)
+        self.history_service = ScheduleHistoryQueryService(conn, logger=logger, op_logger=op_logger)
+        self.operator_service = OperatorService(conn, logger=logger, op_logger=op_logger)
+        self.machine_service = MachineService(conn, logger=logger, op_logger=op_logger)
+        self.team_service = ResourceTeamService(conn, logger=logger, op_logger=op_logger)
+        self.feedback_service = OperationExecutionFeedbackService(conn, logger=logger, op_logger=op_logger)
+
+    @staticmethod
+    def _text(value: Any) -> Optional[str]:
+        if value is None:
+            return None
+        text = str(value).strip()
+        return text or None
+
+    def _normalize_scope_type(self, value: Any) -> str:
+        # R05 步3：合法集收敛到派工资源筛选收口点常量；本地只保留默认 operator 与页面侧报错文案。
+        scope_type = str(value or "operator").strip().lower() or "operator"
+        if scope_type not in SUPPORTED_DISPATCH_RESOURCE_TYPES:
+            raise ValidationError("视角类型不正确，请选择：人员 / 设备 / 班组。", field="scope_type")
+        return scope_type
+
+    def _normalize_team_axis(self, value: Any) -> str:
+        team_axis = str(value or "operator").strip().lower() or "operator"
+        if team_axis not in {"operator", "machine"}:
+            raise ValidationError("班组轴类型不正确，请选择：人员轴 / 设备轴。", field="team_axis")
+        return team_axis
+
+    def _resolve_scope_id(
+        self,
+        *,
+        scope_type: str,
+        scope_id: Any = None,
+        operator_id: Any = None,
+        machine_id: Any = None,
+        team_id: Any = None,
+    ) -> Optional[str]:
+        explicit_scope_id = self._text(scope_id)
+        if explicit_scope_id:
+            return explicit_scope_id
+        if scope_type == "operator":
+            return self._text(operator_id)
+        if scope_type == "machine":
+            return self._text(machine_id)
+        return self._text(team_id)
+
+    def _filter_rows_by_batch(self, rows: List[Dict[str, Any]], batch_id: Any) -> List[Dict[str, Any]]:
+        normalized_batch_id = self._text(batch_id)
+        if not normalized_batch_id:
+            return rows
+        return [row for row in rows if self._text(row.get("batch_id")) == normalized_batch_id]
+
+    def _latest_version(self) -> int:
+        return int(self.history_service.get_latest_version() or 0)
+
+    def _list_versions(self, limit: int = 30) -> List[Dict[str, Any]]:
+        return list(self.history_service.list_versions(limit=limit) or [])
+
+    def _resolve_version(self, value: Any, *, latest_version: Optional[int] = None) -> VersionResolution:
+        latest = self._latest_version() if latest_version is None else int(latest_version or 0)
+        return resolve_version_or_latest(
+            value,
+            latest_version=latest,
+            version_exists=lambda version: self.history_service.get_by_version(int(version)) is not None,
+        )
+
+    def _resolve_result_view_context(
+        self,
+        *,
+        version: Any,
+        plan_role: Any,
+        scenario_id: Any = None,
+        latest_version: Optional[int] = None,
+        require_existing_version: bool = False,
+    ):
+        latest = self._latest_version() if latest_version is None else int(latest_version or 0)
+        return resolve_schedule_result_view_context(
+            raw_version=version,
+            raw_plan_role=plan_role,
+            latest_version=latest,
+            version_exists=lambda item: self.history_service.get_by_version(int(item)) is not None,
+            plan_query_service=getattr(self, "plan_query_service", None),
+            require_existing_version=require_existing_version,
+            raw_scenario_id=scenario_id,
+        )
+
+    def _scope_record(self, scope_type: str, scope_id: str):
+        if scope_type == "operator":
+            return self.operator_service.get_optional(scope_id)
+        if scope_type == "machine":
+            return self.machine_service.get_optional(scope_id)
+        return self.team_service.get_optional(scope_id)
+
+    def _scope_name(self, scope_type: str, scope_id: str) -> str:
+        record = self._scope_record(scope_type, scope_id)
+        if not record:
+            label = {"operator": "人员", "machine": "设备", "team": "班组"}.get(scope_type, scope_type)
+            raise ValidationError(f"所选{label}不存在：{scope_id}", field="scope_id")
+        return str(getattr(record, "name", "") or "").strip()
+
+    def _scope_name_for_query(self, scope_type: str, scope_id: Optional[str]) -> str:
+        if scope_id:
+            return self._scope_name(scope_type, scope_id)
+        return {"operator": "全部人员", "machine": "全部设备", "team": ""}.get(scope_type, "")
+
+    def _build_scope_options(self) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], List[Dict[str, Any]]]:
+        operator_options = [
+            {
+                "id": item.operator_id,
+                "name": item.name,
+                "status": item.status,
+                "team_id": item.team_id,
+            }
+            for item in self.operator_service.list()
+        ]
+        machine_options = [
+            {
+                "id": item.machine_id,
+                "name": item.name,
+                "status": item.status,
+                "team_id": item.team_id,
+            }
+            for item in self.machine_service.list()
+        ]
+        team_options = [
+            {
+                "id": item.team_id,
+                "name": item.name,
+                "status": item.status,
+            }
+            for item in self.team_service.list(status=None)
+        ]
+        return operator_options, machine_options, team_options
+
+    def _log_overdue_marker_degraded(self, *, version: int, reason: str, message: str) -> None:
+        if self.logger is None:
+            return
+        self.logger.warning(
+            "资源排班超期标记降级（service=ResourceDispatchService, page=resource_dispatch, version=%s, source=%s, message=%s）",
+            version,
+            reason or "unknown",
+            message or "",
+        )
+
+    def _log_overdue_marker_partial(self, *, version: int, reason: str, message: str) -> None:
+        if self.logger is None:
+            return
+        self.logger.warning(
+            "资源排班超期标记部分不完整（service=ResourceDispatchService, page=resource_dispatch, version=%s, source=%s, message=%s）",
+            version,
+            reason or "unknown",
+            message or "",
+        )
+
+    def _load_overdue_meta(self, version: int) -> Dict[str, Any]:
+        hist = self.history_service.get_by_version(int(version))
+        if not hist:
+            meta = {
+                "ids": [],
+                "degraded": True,
+                "partial": False,
+                "message": "排产历史缺失，超期统计和标记可能不完整。",
+                "reason": "history_missing",
+            }
+            self._log_overdue_marker_degraded(version=int(version), reason=str(meta["reason"]), message=str(meta["message"]))
+            return meta
+        meta = extract_overdue_batch_ids_with_meta(hist.result_summary)
+        if meta.get("degraded"):
+            self._log_overdue_marker_degraded(
+                version=int(version), reason=str(meta.get("reason") or "unknown"), message=str(meta.get("message") or "")
+            )
+        elif meta.get("partial"):
+            self._log_overdue_marker_partial(
+                version=int(version), reason=str(meta.get("reason") or "unknown"), message=str(meta.get("message") or "")
+            )
+        return meta
+
+    def _load_overdue_meta_for_plan(
+        self,
+        *,
+        version: int,
+        role: str,
+        source_table: str,
+        candidate_id: Any = None,
+        scenario_id: Any = None,
+        batch_id: Any = None,
+    ) -> Dict[str, Any]:
+        try:
+            return build_overdue_meta_for_plan(
+                version=version,
+                role=role,
+                source_table=source_table,
+                list_plan_overdue_base_rows=lambda **_: self.plan_query_service.list_plan_overdue_base_rows_for_resolution(
+                    version=int(version),
+                    source_table=source_table,
+                    candidate_id=candidate_id,
+                    scenario_id=scenario_id,
+                    batch_id=batch_id,
+                ),
+                load_adopted_meta=self._load_overdue_meta,
+                log_degraded=self._log_overdue_marker_degraded,
+            )
+        except ValidationError:
+            raise
+        except ValueError as exc:
+            raise ValidationError(str(exc), field="plan_role") from exc
+
+    def _enrich_rows_with_execution_state(self, rows: List[Dict[str, Any]], plan_role_fields: Dict[str, Any]) -> None:
+        apply_scoped_execution_state_to_rows(self.feedback_service, rows, plan_role_fields)
+
+    def build_page_context(
+        self,
+        *,
+        scope_type: Any = None,
+        scope_id: Any = None,
+        operator_id: Any = None,
+        machine_id: Any = None,
+        team_id: Any = None,
+        team_axis: Any = None,
+        period_preset: Any = None,
+        query_date: Any = None,
+        start_date: Any = None,
+        end_date: Any = None,
+        version: Any = None,
+        plan_role: Any = None,
+        scenario_id: Any = None,
+        batch_id: Any = None,
+    ) -> Dict[str, Any]:
+        normalized_scope_type = self._normalize_scope_type(scope_type)
+        normalized_team_axis = self._normalize_team_axis(team_axis)
+        normalized_plan_role = normalize_plan_role(plan_role)
+        normalized_scenario_id = self._text(scenario_id)
+        versions = self._list_versions(limit=50)
+        latest_version = latest_page_version(self.history_service, versions)
+        dr = resolve_dispatch_range(
+            period_preset=period_preset or "week",
+            query_date=query_date,
+            start_date=start_date,
+            end_date=end_date,
+        )
+        selected_scope_id = self._resolve_scope_id(
+            scope_type=normalized_scope_type,
+            scope_id=scope_id,
+            operator_id=operator_id,
+            machine_id=machine_id,
+            team_id=team_id,
+        )
+        selected_scope_name = self._scope_name_for_query(normalized_scope_type, selected_scope_id)
+        operator_options, machine_options, team_options = self._build_scope_options()
+        view_context = self._resolve_result_view_context(
+            version=version,
+            plan_role=normalized_plan_role,
+            scenario_id=normalized_scenario_id,
+            latest_version=latest_version,
+        )
+        version_resolution = view_context.version_resolution
+        if version_resolution.status == "missing_history":
+            require_selected_version(version_resolution)
+        selected_version = version_resolution.selected_version
+        plan_role_fields, plan_role_options = plan_role_context_for_page(
+            view_context=view_context,
+            selected_version=selected_version,
+            normalized_plan_role=normalized_plan_role,
+        )
+        filters = build_page_filters(
+            text_value=self._text,
+            normalized_scope_type=normalized_scope_type,
+            normalized_team_axis=normalized_team_axis,
+            selected_scope_id=selected_scope_id,
+            selected_scope_name=selected_scope_name,
+            operator_id=operator_id,
+            machine_id=machine_id,
+            team_id=team_id,
+            dr=dr,
+            selected_version=selected_version,
+            batch_id=batch_id,
+            plan_role_fields=plan_role_fields,
+        )
+        return {
+            "filters": filters,
+            "versions": versions,
+            "plan_role_options": plan_role_options,
+            "plan_role_notice": plan_role_notice_from_fields(plan_role_fields),
+            "has_history": bool(versions),
+            "operator_options": operator_options,
+            "machine_options": machine_options,
+            "team_options": team_options,
+            "can_query": can_query_page(
+                selected_version=selected_version,
+                scope_type=normalized_scope_type,
+                scope_id=selected_scope_id,
+            ),
+        }
+
+    def get_dispatch_payload(
+        self,
+        *,
+        scope_type: Any = None,
+        scope_id: Any = None,
+        operator_id: Any = None,
+        machine_id: Any = None,
+        team_id: Any = None,
+        team_axis: Any = None,
+        period_preset: Any = None,
+        query_date: Any = None,
+        start_date: Any = None,
+        end_date: Any = None,
+        version: Any = None,
+        plan_role: Any = None,
+        scenario_id: Any = None,
+        batch_id: Any = None,
+    ) -> Dict[str, Any]:
+        normalized_scope_type = self._normalize_scope_type(scope_type)
+        normalized_team_axis = self._normalize_team_axis(team_axis)
+        normalized_plan_role = normalize_plan_role(plan_role)
+        normalized_scenario_id = self._text(scenario_id)
+        latest_version = self._latest_version()
+        view_context = self._resolve_result_view_context(
+            version=version,
+            plan_role=normalized_plan_role,
+            scenario_id=normalized_scenario_id,
+            latest_version=latest_version,
+        )
+        version_resolution = view_context.version_resolution
+        if version_resolution.status == "no_history":
+            payload = empty_dispatch_payload(
+                scope_type=normalized_scope_type,
+                team_axis=normalized_team_axis,
+                version=None,
+            )
+            plan_role_fields = plan_role_filter_fields(
+                requested_role=normalized_plan_role,
+                effective_role=ROLE_ADOPTED,
+            )
+            payload["filters"].update(plan_role_fields)
+            payload["plan_role_options"] = public_plan_role_options()
+            payload["plan_role_notice"] = ""
+            payload["status"] = "no_history"
+            payload["requested_version"] = version_resolution.requested_version
+            return payload
+        selected_version = require_selected_version(version_resolution)
+        plan_role_fields = plan_role_filter_fields(view_context)
+        effective_role = str(plan_role_fields.get("effective_plan_role") or ROLE_ADOPTED)
+
+        selected_scope_id = self._resolve_scope_id(
+            scope_type=normalized_scope_type,
+            scope_id=scope_id,
+            operator_id=operator_id,
+            machine_id=machine_id,
+            team_id=team_id,
+        )
+        if normalized_scope_type == "team" and not selected_scope_id:
+            raise ValidationError("请选择查询对象", field="scope_id")
+        selected_scope_name = self._scope_name_for_query(normalized_scope_type, selected_scope_id)
+        dr = resolve_dispatch_range(
+            period_preset=period_preset or "week",
+            query_date=query_date,
+            start_date=start_date,
+            end_date=end_date,
+        )
+        overdue_meta = self._load_overdue_meta_for_plan(
+            version=selected_version,
+            role=effective_role,
+            source_table=str(plan_role_fields.get("source_table") or ""),
+            candidate_id=plan_role_fields.get("candidate_id"),
+            scenario_id=plan_role_fields.get("scenario_id"),
+            batch_id=batch_id,
+        )
+        overdue_set = set(overdue_meta.get("ids") or [])
+        rows = self.plan_query_service.list_plan_dispatch_rows_for_resolution(
+            start_time=dr.start_time,
+            end_time=dr.end_time,
+            version=selected_version,
+            source_table=str(plan_role_fields.get("source_table") or ""),
+            candidate_id=plan_role_fields.get("candidate_id"),
+            scenario_id=plan_role_fields.get("scenario_id"),
+            scope_type=normalized_scope_type,
+            scope_id=selected_scope_id,
+            batch_id=batch_id,
+        )
+        rows = [dict(row) for row in rows]
+        rows = self._filter_rows_by_batch(rows, batch_id)
+        self._enrich_rows_with_execution_state(rows, plan_role_fields)
+
+        if normalized_scope_type == "team":
+            payload = build_team_scope_payload(
+                selected_scope_id=selected_scope_id or "",
+                selected_scope_name=selected_scope_name,
+                normalized_team_axis=normalized_team_axis,
+                dr=dr,
+                rows=rows,
+                overdue_set=overdue_set,
+            )
+        else:
+            payload = build_single_scope_payload(
+                normalized_scope_type=normalized_scope_type,
+                selected_scope_id=selected_scope_id or "",
+                selected_scope_name=selected_scope_name,
+                dr=dr,
+                rows=rows,
+                overdue_set=overdue_set,
+            )
+        payload["filters"] = build_dispatch_filters(
+            normalized_scope_type=normalized_scope_type,
+            selected_scope_id=selected_scope_id or "",
+            selected_scope_name=selected_scope_name,
+            normalized_team_axis=normalized_team_axis,
+            dr=dr,
+            selected_version=selected_version,
+            batch_id=batch_id,
+        )
+        payload["filters"].update(plan_role_fields)
+        payload["plan_role_options"] = public_plan_role_options(view_context)
+        payload["plan_role_notice"] = plan_role_notice_from_fields(plan_role_fields)
+        payload["has_history"] = True
+        payload["status"] = "ok"
+        payload["requested_version"] = version_resolution.requested_version
+        payload["overdue_markers_degraded"] = bool(overdue_meta.get("degraded"))
+        payload["overdue_markers_partial"] = bool(overdue_meta.get("partial"))
+        payload["overdue_markers_message"] = str(overdue_meta.get("message") or "")
+        payload["empty_message"] = build_empty_dispatch_message(
+            normalized_scope_type=normalized_scope_type,
+            dr=dr,
+            summary=payload["summary"],
+            detail_rows=payload["detail_rows"],
+            operator_rows=payload["operator_rows"],
+            machine_rows=payload["machine_rows"],
+        )
+        return payload

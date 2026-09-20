@@ -6,11 +6,11 @@ from collections import OrderedDict
 from datetime import datetime
 from pathlib import Path
 
-from core.services.scheduler import gantt_critical_chain
-from core.services.scheduler.gantt_critical_chain_provider import GanttCriticalChainProvider
-from core.services.scheduler.gantt_range import resolve_week_range
-from core.services.scheduler.gantt_service import GanttService
-from core.services.scheduler.gantt_tasks import build_tasks
+from core.services.scheduler.gantt import critical_chain as gantt_critical_chain
+from core.services.scheduler.gantt.critical_chain_provider import GanttCriticalChainProvider
+from core.services.scheduler.gantt.service import GanttService
+from core.services.scheduler.gantt.tasks import build_tasks
+from core.services.scheduler.week_range import resolve_week_range
 from tests._support.paths import REPO_ROOT
 
 
@@ -90,7 +90,7 @@ def test_gantt_payload_surfaces_critical_chain_unavailable(monkeypatch) -> None:
 
 
 def test_gantt_public_contract_preserves_rows_exception_reason_code() -> None:
-    from core.services.scheduler.gantt_contract import build_gantt_contract
+    from core.services.scheduler.gantt.contract import build_gantt_contract
 
     data = build_gantt_contract(
         contract_version=1,

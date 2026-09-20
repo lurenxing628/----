@@ -57,8 +57,8 @@ class ConcurrencyProbeOrderedDict(OrderedDict):
 
 
 def test_gantt_critical_chain_cache_thread_safe(monkeypatch, tmp_path) -> None:
-    import core.services.scheduler.gantt_critical_chain_provider as provider_module
-    from core.services.scheduler.gantt_critical_chain_provider import GanttCriticalChainProvider
+    import core.services.scheduler.gantt.critical_chain_provider as provider_module
+    from core.services.scheduler.gantt.critical_chain_provider import GanttCriticalChainProvider
     from data.repositories import ScheduleRepository
 
     reset_cache(monkeypatch, cache_max=8)

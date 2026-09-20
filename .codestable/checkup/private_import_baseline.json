@@ -174,12 +174,12 @@
       "count": 1
     },
     {
-      "path": "core/services/scheduler/gantt_critical_chain_provider.py",
+      "path": "core/services/scheduler/gantt/critical_chain_provider.py",
       "kind": "private_symbol",
       "count": 1
     },
     {
-      "path": "core/services/scheduler/gantt_service_support.py",
+      "path": "core/services/scheduler/gantt/service_support.py",
       "kind": "private_symbol",
       "count": 1
     },
@@ -194,29 +194,24 @@
       "count": 18
     },
     {
-      "path": "core/services/scheduler/resource_dispatch_actual_excel.py",
+      "path": "core/services/scheduler/resource_dispatch/actual_excel.py",
       "kind": "private_symbol",
       "count": 1
     },
     {
-      "path": "core/services/scheduler/resource_dispatch_actual_import.py",
+      "path": "core/services/scheduler/resource_dispatch/actual_import.py",
       "kind": "private_symbol",
       "count": 1
     },
     {
-      "path": "core/services/scheduler/resource_dispatch_actual_import_validation.py",
+      "path": "core/services/scheduler/resource_dispatch/actual_import_validation.py",
       "kind": "private_symbol",
       "count": 1
     },
     {
-      "path": "core/services/scheduler/resource_dispatch_actual_records.py",
+      "path": "core/services/scheduler/resource_dispatch/actual_records.py",
       "kind": "private_symbol",
       "count": 1
-    },
-    {
-      "path": "core/services/scheduler/resource_dispatch_rows.py",
-      "kind": "private_symbol",
-      "count": 2
     },
     {
       "path": "core/services/scheduler/run/optimizer/graph/candidates.py",

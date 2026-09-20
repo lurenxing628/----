@@ -7,8 +7,8 @@ import sqlite3
 
 import pytest
 
-from core.services.scheduler.gantt_critical_chain_provider import GanttCriticalChainProvider
-from core.services.scheduler.gantt_critical_chain_snapshot import CriticalChainSnapshot
+from core.services.scheduler.gantt.critical_chain_provider import GanttCriticalChainProvider
+from core.services.scheduler.gantt.critical_chain_snapshot import CriticalChainSnapshot
 from tests.gantt.gantt_critical_chain_cache_support import SOURCES, assert_matches_direct, cache_db, reset_cache
 
 

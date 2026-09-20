@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 from core.algorithm_runtime.calendar_timing_memo import native_timing_calendar
 from core.algorithms.greedy import scheduler as scheduler_module
-from core.services.scheduler.calendar_service import CalendarService
+from core.services.scheduler.calendar.service import CalendarService
 from core.services.scheduler.run.schedule_execution_reservations import (
     ExecutionResourceCalendar,
     ExecutionResourceReservation,

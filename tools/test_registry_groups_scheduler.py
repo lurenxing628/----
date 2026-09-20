@@ -143,7 +143,7 @@ SCHEDULER_REQUIRED_REGRESSION_GROUPS = (
             "core/services/scheduler/config*.py",
             "core/services/scheduler/config/*.py",
             "core/services/scheduler/config/**/*.py",
-            "core/services/scheduler/calendar*.py",
+            "core/services/scheduler/calendar/**/*.py",
             "core/services/scheduler/degradation_messages.py",
             "core/algorithms/*.py",
             "core/algorithms/**/*.py",

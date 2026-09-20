@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Sequence
 
 from core.models.workbench_execution import ExecutionProjection
 from core.models.workbench_preflight import local_date, normalize_preflight_input
-from core.services.scheduler.calendar_service import CalendarService
+from core.services.scheduler.calendar.service import CalendarService
 from core.services.scheduler.run.schedule_execution_reservations import (
     ExecutionResourceCalendar,
     build_execution_resource_reservations,

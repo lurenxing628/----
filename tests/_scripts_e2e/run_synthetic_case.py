@@ -535,7 +535,7 @@ def _calc_utilization_from_schedule(conn: sqlite3.Connection, version: int) -> D
 
 
 def _export_gantt(conn: sqlite3.Connection, version: int, start_dt: datetime, days: int, out_dir: str) -> None:
-    from core.services.scheduler.gantt_service import GanttService
+    from core.services.scheduler.gantt.service import GanttService
 
     os.makedirs(out_dir, exist_ok=True)
     sd = start_dt.date().isoformat()

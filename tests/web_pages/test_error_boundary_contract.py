@@ -206,7 +206,7 @@ import sys
 import web.error_boundary
 print(web.error_boundary.get_user_visible_field_label("objective"))
 print("core.services.scheduler.schedule_service" in sys.modules)
-print("core.services.scheduler.resource_dispatch_service" in sys.modules)
+print("core.services.scheduler.resource_dispatch.service" in sys.modules)
 """
     completed = subprocess.run(
         [sys.executable, "-c", script],

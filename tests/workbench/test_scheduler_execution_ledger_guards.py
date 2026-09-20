@@ -5,7 +5,7 @@ import pytest
 from core.errors import AppError
 from core.infrastructure.logging import OperationLogger
 from core.services.execution.ledger_reader import ExecutionLedgerReader
-from core.services.scheduler.gantt_adjustment_publish_service import GanttAdjustmentPublishService
+from core.services.scheduler.gantt.adjustment_publish_service import GanttAdjustmentPublishService
 from core.services.scheduler.run.schedule_execution_guardrails import (
     _collect_execution_guardrails,
     build_execution_guardrails_from_projections,

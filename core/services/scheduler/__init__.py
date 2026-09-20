@@ -17,17 +17,17 @@ from importlib import import_module
 
 _EXPORTS = {
     "BatchService": ".batch_service",
-    "CalendarService": ".calendar_service",
+    "CalendarService": ".calendar.service",
     "ConfigService": ".config.config_service",
-    "GanttAdjustmentDraftService": ".gantt_adjustment_draft_service",
-    "GanttAdjustmentScenarioService": ".gantt_adjustment_scenario_service",
-    "GanttAdjustmentPublishService": ".gantt_adjustment_publish_service",
-    "GanttAdjustmentValidationService": ".gantt_adjustment_validation_service",
-    "GanttService": ".gantt_service",
+    "GanttAdjustmentDraftService": ".gantt.adjustment_draft_service",
+    "GanttAdjustmentScenarioService": ".gantt.adjustment_scenario_service",
+    "GanttAdjustmentPublishService": ".gantt.adjustment_publish_service",
+    "GanttAdjustmentValidationService": ".gantt.adjustment_validation_service",
+    "GanttService": ".gantt.service",
     "OperationExecutionFeedbackService": ".operation_execution_feedback_service",
-    "ResourceDispatchActualRecordService": ".resource_dispatch_actual_record_service",
-    "ResourceDispatchExecutionService": ".resource_dispatch_execution_service",
-    "ResourceDispatchService": ".resource_dispatch_service",
+    "ResourceDispatchActualRecordService": ".resource_dispatch.actual_record_service",
+    "ResourceDispatchExecutionService": ".resource_dispatch.execution_service",
+    "ResourceDispatchService": ".resource_dispatch.service",
     "ScheduleService": ".schedule_service",
 }
 
@@ -60,15 +60,15 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .batch_service import BatchService
-    from .calendar_service import CalendarService
+    from .calendar.service import CalendarService
     from .config.config_service import ConfigService
-    from .gantt_adjustment_draft_service import GanttAdjustmentDraftService
-    from .gantt_adjustment_publish_service import GanttAdjustmentPublishService
-    from .gantt_adjustment_scenario_service import GanttAdjustmentScenarioService
-    from .gantt_adjustment_validation_service import GanttAdjustmentValidationService
-    from .gantt_service import GanttService
+    from .gantt.adjustment_draft_service import GanttAdjustmentDraftService
+    from .gantt.adjustment_publish_service import GanttAdjustmentPublishService
+    from .gantt.adjustment_scenario_service import GanttAdjustmentScenarioService
+    from .gantt.adjustment_validation_service import GanttAdjustmentValidationService
+    from .gantt.service import GanttService
     from .operation_execution_feedback_service import OperationExecutionFeedbackService
-    from .resource_dispatch_actual_record_service import ResourceDispatchActualRecordService
-    from .resource_dispatch_execution_service import ResourceDispatchExecutionService
-    from .resource_dispatch_service import ResourceDispatchService
+    from .resource_dispatch.actual_record_service import ResourceDispatchActualRecordService
+    from .resource_dispatch.execution_service import ResourceDispatchExecutionService
+    from .resource_dispatch.service import ResourceDispatchService
     from .schedule_service import ScheduleService

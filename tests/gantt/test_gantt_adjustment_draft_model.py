@@ -12,7 +12,7 @@ from core.errors import ValidationError
 from core.infrastructure.database import CURRENT_SCHEMA_VERSION, ensure_schema, get_connection
 from core.infrastructure.migration_state import detect_schema_is_current
 from core.models.schedule_adjustment import DRAFT_STATUS_DISCARDED
-from core.services.scheduler.gantt_adjustment_draft_service import GanttAdjustmentDraftService
+from core.services.scheduler.gantt.adjustment_draft_service import GanttAdjustmentDraftService
 from data.repositories import ScheduleAdjustmentRepository, ScheduleHistoryRepository
 from tests._support.paths import REPO_ROOT
 

@@ -10,8 +10,8 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from core.services.scheduler.gantt_range import resolve_week_range
-from core.services.scheduler.gantt_week_plan import build_week_plan_rows
+from core.services.scheduler.gantt.week_plan import build_week_plan_rows
+from core.services.scheduler.week_range import resolve_week_range
 
 _WR = resolve_week_range(week_start="2026-06-01")
 

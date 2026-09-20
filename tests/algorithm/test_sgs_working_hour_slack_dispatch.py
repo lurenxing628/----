@@ -20,7 +20,7 @@ import pytest
 from core.algorithm_contracts.date_parsers import due_exclusive
 from core.algorithms import GreedyScheduler, SortStrategy
 from core.algorithms.greedy.dispatch.sgs_due_span import FAR_DUE_LOOKAHEAD, due_span_inputs, working_hour_span
-from core.services.scheduler.calendar_working_hours import WorkingHoursPrefix
+from core.services.scheduler.calendar.working_hours import WorkingHoursPrefix
 from core.services.scheduler.run.optimizer.proof_oracle import _default_config
 
 START = datetime(2026, 1, 9, 8, 0)  # Friday

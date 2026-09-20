@@ -150,8 +150,8 @@ def main() -> None:
     from copy import deepcopy
     from types import SimpleNamespace
 
-    from core.services.scheduler.gantt_range import resolve_week_range
-    from core.services.scheduler.gantt_tasks import build_tasks
+    from core.services.scheduler.gantt.tasks import build_tasks
+    from core.services.scheduler.week_range import resolve_week_range
     from tests._support.gantt_current_js import run_current_js
 
     row = {"schedule_id": 1, "op_id": 123, "op_code": "B1-20", "batch_id": "B1", "piece_id": "piece-a",

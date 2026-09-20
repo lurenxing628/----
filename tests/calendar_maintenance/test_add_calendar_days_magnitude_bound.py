@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 import pytest
 
 from core.errors import ValidationError
-from core.services.scheduler.calendar_engine import MAX_CALENDAR_DAYS, CalendarEngine
+from core.services.scheduler.calendar.engine import MAX_CALENDAR_DAYS, CalendarEngine
 
 
 def _engine() -> CalendarEngine:

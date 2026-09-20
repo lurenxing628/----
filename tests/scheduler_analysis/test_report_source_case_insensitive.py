@@ -288,7 +288,7 @@ def _report_engine_test_conn() -> sqlite3.Connection:
 
 def test_report_engine_records_bad_time_rows_that_sql_range_cannot_classify(monkeypatch) -> None:
     from core.services.report.report_engine import ReportEngine
-    from core.services.scheduler.calendar_engine import DayPolicy
+    from core.services.scheduler.calendar.engine import DayPolicy
 
     conn = _report_engine_test_conn()
     engine = ReportEngine(conn)

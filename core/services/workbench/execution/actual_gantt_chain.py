@@ -4,12 +4,12 @@ from datetime import datetime
 
 from core.models.workbench_command import input_fingerprint
 from core.models.workbench_plan_scope import PlanReadScope
-from core.services.scheduler.gantt_critical_chain import compute_critical_chain_from_rows
-from core.services.scheduler.resource_dispatch_task_ids import public_task_id
+from core.services.scheduler.dispatch_task_ids import public_task_id
+from core.services.scheduler.gantt.critical_chain import compute_critical_chain_from_rows
 from core.services.workbench.facts.plan_serialization import plain_plan_facts
 from core.services.workbench.plan.projection import public_time
 
-ENGINE = "core.services.scheduler.gantt_critical_chain.compute_critical_chain_from_rows"
+ENGINE = "core.services.scheduler.gantt.critical_chain.compute_critical_chain_from_rows"
 SEMANTICS = "selected_plan_control_predecessor_chain"
 
 

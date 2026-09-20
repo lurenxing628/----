@@ -76,7 +76,7 @@ class CalendarApi:
 
 
 def seed_calendars(api):
-    from core.services.scheduler.calendar_service import CalendarService
+    from core.services.scheduler.calendar.service import CalendarService
 
     with api.db() as conn:
         conn.execute("INSERT INTO Operators(operator_id,name) VALUES ('CAL-O','Calendar operator')")

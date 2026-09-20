@@ -10,7 +10,7 @@ from types import SimpleNamespace
 
 from core.algorithm_runtime.internal_slot import estimate_internal_slot
 from core.algorithms.greedy.scheduler import GreedyScheduler
-from core.services.scheduler.calendar_service import CalendarService
+from core.services.scheduler.calendar.service import CalendarService
 from core.services.scheduler.run.schedule_execution_guardrails import _collect_execution_guardrails
 from core.services.scheduler.run.schedule_input_builder import build_algo_operations
 from core.services.scheduler.run.schedule_payload_contract import build_validated_schedule_payload

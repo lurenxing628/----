@@ -248,7 +248,7 @@ class ScheduleService:
           - 显式传入 True/False：按传入值执行
           - 传入 None：回退读取配置 `enforce_ready_default`
         """
-        from .calendar_service import CalendarService
+        from .calendar.service import CalendarService
         from .config.config_service import ConfigService
 
         schedule_input = collect_schedule_run_input(

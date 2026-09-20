@@ -6,7 +6,7 @@ from datetime import date, datetime, timedelta, timezone
 import pytest
 
 from core.errors import AppError
-from core.services.scheduler.calendar_service import CalendarService
+from core.services.scheduler.calendar.service import CalendarService
 from core.services.workbench.resource.calendar_summary import resource_calendar_summary
 from tests.workbench.resource_metrics_support import stored_state
 

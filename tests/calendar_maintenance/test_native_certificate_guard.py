@@ -6,9 +6,9 @@ from unittest.mock import patch
 
 import pytest
 
-from core.services.scheduler import calendar_service as service_module
-from core.services.scheduler.calendar_engine import CalendarEngine
-from core.services.scheduler.calendar_service import CalendarService
+from core.services.scheduler.calendar import service as service_module
+from core.services.scheduler.calendar.engine import CalendarEngine
+from core.services.scheduler.calendar.service import CalendarService
 from tests._support.busy_block_case import BASE, at, day_row, native_calendar
 
 

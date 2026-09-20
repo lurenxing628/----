@@ -11,7 +11,7 @@ from core.services.report.delay_diagnosis_presentation import (
     build_delay_diagnosis_export_rows,
     build_delay_diagnosis_page_context,
 )
-from core.services.scheduler.calendar_service import CalendarService
+from core.services.scheduler.calendar.service import CalendarService
 from core.services.scheduler.operation_execution_feedback_service import OperationExecutionFeedbackService
 from core.services.scheduler.schedule_delay_diagnosis_service import ScheduleDelayDiagnosisService
 from core.services.scheduler.schedule_plan_query_service import (

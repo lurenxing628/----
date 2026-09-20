@@ -8,7 +8,7 @@ import pytest
 
 from core.algorithm_runtime import static_attribute as module
 from core.algorithm_runtime.static_attribute import static_attribute, static_class_attribute
-from core.services.scheduler.calendar_service import CalendarService
+from core.services.scheduler.calendar.service import CalendarService
 from core.services.scheduler.run.schedule_execution_reservations import ExecutionResourceCalendar
 from tests._support.busy_block_case import native_calendar
 

@@ -14,9 +14,9 @@ import pytest
 
 from core.algorithm_runtime.calendar_timing_memo import MemoizedTimingCalendar, native_timing_calendar
 from core.errors import ValidationError
-from core.services.scheduler.calendar_engine import NATIVE_TIMING_METHODS, CalendarEngine
-from core.services.scheduler.calendar_service import CalendarService
-from core.services.scheduler.calendar_working_hours import MAX_SPAN_DAYS
+from core.services.scheduler.calendar.engine import NATIVE_TIMING_METHODS, CalendarEngine
+from core.services.scheduler.calendar.service import CalendarService
+from core.services.scheduler.calendar.working_hours import MAX_SPAN_DAYS
 from core.services.scheduler.run.optimizer.proof_oracle import _ContinuousCalendar
 from core.services.scheduler.run.schedule_execution_reservations import ExecutionResourceCalendar
 

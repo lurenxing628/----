@@ -6,7 +6,7 @@ from types import SimpleNamespace
 import pytest
 
 from core.services.report.report_engine import ReportEngine
-from core.services.scheduler.calendar_service import CalendarService
+from core.services.scheduler.calendar.service import CalendarService
 
 
 def _calendar(conn, shifts):
