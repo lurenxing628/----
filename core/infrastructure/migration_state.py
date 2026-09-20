@@ -1,27 +1,36 @@
 from __future__ import annotations
 
 import sqlite3
-from typing import List, Optional
+from typing import Dict, List, Optional, Set
 
 from .migration_common import MigrationOutcome, column_exists, fallback_log, table_exists
 from .migration_operation_execution_contract import operation_execution_event_contract_issues
+from .schema_declaration import declared_columns, load_schema_sql
 from .workbench_calibration_adoption_schema import contract_issues as calibration_adoption_contract_issues
+from .workbench_calibration_adoption_schema import objects as calibration_adoption_objects
 from .workbench_dashboard_external_schema import contract_issues as dashboard_external_contract_issues
-from .workbench_dashboard_schema import workbench_dashboard_contract_issues
-from .workbench_execution_ledger_schema import execution_ledger_contract_issues
-from .workbench_execution_void_schema import execution_void_contract_issues
-from .workbench_lineage_lookup_schema import lineage_lookup_contract_issues
-from .workbench_metadata_schema import workbench_metadata_contract_issues
-from .workbench_outsourcing_schema import workbench_outsourcing_contract_issues
-from .workbench_outsourcing_source_schema import workbench_outsourcing_source_contract_issues
-from .workbench_plan_identity_schema import workbench_plan_identity_contract_issues
-from .workbench_plan_identity_write_guard import plan_identity_write_guard_contract_issues
-from .workbench_process_schema import workbench_process_contract_issues
-from .workbench_process_workflow_schema import workbench_process_workflow_contract_issues
-from .workbench_resource_schema import workbench_resource_contract_issues
-from .workbench_run_schema import workbench_run_contract_issues
-from .workbench_template_lineage_schema import template_lineage_contract_issues
-from .workbench_trial_schema import workbench_trial_contract_issues
+from .workbench_dashboard_external_schema import workbench_dashboard_external_objects
+from .workbench_dashboard_schema import workbench_dashboard_contract_issues, workbench_dashboard_objects
+from .workbench_execution_ledger_schema import execution_ledger_contract_issues, execution_ledger_objects
+from .workbench_execution_void_schema import execution_void_contract_issues, execution_void_objects
+from .workbench_lineage_lookup_schema import lineage_lookup_contract_issues, lineage_lookup_objects
+from .workbench_metadata_schema import metadata_objects, workbench_metadata_contract_issues
+from .workbench_outsourcing_schema import workbench_outsourcing_contract_issues, workbench_outsourcing_objects
+from .workbench_outsourcing_source_schema import (
+    workbench_outsourcing_source_contract_issues,
+    workbench_outsourcing_source_objects,
+)
+from .workbench_plan_identity_schema import plan_identity_objects, workbench_plan_identity_contract_issues
+from .workbench_plan_identity_write_guard import (
+    plan_identity_write_guard_contract_issues,
+    plan_identity_write_guard_objects,
+)
+from .workbench_process_schema import process_objects, workbench_process_contract_issues
+from .workbench_process_workflow_schema import workbench_process_workflow_contract_issues, workflow_objects
+from .workbench_resource_schema import resource_objects, workbench_resource_contract_issues
+from .workbench_run_schema import workbench_run_contract_issues, workbench_run_objects
+from .workbench_template_lineage_schema import template_lineage_contract_issues, template_lineage_objects
+from .workbench_trial_schema import workbench_trial_contract_issues, workbench_trial_objects
 
 CURRENT_SCHEMA_VERSION = 32
 
@@ -98,15 +107,17 @@ def ensure_schema_version_not_newer(db_version: int, *, supported_version: int =
         raise build_future_schema_version_error(int(db_version), supported_version=int(supported_version))
 
 
-def ensure_current_schema_contract(conn: sqlite3.Connection, *, schema_version: Optional[int] = None) -> None:
+def ensure_current_schema_contract(
+    conn: sqlite3.Connection, *, schema_version: Optional[int] = None, schema_sql: Optional[str] = None
+) -> None:
     version = int(get_schema_version(conn) if schema_version is None else schema_version)
     if version == CURRENT_SCHEMA_VERSION:
-        issues = current_schema_contract_issues(conn)
+        issues = current_schema_contract_issues(conn, schema_sql=schema_sql)
         if issues:
             raise build_current_schema_contract_error(version, issues=issues)
 
 
-def ensure_schema_version(conn: sqlite3.Connection, logger=None) -> None:
+def ensure_schema_version(conn: sqlite3.Connection, logger=None, *, schema_sql: Optional[str] = None) -> None:
     """
     确保 SchemaVersion 表存在，并写入/修正版本号。
 
@@ -126,7 +137,7 @@ def ensure_schema_version(conn: sqlite3.Connection, logger=None) -> None:
     conn.execute("INSERT OR IGNORE INTO SchemaVersion (id, version) VALUES (1, 0)")
 
     version = get_schema_version(conn)
-    if version <= 0 and detect_schema_is_current(conn) and is_truly_empty_db(conn):
+    if version <= 0 and detect_schema_is_current(conn, schema_sql=schema_sql) and is_truly_empty_db(conn):
         set_schema_version(conn, CURRENT_SCHEMA_VERSION)
         if logger:
             fallback_log(
@@ -190,85 +201,54 @@ def has_no_user_tables(conn: sqlite3.Connection) -> bool:
     return len(list_user_tables(conn)) == 0
 
 
-def detect_schema_is_current(conn: sqlite3.Connection) -> bool:
-    return not current_schema_contract_issues(conn)
+def detect_schema_is_current(conn: sqlite3.Connection, *, schema_sql: Optional[str] = None) -> bool:
+    return not current_schema_contract_issues(conn, schema_sql=schema_sql)
 
 
-def current_schema_contract_issues(conn: sqlite3.Connection) -> List[str]:
+# 有自己 DDL 模块与契约函数的子系统：它们的表/索引/触发器按“DDL 逐字相等”核对，不再重复做列级比对。
+_SUBSYSTEM_OBJECT_SOURCES = (
+    metadata_objects, resource_objects, process_objects, workflow_objects, plan_identity_objects,
+    plan_identity_write_guard_objects, execution_ledger_objects, execution_void_objects, workbench_run_objects,
+    template_lineage_objects, workbench_trial_objects, lineage_lookup_objects, calibration_adoption_objects,
+    workbench_dashboard_objects, workbench_dashboard_external_objects, workbench_outsourcing_objects,
+    workbench_outsourcing_source_objects,
+)
+# 有专用合并标签的核心表，不再单独报 missing_table。
+_CORE_TABLES_WITH_DEDICATED_LABEL = ("SystemConfig", "SystemJobState")
+
+
+def _subsystem_owned_object_names() -> Set[str]:
+    owned: Set[str] = set()
+    for objects in _SUBSYSTEM_OBJECT_SOURCES:
+        owned.update(str(name) for name in objects())
+    return owned
+
+
+def _live_columns(conn: sqlite3.Connection, table: str) -> Set[str]:
+    quoted = '"' + str(table).replace('"', '""') + '"'
+    return {str(row[1]) for row in conn.execute(f"PRAGMA table_info({quoted})").fetchall()}
+
+
+def current_schema_contract_issues(conn: sqlite3.Connection, *, schema_sql: Optional[str] = None) -> List[str]:
     """
-    用“结构特征”判断当前 DB 是否已经包含当前 schema.sql 的关键字段，
-    用于 brand-new 空库初始化后的版本快进。
+    当前库是否满足当前版本的结构契约。
+
+    核心表按“live 表列集合 ⊇ schema.sql 声明表列集合”派生比对（schema.sql 由迁移链生成，不再手写 needed 清单）；
+    各子系统 DDL 模块拥有的对象交给它们自己的契约函数逐字核对。用于 brand-new 空库初始化后的版本快进与启动阻断。
     """
     issues = []
-    needed = [
-        ("ResourceTeams", "team_id"),
-        ("Operators", "team_id"),
-        ("Machines", "category"),
-        ("Machines", "team_id"),
-        ("Batches", "ready_date"),
-        ("MachineDowntimes", "scope_type"),
-        ("MachineDowntimes", "scope_value"),
-        ("WorkCalendar", "shift_start"),
-        ("WorkCalendar", "shift_end"),
-        ("OperatorCalendar", "operator_id"),
-        ("OperatorMachine", "skill_level"),
-        ("OperatorMachine", "is_primary"),
-        ("ScheduleCandidate", "candidate_key"),
-        ("ScheduleCandidate", "status"),
-        ("ScheduleCandidateRows", "candidate_id"),
-        ("ScheduleCandidateSelection", "source_table"),
-        ("ScheduleVersionSeq", "version"),
-        ("ScheduleAdjustmentDraft", "draft_id"),
-        ("ScheduleAdjustmentChange", "draft_id"),
-        ("ScheduleAdjustmentScenario", "scenario_id"),
-        ("ScheduleAdjustmentScenario", "published_version"),
-        ("ScheduleAdjustmentScenario", "published_by"),
-        ("ScheduleAdjustmentScenario", "published_reason"),
-        ("ScheduleAdjustmentScenario", "published_at"),
-        ("ScheduleAdjustmentScenario", "execution_snapshot_revision"),
-        ("ScheduleAdjustmentScenario", "execution_snapshot_op_ids"),
-        ("ScheduleAdjustmentScenario", "execution_snapshot_op_count"),
-        ("ScheduleAdjustmentScenarioRow", "scenario_id"),
-        ("OperationExecutionEvents", "id"),
-        ("OperationExecutionEvents", "schedule_version"),
-        ("OperationExecutionEvents", "schedule_id"),
-        ("OperationExecutionEvents", "op_id"),
-        ("OperationExecutionEvents", "batch_id"),
-        ("OperationExecutionEvents", "source_table"),
-        ("OperationExecutionEvents", "effective_plan_role"),
-        ("OperationExecutionEvents", "scenario_id"),
-        ("OperationExecutionEvents", "event_type"),
-        ("OperationExecutionEvents", "reported_status"),
-        ("OperationExecutionEvents", "event_time"),
-        ("OperationExecutionEvents", "actual_machine_id"),
-        ("OperationExecutionEvents", "actual_operator_id"),
-        ("OperationExecutionEvents", "quantity_done"),
-        ("OperationExecutionEvents", "quantity_scrapped"),
-        ("OperationExecutionEvents", "reason_code"),
-        ("OperationExecutionEvents", "reason_detail"),
-        ("OperationExecutionEvents", "severity"),
-        ("OperationExecutionEvents", "impact_minutes"),
-        ("OperationExecutionEvents", "affected_machine_id"),
-        ("OperationExecutionEvents", "affected_operator_id"),
-        ("OperationExecutionEvents", "handling_status"),
-        ("OperationExecutionEvents", "suggest_reschedule"),
-        ("OperationExecutionEvents", "remark"),
-        ("OperationExecutionEvents", "created_by"),
-        ("OperationExecutionEvents", "idempotency_key"),
-        ("OperationExecutionEvents", "request_fingerprint"),
-        ("OperationExecutionEvents", "previous_state_revision"),
-        ("OperationExecutionEvents", "created_at"),
-    ]
-    missing_tables = set()
-    for table, col in needed:
-        if table in missing_tables:
+    declared: Dict[str, List[str]] = declared_columns(load_schema_sql() if schema_sql is None else schema_sql)
+    owned = _subsystem_owned_object_names()
+    for table, columns in declared.items():
+        if table == "SchemaVersion" or table in owned or table in _CORE_TABLES_WITH_DEDICATED_LABEL:
             continue
         if not table_exists(conn, table):
             issues.append(f"missing_table: {table}")
-            missing_tables.add(table)
             continue
-        if not column_exists(conn, table, col):
-            issues.append(f"missing_column: {table}.{col}")
+        live = _live_columns(conn, table)
+        for col in columns:
+            if col not in live:
+                issues.append(f"missing_column: {table}.{col}")
     for ok, label in (
         (_has_system_management_tables(conn), "missing_table: SystemConfig/SystemJobState"),
         (_has_schedule_unique_index(conn), "bad_index: idx_schedule_version_op_unique"),

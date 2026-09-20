@@ -1,32 +1,28 @@
+-- 本文件由 python -m tools.generate_schema_sql --write 生成：手写源是 core/infrastructure 的 DDL 模块与迁移链，请勿手改。
+-- 校验：python -m tools.generate_schema_sql --check；门禁合同见 tests/migration_db/test_generate_schema_sql.py。
 PRAGMA foreign_keys = ON;
 CREATE TABLE IF NOT EXISTS SchemaVersion (
-    id INTEGER PRIMARY KEY CHECK (id = 1),
-    version INTEGER NOT NULL,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    id              INTEGER PRIMARY KEY CHECK (id = 1),
+    version         INTEGER NOT NULL,
+    updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 INSERT OR IGNORE INTO SchemaVersion (id, version) VALUES (1, 0);
-CREATE TABLE IF NOT EXISTS ResourceTeams (
-    team_id         TEXT PRIMARY KEY,
-    name            TEXT NOT NULL UNIQUE,
-    status          TEXT NOT NULL DEFAULT 'active',
-    remark          TEXT,
-    created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE IF NOT EXISTS Operators (
     operator_id     TEXT PRIMARY KEY,
     name            TEXT NOT NULL,
     status          TEXT DEFAULT 'active',
     remark          TEXT,
-    team_id         TEXT,
     created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP);
+    updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP
+, team_id TEXT);
 CREATE TABLE IF NOT EXISTS OpTypes (
     op_type_id      TEXT PRIMARY KEY,
     name            TEXT NOT NULL UNIQUE,
     category        TEXT DEFAULT 'internal',
     default_hours   REAL,
     remark          TEXT,
-    created_at      DATETIME DEFAULT CURRENT_TIMESTAMP);
+    created_at      DATETIME DEFAULT CURRENT_TIMESTAMP
+);
 CREATE TABLE IF NOT EXISTS Machines (
     machine_id      TEXT PRIMARY KEY,
     name            TEXT NOT NULL,
@@ -34,10 +30,10 @@ CREATE TABLE IF NOT EXISTS Machines (
     category        TEXT,                       -- 设备类别（用于“按类别停机/筛选”等）
     status          TEXT DEFAULT 'active',
     remark          TEXT,
-    team_id         TEXT,
     created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (op_type_id) REFERENCES OpTypes(op_type_id));
+    updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP, team_id TEXT,
+    FOREIGN KEY (op_type_id) REFERENCES OpTypes(op_type_id)
+);
 CREATE TABLE IF NOT EXISTS MachineDowntimes (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     machine_id      TEXT NOT NULL,
@@ -50,7 +46,8 @@ CREATE TABLE IF NOT EXISTS MachineDowntimes (
     status          TEXT DEFAULT 'active',       -- active/cancelled
     created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (machine_id) REFERENCES Machines(machine_id) ON DELETE CASCADE);
+    FOREIGN KEY (machine_id) REFERENCES Machines(machine_id) ON DELETE CASCADE
+);
 CREATE INDEX IF NOT EXISTS idx_machine_downtimes_machine ON MachineDowntimes(machine_id);
 CREATE INDEX IF NOT EXISTS idx_machine_downtimes_time ON MachineDowntimes(start_time, end_time);
 CREATE TABLE IF NOT EXISTS OperatorMachine (
@@ -62,7 +59,8 @@ CREATE TABLE IF NOT EXISTS OperatorMachine (
     created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (operator_id) REFERENCES Operators(operator_id) ON DELETE CASCADE,
     FOREIGN KEY (machine_id) REFERENCES Machines(machine_id) ON DELETE CASCADE,
-    UNIQUE (operator_id, machine_id));
+    UNIQUE (operator_id, machine_id)
+);
 CREATE TABLE IF NOT EXISTS OperatorSkill (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     operator_id     TEXT NOT NULL,
@@ -72,9 +70,9 @@ CREATE TABLE IF NOT EXISTS OperatorSkill (
     created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (operator_id) REFERENCES Operators(operator_id) ON DELETE CASCADE,
     FOREIGN KEY (op_type_id) REFERENCES OpTypes(op_type_id) ON DELETE CASCADE,
-    UNIQUE (operator_id, op_type_id));
+    UNIQUE (operator_id, op_type_id)
+);
 CREATE INDEX IF NOT EXISTS idx_operators_status ON Operators(status);
-CREATE INDEX IF NOT EXISTS idx_operators_team_id ON Operators(team_id);
 CREATE INDEX IF NOT EXISTS idx_operator_machine_operator ON OperatorMachine(operator_id);
 CREATE INDEX IF NOT EXISTS idx_operator_machine_machine ON OperatorMachine(machine_id);
 CREATE TABLE IF NOT EXISTS Suppliers (
@@ -85,7 +83,8 @@ CREATE TABLE IF NOT EXISTS Suppliers (
     status          TEXT DEFAULT 'active',
     remark          TEXT,
     created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (op_type_id) REFERENCES OpTypes(op_type_id));
+    FOREIGN KEY (op_type_id) REFERENCES OpTypes(op_type_id)
+);
 CREATE TABLE IF NOT EXISTS Parts (
     part_no         TEXT PRIMARY KEY,
     part_name       TEXT NOT NULL,
@@ -93,7 +92,8 @@ CREATE TABLE IF NOT EXISTS Parts (
     route_parsed    TEXT DEFAULT 'no',
     remark          TEXT,
     created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP);
+    updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP
+);
 CREATE TABLE IF NOT EXISTS PartOperations (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     part_no         TEXT NOT NULL,
@@ -111,7 +111,8 @@ CREATE TABLE IF NOT EXISTS PartOperations (
     FOREIGN KEY (part_no) REFERENCES Parts(part_no) ON DELETE CASCADE,
     FOREIGN KEY (op_type_id) REFERENCES OpTypes(op_type_id),
     FOREIGN KEY (supplier_id) REFERENCES Suppliers(supplier_id),
-    UNIQUE (part_no, seq));
+    UNIQUE (part_no, seq)
+);
 CREATE TABLE IF NOT EXISTS ExternalGroups (
     group_id        TEXT PRIMARY KEY,
     part_no         TEXT NOT NULL,
@@ -123,13 +124,13 @@ CREATE TABLE IF NOT EXISTS ExternalGroups (
     remark          TEXT,
     created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (part_no) REFERENCES Parts(part_no) ON DELETE CASCADE,
-    FOREIGN KEY (supplier_id) REFERENCES Suppliers(supplier_id));
+    FOREIGN KEY (supplier_id) REFERENCES Suppliers(supplier_id)
+);
 CREATE INDEX IF NOT EXISTS idx_part_operations_part ON PartOperations(part_no);
 CREATE INDEX IF NOT EXISTS idx_part_operations_source ON PartOperations(source);
 CREATE INDEX IF NOT EXISTS idx_external_groups_part ON ExternalGroups(part_no);
 CREATE INDEX IF NOT EXISTS idx_machines_status ON Machines(status);
 CREATE INDEX IF NOT EXISTS idx_machines_op_type ON Machines(op_type_id);
-CREATE INDEX IF NOT EXISTS idx_machines_team_id ON Machines(team_id);
 CREATE TABLE IF NOT EXISTS Batches (
     batch_id        TEXT PRIMARY KEY,
     part_no         TEXT NOT NULL,
@@ -138,12 +139,13 @@ CREATE TABLE IF NOT EXISTS Batches (
     due_date        DATE,
     priority        TEXT DEFAULT 'normal',
     ready_status    TEXT DEFAULT 'yes',
-    ready_date      DATE,
+    ready_date      DATE,                       -- 齐套日期（可选）：最早可开工日期（YYYY-MM-DD）
     status          TEXT DEFAULT 'pending',
     remark          TEXT,
     created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (part_no) REFERENCES Parts(part_no));
+    FOREIGN KEY (part_no) REFERENCES Parts(part_no)
+);
 CREATE TABLE IF NOT EXISTS BatchOperations (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     op_code         TEXT NOT NULL UNIQUE,
@@ -181,56 +183,126 @@ CREATE TABLE IF NOT EXISTS Schedule (
     FOREIGN KEY (machine_id) REFERENCES Machines(machine_id),
     FOREIGN KEY (operator_id) REFERENCES Operators(operator_id)
 );
-CREATE TABLE IF NOT EXISTS OperationExecutionEvents (
-    id                       INTEGER PRIMARY KEY AUTOINCREMENT,
-    schedule_version         INTEGER NOT NULL,
-    schedule_id              INTEGER NOT NULL,
-    op_id                    INTEGER NOT NULL,
-    batch_id                 TEXT NOT NULL,
-    source_table             TEXT NOT NULL CHECK(source_table = 'schedule'),
-    effective_plan_role      TEXT NOT NULL CHECK(effective_plan_role = 'adopted'),
-    scenario_id              TEXT CHECK(scenario_id IS NULL),
-    event_type               TEXT NOT NULL CHECK(event_type IN ('start', 'pause', 'resume', 'finish', 'exception')),
-    reported_status          TEXT NOT NULL CHECK(reported_status IN ('processing', 'paused', 'exception', 'completed')),
-    event_time               DATETIME NOT NULL,
-    actual_machine_id        TEXT,
-    actual_operator_id       TEXT,
-    quantity_done            INTEGER CHECK(quantity_done IS NULL OR quantity_done >= 0),
-    quantity_scrapped        INTEGER CHECK(quantity_scrapped IS NULL OR quantity_scrapped >= 0),
-    reason_code              TEXT CHECK(reason_code IS NULL OR reason_code IN ('equipment', 'person', 'material', 'quality', 'process', 'external', 'other')),
-    reason_detail            TEXT,
-    severity                 TEXT CHECK(severity IS NULL OR severity IN ('low', 'medium', 'high', 'critical')),
-    impact_minutes           INTEGER CHECK(impact_minutes IS NULL OR impact_minutes >= 0),
-    affected_machine_id      TEXT,
-    affected_operator_id     TEXT,
-    handling_status          TEXT CHECK(handling_status IS NULL OR handling_status IN ('new', 'checking', 'waiting', 'handled')),
-    suggest_reschedule       INTEGER NOT NULL DEFAULT 0 CHECK(suggest_reschedule IN (0, 1)),
-    remark                   TEXT,
-    created_by               TEXT NOT NULL,
-    idempotency_key          TEXT NOT NULL UNIQUE,
-    request_fingerprint      TEXT NOT NULL,
-    previous_state_revision  TEXT NOT NULL,
-    created_at               DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (schedule_id, schedule_version, op_id) REFERENCES Schedule(id, version, op_id),
-    FOREIGN KEY (op_id, batch_id) REFERENCES BatchOperations(id, batch_id),
-    FOREIGN KEY (actual_machine_id) REFERENCES Machines(machine_id),
-    FOREIGN KEY (actual_operator_id) REFERENCES Operators(operator_id),
-    FOREIGN KEY (affected_machine_id) REFERENCES Machines(machine_id),
-    FOREIGN KEY (affected_operator_id) REFERENCES Operators(operator_id),
-    UNIQUE(schedule_version, schedule_id, op_id, batch_id, source_table, effective_plan_role, previous_state_revision),
-    CHECK(schedule_version > 0),
-    CHECK(schedule_id > 0),
-    CHECK(op_id > 0),
-    CHECK(TRIM(batch_id) <> ''),
-    CHECK(TRIM(event_time) <> '' AND datetime(event_time) IS NOT NULL),
-    CHECK((event_type IN ('start', 'resume') AND reported_status = 'processing') OR (event_type = 'pause' AND reported_status = 'paused') OR (event_type = 'exception' AND reported_status = 'exception') OR (event_type = 'finish' AND reported_status = 'completed')),
-    CHECK(event_type NOT IN ('pause', 'exception') OR (reason_code IS NOT NULL AND TRIM(reason_code) <> '')),
-    CHECK(event_type <> 'exception' OR (severity IS NOT NULL AND TRIM(severity) <> '')),
-    CHECK(TRIM(created_by) <> ''),
-    CHECK(TRIM(idempotency_key) <> ''),
-    CHECK(TRIM(request_fingerprint) <> ''),
-    CHECK(TRIM(previous_state_revision) <> '')
+CREATE TABLE IF NOT EXISTS ScheduleVersionSeq (
+    version         INTEGER PRIMARY KEY AUTOINCREMENT
 );
+CREATE TABLE IF NOT EXISTS WorkCalendar (
+    date            DATE PRIMARY KEY,
+    day_type        TEXT DEFAULT 'workday',
+    shift_start     TEXT,                       -- 班次开始（HH:MM，可选；默认 08:00）
+    shift_end       TEXT,                       -- 班次结束（HH:MM，可选；用于推导 shift_hours）
+    shift_hours     REAL DEFAULT 8,
+    efficiency      REAL DEFAULT 1.0,
+    allow_normal    TEXT DEFAULT 'yes',
+    allow_urgent    TEXT DEFAULT 'yes',
+    remark          TEXT
+);
+CREATE TABLE IF NOT EXISTS OperatorCalendar (
+    operator_id     TEXT NOT NULL,
+    date            DATE NOT NULL,
+    day_type        TEXT DEFAULT 'workday',
+    shift_start     TEXT,                       -- 班次开始（HH:MM，可选；默认 08:00）
+    shift_end       TEXT,                       -- 班次结束（HH:MM，可选；用于推导 shift_hours）
+    shift_hours     REAL DEFAULT 8,
+    efficiency      REAL DEFAULT 1.0,
+    allow_normal    TEXT DEFAULT 'yes',
+    allow_urgent    TEXT DEFAULT 'yes',
+    remark          TEXT,
+    PRIMARY KEY (operator_id, date),
+    FOREIGN KEY (operator_id) REFERENCES Operators(operator_id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_operator_calendar_operator_date ON OperatorCalendar(operator_id, date);
+CREATE INDEX IF NOT EXISTS idx_operator_calendar_date ON OperatorCalendar(date);
+CREATE TABLE IF NOT EXISTS ScheduleConfig (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    config_key      TEXT NOT NULL UNIQUE,
+    config_value    TEXT NOT NULL,
+    description     TEXT,
+    updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS SystemConfig (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    config_key      TEXT NOT NULL UNIQUE,
+    config_value    TEXT NOT NULL,
+    description     TEXT,
+    updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS SystemJobState (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    job_key         TEXT NOT NULL UNIQUE,
+    last_run_time   DATETIME,
+    last_run_detail TEXT,
+    updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_system_job_state_time ON SystemJobState(last_run_time);
+CREATE INDEX IF NOT EXISTS idx_batches_status ON Batches(status);
+CREATE INDEX IF NOT EXISTS idx_batches_priority ON Batches(priority);
+CREATE INDEX IF NOT EXISTS idx_batches_due_date ON Batches(due_date);
+CREATE INDEX IF NOT EXISTS idx_batch_operations_batch ON BatchOperations(batch_id);
+CREATE INDEX IF NOT EXISTS idx_batch_operations_status ON BatchOperations(status);
+CREATE INDEX IF NOT EXISTS idx_schedule_op ON Schedule(op_id);
+CREATE INDEX IF NOT EXISTS idx_schedule_machine ON Schedule(machine_id);
+CREATE INDEX IF NOT EXISTS idx_schedule_operator ON Schedule(operator_id);
+CREATE INDEX IF NOT EXISTS idx_schedule_time ON Schedule(start_time, end_time);
+CREATE TABLE IF NOT EXISTS OperationLogs (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    log_time        DATETIME DEFAULT CURRENT_TIMESTAMP,
+    log_level       TEXT NOT NULL,
+    module          TEXT NOT NULL,
+    action          TEXT NOT NULL,
+    target_type     TEXT,
+    target_id       TEXT,
+    operator        TEXT,
+    detail          TEXT,
+    error_code      TEXT,
+    error_message   TEXT
+);
+CREATE TABLE IF NOT EXISTS ScheduleHistory (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    schedule_time   DATETIME DEFAULT CURRENT_TIMESTAMP,
+    version         INTEGER NOT NULL,
+    strategy        TEXT NOT NULL,
+    batch_count     INTEGER,
+    op_count        INTEGER,
+    result_status   TEXT,
+    result_summary  TEXT,
+    created_by      TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_operation_logs_time ON OperationLogs(log_time);
+CREATE INDEX IF NOT EXISTS idx_operation_logs_level ON OperationLogs(log_level);
+CREATE INDEX IF NOT EXISTS idx_operation_logs_module ON OperationLogs(module);
+CREATE INDEX IF NOT EXISTS idx_schedule_history_time ON ScheduleHistory(schedule_time);
+CREATE TABLE IF NOT EXISTS Materials (
+    material_id     TEXT PRIMARY KEY,
+    name            TEXT NOT NULL,
+    spec            TEXT,
+    unit            TEXT,
+    stock_qty       REAL DEFAULT 0,
+    status          TEXT DEFAULT 'active',
+    remark          TEXT,
+    created_at      DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS BatchMaterials (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    batch_id        TEXT NOT NULL,
+    material_id     TEXT NOT NULL,
+    required_qty    REAL NOT NULL,
+    available_qty   REAL DEFAULT 0,
+    ready_status    TEXT DEFAULT 'no',
+    FOREIGN KEY (batch_id) REFERENCES Batches(batch_id) ON DELETE CASCADE,
+    FOREIGN KEY (material_id) REFERENCES Materials(material_id)
+);
+CREATE TABLE IF NOT EXISTS ResourceTeams (
+            team_id TEXT PRIMARY KEY,
+            name TEXT NOT NULL UNIQUE,
+            status TEXT NOT NULL DEFAULT 'active',
+            remark TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+CREATE INDEX IF NOT EXISTS idx_operators_team_id ON Operators(team_id);
+CREATE INDEX IF NOT EXISTS idx_machines_team_id ON Machines(team_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_schedule_version_op_unique ON Schedule(version, op_id);
 CREATE TABLE IF NOT EXISTS ScheduleCandidate (
     id                    INTEGER PRIMARY KEY AUTOINCREMENT,
     version               INTEGER NOT NULL,
@@ -286,82 +358,22 @@ CREATE TABLE IF NOT EXISTS ScheduleCandidateSelection (
     FOREIGN KEY(candidate_id, version) REFERENCES ScheduleCandidate(id, version) ON DELETE CASCADE,
     UNIQUE(version, role)
 );
-CREATE TABLE IF NOT EXISTS ScheduleVersionSeq (version INTEGER PRIMARY KEY AUTOINCREMENT);
-CREATE TABLE IF NOT EXISTS WorkCalendar (
-    date            DATE PRIMARY KEY,
-    day_type        TEXT DEFAULT 'workday',
-    shift_start     TEXT,                       -- 班次开始（HH:MM，可选；默认 08:00）
-    shift_end       TEXT,                       -- 班次结束（HH:MM，可选；用于推导 shift_hours）
-    shift_hours     REAL DEFAULT 8,
-    efficiency      REAL DEFAULT 1.0,
-    allow_normal    TEXT DEFAULT 'yes',
-    allow_urgent    TEXT DEFAULT 'yes',
-    remark          TEXT
-);
-CREATE TABLE IF NOT EXISTS OperatorCalendar (
-    operator_id     TEXT NOT NULL,
-    date            DATE NOT NULL,
-    day_type        TEXT DEFAULT 'workday',
-    shift_start     TEXT,                       -- 班次开始（HH:MM，可选；默认 08:00）
-    shift_end       TEXT,                       -- 班次结束（HH:MM，可选；用于推导 shift_hours）
-    shift_hours     REAL DEFAULT 8,
-    efficiency      REAL DEFAULT 1.0,
-    allow_normal    TEXT DEFAULT 'yes',
-    allow_urgent    TEXT DEFAULT 'yes',
-    remark          TEXT,
-    PRIMARY KEY (operator_id, date),
-    FOREIGN KEY (operator_id) REFERENCES Operators(operator_id) ON DELETE CASCADE
-);
-CREATE INDEX IF NOT EXISTS idx_operator_calendar_operator_date ON OperatorCalendar(operator_id, date);
-CREATE INDEX IF NOT EXISTS idx_operator_calendar_date ON OperatorCalendar(date);
-CREATE TABLE IF NOT EXISTS ScheduleConfig (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    config_key      TEXT NOT NULL UNIQUE,
-    config_value    TEXT NOT NULL,
-    description     TEXT,
-    updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP
-);
-CREATE TABLE IF NOT EXISTS SystemConfig (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    config_key      TEXT NOT NULL UNIQUE,
-    config_value    TEXT NOT NULL,
-    description     TEXT,
-    updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP
-);
-CREATE TABLE IF NOT EXISTS SystemJobState (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    job_key         TEXT NOT NULL UNIQUE,
-    last_run_time   DATETIME,
-    last_run_detail TEXT,
-    updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP
-);
-CREATE INDEX IF NOT EXISTS idx_system_job_state_time ON SystemJobState(last_run_time);
-CREATE INDEX IF NOT EXISTS idx_batches_status ON Batches(status);
-CREATE INDEX IF NOT EXISTS idx_batches_priority ON Batches(priority);
-CREATE INDEX IF NOT EXISTS idx_batches_due_date ON Batches(due_date);
-CREATE INDEX IF NOT EXISTS idx_batch_operations_batch ON BatchOperations(batch_id);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_batch_operations_identity_unique ON BatchOperations(id, batch_id);
-CREATE INDEX IF NOT EXISTS idx_batch_operations_status ON BatchOperations(status);
-CREATE INDEX IF NOT EXISTS idx_schedule_op ON Schedule(op_id);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_schedule_version_op_unique ON Schedule(version, op_id);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_schedule_identity_unique ON Schedule(id, version, op_id);
-CREATE INDEX IF NOT EXISTS idx_schedule_machine ON Schedule(machine_id);
-CREATE INDEX IF NOT EXISTS idx_schedule_operator ON Schedule(operator_id);
-CREATE INDEX IF NOT EXISTS idx_schedule_time ON Schedule(start_time, end_time);
-CREATE INDEX IF NOT EXISTS idx_schedule_version_time ON Schedule(version, start_time, end_time);
-CREATE INDEX IF NOT EXISTS idx_operation_execution_events_op ON OperationExecutionEvents(op_id, event_time);
-CREATE INDEX IF NOT EXISTS idx_operation_execution_events_schedule ON OperationExecutionEvents(schedule_id);
-CREATE INDEX IF NOT EXISTS idx_operation_execution_events_schedule_op ON OperationExecutionEvents(schedule_id, op_id);
-CREATE INDEX IF NOT EXISTS idx_operation_execution_events_batch ON OperationExecutionEvents(batch_id);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_operation_execution_events_op_revision_unique
-ON OperationExecutionEvents(schedule_version, schedule_id, op_id, batch_id, source_table, effective_plan_role, previous_state_revision);
-CREATE INDEX IF NOT EXISTS idx_operation_execution_events_latest_exception ON OperationExecutionEvents(op_id, event_type, id);
-CREATE INDEX IF NOT EXISTS idx_schedule_candidate_version ON ScheduleCandidate(version);
-CREATE INDEX IF NOT EXISTS idx_schedule_candidate_version_kind ON ScheduleCandidate(version, candidate_kind);
-CREATE INDEX IF NOT EXISTS idx_schedule_candidate_rows_version_candidate ON ScheduleCandidateRows(version, candidate_id);
-CREATE INDEX IF NOT EXISTS idx_schedule_candidate_rows_version_candidate_time ON ScheduleCandidateRows(version, candidate_id, start_time, end_time);
-CREATE INDEX IF NOT EXISTS idx_schedule_candidate_rows_time ON ScheduleCandidateRows(start_time, end_time);
-CREATE INDEX IF NOT EXISTS idx_schedule_candidate_selection_version ON ScheduleCandidateSelection(version);
+CREATE INDEX IF NOT EXISTS idx_schedule_candidate_version
+ON ScheduleCandidate(version);
+CREATE INDEX IF NOT EXISTS idx_schedule_candidate_version_kind
+ON ScheduleCandidate(version, candidate_kind);
+CREATE INDEX IF NOT EXISTS idx_schedule_candidate_rows_version_candidate
+ON ScheduleCandidateRows(version, candidate_id);
+CREATE INDEX IF NOT EXISTS idx_schedule_candidate_rows_version_candidate_time
+ON ScheduleCandidateRows(version, candidate_id, start_time, end_time);
+CREATE INDEX IF NOT EXISTS idx_schedule_candidate_rows_time
+ON ScheduleCandidateRows(start_time, end_time);
+CREATE INDEX IF NOT EXISTS idx_schedule_candidate_selection_version
+ON ScheduleCandidateSelection(version);
+CREATE INDEX IF NOT EXISTS idx_schedule_version_time
+ON Schedule(version, start_time, end_time);
+CREATE INDEX IF NOT EXISTS idx_schedule_history_version
+ON ScheduleHistory(version);
 CREATE TABLE IF NOT EXISTS ScheduleAdjustmentDraft (
     draft_id        TEXT PRIMARY KEY,
     base_version    INTEGER NOT NULL,
@@ -395,9 +407,12 @@ CREATE TABLE IF NOT EXISTS ScheduleAdjustmentChange (
     FOREIGN KEY(draft_id) REFERENCES ScheduleAdjustmentDraft(draft_id) ON DELETE CASCADE,
     FOREIGN KEY(op_id) REFERENCES BatchOperations(id) ON DELETE CASCADE
 );
-CREATE INDEX IF NOT EXISTS idx_schedule_adjustment_draft_base ON ScheduleAdjustmentDraft(base_version, base_plan_role);
-CREATE INDEX IF NOT EXISTS idx_schedule_adjustment_draft_status ON ScheduleAdjustmentDraft(status, updated_at);
-CREATE INDEX IF NOT EXISTS idx_schedule_adjustment_change_draft_op ON ScheduleAdjustmentChange(draft_id, op_id);
+CREATE INDEX IF NOT EXISTS idx_schedule_adjustment_draft_base
+ON ScheduleAdjustmentDraft(base_version, base_plan_role);
+CREATE INDEX IF NOT EXISTS idx_schedule_adjustment_draft_status
+ON ScheduleAdjustmentDraft(status, updated_at);
+CREATE INDEX IF NOT EXISTS idx_schedule_adjustment_change_draft_op
+ON ScheduleAdjustmentChange(draft_id, op_id);
 CREATE TABLE IF NOT EXISTS ScheduleAdjustmentScenario (
     scenario_id        TEXT PRIMARY KEY,
     source_draft_id    TEXT NOT NULL UNIQUE,
@@ -412,17 +427,10 @@ CREATE TABLE IF NOT EXISTS ScheduleAdjustmentScenario (
     issue_count        INTEGER NOT NULL DEFAULT 0,
     issues_json        TEXT,
     row_count          INTEGER NOT NULL DEFAULT 0,
-    execution_snapshot_revision TEXT,
-    execution_snapshot_op_ids   TEXT,
-    execution_snapshot_op_count INTEGER NOT NULL DEFAULT 0,
     created_by         TEXT,
-    published_version  INTEGER,
-    published_by       TEXT,
-    published_reason   TEXT,
-    published_at       DATETIME,
     created_at         DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at         DATETIME DEFAULT CURRENT_TIMESTAMP
-);
+, published_version INTEGER, published_by TEXT, published_reason TEXT, published_at DATETIME, execution_snapshot_revision TEXT, execution_snapshot_op_ids TEXT, execution_snapshot_op_count INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE IF NOT EXISTS ScheduleAdjustmentScenarioRow (
     id                  INTEGER PRIMARY KEY AUTOINCREMENT,
     scenario_id         TEXT NOT NULL,
@@ -440,61 +448,72 @@ CREATE TABLE IF NOT EXISTS ScheduleAdjustmentScenarioRow (
     FOREIGN KEY(scenario_id) REFERENCES ScheduleAdjustmentScenario(scenario_id) ON DELETE CASCADE,
     FOREIGN KEY(op_id) REFERENCES BatchOperations(id) ON DELETE CASCADE
 );
-CREATE INDEX IF NOT EXISTS idx_schedule_adjustment_scenario_base ON ScheduleAdjustmentScenario(base_version, base_plan_role, status);
-CREATE INDEX IF NOT EXISTS idx_schedule_adjustment_scenario_draft ON ScheduleAdjustmentScenario(source_draft_id);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_schedule_adjustment_scenario_row_op ON ScheduleAdjustmentScenarioRow(scenario_id, op_id);
-CREATE INDEX IF NOT EXISTS idx_schedule_adjustment_scenario_row_time ON ScheduleAdjustmentScenarioRow(scenario_id, start_time, end_time);
-CREATE TABLE IF NOT EXISTS OperationLogs (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    log_time        DATETIME DEFAULT CURRENT_TIMESTAMP,
-    log_level       TEXT NOT NULL,
-    module          TEXT NOT NULL,
-    action          TEXT NOT NULL,
-    target_type     TEXT,
-    target_id       TEXT,
-    operator        TEXT,
-    detail          TEXT,
-    error_code      TEXT,
-    error_message   TEXT
+CREATE INDEX IF NOT EXISTS idx_schedule_adjustment_scenario_base
+ON ScheduleAdjustmentScenario(base_version, base_plan_role, status);
+CREATE INDEX IF NOT EXISTS idx_schedule_adjustment_scenario_draft
+ON ScheduleAdjustmentScenario(source_draft_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_schedule_adjustment_scenario_row_op
+ON ScheduleAdjustmentScenarioRow(scenario_id, op_id);
+CREATE INDEX IF NOT EXISTS idx_schedule_adjustment_scenario_row_time
+ON ScheduleAdjustmentScenarioRow(scenario_id, start_time, end_time);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_batch_operations_identity_unique ON BatchOperations(id, batch_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_schedule_identity_unique ON Schedule(id, version, op_id);
+CREATE TABLE IF NOT EXISTS OperationExecutionEvents (
+    id                       INTEGER PRIMARY KEY AUTOINCREMENT,
+    schedule_version         INTEGER NOT NULL,
+    schedule_id              INTEGER NOT NULL,
+    op_id                    INTEGER NOT NULL,
+    batch_id                 TEXT NOT NULL,
+    source_table             TEXT NOT NULL CHECK(source_table = 'schedule'),
+    effective_plan_role      TEXT NOT NULL CHECK(effective_plan_role = 'adopted'),
+    scenario_id              TEXT CHECK(scenario_id IS NULL),
+    event_type               TEXT NOT NULL CHECK(event_type IN ('start', 'pause', 'resume', 'finish', 'exception')),
+    reported_status          TEXT NOT NULL CHECK(reported_status IN ('processing', 'paused', 'exception', 'completed')),
+    event_time               DATETIME NOT NULL,
+    actual_machine_id        TEXT,
+    actual_operator_id       TEXT,
+    quantity_done            INTEGER CHECK(quantity_done IS NULL OR quantity_done >= 0),
+    quantity_scrapped        INTEGER CHECK(quantity_scrapped IS NULL OR quantity_scrapped >= 0),
+    reason_code              TEXT CHECK(reason_code IS NULL OR reason_code IN ('equipment', 'person', 'material', 'quality', 'process', 'external', 'other')),
+    reason_detail            TEXT,
+    severity                 TEXT CHECK(severity IS NULL OR severity IN ('low', 'medium', 'high', 'critical')),
+    impact_minutes           INTEGER CHECK(impact_minutes IS NULL OR impact_minutes >= 0),
+    affected_machine_id      TEXT,
+    affected_operator_id     TEXT,
+    handling_status          TEXT CHECK(handling_status IS NULL OR handling_status IN ('new', 'checking', 'waiting', 'handled')),
+    suggest_reschedule       INTEGER NOT NULL DEFAULT 0 CHECK(suggest_reschedule IN (0, 1)),
+    remark                   TEXT,
+    created_by               TEXT NOT NULL,
+    idempotency_key          TEXT NOT NULL UNIQUE,
+    request_fingerprint      TEXT NOT NULL,
+    previous_state_revision  TEXT NOT NULL,
+    created_at               DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (schedule_id, schedule_version, op_id) REFERENCES Schedule(id, version, op_id),
+    FOREIGN KEY (op_id, batch_id) REFERENCES BatchOperations(id, batch_id),
+    FOREIGN KEY (actual_machine_id) REFERENCES Machines(machine_id),
+    FOREIGN KEY (actual_operator_id) REFERENCES Operators(operator_id),
+    FOREIGN KEY (affected_machine_id) REFERENCES Machines(machine_id),
+    FOREIGN KEY (affected_operator_id) REFERENCES Operators(operator_id),
+    UNIQUE(schedule_version, schedule_id, op_id, batch_id, source_table, effective_plan_role, previous_state_revision),
+    CHECK(schedule_version > 0),
+    CHECK(schedule_id > 0),
+    CHECK(op_id > 0),
+    CHECK(TRIM(batch_id) <> ''),
+    CHECK(TRIM(event_time) <> '' AND datetime(event_time) IS NOT NULL),
+    CHECK((event_type IN ('start', 'resume') AND reported_status = 'processing') OR (event_type = 'pause' AND reported_status = 'paused') OR (event_type = 'exception' AND reported_status = 'exception') OR (event_type = 'finish' AND reported_status = 'completed')),
+    CHECK(event_type NOT IN ('pause', 'exception') OR (reason_code IS NOT NULL AND TRIM(reason_code) <> '')),
+    CHECK(event_type <> 'exception' OR (severity IS NOT NULL AND TRIM(severity) <> '')),
+    CHECK(TRIM(created_by) <> ''),
+    CHECK(TRIM(idempotency_key) <> ''),
+    CHECK(TRIM(request_fingerprint) <> ''),
+    CHECK(TRIM(previous_state_revision) <> '')
 );
-CREATE TABLE IF NOT EXISTS ScheduleHistory (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    schedule_time   DATETIME DEFAULT CURRENT_TIMESTAMP,
-    version         INTEGER NOT NULL,
-    strategy        TEXT NOT NULL,
-    batch_count     INTEGER,
-    op_count        INTEGER,
-    result_status   TEXT,
-    result_summary  TEXT,
-    created_by      TEXT
-);
-CREATE INDEX IF NOT EXISTS idx_operation_logs_time ON OperationLogs(log_time);
-CREATE INDEX IF NOT EXISTS idx_operation_logs_level ON OperationLogs(log_level);
-CREATE INDEX IF NOT EXISTS idx_operation_logs_module ON OperationLogs(module);
-CREATE INDEX IF NOT EXISTS idx_schedule_history_time ON ScheduleHistory(schedule_time);
-CREATE INDEX IF NOT EXISTS idx_schedule_history_version ON ScheduleHistory(version);
-CREATE TABLE IF NOT EXISTS Materials (
-    material_id     TEXT PRIMARY KEY,
-    name            TEXT NOT NULL,
-    spec            TEXT,
-    unit            TEXT,
-    stock_qty       REAL DEFAULT 0,
-    status          TEXT DEFAULT 'active',
-    remark          TEXT,
-    created_at      DATETIME DEFAULT CURRENT_TIMESTAMP
-);
-CREATE TABLE IF NOT EXISTS BatchMaterials (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    batch_id        TEXT NOT NULL,
-    material_id     TEXT NOT NULL,
-    required_qty    REAL NOT NULL,
-    available_qty   REAL DEFAULT 0,
-    ready_status    TEXT DEFAULT 'no',
-    FOREIGN KEY (batch_id) REFERENCES Batches(batch_id) ON DELETE CASCADE,
-    FOREIGN KEY (material_id) REFERENCES Materials(material_id)
-);
-
--- Workbench metadata. Generated from workbench_metadata_schema.metadata_objects; tested for parity.
+CREATE INDEX IF NOT EXISTS idx_operation_execution_events_op ON OperationExecutionEvents(op_id, event_time);
+CREATE INDEX IF NOT EXISTS idx_operation_execution_events_schedule ON OperationExecutionEvents(schedule_id);
+CREATE INDEX IF NOT EXISTS idx_operation_execution_events_schedule_op ON OperationExecutionEvents(schedule_id, op_id);
+CREATE INDEX IF NOT EXISTS idx_operation_execution_events_batch ON OperationExecutionEvents(batch_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_operation_execution_events_op_revision_unique ON OperationExecutionEvents(schedule_version, schedule_id, op_id, batch_id, source_table, effective_plan_role, previous_state_revision);
+CREATE INDEX IF NOT EXISTS idx_operation_execution_events_latest_exception ON OperationExecutionEvents(op_id, event_type, id);
 CREATE TABLE IF NOT EXISTS WorkbenchEntityRefs (
         ref TEXT PRIMARY KEY NOT NULL CHECK(length(ref) = 48 AND ref NOT GLOB '*[^0-9a-f]*'),
         kind TEXT NOT NULL,
@@ -677,8 +696,6 @@ CREATE TRIGGER IF NOT EXISTS wb_ref_resource_team_delete AFTER DELETE ON "Resour
             UPDATE WorkbenchEntityRefs SET active = 0, revision = revision + 1
                 WHERE kind = 'resource_team' AND entity_key = CAST(OLD."team_id" AS TEXT) AND active = 1;
         END;
-
--- Workbench explicit resources. Generated from workbench_resource_schema.resource_objects; tested for parity.
 CREATE TABLE IF NOT EXISTS WorkbenchMachineGroups (
         group_id TEXT PRIMARY KEY NOT NULL, name TEXT NOT NULL UNIQUE,
         status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'inactive')),
@@ -870,8 +887,6 @@ CREATE TRIGGER IF NOT EXISTS wb_resource_operator_status_reason AFTER UPDATE OF 
 CREATE TRIGGER IF NOT EXISTS wb_resource_supplier_status_reason AFTER UPDATE OF status ON Suppliers BEGIN
             UPDATE WorkbenchSupplierProfiles SET inactive_reason = NULL WHERE supplier_id = NEW.supplier_id AND inactive_reason IS NOT NULL;
         END;
-
--- Template identities. Generated from workbench_process_schema.process_objects; tested for parity.
 CREATE TRIGGER IF NOT EXISTS wb_ref_template_operation_insert AFTER INSERT ON "PartOperations" BEGIN
             UPDATE WorkbenchEntityRefs SET active = 0, revision = revision + 1
                 WHERE kind = 'template_operation' AND active = 1 AND entity_key = CAST(NEW."id" AS TEXT);
@@ -908,8 +923,6 @@ CREATE TRIGGER IF NOT EXISTS wb_ref_template_external_group_delete AFTER DELETE 
             UPDATE WorkbenchEntityRefs SET active = 0, revision = revision + 1
                 WHERE kind = 'template_external_group' AND entity_key = CAST(OLD."group_id" AS TEXT) AND active = 1;
         END;
-
--- Explicit process workflow. Generated from workbench_process_workflow_schema.workflow_objects; tested for parity.
 CREATE TABLE IF NOT EXISTS WorkbenchProcessWorkflow (
         part_ref TEXT PRIMARY KEY NOT NULL REFERENCES WorkbenchEntityRefs(ref),
         route_signature TEXT, route_confirmed_at TEXT, route_confirmed_by TEXT,
@@ -928,8 +941,6 @@ CREATE TABLE IF NOT EXISTS WorkbenchProcessOperationConfirmations (
         PRIMARY KEY(part_ref, operation_ref, stage)
     );
 CREATE INDEX IF NOT EXISTS idx_wb_process_confirmation_operation ON WorkbenchProcessOperationConfirmations(operation_ref);
-
--- Permanent plan and task identities. Generated from workbench_plan_identity_schema; tested for parity.
 CREATE TABLE IF NOT EXISTS WorkbenchPlanSourceRefs (
         ref TEXT PRIMARY KEY NOT NULL CHECK(length(ref) = 48 AND ref NOT GLOB '*[^0-9a-f]*'), kind TEXT NOT NULL, source_key TEXT NOT NULL,
         alternate_key TEXT, extra_key TEXT, version INTEGER, plan_role TEXT,
@@ -996,9 +1007,6 @@ CREATE TRIGGER IF NOT EXISTS wb_plan_task_row_insert AFTER INSERT ON WorkbenchPl
         SELECT lower(hex(randomblob(24))), pairs.plan_ref, pairs.row_ref FROM (SELECT p.ref AS plan_ref, r.ref AS row_ref FROM WorkbenchPlanSourceRefs p JOIN WorkbenchPlanSourceRefs r ON p.kind = 'official' AND r.kind = 'schedule_row' AND r.version = p.version WHERE p.active = 1 AND r.active = 1 AND (1) AND (r.ref = NEW.ref) UNION ALL SELECT p.ref AS plan_ref, r.ref AS row_ref FROM WorkbenchPlanSourceRefs p JOIN WorkbenchPlanSourceRefs r ON p.kind = 'selection' AND p.plan_role != 'adopted' AND p.source_table = 'schedule' AND r.kind = 'schedule_row' AND r.version = p.version WHERE p.active = 1 AND r.active = 1 AND (1) AND (r.ref = NEW.ref) UNION ALL SELECT p.ref AS plan_ref, r.ref AS row_ref FROM WorkbenchPlanSourceRefs p JOIN WorkbenchPlanSourceRefs r ON p.kind = 'selection' AND p.plan_role != 'adopted' AND p.source_table = 'candidate_rows' AND r.kind = 'candidate_row' AND r.version = p.version AND r.parent_ref = p.parent_ref WHERE p.active = 1 AND r.active = 1 AND (1) AND (r.ref = NEW.ref) UNION ALL SELECT p.ref AS plan_ref, r.ref AS row_ref FROM WorkbenchPlanSourceRefs p JOIN WorkbenchPlanSourceRefs r ON p.kind = 'scenario' AND r.kind = 'scenario_row' AND r.parent_ref = p.ref WHERE p.active = 1 AND r.active = 1 AND (1) AND (r.ref = NEW.ref)) pairs
         WHERE NOT EXISTS (SELECT 1 FROM WorkbenchTaskRefs t
             WHERE t.plan_ref = pairs.plan_ref AND t.row_ref = pairs.row_ref); END;
-INSERT INTO WorkbenchPlanIdentityClock(singleton, revision) SELECT 1, CASE WHEN NOT EXISTS (SELECT 1 FROM "WorkbenchPlanSourceRefs" LIMIT 1) AND NOT EXISTS (SELECT 1 FROM "WorkbenchTaskRefs" LIMIT 1) AND NOT EXISTS (SELECT 1 FROM "ScheduleHistory" LIMIT 1) AND NOT EXISTS (SELECT 1 FROM "BatchOperations" LIMIT 1) AND NOT EXISTS (SELECT 1 FROM "ScheduleCandidate" LIMIT 1) AND NOT EXISTS (SELECT 1 FROM "ScheduleCandidateSelection" LIMIT 1) AND NOT EXISTS (SELECT 1 FROM "ScheduleAdjustmentScenario" LIMIT 1) AND NOT EXISTS (SELECT 1 FROM "Schedule" LIMIT 1) AND NOT EXISTS (SELECT 1 FROM "ScheduleCandidateRows" LIMIT 1) AND NOT EXISTS (SELECT 1 FROM "ScheduleAdjustmentScenarioRow" LIMIT 1) THEN 1 ELSE 0 END WHERE NOT EXISTS (SELECT 1 FROM WorkbenchPlanIdentityClock);
-
--- Immutable execution ledger. Generated from execution_ledger_objects; tested for parity.
 CREATE TABLE IF NOT EXISTS WorkbenchExecutionLedgerClock (
             singleton INTEGER PRIMARY KEY CHECK(singleton = 1),
             revision INTEGER NOT NULL CHECK(typeof(revision) = 'integer' AND revision > 0),
@@ -1103,9 +1111,6 @@ CREATE TRIGGER IF NOT EXISTS wb_execution_capture_legacy AFTER INSERT ON Operati
             AND p.version = e.schedule_version
         LEFT JOIN WorkbenchTaskRefs t ON t.row_ref = r.ref AND t.plan_ref = p.ref
         WHERE e.id = NEW.id; END;
-INSERT INTO WorkbenchExecutionLedgerClock(singleton, revision, next_report_no) SELECT 1, CASE WHEN NOT EXISTS (SELECT 1 FROM WorkbenchExecutionLegacyFacts LIMIT 1) AND NOT EXISTS (SELECT 1 FROM WorkbenchProductionReports LIMIT 1) AND NOT EXISTS (SELECT 1 FROM WorkbenchProductionReportRevisions LIMIT 1) AND NOT EXISTS (SELECT 1 FROM OperationExecutionEvents LIMIT 1) AND NOT EXISTS (SELECT 1 FROM WorkbenchCommandReceipts WHERE action GLOB 'execution.*' LIMIT 1) THEN 1 ELSE 0 END, 1 WHERE NOT EXISTS (SELECT 1 FROM WorkbenchExecutionLedgerClock);
-
--- Permanent candidate runs. Generated from workbench_run_objects; tested for parity.
 CREATE TABLE IF NOT EXISTS WorkbenchRunJobs (
             run_ref TEXT NOT NULL CHECK(length(run_ref)=48 AND run_ref NOT GLOB '*[^0-9a-f]*') PRIMARY KEY, request_key TEXT NOT NULL UNIQUE,
             input_ref TEXT NOT NULL, normalized_input_json TEXT NOT NULL,
@@ -1159,7 +1164,6 @@ CREATE TRIGGER IF NOT EXISTS wb_run_state_transition
         NOT (NEW.state=OLD.state OR (OLD.state='queued' AND NEW.state IN ('running','interrupted'))
              OR (OLD.state='running' AND NEW.state IN ('complete','partial','failed','interrupted')))
         BEGIN SELECT RAISE(ABORT,'invalid run transition'); END;
-
 CREATE TABLE IF NOT EXISTS WorkbenchTemplateLineageOrigins (
             lineage_ref TEXT NOT NULL CHECK(length(lineage_ref)=48 AND lineage_ref NOT GLOB '*[^0-9a-f]*') PRIMARY KEY,
             operation_ref TEXT NOT NULL UNIQUE, template_operation_ref TEXT NOT NULL,
@@ -1267,11 +1271,7 @@ CREATE TRIGGER IF NOT EXISTS wb_trial_transition BEFORE UPDATE ON WorkbenchTrial
 CREATE TRIGGER IF NOT EXISTS wb_trial_closed_rows BEFORE UPDATE ON WorkbenchTrialRows
         WHEN (SELECT status FROM WorkbenchTrialDrafts WHERE draft_ref=OLD.draft_ref)<>'editing'
         BEGIN SELECT RAISE(ABORT,'closed trial is immutable'); END;
-
--- Indexed lookup for the unchanged v27 operation-source birth trigger.
 CREATE INDEX IF NOT EXISTS idx_wb_lineage_operation_id_text ON BatchOperations(CAST(id AS TEXT));
-
--- Workbench calibration adoption and dashboard source identity, schema v29.
 CREATE TABLE IF NOT EXISTS WorkbenchCalibrationAdoptions (
             adoption_ref TEXT NOT NULL CHECK(length(adoption_ref)=48 AND adoption_ref NOT GLOB '*[^0-9a-f]*') PRIMARY KEY,
             template_operation_ref TEXT NOT NULL UNIQUE REFERENCES WorkbenchEntityRefs(ref),
@@ -1296,12 +1296,6 @@ CREATE TABLE IF NOT EXISTS WorkbenchCalibrationQuotaLocks (
             locked_unit_hours REAL NOT NULL CHECK(locked_unit_hours>=0 AND locked_unit_hours<=1.7976931348623157e308),
             locked_at TEXT NOT NULL
         );
-CREATE TRIGGER IF NOT EXISTS wb_calibration_adoption_no_delete BEFORE DELETE ON WorkbenchCalibrationAdoptions BEGIN SELECT RAISE(ABORT,'calibration adoption is immutable'); END;
-CREATE TRIGGER IF NOT EXISTS wb_calibration_adoption_no_replace BEFORE INSERT ON WorkbenchCalibrationAdoptions WHEN EXISTS (SELECT 1 FROM WorkbenchCalibrationAdoptions WHERE adoption_ref=NEW.adoption_ref OR template_operation_ref=NEW.template_operation_ref OR request_key=NEW.request_key) BEGIN SELECT RAISE(ABORT,'calibration adoption cannot be replaced'); END;
-CREATE TRIGGER IF NOT EXISTS wb_calibration_adoption_no_update BEFORE UPDATE ON WorkbenchCalibrationAdoptions BEGIN SELECT RAISE(ABORT,'calibration adoption is immutable'); END;
-CREATE TRIGGER IF NOT EXISTS wb_calibration_quota_lock_no_delete BEFORE DELETE ON WorkbenchCalibrationQuotaLocks BEGIN SELECT RAISE(ABORT,'calibration adoption is immutable'); END;
-CREATE TRIGGER IF NOT EXISTS wb_calibration_quota_lock_no_replace BEFORE INSERT ON WorkbenchCalibrationQuotaLocks WHEN EXISTS (SELECT 1 FROM WorkbenchCalibrationQuotaLocks WHERE template_operation_ref=NEW.template_operation_ref OR adoption_ref=NEW.adoption_ref) BEGIN SELECT RAISE(ABORT,'calibration adoption cannot be replaced'); END;
-CREATE TRIGGER IF NOT EXISTS wb_calibration_quota_lock_no_update BEFORE UPDATE ON WorkbenchCalibrationQuotaLocks BEGIN SELECT RAISE(ABORT,'calibration adoption is immutable'); END;
 CREATE TRIGGER IF NOT EXISTS wb_calibration_quota_lock_origin
             BEFORE INSERT ON WorkbenchCalibrationQuotaLocks BEGIN
             SELECT CASE WHEN NOT EXISTS (SELECT 1 FROM WorkbenchCalibrationAdoptions a
@@ -1309,19 +1303,12 @@ CREATE TRIGGER IF NOT EXISTS wb_calibration_quota_lock_origin
                 AND a.new_unit_hours IS NEW.locked_unit_hours AND a.adopted_at=NEW.locked_at)
                 THEN RAISE(ABORT,'quota lock requires matching adoption audit') END;
         END;
-CREATE TABLE IF NOT EXISTS WorkbenchDashboardDowntimeRefs (
-            ref TEXT NOT NULL CHECK(length(ref)=48 AND ref NOT GLOB '*[^0-9a-f]*') PRIMARY KEY, source_id INTEGER NOT NULL, active INTEGER NOT NULL CHECK(active IN (0,1)),
-            revision INTEGER NOT NULL CHECK(typeof(revision)='integer' AND revision>0)
-        );
-CREATE TABLE IF NOT EXISTS WorkbenchDashboardHistory (
-            history_ref TEXT NOT NULL CHECK(length(history_ref)=48 AND history_ref NOT GLOB '*[^0-9a-f]*') PRIMARY KEY, item_ref TEXT NOT NULL,
-            sequence INTEGER NOT NULL CHECK(typeof(sequence)='integer' AND sequence>0),
-            action TEXT NOT NULL CHECK(action IN ('transition','reopen')), before_json TEXT NOT NULL, after_json TEXT NOT NULL,
-            source_json TEXT NOT NULL, source_facts_json TEXT NOT NULL, source_hash TEXT NOT NULL,
-            reason TEXT, local_operator TEXT NOT NULL, recorded_at TEXT NOT NULL, request_key TEXT NOT NULL UNIQUE,
-            UNIQUE(item_ref,sequence), FOREIGN KEY(item_ref) REFERENCES WorkbenchDashboardStates(item_ref),
-            FOREIGN KEY(request_key) REFERENCES WorkbenchCommandReceipts(request_key) DEFERRABLE INITIALLY DEFERRED
-        );
+CREATE TRIGGER IF NOT EXISTS wb_calibration_adoption_no_update BEFORE UPDATE ON WorkbenchCalibrationAdoptions BEGIN SELECT RAISE(ABORT,'calibration adoption is immutable'); END;
+CREATE TRIGGER IF NOT EXISTS wb_calibration_adoption_no_delete BEFORE DELETE ON WorkbenchCalibrationAdoptions BEGIN SELECT RAISE(ABORT,'calibration adoption is immutable'); END;
+CREATE TRIGGER IF NOT EXISTS wb_calibration_adoption_no_replace BEFORE INSERT ON WorkbenchCalibrationAdoptions WHEN EXISTS (SELECT 1 FROM WorkbenchCalibrationAdoptions WHERE adoption_ref=NEW.adoption_ref OR template_operation_ref=NEW.template_operation_ref OR request_key=NEW.request_key) BEGIN SELECT RAISE(ABORT,'calibration adoption cannot be replaced'); END;
+CREATE TRIGGER IF NOT EXISTS wb_calibration_quota_lock_no_update BEFORE UPDATE ON WorkbenchCalibrationQuotaLocks BEGIN SELECT RAISE(ABORT,'calibration adoption is immutable'); END;
+CREATE TRIGGER IF NOT EXISTS wb_calibration_quota_lock_no_delete BEFORE DELETE ON WorkbenchCalibrationQuotaLocks BEGIN SELECT RAISE(ABORT,'calibration adoption is immutable'); END;
+CREATE TRIGGER IF NOT EXISTS wb_calibration_quota_lock_no_replace BEFORE INSERT ON WorkbenchCalibrationQuotaLocks WHEN EXISTS (SELECT 1 FROM WorkbenchCalibrationQuotaLocks WHERE template_operation_ref=NEW.template_operation_ref OR adoption_ref=NEW.adoption_ref) BEGIN SELECT RAISE(ABORT,'calibration adoption cannot be replaced'); END;
 CREATE TABLE IF NOT EXISTS WorkbenchDashboardItems (
             item_ref TEXT NOT NULL CHECK(length(item_ref)=48 AND item_ref NOT GLOB '*[^0-9a-f]*') PRIMARY KEY, category TEXT NOT NULL CHECK(category IN ('delivery','material','actual','downtime')),
             batch_ref TEXT, task_ref TEXT,
@@ -1336,36 +1323,47 @@ CREATE TABLE IF NOT EXISTS WorkbenchDashboardStates (
             handling_json TEXT NOT NULL, origin_json TEXT NOT NULL, updated_at TEXT NOT NULL,
             FOREIGN KEY(item_ref) REFERENCES WorkbenchDashboardItems(item_ref)
         );
+CREATE TABLE IF NOT EXISTS WorkbenchDashboardHistory (
+            history_ref TEXT NOT NULL CHECK(length(history_ref)=48 AND history_ref NOT GLOB '*[^0-9a-f]*') PRIMARY KEY, item_ref TEXT NOT NULL,
+            sequence INTEGER NOT NULL CHECK(typeof(sequence)='integer' AND sequence>0),
+            action TEXT NOT NULL CHECK(action IN ('transition','reopen')), before_json TEXT NOT NULL, after_json TEXT NOT NULL,
+            source_json TEXT NOT NULL, source_facts_json TEXT NOT NULL, source_hash TEXT NOT NULL,
+            reason TEXT, local_operator TEXT NOT NULL, recorded_at TEXT NOT NULL, request_key TEXT NOT NULL UNIQUE,
+            UNIQUE(item_ref,sequence), FOREIGN KEY(item_ref) REFERENCES WorkbenchDashboardStates(item_ref),
+            FOREIGN KEY(request_key) REFERENCES WorkbenchCommandReceipts(request_key) DEFERRABLE INITIALLY DEFERRED
+        );
+CREATE TABLE IF NOT EXISTS WorkbenchDashboardDowntimeRefs (
+            ref TEXT NOT NULL CHECK(length(ref)=48 AND ref NOT GLOB '*[^0-9a-f]*') PRIMARY KEY, source_id INTEGER NOT NULL, active INTEGER NOT NULL CHECK(active IN (0,1)),
+            revision INTEGER NOT NULL CHECK(typeof(revision)='integer' AND revision>0)
+        );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_wb_dashboard_downtime_active ON WorkbenchDashboardDowntimeRefs(source_id) WHERE active=1;
 CREATE TRIGGER IF NOT EXISTS wb_dashboard_batch_insert AFTER INSERT ON WorkbenchEntityRefs
             WHEN NEW.kind='batch' AND NEW.active=1 BEGIN
             INSERT INTO WorkbenchDashboardItems(item_ref,category,batch_ref) VALUES(lower(hex(randomblob(24))),'delivery',NEW.ref);
             INSERT INTO WorkbenchDashboardItems(item_ref,category,batch_ref) VALUES(lower(hex(randomblob(24))),'material',NEW.ref); END;
-CREATE TRIGGER IF NOT EXISTS wb_dashboard_downtime_delete AFTER DELETE ON MachineDowntimes BEGIN
-            UPDATE WorkbenchDashboardDowntimeRefs SET active=0,revision=revision+1 WHERE source_id=OLD.id AND active=1; END;
+CREATE TRIGGER IF NOT EXISTS wb_dashboard_task_insert AFTER INSERT ON WorkbenchTaskRefs BEGIN
+            INSERT INTO WorkbenchDashboardItems(item_ref,category,task_ref) VALUES(lower(hex(randomblob(24))),'actual',NEW.ref);
+            INSERT INTO WorkbenchDashboardItems(item_ref,category,task_ref) VALUES(lower(hex(randomblob(24))),'downtime',NEW.ref); END;
 CREATE TRIGGER IF NOT EXISTS wb_dashboard_downtime_insert AFTER INSERT ON MachineDowntimes BEGIN
             UPDATE WorkbenchDashboardDowntimeRefs SET active=0,revision=revision+1 WHERE source_id=NEW.id AND active=1;
             INSERT INTO WorkbenchDashboardDowntimeRefs VALUES(lower(hex(randomblob(24))),NEW.id,1,1); END;
 CREATE TRIGGER IF NOT EXISTS wb_dashboard_downtime_update AFTER UPDATE ON MachineDowntimes BEGIN
             UPDATE WorkbenchDashboardDowntimeRefs SET source_id=NEW.id,revision=revision+1 WHERE source_id=OLD.id AND active=1; END;
-CREATE TRIGGER IF NOT EXISTS wb_dashboard_downtimerefs_no_delete BEFORE DELETE ON WorkbenchDashboardDowntimeRefs BEGIN SELECT RAISE(ABORT,'dashboard evidence is permanent'); END;
-CREATE TRIGGER IF NOT EXISTS wb_dashboard_downtimerefs_no_replace BEFORE INSERT ON WorkbenchDashboardDowntimeRefs WHEN EXISTS (SELECT 1 FROM WorkbenchDashboardDowntimeRefs WHERE ref=NEW.ref OR (active=1 AND NEW.active=1 AND source_id=NEW.source_id)) BEGIN SELECT RAISE(ABORT,'dashboard evidence cannot be replaced'); END;
-CREATE TRIGGER IF NOT EXISTS wb_dashboard_history_no_delete BEFORE DELETE ON WorkbenchDashboardHistory BEGIN SELECT RAISE(ABORT,'dashboard evidence is permanent'); END;
-CREATE TRIGGER IF NOT EXISTS wb_dashboard_history_no_replace BEFORE INSERT ON WorkbenchDashboardHistory WHEN EXISTS (SELECT 1 FROM WorkbenchDashboardHistory WHERE history_ref=NEW.history_ref OR request_key=NEW.request_key OR (item_ref=NEW.item_ref AND sequence=NEW.sequence)) BEGIN SELECT RAISE(ABORT,'dashboard evidence cannot be replaced'); END;
-CREATE TRIGGER IF NOT EXISTS wb_dashboard_history_no_update BEFORE UPDATE ON WorkbenchDashboardHistory BEGIN SELECT RAISE(ABORT,'dashboard evidence is permanent'); END;
-CREATE TRIGGER IF NOT EXISTS wb_dashboard_items_no_delete BEFORE DELETE ON WorkbenchDashboardItems BEGIN SELECT RAISE(ABORT,'dashboard evidence is permanent'); END;
-CREATE TRIGGER IF NOT EXISTS wb_dashboard_items_no_replace BEFORE INSERT ON WorkbenchDashboardItems WHEN EXISTS (SELECT 1 FROM WorkbenchDashboardItems WHERE item_ref=NEW.item_ref OR (category=NEW.category AND batch_ref=NEW.batch_ref) OR (category=NEW.category AND task_ref=NEW.task_ref)) BEGIN SELECT RAISE(ABORT,'dashboard evidence cannot be replaced'); END;
-CREATE TRIGGER IF NOT EXISTS wb_dashboard_items_no_update BEFORE UPDATE ON WorkbenchDashboardItems BEGIN SELECT RAISE(ABORT,'dashboard evidence is permanent'); END;
+CREATE TRIGGER IF NOT EXISTS wb_dashboard_downtime_delete AFTER DELETE ON MachineDowntimes BEGIN
+            UPDATE WorkbenchDashboardDowntimeRefs SET active=0,revision=revision+1 WHERE source_id=OLD.id AND active=1; END;
 CREATE TRIGGER IF NOT EXISTS wb_dashboard_state_identity BEFORE UPDATE ON WorkbenchDashboardStates
             WHEN NEW.item_ref IS NOT OLD.item_ref OR NEW.origin_json IS NOT OLD.origin_json OR NEW.revision<>OLD.revision+1
             BEGIN SELECT RAISE(ABORT,'dashboard origin is permanent'); END;
+CREATE TRIGGER IF NOT EXISTS wb_dashboard_items_no_update BEFORE UPDATE ON WorkbenchDashboardItems BEGIN SELECT RAISE(ABORT,'dashboard evidence is permanent'); END;
+CREATE TRIGGER IF NOT EXISTS wb_dashboard_items_no_delete BEFORE DELETE ON WorkbenchDashboardItems BEGIN SELECT RAISE(ABORT,'dashboard evidence is permanent'); END;
+CREATE TRIGGER IF NOT EXISTS wb_dashboard_history_no_update BEFORE UPDATE ON WorkbenchDashboardHistory BEGIN SELECT RAISE(ABORT,'dashboard evidence is permanent'); END;
+CREATE TRIGGER IF NOT EXISTS wb_dashboard_history_no_delete BEFORE DELETE ON WorkbenchDashboardHistory BEGIN SELECT RAISE(ABORT,'dashboard evidence is permanent'); END;
 CREATE TRIGGER IF NOT EXISTS wb_dashboard_states_no_delete BEFORE DELETE ON WorkbenchDashboardStates BEGIN SELECT RAISE(ABORT,'dashboard evidence is permanent'); END;
+CREATE TRIGGER IF NOT EXISTS wb_dashboard_downtimerefs_no_delete BEFORE DELETE ON WorkbenchDashboardDowntimeRefs BEGIN SELECT RAISE(ABORT,'dashboard evidence is permanent'); END;
+CREATE TRIGGER IF NOT EXISTS wb_dashboard_items_no_replace BEFORE INSERT ON WorkbenchDashboardItems WHEN EXISTS (SELECT 1 FROM WorkbenchDashboardItems WHERE item_ref=NEW.item_ref OR (category=NEW.category AND batch_ref=NEW.batch_ref) OR (category=NEW.category AND task_ref=NEW.task_ref)) BEGIN SELECT RAISE(ABORT,'dashboard evidence cannot be replaced'); END;
 CREATE TRIGGER IF NOT EXISTS wb_dashboard_states_no_replace BEFORE INSERT ON WorkbenchDashboardStates WHEN EXISTS (SELECT 1 FROM WorkbenchDashboardStates WHERE item_ref=NEW.item_ref) BEGIN SELECT RAISE(ABORT,'dashboard evidence cannot be replaced'); END;
-CREATE TRIGGER IF NOT EXISTS wb_dashboard_task_insert AFTER INSERT ON WorkbenchTaskRefs BEGIN
-            INSERT INTO WorkbenchDashboardItems(item_ref,category,task_ref) VALUES(lower(hex(randomblob(24))),'actual',NEW.ref);
-            INSERT INTO WorkbenchDashboardItems(item_ref,category,task_ref) VALUES(lower(hex(randomblob(24))),'downtime',NEW.ref); END;
-
--- Version 30: explicit outsourcing facts and immutable plan reference guards.
+CREATE TRIGGER IF NOT EXISTS wb_dashboard_history_no_replace BEFORE INSERT ON WorkbenchDashboardHistory WHEN EXISTS (SELECT 1 FROM WorkbenchDashboardHistory WHERE history_ref=NEW.history_ref OR request_key=NEW.request_key OR (item_ref=NEW.item_ref AND sequence=NEW.sequence)) BEGIN SELECT RAISE(ABORT,'dashboard evidence cannot be replaced'); END;
+CREATE TRIGGER IF NOT EXISTS wb_dashboard_downtimerefs_no_replace BEFORE INSERT ON WorkbenchDashboardDowntimeRefs WHEN EXISTS (SELECT 1 FROM WorkbenchDashboardDowntimeRefs WHERE ref=NEW.ref OR (active=1 AND NEW.active=1 AND source_id=NEW.source_id)) BEGIN SELECT RAISE(ABORT,'dashboard evidence cannot be replaced'); END;
 CREATE TRIGGER IF NOT EXISTS wb_plan_source_ref_insert_guard BEFORE INSERT ON WorkbenchPlanSourceRefs
             WHEN EXISTS (SELECT 1 FROM WorkbenchPlanSourceRefs WHERE ref = NEW.ref)
             BEGIN SELECT RAISE(ABORT, 'UNIQUE constraint failed: WorkbenchPlanSourceRefs.ref'); END;
@@ -1434,18 +1432,16 @@ CREATE TRIGGER IF NOT EXISTS wb_outsourcing_members_no_replace BEFORE INSERT ON 
 CREATE TRIGGER IF NOT EXISTS wb_outsourcing_facts_no_update BEFORE UPDATE ON WorkbenchOutsourcingFacts BEGIN SELECT RAISE(ABORT,'outsourcing evidence is permanent'); END;
 CREATE TRIGGER IF NOT EXISTS wb_outsourcing_facts_no_delete BEFORE DELETE ON WorkbenchOutsourcingFacts BEGIN SELECT RAISE(ABORT,'outsourcing evidence is permanent'); END;
 CREATE TRIGGER IF NOT EXISTS wb_outsourcing_facts_no_replace BEFORE INSERT ON WorkbenchOutsourcingFacts WHEN EXISTS(SELECT 1 FROM WorkbenchOutsourcingFacts WHERE fact_ref=NEW.fact_ref OR request_key=NEW.request_key OR (outsourcing_ref=NEW.outsourcing_ref AND sequence=NEW.sequence)) BEGIN SELECT RAISE(ABORT,'outsourcing evidence cannot be replaced'); END;
-
--- Version 31: generic external handling, separate from outsourcing facts.
-CREATE TABLE WorkbenchDashboardExternalItems (
+CREATE TABLE IF NOT EXISTS WorkbenchDashboardExternalItems (
             item_ref TEXT NOT NULL CHECK(length(item_ref)=48 AND item_ref NOT GLOB '*[^0-9a-f]*') PRIMARY KEY,
             category TEXT NOT NULL DEFAULT 'external' CHECK(category='external'),
             outsourcing_ref TEXT NOT NULL UNIQUE,
             FOREIGN KEY(outsourcing_ref) REFERENCES WorkbenchOutsourcingReceipts(outsourcing_ref));
-CREATE TABLE WorkbenchDashboardExternalStates (
+CREATE TABLE IF NOT EXISTS WorkbenchDashboardExternalStates (
             item_ref TEXT PRIMARY KEY NOT NULL, revision INTEGER NOT NULL CHECK(typeof(revision)='integer' AND revision>0),
             handling_json TEXT NOT NULL, origin_json TEXT NOT NULL, updated_at TEXT NOT NULL,
             FOREIGN KEY(item_ref) REFERENCES WorkbenchDashboardExternalItems(item_ref));
-CREATE TABLE WorkbenchDashboardExternalHistory (
+CREATE TABLE IF NOT EXISTS WorkbenchDashboardExternalHistory (
             history_ref TEXT NOT NULL CHECK(length(history_ref)=48 AND history_ref NOT GLOB '*[^0-9a-f]*') PRIMARY KEY, item_ref TEXT NOT NULL,
             sequence INTEGER NOT NULL CHECK(typeof(sequence)='integer' AND sequence>0),
             action TEXT NOT NULL CHECK(action IN ('transition','reopen')), before_json TEXT NOT NULL, after_json TEXT NOT NULL,
@@ -1453,30 +1449,28 @@ CREATE TABLE WorkbenchDashboardExternalHistory (
             reason TEXT, local_operator TEXT NOT NULL, recorded_at TEXT NOT NULL, request_key TEXT NOT NULL UNIQUE,
             UNIQUE(item_ref,sequence), FOREIGN KEY(item_ref) REFERENCES WorkbenchDashboardExternalStates(item_ref),
             FOREIGN KEY(request_key) REFERENCES WorkbenchCommandReceipts(request_key) DEFERRABLE INITIALLY DEFERRED);
-CREATE TRIGGER wb_dashboard_external_receipt_insert
+CREATE TRIGGER IF NOT EXISTS wb_dashboard_external_receipt_insert
             AFTER INSERT ON WorkbenchOutsourcingReceipts BEGIN
             INSERT INTO WorkbenchDashboardExternalItems(item_ref,outsourcing_ref)
                 VALUES(lower(hex(randomblob(24))),NEW.outsourcing_ref); END;
-CREATE TRIGGER wb_dashboard_external_state_identity
+CREATE TRIGGER IF NOT EXISTS wb_dashboard_external_state_identity
             BEFORE UPDATE ON WorkbenchDashboardExternalStates
             WHEN NEW.item_ref IS NOT OLD.item_ref OR NEW.origin_json IS NOT OLD.origin_json OR NEW.revision<>OLD.revision+1
             BEGIN SELECT RAISE(ABORT,'dashboard origin is permanent'); END;
-CREATE TRIGGER wb_dashboard_external_items_no_update BEFORE UPDATE ON WorkbenchDashboardExternalItems BEGIN SELECT RAISE(ABORT,'dashboard evidence is permanent'); END;
-CREATE TRIGGER wb_dashboard_external_items_no_delete BEFORE DELETE ON WorkbenchDashboardExternalItems BEGIN SELECT RAISE(ABORT,'dashboard evidence is permanent'); END;
-CREATE TRIGGER wb_dashboard_external_items_no_replace BEFORE INSERT ON WorkbenchDashboardExternalItems WHEN EXISTS(SELECT 1 FROM WorkbenchDashboardExternalItems WHERE item_ref=NEW.item_ref OR outsourcing_ref=NEW.outsourcing_ref) BEGIN SELECT RAISE(ABORT,'dashboard evidence cannot be replaced'); END;
-CREATE TRIGGER wb_dashboard_external_states_no_delete BEFORE DELETE ON WorkbenchDashboardExternalStates BEGIN SELECT RAISE(ABORT,'dashboard evidence is permanent'); END;
-CREATE TRIGGER wb_dashboard_external_states_no_replace BEFORE INSERT ON WorkbenchDashboardExternalStates WHEN EXISTS(SELECT 1 FROM WorkbenchDashboardExternalStates WHERE item_ref=NEW.item_ref) BEGIN SELECT RAISE(ABORT,'dashboard evidence cannot be replaced'); END;
-CREATE TRIGGER wb_dashboard_external_history_no_update BEFORE UPDATE ON WorkbenchDashboardExternalHistory BEGIN SELECT RAISE(ABORT,'dashboard evidence is permanent'); END;
-CREATE TRIGGER wb_dashboard_external_history_no_delete BEFORE DELETE ON WorkbenchDashboardExternalHistory BEGIN SELECT RAISE(ABORT,'dashboard evidence is permanent'); END;
-CREATE TRIGGER wb_dashboard_external_history_no_replace BEFORE INSERT ON WorkbenchDashboardExternalHistory WHEN EXISTS(SELECT 1 FROM WorkbenchDashboardExternalHistory WHERE history_ref=NEW.history_ref OR request_key=NEW.request_key OR (item_ref=NEW.item_ref AND sequence=NEW.sequence)) BEGIN SELECT RAISE(ABORT,'dashboard evidence cannot be replaced'); END;
-
--- Version 32: explicit source confirmations and report revocation facts.
-CREATE TABLE WorkbenchOutsourcingSourceConfirmations (
+CREATE TRIGGER IF NOT EXISTS wb_dashboard_external_items_no_update BEFORE UPDATE ON WorkbenchDashboardExternalItems BEGIN SELECT RAISE(ABORT,'dashboard evidence is permanent'); END;
+CREATE TRIGGER IF NOT EXISTS wb_dashboard_external_items_no_delete BEFORE DELETE ON WorkbenchDashboardExternalItems BEGIN SELECT RAISE(ABORT,'dashboard evidence is permanent'); END;
+CREATE TRIGGER IF NOT EXISTS wb_dashboard_external_items_no_replace BEFORE INSERT ON WorkbenchDashboardExternalItems WHEN EXISTS(SELECT 1 FROM WorkbenchDashboardExternalItems WHERE item_ref=NEW.item_ref OR outsourcing_ref=NEW.outsourcing_ref) BEGIN SELECT RAISE(ABORT,'dashboard evidence cannot be replaced'); END;
+CREATE TRIGGER IF NOT EXISTS wb_dashboard_external_states_no_delete BEFORE DELETE ON WorkbenchDashboardExternalStates BEGIN SELECT RAISE(ABORT,'dashboard evidence is permanent'); END;
+CREATE TRIGGER IF NOT EXISTS wb_dashboard_external_states_no_replace BEFORE INSERT ON WorkbenchDashboardExternalStates WHEN EXISTS(SELECT 1 FROM WorkbenchDashboardExternalStates WHERE item_ref=NEW.item_ref) BEGIN SELECT RAISE(ABORT,'dashboard evidence cannot be replaced'); END;
+CREATE TRIGGER IF NOT EXISTS wb_dashboard_external_history_no_update BEFORE UPDATE ON WorkbenchDashboardExternalHistory BEGIN SELECT RAISE(ABORT,'dashboard evidence is permanent'); END;
+CREATE TRIGGER IF NOT EXISTS wb_dashboard_external_history_no_delete BEFORE DELETE ON WorkbenchDashboardExternalHistory BEGIN SELECT RAISE(ABORT,'dashboard evidence is permanent'); END;
+CREATE TRIGGER IF NOT EXISTS wb_dashboard_external_history_no_replace BEFORE INSERT ON WorkbenchDashboardExternalHistory WHEN EXISTS(SELECT 1 FROM WorkbenchDashboardExternalHistory WHERE history_ref=NEW.history_ref OR request_key=NEW.request_key OR (item_ref=NEW.item_ref AND sequence=NEW.sequence)) BEGIN SELECT RAISE(ABORT,'dashboard evidence cannot be replaced'); END;
+CREATE TABLE IF NOT EXISTS WorkbenchOutsourcingSourceConfirmations (
             operation_ref TEXT PRIMARY KEY NOT NULL, batch_ref TEXT NOT NULL, fact_ref TEXT NOT NULL,
             FOREIGN KEY(operation_ref) REFERENCES WorkbenchOutsourcingOperationOrigins(operation_ref),
             FOREIGN KEY(batch_ref) REFERENCES WorkbenchEntityRefs(ref),
             FOREIGN KEY(fact_ref) REFERENCES WorkbenchOutsourcingFacts(fact_ref));
-CREATE TRIGGER wb_outsourcing_source_confirmation_guard
+CREATE TRIGGER IF NOT EXISTS wb_outsourcing_source_confirmation_guard
             BEFORE INSERT ON WorkbenchOutsourcingSourceConfirmations BEGIN
             SELECT CASE WHEN NOT EXISTS (
                 SELECT 1 FROM WorkbenchOutsourcingOperationOrigins o
@@ -1486,10 +1480,10 @@ CREATE TRIGGER wb_outsourcing_source_confirmation_guard
                 WHERE o.operation_ref=NEW.operation_ref AND o.batch_ref IS NULL
                 AND r.batch_ref=NEW.batch_ref AND f.fact_ref=NEW.fact_ref AND f.sequence=1)
                 THEN RAISE(ABORT,'outsourcing source confirmation must reference its first registration') END; END;
-CREATE TRIGGER wb_outsourcing_source_confirmation_no_update BEFORE UPDATE ON WorkbenchOutsourcingSourceConfirmations BEGIN SELECT RAISE(ABORT,'outsourcing source confirmation is permanent'); END;
-CREATE TRIGGER wb_outsourcing_source_confirmation_no_delete BEFORE DELETE ON WorkbenchOutsourcingSourceConfirmations BEGIN SELECT RAISE(ABORT,'outsourcing source confirmation is permanent'); END;
-CREATE TRIGGER wb_outsourcing_source_confirmation_no_replace BEFORE INSERT ON WorkbenchOutsourcingSourceConfirmations WHEN EXISTS(SELECT 1 FROM WorkbenchOutsourcingSourceConfirmations WHERE operation_ref=NEW.operation_ref) BEGIN SELECT RAISE(ABORT,'outsourcing source confirmation cannot be replaced'); END;
-CREATE TABLE WorkbenchProductionReportVoids (
+CREATE TRIGGER IF NOT EXISTS wb_outsourcing_source_confirmation_no_update BEFORE UPDATE ON WorkbenchOutsourcingSourceConfirmations BEGIN SELECT RAISE(ABORT,'outsourcing source confirmation is permanent'); END;
+CREATE TRIGGER IF NOT EXISTS wb_outsourcing_source_confirmation_no_delete BEFORE DELETE ON WorkbenchOutsourcingSourceConfirmations BEGIN SELECT RAISE(ABORT,'outsourcing source confirmation is permanent'); END;
+CREATE TRIGGER IF NOT EXISTS wb_outsourcing_source_confirmation_no_replace BEFORE INSERT ON WorkbenchOutsourcingSourceConfirmations WHEN EXISTS(SELECT 1 FROM WorkbenchOutsourcingSourceConfirmations WHERE operation_ref=NEW.operation_ref) BEGIN SELECT RAISE(ABORT,'outsourcing source confirmation cannot be replaced'); END;
+CREATE TABLE IF NOT EXISTS WorkbenchProductionReportVoids (
             void_fact_ref TEXT PRIMARY KEY NOT NULL CHECK(length(void_fact_ref)=48 AND void_fact_ref NOT GLOB '*[^0-9a-f]*'),
             report_ref TEXT NOT NULL UNIQUE,
             original_revision_ref TEXT NOT NULL UNIQUE,
@@ -1501,20 +1495,22 @@ CREATE TABLE WorkbenchProductionReportVoids (
             FOREIGN KEY(original_revision_ref) REFERENCES WorkbenchProductionReportRevisions(revision_ref),
             FOREIGN KEY(request_key) REFERENCES WorkbenchCommandReceipts(request_key) DEFERRABLE INITIALLY DEFERRED
         );
-CREATE TRIGGER wb_execution_voids_clock AFTER INSERT ON WorkbenchProductionReportVoids
+CREATE TRIGGER IF NOT EXISTS wb_execution_voids_clock AFTER INSERT ON WorkbenchProductionReportVoids
             BEGIN UPDATE WorkbenchExecutionLedgerClock SET revision=revision+1 WHERE singleton=1; END;
-CREATE TRIGGER wb_execution_voids_current_revision BEFORE INSERT ON WorkbenchProductionReportVoids
+CREATE TRIGGER IF NOT EXISTS wb_execution_voids_current_revision BEFORE INSERT ON WorkbenchProductionReportVoids
             WHEN NOT EXISTS (SELECT 1 FROM WorkbenchProductionReportRevisions r
                 WHERE r.report_ref=NEW.report_ref AND r.revision_ref=NEW.original_revision_ref
                 AND NOT EXISTS (SELECT 1 FROM WorkbenchProductionReportRevisions later
                     WHERE later.report_ref=r.report_ref AND later.sequence>r.sequence))
             BEGIN SELECT RAISE(ABORT, 'report void requires current revision'); END;
-CREATE TRIGGER wb_execution_voided_no_revision BEFORE INSERT ON WorkbenchProductionReportRevisions
+CREATE TRIGGER IF NOT EXISTS wb_execution_voided_no_revision BEFORE INSERT ON WorkbenchProductionReportRevisions
             WHEN EXISTS (SELECT 1 FROM WorkbenchProductionReportVoids v WHERE v.report_ref=NEW.report_ref)
             BEGIN SELECT RAISE(ABORT, 'voided report cannot be revised'); END;
-CREATE TRIGGER wb_execution_voids_no_replace BEFORE INSERT ON WorkbenchProductionReportVoids
+CREATE TRIGGER IF NOT EXISTS wb_execution_voids_no_replace BEFORE INSERT ON WorkbenchProductionReportVoids
             WHEN EXISTS (SELECT 1 FROM WorkbenchProductionReportVoids v WHERE v.void_fact_ref=NEW.void_fact_ref
                 OR v.report_ref=NEW.report_ref OR v.original_revision_ref=NEW.original_revision_ref OR v.request_key=NEW.request_key)
             BEGIN SELECT RAISE(ABORT, 'execution void cannot be replaced'); END;
-CREATE TRIGGER wb_execution_voids_no_update BEFORE UPDATE ON WorkbenchProductionReportVoids BEGIN SELECT RAISE(ABORT, 'execution ledger is append-only'); END;
-CREATE TRIGGER wb_execution_voids_no_delete BEFORE DELETE ON WorkbenchProductionReportVoids BEGIN SELECT RAISE(ABORT, 'execution ledger is append-only'); END;
+CREATE TRIGGER IF NOT EXISTS wb_execution_voids_no_update BEFORE UPDATE ON WorkbenchProductionReportVoids BEGIN SELECT RAISE(ABORT, 'execution ledger is append-only'); END;
+CREATE TRIGGER IF NOT EXISTS wb_execution_voids_no_delete BEFORE DELETE ON WorkbenchProductionReportVoids BEGIN SELECT RAISE(ABORT, 'execution ledger is append-only'); END;
+INSERT INTO WorkbenchPlanIdentityClock(singleton, revision) SELECT 1, CASE WHEN NOT EXISTS (SELECT 1 FROM "WorkbenchPlanSourceRefs" LIMIT 1) AND NOT EXISTS (SELECT 1 FROM "WorkbenchTaskRefs" LIMIT 1) AND NOT EXISTS (SELECT 1 FROM "ScheduleHistory" LIMIT 1) AND NOT EXISTS (SELECT 1 FROM "BatchOperations" LIMIT 1) AND NOT EXISTS (SELECT 1 FROM "ScheduleCandidate" LIMIT 1) AND NOT EXISTS (SELECT 1 FROM "ScheduleCandidateSelection" LIMIT 1) AND NOT EXISTS (SELECT 1 FROM "ScheduleAdjustmentScenario" LIMIT 1) AND NOT EXISTS (SELECT 1 FROM "Schedule" LIMIT 1) AND NOT EXISTS (SELECT 1 FROM "ScheduleCandidateRows" LIMIT 1) AND NOT EXISTS (SELECT 1 FROM "ScheduleAdjustmentScenarioRow" LIMIT 1) THEN 1 ELSE 0 END WHERE NOT EXISTS (SELECT 1 FROM WorkbenchPlanIdentityClock);
+INSERT INTO WorkbenchExecutionLedgerClock(singleton, revision, next_report_no) SELECT 1, CASE WHEN NOT EXISTS (SELECT 1 FROM WorkbenchExecutionLegacyFacts LIMIT 1) AND NOT EXISTS (SELECT 1 FROM WorkbenchProductionReports LIMIT 1) AND NOT EXISTS (SELECT 1 FROM WorkbenchProductionReportRevisions LIMIT 1) AND NOT EXISTS (SELECT 1 FROM OperationExecutionEvents LIMIT 1) AND NOT EXISTS (SELECT 1 FROM WorkbenchCommandReceipts WHERE action GLOB 'execution.*' LIMIT 1) THEN 1 ELSE 0 END, 1 WHERE NOT EXISTS (SELECT 1 FROM WorkbenchExecutionLedgerClock);

@@ -123,14 +123,14 @@ def _run_preflight_on_probe(
         conn = connection_factory(probe_path)
         initial_version = get_schema_version(conn)
         ensure_schema_version_not_newer(initial_version, supported_version=to_version)
-        ensure_current_schema_contract(conn, schema_version=initial_version)
-        ensure_schema_version(conn, logger=None)
+        ensure_current_schema_contract(conn, schema_version=initial_version, schema_sql=schema_sql)
+        ensure_schema_version(conn, logger=None, schema_sql=schema_sql)
         current = get_schema_version(conn)
         ensure_schema_version_not_newer(current, supported_version=to_version)
         _ensure_completed_event_migration_tables(conn, current=current)
         if current >= to_version:
             if current == CURRENT_SCHEMA_VERSION:
-                ensure_current_schema_contract(conn, schema_version=current)
+                ensure_current_schema_contract(conn, schema_version=current, schema_sql=schema_sql)
             return
         with conn:
             for version in range(current + 1, to_version + 1):
@@ -143,7 +143,7 @@ def _run_preflight_on_probe(
                     )
                 set_schema_version(conn, version)
             if to_version == CURRENT_SCHEMA_VERSION:
-                ensure_current_schema_contract(conn, schema_version=to_version)
+                ensure_current_schema_contract(conn, schema_version=to_version, schema_sql=schema_sql)
     finally:
         _close_connection(conn)
 
@@ -203,19 +203,19 @@ def _apply_migrations(
         conn = connection_factory(db_path)
         initial_version = get_schema_version(conn)
         ensure_schema_version_not_newer(initial_version, supported_version=to_version)
-        ensure_current_schema_contract(conn, schema_version=initial_version)
+        ensure_current_schema_contract(conn, schema_version=initial_version, schema_sql=schema_sql)
         with conn:
-            ensure_schema_version(conn, logger=logger)
+            ensure_schema_version(conn, logger=logger, schema_sql=schema_sql)
             current = get_schema_version(conn)
             ensure_schema_version_not_newer(current, supported_version=to_version)
             _ensure_completed_event_migration_tables(conn, current=current)
             if current >= to_version:
                 if current == CURRENT_SCHEMA_VERSION:
-                    ensure_current_schema_contract(conn, schema_version=current)
+                    ensure_current_schema_contract(conn, schema_version=current, schema_sql=schema_sql)
                 return
             _apply_version_range(conn, current=current, to_version=to_version, schema_sql=schema_sql, logger=logger)
             if to_version == CURRENT_SCHEMA_VERSION:
-                ensure_current_schema_contract(conn, schema_version=to_version)
+                ensure_current_schema_contract(conn, schema_version=to_version, schema_sql=schema_sql)
         if logger:
             fallback_log(logger, "info", f"数据库迁移完成：SchemaVersion {current} -> {to_version}")
     finally:

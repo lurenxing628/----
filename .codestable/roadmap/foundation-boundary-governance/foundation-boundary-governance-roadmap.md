@@ -303,6 +303,7 @@ web/bootstrap 里只有 factory.py 可 import web.routes（装配蓝图）；web
 14. **schema-sql-generated** — `schema.sql` 生成化与 `--check` 门禁；`current_schema_contract_issues` 改为派生比对
     - 所属模块：D
     - 依赖：schema-parity-test
+    - 状态：done（2026-09-20）。生成器、声明结构解析、派生比对、参数贯通与死代码删除均落地；schema.sql 已由生成器重写
 15. **web-dir-cycle-removal** — 三条边改向，消除唯一生产目录环
     - 所属模块：T
     - 依赖：无
@@ -327,7 +328,7 @@ web/bootstrap 里只有 factory.py 可 import web.routes（装配蓝图）；web
 
 ## 7. 观察项
 
-- 背景里“`database_bootstrap` 有非空库缺表按 schema.sql 补齐的修补逻辑”需更正：`bootstrap_missing_tables_from_schema` 及 `database._bootstrap_missing_tables_from_schema` 在生产代码里没有调用方，只有 `tests/migration_db/test_database_migration_runner_delegation.py` 的委托测试引用；迁移器只用 `missing_schema_tables` 组装错误信息，不做静默修补。该死代码在 schema-sql-generated 条目里一并删除。
+- 背景里“`database_bootstrap` 有非空库缺表按 schema.sql 补齐的修补逻辑”需更正：`bootstrap_missing_tables_from_schema` 及 `database._bootstrap_missing_tables_from_schema` 在生产代码里没有调用方，只有 `tests/migration_db/test_database_migration_runner_delegation.py` 的委托测试引用；迁移器只用 `missing_schema_tables` 组装错误信息，不做静默修补。该死代码已在 schema-sql-generated 条目里删除（2026-09-20）。
 - 背景里“门禁清单没有分步耗时记录”需更正：回执已有 `duration_s`，长门禁汇总已有 Slow entries；gate-step-timing 因此 drop。
 
 - `.codestable/architecture/ARCHITECTURE.md` 与 `service-scheduler.md` 在分包落地后需要按 `cs-arch update` 刷新目录地图；本路线不改它们。

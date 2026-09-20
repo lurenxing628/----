@@ -153,5 +153,25 @@ def install_execution_ledger(conn):
     conn.execute(_capture_sql("1 = 1"))
 
 
+_INITIALIZATION_EMPTY_CHECKS = (
+    "NOT EXISTS (SELECT 1 FROM WorkbenchExecutionLegacyFacts LIMIT 1)",
+    "NOT EXISTS (SELECT 1 FROM WorkbenchProductionReports LIMIT 1)",
+    "NOT EXISTS (SELECT 1 FROM WorkbenchProductionReportRevisions LIMIT 1)",
+    "NOT EXISTS (SELECT 1 FROM OperationExecutionEvents LIMIT 1)",
+    "NOT EXISTS (SELECT 1 FROM WorkbenchCommandReceipts WHERE action GLOB 'execution.*' LIMIT 1)",
+)
+
+
+def execution_ledger_initialization_sql() -> str:
+    """Seed for the end of a NEW database's DDL script (schema.sql), never a repair script.
+
+    A brand-new database gets clock revision 1 and report number 1; when any ledger source already
+    exists the revision CHECK deliberately aborts the initialization instead of guessing a state.
+    """
+    return ("INSERT INTO WorkbenchExecutionLedgerClock(singleton, revision, next_report_no) "
+            "SELECT 1, CASE WHEN " + " AND ".join(_INITIALIZATION_EMPTY_CHECKS) + " THEN 1 ELSE 0 END, 1 "
+            "WHERE NOT EXISTS (SELECT 1 FROM WorkbenchExecutionLedgerClock);")
+
+
 objects = execution_ledger_objects
 contract_issues = execution_ledger_contract_issues

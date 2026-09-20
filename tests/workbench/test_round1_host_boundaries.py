@@ -114,6 +114,7 @@ def test_query_rejections_keep_original_status(value, status):
 
 
 def test_shared_sqlite_snapshots_keep_original_objects_rows_and_schema():
+    from core.infrastructure.workbench_metadata_schema import _canonical_sql
     from tests._support import sqlite_snapshot
     from tests.workbench import identity_metadata_support, process_workflow_support
 
@@ -129,7 +130,9 @@ def test_shared_sqlite_snapshots_keep_original_objects_rows_and_schema():
         conn.execute("PRAGMA query_only=ON")
         schema, tables = sqlite_snapshot.stored_state(conn)
         assert tables == {"sample": [(1, None, b"\x00\xff"), (2, 0, b""), (3, "0", None)]}
-        assert schema["sample"] == ("table", "sample", "CREATE TABLE sample(id INTEGER PRIMARY KEY, value, raw BLOB)")
+        # 快照里的 DDL 是生产 _canonical_sql 的规范化形态（去注释、压空白、列/约束排序），对象名与类型原样保留
+        assert schema["sample"] == ("table", "sample", _canonical_sql("CREATE TABLE sample(id INTEGER PRIMARY KEY, value, raw BLOB)"))
+        assert schema["sample"][2] == "CREATE TABLE sample(id INTEGER PRIMARY KEY,raw BLOB,value)"
         assert conn.total_changes == before and not conn.in_transaction
     finally:
         conn.close()

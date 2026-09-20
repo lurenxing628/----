@@ -138,8 +138,50 @@ def install_metadata(conn) -> None:
                 WHERE existing.kind = ? AND existing.entity_key = {key} AND existing.active = 1)""", (kind, kind))
 
 
+_COMMENT_RE = re.compile(r"--[^\n]*")
+_IF_NOT_EXISTS_RE = re.compile(r"\bIF\s+NOT\s+EXISTS\b", re.I)
+_WS_RE = re.compile(r"\s+")
+_PUNCT_WS_RE = re.compile(r"\s*([(),])\s*")
+
+
+def _split_top_level(body: str) -> List[str]:
+    """按最外层逗号切开 CREATE TABLE 的列与约束定义（括号与引号内的逗号不算）。"""
+    parts: List[str] = []
+    depth, quote, start = 0, None, 0
+    for index, char in enumerate(body):
+        if quote is not None:
+            if char == quote:
+                quote = None
+            continue
+        if char in ("'", '"', "`"):
+            quote = char
+        elif char == "[":
+            quote = "]"
+        elif char == "(":
+            depth += 1
+        elif char == ")":
+            depth -= 1
+        elif char == "," and depth == 0:
+            parts.append(body[start:index].strip())
+            start = index + 1
+    parts.append(body[start:].strip())
+    return [part for part in parts if part]
+
+
 def _canonical_sql(sql: str) -> str:
-    return re.sub(r"\s+", " ", re.sub(r"\bIF\s+NOT\s+EXISTS\b", "", sql, flags=re.I)).strip().rstrip(";")
+    """DDL 文本规范化：去 SQL 注释与 IF NOT EXISTS、压空白与标点周围空白；CREATE TABLE 的列/约束按文本排序。
+
+    列的物理顺序不是契约：ALTER TABLE ADD COLUMN 只能追加，迁移链与 schema.sql 新库的列序天然不同，按列名访问不受影响。
+    """
+    text = _COMMENT_RE.sub("", str(sql or ""))
+    text = _IF_NOT_EXISTS_RE.sub("", text)
+    text = _PUNCT_WS_RE.sub(r"\1", _WS_RE.sub(" ", text)).strip().rstrip(";").strip()
+    if text[:12].upper() == "CREATE TABLE":
+        open_index, close_index = text.find("("), text.rfind(")")
+        if 0 < open_index < close_index:
+            body = ",".join(sorted(_split_top_level(text[open_index + 1:close_index])))
+            text = text[:open_index + 1] + body + text[close_index:]
+    return text
 
 
 def workbench_metadata_contract_issues(conn) -> List[str]:

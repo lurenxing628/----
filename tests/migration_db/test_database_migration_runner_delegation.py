@@ -83,45 +83,6 @@ def test_get_connection_race_to_dangling_symlink_does_not_create_outside_target(
     assert not outside_target.exists()
 
 
-def test_bootstrap_missing_tables_commit_failure_raises(monkeypatch):
-    from core.infrastructure import database_bootstrap as bootstrap_mod
-
-    class CommitFailConn:
-        def __init__(self) -> None:
-            self.scripts: List[str] = []
-
-        def executescript(self, script):
-            self.scripts.append(str(script))
-
-        def commit(self):
-            raise sqlite3.OperationalError("commit failed")
-
-    conn = CommitFailConn()
-    schema_sql = "CREATE TABLE IF NOT EXISTS Foo (id INTEGER PRIMARY KEY);"
-    monkeypatch.setattr(bootstrap_mod, "missing_schema_tables", lambda conn_arg, schema_arg: ["Foo"])
-
-    with pytest.raises(sqlite3.OperationalError, match="commit failed"):
-        bootstrap_mod.bootstrap_missing_tables_from_schema(conn, schema_sql, logger=None)
-
-    assert conn.scripts
-
-
-def test_database_bootstrap_wrapper_does_not_commit_twice(monkeypatch):
-    from core.infrastructure import database as database_mod
-
-    class CommitBombConn:
-        def commit(self):
-            raise AssertionError("wrapper must not commit")
-
-    monkeypatch.setattr(
-        database_mod,
-        "_bootstrap_missing_tables_from_schema_impl",
-        lambda conn, schema_sql, logger=None: ["Foo"],
-    )
-
-    assert database_mod._bootstrap_missing_tables_from_schema(CommitBombConn(), "CREATE TABLE Foo(id);") == ["Foo"]
-
-
 def test_ensure_schema_initialization_rollback_failure_raises(monkeypatch, tmp_path):
     from core.infrastructure import database as database_mod
 

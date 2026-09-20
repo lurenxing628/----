@@ -212,8 +212,8 @@ def test_migration_runner_final_contract_failure_restores_real_v20(mem_conn, tmp
     copy_to_temp(conn, path)
     original = migration_runner.ensure_current_schema_contract
 
-    def reject_final(connection, *, schema_version=None):
-        original(connection, schema_version=schema_version)
+    def reject_final(connection, *, schema_version=None, schema_sql=None):
+        original(connection, schema_version=schema_version, schema_sql=schema_sql)
         if schema_version == CURRENT_SCHEMA_VERSION:
             assert connection.in_transaction
             assert workbench_resource_contract_issues(connection) == []

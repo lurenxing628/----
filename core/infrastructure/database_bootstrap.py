@@ -8,13 +8,8 @@ from typing import List
 
 from .migration_common import fallback_log
 from .migration_state import list_user_tables
+from .schema_declaration import declared_tables
 
-_CREATE_TABLE_RE = re.compile(
-    r"(?ims)^\s*(CREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(.*?\);)"
-)
-_CREATE_INDEX_RE = re.compile(
-    r"(?im)^\s*(CREATE\s+(?:UNIQUE\s+)?INDEX\s+IF\s+NOT\s+EXISTS\s+[A-Za-z_][A-Za-z0-9_]*\s+ON\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(.*?\);)"
-)
 _LOGGER = logging.getLogger(__name__)
 
 
@@ -37,29 +32,13 @@ def build_schema_exec_script(sql: str) -> str:
 
 
 def missing_schema_tables(conn: sqlite3.Connection, schema_sql: str) -> List[str]:
+    """schema 文本声明了、当前库却没有的业务表；只用于迁移失败时的提示文案，绝不据此补表。"""
     existing = set(list_user_tables(conn))
     return [name for name in declared_schema_tables(schema_sql) if name not in existing]
 
 
-def bootstrap_missing_tables_from_schema(conn: sqlite3.Connection, schema_sql: str, logger=None) -> List[str]:
-    missing_tables = missing_schema_tables(conn, schema_sql)
-    if not missing_tables:
-        return []
-    selected_statements = _create_missing_table_statements(schema_sql, missing_tables)
-    script = _build_statement_script(selected_statements)
-    if not script:
-        return []
-    conn.executescript(script)
-    try:
-        conn.commit()
-    except Exception as exc:
-        fallback_log(logger, "error", f"缺失整表补齐后提交失败，已阻断迁移：{exc}")
-        raise
-    if logger:
-        fallback_log(
-            logger, "warning", f"检测到非空数据库缺失整表，已按 schema.sql 补齐：{', '.join(missing_tables)}。"
-        )
-    return missing_tables
+def declared_schema_tables(schema_sql: str) -> List[str]:
+    return declared_tables(str(schema_sql or ""))
 
 
 def cleanup_probe_db(db_path: str) -> None:
@@ -69,55 +48,4 @@ def cleanup_probe_db(db_path: str) -> None:
             if os.path.exists(path):
                 os.remove(path)
         except Exception as exc:
-            fallback_log(_LOGGER, "warning", f"迁移预检临时库清理失败（已继续）：{exc}（path={path}）")
-
-
-def declared_schema_tables(schema_sql: str) -> List[str]:
-    tables: List[str] = []
-    for match in _CREATE_TABLE_RE.finditer(str(schema_sql or "")):
-        name = str(match.group(2) or "").strip()
-        if not name or name == "SchemaVersion" or name in tables:
-            continue
-        tables.append(name)
-    return tables
-
-
-def _create_missing_table_statements(schema_sql: str, missing_tables: List[str]) -> List[str]:
-    table_statements = _schema_create_table_statements(schema_sql)
-    index_statements = _schema_index_statements(schema_sql)
-    selected_statements: List[str] = []
-    for table in missing_tables:
-        stmt = table_statements.get(table)
-        if stmt:
-            selected_statements.append(stmt)
-    for table, stmt in index_statements:
-        if table in missing_tables:
-            selected_statements.append(stmt)
-    return selected_statements
-
-
-def _schema_create_table_statements(schema_sql: str) -> dict:
-    statements = {}
-    for match in _CREATE_TABLE_RE.finditer(str(schema_sql or "")):
-        stmt = str(match.group(1) or "").strip()
-        name = str(match.group(2) or "").strip()
-        if stmt and name and name != "SchemaVersion":
-            statements[name] = stmt
-    return statements
-
-
-def _schema_index_statements(schema_sql: str) -> List[tuple]:
-    statements = []
-    for match in _CREATE_INDEX_RE.finditer(str(schema_sql or "")):
-        stmt = str(match.group(1) or "").strip()
-        table = str(match.group(2) or "").strip()
-        if stmt and table:
-            statements.append((table, stmt))
-    return statements
-
-
-def _build_statement_script(statements: List[str]) -> str:
-    clean = [str(stmt or "").strip() for stmt in statements if str(stmt or "").strip()]
-    if not clean:
-        return ""
-    return "BEGIN;\n" + "\n".join(clean) + "\nCOMMIT;\n"
+            fallback_log(_LOGGER, "warning", f"迁移预检临时库清理失败（已继续）：{exc}（path={db_path}{suffix}）")

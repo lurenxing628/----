@@ -112,10 +112,11 @@ items:
   - slug: schema-sql-generated
     description: schema.sql 生成化与 --check 门禁；current_schema_contract_issues 改为派生比对
     depends_on: [schema-parity-test]
-    status: planned
+    status: done
     feature: null
     minimal_loop: false
-    notes: null
+    notes: >-
+      2026-09-20 完成。tools/generate_schema_sql.py（--check/--write）以 v4 起点 + 迁移链导出 DDL 重写 schema.sql（固定头 + 全部 CREATE ... IF NOT EXISTS）；core/infrastructure/schema_declaration.py 用隔离 :memory: 库解析声明结构（替代正则）；current_schema_contract_issues 改为核心表“live 列集合 ⊇ 声明列集合”派生比对，子系统表仍由各自 DDL 契约逐字核对；ensure_schema/迁移器贯通 schema_sql 参数；删除无调用方的 bootstrap_missing_tables_from_schema 及其委托测试；合同测试 tests/migration_db/test_generate_schema_sql.py 登记门禁。
 
   - slug: web-dir-cycle-removal
     description: 三条边改向，消除唯一生产目录环

@@ -461,8 +461,8 @@ def test_migration_runner_retains_outer_rollback_ownership(v19_conn, tmp_path, m
     copy_to_temp(v19_conn, path)
     real_contract_check = migration_runner.ensure_current_schema_contract
 
-    def reject_after_current(conn, *, schema_version=None):
-        real_contract_check(conn, schema_version=schema_version)
+    def reject_after_current(conn, *, schema_version=None, schema_sql=None):
+        real_contract_check(conn, schema_version=schema_version, schema_sql=schema_sql)
         if schema_version == CURRENT_SCHEMA_VERSION:
             assert conn.in_transaction
             assert table_rows(conn, "WorkbenchEntityRefs")

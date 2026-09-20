@@ -8,9 +8,6 @@ from pathlib import Path
 from typing import List, Optional
 
 from .database_bootstrap import (
-    bootstrap_missing_tables_from_schema as _bootstrap_missing_tables_from_schema_impl,
-)
-from .database_bootstrap import (
     build_schema_exec_script as _build_schema_exec_script,
 )
 from .database_bootstrap import (
@@ -44,6 +41,7 @@ from .safe_files import (
     guard_fixed_file_open_target,
     stat_regular_file,
 )
+from .schema_declaration import resolve_schema_path as _resolve_schema_path_impl
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -115,10 +113,6 @@ def get_connection(db_path: str) -> sqlite3.Connection:
         raise
 
 
-def _bootstrap_missing_tables_from_schema(conn: sqlite3.Connection, schema_sql: str, logger=None) -> List[str]:
-    return _bootstrap_missing_tables_from_schema_impl(conn, schema_sql, logger=logger)
-
-
 def _rollback_failed_schema_initialization(conn: sqlite3.Connection, init_exc: Exception, logger=None) -> None:
     try:
         conn.rollback()
@@ -153,32 +147,8 @@ def _ensure_no_user_tables_db_can_bootstrap(conn: sqlite3.Connection, initial_ve
 
 
 def _resolve_schema_path(schema_path: Optional[str]) -> str:
-    # 纯路径解析（无 DB / 无 logger / 无副作用，只读 os/sys）：源码根 → frozen exe 同目录 → cwd 兜底，
-    # 命中即返回 abspath；找不到 / 不存在抛 FileNotFoundError（类型、中文文案、abspath 时序原样保留）。
-    if not schema_path:
-        # 默认优先：仓库根目录（源码运行）
-        candidates = [
-            os.path.join(os.path.dirname(__file__), "..", "..", "schema.sql"),
-        ]
-        # PyInstaller onedir：schema.sql 与 exe 同目录（在 app.py 中也会显式传入，这里再做兜底）
-        if getattr(sys, "frozen", False):
-            candidates.append(os.path.join(os.path.dirname(sys.executable), "schema.sql"))
-        # 最后兜底：当前工作目录
-        candidates.append(os.path.join(os.getcwd(), "schema.sql"))
-
-        for p in candidates:
-            ap = os.path.abspath(p)
-            if os.path.exists(ap):
-                schema_path = ap
-                break
-
-    if not schema_path:
-        raise FileNotFoundError("找不到数据库结构文件：schema.sql（请确认工作目录或打包参数包含该文件）")
-
-    schema_path = os.path.abspath(schema_path)
-    if not os.path.exists(schema_path):
-        raise FileNotFoundError(f"找不到数据库结构文件：{schema_path}")
-    return schema_path
+    # 纯路径解析（无 DB / 无 logger / 无副作用）：源码根 → frozen exe 同目录 → cwd 兜底；实现归 schema_declaration。
+    return _resolve_schema_path_impl(schema_path)
 
 
 def ensure_schema(
@@ -204,16 +174,16 @@ def ensure_schema(
             # 不会修正既有表结构，后续索引/新列依赖会直接失败。
             initial_version = _get_schema_version(conn)
             _ensure_schema_version_not_newer(initial_version, supported_version=CURRENT_SCHEMA_VERSION)
-            _ensure_current_schema_contract(conn, schema_version=initial_version)
+            _ensure_current_schema_contract(conn, schema_version=initial_version, schema_sql=sql)
             if _has_no_user_tables(conn):
                 _ensure_no_user_tables_db_can_bootstrap(conn, initial_version)
                 conn.executescript(script)
 
             # 确保 SchemaVersion 表存在，并获取当前版本
-            _ensure_schema_version(conn, logger=logger)
+            _ensure_schema_version(conn, logger=logger, schema_sql=sql)
             current_version = _get_schema_version(conn)
             _ensure_schema_version_not_newer(current_version, supported_version=CURRENT_SCHEMA_VERSION)
-            _ensure_current_schema_contract(conn, schema_version=current_version)
+            _ensure_current_schema_contract(conn, schema_version=current_version, schema_sql=sql)
             conn.commit()
             if logger:
                 fallback_log(logger, "info", "数据库结构检查完成（已确保所有表存在）。")
