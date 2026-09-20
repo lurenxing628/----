@@ -18,7 +18,7 @@ SOURCE_GUARD = install_from_environment()
 from core.infrastructure.workbench_trial_schema import TRIAL_TABLES
 from core.models.workbench_plan_scope import PlanCatalogScope, PlanReadScope
 from core.services.workbench.plan.queries import WorkbenchPlanQueryService
-from core.services.workbench.trial import WorkbenchTrialService
+from core.services.workbench.trial.service import WorkbenchTrialService
 from tests.workbench.live_environment import REPO, read_identity, write_json
 from tests.workbench.run_live_server_support import database_state
 from web.routes.workbench.write_context import issue_write_context, validate_write_context

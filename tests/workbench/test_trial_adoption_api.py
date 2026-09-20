@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 from flask import g, request
 
-from core.services.workbench.trial_adoption import WorkbenchTrialAdoptionService
+from core.services.workbench.trial.adoption import WorkbenchTrialAdoptionService
 from tests.workbench.trial_adoption_support import BASE, INTENT, KEY, api, saved_scenario
 from tests.workbench.trial_adoption_support import trial_case as trial_case
 from tests.workbench.trial_support import CommitFailureConnection, snapshot

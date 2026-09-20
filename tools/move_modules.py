@@ -213,9 +213,12 @@ def _glob_regex(pattern: str) -> "re.Pattern":
 class StringRewriter:
     def __init__(self, plan: Plan):
         ordered = sorted(plan.moves.items(), key=lambda item: -len(item[0]))
-        self.dotted = [(re.compile(r"(?<![\w.])" + re.escape(old) + r"(?!\w)"), new) for old, new in ordered]
-        self.paths = [(re.compile(r"(?<![\w/])" + re.escape(rel_path(old)) + r"(?!\w)"), rel_path(new))
-                      for old, new in ordered]
+        # 一次扫描、按最长优先的整体交替匹配：每个原始出现只替换一次，
+        # 避免 a→a.service 之后又把已改写出来的 a.catalog 二次替换成 a.service.catalog。
+        self.dotted = {old: new for old, new in ordered}
+        self.dotted_pattern = re.compile(r"(?<![\w.])(?:" + "|".join(re.escape(old) for old, _ in ordered) + r")(?!\w)")
+        self.paths = {rel_path(old): rel_path(new) for old, new in ordered}
+        self.paths_pattern = re.compile(r"(?<![\w/])(?:" + "|".join(re.escape(rel_path(old)) for old, _ in ordered) + r")(?!\w)")
         self.moved_paths = {rel_path(old): rel_path(new) for old, new in ordered}
         self.package_dirs = sorted({parent_of(old).replace(".", "/") for old in plan.moves}
                                    | {parent_of(old) for old in plan.moves})
@@ -227,9 +230,8 @@ class StringRewriter:
             text = source[start:end]
             new_text = self._glob_literal(text)
             if new_text is None:
-                new_text = text
-                for pattern, replacement in self.dotted + self.paths:
-                    new_text = pattern.sub(replacement, new_text)
+                new_text = self.dotted_pattern.sub(lambda m: self.dotted[m.group(0)], text)
+                new_text = self.paths_pattern.sub(lambda m: self.paths[m.group(0)], new_text)
                 self._warn(text, where + ":" + str(source.count("\n", 0, start) + 1), warnings)
             if new_text != text:
                 notes.append(where + ":" + str(source.count("\n", 0, start) + 1) + " " + text + "  →  " + new_text)

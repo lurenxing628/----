@@ -52,7 +52,7 @@ _RUN_SCOPES = (
 )
 _TRIAL_SCOPES = (
     *_RUN_SCOPES,
-    "core/models/workbench_trial*.py", "core/services/workbench/trial*.py", "core/services/workbench/facts/trial_*.py",
+    "core/models/workbench_trial*.py", "core/services/workbench/trial/**/*.py", "core/services/workbench/facts/trial_*.py",
     "web/routes/workbench/trial*.py", "frontend/workbench/app/Trial*",
 )
 _POINT_PIECE_SCOPES = (
@@ -682,7 +682,7 @@ WORKBENCH_REQUIRED_REGRESSION_GROUPS = (
         "test_trial_adoption_history_boundaries.py",
         "test_trial_adoption_execution_anchors.py",
     ), (*_TRIAL_SCOPES, "core/services/workbench/plan/queries.py",
-        "core/errors.py", "core/services/workbench/trial_execution_anchors.py")),
+        "core/errors.py", "core/services/workbench/trial/execution_anchors.py")),
     _group("workbench_dashboard", "Dashboard reads, commands, host connections and retained history", (
         "test_dashboard_schema.py", "test_dashboard_reads.py", "test_dashboard_candidates.py",
         "test_dashboard_commands.py", "test_dashboard_atomic.py", "test_dashboard_api.py",
@@ -736,7 +736,7 @@ WORKBENCH_REQUIRED_REGRESSION_GROUPS = (
         "tests/workbench/piece_production_connection_support.py",
         "core/infrastructure/database.py", "core/services/workbench/plan/projection.py",
         "core/services/workbench/facts/candidate_facts.py", "core/services/workbench/facts/candidate_tasks.py",
-        "core/services/workbench/trial_adoption_validation.py",
+        "core/services/workbench/trial/adoption_validation.py",
     ), ("APS_ET_EVIDENCE_ROOT",)),
 )
 
@@ -1041,7 +1041,7 @@ WORKBENCH_SUPPLEMENTAL_REGRESSION_GROUPS = (
         "tests/workbench/field_workspace_probe_harness.cjs",
         "tests/workbench/field_scope_navigation_browser.cjs",
         "tests/workbench/resource_context_refresh_probe.cjs",
-        "core/services/workbench/trial_execution_anchors.py",
+        "core/services/workbench/trial/execution_anchors.py",
         "web/routes/workbench/system_log_snapshots.py",
         ".codestable/roadmap/workbench-prototype-migration/workbench-capabilities.json",
         ".codestable/roadmap/workbench-prototype-migration/acceptance-master/actions.json",

@@ -334,7 +334,7 @@ def test_required_parent_fingerprint_tracks_group_specific_scope_union(tmp_path)
     "tests/workbench/test_trial_predecessor_labels.py", "tests/workbench/test_piece_chain_end_to_end.py",
     "tests/workbench/piece_production_connection_support.py", "tests/workbench/trial_predecessor_labels_probe.cjs",
     "core/infrastructure/database.py", "core/services/workbench/plan/projection.py",
-    "core/services/workbench/facts/candidate_tasks.py", "core/services/workbench/trial_adoption_validation.py",
+    "core/services/workbench/facts/candidate_tasks.py", "core/services/workbench/trial/adoption_validation.py",
     "frontend/workbench/app/PointContract.js", "frontend/workbench/app/ResourceControls.jsx",
     "frontend/workbench/app/TrialControls.jsx", "frontend/workbench/app/TrialGantt.jsx",
     "frontend/workbench/app/TrialDetails.jsx", "scripts/workbench/compile.cjs",

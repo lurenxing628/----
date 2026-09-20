@@ -9,8 +9,8 @@ from core.models.workbench_command import WorkbenchCommandUncertain, input_finge
 from core.models.workbench_trial import fields
 from core.models.workbench_trial_catalog import TrialCatalogScope
 from core.services.workbench import messages
-from core.services.workbench.trial import WorkbenchTrialService
-from core.services.workbench.trial_catalog import WorkbenchTrialCatalogService
+from core.services.workbench.trial.catalog import WorkbenchTrialCatalogService
+from core.services.workbench.trial.service import WorkbenchTrialService
 from web.api_responses import query_success
 
 from .api_responses import api_endpoint

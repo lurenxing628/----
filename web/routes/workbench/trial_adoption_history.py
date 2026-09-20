@@ -5,7 +5,7 @@ import re
 from flask import g, request
 
 from core.models.workbench_trial import reject
-from core.services.workbench.trial_adoption_history import WorkbenchTrialAdoptionHistoryService, history_scope
+from core.services.workbench.trial.adoption_history import WorkbenchTrialAdoptionHistoryService, history_scope
 from web.api_responses import query_success
 
 from .api_responses import api_endpoint

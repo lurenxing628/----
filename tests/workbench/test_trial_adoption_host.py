@@ -5,7 +5,7 @@ import time
 from pathlib import Path
 
 from core.infrastructure.database import get_connection
-from core.services.workbench import trial_adoption
+from core.services.workbench.trial import adoption as trial_adoption
 from tests.workbench.run_entrypoint_support import EntryHarness, accept_via_http
 from tests.workbench.run_entrypoint_support import entrypoint_case as _case  # noqa: F401
 from tests.workbench.trial_adoption_support import BASE, INTENT

@@ -1,8 +1,7 @@
 """Scenario provenance wrapper; official plan insertion belongs to shared adapter."""
 
 from core.models.workbench_command import WorkbenchCommandOutcome
-
-from .plan.official_persistence import persist_official_plan_in_tx
+from core.services.workbench.plan.official_persistence import persist_official_plan_in_tx
 
 
 def persist_trial_adoption_in_tx(conn, evidence, intent, request_key, *, application_operator):

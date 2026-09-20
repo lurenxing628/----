@@ -1,6 +1,6 @@
 """DL-owned point-event inputs; no edits to existing fixtures or live databases."""
 
-from core.services.workbench.trial_calendar import calendar_engine
+from core.services.workbench.trial.calendar import calendar_engine
 
 
 def original_work(*, setup=0, unit=0, quantity=3, priority="normal"):

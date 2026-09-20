@@ -1,24 +1,24 @@
 """Copy the explicit complete base, including private legacy row fields."""
 
 from core.models.workbench_trial import MAX_TRIAL_TASKS, issue, reject
+from core.services.workbench.facts.candidate_facts import GenerationFacts, _table
+from core.services.workbench.facts.candidate_projection import candidate_summary, dispositions, validate_manifest
+from core.services.workbench.facts.candidate_store import CandidateStore
+from core.services.workbench.facts.candidate_tasks import tasks_projection
+from core.services.workbench.facts.candidate_values import stored_json
+from core.services.workbench.facts.preflight_checks import stored_date
+from core.services.workbench.facts.zero_duration_evidence import CandidatePointReader, point_basis
+from core.services.workbench.piece_adoption_trial import trial_piece_predecessors
+from core.services.workbench.plan.baseline import _complete_rows
+from core.services.workbench.plan.point_evidence import official_point_work
+from core.services.workbench.plan.projection import project_plan
+from core.services.workbench.plan.queries import WorkbenchPlanQueryService
 from data.repositories.workbench_trial_query_repo import WorkbenchTrialQueryRepository
 from data.repositories.workbench_trial_raw_repo import WorkbenchTrialRawPlanRepository
 from data.repositories.workbench_trial_repo import new_ref
 
-from .facts.candidate_facts import GenerationFacts, _table
-from .facts.candidate_projection import candidate_summary, dispositions, validate_manifest
-from .facts.candidate_store import CandidateStore
-from .facts.candidate_tasks import tasks_projection
-from .facts.candidate_values import stored_json
-from .facts.preflight_checks import stored_date
-from .facts.zero_duration_evidence import CandidatePointReader, point_basis
-from .piece_adoption_trial import trial_piece_predecessors
-from .plan.baseline import _complete_rows
-from .plan.point_evidence import official_point_work
-from .plan.projection import project_plan
-from .plan.queries import WorkbenchPlanQueryService
-from .trial_execution_anchors import attach_execution_anchors
-from .trial_facts import entity_maps, live_context
+from .execution_anchors import attach_execution_anchors
+from .facts import entity_maps, live_context
 
 
 def _arrangement(payload, refs):

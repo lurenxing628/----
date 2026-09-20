@@ -7,8 +7,7 @@ from core.models.workbench_trial import issue
 from core.services.scheduler.run.schedule_execution_guardrails import build_execution_guardrails_from_projections
 from core.services.scheduler.run.schedule_execution_resource_facts import _latest_plan_rows
 from core.services.scheduler.schedule_service import ScheduleService
-
-from .facts.run_input_codec import restore_execution_projections
+from core.services.workbench.facts.run_input_codec import restore_execution_projections
 
 
 def _selected_has_actuals(rows, live):

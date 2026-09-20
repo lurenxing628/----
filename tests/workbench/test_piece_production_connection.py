@@ -10,7 +10,7 @@ from core.models.workbench_piece_adoption import PieceAdoptionBlocked
 from core.models.workbench_trial_adoption import TrialAdoptionBlocked
 from core.services.workbench import piece_adoption
 from core.services.workbench.piece_adoption import validate_piece_adoption
-from core.services.workbench.trial_adoption_validation import validate_trial_adoption
+from core.services.workbench.trial.adoption_validation import validate_trial_adoption
 from tests.workbench.piece_adoption_support import lower_input, slot_payload, split
 from tests.workbench.piece_chain_support import adopt_candidate, saved_trial
 from tests.workbench.piece_production_connection_support import (
@@ -165,7 +165,7 @@ def test_saved_snapshot_drift_after_preview_rejected_in_write_transaction(produc
     finally:
         other.close()
     # Raw storage capture must preserve even malformed DATE/BLOB fixtures.
-    from core.services.workbench.trial_facts import capture_facts
+    from core.services.workbench.trial.facts import capture_facts
     before = capture_facts(case.conn)
     receipts = case.conn.execute("SELECT count(*) FROM WorkbenchCommandReceipts").fetchone()[0]
     blocked = svc.preview(saved["scenario_ref"])

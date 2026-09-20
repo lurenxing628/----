@@ -4,14 +4,14 @@ from core.models.workbench_command import WorkbenchCommandRejected, canonical_js
 from core.models.workbench_plan_reference import WorkbenchPlanLocator, WorkbenchPlanReferenceError
 from core.models.workbench_trial import reference, reject
 from core.services.scheduler.workbench_plan_page import _PagePlanQueryService
+from core.services.workbench.facts.run_input_readonly import candidate_read_snapshot
+from core.services.workbench.plan.queries import WorkbenchPlanQueryService
 from data.repositories.workbench_plan_catalog_repo import WorkbenchPlanCatalogRepository
 from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
 from data.repositories.workbench_trial_adoption_history import TrialAdoptionHistoryRepository
 
-from .facts.run_input_readonly import candidate_read_snapshot
-from .plan.queries import WorkbenchPlanQueryService
-from .trial_adoption_history_evidence import audit_fields, gap, invalid, receipt_plan, scenario_evidence
-from .trial_adoption_history_policy import MAX_DIRECTORY_BYTES, adoption_receipts, bound
+from .adoption_history_evidence import audit_fields, gap, invalid, receipt_plan, scenario_evidence
+from .adoption_history_policy import MAX_DIRECTORY_BYTES, adoption_receipts, bound
 
 
 def history_scope(scenario_ref, status="all", size=20):

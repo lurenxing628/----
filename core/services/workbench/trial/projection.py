@@ -6,12 +6,12 @@ from datetime import date, datetime, timedelta
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_trial import ACTIONS
+from core.services.workbench.facts.zero_duration import point_event_dto
+from core.services.workbench.facts.zero_duration_evidence import trial_point_evidence
 
-from .facts.zero_duration import point_event_dto
-from .facts.zero_duration_evidence import trial_point_evidence
-from .trial_calendar import original_duration
-from .trial_capacity import trial_capacity
-from .trial_protection import TrialProtection
+from .calendar import original_duration
+from .capacity import trial_capacity
+from .protection import TrialProtection
 
 
 def tasks_projection(rows, draft_ref, checked, live):

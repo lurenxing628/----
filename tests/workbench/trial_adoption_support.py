@@ -5,7 +5,7 @@ from collections import Counter
 
 from flask import Blueprint, g
 
-from core.services.workbench.trial_adoption import WorkbenchTrialAdoptionService
+from core.services.workbench.trial.adoption import WorkbenchTrialAdoptionService
 from tests.workbench.trial_support import change, connect, create
 from tests.workbench.trial_support import service as trial_service
 from tests.workbench.trial_support import trial_case as trial_case  # noqa: F401

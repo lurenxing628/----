@@ -6,7 +6,7 @@ from flask import current_app, g, jsonify, request
 
 from core.models.workbench_command import WorkbenchCommandUncertain, input_fingerprint, validate_request_key
 from core.models.workbench_trial import fields, reject
-from core.services.workbench.trial_adoption import WorkbenchTrialAdoptionService
+from core.services.workbench.trial.adoption import WorkbenchTrialAdoptionService
 from web.api_responses import query_success
 
 from .api_responses import api_endpoint

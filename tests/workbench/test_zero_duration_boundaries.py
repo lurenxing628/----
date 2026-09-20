@@ -13,7 +13,7 @@ from core.services.workbench.run_candidates import WorkbenchRunCandidateQuerySer
 from core.services.workbench.run_compute import compute_candidate_run
 from core.services.workbench.run_jobs_facts import capture_run_facts
 from core.services.workbench.run_worker import WorkbenchRunWorker
-from core.services.workbench.trial_adoption import WorkbenchTrialAdoptionService
+from core.services.workbench.trial.adoption import WorkbenchTrialAdoptionService
 from tests.workbench.run_candidate_adoption_support import INTENT
 from tests.workbench.run_candidate_adoption_support import service as candidate_adoption
 from tests.workbench.run_candidate_support import candidate_case as candidate_case  # noqa: F401

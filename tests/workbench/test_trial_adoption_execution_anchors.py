@@ -180,7 +180,7 @@ def test_actual_anchor_cannot_be_changed_by_trial_command(trial_case):
 
 
 def test_old_saved_arrangement_is_rejected_without_silently_reanchoring(trial_case, monkeypatch):
-    import core.services.workbench.trial as trial_module
+    import core.services.workbench.trial.service as trial_module
     case = trial_case
     value, _, _ = _two_tasks(case)
     prepare = trial_module.prepare_base

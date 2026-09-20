@@ -5,7 +5,7 @@ import sqlite3
 from flask import Blueprint, g
 
 from core.infrastructure.database import get_connection
-from core.services.workbench.trial_adoption_history import WorkbenchTrialAdoptionHistoryService
+from core.services.workbench.trial.adoption_history import WorkbenchTrialAdoptionHistoryService
 from tests.workbench.trial_adoption_support import INTENT, preview, saved_scenario, service
 from tests.workbench.trial_support import connect
 from tests.workbench.trial_support import trial_case as trial_case  # noqa: F401

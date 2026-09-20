@@ -10,18 +10,18 @@ from core.models.workbench_run_job import durable_value
 from core.models.workbench_trial_adoption import TrialAdoptionBlocked, TrialAdoptionEvidence
 from core.models.workbench_trial_codec import fingerprint
 from core.services.scheduler.schedule_service import ScheduleService
+from core.services.workbench.facts.candidate_archive import require_adoption_schema
+from core.services.workbench.facts.run_input_readonly import candidate_read_snapshot
+from core.services.workbench.facts.trial_scenario_archive import load_saved_scenario, schedule_rows
+from core.services.workbench.run_candidate_adoption_storage import _require_official_baseline
+from core.services.workbench.run_candidate_adoption_validation import _require_official_scope, validate_adoption_payload
+from core.services.workbench.run_compute_validation import validate_candidate
+from core.services.workbench.run_jobs_facts import run_execution_projections
 from data.repositories.workbench_trial_query_repo import WorkbenchTrialQueryRepository
 
-from .facts.candidate_archive import require_adoption_schema
-from .facts.run_input_readonly import candidate_read_snapshot
-from .facts.trial_scenario_archive import load_saved_scenario, schedule_rows
-from .run_candidate_adoption_storage import _require_official_baseline
-from .run_candidate_adoption_validation import _require_official_scope, validate_adoption_payload
-from .run_compute_validation import validate_candidate
-from .run_jobs_facts import run_execution_projections
-from .trial_adoption_input import prepare_trial_adoption_input
-from .trial_facts import live_context
-from .trial_validation import TrialValidator
+from .adoption_input import prepare_trial_adoption_input
+from .facts import live_context
+from .validation import TrialValidator
 
 
 def validate_trial_adoption(conn, scenario_ref):

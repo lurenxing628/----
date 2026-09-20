@@ -8,7 +8,7 @@ import pytest
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_trial_catalog import TrialCatalogScope
-from core.services.workbench.trial_catalog import WorkbenchTrialCatalogService
+from core.services.workbench.trial.catalog import WorkbenchTrialCatalogService
 from tests.workbench.trial_support import BASE, api, candidate, change, connect, create, official, service, snapshot
 from tests.workbench.trial_support import trial_case as trial_case
 
@@ -108,7 +108,7 @@ def test_catalog_rejects_unknown_or_unbounded_queries(trial_case, query):
 
 
 def test_row_bound_is_explicit_and_catalog_reads_no_snapshot_payloads(trial_case, monkeypatch):
-    import core.services.workbench.trial_catalog as module
+    import core.services.workbench.trial.catalog as module
 
     case = trial_case
     original = official(case)
@@ -135,8 +135,8 @@ import json, sqlite3, sys
 from flask import Flask
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_trial_catalog import TrialCatalogScope
-from core.services.workbench.trial import WorkbenchTrialService
-from core.services.workbench.trial_catalog import WorkbenchTrialCatalogService
+from core.services.workbench.trial.service import WorkbenchTrialService
+from core.services.workbench.trial.catalog import WorkbenchTrialCatalogService
 from web.routes.workbench.write_context import issue_write_context, validate_write_context
 conn = sqlite3.connect(sys.argv[1])
 conn.row_factory = sqlite3.Row

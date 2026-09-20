@@ -8,17 +8,11 @@ from typing import NoReturn
 from core.models.workbench_command import input_fingerprint, validate_request_key
 from core.models.workbench_trial import reference, reject
 from core.models.workbench_trial_codec import fingerprint, load_object, require_object
+from core.services.workbench.facts.trial_policy import load_scenario, require_trial_schema
 from data.repositories.workbench_trial_adoption_history import TrialAdoptionHistoryRepository
 from data.repositories.workbench_trial_repo import WorkbenchTrialRepository
 
-from .facts.trial_policy import load_scenario, require_trial_schema
-from .trial_adoption_history_policy import (
-    MAX_SCENARIO_BYTES,
-    bound,
-    load_history,
-    load_receipt,
-    load_scenario_headers,
-)
+from .adoption_history_policy import MAX_SCENARIO_BYTES, bound, load_history, load_receipt, load_scenario_headers
 
 
 def invalid() -> NoReturn:

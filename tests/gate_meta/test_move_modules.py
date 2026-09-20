@@ -117,6 +117,19 @@ def test_plain_import_without_alias_is_refused(tmp_path, monkeypatch):
         move_modules.run(move_modules.Plan({"pkg.run_jobs": "pkg.run.jobs"}), apply=False)
 
 
+def test_string_rewrite_never_reapplies_to_its_own_output(tmp_path, monkeypatch):
+    root = _repo(tmp_path, monkeypatch)
+    (root / "pkg/trial.py").write_text("T = 1\n", encoding="utf-8")
+    (root / "pkg/trial_catalog.py").write_text("C = 2\n", encoding="utf-8")
+    (root / "tests_dir/test_names.py").write_text(
+        'A = "pkg.trial_catalog"\nB = "pkg.trial.T"\nC = "pkg/trial.py"\nD = "pkg/trial_catalog.py"\n', encoding="utf-8")
+    subprocess.run(["git", "add", "."], cwd=str(root), check=True)
+    plan = move_modules.Plan({"pkg.trial": "pkg.trial.service", "pkg.trial_catalog": "pkg.trial.catalog"})
+    assert move_modules.run(plan, apply=True) == 0
+    assert _read(root, "tests_dir/test_names.py") == (
+        'A = "pkg.trial.catalog"\nB = "pkg.trial.service.T"\nC = "pkg/trial/service.py"\nD = "pkg/trial/catalog.py"\n')
+
+
 @pytest.mark.parametrize("moves,message", [
     ({"pkg.missing": "pkg.run.missing"}, "源模块不存在"),
     ({"pkg.run_jobs": "pkg.commands"}, "目标已存在"),

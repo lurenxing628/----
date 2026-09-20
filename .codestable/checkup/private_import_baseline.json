@@ -514,32 +514,32 @@
       "count": 1
     },
     {
-      "path": "core/services/workbench/trial_adoption.py",
+      "path": "core/services/workbench/trial/adoption.py",
       "kind": "private_symbol",
       "count": 1
     },
     {
-      "path": "core/services/workbench/trial_adoption_history.py",
+      "path": "core/services/workbench/trial/adoption_history.py",
       "kind": "private_symbol",
       "count": 1
     },
     {
-      "path": "core/services/workbench/trial_adoption_input.py",
+      "path": "core/services/workbench/trial/adoption_input.py",
       "kind": "private_symbol",
       "count": 2
     },
     {
-      "path": "core/services/workbench/trial_adoption_validation.py",
+      "path": "core/services/workbench/trial/adoption_validation.py",
       "kind": "private_symbol",
       "count": 2
     },
     {
-      "path": "core/services/workbench/trial_base.py",
+      "path": "core/services/workbench/trial/base.py",
       "kind": "private_symbol",
       "count": 2
     },
     {
-      "path": "core/services/workbench/trial_execution_anchors.py",
+      "path": "core/services/workbench/trial/execution_anchors.py",
       "kind": "private_symbol",
       "count": 1
     },

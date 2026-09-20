@@ -4,8 +4,7 @@ from collections import defaultdict
 from datetime import datetime
 
 from core.models.workbench_trial import issue, reject
-
-from .facts.zero_duration_evidence import trial_point_evidence
+from core.services.workbench.facts.zero_duration_evidence import trial_point_evidence
 
 _MAX_ISSUES = 50000
 
@@ -94,8 +93,7 @@ def _outside_occupancy(row, conn, point_versions):
     """A proven point occupies nothing; an unproven interval reports a blocker."""
     if conn is not None and row["start_time"] == row["end_time"]:
         from core.models.workbench_command import WorkbenchCommandRejected
-
-        from .plan.point_evidence import official_point_work
+        from core.services.workbench.plan.point_evidence import official_point_work
 
         try:
             if row["version"] not in point_versions:

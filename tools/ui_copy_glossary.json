@@ -592,91 +592,91 @@
       "why": "自 data/repositories 仓储层逐字上提的既有对外文案（仓储不裁决分簇要求错误码与文案逐字不变）；仓储目录从未纳入词表扫描，改词属独立文案裁决，待另行处理"
     },
     {
-      "path": "core/services/workbench/trial_adoption_history_policy.py",
+      "path": "core/services/workbench/trial/adoption_history_policy.py",
       "term": "回执",
       "text": "原命令回执缺失，不能证明保存来源。",
       "why": "自 data/repositories 仓储层逐字上提的既有对外文案（仓储不裁决分簇要求错误码与文案逐字不变）；仓储目录从未纳入词表扫描，改词属独立文案裁决，待另行处理"
     },
     {
-      "path": "core/services/workbench/trial_adoption_history_policy.py",
+      "path": "core/services/workbench/trial/adoption_history_policy.py",
       "term": "回执",
       "text": "本场景采用回执超过1000条读取上限，未截断。",
       "why": "自 data/repositories 仓储层逐字上提的既有对外文案（仓储不裁决分簇要求错误码与文案逐字不变）；仓储目录从未纳入词表扫描，改词属独立文案裁决，待另行处理"
     },
     {
-      "path": "core/services/workbench/trial_adoption_history_policy.py",
+      "path": "core/services/workbench/trial/adoption_history_policy.py",
       "term": "回执",
       "text": "采用回执不是有效结构化文本，未转换原值。",
       "why": "自 data/repositories 仓储层逐字上提的既有对外文案（仓储不裁决分簇要求错误码与文案逐字不变）；仓储目录从未纳入词表扫描，改词属独立文案裁决，待另行处理"
     },
     {
-      "path": "core/services/workbench/trial_adoption_history_policy.py",
+      "path": "core/services/workbench/trial/adoption_history_policy.py",
       "term": "回执",
       "text": "采用回执目录超过8\\ MiB读取上限，未截断。",
       "why": "自 data/repositories 仓储层逐字上提的既有对外文案（仓储不裁决分簇要求错误码与文案逐字不变）；仓储目录从未纳入词表扫描，改词属独立文案裁决，待另行处理"
     },
     {
-      "path": "core/services/workbench/trial_adoption_history_policy.py",
+      "path": "core/services/workbench/trial/adoption_history_policy.py",
       "term": "场景",
       "text": "场景的原永久草稿缺失。",
       "why": "自 data/repositories 仓储层逐字上提的既有对外文案（仓储不裁决分簇要求错误码与文案逐字不变）；仓储目录从未纳入词表扫描，改词属独立文案裁决，待另行处理"
     },
     {
-      "path": "core/services/workbench/trial_adoption_history_policy.py",
+      "path": "core/services/workbench/trial/adoption_history_policy.py",
       "term": "场景",
       "text": "未找到指定试调场景，未改查最新场景。",
       "why": "自 data/repositories 仓储层逐字上提的既有对外文案（仓储不裁决分簇要求错误码与文案逐字不变）；仓储目录从未纳入词表扫描，改词属独立文案裁决，待另行处理"
     },
     {
-      "path": "core/services/workbench/trial_adoption_history_policy.py",
+      "path": "core/services/workbench/trial/adoption_history_policy.py",
       "term": "场景",
       "text": "本场景采用回执超过1000条读取上限，未截断。",
       "why": "自 data/repositories 仓储层逐字上提的既有对外文案（仓储不裁决分簇要求错误码与文案逐字不变）；仓储目录从未纳入词表扫描，改词属独立文案裁决，待另行处理"
     },
     {
-      "path": "core/services/workbench/trial_adoption_history_policy.py",
+      "path": "core/services/workbench/trial/adoption_history_policy.py",
       "term": "字段",
       "text": "历史证据字段缺失或类型无效。",
       "why": "自 data/repositories 仓储层逐字上提的既有对外文案（仓储不裁决分簇要求错误码与文案逐字不变）；仓储目录从未纳入词表扫描，改词属独立文案裁决，待另行处理"
     },
     {
-      "path": "core/services/workbench/trial_adoption_history_policy.py",
+      "path": "core/services/workbench/trial/adoption_history_policy.py",
       "term": "目录",
       "text": "命令目录超过100000条读取上限，未返回截断采用历史。",
       "why": "自 data/repositories 仓储层逐字上提的既有对外文案（仓储不裁决分簇要求错误码与文案逐字不变）；仓储目录从未纳入词表扫描，改词属独立文案裁决，待另行处理"
     },
     {
-      "path": "core/services/workbench/trial_adoption_history_policy.py",
+      "path": "core/services/workbench/trial/adoption_history_policy.py",
       "term": "目录",
       "text": "采用回执目录超过8\\ MiB读取上限，未截断。",
       "why": "自 data/repositories 仓储层逐字上提的既有对外文案（仓储不裁决分簇要求错误码与文案逐字不变）；仓储目录从未纳入词表扫描，改词属独立文案裁决，待另行处理"
     },
     {
-      "path": "core/services/workbench/trial_adoption_history_policy.py",
+      "path": "core/services/workbench/trial/adoption_history_policy.py",
       "term": "英文机制词",
       "text": "采用回执目录超过8\\ MiB读取上限，未截断。",
       "why": "自 data/repositories 仓储层逐字上提的既有对外文案（仓储不裁决分簇要求错误码与文案逐字不变）；仓储目录从未纳入词表扫描，改词属独立文案裁决，待另行处理"
     },
     {
-      "path": "core/services/workbench/trial_catalog.py",
+      "path": "core/services/workbench/trial/catalog.py",
       "term": "明确刷新",
       "text": "目录页码超过当前范围，请明确刷新目录。",
       "why": "自 data/repositories 仓储层逐字上提的既有对外文案（仓储不裁决分簇要求错误码与文案逐字不变）；仓储目录从未纳入词表扫描，改词属独立文案裁决，待另行处理"
     },
     {
-      "path": "core/services/workbench/trial_catalog.py",
+      "path": "core/services/workbench/trial/catalog.py",
       "term": "目录",
       "text": "完整目录超过100000条或32\\ MiB摘要上限，请用状态或明确来源缩小范围；未截断。",
       "why": "自 data/repositories 仓储层逐字上提的既有对外文案（仓储不裁决分簇要求错误码与文案逐字不变）；仓储目录从未纳入词表扫描，改词属独立文案裁决，待另行处理"
     },
     {
-      "path": "core/services/workbench/trial_catalog.py",
+      "path": "core/services/workbench/trial/catalog.py",
       "term": "目录",
       "text": "目录页码超过当前范围，请明确刷新目录。",
       "why": "自 data/repositories 仓储层逐字上提的既有对外文案（仓储不裁决分簇要求错误码与文案逐字不变）；仓储目录从未纳入词表扫描，改词属独立文案裁决，待另行处理"
     },
     {
-      "path": "core/services/workbench/trial_catalog.py",
+      "path": "core/services/workbench/trial/catalog.py",
       "term": "英文机制词",
       "text": "完整目录超过100000条或32\\ MiB摘要上限，请用状态或明确来源缩小范围；未截断。",
       "why": "自 data/repositories 仓储层逐字上提的既有对外文案（仓储不裁决分簇要求错误码与文案逐字不变）；仓储目录从未纳入词表扫描，改词属独立文案裁决，待另行处理"

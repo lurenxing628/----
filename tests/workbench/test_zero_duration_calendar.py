@@ -6,7 +6,7 @@ import pytest
 
 from core.errors import AppError
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.services.workbench.trial_calendar import estimate, original_duration
+from core.services.workbench.trial.calendar import estimate, original_duration
 from tests.workbench.zero_duration_support import arrangement, engine, original_work, workday
 
 

@@ -9,7 +9,7 @@ from core.infrastructure.database import get_connection
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_trial_codec import fingerprint
 from core.services.workbench.facts.trial_policy import load_draft
-from core.services.workbench.trial_facts import capture_facts
+from core.services.workbench.trial.facts import capture_facts
 from data.repositories.workbench_trial_query_repo import WorkbenchTrialQueryRepository
 from data.repositories.workbench_trial_raw_repo import WorkbenchTrialRawPlanRepository
 from data.repositories.workbench_trial_repo import WorkbenchTrialRepository

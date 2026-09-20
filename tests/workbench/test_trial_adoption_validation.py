@@ -2,7 +2,7 @@
 
 import pytest
 
-from core.services.workbench.trial_adoption_validation import validate_trial_adoption
+from core.services.workbench.trial.adoption_validation import validate_trial_adoption
 from tests.workbench.trial_adoption_support import preview, saved_scenario, service
 from tests.workbench.trial_adoption_support import trial_case as trial_case
 from tests.workbench.trial_support import candidate, snapshot

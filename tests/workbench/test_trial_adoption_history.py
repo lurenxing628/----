@@ -8,7 +8,7 @@ import sys
 import pytest
 
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.services.workbench.trial_adoption_history import WorkbenchTrialAdoptionHistoryService
+from core.services.workbench.trial.adoption_history import WorkbenchTrialAdoptionHistoryService
 from tests.workbench.trial_adoption_history_support import advance, deny_writes, read, seeded
 from tests.workbench.trial_adoption_history_support import trial_case as trial_case  # noqa: F401
 from tests.workbench.trial_adoption_support import INTENT, saved_scenario, service
@@ -111,7 +111,7 @@ def test_cold_process_reads_identical_history_without_browser_or_cache(trial_cas
     expected = read(trial_case, saved)
     code = """
 import json, sqlite3, sys
-from core.services.workbench.trial_adoption_history import WorkbenchTrialAdoptionHistoryService
+from core.services.workbench.trial.adoption_history import WorkbenchTrialAdoptionHistoryService
 conn = sqlite3.connect('file:' + sys.argv[1] + '?mode=ro', uri=True)
 conn.row_factory = sqlite3.Row
 try:

@@ -7,13 +7,13 @@ from core.models.workbench_run_adoption import adoption_input
 from core.models.workbench_trial import reference
 from core.models.workbench_trial_adoption import ADOPT_ACTION, TrialAdoptionBlocked
 from core.services.scheduler import schedule_service
+from core.services.workbench.commands import WorkbenchCommandService
+from core.services.workbench.facts.run_input_readonly import candidate_read_snapshot
+from core.services.workbench.messages import UNAVAILABLE
+from core.services.workbench.run_candidate_adoption import _ADOPTION_LOCK
 
-from .commands import WorkbenchCommandService
-from .facts.run_input_readonly import candidate_read_snapshot
-from .messages import UNAVAILABLE
-from .run_candidate_adoption import _ADOPTION_LOCK
-from .trial_adoption_persistence import persist_trial_adoption_in_tx
-from .trial_adoption_validation import validate_trial_adoption
+from .adoption_persistence import persist_trial_adoption_in_tx
+from .adoption_validation import validate_trial_adoption
 
 
 class WorkbenchTrialAdoptionService:

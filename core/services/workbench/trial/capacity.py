@@ -7,7 +7,7 @@ from core.errors import AppError
 from core.services.capacity.plan_calendar_intervals import hours, intersection, segments, union
 from core.services.capacity.plan_calendar_windows import apply_resource, available_intervals, policy_projection
 
-from .trial_calendar import calendar_engine
+from .calendar import calendar_engine
 
 
 def trial_capacity(rows, live):
