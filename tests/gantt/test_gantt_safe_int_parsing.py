@@ -1,4 +1,4 @@
-"""回归测试：_sched_utils._safe_int 把整数/整值浮点/字符串数字解析为 int、对 None/空白/非整值（5.5、5e0、True）回退到 default（默认 0）；并验证甘特依赖装配 gantt_tasks._attach_process_dependencies 与 gantt_critical_chain 的 _build_nodes/_build_process_prev 在 seq 为浮点（如 5.0/10.0）时仍按数值正确排序与建立工序前驱链。"""
+"""回归测试：_sched_utils._safe_int 把整数/整值浮点/字符串数字解析为 int、对 None/空白/非整值（5.5、5e0、True）回退到 default（默认 0）；并验证甘特依赖装配 task_chain.attach_process_dependencies 与 gantt_critical_chain 的 _build_nodes/_build_process_prev 在 seq 为浮点（如 5.0/10.0）时仍按数值正确排序与建立工序前驱链。"""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from typing import Any
 
 from core.services.scheduler._sched_utils import _safe_int
 from core.services.scheduler.gantt import critical_chain as gantt_critical_chain
-from core.services.scheduler.gantt import tasks as gantt_tasks
+from core.services.scheduler.task_chain import attach_process_dependencies
 
 
 def test_safe_int_parses_integer_float_forms() -> None:
@@ -48,7 +48,7 @@ def test_attach_process_dependencies_sorts_by_seq_even_when_seq_is_float() -> No
     t5 = _task(tid="T5", batch_id="B1", piece_id="P1", seq=5.0)
     tasks = [t10, t5]
 
-    gantt_tasks._attach_process_dependencies(tasks)
+    attach_process_dependencies(tasks)
 
     assert t5["dependencies"] == ""
     assert t5["edge_type"] == ""
