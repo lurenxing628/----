@@ -13,8 +13,9 @@ from core.services.workbench.batch_file_codec import TEMPLATE, write_batch_file
 from core.services.workbench.batch_files import WorkbenchBatchFileService
 from core.services.workbench.batch_queries import WorkbenchBatchQueryService
 from core.services.workbench.commands import WorkbenchCommandService
+from web.api_responses import query_success
 
-from .api_responses import api_endpoint, query_success
+from .api_responses import api_endpoint
 from .batch_context import command_body, json_body, load_preview, save_preview
 from .read_context import bind_read_snapshot
 from .write_context import issue_write_context, validate_write_context

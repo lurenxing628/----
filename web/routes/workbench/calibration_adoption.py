@@ -6,8 +6,9 @@ from core.models.workbench_calibration import MAX_RESPONSE_BYTES
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.workbench import messages
 from core.services.workbench.calibration_adoption import WorkbenchCalibrationAdoptionService
+from web.api_responses import query_success
 
-from .api_responses import api_endpoint, query_success
+from .api_responses import api_endpoint
 from .write_context import issue_write_context, validate_write_context
 
 

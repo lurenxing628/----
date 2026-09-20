@@ -7,8 +7,9 @@ from core.models.workbench_process_file import IMPORT_BYTE_LIMIT, check_format, 
 from core.services.workbench.commands import WorkbenchCommandService
 from core.services.workbench.process_files import WorkbenchProcessFileService, file_operation
 from core.services.workbench.process_queries import WorkbenchProcessQueryService
+from web.api_responses import query_success
 
-from .api_responses import api_endpoint, query_success
+from .api_responses import api_endpoint
 from .process_action_context import action_preview, checked_preview, confirmed_body
 from .read_context import bind_read_snapshot
 from .resource_action_context import read_endpoint

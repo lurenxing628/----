@@ -9,8 +9,9 @@ from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.workbench import messages
 from core.services.workbench.calibration import WorkbenchCalibrationService, filtered_suggestions
 from core.services.workbench.calibration_table import facet_data, validate_facet
+from web.api_responses import query_success
 
-from .api_responses import api_endpoint, query_success
+from .api_responses import api_endpoint
 from .calibration_read_context import as_of as _as_of
 from .calibration_read_context import bind as _bind
 from .calibration_read_context import page_integer as _page_integer

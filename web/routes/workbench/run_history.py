@@ -6,8 +6,9 @@ from flask import g, request
 
 from core.models.workbench_run_history import RunHistoryScope, reject
 from core.services.workbench.run_history import WorkbenchRunHistoryQueryService
+from web.api_responses import query_success
 
-from .api_responses import api_endpoint, query_success
+from .api_responses import api_endpoint
 from .read_context import bind_read_snapshot
 
 

@@ -180,7 +180,7 @@ def _entry_id_for_command(entry_type: str, command: Mapping[str, Any], index: in
     return entry_type
 
 
-_DEFAULT_PYRIGHT_GATE_INCLUDES = ("app.py", "app_new_ui.py", "config.py", "core", "data", "web")
+_DEFAULT_PYRIGHT_GATE_INCLUDES = ("app.py", "app_new_ui.py", "core", "data", "web")
 
 
 def _load_pyright_config(repo_root: Optional[str], config_path: str) -> Dict[str, Any]:
@@ -433,7 +433,6 @@ def _scopes_for_entry(
                 "*.py",
                 "app.py",
                 "app_new_ui.py",
-                "config.py",
                 "schema.sql",
             ]
         )
@@ -502,7 +501,6 @@ def _scopes_for_entry(
                 "tests/app_runtime/runtime_cleanup_helper.py",
                 "app.py",
                 "app_new_ui.py",
-                "config.py",
                 "schema.sql",
                 "web/bootstrap/**/*.py",
                 "web/error_boundary.py",
@@ -595,7 +593,6 @@ def _scopes_for_entry(
                 "开发文档/系统速查表.md",
                 "app.py",
                 "app_new_ui.py",
-                "config.py",
                 "schema.sql",
                 "core/**/*.py",
                 "data/**/*.py",
@@ -665,7 +662,6 @@ def _scopes_for_entry(
                 ".codestable/features/**/*.yaml",
                 "app.py",
                 "app_new_ui.py",
-                "config.py",
                 "schema.sql",
                 "core/**/*.py",
                 "data/**/*.py",
@@ -767,7 +763,6 @@ def _scopes_for_entry(
                 "app.py",
                 "app_new_ui.py",
                 "check_manual_layout.py",
-                "config.py",
                 "schema.sql",
                 "validate_dist_exe.py",
                 "verify_manual_styles.py",

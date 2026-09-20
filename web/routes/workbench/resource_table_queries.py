@@ -14,8 +14,9 @@ from core.models.workbench_resource_table_query import TABLE_KINDS, toolbar_scop
 from core.services.workbench.material_queries import WorkbenchMaterialQueryService
 from core.services.workbench.materials import WorkbenchMaterialService
 from core.services.workbench.resource_queries import WorkbenchResourceQueryService
+from web.api_responses import query_success
 
-from .api_responses import api_endpoint, query_success
+from .api_responses import api_endpoint
 from .materials import _entity_with_context
 from .read_context import bind_read_snapshot
 from .resources import _with_context

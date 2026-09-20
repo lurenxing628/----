@@ -13,8 +13,9 @@ from core.services.workbench.report_catalog import catalog_facts, catalog_worksp
 from core.services.workbench.report_exports import ensure_export_size, export_table, metadata
 from core.services.workbench.report_facts import WorkbenchReportFacts
 from core.services.workbench.report_queries import report_workspace
+from web.api_responses import query_success
 
-from .api_responses import api_endpoint, query_success
+from .api_responses import api_endpoint
 from .read_context import bind_read_snapshot
 from .reports import arguments, bind_report_snapshot, download_response, report_read_time
 

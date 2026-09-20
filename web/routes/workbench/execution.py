@@ -6,7 +6,8 @@ from core.models.workbench_command import WorkbenchCommandRejected, input_finger
 from core.services.workbench.field_workspace import FieldWorkspaceService
 from core.services.workbench.field_workspace_scope import PARAMETERS, normalize_scope, page_input
 from core.services.workbench.plan_fact_serialization import plain_plan_facts
-from web.routes.workbench.api_responses import api_endpoint, query_success
+from web.api_responses import query_success
+from web.routes.workbench.api_responses import api_endpoint
 from web.routes.workbench.read_context import bind_read_snapshot
 from web.routes.workbench.write_context import issue_write_context, validate_write_context
 

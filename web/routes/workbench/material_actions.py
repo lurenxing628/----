@@ -25,8 +25,9 @@ from core.services.workbench.commands import WorkbenchCommandService
 from core.services.workbench.material_bulk import WorkbenchMaterialBulkService
 from core.services.workbench.material_files import WorkbenchMaterialFileService
 from core.services.workbench.material_queries import WorkbenchMaterialQueryService
+from web.api_responses import query_success
 
-from .api_responses import api_endpoint, query_success
+from .api_responses import api_endpoint
 from .material_actions_context import (
     check_source_snapshot,
     issue_preview,

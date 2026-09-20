@@ -13,8 +13,8 @@ from core.services.workbench.process_file_export import (
     select_export_parts,
 )
 from core.services.workbench.process_queries import WorkbenchProcessQueryService
+from web.api_responses import query_success
 
-from .api_responses import query_success
 from .material_actions_context import opaque_ref
 from .process_action_context import EXPORT_SCOPE
 from .process_collections import collection_scope

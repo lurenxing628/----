@@ -9,8 +9,8 @@ from core.services.workbench.system_config import SystemConfigWorkspace
 from core.services.workbench.system_maintenance_records import maintenance_records
 from core.services.workbench.system_reads import log_records
 from core.services.workbench.system_redaction import public_system_text
+from web.api_responses import query_success
 
-from .api_responses import query_success
 from .read_context import bind_read_snapshot
 from .system_context import issue_context, journal, system_endpoint
 from .system_log_snapshots import resolve_log_snapshot, retain_log_snapshot

@@ -10,8 +10,9 @@ from core.services.workbench import messages
 from core.services.workbench.commands import WorkbenchCommandService
 from core.services.workbench.process_part_actions import WorkbenchProcessPartActionService
 from core.services.workbench.process_queries import WorkbenchProcessQueryService
+from web.api_responses import query_success
 
-from .api_responses import api_endpoint, query_success
+from .api_responses import api_endpoint
 from .process_action_context import action_preview, checked_preview, confirmed_body
 from .process_json import read_process_json
 from .read_context import bind_read_snapshot

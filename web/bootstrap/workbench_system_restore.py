@@ -28,6 +28,7 @@ from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.scheduler import schedule_service
 from core.services.system.backup_restore import audit_backup_operation
 from core.services.workbench.system_journal import SystemMaintenanceJournal
+from web.runtime_host import RESTORE_HOST_EXTENSION, RESTORE_HOST_GUARD, SystemRestoreHost
 
 from .launcher_paths import _normalize_db_path_for_runtime
 from .workbench_request_lifecycle import (
@@ -41,11 +42,8 @@ from .workbench_run_runtime import WorkbenchRunRuntime
 from .workbench_run_runtime_lock import RunRuntimeLockProof
 from .workbench_system_restore_status import install_restore_status_transport
 
-EXTENSION = "workbench_system_restore_host"
-GUARD = "workbench_system_restore_guard"
 
-
-class WorkbenchSystemRestoreHost:
+class WorkbenchSystemRestoreHost(SystemRestoreHost):
     def __init__(self, app, runtime):
         self.app, self.runtime = app, runtime
         self.db_path = _normalize_db_path_for_runtime(app.config["DATABASE_PATH"])
@@ -227,7 +225,7 @@ class WorkbenchSystemRestoreHost:
 
 def install_workbench_system_restore_host(app, *, runtime):
     """Install only on the owning real factory app, after runtime, before HTTP."""
-    existing = app.extensions.get(EXTENSION)
+    existing = app.extensions.get(RESTORE_HOST_EXTENSION)
     if existing is not None:
         if not isinstance(existing, WorkbenchSystemRestoreHost) or existing.runtime is not runtime:
             raise RuntimeError("Restore host already foreign")
@@ -239,8 +237,8 @@ def install_workbench_system_restore_host(app, *, runtime):
         raise RuntimeError("Install restore host before the first HTTP request")
     controller = WorkbenchSystemRestoreHost(app, runtime)
     install_restore_status_transport(app, controller)
-    app.extensions[EXTENSION] = controller
-    app.extensions[GUARD] = controller
+    app.extensions[RESTORE_HOST_EXTENSION] = controller
+    app.extensions[RESTORE_HOST_GUARD] = controller
     return controller
 
 

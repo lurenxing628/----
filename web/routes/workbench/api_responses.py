@@ -1,36 +1,19 @@
-"""Workbench JSON boundaries do not infer a saved result from a redirect or HTML."""
+"""Workbench JSON boundaries do not infer a saved result from a redirect or HTML.
+
+信封本体在 web/api_responses.py；这里只负责把领域异常映射成失败信封。
+"""
 
 from __future__ import annotations
 
-import uuid
 from functools import wraps
-from typing import Literal, Union
 
-from flask import current_app, g, jsonify, request, url_for
+from flask import current_app, g, request
 from werkzeug.exceptions import HTTPException
 
 from core.errors import AppError, BusinessError, ValidationError, app_error_http_status
 from core.models.workbench_command import WorkbenchCommandRejected, WorkbenchCommandUncertain
 from core.services.workbench import messages
-
-
-def failure(code, message, status, *, committed: Union[bool, Literal["unknown"]] = False, fields=None, request_key=None):
-    reference = uuid.uuid4().hex
-    error = {"code": code, "message": message, "fields": fields or [],
-             "retryable": status >= 500, "request_ref": reference}
-    if request_key is not None:
-        error["request_key"] = request_key
-        error["result_target"] = url_for("workbench.command_receipt", request_key=request_key)
-    response = jsonify({"ok": False, "committed": committed, "error": error})
-    response.status_code = status
-    response.headers["Cache-Control"] = "no-store"
-    return response
-
-
-def query_success(data, snapshot):
-    return jsonify({"ok": True, "schema_version": 1, "data": data,
-                    "meta": {"request_ref": uuid.uuid4().hex, "source": "production",
-                             "time_basis": "factory_local", **snapshot}, "warnings": []})
+from web.api_responses import failure
 
 
 def _domain_failure(exc):

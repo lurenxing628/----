@@ -12,7 +12,8 @@ from core.services.workbench.field_report_files import FieldReportFileService
 from core.services.workbench.field_report_files_codec import BYTE_LIMIT, MIME, encode_issues
 from core.services.workbench.field_workspace import FieldWorkspaceService
 from core.services.workbench.field_workspace_scope import normalize_scope
-from web.routes.workbench.api_responses import api_endpoint, query_success
+from web.api_responses import query_success
+from web.routes.workbench.api_responses import api_endpoint
 from web.routes.workbench.read_context import bind_read_snapshot
 from web.routes.workbench.resource_action_context import read_endpoint, resolve_context, retain_context
 from web.routes.workbench.write_context import issue_write_context, validate_write_context

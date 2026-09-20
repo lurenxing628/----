@@ -20,9 +20,10 @@ from core.models.workbench_outsourcing_input import factory_time
 from core.services.workbench import messages
 from core.services.workbench.outsourcing import WorkbenchOutsourcingService
 from core.services.workbench.outsourcing_commands import WorkbenchOutsourcingCommandService
+from web.api_responses import query_success
 from web.public_token_registry import issue_public_token, resolve_public_token
 
-from .api_responses import api_endpoint, query_success
+from .api_responses import api_endpoint
 from .write_context import issue_write_context, validate_write_context
 
 _SCOPE = "workbench-outsourcing-read-v1"

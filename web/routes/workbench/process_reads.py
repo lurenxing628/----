@@ -13,8 +13,9 @@ from core.models.workbench_process_table_query import ProcessTablePageRequest, u
 from core.services.workbench.process_projection import capabilities
 from core.services.workbench.process_queries import WorkbenchProcessQueryService
 from core.services.workbench.process_route_preview import ProcessRoutePreviewService
+from web.api_responses import query_success
 
-from .api_responses import api_endpoint, query_success
+from .api_responses import api_endpoint
 from .process_json import read_process_json
 from .read_context import bind_read_snapshot
 from .write_context import issue_write_context

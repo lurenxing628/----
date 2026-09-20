@@ -11,9 +11,10 @@ from core.models.workbench_dashboard import DashboardQuery, payload_size
 from core.services.workbench import messages
 from core.services.workbench.dashboard import WorkbenchDashboardService
 from core.services.workbench.dashboard_commands import WorkbenchDashboardCommandService
+from web.api_responses import query_success
 from web.public_token_registry import issue_public_token, resolve_public_token
 
-from .api_responses import api_endpoint, query_success
+from .api_responses import api_endpoint
 from .dashboard_analysis import dashboard_analysis, dashboard_candidate_comparison
 from .read_context import _SCOPE, bind_read_snapshot
 from .write_context import issue_write_context, validate_write_context

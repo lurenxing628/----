@@ -13,30 +13,7 @@
   "*.py"
  ],
  "file_cycle_semantics": "explicit import edges plus implicit parent-package __init__ loading edges",
- "hard_dir_cycles": [
-  {
-   "members": [
-    ".",
-    "web/bootstrap",
-    "web/routes"
-   ],
-   "edges": [
-    "app_new_ui -> web.bootstrap.entrypoint",
-    "check_manual_layout -> web.bootstrap.runtime_probe",
-    "web.bootstrap.factory -> config",
-    "web.bootstrap.factory -> web.routes.dashboard",
-    "web.bootstrap.factory -> web.routes.equipment",
-    "web.bootstrap.factory -> web.routes.excel_demo",
-    "web.bootstrap.factory -> web.routes.material",
-    "web.bootstrap.factory -> web.routes.personnel",
-    "web.bootstrap.factory -> web.routes.process",
-    "web.bootstrap.factory -> web.routes.reports",
-    "web.bootstrap.factory -> web.routes.scheduler",
-    "web.bootstrap.factory -> web.routes.system",
-    "web.routes.system_runtime_logs -> config"
-   ]
-  }
- ],
+ "hard_dir_cycles": [],
  "hard_file_cycles": [
   {
    "members": [
@@ -307,7 +284,6 @@
   "core/plugins/manager.py|176|lazy|spec_from_file_location(module_name)",
   "core/services/scheduler/__init__.py|39|lazy|module_name",
   "core/services/scheduler/config/__init__.py|22|lazy|module_name",
-  "data/repositories/__init__.py|110|lazy|module_name",
-  "web/routes/domains/scheduler/scheduler_route_registrar.py|31|lazy|<JoinedStr>"
+  "data/repositories/__init__.py|110|lazy|module_name"
  ]
 }

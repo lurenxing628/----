@@ -9,8 +9,8 @@ from core.models.workbench_command import WorkbenchCommandRejected, canonical_js
 from core.models.workbench_resource_action import action_kind
 from core.services.workbench.resource_files import WorkbenchResourceFileService
 from core.services.workbench.resource_queries import WorkbenchResourceQueryService
+from web.api_responses import query_success
 
-from .api_responses import query_success
 from .read_context import bind_read_snapshot
 from .resource_action_context import (
     EXPORT_SCOPE,

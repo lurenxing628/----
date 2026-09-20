@@ -15,8 +15,9 @@ from core.services.workbench.run_candidate_analysis import read_candidate_analys
 from core.services.workbench.run_candidate_export import write_run_candidate_export
 from core.services.workbench.run_candidate_history import read_candidate_history
 from core.services.workbench.run_candidates import WorkbenchRunCandidateQueryService
+from web.api_responses import query_success
 
-from .api_responses import api_endpoint, query_success
+from .api_responses import api_endpoint
 from .read_context import bind_read_snapshot
 
 _WORKSPACE_ARGS = ("range_start", "range_end", "batch_ref", "sort", "order", "snapshot_ref")

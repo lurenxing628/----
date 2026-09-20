@@ -8,8 +8,9 @@ from core.services.workbench.commands import WorkbenchCommandService
 from core.services.workbench.resource_bulk import WorkbenchResourceBulkService
 from core.services.workbench.resource_files import WorkbenchResourceFileService
 from core.services.workbench.resource_queries import WorkbenchResourceQueryService
+from web.api_responses import query_success
 
-from .api_responses import api_endpoint, query_success
+from .api_responses import api_endpoint
 from .read_context import bind_read_snapshot
 from .resource_action_context import issue_preview, json_body, opaque_ref, read_endpoint, resolve_preview, scope_input
 

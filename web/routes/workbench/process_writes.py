@@ -7,8 +7,9 @@ from core.errors import AppError
 from core.models.workbench_command import WorkbenchCommandRejected, input_fingerprint, validate_request_key
 from core.services.workbench.commands import WorkbenchCommandService
 from core.services.workbench.process_queries import WorkbenchProcessQueryService
+from web.api_responses import failure, query_success
 
-from .api_responses import api_endpoint, failure, query_success
+from .api_responses import api_endpoint
 from .process_json import read_process_json
 from .read_context import bind_read_snapshot
 from .write_context import issue_write_context, validate_write_context

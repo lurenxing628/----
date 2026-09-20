@@ -240,9 +240,14 @@ print_long_gate_manifest 新增“耗时 Top 10”段，按 duration_seconds 降
 ### 4.7 web 目录环消除接口
 
 ```
-web/api_responses.py（新，web 根，不依赖 routes/bootstrap）：failure(...)、query_payload(...) 由 web/routes/workbench/api_responses.py 迁入，后者改为 re-export
-app.extensions["aps.runtime_host"] = {"request_shutdown": Callable[[logger], bool]}   由 factory 写入
-routes 只读 current_app.extensions，不 import web.bootstrap
+web/api_responses.py（web 根，只依赖 flask）：failure(...)、query_success(...) 由 web/routes/workbench/api_responses.py 迁入；
+    路由层 api_responses 只留 api_endpoint / _domain_failure，41 个导入方直接改路径，不做 re-export
+web/runtime_host.py（web 根）：RUNTIME_HOST_EXTENSION / RESTORE_HOST_EXTENSION / RESTORE_HOST_GUARD 键名、
+    SystemRestoreHost 抽象契约、install_runtime_host(app, request_shutdown=...)、request_shutdown(app, logger)、restore_host(app)
+app.extensions["aps.runtime_host"] = {"request_shutdown": Callable[[logger], bool]}   由 factory 在建 app 时写入
+routes 只经 web.runtime_host 读 current_app.extensions，任何位置不 import web.bootstrap；
+web/bootstrap 里只有 factory.py 可 import web.routes（装配蓝图）；web/*.py 根辅助模块不 import routes/bootstrap
+根目录 config.py 迁入 web/bootstrap/app_config.py（BASE_DIR 向上两级），不留根目录垫片
 ```
 
 ## 5. 子 feature 清单
@@ -299,12 +304,15 @@ routes 只读 current_app.extensions，不 import web.bootstrap
 15. **web-dir-cycle-removal** — 三条边改向，消除唯一生产目录环
     - 所属模块：T
     - 依赖：无
+    - 状态：done（2026-09-20）。实际硬环是 `.`⇄`web/bootstrap`（factory→根目录 config.py），config.py 搬入 `web/bootstrap/app_config.py`；三条 routes⇄bootstrap 延迟边按 §4.7 改向；生产环基线刷新为 0 目录环
 16. **models-service-annotation-inversion** — `core/models/workbench_run_compute.py` 去掉对服务层的注解依赖
     - 所属模块：T
     - 依赖：无
+    - 状态：done（2026-09-20）。改为模型层 Protocol，服务层结构满足
 17. **request-service-rule-fold** — 并入 web helper 规则，删容器专用清单
     - 所属模块：T
     - 依赖：无
+    - 状态：done（2026-09-20）。规则范围收成 `web/*.py`，容器专用清单与过滤删除
 18. **boundary-policy-decisions** — 四条政策落 `cs-decide`
     - 所属模块：C
     - 依赖：schema-sql-generated、workbench-subpackages

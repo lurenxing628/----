@@ -187,6 +187,7 @@ QUALITY_GATE_GUARD_TESTS = (
     "tests/gate_meta/test_import_cycle_scanner.py",
     "tests/gate_meta/test_import_cycle_baseline.py",
     "tests/gate_meta/test_boundary_ratchets.py",
+    "tests/gate_meta/test_web_layer_direction.py",
     "tests/gate_meta/test_round1_import_resolver.py",
     "tests/gate_meta/test_check_full_test_debt.py",
     "tests/app_runtime/test_fast_static_precheck.py",

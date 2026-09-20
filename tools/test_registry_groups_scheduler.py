@@ -22,6 +22,7 @@ SCHEDULER_REQUIRED_REGRESSION_GROUPS = (
             "tests/gate_meta/test_import_cycle_scanner.py",
             "tests/gate_meta/test_import_cycle_baseline.py",
             "tests/gate_meta/test_boundary_ratchets.py",
+            "tests/gate_meta/test_web_layer_direction.py",
             "tests/gate_meta/test_check_full_test_debt.py",
             "tests/gate_meta/test_quality_gate_output_normalization.py",
             "tests/gate_meta/test_aps_three_gap_docs_quality_gate.py",

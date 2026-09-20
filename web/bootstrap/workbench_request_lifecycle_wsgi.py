@@ -13,7 +13,7 @@ _RESPONSE_KEY = "aps.workbench.request_lifecycle_response"
 def stopping_response():
     message = "系统正在退出或维护，这次操作没有执行。请稍后重新打开页面，并核对上次操作的结果。"
     if request.path.startswith("/api/workbench/"):
-        from web.routes.workbench.api_responses import failure
+        from web.api_responses import failure
 
         return failure("request_lifecycle_stopping", message, 503, committed=False)
     return Response(message, status=503, content_type="text/plain; charset=utf-8",

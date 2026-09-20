@@ -8,6 +8,8 @@ from datetime import datetime, timezone
 
 from flask import current_app, request
 
+from web.runtime_host import request_shutdown
+
 from .legacy_blueprints import system_bp as bp
 
 _APP_ID = "aps"
@@ -50,9 +52,7 @@ def runtime_shutdown():
             mimetype="application/json",
         )
 
-    from web.bootstrap.factory import request_runtime_server_shutdown
-
-    if not request_runtime_server_shutdown(logger=current_app.logger):
+    if not request_shutdown(current_app, logger=current_app.logger):
         payload = {"app": _APP_ID, "status": "shutdown_unavailable"}
         return current_app.response_class(
             json.dumps(payload, ensure_ascii=False, separators=(",", ":")),

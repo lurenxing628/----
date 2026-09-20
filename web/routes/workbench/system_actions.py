@@ -11,6 +11,7 @@ from core.services.workbench import messages
 from core.services.workbench.commands import WorkbenchCommandService
 from core.services.workbench.system_config import SystemConfigWorkspace
 from core.services.workbench.system_files import SystemFileWorkspace
+from web.runtime_host import restore_host
 
 from .system_context import command_body, journal, query_payload, resolve_context, system_endpoint
 
@@ -105,9 +106,8 @@ def _execute_file_action(action, body):
             raise WorkbenchCommandRejected("stale_write", "本页数据已过期，所选备份和确认内容对不上，备份没有改动。请刷新页面后重新选择备份。")
         return resolve_context("backup", body["input"]["backup_ref"])
     if action == "restore":
-        from web.bootstrap.workbench_system_restore import EXTENSION, GUARD, WorkbenchSystemRestoreHost
-        host = current_app.extensions.get(EXTENSION)
-        if not isinstance(host, WorkbenchSystemRestoreHost) or current_app.extensions.get(GUARD) is not host:
+        host = restore_host(current_app)
+        if host is None:
             raise WorkbenchCommandRejected("maintenance_unavailable", RESTORE_DISABLED, 503)
         result = host.execute(service, request_key=body["request_key"], intent=body["input"], guard=guard,
                               audit=host.audit_restore_result, restore_runner=_restore_runner)

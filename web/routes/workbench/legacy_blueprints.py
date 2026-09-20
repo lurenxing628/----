@@ -8,7 +8,6 @@
 
 from __future__ import annotations
 
-import importlib
 from typing import Dict, Tuple
 
 from flask import Blueprint
@@ -75,8 +74,6 @@ LEGACY_PAGE_RULES: Dict[str, str] = {
 }
 
 # 仍由真实处理器提供的旧命名空间端点（说明书页、运行时健康接口），不登记占位规则。
-_REAL_HANDLER_MODULES = ("web.routes.workbench.manual_page", "web.routes.workbench.system_runtime")
-
 LEGACY_BLUEPRINTS: Dict[str, Blueprint] = {name: Blueprint(name, __name__) for name in LEGACY_BLUEPRINT_NAMES}
 dashboard_bp = LEGACY_BLUEPRINTS["dashboard"]
 scheduler_bp = LEGACY_BLUEPRINTS["scheduler"]
@@ -108,8 +105,8 @@ _attach_policy_rules()
 
 def register_legacy_blueprints(app) -> None:
     """在注册前导入真实处理器模块，让说明书页与健康接口挂到同名蓝图上。"""
-    for module_name in _REAL_HANDLER_MODULES:
-        importlib.import_module(module_name)
+    # 两个处理器模块在顶层反向引用本模块的蓝图对象，只能在注册时延迟导入；写成显式 import 让环扫描器可解析。
+    from . import manual_page, system_runtime  # noqa: F401
     for name in LEGACY_BLUEPRINT_NAMES:
         app.register_blueprint(LEGACY_BLUEPRINTS[name])
 

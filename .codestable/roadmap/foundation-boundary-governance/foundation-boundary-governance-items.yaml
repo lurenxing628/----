@@ -118,26 +118,36 @@ items:
   - slug: web-dir-cycle-removal
     description: 三条边改向，消除唯一生产目录环
     depends_on: []
-    status: planned
+    status: done
     feature: null
     minimal_loop: false
-    notes: null
+    notes: >-
+      2026-09-20 完成。实测旧路由删除后硬目录环只剩 `.`⇄`web/bootstrap`，唯一撑着它的边是 factory 导入根目录 config.py，
+      因此把 config.py 搬进 web/bootstrap/app_config.py（不留根目录垫片）；routes⇄bootstrap 三条延迟边按 §4.7 改向：
+      信封 failure/query_success 迁到 web/api_responses.py（41 个导入方改路径，路由层 api_responses 只留异常映射），
+      运行时关停与恢复宿主经 web/runtime_host.py 读 app.extensions；legacy_blueprints 的 importlib 循环改成显式延迟导入，
+      消掉环门禁里 1 条未解析动态导入。生产环基线受控刷新为 0 目录环；新增 tests/gate_meta/test_web_layer_direction.py 锁方向。
 
   - slug: models-service-annotation-inversion
     description: core/models/workbench_run_compute.py 去掉对服务层的注解依赖
     depends_on: []
-    status: planned
+    status: done
     feature: null
     minimal_loop: false
-    notes: null
+    notes: >-
+      2026-09-20 完成。模型层改为声明两个只读 Protocol（FrozenScopeInput.frozen_op_ids、OrchestrationOutcome.candidate_comparison/result_summary_obj），
+      服务层 CandidateRunInput / ScheduleOrchestrationOutcome 以结构满足；pyright 0 错误。A2 边界测试新增“core/models 任何位置不得 import core.services/data/web”。
 
   - slug: request-service-rule-fold
     description: request_service 规则并入 web helper 规则，删容器专用清单
     depends_on: []
-    status: planned
+    status: done
     feature: null
     minimal_loop: false
-    notes: null
+    notes: >-
+      2026-09-20 完成。扫描器改名 scan_direct_assembly_entries（规则名不变），范围收成 web/*.py；
+      删除 REQUEST_SERVICE_TARGET_FILES/SYMBOLS/ALLOWED_HELPERS 与目标过滤，事实键改为 direct_assembly_entries、种类 assembly；
+      适应度测试并入 test_web_helpers_do_not_import_or_assemble_repositories_and_services，删除 4 个容器过滤专用合同测试。
 
   - slug: boundary-policy-decisions
     description: schema 事实源、子包规则、门禁进退、测试往接缝收四条政策落 cs-decide

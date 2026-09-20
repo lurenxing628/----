@@ -12,7 +12,6 @@ from typing import Any, Optional, cast
 from flask import Flask, current_app, g, request
 from werkzeug.serving import ThreadedWSGIServer, make_server
 
-from config import config as _config_map
 from core.infrastructure.backup import BackupManager, is_maintenance_window_active
 from core.infrastructure.database import ensure_schema, get_connection
 from core.infrastructure.logging import AppLogger, OperationLogger, safe_log
@@ -27,7 +26,9 @@ from web.error_handlers import register_error_handlers
 from web.routes.workbench.legacy_blueprints import register_legacy_blueprints
 from web.routes.workbench.legacy_dispatch import install_legacy_retirement
 from web.routes.workbench.registration import bp as workbench_bp
+from web.runtime_host import install_runtime_host
 
+from .app_config import config as _config_map
 from .launcher import resolve_shared_data_root
 from .launcher_paths import is_portable_runtime, resolve_runtime_db_path
 from .launcher_shutdown import (
@@ -197,6 +198,11 @@ def request_runtime_server_shutdown(logger=None) -> bool:
     return True
 
 
+def _request_runtime_shutdown(logger=None) -> bool:
+    """运行时宿主接缝用的适配器：按调用时的模块属性取函数，便于测试替换。"""
+    return request_runtime_server_shutdown(logger=logger)
+
+
 
 
 def _ensure_runtime_dirs(app: Flask) -> None:
@@ -264,6 +270,7 @@ def create_app_core(
     templates_dir = os.path.join(base_dir, "templates")
 
     app = Flask(__name__, static_folder=static_dir, template_folder=templates_dir)
+    install_runtime_host(app, request_shutdown=_request_runtime_shutdown)
     app.config.from_object(cfg_class)
     _apply_runtime_config(app, base_dir=base_dir)
     app.config["APP_UI_MODE"] = ui_mode

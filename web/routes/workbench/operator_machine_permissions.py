@@ -7,8 +7,9 @@ from core.models.workbench_resource_action import ResourceActionPreview
 from core.services.workbench.commands import WorkbenchCommandService
 from core.services.workbench.operator_machine_permissions import OPERATION, WorkbenchOperatorMachinePermissions
 from core.services.workbench.resource_queries import WorkbenchResourceQueryService
+from web.api_responses import query_success
 
-from .api_responses import api_endpoint, query_success
+from .api_responses import api_endpoint
 from .read_context import bind_read_snapshot
 from .resource_action_context import json_body, opaque_ref, read_endpoint, resolve_context, retain_context
 from .write_context import issue_write_context, validate_write_context

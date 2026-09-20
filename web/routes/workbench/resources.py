@@ -8,8 +8,9 @@ from core.models.workbench_command import WorkbenchCommandRejected, input_finger
 from core.models.workbench_resource_query import ResourcePageRequest
 from core.services.workbench.commands import WorkbenchCommandService
 from core.services.workbench.resource_queries import WorkbenchResourceQueryService
+from web.api_responses import query_success
 
-from .api_responses import api_endpoint, query_success
+from .api_responses import api_endpoint
 from .materials import _command_body
 from .read_context import bind_read_snapshot
 from .write_context import issue_write_context, validate_write_context

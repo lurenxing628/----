@@ -11,8 +11,9 @@ from core.models.workbench_trial_catalog import TrialCatalogScope
 from core.services.workbench import messages
 from core.services.workbench.trial import WorkbenchTrialService
 from core.services.workbench.trial_catalog import WorkbenchTrialCatalogService
+from web.api_responses import query_success
 
-from .api_responses import api_endpoint, query_success
+from .api_responses import api_endpoint
 from .read_context import bind_read_snapshot
 from .write_context import issue_write_context, validate_write_context
 

@@ -4,8 +4,9 @@ from flask import current_app, g, jsonify, request
 
 from core.models.workbench_command import WorkbenchCommandRejected, input_fingerprint
 from core.services.workbench.run_candidate_adoption import WorkbenchRunCandidateAdoptionService
+from web.api_responses import query_success
 
-from .api_responses import api_endpoint, query_success
+from .api_responses import api_endpoint
 from .read_context import bind_read_snapshot
 from .write_context import issue_write_context, validate_write_context
 

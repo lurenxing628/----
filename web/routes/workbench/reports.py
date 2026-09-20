@@ -16,10 +16,11 @@ from core.services.workbench.report_columns import public_columns
 from core.services.workbench.report_exports import export_table
 from core.services.workbench.report_facts import WorkbenchReportFacts
 from core.services.workbench.report_queries import SORTS, report_workspace
+from web.api_responses import query_success
 from web.public_token_registry import issue_public_token, resolve_public_token
 
 from . import read_context
-from .api_responses import api_endpoint, query_success
+from .api_responses import api_endpoint
 from .read_context import bind_read_snapshot
 
 

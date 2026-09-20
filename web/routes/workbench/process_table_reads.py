@@ -14,8 +14,9 @@ from core.models.workbench_process_table_query import (
 )
 from core.services.workbench import messages
 from core.services.workbench.process_queries import WorkbenchProcessQueryService
+from web.api_responses import query_success
 
-from .api_responses import api_endpoint, query_success
+from .api_responses import api_endpoint
 from .read_context import bind_read_snapshot
 
 

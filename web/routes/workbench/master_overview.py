@@ -9,8 +9,9 @@ from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_master_overview import invalid, read_scope
 from core.services.workbench import messages
 from core.services.workbench.master_overview import MasterOverviewService
+from web.api_responses import query_success
 
-from .api_responses import api_endpoint, query_success
+from .api_responses import api_endpoint
 from .read_context import bind_read_snapshot
 
 BASE = "/api/workbench/v1/master-overview"

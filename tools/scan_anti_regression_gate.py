@@ -32,7 +32,7 @@ from tools.test_registry import (  # noqa: E402
 
 DEFAULT_BASE_REF = "d4589d77"
 SOURCE_ROOTS = ("core/", "data/", "web/", "desktop/", "plugins/")
-ROOT_SOURCE_FILES = frozenset({"app.py", "app_new_ui.py", "config.py"})
+ROOT_SOURCE_FILES = frozenset({"app.py", "app_new_ui.py"})
 SCOPE_KEYS = ("input_file_scopes", "config_file_scopes", "tool_file_scopes", "dependency_file_scopes")
 
 
