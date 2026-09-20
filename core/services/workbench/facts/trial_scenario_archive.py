@@ -23,6 +23,8 @@ def load_saved_scenario(conn, scenario_ref):
     repo = WorkbenchTrialRepository(conn)
     saved = load_scenario(repo, scenario_ref)
     header = repo.scenario_header(scenario_ref)
+    if header is None:
+        _invalid("试调方案与保存结果不一致，请刷新后重试。")
     head, originals = load_draft(repo, header["draft_ref"])
     _require_head(saved, header, head, originals)
     _require_receipts(conn, saved, header, head)

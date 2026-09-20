@@ -54,6 +54,8 @@ class CandidateStore:
             return None
         bounded_size(size, MAX_ARTIFACT_BYTES)
         row = self.repo.receipt_state_and_result(run["run_ref"])
+        if row is None:
+            corrupt()
         result = stored_json(row[1])
         if row[0] != run["state"] or result.get("state") != run["state"]:
             corrupt()
@@ -83,6 +85,8 @@ class CandidateStore:
 
     def capture(self, run_ref):
         row = self.repo.job_capture(run_ref)
+        if row is None:
+            corrupt()
         return {"input": stored_json(row[0]), "execution": stored_json(row[1], list),
                 "baseline": stored_json(row[2]), "facts_text": row[3], "facts_hash": row[4]}
 

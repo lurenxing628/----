@@ -23,6 +23,8 @@ def load_receipt(repo, key, limit=MAX_SCENARIO_BYTES):
         reject("adoption_history_invalid", "原命令回执缺失，不能证明保存来源。")
     bound(size["bytes"], limit)
     row = repo.receipt_row(key)
+    if row is None:
+        reject("adoption_history_invalid", "原命令回执缺失，不能证明保存来源。")
     if type(row["outcome_json"]) is not str:
         reject("adoption_history_invalid", "采用回执不是有效结构化文本，未转换原值。")
     return row

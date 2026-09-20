@@ -3,6 +3,7 @@
 import math
 import re
 from datetime import date, datetime
+from typing import NoReturn
 
 from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
 
@@ -13,7 +14,7 @@ MAX_ROWS = 10000
 MAX_BYTES = 8 * 1024 * 1024
 
 
-def reject(message, code="invalid_input", status=422):
+def reject(message, code="invalid_input", status=422) -> NoReturn:
     raise WorkbenchCommandRejected(code, message, status)
 
 

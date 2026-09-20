@@ -295,7 +295,8 @@ def record_confirmation(conn, part_no, stage, confirmed_by=None) -> dict:
         previous = {"source": "route", "hours": "source"}.get(stage)
         if previous and view[previous]["state"] != "confirmed":
             raise ValidationError("请先确认上一工艺阶段的当前资料。", field="stage", details={"reason": "process_stage_locked"})
-        if signatures[stage] is None:
+        signature = signatures[stage]
+        if signature is None:
             raise ValidationError("当前工艺资料不完整或不合法，不能确认。", field=stage, details={"reason": "process_facts_invalid"})
         repo = WorkbenchProcessWorkflowRepository(conn)
         if stored is None:
@@ -305,8 +306,8 @@ def record_confirmation(conn, part_no, stage, confirmed_by=None) -> dict:
             repo.delete_confirmations_outside_active_route(part["ref"], part_no)
         else:
             _save_operations(conn, part["ref"], stage, per_op, records, stamp, confirmed_by)
-        if _confirmation(stored, signatures[stage], stage + "_")["state"] != "confirmed":
-            repo.set_stage_confirmation(part_ref=part["ref"], stage=stage, signature=signatures[stage],
+        if _confirmation(stored, signature, stage + "_")["state"] != "confirmed":
+            repo.set_stage_confirmation(part_ref=part["ref"], stage=stage, signature=signature,
                                         confirmed_at=stamp, confirmed_by=confirmed_by)
         return read_workflow(conn, part_no)
 

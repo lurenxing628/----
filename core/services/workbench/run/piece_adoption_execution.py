@@ -95,7 +95,7 @@ def _original_locks(svc, prepared, rows, actual, protected):
     official = WorkbenchPieceAdoptionRepository(svc.conn)
     for op_id, identity in latest.items():
         old = official.get_schedule_row(identity["schedule_id"])
-        if old["lock_status"] not in ("locked", "unlocked"):
+        if old is None or old["lock_status"] not in ("locked", "unlocked"):
             block("piece_lock_invalid", "原计划里有工序的锁定状态读不出来，本次没有采用。请刷新后重新排产。")
         if op_id in actual:
             continue
