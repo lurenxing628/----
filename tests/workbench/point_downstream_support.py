@@ -8,8 +8,8 @@ from flask import Blueprint, Flask, g, request, send_from_directory
 from werkzeug.serving import make_server
 
 from core.infrastructure.database import get_connection
-from core.services.workbench.actual_gantt import ActualGanttService
-from core.services.workbench.actual_gantt_scope import ActualGanttScope
+from core.services.workbench.execution.actual_gantt import ActualGanttService
+from core.services.workbench.execution.actual_gantt_scope import ActualGanttScope
 from tests.workbench.ea_zero_duration_support import adopt, point_candidate
 from web.routes.workbench.actual_gantt import register_actual_gantt_routes
 from web.routes.workbench.execution import register_execution_routes

@@ -12,7 +12,7 @@ from werkzeug.serving import make_server
 
 from core.infrastructure.transaction import TransactionManager
 from core.infrastructure.workbench_calibration_adoption_schema import install
-from core.services.workbench.production_report import WorkbenchProductionReportService
+from core.services.workbench.execution.production_report import WorkbenchProductionReportService
 from tests.workbench.calibration_adoption_support import assert_preserved, snapshot
 from tests.workbench.calibration_lineage_ui_support import template_completed
 from tests.workbench.template_lineage_support import completed, origin

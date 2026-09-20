@@ -6,7 +6,7 @@ import pytest
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_plan_reference import WorkbenchPlanLocator
-from core.services.workbench.execution_ledger import ExecutionLedgerService
+from core.services.workbench.execution.ledger import ExecutionLedgerService
 from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
 from tests.workbench.run_candidate_adoption_support import (
     INTENT,

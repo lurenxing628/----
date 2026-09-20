@@ -70,9 +70,9 @@ def test_ten_thousand_operation_projection_uses_chunked_sql(ledger_case):
 def test_new_runtime_sources_parse_as_python38():
     root = Path(__file__).resolve().parents[2]
     files = list(root.glob("core/models/workbench_execution*.py"))
-    files += list(root.glob("core/services/workbench/execution_ledger*.py"))
+    files += list(root.glob("core/services/workbench/execution/ledger.py"))
     files += [root / "core/services/workbench/facts/execution_projection.py"]
-    files += list(root.glob("core/services/workbench/production_report*.py"))
+    files += list(root.glob("core/services/workbench/execution/production_report*.py"))
     files += list(root.glob("data/repositories/workbench_execution*.py"))
     files += [root / "core/infrastructure/workbench_execution_ledger_schema.py"]
     for path in files:

@@ -9,7 +9,7 @@ from pathlib import Path
 from openpyxl import load_workbook
 from radon.complexity import cc_visit
 
-from core.services.workbench.actual_gantt_export import HEADERS
+from core.services.workbench.execution.actual_gantt_export import HEADERS
 from tests.workbench.execution_ledger_support import all_rows
 from tests.workbench.execution_ledger_support import ledger_case as ledger_case
 from tests.workbench.field_workspace_support import BASE, success
@@ -109,7 +109,7 @@ def test_owned_sources_keep_python38_grammar_and_complexity_limit():
     files = ['field_report_files.py', 'field_report_files_codec.py', 'field_report_files_xml.py',
              'field_report_files_identity.py', 'actual_gantt_export.py', 'actual_gantt_scope.py', 'field_workspace.py']
     for name in files:
-        source = (root / 'core/services/workbench' / name).read_text(encoding='utf-8')
+        source = (root / 'core/services/workbench/execution' / name).read_text(encoding='utf-8')
         ast.parse(source, feature_version=8)
         blocks = cc_visit(source)
         for block in blocks:

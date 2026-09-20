@@ -10,8 +10,8 @@ from core.infrastructure.workbench_execution_ledger_schema import install_execut
 from core.infrastructure.workbench_execution_void_schema import install_execution_voids
 from core.infrastructure.workbench_metadata_schema import install_metadata
 from core.infrastructure.workbench_plan_identity_schema import install_plan_identity
-from core.services.workbench.execution_ledger import ExecutionLedgerService
-from core.services.workbench.production_report import WorkbenchProductionReportService
+from core.services.workbench.execution.ledger import ExecutionLedgerService
+from core.services.workbench.execution.production_report import WorkbenchProductionReportService
 from tests.workbench.plan_identity_support import load_v24_schema
 
 NOW = datetime(2026, 9, 10, 12)

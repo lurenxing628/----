@@ -8,7 +8,7 @@ all revisions, the whole official snapshot and unselected resource reservations.
 from core.services.scheduler.run.schedule_execution_guardrails import _collect_execution_guardrails
 from core.services.scheduler.run.schedule_execution_persistence_guard import _validate_unselected_resource_overlap
 from core.services.scheduler.run.schedule_execution_resource_facts import _latest_plan_rows
-from core.services.workbench.execution_ledger import ExecutionLedgerService
+from core.services.workbench.execution.ledger import ExecutionLedgerService
 from core.services.workbench.facts.piece_scope import block
 from core.services.workbench.facts.run_input_codec import restore_execution_projections
 from data.repositories.workbench_piece_adoption_repo import WorkbenchPieceAdoptionRepository

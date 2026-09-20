@@ -3,7 +3,7 @@
 import csv
 import io
 
-from core.services.workbench.field_report_files_codec import decode_reports, encode_reports
+from core.services.workbench.execution.field_report_files_codec import decode_reports, encode_reports
 from tests.workbench.final_execution_cases import (
     CORRECT_TABLES,
     CREATE_TABLES,

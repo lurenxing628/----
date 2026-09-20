@@ -7,8 +7,7 @@ from typing import NoReturn, Optional, Tuple
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_plan_scope import PlanReadScope, local_time, plan_reference
-
-from .facts.zero_duration_evidence import overlaps
+from core.services.workbench.facts.zero_duration_evidence import overlaps
 
 COHORT_KEYS = ("plan_ref", "source", "range_start", "range_end", "plan_finish_date_from",
                "plan_finish_date_to", "resource_type", "resource_ref", "batch_ids")

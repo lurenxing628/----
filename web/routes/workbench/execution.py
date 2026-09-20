@@ -3,9 +3,9 @@
 from flask import g, jsonify, request
 
 from core.models.workbench_command import WorkbenchCommandRejected, input_fingerprint
+from core.services.workbench.execution.field_workspace import FieldWorkspaceService
+from core.services.workbench.execution.field_workspace_scope import PARAMETERS, normalize_scope, page_input
 from core.services.workbench.facts.plan_serialization import plain_plan_facts
-from core.services.workbench.field_workspace import FieldWorkspaceService
-from core.services.workbench.field_workspace_scope import PARAMETERS, normalize_scope, page_input
 from web.api_responses import query_success
 from web.routes.workbench.api_responses import api_endpoint
 from web.routes.workbench.read_context import bind_read_snapshot
@@ -68,7 +68,7 @@ def command_body():
 
 
 def save_report(action, ref):
-    from core.services.workbench.production_report import WorkbenchProductionReportService
+    from core.services.workbench.execution.production_report import WorkbenchProductionReportService
 
     body = command_body()
     service = WorkbenchProductionReportService(g.db, context_factory=field_context)
@@ -101,7 +101,7 @@ def field_report_void(report_ref):
 
 @api_endpoint
 def field_report_void_preview(report_ref):
-    from core.services.workbench.production_report import WorkbenchProductionReportService
+    from core.services.workbench.execution.production_report import WorkbenchProductionReportService
 
     body = request.get_json(silent=True)
     if request.args or type(body) is not dict or set(body) != {'input'} or type(body['input']) is not dict:

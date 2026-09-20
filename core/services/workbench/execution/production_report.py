@@ -8,7 +8,7 @@ from core.models.workbench_execution_input import reject
 from core.services.workbench.commands import WorkbenchCommandService
 from data.repositories.workbench_execution_report_repo import WorkbenchExecutionReportRepository
 
-from .execution_ledger import ExecutionLedgerService
+from .ledger import ExecutionLedgerService
 from .production_report_prepare import ReportBatchPreparation, normalize_items
 
 

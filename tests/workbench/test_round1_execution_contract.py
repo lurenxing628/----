@@ -6,8 +6,8 @@ import pytest
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_execution_input import factory_time, validate_actual_values
-from core.services.workbench.execution_ledger import ExecutionLedgerService
-from core.services.workbench.production_report_prepare import ReportBatchRejected, normalize_items
+from core.services.workbench.execution.ledger import ExecutionLedgerService
+from core.services.workbench.execution.production_report_prepare import ReportBatchRejected, normalize_items
 from tests.workbench.execution_ledger_support import END, NOW, START, all_rows
 from tests.workbench.execution_ledger_support import ledger_case as ledger_fixture
 

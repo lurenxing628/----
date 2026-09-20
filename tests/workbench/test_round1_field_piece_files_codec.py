@@ -7,7 +7,12 @@ import pytest
 from openpyxl import load_workbook
 
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.services.workbench.field_report_files_codec import HEADERS, TASK_HEADERS, decode_reports, encode_reports
+from core.services.workbench.execution.field_report_files_codec import (
+    HEADERS,
+    TASK_HEADERS,
+    decode_reports,
+    encode_reports,
+)
 
 
 def changed_book(content, mutate):

@@ -5,7 +5,7 @@ import sqlite3
 import pytest
 
 from core.models.workbench_command import WorkbenchCommandRejected, input_fingerprint
-from core.services.workbench.execution_ledger import ExecutionLedgerService
+from core.services.workbench.execution.ledger import ExecutionLedgerService
 from tests.workbench.execution_ledger_support import NOW, START, all_rows
 from tests.workbench.execution_ledger_support import ledger_case as ledger_fixture
 

@@ -6,7 +6,7 @@ from core.infrastructure.schema_probe import object_names
 from core.infrastructure.workbench_execution_ledger_schema import execution_ledger_objects
 from core.models.workbench_command import WorkbenchCommandRejected, input_fingerprint
 from core.models.workbench_execution_input import MAX_OPERATIONS
-from core.services.workbench.execution_ledger import ExecutionLedgerService
+from core.services.workbench.execution.ledger import ExecutionLedgerService
 from core.services.workbench.process.queries import _plain
 from data.repositories.workbench_execution_repo import WorkbenchExecutionRepository
 

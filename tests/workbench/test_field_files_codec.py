@@ -7,7 +7,7 @@ import pytest
 from openpyxl import load_workbook
 
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.services.workbench.field_report_files_codec import HEADERS, decode_reports, encode_reports
+from core.services.workbench.execution.field_report_files_codec import HEADERS, decode_reports, encode_reports
 
 
 def test_ten_columns_null_zero_and_excel_datetime():

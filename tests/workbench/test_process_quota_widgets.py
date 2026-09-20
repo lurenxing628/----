@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from core.services.workbench.production_report import WorkbenchProductionReportService
+from core.services.workbench.execution.production_report import WorkbenchProductionReportService
 from tests.workbench.process_quota_protection_support import quota_case as _quota_case  # noqa: F401
 from tests.workbench.process_quota_widgets_support import serve
 from tests.workbench.template_lineage_support import ledger_fixture as _ledger_fixture  # noqa: F401

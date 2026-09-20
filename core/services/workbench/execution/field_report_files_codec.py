@@ -13,7 +13,8 @@ from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils.datetime import from_excel
 
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.services.workbench.field_report_files_xml import check_package
+
+from .field_report_files_xml import check_package
 
 HEADERS = ('报工编号', '批次号', '工序', '本次完成数量', '实际开工', '本次实际完工',
            '有效加工工时(h)', '实际设备', '实际人员', '备注')

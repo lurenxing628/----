@@ -7,11 +7,10 @@ from core.models.workbench_command import canonical_json, input_fingerprint
 from core.models.workbench_execution_input import MAX_REPORT_BYTES, public_ref, reject
 from core.services.execution.ledger_reader import ExecutionLedgerReader
 from core.services.scheduler.execution.execution_plan_identity import current_execution_plan
+from core.services.workbench.facts.execution_projection import attach_context
+from core.services.workbench.facts.plan_serialization import plain_plan_facts
 from data.repositories.workbench_execution_source_repo import EMPTY_SOURCE_HASH
 from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
-
-from .facts.execution_projection import attach_context
-from .facts.plan_serialization import plain_plan_facts
 
 
 def _check_workspace_tasks(tasks, facts, plan_ref):

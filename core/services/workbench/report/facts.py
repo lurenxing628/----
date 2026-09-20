@@ -11,7 +11,7 @@ from core.models.workbench_plan_reference import WorkbenchPlanLocator
 from core.models.workbench_report import MAX_REPORT_EVENTS, MAX_REPORT_OPERATIONS
 from core.services.report.date_range_limits import ensure_report_date_range_within_limit
 from core.services.report.report_engine import ReportEngine
-from core.services.workbench.execution_ledger import ExecutionLedgerService
+from core.services.workbench.execution.ledger import ExecutionLedgerService
 from core.services.workbench.facts.plan_serialization import plain_plan_facts
 from core.services.workbench.plan.projection import project_plan
 from core.services.workbench.plan.queries import WorkbenchPlanQueryService

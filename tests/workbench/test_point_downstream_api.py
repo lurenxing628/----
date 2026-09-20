@@ -7,9 +7,9 @@ from io import StringIO
 import pytest
 
 from core.infrastructure.migration_state import CURRENT_SCHEMA_VERSION
-from core.services.workbench.actual_gantt import ActualGanttService
-from core.services.workbench.actual_gantt_scope import ActualGanttScope
-from core.services.workbench.field_workspace import FieldWorkspaceService
+from core.services.workbench.execution.actual_gantt import ActualGanttService
+from core.services.workbench.execution.actual_gantt_scope import ActualGanttScope
+from core.services.workbench.execution.field_workspace import FieldWorkspaceService
 from tests.workbench.ea_zero_duration_support import adoption_service
 from tests.workbench.point_downstream_support import ACTUAL, FIELD, adopted, app_for, read, report
 from tests.workbench.trial_support import snapshot

@@ -4,11 +4,11 @@ from datetime import datetime, timedelta
 
 from core.models.workbench_command import WorkbenchCommandRejected, canonical_json, input_fingerprint
 from core.models.workbench_plan_scope import PlanReadScope
+from core.services.workbench.plan.queries import WorkbenchPlanQueryService
 
 from .actual_gantt_chain import plan_chain
 from .actual_gantt_scope import cohort_match
-from .execution_ledger import ExecutionLedgerService
-from .plan.queries import WorkbenchPlanQueryService
+from .ledger import ExecutionLedgerService
 
 MAX_ACTUAL_RESPONSE_BYTES = 32 * 1024 * 1024
 MAX_ACTUAL_REPORTS = 50000

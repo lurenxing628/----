@@ -6,9 +6,9 @@ from flask import current_app, g, request, send_file
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_execution_input import public_ref
-from core.services.workbench.actual_gantt import MAX_ACTUAL_RESPONSE_BYTES, ActualGanttService, bind_axis_time
-from core.services.workbench.actual_gantt_export import actual_gantt_csv
-from core.services.workbench.actual_gantt_scope import COHORT_KEYS, VIEW_KEYS, ActualGanttScope
+from core.services.workbench.execution.actual_gantt import MAX_ACTUAL_RESPONSE_BYTES, ActualGanttService, bind_axis_time
+from core.services.workbench.execution.actual_gantt_export import actual_gantt_csv
+from core.services.workbench.execution.actual_gantt_scope import COHORT_KEYS, VIEW_KEYS, ActualGanttScope
 from web.api_responses import query_success
 
 from .api_responses import api_endpoint

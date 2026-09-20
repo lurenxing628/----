@@ -10,7 +10,7 @@ from core.services.execution import projection as projection_owner
 from core.services.execution.ledger_reader import ExecutionLedgerReader
 from core.services.scheduler.execution.execution_ledger_adapter import ledger_read_snapshot
 from core.services.scheduler.execution.execution_plan_identity import current_execution_plan
-from core.services.workbench.execution_ledger import ExecutionLedgerService
+from core.services.workbench.execution.ledger import ExecutionLedgerService
 from core.services.workbench.facts import execution_projection as projection_adapter
 from tests._support.dependency_boundaries import assert_no_import_prefixes
 from tests._support.paths import REPO_ROOT
@@ -156,6 +156,6 @@ def test_real_import_graph_has_no_execution_service_cycle():
         cycles = [row for row in report[key]
                   if any(name == owner or name.startswith(owner + "/") for name in row["members"] for owner in owned)]
         assert not cycles, cycles
-    prefixes = ("core.services.execution.", "core.services.workbench.execution_ledger",
+    prefixes = ("core.services.execution.", "core.services.workbench.execution.ledger",
                 "core.services.scheduler.execution.execution_ledger")
     assert not [row for row in report["hard_file_cycles"] if any(name.startswith(prefixes) for name in row)]

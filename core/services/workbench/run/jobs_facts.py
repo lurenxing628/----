@@ -7,7 +7,7 @@ from core.models.workbench_command import canonical_json
 from core.models.workbench_run_job import durable_value
 from core.services.scheduler.run.schedule_execution_resource_facts import _latest_plan_rows
 from core.services.scheduler.schedule_service import ScheduleService
-from core.services.workbench.execution_ledger import ExecutionLedgerService
+from core.services.workbench.execution.ledger import ExecutionLedgerService
 from data.repositories.workbench_run_facts_repo import WorkbenchRunFactsRepository
 
 

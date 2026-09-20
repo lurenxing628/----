@@ -384,6 +384,11 @@
       "count": 2
     },
     {
+      "path": "core/services/workbench/execution/production_report_void.py",
+      "kind": "private_symbol",
+      "count": 1
+    },
+    {
       "path": "core/services/workbench/facts/candidate_baseline.py",
       "kind": "private_symbol",
       "count": 4
@@ -435,11 +440,6 @@
     },
     {
       "path": "core/services/workbench/process/projection.py",
-      "kind": "private_symbol",
-      "count": 1
-    },
-    {
-      "path": "core/services/workbench/production_report_void.py",
       "kind": "private_symbol",
       "count": 1
     },

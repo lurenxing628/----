@@ -5,7 +5,7 @@ import sqlite3
 import pytest
 
 from core.models.workbench_command import WorkbenchCommandRejected, WorkbenchCommandUncertain, input_fingerprint
-from core.services.workbench.production_report import WorkbenchProductionReportService
+from core.services.workbench.execution.production_report import WorkbenchProductionReportService
 from data.repositories.workbench_execution_report_repo import WorkbenchExecutionReportRepository
 from tests.workbench.execution_ledger_support import START, all_rows
 from tests.workbench.execution_ledger_support import ledger_case as ledger_fixture

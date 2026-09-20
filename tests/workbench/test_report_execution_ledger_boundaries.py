@@ -4,7 +4,7 @@ from datetime import datetime
 
 import pytest
 
-from core.services.workbench.execution_ledger import ExecutionLedgerService
+from core.services.workbench.execution.ledger import ExecutionLedgerService
 from tests.workbench.execution_ledger_support import LedgerCase
 from tests.workbench.plan_read_support import assert_error
 from tests.workbench.report_execution_ledger_support import report_ledger_api as _fixture

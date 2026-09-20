@@ -8,10 +8,10 @@ from flask import g, jsonify, request, send_file
 
 from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
 from core.services.workbench import messages
-from core.services.workbench.field_report_files import FieldReportFileService
-from core.services.workbench.field_report_files_codec import BYTE_LIMIT, MIME, encode_issues
-from core.services.workbench.field_workspace import FieldWorkspaceService
-from core.services.workbench.field_workspace_scope import normalize_scope
+from core.services.workbench.execution.field_report_files import FieldReportFileService
+from core.services.workbench.execution.field_report_files_codec import BYTE_LIMIT, MIME, encode_issues
+from core.services.workbench.execution.field_workspace import FieldWorkspaceService
+from core.services.workbench.execution.field_workspace_scope import normalize_scope
 from web.api_responses import query_success
 from web.routes.workbench.api_responses import api_endpoint
 from web.routes.workbench.read_context import bind_read_snapshot
@@ -56,7 +56,7 @@ def field_file_preview():
 
 @api_endpoint
 def field_file_confirm():
-    from core.services.workbench.production_report import WorkbenchProductionReportService
+    from core.services.workbench.execution.production_report import WorkbenchProductionReportService
 
     body = command_body()
     if set(body['input']) != {'preview_ref'}:

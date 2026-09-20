@@ -5,18 +5,18 @@ from contextlib import contextmanager
 from core.models.workbench_command import WorkbenchCommandRejected, input_fingerprint
 from core.models.workbench_plan_reference import WorkbenchPlanLocator
 from core.models.workbench_plan_scope import PlanReadScope
-from core.services.workbench.field_workspace_scope import STATES, matches
+from core.services.workbench.facts.plan_serialization import plain_plan_facts
+from core.services.workbench.plan.queries import WorkbenchPlanQueryService
 from data.repositories.workbench_execution_repo import WorkbenchExecutionRepository
 from data.repositories.workbench_field_query_repo import WorkbenchFieldQueryRepository
 from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
 
-from .facts.plan_serialization import plain_plan_facts
-from .plan.queries import WorkbenchPlanQueryService
+from .field_workspace_scope import STATES, matches
 
 
 class FieldWorkspaceService:
     def __init__(self, conn, *, context_factory=None):
-        from core.services.workbench.execution_ledger import ExecutionLedgerService
+        from .ledger import ExecutionLedgerService
 
         self.conn = conn
         self.ledger = ExecutionLedgerService(conn, context_factory=context_factory)

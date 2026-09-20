@@ -17,7 +17,7 @@ from core.models.workbench_dashboard import DashboardQuery
 from core.services.workbench.commands import WorkbenchCommandService
 from core.services.workbench.dashboard.commands import WorkbenchDashboardCommandService
 from core.services.workbench.dashboard.service import WorkbenchDashboardService
-from core.services.workbench.production_report import WorkbenchProductionReportService
+from core.services.workbench.execution.production_report import WorkbenchProductionReportService
 from web.routes.workbench.dashboard import register_dashboard_routes
 from web.routes.workbench.write_context import issue_write_context, validate_write_context
 

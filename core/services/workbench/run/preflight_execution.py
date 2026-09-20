@@ -55,7 +55,7 @@ def execution_projections(facts, operations):
 
         installed = not execution_ledger_contract_issues(facts.conn)
     if installed:
-        from core.services.workbench.execution_ledger import ExecutionLedgerService
+        from core.services.workbench.execution.ledger import ExecutionLedgerService
 
         refs = [facts.operation_ref(op) for op in operations]
         service = ExecutionLedgerService(facts.conn)

@@ -5,8 +5,7 @@ import re
 from datetime import datetime
 
 from core.models.workbench_command import WorkbenchCommandRejected
-
-from .facts.zero_duration_evidence import overlaps
+from core.services.workbench.facts.zero_duration_evidence import overlaps
 
 STATES = ('unreported', 'started', 'partial', 'paused', 'exception', 'complete')
 FILTERS = ('plan_ref', 'query', 'state', 'plan_finish_date_from', 'plan_finish_date_to', 'resource_type', 'resource_ref', 'range_start', 'range_end', 'batch_ids')

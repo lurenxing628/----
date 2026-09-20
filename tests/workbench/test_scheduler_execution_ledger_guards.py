@@ -11,7 +11,7 @@ from core.services.scheduler.run.schedule_execution_guardrails import (
     build_execution_guardrails_from_projections,
 )
 from core.services.scheduler.schedule_service import ScheduleService
-from core.services.workbench.execution_ledger import ExecutionLedgerService
+from core.services.workbench.execution.ledger import ExecutionLedgerService
 from tests._support.gantt_scenario import _saved_scenario, _seed_base
 from tests.schedule.service.test_scheduler_reschedule_execution_minimum_guard import _seed_two_operation_plan
 from tests.workbench.scheduler_execution_ledger_support import (

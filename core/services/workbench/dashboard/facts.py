@@ -3,7 +3,7 @@
 from core.models.workbench_command import WorkbenchCommandRejected, input_fingerprint
 from core.models.workbench_plan_reference import WorkbenchPlanLocator, WorkbenchPlanReferenceError
 from core.models.workbench_plan_scope import PlanReadScope
-from core.services.workbench.execution_ledger import ExecutionLedgerService
+from core.services.workbench.execution.ledger import ExecutionLedgerService
 from core.services.workbench.facts.plan_serialization import plain_plan_facts
 from core.services.workbench.plan.delivery import read_plan_delivery
 from core.services.workbench.plan.projection import project_plan, project_tasks

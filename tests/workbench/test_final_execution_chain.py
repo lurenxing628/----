@@ -5,7 +5,7 @@ import json
 import pytest
 
 from core.services.scheduler.gantt_critical_chain import compute_critical_chain_from_rows
-from core.services.workbench import actual_gantt_chain
+from core.services.workbench.execution import actual_gantt_chain
 from tests.workbench.final_execution_cases import final_e_runtime as final_e_runtime
 from tests.workbench.final_execution_chain_seed import chain_plan
 from tests.workbench.final_execution_seed import execution
