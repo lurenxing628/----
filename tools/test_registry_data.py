@@ -191,6 +191,7 @@ QUALITY_GATE_GUARD_TESTS = (
     "tests/gate_meta/test_boundary_ratchets.py",
     "tests/gate_meta/test_web_layer_direction.py",
     "tests/gate_meta/test_workbench_cluster_layering.py",
+    "tests/gate_meta/test_scheduler_subpackage_layering.py",
     "tests/gate_meta/test_move_modules.py",
     "tests/gate_meta/test_round1_import_resolver.py",
     "tests/gate_meta/test_check_full_test_debt.py",

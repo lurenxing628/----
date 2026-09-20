@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import time
 from datetime import date, datetime
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Protocol, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
 from core.algorithms import ScheduleResult, SortStrategy
 from core.algorithms.evaluation import compute_metrics, objective_score
 from core.algorithms.greedy.algo_stats import merge_algo_stats, snapshot_algo_stats
 from core.errors import ValidationError
+from core.services.scheduler.contracts.scheduler_like import SchedulerLike
 
 from .optimizer.config import (
     ensure_optimizer_config_snapshot,
@@ -35,11 +36,6 @@ from .optimizer.step_report_hooks import (
 
 if TYPE_CHECKING:
     from .optimizer.search_report import OptimizationSearchReportState
-
-
-class SchedulerLike(Protocol):
-    def schedule(self, *args: Any, **kwargs: Any) -> Any:
-        ...
 
 
 def _step_config_snapshot(cfg: Any, *, strict_mode: bool) -> Any:

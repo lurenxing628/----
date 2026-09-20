@@ -175,3 +175,19 @@ def test_frozen_anchor_module_imports_cleanly() -> None:
     module = importlib.import_module(_ANCHOR_MODULE)
     anchors = getattr(module, "FROZEN_IMPORT_ANCHORS")
     assert anchors, "FROZEN_IMPORT_ANCHORS 不应为空"
+
+
+def test_legacy_blueprint_handlers_are_imported_literally_not_dynamically() -> None:
+    """(f) register_legacy_blueprints 延迟导入的说明书页 / 运行时接口模块必须写成字面 import；
+    import_module(变量) 会让 PyInstaller 漏收这两个模块，冻结包里的说明书页直接 404。"""
+    path = REPO_ROOT / "web" / "routes" / "workbench" / "legacy_blueprints.py"
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    function = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "register_legacy_blueprints")
+    literal = {alias.name for node in ast.walk(function) if isinstance(node, ast.ImportFrom) and node.level == 1 and node.module is None
+               for alias in node.names}
+    assert {"manual_page", "system_runtime"} <= literal, sorted(literal)
+    dynamic = [node.lineno for node in ast.walk(tree) if isinstance(node, ast.Call)
+               and getattr(node.func, "attr", getattr(node.func, "id", "")) in ("import_module", "__import__")]
+    assert dynamic == []
+    for module in ("web.routes.workbench.manual_page", "web.routes.workbench.system_runtime"):
+        assert _first_party_module_file_exists(module), module

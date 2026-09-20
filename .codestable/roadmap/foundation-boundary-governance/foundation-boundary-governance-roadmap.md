@@ -222,7 +222,7 @@ core/services/scheduler/
 - 分包前先解掉五对双向依赖，方法只有三种：共享部分下沉到 `facts/`、合并成一个簇、显式接口注入。
 - 不留兼容垫片；调用方（含测试）用 codemod 一次改完。`_frozen_import_anchor` 的静态清单随 scheduler 懒门面同步。
 - 现有目录环门禁（`tools/scan_import_cycles.py`）在分包后自动覆盖簇间环，基线按“只减不增”刷新。
-- 排产服务包目前只约束目录归属，子包之间不设方向表（2026-09-20 复审：`run ⇄ run/optimizer`、`summary → run`、`gantt → run` 有少量反向边）；要冻结方向时照工作台的 `ALLOWED` 表另立适应度测试。
+- 排产服务包子包之间的允许方向锁在 `tests/gate_meta/test_scheduler_subpackage_layering.py`（2026-09-20 复审后建立：`contracts / config / execution / graph` 为叶子，`calendar → config`，`resource_dispatch → execution`，`run/optimizer → {config, contracts}`，`run/optimizer/graph → run/optimizer`，`run → {config, contracts, execution, graph, run/optimizer, run/optimizer/graph}`，`gantt → {calendar, execution, run}`，`summary → {config, contracts, run, run/optimizer}`）；根目录模块既是门面又是叶子助手，暂不约束。方向表要改时先改本文档再改测试。
 
 ### 4.6 门禁回执耗时字段
 
@@ -348,3 +348,4 @@ web/bootstrap 里只有 factory.py 可 import web.routes（装配蓝图）；web
 - 2026-09-20：sql-boundary-ratchet、private-import-ratchet、schema-parity-test 完成；gate-step-timing 因机制已存在 drop；boundary-policy-decisions 依赖去掉 gate-step-timing；观察项补两条事实更正。
 - 2026-09-20：S 模块（SQL 排水七批）、P 模块（工作台簇层次 + 14 簇分包、排产包四步分包）、D 模块（schema 生成化）、T 模块四条、C 模块四份决策全部完成；18 条子 feature 17 done / 1 dropped。
 - 2026-09-20：三轨对抗复审（`.codestable/audits/2026-09-20-foundation-boundary-review/`）：3 blocker（pyright 41 错、债务台账 check 红、就绪度降级漏接 AppError）+ 9 major 全部修复并单独提交；facts/ 定义、排产子包方向约束、文档数字按复审更正。
+- 2026-09-20：复审遗留清理——47 条旧路由层失效分组作用域清空并加合同；死代码孤岛 108 条逐条分诊（删 9 处、基线按类别吸收 99 条）；删 8 个只能 ImportError 的旧脚本；`SchedulerLike` 落到 `contracts/`，排产子包方向表立为适应度测试；说明书蓝图字面导入进冻结合同。

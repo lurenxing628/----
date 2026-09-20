@@ -53,6 +53,18 @@ verified_by: 主代理定向测试（每个修复提交单独跑定向用例，�
 | R4-4 | minor | `calendar_rows` 是生成器函数，错误在首次 next 才翻译 | 改为调用时执行两条语句 |
 | R4-5 | 记录 | `iter_rows` 迭代期 sqlite 错误不翻译（与原 fetchall 一致） | 不改 |
 
+## 复审遗留清理（用户裁决"这俩干了吧，其它该修的修"）
+
+| # | 项 | 处置 |
+|---|---|---|
+| C1 | 47 条旧路由层时代的失效分组作用域（templates/scheduler、static/js、web/routes/*_excel_*、web/viewmodels/scheduler_* …）+ 已删 unit_excel_converter.py | 全部删除；甘特/报表组与界面布局组补现行 workbench 路由 / 前端等价作用域；`.codestable/**/*.yml` 两条属前瞻覆盖保留并显式放行；合同 `test_every_required_group_input_scope_matches_an_existing_path` |
+| C2 | 死代码孤岛 108 条新条目 | 逐条 grep 归类：删 9 处真死代码（4 零引用 + 5 仅测试引用），基线吸收 99 条并在提交说明写明类别（67 生产引用误报 / 25 dunder 钩子 / 3 闭包 / 3 测试接缝 / 1 HTMLParser 钩子）；老 Excel 导入簇（`ExcelService` 生产无调用方 + `build_existing_for_excel` + `tests/excel_data_io` 8 份 + smoke_phase3/4）整簇是否退役留给用户裁决 |
+| C3 | 8 个只能 ImportError 的脚本（7 个 e2e/冒烟 + `scripts/convert_rotary_shell_unit_excel.py`） | 删除；仓内无工具/注册表/现行文档引用 |
+| C4 | `run/optimizer → run` 的 TYPE_CHECKING 反向边 | `SchedulerLike` 协议落到 `contracts/scheduler_like.py`；排产子包方向表立为 `test_scheduler_subpackage_layering.py`（登记进 scheduler_run_core 与守卫清单） |
+| C5 | R3-m2 说明书蓝图延迟导入无合同 | 冻结合同新增 (f)：`register_legacy_blueprints` 必须字面 import，全文件无 import_module |
+| C6 | 系统速查表 / 开发文档.md / .limcode ownership_matrix 旧路径 | 按搬迁计划映射逐条改到现行路径（14 处）；阶段留痕类文档不改 |
+| C7 | R2-m1 嵌套 `begin_immediate` 静默降级 | 未改：10 处生产调用方部分本就嵌套在外层事务里，改成拒绝属事务语义决策，留待另议 |
+
 ## 未做 / 证据不足
 
 - 全量门禁、`tests/workbench` 全目录、三个拒绝 xdist 的算法矩阵测试：按用户明令未跑。

@@ -11,6 +11,7 @@ from core.algorithm_contracts.dispatch_rules import dispatch_rule_search_pool
 from core.algorithms import ScheduleResult, SortStrategy
 from core.algorithms.evaluation import compute_metrics, objective_score
 from core.algorithms.greedy.algo_stats import merge_algo_stats, snapshot_algo_stats
+from core.services.scheduler.contracts.scheduler_like import SchedulerLike
 
 from .attempt_records import candidate_tag, evaluate_optional_start_candidate
 from .config import ensure_optimizer_config_snapshot, weighted_strategy_params
@@ -19,8 +20,6 @@ from .signature_support import schedule_with_optional_strict_mode as _schedule_w
 from .step_report_hooks import _multi_start_deadline_reached, _record_multi_start_candidate
 
 if TYPE_CHECKING:
-    from core.services.scheduler.run.schedule_optimizer_steps import SchedulerLike
-
     from .search_report import OptimizationSearchReportState
 
 

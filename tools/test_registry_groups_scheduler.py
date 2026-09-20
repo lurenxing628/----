@@ -24,6 +24,7 @@ SCHEDULER_REQUIRED_REGRESSION_GROUPS = (
             "tests/gate_meta/test_boundary_ratchets.py",
             "tests/gate_meta/test_web_layer_direction.py",
             "tests/gate_meta/test_workbench_cluster_layering.py",
+            "tests/gate_meta/test_scheduler_subpackage_layering.py",
             "tests/gate_meta/test_move_modules.py",
             "tests/gate_meta/test_check_full_test_debt.py",
             "tests/gate_meta/test_quality_gate_output_normalization.py",

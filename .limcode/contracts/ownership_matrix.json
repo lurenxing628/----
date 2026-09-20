@@ -58,7 +58,7 @@
       "allowedFiles": [
         "core/infrastructure/migrations/v4.py",
         "tests/regression_migrate_v4_sanitize_enum_text_fields.py",
-        "core/services/scheduler/schedule_persistence.py",
+        "core/services/scheduler/run/schedule_persistence.py",
         "core/services/scheduler/operation_edit_service.py"
       ],
       "forbiddenFiles": [

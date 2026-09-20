@@ -13,7 +13,7 @@
       "name": "worker_parse",
       "allowedFiles": [
         "core/algorithms/sort_strategies.py",
-        "core/services/scheduler/schedule_optimizer.py",
+        "core/services/scheduler/run/schedule_optimizer.py",
         "tests/regression_sort_strategy_case_insensitive.py"
       ],
       "forbiddenFiles": [
@@ -55,7 +55,7 @@
     {
       "name": "worker_obs",
       "allowedFiles": [
-        "core/services/scheduler/schedule_optimizer.py",
+        "core/services/scheduler/run/schedule_optimizer.py",
         "core/plugins/manager.py",
         "tests/regression_optimizer_ortools_logging_exc_info_safe.py",
         "tests/regression_plugin_manager_error_trace_visible.py"
