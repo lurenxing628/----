@@ -3,8 +3,8 @@
 import pytest
 
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.services.workbench.run_compute import compute_candidate_run
-from core.services.workbench.run_worker import WorkbenchRunWorker
+from core.services.workbench.run.compute import compute_candidate_run
+from core.services.workbench.run.worker import WorkbenchRunWorker
 from tests.workbench.ea_zero_duration_support import adopt, point_candidate, trial_adoption_service
 from tests.workbench.trial_support import change, create, service, snapshot  # noqa: F401
 from tests.workbench.trial_support import trial_case as trial_case

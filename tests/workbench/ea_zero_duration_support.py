@@ -1,6 +1,6 @@
 """EA backend integration factories; the HTTP point surface remains disabled."""
 
-from core.services.workbench.run_candidate_adoption import WorkbenchRunCandidateAdoptionService
+from core.services.workbench.run.candidate_adoption import WorkbenchRunCandidateAdoptionService
 from core.services.workbench.trial.adoption import WorkbenchTrialAdoptionService
 from tests.workbench.run_candidate_adoption_support import INTENT
 from tests.workbench.run_candidate_support import compute

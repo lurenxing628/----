@@ -2,7 +2,7 @@
 
 import pytest
 
-from core.services.workbench.run_worker import WorkbenchRunWorker
+from core.services.workbench.run.worker import WorkbenchRunWorker
 from tests.workbench.piece_chain_support import adopt_candidate, artifact, piece_layout
 from tests.workbench.piece_chain_support import trial_case as trial_case  # noqa: F401
 from tests.workbench.run_candidate_support import compute

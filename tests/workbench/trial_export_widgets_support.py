@@ -10,7 +10,7 @@ from pathlib import Path
 
 from flask import jsonify
 
-from core.services.workbench.run_worker import WorkbenchRunWorker
+from core.services.workbench.run.worker import WorkbenchRunWorker
 from tests.workbench.run_jobs_support import JobCase
 from tests.workbench.trial_widgets_support import TrialWidgetServer, service, snapshot
 

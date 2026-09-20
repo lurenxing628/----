@@ -225,7 +225,7 @@ def test_archived_multisegment_envelope_keeps_all_segments_without_picking_one(c
 
 
 def test_output_capacity_returns_error_instead_of_truncating(candidate_case, monkeypatch):
-    import core.services.workbench.run_candidate_baseline as module
+    import core.services.workbench.run.candidate_baseline as module
     case = candidate_case
     original_plan(case)
     _, refs = compute(case)

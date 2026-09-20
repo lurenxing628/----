@@ -6,8 +6,8 @@ import sqlite3
 import pytest
 
 from core.models.workbench_command import WorkbenchCommandUncertain
-from core.services.workbench.run_jobs_facts import capture_run_facts
-from core.services.workbench.run_worker import WorkbenchRunWorker
+from core.services.workbench.run.jobs_facts import capture_run_facts
+from core.services.workbench.run.worker import WorkbenchRunWorker
 from data.repositories.workbench_command_repo import WorkbenchCommandRepository
 from data.repositories.workbench_run_repo import WorkbenchRunRepository
 from data.repositories.workbench_run_result_repo import WorkbenchRunResultRepository

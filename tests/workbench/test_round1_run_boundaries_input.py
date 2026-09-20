@@ -9,8 +9,8 @@ from core.models.external_group import ExternalGroup
 from core.models.part_operation import PartOperation
 from core.models.workbench_run_compute import CandidateRunInputError
 from core.services.workbench.facts.run_input_codec import restore_execution_projections, validate_projection_dto
-from core.services.workbench.run_input_external import prime_template_cache
-from core.services.workbench.run_input_runtime import _validate_stored_runtime
+from core.services.workbench.run.input_external import prime_template_cache
+from core.services.workbench.run.input_runtime import _validate_stored_runtime
 from tests.workbench.run_compute_support import run_case as _run_case
 
 

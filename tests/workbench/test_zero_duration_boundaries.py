@@ -8,11 +8,11 @@ import pytest
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_run_candidate import RunCandidateReadScope
 from core.models.workbench_run_compute import CandidateRunInputError
-from core.services.workbench.run_candidate_adoption import WorkbenchRunCandidateAdoptionService
-from core.services.workbench.run_candidates import WorkbenchRunCandidateQueryService
-from core.services.workbench.run_compute import compute_candidate_run
-from core.services.workbench.run_jobs_facts import capture_run_facts
-from core.services.workbench.run_worker import WorkbenchRunWorker
+from core.services.workbench.run.candidate_adoption import WorkbenchRunCandidateAdoptionService
+from core.services.workbench.run.candidates import WorkbenchRunCandidateQueryService
+from core.services.workbench.run.compute import compute_candidate_run
+from core.services.workbench.run.jobs_facts import capture_run_facts
+from core.services.workbench.run.worker import WorkbenchRunWorker
 from core.services.workbench.trial.adoption import WorkbenchTrialAdoptionService
 from tests.workbench.run_candidate_adoption_support import INTENT
 from tests.workbench.run_candidate_adoption_support import service as candidate_adoption

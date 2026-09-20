@@ -12,8 +12,8 @@ from urllib.parse import unquote, urlsplit
 from flask import Blueprint
 
 from core.models.workbench_run_history import RunHistoryScope
-from core.services.workbench.run_history import WorkbenchRunHistoryQueryService
-from core.services.workbench.run_worker import WorkbenchRunWorker
+from core.services.workbench.run.history import WorkbenchRunHistoryQueryService
+from core.services.workbench.run.worker import WorkbenchRunWorker
 from tests._support.excel_templates import point_env_at_shared
 from tests.workbench.run_history_support import BASE, dump, read, seed
 from tests.workbench.run_history_support import history_case as _history_case
@@ -51,7 +51,7 @@ def test_full_flask_app_actual_engine_run_and_only_temporary_sqlite(history_case
         app.register_blueprint(candidates_bp)
     client = app.test_client()
     from core.infrastructure import workbench_run_schema
-    from core.services.workbench.run_jobs import WorkbenchRunService
+    from core.services.workbench.run.jobs import WorkbenchRunService
 
     def forbidden(*args, **kwargs):
         raise AssertionError("History GET must not install, recover or dispatch")
@@ -104,7 +104,7 @@ def test_new_process_reopens_history_without_browser_token_cache(history_case):
     code = '''import json, sqlite3, sys
 from core.infrastructure.migration_state import CURRENT_SCHEMA_VERSION, current_schema_contract_issues
 from core.models.workbench_run_history import RunHistoryScope
-from core.services.workbench.run_history import WorkbenchRunHistoryQueryService
+from core.services.workbench.run.history import WorkbenchRunHistoryQueryService
 conn = sqlite3.connect(sys.argv[1])
 conn.row_factory = sqlite3.Row
 conn.execute("PRAGMA foreign_keys=ON")

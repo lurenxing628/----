@@ -9,7 +9,7 @@ from flask import Blueprint, g, request
 
 from core.infrastructure.backup import BackupManager
 from core.infrastructure.database import get_connection
-from core.services.workbench.run_jobs import WorkbenchRunService
+from core.services.workbench.run.jobs import WorkbenchRunService
 from tests.workbench.request_lifecycle_support import http_json, http_server
 from tests.workbench.run_jobs_support import job_case as _job_case  # noqa: F401
 from tests.workbench.run_runtime_support import BASE, install, paused_compute

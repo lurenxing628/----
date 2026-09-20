@@ -18,9 +18,9 @@ from core.services.scheduler.run.schedule_seed_contracts import coerce_seed_resu
 from core.services.scheduler.schedule_service import ScheduleService
 from core.services.workbench.facts.piece_scope import build_piece_adoption_scope
 from core.services.workbench.facts.run_input_rows import batch_model, operation_model
-from core.services.workbench.run_input_config import candidate_config
-from core.services.workbench.run_input_external import prime_template_cache
-from core.services.workbench.run_input_runtime import _locked_seeds
+from core.services.workbench.run.input_config import candidate_config
+from core.services.workbench.run.input_external import prime_template_cache
+from core.services.workbench.run.input_runtime import _locked_seeds
 from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
 from tests.workbench.run_candidate_adoption_support import snapshot
 from tests.workbench.run_candidate_support import candidate_case as candidate_case  # noqa: F401

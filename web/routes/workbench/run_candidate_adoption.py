@@ -3,7 +3,7 @@
 from flask import current_app, g, jsonify, request
 
 from core.models.workbench_command import WorkbenchCommandRejected, input_fingerprint
-from core.services.workbench.run_candidate_adoption import WorkbenchRunCandidateAdoptionService
+from core.services.workbench.run.candidate_adoption import WorkbenchRunCandidateAdoptionService
 from web.api_responses import query_success
 
 from .api_responses import api_endpoint

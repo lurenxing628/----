@@ -3,7 +3,7 @@
 from core.infrastructure.workbench_dashboard_schema import install
 from core.models.workbench_dashboard import DashboardQuery
 from core.services.workbench.dashboard.service import WorkbenchDashboardService
-from core.services.workbench.run_worker import WorkbenchRunWorker
+from core.services.workbench.run.worker import WorkbenchRunWorker
 from tests.workbench.dashboard_support import NOW
 from tests.workbench.run_candidate_support import candidate_case as _candidate_case  # noqa: F401
 

@@ -51,7 +51,7 @@ def seed(output, batches, operations):
 
 def worker(args):
     from core.models.workbench_run_job import durable_value
-    from core.services.workbench.run_compute import compute_candidate_run
+    from core.services.workbench.run.compute import compute_candidate_run
     from tests.workbench.execution_ledger_support import all_rows
 
     output = Path(args.output)

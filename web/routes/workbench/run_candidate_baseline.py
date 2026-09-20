@@ -3,7 +3,7 @@
 from flask import g, request
 
 from core.models.workbench_run_baseline import RunCandidateBaselineScope
-from core.services.workbench.run_candidate_baseline import WorkbenchRunCandidateBaselineQueryService
+from core.services.workbench.run.candidate_baseline import WorkbenchRunCandidateBaselineQueryService
 
 from .api_responses import api_endpoint
 from .read_context import bind_read_snapshot

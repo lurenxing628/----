@@ -6,7 +6,7 @@ from datetime import datetime
 import pytest
 
 from core.models.workbench_piece_adoption import PieceAdoptionBlocked
-from core.services.workbench.run_input import prepare_candidate_run_input
+from core.services.workbench.run.input import prepare_candidate_run_input
 from tests.workbench.piece_adoption_support import split
 from tests.workbench.piece_chain_support import artifact, piece_candidate, piece_layout
 from tests.workbench.piece_chain_support import trial_case as trial_case  # noqa: F401

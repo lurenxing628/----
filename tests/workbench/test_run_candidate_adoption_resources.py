@@ -2,7 +2,7 @@
 
 import pytest
 
-from core.services.workbench.preflight import PreflightService
+from core.services.workbench.run.preflight import PreflightService
 from tests.workbench.run_candidate_adoption_support import (
     INTENT,
     KEY,

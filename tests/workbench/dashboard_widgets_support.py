@@ -12,7 +12,7 @@ from flask import Blueprint, Flask, g, jsonify, request
 from werkzeug.serving import make_server
 
 from core.infrastructure.workbench_dashboard_schema import install
-from core.services.workbench.run_worker import WorkbenchRunWorker
+from core.services.workbench.run.worker import WorkbenchRunWorker
 from tests.workbench.dashboard_support import NOW
 from web.routes.workbench.actual_gantt import register_actual_gantt_routes
 from web.routes.workbench.batches import register_batch_routes

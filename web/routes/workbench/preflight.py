@@ -9,8 +9,8 @@ from werkzeug.exceptions import HTTPException
 from core.errors import ValidationError
 from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
 from core.models.workbench_preflight import normalize_preflight_input
-from core.services.workbench.preflight import PreflightService
-from core.services.workbench.preflight_facts import full_facts_fingerprint
+from core.services.workbench.run.preflight import PreflightService
+from core.services.workbench.run.preflight_facts import full_facts_fingerprint
 from web.api_responses import failure, query_success
 from web.public_token_registry import issue_public_token_with_expiry, resolve_public_token
 

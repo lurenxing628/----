@@ -6,8 +6,8 @@ import pytest
 
 from core.infrastructure.logging import OperationLogger
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.services.workbench.run_jobs_facts import capture_run_facts
-from core.services.workbench.run_worker import WorkbenchRunWorker
+from core.services.workbench.run.jobs_facts import capture_run_facts
+from core.services.workbench.run.worker import WorkbenchRunWorker
 from tests.workbench.run_jobs_support import connection, service  # noqa: F401
 from tests.workbench.run_jobs_support import job_case as _job_case
 
@@ -131,7 +131,7 @@ def test_actual_excluded_batch_produces_persisted_partial_result(job_case):
 
 
 def test_audit_writes_before_compute_and_before_persist_preserve_run(job_case, monkeypatch):
-    from core.services.workbench import run_worker
+    from core.services.workbench.run import worker as run_worker
 
     case = job_case
     accepted = case.accept()

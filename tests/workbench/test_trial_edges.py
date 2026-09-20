@@ -6,7 +6,7 @@ import pytest
 
 from core.models.workbench_command import WorkbenchCommandRejected, WorkbenchCommandUncertain
 from core.models.workbench_trial_codec import load
-from core.services.workbench.run_worker import WorkbenchRunWorker
+from core.services.workbench.run.worker import WorkbenchRunWorker
 from tests.workbench.trial_support import change, create, official, service, snapshot
 from tests.workbench.trial_support import trial_case as trial_case
 

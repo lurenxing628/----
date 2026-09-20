@@ -4,7 +4,7 @@ from core.infrastructure.schema_probe import schema_objects
 from core.models.workbench_trial import MAX_TRIAL_TASKS, reject
 from core.models.workbench_trial_codec import dump, fingerprint
 from core.services.workbench.execution_ledger import ExecutionLedgerService
-from core.services.workbench.run_jobs_facts import run_baseline
+from core.services.workbench.run.jobs_facts import run_baseline
 from data.repositories.workbench_trial_query_repo import BOOKKEEPING_TABLES, WorkbenchTrialQueryRepository
 
 

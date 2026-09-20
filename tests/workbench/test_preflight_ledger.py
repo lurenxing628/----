@@ -2,7 +2,7 @@
 
 import pytest
 
-from core.services.workbench.preflight import PreflightService
+from core.services.workbench.run.preflight import PreflightService
 from tests.workbench.execution_ledger_support import START
 from tests.workbench.execution_ledger_support import ledger_case as ledger_fixture
 from tests.workbench.identity_metadata_support import insert_row

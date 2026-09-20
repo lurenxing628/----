@@ -13,8 +13,8 @@ from core.infrastructure.workbench_plan_identity_schema import install_plan_iden
 from core.infrastructure.workbench_run_schema import install_workbench_run_schema
 from core.models.workbench_command import canonical_json
 from core.services.scheduler.config.config_field_spec import default_snapshot_values
-from core.services.workbench.preflight import PreflightService
-from core.services.workbench.run_jobs import WorkbenchRunService
+from core.services.workbench.run.jobs import WorkbenchRunService
+from core.services.workbench.run.preflight import PreflightService
 from tests.workbench.run_compute_support import RunCase
 from web.public_token_registry import issue_public_token_with_expiry
 from web.routes.workbench.preflight import INPUT_SCOPE, resolve_preflight_input

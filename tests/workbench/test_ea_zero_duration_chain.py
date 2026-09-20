@@ -2,7 +2,7 @@
 
 from core.models.workbench_plan_scope import PlanReadScope
 from core.services.workbench.plan.queries import WorkbenchPlanQueryService
-from core.services.workbench.run_compute import compute_candidate_run
+from core.services.workbench.run.compute import compute_candidate_run
 from tests.workbench.ea_zero_duration_support import adoption_service, trial_adoption_service
 from tests.workbench.run_candidate_adoption_support import INTENT, assert_retained
 from tests.workbench.run_candidate_support import compute

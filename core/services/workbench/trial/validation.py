@@ -9,7 +9,7 @@ from core.models.workbench_trial_codec import fingerprint
 from core.services.personnel.operator_qualification import OperatorQualificationError, OperatorQualificationService
 from core.services.workbench.facts.preflight_checks import PreflightChecks
 from core.services.workbench.facts.zero_duration_evidence import trial_point_evidence
-from core.services.workbench.piece_adoption_trial import trial_piece_issues
+from core.services.workbench.run.piece_adoption_trial import trial_piece_issues
 
 from .calendar import calendar_engine, estimate
 from .constraints import interval, relation_issues, resource_issues

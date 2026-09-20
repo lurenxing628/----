@@ -3,7 +3,7 @@
 from flask import Blueprint, g
 
 from core.models.workbench_run_baseline import RunCandidateBaselineScope
-from core.services.workbench.run_candidate_baseline import WorkbenchRunCandidateBaselineQueryService
+from core.services.workbench.run.candidate_baseline import WorkbenchRunCandidateBaselineQueryService
 from tests.workbench.run_candidate_support import connect, public
 from web.routes.workbench.run_candidate_baseline import register_run_candidate_baseline_routes
 from web.routes.workbench.run_candidates import register_run_candidate_routes

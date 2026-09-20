@@ -15,8 +15,8 @@ from core.infrastructure.database import get_connection
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_run_job import TERMINAL_STATES, validate_run_ref
 from core.services.scheduler import schedule_service
-from core.services.workbench.run_jobs import WorkbenchRunService
-from core.services.workbench.run_worker import WorkbenchRunWorker
+from core.services.workbench.run.jobs import WorkbenchRunService
+from core.services.workbench.run.worker import WorkbenchRunWorker
 
 from .launcher_paths import _normalize_db_path_for_runtime
 from .workbench_request_lifecycle import lookup_workbench_request_lifecycle

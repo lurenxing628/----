@@ -6,8 +6,8 @@ from datetime import timedelta
 import pytest
 
 from core.models.workbench_run_candidate import local_time
-from core.services.workbench.run_candidate_analysis import read_candidate_analysis
-from core.services.workbench.run_worker import WorkbenchRunWorker
+from core.services.workbench.run.candidate_analysis import read_candidate_analysis
+from core.services.workbench.run.worker import WorkbenchRunWorker
 from tests.workbench.run_candidate_baseline_support import baseline, original_plan
 from tests.workbench.run_candidate_support import candidate_case as _candidate_case
 from tests.workbench.run_candidate_support import compute, retained

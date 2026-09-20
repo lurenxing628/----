@@ -116,7 +116,7 @@ def install_fault(root, mode):
             return copy(self, source_path, locked_warning_message=locked_warning_message)
         BackupManager._copy_db_file = copy_failure
     if mode == "pause-worker":
-        from core.services.workbench import run_worker
+        from core.services.workbench.run import worker as run_worker
         compute = run_worker.compute_candidate_run
         def paused(*args, **kwargs):
             (root / "worker-entered").touch()

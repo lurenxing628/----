@@ -15,7 +15,7 @@ import pytest
 from core.infrastructure.workbench_run_schema import RUN_TABLES
 from core.infrastructure.workbench_trial_schema import TRIAL_TABLES
 from core.models.workbench_trial_catalog import TrialCatalogScope
-from core.services.workbench.run_candidate_adoption_constraints import _TABLES as CONSTRAINT_TABLES
+from core.services.workbench.run.candidate_adoption_constraints import _TABLES as CONSTRAINT_TABLES
 from data.repositories.workbench_piece_adoption_repo import (
     PREFLIGHT_TABLES,
     TEMPLATE_TABLES,

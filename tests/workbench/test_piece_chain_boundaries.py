@@ -5,7 +5,7 @@ import sqlite3
 import pytest
 
 from core.models.workbench_command import WorkbenchCommandRejected, WorkbenchCommandUncertain
-from core.services.workbench.run_worker import WorkbenchRunWorker
+from core.services.workbench.run.worker import WorkbenchRunWorker
 from tests.workbench.piece_chain_support import piece_candidate, piece_layout, saved_trial
 from tests.workbench.piece_chain_support import trial_case as trial_case  # noqa: F401
 from tests.workbench.round1_piece_point_support import adopt, candidate, workspace

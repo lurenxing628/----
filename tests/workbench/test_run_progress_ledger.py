@@ -5,8 +5,8 @@ from types import SimpleNamespace
 import pytest
 
 import core.services.scheduler.run.schedule_candidate_runner as runner
-from core.services.workbench import run_progress
-from core.services.workbench.run_jobs import _with_progress
+from core.services.workbench.run import progress as run_progress
+from core.services.workbench.run.jobs import _with_progress
 from tests.candidate.test_scheduler_candidate_runner_contract import _outcome, _schedule_input, _StepClock
 
 RUN_REF = "a" * 48

@@ -8,9 +8,9 @@ import pytest
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_run_analysis import operation_metrics
 from core.models.workbench_run_candidate import RunCandidateReadScope
-from core.services.workbench.run_candidate_analysis import read_candidate_analysis
-from core.services.workbench.run_candidate_comparison import read_candidate_comparison
-from core.services.workbench.run_candidates import WorkbenchRunCandidateQueryService
+from core.services.workbench.run.candidate_analysis import read_candidate_analysis
+from core.services.workbench.run.candidate_comparison import read_candidate_comparison
+from core.services.workbench.run.candidates import WorkbenchRunCandidateQueryService
 from tests.workbench.run_candidate_baseline_support import baseline, original_plan
 from tests.workbench.run_candidate_support import api, compute, connect, retained
 from tests.workbench.run_candidate_support import candidate_case as _case  # noqa: F401

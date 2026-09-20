@@ -47,7 +47,7 @@ def test_fresh_current_fastforwards_without_scheduling(tmp_path, schema_path, mo
         pytest.fail("A fresh database must not migrate old data or execute a schedule")
 
     monkeypatch.setattr(database, "_migrate_with_backup_impl", forbidden)
-    from core.services.workbench.run_worker import WorkbenchRunWorker
+    from core.services.workbench.run.worker import WorkbenchRunWorker
 
     monkeypatch.setattr(WorkbenchRunWorker, "execute", forbidden)
     path, backups = tmp_path / "fresh.db", tmp_path / "backups"

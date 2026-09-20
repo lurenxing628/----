@@ -5,7 +5,7 @@ from contextlib import closing
 import pytest
 
 from core.infrastructure.database import get_connection
-from core.services.workbench.preflight import PreflightService
+from core.services.workbench.run.preflight import PreflightService
 from tests.workbench.preflight_support import (
     deny_writes,
     payload,

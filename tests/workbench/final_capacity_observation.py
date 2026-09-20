@@ -21,7 +21,8 @@ def peak_rss_bytes():
 
 @contextmanager
 def observe_worker(directory, *, profile=False):
-    from core.services.workbench import run_compute, run_worker
+    from core.services.workbench.run import compute as run_compute
+    from core.services.workbench.run import worker as run_worker
 
     origin = time.monotonic()
     path, lock = directory / "worker-stages.jsonl", threading.Lock()

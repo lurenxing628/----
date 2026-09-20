@@ -2,8 +2,8 @@
 
 from core.models.workbench_preflight import normalize_preflight_input
 from core.services.workbench.facts.run_input_rows import batch_model, operation_model
-from core.services.workbench.preflight_facts import TABLES, PreflightFacts
-from core.services.workbench.run_input import _prepare, _projection_map
+from core.services.workbench.run.input import _prepare, _projection_map
+from core.services.workbench.run.preflight_facts import TABLES, PreflightFacts
 
 
 def prepare_trial_adoption_input(conn, settings, projections, live):

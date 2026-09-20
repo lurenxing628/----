@@ -5,8 +5,8 @@ from datetime import datetime
 from core.models.batch import Batch
 from core.models.batch_operation import BatchOperation
 from core.services.scheduler.run.schedule_input_collector import ScheduleRunInput
-from core.services.workbench.run_compute import compute_candidate_run
-from core.services.workbench.run_input import prepare_candidate_run_input
+from core.services.workbench.run.compute import compute_candidate_run
+from core.services.workbench.run.input import prepare_candidate_run_input
 from tests.workbench.run_compute_support import run_case as _run_case  # noqa: F401
 from tests.workbench.run_compute_support import unchanged
 

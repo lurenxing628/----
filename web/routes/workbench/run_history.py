@@ -5,7 +5,7 @@ import re
 from flask import g, request
 
 from core.models.workbench_run_history import RunHistoryScope, reject
-from core.services.workbench.run_history import WorkbenchRunHistoryQueryService
+from core.services.workbench.run.history import WorkbenchRunHistoryQueryService
 from web.api_responses import query_success
 
 from .api_responses import api_endpoint

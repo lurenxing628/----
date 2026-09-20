@@ -10,7 +10,7 @@ import pytest
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_run_baseline import RunBaselineComparison
 from core.models.workbench_run_job import durable_value
-from core.services.workbench.run_history_projection import scope_summary
+from core.services.workbench.run.history_projection import scope_summary
 
 
 class _Status(Enum):

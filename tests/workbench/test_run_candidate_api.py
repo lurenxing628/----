@@ -87,7 +87,7 @@ def test_queued_catalog_and_failed_empty_run_are_not_mislabeled_complete(candida
     case.conn.execute("UPDATE Machines SET name='Changed after admission'")
     case.conn.commit()
     from core.models.workbench_command import WorkbenchCommandRejected
-    from core.services.workbench.run_worker import WorkbenchRunWorker
+    from core.services.workbench.run.worker import WorkbenchRunWorker
     with pytest.raises(WorkbenchCommandRejected):
         WorkbenchRunWorker(case.conn).execute(accepted["run_ref"])
     failed = read(client, path)

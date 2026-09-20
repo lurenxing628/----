@@ -42,7 +42,7 @@ def test_formal_capacity_rejects_stale_assets_without_relabeling_exploration():
 def actual_payload(tmp_path):
     from core.infrastructure.database import ensure_schema, get_connection
     from core.models.workbench_run_job import durable_value
-    from core.services.workbench.run_compute import compute_candidate_run
+    from core.services.workbench.run.compute import compute_candidate_run
     from tests.workbench.run_compute_support import RunCase
 
     path = tmp_path / "capacity.sqlite"

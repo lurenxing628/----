@@ -12,7 +12,7 @@ from typing import Any
 import pytest
 
 from core.infrastructure.database import get_connection
-from core.services.workbench import run_worker
+from core.services.workbench.run import worker as run_worker
 from tests.workbench.run_entrypoint_support import EntryHarness, accept_via_http
 from tests.workbench.run_entrypoint_support import entrypoint_case as _job_case_fixture  # noqa: F401
 from web.bootstrap import factory, workbench_run_runtime

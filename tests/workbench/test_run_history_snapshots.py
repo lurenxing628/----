@@ -48,7 +48,7 @@ def test_clock_changes_do_not_create_a_directory_fingerprint(history_case, monke
 
 
 def test_wal_writer_commit_between_directory_reads_never_mixes_snapshots(history_case, monkeypatch):
-    from core.services.workbench.run_history_storage import RunHistoryStore
+    from core.services.workbench.run.history_storage import RunHistoryStore
 
     case = history_case
     first_ref = seed(case, "complete")

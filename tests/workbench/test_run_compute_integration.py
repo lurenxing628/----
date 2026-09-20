@@ -5,7 +5,7 @@ from datetime import datetime
 import pytest
 
 from core.models.workbench_run_compute import CandidateRunInputError
-from core.services.workbench.run_compute import compute_candidate_run
+from core.services.workbench.run.compute import compute_candidate_run
 from tests.workbench.identity_metadata_support import insert_row
 from tests.workbench.run_compute_support import run_case as _run_case  # noqa: F401
 from tests.workbench.run_compute_support import unchanged

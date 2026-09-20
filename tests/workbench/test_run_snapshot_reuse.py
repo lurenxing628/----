@@ -6,8 +6,10 @@ from dataclasses import replace
 import pytest
 
 from core.models.workbench_run_compute import CandidateRunInputError
-from core.services.workbench import preflight_facts, run_compute, run_worker
-from core.services.workbench.run_input import prepare_candidate_run_input
+from core.services.workbench.run import compute as run_compute
+from core.services.workbench.run import preflight_facts
+from core.services.workbench.run import worker as run_worker
+from core.services.workbench.run.input import prepare_candidate_run_input
 from tests.workbench.final_capacity_observation import observe_worker
 from tests.workbench.run_compute_support import run_case as _run_case  # noqa: F401
 from tests.workbench.run_compute_support import unchanged

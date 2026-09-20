@@ -444,19 +444,19 @@
       "why": "导入模板表头匹配键，改了旧文件导不进"
     },
     {
-      "path": "core/services/workbench/run_compute.py",
+      "path": "core/services/workbench/run/compute.py",
       "term": "英文提示",
       "text": "Prepared calendar and worker|Version context must be|existing orchestrator cannot|requires its active read-only snapshot",
       "why": "调用方装配断言，用户数据触发不了"
     },
     {
-      "path": "core/services/workbench/run_input.py",
+      "path": "core/services/workbench/run/input.py",
       "term": "英文提示",
       "text": "AJ ExecutionProjection",
       "why": "内部调用方类型断言"
     },
     {
-      "path": "core/services/workbench/run_input_execution.py",
+      "path": "core/services/workbench/run/input_execution.py",
       "term": "英文提示",
       "text": "Supply selected operations plus",
       "why": "worker 调用契约断言"

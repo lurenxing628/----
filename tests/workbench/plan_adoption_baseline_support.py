@@ -5,7 +5,7 @@ import json
 from core.models.workbench_plan_scope import PlanReadScope
 from core.services.workbench.plan.baseline import build_plan_baseline
 from core.services.workbench.plan.queries import WorkbenchPlanQueryService
-from core.services.workbench.run_worker import WorkbenchRunWorker
+from core.services.workbench.run.worker import WorkbenchRunWorker
 from tests.workbench.run_candidate_adoption_support import INTENT
 from tests.workbench.run_candidate_adoption_support import service as candidate_service
 from tests.workbench.run_candidate_support import corrupt_update

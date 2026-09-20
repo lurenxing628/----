@@ -9,7 +9,7 @@ from core.services.workbench.facts.candidate_facts import GenerationFacts
 from core.services.workbench.facts.candidate_store import CandidateStore
 from core.services.workbench.facts.candidate_tasks import operation_labels
 from core.services.workbench.plan.projection import _captured_quantities
-from core.services.workbench.run_candidates import WorkbenchRunCandidateQueryService
+from core.services.workbench.run.candidates import WorkbenchRunCandidateQueryService
 from tests.workbench.piece_chain_support import adopt_candidate, adopt_trial, piece_layout, saved_trial
 from tests.workbench.piece_chain_support import trial_case as trial_case  # noqa: F401
 from tests.workbench.plan_catalog_support import candidate, scenario

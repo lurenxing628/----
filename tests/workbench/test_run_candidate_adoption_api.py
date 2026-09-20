@@ -10,7 +10,7 @@ from flask import g, request
 
 from core.infrastructure.database import get_connection
 from core.infrastructure.logging import OperationLogger
-from core.services.workbench.run_candidate_adoption import WorkbenchRunCandidateAdoptionService
+from core.services.workbench.run.candidate_adoption import WorkbenchRunCandidateAdoptionService
 from tests.workbench.run_candidate_adoption_support import (
     BASE,
     INTENT,

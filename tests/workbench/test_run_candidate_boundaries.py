@@ -7,7 +7,7 @@ import pytest
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_run_candidate import RunCandidateCatalogScope, RunCandidateReadScope
-from core.services.workbench.run_candidates import WorkbenchRunCandidateQueryService
+from core.services.workbench.run.candidates import WorkbenchRunCandidateQueryService
 from tests.workbench.run_candidate_support import (
     BASE,
     api,

@@ -5,7 +5,7 @@ import time
 from pathlib import Path
 
 from core.infrastructure.database import get_connection
-from core.services.workbench import run_candidate_adoption
+from core.services.workbench.run import candidate_adoption as run_candidate_adoption
 from tests.workbench.run_entrypoint_support import EntryHarness, accept_via_http
 from tests.workbench.run_entrypoint_support import entrypoint_case as _case  # noqa: F401
 from web.bootstrap.launcher_paths import db_scope_lock_path

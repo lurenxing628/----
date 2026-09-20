@@ -48,7 +48,7 @@ def test_350_runs_5000_candidates_batched_counts_without_reading_payloads(histor
 
 
 def test_directory_capacity_fails_explicitly_instead_of_truncating(history_case, monkeypatch):
-    from core.services.workbench import run_history_storage
+    from core.services.workbench.run import history_storage as run_history_storage
 
     seed(history_case)
     seed(history_case)

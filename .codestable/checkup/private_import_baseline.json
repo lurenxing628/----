@@ -389,16 +389,6 @@
       "count": 4
     },
     {
-      "path": "core/services/workbench/piece_adoption.py",
-      "kind": "private_symbol",
-      "count": 2
-    },
-    {
-      "path": "core/services/workbench/piece_adoption_execution.py",
-      "kind": "private_symbol",
-      "count": 3
-    },
-    {
       "path": "core/services/workbench/plan/adoption_baseline_sources.py",
       "kind": "private_symbol",
       "count": 2
@@ -469,49 +459,59 @@
       "count": 2
     },
     {
-      "path": "core/services/workbench/run_candidate_adoption_validation.py",
+      "path": "core/services/workbench/run/candidate_adoption_validation.py",
       "kind": "private_symbol",
       "count": 1
     },
     {
-      "path": "core/services/workbench/run_candidate_analysis.py",
+      "path": "core/services/workbench/run/candidate_analysis.py",
       "kind": "private_symbol",
       "count": 3
     },
     {
-      "path": "core/services/workbench/run_candidate_comparison.py",
+      "path": "core/services/workbench/run/candidate_comparison.py",
       "kind": "private_symbol",
       "count": 1
     },
     {
-      "path": "core/services/workbench/run_candidate_export.py",
+      "path": "core/services/workbench/run/candidate_export.py",
       "kind": "private_symbol",
       "count": 1
     },
     {
-      "path": "core/services/workbench/run_candidate_metrics.py",
+      "path": "core/services/workbench/run/candidate_metrics.py",
       "kind": "private_symbol",
       "count": 2
     },
     {
-      "path": "core/services/workbench/run_compute_graph.py",
+      "path": "core/services/workbench/run/compute_graph.py",
       "kind": "private_symbol",
       "count": 1
     },
     {
-      "path": "core/services/workbench/run_input_execution.py",
+      "path": "core/services/workbench/run/input_execution.py",
       "kind": "private_symbol",
       "count": 2
     },
     {
-      "path": "core/services/workbench/run_input_runtime.py",
+      "path": "core/services/workbench/run/input_runtime.py",
       "kind": "private_symbol",
       "count": 2
     },
     {
-      "path": "core/services/workbench/run_jobs_facts.py",
+      "path": "core/services/workbench/run/jobs_facts.py",
       "kind": "private_symbol",
       "count": 1
+    },
+    {
+      "path": "core/services/workbench/run/piece_adoption.py",
+      "kind": "private_symbol",
+      "count": 2
+    },
+    {
+      "path": "core/services/workbench/run/piece_adoption_execution.py",
+      "kind": "private_symbol",
+      "count": 3
     },
     {
       "path": "core/services/workbench/trial/adoption.py",

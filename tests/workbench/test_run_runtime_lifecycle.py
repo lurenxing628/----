@@ -9,8 +9,8 @@ from flask import Flask
 from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_run_job import new_run_ref
 from core.services.scheduler import schedule_service
-from core.services.workbench.run_jobs import WorkbenchRunService
-from core.services.workbench.run_worker import WorkbenchRunWorker
+from core.services.workbench.run.jobs import WorkbenchRunService
+from core.services.workbench.run.worker import WorkbenchRunWorker
 from data.repositories.workbench_run_repo import WorkbenchRunRepository
 from tests.workbench.run_jobs_support import job_case as _job_case  # noqa: F401
 from tests.workbench.run_runtime_support import (

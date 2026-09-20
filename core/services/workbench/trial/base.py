@@ -8,11 +8,11 @@ from core.services.workbench.facts.candidate_tasks import tasks_projection
 from core.services.workbench.facts.candidate_values import stored_json
 from core.services.workbench.facts.preflight_checks import stored_date
 from core.services.workbench.facts.zero_duration_evidence import CandidatePointReader, point_basis
-from core.services.workbench.piece_adoption_trial import trial_piece_predecessors
 from core.services.workbench.plan.baseline import _complete_rows
 from core.services.workbench.plan.point_evidence import official_point_work
 from core.services.workbench.plan.projection import project_plan
 from core.services.workbench.plan.queries import WorkbenchPlanQueryService
+from core.services.workbench.run.piece_adoption_trial import trial_piece_predecessors
 from data.repositories.workbench_trial_query_repo import WorkbenchTrialQueryRepository
 from data.repositories.workbench_trial_raw_repo import WorkbenchTrialRawPlanRepository
 from data.repositories.workbench_trial_repo import new_ref

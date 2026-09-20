@@ -133,7 +133,7 @@ def test_point_report_read_does_not_open_public_adoption(trial_case):
     identity = adopted(trial_case)
     service = adoption_service(trial_case.conn)
     assert service.point_rendering_enabled is True
-    from core.services.workbench.run_candidate_adoption import WorkbenchRunCandidateAdoptionService
+    from core.services.workbench.run.candidate_adoption import WorkbenchRunCandidateAdoptionService
 
     public = WorkbenchRunCandidateAdoptionService(trial_case.conn, integration_enabled=True)
     assert public.point_rendering_enabled is False

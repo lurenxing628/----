@@ -8,8 +8,8 @@ import pytest
 
 from core.models.workbench_piece_adoption import PieceAdoptionBlocked
 from core.models.workbench_trial_adoption import TrialAdoptionBlocked
-from core.services.workbench import piece_adoption
-from core.services.workbench.piece_adoption import validate_piece_adoption
+from core.services.workbench.run import piece_adoption
+from core.services.workbench.run.piece_adoption import validate_piece_adoption
 from core.services.workbench.trial.adoption_validation import validate_trial_adoption
 from tests.workbench.piece_adoption_support import lower_input, slot_payload, split
 from tests.workbench.piece_chain_support import adopt_candidate, saved_trial

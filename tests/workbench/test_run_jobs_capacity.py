@@ -3,8 +3,8 @@
 import json
 import time
 
-from core.services.workbench.run_jobs_facts import capture_run_facts
-from core.services.workbench.run_worker import WorkbenchRunWorker
+from core.services.workbench.run.jobs_facts import capture_run_facts
+from core.services.workbench.run.worker import WorkbenchRunWorker
 from tests.workbench.run_jobs_support import connection, service  # noqa: F401
 from tests.workbench.run_jobs_support import job_case as _job_case
 

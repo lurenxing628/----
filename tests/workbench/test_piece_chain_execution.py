@@ -2,7 +2,7 @@
 
 import pytest
 
-from core.services.workbench.run_worker import WorkbenchRunWorker
+from core.services.workbench.run.worker import WorkbenchRunWorker
 from tests.workbench.piece_chain_support import (
     adopt_candidate,
     adopt_trial,

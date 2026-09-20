@@ -2,7 +2,7 @@
 
 import pytest
 
-from core.services.workbench.run_worker import WorkbenchRunWorker
+from core.services.workbench.run.worker import WorkbenchRunWorker
 from tests.workbench.run_candidate_baseline_support import api, original_plan
 from tests.workbench.run_candidate_support import BASE, compute, read, retained
 from tests.workbench.run_candidate_support import candidate_case as _candidate_case

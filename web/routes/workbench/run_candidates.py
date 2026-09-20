@@ -11,10 +11,10 @@ from core.models.workbench_run_candidate import (
     RunCandidateReadScope,
     reject,
 )
-from core.services.workbench.run_candidate_analysis import read_candidate_analysis
-from core.services.workbench.run_candidate_export import write_run_candidate_export
-from core.services.workbench.run_candidate_history import read_candidate_history
-from core.services.workbench.run_candidates import WorkbenchRunCandidateQueryService
+from core.services.workbench.run.candidate_analysis import read_candidate_analysis
+from core.services.workbench.run.candidate_export import write_run_candidate_export
+from core.services.workbench.run.candidate_history import read_candidate_history
+from core.services.workbench.run.candidates import WorkbenchRunCandidateQueryService
 from web.api_responses import query_success
 
 from .api_responses import api_endpoint

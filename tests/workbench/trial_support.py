@@ -11,7 +11,7 @@ from core.infrastructure.database import ensure_schema
 from core.infrastructure.workbench_trial_schema import TRIAL_TABLES, install_workbench_trial_schema
 from core.models.workbench_trial_codec import fingerprint
 from core.services.scheduler.config.config_field_spec import default_snapshot_values
-from core.services.workbench.run_worker import WorkbenchRunWorker
+from core.services.workbench.run.worker import WorkbenchRunWorker
 from core.services.workbench.trial.service import WorkbenchTrialService
 from tests.workbench.run_jobs_support import JobCase
 from web.routes.workbench.trial import register_trial_routes

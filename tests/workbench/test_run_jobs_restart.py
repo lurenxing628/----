@@ -7,8 +7,8 @@ import sys
 import pytest
 
 from core.models.workbench_command import WorkbenchCommandUncertain
-from core.services.workbench.run_jobs_facts import capture_run_facts
-from core.services.workbench.run_worker import WorkbenchRunWorker
+from core.services.workbench.run.jobs_facts import capture_run_facts
+from core.services.workbench.run.worker import WorkbenchRunWorker
 from tests.workbench.run_jobs_support import connection, service  # noqa: F401
 from tests.workbench.run_jobs_support import job_case as _job_case
 
@@ -61,7 +61,7 @@ def test_process_exits_after_first_candidate_write_preserving_original_database(
     before = capture_run_facts(case.conn)
     script = """
 import os, sqlite3, sys
-from core.services.workbench.run_worker import WorkbenchRunWorker
+from core.services.workbench.run.worker import WorkbenchRunWorker
 from data.repositories.workbench_run_result_repo import WorkbenchRunResultRepository
 conn=sqlite3.connect(sys.argv[1]); conn.row_factory=sqlite3.Row
 conn.execute('PRAGMA foreign_keys=ON')

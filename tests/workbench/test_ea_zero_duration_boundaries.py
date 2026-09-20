@@ -13,9 +13,9 @@ from core.models.workbench_run_candidate import RunCandidateReadScope
 from core.models.workbench_run_compute import CandidateRunInputError
 from core.services.scheduler.run.schedule_payload_contract import build_validated_schedule_payload
 from core.services.workbench.plan.queries import WorkbenchPlanQueryService
-from core.services.workbench.run_candidates import WorkbenchRunCandidateQueryService
-from core.services.workbench.run_compute import compute_candidate_run
-from core.services.workbench.run_input import prepare_candidate_run_input
+from core.services.workbench.run.candidates import WorkbenchRunCandidateQueryService
+from core.services.workbench.run.compute import compute_candidate_run
+from core.services.workbench.run.input import prepare_candidate_run_input
 from tests.workbench.ea_zero_duration_support import adopt, adoption_service, point_candidate
 from tests.workbench.run_candidate_adoption_support import INTENT
 from tests.workbench.run_candidate_adoption_support import service as public_adoption
@@ -140,7 +140,7 @@ def test_bad_hours_fail_before_engine_and_retain_raw_rows(run_case, setup, unit)
 
 
 def test_point_at_compute_right_boundary_is_not_schedulable(run_case):
-    from core.services.workbench.run_compute_validation import validate_candidate
+    from core.services.workbench.run.compute_validation import validate_candidate
 
     case = run_case
     case.conn.execute("UPDATE BatchOperations SET setup_hours=0,unit_hours=0")

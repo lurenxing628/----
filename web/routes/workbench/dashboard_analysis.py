@@ -5,7 +5,7 @@ from flask import g, request
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_run_candidate import RunCandidateReadScope
 from core.services.workbench.dashboard.analysis import read_dashboard_analysis
-from core.services.workbench.run_candidate_comparison import read_candidate_comparison
+from core.services.workbench.run.candidate_comparison import read_candidate_comparison
 
 from .api_responses import api_endpoint
 from .read_context import bind_read_snapshot

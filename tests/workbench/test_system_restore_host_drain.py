@@ -12,7 +12,7 @@ from flask import Response, g, request, stream_with_context
 from core.infrastructure.backup import BackupManager, current_thread_holds_maintenance_window
 from core.infrastructure.database import get_connection
 from core.services.scheduler import schedule_service
-from core.services.workbench.run_jobs import WorkbenchRunService
+from core.services.workbench.run.jobs import WorkbenchRunService
 from tests.workbench.run_runtime_support import paused_compute
 from tests.workbench.system_restore_host_support import BASE, KEY, http_json, http_server, seed_worker
 from tests.workbench.system_restore_host_support import restore_host as _restore_host  # noqa: F401

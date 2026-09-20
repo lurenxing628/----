@@ -7,8 +7,8 @@ import pytest
 
 from core.models.workbench_run_compute import CandidateRunInputError
 from core.models.workbench_run_job import durable_value
-from core.services.workbench import run_compute
-from core.services.workbench.run_input import prepare_candidate_run_input
+from core.services.workbench.run import compute as run_compute
+from core.services.workbench.run.input import prepare_candidate_run_input
 from data.repositories.workbench_run_result_repo import prepare_run_result
 from tests.workbench.run_compute_support import run_case as _run_case
 from tests.workbench.run_compute_support import unchanged

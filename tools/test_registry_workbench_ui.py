@@ -46,7 +46,7 @@ WORKBENCH_UI_REQUIRED_REGRESSION_GROUPS = ({
         "tests/workbench/analysis_ui_contract.cjs",
         "tests/_support/workbench_browser_contract.py", "tests/_support/workbench_browser_probe.cjs",
         "tests/workbench/handler_memory_probe.cjs", "tests/workbench/deletion_icon_contract.cjs",
-        "core/services/workbench/run_progress.py", "core/services/workbench/run_jobs.py", "core/services/workbench/run_worker.py",
+        "core/services/workbench/run/progress.py", "core/services/workbench/run/jobs.py", "core/services/workbench/run/worker.py",
         "core/services/scheduler/run/schedule_candidate_runner.py",
     ),
     "env_keys": ("WORKBENCH_NODE", "NODE_PATH", "node_executable_realpath", "node_version"),

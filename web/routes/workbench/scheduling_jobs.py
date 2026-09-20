@@ -14,7 +14,7 @@ from core.models.workbench_command import (
     validate_request_key,
 )
 from core.services.workbench.facts.run_data_context import RunDataContext
-from core.services.workbench.run_jobs import WorkbenchRunService
+from core.services.workbench.run.jobs import WorkbenchRunService
 from web.api_responses import failure, query_success
 
 from .preflight import resolve_preflight_input
