@@ -10,7 +10,7 @@ import sqlite3
 
 import pytest
 
-from core.services.workbench.master_overview_facts import RELATIONS, SOURCES, WORKFLOW
+from core.services.workbench.master.overview_facts import RELATIONS, SOURCES, WORKFLOW
 from data.repositories.workbench_batch_facts_repo import BATCH_FACT_TABLES, WorkbenchBatchFactsRepository
 from data.repositories.workbench_dashboard_source_repo import latest_outsourcing_fact_rows, unknown_source_rows
 from data.repositories.workbench_execution_repo import WorkbenchExecutionRepository

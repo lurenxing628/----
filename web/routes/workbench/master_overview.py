@@ -8,7 +8,7 @@ from flask import Response, g, request
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_master_overview import invalid, read_scope
 from core.services.workbench import messages
-from core.services.workbench.master_overview import MasterOverviewService
+from core.services.workbench.master.overview import MasterOverviewService
 from web.api_responses import query_success
 
 from .api_responses import api_endpoint

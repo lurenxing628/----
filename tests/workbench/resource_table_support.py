@@ -8,7 +8,7 @@ from flask import Blueprint
 
 from core.models.workbench_material_query import MaterialPageRequest
 from core.models.workbench_resource_query import ResourcePageRequest
-from core.services.workbench.material_queries import WorkbenchMaterialQueryService
+from core.services.workbench.material.queries import WorkbenchMaterialQueryService
 from core.services.workbench.resource_queries import WorkbenchResourceQueryService
 from tests.workbench.resource_relations_support import measured_read, seed_relations, stored_state
 from web.routes.workbench.resource_table_queries import register_resource_table_routes

@@ -1,11 +1,11 @@
 """Migrate prototype external disposition without changing DO's risk summary."""
 
 from core.models.workbench_dashboard import bounded
+from core.services.workbench.outsourcing.service import WorkbenchOutsourcingService
 from data.repositories.workbench_dashboard_external_repo import WorkbenchDashboardExternalRepository
 
-from .dashboard_external_sources import latest_fact, subject
-from .dashboard_policy import read_external_stored, read_receipt_mappings
-from .outsourcing import WorkbenchOutsourcingService
+from .external_sources import latest_fact, subject
+from .policy import read_external_stored, read_receipt_mappings
 
 
 def _source(header):

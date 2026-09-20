@@ -11,7 +11,7 @@ from pathlib import Path
 from flask import Flask
 
 from core.models.workbench_dashboard import DashboardQuery
-from core.services.workbench.dashboard import WorkbenchDashboardService
+from core.services.workbench.dashboard.service import WorkbenchDashboardService
 from tests.workbench.dashboard_external_handling_widgets_support import database, serve
 from tests.workbench.outsourcing_widgets_support import NOW, connect, tables
 from tests.workbench.test_live_browser import runtime_tools

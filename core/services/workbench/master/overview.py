@@ -7,12 +7,12 @@ from contextlib import contextmanager
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_master_overview import DOMAINS, STATUS, MasterOverviewScope, public_ref
 
-from .master_overview_calendar import add_calendar
-from .master_overview_facts import SOURCES, MasterOverviewFacts
-from .master_overview_graph import MasterOverviewGraph, text
-from .master_overview_process import add_process
-from .master_overview_relations import batch_relations, resource_profile_fields
-from .master_overview_resources import add_resources, resource_links
+from .overview_calendar import add_calendar
+from .overview_facts import SOURCES, MasterOverviewFacts
+from .overview_graph import MasterOverviewGraph, text
+from .overview_process import add_process
+from .overview_relations import batch_relations, resource_profile_fields
+from .overview_resources import add_resources, resource_links
 
 LABELS = dict(DOMAINS)
 BASIS = "基础资料与关联检查"

@@ -1,7 +1,7 @@
 """Exact instance reads; raw SQL expressions bypass host DATE converters.
 
 Judgement (missing identities, drift, membership rules, row caps) belongs to
-core.services.workbench.outsourcing_source; this module only returns what is stored.
+core.services.workbench.outsourcing.service.source; this module only returns what is stored.
 """
 
 # Fixed legacy source tables per identity kind; never derived from caller input.

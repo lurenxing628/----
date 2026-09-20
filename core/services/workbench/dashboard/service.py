@@ -18,12 +18,12 @@ from core.models.workbench_dashboard import (
 )
 from data.repositories.workbench_dashboard_repo import WorkbenchDashboardRepository
 
-from .dashboard_downtime import downtime
-from .dashboard_execution import actual
-from .dashboard_external import external
-from .dashboard_external_handling import DashboardExternalHandling
-from .dashboard_facts import DashboardFacts, typed
-from .dashboard_policy import (
+from .downtime import downtime
+from .execution import actual
+from .external import external
+from .external_handling import DashboardExternalHandling
+from .facts import DashboardFacts, typed
+from .policy import (
     read_history,
     read_mappings,
     read_stored,
@@ -31,7 +31,7 @@ from .dashboard_policy import (
     require_external_schema,
     require_identity,
 )
-from .dashboard_projection import category, delivery, safe_material
+from .projection import category, delivery, safe_material
 
 
 def navigation(item, *, current=True):

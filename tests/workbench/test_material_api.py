@@ -143,7 +143,7 @@ def test_paginated_snapshot_does_not_silently_change_after_write(app_client):
 
 def test_read_failures_never_return_demo_or_invoke_automatic_maintenance(app_client, monkeypatch):
     from core.services.system import SystemMaintenanceService
-    from core.services.workbench.material_queries import WorkbenchMaterialQueryService
+    from core.services.workbench.material.queries import WorkbenchMaterialQueryService
 
     maintenance = []
     monkeypatch.setattr(SystemMaintenanceService, "run_if_due", lambda *args, **kwargs: maintenance.append("run"))

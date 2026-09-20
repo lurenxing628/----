@@ -16,8 +16,8 @@ from core.infrastructure.workbench_dashboard_external_schema import contract_iss
 from core.infrastructure.workbench_outsourcing_schema import contract_issues as outsourcing_issues
 from core.infrastructure.workbench_outsourcing_source_schema import install as install_sources
 from core.infrastructure.workbench_plan_identity_write_guard import contract_issues as identity_issues
-from core.services.workbench.outsourcing import WorkbenchOutsourcingService
-from core.services.workbench.outsourcing_commands import WorkbenchOutsourcingCommandService
+from core.services.workbench.outsourcing.commands import WorkbenchOutsourcingCommandService
+from core.services.workbench.outsourcing.service import WorkbenchOutsourcingService
 from tests.workbench.outsourcing_support import FROZEN_V29, FROZEN_V29_SHA256
 from tests.workbench.outsourcing_widgets_support import NOW, connect, digest, seed, tables
 from web.routes.workbench.dashboard import register_dashboard_routes
@@ -111,7 +111,7 @@ def proof(name, path, before, original_schema):
 
 @contextmanager
 def serve(root, output, monkeypatch):
-    import core.services.workbench.dashboard as dashboard_service
+    import core.services.workbench.dashboard.service as dashboard_service
     import web.routes.workbench.dashboard as dashboard_route
     import web.routes.workbench.outsourcing as outsourcing_route
 

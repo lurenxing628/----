@@ -7,8 +7,8 @@ from core.models.workbench_command import WorkbenchCommandRejected, input_finger
 from core.models.workbench_system import RESTORE_DISABLED, filter_records, query_input
 from core.services.workbench.facts.system_reads import log_records
 from core.services.workbench.facts.system_redaction import public_system_text
-from core.services.workbench.system_config import SystemConfigWorkspace
-from core.services.workbench.system_maintenance_records import maintenance_records
+from core.services.workbench.system.config import SystemConfigWorkspace
+from core.services.workbench.system.maintenance_records import maintenance_records
 from web.api_responses import query_success
 
 from .read_context import bind_read_snapshot

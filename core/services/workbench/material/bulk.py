@@ -26,9 +26,10 @@ from core.models.workbench_material_file import (
     preview_row,
     reject_row,
 )
-from core.services.workbench.materials import WorkbenchMaterialService
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
 from data.repositories.workbench_material_file_repo import WorkbenchMaterialFileRepository
+
+from .service import WorkbenchMaterialService
 
 
 def full_material_snapshot(adapter, repo, identity):

@@ -7,7 +7,7 @@ from core.models.workbench_dashboard import payload_size, reference
 from core.models.workbench_dashboard_input import next_handling, normalize_input
 from core.services.workbench.commands import WorkbenchCommandService
 
-from .dashboard import WorkbenchDashboardService
+from .service import WorkbenchDashboardService
 
 
 class WorkbenchDashboardCommandService:

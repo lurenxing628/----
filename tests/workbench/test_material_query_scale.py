@@ -7,8 +7,8 @@ import time
 from flask import Flask
 
 from core.models.workbench_material_query import MaterialPageRequest
-from core.services.workbench.material_queries import WorkbenchMaterialQueryService
-from core.services.workbench.materials import WorkbenchMaterialService
+from core.services.workbench.material.queries import WorkbenchMaterialQueryService
+from core.services.workbench.material.service import WorkbenchMaterialService
 from web.routes.workbench.materials import _entity_with_context
 
 

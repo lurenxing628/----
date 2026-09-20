@@ -7,7 +7,7 @@ import time
 
 from core.models.workbench_master_overview import MasterOverviewScope
 from core.services.process.workflow_state import record_confirmation, start_workflow
-from core.services.workbench.master_overview import MasterOverviewService
+from core.services.workbench.master.overview import MasterOverviewService
 from tests.workbench.master_overview_support import BASE, args, detail, query, ref_for, stored
 from tests.workbench.master_overview_support import overview_client as _overview_client
 

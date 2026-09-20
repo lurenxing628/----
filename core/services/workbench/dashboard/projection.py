@@ -4,9 +4,9 @@ from collections import defaultdict
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_dashboard import MAX_ROWS, bounded
-from core.services.workbench.dashboard_facts import source_issue, typed
+from core.services.workbench.facts.preflight_checks import PreflightChecks, number, stored_date
 
-from .facts.preflight_checks import PreflightChecks, number, stored_date
+from .facts import source_issue, typed
 
 
 def category(state="loaded", *, issues=None, assessed=0, unknown=0):

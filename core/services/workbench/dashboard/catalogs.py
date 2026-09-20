@@ -2,10 +2,9 @@
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_run_history import RunHistoryScope
+from core.services.workbench.plan.calendar import project_plan_calendar
+from core.services.workbench.plan.occupancy import project_plan_occupancy
 from core.services.workbench.run_history import WorkbenchRunHistoryQueryService
-
-from .plan.calendar import project_plan_calendar
-from .plan.occupancy import project_plan_occupancy
 
 
 def resource_pressure(conn, arguments):

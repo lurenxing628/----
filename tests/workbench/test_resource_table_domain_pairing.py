@@ -7,7 +7,7 @@ from flask import Blueprint, Flask, g
 
 from core.models.workbench_material_query import MaterialPageRequest
 from core.models.workbench_resource_query import ResourcePageRequest
-from core.services.workbench.material_queries import WorkbenchMaterialQueryService
+from core.services.workbench.material.queries import WorkbenchMaterialQueryService
 from core.services.workbench.resource_queries import WorkbenchResourceQueryService
 from tests.workbench.resource_table_support import BASE, VIEWS, conditions, stored_state, table_database
 from web.routes.workbench.resource_table_queries import register_resource_table_routes

@@ -12,7 +12,7 @@ from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_master_overview import MasterOverviewScope
 from core.services.process.workflow_state import record_confirmation, workflow_snapshot
-from core.services.workbench.master_overview import MasterOverviewService
+from core.services.workbench.master.overview import MasterOverviewService
 from core.services.workbench.process.queries import WorkbenchProcessQueryService
 from core.services.workbench.process.route_preview import ProcessRoutePreviewService
 from core.services.workbench.resource_readiness import _checked_workflow, process_readiness

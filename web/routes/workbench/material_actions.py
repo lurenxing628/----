@@ -22,9 +22,9 @@ from flask import current_app, g, jsonify, request
 from core.models.workbench_command import WorkbenchCommandRejected, validate_request_key
 from core.models.workbench_material_file import normalize_refs
 from core.services.workbench.commands import WorkbenchCommandService
-from core.services.workbench.material_bulk import WorkbenchMaterialBulkService
-from core.services.workbench.material_files import WorkbenchMaterialFileService
-from core.services.workbench.material_queries import WorkbenchMaterialQueryService
+from core.services.workbench.material.bulk import WorkbenchMaterialBulkService
+from core.services.workbench.material.files import WorkbenchMaterialFileService
+from core.services.workbench.material.queries import WorkbenchMaterialQueryService
 from web.api_responses import query_success
 
 from .api_responses import api_endpoint

@@ -9,8 +9,8 @@ from core.models.workbench_system import RESTORE_DISABLED, object_fields
 from core.services.system.backup_restore import audit_backup_operation, run_backup_restore
 from core.services.workbench import messages
 from core.services.workbench.commands import WorkbenchCommandService
-from core.services.workbench.system_config import SystemConfigWorkspace
-from core.services.workbench.system_files import SystemFileWorkspace
+from core.services.workbench.system.config import SystemConfigWorkspace
+from core.services.workbench.system.files import SystemFileWorkspace
 from web.runtime_host import restore_host
 
 from .system_context import command_body, journal, query_payload, resolve_context, system_endpoint

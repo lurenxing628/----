@@ -16,7 +16,7 @@ from core.models.workbench_resource_table_query import table_query_required, too
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
 from data.repositories.workbench_material_query_repo import WorkbenchMaterialQueryRepository
 
-from .material_table_facts import material_table_index
+from .table_facts import material_table_index
 
 
 @dataclass(frozen=True)

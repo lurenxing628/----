@@ -1,6 +1,6 @@
 """Batch requirements are explicit cross-page facts, never stock reservations."""
 
-from .master_overview_graph import number, text
+from .overview_graph import number, text
 
 READY_TEXT = {"yes": "已齐套", "no": "未齐套"}
 

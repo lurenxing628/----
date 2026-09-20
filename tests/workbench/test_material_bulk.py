@@ -10,8 +10,8 @@ from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_command import WorkbenchCommandRejected, WorkbenchCommandUncertain, canonical_json
 from core.services.material.material_service import MaterialService
 from core.services.workbench.commands import WorkbenchCommandService
-from core.services.workbench.material_bulk import WorkbenchMaterialBulkService
-from core.services.workbench.materials import WorkbenchMaterialService
+from core.services.workbench.material.bulk import WorkbenchMaterialBulkService
+from core.services.workbench.material.service import WorkbenchMaterialService
 from tests.workbench.identity_metadata_support import business_snapshot, table_rows
 from tests.workbench.material_file_support import KEY, confirm_delete, measure, seed_many
 from tests.workbench.material_support import identity_for, material_database, material_row, stored_state

@@ -11,7 +11,7 @@ from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_command import WorkbenchCommandRejected, WorkbenchCommandUncertain
 from core.services.material.material_service import MaterialService
 from core.services.workbench.commands import WorkbenchCommandService
-from core.services.workbench.materials import WorkbenchMaterialService
+from core.services.workbench.material.service import WorkbenchMaterialService
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
 from data.repositories.workbench_material_query_repo import WorkbenchMaterialQueryRepository
 from tests.workbench.identity_metadata_support import business_snapshot

@@ -47,13 +47,14 @@ from core.models.workbench_material_file import (
 )
 from core.models.workbench_material_query import MaterialPageRequest
 from core.services.workbench import messages
-from core.services.workbench.material_bulk import full_material_snapshot
-from core.services.workbench.material_file_codec import check_export_capacity, read_material_file, write_material_file
-from core.services.workbench.material_queries import WorkbenchMaterialQueryService
-from core.services.workbench.materials import WorkbenchMaterialService
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
 from data.repositories.workbench_material_file_repo import WorkbenchMaterialFileRepository
 from data.repositories.workbench_material_query_repo import WorkbenchMaterialQueryRepository
+
+from .bulk import full_material_snapshot
+from .file_codec import check_export_capacity, read_material_file, write_material_file
+from .queries import WorkbenchMaterialQueryService
+from .service import WorkbenchMaterialService
 
 
 def _local_created_at(value):

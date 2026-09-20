@@ -1,7 +1,7 @@
 """Append-only shipment membership and confirmations on the command connection.
 
 Judgement (missing schema, unknown receipt, member drift, row caps) belongs to
-core.services.workbench.outsourcing; this module only returns what is stored.
+core.services.workbench.outsourcing.service; this module only returns what is stored.
 """
 
 import json

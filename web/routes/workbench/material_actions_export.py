@@ -19,8 +19,8 @@ from flask import current_app, g, request, send_file
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_material_file import normalize_refs, normalize_scope
 from core.models.workbench_material_query import MaterialPageRequest
-from core.services.workbench.material_files import WorkbenchMaterialFileService
-from core.services.workbench.material_queries import WorkbenchMaterialQueryService
+from core.services.workbench.material.files import WorkbenchMaterialFileService
+from core.services.workbench.material.queries import WorkbenchMaterialQueryService
 from web.api_responses import query_success
 
 from .material_actions_context import (

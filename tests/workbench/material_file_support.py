@@ -15,8 +15,8 @@ import openpyxl
 from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_material_file import COLUMNS, HEADERS, MATERIAL_COLUMNS
 from core.services.workbench.commands import WorkbenchCommandService
-from core.services.workbench.material_bulk import WorkbenchMaterialBulkService
-from core.services.workbench.material_files import WorkbenchMaterialFileService
+from core.services.workbench.material.bulk import WorkbenchMaterialBulkService
+from core.services.workbench.material.files import WorkbenchMaterialFileService
 from tests.workbench.identity_metadata_support import business_snapshot
 
 KEY = "material-file-test-000001"

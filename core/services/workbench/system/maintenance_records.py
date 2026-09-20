@@ -5,11 +5,10 @@ import os
 from datetime import datetime
 
 from core.models.workbench_command import WorkbenchCommandRejected, input_fingerprint
+from core.services.workbench.facts.system_reads import backup_records
+from core.services.workbench.facts.system_redaction import public_system_text
 from data.repositories.system_job_state_repo import SystemJobStateRepository
 from data.repositories.workbench_system_maintenance_repo import WorkbenchSystemMaintenanceRepository
-
-from .facts.system_reads import backup_records
-from .facts.system_redaction import public_system_text
 
 _AUDIT_LIMIT = 500
 _JOURNAL_LIMIT = 2000

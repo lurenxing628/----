@@ -10,7 +10,7 @@ from core.models.workbench_command import WorkbenchCommandRejected, validate_req
 from core.models.workbench_material_query import MaterialPageRequest
 from core.services.workbench import messages
 from core.services.workbench.commands import WorkbenchCommandService
-from core.services.workbench.material_queries import WorkbenchMaterialQueryService
+from core.services.workbench.material.queries import WorkbenchMaterialQueryService
 from web.api_responses import query_success
 
 from .api_responses import api_endpoint
@@ -21,7 +21,7 @@ _COLLECTION = "material:create"
 
 
 def _services():
-    from core.services.workbench.materials import WorkbenchMaterialService
+    from core.services.workbench.material.service import WorkbenchMaterialService
 
     logger = current_app.logger
     return WorkbenchMaterialQueryService(g.db, logger), WorkbenchMaterialService(g.db, logger)

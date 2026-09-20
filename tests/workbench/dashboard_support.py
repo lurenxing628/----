@@ -15,8 +15,8 @@ from core.infrastructure.workbench_metadata_schema import install_metadata
 from core.infrastructure.workbench_plan_identity_schema import install_plan_identity
 from core.models.workbench_dashboard import DashboardQuery
 from core.services.workbench.commands import WorkbenchCommandService
-from core.services.workbench.dashboard import WorkbenchDashboardService
-from core.services.workbench.dashboard_commands import WorkbenchDashboardCommandService
+from core.services.workbench.dashboard.commands import WorkbenchDashboardCommandService
+from core.services.workbench.dashboard.service import WorkbenchDashboardService
 from core.services.workbench.production_report import WorkbenchProductionReportService
 from web.routes.workbench.dashboard import register_dashboard_routes
 from web.routes.workbench.write_context import issue_write_context, validate_write_context

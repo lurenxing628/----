@@ -13,12 +13,12 @@ from core.models.workbench_command import WorkbenchCommandRejected, input_finger
 from core.models.workbench_dashboard import bounded, payload_size
 from core.models.workbench_outsourcing import STATES
 from core.models.workbench_outsourcing_input import next_values
+from core.services.workbench.outsourcing.projection import values
+from core.services.workbench.outsourcing.service import WorkbenchOutsourcingService
 
-from .dashboard_external_sources import gap, latest_fact, subject, target_source, unknown_sources
-from .dashboard_facts import source_issue, typed
-from .dashboard_projection import category
-from .outsourcing import WorkbenchOutsourcingService
-from .outsourcing_projection import values
+from .external_sources import gap, latest_fact, subject, target_source, unknown_sources
+from .facts import source_issue, typed
+from .projection import category
 
 COUNTS = ("receipt_count", "current_receipt_count", "awaiting_return_count", "overdue_count",
           "returned_count", "awaiting_confirmation_count", "unregistered_count", "source_gap_count")

@@ -6,7 +6,7 @@ from flask import Response
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.workbench import messages
-from core.services.workbench.system_exports import diagnostic_zip, logs_csv
+from core.services.workbench.system.exports import diagnostic_zip, logs_csv
 
 from .system_context import system_endpoint
 from .system_reads import collection

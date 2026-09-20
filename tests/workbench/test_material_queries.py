@@ -12,7 +12,7 @@ from flask import Flask
 import web.public_token_registry as registry
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_material_query import MaterialPageRequest
-from core.services.workbench.material_queries import WorkbenchMaterialQueryService
+from core.services.workbench.material.queries import WorkbenchMaterialQueryService
 from web.routes.workbench.read_context import bind_read_snapshot
 
 

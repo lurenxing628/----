@@ -10,7 +10,7 @@ from core.errors import ValidationError
 from core.models.workbench_material import normalize_material_input
 from core.models.workbench_resource_file import READONLY
 from core.services.material.material_service import MaterialService
-from core.services.workbench.material_files import WorkbenchMaterialFileService
+from core.services.workbench.material.files import WorkbenchMaterialFileService
 from core.services.workbench.resource_entities import WorkbenchResourceService
 from core.services.workbench.resource_files import WorkbenchResourceFileService
 from tests.workbench.batch_support import batch_database, detail, ref_for, state

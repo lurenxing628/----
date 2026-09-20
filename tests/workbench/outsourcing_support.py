@@ -13,8 +13,8 @@ from core.infrastructure.workbench_outsourcing_schema import install
 from core.infrastructure.workbench_outsourcing_source_schema import install as install_sources
 from core.models.workbench_outsourcing import raw_facts
 from core.services.workbench.commands import WorkbenchCommandService
-from core.services.workbench.outsourcing import WorkbenchOutsourcingService
-from core.services.workbench.outsourcing_commands import WorkbenchOutsourcingCommandService
+from core.services.workbench.outsourcing.commands import WorkbenchOutsourcingCommandService
+from core.services.workbench.outsourcing.service import WorkbenchOutsourcingService
 from web.routes.workbench.outsourcing import register_outsourcing_routes
 from web.routes.workbench.write_context import issue_write_context, validate_write_context
 

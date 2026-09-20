@@ -7,8 +7,8 @@ from core.models.workbench_outsourcing import bounded, reference, reject
 from core.models.workbench_outsourcing_input import next_values, normalize_input, target_input
 from core.services.workbench.commands import WorkbenchCommandService
 
-from .outsourcing import WorkbenchOutsourcingService
-from .outsourcing_projection import execution_boundary, values
+from .projection import execution_boundary, values
+from .service import WorkbenchOutsourcingService
 
 
 class WorkbenchOutsourcingCommandService:

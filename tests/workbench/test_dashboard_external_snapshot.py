@@ -7,7 +7,7 @@ import pytest
 
 from core.infrastructure.database import get_connection
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.services.workbench.dashboard import WorkbenchDashboardService
+from core.services.workbench.dashboard.service import WorkbenchDashboardService
 from tests.workbench.dashboard_external_support import external_case as _external_case  # noqa: F401
 from tests.workbench.dashboard_external_support import storage
 from tests.workbench.dashboard_support import NOW, api
@@ -121,7 +121,7 @@ def test_independent_receipt_pages_history_and_execution_boundary(external_case,
 
 
 def test_complete_external_source_limit_never_truncates_to_zero(external_case, monkeypatch):
-    import core.services.workbench.outsourcing as outsourcing
+    import core.services.workbench.outsourcing.service as outsourcing
 
     case = external_case
     for index in range(1, 4):

@@ -4,7 +4,7 @@ import hashlib
 import json
 import math
 
-from .master_overview_facts import plain
+from .overview_facts import plain
 
 KINDS = {"part": "part", "route": "part", "opType": "op_type", "equipment": "machine",
          "personnel": "operator", "material": "material", "supplier": "supplier", "calendar": "calendar"}
@@ -100,7 +100,7 @@ class MasterOverviewGraph:
             return None
         target = self.by_key.get((domain, key))
         if target is None:
-            from .master_overview_facts import SOURCES
+            from .overview_facts import SOURCES
 
             if not self.facts.available(*SOURCES[domain]):
                 self.unknown(entity, label, source, relation=True)

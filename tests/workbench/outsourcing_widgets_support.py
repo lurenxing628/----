@@ -15,8 +15,8 @@ from werkzeug.serving import make_server
 from core.infrastructure.workbench_outsourcing_schema import contract_issues, install
 from core.infrastructure.workbench_outsourcing_source_schema import install as install_sources
 from core.models.workbench_outsourcing import raw_facts
-from core.services.workbench.outsourcing import WorkbenchOutsourcingService
-from core.services.workbench.outsourcing_commands import WorkbenchOutsourcingCommandService
+from core.services.workbench.outsourcing.commands import WorkbenchOutsourcingCommandService
+from core.services.workbench.outsourcing.service import WorkbenchOutsourcingService
 from web.routes.workbench.dashboard import register_dashboard_routes
 from web.routes.workbench.materials import command_receipt
 from web.routes.workbench.outsourcing import register_outsourcing_routes
@@ -132,7 +132,7 @@ def serve(root, output, monkeypatch, legacy_source=False):
     monkeypatch.setattr(module, "WorkbenchOutsourcingService", lambda conn: WorkbenchOutsourcingService(conn, clock=lambda: NOW))
     monkeypatch.setattr(module, "WorkbenchOutsourcingCommandService", lambda conn, **kwargs: WorkbenchOutsourcingCommandService(
         conn, clock=lambda: NOW, actor_provider=lambda: "dn-system-operator", **kwargs))
-    import core.services.workbench.dashboard as dashboard_service
+    import core.services.workbench.dashboard.service as dashboard_service
     import web.routes.workbench.dashboard as dashboard_route
     monkeypatch.setattr(dashboard_service, "datetime", Clock)
     monkeypatch.setattr(dashboard_route, "datetime", Clock)

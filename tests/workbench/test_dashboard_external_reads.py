@@ -3,7 +3,7 @@
 import pytest
 
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.services.workbench.dashboard_external import external
+from core.services.workbench.dashboard.external import external
 from tests.workbench.dashboard_external_migration_support import external_v30_case as _external_v30_case  # noqa: F401
 from tests.workbench.dashboard_external_support import external_case as _external_case  # noqa: F401
 from tests.workbench.dashboard_support import NOW, close_payload
@@ -142,7 +142,7 @@ def test_external_read_requires_snapshot_and_original_ref_is_not_item(external_c
     with pytest.raises(RuntimeError, match="caller-owned snapshot"):
         external(case.conn, NOW)
     ref = case.register()
-    from core.services.workbench.dashboard import WorkbenchDashboardService
+    from core.services.workbench.dashboard.service import WorkbenchDashboardService
     reader = WorkbenchDashboardService(case.conn)
     with reader.read_snapshot(), pytest.raises(WorkbenchCommandRejected) as error:
         reader.detail(reader.read(NOW), ref)

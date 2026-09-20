@@ -9,8 +9,8 @@ from core.errors import ValidationError
 from core.models.workbench_command import WorkbenchCommandRejected, canonical_json, input_fingerprint
 from core.models.workbench_dashboard import DashboardQuery, payload_size
 from core.services.workbench import messages
-from core.services.workbench.dashboard import WorkbenchDashboardService
-from core.services.workbench.dashboard_commands import WorkbenchDashboardCommandService
+from core.services.workbench.dashboard.commands import WorkbenchDashboardCommandService
+from core.services.workbench.dashboard.service import WorkbenchDashboardService
 from web.api_responses import query_success
 from web.public_token_registry import issue_public_token, resolve_public_token
 

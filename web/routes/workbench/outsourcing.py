@@ -18,8 +18,8 @@ from core.models.workbench_command import WorkbenchCommandRejected, canonical_js
 from core.models.workbench_outsourcing import bounded, reject
 from core.models.workbench_outsourcing_input import factory_time
 from core.services.workbench import messages
-from core.services.workbench.outsourcing import WorkbenchOutsourcingService
-from core.services.workbench.outsourcing_commands import WorkbenchOutsourcingCommandService
+from core.services.workbench.outsourcing.commands import WorkbenchOutsourcingCommandService
+from core.services.workbench.outsourcing.service import WorkbenchOutsourcingService
 from web.api_responses import query_success
 from web.public_token_registry import issue_public_token, resolve_public_token
 

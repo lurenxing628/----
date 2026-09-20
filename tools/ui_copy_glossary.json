@@ -490,25 +490,25 @@
       "why": "现场报工导入文件的表头匹配键，改了旧文件导不进"
     },
     {
-      "path": "core/services/workbench/outsourcing.py",
+      "path": "core/services/workbench/outsourcing/service.py",
       "term": "接入",
       "text": "真实外协登记结构尚未完整接入",
       "why": "自 data/repositories 仓储层逐字上提的既有对外文案（仓储不裁决分簇要求错误码与文案逐字不变）；仓储目录从未纳入词表扫描，改词属独立文案裁决，待另行处理"
     },
     {
-      "path": "core/services/workbench/outsourcing.py",
+      "path": "core/services/workbench/outsourcing/service.py",
       "term": "对象",
       "text": "未改读其他对象",
       "why": "自 data/repositories 仓储层逐字上提的既有对外文案（仓储不裁决分簇要求错误码与文案逐字不变）；仓储目录从未纳入词表扫描，改词属独立文案裁决，待另行处理"
     },
     {
-      "path": "core/services/workbench/outsourcing.py",
+      "path": "core/services/workbench/outsourcing/service.py",
       "term": "事实",
       "text": "外协登记缺少确认事实",
       "why": "自 data/repositories 仓储层逐字上提的既有对外文案（仓储不裁决分簇要求错误码与文案逐字不变）；仓储目录从未纳入词表扫描，改词属独立文案裁决，待另行处理"
     },
     {
-      "path": "core/services/workbench/outsourcing_source.py",
+      "path": "core/services/workbench/outsourcing/source.py",
       "term": "实例",
       "text": "工序所属批次实例已变化",
       "why": "自 data/repositories 仓储层逐字上提的既有对外文案（仓储不裁决分簇要求错误码与文案逐字不变）；仓储目录从未纳入词表扫描，改词属独立文案裁决，待另行处理"
@@ -562,31 +562,31 @@
       "why": "自 data/repositories 仓储层逐字上提的既有对外文案（仓储不裁决分簇要求错误码与文案逐字不变）；仓储目录从未纳入词表扫描，改词属独立文案裁决，待另行处理"
     },
     {
-      "path": "core/services/workbench/dashboard_policy.py",
+      "path": "core/services/workbench/dashboard/policy.py",
       "term": "台账",
       "text": "值班台台账未安装或结构不完整，需由主线完成明确迁移；本次没有补表。",
       "why": "自 data/repositories 仓储层逐字上提的既有对外文案（仓储不裁决分簇要求错误码与文案逐字不变）；仓储目录从未纳入词表扫描，改词属独立文案裁决，待另行处理"
     },
     {
-      "path": "core/services/workbench/dashboard_policy.py",
+      "path": "core/services/workbench/dashboard/policy.py",
       "term": "台账",
       "text": "处置台账或来源身份不完整，请核对存储；本次未自动修补。",
       "why": "自 data/repositories 仓储层逐字上提的既有对外文案（仓储不裁决分簇要求错误码与文案逐字不变）；仓储目录从未纳入词表扫描，改词属独立文案裁决，待另行处理"
     },
     {
-      "path": "core/services/workbench/dashboard_policy.py",
+      "path": "core/services/workbench/dashboard/policy.py",
       "term": "台账",
       "text": "外协处置台账未安装或结构不完整，需由主线明确迁移；未补表。",
       "why": "自 data/repositories 仓储层逐字上提的既有对外文案（仓储不裁决分簇要求错误码与文案逐字不变）；仓储目录从未纳入词表扫描，改词属独立文案裁决，待另行处理"
     },
     {
-      "path": "core/services/workbench/dashboard_policy.py",
+      "path": "core/services/workbench/dashboard/policy.py",
       "term": "服务端",
       "text": "值班台台账未安装或结构不完整，需由主线完成明确迁移；本次没有补表。",
       "why": "自 data/repositories 仓储层逐字上提的既有对外文案（仓储不裁决分簇要求错误码与文案逐字不变）；仓储目录从未纳入词表扫描，改词属独立文案裁决，待另行处理"
     },
     {
-      "path": "core/services/workbench/dashboard_policy.py",
+      "path": "core/services/workbench/dashboard/policy.py",
       "term": "服务端",
       "text": "外协处置台账未安装或结构不完整，需由主线明确迁移；未补表。",
       "why": "自 data/repositories 仓储层逐字上提的既有对外文案（仓储不裁决分簇要求错误码与文案逐字不变）；仓储目录从未纳入词表扫描，改词属独立文案裁决，待另行处理"

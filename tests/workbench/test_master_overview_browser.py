@@ -9,7 +9,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from core.services.workbench.master_overview import MasterOverviewService
+from core.services.workbench.master.overview import MasterOverviewService
 from tests.workbench.master_overview_support import ROOT, seed
 
 HERE = Path(__file__).resolve().parent

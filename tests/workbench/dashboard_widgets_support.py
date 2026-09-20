@@ -99,7 +99,7 @@ def proof_for(name, path, before):
 
 @contextmanager
 def serve(case, output, monkeypatch):
-    import core.services.workbench.dashboard as service_module
+    import core.services.workbench.dashboard.service as service_module
     import web.routes.workbench.dashboard as route_module
 
     class Clock(datetime):

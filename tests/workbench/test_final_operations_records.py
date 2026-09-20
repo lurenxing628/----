@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from core.services.workbench.system_maintenance_records import maintenance_records
+from core.services.workbench.system.maintenance_records import maintenance_records
 from tests.workbench.system_maintenance_support import SystemTestAPI
 
 

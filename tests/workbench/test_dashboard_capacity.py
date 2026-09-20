@@ -24,7 +24,7 @@ def test_resource_pressure_comes_from_same_official_projection(dashboard_case):
 
 
 def test_complete_source_limit_fails_instead_of_truncating(dashboard_case, monkeypatch):
-    import core.services.workbench.dashboard_projection as projection
+    import core.services.workbench.dashboard.projection as projection
 
     case = dashboard_case
     case.conn.execute("INSERT INTO Batches(batch_id,part_no,part_name,quantity) VALUES ('LIMIT','DP1','Part',1)")

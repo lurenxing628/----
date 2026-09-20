@@ -6,11 +6,11 @@ import uuid
 from core.infrastructure.backup import BackupManager, maintenance_window
 from core.infrastructure.safe_files import remove_fixed_file
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.services.workbench.system_restore import SystemRestoreManager, restore_outcome
+from core.services.workbench.facts.run_data_context import restored_context_ref
+from core.services.workbench.facts.system_journal import SystemMaintenanceJournal, file_fingerprint
+from core.services.workbench.facts.system_reads import backup_signature
 
-from .facts.run_data_context import restored_context_ref
-from .facts.system_journal import SystemMaintenanceJournal, file_fingerprint
-from .facts.system_reads import backup_signature
+from .restore import SystemRestoreManager, restore_outcome
 
 
 class SystemFileWorkspace:

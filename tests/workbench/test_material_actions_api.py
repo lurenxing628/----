@@ -8,9 +8,9 @@ import pytest
 from werkzeug.datastructures import MultiDict
 
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.services.workbench.material_bulk import WorkbenchMaterialBulkService
-from core.services.workbench.material_files import WorkbenchMaterialFileService
-from core.services.workbench.materials import WorkbenchMaterialService
+from core.services.workbench.material.bulk import WorkbenchMaterialBulkService
+from core.services.workbench.material.files import WorkbenchMaterialFileService
+from core.services.workbench.material.service import WorkbenchMaterialService
 from data.repositories.workbench_command_repo import WorkbenchCommandRepository
 from tests.workbench.material_actions_api_support import (
     BASE,

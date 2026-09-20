@@ -7,7 +7,7 @@ import pytest
 from core.infrastructure.logging import OperationLogger
 from core.services.workbench.facts.system_journal import SystemMaintenanceJournal, assert_system_maintenance_ready
 from core.services.workbench.facts.system_redaction import public_system_text
-from core.services.workbench.system_exports import logs_csv
+from core.services.workbench.system.exports import logs_csv
 from tests.workbench.system_maintenance_support import system_api as _system_api_fixture  # noqa: F401
 
 

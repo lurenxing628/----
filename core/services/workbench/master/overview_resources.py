@@ -1,6 +1,6 @@
 """Resource fields follow existing explicit profiles, not inferred UI status."""
 
-from .master_overview_graph import number, text
+from .overview_graph import number, text
 
 CATALOGS = (("opType", "OpTypes", "op_type_id"), ("equipment", "Machines", "machine_id"),
             ("personnel", "Operators", "operator_id"), ("material", "Materials", "material_id"),

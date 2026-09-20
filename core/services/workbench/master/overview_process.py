@@ -2,7 +2,7 @@
 
 from collections import defaultdict
 
-from .master_overview_graph import number, text
+from .overview_graph import number, text
 
 PARSED_TEXT = {"yes": "已解析", "no": "未解析"}
 MERGE_TEXT = {"merged": "合并设置", "separate": "分别设置"}

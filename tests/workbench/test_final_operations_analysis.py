@@ -7,7 +7,7 @@ import pytest
 
 from core.infrastructure.database import get_connection
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.services.workbench.dashboard_analysis import read_dashboard_analysis
+from core.services.workbench.dashboard.analysis import read_dashboard_analysis
 from tests.workbench.final_operations_seed import seed
 
 

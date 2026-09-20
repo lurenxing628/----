@@ -6,14 +6,19 @@ from datetime import datetime
 from core.models.workbench_command import WorkbenchCommandRejected, input_fingerprint
 from core.models.workbench_dashboard import payload_size, reference
 from core.services.capacity.plan_calendar_intervals import instant, wire
+from core.services.workbench import messages
+from core.services.workbench.facts.resource_pressure import (
+    MAX_RESOURCE_DAYS,
+    daily_resource_pressure,
+    pressure_summary,
+    range_days,
+)
 
-from . import messages
-from .dashboard import WorkbenchDashboardService
-from .dashboard_downtime import downtime
-from .dashboard_execution import actual
-from .dashboard_facts import DashboardFacts, typed
-from .dashboard_projection import safe_material
-from .facts.resource_pressure import MAX_RESOURCE_DAYS, daily_resource_pressure, pressure_summary, range_days
+from .downtime import downtime
+from .execution import actual
+from .facts import DashboardFacts, typed
+from .projection import safe_material
+from .service import WorkbenchDashboardService
 
 
 def _time(value):

@@ -233,7 +233,7 @@ def test_factory_rejects_invalid_input_and_queries_without_writes(factory_case):
 
 
 def test_factory_missing_actual_operator_never_commits(factory_case, monkeypatch):
-    import core.services.workbench.outsourcing_commands as commands
+    import core.services.workbench.outsourcing.commands as commands
 
     case = factory_case
     draft = case.preview(case.payload())

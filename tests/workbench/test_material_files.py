@@ -14,11 +14,11 @@ from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_command import WorkbenchCommandRejected, WorkbenchCommandUncertain, canonical_json
 from core.models.workbench_material_file import HEADERS
 from core.services.material.material_service import MaterialService
-from core.services.workbench import material_file_codec
 from core.services.workbench.commands import WorkbenchCommandService
-from core.services.workbench.material_file_codec import check_export_capacity, write_material_file
-from core.services.workbench.material_files import WorkbenchMaterialFileService
-from core.services.workbench.materials import WorkbenchMaterialService
+from core.services.workbench.material import file_codec as material_file_codec
+from core.services.workbench.material.file_codec import check_export_capacity, write_material_file
+from core.services.workbench.material.files import WorkbenchMaterialFileService
+from core.services.workbench.material.service import WorkbenchMaterialService
 from tests.workbench.identity_metadata_support import business_snapshot, connect_temp, copy_to_temp, table_rows
 from tests.workbench.material_file_support import (
     KEY,

@@ -12,8 +12,8 @@ from core.models.workbench_command import WorkbenchCommandRejected, input_finger
 from core.models.workbench_outsourcing import MAX_ROWS, bounded, page, pagination, reference, reject
 from data.repositories.workbench_outsourcing_repo import WorkbenchOutsourcingRepository
 
-from .outsourcing_projection import fact, receipt
-from .outsourcing_source import WorkbenchOutsourcingSourceService
+from .projection import fact, receipt
+from .source import WorkbenchOutsourcingSourceService
 
 
 class WorkbenchOutsourcingService:

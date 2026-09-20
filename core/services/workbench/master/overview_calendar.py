@@ -3,8 +3,8 @@
 import re
 from datetime import date
 
-from .master_overview_facts import plain
-from .master_overview_graph import number, text
+from .overview_facts import plain
+from .overview_graph import number, text
 
 VALUE_TEXT = {"workday": "工作日", "weekend": "周末", "holiday": "节假日", "yes": "允许", "no": "不允许"}
 
