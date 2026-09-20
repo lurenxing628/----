@@ -8,7 +8,7 @@ from typing import NoReturn
 from core.infrastructure.snapshot_connection import ddl_columns
 from core.infrastructure.workbench_execution_ledger_schema import execution_ledger_objects
 from core.infrastructure.workbench_execution_void_schema import execution_void_objects
-from core.infrastructure.workbench_metadata_schema import _canonical_sql
+from core.infrastructure.workbench_metadata_schema import _canonical_sql, canonical_ddl_parts
 from core.models.workbench_command import WorkbenchCommandRejected, input_fingerprint
 from core.models.workbench_preflight import normalize_preflight_input
 from core.models.workbench_run_baseline import elapsed_hours
@@ -239,12 +239,28 @@ def _report_revisions(archive, name="WorkbenchProductionReportRevisions"):
     ddl = [row[3] for row in archive["schema"] if type(row) is list and len(row) == 4 and row[0:2] == ["table", name]]
     if len(ddl) != 1 or type(ddl[0]) is not str or _canonical_sql(ddl[0]) != _canonical_sql(sql):
         invalid_baseline()
-    # Only the known application DDL is parsed; archived SQL is never executed here.
-    columns = ddl_columns(sql, name)
+    columns = _archived_columns(ddl[0], sql, name)
     rows = archive["tables"].get(name)
     if type(rows) is not list or any(type(row) is not list or len(row) != len(columns) for row in rows):
         invalid_baseline()
     return [dict(zip(columns, row)) for row in rows]
+
+
+def _archived_columns(archived_sql, sql, name):
+    """The archive's own physical column order: its definitions equal the known DDL's, only reordered.
+
+    Only the known application DDL is executed (to learn the column names); the archived text is
+    merely split into definitions, never run, and any definition that is not a known column must be
+    a constraint or the capture is rejected."""
+    known = {column.casefold(): column for column in ddl_columns(sql, name)}
+    ordered = []
+    for part in canonical_ddl_parts(archived_sql):
+        column = known.get(part.split(" ", 1)[0].casefold())
+        if column is not None:
+            ordered.append(column)
+    if sorted(ordered) != sorted(known.values()):
+        invalid_baseline()
+    return ordered
 
 
 def _archived_reports(archive):

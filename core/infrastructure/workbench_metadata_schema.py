@@ -138,10 +138,33 @@ def install_metadata(conn) -> None:
                 WHERE existing.kind = ? AND existing.entity_key = {key} AND existing.active = 1)""", (kind, kind))
 
 
-_COMMENT_RE = re.compile(r"--[^\n]*")
 _IF_NOT_EXISTS_RE = re.compile(r"\bIF\s+NOT\s+EXISTS\b", re.I)
 _WS_RE = re.compile(r"\s+")
 _PUNCT_WS_RE = re.compile(r"\s*([(),])\s*")
+_QUOTES = {"'": "'", '"': '"', "`": "`", "[": "]"}
+
+
+def _strip_line_comments(sql: str) -> str:
+    """去掉 `-- …` 行注释；引号（' " ` [ ]）里的 `--` 是字面量，原样保留。"""
+    out: List[str] = []
+    index, quote = 0, None
+    while index < len(sql):
+        char = sql[index]
+        if quote is not None:
+            out.append(char)
+            if char == quote:
+                quote = None
+        elif char in _QUOTES:
+            quote = _QUOTES[char]
+            out.append(char)
+        elif sql.startswith("--", index):
+            newline = sql.find("\n", index)
+            index = len(sql) if newline < 0 else newline
+            continue
+        else:
+            out.append(char)
+        index += 1
+    return "".join(out)
 
 
 def _split_top_level(body: str) -> List[str]:
@@ -168,19 +191,37 @@ def _split_top_level(body: str) -> List[str]:
     return [part for part in parts if part]
 
 
+def _normalized_sql(sql: str) -> str:
+    text = _strip_line_comments(str(sql or ""))
+    text = _IF_NOT_EXISTS_RE.sub("", text)
+    return _PUNCT_WS_RE.sub(r"\1", _WS_RE.sub(" ", text)).strip().rstrip(";").strip()
+
+
+def _table_body_span(text: str) -> Tuple[int, int]:
+    if text[:12].upper() == "CREATE TABLE":
+        open_index, close_index = text.find("("), text.rfind(")")
+        if 0 < open_index < close_index:
+            return open_index + 1, close_index
+    return -1, -1
+
+
+def canonical_ddl_parts(sql: str) -> List[str]:
+    """CREATE TABLE 的列与约束定义（规范化文本），按语句里的物理顺序；不是 CREATE TABLE 时为空列表。"""
+    text = _normalized_sql(sql)
+    start, end = _table_body_span(text)
+    return _split_top_level(text[start:end]) if start >= 0 else []
+
+
 def _canonical_sql(sql: str) -> str:
     """DDL 文本规范化：去 SQL 注释与 IF NOT EXISTS、压空白与标点周围空白；CREATE TABLE 的列/约束按文本排序。
 
     列的物理顺序不是契约：ALTER TABLE ADD COLUMN 只能追加，迁移链与 schema.sql 新库的列序天然不同，按列名访问不受影响。
+    按列位解码存档行的调用方要用 canonical_ddl_parts 取存档自己的列序，不能拿本模块 DDL 的列序去套。
     """
-    text = _COMMENT_RE.sub("", str(sql or ""))
-    text = _IF_NOT_EXISTS_RE.sub("", text)
-    text = _PUNCT_WS_RE.sub(r"\1", _WS_RE.sub(" ", text)).strip().rstrip(";").strip()
-    if text[:12].upper() == "CREATE TABLE":
-        open_index, close_index = text.find("("), text.rfind(")")
-        if 0 < open_index < close_index:
-            body = ",".join(sorted(_split_top_level(text[open_index + 1:close_index])))
-            text = text[:open_index + 1] + body + text[close_index:]
+    text = _normalized_sql(sql)
+    start, end = _table_body_span(text)
+    if start >= 0:
+        text = text[:start] + ",".join(sorted(_split_top_level(text[start:end]))) + text[end:]
     return text
 
 
