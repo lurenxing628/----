@@ -243,23 +243,6 @@ class OperatorService:
     # -------------------------
     # Excel 相关辅助（按中文列名）
     # -------------------------
-    def build_existing_for_excel(self) -> Dict[str, Dict[str, Any]]:
-        """
-        构建给 ExcelService.preview_import 使用的 existing_data：
-        - key: 工号
-        - value: 以 Excel 列名（中文）表示的 dict
-        """
-        team_names = {team.team_id: team.name for team in self.team_repo.list(status=None)}
-        existing: Dict[str, Dict[str, Any]] = {}
-        for op in self.repo.list():
-            existing[op.operator_id] = {
-                "工号": op.operator_id,
-                "姓名": op.name,
-                "状态": op.status,
-                "备注": op.remark,
-                "班组": team_names.get(op.team_id or "") or None,
-            }
-        return existing
 
     def ensure_replace_allowed(self) -> None:
         """

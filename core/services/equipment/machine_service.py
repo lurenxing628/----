@@ -258,25 +258,6 @@ class MachineService:
     # -------------------------
     # Excel 相关辅助（按中文列名）
     # -------------------------
-    def build_existing_for_excel(self) -> Dict[str, Dict[str, Any]]:
-        """
-        构建给 ExcelService.preview_import 使用的 existing_data：
-        - key: 设备编号
-        - value: 以 Excel 列名（中文）表示的 dict
-        """
-        op_types = {ot.op_type_id: ot for ot in self.op_type_repo.list()}
-        team_names = {team.team_id: team.name for team in self.team_repo.list(status=None)}
-        existing: Dict[str, Dict[str, Any]] = {}
-        for m in self.repo.list():
-            ot = op_types.get(m.op_type_id or "")
-            existing[m.machine_id] = {
-                "设备编号": m.machine_id,
-                "设备名称": m.name,
-                "工种": (ot.name if ot else None),
-                "状态": m.status,
-                "班组": team_names.get(m.team_id or "") or None,
-            }
-        return existing
 
     def list_for_export(self) -> List[Dict[str, Any]]:
         """
