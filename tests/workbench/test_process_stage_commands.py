@@ -9,7 +9,7 @@ from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_command import WorkbenchCommandRejected, WorkbenchCommandUncertain
 from core.services.process.workflow_state import read_workflow, record_confirmation
 from core.services.workbench.commands import WorkbenchCommandService
-from core.services.workbench.process_mutations import WorkbenchProcessMutationService
+from core.services.workbench.process.mutations import WorkbenchProcessMutationService
 from tests.workbench.process_commands_support import (
     KEY,
     downstream,

@@ -7,9 +7,9 @@ from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchComm
 from core.models.workbench_process_file import check_format, file_columns
 from core.models.workbench_resource_action import ResourceActionPreview, check_resource_preview, resource_refs
 
-from .process_file_codec import decode_process_file
-from .process_queries import WorkbenchProcessQueryService
-from .process_quota_protection import quota_skip_summary
+from .file_codec import decode_process_file
+from .queries import WorkbenchProcessQueryService
+from .quota_protection import quota_skip_summary
 
 
 def file_operation(kind):
@@ -31,10 +31,10 @@ class WorkbenchProcessFileService:
     def _domain(self, kind):
         file_columns(kind)
         if kind == "route":
-            from .process_file_route import ProcessRouteFileOperations
+            from .file_route import ProcessRouteFileOperations
 
             return ProcessRouteFileOperations(self.conn, self.logger)
-        from .process_file_hours import ProcessHoursFileOperations
+        from .file_hours import ProcessHoursFileOperations
 
         return ProcessHoursFileOperations(self.conn, self.logger)
 

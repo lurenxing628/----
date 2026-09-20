@@ -8,11 +8,12 @@ from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_process_file import COLUMNS
 from core.models.workbench_resource_action import action_row, reject_action_row
 from core.models.workbench_resource_input import resource_object, resource_text
-from core.services.workbench.process_file_values import typed_value
-from core.services.workbench.process_part_actions import WorkbenchProcessPartActionService
-from core.services.workbench.process_projection import project_group, public_sequence, require_ref
-from core.services.workbench.process_route_apply import affected_group_rows
-from core.services.workbench.process_route_preview import ProcessRoutePreviewService
+
+from .file_values import typed_value
+from .part_actions import WorkbenchProcessPartActionService
+from .projection import project_group, public_sequence, require_ref
+from .route_apply import affected_group_rows
+from .route_preview import ProcessRoutePreviewService
 
 
 def canonical_part(part):

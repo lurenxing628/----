@@ -11,7 +11,7 @@ from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_process_route import MAX_ROUTE_SEQUENCE, MAX_ROUTE_TEXT_BYTES
 from core.services.process.part_service import PartService
 from core.services.process.route_parser import RouteParser
-from core.services.workbench.process_route_preview import ProcessRoutePreviewService
+from core.services.workbench.process.route_preview import ProcessRoutePreviewService
 from data.repositories.op_type_repo import OpTypeRepository
 from data.repositories.supplier_repo import SupplierRepository
 from tests.workbench.process_route_support import (

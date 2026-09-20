@@ -4,7 +4,7 @@ from collections import defaultdict
 from typing import Optional
 
 from core.models.workbench_process_table_query import ProcessTablePageRequest
-from core.services.workbench.process_projection import project_part
+from core.services.workbench.process.projection import project_part
 
 STAGES = ("route", "source", "hours", "ready")
 LONG_NAME = "中文长名称带空格 零件名称完整保留 " * 80

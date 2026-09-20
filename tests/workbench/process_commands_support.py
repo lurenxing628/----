@@ -17,7 +17,7 @@ import pytest
 from core.infrastructure.transaction import TransactionManager
 from core.infrastructure.workbench_process_workflow_schema import install_process_workflow
 from core.services.workbench.commands import WorkbenchCommandService
-from core.services.workbench.process_mutations import WorkbenchProcessMutationService
+from core.services.workbench.process.mutations import WorkbenchProcessMutationService
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
 from tests.workbench.process_query_support import ref_for, seed_process
 from tests.workbench.process_route_support import all_table_snapshot
@@ -324,7 +324,7 @@ def profile_source_hashes():
              root / "core/models/workbench_process_commands.py", root / "core/infrastructure/migration_state.py",
              root / "core/infrastructure/migrations/__init__.py", root / "core/infrastructure/migrations/v24.py",
              root / "core/infrastructure/workbench_plan_identity_schema.py"]
-    files.extend((root / "core/services/workbench").glob("process*.py"))
+    files.extend(sorted((root / "core/services/workbench/process").rglob("*.py")))
     files.append(root / "core/services/workbench/facts/process_file_xml.py")
     return {str(path.relative_to(root)): hashlib.sha256(path.read_bytes()).hexdigest() for path in files}
 

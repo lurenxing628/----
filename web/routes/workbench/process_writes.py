@@ -6,7 +6,7 @@ from werkzeug.exceptions import HTTPException
 from core.errors import AppError
 from core.models.workbench_command import WorkbenchCommandRejected, input_fingerprint, validate_request_key
 from core.services.workbench.commands import WorkbenchCommandService
-from core.services.workbench.process_queries import WorkbenchProcessQueryService
+from core.services.workbench.process.queries import WorkbenchProcessQueryService
 from web.api_responses import failure, query_success
 
 from .api_responses import api_endpoint
@@ -23,7 +23,7 @@ def reviewed_input(action, normalized):
 
 @api_endpoint
 def process_stage_preview(ref):
-    from core.services.workbench.process_mutations import WorkbenchProcessMutationService
+    from core.services.workbench.process.mutations import WorkbenchProcessMutationService
 
     try:
         body = read_process_json("归属检查", 4 * 1024 * 1024)
@@ -55,7 +55,7 @@ def process_stage_preview(ref):
 
 @api_endpoint
 def process_stage_command(ref, action):
-    from core.services.workbench.process_mutations import WorkbenchProcessMutationService
+    from core.services.workbench.process.mutations import WorkbenchProcessMutationService
 
     if action not in ("route_confirm", "source_confirm", "hours_confirm"):
         raise WorkbenchCommandRejected("invalid_input", "这个操作入口不对，工艺资料没有改动。请刷新页面后重试。", 400)

@@ -5,8 +5,8 @@ import time
 import pytest
 
 from core.models.workbench_resource_action import ResourceActionPreview
-from core.services.workbench.process_file_hours import ProcessHoursFileOperations
-from core.services.workbench.process_queries import WorkbenchProcessQueryService
+from core.services.workbench.process.file_hours import ProcessHoursFileOperations
+from core.services.workbench.process.queries import WorkbenchProcessQueryService
 from tests.workbench.process_file_hours_support import (
     apply,
     confirmations,

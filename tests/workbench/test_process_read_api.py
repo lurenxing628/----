@@ -4,7 +4,7 @@ import sqlite3
 
 import pytest
 
-from core.services.workbench.process_queries import WorkbenchProcessQueryService
+from core.services.workbench.process.queries import WorkbenchProcessQueryService
 from tests.workbench.process_query_support import process_read_application, ref_for, stored
 
 BASE = "/api/workbench/v1/entities/part"

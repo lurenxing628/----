@@ -15,12 +15,13 @@ from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_resource_action import resource_refs
 from core.services.process.workflow_state import record_confirmation
-from core.services.workbench.process_file_route_preview import RouteFilePreview, reject_duplicates
-from core.services.workbench.process_part_actions import WorkbenchProcessPartActionService
-from core.services.workbench.process_part_actions_facts import check_part_action_storage
-from core.services.workbench.process_route_apply import apply_route, discard_groups, require_group_ack
 from data.repositories.part_repo import PartRepository
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
+
+from .file_route_preview import RouteFilePreview, reject_duplicates
+from .part_actions import WorkbenchProcessPartActionService
+from .part_actions_facts import check_part_action_storage
+from .route_apply import apply_route, discard_groups, require_group_ack
 
 
 class ProcessRouteFileOperations:

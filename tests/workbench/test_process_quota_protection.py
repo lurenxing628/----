@@ -10,8 +10,8 @@ from core.infrastructure.transaction import TransactionManager
 from core.infrastructure.workbench_calibration_adoption_schema import objects
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.process.part_service import PartService
-from core.services.workbench.process_queries import WorkbenchProcessQueryService
-from core.services.workbench.process_stage_apply import apply_hours
+from core.services.workbench.process.queries import WorkbenchProcessQueryService
+from core.services.workbench.process.stage_apply import apply_hours
 from tests.workbench.process_commands_support import hours_input, run_stage
 from tests.workbench.process_quota_protection_support import (
     assert_rejected,
@@ -131,7 +131,7 @@ def raw_schema28_quota_conn():
 
 
 def test_schema28_is_not_treated_as_no_locks(raw_schema28_quota_conn):
-    from core.services.workbench.process_quota_protection import ProcessQuotaProtection
+    from core.services.workbench.process.quota_protection import ProcessQuotaProtection
 
     conn = raw_schema28_quota_conn
     assert conn.execute("SELECT version FROM SchemaVersion WHERE id=1").fetchone()[0] == 28

@@ -13,8 +13,8 @@ from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_master_overview import MasterOverviewScope
 from core.services.process.workflow_state import record_confirmation, workflow_snapshot
 from core.services.workbench.master_overview import MasterOverviewService
-from core.services.workbench.process_queries import WorkbenchProcessQueryService
-from core.services.workbench.process_route_preview import ProcessRoutePreviewService
+from core.services.workbench.process.queries import WorkbenchProcessQueryService
+from core.services.workbench.process.route_preview import ProcessRoutePreviewService
 from core.services.workbench.resource_readiness import _checked_workflow, process_readiness
 from tests.workbench.process_query_support import ref_for, seed_process
 from tests.workbench.process_quota_protection_support import locked_quota_case as _locked_quota_case  # noqa: F401

@@ -8,8 +8,8 @@ from core.models.workbench_process_query import ProcessPageRequest
 from core.models.workbench_process_table_query import ProcessTablePageRequest
 from core.services.workbench import messages
 from core.services.workbench.commands import WorkbenchCommandService
-from core.services.workbench.process_part_actions import WorkbenchProcessPartActionService
-from core.services.workbench.process_queries import WorkbenchProcessQueryService
+from core.services.workbench.process.part_actions import WorkbenchProcessPartActionService
+from core.services.workbench.process.queries import WorkbenchProcessQueryService
 from web.api_responses import query_success
 
 from .api_responses import api_endpoint

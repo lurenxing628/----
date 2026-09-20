@@ -4,9 +4,9 @@ from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_process_file import check_format, file_columns, file_error
 from core.models.workbench_process_table_query import process_table_request, process_table_scope
 from core.models.workbench_resource_action import resource_refs
+from core.services.workbench.facts.file_writer import XLSX_MAX_ROWS
 
-from .facts.file_writer import XLSX_MAX_ROWS
-from .process_file_values import export_value
+from .file_values import export_value
 
 
 def count_process_export_rows(kind, parts, facts, file_format):

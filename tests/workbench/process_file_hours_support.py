@@ -5,9 +5,9 @@ import pytest
 from core.infrastructure.transaction import TransactionManager
 from core.infrastructure.workbench_calibration_adoption_schema import install
 from core.services.process.workflow_state import record_confirmation
-from core.services.workbench.process_file_codec import decode_process_file, encode_process_file
-from core.services.workbench.process_file_hours import ProcessHoursFileOperations
-from core.services.workbench.process_queries import WorkbenchProcessQueryService
+from core.services.workbench.process.file_codec import decode_process_file, encode_process_file
+from core.services.workbench.process.file_hours import ProcessHoursFileOperations
+from core.services.workbench.process.queries import WorkbenchProcessQueryService
 from tests.workbench.process_query_support import ref_for
 from tests.workbench.process_route_support import all_table_snapshot
 from tests.workbench.process_workflow_support import confirm_all, seed_workflow

@@ -3,10 +3,10 @@
 import pytest
 
 from core.infrastructure.transaction import TransactionManager
-from core.services.workbench.process_file_codec import decode_process_file, encode_process_file
-from core.services.workbench.process_file_export import process_export_rows
-from core.services.workbench.process_files import WorkbenchProcessFileService
-from core.services.workbench.process_queries import WorkbenchProcessQueryService
+from core.services.workbench.process.file_codec import decode_process_file, encode_process_file
+from core.services.workbench.process.file_export import process_export_rows
+from core.services.workbench.process.files import WorkbenchProcessFileService
+from core.services.workbench.process.queries import WorkbenchProcessQueryService
 from tests.workbench.process_file_hours_support import (
     confirmations,
     groups,

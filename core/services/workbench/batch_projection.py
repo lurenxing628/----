@@ -8,7 +8,8 @@ from core.models.workbench_batch import FIELDS, MAX_INTEGER, PRIORITIES, READY, 
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.workbench.batch_execution import batch_progress, operation_execution_fields
 from core.services.workbench.batch_facts import index_relations
-from core.services.workbench.process_projection import public_sequence
+
+from .process.projection import public_sequence
 
 
 def issue(message, code="data_gap"):

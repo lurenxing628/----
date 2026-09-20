@@ -7,9 +7,9 @@ from flask import Flask
 
 from core.infrastructure.transaction import TransactionManager
 from core.infrastructure.workbench_calibration_adoption_schema import install
-from core.services.workbench.process_file_hours import ProcessHoursFileOperations
-from core.services.workbench.process_queries import WorkbenchProcessQueryService
-from core.services.workbench.process_quota_protection import ProcessQuotaProtection
+from core.services.workbench.process.file_hours import ProcessHoursFileOperations
+from core.services.workbench.process.queries import WorkbenchProcessQueryService
+from core.services.workbench.process.quota_protection import ProcessQuotaProtection
 from tests.workbench.calibration_adoption_support import INTENT, KEY, service, token
 from tests.workbench.calibration_adoption_support import snapshot as snapshot
 from tests.workbench.process_workflow_support import confirm_all

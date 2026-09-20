@@ -5,10 +5,11 @@ from __future__ import annotations
 from bisect import bisect_left
 
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.services.workbench.process_route_preview import ProcessRoutePreviewService
 from data.repositories.external_group_repo import ExternalGroupRepository
 from data.repositories.part_operation_repo import PartOperationRepository
 from data.repositories.part_repo import PartRepository
+
+from .route_preview import ProcessRoutePreviewService
 
 
 def prepare_route(conn, logger, payload, operations):

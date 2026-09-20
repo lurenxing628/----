@@ -200,7 +200,7 @@ def test_mutation_or_receipt_failure_rolls_back_every_table_and_retry_has_one_re
 
 
 def test_create_workflow_failure_rolls_back_part_identity_and_workflow(collection_api, monkeypatch):
-    import core.services.workbench.process_part_actions as actions
+    import core.services.workbench.process.part_actions as actions
 
     api = collection_api
     body = api.create_body()

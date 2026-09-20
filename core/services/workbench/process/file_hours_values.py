@@ -4,8 +4,9 @@ from core.errors import ValidationError
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_process_commands import process_number
 from core.models.workbench_process_file import COLUMNS, INT64_MAX
-from core.services.workbench.process_projection import public_sequence
-from core.services.workbench.process_queries import _plain
+
+from .projection import public_sequence
+from .queries import _plain
 
 HOURS_FIELDS = ("setup_hours", "unit_hours", "external_days", "group_total_days")
 

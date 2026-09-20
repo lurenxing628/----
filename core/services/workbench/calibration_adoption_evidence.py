@@ -11,7 +11,7 @@ from core.models.workbench_template_lineage import snapshot
 from .calibration_adoption_policy import require_template
 from .calibration_facts import CalibrationFacts
 from .calibration_samples import number
-from .process_quota_protection import read_quota_locks, require_adoption_schema
+from .process.quota_protection import read_quota_locks, require_adoption_schema
 
 
 def read_evidence(conn, repo, template_ref, intent, clock: Callable[[], datetime]):

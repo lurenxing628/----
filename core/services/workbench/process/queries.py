@@ -11,7 +11,7 @@ from core.services.process.workflow_state import workflow_snapshot
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
 from data.repositories.workbench_process_query_repo import WorkbenchProcessQueryRepository
 
-from .process_projection import capabilities, project_group, project_operation, project_part, public_sequence
+from .projection import capabilities, project_group, project_operation, project_part, public_sequence
 
 
 def _plain(value):
@@ -73,7 +73,7 @@ class WorkbenchProcessQueryService:
                 self._table = previous_table
 
     def table(self):
-        from .process_table import ProcessTable
+        from .table import ProcessTable
 
         if self._table is None:
             facts = self.facts()

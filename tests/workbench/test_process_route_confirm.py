@@ -6,7 +6,7 @@ import pytest
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.process.workflow_state import operation_confirmations, read_workflow
-from core.services.workbench.process_mutations import WorkbenchProcessMutationService
+from core.services.workbench.process.mutations import WorkbenchProcessMutationService
 from tests.workbench.process_commands_support import (
     KEY,
     downstream,

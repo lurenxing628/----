@@ -12,10 +12,10 @@ from openpyxl.styles import Font
 from openpyxl.utils import get_column_letter
 
 from core.models.workbench_process_file import LABELS, ProcessFileDownload, file_columns, file_error
-from core.services.workbench.process_file_values import export_value
+from core.services.workbench.facts.file_writer import XLSX_MAX_ROWS
+from core.services.workbench.facts.process_file_xml import preserve_carriage_returns
 
-from .facts.file_writer import XLSX_MAX_ROWS
-from .facts.process_file_xml import preserve_carriage_returns
+from .file_values import export_value
 
 
 def _row_values(kind, row, number, file_format):

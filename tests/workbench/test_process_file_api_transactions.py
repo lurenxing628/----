@@ -5,8 +5,8 @@ from dataclasses import replace
 import pytest
 
 from core.services.workbench.commands import WorkbenchCommandService
-from core.services.workbench.process_file_hours import ProcessHoursFileOperations
-from core.services.workbench.process_file_route import ProcessRouteFileOperations
+from core.services.workbench.process.file_hours import ProcessHoursFileOperations
+from core.services.workbench.process.file_route import ProcessRouteFileOperations
 from data.repositories.workbench_command_repo import WorkbenchCommandRepository
 from tests.workbench.process_file_api_support import BASE, PART, file_api_fixture, node_contract, uncertain_failure
 from tests.workbench.process_stage_api_support import rejected, success

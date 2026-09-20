@@ -6,13 +6,13 @@ from flask import current_app, g, request
 
 from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
 from core.models.workbench_process_file import check_format, file_columns, public_columns
-from core.services.workbench.process_file_codec import encode_process_file
-from core.services.workbench.process_file_export import (
+from core.services.workbench.process.file_codec import encode_process_file
+from core.services.workbench.process.file_export import (
     count_process_export_rows,
     process_export_rows,
     select_export_parts,
 )
-from core.services.workbench.process_queries import WorkbenchProcessQueryService
+from core.services.workbench.process.queries import WorkbenchProcessQueryService
 from web.api_responses import query_success
 
 from .material_actions_context import opaque_ref

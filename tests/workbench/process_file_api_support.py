@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from core.services.workbench.process_file_codec import encode_process_file
+from core.services.workbench.process.file_codec import encode_process_file
 from tests.workbench.process_query_support import seed_process
 from tests.workbench.process_stage_api_support import BASE, PART, StageAPI, seed_history, success
 

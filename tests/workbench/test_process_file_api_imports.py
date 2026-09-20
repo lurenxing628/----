@@ -5,7 +5,7 @@ import hashlib
 import pytest
 
 from core.models.workbench_process_file import INT64_MAX
-from core.services.workbench.process_file_codec import encode_process_file
+from core.services.workbench.process.file_codec import encode_process_file
 from tests.workbench.process_file_api_support import PART, file_api_fixture, node_contract
 from tests.workbench.process_stage_api_support import rejected, success
 

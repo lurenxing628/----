@@ -13,8 +13,9 @@ import pytest
 
 from core.errors import ValidationError
 from core.models.workbench_process_file import COLUMNS, INT64_MAX, LABELS, ProcessFileDownload
-from core.services.workbench import process_file_reader, process_file_writer
-from core.services.workbench.process_file_codec import (
+from core.services.workbench.process import file_reader as process_file_reader
+from core.services.workbench.process import file_writer as process_file_writer
+from core.services.workbench.process.file_codec import (
     INSTRUCTIONS,
     TEMPLATE_VERSION,
     decode_process_file,
@@ -321,10 +322,10 @@ def test_no_database_access_and_python38_syntax(monkeypatch, fmt):
     # Domain/file API coordinators share the prefix but are not pure codecs.
     codec_modules = {
         "core.models.workbench_process_file",
-        "core.services.workbench.process_file_codec",
-        "core.services.workbench.process_file_reader",
-        "core.services.workbench.process_file_values",
-        "core.services.workbench.process_file_writer",
+        "core.services.workbench.process.file_codec",
+        "core.services.workbench.process.file_reader",
+        "core.services.workbench.process.file_values",
+        "core.services.workbench.process.file_writer",
         "core.services.workbench.facts.process_file_xml",
     }
     pure_services = codec_modules | {

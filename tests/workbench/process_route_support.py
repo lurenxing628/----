@@ -9,7 +9,7 @@ import pytest
 
 from core.infrastructure.database import get_connection
 from core.infrastructure.migrations import v21
-from core.services.workbench.process_route_preview import ProcessRoutePreviewService
+from core.services.workbench.process.route_preview import ProcessRoutePreviewService
 from tests.workbench.identity_metadata_support import seed_resources
 
 

@@ -9,9 +9,9 @@ from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.process.part_service import PartService
 from core.services.process.workflow_state import operation_confirmations, read_workflow
-from core.services.workbench.process_file_route import ProcessRouteFileOperations
-from core.services.workbench.process_part_actions import WorkbenchProcessPartActionService
-from core.services.workbench.process_queries import WorkbenchProcessQueryService
+from core.services.workbench.process.file_route import ProcessRouteFileOperations
+from core.services.workbench.process.part_actions import WorkbenchProcessPartActionService
+from core.services.workbench.process.queries import WorkbenchProcessQueryService
 from tests.workbench.process_file_route_support import (
     HIDDEN,
     PART,
@@ -71,7 +71,7 @@ def test_new_parts_use_create_owner_pending_or_route_only_confirmation(route_fil
 def test_text_only_update_preserves_all_hidden_facts_and_confirmations(route_file_conn, monkeypatch):
     conn = route_file_conn
     monkeypatch.setattr(PartService, "reparse_and_save", fail_if_called)
-    monkeypatch.setattr("core.services.workbench.process_file_route.record_confirmation", fail_if_called)
+    monkeypatch.setattr("core.services.workbench.process.file_route.record_confirmation", fail_if_called)
     before = snapshot(conn)
     before_parts = table(conn, "Parts")
     rows, _ = review(conn, decoded({"business_code": PART, "label": "new name", "remark": None, "route_raw": ROUTE}))
@@ -262,7 +262,7 @@ def test_confirmation_failure_after_persisting_route_is_still_atomic(route_file_
         assert "PROC-G" not in groups(conn)
         raise RuntimeError("injected workflow failure")
 
-    monkeypatch.setattr("core.services.workbench.process_file_route.record_confirmation", broken_confirmation)
+    monkeypatch.setattr("core.services.workbench.process.file_route.record_confirmation", broken_confirmation)
     with pytest.raises(RuntimeError, match="injected workflow failure"):
         apply(conn, rows, [row["ref"] for row in extra["affected_groups"]])
     assert snapshot(conn) == before

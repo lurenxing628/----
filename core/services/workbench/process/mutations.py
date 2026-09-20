@@ -5,17 +5,12 @@ from __future__ import annotations
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
 from core.models.workbench_identity import WorkbenchEntityIdentity
 from core.models.workbench_process_commands import normalize_process_input
-from core.services.workbench.process_projection import require_ref
-from core.services.workbench.process_route_apply import (
-    affected_group_rows,
-    apply_route,
-    discard_groups,
-    prepare_route,
-    require_group_ack,
-)
-from core.services.workbench.process_stage_apply import apply_hours, apply_source, prepare_source
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
 from data.repositories.workbench_process_query_repo import WorkbenchProcessQueryRepository
+
+from .projection import require_ref
+from .route_apply import affected_group_rows, apply_route, discard_groups, prepare_route, require_group_ack
+from .stage_apply import apply_hours, apply_source, prepare_source
 
 
 class WorkbenchProcessMutationService:

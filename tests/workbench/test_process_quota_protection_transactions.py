@@ -5,7 +5,7 @@ import pytest
 
 from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_command import WorkbenchCommandUncertain
-from core.services.workbench.process_queries import WorkbenchProcessQueryService
+from core.services.workbench.process.queries import WorkbenchProcessQueryService
 from tests.workbench.process_commands_support import hours_input, run_stage
 from tests.workbench.process_quota_protection_support import (
     file_apply,

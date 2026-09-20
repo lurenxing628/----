@@ -8,10 +8,11 @@ its own savepoint, and never records or refreshes process-stage confirmations.
 from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_process_commands import process_number
-from core.services.workbench.process_file_hours_preview import HoursFilePreview, protect_hours_preview
-from core.services.workbench.process_quota_protection import ProcessQuotaProtection, quota_skip
-from core.services.workbench.process_zero_hours import require_zero_confirmation
 from data.repositories.workbench_process_hours_repo import WorkbenchProcessHoursRepository
+
+from .file_hours_preview import HoursFilePreview, protect_hours_preview
+from .quota_protection import ProcessQuotaProtection, quota_skip
+from .zero_hours import require_zero_confirmation
 
 
 class ProcessHoursFileOperations:

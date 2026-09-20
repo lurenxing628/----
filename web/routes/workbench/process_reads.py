@@ -10,9 +10,9 @@ from core.errors import AppError
 from core.models.workbench_command import WorkbenchCommandRejected, input_fingerprint
 from core.models.workbench_process_query import ProcessPageRequest
 from core.models.workbench_process_table_query import ProcessTablePageRequest, unique_process_table_object
-from core.services.workbench.process_projection import capabilities
-from core.services.workbench.process_queries import WorkbenchProcessQueryService
-from core.services.workbench.process_route_preview import ProcessRoutePreviewService
+from core.services.workbench.process.projection import capabilities
+from core.services.workbench.process.queries import WorkbenchProcessQueryService
+from core.services.workbench.process.route_preview import ProcessRoutePreviewService
 from web.api_responses import query_success
 
 from .api_responses import api_endpoint
@@ -88,7 +88,7 @@ def _body():
 
 @api_endpoint
 def process_route_preview(ref):
-    from core.services.workbench.process_mutations import WorkbenchProcessMutationService
+    from core.services.workbench.process.mutations import WorkbenchProcessMutationService
 
     try:
         body = _body()

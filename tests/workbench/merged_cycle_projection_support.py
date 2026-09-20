@@ -4,7 +4,7 @@ import pytest
 
 from core.infrastructure.migration_state import CURRENT_SCHEMA_VERSION, get_schema_version
 from core.services.process.workflow_state import operation_confirmations, read_workflow
-from core.services.workbench.process_queries import WorkbenchProcessQueryService
+from core.services.workbench.process.queries import WorkbenchProcessQueryService
 from tests.workbench.process_query_support import ref_for, seed_process
 from tests.workbench.process_stage_api_support import PART, StageAPI, seed_history
 

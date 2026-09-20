@@ -12,7 +12,7 @@ from tests._support.dependency_boundaries import assert_import_orders, assert_no
 from tests._support.paths import REPO_ROOT
 
 _ADAPTERS = (
-    ("core.services.workbench.process_quota_protection", "core.services.process.quota_protection",
+    ("core.services.workbench.process.quota_protection", "core.services.process.quota_protection",
      ("ProcessQuotaProtection", "quota_skip", "quota_skip_summary")),
     ("core.services.workbench.template_lineage", "core.services.scheduler.template_lineage",
      ("TemplateLineageWriter",)),

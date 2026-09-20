@@ -13,7 +13,7 @@ from core.infrastructure.workbench_calibration_adoption_schema import (
     objects,
 )
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.services.workbench.process_quota_protection import read_quota_locks
+from core.services.workbench.process.quota_protection import read_quota_locks
 from data.repositories.workbench_calibration_adoption_repo import WorkbenchCalibrationAdoptionRepository
 from tests.workbench.calibration_adoption_support import INTENT, KEY, PREVIEW_INTENT, service, snapshot, token
 from tests.workbench.calibration_adoption_support import adoption_case as _adoption_case  # noqa: F401

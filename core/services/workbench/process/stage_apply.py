@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.services.workbench.process_quota_protection import ProcessQuotaProtection
-from core.services.workbench.process_zero_hours import require_zero_confirmation
 from data.repositories.external_group_repo import ExternalGroupRepository
 from data.repositories.part_operation_repo import PartOperationRepository
 from data.repositories.supplier_repo import SupplierRepository
 from data.repositories.workbench_process_query_repo import WorkbenchProcessQueryRepository
+
+from .quota_protection import ProcessQuotaProtection
+from .zero_hours import require_zero_confirmation
 
 
 def exact_operations(payload, operations):

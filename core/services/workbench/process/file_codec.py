@@ -29,9 +29,10 @@ from core.models.workbench_process_file import (
     file_error,
     public_columns,
 )
-from core.services.workbench.process_file_reader import check_bytes, csv_rows, xlsx_rows
-from core.services.workbench.process_file_values import decode_value, numeric_diagnostic
-from core.services.workbench.process_file_writer import write_csv, write_xlsx
+
+from .file_reader import check_bytes, csv_rows, xlsx_rows
+from .file_values import decode_value, numeric_diagnostic
+from .file_writer import write_csv, write_xlsx
 
 __all__ = ["decode_process_file", "encode_process_file", "public_columns", "file_columns", "TEMPLATE_VERSION", "INSTRUCTIONS"]
 

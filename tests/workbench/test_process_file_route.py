@@ -9,9 +9,9 @@ from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_resource_action import public_action_row
 from core.services.process.workflow_state import read_workflow
-from core.services.workbench.process_file_route import ProcessRouteFileOperations
-from core.services.workbench.process_queries import WorkbenchProcessQueryService
-from core.services.workbench.process_route_preview import ProcessRoutePreviewService
+from core.services.workbench.process.file_route import ProcessRouteFileOperations
+from core.services.workbench.process.queries import WorkbenchProcessQueryService
+from core.services.workbench.process.route_preview import ProcessRoutePreviewService
 from tests.workbench.process_file_route_support import (
     PART,
     ROUTE,
@@ -172,7 +172,7 @@ def test_identical_route_is_never_reparsed_and_leaves_whole_database_untouched(r
     conn.commit()
     monkeypatch.setattr(ProcessRoutePreviewService, "preview", fail_if_called)
     monkeypatch.setattr(ProcessRoutePreviewService, "reference_snapshot", fail_if_called)
-    monkeypatch.setattr("core.services.workbench.process_file_route.record_confirmation", fail_if_called)
+    monkeypatch.setattr("core.services.workbench.process.file_route.record_confirmation", fail_if_called)
     before = snapshot(conn)
     rows, extra = review(conn, decoded({"business_code": PART, "route_raw": raw}))
     assert rows[0]["route_summary"] is None and rows[0]["result"] == "unchanged"

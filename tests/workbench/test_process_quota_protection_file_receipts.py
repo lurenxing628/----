@@ -4,7 +4,7 @@ from copy import deepcopy
 
 import pytest
 
-from core.services.workbench.process_queries import WorkbenchProcessQueryService
+from core.services.workbench.process.queries import WorkbenchProcessQueryService
 from tests.workbench.process_file_api_support import node_contract
 from tests.workbench.process_quota_protection_file_receipt_support import (
     adopt_second,

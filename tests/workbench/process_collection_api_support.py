@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from core.services.workbench.process_queries import WorkbenchProcessQueryService
+from core.services.workbench.process.queries import WorkbenchProcessQueryService
 from tests.workbench.process_query_support import seed_process
 from tests.workbench.process_stage_api_support import BASE, StageAPI, rejected, seed_history, success
 

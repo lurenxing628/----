@@ -434,17 +434,17 @@
       "count": 3
     },
     {
-      "path": "core/services/workbench/process_file_hours_preview.py",
+      "path": "core/services/workbench/process/file_hours_preview.py",
       "kind": "private_symbol",
       "count": 1
     },
     {
-      "path": "core/services/workbench/process_file_hours_values.py",
+      "path": "core/services/workbench/process/file_hours_values.py",
       "kind": "private_symbol",
       "count": 1
     },
     {
-      "path": "core/services/workbench/process_projection.py",
+      "path": "core/services/workbench/process/projection.py",
       "kind": "private_symbol",
       "count": 1
     },

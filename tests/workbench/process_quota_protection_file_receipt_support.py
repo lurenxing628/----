@@ -8,7 +8,7 @@ from io import BytesIO
 import pytest
 from flask import Blueprint, g
 
-from core.services.workbench.process_file_codec import encode_process_file
+from core.services.workbench.process.file_codec import encode_process_file
 from tests.workbench.calibration_adoption_support import INTENT, KEY, service, token
 from tests.workbench.process_quota_protection_support import adopt, connect
 from web.routes.workbench.materials import command_receipt

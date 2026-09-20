@@ -4,10 +4,10 @@ from copy import deepcopy
 
 import pytest
 
-from core.services.workbench.process_file_codec import decode_process_file, encode_process_file
-from core.services.workbench.process_file_hours import ProcessHoursFileOperations
-from core.services.workbench.process_queries import WorkbenchProcessQueryService
-from core.services.workbench.process_quota_protection import quota_skip_summary
+from core.services.workbench.process.file_codec import decode_process_file, encode_process_file
+from core.services.workbench.process.file_hours import ProcessHoursFileOperations
+from core.services.workbench.process.queries import WorkbenchProcessQueryService
+from core.services.workbench.process.quota_protection import quota_skip_summary
 from tests.workbench.process_quota_protection_support import (
     adopt,
     assert_rejected,

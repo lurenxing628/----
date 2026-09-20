@@ -15,8 +15,7 @@ from core.models.workbench_process_file import (
     XLSX_EXACT_INTEGER_MAX,
     file_error,
 )
-
-from .facts.file_codec import NUMBER
+from core.services.workbench.facts.file_codec import NUMBER
 
 _INTEGER = re.compile(r"[0-9]+\Z")
 _ILLEGAL_XML = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\ud800-\udfff\ufffe\uffff]")

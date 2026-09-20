@@ -9,8 +9,7 @@ import openpyxl
 
 from core.errors import ValidationError
 from core.models.workbench_process_file import IMPORT_BYTE_LIMIT, XLSX_EXPANDED_BYTE_LIMIT, file_error
-
-from .facts.process_file_xml import check_sheet_order
+from core.services.workbench.facts.process_file_xml import check_sheet_order
 
 _WORKBOOK_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"
 

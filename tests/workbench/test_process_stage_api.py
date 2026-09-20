@@ -279,7 +279,7 @@ def test_transaction_failures_roll_back_rows_refs_confirmations_and_receipt(stag
         body["input"]["operations"][0]["unit_hours"] = 9
     body["write_token"] = api.context(action, body["input"])["write_token"]
     import core.services.process.workflow_state as workflow
-    import core.services.workbench.process_mutations as mutations
+    import core.services.workbench.process.mutations as mutations
 
     owner, name = ((WorkbenchCommandRepository, "insert") if failure == "receipt" else
                    (workflow, "record_confirmation") if failure == "confirmation" else
@@ -492,7 +492,7 @@ def test_nonmerged_external_null_never_becomes_zero_or_group_total(stage_api, gr
 
 @pytest.mark.parametrize("action", ACTIONS[:2])
 def test_preview_failure_is_readonly_public_error_without_uncertain_receipt(stage_api, monkeypatch, action):
-    from core.services.workbench.process_mutations import WorkbenchProcessMutationService
+    from core.services.workbench.process.mutations import WorkbenchProcessMutationService
 
     api = stage_api
     api.prepare("source")

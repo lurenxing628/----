@@ -10,7 +10,7 @@ from pathlib import Path
 from flask import Blueprint, Flask, g, request
 from werkzeug.serving import make_server
 
-from core.services.workbench.process_file_codec import encode_process_file
+from core.services.workbench.process.file_codec import encode_process_file
 from tests.workbench.calibration_adoption_support import snapshot
 from tests.workbench.process_quota_protection_file_receipt_support import assert_tables_preserved, file_rows
 from web.routes.workbench.calibration import register_calibration_routes

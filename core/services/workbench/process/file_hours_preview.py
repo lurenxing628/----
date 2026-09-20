@@ -7,18 +7,12 @@ from core.errors import ValidationError
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_process_commands import process_number, process_ref
 from core.models.workbench_resource_action import action_row, reject_action_row
-from core.services.workbench.process_file_hours_values import (
-    HOURS_FIELDS,
-    assertions,
-    flat_hours,
-    hours_values,
-    row_key,
-    supplied_values,
-)
-from core.services.workbench.process_projection import public_sequence, require_ref
-from core.services.workbench.process_queries import _plain
-from core.services.workbench.process_quota_protection import quota_skip, quota_skip_summary
-from core.services.workbench.process_zero_hours import zero_confirmation_required
+
+from .file_hours_values import HOURS_FIELDS, assertions, flat_hours, hours_values, row_key, supplied_values
+from .projection import public_sequence, require_ref
+from .queries import _plain
+from .quota_protection import quota_skip, quota_skip_summary
+from .zero_hours import zero_confirmation_required
 
 
 def protect_hours_preview(rows, locks):

@@ -5,8 +5,8 @@ from flask import current_app, g, jsonify, request
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_process_file import IMPORT_BYTE_LIMIT, check_format, file_columns
 from core.services.workbench.commands import WorkbenchCommandService
-from core.services.workbench.process_files import WorkbenchProcessFileService, file_operation
-from core.services.workbench.process_queries import WorkbenchProcessQueryService
+from core.services.workbench.process.files import WorkbenchProcessFileService, file_operation
+from core.services.workbench.process.queries import WorkbenchProcessQueryService
 from web.api_responses import query_success
 
 from .api_responses import api_endpoint

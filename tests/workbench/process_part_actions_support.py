@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from core.services.workbench.commands import WorkbenchCommandService
-from core.services.workbench.process_part_actions import WorkbenchProcessPartActionService
+from core.services.workbench.process.part_actions import WorkbenchProcessPartActionService
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
 from tests.workbench.identity_metadata_support import seed_resources
 from tests.workbench.process_route_support import all_table_snapshot

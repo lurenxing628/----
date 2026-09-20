@@ -13,7 +13,7 @@ from core.models.workbench_process_table_query import (
     validate_process_facet_request,
 )
 from core.services.workbench import messages
-from core.services.workbench.process_queries import WorkbenchProcessQueryService
+from core.services.workbench.process.queries import WorkbenchProcessQueryService
 from web.api_responses import query_success
 
 from .api_responses import api_endpoint

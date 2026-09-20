@@ -8,7 +8,7 @@ import pytest
 from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_process_file import IMPORT_BYTE_LIMIT
 from core.services.process.workflow_state import record_confirmation
-from core.services.workbench.process_file_codec import decode_process_file
+from core.services.workbench.process.file_codec import decode_process_file
 from tests.workbench.process_file_api_support import BASE, file_api_fixture, node_contract
 from tests.workbench.process_stage_api_support import rejected, success
 

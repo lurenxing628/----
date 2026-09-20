@@ -9,7 +9,7 @@ from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_process_query import ProcessPageRequest
 from core.services.process.workflow_state import record_confirmation
-from core.services.workbench.process_queries import WorkbenchProcessQueryService
+from core.services.workbench.process.queries import WorkbenchProcessQueryService
 from tests.workbench.process_query_support import process_read_database, ref_for, stored
 
 

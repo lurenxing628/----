@@ -24,12 +24,9 @@ from core.models.workbench_process_actions import (
 from core.models.workbench_resource_action import ResourceActionPreview, action_row, reject_action_row
 from core.services.process.part_service import PartService
 from core.services.process.workflow_state import start_workflow
-from core.services.workbench.process_part_actions_facts import (
-    ProcessPartActionFacts,
-    check_part_action_storage,
-    plain_part_action_facts,
-)
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
+
+from .part_actions_facts import ProcessPartActionFacts, check_part_action_storage, plain_part_action_facts
 
 
 class WorkbenchProcessPartActionService:

@@ -4,10 +4,10 @@
 
 from core.infrastructure.transaction import TransactionManager
 from core.services.process.part_service import PartService
-from core.services.workbench.process_file_codec import encode_process_file
-from core.services.workbench.process_files import WorkbenchProcessFileService
-from core.services.workbench.process_queries import WorkbenchProcessQueryService
-from core.services.workbench.process_quota_protection import ProcessQuotaProtection
+from core.services.workbench.process.file_codec import encode_process_file
+from core.services.workbench.process.files import WorkbenchProcessFileService
+from core.services.workbench.process.queries import WorkbenchProcessQueryService
+from core.services.workbench.process.quota_protection import ProcessQuotaProtection
 from tests.workbench.process_commands_support import run_stage, source_input
 from tests.workbench.process_quota_protection_support import (
     adopt,

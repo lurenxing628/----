@@ -6,7 +6,7 @@ import openpyxl
 import pytest
 
 from core.models.workbench_process_file import COLUMNS, INT64_MAX, LABELS
-from core.services.workbench.process_file_codec import decode_process_file
+from core.services.workbench.process.file_codec import decode_process_file
 from tests.workbench.process_file_api_support import BASE, file_api_fixture, node_contract
 from tests.workbench.process_file_codec_support import source_cells
 from tests.workbench.process_stage_api_support import rejected, success

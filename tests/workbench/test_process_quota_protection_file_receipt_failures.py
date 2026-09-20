@@ -7,9 +7,9 @@ from threading import Barrier
 
 import pytest
 
-from core.services.workbench import process_files
 from core.services.workbench.commands import WorkbenchCommandService
-from core.services.workbench.process_file_hours import ProcessHoursFileOperations
+from core.services.workbench.process import files as process_files
+from core.services.workbench.process.file_hours import ProcessHoursFileOperations
 from data.repositories.workbench_command_repo import WorkbenchCommandRepository
 from tests.workbench import process_quota_protection_file_receipt_support as support
 from tests.workbench.process_quota_protection_file_receipt_support import BASE, file_rows, success
