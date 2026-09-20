@@ -333,3 +333,21 @@ def test_a2_hard_directory_scc_is_absent() -> None:
     cycles = [set(item["members"]) for item in report["hard_dir_cycles"]]
     remaining = [members for members in cycles if members & _A2_MEMBERS]
     assert not remaining, remaining
+
+
+def test_core_models_never_import_service_layer_even_for_annotations() -> None:
+    """core/models 是最底层：任何位置（含 TYPE_CHECKING 块与函数内）都不得 import core.services / data / web。"""
+    offenders = []
+    for rel_path in _iter_repo_python_files(("core/models",)):
+        tree = ast.parse((Path(REPO_ROOT) / rel_path).read_text(encoding="utf-8"), filename=rel_path)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom):
+                modules = [str(node.module or "")] if node.level == 0 else []
+            elif isinstance(node, ast.Import):
+                modules = [alias.name for alias in node.names]
+            else:
+                continue
+            for module in modules:
+                if module.startswith(("core.services", "data.", "web.")) or module in ("data", "web"):
+                    offenders.append(f"{rel_path}:{node.lineno} {module}")
+    assert not offenders, "core/models 反向依赖上层:\n" + "\n".join(offenders)
