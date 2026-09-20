@@ -276,7 +276,7 @@ def test_startup_bad_proof_file_invalidates_success_cache_without_runner(monkeyp
         "web/bootstrap/runtime.py",
         "app.py",
         "app_new_ui.py",
-        "config.py",
+        "web/bootstrap/app_config.py",
         "schema.sql",
         "templates/base.html",
         "static/app.css",

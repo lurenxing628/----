@@ -58,7 +58,7 @@ def test_quickref_vs_routes_is_enabled_and_declares_output_file(tmp_path):
         "web/manual_src_security.py",
         "templates/dashboard.html",
         "static/app.css",
-        "config.py",
+        "web/bootstrap/app_config.py",
         "schema.sql",
         "requirements.txt",
         "tests/gate_meta/check_quickref_vs_routes.py",

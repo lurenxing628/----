@@ -631,7 +631,7 @@ def test_runner_writes_and_reuses_full_test_debt_success_cache(monkeypatch, tmp_
         "data/repository.py",
         "plugins/demo.py",
         "app.py",
-        "config.py",
+        "web/bootstrap/app_config.py",
         "schema.sql",
         "assets/启动_排产系统_Chrome.bat",
         "installer/aps_win7.iss",
