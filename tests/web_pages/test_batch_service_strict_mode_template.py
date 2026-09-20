@@ -16,7 +16,7 @@ import pytest
 @pytest.mark.parametrize("case", ["legacy_resolver_returns_none", "autoparse_missing_supplier"])
 def test_batch_service_strict_mode_template_rejects(schema_conn, case) -> None:
     from core.errors import BusinessError, ErrorCode
-    from core.services.scheduler.batch_service import BatchService
+    from core.services.batch.service import BatchService
 
     conn = schema_conn
 

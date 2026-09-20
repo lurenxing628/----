@@ -9,8 +9,8 @@ from types import SimpleNamespace
 import pytest
 
 from core.errors import ValidationError
+from core.services.batch.service import BatchService
 from core.services.common.excel_service import ImportMode, ImportPreviewRow, RowStatus
-from core.services.scheduler.batch_service import BatchService
 from tests._support.paths import REPO_ROOT
 
 

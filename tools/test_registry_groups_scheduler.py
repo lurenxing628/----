@@ -275,7 +275,7 @@ SCHEDULER_REQUIRED_REGRESSION_GROUPS = (
             "tests/gate_meta/test_scheduler_lazy_exports_final.py",
         ),
         "input_file_scopes": (
-            "core/services/scheduler/**/*.py",
+            "core/services/scheduler/**/*.py", "core/services/batch/**/*.py",
             "core/**/*.py",
             "tests/_scripts_e2e/benchmark_fjsp.py",
             "tests/_scripts_e2e/benchmark_optimizer_*.py",
@@ -378,7 +378,7 @@ SCHEDULER_REQUIRED_REGRESSION_GROUPS = (
             "tests/gantt/fixtures/schema_v13.sql",
             "tests/gantt/fixtures/schema_v16.sql",
             "core/models/schedule_plan_role.py",
-            "core/services/scheduler/**/*.py",
+            "core/services/scheduler/**/*.py", "core/services/batch/**/*.py",
             "core/services/common/plan_identity.py",
             "core/services/common/plan_query.py",
             "core/services/common/bounded_plan_query.py",

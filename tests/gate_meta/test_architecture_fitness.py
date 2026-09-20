@@ -73,7 +73,7 @@ LOCAL_PARSE_HELPER_NAMES = {
 }
 LOCAL_PARSE_HELPER_ALLOWLIST = {
     "core/services/scheduler/_sched_utils.py:_safe_int",
-    "core/services/scheduler/batch_service.py:_safe_float",
+    "core/services/batch/service.py:_safe_float",
     "core/services/system/system_config_service.py:_get_int",
 }
 

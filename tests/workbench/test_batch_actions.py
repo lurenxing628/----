@@ -56,7 +56,7 @@ def test_bulk_modify_copy_delete_actual_records_atomic(batch_client):
 
 
 def test_preview_drift_and_injected_second_write_rollback(batch_client, monkeypatch):
-    from core.services.scheduler.batch_service import BatchService
+    from core.services.batch.service import BatchService
 
     client = batch_client
     p = preview(client, patch={"remark": "x"})

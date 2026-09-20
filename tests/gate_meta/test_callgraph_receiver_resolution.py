@@ -401,14 +401,14 @@ def test_full_callgraph_removes_known_false_cycles_and_keeps_real_recursive_mech
             ),
             frozenset(
                 {
-                    "core/services/scheduler/batch_service.py::BatchService.create",
-                    "core/services/scheduler/batch_service.py::BatchService.create_no_tx",
+                    "core/services/batch/service.py::BatchService.create",
+                    "core/services/batch/service.py::BatchService.create_no_tx",
                 }
             ),
             frozenset(
                 {
-                    "core/services/scheduler/batch_service.py::BatchService.update",
-                    "core/services/scheduler/batch_service.py::BatchService.update_no_tx",
+                    "core/services/batch/service.py::BatchService.update",
+                    "core/services/batch/service.py::BatchService.update_no_tx",
                 }
             ),
             frozenset(

@@ -6,7 +6,7 @@ from core.models.enums import BatchStatus
 from core.services.common.excel_import_executor import execute_preview_rows_transactional
 from core.services.common.excel_service import ImportMode
 
-from . import batch_write_rules
+from . import write_rules as batch_write_rules
 
 
 def import_batches_from_preview_rows(

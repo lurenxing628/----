@@ -51,7 +51,7 @@ def test_copy_never_copies_reports_legacy_progress_or_old_identity(batch_ledger,
 
 @pytest.mark.parametrize("failure", ["second_write", "receipt"])
 def test_bulk_metadata_rolls_back_every_table_including_receipt(batch_ledger, monkeypatch, failure):
-    from core.services.scheduler.batch_service import BatchService
+    from core.services.batch.service import BatchService
     from data.repositories.workbench_command_repo import WorkbenchCommandRepository
 
     case = batch_ledger

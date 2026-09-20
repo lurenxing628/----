@@ -11,7 +11,10 @@ from core.services.common.normalize import normalize_text
 from core.shared.number_utils import parse_finite_float, parse_finite_int
 from data.repositories import BatchOperationRepository, BatchRepository, PartOperationRepository, PartRepository
 
-from . import batch_copy, batch_excel_import, batch_template_ops, batch_write_rules
+from . import copy_batch as batch_copy
+from . import excel_import as batch_excel_import
+from . import template_ops as batch_template_ops
+from . import write_rules as batch_write_rules
 
 
 class BatchService:

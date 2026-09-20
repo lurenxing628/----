@@ -15,7 +15,7 @@ from core.infrastructure.workbench_lineage_lookup_schema import (
 )
 from core.infrastructure.workbench_template_lineage_schema import template_lineage_contract_issues
 from core.models.workbench_calibration import CalibrationQuery
-from core.services.scheduler.batch_service import BatchService
+from core.services.batch.service import BatchService
 from core.services.workbench.calibration.service import WorkbenchCalibrationService
 from core.services.workbench.calibration.template_lineage import TemplateLineageWriter
 from core.services.workbench.calibration.template_lineage_query import TemplateLineageQuery

@@ -15,12 +15,12 @@ if str(REPO_ROOT) not in sys.path:
 
 from core.errors import ValidationError
 from core.infrastructure.database import ensure_schema, get_connection
+from core.services.batch.service import BatchService
 from core.services.common.excel_templates import build_xlsx_bytes
 from core.services.common.excel_validators import (
     get_batch_row_validate_and_normalize,
 )
 from core.services.common.normalize import is_blank_value
-from core.services.scheduler.batch_service import BatchService
 
 
 def _new_conn(tmp_path) -> tuple:

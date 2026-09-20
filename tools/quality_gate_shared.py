@@ -247,7 +247,7 @@ UI_MODE_STARTUP_GUARD_SYMBOLS: set = set()
 # web 顶层辅助模块（web/*.py）必须保持薄：不得直接装配 Service/Repository、不得自建 Excel 后端。
 # 路由层按 2026-09-18 旧路由退役后的设计直接装配服务，不在此规则范围内。
 WEB_HELPER_SCAN_SCOPE_PATTERNS = ["web/*.py"]
-REPOSITORY_BUNDLE_DRIFT_SCOPE_PATTERNS = ["core/services/scheduler/**/*.py", "tests/**/*.py", "tools/**/*.py", "web/routes/**/*.py"]
+REPOSITORY_BUNDLE_DRIFT_SCOPE_PATTERNS = ["core/services/scheduler/**/*.py", "core/services/batch/**/*.py", "tests/**/*.py", "tools/**/*.py", "web/routes/**/*.py"]
 
 FALLBACK_KIND_VALUES = {
     "silent_swallow",

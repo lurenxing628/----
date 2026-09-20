@@ -173,7 +173,7 @@ def test_daily_scope_payload_binds_changed_paths_and_targets(monkeypatch) -> Non
             {
                 "group_id": "scheduler_run_core",
                 "target_paths": ["tests/regression_scheduler_run.py"],
-                "input_file_scopes": ["core/services/scheduler/**/*.py"],
+                "input_file_scopes": ["core/services/scheduler/**/*.py", "core/services/batch/**/*.py"],
                 "config_file_scopes": [],
                 "tool_file_scopes": [],
                 "dependency_file_scopes": [],
@@ -201,7 +201,7 @@ def test_impact_plan_selects_matching_required_group(monkeypatch) -> None:
             {
                 "group_id": "scheduler_run_core",
                 "target_paths": ["tests/regression_scheduler_run.py"],
-                "input_file_scopes": ["core/services/scheduler/**/*.py"],
+                "input_file_scopes": ["core/services/scheduler/**/*.py", "core/services/batch/**/*.py"],
                 "config_file_scopes": [],
                 "tool_file_scopes": [],
                 "dependency_file_scopes": [],
@@ -282,7 +282,7 @@ def test_impact_plan_runs_all_required_groups_for_unknown_scope(monkeypatch) -> 
             {
                 "group_id": "scheduler_run_core",
                 "target_paths": ["tests/regression_scheduler_run.py"],
-                "input_file_scopes": ["core/services/scheduler/**/*.py"],
+                "input_file_scopes": ["core/services/scheduler/**/*.py", "core/services/batch/**/*.py"],
                 "config_file_scopes": [],
                 "tool_file_scopes": [],
                 "dependency_file_scopes": [],
@@ -408,7 +408,7 @@ def test_docs_paths_do_not_force_full_gate_for_mixed_known_changes(monkeypatch) 
             {
                 "group_id": "scheduler_run_core",
                 "target_paths": ["tests/regression_scheduler_run.py"],
-                "input_file_scopes": ["core/services/scheduler/**/*.py"],
+                "input_file_scopes": ["core/services/scheduler/**/*.py", "core/services/batch/**/*.py"],
                 "config_file_scopes": [],
                 "tool_file_scopes": [],
                 "dependency_file_scopes": [],

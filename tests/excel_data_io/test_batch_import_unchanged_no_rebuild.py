@@ -4,8 +4,8 @@ from types import SimpleNamespace
 
 
 def test_batch_import_unchanged_no_rebuild(mem_conn) -> None:
+    from core.services.batch.service import BatchService
     from core.services.common.excel_service import ImportMode, ImportPreviewRow, RowStatus
-    from core.services.scheduler import BatchService
 
     conn = mem_conn
     try:

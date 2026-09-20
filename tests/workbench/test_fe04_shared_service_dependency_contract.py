@@ -22,8 +22,8 @@ _ADAPTERS = (
 _ENTRIES = (
     "core.services.process.quota_protection",
     "core.services.process.part_service",
-    "core.services.scheduler.batch_copy",
-    "core.services.scheduler.batch_template_ops",
+    "core.services.batch.copy_batch",
+    "core.services.batch.template_ops",
     "core.services.scheduler.template_lineage",
     "core.services.scheduler.template_lineage_query",
 )

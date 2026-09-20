@@ -303,6 +303,7 @@ web/bootstrap 里只有 factory.py 可 import web.routes（装配蓝图）；web
 13. **scheduler-family-subpackages** — `run/optimizer/graph` 子包、根目录业务族分包、批次族迁出、删 4 个根垫片与 `analysis/`
     - 所属模块：P
     - 依赖：private-import-ratchet
+    - 状态：done（2026-09-20）。四个提交：垫片退役+锚点搬家、run/optimizer(+graph)、gantt/resource_dispatch/calendar、batch 迁出；根垫片实际 7 个；细节见 items.yaml
 14. **schema-sql-generated** — `schema.sql` 生成化与 `--check` 门禁；`current_schema_contract_issues` 改为派生比对
     - 所属模块：D
     - 依赖：schema-parity-test

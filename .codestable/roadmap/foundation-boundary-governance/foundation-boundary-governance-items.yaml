@@ -122,10 +122,18 @@ items:
   - slug: scheduler-family-subpackages
     description: run/optimizer/graph 子包、根目录业务族分包、批次族迁出、删 4 个根垫片与 analysis
     depends_on: [private-import-ratchet]
-    status: planned
+    status: done
     feature: null
     minimal_loop: false
-    notes: _frozen_import_anchor 同步
+    notes: >-
+      2026-09-20 完成，四个提交：(a) 退役 7 个根目录转发垫片（实际 6+1，不是 4）与空包 analysis/，冻结导入锚迁入
+      web/bootstrap（留在 scheduler 根会在分子包后形成根→子包→根硬环）；(b) 35 个 optimizer_* 进 run/optimizer/、
+      44 个 optimizer_graph_ready_* 进 run/optimizer/graph/，OpForScheduleAlgo 抽到 contracts/、graph_ready_profiles/
+      feature_basis 上提消除 optimizer⇄graph 与 optimizer→run 反向边；(c) gantt/ resource_dispatch/ calendar/ 子包，
+      gantt_range / dispatch_task_ids / overdue_batch_ids / task_chain 四个叶子下沉根解开 gantt⇄resource_dispatch；
+      (d) batch 族迁出为 core/services/batch/，门面 _EXPORTS 去掉 BatchService。懒门面机制未动（PyInstaller 契约），
+      条目路径同步；两份 import-cycles 基线因行号漂移受控刷新（含测试基线原本已因旧路由层删除而过期）。
+      验证：各步定向测试 969 / 1596（+串行矩阵 134）/ 2224 / 643 passed；排产包全部模块冷导入通过；无新增硬目录环。
 
   - slug: schema-sql-generated
     description: schema.sql 生成化与 --check 门禁；current_schema_contract_issues 改为派生比对

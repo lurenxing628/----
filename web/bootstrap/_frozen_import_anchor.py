@@ -18,7 +18,6 @@ tests/gate_meta/test_frozen_bundle_contract.py 会做对账，漂移即红。
 
 from __future__ import annotations
 
-import core.services.scheduler.batch_service as _batch_service
 import core.services.scheduler.calendar.service as _calendar_service
 import core.services.scheduler.config.config_page_outcome as _config_page_outcome
 import core.services.scheduler.config.config_service as _config_service
@@ -34,7 +33,6 @@ import core.services.scheduler.resource_dispatch.service as _resource_dispatch_s
 import core.services.scheduler.schedule_service as _schedule_service
 
 FROZEN_IMPORT_ANCHORS = (
-    _batch_service,
     _calendar_service,
     _config_page_outcome,
     _config_service,

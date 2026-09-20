@@ -7,8 +7,7 @@ from core.errors import BusinessError, ErrorCode, ValidationError
 from core.models.enums import BatchPriority, BatchStatus, ReadyStatus
 from core.services.common.normalize import append_unique_text_messages
 from core.services.process.workflow_state import require_template_ready
-
-from .template_lineage import TemplateLineageWriter
+from core.services.scheduler.template_lineage import TemplateLineageWriter
 
 
 def default_template_resolver_factory(svc) -> Callable[..., Any]:

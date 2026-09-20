@@ -5,9 +5,8 @@ from typing import Any
 from core.errors import BusinessError, ErrorCode, ValidationError
 from core.models import Batch
 from core.models.enums import BatchStatus
+from core.services.scheduler.template_lineage import TemplateLineageWriter
 from data.repositories.schedule_batch_copy_repo import ScheduleBatchCopyRepository
-
-from .template_lineage import TemplateLineageWriter
 
 
 def copy_batch(svc, source_batch_id: Any, new_batch_id: Any) -> Batch:

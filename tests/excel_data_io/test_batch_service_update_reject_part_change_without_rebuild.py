@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from core.errors import ValidationError
-from core.services.scheduler.batch_service import BatchService
+from core.services.batch.service import BatchService
 from tests._support.paths import REPO_ROOT
 
 

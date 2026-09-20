@@ -16,7 +16,6 @@ from __future__ import annotations
 from importlib import import_module
 
 _EXPORTS = {
-    "BatchService": ".batch_service",
     "CalendarService": ".calendar.service",
     "ConfigService": ".config.config_service",
     "GanttAdjustmentDraftService": ".gantt.adjustment_draft_service",
@@ -41,7 +40,6 @@ def __getattr__(name: str):
     return value
 
 __all__ = [
-    "BatchService",
     "CalendarService",
     "ConfigService",
     "GanttAdjustmentDraftService",
@@ -59,7 +57,7 @@ __all__ = [
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from .batch_service import BatchService
+
     from .calendar.service import CalendarService
     from .config.config_service import ConfigService
     from .gantt.adjustment_draft_service import GanttAdjustmentDraftService

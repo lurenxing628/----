@@ -6,7 +6,8 @@ import tempfile
 from pathlib import Path
 
 from core.infrastructure.database import ensure_schema, get_connection
-from core.services.scheduler import BatchService, ConfigService, ScheduleService
+from core.services.batch.service import BatchService
+from core.services.scheduler import ConfigService, ScheduleService
 from tests._support.paths import REPO_ROOT
 
 

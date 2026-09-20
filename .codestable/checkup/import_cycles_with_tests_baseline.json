@@ -17,24 +17,24 @@
  "hard_dir_cycles": [
   {
    "members": [
-    ".",
-    "web/bootstrap",
-    "web/routes"
+    "tests/algorithm",
+    "tests/candidate",
+    "tests/operation_execution",
+    "tests/resource_dispatch",
+    "tests/schedule/service",
+    "tests/workbench"
    ],
    "edges": [
-    "app_new_ui -> web.bootstrap.entrypoint",
-    "check_manual_layout -> web.bootstrap.runtime_probe",
-    "web.bootstrap.factory -> config",
-    "web.bootstrap.factory -> web.routes.dashboard",
-    "web.bootstrap.factory -> web.routes.equipment",
-    "web.bootstrap.factory -> web.routes.excel_demo",
-    "web.bootstrap.factory -> web.routes.material",
-    "web.bootstrap.factory -> web.routes.personnel",
-    "web.bootstrap.factory -> web.routes.process",
-    "web.bootstrap.factory -> web.routes.reports",
-    "web.bootstrap.factory -> web.routes.scheduler",
-    "web.bootstrap.factory -> web.routes.system",
-    "web.routes.system_runtime_logs -> config"
+    "tests.algorithm.test_graph_ready_ig_joint_windows -> tests.resource_dispatch.test_sgs_decode_checkpoint_contract",
+    "tests.algorithm.test_optimizer_shared_budget -> tests.candidate.test_scheduler_candidate_runner_contract",
+    "tests.candidate.test_scheduler_candidate_corrections_contract -> tests.algorithm.test_optimizer_shared_budget",
+    "tests.operation_execution.test_scheduler_reschedule_execution_facts -> tests.schedule.service.test_scheduler_reschedule_execution_minimum_guard",
+    "tests.resource_dispatch.test_resource_dispatch_workbench_lane_contract -> tests.operation_execution.operation_execution_feedback_test_support",
+    "tests.schedule.service.test_sql_drain_scheduler_repositories -> tests.workbench.execution_ledger_support",
+    "tests.schedule.service.test_sql_drain_scheduler_repositories -> tests.workbench.process_query_support",
+    "tests.schedule.service.test_sql_drain_scheduler_repositories -> tests.workbench.process_workflow_support",
+    "tests.workbench.test_run_progress_ledger -> tests.candidate.test_scheduler_candidate_runner_contract",
+    "tests.workbench.test_scheduler_execution_ledger_guards -> tests.schedule.service.test_scheduler_reschedule_execution_minimum_guard"
    ]
   }
  ],
@@ -306,7 +306,7 @@
  ],
  "unresolved_dynamic_imports": [
   "core/plugins/manager.py|176|lazy|spec_from_file_location(module_name)",
-  "core/services/scheduler/__init__.py|39|lazy|module_name",
+  "core/services/scheduler/__init__.py|38|lazy|module_name",
   "core/services/scheduler/config/__init__.py|22|lazy|module_name",
   "data/repositories/__init__.py|110|lazy|module_name",
   "tests/_scripts_e2e/run_browser_extreme_stress_case.py|43|lazy|spec_from_file_location('aps_synthetic_case_helpers')",
@@ -327,18 +327,11 @@
   "tests/gate_meta/test_check_quickref_vs_routes.py|26|lazy|spec_from_file_location(module_name)",
   "tests/gate_meta/test_post_change_check_contract.py|14|lazy|spec_from_file_location('post_change_check_contract')",
   "tests/gate_meta/test_run_full_selftest_report_metadata.py|19|lazy|spec_from_file_location('aps_run_full_selftest')",
-  "tests/gate_meta/test_sp05_path_topology_contract.py|267|lazy|old_name",
-  "tests/gate_meta/test_sp05_path_topology_contract.py|268|lazy|new_name",
-  "tests/gate_meta/test_sp05_path_topology_contract.py|274|lazy|old_name",
-  "tests/gate_meta/test_sp05_path_topology_contract.py|275|lazy|new_name",
-  "tests/gate_meta/test_sp05_path_topology_contract.py|354|lazy|old_name",
-  "tests/gate_meta/test_sp05_path_topology_contract.py|355|lazy|new_name",
-  "tests/gate_meta/test_sp05_path_topology_contract.py|359|lazy|old_name",
-  "tests/gate_meta/test_sp05_path_topology_contract.py|360|lazy|new_name",
-  "tests/schedule/route_view/test_scheduler_missing_resource_message.py|239|lazy|__import__(module_name)",
-  "tests/schedule/route_view/test_scheduler_missing_resource_message.py|286|lazy|__import__(module_name)",
+  "tests/gate_meta/test_sp05_path_topology_contract.py|178|lazy|old_name",
+  "tests/gate_meta/test_sp05_path_topology_contract.py|179|lazy|new_name",
+  "tests/gate_meta/test_sp05_path_topology_contract.py|185|lazy|old_name",
+  "tests/gate_meta/test_sp05_path_topology_contract.py|186|lazy|new_name",
   "tests/schedule/service/test_start_and_rerun_route_resolution.py|32|lazy|spec_from_file_location(module_name)",
-  "tests/web_pages/test_system_health_route.py|36|lazy|name",
-  "web/routes/domains/scheduler/scheduler_route_registrar.py|31|lazy|<JoinedStr>"
+  "tests/web_pages/test_system_health_route.py|36|lazy|name"
  ]
 }

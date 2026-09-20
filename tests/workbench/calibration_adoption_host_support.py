@@ -3,7 +3,7 @@
 import sqlite3
 from contextlib import closing
 
-from core.services.scheduler.batch_service import BatchService
+from core.services.batch.service import BatchService
 from core.services.workbench.execution.production_report import WorkbenchProductionReportService
 from data.repositories.workbench_template_lineage_repo import WorkbenchTemplateLineageRepository
 from tests.workbench.calibration_adoption_support import snapshot

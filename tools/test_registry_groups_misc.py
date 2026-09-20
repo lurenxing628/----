@@ -12,7 +12,7 @@ MISC_REQUIRED_REGRESSION_GROUPS = (
         "input_file_scopes": (
             "tests/_support/schedule_retirement.py",
             "web/routes/domains/scheduler/scheduler_excel_batches*.py",
-            "core/services/scheduler/**/*.py",
+            "core/services/scheduler/**/*.py", "core/services/batch/**/*.py",
             "core/services/common/plan_identity.py",
             "core/services/common/plan_query.py",
             "core/services/common/bounded_plan_query.py",

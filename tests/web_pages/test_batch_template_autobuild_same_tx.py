@@ -11,7 +11,7 @@ from tests._support.sqlite_snapshot import stored_state
 def test_batch_template_autobuild_same_tx(schema_conn, conflicting_seq) -> None:
 
     from core.errors import AppError, ErrorCode
-    from core.services.scheduler.batch_service import BatchService
+    from core.services.batch.service import BatchService
 
     conn = schema_conn
     try:

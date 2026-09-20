@@ -54,7 +54,7 @@ def test_missing_docstring_flags_only_undocumented(tmp_path: Path) -> None:
 
 
 def test_uncovered_source_flags_files_outside_scope_globs() -> None:
-    scopes = {"core/services/scheduler/**/*.py"}
+    scopes = {"core/services/scheduler/**/*.py", "core/services/batch/**/*.py"}
     paths = ["core/services/scheduler/schedule_service.py", "core/services/personnel/operator.py"]
     assert gate.scan_uncovered_source(paths, scopes) == ["core/services/personnel/operator.py"]
 

@@ -108,7 +108,8 @@ def main():
 
     from core.infrastructure.database import ensure_schema, get_connection
     from core.infrastructure.logging import OperationLogger
-    from core.services.scheduler import BatchService, CalendarService, ConfigService, ScheduleService
+    from core.services.batch.service import BatchService
+    from core.services.scheduler import CalendarService, ConfigService, ScheduleService
 
     ensure_schema(test_db, logger=None, schema_path=os.path.join(repo_root, "schema.sql"))
     conn = get_connection(test_db)

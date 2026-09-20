@@ -9,7 +9,8 @@ import pytest
 from core.algorithm_contracts.types import ScheduleResult
 from core.algorithms.greedy.scheduler import GreedyScheduler
 from core.infrastructure.database import get_connection
-from core.services.scheduler import BatchService, ConfigService, ScheduleService
+from core.services.batch.service import BatchService
+from core.services.scheduler import ConfigService, ScheduleService
 from core.services.scheduler import schedule_service as service_module
 from core.services.scheduler.operation_execution_feedback_service import (
     ExecutionFeedbackContext,

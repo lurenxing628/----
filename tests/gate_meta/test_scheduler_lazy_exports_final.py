@@ -17,7 +17,6 @@ ROOT = Path(__file__).resolve().parents[2]
 PACKAGE = "core.services.scheduler"
 EXPECTED: Dict[str, Dict[str, str]] = {
     PACKAGE: {
-        "BatchService": PACKAGE + ".batch_service",
         "CalendarService": PACKAGE + ".calendar.service",
         "ConfigService": PACKAGE + ".config.config_service",
         "GanttAdjustmentDraftService": PACKAGE + ".gantt.adjustment_draft_service",

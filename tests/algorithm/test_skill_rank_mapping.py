@@ -17,7 +17,8 @@ def test_skill_rank_mapping(db_path):
 
 
     from core.infrastructure.database import ensure_schema, get_connection
-    from core.services.scheduler import BatchService, ConfigService, ScheduleService
+    from core.services.batch.service import BatchService
+    from core.services.scheduler import ConfigService, ScheduleService
 
 
     conn = get_connection(db_path)

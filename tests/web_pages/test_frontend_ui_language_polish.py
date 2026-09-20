@@ -669,7 +669,7 @@ def test_process_and_scheduler_errors_use_chinese_terms() -> None:
     assert "默认周期无法解析（{raw_default_days!r}）" not in route_parser
     assert "默认周期无效（{raw_default_days!r}）" not in route_parser
 
-    batch_template_ops = _read("core/services/scheduler/batch_template_ops.py")
+    batch_template_ops = _read("core/services/batch/template_ops.py")
     assert "不支持“资料不完整就停下”" in batch_template_ops
     assert "不支持严格模式" not in batch_template_ops
     assert "不支持 strict_mode" not in batch_template_ops
