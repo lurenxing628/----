@@ -5,8 +5,8 @@ from collections import defaultdict
 from core.models.workbench_calibration import CalibrationCandidate, issue
 from core.models.workbench_command import input_fingerprint
 
-from .calibration_method import build_suggestion, summarize_samples
-from .calibration_samples import review_sample
+from .method import build_suggestion, summarize_samples
+from .samples import review_sample
 
 
 def project_lineage_calibration(templates, instances, projections, lineage, *, as_of):

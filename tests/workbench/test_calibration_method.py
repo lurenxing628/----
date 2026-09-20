@@ -5,9 +5,9 @@ from dataclasses import replace
 import pytest
 
 from core.models.workbench_calibration import CalibrationCandidate, CalibrationLineage, CalibrationQuery
-from core.services.workbench.calibration import filtered_suggestions
-from core.services.workbench.calibration_method import build_suggestion, summarize_samples
-from core.services.workbench.calibration_samples import review_sample
+from core.services.workbench.calibration.method import build_suggestion, summarize_samples
+from core.services.workbench.calibration.samples import review_sample
+from core.services.workbench.calibration.service import filtered_suggestions
 from tests.workbench.calibration_support import calibration_case as case_fixture
 from tests.workbench.calibration_support import complete_reports, ledger_fixture, reviewed
 from tests.workbench.execution_ledger_support import NOW

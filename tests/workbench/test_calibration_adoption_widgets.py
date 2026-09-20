@@ -47,7 +47,7 @@ def test_calibration_adoption_widgets(lineage_case, tmp_path):
         assert {"Batches", "BatchOperations", "Schedule", "ScheduleHistory", "WorkbenchProductionReports", "WorkbenchProductionReportRevisions"} <= set(proof["preserved_tables"])
         assert case["geometry"]["width"] <= case["viewport"]["width"]
         # A fresh Python process has no preview-token registry; it must still resolve the original durable key.
-        code = ("import json,sqlite3; from core.services.workbench.calibration_adoption import WorkbenchCalibrationAdoptionService; "
+        code = ("import json,sqlite3; from core.services.workbench.calibration.adoption import WorkbenchCalibrationAdoptionService; "
                 "c=sqlite3.connect(" + repr(proof["database"]) + "); c.row_factory=sqlite3.Row; "
                 "print(json.dumps(WorkbenchCalibrationAdoptionService(c).receipt(" + repr(audit["template_operation_ref"]) + "," + repr(audit["request_key"]) + "))); c.close()")
         restarted = subprocess.run([sys.executable, "-c", code], cwd=str(ROOT), text=True, capture_output=True, check=True)

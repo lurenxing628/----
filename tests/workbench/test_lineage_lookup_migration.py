@@ -17,7 +17,7 @@ from core.infrastructure.migration_state import (
 from core.infrastructure.migrations import MIGRATIONS, v28
 from core.infrastructure.workbench_lineage_lookup_schema import LINEAGE_LOOKUP_INDEX, lineage_lookup_contract_issues
 from core.services.scheduler.config.config_field_spec import default_snapshot_values
-from core.services.workbench.template_lineage import TemplateLineageWriter
+from core.services.workbench.calibration.template_lineage import TemplateLineageWriter
 from tests.workbench.dashboard_external_migration_support import V31_TABLES, assert_v31_receipt_maps_only
 from tests.workbench.legacy_migration_current_support import (
     V30_TABLES,

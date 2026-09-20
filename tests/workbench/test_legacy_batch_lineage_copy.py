@@ -8,7 +8,7 @@ from core.errors import AppError, BusinessError, ErrorCode, ValidationError
 from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_template_lineage import restore_snapshot, state_snapshot
-from core.services.workbench.template_lineage_query import TemplateLineageQuery, read_events
+from core.services.workbench.calibration.template_lineage_query import TemplateLineageQuery, read_events
 from tests.workbench.execution_ledger_support import all_rows
 from tests.workbench.identity_metadata_support import insert_row
 from tests.workbench.legacy_batch_lineage_copy_support import (

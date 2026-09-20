@@ -7,7 +7,7 @@ import pytest
 from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_template_lineage import restore_snapshot
-from core.services.workbench.calibration_adoption_policy import require_unlocked
+from core.services.workbench.calibration.adoption_policy import require_unlocked
 from core.services.workbench.process.quota_protection import read_quota_locks
 from data.repositories.workbench_calibration_adoption_repo import WorkbenchCalibrationAdoptionRepository
 from tests.workbench.calibration_adoption_support import (

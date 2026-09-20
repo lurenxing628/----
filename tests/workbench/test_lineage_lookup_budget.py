@@ -16,9 +16,9 @@ from core.infrastructure.workbench_lineage_lookup_schema import (
 from core.infrastructure.workbench_template_lineage_schema import template_lineage_contract_issues
 from core.models.workbench_calibration import CalibrationQuery
 from core.services.scheduler.batch_service import BatchService
-from core.services.workbench.calibration import WorkbenchCalibrationService
-from core.services.workbench.template_lineage import TemplateLineageWriter
-from core.services.workbench.template_lineage_query import TemplateLineageQuery
+from core.services.workbench.calibration.service import WorkbenchCalibrationService
+from core.services.workbench.calibration.template_lineage import TemplateLineageWriter
+from core.services.workbench.calibration.template_lineage_query import TemplateLineageQuery
 from tests.workbench.execution_ledger_support import NOW
 from tests.workbench.lineage_lookup_budget_support import (
     ORIGINAL_FAILURE_STEPS,

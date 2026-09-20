@@ -8,7 +8,7 @@ from core.infrastructure.database import get_connection
 from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.process.part_service import PartService
-from core.services.workbench.template_lineage import TemplateLineageWriter
+from core.services.workbench.calibration.template_lineage import TemplateLineageWriter
 from tests.workbench.execution_ledger_support import LedgerCase
 from tests.workbench.final_execution_cases import ADOPT_TABLES, CALIBRATION, command, seed, sql
 from tests.workbench.final_execution_cases import final_calibration_host as final_calibration_host

@@ -5,7 +5,7 @@ from types import SimpleNamespace
 from core.models.workbench_calibration import CalibrationCandidate, CalibrationLineage
 from core.services.workbench.actual_gantt import ActualGanttService
 from core.services.workbench.actual_gantt_scope import ActualGanttScope
-from core.services.workbench.calibration_samples import review_sample
+from core.services.workbench.calibration.samples import review_sample
 from core.services.workbench.dashboard.execution import _hours
 from core.services.workbench.facts.run_input_codec import restore_execution_projections
 from core.services.workbench.report.review_records import project_records

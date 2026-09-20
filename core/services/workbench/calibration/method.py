@@ -14,7 +14,7 @@ from core.models.workbench_calibration import (
 )
 from core.models.workbench_command import WorkbenchCommandRejected, input_fingerprint
 
-from .calibration_samples import number
+from .samples import number
 
 
 def _select_recent(samples):

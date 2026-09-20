@@ -7,11 +7,11 @@ from core.models.workbench_calibration import MAX_SAMPLES, MIN_SAMPLES, Calibrat
 from core.models.workbench_calibration_adoption import MAX_EVIDENCE_BYTES, CalibrationAdoptionEvidence
 from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
 from core.models.workbench_template_lineage import snapshot
+from core.services.workbench.process.quota_protection import read_quota_locks, require_adoption_schema
 
-from .calibration_adoption_policy import require_template
-from .calibration_facts import CalibrationFacts
-from .calibration_samples import number
-from .process.quota_protection import read_quota_locks, require_adoption_schema
+from .adoption_policy import require_template
+from .facts import CalibrationFacts
+from .samples import number
 
 
 def read_evidence(conn, repo, template_ref, intent, clock: Callable[[], datetime]):

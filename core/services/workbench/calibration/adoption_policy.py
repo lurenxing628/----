@@ -3,8 +3,7 @@
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_execution_input import public_ref
 from core.models.workbench_template_lineage import snapshot
-
-from .process.quota_protection import read_quota_locks
+from core.services.workbench.process.quota_protection import read_quota_locks
 
 
 def require_template(repo, template_operation_ref):

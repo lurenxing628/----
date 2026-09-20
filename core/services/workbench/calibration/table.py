@@ -2,9 +2,8 @@
 
 from core.models.workbench_calibration import TABLE_COLUMNS
 from core.models.workbench_command import WorkbenchCommandRejected
-
-from .facts.table_cells import number_cell, text_cell
-from .facts.table_index import ResourceTableIndex
+from core.services.workbench.facts.table_cells import number_cell, text_cell
+from core.services.workbench.facts.table_index import ResourceTableIndex
 
 
 def cells(row):

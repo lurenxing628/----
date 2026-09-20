@@ -8,8 +8,8 @@ from flask import g, request, send_file
 from core.models.workbench_calibration import MAX_RESPONSE_BYTES, CalibrationQuery, unique_calibration_object
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.workbench import messages
-from core.services.workbench.calibration import WorkbenchCalibrationService
-from core.services.workbench.calibration_export import export_calibration
+from core.services.workbench.calibration.export import export_calibration
+from core.services.workbench.calibration.service import WorkbenchCalibrationService
 from web.api_responses import query_success
 
 from .api_responses import api_endpoint

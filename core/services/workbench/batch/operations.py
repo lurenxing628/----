@@ -4,7 +4,7 @@ from core.models.workbench_batch import normalize_operation_input, object_fields
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
 from core.services.personnel.operator_qualification import OperatorQualificationService
 from core.services.process.workflow_state import require_template_ready
-from core.services.workbench.template_lineage import TemplateLineageWriter
+from core.services.workbench.calibration.template_lineage import TemplateLineageWriter
 from data.repositories.batch_operation_repo import BatchOperationRepository
 from data.repositories.supplier_repo import SupplierRepository
 

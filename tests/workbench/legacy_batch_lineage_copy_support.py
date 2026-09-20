@@ -8,7 +8,7 @@ import pytest
 from core.infrastructure.transaction import TransactionManager
 from core.infrastructure.workbench_template_lineage_schema import contract_issues
 from core.services.scheduler.batch_service import BatchService
-from core.services.workbench.template_lineage import TemplateLineageWriter
+from core.services.workbench.calibration.template_lineage import TemplateLineageWriter
 from data.repositories.workbench_template_lineage_repo import WorkbenchTemplateLineageRepository
 from tests.workbench.execution_ledger_support import LedgerCase, all_rows
 from tests.workbench.identity_metadata_support import insert_row

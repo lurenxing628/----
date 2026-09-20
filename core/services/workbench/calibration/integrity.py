@@ -3,7 +3,7 @@
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_execution_input import REPORT_FIELDS, factory_time, public_ref, validate_actual_values
 
-from .calibration_samples import number
+from .samples import number
 
 
 def _values(values, as_of):

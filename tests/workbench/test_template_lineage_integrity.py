@@ -7,7 +7,7 @@ import pytest
 from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_template_lineage import restore_snapshot
-from core.services.workbench.template_lineage_query import TemplateLineageQuery, read_events
+from core.services.workbench.calibration.template_lineage_query import TemplateLineageQuery, read_events
 from tests.workbench.execution_ledger_support import all_rows
 from tests.workbench.template_lineage_support import (
     calibration,

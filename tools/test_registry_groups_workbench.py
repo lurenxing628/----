@@ -64,7 +64,7 @@ _POINT_PIECE_SCOPES = (
     "core/services/workbench/plan/**/*.py", "core/services/workbench/facts/plan_serialization.py",
     "core/services/workbench/plan/point_query.py",
     "core/services/workbench/production_report*.py",
-    "core/services/workbench/template_lineage*.py",
+    "core/services/workbench/calibration/template_lineage*.py",
     "core/services/scheduler/template_lineage*.py",
     "core/algorithm_contracts/schedule_point_evidence.py",
     "core/infrastructure/migrations/v31.py",
@@ -79,9 +79,9 @@ _LINEAGE_SCOPES = (
     "core/infrastructure/workbench_template_lineage_schema.py",
     "core/infrastructure/workbench_lineage_lookup_schema.py",
     "core/infrastructure/migrations/v28.py",
-    "core/services/workbench/template_lineage*.py",
+    "core/services/workbench/calibration/template_lineage*.py",
     "core/services/scheduler/template_lineage*.py",
-    "core/services/workbench/calibration*.py", "core/services/workbench/batch/**/*.py",
+    "core/services/workbench/calibration/**/*.py", "core/services/workbench/batch/**/*.py",
     "core/services/scheduler/batch*.py", "data/repositories/*.py",
     "web/routes/workbench/batch*.py", "web/routes/workbench/calibration.py",
 )
@@ -318,7 +318,7 @@ WORKBENCH_REQUIRED_REGRESSION_GROUPS = (
         "core/services/workbench/production_report*.py",
         "core/services/scheduler/batch*.py", "data/repositories/*.py",
         "web/routes/workbench/batch*.py", "frontend/workbench/app/Batch*",
-        "core/services/workbench/template_lineage*.py",
+        "core/services/workbench/calibration/template_lineage*.py",
         "core/services/scheduler/template_lineage*.py",
         "tests/workbench/test_batch_files.py",
     )),
@@ -373,7 +373,7 @@ WORKBENCH_REQUIRED_REGRESSION_GROUPS = (
         "test_report_void_projections.py",
     ), (
         "core/models/workbench_report*.py", "core/services/workbench/report/**/*.py",
-        "core/services/workbench/actual_gantt*.py", "core/services/workbench/calibration*.py",
+        "core/services/workbench/actual_gantt*.py", "core/services/workbench/calibration/**/*.py",
         "core/services/scheduler/**/*.py",
         *_PLAN_READ_SCOPES,
         "core/services/workbench/report/review_*.py", "core/services/workbench/plan/**/*.py", "core/services/workbench/facts/plan_serialization.py",
@@ -613,13 +613,13 @@ WORKBENCH_REQUIRED_REGRESSION_GROUPS = (
     _group("workbench_calibration", "Readonly calibration provenance, method and exports", (
         "test_calibration_method.py", "test_calibration_integrity.py", "test_calibration_routes.py",
     ), (
-        "core/models/workbench_calibration.py", "core/services/workbench/calibration*.py",
+        "core/models/workbench_calibration.py", "core/services/workbench/calibration/**/*.py",
         "core/services/workbench/execution_ledger*.py", "core/services/workbench/facts/execution_projection.py", "core/services/workbench/production_report*.py",
         "core/services/execution/**/*.py",
         "data/repositories/workbench_calibration*.py", "web/routes/workbench/calibration.py",
         "tests/workbench/calibration_support.py",
         "frontend/workbench/app/Calibration*",
-        "core/services/workbench/template_lineage*.py",
+        "core/services/workbench/calibration/template_lineage*.py",
         "core/services/scheduler/template_lineage*.py",
     )),
     _group("workbench_trial", "Trial drafts, validation, atomic writes and catalog APIs", (
@@ -701,7 +701,7 @@ WORKBENCH_REQUIRED_REGRESSION_GROUPS = (
     ), (
         "core/models/workbench_outsourcing*.py", "core/services/workbench/outsourcing/**/*.py",
         *_PLAN_READ_SCOPES,
-        "core/services/workbench/plan/**/*.py", "core/services/workbench/facts/plan_serialization.py", "core/services/workbench/template_lineage*.py",
+        "core/services/workbench/plan/**/*.py", "core/services/workbench/facts/plan_serialization.py", "core/services/workbench/calibration/template_lineage*.py",
         "core/services/scheduler/template_lineage*.py",
         "core/services/workbench/execution_ledger*.py", "core/services/workbench/facts/execution_projection.py", "core/services/workbench/production_report*.py",
         "core/services/execution/**/*.py",

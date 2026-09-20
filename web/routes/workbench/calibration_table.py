@@ -7,8 +7,8 @@ from flask import g, request
 from core.models.workbench_calibration import CalibrationQuery, unique_calibration_object
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.workbench import messages
-from core.services.workbench.calibration import WorkbenchCalibrationService, filtered_suggestions
-from core.services.workbench.calibration_table import facet_data, validate_facet
+from core.services.workbench.calibration.service import WorkbenchCalibrationService, filtered_suggestions
+from core.services.workbench.calibration.table import facet_data, validate_facet
 from web.api_responses import query_success
 
 from .api_responses import api_endpoint

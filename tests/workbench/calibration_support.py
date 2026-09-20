@@ -7,8 +7,8 @@ import pytest
 from flask import Blueprint, Flask, g
 
 from core.models.workbench_calibration import CalibrationCandidate, CalibrationLineage, CalibrationQuery
-from core.services.workbench.calibration_facts import read_templates
-from core.services.workbench.calibration_samples import review_sample
+from core.services.workbench.calibration.facts import read_templates
+from core.services.workbench.calibration.samples import review_sample
 from data.repositories.workbench_calibration_query_repo import WorkbenchCalibrationQueryRepository
 from tests.workbench.execution_ledger_support import NOW, all_rows
 from tests.workbench.execution_ledger_support import ledger_case as ledger_fixture

@@ -5,7 +5,7 @@ import pytest
 from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_calibration_adoption import ADOPT_ACTION
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.services.workbench.calibration_adoption_evidence import read_evidence
+from core.services.workbench.calibration.adoption_evidence import read_evidence
 from data.repositories.workbench_calibration_adoption_repo import WorkbenchCalibrationAdoptionRepository
 from tests.workbench.calibration_adoption_support import (
     BASE,

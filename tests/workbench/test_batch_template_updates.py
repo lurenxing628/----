@@ -39,7 +39,7 @@ def test_preview_lists_changes_and_exact_resource_assignments_to_clear(batch_cli
 
 
 def test_replacement_failure_after_delete_keeps_original_operations_and_refs(batch_client, monkeypatch):
-    from core.services.workbench.template_lineage import TemplateLineageWriter
+    from core.services.workbench.calibration.template_lineage import TemplateLineageWriter
 
     client = batch_client
     internal_template(client)

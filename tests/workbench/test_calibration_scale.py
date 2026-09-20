@@ -75,7 +75,7 @@ def test_json_export_and_xlsx_cell_limits(calibration_api, monkeypatch):
     token = payload["meta"]["snapshot_ref"]
     monkeypatch.setattr("web.routes.workbench.calibration.MAX_RESPONSE_BYTES", 10)
     assert_failure(case.client.get(BASE), "query_too_large", 413)
-    monkeypatch.setattr("core.services.workbench.calibration_export.MAX_EXPORT_BYTES", 10)
+    monkeypatch.setattr("core.services.workbench.calibration.export.MAX_EXPORT_BYTES", 10)
     assert_failure(case.client.get(BASE + "/export", query_string={"snapshot_ref": token}), "export_too_large", 413)
 
 

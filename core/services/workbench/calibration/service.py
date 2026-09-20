@@ -4,8 +4,8 @@ from core.models.workbench_calibration import METHOD_VERSION, closed_capabilitie
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_execution_input import public_ref
 
-from .calibration_facts import CalibrationFacts
-from .calibration_table import filter_rows
+from .facts import CalibrationFacts
+from .table import filter_rows
 
 
 def filtered_suggestions(rows, query):

@@ -7,12 +7,12 @@ from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_calibration_adoption import ADOPT_ACTION, adoption_input, closed_context, preview_input
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected, validate_request_key
 from core.models.workbench_execution_input import public_ref
+from core.services.workbench import messages
+from core.services.workbench.commands import WorkbenchCommandService
 from data.repositories.workbench_calibration_adoption_repo import WorkbenchCalibrationAdoptionRepository
 
-from . import messages
-from .calibration_adoption_evidence import read_evidence
-from .calibration_adoption_policy import adopt_quota
-from .commands import WorkbenchCommandService
+from .adoption_evidence import read_evidence
+from .adoption_policy import adopt_quota
 
 
 class WorkbenchCalibrationAdoptionService:

@@ -8,7 +8,7 @@ from flask import Blueprint, Flask, g
 from core.infrastructure.transaction import TransactionManager
 from core.infrastructure.workbench_calibration_adoption_schema import install
 from core.models.workbench_template_lineage import typed_value
-from core.services.workbench.calibration_adoption import WorkbenchCalibrationAdoptionService
+from core.services.workbench.calibration.adoption import WorkbenchCalibrationAdoptionService
 from tests.workbench.execution_ledger_support import NOW
 from tests.workbench.template_lineage_support import completed
 from tests.workbench.template_lineage_support import ledger_fixture as _ledger_fixture  # noqa: F401

@@ -9,7 +9,7 @@ from core.infrastructure.workbench_template_lineage_schema import contract_issue
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_template_lineage import restore_snapshot, snapshot
 from core.services.scheduler.batch_service import BatchService
-from core.services.workbench.template_lineage_query import TemplateLineageQuery
+from core.services.workbench.calibration.template_lineage_query import TemplateLineageQuery
 from tests.workbench.execution_ledger_support import all_rows
 from tests.workbench.template_lineage_support import create, lineage_case, origin
 from tests.workbench.template_lineage_support import ledger_fixture as _ledger_fixture
