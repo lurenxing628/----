@@ -9,10 +9,10 @@ from core.models.workbench_report import ReportPage
 from core.models.workbench_report_catalog import ReportCatalogScope
 from core.services.report.exporters.xlsx import export_execution_review_xlsx
 from core.services.workbench import messages
-from core.services.workbench.report_catalog import catalog_facts, catalog_workspace, export_catalog_xlsx
-from core.services.workbench.report_exports import ensure_export_size, export_table, metadata
-from core.services.workbench.report_facts import WorkbenchReportFacts
-from core.services.workbench.report_queries import report_workspace
+from core.services.workbench.report.catalog import catalog_facts, catalog_workspace, export_catalog_xlsx
+from core.services.workbench.report.exports import ensure_export_size, export_table, metadata
+from core.services.workbench.report.facts import WorkbenchReportFacts
+from core.services.workbench.report.queries import report_workspace
 from web.api_responses import query_success
 
 from .api_responses import api_endpoint

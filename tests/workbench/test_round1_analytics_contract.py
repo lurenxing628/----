@@ -11,8 +11,8 @@ import pytest
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_report import ReportPage, ReportScope
 from core.models.workbench_report_catalog import ReportCatalogScope
-from core.services.workbench.report_catalog import catalog_workspace
-from core.services.workbench.review_legacy import legacy_review
+from core.services.workbench.report.catalog import catalog_workspace
+from core.services.workbench.report.review_legacy import legacy_review
 from tests.workbench.plan_read_support import assert_error
 from tests.workbench.report_api_support import event
 from tests.workbench.report_api_support import report_api as _report_api

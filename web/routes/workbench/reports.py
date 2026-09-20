@@ -12,10 +12,10 @@ from core.errors import ValidationError
 from core.models.workbench_command import WorkbenchCommandRejected, canonical_json, input_fingerprint
 from core.models.workbench_report import ReportPage, ReportScope, reference
 from core.services.workbench import messages
-from core.services.workbench.report_columns import public_columns
-from core.services.workbench.report_exports import export_table
-from core.services.workbench.report_facts import WorkbenchReportFacts
-from core.services.workbench.report_queries import SORTS, report_workspace
+from core.services.workbench.report.columns import public_columns
+from core.services.workbench.report.exports import export_table
+from core.services.workbench.report.facts import WorkbenchReportFacts
+from core.services.workbench.report.queries import SORTS, report_workspace
 from web.api_responses import query_success
 from web.public_token_registry import issue_public_token, resolve_public_token
 

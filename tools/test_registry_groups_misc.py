@@ -213,7 +213,7 @@ MISC_REQUIRED_REGRESSION_GROUPS = (
             "web/routes/workbench/navigation_boot.py",
             "web/routes/workbench/legacy_*.py",
             "web/routes/workbench/pages.py",
-            "core/services/workbench/report_facts.py",
+            "core/services/workbench/report/facts.py",
             "core/models/workbench_report.py",
             "core/models/operation_log_labels.py",
             "core/services/workbench/facts/system_reads.py",

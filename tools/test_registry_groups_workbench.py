@@ -372,11 +372,11 @@ WORKBENCH_REQUIRED_REGRESSION_GROUPS = (
         "test_round1_analytics_contract.py", "test_round1_report_export_contract.py",
         "test_report_void_projections.py",
     ), (
-        "core/models/workbench_report*.py", "core/services/workbench/report*.py",
+        "core/models/workbench_report*.py", "core/services/workbench/report/**/*.py",
         "core/services/workbench/actual_gantt*.py", "core/services/workbench/calibration*.py",
         "core/services/scheduler/**/*.py",
         *_PLAN_READ_SCOPES,
-        "core/services/workbench/review*.py", "core/services/workbench/plan/**/*.py", "core/services/workbench/facts/plan_serialization.py",
+        "core/services/workbench/report/review_*.py", "core/services/workbench/plan/**/*.py", "core/services/workbench/facts/plan_serialization.py",
         "core/services/capacity/**/*.py", "core/services/workbench/facts/resource_pressure.py",
         "core/services/workbench/execution_ledger*.py", "core/services/workbench/facts/execution_projection.py",
         "core/services/execution/**/*.py",
@@ -475,7 +475,7 @@ WORKBENCH_REQUIRED_REGRESSION_GROUPS = (
         "core/services/workbench/production_report*.py", "data/repositories/*.py",
         "web/routes/workbench/execution*.py", "web/routes/workbench/actual_gantt.py",
         "frontend/workbench/app/Field*", "frontend/workbench/app/ActualGantt*",
-        "core/services/workbench/report*.py", "web/routes/workbench/reports.py",
+        "core/services/workbench/report/**/*.py", "web/routes/workbench/reports.py",
         "tests/workbench/point_downstream_support.py",
     )),
     _group("workbench_preflight", "Readonly preflight APIs, ledger facts and query budgets", (

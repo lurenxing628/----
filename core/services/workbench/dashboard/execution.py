@@ -1,7 +1,7 @@
 """Risk classification consumes the execution ledger, never another report store."""
 
 from core.services.workbench.facts.preflight_checks import number
-from core.services.workbench.review_values import minutes
+from core.services.workbench.report.review_values import minutes
 
 from .projection import category, observation
 

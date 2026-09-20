@@ -9,7 +9,7 @@ import openpyxl
 import pytest
 
 from core.services.report.report_engine import ReportEngine
-from core.services.workbench.report_exports import export_table
+from core.services.workbench.report.exports import export_table
 
 IDENTITIES = ["-R1G标识", "+R1G标识", "=1+1", "@R1G标识", "中文标识"]
 NS = {"m": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}

@@ -13,8 +13,7 @@ from core.models.workbench_command import WorkbenchCommandRejected, canonical_js
 from core.services.common.excel_templates import _sanitize_export_cell
 from core.services.report.exporters.xlsx import SUMMARY_IDENTITY_LABELS, _append_write_only_row
 from core.services.report.report_engine import ReportExport
-
-from .facts.execution_projection import COMPLETION_BASIS_TEXT, DATA_QUALITY_TEXT
+from core.services.workbench.facts.execution_projection import COMPLETION_BASIS_TEXT, DATA_QUALITY_TEXT
 
 # 导出标题与列名都是用户直接看到的文字，统一走词表，不再暴露专题代号。
 TOPIC_TITLES = {"delivery": "工序完成情况", "records": "报工记录", "machines": "设备工时",

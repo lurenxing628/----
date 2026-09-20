@@ -15,7 +15,7 @@ from core.infrastructure.database import get_connection
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_plan_reference import WorkbenchPlanLocator
 from core.models.workbench_report import ReportScope
-from core.services.workbench.report_facts import WorkbenchReportFacts
+from core.services.workbench.report.facts import WorkbenchReportFacts
 from tests._support.paths import REPO_ROOT
 from tests._support.workbench_browser_contract import browser_contract
 from tests._support.workbench_web_contract import boot_payload, canonical_boot

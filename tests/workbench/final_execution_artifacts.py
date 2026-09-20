@@ -9,7 +9,7 @@ from urllib.parse import parse_qs, urlsplit
 
 from openpyxl import load_workbook
 
-from core.services.workbench.report_exports import CELL_TEXTS
+from core.services.workbench.report.exports import CELL_TEXTS
 
 FIELD_HEADERS = ['报工编号', '批次号', '工序', '本次完成数量', '实际开工', '本次实际完工',
                  '有效加工工时(h)', '实际设备', '实际人员', '备注', '任务编号', '工序范围', '单件编号']

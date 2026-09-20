@@ -12,7 +12,7 @@ import pytest
 
 from core.services.report.exporters import xlsx
 from core.services.report.report_engine import ReportEngine
-from core.services.workbench.report_exports import export_table
+from core.services.workbench.report.exports import export_table
 from tests.workbench.final_execution_cases import final_e_runtime as final_e_runtime
 from tests.workbench.final_execution_support import restart_preserved, serving
 from tests.workbench.live_environment import write_json

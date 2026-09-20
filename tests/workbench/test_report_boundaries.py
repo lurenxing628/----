@@ -10,7 +10,7 @@ import openpyxl
 import pytest
 
 from core.services.report.report_engine import ReportEngine
-from core.services.workbench import report_facts
+from core.services.workbench.report import facts as report_facts
 from tests.workbench.plan_catalog_support import history
 from tests.workbench.plan_read_support import assert_error
 from tests.workbench.report_api_support import event
@@ -118,6 +118,6 @@ def test_formula_like_remark_is_literal_in_csv(report_api):
 
 def test_new_python_files_accept_python38_syntax():
     root = Path(__file__).resolve().parents[2]
-    for pattern in ("core/models/workbench_report*.py", "core/services/workbench/report*.py", "core/services/workbench/review*.py", "web/routes/workbench/reports*.py"):
+    for pattern in ("core/models/workbench_report*.py", "core/services/workbench/report/**/*.py", "core/services/workbench/report/review_*.py", "web/routes/workbench/reports*.py"):
         for file in root.glob(pattern):
             ast.parse(file.read_text(encoding="utf-8"), filename=str(file), feature_version=(3, 8))

@@ -8,7 +8,7 @@ from core.services.workbench.actual_gantt_scope import ActualGanttScope
 from core.services.workbench.calibration_samples import review_sample
 from core.services.workbench.dashboard.execution import _hours
 from core.services.workbench.facts.run_input_codec import restore_execution_projections
-from core.services.workbench.review_records import project_records
+from core.services.workbench.report.review_records import project_records
 from tests.workbench.calibration_adoption_support import (
     INTENT,
     KEY,

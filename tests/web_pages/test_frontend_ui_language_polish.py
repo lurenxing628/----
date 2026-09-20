@@ -692,7 +692,7 @@ def test_scheduler_analysis_hides_internal_schema_and_attempt_tags() -> None:
 
 
 def test_reports_and_v2_batch_templates_match_public_manual_contracts() -> None:
-    catalog = _read("core/services/workbench/report_catalog.py")
+    catalog = _read("core/services/workbench/report/catalog.py")
     assert '("utilization_percent", "整窗占用率（%）")' in catalog
     assert 'None if row.get("utilization") is None else round(row["utilization"] * 100, 2)' in catalog
     exporter = _read("core/services/report/exporters/xlsx.py")

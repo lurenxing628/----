@@ -16,7 +16,7 @@ from core.services.report.exporters.xlsx import (
     export_utilization_xlsx,
 )
 
-from .report_exports import TOPIC_TITLES, ensure_export_size, metadata
+from .exports import TOPIC_TITLES, ensure_export_size, metadata
 
 CATALOG_COLUMNS = {
     "overdue": [("batch_label", "批次"), ("part_name", "零件"), ("bucket_label", "风险类别"),
