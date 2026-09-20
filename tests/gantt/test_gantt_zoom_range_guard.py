@@ -90,16 +90,14 @@ def test_render_guard_blocks_too_many_tasks_before_new_gantt(app_client) -> None
     assert MAX_PLAN_TASKS == 10000
 
     class Rows:
+        """仓储替身：服务层只通过有界读取拿行数，SQL 已下沉到 WorkbenchPlanCatalogRepository。"""
+
         def __init__(self, count):
             self.count = count
 
-        def _plan_rows_sql(self, **scope):
-            assert scope == {"source_table": SOURCE_SCHEDULE, "candidate_id": None, "scenario_id": None}
-            return "SELECT id FROM Schedule WHERE version=?", []
-
-        def fetchall(self, sql, params):
-            assert sql == "SELECT id FROM (SELECT id FROM Schedule WHERE version=?) LIMIT ?"
-            assert params == [5, MAX_PLAN_TASKS + 1]
+        def list_plan_row_ids_bounded(self, **scope):
+            assert scope == {"version": 5, "source_table": SOURCE_SCHEDULE, "candidate_id": None,
+                             "scenario_id": None, "limit": MAX_PLAN_TASKS + 1}
             return [None] * self.count
 
     assert _admit_rows(Rows(MAX_PLAN_TASKS), 5, SOURCE_SCHEDULE) is None

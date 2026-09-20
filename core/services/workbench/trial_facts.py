@@ -1,24 +1,21 @@
 """Complete production evidence, with no trial/command bookkeeping feedback loop."""
 
 from core.infrastructure.schema_probe import schema_objects
-from core.infrastructure.workbench_run_schema import RUN_TABLES
-from core.infrastructure.workbench_trial_schema import TRIAL_TABLES
 from core.models.workbench_trial import MAX_TRIAL_TASKS, reject
 from core.models.workbench_trial_codec import dump, fingerprint
 from core.services.workbench.execution_ledger import ExecutionLedgerService
 from core.services.workbench.run_jobs_facts import run_baseline
-from data.repositories.workbench_trial_raw_repo import read_raw_table
-
-_BOOKKEEPING = set(TRIAL_TABLES + RUN_TABLES) | {"WorkbenchCommandReceipts", "OperationLogs", "sqlite_sequence"}
+from data.repositories.workbench_trial_query_repo import BOOKKEEPING_TABLES, WorkbenchTrialQueryRepository
 
 
 def capture_facts(conn):
-    schema = schema_objects(conn, exclude_tbl_names=sorted(_BOOKKEEPING))
+    schema = schema_objects(conn, exclude_tbl_names=sorted(BOOKKEEPING_TABLES))
+    repo = WorkbenchTrialQueryRepository(conn)
     tables, columns = {}, {}
     for kind, name, _, _ in schema:
         if kind != "table":
             continue
-        columns[name], tables[name] = read_raw_table(conn, name)
+        columns[name], tables[name] = repo.read_whole_table(name)
     result = {"schema": schema, "columns": columns, "tables": tables}
     dump(result)
     return result, fingerprint(result)

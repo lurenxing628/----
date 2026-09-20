@@ -2,6 +2,7 @@
 
 from core.models.workbench_command import input_fingerprint
 from core.models.workbench_trial_codec import fingerprint
+from data.repositories.workbench_plan_baseline_repo import WorkbenchPlanBaselineRepository
 
 from .plan_adoption_baseline_values import fail, has_table, require, same, stored
 from .run_candidate_adoption_storage import load_adoption_candidate
@@ -17,7 +18,7 @@ _TABLES = ("Schedule", "ScheduleHistory", "WorkbenchPlanSourceRefs", "WorkbenchT
 def _source_exists(conn, table, field, ref):
     if not has_table(conn, table):
         fail("adoption_evidence_missing", table)
-    if conn.execute("SELECT 1 FROM " + table + " WHERE " + field + "=?", (ref,)).fetchone() is None:
+    if not WorkbenchPlanBaselineRepository(conn).source_exists(table, field, ref):
         fail("adoption_source_archived", table + "." + field)
 
 
@@ -96,8 +97,7 @@ def trial_source(conn, audit):
 
 def _scenario_row_bindings(conn, saved):
     tasks = {row["row_ref"]: row for row in saved["tasks"]}
-    rows = list(conn.execute("SELECT row_ref,task_ref,source_row_ref FROM WorkbenchTrialScenarioRows WHERE scenario_ref=?",
-                             (saved["scenario_ref"],)))
+    rows = WorkbenchPlanBaselineRepository(conn).list_scenario_row_bindings(saved["scenario_ref"])
     require(len(tasks) == len(rows), "trial.scenario_rows")
     for row_ref, task_ref, source_row_ref in rows:
         task = tasks.get(row_ref)

@@ -7,6 +7,7 @@ from core.models.workbench_command import canonical_json
 from core.models.workbench_plan_reference import WorkbenchPlanLocator
 from data.repositories.schedule_history_repo import ScheduleHistoryRepository
 from data.repositories.schedule_repo import ScheduleRepository
+from data.repositories.workbench_plan_baseline_repo import WorkbenchPlanBaselineRepository
 from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
 
 
@@ -38,8 +39,7 @@ def persist_official_plan_in_tx(conn, *, prepared, payload, baseline, audit, app
                     "created_by": application_operator})
     identities = WorkbenchPlanIdentityRepository(conn)
     plan_ref = identities.get_plan_ref(WorkbenchPlanLocator(version, "adopted"))
-    persisted = [dict(row) for row in conn.execute(
-        "SELECT id AS schedule_id,op_id,version FROM Schedule WHERE version=? ORDER BY id", (version,))]
+    persisted = WorkbenchPlanBaselineRepository(conn).list_schedule_identity_rows(version)
     if len(identities.get_task_refs(plan_ref, persisted)) != len(rows):
         raise RuntimeError("New official task identities are incomplete")
     audit["plan_ref"] = plan_ref

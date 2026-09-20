@@ -2,6 +2,7 @@
 
 from dataclasses import asdict
 
+from data.repositories.workbench_piece_adoption_repo import WorkbenchPieceAdoptionRepository
 from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
 
 from .piece_adoption_scope import block, build_piece_adoption_scope
@@ -13,19 +14,18 @@ def current_piece_scope(conn, prepared):
     ids = prepared.normalized_batch_ids
     if not ids or len(ids) != len(set(ids)) or set(ids) != set(prepared.batches):
         block("piece_scope_incomplete", "这次排产的批次范围为空或有重复，本次没有采用。请回「执行排产」重新排一次。")
+    repo = WorkbenchPieceAdoptionRepository(conn)
     batches, operations, batch_refs = {}, [], {}
     for batch_id in ids:
-        row = conn.execute("SELECT * FROM Batches WHERE batch_id=?", (batch_id,)).fetchone()
+        row = repo.get_batch(batch_id)
         if row is None:
             block("piece_identity_changed", "有批次已被删除，本次没有采用。请回「执行排产」重新选批次排一次。")
         batches[batch_id] = batch_model(dict(row))
-        ref = conn.execute("SELECT ref FROM WorkbenchEntityRefs WHERE kind='batch' AND active=1 "
-                           "AND entity_key=?", (batch_id,)).fetchall()
+        ref = repo.active_batch_refs(batch_id)
         if len(ref) != 1:
             block("piece_identity_changed", "有批次缺少唯一编号，本次没有采用。请刷新后重新排产。")
-        batch_refs[batch_id] = ref[0][0]
-        operations.extend(operation_model(dict(row)) for row in conn.execute(
-            "SELECT * FROM BatchOperations WHERE batch_id=? ORDER BY id", (batch_id,)))
+        batch_refs[batch_id] = ref[0]
+        operations.extend(operation_model(dict(row)) for row in repo.list_batch_operations(batch_id))
     scope = build_piece_adoption_scope(operations, batches)
     if not any(op.piece_id is not None for op in operations):
         block("piece_scope_required", "本批工序现在没有分件，不能按分件采用。请回「执行排产」重新排一次。")

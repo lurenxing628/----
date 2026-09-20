@@ -7,6 +7,7 @@ from core.infrastructure.schema_probe import table_exists
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_plan_scope import MAX_PLAN_TASKS
 from core.models.workbench_trial_codec import fingerprint
+from data.repositories.workbench_plan_baseline_repo import WorkbenchPlanBaselineRepository
 
 REASONS = {
     "no_adoption_baseline": "这是首版正式计划，没有上一版可供对比。",
@@ -61,26 +62,19 @@ def has_table(conn, name):
     return table_exists(conn, name)
 
 
-def raw_rows(conn, table, *, where="1=1", params=(), limit=None):
-    def quote(name):
-        return '"' + name.replace('"', '""') + '"'
-    columns = [row[0] for row in conn.execute("SELECT name FROM pragma_table_info(?)", (table,))]
-    if not columns:
+def raw_table_rows(rows, table):
+    """A raw read returns None when the table has no columns; that is missing evidence, not a storage error."""
+    if rows is None:
         fail("adoption_evidence_missing", table)
-    # Unary + and synthetic aliases bypass both DECLTYPES and COLNAMES conversion.
-    fields = ",".join("+" + quote(name) + " AS raw_" + str(i) for i, name in enumerate(columns))
-    sql = "SELECT " + fields + " FROM " + quote(table) + " WHERE " + where + " ORDER BY rowid"
-    if limit is not None:
-        sql += " LIMIT ?"
-        params = tuple(params) + (limit + 1,)
-    rows = [dict(zip(columns, row)) for row in conn.execute(sql, params)]
-    if limit is not None and len(rows) > limit:
-        raise WorkbenchCommandRejected("query_too_large", "完整的初始计划或对比计划超过 10000 条上限。请缩小时间范围后重试。", 413)
     return rows
 
 
 def schedule_rows(conn, version):
-    return raw_rows(conn, "Schedule", where="version=?", params=(version,), limit=MAX_PLAN_TASKS)
+    rows = raw_table_rows(WorkbenchPlanBaselineRepository(conn).raw_schedule_rows_by_version(
+        version, limit=MAX_PLAN_TASKS + 1), "Schedule")
+    if len(rows) > MAX_PLAN_TASKS:
+        raise WorkbenchCommandRejected("query_too_large", "完整的初始计划或对比计划超过 10000 条上限。请缩小时间范围后重试。", 413)
+    return rows
 
 
 def indexed(rows, key):

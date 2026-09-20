@@ -20,13 +20,14 @@ from core.services.scheduler.resource_pool_builder import load_machine_downtimes
 from core.services.scheduler.run.schedule_input_builder import build_algo_operations
 from core.services.scheduler.run.schedule_payload_contract import build_validated_schedule_payload
 from core.services.scheduler.schedule_service import ScheduleService
+from data.repositories.workbench_piece_adoption_repo import WorkbenchPieceAdoptionRepository
 
 from .messages import FAILURE
 from .piece_adoption_execution import validate_piece_execution
 from .piece_adoption_facts import current_piece_scope
 from .piece_adoption_scope import block
 from .preflight_checks import PreflightChecks, stored_date
-from .run_candidate_adoption_constraints import _TABLES, _resource_overlaps
+from .run_candidate_adoption_constraints import _resource_overlaps
 from .run_input_external import prime_template_cache
 from .run_input_readonly import candidate_read_snapshot
 from .run_input_runtime import _validate_stored_runtime
@@ -62,17 +63,12 @@ def _validate_piece_adoption(conn, prepared, payload):
         _payload(prepared, payload, scope)
         svc = ScheduleService(conn)
         protected = validate_piece_execution(svc, prepared, payload, scope, refs)
-        prime_template_cache(svc, _template_tables(conn), prepared.batches, prepared.operations)
+        prime_template_cache(svc, WorkbenchPieceAdoptionRepository(conn).template_tables(), prepared.batches, prepared.operations)
         algo_ops = {op.id: op for op in build_algo_operations(svc, prepared.operations, strict_mode=True)}
         _precedence(payload, scope, algo_ops)
         _constraints(conn, prepared, payload, scope, algo_ops)
         return PieceAdoptionEvidence(scope, tuple(sorted(refs.items())), tuple(sorted(protected)),
                                      prepared.execution_snapshot_revision)
-
-
-def _template_tables(conn):
-    return {name: [dict(row) for row in conn.execute('SELECT * FROM "' + name + '"')]
-            for name in ("PartOperations", "ExternalGroups")}
 
 
 def _payload(prepared, payload, scope):
@@ -112,8 +108,7 @@ def _constraints(conn, prepared, payload, scope, algo_ops):
     downtime = load_machine_downtimes(ScheduleService(conn),
         algo_ops=list(payload.schedule_rows),
         start_dt=min(row.start_time for row in payload.schedule_rows))
-    checks = PreflightChecks({name: [dict(row) for row in conn.execute('SELECT * FROM "' + name + '"')]
-                              for name in _TABLES})
+    checks = PreflightChecks(WorkbenchPieceAdoptionRepository(conn).preflight_tables())
     quantities = {work.op_id: work.target_quantity for work in scope.operations}
     ops = {op.id: op for op in prepared.operations}
     actual = prepared.execution_fixed_op_ids | prepared.execution_completed_op_ids

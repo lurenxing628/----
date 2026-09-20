@@ -19,14 +19,6 @@ def _read(conn, names, source, params=(), order="", expressions=None):
     return [dict(zip(names, tuple(row))) for row in cursor]
 
 
-def read_raw_table(conn, name):
-    quoted = _quote(name)
-    names = [row[1] for row in conn.execute("PRAGMA table_info(" + quoted + ")")]
-    if not names:
-        raise ValueError("Required raw SQLite table has no columns: " + name)
-    return names, _read(conn, names, quoted, order=" ORDER BY rowid")
-
-
 class WorkbenchTrialRawPlanRepository(WorkbenchPlanCatalogRepository):
     """Keep the existing complete-plan SQL/limits, suppress only Python converters."""
 

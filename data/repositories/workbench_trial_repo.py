@@ -107,6 +107,11 @@ class WorkbenchTrialRepository:
             reject("trial_snapshot_invalid", "场景快照与永久明细不一致。")
         return result
 
+    def scenario_header(self, ref):
+        """The whole WorkbenchTrialScenarios row of one scenario, or None."""
+        row = self.conn.execute("SELECT * FROM WorkbenchTrialScenarios WHERE scenario_ref=?", (ref,)).fetchone()
+        return None if row is None else dict(row)
+
     def changes(self, draft_ref):
         result = []
         for row in self.conn.execute("""SELECT change_ref,task_ref,before_json,after_json,validation_json,

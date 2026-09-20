@@ -23,7 +23,6 @@ from core.models.workbench_plan_reference import WorkbenchPlanLocator, Workbench
 from core.models.workbench_plan_scope import MAX_PLAN_TASKS, PlanReadScope
 from core.services.scheduler.workbench_plan_catalog import PlanCatalogEntry, _role_entry
 from core.services.scheduler.workbench_plan_page import _PagePlanQueryService
-from data.repositories.schedule_detail_query import build_schedule_detail_sql
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
 from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
 
@@ -51,15 +50,13 @@ def _unavailable(code, facts):
 
 
 def _complete_rows(repo, *, version, source, candidate_id=None, scenario_id=None):
-    sql, extra = repo._plan_rows_sql(source_table=source, candidate_id=candidate_id, scenario_id=scenario_id)
-    params = [version] + extra
-    ids = repo.fetchall("SELECT id FROM (" + sql + ") LIMIT ?", params + [MAX_PLAN_TASKS + 1])
+    query = {"version": version, "source_table": source, "candidate_id": candidate_id, "scenario_id": scenario_id}
+    ids = repo.list_plan_row_ids_bounded(limit=MAX_PLAN_TASKS + 1, **query)
     if len(ids) > MAX_PLAN_TASKS:
         raise WorkbenchCommandRejected(
             "query_too_large", "完整的初始计划或对比计划超过 10000 条上限。请缩小时间范围后重试。", 413,
         )
-    detail = build_schedule_detail_sql(where_clauses=["1 = 1"], plan_rows_cte_sql=sql)
-    rows = repo.fetchall(detail + " LIMIT ?", params + [MAX_PLAN_TASKS + 1])
+    rows = repo.list_detail_rows_bounded(limit=MAX_PLAN_TASKS + 1, **query)
     if len(rows) != len(ids):
         raise WorkbenchCommandRejected("plan_unavailable", "对比计划的明细条数前后不一致，确认不了完整范围。请刷新后重试。")
     return rows

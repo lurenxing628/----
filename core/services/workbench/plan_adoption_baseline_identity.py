@@ -6,9 +6,10 @@ from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_plan_reference import WorkbenchPlanLocator, WorkbenchPlanReferenceError
 from core.models.workbench_plan_scope import MAX_PLAN_TASKS
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
+from data.repositories.workbench_plan_baseline_repo import WorkbenchPlanBaselineRepository
 from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
 
-from .plan_adoption_baseline_values import fail, indexed, raw_rows, require, same, schedule_rows
+from .plan_adoption_baseline_values import fail, indexed, raw_table_rows, require, same, schedule_rows
 from .plan_projection import project_tasks, public_time
 
 
@@ -40,10 +41,10 @@ def _captured_official(baseline, tables):
 def _live_sources(conn, captured):
     by_ref = indexed(captured, "ref")
     keys, live = list(by_ref), {}
+    repo = WorkbenchPlanBaselineRepository(conn)
     for start in range(0, len(keys), 400):
         chunk = keys[start:start + 400]
-        marks = ",".join("?" for _ in chunk)
-        live.update(indexed(raw_rows(conn, "WorkbenchPlanSourceRefs", where="ref IN (" + marks + ")", params=chunk), "ref"))
+        live.update(indexed(raw_table_rows(repo.raw_source_refs_by_refs(chunk), "WorkbenchPlanSourceRefs"), "ref"))
     if not same(by_ref, live):
         fail("adoption_reference_invalid", "captured_source_instances")
 
@@ -86,7 +87,7 @@ def _arrangement_matches(row, original):
 def baseline_tasks(conn, baseline, tables, facts, *, point_annotator=None):
     ref, version = baseline["plan_ref"], baseline["version"]
     references = WorkbenchPlanIdentityRepository(conn)
-    if not conn.execute("SELECT 1 FROM ScheduleHistory WHERE version=?", (version,)).fetchone():
+    if not WorkbenchPlanBaselineRepository(conn).history_version_exists(version):
         fail("adoption_baseline_archived", "ScheduleHistory.original_version")
     try:
         locator = references.resolve_plan(ref)
@@ -156,7 +157,7 @@ def _task_bindings(conn, baseline, tables, references):
         fail("adoption_reference_invalid", "baseline.current_task_binding")
     if current_tasks != task_refs or current_ops != operations:
         fail("adoption_reference_invalid", "baseline.original_task_ref")
-    current = raw_rows(conn, "WorkbenchTaskRefs", where="plan_ref=?", params=(ref,))
+    current = raw_table_rows(WorkbenchPlanBaselineRepository(conn).raw_task_refs_by_plan(ref), "WorkbenchTaskRefs")
     if not same(indexed(current, "row_ref"), tasks):
         fail("adoption_reference_invalid", "baseline.full_current_task_membership")
     return task_refs, operations

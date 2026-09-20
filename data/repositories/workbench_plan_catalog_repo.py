@@ -19,8 +19,10 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from core.models.schedule_plan_role import SOURCE_SCHEDULE
 
+from .schedule_detail_query import build_schedule_detail_sql
 from .schedule_plan_query_repo import SchedulePlanQueryRepository
 from .schedule_rows import ScheduleTimeSpanRow
+from .schedule_time_sql import DETAIL_OVERLAP_OR_BAD_TIME_SQL
 
 DEFAULT_PLAN_PAGE_SIZE = 20
 MAX_PLAN_PAGE_SIZE = 50
@@ -123,3 +125,32 @@ class WorkbenchPlanCatalogRepository(SchedulePlanQueryRepository):
 
     def list_history_identity_rows(self) -> List[Dict[str, Any]]:
         raise RuntimeError("分页目录禁止调用全量历史查询。")
+
+    # ---- bounded whole-plan reads (callers admit the plan by comparing len() with their cap) ----
+    def list_plan_row_ids_bounded(
+        self, *, version: Any, source_table: str, candidate_id: Optional[int], scenario_id: Optional[str] = None,
+        limit: int,
+    ) -> List[Dict[str, Any]]:
+        sql, extra = self._plan_rows_sql(source_table=source_table, candidate_id=candidate_id, scenario_id=scenario_id)
+        return self.fetchall("SELECT id FROM (" + sql + ") LIMIT ?", [version] + extra + [limit])
+
+    def list_plan_rows_bounded(
+        self, *, version: Any, source_table: str, candidate_id: Optional[int], scenario_id: Optional[str] = None,
+        limit: int,
+    ) -> List[Dict[str, Any]]:
+        sql, extra = self._plan_rows_sql(source_table=source_table, candidate_id=candidate_id, scenario_id=scenario_id)
+        return self.fetchall("SELECT * FROM (" + sql + ") LIMIT ?", [version] + extra + [limit])
+
+    def list_detail_rows_bounded(
+        self, *, version: Any, source_table: str, candidate_id: Optional[int], scenario_id: Optional[str] = None,
+        range_start: Optional[str] = None, range_end: Optional[str] = None, limit: int,
+    ) -> List[Dict[str, Any]]:
+        """Full detail rows of one plan; with a range, rows overlapping it or carrying bad times."""
+        sql, extra = self._plan_rows_sql(source_table=source_table, candidate_id=candidate_id, scenario_id=scenario_id)
+        params: List[Any] = [version] + extra
+        where = ["1 = 1"]
+        if range_start is not None:
+            where = [DETAIL_OVERLAP_OR_BAD_TIME_SQL]
+            params += [range_end, range_start]
+        detail = build_schedule_detail_sql(where_clauses=where, plan_rows_cte_sql=sql)
+        return self.fetchall(detail + " LIMIT ?", params + [limit])

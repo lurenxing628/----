@@ -5,6 +5,7 @@ from types import SimpleNamespace
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_piece_adoption import PieceAdoptionBlocked
 from core.models.workbench_plan_reference import WorkbenchPlanReferenceError
+from data.repositories.workbench_plan_baseline_repo import WorkbenchPlanBaselineRepository
 from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
 
 from .piece_adoption_scope import build_piece_adoption_scope
@@ -85,7 +86,7 @@ def _acyclic(relations):
 def _project(conn, plan_ref, rows, relations, refs):
     repository = WorkbenchPlanIdentityRepository(conn)
     tasks = repository.get_task_refs(plan_ref, [dict(row, schedule_id=row["id"]) for row in rows])
-    all_refs = {row[0] for row in conn.execute("SELECT ref FROM WorkbenchTaskRefs WHERE plan_ref=?", (plan_ref,))}
+    all_refs = set(WorkbenchPlanBaselineRepository(conn).list_task_refs_by_plan(plan_ref))
     require(all_refs == set(tasks.values()) and len(tasks) == len(rows), "process_order.complete_task_membership")
     items = []
     for row in rows:

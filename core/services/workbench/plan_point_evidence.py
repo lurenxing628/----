@@ -2,6 +2,7 @@
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_plan_reference import WorkbenchPlanLocator
+from data.repositories.workbench_plan_baseline_repo import WorkbenchPlanBaselineRepository
 from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
 
 from .plan_adoption_baseline import _audit
@@ -19,8 +20,8 @@ def official_point_work(conn, version):
     try:
         refs = WorkbenchPlanIdentityRepository(conn)
         plan_ref = refs.get_plan_ref(WorkbenchPlanLocator(version, "adopted"))
-        history = conn.execute("SELECT result_summary FROM ScheduleHistory WHERE version=?", (version,)).fetchone()
-        recorded = _audit(conn, plan_ref, version, dict(history) if history else None)
+        history = WorkbenchPlanBaselineRepository(conn).get_history_result_summary(version)
+        recorded = _audit(conn, plan_ref, version, history)
         if recorded is None:
             raise PointEventError("point_evidence_missing", "这一版正式计划没有可核对的采用记录，证明不了这道零工时工序。")
         basis, audit, _ = recorded

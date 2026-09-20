@@ -142,6 +142,7 @@ def _adopted_quantities(conn, plan_ref):
 
 def read_adopted_source(conn, plan_ref):
     """Read the audited immutable source; callers retain their read transaction."""
+    from data.repositories.workbench_plan_baseline_repo import WorkbenchPlanBaselineRepository
     from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
 
     from .plan_adoption_baseline import _audit
@@ -152,8 +153,8 @@ def read_adopted_source(conn, plan_ref):
     locator = WorkbenchPlanIdentityRepository(conn).resolve_plan(plan_ref)
     if locator.scenario_id is not None or locator.plan_role != ROLE_ADOPTED:
         return None
-    history = conn.execute("SELECT result_summary FROM ScheduleHistory WHERE version=?", (locator.version,)).fetchone()
-    recorded = _audit(conn, plan_ref, locator.version, None if history is None else {"result_summary": history[0]})
+    history = WorkbenchPlanBaselineRepository(conn).get_history_result_summary(locator.version)
+    recorded = _audit(conn, plan_ref, locator.version, history)
     if recorded is None:
         return None
     basis, audit, _ = recorded

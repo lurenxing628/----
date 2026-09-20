@@ -9,6 +9,7 @@ from core.services.scheduler.run.schedule_execution_guardrails import _collect_e
 from core.services.scheduler.run.schedule_execution_persistence_guard import _validate_unselected_resource_overlap
 from core.services.scheduler.run.schedule_execution_resource_facts import _latest_plan_rows
 from core.services.workbench.execution_ledger import ExecutionLedgerService
+from data.repositories.workbench_piece_adoption_repo import WorkbenchPieceAdoptionRepository
 
 from .piece_adoption_scope import block
 from .run_input_projection_codec import restore_execution_projections
@@ -92,8 +93,9 @@ def _original_locks(svc, prepared, rows, actual, protected):
     latest = _latest_plan_rows(svc, prepared.prev_version)
     if not set(latest) <= set(rows):
         block("official_scope_not_covered", "候选方案漏掉了正式计划里已有的部分工序，本次没有采用。请回「执行排产」重新排一次。")
+    official = WorkbenchPieceAdoptionRepository(svc.conn)
     for op_id, identity in latest.items():
-        old = svc.conn.execute("SELECT * FROM Schedule WHERE id=?", (identity["schedule_id"],)).fetchone()
+        old = official.get_schedule_row(identity["schedule_id"])
         if old["lock_status"] not in ("locked", "unlocked"):
             block("piece_lock_invalid", "原计划里有工序的锁定状态读不出来，本次没有采用。请刷新后重新排产。")
         if op_id in actual:

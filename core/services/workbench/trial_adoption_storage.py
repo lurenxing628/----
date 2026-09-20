@@ -20,7 +20,7 @@ def load_saved_scenario(conn, scenario_ref):
     reference(scenario_ref)
     repo = WorkbenchTrialRepository(conn)
     saved = repo.scenario(scenario_ref)
-    header = dict(conn.execute("SELECT * FROM WorkbenchTrialScenarios WHERE scenario_ref=?", (scenario_ref,)).fetchone())
+    header = repo.scenario_header(scenario_ref)
     head, originals = repo.get(header["draft_ref"])
     _require_head(saved, header, head, originals)
     _require_receipts(conn, saved, header, head)

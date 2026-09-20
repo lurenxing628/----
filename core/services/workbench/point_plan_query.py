@@ -17,8 +17,8 @@ def _interval(row):
 
 class PointPlanCatalogRepository(WorkbenchPlanCatalogRepository):
     def _validated_rows(self, version, source_table, candidate_id, scenario_id):
-        sql, params = self._plan_rows_sql(source_table=source_table, candidate_id=candidate_id, scenario_id=scenario_id)
-        rows = self.fetchall("SELECT * FROM (" + sql + ") LIMIT ?", [version] + params + [MAX_PLAN_TASKS + 1])
+        rows = self.list_plan_rows_bounded(version=version, source_table=source_table, candidate_id=candidate_id,
+                                           scenario_id=scenario_id, limit=MAX_PLAN_TASKS + 1)
         if len(rows) > MAX_PLAN_TASKS:
             raise WorkbenchCommandRejected("query_too_large", "整个计划超过 10000 条上限。请缩小时间范围后重试。", 413)
         try:

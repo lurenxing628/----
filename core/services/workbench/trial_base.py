@@ -10,7 +10,8 @@ from core.services.workbench.run_candidate_projection import candidate_summary, 
 from core.services.workbench.run_candidate_storage import CandidateStore
 from core.services.workbench.run_candidate_tasks import tasks_projection
 from core.services.workbench.run_candidate_values import stored_json
-from data.repositories.workbench_trial_raw_repo import WorkbenchTrialRawPlanRepository, read_raw_table
+from data.repositories.workbench_trial_query_repo import WorkbenchTrialQueryRepository
+from data.repositories.workbench_trial_raw_repo import WorkbenchTrialRawPlanRepository
 from data.repositories.workbench_trial_repo import new_ref
 
 from .piece_adoption_trial import trial_piece_predecessors
@@ -58,17 +59,18 @@ def _plan(conn, ref):
     with service.read_snapshot():
         _, entry, _ = service._selected(ref)
         repo = WorkbenchTrialRawPlanRepository(conn)
+        facts = WorkbenchTrialQueryRepository(conn)
         identity = entry.plan_identity
         if identity is None:
             reject("plan_unavailable", "所选计划缺少可用的永久身份，未切换到其他计划。")
-        tables = {name: {row[key]: row for row in read_raw_table(conn, name)[1]}
-                  for name, key in (("BatchOperations", "id"), ("Batches", "batch_id"))}
+        tables = {"BatchOperations": {row["id"]: row for row in facts.raw_batch_operations()},
+                  "Batches": {row["batch_id"]: row for row in facts.raw_batches()}}
         detail = _complete_rows(repo, version=entry.locator.version, source=identity.source_table,
                                 candidate_id=identity.candidate_id, scenario_id=entry.locator.scenario_id)
         tasks = service.references.get_task_refs(ref, detail)
         operations = service.references.get_operation_refs(row["op_id"] for row in detail)
-        refs = entity_maps({"WorkbenchEntityRefs": read_raw_table(conn, "WorkbenchEntityRefs")[1]})
-        raw, source_refs, table = _source_rows(conn, identity.source_table, detail)
+        refs = entity_maps({"WorkbenchEntityRefs": facts.raw_entity_refs()})
+        raw, source_refs, table = _source_rows(facts, identity.source_table, detail)
         result, point_work = [], None
         for item in detail:
             op = tables["BatchOperations"].get(item["op_id"])
@@ -84,9 +86,8 @@ def _plan(conn, ref):
                 if point_work is None:
                     point_work = official_point_work(conn, entry.locator.version)
                 _attach_point_work(result[-1], point_work[item["op_id"]])
-        _attach_parts(conn, result)
-        operations = {int(row["source_key"]): row["ref"] for row in conn.execute(
-            "SELECT source_key,ref FROM WorkbenchPlanSourceRefs WHERE kind='operation' AND active=1")}
+        _attach_parts(facts, result)
+        operations = {int(row["source_key"]): row["ref"] for row in facts.active_operation_source_refs()}
         issues = [] if entry.completeness == "complete" else [issue("trial_base_incomplete", "基础方案不完整，暂无法评估交期。")]
         return result, {"identity": project_plan(entry, ref), "source_table": table}, tables["BatchOperations"], operations, issues
 
@@ -101,20 +102,20 @@ def _date_issues(rows):
     return issues
 
 
-def _attach_parts(conn, rows):
-    parts = {row["part_no"]: row for row in read_raw_table(conn, "Parts")[1]}
+def _attach_parts(facts, rows):
+    parts = {row["part_no"]: row for row in facts.raw_parts()}
     for row in rows:
         row["original"]["part"] = parts.get(row["original"]["batch"]["part_no"])
 
 
-def _source_rows(conn, source, detail):
-    sources = {"schedule": ("Schedule", "schedule_row"), "candidate_rows": ("ScheduleCandidateRows", "candidate_row"),
-               "adjustment_scenario_rows": ("ScheduleAdjustmentScenarioRow", "scenario_row")}
-    table, kind = sources[source]
+def _source_rows(facts, source, detail):
+    sources = {"schedule": ("Schedule", "schedule_row", facts.raw_schedule),
+               "candidate_rows": ("ScheduleCandidateRows", "candidate_row", facts.raw_candidate_rows),
+               "adjustment_scenario_rows": ("ScheduleAdjustmentScenarioRow", "scenario_row", facts.raw_scenario_rows)}
+    table, kind, read_rows = sources[source]
     wanted = {row["schedule_id"] for row in detail}
-    raw = {row["id"]: row for row in read_raw_table(conn, table)[1] if row["id"] in wanted}
-    source_refs = {int(row["source_key"]): row["ref"] for row in conn.execute(
-        "SELECT source_key,ref FROM WorkbenchPlanSourceRefs WHERE kind=? AND active=1", (kind,))}
+    raw = {row["id"]: row for row in read_rows() if row["id"] in wanted}
+    source_refs = {int(row["source_key"]): row["ref"] for row in facts.active_source_refs_by_kind(kind)}
     return raw, source_refs, table
 
 

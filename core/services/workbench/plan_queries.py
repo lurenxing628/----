@@ -20,8 +20,6 @@ from core.models.workbench_plan_reference import WorkbenchPlanLocator, Workbench
 from core.models.workbench_plan_scope import MAX_PLAN_TASKS
 from core.services.scheduler.workbench_plan_catalog import _role_entry, _scenario_entry
 from core.services.scheduler.workbench_plan_page import _PagePlanQueryService
-from data.repositories.schedule_detail_query import build_schedule_detail_sql
-from data.repositories.schedule_time_sql import DETAIL_OVERLAP_OR_BAD_TIME_SQL
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
 from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
 
@@ -42,8 +40,8 @@ from .zero_duration_evidence import overlaps
 
 
 def _admit_rows(repo, version, source, candidate_id=None, scenario_id=None):
-    sql, extra = repo._plan_rows_sql(source_table=source, candidate_id=candidate_id, scenario_id=scenario_id)
-    rows = repo.fetchall("SELECT id FROM (" + sql + ") LIMIT ?", [version] + extra + [MAX_PLAN_TASKS + 1])
+    rows = repo.list_plan_row_ids_bounded(version=version, source_table=source, candidate_id=candidate_id,
+                                          scenario_id=scenario_id, limit=MAX_PLAN_TASKS + 1)
     if len(rows) > MAX_PLAN_TASKS:
         raise WorkbenchCommandRejected("query_too_large", "所选计划明细超过 10000 条上限。请缩小时间范围后重试。", 413)
 
@@ -190,15 +188,11 @@ class WorkbenchPlanQueryService:
 
     def _task_rows(self, repo, entry, scope):
         identity = entry.plan_identity
-        plan_sql, extra = repo._plan_rows_sql(source_table=identity.source_table, candidate_id=identity.candidate_id,
-                                              scenario_id=entry.locator.scenario_id)
-        params = [entry.locator.version] + extra
-        where = ["1 = 1"]
-        if scope.range_start is not None:
-            where = [DETAIL_OVERLAP_OR_BAD_TIME_SQL]
-            params += [scope.range_end, scope.range_start]
-        sql = build_schedule_detail_sql(where_clauses=where, plan_rows_cte_sql=plan_sql)
-        rows = repo.fetchall(sql + " LIMIT ?", params + [MAX_PLAN_TASKS + 1])
+        rows = repo.list_detail_rows_bounded(
+            version=entry.locator.version, source_table=identity.source_table, candidate_id=identity.candidate_id,
+            scenario_id=entry.locator.scenario_id, range_start=scope.range_start, range_end=scope.range_end,
+            limit=MAX_PLAN_TASKS + 1,
+        )
         if len(rows) > MAX_PLAN_TASKS:
             raise WorkbenchCommandRejected("query_too_large", "这次要读的安排超过上限。请缩小时间范围后重试。", 413)
         rows = annotate_plan_points(self.conn, rows, source_table=identity.source_table)

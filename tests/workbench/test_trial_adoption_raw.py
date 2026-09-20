@@ -9,7 +9,8 @@ from core.infrastructure.database import get_connection
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_trial_codec import fingerprint
 from core.services.workbench.trial_facts import capture_facts
-from data.repositories.workbench_trial_raw_repo import WorkbenchTrialRawPlanRepository, read_raw_table
+from data.repositories.workbench_trial_query_repo import WorkbenchTrialQueryRepository
+from data.repositories.workbench_trial_raw_repo import WorkbenchTrialRawPlanRepository
 from data.repositories.workbench_trial_repo import WorkbenchTrialRepository
 from tests.workbench.trial_adoption_support import INTENT, KEY, assert_retained, saved_scenario, service
 from tests.workbench.trial_adoption_support import trial_case as trial_case
@@ -26,11 +27,11 @@ def test_raw_helper_preserves_all_storage_classes_and_quoted_column_names(trial_
     with closing(get_connection(str(case.path))) as conn:
         assert type(conn.execute('SELECT "day ""name" FROM "CQ ""raw"').fetchone()[0]) is date
         assert type(conn.execute('SELECT stamp FROM "CQ ""raw"').fetchone()[0]) is datetime
-        columns, rows = read_raw_table(conn, 'CQ "raw')
+        columns, rows = WorkbenchTrialQueryRepository(conn).read_whole_table('CQ "raw')
         assert columns == ['day "name', "stamp", "legacy [DATE]", "n", "r", "optional"]
         assert tuple(rows[0][key] for key in columns) == values
         assert tuple(type(rows[0][key]) for key in columns) == (str, str, bytes, int, float, type(None))
-        assert read_raw_table(case.conn, 'CQ "raw') == (columns, rows)
+        assert WorkbenchTrialQueryRepository(case.conn).read_whole_table('CQ "raw') == (columns, rows)
         assert capture_facts(conn)[1] == capture_facts(case.conn)[1]
         detail = WorkbenchTrialRawPlanRepository(conn).fetchall('SELECT "day ""name" AS due_date,stamp AS saved_timestamp FROM "CQ ""raw"')
         assert detail == [{"due_date": values[0], "saved_timestamp": values[1]}]
@@ -44,7 +45,7 @@ def test_raw_date_column_never_coerces_bad_legacy_values(trial_case, value):
     case.conn.execute("INSERT INTO CQRawDate VALUES (?)", (value,))
     case.conn.commit()
     with closing(get_connection(str(case.path))) as conn:
-        _, rows = read_raw_table(conn, "CQRawDate")
+        _, rows = WorkbenchTrialQueryRepository(conn).read_whole_table("CQRawDate")
         assert rows[0]["value"] == value and type(rows[0]["value"]) is type(value)
         assert fingerprint(capture_facts(conn)[0]) == fingerprint(capture_facts(case.conn)[0])
 

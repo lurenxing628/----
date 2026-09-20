@@ -38,15 +38,15 @@ def scenario_evidence(conn, scenario_ref):
     WorkbenchTrialRepository(conn).require_schema()
     header, draft = repo.scenario_headers(scenario_ref)
     # Bound the permanent detail too, before the existing snapshot reader loads it.
-    sizes = conn.execute("SELECT length(CAST(payload_json AS BLOB)) FROM WorkbenchTrialScenarioRows WHERE scenario_ref=? LIMIT 10001", (scenario_ref,)).fetchall()
-    repo.bound(sum(row[0] or 0 for row in sizes), MAX_SCENARIO_BYTES)
+    sizes = repo.scenario_row_sizes(scenario_ref)
+    repo.bound(sum(size or 0 for size in sizes), MAX_SCENARIO_BYTES)
     if len(sizes) > 10000:
         reject("query_too_large", "试调方案的明细超过 10000 条上限，这次没有读取。请缩小范围。", 413)
     saved = WorkbenchTrialRepository(conn).scenario(scenario_ref)
-    admission_row = conn.execute("SELECT admission_json FROM WorkbenchTrialDrafts WHERE draft_ref=?", (draft["draft_ref"],)).fetchone()
+    admission_row = repo.draft_admission(draft["draft_ref"])
     if admission_row is None:
         invalid()
-    admission = load_object(admission_row[0], draft["admission_hash"])
+    admission = load_object(admission_row["admission_json"], draft["admission_hash"])
     intent = require_object(admission.get("input"))
     baseline = require_object(admission.get("baseline"))
     source = require_object(admission.get("source"))
@@ -58,7 +58,7 @@ def scenario_evidence(conn, scenario_ref):
             or draft["revision"] != header["revision"] + 1
             or saved["base"] != {draft["base_kind"]: draft["base_ref"]}):
         invalid()
-    created = conn.execute("SELECT action,context_ref FROM WorkbenchCommandReceipts WHERE request_key=?", (draft["request_key"],)).fetchone()
+    created = repo.receipt_action(draft["request_key"])
     receipt = repo.receipt(header["request_key"])
     outcome = json_object(receipt["outcome_json"])
     if (created is None or tuple(created) != ("trial.create", draft["base_ref"])
