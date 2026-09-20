@@ -80,10 +80,18 @@ items:
   - slug: sql-drain-hatch-and-policy
     description: 退役 read_raw_table，把 17 处仓储内裁决上提到服务层
     depends_on: [sql-drain-remaining-selects]
-    status: planned
+    status: done
     feature: null
     minimal_loop: false
-    notes: null
+    notes: >-
+      2026-09-20 完成。data_policy 扫描 data/ 命中 0（评估时 17 个文件），基线收紧为空：仓储改为只返回事实
+      （None / 列表 / limit+1 行 / 布尔 / schema_issues），裁决全部上提到服务层策略模块
+      （run_policy、trial_policy、trial_adoption_history_policy、dashboard_policy、calibration_adoption_policy、
+      outsourcing_source 等），错误码/状态/文案逐字不变；形参当表名拼 SQL 的 4 处改为固定白名单展开；
+      workbench_outsourcing_source_binding 仓储删除。定向测试 tests/workbench 全目录 8285 通过。
+      残留：workbench_plan_identity_repo 仍以 WorkbenchPlanReferenceError 在仓储内裁决（不在 data_policy 规则的异常集合里）；
+      36 条从仓储逐字上提的用户文案含词表禁用词，本轮登记为词表 allow（tools/ui_copy_glossary.json）并注明来源，
+      改词属独立文案裁决。
 
   - slug: workbench-cluster-layering
     description: 画 workbench 簇层次图，解五对双向依赖，共享件下沉 facts

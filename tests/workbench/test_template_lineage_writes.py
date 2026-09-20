@@ -72,7 +72,7 @@ def test_withdrawal_is_idempotent_preserves_evidence_and_cannot_rebind(lineage_c
     assert origin(case, op_id) == old
     assert lineage(case, op_id)["problems"][old["operation_ref"]][0]["code"] == "template_lineage_withdrawn"
     with TransactionManager(case.conn).transaction(), pytest.raises(WorkbenchCommandRejected):
-        case.lineage_repo.append_origin(case.lineage_repo.instance(op_id), case.lineage_repo.template(case.template_id), old["template_snapshot"])
+        case.lineage_writer.record_origin(case.lineage_repo.instance(op_id), case.lineage_repo.template(case.template_id), old["template_snapshot"])
 
 
 def test_old_instances_never_receive_template_backfill_or_copy_guess(lineage_case):
@@ -81,7 +81,7 @@ def test_old_instances_never_receive_template_backfill_or_copy_guess(lineage_cas
     before = all_rows(case.conn)
     with TransactionManager(case.conn).transaction(), pytest.raises(WorkbenchCommandRejected):
         template = case.lineage_repo.template(case.template_id)
-        case.lineage_repo.append_origin(old_instance, template, "{}")
+        case.lineage_writer.record_origin(old_instance, template, "{}")
     assert all_rows(case.conn) == before
     case.batch_service.create("OLD-COPY", "P1", 10)
     with TransactionManager(case.conn).transaction():

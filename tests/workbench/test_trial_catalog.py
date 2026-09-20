@@ -108,7 +108,7 @@ def test_catalog_rejects_unknown_or_unbounded_queries(trial_case, query):
 
 
 def test_row_bound_is_explicit_and_catalog_reads_no_snapshot_payloads(trial_case, monkeypatch):
-    import data.repositories.workbench_trial_catalog_repo as module
+    import core.services.workbench.trial_catalog as module
 
     case = trial_case
     original = official(case)

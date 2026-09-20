@@ -6,11 +6,12 @@ from core.models.workbench_trial import reference, reject
 from core.services.scheduler.workbench_plan_page import _PagePlanQueryService
 from data.repositories.workbench_plan_catalog_repo import WorkbenchPlanCatalogRepository
 from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
-from data.repositories.workbench_trial_adoption_history import MAX_DIRECTORY_BYTES, TrialAdoptionHistoryRepository
+from data.repositories.workbench_trial_adoption_history import TrialAdoptionHistoryRepository
 
 from .plan_queries import WorkbenchPlanQueryService
 from .run_input_readonly import candidate_read_snapshot
 from .trial_adoption_history_evidence import audit_fields, gap, invalid, receipt_plan, scenario_evidence
+from .trial_adoption_history_policy import MAX_DIRECTORY_BYTES, adoption_receipts, bound
 
 
 def history_scope(scenario_ref, status="all", size=20):
@@ -46,7 +47,7 @@ class WorkbenchTrialAdoptionHistoryService:
         current_version = catalog.latest_version()
         query = _PagePlanQueryService(catalog, current_version)
         reader = WorkbenchPlanQueryService(self.conn)
-        rows, all_items, seen = repo.receipts(scope["scenario_ref"]), [], set()
+        rows, all_items, seen = adoption_receipts(repo, scope["scenario_ref"]), [], set()
         for row in rows:
             plan = receipt_plan(row, saved)
             if plan["plan_ref"] in seen:
@@ -70,7 +71,7 @@ class WorkbenchTrialAdoptionHistoryService:
         source = {"base": saved["base"], "base_identity": saved["base_identity"], "baseline": saved["baseline"],
                   "name": saved["name"], "saved_at": header["saved_at"], "saved_by": header["local_operator"],
                   "save_request_key": header["request_key"], "draft_ref": saved["draft_ref"], "scenario_ref": saved["scenario_ref"]}
-        repo.bound(len(canonical_json({"source": source, "items": all_items}).encode("utf-8")), MAX_DIRECTORY_BYTES)
+        bound(len(canonical_json({"source": source, "items": all_items}).encode("utf-8")), MAX_DIRECTORY_BYTES)
         digest = input_fingerprint({"scope": scope, "source": source, "items": all_items,
                                     "identity_revision": revision, "current_version": current_version})
         offset = (page - 1) * scope["size"]

@@ -121,12 +121,12 @@ def test_independent_receipt_pages_history_and_execution_boundary(external_case,
 
 
 def test_complete_external_source_limit_never_truncates_to_zero(external_case, monkeypatch):
-    import data.repositories.workbench_outsourcing_repo as repo
+    import core.services.workbench.outsourcing as outsourcing
 
     case = external_case
     for index in range(1, 4):
         case.register(index)
-    monkeypatch.setattr(repo, "MAX_ROWS", 2)
+    monkeypatch.setattr(outsourcing, "MAX_ROWS", 2)
     reader = WorkbenchDashboardService(case.conn)
     with reader.read_snapshot(), pytest.raises(WorkbenchCommandRejected) as error:
         reader.read(NOW)
@@ -136,7 +136,7 @@ def test_complete_external_source_limit_never_truncates_to_zero(external_case, m
 def test_storage_read_error_is_not_disguised_as_unknown(external_case, monkeypatch):
     from data.repositories.workbench_outsourcing_repo import WorkbenchOutsourcingRepository
 
-    def broken(self, batch_ref=None):
+    def broken(self, batch_ref=None, limit=None):
         raise sqlite3.OperationalError("injected read failure")
 
     monkeypatch.setattr(WorkbenchOutsourcingRepository, "refs", broken)

@@ -65,8 +65,8 @@ class ExecutionLedgerService(ExecutionLedgerReader):
 
     def get_task(self, task_ref, *, comparison_task_ref=None):
         with self.read_snapshot():
-            task = self.repo.task(task_ref)
-            comparison = self.repo.task(comparison_task_ref) if comparison_task_ref else task
+            task = self.task_header(task_ref)
+            comparison = self.task_header(comparison_task_ref) if comparison_task_ref else task
             if any(not row["row_active"] or not row["plan_active"] for row in (task, comparison)):
                 reject("这条任务安排已经删除了，系统不会换成编号相同的新安排。请刷新后重新选择。", "entity_not_found", 404)
             if comparison["operation_ref"] != task["operation_ref"]:
@@ -78,7 +78,7 @@ class ExecutionLedgerService(ExecutionLedgerReader):
 
     def get_report(self, report_ref):
         with self.read_snapshot():
-            row = self.repo.report_header(report_ref=report_ref)
+            row = self.report_header(report_ref=report_ref)
             if row is None:
                 reject("报工不存在，旧单号不会改指其他记录。", "entity_not_found", 404)
             projections = self.project_operations([row["operation_ref"]])
@@ -92,7 +92,7 @@ class ExecutionLedgerService(ExecutionLedgerReader):
 
     def find_report(self, report_no):
         with self.read_snapshot():
-            row = self.repo.report_header(report_no=report_no)
+            row = self.report_header(report_no=report_no)
             return self.get_report(row["report_ref"]) if row else None
 
     def snapshot(self, operation_ref):
@@ -102,7 +102,7 @@ class ExecutionLedgerService(ExecutionLedgerReader):
     def list_tasks(self, plan_ref, *, size=100, after_task_ref=None):
         with self.read_snapshot():
             WorkbenchPlanIdentityRepository(self.conn).resolve_plan(plan_ref)
-            rows = self.repo.page_tasks(plan_ref, size, after_task_ref)
+            rows = self.page_tasks(plan_ref, size, after_task_ref)
             selected = rows[:size]
             projections = self.project_operations([row["operation_ref"] for row in selected], comparison_plan_ref=plan_ref)
             by_ref = {row.operation_ref: row.to_dict() for row in projections}

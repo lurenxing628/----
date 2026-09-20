@@ -9,23 +9,13 @@ def _quote(name):
     return '"' + name.replace('"', '""') + '"'
 
 
-def _read(conn, names, source, params=(), order="", expressions=None):
-    # Unary + keeps the SQLite storage class and suppresses DECLTYPES. Synthetic
-    # aliases also prevent a legacy column named "x [DATE]" invoking COLNAMES.
-    overrides = expressions or {}
-    columns = [overrides.get(name, "+" + _quote(name)) + ' AS "trial_raw_' + str(index) + '"'
-               for index, name in enumerate(names)]
-    cursor = conn.execute("SELECT " + ",".join(columns) + " FROM " + source + order, params)
-    return [dict(zip(names, tuple(row))) for row in cursor]
-
-
 class WorkbenchTrialRawPlanRepository(WorkbenchPlanCatalogRepository):
     """Keep the existing complete-plan SQL/limits, suppress only Python converters."""
 
     def fetchall(self, sql, params=()):
         params = () if params is None else params
-        source = "(" + sql + ")"
-        metadata = self.conn.execute("SELECT * FROM " + source + " LIMIT 0", params)
+        subquery = "(" + sql + ")"
+        metadata = self.conn.execute("SELECT * FROM " + subquery + " LIMIT 0", params)
         names = [column[0] for column in metadata.description]
         if not names or len(set(names)) != len(names):
             raise ValueError("Raw plan projection columns must be explicit and unique")
@@ -35,4 +25,9 @@ class WorkbenchTrialRawPlanRepository(WorkbenchPlanCatalogRepository):
             # must instead retain the exact source value, including legacy BLOBs.
             expressions["due_date"] = ('(SELECT +"due_date" FROM "Batches" '
                                        'WHERE "Batches"."batch_id"="trial_plan"."batch_id")')
-        return _read(self.conn, names, source + ' AS "trial_plan"', params, expressions=expressions)
+        # Unary + keeps the SQLite storage class and suppresses DECLTYPES. Synthetic
+        # aliases also prevent a legacy column named "x [DATE]" invoking COLNAMES.
+        columns = [expressions.get(name, "+" + _quote(name)) + ' AS "trial_raw_' + str(index) + '"'
+                   for index, name in enumerate(names)]
+        cursor = self.conn.execute("SELECT " + ",".join(columns) + " FROM " + subquery + ' AS "trial_plan"', params)
+        return [dict(zip(names, tuple(row))) for row in cursor]

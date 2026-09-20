@@ -93,7 +93,7 @@ def test_missing_task_report_and_clock_fail_closed(ledger_case):
     case.conn.commit()
     before = all_rows(case.conn)
     with pytest.raises(WorkbenchCommandRejected) as error:
-        case.ledger.repo.clock()
+        case.ledger.revision_clock()
     assert error.value.code == "execution_ledger_unavailable"
     assert all_rows(case.conn) == before
 

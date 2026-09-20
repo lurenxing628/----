@@ -138,5 +138,5 @@ def correction_conflicts(conn, ledger, facts, before, after, revisions):
     refs = _successor_refs(conn, facts["operations"][before.operation_ref])
     downstream = ledger.project_operations(refs) if refs else []
     current = facts["current_tasks"].get(before.operation_ref)
-    plans = ledger.repo.task_map(refs, facts["plan"]["plan_ref"])
+    plans = ledger.task_map(refs, facts["plan"]["plan_ref"])
     return _downstream_conflicts(before, after, downstream, plans) + _adopted_conflicts(before, after, current, revisions)

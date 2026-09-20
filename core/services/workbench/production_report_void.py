@@ -23,7 +23,7 @@ def _downstream_impacts(conn, ledger, facts, before, after, report):
     for row in downstream:
         if row.execution_state != "unreported" and not any(item["operation_ref"] == row.operation_ref for item in impacts):
             impacts.append({"code": "downstream_execution_exists", "operation_ref": row.operation_ref})
-    labels = ledger.repo.operation_rows(list(dict.fromkeys(item["operation_ref"] for item in impacts))) if impacts else {}
+    labels = ledger.operation_rows(list(dict.fromkeys(item["operation_ref"] for item in impacts))) if impacts else {}
     messages = {"downstream_execution_exists": "后道工序已有开工或报工记录",
                 "downstream_requires_completion": "后道工序的执行或正式安排依赖本工序完工",
                 "downstream_time_conflict": "后道工序时间与撤销后的完工记录冲突",
@@ -40,8 +40,8 @@ class WorkbenchReportVoidService:
         self.conn = ledger.conn
 
     def _prepare(self, payload):
-        self.ledger.repo.require_schema()
-        header = self.ledger.repo.report_header(report_ref=payload["report_ref"])
+        self.ledger.require_schema()
+        header = self.ledger.report_header(report_ref=payload["report_ref"])
         if header is None:
             reject("原报工记录不存在，请刷新后重新选择。", "entity_not_found", 404)
         facts = self.ledger.load([header["operation_ref"]])

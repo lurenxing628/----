@@ -14,6 +14,7 @@ import pytest
 
 from core.infrastructure.workbench_run_schema import RUN_TABLES
 from core.infrastructure.workbench_trial_schema import TRIAL_TABLES
+from core.models.workbench_trial_catalog import TrialCatalogScope
 from core.services.workbench.run_candidate_adoption_constraints import _TABLES as CONSTRAINT_TABLES
 from data.repositories.workbench_piece_adoption_repo import (
     PREFLIGHT_TABLES,
@@ -24,6 +25,7 @@ from data.repositories.workbench_plan_baseline_repo import WorkbenchPlanBaseline
 from data.repositories.workbench_plan_catalog_repo import WorkbenchPlanCatalogRepository
 from data.repositories.workbench_plan_delivery_repo import WorkbenchPlanDeliveryRepository
 from data.repositories.workbench_trial_adoption_history import TrialAdoptionHistoryRepository
+from data.repositories.workbench_trial_catalog_repo import WorkbenchTrialCatalogRepository
 from data.repositories.workbench_trial_query_repo import BOOKKEEPING_TABLES, WorkbenchTrialQueryRepository
 from data.repositories.workbench_trial_raw_repo import WorkbenchTrialRawPlanRepository
 from data.repositories.workbench_trial_repo import WorkbenchTrialRepository
@@ -257,6 +259,59 @@ def test_trial_adoption_history_and_scenario_header_facts(schema_conn) -> None:
                            "local_operator", "request_key"}
     assert (header["name"], header["draft_ref"]) == ("Saved", DRAFT)
     assert WorkbenchTrialRepository(schema_conn).scenario_header("nope") is None
+
+
+def test_trial_repository_fact_methods_never_rule(schema_conn) -> None:
+    """仓储只回草稿头 / 行数 / 原始行 / 永久明细事实；缺失回 None / 0 / []，裁决在 trial_policy。"""
+    op1, _, _ = _seed_plan(schema_conn)
+    _seed_trial(schema_conn, _source_ref(schema_conn, "operation", op1))
+    repo = WorkbenchTrialRepository(schema_conn)
+
+    assert repo.schema_issues() == []
+    head = repo.draft_header(DRAFT)
+    assert (head["draft_ref"], head["row_count"], head["admission_json"], head["status"]) == (DRAFT, 1, '{"input": 1}', "editing")
+    assert repo.draft_header("nope") is None
+    assert repo.draft_row_count(DRAFT) == 1 and repo.draft_row_count("nope") == 0
+    rows = repo.draft_rows(DRAFT)
+    assert [(row["row_ref"], row["ordinal"], row["original_json"], row["current_json"]) for row in rows] == [(ROW, 0, "{}", "{}")]
+    assert repo.draft_rows("nope") == []
+    assert repo.scenario_rows(SCENARIO) == [{"row_ref": SROW, "payload_json": '{"a":1}'}]
+    assert repo.scenario_rows("nope") == []
+
+
+def test_adoption_history_bounded_fact_methods(schema_conn) -> None:
+    """目录扫描按 request_key 升序读 LIMIT 行；回执 / 历史 / 场景头只回字节数，不读大 JSON，也不裁决。"""
+    op1, _, _ = _seed_plan(schema_conn)
+    _seed_trial(schema_conn, _source_ref(schema_conn, "operation", op1))
+    repo = TrialAdoptionHistoryRepository(schema_conn)
+
+    assert [row["request_key"] for row in repo.receipt_headers(10)] == [REQ_CREATE, REQ_RUN, REQ_SAVE]
+    assert [row["request_key"] for row in repo.receipt_headers(2)] == [REQ_CREATE, REQ_RUN], "LIMIT 逐字传入"
+    assert set(repo.receipt_headers(1)[0]) == {"request_key", "action", "context_ref"}
+    assert repo.receipt_size(REQ_SAVE) == {"bytes": 2} and repo.receipt_size("req-nope") is None
+    assert repo.receipt_row(REQ_SAVE)["action"] == "trial.save" and repo.receipt_row("req-nope") is None
+    heads = repo.history_heads(1)
+    assert len(heads) == 1 and heads[0]["bytes"] == len('{"source": "seed"}')
+    assert repo.history_heads(99) == []
+    assert set(repo.history_row(heads[0]["id"])) == {"id", "version", "result_status", "result_summary", "created_by"}
+    assert repo.history_row(-1) is None
+    header = repo.sized_scenario_header(SCENARIO)
+    assert header["bytes"] == 2 and "snapshot_json" not in header and header["draft_ref"] == DRAFT
+    assert repo.sized_scenario_header("nope") is None
+    draft = repo.sized_draft_header(DRAFT)
+    assert draft["bytes"] == len('{"input": 1}') and "admission_json" not in draft and draft["status"] == "editing"
+    assert repo.sized_draft_header("nope") is None
+
+
+def test_trial_catalog_streams_one_row_past_the_cap(schema_conn) -> None:
+    op1, _, _ = _seed_plan(schema_conn)
+    _seed_trial(schema_conn, _source_ref(schema_conn, "operation", op1))
+    repo = WorkbenchTrialCatalogRepository(schema_conn)
+    rows = list(repo.iter_rows(TrialCatalogScope("drafts"), 5))
+    assert [row["draft_ref"] for row in rows] == [DRAFT]
+    assert not any(field in row for row in rows for field in ("admission_json", "snapshot_json"))
+    assert len(list(repo.iter_rows(TrialCatalogScope("drafts"), 0))) == 1, "读 limit + 1 行，越界由服务层裁决"
+    assert list(repo.iter_rows(TrialCatalogScope("scenarios"), 5))[0]["scenario_ref"] == SCENARIO
 
 
 # ---------------------------------------------------------------- piece adoption current rows

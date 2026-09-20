@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from core.models.workbench_command import WorkbenchCommandRejected
-
 from .base_repo import BaseRepository
 
 _SELECT = """SELECT m.material_id, m.name, m.spec, m.unit, m.stock_qty, m.status,
@@ -56,10 +54,9 @@ class WorkbenchMaterialQueryRepository(BaseRepository):
             GROUP BY material_id ORDER BY material_id""")
         return {"refs": refs, "requirements": requirements}
 
-    def metrics(self, query):
-        if query.column_filters:
-            raise WorkbenchCommandRejected("invalid_input", "列筛选统计请使用物料查询服务的统一入口。", 400)
-        where, params = self._where(query.query, query.status)
+    def metrics(self, query="", status=None):
+        """Status and stock counts over the toolbar scope (text query + status) only."""
+        where, params = self._where(query, status)
         return self.fetchone("""SELECT COUNT(*) AS total,
             COALESCE(SUM(CASE WHEN m.status='active' THEN 1 ELSE 0 END),0) AS active,
             COALESCE(SUM(CASE WHEN m.status='inactive' THEN 1 ELSE 0 END),0) AS inactive,

@@ -67,6 +67,9 @@ def test_run_repository_receipt_action_and_candidate_probe(schema_conn) -> None:
     assert repo.command_receipt_action("run-request-missing-1") is None
     assert repo.has_candidates(RUN) is True
     assert repo.has_candidates("0" * 48) is False
+    assert repo.schema_issues() == []
+    assert repo.admission_receipt(REQ) == ("scheduling.run", "in-1", json.dumps({"data": {"run_ref": RUN}}))
+    assert repo.admission_receipt("run-request-missing-1") is None
 
 
 def test_history_query_repository_capacity_orphans_and_directory(schema_conn) -> None:

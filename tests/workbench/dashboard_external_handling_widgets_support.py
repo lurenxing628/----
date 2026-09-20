@@ -69,7 +69,7 @@ def prepare(root):
             path = root / ("dx-" + name + ".sqlite")
             with connect(path) as conn:
                 source.backup(conn)
-                # v32 起外协读取守卫（WorkbenchOutsourcingRepository.require_schema）要求来源确认表齐全；冻结 v30 夹具没有这张表，
+                # v32 起外协读取守卫（WorkbenchOutsourcingService.require_schema）要求来源确认表齐全；冻结 v30 夹具没有这张表，
                 # 浏览器要读外协登记的每个库都补装。current30 只是不装仪表盘外协处置助手，仍锁住 handling_supported=False。
                 conn.execute("BEGIN")
                 install_sources(conn)

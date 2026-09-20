@@ -86,7 +86,7 @@ class WorkbenchResourceQueryService:
     def metrics(self, query):
         if query.kind != self.kind:
             raise WorkbenchCommandRejected("invalid_input", "查询类型与当前资源不一致。", 400)
-        codes = self.matching_keys(query) if table_query_required(query) else self.repo.matching_keys(query)
+        codes = self.matching_keys(query) if table_query_required(query) else self.toolbar_matching_keys(query)
         return self._metrics_reader().metrics(self.kind, codes)
 
     def resolve(self, ref):
@@ -124,7 +124,7 @@ class WorkbenchResourceQueryService:
             records = [self.detail(row["ref"]) for row in rows]
         page = {"number": query.number, "size": query.size, "total": total,
                 "pages": max(1, (total + query.size - 1) // query.size), "sort": [{"field": query.sort, "direction": query.direction}],
-                "metrics": metrics.metrics(self.kind, self.matching_keys(query) if advanced else self.repo.matching_keys(query))}
+                "metrics": metrics.metrics(self.kind, self.matching_keys(query) if advanced else self.toolbar_matching_keys(query))}
         return records, page
 
     def _op_type_page(self, rows, metrics):
@@ -161,6 +161,12 @@ class WorkbenchResourceQueryService:
 
     def matching_keys(self, query):
         return self.table_index(query).matching_keys(query)
+
+    def toolbar_matching_keys(self, query):
+        """Toolbar-scope keys straight from SQL; column filters and business-column sorts must use matching_keys."""
+        if table_query_required(query):
+            raise WorkbenchCommandRejected("invalid_input", "列筛选与业务列排序请使用查询服务的 matching_keys 统一入口。", 400)
+        return self.repo.toolbar_keys(query)
 
     def matching_rows(self, query):
         index = self.table_index(query)

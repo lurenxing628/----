@@ -9,6 +9,7 @@ from core.infrastructure.database import get_connection
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_trial_codec import fingerprint
 from core.services.workbench.trial_facts import capture_facts
+from core.services.workbench.trial_policy import load_draft
 from data.repositories.workbench_trial_query_repo import WorkbenchTrialQueryRepository
 from data.repositories.workbench_trial_raw_repo import WorkbenchTrialRawPlanRepository
 from data.repositories.workbench_trial_repo import WorkbenchTrialRepository
@@ -57,7 +58,7 @@ def test_production_plan_trial_save_and_adopt_are_driver_independent(trial_case)
         svc = trial_service(conn)
         context = svc.preview_create(value)["write_context"]
         created = trial_service(case.conn).create(value, context["write_token"], "cq-raw-create-request")["data"]
-        head, rows = WorkbenchTrialRepository(conn).get(created["draft_ref"])
+        head, rows = load_draft(WorkbenchTrialRepository(conn), created["draft_ref"])
         assert type(rows[0]["original"]["batch"]["due_date"]) is str
         assert type(rows[0]["original"]["detail"]["due_date"]) is str
         assert rows[0]["original"]["batch"]["due_date"] == "2026-09-25"
@@ -118,7 +119,7 @@ def test_bad_blob_date_is_preserved_in_plan_original_and_detail(trial_case):
         svc = trial_service(conn)
         context = svc.preview_create(intent)["write_context"]
         draft = svc.create(intent, context["write_token"], "cq-bad-date-create-request")["data"]
-        original = WorkbenchTrialRepository(conn).get(draft["draft_ref"])[1][0]["original"]
+        original = load_draft(WorkbenchTrialRepository(conn), draft["draft_ref"])[1][0]["original"]
         assert original["batch"]["due_date"] == original["detail"]["due_date"] == value
         assert type(original["detail"]["due_date"]) is bytes
         assert draft["validation"]["constraints_status"] == "blocked"

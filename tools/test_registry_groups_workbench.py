@@ -101,6 +101,7 @@ _DASHBOARD_SCOPES = (
     "core/models/workbench_outsourcing.py", "core/models/workbench_outsourcing_input.py",
     "core/services/workbench/dashboard_external.py", "core/services/workbench/dashboard_external_sources.py",
     "core/services/workbench/outsourcing.py", "core/services/workbench/outsourcing_projection.py",
+    "core/services/workbench/outsourcing_source.py",
     "data/repositories/workbench_outsourcing_repo.py", "data/repositories/workbench_outsourcing_source_repo.py",
     "web/routes/workbench/outsourcing.py", "tests/workbench/dashboard_external_support.py",
     "core/infrastructure/workbench_dashboard_external_schema.py",

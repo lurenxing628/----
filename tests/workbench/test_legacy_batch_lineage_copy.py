@@ -8,7 +8,7 @@ from core.errors import AppError, BusinessError, ErrorCode, ValidationError
 from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_template_lineage import restore_snapshot, state_snapshot
-from core.services.workbench.template_lineage_query import TemplateLineageQuery
+from core.services.workbench.template_lineage_query import TemplateLineageQuery, read_events
 from tests.workbench.execution_ledger_support import all_rows
 from tests.workbench.identity_metadata_support import insert_row
 from tests.workbench.legacy_batch_lineage_copy_support import (
@@ -133,7 +133,7 @@ def test_raw_unknown_null_zero_and_blob_values_are_not_model_normalized(legacy_c
     assert_raw_copy(source, copied, "RAW-COPY")
     instance = case.lineage_repo.instance(copied["id"])
     assert instance["operation_ref"] != old_ref
-    event = case.lineage_repo.events([instance["operation_ref"]])[instance["operation_ref"]][0]
+    event = read_events(case.lineage_repo, [instance["operation_ref"]])[instance["operation_ref"]][0]
     assert state_snapshot(event) == state_snapshot(instance)
     if bound:
         saved = origin(case, copied["id"])

@@ -7,6 +7,7 @@ import pytest
 from flask import Blueprint, Flask, g
 
 from core.models.workbench_calibration import CalibrationCandidate, CalibrationLineage, CalibrationQuery
+from core.services.workbench.calibration_facts import read_templates
 from core.services.workbench.calibration_samples import review_sample
 from data.repositories.workbench_calibration_query_repo import WorkbenchCalibrationQueryRepository
 from tests.workbench.execution_ledger_support import NOW, all_rows
@@ -22,7 +23,7 @@ def calibration_case(ledger_case):
     case.install()
     case.conn.execute("INSERT INTO PartOperations(part_no,seq,op_type_id,op_type_name,source,unit_hours) VALUES ('P1',1,'T1','Turning','internal',1)")
     case.conn.commit()
-    case.template = WorkbenchCalibrationQueryRepository(case.conn).templates(CalibrationQuery())[0]
+    case.template = read_templates(WorkbenchCalibrationQueryRepository(case.conn), CalibrationQuery())[0]
     return case
 
 
@@ -40,7 +41,7 @@ def complete_reports(case, unit_hours):
 
 def reviewed(case, ids, *, lineage=True, template=None):
     template = template or case.template
-    refs = [case.ledger.repo.task(case.task(2, op_id))["operation_ref"] for op_id in ids]
+    refs = [case.ledger.task_header(case.task(2, op_id))["operation_ref"] for op_id in ids]
     projections = {row.operation_ref: row for row in case.ledger.project_operations(refs)}
     evidence = CalibrationLineage(template.operation_ref, template.revision, "test-asserted-origin") if lineage else None
     return [review_sample(CalibrationCandidate(projections[ref], "P1", "B1", "CAL", "internal", evidence), template=template, as_of=NOW)

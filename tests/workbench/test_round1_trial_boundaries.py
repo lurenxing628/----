@@ -9,6 +9,7 @@ import pytest
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.workbench.trial_constraints import _outside_intervals, relation_issues
 from core.services.workbench.trial_facts import live_context
+from core.services.workbench.trial_policy import load_draft
 from core.services.workbench.trial_projection import tasks_projection
 from core.services.workbench.trial_validation import TrialValidator
 from core.services.workbench.zero_duration import PointEventError
@@ -113,7 +114,7 @@ def test_outside_point_requires_real_adoption_evidence_and_never_occupies(trial_
 def _stored_trial(case):
     second = case.operation(seq=2)
     draft = create(case, official(case, ids=[case.op_id, second]))
-    head, rows = WorkbenchTrialRepository(case.conn).get(draft["draft_ref"])
+    head, rows = load_draft(WorkbenchTrialRepository(case.conn), draft["draft_ref"])
     live = live_context(case.conn, [row["operation_ref"] for row in rows])
     return draft, head, rows, live
 

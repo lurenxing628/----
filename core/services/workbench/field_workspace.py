@@ -25,7 +25,7 @@ class FieldWorkspaceService:
 
     @contextmanager
     def read_snapshot(self):
-        self.repo.require_schema()
+        self.ledger.require_schema()
         with self.plans.read_snapshot():
             yield
 
@@ -46,10 +46,10 @@ class FieldWorkspaceService:
     def cohort(self, scope):
         if not self.conn.in_transaction:
             raise RuntimeError('Field cohort requires caller read snapshot.')
-        self.repo.require_schema()
+        self.ledger.require_schema()
         plan_ref = self._plan_ref(scope)
         if plan_ref is None:
-            return {'plan': None, 'scope': dict(scope), 'tasks': [], 'summary': self._summary([])}, input_fingerprint(self.repo.clock())
+            return {'plan': None, 'scope': dict(scope), 'tasks': [], 'summary': self._summary([])}, input_fingerprint(self.ledger.revision_clock())
         plan, plan_state = self.plans.workspace(PlanReadScope(plan_ref))
         refs = [task['operation_ref'] for task in plan['tasks']]
         projections = {item.operation_ref: item.to_dict() for item in self.ledger.project_operations(refs, comparison_plan_ref=plan_ref)}
@@ -66,7 +66,7 @@ class FieldWorkspaceService:
         tasks.sort(key=lambda item: (item['batch_id'], int(item['sequence']), item['planned_start'], item['task_ref']))
         effective = dict(scope, plan_ref=plan_ref)
         # Tokens have expiries and must not become part of the business fingerprint.
-        facts = self.ledger.snapshot(refs[0]) if len(refs) == 1 else self.repo.clock()
+        facts = self.ledger.snapshot(refs[0]) if len(refs) == 1 else self.ledger.revision_clock()
         summary = self._summary(tasks, scope_tasks)
         state = input_fingerprint({'scope': effective, 'plan': plan_state, 'execution': plain_plan_facts(facts),
                                    'data': self._without_context(tasks), 'summary': summary})

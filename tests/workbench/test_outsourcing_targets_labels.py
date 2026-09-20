@@ -5,7 +5,7 @@ import sqlite3
 import pytest
 
 from core.infrastructure.database import get_connection
-from data.repositories.workbench_outsourcing_source_repo import _target_text
+from core.services.workbench.outsourcing_source import _target_text
 from tests.workbench.outsourcing_support import ROOT, api
 from tests.workbench.outsourcing_targets_labels_support import change_origin, storage, target_rows
 from tests.workbench.outsourcing_targets_labels_support import targets_case as _targets_case  # noqa: F401

@@ -291,6 +291,7 @@ web/bootstrap 里只有 factory.py 可 import web.routes（装配蓝图）；web
 10. **sql-drain-hatch-and-policy** — 退役 `read_raw_table`，把 17 处仓储内裁决上提到服务层
     - 所属模块：S
     - 依赖：sql-drain-remaining-selects
+    - 状态：done（2026-09-20）。data_policy 命中 0，基线收紧为空；仓储只返回事实，裁决上提到服务层策略模块，错误码/状态/文案逐字不变；残留 `workbench_plan_identity_repo` 的 `WorkbenchPlanReferenceError` 与 36 条上提文案的词表 allow 见 items.yaml
 11. **workbench-cluster-layering** — 画 workbench 簇层次图，解五对双向依赖，共享件下沉 `facts/`
     - 所属模块：P
     - 依赖：private-import-ratchet、sql-drain-storage-classes

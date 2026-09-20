@@ -1,9 +1,7 @@
-"""Connection-bound run journal. No implicit transaction, commit or schema repair."""
-
-import json
+"""Connection-bound run journal. No implicit transaction, commit, schema repair or ruling."""
 
 from core.infrastructure.workbench_run_schema import workbench_run_contract_issues
-from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
+from core.models.workbench_command import canonical_json
 from core.models.workbench_run_job import TERMINAL_STATES, new_run_ref
 
 
@@ -11,10 +9,9 @@ class WorkbenchRunRepository:
     def __init__(self, conn):
         self.conn = conn
 
-    def require_schema(self):
-        issues = workbench_run_contract_issues(self.conn)
-        if issues:
-            raise WorkbenchCommandRejected("run_schema_unavailable", "排产记录结构不完整，请联系维护人员。", 503)
+    def schema_issues(self):
+        """Run contract issues as reported by the schema probe; [] when the schema is complete."""
+        return workbench_run_contract_issues(self.conn)
 
     def get(self, run_ref):
         row = self.conn.execute("SELECT * FROM WorkbenchRunJobs WHERE run_ref=?", (run_ref,)).fetchone()
@@ -28,12 +25,11 @@ class WorkbenchRunRepository:
         row = self.conn.execute("SELECT * FROM WorkbenchRunReceipts WHERE run_ref=?", (run_ref,)).fetchone()
         return dict(row) if row else None
 
-    def require_admission(self, row):
-        receipt = self.conn.execute("""SELECT action,context_ref,outcome_json FROM WorkbenchCommandReceipts
-            WHERE request_key=?""", (row["request_key"],)).fetchone()
-        if (receipt is None or receipt[0] != "scheduling.run" or receipt[1] != row["input_ref"]
-                or json.loads(receipt[2])["data"] != {"run_ref": row["run_ref"]}):
-            raise WorkbenchCommandRejected("run_result_inconsistent", "这次排产没有一致的接收结果记录，请让维护人员核对排产记录。", 500)
+    def admission_receipt(self, request_key):
+        """(action, context_ref, outcome_json) of the command receipt that admitted a run, or None."""
+        row = self.conn.execute("""SELECT action,context_ref,outcome_json FROM WorkbenchCommandReceipts
+            WHERE request_key=?""", (request_key,)).fetchone()
+        return None if row is None else tuple(row)
 
     def insert(self, *, request_key, input_ref, settings, facts_hash, facts_json, projections, baseline, now):
         ref = new_run_ref()
@@ -84,22 +80,3 @@ class WorkbenchRunRepository:
 
     def awaiting_reconciliation(self, run_ref):
         self.conn.execute("UPDATE WorkbenchRunJobs SET stage='awaiting_reconciliation' WHERE run_ref=? AND state IN ('queued','running')", (run_ref,))
-
-    def public(self, row):
-        self.require_admission(row)
-        receipt = self.receipt(row["run_ref"])
-        result = json.loads(receipt["result_json"]) if receipt else None
-        if ((row["state"] in TERMINAL_STATES) != bool(receipt)
-                or (receipt and (not isinstance(result, dict) or receipt["state"] != row["state"]
-                                 or result["state"] != receipt["state"]))):
-            raise WorkbenchCommandRejected("run_result_inconsistent", "这次排产的最终状态和保存的结果不一致，请让维护人员核对排产记录。", 500)
-        if receipt:
-            from .workbench_run_result_repo import WorkbenchRunResultRepository
-            if not WorkbenchRunResultRepository(self.conn).consistent(row["run_ref"], result):
-                raise WorkbenchCommandRejected("run_result_inconsistent", "候选方案明细和保存的结果不一致，请让维护人员核对排产记录。", 500)
-        return {"run_ref": row["run_ref"], "job_ref": row["run_ref"], "state": row["state"], "stage": row["stage"],
-                "progress": None, "plans": [], "plan_catalog_connected": False,
-                "candidates": result["candidates"] if result else [], "result_persisted": bool(result and result["result_persisted"]),
-                "accepted_at": row["accepted_at"], "started_at": row["started_at"], "finished_at": row["finished_at"],
-                "receipt_ref": receipt["receipt_ref"] if receipt else None, "error": result.get("error") if result else None,
-                "recovery_required": row["stage"] == "awaiting_reconciliation"}

@@ -1,11 +1,4 @@
-"""Stream bounded headers, not large admission/scenario JSON or live plan rows."""
-
-import hashlib
-
-from core.models.workbench_trial import reject
-from core.models.workbench_trial_catalog import MAX_CATALOG_BYTES, MAX_CATALOG_ROWS
-from core.models.workbench_trial_codec import dump
-from data.repositories.workbench_trial_repo import WorkbenchTrialRepository
+"""Stream bounded headers, not large admission/scenario JSON or live plan rows. Limits are decided by the caller."""
 
 _BASE_JOINS = """LEFT JOIN WorkbenchPlanSourceRefs p ON d.base_kind='plan_ref' AND p.ref=d.base_ref
     LEFT JOIN WorkbenchRunCandidates c ON d.base_kind='candidate_ref' AND c.candidate_ref=d.base_ref
@@ -18,24 +11,14 @@ class WorkbenchTrialCatalogRepository:
     def __init__(self, conn):
         self.conn = conn
 
-    def catalog(self, scope):
-        WorkbenchTrialRepository(self.conn).require_schema()
+    def iter_rows(self, scope, limit):
+        """Yield catalog header rows for `scope` in directory order, at most `limit + 1` of them.
+
+        Rows are streamed from the cursor so the caller can stop (and refuse the whole directory)
+        the moment its row or byte cap is exceeded, without materialising the excess."""
         sql, params = _query(scope)
-        digest, selected, total, byte_count = hashlib.sha256(), [], 0, 0
-        offset = (scope.page - 1) * scope.size
-        for raw in self.conn.execute(sql + " LIMIT ?", params + [MAX_CATALOG_ROWS + 1]):
-            total += 1
-            encoded = dump(dict(raw)).encode("utf-8")
-            byte_count += len(encoded)
-            if total > MAX_CATALOG_ROWS or byte_count > MAX_CATALOG_BYTES:
-                reject("query_too_large", "完整目录超过100000条或32 MiB摘要上限，请用状态或明确来源缩小范围；未截断。", 413)
-            digest.update(str(len(encoded)).encode("ascii") + b":" + encoded)
-            if offset < total <= offset + scope.size:
-                selected.append(dict(raw))
-        pages = (total + scope.size - 1) // scope.size
-        if scope.page > max(pages, 1):
-            reject("invalid_input", "目录页码超过当前范围，请明确刷新目录。", 400)
-        return selected, {"number": scope.page, "size": scope.size, "total": total, "pages": pages}, digest.hexdigest()
+        for raw in self.conn.execute(sql + " LIMIT ?", params + [limit + 1]):
+            yield dict(raw)
 
 
 def _query(scope):

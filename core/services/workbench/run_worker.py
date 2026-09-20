@@ -16,6 +16,7 @@ from .run_compute import compute_candidate_run
 from .run_input_projection_codec import restore_execution_projections
 from .run_input_readonly import candidate_read_snapshot
 from .run_jobs_facts import run_facts_unchanged
+from .run_policy import public_run, require_admission, require_run_schema
 from .run_progress import clear_progress, report_progress
 from .run_worker_snapshot import computation_database
 
@@ -43,13 +44,13 @@ class WorkbenchRunWorker:
             raise WorkbenchCommandRejected("scheduling_busy", "已经有一次排产在跑，这次没有重复计算。请等它结束后再看。")
         try:
             with TransactionManager(self.conn).transaction(begin_immediate=True):
-                self.repo.require_schema()
+                require_run_schema(self.repo)
                 row = self.repo.get(run_ref)
                 if row is None:
                     raise WorkbenchCommandRejected("entity_not_found", "找不到这次排产，页面没有打开。请到「排产记录」重新选择。", 404)
                 if row["state"] != "queued" or row["stage"] != "queued":
-                    return self.repo.public(row)
-                self.repo.require_admission(row)
+                    return public_run(self.conn, row)
+                require_admission(self.repo, row)
                 if not self.repo.claim(run_ref, PROCESS_EXECUTOR_REF, self._now()):
                     raise RuntimeError("Run was claimed by another worker")
             try:
@@ -58,7 +59,7 @@ class WorkbenchRunWorker:
                 self._record_failure(row, exc)
                 raise
             self._persist(row, candidates, result)
-            return self.repo.public(self.repo.get(run_ref))
+            return public_run(self.conn, self.repo.get(run_ref))
         finally:
             # The run is terminal (or failed to claim) here; the receipt is the record from now on.
             clear_progress(run_ref)

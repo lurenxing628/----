@@ -12,6 +12,7 @@ from data.repositories.workbench_dashboard_source_repo import DashboardSourceRep
 from data.repositories.workbench_plan_catalog_repo import WorkbenchPlanCatalogRepository
 
 from .dashboard_catalogs import candidate_catalog, resource_pressure
+from .dashboard_policy import read_entity_refs
 
 UNAVAILABLE = {"identity_missing", "plan_binding_invalid", "task_binding_invalid", "plan_unavailable",
                "execution_ledger_unavailable", "constraint_conflict", "entity_not_found"}
@@ -40,6 +41,10 @@ class DashboardFacts:
         self.task_rows, self.execution_facts, self.delivery_facts = [], None, None
         self.pressure = {"state": "unavailable", "resources": None, "issues": []}
         self.candidates = {"state": "unavailable", "run_count": None, "issues": []}
+
+    def entity_refs(self, kind, keys):
+        """Active permanent refs keyed by business key; missing or duplicated keys are identity gaps."""
+        return read_entity_refs(self.repo, kind, keys)
 
     def load(self):
         for table in ("Batches", "BatchMaterials", "Materials", "MachineDowntimes", "Machines", "WorkbenchDashboardDowntimeRefs"):
@@ -101,7 +106,7 @@ class DashboardFacts:
             raise RuntimeError("Execution risk requires the resolved current official plan")
         ledger = ExecutionLedgerService(self.conn, clock=lambda: self.now)
         try:
-            ledger.repo.require_schema()
+            ledger.require_schema()
             facts = ledger.load([task["operation_ref"] for task in self.tasks], comparison_plan_ref=self.plan["plan_ref"])
             self.execution_facts = typed(facts)
             self.execution = {row.operation_ref: row.to_dict() for row in ledger.project_loaded(facts, contexts=False)}

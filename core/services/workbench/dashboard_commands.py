@@ -23,7 +23,7 @@ class WorkbenchDashboardCommandService:
         normalized = normalize_input(action, payload)
 
         def guard():
-            self.reader.repo.require_schema()
+            self.reader.require_schema()
             now = self.reader.clock().replace(microsecond=0)
             data = self.reader.read(now)
             item = self.reader.detail(data, item_ref)
@@ -40,7 +40,7 @@ class WorkbenchDashboardCommandService:
             changed = before != after
             history_ref = None
             if changed:
-                history_ref = self.reader.repo.append(item=item, before=before, after=after,
+                history_ref = self.reader.append_handling(item=item, before=before, after=after,
                     facts={"facts": item["_facts"], "guard": item["_snapshot"]}, actor=actor, action=action,
                     reason=normalized.get("reason"), request_key=request_key, now=now)
             result = payload_size({"item_ref": item_ref, "handling": after, "history_ref": history_ref,

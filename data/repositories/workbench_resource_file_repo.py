@@ -30,14 +30,14 @@ class WorkbenchResourceFileRepository(BaseRepository):
         return self.fetchall("SELECT ref,revision,active FROM WorkbenchEntityRefs WHERE kind=? AND entity_key=? ORDER BY ref", (kind, code))
 
     def references(self, kind, code):
-        return {table + "." + key: self._references(table, key, code)
-                for table, key in DEPENDENCIES[kind]}
-
-    def _references(self, table, key, code):
-        rows = self.fetchall(f"SELECT * FROM {table} WHERE {key}=?", (code,))
-        # Production connections decode DATE. Keep every column; never truncate datetime.
-        values = [{name: value.isoformat() if type(value) is date else value for name, value in row.items()} for row in rows]
-        return sorted(values, key=canonical_json)
+        """Referencing rows per fixed (table, column) of the kind; identifiers come only from DEPENDENCIES."""
+        result = {}
+        for table, key in DEPENDENCIES[kind]:
+            rows = self.fetchall(f"SELECT * FROM {table} WHERE {key}=?", (code,))
+            # Production connections decode DATE. Keep every column; never truncate datetime.
+            values = [{name: value.isoformat() if type(value) is date else value for name, value in row.items()} for row in rows]
+            result[table + "." + key] = sorted(values, key=canonical_json)
+        return result
 
     def authorizations(self, kind, code):
         key = "machine_id" if kind == "machine" else "operator_id"

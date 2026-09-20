@@ -47,7 +47,7 @@ def _pending(facts):
 
 
 def _tasks(facts):
-    refs = facts.repo.entity_refs("batch", [row["batch_id"] for row in facts.tasks])
+    refs = facts.entity_refs("batch", [row["batch_id"] for row in facts.tasks])
     facts.raw["analysis_batch_refs"] = refs
     result = []
     for task, raw in zip(facts.tasks, facts.task_rows):

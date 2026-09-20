@@ -488,6 +488,246 @@
       "path": "core/services/workbench/field_report_files_codec.py",
       "term": "(h) 表头",
       "why": "现场报工导入文件的表头匹配键，改了旧文件导不进"
+    },
+    {
+      "path": "core/services/workbench/outsourcing.py",
+      "term": "接入",
+      "text": "真实外协登记结构尚未完整接入",
+      "why": "自 data/repositories 仓储层逐字上提的既有对外文案（仓储不裁决分簇要求错误码与文案逐字不变）；仓储目录从未纳入词表扫描，改词属独立文案裁决，待另行处理"
+    },
+    {
+      "path": "core/services/workbench/outsourcing.py",
+      "term": "对象",
+      "text": "未改读其他对象",
+      "why": "自 data/repositories 仓储层逐字上提的既有对外文案（仓储不裁决分簇要求错误码与文案逐字不变）；仓储目录从未纳入词表扫描，改词属独立文案裁决，待另行处理"
+    },
+    {
+      "path": "core/services/workbench/outsourcing.py",
+      "term": "事实",
+      "text": "外协登记缺少确认事实",
+      "why": "自 data/repositories 仓储层逐字上提的既有对外文案（仓储不裁决分簇要求错误码与文案逐字不变）；仓储目录从未纳入词表扫描，改词属独立文案裁决，待另行处理"
+    },
+    {
+      "path": "core/services/workbench/outsourcing_source.py",
+      "term": "实例",
+      "text": "工序所属批次实例已变化",
+      "why": "自 data/repositories 仓储层逐字上提的既有对外文案（仓储不裁决分簇要求错误码与文案逐字不变）；仓储目录从未纳入词表扫描，改词属独立文案裁决，待另行处理"
+    },
+    {
+      "path": "core/services/workbench/calendars.py",
+      "term": "引用",
+      "text": "日历与永久引用不一致，请检查数据后重试。",
+      "why": "自 data/repositories 仓储层逐字上提的既有对外文案（仓储不裁决分簇要求错误码与文案逐字不变）；仓储目录从未纳入词表扫描，改词属独立文案裁决，待另行处理"
+    },
+    {
+      "path": "core/services/workbench/calibration_adoption_policy.py",
+      "term": "引用",
+      "text": "模板永久引用已失效或不存在，不能按图号和序号重新绑定。",
+      "why": "自 data/repositories 仓储层逐字上提的既有对外文案（仓储不裁决分簇要求错误码与文案逐字不变）；仓储目录从未纳入词表扫描，改词属独立文案裁决，待另行处理"
+    },
+    {
+      "path": "core/services/workbench/calibration_adoption_policy.py",
+      "term": "采纳",
+      "text": "已采纳的模板定额已锁定，不能覆盖。",
+      "why": "自 data/repositories 仓储层逐字上提的既有对外文案（仓储不裁决分簇要求错误码与文案逐字不变）；仓储目录从未纳入词表扫描，改词属独立文案裁决，待另行处理"
+    },
+    {
+      "path": "core/services/workbench/calibration_adoption_policy.py",
+      "term": "采纳",
+      "text": "模板定额在采纳前已变化，请重新预览核对。",
+      "why": "自 data/repositories 仓储层逐字上提的既有对外文案（仓储不裁决分簇要求错误码与文案逐字不变）；仓储目录从未纳入词表扫描，改词属独立文案裁决，待另行处理"
+    },
+    {
+      "path": "core/services/workbench/calibration_adoption_policy.py",
+      "term": "预览",
+      "text": "模板定额在采纳前已变化，请重新预览核对。",
+      "why": "自 data/repositories 仓储层逐字上提的既有对外文案（仓储不裁决分簇要求错误码与文案逐字不变）；仓储目录从未纳入词表扫描，改词属独立文案裁决，待另行处理"
+    },
+    {
+      "path": "core/services/workbench/calibration_facts.py",
+      "term": "修订",
+      "text": "模板永久身份或修订结构未就绪，本次读取没有补表或补身份。",
+      "why": "自 data/repositories 仓储层逐字上提的既有对外文案（仓储不裁决分簇要求错误码与文案逐字不变）；仓储目录从未纳入词表扫描，改词属独立文案裁决，待另行处理"
+    },
+    {
+      "path": "core/services/workbench/calibration_facts.py",
+      "term": "实例",
+      "text": "执行实例永久身份缺失，不能按批次号或工序号补配。",
+      "why": "自 data/repositories 仓储层逐字上提的既有对外文案（仓储不裁决分簇要求错误码与文案逐字不变）；仓储目录从未纳入词表扫描，改词属独立文案裁决，待另行处理"
+    },
+    {
+      "path": "core/services/workbench/calibration_facts.py",
+      "term": "样本",
+      "text": "待核对执行工序超过10000道，请缩小零件范围；未截断样本。",
+      "why": "自 data/repositories 仓储层逐字上提的既有对外文案（仓储不裁决分簇要求错误码与文案逐字不变）；仓储目录从未纳入词表扫描，改词属独立文案裁决，待另行处理"
+    },
+    {
+      "path": "core/services/workbench/dashboard_policy.py",
+      "term": "台账",
+      "text": "值班台台账未安装或结构不完整，需由主线完成明确迁移；本次没有补表。",
+      "why": "自 data/repositories 仓储层逐字上提的既有对外文案（仓储不裁决分簇要求错误码与文案逐字不变）；仓储目录从未纳入词表扫描，改词属独立文案裁决，待另行处理"
+    },
+    {
+      "path": "core/services/workbench/dashboard_policy.py",
+      "term": "台账",
+      "text": "处置台账或来源身份不完整，请核对存储；本次未自动修补。",
+      "why": "自 data/repositories 仓储层逐字上提的既有对外文案（仓储不裁决分簇要求错误码与文案逐字不变）；仓储目录从未纳入词表扫描，改词属独立文案裁决，待另行处理"
+    },
+    {
+      "path": "core/services/workbench/dashboard_policy.py",
+      "term": "台账",
+      "text": "外协处置台账未安装或结构不完整，需由主线明确迁移；未补表。",
+      "why": "自 data/repositories 仓储层逐字上提的既有对外文案（仓储不裁决分簇要求错误码与文案逐字不变）；仓储目录从未纳入词表扫描，改词属独立文案裁决，待另行处理"
+    },
+    {
+      "path": "core/services/workbench/dashboard_policy.py",
+      "term": "服务端",
+      "text": "值班台台账未安装或结构不完整，需由主线完成明确迁移；本次没有补表。",
+      "why": "自 data/repositories 仓储层逐字上提的既有对外文案（仓储不裁决分簇要求错误码与文案逐字不变）；仓储目录从未纳入词表扫描，改词属独立文案裁决，待另行处理"
+    },
+    {
+      "path": "core/services/workbench/dashboard_policy.py",
+      "term": "服务端",
+      "text": "外协处置台账未安装或结构不完整，需由主线明确迁移；未补表。",
+      "why": "自 data/repositories 仓储层逐字上提的既有对外文案（仓储不裁决分簇要求错误码与文案逐字不变）；仓储目录从未纳入词表扫描，改词属独立文案裁决，待另行处理"
+    },
+    {
+      "path": "core/services/workbench/trial_adoption_history_policy.py",
+      "term": "回执",
+      "text": "原命令回执缺失，不能证明保存来源。",
+      "why": "自 data/repositories 仓储层逐字上提的既有对外文案（仓储不裁决分簇要求错误码与文案逐字不变）；仓储目录从未纳入词表扫描，改词属独立文案裁决，待另行处理"
+    },
+    {
+      "path": "core/services/workbench/trial_adoption_history_policy.py",
+      "term": "回执",
+      "text": "本场景采用回执超过1000条读取上限，未截断。",
+      "why": "自 data/repositories 仓储层逐字上提的既有对外文案（仓储不裁决分簇要求错误码与文案逐字不变）；仓储目录从未纳入词表扫描，改词属独立文案裁决，待另行处理"
+    },
+    {
+      "path": "core/services/workbench/trial_adoption_history_policy.py",
+      "term": "回执",
+      "text": "采用回执不是有效结构化文本，未转换原值。",
+      "why": "自 data/repositories 仓储层逐字上提的既有对外文案（仓储不裁决分簇要求错误码与文案逐字不变）；仓储目录从未纳入词表扫描，改词属独立文案裁决，待另行处理"
+    },
+    {
+      "path": "core/services/workbench/trial_adoption_history_policy.py",
+      "term": "回执",
+      "text": "采用回执目录超过8\\ MiB读取上限，未截断。",
+      "why": "自 data/repositories 仓储层逐字上提的既有对外文案（仓储不裁决分簇要求错误码与文案逐字不变）；仓储目录从未纳入词表扫描，改词属独立文案裁决，待另行处理"
+    },
+    {
+      "path": "core/services/workbench/trial_adoption_history_policy.py",
+      "term": "场景",
+      "text": "场景的原永久草稿缺失。",
+      "why": "自 data/repositories 仓储层逐字上提的既有对外文案（仓储不裁决分簇要求错误码与文案逐字不变）；仓储目录从未纳入词表扫描，改词属独立文案裁决，待另行处理"
+    },
+    {
+      "path": "core/services/workbench/trial_adoption_history_policy.py",
+      "term": "场景",
+      "text": "未找到指定试调场景，未改查最新场景。",
+      "why": "自 data/repositories 仓储层逐字上提的既有对外文案（仓储不裁决分簇要求错误码与文案逐字不变）；仓储目录从未纳入词表扫描，改词属独立文案裁决，待另行处理"
+    },
+    {
+      "path": "core/services/workbench/trial_adoption_history_policy.py",
+      "term": "场景",
+      "text": "本场景采用回执超过1000条读取上限，未截断。",
+      "why": "自 data/repositories 仓储层逐字上提的既有对外文案（仓储不裁决分簇要求错误码与文案逐字不变）；仓储目录从未纳入词表扫描，改词属独立文案裁决，待另行处理"
+    },
+    {
+      "path": "core/services/workbench/trial_adoption_history_policy.py",
+      "term": "字段",
+      "text": "历史证据字段缺失或类型无效。",
+      "why": "自 data/repositories 仓储层逐字上提的既有对外文案（仓储不裁决分簇要求错误码与文案逐字不变）；仓储目录从未纳入词表扫描，改词属独立文案裁决，待另行处理"
+    },
+    {
+      "path": "core/services/workbench/trial_adoption_history_policy.py",
+      "term": "目录",
+      "text": "命令目录超过100000条读取上限，未返回截断采用历史。",
+      "why": "自 data/repositories 仓储层逐字上提的既有对外文案（仓储不裁决分簇要求错误码与文案逐字不变）；仓储目录从未纳入词表扫描，改词属独立文案裁决，待另行处理"
+    },
+    {
+      "path": "core/services/workbench/trial_adoption_history_policy.py",
+      "term": "目录",
+      "text": "采用回执目录超过8\\ MiB读取上限，未截断。",
+      "why": "自 data/repositories 仓储层逐字上提的既有对外文案（仓储不裁决分簇要求错误码与文案逐字不变）；仓储目录从未纳入词表扫描，改词属独立文案裁决，待另行处理"
+    },
+    {
+      "path": "core/services/workbench/trial_adoption_history_policy.py",
+      "term": "英文机制词",
+      "text": "采用回执目录超过8\\ MiB读取上限，未截断。",
+      "why": "自 data/repositories 仓储层逐字上提的既有对外文案（仓储不裁决分簇要求错误码与文案逐字不变）；仓储目录从未纳入词表扫描，改词属独立文案裁决，待另行处理"
+    },
+    {
+      "path": "core/services/workbench/trial_catalog.py",
+      "term": "明确刷新",
+      "text": "目录页码超过当前范围，请明确刷新目录。",
+      "why": "自 data/repositories 仓储层逐字上提的既有对外文案（仓储不裁决分簇要求错误码与文案逐字不变）；仓储目录从未纳入词表扫描，改词属独立文案裁决，待另行处理"
+    },
+    {
+      "path": "core/services/workbench/trial_catalog.py",
+      "term": "目录",
+      "text": "完整目录超过100000条或32\\ MiB摘要上限，请用状态或明确来源缩小范围；未截断。",
+      "why": "自 data/repositories 仓储层逐字上提的既有对外文案（仓储不裁决分簇要求错误码与文案逐字不变）；仓储目录从未纳入词表扫描，改词属独立文案裁决，待另行处理"
+    },
+    {
+      "path": "core/services/workbench/trial_catalog.py",
+      "term": "目录",
+      "text": "目录页码超过当前范围，请明确刷新目录。",
+      "why": "自 data/repositories 仓储层逐字上提的既有对外文案（仓储不裁决分簇要求错误码与文案逐字不变）；仓储目录从未纳入词表扫描，改词属独立文案裁决，待另行处理"
+    },
+    {
+      "path": "core/services/workbench/trial_catalog.py",
+      "term": "英文机制词",
+      "text": "完整目录超过100000条或32\\ MiB摘要上限，请用状态或明确来源缩小范围；未截断。",
+      "why": "自 data/repositories 仓储层逐字上提的既有对外文案（仓储不裁决分簇要求错误码与文案逐字不变）；仓储目录从未纳入词表扫描，改词属独立文案裁决，待另行处理"
+    },
+    {
+      "path": "core/services/workbench/trial_policy.py",
+      "term": "场景",
+      "text": "场景任务明细必须为带永久行引用的对象列表。",
+      "why": "自 data/repositories 仓储层逐字上提的既有对外文案（仓储不裁决分簇要求错误码与文案逐字不变）；仓储目录从未纳入词表扫描，改词属独立文案裁决，待另行处理"
+    },
+    {
+      "path": "core/services/workbench/trial_policy.py",
+      "term": "场景",
+      "text": "场景快照与永久明细不一致。",
+      "why": "自 data/repositories 仓储层逐字上提的既有对外文案（仓储不裁决分簇要求错误码与文案逐字不变）；仓储目录从未纳入词表扫描，改词属独立文案裁决，待另行处理"
+    },
+    {
+      "path": "core/services/workbench/trial_policy.py",
+      "term": "场景",
+      "text": "未找到指定试调场景。",
+      "why": "自 data/repositories 仓储层逐字上提的既有对外文案（仓储不裁决分簇要求错误码与文案逐字不变）；仓储目录从未纳入词表扫描，改词属独立文案裁决，待另行处理"
+    },
+    {
+      "path": "core/services/workbench/trial_policy.py",
+      "term": "字段",
+      "text": "草稿安排字段不完整。",
+      "why": "自 data/repositories 仓储层逐字上提的既有对外文案（仓储不裁决分簇要求错误码与文案逐字不变）；仓储目录从未纳入词表扫描，改词属独立文案裁决，待另行处理"
+    },
+    {
+      "path": "core/services/workbench/trial_policy.py",
+      "term": "对象",
+      "text": "场景任务明细必须为带永久行引用的对象列表。",
+      "why": "自 data/repositories 仓储层逐字上提的既有对外文案（仓储不裁决分簇要求错误码与文案逐字不变）；仓储目录从未纳入词表扫描，改词属独立文案裁决，待另行处理"
+    },
+    {
+      "path": "core/services/workbench/trial_policy.py",
+      "term": "引用",
+      "text": "场景任务明细必须为带永久行引用的对象列表。",
+      "why": "自 data/repositories 仓储层逐字上提的既有对外文案（仓储不裁决分簇要求错误码与文案逐字不变）；仓储目录从未纳入词表扫描，改词属独立文案裁决，待另行处理"
+    },
+    {
+      "path": "core/services/workbench/trial_policy.py",
+      "term": "快照",
+      "text": "场景快照与永久明细不一致。",
+      "why": "自 data/repositories 仓储层逐字上提的既有对外文案（仓储不裁决分簇要求错误码与文案逐字不变）；仓储目录从未纳入词表扫描，改词属独立文案裁决，待另行处理"
+    },
+    {
+      "path": "core/services/workbench/trial_policy.py",
+      "term": "重读",
+      "text": "草稿已被其他操作保存或改变，请重新读取。",
+      "why": "自 data/repositories 仓储层逐字上提的既有对外文案（仓储不裁决分簇要求错误码与文案逐字不变）；仓储目录从未纳入词表扫描，改词属独立文案裁决，待另行处理"
     }
   ]
 }

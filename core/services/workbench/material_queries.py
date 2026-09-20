@@ -75,10 +75,16 @@ class WorkbenchMaterialQueryService:
                       "unknown": sum(row["status"] not in ("active", "inactive") for row in rows),
                       "stock_unknown": sum(row["stock_qty"] is None for row in rows)}
         else:
-            counts = self.repo.metrics(query)
+            counts = self.toolbar_metrics(query)
         return {"scope": "filtered", "counts": counts,
                 "basis": {"low_stock": "尚未设置低库存阈值。"},
                 "issues": []}
+
+    def toolbar_metrics(self, query: MaterialPageRequest):
+        """Counts straight from SQL over the toolbar scope; column filters must go through metrics()."""
+        if query.column_filters:
+            raise WorkbenchCommandRejected("invalid_input", "列筛选统计请使用物料查询服务的统一入口。", 400)
+        return self.repo.metrics(query.query, query.status)
 
     def resolve(self, ref):
         if not isinstance(ref, str) or len(ref) != 48 or any(char not in "0123456789abcdef" for char in ref):

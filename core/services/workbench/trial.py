@@ -25,6 +25,7 @@ from data.repositories.workbench_trial_repo import WorkbenchTrialRepository, new
 
 from .trial_base import prepare_base
 from .trial_facts import live_context
+from .trial_policy import load_draft, load_scenario, require_advanced, require_trial_schema
 from .trial_projection import draft_projection, write_snapshot
 from .trial_validation import TrialValidator
 
@@ -48,7 +49,7 @@ class WorkbenchTrialService:
     def preview_create(self, value):
         intent = create_input(value)
         with candidate_read_snapshot(self.conn):
-            self.repo.require_schema()
+            require_trial_schema(self.repo)
             admission, rows, live = prepare_base(self.conn, intent)
             checked = TrialValidator(self.conn, admission, rows, live).evaluate()
             context = self.context_factory(next(iter(intent["base"].values())), [CREATE], self._create_snapshot(admission, rows))
@@ -61,7 +62,7 @@ class WorkbenchTrialService:
         base_ref = next(iter(intent["base"].values()))
 
         def guard():
-            self.repo.require_schema()
+            require_trial_schema(self.repo)
             admission, rows, live = prepare_base(self.conn, intent)
             self.context_validator(write_token, base_ref, CREATE, self._create_snapshot(admission, rows))
             return admission, rows, live
@@ -70,14 +71,14 @@ class WorkbenchTrialService:
             admission, rows, live = prepared
             checked = TrialValidator(self.conn, admission, rows, live).evaluate()
             ref = self.repo.create(admission, rows, checked, request_key, self.actor_provider(), self._now())
-            head, stored = self.repo.get(ref)
+            head, stored = load_draft(self.repo, ref)
             return WorkbenchCommandOutcome("committed", self._projection(head, stored, live, checked))
 
         return WorkbenchCommandService(self.conn).execute(request_key=request_key, action=CREATE,
             context_ref=base_ref, normalized_input=intent, guard=guard, mutate=mutate)
 
     def _loaded(self, ref):
-        head, rows = self.repo.get(reference(ref))
+        head, rows = load_draft(self.repo, reference(ref))
         live = live_context(self.conn, [row["operation_ref"] for row in rows])
         return head, rows, live
 
@@ -123,8 +124,8 @@ class WorkbenchTrialService:
             checked = validator.evaluate()
             if before == row["current"]:
                 return WorkbenchCommandOutcome("unchanged", self._projection(head, rows, live, checked))
-            self.repo.change(head, row, before, checked, request_key, self.actor_provider(), self._now())
-            current_head, current_rows = self.repo.get(draft_ref)
+            require_advanced(self.repo.change(head, row, before, checked, request_key, self.actor_provider(), self._now()))
+            current_head, current_rows = load_draft(self.repo, draft_ref)
             return WorkbenchCommandOutcome("committed", self._projection(current_head, current_rows, live, checked))
 
         return self._execute(CHANGE, draft_ref, intent, write_token, request_key, mutate)
@@ -147,7 +148,7 @@ class WorkbenchTrialService:
                 _scenario_issue_refs(row["issues"], old_to_new)
             _scenario_issue_refs(snapshot["validation"]["issues"], old_to_new)
             snapshot["preview_target"] = "/api/workbench/v1/trial/scenarios/" + snapshot["scenario_ref"]
-            self.repo.save(head, snapshot, request_key, self.actor_provider(), snapshot["saved_at"])
+            require_advanced(self.repo.save(head, snapshot, request_key, self.actor_provider(), snapshot["saved_at"]))
             return WorkbenchCommandOutcome("committed", snapshot)
 
         return self._execute(SAVE, draft_ref, intent, write_token, request_key, mutate)
@@ -158,7 +159,7 @@ class WorkbenchTrialService:
         def mutate(prepared):
             head, rows, live = prepared
             checked = TrialValidator(self.conn, head["admission"], rows, live).evaluate()
-            self.repo.transition(head, "discarded", checked, self._now())
+            require_advanced(self.repo.transition(head, "discarded", checked, self._now()))
             return WorkbenchCommandOutcome("committed", {"draft_ref": draft_ref, "status": "discarded",
                                                          "validation": checked, "history_retained": True})
 
@@ -166,7 +167,7 @@ class WorkbenchTrialService:
 
     def scenario(self, scenario_ref):
         with candidate_read_snapshot(self.conn):
-            return self.repo.scenario(reference(scenario_ref))
+            return load_scenario(self.repo, reference(scenario_ref))
 
     def lookup(self, request_key):
         validate_request_key(request_key)

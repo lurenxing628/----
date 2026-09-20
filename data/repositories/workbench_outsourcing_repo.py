@@ -1,4 +1,8 @@
-"""Append-only shipment membership and confirmations on the command connection."""
+"""Append-only shipment membership and confirmations on the command connection.
+
+Judgement (missing schema, unknown receipt, member drift, row caps) belongs to
+core.services.workbench.outsourcing; this module only returns what is stored.
+"""
 
 import json
 import secrets
@@ -8,49 +12,48 @@ from core.infrastructure.workbench_outsourcing_schema import contract_issues
 from core.infrastructure.workbench_outsourcing_source_schema import contract_issues as source_contract_issues
 from core.infrastructure.workbench_plan_identity_schema import workbench_plan_identity_contract_issues
 from core.models.workbench_command import canonical_json
-from core.models.workbench_outsourcing import MAX_ROWS, bounded, reject
 
 
 class WorkbenchOutsourcingRepository:
     def __init__(self, conn):
         self.conn = conn
 
-    def require_schema(self):
-        issues = (contract_issues(self.conn) + source_contract_issues(self.conn) +
-                  workbench_metadata_contract_issues(self.conn) + workbench_plan_identity_contract_issues(self.conn))
-        if issues:
-            reject("真实外协登记结构尚未完整接入；未补表或改动原资料。", "outsourcing_unavailable", 503)
+    def schema_issues(self):
+        """Receipt, source-confirmation, metadata and plan-identity contract issues; empty when complete."""
+        return (contract_issues(self.conn) + source_contract_issues(self.conn) +
+                workbench_metadata_contract_issues(self.conn) + workbench_plan_identity_contract_issues(self.conn))
 
     def header(self, ref):
+        """Receipt header with decoded origin/identity and the stored member refs; None when absent.
+
+        result["target"]["operation_refs"] is what the member table holds today;
+        result["origin"]["operation_refs"] is what the receipt recorded at registration.
+        """
         row = self.conn.execute("SELECT * FROM WorkbenchOutsourcingReceipts WHERE outsourcing_ref=?", (ref,)).fetchone()
         if row is None:
-            reject("外协原登记不存在，未改读其他对象。", "entity_not_found", 404)
+            return None
         result = dict(row)
         result["origin"] = json.loads(result.pop("origin_json"))
         result["identity"] = json.loads(result.pop("identity_json"))
         members = [row[0] for row in self.conn.execute("SELECT operation_ref FROM WorkbenchOutsourcingMembers WHERE outsourcing_ref=? ORDER BY operation_ref", (ref,))]
         result["target"] = {"kind": result["target_kind"], "batch_ref": result["batch_ref"],
                             "supplier_ref": result["supplier_ref"], "operation_refs": members}
-        if members != result["origin"]["operation_refs"]:
-            reject("外协成员映射与原登记不一致，未忽略缺失成员。", "outsourcing_unavailable", 503)
-        return bounded(result)
+        return result
 
     def latest(self, ref):
+        """Highest-sequence confirmation fact of the receipt; None when the receipt has no fact."""
         row = self.conn.execute("SELECT * FROM WorkbenchOutsourcingFacts WHERE outsourcing_ref=? ORDER BY sequence DESC LIMIT 1", (ref,)).fetchone()
-        if row is None:
-            reject("外协登记缺少确认事实，请恢复完整记录。", "outsourcing_unavailable", 503)
-        return bounded(dict(row))
+        return dict(row) if row is not None else None
 
     def membership(self, refs):
         marks = ",".join("?" for _ in refs)
         return [dict(row) for row in self.conn.execute("SELECT * FROM WorkbenchOutsourcingMembers WHERE operation_ref IN (" + marks + ") ORDER BY operation_ref", refs)]
 
-    def refs(self, batch_ref=None):
+    def refs(self, batch_ref, limit):
+        """Up to limit + 1 receipt refs (optionally within a batch) so the caller can detect the cap."""
         where, params = (" WHERE batch_ref=?", (batch_ref,)) if batch_ref else ("", ())
         rows = self.conn.execute("SELECT outsourcing_ref FROM WorkbenchOutsourcingReceipts" + where +
-                                 " ORDER BY outsourcing_ref LIMIT ?", params + (MAX_ROWS + 1,)).fetchall()
-        if len(rows) > MAX_ROWS:
-            reject("外协登记超过10000项，请限定批次。", "query_too_large", 413)
+                                 " ORDER BY outsourcing_ref LIMIT ?", params + (limit + 1,)).fetchall()
         return [row[0] for row in rows]
 
     def plan_identity_revision(self):
@@ -65,7 +68,7 @@ class WorkbenchOutsourcingRepository:
         count = self.conn.execute("SELECT COUNT(*) FROM WorkbenchOutsourcingFacts WHERE outsourcing_ref=?", (ref,)).fetchone()[0]
         rows = self.conn.execute("SELECT * FROM WorkbenchOutsourcingFacts WHERE outsourcing_ref=? ORDER BY sequence DESC LIMIT ? OFFSET ?",
                                  (ref, size, (number - 1) * size)).fetchall()
-        return bounded([dict(row) for row in rows]), {"number": number, "size": size, "total": count, "pages": (count + size - 1) // size}
+        return [dict(row) for row in rows], {"number": number, "size": size, "total": count, "pages": (count + size - 1) // size}
 
     def append(self, prepared, *, request_key, local_operator, now):
         if not self.conn.in_transaction:

@@ -13,6 +13,7 @@ from data.repositories.workbench_run_repo import WorkbenchRunRepository
 from .run_candidate_projection import candidate_summary, dispositions, scheduled_ids, validate_manifest
 from .run_candidate_storage import CandidateStore
 from .run_jobs_facts import run_baseline, run_execution_projections, run_facts_unchanged
+from .run_policy import require_admission
 
 
 def require_adoption_schema(conn):
@@ -29,7 +30,7 @@ def load_adoption_candidate(conn, candidate_ref):
     run_ref = store.candidate_run(candidate_ref)
     run = store.run(run_ref)
     repo = WorkbenchRunRepository(conn)
-    repo.require_admission(repo.get(run_ref))
+    require_admission(repo, repo.get(run_ref))
     receipt = store.receipt(run)
     candidates = store.candidates(run_ref)
     validate_manifest(run, candidates, receipt)

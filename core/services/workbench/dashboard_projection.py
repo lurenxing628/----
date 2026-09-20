@@ -86,9 +86,9 @@ def material(facts):
     if any(value is None for value in (batches, requirements, materials)):
         return [], category("unavailable", issues=[source_issue("source_not_read", "批次或物料需求来源尚未读取，齐套风险未知。")])
     bounded(batches, MAX_ROWS)
-    refs = facts.repo.entity_refs("batch", [row["batch_id"] for row in batches])
+    refs = facts.entity_refs("batch", [row["batch_id"] for row in batches])
     facts.raw["material_batch_refs"] = refs
-    material_refs = facts.repo.entity_refs("material", [row["material_id"] for row in materials])
+    material_refs = facts.entity_refs("material", [row["material_id"] for row in materials])
     facts.raw["material_refs"] = material_refs
     by_material = {row["material_id"]: row for row in materials}
     checks = _MaterialChecks(requirements)

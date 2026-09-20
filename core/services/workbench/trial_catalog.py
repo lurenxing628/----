@@ -1,9 +1,15 @@
 """Readonly directory summaries never choose a default/latest draft or candidate."""
 
+import hashlib
+
 from core.models.workbench_trial import reference, reject
-from core.models.workbench_trial_catalog import TrialCatalogScope
+from core.models.workbench_trial_catalog import MAX_CATALOG_BYTES, MAX_CATALOG_ROWS, TrialCatalogScope
+from core.models.workbench_trial_codec import dump
 from core.services.workbench.run_input_readonly import candidate_read_snapshot
 from data.repositories.workbench_trial_catalog_repo import WorkbenchTrialCatalogRepository
+from data.repositories.workbench_trial_repo import WorkbenchTrialRepository
+
+from .trial_policy import require_trial_schema
 
 
 class WorkbenchTrialCatalogService:
@@ -12,10 +18,30 @@ class WorkbenchTrialCatalogService:
 
     def catalog(self, scope: TrialCatalogScope):
         with candidate_read_snapshot(self.conn):
-            rows, page, fingerprint = WorkbenchTrialCatalogRepository(self.conn).catalog(scope)
+            require_trial_schema(WorkbenchTrialRepository(self.conn))
+            rows, page, fingerprint = _bounded_page(WorkbenchTrialCatalogRepository(self.conn), scope)
             items = [_summary(row, scope.collection) for row in rows]
             return {"items": items, "page": page, "scope": scope.scope(), "state": "available" if items else "empty",
                     "selection": None, "validation_state": "not_evaluated"}, fingerprint
+
+
+def _bounded_page(repo, scope):
+    """One page of header rows plus a digest of the whole directory; refuses directories past the row/byte caps."""
+    digest, selected, total, byte_count = hashlib.sha256(), [], 0, 0
+    offset = (scope.page - 1) * scope.size
+    for row in repo.iter_rows(scope, MAX_CATALOG_ROWS):
+        total += 1
+        encoded = dump(row).encode("utf-8")
+        byte_count += len(encoded)
+        if total > MAX_CATALOG_ROWS or byte_count > MAX_CATALOG_BYTES:
+            reject("query_too_large", "完整目录超过100000条或32 MiB摘要上限，请用状态或明确来源缩小范围；未截断。", 413)
+        digest.update(str(len(encoded)).encode("ascii") + b":" + encoded)
+        if offset < total <= offset + scope.size:
+            selected.append(row)
+    pages = (total + scope.size - 1) // scope.size
+    if scope.page > max(pages, 1):
+        reject("invalid_input", "目录页码超过当前范围，请明确刷新目录。", 400)
+    return selected, {"number": scope.page, "size": scope.size, "total": total, "pages": pages}, digest.hexdigest()
 
 
 def _source_label(row):

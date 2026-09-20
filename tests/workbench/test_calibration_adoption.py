@@ -7,6 +7,8 @@ import pytest
 from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_template_lineage import restore_snapshot
+from core.services.workbench.calibration_adoption_policy import require_unlocked
+from core.services.workbench.process_quota_protection import read_quota_locks
 from data.repositories.workbench_calibration_adoption_repo import WorkbenchCalibrationAdoptionRepository
 from tests.workbench.calibration_adoption_support import (
     INTENT,
@@ -93,15 +95,15 @@ def test_real_sample_threshold_and_latest_twenty(adoption_case, count):
 def test_lock_interface_is_permanent_ref_scoped_and_requires_write_transaction(ready_adoption_case):
     case = ready_adoption_case
     repo = WorkbenchCalibrationAdoptionRepository(case.conn)
-    assert repo.read_locks([case.template_ref]) == {}
+    assert read_quota_locks(repo, [case.template_ref]) == {}
     service(case.conn).confirm(case.template_ref, token(case), KEY, INTENT)
-    lock = repo.read_locks([case.template_ref])[case.template_ref]
+    lock = read_quota_locks(repo, [case.template_ref])[case.template_ref]
     assert lock["locked"] is True and lock["locked_unit_hours"] == 3
     assert lock["declared_operator"] == INTENT["declared_operator"] and lock["confirmed"] is True
     with pytest.raises(RuntimeError, match="transaction"):
-        repo.require_unlocked([case.template_ref])
+        require_unlocked(repo, [case.template_ref])
     with TransactionManager(case.conn).transaction(), pytest.raises(WorkbenchCommandRejected) as error:
-        repo.require_unlocked([case.template_ref])
+        require_unlocked(repo, [case.template_ref])
     assert error.value.code == "calibration_quota_locked"
     preview = service(case.conn).preview(case.template_ref, PREVIEW_INTENT)
     assert preview["quota_lock"] == lock and not preview["validation"]["can_adopt"]

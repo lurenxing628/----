@@ -8,8 +8,17 @@ from typing import NoReturn
 from core.models.workbench_command import input_fingerprint, validate_request_key
 from core.models.workbench_trial import reference, reject
 from core.models.workbench_trial_codec import fingerprint, load_object, require_object
-from data.repositories.workbench_trial_adoption_history import MAX_SCENARIO_BYTES, TrialAdoptionHistoryRepository
+from data.repositories.workbench_trial_adoption_history import TrialAdoptionHistoryRepository
 from data.repositories.workbench_trial_repo import WorkbenchTrialRepository
+
+from .trial_adoption_history_policy import (
+    MAX_SCENARIO_BYTES,
+    bound,
+    load_history,
+    load_receipt,
+    load_scenario_headers,
+)
+from .trial_policy import load_scenario, require_trial_schema
 
 
 def invalid() -> NoReturn:
@@ -35,14 +44,15 @@ def json_object(raw):
 def scenario_evidence(conn, scenario_ref):
     reference(scenario_ref)
     repo = TrialAdoptionHistoryRepository(conn)
-    WorkbenchTrialRepository(conn).require_schema()
-    header, draft = repo.scenario_headers(scenario_ref)
+    trial_repo = WorkbenchTrialRepository(conn)
+    require_trial_schema(trial_repo)
+    header, draft = load_scenario_headers(repo, scenario_ref)
     # Bound the permanent detail too, before the existing snapshot reader loads it.
     sizes = repo.scenario_row_sizes(scenario_ref)
-    repo.bound(sum(size or 0 for size in sizes), MAX_SCENARIO_BYTES)
+    bound(sum(size or 0 for size in sizes), MAX_SCENARIO_BYTES)
     if len(sizes) > 10000:
         reject("query_too_large", "试调方案的明细超过 10000 条上限，这次没有读取。请缩小范围。", 413)
-    saved = WorkbenchTrialRepository(conn).scenario(scenario_ref)
+    saved = load_scenario(trial_repo, scenario_ref)
     admission_row = repo.draft_admission(draft["draft_ref"])
     if admission_row is None:
         invalid()
@@ -59,7 +69,7 @@ def scenario_evidence(conn, scenario_ref):
             or saved["base"] != {draft["base_kind"]: draft["base_ref"]}):
         invalid()
     created = repo.receipt_action(draft["request_key"])
-    receipt = repo.receipt(header["request_key"])
+    receipt = load_receipt(repo, header["request_key"])
     outcome = json_object(receipt["outcome_json"])
     if (created is None or tuple(created) != ("trial.create", draft["base_ref"])
             or (receipt["action"], receipt["context_ref"]) != ("trial.save", draft["draft_ref"])
@@ -123,7 +133,7 @@ def _audit_lineage(audit, row, plan, saved, header, draft):
 
 def audit_fields(repo, row, plan, saved, header, draft):
     empty = {"reason": None, "declared_operator": None, "application_operator": None, "adopted_at": None}
-    history = repo.history(plan["version"])
+    history = load_history(repo, plan["version"])
     if history is None:
         return empty, [gap("audit_missing", "找不到对应的正式计划历史，或同一版本有多条记录，采用信息暂时无法确认。")]
     try:

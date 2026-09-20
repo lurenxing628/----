@@ -18,6 +18,7 @@ from data.repositories.workbench_run_repo import WorkbenchRunRepository
 from .run_data_context import RunDataContext
 from .run_input_admission import piece_admission_issues
 from .run_jobs_facts import capture_run_facts, run_baseline, run_execution_projections
+from .run_policy import public_run, require_run_schema
 from .run_progress import read_progress
 
 
@@ -66,7 +67,7 @@ class WorkbenchRunService:
         """Separate authorization preview; an ordinary preflight never authorizes writes."""
         self._require_outer()
         with TransactionManager(self.conn).transaction():
-            self.repo.require_schema()
+            require_run_schema(self.repo)
             settings, data, snapshot = self._resolve(input_ref)
             reasons = self._reasons(data)
             context = {"write_token": None, "expires_at": None,
@@ -80,7 +81,7 @@ class WorkbenchRunService:
                     "calendar_check": data["calendar_check"], "warnings": data["warnings"]}
 
     def accept(self, input_ref, write_token, request_key):
-        self.repo.require_schema()
+        require_run_schema(self.repo)
         if not isinstance(input_ref, str) or not input_ref or len(input_ref) > 256:
             raise WorkbenchCommandRejected("invalid_input", "这份排产检查结果已失效，排产没有开始。请重新做一次排产检查。", 400)
 
@@ -121,20 +122,20 @@ class WorkbenchRunService:
     def get(self, run_ref):
         validate_run_ref(run_ref)
         with TransactionManager(self.conn).transaction():
-            self.repo.require_schema()
+            require_run_schema(self.repo)
             row = self.repo.get(run_ref)
             if row is None:
                 raise WorkbenchCommandRejected("entity_not_found", "找不到这次排产，页面没有打开。请到「排产记录」重新选择。", 404)
-            return _with_progress(self.repo.public(row))
+            return _with_progress(public_run(self.conn, row))
 
     def lookup(self, request_key):
         validate_request_key(request_key)
         with TransactionManager(self.conn).transaction():
-            self.repo.require_schema()
+            require_run_schema(self.repo)
             row = self.repo.by_request(request_key)
             if row is None and self.repo.command_receipt_action(request_key) == "scheduling.run":
                 raise WorkbenchCommandRejected("run_result_inconsistent", messages.unknown("排产"), 500)
-            return _with_progress(self.repo.public(row)) if row else None
+            return _with_progress(public_run(self.conn, row)) if row else None
 
     def recover_unfinished_runs(self, *, executor_is_active=None):
         from .run_worker_recovery import recover_unfinished_runs

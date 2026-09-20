@@ -4,6 +4,7 @@ from core.models.workbench_dashboard import bounded
 from data.repositories.workbench_dashboard_external_repo import WorkbenchDashboardExternalRepository
 
 from .dashboard_external_sources import latest_fact, subject
+from .dashboard_policy import read_external_stored, read_receipt_mappings
 from .outsourcing import WorkbenchOutsourcingService
 
 
@@ -19,7 +20,7 @@ def _navigation(ref, current):
 
 
 def _observation(reader, ref, now, gap):
-    header = reader.repo.header(ref)
+    header = reader.header(ref)
     source = _source(header)
     if gap:
         risk = {"active": None, "code": gap["code"], "message": gap["message"]}
@@ -57,8 +58,8 @@ class DashboardExternalHandling:
                            "message": "外协处置记录不完整，请核对登记来源和处置历史。"}])
             return [], {}, {"state": "unavailable"}
         reader = WorkbenchOutsourcingService(self.conn, clock=lambda: now)
-        refs = reader.repo.refs()
-        mappings, stored = self.repo.receipt_mappings(refs), self.repo.stored()
+        refs = reader.refs()
+        mappings, stored = read_receipt_mappings(self.repo, refs), read_external_stored(self.repo)
         gaps = {row["source_ref"]: row for row in summary["evaluation_gaps"]}
         observations = []
         for ref in refs:

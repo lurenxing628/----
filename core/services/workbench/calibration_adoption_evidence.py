@@ -8,23 +8,25 @@ from core.models.workbench_calibration_adoption import MAX_EVIDENCE_BYTES, Calib
 from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
 from core.models.workbench_template_lineage import snapshot
 
+from .calibration_adoption_policy import require_template
 from .calibration_facts import CalibrationFacts
 from .calibration_samples import number
+from .process_quota_protection import read_quota_locks, require_adoption_schema
 
 
 def read_evidence(conn, repo, template_ref, intent, clock: Callable[[], datetime]):
     if not conn.in_transaction:
         raise RuntimeError("Calibration evidence requires a caller-owned SQLite snapshot.")
-    repo.require_schema()
+    require_adoption_schema(repo)
     as_of = clock()
     facts_reader = CalibrationFacts(conn, as_of=as_of)
     with facts_reader.read_snapshot():
-        template = repo.template(template_ref)
+        template = require_template(repo, template_ref)
         facts = facts_reader.read(CalibrationQuery(part_ref=template["part_ref"]))
         row = next((row for row in facts["rows"] if row["template_operation_ref"] == template_ref), None)
         if row is None:
             raise WorkbenchCommandRejected("entity_not_found", "所选模板建议已失效，请刷新后重新选择。", 404)
-        locks = repo.read_locks([template_ref])
+        locks = read_quota_locks(repo, [template_ref])
         suggestion = {key: value for key, value in row.items() if key not in
                       ("generated_at", "capabilities", "blocked_reasons", "write_context")}
         selected = {sample["sample_ref"]: sample for sample in facts["samples_by_template"].get(template_ref, []) if sample["selected"]}

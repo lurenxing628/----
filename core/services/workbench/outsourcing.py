@@ -1,27 +1,59 @@
-"""SELECT-only outsourcing catalog and original-instance history."""
+"""SELECT-only outsourcing catalog and original-instance history.
+
+Judgement over WorkbenchOutsourcingRepository facts (missing schema, unknown
+receipt, member drift, row caps) lives here; the repository only reads.
+"""
 
 from contextlib import contextmanager
 from datetime import datetime
 
 from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_command import WorkbenchCommandRejected, input_fingerprint
-from core.models.workbench_outsourcing import bounded, page, pagination, reference, reject
+from core.models.workbench_outsourcing import MAX_ROWS, bounded, page, pagination, reference, reject
 from data.repositories.workbench_outsourcing_repo import WorkbenchOutsourcingRepository
-from data.repositories.workbench_outsourcing_source_repo import WorkbenchOutsourcingSourceRepository
 
 from .outsourcing_projection import fact, receipt
+from .outsourcing_source import WorkbenchOutsourcingSourceService
 
 
 class WorkbenchOutsourcingService:
     def __init__(self, conn, *, clock=None):
         self.conn, self.clock = conn, clock or datetime.now
         self.repo = WorkbenchOutsourcingRepository(conn)
-        self.sources = WorkbenchOutsourcingSourceRepository(conn)
+        self.sources = WorkbenchOutsourcingSourceService(conn)
+
+    # ---- judgement over repository facts ----
+
+    def require_schema(self):
+        if self.repo.schema_issues():
+            reject("真实外协登记结构尚未完整接入；未补表或改动原资料。", "outsourcing_unavailable", 503)
+
+    def header(self, ref):
+        header = self.repo.header(ref)
+        if header is None:
+            reject("外协原登记不存在，未改读其他对象。", "entity_not_found", 404)
+        if header["target"]["operation_refs"] != header["origin"]["operation_refs"]:
+            reject("外协成员映射与原登记不一致，未忽略缺失成员。", "outsourcing_unavailable", 503)
+        return bounded(header)
+
+    def latest(self, ref):
+        row = self.repo.latest(ref)
+        if row is None:
+            reject("外协登记缺少确认事实，请恢复完整记录。", "outsourcing_unavailable", 503)
+        return bounded(row)
+
+    def refs(self, batch_ref=None):
+        refs = self.repo.refs(batch_ref, MAX_ROWS)
+        if len(refs) > MAX_ROWS:
+            reject("外协登记超过10000项，请限定批次。", "query_too_large", 413)
+        return refs
+
+    # ---- snapshots and projections ----
 
     @contextmanager
     def read_snapshot(self):
         with TransactionManager(self.conn).transaction():
-            self.repo.require_schema()
+            self.require_schema()
             yield
 
     def now(self):
@@ -31,7 +63,7 @@ class WorkbenchOutsourcingService:
         return now.replace(microsecond=0)
 
     def _entry(self, ref, now):
-        header, latest = self.repo.header(ref), self.repo.latest(ref)
+        header, latest = self.header(ref), self.latest(ref)
         source, issues, state = None, [], "current"
         try:
             source = self.sources.load(header["target"])
@@ -59,7 +91,7 @@ class WorkbenchOutsourcingService:
         pagination(number, size)
         result = self.detail(ref, as_of=as_of)
         rows, paging = self.repo.history(ref, number, size)
-        result["history"] = {"items": [fact(row) for row in rows], "page": paging}
+        result["history"] = {"items": [fact(row) for row in bounded(rows)], "page": paging}
         return bounded(result)
 
     def receipts(self, *, batch_ref=None, status="all", number=1, size=20, as_of=None):
@@ -72,7 +104,7 @@ class WorkbenchOutsourcingService:
             raise RuntimeError("Outsourcing list requires a caller-owned snapshot")
         now = as_of or self.now()
         rows, snapshots = [], []
-        for ref in self.repo.refs(batch_ref):
+        for ref in self.refs(batch_ref):
             item, snapshot = self._entry(ref, now)
             snapshots.append(snapshot)
             matches = {"all": True, "awaiting": item["awaiting_return"], "overdue": item["overdue"], "returned": not item["awaiting_return"]}

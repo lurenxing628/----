@@ -82,6 +82,6 @@ def execution(api):
                 actual_end=f"2026-09-01T{index + 9:02d}:00:00", effective_processing_hours=.5))
         return {"operation_ids": ids, "piece_ids": pieces, "plan_ref": case.plan_ref(1),
                 "task_refs": {str(op): case.task(1, op) for op in ids + pieces},
-                "operation_refs": {str(op): case.ledger.repo.task(case.task(1, op))["operation_ref"] for op in ids + pieces},
+                "operation_refs": {str(op): case.ledger.task_header(case.task(1, op))["operation_ref"] for op in ids + pieces},
                 "original_report": first["data"]["rows"][0], "legacy_events": 4,
                 "machine_ref": case.ref("machine", "M1"), "operator_ref": case.ref("operator", "O1")}

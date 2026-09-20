@@ -23,6 +23,14 @@ from .dashboard_execution import actual
 from .dashboard_external import external
 from .dashboard_external_handling import DashboardExternalHandling
 from .dashboard_facts import DashboardFacts, typed
+from .dashboard_policy import (
+    read_history,
+    read_mappings,
+    read_stored,
+    require_dashboard_schema,
+    require_external_schema,
+    require_identity,
+)
 from .dashboard_projection import category, delivery, safe_material
 
 
@@ -65,13 +73,35 @@ class WorkbenchDashboardService:
     def __init__(self, conn, *, clock=None, context_factory=None):
         self.conn, self.clock, self.context_factory = conn, clock or datetime.now, context_factory
         self.external_handling = DashboardExternalHandling(conn)
-        self.repo = WorkbenchDashboardRepository(conn, external_repo=self.external_handling.repo)
+        self.repo = WorkbenchDashboardRepository(conn)
+
+    def require_schema(self):
+        require_dashboard_schema(self.repo)
 
     @contextmanager
     def read_snapshot(self):
         with TransactionManager(self.conn).transaction():
-            self.repo.require_schema()
+            self.require_schema()
             yield
+
+    def history(self, item_ref, number, size):
+        """Paged handling history; items unknown to the dashboard ledger are read from the external ledger."""
+        repo = self.repo
+        if not repo.has_item(item_ref):
+            repo = self.external_handling.repo
+            require_external_schema(repo)
+            require_identity(repo, item_ref)
+        return read_history(repo, item_ref, number, size)
+
+    def append_handling(self, *, item, before, after, facts, actor, action, reason, request_key, now):
+        repo = self.repo
+        if item["category"] == "external":
+            repo = self.external_handling.repo
+            require_external_schema(repo)
+        source = {key: item[key] for key in ("item_ref", "category", "subject", "source", "risk", "navigation")}
+        payload_size({"source": source, "facts": facts, "before": before, "after": after})
+        return repo.append(item=item, before=before, after=after, facts=facts, actor=actor, action=action,
+                           reason=reason, request_key=request_key, now=now)
 
     def read(self, as_of=None):
         if not self.conn.in_transaction:
@@ -89,7 +119,7 @@ class WorkbenchDashboardService:
         categories["candidate"] = category(facts.candidates["state"], issues=facts.candidates["issues"])
         categories["candidate"].update(kind="directory_not_risk", run_count=facts.candidates["run_count"],
                                        entry={"view": "analysis", "target": "/api/workbench/v1/scheduling/runs", "enabled": True})
-        stored = self.repo.stored()
+        stored = read_stored(self.repo)
         source_state = facts.fingerprint()
         items = self._merge(observations, stored, source_state, now)
         items.extend(self._decorate(item, saved, source_state, identity, now) for item, saved, identity in external_items)
@@ -106,7 +136,7 @@ class WorkbenchDashboardService:
         found = {}
         for name in ("delivery", "actual", "downtime", "material"):
             selected = [row for row in observations if row["category"] == name]
-            mappings = self.repo.mappings(name, [row["anchor_ref"] for row in selected])
+            mappings = read_mappings(self.repo, name, [row["anchor_ref"] for row in selected])
             for item in selected:
                 identity = mappings[item["anchor_ref"]]
                 ref = identity["item_ref"]
@@ -121,7 +151,7 @@ class WorkbenchDashboardService:
             item: Dict[str, Any] = dict(origin, source_state="not_currently_evaluated", risk={"active": None, "code": "source_not_currently_evaluated",
                         "message": "原来源当前未评估或已非当前正式，不能认定风险已消除。"}, _facts={"origin": origin})
             item["navigation"] = navigation(item, current=False)
-            found[ref] = self._decorate(item, saved, source_state, self.repo.identity(ref), now)
+            found[ref] = self._decorate(item, saved, source_state, require_identity(self.repo, ref), now)
         return bounded([item for ref, item in found.items() if item["risk"]["active"] is True or ref in stored])
 
     def _decorate(self, item, saved, source_state, identity, now):

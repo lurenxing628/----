@@ -1,4 +1,4 @@
-"""Exact identity lookups and append-only copy evidence in the caller transaction."""
+"""Exact identity lookups and append-only copy evidence in the caller transaction; no rulings here."""
 
 import secrets
 
@@ -6,7 +6,6 @@ from core.infrastructure.workbench_metadata_schema import workbench_metadata_con
 from core.infrastructure.workbench_plan_identity_schema import workbench_plan_identity_contract_issues
 from core.infrastructure.workbench_process_schema import workbench_process_contract_issues
 from core.infrastructure.workbench_template_lineage_schema import contract_issues, objects
-from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_template_lineage import (
     COPY_COLUMNS,
     EVIDENCE_VERSION,
@@ -18,36 +17,43 @@ from core.models.workbench_template_lineage import (
 from .base_repo import BaseRepository
 from .workbench_execution_repo import chunks
 
-MAX_EVIDENCE_BYTES = 16 * 1024 * 1024
+
+def _size_expression(columns):
+    return "+".join('COALESCE(length(CAST("' + column + '" AS BLOB)),0)' for column in columns)
+
+
+# Fixed evidence tables only; the size SQL is expanded here instead of from caller-supplied names.
+EVIDENCE_SIZE_SQL = {
+    "origins": ("SELECT COALESCE(sum(" + _size_expression(("template_snapshot", "instance_snapshot")) +
+                "),0) AS bytes FROM WorkbenchTemplateLineageOrigins WHERE operation_ref IN ("),
+    "events": ("SELECT COALESCE(sum(" + _size_expression(STATE_COLUMNS + ("operation_ref", "reason", "recorded_at_utc")) +
+               "),0) AS bytes FROM WorkbenchTemplateLineageEvents WHERE operation_ref IN ("),
+}
+EXECUTION_FACT_PROBES = (
+    ("WorkbenchProductionReports", "SELECT 1 FROM WorkbenchProductionReports WHERE operation_ref=? LIMIT 1"),
+    ("WorkbenchExecutionLegacyFacts", "SELECT 1 FROM WorkbenchExecutionLegacyFacts WHERE operation_ref=? LIMIT 1"),
+)
 
 
 class WorkbenchTemplateLineageRepository(BaseRepository):
-    def available(self):
+    def schema_state(self):
+        """'missing' (no lineage objects), 'invalid' (partial/altered DDL) or 'loaded'."""
         names = {row[0] for row in self.conn.execute("SELECT name FROM sqlite_master")}
         if not names & set(objects()):
-            return False
-        if contract_issues(self.conn):
-            raise WorkbenchCommandRejected("template_lineage_unavailable", "模板来源结构不完整，请恢复完整资料；本次没有自动补表。")
-        return True
+            return "missing"
+        return "invalid" if contract_issues(self.conn) else "loaded"
 
-    def require_write(self):
-        if not self.conn.in_transaction:
-            raise RuntimeError("Template lineage writes require a caller transaction.")
-        if not self.available():
-            raise WorkbenchCommandRejected("template_lineage_schema_missing", "模板来源记录结构尚未安装，已阻止新复制；请先完成统一版本升级。")
-        if (workbench_metadata_contract_issues(self.conn) or workbench_process_contract_issues(self.conn) or
-                workbench_plan_identity_contract_issues(self.conn)):
-            raise WorkbenchCommandRejected("template_lineage_unavailable", "来源模板或批次永久身份结构损坏，已阻止复制，未使用不可靠修订。")
+    def identity_schema_broken(self):
+        return bool(workbench_metadata_contract_issues(self.conn) or workbench_process_contract_issues(self.conn) or
+                    workbench_plan_identity_contract_issues(self.conn))
 
     def template(self, template_id):
-        row = self.fetchone("""SELECT o.*, r.ref AS template_operation_ref, r.revision AS template_revision,
+        """Active template row with permanent refs (may be NULL), or None."""
+        return self.fetchone("""SELECT o.*, r.ref AS template_operation_ref, r.revision AS template_revision,
             p.ref AS part_ref FROM PartOperations o LEFT JOIN WorkbenchEntityRefs r
             ON r.kind='template_operation' AND r.active=1 AND r.entity_key=CAST(o.id AS TEXT)
             LEFT JOIN WorkbenchEntityRefs p ON p.kind='part' AND p.active=1 AND p.entity_key=o.part_no
             WHERE o.id=? AND o.status='active'""", (template_id,))
-        if row is None or row["template_operation_ref"] is None or row["part_ref"] is None:
-            raise WorkbenchCommandRejected("template_lineage_unavailable", "来源模板或永久引用已失效，不能按图号或工序号补配。")
-        return row
 
     def current_templates(self, refs):
         result = {}
@@ -61,15 +67,13 @@ class WorkbenchTemplateLineageRepository(BaseRepository):
         return result
 
     def instance(self, operation_id):
-        row = self.fetchone("""SELECT o.*, r.ref AS operation_ref, br.ref AS batch_ref, pr.ref AS part_ref, b.quantity
+        """Batch operation row with operation/batch/part refs (may be NULL), or None."""
+        return self.fetchone("""SELECT o.*, r.ref AS operation_ref, br.ref AS batch_ref, pr.ref AS part_ref, b.quantity
             FROM BatchOperations o JOIN Batches b ON b.batch_id=o.batch_id
             LEFT JOIN WorkbenchPlanSourceRefs r ON r.kind='operation' AND r.active=1 AND r.source_key=CAST(o.id AS TEXT)
             LEFT JOIN WorkbenchEntityRefs br ON br.kind='batch' AND br.active=1 AND br.entity_key=b.batch_id
             LEFT JOIN WorkbenchEntityRefs pr ON pr.kind='part' AND pr.active=1 AND pr.entity_key=b.part_no
             WHERE o.id=?""", (operation_id,))
-        if row is None or any(row[key] is None for key in ("operation_ref", "batch_ref", "part_ref")):
-            raise WorkbenchCommandRejected("template_lineage_unavailable", "批次实例或所属对象缺少永久引用，来源没有补配。")
-        return row
 
     def current_instances(self, refs):
         result = {}
@@ -89,85 +93,67 @@ class WorkbenchTemplateLineageRepository(BaseRepository):
                               ",".join("?" for _ in COPY_COLUMNS) + ")", tuple(payload[key] for key in COPY_COLUMNS))
         return self.instance(cursor.lastrowid)
 
+    def origins_bytes(self, refs):
+        return self._evidence_bytes("origins", refs)
+
     def origins(self, refs):
         result = {}
-        size = 0
         for chunk in chunks(refs):
             marks = ",".join("?" for _ in chunk)
-            size += self._evidence_size("WorkbenchTemplateLineageOrigins", ("template_snapshot", "instance_snapshot"), chunk)
-            self._check_size(size)
             for row in self.fetchall("SELECT * FROM WorkbenchTemplateLineageOrigins WHERE operation_ref IN (" + marks + ")", chunk):
                 result[row["operation_ref"]] = row
         return result
 
-    def events(self, refs):
-        result = {}
-        size = 0
+    def events_bytes(self, refs):
+        return self._evidence_bytes("events", refs)
+
+    def event_chunks(self, refs, limit):
+        """Ordered event rows per ref chunk; each chunk reads at most limit+1 rows and reading stops once exceeded."""
+        result = []
+        total = 0
         for chunk in chunks(refs):
             marks = ",".join("?" for _ in chunk)
-            size += self._evidence_size("WorkbenchTemplateLineageEvents", STATE_COLUMNS + ("operation_ref", "reason", "recorded_at_utc"), chunk)
-            self._check_size(size)
             rows = self.fetchall("SELECT * FROM WorkbenchTemplateLineageEvents WHERE operation_ref IN (" + marks +
-                                 ") ORDER BY event_id LIMIT 50001", chunk)
-            if len(rows) > 50000:
-                raise WorkbenchCommandRejected("query_too_large", "模板来源变更超过50000条，请缩小范围；未截断证据。", 413)
-            for row in rows:
-                result.setdefault(row["operation_ref"], []).append(row)
-        if sum(map(len, result.values())) > 50000:
-            raise WorkbenchCommandRejected("query_too_large", "模板来源变更超过50000条，请缩小范围。", 413)
+                                 ") ORDER BY event_id LIMIT ?", chunk + [limit + 1])
+            result.append(rows)
+            total += len(rows)
+            if len(rows) > limit or total > limit:
+                break
         return result
 
-    def _evidence_size(self, table, columns, refs):
-        sizes = "+".join('COALESCE(length(CAST("' + column + '" AS BLOB)),0)' for column in columns)
-        row = self.fetchone("SELECT COALESCE(sum(" + sizes + "),0) AS bytes FROM " + table +
-                            " WHERE operation_ref IN (" + ",".join("?" for _ in refs) + ")", refs)
-        if row is None:
-            raise RuntimeError("Cannot read lineage evidence size.")
-        return row["bytes"]
+    def _evidence_bytes(self, kind, refs):
+        size = 0
+        for chunk in chunks(refs):
+            row = self.fetchone(EVIDENCE_SIZE_SQL[kind] + ",".join("?" for _ in chunk) + ")", chunk)
+            if row is None:
+                raise RuntimeError("Cannot read lineage evidence size.")
+            size += row["bytes"]
+        return size
 
-    @staticmethod
-    def _check_size(size):
-        if size > MAX_EVIDENCE_BYTES:
-            raise WorkbenchCommandRejected("query_too_large", "模板来源证据超过16MB，请缩小范围；未截断原始内容。", 413)
+    def has_execution_facts(self, operation_ref):
+        names = {row[0] for row in self.conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        return any(table in names and self.fetchone(sql, (operation_ref,)) for table, sql in EXECUTION_FACT_PROBES)
 
-    def append_origin(self, instance, template, template_snapshot, *, source=None, source_event_id=None, source_eligible=True):
-        self._require_unexecuted(instance)
-        events = self.events([instance["operation_ref"]]).get(instance["operation_ref"], [])
-        if len(events) != 1 or events[0]["event_type"] != "created" or state_snapshot(events[0]) != state_snapshot(instance):
-            raise WorkbenchCommandRejected("template_lineage_not_new", "只能为本次新建且未发生变更的工序保存来源，旧实例不得追溯补填。")
+    def has_legacy_execution_events(self, operation_id):
+        names = {row[0] for row in self.conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        return "OperationExecutionEvents" in names and self.fetchone(
+            "SELECT 1 FROM OperationExecutionEvents WHERE op_id=? LIMIT 1", (operation_id,)) is not None
+
+    def append_origin(self, instance, template, template_snapshot, *, birth_event_id, source=None, source_event_id=None,
+                      source_eligible=True):
         encoded = state_snapshot(instance)
-        self._check_size(len(template_snapshot.encode("ascii")) + len(encoded.encode("ascii")))
         row = dict(lineage_ref=secrets.token_hex(24), operation_ref=instance["operation_ref"],
                    template_operation_ref=template["template_operation_ref"], template_revision=template["template_revision"],
                    source_operation_ref=source["operation_ref"] if source else None,
                    source_lineage_ref=source["lineage_ref"] if source else None, source_event_id=source_event_id,
-                   source_eligible=int(source_eligible), birth_event_id=events[0]["event_id"],
+                   source_eligible=int(source_eligible), birth_event_id=birth_event_id,
                    evidence_version=EVIDENCE_VERSION, template_snapshot=template_snapshot,
                    template_fingerprint=fingerprint(template_snapshot), instance_snapshot=encoded, instance_fingerprint=fingerprint(encoded))
         self.conn.execute("INSERT INTO WorkbenchTemplateLineageOrigins (" + ",".join(row) + ") VALUES (" +
                           ",".join("?" for _ in row) + ")", tuple(row.values()))
         return row
 
-    def _require_unexecuted(self, instance):
-        names = {row[0] for row in self.conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-        for table in ("WorkbenchProductionReports", "WorkbenchExecutionLegacyFacts"):
-            if table in names and self.fetchone("SELECT 1 FROM " + table + " WHERE operation_ref=? LIMIT 1", (instance["operation_ref"],)):
-                raise WorkbenchCommandRejected("template_lineage_not_new", "已发生执行的工序不能补配或重绑定模板来源。")
-        if "OperationExecutionEvents" in names and self.fetchone(
-                "SELECT 1 FROM OperationExecutionEvents WHERE op_id=? LIMIT 1", (instance["id"],)):
-            raise WorkbenchCommandRejected("template_lineage_not_new", "存在旧执行记录的工序不能追溯补配模板来源。")
-
-    def withdraw(self, operation_ref, reason):
-        self.require_write()
-        if not isinstance(reason, str) or not reason.strip():
-            raise WorkbenchCommandRejected("invalid_input", "撤回来源必须填写明确原因。", 400)
-        rows = self.events([operation_ref]).get(operation_ref, [])
-        if not self.origins([operation_ref]) or not rows:
-            raise WorkbenchCommandRejected("entity_not_found", "没有可撤回的模板来源。", 404)
-        if any(row["event_type"] == "withdrawn" for row in rows):
-            return False
-        row = rows[-1]
+    def append_withdrawn_event(self, operation_ref, reason, last_event):
         self.conn.execute("INSERT INTO WorkbenchTemplateLineageEvents(operation_ref,event_type,affects_calibration,reason," +
                           ",".join(STATE_COLUMNS) + ") VALUES (?,'withdrawn',1,?," + ",".join("?" for _ in STATE_COLUMNS) + ")",
-                          (operation_ref, reason.strip()) + tuple(row[key] for key in STATE_COLUMNS))
-        return True
+                          (operation_ref, reason) + tuple(last_event[key] for key in STATE_COLUMNS))

@@ -430,13 +430,15 @@ def test_preview_rejects_extra_context_and_nonobject_envelope(calendar_api, body
 
 def test_real_get_connection_date_converter_keeps_iso_snapshot_and_identity(calendar_api):
     from core.infrastructure.database import get_connection
+    from core.services.workbench.calendars import WorkbenchCalendarService
     from data.repositories.workbench_calendar_query_repo import WorkbenchCalendarQueryRepository
 
     conn = get_connection(calendar_api.client.application.config["DATABASE_PATH"])
     try:
         raw = conn.execute("SELECT date FROM WorkCalendar WHERE date=?", (NIGHT,)).fetchone()[0]
         assert type(raw) is date
-        state = WorkbenchCalendarQueryRepository(conn).range_states(NIGHT, NIGHT)[NIGHT]
+        assert type(WorkbenchCalendarQueryRepository(conn).calendar_rows(NIGHT, NIGHT)[0]["date"]) is date
+        state = WorkbenchCalendarService(conn).range_states(NIGHT, NIGHT)[NIGHT]
         assert state["row"]["date"] == state["identity"]["entity_key"] == NIGHT
         assert state["identity"]["ref"] == calendar_api.day()["calendar_ref"]
     finally:
@@ -447,12 +449,13 @@ def test_real_get_connection_date_converter_keeps_iso_snapshot_and_identity(cale
                                   "2026-09-09T00:00:00Z", "2026/09/09", "2026-02-30", None])
 def test_repository_rejects_timestamp_instead_of_silently_extracting_date(schema_conn, value):
     from core.models.workbench_command import WorkbenchCommandRejected
+    from core.services.workbench.calendars import WorkbenchCalendarService
     from data.repositories.workbench_calendar_query_repo import WorkbenchCalendarQueryRepository
 
-    repo = WorkbenchCalendarQueryRepository(schema_conn)
-    with patch.object(repo, "fetchall", return_value=[{"date": value}]):
+    # The repository hands back the stored value untouched; the service refuses to treat it as a date key.
+    with patch.object(WorkbenchCalendarQueryRepository, "calendar_rows", return_value=[{"date": value}]):
         with pytest.raises(WorkbenchCommandRejected, match="日期无效"):
-            repo.range_states(NIGHT, NIGHT)
+            WorkbenchCalendarService(schema_conn).range_states(NIGHT, NIGHT)
 
 
 @pytest.mark.parametrize("operation", ["day", "range"])

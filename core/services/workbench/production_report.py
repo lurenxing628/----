@@ -23,7 +23,7 @@ class WorkbenchProductionReportService:
         actor = self.actor_provider()
         if not isinstance(actor, str) or not actor.strip():
             raise ValueError("Local application operator must be supplied by the server.")
-        self.ledger.repo.require_schema()
+        self.ledger.require_schema()
         return ReportBatchPreparation(self.ledger, items, actor).prepare()
 
     def preview(self, action, ref, payload):

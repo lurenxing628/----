@@ -34,7 +34,7 @@ def summary(state, issues=None):
 
 def _receipts(reader, now, result):
     snapshots = []
-    for ref in reader.repo.refs():
+    for ref in reader.refs():
         latest = latest_fact(reader, ref)
         try:
             if latest["confirmed_state"] not in STATES:
@@ -97,7 +97,7 @@ def external(conn, now):
     schema = object_sql_map(conn, definitions)
     reader = WorkbenchOutsourcingService(conn, clock=lambda: now)
     try:
-        reader.repo.require_schema()
+        reader.require_schema()
     except WorkbenchCommandRejected as exc:
         if exc.code != "outsourcing_unavailable":
             raise

@@ -24,6 +24,16 @@ from core.services.scheduler.calendar_service import CalendarService
 from data.repositories.workbench_calendar_query_repo import WorkbenchCalendarQueryRepository
 
 
+def _date_key(value: Any) -> str:
+    # get_connection enables SQLite DATE conversion. datetime is deliberately not a date key.
+    if type(value) is date:
+        return value.isoformat()
+    try:
+        return calendar_date(value)
+    except ValidationError as exc:
+        raise WorkbenchCommandRejected("constraint_conflict", "存储日历的日期无效，不能当作本地日期读取。") from exc
+
+
 class _CalendarProjection(CalendarEngine):
     """Overlay one raw/proposed global row on the existing engine, without SQL writes."""
 
@@ -79,6 +89,30 @@ class WorkbenchCalendarService:
             raise ValueError("日历时钟必须使用无时区的工厂本地时间。")
         return now.replace(microsecond=0)
 
+    def range_states(self, start_date: str, end_date: str) -> Dict[str, Dict[str, Any]]:
+        """Merge raw rows with lifetime refs per date; caller owns one transaction for both reads.
+
+        Tombstones detect absent -> created -> deleted ABA. An absent date has row=None
+        and identity=None; a GET never invents a ref. A stored date that is not a real
+        local date, or a row whose active refs are not exactly one, is a data conflict.
+        """
+        rows: Dict[str, Dict[str, Any]] = {}
+        for row in self._query.calendar_rows(start_date, end_date):
+            row["date"] = _date_key(row["date"])
+            rows[row["date"]] = row
+        histories: Dict[str, List[Dict[str, Any]]] = {}
+        for identity in self._query.identity_rows(start_date, end_date):
+            identity["entity_key"] = _date_key(identity["entity_key"])
+            histories.setdefault(identity["entity_key"], []).append(identity)
+        result = {}
+        for day in sorted(rows.keys() | histories.keys()):
+            row, history = rows.get(day), histories.get(day, [])
+            active = [item for item in history if item["active"] == 1]
+            if len(active) != (1 if row is not None else 0):
+                raise WorkbenchCommandRejected("constraint_conflict", "日历与永久引用不一致，请检查数据后重试。")
+            result[day] = {"row": row, "identity": active[0] if active else None, "history": history}
+        return result
+
     @staticmethod
     def _snapshot(day: str, states: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
         state = states.get(day, {"row": None, "identity": None, "history": []})
@@ -97,7 +131,7 @@ class WorkbenchCalendarService:
         """
         day = calendar_date(date_value)
         with self._tx.transaction():
-            return self._snapshot(day, self._query.range_states(day, day))
+            return self._snapshot(day, self.range_states(day, day))
 
     def month(self, year: int, month: int) -> Dict[str, Any]:
         """Private monthly read: one-based month, real date cells, Monday-first padding.
@@ -112,7 +146,7 @@ class WorkbenchCalendarService:
         count = calendar.monthrange(year, month)[1]
         last, now = first.replace(day=count), self._now()
         with self._tx.transaction():
-            states = self._query.range_states(first.isoformat(), last.isoformat())
+            states = self.range_states(first.isoformat(), last.isoformat())
             days = []
             for offset in range(count):
                 day = first + timedelta(days=offset)
@@ -203,7 +237,7 @@ class WorkbenchCalendarService:
         dates = calendar_range_dates(request)
         if expected is not None and dates != expected.dates:
             raise WorkbenchCommandRejected("snapshot_stale", "命中的日期已经变了，请重新点「预览变更」。")
-        states = self._query.range_states(request["start_date"], request["end_date"])
+        states = self.range_states(request["start_date"], request["end_date"])
         days = []
         for index, day in enumerate(dates):
             before = self._snapshot(day, states)

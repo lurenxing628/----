@@ -1,9 +1,8 @@
-"""Trial-only writes. The command service owns the outer transaction/receipt."""
+"""Trial-only reads/writes. The command service owns the outer transaction, receipt and every ruling."""
 
 import secrets
 
 from core.infrastructure.workbench_trial_schema import workbench_trial_contract_issues
-from core.models.workbench_trial import MAX_TRIAL_TASKS, reject
 from core.models.workbench_trial_codec import dump, fingerprint, load_object
 
 
@@ -15,32 +14,22 @@ class WorkbenchTrialRepository:
     def __init__(self, conn):
         self.conn = conn
 
-    def require_schema(self):
-        if workbench_trial_contract_issues(self.conn):
-            reject("trial_schema_unavailable", "试调记录结构不完整，请联系维护人员。", 503)
+    def schema_issues(self):
+        """Trial contract issues as reported by the schema probe; [] when the schema is complete."""
+        return workbench_trial_contract_issues(self.conn)
 
-    def get(self, draft_ref):
-        self.require_schema()
+    def draft_header(self, draft_ref):
+        """The whole WorkbenchTrialDrafts row (JSON columns undecoded), or None."""
         row = self.conn.execute("SELECT * FROM WorkbenchTrialDrafts WHERE draft_ref=?", (draft_ref,)).fetchone()
-        if row is None:
-            reject("entity_not_found", "未找到指定草稿，未改查其他草稿或最新计划。", 404)
-        head = dict(row)
-        head["admission"] = load_object(head.pop("admission_json"), head["admission_hash"])
-        head["validation"] = load_object(head.pop("validation_json"))
-        count = self.conn.execute("SELECT COUNT(*) FROM WorkbenchTrialRows WHERE draft_ref=?", (draft_ref,)).fetchone()[0]
-        if count != head["row_count"] or not 0 < count <= MAX_TRIAL_TASKS:
-            reject("trial_snapshot_invalid", "草稿原范围行数不一致，未截断或重建。")
-        rows = []
-        for raw in self.conn.execute("SELECT * FROM WorkbenchTrialRows WHERE draft_ref=? ORDER BY ordinal", (draft_ref,)):
-            item = dict(raw)
-            if item["ordinal"] != len(rows):
-                reject("trial_snapshot_invalid", "草稿原始行顺序缺失。")
-            item["original"] = load_object(item.pop("original_json"), item.pop("original_hash"))
-            item["current"] = load_object(item.pop("current_json"))
-            if set(item["current"]) != {"machine_ref", "operator_ref", "machine_id", "operator_id", "start", "end"}:
-                reject("trial_snapshot_invalid", "草稿安排字段不完整。")
-            rows.append(item)
-        return head, rows
+        return None if row is None else dict(row)
+
+    def draft_row_count(self, draft_ref):
+        return self.conn.execute("SELECT COUNT(*) FROM WorkbenchTrialRows WHERE draft_ref=?", (draft_ref,)).fetchone()[0]
+
+    def draft_rows(self, draft_ref):
+        """All WorkbenchTrialRows of one draft in stored ordinal order (JSON columns undecoded)."""
+        return [dict(raw) for raw in self.conn.execute(
+            "SELECT * FROM WorkbenchTrialRows WHERE draft_ref=? ORDER BY ordinal", (draft_ref,))]
 
     def create(self, admission, rows, checked, request_key, actor, now):
         self._transaction()
@@ -60,6 +49,7 @@ class WorkbenchTrialRepository:
         return ref
 
     def change(self, head, row, before, checked, request_key, actor, now):
+        """Record one arrangement change; True when the draft head advanced, False when it was stale."""
         self._transaction()
         cur = self.conn.execute("UPDATE WorkbenchTrialRows SET current_json=? WHERE row_ref=? AND draft_ref=?",
                                (dump(row["current"]), row["row_ref"], head["draft_ref"]))
@@ -70,17 +60,18 @@ class WorkbenchTrialRepository:
              recorded_at,local_operator,request_key) VALUES (?,?,?,?,?,?,?,?,?,?)""",
             (new_ref(), head["draft_ref"], row["task_ref"], head["revision"] + 1, dump(before),
              dump(row["current"]), dump(checked), now, actor, request_key))
-        self.transition(head, "editing", checked, now)
+        return self.transition(head, "editing", checked, now)
 
     def transition(self, head, status, checked, now):
+        """True when exactly the editing head at this revision advanced; False when another write got there first."""
         self._transaction()
         cur = self.conn.execute("""UPDATE WorkbenchTrialDrafts SET status=?,revision=revision+1,
             validation_json=?,updated_at=? WHERE draft_ref=? AND revision=? AND status='editing'""",
             (status, dump(checked), now, head["draft_ref"], head["revision"]))
-        if cur.rowcount != 1:
-            reject("stale_write", "草稿已被其他操作保存或改变，请重新读取。")
+        return cur.rowcount == 1
 
     def save(self, head, snapshot, request_key, actor, now):
+        """Persist a scenario snapshot plus permanent rows; True when the draft head advanced to saved."""
         self._transaction()
         ref = snapshot["scenario_ref"]
         self.conn.execute("""INSERT INTO WorkbenchTrialScenarios
@@ -90,27 +81,17 @@ class WorkbenchTrialRepository:
         self.conn.executemany("""INSERT INTO WorkbenchTrialScenarioRows
             (row_ref,task_ref,scenario_ref,source_row_ref,payload_json) VALUES (?,?,?,?,?)""",
             [(row["row_ref"], row["task_ref"], ref, row["source_row_ref"], dump(row)) for row in snapshot["tasks"]])
-        self.transition(head, "saved", snapshot["validation"], now)
-
-    def scenario(self, ref):
-        self.require_schema()
-        row = self.conn.execute("SELECT snapshot_json,snapshot_hash FROM WorkbenchTrialScenarios WHERE scenario_ref=?", (ref,)).fetchone()
-        if row is None:
-            reject("entity_not_found", "未找到指定试调场景。", 404)
-        result = load_object(row[0], row[1])
-        tasks = result.get("tasks")
-        if type(tasks) is not list or any(type(task) is not dict or type(task.get("row_ref")) is not str for task in tasks):
-            reject("trial_snapshot_invalid", "场景任务明细必须为带永久行引用的对象列表。")
-        stored = {row[0]: load_object(row[1]) for row in self.conn.execute(
-            "SELECT row_ref,payload_json FROM WorkbenchTrialScenarioRows WHERE scenario_ref=?", (ref,))}
-        if len(stored) != len(tasks) or stored != {row["row_ref"]: row for row in tasks}:
-            reject("trial_snapshot_invalid", "场景快照与永久明细不一致。")
-        return result
+        return self.transition(head, "saved", snapshot["validation"], now)
 
     def scenario_header(self, ref):
         """The whole WorkbenchTrialScenarios row of one scenario, or None."""
         row = self.conn.execute("SELECT * FROM WorkbenchTrialScenarios WHERE scenario_ref=?", (ref,)).fetchone()
         return None if row is None else dict(row)
+
+    def scenario_rows(self, ref):
+        """(row_ref, payload_json) of every permanent scenario row, payload undecoded."""
+        return [dict(row) for row in self.conn.execute(
+            "SELECT row_ref,payload_json FROM WorkbenchTrialScenarioRows WHERE scenario_ref=?", (ref,))]
 
     def changes(self, draft_ref):
         result = []

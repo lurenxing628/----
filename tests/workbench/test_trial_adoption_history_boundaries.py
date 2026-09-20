@@ -5,7 +5,7 @@ import json
 import pytest
 
 from core.models.workbench_command import WorkbenchCommandRejected
-from data.repositories import workbench_trial_adoption_history as limits
+from core.services.workbench import trial_adoption_history_policy as limits
 from tests.workbench.trial_adoption_history_support import raw_receipt, read, seeded
 from tests.workbench.trial_adoption_history_support import trial_case as trial_case  # noqa: F401
 from tests.workbench.trial_support import snapshot

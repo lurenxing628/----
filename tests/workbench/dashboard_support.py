@@ -55,7 +55,7 @@ class DashboardCase:
     def history(self, ref):
         reader = WorkbenchDashboardService(self.conn)
         with reader.read_snapshot():
-            return reader.repo.history(ref, 1, 100)["items"]
+            return reader.history(ref, 1, 100)["items"]
 
     def plan(self, version):
         self.conn.execute("INSERT INTO ScheduleHistory(version,strategy,result_status,result_summary,schedule_time) "

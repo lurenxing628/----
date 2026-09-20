@@ -22,8 +22,8 @@ class WorkbenchOutsourcingCommandService:
         repo, ref = self.reader.repo, payload.get("outsourcing_ref")
         previous, header = None, None
         if ref is not None:
-            header = repo.header(ref)
-            previous = repo.latest(ref)
+            header = self.reader.header(ref)
+            previous = self.reader.latest(ref)
         target = header["target"] if header else payload["target"]
         source = self.reader.sources.load(target)
         if header and source["identity"] != header["identity"]:
@@ -51,14 +51,14 @@ class WorkbenchOutsourcingCommandService:
 
     def execute(self, payload, *, request_key, validate_context):
         normalized = normalize_input(payload)
-        self.reader.repo.require_schema()
+        self.reader.require_schema()
         subject = (reference(normalized["outsourcing_ref"]) if "outsourcing_ref" in normalized
                    else target_input(normalized["target"])["batch_ref"])
         if type(subject) is not str:
             raise RuntimeError("Validated outsourcing subject must be a permanent text reference")
 
         def guard():
-            self.reader.repo.require_schema()
+            self.reader.require_schema()
             prepared = self._prepare(normalized)
             validate_context(subject, "confirm", prepared["snapshot"])
             actor = self.actor_provider()

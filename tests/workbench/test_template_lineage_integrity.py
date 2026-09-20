@@ -7,7 +7,7 @@ import pytest
 from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_template_lineage import restore_snapshot
-from core.services.workbench.template_lineage_query import TemplateLineageQuery
+from core.services.workbench.template_lineage_query import TemplateLineageQuery, read_events
 from tests.workbench.execution_ledger_support import all_rows
 from tests.workbench.template_lineage_support import (
     calibration,
@@ -198,6 +198,6 @@ def test_delete_changes_only_target_business_rows_refs_and_append_only_event(lin
     before_seq, after_seq = dict(before["sqlite_sequence"]), dict(after["sqlite_sequence"])
     assert after_seq.pop("WorkbenchTemplateLineageEvents") == before_seq.pop("WorkbenchTemplateLineageEvents") + 1
     assert after_seq == before_seq
-    events = case.lineage_repo.events([saved["operation_ref"]])[saved["operation_ref"]]
+    events = read_events(case.lineage_repo, [saved["operation_ref"]])[saved["operation_ref"]]
     assert [row["event_type"] for row in events] == ["created", "retired"]
     assert case.lineage_repo.origins([saved["operation_ref"]])[saved["operation_ref"]] == saved

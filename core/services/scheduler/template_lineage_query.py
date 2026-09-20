@@ -16,9 +16,43 @@ from core.models.workbench_template_lineage import (
 )
 from data.repositories.workbench_template_lineage_repo import WorkbenchTemplateLineageRepository
 
+MAX_EVIDENCE_BYTES = 16 * 1024 * 1024
+MAX_EVENTS = 50000
+
 
 def _invalid() -> NoReturn:
     raise WorkbenchCommandRejected("template_lineage_corrupt", "模板来源证据与实例历史不一致，未猜配或静默忽略。", 500)
+
+
+def check_evidence_size(size):
+    if size > MAX_EVIDENCE_BYTES:
+        raise WorkbenchCommandRejected("query_too_large", "模板来源证据超过16MB，请缩小范围；未截断原始内容。", 413)
+
+
+def lineage_available(repo):
+    """False when lineage storage was never installed; partial or altered DDL is rejected, never repaired."""
+    state = repo.schema_state()
+    if state == "invalid":
+        raise WorkbenchCommandRejected("template_lineage_unavailable", "模板来源结构不完整，请恢复完整资料；本次没有自动补表。")
+    return state == "loaded"
+
+
+def read_origins(repo, refs):
+    check_evidence_size(repo.origins_bytes(refs))
+    return repo.origins(refs)
+
+
+def read_events(repo, refs):
+    check_evidence_size(repo.events_bytes(refs))
+    result = {}
+    for rows in repo.event_chunks(refs, MAX_EVENTS):
+        if len(rows) > MAX_EVENTS:
+            raise WorkbenchCommandRejected("query_too_large", "模板来源变更超过50000条，请缩小范围；未截断证据。", 413)
+        for row in rows:
+            result.setdefault(row["operation_ref"], []).append(row)
+    if sum(map(len, result.values())) > MAX_EVENTS:
+        raise WorkbenchCommandRejected("query_too_large", "模板来源变更超过50000条，请缩小范围。", 413)
+    return result
 
 
 def validate_origin(origin, events):
@@ -117,11 +151,11 @@ class TemplateLineageQuery:
 
     def read(self, operation_refs):
         refs = sorted(set(operation_refs))
-        if not self.repo.available():
+        if not lineage_available(self.repo):
             return {"available": False, "origins": {}, "events": {}, "current": {}, "templates": {}, "lineages": {}, "problems": {}}
-        origins = self.repo.origins(refs)
+        origins = read_origins(self.repo, refs)
         self._ancestors(origins)
-        events = self.repo.events(list(origins))
+        events = read_events(self.repo, list(origins))
         current = self.repo.current_instances(list(origins))
         templates = self.repo.current_templates(sorted({row["template_operation_ref"] for row in origins.values()}))
         lineages, problems = {}, {}
@@ -138,12 +172,12 @@ class TemplateLineageQuery:
             missing = {row["source_operation_ref"] for row in origins.values() if row["source_operation_ref"] is not None} - origins.keys()
             if not missing:
                 return
-            rows = self.repo.origins(sorted(missing))
+            rows = read_origins(self.repo, sorted(missing))
             if set(rows) != missing:
                 _invalid()
             origins.update(rows)
-            self.repo._check_size(sum(len(row["template_snapshot"].encode("ascii")) + len(row["instance_snapshot"].encode("ascii"))
-                                      for row in origins.values()))
+            check_evidence_size(sum(len(row["template_snapshot"].encode("ascii")) + len(row["instance_snapshot"].encode("ascii"))
+                                    for row in origins.values()))
             if len(origins) > MAX_OPERATIONS:
                 break
         raise WorkbenchCommandRejected("query_too_large", "模板复制来源超过100层或10000实例，请缩小范围。", 413)

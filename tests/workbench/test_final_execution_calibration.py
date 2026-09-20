@@ -85,7 +85,7 @@ def test_real_original_pause_exception_and_withdrawal_exclude_without_erasing_re
     with closing(get_connection(str(host.root / "db/aps-live.db"))) as conn:
         case = LedgerCase(conn)
         if kind == "withdraw":
-            ref = case.ledger.repo.task(case.task(1, op))["operation_ref"]
+            ref = case.ledger.task_header(case.task(1, op))["operation_ref"]
             with TransactionManager(conn).transaction():
                 assert TemplateLineageWriter(conn).withdraw(ref, "核对后撤销错误来源关联")
                 assert not TemplateLineageWriter(conn).withdraw(ref, "核对后撤销错误来源关联")

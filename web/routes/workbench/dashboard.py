@@ -74,7 +74,7 @@ def _read(item_ref=None, history=False):
             item = reader.detail(data, item_ref, query)
             result = {"item": reader.public_item(item), "as_of": data["as_of"], "scope": query.scope()}
             if history:
-                result["history"] = reader.repo.history(item_ref, history_page, query.size)
+                result["history"] = reader.history(item_ref, history_page, query.size)
             payload_size(result)
     response = query_success(result, snapshot)
     payload_size(response.get_json())

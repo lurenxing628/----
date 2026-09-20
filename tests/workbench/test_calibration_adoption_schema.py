@@ -13,6 +13,7 @@ from core.infrastructure.workbench_calibration_adoption_schema import (
     objects,
 )
 from core.models.workbench_command import WorkbenchCommandRejected
+from core.services.workbench.process_quota_protection import read_quota_locks
 from data.repositories.workbench_calibration_adoption_repo import WorkbenchCalibrationAdoptionRepository
 from tests.workbench.calibration_adoption_support import INTENT, KEY, PREVIEW_INTENT, service, snapshot, token
 from tests.workbench.calibration_adoption_support import adoption_case as _adoption_case  # noqa: F401
@@ -67,7 +68,7 @@ def test_missing_and_changed_storage_fail_closed_without_repair(adoption_case, d
     before, structure = snapshot(case.conn), _schema(case.conn)
     repo = WorkbenchCalibrationAdoptionRepository(case.conn)
     with pytest.raises(WorkbenchCommandRejected) as error:
-        repo.read_locks([case.template_ref])
+        read_quota_locks(repo, [case.template_ref])
     assert error.value.code == "adoption_schema_unavailable"
     with pytest.raises(WorkbenchCommandRejected) as error:
         service(case.conn).preview(case.template_ref, PREVIEW_INTENT)
@@ -108,7 +109,7 @@ def test_lock_requires_matching_audit_and_missing_lock_is_not_unlocked(ready_ado
     case.conn.commit()
     assert contract_issues(case.conn) == []
     with pytest.raises(WorkbenchCommandRejected) as error:
-        WorkbenchCalibrationAdoptionRepository(case.conn).read_locks([case.template_ref])
+        read_quota_locks(WorkbenchCalibrationAdoptionRepository(case.conn), [case.template_ref])
     assert error.value.code == "calibration_lock_corrupt"
 
 

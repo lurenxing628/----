@@ -1,6 +1,12 @@
-"""Shared process quota protection; locks belong to the original template ref."""
+"""Shared process quota protection; locks belong to the original template ref.
 
+The adoption repository only returns storage facts; every ruling about missing DDL,
+bad input, oversized queries and corrupt audit/lock pairs is decided here.
+"""
+
+from core.models.workbench_calibration import MAX_TEMPLATES
 from core.models.workbench_command import WorkbenchCommandRejected
+from core.models.workbench_execution_input import public_ref
 from data.repositories.process_query_repo import ProcessQueryRepository
 from data.repositories.workbench_calibration_adoption_repo import WorkbenchCalibrationAdoptionRepository
 
@@ -17,6 +23,38 @@ def quota_skip_summary(rows):
             "skipped_rows": skipped}
 
 
+def require_adoption_schema(repo):
+    if not repo.schema_installed():
+        raise WorkbenchCommandRejected("adoption_schema_unavailable", "采纳存储尚未安装或结构不完整，本次没有自动补表。", 503)
+
+
+def read_quota_locks(repo, template_operation_refs):
+    """Return {permanent_ref: lock}; absent key means unlocked only with valid DDL.
+
+    Ordinary writes/imports must call inside their own write transaction. Missing or
+    partial DDL and damaged audit pairs are errors even for an empty ref set.
+    """
+    require_adoption_schema(repo)
+    if isinstance(template_operation_refs, (str, bytes)):
+        raise WorkbenchCommandRejected("invalid_input", "定额锁查询必须提供模板永久引用集合。", 400)
+    refs = sorted({public_ref(ref) for ref in template_operation_refs})
+    if len(refs) > MAX_TEMPLATES:
+        raise WorkbenchCommandRejected("query_too_large", "定额锁查询最多10000个模板引用，未截断。", 413)
+    result = {}
+    for audited, rows in repo.lock_pairs(refs):
+        if audited != {row["template_operation_ref"] for row in rows}:
+            raise WorkbenchCommandRejected("calibration_lock_corrupt", "采纳审计与定额锁不成对，未按未锁定处理。", 500)
+        for row in rows:
+            if (row["audit_template_ref"] != row["template_operation_ref"] or row["new_unit_hours"] != row["locked_unit_hours"]
+                    or row["adopted_at"] != row["locked_at"]):
+                raise WorkbenchCommandRejected("calibration_lock_corrupt", "定额锁内容与采纳审计不一致，未按未锁定处理。", 500)
+            result[row["template_operation_ref"]] = {key: value for key, value in row.items()
+                if key not in ("audit_template_ref", "new_unit_hours", "adopted_at")}
+            result[row["template_operation_ref"]]["locked"] = True
+            result[row["template_operation_ref"]]["confirmed"] = row["confirmed"] == 1
+    return result
+
+
 class ProcessQuotaProtection:
     def __init__(self, conn):
         self.conn = conn
@@ -25,7 +63,7 @@ class ProcessQuotaProtection:
 
     def read_locks(self, refs):
         # Missing/partial DDL and damaged audit pairs are errors even for no changes.
-        return self.locks.read_locks(refs)
+        return read_quota_locks(self.locks, refs)
 
     def bind(self, part_no, seq):
         self.read_locks([])

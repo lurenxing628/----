@@ -9,6 +9,8 @@ from core.services.scheduler import schedule_service
 from data.repositories.workbench_run_repo import WorkbenchRunRepository
 from data.repositories.workbench_run_result_repo import WorkbenchRunResultRepository
 
+from .run_policy import require_admission, require_run_schema
+
 
 def recover_unfinished_runs(conn, *, executor_is_active=None, clock=None):
     """Host evidence returns True/False/None. Foreign-process absence is not assumed.
@@ -19,7 +21,7 @@ def recover_unfinished_runs(conn, *, executor_is_active=None, clock=None):
     if conn.in_transaction:
         raise RuntimeError("Run recovery must own the outer transaction")
     repo = WorkbenchRunRepository(conn)
-    repo.require_schema()
+    require_run_schema(repo)
     lock = schedule_service._RUN_SCHEDULE_LOCK
     if not lock.acquire(blocking=False):
         return {"recovered": [], "pending": [], "scheduling_busy": True}
@@ -28,7 +30,7 @@ def recover_unfinished_runs(conn, *, executor_is_active=None, clock=None):
             recovered, pending = [], []
             now = (clock or datetime.now)().isoformat(timespec="seconds")
             for row in repo.unfinished():
-                repo.require_admission(row)
+                require_admission(repo, row)
                 reconciled = _reconcile_result(conn, repo, row)
                 if reconciled is True:
                     recovered.append(row["run_ref"])

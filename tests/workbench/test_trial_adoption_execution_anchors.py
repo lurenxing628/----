@@ -12,6 +12,7 @@ import pytest
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_trial_codec import dump, fingerprint
+from core.services.workbench.trial_policy import load_draft
 from data.repositories.workbench_trial_repo import WorkbenchTrialRepository
 from tests.workbench.run_candidate_support import corrupt_update
 from tests.workbench.trial_adoption_support import BASE, INTENT, api, assert_retained, full_plan
@@ -90,7 +91,7 @@ def _http_adopt_exact_saved(case, saved):
     assert response.status_code == 200, response.get_json()
     version = response.get_json()["data"]["official_plan"]["version"]
     actual = {row["op_id"]: row for row in case.conn.execute("SELECT * FROM Schedule WHERE version=?", (version,))}
-    original_rows = WorkbenchTrialRepository(case.conn).get(saved["draft_ref"])[1]
+    original_rows = load_draft(WorkbenchTrialRepository(case.conn), saved["draft_ref"])[1]
     op_ids = {row["operation_ref"]: row["original"]["operation"]["id"] for row in original_rows}
     assert len(actual) == len(saved["tasks"])
     for task in saved["tasks"]:
@@ -114,7 +115,7 @@ def test_completed_actuals_seed_new_trial_and_publish_exact_saved_arrangements(t
     assert first["original"] == {"start": "2026-09-09T08:00:00", "end": "2026-09-09T11:00:00",
         "machine_ref": case.ref("machine", "M1"), "operator_ref": case.ref("operator", "O1")}
     assert first["changed"]
-    private = next(row for row in WorkbenchTrialRepository(case.conn).get(draft["draft_ref"])[1]
+    private = next(row for row in load_draft(WorkbenchTrialRepository(case.conn), draft["draft_ref"])[1]
                    if row["original"]["operation"]["id"] == case.op_id)
     assert private["original"]["arrangement"]["start"] == first["original"]["start"]
     assert private["original"]["execution_anchor"]["arrangement"] == private["current"]
@@ -212,7 +213,7 @@ def test_saved_execution_anchor_tampering_and_report_drift_cannot_publish(trial_
     checked = adoption_service(case.conn).preview(saved["scenario_ref"])
     assert checked["validation"]["can_adopt"], checked
     if tamper == "private_anchor":
-        row = next(row for row in WorkbenchTrialRepository(case.conn).get(saved["draft_ref"])[1]
+        row = next(row for row in load_draft(WorkbenchTrialRepository(case.conn), saved["draft_ref"])[1]
                    if row["original"].get("execution_anchor"))
         original = deepcopy(row["original"])
         original["execution_anchor"]["arrangement"]["start"] = "2026-09-09T09:30:00"

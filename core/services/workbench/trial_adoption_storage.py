@@ -11,6 +11,8 @@ from core.models.workbench_trial_codec import fingerprint
 from data.repositories.workbench_command_repo import WorkbenchCommandRepository
 from data.repositories.workbench_trial_repo import WorkbenchTrialRepository
 
+from .trial_policy import load_draft, load_scenario
+
 
 def _invalid(message) -> NoReturn:
     raise TrialAdoptionBlocked("trial_snapshot_invalid", message)
@@ -19,9 +21,9 @@ def _invalid(message) -> NoReturn:
 def load_saved_scenario(conn, scenario_ref):
     reference(scenario_ref)
     repo = WorkbenchTrialRepository(conn)
-    saved = repo.scenario(scenario_ref)
+    saved = load_scenario(repo, scenario_ref)
     header = repo.scenario_header(scenario_ref)
-    head, originals = repo.get(header["draft_ref"])
+    head, originals = load_draft(repo, header["draft_ref"])
     _require_head(saved, header, head, originals)
     _require_receipts(conn, saved, header, head)
     sources = {row["row_ref"]: row for row in originals}

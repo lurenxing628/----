@@ -12,6 +12,7 @@ from core.models.workbench_trial_codec import dump, fingerprint, load, load_obje
 from core.services.workbench import trial_base
 from core.services.workbench.trial_adoption import WorkbenchTrialAdoptionService
 from core.services.workbench.trial_capacity import _resource
+from core.services.workbench.trial_policy import load_draft, load_scenario
 from data.repositories.workbench_trial_raw_repo import WorkbenchTrialRawPlanRepository
 from data.repositories.workbench_trial_repo import WorkbenchTrialRepository
 from tests.workbench.run_candidate_support import corrupt_update, edit_capture
@@ -69,7 +70,7 @@ def test_draft_object_columns_reject_scalar_without_writing(trial_case, field):
     corrupt_update(case.conn, table, sql, tuple(values.values()))
     before = snapshot(case.conn)
     with pytest.raises(WorkbenchCommandRejected) as error:
-        WorkbenchTrialRepository(case.conn).get(draft["draft_ref"])
+        load_draft(WorkbenchTrialRepository(case.conn), draft["draft_ref"])
     assert error.value.code == "trial_snapshot_invalid" and snapshot(case.conn) == before
 
 
@@ -179,5 +180,5 @@ def test_saved_scenario_rejects_wrong_shapes_and_duplicate_rows_without_repair(t
                    (dump(value), fingerprint(value)))
     before = snapshot(case.conn)
     with pytest.raises(WorkbenchCommandRejected) as error:
-        WorkbenchTrialRepository(case.conn).scenario(saved["scenario_ref"])
+        load_scenario(WorkbenchTrialRepository(case.conn), saved["scenario_ref"])
     assert error.value.code == "trial_snapshot_invalid" and snapshot(case.conn) == before

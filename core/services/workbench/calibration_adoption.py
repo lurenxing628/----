@@ -11,6 +11,7 @@ from data.repositories.workbench_calibration_adoption_repo import WorkbenchCalib
 
 from . import messages
 from .calibration_adoption_evidence import read_evidence
+from .calibration_adoption_policy import adopt_quota
 from .commands import WorkbenchCommandService
 
 
@@ -70,7 +71,7 @@ class WorkbenchCalibrationAdoptionService:
             actor = self.actor_provider()
             if type(actor) is not str or not actor.strip() or len(actor) > 512 or "\x00" in actor:
                 raise RuntimeError("The server must supply a valid local application operator.")
-            after = self.repo.update_quota(evidence.template, evidence.suggestion["suggested_unit_hours"])
+            after = adopt_quota(self.repo, evidence.template, evidence.suggestion["suggested_unit_hours"])
             audit = self.repo.append(evidence, after, intent, request_key=request_key, actor=actor,
                                      adopted_at=evidence.generated_at)
             return WorkbenchCommandOutcome("committed", {**audit, "locked": True,

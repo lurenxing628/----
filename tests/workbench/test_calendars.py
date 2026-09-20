@@ -448,7 +448,7 @@ def test_raw_null_fields_preserved_in_snapshot_and_not_silently_rewritten(calend
 def test_query_failure_propagates_without_fake_default_or_write(calendar_env):
     conn, adapter, _ = calendar_env
     before = stored_state(conn)
-    with patch.object(WorkbenchCalendarQueryRepository, "range_states", side_effect=RuntimeError("fixture read failure")):
+    with patch.object(WorkbenchCalendarQueryRepository, "calendar_rows", side_effect=RuntimeError("fixture read failure")):
         with pytest.raises(RuntimeError, match="fixture read failure"):
             adapter.month(2024, 2)
     assert stored_state(conn) == before
