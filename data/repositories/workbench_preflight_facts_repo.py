@@ -5,7 +5,7 @@ read_whole_table 只接受当前库 sqlite_master 里实际存在的表，表名
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, Iterator, List, Optional, Set, Tuple
 
 from core.infrastructure.schema_probe import table_names
 
@@ -35,10 +35,12 @@ class WorkbenchPreflightFactsRepository(BaseRepository):
         """按 PREFLIGHT_TABLES 顺序整表读取（rowid 序），返回 {表名: [行 dict]}。"""
         return {name: self.fetchall("SELECT * FROM " + _quote(name) + " ORDER BY rowid") for name in PREFLIGHT_TABLES}
 
-    def read_whole_table(self, name: str) -> List[Tuple[Any, ...]]:
-        """整表按 rowid 序读成原始值元组；表名必须真实存在于 sqlite_master（本实例内缓存一次）。"""
+    def read_whole_table(self, name: str) -> Iterator[Tuple[Any, ...]]:
+        """整表按 rowid 序流式产出原始值元组；表名必须真实存在于 sqlite_master（本实例内缓存一次）。
+
+        表名校验与语句执行在调用时完成（未知表立即 ValueError），行只在迭代时物化，指纹计算不整表装内存。"""
         if name not in self._present_tables():
             raise ValueError("unknown table: " + repr(name))
         quoted = _quote(name)
         cursor = self.execute("SELECT * FROM " + quoted + " ORDER BY rowid")
-        return [tuple(row) for row in cursor]
+        return (tuple(row) for row in cursor)

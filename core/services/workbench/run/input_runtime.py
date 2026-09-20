@@ -129,9 +129,8 @@ def _validate_downtime_row(row):
 
 def _validate_stored_runtime(conn):
     repo = WorkbenchRunInputRepository(conn)
-    for table, rows in repo.calendar_rows().items():
-        for row in rows:
-            _validate_calendar_row(row, table)
+    for table, row in repo.calendar_rows():
+        _validate_calendar_row(row, table)
     for row in repo.machine_downtime_rows():
         _validate_downtime_row(row)
 

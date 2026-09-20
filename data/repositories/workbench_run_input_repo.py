@@ -6,7 +6,7 @@ run_input_points 与 run_candidate_adoption_constraints。表名一律来自本�
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Sequence
+from typing import Any, Dict, Iterator, List, Sequence, Tuple
 
 from .base_repo import BaseRepository
 from .schedule_time_sql import time_dt
@@ -19,16 +19,20 @@ _POINT_CHUNK = 900
 
 
 class WorkbenchRunInputRepository(BaseRepository):
-    def schedule_rows_through_version(self, prev_version: int) -> List[Dict[str, Any]]:
-        """version<=prev_version 的全部 Schedule 行，按 version,id 排序（同一工序后版本覆盖前版本）。"""
-        return self.fetchall("SELECT * FROM Schedule WHERE version<=? ORDER BY version,id", (prev_version,))
+    def schedule_rows_through_version(self, prev_version: int) -> Iterator[Dict[str, Any]]:
+        """流式产出 version<=prev_version 的全部 Schedule 行，按 version,id 排序（同一工序后版本覆盖前版本）。
 
-    def calendar_rows(self) -> Dict[str, List[Dict[str, Any]]]:
-        """{表名: 全部行}，按 CALENDAR_TABLES 顺序。"""
-        return {table: self.fetchall("SELECT * FROM " + table) for table in CALENDAR_TABLES}
+        历史版本可能有几十万行，调用方只保留最新一行，所以这里不整体物化。"""
+        return self.iter_rows("SELECT * FROM Schedule WHERE version<=? ORDER BY version,id", (prev_version,))
 
-    def machine_downtime_rows(self) -> List[Dict[str, Any]]:
-        return self.fetchall("SELECT * FROM MachineDowntimes")
+    def calendar_rows(self) -> Iterator[Tuple[str, Dict[str, Any]]]:
+        """流式产出 (表名, 行)，按 CALENDAR_TABLES 顺序逐表读取。"""
+        for table in CALENDAR_TABLES:
+            for row in self.iter_rows("SELECT * FROM " + table):
+                yield table, row
+
+    def machine_downtime_rows(self) -> Iterator[Dict[str, Any]]:
+        return self.iter_rows("SELECT * FROM MachineDowntimes")
 
     def adoption_check_tables(self) -> Dict[str, List[Dict[str, Any]]]:
         """{表名: 全部行}，按 ADOPTION_CHECK_TABLES 顺序，供 PreflightChecks 复核候选实际资源。"""

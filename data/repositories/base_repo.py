@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 import sys
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, Union
+from typing import Any, Dict, Iterable, Iterator, List, Optional, Sequence, Tuple, Union
 
 from core.errors import AppError, ErrorCode
 
@@ -69,6 +69,11 @@ class BaseRepository:
         cur = self.execute(sql, params)
         rows = cur.fetchall() or []
         return [_row_to_dict(r) for r in rows]
+
+    def iter_rows(self, sql: str, params: Optional[Params] = None) -> Iterator[Dict[str, Any]]:
+        """逐行流式读取：语句在调用时立即执行（错误立即翻译），行只在迭代时物化，整表读取不再一次装进内存。"""
+        cur = self.execute(sql, params)
+        return (_row_to_dict(row) for row in cur)
 
     def fetchvalue(self, sql: str, params: Optional[Params] = None, default: Any = None) -> Any:
         cur = self.execute(sql, params)

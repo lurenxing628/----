@@ -285,9 +285,10 @@ def test_adoption_history_bounded_fact_methods(schema_conn) -> None:
     _seed_trial(schema_conn, _source_ref(schema_conn, "operation", op1))
     repo = TrialAdoptionHistoryRepository(schema_conn)
 
+    assert not isinstance(repo.receipt_headers(10), list), "目录扫描流式产出，不整体物化"
     assert [row["request_key"] for row in repo.receipt_headers(10)] == [REQ_CREATE, REQ_RUN, REQ_SAVE]
     assert [row["request_key"] for row in repo.receipt_headers(2)] == [REQ_CREATE, REQ_RUN], "LIMIT 逐字传入"
-    assert set(repo.receipt_headers(1)[0]) == {"request_key", "action", "context_ref"}
+    assert set(next(repo.receipt_headers(1))) == {"request_key", "action", "context_ref"}
     assert repo.receipt_size(REQ_SAVE) == {"bytes": 2} and repo.receipt_size("req-nope") is None
     assert repo.receipt_row(REQ_SAVE)["action"] == "trial.save" and repo.receipt_row("req-nope") is None
     heads = repo.history_heads(1)

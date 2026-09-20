@@ -6,12 +6,14 @@ class TrialAdoptionHistoryRepository:
         self.conn = conn
 
     def receipt_headers(self, limit):
-        """(request_key, action, context_ref) of the first `limit` command receipts by request_key.
+        """Stream (request_key, action, context_ref) of the first `limit` command receipts by request_key.
 
         There is no action/context index in the frozen schema; the caller bounds the header scan
-        by asking for one row past its cap instead of hiding a full scan."""
-        return [dict(row) for row in self.conn.execute(
-            "SELECT request_key,action,context_ref FROM WorkbenchCommandReceipts ORDER BY request_key LIMIT ?", (limit,))]
+        by asking for one row past its cap instead of hiding a full scan. The statement runs at
+        call time; rows are materialised one at a time while the caller filters them."""
+        cursor = self.conn.execute(
+            "SELECT request_key,action,context_ref FROM WorkbenchCommandReceipts ORDER BY request_key LIMIT ?", (limit,))
+        return (dict(row) for row in cursor)
 
     def receipt_size(self, key):
         """{"bytes": outcome_json byte length} of one command receipt, or None when the receipt is missing."""

@@ -152,7 +152,9 @@ def test_preflight_tables_and_read_whole_table_whitelist(schema_conn) -> None:
     assert tuple(tables) == PREFLIGHT_TABLES
     assert tables["Batches"][0]["batch_id"] == "PROC-B" and isinstance(tables["Parts"][0], dict)
 
-    raw = repo.read_whole_table("Parts")
+    stream = repo.read_whole_table("Parts")
+    assert not isinstance(stream, list), "整表读取流式产出，不整体物化"
+    raw = list(stream)
     expected = [tuple(row) for row in schema_conn.execute("SELECT * FROM Parts ORDER BY rowid")]
     assert raw == expected and all(type(row) is tuple for row in raw)
     with pytest.raises(ValueError):
@@ -161,7 +163,7 @@ def test_preflight_tables_and_read_whole_table_whitelist(schema_conn) -> None:
         repo.read_whole_table('Parts" WHERE 1; --')
     schema_conn.execute('CREATE TABLE "odd""name"(x)')
     schema_conn.execute('INSERT INTO "odd""name" VALUES (1)')
-    assert WorkbenchPreflightFactsRepository(schema_conn).read_whole_table('odd"name') == [(1,)], "表名在仓储内引号化"
+    assert list(WorkbenchPreflightFactsRepository(schema_conn).read_whole_table('odd"name')) == [(1,)], "表名在仓储内引号化"
 
 
 # ---------------- 工艺：工时文件写入 ----------------

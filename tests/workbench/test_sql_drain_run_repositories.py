@@ -6,6 +6,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from core.infrastructure.workbench_run_schema import RUN_TABLES
 from data.repositories.workbench_run_candidate_repo import WorkbenchRunCandidateRepository
 from data.repositories.workbench_run_facts_repo import WorkbenchRunFactsRepository
@@ -194,19 +196,20 @@ def test_input_repository_runtime_rows_and_points(schema_conn) -> None:
     repo = WorkbenchRunInputRepository(schema_conn)
 
     rows = repo.schedule_rows_through_version(1)
+    assert not isinstance(rows, list), "历史版本行流式产出，不整体物化"
     assert [(row["version"], row["op_id"], row["lock_status"]) for row in rows] == [(1, op1, "locked"), (1, op2, "unlocked")]
     assert [(row["version"], row["op_id"]) for row in repo.schedule_rows_through_version(2)] == [(1, op1), (1, op2), (2, op1)]
 
     schema_conn.execute("INSERT INTO WorkCalendar(date,day_type,shift_start,shift_end) VALUES ('2026-09-10','workday','08:00',NULL)")
     schema_conn.execute("INSERT INTO OperatorCalendar(operator_id,date,day_type) VALUES ('O1','2026-09-10','weekend')")
-    calendars = repo.calendar_rows()
-    assert tuple(calendars) == CALENDAR_TABLES
-    assert [row["day_type"] for row in calendars["WorkCalendar"]] == ["workday"]
-    assert [(row["operator_id"], row["day_type"]) for row in calendars["OperatorCalendar"]] == [("O1", "weekend")]
+    calendars = list(repo.calendar_rows())
+    assert tuple(dict.fromkeys(table for table, _ in calendars)) == CALENDAR_TABLES
+    assert [row["day_type"] for table, row in calendars if table == "WorkCalendar"] == ["workday"]
+    assert [(row["operator_id"], row["day_type"]) for table, row in calendars if table == "OperatorCalendar"] == [("O1", "weekend")]
 
-    assert repo.machine_downtime_rows() == []
+    assert not isinstance(repo.machine_downtime_rows(), list) and list(repo.machine_downtime_rows()) == []
     schema_conn.execute("INSERT INTO MachineDowntimes(machine_id,start_time,end_time,status) VALUES ('M1','2026-09-10T08:00:00','2026-09-10T09:00:00','cancelled')")
-    downtimes = repo.machine_downtime_rows()
+    downtimes = list(repo.machine_downtime_rows())
     assert len(downtimes) == 1 and isinstance(downtimes[0], dict) and downtimes[0]["status"] == "cancelled"
 
     checks = repo.adoption_check_tables()
@@ -219,3 +222,17 @@ def test_input_repository_runtime_rows_and_points(schema_conn) -> None:
     assert [(row["op_id"], row["start_time"], row["end_time"]) for row in points] == [(op1, "2026-09-10 08:00:00", "2026-09-10 08:00:00")]
     assert repo.point_rows_at(version=2, op_ids=[op1], start_time="2026-09-10 08:00:00") == []
     assert repo.point_rows_at(version=1, op_ids=[], start_time="2026-09-10 08:00:00") == []
+
+
+def test_iter_rows_translates_failures_at_call_time_and_yields_lazily(schema_conn) -> None:
+    """流式读取的错误在调用时就翻译成 AppError，不能等到迭代时才冒出来；行按需产出、逐行是 dict。"""
+    from core.errors import AppError
+    from data.repositories.base_repo import BaseRepository
+
+    repo = BaseRepository(schema_conn)
+    with pytest.raises(AppError):
+        repo.iter_rows("SELECT * FROM NoSuchTableForStreaming")
+    schema_conn.executemany("INSERT INTO Machines(machine_id,name) VALUES (?,?)", [("S1", "one"), ("S2", "two")])
+    stream = repo.iter_rows("SELECT machine_id FROM Machines ORDER BY machine_id")
+    assert not isinstance(stream, list) and next(stream) == {"machine_id": "S1"}
+    assert [row["machine_id"] for row in stream] == ["S2"]
