@@ -35,7 +35,7 @@ tags: [schema, migrations, sqlite, infrastructure, quality-gate]
 
 - 改结构的工作流固定为：写迁移 → `python -m tools.generate_schema_sql --write` → 跑 `tests/migration_db/test_generate_schema_sql.py` 与结构对账测试 → 提交迁移、`schema.sql` 与测试。
 - 直接改 `schema.sql` 的提交会被 `--check` 门禁拦下。
-- `ensure_schema_version` / `detect_schema_is_current` 等入口带 `schema_sql` 参数贯通，测试可注入声明文本；不再有 `database_bootstrap` 的正则解析路径。
+- `ensure_schema_version` / `detect_schema_is_current` 等入口带 `schema_sql` 参数贯通，测试可注入声明文本；`database_bootstrap` 不再用正则解析表结构（只保留 BEGIN 探测与 PRAGMA 剥离两处文本处理）。
 
 ## 相关文档
 

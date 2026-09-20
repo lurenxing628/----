@@ -1,16 +1,16 @@
 """Win7 冻结包完整性对账合同（2026-07-19 盲区扫描 B07/B08，护栏 B14 同批）。
 
 背景：
-- scheduler 路由 registrar（web/routes/domains/scheduler/scheduler_route_registrar.py）
-  与 core.services.scheduler 包 __init__（含 config 子包）都用变量实参
-  importlib.import_module 做动态导入，PyInstaller 4.10 静态分析不可见；
+- core.services.scheduler 包 __init__（含 config 子包）用变量实参
+  importlib.import_module 做懒导出，PyInstaller 4.10 静态分析不可见
+  （旧路由 registrar 的动态导入已随旧路由层于 2026-09 删除）；
 - 冻结包的模块收集只有两条通道：build_win7_onedir.bat 的 --hidden-import 手工清单，
   以及 app.py 可达静态 import 覆盖的"冻结导入锚"
   （web/bootstrap/factory.py 的 _PYINSTALLER_IMPORT_ANCHORS，
   web/bootstrap/_frozen_import_anchor.py）。
 
 本合同把动态导入清单与两条收集通道钉死对账：
-  (a) bat 两个打包分支的 hidden-import 均须覆盖 registrar._ROUTE_MODULES 全集；
+  (a) 已退役：旧路由 registrar 随旧路由层删除，不再有路由模块动态导入需要对账；
   (b) core.services.scheduler（含 config 子包）_EXPORTS 的每个模块，须被冻结锚
       静态 import 覆盖，或在 bat hidden-import 清单里；
   (c) bat 两个分支的 hidden-import 集合彼此一致；

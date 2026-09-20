@@ -5,7 +5,7 @@
 用法：
     python reference_tracer.py                    # 分析当前 git 未提交的变更
     python reference_tracer.py --commit HEAD~1    # 分析最近一次提交的变更
-    python reference_tracer.py --file core/services/scheduler/batch_service.py  # 分析指定文件
+    python reference_tracer.py --file core/services/batch/service.py  # 分析指定文件
 """
 from __future__ import annotations
 

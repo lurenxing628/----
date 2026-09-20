@@ -64,7 +64,7 @@
 
 - **服务层**：`core/services/scheduler/*`
 - **算法层**：`core/algorithms/*`
-- **与日历相关**：`core/services/scheduler/calendar_service.py`（以及拆分出的 admin/engine 类，如存在）
+- **与日历相关**：`core/services/scheduler/calendar/service.py`（以及拆分出的 admin/engine 类，如存在）
 - **配置键与默认值**：`core/services/scheduler/config_service.py` + `schema.sql` 的 `ScheduleConfig`
 
 抽取清单（用于回填“开发文档/排产算法”“速查表/策略配置与约束”）：

@@ -24,7 +24,7 @@
 “我新增了人员专属工作日历（OperatorCalendar），并把日历 day_type 的 weekend/holiday 口径统一为 holiday。请对齐开发文档。”
 
 **期望行为（Agent）：**
-- 读取变更文件（常见：`schema.sql`、`core/models/calendar.py`、`data/repositories/operator_calendar_repo.py`、`core/services/scheduler/calendar_service.py`、`web/routes/personnel_calendar_pages.py`，以及对应 Excel 路由/模板）。
+- 读取变更文件（常见：`schema.sql`、`core/models/calendar.py`、`data/repositories/operator_calendar_repo.py`、`core/services/scheduler/calendar/service.py`、`web/routes/personnel_calendar_pages.py`，以及对应 Excel 路由/模板）。
 - 并行 subagent 抽取事实：
   - DB：新增表/索引/字段、兼容迁移口径（weekend→holiday）
   - 服务：个人日历覆盖语义（优先级、回退规则）

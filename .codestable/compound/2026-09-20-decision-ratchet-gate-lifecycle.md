@@ -35,7 +35,7 @@ tags: [quality-gate, ratchet, baseline, sql-boundary, private-import, data-polic
 
 ## 后果
 
-- 三条规则当前状态：`sql_boundary` 0 条、`data_policy` 0 条、`private_import` 142 条目 / 387 处；前两条已进入"任何新命中即失败"阶段。
+- 三条规则当前状态：`sql_boundary` 0 条、`data_policy` 0 条、`private_import` 141 条目 / 385 处；前两条已进入"任何新命中即失败"阶段。
 - 后续新边界（例如 web helper 直接组装仓储、模型层反向注解服务层）优先复用同一套扫描器 + 基线 + 参数化测试的形式。
 
 ## 相关文档

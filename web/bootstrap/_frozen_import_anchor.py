@@ -7,9 +7,9 @@
 - 本模块把 _EXPORTS 全部子模块（含 config 子包的 lazy 导出）显式静态 import
   一遍，只作冻结收集锚点；由 web/bootstrap/factory.py 的
   _PYINSTALLER_IMPORT_ANCHORS 静态引用，保证 PyInstaller 从 app.py 可达。
-- 源码态行为零变化：web 启动路径本来就会在 factory 导入
-  web.bootstrap.request_services 时立即导入全部服务；非 web 消费方不导入
-  本模块，包级 lazy 语义保持不变（lazy 化取舍见 41ad409c）。
+- 源码态行为零变化：web 启动路径本来就会在 factory 装配路由与服务时
+  导入全部排产服务；非 web 消费方不导入本模块，包级 lazy 语义保持不变
+  （lazy 化取舍见 41ad409c）。
 
 同步契约：__init__._EXPORTS（含 config/__init__._EXPORTS）新增或删除条目时，
 必须同步本文件的静态 import 清单；

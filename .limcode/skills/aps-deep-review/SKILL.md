@@ -23,7 +23,7 @@ python .limcode/skills/aps-deep-review/scripts/reference_tracer.py
 python .limcode/skills/aps-deep-review/scripts/reference_tracer.py --commit HEAD~1
 
 # 也可以分析指定文件
-python .limcode/skills/aps-deep-review/scripts/reference_tracer.py --file core/services/scheduler/batch_service.py
+python .limcode/skills/aps-deep-review/scripts/reference_tracer.py --file core/services/batch/service.py
 ```
 
 > 说明：`reference_tracer.py` 的“调用点”来自文本匹配（非完整调用图），请把输出当作审查线索并回到源码核对。

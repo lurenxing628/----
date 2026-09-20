@@ -93,7 +93,7 @@ core/services/scheduler/
 ### config/ —— 排产策略配置
 - **职责**:配置读写、预设管理、字段校验/强转、活跃预设溯源。
 - **核心文件**:`config/config_service.py` `ConfigService`(对外门面)、`config/config_snapshot.py` `ensure_schedule_config_snapshot`(被 run/summary 共依的跨包出口)、`config/config_field_spec.py`(包内枢纽,被引 12 次)、`config/config_page_save_service.py`(配置页保存事务)。
-- **依赖现状**:`core.infrastructure.errors`、`core.shared.field_labels`、`core.services.common.safe_logging`;**唯一直连仓储的子包**——`config_service.py` import `data.repositories.config_repo.ConfigRepository`。
+- **依赖现状**:`core.errors`、`core.shared.field_labels`、`core.services.common.safe_logging`;**唯一直连仓储的子包**——`config_service.py` import `data.repositories.config_repo.ConfigRepository`。
 - **对其它子包**:**0**(完全自洽,不依赖 run/summary/graph/analysis)。
 - **被重度依赖**:全仓 15 个 config/ 之外文件引用 `ConfigService`;web 三个 `scheduler_config*` 路由直连。
 

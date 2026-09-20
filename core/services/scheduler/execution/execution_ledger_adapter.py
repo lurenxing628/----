@@ -99,7 +99,7 @@ def _load_projections(ledger, refs, execution_projections):
     else:
         plan = ledger._current_plan()
         projections = _supplied_projection_map(execution_projections, refs, plan)
-        ledger_revision = ledger.repo.clock()["ledger_revision"]
+        ledger_revision = ledger.revision_clock()["ledger_revision"]
     return projections, plan, ledger_revision
 
 
