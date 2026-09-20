@@ -19,9 +19,6 @@ EXPECTED: Dict[str, Dict[str, str]] = {
     PACKAGE: {
         "CalendarService": PACKAGE + ".calendar.service",
         "ConfigService": PACKAGE + ".config.config_service",
-        "GanttAdjustmentDraftService": PACKAGE + ".gantt.adjustment_draft_service",
-        "GanttAdjustmentScenarioService": PACKAGE + ".gantt.adjustment_scenario_service",
-        "GanttAdjustmentValidationService": PACKAGE + ".gantt.adjustment_validation_service",
         "GanttService": PACKAGE + ".gantt.service",
         "OperationExecutionFeedbackService": PACKAGE + ".operation_execution_feedback_service",
         "ResourceDispatchActualRecordService": PACKAGE + ".resource_dispatch.actual_record_service",

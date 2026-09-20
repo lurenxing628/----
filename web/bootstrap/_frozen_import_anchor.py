@@ -21,9 +21,6 @@ from __future__ import annotations
 import core.services.scheduler.calendar.service as _calendar_service
 import core.services.scheduler.config.config_page_outcome as _config_page_outcome
 import core.services.scheduler.config.config_service as _config_service
-import core.services.scheduler.gantt.adjustment_draft_service as _gantt_adjustment_draft_service
-import core.services.scheduler.gantt.adjustment_scenario_service as _gantt_adjustment_scenario_service
-import core.services.scheduler.gantt.adjustment_validation_service as _gantt_adjustment_validation_service
 import core.services.scheduler.gantt.service as _gantt_service
 import core.services.scheduler.operation_execution_feedback_service as _operation_execution_feedback_service
 import core.services.scheduler.resource_dispatch.actual_record_service as _resource_dispatch_actual_record_service
@@ -35,9 +32,6 @@ FROZEN_IMPORT_ANCHORS = (
     _calendar_service,
     _config_page_outcome,
     _config_service,
-    _gantt_adjustment_draft_service,
-    _gantt_adjustment_scenario_service,
-    _gantt_adjustment_validation_service,
     _gantt_service,
     _operation_execution_feedback_service,
     _resource_dispatch_actual_record_service,

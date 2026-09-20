@@ -350,3 +350,4 @@ web/bootstrap 里只有 factory.py 可 import web.routes（装配蓝图）；web
 - 2026-09-20：三轨对抗复审（`.codestable/audits/2026-09-20-foundation-boundary-review/`）：3 blocker（pyright 41 错、债务台账 check 红、就绪度降级漏接 AppError）+ 9 major 全部修复并单独提交；facts/ 定义、排产子包方向约束、文档数字按复审更正。
 - 2026-09-20：复审遗留清理——47 条旧路由层失效分组作用域清空并加合同；死代码孤岛 108 条逐条分诊（删 9 处、基线按类别吸收 99 条）；删 8 个只能 ImportError 的旧脚本；`SchedulerLike` 落到 `contracts/`，排产子包方向表立为适应度测试；说明书蓝图字面导入进冻结合同。
 - 2026-09-20：退役无生产调用方的 `ExcelService` 预览路径与 `GanttAdjustmentPublishService`（门面 / 冻结锚 / 注册表 / 三缺口文档同步）；甘特调整 Draft / Scenario / Validation 三服务同样无生产调用方，整族退役待裁决。
+- 2026-09-20：用户裁决“该退役就退役”——甘特调整族 Draft / Scenario / Validation 三服务、投影、草稿仓储与草稿 / 变更 / 方案行模型删除，方案模型与方案仓储的 `list_catalog_rows` 保留供工作台计划目录读取；测试改为按退役服务的真实产物直插方案表。

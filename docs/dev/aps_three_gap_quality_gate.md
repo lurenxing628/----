@@ -65,7 +65,6 @@
 
 收集方式：合并 `aps-three-gap-directions-items.yaml` 第 1-13 项 `test_commands` 和 `git diff --name-only d4589d77 -- 'tests/*.py'`。下面既包含本 roadmap 改过的测试，也包含第 1-13 项精准命令引用的既有测试。
 
-- `tests/gantt/test_gantt_draft_save_and_preview.py`
 - `tests/migration_db/test_migrations.py`
 - `tests/operation_execution/test_operation_execution_event_foundation.py`
 - `tests/operation_execution/test_operation_execution_event_time_contract.py`
@@ -132,7 +131,6 @@
 - `core/services/scheduler/schedule_delay_diagnosis_clues.py`
 - `core/services/scheduler/execution_fact_provider.py`
 - `core/services/scheduler/execution_snapshot.py`
-- `core/services/scheduler/gantt/adjustment_validation_service.py`
 - `core/services/scheduler/operation_execution_feedback_actions.py`
 - `core/services/scheduler/operation_execution_feedback_service.py`
 - `core/services/scheduler/operation_execution_feedback_support.py`
@@ -145,7 +143,6 @@
 - `core/services/scheduler/run/schedule_input_collector.py`
 - `core/services/scheduler/run/schedule_input_runtime_support.py`
 - `core/services/scheduler/run/schedule_persistence.py`
-- `core/services/scheduler/gantt/adjustment_scenario_service.py`
 - `core/services/report/execution_review.py`
 - `core/services/report/report_plan_helpers.py`
 - `core/services/report/report_engine.py`

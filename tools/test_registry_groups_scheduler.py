@@ -306,8 +306,6 @@ SCHEDULER_REQUIRED_REGRESSION_GROUPS = (
         "label": "Scheduler analysis, gantt, reports, and week plan contracts",
         "target_paths": (
             "tests/gantt/test_gantt_adapter_contract.py",
-            "tests/gantt/test_gantt_adjustment_draft_model.py",
-            "tests/gantt/test_gantt_draft_save_and_preview.py",
             "tests/gantt/test_frappe_gantt_short_task_contract.py",
             "tests/gantt/test_gantt_readonly_mode_contract.py",
             "tests/gantt/test_gantt_zoom_contract.py",

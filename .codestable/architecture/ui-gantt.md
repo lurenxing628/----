@@ -92,6 +92,8 @@ tags: [scheduler, gantt, frontend, readonly, vendor, scenario-preview, task-deta
 
 ## 5. Draft 草稿模型与校验试算
 
+> 2026-09-20 退役：`GanttAdjustmentDraftService` / `GanttAdjustmentValidationService` / `GanttAdjustmentScenarioService`、`adjustment_projection.py` 与 `ScheduleAdjustmentRepository` 在生产代码里已无调用方（旧路由层 2026-09-18 删除），同日删除；模拟调整统一走工作台试调（`core/services/workbench/trial/*`）。`ScheduleAdjustmentDraft` / `ScheduleAdjustmentChange` 两张表不再有写入方，`ScheduleAdjustmentScenario` / `ScheduleAdjustmentScenarioRow` 两张表、`ScheduleAdjustmentScenario` 模型与 `ScheduleAdjustmentScenarioRepository.list_catalog_rows`（仅此一个只读方法）保留，供工作台计划目录 / 页面 / 查询读取已保存方案。§5、§6 以下为历史链路描述。
+
 后端已经有 `ScheduleAdjustmentDraft` 和 `ScheduleAdjustmentChange` 两张表，用来记录模拟调整草稿里“用户想怎么改”。它们不属于正式排产结果：
 
 - 不写 `Schedule`。

@@ -10,26 +10,21 @@ from tests._support import gantt_scenario
 from tests._support import resource_dispatch_frontend_support as canonical_resource
 from tests._support.dependency_boundaries import assert_import_orders
 from tests._support.paths import REPO_ROOT
-from tests.gantt import test_gantt_draft_save_and_preview as legacy_gantt
 from tests.resource_dispatch import resource_dispatch_frontend_support as legacy_resource
 
 
 def test_moved_test_helpers_keep_old_identities_and_import_orders():
-    pairs = (
-        (legacy_gantt, gantt_scenario, ("_connect", "_seed_base", "_draft_with_change", "_build_app", "VERSION", "SCHEMA_PATH")),
-        (legacy_resource, canonical_resource, ("resource_dispatch_script_paths", "resource_dispatch_script_tags", "read_resource_dispatch_script_bundle", "extract_js_function", "RESOURCE_DISPATCH_TEMPLATE")),
-    )
-    for old, new, names in pairs:
-        for name in names:
-            assert getattr(old, name) is getattr(new, name)
-        assert_import_orders(old.__name__, new.__name__, names)
+    names = ("resource_dispatch_script_paths", "resource_dispatch_script_tags", "read_resource_dispatch_script_bundle", "extract_js_function", "RESOURCE_DISPATCH_TEMPLATE")
+    for name in names:
+        assert getattr(legacy_resource, name) is getattr(canonical_resource, name)
+    assert_import_orders(legacy_resource.__name__, canonical_resource.__name__, names)
 
 
 def test_fixture_imports_do_not_load_collected_tests():
     script = """
 import sys
 from tests._support import gantt_scenario, resource_dispatch_frontend_support
-assert 'tests.gantt.test_gantt_draft_save_and_preview' not in sys.modules
+assert not [name for name in sys.modules if name.startswith('tests.') and '.test_' in name], sorted(sys.modules)
 assert 'tests.resource_dispatch.resource_dispatch_frontend_support' not in sys.modules
 assert 'app' not in sys.modules
 """
@@ -41,14 +36,24 @@ assert 'app' not in sys.modules
                 assert node.module.startswith("tests._support."), (module.__name__, node.lineno)
 
 
-def test_scenario_seed_and_draft_data_unchanged(tmp_path):
+def test_scenario_seed_data_unchanged(tmp_path):
     conn = gantt_scenario._connect(tmp_path)
     try:
         gantt_scenario._seed_base(conn)
         rows = conn.execute("SELECT id, op_id, version FROM Schedule ORDER BY id").fetchall()
         assert [tuple(row) for row in rows] == [(70, 10, 5), (80, 20, 5), (90, 30, 5)]
-        draft_id = gantt_scenario._draft_with_change(conn)
-        assert conn.execute("SELECT base_version FROM ScheduleAdjustmentDraft WHERE draft_id=?", (draft_id,)).fetchone()[0] == 5
+        scenario = gantt_scenario._saved_scenario(conn)
+        assert (scenario.scenario_id, scenario.base_version, scenario.base_plan_role, scenario.base_source_table) == (
+            gantt_scenario.SCENARIO_ID, 5, "adopted", "schedule")
+        assert (scenario.status, scenario.validation_status, scenario.row_count) == ("active", "valid", 3)
+        scenario_rows = conn.execute(
+            "SELECT source_row_id, op_id, start_time, end_time, is_changed FROM ScheduleAdjustmentScenarioRow "
+            "WHERE scenario_id = ? ORDER BY id", (scenario.scenario_id,)).fetchall()
+        assert [tuple(row) for row in scenario_rows] == [
+            (70, 10, "2026-05-04 08:00:00", "2026-05-04 09:00:00", "no"),
+            (90, 30, "2026-05-04 11:00:00", "2026-05-04 12:00:00", "yes"),
+            (80, 20, "2026-05-04 10:00:00", "2026-05-04 11:00:00", "no"),
+        ]
         assert [tuple(row) for row in conn.execute("SELECT id, op_id, version FROM Schedule ORDER BY id")] == [tuple(row) for row in rows]
     finally:
         conn.close()

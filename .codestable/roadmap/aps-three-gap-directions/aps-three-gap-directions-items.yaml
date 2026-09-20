@@ -61,7 +61,6 @@ items:
       - core/services/report/downtime_impact.py
       - core/services/report/utilization.py
       - core/services/scheduler/gantt_critical_chain_provider.py
-      - core/services/scheduler/gantt_adjustment_validation_service.py
       - data/repositories/batch_repo.py
       - data/repositories/batch_material_repo.py
       - data/repositories/material_repo.py
@@ -699,7 +698,6 @@ items:
       - core/services/scheduler/execution_fact_provider.py
       - core/models/schedule_adjustment.py
       - data/repositories/operation_execution_event_repo.py
-      - core/services/scheduler/gantt_adjustment_scenario_service.py
       - data/repositories/schedule_adjustment_scenario_repo.py
       - schema.sql
       - core/infrastructure/migration_state.py

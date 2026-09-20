@@ -107,7 +107,6 @@ KEY_PYTHON_FILES = (
     "core/services/scheduler/schedule_plan_query_service.py",
     "core/services/scheduler/schedule_delay_diagnosis_service.py",
     "core/services/scheduler/schedule_delay_diagnosis_clues.py",
-    "core/services/scheduler/gantt/adjustment_validation_service.py",
     "core/services/scheduler/operation_execution_feedback_actions.py",
     "core/services/scheduler/operation_execution_feedback_service.py",
     "core/services/scheduler/operation_execution_feedback_support.py",

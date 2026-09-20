@@ -66,6 +66,7 @@ verified_by: 主代理定向测试（每个修复提交单独跑定向用例，�
 | C7 | R2-m1 嵌套 `begin_immediate` 静默降级 | 用户裁决不改：一人一机，真正会嵌套的 `record_event` 外层本就是 IMMEDIATE，最坏后果是一次可见报错而非坏数据 |
 | C8 | 老 Excel 导入簇 | 用户裁决退役死的一半：删 `ExcelService` 类、两个 `build_existing_for_excel`、一份专测与三个开发期冒烟脚本；类型与 `excel_import_executor` 仍被批次 / 日历 / 人员设备导入使用，原地保留；`TabularBackend` 三件套是插件框架示例能力，是否连插件示例退役另议 |
 | C9 | `GanttAdjustmentPublishService.publish_scenario` 生产无调用方 | 退役：删服务与两份测试、账本守卫里 3 个驱动它的用例，门面 `_EXPORTS` / 冻结锚 / 懒导出合同 / 注册表 / 三缺口文档与路线图条目同步；同族 Draft / Scenario / Validation 三个服务同样无生产调用方（约 1.5k 行 + 46 份测试引用），整族退役另议 |
+| C10 | 甘特调整族 Draft / Scenario / Validation + 投影 + 草稿仓储 | 用户裁决退役：删 3 服务、`adjustment_projection.py`、`ScheduleAdjustmentRepository`，模型只留 `ScheduleAdjustmentScenario`；`ScheduleAdjustmentScenarioRepository` 只留 `list_catalog_rows`（`build_plan_catalog` 仍调用，但该函数生产无调用方、只被两份工作台测试当私有目录合同使用，超出本次裁决未动）；`tests/_support/gantt_scenario.py` 的 `_saved_scenario` 改为按退役服务的真实产物直插两张方案表；`ScheduleAdjustmentDraft` / `ScheduleAdjustmentChange` 两张表不再有写入方，是否 drop 属数据裁决未动 |
 
 ## 未做 / 证据不足
 

@@ -107,12 +107,11 @@ def test_operation_alignment_stable_across_versions(baseline_case):
     assert old["items"][0]["before"]["task_ref"] != new["items"][0]["before"]["task_ref"]
 
 
-def test_real_draft_save_and_connection_restart(baseline_case):
-    from core.services.scheduler.gantt.adjustment_scenario_service import GanttAdjustmentScenarioService
-    from tests._support.gantt_scenario import _draft_with_change, _seed_base
+def test_saved_scenario_read_survives_connection_restart(baseline_case):
+    from tests._support.gantt_scenario import _saved_scenario, _seed_base
     conn = baseline_case.conn
     _seed_base(conn)
-    saved = GanttAdjustmentScenarioService(conn).save_scenario(draft_id=_draft_with_change(conn))
+    saved = _saved_scenario(conn)
     first = baseline_case.read(version=5, scenario_id=saved.scenario_id)
     reopened = connect(baseline_case.path)
     try:

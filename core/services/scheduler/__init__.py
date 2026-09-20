@@ -18,9 +18,6 @@ from importlib import import_module
 _EXPORTS = {
     "CalendarService": ".calendar.service",
     "ConfigService": ".config.config_service",
-    "GanttAdjustmentDraftService": ".gantt.adjustment_draft_service",
-    "GanttAdjustmentScenarioService": ".gantt.adjustment_scenario_service",
-    "GanttAdjustmentValidationService": ".gantt.adjustment_validation_service",
     "GanttService": ".gantt.service",
     "OperationExecutionFeedbackService": ".operation_execution_feedback_service",
     "ResourceDispatchActualRecordService": ".resource_dispatch.actual_record_service",
@@ -41,9 +38,6 @@ def __getattr__(name: str):
 __all__ = [
     "CalendarService",
     "ConfigService",
-    "GanttAdjustmentDraftService",
-    "GanttAdjustmentScenarioService",
-    "GanttAdjustmentValidationService",
     "GanttService",
     "OperationExecutionFeedbackService",
     "ResourceDispatchActualRecordService",
@@ -58,9 +52,6 @@ if TYPE_CHECKING:
 
     from .calendar.service import CalendarService
     from .config.config_service import ConfigService
-    from .gantt.adjustment_draft_service import GanttAdjustmentDraftService
-    from .gantt.adjustment_scenario_service import GanttAdjustmentScenarioService
-    from .gantt.adjustment_validation_service import GanttAdjustmentValidationService
     from .gantt.service import GanttService
     from .operation_execution_feedback_service import OperationExecutionFeedbackService
     from .resource_dispatch.actual_record_service import ResourceDispatchActualRecordService

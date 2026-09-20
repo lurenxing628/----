@@ -7,13 +7,21 @@ import sys
 from pathlib import Path
 
 from core.infrastructure.database import ensure_schema, get_connection
-from core.services.scheduler.gantt.adjustment_draft_service import GanttAdjustmentDraftService
-from core.services.scheduler.gantt.adjustment_scenario_service import GanttAdjustmentScenarioService
+from core.models.schedule_adjustment import ScheduleAdjustmentScenario
 from tests._support.excel_templates import point_env_at_shared
 from tests._support.paths import REPO_ROOT
 
 SCHEMA_PATH = REPO_ROOT / "schema.sql"
 VERSION = 5
+SCENARIO_ID = "scenario-single-day"
+SCENARIO_DRAFT_ID = "draft-single-day"
+_SCENARIO_COLUMNS = (
+    "scenario_id", "source_draft_id", "base_version", "base_plan_role", "base_source_table",
+    "base_candidate_id", "base_candidate_key", "scenario_name", "status", "validation_status",
+    "issue_count", "issues_json", "row_count", "execution_snapshot_revision",
+    "execution_snapshot_op_ids", "execution_snapshot_op_count", "created_by", "published_version",
+    "published_by", "published_reason", "published_at", "created_at", "updated_at",
+)
 
 
 def _connect(tmp_path: Path):
@@ -58,41 +66,37 @@ def _seed_base(conn) -> None:
     )
     conn.commit()
 
-def _draft_with_change(
-    conn,
-    *,
-    to_start: str = "2026-05-04 11:00:00",
-    to_end: str = "2026-05-04 12:00:00",
-    to_machine_id=None,
-    to_operator_id=None,
-) -> str:
-    service = GanttAdjustmentDraftService(conn)
-    draft = service.create_draft(base_version=VERSION, base_plan_role="adopted", created_by="pytest")
-    service.record_time_change(draft_id=draft.draft_id, op_id=30, to_start=to_start, to_end=to_end)
-    if to_machine_id is not None or to_operator_id is not None:
-        service.record_resource_change(
-            draft_id=draft.draft_id,
-            op_id=30,
-            to_machine_id=to_machine_id,
-            to_operator_id=to_operator_id,
-        )
-    return draft.draft_id
 
+def _saved_scenario(conn) -> ScheduleAdjustmentScenario:
+    """Seed the saved scenario the retired draft/scenario services used to write.
 
-def _saved_scenario(conn):
-    draft_service = GanttAdjustmentDraftService(conn)
-    draft = draft_service.create_draft(base_version=VERSION, base_plan_role="adopted", created_by="pytest")
-    draft_service.record_time_change(
-        draft_id=draft.draft_id,
-        op_id=30,
-        to_start="2026-05-04 11:00:00",
-        to_end="2026-05-04 12:00:00",
+    Same rows the retired GanttAdjustmentScenarioService.save_scenario produced for
+    the ``_seed_base`` plan: version 5 copied through, op 30 moved to 11:00-12:00.
+    """
+    conn.execute(
+        "INSERT INTO ScheduleAdjustmentScenario(scenario_id, source_draft_id, base_version, base_plan_role, "
+        "base_source_table, scenario_name, status, validation_status, issue_count, issues_json, row_count, "
+        "execution_snapshot_revision, execution_snapshot_op_ids, execution_snapshot_op_count, created_by) "
+        "VALUES (?, ?, ?, 'adopted', 'schedule', '单日模拟', 'active', 'valid', 0, '[]', 3, "
+        "'execution-snapshot:pytest', '[10, 20, 30]', 3, 'planner')",
+        (SCENARIO_ID, SCENARIO_DRAFT_ID, VERSION),
     )
-    return GanttAdjustmentScenarioService(conn).save_scenario(
-        draft_id=draft.draft_id,
-        scenario_name="单日模拟",
-        created_by="planner",
+    conn.executemany(
+        "INSERT INTO ScheduleAdjustmentScenarioRow(scenario_id, source_table, source_row_id, op_id, machine_id, "
+        "operator_id, start_time, end_time, lock_status, is_changed) "
+        "VALUES (?, 'schedule', ?, ?, ?, ?, ?, ?, 'unlocked', ?)",
+        [
+            (SCENARIO_ID, 70, 10, "M1", "O1", "2026-05-04 08:00:00", "2026-05-04 09:00:00", "no"),
+            (SCENARIO_ID, 90, 30, "M2", "O2", "2026-05-04 11:00:00", "2026-05-04 12:00:00", "yes"),
+            (SCENARIO_ID, 80, 20, "M1", "O1", "2026-05-04 10:00:00", "2026-05-04 11:00:00", "no"),
+        ],
     )
+    row = conn.execute(
+        "SELECT " + ", ".join(_SCENARIO_COLUMNS) + " FROM ScheduleAdjustmentScenario WHERE scenario_id = ?",
+        (SCENARIO_ID,),
+    ).fetchone()
+    conn.commit()
+    return ScheduleAdjustmentScenario.from_row(dict(zip(_SCENARIO_COLUMNS, tuple(row))))
 
 
 def _build_app(tmp_path: Path, monkeypatch):
