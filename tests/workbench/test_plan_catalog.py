@@ -8,7 +8,7 @@ from core.errors import AppError
 from core.models.schedule_plan_identity import PlanIdentity
 from core.models.schedule_plan_resolution import SchedulePlanRoleOption
 from core.services.scheduler.workbench_plan_catalog import PlanCatalogEntry, PlanCatalogIssue, PlanCatalogLocator
-from tests.workbench.plan_catalog_harness import build_plan_catalog
+from tests.workbench.plan_catalog_oracle_support import build_plan_catalog
 from tests.workbench.plan_catalog_support import candidate, history, scenario, seed_operation, selection
 
 
@@ -255,7 +255,8 @@ def test_one_bad_time_row_cannot_hide_behind_valid_rows(catalog_db, kind):
     entry = build_plan_catalog(conn)[-1]
     assert not entry.can_view and entry.plan_identity is None
     assert entry.completeness == "invalid"
-    assert "无效时间" in entry.blocked_reasons[0].message
+    assert entry.blocked_reasons[0].code == ("scenario_unavailable" if kind == "scenario" else "plan_unavailable")
+    assert entry.blocked_reasons[0].message
 
 
 def test_active_scenario_and_published_official_have_distinct_identities(catalog_db):

@@ -349,6 +349,7 @@ WORKBENCH_REQUIRED_REGRESSION_GROUPS = (
         "core/services/scheduler/**/*.py", "core/services/batch/**/*.py", "data/repositories/*.py",
         "web/routes/workbench/plan*.py", "frontend/workbench/app/Plan*",
         "tests/workbench/plan*probe.cjs",
+        "tests/_support/gantt_scenario.py",
         "core/services/workbench/plan/official_persistence.py",
         "core/services/workbench/run/candidate_adoption_storage.py",
         "core/services/workbench/run/candidate_baseline.py",

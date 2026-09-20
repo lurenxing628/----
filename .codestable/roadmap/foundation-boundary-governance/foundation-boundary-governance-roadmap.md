@@ -352,4 +352,5 @@ web/bootstrap 里只有 factory.py 可 import web.routes（装配蓝图）；web
 - 2026-09-20：退役无生产调用方的 `ExcelService` 预览路径与 `GanttAdjustmentPublishService`（门面 / 冻结锚 / 注册表 / 三缺口文档同步）；甘特调整 Draft / Scenario / Validation 三服务同样无生产调用方，整族退役待裁决。
 - 2026-09-20：用户裁决“该退役就退役”——甘特调整族 Draft / Scenario / Validation 三服务、投影、草稿仓储与草稿 / 变更 / 方案行模型删除，方案模型与方案仓储的 `list_catalog_rows` 保留供工作台计划目录读取；测试改为按退役服务的真实产物直插方案表。
 - 2026-09-20：Excel 后端三件套（`TabularBackend` / `OpenpyxlBackend` / `PandasBackend`）、`excel_backend_factory` 与 pandas 插件示例退役；插件框架测试改用合成能力键，仓内真实可选插件只剩 `ortools_probe`。
-- 2026-09-20：工作台私有计划目录层（全量目录 + 两个私有分页入口）从生产搬到 `tests/workbench/plan_catalog_harness.py`，只给测试当 oracle；`_check_detail_times` 收成显式 `validate_detail_times` 单路，`SchedulePlanDetailTimeRepository` / `ScheduleAdjustmentScenarioRepository` 退役；孤儿冻结旧库夹具删除。`ScheduleAdjustmentDraft` / `ScheduleAdjustmentChange` 两张表按裁决保留不 drop。
+- 2026-09-20：工作台私有计划目录层（全量目录 + 两个私有分页入口）从生产搬到 `tests/workbench/plan_catalog_oracle_support.py`，只给测试当 oracle；`_check_detail_times` 收成显式 `validate_detail_times` 单路，`SchedulePlanDetailTimeRepository` / `ScheduleAdjustmentScenarioRepository` 退役；孤儿冻结旧库夹具删除。`ScheduleAdjustmentDraft` / `ScheduleAdjustmentChange` 两张表按裁决保留不 drop。
+- 2026-09-21：三轨复审无 blocker；修复复审项：oracle 模块改名进注册表作用域、零工时采用历史行为测试、`write_fixed_bytes` 链接拒绝直接用例、scip 配置死路径、场景预览读取小合同。待裁决：`GanttService.get_gantt_tasks` 生产无调用方。

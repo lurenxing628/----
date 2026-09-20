@@ -33,8 +33,7 @@
     "quick_ui_check.py",
     "ui_v1_v2_check.py",
     "validate_dist_exe.py",
-    "verify_manual_styles.py",
-    "core/services/common/pandas_backend.py"
+    "verify_manual_styles.py"
   ],
   "pythonVersion": "3.8",
   "typeCheckingMode": "basic",

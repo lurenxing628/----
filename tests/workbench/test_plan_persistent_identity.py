@@ -23,7 +23,7 @@ from core.models.workbench_plan_reference import WorkbenchPlanLocator as Locator
 from core.models.workbench_plan_reference import WorkbenchPlanReferenceError
 from core.services.scheduler.workbench_plan_catalog import PlanCatalogLocator
 from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
-from tests.workbench.plan_catalog_harness import build_plan_catalog
+from tests.workbench.plan_catalog_oracle_support import build_plan_catalog
 from tests.workbench.plan_catalog_support import END, START, history, scenario, seed_operation, selection
 from tests.workbench.plan_identity_support import (
     IDENTITY_TABLES,

@@ -94,3 +94,21 @@ def test_strict_permissive_scenario_and_history_reads_preserve_all_tables(schema
         assert all_rows(conn) == before and conn.total_changes == changes
     finally:
         conn.close()
+
+
+def test_scenario_view_reads_scenario_rows_and_missing_scenario_is_explicit(schema_conn):
+    conn = schema_conn
+    op_id = seed_operation(conn)
+    history(conn, VERSION, op_id=op_id)
+    seed_scenario(conn, "scenario-plain", VERSION, op_id=op_id)
+    conn.execute("UPDATE ScheduleAdjustmentScenarioRow SET start_time='2026-09-09 11:00:00', end_time='2026-09-09 12:00:00' "
+                 "WHERE scenario_id='scenario-plain'")
+    conn.commit()
+    service = SchedulePlanQueryService(conn)
+    window = dict(version=VERSION, role="adopted", start_time="2026-09-09 00:00:00", end_time="2026-09-10 00:00:00")
+    official = service.list_plan_detail_rows_between(**window)
+    preview = service.list_plan_detail_rows_between_for_view(scenario_id="scenario-plain", **window)
+    assert [row["start_time"] for row in official] == ["2026-09-09 08:00:00"]
+    assert [row["start_time"] for row in preview] == ["2026-09-09 11:00:00"]
+    with pytest.raises(ValueError, match="模拟方案不存在"):
+        service.resolve_plan_view(VERSION, "adopted", "scenario-missing")

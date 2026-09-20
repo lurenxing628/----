@@ -260,6 +260,38 @@ def test_write_fixed_text_refuses_preexisting_hardlink_without_truncating_target
     assert victim.read_text(encoding="utf-8") == "VICTIM-UNCHANGED"
 
 
+def test_write_fixed_bytes_refuses_preexisting_symlink_without_touching_target(tmp_path: Path) -> None:
+    _skip_without_symlink(tmp_path)
+    import core.infrastructure.safe_files as safe_mod
+
+    victim = tmp_path / "victim.bin"
+    fixed_file = tmp_path / "report.xlsx"
+    victim.write_bytes(b"VICTIM-UNCHANGED")
+    os.symlink(str(victim), str(fixed_file))
+
+    with pytest.raises(safe_mod.UnsafeFixedFileError):
+        safe_mod.write_fixed_bytes(str(fixed_file), b"NEW-CONTENT")
+
+    assert os.path.islink(str(fixed_file))
+    assert victim.read_bytes() == b"VICTIM-UNCHANGED"
+
+
+def test_write_fixed_bytes_refuses_preexisting_hardlink_without_truncating_target(tmp_path: Path) -> None:
+    _skip_without_hardlink(tmp_path)
+    import core.infrastructure.safe_files as safe_mod
+
+    victim = tmp_path / "victim.bin"
+    fixed_file = tmp_path / "report.xlsx"
+    victim.write_bytes(b"VICTIM-UNCHANGED")
+    os.link(str(victim), str(fixed_file))
+
+    with pytest.raises(safe_mod.UnsafeFixedFileError):
+        safe_mod.write_fixed_bytes(str(fixed_file), b"NEW-CONTENT")
+
+    assert fixed_file.exists()
+    assert victim.read_bytes() == b"VICTIM-UNCHANGED"
+
+
 def test_fixed_file_helpers_refuse_preexisting_hardlink_for_read_and_json_write(tmp_path: Path) -> None:
     _skip_without_hardlink(tmp_path)
     import core.infrastructure.safe_files as safe_mod

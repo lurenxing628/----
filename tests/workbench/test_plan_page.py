@@ -11,7 +11,7 @@ from core.errors import AppError
 from data.repositories import schedule_time_sql
 from data.repositories.schedule_plan_query_repo import SchedulePlanQueryRepository
 from data.repositories.workbench_plan_catalog_repo import MAX_PLAN_PAGE_SIZE, MAX_PLAN_VERSION
-from tests.workbench.plan_catalog_harness import (
+from tests.workbench.plan_catalog_oracle_support import (
     HistoryPlanPage,
     ScenarioPlanPage,
     build_history_plan_page,

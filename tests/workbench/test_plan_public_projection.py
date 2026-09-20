@@ -17,7 +17,7 @@ from core.services.workbench.plan import projection as plan_projection
 from core.services.workbench.plan import queries as plan_queries
 from data.repositories import schedule_time_sql
 from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
-from tests.workbench.plan_catalog_harness import build_history_plan_page
+from tests.workbench.plan_catalog_oracle_support import build_history_plan_page
 from tests.workbench.plan_catalog_support import history, scenario
 from tests.workbench.plan_page_support import create_scale_database
 from tests.workbench.plan_read_support import (

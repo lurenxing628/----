@@ -9,6 +9,7 @@ import pytest
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.workbench.trial.adoption_history import WorkbenchTrialAdoptionHistoryService
+from tests.workbench.round1_piece_point_support import point_case as point_case  # noqa: F401
 from tests.workbench.trial_adoption_history_support import advance, deny_writes, read, seeded
 from tests.workbench.trial_adoption_history_support import trial_case as trial_case  # noqa: F401
 from tests.workbench.trial_adoption_support import INTENT, saved_scenario, service
@@ -42,6 +43,31 @@ def test_official_plan_identity_validates_details_through_the_catalog_repository
     data, _ = read(trial_case, saved)
     assert data["items"][0]["official_plan"]["capabilities"]["view"] is True
     assert validated == [(current_version, "schedule")]
+
+
+def test_zero_duration_official_plan_stays_viewable_in_adoption_history(point_case):
+    from tests.workbench.round1_piece_point_support import adopt, candidate, layout, operation_ref
+    from tests.workbench.trial_support import change, create
+    from tests.workbench.trial_support import service as trial_service
+
+    case = point_case
+    ids = layout(case)
+    plan = adopt(case, candidate(case))["data"]["official_plan"]
+    moved_ref = operation_ref(case, ids["item-B", 50])
+    draft = create(case, {"base": {"plan_ref": plan["plan_ref"]}}, key="hist-point-create-0001")
+    index = next(i for i, task in enumerate(draft["tasks"]) if task["operation_ref"] == moved_ref)
+    changed = change(case, draft, task=index, start="2026-09-09T13:00:00", key="hist-point-move-0001")["data"]
+    saved = trial_service(case.conn).save(changed["draft_ref"], {"name": "point history"},
+                                          changed["write_context"]["write_token"], "hist-point-save-0001")["data"]
+    adopt(case, saved["scenario_ref"], trial=True, key="hist-point-adopt-0001")
+    current_version = case.conn.execute("SELECT MAX(version) FROM ScheduleHistory").fetchone()[0]
+    points = case.conn.execute("SELECT COUNT(*) FROM Schedule WHERE version=? AND start_time=end_time",
+                               (current_version,)).fetchone()[0]
+    assert points > 0
+    data, _ = WorkbenchTrialAdoptionHistoryService(case.conn).read(saved["scenario_ref"])
+    item = data["items"][0]
+    assert item["current_state"] == "current"
+    assert item["official_plan"]["capabilities"]["view"] is True and item["evidence_gaps"] == []
 
 
 def test_real_receipt_audit_and_source_are_bound(trial_case):
