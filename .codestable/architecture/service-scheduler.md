@@ -5,7 +5,7 @@ scope: core/services/scheduler 排产调度模块的内部结构现状——对�
 summary: 排产巨型模块系统地图，记录子包/业务族/主链及 A1/A3 解耦后的单向依赖；区分目录 SCC、父包感知文件 SCC 与纯显式文件 SCC
 status: current
 created: 2026-06-28
-last_reviewed: 2026-09-13
+last_reviewed: 2026-09-20
 tags: [scheduler, core, service, 排产, architecture]
 depends_on: []
 implements: []
@@ -73,6 +73,8 @@ core/services/scheduler/
 
 ## 4. 七个已分包子系统
 
+> **2026-09-20 分包后现状（基础边界治理 P3）**：根目录业务族已分子包——`gantt/`（16）、`resource_dispatch/`（12）、`calendar/`（9，含 operator_shift）、`run/optimizer/`（38，含 signature_support 与 graph_ready_profiles/feature_basis）、`run/optimizer/graph/`（44，入口 `ready.py`）；`batch` 族迁出为 `core/services/batch/`，排产门面不再懒导出 `BatchService`；`analysis/` 与 7 个根目录转发垫片删除；PyInstaller 冻结锚迁到 `web/bootstrap/_frozen_import_anchor.py`。根目录只剩计划身份内核、现场事实包装、延误诊断、`schedule_service` 门面、共享工具，以及四个为解双向依赖下沉的叶子：`week_range`、`dispatch_task_ids`、`overdue_batch_ids`、`task_chain`。族间方向单一：gantt/resource_dispatch → 根、gantt → calendar、run → optimizer → graph；硬目录环 0（`tools/scan_import_cycles.py` 基线）。搬迁计划见 `.codestable/roadmap/foundation-boundary-governance/moves/scheduler-p3*.json`。下文 §4 analysis、§5 表格、§8.3–8.5 保留为分包前的历史记录。
+
 ### run/ —— 排产执行引擎
 - **职责**:收集排产输入 → 跑算法 / 多候选对比 → 校验产出 → 持久化。排产主链的执行核心。
 - **核心文件**:`run/schedule_orchestrator.py:279` `orchestrate_schedule_run`(总编排,把算法和摘要函数作为参数**注入**)、`run/schedule_input_collector.py` `collect_schedule_run_input`(输入收集)、`run/schedule_optimizer.py` `optimize_schedule`(算法入口)、`run/schedule_persistence.py`(持久化)。内部成簇:`optimizer_*`(36)、`schedule_candidate_*`(9)、`schedule_graph_*`(5,graph 子包消费者)。
@@ -113,11 +115,11 @@ core/services/scheduler/
 - **依赖现状**:几乎零外部依赖(仅 `graph/scoring.py` 引 `core.algorithms.greedy.dispatch.ready_queue`)。
 - **唯一消费者**:run/ 的 5 个 `schedule_graph_*` 文件,其中 4 个直接函数体内延迟 import graph 子包(如 `run/schedule_graph_report.py:158-162`),贯彻"不在 import 期拉 NetworkX"。代价是 graph 的真实接入点散落在 run/ 里、不在 graph 包边界上。
 
-### analysis/ —— 诊断合同事实面(休眠/兼容)
+### analysis/ —— 诊断合同事实面(休眠/兼容)【已删除，2026-09-20】
 - **职责**:仅 `analysis/schedule_diagnostic_contract.py`,提供诊断合同构造器。
 - **现状**:在 core/web 中**零 Python import**,自带 `# O23 KEEP` 注解(`analysis/schedule_diagnostic_contract.py:5-7`)说明活护栏已迁到 `web.viewmodels.scheduler_analysis_diagnostic_helpers`。占一个独立子包却不在活路径上,属"为兼容刻意保留"的事实面(tests/ 是否引用未深扫,**TODO: 待确认**)。
 
-## 5. 根目录业务族(尚未分包)
+## 5. 根目录业务族（分包前记录；gantt / gantt_adjustment / resource_dispatch* / calendar 四族已于 2026-09-20 进子包，batch 族已迁出）
 
 79 个根目录业务文件按业务对象聚成 13 族 + 2 共享层。多数文件无 docstring,职责按文件名 + import 结构推断;每族"可否独立成包"判断依据是"族内互依紧、跨族缠绕松"。
 
@@ -181,13 +183,13 @@ core/services/scheduler/
 - **静态终态（2026-07-13）**：生产 779 模块 / 3 hard 目录 SCC，含测试 1475 模块 / 4 SCC；A3 消失，A4/A5/A6/tests 记录不变，unresolved 仍为 6/44。A3 相关父包感知文件圈从 21/94 严格缩为 8/24；hard/runtime 文件 SCC 总数仍为 9/13，纯显式口径仍为 0/4。
 - **证明边界**：调用图两个独立候选逐文件确定；7329 个旧 callable 全映射，新增仅 8 个 context adapter callable。实现已提交为 `f422b88c`，并在该固定 HEAD 的干净工作区前后完成无缓存、无续跑 19/19 步门禁；4731 collected、unexpected failure 0，manifest=`passed`。该 clean proof 只绑定此实现提交。
 
-### 8.3 分包标准不统一,79 文件平铺根目录
+### 8.3 分包标准不统一,79 文件平铺根目录【已解除，2026-09-20：业务族分子包】
 - 已按"计算流程"切出 run/summary/graph/config,但 resource / schedule / gantt 等多组**业务族**仍平铺根目录,每族体量都不小。一半按流程分包、一半按业务族平铺,目录可读性与心智负担偏高。
 
-### 8.4 batch 族与排产执行主链基本分离
+### 8.4 batch 族与排产执行主链基本分离【已解除，2026-09-20：迁出为 core/services/batch/】
 - `batch` 族 6 文件(批次主数据 CRUD/模板/导入/复制)通过 `batch_service.py` 串起多个同目录 helper,不是静态调用图里的全孤岛。它本质仍是"批次主数据服务":主要依赖 `data.repositories`+`core.models`,没有被 run/summary/graph 这些排产执行族反向调用,归在 scheduler 内属历史归类。
 
-### 8.5 兼容 shim 双入口
+### 8.5 兼容 shim 双入口【已解除，2026-09-20：7 个 run 垫片退役；execution 的 4 个转发件仍由 A1 边界测试锁定】
 - 根目录 7 个 `schedule_*`/`freeze_window` 与 4 个 execution wrapper 保留旧 import 路径；仓内生产代码直接依赖 `scheduler.run.*` / `scheduler.execution.*`，旧根路径只服务 tests/外部兼容消费。wrapper 不得承载业务实现或反向被新叶子依赖。
 
 ### 8.6 config_snapshot 是隐性跨包公共依赖

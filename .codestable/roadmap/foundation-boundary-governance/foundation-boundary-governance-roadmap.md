@@ -323,6 +323,7 @@ web/bootstrap 里只有 factory.py 可 import web.routes（装配蓝图）；web
 18. **boundary-policy-decisions** — 四条政策落 `cs-decide`
     - 所属模块：C
     - 依赖：schema-sql-generated、workbench-subpackages
+    - 状态：done（2026-09-20）。四份决策文档：`2026-09-20-decision-schema-single-source-of-truth`、`-ratchet-gate-lifecycle`、`-service-subpackage-layering`、`-tests-at-seams`
 
 **最小闭环**：第 1 条 `sql-boundary-ratchet` 做完后，任何新的服务层 SQL 或仓储内裁决在定向测试里立刻变红，止血生效。
 
@@ -344,3 +345,4 @@ web/bootstrap 里只有 factory.py 可 import web.routes（装配蓝图）；web
 
 - 2026-09-20：new 模式创建。
 - 2026-09-20：sql-boundary-ratchet、private-import-ratchet、schema-parity-test 完成；gate-step-timing 因机制已存在 drop；boundary-policy-decisions 依赖去掉 gate-step-timing；观察项补两条事实更正。
+- 2026-09-20：S 模块（SQL 排水七批）、P 模块（工作台簇层次 + 14 簇分包、排产包四步分包）、D 模块（schema 生成化）、T 模块四条、C 模块四份决策全部完成；18 条子 feature 17 done / 1 dropped。

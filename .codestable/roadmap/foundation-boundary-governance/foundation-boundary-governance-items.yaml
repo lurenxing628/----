@@ -181,7 +181,9 @@ items:
   - slug: boundary-policy-decisions
     description: schema 事实源、子包规则、门禁进退、测试往接缝收四条政策落 cs-decide
     depends_on: [schema-sql-generated, workbench-subpackages]
-    status: planned
+    status: done
     feature: null
     minimal_loop: false
-    notes: null
+    notes: >-
+      2026-09-20 完成。.codestable/compound/2026-09-20-decision-{schema-single-source-of-truth,ratchet-gate-lifecycle,
+      service-subpackage-layering,tests-at-seams}.md；分别对应 architecture / convention / architecture / convention 四类。
