@@ -52,6 +52,12 @@ def _targets(path: Path, module: str, known: Set[str]) -> Iterator[Tuple[int, st
     package = module.rpartition(".")[0]
     tree = ast.parse(path.read_text(encoding="utf-8"))
     for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                candidate = alias.name[len(PREFIX):].lstrip(".") if alias.name.startswith(PREFIX + ".") else ""
+                if candidate in known:
+                    yield node.lineno, candidate
+            continue
         if not isinstance(node, ast.ImportFrom):
             continue
         if node.level == 0:
@@ -115,3 +121,19 @@ def test_subpackage_facades_only_hold_a_docstring():
     for init in sorted(PACKAGE.rglob("__init__.py")):
         tree = ast.parse(init.read_text(encoding="utf-8"))
         assert all(isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant) for node in tree.body), init
+
+
+def test_targets_see_plain_imports_relative_imports_and_symbol_imports(tmp_path):
+    source = tmp_path / "probe.py"
+    source.write_text(
+        "import core.services.workbench.facts.alpha as alpha\n"
+        "import core.services.workbench.facts\n"
+        "from core.services.workbench.plan import beta\n"
+        "from ..execution import gamma\n"
+        "from . import delta\n"
+        "from .delta import helper\n",
+        encoding="utf-8",
+    )
+    known = {"facts.alpha", "plan.beta", "execution.gamma", "run.delta", "run.probe"}
+    assert sorted(_targets(source, "run.probe", known)) == [
+        (1, "facts.alpha"), (3, "plan.beta"), (4, "execution.gamma"), (5, "run.delta"), (6, "run.delta")]

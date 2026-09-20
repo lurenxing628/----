@@ -35,7 +35,7 @@ FILES = {
 
         TARGET = "pkg.run_jobs.Job"
         PATH = "pkg/run_jobs.py"
-        GLOB = "pkg/run_*.py"
+        GLOBS = ["pkg/run_*.py"]
         # 注释里也提到 pkg.run_jobs
         """),
 }
@@ -91,7 +91,7 @@ def test_move_rewrites_every_reference_form_and_keeps_local_names(tmp_path, monk
 
         TARGET = "pkg.run.jobs.Job"
         PATH = "pkg/run/jobs.py"
-        GLOB = "pkg/run_*.py", "pkg/run/**/*.py"
+        GLOBS = ["pkg/run_*.py", "pkg/run/**/*.py"]
         # 注释里也提到 pkg.run.jobs
         """)
     out = capsys.readouterr().out
@@ -167,3 +167,62 @@ def test_invalid_redirects_fail_loudly(tmp_path, monkeypatch, redirects, message
     _repo(tmp_path, monkeypatch)
     with pytest.raises(SystemExit, match=message):
         move_modules.Plan({}, redirects=redirects)
+
+
+def _plan_jobs(root):
+    return move_modules.Plan({"pkg.run_jobs": "pkg.run.jobs"}, {"pkg/run_*.py": ["pkg/run_*.py", "pkg/run/**/*.py"]})
+
+
+def test_formfeed_and_unicode_line_separators_do_not_shift_rewrites(tmp_path, monkeypatch):
+    root = _repo(tmp_path, monkeypatch)
+    (root / "pkg/odd.py").write_text("TEXT = \"第一行\u2028第二行\"\n\x0c\nfrom pkg.run_jobs import Job\n\nX = Job\n", encoding="utf-8")
+    subprocess.run(["git", "add", "pkg/odd.py"], cwd=str(root), check=True)
+    assert move_modules.run(_plan_jobs(root), apply=True) == 0
+    assert _read(root, "pkg/odd.py") == "TEXT = \"第一行\u2028第二行\"\n\x0c\nfrom .run.jobs import Job\n\nX = Job\n"
+
+
+def test_glob_literal_outside_a_list_blocks_apply_and_writes_nothing(tmp_path, monkeypatch, capsys):
+    root = _repo(tmp_path, monkeypatch)
+    (root / "pkg/reg.py").write_text('KEY = "pkg/run_*.py"\nFOUND = glob_files("pkg/run_*.py")\n', encoding="utf-8")
+    subprocess.run(["git", "add", "pkg/reg.py"], cwd=str(root), check=True)
+    before = {name: _read(root, name) for name in list(FILES) + ["pkg/reg.py"]}
+    with pytest.raises(SystemExit, match="阻断项"):
+        move_modules.run(_plan_jobs(root), apply=True)
+    assert {name: _read(root, name) for name in before} == before
+    assert (root / "pkg/run_jobs.py").exists() and not (root / "pkg/run").exists()
+    out = capsys.readouterr().out
+    assert "pkg/reg.py:1 glob 字面量 \"pkg/run_*.py\" 不是 list/tuple 的元素" in out
+    assert "pkg/reg.py:2 glob 字面量" in out
+
+
+def test_new_package_that_would_shadow_an_unmoved_module_is_refused(tmp_path, monkeypatch):
+    root = _repo(tmp_path, monkeypatch)
+    (root / "pkg/run.py").write_text("RUN = 1\n", encoding="utf-8")
+    with pytest.raises(SystemExit, match="同名模块会被新包遮蔽：pkg.run"):
+        move_modules.Plan({"pkg.run_jobs": "pkg.run.jobs"})
+    move_modules.Plan({"pkg.run_jobs": "pkg.run.jobs", "pkg.run": "pkg.run.service"})
+
+
+def test_rewritten_source_that_fails_to_parse_aborts_before_any_write(tmp_path, monkeypatch):
+    root = _repo(tmp_path, monkeypatch)
+    before = {name: _read(root, name) for name in FILES}
+    monkeypatch.setattr(move_modules, "rewrite_imports", lambda source, rewriter, where: (source + "def (\n", []))
+    with pytest.raises(SystemExit, match="改写结果无法解析"):
+        move_modules.run(_plan_jobs(root), apply=True)
+    assert {name: _read(root, name) for name in FILES} == before
+    assert (root / "pkg/run_jobs.py").exists() and not (root / "pkg/run").exists()
+
+
+def test_crlf_files_keep_their_line_endings(tmp_path, monkeypatch):
+    root = _repo(tmp_path, monkeypatch)
+    with (root / "pkg/crlf.py").open("w", encoding="utf-8", newline="") as handle:
+        handle.write("from pkg.run_jobs import Job\r\n\r\nX = Job\r\n")
+    subprocess.run(["git", "add", "pkg/crlf.py"], cwd=str(root), check=True)
+    assert move_modules.run(_plan_jobs(root), apply=True) == 0
+    with (root / "pkg/crlf.py").open(encoding="utf-8", newline="") as handle:
+        assert handle.read() == "from .run.jobs import Job\r\n\r\nX = Job\r\n"
+
+
+@pytest.mark.parametrize("text,body", [('"pkg/run_*/conf"', "pkg/run_*/conf"), ("r'a/b*f'", "a/b*f"), ('rb"x"', "x"), ("plain", "plain")])
+def test_literal_body_strips_prefixes_and_quotes_without_eating_the_glob(text, body):
+    assert move_modules._literal_body(text) == body

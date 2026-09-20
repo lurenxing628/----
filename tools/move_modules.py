@@ -96,6 +96,9 @@ class Plan:
                 problems.append("不支持搬包目录：" + old)
             if targets.count(new) > 1:
                 problems.append("目标重复：" + new)
+        for package in self.new_packages():
+            if package not in self.moves and (ROOT / rel_path(package)).is_file():
+                problems.append("同名模块会被新包遮蔽：" + package)
         if problems:
             raise SystemExit("plan 无效：\n  " + "\n  ".join(sorted(set(problems))))
 
@@ -182,9 +185,19 @@ class ImportRewriter:
         return out
 
 
+def _source_lines(source: str) -> List[str]:
+    """只按 \\n 切行（保留行尾）：ast/tokenize 的行号不把换页符、U+2028 等当换行，str.splitlines 会。"""
+    return [line for line in re.split(r"(?<=\n)", source) if line]
+
+
+def _line_ending(source: str) -> str:
+    return "\r\n" if "\r\n" in source else "\n"
+
+
 def rewrite_imports(source: str, rewriter: ImportRewriter, where: str) -> Tuple[str, List[str]]:
     tree = ast.parse(source)
-    lines = source.splitlines(keepends=True)
+    lines = _source_lines(source)
+    eol = _line_ending(source)
     edits = []
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom):
@@ -200,10 +213,10 @@ def rewrite_imports(source: str, rewriter: ImportRewriter, where: str) -> Tuple[
         tail = last[node.end_col_offset:].strip()
         if tail and not tail.startswith("#"):
             raise SystemExit(where + ":" + str(node.lineno) + "：导入语句后面还有别的代码，请先手工拆开")
-        text = "\n".join(indent + line for line in rendered)
+        text = eol.join(indent + line for line in rendered)
         if tail:
             text += "  " + tail
-        edits.append((node.lineno, node.end_lineno, text + "\n"))
+        edits.append((node.lineno, node.end_lineno, text + eol))
     notes = []
     for start, end, text in sorted(edits, reverse=True):
         notes.append(where + ":" + str(start) + " " + "".join(lines[start - 1:end]).strip().replace("\n", " ⏎ ")
@@ -212,15 +225,35 @@ def rewrite_imports(source: str, rewriter: ImportRewriter, where: str) -> Tuple[
     return "".join(lines), notes
 
 
-def _string_spans(source: str) -> List[Tuple[int, int]]:
+def _string_spans(source: str) -> List[Tuple[int, int, Tuple[int, int]]]:
+    """(起始偏移, 结束偏移, (行号, 该行内的 UTF-8 字节列)) —— 字节列与 ast 节点的 col_offset 同一坐标。"""
+    lines = _source_lines(source)
     offsets = [0]
-    for line in source.splitlines(keepends=True):
+    for line in lines:
         offsets.append(offsets[-1] + len(line))
     spans = []
     for token in tokenize.generate_tokens(io.StringIO(source).readline):
         if token.type in (tokenize.STRING, tokenize.COMMENT):
-            spans.append((offsets[token.start[0] - 1] + token.start[1], offsets[token.end[0] - 1] + token.end[1]))
+            row, col = token.start
+            byte_col = len(lines[row - 1][:col].encode("utf-8"))
+            spans.append((offsets[row - 1] + col, offsets[token.end[0] - 1] + token.end[1], (row, byte_col)))
     return spans
+
+
+def _sequence_literal_starts(source: str) -> set:
+    """直接作为 list/tuple 元素出现的字符串字面量位置；只有这些位置允许把一个 glob 换成多个字面量。"""
+    starts = set()
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, (ast.List, ast.Tuple)):
+            for element in node.elts:
+                if isinstance(element, ast.Constant) and isinstance(element.value, str):
+                    starts.add((element.lineno, element.col_offset))
+    return starts
+
+
+def _literal_body(text: str) -> str:
+    match = re.match(r"^[rbfuRBFU]{0,2}(['\"])(.*)\1$", text, re.S)
+    return match.group(2) if match else text
 
 
 def _glob_regex(pattern: str) -> "re.Pattern":
@@ -242,22 +275,28 @@ class StringRewriter:
                                    | {parent_of(old) for old in plan.rewrites()})
         self.globs = plan.globs
 
-    def apply(self, source: str, where: str) -> Tuple[str, List[str], List[str]]:
-        out, notes, warnings, cursor = [], [], [], 0
-        for start, end in _string_spans(source):
+    def apply(self, source: str, where: str) -> Tuple[str, List[str], List[str], List[str]]:
+        """返回 (改写后文本, 改写记录, 需人工确认的提示, 阻断 --apply 的问题)。"""
+        out, notes, warnings, blocked, cursor = [], [], [], [], 0
+        sequence_starts = _sequence_literal_starts(source)
+        for start, end, position in _string_spans(source):
             text = source[start:end]
+            location = where + ":" + str(position[0])
             new_text = self._glob_literal(text)
+            if new_text is not None and position not in sequence_starts:
+                blocked.append(location + " glob 字面量 " + text + " 不是 list/tuple 的元素，替换成多个字面量会改变语义，请手工改写")
+                new_text = None
             if new_text is None:
                 new_text = self.dotted_pattern.sub(lambda m: self.dotted[m.group(0)], text)
                 new_text = self.paths_pattern.sub(lambda m: self.paths[m.group(0)], new_text)
-                self._warn(text, where + ":" + str(source.count("\n", 0, start) + 1), warnings)
+                self._warn(text, location, warnings)
             if new_text != text:
-                notes.append(where + ":" + str(source.count("\n", 0, start) + 1) + " " + text + "  →  " + new_text)
+                notes.append(location + " " + text + "  →  " + new_text)
             out.append(source[cursor:start])
             out.append(new_text)
             cursor = end
         out.append(source[cursor:])
-        return "".join(out), notes, warnings
+        return "".join(out), notes, warnings, blocked
 
     def _glob_literal(self, text: str) -> Optional[str]:
         quote = text[:1]
@@ -266,7 +305,7 @@ class StringRewriter:
         return ", ".join(quote + item + quote for item in self.globs[text[1:-1]])
 
     def _warn(self, text: str, where: str, warnings: List[str]) -> None:
-        body = text.strip("'\"rbfRBF")
+        body = _literal_body(text)
         if "*" in body and "/" in body:
             regex = _glob_regex(body)
             lost = [old for old, new in self.moved_paths.items() if regex.match(old) and not regex.match(new)]
@@ -276,20 +315,33 @@ class StringRewriter:
             warnings.append(where + " 目录字面量 " + body + "：请确认是否按目录遍历模块")
 
 
+def _require_parsable(text: str, where: str) -> None:
+    """改写结果必须仍是合法 Python；任何一个文件解析失败就整批放弃，什么都不写。"""
+    try:
+        ast.parse(text)
+    except SyntaxError as exc:
+        raise SystemExit(where + "：改写结果无法解析（" + str(exc) + "），整批放弃，未写任何文件") from exc
+
+
 def run(plan: Plan, apply: bool) -> int:
     strings = StringRewriter(plan)
     changed: Dict[Path, str] = {}
     all_notes: List[str] = []
     all_warnings: List[str] = []
+    all_blocked: List[str] = []
     for path in iter_python_files():
         old_module, is_package = module_of(path)
         new_module = plan.new_module(old_module) or old_module
         where = str(path.relative_to(ROOT))
-        source = path.read_text(encoding="utf-8")
+        with path.open(encoding="utf-8", newline="") as handle:
+            source = handle.read()
         text, notes = rewrite_imports(source, ImportRewriter(plan, old_module, new_module, is_package), where)
-        text, string_notes, warnings = strings.apply(text, where)
+        _require_parsable(text, where)
+        text, string_notes, warnings, blocked = strings.apply(text, where)
+        _require_parsable(text, where)
         all_notes.extend(notes + string_notes)
         all_warnings.extend(warnings)
+        all_blocked.extend(blocked)
         if text != source:
             changed[path] = text
     for note in all_notes:
@@ -301,9 +353,15 @@ def run(plan: Plan, apply: bool) -> int:
         print("\n需要人工确认：")
         for warning in all_warnings:
             print("  " + warning)
+    if all_blocked:
+        print("\n阻断 --apply（先手工改写再重跑）：")
+        for problem in all_blocked:
+            print("  " + problem)
     if not apply:
         print("\n（预演，未改动任何文件；加 --apply 执行）")
         return 0
+    if all_blocked:
+        raise SystemExit("存在阻断项，未改动任何文件")
     for package in plan.new_packages():
         directory = ROOT / package.replace(".", "/")
         directory.mkdir(parents=True, exist_ok=True)
@@ -323,7 +381,8 @@ def run(plan: Plan, apply: bool) -> int:
             continue
         target = plan.moves.get(old_module)
         destination = ROOT / rel_path(target) if target else path
-        destination.write_text(text, encoding="utf-8")
+        with destination.open("w", encoding="utf-8", newline="") as handle:
+            handle.write(text)
         touched.append(str(destination.relative_to(ROOT)))
     ruff = subprocess.run([sys.executable, "-m", "ruff", "check", "--fix", "--select", "I", "--quiet"]
                           + sorted(set(touched) | set(moved_paths)), cwd=str(ROOT))
