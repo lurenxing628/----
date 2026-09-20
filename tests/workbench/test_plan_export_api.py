@@ -11,7 +11,7 @@ import openpyxl
 import pytest
 
 import web.public_token_registry as tokens
-from core.services.workbench.plan_export import HEADERS
+from core.services.workbench.plan.export import HEADERS
 from tests.workbench.plan_catalog_support import history
 from tests.workbench.plan_read_support import NIGHT_END, NIGHT_START, add_tasks, assert_error, plan_read_api
 from tests.workbench.test_plan_workspace_projections import prepare

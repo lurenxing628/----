@@ -5,7 +5,7 @@ import json
 
 import pytest
 
-from core.services.workbench.official_plan_persistence import persist_official_plan_in_tx
+from core.services.workbench.plan.official_persistence import persist_official_plan_in_tx
 from core.services.workbench.run_candidate_adoption_validation import validate_adoption
 from tests.workbench.run_candidate_adoption_support import assert_retained, candidate, snapshot
 from tests.workbench.run_candidate_adoption_support import candidate_case as _case  # noqa: F401

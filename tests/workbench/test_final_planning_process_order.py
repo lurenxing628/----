@@ -6,8 +6,8 @@ import pytest
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_plan_scope import PlanReadScope
-from core.services.workbench.plan_process_order import project_process_order
-from core.services.workbench.plan_queries import WorkbenchPlanQueryService
+from core.services.workbench.plan.process_order import project_process_order
+from core.services.workbench.plan.queries import WorkbenchPlanQueryService
 from tests.workbench.piece_chain_support import adopt_trial, piece_layout, saved_trial
 from tests.workbench.plan_adoption_baseline_support import adopt_candidate, mutate_json
 from tests.workbench.round1_piece_point_support import adopt, candidate
@@ -119,7 +119,7 @@ def test_process_order_requires_transaction_and_complete_payload_budget(trial_ca
     plan = adopt_candidate(case)
     with pytest.raises(RuntimeError, match="read transaction"):
         project_process_order(case.conn, plan_ref=plan["plan_ref"])
-    monkeypatch.setattr("core.services.workbench.plan_projection.MAX_PLAN_RESPONSE_BYTES", 1)
+    monkeypatch.setattr("core.services.workbench.plan.projection.MAX_PLAN_RESPONSE_BYTES", 1)
     with WorkbenchPlanQueryService(case.conn).read_snapshot():
         with pytest.raises(WorkbenchCommandRejected) as error:
             project_process_order(case.conn, plan_ref=plan["plan_ref"])

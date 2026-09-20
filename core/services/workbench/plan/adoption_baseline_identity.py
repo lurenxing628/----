@@ -9,8 +9,8 @@ from data.repositories.workbench_identity_repo import WorkbenchIdentityRepositor
 from data.repositories.workbench_plan_baseline_repo import WorkbenchPlanBaselineRepository
 from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
 
-from .plan_adoption_baseline_values import fail, indexed, raw_table_rows, require, same, schedule_rows
-from .plan_projection import project_tasks, public_time
+from .adoption_baseline_values import fail, indexed, raw_table_rows, require, same, schedule_rows
+from .projection import project_tasks, public_time
 
 
 def verify_capture(baseline, tables):

@@ -3,7 +3,7 @@
 from collections import defaultdict
 
 from .facts.candidate_values import corrupt
-from .plan_delivery_projection import project_delivery_batch, task_intervals
+from .plan.delivery_projection import project_delivery_batch, task_intervals
 
 
 def _group_tasks(tasks, facts):

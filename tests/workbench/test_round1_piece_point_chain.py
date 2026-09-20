@@ -3,7 +3,7 @@
 from contextlib import closing
 
 from core.infrastructure.database import get_connection
-from core.services.workbench.plan_point_evidence import official_point_work
+from core.services.workbench.plan.point_evidence import official_point_work
 from tests.workbench.ea_zero_duration_support import adoption_service, trial_adoption_service
 from tests.workbench.round1_piece_point_support import (
     adopt,

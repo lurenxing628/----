@@ -6,7 +6,7 @@ import subprocess
 from pathlib import Path
 
 from core.models.workbench_plan_scope import PlanReadScope
-from core.services.workbench.plan_queries import WorkbenchPlanQueryService
+from core.services.workbench.plan.queries import WorkbenchPlanQueryService
 from tests.workbench.piece_chain_support import piece_layout
 from tests.workbench.plan_adoption_baseline_support import adopt_candidate
 from tests.workbench.test_live_browser import runtime_tools

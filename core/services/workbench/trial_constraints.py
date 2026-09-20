@@ -95,7 +95,7 @@ def _outside_occupancy(row, conn, point_versions):
     if conn is not None and row["start_time"] == row["end_time"]:
         from core.models.workbench_command import WorkbenchCommandRejected
 
-        from .plan_point_evidence import official_point_work
+        from .plan.point_evidence import official_point_work
 
         try:
             if row["version"] not in point_versions:

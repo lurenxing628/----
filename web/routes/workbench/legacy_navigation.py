@@ -10,7 +10,10 @@ from werkzeug.exceptions import NotFound
 from core.errors import AppError
 from core.models.workbench_command import canonical_json
 from core.models.workbench_plan_reference import WorkbenchPlanReferenceError
-from core.services.workbench.legacy_navigation_queries import LegacyNavigationQueries, LegacyNavigationSourceMissing
+from core.services.workbench.plan.legacy_navigation_queries import (
+    LegacyNavigationQueries,
+    LegacyNavigationSourceMissing,
+)
 
 from .legacy_navigation_plan import (
     IDENTITY_KEYS,

@@ -22,8 +22,8 @@ from core.services.capacity.plan_calendar_intervals import hours, instant, segme
 from core.services.capacity.plan_calendar_windows import available_intervals
 from core.services.capacity.resource_utilization_metrics import ResourceUtilizationMetrics
 
-from .plan_calendar_context import issue, public_resource, selected_context
-from .plan_occupancy_constraints import TaskConstraints
+from .calendar_context import issue, public_resource, selected_context
+from .occupancy_constraints import TaskConstraints
 
 
 def _occupancy_groups(rows, start, end, constraints):

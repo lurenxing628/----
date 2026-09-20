@@ -7,9 +7,9 @@ import pytest
 
 from core.models.workbench_plan_reference import WorkbenchPlanLocator
 from core.models.workbench_plan_scope import PlanReadScope
-from core.services.workbench.plan_calendar import project_plan_calendar
-from core.services.workbench.plan_occupancy import project_plan_occupancy
-from core.services.workbench.plan_queries import WorkbenchPlanQueryService
+from core.services.workbench.plan.calendar import project_plan_calendar
+from core.services.workbench.plan.occupancy import project_plan_occupancy
+from core.services.workbench.plan.queries import WorkbenchPlanQueryService
 from tests.workbench.plan_catalog_support import history, seed_operation
 from tests.workbench.plan_read_support import assert_no_private_facts
 

@@ -5,14 +5,14 @@ from types import SimpleNamespace
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_piece_adoption import PieceAdoptionBlocked
 from core.models.workbench_plan_reference import WorkbenchPlanReferenceError
+from core.services.workbench.facts.piece_scope import build_piece_adoption_scope
+from core.services.workbench.facts.trial_scenario_archive import load_saved_scenario
 from data.repositories.workbench_plan_baseline_repo import WorkbenchPlanBaselineRepository
 from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
 
-from .facts.piece_scope import build_piece_adoption_scope
-from .facts.trial_scenario_archive import load_saved_scenario
-from .plan_adoption_baseline_identity import _live_sources
-from .plan_adoption_baseline_values import AdoptionBaselineUnavailable, indexed, require
-from .plan_projection import check_payload_size, read_adopted_source
+from .adoption_baseline_identity import _live_sources
+from .adoption_baseline_values import AdoptionBaselineUnavailable, indexed, require
+from .projection import check_payload_size, read_adopted_source
 
 
 def _unavailable(facts, code, gap):

@@ -6,7 +6,7 @@ import sqlite3
 import pytest
 
 from core.errors import AppError
-from core.services.workbench.plan_baseline import build_plan_baseline
+from core.services.workbench.plan.baseline import build_plan_baseline
 from tests.workbench.plan_adoption_baseline_support import (
     adopt_candidate,
     adopt_trial,

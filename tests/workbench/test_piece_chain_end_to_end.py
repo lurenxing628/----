@@ -5,7 +5,7 @@ import json
 import pytest
 
 from core.models.workbench_plan_scope import PlanReadScope
-from core.services.workbench.plan_queries import WorkbenchPlanQueryService
+from core.services.workbench.plan.queries import WorkbenchPlanQueryService
 from tests.workbench.piece_chain_support import (
     adopt_candidate,
     adopt_trial,

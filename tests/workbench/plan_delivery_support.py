@@ -7,8 +7,8 @@ from typing import Optional
 from core.infrastructure.workbench_plan_identity_schema import install_plan_identity
 from core.models.workbench_plan_reference import WorkbenchPlanLocator
 from core.models.workbench_plan_scope import PlanReadScope
-from core.services.workbench.plan_delivery import read_plan_delivery
-from core.services.workbench.plan_queries import WorkbenchPlanQueryService
+from core.services.workbench.plan.delivery import read_plan_delivery
+from core.services.workbench.plan.queries import WorkbenchPlanQueryService
 from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
 from tests.workbench.plan_catalog_support import candidate, history, scenario, seed_operation, selection
 

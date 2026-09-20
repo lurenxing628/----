@@ -5,9 +5,8 @@ from __future__ import annotations
 from core.models.schedule_plan_role import ROLE_ADOPTED
 from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
 from core.models.workbench_plan_scope import MAX_PLAN_RESPONSE_BYTES
+from core.services.workbench.facts.zero_duration import point_event_dto
 from data.repositories.schedule_time_sql import parse_dt_for_sql
-
-from .facts.zero_duration import point_event_dto
 
 _REASONS = {
     "summary_invalid": "这次排产的摘要无效，确认不了计划是否完整。请刷新后重试。",
@@ -101,7 +100,7 @@ def _resource_ref(row, kind, identities):
 
 
 def _captured_quantities(operation, batch, execution, basis):
-    from .facts.candidate_values import number
+    from core.services.workbench.facts.candidate_values import number
 
     gaps = []
     piece = operation.get("piece_id")
@@ -118,7 +117,7 @@ def _captured_quantities(operation, batch, execution, basis):
 def _adopted_quantities(conn, plan_ref):
     from core.models.workbench_plan_reference import WorkbenchPlanReferenceError
 
-    from .plan_adoption_baseline_values import AdoptionBaselineUnavailable, require
+    from .adoption_baseline_values import AdoptionBaselineUnavailable, require
 
     if conn is None:
         return {}, "plan_target_not_recorded"
@@ -145,10 +144,10 @@ def read_adopted_source(conn, plan_ref):
     from data.repositories.workbench_plan_baseline_repo import WorkbenchPlanBaselineRepository
     from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
 
-    from .plan_adoption_baseline import _audit
-    from .plan_adoption_baseline_identity import verify_arranged, verify_capture
-    from .plan_adoption_baseline_sources import candidate_source, decoded_baseline, trial_source
-    from .plan_adoption_baseline_values import require, same
+    from .adoption_baseline import _audit
+    from .adoption_baseline_identity import verify_arranged, verify_capture
+    from .adoption_baseline_sources import candidate_source, decoded_baseline, trial_source
+    from .adoption_baseline_values import require, same
 
     locator = WorkbenchPlanIdentityRepository(conn).resolve_plan(plan_ref)
     if locator.scenario_id is not None or locator.plan_role != ROLE_ADOPTED:
@@ -170,9 +169,9 @@ def read_adopted_source(conn, plan_ref):
 
 
 def _source_quantities(conn, basis, audit, arranged):
-    from .facts.candidate_facts import GenerationFacts
-    from .facts.candidate_store import CandidateStore
-    from .facts.trial_scenario_archive import load_saved_scenario
+    from core.services.workbench.facts.candidate_facts import GenerationFacts
+    from core.services.workbench.facts.candidate_store import CandidateStore
+    from core.services.workbench.facts.trial_scenario_archive import load_saved_scenario
 
     # Only the audited source can supply target work; current batch joins cannot.
     if basis == "candidate_adoption":

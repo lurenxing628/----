@@ -4,10 +4,10 @@ from core.models.workbench_command import WorkbenchCommandRejected, input_finger
 from core.models.workbench_plan_scope import MAX_PLAN_TASKS
 from core.services.capacity.plan_calendar_intervals import instant
 from core.services.capacity.plan_calendar_issues import issue  # noqa: F401  公开词汇表已下沉到共享内核，这里保留原入口
+from core.services.workbench.facts.plan_serialization import plain_plan_facts
+from core.services.workbench.facts.zero_duration_evidence import overlaps
 
-from .facts.plan_serialization import plain_plan_facts
-from .facts.zero_duration_evidence import overlaps
-from .plan_point_evidence import annotate_plan_points
+from .point_evidence import annotate_plan_points
 
 
 def require_snapshot(conn):

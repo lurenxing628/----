@@ -11,8 +11,8 @@ from data.repositories.workbench_run_facts_repo import WorkbenchRunFactsReposito
 
 from .facts.candidate_store import CandidateStore
 from .facts.candidate_values import bounded_size
-from .plan_adoption_baseline import read_adoption_baseline
-from .plan_adoption_baseline_values import REASONS, AdoptionBaselineUnavailable
+from .plan.adoption_baseline import read_adoption_baseline
+from .plan.adoption_baseline_values import REASONS, AdoptionBaselineUnavailable
 
 
 def _invalid():

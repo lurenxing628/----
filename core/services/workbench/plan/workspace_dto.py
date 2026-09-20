@@ -2,11 +2,11 @@
 
 from core.models.workbench_command import WorkbenchCommandRejected
 
-from .plan_baseline import build_plan_baseline
-from .plan_calendar import project_plan_calendar
-from .plan_delivery import read_plan_delivery
-from .plan_occupancy import project_plan_occupancy
-from .plan_process_order import project_process_order
+from .baseline import build_plan_baseline
+from .calendar import project_plan_calendar
+from .delivery import read_plan_delivery
+from .occupancy import project_plan_occupancy
+from .process_order import project_process_order
 
 
 def resource_directory(rows, resources):

@@ -6,11 +6,11 @@ from core.services.capacity.plan_calendar_engine import SnapshotCalendarEngine
 from core.services.capacity.plan_calendar_intervals import IntervalIndex, instant
 from core.services.capacity.plan_calendar_windows import available_intervals
 from core.services.personnel.operator_qualification import OperatorQualificationError, OperatorQualificationService
+from core.services.workbench.facts.zero_duration import estimate_point_event
 from data.repositories.operator_machine_repo import OperatorMachineRepository
 from data.repositories.operator_qualification_repo import OperatorQualificationRepository
 
-from .facts.zero_duration import estimate_point_event
-from .plan_calendar_context import issue
+from .calendar_context import issue
 
 
 class _SkillFacts(OperatorQualificationRepository):

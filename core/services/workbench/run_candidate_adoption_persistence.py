@@ -2,7 +2,7 @@
 
 from core.models.workbench_command import WorkbenchCommandOutcome
 
-from .official_plan_persistence import persist_official_plan_in_tx
+from .plan.official_persistence import persist_official_plan_in_tx
 
 
 def persist_adoption_in_tx(conn, evidence, intent, request_key, *, application_operator):

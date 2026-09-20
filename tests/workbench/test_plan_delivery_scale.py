@@ -6,7 +6,8 @@ from time import perf_counter
 import pytest
 
 from core.models.workbench_command import WorkbenchCommandRejected, canonical_json, input_fingerprint
-from core.services.workbench import plan_delivery, plan_delivery_repository
+from core.services.workbench.plan import delivery as plan_delivery
+from core.services.workbench.plan import delivery_repository as plan_delivery_repository
 from tests.workbench.plan_delivery_support import add_operation, context, grow_tasks, read, readonly, seed_delivery
 
 

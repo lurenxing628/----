@@ -358,7 +358,7 @@ SCHEDULER_REQUIRED_REGRESSION_GROUPS = (
             "tests/_support/gantt_scenario.py",
             "tests/_support/gantt_retirement.py",
             "tests/gantt/gantt_legacy_schema_support.py",
-            "core/services/workbench/plan*.py", "core/services/workbench/facts/plan_serialization.py",
+            "core/services/workbench/plan/**/*.py", "core/services/workbench/facts/plan_serialization.py",
             "core/models/workbench_plan*.py",
             "web/routes/workbench/plan*.py",
             "web/routes/workbench/assets.py",

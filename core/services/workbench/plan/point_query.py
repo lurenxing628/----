@@ -5,7 +5,7 @@ from core.models.workbench_plan_scope import MAX_PLAN_TASKS
 from data.repositories.schedule_time_sql import parse_dt_for_sql
 from data.repositories.workbench_plan_catalog_repo import WorkbenchPlanCatalogRepository
 
-from .plan_point_evidence import annotate_plan_points
+from .point_evidence import annotate_plan_points
 
 
 def _interval(row):

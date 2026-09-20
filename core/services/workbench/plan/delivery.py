@@ -17,10 +17,10 @@ from core.models.workbench_command import WorkbenchCommandRejected, canonical_js
 from core.models.workbench_plan_scope import MAX_PLAN_RESPONSE_BYTES, PlanReadScope
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
 
-from .plan_delivery_completeness import completion_evidence
-from .plan_delivery_projection import project_delivery_batch, selected_batch_keys, task_intervals
-from .plan_delivery_repository import PlanDeliveryRepository
-from .plan_point_evidence import annotate_plan_points
+from .delivery_completeness import completion_evidence
+from .delivery_projection import project_delivery_batch, selected_batch_keys, task_intervals
+from .delivery_repository import PlanDeliveryRepository
+from .point_evidence import annotate_plan_points
 
 
 def read_plan_delivery(

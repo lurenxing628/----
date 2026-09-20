@@ -8,7 +8,7 @@ import pytest
 from core.errors import AppError
 from core.models.workbench_command import WorkbenchCommandRejected, input_fingerprint
 from core.models.workbench_plan_reference import WorkbenchPlanReferenceError
-from core.services.workbench.plan_delivery import read_plan_delivery
+from core.services.workbench.plan.delivery import read_plan_delivery
 from tests.workbench.plan_delivery_support import (
     add_batch,
     add_operation,

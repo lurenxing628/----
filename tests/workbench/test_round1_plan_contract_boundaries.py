@@ -4,8 +4,8 @@ import pytest
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_run_adoption import adoption_input
-from core.services.workbench.plan_adoption_baseline_identity import _captured_row_binding
-from core.services.workbench.plan_adoption_baseline_values import AdoptionBaselineUnavailable
+from core.services.workbench.plan.adoption_baseline_identity import _captured_row_binding
+from core.services.workbench.plan.adoption_baseline_values import AdoptionBaselineUnavailable
 from tests.workbench.plan_adoption_baseline_support import mutate_json, two_versions
 from tests.workbench.plan_read_support import make_api
 from tests.workbench.run_candidate_adoption_support import service, snapshot

@@ -9,7 +9,7 @@ from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentity
 from data.repositories.workbench_trial_adoption_history import TrialAdoptionHistoryRepository
 
 from .facts.run_input_readonly import candidate_read_snapshot
-from .plan_queries import WorkbenchPlanQueryService
+from .plan.queries import WorkbenchPlanQueryService
 from .trial_adoption_history_evidence import audit_fields, gap, invalid, receipt_plan, scenario_evidence
 from .trial_adoption_history_policy import MAX_DIRECTORY_BYTES, adoption_receipts, bound
 

@@ -9,7 +9,7 @@ from flask import Blueprint, Flask, g
 
 from core.infrastructure.workbench_plan_identity_schema import install_plan_identity
 from core.models.workbench_plan_reference import WorkbenchPlanLocator
-from core.services.workbench import plan_queries
+from core.services.workbench.plan import queries as plan_queries
 from data.repositories import schedule_time_sql
 from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
 from tests.workbench.plan_catalog_support import candidate, history, scenario, seed_operation, selection

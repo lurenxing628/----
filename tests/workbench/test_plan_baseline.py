@@ -4,7 +4,7 @@ import pytest
 
 from core.errors import AppError
 from core.models.workbench_command import WorkbenchCommandRejected, input_fingerprint
-from core.services.workbench.plan_baseline import build_plan_baseline
+from core.services.workbench.plan.baseline import build_plan_baseline
 from tests.workbench.plan_baseline_support import (
     MOVED_END,
     MOVED_START,

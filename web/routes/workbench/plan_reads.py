@@ -23,8 +23,8 @@ from core.models.workbench_plan_scope import (
     PlanCatalogScope,
     PlanReadScope,
 )
-from core.services.workbench.plan_export import write_plan_export
-from core.services.workbench.plan_queries import WorkbenchPlanQueryService
+from core.services.workbench.plan.export import write_plan_export
+from core.services.workbench.plan.queries import WorkbenchPlanQueryService
 from web.api_responses import query_success
 from web.public_token_registry import issue_public_token, resolve_public_token
 

@@ -5,7 +5,8 @@ import copy
 import pytest
 
 from core.models.workbench_command import canonical_json
-from core.services.workbench import plan_projection, plan_workspace_dto
+from core.services.workbench.plan import projection as plan_projection
+from core.services.workbench.plan import workspace_dto as plan_workspace_dto
 from tests.workbench.plan_delivery_support import add_batch, add_operation
 from tests.workbench.plan_read_support import NIGHT_END, NIGHT_START, assert_error, plan_read_api
 from tests.workbench.test_plan_transport import run_probe, workspace_fixture

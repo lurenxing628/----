@@ -26,10 +26,10 @@ from core.services.scheduler.workbench_plan_page import _PagePlanQueryService
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
 from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
 
-from .plan_adoption_baseline import read_adoption_baseline
-from .plan_adoption_baseline_values import REASONS as ADOPTION_REASONS
-from .plan_adoption_baseline_values import AdoptionBaselineUnavailable
-from .plan_projection import check_payload_size, project_plan, project_tasks, public_time
+from .adoption_baseline import read_adoption_baseline
+from .adoption_baseline_values import REASONS as ADOPTION_REASONS
+from .adoption_baseline_values import AdoptionBaselineUnavailable
+from .projection import check_payload_size, project_plan, project_tasks, public_time
 
 _CHANGE_FIELDS = ("start", "end", "machine_ref", "operator_ref")
 _REASONS = {
@@ -76,7 +76,7 @@ def _resource_maps(conn, rows):
 
 
 def _overlaps(start, end, scope):
-    from .facts.zero_duration_evidence import overlaps
+    from core.services.workbench.facts.zero_duration_evidence import overlaps
     return scope.range_start is None or overlaps(start, end, scope.range_start, scope.range_end)
 
 
@@ -113,7 +113,7 @@ def _comparison_items(before_tasks, after_tasks, scope):
 
 class _BaselineReader:
     def __init__(self, conn, entry, scope, selected_rows):
-        from .plan_point_query import PointPlanCatalogRepository
+        from .point_query import PointPlanCatalogRepository
         self.conn, self.entry, self.scope, self.selected_rows = conn, entry, scope, selected_rows
         self.repo = PointPlanCatalogRepository(conn)
         self.references = WorkbenchPlanIdentityRepository(conn)
@@ -150,7 +150,7 @@ class _BaselineReader:
         return self._project(base_entry, base_ref, base_rows, current_rows)
 
     def _adopted(self, locator):
-        from .plan_point_evidence import annotate_plan_points
+        from .point_evidence import annotate_plan_points
 
         if locator.plan_role != "adopted":
             return _unavailable("not_recorded", self.facts)

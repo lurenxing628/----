@@ -17,7 +17,7 @@ from data.repositories.workbench_run_input_repo import WorkbenchRunInputReposito
 
 from .facts.preflight_checks import number, stored_date
 from .facts.run_input_rows import fail
-from .plan_point_evidence import official_point_work
+from .plan.point_evidence import official_point_work
 from .run_input_points import read_point_freeze_rows
 
 

@@ -82,7 +82,7 @@ def test_render_guard_blocks_too_many_tasks_before_new_gantt(app_client) -> None
     from core.models.schedule_plan_role import SOURCE_SCHEDULE
     from core.models.workbench_command import WorkbenchCommandRejected
     from core.models.workbench_plan_scope import MAX_PLAN_TASKS
-    from core.services.workbench.plan_queries import _admit_rows
+    from core.services.workbench.plan.queries import _admit_rows
     from tests._support.gantt_current import plan_fixture
     from tests._support.gantt_current_js import run_current_js
     from tests._support.gantt_retirement import _business_state

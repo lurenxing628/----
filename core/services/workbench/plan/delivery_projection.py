@@ -5,8 +5,7 @@ from __future__ import annotations
 from datetime import date
 
 from core.services.common.overdue_calculations import due_exclusive, parse_dt
-
-from .facts.zero_duration_evidence import overlaps
+from core.services.workbench.facts.zero_duration_evidence import overlaps
 
 
 def task_intervals(rows):

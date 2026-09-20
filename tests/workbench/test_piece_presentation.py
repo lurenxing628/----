@@ -8,7 +8,7 @@ from core.models.workbench_run_candidate import RunCandidateReadScope
 from core.services.workbench.facts.candidate_facts import GenerationFacts
 from core.services.workbench.facts.candidate_store import CandidateStore
 from core.services.workbench.facts.candidate_tasks import operation_labels
-from core.services.workbench.plan_projection import _captured_quantities
+from core.services.workbench.plan.projection import _captured_quantities
 from core.services.workbench.run_candidates import WorkbenchRunCandidateQueryService
 from tests.workbench.piece_chain_support import adopt_candidate, adopt_trial, piece_layout, saved_trial
 from tests.workbench.piece_chain_support import trial_case as trial_case  # noqa: F401
@@ -134,8 +134,8 @@ def test_missing_original_receipt_makes_formal_quantity_explicitly_unknown(trial
 
 def test_quantity_evidence_is_batched_before_task_loop(trial_case, monkeypatch):
     from core.models.workbench_plan_scope import PlanReadScope
-    from core.services.workbench.plan_projection import project_tasks
-    from core.services.workbench.plan_queries import WorkbenchPlanQueryService
+    from core.services.workbench.plan.projection import project_tasks
+    from core.services.workbench.plan.queries import WorkbenchPlanQueryService
 
     case = trial_case
     _, (_, refs) = real_case(case)

@@ -106,7 +106,7 @@ MISC_REQUIRED_REGRESSION_GROUPS = (
             "app_new_ui.py",
             "config.py",
             "schema.sql",
-            "core/services/workbench/legacy_navigation_queries.py",
+            "core/services/workbench/plan/legacy_navigation_queries.py",
             "core/services/workbench/material_queries.py",
             "core/services/workbench/material_table_facts.py",
             "templates/workbench/legacy_base.html",

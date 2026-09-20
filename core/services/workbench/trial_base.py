@@ -1,9 +1,6 @@
 """Copy the explicit complete base, including private legacy row fields."""
 
 from core.models.workbench_trial import MAX_TRIAL_TASKS, issue, reject
-from core.services.workbench.plan_baseline import _complete_rows
-from core.services.workbench.plan_projection import project_plan
-from core.services.workbench.plan_queries import WorkbenchPlanQueryService
 from data.repositories.workbench_trial_query_repo import WorkbenchTrialQueryRepository
 from data.repositories.workbench_trial_raw_repo import WorkbenchTrialRawPlanRepository
 from data.repositories.workbench_trial_repo import new_ref
@@ -16,7 +13,10 @@ from .facts.candidate_values import stored_json
 from .facts.preflight_checks import stored_date
 from .facts.zero_duration_evidence import CandidatePointReader, point_basis
 from .piece_adoption_trial import trial_piece_predecessors
-from .plan_point_evidence import official_point_work
+from .plan.baseline import _complete_rows
+from .plan.point_evidence import official_point_work
+from .plan.projection import project_plan
+from .plan.queries import WorkbenchPlanQueryService
 from .trial_execution_anchors import attach_execution_anchors
 from .trial_facts import entity_maps, live_context
 

@@ -20,14 +20,14 @@ from core.models.workbench_plan_reference import WorkbenchPlanLocator, Workbench
 from core.models.workbench_plan_scope import MAX_PLAN_TASKS
 from core.services.scheduler.workbench_plan_catalog import _role_entry, _scenario_entry
 from core.services.scheduler.workbench_plan_page import _PagePlanQueryService
+from core.services.workbench.facts.plan_serialization import plain_plan_facts
+from core.services.workbench.facts.zero_duration_evidence import overlaps
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
 from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
 
-from .facts.plan_serialization import plain_plan_facts
-from .facts.zero_duration_evidence import overlaps
-from .plan_point_evidence import annotate_plan_points
-from .plan_point_query import PointPlanCatalogRepository
-from .plan_projection import (
+from .point_evidence import annotate_plan_points
+from .point_query import PointPlanCatalogRepository
+from .projection import (
     check_payload_size,
     project_capacity_blocked_plan,
     project_plan,
@@ -36,7 +36,7 @@ from .plan_projection import (
     public_time,
     task_span,
 )
-from .plan_workspace_dto import resource_directory, workspace_projections
+from .workspace_dto import resource_directory, workspace_projections
 
 
 def _admit_rows(repo, version, source, candidate_id=None, scenario_id=None):

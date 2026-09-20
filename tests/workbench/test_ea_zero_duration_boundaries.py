@@ -12,7 +12,7 @@ from core.models.workbench_plan_scope import PlanReadScope
 from core.models.workbench_run_candidate import RunCandidateReadScope
 from core.models.workbench_run_compute import CandidateRunInputError
 from core.services.scheduler.run.schedule_payload_contract import build_validated_schedule_payload
-from core.services.workbench.plan_queries import WorkbenchPlanQueryService
+from core.services.workbench.plan.queries import WorkbenchPlanQueryService
 from core.services.workbench.run_candidates import WorkbenchRunCandidateQueryService
 from core.services.workbench.run_compute import compute_candidate_run
 from core.services.workbench.run_input import prepare_candidate_run_input

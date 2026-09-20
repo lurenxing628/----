@@ -399,37 +399,37 @@
       "count": 3
     },
     {
-      "path": "core/services/workbench/plan_adoption_baseline_sources.py",
+      "path": "core/services/workbench/plan/adoption_baseline_sources.py",
       "kind": "private_symbol",
       "count": 2
     },
     {
-      "path": "core/services/workbench/plan_baseline.py",
+      "path": "core/services/workbench/plan/baseline.py",
       "kind": "private_symbol",
       "count": 2
     },
     {
-      "path": "core/services/workbench/plan_export.py",
+      "path": "core/services/workbench/plan/export.py",
       "kind": "private_symbol",
       "count": 1
     },
     {
-      "path": "core/services/workbench/plan_point_evidence.py",
+      "path": "core/services/workbench/plan/point_evidence.py",
       "kind": "private_symbol",
       "count": 1
     },
     {
-      "path": "core/services/workbench/plan_process_order.py",
+      "path": "core/services/workbench/plan/process_order.py",
       "kind": "private_symbol",
       "count": 1
     },
     {
-      "path": "core/services/workbench/plan_projection.py",
+      "path": "core/services/workbench/plan/projection.py",
       "kind": "private_symbol",
       "count": 1
     },
     {
-      "path": "core/services/workbench/plan_queries.py",
+      "path": "core/services/workbench/plan/queries.py",
       "kind": "private_symbol",
       "count": 3
     },

@@ -7,7 +7,10 @@ import unittest
 from pathlib import Path
 
 from core.models.workbench_plan_reference import WorkbenchPlanLocator
-from core.services.workbench.legacy_navigation_queries import LegacyNavigationQueries, LegacyNavigationSourceMissing
+from core.services.workbench.plan.legacy_navigation_queries import (
+    LegacyNavigationQueries,
+    LegacyNavigationSourceMissing,
+)
 from tests.workbench.final_legacy_navigation_support import prepare_database
 from tests.workbench.plan_read_support import connect
 
@@ -26,7 +29,7 @@ class LegacyNavigationLayeringTests(unittest.TestCase):
                     self.assertNotIn(node.func.attr, ("execute", "executemany", "executescript", "cursor", "commit", "rollback"), (name, node.lineno))
 
     def test_core_query_leaf_has_no_http_or_web_imports(self):
-        tree = ast.parse((ROOT / "core/services/workbench/legacy_navigation_queries.py").read_text(encoding="utf-8"))
+        tree = ast.parse((ROOT / "core/services/workbench/plan/legacy_navigation_queries.py").read_text(encoding="utf-8"))
         imports = []
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):

@@ -7,9 +7,9 @@ from types import SimpleNamespace
 import pytest
 
 from core.models.schedule_plan_role import SOURCE_ADJUSTMENT_SCENARIO_ROWS, SOURCE_CANDIDATE_ROWS, SOURCE_SCHEDULE
-from core.services.workbench.plan_delivery_completeness import completion_evidence
-from core.services.workbench.plan_delivery_projection import project_delivery_batch, selected_batch_keys, task_intervals
-from core.services.workbench.plan_occupancy import _resource_occupancy
+from core.services.workbench.plan.delivery_completeness import completion_evidence
+from core.services.workbench.plan.delivery_projection import project_delivery_batch, selected_batch_keys, task_intervals
+from core.services.workbench.plan.occupancy import _resource_occupancy
 
 
 @pytest.mark.parametrize("payload", [

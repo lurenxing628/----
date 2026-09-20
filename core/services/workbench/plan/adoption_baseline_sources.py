@@ -2,14 +2,14 @@
 
 from core.models.workbench_command import input_fingerprint
 from core.models.workbench_trial_codec import fingerprint
+from core.services.workbench.facts.candidate_archive import load_adoption_candidate
+from core.services.workbench.facts.candidate_baseline import AdmissionBaseline, _blob
+from core.services.workbench.facts.candidate_facts import GenerationFacts, _table
+from core.services.workbench.facts.candidate_store import CandidateStore
+from core.services.workbench.facts.trial_scenario_archive import load_saved_scenario
 from data.repositories.workbench_plan_baseline_repo import WorkbenchPlanBaselineRepository
 
-from .facts.candidate_archive import load_adoption_candidate
-from .facts.candidate_baseline import AdmissionBaseline, _blob
-from .facts.candidate_facts import GenerationFacts, _table
-from .facts.candidate_store import CandidateStore
-from .facts.trial_scenario_archive import load_saved_scenario
-from .plan_adoption_baseline_values import fail, has_table, require, same, stored
+from .adoption_baseline_values import fail, has_table, require, same, stored
 
 _TABLES = ("Schedule", "ScheduleHistory", "WorkbenchPlanSourceRefs", "WorkbenchTaskRefs",
            "WorkbenchEntityRefs", "BatchOperations", "Batches")

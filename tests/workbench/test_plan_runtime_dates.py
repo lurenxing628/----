@@ -12,9 +12,9 @@ from core.infrastructure.database import get_connection
 from core.models.workbench_command import canonical_json, input_fingerprint
 from core.models.workbench_plan_reference import WorkbenchPlanLocator
 from core.models.workbench_plan_scope import PlanReadScope
-from core.services.workbench import plan_queries
 from core.services.workbench.facts.plan_serialization import plain_plan_facts
-from core.services.workbench.plan_queries import WorkbenchPlanQueryService
+from core.services.workbench.plan import queries as plan_queries
+from core.services.workbench.plan.queries import WorkbenchPlanQueryService
 from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
 from tests.workbench.plan_read_support import (
     BASE,

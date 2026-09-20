@@ -7,7 +7,7 @@ import pytest
 
 from core.infrastructure.database import get_connection
 from core.models.workbench_plan_scope import PlanReadScope
-from core.services.workbench.plan_queries import WorkbenchPlanQueryService
+from core.services.workbench.plan.queries import WorkbenchPlanQueryService
 from core.services.workbench.run_jobs import WorkbenchRunService
 from tests.workbench.ea_zero_duration_support import adoption_service, trial_adoption_service
 from tests.workbench.piece_chain_support import piece_layout
