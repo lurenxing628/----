@@ -36,6 +36,10 @@ FOCUSED_PYTEST_NODEIDS: Tuple[str, ...] = (
     # 而删除发生在哪个目录事先不知道，按影响面选组必然漏（2026-09-18 删旧路由层就漏了）。
     "tests/gate_meta/test_dead_path_literals.py::test_repo_dead_path_literals_have_no_new_debt",
     "tests/gate_meta/test_dead_path_literals.py::test_baseline_entries_point_at_existing_source_files",
+    # 实现一致性对标同理：它横跨 schema.sql、bootstrap、排产配置和架构分层，改哪儿都可能动它，
+    # 按影响面选组同样必然漏。0.4 秒，无条件跑。
+    "tests/gate_meta/test_conformance_report.py::test_implementation_matches_documented_conformance_checks",
+    "tests/gate_meta/test_conformance_report.py::test_minor_conformance_gaps_are_reported_without_blocking",
 )
 
 _COLLECT_COUNT_RE = re.compile(r"\b(\d+)\s+(?:tests?|items?) collected\b")

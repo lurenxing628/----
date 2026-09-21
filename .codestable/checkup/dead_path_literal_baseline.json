@@ -68,31 +68,6 @@
       "count": 1
     },
     {
-      "path": "tests/gate_meta/generate_conformance_report.py",
-      "kind": "static/css/frappe-gantt.css",
-      "count": 1
-    },
-    {
-      "path": "tests/gate_meta/generate_conformance_report.py",
-      "kind": "static/js/frappe-gantt.min.js",
-      "count": 1
-    },
-    {
-      "path": "tests/gate_meta/generate_conformance_report.py",
-      "kind": "templates/base.html",
-      "count": 1
-    },
-    {
-      "path": "tests/gate_meta/generate_conformance_report.py",
-      "kind": "templates/scheduler/batches.html",
-      "count": 1
-    },
-    {
-      "path": "tests/gate_meta/generate_conformance_report.py",
-      "kind": "templates/scheduler/gantt.html",
-      "count": 1
-    },
-    {
       "path": "tests/gate_meta/test_anti_regression_gate.py",
       "kind": "core/services/personnel/operator.py",
       "count": 2
