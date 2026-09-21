@@ -82,8 +82,14 @@ async function bounds(page, selector) {
   });
 }
 async function geometry(page) {
+  // 量 .fg-mark-face（视觉条），不要量外面那个 button。button 是点击热区，
+  // 宽度是 Math.max(4, size)（ActualGanttWindow.js:50）——太窄的条点不到，所以给了 4px 下限。
+  // 容器窄的时候短报工段的热区被这个下限撑大，时间比例就失真了：1026px 轨道上真实宽度
+  // 3.35px 被撑成 4px，放开到 1338px 轨道后是 4.37px 不撑，两边比例对不上。
+  // face 的宽度直接就是 size，没有下限，才是这条断言想比的东西。
   return page.locator('[data-report-ref]').first().evaluate(node => {
-    const track = node.parentElement.getBoundingClientRect(), bar = node.getBoundingClientRect();
+    const track = node.parentElement.getBoundingClientRect();
+    const bar = (node.querySelector('.fg-mark-face') || node).getBoundingClientRect();
     return { width: bar.width, track: track.width, ratio: bar.width / track.width, title: node.title };
   });
 }

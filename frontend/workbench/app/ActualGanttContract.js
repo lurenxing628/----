@@ -87,7 +87,7 @@
     const taskRefs = new Set(d.items.map(item => item.task.task_ref));
     if (chain.state !== 'unavailable') {
       if (chain.state !== 'available' || !chain.engine_evidence_ref || chain.snapshot_ref !== meta.snapshot_ref || chain.plan_ref !== query.plan_ref
-        || chain.source !== 'core.services.scheduler.gantt_critical_chain.compute_critical_chain_from_rows'
+        || chain.source !== 'core.services.scheduler.gantt.critical_chain.compute_critical_chain_from_rows'
         || chain.semantics !== 'selected_plan_control_predecessor_chain' || chain.scope !== 'full_plan' || chain.gap_unit !== 'minute'
         || !['global', 'related'].includes(chain.mode) || (chain.mode === 'global' ? chain.target_task_ref !== null : !ref(chain.target_task_ref))
         || chain.time_basis !== 'factory_local' || chain.gap_rounding !== 'floor' || !local(chain.makespan_end)

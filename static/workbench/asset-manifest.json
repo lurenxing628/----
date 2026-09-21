@@ -385,7 +385,7 @@
     },
     {
       "path": "workbench/app/ActualGanttContract.js",
-      "sha256": "fb21ca52cc48b0e58e8b3e975e74480e95a12238e8239873c21c6b3d03007a0f",
+      "sha256": "ad3671c10040da63376256d1d050f9f8c037202ed85d69dd0ba61d8b12671376",
       "bytes": 13670,
       "mime": "application/javascript",
       "dependencies": [
@@ -424,7 +424,7 @@
           "source_files": [
             {
               "path": "frontend/workbench/app/ActualGanttContract.js",
-              "sha256": "7c04eedcadc68a337aff890f180dbaba7c74ec8cd6c895f28794306d293b7a98"
+              "sha256": "8bce1e081e24aaf570a208be1b6e846b66eef0222ed635d2b7d7c0c84a536d6e"
             }
           ],
           "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
@@ -433,7 +433,7 @@
       "source_files": [
         {
           "path": "frontend/workbench/app/ActualGanttContract.js",
-          "sha256": "7c04eedcadc68a337aff890f180dbaba7c74ec8cd6c895f28794306d293b7a98"
+          "sha256": "8bce1e081e24aaf570a208be1b6e846b66eef0222ed635d2b7d7c0c84a536d6e"
         }
       ]
     },
@@ -17580,7 +17580,7 @@
     },
     {
       "path": "frontend/workbench/app/ActualGanttContract.js",
-      "sha256": "7c04eedcadc68a337aff890f180dbaba7c74ec8cd6c895f28794306d293b7a98"
+      "sha256": "8bce1e081e24aaf570a208be1b6e846b66eef0222ed635d2b7d7c0c84a536d6e"
     },
     {
       "path": "frontend/workbench/app/ActualGanttAPI.js",
@@ -18672,5 +18672,5 @@
       "workbench/prototype/ui_kits/workbench/workbench-ui.css"
     ]
   },
-  "build_id": "6f5af0a947373c7ef18e3dbfb65ddafe14618f72cefe4dd695758058c3126765"
+  "build_id": "9c7a02fc002f0d02208330dd2cb6b8651c2853a9171d58834cd2a86e6e84c9c4"
 }
