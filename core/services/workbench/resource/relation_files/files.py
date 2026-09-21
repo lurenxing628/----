@@ -11,6 +11,7 @@ from core.errors import ValidationError
 from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
 from core.models.workbench_relation_file import (
+    EXPORT_LABELS,
     READONLY,
     REQUIRED,
     import_request,
@@ -315,11 +316,15 @@ class WorkbenchRelationFileService:
         names = {"operator": {}, "machine": {}}
         rows = []
         for link in self.links.list_simple_rows_for_operators(sorted(set(codes))):
+            # 导出写中文：文件里的下拉和填写说明都是中文，格子里却留英文代号的话，
+            # 用户点一下下拉就改了值，想照原样填回 normal 又会被数据校验拒掉。
+            # 直接下标不兜底：normalize_*_stored 保证给的是规范值，取不到说明契约破了，
+            # 应当当场暴露而不是悄悄写一个默认档位。
             rows.append({
                 "operator_code": link["operator_id"],
                 "machine_code": link["machine_id"],
-                "skill_level": normalize_skill_level_stored(link.get("skill_level")),
-                "is_primary": normalize_yes_no_stored(link.get("is_primary")),
+                "skill_level": EXPORT_LABELS["skill_level"][normalize_skill_level_stored(link.get("skill_level"))],
+                "is_primary": EXPORT_LABELS["is_primary"][normalize_yes_no_stored(link.get("is_primary"))],
             })
         for row in rows:
             for key, entity in _ENTITY_OF.items():

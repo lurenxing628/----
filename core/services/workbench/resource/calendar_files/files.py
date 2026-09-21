@@ -140,7 +140,12 @@ class WorkbenchCalendarFileService:
                 raise ValidationError("只能填：" + " / ".join(ENUMS[key]) + "。", field=key)
             return ENUMS[key][text]
         text = str(raw).strip() if not isinstance(raw, str) else raw.strip()
-        return text or None
+        if not text:
+            # 只填了空格的格子，和真正的空格子在文件里长得一模一样，含义却相反：
+            # 空格子是"保持原样"（根本走不到这里），纯空格原来被 strip 成 None 当作"清除"。
+            # 与其替用户猜，不如让他明确表达。
+            raise ValidationError("这一格只填了空格。留空表示保持原样，要清空请填 \\N。", field=key)
+        return text
 
     @staticmethod
     def _reject_duplicate_dates(rows) -> None:
@@ -185,7 +190,10 @@ class WorkbenchCalendarFileService:
         row["after"] = self._public(after)
         row["action"] = "create" if before["row"] is None else "update"
         if before["row"] is None:
-            row["result"] = "new"
+            # 只填日期、其余全空的行，对没配置过的天什么都不写（这天继续走默认规则）。
+            # 原来一律判 new，回执跟着报 committed 且 summary 里 new 计 1，而库里一行没落——
+            # 用户被告知"导入了 1 天"，实际什么都没发生。
+            row["result"] = "new" if after is not None else "unchanged"
         else:
             row["changes"] = {key: {"before": row["before"][key], "after": row["after"][key]}
                               for key in file_columns(self.kind)
@@ -196,8 +204,17 @@ class WorkbenchCalendarFileService:
 
     @staticmethod
     def _add_notes(row, after) -> None:
-        if after is not None and after["day_type"] == "holiday" and after["shift_hours"] > 0:
+        if after is None:
+            return
+        if after["day_type"] == "holiday" and after["shift_hours"] > 0:
             row["notes"].append("这一天是假期但安排了工时，效率按排产设置里的假期效率算；日历页上会显示成工作日。")
+            row["requires_confirmation"] = True
+        if after["shift_hours"] > 0 and after["allow_normal"] == "no" and after["allow_urgent"] == "no":
+            # 类型留空时按日期取默认规则，周末的默认是假期且两个优先级都为否。于是"周六只填 4 小时"
+            # 会存成假期 4 小时且不可排产：用户看到日历页显示成工作日，排产时却一道工序也排不进来。
+            # roadmap 4.5 要求这种情况不能让用户自己撞，这里在预检里说清楚。
+            row["notes"].append("这一天安排了工时，但普通件和急件都不可排产，实际一道工序也排不进来。"
+                                "这两列留空时，没配置过的周末按假期默认成「否」；要让这天能排产请把它们填成「是」。")
             row["requires_confirmation"] = True
 
     def _public(self, row: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
@@ -228,7 +245,12 @@ class WorkbenchCalendarFileService:
                 if row["result"] == "unchanged":
                     results.append({"row": row["row"], "business_code": row["business_code"], "result": "unchanged"})
                     continue
-                self.calendar.write_day(row["expected"], row["input"])
+                outcome = self.calendar.write_day(row["expected"], row["input"])
+                # 回执必须照实说。原来这里丢掉了 write_day 的结果一律记 committed，
+                # 于是"预检说要写、领域层判定无事可写"这种不一致会被包装成成功回执。
+                if outcome.result != "committed":
+                    raise RuntimeError(
+                        f"预检判这一行要写入，日历领域层却判定无事可写，不能确认保存：第 {row['row']} 行 {row['business_code']}")
                 results.append({"row": row["row"], "business_code": row["business_code"], "result": "committed"})
             changed = any(item["result"] == "committed" for item in results)
             return WorkbenchCommandOutcome("committed" if changed else "unchanged",

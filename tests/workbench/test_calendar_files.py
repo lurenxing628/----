@@ -262,3 +262,83 @@ def test_excel_date_cells_are_accepted(value):
 def test_excel_datetime_with_a_time_is_rejected():
     with pytest.raises(ValidationError):
         read_date(datetime(2026, 10, 1, 8, 30))
+
+
+def test_only_date_on_an_unconfigured_day_reports_no_write(calendar_env):
+    """只填日期、其余全空的行对没配置过的天什么都不写，回执必须照实说。
+
+    原来预检一律判 new、回执报 committed 且 summary 里 new 计 1，而库里一行没落：
+    用户被告知"导入了 1 天"，实际什么都没发生。
+    """
+    conn = calendar_env[0]
+    before = stored_days(conn)
+    rows = [(OTHER, "", "", "", "", "", "")]
+    document = preview(calendar_env, rows)
+    assert results(document) == [(2, "unchanged")]
+    assert document.as_dict()["summary"]["new"] == 0
+    outcome = confirm(calendar_env, document, rows)
+    assert outcome["result"] == "unchanged"
+    assert stored_days(conn) == before, "回执说没写，库里就不能有变化"
+
+
+def test_only_date_on_a_configured_day_stays_unchanged(calendar_env):
+    """回归：已配置过的天走的是另一条分支，本来就判 unchanged。"""
+    conn = calendar_env[0]
+    seed = [(DAY, "工作日", "8", "100", "是", "是", "白班")]
+    confirm(calendar_env, preview(calendar_env, seed), seed)
+    saved = stored_day(conn, DAY)
+    rows = [(DAY, "", "", "", "", "", "")]
+    document = preview(calendar_env, rows)
+    assert results(document) == [(2, "unchanged")]
+    assert confirm(calendar_env, document, rows)["result"] == "unchanged"
+    assert stored_day(conn, DAY) == saved
+
+
+SATURDAY = "2026-10-03"
+
+
+def test_hours_that_can_never_be_scheduled_are_called_out(calendar_env):
+    """周六只填工时会存成"假期 N 小时且不可排产"，预检必须说清楚，不能让用户自己撞。
+
+    类型留空时按日期取默认规则，周末的默认是假期且两个优先级都为否；日历页又把
+    "假期带工时"显示成工作日。用户安排了 4 小时加班，看着像工作日，排产时一道工序
+    也排不进来。roadmap 4.5 要求这种情况要么定死要么显式提示。
+    """
+    document = preview(calendar_env, [(SATURDAY, "", "4", "", "", "", "")])
+    row = document.as_dict()["rows"][0]
+    assert row["result"] == "new" and row["requires_confirmation"]
+    assert row["after"]["allow_normal"] == "否" and row["after"]["allow_urgent"] == "否"
+    assert any("一道工序也排不进来" in note for note in row["notes"]), row["notes"]
+
+
+def test_holiday_overtime_that_allows_parts_is_not_flagged_as_unschedulable(calendar_env):
+    """回归：假期加班并明确允许排产，是已裁决的用法，不该报"排不进来"。"""
+    document = preview(calendar_env, [("2026-10-04", "假期", "4", "100", "是", "是", "假期加班")])
+    row = document.as_dict()["rows"][0]
+    assert row["result"] == "new"
+    assert not any("一道工序也排不进来" in note for note in row["notes"]), row["notes"]
+
+
+def test_whitespace_only_cell_is_rejected_instead_of_silently_clearing(calendar_env):
+    """只填空格的格子和真正的空格子在文件里长得一样，含义却相反。
+
+    空格子是"保持原样"，纯空格原来被 strip 成 None 当作"清除"：用户多打一个空格
+    就把备注清掉了，而且看不出来。
+    """
+    conn = calendar_env[0]
+    seed = [(DAY, "工作日", "8", "100", "是", "是", "原备注")]
+    confirm(calendar_env, preview(calendar_env, seed), seed)
+    document = preview(calendar_env, [(DAY, "", "", "", "", "", "   ")])
+    assert results(document) == [(2, "rejected")]
+    assert document.as_dict()["rows"][0]["errors"][0]["field"] == "remark"
+    assert stored_day(conn, DAY)["remark"] == "原备注"
+
+
+def test_backslash_n_is_still_the_way_to_clear_a_remark(calendar_env):
+    """回归：明确的清除标记照旧工作，拒绝纯空格不影响它。"""
+    conn = calendar_env[0]
+    seed = [(DAY, "工作日", "8", "100", "是", "是", "原备注")]
+    confirm(calendar_env, preview(calendar_env, seed), seed)
+    rows = [(DAY, "", "", "", "", "", r"\N")]
+    confirm(calendar_env, preview(calendar_env, rows), rows)
+    assert stored_day(conn, DAY)["remark"] is None

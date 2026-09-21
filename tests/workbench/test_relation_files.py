@@ -176,3 +176,27 @@ def test_unknown_headers_are_rejected(relation_env):
         preview(conn, [("RO1", "RM1")], headers=("工号", "随便什么"))
     with pytest.raises(ValidationError):
         preview(conn, [("RO1",)], headers=("工号",))
+
+
+@pytest.mark.parametrize("fmt", ("csv", "xlsx"))
+def test_export_writes_the_same_words_the_dropdown_offers(relation_env, fmt):
+    """导出的值必须和文件里的下拉、填写说明用同一套词。
+
+    原来库里存的英文代号被直接写进格子：下拉给的是「普通」，格子里却是 normal，
+    用户点一下下拉就改了值，想照原样填回 normal 又会被 Excel 的数据校验拒掉。
+    """
+    from tests.workbench.relation_file_support import decode
+
+    conn = relation_env
+    seed = [("RO1", "RM1", "熟练", "是"), ("RO2", "RM2", "初级", "否")]
+    confirm(conn, preview(conn, seed), rows=seed)
+    with TransactionManager(conn).transaction():
+        download = WorkbenchRelationFileService(conn, KIND).export(fmt, scope={})
+
+    headers, rows = decode(download, fmt)
+    level_at, primary_at = headers.index("技能等级"), headers.index("主操设备")
+    levels = {row[level_at] for row in rows}
+    primaries = {row[primary_at] for row in rows}
+    assert levels <= {"初级", "普通", "熟练"}, f"技能等级导出了下拉里没有的词：{levels}"
+    assert primaries <= {"是", "否"}, f"主操设备导出了下拉里没有的词：{primaries}"
+    assert ("RO1", "RM1", "熟练", "是") in {(r[0], r[1], r[level_at], r[primary_at]) for r in rows}

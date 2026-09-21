@@ -33,6 +33,15 @@ ENUMS: Dict[str, Tuple[str, ...]] = {
     "skill_level": ("初级", "普通", "熟练"),
     "is_primary": ("是", "否"),
 }
+#: 库里存的是英文代号，文件里给用户看的是中文。导出必须按这张表翻过去，
+#: 否则格子里是 normal 而下拉给的是「普通」：用户点一下下拉就改了值，
+#: 想照原样填回 normal 又会被 Excel 的数据校验拒掉。
+#: 不能用 ENUMS 的下标对齐代替这张表——SkillLevel 有四个值（skilled 也归到
+#: expert），顺序一致只是巧合。
+EXPORT_LABELS: Dict[str, Dict[str, str]] = {
+    "skill_level": {"beginner": "初级", "normal": "普通", "expert": "熟练"},
+    "is_primary": {"yes": "是", "no": "否"},
+}
 NULLABLE: FrozenSet[str] = frozenset()
 NUMERIC_FIELDS: FrozenSet[str] = frozenset()
 DATE_FIELDS: FrozenSet[str] = frozenset()

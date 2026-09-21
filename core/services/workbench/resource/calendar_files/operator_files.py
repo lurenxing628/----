@@ -150,7 +150,11 @@ class WorkbenchOperatorCalendarFileService:
         if key in ENUMS:
             return self._choice(raw, key)
         text = str(raw).strip() if not isinstance(raw, str) else raw.strip()
-        return text or None
+        if not text:
+            # 与全局日历同一口径：空格子是"保持原样"，纯空格原来被当成"清除"，
+            # 两者在文件里看不出区别。
+            raise ValidationError("这一格只填了空格。留空表示保持原样，要清空请填 \\N。", field=key)
+        return text
 
     @staticmethod
     def _code(raw: Any, key: str) -> str:
@@ -306,7 +310,14 @@ class WorkbenchOperatorCalendarFileService:
                 if row["result"] == "unchanged":
                     results.append({"row": row["row"], "business_code": row["business_code"], "result": "unchanged"})
                     continue
-                self._calendar(row["values"]["operator_code"]).write_day(row["expected"]["state"], row["input"])
+                outcome = self._calendar(row["values"]["operator_code"]).write_day(
+                    row["expected"]["state"], row["input"])
+                # 与全局日历同一条守卫：回执照实说，不把"预检说要写、领域层判定无事可写"
+                # 包装成成功。个人日历这条路今天走不到（只填工号和日期的行会先被拒），
+                # 守在这里是防止将来某个字段变成可选后又悄悄退回假回执。
+                if outcome.result != "committed":
+                    raise RuntimeError(
+                        f"预检判这一行要写入，个人日历领域层却判定无事可写，不能确认保存：第 {row['row']} 行 {row['business_code']}")
                 results.append({"row": row["row"], "business_code": row["business_code"], "result": "committed"})
             changed = any(item["result"] == "committed" for item in results)
             return WorkbenchCommandOutcome("committed" if changed else "unchanged",
