@@ -78,7 +78,9 @@ def _overview_name(descriptor: Dict[str, object], seen: List[str]) -> str:
 
 def overview_section() -> List[str]:
     """总表：有哪些表、各有多少列、一次最多多少行。"""
-    lines = [_HINT, "", "| 表 | 工作表名 | 可填列 | 只读参考列 | 一次最多 |", "|---|---|---:|---:|---:|"]
+    lines = [_HINT, "",
+             "| 表 | 工作表名 | 可填列 | 只读参考列 | 一次最多 | 文件上限 | 写入方式 |",
+             "|---|---|---:|---:|---:|---:|---|"]
     descriptors = all_descriptors()
     names = [str(descriptor["display_name"]) for descriptor in descriptors]
     for descriptor in descriptors:
@@ -86,9 +88,15 @@ def overview_section() -> List[str]:
         lines.append("| " + " | ".join([
             _cell(_overview_name(descriptor, names)), _cell(descriptor["sheet_name"]),
             str(writable), str(len(descriptor["columns"]) - writable), str(descriptor["row_limit"]),
+            _megabytes(descriptor["byte_limit"]), _cell(" / ".join(descriptor["modes"])),
         ]) + " |")
     lines.append("")
     return lines
+
+
+def _megabytes(byte_limit: object) -> str:
+    """上限一律按整 MB 写；协议要求是正整数字节，不到 1MB 的表目前没有。"""
+    return str(int(byte_limit) // (1024 * 1024)) + "MB"
 
 
 def _generate(name: str) -> List[str]:

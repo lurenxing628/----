@@ -6,7 +6,11 @@ from typing import Any, Dict, Optional, Tuple
 
 from core.errors import ValidationError
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.models.workbench_table_descriptor import instructions_text
+from core.models.workbench_table_descriptor import (
+    DEFAULT_IMPORT_BYTE_LIMIT,
+    UPSERT_ONLY,
+    instructions_text,
+)
 
 IMPORT_ROW_LIMIT = 2000
 TEMPLATE_VERSION = 1
@@ -197,6 +201,8 @@ def table_descriptor(kind: str) -> Dict[str, Any]:
         "general_rules": _GENERAL_RULES[kind],
         "sample_rows": _SAMPLE_ROWS[kind],
         "row_limit": IMPORT_ROW_LIMIT,
+        "byte_limit": DEFAULT_IMPORT_BYTE_LIMIT,
+        "modes": UPSERT_ONLY,
     }
 
 

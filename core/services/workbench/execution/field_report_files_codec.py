@@ -14,6 +14,7 @@ from openpyxl.utils.datetime import from_excel
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_field_report_file import (
+    BYTE_LIMIT,
     FIELDS,
     HEADERS,
     ROW_LIMIT,
@@ -27,7 +28,6 @@ from core.services.common.excel_instruction_sheet import append_instruction_shee
 
 from .field_report_files_xml import check_package
 
-BYTE_LIMIT = 8 * 1024 * 1024
 MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 
 

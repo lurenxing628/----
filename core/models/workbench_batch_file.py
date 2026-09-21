@@ -63,4 +63,6 @@ def table_descriptor(_kind=None):
         "general_rules": _GENERAL_RULES,
         "sample_rows": _SAMPLE_ROWS,
         "row_limit": MAX_ROWS,
+        "byte_limit": MAX_BYTES,
+        "modes": ("已有批次就更新，没有的就新增", "只新增没有的批次（已有的跳过）", "先清除全部批次，再按表格重导"),
     }

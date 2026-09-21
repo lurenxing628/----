@@ -2,6 +2,8 @@ import os
 import sys
 from pathlib import Path
 
+from core.models.workbench_table_descriptor import DEFAULT_IMPORT_BYTE_LIMIT
+
 
 class Config:
     """应用配置（V1 最终）"""
@@ -42,7 +44,10 @@ class Config:
 
     # Excel模板
     EXCEL_TEMPLATE_DIR = os.environ.get("APS_EXCEL_TEMPLATE_DIR") or os.path.join(BASE_DIR, "templates_excel")
-    EXCEL_MAX_UPLOAD_BYTES = 16 * 1024 * 1024  # 16MB（Excel 文件本体）
+    # 上限的唯一来源是表描述协议：各表自己声明 byte_limit（批次 10MB、报工 8MB、
+    # 其余按默认 16MB），传输层只需要放行其中最大的那个。原来这里独立写 16MB，
+    # 说明书跟着写"统一 16MB"，而批次和报工在自己的读取器里另有更小的值，三处各说各的。
+    EXCEL_MAX_UPLOAD_BYTES = DEFAULT_IMPORT_BYTE_LIMIT  # 16MB（Excel 文件本体）
     # multipart/form-data 会包含 boundary/header 等额外开销，请求体上限需略大于文件本体上限。
     MAX_CONTENT_LENGTH = EXCEL_MAX_UPLOAD_BYTES + 1 * 1024 * 1024
 

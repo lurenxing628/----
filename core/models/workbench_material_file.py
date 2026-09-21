@@ -22,6 +22,7 @@ from typing import Any, Dict
 from core.errors import ValidationError
 from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
 from core.models.workbench_material_query import MaterialPageRequest
+from core.models.workbench_table_descriptor import DEFAULT_IMPORT_BYTE_LIMIT, UPSERT_ONLY
 
 IMPORT_ROW_LIMIT = 2000
 HEADERS = ("物料编号", "名称", "规格", "单位", "库存数量", "状态", "备注", "创建时间")
@@ -92,6 +93,8 @@ def table_descriptor(_kind=None):
         "general_rules": _GENERAL_RULES,
         "sample_rows": _SAMPLE_ROWS,
         "row_limit": IMPORT_ROW_LIMIT,
+        "byte_limit": DEFAULT_IMPORT_BYTE_LIMIT,
+        "modes": UPSERT_ONLY,
     }
 
 

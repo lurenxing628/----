@@ -9,7 +9,7 @@ from dataclasses import dataclass
 
 from core.errors import ValidationError
 from core.models.workbench_resource_file import IMPORT_ROW_LIMIT
-from core.models.workbench_table_descriptor import instructions_text
+from core.models.workbench_table_descriptor import UPSERT_ONLY, instructions_text
 
 COLUMNS = {
     "route": ("business_code", "label", "route_raw", "remark"),
@@ -132,6 +132,8 @@ def table_descriptor(kind):
         "general_rules": _GENERAL_RULES[kind],
         "sample_rows": _SAMPLE_ROWS[kind],
         "row_limit": IMPORT_ROW_LIMIT,
+        "byte_limit": IMPORT_BYTE_LIMIT,
+        "modes": UPSERT_ONLY,
     }
 
 

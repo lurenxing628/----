@@ -4,6 +4,7 @@
 """
 
 from core.models.workbench_command import WorkbenchCommandRejected
+from core.models.workbench_table_descriptor import UPSERT_ONLY
 
 HEADERS = ('报工编号', '批次号', '工序', '本次完成数量', '实际开工', '本次实际完工',
            '有效加工工时(h)', '实际设备', '实际人员', '备注')
@@ -12,6 +13,9 @@ FIELDS = ('report_no', 'batch_id', 'operation_label', 'completed_quantity', 'act
 TASK_HEADERS = HEADERS + ('任务编号', '工序范围', '单件编号')
 TASK_FIELDS = FIELDS + ('task_ref', 'operation_scope', 'piece_id')
 ROW_LIMIT = 5000
+#: 报工文件的上传上限。定在这里而不是读取器里：说明书的规格表从表描述取，
+#: 读取器和路由也从这里取，一个数只有一处定义。
+BYTE_LIMIT = 8 * 1024 * 1024
 _VALUE_HINTS = {
     'report_no': '系统预填的报工编号，请原样保留',
     'batch_id': '批次号，例如 B001',
@@ -91,4 +95,6 @@ def table_descriptor(format_version=1):
         'general_rules': _GENERAL_RULES,
         'sample_rows': samples,
         'row_limit': ROW_LIMIT,
+        'byte_limit': BYTE_LIMIT,
+        'modes': UPSERT_ONLY,
     }

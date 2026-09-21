@@ -11,11 +11,22 @@ from typing import Any, Dict, List, Sequence, Tuple
 
 #: 第二张工作表的固定名字。读取器一律只读第一张，所以这个名字不参与导入判定，只给用户看。
 INSTRUCTION_SHEET = "填写说明"
+
+#: 上传文件本体的默认大小上限。多数表用它，批次和报工在自己的列目录里给更小的值。
+#: `web/bootstrap/app_config.py` 的 EXCEL_MAX_UPLOAD_BYTES 从这里取，不再各写一份：
+#: 原来说明书写"统一 16MB"，而批次实际是 10MB、报工是 8MB，三处各说各的。
+DEFAULT_IMPORT_BYTE_LIMIT = 16 * 1024 * 1024
+
+#: 写入方式（导入模式）。只有批次这一张表让用户选，其余一律按编号增量更新。
+#: 说明书里"三种导入模式"曾被写到人员和日历头上，那两处根本没有这个选项。
+UPSERT_ONLY = ("已有的就更新，没有的就新增",)
+
 _HEADER = ("列名", "必填", "能填什么", "会报错的情况")
 _TEXT_KEYS = ("table_id", "display_name", "sheet_name", "file_stem")
 _COLUMN_TEXT = ("key", "label", "value_hint", "error_hint")
 _COLUMN_FLAGS = ("required", "readonly", "nullable")
-_DESCRIPTOR_KEYS = (*_TEXT_KEYS, "columns", "general_rules", "sample_rows", "row_limit")
+_DESCRIPTOR_KEYS = (*_TEXT_KEYS, "columns", "general_rules", "sample_rows", "row_limit",
+                    "byte_limit", "modes")
 
 
 def extra_sheet_notice(sheet_count: int) -> List[Dict[str, str]]:
@@ -89,7 +100,16 @@ def check_table_descriptor(descriptor: Any) -> Dict[str, Any]:
     _check_columns(descriptor)
     _check_rules(descriptor)
     _check_samples(descriptor)
+    _check_limits(descriptor)
     return descriptor
+
+
+def _check_limits(descriptor: Dict[str, Any]) -> None:
+    if type(descriptor["byte_limit"]) is not int or descriptor["byte_limit"] <= 0:
+        _fail("byte_limit 必须是大于 0 的整数字节数", descriptor)
+    modes = descriptor["modes"]
+    if type(modes) is not tuple or not modes or any(not _nonempty_text(mode) for mode in modes):
+        _fail("modes 必须是至少一条非空文字的元组，写用户在界面上看到的那句话", descriptor)
 
 
 def _check_samples(descriptor: Dict[str, Any]) -> None:
