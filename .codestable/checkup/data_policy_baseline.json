@@ -1,9 +1,0 @@
-{
-  "schema_version": 1,
-  "rule": "data_policy",
-  "scan_roots": [
-    "data"
-  ],
-  "note": "仓储层不做裁决棘轮基线：data/ 不得 import/raise 业务拒绝，也不得把形参当表名拼 SQL；条目只减不增，刷新走 --refresh。",
-  "entries": []
-}
