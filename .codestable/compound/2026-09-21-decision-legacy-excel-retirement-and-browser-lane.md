@@ -62,14 +62,20 @@ tags: [excel, retirement, browser-lane, quality-gate, ratchet, conformance]
    `final_master_visual_index_support.py` 同样零引用，但被 `.gitignore:289` 单独点名忽略，
    是有意排除的，没动。
 
-## 未做与待裁决
+8. **浏览器车道的执行机制定为 pre-push 轮转抽样**（用户裁决）。2026-09-17 建起车道后，
+   没有任何 CI workflow 或定时任务引用 `scripts/run_browser_test_lane.py`，"每周至少跑一次"
+   只写在文档里；09-17 的裁决文档自己最后一行就写着"浏览器车道本机缺 Chromium 109 未实跑"。
+   `test_frontend_ui_language_polish.py` 那 17 条用例烂了三天没人发现就是这么来的。
+   现在 `tools/browser_lane_sample.py` 进 pre-push（`.pre-commit-config.yaml` 最后一个钩子），
+   默认每次抽 2 个文件（实测约 80 秒），130 个文件约 65 次 push 覆盖一圈。
+   **必须是轮转不是随机**：随机会让某些文件长期抽不到，也不可复现；轮转语义由
+   `tests/gate_meta/test_browser_lane_sample.py` 锁住。
+   游标写在 `evidence/browser-lane/sample-cursor.json`——**不能放进版本控制**，
+   pre-push 写一个被跟踪的文件会弄脏工作区，把要求干净树的门禁卡死。
+   本机没准备 Chromium 109 时抽样跳过而不拦 push（开发机不一定装运行时，拦下来只会逼人绕过钩子），
+   但会往 stderr 喊出解压命令。整条车道仍用 `scripts/run_browser_test_lane.py` 手动跑。
 
-- **浏览器验收车道没有执行机制。** 2026-09-17 建起 127 个文件的车道后，没有任何 CI workflow
-  或定时任务引用 `scripts/run_browser_test_lane.py`，"每周至少跑一次"只写在文档里；09-17 的
-  裁决文档自己最后一行就写着"浏览器车道本机缺 Chromium 109 未实跑"。
-  `test_frontend_ui_language_polish.py` 那 17 条纯读源文件的用例烂了三天没人发现，
-  直接后果就是这个。本轮补了运行时修复和一次实跑，**执行机制本身待裁决**
-  （候选：CI 定时任务、pre-push 抽样、发版前必跑清单）。
+## 未做与待裁决
 - **"车道纯度门禁"不建。** 原计划要建一道门禁盯"车道文件里混进不需要浏览器的用例"，
   实测推翻了前提：静态判定说 `test_final_execution_chain.py` 8/8 都"不碰浏览器"，
   实跑 152 秒、要起 live server，因为它们通过 fixture 拿 server，源码里看不见关键词。
