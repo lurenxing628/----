@@ -48,6 +48,19 @@ WORKBENCH_UI_REQUIRED_REGRESSION_GROUPS = ({
         "tests/workbench/handler_memory_probe.cjs", "tests/workbench/deletion_icon_contract.cjs",
         "core/services/workbench/run/progress.py", "core/services/workbench/run/jobs.py", "core/services/workbench/run/worker.py",
         "core/services/scheduler/run/schedule_candidate_runner.py",
+        # 文案词表（test_ui_copy_glossary.py）扫的是 tools/ui_copy_glossary.json 里那四类范围，
+        # 而这里原来只覆盖了 frontend 一类：改说明书、改工作台服务层的提示语都不会触发它。
+        # 2026-09-21 就这么把一个停用词写进说明书第 14 章，只有跑全目录才发现。
+        # 词表本身改了同样要重扫。
+        "tools/ui_copy_glossary.json", "tools/scan_ui_copy.py",
+        "static/docs/scheduler_manual.md", "static/docs/aps_three_gap_user_guide.md",
+        "templates/workbench/**/*.html", "templates/error.html", "templates/error_base.html",
+        "core/services/workbench/**/*.py", "web/routes/workbench/*.py", "web/routes/workbench/**/*.py",
+        "frontend/workbench/prototype/ui_kits/workbench/*.jsx",
+        "frontend/workbench/prototype/ui_kits/workbench/*.js",
+        "frontend/workbench/prototype/ui_kits/workbench/assets/*.js",
+        "core/models/workbench_*.py", "web/error_boundary.py", "web/error_handlers.py",
+        "web/bootstrap/workbench_*.py", "data/repositories/workbench_run_repo.py",
     ),
     "env_keys": ("WORKBENCH_NODE", "NODE_PATH", "node_executable_realpath", "node_version"),
 },)
