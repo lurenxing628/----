@@ -28,7 +28,7 @@ APS_Portable/
     db/aps.db               业务数据库
     backups/                备份
     logs/                   日志、密钥和运行状态
-    templates_excel/        Excel 示例（单元产品数据与转换输出）
+    templates_excel/        运行时的 Excel 目录（随包不带示例，模板由工作台现生成）
     chrome109_profile/      APS 浏览器配置
 ```
 

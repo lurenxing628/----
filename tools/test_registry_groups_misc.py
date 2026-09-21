@@ -123,6 +123,10 @@ MISC_REQUIRED_REGRESSION_GROUPS = (
             # 整文件 0.3 秒，却因为和真机用例同住一个文件而被整体标 perf，退出所有门禁后
             # 烂了 8 条没人发现。真机那半已拆到 *_browser.py 留在浏览器车道。
             "tests/web_pages/test_frontend_ui_language_polish.py",
+            # 本组已经是 core/services/common/**/*.py 和 static/docs/**/*.md 的 owner，
+            # 这两条合同守的正是这两处，2026-09-21 盲审发现它们建起来时漏了登记。
+            "tests/workbench/test_excel_cell_values.py",
+            "tests/gate_meta/test_table_doc_generation.py",
         ),
         "input_file_scopes": (
             # templates_excel/**/* 2026-09-21 移除：旧资料样本与 7 份转换输出参考表随

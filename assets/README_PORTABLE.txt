@@ -8,7 +8,7 @@ APS 排产系统 · Win7 x64 绿色便携版
   db\aps.db             业务数据库
   backups\              系统备份
   logs\                 日志和运行状态
-  templates_excel\      Excel 模板
+  templates_excel\      运行时的 Excel 目录（模板在工作台各页「导入 → 下载模板」当场生成）
   chrome109_profile\    APS 专用浏览器配置
 
 正常退出：使用系统页面中的退出功能，等待程序退出后再移动或复制目录。

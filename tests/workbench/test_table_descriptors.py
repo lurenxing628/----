@@ -188,3 +188,27 @@ def test_instruction_sheet_is_not_written_twice_for_the_same_table():
 @pytest.mark.parametrize("count,expected", ((0, 0), (1, 0), (2, 1), (5, 1)))
 def test_extra_sheet_notice_only_fires_for_more_than_one_sheet(count, expected):
     assert len(extra_sheet_notice(count)) == expected
+
+
+def test_no_table_declares_a_limit_the_transport_layer_would_reject():
+    """哪张表都不能声明一个比传输层上限还大的 byte_limit。
+
+    协议本身只校验 byte_limit 是正整数，没有上界。某张表要是声明了 32MB，用户传 20MB 的文件
+    会先被 Flask 按 MAX_CONTENT_LENGTH 挡成 413，读取器那句"不超过 32MB"的提示永远走不到——
+    表面上是上限放宽了，实际是给了个兑现不了的承诺。
+    """
+    from core.models.workbench_table_catalog import all_descriptors
+    from web.bootstrap.app_config import Config
+
+    over = [(descriptor["table_id"], descriptor["byte_limit"]) for descriptor in all_descriptors()
+            if int(descriptor["byte_limit"]) > Config.EXCEL_MAX_UPLOAD_BYTES]
+    assert not over, f"这些表声明的上限超过了传输层的 {Config.EXCEL_MAX_UPLOAD_BYTES} 字节：{over}"
+
+
+def test_the_process_import_limit_comes_from_the_protocol():
+    """工艺表原来自己写了一份 16MB，注释说 Matches Config，可两边都是独立字面量。"""
+    from core.models.workbench_process_file import IMPORT_BYTE_LIMIT
+    from core.models.workbench_table_descriptor import DEFAULT_IMPORT_BYTE_LIMIT
+    from web.bootstrap.app_config import Config
+
+    assert IMPORT_BYTE_LIMIT == DEFAULT_IMPORT_BYTE_LIMIT == Config.EXCEL_MAX_UPLOAD_BYTES

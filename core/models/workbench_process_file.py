@@ -9,7 +9,11 @@ from dataclasses import dataclass
 
 from core.errors import ValidationError
 from core.models.workbench_resource_file import IMPORT_ROW_LIMIT
-from core.models.workbench_table_descriptor import UPSERT_ONLY, instructions_text
+from core.models.workbench_table_descriptor import (
+    DEFAULT_IMPORT_BYTE_LIMIT,
+    UPSERT_ONLY,
+    instructions_text,
+)
 
 COLUMNS = {
     "route": ("business_code", "label", "route_raw", "remark"),
@@ -30,8 +34,9 @@ SOURCE_LABELS = {"internal": "自制", "external": "外协"}
 TEMPLATE_VERSION = 1
 INT64_MAX = 9223372036854775807
 XLSX_EXACT_INTEGER_MAX = 2 ** 53
-# Matches Config.EXCEL_MAX_UPLOAD_BYTES; this core contract does not import Flask/config.
-IMPORT_BYTE_LIMIT = 16 * 1024 * 1024
+# 上限的唯一来源是表描述协议，别在这里另写一份 16MB：注释写着"Matches Config"，
+# 可两边都是独立字面量，改一边不会有任何东西红。app_config.EXCEL_MAX_UPLOAD_BYTES 也取这个值。
+IMPORT_BYTE_LIMIT = DEFAULT_IMPORT_BYTE_LIMIT
 XLSX_EXPANDED_BYTE_LIMIT = 64 * 1024 * 1024
 
 

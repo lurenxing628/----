@@ -204,6 +204,11 @@ QUALITY_GATE_GUARD_TESTS = (
     "tests/excel_data_io/test_excel_import_hardening.py",
     "tests/app_runtime/test_frontend_offline_static_assets.py",
     "tests/web_pages/test_frontend_ui_language_polish.py",
+    # 2026-09-21 盲审补登记：这两条合同建起来时没进任何组，被它们守的源文件改了也不会触发。
+    # 百分比按用户看到的数读（把 cell_value 的百分比分支删掉就是效率缩小 100 倍的静默缺陷），
+    # 以及说明书列说明与表描述一致（手改生成区间不会被发现）。
+    "tests/workbench/test_excel_cell_values.py",
+    "tests/gate_meta/test_table_doc_generation.py",
     "tests/web_pages/test_error_boundary_contract.py",
     # 诊断包安全红线：zip 名单永不含 aps_secret_key.txt（fusion-runtime-log-viewer）
     # 打印介质契约：.sidebar 必须在 print 隐藏名单（fusion-anchor-baseline-prep）
