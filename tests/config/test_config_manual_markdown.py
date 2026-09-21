@@ -98,7 +98,9 @@ def _find_legacy_excel_entry_terms(markdown_text: str) -> List[str]:
 def _is_historical_legacy_entry_note(line: str, term: str) -> bool:
     if term not in ("Excel 导入导出", "Excel导入导出"):
         return False
-    return "老资料" in line and "旧入口" in line and "批量维护" in line
+    # 「老资料」「旧入口」两个词就足以认出这是历史说明那一行。原来还要求它含
+    # 「批量维护」，但那一行现在写的是各页真实按钮名（批量导入 / 报工文件）。
+    return "老资料" in line and "旧入口" in line
 
 
 def _find_heading_entry_line(markdown_text: str, section_name: str) -> str:
@@ -122,7 +124,7 @@ def _assert_manual_table_guide_entries(markdown_text: str) -> None:
     legacy_hits = _find_legacy_excel_entry_terms(markdown_text)
     assert not legacy_hits, "说明书仍出现旧 Excel 入口叫法：\n" + "\n".join(legacy_hits[:20])
 
-    # 入口一律从工作台的导航写起：12 张表里只有批次还叫「批量维护」，其余都从基础资料的产能链进。
+    # 入口一律从工作台的导航写起：批次从批次管理进，报工从现场记录进，其余都从基础资料的产能链进。
     missing_entry = []
     for section_name in MANUAL_TABLE_GUIDE_SECTIONS:
         entry_line = _find_heading_entry_line(markdown_text, section_name)
@@ -445,11 +447,12 @@ def _assert_resource_dispatch_site_record_section(markdown_text: str, label: str
         "页面里有任务明细、日历矩阵、排布图和现场记录四种看法",
         "现场记录只对当前最新的正式计划开放",
         "填写实际情况",
-        "下载填写模板",
-        "导入实际情况 Excel",
+        # 报工文件弹窗把模板下载、导出和导入放在一起；导入与其他 11 张表一样分两步，
+        # 早先这里锁着"当前是直接导入，不走预检和二次确认"，是一条被测试钉住的错话。
+        "报工文件 → 下载模板",
+        "报工文件 → 开始预检 → 确认导入",
         "查看现场记录",
         "查看计划和实际",
-        "当前是直接导入，不走预检和二次确认",
     ):
         assert needle in section, f"{label} 资源排班章节缺少现场记录当前口径：{needle}"
 
@@ -549,7 +552,7 @@ def _assert_scheduler_manual_required_content(markdown_text: str, label: str) ->
         "任务明细/日历矩阵/排布图/现场记录",
         "页面里有任务明细、日历矩阵、排布图和现场记录四种看法",
         "填写实际情况",
-        "导入实际情况 Excel",
+        "报工文件 → 开始预检 → 确认导入",
         "查看现场记录",
         "| 查询目标 | 当前视角正在看的人员、设备或班组 |",
         "| 日志序号 | 当前查询结果里的顺序，不是固定不变的数据库编号 |",

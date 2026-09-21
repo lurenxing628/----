@@ -117,7 +117,9 @@ def _check_entry_terms(source):
     """Keep the public bulk-maintenance vocabulary, including historical notes."""
     for line in source.splitlines():
         for term in LEGACY_EXCEL_ENTRY_TERMS:
-            if term in ("Excel 导入导出", "Excel导入导出") and all(value in line for value in ("老资料", "旧入口", "批量维护")):
+            # 「老资料」「旧入口」两个词就足以认出这是历史说明那一行。原来还要求它含
+            # 「批量维护」，但那一行现在写的是各页真实按钮名（批量导入 / 报工文件）。
+            if term in ("Excel 导入导出", "Excel导入导出") and all(value in line for value in ("老资料", "旧入口")):
                 continue
             assert term not in line
     assert "批量维护" in source

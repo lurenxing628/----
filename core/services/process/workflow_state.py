@@ -319,5 +319,5 @@ def require_template_ready(conn, part_no) -> None:
             return
         view = _view(stored, _facts(part, _load_facts(conn, part_no)))
         if not view["ready"]:
-            raise BusinessError(ErrorCode.ROUTE_PARSE_ERROR, "该零件工艺尚未完成路线、归属和工时确认，不能用于创建批次工序。",
+            raise BusinessError(ErrorCode.ROUTE_PARSE_ERROR, "该零件工艺尚未完成路线、归属和工时确认，不能用于生成批次工序。",
                                 details={"reason": "process_workflow_pending", "stage": view["stage"]})
