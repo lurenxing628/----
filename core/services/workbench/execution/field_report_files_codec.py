@@ -8,7 +8,7 @@ from typing import NoReturn
 from zipfile import BadZipFile
 
 from openpyxl import Workbook, load_workbook
-from openpyxl.cell.cell import TYPE_ERROR, TYPE_FORMULA, TYPE_STRING
+from openpyxl.cell.cell import TYPE_STRING
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils.datetime import from_excel
 
@@ -22,6 +22,7 @@ from core.models.workbench_field_report_file import (
     table_descriptor,
 )
 from core.models.workbench_table_descriptor import INSTRUCTION_SHEET
+from core.services.common.excel_cell_values import cell_value, is_formula_or_error
 from core.services.common.excel_instruction_sheet import append_instruction_sheet
 
 from .field_report_files_xml import check_package
@@ -55,8 +56,8 @@ def _timestamp(value, epoch):
 
 
 def _value(cell, field, epoch):
-    value = cell.value
-    if cell.data_type in (TYPE_FORMULA, TYPE_ERROR) or type(value) is bool:
+    value = cell_value(cell)
+    if is_formula_or_error(cell) or type(value) is bool:
         reject('这一格不能填公式，也不能是 Excel 的错误值或「是/否」，请直接填实际值。')
     if value is None or type(value) is str and not value.strip():
         return None if field in FIELDS[3:7] else ''

@@ -337,6 +337,8 @@ def test_no_database_access_and_python38_syntax(monkeypatch, fmt):
         "core.services.workbench.facts.file_writer",
         # 12 张表共用的填写说明写法，只依赖 openpyxl 和列目录模型，不碰库也不碰 Flask。
         "core.services.common.excel_instruction_sheet",
+        # 七个读取器共用的单元格翻译，纯函数，只依赖 re。
+        "core.services.common.excel_cell_values",
     }
     paths = [root / (module.replace(".", "/") + ".py") for module in sorted(codec_modules)]
     for path in paths:

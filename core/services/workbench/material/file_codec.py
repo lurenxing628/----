@@ -36,6 +36,7 @@ from core.models.workbench_material_file import (
     table_descriptor,
 )
 from core.models.workbench_table_descriptor import cell_notes, extra_sheet_notice
+from core.services.common.excel_cell_values import cell_value, is_formula_or_error
 from core.services.common.excel_instruction_sheet import (
     add_enum_dropdowns,
     append_instruction_sheet,
@@ -96,8 +97,8 @@ def _xlsx_rows(content, state):
         ws.reset_dimensions()
         for number, cells in enumerate(ws.iter_rows(), 1):
             errors = {index: "不接受公式或 Excel 错误单元格，请提供实际值。"
-                      for index, cell in enumerate(cells) if cell.data_type in ("f", "e")}
-            yield number, [cell.value for cell in cells], errors
+                      for index, cell in enumerate(cells) if is_formula_or_error(cell)}
+            yield number, [cell_value(cell) for cell in cells], errors
     except ValidationError:
         raise
     except Exception as exc:

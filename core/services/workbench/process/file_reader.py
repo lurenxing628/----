@@ -9,6 +9,7 @@ import openpyxl
 
 from core.errors import ValidationError
 from core.models.workbench_process_file import IMPORT_BYTE_LIMIT, XLSX_EXPANDED_BYTE_LIMIT, file_error
+from core.services.common.excel_cell_values import cell_value, is_formula_or_error
 from core.services.workbench.facts.process_file_xml import check_sheet_order
 
 _WORKBOOK_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"
@@ -81,8 +82,8 @@ def xlsx_rows(content, state):
         ws.reset_dimensions()
         for number, cells in enumerate(ws.iter_rows(), 1):
             errors = {index: "不接受公式或 Excel 错误单元格，请填写实际值。"
-                      for index, cell in enumerate(cells) if cell.data_type in ("f", "e")}
-            yield number, [cell.value for cell in cells], errors
+                      for index, cell in enumerate(cells) if is_formula_or_error(cell)}
+            yield number, [cell_value(cell) for cell in cells], errors
     except ValidationError:
         raise
     except Exception as exc:

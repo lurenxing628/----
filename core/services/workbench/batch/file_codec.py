@@ -19,6 +19,7 @@ from core.models.workbench_batch_file import (
     table_descriptor,
 )
 from core.models.workbench_table_descriptor import cell_notes, extra_sheet_notice
+from core.services.common.excel_cell_values import cell_value, is_formula_or_error
 from core.services.common.excel_instruction_sheet import add_enum_dropdowns, append_instruction_sheet
 from core.services.common.excel_templates import get_template_definition
 
@@ -76,11 +77,11 @@ def _read_first_sheet(workbook):
 
 def _read_data_row(line, cells, headers):
     errors = []
-    if any(cell.data_type in ("f", "e") for cell in cells):
+    if any(is_formula_or_error(cell) for cell in cells):
         errors.append("不能导入公式或错误单元格，请提供实际值。")
     if any(cell.value is not None for cell in cells[len(headers):]):
         errors.append("数据行里有表头之外的多余列。")
-    values = {key: cells[index].value if index < len(cells) else None for index, key in enumerate(headers) if key in HEADERS}
+    values = {key: cell_value(cells[index]) if index < len(cells) else None for index, key in enumerate(headers) if key in HEADERS}
     return {"row": line, "values": values, "errors": errors}
 
 

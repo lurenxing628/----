@@ -15,6 +15,7 @@ from core.models.workbench_relation_file import (
     relation_kind,
 )
 from core.models.workbench_table_descriptor import extra_sheet_notice
+from core.services.common.excel_cell_values import cell_value, is_formula_or_error
 
 NUMBER = re.compile(r"[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?\Z")
 
@@ -49,8 +50,8 @@ def _source_rows(content, fmt, state):
             ws.reset_dimensions()
             for number, cells in enumerate(ws.iter_rows(), 1):
                 errors = {i: "这个格子是公式或者显示为错误值，没有导入。请改成纯文本后重新上传。"
-                          for i, cell in enumerate(cells) if cell.data_type in ("f", "e")}
-                yield number, [cell.value for cell in cells], errors
+                          for i, cell in enumerate(cells) if is_formula_or_error(cell)}
+                yield number, [cell_value(cell) for cell in cells], errors
         except ValidationError:
             raise
         except Exception as exc:
