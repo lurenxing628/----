@@ -20,3 +20,5 @@
 从干净 checkout 进行测试：安装项目依赖后运行相关 pytest 与正常 pre-push 门禁。不复制本机 Agent 目录、不跳过检查来填补缺失依赖。Windows 打包仍需在支持的 Windows 构建环境完成，macOS 上的路径契约测试不等于 Windows 打包验收。
 
 自检 runner 使用当前统一登记的非浏览器测试套件，不再调用已退役的阶段 smoke 脚本；缺失已登记测试立即失败。`--complex-repeat` 只追加当前 Excel 回归轮次，不替代浏览器或 Windows 打包验证。
+
+浏览器抽样 pre-push 与日常门禁一样，通过 `tools/git_hook_checks.py` 重启到项目 `.venv` 解释器；不能让系统 Python 决定产品数据库、Flask 和 pytest 的版本。显式抽样可运行 `.venv/bin/python tools/git_hook_checks.py run-browser-lane-sample`，缺少项目环境时报错，不退回宿主解释器。

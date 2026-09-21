@@ -438,6 +438,21 @@ def run_fast_static_precheck(_args: argparse.Namespace) -> int:
     return subprocess.call(command, cwd=str(REPO_ROOT), env=_quality_gate_env())
 
 
+def run_browser_lane_sample(args: argparse.Namespace) -> int:
+    """Browser fixtures and product imports use the same project runtime as all other gates."""
+    try:
+        executable = _project_python_executable()
+    except RuntimeError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    command = [executable, "-m", "tools.browser_lane_sample"]
+    if args.count is not None:
+        command.extend(["--count", str(args.count)])
+    if args.list:
+        command.append("--list")
+    return subprocess.call(command, cwd=str(REPO_ROOT), env=_quality_gate_env())
+
+
 def run_ruff(_args: argparse.Namespace) -> int:
     try:
         executable = _project_python_executable()
@@ -506,6 +521,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     fast_precheck = subparsers.add_parser("run-fast-static-precheck")
     fast_precheck.set_defaults(func=run_fast_static_precheck)
+
+    browser = subparsers.add_parser("run-browser-lane-sample")
+    browser.add_argument("--count", type=int, default=None)
+    browser.add_argument("--list", action="store_true")
+    browser.set_defaults(func=run_browser_lane_sample)
 
     ruff = subparsers.add_parser("run-ruff")
     ruff.set_defaults(func=run_ruff)

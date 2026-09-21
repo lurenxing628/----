@@ -982,3 +982,48 @@ def test_pre_commit_config_wires_quality_gate_and_ruff_hooks() -> None:
     assert hooks["aps-quality-gate"]["stages"] == ["pre-push"]
     assert hooks["aps-quality-gate"]["pass_filenames"] is False
     assert hooks["aps-quality-gate"]["always_run"] is True
+
+
+@pytest.mark.parametrize("code", [0, 7])
+def test_browser_sample_hook_uses_project_runtime_and_preserves_failure(monkeypatch, tmp_path, code):
+    calls = []
+    python = str(tmp_path / ".venv" / "bin" / "python")
+    monkeypatch.setattr(git_hook_checks, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(git_hook_checks, "_project_python_executable", lambda: python)
+    for key in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR"):
+        monkeypatch.setenv(key, "/outer/repository")
+
+    def call(command, *, cwd, env):
+        calls.append((command, cwd, env))
+        return code
+
+    monkeypatch.setattr(git_hook_checks.subprocess, "call", call)
+    assert git_hook_checks.main(["run-browser-lane-sample"]) == code
+    command, cwd, env = calls[0]
+    assert command == [python, "-m", "tools.browser_lane_sample"]
+    assert cwd == str(tmp_path)
+    assert env["PYTHONDONTWRITEBYTECODE"] == "1" and env["PYTHONUTF8"] == "1"
+    assert all(key not in env for key in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR"))
+
+
+def test_browser_sample_hook_forwards_selection_options(monkeypatch):
+    calls = []
+    monkeypatch.setattr(git_hook_checks, "_project_python_executable", lambda: "project-python")
+    monkeypatch.setattr(git_hook_checks.subprocess, "call", lambda command, **kwargs: calls.append(command) or 0)
+    assert git_hook_checks.main(["run-browser-lane-sample", "--count", "5", "--list"]) == 0
+    assert calls == [["project-python", "-m", "tools.browser_lane_sample", "--count", "5", "--list"]]
+
+
+def test_browser_sample_hook_missing_venv_fails_without_host_fallback(monkeypatch, tmp_path, capsys):
+    monkeypatch.setattr(git_hook_checks, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(git_hook_checks.subprocess, "call", lambda *_args, **_kwargs: pytest.fail("must not start host Python"))
+    assert git_hook_checks.main(["run-browser-lane-sample"]) == 1
+    assert "找不到项目 .venv" in capsys.readouterr().err
+
+
+def test_browser_sample_pre_push_config_routes_through_project_runtime():
+    hooks = [hook for repository in load_config(str(REPO_ROOT / ".pre-commit-config.yaml"))["repos"]
+             for hook in repository["hooks"]]
+    hook = next(item for item in hooks if item["id"] == "browser-lane-sample")
+    assert hook["entry"] == "python tools/git_hook_checks.py run-browser-lane-sample"
+    assert hook["stages"] == ["pre-push"] and hook["always_run"] is True

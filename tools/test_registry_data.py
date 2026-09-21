@@ -31,6 +31,7 @@ QUALITY_GATE_STARTUP_REGRESSION_ARGS = (
 )
 
 QUALITY_GATE_GUARD_TESTS = (
+    "tests/app_runtime/test_geometry_seed_identity.py",
     'tests/gate_meta/test_product_tooling_localization.py',
     'tests/_support/workbench_source/test_source_guard.py',
     'tests/schedule/service/test_start_and_rerun_route_resolution.py',

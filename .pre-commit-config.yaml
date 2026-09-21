@@ -45,7 +45,7 @@ repos:
       # 每次两个文件、N 次 push 覆盖一圈。APS_BROWSER_LANE_SAMPLE=0 可临时关掉。
       - id: browser-lane-sample
         name: browser lane sample (rotating)
-        entry: python -m tools.browser_lane_sample
+        entry: python tools/git_hook_checks.py run-browser-lane-sample
         language: system
         pass_filenames: false
         always_run: true
