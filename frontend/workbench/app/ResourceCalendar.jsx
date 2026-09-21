@@ -3,7 +3,7 @@
   const K = window.APSCalendarContract, S = window.APSResourceSession;
   const { Button, ErrorBox, Issues, Modal } = window.ResourceControls;
   const { RefreshResult, Policy } = window.CalendarFields;
-  function ResourceCalendar({ adapter, onCommitted, initialContext, onNavigationReady, rememberEnabled = true }) {
+  function ResourceCalendar({ adapter, onCommitted, initialContext, onNavigationReady, onOpenFile, rememberEnabled = true }) {
     const [target] = React.useState(() => {
       if (initialContext == null) return { context: null };
       const parsed = window.ResourceWorkspace.navigation(initialContext);
@@ -68,7 +68,14 @@
             <Button className="cal-nav cal-today-btn" title="回到本月" style={{ width: 'auto', padding: '0 10px', fontSize: 12, fontWeight: 600 }} disabled={blocked}
               onClick={() => { const now = new Date(); setMonth({ year: now.getFullYear(), month: now.getMonth() + 1 }); request.reload(); }}>今天</Button>
             <Button icon="refresh-cw" aria-label="刷新本月" busy={request.loading} disabled={blocked} onClick={request.reload} />
-            <span className="tb-spacer" style={{ flex: 1 }} /><Button icon="calendar-days" className="btn cal-batch" disabled={blocked || !data || request.loading}
+            <span className="tb-spacer" style={{ flex: 1 }} />
+            <Button icon="file-input" transfer="import" disabled={blocked || !data || request.loading}
+              reason={typeof onOpenFile !== 'function' ? '日历文件导入尚未开通。' : source && source !== 'production' ? '当前不是生产数据，不能导入。' : ''}
+              onClick={() => onOpenFile('import', { source, month })}>导入日历</Button>
+            <Button icon="file-output" transfer="export" disabled={blocked || !data || request.loading}
+              reason={typeof onOpenFile !== 'function' ? '日历文件导出尚未开通。' : ''}
+              onClick={() => onOpenFile('export', { source, month })}>导出日历</Button>
+            <Button icon="calendar-days" className="btn cal-batch" disabled={blocked || !data || request.loading}
               reason={source && source !== 'production' ? '当前不是生产数据，不能维护。' : ''} onClick={() => open({ mode: 'range' })}>批量维护</Button>
           </div>
           {request.loading && <window.WorkbenchControls.EmptyState kind="loading" title="正在读取工作日历…" />}

@@ -46,12 +46,17 @@ class ResourceActionPreview:
     document: str
 
     @classmethod
-    def build(cls, operation, request, rows):
+    def build(cls, operation, request, rows, notices=()):
+        """notices 是整批级的告知，不是行错误：例如"文件里还有别的工作表，只读了第一张"。
+
+        它进文档而不是只进响应，这样确认时的逐字比对也盖住它，用户看到的提示和最终写入的依据同源。
+        """
         summary = {key: sum(row["result"] == key for row in rows)
                    for key in ("new", "update", "unchanged", "delete", "rejected")}
         try:
             return cls(canonical_json({"version": 1, "operation": operation, "request": request,
-                                       "commit_policy": "atomic", "rows": rows, "summary": summary}))
+                                       "commit_policy": "atomic", "rows": rows, "summary": summary,
+                                       "notices": list(notices)}))
         except (TypeError, ValueError, OverflowError) as exc:
             raise WorkbenchCommandRejected("storage_failure", "这批数据算不出完整预检结果，没有写入任何数据。请刷新后重新预检。", 500) from exc
 

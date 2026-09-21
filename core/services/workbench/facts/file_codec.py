@@ -16,6 +16,7 @@ from core.models.workbench_resource_file import (
     file_columns,
     public_columns,
 )
+from core.models.workbench_table_descriptor import extra_sheet_notice
 
 NUMBER = re.compile(r"[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?\Z")
 
@@ -24,7 +25,7 @@ def file_error(message, row=1, field="file"):
     return ValidationError(message, field=field, details={"row": row})
 
 
-def _source_rows(content, fmt):
+def _source_rows(content, fmt, state):
     if fmt == "csv":
         reader = None
         try:
@@ -41,8 +42,10 @@ def _source_rows(content, fmt):
         wb = None
         try:
             wb = openpyxl.load_workbook(BytesIO(content), read_only=True, data_only=False, keep_links=False)
-            if len(wb.sheetnames) != 1 or len(wb.worksheets) != 1:
-                raise file_error("文件里只能有一张数据表，没有导入。请删掉多余的工作表后重新上传。")
+            if not wb.worksheets:
+                raise file_error("这个 XLSX 里没有工作表，没有导入。请确认文件完整后重新上传。")
+            # 只读第一张表，其余忽略；模板和导出文件本身就带一张「填写说明」。
+            state["sheets"] = len(wb.worksheets)
             ws = wb.worksheets[0]
             ws.reset_dimensions()
             for number, cells in enumerate(ws.iter_rows(), 1):
@@ -131,7 +134,8 @@ def _parse(number, values, errors, fields, fmt):
 def read_resource_file(kind, content, fmt):
     if type(content) is not bytes or fmt not in ("csv", "xlsx"):
         raise file_error("只能导入 CSV 或 XLSX 文件，没有导入。请重新选择文件。")
-    source = _source_rows(content, fmt)
+    state = {"sheets": 1}
+    source = _source_rows(content, fmt, state)
     try:
         header = next(source, None)
         if header is None or header[2]:
@@ -144,6 +148,6 @@ def read_resource_file(kind, content, fmt):
             if len(rows) == IMPORT_ROW_LIMIT:
                 raise file_error("一次最多导入 2000 行，这个文件超了，一行都没有导入。请拆成几个小文件分次上传。", number)
             rows.append(_parse(number, values, errors, fields, fmt))
-        return rows
+        return rows, extra_sheet_notice(state["sheets"])
     finally:
         source.close()

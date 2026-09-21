@@ -140,7 +140,8 @@ def test_batch_actual_export_reimports_status_as_reference(batch_client):
     before = state(client)
     document = uploaded(client, [], content=export.data).get_json()["data"]
     assert document["can_confirm"] and state(client) == before
-    assert document["warnings"] == [{"code": "reference_column_ignored", "message": "文件中的“状态”仅供参考，不导入；已有批次保留当前状态，新批次从待排开始。"}]
+    # 导出文件带着「填写说明」表回导，所以除了状态参考列还会多一条只读第一张表的告知。
+    assert [item["code"] for item in document["warnings"]] == ["first_sheet_only", "reference_column_ignored"]
     assert "status" not in document["rows"][0]["input"]["fields"]
     original = detail(client)["data"]["status"]
     assert confirm_batch(client, document).status_code == 200

@@ -15,7 +15,6 @@ from __future__ import annotations
 import codecs
 import csv
 import math
-import os
 import re
 from io import BytesIO, StringIO
 from tempfile import SpooledTemporaryFile
@@ -28,7 +27,20 @@ from openpyxl.styles import Font
 from openpyxl.utils import get_column_letter
 
 from core.errors import ValidationError
-from core.models.workbench_material_file import COLUMNS, HEADER_FIELDS, HEADERS, IMPORT_ROW_LIMIT, MaterialFileDownload
+from core.models.workbench_material_file import (
+    COLUMNS,
+    HEADER_FIELDS,
+    HEADERS,
+    IMPORT_ROW_LIMIT,
+    MaterialFileDownload,
+    table_descriptor,
+)
+from core.models.workbench_table_descriptor import cell_notes, extra_sheet_notice
+from core.services.common.excel_instruction_sheet import (
+    add_enum_dropdowns,
+    append_instruction_sheet,
+    close_write_only_sheets,
+)
 
 _NUMBER = re.compile(r"[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?\Z")
 _ILLEGAL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
@@ -71,12 +83,14 @@ def _csv_rows(content):
         raise _file_error("CSV 格式错误，请核对引号和分隔符。", reader.line_num) from exc
 
 
-def _xlsx_rows(content):
+def _xlsx_rows(content, state):
     wb = None
     try:
         wb = openpyxl.load_workbook(BytesIO(content), read_only=True, data_only=False, keep_links=False)
-        if len(wb.sheetnames) != 1 or len(wb.worksheets) != 1:
-            raise _file_error("物料文件只能有一张数据工作表。")
+        if not wb.worksheets:
+            raise _file_error("这个 XLSX 里没有工作表，请核对文件格式和内容。")
+        # 只读第一张表，其余忽略；模板和导出文件本身就带一张「填写说明」。
+        state["sheets"] = len(wb.worksheets)
         ws = wb.worksheets[0]
         # Do not trust a producer's cached dimensions to hide later rows/columns.
         ws.reset_dimensions()
@@ -127,7 +141,8 @@ def _parse_row(number, values, cell_errors, fields, file_format):
 def read_material_file(content: bytes, file_format: str):
     if type(content) is not bytes or file_format not in ("csv", "xlsx"):
         raise _file_error("必须提供 CSV/XLSX 的原始文件字节。")
-    source = _csv_rows(content) if file_format == "csv" else _xlsx_rows(content)
+    state = {"sheets": 1}
+    source = _csv_rows(content) if file_format == "csv" else _xlsx_rows(content, state)
     try:
         header = next(source, None)
         if header is None or header[2]:
@@ -140,7 +155,7 @@ def read_material_file(content: bytes, file_format: str):
             if len(result) == IMPORT_ROW_LIMIT:
                 raise _file_error("一次最多导入 2000 行；这次一行都没有导入。", number)
             result.append(_parse_row(number, values, errors, fields, file_format))
-        return result
+        return result, extra_sheet_notice(state["sheets"])
     finally:
         source.close()
 
@@ -177,10 +192,11 @@ def check_export_capacity(row_count, file_format):
 def write_material_file(rows, file_format, *, template=False):
     """Consume rows exactly once; only returned file bytes require full materialization."""
     check_export_capacity(0, file_format)
-    filename = "物料导入模板" if template else "物料清单"
+    descriptor = table_descriptor()
+    filename = descriptor["file_stem"] + ("导入模板" if template else "清单")
     if file_format == "csv":
         return _write_csv(rows, filename)
-    return _write_xlsx(rows, filename, template)
+    return _write_xlsx(rows, filename, template, descriptor)
 
 
 def _write_csv(rows, filename):
@@ -198,14 +214,13 @@ def _write_csv(rows, filename):
     return MaterialFileDownload(filename + ".csv", "text/csv; charset=utf-8", content, count)
 
 
-def _xlsx_headers(ws, template):
-    examples = ("000123", "45# 圆钢", "D25", "kg", "12.375", "active / inactive", "采购备注", "参考时间，不导入")
-    headers = []
+def _xlsx_headers(ws, template, descriptor):
+    headers, notes = [], cell_notes(descriptor)
     for index, value in enumerate(HEADERS):
         cell = WriteOnlyCell(ws, value=value)
         cell.font = Font(bold=True)
         if template:
-            cell.comment = Comment("示例：" + examples[index] + "。编号必须为文本；缺列/空格子不改；\\N 仅清规格、单位或备注；创建时间仅供参考，不导入。", "APS")
+            cell.comment = Comment(notes[index], "APS")
         headers.append(cell)
     return headers
 
@@ -224,19 +239,21 @@ def _xlsx_row(ws, row, number):
     return cells
 
 
-def _write_xlsx(rows, filename, template):
+def _write_xlsx(rows, filename, template, descriptor):
     wb = openpyxl.Workbook(write_only=True)
-    ws = wb.create_sheet("物料")
-    count = 0
+    ws = wb.create_sheet(descriptor["sheet_name"])
+    sheets, count = [ws], 0
     try:
         ws.freeze_panes = "A2"
         for index, width in enumerate((22, 28, 28, 14, 18, 18, 40, 24), 1):
             ws.column_dimensions[get_column_letter(index)].width = width
-        ws.append(_xlsx_headers(ws, template))
+        ws.append(_xlsx_headers(ws, template, descriptor))
         for count, row in enumerate(rows, 1):
             check_export_capacity(count, "xlsx")
             ws.append(_xlsx_row(ws, row, count + 1))
         ws.auto_filter.ref = "A1:H" + str(count + 1)
+        add_enum_dropdowns(ws, descriptor, count, write_only=True)
+        sheets.append(append_instruction_sheet(wb, descriptor))
         with SpooledTemporaryFile(max_size=_SPOOL_BYTES, mode="w+b") as buffer:
             wb.save(buffer)
             buffer.seek(0)
@@ -245,9 +262,5 @@ def _write_xlsx(rows, filename, template):
                                     content, count)
     finally:
         # Pinned openpyxl 3.0.10 Workbook.close() alone leaves an aborted sheet's temp XML behind.
-        if not ws.closed:
-            ws.close()
-        writer = ws._writer
-        if writer is not None and os.path.exists(writer.out):
-            writer.cleanup()
+        close_write_only_sheets(sheets)
         wb.close()

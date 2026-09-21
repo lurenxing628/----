@@ -139,6 +139,9 @@
   }) {
     const [search, setSearch] = React.useState(scope.query);
     React.useEffect(() => setSearch(scope.query), [scope.query, config.kind]);
+    // 附属资料的文件入口只在挂靠它的那类资料上出现，有几种、叫什么由适配器给，页面不写死。
+    const attached = typeof adapter.attachedFiles === 'function' ? adapter.attachedFiles(config.kind) : [];
+    const actions = [['openImport', 'file-input', '导入'], ['openExport', 'file-output', '导出'], ...attached.flatMap(item => [['openRelationImport', 'file-input', '导入' + item.label, item.family], ['openRelationExport', 'file-output', '导出' + item.label, item.family]]), ['openBulk', 'trash-2', '批量删除']];
     return /*#__PURE__*/React.createElement("form", {
       className: "toolbar",
       onSubmit: event => {
@@ -197,14 +200,16 @@
       className: "tb-spacer"
     }), /*#__PURE__*/React.createElement("div", {
       className: "wb-actions"
-    }, [['openImport', 'file-input', '导入'], ['openExport', 'file-output', '导出'], ['openBulk', 'trash-2', '批量删除']].map(([name, icon, label]) => /*#__PURE__*/React.createElement(Button, {
-      key: name,
+    }, actions.map(([name, icon, label, family]) => /*#__PURE__*/React.createElement(Button, {
+      key: name + ':' + (family || ''),
       icon: icon,
-      transfer: name === 'openImport' ? 'import' : name === 'openExport' ? 'export' : undefined,
+      transfer: /Import$/.test(name) ? 'import' : /Export$/.test(name) ? 'export' : undefined,
       disabled: disabled || loading,
       reasonDisplay: "tooltip",
       reason: typeof adapter[name] !== 'function' || typeof adapter.supports === 'function' && !adapter.supports(name, config.kind) ? label + '尚未开通。' : !ready ? '请先读取当前列表。' : name === 'openBulk' && !selected.length ? '请先勾选记录。' : '',
-      onClick: () => onExternal(name)
+      onClick: () => onExternal(name, family ? {
+        family
+      } : {})
     }, label)), /*#__PURE__*/React.createElement(Button, {
       icon: "plus",
       className: "btn primary wb-action wb-primary",
@@ -565,7 +570,7 @@
           busy: false,
           error: null,
           result,
-          action: name === 'openBulk' ? 'delete' : name === 'openImport' ? 'import' : 'save'
+          action: name === 'openBulk' ? 'delete' : /Import$/.test(name) ? 'import' : 'save'
         });
       };
       try {
@@ -743,6 +748,7 @@
       onEdit: () => edit('update'),
       onAdjustStock: () => edit('update', true),
       onMachinePermissions: () => edit('machine_permissions'),
+      onOperatorCalendar: () => edit('operator_calendar'),
       onDelete: () => edit('delete')
     }), editorReady && dialog.action === 'machine_permissions' && /*#__PURE__*/React.createElement(window.OperatorMachinePermissions, {
       adapter: adapter,
@@ -753,7 +759,16 @@
       refreshState: refreshState,
       onRefresh: readAfterCommand,
       Feedback: Forms.Feedback
-    }), editorReady && !['view', 'machine_permissions'].includes(dialog.action) && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Forms, {
+    }), editorReady && dialog.action === 'operator_calendar' && /*#__PURE__*/React.createElement(window.OperatorCalendarPanel, {
+      adapter: adapter,
+      entity: editorEntity,
+      source: detail.result.meta.source,
+      command: command,
+      onClose: close,
+      refreshState: refreshState,
+      onRefresh: readAfterCommand,
+      Feedback: Forms.Feedback
+    }), editorReady && !['view', 'machine_permissions', 'operator_calendar'].includes(dialog.action) && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Forms, {
       key: dialog.kind + ':' + (dialog.ref || 'create') + ':' + dialog.action,
       adapter: adapter,
       kind: dialog.kind,

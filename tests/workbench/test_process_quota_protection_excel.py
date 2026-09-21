@@ -4,10 +4,11 @@ from copy import deepcopy
 
 import pytest
 
-from core.services.workbench.process.file_codec import decode_process_file, encode_process_file
+from core.services.workbench.process.file_codec import encode_process_file
 from core.services.workbench.process.file_hours import ProcessHoursFileOperations
 from core.services.workbench.process.queries import WorkbenchProcessQueryService
 from core.services.workbench.process.quota_protection import quota_skip_summary
+from tests.workbench.process_file_codec_support import decode_rows
 from tests.workbench.process_quota_protection_support import (
     adopt,
     assert_rejected,
@@ -28,7 +29,7 @@ def test_real_mixed_file_skips_locked_row_and_counts_without_hidden_writes(locke
     case = locked_quota_case
     content = encode_process_file("hours", [{"business_code": "P1", "sequence": 1, "setup_hours": 9, "unit_hours": 99},
         {"business_code": "P1", "sequence": 2, "unit_hours": 8}], fmt).content
-    source = decode_process_file("hours", content, fmt)
+    source = decode_rows("hours", content, fmt)
     before, old = snapshot(case.conn), templates(case.conn)
     reader = WorkbenchProcessQueryService(case.conn)
     with reader.read_snapshot():

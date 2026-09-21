@@ -133,7 +133,13 @@
     finally { link.remove(); window.setTimeout(() => URL.revokeObjectURL(url), 30000); }
     return name;
   }
-  return { kind, label, fields, results, paths, preview, exportPreview, source, selection, listContext, requestBody, blocked, validateFile, filename, saveDownload };
+  // 逐行提示与勾选文案按资料类型给一次，别让预检组件再按 kind 分支。
+  const confirmationHint = kind === 'material' ? '涉及已有物料需求，需核对修改前后内容。' : '涉及关键项或已有关联，需核对修改前后内容。';
+  const acknowledgeHint = kind === 'material' ? '已核对在用物料的修改前后内容，确认这些更新。' : '已核对关键项和关联关系的修改前后内容，确认这些更新。';
+  // 这一类资料勾选几条就导出几行；关联资料一条记录可能带出多行，由它自己的契约改成 false。
+  // 导出范围里说的还是这类资料本身，所以不给 scopeLabel，由对话框沿用当前标签（工种要区分自制与外协）。
+  const rowsMatchSelection = true;
+  return { kind, label, fields, results, paths, envelope, preview, exportPreview, source, selection, listContext, requestBody, blocked, validateFile, filename, saveDownload, confirmationHint, acknowledgeHint, rowsMatchSelection };
   }
   window.APSResourceMaterial = { ...create(), create };
 })();

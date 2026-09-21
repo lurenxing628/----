@@ -3,10 +3,11 @@
 import pytest
 
 from core.infrastructure.transaction import TransactionManager
-from core.services.workbench.process.file_codec import decode_process_file, encode_process_file
+from core.services.workbench.process.file_codec import encode_process_file
 from core.services.workbench.process.file_export import process_export_rows
 from core.services.workbench.process.files import WorkbenchProcessFileService
 from core.services.workbench.process.queries import WorkbenchProcessQueryService
+from tests.workbench.process_file_codec_support import decode_rows
 from tests.workbench.process_file_hours_support import (
     confirmations,
     groups,
@@ -34,7 +35,7 @@ def test_real_export_null_na_roundtrip_preserves_hidden_facts_and_stamps(hours_c
     part = next(row for row in facts["parts"] if row["part_no"] == "P1")
     exported = list(process_export_rows("hours", [part], facts))
     content = encode_process_file("hours", exported, fmt).content
-    decoded = decode_process_file("hours", content, fmt)
+    decoded = decode_rows("hours", content, fmt)
     assert all(not row["errors"] for row in decoded)
     values = {row["values"]["sequence"]: row["values"] for row in decoded}
     assert values[1]["external_days"] is None and values[1]["group_total_days"] is None

@@ -13,6 +13,13 @@ NS = {"s": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
 SHEET = "xl/worksheets/sheet1.xml"
 
 
+def decode_rows(kind, content, fmt):
+    """只取解码出来的行。读取器另外回一份整批告知，多表提示由专门的用例覆盖。"""
+    from core.services.workbench.process.file_codec import decode_process_file
+
+    return decode_process_file(kind, content, fmt)[0]
+
+
 def file_bytes(headers, rows, file_format, *, text=False):
     if file_format == "csv":
         buffer = StringIO(newline="")

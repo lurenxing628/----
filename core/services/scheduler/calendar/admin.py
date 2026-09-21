@@ -17,6 +17,9 @@ from core.services.scheduler.config.config_service import ConfigService
 from core.shared.number_utils import parse_finite_float
 from data.repositories import CalendarRepository, OperatorCalendarRepository
 
+#: 没有单独设置开工时刻时采用的默认值。工作台据此判断某天的班次结束是推出来的还是真实班表。
+DEFAULT_SHIFT_START = "08:00"
+
 
 class CalendarAdmin:
     """
@@ -95,7 +98,7 @@ class CalendarAdmin:
         shift_start: Any,
         shift_end: Any,
     ) -> Tuple[str, Optional[str], float]:
-        ss = self._normalize_hhmm(shift_start, field="班次开始", allow_none=True) or "08:00"
+        ss = self._normalize_hhmm(shift_start, field="班次开始", allow_none=True) or DEFAULT_SHIFT_START
         se = self._normalize_hhmm(shift_end, field="班次结束", allow_none=True)
         sh = float(shift_hours)
         if se:

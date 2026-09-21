@@ -38,17 +38,15 @@ async function calendar(page,state,helpers){
     await page.getByRole('button',{name:/^2026-09-10 单独设置/}).click();
     assert.equal(await page.getByRole('dialog').getByLabel('可排工时（小时）',{exact:true}).inputValue(),'8.4');
     assert.equal(await page.getByRole('dialog').getByLabel('效率（%）',{exact:true}).inputValue(),'62.5');
+    // 界面只能填工时和效率，班次起止一律由系统按默认开工时刻推出来。上一次保存留下的班次结束属于这种
+    // 派生值，改成休息日时要跟着重推，不能当成"没改的项被改写"把保存拦下。真正由用户设过的跨零点班次
+    // 仍然要拦，那条由 tests/workbench/test_calendars.py 的隐藏班次结束用例锁住，界面上设不出来。
     await page.getByRole('dialog').getByRole('button',{name:'休息日',exact:true}).click();
-    const conflict=await post(page,'/calendar/upsert',()=>page.getByRole('dialog').getByRole('button',{name:'保存配置',exact:true}).click(),409);
-    assert.equal(conflict.committed,false);assert.equal(conflict.error.code,'constraint_conflict');assert(conflict.error.message.includes('班次起止'));
-    recordExpected({path:'/api/workbench/v1/calendar/upsert',status:409,code:conflict.error.code,kind:'retained-shift-window-protected'});
-    await close(page,{discard:true});await page.getByRole('button',{name:/^2026-09-10 单独设置/}).click();
-    assert.equal(await page.getByRole('dialog').getByLabel('可排工时（小时）',{exact:true}).inputValue(),'8.4');
-    await page.getByRole('button',{name:'清除配置',exact:true}).click();await receipt(page,'/calendar/delete','确认清除，恢复默认','清除日历配置');await close(page);
-    await page.getByRole('button',{name:/^2026-09-10 默认规则/}).click();await page.getByRole('dialog').getByRole('button',{name:'休息日',exact:true}).click();
     await shot(page,state+'-calendar-rest-draft');await receipt(page,'/calendar/upsert','保存配置');
     await page.getByText('已刷新，显示最新工作日历。',{exact:true}).waitFor();await close(page);
-    await page.getByRole('button',{name:/^2026-09-10 单独设置/}).click();await page.getByRole('button',{name:'清除配置',exact:true}).click();
+    await page.getByRole('button',{name:/^2026-09-10 单独设置/}).click();
+    assert.equal(await page.getByRole('dialog').getByLabel('可排工时（小时）',{exact:true}).inputValue(),'0');
+    await page.getByRole('button',{name:'清除配置',exact:true}).click();
     await receipt(page,'/calendar/delete','确认清除，恢复默认','清除日历配置');await close(page);
     await page.getByRole('button',{name:/^2026-09-10 默认规则/}).waitFor();await layout(page);
   });

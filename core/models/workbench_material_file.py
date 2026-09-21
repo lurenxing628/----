@@ -29,6 +29,70 @@ COLUMNS = ("business_code", "label", "spec", "unit", "stock_qty", "status", "rem
 HEADER_FIELDS: Dict[str, str] = dict(zip(HEADERS, COLUMNS))
 HEADER_FIELDS.update({key: key for key in COLUMNS})
 MATERIAL_COLUMNS = ("material_id", "name", "spec", "unit", "stock_qty", "status", "remark", "created_at")
+READONLY = ("created_at",)
+REQUIRED = ("business_code",)
+NULLABLE = ("spec", "unit", "remark")
+#: 文件里的状态写英文代号，和界面上的中文标签不是一回事。
+ENUMS = {"status": ("active", "inactive")}
+_VALUE_HINTS = {
+    "business_code": "物料编号，例如 MAT-001；不填就不知道改哪一条",
+    "label": "名称；新增时必须填，已有的留空保持原样",
+    "spec": "规格；要清除请填 \\N（大写）",
+    "unit": "单位，例如 kg；要清除请填 \\N（大写）",
+    "stock_qty": "库存数量，填数字，不要带单位或千分位逗号",
+    "status": "只填代号：active 启用 / inactive 停用",
+    "remark": "随便写；要清除请填 \\N（大写）",
+    "created_at": "导出时带出的创建时间，导入时不看这一列",
+}
+_ERROR_HINTS = {
+    "business_code": "留空、有首尾空格、或同一份文件里出现了两次",
+    "label": "新增时留空",
+    "spec": "填了 \\N 以外的清除写法",
+    "unit": "填了 \\N 以外的清除写法",
+    "stock_qty": "不是数字，或者带了单位、「是/否」、千分位逗号",
+    "status": "填了中文，或者填了 active、inactive 以外的代号",
+    "remark": "填了 \\N 以外的清除写法",
+    "created_at": "这一列不校验",
+}
+_GENERAL_RULES = (
+    "一次最多导入 " + str(IMPORT_ROW_LIMIT) + " 行。",
+    "按编号增量更新：编号已有的更新，没有的新增，文件里没写的物料完全不动，不会被删除。",
+    "空格子表示这一项保持原样，不是清除；要清除规格、单位或备注请填 \\N（大写）。",
+    "状态这一列填英文代号，不要填界面上看到的中文。",
+    "只读列仅供参考，不导入。",
+)
+_SAMPLE_ROWS = (
+    ("MAT-001", "45# 圆钢", "D25", "kg", "12.375", "active", "常备料"),
+    ("MAT-002", "铝板", "3mm", "张", "40", "inactive", ""),
+)
+
+
+def table_descriptor(_kind=None):
+    """模板与填写说明生成器的唯一入口，12 张表统一形状。物料只有一张表，不分 kind。"""
+    columns = []
+    for index, key in enumerate(COLUMNS):
+        readonly = key in READONLY
+        columns.append({
+            "key": key,
+            # 标签就是文件里真正的表头，读取器按它认列，不能在这里加后缀。
+            "label": HEADERS[index],
+            "required": key in REQUIRED,
+            "readonly": readonly,
+            "value_hint": _VALUE_HINTS[key],
+            "error_hint": _ERROR_HINTS[key],
+            "enum": ENUMS.get(key) if not readonly else None,
+            "nullable": key in NULLABLE,
+        })
+    return {
+        "table_id": "material",
+        "display_name": "物料",
+        "sheet_name": "物料",
+        "file_stem": "物料",
+        "columns": columns,
+        "general_rules": _GENERAL_RULES,
+        "sample_rows": _SAMPLE_ROWS,
+        "row_limit": IMPORT_ROW_LIMIT,
+    }
 
 
 def normalize_scope(scope: Any) -> Dict[str, Any]:
@@ -69,12 +133,14 @@ class MaterialPreview:
     document: str
 
     @classmethod
-    def build(cls, operation, request, rows):
+    def build(cls, operation, request, rows, notices=()):
+        """notices 是整批级的告知，不是行错误；进文档让确认时的逐字比对也盖住它。"""
         summary = {key: sum(row["result"] == key for row in rows)
                    for key in ("new", "update", "unchanged", "delete", "rejected")}
         try:
             return cls(canonical_json({"version": 1, "operation": operation, "request": request,
-                                       "commit_policy": "atomic", "rows": rows, "summary": summary}))
+                                       "commit_policy": "atomic", "rows": rows, "summary": summary,
+                                       "notices": list(notices)}))
         except (TypeError, ValueError, OverflowError) as exc:
             raise WorkbenchCommandRejected("storage_failure", "这批物料数据算不出完整预检结果，没有写入任何数据。请刷新后重新预检。", 500) from exc
 

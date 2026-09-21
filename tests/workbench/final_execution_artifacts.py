@@ -98,7 +98,8 @@ def _field(content, name, query, report):
             assert any(row[12] == "0" for row in rows[1:])
             return {"rows": len(rows) - 1, "columns": FIELD_HEADERS}
         assert name == "saved-records"
-        assert book.sheetnames == ["报工记录", "工序汇总", "录入信息"]
+        # 导出文件也带填写说明表，位置固定在数据表后面（roadmap 4.8）。
+        assert book.sheetnames == ["报工记录", "填写说明", "工序汇总", "录入信息"]
         source = _readings(report, query["snapshot_ref"][0], "tasks")[-1]
         tasks = source["data"]["tasks"]
         assert len(tasks) == source["data"]["page"]["total"] == 33

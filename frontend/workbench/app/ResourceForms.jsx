@@ -179,7 +179,7 @@
           {refreshState.error && <Button icon="refresh-cw" onClick={onRefresh}>刷新保存结果</Button>}</>}
       </form></Modal>;
   }
-  function Detail({ adapter, kind, result, onClose, onEdit, onDelete, onAdjustStock, onMachinePermissions, onRelated, onBack, busy, error, onRetry }) {
+  function Detail({ adapter, kind, result, onClose, onEdit, onDelete, onAdjustStock, onMachinePermissions, onOperatorCalendar, onRelated, onBack, busy, error, onRetry }) {
     const entity = result && result.data;
     return <Modal title={C.resourceName(kind, entity && entity.fields.category) + '详情'} icon={icons[kind]} onClose={onClose} footer={<>{onBack && <Button icon="chevron-left" onClick={onBack}>返回上一条详情</Button>}<Button onClick={onClose}>关闭</Button>
       {entity && <><Button icon="trash-2" reason={C.blocked(entity.write_context, kind, 'delete', result.meta.source)} onClick={onDelete}>删除</Button>
@@ -194,6 +194,8 @@
             {kind === 'operator' && <LegacyFacts entity={entity} />}</div>}<Remark kind={kind} entity={entity} /><Issues issues={entity.issues} />
           {kind === 'operator' && <Button icon="machine" reason={C.blocked(entity.write_context, kind, 'update', result.meta.source)
             || (typeof onMachinePermissions !== 'function' ? '设备关联编辑未连接。' : '')} onClick={onMachinePermissions}>编辑可操作设备</Button>}
+          {kind === 'operator' && <Button icon="calendar-days" reason={C.blocked(entity.write_context, kind, 'update', result.meta.source)
+            || (typeof onOperatorCalendar !== 'function' ? '个人日历编辑未连接。' : '')} onClick={onOperatorCalendar}>编辑个人日历</Button>}
           {kind === 'op_type' && ['internal', 'external'].includes(entity.fields.category) && <window.ResourceDetailRelations key={entity.ref + ':' + result.meta.snapshot_ref} adapter={adapter} entity={entity} onOpen={onRelated} />}
           <Issues issues={result.warnings} /><p className="wb-resource-read-time">读取时间：<time dateTime={result.meta.as_of}>{window.WorkbenchFormat.dateTime(result.meta.as_of)}</time></p></>}</div></Modal>;
   }

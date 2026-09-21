@@ -61,7 +61,7 @@ def resource_import_preview(kind):
         preview = WorkbenchResourceFileService(g.db, kind, current_app.logger).preview_import(content, file_format=fmt, mode=mode, scope=scope)
         data = issue_preview(kind, preview, content)
         snapshot = bind_read_snapshot({"kind": kind, "operation": kind + ".import", "preview_ref": data["preview_ref"], **scope}, fingerprint)
-    return query_success(data, snapshot)
+    return query_success(data, snapshot, preview.as_dict()["notices"])
 
 
 def _confirm_body():

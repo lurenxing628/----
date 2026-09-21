@@ -94,4 +94,4 @@ def process_file_export(kind):
 def process_file_template(kind):
     file_columns(kind)
     _args({"format"})
-    return _response(encode_process_file(kind, [], request.args["format"]))
+    return _response(encode_process_file(kind, [], request.args["format"], template=True))

@@ -2,16 +2,28 @@
 
 import codecs
 import csv
-import os
 from collections.abc import Mapping
 from tempfile import SpooledTemporaryFile
 
 import openpyxl
 from openpyxl.cell import WriteOnlyCell
+from openpyxl.comments import Comment
 from openpyxl.styles import Font
 from openpyxl.utils import get_column_letter
 
-from core.models.workbench_process_file import LABELS, ProcessFileDownload, file_columns, file_error
+from core.models.workbench_process_file import (
+    LABELS,
+    ProcessFileDownload,
+    file_columns,
+    file_error,
+    table_descriptor,
+)
+from core.models.workbench_table_descriptor import cell_notes
+from core.services.common.excel_instruction_sheet import (
+    add_enum_dropdowns,
+    append_instruction_sheet,
+    close_write_only_sheets,
+)
 from core.services.workbench.facts.file_writer import XLSX_MAX_ROWS
 from core.services.workbench.facts.process_file_xml import preserve_carriage_returns
 
@@ -42,19 +54,22 @@ def write_csv(kind, rows):
 
 
 def _filename(kind, file_format):
-    return ("零件工艺路线" if kind == "route" else "零件工序工时") + "." + file_format
+    return table_descriptor(kind)["file_stem"] + "." + file_format
 
 
-def write_xlsx(kind, rows):
+def write_xlsx(kind, rows, template=False):
+    descriptor = table_descriptor(kind)
     wb = openpyxl.Workbook(write_only=True)
-    ws = wb.create_sheet("工艺路线" if kind == "route" else "工序工时")
-    count = 0
+    ws = wb.create_sheet(descriptor["sheet_name"])
+    sheets, notes, count = [ws], cell_notes(descriptor), 0
     try:
         ws.freeze_panes = "A2"
         headers = []
         for index, field in enumerate(file_columns(kind), 1):
             cell = WriteOnlyCell(ws, value=LABELS[field])
             cell.font = Font(bold=True)
+            if template:
+                cell.comment = Comment(notes[index - 1], "APS")
             headers.append(cell)
             ws.column_dimensions[get_column_letter(index)].width = 44 if field in ("route_raw", "remark") else 24
         ws.append(headers)
@@ -69,7 +84,10 @@ def write_xlsx(kind, rows):
                 cells.append(cell)
             ws.append(cells)
         ws.auto_filter.ref = "A1:" + get_column_letter(len(headers)) + str(count + 1)
+        add_enum_dropdowns(ws, descriptor, count, write_only=True)
+        # 这一步会关掉数据表并改写它的临时 XML，说明表要在它之后再建，各写各的。
         preserve_carriage_returns(ws)
+        sheets.append(append_instruction_sheet(wb, descriptor))
         with SpooledTemporaryFile(max_size=4 * 1024 * 1024, mode="w+b") as buffer:
             wb.save(buffer)
             buffer.seek(0)
@@ -78,8 +96,5 @@ def write_xlsx(kind, rows):
                                        buffer.read(), count)
     finally:
         # Pinned openpyxl 3.0.10 needs explicit sheet cleanup when export aborts.
-        if not ws.closed:
-            ws.close()
-        if ws._writer is not None and os.path.exists(ws._writer.out):
-            ws._writer.cleanup()
+        close_write_only_sheets(sheets)
         wb.close()

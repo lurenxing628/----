@@ -44,7 +44,7 @@ def process_file_preview(kind):
         data = action_preview(preview, file_operation(kind), kind=kind, content=content, extra=extra)
         snapshot = bind_read_snapshot({"kind": "process_file_import", "operation": file_operation(kind),
                                        "preview_ref": data["preview_ref"], "target_ref": target}, state)
-    return query_success(data, snapshot)
+    return query_success(data, snapshot, preview.as_dict()["notices"])
 
 
 @api_endpoint

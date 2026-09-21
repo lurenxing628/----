@@ -5,9 +5,10 @@ import pytest
 from core.infrastructure.transaction import TransactionManager
 from core.infrastructure.workbench_calibration_adoption_schema import install
 from core.services.process.workflow_state import record_confirmation
-from core.services.workbench.process.file_codec import decode_process_file, encode_process_file
+from core.services.workbench.process.file_codec import encode_process_file
 from core.services.workbench.process.file_hours import ProcessHoursFileOperations
 from core.services.workbench.process.queries import WorkbenchProcessQueryService
+from tests.workbench.process_file_codec_support import decode_rows
 from tests.workbench.process_query_support import ref_for
 from tests.workbench.process_route_support import all_table_snapshot
 from tests.workbench.process_workflow_support import confirm_all, seed_workflow
@@ -52,7 +53,7 @@ def preview(conn, *values, target_ref=None, fmt=None):
     source = decoded(*values)
     if fmt is not None:
         content = encode_process_file("hours", [row["values"] for row in source], fmt).content
-        source = decode_process_file("hours", content, fmt)
+        source = decode_rows("hours", content, fmt)
     return ProcessHoursFileOperations(conn).preview_rows(source, WorkbenchProcessQueryService(conn).facts(), target_ref)
 
 

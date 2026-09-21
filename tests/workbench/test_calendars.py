@@ -168,6 +168,40 @@ def test_hidden_end_conflict_never_claims_input_hours_saved(calendar_env, fields
     assert stored_state(conn) == before
 
 
+def test_derived_shift_window_follows_new_hours(calendar_env):
+    """按默认开工时刻推出来的班次结束要跟着新工时重推，不能把上一次的推算结果当成真实班表挡住修改。"""
+    conn, _, _ = calendar_env
+    day = "2024-02-26"
+    run_day(calendar_env, "upsert", {"date": day, "fields": WORK}, key=KEY + "-derived-base")
+    assert row_for(conn, day)["shift_start"] == "08:00" and row_for(conn, day)["shift_end"] == "16:00"
+    run_day(calendar_env, "upsert", {"date": day, "fields": {"hours": 10}}, key=KEY + "-derived-grow")
+    saved = row_for(conn, day)
+    assert saved["shift_hours"] == 10 and saved["shift_start"] == "08:00" and saved["shift_end"] == "18:00"
+
+
+def test_rest_day_returns_to_work_without_untouched_field_conflict(calendar_env):
+    """休息改回上班时班次结束会重新出现，这属于派生结果，不算未改项被规则改写。"""
+    conn, _, _ = calendar_env
+    day = "2024-02-27"
+    run_day(calendar_env, "upsert", {"date": day, "fields": {"type": "rest"}}, key=KEY + "-rest-base")
+    assert row_for(conn, day)["shift_hours"] == 0 and row_for(conn, day)["shift_end"] is None
+    run_day(calendar_env, "upsert", {"date": day, "fields": WORK}, key=KEY + "-rest-back")
+    saved = row_for(conn, day)
+    assert saved["day_type"] == "workday" and saved["shift_hours"] == 8 and saved["shift_end"] == "16:00"
+
+
+def test_range_preview_matches_single_day_on_derived_window(calendar_env):
+    """范围维护与单日保存同一口径：派生班次不挡改工时，真实班表只填工时仍然拒绝。"""
+    conn, adapter, _ = calendar_env
+    day = "2024-02-28"
+    run_day(calendar_env, "upsert", {"date": day, "fields": WORK}, key=KEY + "-range-base")
+    preview = adapter.preview(range_input(start_date=day, end_date=day, fields={"hours": 10}))
+    assert [item["after"]["row"]["shift_end"] for item in preview.days] == ["18:00"]
+    assert [item["after"]["row"]["shift_hours"] for item in preview.days] == [10]
+    with pytest.raises(WorkbenchCommandRejected, match="算出 8 小时"):
+        adapter.preview(range_input(start_date=NIGHT, end_date=NIGHT, fields={"hours": 10}))
+
+
 def test_rest_is_zero_unavailable_and_clear_restores_default_with_new_lifetime(calendar_env):
     conn, adapter, _ = calendar_env
     day = "2024-02-29"

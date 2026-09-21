@@ -8,8 +8,8 @@ import pytest
 from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_process_file import IMPORT_BYTE_LIMIT
 from core.services.process.workflow_state import record_confirmation
-from core.services.workbench.process.file_codec import decode_process_file
 from tests.workbench.process_file_api_support import BASE, file_api_fixture, node_contract
+from tests.workbench.process_file_codec_support import decode_rows
 from tests.workbench.process_stage_api_support import rejected, success
 
 
@@ -75,7 +75,7 @@ def test_actual_column_filter_exports_full_matches_after_node_request_encoding(f
     node_contract("export", preview, "route", body=body)
     response = file_api.download("route", preview["data"]["export_ref"])
     assert response.status_code == 200, response.get_json()
-    exported = {row["values"]["business_code"] for row in decode_process_file("route", response.data, "csv")}
+    exported = {row["values"]["business_code"] for row in decode_rows("route", response.data, "csv")}
     assert exported == (codes if mode == "include" else {"PROC-002", "PROC-003", "PROC-%_"})
     assert len(exported) > 1
     changed = json.loads(json.dumps(body))

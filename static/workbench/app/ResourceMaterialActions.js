@@ -42,7 +42,8 @@
     refs,
     disabled,
     label,
-    kind
+    kind,
+    scopeLabel
   }) {
     return /*#__PURE__*/React.createElement("fieldset", {
       style: {
@@ -53,7 +54,7 @@
       disabled: disabled
     }, /*#__PURE__*/React.createElement("legend", {
       className: "seclabel"
-    }, "\u5BFC\u51FA\u8303\u56F4"), [['filtered', '当前筛选结果', '当前搜索与状态筛选下的全部记录，不限当前页'], ['all', '全部' + label, '忽略搜索与状态筛选，导出全部' + label + (kind === 'op_type' ? '，保留当前工种类别' : '')], ['selected', '已选' + label, refs.length + ' 条，含非当前页和当前筛选外的勾选记录']].map(([key, title, detail]) => /*#__PURE__*/React.createElement("label", {
+    }, "\u5BFC\u51FA\u8303\u56F4"), [['filtered', '当前筛选结果', '当前搜索与状态筛选下的全部记录，不限当前页'], ['all', '全部' + scopeLabel, '忽略搜索与状态筛选，导出全部' + scopeLabel + (kind === 'op_type' ? '，保留当前工种类别' : '')], ['selected', '已选' + scopeLabel, refs.length + ' 条，含非当前页和当前筛选外的勾选记录']].map(([key, title, detail]) => /*#__PURE__*/React.createElement("label", {
       key: key,
       className: 'iorow' + (selection === key ? ' on' : '')
     }, /*#__PURE__*/React.createElement("input", {
@@ -84,8 +85,9 @@
       }
     }));
     const [format, setFormat] = React.useState('xlsx'),
-      [file, setFile] = React.useState(null),
-      [selection, setSelection] = React.useState('');
+      [file, setFile] = React.useState(null);
+    // 导出范围默认是三档单选里的"还没选"；给了 ExportScope 的契约自己决定初值（日历用的是日期区间）。
+    const [selection, setSelection] = React.useState(() => M.exportScopeInitial === undefined ? '' : M.exportScopeInitial);
     const [job, setJob] = React.useState(null),
       [error, setError] = React.useState(null),
       [acknowledged, setAcknowledged] = React.useState(false);
@@ -121,7 +123,7 @@
       const raw = await adapter.preview(M.paths[effectiveMode], body, signal);
       if (isExport) {
         const result = M.exportPreview(raw, job.selection, original);
-        if (job.selection === 'selected' && result.data.row_count !== M.selection(original).length) throw C.failure('导出预检数量与勾选的' + label + '不一致，没有开始下载。');
+        if (M.rowsMatchSelection && job.selection === 'selected' && result.data.row_count !== M.selection(original).length) throw C.failure('导出预检数量与勾选的' + label + '不一致，没有开始下载。');
         return result;
       }
       return M.preview(raw, effectiveMode, effectiveMode === 'import' ? job.format : M.selection(original), original);
@@ -379,7 +381,15 @@
       onClick: invalidate
     }, "\u66F4\u6362\u6587\u4EF6")), !recovery && !done && !command.locked && isExport && /*#__PURE__*/React.createElement("div", {
       className: "iopane on"
-    }, /*#__PURE__*/React.createElement(ExportOptions, {
+    }, M.ExportScope ? /*#__PURE__*/React.createElement(M.ExportScope, {
+      value: selection,
+      onChange: value => {
+        invalidate();
+        setSelection(value);
+      },
+      disabled: controlsDisabled,
+      refs: refs
+    }) : /*#__PURE__*/React.createElement(ExportOptions, {
       selection: selection,
       setSelection: value => {
         invalidate();
@@ -388,6 +398,7 @@
       refs: refs,
       disabled: controlsDisabled,
       label: label,
+      scopeLabel: M.scopeLabel || label,
       kind: M.kind
     }), /*#__PURE__*/React.createElement(Format, {
       value: format,
@@ -415,7 +426,7 @@
       checked: acknowledged,
       disabled: controlsDisabled,
       onChange: event => setAcknowledged(event.target.checked)
-    }), /*#__PURE__*/React.createElement("span", null, effectiveMode === 'bulk' ? '已核对完整删除范围及明细，确认删除这些' + label + '。' : M.kind === 'material' ? '已核对在用物料的修改前后内容，确认这些更新。' : '已核对关键项和关联关系的修改前后内容，确认这些更新。')), reason && !done && /*#__PURE__*/React.createElement("p", {
+    }), /*#__PURE__*/React.createElement("span", null, effectiveMode === 'bulk' ? '已核对完整删除范围及明细，确认删除这些' + label + '。' : M.acknowledgeHint)), reason && !done && /*#__PURE__*/React.createElement("p", {
       role: "status"
     }, reason)), data && isExport && /*#__PURE__*/React.createElement("p", {
       role: "status"

@@ -29,6 +29,7 @@ from core.models.workbench_process_file import (
     file_error,
     public_columns,
 )
+from core.models.workbench_table_descriptor import extra_sheet_notice
 
 from .file_reader import check_bytes, csv_rows, xlsx_rows
 from .file_values import decode_value, numeric_diagnostic
@@ -100,7 +101,8 @@ def decode_process_file(kind, content, fmt):
     file_columns(kind)
     check_format(fmt)
     check_bytes(content, fmt)
-    source = csv_rows(content) if fmt == "csv" else xlsx_rows(content)
+    state = {"sheets": 1}
+    source = csv_rows(content) if fmt == "csv" else xlsx_rows(content, state)
     try:
         header = next(source, None)
         if header is None or header[2]:
@@ -112,12 +114,12 @@ def decode_process_file(kind, content, fmt):
                 raise file_error("一次最多导入 2000 行。请拆分文件后重新导入。", number)
             rows.append(_parse_row(kind, number, values, errors, fields, fmt))
         _duplicates(kind, rows)
-        return rows
+        return rows, extra_sheet_notice(state["sheets"])
     finally:
         source.close()
 
 
-def encode_process_file(kind, rows, fmt):
+def encode_process_file(kind, rows, fmt, *, template=False):
     file_columns(kind)
     check_format(fmt)
-    return write_csv(kind, rows) if fmt == "csv" else write_xlsx(kind, rows)
+    return write_csv(kind, rows) if fmt == "csv" else write_xlsx(kind, rows, template)

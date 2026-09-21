@@ -151,5 +151,6 @@ class FieldReportFileService:
             for report in p['reports']:
                 corrections = sum(item['action'] in ('supplement', 'correct') for item in report['correction_history'])
                 metadata.append([report['report_no'], report['recorded_at'], 'Excel' if report['source'] == 'excel' else '手工', corrections])
-        return encode_reports(rows, template=template, summaries=() if template else summaries,
+        # 模板和导出都带说明表，两者的差别只剩要不要另外附汇总与录入信息。
+        return encode_reports(rows, summaries=() if template else summaries,
                               metadata=() if template else metadata, format_version=2), len(rows)

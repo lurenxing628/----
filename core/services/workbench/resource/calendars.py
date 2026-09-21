@@ -19,6 +19,7 @@ from core.models.workbench_calendar import (
     normalize_calendar_input,
 )
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected, input_fingerprint
+from core.services.scheduler.calendar.admin import DEFAULT_SHIFT_START
 from core.services.scheduler.calendar.engine import CalendarEngine
 from core.services.scheduler.calendar.service import CalendarService
 from data.repositories.workbench_calendar_query_repo import WorkbenchCalendarQueryRepository
@@ -165,6 +166,27 @@ class WorkbenchCalendarService:
         shifted_year, shifted_month = divmod(year * 12 + month - 1 + delta, 12)
         return {"year": shifted_year, "month": shifted_month + 1} if 1 <= shifted_year <= 9999 else None
 
+    # ---------- 供日历文件家族使用的公开入口 ----------
+    # 文件导入要一次处理上千天，逐日调 snapshot() 会开上千次事务、查上万次库（见 roadmap 4.7），
+    # 所以这三个入口把"一次读回整段 / 算一天 / 写一天"拆开，由调用方持有一个事务。
+
+    def day_state(self, day: str, states: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
+        """某一天的完整状态。states 必须来自同一次 range_states。"""
+        return self._snapshot(day, states)
+
+    def proposed_row(self, fields: Dict[str, Any], before: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """按领域规则算出这一天保存后的行；与界面走同一条一致性校验，不合规直接抛拒绝。
+
+        fields 用的是界面字段名（type/hours/eff/allowNormal/allowUrgent/note），不经过界面的
+        输入模型，所以文件可以表达界面表达不了的组合（例如假期带工时），取值合法性由调用方自己校验。
+        """
+        return self._proposed(fields, before)
+
+    def write_day(self, before: Dict[str, Any], after: Optional[Dict[str, Any]]) -> WorkbenchCommandOutcome:
+        """写一天。必须由外层 WorkbenchCommandService 持有写事务。"""
+        self._require_write_transaction()
+        return self._write(before, after)
+
     def _proposed(self, fields: Dict[str, Any], before: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         row = before["row"]
         if not fields:
@@ -176,11 +198,32 @@ class WorkbenchCalendarService:
             payload["remark"] = None
         patch = calendar_domain_fields(fields)
         payload.update(patch)
+        derived = self._shift_window_is_derived(patch, row)
+        if derived:
+            # 只填工时保存时，CalendarAdmin 会用“班次开始 + 工时”推出班次结束并一起存库。这一天的班次
+            # 结束属于上次工时的派生结果时，留着它会被反过来当成事实：把新工时算回旧值（改工时被拒），
+            # 或在休息改上班时凭空多出一个未改项（保存被拒）。清掉让它按新工时重推。
+            payload["shift_end"] = None
         proposed = self._calendar._admin._build_work_calendar_from_payload(payload).to_dict()
-        self._check_proposed(before, patch, proposed)
+        self._check_proposed(before, patch, proposed, derived_shift_window=derived)
         return proposed
 
-    def _check_proposed(self, before: Dict[str, Any], patch: Dict[str, Any], proposed: Dict[str, Any]) -> None:
+    @classmethod
+    def _shift_window_is_derived(cls, patch: Dict[str, Any], row: Optional[Dict[str, Any]]) -> bool:
+        """这一天的班次结束是不是上一次按默认开工时刻推出来的派生值。
+
+        本页只让改工时，不让单独设置班次起止，所以开工时刻仍是默认值的那些天，班次结束必然是推出来的，
+        改工时时应当跟着重推。开工时刻不是默认值的（例如跨夜班表 22:30 到 06:30）是真实班表，只填工时
+        会与它冲突，仍要拒绝并让用户先核对班表。库里没有单独记录"班次是谁设的"，只能这样判断。
+        """
+        if "shift_hours" not in patch or "shift_start" in patch or "shift_end" in patch:
+            return False
+        if row is None:
+            return True
+        return (row.get("shift_start") or DEFAULT_SHIFT_START) == DEFAULT_SHIFT_START
+
+    def _check_proposed(self, before: Dict[str, Any], patch: Dict[str, Any], proposed: Dict[str, Any],
+                        *, derived_shift_window: bool = False) -> None:
         if self._calendar._admin._build_work_calendar_from_payload(proposed).to_dict() != proposed:
             raise WorkbenchCommandRejected("constraint_conflict", "填的工时换成班次的分钟数后存不稳，请核对工时。")
         if "shift_hours" in patch and abs(proposed["shift_hours"] - patch["shift_hours"]) > 1e-9:
@@ -189,7 +232,9 @@ class WorkbenchCalendarService:
                 f"和你填的 {patch['shift_hours']:g} 小时对不上，所以没有保存；请先核对原班次。")
         row = before["row"]
         if row is not None:
-            if any(proposed.get(name) != value for name, value in row.items() if name not in patch):
+            derived_names = {"shift_end"} if derived_shift_window else set()
+            if any(proposed.get(name) != value for name, value in row.items()
+                   if name not in patch and name not in derived_names):
                 raise WorkbenchCommandRejected("constraint_conflict", "这一天没改的项会被规则改写，所以没有保存；请先核对原来的配置。")
 
     def _require_write_transaction(self) -> None:

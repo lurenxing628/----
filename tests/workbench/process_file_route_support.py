@@ -6,9 +6,10 @@ import pytest
 
 from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_resource_action import ResourceActionPreview
-from core.services.workbench.process.file_codec import decode_process_file, encode_process_file
+from core.services.workbench.process.file_codec import encode_process_file
 from core.services.workbench.process.file_route import ProcessRouteFileOperations
 from core.services.workbench.process.queries import WorkbenchProcessQueryService
+from tests.workbench.process_file_codec_support import decode_rows
 from tests.workbench.process_query_support import ref_for, seed_process
 from tests.workbench.process_route_support import all_table_snapshot
 from tests.workbench.process_workflow_support import confirm_all
@@ -37,7 +38,7 @@ def decoded(*values):
 
 def file_rows(records, fmt="csv"):
     content = encode_process_file("route", records, fmt).content
-    return decode_process_file("route", content, fmt)
+    return decode_rows("route", content, fmt)
 
 
 def review(conn, source, target_ref=None):

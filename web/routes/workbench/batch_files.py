@@ -9,7 +9,7 @@ from core.models.workbench_batch import object_fields, public_ref
 from core.models.workbench_batch_file import MAX_BYTES, MAX_ROWS, MIME
 from core.models.workbench_batch_query import batch_scope, snapshot_scope
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.services.workbench.batch.file_codec import TEMPLATE, write_batch_file
+from core.services.workbench.batch.file_codec import write_batch_file
 from core.services.workbench.batch.files import WorkbenchBatchFileService
 from core.services.workbench.batch.queries import WorkbenchBatchQueryService
 from core.services.workbench.commands import WorkbenchCommandService
@@ -32,7 +32,8 @@ def download(content, name, count):
 def batch_template():
     if request.args:
         raise WorkbenchCommandRejected("invalid_input", "模板下载不需要其他条件，没有开始下载。请直接点「下载批次模板」。", 400)
-    return download(write_batch_file(TEMPLATE["sample_rows"], template=True), "批次导入模板.xlsx", len(TEMPLATE["sample_rows"]))
+    # 示例行移到了「填写说明」表，数据表只留表头，用户不用先删示例再填。
+    return download(write_batch_file([], template=True), "批次导入模板.xlsx", 0)
 
 
 @api_endpoint

@@ -82,7 +82,7 @@ def material_import_preview():
         data = issue_preview(preview, content)
         snapshot = bind_read_snapshot({"kind": "material", "operation": "material.import",
                                        "preview_ref": data["preview_ref"]}, fingerprint)
-    return query_success(data, snapshot)
+    return query_success(data, snapshot, preview.as_dict()["notices"])
 
 
 def _confirm_body():

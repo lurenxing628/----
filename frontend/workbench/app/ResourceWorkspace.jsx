@@ -84,6 +84,12 @@
   function Toolbar({ config, scope, onFilter, loading, disabled, onRefresh, onCreate, createReason, onExternal, adapter, selected, ready, onClearSelection }) {
     const [search, setSearch] = React.useState(scope.query);
     React.useEffect(() => setSearch(scope.query), [scope.query, config.kind]);
+    // 附属资料的文件入口只在挂靠它的那类资料上出现，有几种、叫什么由适配器给，页面不写死。
+    const attached = typeof adapter.attachedFiles === 'function' ? adapter.attachedFiles(config.kind) : [];
+    const actions = [['openImport', 'file-input', '导入'], ['openExport', 'file-output', '导出'],
+      ...attached.flatMap(item => [['openRelationImport', 'file-input', '导入' + item.label, item.family],
+        ['openRelationExport', 'file-output', '导出' + item.label, item.family]]),
+      ['openBulk', 'trash-2', '批量删除']];
     return <form className="toolbar" onSubmit={event => { event.preventDefault(); onFilter({ query: search }); }}>
       <label className="search"><span className="ic"><Icon name="search" /></span><input type="search" aria-label="搜索编号或名称" placeholder={'搜索' + config.label + '编号、名称…'} value={search} disabled={disabled} onChange={event => setSearch(event.target.value)} /></label>
       <Button type="submit" icon="search" disabled={disabled} aria-busy={loading}>搜索</Button>
@@ -92,9 +98,9 @@
       <Button icon="refresh-cw" aria-label="刷新列表" onClick={onRefresh} disabled={disabled} busy={loading} />
       {selected.length > 0 && <Button icon="x" aria-label="清除所有选择" onClick={onClearSelection} disabled={disabled}>清除选择</Button>}
       <span className="tb-spacer" /><div className="wb-actions">
-      {[['openImport', 'file-input', '导入'], ['openExport', 'file-output', '导出'], ['openBulk', 'trash-2', '批量删除']].map(([name, icon, label]) => <Button key={name} icon={icon} transfer={name === 'openImport' ? 'import' : name === 'openExport' ? 'export' : undefined}
+      {actions.map(([name, icon, label, family]) => <Button key={name + ':' + (family || '')} icon={icon} transfer={/Import$/.test(name) ? 'import' : /Export$/.test(name) ? 'export' : undefined}
         disabled={disabled || loading} reasonDisplay="tooltip" reason={typeof adapter[name] !== 'function' || typeof adapter.supports === 'function' && !adapter.supports(name, config.kind) ? label + '尚未开通。' : !ready ? '请先读取当前列表。' : name === 'openBulk' && !selected.length ? '请先勾选记录。' : ''}
-        onClick={() => onExternal(name)}>{label}</Button>)}
+        onClick={() => onExternal(name, family ? { family } : {})}>{label}</Button>)}
       <Button icon="plus" className="btn primary wb-action wb-primary" reason={createReason} disabled={disabled} onClick={onCreate}>新增{config.label}</Button></div>
     </form>;
   }
@@ -252,7 +258,7 @@
           const removed = new Set(result.data.rows.map(row => row.entity_ref));
           setSelected(current => current.filter(ref => !removed.has(ref)));
         }
-        refresh(); setExternal({ busy: false, error: null, result, action: name === 'openBulk' ? 'delete' : name === 'openImport' ? 'import' : 'save' });
+        refresh(); setExternal({ busy: false, error: null, result, action: name === 'openBulk' ? 'delete' : /Import$/.test(name) ? 'import' : 'save' });
       };
       try {
         const result = await adapter[name](config.kind, { refs: selected.slice(), scope: { ...scope, source: list.result && list.result.meta.source, snapshot_ref: list.result && list.result.meta.snapshot_ref }, ...extra, onCommitted }, new AbortController().signal);
@@ -291,10 +297,13 @@
       </section>
       {dialog && (dialog.action === 'view' || !editorReady) && <Forms.Detail key={dialog.kind + ':' + dialog.ref} adapter={adapter} kind={dialog.kind} result={detail.result} busy={detail.loading} error={detail.error} onRetry={detail.reload} onClose={close}
         onRelated={(kind, ref, category) => open('view', ref, { kind, category })} onBack={dialog.history && dialog.history.length ? back : null}
-        onEdit={() => edit('update')} onAdjustStock={() => edit('update', true)} onMachinePermissions={() => edit('machine_permissions')} onDelete={() => edit('delete')} />}
+        onEdit={() => edit('update')} onAdjustStock={() => edit('update', true)} onMachinePermissions={() => edit('machine_permissions')}
+        onOperatorCalendar={() => edit('operator_calendar')} onDelete={() => edit('delete')} />}
       {editorReady && dialog.action === 'machine_permissions' && <window.OperatorMachinePermissions adapter={adapter} entity={editorEntity} source={detail.result.meta.source}
         command={command} onClose={close} refreshState={refreshState} onRefresh={readAfterCommand} Feedback={Forms.Feedback} />}
-      {editorReady && !['view', 'machine_permissions'].includes(dialog.action) && <><Forms key={dialog.kind + ':' + (dialog.ref || 'create') + ':' + dialog.action} adapter={adapter} kind={dialog.kind} action={dialog.action} entity={editorEntity} category={dialog.category} stockOnly={!!dialog.stockOnly}
+      {editorReady && dialog.action === 'operator_calendar' && <window.OperatorCalendarPanel adapter={adapter} entity={editorEntity} source={detail.result.meta.source}
+        command={command} onClose={close} refreshState={refreshState} onRefresh={readAfterCommand} Feedback={Forms.Feedback} />}
+      {editorReady && !['view', 'machine_permissions', 'operator_calendar'].includes(dialog.action) && <><Forms key={dialog.kind + ':' + (dialog.ref || 'create') + ':' + dialog.action} adapter={adapter} kind={dialog.kind} action={dialog.action} entity={editorEntity} category={dialog.category} stockOnly={!!dialog.stockOnly}
         acceptedEntity={editContext && editContext.entity}
         writeContext={editContext ? editContext.context : editorEntity ? editorEntity.write_context : dialog.createContext} source={editContext ? editContext.source : editorEntity ? detail.result.meta.source : dialog.source}
         command={command} onClose={close} onReloadContext={reloadContext} refreshState={refreshState} onRefresh={readAfterCommand}

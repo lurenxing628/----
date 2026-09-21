@@ -43,7 +43,7 @@ class WorkbenchProcessFileService:
         check_format(file_format)
         if mode != "upsert":
             raise WorkbenchCommandRejected("invalid_input", "工艺文件仅支持按图号增量导入。", 400)
-        decoded = decode_process_file(kind, content, file_format)
+        decoded, notices = decode_process_file(kind, content, file_format)
         with self.reader.read_snapshot() as state:
             if target_ref is not None:
                 self.reader.resolve(target_ref)
@@ -57,7 +57,7 @@ class WorkbenchProcessFileService:
                        "file_sha256": hashlib.sha256(content).hexdigest(), "state": state,
                        "acknowledgements": {"discard_group_refs": sorted(group["ref"] for group in extra["affected_groups"]),
                                             "zero_review_required": extra["zero_review_required"]}}
-            return ResourceActionPreview.build(file_operation(kind), request, rows), extra
+            return ResourceActionPreview.build(file_operation(kind), request, rows, notices), extra
 
     def confirm_import(self, preview, content, *, discard_group_refs, confirm_zero_unit_hours):
         if not self.conn.in_transaction:

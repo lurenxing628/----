@@ -1,6 +1,28 @@
 (function () {
   'use strict';
   const fileKinds = ['material', 'op_type', 'machine', 'operator', 'supplier'];
+  // 附属资料按它挂靠的那类基础资料开入口：在人员页维护可操作设备和个人日历。
+  const attachedTo = { operator: ['operator_machine', 'operator_calendar'] };
+  const hostOf = Object.fromEntries(Object.keys(attachedTo)
+    .flatMap(kind => attachedTo[kind].map(family => [family, kind])));
+  // 只有导入导出、没有批量删除的文件家族，以及各自恢复后应该回到哪一页。
+  const importOnlyBase = { operator_machine: 'relation-files', operator_calendar: 'calendar-files', work_calendar: 'calendar-files' };
+  const importOnlyKinds = Object.keys(importOnlyBase);
+  const importOnlyNode = { ...hostOf, work_calendar: 'calendar' };
+  // 走日历文件对话框的家族：它们的导出范围是日期区间，不是列表的三档筛选。
+  const calendarFileKinds = ['work_calendar', 'operator_calendar'];
+  function familyLabel(family) {
+    return calendarFileKinds.includes(family) ? window.APSCalendarFile.labels[family] : window.APSRelationFile.labels[family];
+  }
+  function importOnlyAdapter(kind) {
+    const adapter = window.APSResourceAPI.create(kind + '_files');
+    adapter.command = (commandKind, action, ref, body, signal) => {
+      if (commandKind !== kind + '_import' || action !== 'confirm' || !body || !body.input || body.input.preview_ref !== ref)
+        throw window.APSResourceContract.failure('确认操作与当前预检结果不一致。');
+      return adapter.execute(importOnlyBase[kind] + '/' + kind + '/confirm', body, signal);
+    };
+    return adapter;
+  }
   function fileAdapter(kind) {
     const adapter = window.APSResourceAPI.create(kind + '_files');
     adapter.command = (commandKind, action, ref, body, signal) => {
@@ -13,15 +35,18 @@
   }
   function recovery(adapters) {
     const pending = [{ type: 'base', adapter: adapters.base }, ...fileKinds.map(kind => ({ type: 'file', kind, adapter: adapters.files[kind] })),
+      ...importOnlyKinds.map(kind => ({ type: 'file_only', kind, adapter: adapters.imports[kind] })),
       { type: 'catalog', adapter: adapters.catalog }, { type: 'calendar', adapter: adapters.calendar }, { type: 'process', adapter: adapters.process }]
       .map(item => ({ ...item, intent: typeof item.adapter.readPending === 'function' && item.adapter.readPending() })).find(item => item.intent);
     if (!pending) return null;
     const intent = pending.intent, kind = pending.kind || intent.kind;
-    const node = pending.type === 'process' ? 'process' : pending.type === 'calendar' ? 'calendar' : kind === 'op_type'
-      ? intent.category === 'external' ? 'op_ext' : 'op_int' : fileKinds.includes(kind) ? kind : 'material';
+    const node = pending.type === 'process' ? 'process' : pending.type === 'calendar' ? 'calendar'
+      : pending.type === 'file_only' ? importOnlyNode[kind] : kind === 'op_type'
+        ? intent.category === 'external' ? 'op_ext' : 'op_int' : fileKinds.includes(kind) ? kind : 'material';
     const auxiliary = pending.type === 'file' ? { type: intent.kind === kind + '_bulk' ? 'bulk' : 'import', kind,
       request: { refs: [], scope: intent.category ? { category: intent.category } : {}, recovery: true } }
-      : pending.type === 'catalog' ? { type: 'catalog', kind, request: { recovery: true } } : null;
+      : pending.type === 'file_only' ? { type: 'import', kind, request: { refs: [], scope: {}, recovery: true } }
+        : pending.type === 'catalog' ? { type: 'catalog', kind, request: { recovery: true } } : null;
     return { node, auxiliary };
   }
   function ResourceLive({ onNavigate, initialContext }) {
@@ -30,18 +55,33 @@
     const adapters = React.useMemo(() => {
       const base = window.APSResourceAPI.create(), calendar = window.APSResourceAPI.create('calendar');
       const files = Object.fromEntries(fileKinds.map(kind => [kind, fileAdapter(kind)])), catalog = window.APSResourceAPI.create('catalog');
+      const imports = Object.fromEntries(importOnlyKinds.map(kind => [kind, importOnlyAdapter(kind)]));
       calendar.command = (kind, action, ref, body, signal) => {
         if (kind !== 'calendar' || !['upsert', 'delete', 'confirm'].includes(action)) throw window.APSResourceContract.failure('工作日历操作不正确。');
         return calendar.execute('calendar/' + (action === 'confirm' ? 'range/confirm' : action), body, signal);
       };
       const open = (type, kind, request) => { setHostError(null); setAuxiliary({ type, kind, request }); return { state: 'opened' }; };
       base.supports = (name, kind) => name === 'openCatalog' ? ['machine_group', 'shift_profile'].includes(kind)
-        : ['openImport', 'openExport', 'openBulk'].includes(name) && fileKinds.includes(kind);
+        : ['openRelationImport', 'openRelationExport'].includes(name) ? !!(attachedTo[kind] || []).length
+          : ['openImport', 'openExport', 'openBulk'].includes(name) && fileKinds.includes(kind);
       base.openImport = (kind, request) => open('import', kind, request);
       base.openExport = (kind, request) => open('export', kind, request);
       base.openBulk = (kind, request) => open('bulk', kind, request);
       base.openCatalog = (kind, request) => open('catalog', kind, request);
-      return { base, calendar, files, catalog, process: window.APSProcessAPI.create(base) };
+      const openAttached = (mode, kind, request) => {
+        // 一类基础资料可以挂多种附属资料，所以要打开哪一种由按钮自己说，主机不替它猜。
+        if (!(attachedTo[kind] || []).includes(request && request.family))
+          throw window.APSResourceContract.failure('这类基础资料没有这种可以用文件维护的附属资料。');
+        return open(mode, request.family, request);
+      };
+      base.openRelationImport = (kind, request) => openAttached('import', kind, request);
+      base.openRelationExport = (kind, request) => openAttached('export', kind, request);
+      base.attachedFiles = kind => (attachedTo[kind] || []).map(family => ({ family, label: familyLabel(family) }));
+      base.openCalendarFile = (mode, request) => {
+        if (!['import', 'export'].includes(mode)) throw window.APSResourceContract.failure('日历文件只支持导入和导出。');
+        return open(mode, 'work_calendar', request);
+      };
+      return { base, calendar, files, imports, catalog, process: window.APSProcessAPI.create(base) };
     }, []);
     const [boot] = React.useState(() => {
       const target = window.ResourceWorkspace.navigation(initialContext);
@@ -87,10 +127,13 @@
         rememberEnabled={!auxiliary && !deferred && !hostError && !boot.error && !boot.target.error}
         initialContext={deferred || boot.error ? undefined : boot.target.context} onNavigationReady={setNavigationReady}
         renderPart={({ onRefresh, initialContext, rememberEnabled }) => <window.ProcessWorkspace adapter={adapters.process} onCommitted={onRefresh} initialContext={initialContext} rememberEnabled={rememberEnabled} onNavigationReady={setNavigationReady} />}
-        renderCalendar={({ onCommitted, initialContext, rememberEnabled }) => <window.ResourceCalendar adapter={adapters.calendar} onCommitted={onCommitted} initialContext={initialContext} rememberEnabled={rememberEnabled} onNavigationReady={setNavigationReady} />} />
+        renderCalendar={({ onCommitted, initialContext, rememberEnabled }) => <window.ResourceCalendar adapter={adapters.calendar} onCommitted={onCommitted} initialContext={initialContext} rememberEnabled={rememberEnabled} onNavigationReady={setNavigationReady}
+          onOpenFile={(mode, context) => adapters.base.openCalendarFile(mode, { refs: [], scope: {}, ...context, onCommitted })} />} />
       {auxiliary && (auxiliary.type === 'catalog' ? <window.ResourceCatalog kind={auxiliary.kind} adapter={adapters.catalog} onClose={close} onCommitted={committed} /> :
-        auxiliary.kind === 'material' ? <window.ResourceMaterialActions mode={auxiliary.type} request={auxiliary.request} adapter={adapters.files.material} onClose={close} onCommitted={committed} /> :
-          <window.ResourceFileActions kind={auxiliary.kind} mode={auxiliary.type} request={auxiliary.request} adapter={adapters.files[auxiliary.kind]} onClose={close} onCommitted={committed} />)}
+        calendarFileKinds.includes(auxiliary.kind) ? <window.CalendarFileActions kind={auxiliary.kind} month={auxiliary.request.month} mode={auxiliary.type} request={auxiliary.request} adapter={adapters.imports[auxiliary.kind]} onClose={close} onCommitted={committed} /> :
+          importOnlyKinds.includes(auxiliary.kind) ? <window.RelationFileActions kind={auxiliary.kind} mode={auxiliary.type} request={auxiliary.request} adapter={adapters.imports[auxiliary.kind]} onClose={close} onCommitted={committed} /> :
+          auxiliary.kind === 'material' ? <window.ResourceMaterialActions mode={auxiliary.type} request={auxiliary.request} adapter={adapters.files.material} onClose={close} onCommitted={committed} /> :
+            <window.ResourceFileActions kind={auxiliary.kind} mode={auxiliary.type} request={auxiliary.request} adapter={adapters.files[auxiliary.kind]} onClose={close} onCommitted={committed} />)}
     </>;
   }
   window.ResourceLive = ResourceLive;

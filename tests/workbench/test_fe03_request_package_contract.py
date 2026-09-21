@@ -16,6 +16,7 @@ ROOT = Path(__file__).resolve().parents[2]
 MANIFEST = Path(__file__).with_name("fe03_route_manifest.json")
 REGISTRARS = (
     "material", "resource", "resource_relation", "resource_table", "material_action", "resource_action",
+    "relation_file", "calendar_file", "operator_calendar",
     "calendar", "batch", "process_read", "process_write", "process_collection", "process_table",
     "process_file", "plan_read", "execution", "actual_gantt", "preflight", "scheduling_job",
     "run_candidate", "run_candidate_adoption", "run_candidate_baseline", "run_history", "report",

@@ -8,6 +8,7 @@ import openpyxl
 import pytest
 
 from core.errors import ValidationError
+from core.models.workbench_resource_file import table_descriptor
 from core.services.workbench.facts import file_writer as resource_file_writer
 from core.services.workbench.facts.file_codec import read_resource_file
 from core.services.workbench.facts.file_writer import check_capacity
@@ -21,6 +22,7 @@ from tests.workbench.resource_file_support import (
     snapshot,
 )
 from tests.workbench.resource_file_support import existing_raw as raw
+from tests.workbench.table_template_support import check_instruction_sheet
 
 
 @pytest.mark.parametrize("fmt", ("csv", "xlsx"))
@@ -102,34 +104,44 @@ def test_formula_like_text_leading_zero_null_and_slashes_are_reversible(resource
             assert b"<f>" not in archive.read("xl/worksheets/sheet1.xml")
 
 
-def test_xlsx_template_has_only_headers_and_json_array_explanations(resource_conn):
+def test_xlsx_template_carries_the_instruction_sheet_and_one_line_notes(resource_conn):
     for kind, category in (("op_type", "external"), ("operator", None), ("machine", None), ("supplier", None)):
         result = WorkbenchResourceFileService.template(kind, category=category)
         wb = openpyxl.load_workbook(BytesIO(result.content))
         try:
+            check_instruction_sheet(wb, table_descriptor(kind))
             ws = wb.worksheets[0]
+            # 数据表只有表头，规则全在说明表里，表头批注收敛成一句示例值。
             assert ws.max_row == 1 and result.row_count == 0
-            assert all(cell.comment and "只读" in cell.comment.text and "JSON" in cell.comment.text for cell in ws[1])
-            assert any(cell.comment and '["OT1","OT2"]' in cell.comment.text for cell in ws[1])
+            assert all(cell.comment and "填写说明" in cell.comment.text for cell in ws[1])
+            assert all(len(cell.comment.text) < 80 for cell in ws[1])
+            # 多值列的示例必须是 JSON 数组，否则用户会照着逗号写。
+            if kind in ("operator", "supplier"):
+                assert any(cell.comment and '["OT' in cell.comment.text for cell in ws[1])
         finally:
             wb.close()
 
 
 @pytest.mark.parametrize("fmt", ("csv", "xlsx"))
-def test_duplicate_headers_unheaded_cells_and_multiple_sheets_fail(resource_conn, fmt):
+def test_duplicate_headers_and_unheaded_cells_fail(resource_conn, fmt):
     with pytest.raises(ValidationError):
         read_resource_file("machine", file_bytes([["M1", "M1"]], fmt, ("business_code", "编号")), fmt)
-    rows = read_resource_file("machine", file_bytes([["M1", "extra"]], fmt, ("business_code",)), fmt)
-    assert rows[0]["errors"][0]["field"] == "columns"
-    if fmt == "xlsx":
-        wb = openpyxl.Workbook()
-        wb.worksheets[0].append(["business_code"])
-        wb.create_sheet("another")
-        buffer = BytesIO()
-        wb.save(buffer)
-        wb.close()
-        with pytest.raises(ValidationError):
-            read_resource_file("machine", buffer.getvalue(), fmt)
+    rows, notices = read_resource_file("machine", file_bytes([["M1", "extra"]], fmt, ("business_code",)), fmt)
+    assert rows[0]["errors"][0]["field"] == "columns" and notices == []
+
+
+def test_extra_sheets_are_ignored_with_a_notice(resource_conn):
+    """模板和导出文件自己就带一张说明表，回导时不能因此整份拒绝。"""
+    wb = openpyxl.Workbook()
+    wb.worksheets[0].append(["business_code"])
+    wb.worksheets[0].append(["M1"])
+    wb.create_sheet("填写说明").append(["列名"])
+    buffer = BytesIO()
+    wb.save(buffer)
+    wb.close()
+    rows, notices = read_resource_file("machine", buffer.getvalue(), "xlsx")
+    assert [row["values"] for row in rows] == [{"business_code": "M1"}]
+    assert [item["code"] for item in notices] == ["first_sheet_only"]
 
 
 def test_missing_reference_metadata_is_not_repaired(resource_conn):

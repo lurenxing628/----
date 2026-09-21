@@ -9,6 +9,7 @@ from uuid import uuid4
 import openpyxl
 
 from core.infrastructure.transaction import TransactionManager
+from core.models.workbench_table_descriptor import INSTRUCTION_SHEET
 from core.services.workbench.commands import WorkbenchCommandService
 from core.services.workbench.resource.bulk import WorkbenchResourceBulkService
 from core.services.workbench.resource.files import WorkbenchResourceFileService
@@ -72,7 +73,8 @@ def decode(download, fmt, *, check_text=True):
         return rows[0], [[v[1:] if v.startswith("'") else v for v in row] for row in rows[1:]]
     wb = openpyxl.load_workbook(BytesIO(download.content), read_only=True, data_only=False)
     try:
-        assert len(wb.worksheets) == 1
+        # 模板与导出文件固定两张表：数据表在前，「填写说明」在后。
+        assert wb.sheetnames[1:] == [INSTRUCTION_SHEET], wb.sheetnames
         source = wb.worksheets[0].iter_rows()
         headers = [cell.value for cell in next(source)]
         rows = []

@@ -39,13 +39,13 @@ class WorkbenchResourceFileService:
 
     def preview_import(self, content, *, file_format, scope, mode="upsert"):
         request = import_request(self.kind, content, file_format, mode, scope)
-        source = read_resource_file(self.kind, content, file_format)
+        source, notices = read_resource_file(self.kind, content, file_format)
         with self.tx.transaction():
             rows = [self._import_row(item, request["scope"]) for item in source]
             self._duplicates(rows, "business_code")
             if self.kind == "op_type":
                 self._duplicates(rows, "label")
-            return ResourceActionPreview.build(self.kind + ".import", request, rows)
+            return ResourceActionPreview.build(self.kind + ".import", request, rows, notices)
 
     @staticmethod
     def _duplicates(rows, field):

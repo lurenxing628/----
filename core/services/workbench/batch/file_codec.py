@@ -11,7 +11,15 @@ from openpyxl.styles import Font
 from openpyxl.utils import get_column_letter
 
 from core.errors import ValidationError
-from core.models.workbench_batch_file import HEADERS, MAX_BYTES, MAX_ROWS, TEMPLATE_FILENAME
+from core.models.workbench_batch_file import (
+    HEADERS,
+    MAX_BYTES,
+    MAX_ROWS,
+    TEMPLATE_FILENAME,
+    table_descriptor,
+)
+from core.models.workbench_table_descriptor import cell_notes, extra_sheet_notice
+from core.services.common.excel_instruction_sheet import add_enum_dropdowns, append_instruction_sheet
 from core.services.common.excel_templates import get_template_definition
 
 TEMPLATE = get_template_definition(TEMPLATE_FILENAME)
@@ -29,7 +37,8 @@ def read_batch_file(content):
                 raise ValidationError("Excel展开后超过64MB，请拆分文件。", field="file")
         workbook = openpyxl.load_workbook(BytesIO(content), read_only=True, data_only=False, keep_links=False)
         rows, reference_status = _read_first_sheet(workbook)
-        warnings = ([{"code": "first_sheet_only", "message": "仅导入第一张工作表。"}] if len(workbook.worksheets) > 1 else [])
+        # 多表提示与其余 11 张表同一句话，见 core/models/workbench_table_descriptor.py。
+        warnings = extra_sheet_notice(len(workbook.worksheets))
         if reference_status:
             warnings.append({"code": "reference_column_ignored", "message": "文件中的“状态”仅供参考，不导入；已有批次保留当前状态，新批次从待排开始。"})
         return rows, warnings
@@ -78,18 +87,19 @@ def _read_data_row(line, cells, headers):
 def write_batch_file(rows, *, template=False):
     if len(rows) > MAX_ROWS:
         raise ValidationError("单次导出超过5000行，请缩小范围。", field="scope")
+    descriptor = table_descriptor()
+    notes = cell_notes(descriptor)
     workbook = openpyxl.Workbook()
     sheet = workbook.worksheets[0]
-    sheet.title = "批次信息"
+    sheet.title = descriptor["sheet_name"]
     sheet.freeze_panes = "A2"
     headers = HEADERS if template else HEADERS + ("状态",)
     sheet.append(headers)
     for index, _header in enumerate(headers, 1):
         cell = sheet.cell(1, index)
         cell.font = Font(bold=True)
-        if template:
-            example = TEMPLATE["sample_rows"][0][index - 1]
-            cell.comment = Comment("示例：" + str(example if example is not None else "留空") + "。批次号、图号须为文本；日期不要填写时分。现有批次的空单元格不覆盖；新批次不会自动生成工序。", "APS")
+        if template and index <= len(notes):
+            cell.comment = Comment(notes[index - 1], "APS")
         sheet.column_dimensions[get_column_letter(index)].width = (22 if index < 3 else 16) if index != 8 else 36
     for number, row in enumerate(rows, 2):
         for index, value in enumerate(row, 1):
@@ -100,6 +110,8 @@ def write_batch_file(rows, *, template=False):
                 cell.data_type = TYPE_STRING
                 cell.number_format = "@"
     sheet.auto_filter.ref = "A1:" + get_column_letter(len(headers)) + str(max(1, len(rows) + 1))
+    add_enum_dropdowns(sheet, descriptor, len(rows), write_only=False)
+    append_instruction_sheet(workbook, descriptor)
     try:
         buffer = BytesIO()
         workbook.save(buffer)

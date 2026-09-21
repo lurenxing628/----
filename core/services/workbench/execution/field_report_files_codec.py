@@ -13,16 +13,19 @@ from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils.datetime import from_excel
 
 from core.models.workbench_command import WorkbenchCommandRejected
+from core.models.workbench_field_report_file import (
+    FIELDS,
+    HEADERS,
+    ROW_LIMIT,
+    TASK_FIELDS,
+    TASK_HEADERS,
+    table_descriptor,
+)
+from core.models.workbench_table_descriptor import INSTRUCTION_SHEET
+from core.services.common.excel_instruction_sheet import append_instruction_sheet
 
 from .field_report_files_xml import check_package
 
-HEADERS = ('报工编号', '批次号', '工序', '本次完成数量', '实际开工', '本次实际完工',
-           '有效加工工时(h)', '实际设备', '实际人员', '备注')
-FIELDS = ('report_no', 'batch_id', 'operation_label', 'completed_quantity', 'actual_start', 'actual_end',
-          'effective_processing_hours', 'machine_label', 'operator_label', 'remark')
-TASK_HEADERS = HEADERS + ('任务编号', '工序范围', '单件编号')
-TASK_FIELDS = FIELDS + ('task_ref', 'operation_scope', 'piece_id')
-ROW_LIMIT = 5000
 BYTE_LIMIT = 8 * 1024 * 1024
 MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 
@@ -125,20 +128,6 @@ def decode_reports(content):
         book.close()
 
 
-def _instructions(book):
-    help_sheet = book.create_sheet('填写说明')
-    help_sheet.append(['项目', '说明'])
-    for row in [('数据范围', '只读第一张报工记录表，最多 5000 行；预检只看不保存。'),
-                    ('逐次报工', '填写本次完成数量和有效工时；未填写请留空，确为零时填 0。'),
-                    ('编号', '请保留报工编号。任务编号、工序范围和单件编号由当前范围预填，不要改；不用手抄任务编号。'),
-                    ('单件与共同工序', '工序范围为单件时，单件编号必须与预填值一致；共同工序的单件编号必须留空。原来的 10 列格式只支持批次和工序都唯一的情况；重名分不清会被拒绝。'),
-                    ('目标数量', '实际甘特 CSV 里的目标数量按报工统计；计划应做数量、计划批次数量和依据另外列出，不知道就留空。'),
-                    ('设备人员', '实际设备和人员要按现场核对后填写，不能拿计划里的当实际。'),
-                    ('重复与更正', '重复导入仅补空项；修改已有内容请使用更正并填写原因。'),
-                    ('时间', '时间格式：2026-09-13 08:30；有效加工工时单独填写。')]:
-        help_sheet.append(row)
-
-
 def _style(page, is_report):
     page.freeze_panes = 'A2'
     page.auto_filter.ref = page.dimensions
@@ -155,11 +144,9 @@ def _style(page, is_report):
         page.column_dimensions[letter].width = 26 if is_report else 32
     if is_report:
         page.column_dimensions['J'].width = 48
-    elif page.title == '填写说明':
-        page.column_dimensions['B'].width = 90
 
 
-def encode_reports(rows, *, template=False, summaries=(), metadata=(), format_version=1):
+def encode_reports(rows, *, summaries=(), metadata=(), format_version=1):
     if type(format_version) is not int or format_version not in (1, 2):
         reject('这个报工文件的格式版本不支持。')
     headers, fields = (HEADERS, FIELDS) if format_version == 1 else (TASK_HEADERS, TASK_FIELDS)
@@ -173,8 +160,8 @@ def encode_reports(rows, *, template=False, summaries=(), metadata=(), format_ve
         if number > ROW_LIMIT:
             reject('导出超过 5000 行，请缩小筛选范围。')
         sheet.append([row.get(field) for field in fields])
-    if template:
-        _instructions(book)
+    # 模板和导出都带说明表，位置固定在数据表后面；回导时它会被当成多余的表忽略。
+    append_instruction_sheet(book, table_descriptor(format_version))
     for title, values in [('工序汇总', summaries), ('录入信息', metadata)]:
         values = list(values)
         if values:
@@ -182,7 +169,8 @@ def encode_reports(rows, *, template=False, summaries=(), metadata=(), format_ve
             for row in values:
                 extra.append(row)
     for page in book:
-        _style(page, page is sheet)
+        if page.title != INSTRUCTION_SHEET:
+            _style(page, page is sheet)
     output = BytesIO()
     book.save(output)
     book.close()

@@ -1,0 +1,267 @@
+"""全局工作日历的文件预检与确认。只改文件里列出的日期，没列出的日期完全不动。
+
+文件不做删除：把某一天恢复成默认规则要用日历页的范围清除。这样文件里少写一天永远是安全的，
+不会因为漏抄一行就把配置抹掉。
+
+取值校验在这里做，领域一致性交给 `WorkbenchCalendarService.proposed_row`，与日历页走同一条校验链，
+所以界面拒绝的组合文件也拒绝。唯一的例外是假期带工时：界面的输入模型禁止，文件放行，见 4.5 的裁决。
+"""
+
+from datetime import date
+from typing import Any, Dict, List, Optional
+
+from core.errors import ValidationError
+from core.infrastructure.transaction import TransactionManager
+from core.models.workbench_calendar_file import (
+    ENUMS,
+    MAX_RANGE_DAYS,
+    NULLABLE,
+    NUMERIC,
+    REQUIRED,
+    UI_FIELDS,
+    CalendarFileDownload,
+    calendar_kind,
+    file_columns,
+    import_request,
+    row_identity,
+)
+from core.models.workbench_command import (
+    WorkbenchCommandOutcome,
+    WorkbenchCommandRejected,
+    input_fingerprint,
+)
+from core.models.workbench_resource_action import (
+    ResourceActionPreview,
+    action_row,
+    check_resource_preview,
+    reject_action_row,
+)
+
+from ..calendars import WorkbenchCalendarService
+from .file_codec import read_calendar_file, read_date, read_number
+from .file_writer import check_capacity, write_calendar_file
+
+_LIMITS = {"shift_hours": (0.0, 24.0, False), "efficiency": (0.0, 200.0, True)}
+_DAY_TYPE_TEXT = {"workday": "工作日", "holiday": "假期"}
+_YES_NO_TEXT = {"yes": "是", "no": "否"}
+
+
+def _blocked(row) -> bool:
+    """这一行是不是已经出错。预检行的初始状态就是 rejected，判据只能是错误列表。"""
+    return bool(row["errors"])
+
+
+def _text(value: float) -> str:
+    """数字写进文件时不要留浮点尾巴：8.0 写成 8，7.5 还是 7.5。"""
+    return f"{value:f}".rstrip("0").rstrip(".") or "0"
+
+
+def range_fingerprint(states: Dict[str, Dict[str, Any]]) -> str:
+    """按日期范围的读快照指纹：只认真正落过库的那些天的行与修订号。"""
+    return input_fingerprint([{"date": day, "row": state["row"],
+                               "revision": state["identity"]["revision"] if state["identity"] else None}
+                              for day, state in sorted(states.items())])
+
+
+def check_range(start_date: str, end_date: str) -> None:
+    try:
+        start, end = date.fromisoformat(start_date), date.fromisoformat(end_date)
+    except (TypeError, ValueError) as exc:
+        raise WorkbenchCommandRejected("invalid_input", "日期范围必须填成 2026-10-01 这样的年月日，没有开始下载。", 400) from exc
+    if end < start:
+        raise WorkbenchCommandRejected("invalid_input", "结束日期不能早于开始日期，没有开始下载。请重新选择范围。", 400)
+    if (end - start).days + 1 > MAX_RANGE_DAYS:
+        raise WorkbenchCommandRejected(
+            "invalid_input", "一次最多处理 " + str(MAX_RANGE_DAYS) + " 天，没有开始下载。请把范围缩小后重试。", 400)
+
+
+class WorkbenchCalendarFileService:
+    def __init__(self, conn, kind, logger=None, *, clock=None):
+        self.conn, self.kind = conn, calendar_kind(kind)
+        self.logger = logger
+        self.calendar = (WorkbenchCalendarService(conn, logger, clock=clock) if clock is not None
+                         else WorkbenchCalendarService(conn, logger))
+        self.tx = TransactionManager(conn)
+
+    # ---------- 导入 ----------
+
+    def preview_import(self, content, *, file_format, mode="upsert"):
+        request = import_request(self.kind, content, file_format, mode)
+        source, notices = read_calendar_file(self.kind, content, file_format)
+        with self.tx.transaction():
+            return ResourceActionPreview.build(self.kind + ".import", request, self._build_rows(source), notices)
+
+    def _build_rows(self, source) -> List[Dict[str, Any]]:
+        rows = [self._parse_row(item) for item in source]
+        self._reject_duplicate_dates(rows)
+        states = self._load_states(rows)
+        for row in rows:
+            self._classify(row, states)
+        return rows
+
+    def _parse_row(self, source) -> Dict[str, Any]:
+        row = action_row(source["row"])
+        row["errors"] = list(source["errors"])
+        row["notes"] = []
+        row["reference_fields"] = []
+        row["input"] = None
+        values = source["values"]
+        parsed: Dict[str, Any] = {}
+        for key in file_columns(self.kind):
+            if key not in values:
+                continue
+            try:
+                parsed[key] = self._value(key, values[key])
+            except ValidationError as exc:
+                reject_action_row(row, exc.message, field=key)
+        for key in REQUIRED[self.kind]:
+            if key not in parsed and not any(item["field"] == key for item in row["errors"]):
+                reject_action_row(row, "这一项必须填写。", field=key)
+        row["business_code"] = row_identity(self.kind, parsed)
+        row["values"] = parsed
+        return row
+
+    def _value(self, key: str, raw: Any) -> Any:
+        if raw is None:
+            if key not in NULLABLE[self.kind]:
+                raise ValidationError("这一项不能清除，留空表示保持原样。要把整天恢复成默认规则请到日历页用范围清除。", field=key)
+            return None
+        if key in ("date",):
+            return read_date(raw, key)
+        if key in NUMERIC[self.kind]:
+            number = read_number(raw, key)
+            low, high, positive = _LIMITS[key]
+            if not low <= number <= high or (positive and number == low):
+                raise ValidationError("工时要填 0 到 24，效率要填大于 0 且不超过 200 的数字。", field=key)
+            return number
+        if key in ENUMS:
+            text = raw.strip() if type(raw) is str else raw
+            if text not in ENUMS[key]:
+                raise ValidationError("只能填：" + " / ".join(ENUMS[key]) + "。", field=key)
+            return ENUMS[key][text]
+        text = str(raw).strip() if not isinstance(raw, str) else raw.strip()
+        return text or None
+
+    @staticmethod
+    def _reject_duplicate_dates(rows) -> None:
+        seen: Dict[str, List[Dict[str, Any]]] = {}
+        for row in rows:
+            if row["business_code"] is not None:
+                seen.setdefault(row["business_code"], []).append(row)
+        for repeated in seen.values():
+            if len(repeated) > 1:
+                numbers = ", ".join(str(item["row"]) for item in repeated)
+                for item in repeated:
+                    reject_action_row(item, "同一个日期在文件里出现了多次，这些行都没有导入：第 " + numbers
+                                      + " 行。请只保留一行。", field="date", code="duplicate_entry")
+
+    def _load_states(self, rows) -> Dict[str, Dict[str, Any]]:
+        """一次读回整段日期的状态，不逐行查库（roadmap 4.7）。"""
+        days = sorted({row["values"]["date"] for row in rows if not _blocked(row)})
+        if not days:
+            return {}
+        if (date.fromisoformat(days[-1]) - date.fromisoformat(days[0])).days + 1 > MAX_RANGE_DAYS:
+            raise ValidationError(
+                "文件里最早和最晚的日期相差超过 " + str(MAX_RANGE_DAYS) + " 天，一行都没有导入。请拆成几个文件分次上传。",
+                field="date")
+        return self.calendar.range_states(days[0], days[-1])
+
+    def _classify(self, row, states) -> None:
+        if _blocked(row):
+            return
+        day = row["values"]["date"]
+        before = self.calendar.day_state(day, states)
+        fields = {UI_FIELDS[self.kind][key]: value for key, value in row["values"].items() if key != "date"}
+        try:
+            after = self.calendar.proposed_row(fields, before)
+        except WorkbenchCommandRejected as exc:
+            reject_action_row(row, str(exc), code=exc.code, field="date")
+            return
+        except ValidationError as exc:
+            reject_action_row(row, exc.message, field=exc.field or "date")
+            return
+        row["expected"], row["input"] = before, after
+        row["before"] = self._public(before["row"])
+        row["after"] = self._public(after)
+        row["action"] = "create" if before["row"] is None else "update"
+        if before["row"] is None:
+            row["result"] = "new"
+        else:
+            row["changes"] = {key: {"before": row["before"][key], "after": row["after"][key]}
+                              for key in file_columns(self.kind)
+                              if key != "date" and row["before"][key] != row["after"][key]}
+            row["result"] = "update" if row["changes"] else "unchanged"
+        row["reference_count"] = 1 if before["row"] is not None else 0
+        self._add_notes(row, after)
+
+    @staticmethod
+    def _add_notes(row, after) -> None:
+        if after is not None and after["day_type"] == "holiday" and after["shift_hours"] > 0:
+            row["notes"].append("这一天是假期但安排了工时，效率按排产设置里的假期效率算；日历页上会显示成工作日。")
+            row["requires_confirmation"] = True
+
+    def _public(self, row: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        """把领域行翻成文件列口径，导出、预检对比、回导用的是同一份翻译。"""
+        if row is None:
+            return None
+        return {"date": row["date"], "day_type": _DAY_TYPE_TEXT[row["day_type"]],
+                "shift_hours": _text(row["shift_hours"]), "efficiency": _text(row["efficiency"] * 100),
+                "allow_normal": _YES_NO_TEXT[row["allow_normal"]], "allow_urgent": _YES_NO_TEXT[row["allow_urgent"]],
+                "remark": row["remark"]}
+
+    def confirm_import(self, preview, content, *, file_format, mode="upsert"):
+        if not self.conn.in_transaction:
+            raise RuntimeError("日历文件导入确认必须在外层工作台写事务中执行。")
+        with self.tx.transaction():
+            try:
+                current = self.preview_import(content, file_format=file_format, mode=mode)
+            except ValidationError as exc:
+                raise WorkbenchCommandRejected(
+                    "stale_write", "文件或日历已经变了，没有导入。请重新点「开始预检」后再确认。") from exc
+            check_resource_preview(preview, current)
+            body = current.as_dict()
+            if body["summary"]["rejected"]:
+                raise WorkbenchCommandRejected(
+                    "constraint_conflict", "这一批里有不能导入的行，一行都没有导入。请修好标红的行后重新点「开始预检」。")
+            results = []
+            for row in body["rows"]:
+                if row["result"] == "unchanged":
+                    results.append({"row": row["row"], "business_code": row["business_code"], "result": "unchanged"})
+                    continue
+                self.calendar.write_day(row["expected"], row["input"])
+                results.append({"row": row["row"], "business_code": row["business_code"], "result": "committed"})
+            changed = any(item["result"] == "committed" for item in results)
+            return WorkbenchCommandOutcome("committed" if changed else "unchanged",
+                                           {"rows": results, "summary": body["summary"]})
+
+    # ---------- 导出 ----------
+
+    def range_snapshot(self, start_date: str, end_date: str) -> str:
+        """按日期范围的读快照指纹。月视图指纹绑的是一个月，导出范围要单独算。"""
+        if not self.conn.in_transaction:
+            raise RuntimeError("日历范围读取必须在快照事务中执行。")
+        check_range(start_date, end_date)
+        return range_fingerprint(self.calendar.range_states(start_date, end_date))
+
+    def _rows_for(self, start_date: str, end_date: str) -> List[Dict[str, Any]]:
+        """只导出这段时间里单独配置过的日期；没配置过的天按默认规则走，导出来回导会把默认固化成数据。"""
+        states = self.calendar.range_states(start_date, end_date)
+        return [self._public(state["row"]) for _, state in sorted(states.items()) if state["row"] is not None]
+
+    def preview_export(self, *, start_date: str, end_date: str):
+        if not self.conn.in_transaction:
+            raise RuntimeError("日历导出预览必须在已验证的查询快照事务中执行。")
+        check_range(start_date, end_date)
+        return ({"start_date": start_date, "end_date": end_date}, len(self._rows_for(start_date, end_date)))
+
+    def export(self, file_format, *, start_date: str, end_date: str) -> CalendarFileDownload:
+        if not self.conn.in_transaction:
+            raise RuntimeError("日历导出必须在已验证的查询快照事务中执行。")
+        check_range(start_date, end_date)
+        rows = self._rows_for(start_date, end_date)
+        check_capacity(len(rows), file_format)
+        return write_calendar_file(self.kind, rows, file_format)
+
+    @staticmethod
+    def template(kind, file_format="xlsx") -> CalendarFileDownload:
+        return write_calendar_file(calendar_kind(kind), [], file_format, template=True)

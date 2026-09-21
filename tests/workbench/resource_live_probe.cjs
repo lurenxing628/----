@@ -5,6 +5,10 @@ const auxiliary=require('./resource_aux_probe.cjs');
 const {conflicts}=require('./resource_conflicts_probe.cjs');
 const {select}=require('./custom_control_actions.cjs');
 const {resourceFiles}=require('./resource_files_live_probe.cjs');
+const {relationFiles}=require('./relation_files_live_probe.cjs');
+const {calendarFiles}=require('./calendar_files_live_probe.cjs');
+const {operatorCalendar}=require('./operator_calendar_live_probe.cjs');
+const {operatorCalendarFiles}=require('./operator_calendar_files_live_probe.cjs');
 const {resourceDetails}=require('./resource_details_live_probe.cjs');
 const {resourceTableControls}=require('./resource_table_live_probe.cjs');
 const ready=JSON.parse(fs.readFileSync(process.argv[2],'utf8')),root=ready.root,origin=ready.url;
@@ -157,9 +161,13 @@ async function scenario(browser,viewport,theme){
     await resourceDetails(page,state,{...helpers,row,save});
     await auxiliary.catalog(page,state,helpers);
     await auxiliary.calendar(page,state,helpers);
+    await calendarFiles(page,state,helpers,root,report);
     await auxiliary.files(page,state,helpers,root,report);
     await conflicts(page,context,state,{...helpers,createEntity,editAndDelete,openEdit,save,row,watch,readEntity},report,origin);
     await resourceFiles(page,state,helpers,root,report);
+    await relationFiles(page,state,helpers,root,report);
+    await operatorCalendar(page,state,helpers,root,report);
+    await operatorCalendarFiles(page,state,helpers,root,report);
   }finally{await context.close();}
 }
 (async()=>{

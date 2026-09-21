@@ -24,7 +24,7 @@ def failure(code, message, status, *, committed: Union[bool, Literal["unknown"]]
     return response
 
 
-def query_success(data, snapshot):
+def query_success(data, snapshot, warnings=()):
     return jsonify({"ok": True, "schema_version": 1, "data": data,
                     "meta": {"request_ref": uuid.uuid4().hex, "source": "production",
-                             "time_basis": "factory_local", **snapshot}, "warnings": []})
+                             "time_basis": "factory_local", **snapshot}, "warnings": list(warnings)})

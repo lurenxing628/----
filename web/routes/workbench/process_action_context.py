@@ -27,7 +27,7 @@ def action_preview(preview, command, *, kind=None, content=None, extra=None):
               "can_confirm": not rejected, "write_context": context,
               "columns": public_columns(kind or "route"), "scope": body["request"]["scope"]}
     if kind is not None:
-        result.update(kind=kind, template_version=TEMPLATE_VERSION, instructions=INSTRUCTIONS)
+        result.update(kind=kind, template_version=TEMPLATE_VERSION, instructions=INSTRUCTIONS[kind])
         result.update({key: body["request"][key] for key in ("file_sha256", "format", "mode")})
     result.update(extra or {})
     return result

@@ -104,10 +104,98 @@ def issue_preview(kind, preview, content=None):
               "can_confirm": not rejected, "write_context": context, "columns": public_columns(kind), "scope": body["request"]["scope"]}
     if action.endswith(".import"):
         result.update({key: body["request"][key] for key in ("file_sha256", "format", "mode")})
-        result.update(template_version=TEMPLATE_VERSION, instructions=INSTRUCTIONS)
+        result.update(template_version=TEMPLATE_VERSION, instructions=INSTRUCTIONS[kind])
         if kind == "op_type":
             result["category"] = body["request"]["scope"]["category"]
     return result
+
+
+def issue_file_preview(preview, content, *, columns, instructions, template_version, extra=None):
+    """导入预检的公开响应。关联资料与日历文件家族共用；资源家族的 issue_preview 还要兼顾批量删除，不并进来。"""
+    ref, expires_at = retain_context(PREVIEW_SCOPE, preview.document, content)
+    body = preview.as_dict()
+    action = body["operation"]
+    context = issue_write_context(ref, [action], preview.intent())
+    rejected = body["summary"]["rejected"] != 0
+    if rejected:
+        context["capabilities"][action] = False
+        context["blocked_reasons"] = [{"action": action, "code": "constraint_conflict",
+                                       "message": "这一批里有不能提交的行，数据没有改动。请修好标红的行后重新点「开始预检」。"}]
+    return {"preview_ref": ref, "expires_at": expires_at, "operation": action, "commit_policy": "atomic",
+            "summary": body["summary"], "rows": [public_action_row(row) for row in body["rows"]],
+            "can_confirm": not rejected, "write_context": context, "columns": columns,
+            "scope": body["request"]["scope"], "file_sha256": body["request"]["file_sha256"],
+            "format": body["request"]["format"], "mode": body["request"]["mode"],
+            "template_version": template_version, "instructions": instructions, **(extra or {})}
+
+
+def upload_body(*, modes=("upsert",)):
+    """导入预检的 multipart 请求：恰好一个文件，外加格式与导入方式，多一项少一项都拒绝。"""
+    from flask import request
+
+    if (request.args or request.mimetype != "multipart/form-data" or set(request.files) != {"file"}
+            or len(request.files.getlist("file")) != 1 or set(request.form) != {"format", "mode"}
+            or any(len(request.form.getlist(key)) != 1 for key in request.form)):
+        raise WorkbenchCommandRejected("invalid_input", "请上传一个文件并选好格式和导入方式；数据没有改动。选好后点「开始预检」。", 400)
+    fmt, mode = request.form["format"], request.form["mode"]
+    if fmt not in ("csv", "xlsx") or mode not in modes:
+        raise WorkbenchCommandRejected("invalid_input", "只支持 CSV 或 XLSX 按编号增量导入；数据没有改动。请换用正确的文件后点「开始预检」。", 400)
+    content = request.files["file"].read()
+    limit = int(current_app.config.get("EXCEL_MAX_UPLOAD_BYTES") or current_app.config.get("MAX_CONTENT_LENGTH") or 0)
+    if limit > 0 and len(content) > limit:
+        raise WorkbenchCommandRejected("invalid_input", "文件超过本机允许的大小，一行都没有导入。请缩小文件后重新点「开始预检」。", 413)
+    return content, fmt, mode
+
+
+def download_args(required):
+    from flask import request
+
+    if set(request.args) != required or any(len(request.args.getlist(key)) != 1 for key in request.args):
+        raise WorkbenchCommandRejected("invalid_input", "下载条件不完整或有多余项，没有开始下载。请刷新页面后重新点「导出」。", 400)
+    fmt = request.args["format"]
+    if fmt not in ("csv", "xlsx"):
+        raise WorkbenchCommandRejected("invalid_input", "下载只支持 CSV 或 XLSX 格式，没有开始下载。请重新选择格式后点「导出」。", 400)
+    return fmt
+
+
+def file_response(download):
+    from io import BytesIO
+
+    from flask import send_file
+
+    response = send_file(BytesIO(download.content), mimetype=download.mime_type, as_attachment=True,
+                         download_name=download.filename, max_age=0)
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["X-Workbench-Row-Count"] = str(download.row_count)
+    return response
+
+
+def confirm_body():
+    """确认导入的 JSON 请求体：只能确认刚预检过的那一批。"""
+    from flask import g
+
+    from core.models.workbench_command import validate_request_key
+
+    body = json_body({"request_key", "write_token", "input"})
+    validate_request_key(body["request_key"])
+    g.workbench_request_key = body["request_key"]
+    opaque_ref(body["write_token"], "write_token")
+    if type(body["input"]) is not dict or set(body["input"]) != {"preview_ref"}:
+        raise WorkbenchCommandRejected("invalid_input", "只能确认刚才预检过的那一批，数据没有改动。请重新点「开始预检」。", 400)
+    opaque_ref(body["input"]["preview_ref"], "preview_ref")
+    return body
+
+
+def resolve_import_preview(ref, action, write_token):
+    """按预检编号取回服务端留存的预检文档，并核对写令牌绑定的正是这一次操作。"""
+    from core.models.workbench_resource_action import ResourceActionPreview
+
+    document, content = resolve_context(PREVIEW_SCOPE, ref, "stale_write")
+    preview = ResourceActionPreview(document)
+    if preview.as_dict()["operation"] != action:
+        raise WorkbenchCommandRejected("stale_write", "预检结果和这次操作对不上，数据没有改动。请重新点「开始预检」。")
+    validate_write_context(write_token, ref, action, preview.intent())
+    return preview, content
 
 
 def resolve_preview(ref, action, write_token):

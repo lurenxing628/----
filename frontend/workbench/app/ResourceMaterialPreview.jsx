@@ -29,8 +29,8 @@
     const referenceFields = Array.from(new Set(data.rows.flatMap(row => row.reference_fields || [])));
     const pages = Math.max(1, Math.ceil(rows.length / size)), current = Math.min(page, pages);
     return <section className="rm-preview" aria-label={label + '预检明细'}>
-      <div className="rm-summary" role="status">{Object.keys(M.results).filter(key => key !== (mode === 'bulk' ? 'new' : 'delete') && (mode !== 'bulk' || !['update', 'unchanged'].includes(key))).map(key =>
-        <span key={key}>{M.results[key]} <b className={key === 'rejected' && data.summary[key] ? 'rm-danger' : ''}>{data.summary[key]}</b></span>)}</div>
+      <div className="rm-summary" role="status">{Object.keys(contract.results).filter(key => key !== (mode === 'bulk' ? 'new' : 'delete') && (mode !== 'bulk' || !['update', 'unchanged'].includes(key))).map(key =>
+        <span key={key}>{contract.results[key]} <b className={key === 'rejected' && data.summary[key] ? 'rm-danger' : ''}>{data.summary[key]}</b></span>)}</div>
       {mode === 'import' && referenceFields.length > 0 && <p role="status">以下文件列仅供参考，本次不导入：{referenceFields.map(key => fields[key]).join('、')}。
         已有记录的这些信息保持原值；新记录按系统规则生成。{referenceFields.includes('machine_authorizations') && '设备权限需在人员详情设置。'}</p>}
       <div className="rm-preview-toolbar"><h3>逐行预检</h3><label>显示 <select aria-label="预检明细筛选" value={filter} onChange={event => { setFilter(event.target.value); setPage(1); }}>
@@ -39,12 +39,13 @@
       <div className="rm-table-wrap wb-table-frame" data-sticky-head tabIndex="0" role="region" aria-label="完整修改前后明细"><table className="rm-table wb-table">
         <caption className="wb-visually-hidden">{label}预检的修改前后明细</caption><thead><tr><th scope="col" style={{ width: '7%' }}>行号</th><th scope="col" style={{ width: '15%' }}>{label} / 结果</th><th scope="col" style={{ width: '34%' }}>修改前</th><th scope="col" style={{ width: '34%' }}>修改后</th><th scope="col" style={{ width: '10%' }}>关联数</th></tr></thead>
         <tbody>{rows.slice((current - 1) * size, current * size).map(row => <React.Fragment key={row.row}>
-          <tr data-material-row={contract.kind === 'material' ? row.row : undefined} data-resource-row={row.row}><td>{row.row}</td><td><strong>{row.business_code || '编号无效'}</strong><div className={row.result === 'rejected' ? 'rm-danger' : ''}>{M.results[row.result]}</div></td>
+          <tr data-material-row={contract.kind === 'material' ? row.row : undefined} data-resource-row={row.row}><td>{row.row}</td><td><strong>{row.business_code || '编号无效'}</strong><div className={row.result === 'rejected' ? 'rm-danger' : ''}>{contract.results[row.result]}</div></td>
             <td><Facts facts={row.before} empty={row.result === 'new' ? '尚不存在' : '未取得原记录'} changes={row.changes} fields={fields} contract={contract} /></td>
             <td><Facts facts={row.after} empty={row.action === 'delete' ? '删除后不再存在' : '未形成可提交内容'} changes={row.changes} fields={fields} contract={contract} /></td><td>{row.reference_count} 项</td></tr>
-          {(row.errors.length > 0 || row.requires_confirmation) && <tr className="rm-row-note"><td /><td colSpan="4">
+          {(row.errors.length > 0 || row.requires_confirmation || (row.notes || []).length > 0) && <tr className="rm-row-note"><td /><td colSpan="4">
             {row.errors.map((error, index) => <div className="rm-danger" key={index}>第 {row.row} 行 · {fields[error.field] || '数据'}：{error.message}</div>)}
-            {row.requires_confirmation && <div>{contract.kind === 'material' ? '涉及已有物料需求' : '涉及关键项或已有关联'}，需核对修改前后内容。</div>}</td></tr>}
+            {(row.notes || []).map((note, index) => <div key={'note-' + index}>{note}</div>)}
+            {row.requires_confirmation && !(row.notes || []).length && <div>{contract.confirmationHint}</div>}</td></tr>}
         </React.Fragment>)}{!rows.length && <tr><td colSpan="5"><window.WorkbenchControls.EmptyState kind={filter === 'all' ? 'empty' : 'filtered'} title={filter === 'all' ? '暂无预检行' : undefined}
           action={filter === 'all' ? undefined : <Button onClick={() => { setFilter('all'); setPage(1); }}>清除筛选</Button>} /></td></tr>}</tbody></table></div>
       <window.WorkbenchControls.Pager page={current} pages={pages} total={rows.length} size={size} sizes={[20, 50, 100]} unit="行" label="预检" sizeLabel="预检每页行数"

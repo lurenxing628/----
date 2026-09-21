@@ -60,9 +60,9 @@
     }, /*#__PURE__*/React.createElement("div", {
       className: "rm-summary",
       role: "status"
-    }, Object.keys(M.results).filter(key => key !== (mode === 'bulk' ? 'new' : 'delete') && (mode !== 'bulk' || !['update', 'unchanged'].includes(key))).map(key => /*#__PURE__*/React.createElement("span", {
+    }, Object.keys(contract.results).filter(key => key !== (mode === 'bulk' ? 'new' : 'delete') && (mode !== 'bulk' || !['update', 'unchanged'].includes(key))).map(key => /*#__PURE__*/React.createElement("span", {
       key: key
-    }, M.results[key], " ", /*#__PURE__*/React.createElement("b", {
+    }, contract.results[key], " ", /*#__PURE__*/React.createElement("b", {
       className: key === 'rejected' && data.summary[key] ? 'rm-danger' : ''
     }, data.summary[key])))), mode === 'import' && referenceFields.length > 0 && /*#__PURE__*/React.createElement("p", {
       role: "status"
@@ -123,7 +123,7 @@
       "data-resource-row": row.row
     }, /*#__PURE__*/React.createElement("td", null, row.row), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("strong", null, row.business_code || '编号无效'), /*#__PURE__*/React.createElement("div", {
       className: row.result === 'rejected' ? 'rm-danger' : ''
-    }, M.results[row.result])), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Facts, {
+    }, contract.results[row.result])), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Facts, {
       facts: row.before,
       empty: row.result === 'new' ? '尚不存在' : '未取得原记录',
       changes: row.changes,
@@ -135,14 +135,16 @@
       changes: row.changes,
       fields: fields,
       contract: contract
-    })), /*#__PURE__*/React.createElement("td", null, row.reference_count, " \u9879")), (row.errors.length > 0 || row.requires_confirmation) && /*#__PURE__*/React.createElement("tr", {
+    })), /*#__PURE__*/React.createElement("td", null, row.reference_count, " \u9879")), (row.errors.length > 0 || row.requires_confirmation || (row.notes || []).length > 0) && /*#__PURE__*/React.createElement("tr", {
       className: "rm-row-note"
     }, /*#__PURE__*/React.createElement("td", null), /*#__PURE__*/React.createElement("td", {
       colSpan: "4"
     }, row.errors.map((error, index) => /*#__PURE__*/React.createElement("div", {
       className: "rm-danger",
       key: index
-    }, "\u7B2C ", row.row, " \u884C \xB7 ", fields[error.field] || '数据', "\uFF1A", error.message)), row.requires_confirmation && /*#__PURE__*/React.createElement("div", null, contract.kind === 'material' ? '涉及已有物料需求' : '涉及关键项或已有关联', "\uFF0C\u9700\u6838\u5BF9\u4FEE\u6539\u524D\u540E\u5185\u5BB9\u3002"))))), !rows.length && /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", {
+    }, "\u7B2C ", row.row, " \u884C \xB7 ", fields[error.field] || '数据', "\uFF1A", error.message)), (row.notes || []).map((note, index) => /*#__PURE__*/React.createElement("div", {
+      key: 'note-' + index
+    }, note)), row.requires_confirmation && !(row.notes || []).length && /*#__PURE__*/React.createElement("div", null, contract.confirmationHint))))), !rows.length && /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", {
       colSpan: "5"
     }, /*#__PURE__*/React.createElement(window.WorkbenchControls.EmptyState, {
       kind: filter === 'all' ? 'empty' : 'filtered',

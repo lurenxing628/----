@@ -384,6 +384,165 @@
     "strict_slashes": true
   },
   {
+    "rule": "/api/workbench/v1/relation-files/<kind>/preview",
+    "endpoint": "workbench.relation_import_preview",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/relation-files/<kind>/confirm",
+    "endpoint": "workbench.relation_import_confirm",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/relation-files/<kind>/export-preview",
+    "endpoint": "workbench.relation_export_preview",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/relation-files/<kind>/export",
+    "endpoint": "workbench.relation_export",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/relation-files/<kind>/template",
+    "endpoint": "workbench.relation_template",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/calendar-files/<kind>/preview",
+    "endpoint": "workbench.calendar_import_preview",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/calendar-files/<kind>/confirm",
+    "endpoint": "workbench.calendar_import_confirm",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/calendar-files/<kind>/export-preview",
+    "endpoint": "workbench.calendar_export_preview",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/calendar-files/<kind>/export",
+    "endpoint": "workbench.calendar_export",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/calendar-files/<kind>/template",
+    "endpoint": "workbench.calendar_template",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/entities/operator/<ref>/calendar/month",
+    "endpoint": "workbench.operator_calendar_month",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/entities/operator/<ref>/calendar/upsert",
+    "endpoint": "workbench.operator_calendar_upsert",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "defaults": {
+      "action": "upsert"
+    },
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/entities/operator/<ref>/calendar/delete",
+    "endpoint": "workbench.operator_calendar_delete",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "defaults": {
+      "action": "delete"
+    },
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/entities/operator/<ref>/calendar/range-preview",
+    "endpoint": "workbench.operator_calendar_range_preview",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/entities/operator/<ref>/calendar/range-clear",
+    "endpoint": "workbench.operator_calendar_range_clear",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
     "rule": "/api/workbench/v1/calendar/month",
     "endpoint": "workbench.calendar_month",
     "methods": [

@@ -9,15 +9,17 @@
     return <div className="rm-format"><span className="seclabel">文件格式</span><div className="seg" role="group" aria-label="文件格式">
       {['xlsx', 'csv'].map(format => <button key={format} type="button" disabled={disabled} className={value === format ? 'on' : ''} aria-pressed={value === format} onClick={() => onChange(format)}>{format === 'xlsx' ? 'Excel (.xlsx)' : 'CSV (.csv)'}</button>)}</div></div>;
   }
-  function ExportOptions({ selection, setSelection, refs, disabled, label, kind }) {
+  function ExportOptions({ selection, setSelection, refs, disabled, label, kind, scopeLabel }) {
     return <fieldset style={{ border: 0, margin: 0, padding: 0 }} disabled={disabled}><legend className="seclabel">导出范围</legend>
-      {[['filtered', '当前筛选结果', '当前搜索与状态筛选下的全部记录，不限当前页'], ['all', '全部' + label, '忽略搜索与状态筛选，导出全部' + label + (kind === 'op_type' ? '，保留当前工种类别' : '')], ['selected', '已选' + label, refs.length + ' 条，含非当前页和当前筛选外的勾选记录']].map(([key, title, detail]) =>
+      {[['filtered', '当前筛选结果', '当前搜索与状态筛选下的全部记录，不限当前页'], ['all', '全部' + scopeLabel, '忽略搜索与状态筛选，导出全部' + scopeLabel + (kind === 'op_type' ? '，保留当前工种类别' : '')], ['selected', '已选' + scopeLabel, refs.length + ' 条，含非当前页和当前筛选外的勾选记录']].map(([key, title, detail]) =>
         <label key={key} className={'iorow' + (selection === key ? ' on' : '')}><input type="radio" name={kind + '-export-scope'} value={key} checked={selection === key} onChange={() => setSelection(key)} />
           <div><div className="iotitle">{title}</div><div className="iosub">{detail}</div></div></label>)}</fieldset>;
   }
   function Actions({ adapter, mode, request, onClose, onCommitted, contract: M }) {
     const [original] = React.useState(() => ({ ...request, refs: Array.isArray(request.refs) ? request.refs.slice() : request.refs, scope: { ...request.scope } }));
-    const [format, setFormat] = React.useState('xlsx'), [file, setFile] = React.useState(null), [selection, setSelection] = React.useState('');
+    const [format, setFormat] = React.useState('xlsx'), [file, setFile] = React.useState(null);
+    // 导出范围默认是三档单选里的"还没选"；给了 ExportScope 的契约自己决定初值（日历用的是日期区间）。
+    const [selection, setSelection] = React.useState(() => M.exportScopeInitial === undefined ? '' : M.exportScopeInitial);
     const [job, setJob] = React.useState(null), [error, setError] = React.useState(null), [acknowledged, setAcknowledged] = React.useState(false);
     const [download, setDownload] = React.useState({ busy: false, name: null }), [now, setNow] = React.useState(Date.now());
     const command = S.useCommand(adapter), notified = React.useRef(null), alive = React.useRef(true), downloadAbort = React.useRef(null);
@@ -37,7 +39,7 @@
       const raw = await adapter.preview(M.paths[effectiveMode], body, signal);
       if (isExport) {
         const result = M.exportPreview(raw, job.selection, original);
-        if (job.selection === 'selected' && result.data.row_count !== M.selection(original).length)
+        if (M.rowsMatchSelection && job.selection === 'selected' && result.data.row_count !== M.selection(original).length)
           throw C.failure('导出预检数量与勾选的' + label + '不一致，没有开始下载。');
         return result;
       }
@@ -137,13 +139,16 @@
           </div>}
           {!done && !command.locked && effectiveMode === 'import' && data && <div className="tmpl-row"><span className="tmpl-ico"><Icon name="file-input" /></span>
             <div><div className="tmpl-t">{file && file.name}</div><div className="tmpl-s">{format.toUpperCase()} · 按编号增量更新 · {data.rows.length} 行</div></div><Button icon="file-input" disabled={controlsDisabled} onClick={invalidate}>更换文件</Button></div>}
-          {!recovery && !done && !command.locked && isExport && <div className="iopane on"><ExportOptions selection={selection} setSelection={value => { invalidate(); setSelection(value); }} refs={refs} disabled={controlsDisabled} label={label} kind={M.kind} /><Format value={format} onChange={chooseFormat} disabled={controlsDisabled} /></div>}
+          {!recovery && !done && !command.locked && isExport && <div className="iopane on">
+            {M.ExportScope ? <M.ExportScope value={selection} onChange={value => { invalidate(); setSelection(value); }} disabled={controlsDisabled} refs={refs} />
+              : <ExportOptions selection={selection} setSelection={value => { invalidate(); setSelection(value); }} refs={refs} disabled={controlsDisabled} label={label} scopeLabel={M.scopeLabel || label} kind={M.kind} />}
+            <Format value={format} onChange={chooseFormat} disabled={controlsDisabled} /></div>}
           {!done && effectiveMode === 'bulk' && (!recovery || command.intent) && (recovery || command.intent && !job ? <p>正在查询上次批量删除的结果，当前列表里新勾选的还没提交。</p> :
             <p>本次勾选了 <b>{refs.length}</b> 条{label}，含非当前页和当前筛选外的勾选项。</p>)}
           {activeRead && <p role="status">正在读取完整预检结果，尚未写入数据…</p>}
           <ErrorBox error={error} /><ErrorBox error={query.error} /><Issues issues={result && result.warnings || []} />
           {data && !isExport && <><Preview data={data} mode={effectiveMode} contract={M} label={label} /><p className="iohint">本批整体确认；任意一行校验不通过，全部不写入。</p>
-            {needsAcknowledgement && !done && <label className="rm-check"><input type="checkbox" checked={acknowledged} disabled={controlsDisabled} onChange={event => setAcknowledged(event.target.checked)} /><span>{effectiveMode === 'bulk' ? '已核对完整删除范围及明细，确认删除这些' + label + '。' : M.kind === 'material' ? '已核对在用物料的修改前后内容，确认这些更新。' : '已核对关键项和关联关系的修改前后内容，确认这些更新。'}</span></label>}
+            {needsAcknowledgement && !done && <label className="rm-check"><input type="checkbox" checked={acknowledged} disabled={controlsDisabled} onChange={event => setAcknowledged(event.target.checked)} /><span>{effectiveMode === 'bulk' ? '已核对完整删除范围及明细，确认删除这些' + label + '。' : M.acknowledgeHint}</span></label>}
             {reason && !done && <p role="status">{reason}</p>}</>}
           {data && isExport && <p role="status">已核对导出范围：<b>{data.row_count}</b> 条 · {format.toUpperCase()}{expired ? ' · 预检结果已过期' : ''}</p>}
           {download.busy && <p role="status">正在读取下载文件…</p>}{download.name && <p role="status">已交给浏览器下载：<b>{download.name}</b></p>}

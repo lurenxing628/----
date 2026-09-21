@@ -69,12 +69,14 @@ def csv_rows(content):
         raise file_error("CSV 必须是 UTF-8 编码，系统不猜编码，也不替你补引号。请另存为 UTF-8 后重新上传。", reader.line_num if reader else 1) from exc
 
 
-def xlsx_rows(content):
+def xlsx_rows(content, state):
     wb = None
     try:
         wb = openpyxl.load_workbook(BytesIO(content), read_only=True, data_only=False, keep_links=False)
-        if len(wb.sheetnames) != 1 or len(wb.worksheets) != 1:
-            raise file_error("文件只能有一张数据工作表。请删掉多余的工作表后重新上传。")
+        if not wb.worksheets:
+            raise file_error("这个 XLSX 里没有工作表。请用 Excel 另存为 xlsx 后重新上传。")
+        # 只读第一张表，其余忽略；模板和导出文件本身就带一张「填写说明」。
+        state["sheets"] = len(wb.worksheets)
         ws = wb.worksheets[0]
         ws.reset_dimensions()
         for number, cells in enumerate(ws.iter_rows(), 1):

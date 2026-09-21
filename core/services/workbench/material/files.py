@@ -78,7 +78,7 @@ class WorkbenchMaterialFileService:
 
     def preview_import(self, content, *, file_format, scope, mode="upsert"):
         request = file_request(content, file_format, mode, scope)
-        source = read_material_file(content, file_format)
+        source, notices = read_material_file(content, file_format)
         with self.tx.transaction():
             rows = [self._import_row(item) for item in source]
             duplicates = {}
@@ -90,7 +90,7 @@ class WorkbenchMaterialFileService:
                     numbers = ", ".join(str(row["row"]) for row in repeated)
                     for row in repeated:
                         reject_row(row, "同一编号在文件中重复，涉及行：" + numbers, code="duplicate_entry")
-            return MaterialPreview.build("material.import", request, rows)
+            return MaterialPreview.build("material.import", request, rows, notices)
 
     def _import_row(self, source):
         row = preview_row(source["row"])

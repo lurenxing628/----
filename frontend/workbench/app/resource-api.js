@@ -3,6 +3,11 @@
   const prefix = '/api/workbench/v1/';
   const kinds = new Set(['material', 'op_type', 'machine', 'operator', 'supplier', 'machine_group', 'shift_profile']);
   const fileKinds = new Set(['material', 'op_type', 'machine', 'operator', 'supplier']);
+  // 只有增量导入和导出、没有批量删除的文件家族：关联资料与日历。
+  const importOnlyKinds = new Set(['operator_machine', 'work_calendar', 'operator_calendar']);
+  // 个人日历的三个写入动作；意图里保持 kind=operator，保存后的刷新逻辑才认得出该读哪一页。
+  const calendarActions = new Map([['calendar_upsert', 'upsert'], ['calendar_delete', 'delete'],
+    ['calendar_range_clear', 'range-clear']]);
   const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
   function problem(message, committed, details) {
     const error = new Error(message);
@@ -101,8 +106,8 @@
   }
   function validIntent(value) {
     if (!object(value) || typeof value.request_key !== 'string' || !/^resource-[0-9a-f]{48}$/.test(value.request_key)) return false;
-    if (value.kind === 'operator' && value.action === 'machine_permissions') return value.category === undefined
-      && typeof value.ref === 'string' && /^[0-9a-f]{48}$/.test(value.ref);
+    if (value.kind === 'operator' && (value.action === 'machine_permissions' || calendarActions.has(value.action)))
+      return value.category === undefined && typeof value.ref === 'string' && /^[0-9a-f]{48}$/.test(value.ref);
     if (value.kind === 'calendar') return typeof value.ref === 'string' && (
       ['upsert', 'delete'].includes(value.action) && /^\d{4}-\d{2}-\d{2}$/.test(value.ref)
       || value.action === 'confirm' && /^[0-9a-f]{32}$/.test(value.ref));
@@ -116,6 +121,9 @@
     if (value.kind === 'execution') return value.category === undefined && typeof value.ref === 'string'
       && (['create', 'supplement', 'correct', 'report_void'].includes(value.action) && /^[0-9a-f]{48}$/.test(value.ref)
         || value.action === 'import_confirm' && /^[A-Za-z0-9_-]{32}$/.test(value.ref));
+    const importOnly = typeof value.kind === 'string' && /^(.+)_import$/.exec(value.kind);
+    if (importOnly && importOnlyKinds.has(importOnly[1])) return value.action === 'confirm' && value.category === undefined
+      && typeof value.ref === 'string' && /^[A-Za-z0-9_-]{32}$/.test(value.ref);
     const file = typeof value.kind === 'string' && /^(material|op_type|machine|operator|supplier)_(import|bulk)$/.exec(value.kind);
     if (file) return value.action === 'confirm' && typeof value.ref === 'string' && /^[A-Za-z0-9_-]{32}$/.test(value.ref)
       && (file[1] === 'op_type' ? ['internal', 'external'].includes(value.category) : value.category === undefined);
@@ -131,10 +139,12 @@
     if (namespace === 'execution') return intent.kind === 'execution';
     if (namespace === 'catalog') return ['machine_group', 'shift_profile'].includes(intent.kind);
     const kind = namespace.slice(0, -6);
+    if (importOnlyKinds.has(kind)) return intent.kind === kind + '_import';
     return fileKinds.has(kind) && [kind + '_import', kind + '_bulk'].includes(intent.kind);
   }
   function create(namespace = 'resources') {
-    if (!['resources', 'calendar', 'catalog', 'process', 'batches', 'execution'].includes(namespace) && !Array.from(fileKinds).some(kind => namespace === kind + '_files')) throw problem('基础资料操作入口不正确。', false);
+    if (!['resources', 'calendar', 'catalog', 'process', 'batches', 'execution'].includes(namespace)
+        && ![...fileKinds, ...importOnlyKinds].some(kind => namespace === kind + '_files')) throw problem('基础资料操作入口不正确。', false);
     const pendingKey = 'aps_workbench_resource_pending_v1' + (namespace === 'resources' ? '' : '_' + namespace);
     const api = {
       async query(path, scope, signal) { return production(await send(queryPath(path, scope), { signal })); },
@@ -157,6 +167,8 @@
       command(kind, action, ref, body, signal) {
         if (kind === 'operator' && action === 'machine_permissions' && ref !== null)
           return api.execute(resource(kind, ref) + '/machine-permissions/confirm', body, signal);
+        if (kind === 'operator' && calendarActions.has(action) && ref !== null)
+          return api.execute(resource(kind, ref) + '/calendar/' + calendarActions.get(action), body, signal);
         if (!['create', 'update', 'delete'].includes(action) || (action === 'create') !== (ref === null))
           throw problem('保存操作与所选记录不一致。', false);
         return api.execute(resource(kind, ref) + '/' + action, body, signal);

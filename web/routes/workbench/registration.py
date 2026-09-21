@@ -2,6 +2,7 @@
 
 from .actual_gantt import register_actual_gantt_routes
 from .batches import register_batch_routes
+from .calendar_files import register_calendar_file_routes
 from .calendars import register_calendar_routes
 from .calibration import register_calibration_routes
 from .calibration_adoption import register_calibration_adoption_routes
@@ -10,6 +11,7 @@ from .execution import register_execution_routes
 from .master_overview import register_master_overview_routes
 from .material_actions import register_material_action_routes
 from .materials import register_material_routes
+from .operator_calendars import register_operator_calendar_routes
 from .outsourcing import register_outsourcing_routes
 from .pages import bp
 from .plan_reads import register_plan_read_routes
@@ -19,6 +21,7 @@ from .process_files import register_process_file_routes
 from .process_reads import register_process_read_routes
 from .process_table_reads import register_process_table_routes
 from .process_writes import register_process_write_routes
+from .relation_files import register_relation_file_routes
 from .reports import register_report_routes
 from .resource_actions import register_resource_action_routes
 from .resource_relations import register_resource_relation_routes
@@ -40,6 +43,9 @@ register_resource_relation_routes(bp)
 register_resource_table_routes(bp)
 register_material_action_routes(bp)
 register_resource_action_routes(bp)
+register_relation_file_routes(bp)
+register_calendar_file_routes(bp)
+register_operator_calendar_routes(bp)
 register_calendar_routes(bp)
 register_batch_routes(bp)
 register_process_read_routes(bp)

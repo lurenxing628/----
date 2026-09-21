@@ -18,6 +18,7 @@
     onCommitted,
     initialContext,
     onNavigationReady,
+    onOpenFile,
     rememberEnabled = true
   }) {
     const [target] = React.useState(() => {
@@ -229,6 +230,24 @@
         flex: 1
       }
     }), /*#__PURE__*/React.createElement(Button, {
+      icon: "file-input",
+      transfer: "import",
+      disabled: blocked || !data || request.loading,
+      reason: typeof onOpenFile !== 'function' ? '日历文件导入尚未开通。' : source && source !== 'production' ? '当前不是生产数据，不能导入。' : '',
+      onClick: () => onOpenFile('import', {
+        source,
+        month
+      })
+    }, "\u5BFC\u5165\u65E5\u5386"), /*#__PURE__*/React.createElement(Button, {
+      icon: "file-output",
+      transfer: "export",
+      disabled: blocked || !data || request.loading,
+      reason: typeof onOpenFile !== 'function' ? '日历文件导出尚未开通。' : '',
+      onClick: () => onOpenFile('export', {
+        source,
+        month
+      })
+    }, "\u5BFC\u51FA\u65E5\u5386"), /*#__PURE__*/React.createElement(Button, {
       icon: "calendar-days",
       className: "btn cal-batch",
       disabled: blocked || !data || request.loading,

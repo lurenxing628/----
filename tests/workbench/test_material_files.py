@@ -149,17 +149,24 @@ def test_csv_multiline_record_keeps_physical_source_line_and_chinese(material_co
     assert rows[1]["errors"][0]["row"] == 4 and rows[1]["errors"][0]["field"] == "columns"
 
 
-def test_xlsx_formula_and_extra_sheet_are_not_silently_evaluated_or_ignored(material_conn):
+def test_xlsx_formula_is_not_silently_evaluated(material_conn):
     content = file_bytes([["MAT2", "=1+1"]], "xlsx", headers=HEADERS[:2], formulas=True)
     rows = WorkbenchMaterialFileService(material_conn).preview_import(content, file_format="xlsx", scope={}).as_dict()["rows"]
     assert rows[0]["errors"][0]["field"] == "label" and rows[0]["result"] == "rejected"
+
+
+def test_extra_sheets_are_ignored_with_a_notice(material_conn):
+    """模板和导出文件自己就带一张说明表，回导时不能因此整份拒绝。"""
+    content = file_bytes([["MAT2", "圆钢"]], "xlsx", headers=HEADERS[:2])
     wb = openpyxl.load_workbook(BytesIO(content))
-    wb.create_sheet("extra")
+    wb.create_sheet("填写说明").append(["列名"])
     output = BytesIO()
     wb.save(output)
     wb.close()
-    with pytest.raises(ValidationError, match="一张"):
-        WorkbenchMaterialFileService(material_conn).preview_import(output.getvalue(), file_format="xlsx", scope={})
+    document = WorkbenchMaterialFileService(material_conn).preview_import(
+        output.getvalue(), file_format="xlsx", scope={}).as_dict()
+    assert [row["result"] for row in document["rows"]] == ["new"]
+    assert [item["code"] for item in document["notices"]] == ["first_sheet_only"]
 
 
 @pytest.mark.parametrize("fmt", ("csv", "xlsx"))

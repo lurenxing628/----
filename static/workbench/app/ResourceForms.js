@@ -505,6 +505,7 @@
     onDelete,
     onAdjustStock,
     onMachinePermissions,
+    onOperatorCalendar,
     onRelated,
     onBack,
     busy,
@@ -576,7 +577,11 @@
       icon: "machine",
       reason: C.blocked(entity.write_context, kind, 'update', result.meta.source) || (typeof onMachinePermissions !== 'function' ? '设备关联编辑未连接。' : ''),
       onClick: onMachinePermissions
-    }, "\u7F16\u8F91\u53EF\u64CD\u4F5C\u8BBE\u5907"), kind === 'op_type' && ['internal', 'external'].includes(entity.fields.category) && /*#__PURE__*/React.createElement(window.ResourceDetailRelations, {
+    }, "\u7F16\u8F91\u53EF\u64CD\u4F5C\u8BBE\u5907"), kind === 'operator' && /*#__PURE__*/React.createElement(Button, {
+      icon: "calendar-days",
+      reason: C.blocked(entity.write_context, kind, 'update', result.meta.source) || (typeof onOperatorCalendar !== 'function' ? '个人日历编辑未连接。' : ''),
+      onClick: onOperatorCalendar
+    }, "\u7F16\u8F91\u4E2A\u4EBA\u65E5\u5386"), kind === 'op_type' && ['internal', 'external'].includes(entity.fields.category) && /*#__PURE__*/React.createElement(window.ResourceDetailRelations, {
       key: entity.ref + ':' + result.meta.snapshot_ref,
       adapter: adapter,
       entity: entity,

@@ -47,7 +47,7 @@ function fileRows(file,format){
   const python=path.resolve(__dirname,'../../.venv/bin/python');
   const program='import csv,json,sys,openpyxl\npath,fmt=sys.argv[1:]\n' +
     'if fmt=="csv":\n with open(path,encoding="utf-8-sig",newline="") as stream: rows=list(csv.reader(stream))\n' +
-    'else:\n wb=openpyxl.load_workbook(path,read_only=True,data_only=False)\n assert len(wb.worksheets)==1\n rows=list(wb.worksheets[0].iter_rows(values_only=True))\n wb.close()\n' +
+    'else:\n wb=openpyxl.load_workbook(path,read_only=True,data_only=False)\n assert wb.sheetnames[1:]==["填写说明"],wb.sheetnames\n rows=list(wb.worksheets[0].iter_rows(values_only=True))\n wb.close()\n' +
     'print(json.dumps(rows,ensure_ascii=False))';
   const rows=JSON.parse(cp.execFileSync(python,['-B','-c',program,file,format],{encoding:'utf8',maxBuffer:8*1024*1024}));
   return rows.map(row=>row.map(value=>format==='csv'&&typeof value==='string'&&value.startsWith("'")?value.slice(1):value));
