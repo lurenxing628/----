@@ -8,6 +8,11 @@ from typing import Any, Dict
 
 from core.errors import ValidationError
 
+#: 解析器认的状态代号。描述符那份在 workbench_resource_file.ENUMS，两份是有意分开的：
+#: 下拉给什么、解析器认什么如果悄悄分叉，用户照着下拉选就会被拒，
+#: tests/workbench/test_table_descriptors.py 比对两者来抓这件事。
+STATUS_VALUES = ("active", "pending_review", "inactive")
+
 _TOP_LEVEL = {
     "create": frozenset(("business_code", "label", "fields", "relationships")),
     "update": frozenset(("label", "fields", "relationships")),
@@ -74,7 +79,7 @@ def normalize_supplier_input(action: str, payload: Any) -> Dict[str, Any]:
         elif key == "remark":
             normalized[key] = _text(value, "fields.remark", clearable=True)
         else:
-            if type(value) is not str or value not in ("active", "pending_review", "inactive"):
+            if type(value) is not str or value not in STATUS_VALUES:
                 raise ValidationError("状态仅允许 active、pending_review 或 inactive。", field="fields.status")
             normalized[key] = value
     if action == "create" and "default_days" not in normalized:

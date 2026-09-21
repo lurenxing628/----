@@ -19,6 +19,10 @@ _RELATIONS = {"op_type": set(), "machine": {"op_type_ref", "group_ref"},
               "operator": {"skill_refs", "shift_profile_ref"}, "machine_group": set(), "shift_profile": set()}
 _STATUS = {"machine": ("active", "maintain", "inactive"), "operator": ("active", "leave", "inactive"),
            "machine_group": ("active", "inactive"), "shift_profile": ("active", "inactive")}
+#: 工种的归属与默认合并方式。原来内联在 _validate_field 的一行三元里，
+#: 描述符那份在 workbench_resource_file.ENUMS["op_type"]，两份分叉要能被测出来。
+_CATEGORY = ("internal", "external")
+_MERGE_MODE = ("separate", "merged")
 
 
 def resource_object(value, allowed, path):
@@ -105,7 +109,7 @@ def _field(kind, name, value):
         except (TypeError, ValueError):
             raise ValidationError("班次起始日期必须是有效的YYYY-MM-DD。", field=path) from None
         return value
-    allowed = _STATUS[kind] if name == "status" else (("internal", "external") if name == "category" else (None, "separate", "merged"))
+    allowed = _STATUS[kind] if name == "status" else (_CATEGORY if name == "category" else (None,) + _MERGE_MODE)
     if value not in allowed:
         raise ValidationError("这一项的选项不正确。", field=path)
     return value

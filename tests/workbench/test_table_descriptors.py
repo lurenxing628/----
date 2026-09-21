@@ -143,20 +143,27 @@ def _batch_accepts(key, choice):
 
 
 def _accepts(name, key, choice):
-    """模板下拉给的取值，解析器必须认。否则用户照着下拉选也会被拒。"""
+    """模板下拉给的取值，解析器必须认。否则用户照着下拉选也会被拒。
+
+    取值一律从**解析器那一侧**拿，不能从描述符那一侧拿：下拉选项本来就是按描述符生成的，
+    拿描述符去比描述符是自反的，改错了也全绿（2026-09-21 试过一次，确实抓不到）。
+    也不要在这里另抄一份元组——生产侧收紧取值时，那只会证明"测试里抄的那份没变"。
+    """
+    from core.models.workbench_material import STATUS_VALUES as material_status
     from core.models.workbench_process_file import SOURCE_VALUES
-    from core.models.workbench_resource_input import _STATUS
+    from core.models.workbench_resource_input import _CATEGORY, _MERGE_MODE, _STATUS
+    from core.models.workbench_supplier import STATUS_VALUES as supplier_status
 
     if name == "batch":
         return _batch_accepts(key, choice)
     if name in ("machine", "operator"):
         return choice in _STATUS[name]
     if name == "supplier":
-        return choice in ("active", "pending_review", "inactive")
+        return choice in supplier_status
     if name == "op_type":
-        return choice in (("internal", "external") if key == "category" else ("separate", "merged"))
+        return choice in (_CATEGORY if key == "category" else _MERGE_MODE)
     if name == "material":
-        return choice in ("active", "inactive")
+        return choice in material_status
     if name in ("route", "hours"):
         return choice in SOURCE_VALUES
     if name == "operator_machine":

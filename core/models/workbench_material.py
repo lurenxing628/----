@@ -7,6 +7,8 @@ from typing import Any, Dict
 
 from core.errors import ValidationError
 
+#: 解析器认的状态代号；描述符那份在 workbench_material_file.ENUMS，见 supplier 里的说明。
+STATUS_VALUES = ("active", "inactive")
 _CLEARABLE = ("spec", "unit", "remark")
 _FIELDS = frozenset(_CLEARABLE + ("stock_qty", "status"))
 _TOP_LEVEL = {
@@ -69,7 +71,7 @@ def normalize_material_input(action: str, payload: Any) -> Dict[str, Any]:
             normalized[key] = _stock_qty(value)
         else:
             status = _text(value, "fields.status")
-            if status not in ("active", "inactive"):
+            if status not in STATUS_VALUES:
                 raise ValidationError("状态仅允许 active 或 inactive。", field="fields.status")
             normalized[key] = status
     result["fields"] = normalized
