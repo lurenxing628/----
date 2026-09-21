@@ -1,0 +1,59 @@
+roadmap: workbench-file-imports-and-templates
+created: 2026-09-21
+
+items:
+  - slug: wbfile-calendar-consistency-fix
+    description: 修全局日历一致性校验误拒改工时与休息转工作两种常见操作
+    depends_on: []
+    status: done
+    feature: null
+    minimal_loop: false
+    notes: 2026-09-21 直接实施完成，记录见同目录 implementation-notes.md。判据是"开工时刻是否为默认值"而不是"本次有没有填班次起止"：后者会把真实跨夜班表误当派生值清掉，实测会让 4 个既有夜班测试失败。最终 186 个日历测试加 407 个日历维护测试全过。
+
+  - slug: wbfile-operator-machine
+    description: 可操作设备文件导入导出，含关系文件家族全部新建件、共享弹窗两个扩展点与表选择层
+    depends_on: []
+    status: done
+    feature: null
+    minimal_loop: true
+    notes: 2026-09-21 完成，记录见同目录 implementation-notes.md。服务层落在资源簇内（core/services/workbench/resource/relation_files/）而不是新建顶层簇，否则会违反工作台簇分层合同；前端没有做表选择层，改为人员页工具栏按适配器给的名字多出两个按钮。共享弹窗的三处硬编码改成契约字段（confirmationHint / acknowledgeHint / rowsMatchSelection / scopeLabel），其中勾选导出的行数校验对一人多设备本来就是误报。验证：资源组 2094 个测试全过，真机探针新增 6 个场景乘 4 种视口主题全过且数据库隔离断言通过。
+
+  - slug: wbfile-work-calendar
+    description: 全局工作日历文件导入导出，含日历文件家族骨架与日历页入口
+    depends_on: [wbfile-calendar-consistency-fix, wbfile-operator-machine]
+    status: done
+    feature: null
+    minimal_loop: false
+    notes: 2026-09-21 完成，记录见同目录 implementation-notes.md。预检存储选了上下文存储，与关系家族一致，不引入 preview_capacity 错误码。按日期范围的读快照新增在 range_snapshot，导出预检自己算并返回，不要求前端先持有；月视图快照绑的是一个月，覆盖不了任意区间。日历页导出范围用日期区间，弹窗为此加了 ExportScope 扩展点。文件只做增量更新不做删除，恢复默认规则仍走批量维护的清除。
+
+  - slug: wbfile-operator-calendar-editing
+    description: 个人工作日历的工作台写入服务、路由、人员详情页面板与按日期范围清除
+    depends_on: [wbfile-work-calendar]
+    status: done
+    feature: null
+    minimal_loop: false
+    notes: 2026-09-21 完成，记录见同目录 implementation-notes.md。界面和文件都以班次起止为准，工时由领域层算，用户不直接填，避开了全局日历那种派生值冲突。写能力由个人日历月视图自己签发（绑人员当前状态），不去扩人员详情的写上下文。范围清除已实现，不做文件删除的前提成立。面板提示了个人日历会整天盖过班次轮换。
+
+  - slug: wbfile-operator-calendar-file
+    description: 个人工作日历文件导入导出
+    depends_on: [wbfile-work-calendar, wbfile-operator-calendar-editing]
+    status: done
+    feature: null
+    minimal_loop: false
+    notes: 2026-09-21 完成，记录见同目录 implementation-notes.md。能力对齐的判据只能看填进来的值不能看算完的行：领域层对缺失的班次开始会补 08:00，所以"原来就上班可留空继承、新建和假期改回上班必须自己填"。顺手修掉第 4 条 _proposed 没以原行为基底的缺陷。人员范围走 scope.operator_refs 并由服务端回显对账。人员页从只能挂一种关联资料改成可挂多种附属资料，resource-api.js 的 importOnlyKinds 必须同步，漏了会把整个工作区渲染打挂。
+
+  - slug: wbfile-template-unification
+    description: 12 张导入表模板统一为数据表加填写说明表，四个读取器统一，为现有家族补齐表描述协议
+    depends_on: [wbfile-operator-machine, wbfile-operator-calendar-file]
+    status: done
+    feature: null
+    minimal_loop: false
+    notes: 2026-09-21 完成，记录见同目录 implementation-notes.md。共用件放 core/models/workbench_table_descriptor.py 加 core/services/common/excel_instruction_sheet.py，后者不能放进工作台任何一个簇，否则违反簇分层合同。协议硬性一条：列的 label 必须就是文件里真正的表头，关联与日历家族为此改走 public_columns。多表提示走整批级 notices，读取器回 (rows, notices)，进预检文档再进响应信封 warnings，前端不用改。批次模板的示例行从数据表移进说明表。两处明确没做并写明理由：前端上传前的提示仍是各家族常量（要在拿到预检前显示，留给第 7 条的一致性门禁），报工不发多表提示（它的弹窗没有显示整批级告知的位置）。
+
+  - slug: wbfile-manual-and-legacy-retirement
+    description: 说明书第 1 章按工作台重写、补导出表列含义、退役启动期旧模板生成与旧 Excel 页说明、加一致性门禁
+    depends_on: [wbfile-template-unification]
+    status: done
+    feature: null
+    minimal_loop: false
+    notes: 2026-09-21 完成，记录见同目录 implementation-notes.md。第 1 章的列说明由 tools/generate_table_docs.py 从表描述生成进标记区间，门禁 tests/gate_meta/test_table_doc_generation.py 比对；散文仍人工写。写文档过程对出前六条自己埋的四处描述错误（只读列用可填口吻、四类资源共用通用规则、路线与工时共用图号提示、供应商默认周期说成纯选填），都改在源头。退役 _init_excel_templates 与 ensure_excel_templates 及 15 个旧模板修复助手、11 份旧模板 xlsx、13 个旧 Excel 页说明主题与 11 个共享片段；EXCEL_TEMPLATE_DIR、get_template_definition、excel_template_defaults 仍被转换输出和批次 codec 用着，必须保留。词表处理分两类：散文按词表改，真实表头按已有同类裁决补豁免。两件明确没做：前端 importHint 仍是各家族常量（要在拿到预检前显示，收口需把表描述投影到前端资产）；tests/web_pages/test_frontend_ui_language_polish.py 还有 8 条失败，HEAD 基线同样失败，是早前退役留下的陈旧引用，该文件整体被标 perf 不进门禁，需单独一条裁决。

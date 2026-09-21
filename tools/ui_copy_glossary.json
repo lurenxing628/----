@@ -423,8 +423,20 @@
     {
       "path": "static/docs/scheduler_manual.md",
       "term": "(h) 表头",
-      "text": "换型时间\\(h\\)|单件工时\\(h\\)",
+      "text": "换型时间\\(h\\)|单件工时\\(h\\)|有效加工工时\\(h\\)",
       "why": "Excel 导入模板的真实列名，用户必须照抄"
+    },
+    {
+      "path": "static/docs/scheduler_manual.md",
+      "term": "策略",
+      "text": "外协周期策略",
+      "why": "导入表的真实列名，用户必须照抄；与 core/models/workbench_resource_file.py 同一条豁免"
+    },
+    {
+      "path": "static/docs/scheduler_manual.md",
+      "term": "显式",
+      "text": "显式工种编号数组",
+      "why": "导入表的真实列名，用户必须照抄；与 core/models/workbench_resource_file.py 同一条豁免"
     },
     {
       "path": "static/docs/scheduler_manual.md",
@@ -485,7 +497,7 @@
       "why": "导入模板表头匹配键"
     },
     {
-      "path": "core/services/workbench/execution/field_report_files_codec.py",
+      "path": "core/models/workbench_field_report_file.py",
       "term": "(h) 表头",
       "why": "现场报工导入文件的表头匹配键，改了旧文件导不进"
     },

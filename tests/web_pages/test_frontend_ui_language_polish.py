@@ -238,12 +238,6 @@ def test_manuals_keep_backend_supported_english_aliases_but_mark_them_as_compati
         normalize_ready_status_value,
     )
 
-    process_manuals = "\n".join(
-        (
-            _read("web/viewmodels/page_manuals_process.py"),
-            _read("web/viewmodels/page_manuals_process_excel.py"),
-        )
-    )
     scheduler_manuals = "\n".join(
         (
             _read("web/viewmodels/page_manuals_scheduler.py"),
@@ -252,35 +246,25 @@ def test_manuals_keep_backend_supported_english_aliases_but_mark_them_as_compati
             _read("web/viewmodels/page_manuals_scheduler_week_plan.py"),
         )
     )
-    personnel_manuals = "\n".join(
-        (
-            _read("web/viewmodels/page_manuals_personnel.py"),
-            _read("web/viewmodels/page_manuals_personnel_excel.py"),
-        )
-    )
-    equipment_manuals = "\n".join(
-        (
-            _read("web/viewmodels/page_manuals_equipment.py"),
-            _read("web/viewmodels/page_manuals_equipment_excel.py"),
-        )
-    )
     full_manual = _read("static/docs/scheduler_manual.md")
-    manual_sources = "\n".join((process_manuals, scheduler_manuals, personnel_manuals, equipment_manuals, full_manual))
+    manual_sources = "\n".join((
+        _read("web/viewmodels/page_manuals_process.py"),
+        scheduler_manuals,
+        _read("web/viewmodels/page_manuals_personnel.py"),
+        _read("web/viewmodels/page_manuals_equipment.py"),
+        full_manual,
+    ))
 
-    assert "以前文件里写过 新手 / 一般 / 中级 / 高级 / 专家 的，系统会尽量读懂" in personnel_manuals
-    assert "以前文件里写过 1/0 的，系统会尽量读懂" in scheduler_manuals
-    assert "类型模板下拉推荐填：工作日 / 假期" in scheduler_manuals
-    assert "新表按下拉推荐写" in scheduler_manuals
-    assert "状态模板下拉优先选：在岗 / 停用" in personnel_manuals
-    assert "新文件请填中文" in full_manual
-    assert "归属可填：自制 / 外协。新文件请只填这两个中文选项" in process_manuals
+    # 2026-09 起工作台文件里填的是什么，说明书就写什么：资源四张表填英文代号，日历与关系表填中文。
+    # 旧的"一律填中文、英文只是兼容"说法已经不成立，改成按表说清楚，并挡住把两者混为一谈的写法。
+    assert "工种、供应商、人员、设备这四张资源表的状态和归属填英文代号" in full_manual
+    assert "日历、可操作设备、批次这几张表填中文" in full_manual
+    assert "只填代号：internal 自制 / external 外协" in full_manual
+    assert "初级 / 普通 / 熟练" in full_manual
+    assert "新文件请填中文" not in full_manual, "资源四张表已改英文代号，不能再笼统说新文件填中文"
     assert "兼容英文标准值" not in manual_sources
-    assert "internal` / `external" not in manual_sources
-    assert "`internal`" not in full_manual
-    assert "`external`" not in full_manual
     assert "`locked`" not in full_manual
     assert "`unlocked`" not in full_manual
-    assert "兼容英文标准值 `internal`/`external`" not in manual_sources
 
     assert normalize_operator_status("active") == OperatorStatus.ACTIVE.value
     assert normalize_operator_status("inactive") == OperatorStatus.INACTIVE.value
@@ -309,7 +293,9 @@ def test_manuals_keep_backend_supported_english_aliases_but_mark_them_as_compati
 
     static_manual = _read("static/docs/scheduler_manual.md")
     assert "发现问题就停下" in static_manual
-    assert "缺工种、缺供应商或外协周期不正确" in static_manual
+    # 文件导入侧的"资料不完整就停下"开关随第 1 章重写退役：工作台的导入对话框没有这个勾选项，
+    # 缺工种/缺供应商由预检逐行指出。排产面板那一个参数开关仍在，见第 6 章。
+    assert "预检会指出是哪一道工序对不上，先把工种补齐再导" in static_manual
     assert "route_raw 自动补建模板" not in static_manual
     assert "未指定设备或人员时，系统自动分配" in static_manual
     assert "智能派工规则" in static_manual
@@ -321,13 +307,13 @@ def test_supplier_manual_matches_required_default_days_and_template_columns() ->
         _read(rel_path)
         for rel_path in (
             "web/viewmodels/page_manuals_process.py",
-            "web/viewmodels/page_manuals_process_excel.py",
             "static/docs/scheduler_manual.md",
         )
     )
-    assert "默认周期必须填写大于 0 的有限数字(天)" in manual_sources
-    assert "`默认周期` 必填，必须是大于 0 的有限数字" in manual_sources
-    assert "下载的模板包含“状态”和“备注”两列" in manual_sources
+    # 新增供应商时域层要求大于 0 的默认周期，已有供应商留空表示保持原样——两件事都要说清楚，
+    # 尤其不能再出现"不填按 1 天"这类旧兜底说法：那是历史读取的兼容回退，不是写入行为。
+    assert "默认周期天数，填大于 0 的数字；新增供应商必须填，已有的留空保持原样" in manual_sources
+    assert "新增供应商时留空、不大于 0、不是数字" in manual_sources
     assert "模板只有4列" not in manual_sources
     assert "不填默认1天" not in manual_sources
     assert "不填默认 1 天" not in manual_sources
@@ -434,144 +420,6 @@ def test_excel_templates_default_to_chinese_enum_values_accepted_by_backend() ->
             normalize, allowed = normalizers[key]
             for value in values:
                 assert normalize(value) in allowed, f"{filename}.{header} 的模板值 {value!r} 后端不接受"
-
-
-def test_ensure_excel_templates_refreshes_known_stale_generated_template(tmp_path) -> None:
-    from core.services.common.excel_templates import ExcelTemplateError, build_xlsx_bytes, ensure_excel_templates
-
-    stale_path = tmp_path / "人员基本信息.xlsx"
-    stale_bytes = build_xlsx_bytes(
-        ["工号", "姓名", "状态", "班组", "备注"],
-        [["OP001", "张三", "active", None, "旧模板"]],
-        format_spec={"enum_cols": {2: ["active", "inactive"]}},
-    ).getvalue()
-    stale_path.write_bytes(
-        stale_bytes
-    )
-
-    with pytest.raises(ExcelTemplateError) as exc_info:
-        ensure_excel_templates(str(tmp_path))
-    assert "不能安全自动覆盖" in str(exc_info.value)
-    assert stale_path.read_bytes() == stale_bytes
-
-    workbook = None
-    try:
-        workbook = openpyxl.load_workbook(filename=stale_path, data_only=True)
-        ws = workbook.active
-        assert ws["C2"].value == "active"
-    finally:
-        if workbook is not None:
-            workbook.close()
-
-
-def test_ensure_excel_templates_refreshes_known_legacy_id_headers(tmp_path) -> None:
-    from core.services.common.excel_templates import build_xlsx_bytes, ensure_excel_templates
-
-    op_type_path = tmp_path / "工种配置.xlsx"
-    op_type_path.write_bytes(
-        build_xlsx_bytes(
-            ["工种ID", "工种名称", "归属"],
-            [["OT001", "数车", "自制"]],
-            format_spec={"text_cols": [0, 1], "enum_cols": {2: ["自制", "外协"]}},
-        ).getvalue()
-    )
-    supplier_path = tmp_path / "供应商配置.xlsx"
-    supplier_path.write_bytes(
-        build_xlsx_bytes(
-            ["供应商ID", "名称", "对应工种", "默认周期", "状态", "备注"],
-            [["S001", "外协-标印厂", "标印", 1, "启用", "保留数据"]],
-            format_spec={"text_cols": [0, 1, 2, 4, 5], "float_cols": [3], "enum_cols": {4: ["启用", "停用"]}},
-        ).getvalue()
-    )
-
-    stats = ensure_excel_templates(str(tmp_path))
-
-    assert "工种配置.xlsx" in stats["created"]
-    assert "供应商配置.xlsx" in stats["created"]
-    workbook = None
-    try:
-        workbook = openpyxl.load_workbook(filename=op_type_path, data_only=True)
-        ws = workbook.active
-        assert [ws.cell(1, col).value for col in range(1, 4)] == ["工种编号", "工种名称", "归属"]
-        assert [ws.cell(2, col).value for col in range(1, 4)] == ["OT001", "数车", "自制"]
-    finally:
-        if workbook is not None:
-            workbook.close()
-
-    workbook = None
-    try:
-        workbook = openpyxl.load_workbook(filename=supplier_path, data_only=True)
-        ws = workbook.active
-        assert [ws.cell(1, col).value for col in range(1, 7)] == ["供应商编号", "名称", "对应工种", "默认周期", "状态", "备注"]
-        assert [ws.cell(2, col).value for col in range(1, 7)] == ["S001", "外协-标印厂", "标印", 1, "启用", "保留数据"]
-    finally:
-        if workbook is not None:
-            workbook.close()
-
-
-def test_template_download_preserves_existing_disk_file_when_headers_match(tmp_path) -> None:
-    from flask import Flask
-
-    from core.services.common.excel_templates import build_xlsx_bytes
-    from web.routes.excel_utils import send_excel_template_file
-
-    custom_path = tmp_path / "人员基本信息.xlsx"
-    custom_path.write_bytes(
-        build_xlsx_bytes(
-            ["工号", "姓名", "状态", "班组", "备注"],
-            [["OP999", "自定义示例", "active", "A组", "保留用户模板"]],
-            format_spec={"enum_cols": {2: ["active", "inactive", "在岗", "停用"]}},
-        ).getvalue()
-    )
-
-    app = Flask(__name__)
-
-    @app.get("/template")
-    def _template():
-        return send_excel_template_file(str(custom_path), download_name="人员基本信息.xlsx")
-
-    response = app.test_client().get("/template")
-    assert response.status_code == 200
-
-    workbook = None
-    try:
-        workbook = openpyxl.load_workbook(filename=io.BytesIO(response.data), data_only=True)
-        ws = workbook.active
-        assert ws["A2"].value == "OP999"
-        assert ws["C2"].value == "active"
-        assert ws["E2"].value == "保留用户模板"
-    finally:
-        if workbook is not None:
-            workbook.close()
-
-
-def test_ensure_excel_templates_preserves_user_custom_template_with_extra_rows(tmp_path) -> None:
-    from core.services.common.excel_templates import build_xlsx_bytes, ensure_excel_templates
-
-    custom_path = tmp_path / "人员基本信息.xlsx"
-    custom_path.write_bytes(
-        build_xlsx_bytes(
-            ["工号", "姓名", "状态", "班组", "备注"],
-            [
-                ["OP001", "张三", "active", "A组", "用户自定义示例"],
-                ["OP002", "李四", "inactive", "B组", "用户额外示例"],
-            ],
-            format_spec={"enum_cols": {2: ["active", "inactive", "在岗", "停用"]}},
-        ).getvalue()
-    )
-
-    stats = ensure_excel_templates(str(tmp_path))
-    assert "人员基本信息.xlsx" in stats["skipped"]
-
-    workbook = None
-    try:
-        workbook = openpyxl.load_workbook(filename=custom_path, data_only=True)
-        ws = workbook.active
-        assert ws["C2"].value == "active"
-        assert ws["E3"].value == "用户额外示例"
-    finally:
-        if workbook is not None:
-            workbook.close()
 
 
 def test_import_errors_present_chinese_first_and_english_as_compatible_aliases() -> None:

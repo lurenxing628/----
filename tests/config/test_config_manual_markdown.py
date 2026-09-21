@@ -1,4 +1,4 @@
-"""回归测试：守护系统使用说明书（static/docs/scheduler_manual.md）与 config_manual.js/模板的契约——必备口径与边界说明在场（排产历史不承诺导出/恢复、资源排班现场记录当前直接导入、截止日期是严格限制等）、入口统一叫批量维护、内部锚点全部命中、JS 过滤危险协议并对数字前缀 hash 不崩，且真实请求下整本/页面级两种说明书形态的 JSON 数据块与 noscript 回退正确。"""
+"""回归测试：守护系统使用说明书（static/docs/scheduler_manual.md）与 config_manual.js/模板的契约——必备口径与边界说明在场（排产历史不承诺导出/恢复、资源排班现场记录当前直接导入、截止日期是严格限制等）、逐表指南 12 张表逐一给出工作台入口、内部锚点全部命中、JS 过滤危险协议并对数字前缀 hash 不崩，且真实请求下整本/页面级两种说明书形态的 JSON 数据块与 noscript 回退正确。"""
 
 from __future__ import annotations
 
@@ -25,17 +25,21 @@ LEGACY_EXCEL_ENTRY_TERMS = (
     "Excel导入导出",
 )
 
-MANUAL_BATCH_MAINTENANCE_SECTIONS = (
-    "工种配置",
-    "供应商配置",
+#: 第 1 章逐表指南必须逐张给出进入方式。名字与顺序跟 core.models.workbench_table_catalog 的表目录一致，
+#: 少一张就说明新增了能导入的表却没写进说明书。报工记录两个格式版本合一节，所以这里是 12 项。
+MANUAL_TABLE_GUIDE_SECTIONS = (
+    "工种",
+    "供应商",
     "零件工艺路线",
     "零件工序工时",
-    "人员基本信息",
-    "设备信息",
-    "人员设备关联",
+    "人员",
+    "设备",
+    "可操作设备",
+    "物料",
     "工作日历",
-    "个人工作日历",
+    "个人日历",
     "批次信息",
+    "报工记录",
 )
 
 
@@ -109,21 +113,22 @@ def _find_heading_entry_line(markdown_text: str, section_name: str) -> str:
         for next_line in lines[idx + 1 :]:
             if re.match(r"^####\s+", next_line):
                 break
-            if re.match(r"^(?:\*\*进入方式\*\*|进入方式|入口)[:：]", next_line):
+            if re.match(r"^(?:\*\*从哪里进\*\*|\*\*进入方式\*\*|进入方式|入口)[:：]", next_line):
                 return next_line.strip()
     raise RuntimeError(f"说明书缺少“{section_name}”章节的进入方式")
 
 
-def _assert_manual_uses_batch_maintenance_entry_names(markdown_text: str) -> None:
+def _assert_manual_table_guide_entries(markdown_text: str) -> None:
     legacy_hits = _find_legacy_excel_entry_terms(markdown_text)
     assert not legacy_hits, "说明书仍出现旧 Excel 入口叫法：\n" + "\n".join(legacy_hits[:20])
 
-    missing_batch_maintenance = []
-    for section_name in MANUAL_BATCH_MAINTENANCE_SECTIONS:
+    # 入口一律从工作台的导航写起：12 张表里只有批次还叫「批量维护」，其余都从基础资料的产能链进。
+    missing_entry = []
+    for section_name in MANUAL_TABLE_GUIDE_SECTIONS:
         entry_line = _find_heading_entry_line(markdown_text, section_name)
-        if "批量维护" not in entry_line:
-            missing_batch_maintenance.append(f"{section_name}: {entry_line}")
-    assert not missing_batch_maintenance, "说明书主流程入口必须叫“批量维护”：\n" + "\n".join(missing_batch_maintenance)
+        if not any(term in entry_line for term in ("基础资料", "批次管理", "现场记录")):
+            missing_entry.append(f"{section_name}: {entry_line}")
+    assert not missing_entry, "逐表指南的进入方式必须从工作台导航写起：\n" + "\n".join(missing_entry)
 
 
 def _run_hash_runtime_check(js_path: str, mode: str) -> dict:
@@ -465,7 +470,8 @@ def _assert_scheduler_manual_closeout_contracts(markdown_text: str, label: str) 
     for needle in (
         "**本页说明**",
         "只打开当前页面的速览卡片",
-        "设备 Excel 真实模板只有这 5 列：设备编号、设备名称、工种、班组、状态",
+        # 设备表的列不再由手写段落宣告：第 1 章的列说明由表描述生成，改列就改说明，无需在这里复述列名。
+        "`自制工种编号` 一台设备只能绑一个，而且必须是自制工种",
     ):
         assert needle in markdown_text, f"{label} 缺少本轮说明书收口内容：{needle}"
 
@@ -509,17 +515,19 @@ def _assert_scheduler_manual_closeout_contracts(markdown_text: str, label: str) 
 
 def _assert_scheduler_manual_required_content(markdown_text: str, label: str) -> None:
     for needle in (
-        "刷新模板时保留已有数据行",
-        "新填数据请使用 `自制`/`外协`",
+        # 2026-09 第 1 章按工作台重写：模板不再由启动期生成，资源四张表的固定选项也从中文改成英文代号。
+        "“导出 → 改 → 导回”是最稳的改法",
+        "只填代号：internal 自制 / external 外协",
         # 2026-09 手册整改删掉了“提醒去向要分清”整段，改由排产记录与结果状态表两处说明提醒去哪里看。
         "只看版本摘要、提醒和结果概况",
         "先看页面展示的提醒，再去排产记录看完整摘要",
         "版本留空或版本为空字符串，都表示看最新排产记录",
         "输入不存在的数字版本时",
         "输入 `abc` 这类不是数字的版本号",
-        "空工时按 0 小时处理",
-        "日历类型空着按工作日理解",
-        "连续外协周期示例",
+        # 工时留空的语义 2026-09 改了：以前空着按 0 小时，现在空着表示保持原样，要清零得明确填 0。
+        "工时留空不会自动补零",
+        "这一天原来没配置过、类型又留空时，按这个日期的默认规则定",
+        "合并周期只改原来那个外协组的周期，不新增组，也不调整组的范围。",
         "执行排产 → 排产记录** 只看版本摘要、提醒和结果概况",
         "选择查看最近 10 条、50 条这类记录",
         "值班台怎么看",
@@ -647,7 +655,7 @@ def test_config_manual_markdown_contract(app_client, monkeypatch, tmp_path) -> N
     # All source-content and terminology assertions remain unchanged.
     assert manual_text.startswith("# 系统使用说明")
     _assert_scheduler_manual_required_content(manual_text, "主说明书")
-    _assert_manual_uses_batch_maintenance_entry_names(manual_text)
+    _assert_manual_table_guide_entries(manual_text)
     heading_ids = _extract_heading_ids(manual_text)
     internal_hashes = _extract_internal_hashes(manual_text)
     missing_hashes = [item for item in internal_hashes if item not in heading_ids]
