@@ -32,6 +32,10 @@ from tools.test_registry import (
 # 无需在每次 push 的 focused 冒烟里重复支付（这几个又慢，是最慢榜常客）。
 FOCUSED_PYTEST_NODEIDS: Tuple[str, ...] = (
     "tests/app_runtime/test_ui_geometry_html_contract.py::test_ui_smoke_pages_render_expected_html_contract",
+    # 失效路径字面量棘轮必须无条件跑：它要抓的是"删了文件、引用它的字符串还在"，
+    # 而删除发生在哪个目录事先不知道，按影响面选组必然漏（2026-09-18 删旧路由层就漏了）。
+    "tests/gate_meta/test_dead_path_literals.py::test_repo_dead_path_literals_have_no_new_debt",
+    "tests/gate_meta/test_dead_path_literals.py::test_baseline_entries_point_at_existing_source_files",
 )
 
 _COLLECT_COUNT_RE = re.compile(r"\b(\d+)\s+(?:tests?|items?) collected\b")
