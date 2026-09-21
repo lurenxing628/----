@@ -185,8 +185,8 @@ async function batchCases() {
   await button('返回列表').click();await button('筛选').click();await shot('batch','filter',true);await button('完成').click();
   await button('筛选数量').click();await page.getByText('全选列值',{exact:true}).waitFor();await shot('batch','column-filter',true);await button('取消').click();
   await button('批量导入').click();await shot('batch','import',true);
-  await page.getByLabel('选择 Excel 文件').setInputFiles({name:'ah.xlsx',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',buffer:Buffer.from('Explicit style-only mock')});
-  await button('导入预检').click();await page.getByRole('table',{name:'批次导入预检'}).waitFor();await shot('batch','import-preview',true);
+  await page.getByLabel('选择文件').setInputFiles({name:'ah.xlsx',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',buffer:Buffer.from('Explicit style-only mock')});
+  await button('开始预检').click();await page.getByRole('table',{name:'批次导入预检'}).waitFor();await shot('batch','import-preview',true);
   await scrollCheck('.batch-preview');await button('取消').click();await scrollCheck('.wb-table-frame',true);await geometry('batch');
   const reads=await page.evaluate(()=>state.reads);await button('下一页').click();await page.waitForFunction(n=>state.reads>n,reads);await button('AH-021').waitFor();
   await mount('batch',true);report.legacy_checks.push({variant,kind:'batch',layout:await geometry('batch',true)});

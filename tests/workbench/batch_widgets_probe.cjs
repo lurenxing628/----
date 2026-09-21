@@ -170,10 +170,10 @@ async function cases() {
   });
   await run('file-mode-preview-invalidation-confirm-and-download-scope', async () => {
     await mount(); await button('批量导入').click();
-    const templateWait = page.waitForEvent('download'); await button('下载批次模板').click(); assert.equal((await templateWait).suggestedFilename(), '批次导入模板.xlsx');
-    await page.getByLabel('选择 Excel 文件').setInputFiles({ name: 'batches.xlsx', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', buffer: Buffer.from('Explicit mock bytes, parser is independently tested in SQLite suite') });
-    await button('导入预检').click(); await page.getByRole('table', { name: '批次导入预检' }).waitFor(); assert.equal(await page.evaluate(() => f.commands.length), 0);
-    await page.getByLabel('导入模式').selectOption('append'); assert.equal(await page.getByRole('table', { name: '批次导入预检' }).count(), 0); await button('导入预检').click(); await button('确认导入').waitFor();
+    const templateWait = page.waitForEvent('download'); await button('下载模板').click(); assert.equal((await templateWait).suggestedFilename(), '批次导入模板.xlsx');
+    await page.getByLabel('选择文件').setInputFiles({ name: 'batches.xlsx', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', buffer: Buffer.from('Explicit mock bytes, parser is independently tested in SQLite suite') });
+    await button('开始预检').click(); await page.getByRole('table', { name: '批次导入预检' }).waitFor(); assert.equal(await page.evaluate(() => f.commands.length), 0);
+    await page.getByLabel('导入模式').selectOption('append'); assert.equal(await page.getByRole('table', { name: '批次导入预检' }).count(), 0); await button('开始预检').click(); await button('确认导入').waitFor();
     await shot('file-preview'); await button('确认导入').click(); await page.getByText('保存已完成。', { exact: true }).waitFor(); assert.equal(await page.evaluate(() => f.files[1].mode), 'append');
     assert.equal(await page.evaluate(() => f.commands[0].action), 'import_confirm'); await button('关闭').last().click();
     await button('批量导出').click(); const downloading = page.waitForEvent('download'); await button('下载批次清单').click(); const file = await downloading; assert.equal(file.suggestedFilename(), '批次清单.xlsx');
@@ -181,8 +181,8 @@ async function cases() {
   });
   await run('replace-errors-disable-confirmation', async () => {
     await mount({ fileErrors: true }); await button('批量导入').click(); await page.getByLabel('导入模式').selectOption('replace');
-    await page.getByLabel('选择 Excel 文件').setInputFiles({ name: 'replace.xlsx', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', buffer: Buffer.from('Explicit invalid fixture') });
-    await button('导入预检').click(); await page.getByText('将删除的全部批次', { exact: true }).waitFor(); assert(await button('确认导入').isDisabled());
+    await page.getByLabel('选择文件').setInputFiles({ name: 'replace.xlsx', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', buffer: Buffer.from('Explicit invalid fixture') });
+    await button('开始预检').click(); await page.getByText('将删除的全部批次', { exact: true }).waitFor(); assert(await button('确认导入').isDisabled());
     assert.equal(await page.evaluate(() => f.commands.length), 0); await shot('replace-rejected'); await button('取消').click();
   });
 }

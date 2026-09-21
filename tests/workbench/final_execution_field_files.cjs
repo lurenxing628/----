@@ -20,10 +20,10 @@ async function files(p) {
       { cwd: path.resolve(__dirname, '../..'), env: process.env, stdio: 'pipe' });
     await page.getByRole('button', { name: '报工文件', exact: true }).click();
     const chooser = page.waitForEvent('filechooser');
-    await page.getByRole('button', { name: '选择 Excel 文件', exact: true }).click();
+    await page.getByRole('button', { name: '选择文件', exact: true }).click();
     await (await chooser).setFiles(rejected);
     await page.getByText(path.basename(rejected), { exact: true }).waitFor();
-    const result = await p.read(() => page.getByRole('button', { name: '预检文件', exact: true }).click(), '/files/preview');
+    const result = await p.read(() => page.getByRole('button', { name: '开始预检', exact: true }).click(), '/files/preview');
     assert.equal(result.data.can_confirm, false); assert.equal(result.data.summary.rejected, 10);
     assert.equal(result.data.summary.changed, 0);
     const confirm = page.getByRole('button', { name: '确认导入', exact: true });
@@ -35,7 +35,7 @@ async function files(p) {
     assert.deepEqual(lines.map(Number), Array.from({ length: 10 }, (_, index) => index + 2));
     await p.download(() => page.getByRole('button', { name: '下载问题清单', exact: true }).click(), 'rejected-rows');
     await p.shot('ten-rejected-rows');
-    const again = await p.read(() => page.getByRole('button', { name: '重新预检原文件', exact: true }).click(), '/files/preview');
+    const again = await p.read(() => page.getByRole('button', { name: '重新预检', exact: true }).click(), '/files/preview');
     assert.deepEqual(again.data.rows, result.data.rows);
     await page.getByRole('button', { name: '取消', exact: true }).click();
   });
@@ -46,7 +46,7 @@ async function files(p) {
     for (const round of ['first', 'duplicate']) {
       await page.getByRole('button', { name: '报工文件', exact: true }).click();
       await page.getByLabel('报工 XLSX 文件', { exact: true }).setInputFiles(edited);
-      const preview = await p.read(() => page.getByRole('button', { name: '预检文件', exact: true }).click(), '/files/preview');
+      const preview = await p.read(() => page.getByRole('button', { name: '开始预检', exact: true }).click(), '/files/preview');
       assert.equal(preview.data.can_confirm, true);
       assert.equal(preview.data.summary[round === 'first' ? 'changed' : 'unchanged'], 2);
       await p.shot('file-' + round + '-preview');

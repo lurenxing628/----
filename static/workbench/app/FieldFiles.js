@@ -56,7 +56,7 @@
         icon: "search",
         disabled: locked || !file,
         onClick: () => run('preview')
-      }, "\u9884\u68C0\u6587\u4EF6"), preview && command.phase !== 'done' && /*#__PURE__*/React.createElement(Button, {
+      }, "\u5F00\u59CB\u9884\u68C0"), preview && command.phase !== 'done' && /*#__PURE__*/React.createElement(Button, {
         transfer: "import",
         className: "btn primary",
         disabled: locked || !preview.can_confirm,
@@ -88,7 +88,7 @@
       icon: "folder-open",
       disabled: locked,
       onClick: () => input.current.click()
-    }, "\u9009\u62E9 Excel \u6587\u4EF6"), /*#__PURE__*/React.createElement("span", null, file ? file.name : '尚未选择文件'), /*#__PURE__*/React.createElement("input", {
+    }, "\u9009\u62E9\u6587\u4EF6"), /*#__PURE__*/React.createElement("span", null, file ? file.name : '尚未选择文件'), /*#__PURE__*/React.createElement("input", {
       ref: input,
       hidden: true,
       type: "file",
@@ -144,7 +144,7 @@
         setPreview(null);
         run('preview');
       }
-    }, "\u91CD\u65B0\u9884\u68C0\u539F\u6587\u4EF6")), /*#__PURE__*/React.createElement(ErrorBox, {
+    }, "\u91CD\u65B0\u9884\u68C0")), /*#__PURE__*/React.createElement(ErrorBox, {
       error: error
     }), /*#__PURE__*/React.createElement(Feedback, {
       command: command,

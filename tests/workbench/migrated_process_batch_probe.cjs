@@ -198,7 +198,7 @@ async function batchImport(file, mode, cancel = false) {
   await p.click(button(batchArea(), '批量导入')); const d = dialog('批量维护批次');
   if (mode !== 'overwrite') await p.select(d.getByLabel('导入模式', {exact: true}), mode === 'append' ? '只新增没有的批次（已有的跳过）' : '先清除全部批次，再按表格重导');
   p.step('setInputFiles', 'input[type=file]', file); await d.locator('input[type=file]').setInputFiles(path.join(root, 'uploads', file + '.xlsx'));
-  const preview = await p.response('/import-preview', () => p.click(button(d, '导入预检'))); await p.shot('batch-file-' + mode + (cancel ? '-cancel' : ''));
+  const preview = await p.response('/import-preview', () => p.click(button(d, '开始预检'))); await p.shot('batch-file-' + mode + (cancel ? '-cancel' : ''));
   if (mode === 'replace') { assert.equal(preview.data.can_confirm, false); assert(preview.data.deleted.some(r => r.before.business_code === 'PROC-B')); assert(await button(d, '确认导入').isDisabled()); }
   else if (!cancel) { assert(preview.data.can_confirm); await saved('import_confirm', button(d, '确认导入')); }
   await p.click(button(d, cancel || mode === 'replace' ? '取消' : '关闭')); return preview;

@@ -36,7 +36,7 @@ async function mouseClick(page, selector) {
         await page.getByRole('dialog').waitFor(); await H.settle(page);
         // Form setup is outside the reachability proof; no footer locator click is ever used.
         await page.getByLabel('导入模式').selectOption('replace');
-        await page.getByLabel('选择 Excel 文件').setInputFiles({ name: 'az-replace.xlsx', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', buffer: Buffer.from('AZ explicit component mock; no parser or persistence assertion') });
+        await page.getByLabel('选择文件').setInputFiles({ name: 'az-replace.xlsx', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', buffer: Buffer.from('AZ explicit component mock; no parser or persistence assertion') });
         await H.settle(page); await mouseClick(page, '.modal-f button[data-wb-transfer="import"]');
         await page.getByRole('table', { name: '批次导入预检' }).waitFor(); await H.settle(page);
         row.before = await geometry(page); await h.shot(page, variant.name + '-' + action + '-before');

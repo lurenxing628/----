@@ -66,7 +66,7 @@ async function main() {
     workbook('fill', source, filled);
     await shot('template');
     await page.getByLabel('报工 XLSX 文件', { exact: true }).setInputFiles(filled);
-    await page.getByRole('button', { name: '预检文件', exact: true }).click();
+    await page.getByRole('button', { name: '开始预检', exact: true }).click();
     await page.getByText('预检通过，尚未写入报工。', { exact: true }).waitFor();
     await shot('preview');
     await page.getByRole('button', { name: '确认导入', exact: true }).click();
@@ -78,7 +78,7 @@ async function main() {
     const exported = await download('导出当前范围', 'exported.xlsx');
     workbook('verify', exported);
     await page.getByLabel('报工 XLSX 文件', { exact: true }).setInputFiles(filled);
-    await page.getByRole('button', { name: '预检文件', exact: true }).click();
+    await page.getByRole('button', { name: '开始预检', exact: true }).click();
     await page.getByText('预检通过，尚未写入报工。', { exact: true }).waitFor();
     assert.equal(await page.getByRole('table', { name: '文件逐行预检' }).getByText('重复', { exact: true }).count(), 3);
     await shot('duplicate');

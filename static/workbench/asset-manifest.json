@@ -1065,8 +1065,8 @@
     },
     {
       "path": "workbench/app/BatchFiles.js",
-      "sha256": "fcdb1d7d8618d10d2446759dfe2e38cf1aa8fcd72a7de511043995986a0e0de4",
-      "bytes": 10853,
+      "sha256": "2b9d6d11075094aea0160276722fb867607379cb3b060edd37d7190e3b8bf32d",
+      "bytes": 10865,
       "mime": "application/javascript",
       "dependencies": [
         "workbench/app/BatchContract.js",
@@ -1125,7 +1125,7 @@
           "source_files": [
             {
               "path": "frontend/workbench/app/BatchFiles.jsx",
-              "sha256": "6247cb79dd6e9b931c74aa1a90fdab6e132e846c913edbf6805d8a182d775c53"
+              "sha256": "5c6278d6fe54df03ba529ebd87ffeaacee2559e885694f6e26e04b91eb3317db"
             }
           ],
           "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
@@ -1134,7 +1134,7 @@
       "source_files": [
         {
           "path": "frontend/workbench/app/BatchFiles.jsx",
-          "sha256": "6247cb79dd6e9b931c74aa1a90fdab6e132e846c913edbf6805d8a182d775c53"
+          "sha256": "5c6278d6fe54df03ba529ebd87ffeaacee2559e885694f6e26e04b91eb3317db"
         }
       ]
     },
@@ -4101,8 +4101,8 @@
     },
     {
       "path": "workbench/app/FieldFiles.js",
-      "sha256": "2fc9b6455f2521d032d7b27aef5fbd5d34f548c99662600f79444faee876baf1",
-      "bytes": 7452,
+      "sha256": "592e81b8f112739e9eac42dc6a20c37a568701747dcf36ac38e93cc8aaa3507f",
+      "bytes": 7427,
       "mime": "application/javascript",
       "dependencies": [
         "workbench/app/FieldContract.js",
@@ -4147,7 +4147,7 @@
           "source_files": [
             {
               "path": "frontend/workbench/app/FieldFiles.jsx",
-              "sha256": "f835a56c0c59a4ca535d5f8ff22f7851537f754bc5d205fbab2d7c439bd61c0e"
+              "sha256": "b116444b7c6f4a58017e5153d6c20bb6d7eb607f6a867f7dd96aed8319baf9b2"
             }
           ],
           "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
@@ -4156,7 +4156,7 @@
       "source_files": [
         {
           "path": "frontend/workbench/app/FieldFiles.jsx",
-          "sha256": "f835a56c0c59a4ca535d5f8ff22f7851537f754bc5d205fbab2d7c439bd61c0e"
+          "sha256": "b116444b7c6f4a58017e5153d6c20bb6d7eb607f6a867f7dd96aed8319baf9b2"
         }
       ]
     },
@@ -17472,7 +17472,7 @@
     },
     {
       "path": "frontend/workbench/app/BatchFiles.jsx",
-      "sha256": "6247cb79dd6e9b931c74aa1a90fdab6e132e846c913edbf6805d8a182d775c53"
+      "sha256": "5c6278d6fe54df03ba529ebd87ffeaacee2559e885694f6e26e04b91eb3317db"
     },
     {
       "path": "frontend/workbench/app/BatchWorkspace.jsx",
@@ -17564,7 +17564,7 @@
     },
     {
       "path": "frontend/workbench/app/FieldFiles.jsx",
-      "sha256": "f835a56c0c59a4ca535d5f8ff22f7851537f754bc5d205fbab2d7c439bd61c0e"
+      "sha256": "b116444b7c6f4a58017e5153d6c20bb6d7eb607f6a867f7dd96aed8319baf9b2"
     },
     {
       "path": "frontend/workbench/app/FieldWorkspace.jsx",
@@ -18672,5 +18672,5 @@
       "workbench/prototype/ui_kits/workbench/workbench-ui.css"
     ]
   },
-  "build_id": "1c7a0a763a4e1294537937e285c093fafeb47e0e1a74139a2cbcf56a60085a9f"
+  "build_id": "6f5af0a947373c7ef18e3dbfb65ddafe14618f72cefe4dd695758058c3126765"
 }
