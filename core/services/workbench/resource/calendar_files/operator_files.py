@@ -153,7 +153,7 @@ class WorkbenchOperatorCalendarFileService:
         if not text:
             # 与全局日历同一口径：空格子是"保持原样"，纯空格原来被当成"清除"，
             # 两者在文件里看不出区别。
-            raise ValidationError("这一格只填了空格。留空表示保持原样，要清空请填 \\N。", field=key)
+            raise ValidationError("这一格只填了空格。留空表示保持原样，要清除请填 \\N。", field=key)
         return text
 
     @staticmethod

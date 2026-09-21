@@ -144,7 +144,7 @@ class WorkbenchCalendarFileService:
             # 只填了空格的格子，和真正的空格子在文件里长得一模一样，含义却相反：
             # 空格子是"保持原样"（根本走不到这里），纯空格原来被 strip 成 None 当作"清除"。
             # 与其替用户猜，不如让他明确表达。
-            raise ValidationError("这一格只填了空格。留空表示保持原样，要清空请填 \\N。", field=key)
+            raise ValidationError("这一格只填了空格。留空表示保持原样，要清除请填 \\N。", field=key)
         return text
 
     @staticmethod
