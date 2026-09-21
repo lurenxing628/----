@@ -639,16 +639,6 @@
       "count": 3
     },
     {
-      "path": "web/viewmodels/page_manuals_equipment_excel.py",
-      "kind": "private_symbol",
-      "count": 3
-    },
-    {
-      "path": "web/viewmodels/page_manuals_excel_demo.py",
-      "kind": "private_symbol",
-      "count": 3
-    },
-    {
       "path": "web/viewmodels/page_manuals_material.py",
       "kind": "private_symbol",
       "count": 3
@@ -659,17 +649,7 @@
       "count": 3
     },
     {
-      "path": "web/viewmodels/page_manuals_personnel_excel.py",
-      "kind": "private_symbol",
-      "count": 3
-    },
-    {
       "path": "web/viewmodels/page_manuals_process.py",
-      "kind": "private_symbol",
-      "count": 3
-    },
-    {
-      "path": "web/viewmodels/page_manuals_process_excel.py",
       "kind": "private_symbol",
       "count": 3
     },

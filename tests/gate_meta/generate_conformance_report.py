@@ -114,32 +114,33 @@ def _check_gantt_assets(repo_root: str) -> CheckResult:
 
 
 def _check_excel_templates(repo_root: str) -> CheckResult:
+    """转换输出的交付示例是否齐全。
+
+    2026-09 起 12 张业务表的模板由工作台按表描述现生成，不再预先摆文件在 templates_excel/ 顶层，
+    所以这里不再点名那 11 份已退役的固定模板；仍要交付的是转换输出那一组参考表。
+    """
     required = [
-        "人员基本信息.xlsx",
-        "人员设备关联.xlsx",
-        "设备信息.xlsx",
-        "设备人员关联.xlsx",
         "工种配置.xlsx",
         "供应商配置.xlsx",
         "零件工艺路线.xlsx",
         "零件工序工时.xlsx",
-        "批次信息.xlsx",
-        "工作日历.xlsx",
-        "人员专属工作日历.xlsx",
+        "人员基本信息.xlsx",
+        "人员设备关联.xlsx",
+        "设备信息.xlsx",
     ]
-    existing = _list_files(repo_root, "templates_excel")
+    existing = _list_files(repo_root, os.path.join("templates_excel", "转换输出"))
     missing = [x for x in required if x not in existing]
     ok = len(missing) == 0
     evidence = [
-        f"`templates_excel/` 文件数：{len(existing)}",
-        f"缺失模板：{missing if missing else '无'}",
+        f"`templates_excel/转换输出/` 文件数：{len(existing)}",
+        f"缺失参考表：{missing if missing else '无'}",
     ]
     return CheckResult(
-        name="交付模板（templates_excel/ 固定模板文件齐全）",
+        name="交付示例（templates_excel/转换输出/ 参考表齐全）",
         ok=ok,
         severity="MAJOR" if not ok else "INFO",
         evidence=evidence,
-        details=None if ok else "模板缺失会导致“从Excel导入开始跑测试/交付”不完整（虽有动态兜底，但不满足交付清单）。",
+        details=None if ok else "转换输出是旧资料转换的参考表，缺失会让现场拿不到导入前的比对材料。",
     )
 
 
@@ -610,7 +611,7 @@ def _check_routes_presence(repo_root: str) -> CheckResult:
             sys.path.insert(0, repo_root)
             inserted_sys_path = True
 
-        # 这里会触发 ensure_schema 与 ensure_excel_templates（写入临时目录）
+        # 这里会触发 ensure_schema（写入临时目录）
         app_mod = importlib.import_module("app")
         app = app_mod.create_app()
         rules = sorted({str(r.rule) for r in app.url_map.iter_rules()})

@@ -9,7 +9,6 @@ from .page_manuals_common import (
     build_page_fallback_text_from_bundle,
 )
 from .page_manuals_equipment import EQUIPMENT_TOPICS
-from .page_manuals_excel_demo import EXCEL_DEMO_TOPICS
 from .page_manuals_material import MATERIAL_TOPICS
 from .page_manuals_personnel import PERSONNEL_TOPICS
 from .page_manuals_process import PROCESS_TOPICS
@@ -20,7 +19,6 @@ from .page_manuals_system import SYSTEM_TOPICS
 
 MANUAL_TOPICS: Dict[str, Dict[str, Any]] = {}
 for topic_group in (
-    EXCEL_DEMO_TOPICS,
     PERSONNEL_TOPICS,
     EQUIPMENT_TOPICS,
     PROCESS_TOPICS,

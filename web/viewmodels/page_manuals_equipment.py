@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import Any, Dict
 
 from .page_manuals_common import _card, _section, _topic
-from .page_manuals_equipment_excel import EQUIPMENT_EXCEL_TOPICS
 
 EQUIPMENT_TOPICS: Dict[str, Dict[str, Any]] = {
     "equipment_management": _topic(
@@ -156,7 +155,7 @@ EQUIPMENT_TOPICS: Dict[str, Dict[str, Any]] = {
                 ),
             ),
         ],
-        related_manual_ids=["equipment_downtime_batch", "excel_equipment", "excel_equipment_link", "scheduler_dispatch"],
+        related_manual_ids=["equipment_downtime_batch", "scheduler_dispatch"],
     ),
     "equipment_detail": _topic(
         title="设备详情",
@@ -300,7 +299,7 @@ EQUIPMENT_TOPICS: Dict[str, Dict[str, Any]] = {
                 ),
             ),
         ],
-        related_manual_ids=["equipment_management", "equipment_downtime_batch", "excel_equipment_link", "scheduler_dispatch"],
+        related_manual_ids=["equipment_management", "equipment_downtime_batch", "scheduler_dispatch"],
     ),
     "equipment_downtime_batch": _topic(
         title="批量停机计划",
@@ -398,4 +397,3 @@ EQUIPMENT_TOPICS: Dict[str, Dict[str, Any]] = {
     ),
 }
 
-EQUIPMENT_TOPICS.update(EQUIPMENT_EXCEL_TOPICS)

@@ -15,7 +15,6 @@ from werkzeug.serving import ThreadedWSGIServer, make_server
 from core.infrastructure.backup import BackupManager, is_maintenance_window_active
 from core.infrastructure.database import ensure_schema, get_connection
 from core.infrastructure.logging import AppLogger, OperationLogger, safe_log
-from core.services.common.excel_templates import ExcelTemplateError, ensure_excel_templates
 from web.bootstrap import _frozen_import_anchor as _scheduler_services_import_anchor
 from web.error_boundary import (
     render_error_template,
@@ -214,25 +213,6 @@ def _ensure_runtime_dirs(app: Flask) -> None:
     os.makedirs(app.config["EXCEL_TEMPLATE_DIR"], exist_ok=True)
 
 
-def _init_excel_templates(app: Flask) -> None:
-    # 三出口：成功 else 写 ok 状态；ExcelTemplateError / 未知异常都写失败状态并 raise（启动停止）。
-    # raise 必须早于 ensure_schema / 蓝图——调用点位置不可后移，否则在半装配状态失败、改变副作用时序。
-    try:
-        stats = ensure_excel_templates(app.config["EXCEL_TEMPLATE_DIR"])
-        if stats.get("created"):
-            app.logger.info(f"已生成 Excel 模板：{len(stats.get('created', []))} 个")
-    except ExcelTemplateError as e:
-        app.config["EXCEL_TEMPLATE_INIT_STATUS"] = {"ok": False, "error": str(e)}
-        safe_log(app.logger, "error", f"Excel 模板初始化失败，系统启动已停止：{e}")
-        raise
-    except Exception as e:
-        app.config["EXCEL_TEMPLATE_INIT_STATUS"] = {"ok": False, "error": str(e)}
-        safe_log(app.logger, "error", f"Excel 模板初始化出现未知错误，系统启动已停止：{e}")
-        raise
-    else:
-        app.config["EXCEL_TEMPLATE_INIT_STATUS"] = {"ok": True, "error": None}
-
-
 def _register_all_blueprints(app: Flask) -> None:
     # 旧 HTML 页面层已删除：旧命名空间只剩策略页占位规则、说明书页与运行时健康接口，
     # 由 install_legacy_retirement 在启动期换成跳转/410 适配器；工作台是唯一的业务入口。
@@ -301,7 +281,6 @@ def create_app_core(
         apply_session_cookie_hardening(app)
 
     _ensure_runtime_dirs(app)
-    _init_excel_templates(app)
 
     schema_path = os.path.abspath(os.path.join(base_dir, "schema.sql"))
     ensure_schema(

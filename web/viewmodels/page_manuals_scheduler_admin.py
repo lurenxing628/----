@@ -215,6 +215,6 @@ SCHEDULER_ADMIN_TOPICS: Dict[str, Dict[str, Any]] = {
                 ),
             ),
         ],
-        related_manual_ids=["excel_calendar", "personnel_calendar", "scheduler_batches"],
+        related_manual_ids=["personnel_calendar", "scheduler_batches"],
     ),
 }

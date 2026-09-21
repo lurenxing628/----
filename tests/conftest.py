@@ -162,8 +162,8 @@ def db_path(tmp_path):
 
 @pytest.fixture(scope="session", autouse=True)
 def _shared_excel_templates(tmp_path_factory):
-    """session 起始把 11 个交付模板预建到一个共享 WARM 目录并登记，省掉各用例
-    create_app→ensure_excel_templates 的 COLD 重建。改写/独立目录类用例不走它。"""
+    """session 起始登记一个共享的 templates_excel 目录，供各用例的 APS_EXCEL_TEMPLATE_DIR 指过去。
+    启动期模板生成已退役，这里不再预建任何模板文件；需要独立目录的用例不走它。"""
     publish_shared_dir(str(tmp_path_factory.mktemp("shared_excel_templates")))
     yield
     reset_shared_dir()

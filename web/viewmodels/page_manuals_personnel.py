@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import Any, Dict
 
 from .page_manuals_common import _card, _section, _topic
-from .page_manuals_personnel_excel import PERSONNEL_EXCEL_TOPICS
 
 PERSONNEL_TOPICS: Dict[str, Dict[str, Any]] = {
     "personnel_management": _topic(
@@ -109,7 +108,7 @@ PERSONNEL_TOPICS: Dict[str, Dict[str, Any]] = {
                 ),
             ),
         ],
-        related_manual_ids=["personnel_teams", "excel_personnel", "excel_personnel_link", "personnel_calendar"],
+        related_manual_ids=["personnel_teams", "personnel_calendar"],
     ),
     "personnel_detail": _topic(
         title="人员详情",
@@ -202,7 +201,7 @@ PERSONNEL_TOPICS: Dict[str, Dict[str, Any]] = {
                 ),
             ),
         ],
-        related_manual_ids=["personnel_management", "personnel_teams", "personnel_calendar", "excel_personnel_link"],
+        related_manual_ids=["personnel_management", "personnel_teams", "personnel_calendar"],
     ),
     "personnel_teams": _topic(
         title="班组管理",
@@ -379,8 +378,7 @@ PERSONNEL_TOPICS: Dict[str, Dict[str, Any]] = {
                 ),
             ),
         ],
-        related_manual_ids=["personnel_management", "excel_personnel_calendar", "scheduler_calendar"],
+        related_manual_ids=["personnel_management", "scheduler_calendar"],
     ),
 }
 
-PERSONNEL_TOPICS.update(PERSONNEL_EXCEL_TOPICS)

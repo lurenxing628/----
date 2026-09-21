@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import Any, Dict
 
 from .page_manuals_common import _card, _section, _topic
-from .page_manuals_process_excel import PROCESS_EXCEL_TOPICS
 
 PROCESS_TOPICS: Dict[str, Dict[str, Any]] = {
     "process_parts": _topic(
@@ -94,7 +93,7 @@ PROCESS_TOPICS: Dict[str, Dict[str, Any]] = {
                 ),
             ),
         ],
-        related_manual_ids=["process_op_types", "process_suppliers", "excel_routes", "excel_part_op_hours"],
+        related_manual_ids=["process_op_types", "process_suppliers"],
     ),
     "process_part_detail": _topic(
         title="零件工艺模板",
@@ -266,7 +265,7 @@ PROCESS_TOPICS: Dict[str, Dict[str, Any]] = {
                 ),
             ),
         ],
-        related_manual_ids=["process_parts", "process_suppliers", "excel_op_types", "excel_equipment"],
+        related_manual_ids=["process_parts", "process_suppliers"],
     ),
     "process_op_type_detail": _topic(
         title="工种详情",
@@ -312,7 +311,7 @@ PROCESS_TOPICS: Dict[str, Dict[str, Any]] = {
                 ),
             ),
         ],
-        related_manual_ids=["process_op_types", "process_parts", "process_suppliers", "excel_op_types"],
+        related_manual_ids=["process_op_types", "process_parts", "process_suppliers"],
     ),
     "process_suppliers": _topic(
         title="供应商配置",
@@ -375,7 +374,7 @@ PROCESS_TOPICS: Dict[str, Dict[str, Any]] = {
                 ),
             ),
         ],
-        related_manual_ids=["process_parts", "process_op_types", "excel_suppliers", "excel_routes"],
+        related_manual_ids=["process_parts", "process_op_types"],
     ),
     "process_supplier_detail": _topic(
         title="供应商详情",
@@ -422,8 +421,7 @@ PROCESS_TOPICS: Dict[str, Dict[str, Any]] = {
                 ),
             ),
         ],
-        related_manual_ids=["process_suppliers", "process_parts", "process_op_types", "excel_suppliers"],
+        related_manual_ids=["process_suppliers", "process_parts", "process_op_types"],
     ),
 }
 
-PROCESS_TOPICS.update(PROCESS_EXCEL_TOPICS)
