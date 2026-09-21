@@ -15,17 +15,16 @@ from core.models.workbench_batch_file import (
     HEADERS,
     MAX_BYTES,
     MAX_ROWS,
-    TEMPLATE_FILENAME,
     table_descriptor,
 )
 from core.models.workbench_table_descriptor import cell_notes, extra_sheet_notice
 from core.services.common.excel_cell_values import cell_value, is_formula_or_error
 from core.services.common.excel_instruction_sheet import add_enum_dropdowns, append_instruction_sheet
-from core.services.common.excel_templates import get_template_definition
 
-TEMPLATE = get_template_definition(TEMPLATE_FILENAME)
-if tuple(TEMPLATE["headers"]) != HEADERS:
-    raise RuntimeError("批次文件合同与现有模板表头不一致，请检查当前模板定义。")
+# 这里原本拿旧模板清单（excel_template_defaults）交叉校验一遍表头。那份清单 2026-09-21
+# 随旧资料转换一起退役了，而表头本来就同源：表描述的列标签直接取自 HEADERS
+# （core/models/workbench_batch_file.py:49），用户下载到的模板由表描述现生成，
+# 再比一次旧清单只是在校验一份没人再用的数据。
 
 
 def read_batch_file(content):

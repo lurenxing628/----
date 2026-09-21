@@ -17,13 +17,6 @@ def _read_text(path: str) -> str:
         return f.read()
 
 
-def _list_files(repo_root: str, rel_dir: str) -> List[str]:
-    p = os.path.join(repo_root, rel_dir)
-    if not os.path.isdir(p):
-        return []
-    return sorted([x for x in os.listdir(p) if os.path.isfile(os.path.join(p, x))])
-
-
 @dataclass
 class CheckResult:
     name: str
@@ -84,37 +77,6 @@ def _check_no_locking(repo_root: str) -> CheckResult:
         severity="BLOCKER" if not ok else "INFO",
         evidence=evidence,
         details=details,
-    )
-
-
-def _check_excel_templates(repo_root: str) -> CheckResult:
-    """转换输出的交付示例是否齐全。
-
-    2026-09 起 12 张业务表的模板由工作台按表描述现生成，不再预先摆文件在 templates_excel/ 顶层，
-    所以这里不再点名那 11 份已退役的固定模板；仍要交付的是转换输出那一组参考表。
-    """
-    required = [
-        "工种配置.xlsx",
-        "供应商配置.xlsx",
-        "零件工艺路线.xlsx",
-        "零件工序工时.xlsx",
-        "人员基本信息.xlsx",
-        "人员设备关联.xlsx",
-        "设备信息.xlsx",
-    ]
-    existing = _list_files(repo_root, os.path.join("templates_excel", "转换输出"))
-    missing = [x for x in required if x not in existing]
-    ok = len(missing) == 0
-    evidence = [
-        f"`templates_excel/转换输出/` 文件数：{len(existing)}",
-        f"缺失参考表：{missing if missing else '无'}",
-    ]
-    return CheckResult(
-        name="交付示例（templates_excel/转换输出/ 参考表齐全）",
-        ok=ok,
-        severity="MAJOR" if not ok else "INFO",
-        evidence=evidence,
-        details=None if ok else "转换输出是旧资料转换的参考表，缺失会让现场拿不到导入前的比对材料。",
     )
 
 
@@ -345,7 +307,6 @@ def generate_report(repo_root: str) -> Tuple[str, List[CheckResult]]:
     checks: List[CheckResult] = []
     checks.append(_check_requirements(repo_root))
     checks.append(_check_no_locking(repo_root))
-    checks.append(_check_excel_templates(repo_root))
     checks.append(_check_backup_on_exit(repo_root))
     checks.append(_check_scheduler_config_defaults(repo_root))
     checks.append(_check_operation_logs_keys(repo_root))

@@ -16,7 +16,7 @@ if str(REPO_ROOT) not in sys.path:
 from core.errors import ValidationError
 from core.infrastructure.database import ensure_schema, get_connection
 from core.services.batch.service import BatchService
-from core.services.common.excel_templates import build_xlsx_bytes
+from core.services.common.excel_templates import sanitize_export_cell
 from core.services.common.excel_validators import (
     get_batch_row_validate_and_normalize,
 )
@@ -195,20 +195,19 @@ def test_blank_helper_does_not_treat_zero_as_blank() -> None:
     assert is_blank_value("   ") is True
 
 
-def test_build_xlsx_bytes_sanitizes_formula_like_strings() -> None:
-    output = build_xlsx_bytes(
-        ["备注"],
-        [["=cmd|' /C calc'!A0"], ["+SUM(1,1)"], ["-1"], ["@A1"]],
-        sanitize_formula=True,
-    )
-    wb = openpyxl.load_workbook(output)
-    try:
-        ws = wb.active
-        assert ws is not None
-        assert ws["A2"].value == "'=cmd|' /C calc'!A0"
-        assert ws["A3"].value == "'+SUM(1,1)"
-        assert ws["A4"].value == "'-1"
-        assert ws["A5"].value == "'@A1"
-        assert ws.freeze_panes == "A2"
-    finally:
-        wb.close()
+def test_export_cells_escape_formula_like_strings() -> None:
+    """导出到 Excel 的文字里，四个会被当公式起头的字符必须先加单引号。
+
+    原来这条挂在 build_xlsx_bytes 上，那个构建器 2026-09-21 随旧模板清单一起退役了；
+    防注入本身没退役——排产实际导出、校准导出、报表导出、报表 xlsx 四处生产代码都
+    直接用 sanitize_export_cell，所以契约改挂在它身上。
+    """
+    assert sanitize_export_cell("=cmd|' /C calc'!A0") == "'=cmd|' /C calc'!A0"
+    assert sanitize_export_cell("+SUM(1,1)") == "'+SUM(1,1)"
+    assert sanitize_export_cell("-1") == "'-1"
+    assert sanitize_export_cell("@A1") == "'@A1"
+    assert sanitize_export_cell("正常文字") == "正常文字"
+    assert sanitize_export_cell(123) == 123
+    # 控制字符会让 openpyxl 写出打不开的文件，一并剔掉；制表和换行保留。
+    assert sanitize_export_cell("甲\x00乙\x07") == "甲乙"
+    assert sanitize_export_cell("甲\t乙\n丙") == "甲\t乙\n丙"

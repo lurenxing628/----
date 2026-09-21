@@ -125,8 +125,11 @@ MISC_REQUIRED_REGRESSION_GROUPS = (
             "tests/web_pages/test_frontend_ui_language_polish.py",
         ),
         "input_file_scopes": (
-            "templates_excel/**/*",
-            # P0.3 收窄：本组是 templates_excel 的 owner（保留宽 glob）。docs 三项保留原样
+            # templates_excel/**/* 2026-09-21 移除：旧资料样本与 7 份转换输出参考表随
+            # unit_excel 一起退役后，这个目录在仓库里已经没有文件，运行时那份由
+            # web/bootstrap/factory.py 现建空目录。留着会让"每条范围至少匹配一个真实路径"的
+            # 合同红。
+            # P0.3 收窄：docs 三项保留原样
             # （文档改动本就 skip 门禁、且 test_long_gate_required_regression_cache 契约要求其存在）；
             # templates 收窄到 excel 导入页面；viewmodels 收窄到 excel 域；core 收窄到导入相关服务子域；
             # static(非docs) 由 ui_layout owner 覆盖故移除；data 由 run_core owner 覆盖故移除。

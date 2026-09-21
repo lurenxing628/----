@@ -209,7 +209,7 @@ def test_impact_plan_selects_matching_required_group(monkeypatch) -> None:
             {
                 "group_id": "frontend_manual_excel",
                 "target_paths": ["tests/excel_data_io/test_excel_import_hardening.py"],
-                "input_file_scopes": ["templates_excel/**/*"],
+                "input_file_scopes": ["static/docs/**/*.md"],
                 "config_file_scopes": [],
                 "tool_file_scopes": [],
                 "dependency_file_scopes": [],

@@ -132,7 +132,7 @@ full-test-debt proof 的意思是：当前没有未登记的 full pytest 失败�
 - `data/`：数据访问层。
 - `web/`：Flask 启动、路由、页面装配与 viewmodel。
 - `templates/`、`static/`：页面模板与本地静态资源。
-- `templates_excel/`：随包交付的 Excel 示例，只剩回转壳体单元产品数据与转换输出；业务表模板不在这里，由工作台现生成。
+- `templates_excel/`：运行时的 Excel 模板目录，随包不再附带示例文件；业务表模板由工作台按表描述现生成。
 - `plugins/`：自研插件目录，当前插件默认关闭。
 - `tests/`：自动化测试；新增回归优先写成标准 `test_*.py` 用例，并按业务目录或 `tests/gate_meta/` 落点。
 - `开发文档/`：开发说明、系统速查表、页面与接口清单、设计资料。

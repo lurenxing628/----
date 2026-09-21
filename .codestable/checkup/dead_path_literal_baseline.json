@@ -484,11 +484,6 @@
     },
     {
       "path": "tests/gate_meta/test_long_gate_required_regression_cache.py",
-      "kind": "templates_excel/批次信息.xlsx",
-      "count": 1
-    },
-    {
-      "path": "tests/gate_meta/test_long_gate_required_regression_cache.py",
       "kind": "web/bootstrap/request_services.py",
       "count": 1
     },
