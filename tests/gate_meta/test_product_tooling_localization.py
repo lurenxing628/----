@@ -10,7 +10,7 @@ import pytest
 from tests._support.paths import REPO_ROOT
 from tools.quality_gate_shared import QUALITY_GATE_TOOL_PATHS
 from tools.scan_aps_three_gap_py38_scope import is_aps_py38_scope_path
-from tools.test_registry_groups_scheduler import SCHEDULER_REQUIRED_REGRESSION_GROUPS
+from tools.test_registry import iter_required_regression_groups
 
 PRIVATE_ROOTS = (".codestable", ".limcode", ".codex", ".cursor")
 
@@ -22,7 +22,7 @@ def test_quality_tools_are_present_without_private_workflow_paths():
 
 
 def test_shared_regression_inputs_do_not_scan_local_workflows():
-    for group in SCHEDULER_REQUIRED_REGRESSION_GROUPS:
+    for group in iter_required_regression_groups():
         for key in ("input_file_scopes", "tool_file_scopes", "config_file_scopes"):
             for pattern in group.get(key, ()):
                 assert Path(pattern).parts[0] not in PRIVATE_ROOTS, (group["group_id"], pattern)
@@ -82,3 +82,60 @@ def test_full_selftest_plan_uses_current_suite_and_checks_missing_guards(tmp_pat
         module._build_steps(tmp_path, complex_repeat=1)
     with pytest.raises(ValueError, match="at least 1"):
         module._build_steps(REPO_ROOT, complex_repeat=0)
+
+
+def test_browser_tools_do_not_import_script_entrypoints():
+    import ast
+
+    for relative in ("tools/browser_lane_runtime.py", "tools/browser_lane_sample.py"):
+        tree = ast.parse((REPO_ROOT / relative).read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                assert not any(alias.name == "scripts" or alias.name.startswith("scripts.") for alias in node.names)
+            if isinstance(node, ast.ImportFrom):
+                assert node.module != "scripts" and not (node.module or "").startswith("scripts.")
+
+
+def test_browser_entrypoints_reuse_the_shared_lane_and_runtime():
+    from scripts import run_browser_test_lane, run_workbench_opt_in_browser
+    from tools import browser_lane_runtime, browser_lane_sample
+
+    assert run_browser_test_lane.lane_targets is browser_lane_runtime.lane_targets
+    assert browser_lane_sample.lane_targets is browser_lane_runtime.lane_targets
+    assert run_workbench_opt_in_browser.runtime_environment is browser_lane_runtime.runtime_environment
+    assert browser_lane_sample.runtime_environment is browser_lane_runtime.runtime_environment
+
+
+def test_browser_runtime_respects_explicit_paths_and_reports_missing_files(tmp_path, monkeypatch):
+    from tools import browser_lane_runtime as runtime
+
+    node = tmp_path / "node"
+    browser = tmp_path / "browser"
+    node.touch()
+    browser.touch()
+    monkeypatch.setenv("WORKBENCH_NODE", str(node))
+    monkeypatch.setenv("WORKBENCH_BROWSER", str(browser))
+    monkeypatch.setenv("FORCE_COLOR", "1")
+    value = runtime.runtime_environment()
+    assert value["WORKBENCH_NODE"] == str(node)
+    assert value["WORKBENCH_BROWSER"] == str(browser)
+    assert value["NO_COLOR"] == "1" and "FORCE_COLOR" not in value
+    browser.unlink()
+    with pytest.raises(SystemExit, match="missing"):
+        runtime.runtime_environment()
+
+
+def test_default_browser_uses_the_first_existing_candidate(tmp_path, monkeypatch):
+    from tools import browser_lane_runtime as runtime
+
+    candidates = (tmp_path / "missing", tmp_path / "present")
+    monkeypatch.setattr(runtime, "DEFAULT_BROWSER_CANDIDATES", candidates)
+    assert runtime.default_browser() == str(candidates[0])
+    candidates[1].touch()
+    assert runtime.default_browser() == str(candidates[1])
+
+
+def test_product_boundary_scan_roots_do_not_include_private_workflows():
+    from tests.models_domain.test_foundation_a2_dependency_boundary import _RETIRED_ERROR_COMPAT_SCAN_ROOTS
+
+    assert all(Path(root).parts[0] not in PRIVATE_ROOTS for root in _RETIRED_ERROR_COMPAT_SCAN_ROOTS)

@@ -237,7 +237,7 @@ def test_canonical_and_compatibility_modules_import_in_both_orders() -> None:
 
 
 _RETIRED_ERROR_COMPAT_MODULE = "core.infrastructure.errors"
-_RETIRED_ERROR_COMPAT_SCAN_ROOTS = ("core", "web", "data", "tests", "tools", "scripts", ".codestable/semantics",
+_RETIRED_ERROR_COMPAT_SCAN_ROOTS = ("core", "web", "data", "tests", "tools", "scripts",
                                     "app.py", "app_new_ui.py")
 
 
