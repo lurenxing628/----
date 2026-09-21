@@ -75,6 +75,26 @@ tags: [excel, retirement, browser-lane, quality-gate, ratchet, conformance]
    本机没准备 Chromium 109 时抽样跳过而不拦 push（开发机不一定装运行时，拦下来只会逼人绕过钩子），
    但会往 stderr 喊出解压命令。整条车道仍用 `scripts/run_browser_test_lane.py` 手动跑。
 
+9. **跨语言引用要有专门的门禁。** 同一天因为"Python 侧静态工具看不见跨语言引用"踩了两次：
+   按"全仓库零引用"删掉的两个测试支撑脚本，其实被 260 个 `.cjs` 探针用
+   `spawn(python, ['-m', 'tests.workbench.X'])` 拉起；分包重构（4f3a127a）把
+   `gantt_critical_chain.py` 搬进 `gantt/` 子包后，`ActualGanttContract.js` 里钉着的
+   模块路径字符串没跟着改，前端把整份数据判成"没有真实算法证据"，6 个浏览器用例一起红
+   （页面退化成"现场实际甘特未读取成功"，而接口返回的是完整的 200）。
+   两道门禁进 focused 无条件车道：
+   `tests/gate_meta/test_node_referenced_python_modules.py`、
+   `tests/gate_meta/test_frontend_backend_module_refs.py`。
+   **删 `tests/` 下的 .py 前 grep `.cjs`；搬 `core/services/**` 前 grep `frontend/`、`static/`。**
+
+10. **浏览器车道的 12 个积压失败全部修完**（本轮起点 `5bb288f1` 就是红的，非本轮引入）。
+    归因方法：建 `git worktree` 到本轮起点逐个对跑，分清"本轮造成"和"既有"。
+    其中 11 个是上面第 9 条那个模块路径漂移的连带，1 个是
+    `be_surface_browser.cjs` 的 `geometry()` 量错了对象——它量外层 button（点击热区，
+    宽度有 `Math.max(4, size)` 下限，太窄的条点不到），该量里面的 `.fg-mark-face`
+    （宽度就是 size，无下限）。容器 1026px 时真实 3.35px 被撑成 4px，放开到 1338px 是
+    4.37px 不撑，两次时间比例自然对不上；改量 face 后两条比例断言都自洽。
+    这是 `1a7a75c6` 加最小热区时测试没跟着改。
+
 ## 未做与待裁决
 - **"车道纯度门禁"不建。** 原计划要建一道门禁盯"车道文件里混进不需要浏览器的用例"，
   实测推翻了前提：静态判定说 `test_final_execution_chain.py` 8/8 都"不碰浏览器"，
@@ -84,7 +104,13 @@ tags: [excel, retirement, browser-lane, quality-gate, ratchet, conformance]
   属于过度工程。**判断"哪些用例被误踢"必须实测耗时，不能只看静态特征。**
 - **"执行器登记门禁"不建。** 原计划假设 `tests/_scripts_e2e/` 下的手工脚本已经烂掉，
   实测 25 个脚本语法与 import 全部有效；把范围放大到 tests/ 下全部 304 个非用例脚本，
-  同样 0 问题。真正的孤儿是上面第 7 条那 7 个死支撑脚本，已删。
+  同样 0 问题。真正的孤儿是上面第 7 条那 7 个死支撑脚本，其中 2 个后来证明不是孤儿
+  （见第 9 条），已恢复。
+- `frontend/workbench/prototype/ui_kits/workbench/` 下两个夹具数据文件
+  （`field-gantt-current-chain-data.js`、`field-gantt-current-chains.js`）里还写着老的
+  `gantt_critical_chain` 模块路径。原型目录有独立快照 hash，直接改会让
+  `scripts/workbench/build.py` 以 "Snapshot hash mismatch" 失败，要走原型导入流程。
+  它们是夹具数据、不进生产，本轮没动。
 - `EXCEL_TEMPLATE_DIR` 配置的存废没动：`factory.py:213` 仍在运行时目录下现建空
   `templates_excel/`，但已经没人往里放文件、也没人读。属于 bootstrap 层的事，另议。
 - `开发文档/` 下的实现计划表、阶段留痕、审查提示词仍提到已删的
