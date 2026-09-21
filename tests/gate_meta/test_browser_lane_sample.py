@@ -69,18 +69,24 @@ def test_unreadable_cursor_is_treated_as_never_run(tmp_path, monkeypatch) -> Non
     assert read_cursor() == ""
 
 
-def test_drifted_lane_list_names_the_missing_files(monkeypatch, capsys) -> None:
-    """清单过期要直接说是哪个文件没了，不能让 pytest 的 file-not-found 顶上来当错误信息。"""
+def test_drifted_lane_list_names_the_missing_files(tmp_path, monkeypatch) -> None:
+    """清单过期要直接说是哪个文件没了，不能让 pytest 的 file-not-found 顶上来当错误信息。
+
+    缺失路径用 tmp_path 现造，不写成字面量：失效路径字面量棘轮
+    （tools/scan_dead_path_literals.py）会把源码里指向不存在文件的字符串当成新增债务，
+    它分不出这是夹具还是真引用——2026-09-21 这条测试刚写出来就把日常门禁弄红过一次。
+    """
     import pytest
 
     from tools import browser_lane_sample
 
+    absent = str(tmp_path / "已经改名了.py")
     monkeypatch.setattr(browser_lane_sample, "lane_targets",
-                        lambda: ["tests/gate_meta/test_browser_lane_sample.py", "tests/已经改名了.py"])
+                        lambda: ["tests/gate_meta/test_browser_lane_sample.py", absent])
     with pytest.raises(SystemExit) as caught:
         browser_lane_sample.main([])
     message = str(caught.value)
-    assert "tests/已经改名了.py" in message
+    assert absent in message
     assert "browser_lane_files --check" in message
 
 

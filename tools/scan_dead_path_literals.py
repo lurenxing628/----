@@ -170,9 +170,16 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         except BoundaryBaselineError as exc:
             _error(str(exc))
             return 2
-        if previous is not None and total_count(current) > total_count(previous) and not args.allow_growth:
-            _error(f"刷新被拒绝：总命中数 {total_count(previous)} -> {total_count(current)} 增长；请先删掉指向已删文件的字符串，或人工核对后加 --allow-growth")
-            return 1
+        if previous is not None and not args.allow_growth:
+            # 光比总数挡不住"还掉一笔、同时欠下一笔"：总数不变，新的失效字面量就被烘进基线了。
+            # 刷新只该用来清理已还的债，新增一律要人工核对后显式 --allow-growth。
+            comparison = compare_counts(current, previous)
+            if comparison.new or comparison.increased:
+                detail = sorted(comparison.new) + sorted(comparison.increased)
+                _error("刷新被拒绝：有新增的失效路径字面量，请先改掉引用而不是刷基线；"
+                       "确属测试夹具等人工核对过的情况再加 --allow-growth。\n  "
+                       + "\n  ".join(f"{path} -> {literal}" for path, literal in detail))
+                return 1
         write_baseline(baseline_path, rule=RULE, scan_roots=list(SCAN_ROOTS), note=BASELINE_NOTE, counts=current)
         print(f"[{RULE}] 基线已写入 {os.path.relpath(baseline_path, args.repo_root)}：{len(current)} 条目 / {total_count(current)} 处")
         return 0

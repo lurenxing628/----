@@ -87,10 +87,13 @@ def _check_backup_on_exit(repo_root: str) -> CheckResult:
     红的是检查而不是实现。现在按要件分别认位置：注册在 factory.py，配置守卫和 suffix=exit
     在 launcher_shutdown.py。
     """
+    # 三个模式都要求「代码形态」而不是「字面出现」：光搜 auto_backup_enabled 会被
+    # launcher_shutdown.py:107 那句日志字符串 "…auto_backup_enabled=no。" 顶替，
+    # 真守卫被删了这条检查照样绿。要求属性访问且参与比较，日志里的裸等号就命中不了。
     parts = [
         ("注册（atexit.register）", "web/bootstrap/factory.py", r"\batexit\.register\s*\("),
-        ("配置守卫（auto_backup_enabled）", "web/bootstrap/launcher_shutdown.py",
-         r"auto_backup_enabled"),
+        ("配置守卫（读配置后比较 auto_backup_enabled）", "web/bootstrap/launcher_shutdown.py",
+         r"\.auto_backup_enabled\s*=="),
         ("执行（backup(suffix=\"exit\")）", "web/bootstrap/launcher_shutdown.py",
          r"\.backup\s*\(\s*suffix\s*=\s*['\"]exit['\"]\s*\)"),
     ]
@@ -100,7 +103,9 @@ def _check_backup_on_exit(repo_root: str) -> CheckResult:
         path = os.path.join(repo_root, *rel.split("/"))
         txt = _read_text(path) if os.path.exists(path) else ""
         lines = txt.splitlines()
-        hit = next((i for i, line in enumerate(lines) if re.search(pattern, line)), None)
+        # 注释掉的实现不算实现。字符串里的出现靠上面那三个模式的形态要求挡住。
+        hit = next((i for i, line in enumerate(lines)
+                    if not line.lstrip().startswith("#") and re.search(pattern, line)), None)
         if hit is None:
             ok = False
             evidence.append(f"- {label}：`{rel}` 里没找到")
