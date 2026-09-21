@@ -83,6 +83,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         raise SystemExit("--count 要是正整数。")
 
     targets = lane_targets()
+    # 车道清单漂移（文件改名或删除）要在这里喊出来。不检查的话 pytest 只会报一句
+    # "file or directory not found"，看不出是清单过期还是测试真的坏了。
+    missing = [target for target in targets if not (ROOT / target).is_file()]
+    if missing:
+        raise SystemExit("浏览器车道清单里有不存在的文件，先跑 python -m tools.browser_lane_files --check：\n  "
+                         + "\n  ".join(missing))
     selected = pick(targets, args.count, read_cursor())
     if not selected:
         raise SystemExit("浏览器车道一个文件都没有，先检查 tools/browser_lane_files.py。")

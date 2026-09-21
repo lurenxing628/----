@@ -69,6 +69,29 @@ def test_unreadable_cursor_is_treated_as_never_run(tmp_path, monkeypatch) -> Non
     assert read_cursor() == ""
 
 
+def test_drifted_lane_list_names_the_missing_files(monkeypatch, capsys) -> None:
+    """清单过期要直接说是哪个文件没了，不能让 pytest 的 file-not-found 顶上来当错误信息。"""
+    import pytest
+
+    from tools import browser_lane_sample
+
+    monkeypatch.setattr(browser_lane_sample, "lane_targets",
+                        lambda: ["tests/gate_meta/test_browser_lane_sample.py", "tests/已经改名了.py"])
+    with pytest.raises(SystemExit) as caught:
+        browser_lane_sample.main([])
+    message = str(caught.value)
+    assert "tests/已经改名了.py" in message
+    assert "browser_lane_files --check" in message
+
+
+def test_real_lane_list_points_at_existing_files() -> None:
+    """顺手守住真实清单：抽样、整条车道跑、full_test_debt 分片都依赖它不漂。"""
+    from tools.browser_lane_sample import ROOT, lane_targets
+
+    missing = [target for target in lane_targets() if not (ROOT / target).is_file()]
+    assert not missing, f"浏览器车道清单里有不存在的文件：{missing}"
+
+
 def test_cursor_stays_out_of_version_control() -> None:
     """游标一旦进了版本控制，pre-push 写它就会弄脏工作区，把要求干净树的门禁卡死。"""
     import subprocess
