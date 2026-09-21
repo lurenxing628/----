@@ -13,7 +13,7 @@ import tempfile
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
-HELPERS = Path(".codestable/roadmap/workbench-prototype-migration/legacy-retirement/factory-tests")
+HELPERS = Path("tests/_support/workbench_source")
 
 
 def seal(parent):
@@ -21,11 +21,11 @@ def seal(parent):
     parent.mkdir(parents=True, exist_ok=False)
     source, manifest = parent / "source", parent / "source-manifest.json"
     capture = [sys.executable, "-B", str(REPO / HELPERS / "source_binding.py")]
-    facts = sorted(path.relative_to(REPO).as_posix() for path in (REPO / ".codestable").rglob("*")
+    facts = sorted(path.relative_to(REPO).as_posix() for path in (REPO / "tests" / "fixtures").rglob("*")
                    if path.is_file() and path.suffix not in (".py", ".pyc", ".pyo") and "__pycache__" not in path.parts)
     helpers = [(HELPERS / name).as_posix() for name in ("source_guard.py", "source_binding.py", "source_inventory.py")]
     documents = sorted(path.name for path in REPO.glob("*.md"))
-    documents += [name for name in ("docs", "开发文档", "策划方案", "前端设计", ".github", ".limcode") if (REPO / name).exists()]
+    documents += [name for name in ("docs", "开发文档", "策划方案", "前端设计", ".github") if (REPO / name).exists()]
     extras = [item for name in facts + helpers + documents for item in ("--extra", name)]
     subprocess.run(capture + ["capture", str(REPO), str(manifest)] + extras, check=True)
     value = json.loads(manifest.read_text(encoding="utf-8"))

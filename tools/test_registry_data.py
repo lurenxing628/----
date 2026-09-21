@@ -31,6 +31,10 @@ QUALITY_GATE_STARTUP_REGRESSION_ARGS = (
 )
 
 QUALITY_GATE_GUARD_TESTS = (
+    'tests/gate_meta/test_product_tooling_localization.py',
+    'tests/_support/workbench_source/test_source_guard.py',
+    'tests/schedule/service/test_start_and_rerun_route_resolution.py',
+    'tests/schedule/service/test_start_and_rerun_route_modes.py',
     *ALGORITHM_EFFICIENCY_REQUIRED_TESTS,
     "tests/gate_meta/test_no_residual_main_style_regression.py",
     "tests/gate_meta/test_sp05_path_topology_contract.py",
@@ -284,8 +288,8 @@ REQUIRED_REGRESSION_COMMON_SCOPES = {
         "tools/quality_gate_shared.py",
         "tools/quality_gate_support.py",
         "scripts/run_quality_gate.py",
-        ".codestable/checkup/import_cycles_production_baseline.json",
-        ".codestable/checkup/import_cycles_with_tests_baseline.json",
+        "tools/baselines/import_cycles_production_baseline.json",
+        "tools/baselines/import_cycles_with_tests_baseline.json",
     ),
     "tool_file_scopes": (
         "scripts/run_quality_gate.py",
@@ -324,7 +328,7 @@ REQUIRED_REGRESSION_COMMON_SCOPES = {
         "tools/scan_dead_code_islands.py",
         "tools/import_cycle_*.py",
         "tools/scan_import_cycles.py",
-        ".codestable/checkup/scripts/callgraph_*.py",
+        "tools/checkup/callgraph_*.py",
         "tools/dead_code_usage/**/*.py",
         "tools/scan_py38plus_syntax.py",
         "scripts/build_test_inventory.py",

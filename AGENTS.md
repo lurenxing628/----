@@ -1,83 +1,31 @@
 # 项目级代理约定
 
-## 语言
+## 授权与工作区
 
-- 面向用户默认使用简体中文。
-- 对用户解释时尽量用通俗说法，把背景、目的、改动范围和预期结果讲清楚。
+- 默认使用简体中文，关键判断附文件位置或实际验证证据。
+- 调查、审查默认只读；只有用户要求实施才修改。已授权范围连续完成，不自动扩大范围。
+- 修改前检查 Git 的已暂存、未暂存、未跟踪状态。保留其他任务的改动；批量迁移先留可恢复快照。
+- 提交与推送分别遵从用户授权。只提交当前任务范围，不夹带其他暂存文件。
 
-## 当前默认工作流
+## 产品约束
 
-本仓库从 2026-04-27 起默认使用 CodeStable 工作流。
+- Win7 x64、Python 3.8、离线单机；目标机不要求另装 Python，静态资源随交付包提供。
+- 产品构建、测试、门禁必须依赖版本库内文件，不能依赖个人 Agent 目录或本机历史报告。
+- 产品代码保持现有分层、事务和错误语义，不吞错、不静默改范围，不为通过测试改写业务要求。
+- 修改产品函数前用 `python -m tools.symbol_locator` 定位定义与影响面；工具输出是线索，关键判断回到源码和运行证据。
 
-收到任务时，优先按 CodeStable 分流：
+## 项目入口
 
-- 开放式诉求 / 不知道走哪条路 → `cs`
-- 仓库接入 / 刷新 CodeStable 骨架 → `cs-onboard`
-- 新功能 / 新能力 → `cs-feat`
-- 想法模糊、需要先聊清楚 → `cs-brainstorm`
-- 系统审计、主动扫描隐患 → `cs-audit`
-- 大需求拆解 / 分阶段路线 → `cs-roadmap`
-- BUG / 异常 / 文档错误 → `cs-issue`
-- 行为不变的重构 / 代码优化 → `cs-refactor`
-- 定向研究代码 → `cs-explore`
-- 更新需求文档 → `cs-req`
-- 更新或检查架构文档 → `cs-arch`
-- 技术决定 / 长期约束 → `cs-decide`
-- 踩坑经验 / 可复用做法 → `cs-learn` / `cs-trick`
-- 用户指南 / 开发者指南 / API 参考 → `cs-guide` / `cs-libdoc`
+- 开发与质量治理入口：`开发文档/README.md`。
+- 日常门禁：`scripts/run_daily_quality_gate.py`；完整门禁：`scripts/run_quality_gate.py`。
+- Win7 打包：`build_win7_portable.bat` 调用 `scripts/windows/package_win7.ps1`。
+- 可复现的门禁工具和基线：`tools/`；冻结测试输入：`tests/fixtures/`；辅助测试工具：`tests/_support/`。
+- 产品架构、决定和受测试约束的文档：`docs/`、`开发文档/`。工具布局说明见 `docs/dev/product-tooling.md`。
 
-## 会话起步规则
+## 本机工作流与交付
 
-本文件是会话起步的首要兜底入口。
-
-在任何回复、澄清问题、搜索、改文件、跑命令之前，先确认本仓库是否已有 `.codestable/`：
-
-- 如果已有 `.codestable/`，先读取 `.codestable/attention.md`，再读取 `.codestable/reference/system-overview.md`，然后按用户诉求选择对应的 `cs-*` 技能。
-- 如果当前宿主没有自动注册 `cs-*` 技能入口，先读取项目内 `.limcode/skills/<技能名>/SKILL.md`；项目副本不存在时，再依次查 `~/.codex/skills/<技能名>/SKILL.md`、`~/.agents/skills/<技能名>/SKILL.md`。
-- 如果没有 `.codestable/`，先走 `cs-onboard`。
-
-不要再默认读取 `.limcode/skills/using-superpowers/SKILL.md`。只有下面这些情况才回看它：
-
-- 用户明确要求按旧 superpowers / `.limcode` 流程处理。
-- 正在续作 `.limcode/plans/`、`.limcode/review/`、`.limcode/design/` 里的历史任务。
-- 需要查 APS 专项旧技能或旧审查记录，作为证据或参考。
-
-## 事实源约定
-
-当前项目中，事实源分成新旧两层：
-
-- `.codestable/`：新的默认工作流事实源。后续需求、架构、功能、问题、重构、知识沉淀优先落在这里。
-- `.limcode/`：旧工作流归档和 APS 专项资产库。里面的历史 plan、review、design、APS 专项技能、子代理说明仍有参考价值，但不再抢默认入口。
-
-`.cursor/` 仅作为旧宿主兼容层保留，不再作为首选事实源。
-
-## 落盘约定
-
-默认落盘位置按 CodeStable 目录执行：
-
-- 需求现状：`.codestable/requirements/`
-- 架构现状：`.codestable/architecture/`
-- 大需求规划：`.codestable/roadmap/`
-- 新功能流程：`.codestable/features/`
-- 问题修复流程：`.codestable/issues/`
-- 重构流程：`.codestable/refactors/`
-- 审计报告：`.codestable/audits/`
-- 开放脑暴：`.codestable/brainstorms/`
-- 知识沉淀：`.codestable/compound/`
-
-只有在续作旧任务或用户明确要求时，才继续写入 `.limcode/design/`、`.limcode/plans/`、`.limcode/review/`。
-
-## APS 项目硬约束
-
-- 当前目标仍是 Win7 x64 离线场景，因此依赖升级、语法升级与打包方案都要优先服从 Python 3.8 与 Win7 兼容性。
-- 目标机不要求安装 Python；源码开发与打包机仍使用 Python 3.8。
-- 页面不依赖外部脚本或样式，静态资源应随应用本地交付。
-- 质量门禁入口仍以 `scripts/run_quality_gate.py` 为准。
-- 需要 APS 专项深审、门禁快检、文档联动时，可以参考 `.limcode/skills/aps-*`，但默认产物仍应回到 CodeStable 结构。
-
-## 子代理兼容
-
-涉及 LimCode 原生已注册子代理、角色正文回退、宿主通用子代理与主代理降级执行时，仍可参考：
-
-- `.limcode/subagents/README.md`
-- `.limcode/skills/_shared/subagent-compat.md`
+- 本机可以另有 `.limcode/`、`.codestable/`、`.codex/`、`.cursor/`；这些是可选个人工作流，不属于产品交付。
+- 不因上述目录缺失而初始化工作流、下载技能或阻断正常开发。存在时仅按当前任务需要参考，不让本机规则覆盖用户授权。
+- 不把产品脚本、门禁基线或测试夹具重新放回个人工作流目录。
+- 新行为和修复用相关测试验证；已有有效证据可以复用。记录实际通过、失败、跳过及平台限制。
+- 工作区未清理或完整门禁未完成时，不声明 clean-worktree proof。不要把生成截图当作完成视觉验收。

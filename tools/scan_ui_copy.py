@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """扫描工作台用户可见文案里的内部词、英文单位和纯英文提示。
 
-词表来源：tools/ui_copy_glossary.json（决策见 .codestable/compound/2026-09-13-decision-ui-copy-glossary.md）。
+词表来源：tools/ui_copy_glossary.json（决策见 docs/dev/decisions/2026-09-13-decision-ui-copy-glossary.md）。
 
 用法：
   python3 -m tools.scan_ui_copy                  # 明细 + 按词统计，有残留则退出码 1

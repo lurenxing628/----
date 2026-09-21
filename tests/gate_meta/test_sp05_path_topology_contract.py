@@ -304,5 +304,5 @@ def test_sp05_documentation_uses_migrated_scheduler_paths() -> None:
     assert "core/services/scheduler/run/schedule_input_collector.py" in stage_record
     assert "core/services/scheduler/schedule_input_collector.py" not in stage_record
 
-    # `.limcode/plans/` 是 ignored 历史归档，不存在于 clean clone，不能作为质量门禁事实源。
+    # `docs/maintenance/plans/` 是 ignored 历史归档，不存在于 clean clone，不能作为质量门禁事实源。
     # 当前路径合同只读取上面的两份 tracked 文档。

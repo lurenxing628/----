@@ -13,7 +13,7 @@ from typing import Dict, List, Tuple
 
 from tests._support.paths import REPO_ROOT
 
-CALLGRAPH_SCRIPTS = REPO_ROOT / ".codestable" / "checkup" / "scripts"
+CALLGRAPH_SCRIPTS = REPO_ROOT / "tools"/ "checkup"
 CALLGRAPH_EXTRACT = CALLGRAPH_SCRIPTS / "callgraph_extract.py"
 
 

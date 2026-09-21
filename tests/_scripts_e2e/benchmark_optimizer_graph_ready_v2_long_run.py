@@ -34,7 +34,7 @@ from tests._support.optimizer_graph_ready_v2_long_run import (  # noqa: E402
     build_graph_ready_v2_long_run,
 )
 
-DEFAULT_LONG_RUN_BASELINE = Path(".codestable/roadmap/scheduler-global-optimizer/graph-ready-v2-long-run-baseline.json")
+DEFAULT_LONG_RUN_BASELINE = Path("tests/fixtures/optimizer/graph-ready-v2-long-run-baseline.json")
 DEFAULT_LONG_RUN_OUTPUT = Path("evidence/QualityGate/long_gate/optimizer_benchmark/optimizer_graph_ready_v2_long_run.json")
 
 

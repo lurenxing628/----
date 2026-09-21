@@ -8,7 +8,7 @@ from collections import Counter
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
-FOLDER = REPO / ".codestable/roadmap/workbench-prototype-migration/acceptance-master"
+FOLDER = REPO / "tests/fixtures/workbench_contracts/acceptance-master"
 VARIANTS = {"1920x1080-light", "1920x1080-dark", "1392x924-light", "1392x924-dark"}
 CONTROL_PROOF = {
     "final-master-controls.json": "2a8af785e8f7470eaef6921fca3bbe29ff7dfb0fad40d796d7fe3ee26bf36755",
@@ -75,7 +75,7 @@ def coverage(domain, shared):
     return {"schema_version": 1, "planning_sha256": domain["planning_sha256"], "counts": counts,
             "status": "in_progress", "all_gates_passed": sum(all(value in ("passed", "reused", "not_applicable")
                 for value in row["gates"].values()) for row in rows), "actions": rows,
-            "main_decision_reference": ".codestable/roadmap/workbench-prototype-migration/round2-main-decisions.md",
+            "main_decision_reference": "tests/fixtures/workbench_contracts/round2-main-decisions.md",
             "visual_boundary": "Main reviewed only the eight named column-width screenshots. Keep other V pending; no family/action-wide visual promotion."}
 
 

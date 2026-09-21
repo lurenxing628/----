@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-FOLDER = ROOT / ".codestable/roadmap/workbench-prototype-migration/acceptance-master"
+FOLDER = ROOT / "tests/fixtures/workbench_contracts/acceptance-master"
 
 
 def test_frozen_denominator_and_explicit_action_ids():

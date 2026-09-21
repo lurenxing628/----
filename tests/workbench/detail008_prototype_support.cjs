@@ -9,7 +9,7 @@ const assert = require('node:assert/strict');
 const sha = value => crypto.createHash('sha256').update(value).digest('hex');
 const repo = path.resolve(__dirname, '../..');
 const origin = path.join(repo, '\u524d\u7aef\u8bbe\u8ba1');
-const roadmap = path.join(repo, '.codestable/roadmap/workbench-prototype-migration');
+const roadmap = path.join(repo, 'tests/fixtures/workbench_contracts');
 const json = (file, value) => fs.writeFileSync(file, JSON.stringify(value, null, 2) + '\n');
 
 function snapshot(root, bytes = false) {

@@ -355,7 +355,7 @@ def test_fingerprint_entry_changes_when_output_result_files_change(tmp_path):
         "scripts/example.py",
         "tools/example.py",
         "tests/test_example.py",
-        ".codestable/tools/example.py",
+        "tools/document_metadata/example.py",
         "audit/example.py",
         "pyproject.toml",
         "ruff.toml",

@@ -10,7 +10,7 @@ from tests.workbench.system_restore_entrypoint_support import wait_for
 
 
 def test_final_operations_action_denominator_matches_all_planning_families():
-    planning = json.loads((REPO / ".codestable/roadmap/workbench-prototype-migration/workbench-capabilities.json").read_text())
+    planning = json.loads((REPO / "tests/fixtures/workbench_contracts/workbench-capabilities.json").read_text())
     expected = {row["id"] for row in planning["capabilities"] if row["workstream"] in ("dashboard", "system")}
     assert set(FAMILIES) == expected and len(expected) == 33
     rows = actions()

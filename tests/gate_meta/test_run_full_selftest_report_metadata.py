@@ -15,7 +15,7 @@ from tests._support.paths import REPO_ROOT
 
 def _load_module():
     repo_root = REPO_ROOT
-    module_path = repo_root / ".limcode" / "skills" / "aps-full-selftest" / "scripts" / "run_full_selftest.py"
+    module_path = repo_root / "scripts"/ "run_full_selftest.py"
     spec = importlib.util.spec_from_file_location("aps_run_full_selftest", module_path)
     assert spec and spec.loader
     module = importlib.util.module_from_spec(spec)

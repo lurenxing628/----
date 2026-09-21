@@ -1,0 +1,574 @@
+roadmap: scheduler-global-optimizer
+created: 2026-06-26
+
+items:
+  - slug: optimizer-quality-efficiency-20260912
+    description: 完成2026-09-12已授权算法能力和效率清单，含独立量尺、并行实现及统一实测
+    depends_on: [optimizer-integration-auto-selection]
+    status: done
+    feature: 2026-09-12-algorithm-capability-efficiency
+    minimal_loop: false
+    notes: A-K实施与定向验收完成，最终20+8及native20通过、两次5000工序容量通过；详见2026-09-12-quality-efficiency.md。按用户要求停止追加长跑，最终整仓门禁未完成，不升级历史ALNS状态，不声称clean/full proof。
+
+  - slug: optimizer-proof-harness
+    description: 建立 tiny oracle、lower bound、best-known 和不写 tracked evidence 的 benchmark check 模式
+    depends_on: []
+    status: done
+    feature: 2026-06-26-optimizer-proof-harness
+    minimal_loop: true
+    notes: 最小闭环；gap 必须绑定 objective 和 metric；public benchmark 输出不能含内部 id/sample
+
+  - slug: diagnostic-public-id-boundary-fix
+    description: 修复诊断页展示 op 节点、数字 op_id 和内部样本的 public 边界问题
+    depends_on: []
+    status: done
+    feature: 2026-06-26-diagnostic-public-id-boundary-fix
+    minimal_loop: false
+    notes: 已完成前置治理；public algo/graph/candidate/export/OperationLogs 已收紧为白名单摘要；diagnostics 可保留内部调试但不得进入普通页面、HTML、导出、OperationLogs public 投影；新增 trace/attempt/move/benchmark 样本前必须继续复用该投影边界
+
+  - slug: optimizer-search-report-contract
+    description: 给 optimizer 增加 stop_reason、seed、搜索统计、候选拒绝原因和 trace 合同
+    depends_on: [optimizer-proof-harness, diagnostic-public-id-boundary-fix]
+    status: done
+    feature: 2026-06-27-optimizer-search-report-contract
+    minimal_loop: false
+    notes: baseline fallback、multi-start、optional OR-Tools warm-start failure、candidate_rejected、local search skipped/noop、time_budget、iteration_limit、no_improvement 都进入 OptimizationSearchReport；public 只投安全摘要，raw attempts/fingerprint 留 diagnostics；完整 candidate profile 与完整 CandidateFingerprint 仍留给 item 4/5
+
+  - slug: optimizer-candidate-profile-contract
+    description: 定义非 OR-Tools 搜索 profile，收紧配置校验和非法参数 fail-loud 合同
+    depends_on: [optimizer-search-report-contract]
+    status: done
+    feature: 2026-06-28-optimizer-candidate-profile-contract
+    minimal_loop: false
+    notes: 已落地 CandidateProfile 合同(core/services/scheduler/run/optimizer_candidate_profile.py)并接入 OptimizationSearchReport.candidate_profile；configured/effective time budget 与 max_iterations 区分、迭代 [200,5000] 系统钳制如实写 system_limit_applied/system_limit_reason/iteration_limit_source；derive_iteration_limits 作为迭代上限单一真相源,local search 改为共用(零行为变化);未知 profile/repair/acceptance/neighborhood 与非法 budget 一律 fail-loud(与 strict 无关);profile_public/profile_diagnostics 白名单分层 + size guard 最小摘要保留 profile_public;seed 如实标 version 派生。item 4 初始落地时只覆盖 baseline/multi_start_local_search、repair=sgs、acceptance=improve_only 与旧 swap/insert/block 邻域；当前生产能力已由 item 6/7/8 扩展为 grasp_ig/vns_sa、六个业务邻域 + SGS 专用 sgs_dispatch_rule，以及 improve_only/threshold/record_to_record/simulated_annealing acceptance，未知值仍 ValidationError。未做 item 5 完整 CandidateFingerprint。
+
+  - slug: distinct-candidate-fingerprint-contract
+    description: 定义候选指纹、去重计数、same-fingerprint 拒绝和 improved 判定合同
+    depends_on: [optimizer-candidate-profile-contract]
+    status: done
+    feature: 2026-06-28-distinct-candidate-fingerprint-contract
+    minimal_loop: false
+    notes: 已落地 CandidateFingerprint 合同(core/services/scheduler/run/optimizer_candidate_fingerprint.py);decision_fingerprint 覆盖 objective/strategy/params/dispatch/batch_order/resource/seed/mutable_scope,output_fingerprint 覆盖正式解码结果数量、工序-资源-时间签名、summary 与当前 objective score;distinct_candidates/accepted_distinct_candidates 改为按 decoded_output 去重并在 public/minimal 摘要声明口径;improved 显式要求 fingerprint_changed + score_strictly_better + acceptance_passed(acceptance=improve_only);same_as_parent/same_as_seen 记 same_fingerprint 拒绝,不算 improvement;hash 和内部输入只进 diagnostics,public/OperationLogs/size guard 不透传内部 id 或 fingerprint hash。
+
+  - slug: grasp-ig-candidate-construction
+    description: 用 GRASP 和 Iterated Greedy 生成更多可行起点，仍由现有 SGS 落位
+    depends_on: [distinct-candidate-fingerprint-contract]
+    status: done
+    feature: 2026-06-28-grasp-ig-candidate-construction
+    minimal_loop: false
+    notes: 已落地 GRASP/IG 候选构造；默认 improve profile 扩展为 grasp_ig，candidate_strategy_families=multi_start/grasp/iterated_greedy；GRASP/IG 只生成批次顺序候选并通过 batch_order 派工解码，不保留不可达的 sgs 候选分支；候选接入 CandidateProfile/SearchReport/CandidateFingerprint，distinct 继续按 decoded_output 去重，same-fingerprint 不算 improved；没有真实 best acceptance event 时 acceptance_passed=false 且 improved=false；public/OperationLogs/size guard 只投安全摘要。
+
+  - slug: business-neighborhood-registry
+    description: 建立关键链、延期批次、瓶颈设备、换型块、资源替换、时间窗 repair 的邻域注册表
+    depends_on: [distinct-candidate-fingerprint-contract]
+    status: done
+    feature: 2026-06-28-business-neighborhood-registry
+    minimal_loop: false
+    notes: 已落地业务邻域 registry 与 NeighborhoodMove 合同；支持 critical_chain/tardy_window/bottleneck_machine/changeover_block/resource_alternative/time_window 六个业务邻域，另有 SGS 专用 sgs_dispatch_rule 用于 dispatch_mode=sgs 时切换派工规则；旧 swap/insert/block 不在正式 registry 和 profile 白名单里；默认 improve profile 的 configured_neighborhoods 为六个业务邻域，实际执行 effective_neighborhoods 需按当前派工模式报告，SGS 时只能是 sgs_dispatch_rule，未知邻域 ValidationError fail-loud；local search 通过 registry 生成 move 后仍调用现有正式解码链，SearchReport 记录 neighborhood_moves diagnostics 与 neighborhood_summary public 小摘要；no-op 记 noop_neighbor，fallback 必写 fallback_reason；public/OperationLogs/size guard 不透传 raw move、内部 op/resource id、fingerprint hash。未做 VNS/SA acceptance，未做 ALNS。
+
+  - slug: vns-sa-local-search-upgrade
+    description: 把现有 local search 升级为 VNS 和 SA 后处理，先做轻量可复现版本
+    depends_on: [grasp-ig-candidate-construction, business-neighborhood-registry]
+    status: done
+    feature: 2026-06-28-vns-sa-local-search-upgrade
+    minimal_loop: false
+    notes: 已落地 VNS/acceptance 局搜升级；新增 current/best 分离状态，非改进候选可按 threshold/record_to_record/simulated_annealing 接受为 current，但 best 只在 acceptance 通过、score 严格更优、output_fingerprint 非 parent 且非 seen 时更新；CandidateProfile 默认 improve 扩展为 vns_sa，acceptance 白名单扩为 improve_only/threshold/record_to_record/simulated_annealing，未知 acceptance 继续 ValidationError fail-loud；SearchReport 新增 acceptance_events/acceptance_summary、vns_events/vns_summary，并把 acceptance_passed 改为真实 best acceptance 事件，不再用 accepted_candidates>1 代理；public/OperationLogs/size guard 只投 acceptance/VNS 安全计数摘要，不泄漏 raw random draw、fingerprint hash、raw move 或内部 op/resource id。未做 ALNS。
+
+  - slug: graph-ready-local-search-contract
+    description: 定义工序图就绪队列派工的局部搜索合同、候选口径和 public/diagnostics 边界
+    depends_on: [vns-sa-local-search-upgrade]
+    status: done
+    feature: 2026-06-29-scheduler-global-optimizer-items-9-13
+    minimal_loop: false
+    notes: 已落地图 ready候选搜索合同；生产只消费既有 graph_ready_context 和 node_metrics_by_op_id，不重跑图主链；候选只改变图优先级权重和 SGS ready 排序，正式时间仍由 SGS 解码；严格校验 schedulable_op_ids/fixed_op_ids/fixed_op_sources_by_op_id/predecessor/successor/sort_key/graph_priority_key/node_metrics，图不可用、有环、缺字段、非法 key、缺指标、重复 output fingerprint 均有 skipped/candidate_rejected 或 strict fail-loud 证据；旧 graph_ready_requires_graph_neighborhood 口径已替换为 graph_ready_uses_graph_candidate_phase
+
+  - slug: graph-ready-priority-tuning
+    description: 围绕关键路径、后续影响、下游工时和瓶颈资源做工序图权重多起点比较
+    depends_on: [graph-ready-local-search-contract]
+    status: done
+    feature: 2026-06-29-scheduler-global-optimizer-items-9-13
+    minimal_loop: false
+    notes: 已落 balanced/critical_path_first/successor_fanout_first/downstream_work_first/bottleneck_relief/critical_bottleneck/fanout_downstream/bottleneck_downstream/graph_neutral 九组默认图权重；OptimizationSearchReport.candidate_profile 记录 max_weight_profiles、截断状态、权重 profile 名称和 failed_ops/objective_score/best_fingerprint_changed/runtime_ms/candidate_origin 择优顺序；CandidateFingerprint 按正式 SGS 输出去重，同输出记 same_fingerprint；FJSP 中门禁通过 benchmark_optimizer_medium_gate.py --run 覆盖
+
+  - slug: optimizer-integration-auto-selection
+    description: 把 GRASP/IG/VNS/SA 和工序图候选接回 OptimizationOutcome、候选比较和 summary
+    depends_on: [diagnostic-public-id-boundary-fix, vns-sa-local-search-upgrade, graph-ready-priority-tuning]
+    status: done
+    feature: 2026-06-29-scheduler-global-optimizer-items-9-13
+    minimal_loop: false
+    notes: 已通过 OptimizerRuntime.run_graph_ready_candidates 和 run_heuristic_candidate_phases 接回 optimize_schedule；候选比较统一按 failed_ops/objective_score/best_fingerprint_changed/runtime_ms/candidate_origin，并已覆盖 GraphReady、GRASP/IG、VNS/SA 的 best 更新；重复 output_fingerprint 只记 same_fingerprint，不采纳；graph_ready profile 接入 public/profile_diagnostics 白名单，public 只展示小摘要，完整 attempts/fingerprint/图上下文仍留 diagnostics 且普通模板不直渲染；aps-three-gap-directions 的 candidate_id/source_table/plan_role 等 public 禁止字段未新增
+
+  - slug: benchmark-ratchet-quality-gate
+    description: 把 tiny oracle、非劣化阈值、稳定性统计纳入轻/中/长三层门禁
+    depends_on: [optimizer-integration-auto-selection]
+    status: done
+    feature: 2026-06-29-scheduler-global-optimizer-items-9-13
+    minimal_loop: false
+    notes: 已新增 benchmark-ratchet-baseline.json、benchmark_optimizer_ratchet.py、benchmark_optimizer_medium_gate.py 和 required 测试 test_optimizer_benchmark_ratchet_gate.py；轻门禁覆盖 tiny proof + 图异常合同；当前 tracked baseline 和 actual snapshot 均为 dirty_worktree=true 时，--check-baseline 会按合同失败并返回 unbound_dirty_worktree，不能写成通过证明；中门禁实际跑通 FJSP mk01、SMTWT 250x2 模式和 SGS 大资源池，报告默认写 ignored long_gate；FJSP 原 700 行脚本已按数据镜像/装载/运行/报告拆成支撑模块，避免为了门禁硬压行数；FJSP makespan 仍只作技术参考，不证明 APS 业务目标全局最优
+
+  - slug: long-run-tuning-evidence
+    description: 建立工序图权重、不同 seed、不同基准集的长跑统计证据和归档口径
+    depends_on: [benchmark-ratchet-quality-gate]
+    status: done
+    feature: 2026-06-29-scheduler-global-optimizer-items-9-13
+    minimal_loop: false
+    notes: 已新增 benchmark_optimizer_long_run.py，默认写 evidence/QualityGate/long_gate/optimizer_benchmark/ ignored 目录；长跑输出包含 10 seed、best_score、failed_ops、均值/最差值/标准差、重复候选率、候选拒绝率和 same_fingerprint 统计；本轮 --no-write 复核通过，写盘证据默认只进 ignored long_gate；显式写 tracked evidence 时仍需重新 clean proof；后续 ALNS 继续复用同一证据口径
+
+  - slug: benchmark-reference-diagnostics-baseline
+    description: 补齐 GraphReady v2 前的同目标下界、不可比诊断和换型基准准备口径
+    depends_on: [long-run-tuning-evidence]
+    status: done
+    feature: 2026-06-29-graph-ready-v2-hardening
+    minimal_loop: false
+    notes: 已落地 reference_diagnostics；只补量尺和诊断，不重复 item 3/5/7/8 已有 noop/no_improvement/same_fingerprint/improved 合同；Jackson 单机抢占下界只能在同目标同指标可声明时进入 gap，否则标 not_comparable；WTSDS/Cicirello/SDST 换型基准已定义装载、评分、脱敏和默认 stdout/ignored 口径，不下载 tracked 数据；graph-ready-v2-comparison-baseline-contract 已消费本项输出
+
+  - slug: graph-ready-v2-comparison-baseline-contract
+    description: 建立 GraphReady v2 修改前的多算法同台比较基准，补齐算法名/版本/seed 维度的 ratchet key
+    depends_on: [benchmark-reference-diagnostics-baseline]
+    status: done
+    feature: 2026-06-29-graph-ready-v2-hardening
+    minimal_loop: false
+    notes: 已建立同一 case/seed/time_budget/objective 下 greedy、local_search、grasp_ig、graph_ready_v1、graph_ready_v2_no_repair、graph_ready_v2_with_repair 的 compare_algorithms 基准；portfolio_all 只作为事后上界行，必须标 comparison_semantics=posthoc_upper_bound，普通胜平负必须标 not_comparable，不能伪装成同预算算法；ratchet key 包含 case_group、case_slug、algorithm_profile、algorithm_version、seed，禁止继续用只含 case 的 key 承载多算法比较；当前对比可在脏工作区以 unbound_dirty_worktree 运行，但不能包装成 clean proof；默认输出 stdout 或 ignored evidence，显式写 tracked evidence 后必须重新跑最新 HEAD 质量门禁
+
+  - slug: graph-ready-v2-objective-feature-contract
+    description: 为 GraphReady v2 定义 due pressure、slack、saveability、remaining work、processing time 和 sacrifice penalty 等目标感知特征
+    depends_on: [graph-ready-v2-comparison-baseline-contract]
+    status: done
+    feature: 2026-06-29-graph-ready-v2-hardening
+    minimal_loop: false
+    notes: 已落地 due_pressure、slack_hours、remaining_work_hours、remaining_due_burden_hours、due_budget_hours、saveability、processing_time_rank、sacrifice_penalty、critical_ratio 等目标感知特征；只消费已有 graph_ready_context、node_metrics_by_op_id、批次交期和正式 SGS 可见输入，不重跑图主链；min_overdue 下表达“批次是否还可救、单位剩余工时能救多少交付风险、容量不足时谁应后置牺牲”；批次 due_date 是合法可空业务字段，空交期不再让 v2 整池静默退化成 v1 成功，而是生成 no_due_placeholder 特征并在交期型公式中后置；非空非法交期、缺必要特征、非法数字和 NaN/Inf 均 fail-loud；所有特征进入排序前做 rank/percentile 归一化，避免分钟数裸加压倒其他信号
+
+  - slug: graph-ready-v2-bottleneck-resource-score
+    description: 将 bottleneck_machine_score 升级为残余容量、分摊负荷、最小候选负荷、灵活性降权和交期门控的瓶颈资源分
+    depends_on: [graph-ready-v2-objective-feature-contract]
+    status: done
+    feature: 2026-06-30-graph-ready-v2-production-capacity
+    minimal_loop: false
+    notes: 2026-06-29 第 9-13 项已提前把“候选资源分摊负荷、最小候选负荷、可选资源灵活性降权”落入生产 `bottleneck_machine_score` 基础图指标，并用轻门禁锁定 busy/light/flex 顺序；本轮补齐 GraphReady v2 残余容量特征，按交期窗口统计日历可用工时，扣除设备停机和 seed_results 中冻结/执行态/已排片段占用；新增 residual_capacity_hours/window/blocked/ratio/pressure 与 candidate_machine_count，旧 `bottleneck_machine_score` 不改写；交期压力计算区分 due_deadline_hours 与 due_budget_hours，内制工序有日历时用窗口产能(毛,未扣占用)小时，外协交付周期继续用自然小时(毛/净口径决策见 docs/dev/decisions/2026-06-30-due-budget-window-vs-residual/)，避免把内制净工时、外协自然日和交期自然小时裸混成同一口径；bottleneck_on/release/due_gate 结合残余容量压力、候选设备灵活性、due_pressure 和 saveability，交期不紧或不可救时不会让瓶颈分越过主交期信号
+
+  - slug: graph-ready-v2-candidate-portfolio
+    description: 建立 GraphReady v2 候选家族，覆盖目标规则、图交期混合、瓶颈交期混合、长尾牺牲和小扰动候选
+    depends_on: [graph-ready-v2-bottleneck-resource-score]
+    status: done
+    feature: 2026-06-30-graph-ready-v2-production-capacity
+    minimal_loop: false
+    notes: 已保留旧九组图权重作为 v1 对照，并生成 EDD、SPT、min_slack、critical_ratio、ATC-like、saveability、sacrifice_long、graph_due_hybrid、bottleneck_due_gated、micro_perturbation 等候选；候选逻辑抽象为“保护更多可准交批次、必要时牺牲长尾”，不写死当前 4 工序样例；v2 公式不再让 ATC-like、saveability、graph_due_hybrid、bottleneck_due_gated 等大面积共享 sacrifice_penalty 首键，基准夹具锁住 10 个 v2 公式至少产生 6 种 ready 排序；小扰动只在主交期目标相同时作为平局信号，seed 派生且可复现；候选仍通过正式 SGS，因此不能绕过前后置、资源资格、冻结或执行态保护；默认 GraphReady 候选 profile 为 19 个（9 个 v1 对照 + 10 个 v2），若报告口径把 baseline 也算入 evaluated_candidates，常见展示为 20；配置上限仍为 60，超预算报告截断原因
+
+  - slug: graph-ready-v2-elite-local-repair
+    description: 对 GraphReady v2 前 K 个候选做轻量局部修补，修复接近好解但差一两步的排序
+    depends_on: [graph-ready-v2-candidate-portfolio]
+    status: in_progress
+    feature: null
+    minimal_loop: false
+    notes: |-
+      生产落地方向不是新增独立“剪枝算法”，而是在 GraphReady v2 elite repair 中先落最小生产级剪枝策略包。
+
+      目标：
+      - 只对 GraphReady v2 已正式 SGS 解码并进入候选池的前 K 个精英候选做轻量 repair。
+      - repair 只能生成 batch_order / graph priority / repair request 这类候选决策，不能直接写 ScheduleResult、start_time、end_time 或正式计划表。
+      - 每个 repair 邻居必须重新走正式 SGS 解码、compute_metrics、objective_score、CandidateFingerprint、candidate_is_preferred 和 SearchReport。
+      - 只有正式 objective score 严格更好、output_fingerprint 非 parent/seen、acceptance 通过时，才能采纳为 graph_ready_v2_repaired。
+
+      配置合同：
+      - graph_ready_optimization.elite_repair.enabled: bool
+      - graph_ready_optimization.elite_repair.top_k: 正整数，默认 3，系统上限建议 8
+      - graph_ready_optimization.elite_repair.max_neighbors_per_elite: 正整数，默认 8，系统上限建议 32
+      - graph_ready_optimization.elite_repair.time_budget_ms: 正整数，默认从 optimizer 剩余预算派生，必须独立报告
+      - graph_ready_optimization.elite_repair.neighbor_generators: adjacent_swap / single_insert / tardy_boundary_move
+      - graph_ready_optimization.elite_repair.pruning_strategy: elite_top_k + duplicate_decision + budget_guard
+
+      2026-09-14 接续实现：profiles、elite repair、IG 以同一截止轮转，取消图阶段固定 repair 25% 预留；60 仅限制 profiles + repair，IG 独立计数。IG 分成每试解可暂停的工作单元，父解接力同步批序、资源与 profile；续排候选通过全量业务摘要和 score 等价核对后才可发布。旧 time_share/time_ceiling 草案已被本日技术决定取代。历史实测仍保留于 ff-note，新版质量验收另存，不能沿用旧版“无退化”结论。见 docs/maintenance/features/2026-09-14-graph-ready-iterated-greedy/。
+
+      本次接手快照对照已完成：SMTWT250的3s为208好42平0差，5s为207好43平0差；e2e20为2好18平0差，完整分数逐例比较。最佳分数层起点和独立随机流之外，符合单工序/同资源条件的min_overdue新增经正式SGS验证的有界交期起点。计时源码、最终收尾等价拆分与定向回归分开绑定，见本功能acceptance；按用户要求未跑全门禁，不构成整条路线图或clean proof。
+
+      候选空间口径：
+      - candidate_space_total = top_k 精英候选在启用 neighbor_generators 后理论邻居数；无法精确时写 upper_bound 或 unknown。
+      - generated_candidates = 实际生成的 repair 邻居数。
+      - evaluated_candidates = 实际重新走正式 SGS 解码的 repair 邻居数。
+      - pruned_candidates = 已生成但因 duplicate_decision、same elite no-op、scope filter 等原因未解码的邻居数。
+      - skipped_by_budget = 因 top_k、max_neighbors_per_elite、time_budget_ms 或全局 deadline 未生成/未评估的邻居数；不能写成证明型剪枝。
+
+      必填报告字段：
+      - repair_enabled
+      - repair_top_k
+      - repair_max_neighbors_per_elite
+      - repair_time_budget_ms
+      - repair_candidate_space_total
+      - repair_candidate_space_total_status
+      - repair_generated_candidates
+      - repair_evaluated_candidates
+      - repair_pruned_candidates
+      - repair_skipped_by_budget
+      - repair_rejection_summary
+      - repair_pruning_report
+      - repair_best_origin
+      - repair_accepted
+      - repair_status: not_run / skipped_no_elite / skipped_by_budget / no_strict_improvement / strict_improvement / all_candidates_rejected
+
+      邻居规则：
+      - adjacent_swap: 只交换 elite decoded order 中相邻批次/相邻 ready 决策，重复 decision_key 必须跳过。
+      - single_insert: 只移动 top tardy / due pressure / critical ready 相关批次，不能全量枚举所有插入位置。
+      - tardy_boundary_move: 只围绕延期边界、可救批次、长尾牺牲批次生成少量候选。
+      - 所有邻居都必须可复现，seed 来自 optimizer version 派生。
+
+      接受规则：
+      - repair 后 score 必须严格小于当前 best score。
+      - output_fingerprint 必须不同于 parent 和 seen。
+      - same_fingerprint 只能进入 rejected/same_fingerprint，不得算 improvement。
+      - repair 失败必须 candidate_rejected 或 fail-loud，不能返回原方案假装成功。
+      - 如果只是预算没跑，必须写 skipped_by_budget，不能写 pruned_by_bound。
+
+      public/diagnostics 边界：
+      - public 只展示 repair 是否启用、top_k、评估数、剪枝数、预算跳过数、是否采纳、中文拒绝摘要。
+      - diagnostics 可保留 rule_trace，但不得把 raw op_id/resource_id/fingerprint hash 暴露到 public、HTML、导出或 OperationLogs public 投影。
+
+      测试验收：
+      - 新增或扩展 test_optimizer_graph_ready_v2_elite_repair_contract.py。
+      - 覆盖 top_k 截断、max_neighbors_per_elite 截断、time_budget_ms 截断。
+      - 覆盖 duplicate decision 被 pruned/rejected，不能进入 evaluated_candidates。
+      - 覆盖 same output fingerprint 被 rejected，不能算 improvement。
+      - 覆盖 repair 候选必须调用正式 schedule_fn / SGS 解码，不能直接构造 ScheduleResult。
+      - 覆盖 score 不严格变好不采纳。
+      - 覆盖 public summary 不泄漏内部 id 或 fingerprint hash。
+      - 覆盖 benchmark_support_only_not_core 口径删除或替换为生产 core 口径后，才能置为 done。
+
+      当前状态：
+      - benchmark 支撑里已有 adjacent swap 与 single insert 的确定性 repair 脚手架，并能区分 graph_ready_v2_no_repair / graph_ready_v2_with_repair。
+      - 生产 core 仍未落地 top-K elite、max_neighbors_per_elite、time_budget_ms、tardy_boundary_move、repair pruning report 和正式 SGS 接受链。
+      - 本项完成前不得把 benchmark repair 结果包装成生产能力。
+
+  - slug: graph-ready-v2-portfolio-integration
+    description: 把 GraphReady v2 作为候选来源接入统一候选池，与 greedy、local_search、GRASP/IG、GraphReady v1 共同择优
+    depends_on: [graph-ready-v2-elite-local-repair]
+    status: in_progress
+    feature: null
+    minimal_loop: false
+    notes: |-
+      本轮已把 GraphReady v2 no-repair 候选池接入生产 GraphReady 正式 profile，不再依赖 benchmark 的 profiles_override/profile_summary_override；生产路径从 CandidateProfile.candidate_construction 选择 objective_aware_portfolio，经 run_graph_ready_candidates 补 v2 特征，再走正式 SGS 和统一 candidate_is_preferred/output_fingerprint 去重，胜出来源为 graph_ready_v2_generated；仍未完成“与 GRASP/IG、VNS/SA 同一生产候选池并行择优”和 graph_ready_v2_repaired 生产来源，因此保持 in_progress；public 只展示候选族计数、胜出来源和中文摘要，完整 attempts、指纹、内部节点/工序/资源 id 只能进 diagnostics。
+
+      剪枝/repair 集成补充：
+      - graph_ready_v2_repaired 只能作为统一候选池中的一个 candidate_origin，不新增独立算法入口。
+      - repaired candidate 必须和 greedy、local_search、grasp_ig、graph_ready_v1、graph_ready_v2_generated 使用同一 candidate_is_preferred / output_fingerprint 去重 / search_report 口径。
+      - portfolio integration 只负责接入和择优，不负责把 repair 命中率包装成独立算法胜负。
+      - 如果组合池最优来自 repaired candidate，public 可以写“统一候选池采纳 GraphReady v2 修补候选”；不能写“剪枝算法证明优于其他算法”。
+      - portfolio_all 仍只能作为 posthoc upper bound / not_comparable，不得因为 repair/pruning 接入而变成同预算普通算法。
+
+  - slug: graph-ready-v2-comparative-ratchet-gate
+    description: 建立 GraphReady v2 修改后的轻/中/长对比门禁，和当前基准及其他算法做胜平负统计
+    depends_on: [graph-ready-v2-portfolio-integration]
+    status: in_progress
+    feature: null
+    minimal_loop: false
+    notes: |-
+      本项只负责比较门禁和反假证明，不实现剪枝算法本体。
+
+      已有门禁继续保留：
+      - benchmark_optimizer_ratchet.py --check-baseline
+      - benchmark_optimizer_compare_algorithms.py --check-baseline
+      - benchmark_optimizer_long_run.py --seeds 10 --no-write
+      - benchmark_optimizer_medium_gate.py --run
+      - portfolio_all 只能报告 posthoc_upper_bound / not_comparable，不能作为同预算普通胜负。
+      - dirty_worktree / unbound_dirty_worktree 证据不能冒充 clean proof。
+      - 缺算法、缺指标、目标不可比时必须失败或标 not_comparable。
+
+      剪枝补充门禁：
+      - pruning_enabled=true 时，必须存在 pruning_report 或阶段级 pruning summary。
+      - evaluated_candidates 必须等于真实正式 SGS/Greedy 解码次数，不能把 pruned/skipped 候选算进去。
+      - pruned_candidates 必须有 pruned_by_rule / reason summary。
+      - skipped_by_budget 必须单独报告，不能计入 pruned_by_bound。
+      - 如果出现 pruned_by_bound > 0，必须同时报告 objective_name、bound_metric、objective_compatibility=same_objective；否则门禁失败或强制 not_comparable。
+      - 如果 bound_metric=makespan 且 objective_name 属于 min_overdue/min_tardiness/min_changeover，必须标 not_comparable，不能进入 gap/improved 证明。
+      - same_fingerprint_rejected 只能来自正式 decoded output fingerprint，不能在未解码候选上伪造。
+      - duplicate_decision_pruned 和 same_fingerprint_rejected 必须分开计数。
+      - repair/pruning 采纳成功必须同时满足 strict score improvement、fingerprint changed、acceptance passed。
+      - no-write / ignored evidence 可以做调研，不能写成 tracked clean proof。
+      - dirty proof、预算未评估、不可比下界三者任一出现时，public 必须明确说明证明状态受限。
+
+      新增测试建议：
+      - benchmark gate fixture: pruned_by_bound 使用 makespan 去证明 min_overdue 时必须失败或 not_comparable。
+      - benchmark gate fixture: skipped_by_budget 被写成 proof pruning 时必须失败。
+      - benchmark gate fixture: dirty_worktree=true 且报告 clean_proof=true 时必须失败。
+      - benchmark gate fixture: same_fingerprint_rejected 计入 improvement 时必须失败。
+
+      当前状态：
+      - 本轮已跑 benchmark_optimizer_ratchet.py --check-baseline、benchmark_optimizer_compare_algorithms.py --check-baseline --allow-dirty-proof --no-write、benchmark_optimizer_long_run.py --seeds 10 --no-write、benchmark_optimizer_medium_gate.py --run。
+      - v2_no_repair 在 GraphReady 10 seed 基准中对 greedy/local_search 为 10/0/0，对 grasp_ig 为 5/5/0，对 graph_ready_v1 为 10/0/0，均值 primary_delta 分别为 -2.0/-2.0/-0.6/-1.0。
+      - portfolio_all 是事后上界，只能报告差距、来源和 not_comparable，旧 0/10/0 不能作为同预算普通胜负。
+      - 本轮证据为 dirty_worktree/unbound_dirty_worktree，且长跑脚本仍是旧 graph_ready 长跑，未建立最新 HEAD clean comparative ratchet baseline，因此保持 in_progress。
+
+  - slug: alns-graph-ready-bridge-contract
+    description: 定义工序图闭环产物如何喂给自适应大邻域拆修搜索
+    depends_on: [graph-ready-v2-comparative-ratchet-gate]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: |-
+      只消费第 9-13 项和 GraphReady v2 已校验的图摘要、目标感知 ready rank、瓶颈资源分和多算法 ratchet baseline，不重新跑另一套图主链；桥接结果只能影响 destroy scope/repair priority，不能直接写可变工序时间；拆修搜索后续必须复用同一自动选择和 benchmark 矩阵。
+
+      剪枝桥接补充：
+      - GraphReady v2 的 ready rank、elite repair 结果和 pruning_report 只能作为 ALNS destroy scope / repair priority 的输入摘要。
+      - 桥接层不得重新解释 GraphReady 剪枝为数学证明。
+      - 桥接层不得把 graph_ready_v2_repaired 的胜出结果拆成单个剪枝规则的独立算法胜利。
+      - 进入 ALNS 的只应是脱敏后的候选摘要、rank、scope 和统计字段，不传 raw graph 对象或 public 禁止 id。
+
+      2026-09-14 接续实现：图阶段 IG 已有时间窗、资源窗、迟到/随机三种生成器，规模随原位、拒绝、变差与中断调整，成功续用；有界多样性解池、停滞换起点和指数退火已接入。前缀复用采用输入绑定的 SGS 状态检查点，不向 seed_results 注入可变工序时间；最终候选仍走严格正式择优。该实现是此桥接的可复用基础，不代表通用 ALNS operator/reward 和整条路线图已经验收完成。
+
+      千工序已测真实IG：同一源码和seed、声明末尾100工序局部时间窗、30秒预算，checkpoint关闭完成0轮，开启完成3轮（2轮非idle），两臂完整score相同且无超时。分母为0不报告迭代倍数；此前含捕获1.86倍为续排相对全排的组件测量，新版检查较旧checkpoint多约4%成本，两种口径均不能外推为默认全局IG的一般提速。
+
+  - slug: alns-partial-repair-contract
+    description: 定义自适应大邻域拆修搜索的局部拆修 allowed-op、payload validation 和执行态保护复用合同
+    depends_on: [alns-graph-ready-bridge-contract]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: |-
+      局部 repair 结果必须复用正式排产守门链，不能只靠拆修搜索内部校验。
+
+      剪枝/repair 合同补充：
+      - pruning 只允许减少 repair request 的候选数量，不能减少 allowed-op、payload validation、执行态保护检查。
+      - 被剪掉的候选必须保留 reason；被评估的候选必须走正式 SGS repair adapter。
+      - mutable operations 不允许通过 seed_results 注入带时间结果；seed_results 只能放保护/执行态固定片段。
+      - repair_failed 必须 rejected/failed，不能返回原方案假装 repair 成功。
+      - 局部 repair 的 pruned/evaluated/rejected/skipped 计数必须进入 OptimizationPruningReport。
+
+  - slug: alns-state-operators-core
+    description: 建立自适应大邻域拆修搜索 state、destroy/repair operator 接口、operator reward 和权重更新
+    depends_on: [alns-partial-repair-contract]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: |-
+      先做纯 Python 外壳，不引入 alns/job-shop-lib 包、NumPy/Matplotlib 或重依赖；ALNSOperatorResult 字段必须在本项启动时定稿，非法 score/repair 输出/seed_results 必须 fail-loud。
+
+      剪枝合同必须在本项一并定稿，但不新增独立“剪枝算法”路线。
+
+      新增核心结构：
+      - ALNSState
+      - ALNSOperator
+      - ALNSOperatorResult
+      - ALNSCandidateDecision
+      - ALNSPruningReport
+      - PruningRuleDecision
+      - PruningRuleTrace
+
+      ALNSOperatorResult 必填字段：
+      - schema_version
+      - operator_name
+      - operator_version
+      - destroy_scope
+      - repair_request
+      - candidate_decisions
+      - generated_candidates
+      - evaluated_candidates
+      - pruned_candidates
+      - rejected_candidates
+      - skipped_by_budget
+      - pruning_report
+      - reward_delta
+      - reward_reason
+      - objective_score_before
+      - objective_score_after
+      - accepted
+      - accepted_as: none / current / best
+      - safety_status
+
+      PruningRuleDecision 字段：
+      - rule_id
+      - rule_version
+      - phase
+      - operator_name
+      - decision: keep / prune / reject / skip_by_budget
+      - reason
+      - safety_status: safe_exact / safe_duplicate / safe_feasibility / heuristic_scope_reduction / budget_only / not_comparable / unsafe_disallowed
+      - objective_name
+      - objective_compatibility
+      - candidate_space_before
+      - candidate_space_after
+      - generated_delta
+      - pruned_delta
+      - skipped_delta
+      - diagnostics
+
+      计数规则：
+      - generated_candidates 是 operator 明确生成出来的候选数。
+      - evaluated_candidates 是正式 SGS/Greedy 解码次数。
+      - pruned_candidates 是生成后、正式解码前因规则剪掉的候选数。
+      - rejected_candidates 是生成或评估后被合同拒绝的候选数。
+      - skipped_by_budget 是因预算未生成或未评估的候选数，不能算 proof。
+      - duplicate decision 可 pre-evaluation prune；same output fingerprint 只能 post-evaluation reject，除非有严格 memoized equivalence 证明。
+
+      bound / dominance 规则：
+      - pruned_by_bound 只能用于 same_objective / same_metric / same_model。
+      - dominance 必须声明支配关系字段和目标兼容性；缺任何字段时 safety_status=heuristic_scope_reduction 或 not_comparable。
+      - 不允许用 makespan 下界剪掉 min_overdue/min_tardiness/min_changeover 候选。
+      - 不允许用预算、经验、历史命中率伪装成 bound proof。
+
+      operator reward 规则：
+      - reward 只能影响后续 operator selection probability。
+      - reward 不能直接覆盖 objective_score。
+      - reward 不能把组合池 posthoc best 归功给单个 operator。
+      - accepted_as=best 必须来自正式 score 严格更好 + fingerprint changed + acceptance passed。
+
+      测试验收：
+      - ALNSOperatorResult 缺 pruning_report 时 fail-loud 或合同测试失败。
+      - pruned_by_bound 与 objective 不兼容时 not_comparable/failed。
+      - skipped_by_budget 计入 proof 时失败。
+      - operator reward 修改 objective_score 时失败。
+      - duplicate_decision_pruned 与 same_fingerprint_rejected 混算时失败。
+
+  - slug: alns-sgs-repair-adapter
+    description: 把拆修搜索 repair 接到现有 SGS，确保 repair 后完整校验并返回候选结果
+    depends_on: [alns-state-operators-core]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: |-
+      repair 失败必须明确 rejected/failed；seed_results 只能放保护/执行态固定片段，mutable operations 必须由 SGS 重新落位。
+
+      剪枝适配补充：
+      - ALNS 剪枝后留下的候选必须通过本项 SGS repair adapter 执行正式排产。
+      - adapter 输入只能是 batch_order/resource override/repair request/mutable scope，不能是可变工序的 start/end 时间。
+      - adapter 输出必须包含 results、summary、metrics、score、candidate_origin、mutable_scope、CandidateFingerprint 所需字段。
+      - repair 失败必须进入 candidate_rejected 或 fail-loud。
+      - adapter 必须把 evaluated_candidates 与 rejected_candidates 回填到 pruning_report/search_report，不能让 ALNS 外壳自行宣称评估成功。
+
+  - slug: alns-domain-neighborhood-operators
+    description: 定义 ALNS 领域邻域算子：联合机器-排序、关键块 N5 和移动瓶颈候选
+    depends_on: [alns-sgs-repair-adapter]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: |-
+      只生成资源 override、batch_order 或 repair request，不直接写工序时间；机器选择必须先确认业务资源资格真实可选，缺资格数据一律 candidate_rejected/fail-loud；关键块 N5 和移动瓶颈只作为 destroy scope、repair priority 或 operator 候选，仍复用正式 SGS 解码和 CandidateFingerprint。
+
+      本项承载领域剪枝规则，不新增独立“剪枝算法”。
+
+      领域剪枝规则组：
+
+      1. critical_block_pruning
+      - 输入：正式 decoded schedule、objective metrics、graph critical metrics、延期批次摘要。
+      - 只选择影响 failed_ops / tardiness / due pressure / critical path 的关键块。
+      - N5 / adjacent move 只在关键块边界、延期边界、瓶颈交界处生成。
+      - 非关键块候选记为 pruned_by_scope_filter，safety_status=heuristic_scope_reduction。
+      - 不得写成数学 proof，只能写“启发式缩小邻域”。
+
+      2. moving_bottleneck_candidate_pruning
+      - 输入：设备负荷、残余容量、延期相关工序、候选资源资格。
+      - 只选择 top_m bottleneck machines 和 top_n impacted operations。
+      - 非瓶颈设备候选记为 pruned_by_scope_filter。
+      - 如果资源资格缺失，必须 candidate_rejected/fail-loud，不能回退成所有设备可用。
+      - 移动瓶颈只能影响 destroy scope / repair priority / resource override，不能直接指定时间。
+
+      3. joint_machine_order_pruning
+      - 输入：真实可选资源资格、resource_pool、当前 decoded order、目标指标。
+      - 候选只表达 resource override + batch_order / repair request。
+      - 未授权资源、不可用资源、缺资格资源必须 rejected，不得作为可行候选。
+      - dominance 只允许在同 objective、同可行性、同资源资格语义下使用。
+      - 不满足严格 dominance 证据时，只能标 heuristic_scope_reduction。
+
+      4. tardy_boundary_pruning
+      - 输入：延期批次、可救批次、长尾牺牲批次、due pressure / saveability。
+      - 只围绕可救/延期边界生成候选。
+      - 空交期批次不能伪装成延期压力；必须沿用 no-due placeholder / not comparable 语义。
+      - 对不可救长尾的后置只能作为候选 priority，不能写成 proof。
+
+      5. duplicate_and_budget_guard
+      - decision_key 重复：duplicate_decision_pruned。
+      - output fingerprint 重复：same_fingerprint_rejected。
+      - 超 top_k / top_m / top_n / time_budget：skipped_by_budget。
+      - 三者必须分开计数。
+
+      每条规则必须输出：
+      - rule_id
+      - rule_version
+      - operator_name
+      - candidate_space_before
+      - candidate_space_after
+      - generated_candidates
+      - pruned_candidates
+      - reason_summary
+      - safety_status
+      - objective_compatibility
+
+      测试验收：
+      - 关键块规则不会生成全场所有 swap/insert。
+      - 移动瓶颈规则只选 top_m 设备，且缺资源资格 fail-loud/rejected。
+      - 联合机器-排序不会使用未授权资源。
+      - duplicate decision 不进入正式 SGS 解码。
+      - same fingerprint 不算 improvement。
+      - scope filter 的剪枝状态必须是 heuristic_scope_reduction，不能是 safe_exact proof。
+
+  - slug: alns-setup-aware-neighborhoods
+    description: 在换型基准量尺到位后定义 setup-aware 拆修邻域
+    depends_on: [alns-domain-neighborhood-operators, benchmark-reference-diagnostics-baseline]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: |-
+      等换型基准、不可比诊断和 ALNS repair 链到位后再做；只优化换型相关候选作用域和排序/资源决策，不把 setup 收益写成缺证据的 objective improvement；无 SDST/WTSDS 等可比样例时只能跳过或标 not_comparable。
+
+      剪枝补充：
+      - setup-aware pruning 只能在换型基准、SDST/WTSDS 量尺和同目标评分口径到位后启用。
+      - 没有可比 setup benchmark 时，setup 剪枝只能标 heuristic_scope_reduction 或 not_comparable。
+      - 不允许把“预计减少换型”直接写成 objective improvement，除非正式 SGS 解码后的当前 objective score 严格变好。
+      - setup 候选只能改变换型相关 scope、排序或资源决策，不能直接写时间。
+
+  - slug: alns-selection-acceptance-trace
+    description: 实现拆修搜索 operator 选择、threshold/Record-to-Record Travel/SA acceptance、segment 权重更新和 trace 输出
+    depends_on: [alns-sgs-repair-adapter]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: |-
+      operator reward 只影响后续选择概率，不能直接覆盖 objective score。
+
+      本项承载剪枝 trace、拒绝原因、operator reward 和算法归因边界，不实现剪枝规则本体。
+
+      必填 trace：
+      - pruning_trace
+      - operator_selection_trace
+      - acceptance_trace
+      - reward_update_trace
+      - candidate_rejection_trace
+
+      PruningTraceEvent 字段：
+      - schema_version
+      - elapsed_ms
+      - phase
+      - operator_name
+      - operator_version
+      - rule_id
+      - rule_version
+      - decision: keep / prune / reject / skip_by_budget
+      - reason
+      - safety_status
+      - objective_name
+      - objective_compatibility
+      - candidate_space_before
+      - candidate_space_after
+      - generated_candidates
+      - evaluated_candidates
+      - pruned_candidates
+      - rejected_candidates
+      - skipped_by_budget
+
+      归因规则：
+      - algorithm_profile 表示本轮运行的算法外壳，如 graph_ready / alns。
+      - candidate_origin 表示候选来源，如 graph_ready_v2_generated / graph_ready_v2_repaired / alns。
+      - operator_name 表示产生候选的算子。
+      - selection_source 表示最终选择来自统一候选池、当前 best 或 posthoc portfolio。
+      - posthoc portfolio best 只能写 portfolio_all / posthoc_upper_bound / not_comparable。
+      - 单个 operator 只能获得“参与贡献”或 reward，不得把组合池最优偷归功给自己。
+      - reward_update_trace 只能改变后续 operator 权重，不能改正式 score。
+
+      public/diagnostics：
+      - public 只展示聚合计数、中文摘要、安全状态和是否采纳。
+      - diagnostics 可保留完整 trace，但不能进入普通页面、HTML、导出、OperationLogs public 投影。
+      - raw op_id/resource_id/candidate_id/fingerprint hash 不得 public 暴露。
+
+      测试验收：
+      - reward 直接修改 objective score 时失败。
+      - posthoc portfolio best 被归因到单一 operator 时失败。
+      - 剪枝 trace 缺 rule_id/rule_version/safety_status 时失败。
+      - reject reason 为空时失败。
+      - public 投影出现 raw id/fingerprint hash 时失败。

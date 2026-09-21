@@ -187,9 +187,9 @@ FINAL_INTEGRATION_SUPPLEMENTAL_FILES = {
 CAPACITY_SOURCE_BINDING_INPUTS = (
     "tests/workbench/final_capacity_binding.py",
     "tests/workbench/final_foundation_live_source_guard.py",
-    ".codestable/roadmap/workbench-prototype-migration/legacy-retirement/factory-tests/source_guard.py",
-    ".codestable/roadmap/workbench-prototype-migration/legacy-retirement/factory-tests/source_binding.py",
-    ".codestable/roadmap/workbench-prototype-migration/legacy-retirement/factory-tests/source_inventory.py",
+    "tests/_support/workbench_source/source_guard.py",
+    "tests/_support/workbench_source/source_binding.py",
+    "tests/_support/workbench_source/source_inventory.py",
 )
 CAPACITY_SOURCE_BINDING_ENV_KEYS = (
     "FACTORY_SOURCE_MANIFEST", "WORKBENCH_CAPACITY_EXPECTED_SOURCE_ROOT",

@@ -1,6 +1,6 @@
 """SQL 边界扫描器：服务层不写 SQL（sql_boundary）、仓储层不做裁决（data_policy）两条棘轮规则。
 
-规则口径见 .codestable/roadmap/foundation-boundary-governance §4.2。
+规则口径见 docs/dev/roadmaps/foundation-boundary-governance §4.2。
 - sql_boundary 扫描 core/ 与 web/（core/infrastructure 除外）：
     conn_execute   在 conn 类接收者上调用 execute/executemany/executescript/fetchone/fetchall
     sqlite_connect 直接 sqlite3.connect(...)

@@ -275,9 +275,9 @@ def _scopes_for_entry(
         )
         if entry_type == ENTRY_IMPORT_CYCLES_WITH_TESTS:
             input_scopes.append("tests/**/*.py")
-            baseline_path = ".codestable/checkup/import_cycles_with_tests_baseline.json"
+            baseline_path = "tools/baselines/import_cycles_with_tests_baseline.json"
         else:
-            baseline_path = ".codestable/checkup/import_cycles_production_baseline.json"
+            baseline_path = "tools/baselines/import_cycles_production_baseline.json"
         input_scopes.append(baseline_path)
         config_scopes.append(baseline_path)
         tool_scopes.extend(
@@ -303,7 +303,7 @@ def _scopes_for_entry(
             [
                 "*.py",
                 "audit/**/*.py",
-                ".codestable/tools/**/*.py",
+                "tools/document_metadata/**/*.py",
                 "core/**/*.py",
                 "data/**/*.py",
                 "desktop/**/*.py",
@@ -516,7 +516,7 @@ def _scopes_for_entry(
                 "assets/启动_排产系统_Chrome.bat",
                 "build_win7*.bat",
                 "installer/aps_win7*.iss",
-                ".limcode/skills/aps-package-win7/scripts/package_win7.ps1",
+                "scripts/windows/package_win7.ps1",
             ]
         )
         config_scopes = [
@@ -655,10 +655,8 @@ def _scopes_for_entry(
         input_scopes.extend(
             [
                 "开发文档/技术债务治理台账.md",
-                ".codestable/roadmap/**/*.md",
-                ".codestable/roadmap/**/*.yaml",
-                ".codestable/features/**/*.md",
-                ".codestable/features/**/*.yaml",
+                "docs/dev/roadmaps/**/*.md",
+                "docs/dev/roadmaps/**/*.yaml",
                 "app.py",
                 "app_new_ui.py",
                 "schema.sql",
@@ -689,8 +687,8 @@ def _scopes_for_entry(
                 quality_gate_shared.QUALITY_GATE_PYRIGHT_GATE_CONFIG,
                 quality_gate_shared.QUALITY_GATE_PYRIGHT_TOOLS_CONFIG,
                 "pyrightconfig.json",
-                ".codestable/roadmap/quality-gate-long-cache/quality-gate-long-cache-roadmap.md",
-                ".codestable/roadmap/quality-gate-long-cache/quality-gate-long-cache-items.yaml",
+                "docs/dev/roadmaps/quality-gate-long-cache/quality-gate-long-cache-roadmap.md",
+                "docs/dev/roadmaps/quality-gate-long-cache/quality-gate-long-cache-items.yaml",
             ]
         )
         tool_scopes.extend(
@@ -770,22 +768,18 @@ def _scopes_for_entry(
                 "templates/**/*.html",
                 "static/**/*",
                 "audit/**/*.md",
-                ".codestable/architecture/**/*.md",
-                ".codestable/compound/**/*.md",
-                ".codestable/issues/**/*.md",
-                ".codestable/issues/**/*.yaml",
-                ".codestable/issues/**/*.yml",
-                ".codestable/requirements/**/*.md",
-                ".codestable/roadmap/**/*.md",
-                ".codestable/roadmap/**/*.yaml",
-                ".codestable/roadmap/**/*.yml",
+                "docs/dev/architecture/**/*.md",
+                "docs/dev/decisions/**/*.md",
+                "docs/dev/roadmaps/**/*.md",
+                "docs/dev/roadmaps/**/*.yaml",
+                "docs/dev/roadmaps/**/*.yml",
                 "docs/**/*.md",
                 "evidence/README.md",
                 "evidence/current/README.md",
                 ".github/workflows/*.yml",
                 ".gitignore",
-                ".limcode/skills/**/*",
-                ".limcode/plans/**/*",
+                "scripts/**/*.ps1",
+                "tests/fixtures/**/*",
                 "开发文档/**/*.md",
                 "evidence/QualityGate/collect_nodeids.json",
             ]
@@ -803,7 +797,7 @@ def _scopes_for_entry(
                 "tools/test_debt_registry.py",
                 "tools/quality_gate_shared.py",
                 "tools/quality_gate_support.py",
-                ".codestable/tools/**/*.py",
+                "tools/document_metadata/**/*.py",
                 "scripts/run_quality_gate.py",
             ]
         )

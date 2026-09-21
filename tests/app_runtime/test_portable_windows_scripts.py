@@ -8,7 +8,7 @@ import pytest
 
 from tests._support.paths import REPO_ROOT
 
-PACKAGE = REPO_ROOT / ".limcode/skills/aps-package-win7/scripts/package_win7.ps1"
+PACKAGE = REPO_ROOT / "scripts/windows/package_win7.ps1"
 LAUNCHER = REPO_ROOT / "assets/启动_排产系统_Chrome.bat"
 
 

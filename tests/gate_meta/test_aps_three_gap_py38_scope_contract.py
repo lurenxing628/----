@@ -8,9 +8,9 @@ from tools import scan_aps_three_gap_py38_scope as scope_scan
 
 
 def test_py38_scope_excludes_codestable_and_limcode_host_tools() -> None:
-    assert scope_scan.is_aps_py38_scope_path(".codestable/checkup/scripts/codemap_extract.py") is False
-    assert scope_scan.is_aps_py38_scope_path(".codestable/tools/search-yaml.py") is False
-    assert scope_scan.is_aps_py38_scope_path(".limcode/skills/cs-onboard/tools/search-yaml.py") is False
+    assert scope_scan.HOST_TOOL_PYTHON_PREFIXES == (".codestable/", ".limcode/skills/")
+    for prefix in scope_scan.HOST_TOOL_PYTHON_PREFIXES:
+        assert scope_scan.is_aps_py38_scope_path(prefix + "sample.py") is False
 
 
 def test_py38_scope_keeps_aps_product_tests_and_gate_tools() -> None:
@@ -23,12 +23,8 @@ def test_py38_scope_keeps_aps_product_tests_and_gate_tools() -> None:
 
 def test_changed_file_collection_applies_host_tool_boundary(tmp_path, monkeypatch) -> None:
     changed = "\n".join(
-        (
-            ".codestable/checkup/scripts/codemap_extract.py",
-            ".limcode/skills/cs-onboard/tools/validate-yaml.py",
-            "core/services/scheduler/run/optimizer/graph/ready.py",
-            "tests/gate_meta/test_example.py",
-        )
+        [prefix + "sample.py" for prefix in scope_scan.HOST_TOOL_PYTHON_PREFIXES]
+        + ["core/services/scheduler/run/optimizer/graph/ready.py", "tests/gate_meta/test_example.py"]
     )
     monkeypatch.setattr(
         scope_scan.subprocess,

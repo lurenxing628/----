@@ -7,8 +7,8 @@
 
 ## 1. 当前口径
 
-- `.codestable/roadmap/aps-three-gap-directions/aps-three-gap-directions-roadmap.md` 和 `aps-three-gap-directions-items.yaml` 是第 1-14 项继续维护的事实源。
-- 原 `.codestable/compound/2026-05-23-explore-aps-three-gap-directions.md` 后半段旧路线草案已经被本 roadmap 覆盖。后续实现、验收和文档说明都以 roadmap 主文档和 items.yaml 为准。
+- `docs/dev/roadmaps/aps-three-gap-directions/aps-three-gap-directions-roadmap.md` 和 `aps-three-gap-directions-items.yaml` 是第 1-14 项继续维护的事实源。
+- 原 `docs/dev/decisions/2026-05-23-explore-aps-three-gap-directions.md` 后半段旧路线草案已经被本 roadmap 覆盖。后续实现、验收和文档说明都以 roadmap 主文档和 items.yaml 为准。
 - 用户可见说明不能直接展示 `plan_role`、`scenario_id`、`source_table`、`candidate_id`、`event_type`、`ReasonCode`、`score tuple`、数据库字段名、函数名或内部异常堆栈。
 - 开发和测试可以讨论 PlanIdentity、EvidenceLink、OperationExecutionEvents、OperationExecutionState、state_revision、execution_snapshot_revision、execution_snapshot_op_ids，但必须放在开发专用文档或测试断言里。
 
@@ -58,7 +58,7 @@
 | 迁移测试 | `tests/migration_db/test_migrations.py` |
 | 页面大白话测试 | `tests/scheduler_analysis/test_report_delay_diagnosis_plain_language.py`、`tests/gate_meta/test_aps_three_gap_docs_quality_gate.py` |
 | Win7/offline 测试 | `tests/app_runtime/test_frontend_offline_static_assets.py`、`tests/gate_meta/test_scan_py38plus_syntax.py` |
-| CodeStable YAML 测试 | `.codestable/tools/validate-yaml.py` 命令和 `tests/gate_meta/test_codestable_tools_contract.py` |
+| CodeStable YAML 测试 | `tools/document_metadata/validate-yaml.py` 命令和 `tests/gate_meta/test_codestable_tools_contract.py` |
 | 长门禁 | `scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache`，其中命令计划已包含 roadmap YAML 校验和 Python 3.8 扫描 |
 
 ## 3. 第 1-13 项回归测试清单
@@ -162,7 +162,7 @@
 - `web/viewmodels/scheduler_plan_guardrail_messages.py`
 - `web/viewmodels/scheduler_resource_dispatch.py`
 - `web/viewmodels/scheduler_resource_dispatch_execution.py`
-- `.codestable/tools/validate-yaml.py`
+- `tools/document_metadata/validate-yaml.py`
 - `tools/quality_gate_shared.py`
 - `tools/scan_py38plus_syntax.py`
 - `tools/scan_aps_three_gap_py38_scope.py`
@@ -180,7 +180,7 @@
 > 仅给开发和测试使用，不给用户看。
 
 1. Python 语法验收：对本 roadmap 改动过的 Python 文件运行 `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/scan_aps_three_gap_py38_scope.py --base-ref d4589d77`。该命令会用 `git diff --name-only d4589d77 -- '*.py'` 收集仍存在的 Python 文件，再调用 `tools/scan_py38plus_syntax.py`。
-2. CodeStable YAML 验收：运行 `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python .codestable/tools/validate-yaml.py --file .codestable/roadmap/aps-three-gap-directions/aps-three-gap-directions-items.yaml --yaml-only --require roadmap --require created --require items`。
+2. CodeStable YAML 验收：运行 `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/document_metadata/validate-yaml.py --file docs/dev/roadmaps/aps-three-gap-directions/aps-three-gap-directions-items.yaml --yaml-only --require roadmap --require created --require items`。
 3. 离线静态资源验收：运行 `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/app_runtime/test_frontend_offline_static_assets.py`。它会扫描模板、静态资源和 `docs/aps_frontend_workbench_mockup.html`，阻止外链脚本、样式、字体、图片和 CDN。
 4. Chrome 109 人工验收：在交付浏览器环境打开首页、排产优化分析、超期清单、资源排班、计划和现场实际、甘特图模拟预览，检查页面能打开、按钮和筛选能操作、导出能下载、长文字不遮挡。
 5. Win7 x64 人工验收：在目标系统或同等离线环境里启动打包后的应用，确认不需要联网、不需要目标机安装 Python，页面静态资源从本地加载。
@@ -190,7 +190,7 @@
 
 ```bash
 PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/app_runtime/test_frontend_offline_static_assets.py tests/web_pages/test_frontend_ui_language_polish.py tests/web_pages/test_frontend_ui_language_polish_browser.py tests/config/test_config_manual_markdown.py tests/web_pages/test_page_manual_registry.py tests/gate_meta/test_codestable_tools_contract.py tests/gate_meta/test_scan_py38plus_syntax.py tests/gate_meta/test_aps_three_gap_docs_quality_gate.py tests/gate_meta/test_run_quality_gate.py
-PYTHONDONTWRITEBYTECODE=1 .venv/bin/python .codestable/tools/validate-yaml.py --file .codestable/roadmap/aps-three-gap-directions/aps-three-gap-directions-items.yaml --yaml-only --require roadmap --require created --require items
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/document_metadata/validate-yaml.py --file docs/dev/roadmaps/aps-three-gap-directions/aps-three-gap-directions-items.yaml --yaml-only --require roadmap --require created --require items
 PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/scan_aps_three_gap_py38_scope.py --base-ref d4589d77
 PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/scan_py38plus_syntax.py --fail-on-hit scripts/run_quality_gate.py tools/quality_gate_shared.py tools/scan_aps_three_gap_py38_scope.py tests/app_runtime/test_frontend_offline_static_assets.py tests/web_pages/test_frontend_ui_language_polish.py tests/web_pages/test_frontend_ui_language_polish_browser.py tests/config/test_config_manual_markdown.py tests/web_pages/test_page_manual_registry.py tests/operation_execution/test_operation_execution_event_time_contract.py tests/gate_meta/test_scheduler_data_route_error_contract.py tests/resource_dispatch/test_scheduler_resource_dispatch_invalid_query_cleanup.py tests/gate_meta/test_aps_three_gap_docs_quality_gate.py tests/gate_meta/test_run_quality_gate.py
 git diff --check

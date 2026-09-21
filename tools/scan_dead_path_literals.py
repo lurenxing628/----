@@ -29,6 +29,7 @@ import json
 import os
 import re
 import sys
+from fnmatch import fnmatch
 from typing import Dict, List, Optional, Sequence
 
 from tools.boundary_baseline import (
@@ -41,6 +42,7 @@ from tools.boundary_baseline import (
     total_count,
     write_baseline,
 )
+from tools.git_hook_blocked_paths import BLOCKED_PATH_RULES
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
 RULE = "dead_path_literal"
@@ -92,6 +94,12 @@ def is_repo_path_literal(value: str) -> bool:
     if _NOT_A_PLAIN_PATH.search(value):
         return False
     if value.startswith(RUNTIME_PREFIXES):
+        return False
+    # Forbidden generated documentation is an output declaration, not a required source file.
+    if value.startswith("docs/") and any(
+        pattern.startswith("docs/") and (fnmatch(value, pattern) or (pattern.endswith("/") and value.startswith(pattern)))
+        for pattern, _reason in BLOCKED_PATH_RULES
+    ):
         return False
     return value.split("/", 1)[0] in REPO_TOP_DIRS and bool(_EXTENSION.search(value))
 

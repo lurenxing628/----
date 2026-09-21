@@ -1,6 +1,6 @@
 """边界棘轮基线：三条边界规则（sql_boundary / data_policy / private_import）共用的基线读写与比较。
 
-口径（见 .codestable/roadmap/foundation-boundary-governance §4.1）：
+口径（见 docs/dev/roadmaps/foundation-boundary-governance §4.1）：
 - 条目键为 (path, kind)，值为 count。
 - 当前有、基线无 → new；基线有、当前无 → stale（请从基线移除）；同键 count 变大 → increased。
 - 三者任一非空即门禁失败；count 变小允许，但提示刷新。
@@ -41,7 +41,7 @@ class BaselineComparison:
 
 
 def default_baseline_path(repo_root: str, rule: str) -> str:
-    return os.path.join(repo_root, ".codestable", "checkup", f"{rule}_baseline.json")
+    return os.path.join(repo_root, "tools", "baselines", f"{rule}_baseline.json")
 
 
 def entries_to_counts(entries: Iterable[Dict[str, object]]) -> Dict[EntryKey, int]:

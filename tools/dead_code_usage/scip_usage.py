@@ -16,7 +16,7 @@ from typing import Dict, Iterable, List, Optional, Set, Tuple
 
 from .model import FunctionRecord, UsageEvidence
 
-SCIP_INDEX = os.path.join(".codestable", "checkup", "latest", "scip", "index.scip")
+SCIP_INDEX = os.path.join(".cache", "aps-analysis", "scip", "index.scip")
 DEFINITION_ROLE = 1
 _VERSION_RE = re.compile(r"\baps\s+([0-9a-f]{40})\b")
 
@@ -59,7 +59,7 @@ def _require_fresh_index(repo_root, index_path=None):
             f"未找到 SCIP 索引文件:{path}",
             [
                 "先运行: python -m tools.symbol_locator build-index",
-                "或运行: scip-python index . --project-name=aps --output .codestable/checkup/latest/scip/index.scip",
+                "或运行: scip-python index . --project-name=aps --output .cache/aps-analysis/scip/index.scip",
             ],
         )
     return path

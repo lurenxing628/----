@@ -83,7 +83,7 @@ def test_collect_changed_python_files_base_ref_does_not_use_worktree_sources(mon
 def test_filter_python_targets_skips_non_files_and_runtime_paths(tmp_path: Path) -> None:
     good = tmp_path / "good.py"
     good.write_text("VALUE = 1\n", encoding="utf-8")
-    dotdir = tmp_path / ".limcode" / "hooks" / "check_complexity.py"
+    dotdir = tmp_path / ".local-hooks" / "hooks" / "check_complexity.py"
     dotdir.parent.mkdir(parents=True)
     dotdir.write_text("VALUE = 1\n", encoding="utf-8")
     (tmp_path / "build").mkdir()
@@ -93,9 +93,9 @@ def test_filter_python_targets_skips_non_files_and_runtime_paths(tmp_path: Path)
     directory.mkdir()
 
     assert precheck.filter_python_targets(
-        ["good.py", "./.limcode/hooks/check_complexity.py", "notes.txt", "missing.py", "build/generated.py", "package.py"],
+        ["good.py", "./.local-hooks/hooks/check_complexity.py", "notes.txt", "missing.py", "build/generated.py", "package.py"],
         repo_root=str(tmp_path),
-    ) == (".limcode/hooks/check_complexity.py", "good.py")
+    ) == (".local-hooks/hooks/check_complexity.py", "good.py")
 
 
 def test_main_no_targets_returns_zero_without_running_ruff(monkeypatch, tmp_path: Path, capsys) -> None:

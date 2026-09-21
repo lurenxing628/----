@@ -14,7 +14,7 @@ from typing import Optional
 from .static_index import FUNCTIONS_JSON, REPO_ROOT
 
 _FIRST_PARTY = ("core", "web", "data", "tools", "scripts", "plugins", "desktop")
-_EXTRACT = os.path.join(REPO_ROOT, ".codestable", "checkup", "scripts", "callgraph_extract.py")
+_EXTRACT = os.path.join(REPO_ROOT, "tools", "checkup", "callgraph_extract.py")
 _VENV_PY = os.path.join(REPO_ROOT, ".venv", "bin", "python")
 _LAST_REBUILD_ERROR = None
 

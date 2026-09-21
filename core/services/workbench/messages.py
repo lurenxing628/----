@@ -1,6 +1,6 @@
 """工作台面向用户的提示模板与统一用词。
 
-词表决策：.codestable/compound/2026-09-13-decision-ui-copy-glossary.md。
+词表决策：docs/dev/decisions/2026-09-13-decision-ui-copy-glossary.md。
 前端对应 frontend/workbench/app/WorkbenchTerms.js，两边句式保持一致：
 结果未知这一族提示只从这里取，各服务不再自己写。
 """

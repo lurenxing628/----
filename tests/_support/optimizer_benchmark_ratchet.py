@@ -25,7 +25,7 @@ from tests._support.optimizer_graph_ready_benchmark import (
     run_graph_ready_real_sgs_case,
 )
 
-DEFAULT_BASELINE = Path(".codestable/roadmap/scheduler-global-optimizer/benchmark-ratchet-baseline.json")
+DEFAULT_BASELINE = Path("tests/fixtures/optimizer/benchmark-ratchet-baseline.json")
 
 
 def build_light_ratchet_snapshot(*, repo_root: Path) -> Dict[str, Any]:

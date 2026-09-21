@@ -349,7 +349,7 @@ def test_main_runs_guard_preflight_before_static_and_startup_checks(monkeypatch,
     assert "tools/import_cycle_analysis.py" in module.QUALITY_GATE_TOOL_PATHS
     assert "tools/import_cycle_baseline.py" in module.QUALITY_GATE_TOOL_PATHS
     assert "tools/scan_import_cycles.py" in module.QUALITY_GATE_TOOL_PATHS
-    assert ".codestable/checkup/scripts/callgraph_extract.py" in module.QUALITY_GATE_TOOL_PATHS
+    assert "tools/checkup/callgraph_extract.py" in module.QUALITY_GATE_TOOL_PATHS
     required_display = "python tools/verify_required_regressions_from_full_test_debt.py"
     assert required_display in displays
     assert "python scripts/sync_debt_ledger.py check" in displays
@@ -362,7 +362,7 @@ def test_main_runs_guard_preflight_before_static_and_startup_checks(monkeypatch,
         "python -m pytest --collect-only -q tests"
     )
     assert displays.index("python -m pytest --collect-only -q tests") < displays.index(
-        "python .codestable/tools/validate-yaml.py --file .codestable/roadmap/aps-three-gap-directions/aps-three-gap-directions-items.yaml --yaml-only --require roadmap --require created --require items"
+        "python tools/document_metadata/validate-yaml.py --file docs/dev/roadmaps/aps-three-gap-directions/aps-three-gap-directions-items.yaml --yaml-only --require roadmap --require created --require items"
     )
     assert displays.index(
         "python tools/scan_py38plus_syntax.py --fail-on-hit scripts/run_quality_gate.py tools/quality_gate_shared.py tools/scan_aps_three_gap_py38_scope.py tests/app_runtime/test_frontend_offline_static_assets.py tests/web_pages/test_frontend_ui_language_polish.py tests/web_pages/test_frontend_ui_language_polish_browser.py tests/config/test_config_manual_markdown.py tests/web_pages/test_page_manual_registry.py tests/gate_meta/test_aps_three_gap_docs_quality_gate.py tests/gate_meta/test_run_quality_gate.py"

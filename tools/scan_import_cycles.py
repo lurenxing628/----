@@ -21,7 +21,7 @@ import 四分类(决定一条 import 边算不算"加载期耦合"):
   1  --fail-on-hard-cycle 且检出硬加载期目录环 / 文件环
   2  工具自身错误
 
-口径要点(经 Codex 对抗核验修正,详见 .codestable/audits/2026-06-28-circular-imports/):
+口径要点(经 Codex 对抗核验修正,详见 docs/maintenance/audits/2026-06-28-circular-imports/):
   - `from . import 兄弟模块` 不连"包根"假边:仅当确有 name 来自 __init__/包符号时才连包根。
   - TYPE_CHECKING 的 else 归运行时(此前整块跳过会漏 else 边)。
   - 动态 importlib.import_module("字面量") 按顶层/函数内定 hard/lazy。

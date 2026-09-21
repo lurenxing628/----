@@ -14465,8 +14465,8 @@
     },
     {
       "path": "workbench/app/WorkbenchTerms.js",
-      "sha256": "c378bbab1d5b34f018a7e51be6db725bee413849f73d4c744b2a7ba9ea5078e8",
-      "bytes": 2091,
+      "sha256": "9d965e2617ae7898a9aec6e153ba28f0093fb22854f00a8e907aaddcb36178df",
+      "bytes": 2089,
       "mime": "application/javascript",
       "dependencies": [],
       "dependency_symbols": [],
@@ -14481,7 +14481,7 @@
           "source_files": [
             {
               "path": "frontend/workbench/app/WorkbenchTerms.js",
-              "sha256": "02fb3c0e825c50cb316b347f9bc4bbfba590548c379240ccb276ce30b83247ac"
+              "sha256": "247621e1438bff507659d0b9922a8c79fa3a7bb0abcabf12e0fdb80a5d8f18e2"
             }
           ],
           "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
@@ -14490,7 +14490,7 @@
       "source_files": [
         {
           "path": "frontend/workbench/app/WorkbenchTerms.js",
-          "sha256": "02fb3c0e825c50cb316b347f9bc4bbfba590548c379240ccb276ce30b83247ac"
+          "sha256": "247621e1438bff507659d0b9922a8c79fa3a7bb0abcabf12e0fdb80a5d8f18e2"
         }
       ]
     },
@@ -17156,7 +17156,7 @@
     },
     {
       "path": "frontend/workbench/app/WorkbenchTerms.js",
-      "sha256": "02fb3c0e825c50cb316b347f9bc4bbfba590548c379240ccb276ce30b83247ac"
+      "sha256": "247621e1438bff507659d0b9922a8c79fa3a7bb0abcabf12e0fdb80a5d8f18e2"
     },
     {
       "path": "frontend/workbench/app/WorkbenchHandlerMemory.js",
@@ -18672,5 +18672,5 @@
       "workbench/prototype/ui_kits/workbench/workbench-ui.css"
     ]
   },
-  "build_id": "9c7a02fc002f0d02208330dd2cb6b8651c2853a9171d58834cd2a86e6e84c9c4"
+  "build_id": "5dfa742ea1121a4ceafead90dac20d197317945ec4a2914049c0a7f6fe6fe430"
 }

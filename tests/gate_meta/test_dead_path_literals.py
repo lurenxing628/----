@@ -44,7 +44,7 @@ def test_repo_path_literal_accepts_source_paths_under_repo_top_dirs() -> None:
         "templates/workbench/legacy_result.html",
         "static/docs/scheduler_manual.md",
         "开发文档/技术债务治理台账.md",
-        ".codestable/checkup/private_import_baseline.json",
+        "tools/baselines/private_import_baseline.json",
     ):
         assert scan_dead_path_literals.is_repo_path_literal(value), value
 
@@ -166,3 +166,23 @@ def test_baseline_entries_point_at_existing_source_files() -> None:
         assert os.path.exists(os.path.join(REPO_ROOT, source_path)), (
             f"基线引用的源文件不存在：{source_path}（请 --refresh）"
         )
+
+
+def test_forbidden_generated_documents_are_outputs_not_missing_sources() -> None:
+    from tools.git_hook_blocked_paths import BLOCKED_PATH_RULES
+
+    for pattern, _reason in BLOCKED_PATH_RULES:
+        if pattern.startswith("docs/"):
+            example = pattern.replace("**", "generated").replace("*", "generated")
+            assert not scan_dead_path_literals.is_repo_path_literal(example)
+    assert scan_dead_path_literals.is_repo_path_literal("docs/dev/product-tooling.md")
+
+
+def test_missing_shared_document_is_still_reported(tmp_path: Path) -> None:
+    name = "docs/dev/product-tooling.md"
+    _write(tmp_path, name, "# Shared tooling")
+    _write(tmp_path, "tools/scan_dead_path_literals.py", 'DOC = "' + name + '"\n')
+    assert scan_dead_path_literals.scan(str(tmp_path))["entries"] == []
+    (tmp_path / name).unlink()
+    entries = scan_dead_path_literals.scan(str(tmp_path))["entries"]
+    assert len(entries) == 1 and entries[0]["kind"] == name

@@ -1,4 +1,4 @@
-"""契约测试：.codestable/architecture 与 roadmap 文档可被 yaml 工具校验和检索——架构入口 ARCHITECTURE.md 通过 validate-yaml 必填字段校验且按 slug 可被 search-yaml 检索到，roadmap 的 related_architecture 关联 slug 与对应架构文档双向可查。"""
+"""契约测试：docs/dev/architecture 与 roadmap 文档可被 yaml 工具校验和检索——架构入口 ARCHITECTURE.md 通过 validate-yaml 必填字段校验且按 slug 可被 search-yaml 检索到，roadmap 的 related_architecture 关联 slug 与对应架构文档双向可查。"""
 
 from __future__ import annotations
 
@@ -8,8 +8,8 @@ from pathlib import Path
 
 from tests._support.paths import REPO_ROOT
 
-SEARCH_TOOL = REPO_ROOT / ".codestable" / "tools" / "search-yaml.py"
-VALIDATE_TOOL = REPO_ROOT / ".codestable" / "tools" / "validate-yaml.py"
+SEARCH_TOOL = REPO_ROOT / "tools"/ "document_metadata" / "search-yaml.py"
+VALIDATE_TOOL = REPO_ROOT / "tools"/ "document_metadata" / "validate-yaml.py"
 
 
 def _run_tool(script: Path, *args: str) -> subprocess.CompletedProcess:
@@ -23,7 +23,7 @@ def _run_tool(script: Path, *args: str) -> subprocess.CompletedProcess:
 
 
 def test_architecture_entrypoint_is_valid_and_slug_searchable() -> None:
-    architecture_dir = REPO_ROOT / ".codestable" / "architecture"
+    architecture_dir = REPO_ROOT / "docs"/ "dev"/ "architecture"
     validate = _run_tool(
         VALIDATE_TOOL,
         "--dir",
@@ -57,7 +57,7 @@ def test_roadmap_related_architecture_slugs_are_searchable() -> None:
         proc = _run_tool(
             SEARCH_TOOL,
             "--dir",
-            str(REPO_ROOT / ".codestable" / "roadmap"),
+            str(REPO_ROOT / "docs"/ "dev"/ "roadmaps"),
             "--filter",
             "doc_type=roadmap",
             "--filter",
@@ -70,7 +70,7 @@ def test_roadmap_related_architecture_slugs_are_searchable() -> None:
         architecture = _run_tool(
             SEARCH_TOOL,
             "--dir",
-            str(REPO_ROOT / ".codestable" / "architecture"),
+            str(REPO_ROOT / "docs"/ "dev"/ "architecture"),
             "--filter",
             "doc_type=architecture",
             "--filter",

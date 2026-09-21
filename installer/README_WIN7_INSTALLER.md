@@ -50,7 +50,7 @@ python -m pip install --no-index --find-links C:\wheelhouse -r requirements.txt 
 在仓库根目录运行：
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .limcode/skills/aps-package-win7/scripts/package_win7.ps1 -Installer
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/windows/package_win7.ps1 -Installer
 ```
 
 默认会：
@@ -69,7 +69,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .limcode/skills/aps-package-
 内部应急回退：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .limcode/skills/aps-package-win7/scripts/package_win7.ps1 -Legacy
+powershell -ExecutionPolicy Bypass -File scripts/windows/package_win7.ps1 -Legacy
 ```
 
 `-Legacy` 模式还会对 `dist\...\tools\chrome109\chrome.exe` 追加同口径浏览器最小冒烟，再生成 `APS_Legacy_Full_Setup.exe`。
@@ -107,7 +107,7 @@ python validate_dist_exe.py "dist\排产系统\排产系统.exe"
 官方口径请使用打包脚本，它会先生成裁剪后的 APS 运行时 payload，再调用 Inno Setup：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .limcode/skills/aps-package-win7/scripts/package_win7.ps1 -ChromeOnly
+powershell -ExecutionPolicy Bypass -File scripts/windows/package_win7.ps1 -ChromeOnly
 ```
 
 产物：

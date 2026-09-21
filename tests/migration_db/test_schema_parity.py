@@ -6,7 +6,7 @@
 CHECK 约束、触发器、视图逐项比较，任一差异即失败并逐项列出。列的物理顺序不比较：SQLite 的
 ALTER TABLE ADD COLUMN 只能追加，Machines/Operators/ScheduleAdjustmentScenario 三张表在迁移链上的
 列序天然与 schema.sql 不同，按列名访问不受影响。修法方向固定为“补迁移让 B 追上 A”，
-不允许删 A 的对象来凑齐（见 .codestable/roadmap/foundation-boundary-governance §4.4）。
+不允许删 A 的对象来凑齐（见 docs/dev/roadmaps/foundation-boundary-governance §4.4）。
 """
 
 from __future__ import annotations

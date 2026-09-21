@@ -6,7 +6,7 @@ half its slice while duplicate and no-op rounds burned the rest. Now an iteratio
 decoder invocation; the limit comes from the slice that is left and the measured cost
 of one decode; rounds that decode nothing only count toward a bounded idle streak that
 ends the search as exhausted. See
-``.codestable/compound/2026-09-18-decision-optimizer-budget-and-rule-pool-corrections.md``.
+``docs/dev/decisions/2026-09-18-decision-optimizer-budget-and-rule-pool-corrections.md``.
 """
 
 from __future__ import annotations

@@ -4,7 +4,7 @@
 - **日期**：2026-05-16
 - **版本锁定**：networkx==3.1
 - **环境约束**：Windows 7 x64 + Python 3.8.x
-- **关联路线图**：`.codestable/roadmap/networkx-scheduler-graph-introduction/networkx-scheduler-graph-introduction-roadmap.md`
+- **关联路线图**：`docs/dev/roadmaps/networkx-scheduler-graph-introduction/networkx-scheduler-graph-introduction-roadmap.md`
 
 ## 背景
 

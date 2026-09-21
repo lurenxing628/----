@@ -174,7 +174,7 @@ def test_simulation_shell_removed_zero_references():
     assert not (REPO_ROOT / "static/css/aps_gantt_simulation.css").exists()
     hex_contract = (REPO_ROOT / "tests/web_pages/test_css_token_source_contract.py").read_text(encoding="utf-8")
     assert "aps_gantt_simulation" not in hex_contract
-    for rel in (".codestable/architecture/ui-gantt.md", "web/viewmodels/page_manuals_scheduler_outputs.py", "static/docs/scheduler_manual.md"):
+    for rel in ("docs/dev/architecture/ui-gantt.md", "web/viewmodels/page_manuals_scheduler_outputs.py", "static/docs/scheduler_manual.md"):
         text = (REPO_ROOT / rel).read_text(encoding="utf-8")
         for stale in ("灰色说明入口", "灰色禁用按钮", "灰色入口", "不能点击", "当前页面入口仍禁用", "ganttSimulationEntry"):
             assert stale not in text, (rel, stale)

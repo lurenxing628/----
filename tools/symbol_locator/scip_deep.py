@@ -16,7 +16,7 @@ from typing import Any, Dict, Iterable, List, Optional
 
 from .static_index import REPO_ROOT
 
-SCIP_DIR = os.path.join(REPO_ROOT, ".codestable", "checkup", "latest", "scip")
+SCIP_DIR = os.path.join(REPO_ROOT, ".cache", "aps-analysis", "scip")
 INDEX_FILE = os.path.join(SCIP_DIR, "index.scip")
 DEFINITION_ROLE = 1
 
@@ -49,8 +49,8 @@ def ensure_index(index_path=None):
             "missing_index",
             f"未找到 SCIP 索引文件:{path}",
             [
-                "先运行: mkdir -p .codestable/checkup/latest/scip",
-                "再运行: scip-python index . --project-name=aps --output .codestable/checkup/latest/scip/index.scip",
+                "先运行: mkdir -p .cache/aps-analysis/scip",
+                "再运行: scip-python index . --project-name=aps --output .cache/aps-analysis/scip/index.scip",
                 "仓库提供 scip-pyrightconfig.json,scip-python 会优先使用它把 tests/tools/scripts 纳入索引。",
             ],
         )

@@ -490,8 +490,8 @@ def test_import_cycle_entries_have_stable_ids_hash_and_scope(tmp_path):
     assert "core/**/*.py" in production["input_file_scopes"]
     assert "tests/**/*.py" not in production["input_file_scopes"]
     assert "tests/**/*.py" in with_tests["input_file_scopes"]
-    assert ".codestable/checkup/import_cycles_production_baseline.json" in production["config_file_scopes"]
-    assert ".codestable/checkup/import_cycles_with_tests_baseline.json" in with_tests["config_file_scopes"]
+    assert "tools/baselines/import_cycles_production_baseline.json" in production["config_file_scopes"]
+    assert "tools/baselines/import_cycles_with_tests_baseline.json" in with_tests["config_file_scopes"]
     for entry in (production, with_tests):
         assert "tools/scan_import_cycles.py" in entry["tool_file_scopes"]
         assert "tools/import_cycle_analysis.py" in entry["tool_file_scopes"]
@@ -777,7 +777,7 @@ def test_required_group_scopes_follow_app_config_not_the_retired_root_config():
 
 
 # CodeStable 条目文件两种扩展名都合法，.yml 变体今天没有实例但要提前纳入指纹。
-FORWARD_COVERAGE_SCOPES = frozenset({".codestable/issues/**/*.yml", ".codestable/roadmap/**/*.yml"})
+FORWARD_COVERAGE_SCOPES = frozenset({"docs/dev/roadmaps/**/*.yml"})
 
 
 def _scope_matches_something(scope):

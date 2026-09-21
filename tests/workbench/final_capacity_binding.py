@@ -17,7 +17,7 @@ ENV = "FACTORY_SOURCE_MANIFEST"
 EXPECTED_ROOT = "WORKBENCH_CAPACITY_EXPECTED_SOURCE_ROOT"
 FORBIDDEN_ORIGIN = "WORKBENCH_CAPACITY_FORBIDDEN_ORIGIN"
 MANIFEST_SHA256 = "WORKBENCH_CAPACITY_MANIFEST_SHA256"
-G_PATH = ".codestable/roadmap/workbench-prototype-migration/legacy-retirement/factory-tests"
+G_PATH = "tests/_support/workbench_source"
 G_FILES = ("source_guard.py", "source_binding.py", "source_inventory.py")
 _ACTIVE: Optional["CapacitySourceBinding"] = None
 

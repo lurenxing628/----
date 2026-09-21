@@ -1,6 +1,6 @@
 """私有符号跨模块导入扫描器（private_import 棘轮规则）。
 
-口径见 .codestable/roadmap/foundation-boundary-governance §4.2：
+口径见 docs/dev/roadmaps/foundation-boundary-governance §4.2：
 - 扫描 core/、web/、data/ 下 `from <模块> import _name`（_name 以单下划线开头、非 dunder）。
 - 豁免：目标模块最后一段本身以 `_` 开头（私有模块）、`_frozen_import_anchor`、`from __future__`。
 - 每个文件按 kind=private_symbol 计数；基线只减不增。

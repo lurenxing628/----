@@ -2,7 +2,7 @@
 
 - **状态**: 已决策
 - **日期**: 2026-05-17
-- **关联文档**: [NetworkX 排产工序图分析引入路线](../../.codestable/roadmap/networkx-scheduler-graph-introduction/networkx-scheduler-graph-introduction-roadmap.md)
+- **关联文档**: [NetworkX 排产工序图分析引入路线](../../docs/dev/roadmaps/networkx-scheduler-graph-introduction/networkx-scheduler-graph-introduction-roadmap.md)
 
 ## 背景
 

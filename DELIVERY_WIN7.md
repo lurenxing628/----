@@ -59,7 +59,7 @@ build_win7_portable.bat
 等价命令：
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .limcode/skills/aps-package-win7/scripts/package_win7.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/windows/package_win7.ps1
 ```
 
 流程会核对工具链和浏览器源，重新生成 `build/`、`dist/` 中的构建产物，复制裁剪后的 Chrome109、启动器、使用说明和便携标记，执行主程序冷启动及浏览器最小冒烟，然后清理**本次新构建的测试数据**，最后生成 ZIP 并检查完整性。不要把生产数据保存在仓库的构建目录里。

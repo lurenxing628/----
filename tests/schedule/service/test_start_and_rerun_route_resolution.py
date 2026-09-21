@@ -6,7 +6,7 @@
 2) `start-only` / `rerun` 输出的 `host` / `port` / `url` 来自实际 endpoint。
 3) fresh-start 会把统一目标 DB 传给子服务环境。
 4) DB 错配或 runtime endpoint 身份不可证实时必须拒绝复用。
-5) `.limcode` 现行 runner 行为保持契约一致；如果旧 `.cursor` 兼容目录存在，也一起覆盖。
+5) 只验证版本库内的 scripts runner，不读取个人编辑器或 Agent 副本。
 """
 
 from __future__ import annotations
@@ -51,10 +51,7 @@ def _normalize_path(path: str) -> str:
 
 def _runner_paths(repo_root: str) -> List[Path]:
     base = Path(repo_root)
-    candidates = [
-        base / ".limcode" / "skills" / "aps-start-and-rerun-route" / "scripts" / "run_start_and_rerun_route.py",
-        base / ".cursor" / "skills" / "aps-start-and-rerun-route" / "scripts" / "run_start_and_rerun_route.py",
-    ]
+    candidates = [base / "scripts" / "run_start_and_rerun_route.py"]
     existing = [path for path in candidates if path.exists()]
     _assert(bool(existing), "未找到 aps-start-and-rerun-route runner")
     return existing
@@ -178,19 +175,11 @@ def _exercise_runner(runner_path: Path, label: str) -> None:
         rerun_mod._seed_and_schedule = _fake_seed
         verify_calls: List[Dict] = []
 
-        def _fake_verify_route(host: str, port: int, view: str, week_start: str, version: int) -> int:
-            verify_calls.append(
-                {
-                    "host": host,
-                    "port": int(port),
-                    "view": view,
-                    "week_start": week_start,
-                    "version": int(version),
-                }
-            )
-            return 11
+        def _fake_read_existing_plan(base_url: str, expected_version=None) -> Dict:
+            verify_calls.append({"base_url": base_url, "expected_version": expected_version})
+            return {"task_count": 11, "plan_ref": "test-plan", "url": base_url + "/workbench?view=gantt"}
 
-        rerun_mod._verify_route = _fake_verify_route
+        rerun_mod._read_existing_plan = _fake_read_existing_plan
         rerun_opened: List[str] = []
         rerun_mod._open_url = lambda url: rerun_opened.append(url)
 
@@ -199,14 +188,13 @@ def _exercise_runner(runner_path: Path, label: str) -> None:
         _assert(payload["host"] == "127.0.0.1", f"{label}: rerun host 不正确")
         _assert(int(payload["port"]) == 5715, f"{label}: rerun port 未使用实际 endpoint")
         _assert(
-            payload["url"] == "http://127.0.0.1:5715/scheduler/gantt?view=operator&week_start=2026-03-16&version=7",
+            payload["url"] == "http://127.0.0.1:5715/workbench?view=gantt",
             f"{label}: rerun url 未使用实际 endpoint",
         )
         _assert(payload["server_started_now"] is True, f"{label}: rerun server_started_now 不正确")
-        _assert(len(verify_calls) == 1, f"{label}: _verify_route 应被调用一次")
-        _assert(verify_calls[0]["host"] == "127.0.0.1", f"{label}: _verify_route 未收到实际 host")
-        _assert(verify_calls[0]["port"] == 5715, f"{label}: _verify_route 未收到实际 port")
-        _assert(verify_calls[0]["view"] == "operator", f"{label}: _verify_route view 不正确")
+        _assert(len(verify_calls) == 1, f"{label}: existing plan must be verified once")
+        _assert(verify_calls[0]["base_url"] == "http://127.0.0.1:5715", f"{label}: actual endpoint must be verified")
+        _assert(verify_calls[0]["expected_version"] == 7, f"{label}: exact generated version must be verified")
         _assert(not rerun_opened, f"{label}: 传入 --no-open 时不应打开浏览器")
         _assert(len(fresh_resolve_calls) == 1, f"{label}: fresh-start 前应只检查一次 repo runtime contract")
         _assert(fresh_resolve_calls[0]["preferred_host"] is None, f"{label}: fresh-start 前不应按 preferred host 探测外部实例")

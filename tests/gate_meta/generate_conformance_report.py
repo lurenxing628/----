@@ -256,7 +256,7 @@ _UNDOCUMENTED_TABLES_DEBT = (
 
 def _documented_tables_debt(repo_root: str) -> Tuple[str, ...]:
     """欠账清单落在单独文件里，人改它时能看见一次改了多少。"""
-    path = os.path.join(repo_root, ".codestable", "checkup", "undocumented_tables_baseline.txt")
+    path = os.path.join(repo_root, "tools", "baselines", "undocumented_tables_baseline.txt")
     if not os.path.exists(path):
         return _UNDOCUMENTED_TABLES_DEBT
     return tuple(line.strip() for line in _read_text(path).splitlines()
@@ -298,7 +298,7 @@ def _check_schema_tables_documented(repo_root: str) -> CheckResult:
     if new_gaps:
         details = f"这些表是新建的、开发文档和速查表里都没有：{new_gaps}。请补文档，不要往欠账清单里加。"
     elif stale:
-        details = f"这些表已经有文档了，请从 .codestable/checkup/undocumented_tables_baseline.txt 里删掉：{stale}。"
+        details = f"这些表已经有文档了，请从 tools/baselines/undocumented_tables_baseline.txt 里删掉：{stale}。"
     return CheckResult(
         name="Schema 表文档化（新建表必须有文档；存量欠账按清单只减不增）",
         ok=ok,

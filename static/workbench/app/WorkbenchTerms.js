@@ -1,7 +1,7 @@
 (function () {
   'use strict';
 
-  // 用户可见文案的前端词表与句式模板。词表决策：.codestable/compound/2026-09-13-decision-ui-copy-glossary.md
+  // 用户可见文案的前端词表与句式模板。词表决策：docs/dev/decisions/2026-09-13-decision-ui-copy-glossary.md
   const sentence = text => /[。！？；]$/.test(text) ? text : text + '。';
   window.WorkbenchTerms = Object.freeze({
     overdue_count: '预计超期批次',

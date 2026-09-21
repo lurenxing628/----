@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """死代码孤岛防回潮扫描器。
 
-复用静态调用图工具 .codestable/checkup/scripts/callgraph_extract.py:把它的产物输出
+复用静态调用图工具 tools/checkup/callgraph_extract.py:把它的产物输出
 经 CHECKUP_CALLGRAPH 重定向到 OS 临时目录(绝不弄脏已提交的 latest/callgraph/、
 不破坏净树证明),读临时目录里的 functions/edges/islands,再用真实使用图过滤误报。
 
@@ -30,8 +30,8 @@ if REPO_ROOT not in sys.path:
 from tools.dead_code_usage.ast_usage import collect_ast_usage
 from tools.dead_code_usage.model import UsageEvidence, records_from_functions
 
-CALLGRAPH_EXTRACT = os.path.join(REPO_ROOT, ".codestable", "checkup", "scripts", "callgraph_extract.py")
-BASELINE_PATH = os.path.join(REPO_ROOT, ".codestable", "checkup", "dead_code_islands_baseline.json")
+CALLGRAPH_EXTRACT = os.path.join(REPO_ROOT, "tools", "checkup", "callgraph_extract.py")
+BASELINE_PATH = os.path.join(REPO_ROOT, "tools", "baselines", "dead_code_islands_baseline.json")
 BASELINE_REL = os.path.relpath(BASELINE_PATH, REPO_ROOT)
 
 

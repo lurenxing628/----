@@ -1,5 +1,5 @@
 {
-  "decision": ".codestable/compound/2026-09-13-decision-ui-copy-glossary.md",
+  "decision": "docs/dev/decisions/2026-09-13-decision-ui-copy-glossary.md",
   "scan": {
     "frontend": [
       "frontend/workbench/app",

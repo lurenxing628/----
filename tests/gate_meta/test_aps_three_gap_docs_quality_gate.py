@@ -62,7 +62,7 @@ DEV_REQUIRED_TERMS = (
     "state_revision",
     "execution_snapshot_revision",
     "execution_snapshot_op_ids",
-    "原 `.codestable/compound/2026-05-23-explore-aps-three-gap-directions.md` 后半段旧路线草案已经被本 roadmap 覆盖",
+    "原 `docs/dev/decisions/2026-05-23-explore-aps-three-gap-directions.md` 后半段旧路线草案已经被本 roadmap 覆盖",
     "git diff --name-only d4589d77 -- 'tests/*.py'",
     "git diff --name-only d4589d77 -- '*.py'",
     "tools/scan_aps_three_gap_py38_scope.py --base-ref d4589d77",
@@ -129,7 +129,7 @@ KEY_PYTHON_FILES = (
     "web/viewmodels/scheduler_analysis_candidates.py",
     "web/viewmodels/scheduler_analysis_candidate_helpers.py",
     "web/viewmodels/scheduler_plan_guardrail_messages.py",
-    ".codestable/tools/validate-yaml.py",
+    "tools/document_metadata/validate-yaml.py",
     "tools/quality_gate_shared.py",
     "tools/scan_py38plus_syntax.py",
     "tools/scan_aps_three_gap_py38_scope.py",
@@ -175,7 +175,7 @@ def test_developer_guide_lists_regression_tests_and_key_python_files() -> None:
 
 
 def test_developer_guide_mentions_every_item_test_command_file() -> None:
-    items_text = _read(REPO_ROOT / ".codestable" / "roadmap" / "aps-three-gap-directions" / "aps-three-gap-directions-items.yaml")
+    items_text = _read(REPO_ROOT / "docs"/ "dev"/ "roadmaps" / "aps-three-gap-directions" / "aps-three-gap-directions-items.yaml")
     dev_text = _read(DEV_GUIDE)
     test_files = sorted(set(re.findall(r"tests/[A-Za-z0-9_./:-]+\.py", items_text)))
 
@@ -200,6 +200,6 @@ def test_developer_guide_contains_win7_offline_quality_gate_manual() -> None:
 def test_quality_gate_plan_runs_codestable_yaml_and_py38_scan() -> None:
     displays = [command["display"] for command in quality_gate_shared.build_quality_gate_command_plan()]
 
-    assert any("validate-yaml.py --file .codestable/roadmap/aps-three-gap-directions" in item for item in displays)
+    assert any("validate-yaml.py --file docs/dev/roadmaps/aps-three-gap-directions" in item for item in displays)
     assert any("scan_aps_three_gap_py38_scope.py --base-ref d4589d77" in item for item in displays)
     assert any("scan_py38plus_syntax.py --fail-on-hit" in item for item in displays)

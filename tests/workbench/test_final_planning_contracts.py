@@ -6,7 +6,7 @@ import re
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
-ROADMAP = REPO / ".codestable/roadmap/workbench-prototype-migration"
+ROADMAP = REPO / "tests/fixtures/workbench_contracts"
 
 
 def test_planning_action_denominator_keeps_every_frozen_family():

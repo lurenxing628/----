@@ -1,6 +1,6 @@
 """用户可见文案词表守卫：扫描器残留必须为 0。
 
-词表决策：.codestable/compound/2026-09-13-decision-ui-copy-glossary.md
+词表决策：docs/dev/decisions/2026-09-13-decision-ui-copy-glossary.md
 机器可读词表：tools/ui_copy_glossary.json（例外只能通过 allow 段加白名单，并写明理由）。
 """
 import json

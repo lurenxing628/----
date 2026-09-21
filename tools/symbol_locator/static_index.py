@@ -20,7 +20,7 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.abspath(os.path.join(_HERE, "..", ".."))
 CALLGRAPH_DIR = os.path.abspath(
     os.environ.get("CHECKUP_CALLGRAPH")
-    or os.path.join(REPO_ROOT, ".codestable", "checkup", "latest", "callgraph"))
+    or os.path.join(REPO_ROOT, ".cache", "aps-analysis", "callgraph"))
 FUNCTIONS_JSON = os.path.join(CALLGRAPH_DIR, "functions.json")
 EDGES_JSON = os.path.join(CALLGRAPH_DIR, "edges.json")
 DYNAMIC_JSON = os.path.join(CALLGRAPH_DIR, "dynamic_unresolved.json")

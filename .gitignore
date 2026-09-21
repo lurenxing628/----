@@ -336,3 +336,6 @@ htmlcov/
 /.codestable/roadmap/workbench-manual-remediation/execution-20260915/final-worktree-incremental.json
 /.codestable/roadmap/workbench-manual-remediation/execution-20260915/isolated5005-*.json
 /.codestable/roadmap/workbench-manual-remediation/execution-20260915/production-*.json
+
+# Reproducible local static-analysis caches (not gate baselines).
+/.cache/aps-analysis/

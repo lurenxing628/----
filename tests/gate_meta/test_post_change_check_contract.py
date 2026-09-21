@@ -10,7 +10,7 @@ from tests._support.paths import REPO_ROOT as ROOT
 
 
 def _load_post_change_check_module():
-    path = ROOT / ".limcode/skills/aps-post-change-check/scripts/post_change_check.py"
+    path = ROOT / "scripts/post_change_check.py"
     spec = importlib.util.spec_from_file_location("post_change_check_contract", path)
     assert spec and spec.loader
     module = importlib.util.module_from_spec(spec)

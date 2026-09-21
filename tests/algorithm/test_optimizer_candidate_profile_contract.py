@@ -178,7 +178,7 @@ def test_graph_ready_profile_keeps_repair_out_of_production_strategy_families() 
 
 
 def test_graph_ready_repair_roadmap_items_remain_in_progress_until_core_lands() -> None:
-    items_path = Path(__file__).resolve().parents[2] / ".codestable" / "roadmap" / "scheduler-global-optimizer" / "scheduler-global-optimizer-items.yaml"
+    items_path = Path(__file__).resolve().parents[2] / "tests"/ "fixtures"/ "optimizer" / "scheduler-global-optimizer-items.yaml"
     text = items_path.read_text(encoding="utf-8")
 
     for slug in (

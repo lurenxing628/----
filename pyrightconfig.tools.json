@@ -34,10 +34,10 @@
     "tools/import_cycle_baseline.py",
     "tools/import_cycle_graph.py",
     "tools/scan_import_cycles.py",
-    ".codestable/checkup/scripts/callgraph_call_sites.py",
-    ".codestable/checkup/scripts/callgraph_dataflow.py",
-    ".codestable/checkup/scripts/callgraph_extract.py",
-    ".codestable/checkup/scripts/callgraph_function_index.py",
+    "tools/checkup/callgraph_call_sites.py",
+    "tools/checkup/callgraph_dataflow.py",
+    "tools/checkup/callgraph_extract.py",
+    "tools/checkup/callgraph_function_index.py",
     "tools/dead_code_usage/__init__.py",
     "tools/dead_code_usage/ast_nodes.py",
     "tools/dead_code_usage/ast_usage.py",
@@ -55,7 +55,7 @@
     "tools/test_registry_groups_workbench.py",
     "tools/test_registry_workbench_ui.py",
     "tests/conftest.py",
-    ".codestable/tools/validate-yaml.py",
+    "tools/document_metadata/validate-yaml.py",
     "tests/config/test_config_manual_markdown.py",
     "tests/app_runtime/test_frontend_offline_static_assets.py",
     "tests/web_pages/test_page_manual_registry.py",
@@ -85,7 +85,7 @@
       "root": ".",
       "extraPaths": [
         ".",
-        ".codestable/checkup/scripts"
+        "tools/checkup"
       ]
     }
   ]

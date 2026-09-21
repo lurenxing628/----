@@ -37,7 +37,7 @@ from tests._support.optimizer_compare_algorithms_provenance import (  # noqa: E4
     source_binding,
 )
 
-DEFAULT_COMPARE_BASELINE = Path(".codestable/roadmap/scheduler-global-optimizer/graph-ready-v2-comparison-baseline.json")
+DEFAULT_COMPARE_BASELINE = Path("tests/fixtures/optimizer/graph-ready-v2-comparison-baseline.json")
 
 
 def build_arg_parser() -> argparse.ArgumentParser:

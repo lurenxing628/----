@@ -60,7 +60,7 @@ def baseline_scope(include_tests: bool) -> str:
 
 def default_baseline_path(repo_root: str, include_tests: bool = False) -> str:
     filename = "import_cycles_with_tests_baseline.json" if include_tests else "import_cycles_production_baseline.json"
-    return os.path.join(repo_root, ".codestable", "checkup", filename)
+    return os.path.join(repo_root, "tools", "baselines", filename)
 
 
 def cycle_signature(members: Sequence[str]) -> str:

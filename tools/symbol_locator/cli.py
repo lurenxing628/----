@@ -6,7 +6,7 @@
   python -m tools.symbol_locator callees <函数名> [--deep] [--json] [--rebuild]
 
 产物目录由环境变量 CHECKUP_CALLGRAPH 覆盖(与 callgraph_extract 一致),
-默认 .codestable/checkup/latest/callgraph/。
+默认 .cache/aps-analysis/callgraph/。
 """
 from __future__ import annotations
 
@@ -34,7 +34,7 @@ def build_parser():
     sub = parser.add_subparsers(dest="cmd")
     build = sub.add_parser("build-index", help="重建 SCIP 深度索引")
     build.add_argument("--json", action="store_true", help="输出结构化 JSON")
-    build.add_argument("--output", default=None, help="索引输出路径(默认 .codestable/checkup/latest/scip/index.scip)")
+    build.add_argument("--output", default=None, help="索引输出路径(默认 .cache/aps-analysis/scip/index.scip)")
     specs = (
         ("whereis", "查函数定义位置"),
         ("callers", "查谁调用它(改动影响面)"),
