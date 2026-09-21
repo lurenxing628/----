@@ -53,6 +53,28 @@ def read_date(value, field="date"):
         raise ValidationError("这个日期不存在，请核对年月日。", field=field) from exc
 
 
+def read_clock(value, field="clock"):
+    """接受文本时刻与 Excel 时间格子，与 read_date 对称。
+
+    原来时刻列直接调界面输入模型 operator_clock（只收 str），而同一份文件里日期列走
+    read_date（接受原生日期格子），同一个 codec 里两套标准：用户把班次起止填成 Excel
+    的时间格式，文件就被拒，而他在界面上看到的是 08:00。
+
+    这里只做归一，归一完仍交 operator_clock 做最终校验——界面输入模型不为文件格式让步。
+    秒和微秒非零一律拒绝，不做截断（"分钟到分为止"是既有合同）；带日期的格子也拒绝，
+    悄悄丢掉用户填的日期属于静默改值。
+    """
+    if type(value) is datetime:
+        raise ValidationError("这一格里带了日期，班次起止只填时刻，比如 08:00。", field=field)
+    if type(value) is time:
+        if value.second or value.microsecond:
+            raise ValidationError("时刻只到分钟，请把秒去掉。", field=field)
+        return f"{value.hour:02d}:{value.minute:02d}"
+    if type(value) is str:
+        return value.strip()
+    raise ValidationError("时刻必须填成 08:00 这样的 24 小时制，分钟到分为止。", field=field)
+
+
 def read_number(value, field):
     if type(value) is bool:
         raise ValidationError("这一项必须填数字。", field=field)

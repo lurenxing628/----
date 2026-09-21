@@ -46,7 +46,7 @@ from data.repositories.workbench_resource_file_repo import WorkbenchResourceFile
 
 from ..operator_calendars import WorkbenchOperatorCalendarService
 from ..queries import WorkbenchResourceQueryService
-from .file_codec import read_calendar_file, read_date, read_number
+from .file_codec import read_calendar_file, read_clock, read_date, read_number
 from .file_writer import check_capacity, write_calendar_file
 
 KIND = "operator_calendar"
@@ -144,7 +144,7 @@ class WorkbenchOperatorCalendarFileService:
         if key in DATE_FIELDS[self.kind]:
             return read_date(raw, key)
         if key in CLOCK_FIELDS[self.kind]:
-            return operator_clock(raw.strip() if type(raw) is str else raw, key)
+            return operator_clock(read_clock(raw, key), key)
         if key in NUMERIC[self.kind]:
             return self._efficiency(raw, key)
         if key in ENUMS:

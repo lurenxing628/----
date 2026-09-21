@@ -1,5 +1,6 @@
 """个人工作日历文件的导入合同：按工号加日期增量更新、不删除、与人员详情面板同一条校验链。"""
 
+from datetime import date, datetime, time
 from uuid import uuid4
 
 import pytest
@@ -249,3 +250,45 @@ def test_turning_a_holiday_back_to_work_needs_a_shift_start(file_env):
     assert results(document) == [(2, "update")]
     confirm(file_env, document, back)
     assert stored(file_env[0], DAY)["shift_hours"] == 8.0
+
+
+# ---------------------------------------------------------------------------
+# Excel 时间格子：与日期格子同一口径
+# ---------------------------------------------------------------------------
+
+
+def test_excel_time_cells_are_accepted_like_excel_date_cells(file_env):
+    """同一份文件里日期列接受 Excel 原生格子，时刻列原来却只收文本，是两套标准。
+
+    用户在 Excel 里把班次起止设成时间格式，界面上显示 08:00，文件却被拒。
+    """
+    rows = [(OPERATOR, date(2026, 10, 5), "工作日", time(8, 0), time(17, 0), 100, "是", "是", "")]
+    document = preview(file_env, rows, fmt="xlsx")
+    assert results(document) == [(2, "new")]
+    confirm(file_env, document, rows, fmt="xlsx")
+    saved = stored(file_env[0], DAY)
+    assert saved["shift_start"] == "08:00" and saved["shift_end"] == "17:00" and saved["shift_hours"] == 9.0
+
+
+def test_time_cell_with_seconds_is_rejected_not_truncated(file_env):
+    """"分钟到分为止"是既有合同：带秒的格子要报错，不能悄悄截断。"""
+    rows = [(OPERATOR, date(2026, 10, 5), "工作日", time(8, 0, 30), time(17, 0), 100, "是", "是", "")]
+    document = preview(file_env, rows, fmt="xlsx")
+    assert results(document) == [(2, "rejected")]
+    assert document.as_dict()["rows"][0]["errors"][0]["field"] == "shift_start"
+
+
+def test_time_cell_carrying_a_date_is_rejected(file_env):
+    """把整个时间戳填进时刻列时要报错：默默丢掉日期属于静默改值。"""
+    rows = [(OPERATOR, date(2026, 10, 5), "工作日", datetime(2026, 10, 5, 8, 0), time(17, 0), 100, "是", "是", "")]
+    document = preview(file_env, rows, fmt="xlsx")
+    assert results(document) == [(2, "rejected")]
+    assert document.as_dict()["rows"][0]["errors"][0]["field"] == "shift_start"
+
+
+def test_text_clock_still_works_after_the_codec_layer_normalises(file_env):
+    """回归：文本时刻仍然走界面输入模型那条校验链，行为不变。"""
+    rows = [(OPERATOR, DAY, "工作日", "08:00", "17:00", "100", "是", "是", "")]
+    confirm(file_env, preview(file_env, rows), rows)
+    assert stored(file_env[0], DAY)["shift_start"] == "08:00"
+    assert results(preview(file_env, [(OPERATOR, DAY, "工作日", "8点", "", "", "", "", "")])) == [(2, "rejected")]

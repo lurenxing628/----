@@ -172,3 +172,47 @@ def test_xlsx_capacity_and_abort_cleanup_do_not_truncate(resource_conn, monkeypa
     with pytest.raises(ValidationError):
         exported(resource_conn, "machine", "xlsx")
     assert list(ALL_TEMP_FILES) == before
+
+
+# ---------------------------------------------------------------------------
+# 只读列：不参与解析，但键必须留下
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("fmt", ("csv", "xlsx"))
+def test_readonly_columns_are_not_validated_as_json_or_numbers(fmt):
+    """JSON_FIELDS / NUMERIC_FIELDS 是按列名分的，只读列跟着可填列一起被校验过。
+
+    后果是导出的「原技能明细（只读）」在 Excel 里被重排一下，回导整行就被拒，
+    而这一列根本不会被导入。
+    """
+    headers = ("编号", "名称", "状态", "技能工种编号数组", "原技能明细（只读）", "原设备授权（只读）")
+    rows = [("CO1", "张三", "active", '["OT001"]', "钳工 3 级", "3140124 主操")]
+    parsed, _ = read_resource_file("operator", file_bytes(rows, fmt, headers), fmt)
+    assert parsed[0]["errors"] == []
+    assert parsed[0]["values"]["skill_codes"] == ["OT001"], "可填列照旧解析"
+    assert parsed[0]["values"]["skill_details"] == "钳工 3 级", "只读列保留原样，不解析"
+
+
+@pytest.mark.parametrize("fmt", ("csv", "xlsx"))
+def test_readonly_column_keys_survive_parsing(fmt):
+    """键存在性有业务含义，不能因为"反正不导入"就把只读列整列丢掉。
+
+    file_input._declares_empty_skills 靠 skills_declared 这个键在不在，区分
+    「导出回导、空技能列表保持不变」和「明确声明没有技能」；丢了键会误清空人员技能。
+    """
+    headers = ("编号", "名称", "状态", "技能工种编号数组", "技能已声明（只读）")
+    rows = [("CO1", "张三", "active", "[]", "否")]
+    parsed, _ = read_resource_file("operator", file_bytes(rows, fmt, headers), fmt)
+    assert "skills_declared" in parsed[0]["values"]
+    assert parsed[0]["errors"] == []
+
+
+@pytest.mark.parametrize("fmt", ("csv", "xlsx"))
+def test_readonly_hours_column_accepts_text_that_is_not_a_number(fmt):
+    """default_hours 在 NUMERIC_FIELDS 里，但对工种表是只读列。"""
+    headers = ("编号", "名称", "归属", "原默认工时（只读）")
+    rows = [("OT001", "钳工", "internal", "按件计")]
+    parsed, _ = read_resource_file("op_type", file_bytes(rows, fmt, headers), fmt)
+    assert parsed[0]["errors"] == []
+    assert parsed[0]["values"]["default_hours"] == "按件计"

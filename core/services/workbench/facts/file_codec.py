@@ -13,6 +13,7 @@ from core.models.workbench_resource_file import (
     JSON_FIELDS,
     MULTI_CODES,
     NUMERIC_FIELDS,
+    READONLY,
     file_columns,
     public_columns,
 )
@@ -116,7 +117,7 @@ def _decode_json(value, field):
     return value
 
 
-def _parse(number, values, errors, fields, fmt):
+def _parse(number, values, errors, fields, fmt, readonly):
     parsed, issues = {}, []
     if len(values) > len(fields) and any(v is not None and v != "" for v in values[len(fields):]):
         issues.append({"row": number, "field": "columns", "code": "invalid_input", "message": "这一行的列数比表头多，多出来的内容没有导入。请删掉多余的列。"})
@@ -126,7 +127,12 @@ def _parse(number, values, errors, fields, fmt):
             if index in errors:
                 raise ValidationError(errors[index], field=field)
             if value is not None and value != "":
-                parsed[field] = _decode(value, field, fmt)
+                # 只读列不参与解析：它们的值根本不会被导入，却因为 JSON_FIELDS / NUMERIC_FIELDS
+                # 是按列名而不是按表分的，跟着可填列一起被校验——导出的「原技能明细（只读）」
+                # 在 Excel 里被重排一下，回导整行就被拒。
+                # 但键必须留下：file_input._declares_empty_skills 靠 skills_declared 这个键
+                # 在不在，区分「导出回导、空技能列表保持不变」和「明确声明没有技能」。
+                parsed[field] = value if field in readonly else _decode(value, field, fmt)
         except ValidationError as exc:
             issues.append({"row": number, "field": field, "code": "invalid_input", "message": exc.message})
     return {"row": number, "values": parsed, "errors": issues}
@@ -148,7 +154,7 @@ def read_resource_file(kind, content, fmt):
                 continue
             if len(rows) == IMPORT_ROW_LIMIT:
                 raise file_error("一次最多导入 2000 行，这个文件超了，一行都没有导入。请拆成几个小文件分次上传。", number)
-            rows.append(_parse(number, values, errors, fields, fmt))
+            rows.append(_parse(number, values, errors, fields, fmt, READONLY[kind]))
         return rows, extra_sheet_notice(state["sheets"])
     finally:
         source.close()
