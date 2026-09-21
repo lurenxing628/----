@@ -624,11 +624,6 @@
     },
     {
       "path": "tests/gate_meta/test_run_quality_gate.py",
-      "kind": "tests/excel_data_io/test_excel_template_contract.py",
-      "count": 1
-    },
-    {
-      "path": "tests/gate_meta/test_run_quality_gate.py",
       "kind": "tools/changed_command.py",
       "count": 1
     },
@@ -765,101 +760,6 @@
     {
       "path": "tests/scheduler_analysis/test_plan_vs_actual_review.py",
       "kind": "templates/reports/execution_review.html",
-      "count": 1
-    },
-    {
-      "path": "tests/web_pages/test_frontend_ui_language_polish.py",
-      "kind": "templates/workbench/legacy_result.html",
-      "count": 2
-    },
-    {
-      "path": "tests/web_pages/test_frontend_ui_language_polish.py",
-      "kind": "web/routes/domains/scheduler/scheduler_excel_batches.py",
-      "count": 2
-    },
-    {
-      "path": "tests/web_pages/test_frontend_ui_language_polish.py",
-      "kind": "web/routes/domains/scheduler/scheduler_excel_calendar.py",
-      "count": 3
-    },
-    {
-      "path": "tests/web_pages/test_frontend_ui_language_polish.py",
-      "kind": "web/routes/domains/scheduler/scheduler_excel_calendar_rows.py",
-      "count": 1
-    },
-    {
-      "path": "tests/web_pages/test_frontend_ui_language_polish.py",
-      "kind": "web/routes/equipment_excel_links.py",
-      "count": 1
-    },
-    {
-      "path": "tests/web_pages/test_frontend_ui_language_polish.py",
-      "kind": "web/routes/equipment_excel_machines.py",
-      "count": 2
-    },
-    {
-      "path": "tests/web_pages/test_frontend_ui_language_polish.py",
-      "kind": "web/routes/material.py",
-      "count": 1
-    },
-    {
-      "path": "tests/web_pages/test_frontend_ui_language_polish.py",
-      "kind": "web/routes/personnel_excel_links.py",
-      "count": 2
-    },
-    {
-      "path": "tests/web_pages/test_frontend_ui_language_polish.py",
-      "kind": "web/routes/personnel_excel_operator_calendar.py",
-      "count": 2
-    },
-    {
-      "path": "tests/web_pages/test_frontend_ui_language_polish.py",
-      "kind": "web/routes/personnel_excel_operators.py",
-      "count": 2
-    },
-    {
-      "path": "tests/web_pages/test_frontend_ui_language_polish.py",
-      "kind": "web/routes/process_excel_op_types.py",
-      "count": 2
-    },
-    {
-      "path": "tests/web_pages/test_frontend_ui_language_polish.py",
-      "kind": "web/routes/process_excel_part_operation_hours.py",
-      "count": 1
-    },
-    {
-      "path": "tests/web_pages/test_frontend_ui_language_polish.py",
-      "kind": "web/routes/process_excel_part_operations.py",
-      "count": 1
-    },
-    {
-      "path": "tests/web_pages/test_frontend_ui_language_polish.py",
-      "kind": "web/routes/process_excel_suppliers.py",
-      "count": 2
-    },
-    {
-      "path": "tests/web_pages/test_frontend_ui_language_polish.py",
-      "kind": "web/viewmodels/scheduler_analysis_compat.py",
-      "count": 1
-    },
-    {
-      "path": "tests/web_pages/test_frontend_ui_language_polish.py",
-      "kind": "web/viewmodels/scheduler_analysis_vm.py",
-      "count": 1
-    },
-    {
-      "path": "tests/web_pages/test_frontend_ui_language_polish.py",
-      "kind": "web/viewmodels/scheduler_config_panel.py",
-      "count": 1
-    },
-    {
-      "path": "tests/web_pages/test_frontend_ui_language_polish.py",
-      "kind": "web/viewmodels/scheduler_degradation_presenter.py",
-      "count": 1
-    },
-    {
-      "path": "tests/web_pages/test_frontend_ui_language_polish.py",
-      "kind": "web/viewmodels/scheduler_run_options.py",
       "count": 1
     },
     {

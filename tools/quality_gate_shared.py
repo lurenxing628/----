@@ -207,7 +207,9 @@ QUALITY_GATE_SOURCE_FILES = tuple(
             ".codestable/checkup/import_cycles_production_baseline.json",
             ".codestable/checkup/import_cycles_with_tests_baseline.json",
             *QUALITY_GATE_TOOL_PATHS,
-            "tests/web_pages/test_frontend_ui_language_polish.py",
+            # 非真机那半已登记进 QUALITY_GATE_REQUIRED_TESTS（见下一行展开），
+            # 这里只需要单列留在浏览器车道的真机文件。
+            "tests/web_pages/test_frontend_ui_language_polish_browser.py",
             "tests/gate_meta/test_architecture_fitness.py",
             *QUALITY_GATE_REQUIRED_TESTS,
             *QUALITY_GATE_STARTUP_REGRESSION_ARGS,
@@ -764,7 +766,7 @@ def build_quality_gate_command_plan() -> List[Dict[str, Any]]:
             "output_policy": "normalized",
         },
         {
-            "display": "python tools/scan_py38plus_syntax.py --fail-on-hit scripts/run_quality_gate.py tools/quality_gate_shared.py tools/scan_aps_three_gap_py38_scope.py tests/app_runtime/test_frontend_offline_static_assets.py tests/web_pages/test_frontend_ui_language_polish.py tests/config/test_config_manual_markdown.py tests/web_pages/test_page_manual_registry.py tests/gate_meta/test_aps_three_gap_docs_quality_gate.py tests/gate_meta/test_run_quality_gate.py",
+            "display": "python tools/scan_py38plus_syntax.py --fail-on-hit scripts/run_quality_gate.py tools/quality_gate_shared.py tools/scan_aps_three_gap_py38_scope.py tests/app_runtime/test_frontend_offline_static_assets.py tests/web_pages/test_frontend_ui_language_polish.py tests/web_pages/test_frontend_ui_language_polish_browser.py tests/config/test_config_manual_markdown.py tests/web_pages/test_page_manual_registry.py tests/gate_meta/test_aps_three_gap_docs_quality_gate.py tests/gate_meta/test_run_quality_gate.py",
             "args": [
                 "python",
                 "tools/scan_py38plus_syntax.py",
@@ -774,6 +776,7 @@ def build_quality_gate_command_plan() -> List[Dict[str, Any]]:
                 "tools/scan_aps_three_gap_py38_scope.py",
                 "tests/app_runtime/test_frontend_offline_static_assets.py",
                 "tests/web_pages/test_frontend_ui_language_polish.py",
+                "tests/web_pages/test_frontend_ui_language_polish_browser.py",
                 "tests/config/test_config_manual_markdown.py",
                 "tests/web_pages/test_page_manual_registry.py",
                 "tests/gate_meta/test_aps_three_gap_docs_quality_gate.py",

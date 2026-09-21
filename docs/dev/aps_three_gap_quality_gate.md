@@ -85,6 +85,7 @@
 - `tests/calendar_maintenance/test_freeze_window_bounds.py`
 - `tests/app_runtime/test_frontend_offline_static_assets.py`
 - `tests/web_pages/test_frontend_ui_language_polish.py`
+- `tests/web_pages/test_frontend_ui_language_polish_browser.py`
 - `tests/config/test_config_manual_markdown.py`
 - `tests/gantt/test_gantt_degradation_surface.py`
 - `tests/resource_dispatch/test_resource_dispatch_invalid_summary_surfaces_overdue_degraded.py`
@@ -188,10 +189,10 @@
 ## 7. 第 14 项最小命令
 
 ```bash
-PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/app_runtime/test_frontend_offline_static_assets.py tests/web_pages/test_frontend_ui_language_polish.py tests/config/test_config_manual_markdown.py tests/web_pages/test_page_manual_registry.py tests/gate_meta/test_codestable_tools_contract.py tests/gate_meta/test_scan_py38plus_syntax.py tests/gate_meta/test_aps_three_gap_docs_quality_gate.py tests/gate_meta/test_run_quality_gate.py
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/app_runtime/test_frontend_offline_static_assets.py tests/web_pages/test_frontend_ui_language_polish.py tests/web_pages/test_frontend_ui_language_polish_browser.py tests/config/test_config_manual_markdown.py tests/web_pages/test_page_manual_registry.py tests/gate_meta/test_codestable_tools_contract.py tests/gate_meta/test_scan_py38plus_syntax.py tests/gate_meta/test_aps_three_gap_docs_quality_gate.py tests/gate_meta/test_run_quality_gate.py
 PYTHONDONTWRITEBYTECODE=1 .venv/bin/python .codestable/tools/validate-yaml.py --file .codestable/roadmap/aps-three-gap-directions/aps-three-gap-directions-items.yaml --yaml-only --require roadmap --require created --require items
 PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/scan_aps_three_gap_py38_scope.py --base-ref d4589d77
-PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/scan_py38plus_syntax.py --fail-on-hit scripts/run_quality_gate.py tools/quality_gate_shared.py tools/scan_aps_three_gap_py38_scope.py tests/app_runtime/test_frontend_offline_static_assets.py tests/web_pages/test_frontend_ui_language_polish.py tests/config/test_config_manual_markdown.py tests/web_pages/test_page_manual_registry.py tests/operation_execution/test_operation_execution_event_time_contract.py tests/gate_meta/test_scheduler_data_route_error_contract.py tests/resource_dispatch/test_scheduler_resource_dispatch_invalid_query_cleanup.py tests/gate_meta/test_aps_three_gap_docs_quality_gate.py tests/gate_meta/test_run_quality_gate.py
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python tools/scan_py38plus_syntax.py --fail-on-hit scripts/run_quality_gate.py tools/quality_gate_shared.py tools/scan_aps_three_gap_py38_scope.py tests/app_runtime/test_frontend_offline_static_assets.py tests/web_pages/test_frontend_ui_language_polish.py tests/web_pages/test_frontend_ui_language_polish_browser.py tests/config/test_config_manual_markdown.py tests/web_pages/test_page_manual_registry.py tests/operation_execution/test_operation_execution_event_time_contract.py tests/gate_meta/test_scheduler_data_route_error_contract.py tests/resource_dispatch/test_scheduler_resource_dispatch_invalid_query_cleanup.py tests/gate_meta/test_aps_three_gap_docs_quality_gate.py tests/gate_meta/test_run_quality_gate.py
 git diff --check
 ```
 

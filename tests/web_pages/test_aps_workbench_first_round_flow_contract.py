@@ -220,7 +220,11 @@ return document.body.innerText;
         assert "<dt>排产版本</dt><dd>12</dd>" in body
         assert "正式采用方案" in body
         if path.startswith("/reports/"):
-            assert "按原条件下载旧报表" in body and "version=12" in body
+            # 旧报表导出接口随 2026-09-18 旧路由层退役删除，退役页不再提供
+            # “按原条件下载旧报表”链接（见 web/routes/workbench/legacy_navigation.py 的说明
+            # 与 tests/workbench/test_final_legacy_navigation.py 里已更新的同类合同）。
+            # 退役页仍要带出公开的排产版本与方案身份，上面两条断言已经覆盖。
+            assert "按原条件下载旧报表" not in body
     for path, view in (("/scheduler/analysis?", "analysis"), ("/scheduler/gantt?", "gantt")):
         canonical_boot(client, path + identity, view, {"plan_ref": plan["plan_ref"]})
     for path in ("/scheduler/analysis?version=0", "/scheduler/gantt?version=12&start_date=bad&end_date=" + day):

@@ -203,6 +203,7 @@ QUALITY_GATE_GUARD_TESTS = (
     "tests/web_pages/test_system_runtime_log_reader.py",
     "tests/excel_data_io/test_excel_import_hardening.py",
     "tests/app_runtime/test_frontend_offline_static_assets.py",
+    "tests/web_pages/test_frontend_ui_language_polish.py",
     "tests/web_pages/test_error_boundary_contract.py",
     # 诊断包安全红线：zip 名单永不含 aps_secret_key.txt（fusion-runtime-log-viewer）
     # 打印介质契约：.sidebar 必须在 print 隐藏名单（fusion-anchor-baseline-prep）

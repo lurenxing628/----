@@ -24,7 +24,7 @@ from typing import List, Optional, Sequence, Set, Tuple
 
 BROWSER_LANE_FILES: Tuple[str, ...] = (
     "tests/web_pages/test_aps_workbench_first_round_flow_contract.py",
-    "tests/web_pages/test_frontend_ui_language_polish.py",
+    "tests/web_pages/test_frontend_ui_language_polish_browser.py",
     "tests/web_pages/test_lazy_select_orphan_option.py",
     "tests/workbench/test_actual_gantt_ui.py",
     "tests/workbench/test_asset_browser_globals.py",

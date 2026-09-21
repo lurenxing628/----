@@ -365,7 +365,7 @@ def test_main_runs_guard_preflight_before_static_and_startup_checks(monkeypatch,
         "python .codestable/tools/validate-yaml.py --file .codestable/roadmap/aps-three-gap-directions/aps-three-gap-directions-items.yaml --yaml-only --require roadmap --require created --require items"
     )
     assert displays.index(
-        "python tools/scan_py38plus_syntax.py --fail-on-hit scripts/run_quality_gate.py tools/quality_gate_shared.py tools/scan_aps_three_gap_py38_scope.py tests/app_runtime/test_frontend_offline_static_assets.py tests/web_pages/test_frontend_ui_language_polish.py tests/config/test_config_manual_markdown.py tests/web_pages/test_page_manual_registry.py tests/gate_meta/test_aps_three_gap_docs_quality_gate.py tests/gate_meta/test_run_quality_gate.py"
+        "python tools/scan_py38plus_syntax.py --fail-on-hit scripts/run_quality_gate.py tools/quality_gate_shared.py tools/scan_aps_three_gap_py38_scope.py tests/app_runtime/test_frontend_offline_static_assets.py tests/web_pages/test_frontend_ui_language_polish.py tests/web_pages/test_frontend_ui_language_polish_browser.py tests/config/test_config_manual_markdown.py tests/web_pages/test_page_manual_registry.py tests/gate_meta/test_aps_three_gap_docs_quality_gate.py tests/gate_meta/test_run_quality_gate.py"
     ) < displays.index("python tests/gate_meta/check_quickref_vs_routes.py")
     assert displays.index("python tools/scan_anti_regression_gate.py --base-ref d4589d77") < displays.index(
         "python -m pyright -p pyrightconfig.gate.json"
@@ -715,6 +715,9 @@ def test_required_suite_comes_from_shared_registry_and_covers_high_risk_regressi
         "tests/gate_meta/test_long_gate_cli_controls.py",
         "tests/gate_meta/test_long_gate_quickref_cache.py",
         "tests/schedule/service/test_schedule_template_lookup_contract.py",
+        # 2026-09-21 推翻 3aafeaf9 的"低频"决定：它只读源文件、0.3 秒，被整体标 perf
+        # 退出门禁后烂了 8 条三天没人发现。真机那半已拆到 *_browser.py。
+        "tests/web_pages/test_frontend_ui_language_polish.py",
     ):
         assert high_value_path in module.REQUIRED_TEST_ARGS
 
@@ -724,10 +727,8 @@ def test_required_suite_comes_from_shared_registry_and_covers_high_risk_regressi
         "tests/gate_meta/test_long_gate_required_regression_cache.py",
         "tests/gate_meta/test_sync_debt_ledger.py",
         "tests/config/test_config_manual_markdown.py",
-        "tests/web_pages/test_frontend_ui_language_polish.py",
         "tests/web_pages/test_manual_entry_scope.py",
         "tests/web_pages/test_page_manual_registry.py",
-        "tests/excel_data_io/test_excel_template_contract.py",
     ):
         assert lower_frequency_path not in module.REQUIRED_TEST_ARGS
 

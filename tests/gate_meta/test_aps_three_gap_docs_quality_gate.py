@@ -83,6 +83,7 @@ REGRESSION_TESTS = (
     "tests/operation_execution/test_scheduler_reschedule_execution_facts.py",
     "tests/app_runtime/test_frontend_offline_static_assets.py",
     "tests/web_pages/test_frontend_ui_language_polish.py",
+    "tests/web_pages/test_frontend_ui_language_polish_browser.py",
     "tests/config/test_config_manual_markdown.py",
     "tests/web_pages/test_page_manual_registry.py",
     "tests/schedule/service/test_schedule_input_collector_legacy_compat.py",

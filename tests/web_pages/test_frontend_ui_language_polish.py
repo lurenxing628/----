@@ -1,4 +1,13 @@
-"""回归测试：前端模板、JS、手册与服务层的面向用户文案必须是规范中文，不得泄露内部术语——校验排产配置/批次/运行面板提示、甘特图与日志展示字段用中文 label、Excel 预览用 display_data、错误文案中文优先而英文仅作兼容别名，并守护若干已知乱码错误消息已被修复。"""
+"""回归测试：面向用户的文案必须是规范中文，不得泄露内部术语。
+
+只读源文件，不起浏览器——真机那半在同名的 *_browser.py 里。2026-09-21 拆开：
+浏览器车道按文件判定，两者放在一起会让纯读文件的用例也被标 perf、退出所有门禁。
+
+守的是：甘特与日志展示字段用中文 label、错误文案中文优先而英文仅作兼容别名、
+调试细节不外泄、以及若干已知乱码错误消息已被修复。
+2026-09-18 旧路由层退役后，本文件里指向已删文件的断言已在 2026-09-21 逐条裁决：
+对象还在的剪掉死路径继续守，对象整体消失的整条退役并写明由谁接手。
+"""
 
 from __future__ import annotations
 
@@ -9,7 +18,6 @@ import openpyxl
 import pytest
 
 from tests._support.paths import REPO_ROOT
-from tests._support.workbench_browser_contract import browser_contract
 
 
 def _read(rel_path: str) -> str:
@@ -25,41 +33,16 @@ def _read_analysis_template() -> str:
     ))
 
 
-def test_scheduler_config_and_batch_hints_are_user_facing_chinese() -> None:
-    browser_contract("""
-const value = {type:'work',hours:'8',eff:'100',allowNormal:'yes',allowUrgent:'no',note:''};
-expect(window.APSCalendarContract.input(value).eff === 100);
-for (const eff of ['', '0', '-1', 'bad', '201']) {
-  let message = '';
-  try { window.APSCalendarContract.input({...value,eff}); } catch(error) { message = error.message; }
-  expect(message === '效率须大于 0 且不超过 200%。', 'Bad efficiency was accepted or leaked an internal field name');
-}
-const node = await render(React.createElement(window.PreflightControls.Rules,
-  {value:{ready_check:true,missing_resource_policy:'auto_assign'},onChange:()=>{},disabled:false}));
-expect(node.textContent.includes('缺资源工序'));
-expect(node.textContent.includes('自动分配') && node.textContent.includes('暂不排'));
-expect(node.textContent.includes('已开工工序：保留记录（不可修改）'));
-expect(!node.textContent.includes('missing_resource_policy') && !node.textContent.includes('strict_mode'));
-return true;
-""", scripts=("static/workbench/app/resource-contract.js", "static/workbench/app/ResourceControls.js",
-              "static/workbench/app/CalendarContract.js", "static/workbench/app/PreflightControls.js"))
-    batch = _read("frontend/workbench/app/BatchDetail.jsx")
-    assert "刷新详情" in batch
-    assert "B.label('status', entity.status)" in batch
-    assert "解析器不支持 strict_mode" not in batch
-    calendar = _read("frontend/workbench/app/CalendarFields.jsx")
-    assert "效率（%）" in calendar and "可排工时（小时）" in calendar
-    assert "假期安排生产但未单独设置效率时" not in calendar
-
-
 def test_scheduler_run_copy_avoids_vague_vocabulary_for_operators() -> None:
     forbidden_terms = ("配置不合法", "安全取值", "工时空着时可能", "可能按 0 小时", "当前配置无效",
                        "配置无效", "格式不合法", "时间不合法", "外协周期缺失或不合法")
     for path in (
         "frontend/workbench/app/PreflightControls.jsx", "frontend/workbench/app/RunJobControls.jsx",
         "frontend/workbench/app/PlanGantt.jsx", "frontend/workbench/app/PlanWorkspace.jsx",
-        "web/viewmodels/scheduler_run_options.py", "web/viewmodels/page_manuals_scheduler.py",
-        "web/viewmodels/page_manuals_scheduler_week_plan.py", "web/viewmodels/scheduler_degradation_presenter.py",
+        # scheduler_run_options.py 与 scheduler_degradation_presenter.py 随 2026-09-18
+        # 旧路由层退役删除，降级展示在工作台无后继；其余 8 个源仍然要守这批含糊词。
+        "web/viewmodels/page_manuals_scheduler.py",
+        "web/viewmodels/page_manuals_scheduler_week_plan.py",
         "core/services/scheduler/summary/schedule_summary_degradation.py", "static/docs/scheduler_manual.md",
     ):
         source = _read(path)
@@ -73,11 +56,8 @@ def test_scheduler_config_repair_notices_use_public_field_labels() -> None:
     assert "{field.label}" in source and "base.stored_values[field.key]" in source
     assert "notice.fields" not in source
 
-    panel_vm = _read("web/viewmodels/scheduler_config_panel.py")
-    assert 'raw_notice.get("field_labels")' in panel_vm
-    assert "detail_items = tuple" in panel_vm
-    assert 'raw_notice.get("fields")' not in panel_vm
-
+    # scheduler_config_panel.py 随旧路由层退役删除，工作台改由 SystemMaintenanceConfig.jsx
+    # 直接渲染 field.label；上面三条断言已经覆盖前端这一侧。
     config_outcome = _read("core/services/scheduler/config/config_page_outcome.py")
     assert '"field_labels"' in config_outcome
     assert "public_config_field_labels" in config_outcome
@@ -124,87 +104,30 @@ def test_scheduler_analysis_gantt_and_logs_do_not_surface_internal_terms() -> No
 
 
 def test_debug_details_do_not_expose_flask_endpoint_names_to_users() -> None:
+    # legacy_result.html 随旧路由层退役删除；其余 5 个仍然要守。
     for path in ("frontend/workbench/app/main.jsx", "frontend/workbench/app/ResourceForms.jsx",
                  "frontend/workbench/app/BatchForms.jsx", "frontend/workbench/app/SystemMaintenanceConfig.jsx",
-                 "frontend/workbench/app/PlanWorkspace.jsx", "templates/workbench/legacy_result.html"):
+                 "frontend/workbench/app/PlanWorkspace.jsx"):
         source = _read(path)
         for term in ("后端接口未注册（endpoint", "endpoint）", "missing_preset_endpoints|join"):
             assert term not in source
 
 
-def test_process_excel_current_tables_render_chinese_display_fields() -> None:
-    from types import SimpleNamespace
+def test_source_and_primary_machine_labels_stay_chinese_for_users() -> None:
+    """工艺归属与主操设备在用户面前是中文。
 
-    from web.routes.workbench.legacy_presentation import preview_fields
+    这条原来叫 test_process_excel_current_tables_render_chinese_display_fields，守的是
+    旧 Excel 预览页按 display_data 渲染中文、隐藏 op_id。那一整套页面、legacy_presentation
+    的 preview_fields、以及 8 个旧路由都随 2026-09-18 退役删除，对象整体消失。工作台的
+    同类口径已由 tests/workbench/test_*_files.py 逐表接手（自制/外协、是/否 都在那边锁着），
+    这里只留三个仍然活着、别处没覆盖的碎片。
 
-    cases = (
-        ("personnel.excel_operator_preview", {"状态": "在岗"}, {"状态": "active"}),
-        ("equipment.excel_machine_preview", {"状态": "停机"}, {"状态": "inactive"}),
-        ("scheduler.excel_batches_preview", {"优先级": "急件", "齐套": "部分齐套"}, {"优先级": "urgent", "齐套": "partial"}),
-        ("scheduler.excel_calendar_preview", {"类型": "工作日", "允许普通件": "是", "允许急件": "否"}, {"类型": "workday"}),
-        ("personnel.excel_operator_calendar_preview", {"类型": "休息日", "允许普通件": "否", "允许急件": "是"}, {"类型": "holiday"}),
-        ("process.excel_op_type_preview", {"归属": "自制"}, {"归属": "internal"}),
-        ("process.excel_part_op_hours_preview", {"图号": "P1", "工序": "10", "单件工时(h)": "0.25"},
-         {"图号": "P1", "工序": 10, "单件工时(h)": 0.25, "归属": "external"}),
-        ("process.excel_supplier_preview", {"状态": "启用", "备注": "原备注"}, {"状态": "active", "备注": "原备注"}),
-    )
-    for endpoint, public, raw in cases:
-        original = dict(raw)
-        row = SimpleNamespace(data=raw, display_data={**public, "op_id": "private-operation"},
-                              display_changes={}, changes={})
-        fields = preview_fields(row, endpoint)
-        projected = {field["label"]: field["value"] for field in fields}
-        assert projected == public, (endpoint, projected)
-        assert row.data == original
-        assert "op_id" not in projected and "private-operation" not in str(projected)
-    template = _read("templates/workbench/legacy_result.html")
-    assert "row|legacy_preview_fields(request.endpoint)" in template
-    assert "{{ field.label }}" in template and "{{ field.value }}" in template
-    assert "{{ field.before }}" in template and "{{ field.after }}" in template
-    assert "r.data | tojson_zh" not in template
+    顺带记一笔：op_type_service.py 的「归属显示」与 supplier_service.py 的「状态显示」
+    两个字段在全仓已经没有消费方，原来只被这条测试钉着活。它们的去留是独立裁决，
+    不在这里继续替它们站岗。
+    """
     detail = _read("frontend/workbench/app/ProcessDetail.jsx")
     assert "P = window.APSProcessContract" in detail and "P.sourceLabel(row.source)" in detail
-    browser_contract("""
-expect(window.APSProcessContract.sourceLabel('internal') === '自制');
-expect(window.APSProcessContract.sourceLabel('external') === '外协');
-expect(window.APSProcessContract.sourceLabel('unknown') === '未归类');
-return true;
-""", scripts=("static/workbench/app/resource-contract.js", "static/workbench/app/ProcessContract.js"))
-    batch_route = _read("web/routes/domains/scheduler/scheduler_excel_batches.py")
-    assert "encode_preview_rows_payload" in batch_route
-
-    operator_route = _read("web/routes/personnel_excel_operators.py")
-    assert '"状态显示": operator_status_label' in operator_route
-
-    machine_route = _read("web/routes/equipment_excel_machines.py")
-    assert '"状态显示": machine_status_label' in machine_route
-
-    assert '"优先级显示": batch_priority_label' in batch_route
-    assert '"齐套显示": ready_status_label' in batch_route
-
-    calendar_route = _read("web/routes/domains/scheduler/scheduler_excel_calendar.py")
-    assert '"类型显示": calendar_day_type_label' in calendar_route
-    assert '"允许普通件显示": yes_no_label' in calendar_route
-    assert '"允许急件显示": yes_no_label' in calendar_route
-
-    operator_calendar_route = _read("web/routes/personnel_excel_operator_calendar.py")
-    assert '"类型显示": calendar_day_type_label' in operator_calendar_route
-    assert '"允许普通件显示": yes_no_label' in operator_calendar_route
-    assert '"允许急件显示": yes_no_label' in operator_calendar_route
-
-    op_type_service = _read("core/services/process/op_type_service.py")
-    assert '"归属显示": source_type_label(ot.category)' in op_type_service
-
-    supplier_service = _read("core/services/process/supplier_service.py")
-    assert '"状态显示": supplier_status_label(s.status)' in supplier_service
-
-    part_operation_hours_route = _read("web/routes/process_excel_part_operation_hours.py")
-    assert '"归属显示": source_type_label(source)' in part_operation_hours_route
-
-    operator_machine_route = _read("web/routes/personnel_excel_links.py")
-    assert "project_preview_rows_for_display" in operator_machine_route
-    assert '"技能等级": skill_level_label' in operator_machine_route
-    assert '"主操设备": yes_no_label' in operator_machine_route
 
     operator_machine_service = _read("core/services/personnel/operator_machine_service.py")
     assert "主操设备=yes" not in operator_machine_service
@@ -323,16 +246,17 @@ def test_supplier_manual_matches_required_default_days_and_template_columns() ->
 
 def test_material_status_and_delete_messages_match_user_page_labels() -> None:
     material_page = _read("web/viewmodels/page_manuals_material.py")
-    material_route = _read("web/routes/material.py")
     material_service = _read("core/services/material/material_service.py")
 
     assert "状态为可用" in material_page
     assert "删除可能失败；这时先去处理引用它的批次物料需求" in material_page
-    assert "请先处理关联需求后再试" in material_route
-    delete_block = material_route.split("def materials_delete", 1)[-1].split("# ============================================================", 1)[0]
-    assert "请稍后重试" not in delete_block
     assert "请选择：可用 / 停用" in material_service
     assert "请选择：启用 / 停用" not in material_service
+
+    # web/routes/material.py 随旧路由层退役删除，删除受阻的提示改由工作台的批量删除给出。
+    material_bulk = _read("core/services/workbench/material/bulk.py")
+    assert "这个物料还挂在批次的物料需求上，不能删除。" in material_bulk
+    assert "请稍后重试" not in material_bulk
 
 
 def test_excel_templates_default_to_chinese_enum_values_accepted_by_backend() -> None:
@@ -423,49 +347,36 @@ def test_excel_templates_default_to_chinese_enum_values_accepted_by_backend() ->
 
 
 def test_import_errors_present_chinese_first_and_english_as_compatible_aliases() -> None:
+    # 四个旧路由随 2026-09-18 退役删除；剩下这两个源仍在工作台的链路上
+    # （excel_validators 被批次 codec 与日历 codec 消费）。
     sources = "\n".join(
         _read(rel_path)
         for rel_path in (
             "core/services/common/excel_validators.py",
-            "web/routes/process_excel_op_types.py",
-            "web/routes/process_excel_suppliers.py",
-            "web/routes/domains/scheduler/scheduler_excel_calendar.py",
-            "web/routes/domains/scheduler/scheduler_excel_calendar_rows.py",
             "core/services/personnel/operator_machine_normalizers.py",
+            "core/services/scheduler/calendar/admin.py",
         )
     )
     assert "允许：normal/urgent/critical；或中文" not in sources
     assert "允许：yes/no/partial；或中文" not in sources
     assert "允许：workday/holiday；或中文" not in sources
     assert "允许：yes/no/true/false/1/0；或中文" not in sources
-    assert "允许：internal / external；或中文" not in sources
-    assert "允许：active / inactive；或中文" not in sources
+    # 工种归属与供应商状态这两条随资源四表改填英文代号而失效（见 workbench_resource_file.py
+    # 的 value_hint 与 tests/workbench/test_resource_file_codec.py），不再在这里守。
     assert "可填写：普通 / 急件 / 特急。以前的 Excel 如果写过英文，系统会尽量按中文意思读取；新文件请直接填中文" in sources
     assert "新文件请填写：齐套 / 未齐套 / 部分齐套。以前的 Excel 如果写过 是 / 否 或英文，系统会尽量按中文意思读取；新文件请直接填中文推荐值" in sources
     assert "新文件请填写：工作日 / 假期。以前的 Excel 如果写过周末 / 节假日或英文，系统会尽量按中文意思读取；新文件请直接填中文推荐值" in sources
     assert "可填写：是 / 否。以前的 Excel 如果写过英文，系统会尽量按中文意思读取；新文件请直接填中文" in sources
-    assert "请填写中文：自制、外协。以前的 Excel 如果写过“内部、外部、内、外”，系统会尽量按自制或外协读取" in sources
-    assert "可填写：启用 / 停用 / 在用 / 正常 / 禁用。以前的 Excel 如果写过英文状态，系统会尽量按中文意思读取；新文件请直接填中文" in sources
     assert "以前的 Excel 如果写过英文，系统会尽量按中文意思读取；新文件请直接填中文" in sources
 
 
-def test_excel_exports_use_chinese_labels_for_enum_columns() -> None:
-    route_expectations = {
-        "web/routes/personnel_excel_operators.py": ("operator_status_label",),
-        "web/routes/equipment_excel_machines.py": ("machine_status_label",),
-        "web/routes/process_excel_op_types.py": ("source_type_label",),
-        "web/routes/process_excel_suppliers.py": ("supplier_status_label",),
-        "web/routes/personnel_excel_links.py": ("skill_level_label", "yes_no_label"),
-        "web/routes/equipment_excel_links.py": ("skill_level_label", "yes_no_label"),
-        "web/routes/domains/scheduler/scheduler_excel_batches.py": ("batch_priority_label", "ready_status_label"),
-        "web/routes/domains/scheduler/scheduler_excel_calendar.py": ("calendar_day_type_label", "yes_no_label"),
-        "web/routes/personnel_excel_operator_calendar.py": ("calendar_day_type_label", "yes_no_label"),
-        "web/routes/process_excel_part_operations.py": ("source_type_label",),
-    }
-    for rel_path, helpers in route_expectations.items():
-        source = _read(rel_path)
-        for helper in helpers:
-            assert helper in source, f"{rel_path} 导出枚举字段应使用 {helper}"
+# test_excel_exports_use_chinese_labels_for_enum_columns 已退役（2026-09-21）。
+# 它守的 10 个旧 Excel 路由随 2026-09-18 退役全部删除，而且"导出枚举列一律用中文"
+# 这条口径本身已被产品决策部分反转：工作台的资源四表导出英文代号（见
+# core/models/workbench_resource_file.py 的 value_hint 与
+# tests/workbench/test_resource_file_codec.py），日历、可操作设备、批次导出中文
+# （由 tests/workbench/test_calendar_files.py、test_relation_files.py、
+# test_batch_files.py 逐表锁住）。按表守比按"全都中文"守准确。
 
 
 def test_frontend_scripts_keep_internal_details_out_of_user_messages() -> None:
@@ -524,13 +435,8 @@ def test_process_and_scheduler_errors_use_chinese_terms() -> None:
 
 
 def test_scheduler_analysis_hides_internal_schema_and_attempt_tags() -> None:
-    analysis_vm = _read("web/viewmodels/scheduler_analysis_vm.py")
-    analysis_compat = _read("web/viewmodels/scheduler_analysis_compat.py")
-    assert "这个历史版本缺少新的分析字段，页面只展示能确认的内容。" in analysis_compat
-    assert "新 schema 字段" not in analysis_vm + analysis_compat
-    assert '"comparison_metric": "优化对比指标"' in analysis_compat
-    assert '"best_score_schema": "系统比较顺序"' in analysis_compat
-
+    # scheduler_analysis_vm.py 与 scheduler_analysis_compat.py 随 2026-09-18 退役删除
+    # （那一批"只测旧视图模型"的测试也一并删了）；分析页本身还在，这半条继续守。
     analysis = _read_analysis_template()
     assert "完整候选比较摘要" in analysis and "整份候选与排产时的正式计划" in analysis
     assert "metric.value === null" in analysis and "metric.known_subtotal" in analysis

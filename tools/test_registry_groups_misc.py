@@ -119,6 +119,10 @@ MISC_REQUIRED_REGRESSION_GROUPS = (
             "tests/excel_data_io/test_excel_import_hardening.py",
             "tests/app_runtime/test_frontend_offline_static_assets.py",
             "tests/excel_data_io/test_import_execution_stats_source_row_num.py",
+            # 2026-09-21 推翻 3aafeaf9 的"低频、不进 required"决定：这个文件只读源文件、
+            # 整文件 0.3 秒，却因为和真机用例同住一个文件而被整体标 perf，退出所有门禁后
+            # 烂了 8 条没人发现。真机那半已拆到 *_browser.py 留在浏览器车道。
+            "tests/web_pages/test_frontend_ui_language_polish.py",
         ),
         "input_file_scopes": (
             "templates_excel/**/*",
@@ -135,6 +139,10 @@ MISC_REQUIRED_REGRESSION_GROUPS = (
             "core/services/material/**/*.py",
             "core/services/personnel/**/*.py",
             "core/services/equipment/**/*.py",
+            # 文案回归读 9 个 jsx 与排产/工作台的服务层，作用域要覆盖到，否则改了文案不触发。
+            "frontend/workbench/app/*.jsx",
+            "core/services/scheduler/**/*.py",
+            "core/services/workbench/**/*.py",
             "app.py",
             "app_new_ui.py",
             "web/bootstrap/app_config.py",
