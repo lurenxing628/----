@@ -40,6 +40,11 @@ FOCUSED_PYTEST_NODEIDS: Tuple[str, ...] = (
     # 按影响面选组同样必然漏。0.4 秒，无条件跑。
     "tests/gate_meta/test_conformance_report.py::test_implementation_matches_documented_conformance_checks",
     "tests/gate_meta/test_conformance_report.py::test_minor_conformance_gaps_are_reported_without_blocking",
+    # 同理无条件：260 个 .cjs 探针用子进程拉起的 Python 模块，在 Python 侧的 import 图、
+    # 符号索引、死代码扫描里全都不可见。2026-09-21 就这么把两个"零引用"脚本删错了，
+    # 只有一小时一次、且长期没人跑的浏览器车道才报得出来。
+    "tests/gate_meta/test_node_referenced_python_modules.py::test_node_probes_do_not_reference_deleted_python_modules",
+    "tests/gate_meta/test_node_referenced_python_modules.py::test_the_scan_actually_reaches_the_probe_scripts",
 )
 
 _COLLECT_COUNT_RE = re.compile(r"\b(\d+)\s+(?:tests?|items?) collected\b")
