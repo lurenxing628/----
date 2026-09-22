@@ -25,8 +25,17 @@
     return [31, year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0) ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1];
   }
   function monthKey(year, month) { return String(year).padStart(4, '0') + '-' + String(month).padStart(2, '0'); }
-  function DayEditor({ day, draft, setDraft, disabled, error, onSave, onClear, saveReason, clearReason }) {
+  function DayEditor({ day, draft, setDraft, disabled, error, onSave, onClear, saveReason, clearReason, clearing, onClearing }) {
     const rest = draft.type === 'rest';
+    // 清除单独设置与全局日历同一套两步：先点「清除单独设置」，再点「确认清除，恢复默认」才真正提交。
+    if (clearing) return <div className="iopane on">
+      <div className="chead"><h3 style={{ margin: 0 }}>{day.date} · 清除单独设置</h3></div>
+      <p>将清除 <b>{day.date}</b> 的单独设置，这一天恢复按班次轮换或全局工作日历排产。</p>
+      <div className="wb-actions" style={{ marginTop: 12 }}>
+        <Button disabled={disabled} onClick={() => onClearing(false)}>返回编辑</Button>
+        <Button icon="trash-2" className="btn danger" disabled={disabled} reason={clearReason} onClick={onClear}>确认清除，恢复默认</Button>
+      </div>
+    </div>;
     return <div className="iopane on">
       <div className="chead"><h3 style={{ margin: 0 }}>{day.date} · {day.explicit ? '已单独设置' : '未单独设置'}</h3></div>
       <Segment label="这一天" value={draft.type} disabled={disabled} options={[['work', '上班'], ['rest', '休息']]}
@@ -40,10 +49,10 @@
             onChange={event => setDraft({ ...draft, shiftEnd: event.target.value })} /></Field>
       </div>}
       {!rest && <p className="iohint">工时由班次起止算出来，不用单独填。结束时刻早于开始时刻表示跨零点的夜班。
-        留空结束时刻时，按 8 小时推算。</p>}
+        留空结束时刻时，由系统按默认班次时长推算。</p>}
       <div className="fgrid">
         <Field label="效率（%）" path="fields.eff" error={error} required>
-          <input type="number" min="0.1" max="200" step="0.1" value={draft.eff} disabled={disabled}
+          <input type="number" min="0" max="200" step="any" data-wb-step="5" value={draft.eff} disabled={disabled}
             onChange={event => setDraft({ ...draft, eff: event.target.value })} /></Field>
         <Field label="备注" path="fields.note" error={error}>
           <input type="text" value={draft.note} disabled={disabled}
@@ -58,8 +67,7 @@
       {rest && <p className="iohint">休息日不排产，工时按 0 计。</p>}
       <div className="wb-actions" style={{ marginTop: 12 }}>
         <Button icon="check" className="btn primary" disabled={disabled} reason={saveReason} onClick={onSave}>保存这一天</Button>
-        {day.explicit && <Button icon="trash-2" className="btn danger" disabled={disabled} reason={clearReason}
-          onClick={onClear}>清除这一天</Button>}
+        {day.explicit && <Button icon="minus" disabled={disabled} reason={clearReason} onClick={() => onClearing(true)}>清除单独设置</Button>}
       </div>
     </div>;
   }
@@ -93,23 +101,60 @@
     const [range, setRange] = React.useState(() => ({ start_date: monthKey(month.year, month.month) + '-01',
       end_date: monthKey(month.year, month.month) + '-' + monthDays(month.year, month.month) }));
     const [preview, setPreview] = React.useState(null), [busy, setBusy] = React.useState(false);
-    const [error, setError] = React.useState(null);
-    const mounted = React.useRef(true);
+    const [error, setError] = React.useState(null), [clearing, setClearing] = React.useState(false);
+    const mounted = React.useRef(true), lastResult = React.useRef(null);
     React.useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
     const request = S.useQuery(async signal => {
       if (typeof adapter.query !== 'function') throw C.failure('dependency not wired: adapter.query');
       return O.month(await adapter.query(PATH(ref) + '/month', month, signal), { ...month, ref });
     }, [adapter, ref, month.year, month.month]);
     const result = request.result, data = result && result.data;
+    if (result) lastResult.current = result;
+    // 刷新本月时保留上一次读到的月历，不把整块清空闪烁；写入仍只认最新读到的 data。
+    // 翻月时标题已经指向新月，旧月网格不能继续显示在新标题下。
+    const previous = lastResult.current && lastResult.current.data;
+    const baseline = data || (previous && previous.year === month.year && previous.month === month.month ? previous : null);
+    const shown = data || (request.loading ? baseline : null);
     const done = command.phase === 'done', disabled = command.locked || done || request.loading || busy;
-    const current = data && selected ? data.days.find(day => day.date === selected) : null;
+    // 刷新开始或失败时 data 会暂时为空，但不能因此把尚未保存的草稿判成 clean。
+    // baseline 只给草稿身份和 dirty guard 用；保存仍由下方 data 门禁只使用最新写入上下文。
+    const current = baseline && selected ? baseline.days.find(day => day.date === selected) : null;
     React.useEffect(() => {
       if (current) setDraft(value => value && value.date === current.date ? value : { ...O.draftOf(current), date: current.date });
     }, [current && current.date, current && current.calendar_ref]);
-    function openDay(day) {
+    const dirty = !done && mode === 'day' && !!current && !!draft && draft.date === current.date
+      && JSON.stringify(draft) !== JSON.stringify({ ...O.draftOf(current), date: current.date });
+    const owner = window.WorkbenchGuards.useDirtyGuard({ dirty, message: window.WorkbenchTerms.personal_calendar + '有尚未保存的修改。', locked: command.locked });
+    async function close(detail) {
+      if (command.locked) return;
+      if (!(detail && detail.guardConfirmed === true && detail.guardOwner === owner) && !await window.WorkbenchGuards.confirmLeave({ owner })) return;
+      onClose();
+    }
+    async function confirmDraftTransition() {
+      if (disabled) return false;
+      return window.WorkbenchGuards.confirmLeave({ owner });
+    }
+    async function openDay(day) {
       if (disabled) return;
+      if (mode === 'day' && day.date === selected) return;
+      if (!await confirmDraftTransition()) return;
       if (!command.reset()) return;
-      setError(null); setMode('day'); setSelected(day.date); setDraft({ ...O.draftOf(day), date: day.date });
+      setError(null); setMode('day'); setClearing(false); setSelected(day.date); setDraft({ ...O.draftOf(day), date: day.date });
+    }
+    async function changeMonth(next) {
+      if (!next || !await confirmDraftTransition()) return;
+      if (!command.reset()) return;
+      setError(null); setClearing(false); setSelected(null); setDraft(null); setMonth(next);
+    }
+    async function toggleMode() {
+      const abandonDraft = dirty;
+      if (!await confirmDraftTransition()) return;
+      if (!command.reset()) return;
+      // Only a confirmed dirty transition abandons the day draft. Keep the established clean-mode round trip, but clear
+      // a discarded draft's identity as well as its fields so returning from range mode cannot register it dirty again.
+      setMode(value => value === 'range' ? 'day' : 'range');
+      if (abandonDraft) { setSelected(null); setDraft(null); }
+      setClearing(false); setError(null); setPreview(null);
     }
     function capability(action) {
       if (!data) return '请先读取这个月的个人日历。';
@@ -126,7 +171,7 @@
       } catch (failure) { setError(failure); }
     }
     function clearDay() {
-      if (disabled || !current || !current.explicit) return;
+      if (disabled || !current || !current.explicit || !clearing) return;
       setError(null);
       if (!command.reset()) return;
       command.submit('operator', 'calendar_delete', ref, data.write_context, { date: current.date });
@@ -154,30 +199,30 @@
     const rangeReason = !preview ? '请先预检要清除的日期。' : !preview.data.count ? '这段时间没有要清除的日期。'
       : capability('calendar_range_clear');
     return <div className="plana resource-calendar wb-operator-calendar">
-      <Modal title={(entity.business_code || '') + ' · 个人工作日历'} icon="calendar-days" onClose={onClose} locked={command.locked}
-        footer={<Button onClick={onClose} reason={command.locked ? '结果还没确认，暂时不能关闭。' : ''}>{done ? '完成' : '关闭'}</Button>}>
+      <Modal title={(entity.business_code || '') + ' · ' + window.WorkbenchTerms.personal_calendar} icon="calendar-days" onClose={close} guardOwner={owner} locked={command.locked}
+        footer={<Button onClick={close} reason={command.locked ? '结果还没确认，暂时不能关闭。' : ''}>{done ? '完成' : '关闭'}</Button>}>
         <div className="modal-b scroll">
-          <p className="iohint">个人日历只管这一个人。某一天设了个人日历，这一天就整天按这里的安排排产，
+          <p className="iohint">{window.WorkbenchTerms.personal_calendar}只管这一个人。某一天设了{window.WorkbenchTerms.personal_calendar}，这一天就整天按这里的安排排产，
             不再套用他的班次轮换，也不看全局工作日历。没有单独设置的日期显示「按班次」。</p>
           <div className="cal-top" style={{ flexWrap: 'wrap' }}>
             <Button className="cal-nav" icon="chevron-left" aria-label="上一月" disabled={disabled || !data || !data.previous_month}
-              onClick={() => { setSelected(null); setMonth(data.previous_month); }} />
+              onClick={() => changeMonth(data.previous_month)} />
             <span className="cal-title">{month.year} 年 {month.month} 月</span>
             <Button className="cal-nav" icon="chevron-right" aria-label="下一月" disabled={disabled || !data || !data.next_month}
-              onClick={() => { setSelected(null); setMonth(data.next_month); }} />
+              onClick={() => changeMonth(data.next_month)} />
             <Button icon="refresh-cw" aria-label="刷新本月" busy={request.loading} disabled={disabled} onClick={request.reload} />
             <span className="tb-spacer" style={{ flex: 1 }} />
-            <Button icon={mode === 'range' ? 'calendar-days' : 'trash-2'} disabled={command.locked || done}
-              onClick={() => { setMode(mode === 'range' ? 'day' : 'range'); setError(null); setPreview(null); }}>
+            <Button icon={mode === 'range' ? 'calendar-days' : 'trash-2'} disabled={disabled} onClick={toggleMode}>
               {mode === 'range' ? '返回按天维护' : '按日期范围清除'}</Button>
           </div>
-          {data && <p className="muted" role="status">本月单独设置了 <b>{data.stats.configured}</b> 天，
-            其中上班 {data.stats.work_days} 天。</p>}
+          {shown && <p className="muted" role="status">本月单独设置了 <b>{shown.stats.configured}</b> 天，
+            其中上班 {shown.stats.work_days} 天。</p>}
           <ErrorBox error={request.error} /><Issues issues={result && result.warnings || []} />
-          {request.loading && <window.WorkbenchControls.EmptyState kind="loading" title="正在读取个人日历…" />}
-          {data && mode === 'day' && <div className="cal-grid">
+          {request.loading && !shown && <window.WorkbenchControls.EmptyState kind="loading" title={'正在读取' + window.WorkbenchTerms.personal_calendar + '…'} />}
+          {request.loading && shown && <p role="status" className="muted">正在刷新本月…</p>}
+          {shown && mode === 'day' && <div className="cal-grid" aria-busy={request.loading || undefined}>
             {['一', '二', '三', '四', '五', '六', '日'].map(name => <div className="cal-wd" key={name}>{name}</div>)}
-            {data.cells.map((cell, index) => {
+            {shown.cells.map((cell, index) => {
               if (!cell) return <div key={'empty-' + index} className="cal-cell empty" />;
               const meta = O.tag(cell);
               return <button key={cell.date} type="button" disabled={disabled}
@@ -189,7 +234,8 @@
                 <span className="tag" style={{ whiteSpace: 'normal', overflowWrap: 'anywhere' }}>{meta.text}</span></button>;
             })}</div>}
           {data && mode === 'day' && current && draft && <DayEditor day={current} draft={draft} setDraft={setDraft}
-            disabled={disabled} error={error} onSave={save} onClear={clearDay} saveReason={saveReason} clearReason={clearReason} />}
+            disabled={disabled} error={error} onSave={save} onClear={clearDay} saveReason={saveReason} clearReason={clearReason}
+            clearing={clearing && current.explicit} onClearing={value => { setClearing(value); setError(null); }} />}
           {data && mode === 'day' && !current && <p role="status">点一天开始维护。</p>}
           {data && mode === 'range' && <RangeClear range={range} setRange={setRange} disabled={disabled} error={error}
             preview={preview} onPreview={previewRange} onConfirm={confirmRange} reason={rangeReason} busy={busy} />}

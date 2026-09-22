@@ -79,7 +79,7 @@
       className: "os-heading"
     }, /*#__PURE__*/React.createElement("span", {
       className: "os-muted"
-    }, "\u6570\u636E\u622A\u81F3 ", P.when(result.meta.as_of)), /*#__PURE__*/React.createElement(Button, {
+    }, window.WorkbenchTerms.data_as_of(P.when(result.meta.as_of))), /*#__PURE__*/React.createElement(Button, {
       icon: "square-pen",
       disabled: blocked,
       reason: !item.can_preview ? '来源资料已变化，请重新核对工序。' : '',
@@ -129,8 +129,17 @@
       [revision, refresh] = React.useReducer(n => n + 1, 0);
     const read = S.useRead(signal => api.read('receipts', q, undefined, signal), [api, q, revision]);
     const result = read.result,
-      data = result && result.data,
       blocked = command.busy || !!command.saved || !!command.storageError;
+    // 刷新期间继续显示上一次读到的列表，只标 aria-busy，不把整块清空。
+    const last = React.useRef(null);
+    if (result) last.current = result;
+    const shown = result || read.loading && last.current || null,
+      data = shown && shown.data;
+    const filterNames = {
+      awaiting: '待回厂',
+      overdue: '超期未回',
+      returned: '已回厂'
+    };
     function change(patch, paging = false) {
       const next = {
         ...q,
@@ -206,15 +215,17 @@
       })
     }, command.saved.phase === 'confirmed' ? '查看已确认的结果' : '查询上次登记结果'))), /*#__PURE__*/React.createElement(ErrorBox, {
       error: read.error
-    }), read.loading && /*#__PURE__*/React.createElement(EmptyState, {
+    }), read.loading && !shown && /*#__PURE__*/React.createElement(EmptyState, {
       kind: "loading",
       title: "\u6B63\u5728\u8BFB\u53D6\u5916\u534F\u767B\u8BB0"
     }), data && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
-      className: "os-muted"
-    }, "\u6570\u636E\u622A\u81F3 ", P.when(result.meta.as_of)), /*#__PURE__*/React.createElement("div", {
+      className: "os-muted",
+      role: "status"
+    }, read.loading ? '正在刷新外协登记…' : window.WorkbenchTerms.data_as_of(P.when(shown.meta.as_of))), /*#__PURE__*/React.createElement("div", {
       className: "os-scroll os-register-scroll wb-table-shell wb-table-frame",
       "data-sticky-head": true,
-      "data-sticky-actions": true
+      "data-sticky-actions": true,
+      "aria-busy": read.loading
     }, /*#__PURE__*/React.createElement("table", {
       className: "os-table wb-table"
     }, /*#__PURE__*/React.createElement("caption", {
@@ -253,8 +264,8 @@
       onClick: () => open(r.outsourcing_ref)
     }, "\u8BE6\u60C5"))))))), !data.items.length && /*#__PURE__*/React.createElement(EmptyState, {
       kind: q.status === 'all' ? 'empty' : 'filtered',
-      title: data.page.total ? '当前页没有登记' : '当前筛选没有外协登记',
-      hint: "\u53EF\u4EE5\u8C03\u6574\u7B5B\u9009\u67E5\u770B\u5DF2\u6709\u767B\u8BB0\uFF1B\u6709\u53EF\u767B\u8BB0\u7684\u5916\u534F\u5DE5\u5E8F\u65F6\u4E5F\u53EF\u4EE5\u65B0\u589E\u767B\u8BB0\u3002",
+      title: data.page.total ? '当前页没有登记' : q.status === 'all' ? '还没有外协登记' : '没有' + filterNames[q.status] + '的登记',
+      hint: q.status === 'all' ? '有可登记的外协工序时，点「新增外协登记」开始登记。' : '可以切换筛选查看其他登记。',
       action: q.status !== 'all' ? /*#__PURE__*/React.createElement(Button, {
         disabled: read.loading,
         onClick: () => change({
@@ -282,7 +293,7 @@
       onClose: () => setSelected(null),
       blocked: blocked
     }), dialog && /*#__PURE__*/React.createElement(P.Editor, {
-      key: command.saved ? command.saved.request_key : dialog.item ? dialog.item.latest_fact_ref : 'create',
+      key: dialog.item ? dialog.item.latest_fact_ref : 'create',
       api: api,
       item: dialog.item,
       batchRef: batchRef,

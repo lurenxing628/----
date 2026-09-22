@@ -219,11 +219,7 @@
     return ReactDOM.createPortal(/*#__PURE__*/React.createElement("div", {
       ref: popup,
       className: "wb-control-popup",
-      style: {
-        position: 'fixed',
-        zIndex: 'var(--wb-z-popup)',
-        ...position
-      },
+      style: position,
       role: opened.type === 'select' ? undefined : 'dialog',
       "aria-modal": opened.type === 'select' ? undefined : true,
       id: opened.type === 'select' ? undefined : id,

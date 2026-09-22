@@ -53,9 +53,9 @@
     const disabled = request.busy || downloading || stale;
     // 错误正文就是通用“数据已更新”句时，只保留下面带保留说明的过期提示，不重复报两遍；具体原因照常显示。
     const shownError = request.error || error, staleOnly = !!(stale && shownError && shownError.message === window.WorkbenchTerms.outcomes.stale);
-    const viewError = selected && data && data.capabilities.view !== true ? A.failure('查看权限尚未确认，暂不能读取完工记录来源。') : null;
+    const viewError = selected && data && data.capabilities.view !== true ? A.failure(C.viewReason + '没有读取完工记录来源。') : null;
     return <section className="calib-workbench calibration-live" aria-label="工时定额校准" data-ready={!!data} data-source="production" data-stale={stale}>
-      <C.Styles /><header className="ca-heading"><div><h2 className="wb-page-title">工时定额校准</h2><p className="ca-muted wb-page-context">模板定额与实际加工记录{result ? ' · 数据截至 ' + window.WorkbenchFormat.dateTime(result.meta.as_of) : ''}</p></div>
+      <C.Styles /><header className="ca-heading"><div><h2 className="wb-page-title">工时定额校准</h2><p className="ca-muted wb-page-context">模板定额与实际加工记录{result ? ' · ' + window.WorkbenchTerms.data_as_of(window.WorkbenchFormat.dateTime(result.meta.as_of)) : ''}</p></div>
         <div className="ca-actions"><Button icon="refresh-cw" aria-label="刷新校准数据" busy={request.busy} disabled={downloading} onClick={reload} />
           {window.CalibrationAdoptionAction && <window.CalibrationAdoptionAction detail={detail.result && detail.result.data} stale={stale || detail.busy} onRefresh={reload} />}
           {typeof onNavigate === 'function' && <Button icon="arrow-right" disabled={!data || disabled} onClick={() => onNavigate('review', { returnTo: { view: 'calib', context: {
@@ -68,7 +68,7 @@
         <div className="ca-metric" key={key}><span>{label}</span><strong>{data.summary[key]}</strong></div>)}</div>}
       </div>
       <ErrorBox error={staleOnly ? null : shownError} />
-      {stale && <p className="ca-note" role="alert">数据已更新，请刷新后重试。</p>}
+      {stale && <p className="ca-note" role="alert">{window.WorkbenchTerms.outcomes.stale}</p>}
       {(stale || request.error) && <Button icon="refresh-cw" disabled={downloading} onClick={reload}>刷新</Button>}
       {request.busy && <window.WorkbenchListControls.EmptyState kind="loading" title="正在读取校准记录" />}{notice && <p role="status">{notice}</p>}
       <div className={selected ? 'wb-detail-layout' : ''}><div className="ca-list-pane">
@@ -77,7 +77,7 @@
         <div className="ca-tools"><h3>校准明细</h3><label>排序<select aria-label="排序列" disabled={disabled} value={input.sort} onChange={event => change({ sort: event.target.value })}>
           {Object.entries(A.sorts).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
           <label>顺序<select aria-label="排序方向" disabled={disabled} value={input.direction} onChange={event => change({ direction: event.target.value })}><option value="asc">升序</option><option value="desc">降序</option></select></label>
-          <div className="ca-actions" style={{ marginLeft: 'auto' }}><label>格式<select aria-label="导出格式" value={format} disabled={disabled} onChange={event => setFormat(event.target.value)}><option value="csv">CSV</option><option value="xlsx">XLSX</option></select></label>
+          <div className="ca-actions ca-actions-end"><label>格式<select aria-label="导出格式" value={format} disabled={disabled} onChange={event => setFormat(event.target.value)}><option value="csv">CSV</option><option value="xlsx">XLSX</option></select></label>
             <Button transfer="export" busy={downloading} disabled={disabled} reasonDisplay="tooltip" reason={A.exportReason(data, format)} onClick={download}>导出全部筛选</Button></div></div>
         <C.Table rows={data.items} selected={selected} disabled={disabled} canView={data.capabilities.view === true} onPart={setPart} onSelect={value => { setSelected(value); setSample(null); }}
           scope={bound} adapter={api} widths={widths} total={data.summary.total} onResize={(key, value) => setWidths(old => ({ ...old, [key]: value }))}

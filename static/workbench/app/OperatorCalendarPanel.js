@@ -74,9 +74,35 @@
     onSave,
     onClear,
     saveReason,
-    clearReason
+    clearReason,
+    clearing,
+    onClearing
   }) {
     const rest = draft.type === 'rest';
+    // 清除单独设置与全局日历同一套两步：先点「清除单独设置」，再点「确认清除，恢复默认」才真正提交。
+    if (clearing) return /*#__PURE__*/React.createElement("div", {
+      className: "iopane on"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "chead"
+    }, /*#__PURE__*/React.createElement("h3", {
+      style: {
+        margin: 0
+      }
+    }, day.date, " \xB7 \u6E05\u9664\u5355\u72EC\u8BBE\u7F6E")), /*#__PURE__*/React.createElement("p", null, "\u5C06\u6E05\u9664 ", /*#__PURE__*/React.createElement("b", null, day.date), " \u7684\u5355\u72EC\u8BBE\u7F6E\uFF0C\u8FD9\u4E00\u5929\u6062\u590D\u6309\u73ED\u6B21\u8F6E\u6362\u6216\u5168\u5C40\u5DE5\u4F5C\u65E5\u5386\u6392\u4EA7\u3002"), /*#__PURE__*/React.createElement("div", {
+      className: "wb-actions",
+      style: {
+        marginTop: 12
+      }
+    }, /*#__PURE__*/React.createElement(Button, {
+      disabled: disabled,
+      onClick: () => onClearing(false)
+    }, "\u8FD4\u56DE\u7F16\u8F91"), /*#__PURE__*/React.createElement(Button, {
+      icon: "trash-2",
+      className: "btn danger",
+      disabled: disabled,
+      reason: clearReason,
+      onClick: onClear
+    }, "\u786E\u8BA4\u6E05\u9664\uFF0C\u6062\u590D\u9ED8\u8BA4")));
     return /*#__PURE__*/React.createElement("div", {
       className: "iopane on"
     }, /*#__PURE__*/React.createElement("div", {
@@ -123,7 +149,7 @@
       })
     }))), !rest && /*#__PURE__*/React.createElement("p", {
       className: "iohint"
-    }, "\u5DE5\u65F6\u7531\u73ED\u6B21\u8D77\u6B62\u7B97\u51FA\u6765\uFF0C\u4E0D\u7528\u5355\u72EC\u586B\u3002\u7ED3\u675F\u65F6\u523B\u65E9\u4E8E\u5F00\u59CB\u65F6\u523B\u8868\u793A\u8DE8\u96F6\u70B9\u7684\u591C\u73ED\u3002 \u7559\u7A7A\u7ED3\u675F\u65F6\u523B\u65F6\uFF0C\u6309 8 \u5C0F\u65F6\u63A8\u7B97\u3002"), /*#__PURE__*/React.createElement("div", {
+    }, "\u5DE5\u65F6\u7531\u73ED\u6B21\u8D77\u6B62\u7B97\u51FA\u6765\uFF0C\u4E0D\u7528\u5355\u72EC\u586B\u3002\u7ED3\u675F\u65F6\u523B\u65E9\u4E8E\u5F00\u59CB\u65F6\u523B\u8868\u793A\u8DE8\u96F6\u70B9\u7684\u591C\u73ED\u3002 \u7559\u7A7A\u7ED3\u675F\u65F6\u523B\u65F6\uFF0C\u7531\u7CFB\u7EDF\u6309\u9ED8\u8BA4\u73ED\u6B21\u65F6\u957F\u63A8\u7B97\u3002"), /*#__PURE__*/React.createElement("div", {
       className: "fgrid"
     }, /*#__PURE__*/React.createElement(Field, {
       label: "\u6548\u7387\uFF08%\uFF09",
@@ -132,9 +158,10 @@
       required: true
     }, /*#__PURE__*/React.createElement("input", {
       type: "number",
-      min: "0.1",
+      min: "0",
       max: "200",
-      step: "0.1",
+      step: "any",
+      "data-wb-step": "5",
       value: draft.eff,
       disabled: disabled,
       onChange: event => setDraft({
@@ -187,12 +214,11 @@
       reason: saveReason,
       onClick: onSave
     }, "\u4FDD\u5B58\u8FD9\u4E00\u5929"), day.explicit && /*#__PURE__*/React.createElement(Button, {
-      icon: "trash-2",
-      className: "btn danger",
+      icon: "minus",
       disabled: disabled,
       reason: clearReason,
-      onClick: onClear
-    }, "\u6E05\u9664\u8FD9\u4E00\u5929")));
+      onClick: () => onClearing(true)
+    }, "\u6E05\u9664\u5355\u72EC\u8BBE\u7F6E")));
   }
   function RangeClear({
     range,
@@ -284,8 +310,10 @@
     }));
     const [preview, setPreview] = React.useState(null),
       [busy, setBusy] = React.useState(false);
-    const [error, setError] = React.useState(null);
-    const mounted = React.useRef(true);
+    const [error, setError] = React.useState(null),
+      [clearing, setClearing] = React.useState(false);
+    const mounted = React.useRef(true),
+      lastResult = React.useRef(null);
     React.useEffect(() => {
       mounted.current = true;
       return () => {
@@ -301,25 +329,82 @@
     }, [adapter, ref, month.year, month.month]);
     const result = request.result,
       data = result && result.data;
+    if (result) lastResult.current = result;
+    // 刷新本月时保留上一次读到的月历，不把整块清空闪烁；写入仍只认最新读到的 data。
+    // 翻月时标题已经指向新月，旧月网格不能继续显示在新标题下。
+    const previous = lastResult.current && lastResult.current.data;
+    const baseline = data || (previous && previous.year === month.year && previous.month === month.month ? previous : null);
+    const shown = data || (request.loading ? baseline : null);
     const done = command.phase === 'done',
       disabled = command.locked || done || request.loading || busy;
-    const current = data && selected ? data.days.find(day => day.date === selected) : null;
+    // 刷新开始或失败时 data 会暂时为空，但不能因此把尚未保存的草稿判成 clean。
+    // baseline 只给草稿身份和 dirty guard 用；保存仍由下方 data 门禁只使用最新写入上下文。
+    const current = baseline && selected ? baseline.days.find(day => day.date === selected) : null;
     React.useEffect(() => {
       if (current) setDraft(value => value && value.date === current.date ? value : {
         ...O.draftOf(current),
         date: current.date
       });
     }, [current && current.date, current && current.calendar_ref]);
-    function openDay(day) {
+    const dirty = !done && mode === 'day' && !!current && !!draft && draft.date === current.date && JSON.stringify(draft) !== JSON.stringify({
+      ...O.draftOf(current),
+      date: current.date
+    });
+    const owner = window.WorkbenchGuards.useDirtyGuard({
+      dirty,
+      message: window.WorkbenchTerms.personal_calendar + '有尚未保存的修改。',
+      locked: command.locked
+    });
+    async function close(detail) {
+      if (command.locked) return;
+      if (!(detail && detail.guardConfirmed === true && detail.guardOwner === owner) && !(await window.WorkbenchGuards.confirmLeave({
+        owner
+      }))) return;
+      onClose();
+    }
+    async function confirmDraftTransition() {
+      if (disabled) return false;
+      return window.WorkbenchGuards.confirmLeave({
+        owner
+      });
+    }
+    async function openDay(day) {
       if (disabled) return;
+      if (mode === 'day' && day.date === selected) return;
+      if (!(await confirmDraftTransition())) return;
       if (!command.reset()) return;
       setError(null);
       setMode('day');
+      setClearing(false);
       setSelected(day.date);
       setDraft({
         ...O.draftOf(day),
         date: day.date
       });
+    }
+    async function changeMonth(next) {
+      if (!next || !(await confirmDraftTransition())) return;
+      if (!command.reset()) return;
+      setError(null);
+      setClearing(false);
+      setSelected(null);
+      setDraft(null);
+      setMonth(next);
+    }
+    async function toggleMode() {
+      const abandonDraft = dirty;
+      if (!(await confirmDraftTransition())) return;
+      if (!command.reset()) return;
+      // Only a confirmed dirty transition abandons the day draft. Keep the established clean-mode round trip, but clear
+      // a discarded draft's identity as well as its fields so returning from range mode cannot register it dirty again.
+      setMode(value => value === 'range' ? 'day' : 'range');
+      if (abandonDraft) {
+        setSelected(null);
+        setDraft(null);
+      }
+      setClearing(false);
+      setError(null);
+      setPreview(null);
     }
     function capability(action) {
       if (!data) return '请先读取这个月的个人日历。';
@@ -340,7 +425,7 @@
       }
     }
     function clearDay() {
-      if (disabled || !current || !current.explicit) return;
+      if (disabled || !current || !current.explicit || !clearing) return;
       setError(null);
       if (!command.reset()) return;
       command.submit('operator', 'calendar_delete', ref, data.write_context, {
@@ -377,19 +462,20 @@
     return /*#__PURE__*/React.createElement("div", {
       className: "plana resource-calendar wb-operator-calendar"
     }, /*#__PURE__*/React.createElement(Modal, {
-      title: (entity.business_code || '') + ' · 个人工作日历',
+      title: (entity.business_code || '') + ' · ' + window.WorkbenchTerms.personal_calendar,
       icon: "calendar-days",
-      onClose: onClose,
+      onClose: close,
+      guardOwner: owner,
       locked: command.locked,
       footer: /*#__PURE__*/React.createElement(Button, {
-        onClick: onClose,
+        onClick: close,
         reason: command.locked ? '结果还没确认，暂时不能关闭。' : ''
       }, done ? '完成' : '关闭')
     }, /*#__PURE__*/React.createElement("div", {
       className: "modal-b scroll"
     }, /*#__PURE__*/React.createElement("p", {
       className: "iohint"
-    }, "\u4E2A\u4EBA\u65E5\u5386\u53EA\u7BA1\u8FD9\u4E00\u4E2A\u4EBA\u3002\u67D0\u4E00\u5929\u8BBE\u4E86\u4E2A\u4EBA\u65E5\u5386\uFF0C\u8FD9\u4E00\u5929\u5C31\u6574\u5929\u6309\u8FD9\u91CC\u7684\u5B89\u6392\u6392\u4EA7\uFF0C \u4E0D\u518D\u5957\u7528\u4ED6\u7684\u73ED\u6B21\u8F6E\u6362\uFF0C\u4E5F\u4E0D\u770B\u5168\u5C40\u5DE5\u4F5C\u65E5\u5386\u3002\u6CA1\u6709\u5355\u72EC\u8BBE\u7F6E\u7684\u65E5\u671F\u663E\u793A\u300C\u6309\u73ED\u6B21\u300D\u3002"), /*#__PURE__*/React.createElement("div", {
+    }, window.WorkbenchTerms.personal_calendar, "\u53EA\u7BA1\u8FD9\u4E00\u4E2A\u4EBA\u3002\u67D0\u4E00\u5929\u8BBE\u4E86", window.WorkbenchTerms.personal_calendar, "\uFF0C\u8FD9\u4E00\u5929\u5C31\u6574\u5929\u6309\u8FD9\u91CC\u7684\u5B89\u6392\u6392\u4EA7\uFF0C \u4E0D\u518D\u5957\u7528\u4ED6\u7684\u73ED\u6B21\u8F6E\u6362\uFF0C\u4E5F\u4E0D\u770B\u5168\u5C40\u5DE5\u4F5C\u65E5\u5386\u3002\u6CA1\u6709\u5355\u72EC\u8BBE\u7F6E\u7684\u65E5\u671F\u663E\u793A\u300C\u6309\u73ED\u6B21\u300D\u3002"), /*#__PURE__*/React.createElement("div", {
       className: "cal-top",
       style: {
         flexWrap: 'wrap'
@@ -399,10 +485,7 @@
       icon: "chevron-left",
       "aria-label": "\u4E0A\u4E00\u6708",
       disabled: disabled || !data || !data.previous_month,
-      onClick: () => {
-        setSelected(null);
-        setMonth(data.previous_month);
-      }
+      onClick: () => changeMonth(data.previous_month)
     }), /*#__PURE__*/React.createElement("span", {
       className: "cal-title"
     }, month.year, " \u5E74 ", month.month, " \u6708"), /*#__PURE__*/React.createElement(Button, {
@@ -410,10 +493,7 @@
       icon: "chevron-right",
       "aria-label": "\u4E0B\u4E00\u6708",
       disabled: disabled || !data || !data.next_month,
-      onClick: () => {
-        setSelected(null);
-        setMonth(data.next_month);
-      }
+      onClick: () => changeMonth(data.next_month)
     }), /*#__PURE__*/React.createElement(Button, {
       icon: "refresh-cw",
       "aria-label": "\u5237\u65B0\u672C\u6708",
@@ -427,28 +507,28 @@
       }
     }), /*#__PURE__*/React.createElement(Button, {
       icon: mode === 'range' ? 'calendar-days' : 'trash-2',
-      disabled: command.locked || done,
-      onClick: () => {
-        setMode(mode === 'range' ? 'day' : 'range');
-        setError(null);
-        setPreview(null);
-      }
-    }, mode === 'range' ? '返回按天维护' : '按日期范围清除')), data && /*#__PURE__*/React.createElement("p", {
+      disabled: disabled,
+      onClick: toggleMode
+    }, mode === 'range' ? '返回按天维护' : '按日期范围清除')), shown && /*#__PURE__*/React.createElement("p", {
       className: "muted",
       role: "status"
-    }, "\u672C\u6708\u5355\u72EC\u8BBE\u7F6E\u4E86 ", /*#__PURE__*/React.createElement("b", null, data.stats.configured), " \u5929\uFF0C \u5176\u4E2D\u4E0A\u73ED ", data.stats.work_days, " \u5929\u3002"), /*#__PURE__*/React.createElement(ErrorBox, {
+    }, "\u672C\u6708\u5355\u72EC\u8BBE\u7F6E\u4E86 ", /*#__PURE__*/React.createElement("b", null, shown.stats.configured), " \u5929\uFF0C \u5176\u4E2D\u4E0A\u73ED ", shown.stats.work_days, " \u5929\u3002"), /*#__PURE__*/React.createElement(ErrorBox, {
       error: request.error
     }), /*#__PURE__*/React.createElement(Issues, {
       issues: result && result.warnings || []
-    }), request.loading && /*#__PURE__*/React.createElement(window.WorkbenchControls.EmptyState, {
+    }), request.loading && !shown && /*#__PURE__*/React.createElement(window.WorkbenchControls.EmptyState, {
       kind: "loading",
-      title: "\u6B63\u5728\u8BFB\u53D6\u4E2A\u4EBA\u65E5\u5386\u2026"
-    }), data && mode === 'day' && /*#__PURE__*/React.createElement("div", {
-      className: "cal-grid"
+      title: '正在读取' + window.WorkbenchTerms.personal_calendar + '…'
+    }), request.loading && shown && /*#__PURE__*/React.createElement("p", {
+      role: "status",
+      className: "muted"
+    }, "\u6B63\u5728\u5237\u65B0\u672C\u6708\u2026"), shown && mode === 'day' && /*#__PURE__*/React.createElement("div", {
+      className: "cal-grid",
+      "aria-busy": request.loading || undefined
     }, ['一', '二', '三', '四', '五', '六', '日'].map(name => /*#__PURE__*/React.createElement("div", {
       className: "cal-wd",
       key: name
-    }, name)), data.cells.map((cell, index) => {
+    }, name)), shown.cells.map((cell, index) => {
       if (!cell) return /*#__PURE__*/React.createElement("div", {
         key: 'empty-' + index,
         className: "cal-cell empty"
@@ -486,7 +566,12 @@
       onSave: save,
       onClear: clearDay,
       saveReason: saveReason,
-      clearReason: clearReason
+      clearReason: clearReason,
+      clearing: clearing && current.explicit,
+      onClearing: value => {
+        setClearing(value);
+        setError(null);
+      }
     }), data && mode === 'day' && !current && /*#__PURE__*/React.createElement("p", {
       role: "status"
     }, "\u70B9\u4E00\u5929\u5F00\u59CB\u7EF4\u62A4\u3002"), data && mode === 'range' && /*#__PURE__*/React.createElement(RangeClear, {

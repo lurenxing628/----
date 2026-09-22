@@ -46,6 +46,10 @@
     const content = React.useRef(null);
     React.useEffect(() => window.WorkbenchScrollShadows.attach(content.current), []);
     return <div className="app-container operations-shell">
+      <a className="wb-skip-link" href="#wb-view-panel" onClick={event => {
+        // A fragment jump would push a history entry without workbench state and replay the page; focus the panel directly.
+        event.preventDefault(); const panel = document.getElementById('wb-view-panel'); if (panel) panel.focus();
+      }}>跳到主内容</a>
       <aside className="sidebar"><div className="sidebar-header">
         <span className="brand-tile" aria-label="APS 智能排产"><svg viewBox="0 0 24 24" width="18" height="18" fill="var(--ui-text-inverse)" aria-hidden="true">
           <rect x="4" y="6" width="10" height="3.2" rx="1.6" /><rect x="7" y="10.4" width="12" height="3.2" rx="1.6" fillOpacity="0.92" /><rect x="4" y="14.8" width="8" height="3.2" rx="1.6" fillOpacity="0.78" />
@@ -85,7 +89,7 @@
         }}>{planTabs.map(id => <button type="button" key={id} role="tab" id={'wb-view-tab-' + id}
           aria-controls="wb-view-panel" aria-selected={id === view} tabIndex={id === view ? 0 : -1}
           onClick={() => switchTab(id)}>{boot.titles[id]}</button>)}</div>}
-        <div id="wb-view-panel" role={showPlanTabs ? 'tabpanel' : undefined}
+        <div id="wb-view-panel" tabIndex={-1} role={showPlanTabs ? 'tabpanel' : undefined}
           aria-labelledby={showPlanTabs ? 'wb-view-tab-' + view : undefined}>{children}</div></main></div>
     </div>;
   }
@@ -97,7 +101,10 @@
     const [page, setPage] = React.useState(currentPage);
     const [messages, setMessages] = React.useState(boot.messages || []);
     const [navigationError, setNavigationError] = React.useState('');
-    const activePage = React.useRef(page), restoring = React.useRef(true), historyGuard = React.useRef(null);
+    const activePage = React.useRef(page), restoring = React.useRef(true), historyGuard = React.useRef(null), scrollMemory = React.useRef(null);
+    // History cannot replace the entry that the browser just left. Keep the newest scroll snapshot by history key so an
+    // immediate Back/Forward inside the 200 ms throttle window can apply it when that exact entry becomes current again.
+    const scrollSnapshots = React.useRef(new Map());
     activePage.current = page;
     const { view, context } = page;
     const initialContext = Object.keys(context).length ? context : undefined;
@@ -112,25 +119,32 @@
     React.useEffect(() => window.WorkbenchDensity.subscribe(setDensity), []);
     React.useEffect(() => {
       const previous = history.scrollRestoration; history.scrollRestoration = 'manual';
-      let frame = 0;
       const save = () => {
         if (restoring.current || activePage.current.error || historyGuard.current && historyGuard.current.busy()) return;
-        try { window.WorkbenchNavigation.remember(boot, activePage.current); if (historyGuard.current) historyGuard.current.sync(); }
+        const captured = scrollSnapshots.current.get(activePage.current.key);
+        try { window.WorkbenchNavigation.remember(boot, activePage.current, captured); if (historyGuard.current) historyGuard.current.sync(); }
         catch (error) { setPage(old => ({ ...old, error: error.message })); }
       };
-      const scroll = () => { cancelAnimationFrame(frame); frame = requestAnimationFrame(save); };
-      const restore = () => { restoring.current = true; cancelAnimationFrame(frame); setMessages([]); setNavigationError('');
-        const next = currentPage(); activePage.current = next; setPage(next); };
+      const memory = window.WorkbenchNavigation.scrollMemory(save); scrollMemory.current = memory;
+      const scroll = () => {
+        if (restoring.current || activePage.current.error || historyGuard.current && historyGuard.current.busy()) return;
+        scrollSnapshots.current.set(activePage.current.key, window.WorkbenchNavigation.captureScroll()); memory.schedule();
+      };
+      const restore = () => { restoring.current = true; memory.cancel(); setMessages([]); setNavigationError('');
+        let next = currentPage();
+        const captured = !next.error && scrollSnapshots.current.get(next.key);
+        if (captured) { window.WorkbenchNavigation.remember(boot, next, captured); next = currentPage(); }
+        activePage.current = next; setPage(next); };
       if (!activePage.current.error) historyGuard.current = window.WorkbenchNavigation.guardHistory(boot, {
         hasDirty: () => window.WorkbenchGuards.hasDirty(), confirmLeave: () => window.WorkbenchGuards.confirmLeave(),
         onRestore: restore, onError: error => setNavigationError(error.message),
       });
-      window.addEventListener('pagehide', save);
+      window.addEventListener('pagehide', memory.flush);
       document.addEventListener('scroll', scroll, true);
       return () => {
-        cancelAnimationFrame(frame); history.scrollRestoration = previous;
+        memory.cancel(); scrollMemory.current = null; history.scrollRestoration = previous;
         if (historyGuard.current) historyGuard.current.dispose(); historyGuard.current = null;
-        window.removeEventListener('pagehide', save);
+        window.removeEventListener('pagehide', memory.flush);
         document.removeEventListener('scroll', scroll, true);
       };
     }, []);
@@ -147,7 +161,11 @@
       try {
         if (page.error) { await window.WorkbenchGuards.leaveExternal(() => { if (activePage.current === origin) location.assign(href(target)); }); return; }
         if (!await window.WorkbenchGuards.confirmLeave() || activePage.current !== origin) return;
+        // navigate() remembers the current page itself; a pending throttled write would only repeat it.
+        if (scrollMemory.current) scrollMemory.current.cancel();
         const next = window.WorkbenchNavigation.navigate(boot, page, target, nextContext, preferSaved);
+        // pushState truncates the Forward branch. Drop snapshots whose numeric keys can now be reused by the new branch.
+        for (const key of scrollSnapshots.current.keys()) if (key >= next.key) scrollSnapshots.current.delete(key);
         if (historyGuard.current) historyGuard.current.sync();
         restoring.current = true; activePage.current = next; setMessages([]); setNavigationError(''); setPage(next);
       } catch (error) { setNavigationError(error.message); }

@@ -41,7 +41,7 @@ for (const [action, label] of [['delete', '删除'], ['update', '保存'], ['cop
 assert(feedback('batch', 'bulk_confirm', 'pending').startsWith('上次批次操作'));
 assert.equal(feedback('operator', 'machine_permissions'), '设备关联保存已完成。');
 assert.equal(feedback('operator', 'unlink'), '解除关联已完成。');
-assert.equal(feedback('calendar', 'delete'), '清除日历配置已完成。');
+assert.equal(feedback('calendar', 'delete'), '清除单独设置已完成。');
 assert.equal(feedback(null, null, 'done', 'committed', 'import'), '导入已完成。');
 assert(feedback('material', 'delete', 'pending').startsWith('上次删除的结果还没查到'));
 assert.equal(feedback('material', 'delete', 'checking'), '正在查询上次删除的结果…');

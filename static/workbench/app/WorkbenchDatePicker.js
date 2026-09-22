@@ -40,16 +40,11 @@
       if (next >= 0 && next <= maximum) onChange(M.pad(next, width));
     }
     return /*#__PURE__*/React.createElement("div", {
-      className: "wb-picker-field",
-      style: {
-        minWidth: 0
-      }
+      className: "wb-picker-field"
     }, /*#__PURE__*/React.createElement("label", {
       htmlFor: id
     }, label), /*#__PURE__*/React.createElement("div", {
-      style: {
-        position: 'relative'
-      }
+      className: "wb-picker-input"
     }, /*#__PURE__*/React.createElement("input", {
       id: id,
       className: "wb-number-input",
@@ -73,10 +68,7 @@
         }
       }
     }), /*#__PURE__*/React.createElement("span", {
-      className: "wb-number-stepper",
-      style: {
-        width: 20
-      }
+      className: "wb-number-stepper"
     }, [1, -1].map(delta => /*#__PURE__*/React.createElement("button", {
       key: delta,
       type: "button",
@@ -87,10 +79,7 @@
       onMouseDown: event => event.preventDefault(),
       onClick: () => increment(delta)
     }, /*#__PURE__*/React.createElement("span", {
-      style: {
-        display: 'flex',
-        transform: delta > 0 ? 'rotate(180deg)' : undefined
-      }
+      className: 'wb-picker-chevron' + (delta > 0 ? ' is-flipped' : '')
     }, /*#__PURE__*/React.createElement(Icon, {
       name: "chevron-down"
     })))))));
@@ -106,11 +95,7 @@
       className: "wb-picker-fields",
       role: "group",
       "aria-label": "\u65F6\u95F4\uFF0824\u5C0F\u65F6\u5236\uFF09",
-      style: {
-        display: 'grid',
-        gridTemplateColumns: 'repeat(' + fields.length + ', minmax(0, 1fr))',
-        gap: 8
-      }
+      "data-columns": fields.length
     }, fields.map(([key, label, maximum]) => /*#__PURE__*/React.createElement(NumberField, {
       key: key,
       label: label,
@@ -167,16 +152,10 @@
       className: "wb-picker-grid",
       ref: root,
       role: "grid",
-      "aria-label": view.slice(0, 4) + ' 年 ' + Number(view.slice(5, 7)) + ' 月',
-      style: {
-        display: 'grid',
-        gridTemplateColumns: 'repeat(7, minmax(0, 1fr))'
-      }
+      "aria-label": view.slice(0, 4) + ' 年 ' + Number(view.slice(5, 7)) + ' 月'
     }, /*#__PURE__*/React.createElement("div", {
       role: "row",
-      style: {
-        display: 'contents'
-      }
+      className: "wb-picker-row"
     }, weekdays.map(day => /*#__PURE__*/React.createElement("span", {
       role: "columnheader",
       className: "wb-picker-weekday",
@@ -186,9 +165,7 @@
     }, (_, week) => /*#__PURE__*/React.createElement("div", {
       role: "row",
       key: week,
-      style: {
-        display: 'contents'
-      }
+      className: "wb-picker-row"
     }, dates.slice(week * 7, week * 7 + 7).map((day, index) => {
       if (!day) return /*#__PURE__*/React.createElement("span", {
         key: 'empty-' + index,
@@ -260,21 +237,15 @@
       }
     }
     return /*#__PURE__*/React.createElement("div", {
-      className: "wb-picker-grid",
+      className: "wb-picker-grid wb-picker-months",
       ref: root,
       role: "grid",
-      "aria-label": view.slice(0, 4) + ' 年月份',
-      style: {
-        display: 'grid',
-        gridTemplateColumns: 'repeat(3, minmax(0, 1fr))'
-      }
+      "aria-label": view.slice(0, 4) + ' 年月份'
     }, Array.from({
       length: 4
     }, (_, row) => /*#__PURE__*/React.createElement("div", {
       role: "row",
-      style: {
-        display: 'contents'
-      },
+      className: "wb-picker-row",
       key: row
     }, Array.from({
       length: 3
@@ -424,11 +395,6 @@
       className: "wb-date-picker",
       "data-picker-type": type,
       "data-picker-view": pickerView,
-      style: {
-        width: 336,
-        maxWidth: '100%',
-        minWidth: 0
-      },
       onKeyDown: event => {
         if (event.key === 'Enter' && event.target.tagName === 'INPUT' && event.target.closest('.wb-picker-fields')) {
           event.preventDefault();
@@ -440,35 +406,20 @@
       className: "wb-popup-header"
     }, /*#__PURE__*/React.createElement("strong", {
       id: id,
-      style: {
-        minWidth: 0,
-        overflowWrap: 'anywhere'
-      }
+      className: "wb-picker-title"
     }, title), /*#__PURE__*/React.createElement(NavButton, {
       icon: "x",
       name: "\u5173\u95ED\u65E5\u671F\u65F6\u95F4\u9009\u62E9",
       onClick: onClose
     })), hasDate && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
-      className: "wb-picker-actions",
-      style: {
-        display: 'flex',
-        alignItems: 'center',
-        gap: 8
-      }
+      className: "wb-picker-actions"
     }, /*#__PURE__*/React.createElement(NavButton, {
       name: showMonths ? '上一年' : '上个月',
       icon: "chevron-left",
       disabled: showMonths ? browseYear <= 1 : previous === view,
       onClick: () => browse(previous, false)
     }), /*#__PURE__*/React.createElement("label", {
-      className: "wb-picker-year",
-      style: {
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: 4,
-        flex: '1 1 auto',
-        minWidth: 0
-      }
+      className: "wb-picker-year"
     }, /*#__PURE__*/React.createElement("input", {
       type: "text",
       inputMode: "numeric",
@@ -476,9 +427,6 @@
       value: year,
       maxLength: 4,
       autoComplete: "off",
-      style: {
-        width: 72
-      },
       "aria-invalid": !!yearError,
       onChange: event => {
         if (/^\d{0,4}$/.test(event.target.value)) {
@@ -496,22 +444,13 @@
       }
     }), "\u5E74"), type !== 'month' && /*#__PURE__*/React.createElement("button", {
       type: "button",
-      className: "btn",
+      className: "btn wb-picker-month",
       "aria-label": showMonths ? '返回日历' : '选择月份',
       "aria-expanded": showMonths,
       title: showMonths ? '返回日历' : '选择月份',
-      onClick: toggleMonths,
-      style: {
-        flex: '0 0 100px',
-        width: 100,
-        marginLeft: 'auto',
-        whiteSpace: 'nowrap'
-      }
+      onClick: toggleMonths
     }, showMonths ? '返回日历' : Number(view.slice(5, 7)) + ' 月', /*#__PURE__*/React.createElement("span", {
-      style: {
-        display: 'flex',
-        transform: showMonths ? 'rotate(180deg)' : undefined
-      }
+      className: 'wb-picker-chevron' + (showMonths ? ' is-flipped' : '')
     }, /*#__PURE__*/React.createElement(Icon, {
       name: "chevron-down"
     }))), /*#__PURE__*/React.createElement(NavButton, {
@@ -537,10 +476,7 @@
       onBrowse: browse,
       onChoose: choose
     })), hasTime && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
-      className: "wb-picker-actions",
-      style: {
-        marginTop: hasDate ? 12 : 0
-      }
+      className: 'wb-picker-actions wb-picker-time-head' + (hasDate ? ' has-date' : '')
     }, /*#__PURE__*/React.createElement("span", null, type === 'datetime-local' ? selected || '尚未选择日期' : '24 小时制')), /*#__PURE__*/React.createElement(TimeFields, {
       time: time,
       units: units,
@@ -551,20 +487,9 @@
       }
     })), (yearError || edited && !check.valid && hasTime) && /*#__PURE__*/React.createElement("div", {
       role: "status",
-      className: "wb-picker-error",
-      style: {
-        color: 'var(--ui-danger-text)',
-        overflowWrap: 'anywhere',
-        marginTop: 8
-      }
+      className: "wb-picker-error"
     }, yearError || check.message), /*#__PURE__*/React.createElement("div", {
-      className: "wb-popup-footer",
-      style: {
-        display: 'flex',
-        alignItems: 'center',
-        flexWrap: 'wrap',
-        gap: 8
-      }
+      className: "wb-popup-footer"
     }, /*#__PURE__*/React.createElement("button", {
       type: "button",
       className: "btn",
@@ -575,9 +500,7 @@
       disabled: !shortcutAllowed,
       onClick: () => choose(shortcut)
     }, type === 'month' ? '当前月份' : '今天'), /*#__PURE__*/React.createElement("span", {
-      style: {
-        flex: '1 1 auto'
-      }
+      className: "wb-picker-spacer"
     }), /*#__PURE__*/React.createElement("button", {
       type: "button",
       className: "btn",

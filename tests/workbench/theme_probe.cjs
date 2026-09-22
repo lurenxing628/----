@@ -132,6 +132,11 @@ check('window focus rechecks preferences without saving or changing business sta
   client.api.subscribe(value => notices.push(value)); client.store.set(PRIMARY, 'light'); client.emit('focus');
   themeIs(client, 'light'); assert.equal(notices.length, 1); assert.equal(client.writes.length, 0);
 });
+check('window focus and pageshow with an unchanged preference do not notify subscribers', () => {
+  const client = runtime({stored: {[PRIMARY]: 'dark'}}), notices = [];
+  client.api.subscribe(value => notices.push(value)); client.emit('focus'); client.emit('pageshow');
+  assert.equal(notices.length, 0); themeIs(client, 'dark');
+});
 check('prototype storage events cannot override a canonical preference', () => {
   const client = runtime({stored: {[PRIMARY]: 'light', [PROTOTYPE]: 'light'}});
   client.store.set(PROTOTYPE, 'dark'); client.emit('storage', {key: PROTOTYPE});
@@ -152,7 +157,9 @@ check('unsubscribe stops set and event notifications without removing other subs
   client.api.subscribe(value => second.push(value)); client.api.set('dark');
   assert.equal(first.length, 1); assert.equal(second.length, 1);
   assert.equal(first[0].theme, 'dark'); assert.equal(first[0].error, '');
-  unsubscribe(); unsubscribe(); client.api.set('light'); client.emit('storage', {key: PRIMARY}); client.emit('pageshow');
+  unsubscribe(); unsubscribe(); client.api.set('light');
+  client.store.set(PRIMARY, 'dark'); client.emit('storage', {key: PRIMARY});
+  client.store.set(PRIMARY, 'light'); client.emit('pageshow');
   assert.equal(first.length, 1); assert.equal(second.length, 4);
 });
 check('canonical storage read failures are visible on initialization', () => {

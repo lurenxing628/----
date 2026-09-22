@@ -22,7 +22,7 @@
   }
   function Records({ value, saved, result }) {
     return <details className="ta-records wb-ref"><summary>编号与保存记录</summary><div>试调方案编号：{value.scenario_ref}</div>
-      {value.draft_ref && <div>试调草稿编号：{value.draft_ref}</div>}{value.baseline && value.baseline.plan_ref && <div>当时的正式计划编号：{value.baseline.plan_ref}</div>}
+      {value.draft_ref && <div>试调草稿编号：{value.draft_ref}</div>}{value.baseline && value.baseline.plan_ref && <div>建草稿时的正式计划编号：{value.baseline.plan_ref}</div>}
       {saved && <div>操作编号：{saved.request_key}</div>}{result && <><div>结果编号：{result.receipt_ref}</div><div>新正式计划编号：{result.data.official_plan.plan_ref}</div></>}</details>;
   }
   function Dialog({ session: s, scenarioRef, onNavigate, name }) {

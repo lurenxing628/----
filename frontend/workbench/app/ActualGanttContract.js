@@ -71,7 +71,7 @@
     const resourceRefs = new Set(d.resources.map(row => row.ref)), taskRefs = new Set(); let count = 0;
     d.items.forEach(item => {
       const t = item.task, e = item.execution;
-      if (!t || !ref(t.task_ref) || taskRefs.has(t.task_ref) || !ref(t.operation_ref) || t.plan_ref !== query.plan_ref || !arrangement(t) || !planQuantity(t) || typeof t.batch_id !== 'string' || typeof t.process_label !== 'string') fail('计划任务身份、数量证据或时间无效。');
+      if (!t || !ref(t.task_ref) || taskRefs.has(t.task_ref) || !ref(t.operation_ref) || t.plan_ref !== query.plan_ref || !arrangement(t) || !planQuantity(t) || typeof t.batch_id !== 'string' || typeof t.process_label !== 'string') fail('计划任务的编号、应做数量或时间无效。');
       if (t.start < d.plan_span.start || t.end > d.plan_span.end || t.start < d.axis_span.start || t.end > d.axis_span.end) fail('计划任务超出原计划或显示范围。');
       taskRefs.add(t.task_ref);
       if (d.availability.state === 'available' ? !execution(e, t) : e !== null) fail('报工记录缺失或与计划任务不匹配。');
@@ -94,7 +94,7 @@
         || !Number.isInteger(chain.omitted_point_count) || chain.omitted_point_count < 0 || chain.partial !== (chain.omitted_point_count > 0)
         || !Array.isArray(chain.nodes) || !chain.nodes.length || chain.task_refs.length !== chain.nodes.length
         || new Set(chain.task_refs).size !== chain.task_refs.length || chain.edges.length !== chain.nodes.length - 1)
-        fail('关键链没有绑定本次数据版本的真实算法证据。');
+        fail('关键链和本次读到的数据版本对不上，没有显示。');
       const nodes = new Map();
       chain.nodes.forEach((node, index) => {
         if (!object(node) || !ref(node.task_ref) || !ref(node.operation_ref) || node.task_ref !== chain.task_refs[index]

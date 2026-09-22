@@ -170,18 +170,18 @@
       icon: "refresh-cw",
       disabled: locked,
       onClick: reload
-    }, "\u5237\u65B0\u5E76\u6838\u5BF9"), review && /*#__PURE__*/React.createElement("div", {
+    }, window.WorkbenchTerms.refresh_latest), review && /*#__PURE__*/React.createElement("div", {
       className: "batch-band"
     }, /*#__PURE__*/React.createElement(Issues, {
       issues: [{
-        message: '已读到最新资料，您填写的内容没有被覆盖。'
+        message: '已读到最新资料，已填写的内容没有被覆盖。'
       }]
     }), entity && /*#__PURE__*/React.createElement("dl", null, B.fields.map(key => /*#__PURE__*/React.createElement(React.Fragment, {
       key: key
     }, /*#__PURE__*/React.createElement("dt", null, B.fieldNames[key]), /*#__PURE__*/React.createElement("dd", null, window.BatchControls.display(key, review.data.fields[key]))))), /*#__PURE__*/React.createElement(Button, {
       onClick: acceptReview,
       disabled: locked
-    }, "\u91C7\u7528\u6700\u65B0\u8D44\u6599"))));
+    }, window.WorkbenchTerms.accept_latest))));
   }
   function SyncPreview({
     preview
@@ -230,7 +230,8 @@
     disabled
   }) {
     const seen = React.useRef(null),
-      [error, setError] = React.useState(null);
+      [error, setError] = React.useState(null),
+      [acknowledged, setAcknowledged] = React.useState(false);
     const action = preview.operation.split('.')[1],
       subject = action === 'bulk_confirm' ? preview.preview_ref : preview.entity_ref;
     React.useEffect(() => {
@@ -247,12 +248,16 @@
       key: index
     }, op.business_code, " \xB7 ", op.sequence, " \xB7 ", op.label, " \xB7 ", op.source === 'external' ? '外协' : '自制', " \xB7", Object.values(op.resources).filter(Boolean).map(resource => resource.label).join(' / '), " \xB7 \u6362\u578B ", window.WorkbenchFormat.hours(op.setup_hours, ENTERED_HOURS), " / \u5355\u4EF6 ", window.WorkbenchFormat.hours(op.unit_hours, ENTERED_HOURS), " / \u5468\u671F ", window.WorkbenchFormat.number(op.external_days, ENTERED_DAYS), " \xB7 ", B.label('status', op.status))), /*#__PURE__*/React.createElement("div", null, "\u7269\u6599\u9700\u6C42 ", row.relationships.material_requirement_count, " \u9879")) : '删除';
     const deleting = action === 'bulk_confirm' && preview.action === 'delete';
+    // 只删一个批次时标题直接点名；删除要先核对明细并勾选，主按钮按危险动作着色。
+    const single = deleting && preview.rows.length === 1 && preview.rows[0].before ? preview.rows[0].before.business_code : null;
+    const title = action === 'sync_confirm' ? '确认更新批次工序' : single ? '确认删除批次 ' + single : '确认批量' + {
+      update: '修改',
+      delete: '删除',
+      copy: '复制'
+    }[preview.action];
+    const reason = deleting && !acknowledged ? '请先核对明细并勾选确认删除。' : '';
     return /*#__PURE__*/React.createElement(Modal, {
-      title: action === 'sync_confirm' ? '确认更新批次工序' : '确认批量' + {
-        update: '修改',
-        delete: '删除',
-        copy: '复制'
-      }[preview.action],
+      title: title,
       icon: deleting ? 'trash-2' : 'check',
       locked: command.locked,
       onClose: onClose,
@@ -261,8 +266,9 @@
         disabled: command.locked
       }, command.phase === 'done' ? '关闭' : '取消'), command.phase !== 'done' && /*#__PURE__*/React.createElement(Button, {
         icon: deleting ? 'trash-2' : 'check',
-        className: "btn primary",
+        className: 'btn ' + (deleting ? 'danger' : 'primary'),
         disabled: disabled || command.locked,
+        reason: reason,
         onClick: () => command.submit('batch', action, subject, preview.write_context, {
           preview_ref: preview.preview_ref
         })
@@ -288,7 +294,16 @@
       issues: preview.warnings || []
     }), /*#__PURE__*/React.createElement(ErrorBox, {
       error: error
-    }), /*#__PURE__*/React.createElement(window.ResourceForms.Feedback, {
+    }), deleting && command.phase !== 'done' && /*#__PURE__*/React.createElement("label", {
+      className: "batch-check"
+    }, /*#__PURE__*/React.createElement("input", {
+      type: "checkbox",
+      checked: acknowledged,
+      disabled: disabled || command.locked,
+      onChange: event => setAcknowledged(event.target.checked)
+    }), single ? '已核对明细，确认删除批次 ' + single + '。' : '已核对全部明细，确认删除这 ' + window.WorkbenchFormat.number(preview.rows.length, {
+      digits: 0
+    }) + ' 个批次。'), /*#__PURE__*/React.createElement(window.ResourceForms.Feedback, {
       command: command,
       action: deleting ? 'delete' : 'save'
     })));

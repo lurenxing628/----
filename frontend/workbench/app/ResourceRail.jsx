@@ -6,23 +6,34 @@
   const weekdays = ['一', '二', '三', '四', '五', '六', '日'];
   const number = value => Number.isFinite(value) && value >= 0;
   const amount = value => window.WorkbenchFormat.number(value, { digits: 1 });
+  const integer = value => window.WorkbenchFormat.number(value, { digits: 0 });
+  const hoursOrNone = value => value == null ? '暂无数据' : window.WorkbenchFormat.hours(value);
   const countLabels = { active: '启用', inactive: '停用', maintain: '停机', leave: '请假', pending_review: '待复核', unknown: '未知' };
   const chipOrder = ['process', 'material', 'op_int', 'machine', 'operator', 'op_ext', 'supplier'];
+  // 视口高度不超过这个值时，进入某个节点后产能链默认收起，把高度留给下方列表；用户展开 / 收起的选择在本页会话内记住。
+  const MEDIUM_SCREEN_MAX_PX = 1000, COLLAPSED_CHOICE_KEY = 'aps_resource_rail_collapsed';
   function shortScreenMedia() {
     // 阈值来自样式令牌，与 10-shell.css 里的 @media (max-height) 保持同一数值；令牌缺失说明样式没加载，直接报错。
     const value = getComputedStyle(document.documentElement).getPropertyValue('--wb-short-screen-max').trim();
     if (!value) throw new Error('样式令牌 --wb-short-screen-max 缺失，无法判断矮屏布局。');
     return window.matchMedia('(max-height: ' + value + ')');
   }
-  function useShortScreen() {
-    const media = React.useMemo(shortScreenMedia, []);
-    const [short, setShort] = React.useState(media.matches);
+  function mediumScreenMedia() { return window.matchMedia('(max-height: ' + MEDIUM_SCREEN_MAX_PX + 'px)'); }
+  function useMediaMatch(factory) {
+    const media = React.useMemo(factory, []);
+    const [matches, setMatches] = React.useState(media.matches);
     React.useEffect(() => {
-      const sync = () => setShort(media.matches);
+      const sync = () => setMatches(media.matches);
       media.addEventListener('change', sync);
       return () => media.removeEventListener('change', sync);
     }, [media]);
-    return short;
+    return matches;
+  }
+  function useShortScreen() { return useMediaMatch(shortScreenMedia); }
+  function useMediumScreen() { return useMediaMatch(mediumScreenMedia); }
+  function readCollapsedChoice() {
+    const value = sessionStorage.getItem(COLLAPSED_CHOICE_KEY);
+    return value === 'true' ? true : value === 'false' ? false : null;
   }
   function processText(item, total, loading) {
     const unavailable = { lead: loading ? '工艺阶段未读取' : '工艺阶段暂无数据', lines: [] };
@@ -67,18 +78,19 @@
     const stats = value && value.stats, standard = value && value.standard_hours;
     const standardText = standard ? standard.status === 'known' ? window.WorkbenchFormat.hours(standard.value) : labels[standard.status] : pending;
     const days = value ? value.days : weekdays.map((label, index) => ({ weekday: index, date: label, status: 'unavailable', issues: [] }));
-    const rest = stats && stats.rest_days != null ? stats.rest_days + ' 天' : pending;
+    const rest = stats && stats.rest_days != null ? integer(stats.rest_days) + ' 天' : pending;
     const holiday = value && value.holiday_default_efficiency;
     const caption = value ? value.week_start + ' 至 ' + value.week_end : '本周排班 · ' + pending;
-    return <button type="button" className={'hb-block hero hb-cal-block' + (node === 'calendar' ? ' on' : '')}
+    // 大按钮里的汇总文字很长，可访问名称只保留短标题；明细仍以可见文字和 title 提供。
+    return <button type="button" className={'hb-block hero hb-cal-block' + (node === 'calendar' ? ' on' : '')} aria-label="工作日历 · 全局"
       style={{ font: 'inherit', color: 'inherit', textAlign: 'left' }} disabled={disabled} aria-pressed={node === 'calendar'} onClick={() => onNode('calendar')}>
       <span className="hb-bhead"><span className="hb-bdot cal" /><span className="hb-bname">工作日历</span><span className="hb-bmeas">全局</span></span>
       <span className="hb-bbody">
         <span className="hb-cal-top"><span className="hb-cal-ico"><Icon name="calendar-days" /></span><span className="hb-cal-lead">
           <span className="hb-cl1">工时 / 调休 / 加班</span><span className="hb-cl2" title={value ? value.basis : error}>
-            {stats ? '本周单独设置 ' + stats.configured_days + ' 天 · 按默认 ' + stats.default_days + ' 天' : error || pending}</span></span></span>
+            {stats ? '本周单独设置 ' + integer(stats.configured_days) + ' 天 · 按默认 ' + integer(stats.default_days) + ' 天' : error || pending}</span></span></span>
         <span className="hb-cal-stats">{[[standardText, '标准工时 / 日', standard && standard.message],
-          [stats && stats.work_days != null ? stats.work_days + ' 天' : pending, '本周工作日', '有工时且至少允许普通件或急件的班次起始日'],
+          [stats && stats.work_days != null ? integer(stats.work_days) + ' 天' : pending, '本周工作日', '有工时且至少允许普通件或急件的班次起始日'],
           [rest, '休息 / 不许排产', stats && stats.known_rest_dates.join('、')]].map(([text, label, title]) =>
           <span className="hb-cs" key={label} style={{ minWidth: 0 }} title={title || undefined}><span className="hb-csv" style={{ fontSize: 12, whiteSpace: 'normal', letterSpacing: 0 }}>{text}</span><span className="hb-csl">{label}</span></span>)}</span>
         <span className="hb-cal-strip-cap" style={{ flexWrap: 'wrap' }}>{caption}</span>
@@ -88,15 +100,15 @@
             data-calendar-source={day.source} data-calendar-status={day.status} title={value ? dayText(day) : error || pending}>
             <span className="hb-sl">{weekdays[day.weekday]}</span><span className="hb-sb" style={!effective ? { background: 'var(--ui-border)' } : {}}
               aria-label={value ? dayText(day) : weekdays[day.weekday] + ' ' + pending} />
-            <span className="hb-sl">{effective ? rest ? effective.rest_reason === 'priorities_disabled' ? '禁排' : '休' : window.WorkbenchFormat.hours(effective.effective_hours) : '?'}</span>
-            <span className="hb-sl">{value ? day.explicit ? '单独' : '默认' : '?'}</span></span>;
+            <span className="hb-sl">{effective ? rest ? effective.rest_reason === 'priorities_disabled' ? '禁排' : '休' : window.WorkbenchFormat.hours(effective.effective_hours) : '未知'}</span>
+            <span className="hb-sl">{value ? day.explicit ? '单独' : '默认' : '未知'}</span></span>;
         })}</span>
         {value && <span className="hb-cl2" title={value.basis} data-calendar-week-hours>
-          本周有效 {stats.effective_hours == null ? '暂无数据' : window.WorkbenchFormat.hours(stats.effective_hours)} · 普通 {amount(stats.normal_effective_hours)} / 急件 {window.WorkbenchFormat.hours(stats.urgent_effective_hours)}
+          本周有效 {hoursOrNone(stats.effective_hours)} · 普通 {hoursOrNone(stats.normal_effective_hours)} / 急件 {hoursOrNone(stats.urgent_effective_hours)}
           <br />工厂日期 {value.factory_today} · 按班次起始日统计
           <br /><span title={holiday.basis + (holiday.issues.length ? '；' + holiday.issues.map(issue => issue.message).join('；') : '')}>
             假期录入默认效率：{holiday.status === 'known' ? amount(holiday.value * 100) + '%' : labels[holiday.status]}</span>
-          {stats.unavailable_days > 0 && <><br />{stats.unavailable_days} 天暂无数据</>}
+          {stats.unavailable_days > 0 && <><br />{integer(stats.unavailable_days)} 天暂无数据</>}
         </span>}
       </span>
     </button>;
@@ -105,16 +117,14 @@
     const summary = counts.summary || {}, value = summary.data || {}, readiness = value.readiness;
     const items = readiness && readiness.items || {};
     const process = processText(items.process, counts.process && counts.process.total, summary.loading);
-    const short = useShortScreen();
-    // 矮屏且已进入某个节点时默认收起成一行快捷切换，把高度留给下方列表；节点之间切换尊重用户当前的展开 / 收起选择。
-    const [collapsed, setCollapsed] = React.useState(short && !!node);
-    const previous = React.useRef({ node, short });
-    React.useEffect(() => {
-      const was = previous.current; previous.current = { node, short };
-      if (short !== was.short || !node || !was.node) setCollapsed(short && !!node);
-    }, [node, short]);
-    const compact = short && !!node && collapsed;
-    const countText = key => { const count = counts[key]; return count && number(count.total) ? count.total + ' ' + C.nodes[key].unit : summary.loading ? '未读取' : '暂无数据'; };
+    const short = useShortScreen(), medium = useMediumScreen();
+    // 视口不高（≤ 1000px，含 820px 以内的矮屏）且已进入某个节点时，默认收起成一行快捷切换，把高度留给下方列表；
+    // 用户点过展开 / 收起后，本页会话内一直按用户的选择来，节点之间切换不再重置。
+    const collapsible = (short || medium) && !!node;
+    const [choice, setChoice] = React.useState(readCollapsedChoice);
+    const compact = collapsible && (choice === null ? true : choice);
+    function toggle() { const next = !compact; sessionStorage.setItem(COLLAPSED_CHOICE_KEY, String(next)); setChoice(next); }
+    const countText = key => { const item = counts[key]; return item && number(item.total) ? integer(item.total) + ' ' + C.nodes[key].unit : summary.loading ? '未读取' : '暂无数据'; };
     const tile = (key, tone) => {
       const item = items[key], text = countText(key), count = counts[key];
       const details = itemText(item, key), issues = item && item.issues || [];
@@ -134,9 +144,9 @@
     const chip = (key, label, icon) => <button type="button" key={key} className={node === key ? 'on' : ''} data-rail-node={key} aria-pressed={node === key}
       disabled={disabled} title={C.nodes[key] ? [C.nodes[key].label, itemText(items[key], key)].filter(Boolean).join('；') : label} onClick={() => onNode(key)}>
       <Icon name={icon} /><span>{label}</span>{key !== 'calendar' && <b>{countText(key)}</b>}</button>;
-    return <section className={'rail' + (compact ? ' rail-collapsed' : '')} aria-label="产能链" aria-busy={!!summary.loading}>
+    return <section className={'rail' + (compact ? ' rail-collapsed' : '')} data-collapsed={compact ? 'true' : 'false'} aria-label="产能链" aria-busy={!!summary.loading}>
       <div className="rail-bar"><span className="rail-cap">产能链</span><span className="rail-status muted">基础资料 · {summary.error ? '暂无数据' : summary.loading ? '读取中' : '只读汇总'}</span>
-        {short && !!node && <Button className="btn link rail-toggle" icon={compact ? 'chevron-down' : 'chevron-up'} aria-expanded={!compact} onClick={() => setCollapsed(!collapsed)}>{compact ? '展开产能链' : '收起产能链'}</Button>}</div>
+        {collapsible && <Button className="btn link rail-toggle" icon={compact ? 'chevron-down' : 'chevron-up'} aria-expanded={!compact} onClick={toggle}>{compact ? '展开产能链' : '收起产能链'}</Button>}</div>
       {compact && <div className="seg rail-compact" role="group" aria-label="产能链快捷切换">
         {chipOrder.map(key => chip(key, C.nodes[key].label, C.nodes[key].icon))}{chip('calendar', '工作日历', 'calendar-days')}</div>}
       {!compact && <><div className="flow"><div className="hb-hub" style={{ width: '100%' }}>

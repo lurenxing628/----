@@ -98,11 +98,13 @@ async function fillHandling(page, status, remark, complete) {
 }
 async function send(page, reopen = false) {
   const wait = page.waitForResponse(r => commandPath(new URL(r.url()).pathname));
-  await page.getByRole('dialog').getByRole('button', { name: reopen ? '确认独立重开' : '提交处置', exact: true }).click(); return wait;
+  await page.getByRole('dialog').getByRole('button', { name: reopen ? '确认重新打开' : '提交处置', exact: true }).click(); return wait;
 }
 async function confirmed(page) { await page.getByRole('dialog').getByText(/^处置已完成。/).waitFor(); }
 async function finish(page) { await listAction(page, () => page.getByRole('dialog').getByRole('button', { name: '完成', exact: true }).click()); }
 async function historyTab(page) { const wait = page.waitForResponse(r => /\/dashboard\/items\/[a-f0-9]{48}\/history$/.test(new URL(r.url()).pathname)); await page.getByRole('tab', { name: '处置历史', exact: true }).click(); assert.equal((await wait).status(), 200); await page.locator('[data-history-sequence]').first().waitFor(); }
+// The history tab carries the same 登记处置 / 重新打开处置 button as the detail panel; only one tab is mounted at a time, but scope it anyway.
+async function historyAction(page, name) { await page.getByRole('region', { name: '处置历史', exact: true }).getByRole('button', { name, exact: true }).click(); }
 async function geometry(page, viewport) {
   const g = await page.evaluate(() => {
     const workspace = document.querySelector('[data-dashboard-workspace]'), rect = node => { const r = node.getBoundingClientRect(); return { x: r.x, y: r.y, right: r.right, bottom: r.bottom, width: r.width }; };
@@ -188,9 +190,9 @@ async function happy(viewport, theme) {
   if (!report.contract_rejections) report.contract_rejections = await mutateContracts(page, data, selected, intent.receipt, intent);
   await finish(page); await page.locator('[data-detail-ref="' + ref + '"]').waitFor(); await openHandling(page);
   await fillHandling(page, '待验证', '协调完成后交生产验证'); assert.equal((await send(page)).status(), 200); await confirmed(page); await finish(page);
-  await historyTab(page); await page.getByRole('button', { name: '调整当前处置', exact: true }).click(); await fillHandling(page, '跟进中', '验证未通过，回到跟进补充证据');
+  await historyTab(page); await historyAction(page, '登记处置'); await fillHandling(page, '跟进中', '验证未通过，回到跟进补充证据');
   assert.equal((await send(page)).status(), 200); await confirmed(page); await finish(page); await page.locator('[data-history-sequence="3"]').waitFor();
-  await page.getByRole('button', { name: '调整当前处置', exact: true }).click(); await fillHandling(page, '已关闭', '依据现场核验完成本轮处置', complete);
+  await historyAction(page, '登记处置'); await fillHandling(page, '已关闭', '依据现场核验完成本轮处置', complete);
   await geometry(page, viewport); await shot(page, name + '-close-form'); fault = 'after'; blockReceipts = true;
   await page.getByRole('dialog').getByRole('button', { name: '提交处置', exact: true }).click(); await page.getByRole('dialog').getByText('上次处置的结果还没查到，可能已经生效。请点「查询结果」，不要重复提交。', { exact: true }).waitFor();
   await page.getByRole('dialog').getByRole('button', { name: '查询结果', exact: true }).waitFor();
@@ -203,10 +205,10 @@ async function happy(viewport, theme) {
   await historyTab(page); await page.locator('[data-history-sequence="4"]').getByText('变更前后及完成凭据', { exact: true }).click(); await page.getByText(complete.evidence, { exact: true }).waitFor(); await shot(page, name + '-closed-history');
   const oldPage = page.waitForResponse(r => new URL(r.url()).searchParams.get('history_page') === '2'); await page.getByRole('button', { name: '历史下一页', exact: true }).click(); assert.equal((await oldPage).status(), 200);
   await page.locator('[data-history-sequence="1"]').waitFor(); await page.getByRole('button', { name: '查看第 1 次原始依据', exact: true }).click(); await page.getByText(/当时来源 ·/).waitFor();
-  await page.getByRole('button', { name: '独立重开', exact: true }).click(); const reason = '复查仍有交期风险，新增跟进 ' + name;
+  await historyAction(page, '重新打开处置'); const reason = '复查仍有交期风险，新增跟进 ' + name;
   await page.getByRole('dialog').getByLabel('重开原因', { exact: true }).fill(reason); const r = await send(page, true); assert.equal(r.status(), 200); await confirmed(page); await finish(page);
   await page.locator('[data-history-sequence="5"]').waitFor(); await shot(page, name + '-reopened');
-  await page.getByRole('button', { name: '调整当前处置', exact: true }).click(); const noChange = await send(page); assert.equal((await noChange.json()).result, 'unchanged'); await confirmed(page); await finish(page);
+  await historyAction(page, '登记处置'); const noChange = await send(page); assert.equal((await noChange.json()).result, 'unchanged'); await confirmed(page); await finish(page);
   const reopening = report.responses.filter(r => r.path.endsWith('/reopen')).pop(); assert.deepEqual(Object.keys(reopening.input.input), ['reason']);
   report.cases.push({ name, viewport, theme, geometry: firstGeometry, completion_evidence: complete.result, evidence: complete.evidence, reopen_reason: reason, unknown_key: pending.request_key });
   await context.close();

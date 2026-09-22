@@ -70,7 +70,7 @@ async function manualRows() {
   await p.click(parent.getByRole('tab', {name: /工艺路线/}));
   await p.click(b(parent, '录入路线'));
   const child = page.getByRole('dialog', {name: '录入工艺路线 · PROC-002', exact: true});
-  await p.click(child.getByRole('tab', {name: '逐行表格', exact: true}));
+  await p.click(child.getByRole('button', {name: '逐行表格', exact: true}));
   const table = child.getByRole('table', {name: '逐行路线录入', exact: true});
   assert.equal(await table.locator('tbody tr').count(), 1);
   await p.type(child.getByLabel('第 1 行工序号', {exact: true}), '10');

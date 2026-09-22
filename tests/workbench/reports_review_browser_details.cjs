@@ -25,7 +25,7 @@ async function detailsAndCatalogs(p) {
     await detail.locator('.rw-limitations[open] > details > summary').last().click();
     await p.shot('correction-evidence');
     await detail.getByRole('button', { name: '下一页', exact: true }).click();
-    assert((await detail.locator('.wb-detail-body > .wb-pager').textContent()).includes('第 2 / 2 页'));
+    assert((await detail.locator('.wb-detail-body .rw-detail-pager > .wb-pager').textContent()).includes('第 2 / 2 页'));
     await detail.getByRole('button', { name: /^关闭/ }).click();
     await p.read(() => work.getByRole('button', { name: '清除筛选', exact: true }).click());
   });
@@ -51,7 +51,7 @@ async function detailsAndCatalogs(p) {
       const tableTop = await table.evaluate(node => node.scrollTop);
       await p.read(() => work.getByRole('tablist', { name: '统计分析视图', exact: true }).getByRole('tab', { name: '执行复盘', exact: true }).click());
       assert.equal(p.data.data.topic, 'delivery');
-      await work.locator('.er-chart-disclosure > summary').click();
+      await work.locator('.er-chart-disclosure[data-expanded="true"]').waitFor();
       await work.locator('.aw-data > summary').click();
       await p.shot('review-charts');
       const firstReading = page.waitForResponse(response => {

@@ -9,8 +9,11 @@
   const nullable = value => value === null || Number.isFinite(value) && value >= 0;
   const time = value => value === null || typeof value === 'string' && /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d$/.test(value);
   const validTime = value => typeof value === 'string' && time(value) && Number.isFinite(Date.parse(value + 'Z')) && new Date(value + 'Z').toISOString().slice(0, 19) === value;
-  const quantityReasons = { plan_target_not_recorded: '旧计划未记录原数量证据', plan_target_unavailable: '原计划数量证据不可用', plan_target_invalid: '原计划数量证据无效' };
+  // 计划应做数量缺失的三种说法：现场记录、现场实际甘特、计划甘特提示共用，不再各写一份。
+  const quantityReasons = { plan_target_not_recorded: '原计划未记录应做数量', plan_target_unavailable: '原计划应做数量读不到', plan_target_invalid: '原计划应做数量无效' };
   const quantity = value => window.WorkbenchFormat.number(value, { digits: 0 });
+  // 有效工时按录入精度最多显示三位小数；单位由表头或调用处补。
+  const hours = value => value === null || value === undefined || value === '' ? '未知' : window.WorkbenchFormat.number(value, { digits: 3, trim: true });
   const pieceLabel = value => value.piece_id === null ? '共同工序' : '分件 ' + value.piece_id;
   function planQuantity(value) {
     const valid = n => Number.isSafeInteger(n) && n >= 0;
@@ -95,7 +98,9 @@
     document.body.appendChild(link); link.click(); link.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
   const display = value => value === null || value === undefined || value === '' ? '未知' : String(value);
-  // Report times are second-precision facts (see the time pattern and step="1" inputs); never drop the seconds.
-  const date = value => window.WorkbenchFormat.dateTime(value, { seconds: true });
-  window.FieldContract = { states, reportActions, fields, ref, task, report, query, blocked, draft, input, saveFile, display, date, quantity, pieceLabel, planQuantity, quantityReasons, validTime };
+  // Report times are second-precision (see the time pattern and step="1" inputs): seconds stay visible whenever they are
+  // not :00, so nothing is lost while whole-minute times read as minutes. WorkbenchFormat has no auto option yet.
+  const hasSeconds = value => typeof value === 'string' && /:\d\d:(?!00(?:\.0+)?$)\d\d(?:\.\d+)?$/.test(value);
+  const date = value => window.WorkbenchFormat.dateTime(value, { seconds: hasSeconds(value) });
+  window.FieldContract = { states, reportActions, fields, ref, task, report, query, blocked, draft, input, saveFile, display, date, hasSeconds, quantity, hours, pieceLabel, planQuantity, quantityReasons, validTime };
 })();

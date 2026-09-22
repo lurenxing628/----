@@ -98,7 +98,7 @@
     function reload() { commands.restore(); refresh(); }
     const title = data ? data.name || U.sourceLabel(data.base_identity) : '尚未选择试调草稿或试调方案';
     return <div className="plana trial-workspace" data-trial-workspace data-open-ref={key} data-open-kind={isScenario ? 'scenario' : 'draft'}><window.TrialStyles />
-      <header className="tt-heading"><div><h2 className="wb-page-title">排产方案试调</h2><span className="tt-muted wb-page-context">{title}{data && ' · ' + U.statusLabel(data.status)}</span></div><div className="tt-tools">
+      <header className="tt-heading"><div><h2 className="wb-page-title">试调排产方案</h2><span className="tt-muted wb-page-context">{title}{data && ' · ' + U.statusLabel(data.status)}</span></div><div className="tt-tools">
         {onNavigate && <U.Button icon="chevron-left" onClick={() => onNavigate('analysis', base || {})}>返回方案</U.Button>}
         <U.Button icon="folder-open" onClick={() => setDirectory(!directory)} aria-expanded={directory}>草稿 / 试调方案列表</U.Button>
         <U.Button icon="plus" className="btn primary" disabled={commands.blocked} onClick={async () => { if (await guard()) setModal('create'); }}>新增试调</U.Button>

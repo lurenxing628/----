@@ -61,7 +61,11 @@ async function main() {
       const page = await context.newPage(); p.attach(page, state);
       await page.goto(ready.url + '/workbench'); await page.locator('.sidebar').waitFor();
       await p.click(page.locator('.sidebar').getByText('基础资料', {exact: true}));
-      await A.area(page).locator('.hb-tile').first().waitFor();
+      // The 1392x924 viewport intentionally starts the capacity rail in compact mode. Both the full tile and
+      // compact chip expose the stable rail-node contract, so wait for the visible, selected material node.
+      const materialNode = A.area(page).locator('[data-rail-node="material"]');
+      await materialNode.waitFor();
+      assert.equal(await materialNode.getAttribute('aria-pressed'), 'true');
       if (theme === 'dark') await p.click(A.button(page, '切换深色'));
       const stateBefore = p.oracle();
       await A.configure(p, page, data.material_prefix, 2, 25);

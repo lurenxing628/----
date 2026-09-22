@@ -9,6 +9,8 @@ let page,state;
 const workspace=()=>page.locator('[data-process-workspace]');
 async function type(field,value){await field.click();await field.fill('');await field.type(value,{delay:1});}
 async function list(action){const response=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/workbench/v1/entities/part');await action();const result=await response;assert.equal(result.status(),200,await result.text());await workspace().getByRole('table',{name:'零件工艺列表',exact:true}).and(page.locator('[aria-busy="false"]')).waitFor();return result.json();}
+// 视口高度 <= 1000px（1392x924 这一档）进入节点后产能链默认收起，.hb-tile 不渲染；先点「展开产能链」再进入工艺节点。展开选择记在 sessionStorage，reload 后仍展开。
+async function expandRail(){await page.locator('.hb-tile, button.rail-toggle').first().waitFor();if(await page.locator('section.rail').getAttribute('data-collapsed')==='true'){await page.getByRole('button',{name:'展开产能链',exact:true}).click();await page.getByRole('button',{name:'收起产能链',exact:true}).waitFor();}}
 async function enter(restored=false){const tile=page.locator('.hb-tile').filter({hasText:/^工艺/});if(restored){await workspace().getByRole('table',{name:'零件工艺列表',exact:true}).and(page.locator('[aria-busy="false"]')).waitFor();await tile.click();}else await list(()=>tile.click());}
 async function search(text){await type(workspace().getByRole('searchbox',{name:'搜索图号、名称、路线',exact:true}),text);return list(()=>workspace().getByRole('button',{name:'搜索',exact:true}).click());}
 async function actionCapabilities(result){
@@ -98,9 +100,9 @@ async function cases(){
     const found=await search('热处理');assert.equal(found.data.page.total,1);await search('');
   });
   await run('stage-sort-empty-and-explicit-unavailable-actions',async()=>{
-    const result=await list(()=>workspace().getByRole('tab',{name:/^待定归属/}).click());assert.equal(result.data.page.total,3);
-    await list(()=>workspace().getByRole('tab',{name:/^已就绪/}).click());await workspace().getByText('当前筛选没有匹配的零件',{exact:true}).waitFor();
-    await list(()=>workspace().getByRole('tab',{name:/^全部/}).click());
+    const result=await list(()=>workspace().getByRole('button',{name:/^待定归属/}).click());assert.equal(result.data.page.total,3);
+    await list(()=>workspace().getByRole('button',{name:/^已就绪/}).click());await workspace().getByText('当前筛选没有匹配的零件',{exact:true}).waitFor();
+    await list(()=>workspace().getByRole('button',{name:/^全部/}).click());
     let current;for(const order of ['ascending','descending','none']){current=await list(()=>workspace().getByRole('button',{name:'图号排序',exact:true}).click());assert.equal(await workspace().locator('th').filter({has:page.getByRole('button',{name:'图号排序',exact:true})}).getAttribute('aria-sort'),order);}
     await actionCapabilities(current);
   });
@@ -130,7 +132,7 @@ async function cases(){
     await page.getByRole('button',{name:'取消',exact:true}).click();await closeDetail(true);
   });
   await run('row-input-duplicate-validation-and-cancel',async()=>{
-    await search('PROC-002');await open('PROC-002');await routeEntry();await page.getByRole('tab',{name:'逐行表格',exact:true}).click();
+    await search('PROC-002');await open('PROC-002');await routeEntry();await page.getByRole('button',{name:'逐行表格',exact:true}).click();
     await type(page.getByRole('textbox',{name:'第 1 行工序号',exact:true}),'10');await type(page.getByRole('combobox',{name:'第 1 行工种',exact:true}),'车削');
     await page.getByRole('button',{name:'新增工序',exact:true}).click();await type(page.getByRole('textbox',{name:'第 2 行工序号',exact:true}),'10');await type(page.getByRole('combobox',{name:'第 2 行工种',exact:true}),'检验');
     let result=await preflight();assert(!result.data.can_confirm_route);assert(result.data.diagnostics.some(x=>x.code==='duplicate_sequence'));
@@ -161,7 +163,7 @@ async function cases(){
       await page.getByRole('tab',{name:stage}).click();await readAllOperations(name,expected);
     }
     report.timings.push({state,action:'2000-operation-detail',milliseconds:Date.now()-begin});await shot('large-detail');await closeDetail();
-    await page.reload();await page.locator('.hb-tile').first().waitFor();await enter(true);
+    await page.reload();await expandRail();await page.locator('.hb-tile').first().waitFor();await enter(true);
     assert.equal(await workspace().getByRole('searchbox',{name:'搜索图号、名称、路线',exact:true}).inputValue(),'PROC-LARGE');
     await search('PROC-001');await open('PROC-001');
     await page.getByRole('tab',{name:/^3 工时定额/}).click();assert.equal(await page.getByLabel('工序 10 单件工时',{exact:true}).inputValue(),'0.125');await closeDetail();
@@ -170,7 +172,7 @@ async function cases(){
 (async()=>{let browser;try{browser=await chromium.launch({executablePath:process.env.WORKBENCH_BROWSER,headless:true});report.browser=await browser.version();assert(report.browser.startsWith('109.'));
   for(const viewport of [{width:1920,height:1080},{width:1392,height:924}])for(const theme of ['light','dark']){state=viewport.width+'-'+theme;const context=await browser.newContext({viewport,timezoneId:'Asia/Shanghai'});await context.addInitScript(value=>{localStorage.setItem('aps_theme',value);localStorage.setItem('aps_kit_theme',value);},theme);page=await context.newPage();page.setDefaultTimeout(15000);
     page.on('pageerror',error=>report.errors.push({state,message:error.stack}));page.on('request',r=>{if(!r.url().startsWith(origin+'/')&&!r.url().startsWith('data:'))report.external.push(r.url());if(r.url().startsWith(origin+'/api/'))report.requests.push({state,method:r.method(),path:new URL(r.url()).pathname});});page.on('response',r=>{if(r.status()>=400)report.http_errors.push({state,url:r.url(),status:r.status()});});
-    await page.goto(ready.resource_url);await page.locator('.hb-tile').first().waitFor();await enter();await cases();await context.close();}
+    await page.goto(ready.resource_url);await expandRail();await page.locator('.hb-tile').first().waitFor();await enter();await cases();await context.close();}
   assert.deepEqual(report.errors,[]);assert.deepEqual(report.external,[]);assert(report.http_errors.every(row=>report.expected_failures.some(expected=>expected.state===row.state&&expected.url===row.url&&expected.status===row.status)));
   assert(report.requests.some(row=>row.method==='POST'));assert(report.requests.every(row=>['GET','HEAD'].includes(row.method)||row.method==='POST'&&row.path.endsWith('/route-preview')));
 }finally{if(browser)await browser.close();report.summary={cases:report.cases.length,failed:report.cases.filter(x=>!x.passed).length,screenshots:report.screenshots.length,read_requests:report.requests.length,previews:report.requests.filter(x=>x.method==='POST').length};fs.writeFileSync(path.join(root,'process-probe-results.json'),JSON.stringify(report,null,2)+'\n');}console.log(JSON.stringify(report.summary));})().catch(error=>{console.error(error);process.exitCode=1;});

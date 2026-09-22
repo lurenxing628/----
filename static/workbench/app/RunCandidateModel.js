@@ -9,7 +9,7 @@
     visibleRows,
     ticks
   } = geometry;
-  const timeLabel = value => window.WorkbenchFormat.dateTime(value);
+  const timeLabel = value => geometry.timeLabel(value);
   // The candidate DTO preserves integers above MAX_SAFE_INTEGER as exact decimal text.
   // Comparison metrics keep up to three decimals; a one-decimal summary would make distinct candidates look identical.
   const number = value => typeof value === 'string' ? window.WorkbenchFormat.integerText(value) : window.WorkbenchFormat.number(value, {

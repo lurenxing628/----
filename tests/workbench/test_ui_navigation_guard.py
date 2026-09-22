@@ -30,8 +30,13 @@ expect(N.title(original, {view: 'analysis', context: {source: 'run_history', run
 expect(N.historyView({view: 'analysis', context: {source: 'run_history'}}) === true);
 expect(N.historyView({view: 'gantt', context: {source: 'run_history', candidate_ref: 'x'}}) === false);
 expect(N.historyView({view: 'reports', context: {source: 'run_history'}}) === false);
-expect(N.helpUrl(original, {view: 'analysis', context: {}}) === '/scheduler/config/manual?src=%2Fworkbench%3Fview%3Danalysis',
-  'help must carry the current view so the manual can offer a way back');
+expect(N.helpUrl(original, {view: 'analysis', context: {}}) === '/scheduler/config/manual?src=%2Fworkbench%3Fview%3Danalysis&page=analysis',
+  'help must carry the current view as src (the way back) and page (the manual chapter)');
+for (const view of ['analysis', 'gantt', 'delay']) {
+  expect(N.helpUrl(original, {view, context: {source: 'run_history'}}) ===
+    '/scheduler/config/manual?src=%2Fworkbench%3Fview%3D' + view + '&page=run#%E6%8E%92%E4%BA%A7%E8%AE%B0%E5%BD%95',
+    'run history help must open the execution chapter at the run-history subsection');
+}
 return {refused: mutations.length};
 """, scripts=INPUTS, data={"boot": boot})
     assert observed == {"refused": 7}

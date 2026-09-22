@@ -24,6 +24,10 @@
   --wb-gantt-overlap-edge: var(--wb-gantt-primary-edge);
   --wb-gantt-critical-stripe: repeating-linear-gradient(135deg, var(--wb-gantt-critical-edge) 0 1px, transparent 1px 6px);
   --wb-gantt-overlap-stripe: repeating-linear-gradient(135deg, var(--wb-gantt-overlap-edge) 0 1px, transparent 1px 6px);
+  /* 外协工序斜纹：RunCandidateGantt 画布按 10px 水平步距画 --wb-gantt-plan-edge 细线（左上→右下），换算成垂直于条纹的周期 ≈ 7px；图例 .rc-external 用它与画布对齐。 */
+  --wb-gantt-external-stripe: repeating-linear-gradient(45deg, var(--wb-gantt-plan-edge) 0 1px, transparent 1px 7px);
+  /* 甘特画布文字：PlanGanttCanvas / RunCandidateGantt 的 ctx.font 由 JSX 用 getComputedStyle 读本变量；值与画布现有字面量 '11px sans-serif' 一致，调字号 / 字体只改这里。 */
+  --wb-gantt-font: 11px sans-serif;
   --wb-gantt-success-ring: inset 0 0 0 2px var(--wb-gantt-success-edge);
   --wb-sev-ok: var(--ui-success);
   --wb-sev-notice: var(--ui-primary);
@@ -41,6 +45,15 @@
   --wb-scroll-shadow: var(--ui-info-muted);
   /* 选中页签落在 .wb-surface 卡片上时的强调色；深色卡底上 --ui-primary 只有 3.98:1，要换更亮一档。 */
   --wb-tab-selected: var(--ui-primary);
+  /* 主按钮三件套：浅色沿用饱和蓝底白字；深色下 --ui-info-text 是浅蓝，直接当底色会变成浅底深字、还和链接撞色，所以深色单独映射。 */
+  --wb-primary-button-bg: var(--ui-info-text);
+  --wb-primary-button-text: var(--ui-card-bg);
+  --wb-primary-button-hover-bg: var(--ui-info-text);
+  /* 固定列盖住数据列时的提示阴影：偏移 / 模糊 / 收缩两侧镜像，色值走 --wb-scroll-shadow；带宽约 18px，被盖住的那列一眼能看出“右边还有”。 */
+  --wb-scroll-shadow-right: -18px 0 18px -8px var(--wb-scroll-shadow);
+  --wb-scroll-shadow-left: 18px 0 18px -8px var(--wb-scroll-shadow);
+  /* 弹窗遮罩压暗量：原型遮罩底色 rgb(15 23 42 / .45) 在浅色页面上够暗；深色页面底色与它同色等于没变暗，改用 backdrop-filter 把弹窗后面压暗（样式合同不放行字面颜色，故不另定义遮罩色）。 */
+  --wb-modal-backdrop-dim: none;
 }
 
 html[data-theme="dark"] {
@@ -51,6 +64,12 @@ html[data-theme="dark"] {
   --wb-secondary-copy: var(--ui-muted);
   --wb-scroll-shadow: var(--ui-bg);
   --wb-tab-selected: var(--ui-primary-hover);
+  --wb-primary-button-bg: var(--ui-primary-hover);
+  --wb-primary-button-text: var(--ui-bg);
+  --wb-primary-button-hover-bg: var(--ui-primary-hover);
+  --wb-modal-backdrop-dim: brightness(.5);
+  /* dark.css 把 --ui-table-head-bg 钉成卡片底色，20-controls 又把它用在所有 .wb-table 表头上，而其它表格表头用 --ui-surface-muted，深色下就成了两种表头底色；统一到 surface-muted。 */
+  --ui-table-head-bg: var(--ui-surface-muted);
 }
 
 html[data-density="compact"] {

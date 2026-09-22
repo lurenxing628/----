@@ -51,21 +51,22 @@
       <U.ErrorBox error={read.error} />{read.busy && <p role="status">正在读取原来源…</p>}
       {d && <><div className="tt-source-list">{rows.map(r => {
         const key = kind === 'plan' ? 'plan_ref' : run ? 'candidate_ref' : 'run_ref', id = r[key];
-        const title = kind === 'plan' ? U.sourceLabel(r) : run ? r.label || '未命名候选' : U.timeLabel(r.accepted_at) + ' · ' + U.statusLabel(r.state);
+        const title = kind === 'plan' ? U.sourceLabel(r) : run ? r.label || window.WorkbenchTerms.name_missing : U.timeLabel(r.accepted_at) + ' · ' + U.runStatusLabel(r.state);
         const disabled = kind === 'plan' ? !C.ref(id) || !r.capabilities.view : run ? !r.capabilities.view || !r.task_count : !r.candidate_count;
         return <div key={id || title} className="tt-source-row">{key === 'run_ref' ? <U.Button icon="arrow-right" disabled={disabled} onClick={() => { setRun(r); setQ({}); }}>{title}</U.Button> :
           <label><input type="radio" name="trial-base" disabled={disabled} checked={!!selected && selected[key] === id} onChange={() => onSelect({ [key]: id }, title)} />{title}</label>}
-          <span className="tt-muted">{kind === 'plan' ? r.is_current_official ? '当前正式' : '历史正式' : (r.task_count + ' 道安排')}{run && ' · ' + U.statusLabel(r.status)}</span></div>;
+          <span className="tt-muted">{kind === 'plan' ? r.is_current_official ? window.WorkbenchTerms.current_official : window.WorkbenchTerms.historical_official : (r.task_count + ' 道安排')}{run && ' · ' + U.candidateStatusLabel(r.status)}</span></div>;
       })}{!rows.length && <p className="tt-empty">本页没有可选来源</p>}</div>
-      {kind === 'plan' ? <div className="tt-tools"><U.Button icon="chevron-left" disabled={!q.cursor} onClick={() => setQ({})}>首批版本</U.Button>
-        <U.Button icon="chevron-right" disabled={!d.page.has_more} onClick={() => setQ({ cursor: d.page.next_cursor, snapshot_ref: read.result.meta.snapshot_ref })}>下一批版本</U.Button></div> :
+      {kind === 'plan' ? <div className="tt-tools"><U.Button icon="chevron-left" disabled={!q.cursor} onClick={() => setQ({})}>第一页</U.Button>
+        <U.Button icon="chevron-right" disabled={!d.page.has_more} onClick={() => setQ({ cursor: d.page.next_cursor, snapshot_ref: read.result.meta.snapshot_ref })}>下一页</U.Button></div> :
         <U.Pager label="来源" page={d.page} onPage={page => setQ({ ...q, page, snapshot_ref: read.result.meta.snapshot_ref })} />}</>}
     </>;
   }
   function Create({ initialBase, initialScope = {}, commands, onClose, fixedBase = false, onExisting }) {
     const [base, setBase] = React.useState(initialBase || null), [label, setLabel] = React.useState(''), [epoch, refresh] = React.useReducer(n => n + 1, 0);
     const [choosing, setChoosing] = React.useState(!initialBase);
-    const [inspect, setInspect] = React.useState(false), [agreed, setAgreed] = React.useState(false);
+    // A source carried in from the plan or candidate page is checked at once so its name and version show instead of a placeholder.
+    const [inspect, setInspect] = React.useState(!!initialBase), [agreed, setAgreed] = React.useState(false);
     const input = { base, scope: initialScope };
     const baseline = React.useRef(initialBase || null);
     const guardOwner = window.WorkbenchGuards.useDirtyGuard({ dirty: JSON.stringify(base) !== JSON.stringify(baseline.current),
@@ -82,7 +83,7 @@
       footer={<><U.Button icon="x" disabled={commands.busy || !!commands.key} onClick={close}>取消</U.Button>
         {onExisting && <U.Button icon="folder-open" disabled={commands.busy || !!commands.key} onClick={async () => { if (await window.WorkbenchGuards.confirmLeave({ owner: guardOwner })) onExisting(); }}>打开已有草稿</U.Button>}
         <U.Button icon="refresh-cw" disabled={!base || commands.busy} onClick={() => { commands.restore(); setInspect(true); setAgreed(false); refresh(); }}>核对原来源</U.Button>
-        <U.Button icon="plus" className="btn primary" disabled={!d || !agreed || commands.blocked} onClick={() => commands.execute({ action: 'create', input }, d.write_context.write_token)}>确认新增草稿</U.Button></>}>
+        <U.Button icon="plus" className="btn primary" reason={!d ? '请先核对原来源' : !agreed ? '请先勾选确认' : ''} disabled={commands.blocked} onClick={() => commands.execute({ action: 'create', input }, d.write_context.write_token)}>确认新增草稿</U.Button></>}>
       <div className="trial-modal-body">{!fixedBase && choosing && <SourceCatalog selected={base} onSelect={select} />}
         <section aria-label="已选择的试调来源"><div className="tt-heading"><strong>{base ? '来源类型：' + sourceType : '请选择试调来源'}</strong>
           {!fixedBase && base && !choosing && <U.Button icon="refresh-cw" disabled={commands.busy || !!commands.key} onClick={() => setChoosing(true)}>更换来源</U.Button>}</div>

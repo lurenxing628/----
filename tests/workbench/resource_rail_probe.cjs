@@ -94,12 +94,12 @@ async function inspect(page, viewport) {
       page.on('console',message=>{if(message.type()==='error')result.errors.push(message.text());});
       await page.route('**/*',route=>{if(!route.request().url().startsWith(origin+'/')){result.external.push(route.request().url());return route.abort();}return route.continue();});
       await page.goto(origin);
-      // Short screens (<= 820px, --wb-short-screen-max) start collapsed once a node is selected; expand to inspect the full rail.
+      // 视口高度 <= 1000px（含 820px 以内的矮屏）时，进入节点后产能链默认收起；先展开再检查完整的产能链。
       const toggle=page.getByRole('button',{name:'展开产能链'});
-      if(viewport.height<=820){await toggle.waitFor();assert.equal(await page.locator('.hb-cal-block').count(),0,'Short screens with a selected node start collapsed');
+      if(viewport.height<=1000){await toggle.waitFor();assert.equal(await page.locator('.hb-cal-block').count(),0,'Short screens with a selected node start collapsed');
         assert.equal(await page.locator('[data-rail-node="process"]').getAttribute('aria-pressed'),'true','Compact chips keep the node selection');
         await toggle.click();await page.getByRole('button',{name:'收起产能链'}).waitFor();}
-      else assert.equal(await toggle.count(),0,'Tall screens have no rail toggle');
+      else assert.equal(await toggle.count(),0,'Tall screens (> 1000px) have no rail toggle');
       await page.locator('[data-calendar-date="2026-09-09"]').waitFor();
       await page.evaluate(()=>document.fonts.ready);
       const rail=page.locator('.rail');

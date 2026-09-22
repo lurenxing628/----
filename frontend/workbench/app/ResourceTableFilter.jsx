@@ -130,38 +130,38 @@
       if (!queryText) commitChange(() => ({ mode: enabled ? 'exclude' : 'include', values: [] }));
       else if (keyResult) commitChange(() => M.toggleKeys(filter, keyResult.data.keys, enabled));
     }
-    return ReactDOM.createPortal(<section ref={panel} className="wb-resource-table-filter wb-control-popup" data-wb-table-filter="true"
-      role="dialog" aria-modal="true" aria-labelledby={id} style={{ position: 'fixed', zIndex: 'var(--wb-z-popup)', padding: 8, display: 'flex', flexDirection: 'column', gap: 6, boxSizing: 'border-box', overflow: 'auto', ...position }}>
-      <div className="wb-popup-header" style={{ margin: 0, padding: '0 0 6px' }}><strong id={id} style={{ overflowWrap: 'anywhere' }}>筛选 · {column.title}</strong>
+    return ReactDOM.createPortal(<section ref={panel} className="wb-resource-table-filter wb-control-popup wb-filter-pop" data-wb-table-filter="true"
+      role="dialog" aria-modal="true" aria-labelledby={id} style={{ position: 'fixed', zIndex: 'var(--wb-z-popup)', ...position }}>
+      <div className="wb-popup-header wb-filter-pop-head"><strong id={id}>筛选 · {column.title}</strong>
         <Button className="mini" icon="x" aria-label="关闭列筛选" onClick={() => close.current(true)} /></div>
-      <div style={{ display: 'flex', gap: 6, flex: 'none', minWidth: 0 }}>
-        <input ref={search} type="text" aria-label={'搜索' + column.title + '列值'} value={request.query} placeholder="搜索列值" style={{ flex: '1 1 auto', width: 0 }}
+      <div className="wb-filter-pop-search">
+        <input ref={search} type="text" aria-label={'搜索' + column.title + '列值'} value={request.query} placeholder="搜索列值"
           onChange={event => setRequest({ query: event.target.value, page: 1, size: pageSize })} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); event.stopPropagation(); } }} />
         <Button className="mini" icon="search" aria-label="搜索列值" onClick={readFirst} /></div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 'none', flexWrap: 'wrap' }}>
-        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><input type="checkbox" aria-label="全选" checked={group.all} disabled={blocked || !!keyError || !data || !data.page.total}
+      <div className="wb-filter-pop-all">
+        <label><input type="checkbox" aria-label="全选" checked={group.all} disabled={blocked || !!keyError || !data || !data.page.total}
           ref={node => { if (node) node.indeterminate = group.mixed; }}
           onChange={event => selectAll(event.target.checked)} />（全选）</label>
         <span className="muted">{data ? data.page.total + ' 个值' : ''}</span></div>
       <ErrorBox error={current.error} /><ErrorBox error={readError} /><ErrorBox error={keyError} /><ErrorBox error={changeError} />
       {(readError || keyError) && <Button className="mini" icon="refresh-cw" onClick={readFirst}>回到第 1 页重新查询</Button>}
       {keyLoading && <span role="status" className="muted">正在读取全部匹配值…</span>}
-      <div className="wb-table-facet-options" role="group" aria-label={column.title + '列值'} aria-busy={loading || keyLoading} style={{ overflowY: 'auto', minHeight: 40, flex: '1 1 auto', borderTop: '1px solid var(--ui-border)', borderBottom: '1px solid var(--ui-border)' }}>
+      <div className="wb-table-facet-options wb-filter-pop-options" role="group" aria-label={column.title + '列值'} aria-busy={loading || keyLoading}>
         {loading && <p role="status">正在读取列值…</p>}
         {data && !data.options.length && <p role="status">{queryText ? '没有匹配的列值' : '当前范围没有列值'}</p>}
-        {data && data.options.map(option => <label key={option.key} data-facet-key={option.key} className="wb-table-facet-option" style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '6px 4px', minHeight: 30, cursor: 'pointer' }}>
+        {data && data.options.map(option => <label key={option.key} data-facet-key={option.key} className="wb-table-facet-option wb-filter-pop-option">
           <input type="checkbox" aria-label={option.label === '' ? '（空白）' : option.label} checked={(normalized.mode === 'include') === selectedKeys.has(option.key)} disabled={blocked}
-            style={{ marginTop: 2, flex: 'none' }} onChange={event => { const checked = event.target.checked; commitChange(() => M.toggle(filter, option.key, checked)); }} />
-          <span style={{ minWidth: 0, flex: '1 1 auto', whiteSpace: 'normal', overflowWrap: 'anywhere', lineHeight: '20px' }}>{option.label === '' ? '（空白）' : option.label}</span>
-          <span className="muted" style={{ flex: 'none', fontVariantNumeric: 'tabular-nums' }}>{option.count}</span></label>)}
+            onChange={event => { const checked = event.target.checked; commitChange(() => M.toggle(filter, option.key, checked)); }} />
+          <span className="wb-filter-pop-option-label">{option.label === '' ? '（空白）' : option.label}</span>
+          <span className="muted wb-filter-pop-option-count">{option.count}</span></label>)}
       </div>
-      {[result, needed && keyResult].filter(Boolean).map((item, group) => item.warnings.length > 0 && <div key={group} role="status" style={{ overflowWrap: 'anywhere' }}>{item.warnings.map((warning, index) => <div key={index}>{warning.message}</div>)}</div>)}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 'none', minHeight: 30 }}>
-        <span className="muted" style={{ flex: 1 }}>{data ? '列值分页' : '列值尚未读取'}</span>
+      {[result, needed && keyResult].filter(Boolean).map((item, group) => item.warnings.length > 0 && <div key={group} role="status" className="wb-filter-pop-warnings">{item.warnings.map((warning, index) => <div key={index}>{warning.message}</div>)}</div>)}
+      <div className="wb-filter-pop-pager">
+        <span className="muted wb-filter-pop-pager-note">{data ? '列值分页' : '列值尚未读取'}</span>
         <Button className="mini" icon="chevron-left" aria-label="列值上一页" disabled={!data || data.page.number <= 1} onClick={() => changePage(data.page.number - 1)} />
         <span aria-label="列值页码">{data ? data.page.number + '/' + data.page.pages : '—'}</span>
         <Button className="mini" icon="chevron-right" aria-label="列值下一页" disabled={!data || data.page.number >= data.page.pages} onClick={() => changePage(data.page.number + 1)} /></div>
-      <div className="wb-popup-footer" style={{ margin: 0, padding: '6px 0 0', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div className="wb-popup-footer wb-filter-pop-foot">
         <span className="muted" role="status">{Number.isSafeInteger(matchingCount) && matchingCount >= 0 ? matchingCount + ' 行匹配' : '匹配行数未读取'}</span>
         <Button className="mini" onClick={() => commitChange(() => null, true)}>清除</Button></div>
     </section>, portal);

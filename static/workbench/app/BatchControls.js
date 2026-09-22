@@ -80,12 +80,12 @@
     }, entity ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Field, {
       label: "\u6279\u6B21\u53F7"
     }, /*#__PURE__*/React.createElement("input", {
-      disabled: true,
+      readOnly: true,
       value: entity.business_code
     })), /*#__PURE__*/React.createElement(Field, {
       label: "\u56FE\u53F7"
     }, /*#__PURE__*/React.createElement("input", {
-      disabled: true,
+      readOnly: true,
       value: entity.relationships.part_no + ' · ' + entity.label
     }))) : /*#__PURE__*/React.createElement(React.Fragment, null, input('business_code', '批次号'), /*#__PURE__*/React.createElement(Field, {
       label: "\u56FE\u53F7",

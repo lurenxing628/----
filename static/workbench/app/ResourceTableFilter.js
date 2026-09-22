@@ -323,7 +323,7 @@
     }
     return ReactDOM.createPortal(/*#__PURE__*/React.createElement("section", {
       ref: panel,
-      className: "wb-resource-table-filter wb-control-popup",
+      className: "wb-resource-table-filter wb-control-popup wb-filter-pop",
       "data-wb-table-filter": "true",
       role: "dialog",
       "aria-modal": "true",
@@ -331,47 +331,25 @@
       style: {
         position: 'fixed',
         zIndex: 'var(--wb-z-popup)',
-        padding: 8,
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 6,
-        boxSizing: 'border-box',
-        overflow: 'auto',
         ...position
       }
     }, /*#__PURE__*/React.createElement("div", {
-      className: "wb-popup-header",
-      style: {
-        margin: 0,
-        padding: '0 0 6px'
-      }
+      className: "wb-popup-header wb-filter-pop-head"
     }, /*#__PURE__*/React.createElement("strong", {
-      id: id,
-      style: {
-        overflowWrap: 'anywhere'
-      }
+      id: id
     }, "\u7B5B\u9009 \xB7 ", column.title), /*#__PURE__*/React.createElement(Button, {
       className: "mini",
       icon: "x",
       "aria-label": "\u5173\u95ED\u5217\u7B5B\u9009",
       onClick: () => close.current(true)
     })), /*#__PURE__*/React.createElement("div", {
-      style: {
-        display: 'flex',
-        gap: 6,
-        flex: 'none',
-        minWidth: 0
-      }
+      className: "wb-filter-pop-search"
     }, /*#__PURE__*/React.createElement("input", {
       ref: search,
       type: "text",
       "aria-label": '搜索' + column.title + '列值',
       value: request.query,
       placeholder: "\u641C\u7D22\u5217\u503C",
-      style: {
-        flex: '1 1 auto',
-        width: 0
-      },
       onChange: event => setRequest({
         query: event.target.value,
         page: 1,
@@ -389,20 +367,8 @@
       "aria-label": "\u641C\u7D22\u5217\u503C",
       onClick: readFirst
     })), /*#__PURE__*/React.createElement("div", {
-      style: {
-        display: 'flex',
-        alignItems: 'center',
-        gap: 8,
-        flex: 'none',
-        flexWrap: 'wrap'
-      }
-    }, /*#__PURE__*/React.createElement("label", {
-      style: {
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: 6
-      }
-    }, /*#__PURE__*/React.createElement("input", {
+      className: "wb-filter-pop-all"
+    }, /*#__PURE__*/React.createElement("label", null, /*#__PURE__*/React.createElement("input", {
       type: "checkbox",
       "aria-label": "\u5168\u9009",
       checked: group.all,
@@ -429,17 +395,10 @@
       role: "status",
       className: "muted"
     }, "\u6B63\u5728\u8BFB\u53D6\u5168\u90E8\u5339\u914D\u503C\u2026"), /*#__PURE__*/React.createElement("div", {
-      className: "wb-table-facet-options",
+      className: "wb-table-facet-options wb-filter-pop-options",
       role: "group",
       "aria-label": column.title + '列值',
-      "aria-busy": loading || keyLoading,
-      style: {
-        overflowY: 'auto',
-        minHeight: 40,
-        flex: '1 1 auto',
-        borderTop: '1px solid var(--ui-border)',
-        borderBottom: '1px solid var(--ui-border)'
-      }
+      "aria-busy": loading || keyLoading
     }, loading && /*#__PURE__*/React.createElement("p", {
       role: "status"
     }, "\u6B63\u5728\u8BFB\u53D6\u5217\u503C\u2026"), data && !data.options.length && /*#__PURE__*/React.createElement("p", {
@@ -447,63 +406,30 @@
     }, queryText ? '没有匹配的列值' : '当前范围没有列值'), data && data.options.map(option => /*#__PURE__*/React.createElement("label", {
       key: option.key,
       "data-facet-key": option.key,
-      className: "wb-table-facet-option",
-      style: {
-        display: 'flex',
-        alignItems: 'flex-start',
-        gap: 8,
-        padding: '6px 4px',
-        minHeight: 30,
-        cursor: 'pointer'
-      }
+      className: "wb-table-facet-option wb-filter-pop-option"
     }, /*#__PURE__*/React.createElement("input", {
       type: "checkbox",
       "aria-label": option.label === '' ? '（空白）' : option.label,
       checked: normalized.mode === 'include' === selectedKeys.has(option.key),
       disabled: blocked,
-      style: {
-        marginTop: 2,
-        flex: 'none'
-      },
       onChange: event => {
         const checked = event.target.checked;
         commitChange(() => M.toggle(filter, option.key, checked));
       }
     }), /*#__PURE__*/React.createElement("span", {
-      style: {
-        minWidth: 0,
-        flex: '1 1 auto',
-        whiteSpace: 'normal',
-        overflowWrap: 'anywhere',
-        lineHeight: '20px'
-      }
+      className: "wb-filter-pop-option-label"
     }, option.label === '' ? '（空白）' : option.label), /*#__PURE__*/React.createElement("span", {
-      className: "muted",
-      style: {
-        flex: 'none',
-        fontVariantNumeric: 'tabular-nums'
-      }
+      className: "muted wb-filter-pop-option-count"
     }, option.count)))), [result, needed && keyResult].filter(Boolean).map((item, group) => item.warnings.length > 0 && /*#__PURE__*/React.createElement("div", {
       key: group,
       role: "status",
-      style: {
-        overflowWrap: 'anywhere'
-      }
+      className: "wb-filter-pop-warnings"
     }, item.warnings.map((warning, index) => /*#__PURE__*/React.createElement("div", {
       key: index
     }, warning.message)))), /*#__PURE__*/React.createElement("div", {
-      style: {
-        display: 'flex',
-        alignItems: 'center',
-        gap: 6,
-        flex: 'none',
-        minHeight: 30
-      }
+      className: "wb-filter-pop-pager"
     }, /*#__PURE__*/React.createElement("span", {
-      className: "muted",
-      style: {
-        flex: 1
-      }
+      className: "muted wb-filter-pop-pager-note"
     }, data ? '列值分页' : '列值尚未读取'), /*#__PURE__*/React.createElement(Button, {
       className: "mini",
       icon: "chevron-left",
@@ -519,13 +445,7 @@
       disabled: !data || data.page.number >= data.page.pages,
       onClick: () => changePage(data.page.number + 1)
     })), /*#__PURE__*/React.createElement("div", {
-      className: "wb-popup-footer",
-      style: {
-        margin: 0,
-        padding: '6px 0 0',
-        justifyContent: 'space-between',
-        alignItems: 'center'
-      }
+      className: "wb-popup-footer wb-filter-pop-foot"
     }, /*#__PURE__*/React.createElement("span", {
       className: "muted",
       role: "status"

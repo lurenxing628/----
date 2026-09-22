@@ -119,8 +119,7 @@
       setError(null);
       setSuggestions(Object.fromEntries(['actual_start', 'actual_end'].filter(key => value[key]).map(key => [key, '复制自同任务上一条报工，请重新核对'])));
     }
-    const remaining = task.execution.remaining_quantity,
-      fresh = action === 'create' && !legacy;
+    const fresh = action === 'create' && !legacy;
     const mapped = C.fields.concat(['reason', 'declared_operator']);
     return /*#__PURE__*/React.createElement("form", {
       ref: form,
@@ -165,17 +164,6 @@
       onClick: onClose,
       disabled: command.locked
     }, "\u53D6\u6D88"), fresh && /*#__PURE__*/React.createElement(Button, {
-      icon: "check-check",
-      disabled: disabled || remaining === null || !!reason,
-      onClick: () => {
-        const value = {
-          ...draft,
-          completed_quantity: String(remaining)
-        };
-        setDraft(value);
-        save(value);
-      }
-    }, "\u5269\u4F59\u5168\u90E8\u5B8C\u5DE5"), fresh && /*#__PURE__*/React.createElement(Button, {
       disabled: disabled,
       reason: reason,
       onClick: () => save(draft, true)

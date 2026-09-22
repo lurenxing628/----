@@ -117,7 +117,7 @@
     // 错误正文就是通用“数据已更新”句时，只保留下面带保留说明的过期提示，不重复报两遍；具体原因照常显示。
     const shownError = request.error || error,
       staleOnly = !!(stale && shownError && shownError.message === window.WorkbenchTerms.outcomes.stale);
-    const viewError = selected && data && data.capabilities.view !== true ? A.failure('查看权限尚未确认，暂不能读取完工记录来源。') : null;
+    const viewError = selected && data && data.capabilities.view !== true ? A.failure(C.viewReason + '没有读取完工记录来源。') : null;
     return /*#__PURE__*/React.createElement("section", {
       className: "calib-workbench calibration-live",
       "aria-label": "\u5DE5\u65F6\u5B9A\u989D\u6821\u51C6",
@@ -130,7 +130,7 @@
       className: "wb-page-title"
     }, "\u5DE5\u65F6\u5B9A\u989D\u6821\u51C6"), /*#__PURE__*/React.createElement("p", {
       className: "ca-muted wb-page-context"
-    }, "\u6A21\u677F\u5B9A\u989D\u4E0E\u5B9E\u9645\u52A0\u5DE5\u8BB0\u5F55", result ? ' · 数据截至 ' + window.WorkbenchFormat.dateTime(result.meta.as_of) : '')), /*#__PURE__*/React.createElement("div", {
+    }, "\u6A21\u677F\u5B9A\u989D\u4E0E\u5B9E\u9645\u52A0\u5DE5\u8BB0\u5F55", result ? ' · ' + window.WorkbenchTerms.data_as_of(window.WorkbenchFormat.dateTime(result.meta.as_of)) : '')), /*#__PURE__*/React.createElement("div", {
       className: "ca-actions"
     }, /*#__PURE__*/React.createElement(Button, {
       icon: "refresh-cw",
@@ -187,7 +187,7 @@
     }), stale && /*#__PURE__*/React.createElement("p", {
       className: "ca-note",
       role: "alert"
-    }, "\u6570\u636E\u5DF2\u66F4\u65B0\uFF0C\u8BF7\u5237\u65B0\u540E\u91CD\u8BD5\u3002"), (stale || request.error) && /*#__PURE__*/React.createElement(Button, {
+    }, window.WorkbenchTerms.outcomes.stale), (stale || request.error) && /*#__PURE__*/React.createElement(Button, {
       icon: "refresh-cw",
       disabled: downloading,
       onClick: reload
@@ -227,10 +227,7 @@
     }, "\u5347\u5E8F"), /*#__PURE__*/React.createElement("option", {
       value: "desc"
     }, "\u964D\u5E8F"))), /*#__PURE__*/React.createElement("div", {
-      className: "ca-actions",
-      style: {
-        marginLeft: 'auto'
-      }
+      className: "ca-actions ca-actions-end"
     }, /*#__PURE__*/React.createElement("label", null, "\u683C\u5F0F", /*#__PURE__*/React.createElement("select", {
       "aria-label": "\u5BFC\u51FA\u683C\u5F0F",
       value: format,

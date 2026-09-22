@@ -133,7 +133,7 @@
         overflowWrap: 'anywhere',
         lineHeight: 1.65
       }
-    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("b", null, value.explicit ? '单独配置' : '默认规则'), " \xB7 ", value.effective.is_working ? '可排产' : '不排产'), /*#__PURE__*/React.createElement("div", null, number(fields.hours), " \u5C0F\u65F6 \xB7 \u6548\u7387 ", number(fields.eff), "% \xB7 \u666E\u901A\u4EF6", fields.allowNormal === 'yes' ? '可排' : '不可排', " \xB7 \u6025\u4EF6", fields.allowUrgent === 'yes' ? '可排' : '不可排'), /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("b", null, value.explicit ? '单独设置' : '默认规则'), " \xB7 ", value.effective.is_working ? '可排产' : '不排产'), /*#__PURE__*/React.createElement("div", null, number(fields.hours), " \u5C0F\u65F6 \xB7 \u6548\u7387 ", number(fields.eff), "% \xB7 \u666E\u901A\u4EF6", fields.allowNormal === 'yes' ? '可排' : '不可排', " \xB7 \u6025\u4EF6", fields.allowUrgent === 'yes' ? '可排' : '不可排'), /*#__PURE__*/React.createElement("div", {
       className: "muted"
     }, "\u6709\u6548\u65F6\u6BB5\uFF1A", window.WorkbenchFormat.dateTime(value.effective.window_start), " \u81F3 ", window.WorkbenchFormat.dateTime(value.effective.window_end)), raw && stored && /*#__PURE__*/React.createElement("div", {
       className: "muted"

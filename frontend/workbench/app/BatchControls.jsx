@@ -21,7 +21,7 @@
     const select = (key, label, options) => <Field label={label} path={path(key)} error={error} errors={errors}><select value={value[key]} disabled={disabled} onChange={event => set(key, event.target.value)}>
       {!options.some(row => row[0] === value[key]) && <option value={value[key]}>原值待核对</option>}{options.map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></Field>;
     return <div className="fgrid batch-fields">
-      {entity ? <><Field label="批次号"><input disabled value={entity.business_code} /></Field><Field label="图号"><input disabled value={entity.relationships.part_no + ' · ' + entity.label} /></Field></>
+      {entity ? <><Field label="批次号"><input readOnly value={entity.business_code} /></Field><Field label="图号"><input readOnly value={entity.relationships.part_no + ' · ' + entity.label} /></Field></>
         : <>{input('business_code', '批次号')}<Field label="图号" path="part_ref" error={error} errors={errors} required><select value={value.part_ref} disabled={disabled || !choices} onChange={event => set('part_ref', event.target.value)}>
           <option value="">请选择图号</option>{choices && choices.parts.map(row => <option key={row.ref} value={row.ref}>{row.business_code} · {row.label}</option>)}</select></Field></>}
       {input('quantity', '数量', 'number')}{input('due_date', '交期', 'date')}{select('priority', '优先级', B.priority)}

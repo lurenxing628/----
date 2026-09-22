@@ -13,7 +13,7 @@
     const template = entity.template;
     return <div data-batch-detail={entity.ref}>
       <section className="batch-band"><div className="batch-section-head"><h2>批次详情 · {entity.business_code}</h2><div className="batch-section-actions">
-        <Button icon="arrow-left" onClick={onBack} disabled={disabled}>返回列表</Button><Button icon="trash-2" aria-label="删除批次" disabled={disabled} reasonDisplay="tooltip" reason={reason('delete')} onClick={() => onDelete(entity)}>删除批次</Button></div></div>
+        <Button icon="arrow-left" onClick={onBack} disabled={disabled}>返回列表</Button><Button icon="trash-2" className="btn danger" aria-label="删除批次" disabled={disabled} reasonDisplay="tooltip" reason={reason('delete')} onClick={() => onDelete(entity)}>删除批次</Button></div></div>
         <dl className="batch-facts-grid"><div className="batch-fact-wide"><dt>图号 / 零件</dt><dd>{entity.relationships.part_no} · {entity.label}</dd></div><div><dt>数量</dt><dd>{window.WorkbenchFormat.number(entity.fields.quantity, { digits: 0 })}</dd></div>
           <div><dt>批次状态</dt><dd>{B.label('status', entity.status)}</dd></div><div><dt>工序进度</dt><dd>已完成 {entity.relationships.completed_count} / {entity.operations.length} 道</dd></div></dl>
         {entity.protected && <div className="batch-restriction" role="status"><p>已有排产、报工或执行状态记录，暂不能删除、替换或编辑工序。</p><details><summary>查看关联情况</summary>

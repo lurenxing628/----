@@ -6,14 +6,7 @@
       Modal
     } = window.ResourceControls,
     A = window.RunJobAPI;
-  const labels = {
-    queued: '等待计算',
-    running: '正在计算',
-    complete: '计算完成',
-    partial: '部分完成',
-    failed: '计算失败',
-    interrupted: '排产中断'
-  };
+  const labels = window.WorkbenchTerms.run_statuses;
   function Progress({
     run
   }) {
@@ -227,16 +220,11 @@
       className: "wb-col-key"
     }, /*#__PURE__*/React.createElement("div", {
       className: "rj-name"
-    }, /*#__PURE__*/React.createElement("span", null, row.label || '生成时名称未填写', selected.has(row.candidate_ref) && /*#__PURE__*/React.createElement("span", {
+    }, /*#__PURE__*/React.createElement("span", null, row.label || window.WorkbenchTerms.name_missing, selected.has(row.candidate_ref) && /*#__PURE__*/React.createElement("span", {
       className: "rj-selected"
     }, "\u672C\u6B21\u9009\u4E2D")), /*#__PURE__*/React.createElement(window.WorkbenchReference, {
       value: row.candidate_ref
-    }))), /*#__PURE__*/React.createElement("td", null, {
-      completed: '已完成',
-      partial: '部分完成',
-      failed: '失败',
-      skipped: '已跳过'
-    }[row.status], row.completeness === 'unknown' && /*#__PURE__*/React.createElement("small", null, "\u5B8C\u6574\u6027\u5C1A\u672A\u786E\u8BA4")), /*#__PURE__*/React.createElement("td", null, row.task_count), /*#__PURE__*/React.createElement("td", {
+    }))), /*#__PURE__*/React.createElement("td", null, window.WorkbenchTerms.candidate_statuses[row.status], row.completeness === 'unknown' && /*#__PURE__*/React.createElement("small", null, "\u5B8C\u6574\u6027\u5C1A\u672A\u786E\u8BA4")), /*#__PURE__*/React.createElement("td", null, row.task_count), /*#__PURE__*/React.createElement("td", {
       className: "wb-col-actions"
     }, /*#__PURE__*/React.createElement(Button, {
       icon: "eye",
@@ -264,6 +252,7 @@
     intent,
     paused,
     retryPaused,
+    retryHint = '可点「查询结果」再次核对原记录。',
     lastChecked,
     resolution,
     checking,
@@ -312,7 +301,7 @@
     })), !replaced && /*#__PURE__*/React.createElement("p", {
       className: "rj-muted rj-query-summary",
       role: "status"
-    }, lastChecked && /*#__PURE__*/React.createElement("span", null, "\u6700\u8FD1\u67E5\u8BE2\uFF1A", window.WorkbenchFormat.dateTime(new Date(lastChecked).toLocaleString('sv-SE').replace(' ', 'T'))), retryPaused ? /*#__PURE__*/React.createElement("span", null, "\u5DF2\u6682\u505C\u81EA\u52A8\u67E5\u8BE2\u3002\u53EF\u70B9\u300C\u67E5\u8BE2\u7ED3\u679C\u300D\u518D\u6B21\u6838\u5BF9\u539F\u8BB0\u5F55\u3002") : !A.terminal(run) && /*#__PURE__*/React.createElement("span", null, paused ? '页面已切走，返回后继续查询。' : checking ? '正在读取排产记录。' : '等待下次查询。')));
+    }, lastChecked && /*#__PURE__*/React.createElement("span", null, "\u6700\u8FD1\u67E5\u8BE2\uFF1A", window.WorkbenchFormat.dateTime(new Date(lastChecked).toLocaleString('sv-SE').replace(' ', 'T'))), retryPaused ? /*#__PURE__*/React.createElement("span", null, "\u5DF2\u6682\u505C\u81EA\u52A8\u67E5\u8BE2\u3002", retryHint) : !A.terminal(run) && /*#__PURE__*/React.createElement("span", null, paused ? '页面已切走，返回后继续查询。' : checking ? '正在读取排产记录。' : '等待下次查询。')));
   }
   function Styles() {
     return null;

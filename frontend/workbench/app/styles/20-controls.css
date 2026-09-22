@@ -28,57 +28,58 @@ body.aps-workbench :is(button,input,select,textarea,summary,[role="button"],[rol
 body.aps-workbench :is(.sm-work-row,.hb-tile,.hb-cal-block,.cal-cell,.tr-bar,.gb-bar,.fg-bar,[role="tab"]):focus-visible {
   outline-offset: -2px;
 }
-body.aps-workbench :is(button.wb-control,button.wb-action,button.btn,button.mini,button.pg,button.cal-nav,button.hdr-pill,button.sm-button,button.modal-x,button.hb-r-next,button.ph-help,button.gb-tb-btn,button.fg-icon-button,button.fg-return,button.aw-reset,button.aw-more,button.wb-picker-nav,button.wb-picker-trigger,input[type="button"],input[type="submit"],input[type="reset"]) {
-  /* override: body.aps-workbench :is(button.wb-control,button.wb-action,button.btn,button.mini,button.pg,button.cal-nav,button.hdr-pill,button.sm-button,button.modal-x,button.hb-r-next,button.ph-help,button.gb-tb-btn,button.fg-icon-button,button.fg-return,button.aw-reset,button.aw-more,button.wb-picker-nav,button.wb-picker-trigger,input[type="button"],input[type="submit"],input[type="reset"]); preserve shared control geometry against legacy inline and prototype declarations. */
+body.aps-workbench :is(button.wb-control,button.wb-action,button.btn,button.mini,button.pg,button.cal-nav,button.hdr-pill,a.hdr-pill,button.sm-button,button.modal-x,button.hb-r-next,button.ph-help,button.gb-tb-btn,button.fg-icon-button,button.fg-return,button.aw-reset,button.aw-more,button.wb-picker-nav,input[type="button"],input[type="submit"],input[type="reset"]) {
+  /* override: body.aps-workbench :is(button.wb-control,button.wb-action,button.btn,button.mini,button.pg,button.cal-nav,button.hdr-pill,a.hdr-pill,button.sm-button,button.modal-x,button.hb-r-next,button.ph-help,button.gb-tb-btn,button.fg-icon-button,button.fg-return,button.aw-reset,button.aw-more,button.wb-picker-nav,input[type="button"],input[type="submit"],input[type="reset"]); preserve shared control geometry against legacy inline and prototype declarations. */
   display: inline-flex !important;
   align-items: center;
   justify-content: center;
   gap: var(--space-2);
-  /* override: body.aps-workbench :is(button.wb-control,button.wb-action,button.btn,button.mini,button.pg,button.cal-nav,button.hdr-pill,button.sm-button,button.modal-x,button.hb-r-next,button.ph-help,button.gb-tb-btn,button.fg-icon-button,button.fg-return,button.aw-reset,button.aw-more,button.wb-picker-nav,button.wb-picker-trigger,input[type="button"],input[type="submit"],input[type="reset"]); preserve shared control geometry against legacy inline and prototype declarations. */
+  /* override: body.aps-workbench :is(button.wb-control,button.wb-action,button.btn,button.mini,button.pg,button.cal-nav,button.hdr-pill,a.hdr-pill,button.sm-button,button.modal-x,button.hb-r-next,button.ph-help,button.gb-tb-btn,button.fg-icon-button,button.fg-return,button.aw-reset,button.aw-more,button.wb-picker-nav,input[type="button"],input[type="submit"],input[type="reset"]); preserve shared control geometry against legacy inline and prototype declarations. */
   min-height: var(--wb-control-height) !important;
-  /* override: body.aps-workbench :is(button.wb-control,button.wb-action,button.btn,button.mini,button.pg,button.cal-nav,button.hdr-pill,button.sm-button,button.modal-x,button.hb-r-next,button.ph-help,button.gb-tb-btn,button.fg-icon-button,button.fg-return,button.aw-reset,button.aw-more,button.wb-picker-nav,button.wb-picker-trigger,input[type="button"],input[type="submit"],input[type="reset"]); preserve shared control geometry against legacy inline and prototype declarations. */
+  /* override: body.aps-workbench :is(button.wb-control,button.wb-action,button.btn,button.mini,button.pg,button.cal-nav,button.hdr-pill,a.hdr-pill,button.sm-button,button.modal-x,button.hb-r-next,button.ph-help,button.gb-tb-btn,button.fg-icon-button,button.fg-return,button.aw-reset,button.aw-more,button.wb-picker-nav,input[type="button"],input[type="submit"],input[type="reset"]); preserve shared control geometry against legacy inline and prototype declarations. */
   height: auto !important;
   max-width: 100%;
-  /* override: body.aps-workbench :is(button.wb-control,button.wb-action,button.btn,button.mini,button.pg,button.cal-nav,button.hdr-pill,button.sm-button,button.modal-x,button.hb-r-next,button.ph-help,button.gb-tb-btn,button.fg-icon-button,button.fg-return,button.aw-reset,button.aw-more,button.wb-picker-nav,button.wb-picker-trigger,input[type="button"],input[type="submit"],input[type="reset"]); preserve shared control geometry against legacy inline and prototype declarations. */
+  /* override: body.aps-workbench :is(button.wb-control,button.wb-action,button.btn,button.mini,button.pg,button.cal-nav,button.hdr-pill,a.hdr-pill,button.sm-button,button.modal-x,button.hb-r-next,button.ph-help,button.gb-tb-btn,button.fg-icon-button,button.fg-return,button.aw-reset,button.aw-more,button.wb-picker-nav,input[type="button"],input[type="submit"],input[type="reset"]); preserve shared control geometry against legacy inline and prototype declarations. */
   padding: 5px 10px !important;
-  /* override: body.aps-workbench :is(button.wb-control,button.wb-action,button.btn,button.mini,button.pg,button.cal-nav,button.hdr-pill,button.sm-button,button.modal-x,button.hb-r-next,button.ph-help,button.gb-tb-btn,button.fg-icon-button,button.fg-return,button.aw-reset,button.aw-more,button.wb-picker-nav,button.wb-picker-trigger,input[type="button"],input[type="submit"],input[type="reset"]); preserve shared control geometry against legacy inline and prototype declarations. */
+  /* override: body.aps-workbench :is(button.wb-control,button.wb-action,button.btn,button.mini,button.pg,button.cal-nav,button.hdr-pill,a.hdr-pill,button.sm-button,button.modal-x,button.hb-r-next,button.ph-help,button.gb-tb-btn,button.fg-icon-button,button.fg-return,button.aw-reset,button.aw-more,button.wb-picker-nav,input[type="button"],input[type="submit"],input[type="reset"]); preserve shared control geometry against legacy inline and prototype declarations. */
   border: 1px solid var(--ui-border) !important;
-  /* override: body.aps-workbench :is(button.wb-control,button.wb-action,button.btn,button.mini,button.pg,button.cal-nav,button.hdr-pill,button.sm-button,button.modal-x,button.hb-r-next,button.ph-help,button.gb-tb-btn,button.fg-icon-button,button.fg-return,button.aw-reset,button.aw-more,button.wb-picker-nav,button.wb-picker-trigger,input[type="button"],input[type="submit"],input[type="reset"]); preserve shared control geometry against legacy inline and prototype declarations. */
+  /* override: body.aps-workbench :is(button.wb-control,button.wb-action,button.btn,button.mini,button.pg,button.cal-nav,button.hdr-pill,a.hdr-pill,button.sm-button,button.modal-x,button.hb-r-next,button.ph-help,button.gb-tb-btn,button.fg-icon-button,button.fg-return,button.aw-reset,button.aw-more,button.wb-picker-nav,input[type="button"],input[type="submit"],input[type="reset"]); preserve shared control geometry against legacy inline and prototype declarations. */
   border-radius: var(--wb-radius-control) !important;
-  /* override: body.aps-workbench :is(button.wb-control,button.wb-action,button.btn,button.mini,button.pg,button.cal-nav,button.hdr-pill,button.sm-button,button.modal-x,button.hb-r-next,button.ph-help,button.gb-tb-btn,button.fg-icon-button,button.fg-return,button.aw-reset,button.aw-more,button.wb-picker-nav,button.wb-picker-trigger,input[type="button"],input[type="submit"],input[type="reset"]); preserve shared control geometry against legacy inline and prototype declarations. */
+  /* override: body.aps-workbench :is(button.wb-control,button.wb-action,button.btn,button.mini,button.pg,button.cal-nav,button.hdr-pill,a.hdr-pill,button.sm-button,button.modal-x,button.hb-r-next,button.ph-help,button.gb-tb-btn,button.fg-icon-button,button.fg-return,button.aw-reset,button.aw-more,button.wb-picker-nav,input[type="button"],input[type="submit"],input[type="reset"]); preserve shared control geometry against legacy inline and prototype declarations. */
   color: var(--ui-text) !important;
-  /* override: body.aps-workbench :is(button.wb-control,button.wb-action,button.btn,button.mini,button.pg,button.cal-nav,button.hdr-pill,button.sm-button,button.modal-x,button.hb-r-next,button.ph-help,button.gb-tb-btn,button.fg-icon-button,button.fg-return,button.aw-reset,button.aw-more,button.wb-picker-nav,button.wb-picker-trigger,input[type="button"],input[type="submit"],input[type="reset"]); preserve shared control geometry against legacy inline and prototype declarations. */
+  /* override: body.aps-workbench :is(button.wb-control,button.wb-action,button.btn,button.mini,button.pg,button.cal-nav,button.hdr-pill,a.hdr-pill,button.sm-button,button.modal-x,button.hb-r-next,button.ph-help,button.gb-tb-btn,button.fg-icon-button,button.fg-return,button.aw-reset,button.aw-more,button.wb-picker-nav,input[type="button"],input[type="submit"],input[type="reset"]); preserve shared control geometry against legacy inline and prototype declarations. */
   background: var(--ui-card-bg) !important;
-  /* override: body.aps-workbench :is(button.wb-control,button.wb-action,button.btn,button.mini,button.pg,button.cal-nav,button.hdr-pill,button.sm-button,button.modal-x,button.hb-r-next,button.ph-help,button.gb-tb-btn,button.fg-icon-button,button.fg-return,button.aw-reset,button.aw-more,button.wb-picker-nav,button.wb-picker-trigger,input[type="button"],input[type="submit"],input[type="reset"]); preserve shared control geometry against legacy inline and prototype declarations. */
+  /* override: body.aps-workbench :is(button.wb-control,button.wb-action,button.btn,button.mini,button.pg,button.cal-nav,button.hdr-pill,a.hdr-pill,button.sm-button,button.modal-x,button.hb-r-next,button.ph-help,button.gb-tb-btn,button.fg-icon-button,button.fg-return,button.aw-reset,button.aw-more,button.wb-picker-nav,input[type="button"],input[type="submit"],input[type="reset"]); preserve shared control geometry against legacy inline and prototype declarations. */
   font: 500 var(--font-size-2)/20px var(--font-family) !important;
-  /* override: body.aps-workbench :is(button.wb-control,button.wb-action,button.btn,button.mini,button.pg,button.cal-nav,button.hdr-pill,button.sm-button,button.modal-x,button.hb-r-next,button.ph-help,button.gb-tb-btn,button.fg-icon-button,button.fg-return,button.aw-reset,button.aw-more,button.wb-picker-nav,button.wb-picker-trigger,input[type="button"],input[type="submit"],input[type="reset"]); preserve shared control geometry against legacy inline and prototype declarations. */
+  /* override: body.aps-workbench :is(button.wb-control,button.wb-action,button.btn,button.mini,button.pg,button.cal-nav,button.hdr-pill,a.hdr-pill,button.sm-button,button.modal-x,button.hb-r-next,button.ph-help,button.gb-tb-btn,button.fg-icon-button,button.fg-return,button.aw-reset,button.aw-more,button.wb-picker-nav,input[type="button"],input[type="submit"],input[type="reset"]); preserve shared control geometry against legacy inline and prototype declarations. */
   white-space: normal !important;
   overflow-wrap: anywhere;
   text-overflow: clip;
-  /* override: body.aps-workbench :is(button.wb-control,button.wb-action,button.btn,button.mini,button.pg,button.cal-nav,button.hdr-pill,button.sm-button,button.modal-x,button.hb-r-next,button.ph-help,button.gb-tb-btn,button.fg-icon-button,button.fg-return,button.aw-reset,button.aw-more,button.wb-picker-nav,button.wb-picker-trigger,input[type="button"],input[type="submit"],input[type="reset"]); preserve shared control geometry against legacy inline and prototype declarations. */
+  /* override: body.aps-workbench :is(button.wb-control,button.wb-action,button.btn,button.mini,button.pg,button.cal-nav,button.hdr-pill,a.hdr-pill,button.sm-button,button.modal-x,button.hb-r-next,button.ph-help,button.gb-tb-btn,button.fg-icon-button,button.fg-return,button.aw-reset,button.aw-more,button.wb-picker-nav,input[type="button"],input[type="submit"],input[type="reset"]); preserve shared control geometry against legacy inline and prototype declarations. */
   box-shadow: none !important;
-  /* override: body.aps-workbench :is(button.wb-control,button.wb-action,button.btn,button.mini,button.pg,button.cal-nav,button.hdr-pill,button.sm-button,button.modal-x,button.hb-r-next,button.ph-help,button.gb-tb-btn,button.fg-icon-button,button.fg-return,button.aw-reset,button.aw-more,button.wb-picker-nav,button.wb-picker-trigger,input[type="button"],input[type="submit"],input[type="reset"]); preserve shared control geometry against legacy inline and prototype declarations. */
+  /* override: body.aps-workbench :is(button.wb-control,button.wb-action,button.btn,button.mini,button.pg,button.cal-nav,button.hdr-pill,a.hdr-pill,button.sm-button,button.modal-x,button.hb-r-next,button.ph-help,button.gb-tb-btn,button.fg-icon-button,button.fg-return,button.aw-reset,button.aw-more,button.wb-picker-nav,input[type="button"],input[type="submit"],input[type="reset"]); preserve shared control geometry against legacy inline and prototype declarations. */
   transform: none !important;
   filter: none;
   transition: background-color .12s, border-color .12s, color .12s;
 }
-body.aps-workbench :is(button.wb-control,button.wb-action,button.btn,button.mini,button.pg,button.cal-nav,button.hdr-pill,button.sm-button,button.modal-x,button.hb-r-next,button.ph-help,button.gb-tb-btn,button.fg-icon-button,button.fg-return,button.aw-reset,button.aw-more,button.wb-picker-nav,button.wb-picker-trigger,input[type="button"],input[type="submit"],input[type="reset"]):hover:not(:disabled):not([aria-disabled="true"]) {
-  /* override: body.aps-workbench :is(button.wb-control,button.wb-action,button.btn,button.mini,button.pg,button.cal-nav,button.hdr-pill,button.sm-button,button.modal-x,button.hb-r-next,button.ph-help,button.gb-tb-btn,button.fg-icon-button,button.fg-return,button.aw-reset,button.aw-more,button.wb-picker-nav,button.wb-picker-trigger,input[type="button"],input[type="submit"],input[type="reset"]):hover:not(:disabled):not([aria-disabled="true"]); preserve shared control geometry against legacy inline and prototype declarations. */
+body.aps-workbench :is(button.wb-control,button.wb-action,button.btn,button.mini,button.pg,button.cal-nav,button.hdr-pill,a.hdr-pill,button.sm-button,button.modal-x,button.hb-r-next,button.ph-help,button.gb-tb-btn,button.fg-icon-button,button.fg-return,button.aw-reset,button.aw-more,button.wb-picker-nav,input[type="button"],input[type="submit"],input[type="reset"]):hover:not(:disabled):not([aria-disabled="true"]) {
+  /* override: body.aps-workbench :is(button.wb-control,button.wb-action,button.btn,button.mini,button.pg,button.cal-nav,button.hdr-pill,a.hdr-pill,button.sm-button,button.modal-x,button.hb-r-next,button.ph-help,button.gb-tb-btn,button.fg-icon-button,button.fg-return,button.aw-reset,button.aw-more,button.wb-picker-nav,input[type="button"],input[type="submit"],input[type="reset"]):hover:not(:disabled):not([aria-disabled="true"]); preserve shared control geometry against legacy inline and prototype declarations. */
   border-color: var(--wb-control-edge-hover) !important;
-  /* override: body.aps-workbench :is(button.wb-control,button.wb-action,button.btn,button.mini,button.pg,button.cal-nav,button.hdr-pill,button.sm-button,button.modal-x,button.hb-r-next,button.ph-help,button.gb-tb-btn,button.fg-icon-button,button.fg-return,button.aw-reset,button.aw-more,button.wb-picker-nav,button.wb-picker-trigger,input[type="button"],input[type="submit"],input[type="reset"]):hover:not(:disabled):not([aria-disabled="true"]); preserve shared control geometry against legacy inline and prototype declarations. */
+  /* override: body.aps-workbench :is(button.wb-control,button.wb-action,button.btn,button.mini,button.pg,button.cal-nav,button.hdr-pill,a.hdr-pill,button.sm-button,button.modal-x,button.hb-r-next,button.ph-help,button.gb-tb-btn,button.fg-icon-button,button.fg-return,button.aw-reset,button.aw-more,button.wb-picker-nav,input[type="button"],input[type="submit"],input[type="reset"]):hover:not(:disabled):not([aria-disabled="true"]); preserve shared control geometry against legacy inline and prototype declarations. */
   background: var(--ui-surface-muted) !important;
 }
-body.aps-workbench :is(button.wb-control,button.wb-action,button.btn,button.mini,button.pg,button.cal-nav,button.hdr-pill,button.sm-button,button.modal-x,button.hb-r-next,button.ph-help,button.gb-tb-btn,button.fg-icon-button,button.fg-return,button.aw-reset,button.aw-more,button.wb-picker-nav,button.wb-picker-trigger,input[type="button"],input[type="submit"],input[type="reset"]):active:not(:disabled):not([aria-disabled="true"]) {
-  /* override: body.aps-workbench :is(button.wb-control,button.wb-action,button.btn,button.mini,button.pg,button.cal-nav,button.hdr-pill,button.sm-button,button.modal-x,button.hb-r-next,button.ph-help,button.gb-tb-btn,button.fg-icon-button,button.fg-return,button.aw-reset,button.aw-more,button.wb-picker-nav,button.wb-picker-trigger,input[type="button"],input[type="submit"],input[type="reset"]):active:not(:disabled):not([aria-disabled="true"]); preserve shared control geometry against legacy inline and prototype declarations. */
+body.aps-workbench :is(button.wb-control,button.wb-action,button.btn,button.mini,button.pg,button.cal-nav,button.hdr-pill,a.hdr-pill,button.sm-button,button.modal-x,button.hb-r-next,button.ph-help,button.gb-tb-btn,button.fg-icon-button,button.fg-return,button.aw-reset,button.aw-more,button.wb-picker-nav,input[type="button"],input[type="submit"],input[type="reset"]):active:not(:disabled):not([aria-disabled="true"]) {
+  /* override: body.aps-workbench :is(button.wb-control,button.wb-action,button.btn,button.mini,button.pg,button.cal-nav,button.hdr-pill,a.hdr-pill,button.sm-button,button.modal-x,button.hb-r-next,button.ph-help,button.gb-tb-btn,button.fg-icon-button,button.fg-return,button.aw-reset,button.aw-more,button.wb-picker-nav,input[type="button"],input[type="submit"],input[type="reset"]):active:not(:disabled):not([aria-disabled="true"]); preserve shared control geometry against legacy inline and prototype declarations. */
   background: var(--ui-info-bg) !important;
-  /* override: body.aps-workbench :is(button.wb-control,button.wb-action,button.btn,button.mini,button.pg,button.cal-nav,button.hdr-pill,button.sm-button,button.modal-x,button.hb-r-next,button.ph-help,button.gb-tb-btn,button.fg-icon-button,button.fg-return,button.aw-reset,button.aw-more,button.wb-picker-nav,button.wb-picker-trigger,input[type="button"],input[type="submit"],input[type="reset"]):active:not(:disabled):not([aria-disabled="true"]); preserve shared control geometry against legacy inline and prototype declarations. */
+  /* override: body.aps-workbench :is(button.wb-control,button.wb-action,button.btn,button.mini,button.pg,button.cal-nav,button.hdr-pill,a.hdr-pill,button.sm-button,button.modal-x,button.hb-r-next,button.ph-help,button.gb-tb-btn,button.fg-icon-button,button.fg-return,button.aw-reset,button.aw-more,button.wb-picker-nav,input[type="button"],input[type="submit"],input[type="reset"]):active:not(:disabled):not([aria-disabled="true"]); preserve shared control geometry against legacy inline and prototype declarations. */
   border-color: var(--ui-primary) !important;
 }
-body.aps-workbench :is(button.wb-control,button.wb-action,button.btn,button.mini,button.pg,button.cal-nav,button.hdr-pill,button.sm-button,button.modal-x,button.hb-r-next,button.ph-help,button.gb-tb-btn,button.fg-icon-button,button.fg-return,button.aw-reset,button.aw-more,button.wb-picker-nav,button.wb-picker-trigger,input[type="button"],input[type="submit"],input[type="reset"]) svg { flex: none; }
-body.aps-workbench :is(button.pg,button.sm-icon-button,button.modal-x,button.cal-nav:not(.cal-today-btn),button.wb-picker-nav,button.wb-picker-trigger) {
+body.aps-workbench :is(button.wb-control,button.wb-action,button.btn,button.mini,button.pg,button.cal-nav,button.hdr-pill,a.hdr-pill,button.sm-button,button.modal-x,button.hb-r-next,button.ph-help,button.gb-tb-btn,button.fg-icon-button,button.fg-return,button.aw-reset,button.aw-more,button.wb-picker-nav,input[type="button"],input[type="submit"],input[type="reset"]) svg { flex: none; }
+/* 图标按钮档（32×32、四边 5px）：.mo-icon / .plan-icon / .fg-icon-button / .rh-table 里的 .btn 原先各自写 30-32px 与 padding 0/5/6px，全被上面合同的 padding:5px 10px !important 压住而图标溢出，统一并入这一档。 */
+body.aps-workbench :is(button.pg,button.sm-icon-button,button.modal-x,button.cal-nav:not(.cal-today-btn),button.wb-picker-nav,button.mo-icon,button.plan-icon,button.fg-icon-button,.rh-table button.btn) {
   width: var(--wb-control-height);
   min-width: var(--wb-control-height);
-  /* override: body.aps-workbench :is(button.pg,button.sm-icon-button,button.modal-x,button.cal-nav:not(.cal-today-btn),button.wb-picker-nav,button.wb-picker-trigger); preserve shared control geometry against legacy inline and prototype declarations. */
+  /* override: body.aps-workbench :is(button.pg,button.sm-icon-button,button.modal-x,button.cal-nav:not(.cal-today-btn),button.wb-picker-nav,button.mo-icon,button.plan-icon,button.fg-icon-button,.rh-table button.btn); preserve shared control geometry against legacy inline and prototype declarations. */
   padding: 5px !important;
   flex: none;
 }
@@ -88,30 +89,31 @@ body.aps-workbench button.mini { min-height: var(--wb-control-mini-height) !impo
 body.aps-workbench .resource-catalog .rc-list button.mini { width: var(--wb-control-mini-height); min-width: var(--wb-control-mini-height); padding: var(--space-1) !important; }
 /* override: body.aps-workbench button.modal-x; preserve shared control geometry against legacy inline and prototype declarations. */
 body.aps-workbench button.modal-x { background: transparent !important; border-color: transparent !important; color: var(--ui-info-muted) !important; }
+/* 主按钮底色 / 字色走 00-tokens 的 --wb-primary-button-*：深色下 --ui-info-text 是浅蓝，直接当底色会和链接撞色、明暗反转。 */
 body.aps-workbench :is(button.wb-primary,button.btn.primary,button.sm-primary-button,button.hb-r-next) {
   /* override: body.aps-workbench :is(button.wb-primary,button.btn.primary,button.sm-primary-button,button.hb-r-next); preserve shared control geometry against legacy inline and prototype declarations. */
-  background: var(--ui-info-text) !important;
+  background: var(--wb-primary-button-bg) !important;
   /* override: body.aps-workbench :is(button.wb-primary,button.btn.primary,button.sm-primary-button,button.hb-r-next); preserve shared control geometry against legacy inline and prototype declarations. */
-  border-color: var(--ui-info-text) !important;
+  border-color: var(--wb-primary-button-bg) !important;
   /* override: body.aps-workbench :is(button.wb-primary,button.btn.primary,button.sm-primary-button,button.hb-r-next); preserve shared control geometry against legacy inline and prototype declarations. */
-  color: var(--ui-card-bg) !important;
+  color: var(--wb-primary-button-text) !important;
 }
 body.aps-workbench :is(button.wb-primary,button.btn.primary,button.sm-primary-button,button.hb-r-next):hover:not(:disabled):not([aria-disabled="true"]) {
   /* override: body.aps-workbench :is(button.wb-primary,button.btn.primary,button.sm-primary-button,button.hb-r-next):hover:not(:disabled):not([aria-disabled="true"]); preserve shared control geometry against legacy inline and prototype declarations. */
-  background: var(--ui-info-text) !important;
+  background: var(--wb-primary-button-hover-bg) !important;
   /* override: body.aps-workbench :is(button.wb-primary,button.btn.primary,button.sm-primary-button,button.hb-r-next):hover:not(:disabled):not([aria-disabled="true"]); preserve shared control geometry against legacy inline and prototype declarations. */
-  border-color: var(--ui-info-text) !important;
+  border-color: var(--wb-primary-button-hover-bg) !important;
   filter: brightness(.94);
   /* override: body.aps-workbench :is(button.wb-primary,button.btn.primary,button.sm-primary-button,button.hb-r-next):hover:not(:disabled):not([aria-disabled="true"]); preserve shared control geometry against legacy inline and prototype declarations. */
   box-shadow: none !important;
 }
 body.aps-workbench :is(button.wb-primary,button.btn.primary,button.sm-primary-button,button.hb-r-next):active:not(:disabled):not([aria-disabled="true"]) {
   /* override: body.aps-workbench :is(button.wb-primary,button.btn.primary,button.sm-primary-button,button.hb-r-next):active:not(:disabled):not([aria-disabled="true"]); preserve shared control geometry against legacy inline and prototype declarations. */
-  background: var(--ui-info-text) !important;
+  background: var(--wb-primary-button-hover-bg) !important;
   /* override: body.aps-workbench :is(button.wb-primary,button.btn.primary,button.sm-primary-button,button.hb-r-next):active:not(:disabled):not([aria-disabled="true"]); preserve shared control geometry against legacy inline and prototype declarations. */
-  border-color: var(--ui-info-text) !important;
+  border-color: var(--wb-primary-button-hover-bg) !important;
   /* override: body.aps-workbench :is(button.wb-primary,button.btn.primary,button.sm-primary-button,button.hb-r-next):active:not(:disabled):not([aria-disabled="true"]); preserve shared control geometry against legacy inline and prototype declarations. */
-  color: var(--ui-card-bg) !important;
+  color: var(--wb-primary-button-text) !important;
   filter: brightness(.88);
 }
 /* override: body.aps-workbench :is(button.btn.danger,button.mini.danger); preserve shared control geometry against legacy inline and prototype declarations. */
@@ -132,16 +134,18 @@ body.aps-workbench :is(button.btn.danger,button.mini.danger):hover:not(:disabled
 }
 /* override: body.aps-workbench :is(button.btn.danger,button.mini.danger):active:not(:disabled); preserve shared control geometry against legacy inline and prototype declarations. */
 body.aps-workbench :is(button.btn.danger,button.mini.danger):active:not(:disabled) { border-color: var(--ui-danger-text) !important; }
-body.aps-workbench :is(button.wb-control,button.wb-action,button.btn,button.mini,button.pg,button.cal-nav,button.hdr-pill,button.sm-button,button.modal-x,button.hb-r-next,button.ph-help,button.gb-tb-btn,button.fg-icon-button,button.fg-return,button.aw-reset,button.aw-more,button.wb-picker-nav,button.wb-picker-trigger,input[type="button"],input[type="submit"],input[type="reset"]):is(:disabled,[aria-disabled="true"]) {
-  /* override: body.aps-workbench :is(button.wb-control,button.wb-action,button.btn,button.mini,button.pg,button.cal-nav,button.hdr-pill,button.sm-button,button.modal-x,button.hb-r-next,button.ph-help,button.gb-tb-btn,button.fg-icon-button,button.fg-return,button.aw-reset,button.aw-more,button.wb-picker-nav,button.wb-picker-trigger,input[type="button"],input[type="submit"],input[type="reset"]):is(:disabled,[aria-disabled="true"]); preserve shared control geometry against legacy inline and prototype declarations. */
+body.aps-workbench :is(button.wb-control,button.wb-action,button.btn,button.mini,button.pg,button.cal-nav,button.hdr-pill,a.hdr-pill,button.sm-button,button.modal-x,button.hb-r-next,button.ph-help,button.gb-tb-btn,button.fg-icon-button,button.fg-return,button.aw-reset,button.aw-more,button.wb-picker-nav,input[type="button"],input[type="submit"],input[type="reset"]):is(:disabled,[aria-disabled="true"]) {
+  /* override: body.aps-workbench :is(button.wb-control,button.wb-action,button.btn,button.mini,button.pg,button.cal-nav,button.hdr-pill,a.hdr-pill,button.sm-button,button.modal-x,button.hb-r-next,button.ph-help,button.gb-tb-btn,button.fg-icon-button,button.fg-return,button.aw-reset,button.aw-more,button.wb-picker-nav,input[type="button"],input[type="submit"],input[type="reset"]):is(:disabled,[aria-disabled="true"]); preserve shared control geometry against legacy inline and prototype declarations. */
   background: var(--ui-surface-muted) !important;
-  /* override: body.aps-workbench :is(button.wb-control,button.wb-action,button.btn,button.mini,button.pg,button.cal-nav,button.hdr-pill,button.sm-button,button.modal-x,button.hb-r-next,button.ph-help,button.gb-tb-btn,button.fg-icon-button,button.fg-return,button.aw-reset,button.aw-more,button.wb-picker-nav,button.wb-picker-trigger,input[type="button"],input[type="submit"],input[type="reset"]):is(:disabled,[aria-disabled="true"]); preserve shared control geometry against legacy inline and prototype declarations. */
+  /* override: body.aps-workbench :is(button.wb-control,button.wb-action,button.btn,button.mini,button.pg,button.cal-nav,button.hdr-pill,a.hdr-pill,button.sm-button,button.modal-x,button.hb-r-next,button.ph-help,button.gb-tb-btn,button.fg-icon-button,button.fg-return,button.aw-reset,button.aw-more,button.wb-picker-nav,input[type="button"],input[type="submit"],input[type="reset"]):is(:disabled,[aria-disabled="true"]); preserve shared control geometry against legacy inline and prototype declarations. */
   color: var(--ui-info-muted) !important;
-  /* override: body.aps-workbench :is(button.wb-control,button.wb-action,button.btn,button.mini,button.pg,button.cal-nav,button.hdr-pill,button.sm-button,button.modal-x,button.hb-r-next,button.ph-help,button.gb-tb-btn,button.fg-icon-button,button.fg-return,button.aw-reset,button.aw-more,button.wb-picker-nav,button.wb-picker-trigger,input[type="button"],input[type="submit"],input[type="reset"]):is(:disabled,[aria-disabled="true"]); preserve shared control geometry against legacy inline and prototype declarations. */
+  /* override: body.aps-workbench :is(button.wb-control,button.wb-action,button.btn,button.mini,button.pg,button.cal-nav,button.hdr-pill,a.hdr-pill,button.sm-button,button.modal-x,button.hb-r-next,button.ph-help,button.gb-tb-btn,button.fg-icon-button,button.fg-return,button.aw-reset,button.aw-more,button.wb-picker-nav,input[type="button"],input[type="submit"],input[type="reset"]):is(:disabled,[aria-disabled="true"]); preserve shared control geometry against legacy inline and prototype declarations. */
   border-color: var(--ui-border) !important;
-  /* override: body.aps-workbench :is(button.wb-control,button.wb-action,button.btn,button.mini,button.pg,button.cal-nav,button.hdr-pill,button.sm-button,button.modal-x,button.hb-r-next,button.ph-help,button.gb-tb-btn,button.fg-icon-button,button.fg-return,button.aw-reset,button.aw-more,button.wb-picker-nav,button.wb-picker-trigger,input[type="button"],input[type="submit"],input[type="reset"]):is(:disabled,[aria-disabled="true"]); preserve shared control geometry against legacy inline and prototype declarations. */
+  /* override: body.aps-workbench :is(button.wb-control,button.wb-action,button.btn,button.mini,button.pg,button.cal-nav,button.hdr-pill,a.hdr-pill,button.sm-button,button.modal-x,button.hb-r-next,button.ph-help,button.gb-tb-btn,button.fg-icon-button,button.fg-return,button.aw-reset,button.aw-more,button.wb-picker-nav,input[type="button"],input[type="submit"],input[type="reset"]):is(:disabled,[aria-disabled="true"]); preserve shared control geometry against legacy inline and prototype declarations. */
   opacity: 1 !important;
   filter: none;
+  /* 不可用态统一：底色 surface-muted、字色 info-muted、保留边框、不透明、cursor default；plana.css .btn:disabled 的 opacity:.45 / not-allowed 在这里一并压掉。 */
+  cursor: default;
 }
 body.aps-workbench :is(.lnk,.linkbtn,.aps-fp-clear):is(button),
 body.aps-workbench th > button:not([class]) {
@@ -152,6 +156,7 @@ body.aps-workbench :is(button.lnk,button.linkbtn) {
   display: inline-flex; align-items: center; gap: var(--space-2); vertical-align: middle;
 }
 body.aps-workbench :is(button.lnk,button.linkbtn) > svg { flex: none; }
+body.aps-workbench .wb-table button.lnk { padding: 0; }
 body.aps-workbench :is(button.lnk,button.linkbtn):hover:not(:disabled) { text-decoration: underline; text-underline-offset: 3px; }
 /* override: body.aps-workbench :is(button.lnk,button.linkbtn,th > button):disabled; preserve shared control geometry against legacy inline and prototype declarations. */
 body.aps-workbench :is(button.lnk,button.linkbtn,th > button):disabled { color: var(--ui-info-muted) !important; text-decoration: none; }
@@ -320,7 +325,7 @@ body.aps-workbench input[type="radio"]:checked::before { visibility: visible; wi
 /* override: body.aps-workbench input:is([type="checkbox"],[type="radio"]):disabled; preserve shared control geometry against legacy inline and prototype declarations. */
 body.aps-workbench input:is([type="checkbox"],[type="radio"]):disabled { background: var(--ui-surface-muted); border-color: var(--ui-border) !important; color: var(--ui-info-muted); opacity: 1; }
 body.aps-workbench input[type="range"] {
-  display: inline-block; min-width: 80px; max-width: 100%; height: 32px;
+  display: inline-block; min-width: 80px; max-width: 100%; height: var(--wb-control-height);
   margin: 0; padding: 0; border: 0; background: transparent; vertical-align: middle;
   cursor: pointer; accent-color: var(--ui-info-text);
 }
@@ -334,7 +339,7 @@ body.aps-workbench input[type="range"]:disabled::-webkit-slider-runnable-track {
 body.aps-workbench input[type="range"]:disabled::-webkit-slider-thumb { border-color: var(--ui-info-muted); background: var(--ui-surface-muted); }
 body.aps-workbench input[type="file"] { max-width: 100%; color: var(--ui-text); font: var(--font-size-2)/20px var(--font-family); }
 body.aps-workbench input[type="file"]::file-selector-button {
-  -webkit-appearance: none; appearance: none; min-height: 32px; margin: 0 var(--space-2) 0 0; padding: 5px 10px;
+  -webkit-appearance: none; appearance: none; min-height: var(--wb-control-height); margin: 0 var(--space-2) 0 0; padding: 5px 10px;
   border: 1px solid var(--ui-border); border-radius: var(--wb-radius-control);
   background: var(--ui-card-bg); color: var(--ui-text); font: inherit; cursor: pointer;
 }
@@ -351,7 +356,7 @@ body.aps-workbench summary::before {
 body.aps-workbench details[open] > summary::before { transform: rotate(90deg); }
 body.aps-workbench summary:hover { color: var(--ui-info-text); }
 body.aps-workbench .seg > button {
-  min-height: 36px; height: auto; padding: 7px 10px; border-radius: var(--wb-radius-control);
+  min-height: var(--wb-control-edit-height); height: auto; padding: 7px 10px; border-radius: var(--wb-radius-control);
   font: 500 var(--font-size-2)/20px var(--font-family); white-space: normal; overflow-wrap: anywhere; box-shadow: none;
 }
 body.aps-workbench .seg > button:is(.on,[aria-pressed="true"]) { color: var(--ui-info-text); background: var(--ui-info-bg); border-color: var(--ui-primary); }
@@ -375,6 +380,10 @@ body.aps-workbench .segm button.on.ext:disabled { background: var(--ui-warning-b
 body.aps-workbench .stp.active .stp-n { background: var(--ui-info-text); border-color: var(--ui-info-text); color: var(--ui-card-bg); }
 body.aps-workbench .stp.active .stp-s { color: var(--ui-info-muted); }
 body.aps-workbench .subtab.on .cnt { color: var(--ui-info-text); }
+/* 原型 index.inline.css 给 .subtab.on 裸 --ui-primary（深色卡底 3.98:1）；选中态与页签同色走 --wb-tab-selected。当前唯一的子页签在 .process-workspace（根上没有 .plana），走的就是本条。
+   plana.css 里 .plana .subtab.on 字色是 --ui-text（够对比），但 .plana .subtab.on .cnt 是裸 --ui-primary 且优先级 (0,4,0) 高于上面的 .cnt 规则，下一条按 .plana 作用域再压一层，以后子页签落到 .plana 内也不回退。 */
+body.aps-workbench .subtab.on { color: var(--wb-tab-selected); border-bottom-color: var(--wb-tab-selected); }
+body.aps-workbench .plana .subtab.on .cnt { color: var(--wb-tab-selected); }
 body.aps-workbench .wb-control-popup {
   position: fixed; z-index: var(--wb-z-popup); display: flex; flex-direction: column;
   box-sizing: border-box; min-width: 160px; max-width: calc(100vw - 16px); max-height: calc(100vh - 16px);
@@ -383,7 +392,7 @@ body.aps-workbench .wb-control-popup {
   box-shadow: var(--ui-shadow-md); overflow: auto; overscroll-behavior: contain;
 }
 body.aps-workbench .wb-popup-option {
-  display: flex; align-items: center; gap: var(--space-2); flex: none; width: 100%; min-height: 32px;
+  display: flex; align-items: center; gap: var(--space-2); flex: none; width: 100%; min-height: var(--wb-control-height);
   margin: 0; padding: 6px var(--space-2); border: 1px solid transparent; border-radius: var(--wb-radius-control);
   color: var(--ui-text); background: transparent; font: inherit; text-align: left;
   white-space: normal; overflow-wrap: anywhere; box-shadow: none; cursor: pointer;
@@ -406,10 +415,13 @@ body.aps-workbench .wb-date-picker .wb-popup-header { position: sticky; top: 0; 
 body.aps-workbench .wb-date-picker .wb-popup-footer { position: sticky; bottom: 0; z-index: var(--wb-z-sticky); background: var(--ui-card-bg); }
 body.aps-workbench .wb-control-popup :is([role="status"],[role="alert"],.wb-popup-empty) { margin: var(--space-1); color: var(--ui-info-muted); overflow-wrap: anywhere; white-space: normal; }
 body.aps-workbench .wb-control-popup [role="alert"] { color: var(--ui-danger-text); }
-body.aps-workbench .wb-picker-grid { display: grid; grid-template-columns: repeat(7,minmax(0,1fr)); grid-auto-rows: 32px; gap: 3px; min-width: 0; padding: var(--space-1); }
+body.aps-workbench .wb-picker-grid { display: grid; grid-template-columns: repeat(7,minmax(0,1fr)); grid-auto-rows: var(--wb-control-height); gap: 3px; min-width: 0; padding: var(--space-1); }
+/* 网格里的 role="row" 包装层不参与布局，格子直接落进列里；月份视图 4 行 × 3 列。 */
+body.aps-workbench .wb-picker-row { display: contents; }
+body.aps-workbench .wb-picker-grid.wb-picker-months { grid-template-columns: repeat(3,minmax(0,1fr)); }
 body.aps-workbench .wb-picker-weekday { display: flex; justify-content: center; align-items: center; min-height: 26px; color: var(--ui-info-muted); font-size: var(--font-size-1); }
 body.aps-workbench .wb-picker-day {
-  display: flex; justify-content: center; align-items: center; width: 100%; min-width: 0; min-height: 32px; height: 32px; max-height: 32px; aspect-ratio: auto;
+  display: flex; justify-content: center; align-items: center; width: 100%; min-width: 0; min-height: var(--wb-control-height); height: var(--wb-control-height); max-height: var(--wb-control-height); aspect-ratio: auto;
   margin: 0; padding: 3px; border: 1px solid transparent; border-radius: var(--wb-radius-control);
   font: var(--font-size-2)/20px var(--font-family); font-variant-numeric: tabular-nums;
   color: var(--ui-text); background: transparent; box-shadow: none; cursor: pointer;
@@ -425,14 +437,44 @@ body.aps-workbench .wb-date-picker[data-picker-type="month"] .wb-picker-day { mi
 body.aps-workbench :is(.wb-picker-day,.wb-picker-nav,.wb-popup-option):focus-visible { outline-width: 1px !important; outline-offset: -1px; border-color: var(--wb-control-focus); }
 body.aps-workbench .wb-picker-actions { display: flex; justify-content: flex-end; align-items: center; flex-wrap: wrap; gap: var(--space-2); padding: var(--space-2) var(--space-1) var(--space-1); }
 body.aps-workbench .wb-picker-fields { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); align-items: end; gap: var(--space-2); padding: var(--space-2) var(--space-1); }
+body.aps-workbench .wb-picker-fields[data-columns="3"] { grid-template-columns: repeat(3,minmax(0,1fr)); }
+body.aps-workbench .wb-picker-fields[data-columns="4"] { grid-template-columns: repeat(4,minmax(0,1fr)); }
 body.aps-workbench .wb-picker-field { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; }
 body.aps-workbench .wb-picker-fields label { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; color: var(--ui-info-muted); font-size: var(--font-size-1); }
 body.aps-workbench .wb-picker-fields :is(input,select) { width: 100%; }
 body.aps-workbench .wb-picker-field .wb-picker-actions { flex-wrap: nowrap; justify-content: space-between; padding: 0; }
 body.aps-workbench .wb-picker-field button.wb-picker-nav { width: auto; min-width: 0; flex: 1 1 0; }
+/* 日期时间选择器面板（WorkbenchDatePicker）：原内联样式改成类名后在这里落地。 */
+body.aps-workbench .wb-date-picker { width: 336px; max-width: 100%; min-width: 0; }
+body.aps-workbench .wb-picker-title { overflow-wrap: anywhere; }
+body.aps-workbench .wb-picker-year { display: inline-flex; align-items: center; gap: var(--space-1); flex: 1 1 auto; min-width: 0; }
+body.aps-workbench .wb-picker-year input { width: 72px; }
+/* “选择月份 / 返回日历”按钮定宽 100px 靠右；换行仍归上面合同的 white-space:normal !important（原内联 nowrap 从未压过合同，不再写）。 */
+body.aps-workbench button.wb-picker-month { flex: 0 0 100px; width: 100px; margin-left: auto; }
+body.aps-workbench .wb-picker-chevron { display: flex; }
+body.aps-workbench .wb-picker-chevron.is-flipped { transform: rotate(180deg); }
+body.aps-workbench .wb-picker-time-head.has-date { margin-top: var(--space-3); }
+body.aps-workbench .wb-picker-input { position: relative; }
+body.aps-workbench .wb-picker-field .wb-number-stepper { width: 20px; }
+body.aps-workbench .wb-date-picker .wb-picker-error { margin-top: var(--space-2); color: var(--ui-danger-text); overflow-wrap: anywhere; }
+body.aps-workbench .wb-picker-spacer { flex: 1 1 auto; }
+/* 减少动效：系统开启“减少动态效果”时，原型（plana.css 的 fade 关键帧与 .btn/.hb-cal-block/.selcar 等过渡、basedata.css 的 bd-flash-in/bd-toast-in/bd-tip-in、aps-datepicker.css 与 field-reporting.css 的 apsdp-pop、index.inline.css 的 .scheme-card/.cmp-fill）
+   与本层（上面控件过渡、34-run.css 的 rj-bar-slide）的 transition / animation 一并归零。原型规则优先级高于通配选择器，只能用 !important；用 0.01ms 而不是 none，是让依赖 transitionend / animationend 的逻辑仍能收到事件。 */
 @media (prefers-reduced-motion: reduce) {
-  /* override: body.aps-workbench :is(button,input,select,textarea); preserve shared control geometry against legacy inline and prototype declarations. */
-  body.aps-workbench :is(button,input,select,textarea) { transition: none !important; }
+  body.aps-workbench *, body.aps-workbench *::before, body.aps-workbench *::after {
+    /* override: 原型与本层所有 transition; 减少动效时过渡即时完成。 */
+    transition-duration: 0.01ms !important;
+    /* override: 原型与本层所有 transition-delay; 减少动效时不再延迟。 */
+    transition-delay: 0ms !important;
+    /* override: 原型 fade / bd-flash-in / bd-toast-in / bd-tip-in / apsdp-pop 与 34-run rj-bar-slide 等 animation; 减少动效时动画只跑一帧。 */
+    animation-duration: 0.01ms !important;
+    /* override: 同上各 animation 的延迟; 减少动效时不再延迟。 */
+    animation-delay: 0ms !important;
+    /* override: 34-run rj-bar-slide 的 infinite alternate 等循环动画; 减少动效时只跑一次。 */
+    animation-iteration-count: 1 !important;
+    /* override: 任何 scroll-behavior:smooth; 减少动效时滚动直接到位。 */
+    scroll-behavior: auto !important;
+  }
 }
 
 /* Table compatibility is confined here while the imported prototype still owns important declarations. */
@@ -484,7 +526,135 @@ body.aps-workbench .field-workspace > .field-scroll { border: 1px solid var(--bo
 .master-overview .mo-domains { border-top: 0 !important; }
 /* override: .master-overview :is(.mo-metrics,.mo-domains); workbench-ui.css resets metric side borders, but both overview groups must be closed at their sides. */
 .master-overview :is(.mo-metrics,.mo-domains) { border-left: 1px solid var(--ui-border) !important; border-right: 1px solid var(--ui-border) !important; }
-/* override: .master-overview .mo-domains>.wb-metric:nth-child(n+5) and :nth-child(4n); the shared metric reset removes row borders, but the overview uses four columns between 901px and 1280px. */
-@media (min-width: 901px) and (max-width: 1280px) { .master-overview .mo-domains>.wb-metric:nth-child(n+5) { border-top: 1px solid var(--ui-border) !important; } .master-overview .mo-domains>.wb-metric:nth-child(4n) { border-right: 0 !important; } }
+/* override: .master-overview .mo-domains>.wb-metric:nth-child(n+5) and :nth-child(4n); the shared metric reset removes row borders, but 36-analysis.css keeps the eight domain cards in four columns at every width above 900px, so the second row always needs its top border. */
+@media (min-width: 901px) { .master-overview .mo-domains>.wb-metric:nth-child(n+5) { border-top: 1px solid var(--ui-border) !important; } .master-overview .mo-domains>.wb-metric:nth-child(4n) { border-right: 0 !important; } }
 /* override: body.aps-workbench .sm-workbench .sm-metrics; workbench-ui.css resets metric side borders, but the source-and-status panel must be closed at its sides. */
 body.aps-workbench .sm-workbench .sm-metrics { border-left: 1px solid var(--ui-border) !important; border-right: 1px solid var(--ui-border) !important; }
+/* override: .master-overview .mo-domains .wb-metric; workbench-ui.css pins 78px / 11px 13px on every metric, but the eight domain cards sit in two rows of four and stay compact (moved here from 36-analysis.css, where the plain rule never took effect). */
+.master-overview .mo-domains .wb-metric { padding: var(--space-2) 10px !important; min-height: 72px !important; }
+/* override: .master-overview .mo-domains .wb-metric-value; workbench-ui.css pins the 30px value line, the compact domain cards use 28px. */
+.master-overview .mo-domains .wb-metric-value { line-height: 28px !important; }
+/* override: body.aps-workbench .batch-workspace .wb-col-actions button.btn; the shared 10px side padding plus the 8px icon gap push 查看/编辑 and 删除 onto two rows inside the 190px action column; 7px sides and a 6px gap keep both on one row. */
+body.aps-workbench .batch-workspace .wb-col-actions button.btn { padding: 5px 7px !important; gap: 6px; }
+/* override: body.aps-workbench .plana .toolbar button.btn.wb-action; plana.css:417 pins these toolbar buttons to height:32px !important at (0,4,0), beating the shared height:auto — a wrapped label would spill out of the fixed box, so every button keeps the same grow-from-32px rule. */
+body.aps-workbench .plana .toolbar button.btn.wb-action { height: auto !important; min-height: var(--wb-control-height) !important; }
+/* override: body.aps-workbench .scheduling-navigation button.btn[aria-pressed="true"]; the shared button contract pins colour / background / border with !important, so the pressed state 34-run.css declared never rendered; it uses the same tint as pressed .seg buttons. */
+body.aps-workbench .scheduling-navigation button.btn[aria-pressed="true"] { color: var(--ui-info-text) !important; background: var(--ui-info-bg) !important; border-color: var(--ui-primary) !important; }
+/* override: body.aps-workbench .rw-detail-pager .wb-pager button.btn; 工序详情抽屉里的记录分页行走 30px mini 档，合同钉的 32px / 5px 10px 要压掉。 */
+body.aps-workbench .rw-detail-pager .wb-pager button.btn { min-height: var(--wb-control-mini-height) !important; padding: var(--space-1) 9px !important; }
+
+/* ===== 打印（@media print）：最小打印样式。本应独立成 38-print.css，但新文件要登记 scripts/workbench/build-order.json（本包不改）；
+   放开吸附 / 限高要压过工作区文件里最高 (0,6,2) 优先级的规则，非 !important 不可，而样式合同只允许本文件保留 !important，故暂放此处。
+   登记 38-print.css 后可整段迁走（同时要放宽 tests/workbench-app-styles.cjs 里 !important 的宿主文件白名单）。 ===== */
+@media print {
+  @page { margin: 12mm; }
+  /* 深色主题的近白文字落在透明纸面上无法阅读；打印介质统一改用系统纸面色，同时保留边框和甘特形状通道。 */
+  html[data-theme="dark"] {
+    color-scheme: light;
+    --ui-bg: Canvas; --ui-card-bg: Canvas; --ui-surface: Canvas; --ui-surface-muted: Canvas; --ui-surface-soft: Canvas; --ui-surface-raised: Canvas;
+    --ui-text: CanvasText; --ui-muted: CanvasText; --ui-text-strong: CanvasText; --ui-text-subtle: CanvasText; --ui-text-inverse: CanvasText;
+    --ui-primary: CanvasText; --ui-primary-hover: CanvasText; --ui-primary-soft: ButtonFace;
+    --ui-neutral-bg: Canvas; --ui-neutral-border: GrayText; --ui-neutral-text: CanvasText; --ui-neutral-muted: CanvasText;
+    --ui-info-bg: Canvas; --ui-info-border: GrayText; --ui-info-text: CanvasText; --ui-info-muted: CanvasText;
+    --ui-success-bg: Canvas; --ui-success-border: GrayText; --ui-success-text: CanvasText; --ui-success-muted: CanvasText;
+    --ui-warning-bg: Canvas; --ui-warning-border: GrayText; --ui-warning-text: CanvasText; --ui-warning-muted: CanvasText;
+    --ui-danger-bg: Canvas; --ui-danger-border: GrayText; --ui-danger-text: CanvasText; --ui-danger-muted: CanvasText;
+    --ui-border: GrayText; --ui-table-head-bg: Canvas; --ui-table-row-hover-bg: Canvas; --ui-table-row-even-bg: Canvas;
+    --wb-gantt-primary-fill: Canvas; --wb-gantt-primary-edge: CanvasText; --wb-gantt-primary-ink: CanvasText;
+    --wb-gantt-plan-fill: Canvas; --wb-gantt-plan-edge: CanvasText; --wb-gantt-plan-ink: CanvasText;
+    --wb-gantt-overlap-fill: Canvas; --wb-gantt-overlap-edge: CanvasText;
+    --wb-gantt-critical-fill: Canvas; --wb-gantt-critical-edge: CanvasText; --wb-gantt-critical-ink: CanvasText;
+    --wb-gantt-success-fill: Canvas; --wb-gantt-success-edge: CanvasText; --wb-gantt-success-ink: CanvasText;
+    --wb-gantt-gold: CanvasText; --wb-secondary-copy: CanvasText;
+  }
+  body.aps-workbench { --sidebar-width: 0px; --wb-modal-backdrop-dim: none; background: transparent; }
+  /* 壳层、弹窗遮罩、浮层、提示、分页器、列头工具、数值步进与各类操作按钮不打印；承载列名的表头排序按钮与页签 / 分段 / 状态筛选保留。 */
+  body.aps-workbench :is(.sidebar, .top-header, .modal-bg, .wb-guard-host, .wb-control-popup, .toast, .bd-toast, [role="tooltip"], .wb-pager, .pager, .wb-detail-actions, .wb-number-stepper, .wb-th-filter, .wb-th-resize, .wb-th-action, .aps-filter-btn, .aps-sort-facetbtn, .wb-column-filter, .batch-column-resizer, input[type="range"]),
+  body.aps-workbench :is(button.btn, button.wb-action, button.mini, button.pg, button.modal-x, button.sm-button, button.hdr-pill, a.hdr-pill, button.fg-icon-button, button.rw-icon-button) {
+    /* override: 上面合同给按钮的 display:inline-flex !important; 打印时这些元素整体不出现。 */
+    display: none !important;
+  }
+  /* 主内容占满页宽；壳层与矮屏“只滚表格”链（10-shell.css）不再按视口定高、内滚或走弹性列；工作区标题从视觉隐藏恢复成打印页的标题。 */
+  body.aps-workbench .app-container { display: block; min-height: 0; }
+  body.aps-workbench .main-content, body.aps-workbench .main-content:has(.wb-fill-viewport) { display: block; max-width: 100%; height: auto; max-height: none; overflow: visible; }
+  body.aps-workbench .page-content, body.aps-workbench .main-content:has(.wb-fill-viewport) > .page-content { display: block; padding: 0; overflow: visible; }
+  body.aps-workbench .page-content :has(.wb-fill-viewport), body.aps-workbench .page-content .wb-fill-viewport { display: block; }
+  body.aps-workbench .main-content .page-content .wb-page-title { position: static; width: auto; height: auto; margin: 0 0 var(--space-3); padding: 0; overflow: visible; clip: auto; white-space: normal; }
+  /* Chrome 109 会把跨页 grid item 的后续 fragment 错移到纸边；候选主区打印时降为普通块流。 */
+  body.aps-workbench .run-candidate-workspace .rc-main { display: block; }
+  body.aps-workbench .run-candidate-workspace .rc-main > div { width: 100%; min-width: 0; }
+  /* 候选明细打印拆成短 table；每块单独起页，绕开 Chrome 109 对长 grid/table continuation fragment 的横向错位。 */
+  body.aps-workbench .run-candidate-workspace .rc-print-tables { width: 100%; min-width: 0; }
+  body.aps-workbench .run-candidate-workspace table.rc-print-table { width: 100%; min-width: 0; table-layout: fixed; border-collapse: collapse; }
+  body.aps-workbench .run-candidate-workspace .rc-print-chunk { break-before: page; page-break-before: always; break-inside: avoid; page-break-inside: avoid; }
+  body.aps-workbench .run-candidate-workspace .rc-print-table tr { break-inside: avoid; page-break-inside: avoid; }
+  body.aps-workbench .run-candidate-workspace .rc-print-table :is(th, td) { white-space: normal; overflow-wrap: anywhere; vertical-align: top; }
+  body.aps-workbench .run-candidate-workspace .rc-print-table small { display: block; }
+  /* 表格框与各类滚动区：放开限高、取消内滚，内容全部铺开分页。 */
+  body.aps-workbench :is(.wb-table-frame, .wb-table-shell, .field-scroll, .rw-primary-table, .rw-table-scroll, .ca-table-scroll, .dy-scroll, .dy-gap-table-scroll, .os-scroll, .tt-table-scroll, .tt-directory-scroll, .tt-board, .plan-board, .plan-catalog-scroll, .plan-projection-table, .fg-board, .fg-details, .rc-scroll, .rc-virtual-table, .rc-list-head, .rc-list, .rb-list, .rb-segments, .rh-table, .rj-table, .rc-table, .pf-results, .pf-picker-list, .pf-reason-list, .batch-preview, .batch-value-list, .rm-table-wrap, .field-timeline, .mo-gaps ul, .dy-evidence pre, .plan-inspector, .tt-detail, .sm-detail pre) {
+    /* override: 21-table-frame.css 与各工作区文件里的 max-height（最高 (0,4,0)）; 打印时不限高。 */
+    max-height: none !important;
+    /* override: .rc-list 320px / .rc-scroll 310px / .plan-catalog-scroll 180px 等固定高度; 打印时随内容撑开。 */
+    height: auto !important;
+    /* override: 同上各处的 overflow:auto; 打印时取消内滚。 */
+    overflow: visible !important;
+  }
+  /* React 在 beforeprint 已挂载完整窗口；这些虚拟列表的内层占位高度改回内容高度，避免绝对定位留下跨页空白。 */
+  body.aps-workbench :is(.rc-list, .rb-list, .rb-segments) > div:first-child {
+    /* override: JSX 虚拟列表的内联 height; 打印时由完整行集合自然撑开。 */
+    height: auto !important;
+    /* override: JSX 虚拟占位层的 relative/最小宽度；Chrome 109 跨页定位容器会让 continuation fragment 横向错位。 */
+    position: static !important;
+    /* override: 同一 JSX 内联 min-width；占位层需收进纸面宽度。 */
+    min-width: 0 !important;
+    width: 100%;
+  }
+  body.aps-workbench :is(.rc-list-row, .rb-row, .rb-segment) {
+    /* override: JSX 行的内联 position:absolute; 打印时按文档流分页。 */
+    position: static !important;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  body.aps-workbench .rc-list-row {
+    /* override: 34-run 固定行高和单行省略；打印时完整单元格自然撑开，并防止跨页切掉左侧字符。 */
+    height: auto !important;
+    /* override: 34-run 的 720px 最小宽度；打印行必须收进扣除页边距后的纸面宽度。 */
+    min-width: 0 !important;
+    width: 100%;
+    min-height: 44px;
+    box-sizing: border-box;
+  }
+  body.aps-workbench .rc-list-row > span {
+    overflow: visible;
+    white-space: normal;
+    text-overflow: clip;
+  }
+  body.aps-workbench .rb-segment {
+    /* override: 34-run 固定 76px 高和 overflow:auto；长分段说明在纸面按内容撑开。 */
+    height: auto !important;
+    min-height: 76px;
+    /* override: 34-run 的 .rb-segment overflow:auto；打印不建立分段内滚动裁切。 */
+    overflow: visible !important;
+  }
+  body.aps-workbench .rc-scroll > div:first-child {
+    /* override: 候选甘特内层的内联固定 height; beforeprint 已挂载全量轨道，打印按轨道自然撑开。 */
+    height: auto !important;
+    min-height: 0;
+  }
+  body.aps-workbench .rc-gantt .rc-lane {
+    /* override: .rc-gantt .rc-lane 和 JSX 的 absolute/top; 打印时每条轨道进入文档流且继续作为画布定位容器。 */
+    position: relative !important;
+    /* override: JSX 的内联 top; 文档流打印不保留虚拟窗口偏移。 */
+    top: auto !important;
+    break-inside: avoid;
+  }
+  /* 吸附表头、固定列、甘特冻结列与吸底工具条：分页打印时吸附元素会在每页重复并压住内容，一律回到常规定位。 */
+  body.aps-workbench :is(table th, table td, thead, .rw-fixed-key, .rw-fixed-action, .plan-axis, .plan-corner, .plan-resource, .plan-inspector, .fg-axis, .fg-corner, .fg-frozen, .fg-wait, .tt-axis, .tt-corner, .tt-task-label, .tt-detail, .dy-timeline-axis, .dy-timeline-corner, .dy-timeline-label, .rc-lane-label, .pd-foot.sticky, .tr-decision-bar) {
+    /* override: 21-table-frame / 37-reports / 33-gantt-foundation / 32-process-trial / 36-analysis 里的 position:sticky（最高 (0,6,2)）; 打印回到常规定位。 */
+    position: static !important;
+    /* override: 固定列的边线阴影与滚动阴影; 打印不需要。 */
+    box-shadow: none !important;
+  }
+  /* 卡片与面板不带底色阴影；表头 / 甘特条的底色由浏览器“背景图形”开关决定，不在这里改。 */
+  body.aps-workbench :is(.app-container, .main-content, .page-content, .wb-surface, .plana, .wb-detail, .hb-block, .hb-tile, .rail) { background: transparent; box-shadow: none; }
+}

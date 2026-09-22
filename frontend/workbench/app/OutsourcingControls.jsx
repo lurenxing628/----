@@ -53,7 +53,7 @@
   function Pending({ command }) {
     const v = command.saved, done = v.phase === 'confirmed';
     return <><Target target={v.target} /><Facts facts={v.after} /><div className={'os-note ' + (done ? 'success' : 'warning')} role="status">
-      {done ? window.WorkbenchTerms.outcomes.done('外协登记') : v.phase === 'rejected' ? '上次外协登记没有生效，填写内容已保留。改好后重新提交。' : window.WorkbenchTerms.outcomes.pending('外协登记')}</div>
+      {done ? window.WorkbenchTerms.outcomes.done('外协登记') : v.phase === 'rejected' ? '上次外协登记没有生效，没有写入。请点「完成」后重新填写。' : window.WorkbenchTerms.outcomes.pending('外协登记')}</div>
       <div data-original-key><window.WorkbenchReference entries={{ '操作编号': v.request_key }} /></div>
       <dl className="os-facts"><div><dt>经办人</dt><dd>{v.input.declared_operator}</dd></div>
         <div><dt>核实原因</dt><dd>{v.input.reason}</dd></div>{done && <><div><dt>记录人</dt><dd>{v.receipt.data.local_operator}</dd></div><div><dt>确认时间</dt><dd>{when(v.receipt.data.confirmed_at)}</dd></div></>}</dl></>;
@@ -72,6 +72,8 @@
     React.useEffect(() => {
       if (error && !focusFirstInvalid(formRef.current) && errorRef.current) errorRef.current.focus();
     }, [error]);
+    // 被拒后原预检结果已失效：清掉它，表单回到可编辑状态，改好后重新预检再提交；填写内容不动。
+    React.useEffect(() => { if (!saved && command.error && C.isRejected(command.error)) setPreview(null); }, [saved, command.error]);
     function update(k, v) { setDraft(d => ({ ...d, [k]: v })); setPreview(null); setError(null); }
     async function review() {
       if (running.current || saved || command.storageError) return;

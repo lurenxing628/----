@@ -38,9 +38,13 @@ async function scenario(browser,viewport,theme) {
       record.equal(await page.locator('html').getAttribute('data-theme'),theme);
       const metric=page.locator('.wb-metric').filter({has:page.getByText('当前页面检查',{exact:true})});
       record.equal((await metric.locator('.wb-metric-value').innerText()).replace(/\s/g,''),'8/8','Initial render, before refresh or theme actions');
-      const rows=page.locator('.sm-check-table tbody tr');record.equal(await rows.count(),8);
-      record.equal(await rows.filter({hasText:'系统管理样式'}).locator('.sm-status').getAttribute('data-state'),'available');
-      record.ok(!(await rows.filter({hasText:'管理资源模型'}).innerText()).includes('尚未读取'));
+      const live=page.locator('.sm-workbench[data-source="current"][data-live="true"]');
+      record.equal(await live.count(),1,'The formal system page is the current read-only workspace');
+      record.equal(await live.evaluate(node=>getComputedStyle(node).getPropertyValue('--sm-workbench-ready').trim()),'1');
+      record.equal(await live.locator('.sm-work-title').allTextContents(),['备份与恢复','运行日志','自动维护规则']);
+      record.equal(await live.locator('input[name="sm-source"]').count(),0,'The retired sample source selector is absent');
+      record.equal(await page.evaluate(()=>['dataset','sampleLogCSV','SAMPLE_CONFIG','SAMPLE_DATE'].map(name=>typeof APSSystemWorkbench[name])),
+        ['undefined','undefined','undefined','undefined'],'The production foundation exposes no sample system API');
       record.ok((await page.locator('.sm-source-note').innerText()).includes(ready.expected.instance_label));
       record.report.first_render.push({state,checks:8,style:'available',before_theme_action:true});
       await layout(page,record);
@@ -145,30 +149,13 @@ async function scenario(browser,viewport,theme) {
         record.ok((await alert.innerText()).includes('本机系统信息不完整'),'Reject malformed fields after accepting legitimate meta');
         record.equal(await page.locator('.top-title').innerText(),'系统管理');
         record.equal(await page.locator('.sm-workbench').getAttribute('data-source'),'current');
-        record.ok(await page.getByRole('button',{name:'导出诊断文件',exact:true}).isDisabled());
+        record.ok(await page.getByRole('button',{name:'导出页面诊断',exact:true}).isDisabled());
         last=await realRead(page,()=>alert.getByRole('button',{name:'重试',exact:true}).click(),record,ready.expected);
         record.equal(await alert.count(),0);
       } finally {await page.unroute(matcher,handler);}
     });
-    await record.run(page,state,'sample-isolation-and-real-return',async()=>{
-      const calls=record.report.api_responses.length;
-      let requests=0;const count=request=>{if(new URL(request.url()).pathname===API_PATH)requests++;};page.on('request',count);
-      try {
-        await page.locator('input[name="sm-source"][value="sample"]').check();
-        await page.waitForFunction(()=>document.querySelector('.sm-workbench')?.dataset.source==='sample');
-        record.ok(await page.getByRole('button',{name:'导出诊断文件',exact:true}).isDisabled());
-        for(const id of ['overview','backups','logs','config']){await tab(page,id,record);await layout(page,record);}
-        const input=page.locator('#sm-auto_backup_interval_minutes');await input.fill('123');
-        await page.getByRole('button',{name:'检查参数',exact:true}).click();
-        await page.locator('.sm-preview').waitFor({state:'visible'});
-        record.equal(await input.inputValue(),'123');record.equal(requests,0,'Sample actions make no production API calls');
-        record.equal(record.report.api_responses.length,calls);await record.shot(page,state,'sample-draft');
-      } finally {page.off('request',count);}
-      last=await realRead(page,()=>page.locator('input[name="sm-source"][value="current"]').check(),record,ready.expected);
-      record.equal(await page.locator('#sm-maintenance-auto_backup_interval_minutes').inputValue(),String(ready.expected.backup_interval_minutes));
-      record.equal(await page.locator('.sm-workbench').getAttribute('data-source'),'current');
-    });
-    await record.run(page,state,'real-diagnostic-content',()=>diagnostic(page,state,'after-sample',last,ready.expected,record));
+    // 管理样例已下线（2026-09-21）：系统管理只读本机数据，没有可切换的数据来源。
+    await record.run(page,state,'real-diagnostic-content',()=>diagnostic(page,state,'after-retry',last,ready.expected,record));
     await record.run(page,state,'connected-navigation-keeps-real-readonly-data',async()=>{
       const markers={process:'[data-resource-workspace="true"]',batches:'[data-batch-workspace]',run:'[data-preflight-workspace]',
         analysis:'[data-plan-workspace]',trial:'.trial-workspace',gantt:'[data-plan-workspace]',field:'[data-field-workspace]',

@@ -72,6 +72,14 @@
     }
     return false;
   }
+  function limitText(props, value) {
+    // Limits come straight from the input's min/max attributes; show them the way the rest of the workbench writes them.
+    if (props.type === 'datetime-local') return window.WorkbenchFormat.dateTime(value, {
+      seconds: precision(props).seconds
+    });
+    if (props.type === 'date') return window.WorkbenchFormat.date(value);
+    return value;
+  }
   function validate(props, value) {
     if (!types.includes(props.type)) return {
       valid: false,
@@ -89,17 +97,21 @@
       message: ''
     };
     const validity = input.validity;
-    if (validity.rangeUnderflow && validity.rangeOverflow) return {
-      valid: false,
-      message: '时间须在 ' + props.min + ' 至次日 ' + props.max + ' 之间。'
-    };
+    if (validity.rangeUnderflow && validity.rangeOverflow) {
+      // Both flags together mean the allowed range wraps past midnight: a time whose max lies before its min.
+      const nextDay = props.type === 'time' && String(props.max) < String(props.min);
+      return {
+        valid: false,
+        message: '时间须在 ' + limitText(props, props.min) + ' 至' + (nextDay ? '次日 ' : ' ') + limitText(props, props.max) + ' 之间。'
+      };
+    }
     if (validity.rangeUnderflow) return {
       valid: false,
-      message: '不能早于 ' + props.min + '。'
+      message: '不能早于 ' + limitText(props, props.min) + '。'
     };
     if (validity.rangeOverflow) return {
       valid: false,
-      message: '不能晚于 ' + props.max + '。'
+      message: '不能晚于 ' + limitText(props, props.max) + '。'
     };
     if (validity.stepMismatch) return {
       valid: false,

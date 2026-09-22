@@ -69,7 +69,7 @@ function measure(view) {
   add('L2',overlaps.length===0,{overlaps});
   const blocked=[];
   for(const element of document.querySelectorAll('.sidebar-nav a,.top-header button,.wb-col-actions button')) {
-    if(!shown(element)||element.disabled)continue;
+    if(!shown(element)||element.disabled||element.getAttribute('aria-disabled')==='true')continue;
     const r=rect(element),clip=clippingBox(element),x=(Math.max(r.left,clip.left)+Math.min(r.right,clip.right))/2,
       y=(Math.max(r.top,clip.top)+Math.min(r.bottom,clip.bottom))/2,hit=document.elementFromPoint(x,y);
     if(!hit||!element.contains(hit))blocked.push({name:name(element),rect:r,clip,hit:hit?name(hit):null});
@@ -77,7 +77,7 @@ function measure(view) {
   add('L3',blocked.length===0,{blocked});
   const tables=[...document.querySelectorAll('table')].filter(visible).map(table=>({name:name(table).slice(0,90),
     caption:!!table.querySelector('caption'),missingScope:[...table.querySelectorAll('th')].filter(th=>!th.hasAttribute('scope')).map(name)}));
-  const disabled=[...document.querySelectorAll('button:disabled')].filter(visible).map(button=>({name:name(button),title:button.title,
+  const disabled=[...document.querySelectorAll('button:disabled,button[aria-disabled="true"]')].filter(visible).map(button=>({name:name(button),title:button.title,
     parentTitle:button.parentElement?.title||'',describedBy:button.getAttribute('aria-describedby'),
     visibleReasons:(button.getAttribute('aria-describedby')||'').split(/\s+/).map(id=>document.getElementById(id)).filter(visible).map(name)}));
   return {view,url:location.href,theme:document.documentElement.dataset.theme,viewport:{width:innerWidth,height:innerHeight},checks,
@@ -94,7 +94,7 @@ async function measureTable() {
   frame.scrollTop=Math.min(100,frame.scrollHeight-frame.clientHeight);frame.scrollLeft=frame.scrollWidth;await next();
   const f=frame.getBoundingClientRect(),h=head.getBoundingClientRect();
   const action=[...frame.querySelectorAll('tbody .wb-col-actions button,tbody .wb-col-actions a')].find(element=>{
-    const r=element.getBoundingClientRect();return !element.disabled&&r.top>=h.bottom&&r.bottom<=Math.min(f.bottom,innerHeight)&&r.width>0;
+    const r=element.getBoundingClientRect();return !element.disabled&&element.getAttribute('aria-disabled')!=='true'&&r.top>=h.bottom&&r.bottom<=Math.min(f.bottom,innerHeight)&&r.width>0;
   });
   if(!action){frame.scrollLeft=old.x;frame.scrollTop=old.y;return {id:'G1',ok:false,detail:{reason:'missing visible row action after scrolling'}};}
   const a=action.getBoundingClientRect();

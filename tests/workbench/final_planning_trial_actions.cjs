@@ -100,8 +100,12 @@ async function trialActions(page, ready, report, h, flush) {
     report.scenario_ref = await page.locator('[data-trial-workspace]').getAttribute('data-open-ref');
     report.scenario = last(data => data.scenario_ref === report.scenario_ref && data.tasks);
     await h.caption(report.scenario_ref, '已保存的试调方案');
-    for (const name of ['导出对比', '导出原始数据']) {
-      const pending = page.waitForEvent('download'); await button(name).click(); const file = await pending;
+    // One 导出 button opens the format dialog; each file starts from its own button inside it.
+    for (const name of ['下载 CSV（方案对比）', '下载 JSON（原始数据）']) {
+      await button('导出', page.locator('[data-trial-workspace]')).click();
+      const exportDialog = page.getByRole('dialog', { name: '导出试调方案', exact: true }); await exportDialog.waitFor();
+      const pending = page.waitForEvent('download'); await button(name, exportDialog).click(); const file = await pending;
+      await exportDialog.waitFor({ state: 'hidden' });
       const destination = path.join(ready.root, 'downloads', file.suggestedFilename()); await file.saveAs(destination);
       assert.equal(await file.failure(), null); assert(fs.statSync(destination).size > 100);
       report.downloads.push(destination);

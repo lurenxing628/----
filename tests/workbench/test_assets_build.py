@@ -84,8 +84,10 @@ class WorkbenchAssetsBuildTest(unittest.TestCase):
                 continue
             code = self.asset(name).read_text(encoding="utf-8")
             self.assertNotIn("function _extends(", code, name)
-        controls = self.asset("workbench/app/WorkbenchControls.js").read_text(encoding="utf-8")
-        self.assertIn("...position", controls)
+        # 哨兵：证明对象展开语法本身被原样保留（没有被降级成 helper）。2026-09-21 起 WorkbenchControls 不再展开
+        # position（fixed/z-index 挪进 CSS），改看日期选择器里的 ...props。
+        picker = self.asset("workbench/app/WorkbenchDatePicker.js").read_text(encoding="utf-8")
+        self.assertIn("...props", picker)
 
     def test_reproducible_payload_and_manifest(self):
         target = self.root / "repeat-output"
@@ -178,15 +180,16 @@ class WorkbenchAssetsBuildTest(unittest.TestCase):
             self.assertFalse(row["path"].endswith((".jsx", ".html")))
         foundation = self.asset(self.manifest["scripts"][2]).read_text(encoding="utf-8")
         declared = [name for item in load_json(TOOLS / "build-order.json")["foundation"] for name in item.get("declarations", [])]
-        self.assertEqual(declared, ["SM_TOOL_ICONS", "SMIcon", "SMStatus", "SMUnavailable", "SMExport", "SMOverview",
-                                    "SMFilters", "SMPager", "SMRecordDetail"])
+        self.assertEqual(declared, ["SM_TOOL_ICONS", "SMIcon", "SMStatus", "SMUnavailable", "SMExport"])
         for name in [name for name in declared if name != "SM_TOOL_ICONS"] + ["AppShell"]:
             self.assertIn("function " + name + "(", foundation)
-        # The record table and configuration panel are maintained live components now, not prototype projections.
-        sample_controls = self.asset("workbench/app/SystemSampleControls.js").read_text(encoding="utf-8")
-        for name in ("SMRecords", "SMConfiguration"):
+        # 管理样例已下线（2026-09-21）：生产基座只保留正式页面共用原语，不再公开样例数据、CSV 或概况组件。
+        for name in ("SMOverview", "SMFilters", "SMPager", "SMRecordDetail", "SMRecords", "SMConfiguration", "SMDisabled"):
             self.assertNotIn("function " + name + "(", foundation)
-            self.assertIn("function " + name + "(", sample_controls)
+        for marker in ("sampleLogCSV", "sample-backup-", "sample-log-", "SAMPLE_CONFIG", "function dataset("):
+            self.assertNotIn(marker, foundation)
+        self.assertFalse(any(row["path"].endswith("SystemSampleControls.js") for row in self.manifest["files"]))
+        self.assertFalse(self.asset("workbench/app/SystemSampleControls.js").exists())
         self.assertNotIn("function SMWorkbench(", foundation)
         self.assertNotIn("function SystemManagementScreen(", foundation)
         self.assertFalse("function App(" in foundation, "Old app is embedded in the live foundation")
@@ -293,6 +296,19 @@ class WorkbenchAssetsBuildTest(unittest.TestCase):
         finally:
             file.unlink()
 
+    def test_rebuild_removes_only_retired_generated_assets(self):
+        target = self.root / "retired-output"
+        shutil.copytree(self.output, target)
+        retired = [target / "app/SystemSampleControls.js", target / "app/styles/retired.css",
+                   target / "assets/foundation-deadbeefdeadbeef.js"]
+        preserved = [target / "app/operator-note.txt", target / "assets/manual.js"]
+        for file in retired + preserved:
+            file.parent.mkdir(parents=True, exist_ok=True)
+            file.write_text("manual fixture", encoding="utf-8")
+        build(self.root, target, self.node)
+        self.assertTrue(all(not file.exists() for file in retired))
+        self.assertTrue(all(file.read_text(encoding="utf-8") == "manual fixture" for file in preserved))
+
     def test_bad_jsx_does_not_touch_published_assets(self):
         target = self.app / "SystemLive.jsx"
         original = target.read_bytes()
@@ -377,28 +393,20 @@ const server = http.createServer((req,res)=>{
         order:assetOrder,dsErrors:APSDesignSystem_edbc5d.__errors,theme:document.documentElement.dataset.theme,
         icons:document.querySelectorAll('svg.sm-icon path').length,rootChildren:document.querySelector('#root').children.length,
         font:document.fonts.check('13px "Microsoft YaHei"'),rawJSX:document.querySelectorAll('script[type="text/babel"]').length,
-        shared:[typeof Ico,typeof NAV_GROUPS,typeof SMOverview,typeof SMRecords,typeof SMConfiguration],
+        shared:[typeof Ico,typeof NAV_GROUPS,typeof SMIcon,typeof SMStatus,typeof SMUnavailable,typeof SMExport,
+          typeof SMOverview,typeof SMRecords,typeof SMConfiguration,typeof SMDisabled],
+        sampleApi:['dataset','sampleLogCSV','SAMPLE_CONFIG','SAMPLE_DATE'].map(name=>typeof APSSystemWorkbench[name]),
         controls:['Table','Button','Meter'].map(name=>typeof APSDesignSystem_edbc5d[name])}));
       assert.equal(facts.react,'18.3.1');
       // This is the runtime label in npm react-dom@18.3.1's integrity-verified UMD.
       assert.equal(facts.dom,'18.3.1-next-f1338f8080-20240426');assert.equal(facts.babel,'undefined');
       assert.equal(facts.themeRuns,1);assert.deepEqual(facts.order,['transport','system-contract','main']);assert.deepEqual(facts.dsErrors,[]);
       assert.equal(facts.rootChildren,1);assert(facts.icons>0);assert(facts.font);assert.equal(facts.rawJSX,0);assert.equal(facts.theme,'dark');
-      assert.deepEqual(facts.shared,['function','object','function','function','function']);
+      assert.deepEqual(facts.shared,['function','object','function','function','function','function','undefined','undefined','undefined','undefined']);
+      assert.deepEqual(facts.sampleApi,['undefined','undefined','undefined','undefined']);
       assert.deepEqual(facts.controls,['function','function','function']);
       await page.locator('.hdr-pill').click();assert.equal(await page.evaluate(()=>document.documentElement.dataset.theme),'light');
       await page.locator('a[href="#batches"]').click();assert.equal(await page.evaluate(()=>window.assetNav),'batches');
-      const samples=await page.evaluate(async()=>{
-        const host=document.createElement('div');document.body.appendChild(host);const root=ReactDOM.createRoot(host),mounted=[];
-        const common={source:'sample',pageSize:10,onPageSize:()=>{},onTab:()=>{},theme:'light',onSetTheme:()=>{},compact:true,onCompact:()=>{},
-          report:{checkedAt:new Date().toISOString(),checks:[]},kind:'backups',exportLogs:()=>{},downloadReady:true};
-        for(const [Component,selector] of [[SMOverview,'.sm-overview-layout'],[SMRecords,'.sm-record-table'],[SMConfiguration,'.sm-configuration']]){
-          root.render(React.createElement(Component,common));await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
-          mounted.push(!!host.querySelector(selector));
-        }
-        root.unmount();host.remove();return mounted;
-      });
-      assert.deepEqual(samples,[true,true,true]);
       await page.close();
     }
     assert.deepEqual(errors,[]);assert.deepEqual(external,[]);assert.deepEqual(failed,[]);assert.deepEqual(badMimes,[]);

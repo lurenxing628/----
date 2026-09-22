@@ -11,7 +11,7 @@ const root = path.resolve(__dirname, '../..'), output = process.argv[2];
 if (!output) throw new Error('Pass an artifact directory');
 fs.mkdirSync(output, { recursive: true });
 const manifest = JSON.parse(fs.readFileSync(path.join(root, 'static/workbench/asset-manifest.json')));
-const files = ['resource-contract.js', 'CalendarContract.js', 'ResourceControls.jsx', 'WorkbenchControlStyles.jsx', 'WorkbenchDatePickerModel.js', 'WorkbenchDatePicker.jsx'];
+const files = ['WorkbenchFormat.js', 'resource-contract.js', 'CalendarContract.js', 'ResourceControls.jsx', 'WorkbenchControlStyles.jsx', 'WorkbenchDatePickerModel.js', 'WorkbenchDatePicker.jsx'];
 const sources = files.map(file => ({ path: 'frontend/workbench/app/' + file, code: fs.readFileSync(path.join(root, 'frontend/workbench/app', file), 'utf8') }));
 const compiled = compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'), sources, check_combined: true });
 const scripts = new Map(compiled.outputs.map((item, index) => ['/fixture/' + files[index] + '.js', item.code]));

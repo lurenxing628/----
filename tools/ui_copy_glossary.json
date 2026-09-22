@@ -16,6 +16,18 @@
     ],
     "backend": [
       "core/services/workbench",
+      "core/services/execution",
+      "core/services/process/quota_protection.py",
+      "core/services/scheduler/template_lineage.py",
+      "core/services/scheduler/template_lineage_query.py",
+      "core/services/process/op_type_service.py",
+      "core/services/process/supplier_service.py",
+      "core/services/process/part_service.py",
+      "core/services/batch/service.py",
+      "core/services/scheduler/execution/execution_ledger_adapter.py",
+      "core/services/equipment/machine_service.py",
+      "core/services/personnel/operator_service.py",
+      "core/services/personnel/resource_team_service.py",
       "web/routes/workbench",
       "core/models/workbench_*.py",
       "web/error_boundary.py",
@@ -123,6 +135,11 @@
       "term": "事实",
       "pattern": "事实",
       "replace": "记录 / 报工记录 / 历史记录"
+    },
+    {
+      "term": "证据",
+      "pattern": "证据",
+      "replace": "依据 / 记录 / 完工记录 / 检查结果"
     },
     {
       "term": "台账",

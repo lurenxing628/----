@@ -39,8 +39,8 @@ function FormHarness({spec}){
     mode==='detail'?h(ResourceForms.Detail,{adapter,kind,result:envelope(original,spec.source||'production'),onClose:close,onEdit:()=>setMode('normal'),onDelete:()=>{},
       onAdjustStock:spec.noAdjust?undefined:()=>{stockFixture.adjusted++;setMode('stock');}}):
     h(ResourceForms,{adapter,kind,action:spec.action||'update',entity:original,acceptedEntity:accepted,writeContext:write,source:spec.source||'production',command,stockOnly:mode==='stock',onClose:close,
-      refreshState:refreshed,onRefresh:()=>setRefreshed({done:true}),contextReview:review,onReloadContext:()=>setReview(envelope({...original,label:'服务端新名称',fields:{...original.fields,stock_qty:18.625,unit:'件'},write_context:context(kind,'reviewed-token')})),
-      onAcceptContext:()=>{setWrite(review.data.write_context);setAccepted(review.data);setReview(null);}})));
+      refreshState:refreshed,onRefresh:()=>setRefreshed({done:true}),contextReview:review,// 刷新即采用：与 ResourceWorkspace.reloadContext 同一条路，新读到的资料直接接进保存路径，复核区只展示当前资料。
+      onReloadContext:()=>{const next=envelope({...original,label:'服务端新名称',fields:{...original.fields,stock_qty:18.625,unit:'件'},write_context:context(kind,'reviewed-token')});setReview(next);setWrite(next.data.write_context);setAccepted(next.data);}})));
 }
 function OverlayHarness(){
   const [visible,setVisible]=React.useState(false),[locked,setLocked]=React.useState(false),[suspended,setSuspended]=React.useState(false),[filter,setFilter]=React.useState(false);
@@ -121,9 +121,11 @@ async function cases(){
     await mount({detail:true,source:'demo'});assert(await panel().getByRole('button',{name:'调整库存',exact:true}).isDisabled());});
   await run('stale-context-keeps-stock-draft',async()=>{await mount({behavior:'stale'});await stock().fill('17.875');await save();await panel().getByRole('alert').getByText('资料已变化，请重新读取并核对。',{exact:true}).waitFor();
     assert.equal(await stock().inputValue(),'17.875');await panel().getByRole('button',{name:'刷新最新资料',exact:true}).click();
-    await panel().getByText('服务端新名称',{exact:false}).waitFor();assert.equal(await stock().inputValue(),'17.875');await shot('stale-draft');
-    await panel().getByRole('button',{name:'已核对，继续编辑',exact:true}).click();assert.equal(await stock().inputValue(),'17.875');
-    assert(await panel().getByText('18.625',{exact:true}).isVisible());assert(await panel().getByText('件',{exact:true}).isVisible());assert.equal(await panel().getByText('kg',{exact:true}).count(),0);
+    // 刷新即采用后弹窗标题和复核区（.wb-resource-review 里的 <strong>）同时出现服务端新名称，锁定复核区那一处，避免 strict 模式撞到两个元素。
+    await panel().locator('.wb-resource-review').getByText('服务端新名称',{exact:false}).waitFor();assert.equal(await stock().inputValue(),'17.875');await shot('stale-draft');
+    assert.equal(await panel().getByRole('button',{name:'已核对，继续编辑',exact:true}).count(),0);assert.equal(await stock().inputValue(),'17.875');
+    // 刷新即采用后表单里的当前库存和复核区都会显示服务端的 18.625 / 件，只锁定复核区那份；kg 在整个弹窗里都不该再出现。
+    assert(await panel().locator('.wb-resource-review').getByText('18.625',{exact:true}).isVisible());assert(await panel().locator('.wb-resource-review').getByText('件',{exact:true}).isVisible());assert.equal(await panel().getByText('kg',{exact:true}).count(),0);
     await save();const call=await lastInput(2);assert.equal(call.body.write_token,'reviewed-token');
     assert.deepEqual(call.body.input,{fields:{stock_qty:17.875}});assert.equal(await page.evaluate(()=>stockFixture.original.fields.remark),'不可覆盖的原备注');});
   await run('stock-mode-drops-unrelated-unsaved-fields',async()=>{await mount({normal:true});await panel().locator('input[name="label"]').fill('不得提交的名称');await panel().locator('input[name="unit"]').fill('不得提交的单位');

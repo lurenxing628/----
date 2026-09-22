@@ -7,21 +7,27 @@
   }
   function ReadRun({ runRef, api }) {
     const [record, setRecord] = React.useState(null), [error, setError] = React.useState('');
-    const [checking, setChecking] = React.useState(false), [verified, setVerified] = React.useState(false);
+    const [checking, setChecking] = React.useState(false), [verified, setVerified] = React.useState(false), [retryPaused, setRetryPaused] = React.useState(false);
     const [paused, setPaused] = React.useState(document.hidden), [revision, refresh] = React.useReducer(v => v + 1, 0);
     React.useEffect(() => {
       if (!A.ref(runRef)) return undefined;
-      let disposed = false, timer, controller, querying = false, done = false, attempt = 0;
+      setRetryPaused(false);
+      let disposed = false, timer, controller, querying = false, done = false, attempt = 0, unsettledSince = null;
       function schedule() { if (!disposed && !done && !document.hidden) timer = setTimeout(read, A.pollDelay(attempt++)); }
+      // Same rule as the candidate panel: 60 seconds of failed reads stop the automatic query; the refresh button restarts it.
+      function unresolved(started) {
+        if (unsettledSince === null) unsettledSince = started;
+        if (Date.now() - unsettledSince >= 60000) { done = true; setRetryPaused(true); }
+      }
       async function read() {
         if (disposed || querying || document.hidden || done) return;
-        querying = true; controller = new AbortController(); setChecking(true); setVerified(false);
+        querying = true; controller = new AbortController(); setChecking(true); setVerified(false); const started = Date.now();
         try {
           const value = A.run(A.envelope(await api.get(runRef, controller.signal)), runRef);
           if (disposed || controller.signal.aborted) return;
-          setRecord(value); setVerified(true); setError(''); done = A.terminal(value);
+          setRecord(value); setVerified(true); setError(''); unsettledSince = null; done = A.terminal(value);
         } catch (problem) {
-          if (!disposed && !controller.signal.aborted) { setError(A.message(problem)); setVerified(false); }
+          if (!disposed && !controller.signal.aborted) { setError(A.message(problem)); setVerified(false); unresolved(started); }
         } finally { querying = false; if (!disposed) { setChecking(false); schedule(); } }
       }
       function visibility() {
@@ -36,8 +42,8 @@
       <div className="rj-heading"><h2>这次排产</h2><U.Button icon="refresh-cw" aria-label="刷新这次排产" busy={checking} disabled={!A.ref(runRef)} onClick={refresh} /></div>
       {!A.ref(runRef) ? <p role="alert">这条排产记录已失效，页面没有切换。请点「排产记录」重新选择。</p> : <>
         <window.WorkbenchReference entries={{ '排产编号': runRef }} />{error && <div className="rj-notice" role="alert">{error}</div>}
-        {record && <U.Record run={record} intent={null} paused={paused} checking={checking} verified={verified} api={api} />}
-        {!record && <p role="status" className="rj-muted">{checking ? '正在读取这次排产。' : paused ? '返回本页后继续读取这次排产。' : '还没读到这次排产的结果。请点右上角的刷新按钮。'}</p>}
+        {record && <U.Record run={record} intent={null} paused={paused} checking={checking} verified={verified} retryPaused={retryPaused} retryHint="请点右上角的刷新按钮再次核对。" api={api} />}
+        {!record && <p role="status" className="rj-muted">{checking ? '正在读取这次排产。' : paused ? '返回本页后继续读取这次排产。' : retryPaused ? '已暂停自动查询。请点右上角的刷新按钮再次核对。' : '暂未查到这次排产记录。请点右上角的刷新按钮。'}</p>}
       </>}
     </section>;
   }
@@ -48,7 +54,7 @@
     const api = useRunAdapter(onNavigate), specified = initialContext && Object.prototype.hasOwnProperty.call(initialContext, 'run_ref');
     const history = <U.Button icon="history" onClick={() => onNavigate('analysis', { source: 'run_history' })}>排产记录</U.Button>;
     // The preflight page carries 排产记录 in its own heading; only the specified-run view keeps the navigation strip.
-    return specified ? <><Navigation>{history}<U.Button icon="plus" onClick={() => onNavigate('run', {})}>开始新排产</U.Button></Navigation>
+    return specified ? <><Navigation>{history}<U.Button icon="plus" onClick={() => onNavigate('run', {})}>执行排产</U.Button></Navigation>
       <ReadRun key={initialContext.run_ref} runRef={initialContext.run_ref} api={api} /></> :
       <window.PreflightWorkspace initialContext={initialContext} onNavigate={onNavigate} actions={history}
         renderRunPanel={data => <window.RunJobPanel preflight={data} adapter={api} />} />;
@@ -69,7 +75,7 @@
     const navigation = <Navigation>
       <U.Button icon="files" aria-pressed={!candidate && !history} onClick={() => onNavigate(view, {})}>计划版本</U.Button>
       <U.Button icon="history" aria-pressed={history} onClick={() => onNavigate('analysis', { source: 'run_history', ...(historyQuery ? { history_query: historyQuery } : {}) })}>排产记录</U.Button>
-      {candidate && <U.Button icon="chart" aria-pressed={true} aria-current="page">候选方案</U.Button>}
+      {candidate && <span className="btn scheduling-current" aria-current="page"><window.ResourceControls.Icon name="chart" />{window.WorkbenchTerms.candidate}</span>}
       {candidate && <span className="scheduling-source">不是正式计划</span>}
     </Navigation>;
     return <>{(candidate || history) && navigation}{candidate ? <window.RunCandidateWorkspace view={view} initialContext={initialContext} onNavigate={onNavigate}

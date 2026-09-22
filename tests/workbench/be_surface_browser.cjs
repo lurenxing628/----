@@ -125,7 +125,7 @@ async function preflight(page, variant) {
 async function actual(page, variant) {
   await page.evaluate(spec => mountActual(spec), variant); await ready(page);
   // Initial focus now follows the plan; this geometry comparison explicitly requests the whole axis.
-  await page.getByRole('button', { name: '适应全部', exact: true }).click(); await fullAxisReady(page);
+  await (async () => { const fit = page.getByRole('button', { name: '显示完整时间范围', exact: true }); await fit.waitFor(); if (await fit.isEnabled()) await fit.click(); })(); await fullAxisReady(page);
   await page.locator('[data-actual-gantt]').evaluate(node => { node.style.maxWidth = '1320px'; }); await fullAxisReady(page);
   const before = await bounds(page, '[data-actual-gantt]'), oldBar = await geometry(page);
   await page.locator('[data-actual-gantt]').evaluate(node => { node.style.maxWidth = ''; }); await fullAxisReady(page);
@@ -163,7 +163,7 @@ async function actual(page, variant) {
   await shot(page, variant.key + '-actual-selected');
   await page.getByRole('checkbox', { name: '只看选中', exact: true }).check(); await page.getByLabel('搜索现场甘特').fill('BG-00000001');
   await page.getByRole('button', { name: '全部折叠', exact: true }).click();
-  await page.getByRole('button', { name: '导出 CSV', exact: true }).click();
+  await page.getByRole('button', { name: '导出', exact: true }).click();
   const download = page.waitForEvent('download'); await page.getByRole('button', { name: '下载 CSV', exact: true }).click();
   const downloaded = await download, file = path.join(output, variant.key + '-export.csv'); await downloaded.saveAs(file);
   assert.equal(hash(fs.readFileSync(file)), hash(fs.readFileSync(path.join(output, 'actual.csv'))));
@@ -191,7 +191,7 @@ async function edgeCases(page) {
   }
   await page.evaluate(() => mountActual({ theme: 'dark', key: 'unavailable', unavailable: true })); await ready(page);
   assert.ok((await page.locator('[data-actual-gantt]').innerText()).includes('报工记录不可用，实际状态无法核实。'));
-  assert.equal(await page.getByRole('button', { name: '导出 CSV', exact: true }).isDisabled(), true);
+  assert.equal(await page.getByRole('button', { name: '导出', exact: true }).isDisabled(), true);
   assert.ok((await page.locator('.fg-group-summary').innerText()).includes('报工记录不可用'));
   report.edge_cases = ['duplicate operation count stays unique', 'same-code detail and trailing reason retained', 'reports under other bound resources',
     'no reports in task or resource', 'unavailable reason and disabled export retained'];

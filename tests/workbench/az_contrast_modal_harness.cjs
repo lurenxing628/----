@@ -14,7 +14,7 @@ const appFiles = ['WorkbenchFormat.js', 'WorkbenchTerms.js', 'WorkbenchReference
   'resource-contract.js', 'resource-api.js', 'ProcessContract.js', 'resource-session.js', 'ResourceControls.jsx',
   'WorkbenchControlBridge.js', 'CalendarContract.js', 'WorkbenchSelectMenu.jsx', 'WorkbenchDatePickerModel.js',
   'WorkbenchDatePicker.jsx', 'WorkbenchControls.jsx', 'ResourceTableFilterModel.js', 'ResourceTableFilter.jsx',
-  'ResourceTableHeader.jsx', 'ResourceDetailRelations.jsx', 'ResourceForms.jsx', 'ResourceTables.jsx', 'ProcessAPI.js',
+  'WorkbenchGuardHost.jsx', 'ResourceTableHeader.jsx', 'ResourceDetailRelations.jsx', 'ResourceForms.jsx', 'ResourceTables.jsx', 'ProcessAPI.js',
   'ProcessStageEditor.jsx', 'ProcessOpTypeCreate.jsx', 'ProcessSourceEditor.jsx', 'BatchContract.js', 'BatchControls.jsx',
   'BatchFiles.jsx', 'WorkbenchControlStyles.jsx'];
 async function setup(kind) {
@@ -52,7 +52,8 @@ async function setup(kind) {
   assert.equal(inlineStyles.length, 0, 'ProcessDetail grew an inline <style>; its presentation belongs to the CSS layer');
   report.presentation = { path: detailPath, sha256: sha(detail), extraction: 'Babel AST: Steps function; styles come from the maintained CSS layer' };
   sources.splice(sources.length - 1, 0, { path: 'az-extracted-process-presentation.jsx', code:
-    '(function(){const {Button}=window.ResourceControls;' + detail.slice(steps.start, steps.end) +
+    // Steps 的步骤副标题改由 APSProcessContract.workflowStateLabel 统一给（2026-09-21），抽出来的函数要带上 P。
+    '(function(){const {Button}=window.ResourceControls,P=window.APSProcessContract;' + detail.slice(steps.start, steps.end) +
     ';window.AZProcessSteps=Steps;window.AZProcessDetailStyles=()=>null;})();' });
   const built = compile({ babel_path: path.join(output, 'frozen', babelPath), sources, check_combined: true });
   report.compile = { target: built.target, babel: built.babel_version, global_build: false };

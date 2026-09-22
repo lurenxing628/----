@@ -58,7 +58,16 @@
     React.useEffect(() => window.WorkbenchScrollShadows.attach(content.current), []);
     return /*#__PURE__*/React.createElement("div", {
       className: "app-container operations-shell"
-    }, /*#__PURE__*/React.createElement("aside", {
+    }, /*#__PURE__*/React.createElement("a", {
+      className: "wb-skip-link",
+      href: "#wb-view-panel",
+      onClick: event => {
+        // A fragment jump would push a history entry without workbench state and replay the page; focus the panel directly.
+        event.preventDefault();
+        const panel = document.getElementById('wb-view-panel');
+        if (panel) panel.focus();
+      }
+    }, "\u8DF3\u5230\u4E3B\u5185\u5BB9"), /*#__PURE__*/React.createElement("aside", {
       className: "sidebar"
     }, /*#__PURE__*/React.createElement("div", {
       className: "sidebar-header"
@@ -200,6 +209,7 @@
       onClick: () => switchTab(id)
     }, boot.titles[id]))), /*#__PURE__*/React.createElement("div", {
       id: "wb-view-panel",
+      tabIndex: -1,
       role: showPlanTabs ? 'tabpanel' : undefined,
       "aria-labelledby": showPlanTabs ? 'wb-view-tab-' + view : undefined
     }, children))));
@@ -222,7 +232,11 @@
     const [navigationError, setNavigationError] = React.useState('');
     const activePage = React.useRef(page),
       restoring = React.useRef(true),
-      historyGuard = React.useRef(null);
+      historyGuard = React.useRef(null),
+      scrollMemory = React.useRef(null);
+    // History cannot replace the entry that the browser just left. Keep the newest scroll snapshot by history key so an
+    // immediate Back/Forward inside the 200 ms throttle window can apply it when that exact entry becomes current again.
+    const scrollSnapshots = React.useRef(new Map());
     activePage.current = page;
     const {
       view,
@@ -241,11 +255,11 @@
     React.useEffect(() => {
       const previous = history.scrollRestoration;
       history.scrollRestoration = 'manual';
-      let frame = 0;
       const save = () => {
         if (restoring.current || activePage.current.error || historyGuard.current && historyGuard.current.busy()) return;
+        const captured = scrollSnapshots.current.get(activePage.current.key);
         try {
-          window.WorkbenchNavigation.remember(boot, activePage.current);
+          window.WorkbenchNavigation.remember(boot, activePage.current, captured);
           if (historyGuard.current) historyGuard.current.sync();
         } catch (error) {
           setPage(old => ({
@@ -254,16 +268,24 @@
           }));
         }
       };
+      const memory = window.WorkbenchNavigation.scrollMemory(save);
+      scrollMemory.current = memory;
       const scroll = () => {
-        cancelAnimationFrame(frame);
-        frame = requestAnimationFrame(save);
+        if (restoring.current || activePage.current.error || historyGuard.current && historyGuard.current.busy()) return;
+        scrollSnapshots.current.set(activePage.current.key, window.WorkbenchNavigation.captureScroll());
+        memory.schedule();
       };
       const restore = () => {
         restoring.current = true;
-        cancelAnimationFrame(frame);
+        memory.cancel();
         setMessages([]);
         setNavigationError('');
-        const next = currentPage();
+        let next = currentPage();
+        const captured = !next.error && scrollSnapshots.current.get(next.key);
+        if (captured) {
+          window.WorkbenchNavigation.remember(boot, next, captured);
+          next = currentPage();
+        }
         activePage.current = next;
         setPage(next);
       };
@@ -273,14 +295,15 @@
         onRestore: restore,
         onError: error => setNavigationError(error.message)
       });
-      window.addEventListener('pagehide', save);
+      window.addEventListener('pagehide', memory.flush);
       document.addEventListener('scroll', scroll, true);
       return () => {
-        cancelAnimationFrame(frame);
+        memory.cancel();
+        scrollMemory.current = null;
         history.scrollRestoration = previous;
         if (historyGuard.current) historyGuard.current.dispose();
         historyGuard.current = null;
-        window.removeEventListener('pagehide', save);
+        window.removeEventListener('pagehide', memory.flush);
         document.removeEventListener('scroll', scroll, true);
       };
     }, []);
@@ -309,7 +332,11 @@
           return;
         }
         if (!(await window.WorkbenchGuards.confirmLeave()) || activePage.current !== origin) return;
+        // navigate() remembers the current page itself; a pending throttled write would only repeat it.
+        if (scrollMemory.current) scrollMemory.current.cancel();
         const next = window.WorkbenchNavigation.navigate(boot, page, target, nextContext, preferSaved);
+        // pushState truncates the Forward branch. Drop snapshots whose numeric keys can now be reused by the new branch.
+        for (const key of scrollSnapshots.current.keys()) if (key >= next.key) scrollSnapshots.current.delete(key);
         if (historyGuard.current) historyGuard.current.sync();
         restoring.current = true;
         activePage.current = next;

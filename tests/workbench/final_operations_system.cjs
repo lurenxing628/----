@@ -14,7 +14,7 @@ async function system(h) {
     assert((await page.locator('.sm-metrics').innerText()).includes('未校验')); assert.equal(await page.locator('.sm-check-table tbody tr').count(), 8);
   });
   await mark('WBP-SYS-003.rerun', () => request('/system/overview', () => page.getByRole('button', { name: '重新检查', exact: true }).click()));
-  const diagnostic = await mark('WBP-SYS-004.download-json', () => download('导出诊断文件', 'page-diagnostic.json'));
+  const diagnostic = await mark('WBP-SYS-004.download-json', () => download('导出页面诊断', 'page-diagnostic.json'));
   const dto = JSON.parse(fs.readFileSync(diagnostic)); assert.equal(dto.system.meta.source, 'production'); assert.equal(dto.page_check.checks.length, 8);
   await mark(['WBP-SYS-004.verify-json-payload', 'WBP-SYS-003.timestamp', ...['runtime', 'scripts', 'ui', 'icons', 'styles', 'model', 'download', 'theme'].map(s => 'WBP-SYS-003.check-' + s)], async () => {
     assert(dto.page_check.checkedAt); assert(dto.page_check.checks.every(row => row.status === 'available'));
@@ -27,8 +27,8 @@ async function system(h) {
     await mark('WBP-SYS-002.row-' + tab, async () => { await page.getByRole('button', { name: title, exact: true }).click(); assert.equal(await page.getByRole('tab', { name, exact: true }).getAttribute('aria-selected'), 'true'); });
     await page.getByRole('tab', { name: '概况', exact: true }).click();
   }
-  await mark('WBP-SYS-001.source-sample', () => page.getByRole('radio', { name: '管理样例', exact: true }).check());
-  await mark('WBP-SYS-001.source-current', () => page.getByRole('radio', { name: '本机数据', exact: true }).check());
+  // 管理样例已下线（2026-09-21）：页面只读本机数据，没有数据来源单选。
+  assert.equal(await page.getByRole('radio', { name: '管理样例', exact: true }).count(), 0);
   await mark('WBP-SYS-001.keyboard-tabs', async () => { await page.getByRole('tab', { name: '概况', exact: true }).focus(); await page.keyboard.press('End'); assert.equal(await page.getByRole('tab', { name: '配置', exact: true }).getAttribute('aria-selected'), 'true'); });
   const config = page.locator('.sm-maintenance-config:visible');
   await config.getByRole('button', { name: '保存维护配置', exact: true }).waitFor();
@@ -65,7 +65,7 @@ async function system(h) {
     const input = page.locator('#sm-maintenance-' + key); assert.equal(key.endsWith('_enabled') ? await input.isChecked() ? 'yes' : 'no' : await input.inputValue(), value); } });
   for (const [name, id] of [['深色', 'dark'], ['浅色', 'light']]) await mark('WBP-SYS-015.' + id, () => page.getByRole('radio', { name, exact: true }).check());
   await page.getByRole('radio', { name: h.config.theme === 'dark' ? '深色' : '浅色', exact: true }).check();
-  await mark('WBP-SYS-015.compact', async () => { await page.getByLabel('紧凑行距', { exact: true }).uncheck(); await page.getByLabel('紧凑行距', { exact: true }).check(); });
+  await mark('WBP-SYS-015.compact', async () => { await page.getByLabel('紧凑表格', { exact: true }).uncheck(); await page.getByLabel('紧凑表格', { exact: true }).check(); });
   for (const n of [25, 50, 10]) await mark('WBP-SYS-015.size-' + n, async () => {
     await page.locator('.sm-preferences select').click(); await page.locator('.wb-control-popup').getByRole('option', { name: n + ' 条', exact: true }).click();
   });
@@ -93,7 +93,7 @@ async function system(h) {
   await request('/system/logs', () => logs.getByRole('button', { name: '上一页', exact: true }).click());
   report.log_rows = filtered.data.page.total;
   await mark(['WBP-SYS-013.export', 'WBP-SYS-013.all-filtered-pages'], () => download('导出这段日志 CSV', 'logs.csv', logs));
-  await mark(['WBP-SYS-014.build-zip', 'WBP-SYS-014.download-zip'], () => download('脱敏诊断 ZIP', 'logs.zip', logs));
+  await mark(['WBP-SYS-014.build-zip', 'WBP-SYS-014.download-zip'], () => download('导出诊断包', 'logs.zip', logs));
   await shot('system-logs');
   await mark('WBP-SYS-001.tab-backups', () => page.getByRole('tab', { name: '备份恢复', exact: true }).click());
   await page.getByRole('button', { name: '新增备份', exact: true }).waitFor();

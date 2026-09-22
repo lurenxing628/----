@@ -76,7 +76,7 @@ async function verifyCells(page, payload) {
     assert.equal(rows[index].cells[2], item.old_unit_hours === null ? '未填写' : String(item.old_unit_hours));
     assert.equal(rows[index].cells[3], item.suggested_unit_hours === null ? '暂无建议' : String(item.suggested_unit_hours));
     assert.equal(rows[index].cells[4], String(item.sample_count));
-    assert.equal(rows[index].cells[6], item.status === 'suggested' ? '待复核' : '数据不足');
+    assert.equal(rows[index].cells[6], item.status === 'suggested' ? '已有建议' : '数据不足');
   });
 }
 async function openDetail(page, ref) {
@@ -165,7 +165,8 @@ async function rejectInvalidDetails(page, payload) {
       await sample.getByText('登记与更正记录（2 条）', { exact: true }).waitFor();
       await sample.locator('details > summary').filter({ hasText: /^更正 ·/ }).click();
       const correction = await sample.getByRole('table', { name: '更正前后值' }).locator('tr').filter({ hasText: '有效加工工时（小时）' }).textContent();
-      assert(correction.includes('900') && correction.includes('1000')); await geometry(page, viewport);
+      // 工时格子走 WorkbenchFormat.number（zh-CN 千分位），1000 小时上屏是「1,000」。
+      assert(correction.includes('900') && correction.includes('1,000') && !correction.includes('1000')); await geometry(page, viewport);
       await sample.locator('details > summary').filter({ hasText: /^更正 ·/ }).scrollIntoViewIfNeeded(); await capture(page, prefix + '-correction');
       const unknown = detail.locator('.ca-sample[data-sample-ref="' + config.unknown_ref + '"]');
       assert((await unknown.locator(':scope > summary').textContent()).includes('已知数量 0 · 1 条数量未知'));

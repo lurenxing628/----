@@ -3,10 +3,7 @@
 
   const listeners = new Set(),
     key = 'aps_density';
-  let current = {
-    density: 'comfortable',
-    error: ''
-  };
+  let current = null;
   const valid = value => value === 'comfortable' || value === 'compact';
   function publish(density, error) {
     current = {
@@ -22,12 +19,20 @@
     };
   }
   function refresh() {
+    let density, error;
     try {
       const value = localStorage.getItem(key);
-      return publish(valid(value) ? value : 'comfortable', value !== null && !valid(value) ? '表格密度设置无效，当前使用舒适密度。' : '');
+      density = valid(value) ? value : 'comfortable';
+      error = value !== null && !valid(value) ? '表格密度设置无效，当前使用舒适密度。' : '';
     } catch (_) {
-      return publish(current.density, '无法读取本机表格密度设置，当前密度保持不变。');
+      density = current ? current.density : 'comfortable';
+      error = '无法读取本机表格密度设置，当前密度保持不变。';
     }
+    // pageshow and storage re-read the preference; an unchanged value must not re-render every subscriber.
+    if (current && density === current.density && error === current.error) return {
+      ...current
+    };
+    return publish(density, error);
   }
   function set(value) {
     if (!valid(value)) throw new TypeError('表格密度只能是舒适或紧凑。');

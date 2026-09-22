@@ -83,7 +83,7 @@ async function selectedOfficial(planRef, version, identity) {
   const catalog = page.getByRole('region', { name: '排产方案列表', exact: true });
   assert.equal(await catalog.getByRole('combobox', { name: '切换所选计划', exact: true }).inputValue(), planRef);
   await catalog.getByRole('button', { name: '展开计划列表', exact: true }).click();
-  const selected = catalog.getByRole('table', { name: '可选排产方案', exact: true }).locator('tbody tr[aria-selected=true]');
+  const selected = catalog.getByRole('table', { name: '可选排产方案', exact: true }).locator('tbody tr[aria-current=true]');
   await selected.waitFor(); assert.equal(await selected.count(), 1); assert(await selected.getByRole('radio').isChecked());
   assert.equal(await selected.getByRole('cell').nth(1).innerText(), String(version));
   assert.equal(await selected.locator('.plan-state').innerText(), identity);
@@ -95,7 +95,8 @@ async function geometry(name) {
     const rgb = x => (x.match(/[\d.]+/g) || []).map(Number).slice(0, 3);
     const luma = x => rgb(x).map(v => v / 255).map(v => v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4).reduce((s, v, i) => s + v * [.2126, .7152, .0722][i], 0);
     const background = n => { for (let p = n; p; p = p.parentElement) { const c = getComputedStyle(p).backgroundColor; if (!['transparent', 'rgba(0, 0, 0, 0)'].includes(c)) return c; } return 'rgb(255,255,255)'; };
-    const controls = [...d.querySelectorAll('button:not(:disabled),input:not(:disabled),textarea,dd,dt,.ta-note,.ta-result')].filter(n => n.getClientRects().length);
+    // 2026-09-21：带原因的按钮改用 aria-disabled 保持可聚焦（ResourceControls.jsx），禁用外观不适用 4.5:1，与 migrated_process_batch_visual.cjs 同样排除。
+    const controls = [...d.querySelectorAll('button:not(:disabled):not([aria-disabled="true"]),input:not(:disabled),textarea,dd,dt,.ta-note,.ta-result')].filter(n => n.getClientRects().length);
     const contrast = n => { const a = luma(getComputedStyle(n).color), b = luma(background(n)); return (Math.max(a, b) + .05) / (Math.min(a, b) + .05); };
     const footer = d.querySelector('.modal-f').getBoundingClientRect(), body = d.querySelector('.ta-body').getBoundingClientRect();
     return { x: r.x, y: r.y, right: r.right, bottom: r.bottom, width: innerWidth, height: innerHeight,
@@ -126,7 +127,7 @@ async function basic() {
   assert.equal(intent.scenario_ref, before.scenario_ref); assert.equal(intent.preview.draft_ref, before.draft_ref); assert.equal((await evidence()).receipts.length, 1);
   assert.deepEqual(await savedScenario(), before); assert.equal(await page.evaluate(ref => hookSnapshots[ref], refs.scenario_ref), JSON.stringify(before));
   await geometry('receipt'); await shot('receipt'); await page.locator('.ta-records summary').click(); await geometry('expanded'); await shot('expanded');
-  await button('进入正式计划').click(); await page.locator('[data-plan-workspace] .plan-bar').first().waitFor();
+  await button('进入正式计划').click(); await page.locator('[data-plan-workspace] section[aria-label="计划分析"]').first().waitFor();
   const navigation = await page.evaluate(() => nav[nav.length - 1]); assert.deepEqual(navigation, ['analysis', { plan_ref: intent.receipt.data.official_plan.plan_ref }]);
   assert.notEqual(navigation[1].plan_ref, refs.scenario_ref); assert.notEqual(navigation[1].plan_ref, refs.baseline_ref);
   await selectedOfficial(navigation[1].plan_ref, 41, '当前正式'); await shot('official-navigation'); done('real-commit-new-official-identity-main-plan-navigation');
@@ -140,7 +141,7 @@ async function basic() {
     data: { write_token: 'expired-replay-token', request_key: intent.request_key, input: intent.input } });
   const replayed = await replay.json(); assert.equal(replayed.receipt_ref, intent.receipt.receipt_ref); assert(replayed.replayed); assert.equal(replayed.data.official_plan.version, 41);
   assert.equal((await evidence()).receipts.length, 2); assert.deepEqual(await savedScenario(), before); await shot('old-receipt-after-new-official');
-  await button('进入正式计划').click(); await page.locator('[data-plan-workspace] .plan-bar').first().waitFor();
+  await button('进入正式计划').click(); await page.locator('[data-plan-workspace] section[aria-label="计划分析"]').first().waitFor();
   await selectedOfficial(intent.receipt.data.official_plan.plan_ref, 41, '历史正式'); done('original-key-replay-after-newer-official-is-historical-not-current');
   await button('返回原场景').click(); await ready(); await button('查看采用结果').click(); await success(); await button('完成').click(); assert.equal(await state(), null);
 }

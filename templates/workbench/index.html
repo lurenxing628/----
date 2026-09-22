@@ -12,7 +12,7 @@
 <body class="aps-workbench">
   <div id="root" data-workbench-boot="loading"><section class="wb-page-panel">
     <h1>APS 智能排产</h1><p role="status">正在打开工作台…</p>
-    <a href="{{ request.full_path }}">重新加载</a>
+    <a href="{{ request.path }}{% if request.query_string %}?{{ request.query_string.decode('utf-8') }}{% endif %}">重新加载</a>
   </section></div>
   <noscript>这台电脑的浏览器没有允许运行 JavaScript 脚本，工作台打不开。请用交付包里自带的浏览器打开。</noscript>
   <script>

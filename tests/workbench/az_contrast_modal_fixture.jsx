@@ -73,6 +73,7 @@
     if (mounted) mounted.unmount();
     window.az = { submissions: [], previews: [], cancelled: 0 };
     mounted = ReactDOM.createRoot(document.getElementById('root'));
-    mounted.render(<><window.WorkbenchControlStyles />{kind === 'contrast' ? <Contrast /> : <Batch spec={spec} />}</>);
+    mounted.render(<><window.WorkbenchControlStyles /><window.WorkbenchGuardHost />
+      {kind === 'contrast' ? <Contrast /> : <Batch spec={spec} />}</>);
   };
 })();

@@ -74,7 +74,7 @@ async function main() {
     await run('second-task-correction-keeps-operation-and-one-report', async () => {
       const start = report.reads.length;
       await page.getByRole('button', {name: /^更正 BG/}).click(); await page.getByLabel('有效工时（小时）', {exact: true}).fill('0');
-      await page.getByLabel('补齐或更正原因', {exact: true}).fill('核对当前工序，不沿用入口工序'); await saved('保存更正');
+      await page.getByLabel('更正原因', {exact: true}).fill('核对当前工序，不沿用入口工序'); await saved('保存更正');
       boundSince(start, second, scope);
       const latest = await read(), a = latest.tasks.find(task => task.task_ref === first.task_ref), b = latest.tasks.find(task => task.task_ref === second.task_ref);
       assert.equal(a.execution.reports.length, 1); assert.equal(a.execution.reports[0].completed_quantity, 0);

@@ -210,7 +210,7 @@
     }, rows.map(r => {
       const key = kind === 'plan' ? 'plan_ref' : run ? 'candidate_ref' : 'run_ref',
         id = r[key];
-      const title = kind === 'plan' ? U.sourceLabel(r) : run ? r.label || '未命名候选' : U.timeLabel(r.accepted_at) + ' · ' + U.statusLabel(r.state);
+      const title = kind === 'plan' ? U.sourceLabel(r) : run ? r.label || window.WorkbenchTerms.name_missing : U.timeLabel(r.accepted_at) + ' · ' + U.runStatusLabel(r.state);
       const disabled = kind === 'plan' ? !C.ref(id) || !r.capabilities.view : run ? !r.capabilities.view || !r.task_count : !r.candidate_count;
       return /*#__PURE__*/React.createElement("div", {
         key: id || title,
@@ -232,7 +232,7 @@
         }, title)
       }), title), /*#__PURE__*/React.createElement("span", {
         className: "tt-muted"
-      }, kind === 'plan' ? r.is_current_official ? '当前正式' : '历史正式' : r.task_count + ' 道安排', run && ' · ' + U.statusLabel(r.status)));
+      }, kind === 'plan' ? r.is_current_official ? window.WorkbenchTerms.current_official : window.WorkbenchTerms.historical_official : r.task_count + ' 道安排', run && ' · ' + U.candidateStatusLabel(r.status)));
     }), !rows.length && /*#__PURE__*/React.createElement("p", {
       className: "tt-empty"
     }, "\u672C\u9875\u6CA1\u6709\u53EF\u9009\u6765\u6E90")), kind === 'plan' ? /*#__PURE__*/React.createElement("div", {
@@ -241,14 +241,14 @@
       icon: "chevron-left",
       disabled: !q.cursor,
       onClick: () => setQ({})
-    }, "\u9996\u6279\u7248\u672C"), /*#__PURE__*/React.createElement(U.Button, {
+    }, "\u7B2C\u4E00\u9875"), /*#__PURE__*/React.createElement(U.Button, {
       icon: "chevron-right",
       disabled: !d.page.has_more,
       onClick: () => setQ({
         cursor: d.page.next_cursor,
         snapshot_ref: read.result.meta.snapshot_ref
       })
-    }, "\u4E0B\u4E00\u6279\u7248\u672C")) : /*#__PURE__*/React.createElement(U.Pager, {
+    }, "\u4E0B\u4E00\u9875")) : /*#__PURE__*/React.createElement(U.Pager, {
       label: "\u6765\u6E90",
       page: d.page,
       onPage: page => setQ({
@@ -270,7 +270,8 @@
       [label, setLabel] = React.useState(''),
       [epoch, refresh] = React.useReducer(n => n + 1, 0);
     const [choosing, setChoosing] = React.useState(!initialBase);
-    const [inspect, setInspect] = React.useState(false),
+    // A source carried in from the plan or candidate page is checked at once so its name and version show instead of a placeholder.
+    const [inspect, setInspect] = React.useState(!!initialBase),
       [agreed, setAgreed] = React.useState(false);
     const input = {
       base,
@@ -328,7 +329,8 @@
       }, "\u6838\u5BF9\u539F\u6765\u6E90"), /*#__PURE__*/React.createElement(U.Button, {
         icon: "plus",
         className: "btn primary",
-        disabled: !d || !agreed || commands.blocked,
+        reason: !d ? '请先核对原来源' : !agreed ? '请先勾选确认' : '',
+        disabled: commands.blocked,
         onClick: () => commands.execute({
           action: 'create',
           input

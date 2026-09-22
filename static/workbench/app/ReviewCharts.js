@@ -1,6 +1,7 @@
 (function () {
   'use strict';
 
+  const title = '趋势、偏差与资源分析';
   function ResourceHours({
     data,
     onDrill,
@@ -13,7 +14,10 @@
       {
         kind,
         page
-      } = view;
+      } = view,
+      {
+        hoursText
+      } = window.ReportTable;
     const rows = data.resources[kind === 'machine' ? 'machines' : 'people'],
       pages = Math.max(1, Math.ceil(rows.length / 6));
     const current = Math.min(page, pages),
@@ -30,20 +34,18 @@
       className: "rw-section-heading"
     }, /*#__PURE__*/React.createElement("h3", null, "\u5B9E\u9645\u8D44\u6E90\u5DE5\u65F6"), /*#__PURE__*/React.createElement("div", {
       className: "seg",
-      role: "tablist",
+      role: "group",
       "aria-label": "\u8D44\u6E90\u5DE5\u65F6\u7C7B\u578B"
     }, [['machine', '设备'], ['operator', '人员']].map(([key, label]) => /*#__PURE__*/React.createElement(Button, {
       key: key,
-      role: "tab",
-      "aria-selected": kind === key,
+      "aria-pressed": kind === key,
       className: 'seg-btn' + (kind === key ? ' on' : ''),
       onClick: () => onChange({
         kind: key,
         page: 1
       })
     }, label)))), /*#__PURE__*/React.createElement("div", {
-      role: "tabpanel",
-      "aria-label": kind === 'machine' ? '实际设备工时' : '实际人员工时'
+      className: "er-resource-list"
     }, visible.map(row => /*#__PURE__*/React.createElement("div", {
       className: "er-resource-row",
       key: row.resource_ref || 'unassigned',
@@ -57,7 +59,7 @@
       "aria-label": '查看 ' + row.resource_label + ' 关联记录',
       disabled: !onDrill,
       onClick: () => open(row),
-      title: '已知工时 ' + window.ReportTable.text(row.known_effective_processing_hours) + ' 小时；未知 ' + row.unknown_hour_events + ' 条'
+      title: '已知工时 ' + hoursText(row.known_effective_processing_hours) + '；未知 ' + row.unknown_hour_events + ' 条'
     }, row.known_effective_processing_hours !== null && /*#__PURE__*/React.createElement("i", {
       "aria-hidden": "true",
       style: {
@@ -65,7 +67,7 @@
       }
     })), /*#__PURE__*/React.createElement("span", {
       className: "er-resource-value"
-    }, row.effective_processing_hours === null ? '总工时未知' : row.effective_processing_hours + ' 小时', " \xB7 \u5DF2\u77E5 ", window.ReportTable.text(row.known_effective_processing_hours), " \u5C0F\u65F6 \xB7 \u5F85\u8865 ", row.unknown_hour_events, " \u6761"))), !rows.length && /*#__PURE__*/React.createElement(window.WorkbenchListControls.EmptyState, {
+    }, row.effective_processing_hours === null ? '总工时未知' : '总工时 ' + hoursText(row.effective_processing_hours), " \xB7 \u5DF2\u77E5 ", hoursText(row.known_effective_processing_hours), " \xB7 \u5F85\u8865 ", row.unknown_hour_events, " \u6761"))), !rows.length && /*#__PURE__*/React.createElement(window.WorkbenchListControls.EmptyState, {
       kind: "empty",
       title: "\u5F53\u524D\u8303\u56F4\u6CA1\u6709\u8D44\u6E90\u5DE5\u65F6\u8BB0\u5F55"
     })), /*#__PURE__*/React.createElement(window.WorkbenchListControls.Pager, {
@@ -85,22 +87,28 @@
       data: {
         topic: kind === 'machine' ? 'machines' : 'people',
         rows: visible,
-        columns: window.ReviewChartViews.resourceColumns
+        columns: window.ReviewChartViews.resourceColumns()
       }
     }));
   }
+  // expanded：执行复盘页把图表当主体，直接展开，不再折叠；报表中心仍是可折叠的辅助区。
   function Charts({
     data,
     open,
     onChange,
     onDrill,
     resourceView,
-    onResourceView
+    onResourceView,
+    expanded = false
   }) {
     const {
-      DistributionChart,
-      TrendChart
-    } = window.ReviewChartViews;
+        DistributionChart,
+        TrendChart
+      } = window.ReviewChartViews,
+      {
+        hoursText
+      } = window.ReportTable,
+      legacy = window.WorkbenchTerms.legacy_field_records;
     const points = data.charts.trend.map(row => ({
       time: new Date(row.date + 'T00:00:00').getTime(),
       label: row.date,
@@ -113,11 +121,7 @@
       id: row.label,
       tone
     }));
-    return /*#__PURE__*/React.createElement("details", {
-      className: "er-chart-disclosure",
-      open: open,
-      onToggle: event => onChange(event.currentTarget.open)
-    }, /*#__PURE__*/React.createElement("summary", null, "\u8D8B\u52BF\u3001\u504F\u5DEE\u4E0E\u8D44\u6E90\u5206\u6790"), /*#__PURE__*/React.createElement("div", {
+    const body = /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
       className: "er-overview-grid"
     }, /*#__PURE__*/React.createElement("section", {
       className: "er-section er-trend"
@@ -126,7 +130,7 @@
       label: "\u8303\u56F4\u5185\u5DE5\u5E8F\u7D2F\u8BA1\u5B8C\u5DE5"
     })), /*#__PURE__*/React.createElement("section", {
       className: "er-section er-insights"
-    }, /*#__PURE__*/React.createElement("h3", null, "\u8BB0\u5F55\u8981\u70B9"), /*#__PURE__*/React.createElement("p", null, "\u5DF2\u786E\u8BA4\u665A\u5B8C\u6210 ", data.summary.finish_late, " \u9053\uFF1B\u5230\u671F\u672A\u786E\u8BA4 ", data.summary.unclosed_due, " \u9053\u3002"), /*#__PURE__*/React.createElement("p", null, "\u65E7\u73B0\u573A\u4E8B\u4EF6 ", data.summary.events, " \u6761\uFF1B\u9010\u6B21\u62A5\u5DE5 ", data.summary.production_reports, " \u6761\uFF1B\u5168\u90E8\u8BB0\u5F55 ", data.summary.records, " \u6761\u3002"), !window.ReportEvidence.noFeedback(data.summary) && /*#__PURE__*/React.createElement("p", null, "\u6709\u6548\u52A0\u5DE5\u5DE5\u65F6 ", window.ReportTable.text(data.summary.effective_processing_hours), " \u5C0F\u65F6\uFF1B\u5DF2\u77E5\u5C0F\u8BA1 ", window.ReportTable.text(data.summary.known_effective_processing_hours), " \u5C0F\u65F6\uFF1B\u5DE5\u65F6\u672A\u77E5 ", data.summary.unknown_hour_events, " \u6761\u3002"), /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("h3", null, "\u8BB0\u5F55\u8981\u70B9"), /*#__PURE__*/React.createElement("p", null, "\u5DF2\u786E\u8BA4\u665A\u5B8C\u6210 ", data.summary.finish_late, " \u9053\uFF1B\u5230\u671F\u672A\u786E\u8BA4 ", data.summary.unclosed_due, " \u9053\u3002"), /*#__PURE__*/React.createElement("p", null, legacy, " ", data.summary.events, " \u6761\uFF1B\u9010\u6B21\u62A5\u5DE5 ", data.summary.production_reports, " \u6761\uFF1B\u5168\u90E8\u8BB0\u5F55 ", data.summary.records, " \u6761\u3002"), !window.ReportEvidence.noFeedback(data.summary) && /*#__PURE__*/React.createElement("p", null, "\u6709\u6548\u52A0\u5DE5\u5DE5\u65F6 ", hoursText(data.summary.effective_processing_hours), "\uFF1B\u5DF2\u77E5\u5C0F\u8BA1 ", hoursText(data.summary.known_effective_processing_hours), "\uFF1B\u5DE5\u65F6\u672A\u77E5 ", data.summary.unknown_hour_events, " \u6761\u3002"), /*#__PURE__*/React.createElement("div", {
       className: "rw-actions"
     }, [['finish_late', '晚完成明细'], ['unclosed', '未确认明细'], [data.scope.focus, '工序明细']].map(([focus, label]) => /*#__PURE__*/React.createElement(window.ResourceControls.Button, {
       key: label,
@@ -151,6 +155,18 @@
       view: resourceView,
       onChange: onResourceView
     }));
+    if (expanded) return /*#__PURE__*/React.createElement("section", {
+      className: "er-chart-disclosure er-chart-expanded",
+      "data-expanded": "true",
+      "aria-label": title
+    }, /*#__PURE__*/React.createElement("h3", {
+      className: "er-chart-title"
+    }, title), body);
+    return /*#__PURE__*/React.createElement("details", {
+      className: "er-chart-disclosure",
+      open: open,
+      onToggle: event => onChange(event.currentTarget.open)
+    }, /*#__PURE__*/React.createElement("summary", null, title), body);
   }
   window.ReviewCharts = Charts;
 })();

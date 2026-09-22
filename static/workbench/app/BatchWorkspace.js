@@ -389,9 +389,7 @@
       icon: returnSource ? 'arrow-left' : 'arrow-right',
       disabled: blocked,
       onClick: () => typeof returnTarget === 'string' ? onNav(returnTarget) : onNav(returnTarget.view, returnTarget.context)
-    }, !returnSource ? '下一步 · 去排产' : returnView === 'dashboard' ? '返回值班台' : '返回排产'))), data && data.entities.length > 0 && /*#__PURE__*/React.createElement(ErrorBox, {
-      error: list.error
-    }), /*#__PURE__*/React.createElement(window.BatchTable, {
+    }, !returnSource ? '下一步 · 去排产' : returnView === 'dashboard' ? '返回值班台' : '返回排产'))), /*#__PURE__*/React.createElement(window.BatchTable, {
       rows: data ? data.entities : [],
       scope: scope,
       selected: selected,

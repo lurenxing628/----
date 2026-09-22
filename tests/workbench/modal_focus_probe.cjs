@@ -97,6 +97,15 @@ async function cases() {
     await page.keyboard.press('Escape'); await page.waitForFunction(() => document.activeElement.id === 'flow-trigger');
     assert(await page.locator('#flow-trigger').isEnabled()); await empty();
   });
+  await run('launcher-disabled-before-async-open-restores-on-close', async () => {
+    await mount({ asyncOpen: true }); await dialog(1).waitFor(); assert(await focused('#input-1'));
+    await page.keyboard.press('Escape'); await page.waitForFunction(() => document.activeElement.id === 'flow-trigger'); await empty();
+  });
+  await run('launcher-removed-restores-to-nearest-tabindex-container', async () => {
+    await mount({ panel: true }); await page.evaluate(() => ReactDOM.flushSync(() => focusFixture.removeTrigger()));
+    assert.equal(await page.locator('#flow-trigger').count(), 0);
+    await page.keyboard.press('Escape'); await page.waitForFunction(() => document.activeElement.id === 'focus-panel'); await empty();
+  });
   await run('nested-modal-scroll-lock-restores-inline-priorities', async () => {
     const state = () => page.evaluate(() => [document.documentElement, document.body].map(node =>
       ['overflow', 'overflow-x', 'overflow-y'].map(name => [name, node.style.getPropertyValue(name), node.style.getPropertyPriority(name)])));

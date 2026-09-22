@@ -1,6 +1,7 @@
 <style>
-:root { color-scheme: light; --page:#f5f7fa; --surface:#ffffff; --text:#24272c; --muted:#68707b; --line:#dce1e7; --accent:#cf3348; --warning:#956700; }
-:root[data-theme="dark"] { color-scheme:dark; --page:#191b20; --surface:#23262d; --text:#eff1f4; --muted:#afb6c2; --line:#3a404a; --accent:#ff7180; --warning:#efc86e; }
+/* 沿用工作台色系；浅色 muted 稍加深，保证在 page 底色上也有 4.5:1 对比度。 */
+:root { color-scheme: light; --page:#f1f5f9; --surface:#ffffff; --text:#0f172a; --muted:#5f6f82; --line:#e2e8f0; --accent:#2563eb; --warning:#b45309; }
+:root[data-theme="dark"] { color-scheme:dark; --page:#0f172a; --surface:#1e293b; --text:#f1f5f9; --muted:#94a3b8; --line:#334155; --accent:#60a5fa; --warning:#fde68a; }
 * { box-sizing:border-box; letter-spacing:0; }
 body { margin:0; background:var(--page); color:var(--text); font:14px/1.6 "Microsoft YaHei","PingFang SC",sans-serif; }
 main { max-width:1120px; padding:28px 24px 64px; margin:auto; min-width:0; }
@@ -9,7 +10,7 @@ h1 { font-size:22px; line-height:1.4; margin:0 0 8px; overflow-wrap:anywhere; }
 h2 { font-size:17px; margin:24px 0 12px; }
 a { color:var(--accent); text-underline-offset:3px; }
 button { font:inherit; padding:7px 15px; border:1px solid var(--line); border-radius:6px; cursor:pointer; background:var(--surface); color:var(--text); }
-button[type="submit"] { background:var(--accent); color:var(--surface); border-color:var(--accent); }
+button[type="submit"] { background:var(--accent); color:#ffffff; border-color:var(--accent); }
 button:disabled { opacity:.55; cursor:not-allowed; }
 section { margin-top:20px; padding-top:16px; border-top:1px solid var(--line); }
 dl { display:grid; grid-template-columns:minmax(100px,180px) minmax(0,1fr); gap:6px 18px; }

@@ -60,6 +60,7 @@
       disabled: disabled
     }, "\u8FD4\u56DE\u5217\u8868"), /*#__PURE__*/React.createElement(Button, {
       icon: "trash-2",
+      className: "btn danger",
       "aria-label": "\u5220\u9664\u6279\u6B21",
       disabled: disabled,
       reasonDisplay: "tooltip",

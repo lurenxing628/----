@@ -15,7 +15,8 @@ async function settle(page) {
   await page.evaluate(async () => { await document.fonts.ready; await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))); });
 }
 async function mount(page, spec = {}) {
-  await page.evaluate(spec => mountPlan(spec), { theme: state.theme, context: { query: '' }, ...spec });
+  // The board lives on the gantt tab now; analysis and delay show the projection tables for the same read.
+  await page.evaluate(spec => mountPlan(spec), { theme: state.theme, view: 'gantt', context: { query: '' }, ...spec });
   await page.getByRole('table', { name: '可选排产方案' }).waitFor(); await settle(page);
 }
 const ready = page => page.locator('[data-plan-gantt]').waitFor();
@@ -84,6 +85,9 @@ async function interactive(page) {
     ok((await page.locator('[data-plan-inspector]').textContent()).includes('时长'));
     ok(await page.getByRole('button', { name: /^调整此工序(?:：|$)/ }).isDisabled());
     ok(await page.getByRole('button', { name: /^保存：/ }).count() === 0, 'Read-only plan details cannot expose a save placeholder');
+    // Resource load and calendar tables live on the analysis tab; the same plan read shows them without the board.
+    await page.evaluate(() => mountPlan({ view: 'analysis', theme: document.documentElement.dataset.theme, context: { plan_ref: PlanUIFixtures.ref(1) } }));
+    await page.locator('section[aria-label="计划分析"]').waitFor(); equal(await page.locator('[data-plan-gantt]').count(), 0, 'Analysis tab has no board');
     await page.getByRole('button', { name: '资源负荷', exact: true }).click();
     await page.getByRole('table', { name: '资源负荷列表' }).waitFor(); await shot(page, 'selected-task-load');
     await page.getByRole('button', { name: '资源班表', exact: true }).click();
@@ -97,6 +101,20 @@ async function interactive(page) {
     equal(await page.evaluate(() => fixture.calls.filter(row => row.type === 'workspace').at(-1).ref), F.ref(1));
     ok((await page.evaluate(() => fixture.calls.filter(row => row.type === 'workspace').at(-1).scope.snapshot_ref)).startsWith('workspace-ui:'), 'Explicit view receives the same plan and snapshot');
     await layout(page); await shot(page, 'gantt-page');
+    // A relation chosen outside the gantt survives the shell context hand-off and is auto-located on the gantt.
+    const relatedData = F.workspace(F.ref(1), {}, { count: 36, processOrder: true }).data, initial = relatedData.tasks.at(-1);
+    await page.evaluate(({ initial, plan }) => mountPlan({ view: 'analysis', count: 36, processOrder: true,
+      context: { plan_ref: plan, selected_task_ref: initial } }), { initial: initial.task_ref, plan: F.ref(1) });
+    const relations = page.locator('[data-plan-inspector] section[aria-label="工艺前后序"]');
+    await relations.getByRole('button', { name: /^前序 / }).click();
+    await page.waitForFunction(() => fixture.context && fixture.context.selected_task_ref && fixture.context.selected_task_ref !== fixture.spec.context.selected_task_ref);
+    const carried = await page.evaluate(() => fixture.context); equal(carried.query, '');
+    const narrowBoard = await page.addStyleTag({ content: '.plan-board{height:80px!important;min-height:80px!important}' });
+    await page.evaluate(({ context, plan }) => mountPlan({ view: 'gantt', count: 36, processOrder: true,
+      context: { ...context, plan_ref: plan } }), { context: carried, plan: F.ref(1) });
+    await ready(page); await page.waitForFunction(ref => document.querySelector('[data-plan-task="' + ref + '"][aria-pressed="true"]'), carried.selected_task_ref);
+    await page.waitForFunction(() => document.querySelector('[data-plan-scroll]').scrollTop > 0);
+    await narrowBoard.evaluate(node => node.remove());
   });
   await run(page, 'catalog-cursor-does-not-reselect', async () => {
     await mount(page); await choose(page);
@@ -109,16 +127,23 @@ async function interactive(page) {
     ok(!(await page.locator('.plan-catalog').textContent()).includes('总页'));
     await choose(page, '夜班调整场景 3');
     await page.getByRole('checkbox', { name: '显示初始计划' }).check();
+    await page.getByRole('checkbox', { name: '仅变更' }).check();
     await page.locator('[data-before=true]').first().waitFor();
-    const scopeText = await page.locator('.plan-global-labels').textContent(); ok(scopeText.includes('2026-09-09 20:30:00'), 'Baseline moves start earlier, no clipping');
+    const scopeText = await page.locator('.plan-global-labels').textContent(); ok(scopeText.includes('2026-09-09 20:30:00'), 'Baseline moves start earlier without losing seconds or clipping');
     await page.locator('[data-before=true]').first().click();
     ok((await page.locator('[data-plan-inspector]').textContent()).includes('初始计划安排')); await shot(page, 'scenario-baseline');
+    await page.evaluate(() => { fixture.spec.baselineUnavailable = true; });
+    await page.getByRole('button', { name: '刷新所选计划' }).click();
+    await page.getByRole('checkbox', { name: '仅变更' }).waitFor({ state: 'attached' });
+    await page.waitForFunction(() => document.querySelector('input[aria-label="仅变更"]').disabled);
+    equal(await page.getByRole('checkbox', { name: '仅变更' }).isChecked(), false, 'Unavailable comparison clears the hidden filter');
+    equal(await page.locator('[data-plan-search-count]').textContent(), '36 / 36 道安排', 'Unavailable comparison cannot hide the refreshed plan');
   });
   await run(page, 'zoom-search-hover-boundaries', async () => {
     await mount(page); await choose(page); await page.getByRole('button', { name: '收起计划列表' }).click();
     const bar = page.locator('[data-plan-task]').first(), ref = await bar.getAttribute('data-plan-task');
     const before = await bar.boundingBox(); await bar.hover(); await page.getByRole('tooltip').waitFor();
-    ok((await page.getByRole('tooltip').textContent()).includes('2026-09-09 22:30:00')); await bar.click();
+    ok((await page.getByRole('tooltip').textContent()).includes('2026-09-09 22:30:00 至 ')); await bar.click();
     const selected = await bar.boundingBox(); equal(selected.width, before.width, 'Selection does not inflate real duration');
     await page.getByRole('button', { name: '放大时间轴' }).click(); await page.getByRole('button', { name: '定位选中任务' }).click(); await settle(page);
     const zoomed = await page.locator('[data-plan-task="' + ref + '"]').boundingBox(); ok(Math.abs(zoomed.width - 2 * before.width) < 1, 'Zoom proportional to time');
@@ -128,7 +153,7 @@ async function interactive(page) {
     await page.getByRole('searchbox').fill('D2609-012'); await page.getByRole('searchbox').press('Enter');
     ok((await page.locator('[data-plan-inspector]').textContent()).includes('D2609-012'));
     equal(await page.locator('.plan-global-labels').textContent(), global, 'Client search preserves complete time range');
-    await page.getByRole('button', { name: '显示完整时间范围' }).click(); await settle(page);
+    await (async () => { const fit = page.getByRole('button', { name: '显示完整时间范围' }); await fit.waitFor(); if (await fit.isEnabled()) await fit.click(); })(); await settle(page);
     equal(await page.locator('[data-plan-scroll]').evaluate(node => node.scrollLeft), 0);
     await shot(page, 'search-fit');
     await page.getByRole('searchbox').fill('不存在的安排'); equal(await page.locator('[data-plan-search-count]').textContent(), '0 / 36 道安排');
@@ -180,7 +205,7 @@ async function rangesAndLifecycle(page) {
     await page.getByLabel('读取结束时间', { exact: true }).fill('2026-09-10T01:00');
     await page.getByRole('button', { name: '应用范围', exact: true }).click(); await ready(page);
     equal(await page.evaluate(() => fixture.calls.filter(row => row.type === 'workspace').at(-1).scope), { range_start: '2026-09-09T23:00:00', range_end: '2026-09-10T01:00:00' });
-    const title = await page.locator('[data-plan-task]').first().getAttribute('title'); ok(title.includes('2026-09-09 22:30:00'), 'Task start is not clipped to query');
+    const title = await page.locator('[data-plan-task]').first().getAttribute('title'); ok(title.includes('2026-09-09 22:30:00 至 '), 'Task start is not clipped to query and keeps seconds');
     await page.getByRole('button', { name: '导出', exact: true }).click(); const pending = page.waitForEvent('download');
     await page.getByRole('dialog').getByRole('button', { name: '下载 CSV', exact: true }).click(); await pending;
     const scope = await page.evaluate(() => fixture.calls.filter(row => row.type === 'export').at(-1).scope);
@@ -193,11 +218,15 @@ async function rangesAndLifecycle(page) {
     await page.getByLabel('读取结束时间', { exact: true }).fill('2026-10-02T00:00');
     await page.getByRole('button', { name: '应用范围', exact: true }).click(); await ready(page);
     equal(await page.locator('[data-plan-search-count]').textContent(), '0 / 0 道安排');
-    ok((await page.getByRole('table', { name: '交付风险列表' }).textContent()).includes('没有记录'));
     ok(!(await page.locator('[data-plan-workspace]').textContent()).includes('全部完成'));
     await shot(page, 'empty-server-range');
     await page.getByRole('button', { name: '完整计划', exact: true }).click(); await ready(page);
     equal(await page.locator('[data-plan-search-count]').textContent(), '36 / 36 道安排');
+    // The delivery table lives on the analysis tab: the same empty range must report no records there, never completion.
+    await page.evaluate(() => mountPlan({ view: 'analysis', theme: document.documentElement.dataset.theme, context: { plan_ref: PlanUIFixtures.ref(1), range_start: '2026-10-01T00:00:00', range_end: '2026-10-02T00:00:00' } }));
+    await page.locator('section[aria-label="计划分析"]').waitFor();
+    ok((await page.getByRole('table', { name: '交付风险列表' }).textContent()).includes('没有记录'));
+    ok(!(await page.locator('[data-plan-workspace]').textContent()).includes('全部完成'));
   });
   await run(page, 'catalog-failure-cancel-export-and-adapter-reset', async () => {
     await mount(page, { badCatalog: true }); await page.getByRole('alert').waitFor(); equal(await page.getByRole('radio').count(), 0);
@@ -243,10 +272,12 @@ async function failures(page) {
   });
   await run(page, 'unknown-evidence-not-zero', async () => {
     await mount(page, { unknown: true, nullLabels: true }); await choose(page);
-    await page.getByRole('button', { name: '资源负荷', exact: true }).click();
-    ok((await page.getByRole('table', { name: '资源负荷列表' }).textContent()).includes('无法核实'));
     await page.locator('[data-plan-task]').first().click(); const text = await page.locator('[data-plan-inspector]').textContent();
     ok(text.includes('无法核实') && text.includes('未排工序') && text.includes('M-0'));
+    // Resource load lives on the analysis tab; unknown evidence must read as unverifiable there too, never as zero.
+    await page.evaluate(() => mountPlan({ view: 'analysis', theme: document.documentElement.dataset.theme, unknown: true, nullLabels: true, context: { plan_ref: PlanUIFixtures.ref(1) } }));
+    await page.locator('section[aria-label="计划分析"]').waitFor(); await page.getByRole('button', { name: '资源负荷', exact: true }).click();
+    ok((await page.getByRole('table', { name: '资源负荷列表' }).textContent()).includes('无法核实'));
     await shot(page, 'unknown-evidence');
   });
 }

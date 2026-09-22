@@ -21,7 +21,7 @@
           <div><div className="iotitle">{title}</div><div className="iosub">{detail}</div></div></label>)}
     </fieldset>;
   }
-  function ExportScope({ value, onChange, disabled, refs = [] }) {
+  function ExportScope({ value, onChange, disabled, refs = [], error = null }) {
     const id = React.useId();
     const set = (key, next) => onChange({ ...value, [key]: next });
     return <>
@@ -29,14 +29,14 @@
       <fieldset style={{ border: 0, margin: 0, padding: 0 }} disabled={disabled}>
         <legend className="seclabel">导出范围</legend>
         <div className="fgrid">
-          <Field label="开始日期" path="start_date" required>
+          <Field label="开始日期" path="start_date" error={error} required>
             <input id={id + '-from'} type="date" value={value.start_date} disabled={disabled}
               onChange={event => set('start_date', event.target.value)} /></Field>
-          <Field label="结束日期" path="end_date" required>
+          <Field label="结束日期" path="end_date" error={error} required>
             <input id={id + '-to'} type="date" value={value.end_date} disabled={disabled}
               onChange={event => set('end_date', event.target.value)} /></Field>
         </div>
-        <p className="iohint">只导出这段时间里单独配置过的日期。没有单独配置过的日期按默认规则算，不会出现在文件里，
+        <p className="iohint">只导出这段时间里单独设置过的日期。没有单独设置过的日期按默认规则算，不会出现在文件里，
           所以导出的文件原样导回来不会有任何改动。</p>
       </fieldset></>;
   }
@@ -47,6 +47,8 @@
       ...window.APSCalendarFile.create(kind),
       // 个人日历从人员列表打开，勾了人就默认只导这些人；全局日历没有这一维。
       exportScopeInitial: { ...monthRange(month || thisMonth()), ...(people ? { people: refs.length ? 'selected' : 'all' } : {}) },
+      // 日期范围填错时错误标到对应的日期项上，总错误框只留一句话，不再重复逐项说明。
+      exportFieldPaths: ['start_date', 'end_date'],
       ExportScope
     }), [kind, people, refs.length, month && month.year, month && month.month]);
     return <window.ResourceFileActionFlow key={kind} {...props} request={request} contract={contract} />;

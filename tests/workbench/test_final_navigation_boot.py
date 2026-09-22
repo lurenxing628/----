@@ -37,6 +37,17 @@ class NavigationBootTests(unittest.TestCase):
         with self.assertRaises(WorkbenchNavigationInvalid):
             read_navigation("trial", MultiDict({"view": "gantt"}))
 
+    def test_maintenance_page_links_after_restart_say_maintenance_is_over(self):
+        # 恢复维护页里「查看这条结果 / 导出维护诊断」的地址在软件重启后会落到普通入口，要说清是维护已结束，不是地址写错。
+        for args in (MultiDict({"kind": "request", "reference": "system-" + "a" * 48}),
+                     MultiDict({"reference": "b" * 32, "kind": "job", "download": "diagnostic"}),
+                     MultiDict({"download": "diagnostic"})):
+            with self.subTest(args=list(args.items(multi=True))):
+                with self.assertRaisesRegex(WorkbenchNavigationInvalid, "维护已结束.*「系统管理」"):
+                    read_navigation("dashboard", args)
+        with self.assertRaisesRegex(WorkbenchNavigationInvalid, "不支持的条件"):
+            read_navigation("dashboard", MultiDict({"reference": "x", "resume": "yes"}))
+
     def test_valid_contexts_preserve_exact_values_and_query(self):
         for view, context in VALID_CONTEXTS:
             with self.subTest(view=view, context=context):

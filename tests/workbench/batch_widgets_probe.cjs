@@ -153,14 +153,14 @@ async function cases() {
   await run('stale-edit-keeps-draft-explicit-review', async () => {
     await mount({ stale: true }); await button('B001').click(); await button('编辑基础信息').click(); await type('备注', '不能丢失的草稿'); await button('保存基础信息').click();
     await page.getByText('MOCK stale：资料已变化', { exact: true }).waitFor(); assert.equal(await page.getByRole('textbox', { name: '备注' }).inputValue(), '不能丢失的草稿');
-    await button('刷新并核对').click(); await button('采用最新资料').waitFor(); assert(await button('保存基础信息').isDisabled());
-    await button('采用最新资料').click(); assert.equal(await page.getByRole('textbox', { name: '备注' }).inputValue(), '不能丢失的草稿'); await shot('stale-preserved');
+    await button('刷新最新资料').click(); await button('已核对，继续编辑').waitFor(); assert(await button('保存基础信息').isDisabled());
+    await button('已核对，继续编辑').click(); assert.equal(await page.getByRole('textbox', { name: '备注' }).inputValue(), '不能丢失的草稿'); await shot('stale-preserved');
     await page.evaluate(() => f.spec.stale = false); await button('保存基础信息').click(); await page.getByText('保存已完成。', { exact: true }).waitFor(); await button('关闭').last().click();
   });
   await run('bulk-preview-cancel-and-confirm', async () => {
     await mount(); await page.getByRole('checkbox', { name: '选择 B001', exact: true }).check(); await button('批量修改').click(); await type('批量备注', '批量实际输入');
     await button('预览变更').click(); await page.getByRole('dialog', { name: '确认批量修改' }).waitFor(); assert.equal(await page.evaluate(() => f.commands.length), 0); await shot('bulk-preview');
-    await button('取消').click(); assert.equal(await page.evaluate(() => f.commands.length), 0); await button('删除所选').click(); await button('确认删除').click();
+    await button('取消').click(); assert.equal(await page.evaluate(() => f.commands.length), 0); await button('删除所选').click(); await page.getByRole('dialog', { name: '确认删除批次 B001' }).waitFor(); await page.getByRole('checkbox', { name: /确认删除批次 B001/ }).check(); await button('确认删除').click();
     await page.getByText('删除已完成。', { exact: true }).waitFor(); assert.equal(await page.evaluate(() => f.rows.some(r => r.business_code === 'B001')), false); await button('关闭').last().click();
   });
   await run('uncertain-receipt-locks-writes', async () => {
@@ -177,7 +177,7 @@ async function cases() {
     await shot('file-preview'); await button('确认导入').click(); await page.getByText('保存已完成。', { exact: true }).waitFor(); assert.equal(await page.evaluate(() => f.files[1].mode), 'append');
     assert.equal(await page.evaluate(() => f.commands[0].action), 'import_confirm'); await button('关闭').last().click();
     await button('批量导出').click(); const downloading = page.waitForEvent('download'); await button('下载批次清单').click(); const file = await downloading; assert.equal(file.suggestedFilename(), '批次清单.xlsx');
-    assert.equal(await page.evaluate(() => f.exports[0].selection), 'filtered'); await page.getByText('已生成 25 个批次的清单。', { exact: true }).waitFor(); await button('取消').click();
+    assert.equal(await page.evaluate(() => f.exports[0].selection), 'filtered'); await page.getByText('已交给浏览器下载：批次清单.xlsx（共 25 个批次）', { exact: true }).waitFor(); await button('取消').click();
   });
   await run('replace-errors-disable-confirmation', async () => {
     await mount({ fileErrors: true }); await button('批量导入').click(); await page.getByLabel('导入模式').selectOption('replace');

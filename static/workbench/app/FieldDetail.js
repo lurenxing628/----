@@ -48,6 +48,7 @@
     }
     return /*#__PURE__*/React.createElement("div", {
       className: "field-timeline",
+      role: "region",
       "aria-label": "\u4F5C\u4E1A\u65F6\u95F4\u7EBF"
     }, /*#__PURE__*/React.createElement(window.PointGantt.Styles, null), /*#__PURE__*/React.createElement("div", {
       className: "field-timeline-axis"
@@ -147,7 +148,10 @@
       if (nextDraft && task && !request.loading && !request.error) onContinueReady(task);
     }, [nextDraft, task, request.loading, request.error, onContinueReady]);
     React.useEffect(() => {
-      if (task && detail.current && !editor && !nextDraft) detail.current.scrollIntoView({
+      if (!task || !detail.current || editor || nextDraft) return;
+      // Only bring the detail into view when it is off screen; scrolling an already visible detail pushed the toolbar away.
+      const box = detail.current.getBoundingClientRect();
+      if (box.top < 0 || box.top > window.innerHeight - 120) detail.current.scrollIntoView({
         block: 'start',
         inline: 'nearest'
       });
@@ -178,10 +182,7 @@
     }, /*#__PURE__*/React.createElement("div", {
       className: "field-detail-heading"
     }, /*#__PURE__*/React.createElement("h3", {
-      style: {
-        maxWidth: '100%',
-        overflowWrap: 'anywhere'
-      }
+      className: "field-detail-title"
     }, task.batch_id, " \xB7 ", task.operation_label, " \xB7 ", C.pieceLabel(task)), /*#__PURE__*/React.createElement(State, {
       value: p.execution_state
     }), /*#__PURE__*/React.createElement("span", {
@@ -221,7 +222,7 @@
           }
         });
       }
-    }, "\u5B9E\u9645\u7518\u7279")), timeline && /*#__PURE__*/React.createElement(Timeline, {
+    }, "\u73B0\u573A\u5B9E\u9645\u7518\u7279")), timeline && /*#__PURE__*/React.createElement(Timeline, {
       task: task
     }), p.completion_basis === 'legacy_finish_event' && /*#__PURE__*/React.createElement("div", {
       className: "field-note"
@@ -238,39 +239,10 @@
       "aria-label": "\u9010\u6B21\u62A5\u5DE5\u8BB0\u5F55"
     }, /*#__PURE__*/React.createElement("caption", {
       className: "wb-visually-hidden"
-    }, "\u672C\u5DE5\u5E8F\u6BCF\u6B21\u62A5\u5DE5\u7684\u6570\u91CF\u3001\u5B9E\u9645\u8D77\u6B62\u3001\u6709\u6548\u5DE5\u65F6\u3001\u8D44\u6E90\u548C\u66F4\u6B63\u64CD\u4F5C"), /*#__PURE__*/React.createElement("colgroup", null, /*#__PURE__*/React.createElement("col", {
-      style: {
-        width: '14%'
-      }
-    }), /*#__PURE__*/React.createElement("col", {
-      style: {
-        width: '8%'
-      }
-    }), /*#__PURE__*/React.createElement("col", {
-      style: {
-        width: '15%'
-      }
-    }), /*#__PURE__*/React.createElement("col", {
-      style: {
-        width: '15%'
-      }
-    }), /*#__PURE__*/React.createElement("col", {
-      style: {
-        width: '8%'
-      }
-    }), /*#__PURE__*/React.createElement("col", {
-      style: {
-        width: '12%'
-      }
-    }), /*#__PURE__*/React.createElement("col", {
-      style: {
-        width: '8%'
-      }
-    }), /*#__PURE__*/React.createElement("col", {
-      style: {
-        width: 190
-      }
-    })), /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, ['报工编号', '本次数量', '实际开工', '本次完工', '有效工时（小时）', '实际设备 / 人员', '备注', '操作'].map((name, index) => /*#__PURE__*/React.createElement("th", {
+    }, "\u672C\u5DE5\u5E8F\u6BCF\u6B21\u62A5\u5DE5\u7684\u6570\u91CF\u3001\u5B9E\u9645\u8D77\u6B62\u3001\u6709\u6548\u5DE5\u65F6\u3001\u8D44\u6E90\u548C\u66F4\u6B63\u64CD\u4F5C"), /*#__PURE__*/React.createElement("colgroup", null, ['no', 'quantity', 'start', 'end', 'hours', 'resource', 'remark', 'actions'].map(key => /*#__PURE__*/React.createElement("col", {
+      key: key,
+      className: 'field-report-col-' + key
+    }))), /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, ['报工编号', '本次数量', '实际开工', '本次完工', '有效工时（小时）', '实际设备 / 人员', '备注', '操作'].map((name, index) => /*#__PURE__*/React.createElement("th", {
       key: name,
       scope: "col",
       className: index === 7 ? 'wb-col-actions' : undefined
@@ -281,7 +253,7 @@
       "aria-label": '录入信息 ' + record.report_no,
       "aria-expanded": historyRef === record.report_ref,
       onClick: () => setHistoryRef(historyRef === record.report_ref ? null : record.report_ref)
-    })), /*#__PURE__*/React.createElement("td", null, C.display(record.completed_quantity)), /*#__PURE__*/React.createElement("td", null, C.date(record.actual_start)), /*#__PURE__*/React.createElement("td", null, C.date(record.actual_end)), /*#__PURE__*/React.createElement("td", null, C.display(record.effective_processing_hours)), /*#__PURE__*/React.createElement("td", null, C.display(record.actual_machine_label), /*#__PURE__*/React.createElement("small", null, C.display(record.actual_operator_label))), /*#__PURE__*/React.createElement("td", null, C.display(record.remark)), /*#__PURE__*/React.createElement("td", {
+    })), /*#__PURE__*/React.createElement("td", null, C.display(record.completed_quantity)), /*#__PURE__*/React.createElement("td", null, C.date(record.actual_start)), /*#__PURE__*/React.createElement("td", null, C.date(record.actual_end)), /*#__PURE__*/React.createElement("td", null, C.hours(record.effective_processing_hours)), /*#__PURE__*/React.createElement("td", null, C.display(record.actual_machine_label), /*#__PURE__*/React.createElement("small", null, C.display(record.actual_operator_label))), /*#__PURE__*/React.createElement("td", null, C.display(record.remark)), /*#__PURE__*/React.createElement("td", {
       className: "wb-col-actions"
     }, /*#__PURE__*/React.createElement("div", {
       className: "field-report-actions"
@@ -360,7 +332,7 @@
       className: "field-note"
     }, /*#__PURE__*/React.createElement("summary", null, "\u5DF2\u64A4\u9500\u62A5\u5DE5 \xB7 ", p.voided_reports.length, " \u6761"), p.voided_reports.map(item => /*#__PURE__*/React.createElement("section", {
       key: item.void_fact.void_fact_ref
-    }, /*#__PURE__*/React.createElement("h4", null, item.report.report_no, " \xB7 \u5DF2\u64A4\u9500"), /*#__PURE__*/React.createElement("p", null, C.date(item.void_fact.recorded_at), " \xB7 ", item.void_fact.local_operator, item.void_fact.declared_operator ? ' · 经办人 ' + item.void_fact.declared_operator : '', " \xB7 ", item.void_fact.reason), /*#__PURE__*/React.createElement("p", null, "\u539F\u6570\u91CF ", C.display(item.report.completed_quantity), " \u4EF6 \xB7 \u539F\u6709\u6548\u5DE5\u65F6 ", C.display(item.report.effective_processing_hours), " \u5C0F\u65F6"), /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("h4", null, item.report.report_no, " \xB7 \u5DF2\u64A4\u9500"), /*#__PURE__*/React.createElement("p", null, C.date(item.void_fact.recorded_at), " \xB7 ", item.void_fact.local_operator, item.void_fact.declared_operator ? ' · 经办人 ' + item.void_fact.declared_operator : '', " \xB7 ", item.void_fact.reason), /*#__PURE__*/React.createElement("p", null, "\u539F\u6570\u91CF ", C.display(item.report.completed_quantity), " \u4EF6 \xB7 \u539F\u6709\u6548\u5DE5\u65F6 ", C.hours(item.report.effective_processing_hours), " \u5C0F\u65F6"), /*#__PURE__*/React.createElement("div", {
       className: "field-history"
     }, /*#__PURE__*/React.createElement("dl", null, /*#__PURE__*/React.createElement("dt", null, "\u539F\u5B9E\u9645\u8D77\u6B62"), /*#__PURE__*/React.createElement("dd", null, C.date(item.report.actual_start), " \u81F3 ", C.date(item.report.actual_end)), /*#__PURE__*/React.createElement("dt", null, "\u539F\u8BBE\u5907 / \u4EBA\u5458"), /*#__PURE__*/React.createElement("dd", null, C.display(item.report.actual_machine_label), " / ", C.display(item.report.actual_operator_label)), /*#__PURE__*/React.createElement("dt", null, "\u539F\u5907\u6CE8"), /*#__PURE__*/React.createElement("dd", null, C.display(item.report.remark)))), /*#__PURE__*/React.createElement(History, {
       record: item.report

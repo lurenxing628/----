@@ -83,6 +83,7 @@
       onBlur: () => onHover(null)
     });
     return /*#__PURE__*/React.createElement("button", {
+      type: "button",
       className: 'fg-mark fg-' + kind,
       "data-actual-mark": mark.kind,
       "data-report-ref": mark.report && mark.report.report_ref,
@@ -220,7 +221,7 @@
         canvasPainted,
         selected: view.selected
       });
-      const pending = window.PointContract.isPoint(t) ? '零工时工序已安排 · 完成待确认' : '待续排';
+      const pending = window.PointContract.isPoint(t) ? '零工时工序已安排 · 完成待确认' : '剩余数量还没安排';
       const nowX = (model.asOf - model.start) / (model.end - model.start) * width;
       const timing = M.deadlines(item, M.wire(model.asOf));
       return /*#__PURE__*/React.createElement("div", {
@@ -232,6 +233,7 @@
       }, /*#__PURE__*/React.createElement("div", {
         className: "fg-frozen"
       }, /*#__PURE__*/React.createElement("button", {
+        type: "button",
         className: "fg-task-select",
         title: M.taskLabel(t),
         onClick: () => onSelect(item, row.reports[0]),

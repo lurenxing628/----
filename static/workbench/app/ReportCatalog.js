@@ -53,27 +53,28 @@
       setDownloading(true);
       setError(null);
       try {
-        await api.download('/api/workbench/v1/reports/' + kind + '/export', {
+        const result = await api.download('/api/workbench/v1/reports/' + kind + '/export', {
           ...input,
           snapshot_ref: response.meta.snapshot_ref,
           format: 'xlsx'
         });
-        setNotice('完整范围 XLSX 已交给浏览器下载。');
+        setNotice(window.WorkbenchTerms.download_started(result.filename) + '（完整范围）。');
       } catch (failure) {
         setError(failure);
       } finally {
         setDownloading(false);
       }
     }
+    const empty = {
+      title: '当前范围没有结果',
+      hint: kind === 'official-review' ? '当前正式计划里没有符合范围的工序。' : '调整统计日期或搜索条件后重新查询。'
+    };
     return /*#__PURE__*/React.createElement("section", {
       "aria-label": "\u5176\u4ED6\u62A5\u8868\u5217\u8868"
     }, /*#__PURE__*/React.createElement("div", {
       className: "rw-table-heading"
     }, /*#__PURE__*/React.createElement("div", {
-      className: "rw-filters",
-      style: {
-        marginLeft: 0
-      }
+      className: "rw-filters rw-filters-start"
     }, /*#__PURE__*/React.createElement("label", null, "\u62A5\u8868", /*#__PURE__*/React.createElement("select", {
       "aria-label": "\u5176\u4ED6\u62A5\u8868",
       value: kind,
@@ -175,7 +176,8 @@
       data: kind === 'official-review' ? {
         ...response.data,
         topic: 'delivery'
-      } : response.data
+      } : response.data,
+      empty: empty
     }), /*#__PURE__*/React.createElement(Page, {
       page: response.data.page,
       onChange: patch => setTable(old => ({

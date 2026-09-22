@@ -7,7 +7,7 @@ async function post(page,suffix,click,status=200){
   await click();const response=await pending;assert.equal(response.status(),status,await response.text());return response.json();
 }
 async function receipt(page,suffix,name,verb='保存'){
-  // Feedback names the finished action (ResourceForms.Feedback verb mapping): 保存 / 删除 / 清除日历配置 / 导入.
+  // Feedback names the finished action (ResourceForms.Feedback verb mapping): 保存 / 删除 / 清除单独设置 / 导入.
   const value=await post(page,suffix,()=>page.getByRole('dialog').getByRole('button',{name,exact:true}).click());
   assert(['committed','unchanged'].includes(value.result));await page.getByRole('dialog').getByText(verb+'已完成。',{exact:true}).waitFor();return value;
 }
@@ -46,8 +46,8 @@ async function calendar(page,state,helpers){
     await page.getByText('已刷新，显示最新工作日历。',{exact:true}).waitFor();await close(page);
     await page.getByRole('button',{name:/^2026-09-10 单独设置/}).click();
     assert.equal(await page.getByRole('dialog').getByLabel('可排工时（小时）',{exact:true}).inputValue(),'0');
-    await page.getByRole('button',{name:'清除配置',exact:true}).click();
-    await receipt(page,'/calendar/delete','确认清除，恢复默认','清除日历配置');await close(page);
+    await page.getByRole('button',{name:'清除单独设置',exact:true}).click();
+    await receipt(page,'/calendar/delete','确认清除，恢复默认','清除单独设置');await close(page);
     await page.getByRole('button',{name:/^2026-09-10 默认规则/}).waitFor();await layout(page);
   });
   await run(page,state,'calendar-range-preview-confirm-clear',async()=>{
@@ -64,7 +64,7 @@ async function calendar(page,state,helpers){
       await startPicker.getByRole('gridcell',{name:'2027-01-04',exact:true}).click();
       await end.fill('2027-01-09');
       const endPicker=await openPicker(end);await endPicker.getByRole('gridcell',{name:'2027-01-08',exact:true}).click();
-      if(operation==='delete')await dialog.getByRole('button',{name:'清除配置，恢复默认',exact:true}).click();
+      if(operation==='delete')await dialog.getByRole('button',{name:'清除单独设置，恢复默认',exact:true}).click();
       const preview=await post(page,'/calendar/range/preview',()=>dialog.getByRole('button',{name:'预览变更',exact:true}).click());
       assert.equal(preview.data.counts.selected,5);assert.equal(preview.data.days.length,5);
       const control=await dialog.getByRole('combobox',{name:'预览变更页码',exact:true}).evaluate(node=>({height:node.getBoundingClientRect().height,background:getComputedStyle(node).backgroundColor,theme:document.documentElement.dataset.theme}));

@@ -15,7 +15,8 @@ FAMILIES = {
     "WBP-DASH-012": "batch quantity due-date ready-status ready-date constraints",
     "WBP-DASH-013": "candidate-radio benefits-costs per-batch-change summary-dialog",
     "WBP-DASH-014": "no-independent-candidate existing-candidates navigation-confirm unlocatable return-context",
-    "WBP-SYS-001": "source-current source-sample tab-overview tab-backups tab-logs tab-config keyboard-tabs metric-page metric-source metric-database metric-backup",
+    # 2026-09-21 管理样例下线：系统管理只读本机数据，不再有 source-current / source-sample 两个动作。
+    "WBP-SYS-001": "tab-overview tab-backups tab-logs tab-config keyboard-tabs metric-page metric-source metric-database metric-backup",
     "WBP-SYS-002": "row-backups row-logs row-config",
     "WBP-SYS-003": "check-runtime check-scripts check-ui check-icons check-styles check-model check-download check-theme rerun timestamp",
     "WBP-SYS-004": "download-json verify-json-payload",

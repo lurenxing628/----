@@ -79,6 +79,10 @@ def test_base_header_mounts_plan_workbench_menu() -> None:
     assert "const NAV_GROUPS" not in source
     # The plan-center tab strip hides inside 排产历史 and help carries the current view back to the manual.
     assert "WorkbenchNavigation.historyView(page)" in source and "WorkbenchNavigation.helpUrl(boot, page)" in source
+    # Scroll events capture immediately by history key; the 200 ms writer remains throttled, and a pop target only
+    # consumes the snapshot stored for that exact entry instead of receiving the outgoing page's position.
+    assert "scrollSnapshots.current.set(activePage.current.key, window.WorkbenchNavigation.captureScroll())" in source
+    assert "scrollSnapshots.current.get(next.key)" in source
     assert not (REPO_ROOT / "templates/base.html").exists()
 
 
@@ -146,8 +150,8 @@ def test_workbench_header_controls_show_instance_help_and_preference_actions(app
     result = browser_contract("""
 const controls = document.querySelector('.header-controls');
 expect(controls.querySelector('.wb-instance-label').textContent === '导航合同测试副本');
-expect(/^\\/scheduler\\/config\\/manual\\?src=%2Fworkbench%3Fview%3D[a-z]+$/.test(controls.querySelector('a.wb-help-link').getAttribute('href')),
-  'help link must carry the current view as src');
+expect(/^\\/scheduler\\/config\\/manual\\?src=%2Fworkbench%3Fview%3D[a-z]+&page=[a-z]+$/.test(controls.querySelector('a.wb-help-link').getAttribute('href')),
+  'help link must carry the current view as src and page');
 const theme = Array.from(controls.querySelectorAll('button')).find(button => /切换[深浅]色/.test(button.textContent));
 const density = Array.from(controls.querySelectorAll('button')).find(button => button.textContent === '紧凑表格');
 expect(theme && density, 'Missing preference action');

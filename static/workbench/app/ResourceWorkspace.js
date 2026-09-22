@@ -690,8 +690,6 @@
       selected: selected,
       ready: !!data,
       onClearSelection: () => setSelected([])
-    }), data && data.entities.length > 0 && /*#__PURE__*/React.createElement(ErrorBox, {
-      error: list.error
     }), data && /*#__PURE__*/React.createElement(Issues, {
       issues: list.result.warnings
     }), /*#__PURE__*/React.createElement(Tables, {

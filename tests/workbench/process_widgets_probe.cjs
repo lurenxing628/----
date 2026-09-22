@@ -268,9 +268,9 @@ async function cases() {
         assert.deepEqual(await table().locator('tbody tr').evaluateAll(rows => rows.map(row => row.dataset.processRef)), expected);
       }
     }
-    await page.getByRole('tab', { name: /^待导入路线/ }).click(); await settled(); assert.equal(await table().locator('tbody tr').count(), 22);
-    await page.getByRole('tab', { name: /^已就绪/ }).click(); await settled(); assert(await page.getByText('当前筛选没有匹配的零件', { exact: true }).isVisible());
-    await page.getByRole('tab', { name: /^全部/ }).click(); await settled(); await button('清除所有选择').click();
+    await page.getByRole('button', { name: /^待导入路线/ }).click(); await settled(); assert.equal(await table().locator('tbody tr').count(), 22);
+    await page.getByRole('button', { name: /^已就绪/ }).click(); await settled(); assert(await page.getByText('当前筛选没有匹配的零件', { exact: true }).isVisible());
+    await page.getByRole('button', { name: /^全部/ }).click(); await settled(); await button('清除所有选择').click();
     assert.equal(await page.locator('[data-process-selection-count]').innerText(), '0'); await shot('list');
     assert((await page.evaluate(() => fixture.keys.filter(x => x.label === '搜索图号、名称、路线').map(x => x.key))).includes('P'));
   });
@@ -313,7 +313,7 @@ async function cases() {
   });
   await run('rows-preview-invalid-integer-duplicate-mode-drafts', async () => {
     await mount(); await entry(2); const input = page.getByRole('textbox', { name: '路线文字', exact: true }); await type(input, 'TextDraft');
-    await page.getByRole('tab', { name: '逐行表格', exact: true }).click();
+    await page.getByRole('button', { name: '逐行表格', exact: true }).click();
     const seq = page.getByRole('textbox', { name: '第 1 行工序号', exact: true }), name = page.getByRole('combobox', { name: '第 1 行工种', exact: true });
     // The op_type catalog is read once on entry and only suggests: free text still reaches the server preflight.
     await page.waitForFunction(() => document.querySelectorAll('.process-route-entry datalist option').length === 3);
@@ -328,8 +328,8 @@ async function cases() {
     assert(await page.getByText(/工序号重复/).isVisible()); assert((await page.locator('[data-process-preview]').innerText()).includes('输入存在待处理问题'));
     await type(page.getByRole('textbox', { name: '第 2 行工序号', exact: true }), '10'); await preflight();
     assert.deepEqual(await page.evaluate(() => fixture.reads.filter(x => x.type === 'preview').at(-1).body), { mode: 'rows', rows: [{ seq: 5, op_type_name: 'Turn' }, { seq: 10, op_type_name: 'Unknown' }], snapshot_ref: 'fixture-detail' });
-    await shot('rows-preview'); await page.getByRole('tab', { name: '整条录入', exact: true }).click(); assert.equal(await input.inputValue(), 'TextDraft');
-    assert.equal(await page.locator('[data-process-preview]').count(), 0); await page.getByRole('tab', { name: '逐行表格', exact: true }).click(); assert.equal(await name.inputValue(), 'Turn');
+    await shot('rows-preview'); await page.getByRole('button', { name: '整条录入', exact: true }).click(); assert.equal(await input.inputValue(), 'TextDraft');
+    assert.equal(await page.locator('[data-process-preview]').count(), 0); await page.getByRole('button', { name: '逐行表格', exact: true }).click(); assert.equal(await name.inputValue(), 'Turn');
     await button('删除第 1 行').click(); assert.equal(await name.inputValue(), 'Unknown');
     await page.keyboard.press('Escape'); assert.equal(await page.getByRole('dialog').count(), 1);
     await button('录入路线').click(); assert.equal(await name.inputValue(), 'Unknown');
@@ -337,11 +337,12 @@ async function cases() {
   });
   await run('list-fail-empty-retry-malformed-stale-page', async () => {
     await mount({ failList: true }); assert(await page.getByText('Mock 列表读取失败', { exact: true }).isVisible());
-    await page.evaluate(() => { fixture.spec.failList = false; fixture.spec.empty = true; }); await button('刷新列表').click(); await settled(); assert(await page.getByText('暂无零件工艺', { exact: true }).isVisible());
+    // 列表顶部的 ErrorBox 与「刷新列表」按钮已删除，读取失败只剩表内错误态（TableEmpty kind=error）里的「刷新」。
+    await page.evaluate(() => { fixture.spec.failList = false; fixture.spec.empty = true; }); await button('刷新').click(); await settled(); assert(await page.getByText('暂无零件工艺', { exact: true }).isVisible());
     await page.evaluate(() => { fixture.spec.empty = false; fixture.spec.badList = true; }); await button('刷新工艺列表').click(); await settled(); assert(await page.getByText(/读到的工艺列表不完整/).isVisible());
-    await page.evaluate(() => { fixture.spec.badList = false; fixture.spec.stalePage = true; }); await button('刷新列表').click(); await settled();
+    await page.evaluate(() => { fixture.spec.badList = false; fixture.spec.stalePage = true; }); await button('刷新').click(); await settled();
     await button('下一页').click(); await settled(); assert(await page.getByText(/翻页位置已失效/).isVisible());
-    await page.evaluate(() => fixture.spec.stalePage = false); await button('刷新列表').click(); await button('查看 PART-001').waitFor();
+    await page.evaluate(() => fixture.spec.stalePage = false); await button('刷新').click(); await button('查看 PART-001').waitFor();
   });
   await run('detail-preview-errors-retry-capability-fail-closed', async () => {
     await mount({ demoDetail: true }); await button('查看 PART-001').click(); await page.getByText('未取得原零件的生产详情，不能使用样例替代。', { exact: true }).waitFor();
@@ -415,7 +416,7 @@ async function cases() {
     const rendered = await page.locator('[data-process-preview]').innerText();
     for (const value of ['9223372036854775807', '9223372036854775806', '9007199254740992']) assert(rendered.includes(value));
     assert(!rendered.includes('9223372036854776000'));
-    await page.getByRole('tab', { name: '逐行表格', exact: true }).click();
+    await page.getByRole('button', { name: '逐行表格', exact: true }).click();
     assert.equal(await page.getByRole('textbox', { name: '第 1 行工序号', exact: true }).inputValue(), '9223372036854775807');
     assert.equal(await page.getByRole('combobox', { name: '第 1 行工种', exact: true }).inputValue(), 'Turn', 'original operation name, not renamed master label');
     assert.equal(await page.getByRole('table', { name: '逐行路线录入' }).locator('tbody tr').count(), 3, 'deleted record not resurrected into draft');
@@ -444,9 +445,9 @@ async function cases() {
     await mount({ failPreview: true }); await entry(2); const input = page.getByRole('textbox', { name: '路线文字', exact: true });
     await type(input, '5Turn10Unknown'); await button('预检路线').click(); await page.getByText('Mock 预检快照失效', { exact: true }).waitFor();
     await page.evaluate(() => { fixture.spec.failPreview = false; fixture.spec.detailSnapshot = 'fresh-detail'; });
-    await button('刷新详情并保留草稿').click(); await page.getByText('已刷新详情，录入内容保留；请核对后重新预检。', { exact: true }).waitFor();
+    await button('刷新最新资料').click(); await page.getByText('已刷新详情，录入内容保留；请核对后重新预检。', { exact: true }).waitFor();
     assert.equal(await input.inputValue(), '5Turn10Unknown'); assert(await button('预检路线').isDisabled());
-    await button('采用最新资料').click();
+    await button('已核对，继续编辑').click();
     assert.equal(await input.inputValue(), '5Turn10Unknown'); await preflight();
     assert.equal(await page.evaluate(() => fixture.reads.filter(x => x.type === 'preview').at(-1).body.snapshot_ref), 'fresh-detail');
     assert(await page.getByRole('button', { name: /^确认保存路线/ }).isDisabled());

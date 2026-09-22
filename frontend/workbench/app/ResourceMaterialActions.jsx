@@ -28,6 +28,9 @@
     const effectiveMode = command.intent && ['sending', 'pending', 'checking', 'done'].includes(command.phase)
       ? ({ [M.kind + '_import']: 'import', [M.kind + '_bulk']: 'bulk' })[command.intent.kind] || mode : mode;
     const isExport = effectiveMode === 'export', done = command.phase === 'done', recovery = original.recovery === true;
+    // 已选文件或已有预检结果都算未完成的填写：关闭弹窗前先过离开守卫，和工艺文件导入一致。
+    const dirty = !done && !command.locked && (effectiveMode === 'import' ? !!file || !!job : effectiveMode === 'bulk' && !!job);
+    const guardOwner = window.WorkbenchGuards.useDirtyGuard({ dirty, locked: command.locked, message: label + (isExport ? '导出' : effectiveMode === 'bulk' ? '删除' : '导入') + '还没有完成，离开会放弃已选文件和预检结果。' });
     const query = S.useQuery(async signal => {
       if (typeof adapter.preview !== 'function') throw C.failure('dependency not wired: adapter.preview');
       let body;
@@ -63,8 +66,9 @@
         if (alive.current) setError(C.failure('已保存，但列表刷新失败：' + C.message(failure)));
       });
     }, [done, command.intent, command.result, onCommitted]);
-    function close() {
+    async function close(detail) {
       if (command.locked) return;
+      if (!(detail && detail.guardConfirmed === true && detail.guardOwner === guardOwner) && !await window.WorkbenchGuards.confirmLeave({ owner: guardOwner })) return;
       if (!command.reset()) return;
       if (downloadAbort.current) downloadAbort.current.abort();
       onClose();
@@ -120,8 +124,8 @@
     const title = ({ import: '批量导入', export: '批量导出', bulk: '批量删除' }[effectiveMode] || '操作') + ' · ' + label;
     const refs = Array.isArray(original.refs) ? original.refs : [];
     return <div className={'plana rm-actions' + (data && !isExport ? ' rm-wide' : '')}><Preview.Styles />
-      <Modal title={title} icon={effectiveMode === 'bulk' ? 'trash-2' : isExport ? 'file-output' : 'file-input'} onClose={close} locked={command.locked}
-        footer={<><Button onClick={close} reason={command.locked ? '结果还没确认，暂时不能关闭。' : ''}>{done || download.name ? '完成' : '取消'}</Button>
+      <Modal title={title} icon={effectiveMode === 'bulk' ? 'trash-2' : isExport ? 'file-output' : 'file-input'} onClose={close} guardOwner={guardOwner} locked={command.locked}
+        footer={<><Button onClick={() => close()} reason={command.locked ? '结果还没确认，暂时不能关闭。' : ''}>{done || download.name ? '完成' : '取消'}</Button>
           {!done && !command.locked && !recovery && <Button icon="check" onClick={preflight} busy={activeRead} disabled={download.busy}>{data || query.error || command.phase === 'rejected' ? '重新预检' : '开始预检'}</Button>}
           {isExport && data && <Button transfer="export" className="btn primary wb-action wb-primary" disabled={controlsDisabled} reason={expired ? '预检结果已过期，请重新预检。' : ''} onClick={() => downloadFile(false)}>下载文件</Button>}
           {!isExport && !done && data && <Button icon={effectiveMode === 'bulk' ? 'trash-2' : 'check'} className={'btn ' + (effectiveMode === 'bulk' ? 'danger' : 'primary wb-action wb-primary')} busy={command.locked} disabled={controlsDisabled} reason={reason} onClick={confirm}>{effectiveMode === 'bulk' ? '确认删除' : '确认导入'}</Button>}</>}>
@@ -140,18 +144,18 @@
           {!done && !command.locked && effectiveMode === 'import' && data && <div className="tmpl-row"><span className="tmpl-ico"><Icon name="file-input" /></span>
             <div><div className="tmpl-t">{file && file.name}</div><div className="tmpl-s">{format.toUpperCase()} · 按编号增量更新 · {data.rows.length} 行</div></div><Button icon="file-input" disabled={controlsDisabled} onClick={invalidate}>更换文件</Button></div>}
           {!recovery && !done && !command.locked && isExport && <div className="iopane on">
-            {M.ExportScope ? <M.ExportScope value={selection} onChange={value => { invalidate(); setSelection(value); }} disabled={controlsDisabled} refs={refs} />
+            {M.ExportScope ? <M.ExportScope value={selection} onChange={value => { invalidate(); setSelection(value); }} disabled={controlsDisabled} refs={refs} error={error} />
               : <ExportOptions selection={selection} setSelection={value => { invalidate(); setSelection(value); }} refs={refs} disabled={controlsDisabled} label={label} scopeLabel={M.scopeLabel || label} kind={M.kind} />}
             <Format value={format} onChange={chooseFormat} disabled={controlsDisabled} /></div>}
           {!done && effectiveMode === 'bulk' && (!recovery || command.intent) && (recovery || command.intent && !job ? <p>正在查询上次批量删除的结果，当前列表里新勾选的还没提交。</p> :
             <p>本次勾选了 <b>{refs.length}</b> 条{label}，含非当前页和当前筛选外的勾选项。</p>)}
           {activeRead && <p role="status">正在读取完整预检结果，尚未写入数据…</p>}
-          <ErrorBox error={error} /><ErrorBox error={query.error} /><Issues issues={result && result.warnings || []} />
+          <ErrorBox error={error} excludePaths={isExport && Array.isArray(M.exportFieldPaths) ? M.exportFieldPaths : []} /><ErrorBox error={query.error} /><Issues issues={result && result.warnings || []} />
           {data && !isExport && <><Preview data={data} mode={effectiveMode} contract={M} label={label} /><p className="iohint">本批整体确认；任意一行校验不通过，全部不写入。</p>
             {needsAcknowledgement && !done && <label className="rm-check"><input type="checkbox" checked={acknowledged} disabled={controlsDisabled} onChange={event => setAcknowledged(event.target.checked)} /><span>{effectiveMode === 'bulk' ? '已核对完整删除范围及明细，确认删除这些' + label + '。' : M.acknowledgeHint}</span></label>}
             {reason && !done && <p role="status">{reason}</p>}</>}
           {data && isExport && <p role="status">已核对导出范围：<b>{data.row_count}</b> 条 · {format.toUpperCase()}{expired ? ' · 预检结果已过期' : ''}</p>}
-          {download.busy && <p role="status">正在读取下载文件…</p>}{download.name && <p role="status">已交给浏览器下载：<b>{download.name}</b></p>}
+          {download.busy && <p role="status">正在读取下载文件…</p>}{download.name && <p role="status">{window.WorkbenchTerms.download_started(download.name)}</p>}
           {!isExport && <Feedback command={command} />}
           {command.intent && <window.WorkbenchReference entries={{ '操作编号': command.intent.request_key }} />}
           {done && <p role="status">{Number.isSafeInteger(command.result.data.deleted_count) ? '已删除 ' + command.result.data.deleted_count + ' 条。' : command.result.data.summary ? '导入结果已确认。' : '已查到上次操作的完成结果。'}</p>}

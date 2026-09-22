@@ -24,8 +24,8 @@
   }
   function Batches({ data, onBatch, onLast }) {
     const [page, setPage] = React.useState(1), pages = Math.max(1, Math.ceil(data.batches.length / 20)), current = Math.min(page, pages);
-    return <section aria-label="候选批次交付对照"><div className="rc-heading"><h3>批次交付对照</h3><span className="rc-muted">完整排产批次 · 候选减排产时的正式计划</span></div>
-      <div className="rc-table wb-table-frame" data-sticky-head data-sticky-actions><table className="wb-table" aria-label="候选批次交付对照"><caption className="wb-visually-hidden">候选批次交付对照</caption><thead><tr>{['批次 / 零件', '交付截至日', '对比基准完工', '候选完工', '超期变化（小时）', '甘特定位'].map(label => <th scope="col" key={label}>{label}</th>)}</tr></thead>
+    return <section aria-label="候选批次交付对照"><div className="rc-heading"><h3>批次交付对照</h3><span className="rc-muted">完整排产批次 · 变化 = 候选方案 − 排产时的正式计划</span></div>
+      <div className="rc-table wb-table-frame" data-sticky-head data-sticky-actions><table className="wb-table" aria-label="候选批次交付对照"><caption className="wb-visually-hidden">候选批次交付对照</caption><thead><tr>{['批次 / 零件', '交期', '对比基准完工', '候选完工', '超期变化（小时）', '甘特定位'].map(label => <th scope="col" key={label}>{label}</th>)}</tr></thead>
         <tbody>{data.batches.slice((current - 1) * 20, current * 20).map(row => <tr key={row.batch_ref} data-analysis-batch={row.batch_ref}>
           <td>{row.batch_id}<small>{row.part_label || '名称未填写'}</small></td><td>{row.after.due_date || '未记录'}</td>
           <td><Finish row={row.before} /></td><td><Finish row={row.after} /></td><td>{row.delay_delta_hours === null ? '未知' : M.signedChange(row.delay_delta_hours)}</td>

@@ -23,7 +23,9 @@
     return navigationLabels[n.view];
   }
   const value = v => v === null || v === undefined || v === '' ? '未填写' : typeof v === 'boolean' ? v ? '是' : '否' : String(v);
-  const hours = v => window.WorkbenchFormat.hours(v, 2);
+  // Hour columns carry the unit in their header; cells show the number only.
+  const hoursValue = v => window.WorkbenchFormat.number(v, 2);
+  const dateOnly = v => v === null || v === undefined || v === '' ? '未填写' : window.WorkbenchFormat.date(v);
   function Risk({
     risk
   }) {
@@ -57,6 +59,7 @@
   }) {
     return /*#__PURE__*/React.createElement("div", {
       className: "dy-metrics",
+      role: "region",
       "aria-label": "\u98CE\u9669\u6982\u89C8"
     }, ['delivery', 'pressure', 'actual', 'external', 'downtime', 'material', 'pending'].map(k => {
       if (k === 'pressure' || k === 'pending') {
@@ -66,7 +69,7 @@
           className: "dy-metric",
           key: k,
           onClick: () => onAnalysis(k === 'pressure' ? 'delivery' : 'material')
-        }, /*#__PURE__*/React.createElement("span", null, k === 'pressure' ? '资源压力' : '待排批次'), /*#__PURE__*/React.createElement("strong", null, !p ? '未读取' : p.count === null ? '未知' : p.count), /*#__PURE__*/React.createElement("small", null, k === 'pressure' ? '≥90% · 同范围日峰值' : '本机全部待排批次'), p && k === 'pressure' && (p.unknown_resources > 0 || p.zero_capacity_resources > 0) && /*#__PURE__*/React.createElement("small", null, "\u5BB9\u91CF\u672A\u77E5 ", p.unknown_resources, " \xB7 \u96F6\u53EF\u7528 ", p.zero_capacity_resources));
+        }, /*#__PURE__*/React.createElement("span", null, k === 'pressure' ? '资源压力' : '待排批次'), /*#__PURE__*/React.createElement("strong", null, !p ? '未读取' : p.count === null ? '未知' : p.count), /*#__PURE__*/React.createElement("small", null, k === 'pressure' ? '日峰值占用率 ≥ 90%' : '全部待排批次'), p && k === 'pressure' && (p.unknown_resources > 0 || p.zero_capacity_resources > 0) && /*#__PURE__*/React.createElement("small", null, "\u5BB9\u91CF\u672A\u77E5 ", p.unknown_resources, " \xB7 \u96F6\u53EF\u7528 ", p.zero_capacity_resources));
       }
       const s = data && data.categories[k];
       return /*#__PURE__*/React.createElement("button", {
@@ -242,7 +245,7 @@
       className: "dy-muted"
     }, "\u5386\u53F2 ", row.handling.history_count, " \u6761")), /*#__PURE__*/React.createElement("td", null, value(row.handling.owner), /*#__PURE__*/React.createElement("div", {
       className: row.handling.deadline_overdue ? 'dy-danger' : 'dy-muted'
-    }, value(row.handling.deadline), row.handling.deadline_overdue ? ' · 处置超期' : '')), /*#__PURE__*/React.createElement("td", {
+    }, dateOnly(row.handling.deadline), row.handling.deadline_overdue ? ' · 处置超期' : '')), /*#__PURE__*/React.createElement("td", {
       className: "wb-col-actions"
     }, /*#__PURE__*/React.createElement(Button, {
       reasonDisplay: "inline",
@@ -333,7 +336,7 @@
       className: "dy-facts"
     }, ['status', ...C.fields.filter(k => k !== 'evidence_ref')].map(k => /*#__PURE__*/React.createElement("div", {
       key: k
-    }, /*#__PURE__*/React.createElement("dt", null, C.labels[k]), /*#__PURE__*/React.createElement("dd", null, k === 'status' ? C.statuses[handling.status] : k === 'completed_at' ? window.WorkbenchFormat.dateTime(handling[k]) : value(handling[k]))))), handling.evidence_ref ? /*#__PURE__*/React.createElement(window.WorkbenchReference, {
+    }, /*#__PURE__*/React.createElement("dt", null, C.labels[k]), /*#__PURE__*/React.createElement("dd", null, k === 'status' ? C.statuses[handling.status] : k === 'completed_at' ? window.WorkbenchFormat.dateTime(handling[k]) : k === 'deadline' ? dateOnly(handling[k]) : value(handling[k]))))), handling.evidence_ref ? /*#__PURE__*/React.createElement(window.WorkbenchReference, {
       entries: {
         '已核验附件编号': handling.evidence_ref
       }
@@ -383,7 +386,7 @@
       reasonDisplay: "inline",
       icon: item.handling.status === 'closed' ? 'refresh-cw' : 'square-pen',
       onClick: onHandle
-    }, item.handling.status === 'closed' ? '独立重开' : '登记处置'), /*#__PURE__*/React.createElement(Button, {
+    }, item.handling.status === 'closed' ? '重新打开处置' : '登记处置'), /*#__PURE__*/React.createElement(Button, {
       reasonDisplay: "inline",
       icon: "history",
       onClick: onHistory
@@ -431,10 +434,7 @@
         onClick: onConfirm
       }, "\u6253\u5F00", label, "\u6982\u89C8"))
     }, /*#__PURE__*/React.createElement("div", {
-      className: "modal-b scroll",
-      style: {
-        overflowWrap: 'anywhere'
-      }
+      className: "modal-b scroll dy-wrap"
     }, /*#__PURE__*/React.createElement("h3", null, item.subject, " \xB7 ", C.categories[item.category]), /*#__PURE__*/React.createElement("p", {
       role: "status"
     }, navigation.reason), /*#__PURE__*/React.createElement("div", {
@@ -490,20 +490,20 @@
       scope: "col"
     }, "\u73ED\u8868\u5185\u5360\u7528\uFF08\u5C0F\u65F6\uFF09"), /*#__PURE__*/React.createElement("th", {
       scope: "col"
-    }, "\u53EF\u7528"), /*#__PURE__*/React.createElement("th", {
+    }, "\u53EF\u7528\uFF08\u5C0F\u65F6\uFF09"), /*#__PURE__*/React.createElement("th", {
       scope: "col"
     }, "\u6574\u7A97\u5360\u7528\u7387"), /*#__PURE__*/React.createElement("th", {
       scope: "col"
-    }, "\u91CD\u53E0\u65F6\u6BB5"), /*#__PURE__*/React.createElement("th", {
+    }, "\u91CD\u53E0\u65F6\u6BB5\uFF08\u5C0F\u65F6\uFF09"), /*#__PURE__*/React.createElement("th", {
       scope: "col"
-    }, "\u73ED\u8868\u5916\u5360\u7528"), /*#__PURE__*/React.createElement("th", {
+    }, "\u73ED\u8868\u5916\u5360\u7528\uFF08\u5C0F\u65F6\uFF09"), /*#__PURE__*/React.createElement("th", {
       scope: "col"
-    }, "\u5BB9\u91CF\u7F3A\u53E3"))), /*#__PURE__*/React.createElement("tbody", null, rows.map(r => /*#__PURE__*/React.createElement("tr", {
+    }, "\u5BB9\u91CF\u7F3A\u53E3\uFF08\u5C0F\u65F6\uFF09"))), /*#__PURE__*/React.createElement("tbody", null, rows.map(r => /*#__PURE__*/React.createElement("tr", {
       key: r.kind + r.resource_ref,
       "data-resource-ref": r.resource_ref
     }, /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("b", null, r.label || '名称未填写'), /*#__PURE__*/React.createElement("div", {
       className: "dy-muted"
-    }, r.kind === 'machine' ? '设备' : '人员', " \xB7 ", r.operation_count, " \u9053\u5DE5\u5E8F")), /*#__PURE__*/React.createElement("td", null, hours(r.available_occupied_hours)), /*#__PURE__*/React.createElement("td", null, hours(r.available_hours)), /*#__PURE__*/React.createElement("td", null, window.WorkbenchFormat.percent(r.utilization), r.utilization !== null && /*#__PURE__*/React.createElement("div", {
+    }, r.kind === 'machine' ? '设备' : '人员', " \xB7 ", r.operation_count, " \u9053\u5DE5\u5E8F")), /*#__PURE__*/React.createElement("td", null, hoursValue(r.available_occupied_hours)), /*#__PURE__*/React.createElement("td", null, hoursValue(r.available_hours)), /*#__PURE__*/React.createElement("td", null, window.WorkbenchFormat.percent(r.utilization), r.utilization !== null && /*#__PURE__*/React.createElement("div", {
       className: 'dy-meter' + (r.capacity_insufficient || r.has_overlap ? ' hot' : '')
     }, /*#__PURE__*/React.createElement("i", {
       style: {
@@ -511,9 +511,9 @@
       }
     }))), /*#__PURE__*/React.createElement("td", {
       className: r.has_overlap ? 'dy-danger' : ''
-    }, hours(r.overlap_hours)), /*#__PURE__*/React.createElement("td", {
+    }, hoursValue(r.overlap_hours)), /*#__PURE__*/React.createElement("td", {
       className: r.outside_available_hours > 0 ? 'dy-warning' : ''
-    }, hours(r.outside_available_hours)), /*#__PURE__*/React.createElement("td", null, hours(r.capacity_shortfall_hours), /*#__PURE__*/React.createElement(Issues, {
+    }, hoursValue(r.outside_available_hours)), /*#__PURE__*/React.createElement("td", null, hoursValue(r.capacity_shortfall_hours), /*#__PURE__*/React.createElement(Issues, {
       issues: r.issues
     }))))))));
   }
@@ -523,14 +523,7 @@
     canNavigate
   }) {
     const c = data.candidate_catalog,
-      runStates = {
-        queued: '排队中',
-        running: '计算中',
-        complete: '计算完成',
-        partial: '部分完成',
-        failed: '失败',
-        interrupted: '已中断'
-      };
+      runStates = window.WorkbenchTerms.run_statuses;
     return /*#__PURE__*/React.createElement("section", {
       "aria-label": "\u5019\u9009\u65B9\u6848\u5217\u8868"
     }, /*#__PURE__*/React.createElement("div", {
@@ -557,14 +550,14 @@
         context: {},
         enabled: true
       })
-    }, "\u53BB\u6267\u884C\u6392\u4EA7"))), /*#__PURE__*/React.createElement("div", {
+    }, navigationLabels.run))), /*#__PURE__*/React.createElement("div", {
       className: "dy-note"
     }, "\u5DF2\u4FDD\u5B58\u7684\u5019\u9009\u65B9\u6848"), /*#__PURE__*/React.createElement(Issues, {
       issues: c.issues
     }), c.state === 'unavailable' ? /*#__PURE__*/React.createElement(window.WorkbenchListControls.EmptyState, {
       kind: "empty",
       title: "\u5019\u9009\u65B9\u6848\u5217\u8868\u8BFB\u4E0D\u5230\u3002",
-      hint: "\u8BF7\u70B9\u300C\u5237\u65B0\u300D\u91CD\u8BD5\u3002"
+      hint: "\u8BF7\u70B9\u53F3\u4E0A\u89D2\u7684\u300C\u5237\u65B0\u503C\u73ED\u53F0\u300D\u6309\u94AE\u91CD\u8BD5\u3002"
     }) : !c.runs.length ? /*#__PURE__*/React.createElement(window.WorkbenchListControls.EmptyState, {
       kind: "empty",
       title: "\u8FD8\u6CA1\u6709\u6392\u4EA7\u8BB0\u5F55\u3002"
@@ -608,7 +601,7 @@
       "aria-label": "\u5916\u534F\u6C47\u603B"
     }, /*#__PURE__*/React.createElement("dl", {
       className: "dy-facts"
-    }, [['receipt_count', '全部登记'], ['current_receipt_count', '来源仍有效的登记'], ['awaiting_return_count', '待回厂'], ['overdue_count', '超期未回'], ['returned_count', '已回厂'], ['awaiting_confirmation_count', '待确认'], ['unregistered_count', '未登记工序'], ['source_gap_count', '来源缺口']].map(([k, label]) => /*#__PURE__*/React.createElement("div", {
+    }, [['receipt_count', '全部登记'], ['current_receipt_count', '来源未失效的登记'], ['awaiting_return_count', '待回厂'], ['overdue_count', '超期未回'], ['returned_count', '已回厂'], ['awaiting_confirmation_count', '待确认'], ['unregistered_count', '未登记工序'], ['source_gap_count', '来源缺口']].map(([k, label]) => /*#__PURE__*/React.createElement("div", {
       key: k
     }, /*#__PURE__*/React.createElement("dt", null, label), /*#__PURE__*/React.createElement("dd", {
       "data-external-count": k

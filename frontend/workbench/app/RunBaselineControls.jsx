@@ -1,6 +1,32 @@
 (function () {
   'use strict';
   const M = window.RunCandidateModel, B = window.RunBaselineModel, { Button } = window.RunCandidateControls;
+  function usePrintLayout() {
+    const [printing, setPrinting] = React.useState(() => typeof window.matchMedia === 'function' && window.matchMedia('print').matches);
+    React.useLayoutEffect(() => {
+      const media = typeof window.matchMedia === 'function' ? window.matchMedia('print') : null;
+      function commit(value, synchronous) {
+        if (synchronous && window.ReactDOM && typeof window.ReactDOM.flushSync === 'function') window.ReactDOM.flushSync(() => setPrinting(value));
+        else setPrinting(value);
+      }
+      function beforePrint() { commit(true, true); }
+      function afterPrint() { commit(false, true); }
+      function mediaChanged(event) { commit(event.matches, false); }
+      window.addEventListener('beforeprint', beforePrint); window.addEventListener('afterprint', afterPrint);
+      if (media) {
+        if (typeof media.addEventListener === 'function') media.addEventListener('change', mediaChanged);
+        else media.addListener(mediaChanged);
+      }
+      return () => {
+        window.removeEventListener('beforeprint', beforePrint); window.removeEventListener('afterprint', afterPrint);
+        if (media) {
+          if (typeof media.removeEventListener === 'function') media.removeEventListener('change', mediaChanged);
+          else media.removeListener(mediaChanged);
+        }
+      };
+    }, []);
+    return printing;
+  }
   function useBaseline(data) {
     const [enabled, setEnabled] = React.useState(false), [revision, refresh] = React.useReducer(v => v + 1, 0);
     const [state, setState] = React.useState({ result: null, error: null, busy: false }), request = React.useRef(null);
@@ -20,18 +46,19 @@
     return { ...(state.identity === identity ? state : { result: null, error: null, busy: enabled }), enabled, toggle, retry };
   }
   function Toggle({ state }) {
-    return <label className="rb-toggle"><input type="checkbox" checked={state.enabled} onChange={e => state.toggle(e.target.checked)} />初始计划</label>;
+    return <label className="rb-toggle"><input type="checkbox" checked={state.enabled} onChange={e => state.toggle(e.target.checked)} />{window.WorkbenchTerms.initial_plan}</label>;
   }
   function Segments({ row, chosen }) {
-    const [top, setTop] = React.useState(0), host = React.useRef(null), first = Math.max(0, Math.floor(top / 76) - 2);
+    const printing = usePrintLayout(), [top, setTop] = React.useState(0), host = React.useRef(null), first = printing ? 0 : Math.max(0, Math.floor(top / 76) - 2);
+    const segments = printing ? row.baseline_segments : row.baseline_segments.slice(first, first + 6);
     React.useEffect(() => {
       const index = chosen ? row.baseline_segments.findIndex(s => s.row_ref === chosen.row_ref) : 0;
       if (host.current) host.current.scrollTop = Math.max(0, index) * 76;
     }, [row, chosen]);
     return <div ref={host} className="rb-segments" data-baseline-segments role="region" aria-label="初始计划完整分段" onScroll={e => setTop(e.currentTarget.scrollTop)}>
       <div style={{ height: row.baseline_segments.length * 76, position: 'relative', minWidth: 510 }}>
-        {row.baseline_segments.slice(first, first + 6).map((s, i) => <div key={s.row_ref} data-baseline-segment={s.row_ref} className="rb-segment"
-          style={{ top: (first + i) * 76 }} aria-selected={!!chosen && chosen.row_ref === s.row_ref}>
+        {segments.map((s, i) => <div key={s.row_ref} data-baseline-segment={s.row_ref} className="rb-segment"
+          style={{ top: (first + i) * 76 }} aria-current={!!chosen && chosen.row_ref === s.row_ref ? 'true' : undefined}>
           <div>{M.timeLabel(s.start)} 至 {M.timeLabel(s.end)}{!s.interval_comparable && ' · 起止不可比较'}</div>
           <div>设备 {s.machine && s.machine.label || '未记录'} · 人员 {s.operator && s.operator.label || '未记录'} · 起止时长 {M.number(s.elapsed_hours)} 小时</div>
           <small>{s.data_gaps.map(g => g.message).join(' · ')}</small><window.WorkbenchReference value={s.row_ref} /></div>)}
@@ -53,15 +80,16 @@
     </div>;
   }
   function ComparisonList({ rows, chosen, onChoose }) {
-    const [top, setTop] = React.useState(0), host = React.useRef(null), first = Math.max(0, Math.floor(top / 40) - 2);
+    const printing = usePrintLayout(), [top, setTop] = React.useState(0), host = React.useRef(null), first = printing ? 0 : Math.max(0, Math.floor(top / 40) - 2);
+    const visible = printing ? rows : rows.slice(first, first + 12);
     React.useEffect(() => {
       const index = chosen ? rows.findIndex(r => r.operation_ref === chosen.comparison.operation_ref) : -1, node = host.current;
       if (node && index >= 0 && (index * 40 < node.scrollTop || index * 40 + 40 > node.scrollTop + node.clientHeight)) node.scrollTop = index * 40;
     }, [chosen, rows]);
     return <div ref={host} className="rb-list" data-baseline-list role="region" aria-label="初始计划对照列表" onScroll={e => setTop(e.currentTarget.scrollTop)}>
-      <div style={{ height: rows.length * 40, minWidth: 570, position: 'relative' }}>{rows.slice(first, first + 12).map((r, i) =>
+      <div style={{ height: rows.length * 40, minWidth: 570, position: 'relative' }}>{visible.map((r, i) =>
         <div className="rb-row" data-baseline-operation={r.operation_ref} key={r.operation_ref} style={{ top: (first + i) * 40 }}
-          aria-selected={!!chosen && chosen.comparison.operation_ref === r.operation_ref}>
+          aria-current={!!chosen && chosen.comparison.operation_ref === r.operation_ref ? 'true' : undefined}>
           <span title={r.batch_label || '未记录'}>{r.batch_label || '未记录'}</span><span title={r.process_label || '未记录'}>{M.number(r.sequence)} {r.process_label || '未记录'}</span>
           <span>{B.statusLabels[r.status]}</span><span>{r.baseline_segments.length} 段{r.execution_affected && ' · 有报工影响'}</span>
           <Button icon="search" className="mini" aria-label={'初始计划对照 ' + (r.batch_label || '批次未记录') + ' ' + M.number(r.sequence) + ' ' + (r.process_label || '工序未记录')} onClick={() => onChoose({ comparison: r, segment: null })} /></div>)}</div>
@@ -72,8 +100,8 @@
     React.useEffect(() => { if (chosen) setOpen(true); }, [chosen]);
     return <>{state.enabled && <>
       {state.busy && <div className="rc-muted" role="status">正在读取排产时的初始计划。</div>}
-      {state.error && <div role="alert">{state.error.message}<Button icon="refresh-cw" aria-label="刷新初始计划" onClick={state.retry} /></div>}
-      {d && <><div className="rb-legend"><span><i />候选安排</span><span><i className="rb-before" />初始计划</span><span><i className="rb-selected" />已选工序</span></div>
+      {state.error && <div role="alert">{state.error.message}<Button icon="refresh-cw" onClick={state.retry}>刷新初始计划</Button></div>}
+      {d && <><div className="rb-legend"><span><i />候选安排</span><span><i className="rb-before" />{window.WorkbenchTerms.initial_plan}</span><span><i className="rb-selected" />已选工序</span></div>
         <details className="rb-panel" open={open} onToggle={e => setOpen(e.currentTarget.open)}><summary>初始计划对照明细（{rows.length}） · 说明</summary>
           {open && <><div>提交于 {M.timeLabel(d.generation.accepted_at)} · {d.baseline.captured_task_count} 段初始安排 · 有报工影响 {d.execution_affected_count} 道</div>
             {d.baseline.reason && <div>{d.baseline.reason.message}</div>}
@@ -84,5 +112,5 @@
         </details></>}
     </>}</>;
   }
-  window.RunBaselineControls = { useBaseline, Toggle, Panel };
+  window.RunBaselineControls = { useBaseline, usePrintLayout, Toggle, Panel };
 })();

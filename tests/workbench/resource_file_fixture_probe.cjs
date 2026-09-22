@@ -88,7 +88,7 @@ window.mountFixture=(spec,resume=false)=>{
   Object.assign(fixture,{previews:[],commands:[],downloads:[],lookups:[],committed:[],closed:0,ready:false,aborted:0});
   sessionStorage.setItem('fixture-resume',JSON.stringify(spec));rendered=ReactDOM.createRoot(document.getElementById('fixture-root'));rendered.render(React.createElement(Harness,{spec}));
 };
-ReactDOM.createRoot(document.getElementById('controls-root')).render(React.createElement(React.Fragment,null,React.createElement(WorkbenchControlStyles),React.createElement(WorkbenchControls)));
+ReactDOM.createRoot(document.getElementById('controls-root')).render(React.createElement(React.Fragment,null,React.createElement(WorkbenchGuardHost),React.createElement(WorkbenchControlStyles),React.createElement(WorkbenchControls)));
 if(sessionStorage.getItem('fixture-resume'))mountFixture({...JSON.parse(sessionStorage.getItem('fixture-resume')),recovery:true},true);
 `;
   const html = '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +

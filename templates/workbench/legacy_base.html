@@ -1,20 +1,23 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="{{ 'dark' if request.cookies.get('aps_theme') == 'dark' else 'light' }}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ title or "APS 智能排产" }}</title>
+  <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='workbench/prototype/assets/logo-mark.svg') }}">
   {% include "workbench/legacy_style.html" %}
   <script>
-  try { var theme = localStorage.getItem('aps_kit_theme') || localStorage.getItem('aps_theme');
-    if (theme === 'dark' || theme === 'light') document.documentElement.dataset.theme = theme;
+  // 与 theme.js 同一优先级：只有合法的 aps_theme 才优先，否则再看 aps_kit_theme。
+  try { var preferred = localStorage.getItem('aps_theme'); var legacy = localStorage.getItem('aps_kit_theme');
+    var theme = preferred === 'dark' || preferred === 'light' ? preferred : legacy === 'dark' || legacy === 'light' ? legacy : null;
+    if (theme) document.documentElement.dataset.theme = theme;
   } catch (error) { document.documentElement.dataset.preferenceError = 'true'; }
   </script>
 </head>
 <body>
   <main data-workbench-legacy-response="true">
     <header><h1>{{ title or "APS 智能排产" }}</h1><a href="/workbench">工作台</a></header>
-    <p class="notice preference-error" role="status">读不到深浅色设置，本页按浅色显示。业务数据和刚才的操作结果都没有变化。</p>
+    <p class="notice preference-error" role="status">读不到深浅色设置，本页沿用打开时的主题。业务数据和刚才的操作结果都没有变化。</p>
     {% for category, message in get_flashed_messages(with_categories=true) %}
       <p class="notice" data-level="{{ category }}" role="status">{{ message }}</p>
     {% endfor %}

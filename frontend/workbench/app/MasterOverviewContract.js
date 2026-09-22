@@ -113,7 +113,16 @@
     });
     return result;
   }
-  function value(input) { return input === null || input === undefined ? '未知' : object(input) ? JSON.stringify(input) : String(input); }
+  // 结构化的原值逐项写成中文，不把 JSON 直接上屏：数组按「、」并列，对应关系按「名：值」并用「；」分隔。
+  function value(input) {
+    if (input === null || input === undefined) return '未知';
+    if (Array.isArray(input)) return input.length ? input.map(value).join('、') : '无';
+    if (object(input)) {
+      const keys = Object.keys(input);
+      return keys.length ? keys.map(key => key + '：' + value(input[key])).join('；') : '无';
+    }
+    return String(input);
+  }
   function cell(item, column) {
     if (column === 'domain') return (domains.find(row => row[0] === item.domain) || [null, '批次'])[1];
     if (column === 'status') return statuses[item.status];

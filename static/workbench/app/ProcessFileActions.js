@@ -285,7 +285,9 @@
       }
     })), file && /*#__PURE__*/React.createElement("span", {
       className: "fhint"
-    }, file.name, " \xB7 ", file.size, " \u5B57\u8282")), original.target_ref && /*#__PURE__*/React.createElement("p", null, "\u5BFC\u5165\u8303\u56F4\uFF1A\u5F53\u524D\u96F6\u4EF6\u3002")) : /*#__PURE__*/React.createElement("fieldset", {
+    }, file.name, " \xB7 ", window.WorkbenchFormat.number(file.size, {
+      digits: 0
+    }), " \u5B57\u8282")), original.target_ref && /*#__PURE__*/React.createElement("p", null, "\u5BFC\u5165\u8303\u56F4\uFF1A\u5F53\u524D\u96F6\u4EF6\u3002")) : /*#__PURE__*/React.createElement("fieldset", {
       disabled: controlsDisabled,
       style: {
         border: 0,
@@ -325,13 +327,13 @@
     }), data.zero_review_required && /*#__PURE__*/React.createElement("p", {
       className: "process-zero-impact",
       role: "status"
-    }, "\u4EE5\u4E0B\u5DE5\u5E8F\u7684\u5355\u4EF6\u5DE5\u65F6\u4E3A 0\uFF0C\u6392\u4EA7\u53EA\u8BA1\u7B97\u6362\u578B\u5DE5\u65F6\uFF0C\u6570\u91CF\u589E\u52A0\u4E0D\u4F1A\u589E\u52A0\u52A0\u5DE5\u65F6\u957F\uFF1A", data.rows.filter(row => row.requires_confirmation && row.after && row.after.unit_hours === 0).map(row => row.business_code + ' / 工序 ' + row.sequence).join('、'), "\u3002\u70B9\u51FB\u201C\u6309 0 \u5BFC\u5165\u201D\u4FDD\u5B58\u8FD9\u4E9B\u6570\u503C\u3002"), /*#__PURE__*/React.createElement("p", null, kind === 'hours' ? '锁定跳过行不参与写入；其余行整体确认，任何一行不能提交，本批全部不修改。' : '本批整体确认；任何一行不能提交，本批全部不修改。')), data && !importing && /*#__PURE__*/React.createElement("p", {
+    }, "\u4EE5\u4E0B\u5DE5\u5E8F\u7684\u5355\u4EF6\u5DE5\u65F6\u4E3A 0\uFF0C\u6392\u4EA7\u53EA\u8BA1\u7B97\u6362\u578B\u5DE5\u65F6\uFF0C\u6570\u91CF\u589E\u52A0\u4E0D\u4F1A\u589E\u52A0\u52A0\u5DE5\u65F6\u957F\uFF1A", data.rows.filter(row => row.requires_confirmation && row.after && row.after.unit_hours === 0).map(row => row.business_code + ' / 工序 ' + row.sequence).join('、'), "\u3002\u70B9\u300C\u6309 0 \u5BFC\u5165\u300D\u4FDD\u5B58\u8FD9\u4E9B\u6570\u503C\u3002"), /*#__PURE__*/React.createElement("p", null, kind === 'hours' ? '锁定跳过行不参与写入；其余行整体确认，任何一行不能提交，本批全部不修改。' : '本批整体确认；任何一行不能提交，本批全部不修改。')), data && !importing && /*#__PURE__*/React.createElement("p", {
       role: "status"
     }, "\u5DF2\u6838\u5BF9 ", data.part_count, " \u4E2A\u96F6\u4EF6\uFF0C\u5BFC\u51FA ", data.row_count, " \u884C", kind === 'hours' ? '工序记录' : '零件记录', "\uFF0C\u4E0D\u9650\u5F53\u524D\u663E\u793A\u9875\u3002"), reason && data && !done && /*#__PURE__*/React.createElement("p", {
       role: "status"
     }, reason), download.name && /*#__PURE__*/React.createElement("p", {
       role: "status"
-    }, "\u5DF2\u5F00\u59CB\u4E0B\u8F7D\uFF1A", download.name), importing && /*#__PURE__*/React.createElement(window.ResourceForms.Feedback, {
+    }, window.WorkbenchTerms.download_started(download.name)), importing && /*#__PURE__*/React.createElement(window.ResourceForms.Feedback, {
       command: done && kind === 'hours' ? {
         ...visible,
         phase: 'idle'

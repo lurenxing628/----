@@ -101,7 +101,7 @@ async function shot(page, name) {
       });
       assert.equal(missingData.empty.banners, 1); assert.deepEqual(missingData.empty.values, ['3', '0', '0', '—']);
       assert.equal(missingData.partial.banners, 0); assert.equal(missingData.partial.values[3], '未知');
-      assert(missingData.partial.text.includes('已知小计 0；未知 1 条'));
+      assert(missingData.partial.text.includes('已知小计 0 小时；未知 1 条'));
       assert.equal(await page.locator('.mockroot.plana').count(), 0);
       const work = page.getByRole('region', { name: '报表中心', exact: true });
       await work.locator('[role="tabpanel"] table tbody tr').first().waitFor();
@@ -184,16 +184,17 @@ async function shot(page, name) {
       await work.locator('.rw-catalog > summary').evaluate(node => node.scrollIntoView({ block: 'start' }));
       await shot(page, prefix + '-catalog');
       await work.getByRole('tab', { name: '执行复盘', exact: true }).click();
-      const review = page.getByRole('region', { name: '执行复盘', exact: true }); await review.locator('table tbody tr').first().waitFor();
+      // 执行复盘把展开的图表区（含折叠的「图表数据」表）放在结果表前面，所以等结果表 .rw-primary-table 本身出现。
+      const review = page.getByRole('region', { name: '执行复盘', exact: true }); await review.locator('.rw-primary-table tbody tr').first().waitFor();
       await review.getByRole('tab', { name: '执行复盘', exact: true }).press('Home');
       await work.locator('.rw-primary-table tbody tr').first().waitFor();
       await page.waitForFunction(() => document.activeElement.id === 'analytics-view-reports');
       await work.getByRole('tab', { name: '报表中心', exact: true }).press('End');
-      await review.locator('table tbody tr').first().waitFor();
+      await review.locator('.rw-primary-table tbody tr').first().waitFor();
       await page.waitForFunction(() => document.activeElement.id === 'analytics-view-review');
       await page.evaluate(() => window.scrollTo(0, 0)); await shot(page, prefix + '-review');
-      await review.locator('.er-chart-disclosure > summary').click();
-      await review.locator('.er-chart-disclosure > summary').evaluate(node => node.scrollIntoView({ block: 'start' })); await shot(page, prefix + '-charts');
+      await review.locator('.er-chart-disclosure[data-expanded="true"]').waitFor();
+      await review.locator('.er-chart-disclosure').evaluate(node => node.scrollIntoView({ block: 'start' })); await shot(page, prefix + '-charts');
       const geometry = await page.evaluate(() => ({ width: innerWidth, scroll: document.documentElement.scrollWidth,
         theme: document.documentElement.dataset.theme, background: getComputedStyle(document.querySelector('.rw-workbench')).backgroundColor,
         controls: Array.from(document.querySelectorAll('.aw-scope-main input,.aw-scope-main select,.aw-scope-tools button')).map(node => { const rect = node.getBoundingClientRect(); return { x: rect.x, right: rect.right, width: rect.width, height: rect.height }; }) }));

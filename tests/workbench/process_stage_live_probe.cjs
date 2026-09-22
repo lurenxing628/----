@@ -39,8 +39,8 @@ async function saved(action, click) {
   assert.equal(response.status(), 200); return response.json();
 }
 async function reloadDraft(scope) {
-  await responseTo('/entities/part/' + (await currentRef()), () => scope.getByRole('button', {name: '刷新详情并保留草稿', exact: true}).click());
-  await scope.getByRole('button', {name: '采用最新资料', exact: true}).click();
+  await responseTo('/entities/part/' + (await currentRef()), () => scope.getByRole('button', {name: '刷新最新资料', exact: true}).click());
+  await scope.getByRole('button', {name: '已核对，继续编辑', exact: true}).click();
 }
 let partRef;
 async function currentRef() { assert(partRef); return partRef; }
@@ -132,7 +132,25 @@ async function smallWorkflow() {
   assert.equal(await page.getByRole('dialog', {name: '按零单件工时保存', exact: true}).getByRole('checkbox').count(), 0);
   await snapshot('hours-reviewed');
   detail = await saved('hours_confirm', () => page.getByRole('button', {name: '按 0 保存', exact: true}).click());
-  assert(detail.data.workflow.ready); await snapshot('ready'); await close();
+  assert(detail.data.workflow.ready); await snapshot('ready');
+  const tabs = page.getByRole('tablist', {name: '零件工艺步骤', exact: true});
+  const routeTab = tabs.getByRole('tab', {name: /^1 /}), hoursTab = tabs.getByRole('tab', {name: /^3 /}), readyTab = tabs.getByRole('tab', {name: /^4 汇总/});
+  assert.equal(await tabs.getByRole('tab').count(), 4); assert.equal(await tabs.locator('[role="tab"][aria-selected="true"]').count(), 1);
+  assert.equal(await tabs.locator('[role="tab"][tabindex="0"]').count(), 1);
+  assert.equal(await readyTab.getAttribute('aria-selected'), 'true'); assert.equal(await readyTab.getAttribute('tabindex'), '0');
+  for (const tab of await tabs.getByRole('tab').all()) {
+    const tabId = await tab.getAttribute('id'), controls = await tab.getAttribute('aria-controls');
+    const panel = page.locator('[id="' + controls + '"]');
+    assert(tabId && controls); assert.equal(await panel.getAttribute('role'), 'tabpanel'); assert.equal(await panel.getAttribute('aria-labelledby'), tabId);
+    assert.equal(await panel.isVisible(), tabId.endsWith('-ready'));
+  }
+  const summary = page.locator('[id="' + await readyTab.getAttribute('aria-controls') + '"]');
+  await readyTab.focus(); await readyTab.press('ArrowLeft');
+  assert.equal(await hoursTab.getAttribute('aria-selected'), 'true'); assert(await hoursTab.evaluate(node => document.activeElement === node)); assert.equal(await summary.isVisible(), false);
+  await hoursTab.press('ArrowRight'); assert.equal(await readyTab.getAttribute('aria-selected'), 'true'); assert(await readyTab.evaluate(node => document.activeElement === node)); assert.equal(await summary.isVisible(), true);
+  await readyTab.press('Home'); assert.equal(await routeTab.getAttribute('aria-selected'), 'true'); assert(await routeTab.evaluate(node => document.activeElement === node)); assert.equal(await summary.isVisible(), false);
+  await routeTab.press('End'); assert.equal(await readyTab.getAttribute('aria-selected'), 'true'); assert(await readyTab.evaluate(node => document.activeElement === node)); assert.equal(await summary.isVisible(), true);
+  await close();
   detail = await open('STAGE-' + state);
   assert(detail.data.workflow.ready); assert.equal(detail.data.operations[0].unit_hours, 2.125);
   assert.equal(detail.data.operations[1].external_days, 4.25); assert.equal(detail.data.external_groups[0].total_days, 9.5);
@@ -185,8 +203,8 @@ async function scaleWorkflow(count) {
         if (request.url().startsWith(origin + '/api/')) report.requests.push({state, method: request.method(), path: new URL(request.url()).pathname});
       });
       page.on('response', response => { if (response.status() >= 400) report.http_errors.push({state, url: response.url(), status: response.status()}); });
-      await page.goto(ready.resource_url); await page.locator('.hb-tile').first().waitFor();
-      await responseTo('/entities/part', () => page.locator('.hb-tile').filter({hasText: /^工艺/}).click());
+      await page.goto(ready.resource_url); const processNode = page.locator('[data-rail-node="process"]'); await processNode.waitFor();
+      await responseTo('/entities/part', () => processNode.click());
       if (scope !== 'large') await run('route-source-hours-ready-recovery', smallWorkflow);
       if (scope !== 'regular') {
         await run('2000-paged-full-input', () => scaleWorkflow(2000));

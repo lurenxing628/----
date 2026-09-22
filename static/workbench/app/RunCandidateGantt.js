@@ -56,6 +56,7 @@
     width,
     left,
     viewport,
+    printing,
     selected,
     baselineSelected,
     onSelect,
@@ -112,29 +113,57 @@
             }
             ctx.restore();
           }
+          const external = item.task.source === 'external';
+          if (external) {
+            // External operations differ by shape as well as colour: a sparse hatch and a dashed edge (the legend swatch matches).
+            ctx.save();
+            ctx.beginPath();
+            ctx.rect(x, 7, barWidth, 33);
+            ctx.clip();
+            ctx.strokeStyle = value('--wb-gantt-plan-edge');
+            ctx.lineWidth = 1;
+            for (let stripe = -33; stripe < barWidth; stripe += 10) {
+              ctx.beginPath();
+              ctx.moveTo(x + stripe, 7);
+              ctx.lineTo(x + stripe + 33, 40);
+              ctx.stroke();
+            }
+            ctx.restore();
+          }
           ctx.strokeStyle = value(chosen ? '--wb-gantt-gold' : '--wb-gantt-' + tone + '-edge');
           ctx.lineWidth = Math.min(barWidth, chosen ? 2 : 1);
+          ctx.setLineDash(external ? [4, 3] : []);
           ctx.strokeRect(x + ctx.lineWidth / 2, 7 + ctx.lineWidth / 2, Math.max(0, barWidth - ctx.lineWidth), 33 - ctx.lineWidth);
+          ctx.setLineDash([]);
           if (barWidth > 80) {
             ctx.save();
             ctx.beginPath();
             ctx.rect(Math.max(0, x + 4), 9, Math.max(0, Math.min(w, x + barWidth) - Math.max(0, x + 4) - 4), 28);
             ctx.clip();
             ctx.fillStyle = value('--ui-text');
-            ctx.font = '11px sans-serif';
+            ctx.font = value('--wb-gantt-font') || '11px sans-serif';
             ctx.fillText(M.pieceLabel(item.task) + ' · ' + (item.task.batch_label || '未记录') + ' · ' + M.number(item.task.sequence), Math.max(4, x + 5), 28);
             ctx.restore();
           }
         }
       }
       paint();
-      const theme = new MutationObserver(paint);
+      const theme = new MutationObserver(paint),
+        media = typeof matchMedia === 'function' ? matchMedia('print') : null;
       theme.observe(document.documentElement, {
         attributes: true,
         attributeFilter: ['data-theme', 'class']
       });
-      return () => theme.disconnect();
-    }, [row, model, width, left, viewport, selected, baselineSelected]);
+      if (media) {
+        if (typeof media.addEventListener === 'function') media.addEventListener('change', paint);else media.addListener(paint);
+      }
+      return () => {
+        theme.disconnect();
+        if (media) {
+          if (typeof media.removeEventListener === 'function') media.removeEventListener('change', paint);else media.removeListener(paint);
+        }
+      };
+    }, [row, model, width, left, viewport, printing, selected, baselineSelected]);
     function hit(event) {
       const box = ref.current.getBoundingClientRect(),
         at = model.start + (event.clientX - box.left + left) / scale;
@@ -178,17 +207,79 @@
       }
     });
   }
+  function TaskCells({
+    task: t,
+    planned,
+    onSelect,
+    print
+  }) {
+    const Cell = print ? 'td' : 'span';
+    return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Cell, {
+      role: "cell",
+      title: (t.batch_label || '未记录') + '\n' + (t.part_label || '未记录')
+    }, t.batch_label || '未记录', /*#__PURE__*/React.createElement("small", null, t.part_label || '未记录')), /*#__PURE__*/React.createElement(Cell, {
+      role: "cell",
+      title: M.number(t.sequence) + ' ' + (t.process_label || '未记录') + '\n' + M.pieceLabel(t)
+    }, M.pieceLabel(t), /*#__PURE__*/React.createElement("small", null, M.number(t.sequence), " ", t.process_label || '未记录')), /*#__PURE__*/React.createElement(Cell, {
+      role: "cell",
+      title: planned ? M.title(t) : t.reason.message
+    }, planned ? /*#__PURE__*/React.createElement(React.Fragment, null, M.timeLabel(t.start), /*#__PURE__*/React.createElement("small", null, window.PointContract.isPoint(t) ? '零工时工序 · 不占设备人员' : M.timeLabel(t.end))) : t.reason.message), /*#__PURE__*/React.createElement(Cell, {
+      role: "cell",
+      title: planned ? (t.machine && t.machine.label || '未记录') + '\n' + (t.operator && t.operator.label || '未记录') : ''
+    }, planned ? /*#__PURE__*/React.createElement(React.Fragment, null, t.machine && t.machine.label || '未记录', /*#__PURE__*/React.createElement("small", null, t.operator && t.operator.label || '未记录')) : t.execution_at_generation ? M.executionValue(t.execution_at_generation.execution_state) : '未记录'), !print && /*#__PURE__*/React.createElement(Cell, {
+      role: "cell"
+    }, /*#__PURE__*/React.createElement(Button, {
+      icon: "search",
+      className: "mini",
+      "aria-label": '工序详情 ' + (t.batch_label || '批次未记录') + ' ' + M.number(t.sequence) + ' ' + (t.process_label || '工序未记录') + ' ' + M.pieceLabel(t),
+      onClick: () => onSelect(t)
+    }, "\u8BE6\u60C5")));
+  }
   function TaskList({
     tasks,
     selected,
     onSelect,
     planned
   }) {
-    const [top, setTop] = React.useState(0),
-      height = 44,
-      first = Math.max(0, Math.floor(top / height) - 3),
-      end = Math.min(tasks.length, first + 16);
-    const head = React.useRef(null);
+    const printing = BC.usePrintLayout(),
+      [top, setTop] = React.useState(0),
+      height = 44;
+    const first = printing ? 0 : Math.max(0, Math.floor(top / height) - 3),
+      end = printing ? tasks.length : Math.min(tasks.length, first + 16);
+    const head = React.useRef(null),
+      labels = ['批次 / 零件', '工序', planned ? '开始 / 结束' : '状态 / 原因', planned ? '设备 / 人员' : '生成时执行'];
+    if (printing) return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+      className: "rc-muted"
+    }, tasks.length, " \u9053", planned ? '安排' : '未安排工序'), /*#__PURE__*/React.createElement("div", {
+      className: "rc-print-tables",
+      "data-candidate-task-list": true,
+      "data-print-row-count": tasks.length
+    }, Array.from({
+      length: Math.ceil(tasks.length / 12)
+    }, (_, chunk) => {
+      const rows = tasks.slice(chunk * 12, (chunk + 1) * 12);
+      return /*#__PURE__*/React.createElement("table", {
+        key: chunk,
+        className: "rc-print-table rc-print-chunk",
+        "data-print-chunk": chunk + 1,
+        "aria-label": (planned ? '候选任务安排' : '候选未安排明细') + '，第 ' + (chunk + 1) + ' 组',
+        "aria-rowcount": rows.length + 1,
+        "aria-colcount": 4
+      }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, labels.map(label => /*#__PURE__*/React.createElement("th", {
+        key: label
+      }, label)))), /*#__PURE__*/React.createElement("tbody", null, rows.map(t => /*#__PURE__*/React.createElement("tr", {
+        key: t.row_ref || t.operation_ref,
+        "data-row-ref": t.row_ref || undefined,
+        "data-operation-ref": t.operation_ref,
+        "aria-selected": selected && (t.row_ref ? selected.row_ref === t.row_ref : selected.operation_ref === t.operation_ref)
+      }, /*#__PURE__*/React.createElement(TaskCells, {
+        task: t,
+        planned: planned,
+        print: true
+      })))));
+    })), !tasks.length && /*#__PURE__*/React.createElement(window.WorkbenchListControls.EmptyState, {
+      title: "\u5F53\u524D\u8303\u56F4\u6CA1\u6709\u5339\u914D\u8BB0\u5F55"
+    }));
     return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
       className: "rc-muted"
     }, tasks.length, " \u9053", planned ? '安排' : '未安排工序'), /*#__PURE__*/React.createElement("div", {
@@ -205,7 +296,7 @@
       className: "rc-list-row rc-muted",
       role: "row",
       "aria-rowindex": 1
-    }, ['批次 / 零件', '工序', planned ? '开始 / 结束' : '状态 / 原因', planned ? '设备 / 人员' : '生成时执行', '详情'].map(label => /*#__PURE__*/React.createElement("span", {
+    }, labels.concat('详情').map(label => /*#__PURE__*/React.createElement("span", {
       role: "columnheader",
       key: label
     }, label)))), /*#__PURE__*/React.createElement("div", {
@@ -239,26 +330,11 @@
         left: 0,
         right: 0
       }
-    }, /*#__PURE__*/React.createElement("span", {
-      role: "cell",
-      title: (t.batch_label || '未记录') + '\n' + (t.part_label || '未记录')
-    }, t.batch_label || '未记录', /*#__PURE__*/React.createElement("small", null, t.part_label || '未记录')), /*#__PURE__*/React.createElement("span", {
-      role: "cell",
-      title: M.number(t.sequence) + ' ' + (t.process_label || '未记录') + '\n' + M.pieceLabel(t)
-    }, M.pieceLabel(t), /*#__PURE__*/React.createElement("small", null, M.number(t.sequence), " ", t.process_label || '未记录')), /*#__PURE__*/React.createElement("span", {
-      role: "cell",
-      title: planned ? M.title(t) : t.reason.message
-    }, planned ? /*#__PURE__*/React.createElement(React.Fragment, null, M.timeLabel(t.start), /*#__PURE__*/React.createElement("small", null, window.PointContract.isPoint(t) ? '零工时工序 · 不占设备人员' : M.timeLabel(t.end))) : t.reason.message), /*#__PURE__*/React.createElement("span", {
-      role: "cell",
-      title: planned ? (t.machine && t.machine.label || '未记录') + '\n' + (t.operator && t.operator.label || '未记录') : ''
-    }, planned ? /*#__PURE__*/React.createElement(React.Fragment, null, t.machine && t.machine.label || '未记录', /*#__PURE__*/React.createElement("small", null, t.operator && t.operator.label || '未记录')) : t.execution_at_generation ? M.executionValue(t.execution_at_generation.execution_state) : '未记录'), /*#__PURE__*/React.createElement("span", {
-      role: "cell"
-    }, /*#__PURE__*/React.createElement(Button, {
-      icon: "search",
-      className: "mini",
-      "aria-label": '工序详情 ' + (t.batch_label || '批次未记录') + ' ' + M.number(t.sequence) + ' ' + (t.process_label || '工序未记录') + ' ' + M.pieceLabel(t),
-      onClick: () => onSelect(t)
-    }, "\u8BE6\u60C5"))))))), !tasks.length && /*#__PURE__*/React.createElement(window.WorkbenchListControls.EmptyState, {
+    }, /*#__PURE__*/React.createElement(TaskCells, {
+      task: t,
+      planned: planned,
+      onSelect: onSelect
+    })))))), !tasks.length && /*#__PURE__*/React.createElement(window.WorkbenchListControls.EmptyState, {
       title: "\u5F53\u524D\u8303\u56F4\u6CA1\u6709\u5339\u914D\u8BB0\u5F55"
     }));
   }
@@ -278,12 +354,13 @@
       [hover, setHover] = React.useState(null),
       host = React.useRef(null),
       owner = React.useRef(null);
+    const printing = BC.usePrintLayout();
     const baseline = BC.useBaseline(data),
       [selection, setSelection] = React.useState(null),
       result = baseline.result;
     const chosen = selection && selection.result === result && B.matching([selection.item.comparison], query).length ? selection.item : null;
     const labelWidth = 156,
-      width = Math.max(1, viewport) * zoom;
+      width = Math.max(1, viewport) * (printing ? 1 : zoom);
     const candidate = React.useMemo(() => M.layout(data, mode, query, width), [data, mode, query, width]);
     const model = React.useMemo(() => window.PointGanttModel.candidateRows(B.compose(candidate, result && result.data, mode, query), width), [candidate, result, mode, query, width]);
     function selectBaseline(item) {
@@ -336,8 +413,10 @@
       event.preventDefault();
       if (action === 'fit') fit();else setZoom(z => timelineZoomStep(z, action === 'in' ? 1 : -1, ZOOM_MAX));
     }
-    const visible = M.visibleRows(model.rows, scroll.top - 48, scroll.top + 384);
-    const tickRows = model.start === null ? [] : M.ticks(model.start, model.end, width, scroll.left, viewport);
+    const renderLeft = printing ? 0 : scroll.left,
+      renderViewport = printing ? width : viewport;
+    const visible = printing ? model.rows : M.visibleRows(model.rows, scroll.top - 48, scroll.top + 384);
+    const tickRows = model.start === null ? [] : M.ticks(model.start, model.end, width, renderLeft, renderViewport);
     return /*#__PURE__*/React.createElement("section", {
       ref: host,
       className: "rc-gantt",
@@ -383,13 +462,9 @@
       key: t.at,
       className: "rc-tick",
       style: {
-        left: t.x - scroll.left
+        left: t.x - renderLeft
       }
-    }, window.WorkbenchFormat.dateTime(t.label, {
-      seconds: true
-    }).slice(5, 10), /*#__PURE__*/React.createElement("br", null), window.WorkbenchFormat.dateTime(t.label, {
-      seconds: true
-    }).slice(11)))), /*#__PURE__*/React.createElement("div", {
+    }, M.timeLabel(t.label).slice(5, 10), /*#__PURE__*/React.createElement("br", null), M.timeLabel(t.label).slice(11)))), /*#__PURE__*/React.createElement("div", {
       ref: owner,
       className: "rc-scroll",
       "data-candidate-gantt-scroll": true,
@@ -436,8 +511,9 @@
       row,
       model,
       width,
-      left: scroll.left,
-      viewport,
+      left: renderLeft,
+      viewport: renderViewport,
+      printing,
       selected,
       baselineSelected: chosen,
       onSelect: selectCandidate,

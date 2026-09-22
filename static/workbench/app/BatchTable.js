@@ -181,7 +181,7 @@
       scope: "col",
       className: "wb-col-actions",
       style: {
-        width: 190
+        width: 184
       }
     }, "\u64CD\u4F5C"))), /*#__PURE__*/React.createElement("tbody", null, rows.map(row => /*#__PURE__*/React.createElement("tr", {
       key: row.ref

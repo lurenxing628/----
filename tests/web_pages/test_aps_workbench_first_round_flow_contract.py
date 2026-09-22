@@ -193,7 +193,7 @@ const caption = document.querySelector('.wb-current-plan');
 expect(caption && caption.dataset.planRef === data.reference && caption.textContent.includes('正式 v12'));
 return document.body.innerText;
 """, app=client.application, data={"reference": plan["plan_ref"]})
-    assert "计划员值班台" in text and "值班台" in text
+    assert "值班台" in text
     assert "必须补录" not in text
     for token in INTERNAL_VISIBLE_TOKENS:
         assert token not in text

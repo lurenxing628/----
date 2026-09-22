@@ -8,7 +8,7 @@
     const [error, setError] = React.useState(null), [discard, setDiscard] = React.useState(false), [job, setJob] = React.useState(null);
     const [ack, setAck] = React.useState(false), [now, setNow] = React.useState(Date.now()), [opening, setOpening] = React.useState(false);
     const [context, setContext] = React.useState(original), [review, setReview] = React.useState(null), [reading, setReading] = React.useState(false);
-    const command = S.useCommand(adapter), notified = React.useRef(null), controller = React.useRef(null);
+    const command = S.useCommand(adapter), notified = React.useRef(null), controller = React.useRef(null), formId = React.useId();
     const create = original.mode === 'create', recovery = original.recovery === true;
     let saved = null, receiptError = null;
     if (command.phase === 'done') { try { saved = A.receipt(command.result, command.intent, !create && !recovery ? original.refs : undefined); } catch (failure) { receiptError = failure; } }
@@ -64,7 +64,8 @@
     if (!create && !reason && !ack) reason = '请先核对并勾选完整删除范围。';
     if (review) reason = '请先核对新读取的资料。';
     if (command.phase === 'rejected') reason = create ? '本次未保存，请刷新资料后再试。' : '本次未删除，请重新预检。';
-    function confirm() {
+    function confirm(event) {
+      if (event && typeof event.preventDefault === 'function') event.preventDefault();
       if (disabled || locked || done || reason || recovery) return;
       setError(null);
       try {
@@ -76,13 +77,14 @@
       <Modal title={create ? '新增零件' : original.refs && original.refs.length === 1 ? '删除零件' : '批量删除零件'} icon={create ? 'plus' : 'trash-2'} locked={locked} suspended={discard} onClose={() => close()}
         footer={<><Button disabled={locked} onClick={() => close()}>{done ? '完成' : '取消'}</Button>
           {!create && !recovery && !done && <Button icon="check" disabled={disabled || locked} busy={!!job && preview.loading} onClick={preflight}>{job ? '重新预检' : '检查删除范围'}</Button>}
-          {!recovery && !done && (create || data) && <Button icon={create ? 'plus' : 'trash-2'} className={'btn ' + (create ? 'primary' : 'danger')} disabled={disabled || locked || preview.loading} reason={reason} onClick={confirm}>{create ? '保存零件' : '确认删除'}</Button>}
+          {!recovery && !done && (create || data) && <Button icon={create ? 'plus' : 'trash-2'} className={'btn ' + (create ? 'primary' : 'danger')} disabled={disabled || locked || preview.loading} reason={reason}
+            type={create ? 'submit' : 'button'} form={create ? formId : undefined} onClick={create ? undefined : confirm}>{create ? '保存零件' : '确认删除'}</Button>}
           {done && create && <Button icon="arrow-right" className="btn primary" busy={opening} disabled={disabled || locked} onClick={openCreated}>打开工艺详情</Button>}</>}>
         <div className="modal-b scroll rm-body">
-          {create && !recovery && !done && <div className="fgrid">{[['business_code', '图号'], ['label', '零件名称'], ['route_raw', '路线文字（选填）'], ['remark', '备注（选填）']].map(([key, label]) => <label className={'field' + (['route_raw', 'remark'].includes(key) ? ' full' : '')} key={key}>{label}
-            {['route_raw', 'remark'].includes(key) ? <textarea aria-label={label} rows={key === 'route_raw' ? 4 : 2} disabled={disabled || locked} value={draft[key]} onChange={event => setDraft({ ...draft, [key]: event.target.value })} /> : <input aria-label={label} required disabled={disabled || locked} value={draft[key]} onChange={event => setDraft({ ...draft, [key]: event.target.value })} />}</label>)}</div>}
-          {create && !done && !recovery && <><p>新增后，请继续确认工艺。</p><Button icon="refresh-cw" disabled={disabled || locked} onClick={readCurrent}>刷新资料</Button></>}
-          {review && <div role="status"><p>已读取最新资料，填写内容未改。请核对后继续保存。</p><Button disabled={locked} onClick={() => { if (command.reset()) { setContext(review); setReview(null); } }}>已核对，继续编辑</Button></div>}
+          {create && !recovery && !done && <form id={formId} className="fgrid" onSubmit={confirm}>{[['business_code', '图号'], ['label', '零件名称'], ['route_raw', '路线文字（选填）'], ['remark', '备注（选填）']].map(([key, label]) => <label className={'field' + (['route_raw', 'remark'].includes(key) ? ' full' : '')} key={key}>{label}
+            {['route_raw', 'remark'].includes(key) ? <textarea aria-label={label} rows={key === 'route_raw' ? 4 : 2} disabled={disabled || locked} value={draft[key]} onChange={event => setDraft({ ...draft, [key]: event.target.value })} /> : <input aria-label={label} required disabled={disabled || locked} value={draft[key]} onChange={event => setDraft({ ...draft, [key]: event.target.value })} />}</label>)}</form>}
+          {create && !done && !recovery && <><p>新增后，请继续确认工艺。</p><Button icon="refresh-cw" disabled={disabled || locked} onClick={readCurrent}>{window.WorkbenchTerms.refresh_latest}</Button></>}
+          {review && <div role="status"><p>已读取最新资料，填写内容未改。请核对后继续保存。</p><Button disabled={locked} onClick={() => { if (command.reset()) { setContext(review); setReview(null); } }}>{window.WorkbenchTerms.accept_latest}</Button></div>}
           {!create && !recovery && <p>本次选中 {original.refs.length} 个零件，包含其他页的选择；已被批次使用的零件不能删除。有一项不能删，本次就一项也不删。</p>}
           {recovery && <p>正在查询上次操作结果，请稍候。</p>}
           {!!job && preview.loading && <p role="status">正在检查完整删除范围，尚未删除…</p>}

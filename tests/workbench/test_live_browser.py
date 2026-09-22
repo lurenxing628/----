@@ -95,7 +95,8 @@ class WorkbenchLiveBrowserTest(unittest.TestCase):
         report = result["probe"]
         for key in ("page_errors", "console_errors", "external_requests", "failed_requests", "http_errors"):
             self.assertEqual(report[key], [], "Including events delivered while closing browser contexts: " + key)
-        self.assertEqual(report["summary"]["cases"], 60)
+        # 2026-09-21 管理样例下线：每个视口/主题少一个 sample-isolation 用例，4 × 14 = 56。
+        self.assertEqual(report["summary"]["cases"], 56)
         self.assertEqual(report["summary"]["failed"], 0)
         self.assertEqual(len(report["first_render"]), 4)
         self.assertTrue(all(row["checks"] == 8 and row["style"] == "available" and row["before_theme_action"] for row in report["first_render"]))

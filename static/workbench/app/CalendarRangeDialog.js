@@ -33,10 +33,7 @@
       size = 10,
       pages = Math.max(1, Math.ceil(data.days.length / size));
     return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
-      className: "match-note",
-      style: {
-        display: 'block'
-      }
+      className: "match-note is-block"
     }, /*#__PURE__*/React.createElement("b", null, "\u5168\u90E8\u547D\u4E2D ", data.counts.selected, " \u5929"), " \xB7 \u53D8\u66F4 ", data.counts.changed, " \u5929 \xB7 \u4E0D\u53D8 ", data.counts.unchanged, " \u5929", /*#__PURE__*/React.createElement("div", null, data.request.start_date, " \u81F3 ", data.request.end_date, " \xB7 ", {
       all: '范围内每天',
       weekday: '仅周一至周五',
@@ -288,7 +285,7 @@
       label: "\u7EF4\u62A4\u65B9\u5F0F",
       value: range.operation,
       disabled: disabled,
-      options: [["upsert", "设置日历"], ["delete", "清除配置，恢复默认"]],
+      options: [["upsert", "设置日历"], ["delete", "清除单独设置，恢复默认"]],
       onChange: operation => setRange({
         ...range,
         operation
@@ -319,7 +316,7 @@
       },
       disabled: disabled,
       noteEnabled: replaceNote
-    })) : /*#__PURE__*/React.createElement("p", null, "\u6E05\u9664\u8303\u56F4\u5185\u547D\u4E2D\u65E5\u671F\u7684\u5168\u5C40\u65E5\u5386\u914D\u7F6E\uFF0C\u6062\u590D\u9ED8\u8BA4\u89C4\u5219\u3002\u4EBA\u5458\u4E13\u5C5E\u65E5\u5386\u548C\u73ED\u6B21\u4E0D\u53D8\u3002")), loading && /*#__PURE__*/React.createElement("p", {
+    })) : /*#__PURE__*/React.createElement("p", null, "\u6E05\u9664\u8303\u56F4\u5185\u547D\u4E2D\u65E5\u671F\u7684\u5355\u72EC\u8BBE\u7F6E\uFF0C\u6062\u590D\u9ED8\u8BA4\u89C4\u5219\u3002", window.WorkbenchTerms.personal_calendar, "\u548C\u73ED\u6B21\u4E0D\u53D8\u3002")), loading && /*#__PURE__*/React.createElement("p", {
       role: "status"
     }, "\u6B63\u5728\u8BFB\u53D6\u5168\u90E8\u547D\u4E2D\u65E5\u671F\u5E76\u8BA1\u7B97\u53D8\u66F4\u524D\u540E\u914D\u7F6E\u2026"), result && /*#__PURE__*/React.createElement(RangePreview, {
       result: result,

@@ -2,11 +2,25 @@
   'use strict';
   const C = window.APSResourceContract, P = window.APSProcessContract, S = window.APSResourceSession, E = window.ProcessStageEditor;
   const { Button, Modal, ErrorBox, Issues } = window.ResourceControls;
-  function Steps({ entity, stage, onStage, disabled }) {
-    const subtitle = key => entity.workflow[key].state === 'confirmed' ? '已确认' : entity.workflow[key].state === 'locked' ? key === 'source' ? '待路线确认' : '待归属确认' : key === 'route' ? entity.workflow.route.state === 'present' ? '已有路线 · 待保存' : '待录入路线' : '待保存';
-    return <div className="stepper" role="tablist" aria-label="零件工艺步骤">{[['route', '工艺路线'], ['source', '归属'], ['hours', '工时定额']].map(([key, title], index) =>
-      <Button key={key} className={'stp ' + (stage === key ? 'active' : entity.workflow[key].state === 'confirmed' ? 'done' : '')} role="tab" aria-selected={stage === key} disabled={disabled} onClick={() => onStage(key)}>
-        <span className="stp-n">{index + 1}</span><span className="stp-b"><span className="stp-t">{title}</span><span className="stp-s">{subtitle(key)}</span></span></Button>)}</div>;
+  function Steps({ entity, stage, onStage, disabled, panelId, sharedPanel = false }) {
+    const items = [['route', '工艺路线'], ['source', '归属'], ['hours', '工时定额'], ...(entity.workflow.ready ? [['ready', '汇总']] : [])];
+    const tabs = items.map(([key]) => key);
+    const subtitle = key => P.workflowStateLabel(key, entity.workflow[key].state);
+    const focusKey = tabs.includes(stage) ? stage : tabs[tabs.length - 1];
+    // 真页签：方向键 / Home / End 在步骤间移动并切换，Tab 只停在当前步骤上；面板通过 aria-controls 关联。
+    function keyDown(event, index) {
+      if (event.altKey || event.ctrlKey || event.metaKey || !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+      event.preventDefault();
+      const next = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : (index + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
+      onStage(tabs[next]);
+      const list = event.currentTarget.closest('[role="tablist"]');
+      const target = list && list.querySelectorAll('[role="tab"]')[next];
+      if (target) target.focus();
+    }
+    return <div className="stepper" role="tablist" aria-label="零件工艺步骤">{items.map(([key, title], index) =>
+      <Button key={key} id={panelId ? panelId + '-tab-' + key : undefined} className={'stp ' + (stage === key ? 'active' : key === 'ready' || entity.workflow[key].state === 'confirmed' ? 'done' : '')} role="tab" aria-selected={stage === key} aria-controls={panelId ? panelId + (sharedPanel ? '-navigation' : '-' + key) : undefined}
+        tabIndex={focusKey === key ? 0 : -1} disabled={disabled} onKeyDown={event => keyDown(event, index)} onClick={() => onStage(key)}>
+        <span className="stp-n">{index + 1}</span><span className="stp-b"><span className="stp-t">{title}</span><span className="stp-s">{key === 'ready' ? '已就绪' : subtitle(key)}</span></span></Button>)}</div>;
   }
   function Operations({ entity, hours, focusRef = null }) {
     const paging = E.usePage(entity.operations, focusRef), groups = new Map(entity.external_groups.map(row => [row.ref, row])), root = React.useRef(null);
@@ -37,6 +51,7 @@
     const [refresh, setRefresh] = React.useState({}), [receipt, setReceipt] = React.useState(null);
     const [fileAction, setFileAction] = React.useState(null), [fileReceipt, setFileReceipt] = React.useState(null);
     const request = React.useRef(null), notified = React.useRef(null), root = React.useRef(null), fileFocus = React.useRef(null);
+    const panelId = React.useId();
     const onDirty = React.useCallback((key, value) => setDirty(old => old[key] === value ? old : { ...old, [key]: value }), []);
     async function loadPart(signal) {
       if (target.error) throw target.error;
@@ -140,8 +155,8 @@
     }
     const result = current, entity = result && result.data;
     const selected = stage || (entity && (entity.workflow.route.state !== 'confirmed' ? 'route' : entity.workflow.stage));
-    const prerequisite = entity && (selected === 'source' && entity.workflow.route.state !== 'confirmed' ? '路线尚未确认；当前只读定位，不能确认归属。'
-      : selected === 'hours' && (entity.workflow.route.state !== 'confirmed' || entity.workflow.source.state !== 'confirmed') ? '前置路线或归属尚未确认；当前只读定位，不能确认工时。' : '');
+    const prerequisite = entity && (selected === 'source' && entity.workflow.route.state !== 'confirmed' ? '路线尚未确认；当前只能查看，不能确认归属。'
+      : selected === 'hours' && (entity.workflow.route.state !== 'confirmed' || entity.workflow.source.state !== 'confirmed') ? '前置路线或归属尚未确认；当前只能查看，不能确认工时。' : '');
     React.useEffect(() => {
       if (!browsing || !entity || target.operationRef || target.groupRef || !root.current) return undefined;
       const frame = requestAnimationFrame(() => { const tab = root.current && root.current.querySelector('.stepper [aria-selected="true"]'); if (tab) { tab.focus(); tab.scrollIntoView({ block: 'nearest' }); } });
@@ -156,9 +171,9 @@
           {refresh.loading && (receiptMatches || fileReceipt) && <p role="status">保存已确认，正在刷新工艺详情…</p>}<ErrorBox error={refresh.error} />{refresh.error && !needsReceiptCheck && <Button icon="refresh-cw" onClick={fileReceipt ? () => readFileSaved(fileReceipt) : readSaved}>查询结果</Button>}
           {fileReceipt && !refresh.done && !refresh.loading && <p role="status">资料尚未刷新，请刷新后继续编辑。</p>}
           {receipt && refresh.done && command.phase === 'idle' && <p role="status">提交已确认，工艺详情已刷新。</p>}
-          {entity && <><Issues issues={result.warnings} /><Issues issues={entity.issues} /><Steps entity={entity} stage={selected} disabled={editingBlocked} onStage={setStage} />
-            {browsing && <section data-process-navigation-stage={selected}>
-              <div className="toolbar"><span role="status">已按原零件记录只读定位 · {({ route: '工艺路线', source: '归属', hours: '工时定额', ready: '已就绪汇总' })[selected]}</span>
+          {entity && <><Issues issues={result.warnings} /><Issues issues={entity.issues} /><Steps entity={entity} stage={selected} disabled={editingBlocked} onStage={setStage} panelId={panelId} sharedPanel={browsing} />
+            {browsing && <section role="tabpanel" id={panelId + '-navigation'} aria-labelledby={panelId + '-tab-' + selected} data-process-navigation-stage={selected}>
+              <div className="toolbar"><span role="status">已按原零件记录定位，当前只能查看 · {P.stageLabel(selected)}</span>
                 <Button icon="square-pen" disabled={editingBlocked} reason={prerequisite} onClick={() => setBrowsing(false)}>开始维护</Button></div>
               {prerequisite && <p role="status">{prerequisite}</p>}
               <p><E.Confirmation record={entity.workflow[selected === 'ready' ? 'hours' : selected]} /></p>
@@ -167,10 +182,10 @@
               <E.Groups key={'groups-' + selected} rows={entity.external_groups} focusRef={target.groupRef} />
             </section>}
             {!browsing && <>{entity.workflow.ready && <div className="toolbar"><span className="pill ok">三阶段已确认 · 已就绪</span><Button icon="check" onClick={() => setStage('ready')} disabled={editingBlocked}>查看汇总</Button></div>}
-            <div hidden={selected !== 'route'}><RouteView entity={entity} disabled={editingBlocked} onFileAction={openFile} previewAvailable={typeof adapter.routePreview === 'function'} onEntry={() => { setEntryStarted(true); setEntry(true); }} /></div>
-            <div hidden={selected !== 'source'}><window.ProcessSourceEditor key={saved.source} adapter={adapter} result={result} command={visibleCommand} disabled={editorDisabled} saved={saved.source} onDirty={onDirty} onOverlay={setOverlay} onResourceCommitted={onCommitted} /></div>
-            <div hidden={selected !== 'hours'}><window.ProcessHoursEditor key={saved.hours} adapter={adapter} result={result} command={visibleCommand} disabled={editorDisabled} saved={saved.hours} onDirty={onDirty} onOverlay={setOverlay} onFileAction={openFile} /></div>
-            {selected === 'ready' && <><Operations entity={entity} hours /><E.Groups rows={entity.external_groups} /><p><E.Confirmation record={entity.workflow.hours} /></p></>}</>}
+            <div hidden={selected !== 'route'} role="tabpanel" id={panelId + '-route'} aria-labelledby={panelId + '-tab-route'}><RouteView entity={entity} disabled={editingBlocked} onFileAction={openFile} previewAvailable={typeof adapter.routePreview === 'function'} onEntry={() => { setEntryStarted(true); setEntry(true); }} /></div>
+            <div hidden={selected !== 'source'} role="tabpanel" id={panelId + '-source'} aria-labelledby={panelId + '-tab-source'}><window.ProcessSourceEditor key={saved.source} adapter={adapter} result={result} command={visibleCommand} disabled={editorDisabled} saved={saved.source} onDirty={onDirty} onOverlay={setOverlay} onResourceCommitted={onCommitted} /></div>
+            <div hidden={selected !== 'hours'} role="tabpanel" id={panelId + '-hours'} aria-labelledby={panelId + '-tab-hours'}><window.ProcessHoursEditor key={saved.hours} adapter={adapter} result={result} command={visibleCommand} disabled={editorDisabled} saved={saved.hours} onDirty={onDirty} onOverlay={setOverlay} onFileAction={openFile} /></div>
+            {entity.workflow.ready && <div hidden={selected !== 'ready'} role="tabpanel" id={panelId + '-ready'} aria-labelledby={panelId + '-tab-ready'}><Operations entity={entity} hours /><E.Groups rows={entity.external_groups} /><p><E.Confirmation record={entity.workflow.hours} /></p></div>}</>}
           </>}
         </div>
       </Modal>

@@ -1,7 +1,7 @@
 (function () {
   'use strict';
   // Axis numbers encode factory-local wall-clock fields; UTC extraction must not shift them to the browser timezone.
-  const U = window.TrialControls, wall = value => Date.parse(value + 'Z');
+  const U = window.TrialControls, { TimelineZoom } = window.ResourceControls, ZOOM_MAX = 8, wall = value => Date.parse(value + 'Z');
   const pieceLabel = t => t.piece_id === null ? '共同工序' : '分件 ' + t.piece_id;
   const taskLabel = t => t.batch_id + ' · ' + t.sequence + ' ' + t.process_label + ' · ' + pieceLabel(t);
   function resourceNames(data) {
@@ -16,10 +16,13 @@
       && (!needle || [t.batch_id, t.part_no, t.part_name, t.process_label, t.piece_id, name(t.machine_ref), name(t.operator_ref)].join(' ').toLowerCase().includes(needle)));
   }
   function Gantt({ data, selected, onSelect }) {
-    const V = window.TrialViewState, preferences = V.useView(data), values = preferences.value || V.defaults(data);
+    const V = window.TrialViewState, preferences = V.useView(data);
+    // When the local preference cannot be read, the gantt still renders with defaults and view changes stay on this page.
+    const [local, setLocal] = React.useState(null), values = preferences.value || local || V.defaults(data);
     const view = values.mode, baseline = values.baseline, changed = values.only_changed, query = values.query;
-    const setView = mode => preferences.change({ mode }), setBaseline = baseline => preferences.change({ baseline });
-    const setChanged = only_changed => preferences.change({ only_changed }), setQuery = query => preferences.change({ query });
+    const update = patch => { if (!preferences.change(patch)) setLocal({ ...values, ...patch }); };
+    const setView = mode => update({ mode }), setBaseline = baseline => update({ baseline });
+    const setChanged = only_changed => update({ only_changed }), setQuery = query => update({ query });
     const [limit, setLimit] = React.useState(true);
     const [page, setPage] = React.useState(1), [zoom, setZoom] = React.useState(1), [expanded, setExpanded] = React.useState(false);
     const [hover, setHover] = React.useState(null);
@@ -39,6 +42,8 @@
       data.tasks.forEach(t => { start = Math.min(start, wall(t.start), wall(t.original.start)); end = Math.max(end, wall(t.end), wall(t.original.end)); });
       const pad = Math.max(60000, (end - start) * .025); return { start: start - pad, end: end + pad };
     }, [data]);
+    // Same tick ladder as the plan gantt: 1000 axis units per zoom step, placed by percentage of the timeline width.
+    const ticks = React.useMemo(() => window.PlanGanttModel.ticks(bounds.start, bounds.end, 1000 * zoom, 0, 1000 * zoom), [bounds, zoom]);
     const position = t => ({ left: (wall(t.start) - bounds.start) / (bounds.end - bounds.start) * 100 + '%', width: (wall(t.end) - wall(t.start)) / (bounds.end - bounds.start) * 100 + '%' });
     const pointTitle = (t, original) => (original ? '原安排 · ' : '') + taskLabel(t) + '\n'
       + U.timeLabel((original ? t.original : t).start) + '\n零工时工序 · 0 小时 · 不占设备人员';
@@ -56,7 +61,6 @@
     React.useEffect(() => {
       if (expanded) { const handler = e => { if (e.key === 'Escape') setExpanded(false); }; document.addEventListener('keydown', handler); return () => document.removeEventListener('keydown', handler); }
     }, [expanded]);
-    if (!preferences.value) return <section aria-label="试调甘特"><V.Notice state={preferences} label="试调甘特查看偏好" /></section>;
     return <section className={'tt-gantt' + (expanded ? ' tt-expanded' : '')} aria-label="试调甘特"><window.PointGantt.Styles />
       <V.Notice state={preferences} label="试调甘特查看偏好" /><div className="tt-heading"><h3>试调排程图</h3>
       <span className="tt-muted">含夜间</span></div><div className="tt-tools tt-gantt-tools"><U.Tabs value={view} label="甘特分组"
@@ -65,11 +69,10 @@
       <label className="tt-check"><input type="checkbox" checked={changed} onChange={e => { setChanged(e.target.checked); setPage(1); }} />仅变更</label>
       {!!Object.keys(data.scope).length && <label className="tt-check"><input type="checkbox" checked={limit} onChange={e => { setLimit(e.target.checked); setPage(1); }} />原显示范围</label>}
       <input type="search" aria-label="搜索试调工序" placeholder="批次 / 工序 / 资源" maxLength={200} value={query} onChange={e => { setQuery(e.target.value); setPage(1); }} />
-      <U.Button icon="minus" aria-label="缩小甘特" disabled={zoom <= 1} onClick={() => setZoom(z => z / 2)} />
-      <U.Button icon="plus" aria-label="放大甘特" disabled={zoom >= 8} onClick={() => setZoom(z => z * 2)} />
+      <TimelineZoom zoom={zoom} max={ZOOM_MAX} scope="试调" onZoom={setZoom} onFit={() => setZoom(1)} />
       <U.Button icon="chart-gantt" aria-label={expanded ? '收起甘特' : '展开甘特'} onClick={() => setExpanded(!expanded)} /></div>
       <div className="tt-board" ref={board} onScroll={() => setHover(null)}><div className="tt-timeline" style={{ width: zoom === 1 ? '100%' : zoom * 100 + '%' }}>
-        <div className="tt-axis"><div className="tt-corner">工序 / 资源</div><div className="tt-ticks">{[0, 1, 2, 3].map(i => <span key={i}>{U.timeLabel(new Date(bounds.start + (bounds.end - bounds.start) * i / 3).toISOString().slice(0, 19)).slice(5, 16)}</span>)}</div></div>
+        <div className="tt-axis"><div className="tt-corner">工序 / 资源</div><div className="tt-ticks">{ticks.map(tick => <span key={tick.at} className="tt-tick" style={{ left: tick.x / (10 * zoom) + '%' }}>{U.timeLabel(tick.label).slice(5, 10)}<small>{U.timeLabel(tick.label).slice(11)}</small></span>)}</div></div>
         {visible.map((r, i) => <React.Fragment key={r.t.task_ref + ':' + r.ghost}>{(i === 0 || visible[i - 1].group !== r.group) && <div className="tt-group">{view === 'batch' ? r.t.batch_id + ' · ' + (r.t.part_name || '零件名称未填写') : name(r.group)}</div>}
           <div className={'tt-gantt-row' + (selected === r.t.task_ref ? ' selected' : '')} data-trial-task={r.t.task_ref}>
             <button type="button" className="tt-task-label" onClick={() => onSelect(r.t.task_ref)} aria-pressed={selected === r.t.task_ref}
@@ -78,8 +81,8 @@
             <div className="tt-track">{!r.ghost && (window.PointContract.isPoint(r.t) ? pointMarker(r.t, false) : <button type="button" className={'tt-bar' + (r.t.issues.length ? ' conflict' : '') + (r.t.locked ? ' locked' : '')}
               data-task-ref={r.t.task_ref} aria-label={'安排时段 ' + taskLabel(r.t)} aria-pressed={selected === r.t.task_ref}
               title={taskLabel(r.t) + '\n本工序目标量 ' + U.number(r.t.quantity) + ' · 整批量 ' + U.number(r.t.batch_quantity) + '\n' + U.timeLabel(r.t.start) + ' 至 ' + U.timeLabel(r.t.end)} style={position(r.t)} onClick={() => onSelect(r.t.task_ref)} />)}
-              {baseline && (view === 'batch' || r.ghost || r.t.original[key] === r.group) && (window.PointContract.isPoint(r.t) ? pointMarker(r.t, true) : <span className="tt-baseline" data-baseline-ref={r.t.task_ref}
-                style={position(r.t.original)} title={'原安排 ' + taskLabel(r.t) + '\n' + U.timeLabel(r.t.original.start) + ' 至 ' + U.timeLabel(r.t.original.end)} />)}</div></div></React.Fragment>)}
+              {baseline && (view === 'batch' || r.ghost || r.t.original[key] === r.group) && (window.PointContract.isPoint(r.t) ? pointMarker(r.t, true) : <span className="tt-baseline" data-baseline-ref={r.t.task_ref} role="img"
+                style={position(r.t.original)} aria-label={'原安排 ' + taskLabel(r.t) + '，' + U.timeLabel(r.t.original.start) + ' 至 ' + U.timeLabel(r.t.original.end)} title={'原安排 ' + taskLabel(r.t) + '\n' + U.timeLabel(r.t.original.start) + ' 至 ' + U.timeLabel(r.t.original.end)} />)}</div></div></React.Fragment>)}
         {!visible.length && <div className="tt-empty">当前显示范围没有匹配工序</div>}</div></div>
       <div className="tt-heading"><div className="tt-legend"><span><i />试调安排</span><span><i className="baseline" />原试调基础</span><span><i className="conflict" />约束问题</span><span><i className="locked" />已锁定，不能调整</span></div>
         <span className="tt-muted">匹配 {filtered.length} / 完整 {data.task_count} 道 · {zoom}×</span></div>

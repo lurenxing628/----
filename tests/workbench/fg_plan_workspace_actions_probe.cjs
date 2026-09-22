@@ -30,7 +30,8 @@ async function check(page, fixture, variant) {
   await navigate(page, fixture.plan_ref);
   const workspace = page.locator('[data-plan-workspace]'), heading = workspace.locator('.plan-catalog > .plan-toolbar');
   await workspace.waitFor();
-  if (fixture.plan_ref) await workspace.locator('[data-plan-gantt]').waitFor();
+  // The analysis tab (the navigate default) shows the projection tables; the board only appears on the gantt tab.
+  if (fixture.plan_ref) await workspace.locator('section[aria-label="计划分析"]').waitFor();
   else await workspace.getByText('请在计划列表里选一个可查看的计划。', { exact: true }).waitFor();
   await settle(page);
   assert.equal(await workspace.getByRole('button', { name: /^(采用|正式采用|重新采用)/ }).count(), 0);
@@ -39,13 +40,15 @@ async function check(page, fixture, variant) {
   const ready = !!fixture.plan_ref;
   if (ready && [1280, 1366].includes(page.viewportSize().width)) {
     for (const [id, name] of [['gantt', '计划甘特'], ['delay', '交付风险'], ['analysis', '选择排产方案']]) {
-      await page.getByRole('tab', { name, exact: true }).click(); await workspace.locator('[data-plan-gantt]').waitFor();
+      // Only the gantt tab draws the board; delay and analysis show the projection tables for the same read.
+      await page.getByRole('tab', { name, exact: true }).click(); await workspace.locator(id === 'gantt' ? '[data-plan-gantt]' : 'section[aria-label="计划分析"]').waitFor();
       await page.evaluate(() => window.scrollTo(0, 0)); await settle(page);
-      const row = await workspace.locator('.plan-lane').first().evaluate(node => {
+      const row = await workspace.locator(id === 'gantt' ? '.plan-lane' : 'section[aria-label="计划分析"]').first().evaluate(node => {
         const box = node.getBoundingClientRect(), mark = node.querySelector('[data-plan-task]'), face = mark && mark.getBoundingClientRect();
         return { top: box.top, bottom: box.bottom, markTop: face && face.top, markBottom: face && face.bottom, viewport: innerHeight };
       });
-      assert(row.top >= 0 && row.bottom <= row.viewport && row.markTop >= 0 && row.markBottom <= row.viewport, 'Entire first row and mark visible in real shell: ' + JSON.stringify({ id, ...row }));
+      if (id === 'gantt') assert(row.top >= 0 && row.bottom <= row.viewport && row.markTop >= 0 && row.markBottom <= row.viewport, 'Entire first row and mark visible in real shell: ' + JSON.stringify({ id, ...row }));
+      else assert(row.top >= 0 && row.top < row.viewport, 'Projection tables start on the first screen in real shell: ' + JSON.stringify({ id, ...row }));
       if (!report.first_rows) report.first_rows=[]; report.first_rows.push({variant,fixture:fixture.name,view:id,...row});
     }
   }
@@ -64,13 +67,13 @@ async function check(page, fixture, variant) {
     assert.equal(await page.evaluate(() => history.state.workbench.context.plan_ref), fixture.plan_ref);
     await page.getByRole('tab', { name: '选择排产方案', exact: true }).click();
     await page.waitForFunction(() => document.querySelector('#wb-view-tab-analysis').getAttribute('aria-selected') === 'true');
-    await workspace.locator('[data-plan-gantt]').waitFor();
+    await workspace.locator('section[aria-label="计划分析"]').waitFor();
     const payload = await page.evaluate(async ref => (await fetch('/api/workbench/v1/plans/' + ref + '/workspace')).json(), fixture.plan_ref);
     if (fixture.payload) assert.deepEqual(payload.data, fixture.payload.data, 'UI must not change plan data');
     const data = payload.data, label = value => value.replace('T', ' ');
     const inclusive = data.plan_span.end_inclusive === true;
     const caption = inclusive && data.plan_span.start === data.plan_span.end ? '计划时刻：' + label(data.plan_span.start)
-      : '计划时间范围：' + label(data.time_scope.range_start) + ' → ' + label(data.time_scope.range_end) + (inclusive ? '（包含末端零工时工序）' : '（不含结束时刻）');
+      : '计划时间范围：' + label(data.time_scope.range_start) + ' 至 ' + label(data.time_scope.range_end) + (inclusive ? '（包含末端零工时工序）' : '（不含结束时刻）');
     assert.equal(await workspace.locator('.plan-scope-caption').innerText(), caption, 'Keep FA scope caption');
     const metrics = await workspace.locator('.plan-scope > .wb-metrics > .wb-metric').evaluateAll(nodes => nodes.slice(2).map(node => ({
       value: Number(node.querySelector('.wb-metric-value').textContent), tone: node.dataset.tone })));

@@ -25,10 +25,10 @@ body.aps-workbench .wb-table-frame[data-sticky-actions] > table.wb-table :is(th,
 }
 /* WorkbenchScrollShadows sets the overflow flags; a shadow appears only while cells are hidden under a sticky column. */
 body.aps-workbench .wb-table-frame[data-sticky-actions][data-overflow-right] > table.wb-table :is(th,td).wb-col-actions {
-  box-shadow: var(--wb-row-focus-shadow, 0 0 transparent), -1px 0 0 var(--ui-border), -12px 0 14px -10px var(--wb-scroll-shadow);
+  box-shadow: var(--wb-row-focus-shadow, 0 0 transparent), -1px 0 0 var(--ui-border), var(--wb-scroll-shadow-right);
 }
 body.aps-workbench .wb-table-frame[data-sticky-actions][data-overflow-left] > table.wb-table :is(th,td).wb-col-key {
-  box-shadow: var(--wb-row-focus-shadow, 0 0 transparent), 1px 0 0 var(--ui-border), 12px 0 14px -10px var(--wb-scroll-shadow);
+  box-shadow: var(--wb-row-focus-shadow, 0 0 transparent), 1px 0 0 var(--ui-border), var(--wb-scroll-shadow-left);
 }
 /* CJK header labels break only at spaces or slashes, never inside a word. */
 body.aps-workbench table thead th { word-break: keep-all; }
@@ -86,7 +86,8 @@ body.aps-workbench .wb-error {
   background: var(--wb-sev-danger-bg); color: var(--wb-sev-danger-text); border-radius: var(--wb-radius-control); overflow-wrap: anywhere;
 }
 body.aps-workbench .wb-error p { margin: 0; overflow-wrap: anywhere; }
-body.aps-workbench .plana .modal-bg { z-index: var(--wb-z-modal); }
+/* 深色下原型遮罩 rgb(15 23 42 / .45) 与页面底色同色等于没变暗；--wb-modal-backdrop-dim 只在深色块给值，把弹窗后面的画面压暗，弹窗本体不受影响。 */
+body.aps-workbench .plana .modal-bg { z-index: var(--wb-z-modal); backdrop-filter: var(--wb-modal-backdrop-dim); }
 body.aps-workbench :is(.aps-filter-pop,.pl-menu,.selpop) { z-index: var(--wb-z-dropdown); }
 body.aps-workbench :is(.toast,.bd-toast) { z-index: var(--wb-z-toast); }
 body.aps-workbench .wb-guard-host > .modal-bg { z-index: var(--wb-z-popup); }

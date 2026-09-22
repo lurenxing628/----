@@ -113,7 +113,7 @@ async function choose(page, ref) {
   const result = await action(page, base + '/items/' + selected, () => row.getByRole('button').click());
   await detail(page).waitFor(); return result.data.item;
 }
-async function open(page, closed = false) { await detail(page).getByRole('button', { name: closed ? '独立重开' : '登记处置', exact: true }).click(); await dialog(page).waitFor(); }
+async function open(page, closed = false) { await detail(page).getByRole('button', { name: closed ? '重新打开处置' : '登记处置', exact: true }).click(); await dialog(page).waitFor(); }
 async function fillHandling(page, status, complete) {
   await select(page, '目标处置状态', status);
   await dialog(page).getByLabel('责任人', { exact: true }).fill('外协跟单员李工');
@@ -128,7 +128,7 @@ async function fillHandling(page, status, complete) {
 }
 async function submit(page, ref, reopen = false, status = 200) {
   return action(page, base + '/items/' + ref + '/' + (reopen ? 'reopen' : 'transition'),
-    () => dialog(page).getByRole('button', { name: reopen ? '确认独立重开' : '提交处置', exact: true }).click(), 'POST', status);
+    () => dialog(page).getByRole('button', { name: reopen ? '确认重新打开' : '提交处置', exact: true }).click(), 'POST', status);
 }
 async function finish(page) { await dialog(page).getByText(/^处置已完成。/).waitFor(); return action(page, base, () => dialog(page).getByRole('button', { name: '完成', exact: true }).click()); }
 async function reload(page) { return action(page, base, () => page.getByRole('button', { name: '刷新值班台', exact: true }).click()); }

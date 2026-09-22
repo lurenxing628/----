@@ -63,9 +63,12 @@ def _redirect(view, context):
     return decision
 
 
-def _unsupported(code="unsupported_scope", message=None, public=None):
-    return retired(code, message or "新页面装不下这组旧条件，没有跳转，也没有丢掉任何条件。原来的数据都还在，请从侧栏进入对应页面重新筛选。",
-                   public_context=public)
+def _unsupported(code="unsupported_scope", message=None, public=None, *, conditions=True):
+    # 旧地址带了条件才说“装不下这组条件”；不带条件的旧入口只是页面退役了。
+    if message is None:
+        message = ("新页面装不下这组旧条件，没有跳转，也没有丢掉任何条件。原来的数据都还在，请从侧栏进入对应页面重新筛选。" if conditions
+                   else "这个旧页面已退役，页面没有打开。原来的数据都还在，请从侧栏进入对应页面。")
+    return retired(code, message, public_context=public)
 
 
 def _detail(queries, legacy, args):
@@ -136,7 +139,7 @@ def _resolve(queries, legacy, args):
     if legacy.endpoint in ("material.index", "material.materials_page") and not args:
         return _redirect("process", {"source": "production"})
     # Old lists have implicit status/tab defaults. A generic new landing is not equivalent.
-    return _unsupported("old_control_retired" if policy == "retired" else "unsupported_scope")
+    return _unsupported("old_control_retired" if policy == "retired" else "unsupported_scope", conditions=bool(args))
 
 
 def resolve_legacy_get(conn, legacy):

@@ -45,7 +45,7 @@
       const value = M.copyPrevious(draft, task); setDraft(value); setError(null);
       setSuggestions(Object.fromEntries(['actual_start', 'actual_end'].filter(key => value[key]).map(key => [key, '复制自同任务上一条报工，请重新核对'])));
     }
-    const remaining = task.execution.remaining_quantity, fresh = action === 'create' && !legacy;
+    const fresh = action === 'create' && !legacy;
     const mapped = C.fields.concat(['reason', 'declared_operator']);
     return <form ref={form} className="field-editor" aria-label={title} noValidate onSubmit={event => { event.preventDefault(); save(draft); }}>
       <div className="field-editor-heading"><h3>{title}{record ? ' · ' + record.report_no : ''}</h3>
@@ -53,7 +53,6 @@
       <window.FieldEditorFields {...{ task, record, legacy, action, adapter, draft, suggestions, disabled, first, change }} error={shownError} />
       <ErrorBox error={error} excludePaths={mapped} /><Feedback command={command} onDone={onDone} excludePaths={mapped} />{reason && <p role="status">{reason}</p>}
       <div className="field-footer"><Button onClick={onClose} disabled={command.locked}>取消</Button>
-        {fresh && <Button icon="check-check" disabled={disabled || remaining === null || !!reason} onClick={() => { const value = { ...draft, completed_quantity: String(remaining) }; setDraft(value); save(value); }}>剩余全部完工</Button>}
         {fresh && <Button disabled={disabled} reason={reason} onClick={() => save(draft, true)}>保存并继续</Button>}
         <Button type="submit" icon="check" className="btn primary" disabled={disabled} busy={command.locked} reason={reason}>{action === 'correct' ? '保存更正' : '保存报工'}</Button></div>
     </form>;

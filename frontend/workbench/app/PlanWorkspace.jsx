@@ -5,7 +5,10 @@
   const M = window.PlanGanttModel, { TaskDetail, ProjectionTables, Conflicts } = window.PlanDetailsUI;
   const adapterIds = new WeakMap(); let nextAdapter = 0;
   function adapterId(adapter) { if (!adapterIds.has(adapter)) adapterIds.set(adapter, ++nextAdapter); return adapterIds.get(adapter); }
-  function WorkspaceSession({ adapter, view, planRef, initialContext = {}, disabled = false, renderTrial, navigation }) {
+  // The three plan-centre tabs share the heading and task detail; the body differs: analysis = projection tables,
+  // gantt = the gantt board, delay = projection tables plus resource overlap. Selecting a batch or a related task on a
+  // tab without the gantt only selects it for the task detail; the gantt locates it when that tab is shown.
+  function WorkspaceSession({ adapter, view = 'analysis', planRef, initialContext = {}, disabled = false, renderTrial, navigation }) {
     const [selection, setSelection] = React.useState(() => planRef || initialContext.plan_ref ? { plan_ref: planRef || initialContext.plan_ref, display_name: '指定计划' } : null);
     const [scope, setScope] = React.useState(() => {
       const result = {};
@@ -31,7 +34,7 @@
       initialTaskRef.current = null;
       if (!target) return;
       const task = data.tasks.find(row => row.task_ref === target);
-      if (task) setSelected({ task, before: false, result, ...(relatedRef ? { locate: true } : {}) });
+      if (task) setSelected({ task, before: false, result, ...(relatedRef || view === 'gantt' ? { locate: true } : {}) });
       else setRangeError(C.failure(relatedRef ? '此计划中未找到相关工序。'
         : '要恢复的工序不在当前范围内。'));
       if (relatedRef) setRelatedRef(null);
@@ -47,7 +50,7 @@
     function refresh() {
       const next = { ...scope }; delete next.snapshot_ref; setScope(next); setPaused(false); setSelected(null); read.reload();
     }
-    function selectTask(task, before = false) { initialTaskRef.current = null; setSelected({ task, before, result }); }
+    function selectTask(task, before = false, locate = false) { initialTaskRef.current = null; setSelected({ task, before, result, ...(locate ? { locate: true } : {}) }); }
     function selectRelated(ref) {
       initialTaskRef.current = null;
       const task = data.tasks.find(row => row.task_ref === ref);
@@ -75,11 +78,12 @@
     const includesPlanEnd = data && data.scope.range_start === null && data.plan_span.end_inclusive === true;
     const scopeCaption = !data ? '' : includesPlanEnd && data.plan_span.start === data.plan_span.end
       ? `计划时刻：${M.timeLabel(data.plan_span.start)}`
-      : `计划时间范围：${M.timeLabel(data.time_scope.range_start)} → ${M.timeLabel(data.time_scope.range_end)}（${includesPlanEnd ? '包含末端零工时工序' : '不含结束时刻'}）`;
+      : `计划时间范围：${M.timeLabel(data.time_scope.range_start)} 至 ${M.timeLabel(data.time_scope.range_end)}（${includesPlanEnd ? '包含末端零工时工序' : '不含结束时刻'}）`;
     window.WorkbenchCaption.useCaption(data && !read.loading && !read.error && !paused ? {
       reference: data.plan.plan_ref, label: '正式计划', name: data.plan.display_name,
-      status: data.plan.is_current_official ? '当前正式' : data.plan.kind === 'official' ? '历史正式' : data.plan.kind === 'candidate' ? '候选方案' : '试调方案',
-      ...(data.plan.kind === 'official' && data.plan.version !== null ? { version: '第 ' + data.plan.version + ' 版' } : {}),
+      status: data.plan.is_current_official ? window.WorkbenchTerms.current_official : data.plan.kind === 'official' ? window.WorkbenchTerms.historical_official
+        : data.plan.kind === 'candidate' ? window.WorkbenchTerms.candidate : window.WorkbenchTerms.trial_scenario,
+      ...(data.plan.kind === 'official' && data.plan.version !== null ? { version: window.WorkbenchTerms.plan_version(data.plan.version) } : {}),
       range: scopeCaption,
     } : null);
     return <div className="plana plan-workspace" data-plan-workspace>
@@ -114,8 +118,8 @@
             <div className="stat wb-metric" key={label} data-tone={tone === 'warn' && value === 0 ? 'neutral' : tone}><span className="sl wb-metric-label">{label}</span><span className="sv wb-metric-value">{value}</span></div>)}
         </div>}</section>
       {data && <div className="plan-main"><div>
-          <window.PlanGantt key={'gantt:' + result.meta.snapshot_ref} data={data} asOf={result.meta.as_of} selected={chosen} onSelect={selectTask} query={query} onQuery={setQuery} disabled={disabled} />
-          <ProjectionTables key={'risk:' + result.meta.snapshot_ref} data={data} onResource={setQuery} onBatch={batch => { setQuery(batch); const task = data.tasks.find(row => row.batch_id === batch); if (task) selectTask(task); }} />
+          {view === 'gantt' && <window.PlanGantt key={'gantt:' + data.plan.plan_ref} data={data} asOf={result.meta.as_of} selected={chosen} onSelect={selectTask} query={query} onQuery={setQuery} disabled={disabled} />}
+          {view !== 'gantt' && <ProjectionTables key={'risk:' + result.meta.snapshot_ref} data={data} onResource={setQuery} onBatch={batch => { setQuery(batch); const task = data.tasks.find(row => row.batch_id === batch); if (task) selectTask(task, false, true); }} />}
           {view === 'delay' && <Conflicts key={'conflicts:' + result.meta.snapshot_ref} data={data} />}
         </div><TaskDetail data={data} selected={chosen} onSelect={selectTask} onRelated={selectRelated}
           renderTrial={renderTrial} scope={scope} query={query} disabled={!ready || read.loading || !!read.error} /></div>}

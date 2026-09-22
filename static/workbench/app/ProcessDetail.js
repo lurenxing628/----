@@ -15,19 +15,38 @@
     entity,
     stage,
     onStage,
-    disabled
+    disabled,
+    panelId,
+    sharedPanel = false
   }) {
-    const subtitle = key => entity.workflow[key].state === 'confirmed' ? '已确认' : entity.workflow[key].state === 'locked' ? key === 'source' ? '待路线确认' : '待归属确认' : key === 'route' ? entity.workflow.route.state === 'present' ? '已有路线 · 待保存' : '待录入路线' : '待保存';
+    const items = [['route', '工艺路线'], ['source', '归属'], ['hours', '工时定额'], ...(entity.workflow.ready ? [['ready', '汇总']] : [])];
+    const tabs = items.map(([key]) => key);
+    const subtitle = key => P.workflowStateLabel(key, entity.workflow[key].state);
+    const focusKey = tabs.includes(stage) ? stage : tabs[tabs.length - 1];
+    // 真页签：方向键 / Home / End 在步骤间移动并切换，Tab 只停在当前步骤上；面板通过 aria-controls 关联。
+    function keyDown(event, index) {
+      if (event.altKey || event.ctrlKey || event.metaKey || !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+      event.preventDefault();
+      const next = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : (index + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
+      onStage(tabs[next]);
+      const list = event.currentTarget.closest('[role="tablist"]');
+      const target = list && list.querySelectorAll('[role="tab"]')[next];
+      if (target) target.focus();
+    }
     return /*#__PURE__*/React.createElement("div", {
       className: "stepper",
       role: "tablist",
       "aria-label": "\u96F6\u4EF6\u5DE5\u827A\u6B65\u9AA4"
-    }, [['route', '工艺路线'], ['source', '归属'], ['hours', '工时定额']].map(([key, title], index) => /*#__PURE__*/React.createElement(Button, {
+    }, items.map(([key, title], index) => /*#__PURE__*/React.createElement(Button, {
       key: key,
-      className: 'stp ' + (stage === key ? 'active' : entity.workflow[key].state === 'confirmed' ? 'done' : ''),
+      id: panelId ? panelId + '-tab-' + key : undefined,
+      className: 'stp ' + (stage === key ? 'active' : key === 'ready' || entity.workflow[key].state === 'confirmed' ? 'done' : ''),
       role: "tab",
       "aria-selected": stage === key,
+      "aria-controls": panelId ? panelId + (sharedPanel ? '-navigation' : '-' + key) : undefined,
+      tabIndex: focusKey === key ? 0 : -1,
       disabled: disabled,
+      onKeyDown: event => keyDown(event, index),
       onClick: () => onStage(key)
     }, /*#__PURE__*/React.createElement("span", {
       className: "stp-n"
@@ -37,7 +56,7 @@
       className: "stp-t"
     }, title), /*#__PURE__*/React.createElement("span", {
       className: "stp-s"
-    }, subtitle(key))))));
+    }, key === 'ready' ? '已就绪' : subtitle(key))))));
   }
   function Operations({
     entity,
@@ -191,6 +210,7 @@
       notified = React.useRef(null),
       root = React.useRef(null),
       fileFocus = React.useRef(null);
+    const panelId = React.useId();
     const onDirty = React.useCallback((key, value) => setDirty(old => old[key] === value ? old : {
       ...old,
       [key]: value
@@ -396,7 +416,7 @@
     const result = current,
       entity = result && result.data;
     const selected = stage || entity && (entity.workflow.route.state !== 'confirmed' ? 'route' : entity.workflow.stage);
-    const prerequisite = entity && (selected === 'source' && entity.workflow.route.state !== 'confirmed' ? '路线尚未确认；当前只读定位，不能确认归属。' : selected === 'hours' && (entity.workflow.route.state !== 'confirmed' || entity.workflow.source.state !== 'confirmed') ? '前置路线或归属尚未确认；当前只读定位，不能确认工时。' : '');
+    const prerequisite = entity && (selected === 'source' && entity.workflow.route.state !== 'confirmed' ? '路线尚未确认；当前只能查看，不能确认归属。' : selected === 'hours' && (entity.workflow.route.state !== 'confirmed' || entity.workflow.source.state !== 'confirmed') ? '前置路线或归属尚未确认；当前只能查看，不能确认工时。' : '');
     React.useEffect(() => {
       if (!browsing || !entity || target.operationRef || target.groupRef || !root.current) return undefined;
       const frame = requestAnimationFrame(() => {
@@ -458,19 +478,19 @@
       entity: entity,
       stage: selected,
       disabled: editingBlocked,
-      onStage: setStage
+      onStage: setStage,
+      panelId: panelId,
+      sharedPanel: browsing
     }), browsing && /*#__PURE__*/React.createElement("section", {
+      role: "tabpanel",
+      id: panelId + '-navigation',
+      "aria-labelledby": panelId + '-tab-' + selected,
       "data-process-navigation-stage": selected
     }, /*#__PURE__*/React.createElement("div", {
       className: "toolbar"
     }, /*#__PURE__*/React.createElement("span", {
       role: "status"
-    }, "\u5DF2\u6309\u539F\u96F6\u4EF6\u8BB0\u5F55\u53EA\u8BFB\u5B9A\u4F4D \xB7 ", {
-      route: '工艺路线',
-      source: '归属',
-      hours: '工时定额',
-      ready: '已就绪汇总'
-    }[selected]), /*#__PURE__*/React.createElement(Button, {
+    }, "\u5DF2\u6309\u539F\u96F6\u4EF6\u8BB0\u5F55\u5B9A\u4F4D\uFF0C\u5F53\u524D\u53EA\u80FD\u67E5\u770B \xB7 ", P.stageLabel(selected)), /*#__PURE__*/React.createElement(Button, {
       icon: "square-pen",
       disabled: editingBlocked,
       reason: prerequisite,
@@ -499,7 +519,10 @@
       onClick: () => setStage('ready'),
       disabled: editingBlocked
     }, "\u67E5\u770B\u6C47\u603B")), /*#__PURE__*/React.createElement("div", {
-      hidden: selected !== 'route'
+      hidden: selected !== 'route',
+      role: "tabpanel",
+      id: panelId + '-route',
+      "aria-labelledby": panelId + '-tab-route'
     }, /*#__PURE__*/React.createElement(RouteView, {
       entity: entity,
       disabled: editingBlocked,
@@ -510,7 +533,10 @@
         setEntry(true);
       }
     })), /*#__PURE__*/React.createElement("div", {
-      hidden: selected !== 'source'
+      hidden: selected !== 'source',
+      role: "tabpanel",
+      id: panelId + '-source',
+      "aria-labelledby": panelId + '-tab-source'
     }, /*#__PURE__*/React.createElement(window.ProcessSourceEditor, {
       key: saved.source,
       adapter: adapter,
@@ -522,7 +548,10 @@
       onOverlay: setOverlay,
       onResourceCommitted: onCommitted
     })), /*#__PURE__*/React.createElement("div", {
-      hidden: selected !== 'hours'
+      hidden: selected !== 'hours',
+      role: "tabpanel",
+      id: panelId + '-hours',
+      "aria-labelledby": panelId + '-tab-hours'
     }, /*#__PURE__*/React.createElement(window.ProcessHoursEditor, {
       key: saved.hours,
       adapter: adapter,
@@ -533,7 +562,12 @@
       onDirty: onDirty,
       onOverlay: setOverlay,
       onFileAction: openFile
-    })), selected === 'ready' && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Operations, {
+    })), entity.workflow.ready && /*#__PURE__*/React.createElement("div", {
+      hidden: selected !== 'ready',
+      role: "tabpanel",
+      id: panelId + '-ready',
+      "aria-labelledby": panelId + '-tab-ready'
+    }, /*#__PURE__*/React.createElement(Operations, {
       entity: entity,
       hours: true
     }), /*#__PURE__*/React.createElement(E.Groups, {

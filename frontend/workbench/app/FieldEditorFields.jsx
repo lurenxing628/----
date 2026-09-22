@@ -16,11 +16,11 @@
     const difference = span !== null && effectiveHours !== null ? span - effectiveHours : null;
     // Span and difference are checked against entered hours; keep up to three decimals instead of a one-decimal summary.
     const hours = value => window.WorkbenchFormat.hours(value, { digits: 3, trim: true });
-    const timeHints = Object.keys(suggestions).length > 0;
+    const timeHints = Object.keys(suggestions).length > 0, reasonLabel = action === 'supplement' || legacy ? '补齐原因' : '更正原因';
     return <><div className="field-entry-grid">
       <section><h4>产出数量</h4><Field label="本次完成数量" path="completed_quantity" error={error}><input ref={first} type="number" min="0" step="1" aria-label="本次完成数量" value={draft.completed_quantity} disabled={readonly('completed_quantity')} onChange={event => change('completed_quantity', event.target.value)} /></Field>
-        <div className="field-quantity-tools"><span>件</span><Button disabled={readonly('completed_quantity')} onClick={() => change('completed_quantity', '0')}>最小</Button>
-          {action === 'create' && <Button disabled={disabled || task.execution.remaining_quantity === null} onClick={() => change('completed_quantity', String(task.execution.remaining_quantity))}>最大</Button>}</div>
+        <div className="field-quantity-tools"><span>件</span><Button disabled={readonly('completed_quantity')} onClick={() => change('completed_quantity', '0')}>填 0</Button>
+          {action === 'create' && <Button disabled={disabled || task.execution.remaining_quantity === null} onClick={() => change('completed_quantity', String(task.execution.remaining_quantity))}>填剩余数</Button>}</div>
         <p className="field-note">已知累计 <output aria-label="已知累计">{cumulative === null ? '未核对' : cumulative}</output> / 执行目标 {C.quantity(task.execution.target_quantity)} 件
           {task.execution.unknown_record_count > 0 && <small> · 原记录数量待补 {task.execution.unknown_record_count} 条</small>}</p></section>
       <section><h4>实际起止</h4>{timeHints && <p className="field-suggestion" role="status">请核对预填时间；不确定的时间请清除。</p>}
@@ -34,7 +34,7 @@
     <details open={action !== 'create' || !!legacy}><summary>实际设备 / 人员 / 备注{record || legacy ? ' / 原因' : ''}</summary><div className="field-extra">
       {choices('actual_machine_ref', '实际设备', 'machine')}{choices('actual_operator_ref', '实际人员', 'operator')}
       <Field label="作业备注" path="remark" error={error}><textarea aria-label="作业备注" maxLength="2000" value={draft.remark} disabled={readonly('remark')} onChange={event => change('remark', event.target.value)} /></Field>
-      {(record || legacy) && <Field label={action === 'supplement' || legacy ? '补齐原因' : '更正原因'} path="reason" error={error} required><textarea required aria-label="补齐或更正原因" maxLength="2000" value={draft.reason} disabled={disabled} onChange={event => change('reason', event.target.value)} /></Field>}
+      {(record || legacy) && <Field label={reasonLabel} path="reason" error={error} required><textarea required aria-label={reasonLabel} maxLength="2000" value={draft.reason} disabled={disabled} onChange={event => change('reason', event.target.value)} /></Field>}
       <Field label="经办人" path="declared_operator" error={error}><input aria-label="经办人" maxLength="2000" value={draft.declared_operator} disabled={disabled} onChange={event => change('declared_operator', event.target.value)} /></Field>
     </div></details></>;
   }

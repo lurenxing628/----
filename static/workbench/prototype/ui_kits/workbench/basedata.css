@@ -125,7 +125,9 @@
 .bd-search .bd-field { max-width: 320px; }
 
 /* ---- bulk operation (方案 B：选择条 + 修改卡) ---- */
-.bd-selbar { display: flex; align-items: center; gap: 14px; margin-top: 16px; padding: 12px 16px; border: 1px solid var(--ui-border); border-left: 3px solid var(--ui-primary); border-radius: var(--wb-radius-surface); background: color-mix(in srgb, var(--ui-primary) 6%, transparent); }
+/* Chrome 109 不认 color-mix()：选择条底纹写成等价的 6% 透明主色（浅色 --ui-primary #2563eb / 深色 #3b82f6）。 */
+.bd-selbar { display: flex; align-items: center; gap: 14px; margin-top: 16px; padding: 12px 16px; border: 1px solid var(--ui-border); border-left: 3px solid var(--ui-primary); border-radius: var(--wb-radius-surface); background: rgb(37 99 235 / .06); }
+html[data-theme="dark"] .bd-selbar { background: rgb(59 130 246 / .06); }
 .bd-selbar .selbar-count { font-size: var(--font-size-2); color: var(--ui-muted); white-space: nowrap; }
 .bd-selbar .selbar-count strong { color: var(--ui-text); font-variant-numeric: tabular-nums; }
 .bd-selbar .selbar-actions { margin-left: auto; display: flex; gap: 10px; align-items: center; }

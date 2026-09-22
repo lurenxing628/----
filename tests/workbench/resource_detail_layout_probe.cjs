@@ -260,9 +260,11 @@ async function detailCase(page, spec) {
     assert(near(g.remark.left, g.content.left) && near(g.remark.right, g.content.right));
     assert(g.remark.top >= g.factsBox.bottom - 1);
   });
-  const time = await dialog.locator('.wb-resource-read-time time').getAttribute('datetime');
+  // 读取时间改为词表句式「数据截至 <时间>」（ResourceForms.jsx Detail 尾部，WorkbenchTerms.data_as_of），不再套 <time> 元素；按同一格式函数算期望值。
+  const readTime = (await dialog.locator('.wb-resource-read-time').innerText()).trim();
+  const expectedReadTime = await page.evaluate(value => window.WorkbenchTerms.data_as_of(window.WorkbenchFormat.dateTime(value)), AS_OF);
   check('read-time-after-remark-and-full-width', () => {
-    assert.equal(time, AS_OF); assert(g.readTime.top >= g.remark.bottom - 1);
+    assert.equal(readTime, expectedReadTime); assert(g.readTime.top >= g.remark.bottom - 1);
     assert(near(g.readTime.left, g.content.left) && near(g.readTime.right, g.content.right));
   });
   if (entity.kind === 'material') {
@@ -299,7 +301,7 @@ async function reviewCase(page, kind) {
   await dialog.getByRole('button', { name: '刷新最新资料', exact: true }).click();
   // 本轮整改后（ResourceForms.jsx contextReview 区块）：刷新即采用最新资料，复核区只展示当前已保存的资料，不再有「已核对，继续编辑」按钮。
   const review = dialog.locator('.wb-resource-review'); await review.waitFor();
-  await review.getByText('最新资料已刷新。你修改的内容已保留，未修改的项已更新；下方显示当前已保存的资料。', { exact: true }).waitFor();
+  await review.getByText('最新资料已刷新。已修改的内容保留，未修改的项已更新；下方显示当前已保存的资料。', { exact: true }).waitFor();
   await review.getByText('当前资料总数：7', { exact: true }).waitFor();
   const notice = review.locator('p').first();
   await notice.scrollIntoViewIfNeeded(); await commonLayout(page);

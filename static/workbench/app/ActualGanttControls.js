@@ -3,7 +3,8 @@
 
   const {
       Button,
-      Icon
+      Icon,
+      TimelineZoom
     } = window.ResourceControls,
     M = window.ActualGanttModel;
   // 工序说明只有 ActualGanttModel 那一份写法，这里不再改写措辞。
@@ -35,6 +36,7 @@
       role: "group",
       "aria-label": "\u7518\u7279\u89C6\u56FE"
     }, Object.entries(M.views).map(([key, label]) => /*#__PURE__*/React.createElement("button", {
+      type: "button",
       key: key,
       className: 'seg-btn' + (view.mode === key ? ' on' : ''),
       "aria-pressed": view.mode === key,
@@ -60,8 +62,8 @@
       "data-actual-count": true
     }, model.groups.length, " \u7EC4 \xB7 ", model.items.length, " / ", data.task_count, " \u9053\u5DE5\u5E8F"), /*#__PURE__*/React.createElement("label", {
       className: "fg-late-filter"
-    }, "\u665A\u671F", /*#__PURE__*/React.createElement("select", {
-      "aria-label": "\u665A\u671F\u7B5B\u9009",
+    }, window.WorkbenchTerms.overdue, /*#__PURE__*/React.createElement("select", {
+      "aria-label": window.WorkbenchTerms.overdue + '筛选',
       value: view.late,
       onChange: e => patch({
         late: e.target.value
@@ -74,7 +76,7 @@
       busy: busy,
       disabled: !model.items.length || data.availability.state !== 'available',
       onClick: onExport
-    }, "\u5BFC\u51FA CSV")), /*#__PURE__*/React.createElement("div", {
+    }, "\u5BFC\u51FA")), /*#__PURE__*/React.createElement("div", {
       className: "fg-toolbar-chart"
     }, /*#__PURE__*/React.createElement("div", {
       className: "fg-legend"
@@ -134,31 +136,17 @@
       onChange: e => patch({
         chainLines: e.target.checked
       })
-    }), "\u5173\u952E\u94FE\u8FDE\u7EBF"), /*#__PURE__*/React.createElement(Button, {
-      className: "fg-icon-button",
-      icon: "minus",
-      "aria-label": "\u7F29\u5C0F\u65F6\u95F4\u8F74",
-      disabled: zoom <= 1,
-      onClick: () => onZoom(zoom / 2)
-    }), /*#__PURE__*/React.createElement("span", {
-      className: "fg-zoom-value",
-      "aria-label": "\u65F6\u95F4\u8F74\u7F29\u653E\u6A21\u5F0F"
-    }, zoom === 1 ? '自动' : '手动'), /*#__PURE__*/React.createElement(Button, {
-      className: "fg-icon-button",
-      icon: "plus",
-      "aria-label": "\u653E\u5927\u65F6\u95F4\u8F74",
-      disabled: zoom >= 1024,
-      onClick: () => onZoom(zoom * 2)
+    }), "\u5173\u952E\u94FE\u8FDE\u7EBF"), /*#__PURE__*/React.createElement(TimelineZoom, {
+      zoom: zoom,
+      max: 1024,
+      onZoom: onZoom,
+      onFit: onFit,
+      className: "fg-icon-button"
     }), /*#__PURE__*/React.createElement("span", {
       className: "fg-muted",
       "aria-label": "\u65F6\u95F4\u8F74\u523B\u5EA6",
       "data-tick-step": M.tickStep(model, width)
     }, "\u523B\u5EA6 ", M.tickLabel(M.tickStep(model, width))), /*#__PURE__*/React.createElement(Button, {
-      className: "fg-icon-button",
-      icon: "chart-gantt",
-      "aria-label": "\u9002\u5E94\u5168\u90E8",
-      onClick: onFit
-    }), /*#__PURE__*/React.createElement(Button, {
       className: "fg-icon-button",
       icon: "search",
       "aria-label": "\u5B9A\u4F4D\u9009\u4E2D\u5DE5\u5E8F",
@@ -179,7 +167,7 @@
       "data-chain-target": chain.target_task_ref || ''
     }, /*#__PURE__*/React.createElement("div", {
       className: "fg-chain-heading"
-    }, /*#__PURE__*/React.createElement("strong", null, chain.mode === 'related' ? '所选工序前驱链（近似）' : '计划关键链（近似）'), " \xB7 ", chain.mode === 'related' ? '计划结束' : '最晚结束', " ", M.time(chain.makespan_end), chain.partial && /*#__PURE__*/React.createElement("span", {
+    }, /*#__PURE__*/React.createElement("strong", null, chain.mode === 'related' ? '所选工序的前置工序链（近似）' : '计划关键链（近似）'), " \xB7 ", chain.mode === 'related' ? '计划结束' : '最晚结束', " ", M.time(chain.makespan_end), chain.partial && /*#__PURE__*/React.createElement("span", {
       role: "status"
     }, " \xB7 \u5DF2\u7565\u53BB ", chain.omitted_point_count, " \u9053\u96F6\u5DE5\u65F6\u5DE5\u5E8F")), chain.state === 'unavailable' ? /*#__PURE__*/React.createElement("span", {
       role: "status"
@@ -240,14 +228,13 @@
           if (next[key] === '' || next[key] === null) delete next[key];
         });
         if (!next.resource_ref) delete next.resource_type;
-        if (batches.trim()) next.batch_ids = batches.split(',').map(v => v.trim());else delete next.batch_ids;
+        if (batches.trim()) next.batch_ids = batches.split(/[,，]+/).map(v => v.trim()).filter(Boolean);else delete next.batch_ids;
         delete next.snapshot_ref;
         onApply(next);
       }
     }, scope.range_start && /*#__PURE__*/React.createElement("span", {
-      className: "fg-muted",
-      title: "\u6309\u539F\u8BA1\u5212\u65F6\u6BB5\u6709\u91CD\u53E0\u6765\u6311\u5DE5\u5E8F\uFF1B\u9009\u4E2D\u7684\u5DE5\u5E8F\u4FDD\u7559\u5168\u90E8\u6709\u6548\u62A5\u5DE5"
-    }, "\u539F\u8BA1\u5212\u65F6\u6BB5 ", M.time(scope.range_start), " \u81F3 ", M.time(scope.range_end)), /*#__PURE__*/React.createElement("label", null, "\u8BA1\u5212\u5B8C\u5DE5\u65E5", /*#__PURE__*/React.createElement("input", {
+      className: "fg-muted"
+    }, "\u539F\u8BA1\u5212\u65F6\u6BB5 ", M.time(scope.range_start), " \u81F3 ", M.time(scope.range_end), /*#__PURE__*/React.createElement("small", null, "\u6309\u539F\u8BA1\u5212\u65F6\u6BB5\u6709\u91CD\u53E0\u6765\u6311\u5DE5\u5E8F\uFF1B\u9009\u4E2D\u7684\u5DE5\u5E8F\u4FDD\u7559\u5168\u90E8\u6709\u6548\u62A5\u5DE5")), /*#__PURE__*/React.createElement("label", null, "\u8BA1\u5212\u5B8C\u5DE5\u65E5", /*#__PURE__*/React.createElement("input", {
       type: "date",
       "aria-label": "\u8BA1\u5212\u5B8C\u5DE5\u5F00\u59CB\u65E5",
       value: draft.plan_finish_date_from || '',
@@ -279,6 +266,7 @@
     }, M.views[r.kind], " \xB7 ", r.label || r.business_code)))), /*#__PURE__*/React.createElement("label", null, "\u6279\u6B21", /*#__PURE__*/React.createElement("input", {
       className: "fg-batches",
       "aria-label": "\u6279\u6B21\u8303\u56F4",
+      placeholder: "\u591A\u4E2A\u6279\u6B21\u7528\u9017\u53F7\u5206\u9694",
       value: batches,
       onChange: e => setBatches(e.target.value)
     })), /*#__PURE__*/React.createElement(Button, {

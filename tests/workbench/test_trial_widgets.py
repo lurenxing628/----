@@ -103,12 +103,12 @@ def test_trial_widgets_real_browser(probe_scope):
                 assert all(0 < task["width"] < 5 and task["seconds"] == 30 and task["real_hit_and_click"] for task in row["tasks"])
                 assert all(abs(pair["pixel_gap"]) < 0.05 and pair["separate_rows"] for pair in row["boundaries"])
         expected_downloads = [(row["variant"], entry, button) for row in report["variants"]
-                              for entry in ("editing", "saved") for button in ("导出对比", "导出原始数据")]
-        expected_downloads.extend(("1392-dark", "1000-tasks-last-page", button) for button in ("导出对比", "导出原始数据"))
+                              for entry in ("editing", "saved") for button in ("下载 CSV（方案对比）", "下载 JSON（原始数据）")]
+        expected_downloads.extend(("1392-dark", "1000-tasks-last-page", button) for button in ("下载 CSV（方案对比）", "下载 JSON（原始数据）"))
         assert [(item["variant"], item["entry"], item["button"]) for item in report["downloads"]] == expected_downloads
         fields = []
         for item in report["downloads"]:
-            if item["button"] == "导出对比":
+            if item["button"] == "下载 CSV（方案对比）":
                 fields.append(verify_download(item))
                 continue
             actual = json.loads(Path(item["path"]).read_text(encoding="utf-8"))

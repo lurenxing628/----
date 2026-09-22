@@ -109,6 +109,13 @@
     const isExport = effectiveMode === 'export',
       done = command.phase === 'done',
       recovery = original.recovery === true;
+    // 已选文件或已有预检结果都算未完成的填写：关闭弹窗前先过离开守卫，和工艺文件导入一致。
+    const dirty = !done && !command.locked && (effectiveMode === 'import' ? !!file || !!job : effectiveMode === 'bulk' && !!job);
+    const guardOwner = window.WorkbenchGuards.useDirtyGuard({
+      dirty,
+      locked: command.locked,
+      message: label + (isExport ? '导出' : effectiveMode === 'bulk' ? '删除' : '导入') + '还没有完成，离开会放弃已选文件和预检结果。'
+    });
     const query = S.useQuery(async signal => {
       if (typeof adapter.preview !== 'function') throw C.failure('dependency not wired: adapter.preview');
       let body;
@@ -153,8 +160,11 @@
         if (alive.current) setError(C.failure('已保存，但列表刷新失败：' + C.message(failure)));
       });
     }, [done, command.intent, command.result, onCommitted]);
-    function close() {
+    async function close(detail) {
       if (command.locked) return;
+      if (!(detail && detail.guardConfirmed === true && detail.guardOwner === guardOwner) && !(await window.WorkbenchGuards.confirmLeave({
+        owner: guardOwner
+      }))) return;
       if (!command.reset()) return;
       if (downloadAbort.current) downloadAbort.current.abort();
       onClose();
@@ -284,9 +294,10 @@
       title: title,
       icon: effectiveMode === 'bulk' ? 'trash-2' : isExport ? 'file-output' : 'file-input',
       onClose: close,
+      guardOwner: guardOwner,
       locked: command.locked,
       footer: /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Button, {
-        onClick: close,
+        onClick: () => close(),
         reason: command.locked ? '结果还没确认，暂时不能关闭。' : ''
       }, done || download.name ? '完成' : '取消'), !done && !command.locked && !recovery && /*#__PURE__*/React.createElement(Button, {
         icon: "check",
@@ -388,7 +399,8 @@
         setSelection(value);
       },
       disabled: controlsDisabled,
-      refs: refs
+      refs: refs,
+      error: error
     }) : /*#__PURE__*/React.createElement(ExportOptions, {
       selection: selection,
       setSelection: value => {
@@ -407,7 +419,8 @@
     })), !done && effectiveMode === 'bulk' && (!recovery || command.intent) && (recovery || command.intent && !job ? /*#__PURE__*/React.createElement("p", null, "\u6B63\u5728\u67E5\u8BE2\u4E0A\u6B21\u6279\u91CF\u5220\u9664\u7684\u7ED3\u679C\uFF0C\u5F53\u524D\u5217\u8868\u91CC\u65B0\u52FE\u9009\u7684\u8FD8\u6CA1\u63D0\u4EA4\u3002") : /*#__PURE__*/React.createElement("p", null, "\u672C\u6B21\u52FE\u9009\u4E86 ", /*#__PURE__*/React.createElement("b", null, refs.length), " \u6761", label, "\uFF0C\u542B\u975E\u5F53\u524D\u9875\u548C\u5F53\u524D\u7B5B\u9009\u5916\u7684\u52FE\u9009\u9879\u3002")), activeRead && /*#__PURE__*/React.createElement("p", {
       role: "status"
     }, "\u6B63\u5728\u8BFB\u53D6\u5B8C\u6574\u9884\u68C0\u7ED3\u679C\uFF0C\u5C1A\u672A\u5199\u5165\u6570\u636E\u2026"), /*#__PURE__*/React.createElement(ErrorBox, {
-      error: error
+      error: error,
+      excludePaths: isExport && Array.isArray(M.exportFieldPaths) ? M.exportFieldPaths : []
     }), /*#__PURE__*/React.createElement(ErrorBox, {
       error: query.error
     }), /*#__PURE__*/React.createElement(Issues, {
@@ -434,7 +447,7 @@
       role: "status"
     }, "\u6B63\u5728\u8BFB\u53D6\u4E0B\u8F7D\u6587\u4EF6\u2026"), download.name && /*#__PURE__*/React.createElement("p", {
       role: "status"
-    }, "\u5DF2\u4EA4\u7ED9\u6D4F\u89C8\u5668\u4E0B\u8F7D\uFF1A", /*#__PURE__*/React.createElement("b", null, download.name)), !isExport && /*#__PURE__*/React.createElement(Feedback, {
+    }, window.WorkbenchTerms.download_started(download.name)), !isExport && /*#__PURE__*/React.createElement(Feedback, {
       command: command
     }), command.intent && /*#__PURE__*/React.createElement(window.WorkbenchReference, {
       entries: {

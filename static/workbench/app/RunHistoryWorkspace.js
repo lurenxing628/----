@@ -149,7 +149,7 @@
       page: data.page,
       busy: read.busy,
       onChange: change
-    }), /*#__PURE__*/React.createElement("div", {
+    }), data.runs.length > 0 && /*#__PURE__*/React.createElement("div", {
       className: "rh-muted"
     }, "\u5B89\u6392\u884C\u6570\u662F\u5404\u5019\u9009\u65B9\u6848\u5DF2\u4FDD\u5B58\u884C\u7684\u5408\u8BA1\uFF0C\u4E0D\u662F\u4E0D\u91CD\u590D\u7684\u5DE5\u5E8F\u9053\u6570\u3002\u8BA1\u7B97\u5B8C\u6210\u53EA\u8868\u793A\u6392\u4EA7\u7ED3\u675F\uFF1B\u7EA6\u675F\u548C\u4EFB\u52A1\u5185\u5BB9\u8981\u5728\u5019\u9009\u65B9\u6848\u91CC\u6838\u5BF9\u3002")));
   }

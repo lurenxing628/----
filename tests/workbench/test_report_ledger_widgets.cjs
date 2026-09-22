@@ -70,14 +70,15 @@ async function compare(page, dto, label) {
     }
   });
   const cells = await rows.evaluateAll(nodes => nodes.map(node => Array.from(node.cells).map(cell => cell.textContent)));
-  const value = item => item === null ? '未知' : String(item);
+  // 数字列走 WorkbenchFormat.number：最多 3 位小数、千分位；文字列照原样。
+  const value = item => item === null ? '未知' : typeof item === 'number' ? item.toLocaleString('zh-CN', { maximumFractionDigits: 3 }) : String(item);
   if (data.topic === 'records') data.rows.forEach((row, index) => assert.deepEqual(cells[index].slice(3, 5), [row.quantity_done, row.effective_processing_hours].map(value)));
   if (['machines', 'people'].includes(data.topic)) data.rows.forEach((row, index) => assert.deepEqual(cells[index], data.columns.filter(column => !column.key.endsWith('_ref')).map(column => value(row[column.key]))));
   const helpers = await page.locator('.rw-metrics').innerText();
   if (data.topic !== 'delivery') {
     const values = await page.locator('.rw-metrics .wb-metric-value').allTextContents();
     assert.deepEqual(values, [data.summary.operations, data.summary.production_reports, data.summary.records, data.summary.effective_processing_hours === null ? '未知' : data.summary.effective_processing_hours].map(String));
-    assert(helpers.includes('旧现场事件 ' + data.summary.events + ' 条'));
+    assert(helpers.includes('历史现场记录 ' + data.summary.events + ' 条'));
     assert(helpers.includes('已知小计 ' + (data.summary.known_effective_processing_hours ?? '未知')));
   }
   if (data.topic === 'delivery') {
@@ -172,11 +173,15 @@ async function main() {
       const oldDTO = await (await oldRead).json();
       await detail.getByText('整道完成', { exact: true }).waitFor();
       await detail.locator('.rw-limitations > summary').first().click();
-      assert((await detail.innerText()).includes('历史原始记录'));
-      const evidenceText = await detail.locator('.rw-limitations[open] .rw-evidence-facts').first().textContent();
-      const leaves = value => value && typeof value === 'object' ? Object.values(value).flatMap(leaves) :
-        [value === null ? '未知' : typeof value === 'boolean' ? value ? '是' : '否' : String(value)];
-      for (const value of leaves(oldDTO.data.detail.records[0].legacy_evidence)) assert(evidenceText.includes(value), value);
+      assert((await detail.innerText()).includes('历史现场记录'));
+      const evidenceText = await detail.locator('.rw-limitations[open] .rw-legacy-record').first().textContent();
+      const legacy = oldDTO.data.detail.records[0].legacy_evidence;
+      // 历史现场记录只显示登记过中文名的项，英文代号换成说法，键名不再上屏；编号折叠进「编号」区。
+      const eventLabels = { start: '开工', finish: '整道完工', pause: '暂停', resume: '恢复', exception: '异常' };
+      assert(evidenceText.includes('记录类型' + (eventLabels[legacy.event_type] || '执行事件')), evidenceText);
+      assert(evidenceText.includes('登记时间' + legacy.created_at + '（历史系统导入的原始时间）'), evidenceText);
+      for (const raw of ['event_type', 'created_at_time_basis', 'legacy_storage', 'utc', 'unavailable_fields', 'reported_status']) assert(!evidenceText.includes(raw), raw);
+      if (legacy.quantity_done !== null) assert(evidenceText.includes('登记数量' + legacy.quantity_done));
       assert((await detail.innerText()).includes('历史系统导入的原始时间'));
       await detail.scrollIntoViewIfNeeded(); await shot(page, prefix + '-legacy');
       await detail.getByRole('button', { name: /^关闭/ }).click();
@@ -194,15 +199,20 @@ async function main() {
       assert.equal(dto.data.summary.effective_processing_hours, 3); assert.equal(dto.data.resources.machines.length, 2);
       await compare(page, dto, prefix + '-combined-cohort'); await download(page, dto, 'csv', prefix + '-filtered');
       dto = await change(page, () => page.getByRole('tab', { name: '执行复盘', exact: true }).click());
-      await page.locator('.er-chart-disclosure > summary').click();
+      // 执行复盘的图表区直接展开放在最前，没有折叠标题；报表子页签与导出范围也不在复盘页显示。
+      await page.locator('.er-chart-disclosure[data-expanded="true"]').waitFor();
+      assert.equal(await page.locator('.er-chart-disclosure > summary').count(), 0);
+      assert.equal(await page.getByRole('tablist', { name: '报表专题' }).count(), 0); assert.equal(await page.getByRole('button', { name: '导出范围', exact: true }).count(), 0);
+      assert.equal((await page.locator('.rw-workbench').evaluate(node => Array.from(node.querySelectorAll('.er-chart-disclosure, .rw-results')).map(item => item.className.split(' ')[0]))).join(','), 'er-chart-disclosure,rw-results');
       const insights = page.locator('.er-insights'); assert((await insights.innerText()).includes('逐次报工 12 条'));
       assert((await insights.innerText()).includes('有效加工工时 3 小时')); assert(!(await insights.innerText()).includes('不能生成实际工时排名'));
       assert.equal(await page.locator('.er-chart-disclosure .rw-resource-table').count(), 1);
       for (const [kind, label] of [['machines', '设备'], ['people', '人员']]) {
-        await page.getByRole('tablist', { name: '资源工时类型' }).getByRole('tab', { name: label, exact: true }).click();
+        await page.getByRole('group', { name: '资源工时类型' }).getByRole('button', { name: label, exact: true }).click();
         const values = await page.locator('.er-chart-disclosure .rw-resource-table tbody tr').evaluateAll(nodes => nodes.map(node => Array.from(node.cells).map(cell => cell.textContent)));
         assert.equal(values.length, dto.data.resources[kind].length);
-        dto.data.resources[kind].forEach((row, rowIndex) => assert.deepEqual(values[rowIndex], [row.resource_label, row.operations, row.events, row.production_reports, row.records, row.effective_processing_hours, row.known_effective_processing_hours, row.unknown_hour_events].map(v => v === null ? '未知' : String(v))));
+        const shown = item => item === null ? '未知' : typeof item === 'number' ? item.toLocaleString('zh-CN', { maximumFractionDigits: 3 }) : String(item);
+        dto.data.resources[kind].forEach((row, rowIndex) => assert.deepEqual(values[rowIndex], [row.resource_label, row.operations, row.events, row.production_reports, row.records, row.effective_processing_hours, row.known_effective_processing_hours, row.unknown_hour_events].map(shown)));
       }
       await page.locator('.er-chart-disclosure').scrollIntoViewIfNeeded(); await shot(page, prefix + '-review');
       const chartPoints = await page.locator('.aw-actual circle title').allTextContents(); assert.equal(chartPoints.length, dto.data.charts.trend.filter(row => row.actual !== null).length);

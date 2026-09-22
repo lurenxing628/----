@@ -18,6 +18,8 @@
   const values = { yes: '已齐套', no: '未齐套', partial: '部分完成', unreported: '待报工', started: '已开工', complete: '完整',
     paused: '已暂停', exception: '异常', incomplete: '尚不完整', invalid: '待核对', legacy: '旧记录需核对', available: '已读取',
     unknown: '未知', missing: '缺少来源', unavailable: '无法读取', on_time: '预计准时', overdue: '预计超期',
+    manual: '手工', excel: 'Excel', internal: '自制', external: '外协', current: '当前', not_currently_evaluated: '现在没有评估',
+    single: '单条', merged: '合并', outsourcing_receipt: '外协物流登记',
     complete_report_processing_hours_vs_operation_unit_hours_times_target: '完整报工加工工时与单件定额乘以目标数量对照' };
   // Only diagnostics and opaque references fold into the reference summary. Business identifiers such as
   // business_code or kind stay visible: 4.7 hides technical ids, not the information a planner acts on.
@@ -33,17 +35,22 @@
     if (typeof value === 'boolean') return value ? '是' : '否';
     if (typeof value === 'number') return F.number(value, { digits: Number.isInteger(value) ? 0 : 2 });
     if (/^\d{4}-\d\d-\d\d[T ]\d\d:\d\d/.test(value)) return F.dateTime(value);
-    return values[value] || String(value);
+    if (/^\d{4}-\d\d-\d\d$/.test(value)) return F.date(value);
+    const C = window.DashboardContract;
+    return values[value] || C.categories[value] || C.statuses[value] || C.states[value] || String(value);
   }
+  const technical = item => item === null || item === undefined ? '' : typeof item === 'object' ? JSON.stringify(item) : String(item);
   function Structure({ value, title }) {
     if (Array.isArray(value)) return value.length ? <ol className="dy-source-list">{value.map((item, index) => <li key={index}><Structure value={item} /></li>)}</ol> : <span>无记录</span>;
     if (!value || typeof value !== 'object') return /[a-f0-9]{32,}/i.test(String(value)) ? <window.WorkbenchReference value={value} /> : <span>{display(value)}</span>;
+    // Only keys with a label become visible facts. Opaque references, diagnostics and keys without a label fold into the
+    // reference summary, so a raw key or internal value never reads as a label on screen.
     const refs = {}, fields = [];
     Object.entries(value).forEach(([key, item]) => {
-      if (referenceField(key, item)) refs[labels[key] || key] = item;
-      else fields.push([key, item]);
+      if (Object.prototype.hasOwnProperty.call(labels, key) && !referenceField(key, item)) fields.push([key, item]);
+      else refs[labels[key] || key] = technical(item);
     });
-    return <>{title && <h4>{title}</h4>}<dl className="dy-source-facts">{fields.map(([key, item]) => <div key={key}><dt>{labels[key] || key}</dt><dd><Structure value={item} /></dd></div>)}</dl>
+    return <>{title && <h4>{title}</h4>}<dl className="dy-source-facts">{fields.map(([key, item]) => <div key={key}><dt>{labels[key]}</dt><dd><Structure value={item} /></dd></div>)}</dl>
       {Object.keys(refs).length > 0 && <window.WorkbenchReference entries={refs} />}</>;
   }
   function Evidence({ source }) {

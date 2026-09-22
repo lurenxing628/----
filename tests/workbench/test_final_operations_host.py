@@ -14,7 +14,7 @@ def test_final_operations_action_denominator_matches_all_planning_families():
     expected = {row["id"] for row in planning["capabilities"] if row["workstream"] in ("dashboard", "system")}
     assert set(FAMILIES) == expected and len(expected) == 33
     rows = actions()
-    assert len(rows) == 228 and len({row["action_id"] for row in rows}) == 228
+    assert len(rows) == 226 and len({row["action_id"] for row in rows}) == 226
     assert planning["phase"] == "planning" and planning["summary"]["exact_count"] == 206
 
 

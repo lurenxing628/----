@@ -111,7 +111,7 @@
     candidate_artifact_invalid: '候选方案记录不完整，请联系维护人员。',
     candidate_capacity_exceeded: '候选方案数量超过读取上限。',
     zero_duration_candidate_unsupported: '本次有零工时工序，候选计算还不支持。请核对工时资料。',
-    candidate_computation_failed: '本次候选计算失败。请查看系统日志，再重新做排产检查。',
+    candidate_computation_failed: '本次候选计算失败。请联系维护人员，再重新做排产检查。',
     run_interrupted: '这次排产已中断，没有自动重跑。',
     request_lifecycle_stopping: '程序正在停止或维护，这次排产没有开始。重新启动后请重新做排产检查。'
   };

@@ -44,19 +44,19 @@
     }
     return <Modal title={base.date + ' · 工作日历'} icon="calendar-days" onClose={onClose} guardOwner={guardOwner} locked={command.locked || reading}
       footer={<><Button disabled={command.locked || reading} onClick={close}>{done ? '关闭' : '取消'}</Button>
-        {!done && !clearing && base.explicit && <Button icon="minus" disabled={disabled || !!review} onClick={() => setClearing(true)}>清除配置</Button>}
+        {!done && !clearing && base.explicit && <Button icon="minus" disabled={disabled || !!review} onClick={() => setClearing(true)}>清除单独设置</Button>}
         {!done && clearing && <Button disabled={disabled} onClick={() => setClearing(false)}>返回编辑</Button>}
         {!done && <Button type="submit" form={formId} className="btn primary" icon={clearing ? 'minus' : 'check'} busy={disabled} reason={reason}>
           {clearing ? '确认清除，恢复默认' : '保存配置'}</Button>}</>}>
       <form id={formId} ref={formRef} className="modal-b form scroll" onSubmit={save} noValidate>
         <div style={{ borderBottom: '1px solid var(--ui-border)', paddingBottom: 12, marginBottom: 16 }}><Policy value={base} /></div>
-        {clearing ? <p>将清除 <b>{base.date}</b> 的全局日历配置，改用该日期的默认规则。人员专属日历和班次不变。</p> :
+        {clearing ? <p>将清除 <b>{base.date}</b> 的单独设置，改用该日期的默认规则。{window.WorkbenchTerms.personal_calendar}和班次不变。</p> :
           <Fields value={value} error={error || command.error} showSummary={false} disabled={disabled} onChange={next => { setValue(next); setError(null); }} />}
         <ErrorBox error={error} excludePaths={clearing ? [] : window.CalendarFields.fieldPaths} /><Feedback command={command} excludePaths={clearing ? [] : window.CalendarFields.fieldPaths} /><ErrorBox error={readError} />
-        {!done && <Button icon="refresh-cw" busy={reading} disabled={command.locked} onClick={reloadContext}>刷新最新资料</Button>}
-        {review && <div className="match-note" style={{ display: 'block' }}>
+        {!done && <Button icon="refresh-cw" busy={reading} disabled={command.locked} onClick={reloadContext}>{window.WorkbenchTerms.refresh_latest}</Button>}
+        {review && <div className="match-note is-block">
           <p>最新资料已读取，已填写的内容保持不变。请核对后继续编辑。</p><Policy value={review.day} />
-          <Button disabled={disabled} reason={C.blocked(review.day.write_context, 'calendar', clearing ? 'delete' : 'upsert', review.source)} onClick={accept}>已核对，继续编辑</Button></div>}
+          <Button disabled={disabled} reason={C.blocked(review.day.write_context, 'calendar', clearing ? 'delete' : 'upsert', review.source)} onClick={accept}>{window.WorkbenchTerms.accept_latest}</Button></div>}
         {reason && <p role="status">{reason}</p>}
         {done && <RefreshResult state={refreshState} onRefresh={onRefresh} />}
       </form></Modal>;

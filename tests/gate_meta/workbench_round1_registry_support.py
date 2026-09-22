@@ -89,6 +89,10 @@ UI_REQUIRED_TARGETS = (
     "tests/workbench/test_style_build_sources.py",
     "tests/workbench/test_ui_refinement_style_gate.py",
     "tests/workbench/test_ui_refinement_node_contracts.py",
+    # 2026-09-21 reviewed addition (UI audit remediation): dialog focus restoration / tooltip-reason Button vm contract.
+    "tests/workbench/test_modal_focus_restore_contract.py",
+    "tests/workbench/test_process_op_type_create_contract.py",
+    "tests/workbench/test_field_editor_fill_contract.py",
     "tests/workbench/test_ui_refinement_evidence_contract.py",
     "tests/workbench/test_ui_refinement_browser_dependencies.py",
     "tests/gate_meta/test_daily_ui_refinement_opt_in.py",

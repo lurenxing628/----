@@ -109,7 +109,7 @@ async function adopt(page, reason) {
   await dialog.getByRole('checkbox').check(); const saved = page.waitForResponse(response => response.url().endsWith('/adopt'));
   await button(page, '确认采用并锁定').click(); const receipt = await (await saved).json();
   assert.equal(receipt.result, 'committed'); assert.equal(receipt.data.new_unit_hours, 3); assert(receipt.data.locked);
-  await dialog.getByText('采用已完成。新定额 3 小时 / 件，定额已锁定（来自工时校准）。', { exact: true }).waitFor();
+  await dialog.getByText('采用已完成。新定额 3 小时/件，定额已锁定（来自工时校准）。', { exact: true }).waitFor();
   await button(page, '完成').click();
 }
 async function openImport(page, detail) {

@@ -43,7 +43,7 @@ async function main() {
     });
     await run('a reason produces a read-only before and after preview for exactly one report', async () => {
       await page.getByLabel('撤销原因', { exact: true }).fill('该次记录误登记了其他工序的产出');
-      await page.getByLabel('撤销经办人', { exact: true }).fill('浏览器测试员');
+      await page.getByLabel('经办人', { exact: true }).fill('浏览器测试员');
       const data = await inspect(); assert(data.can_confirm);
       assert.equal(data.before.known_completed_quantity, 6); assert.equal(data.after.known_completed_quantity, 5);
       assert.equal(await table().locator('tbody > tr').count(), 6); await screenshot('void-preview-light');

@@ -290,7 +290,7 @@
     }), /*#__PURE__*/React.createElement("div", {
       className: 'os-note ' + (done ? 'success' : 'warning'),
       role: "status"
-    }, done ? window.WorkbenchTerms.outcomes.done('外协登记') : v.phase === 'rejected' ? '上次外协登记没有生效，填写内容已保留。改好后重新提交。' : window.WorkbenchTerms.outcomes.pending('外协登记')), /*#__PURE__*/React.createElement("div", {
+    }, done ? window.WorkbenchTerms.outcomes.done('外协登记') : v.phase === 'rejected' ? '上次外协登记没有生效，没有写入。请点「完成」后重新填写。' : window.WorkbenchTerms.outcomes.pending('外协登记')), /*#__PURE__*/React.createElement("div", {
       "data-original-key": true
     }, /*#__PURE__*/React.createElement(window.WorkbenchReference, {
       entries: {
@@ -355,6 +355,10 @@
     React.useEffect(() => {
       if (error && !focusFirstInvalid(formRef.current) && errorRef.current) errorRef.current.focus();
     }, [error]);
+    // 被拒后原预检结果已失效：清掉它，表单回到可编辑状态，改好后重新预检再提交；填写内容不动。
+    React.useEffect(() => {
+      if (!saved && command.error && C.isRejected(command.error)) setPreview(null);
+    }, [saved, command.error]);
     function update(k, v) {
       setDraft(d => ({
         ...d,

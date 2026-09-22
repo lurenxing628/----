@@ -9,7 +9,7 @@ async function contrast(page) {
     let node;
     while ((node = walker.nextNode())) {
       const text = node.textContent.trim(), owner = node.parentElement;
-      if (!text || !owner || owner.closest('style,script,[aria-hidden="true"],[hidden],button:disabled,select:disabled,input:disabled')) continue;
+      if (!text || !owner || owner.closest('style,script,[aria-hidden="true"],[hidden],button:disabled,button[aria-disabled="true"],select:disabled,input:disabled')) continue;
       const style = getComputedStyle(owner), rect = owner.getBoundingClientRect();
       if (style.visibility !== 'visible' || !owner.getClientRects().length || rect.bottom < 0 || rect.top > innerHeight || rect.right < 0 || rect.left > innerWidth) continue;
       const range = document.createRange(); range.selectNodeContents(node);

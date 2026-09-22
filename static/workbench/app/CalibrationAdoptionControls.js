@@ -6,18 +6,22 @@
       Modal
     } = window.ResourceControls,
     {
-      hours
+      text,
+      amount,
+      unitHours
     } = window.CalibrationControls;
   const time = value => value ? window.WorkbenchFormat.dateTime(value, {
     seconds: true
   }) : '未知';
-  const scope = '采用后更新模板定额并锁定；已有批次保持不变。新批次使用前请重新确认模板工时。';
+  // 采用即锁定，而且锁不掉：这句要在预检、勾选确认两处都说清楚。
+  const scope = '采用后会更新这个模板的定额并锁定：不能撤销，以后也不能再改这个模板的定额；已有批次保持不变。';
+  const consentText = '我已知道：采用后这个模板的定额锁定，不能撤销，以后不能再改；新定额只用于以后新增的工序。';
   function Facts({
     row
   }) {
     return /*#__PURE__*/React.createElement("dl", {
       className: "cad-facts"
-    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u6A21\u677F\u5DE5\u5E8F"), /*#__PURE__*/React.createElement("dd", null, row.part_no, " \xB7 ", row.sequence, " ", row.operation_label)), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u6A21\u677F\u7248\u672C"), /*#__PURE__*/React.createElement("dd", null, "\u7B2C ", row.template_revision, " \u7248")), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u539F\u5B9A\u989D"), /*#__PURE__*/React.createElement("dd", null, hours(row.old_unit_hours), " / \u4EF6")), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u5EFA\u8BAE\u5B9A\u989D"), /*#__PURE__*/React.createElement("dd", null, hours(row.suggested_unit_hours, '暂无建议'), " / \u4EF6")), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u53EF\u7528\u8BB0\u5F55\u6570"), /*#__PURE__*/React.createElement("dd", null, row.sample_count, " \u6761")), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u672A\u91C7\u7528\u8BB0\u5F55\u6570"), /*#__PURE__*/React.createElement("dd", null, row.excluded_count, " \u6761")));
+    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u6A21\u677F\u5DE5\u5E8F"), /*#__PURE__*/React.createElement("dd", null, row.part_no, " \xB7 ", row.sequence, " ", row.operation_label)), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u6A21\u677F\u7248\u672C"), /*#__PURE__*/React.createElement("dd", null, "\u7B2C ", row.template_revision, " \u7248")), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u539F\u5B9A\u989D"), /*#__PURE__*/React.createElement("dd", null, unitHours(row.old_unit_hours))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u5EFA\u8BAE\u5B9A\u989D"), /*#__PURE__*/React.createElement("dd", null, unitHours(row.suggested_unit_hours, '暂无建议'))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u53EF\u7528\u8BB0\u5F55\u6570"), /*#__PURE__*/React.createElement("dd", null, row.sample_count, " \u6761")), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u672A\u91C7\u7528\u8BB0\u5F55\u6570"), /*#__PURE__*/React.createElement("dd", null, row.excluded_count, " \u6761")));
   }
   function Samples({
     preview,
@@ -29,13 +33,25 @@
       "aria-label": "\u91C7\u7528\u9884\u68C0\u7684\u5B8C\u5DE5\u8BB0\u5F55"
     }, /*#__PURE__*/React.createElement("h4", null, "\u672C\u6B21\u91C7\u7528\u7684\u53EF\u7528\u5B8C\u5DE5\u8BB0\u5F55\uFF08", rows.length, " \u6761\uFF09"), /*#__PURE__*/React.createElement("table", {
       className: "ca-table"
-    }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "\u6279\u6B21 / \u5DE5\u5E8F"), /*#__PURE__*/React.createElement("th", null, "\u6570\u91CF"), /*#__PURE__*/React.createElement("th", null, "\u52A0\u5DE5\u5DE5\u65F6\uFF08\u5C0F\u65F6\uFF09"), /*#__PURE__*/React.createElement("th", null, "\u5355\u4EF6\uFF08\u5C0F\u65F6\uFF09"), /*#__PURE__*/React.createElement("th", null, "\u6765\u6E90\u4E0E\u7248\u672C"))), /*#__PURE__*/React.createElement("tbody", null, rows.map(row => /*#__PURE__*/React.createElement("tr", {
+    }, /*#__PURE__*/React.createElement("caption", {
+      className: "wb-visually-hidden"
+    }, "\u672C\u6B21\u91C7\u7528\u7684\u53EF\u7528\u5B8C\u5DE5\u8BB0\u5F55\uFF0C\u6309\u6279\u6B21\u5217\u51FA\u6570\u91CF\u3001\u52A0\u5DE5\u5DE5\u65F6\u4E0E\u5355\u4EF6\u5DE5\u65F6"), /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u6279\u6B21 / \u5DE5\u5E8F"), /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u6570\u91CF"), /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u52A0\u5DE5\u5DE5\u65F6\uFF08\u5C0F\u65F6\uFF09"), /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u5355\u4EF6\uFF08\u5C0F\u65F6\uFF09"), /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u6765\u6E90\u4E0E\u7248\u672C"))), /*#__PURE__*/React.createElement("tbody", null, rows.map(row => /*#__PURE__*/React.createElement("tr", {
       key: row.sample_ref,
       "data-adoption-sample": row.sample_ref
-    }, /*#__PURE__*/React.createElement("td", null, row.batch_code, /*#__PURE__*/React.createElement("small", null, row.operation_code)), /*#__PURE__*/React.createElement("td", null, row.completed_quantity), /*#__PURE__*/React.createElement("td", null, row.effective_processing_hours), /*#__PURE__*/React.createElement("td", null, row.unit_hours), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "\u6A21\u677F\u7B2C ", row.template_revision, " \u7248"), /*#__PURE__*/React.createElement(window.WorkbenchReference, {
+    }, /*#__PURE__*/React.createElement("td", null, row.batch_code, /*#__PURE__*/React.createElement("small", null, row.operation_code)), /*#__PURE__*/React.createElement("td", null, text(row.completed_quantity)), /*#__PURE__*/React.createElement("td", null, amount(row.effective_processing_hours)), /*#__PURE__*/React.createElement("td", null, amount(row.unit_hours)), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "\u6A21\u677F\u7B2C ", row.template_revision, " \u7248"), /*#__PURE__*/React.createElement(window.WorkbenchReference, {
       entries: {
         '完工记录编号': row.sample_ref,
-        '来源证据编号': row.lineage_evidence_ref,
+        '来源记录编号': row.lineage_evidence_ref,
         '记录版本': row.sample_revision
       }
     }))))))), detail && /*#__PURE__*/React.createElement("details", {
@@ -53,9 +69,9 @@
     }, /*#__PURE__*/React.createElement("p", {
       className: "cad-success",
       role: "status"
-    }, window.WorkbenchTerms.outcomes.done('采用', '新定额 ' + hours(d.new_unit_hours) + ' / 件，定额已锁定（来自工时校准）')), /*#__PURE__*/React.createElement("dl", {
+    }, window.WorkbenchTerms.outcomes.done('采用', '新定额 ' + unitHours(d.new_unit_hours) + '，定额已锁定（来自工时校准）')), /*#__PURE__*/React.createElement("dl", {
       className: "cad-facts"
-    }, [['原定额', hours(d.old_unit_hours)], ['新定额', hours(d.new_unit_hours)], ['版本变化', '第 ' + d.template_revision_before + ' 版 → 第 ' + d.template_revision_after + ' 版'], ['采用时间', time(d.adopted_at)], ['经办人', d.declared_operator], ['记录人', d.application_operator], ['采用原因', d.reason], ['用户确认', d.confirmed ? '已确认' : '未确认']].map(([label, value]) => /*#__PURE__*/React.createElement("div", {
+    }, [['原定额', unitHours(d.old_unit_hours)], ['新定额', unitHours(d.new_unit_hours)], ['版本变化', '第 ' + d.template_revision_before + ' 版 → 第 ' + d.template_revision_after + ' 版'], ['采用时间', time(d.adopted_at)], ['经办人', d.declared_operator], ['记录人', d.application_operator], ['采用原因', d.reason], ['用户确认', d.confirmed ? '已确认' : '未确认']].map(([label, value]) => /*#__PURE__*/React.createElement("div", {
       key: label
     }, /*#__PURE__*/React.createElement("dt", null, label), /*#__PURE__*/React.createElement("dd", null, value)))), /*#__PURE__*/React.createElement("div", {
       className: "cad-records"
@@ -102,7 +118,7 @@
       }, window.WorkbenchTerms.actions.query_result) : /*#__PURE__*/React.createElement(React.Fragment, null, saved && /*#__PURE__*/React.createElement(Button, {
         disabled: s.busy || !!s.storageError,
         onClick: s.finish
-      }, "\u7ED3\u675F\u672C\u6B21\u672A\u91C7\u7528"), /*#__PURE__*/React.createElement(Button, {
+      }, "\u653E\u5F03\u4E0A\u6B21\u91C7\u7528\u8BB0\u5F55"), /*#__PURE__*/React.createElement(Button, {
         icon: "refresh-cw",
         disabled: s.busy || typeof onRefresh !== 'function',
         onClick: refresh
@@ -171,7 +187,7 @@
       key: item.code
     }, item.message)), preview.quota_lock && /*#__PURE__*/React.createElement("p", {
       className: "cad-notice"
-    }, "\u5B9A\u989D\u5DF2\u9501\u5B9A\uFF08\u6765\u81EA\u5DE5\u65F6\u6821\u51C6\uFF09\uFF1A", hours(preview.quota_lock.locked_unit_hours), " / \u4EF6\uFF1B\u9501\u5B9A\u65F6\u95F4 ", time(preview.quota_lock.locked_at), "\u3002"), /*#__PURE__*/React.createElement(Samples, {
+    }, "\u5B9A\u989D\u5DF2\u9501\u5B9A\uFF08\u6765\u81EA\u5DE5\u65F6\u6821\u51C6\uFF09\uFF1A", unitHours(preview.quota_lock.locked_unit_hours), "\uFF1B\u9501\u5B9A\u65F6\u95F4 ", time(preview.quota_lock.locked_at), "\u3002"), /*#__PURE__*/React.createElement(Samples, {
       preview: preview,
       detail: detail
     }), preview.validation.can_adopt && /*#__PURE__*/React.createElement("label", {
@@ -181,7 +197,7 @@
       checked: s.consent,
       disabled: s.busy || blocked,
       onChange: e => s.setConsent(e.target.checked)
-    }), /*#__PURE__*/React.createElement("span", null, "\u786E\u8BA4\u91C7\u7528\u5E76\u9501\u5B9A\u65B0\u5B9A\u989D\uFF0C\u7528\u4E8E\u4EE5\u540E\u65B0\u589E\u7684\u5DE5\u5E8F\u3002")), /*#__PURE__*/React.createElement("p", {
+    }), /*#__PURE__*/React.createElement("span", null, consentText)), /*#__PURE__*/React.createElement("p", {
       className: "ca-muted"
     }, "\u9884\u68C0\u65F6\u95F4\uFF1A", time(preview.generated_at), preview.write_context.expires_at && ' · 有效至 ' + time(preview.write_context.expires_at)))), /*#__PURE__*/React.createElement("div", {
       className: "cad-records",

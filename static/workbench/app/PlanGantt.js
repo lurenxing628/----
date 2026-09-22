@@ -126,12 +126,14 @@
       expandButton = React.useRef(null);
     const labelWidth = position.width < 550 ? 125 : 170,
       viewport = Math.max(100, position.width - labelWidth);
-    const width = viewport * zoom,
-      selectedRef = selected && selected.task.task_ref;
-    const model = React.useMemo(() => M.layout(data, mode, query, baseline, width, changedOnly), [data, mode, query, baseline, width, changedOnly]);
-    const risks = React.useMemo(() => new Map((data.projections.delivery_risks.items || []).map(row => [row.batch_id, row.risk])), [data]);
     const before = data.projections.baseline,
       showBaseline = before.state === 'available';
+    const displayBaseline = showBaseline && baseline,
+      displayChangedOnly = showBaseline && changedOnly;
+    const width = viewport * zoom,
+      selectedRef = selected && selected.task.task_ref;
+    const model = React.useMemo(() => M.layout(data, mode, query, displayBaseline, width, displayChangedOnly), [data, mode, query, displayBaseline, width, displayChangedOnly]);
+    const risks = React.useMemo(() => new Map((data.projections.delivery_risks.items || []).map(row => [row.batch_id, row.risk])), [data]);
     const ticks = M.ticks(model.start, model.end, width, position.left, viewport);
     const today = M.instant(asOf.slice(0, 10) + 'T00:00:00'),
       now = M.instant(asOf);
@@ -168,6 +170,12 @@
       setHover(null);
     }, [query, mode, baseline, changedOnly, expanded]);
     React.useEffect(() => {
+      if (!showBaseline) {
+        setBaseline(false);
+        setChangedOnly(false);
+      }
+    }, [showBaseline]);
+    React.useEffect(() => {
       setHover(current => {
         if (!current) return null;
         const node = document.elementFromPoint(current.x, current.y),
@@ -180,8 +188,9 @@
       const overflow = document.body.style.overflow;
       document.body.style.overflow = 'hidden';
       board.current.focus();
+      // Escape inside the search box (or any field) belongs to that field; only a bare Escape collapses the board.
       const close = event => {
-        if (event.key === 'Escape') {
+        if (event.key === 'Escape' && !event.target.closest('input,textarea,select')) {
           event.preventDefault();
           setExpanded(false);
         }
@@ -277,16 +286,16 @@
     }, /*#__PURE__*/React.createElement("input", {
       type: "checkbox",
       "aria-label": "\u663E\u793A\u521D\u59CB\u8BA1\u5212",
-      checked: baseline && showBaseline,
+      checked: displayBaseline,
       disabled: !showBaseline || disabled,
       onChange: event => setBaseline(event.target.checked)
-    }), "\u521D\u59CB\u8BA1\u5212"), /*#__PURE__*/React.createElement("label", {
+    }), window.WorkbenchTerms.initial_plan), /*#__PURE__*/React.createElement("label", {
       className: "plan-check",
       title: showBaseline ? '只看和初始计划不一样的安排' : before.reason || '初始计划暂无数据'
     }, /*#__PURE__*/React.createElement("input", {
       type: "checkbox",
       "aria-label": "\u4EC5\u53D8\u66F4",
-      checked: changedOnly && showBaseline,
+      checked: displayChangedOnly,
       disabled: !showBaseline || disabled,
       onChange: event => setChangedOnly(event.target.checked)
     }), "\u4EC5\u53D8\u66F4"), /*#__PURE__*/React.createElement("label", {
@@ -375,10 +384,7 @@
     }, /*#__PURE__*/React.createElement("div", {
       className: "plan-corner"
     }, M.kindLabels[mode], " / \u5DE5\u5E8F", /*#__PURE__*/React.createElement("small", {
-      className: "plan-muted",
-      style: {
-        display: 'block'
-      }
+      className: "plan-muted plan-corner-count"
     }, model.groupCount, " \u7EC4")), /*#__PURE__*/React.createElement("div", {
       className: "plan-ticks",
       style: {
@@ -453,9 +459,9 @@
         width: position.width
       }
     }, /*#__PURE__*/React.createElement(window.WorkbenchControls.EmptyState, {
-      kind: query || changedOnly ? 'filtered' : 'empty',
-      title: changedOnly ? '当前范围没有匹配的变更安排。' : query ? '没有匹配安排，完整计划的时间范围保持不变。' : '该读取范围没有安排。',
-      action: query || changedOnly ? /*#__PURE__*/React.createElement(Button, {
+      kind: query || displayChangedOnly ? 'filtered' : 'empty',
+      title: displayChangedOnly ? '当前范围没有匹配的变更安排。' : query ? '没有匹配安排，完整计划的时间范围保持不变。' : '该读取范围没有安排。',
+      action: query || displayChangedOnly ? /*#__PURE__*/React.createElement(Button, {
         onClick: () => {
           onQuery('');
           setChangedOnly(false);
@@ -485,7 +491,7 @@
       className: "plan-legend"
     }, /*#__PURE__*/React.createElement("i", {
       className: "plan-swatch before"
-    }), "\u521D\u59CB\u8BA1\u5212"), /*#__PURE__*/React.createElement("span", {
+    }), window.WorkbenchTerms.initial_plan), /*#__PURE__*/React.createElement("span", {
       className: "plan-legend"
     }, /*#__PURE__*/React.createElement("i", {
       className: "plan-swatch point"

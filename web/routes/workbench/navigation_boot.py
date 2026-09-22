@@ -50,7 +50,13 @@ def _invalid_constant(_value):
     _invalid("页面地址里的数字不是有效数字，页面没有打开。请从侧栏重新进入。")
 
 
+# 恢复维护页里「查看这条结果」「导出维护诊断」用的查询条件；维护结束、软件重启后这些链接会落到普通入口。
+MAINTENANCE_QUERY_KEYS = frozenset(("reference", "kind", "download"))
+
+
 def _query_value(view, args):
+    if set(args) & MAINTENANCE_QUERY_KEYS and not (set(args) - MAINTENANCE_QUERY_KEYS - {"view"}):
+        _invalid("维护已结束，这个查询入口只在维护期间有效，页面没有打开；业务数据没有变化。请从侧栏进入「系统管理」查看维护记录。")
     if set(args) - {"nav", "view"}:
         _invalid("页面地址里有不支持的条件，页面没有打开。请从侧栏重新进入。")
     for key in args:
@@ -82,10 +88,10 @@ def _calendar_context(context):
     _object(context, ("source", "kind", "month", "date"), ("source", "kind", "month"))
     month = context["month"]
     if type(month) is not str or re.fullmatch(r"[0-9]{4}-(0[1-9]|1[0-2])", month) is None:
-        _invalid("页面地址里的月份不对，页面没有打开。请从侧栏进入「工作日历」重新选择月份。")
+        _invalid("页面地址里的月份不对，页面没有打开。请从侧栏进入「基础资料 → 工作日历」重新选择月份。")
     calendar_date(month + "-01")
     if "date" in context and calendar_date(context["date"])[:7] != month:
-        _invalid("页面地址里的日期不在这个月里，页面没有打开。请从侧栏进入「工作日历」重新选择日期。")
+        _invalid("页面地址里的日期不在这个月里，页面没有打开。请从侧栏进入「基础资料 → 工作日历」重新选择日期。")
 
 
 def _resource_context(context):
@@ -159,7 +165,7 @@ def _trial_task_origin(context):
     create_input(target)
     _explicit_times(target.get("scope", {}))
     if target["base"] != {"plan_ref": origin["plan_ref"]}:
-        _invalid("要定位的工序必须属于同一份计划，不能换成候选方案或别的计划，页面没有打开。请从侧栏进入「试调」重新选择。")
+        _invalid("要定位的工序必须属于同一份计划，不能换成候选方案或别的计划，页面没有打开。请从侧栏进入「试调排产方案」重新选择。")
 
 
 def _trial_context(context):

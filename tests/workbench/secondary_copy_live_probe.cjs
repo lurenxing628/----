@@ -8,7 +8,8 @@ const report = { scope: 'frozen-formal-main-and-pages-with-private-style-candida
   win7_hardware_tested: false, cases: [], errors: [], external: [], writes: [], api: [], scripts: [], screenshots: [] };
 const targets = {
   process: ['.crumb > span:not(.cur):not(.sep)', '.wb-pager-summary', '.wb-th-title', '.tbl td .muted'],
-  reports: ['.rw-header p', '.rw-asof', '.rw-basis', '.wb-pager-summary', '.rw-filters label'],
+  // .rw-basis 的口径说明已从报表页撤下（2026-09-16 起）；次要文案改量表格里的工序信息行 .rw-stack .rw-muted（同为 --ui-info-muted）。
+  reports: ['.rw-header p', '.rw-asof', '.rw-stack .rw-muted', '.wb-pager-summary', '.rw-filters label'],
   system: ['.sm-header p', '.sm-source-note', '.sm-work-description', '.sm-meta']
 };
 const sha = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
@@ -57,6 +58,9 @@ async function capture(browser, width, theme, view, phase) {
       await page.getByRole('button', { name: 'EO-MAT-001', exact: true }).waitFor();
       await page.locator('.wb-pager').waitFor();
       assert.match(await page.locator('.wb-pager').innerText(), /25/);
+      // 高度不超过 1000px 的屏幕上产能链默认收起（ResourceRail.jsx MEDIUM_SCREEN_MAX_PX，2026-09-21），收起时不显示面包屑；先展开再量。
+      const expandRail = page.getByRole('button', { name: '展开产能链', exact: true });
+      if (await expandRail.count()) { await expandRail.click(); await page.locator('.crumb').waitFor(); }
     } else if (view === 'reports') {
       await page.locator('.rw-workbench[data-ready="true"]').waitFor();
       assert((await page.locator('.rw-table tbody tr').count()) > 0, 'Nonempty real report required');

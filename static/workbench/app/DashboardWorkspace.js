@@ -228,9 +228,9 @@
       className: "dy-heading"
     }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h2", {
       className: "wb-page-title"
-    }, "\u8BA1\u5212\u5458\u503C\u73ED\u53F0"), /*#__PURE__*/React.createElement("div", {
+    }, "\u503C\u73ED\u53F0"), /*#__PURE__*/React.createElement("div", {
       className: "dy-context wb-page-context"
-    }, /*#__PURE__*/React.createElement("span", null, comparing ? comparisonState.caption ? comparisonState.caption.name + ' · ' + comparisonState.caption.status : '尚未确认所选候选方案' : data ? data.plan ? data.plan.display_name + ' · 当前正式' : data.categories.delivery.state === 'no_official_plan' ? '当前无正式计划' : '正式计划未能读取' : '正式计划未读取'), /*#__PURE__*/React.createElement("span", null, data ? '数据截至 ' + window.WorkbenchFormat.dateTime(data.as_of) : '数据尚未读取'))), /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("span", null, comparing ? comparisonState.caption ? comparisonState.caption.name + ' · ' + comparisonState.caption.status : '尚未确认所选候选方案' : data ? data.plan ? data.plan.display_name + ' · 当前正式' : data.categories.delivery.state === 'no_official_plan' ? '当前无正式计划' : '正式计划未能读取' : '正式计划未读取'), /*#__PURE__*/React.createElement("span", null, data ? window.WorkbenchTerms.data_as_of(window.WorkbenchFormat.dateTime(data.as_of)) : '数据尚未读取'))), /*#__PURE__*/React.createElement("div", {
       className: "dy-tools"
     }, /*#__PURE__*/React.createElement(Button, {
       icon: "refresh-cw",
@@ -454,7 +454,7 @@
         className: "plana dashboard-live"
       }, /*#__PURE__*/React.createElement(window.DashboardStyles, null), /*#__PURE__*/React.createElement("h2", {
         className: "wb-page-title"
-      }, "\u8BA1\u5212\u5458\u503C\u73ED\u53F0"), /*#__PURE__*/React.createElement(ErrorBox, {
+      }, "\u503C\u73ED\u53F0"), /*#__PURE__*/React.createElement(ErrorBox, {
         error: error
       }));
     }

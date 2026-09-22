@@ -90,10 +90,10 @@
     function summary(code, items) {
       const operations = new Set(items.map(item => item.operation_ref).filter(Boolean)).size;
       const messages = Array.from(new Set(items.map(item => item.message))).join('；');
-      if (operations && code === 'operation_blocked') return operations + '道工序缺必填资料';
-      if (operations && code === 'execution_review_required') return operations + '道工序已有执行记录待核对';
-      if (code === 'route_not_generated') return new Set(items.map(item => item.batch_ref).filter(Boolean)).size + '批尚未生成工艺';
-      return (operations ? operations + '道工序：' : '') + messages;
+      if (operations && code === 'operation_blocked') return operations + ' 道工序缺必填资料';
+      if (operations && code === 'execution_review_required') return operations + ' 道工序已有执行记录待核对';
+      if (code === 'route_not_generated') return new Set(items.map(item => item.batch_ref).filter(Boolean)).size + ' 批尚未生成工艺';
+      return (operations ? operations + ' 道工序：' : '') + messages;
     }
     function objectLabel(item) {
       const task = tasks.get(item.operation_ref);

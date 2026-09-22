@@ -84,9 +84,9 @@ async function caption(page, recipe, dto, record) {
     + (data.base_identity.plan_ref && data.base_identity.version ? ' · v' + data.base_identity.version : '') : plan.display_name;
   const expected = {reference: recipe.caption.reference, name,
     label: draft ? '当前试调草稿' : recipe.view === 'reports' ? '报表计划' : '正式计划',
-    status: draft ? '试调草稿 · 可继续试调' : recipe.view === 'reports' ? '当前正式采用' : '当前正式',
+    status: draft ? '试调草稿 · 可继续试调' : '当前正式',
     version: draft ? '建草稿时的正式计划 第 ' + data.baseline.version + ' 版'
-      : recipe.view === 'reports' ? '正式 v' + plan.version : '第 ' + plan.version + ' 版'};
+      : '正式 v' + plan.version};
   record.equal(await target.getAttribute('data-plan-ref'), expected.reference);
   record.equal(await target.locator('.wb-current-name').innerText(), name);
   record.equal(await target.locator('strong').innerText(), expected.label);

@@ -1,28 +1,41 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="{{ 'dark' if request.cookies.get('aps_theme') == 'dark' else 'light' }}">
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>工作台暂不可用 · APS 智能排产</title>
+  <title>{{ title or "工作台暂不可用" }} · APS 智能排产</title>
+  <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='workbench/prototype/assets/logo-mark.svg') }}">
   <style>
-    :root { color-scheme: light dark; --bg: #f3f5f8; --surface: #fff; --ink: #172237; --line: #dbe1e9; --accent: #2457d6; }
+    /* 沿用工作台色系；浅色 muted 稍加深，三套兜底页共用可读对比度。 */
+    :root { color-scheme: light; --page: #f1f5f9; --surface: #ffffff; --text: #0f172a; --muted: #5f6f82; --line: #e2e8f0; --accent: #2563eb; }
+    :root[data-theme="dark"] { color-scheme: dark; --page: #0f172a; --surface: #1e293b; --text: #f1f5f9; --muted: #94a3b8; --line: #334155; --accent: #60a5fa; }
     * { box-sizing: border-box; }
-    body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.6 "Microsoft YaHei", sans-serif; letter-spacing: 0; }
+    body { margin: 0; background: var(--page); color: var(--text); font: 15px/1.6 "Microsoft YaHei", sans-serif; letter-spacing: 0; }
     header { padding: 18px 24px; border-bottom: 1px solid var(--line); background: var(--surface); font-weight: 600; }
     main { max-width: 760px; margin: 48px auto; padding: 0 24px; }
     h1 { margin: 0 0 16px; font-size: 24px; line-height: 1.4; }
     p { overflow-wrap: anywhere; }
+    .muted { color: var(--muted); }
     nav { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 24px; }
     a { display: inline-flex; align-items: center; min-height: 40px; padding: 7px 14px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface); color: var(--accent); text-decoration: none; }
     a:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
-    @media (prefers-color-scheme: dark) { :root { --bg: #111827; --surface: #1f2937; --ink: #f3f4f6; --line: #4b5563; --accent: #b9d5ff; } }
+    .preference-error { display: none; }
+    [data-preference-error="true"] .preference-error { display: block; }
   </style>
+  <script>
+  // 与 theme.js 同一优先级：只有合法的 aps_theme 才优先，否则再看 aps_kit_theme。
+  try { var preferred = localStorage.getItem('aps_theme'); var legacy = localStorage.getItem('aps_kit_theme');
+    var theme = preferred === 'dark' || preferred === 'light' ? preferred : legacy === 'dark' || legacy === 'light' ? legacy : null;
+    if (theme) document.documentElement.dataset.theme = theme;
+  } catch (error) { document.documentElement.dataset.preferenceError = 'true'; }
+  </script>
 </head>
 <body>
   <header>APS 智能排产</header>
-  <main><h1>工作台暂不可用</h1><p role="alert">{{ message }}</p>
+  <main><h1>{{ title or "工作台暂不可用" }}</h1><p role="alert">{{ message }}</p>
+    <p class="muted preference-error" role="status">读不到深浅色设置，本页沿用打开时的主题。业务数据没有变化。</p>
     {% set messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}<section aria-label="操作结果">{% for category, text in messages %}<p role="status">{{ text }}</p>{% endfor %}</section>{% endif %}
-    <nav aria-label="恢复入口"><a href="{{ url_for('workbench.index') }}">打开工作台</a><a href="">重新加载</a></nav>
+    <nav aria-label="恢复入口"><a href="{{ url_for('workbench.index') }}">打开工作台</a><a href="{{ request.path }}{% if request.query_string %}?{{ request.query_string.decode('utf-8') }}{% endif %}">重新加载</a></nav>
   </main>
 </body>
 </html>

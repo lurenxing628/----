@@ -79,7 +79,7 @@
         setBusy(false);
       }
     }
-    const fields = [['结果来源', '来自本机数据库以外的维护记录，不是数据库里的业务结果'], ['该次维护记录的数据库来源', description.origin], ['选定备份', op && op.filename || (!query && command.selection ? command.selection.filename + '（页面上选的，还没有确认）' : '维护记录尚未确认')], ['恢复前保护副本', op && op.protection_filename || '保护副本状态待确认'], ['业务审计', op && op.audit_persisted ? '维护记录报告已留存；当前数据库内容仍需重启后读取' : '未确认留存'], ['软件状态', command.hostError || !host ? '无法读取维护状态，当前页面已暂停业务读写' : host.restart_required ? '业务操作已停用，须重启整个软件' : '维护状态还没有确认，当前页面已暂停业务读写']];
+    const fields = [['结果来源', '来自本机数据库以外的维护记录，不是数据库里的业务结果'], ['该次维护记录的数据库来源', description.origin], ['选定备份', op && op.filename || (!query && command.selection ? command.selection.filename + '（页面上选的，还没有确认）' : '维护记录尚未确认')], ['恢复前保护副本', op && op.protection_filename || '保护副本状态待确认'], ['操作记录', op && op.audit_persisted ? '已留存；当前数据库内容仍需重启后读取' : '未确认留存'], ['软件状态', command.hostError || !host ? '无法读取维护状态，当前页面已暂停业务读写' : host.restart_required ? '业务操作已停用，须重启整个软件' : '维护状态还没有确认，当前页面已暂停业务读写']];
     return ReactDOM.createPortal(/*#__PURE__*/React.createElement("div", {
       className: "sm-workbench sm-maintenance-workspace plana sm-restore-screen",
       "data-restore-maintenance": "warm",
@@ -145,7 +145,7 @@
       onClick: () => {
         try {
           R.download(host, result, problem);
-          setNotice('已导出本次维护诊断，不含数据库或完整业务日志。');
+          setNotice(window.WorkbenchTerms.download_started(R.DIAGNOSTIC_FILENAME) + '，不含数据库和完整日志。');
         } catch (problem) {
           setError(problem);
         }
@@ -159,10 +159,7 @@
     }, /*#__PURE__*/React.createElement("h2", null, "\u67E5\u8BE2\u5176\u4ED6\u7EF4\u62A4\u7ED3\u679C"), /*#__PURE__*/React.createElement("form", {
       onSubmit: lookup
     }, /*#__PURE__*/React.createElement("fieldset", {
-      className: "sm-choice",
-      style: {
-        marginTop: 12
-      }
+      className: "sm-choice sm-choice-gap"
     }, /*#__PURE__*/React.createElement("legend", null, "\u7F16\u53F7\u7C7B\u578B"), [['request', '操作编号'], ['job', '维护记录编号']].map(([value, label]) => /*#__PURE__*/React.createElement("label", {
       key: value
     }, /*#__PURE__*/React.createElement("input", {

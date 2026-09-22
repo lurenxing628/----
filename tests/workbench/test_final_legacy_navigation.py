@@ -129,6 +129,21 @@ class LegacyNavigationTests(unittest.TestCase):
             with self.subTest(args=args):
                 self.assertEqual(self.decision("scheduler.analysis_page", args).kind, "retired")
 
+    def test_retired_message_depends_on_whether_the_old_address_carried_conditions(self):
+        without = self.decision(args={"gantt_zoom": "day"})
+        self.assertEqual(without.kind, "retired")
+        self.assertIn("装不下这组旧条件", without.message)
+        retired_list = next(endpoint for endpoint, policy in PAGE_POLICIES.items()
+                            if policy == "retired" and endpoint not in ("scheduler.week_plan_print_page",)
+                            and not endpoint.startswith("reports.") and "detail" not in endpoint
+                            and endpoint not in ("scheduler.gantt_page", "scheduler.analysis_page", "dashboard.index",
+                                                 "scheduler.resource_dispatch_page", "scheduler.week_plan_page",
+                                                 "material.index", "material.materials_page"))
+        plain = self.decision(retired_list, args={})
+        self.assertEqual((plain.kind, plain.reason_code), ("retired", "old_control_retired"))
+        self.assertIn("这个旧页面已退役", plain.message)
+        self.assertNotIn("装不下", plain.message)
+
     def test_unknown_duplicate_and_unsupported_gantt_filters_are_never_dropped(self):
         with self.assertRaises(LegacyNavigationInvalid):
             self.decision(args=(("version", "3"), ("version", "3")))

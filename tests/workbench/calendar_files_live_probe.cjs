@@ -90,7 +90,7 @@ async function calendarFiles(page,state,helpers,root,report){
     const dialog=page.getByRole('dialog',{name:'批量维护工作日历',exact:true});
     await dialog.locator('input[id$="-from"]').fill(FIRST);
     await dialog.locator('input[id$="-to"]').fill(SECOND);
-    await dialog.getByRole('button',{name:'清除配置，恢复默认',exact:true}).click();
+    await dialog.getByRole('button',{name:'清除单独设置，恢复默认',exact:true}).click();
     const preview=await post(page,'/calendar/range/preview',()=>dialog.getByRole('button',{name:'预览变更',exact:true}).click());
     assert.equal(preview.data.counts.selected,2);
     const confirmed=await post(page,'/calendar/range/confirm',()=>dialog.getByRole('button',{name:'确认全部 2 天',exact:true}).click());

@@ -52,7 +52,8 @@
       digits: 3,
       trim: true
     });
-    const timeHints = Object.keys(suggestions).length > 0;
+    const timeHints = Object.keys(suggestions).length > 0,
+      reasonLabel = action === 'supplement' || legacy ? '补齐原因' : '更正原因';
     return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
       className: "field-entry-grid"
     }, /*#__PURE__*/React.createElement("section", null, /*#__PURE__*/React.createElement("h4", null, "\u4EA7\u51FA\u6570\u91CF"), /*#__PURE__*/React.createElement(Field, {
@@ -73,10 +74,10 @@
     }, /*#__PURE__*/React.createElement("span", null, "\u4EF6"), /*#__PURE__*/React.createElement(Button, {
       disabled: readonly('completed_quantity'),
       onClick: () => change('completed_quantity', '0')
-    }, "\u6700\u5C0F"), action === 'create' && /*#__PURE__*/React.createElement(Button, {
+    }, "\u586B 0"), action === 'create' && /*#__PURE__*/React.createElement(Button, {
       disabled: disabled || task.execution.remaining_quantity === null,
       onClick: () => change('completed_quantity', String(task.execution.remaining_quantity))
-    }, "\u6700\u5927")), /*#__PURE__*/React.createElement("p", {
+    }, "\u586B\u5269\u4F59\u6570")), /*#__PURE__*/React.createElement("p", {
       className: "field-note"
     }, "\u5DF2\u77E5\u7D2F\u8BA1 ", /*#__PURE__*/React.createElement("output", {
       "aria-label": "\u5DF2\u77E5\u7D2F\u8BA1"
@@ -139,13 +140,13 @@
       disabled: readonly('remark'),
       onChange: event => change('remark', event.target.value)
     })), (record || legacy) && /*#__PURE__*/React.createElement(Field, {
-      label: action === 'supplement' || legacy ? '补齐原因' : '更正原因',
+      label: reasonLabel,
       path: "reason",
       error: error,
       required: true
     }, /*#__PURE__*/React.createElement("textarea", {
       required: true,
-      "aria-label": "\u8865\u9F50\u6216\u66F4\u6B63\u539F\u56E0",
+      "aria-label": reasonLabel,
       maxLength: "2000",
       value: draft.reason,
       disabled: disabled,

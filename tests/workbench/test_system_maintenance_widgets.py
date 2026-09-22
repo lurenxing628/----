@@ -124,8 +124,8 @@ def test_system_maintenance_widgets(restore_host, system_api):
     assert len(report["variants"]) == 4
     assert len(report["cases"]) >= 40
     assert all(item["passed"] for item in report["cases"])
-    assert {"system-live-backups-size-format", "system-live-logs-size-format",
-            "maintenance-backup-size-format-preserves-event-and-dto"} <= {item["name"] for item in report["cases"]}
+    # SystemLiveFiles 已随管理样例一起删除（2026-09-21）：文件大小格式只在本机维护记录表里核对。
+    assert "maintenance-backup-size-format-preserves-event-and-dto" in {item["name"] for item in report["cases"]}
     assert hashes == {name: hashlib.sha256((source / name).read_bytes()).hexdigest() for name in NAMES}
     report["source_sha256"] = hashes
     report["asset_manifest_sha256_at_start"] = before_manifest

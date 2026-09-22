@@ -30,7 +30,7 @@ async function selectionLifecycle(page) {
     const item = { name, passed: false, initial_ref: selectedRef, related_ref: related ? previous : null, stages: [] };
     report.selection_lifecycle.push(item);
     try {
-      const spec = { count: 3, processOrder: true, context: { plan_ref: plan, ...range, selected_task_ref: selectedRef },
+      const spec = { view: 'gantt', count: 3, processOrder: true, context: { plan_ref: plan, ...range, selected_task_ref: selectedRef },
         ...(missing ? { omitFullTaskRef: previous } : {}) };
       const valid = await page.evaluate(({ plan, range, spec }) => [range, {}].every(scope => {
         const data = PlanUIFixtures.workspace(plan, scope, spec).data;
@@ -67,7 +67,7 @@ async function selectionLifecycle(page) {
   const retry = { name: 'initial-read-retry-restores-valid-target', passed: false, initial_ref: initial, stages: [] };
   report.selection_lifecycle.push(retry);
   try {
-    await page.evaluate(spec => mountPlan(spec), { count: 3, processOrder: true, workspaceFailure: '初始计划读取失败，等待手动重试',
+    await page.evaluate(spec => mountPlan(spec), { view: 'gantt', count: 3, processOrder: true, workspaceFailure: '初始计划读取失败，等待手动重试',
       context: { plan_ref: plan, ...range, selected_task_ref: initial } });
     await page.getByRole('alert').waitFor();
     retry.stages.push(await capture('initial-read-failed', false));
@@ -89,7 +89,7 @@ async function selectionLifecycle(page) {
   const fullRange = { name: 'failed-initial-full-range-does-not-replay-target', passed: false, initial_ref: initial, stages: [] };
   report.selection_lifecycle.push(fullRange);
   try {
-    await page.evaluate(spec => mountPlan(spec), { count: 3, processOrder: true, workspaceFailure: '初始计划读取失败，等待切换完整范围',
+    await page.evaluate(spec => mountPlan(spec), { view: 'gantt', count: 3, processOrder: true, workspaceFailure: '初始计划读取失败，等待切换完整范围',
       context: { plan_ref: plan, ...range, selected_task_ref: initial } });
     await page.getByRole('alert').waitFor();
     fullRange.stages.push(await capture('initial-read-failed', false));
@@ -122,29 +122,35 @@ async function selectionLifecycle(page) {
     for (const [width, height] of [[1366, 768], [1280, 720]]) for (const view of ['analysis', 'gantt', 'delay']) {
       await page.setViewportSize({ width, height });
       await page.evaluate(view => { window.scrollTo(0, 0); mountPlan({ view }); }, view);
-      await page.locator('[data-plan-gantt]').waitFor();
+      // Only the gantt tab draws the board; analysis and delay show the projection tables for the same read.
+      const gantt = view === 'gantt';
+      await page.locator(gantt ? '[data-plan-gantt]' : 'section[aria-label="计划分析"]').waitFor();
+      assert.equal(await page.locator('[data-plan-gantt]').count(), gantt ? 1 : 0);
       await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
       assert.equal(await page.locator('.plan-catalog').getAttribute('data-collapsed'), 'true');
       assert.equal(await page.getByRole('table', { name: '可选排产方案' }).count(), 0);
-      const value = await page.evaluate(() => {
-        const first = document.querySelector('.plan-lane').getBoundingClientRect();
+      const value = await page.evaluate(gantt => {
+        const first = document.querySelector(gantt ? '.plan-lane' : 'section[aria-label="计划分析"]').getBoundingClientRect();
         return { top: first.top, bottom: first.bottom, viewport: innerHeight, width: innerWidth, pageWidth: document.documentElement.scrollWidth,
           plans: fixture.calls.filter(call => call.type === 'workspace').map(call => call.ref) };
-      });
-      assert(value.top >= 0 && value.bottom <= height, 'First Gantt row fully visible: ' + JSON.stringify({ view, ...value }));
+      }, gantt);
+      if (gantt) assert(value.top >= 0 && value.bottom <= height, 'First Gantt row fully visible: ' + JSON.stringify({ view, ...value }));
+      else assert(value.top >= 0 && value.top < height, 'Projection tables start on the first screen: ' + JSON.stringify({ view, ...value }));
       assert(value.pageWidth <= width + 1, 'No root horizontal overflow');
       assert.deepEqual(value.plans, ['1'.padStart(48, '0')]);
-      const text = await page.locator('.plan-footer').textContent();
-      for (const label of ['已确认准时', '资源重叠', '初始计划', '零工时工序']) assert(text.includes(label));
-      const visibleBar = page.locator('.plan-bar-face strong').first();
-      if (await visibleBar.count()) assert((await visibleBar.textContent()).startsWith('D2609-'));
+      if (gantt) {
+        const text = await page.locator('.plan-footer').textContent();
+        for (const label of ['已确认准时', '资源重叠', '初始计划', '零工时工序']) assert(text.includes(label));
+        const visibleBar = page.locator('.plan-bar-face strong').first();
+        if (await visibleBar.count()) assert((await visibleBar.textContent()).startsWith('D2609-'));
+      }
       const image = path.join(output, view + '-' + width + '.png'); await page.screenshot({ path: image }); report.screenshots.push(image);
       report.cases.push({ view, width, height, ...value });
     }
     await page.evaluate(() => mountPlan({ context: { query: 'D2609' } }));
     await page.getByRole('table', { name: '可选排产方案' }).waitFor();
     assert.equal(await page.evaluate(() => fixture.calls.filter(call => call.type === 'workspace').length), 0);
-    await page.evaluate(() => mountPlan({ asOf: '2026-09-10T06:00:00' })); await page.locator('[data-plan-gantt]').waitFor();
+    await page.evaluate(() => mountPlan({ view: 'gantt', asOf: '2026-09-10T06:00:00' })); await page.locator('[data-plan-gantt]').waitFor();
     assert.equal(await page.locator('[data-plan-time-line=today]').getAttribute('data-time-value'), '2026-09-10T00:00:00');
     assert.equal(await page.locator('[data-plan-time-line=as-of]').getAttribute('data-time-value'), '2026-09-10T06:00:00');
     await page.getByLabel('切换所选计划', { exact: true }).selectOption('2'.padStart(48, '0'));

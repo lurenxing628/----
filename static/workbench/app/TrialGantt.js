@@ -3,6 +3,10 @@
 
   // Axis numbers encode factory-local wall-clock fields; UTC extraction must not shift them to the browser timezone.
   const U = window.TrialControls,
+    {
+      TimelineZoom
+    } = window.ResourceControls,
+    ZOOM_MAX = 8,
     wall = value => Date.parse(value + 'Z');
   const pieceLabel = t => t.piece_id === null ? '共同工序' : '分件 ' + t.piece_id;
   const taskLabel = t => t.batch_id + ' · ' + t.sequence + ' ' + t.process_label + ' · ' + pieceLabel(t);
@@ -22,22 +26,30 @@
     onSelect
   }) {
     const V = window.TrialViewState,
-      preferences = V.useView(data),
-      values = preferences.value || V.defaults(data);
+      preferences = V.useView(data);
+    // When the local preference cannot be read, the gantt still renders with defaults and view changes stay on this page.
+    const [local, setLocal] = React.useState(null),
+      values = preferences.value || local || V.defaults(data);
     const view = values.mode,
       baseline = values.baseline,
       changed = values.only_changed,
       query = values.query;
-    const setView = mode => preferences.change({
+    const update = patch => {
+      if (!preferences.change(patch)) setLocal({
+        ...values,
+        ...patch
+      });
+    };
+    const setView = mode => update({
         mode
       }),
-      setBaseline = baseline => preferences.change({
+      setBaseline = baseline => update({
         baseline
       });
-    const setChanged = only_changed => preferences.change({
+    const setChanged = only_changed => update({
         only_changed
       }),
-      setQuery = query => preferences.change({
+      setQuery = query => update({
         query
       });
     const [limit, setLimit] = React.useState(true);
@@ -81,6 +93,8 @@
         end: end + pad
       };
     }, [data]);
+    // Same tick ladder as the plan gantt: 1000 axis units per zoom step, placed by percentage of the timeline width.
+    const ticks = React.useMemo(() => window.PlanGanttModel.ticks(bounds.start, bounds.end, 1000 * zoom, 0, 1000 * zoom), [bounds, zoom]);
     const position = t => ({
       left: (wall(t.start) - bounds.start) / (bounds.end - bounds.start) * 100 + '%',
       width: (wall(t.end) - wall(t.start)) / (bounds.end - bounds.start) * 100 + '%'
@@ -127,12 +141,6 @@
         return () => document.removeEventListener('keydown', handler);
       }
     }, [expanded]);
-    if (!preferences.value) return /*#__PURE__*/React.createElement("section", {
-      "aria-label": "\u8BD5\u8C03\u7518\u7279"
-    }, /*#__PURE__*/React.createElement(V.Notice, {
-      state: preferences,
-      label: "\u8BD5\u8C03\u7518\u7279\u67E5\u770B\u504F\u597D"
-    }));
     return /*#__PURE__*/React.createElement("section", {
       className: 'tt-gantt' + (expanded ? ' tt-expanded' : ''),
       "aria-label": "\u8BD5\u8C03\u7518\u7279"
@@ -187,16 +195,12 @@
         setQuery(e.target.value);
         setPage(1);
       }
-    }), /*#__PURE__*/React.createElement(U.Button, {
-      icon: "minus",
-      "aria-label": "\u7F29\u5C0F\u7518\u7279",
-      disabled: zoom <= 1,
-      onClick: () => setZoom(z => z / 2)
-    }), /*#__PURE__*/React.createElement(U.Button, {
-      icon: "plus",
-      "aria-label": "\u653E\u5927\u7518\u7279",
-      disabled: zoom >= 8,
-      onClick: () => setZoom(z => z * 2)
+    }), /*#__PURE__*/React.createElement(TimelineZoom, {
+      zoom: zoom,
+      max: ZOOM_MAX,
+      scope: "\u8BD5\u8C03",
+      onZoom: setZoom,
+      onFit: () => setZoom(1)
     }), /*#__PURE__*/React.createElement(U.Button, {
       icon: "chart-gantt",
       "aria-label": expanded ? '收起甘特' : '展开甘特',
@@ -216,9 +220,13 @@
       className: "tt-corner"
     }, "\u5DE5\u5E8F / \u8D44\u6E90"), /*#__PURE__*/React.createElement("div", {
       className: "tt-ticks"
-    }, [0, 1, 2, 3].map(i => /*#__PURE__*/React.createElement("span", {
-      key: i
-    }, U.timeLabel(new Date(bounds.start + (bounds.end - bounds.start) * i / 3).toISOString().slice(0, 19)).slice(5, 16))))), visible.map((r, i) => /*#__PURE__*/React.createElement(React.Fragment, {
+    }, ticks.map(tick => /*#__PURE__*/React.createElement("span", {
+      key: tick.at,
+      className: "tt-tick",
+      style: {
+        left: tick.x / (10 * zoom) + '%'
+      }
+    }, U.timeLabel(tick.label).slice(5, 10), /*#__PURE__*/React.createElement("small", null, U.timeLabel(tick.label).slice(11)))))), visible.map((r, i) => /*#__PURE__*/React.createElement(React.Fragment, {
       key: r.t.task_ref + ':' + r.ghost
     }, (i === 0 || visible[i - 1].group !== r.group) && /*#__PURE__*/React.createElement("div", {
       className: "tt-group"
@@ -246,7 +254,9 @@
     })), baseline && (view === 'batch' || r.ghost || r.t.original[key] === r.group) && (window.PointContract.isPoint(r.t) ? pointMarker(r.t, true) : /*#__PURE__*/React.createElement("span", {
       className: "tt-baseline",
       "data-baseline-ref": r.t.task_ref,
+      role: "img",
       style: position(r.t.original),
+      "aria-label": '原安排 ' + taskLabel(r.t) + '，' + U.timeLabel(r.t.original.start) + ' 至 ' + U.timeLabel(r.t.original.end),
       title: '原安排 ' + taskLabel(r.t) + '\n' + U.timeLabel(r.t.original.start) + ' 至 ' + U.timeLabel(r.t.original.end)
     })))))), !visible.length && /*#__PURE__*/React.createElement("div", {
       className: "tt-empty"

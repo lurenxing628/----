@@ -18,6 +18,25 @@ body.aps-workbench .sm-workbench .sm-environment summary .sm-meta { margin-left:
 body.aps-workbench .sm-workbench .sm-pager > .wb-pager { flex: 1; width: 100%; }
 body.aps-workbench .sm-workbench .sm-detail pre { white-space: pre-wrap; overflow-wrap: anywhere; max-width: 100%; }
 body.aps-workbench .sm-workbench .sm-record-table { --wb-table-min: 780px; }
+/* 系统维护（E1 包）：原内联样式改成类名后在这里落地。 */
+body.aps-workbench :is(.sm-wrap-anywhere,.sm-detail-summary) { overflow-wrap: anywhere; }
+body.aps-workbench .sm-detail-title { min-width: 0; overflow-wrap: anywhere; }
+body.aps-workbench .sm-detail-body { font-size: var(--font-size-2); }
+body.aps-workbench .sm-field-gap { margin-top: var(--space-4); }
+body.aps-workbench .sm-choice-gap { margin-top: var(--space-3); }
+body.aps-workbench .sm-maintenance-outcome { padding: var(--space-3) 20px; background: var(--ui-card-bg); border-bottom: 1px solid var(--ui-border); overflow-wrap: anywhere; }
+body.aps-workbench .sm-filter-actions { grid-column: 1 / -1; justify-content: flex-end; }
+body.aps-workbench .sm-log-sources { margin-bottom: var(--space-3); padding-bottom: var(--space-3); border-bottom: 1px solid var(--ui-border); }
+body.aps-workbench .sm-source-list { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-5); }
+body.aps-workbench .sm-source-item { flex: 1 1 210px; min-width: 0; overflow-wrap: anywhere; font-size: var(--font-size-2); }
+body.aps-workbench .sm-record-row { cursor: pointer; }
+body.aps-workbench .sm-summary-title { font-size: var(--font-size-3); }
+body.aps-workbench .sm-record-table td.sm-col-size { text-align: right; font-variant-numeric: tabular-nums; }
+body.aps-workbench .sm-configuration-full { max-width: none; }
+body.aps-workbench .sm-config-row-wide { grid-template-columns: minmax(140px, 1fr) minmax(140px, 1fr); }
+/* 开关旁的“当前：已开启 / 已关闭”状态字：与同行的 small.sm-meta 同级（本工作区 .sm-meta 是 13px）。 */
+body.aps-workbench .sm-switch-state { color: var(--ui-info-muted); font-size: var(--font-size-2); }
+body.aps-workbench .plana.sm-maintenance-workspace-flush { padding: 0; max-width: none; border-radius: 0; }
 /* Full-screen maintenance must cover the inert workbench even while global shell CSS is active. */
 body.aps-workbench .sm-restore-screen { position: fixed; inset: 0; z-index: var(--wb-z-modal); overflow: auto; background: var(--ui-card-bg); color: var(--ui-text); padding: 0; max-width: none; margin: 0; border-radius: 0; }
 body.aps-workbench .sm-restore-bar { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); flex-wrap: wrap; padding: var(--space-3) var(--space-5); border-bottom: 1px solid var(--ui-border); background: var(--ui-surface-muted); }

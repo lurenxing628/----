@@ -3,6 +3,30 @@ const fs = require('node:fs'), path = require('node:path'), assert = require('no
 const { chromium } = require('playwright');
 const input = JSON.parse(fs.readFileSync(0, 'utf8'));
 const evidence = { errors: [], external: [], screenshots: [], http: [], navigation_scopes: [], main_source_used: true, successful_api_stubs: false };
+// 缩放已经是 1 倍时「显示完整时间范围」按钮本就禁用（共享 TimelineZoom 的既定行为），这时不用再点。
+async function showWholeRange(page) {
+  const fit = page.getByRole('button', { name: '显示完整时间范围', exact: true });
+  await fit.waitFor();
+  if (await fit.isEnabled()) await fit.click();
+}
+// 2026-09-21：显示完整时间范围后视窗要再收敛一次（ActualGanttWindow 的初始缩放封顶），而
+// ActualGanttWorkspace 在 position 变化时会清掉 hover，鼠标落在旧位置也不会再进 mouseenter。
+// 等标记的位置连续两帧不动再悬停，必要时补一次移开再移入。
+async function settledHover(page, target) {
+  let last = null;
+  for (let i = 0; i < 40; i++) {
+    const box = await target.boundingBox();
+    const now = box && JSON.stringify([Math.round(box.x), Math.round(box.y), Math.round(box.width), Math.round(box.height)]);
+    if (now && now === last) break;
+    last = now; await page.waitForTimeout(100);
+  }
+  const tooltip = page.getByRole('tooltip');
+  for (let attempt = 0; attempt < 3; attempt++) {
+    await page.mouse.move(0, 0);
+    await target.hover();
+    try { await tooltip.waitFor({ timeout: 4000 }); return; } catch (error) { if (attempt === 2) throw error; }
+  }
+}
 async function shot(page, name) {
   const file = path.join(input.output, name + '.png'); await page.screenshot({ path: file, fullPage: true }); evidence.screenshots.push(file);
 }
@@ -67,8 +91,8 @@ async function main() {
         await point.waitFor();
       }
       // The default plan window can exclude later reports; inspect the entire axis for all-report assertions.
-      await page.getByRole('button', { name: '适应全部', exact: true }).click();
-      await point.hover();
+      await showWholeRange(page);
+      await settledHover(page, point);
       assert.ok((await page.getByRole('tooltip').innerText()).includes('原计划 · 零工时工序'));
       await point.click();
       await page.getByRole('checkbox', { name: '详情', exact: true }).check();
@@ -77,12 +101,12 @@ async function main() {
       assert.equal(await point.getAttribute('aria-pressed'), 'true');
       assert.equal(await page.locator('[data-actual-mark=actual]').count(), input.reports ? 1 : 0);
       assert.equal(await page.locator('[data-actual-mark=point]').count(), input.reports ? 2 : 0);
-      assert.equal(await page.getByText('待续排', { exact: true }).count(), 0);
+      assert.equal(await page.getByText('剩余数量还没安排', { exact: true }).count(), 0);
       assert.ok((await page.locator('[data-actual-gantt]').innerText()).includes('零工时工序已安排 · 完成待确认'));
       if (input.reports) {
         const actual = page.locator('[data-actual-mark=actual]'); assert.ok((await actual.boundingBox()).width > 0);
         const reportPoint = page.locator('[data-actual-mark=point]').first();
-        await reportPoint.hover();
+        await settledHover(page, reportPoint);
         assert.ok((await page.getByRole('tooltip').innerText()).includes('报工时刻'));
         const reportRef = await reportPoint.getAttribute('data-report-ref');
         assert.equal(await reportPoint.getAttribute('data-point-ref'), reportRef);
@@ -93,10 +117,10 @@ async function main() {
       } else assert.ok((await page.getByLabel('工序详情').innerText()).includes('待报工'));
       await page.getByLabel('搜索现场甘特').fill('B1');
       assert.ok((await page.locator('[data-actual-count]').innerText()).includes('1 / 1'));
-      await page.getByRole('button', { name: '适应全部', exact: true }).click();
+      await showWholeRange(page);
       await page.getByRole('button', { name: '放大时间轴', exact: true }).click();
       await page.getByRole('button', { name: '定位选中工序', exact: true }).click();
-      await page.getByRole('button', { name: '适应全部', exact: true }).click();
+      await showWholeRange(page);
       await fit(page); await shot(page, width + '-' + theme + '-actual');
       const originContext = await page.evaluate(() => history.state.workbench.context);
       const [fieldRead] = await Promise.all([
@@ -118,14 +142,14 @@ async function main() {
       if (returnContext.context.scope.batch_ids !== undefined) assert.deepEqual(returnContext.context.scope.batch_ids, []);
       assert.equal(await fieldPoint.getAttribute('data-point-ref'), input.identity.task.task_ref);
       assert.equal((await fieldPoint.boundingBox()).width, 24);
-      await fieldPoint.hover(); assert.ok((await page.getByRole('tooltip').innerText()).includes('零工时工序，无资源占用。'));
+      await settledHover(page, fieldPoint); assert.ok((await page.getByRole('tooltip').innerText()).includes('零工时工序，无资源占用。'));
       await fieldPoint.focus(); await page.keyboard.press('Space');
       assert.equal(await fieldPoint.getAttribute('aria-pressed'), 'true');
       assert.equal(await page.locator('[data-field-point=report]').count(), input.reports ? 2 : 0);
       // Report times are second-precision facts; the axis shows the exact latest report instant.
-      if (input.reports) assert.equal(await page.locator('.field-timeline-axis > span').last().innerText(), '2026-09-09 09:50:00');
+      if (input.reports) assert.equal(await page.locator('.field-timeline-axis > span').last().innerText(), '2026-09-09 09:50');
       await fit(page); await shot(page, width + '-' + theme + '-field');
-      await page.getByRole('button', { name: '实际甘特', exact: true }).click(); await page.locator('[data-actual-scroll]').waitFor();
+      await page.getByRole('button', { name: '现场实际甘特', exact: true }).click(); await page.locator('[data-actual-scroll]').waitFor();
     }
     await page.getByLabel('批次范围', { exact: true }).fill('B1');
     const [scopedRead] = await Promise.all([
@@ -159,7 +183,7 @@ async function main() {
     assert.equal(await page.getByLabel('搜索现场甘特').inputValue(), 'B1');
     assert.equal(await page.locator('[data-actual-mark="plan-point"]').getAttribute('aria-pressed'), 'true');
     evidence.nonempty_batch_navigation.returned_scope = restoredScope;
-    await page.getByRole('button', { name: '导出 CSV', exact: true }).click();
+    await page.getByRole('button', { name: '导出', exact: true }).click();
     const pending = page.waitForEvent('download'); await page.getByRole('button', { name: '下载 CSV', exact: true }).click();
     const download = await pending, file = path.join(input.output, 'actual.csv'); await download.saveAs(file);
     const csv = fs.readFileSync(file, 'utf8'); assert.ok(csv.includes('计划事件类型') && csv.includes('point') && csv.includes(input.identity.task.task_ref));

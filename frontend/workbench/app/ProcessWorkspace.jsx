@@ -19,13 +19,13 @@
     const w = entity.workflow;
     return <div className="pipe" aria-label="工艺三阶段">
       {['route', 'source', 'hours'].map((key, index) => <React.Fragment key={key}>{index > 0 && <span className="pp-arr" />}<span className={'pp ' + (w[key].state === 'confirmed' ? 'done' : w[key].state === 'locked' ? 'lock' : 'warn')}>
-        {({ route: '路线', source: '归属', hours: '工时' })[key]} · {w[key].state === 'confirmed' ? '已确认' : w[key].state === 'locked' ? key === 'source' ? '待路线' : '待归属' : w[key].state === 'present' ? '已有记录' : w[key].state === 'missing' ? '待录入' : '未确认'}</span></React.Fragment>)}
+        {({ route: '路线', source: '归属', hours: '工时' })[key]} · {P.workflowStateLabel(key, w[key].state)}</span></React.Fragment>)}
     </div>;
   }
   function TableEmpty({ loading, error, filtered, onClear, onRetry }) {
     const { EmptyState } = window.WorkbenchListControls;
     if (loading) return <EmptyState kind="loading" title="正在读取零件工艺" />;
-    if (error) return <EmptyState kind="error" action={<Button icon="refresh-cw" onClick={onRetry}>刷新</Button>} />;
+    if (error) return <EmptyState kind="error" error={error} action={<Button icon="refresh-cw" onClick={onRetry}>刷新</Button>} />;
     if (filtered) return <EmptyState kind="filtered" title="当前筛选没有匹配的零件" action={<Button icon="x" onClick={onClear}>清除筛选</Button>} />;
     return <EmptyState kind="empty" title="暂无零件工艺" />;
   }
@@ -50,12 +50,12 @@
           <window.ResourceTableHeader column={column} kind="part" scope={scope} adapter={adapter} sort={sorted && sorted.field} direction={sorted && sorted.direction} sortActive={!!sorted}
             onSort={onSort} onFilter={rule => onFilter(column.key, rule)} filter={scope.column_filters && scope.column_filters[column.key]} matchingCount={matchingCount}
             width={width(column)} onResize={value => resize(column.key, value)} disabled={disabled} scopeTransform={A.facetScope} pageSize={50} />
-        </th>; })}<th scope="col" data-column="__actions" style={{ width: widths ? widths.__actions : 190 }}>下一步 / 操作</th></tr></thead>
+        </th>; })}<th scope="col" className="wb-col-actions" data-column="__actions" style={{ width: widths ? widths.__actions : 190 }}>下一步 / 操作</th></tr></thead>
       <tbody>{entities.map(row => <tr key={row.ref} data-process-ref={row.ref}>
         <td><input type="checkbox" aria-label={'选择 ' + row.business_code} checked={selectedSet.has(row.ref)} disabled={disabled || loading} onChange={event => setSelected(event.target.checked ? selected.concat(row.ref) : selected.filter(ref => ref !== row.ref))} /></td>
         <td><Button className="lnk" disabled={disabled || loading} aria-label={'查看 ' + row.business_code} onClick={() => onOpen(row.ref)} style={{ whiteSpace: 'normal', overflowWrap: 'anywhere', textAlign: 'left' }}>{row.business_code}</Button></td>
         <td>{row.label}{row.issues.length > 0 && <Issues issues={row.issues} />}</td><td className="r">{row.relationships.operation_count}</td><td><Pipeline entity={row} /></td>
-        <td><div className="wb-actions" style={{ flexWrap: 'wrap' }}><Button className="linkbtn" icon="arrow-right" disabled={disabled || loading} aria-label={'浏览步骤 ' + row.business_code} onClick={() => onOpen(row.ref)}>{row.workflow.route.state !== 'confirmed' ? '确认路线' : ({ source: '确认归属', hours: '填写工时', ready: '已就绪 · 汇总' })[row.workflow.stage]}</Button>
+        <td className="wb-col-actions"><div className="wb-actions" style={{ flexWrap: 'wrap' }}><Button className="linkbtn" icon="arrow-right" disabled={disabled || loading} aria-label={'浏览步骤 ' + row.business_code} onClick={() => onOpen(row.ref)}>{row.workflow.route.state !== 'confirmed' ? '确认路线' : ({ source: '确认归属', hours: '填写工时', ready: '已就绪 · 汇总' })[row.workflow.stage]}</Button>
           <Button className="mini" icon="trash-2" disabled={disabled || loading} reasonDisplay="tooltip" reason={deleteReason} aria-label={'删除 ' + row.business_code} onClick={() => onDelete([row.ref])}>删除</Button></div></td>
       </tr>)}{!entities.length && <tr><td colSpan={P.columns.length + 2}><TableEmpty loading={loading} error={error} onClear={onClear} onRetry={onRetry}
         filtered={!!(scope.query || scope.stage || Object.keys(scope.column_filters || {}).length)} /></td></tr>}</tbody>
@@ -142,8 +142,8 @@
         {[['total', '零件总数', 'primary'], ['source', '待定归属', 'warn'], ['hours', '待填工时', 'warn'], ['ready', '已就绪', 'ok']].map(([key, label, tone]) =>
           <div key={key} className="stat wb-metric" data-tone={tone}><span className="sl wb-metric-label">{label}</span><span className="sv wb-metric-value">{counts ? counts[key] : '未读取'}</span></div>)}
       </div>
-      <div className="process-list-controls"><div className="subtabs" role="tablist" aria-label="工艺阶段">{P.stages.map(([stage, label, key]) => <Button key={key} className={'subtab' + ((scope.stage || '') === stage ? ' on' : '')}
-        role="tab" aria-selected={(scope.stage || '') === stage} disabled={blocked} onClick={() => filter({ stage: stage || undefined })}>{label} <span className="cnt">{counts ? counts[key] : '…'}</span></Button>)}</div>
+      <div className="process-list-controls"><div className="subtabs" role="group" aria-label="按工艺阶段筛选">{P.stages.map(([stage, label, key]) => <Button key={key} className={'subtab' + ((scope.stage || '') === stage ? ' on' : '')}
+        aria-pressed={(scope.stage || '') === stage} disabled={blocked} onClick={() => filter({ stage: stage || undefined })}>{label} <span className="cnt">{counts ? counts[key] : '…'}</span></Button>)}</div>
       <form className="toolbar" onSubmit={event => { event.preventDefault(); if (!blocked) filter({ query: search }); }}>
         <label className="search"><span className="ic"><Icon name="search" /></span><input type="search" aria-label="搜索图号、名称、路线" placeholder="搜索图号、名称、路线…" value={search} disabled={blocked} onChange={event => setSearch(event.target.value)} /></label>
         <Button type="submit" icon="search" disabled={blocked}>搜索</Button><Button icon="refresh-cw" aria-label="刷新工艺列表" disabled={blocked} busy={list.loading} onClick={() => filter({})} />
@@ -157,7 +157,6 @@
         <Button icon="x" aria-label="清除所有选择" disabled={blocked || !selected.length} onClick={() => setSelected([])}>清除选择</Button>
         <Button icon="trash-2" className="btn danger" disabled={blocked || list.loading || !selected.length} reasonDisplay="tooltip" reason={deleteReason} onClick={() => action('bulk')}>批量删除</Button>
       </div></div>
-      <ErrorBox error={list.error} />{list.error && <Button icon="refresh-cw" disabled={blocked} onClick={() => filter({})}>刷新列表</Button>}
       <ErrorBox error={recoveryError} />{!dialog && command.locked && <window.ResourceForms.Feedback command={command} />}
       {list.result && <Issues issues={list.result.warnings} />}
       <ProcessTable entities={data ? data.entities : []} selected={selected} setSelected={setSelected} onOpen={ref => setDialog({ ref, adapter })} onDelete={refs => action('bulk', refs)} deleteReason={deleteReason}

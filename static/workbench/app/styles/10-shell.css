@@ -40,6 +40,16 @@ body.aps-workbench .operations-shell :is(.wb-current-name,.wb-current-range) {
 }
 body.aps-workbench .operations-shell .header-controls { flex: 0 0 auto; margin-left: auto; }
 body.aps-workbench .operations-shell .wb-render-failure { padding: var(--space-5) 0; }
+/* 跳到主内容：键盘用户按 Tab 的第一站；平时视觉隐藏，得到焦点才浮出（焦点描边由 20-controls 的 a[href]:focus-visible 合同给）。 */
+body.aps-workbench .wb-skip-link {
+  position: fixed; top: var(--space-2); left: var(--space-2); z-index: var(--wb-z-popup);
+  width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap;
+  color: var(--ui-text); background: var(--ui-card-bg); text-decoration: none;
+}
+body.aps-workbench .wb-skip-link:is(:focus, :focus-visible) {
+  width: auto; height: auto; margin: 0; padding: var(--space-2) var(--space-3); overflow: visible; clip: auto;
+  border: 1px solid var(--ui-border); border-radius: var(--wb-radius-control); box-shadow: var(--ui-shadow-md);
+}
 @media (max-width: 1366px) {
   body.aps-workbench .top-header { gap: var(--space-2); }
   body.aps-workbench .top-header .header-controls { gap: var(--space-2); }

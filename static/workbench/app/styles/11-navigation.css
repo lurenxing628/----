@@ -41,7 +41,7 @@
 }
 .wb-view-tabs > [role="tab"]:focus-visible,
 .operations-shell .hdr-pill:focus-visible { outline: 2px solid var(--ui-primary); outline-offset: 2px; }
-.wb-navigation-error { color: var(--wb-sev-danger); }
+.wb-navigation-error { color: var(--wb-sev-danger-text); }
 .wb-server-messages { display: grid; gap: var(--space-2); margin-bottom: var(--space-4); }
 .wb-server-message {
   display: flex;
@@ -60,9 +60,9 @@
 .wb-server-message p { flex: 1; min-width: 0; margin: 0; overflow-wrap: anywhere; }
 .wb-server-badge { flex: 0 0 auto; font-size: var(--font-size-1); font-weight: 600; }
 .wb-server-message button {
-  flex: 0 0 28px;
-  width: 28px;
-  height: 28px;
+  flex: 0 0 var(--wb-control-mini-height);
+  width: var(--wb-control-mini-height);
+  height: var(--wb-control-mini-height);
   display: grid;
   place-items: center;
   padding: 0;

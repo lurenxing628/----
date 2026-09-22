@@ -22,7 +22,7 @@
     key,
     title,
     numeric: key === 'operation_count',
-    width: [160, 190, 118, 390][index]
+    width: [140, 150, 90, 350][index]
   }));
   function ordering(scope) {
     const value = scope.sort === undefined ? 'business_code' : scope.sort;
@@ -146,9 +146,32 @@
   function sourceLabel(value) {
     return value === 'internal' ? '自制' : value === 'external' ? '外协' : '未归类';
   }
-  function valueText(value, unit = '') {
-    return value === null ? '未填写' : String(value) + unit + (value <= 0 ? ' · 请复核' : '');
+  // 数值按录入精度显示（最多四位小数），格式统一走 WorkbenchFormat；单位由表头交代，这里不拼。
+  function valueText(value) {
+    return value === null ? '未填写' : window.WorkbenchFormat.number(value, {
+      digits: 4,
+      trim: true
+    }) + (value <= 0 ? ' · 请复核' : '');
   }
+  // 三阶段状态词全站只此一套：列表进度条、详情步骤条和最新资料差异表都从这里取。
+  const stageNames = {
+    route: '工艺路线',
+    source: '归属',
+    hours: '工时定额',
+    ready: '已就绪'
+  };
+  function workflowStateLabel(key, state) {
+    if (state === 'confirmed') return '已确认';
+    if (state === 'locked') return key === 'source' ? '待路线确认' : '待归属确认';
+    if (state === 'present') return '已有记录，待确认';
+    if (state === 'missing') return '待录入';
+    if (state === 'unconfirmed') return '待确认';
+    return '状态未明确';
+  }
+  function stageLabel(key) {
+    return own(stageNames, key) ? stageNames[key] : '阶段未明确';
+  }
+  const own = (target, key) => Object.prototype.hasOwnProperty.call(target, key);
   window.APSProcessContract = {
     stages,
     sorts,
@@ -163,6 +186,8 @@
     previewBody,
     reason,
     sourceLabel,
-    valueText
+    valueText,
+    workflowStateLabel,
+    stageLabel
   };
 })();

@@ -69,7 +69,7 @@ def test_plan_scope_caption_real_adoption(trial_case, caption_assets, tmp_path, 
         def label(value):
             return value.replace("T", " ")
 
-        prefix = "计划时间范围：" + label(span["start"]) + " → " + label(span["end"])
+        prefix = "计划时间范围：" + label(span["start"]) + " 至 " + label(span["end"])
         caption = "计划时刻：" + label(span["start"]) if kind == "point-only" else (
             prefix + ("（包含末端零工时工序）" if inclusive else "（不含结束时刻）"))
         fixtures = [{"name": "whole", "scope": {}, "caption": caption, "payload": read(client, path)}]
@@ -82,7 +82,7 @@ def test_plan_scope_caption_real_adoption(trial_case, caption_assets, tmp_path, 
             refs = {row["task_ref"] for row in payload["data"]["tasks"]}
             for point in points:
                 assert (point["task_ref"] in refs) is (name == "start-includes")
-            caption = "计划时间范围：" + label(start) + " → " + label(end) + "（不含结束时刻）"
+            caption = "计划时间范围：" + label(start) + " 至 " + label(end) + "（不含结束时刻）"
             fixtures.append({"name": name, "scope": scope, "caption": caption, "payload": payload})
         with serve(app) as base:
             assert not base.endswith(":53144")

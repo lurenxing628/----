@@ -69,7 +69,8 @@ window.mountPrimitive = (kind,legacy=false) => {
   const adapter=kind==='batch'?batchAdapter():{catalog:async scope=>F.catalog(scope),workspace:async(reference,scope)=>F.workspace(reference,scope),export:async()=>{throw new Error('No download in style probe');}};
   const child=kind==='batch'?el(BatchWorkspace,{adapter}):el(PlanWorkspace,{adapter,view:'gantt',planRef:ref(1)});
   mounted=ReactDOM.createRoot(document.getElementById('fixture-root'));
-  mounted.render(el(React.Fragment,null,el(WorkbenchControlStyles),el(WorkbenchControls),el(WorkbenchNumberControls),shell(child,legacy)));
+  // main.jsx 同样挂着 WorkbenchGuardHost：导入弹窗选了文件/有预检后关闭要先过「离开前确认」。
+  mounted.render(el(React.Fragment,null,el(WorkbenchControlStyles),el(WorkbenchControls),el(WorkbenchNumberControls),el(WorkbenchGuardHost),shell(child,legacy)));
 };
 `;
 new (require('node:vm').Script)(fixture);
@@ -187,7 +188,10 @@ async function batchCases() {
   await button('批量导入').click();await shot('batch','import',true);
   await page.getByLabel('选择文件').setInputFiles({name:'ah.xlsx',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',buffer:Buffer.from('Explicit style-only mock')});
   await button('开始预检').click();await page.getByRole('table',{name:'批次导入预检'}).waitFor();await shot('batch','import-preview',true);
-  await scrollCheck('.batch-preview');await button('取消').click();await scrollCheck('.wb-table-frame',true);await geometry('batch');
+  await scrollCheck('.batch-preview');
+  // 已选文件/已有预检时点「取消」先弹 BatchFiles 的离开前确认；放弃后导入弹窗（含 .batch-preview.wb-table-frame）才卸载，再量批次列表自己的表框。
+  await button('取消').click();await page.getByRole('dialog',{name:'离开前确认'}).waitFor();await button('放弃未保存内容并继续').click();
+  await page.getByRole('table',{name:'批次导入预检'}).waitFor({state:'hidden'});await scrollCheck('.batch-table-frame',true);await geometry('batch');
   const reads=await page.evaluate(()=>state.reads);await button('下一页').click();await page.waitForFunction(n=>state.reads>n,reads);await button('AH-021').waitFor();
   await mount('batch',true);report.legacy_checks.push({variant,kind:'batch',layout:await geometry('batch',true)});
   await button('新增批次').click();await modalGeometry();

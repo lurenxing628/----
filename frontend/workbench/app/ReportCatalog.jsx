@@ -12,10 +12,11 @@
     function choose(next) { setKind(next); setFilter({}); setDraft({}); setTable({ page: 1, size: 10 }); setError(null); setNotice(''); }
     async function download() {
       setDownloading(true); setError(null);
-      try { await api.download('/api/workbench/v1/reports/' + kind + '/export', { ...input, snapshot_ref: response.meta.snapshot_ref, format: 'xlsx' }); setNotice('完整范围 XLSX 已交给浏览器下载。'); }
+      try { const result = await api.download('/api/workbench/v1/reports/' + kind + '/export', { ...input, snapshot_ref: response.meta.snapshot_ref, format: 'xlsx' }); setNotice(window.WorkbenchTerms.download_started(result.filename) + '（完整范围）。'); }
       catch (failure) { setError(failure); } finally { setDownloading(false); }
     }
-    return <section aria-label="其他报表列表"><div className="rw-table-heading"><div className="rw-filters" style={{ marginLeft: 0 }}>
+    const empty = { title: '当前范围没有结果', hint: kind === 'official-review' ? '当前正式计划里没有符合范围的工序。' : '调整统计日期或搜索条件后重新查询。' };
+    return <section aria-label="其他报表列表"><div className="rw-table-heading"><div className="rw-filters rw-filters-start">
       <label>报表<select aria-label="其他报表" value={kind} onChange={event => choose(event.target.value)}>{options.map(([key, label]) => <option value={key} key={key}>{label}</option>)}</select></label>
       {['utilization', 'downtime'].includes(kind) && <><label>统计起日<input type="date" aria-label="统计起日" value={draft.window_date_from || ''} onChange={event => setDraft(old => ({ ...old, window_date_from: event.target.value }))} /></label>
         <label>止日<input type="date" aria-label="统计止日" value={draft.window_date_to || ''} onChange={event => setDraft(old => ({ ...old, window_date_to: event.target.value }))} /></label>
@@ -27,7 +28,7 @@
       <Button transfer="export" busy={downloading} disabled={!response || request.busy} reason={response && !response.data.page.total ? '当前范围没有可导出的结果。' : ''} onClick={download}>导出 XLSX</Button></div></div>
       <ErrorBox error={request.error || error} />{notice && <p role="status">{notice}</p>}{request.busy && <p role="status">正在读取报表…</p>}
       {response && <><p>{response.data.data_gaps.join(' ')}{response.data.scope.window_date_from ? ' 统计范围：' + response.data.scope.window_date_from + ' 至 ' + response.data.scope.window_date_to : ''}</p>
-        <window.ReportTable.Table data={kind === 'official-review' ? { ...response.data, topic: 'delivery' } : response.data} />
+        <window.ReportTable.Table data={kind === 'official-review' ? { ...response.data, topic: 'delivery' } : response.data} empty={empty} />
         <Page page={response.data.page} onChange={patch => setTable(old => ({ ...old, ...patch, snapshot_ref: response.meta.snapshot_ref }))} busy={request.busy} /></>}
     </section>;
   }

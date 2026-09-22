@@ -79,6 +79,7 @@
       className: "mo-field",
       key: index
     }, /*#__PURE__*/React.createElement("dt", null, field.label), /*#__PURE__*/React.createElement("dd", null, field.state === 'unknown' ? '未知' : field.state === 'missing' ? '未填写' : C.value(field.value), field.state === 'invalid' ? '（原值待核对）' : ''), /*#__PURE__*/React.createElement("dd", null, /*#__PURE__*/React.createElement(window.WorkbenchReference, {
+      label: "\u6570\u636E\u6765\u6E90",
       entries: {
         '数据来源': field.source
       }
@@ -97,10 +98,12 @@
       }),
       disabled: item.domain === 'batch' && !navigation
     }, /*#__PURE__*/React.createElement("strong", null, item.business_code, " \xB7 ", item.label)), /*#__PURE__*/React.createElement(window.WorkbenchReference, {
+      label: "\u6570\u636E\u6765\u6E90",
       entries: {
         '数据来源': item.source
       }
     })) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("strong", null, item.title), /*#__PURE__*/React.createElement("p", null, item.evidence), /*#__PURE__*/React.createElement(window.WorkbenchReference, {
+      label: "\u68C0\u67E5\u89C4\u5219",
       entries: {
         '检查规则': item.rule
       }

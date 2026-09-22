@@ -79,7 +79,7 @@
         minWidth: columns.reduce((sum, item) => sum + item[2], 64)
       }
     }, /*#__PURE__*/React.createElement("caption", {
-      className: "wb-sr-only"
+      className: "wb-visually-hidden"
     }, "\u8D44\u6599\u6E05\u5355"), /*#__PURE__*/React.createElement("colgroup", null, columns.map(([key,, width]) => /*#__PURE__*/React.createElement("col", {
       key: key,
       style: {

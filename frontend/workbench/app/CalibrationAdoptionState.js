@@ -68,7 +68,7 @@
     function change(value) { setDraft(value); setPreview(null); setConsent(false); setError(''); }
     async function inspect() {
       if (lock.current || stale || storageError || !detail || saved && saved.phase !== 'rejected') return;
-      if (saved && saved.baseline.template_operation_ref !== detail.suggestion.template_operation_ref) { setError('上次操作属于另一个模板。请先点「结束本次未采用」处理完上次操作。'); return; }
+      if (saved && saved.baseline.template_operation_ref !== detail.suggestion.template_operation_ref) { setError('上次操作属于另一个模板。请先点「放弃上次采用记录」处理完上次操作。'); return; }
       let values; try { values = A.input(draft); } catch (e) { setError(e.message); return; }
       lock.current = true; setBusy(true); setPreview(null); setConsent(false); setError(''); setNotice('');
       const controller = new AbortController(); request.current = controller;

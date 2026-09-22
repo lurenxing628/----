@@ -14,22 +14,21 @@
       const next = value === '' ? delta > 0 ? 0 : maximum : Number(value) + delta;
       if (next >= 0 && next <= maximum) onChange(M.pad(next, width));
     }
-    return <div className="wb-picker-field" style={{ minWidth: 0 }}><label htmlFor={id}>{label}</label>
-      <div style={{ position: 'relative' }}><input id={id} className="wb-number-input" type="text" inputMode="numeric" autoComplete="off" value={value} maxLength={width} placeholder={'-'.repeat(width)} data-picker-initial={initial || undefined}
+    return <div className="wb-picker-field"><label htmlFor={id}>{label}</label>
+      <div className="wb-picker-input"><input id={id} className="wb-number-input" type="text" inputMode="numeric" autoComplete="off" value={value} maxLength={width} placeholder={'-'.repeat(width)} data-picker-initial={initial || undefined}
         aria-invalid={invalid || undefined} onChange={event => change(event.target.value)} onBlur={() => { if (value && !invalid) onChange(M.pad(Number(value), width)); }}
         onKeyDown={event => { if (['ArrowUp', 'ArrowDown'].includes(event.key)) { event.preventDefault(); event.stopPropagation(); increment(event.key === 'ArrowUp' ? 1 : -1); } }} />
-      <span className="wb-number-stepper" style={{ width: 20 }}>
+      <span className="wb-number-stepper">
         {[1, -1].map(delta => <button key={delta} type="button" className="wb-number-step" aria-label={(delta > 0 ? '增加' : '减少') + label}
           title={(delta > 0 ? '增加' : '减少') + label} disabled={value !== '' && (delta > 0 ? Number(value) >= maximum : Number(value) <= 0)}
           onMouseDown={event => event.preventDefault()} onClick={() => increment(delta)}>
-          <span style={{ display: 'flex', transform: delta > 0 ? 'rotate(180deg)' : undefined }}><Icon name="chevron-down" /></span>
+          <span className={'wb-picker-chevron' + (delta > 0 ? ' is-flipped' : '')}><Icon name="chevron-down" /></span>
         </button>)}
       </span></div></div>;
   }
   function TimeFields({ time, units, onChange, initial }) {
     const fields = [['hour', '时', 23], ['minute', '分', 59]].concat(units.seconds ? [['second', '秒', 59]] : [], units.fraction ? [['millisecond', '毫秒', 999]] : []);
-    return <div className="wb-picker-fields" role="group" aria-label="时间（24小时制）"
-      style={{ display: 'grid', gridTemplateColumns: 'repeat(' + fields.length + ', minmax(0, 1fr))', gap: 8 }}>
+    return <div className="wb-picker-fields" role="group" aria-label="时间（24小时制）" data-columns={fields.length}>
       {fields.map(([key, label, maximum]) => <NumberField key={key} label={label} maximum={maximum} width={key === 'millisecond' ? 3 : 2} initial={initial && key === 'hour'}
         value={time[key]} onChange={value => onChange({ ...time, [key]: value })} />)}</div>;
   }
@@ -49,10 +48,9 @@
       else return;
       event.preventDefault(); event.stopPropagation(); onBrowse(next, true);
     }
-    return <div className="wb-picker-grid" ref={root} role="grid" aria-label={view.slice(0, 4) + ' 年 ' + Number(view.slice(5, 7)) + ' 月'}
-      style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))' }}>
-      <div role="row" style={{ display: 'contents' }}>{weekdays.map(day => <span role="columnheader" className="wb-picker-weekday" key={day}>周{day}</span>)}</div>
-      {Array.from({ length: 6 }, (_, week) => <div role="row" key={week} style={{ display: 'contents' }}>
+    return <div className="wb-picker-grid" ref={root} role="grid" aria-label={view.slice(0, 4) + ' 年 ' + Number(view.slice(5, 7)) + ' 月'}>
+      <div role="row" className="wb-picker-row">{weekdays.map(day => <span role="columnheader" className="wb-picker-weekday" key={day}>周{day}</span>)}</div>
+      {Array.from({ length: 6 }, (_, week) => <div role="row" key={week} className="wb-picker-row">
         {dates.slice(week * 7, week * 7 + 7).map((day, index) => {
           if (!day) return <span key={'empty-' + index} role="gridcell" />;
           const allowed = M.daySelectable(props, day), outside = day.slice(0, 7) !== view.slice(0, 7);
@@ -78,9 +76,8 @@
       }
       else if (['Enter', ' '].includes(event.key)) { event.preventDefault(); event.stopPropagation(); onChoose(key); }
     }
-    return <div className="wb-picker-grid" ref={root} role="grid" aria-label={view.slice(0, 4) + ' 年月份'}
-      style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' }}>
-      {Array.from({ length: 4 }, (_, row) => <div role="row" style={{ display: 'contents' }} key={row}>
+    return <div className="wb-picker-grid wb-picker-months" ref={root} role="grid" aria-label={view.slice(0, 4) + ' 年月份'}>
+      {Array.from({ length: 4 }, (_, row) => <div role="row" className="wb-picker-row" key={row}>
         {Array.from({ length: 3 }, (_, column) => {
           const number = row * 3 + column + 1, key = year + '-' + M.pad(number), allowed = availability[number - 1];
           return <button type="button" role="gridcell" key={key} data-date={key} data-view-month={key === browseMonth || undefined} className={'wb-picker-day' + (key === selectedMonth ? ' is-selected' : '')}
@@ -154,34 +151,34 @@
     const browseBase = M.dateKey(browseYear, Number(view.slice(5, 7)), Math.min(Number(view.slice(8)), C.monthDays(browseYear, Number(view.slice(5, 7)))));
     const previous = M.moveMonth(browseBase, -move), next = M.moveMonth(browseBase, move);
     const title = label || ({ date: '选择日期', time: '选择时间', month: '选择月份', 'datetime-local': '选择日期和时间' })[type];
-    return <div className="wb-date-picker" data-picker-type={type} data-picker-view={pickerView} style={{ width: 336, maxWidth: '100%', minWidth: 0 }}
+    return <div className="wb-date-picker" data-picker-type={type} data-picker-view={pickerView}
       onKeyDown={event => { if (event.key === 'Enter' && event.target.tagName === 'INPUT' && event.target.closest('.wb-picker-fields')) { event.preventDefault(); event.stopPropagation(); confirm(); } }}>
 
-      <div className="wb-popup-header"><strong id={id} style={{ minWidth: 0, overflowWrap: 'anywhere' }}>{title}</strong>
+      <div className="wb-popup-header"><strong id={id} className="wb-picker-title">{title}</strong>
         <NavButton icon="x" name="关闭日期时间选择" onClick={onClose} /></div>
-      {hasDate && <><div className="wb-picker-actions" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      {hasDate && <><div className="wb-picker-actions">
         <NavButton name={showMonths ? '上一年' : '上个月'} icon="chevron-left" disabled={showMonths ? browseYear <= 1 : previous === view} onClick={() => browse(previous, false)} />
-        <label className="wb-picker-year" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, flex: '1 1 auto', minWidth: 0 }}>
-          <input type="text" inputMode="numeric" aria-label="年份" value={year} maxLength={4} autoComplete="off" style={{ width: 72 }} aria-invalid={!!yearError}
+        <label className="wb-picker-year">
+          <input type="text" inputMode="numeric" aria-label="年份" value={year} maxLength={4} autoComplete="off" aria-invalid={!!yearError}
             onChange={event => { if (/^\d{0,4}$/.test(event.target.value)) { setYear(event.target.value); setYearError(''); } }}
             onBlur={applyYear} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); event.stopPropagation(); applyYear(); } }} />年</label>
-        {type !== 'month' && <button type="button" className="btn" aria-label={showMonths ? '返回日历' : '选择月份'} aria-expanded={showMonths}
-          title={showMonths ? '返回日历' : '选择月份'} onClick={toggleMonths} style={{ flex: '0 0 100px', width: 100, marginLeft: 'auto', whiteSpace: 'nowrap' }}>
+        {type !== 'month' && <button type="button" className="btn wb-picker-month" aria-label={showMonths ? '返回日历' : '选择月份'} aria-expanded={showMonths}
+          title={showMonths ? '返回日历' : '选择月份'} onClick={toggleMonths}>
           {showMonths ? '返回日历' : Number(view.slice(5, 7)) + ' 月'}
-          <span style={{ display: 'flex', transform: showMonths ? 'rotate(180deg)' : undefined }}><Icon name="chevron-down" /></span></button>}
+          <span className={'wb-picker-chevron' + (showMonths ? ' is-flipped' : '')}><Icon name="chevron-down" /></span></button>}
         <NavButton name={showMonths ? '下一年' : '下个月'} icon="chevron-right" disabled={showMonths ? browseYear >= 9999 : next === view} onClick={() => browse(next, false)} />
       </div>
         {showMonths ? <MonthGrid {...{ view, cursor, selected, props, root }} browseMonth={type === 'month' ? undefined : monthAnchor.current.slice(0, 7)} onBrowse={browse} onChoose={chooseMonth} />
           : <DateGrid {...{ view, cursor, selected, props, root }} onBrowse={browse} onChoose={choose} />}
       </>}
-      {hasTime && <><div className="wb-picker-actions" style={{ marginTop: hasDate ? 12 : 0 }}>
+      {hasTime && <><div className={'wb-picker-actions wb-picker-time-head' + (hasDate ? ' has-date' : '')}>
         <span>{type === 'datetime-local' ? selected || '尚未选择日期' : '24 小时制'}</span></div>
         <TimeFields time={time} units={units} initial={type === 'time'} onChange={nextTime => { setTime(nextTime); setEdited(true); }} /></>}
-      {(yearError || edited && !check.valid && hasTime) && <div role="status" className="wb-picker-error" style={{ color: 'var(--ui-danger-text)', overflowWrap: 'anywhere', marginTop: 8 }}>{yearError || check.message}</div>}
-      <div className="wb-popup-footer" style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+      {(yearError || edited && !check.valid && hasTime) && <div role="status" className="wb-picker-error">{yearError || check.message}</div>}
+      <div className="wb-popup-footer">
         <button type="button" className="btn" onClick={() => onCommit('')}>清除</button>
         {hasDate && <button type="button" className="btn" disabled={!shortcutAllowed} onClick={() => choose(shortcut)}>{type === 'month' ? '当前月份' : '今天'}</button>}
-        <span style={{ flex: '1 1 auto' }} />
+        <span className="wb-picker-spacer" />
         <button type="button" className="btn" onClick={onClose}>取消</button>
         {hasTime && <button type="button" className="btn primary wb-action wb-primary" disabled={!check.valid || !!yearError || !yearApplied} onClick={confirm}><Icon name="check" />确认</button>}
       </div>

@@ -9,7 +9,7 @@
   function Details({ data }) {
     const [page, setPage] = React.useState(1), pages = Math.max(1, Math.ceil(data.tasks.length / 100));
     return <details className="pf-detail"><summary>检查明细 · {data.tasks.length} 道</summary>
-      <div className="pf-results wb-table-frame" data-sticky-head data-sticky-actions><table className="wb-table" aria-label="排产检查明细"><caption className="wb-visually-hidden">排产检查明细</caption><colgroup><col style={{ width: '18%' }} /><col style={{ width: '20%' }} /><col style={{ width: '15%' }} /><col /></colgroup>
+      <div className="pf-results wb-table-frame" data-sticky-head data-sticky-actions><table className="wb-table" aria-label="排产检查明细"><caption className="wb-visually-hidden">排产检查明细</caption><colgroup>{['batch', 'operation', 'status', 'reason'].map(key => <col key={key} className={'pf-col-' + key} />)}</colgroup>
         <thead><tr><th scope="col">批次</th><th scope="col">工序</th><th scope="col">检查结果</th><th scope="col">原因</th></tr></thead><tbody>{data.tasks.slice((page - 1) * 100, page * 100).map(row => <tr key={row.operation_ref}>
           <td>{row.batch_id}</td><td>{row.sequence} · {row.label}{row.piece_id ? ' · ' + row.piece_id : ''}</td><td>{labels[row.status]}</td>
           <td>{row.issues.map((item, index) => <p key={index}>{item.message}{item.predecessor_sequence ? ' 前序：' + item.predecessor_sequence : ''}</p>)}
@@ -90,7 +90,7 @@
         {!!data.no_route_batches.length && <NoRoutes key={data.input_ref} rows={data.no_route_batches} />}
         <Reasons data={data} /></>}
       <div className="pf-footer"><span className="pf-muted">{data ? '排产检查不生成版本、不写入业务或审计数据。' : renderRunPanel ? '请先选择批次和排产日期范围，再点「开始排产检查」。' : window.WorkbenchTerms.outcomes.unavailable}</span>
-        <div className="pf-tools"><Button icon="search" className={currentStep === 2 ? 'btn primary' : 'btn'} busy={busy} disabled={!!initial.error} onClick={check}>{data ? '重新检查' : '开始排产检查'}</Button>
+        <div className="pf-tools"><Button icon="search" className={currentStep === 2 ? 'btn primary' : 'btn'} busy={busy} disabled={!!initial.error} reason={!initial.error && !value.batch_refs.length ? '请先选择要排产的批次。' : ''} reasonDisplay="tooltip" onClick={check}>{data ? '重新检查' : '开始排产检查'}</Button>
           {!renderRunPanel && <Button icon="play" className={currentStep === 3 ? 'btn primary' : 'btn'} disabled={runBlocked} reason={runReason}>开始排产</Button>}</div></div></section>
       {renderRunPanel && renderRunPanel(data)}
     </div>;

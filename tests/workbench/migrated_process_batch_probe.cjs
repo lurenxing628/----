@@ -10,16 +10,15 @@ const dialog = name => page.getByRole('dialog', {name, exact: true});
 const processArea = () => page.locator('[data-process-workspace]');
 const batchArea = () => page.locator('[data-batch-workspace]');
 async function processPage() {
-  await page.goto(ready.resource_url); await page.locator('.hb-tile').first().waitFor();
+  await page.goto(ready.resource_url); const processNode = page.locator('[data-rail-node="process"]'); await processNode.waitFor();
   // Since 2026-09-13 the entry restores the last node and the last open detail dialog: dismiss a restored dialog,
   // and when the process list is already open the tile click issues no request, so wait for the rows instead.
-  const tile = page.locator('.hb-tile').filter({hasText: /^工艺/});
-  for (let i = 0; i < 40 && await tile.isDisabled(); i++) {
+  for (let i = 0; i < 40 && await processNode.isDisabled(); i++) {
     if (await page.locator('[role="dialog"][aria-modal="true"]:visible').count()) await page.keyboard.press('Escape');
     await page.waitForTimeout(250);
   }
-  if (await tile.getAttribute('aria-pressed') === 'true') await processArea().waitFor();
-  else await p.response('/entities/part', () => p.click(tile));
+  if (await processNode.getAttribute('aria-pressed') === 'true') await processArea().waitFor();
+  else await p.response('/entities/part', () => p.click(processNode));
   await processArea().locator('tbody tr[data-process-ref]').first().waitFor();
 }
 async function batchPage() {
@@ -27,8 +26,9 @@ async function batchPage() {
   await batchArea().waitFor();
 }
 async function searchProcess(code) {
-  await p.type(processArea().getByRole('searchbox'), code);
-  return p.response('/entities/part', () => processArea().getByRole('searchbox').press('Enter'));
+  const search = processArea().getByRole('searchbox', {name: '搜索图号、名称、路线', exact: true});
+  await p.type(search, code);
+  return p.response('/entities/part', () => search.press('Enter'));
 }
 async function openProcess(code) {
   await searchProcess(code); const open = button(processArea(), '查看 ' + code);
@@ -80,7 +80,11 @@ async function processReads() {
   const before = Number(await resize.getAttribute('aria-valuenow')); await resize.focus(); await resize.press('ArrowRight');
   await page.waitForFunction(before => Number(document.querySelector('[aria-label="调整图号列宽"]').getAttribute('aria-valuenow')) > before, before);
   await resize.press('ArrowLeft');
-  await openProcess('PROC-001'); assert((await page.locator('.process-detail').innerText()).includes('保留合并规则'));
+  await openProcess('PROC-001'); const detail = page.locator('.process-detail');
+  const rawRecords = detail.getByText('原始导入资料与保存记录', {exact: true});
+  if (await rawRecords.isVisible()) await p.click(rawRecords);
+  const externalGroups = detail.getByRole('table', {name: '外协组原记录', exact: true}); await externalGroups.waitFor();
+  assert((await externalGroups.innerText()).includes('保留合并规则'));
   await p.shot('legacy-process-detail'); await closeProcess();
 }
 async function processExports(prefix = 'CROSSPAGE-', total = 63, operationCount = 0) {
@@ -195,13 +199,15 @@ async function batchEditSync() {
   await p.click(button(batchArea(), '返回列表'));
 }
 async function batchImport(file, mode, cancel = false) {
-  await p.click(button(batchArea(), '批量导入')); const d = dialog('批量维护批次');
+  await p.click(button(batchArea(), '批量导入')); const d = dialog('批量导入批次');
   if (mode !== 'overwrite') await p.select(d.getByLabel('导入模式', {exact: true}), mode === 'append' ? '只新增没有的批次（已有的跳过）' : '先清除全部批次，再按表格重导');
   p.step('setInputFiles', 'input[type=file]', file); await d.locator('input[type=file]').setInputFiles(path.join(root, 'uploads', file + '.xlsx'));
   const preview = await p.response('/import-preview', () => p.click(button(d, '开始预检'))); await p.shot('batch-file-' + mode + (cancel ? '-cancel' : ''));
   if (mode === 'replace') { assert.equal(preview.data.can_confirm, false); assert(preview.data.deleted.some(r => r.before.business_code === 'PROC-B')); assert(await button(d, '确认导入').isDisabled()); }
   else if (!cancel) { assert(preview.data.can_confirm); await saved('import_confirm', button(d, '确认导入')); }
-  await p.click(button(d, cancel || mode === 'replace' ? '取消' : '关闭')); return preview;
+  await p.click(button(d, cancel || mode === 'replace' ? '取消' : '关闭'));
+  if (cancel || mode === 'replace') await p.click(button(dialog('离开前确认'), '放弃未保存内容并继续'));
+  return preview;
 }
 async function batchMulti() {
   await searchBatch('AN-MULTI-'); await p.click(batchArea().getByRole('checkbox', {name: '选择 AN-MULTI-001', exact: true}));
@@ -226,7 +232,9 @@ async function batchMulti() {
   await p.click(button(batchArea(), '清除选择')); await searchBatch(copy);
   await p.click(batchArea().getByRole('checkbox', {name: '选择 ' + copy, exact: true}));
   await p.response('/bulk-preview', () => p.click(button(batchArea(), '删除所选')));
-  await saved('bulk_confirm', button(dialog('确认批量删除'), '确认删除')); await p.click(button(dialog('确认批量删除'), '关闭'));
+  // 只删一个批次时标题直接点名，且要先勾选核对才允许确认。
+  const single = dialog('确认删除批次 ' + copy); await p.click(single.getByRole('checkbox'));
+  await saved('bulk_confirm', button(single, '确认删除')); await p.click(button(single, '关闭'));
   await page.reload(); const fresh = await searchBatch('AN-MULTI-'); assert.equal(fresh.data.page.total, 43);
   assert.equal(await batchArea().getByRole('table', {name: '批次列表', exact: true}).locator('tbody tr').count(), 20);
 }

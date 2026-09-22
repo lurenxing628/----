@@ -10,10 +10,12 @@
 
 /* Self-hosted CJK face — uploaded brand file, served offline.
    Keeps --font-family pointing at "Microsoft YaHei" (the system
-   name) so installed copies still win and this is the fallback. */
+   name); the local() entries make an installed copy (Chinese or
+   English face name) win, and the bundled TTF is only the fallback
+   on machines without it. */
 @font-face {
   font-family: "Microsoft YaHei";
-  src: url("../fonts/MicrosoftYaHei-Regular.ttf") format("truetype");
+  src: local("Microsoft YaHei"), local("微软雅黑"), url("../fonts/MicrosoftYaHei-Regular.ttf") format("truetype");
   font-weight: 400;
   font-style: normal;
   font-display: swap;

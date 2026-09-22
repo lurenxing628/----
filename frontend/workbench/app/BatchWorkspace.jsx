@@ -143,7 +143,6 @@
           {(scope.focus || scope.batch_ids) && <span>已定位{scope.focus === 'gaps' ? '工序缺项' : scope.focus === 'unready' ? '未齐套' : '指定批次'}</span>}
           <Button icon="x" disabled={blocked} onClick={clearFilters}>清除全部筛选</Button>
           {onNav && <Button icon={returnSource ? 'arrow-left' : 'arrow-right'} disabled={blocked} onClick={() => typeof returnTarget === 'string' ? onNav(returnTarget) : onNav(returnTarget.view, returnTarget.context)}>{!returnSource ? '下一步 · 去排产' : returnView === 'dashboard' ? '返回值班台' : '返回排产'}</Button>}</div></div>
-        {data && data.entities.length > 0 && <ErrorBox error={list.error} />}
         <window.BatchTable rows={data ? data.entities : []} scope={scope} selected={selected} setSelected={setSelected} onOpen={setOpened} onDelete={deletion}
           onSort={sortBy} onFilter={field => setDialog({ type: 'column', field, scope: { ...scope, snapshot_ref: snapshot } })} onClear={clearFilters} onRetry={() => filter({})} error={list.error} loading={list.loading} disabled={blocked || list.loading} />
         {data && <window.WorkbenchControls.Pager page={data.page} sizes={Array.from(new Set([20, 50, 100, data.page.size])).sort((a, b) => a - b)} unit="个批次" label="" sizeLabel="每页条数" showPageJump disabled={blocked || list.loading} onSize={size => filter({ size })} onPage={page => setScope(current => ({ ...current, page, snapshot_ref: snapshot }))} />}

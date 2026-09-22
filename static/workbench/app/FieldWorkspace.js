@@ -50,7 +50,7 @@
     if (data && !read.loading && !read.error) readPlan.current = data.scope.plan_ref;
     const captionPlan = !read.loading && !read.error && data && data.plan;
     const captionStatus = captionPlan && {
-      official: captionPlan.is_current_official ? '当前正式采用' : '历史正式计划',
+      official: captionPlan.is_current_official ? window.WorkbenchTerms.current_official : window.WorkbenchTerms.historical_official,
       candidate: window.WorkbenchTerms.candidate,
       scenario: window.WorkbenchTerms.trial_scenario
     }[captionPlan.kind];
@@ -59,7 +59,7 @@
       label: '现场计划',
       name: captionPlan.display_name,
       status: captionStatus,
-      version: captionPlan.kind === 'official' && Number.isSafeInteger(captionPlan.version) ? '正式 v' + captionPlan.version : undefined,
+      version: captionPlan.kind === 'official' && Number.isSafeInteger(captionPlan.version) ? window.WorkbenchTerms.plan_version(captionPlan.version) : undefined,
       range: data.scope.plan_finish_date_from && data.scope.plan_finish_date_to ? '计划完工 ' + data.scope.plan_finish_date_from + ' 至 ' + data.scope.plan_finish_date_to : undefined
     } : null);
     const selectedTask = data && data.tasks.find(task => task.task_ref === opened);

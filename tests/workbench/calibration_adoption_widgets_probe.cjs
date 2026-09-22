@@ -137,7 +137,7 @@ async function happyCase(viewport, theme) {
   await context.close(); await browser.close(); browser = await launch(); record.browser_restarts++;
   blockReceipts = false; fault = ''; ({ context, page } = await contextFor(name, viewport, theme, state));
   await page.getByRole('button', { name: '查看采用结果', exact: true }).click();
-  let dialog = page.getByRole('dialog'); await dialog.getByText('采用已完成。新定额 3 小时 / 件，定额已锁定（来自工时校准）。', { exact: true }).waitFor();
+  let dialog = page.getByRole('dialog'); await dialog.getByText('采用已完成。新定额 3 小时/件，定额已锁定（来自工时校准）。', { exact: true }).waitFor();
   const committed = await page.evaluate(() => window.CalibrationAdoptionState.read());
   assert.equal(committed.request_key, stored.request_key); assert(committed.receipt.replayed);
   await geometry(page, viewport); await screenshot(page, name + '-receipt');

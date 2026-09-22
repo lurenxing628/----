@@ -31,7 +31,7 @@
       operation = action || intent.action;
     const bulkDelete = operation === 'confirm' && ['material_bulk', 'op_type_bulk', 'machine_bulk', 'operator_bulk', 'supplier_bulk', 'process_bulk'].includes(intent.kind);
     const batchAction = command.result && command.result.data && command.result.data.action;
-    const verb = intent.kind === 'calendar' && operation === 'delete' ? '清除日历配置' : operation === 'delete' || bulkDelete ? '删除' : operation === 'unlink' ? '解除关联' : intent.kind === 'batch' && operation === 'bulk_confirm' ? ['delete', 'update', 'copy'].includes(batchAction) ? {
+    const verb = intent.kind === 'calendar' && operation === 'delete' ? '清除单独设置' : operation === 'delete' || bulkDelete ? '删除' : operation === 'unlink' ? '解除关联' : intent.kind === 'batch' && operation === 'bulk_confirm' ? ['delete', 'update', 'copy'].includes(batchAction) ? {
       delete: '删除',
       update: '保存',
       copy: '复制'
@@ -40,10 +40,7 @@
       role: "status"
     }, phase === 'sending' ? '正在提交' + verb + '，请勿重复操作…' : '正在查询上次' + verb + '的结果…'), phase === 'pending' && /*#__PURE__*/React.createElement("div", {
       role: "status",
-      className: "match-note",
-      style: {
-        display: 'block'
-      }
+      className: "match-note is-block"
     }, /*#__PURE__*/React.createElement("p", null, window.WorkbenchTerms.outcomes.pending(verb)), /*#__PURE__*/React.createElement(Button, {
       icon: "history",
       onClick: command.check
@@ -88,7 +85,7 @@
       className: "fhint"
     }, "\u5C1A\u672A\u8BBE\u7F6E\u53EF\u64CD\u4F5C\u8BBE\u5907\u3002"), /*#__PURE__*/React.createElement("span", {
       className: "fhint"
-    }, "\u5728\u4EBA\u5458\u8BE6\u60C5\u4E2D\u70B9\u201C\u7F16\u8F91\u53EF\u64CD\u4F5C\u8BBE\u5907\u201D\u7EF4\u62A4\u8BBE\u5907\u5173\u8054\u3002"));
+    }, "\u5728\u4EBA\u5458\u8BE6\u60C5\u4E2D\u70B9\u300C\u7F16\u8F91\u53EF\u64CD\u4F5C\u8BBE\u5907\u300D\u7EF4\u62A4\u8BBE\u5907\u5173\u8054\u3002"));
     const facts = entity.relationships.legacy_machine_authorizations;
     return /*#__PURE__*/React.createElement("div", {
       className: "field full"
@@ -350,7 +347,7 @@
         form: formId,
         type: "submit",
         icon: action === 'delete' ? 'trash-2' : 'check',
-        className: 'btn primary wb-action wb-primary',
+        className: action === 'delete' ? 'btn danger' : 'btn primary wb-action wb-primary',
         reason: reason || confirmReason,
         busy: disabled
       }, action === 'delete' ? '确认删除' : '保存'))
@@ -469,10 +466,10 @@
       busy: contextBusy,
       disabled: catalogBusy,
       onClick: onReloadContext
-    }, "\u5237\u65B0\u6700\u65B0\u8D44\u6599"), contextReview && !done && /*#__PURE__*/React.createElement("div", {
+    }, window.WorkbenchTerms.refresh_latest), contextReview && !done && /*#__PURE__*/React.createElement("div", {
       className: "wb-resource-review",
       role: "status"
-    }, /*#__PURE__*/React.createElement("p", null, "\u6700\u65B0\u8D44\u6599\u5DF2\u5237\u65B0\u3002\u4F60\u4FEE\u6539\u7684\u5185\u5BB9\u5DF2\u4FDD\u7559\uFF0C\u672A\u4FEE\u6539\u7684\u9879\u5DF2\u66F4\u65B0\uFF1B\u4E0B\u65B9\u663E\u793A\u5F53\u524D\u5DF2\u4FDD\u5B58\u7684\u8D44\u6599\u3002"), contextReview.data.ref ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("p", null, "\u6700\u65B0\u8D44\u6599\u5DF2\u5237\u65B0\u3002\u5DF2\u4FEE\u6539\u7684\u5185\u5BB9\u4FDD\u7559\uFF0C\u672A\u4FEE\u6539\u7684\u9879\u5DF2\u66F4\u65B0\uFF1B\u4E0B\u65B9\u663E\u793A\u5F53\u524D\u5DF2\u4FDD\u5B58\u7684\u8D44\u6599\u3002"), contextReview.data.ref ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
       className: "wb-resource-review-identity"
     }, /*#__PURE__*/React.createElement("strong", null, contextReview.data.business_code, " \xB7 ", contextReview.data.label), kind !== 'op_type' && /*#__PURE__*/React.createElement(Status, {
       kind: kind,
@@ -524,6 +521,7 @@
         onClick: onClose
       }, "\u5173\u95ED"), entity && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Button, {
         icon: "trash-2",
+        className: "btn danger",
         reason: C.blocked(entity.write_context, kind, 'delete', result.meta.source),
         onClick: onDelete
       }, "\u5220\u9664"), kind === 'material' && /*#__PURE__*/React.createElement(Button, {
@@ -575,13 +573,13 @@
       issues: entity.issues
     }), kind === 'operator' && /*#__PURE__*/React.createElement(Button, {
       icon: "machine",
-      reason: C.blocked(entity.write_context, kind, 'update', result.meta.source) || (typeof onMachinePermissions !== 'function' ? '设备关联编辑未连接。' : ''),
+      reason: C.blocked(entity.write_context, kind, 'update', result.meta.source) || (typeof onMachinePermissions !== 'function' ? window.WorkbenchTerms.outcomes.unavailable : ''),
       onClick: onMachinePermissions
     }, "\u7F16\u8F91\u53EF\u64CD\u4F5C\u8BBE\u5907"), kind === 'operator' && /*#__PURE__*/React.createElement(Button, {
       icon: "calendar-days",
-      reason: C.blocked(entity.write_context, kind, 'update', result.meta.source) || (typeof onOperatorCalendar !== 'function' ? '个人日历编辑未连接。' : ''),
+      reason: C.blocked(entity.write_context, kind, 'update', result.meta.source) || (typeof onOperatorCalendar !== 'function' ? window.WorkbenchTerms.outcomes.unavailable : ''),
       onClick: onOperatorCalendar
-    }, "\u7F16\u8F91\u4E2A\u4EBA\u65E5\u5386"), kind === 'op_type' && ['internal', 'external'].includes(entity.fields.category) && /*#__PURE__*/React.createElement(window.ResourceDetailRelations, {
+    }, "\u7F16\u8F91", window.WorkbenchTerms.personal_calendar), kind === 'op_type' && ['internal', 'external'].includes(entity.fields.category) && /*#__PURE__*/React.createElement(window.ResourceDetailRelations, {
       key: entity.ref + ':' + result.meta.snapshot_ref,
       adapter: adapter,
       entity: entity,
@@ -590,9 +588,7 @@
       issues: result.warnings
     }), /*#__PURE__*/React.createElement("p", {
       className: "wb-resource-read-time"
-    }, "\u8BFB\u53D6\u65F6\u95F4\uFF1A", /*#__PURE__*/React.createElement("time", {
-      dateTime: result.meta.as_of
-    }, window.WorkbenchFormat.dateTime(result.meta.as_of))))));
+    }, window.WorkbenchTerms.data_as_of(window.WorkbenchFormat.dateTime(result.meta.as_of))))));
   }
   ResourceForms.Detail = Detail;
   ResourceForms.Feedback = Feedback;

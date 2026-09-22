@@ -12,14 +12,14 @@
       <label className="search"><input type="search" aria-label="搜索编号或名称" value={search} disabled={disabled} onChange={event => setSearch(event.target.value)} /></label>
       <Button icon="search" type="submit" aria-label="搜索" disabled={disabled} />
       <div className="field"><select aria-label="状态筛选" value={scope.status} disabled={disabled} onChange={event => filter({ status: event.target.value })}>
-        <option value="">全部状态</option><option value="active">启用</option><option value="inactive">停用</option><option value="unknown">旧状态未知</option></select></div>
+        <option value="">全部状态</option><option value="active">启用</option><option value="inactive">停用</option><option value="unknown">旧状态 / 原因未知</option></select></div>
       <Button icon="refresh-cw" aria-label="刷新列表" disabled={disabled} busy={list.loading} onClick={() => { filter({}); list.reload(); }} />
       <span className="tb-spacer" /><Button icon="plus" className="btn primary" disabled={disabled} reason={C.blocked(data && data.create_context, kind, 'create', list.result && list.result.meta.source)} onClick={() => onOpen('create')}>新增{M.names[kind]}</Button>
     </form><ErrorBox error={list.error} />{list.loading && <EmptyState kind="loading" title="正在读取列表" />}
       {data && <><Issues issues={list.result.warnings} /><div className="wb-table-frame rc-list-scroll" data-sticky-head data-sticky-actions><table className="tbl wb-table rc-list"><caption className="wb-visually-hidden">{M.names[kind]}列表</caption><thead><tr>
         <th scope="col" className="wb-col-key">编号 / 名称</th><th scope="col">状态</th><th scope="col">{kind === 'machine_group' ? '关联设备' : '关联人员'}</th>{kind === 'shift_profile' && <th scope="col">轮换天数</th>}<th scope="col" className="wb-col-actions">操作</th></tr></thead><tbody>
         {data.entities.map(entity => <tr key={entity.ref}><td className="rc-wrap wb-col-key"><b>{entity.business_code}</b><div>{entity.label}</div></td>
-          <td><span className={'pill ' + (entity.status === 'active' ? 'ok' : entity.status === 'inactive' ? 'off' : 'warn')}><span className="dot" />{entity.status === 'active' ? '启用' : entity.status === 'inactive' ? '停用' : '旧状态未知'}</span></td>
+          <td><span className={'pill ' + (entity.status === 'active' ? 'ok' : entity.status === 'inactive' ? 'off' : 'warn')}><span className="dot" />{entity.status === 'active' ? '启用' : entity.status === 'inactive' ? '停用' : '旧状态 / 原因未知'}</span></td>
           <td>{M.memberCount(kind, entity) === null ? '未读取' : M.memberCount(kind, entity)}</td>{kind === 'shift_profile' && <td>{entity.fields.cycle_days}</td>}
           <td className="wb-col-actions"><div className="rowact"><Button className="mini" icon="square-pen" aria-label={'编辑 ' + entity.business_code} disabled={disabled} reasonDisplay="tooltip" reason={C.blocked(entity.write_context, kind, 'update', list.result.meta.source)} onClick={() => onOpen('update', entity.ref)} />
             <Button className="mini danger" icon="trash-2" aria-label={'删除 ' + entity.business_code} disabled={disabled} reasonDisplay="tooltip" reason={C.blocked(entity.write_context, kind, 'delete', list.result.meta.source)} onClick={() => onOpen('delete', entity.ref)}>删除</Button></div></td></tr>)}
@@ -122,11 +122,11 @@
           <ErrorBox error={error} excludePaths={editor && !done && editor.action !== 'delete' ? Editor.fieldPaths : []} /><ResourceForms.Feedback command={command} excludePaths={editor && !done && editor.action !== 'delete' ? Editor.fieldPaths : []} />
           {command.intent && command.locked && <window.WorkbenchReference entries={{ '操作编号': command.intent.request_key }} />}
           {editor && !done && !command.locked && <div className="rc-pattern">
-            <Button icon="refresh-cw" disabled={busy} onClick={() => { setReview(null); load(editor.action, editor.ref, true); }}>刷新最新资料</Button>
+            <Button icon="refresh-cw" disabled={busy} onClick={() => { setReview(null); load(editor.action, editor.ref, true); }}>{window.WorkbenchTerms.refresh_latest}</Button>
             {reason && <p role="status">{reason}</p>}
             {review && <div className="match-note rc-note"><p>最新资料已读取，已填写的内容保持不变。请核对后继续编辑。</p>
               {editor.ref ? <Editor.Facts kind={kind} entity={review.data} /> : <p>当前共有 {review.data.page.total} 条记录。</p>}
-              <Button icon="check" disabled={locked} onClick={acceptReview}>已核对，继续编辑</Button></div>}</div>}
+              <Button icon="check" disabled={locked} onClick={acceptReview}>{window.WorkbenchTerms.accept_latest}</Button></div>}</div>}
         </div></Modal>
     </div>;
   }

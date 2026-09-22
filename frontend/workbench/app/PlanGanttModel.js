@@ -5,11 +5,11 @@
   const wire = value => new Date(value).toISOString().slice(0, 19);
   const timeLabel = value => window.WorkbenchFormat.dateTime(value, { seconds: true });
   const number = value => window.WorkbenchFormat.number(value, { digits: 2 });
+  const count = value => window.WorkbenchFormat.number(value, { digits: 0 });
   const quantityLabel = value => value === null ? '未知' : typeof value === 'string' ? value : number(value);
   const pieceLabel = task => task.piece_id === null ? '共同工序' : '分件 ' + task.piece_id;
-  const quantityReasons = { plan_target_not_recorded: '原计划未记录目标量。',
-    plan_target_unavailable: '采用记录或来源资料不完整，原计划目标量暂不可用。',
-    plan_target_invalid: '原来的数量依据无效或缺失，没有推算目标量。' };
+  // Same three sentences as FieldContract.quantityReasons; this module loads before FieldContract, so the text is repeated here.
+  const quantityReasons = { plan_target_not_recorded: '原计划未记录应做数量', plan_target_unavailable: '原计划应做数量读不到', plan_target_invalid: '原计划应做数量无效' };
   const kindLabels = { machine: '设备', operator: '人员', batch: '批次' };
   function names(data) {
     const result = new Map();
@@ -141,7 +141,7 @@
       '本工序目标量：' + quantityLabel(task.quantity) + ' · 计划来源整批量：' + quantityLabel(task.batch_quantity),
       task.quantity_reason ? quantityReasons[task.quantity_reason] : null,
       window.PointContract.isPoint(task) ? '零工时工序 · 0 小时 · 不占设备人员' : null,
-      timeLabel(task.start) + ' → ' + timeLabel(task.end), resourceLabel(task, 'machine', labels) + ' / ' + resourceLabel(task, 'operator', labels),
+      timeLabel(task.start) + ' 至 ' + timeLabel(task.end), resourceLabel(task, 'machine', labels) + ' / ' + resourceLabel(task, 'operator', labels),
       conflict ? '资源时间冲突（安排重叠）' : null].filter(Boolean).join('\n');
   }
   function tone(task, conflicts, risks) {
@@ -149,5 +149,5 @@
     const risk = risks.get(task.batch_id);
     return risk === 'overdue' ? 'critical' : risk === 'on_time' ? 'success' : 'primary';
   }
-  window.PlanGanttModel = { instant, wire, timeLabel, number, quantityLabel, pieceLabel, quantityReasons, names, resourceLabel, searchText, layout, visibleItems, visibleRows, ticks, taskTitle, tone, kindLabels };
+  window.PlanGanttModel = { instant, wire, timeLabel, number, count, quantityLabel, pieceLabel, quantityReasons, names, resourceLabel, searchText, layout, visibleItems, visibleRows, ticks, taskTitle, tone, kindLabels };
 })();

@@ -16,6 +16,6 @@ for (const piece of ['item-A', 'item-B', 'item-C', '分件原始中文身份']) 
   assert(M.taskLabel(task).includes(piece)); assert(M.searchText(item, new Map()).includes(piece.toLowerCase()));
   const text = M.describe(item, new Map()).join('\n'); assert(text.includes(piece)); assert(text.includes('计划应做：1.00 件 · 批次：3.00 件'));
   const unknown = M.describe({ task: { ...task, ...old }, execution: null }, new Map()).join('\n');
-  assert(unknown.includes('计划应做：未知 件')); assert(unknown.includes('旧计划未记录原数量证据'));
+  assert(unknown.includes('计划应做：未知 件')); assert(unknown.includes('原计划未记录应做数量'));
 }
 console.log('FB field contract, original identity, null/zero and actual descriptions passed');

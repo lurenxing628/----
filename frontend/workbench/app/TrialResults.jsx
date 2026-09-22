@@ -4,7 +4,7 @@
   function Summary({ data }) {
     const c = data.comparison;
     return <div className="tt-summary">{[[c.late_count, window.WorkbenchTerms.overdue_count], [c.total_delay_hours, window.WorkbenchTerms.total_tardiness_hours + '（小时）'], [c.changed_operations, '调整工序'], [c.moved_operations, '换设备工序']].map(([value, label]) =>
-      <div key={label}><span>{label}</span><strong>{U.number(value)}</strong></div>)}<div><span>换型次数</span><strong title={c.changeovers === null ? c.changeover_reason : undefined}>{c.changeovers === null ? '未评估' : U.number(c.changeovers)}</strong></div></div>;
+      <div key={label}><span>{label}</span><strong>{U.number(value)}</strong></div>)}<div><span>换型次数</span><strong>{c.changeovers === null ? '未评估' : U.number(c.changeovers)}</strong>{c.changeovers === null && c.changeover_reason && <small>{c.changeover_reason}</small>}</div></div>;
   }
   function Calendar({ resource }) {
     return <details><summary>时段与班表</summary><div className="tt-subtable"><U.Table label="占用时段" rows={resource.segments} size={10}
@@ -25,7 +25,9 @@
       } catch (_) { return { tab: null, error: new Error('试调页签记录无法恢复，请刷新或清除本页页签记录。') }; }
     }
     const [entry, setEntry] = React.useState(readEntry), name = window.TrialGantt.resourceNames(data), c = data.comparison;
-    const tab = entry.tab || preferences.value && preferences.value.result_tab;
+    // When the local preference cannot be read, the result still renders with defaults and the tab choice stays on this page.
+    const [local, setLocal] = React.useState(null), values = preferences.value || local || V.defaults(data);
+    const tab = entry.tab || values.result_tab;
     function clearEntry() {
       try {
         const current = history.state, saved = current && current.trialAdoptionHistory;
@@ -36,22 +38,25 @@
       } catch (_) { setEntry({ ...entry, error: new Error('本页试调页签记录清除失败，请重试。') }); }
     }
     function selectTab(next) {
-      preferences.change({ result_tab: next });
+      if (!preferences.change({ result_tab: next })) setLocal({ ...values, result_tab: next });
       try { if (H) H.remember(data.scenario_ref, { tab: next }); setEntry({ tab: next, error: null }); }
       catch (_) { setEntry({ tab: next, error: new Error('本页试调页签记录保存失败，返回后可能无法恢复。') }); }
     }
-    if (!preferences.value || entry.error) return <section className="tt-results" aria-label="试调结果恢复">
-      <V.Notice state={preferences} label="试调结果查看偏好" />{entry.error && <><U.ErrorBox error={entry.error} /><div className="tt-tools">
+    // A malformed page-history entry keeps the recovery notice in place of the results (contract: the entry must be cleared first);
+    // an unreadable local preference no longer hides the results: they render with defaults under the notice.
+    if (entry.error) return <section className="tt-results" aria-label="试调结果恢复">
+      <V.Notice state={preferences} label="试调结果查看偏好" /><U.ErrorBox error={entry.error} /><div className="tt-tools">
         <U.Button icon="refresh-cw" onClick={() => setEntry(readEntry())}>刷新本页页签记录</U.Button>
-        <U.Button icon="rotate-ccw" onClick={clearEntry}>清除本页页签记录</U.Button></div></>}</section>;
+        <U.Button icon="rotate-ccw" onClick={clearEntry}>清除本页页签记录</U.Button></div></section>;
     const arrangement = r => <>{name(r.machine_ref)}<br />{name(r.operator_ref)}<br />{U.timeLabel(r.start)}<br />{U.timeLabel(r.end)}</>;
-    return <section className="tt-results"><V.Notice state={preferences} label="试调结果查看偏好" /><U.Tabs value={tab} onChange={selectTab} label="试调结果" options={[
+    return <section className="tt-results"><V.Notice state={preferences} label="试调结果查看偏好" />
+      <U.Tabs value={tab} onChange={selectTab} label="试调结果" idPrefix="tt-result-tab-" panelId="tt-result-panel" options={[
       ['delivery', '批次对比'], ['capacity', '资源占用'], ['history', '调整记录'], ['adoptions', '采用记录'], ['issues', '约束问题'], ['tasks', '完整任务'], ['unplanned', '未排工序']]} />
-      <div role="tabpanel">
+      <div role="tabpanel" id="tt-result-panel" aria-labelledby={'tt-result-tab-' + tab}>
         {tab === 'adoptions' && (window.TrialAdoptionHistory ? <window.TrialAdoptionHistory data={data} /> : <p role="alert">{window.WorkbenchTerms.outcomes.unavailable}</p>)}
         {tab === 'delivery' && <><p className="tt-muted">对比方案：{data.base_identity.display_name || '原试调来源'}</p>
           <U.Table rows={c.batches} label="批次交付对比" columns={[
-            ['批次 / 零件', r => <>{r.batch_id}<br />{r.part_name}</>], ['批次数量', r => U.number(r.quantity)], ['交付截至日', r => <span title="交期截至当日结束，次日零点起计为超期。">{r.due_date || '未知'}</span>],
+            ['批次 / 零件', r => <>{r.batch_id}<br />{r.part_name}</>], ['批次数量', r => U.number(r.quantity)], ['交期', r => <span title="交期截至当日结束，次日零点起计为超期。">{r.due_date || '未知'}</span>],
             ['原完工', r => U.timeLabel(r.baseline_finish)], ['试调完工', r => U.timeLabel(r.finish)], ['提前（小时）', r => U.number(r.improvement_hours)],
             ['预计交付', r => ({ on_time: '可按期', overdue: '预计超期', unavailable: '有冲突，不能评估', invalid_data: '交期数据无效' }[r.risk] || '未知')],
             ['超期（小时）', r => U.number(r.late_hours)]]} /></>}
@@ -59,17 +64,17 @@
           {data.capacity.reason && <p className="tt-notice">{data.capacity.reason}</p>}<U.Table label="资源占用" rows={data.capacity.resources} columns={[
             ['资源', r => (r.resource_type === 'machine' ? '设备 ' : '人员 ') + name(r.resource_ref)], ['安排（小时）', r => U.number(r.arranged_hours)], ['班表内占用（小时）', r => U.number(r.available_occupied_hours)],
             ['重叠时间（小时）', r => U.number(r.overlap_hours)], ['可用（小时）', r => U.number(r.available_hours)], ['班表外占用（小时）', r => U.number(r.outside_available_hours)],
-            ['班表内占用率', r => r.utilization === null ? '暂无数据' : U.number(r.utilization * 100) + '%'], ['依据', r => <Calendar resource={r} />]]} /></>}
+            ['班表内占用率', r => U.percent(r.utilization)], ['依据', r => <Calendar resource={r} />]]} /></>}
         {tab === 'history' && <><U.Table label="调整记录" rows={data.change_history.slice().reverse()} columns={[
           ['记录时间', r => U.timeLabel(r.recorded_at)], ['记录人', r => r.local_operator], ['调整前', r => arrangement(r.before)], ['调整后', r => arrangement(r.after)],
           ['当时约束', r => U.statusLabel(r.validation.constraints_status)], ['记录依据', r => <details><summary>编号</summary><div className="tt-ref">{r.change_ref}</div><div className="tt-ref">{r.task_ref}</div></details>]]} /></>}
         {tab === 'issues' && <><p>整体约束：{U.statusLabel(data.validation.constraints_status)}</p><U.Issues rows={data.validation.issues} onSelect={onSelect} /></>}
         {tab === 'tasks' && <U.Table label="完整任务明细" rows={data.tasks} size={50} columns={[
           ['批次 / 工序', t => <U.Button icon="arrow-right" onClick={() => onSelect(t.task_ref)}>{t.batch_id + ' · ' + t.process_label + ' ' + t.sequence}</U.Button>],
-          ['分件', t => t.piece_id || '整批'], ['目标量', t => U.number(t.quantity)], ['设备 / 人员', t => <>{name(t.machine_ref)}<br />{name(t.operator_ref)}</>],
+          ['分件', t => t.piece_id || window.WorkbenchTerms.shared_operation], ['目标量', t => U.number(t.quantity)], ['设备 / 人员', t => <>{name(t.machine_ref)}<br />{name(t.operator_ref)}</>],
           ['开始', t => U.timeLabel(t.start)], ['结束', t => U.timeLabel(t.end)], ['变更', t => t.changed ? '已调整' : '未变']]} />}
         {tab === 'unplanned' && <><p className="tt-muted">未排工序 {data.unplanned_operations.length} 道</p><U.Table label="未排工序" rows={data.unplanned_operations} columns={[
-          ['工序顺序', r => r.sequence], ['分件', r => r.piece_id || '整批'], ['原因', r => r.reason.message], ['工序编号', r => <span className="tt-ref">{r.operation_ref}</span>]]} /></>}
+          ['工序顺序', r => r.sequence], ['分件', r => r.piece_id || window.WorkbenchTerms.shared_operation], ['原因', r => r.reason.message], ['编号', r => <window.WorkbenchReference value={r.operation_ref} label="工序编号" />]]} /></>}
       </div></section>;
   }
   window.TrialResults = { Summary, Results };

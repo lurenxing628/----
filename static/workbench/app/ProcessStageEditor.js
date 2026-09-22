@@ -213,19 +213,7 @@
     const oldGroups = new Map(before.external_groups.map(row => [row.ref, row])),
       newGroups = new Map(after.external_groups.map(row => [row.ref, row]));
     const range = group => group ? value(group.start_sequence) + ' 至 ' + value(group.end_sequence) : '范围未填写';
-    const state = item => ({
-      missing: '未录入',
-      present: '已有记录，未人工确认',
-      locked: '待前一步确认',
-      unconfirmed: '未人工确认',
-      confirmed: '已确认'
-    })[item] || '状态未明确';
-    const stage = item => ({
-      route: '工艺路线',
-      source: '归属',
-      hours: '工时定额',
-      ready: '已就绪'
-    })[item] || '阶段未明确';
+    const stage = item => P.stageLabel(item);
     const cycleMode = item => ({
       merged: '合并设置',
       separate: '分别设置'
@@ -248,8 +236,8 @@
         current
       });
     }
-    function confirmation(label, previous, current) {
-      field(label + '状态', previous.state, current.state, state);
+    function confirmation(label, previous, current, key) {
+      field(label + '状态', previous.state, current.state, item => P.workflowStateLabel(key, item));
       field(label + '时间', previous.confirmed_at, current.confirmed_at, confirmationTime);
       if (previous.confirmed_by !== current.confirmed_by) result.push({
         label: label + '记录',
@@ -275,8 +263,8 @@
         relation(prefix + '工种', previous.op_type_ref, row.op_type_ref, previous.op_type_label, row.op_type_label);
         relation(prefix + '供应商', previous.supplier_ref, row.supplier_ref, previous.supplier_label, row.supplier_label);
         relation(prefix + '外协组', previous.external_group_ref, row.external_group_ref, range(oldGroups.get(previous.external_group_ref)), range(newGroups.get(row.external_group_ref)));
-        confirmation(prefix + '归属确认', previous.confirmation.source, row.confirmation.source);
-        confirmation(prefix + '工时确认', previous.confirmation.hours, row.confirmation.hours);
+        confirmation(prefix + '归属确认', previous.confirmation.source, row.confirmation.source, 'source');
+        confirmation(prefix + '工时确认', previous.confirmation.hours, row.confirmation.hours, 'hours');
       }
     });
     old.forEach(row => result.push({
@@ -304,7 +292,7 @@
       legacy: '原有工艺记录',
       managed: '三阶段工艺记录'
     })[origin] || '来源未明确');
-    ['route', 'source', 'hours'].forEach(key => confirmation(stage(key) + ' · 确认', before.workflow[key], after.workflow[key]));
+    ['route', 'source', 'hours'].forEach(key => confirmation(stage(key) + ' · 确认', before.workflow[key], after.workflow[key], key));
     return result;
   }
   function Review({
@@ -316,12 +304,9 @@
     const rows = React.useMemo(() => changes(before, after), [before, after]),
       paging = usePage(rows);
     return /*#__PURE__*/React.createElement("section", {
-      className: "match-note",
-      style: {
-        display: 'block'
-      },
+      className: "match-note is-block",
       role: "status"
-    }, /*#__PURE__*/React.createElement("p", null, "\u6700\u65B0\u8D44\u6599\u5DF2\u8BFB\u53D6\uFF0C\u8349\u7A3F\u6CA1\u6709\u88AB\u66FF\u6362\u3002\u5DEE\u5F02 ", rows.length, " \u9879\uFF0C\u8BF7\u6838\u5BF9\u4E0B\u8868\u548C\u5F53\u524D\u8349\u7A3F\u3002\u70B9\u300C\u91C7\u7528\u6700\u65B0\u8D44\u6599\u300D\u540E\uFF1A\u60A8\u6539\u8FC7\u7684\u9879\u4FDD\u7559\uFF0C\u5176\u4F59\u6309\u6700\u65B0\u503C\uFF1B\u6709\u53D8\u5316\u7684\u5DE5\u5E8F\u8981\u91CD\u65B0\u786E\u8BA4\uFF0C\u5DF2\u79FB\u9664\u7684\u5DE5\u5E8F\u4E0D\u518D\u63D0\u4EA4\u3002"), !!rows.length && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("p", null, "\u6700\u65B0\u8D44\u6599\u5DF2\u8BFB\u53D6\uFF0C\u8349\u7A3F\u6CA1\u6709\u88AB\u66FF\u6362\u3002\u5DEE\u5F02 ", rows.length, " \u9879\uFF0C\u8BF7\u6838\u5BF9\u4E0B\u8868\u548C\u5F53\u524D\u8349\u7A3F\u3002\u70B9\u300C", window.WorkbenchTerms.accept_latest, "\u300D\u540E\uFF1A\u5DF2\u6539\u8FC7\u7684\u9879\u4FDD\u7559\uFF0C\u5176\u4F59\u6309\u6700\u65B0\u503C\uFF1B\u6709\u53D8\u5316\u7684\u5DE5\u5E8F\u8981\u91CD\u65B0\u786E\u8BA4\uFF0C\u5DF2\u79FB\u9664\u7684\u5DE5\u5E8F\u4E0D\u518D\u63D0\u4EA4\u3002"), !!rows.length && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
       className: "card-scroll"
     }, /*#__PURE__*/React.createElement("table", {
       className: "tbl wb-table",
@@ -355,7 +340,7 @@
       icon: "check",
       disabled: disabled,
       onClick: onAccept
-    }, "\u91C7\u7528\u6700\u65B0\u8D44\u6599"));
+    }, window.WorkbenchTerms.accept_latest));
   }
   function useDraft({
     result,
@@ -450,7 +435,7 @@
       busy: model.busy,
       disabled: disabled,
       onClick: model.reload
-    }, "\u5237\u65B0\u8BE6\u60C5\u5E76\u4FDD\u7559\u8349\u7A3F"), model.review && /*#__PURE__*/React.createElement(Review, {
+    }, window.WorkbenchTerms.refresh_latest), model.review && /*#__PURE__*/React.createElement(Review, {
       before: model.base.data,
       after: model.review.data,
       disabled: disabled || model.busy,

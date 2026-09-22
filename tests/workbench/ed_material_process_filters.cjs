@@ -28,9 +28,18 @@ async function noMatches(p, page, data) {
     const area = page.locator(selector + ':visible');
     await p.type(area.getByRole('searchbox'), 'ED没有匹配的工序编号');
     await p.shot('process-stage-' + stage + '-empty-search');
-    assert.equal(await area.getByRole('table').first().innerText().then(text => text.includes('没有匹配的工序。')), true,
-      'A nonempty template with no search matches needs an explicit empty-result row');
-    await p.type(area.getByRole('searchbox'), ''); assert.equal(await area.getByRole('table').first().locator('tbody tr').count(), 50);
+    if (stage === 2) {
+      const table = area.getByRole('table', {name: '归属明细', exact: true});
+      assert((await table.innerText()).includes('没有匹配的工序。'), 'Source stage needs an explicit empty-result row');
+      await p.type(area.getByRole('searchbox'), ''); assert.equal(await table.locator('tbody tr').count(), 50);
+    } else {
+      await area.getByText('当前页没有自制工序。', {exact: true}).waitFor();
+      await area.getByText('当前页没有外协工序。', {exact: true}).waitFor();
+      await p.type(area.getByRole('searchbox'), '');
+      const rows = await Promise.all(['自制工时明细', '外协周期明细'].map(name => area.getByRole('table', {name, exact: true})
+        .locator('tbody tr').evaluateAll(items => items.filter(row => row.querySelector('td b')).length)));
+      assert.equal(rows.reduce((total, value) => total + value, 0), 50);
+    }
   }
   await p.click(b(page, '关闭详情'));
 }

@@ -8,6 +8,8 @@ const files = ['WorkbenchFormat.js', 'WorkbenchTerms.js', 'WorkbenchReferences.j
   'resource-contract.js', 'CalendarContract.js', 'PointContract.js', 'PlanProcessOrder.js', 'PlanContract.js', 'resource-session.js', 'ResourceControls.jsx', 'WorkbenchGuardHost.jsx',
   'PointGanttModel.js', 'PointGantt.jsx', 'PlanGanttModel.js', 'PlanLayout.jsx', 'PlanGanttCanvas.jsx', 'PlanGantt.jsx', 'PlanDetailsUI.jsx',
   'RunCandidateAPI.js', 'RunCandidateModel.js', 'RunCandidateControls.jsx', 'RunBaselineAPI.js', 'RunBaselineModel.js', 'RunBaselineControls.jsx', 'RunCandidateGantt.jsx',
+  // TrialDetails 通过 FieldContract 与 RunCandidateModel 给执行依据配中文标签（2026-09-21 起）。
+  'FieldContract.js',
   'TrialContract.js', 'TrialAPI.js', 'TrialExport.js', 'TrialControls.jsx', 'TrialViewState.js', 'TrialGantt.jsx', 'TrialDetails.jsx', 'TrialStyles.jsx',
   'WorkbenchControlBridge.js', 'WorkbenchControlStyles.jsx', 'WorkbenchSelectMenu.jsx', 'WorkbenchDatePickerModel.js',
   'WorkbenchDatePicker.jsx', 'WorkbenchControls.jsx', 'WorkbenchListControls.jsx', 'WorkbenchNumberControls.jsx'];

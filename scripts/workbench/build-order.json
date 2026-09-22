@@ -30,11 +30,7 @@
         "SMIcon",
         "SMStatus",
         "SMUnavailable",
-        "SMExport",
-        "SMOverview",
-        "SMFilters",
-        "SMPager",
-        "SMRecordDetail"
+        "SMExport"
       ]
     }
   ],
@@ -232,7 +228,6 @@
     "SystemMaintenanceRecords.jsx",
     "SystemMaintenanceConfig.jsx",
     "SystemMaintenanceWorkspace.jsx",
-    "SystemSampleControls.jsx",
     "SystemLive.jsx",
     "OutsourcingContract.js",
     "OutsourcingSession.js",

@@ -42,7 +42,7 @@
       reasonDisplay: "inline",
       icon: item.handling.status === 'closed' ? 'refresh-cw' : 'square-pen',
       onClick: onHandle
-    }, item.handling.status === 'closed' ? '独立重开' : '调整当前处置')), item && /*#__PURE__*/React.createElement("div", {
+    }, item.handling.status === 'closed' ? '重新打开处置' : '登记处置')), item && /*#__PURE__*/React.createElement("div", {
       className: "dy-tools"
     }, /*#__PURE__*/React.createElement(P.Risk, {
       risk: item.risk
@@ -65,7 +65,7 @@
       "data-history-sequence": h.sequence
     }, /*#__PURE__*/React.createElement("div", {
       className: "dy-heading"
-    }, /*#__PURE__*/React.createElement("b", null, "\u7B2C ", h.sequence, " \u6B21 \xB7 ", C.statuses[h.before.status], " \u2192 ", C.statuses[h.after.status], h.action === 'reopen' ? ' · 独立重开' : ''), /*#__PURE__*/React.createElement("time", null, window.WorkbenchFormat.dateTime(h.recorded_at))), /*#__PURE__*/React.createElement("p", null, h.action === 'reopen' ? '重开原因：' + h.reason : '原因说明：' + h.after.remark), /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("b", null, "\u7B2C ", h.sequence, " \u6B21 \xB7 ", C.statuses[h.before.status], " \u2192 ", C.statuses[h.after.status], h.action === 'reopen' ? ' · 重新打开' : ''), /*#__PURE__*/React.createElement("time", null, window.WorkbenchFormat.dateTime(h.recorded_at))), /*#__PURE__*/React.createElement("p", null, h.action === 'reopen' ? '重开原因：' + h.reason : '原因说明：' + h.after.remark), /*#__PURE__*/React.createElement("div", {
       className: "dy-muted"
     }, "\u8BB0\u5F55\u4EBA ", h.local_operator), /*#__PURE__*/React.createElement(window.WorkbenchReference, {
       entries: {

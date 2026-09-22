@@ -167,7 +167,7 @@
     const caption = data ? {
       reference: data.candidate.candidate_ref,
       label: '比较方案',
-      name: data.candidate.label || '候选方案名称未填写',
+      name: data.candidate.label || window.WorkbenchTerms.name_missing,
       status: data.baseline.available ? '已保存候选方案 · 与排产时的正式计划对照' : '已保存候选方案 · 排产时没有正式计划'
     } : null;
     const captionKey = JSON.stringify(caption);
@@ -267,12 +267,7 @@
         ...choice,
         candidate_ref: row.candidate_ref
       })
-    }), /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("b", null, row.label || '候选方案名称未填写'), /*#__PURE__*/React.createElement("small", null, {
-      completed: '计算完成',
-      partial: '部分完成',
-      failed: '失败',
-      skipped: '已跳过'
-    }[row.status], " \xB7 ", row.task_count, " \u9053\u5B89\u6392")))), !options.candidates.length && /*#__PURE__*/React.createElement(window.WorkbenchListControls.EmptyState, {
+    }), /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("b", null, row.label || window.WorkbenchTerms.name_missing), /*#__PURE__*/React.createElement("small", null, window.WorkbenchTerms.candidate_statuses[row.status], " \xB7 ", row.task_count, " \u9053\u5B89\u6392")))), !options.candidates.length && /*#__PURE__*/React.createElement(window.WorkbenchListControls.EmptyState, {
       kind: "empty",
       title: "\u8FD9\u6B21\u6392\u4EA7\u8FD8\u6CA1\u6709\u4FDD\u5B58\u5019\u9009\u65B9\u6848\u3002"
     })), choice.run_ref && /*#__PURE__*/React.createElement("form", {
@@ -314,7 +309,7 @@
       onSelect: onSelectBatch
     }), /*#__PURE__*/React.createElement("div", {
       className: "dy-heading"
-    }, /*#__PURE__*/React.createElement("h3", null, data.candidate.label || '候选方案名称未填写'), /*#__PURE__*/React.createElement(Button, {
+    }, /*#__PURE__*/React.createElement("h3", null, data.candidate.label || window.WorkbenchTerms.name_missing), /*#__PURE__*/React.createElement(Button, {
       reasonDisplay: "inline",
       icon: "chart-gantt",
       onClick: () => setSummary(true)

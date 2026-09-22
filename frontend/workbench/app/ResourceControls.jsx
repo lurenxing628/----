@@ -32,15 +32,25 @@
   function Search({ className = '', ...props }) {
     return <label className={'search wb-search ' + className}><Icon name="search" /><input {...props} type="search" /></label>;
   }
+  // The Button activated most recently. A busy commit may disable (and Chrome then blurs) a launcher before the dialog
+  // it asked for opens, so Modal falls back to this element when focus has already dropped to <body>.
+  let launcher = null;
   // reasonDisplay: 'inline' shows the reason next to the control; 'tooltip' keeps it in the title and a hidden description (table cells, toolbars).
-  function Button({ icon, transfer, children, reason, reasonDisplay = 'inline', busy, className = 'btn', ...props }) {
+  // A tooltip-only reason is reachable only through the button itself, so that button stays focusable (aria-disabled) and just ignores clicks.
+  function Button({ icon, transfer, children, reason, reasonDisplay = 'inline', busy, className = 'btn', onClick, ...props }) {
     if (reasonDisplay !== 'inline' && reasonDisplay !== 'tooltip') throw new TypeError('Unknown reasonDisplay: ' + reasonDisplay);
     const reasonId = React.useId(), inlineReason = reason && reasonDisplay === 'inline', hiddenReason = reason && reasonDisplay === 'tooltip';
+    const blocked = !!hiddenReason && !busy && !props.disabled;
     const title = reason || props.title || (typeof children === 'string' ? children : props['aria-label']);
     if (className.split(/\s+/).includes('primary')) className = Array.from(new Set(className.split(/\s+/).concat(['wb-action', 'wb-primary']))).join(' ');
-    return <span title={title} className={inlineReason ? 'wb-button-reason' : undefined} style={inlineReason ? undefined : { display: 'inline-flex', maxWidth: '100%' }}>
-      <button {...props} type={props.type || 'button'} className={className + (transfer ? ' wb-action wb-transfer' : '')} data-wb-transfer={transfer} data-wb-disabled-reason={reason || undefined} disabled={!!reason || busy || props.disabled}
-        style={className.startsWith('mini') ? { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5, ...props.style } : props.style}
+    function activate(event) {
+      launcher = event.currentTarget;
+      if (blocked) { event.preventDefault(); return; }
+      if (onClick) onClick(event);
+    }
+    return <span title={title} className={inlineReason ? 'wb-button-reason' : 'wb-button-host'}>
+      <button {...props} type={props.type || 'button'} className={className + (transfer ? ' wb-action wb-transfer' : '')} data-wb-transfer={transfer} data-wb-disabled-reason={reason || undefined}
+        disabled={busy || props.disabled || (!!reason && !blocked)} aria-disabled={blocked || undefined} onClick={activate}
         title={title} aria-label={props['aria-label'] || (reason && !inlineReason && typeof children === 'string' ? children + '：' + reason : undefined)} aria-busy={busy || undefined}
         aria-describedby={[props['aria-describedby'], (inlineReason || hiddenReason) && reasonId].filter(Boolean).join(' ') || undefined}>
         {transfer ? <window.APSWorkbenchUI.TransferIcon kind={transfer} /> : icon && <Icon name={icon} />}{children}</button>
@@ -96,12 +106,12 @@
       const row = rows.find(item => item.text === text);
       if (row) row.count += 1; else rows.push({ text, count: 1 });
     }
-    return rows.length ? <div className="match-note" role="status" style={{ display: 'block', overflowWrap: 'anywhere' }}>
+    return rows.length ? <div className="match-note wb-issues" role="status">
       {rows.map(row => <div key={row.text}>{row.text}{row.count > 1 && <span className="wb-issue-count">（{row.count} 条）</span>}</div>)}</div> : null;
   }
   function Status({ kind, entity }) {
     const value = entity.status, tone = value === 'active' ? 'ok' : value === 'inactive' && entity.fields.inactive_reason !== 'unknown' ? 'off' : 'warn';
-    return <span className={'pill ' + tone} style={{ whiteSpace: 'normal' }}><span className="dot" />{C.statusLabel(kind, value, entity.fields)}</span>;
+    return <span className={'pill wb-status ' + tone}><span className="dot" />{C.statusLabel(kind, value, entity.fields)}</span>;
   }
   const ModalFocusParent = React.createContext(null), modalStack = [];
   const modalSelector = 'button,input,select,textarea,a[href],[tabindex]';
@@ -134,22 +144,42 @@
       items.find(node => node.matches('input,select,textarea')) || items[0] || entry.root;
     if (document.activeElement !== target) target.focus();
   }
+  // Where a dialog's focus came from: the launcher (or the last activated Button once focus has already dropped to
+  // <body>) followed by its containers, nearest first and stopping before <body>. Captured while the launcher is mounted.
+  function focusOrigin() {
+    const active = document.activeElement, start = active && active !== document.body ? active : launcher;
+    launcher = null;
+    const origin = [];
+    for (let node = start; node && node !== document.body; node = node.parentElement) origin.push(node);
+    return origin;
+  }
+  // Which node regains focus once dialogs close: the newest dialog's launcher, then each parent dialog's launcher. Outside
+  // any dialog a launcher React has since replaced yields to its nearest still-mounted container (the workspace panel
+  // carries tabindex="-1" for this), so keyboard focus never silently lands on <body>.
+  function restoreCandidate(entries, nested, focusable) {
+    for (const entry of entries) {
+      for (let item = entry; item; item = item.parent) {
+        const node = (nested ? item.origin.slice(0, 1) : item.origin).find(focusable);
+        if (node) return node;
+      }
+    }
+    return null;
+  }
   function syncModalFocus() {
     if (modalFocusQueued) return;
     modalFocusQueued = true;
     // React may clean up parents before children, or replay effects. Restore only after the commit settles.
     queueMicrotask(() => {
       modalFocusQueued = false;
-      const restores = modalRestores; modalRestores = [];
-      const top = topModal(), candidates = [];
+      const restores = modalRestores.reverse(); modalRestores = [];
+      const top = topModal();
       if (top && !modalScrollStyles.length) lockModalScroll();
       else if (!top && modalScrollStyles.length) unlockModalScroll();
-      restores.reverse().forEach(entry => { for (let item = entry; item; item = item.parent) candidates.push(item.previous); });
       if (top) {
-        const previous = candidates.find(node => modalFocusable(node) && top.root.contains(node));
+        const previous = restoreCandidate(restores, true, node => modalFocusable(node) && top.root.contains(node));
         if (previous || !top.root.contains(document.activeElement) || !modalFocusable(document.activeElement)) focusModal(top, previous);
       } else {
-        const previous = candidates.find(node => modalFocusable(node) && !modalStack.some(entry => entry.root.contains(node)));
+        const previous = restoreCandidate(restores, false, node => modalFocusable(node) && !modalStack.some(entry => entry.root.contains(node)));
         if (previous) previous.focus();
       }
     });
@@ -188,8 +218,9 @@
     };
   }
   function Modal({ title, icon, children, footer, onClose, locked, labelId, suspended, guardOwner, guardBypass = false }) {
-    // Capture before this commit disables the launcher and moves focus back to the body.
-    const ref = React.useRef(null), entry = React.useRef({ previous: document.activeElement }), parent = React.useContext(ModalFocusParent);
+    // Capture during the first render, before this commit disables the launcher and moves focus back to the body.
+    const ref = React.useRef(null), entry = React.useRef(null), parent = React.useContext(ModalFocusParent);
+    if (!entry.current) entry.current = { origin: focusOrigin() };
     const backdropStart = React.useRef(false), id = React.useId();
     const closing = React.useRef(false);
     async function requestClose() {
@@ -208,7 +239,7 @@
       syncModalFocus();
     });
     React.useLayoutEffect(() => {
-      entry.current.parent = parent || modalStack.slice().reverse().find(item => item.root.contains(entry.current.previous)) || null;
+      entry.current.parent = parent || modalStack.slice().reverse().find(item => item.root.contains(entry.current.origin[0] || null)) || null;
       return mountModal(entry.current);
     }, []);
     const canClose = () => topModal() === entry.current && !entry.current.locked;
@@ -221,9 +252,9 @@
         backdropStart.current = false;
         if (dismiss && canClose()) entry.current.close();
       }}><div className="modal lg" role="dialog" aria-modal={suspended ? undefined : true} aria-labelledby={labelId || id} ref={ref} tabIndex={-1}>
-      <div className="modal-head"><span className="modal-ico"><Icon name={icon} /></span><div style={{ minWidth: 0, overflowWrap: 'anywhere' }}><div className="modal-h2" id={labelId || id}>{title}</div></div>
-        <span style={{ marginLeft: 'auto' }}><Button className="modal-x" icon="x" aria-label="关闭" onClick={() => { if (canClose()) entry.current.close(); }} reason={locked ? '操作结果还没确认，请保留当前页面。' : ''} /></span></div>
-      {children}<div className="modal-f wb-actions" style={{ flexWrap: 'wrap', marginLeft: 0, width: '100%', boxSizing: 'border-box' }}>{footer}</div></div></div></ModalFocusParent.Provider>;
+      <div className="modal-head"><span className="modal-ico"><Icon name={icon} /></span><div className="wb-modal-title"><div className="modal-h2" id={labelId || id}>{title}</div></div>
+        <span className="wb-modal-close"><Button className="modal-x" icon="x" aria-label="关闭" onClick={() => { if (canClose()) entry.current.close(); }} reason={locked ? '操作结果还没确认，请保留当前页面。' : ''} /></span></div>
+      {children}<div className="modal-f wb-actions wb-modal-footer">{footer}</div></div></div></ModalFocusParent.Provider>;
   }
   function relationLabels(entity, key) {
     if (!entity) return [];
@@ -238,7 +269,7 @@
   }
   function Relation({ entity, field, onOpen }) {
     const items = relationLabels(entity, field);
-    return items.length ? <span className="chipline">{items.map(item => onOpen ? <Button key={item.ref} className="mini" icon="arrow-right" onClick={() => onOpen(item.ref)} style={{ whiteSpace: 'normal', overflowWrap: 'anywhere', textAlign: 'left' }}>{item.label || '名称未填写'}</Button> : <span className="chip" key={item.ref} style={{ whiteSpace: 'normal', overflowWrap: 'anywhere' }}>{item.label || '名称未填写'}</span>)}</span> : <span className="muted">{entity.relationships[field] === null || Array.isArray(entity.relationships[field]) ? '未选' : '未读取'}</span>;
+    return items.length ? <span className="chipline">{items.map(item => onOpen ? <Button key={item.ref} className="mini wb-chip-link" icon="arrow-right" onClick={() => onOpen(item.ref)}>{item.label || '名称未填写'}</Button> : <span className="chip wb-chip-wrap" key={item.ref}>{item.label || '名称未填写'}</span>)}</span> : <span className="muted">{entity.relationships[field] === null || Array.isArray(entity.relationships[field]) ? '未选' : '未读取'}</span>;
   }
   function Choice({ adapter, field, value, original, onChange, disabled, onCatalog, catalogBusy, error }) {
     const [search, setSearch] = React.useState(''), [query, setQuery] = React.useState('');
@@ -281,15 +312,15 @@
     const changePage = next => { setSnapshot(response.meta.snapshot_ref); setPage(next); };
     const runSearch = () => { setQuery(search); setPage(1); setSnapshot(undefined); request.reload(); };
     const options = Array.from(available.values());
-    return <div className={'field wb-field' + (field.multiple ? ' full' : '') + (invalid ? ' err' : '')} style={{ minWidth: 0 }} data-field-path={'relationships.' + field.key}>
+    return <div className={'field wb-field wb-choice' + (field.multiple ? ' full' : '') + (invalid ? ' err' : '')} data-field-path={'relationships.' + field.key}>
       <label htmlFor={id}>{field.label}</label>
-      <div className="rowact"><div className="search" style={{ maxWidth: '100%', flex: '1 1 auto', minWidth: 0 }}><span className="ic"><Icon name="search" /></span>
+      <div className="rowact"><div className="search wb-choice-search"><span className="ic"><Icon name="search" /></span>
         <input aria-label={'搜索' + field.label} value={search} disabled={disabled} onChange={event => setSearch(event.target.value)} onKeyDown={event => {
           if (event.key === 'Enter') { event.preventDefault(); runSearch(); }
         }} /></div><Button icon="search" aria-label={'执行' + field.label + '搜索'} disabled={disabled} onClick={runSearch} /></div>
-      {field.multiple ? <div id={id} role="group" aria-label={field.label} aria-invalid={invalid || undefined} aria-describedby={describedBy} tabIndex={invalid ? -1 : undefined} className="fchips" style={{ maxHeight: 160, overflowY: 'auto' }}>
-        {options.map(item => <label key={item.ref} className={'fchip' + (selected.includes(item.ref) ? ' on' : '')} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'normal', overflowWrap: 'anywhere' }}>
-          <input type="checkbox" style={{ width: 15, height: 15, padding: 0, flex: 'none' }} checked={selected.includes(item.ref)}
+      {field.multiple ? <div id={id} role="group" aria-label={field.label} aria-invalid={invalid || undefined} aria-describedby={describedBy} tabIndex={invalid ? -1 : undefined} className="fchips wb-choice-options">
+        {options.map(item => <label key={item.ref} className={'fchip wb-choice-option' + (selected.includes(item.ref) ? ' on' : '')}>
+          <input type="checkbox" className="wb-choice-check" checked={selected.includes(item.ref)}
             disabled={disabled || (!selected.includes(item.ref) && !selectable(item))} onChange={event => choose(item.ref, event.target.checked)} />
           {item.label}{!selectable(item) ? '（停用 / 未确认）' : ''}</label>)}</div> :
         <select id={id} value={value} disabled={disabled} aria-invalid={invalid || undefined} aria-describedby={describedBy} onChange={event => choose(event.target.value)}>
@@ -309,11 +340,13 @@
   function EmptyState({ kind = 'empty', title, hint, action, error }) {
     if (!Object.prototype.hasOwnProperty.call(titles, kind)) throw new TypeError('empty_state_kind_unknown: ' + kind);
     if ((kind === 'filtered' || kind === 'error') && !action) throw new TypeError('empty_state_requires_action: ' + kind);
+    // A bare <button> action inside a form must not submit it; the shared Button already defaults to type="button".
+    const actions = React.Children.map(action, child => child && child.type === 'button' && !child.props.type ? React.cloneElement(child, { type: 'button' }) : child);
     return <div className={'wb-empty wb-empty-' + kind} role={kind === 'error' ? undefined : 'status'} aria-busy={kind === 'loading' || undefined}>
       <p className="wb-empty-title">{title || titles[kind]}</p>
       {hint && <p className="wb-empty-hint">{hint}</p>}
       {kind === 'error' && error && <ErrorBox error={error} />}
-      {action && <div className="wb-empty-action">{action}</div>}</div>;
+      {action && <div className="wb-empty-action">{actions}</div>}</div>;
   }
   function Pager({ page = 1, pages, total, size, sizes, unit = '项', onPage, onSize, disabled, busy, label = '记录', sizeLabel,
     mode = 'pages', hasPrevious, hasNext, onPrevious, onNext, showPageSelect = false, showPageJump = false, jumpLabel = '跳转页码', jumpActionLabel = '跳转' }) {
@@ -371,5 +404,5 @@
       <Button icon="plus" className={className} aria-label={'放大' + axis} title={'放大' + axis + ' (+)'} disabled={disabled || zoom >= max} onClick={() => onZoom(timelineZoomStep(zoom, 1, max))} />
       <Button icon="unfold-vertical" className={(fitClassName || className) + ' wb-zoom-fit'} aria-label={'显示完整' + range} title={'显示完整' + range + ' (F)'} disabled={disabled || zoom <= 1} onClick={onFit} /></>;
   }
-  window.ResourceControls = { Icon, Button, Search, ErrorBox, Issues, Status, Modal, Relation, relationLabels, Choice, Field, focusFirstInvalid, EmptyState, Pager, TimelineZoom, timelineZoomKey, timelineZoomStep };
+  window.ResourceControls = { Icon, Button, Search, ErrorBox, Issues, Status, Modal, Relation, relationLabels, Choice, Field, focusFirstInvalid, EmptyState, Pager, TimelineZoom, timelineZoomKey, timelineZoomStep, focusOrigin, restoreCandidate };
 })();

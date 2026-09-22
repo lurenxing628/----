@@ -34,10 +34,11 @@
     const [position, setPosition] = React.useState({ left: 0, top: 0, width: 1000, height: 440 }), [hover, setHover] = React.useState(null);
     const board = React.useRef(null), search = React.useRef(null), pending = React.useRef(null), frame = React.useRef(null), expandButton = React.useRef(null);
     const labelWidth = position.width < 550 ? 125 : 170, viewport = Math.max(100, position.width - labelWidth);
-    const width = viewport * zoom, selectedRef = selected && selected.task.task_ref;
-    const model = React.useMemo(() => M.layout(data, mode, query, baseline, width, changedOnly), [data, mode, query, baseline, width, changedOnly]);
-    const risks = React.useMemo(() => new Map((data.projections.delivery_risks.items || []).map(row => [row.batch_id, row.risk])), [data]);
     const before = data.projections.baseline, showBaseline = before.state === 'available';
+    const displayBaseline = showBaseline && baseline, displayChangedOnly = showBaseline && changedOnly;
+    const width = viewport * zoom, selectedRef = selected && selected.task.task_ref;
+    const model = React.useMemo(() => M.layout(data, mode, query, displayBaseline, width, displayChangedOnly), [data, mode, query, displayBaseline, width, displayChangedOnly]);
+    const risks = React.useMemo(() => new Map((data.projections.delivery_risks.items || []).map(row => [row.batch_id, row.risk])), [data]);
     const ticks = M.ticks(model.start, model.end, width, position.left, viewport);
     const today = M.instant(asOf.slice(0, 10) + 'T00:00:00'), now = M.instant(asOf);
     const timeX = at => (at - model.start) / (model.end - model.start) * width;
@@ -55,6 +56,9 @@
     }, [width, model]);
     React.useEffect(() => { setHover(null); }, [query, mode, baseline, changedOnly, expanded]);
     React.useEffect(() => {
+      if (!showBaseline) { setBaseline(false); setChangedOnly(false); }
+    }, [showBaseline]);
+    React.useEffect(() => {
       setHover(current => {
         if (!current) return null;
         const node = document.elementFromPoint(current.x, current.y), task = node && node.closest('[data-plan-task]');
@@ -65,7 +69,8 @@
       if (!expanded) return undefined;
       const overflow = document.body.style.overflow;
       document.body.style.overflow = 'hidden'; board.current.focus();
-      const close = event => { if (event.key === 'Escape') { event.preventDefault(); setExpanded(false); } };
+      // Escape inside the search box (or any field) belongs to that field; only a bare Escape collapses the board.
+      const close = event => { if (event.key === 'Escape' && !event.target.closest('input,textarea,select')) { event.preventDefault(); setExpanded(false); } };
       document.addEventListener('keydown', close);
       return () => { document.body.style.overflow = overflow; document.removeEventListener('keydown', close); if (expandButton.current) expandButton.current.focus(); };
     }, [expanded]);
@@ -105,9 +110,9 @@
     }}>
       <window.PointGantt.Styles /><div className="plan-toolbar">
         <Segment value={mode} options={Object.entries(M.kindLabels)} onChange={setMode} label="甘特分组" disabled={disabled} />
-        <label className="plan-check" title={showBaseline ? '和初始计划对照' : before.reason || '初始计划暂无数据'}><input type="checkbox" aria-label="显示初始计划" checked={baseline && showBaseline} disabled={!showBaseline || disabled}
-          onChange={event => setBaseline(event.target.checked)} />初始计划</label>
-        <label className="plan-check" title={showBaseline ? '只看和初始计划不一样的安排' : before.reason || '初始计划暂无数据'}><input type="checkbox" aria-label="仅变更" checked={changedOnly && showBaseline} disabled={!showBaseline || disabled}
+        <label className="plan-check" title={showBaseline ? '和初始计划对照' : before.reason || '初始计划暂无数据'}><input type="checkbox" aria-label="显示初始计划" checked={displayBaseline} disabled={!showBaseline || disabled}
+          onChange={event => setBaseline(event.target.checked)} />{window.WorkbenchTerms.initial_plan}</label>
+        <label className="plan-check" title={showBaseline ? '只看和初始计划不一样的安排' : before.reason || '初始计划暂无数据'}><input type="checkbox" aria-label="仅变更" checked={displayChangedOnly} disabled={!showBaseline || disabled}
           onChange={event => setChangedOnly(event.target.checked)} />仅变更</label>
         <label className="search plan-search"><span className="ic"><Icon name="search" /></span><input ref={search} type="search" aria-label="搜索批次、工序、设备、人员" placeholder="批次、工序、资源" value={query}
           onChange={event => onQuery(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); move(event.shiftKey ? -1 : 1); } if (event.key === 'Escape') onQuery(''); }} /></label>
@@ -125,7 +130,7 @@
           if (frame.current) cancelAnimationFrame(frame.current); frame.current = requestAnimationFrame(measure);
         }} style={{ '--plan-label': labelWidth + 'px' }}>
           <div className="plan-board-inner" style={{ width: labelWidth + width, height: model.height + 52 }}>
-            <div className="plan-axis"><div className="plan-corner">{M.kindLabels[mode]} / 工序<small className="plan-muted" style={{ display: 'block' }}>{model.groupCount} 组</small></div>
+            <div className="plan-axis"><div className="plan-corner">{M.kindLabels[mode]} / 工序<small className="plan-muted plan-corner-count">{model.groupCount} 组</small></div>
               <div className="plan-ticks" style={{ width }}>{ticks.map(tick => <div className="plan-tick" key={tick.at} style={{ left: tick.x }}>
                 {M.timeLabel(tick.label).slice(0, 10)}<small>{M.timeLabel(tick.label).slice(11)}</small></div>)}</div></div>
             {visibleRows.map(row => {
@@ -141,14 +146,14 @@
             {[['today', today, '今日零点（按数据日期）'], ['as-of', now, '数据时点']].filter(([, at]) => at >= model.start && at <= model.end).map(([kind, at, label]) =>
               <i key={kind} className={'plan-time-line ' + kind} data-plan-time-line={kind} data-time-value={M.wire(at)} aria-label={label + ' ' + M.timeLabel(M.wire(at))} title={label + ' ' + M.timeLabel(M.wire(at))}
                 style={{ left: labelWidth + timeX(at), top: 52, height: model.height }} />)}
-            {!model.rows.length && <div style={{ position: 'sticky', left: 0, width: position.width }}><window.WorkbenchControls.EmptyState kind={query || changedOnly ? 'filtered' : 'empty'} title={changedOnly ? '当前范围没有匹配的变更安排。' : query ? '没有匹配安排，完整计划的时间范围保持不变。' : '该读取范围没有安排。'}
-              action={query || changedOnly ? <Button onClick={() => { onQuery(''); setChangedOnly(false); }}>清除筛选</Button> : undefined} /></div>}
+            {!model.rows.length && <div style={{ position: 'sticky', left: 0, width: position.width }}><window.WorkbenchControls.EmptyState kind={query || displayChangedOnly ? 'filtered' : 'empty'} title={displayChangedOnly ? '当前范围没有匹配的变更安排。' : query ? '没有匹配安排，完整计划的时间范围保持不变。' : '该读取范围没有安排。'}
+              action={query || displayChangedOnly ? <Button onClick={() => { onQuery(''); setChangedOnly(false); }}>清除筛选</Button> : undefined} /></div>}
           </div>
         </div>
         <div className="plan-footer"><span data-plan-search-count>{model.tasks.length} / {data.task_count} 道安排</span>
           <span className="plan-legend"><i className="plan-swatch" />安排</span><span className="plan-legend"><i className="plan-swatch success" />已确认准时</span>
           <span className="plan-legend"><i className="plan-swatch critical" />预计超期</span><span className="plan-legend"><i className="plan-swatch conflict" />资源重叠</span>
-          <span className="plan-legend"><i className="plan-swatch before" />初始计划</span><span className="plan-legend"><i className="plan-swatch point" />零工时工序</span>
+          <span className="plan-legend"><i className="plan-swatch before" />{window.WorkbenchTerms.initial_plan}</span><span className="plan-legend"><i className="plan-swatch point" />零工时工序</span>
           <span className="plan-legend"><i className="plan-swatch today" />今日 / 数据时点</span>
           <span className="plan-actions"><Button className="btn plan-icon" icon="chevron-left" aria-label="上一匹配任务" disabled={currentIndex <= 0} onClick={() => move(-1)} />
             <span>{currentIndex < 0 ? '未选任务' : '第 ' + (currentIndex + 1) + ' 道匹配'}</span><Button className="btn plan-icon" icon="chevron-right" aria-label="下一匹配任务" disabled={!model.tasks.length || currentIndex >= model.tasks.length - 1} onClick={() => move(1)} /></span>

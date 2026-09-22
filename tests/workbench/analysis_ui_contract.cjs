@@ -18,7 +18,7 @@ const tree = expand(h(window.DashboardEvidence.Structure, { value: sample }));
 assert.match(text(tree), /0/); assert.match(text(tree), /未知/); assert.match(text(tree), /原料/);
 assert(!text(tree).includes('a'.repeat(48)), '完整引用不能进入普通可见字段');
 assert(!text(tree).includes('c'.repeat(48)) && !text(tree).includes('qualification.empty'), '请求键与规则码只能进编号折叠区');
-assert.match(text(tree), /M-001/); assert.match(text(tree), /delivery/);
+assert.match(text(tree), /M-001/); assert.match(text(tree), /交期风险/); assert(!text(tree).includes('delivery'), '来源类型显示中文类别，不显示内部取值');
 const references = nodes(tree).filter(row => row.type === 'reference');
 assert(references.some(row => Object.values(row.props.entries || {}).includes('a'.repeat(48))), '完整引用必须保留在编号折叠区');
 assert(references.some(row => Object.values(row.props.entries || {}).includes('c'.repeat(48))), '请求键必须保留在编号折叠区');

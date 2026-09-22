@@ -1,10 +1,18 @@
 (function () {
   'use strict';
   const { Button, Icon, ErrorBox } = window.ResourceControls;
-  const text = (value, missing = '未知') => value === null || value === undefined ? missing : String(value);
-  const hours = (value, missing = '未填写') => value === null ? missing : text(value) + ' 小时';
+  const missingValue = value => value === null || value === undefined;
+  const text = (value, missing = '未知') => missingValue(value) ? missing : String(value);
+  // 数字一律走 WorkbenchFormat：小时最多 3 位小数、去掉尾零；缺值只写缺值说明，不拼单位。
+  const amount = (value, missing = '未知') => missingValue(value) ? missing : window.WorkbenchFormat.number(value, { digits: 3, trim: true });
+  const hours = (value, missing = '未填写') => missingValue(value) ? missing : window.WorkbenchFormat.hours(value, { digits: 3, trim: true });
+  const unitHours = (value, missing = '未填写') => missingValue(value) ? missing : hours(value) + '/件';
+  const percent = (value, missing = '未计算') => missingValue(value) ? missing
+    : (value > 0 ? '+' : '') + window.WorkbenchFormat.percent(value / 100, { digits: 1, trim: true });
   const source = value => ({ internal: '自制', external: '外协', unknown: '未确认' })[value] || '未确认';
+  const statusText = value => value === 'insufficient_data' ? '数据不足' : '已有建议';
   const writeReason = '请先检查所选模板是否可采用。';
+  const viewReason = '当前来源暂不能查看。';
   function useRead(load, identity, adapter, enabled = true) {
     const [state, setState] = React.useState({ result: null, error: null, busy: true, identity });
     React.useEffect(() => {
@@ -40,23 +48,26 @@
       onPage={number => onChange({ page: number })} onSize={size => onChange({ size, page: 1 })} />;
   }
   function Table({ rows, selected, onSelect, onPart, disabled, canView, scope, adapter, onSort, onFilter, widths, onResize, total }) {
-    const columns = [['part_no', '图号 / 零件', 240], ['operation_label', '工序 / 来源', 210], ['old_unit_hours', '原定额（小时/件）', 175],
-      ['suggested_unit_hours', '建议（小时/件）', 160], ['sample_count', '可用记录数', 125], ['absolute_deviation_percent', '偏差', 125], ['status', '状态', 125]];
+    // 默认列宽（B1 样式包 2026-09-21 核定）：905 + 详情列 60 = 965，1280 视口整表放得下；
+    // 每个表头文字按 13px 字号加 16px 内距都放得进对应宽度，放不下时缩短文案而不是压宽度。
+    const columns = [['part_no', '图号 / 零件', 190], ['operation_label', '工序 / 来源', 160], ['old_unit_hours', '原定额（小时/件）', 145],
+      ['suggested_unit_hours', '建议（小时/件）', 130], ['sample_count', '可用记录数', 95], ['absolute_deviation_percent', '偏差', 90], ['status', '状态', 95]];
+    const actionWidth = 60;
     const width = (key, value) => widths[key] || value;
-    return <div className="ca-table-scroll wb-table-frame" tabIndex={0} role="region" aria-label="校准明细滚动区域"><table className="ca-table" aria-label="校准明细" style={{ minWidth: 60 + columns.reduce((sum, [key, , value]) => sum + width(key, value), 0) }}><caption className="wb-visually-hidden">当前筛选范围的校准建议；建议不直接修改已有批次定额。</caption><thead><tr>
+    return <div className="ca-table-scroll wb-table-frame" tabIndex={0} role="region" aria-label="校准明细滚动区域"><table className="ca-table" aria-label="校准明细" style={{ minWidth: actionWidth + columns.reduce((sum, [key, , value]) => sum + width(key, value), 0) }}><caption className="wb-visually-hidden">当前筛选范围的校准建议；建议不直接修改已有批次定额。</caption><thead><tr>
       {columns.map(([key, title, value]) => <th key={key} scope="col" style={{ width: width(key, value) }} aria-sort={scope.sort === key ? scope.direction === 'asc' ? 'ascending' : 'descending' : 'none'}>
         <window.ResourceTableHeader column={{ key, title }} kind="calibration" scope={scope} adapter={adapter} sort={scope.sort} direction={scope.direction} sortActive
           onSort={onSort} onFilter={rule => onFilter(key, rule)} filter={scope.column_filters[key]} matchingCount={total}
           width={width(key, value)} onResize={value => onResize(key, Math.min(16384, value))} disabled={disabled} scopeTransform={window.CalibrationAPI.facetScope} />
-      </th>)}<th scope="col" className="ca-action">详情</th>
+      </th>)}<th scope="col" className="ca-action" style={{ width: actionWidth }}>详情</th>
     </tr></thead><tbody>{rows.map(row => <tr key={row.suggestion_ref} data-ref={row.suggestion_ref} data-selected={selected === row.suggestion_ref}>
       <td><Button className="lnk" aria-label={'查看零件 ' + row.part_no} disabled={disabled || !canView || row.capabilities.view !== true || typeof onPart !== 'function'}
         onClick={() => onPart(row)}>{row.part_no}</Button><small>{row.part_name}</small></td><td>{row.sequence} · {row.operation_label}<small>{source(row.source)}</small></td>
-      <td className="ca-number">{text(row.old_unit_hours, '未填写')}</td><td className="ca-number">{text(row.suggested_unit_hours, '暂无建议')}</td><td className="ca-number">{row.sample_count}</td>
-      <td className="ca-number" style={{ color: row.over_20_percent ? 'var(--ui-danger-text)' : 'var(--ui-info-muted)' }}>{row.deviation_percent === null ? '未计算' : (row.deviation_percent > 0 ? '+' : '') + row.deviation_percent + '%'}</td>
-      <td>{row.status === 'insufficient_data' ? '数据不足' : '待复核'}</td><td><Button icon="arrow-right" className="mini" aria-label={'查看 ' + row.part_no + ' ' + row.sequence + ' ' + row.operation_label}
-        disabled={disabled} reasonDisplay="tooltip" reason={canView && row.capabilities.view === true ? '' : '查看权限尚未确认，暂不能打开。'} onClick={() => onSelect(row.suggestion_ref)} /></td>
+      <td className="ca-number">{amount(row.old_unit_hours, '未填写')}</td><td className="ca-number">{amount(row.suggested_unit_hours, '暂无建议')}</td><td className="ca-number">{row.sample_count}</td>
+      <td className={'ca-number ' + (row.over_20_percent ? 'ca-deviation-over' : 'ca-deviation-within')}>{percent(row.deviation_percent)}</td>
+      <td>{statusText(row.status)}</td><td className="ca-action"><Button icon="arrow-right" className="mini" aria-label={'查看 ' + row.part_no + ' ' + row.sequence + ' ' + row.operation_label}
+        disabled={disabled} reasonDisplay="tooltip" reason={canView && row.capabilities.view === true ? '' : viewReason} onClick={() => onSelect(row.suggestion_ref)} /></td>
     </tr>)}</tbody></table>{!rows.length && <window.WorkbenchListControls.EmptyState kind="empty" title="当前筛选没有记录" hint="调整图号、工序来源或建议状态后重新查询。" />}</div>;
   }
-  window.CalibrationControls = { Button, Icon, ErrorBox, Styles, Filters, Page, Table, useRead, text, hours, source, writeReason };
+  window.CalibrationControls = { Button, Icon, ErrorBox, Styles, Filters, Page, Table, useRead, text, amount, hours, unitHours, percent, source, statusText, writeReason, viewReason };
 })();

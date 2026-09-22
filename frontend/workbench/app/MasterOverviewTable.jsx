@@ -19,7 +19,7 @@
     const columns = C.columns[data.scope.view], rows = data.rows;
     const filtered = data.scope.query !== '' || data.scope.domain !== 'all' || data.scope.status !== 'all' || Object.keys(data.scope.column_filters).length > 0;
     return <div className="wb-table-frame" data-sticky-head data-sticky-actions><table className="wb-table mo-table" aria-label="资料清单" aria-busy={loading}
-      style={{ minWidth: columns.reduce((sum, item) => sum + item[2], 64) }}><caption className="wb-sr-only">资料清单</caption><colgroup>{columns.map(([key, , width]) => <col key={key} style={{ width }} />)}<col style={{ width: 64 }} /></colgroup>
+      style={{ minWidth: columns.reduce((sum, item) => sum + item[2], 64) }}><caption className="wb-visually-hidden">资料清单</caption><colgroup>{columns.map(([key, , width]) => <col key={key} style={{ width }} />)}<col style={{ width: 64 }} /></colgroup>
       <thead><tr>{columns.map(([key, title]) => <th scope="col" key={key} className={key === 'business_code' ? 'wb-col-key' : ''}><div className="mo-column"><span>{title}</span><Button className="btn mo-icon wb-column-filter" icon="search" aria-label={'筛选列 ' + title}
         title={'筛选列 ' + title} aria-pressed={!!data.scope.column_filters[key]} onClick={() => onFilter(key)} disabled={loading} /></div></th>)}<th scope="col" className="wb-col-actions">维护</th></tr></thead>
       <tbody>{rows.map(item => <tr key={item.key} aria-selected={!!selected && selected.key === item.key} data-master-ref={item.entity_ref || item.ref}>{columns.map(([key]) => <td key={key} className={key === 'business_code' ? 'wb-col-key' : ''}>

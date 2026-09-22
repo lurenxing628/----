@@ -67,22 +67,23 @@
     return { intent, result, error, storageError, busy, host, hostError, hostBusy, suspended, inspectHost, selection,
       locked: suspended || !!intent || busy || !host.operations_available, execute, lookup, acknowledge };
   }
-  // Keep this component mounted across tab/source changes: it owns the system-only original request.
-  function Workspace({ tab, source = 'current', theme, onSetTheme, pageSize, onPageSize, compact, onCompact, revision = 0, onChanged, onReadSuspendedChange, recordContexts = {}, onRecordContext, api: supplied, children }) {
+  // Keep this component mounted across tab changes: it owns the system-only original request.
+  // 系统管理只读本机数据，没有别的数据来源可切换。
+  function Workspace({ tab, theme, onSetTheme, pageSize, onPageSize, compact, onCompact, revision = 0, onChanged, onReadSuspendedChange, recordContexts = {}, onRecordContext, api: supplied, children }) {
     const api = React.useMemo(() => supplied || A.create(), [supplied]);
     const [version, refresh] = React.useReducer(value => value + 1, 0);
     const command = useCommand(api, (intent, result) => { refresh(); if (onChanged) onChanged(intent, result); });
     const suspended = command.suspended;
     React.useLayoutEffect(() => { if (onReadSuspendedChange) onReadSuspendedChange(suspended); }, [suspended, onReadSuspendedChange]);
-    const current = source === 'current', enabled = current && !suspended, serial = revision + ':' + version;
+    const enabled = !suspended, serial = revision + ':' + version;
     const [visited, setVisited] = React.useState({});
     React.useEffect(() => { if (enabled && ['backups', 'logs', 'config'].includes(tab)) setVisited(value => ({ ...value, [tab]: true })); }, [enabled, tab]);
-    return <div className="sm-maintenance-workspace plana" data-system-maintenance="v1" style={{ padding: 0, maxWidth: 'none', borderRadius: 0 }}>
+    return <div className="sm-maintenance-workspace sm-maintenance-workspace-flush plana" data-system-maintenance="v1">
       <C.Styles />
       {suspended && !(command.hostBusy && !command.intent && !command.hostError && !command.storageError && !command.host)
         ? <window.SystemRestorePanel command={command} api={api} theme={theme} onSetTheme={onSetTheme} /> : <C.Outcome command={command} />}
       {suspended && command.hostBusy && !command.intent && <p className="sm-note" role="status">正在核对软件维护状态，还没有读取数据库。</p>}
-      {(!current || tab === 'overview') && !suspended && children}
+      {tab === 'overview' && !suspended && children}
       {['backups', 'logs'].map(kind => visited[kind] || enabled && tab === kind ? <div key={kind} hidden={!enabled || tab !== kind}>
         <window.SystemMaintenanceRecords api={api} kind={kind} pageSize={pageSize} onPageSize={onPageSize} revision={serial} command={command} active={enabled && tab === kind}
           initialContext={recordContexts[kind]} onReadContext={onRecordContext} />

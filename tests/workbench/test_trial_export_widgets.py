@@ -41,7 +41,7 @@ def test_trial_export_widgets_real_browser():
     assert report['browser'].startswith('109.')
     assert len(report['variants']) == 4 and all(row['passed'] for row in report['variants'])
     assert not report['errors'] and not report['external']
-    decoded = [verify_download(item) for item in report['downloads'] if item['button'] == '导出对比']
+    decoded = [verify_download(item) for item in report['downloads'] if item['button'] == '下载 CSV（方案对比）']
     (output / 'csv-field-proof.json').write_text(json.dumps(decoded, ensure_ascii=False, indent=2), encoding='utf-8')
     assert any(item['rows'] == 24 for item in decoded)
     assert report['boundary_checks'] and all(item['passed'] for item in report['boundary_checks'])

@@ -35,11 +35,11 @@
     }
     return <form ref={form} className="field-editor" aria-label="撤销这次报工" onSubmit={event => { event.preventDefault(); inspect(); }}>
       <div className="field-editor-heading"><h3>撤销这次报工 · {record.report_no}</h3></div>
-      <p>本次数量 {C.display(record.completed_quantity)} 件 · 有效工时 {C.display(record.effective_processing_hours)} 小时。撤销后不再计入进度和工时，原记录及更正历史保留。</p>
+      <p>本次数量 {C.display(record.completed_quantity)} 件 · 有效工时 {C.hours(record.effective_processing_hours)} 小时。撤销后不再计入进度和工时，原记录及更正历史保留。</p>
       <div className="field-extra"><window.ResourceControls.Field label="撤销原因" path="reason" error={error} required>
         <textarea ref={inputRef} aria-label="撤销原因" required maxLength="2000" value={draft.reason} disabled={locked} onChange={event => change('reason', event.target.value)} />
       </window.ResourceControls.Field><window.ResourceControls.Field label="经办人" path="declared_operator" error={error}>
-        <input aria-label="撤销经办人" maxLength="2000" value={draft.declared_operator} disabled={locked} onChange={event => change('declared_operator', event.target.value)} />
+        <input aria-label="经办人" maxLength="2000" value={draft.declared_operator} disabled={locked} onChange={event => change('declared_operator', event.target.value)} />
       </window.ResourceControls.Field></div>
       {preview && <section aria-label="撤销影响" className="field-note"><h4>撤销后</h4>
         <p>累计完成 {C.quantity(preview.before.known_completed_quantity)} → {C.quantity(preview.after.known_completed_quantity)} 件；剩余 {C.quantity(preview.after.remaining_quantity)} 件；状态 {C.states[preview.after.execution_state]}。</p>

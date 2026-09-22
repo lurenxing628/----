@@ -14,7 +14,7 @@
     const ready = incoming && base === incoming && !request.loading && !request.error;
     const reason = command.locked ? '上次维护操作还没有确认结果。请先点「查询结果」。' : !ready ? '请先点「刷新配置」读取正式配置。' : '';
     function refreshNow() { setReplace(false); setBase(null); setDraft(null); reload(); }
-    return <div className="sm-configuration" style={{ maxWidth: 'none' }}>
+    return <div className="sm-configuration sm-configuration-full">
       <C.Preferences {...preferences} />
       <section className="sm-section sm-maintenance-config"><div className="sm-section-head"><h3>本机自动维护配置</h3><C.Button icon="refresh-cw" aria-label="刷新配置" busy={request.loading}
         onClick={() => changed ? setReplace(true) : refreshNow()} /></div>
@@ -25,15 +25,15 @@
         {draft && base && <form className="sm-config-form" noValidate onSubmit={event => { event.preventDefault(); setValidated(true);
           if (validation.valid && !reason) command.execute('config', base.write_context.write_token, validation.values);
         }}><div className="sm-config-groups">{[['backup', '备份规则'], ['logs', '操作日志规则']].map(([group, label]) => <fieldset className="sm-config-group" key={group}><legend>{label}</legend>
-          {A.fields.filter(field => field.group === group).map(field => <div className="sm-config-row" key={field.key} style={{ gridTemplateColumns: 'minmax(140px, 1fr) minmax(140px, 1fr)' }}>
+          {A.fields.filter(field => field.group === group).map(field => <div className="sm-config-row sm-config-row-wide" key={field.key}>
             <label htmlFor={'sm-maintenance-' + field.key}>{field.label}</label><div>
               {field.switch ? <label className="sm-draft-checkbox"><input id={'sm-maintenance-' + field.key} type="checkbox" checked={draft[field.key] === 'yes'} disabled={!!reason}
-                onChange={event => setDraft({ ...draft, [field.key]: event.target.checked ? 'yes' : 'no' })} /><span>{draft[field.key] === 'yes' ? '启用' : '关闭'}</span></label> : <div className="sm-number">
+                onChange={event => setDraft({ ...draft, [field.key]: event.target.checked ? 'yes' : 'no' })} /><span>开启</span><span className="sm-switch-state">{draft[field.key] === 'yes' ? '当前：已开启' : '当前：已关闭'}</span></label> : <div className="sm-number">
                 <input id={'sm-maintenance-' + field.key} type="number" min={1} max={field.max} step={1} value={draft[field.key]} disabled={!!reason} aria-invalid={validated && !!validation.errors[field.key]}
                   aria-describedby={'sm-maintenance-help-' + field.key} onChange={event => setDraft({ ...draft, [field.key]: event.target.value })} /><span>{field.unit}</span></div>}
               <small id={'sm-maintenance-help-' + field.key} className={validated && validation.errors[field.key] ? 'sm-error' : 'sm-meta'}>{validated && validation.errors[field.key] || (field.switch ? '正式配置' : '1 至 ' + field.max + ' ' + field.unit)}</small>
               {base.dirty_fields.includes(field.key) ? <small className="sm-error">旧配置异常：{base.dirty_reasons[field.key]}{base.stored_values[field.key] !== null ? ' · 原值：' + base.stored_values[field.key] : ''}</small>
-                : base.defaulted_fields.includes(field.key) ? <small className="sm-meta">默认值，尚未保存</small> : <small className="sm-meta">已存值：{field.switch ? base.values[field.key] === 'yes' ? '启用' : '关闭' : base.values[field.key]}</small>}
+                : base.defaulted_fields.includes(field.key) ? <small className="sm-meta">默认值，尚未保存</small> : <small className="sm-meta">已存值：{field.switch ? base.values[field.key] === 'yes' ? '已开启' : '已关闭' : base.values[field.key]}</small>}
             </div>
           </div>)}
         </fieldset>)}</div>
@@ -41,7 +41,9 @@
             <C.Button icon="rotate-ccw" disabled={!!reason || !changed} onClick={() => setReplace(true)}>放弃草稿</C.Button><C.Button icon="save" type="submit" className="btn primary" reason={reason}>保存维护配置</C.Button>
           </div></div>{validated && !validation.valid && <p className="sm-error" role="alert">有几项填得不对，配置没有保存。请修正标红的项。</p>}
         </form>}
-        <details className="sm-rules sm-config-help"><summary>生效范围与自动维护规则</summary><p>自动维护在打开页面时检查是否到期；操作日志与运行日志分别清理。</p></details>
+        <details className="sm-rules sm-config-help"><summary>生效范围与自动维护规则</summary>
+          <p>打开页面时系统才会检查一次备份和清理，没有后台定时任务。间隔只是检查周期，不保证在指定时刻执行；正常退出时的备份也受自动备份开关控制。</p>
+          <p>日志清理只清操作记录，不清除运行文件日志。备份失败时会跳过本轮备份清理，保底规则不会删掉全部近期副本。</p></details>
       </section>
       {replace && <window.ResourceControls.Modal title="放弃当前草稿并刷新？" icon="history" onClose={() => setReplace(false)}
         footer={<><C.Button onClick={() => setReplace(false)}>保留草稿</C.Button><C.Button icon="refresh-cw" onClick={refreshNow}>放弃并刷新</C.Button></>}><div className="modal-b form"><p>未保存修改将被丢弃。</p></div></window.ResourceControls.Modal>}

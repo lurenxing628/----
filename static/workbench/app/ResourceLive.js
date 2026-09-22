@@ -216,11 +216,7 @@
       error: hostError || boot.target.error || boot.error
     }), deferred && /*#__PURE__*/React.createElement("div", {
       role: "status",
-      className: "match-note",
-      style: {
-        display: 'block',
-        margin: 12
-      }
+      className: "match-note is-block wb-resource-live-note"
     }, /*#__PURE__*/React.createElement("p", null, "\u4E0A\u6B21\u64CD\u4F5C\u8FD8\u6CA1\u5904\u7406\u5B8C\uFF0C\u6682\u65F6\u6CA1\u6709\u8DF3\u8F6C\u5230\u6307\u5B9A\u8BB0\u5F55\u3002\u521A\u624D\u7684\u63D0\u4EA4\u6CA1\u6709\u88AB\u8986\u76D6\u3002"), /*#__PURE__*/React.createElement(window.ResourceControls.Button, {
       icon: "arrow-right",
       onClick: continueNavigation

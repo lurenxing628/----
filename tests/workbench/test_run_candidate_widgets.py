@@ -48,6 +48,27 @@ def test_run_candidate_widgets_real_browser_and_downloads(candidate_case):
     assert len(report["variants"]) == 4 and all(row["passed"] for row in report["variants"])
     assert len(report["downloads"]) == 24
     assert len(report["capacity"]) == 12 and all(row["tasks"] == 5000 for row in report["capacity"])
+    assert len(report["prints"]) == 1
+    print_run = report["prints"][0]
+    assert print_run["variant"] == "1392-dark"
+    assert print_run["kind"] == "chunked-candidate-tables-and-default-zoom-canvas"
+    before, after = print_run["events"]
+    assert [(row["event"], row["trusted"], row["theme"]) for row in (before, after)] == [
+        ("beforeprint", True, "dark"),
+        ("afterprint", True, "dark"),
+    ]
+    assert before["rows"] == before["uniqueRowRefs"] == 500
+    assert before["chunks"] == 42 and before["maxChunkRows"] == 12
+    assert before["zoom"] == after["zoom"] == "1×"
+    assert before["lanes"] == before["expectedLanes"] == 10
+    assert after["rows"] <= 16 and after["chunks"] == 0 and after["lanes"] < before["lanes"]
+    assert after["rows"] == after["uniqueRowRefs"]
+    assert abs(after["spaceWidth"] - after["canvasWidth"]) < 2
+    assert print_run["media"]["uniqueRowRefs"] == 500
+    assert all(0 < chunk["rows"] <= 12 and chunk["headers"] == 4 for chunk in print_run["media"]["chunks"])
+    pdf = Path(print_run["path"]).read_bytes()
+    assert pdf.startswith(b"%PDF-")
+    assert hashlib.sha256(pdf).hexdigest() == print_run["sha256"]
     assert not any(row["path"].endswith("/baseline") for row in report["requests"])
     assert proof["source_data_retained"] and proof["read_only_http"] and proof["all_connections_isolated"]
     assert proof["schema_version"] == CURRENT_SCHEMA_VERSION

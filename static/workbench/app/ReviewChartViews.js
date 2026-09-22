@@ -6,19 +6,22 @@
     digits: 1,
     trim: true
   });
+  const UNIT = '道';
   function DistributionChart({
     items,
     label
   }) {
     const id = React.useId(),
       maximum = Math.max(1, ...items.map(row => row.count || 0));
+    // 各档都是 0 时没有可比较的分布，不画 0 / 0.5 / 1 这种假刻度，直接说暂无数据。
+    const hasData = items.some(row => row.count > 0);
     return /*#__PURE__*/React.createElement("figure", {
       className: "aw-chart aw-distribution",
       "aria-labelledby": id
     }, /*#__PURE__*/React.createElement("figcaption", {
       className: "aw-caption",
       id: id
-    }, label), items.length ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("ul", {
+    }, label), hasData ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("ul", {
       className: "aw-bars"
     }, items.map(row => /*#__PURE__*/React.createElement("li", {
       key: row.id
@@ -34,16 +37,16 @@
       style: {
         width: row.count / maximum * 100 + '%'
       }
-    })), /*#__PURE__*/React.createElement("strong", null, row.count))))), /*#__PURE__*/React.createElement("div", {
+    })), /*#__PURE__*/React.createElement("strong", null, row.count, " ", UNIT))))), /*#__PURE__*/React.createElement("div", {
       className: "aw-bar-row aw-scale",
       "aria-hidden": "true"
     }, /*#__PURE__*/React.createElement("span", null), /*#__PURE__*/React.createElement("span", {
       className: "aw-scale-ticks"
-    }, [0, maximum / 2, maximum].map(value => /*#__PURE__*/React.createElement("span", {
+    }, [0, maximum / 2, maximum].map((value, index) => /*#__PURE__*/React.createElement("span", {
       key: value
-    }, tick(value)))), /*#__PURE__*/React.createElement("strong", {
+    }, tick(value), index === 2 ? ' ' + UNIT : ''))), /*#__PURE__*/React.createElement("strong", {
       className: "aw-scale-gutter"
-    }, maximum))) : /*#__PURE__*/React.createElement(window.WorkbenchListControls.EmptyState, {
+    }, maximum, " ", UNIT))) : /*#__PURE__*/React.createElement(window.WorkbenchListControls.EmptyState, {
       kind: "empty",
       title: "\u5F53\u524D\u8303\u56F4\u6682\u65E0\u6570\u636E"
     }));
@@ -83,7 +86,7 @@
       style: {
         top: 0
       }
-    }, tick(max)), /*#__PURE__*/React.createElement("span", {
+    }, tick(max), " ", UNIT), /*#__PURE__*/React.createElement("span", {
       style: {
         top: '50%'
       }
@@ -121,7 +124,7 @@
         cy: y(row[key]),
         r: 3,
         vectorEffect: "non-scaling-stroke"
-      }, /*#__PURE__*/React.createElement("title", null, row.label, " \xB7 ", title, " ", row[key], " \u9053"))));
+      }, /*#__PURE__*/React.createElement("title", null, row.label, " \xB7 ", title, " ", row[key], " ", UNIT))));
     })))), /*#__PURE__*/React.createElement("div", {
       className: "aw-x-axis"
     }, /*#__PURE__*/React.createElement("span", null, points[0].label), /*#__PURE__*/React.createElement("span", null, points[points.length - 1].label)), /*#__PURE__*/React.createElement("details", {
@@ -137,15 +140,16 @@
       scope: "col"
     }, "\u65E5\u671F"), /*#__PURE__*/React.createElement("th", {
       scope: "col"
-    }, "\u8BA1\u5212\u7D2F\u8BA1\u5B8C\u5DE5"), /*#__PURE__*/React.createElement("th", {
+    }, "\u8BA1\u5212\u7D2F\u8BA1\u5B8C\u5DE5\uFF08\u9053\uFF09"), /*#__PURE__*/React.createElement("th", {
       scope: "col"
-    }, "\u5DF2\u786E\u8BA4\u6574\u9053\u5B8C\u5DE5"))), /*#__PURE__*/React.createElement("tbody", null, points.map(row => /*#__PURE__*/React.createElement("tr", {
+    }, "\u5DF2\u786E\u8BA4\u6574\u9053\u5B8C\u5DE5\uFF08\u9053\uFF09"))), /*#__PURE__*/React.createElement("tbody", null, points.map(row => /*#__PURE__*/React.createElement("tr", {
       key: row.time
     }, /*#__PURE__*/React.createElement("th", {
       scope: "row"
     }, window.WorkbenchFormat.date(row.label)), /*#__PURE__*/React.createElement("td", null, row.planned), /*#__PURE__*/React.createElement("td", null, row.actual == null ? '未知' : row.actual))))))));
   }
-  const resourceColumns = [['resource_label', '实际资源'], ['operations', '涉及工序'], ['events', '旧现场事件数'], ['production_reports', '逐次报工数'], ['records', '全部记录数'], ['effective_processing_hours', '有效加工工时（小时）'], ['known_effective_processing_hours', '已知工时小计（小时）'], ['unknown_hour_events', '工时未知记录数']].map(([key, label]) => ({
+  // 列名里的「历史现场记录」从词表取，所以做成函数，在渲染时再读。
+  const resourceColumns = () => [['resource_label', '实际资源'], ['operations', '涉及工序'], ['events', window.WorkbenchTerms.legacy_field_records + '数'], ['production_reports', '逐次报工数'], ['records', '全部记录数'], ['effective_processing_hours', '有效加工工时（小时）'], ['known_effective_processing_hours', '已知工时小计（小时）'], ['unknown_hour_events', '工时未知记录数']].map(([key, label]) => ({
     key,
     label
   }));

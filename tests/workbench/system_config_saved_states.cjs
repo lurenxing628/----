@@ -33,7 +33,7 @@ async function states(page, H) {
   const initialCount = report.requests.filter(row => row.method === 'POST').length;
   const original = (await read(page)).data.values;
   await page.getByLabel('深色', { exact: true }).check(); await page.getByLabel('每页条数').selectOption('25');
-  await page.getByLabel('紧凑行距', { exact: true }).uncheck();
+  await page.getByLabel('紧凑表格', { exact: true }).uncheck();
   assert.equal(report.requests.filter(row => row.method === 'POST').length, initialCount);
   assert.deepEqual((await read(page)).data.values, original); passed('preferences-never-write-maintenance-config');
   for (const value of ['0', '1.5', '1441', '']) {
@@ -51,7 +51,7 @@ async function states(page, H) {
   assert.deepEqual(await pending(page), originalPending);
   assert(await page.getByLabel('深色', { exact: true }).isChecked());
   assert.equal(await page.getByLabel('每页条数').inputValue(), '25');
-  assert.equal(await page.getByLabel('紧凑行距', { exact: true }).isChecked(), false);
+  assert.equal(await page.getByLabel('紧凑表格', { exact: true }).isChecked(), false);
   passed('equal-readback-before-acknowledgement-keeps-original-lock');
   await page.reload(); await page.getByRole('button', { name: '确认结果', exact: true }).waitFor(); await settled(page);
   assert(await save(page).isDisabled()); assert.equal(report.requests.filter(row => row.method === 'POST').length, count);

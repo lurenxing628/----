@@ -88,7 +88,7 @@ async function checkGeometry(page, kind) {
           await page.getByRole('checkbox', {name: '显示初始计划', exact: true}).uncheck();
           await page.getByRole('button', {name: '查看当前安排', exact: true}).click();
         }
-        const zoomName = kind === 'plan' ? '放大时间轴' : kind === 'candidate' ? '放大候选时间轴' : '放大甘特';
+        const zoomName = kind === 'plan' ? '放大时间轴' : kind === 'candidate' ? '放大候选时间轴' : '放大试调时间轴';
         await page.getByRole('button', {name: zoomName, exact: true}).click();
         await page.getByRole('button', {name: zoomName, exact: true}).click();
         if (kind === 'plan') await page.getByRole('button', {name: '定位选中任务', exact: true}).click();
@@ -96,9 +96,9 @@ async function checkGeometry(page, kind) {
         await marker.focus(); await marker.press('Enter'); await settled(page);
         assert.equal(await marker.getAttribute('aria-pressed'), 'true', 'Keyboard can select points');
         report.actions.push({kind, type: 'zoom-pan-point-click-and-keyboard'});
-        if (kind === 'plan') await page.getByRole('button', {name: '显示完整时间范围', exact: true}).click();
+        if (kind === 'plan') await (async () => { const fit = page.getByRole('button', {name: '显示完整时间范围', exact: true}); await fit.waitFor(); if (await fit.isEnabled()) await fit.click(); })();
         else {
-          const shrink = kind === 'candidate' ? '缩小候选时间轴' : '缩小甘特';
+          const shrink = kind === 'candidate' ? '缩小候选时间轴' : '缩小试调时间轴';
           await page.getByRole('button', {name: shrink, exact: true}).click();
           await page.getByRole('button', {name: shrink, exact: true}).click();
         }

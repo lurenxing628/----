@@ -157,10 +157,10 @@
       acknowledge
     };
   }
-  // Keep this component mounted across tab/source changes: it owns the system-only original request.
+  // Keep this component mounted across tab changes: it owns the system-only original request.
+  // 系统管理只读本机数据，没有别的数据来源可切换。
   function Workspace({
     tab,
-    source = 'current',
     theme,
     onSetTheme,
     pageSize,
@@ -185,8 +185,7 @@
     React.useLayoutEffect(() => {
       if (onReadSuspendedChange) onReadSuspendedChange(suspended);
     }, [suspended, onReadSuspendedChange]);
-    const current = source === 'current',
-      enabled = current && !suspended,
+    const enabled = !suspended,
       serial = revision + ':' + version;
     const [visited, setVisited] = React.useState({});
     React.useEffect(() => {
@@ -196,13 +195,8 @@
       }));
     }, [enabled, tab]);
     return /*#__PURE__*/React.createElement("div", {
-      className: "sm-maintenance-workspace plana",
-      "data-system-maintenance": "v1",
-      style: {
-        padding: 0,
-        maxWidth: 'none',
-        borderRadius: 0
-      }
+      className: "sm-maintenance-workspace sm-maintenance-workspace-flush plana",
+      "data-system-maintenance": "v1"
     }, /*#__PURE__*/React.createElement(C.Styles, null), suspended && !(command.hostBusy && !command.intent && !command.hostError && !command.storageError && !command.host) ? /*#__PURE__*/React.createElement(window.SystemRestorePanel, {
       command: command,
       api: api,
@@ -213,7 +207,7 @@
     }), suspended && command.hostBusy && !command.intent && /*#__PURE__*/React.createElement("p", {
       className: "sm-note",
       role: "status"
-    }, "\u6B63\u5728\u6838\u5BF9\u8F6F\u4EF6\u7EF4\u62A4\u72B6\u6001\uFF0C\u8FD8\u6CA1\u6709\u8BFB\u53D6\u6570\u636E\u5E93\u3002"), (!current || tab === 'overview') && !suspended && children, ['backups', 'logs'].map(kind => visited[kind] || enabled && tab === kind ? /*#__PURE__*/React.createElement("div", {
+    }, "\u6B63\u5728\u6838\u5BF9\u8F6F\u4EF6\u7EF4\u62A4\u72B6\u6001\uFF0C\u8FD8\u6CA1\u6709\u8BFB\u53D6\u6570\u636E\u5E93\u3002"), tab === 'overview' && !suspended && children, ['backups', 'logs'].map(kind => visited[kind] || enabled && tab === kind ? /*#__PURE__*/React.createElement("div", {
       key: kind,
       hidden: !enabled || tab !== kind
     }, /*#__PURE__*/React.createElement(window.SystemMaintenanceRecords, {

@@ -20,10 +20,10 @@
     const request = useRead(signal => window.ReportAPI.readView(api, input, signal), JSON.stringify(input) + revision);
     const response = request.result, data = response && response.data;
     const captionPlan = !request.busy && !request.error && data && data.plan;
-    const captionStatus = captionPlan && ({ official: captionPlan.is_current_official ? '当前正式采用' : '历史正式计划', candidate: window.WorkbenchTerms.candidate, scenario: window.WorkbenchTerms.trial_scenario })[captionPlan.kind];
+    const captionStatus = captionPlan && ({ official: captionPlan.is_current_official ? window.WorkbenchTerms.current_official : window.WorkbenchTerms.historical_official, candidate: window.WorkbenchTerms.candidate, scenario: window.WorkbenchTerms.trial_scenario })[captionPlan.kind];
     window.WorkbenchCaption.useCaption(captionStatus ? {
       reference: captionPlan.plan_ref, label: mode === 'review' ? '复盘计划' : '报表计划', name: captionPlan.display_name, status: captionStatus,
-      version: captionPlan.kind === 'official' && Number.isSafeInteger(captionPlan.version) ? '正式 v' + captionPlan.version : undefined,
+      version: captionPlan.kind === 'official' && Number.isSafeInteger(captionPlan.version) ? window.WorkbenchTerms.plan_version(captionPlan.version) : undefined,
       range: data.scope.plan_finish_date_from && data.scope.plan_finish_date_to ? '计划完工 ' + data.scope.plan_finish_date_from + ' 至 ' + data.scope.plan_finish_date_to : undefined
     } : null);
     window.WorkbenchPageContext.useSnapshot(data ? {
@@ -65,11 +65,13 @@
       setDownloading(true); setError(null); setNotice('');
       try {
         const result = await api.download(data.exports.url, { ...window.ReportAPI.scope(data.scope), ...window.ReportAPI.table(state, data.topic), snapshot_ref: response.meta.snapshot_ref, format });
-        setNotice('已交给浏览器下载：' + result.filename + '（当前筛选全部 ' + data.page.total + ' 项）。');
+        setNotice(window.WorkbenchTerms.download_started(result.filename) + '（当前筛选全部 ' + data.page.total + ' 项）。');
       }
       catch (failure) { setError(failure); } finally { setDownloading(false); }
     }
-    const title = mode === 'review' ? '执行复盘' : '报表中心';
+    // 执行复盘以图表分析为主体：图表直接展开放最前，不显示报表子页签和导出范围，表格放在后面；报表中心保持原样。
+    const review = mode === 'review';
+    const title = review ? '执行复盘' : '报表中心';
     React.useLayoutEffect(() => {
       if (pendingViewFocus !== mode) return;
       const tab = document.getElementById('analytics-view-' + mode);
@@ -98,9 +100,9 @@
       onNav(target, { plan_ref: data.plan.plan_ref, task_ref: row.task_ref, operation_ref: operationRef, scope: targetScope,
         ...(reportRef ? { report_ref: reportRef } : {}), return_to: { view: mode, context: currentContext() } });
     }
-    return <section ref={root} className={mode === 'review' ? 'er-workbench rw-workbench' : 'rw-workbench'} aria-label={title} data-source="production" data-ready={!!data}>
+    return <section ref={root} className={review ? 'er-workbench rw-workbench' : 'rw-workbench'} aria-label={title} data-source="production" data-ready={!!data}>
       <Styles />
-      <header className="rw-header"><div><h2 className="wb-page-title">{title}</h2><p className="wb-page-context">{data ? data.plan.display_name + ' · 当前正式计划与报工记录' : '当前正式计划'}{response && <span className="rw-asof">数据截至 {window.WorkbenchFormat.dateTime(response.meta.as_of)}</span>}</p></div>
+      <header className="rw-header"><div><h2 className="wb-page-title">{title}</h2><p className="wb-page-context">{data ? data.plan.display_name + ' · 当前正式计划与报工记录' : '当前正式计划'}{response && <span className="rw-asof">{window.WorkbenchTerms.data_as_of(window.WorkbenchFormat.dateTime(response.meta.as_of))}</span>}</p></div>
         <div className="rw-actions">{initialContext.returnTo && initialContext.returnTo.view === 'calib' && <Button icon="arrow-left"
           disabled={typeof onNav !== 'function'} onClick={() => go('calib')}>返回工时校准</Button>}
           {initialContext.returnTo && ['reports', 'review'].includes(initialContext.returnTo.view) && <Button icon="arrow-left"
@@ -118,18 +120,19 @@
       </div>
       <Scope value={scope} onChange={changeScope} choices={lastChoices} busy={request.busy} /></div>
       <div id="analytics-view-panel" role="tabpanel" aria-labelledby={'analytics-view-' + mode}>
+      {data && review && <window.ReviewCharts data={data} expanded resourceView={resourceView} onResourceView={setResourceView} onDrill={typeof onNav === 'function' ? drill : undefined} />}
       <div className="rw-results wb-surface">
-      {mode !== 'review' && <Tabs topic={state.topic} onChange={changeTopic} />}
+      {!review && <Tabs topic={state.topic} onChange={changeTopic} />}
       <ErrorBox error={request.error || error} />{request.error && <Button icon="refresh-cw" onClick={reload}>刷新报表数据</Button>}
       {notice && <p className="rw-notice" role="status">{notice}</p>}
       {request.busy && <window.WorkbenchListControls.EmptyState kind="loading" title="正在读取当前范围" />}
-      {data && <div id="report-topic-panel" role={mode === 'review' ? undefined : 'tabpanel'} aria-labelledby={mode === 'review' ? undefined : 'report-tab-' + state.topic}>
+      {data && <div id="report-topic-panel" role={review ? undefined : 'tabpanel'} aria-labelledby={review ? undefined : 'report-tab-' + state.topic}>
         <div className="rw-summary"><Metrics summary={data.summary} topic={state.topic} />
         <window.ReportEvidence.NoFeedback summary={data.summary} /></div>
-        <div className="rw-table-heading wb-surface-row wb-surface-divider"><div className="rw-table-title"><h3>{state.topic === 'records' ? '逐次报工与旧现场事件' : ['machines', 'people'].includes(state.topic) ? '实际资源记录' : '范围内工序'}</h3><span>{data.page.total} 项</span></div>
+        <div className="rw-table-heading wb-surface-row wb-surface-divider"><div className="rw-table-title"><h3>{state.topic === 'records' ? '逐次报工与' + window.WorkbenchTerms.legacy_field_records : ['machines', 'people'].includes(state.topic) ? '实际资源记录' : '范围内工序'}</h3><span>{data.page.total} 项</span></div>
           <div className="rw-filters"><Sort topic={state.topic} state={state} onChange={changePage} />
-            <label>格式<select aria-label="导出格式" value={format} onChange={event => setFormat(event.target.value)}><option value="csv">CSV</option><option value="xlsx">XLSX</option></select></label>
-            <Button transfer="export" busy={downloading} disabled={request.busy} reasonDisplay="inline" reason={!data.page.total ? '当前范围没有可导出的结果。' : ''} onClick={download}>导出范围</Button></div></div>
+            {!review && <><label>格式<select aria-label="导出格式" value={format} onChange={event => setFormat(event.target.value)}><option value="csv">CSV</option><option value="xlsx">XLSX</option></select></label>
+            <Button transfer="export" busy={downloading} disabled={request.busy} reasonDisplay="inline" reason={!data.page.total ? '当前范围没有可导出的结果。' : ''} onClick={download}>导出范围</Button></>}</div></div>
         <div className={'rw-result-content' + (selected ? ' wb-detail-layout' : '')}><div className="rw-list-pane">
         <Table data={data} onDetail={ref => { setSelected(ref); setDetailView({ page: 1, size: 10 }); }} busy={request.busy} primary /><Page page={data.page} onChange={changePage} busy={request.busy} /></div>
         {selected && <window.ReportDetail api={api} operationRef={selected} input={{ ...window.ReportAPI.scope(data.scope), ...window.ReportAPI.table(state, data.topic), snapshot_ref: response.meta.snapshot_ref }} onClose={() => setSelected(null)}
@@ -137,7 +140,7 @@
       </div>}
       </div>
       {data && <>
-        <window.ReviewCharts data={data} open={chartsOpen} onChange={setChartsOpen} resourceView={resourceView} onResourceView={setResourceView} onDrill={typeof onNav === 'function' ? drill : undefined} />
+        {!review && <window.ReviewCharts data={data} open={chartsOpen} onChange={setChartsOpen} resourceView={resourceView} onResourceView={setResourceView} onDrill={typeof onNav === 'function' ? drill : undefined} />}
         <div className="rw-support"><details className="rw-limitations"><summary>统计说明与待补资料</summary><ul>{data.data_gaps.map(text => <li key={text}>{text}</li>)}</ul></details>
         <details className="rw-catalog" open={catalog} onToggle={event => setCatalog(event.currentTarget.open)}><summary>其他报表</summary>
           {catalog && <window.ReportCatalog api={api} scope={data.scope} snapshot={response.meta.snapshot_ref} />}</details></div>

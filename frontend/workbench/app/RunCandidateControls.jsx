@@ -20,7 +20,7 @@
   }
   function Status({ candidate }) {
     return <span className={'pill ' + (candidate.status === 'completed' && candidate.completeness === 'complete' ? 'ok' : 'warn')} data-candidate-status={candidate.status}>
-      <span className="dot" />{{ completed: '已完成', partial: '部分完成', failed: '失败', skipped: '已跳过' }[candidate.status]}
+      <span className="dot" />{window.WorkbenchTerms.candidate_statuses[candidate.status]}
       {candidate.completeness === 'unknown' && ' · 完整性未知'}</span>;
   }
   function Catalog({ result, selectedRef, busy, query, onQuery, onSelect }) {
@@ -35,12 +35,12 @@
       <summary>候选比较{d && ' · ' + d.candidate_count + ' 项'}{selectedRef && !open ? ' · 展开查看其他候选' : ''}</summary>
       <section aria-label="候选比较"><div className="rc-heading"><h3>候选比较{d && ' · ' + d.candidate_count + ' 项'}</h3>
       <div className="rc-tools"><label>状态 <select aria-label="候选状态" value={query.status || 'all'} disabled={busy} onChange={e => onQuery({ status: e.target.value })}>
-        {[['all', '全部'], ['completed', '已完成'], ['partial', '部分完成'], ['failed', '失败'], ['skipped', '已跳过']].map(([v, t]) => <option key={v} value={v}>{t}</option>)}</select></label>
+        {[['all', '全部'], ...Object.entries(window.WorkbenchTerms.candidate_statuses)].map(([v, t]) => <option key={v} value={v}>{t}</option>)}</select></label>
         <label>排序 <select aria-label="候选排序" value={query.sort || 'sequence'} disabled={busy} onChange={e => onQuery({ sort: e.target.value })}>
           <option value="sequence">生成顺序</option><option value="label">名称</option><option value="task_count">安排数</option></select></label></div></div>
       {d && <><div className="rc-table wb-table-frame" data-sticky-head data-sticky-actions><table className="wb-table" aria-label="候选比较"><caption className="wb-visually-hidden">候选比较</caption><thead><tr><th scope="col" className="wb-col-key">{window.WorkbenchTerms.candidate}</th><th scope="col">状态</th><th scope="col">安排</th><th scope="col">{window.WorkbenchTerms.overdue_count}</th><th scope="col">{window.WorkbenchTerms.total_tardiness_hours}（小时）</th><th scope="col">时长（小时）</th><th scope="col" className="wb-col-actions">操作</th></tr></thead><tbody>
-        {d.candidates.map((c, index) => <tr key={c.candidate_ref} data-candidate-ref={c.candidate_ref} aria-selected={c.candidate_ref === selectedRef}>
-          <td className="wb-col-key"><div className="rc-name"><span>{c.label || '生成时名称未填写'}</span><window.WorkbenchReference value={c.candidate_ref} /></div></td><td><Status candidate={c} /></td><td>{c.task_count}</td>
+        {d.candidates.map((c, index) => <tr key={c.candidate_ref} data-candidate-ref={c.candidate_ref} aria-current={c.candidate_ref === selectedRef ? 'true' : undefined}>
+          <td className="wb-col-key"><div className="rc-name"><span>{c.label || window.WorkbenchTerms.name_missing}</span><window.WorkbenchReference value={c.candidate_ref} /></div></td><td><Status candidate={c} /></td><td>{c.task_count}</td>
           {['overdue_count', 'total_tardiness_hours', 'makespan_hours'].map(k => <td key={k}><Metric metric={c.metrics[k]} /></td>)}
           <td className="wb-col-actions"><Button icon="search" className="mini" aria-label={'查看候选 ' + (c.label || '第 ' + ((d.page.number - 1) * d.page.size + index + 1) + ' 项')} disabled={busy || d.capabilities.view !== true || c.capabilities.view !== true} onClick={() => onSelect(c)}>查看</Button></td></tr>)}</tbody></table></div>
         {!d.candidates.length && <p className="rc-muted">这次排产在当前筛选下没有候选方案。</p>}
@@ -51,12 +51,12 @@
   }
   function Generation({ data, analysis }) {
     const g = data.generation, input = g.input, M = window.RunCandidateModel;
-    return <section aria-label="生成时范围"><div className="rc-heading"><div className="rc-tools"><h3>当前：{data.candidate.label || '名称未填写'}</h3><Status candidate={data.candidate} /><span className="rc-pending">生成时还没成为正式计划</span></div>
+    return <section aria-label="生成时范围"><div className="rc-heading"><div className="rc-tools"><h3>当前：{data.candidate.label || window.WorkbenchTerms.name_missing}</h3><Status candidate={data.candidate} /><span className="rc-pending">生成时还没成为正式计划</span></div>
       <span>生成日期：{input.start_date || '未记录'} 至 {input.end_date || '未记录'}</span></div>
       <div className="rc-source-summary"><details className="rc-reasons rc-generation wb-ref"><summary>生成资料与记录编号</summary><dl className="rc-meta">
         <div><dt>提交 / 结束时间</dt><dd>{M.timeLabel(g.accepted_at)}<small>{M.timeLabel(g.finished_at)}</small></dd></div>
         <div><dt>齐套检查 / 缺资源</dt><dd>{input.ready_check === null ? '未记录' : input.ready_check ? '开启' : '关闭'} / {{ auto_assign: '自动分配', exclude: '暂不排' }[input.missing_resource_policy] || '未记录'}</dd></div>
-        <div><dt>已有执行 / 当时的正式计划</dt><dd>{input.completed_policy === 'preserve_actuals' ? '保留已有开工和完工记录' : '执行规则未记录'}<small>{g.baseline.captured_task_count === null ? '正式计划安排数未知' : '已保留 ' + g.baseline.captured_task_count + ' 道正式计划安排'}</small></dd></div></dl>
+        <div><dt>{'已有执行 / ' + window.WorkbenchTerms.baseline_plan}</dt><dd>{input.completed_policy === 'preserve_actuals' ? '保留已有开工和完工记录' : '执行规则未记录'}<small>{g.baseline.captured_task_count === null ? '正式计划安排数未知' : '已保留 ' + g.baseline.captured_task_count + ' 道正式计划安排'}</small></dd></div></dl>
       <div className="rc-muted">名称、资源、交期和执行状态来自生成时保存的资料，未读取后来的修改。{analysis ? analysis.baseline.reason && analysis.baseline.reason.message : g.baseline.reason.message}</div>
       <div className="rc-muted">{analysis ? '排产时选批：' + analysis.batches.map(row => row.batch_id).join(' / ') : '排产时的批次清单暂不可用。'}</div>
       <div>排产记录编号：<code>{g.run_ref}</code></div><div>候选记录编号：<code>{data.candidate.candidate_ref}</code></div>
@@ -96,7 +96,7 @@
         [summary.unknown_count, '交付待确认'], [summary.batch_count, '关联批次']].map(([value, label]) => <div key={label}><dt>{label}</dt><dd>{M.number(value)}</dd></div>)}</dl>
       <p className="rc-muted">依据：排产时的资料和同批完整候选安排。不是实际完工或发货；没有核对等待、停机或缺料的原因。</p>
       {data.issues.map((issue, index) => <p className="rc-notice" key={index}>{issue.message}</p>)}
-      <div className="rc-table wb-table-frame" data-sticky-head data-sticky-actions><table className="wb-table" aria-label="候选交付风险列表"><caption className="wb-visually-hidden">候选交付风险列表</caption><thead><tr>{['批次 / 零件', '批量 / 工序覆盖', '交付截至日', '全批计划完工', '预计交付', '末端工序 / 依据'].map(label => <th scope="col" key={label}>{label}</th>)}</tr></thead>
+      <div className="rc-table wb-table-frame" data-sticky-head data-sticky-actions><table className="wb-table" aria-label="候选交付风险列表"><caption className="wb-visually-hidden">候选交付风险列表</caption><thead><tr>{['批次 / 零件', '批量 / 工序覆盖', '交期', '全批计划完工', '预计交付', '末端工序 / 依据'].map(label => <th scope="col" key={label}>{label}</th>)}</tr></thead>
         <tbody>{data.items.slice((current - 1) * 20, current * 20).map(row => <tr key={row.batch_ref}>
           <td>{row.batch_id}<small>{row.part_no || '图号未记录'} · {row.part_label || '名称未填写'}</small></td>
           <td>{M.number(row.quantity)} 件<small>{row.scheduled_operation_count} / {row.operation_count} 道</small></td>

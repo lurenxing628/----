@@ -83,7 +83,7 @@ async function main() {
         report.new_report = r;
       }
       await shot(page, 'field-' + index);
-      await detail.getByRole('button', { name: '实际甘特', exact: true }).click(); await page.locator('[data-actual-scroll]').waitFor();
+      await detail.getByRole('button', { name: '现场实际甘特', exact: true }).click(); await page.locator('[data-actual-scroll]').waitFor();
       await page.getByRole('checkbox', { name: '详情', exact: true }).check(); await flush();
       const actual = latest(item => /\/actual-gantt\?/.test(item.url)).data;
       const item = actual.items.find(item => item.task.task_ref === task.task_ref);
@@ -99,7 +99,7 @@ async function main() {
       await mark.hover(); assert((await page.getByRole('tooltip').innerText()).includes(piece));
       assert((await page.getByRole('tooltip').innerText()).includes('计划应做：1.00 件 · 批次：3.00 件'));
       await shot(page, 'actual-' + index);
-      await page.getByRole('button', { name: '导出 CSV', exact: true }).click();
+      await page.getByRole('button', { name: '导出', exact: true }).click();
       const download = page.waitForEvent('download'); await page.getByRole('button', { name: '下载 CSV', exact: true }).click();
       const file = path.join(root, 'downloads', 'fb-piece-' + index + '.csv'); await (await download).saveAs(file);
       const csv = fs.readFileSync(file, 'utf8'); assert(csv.includes('单件编号') && csv.includes(piece) && csv.includes(task.task_ref));
@@ -116,10 +116,10 @@ async function main() {
     await page.evaluate(planRef => { history.replaceState({ workbench: { view: 'field', key: 900, context: { plan_ref: planRef } } }, '', '/workbench?view=field'); }, ready.expected.original_plan_ref);
     await page.reload(); await page.locator('[data-field-task]').waitFor(); await flush();
     assert((await page.locator('[data-field-quantity]').innerText()).includes('/ 未知'));
-    assert((await page.locator('[data-field-quantity]').innerText()).includes('旧计划未记录原数量证据'));
+    assert((await page.locator('[data-field-quantity]').innerText()).includes('原计划未记录应做数量'));
     await page.locator('.field-link').click(); await page.locator('.field-detail').waitFor();
     await shot(page, 'old-field-unknown');
-    await page.getByRole('button', { name: '实际甘特', exact: true }).click(); await page.locator('[data-actual-scroll]').waitFor();
+    await page.getByRole('button', { name: '现场实际甘特', exact: true }).click(); await page.locator('[data-actual-scroll]').waitFor();
     await page.getByRole('checkbox', { name: '详情', exact: true }).check();
     assert((await page.getByLabel('工序详情', { exact: true }).innerText()).includes('计划应做：未知 件 · 批次：未知 件'));
     await shot(page, 'old-actual-unknown');

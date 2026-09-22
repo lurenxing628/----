@@ -29,6 +29,11 @@ assert.deepEqual(JSON.parse(JSON.stringify(T)), {
   overdue_count: '预计超期批次', delay_hours: '超期时长', total_tardiness_hours: '总拖期', utilization: '利用率',
   candidate: '候选方案', official_plan: '正式计划', trial: '试调', trial_draft: '试调草稿', trial_scenario: '试调方案',
   hours_unit: '小时', handler: '经办人', recorder: '记录人', owner: '责任人',
+  refresh_latest: '刷新最新资料', accept_latest: '已核对，继续编辑', personal_calendar: '个人日历',
+  name_missing: '名称未填写', legacy_field_records: '历史现场记录', shared_operation: '共同工序', overdue: '超期',
+  current_official: '当前正式', historical_official: '历史正式', baseline_plan: '排产时的正式计划', initial_plan: '初始计划',
+  run_statuses: { queued: '等待计算', running: '正在计算', complete: '计算完成', partial: '部分完成', failed: '计算失败', interrupted: '已中断' },
+  candidate_statuses: { completed: '已完成', partial: '部分完成', failed: '失败', skipped: '已跳过' },
   report_actions: { create: '新增', supplement: '补齐', correct: '更正' },
   actions: { add: '新增', save: '保存', confirm: '确认', cancel: '取消', clear: '清除', import: '导入', export: '导出', download: '下载',
     refresh: '刷新', query_result: '查询结果', adopt: '采用' },
@@ -42,6 +47,9 @@ assert.equal(T.outcomes.rejected('采用', '批次号重复。'), '上次采用�
 assert.equal(T.outcomes.done('导入'), '导入已完成。');
 assert.equal(T.outcomes.done('导入', '请到批次管理查看'), '导入已完成。请到批次管理查看。');
 assert.equal(T.outcomes.unknown('提交'), '提交结果不确定，可能已经生效。请刷新后核对，不要重复提交。');
+assert.equal(T.plan_version(3), '正式 v3');
+assert.equal(T.download_started('批次.xlsx'), '已交给浏览器下载：批次.xlsx');
+assert.equal(T.data_as_of('2026-09-21 16:00'), '数据截至 2026-09-21 16:00');
 assert(Object.isFrozen(T));
 assert(Object.isFrozen(T.actions));
 assert.equal(Ref({}), null);

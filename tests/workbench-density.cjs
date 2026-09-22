@@ -43,4 +43,7 @@ assert.equal(saved.api.get().density, 'compact');
 saved.events.storage({ key: 'aps_density' }); assert.equal(saved.api.get().density, 'comfortable');
 const snapshot = saved.api.get(); snapshot.density = 'compact';
 assert.equal(saved.api.get().density, 'comfortable');
+const quiet = host('compact'), notices = []; quiet.api.subscribe(value => notices.push(value));
+quiet.events.pageshow(); assert.equal(notices.length, 0, 'pageshow with an unchanged preference must not notify');
+quiet.storage.value = 'comfortable'; quiet.events.pageshow(); assert.equal(notices.length, 1); assert.equal(notices[0].density, 'comfortable');
 console.log('workbench density preference contract passed');

@@ -3,7 +3,7 @@
 const assert = require('node:assert/strict'), fs = require('node:fs'), http = require('node:http'), path = require('node:path'), crypto = require('node:crypto');
 const { chromium } = require('playwright'), { compile } = require('../../scripts/workbench/compile.cjs');
 const root = path.resolve(__dirname, '../..'), output = process.argv[2], backend = process.argv[3];
-const files = ['WorkbenchFormat.js', 'WorkbenchTerms.js', 'WorkbenchReferences.jsx', 'WorkbenchGuards.js', 'WorkbenchCaption.jsx', 'WorkbenchPageContext.jsx', 'resource-contract.js', 'ResourceControls.jsx', 'WorkbenchGuardHost.jsx', 'WorkbenchControlStyles.jsx', 'WorkbenchControlBridge.js', 'WorkbenchSelectMenu.jsx', 'WorkbenchDatePickerModel.js', 'WorkbenchDatePicker.jsx', 'WorkbenchControls.jsx', 'WorkbenchListControls.jsx', 'WorkbenchNumberControls.jsx',  'PointContract.js', 'PointGantt.jsx', 'TrialContract.js', 'TrialAPI.js', 'TrialSession.js',
+const files = ['WorkbenchFormat.js', 'WorkbenchTerms.js', 'WorkbenchReferences.jsx', 'WorkbenchGuards.js', 'WorkbenchCaption.jsx', 'WorkbenchPageContext.jsx', 'resource-contract.js', 'ResourceControls.jsx', 'WorkbenchGuardHost.jsx', 'WorkbenchControlStyles.jsx', 'WorkbenchControlBridge.js', 'WorkbenchSelectMenu.jsx', 'WorkbenchDatePickerModel.js', 'WorkbenchDatePicker.jsx', 'WorkbenchControls.jsx', 'WorkbenchListControls.jsx', 'WorkbenchNumberControls.jsx',  'PointContract.js', 'PointGantt.jsx', 'PlanGanttModel.js', 'FieldContract.js', 'RunCandidateModel.js', 'TrialContract.js', 'TrialAPI.js', 'TrialSession.js',
   ...(fs.existsSync(path.join(root, 'frontend/workbench/app/TrialExport.js')) ? ['TrialExport.js'] : []),
   'TrialControls.jsx', 'TrialViewState.js', 'TrialCatalog.jsx', 'TrialGantt.jsx', 'TrialDetails.jsx', 'TrialResults.jsx', 'TrialStyles.jsx', 'TrialWorkspace.jsx'];
 const styleSources = JSON.parse(fs.readFileSync(path.join(root, 'scripts/workbench/build-order.json'), 'utf8')).styles.map(name => {
@@ -38,6 +38,10 @@ const report = { browser: null, variants: [], downloads: [], boundary_checks: []
   sources: sources.concat(styleSources).map(s => ({ path: s.path, sha256: crypto.createHash('sha256').update(s.code).digest('hex') })) };
 let page, origin, variant;
 const button = name => page.getByRole('button', { name, exact: true });
+const EXPORT_CSV = '下载 CSV（方案对比）', EXPORT_JSON = '下载 JSON（原始数据）';
+// One 导出 button opens the format dialog; each file starts from its own button inside it and the dialog closes on success.
+async function exportDialog() { await button('导出').click(); const dialog = page.getByRole('dialog', { name: '导出试调方案', exact: true }); await dialog.waitFor(); return dialog; }
+async function closeExport() { const dialog = page.getByRole('dialog', { name: '导出试调方案', exact: true }); await dialog.getByRole('button', { name: '取消', exact: true }).click(); await dialog.waitFor({ state: 'hidden' }); }
 const proof = async () => (await page.request.get(origin + '/fixture/export-proof')).json();
 async function shot(name) {
   const file = path.join(output, variant + '-' + name + '.png');
@@ -48,14 +52,16 @@ async function download(name, entry, data) {
   const listener = request => requests.push(request.url()); page.on('request', listener);
   let item;
   try {
-    const pending = page.waitForEvent('download'); await button(name).click(); const file = await pending;
+    const dialog = await exportDialog();
+    const pending = page.waitForEvent('download'); await dialog.getByRole('button', { name, exact: true }).click(); const file = await pending;
+    await dialog.waitFor({ state: 'hidden' });
     const filename = file.suggestedFilename(), dest = path.join(output, variant + '-' + entry + '-' + filename);
     await file.saveAs(dest); item = { variant, entry, filename, path: dest, button: name };
     report.downloads.push(item);
   } finally { page.off('request', listener); }
   assert.deepEqual(requests, [], 'Download must not fetch, re-evaluate, or write');
   const after = await proof(); assert.deepEqual(after, before); item.database_unchanged = true;
-  if (name === '导出对比') {
+  if (name === EXPORT_CSV) {
     assert(item.filename.endsWith('.csv'), 'FIRST ORIGINAL FAILURE: comparison button downloads JSON, not prototype CSV');
     const bytes = fs.readFileSync(item.path); assert.deepEqual([...bytes.subarray(0, 3)], [239, 187, 191]);
     assert(bytes.toString('utf8').includes('批次')); assert(!bytes.toString('utf8').includes('write_token'));
@@ -70,7 +76,7 @@ async function realDTO(entry) {
   const response = await page.request.get(origin + '/api/workbench/v1/trial/' + kind + '/' + entry.target[key]);
   assert.equal(response.status(), 200); const envelope = await response.json();
   assert.equal(envelope.meta.source, 'production');
-  await page.evaluate(target => mountTrial(target), entry.target); await button('导出对比').waitFor();
+  await page.evaluate(target => mountTrial(target), entry.target); await button('导出').waitFor();
   await page.getByRole('tab', { name: '批次对比', exact: true }).waitFor();
   const data = JSON.parse(JSON.stringify(envelope.data, (key, value) => key === 'write_context' ? undefined : value));
   const dto = path.join(output, variant + '-' + entry.name + '-dto.json'); fs.writeFileSync(dto, JSON.stringify(data, null, 2));
@@ -79,25 +85,26 @@ async function realDTO(entry) {
     assert.equal(await page.getByRole('table', { name: '批次交付对比' }).locator('tbody tr').count(), 20);
     assert.equal(await page.locator('.tt-bar').count(), 0, 'Original display query hides tasks, not full DTO');
   }
-  await download('导出对比', entry.name, data);
+  await download(EXPORT_CSV, entry.name, data);
   report.downloads[report.downloads.length - 1].dto = dto;
-  await download('导出原始数据', entry.name, data);
+  await download(EXPORT_JSON, entry.name, data);
   if (entry.name === 'saved-plan') {
     assert(data.change_history.some(change => change.before.machine_ref !== change.after.machine_ref && change.before.operator_ref !== change.after.operator_ref));
     await page.getByRole('tab', { name: '完整任务', exact: true }).click();
     assert.equal(await page.getByRole('table', { name: '完整任务明细' }).locator('tbody tr').count(), 50);
     await page.getByRole('button', { name: '完整任务明细下一页', exact: true }).click();
     assert.equal(await page.getByRole('table', { name: '完整任务明细' }).locator('tbody tr').count(), 22);
-    await download('导出对比', entry.name + '-last-page', data); report.downloads[report.downloads.length - 1].dto = dto;
+    await download(EXPORT_CSV, entry.name + '-last-page', data); report.downloads[report.downloads.length - 1].dto = dto;
     const two = report.downloads.filter(row => row.dto === dto);
     assert.deepEqual(fs.readFileSync(two[0].path), fs.readFileSync(two[1].path), 'Pagination must not affect export');
     await shot(entry.name);
   }
   const geometry = await page.evaluate(() => ({ width: innerWidth, scroll: document.documentElement.scrollWidth,
-    buttons: [...document.querySelectorAll('button')].filter(b => /^(导出对比|导出原始数据)$/.test(b.textContent)).map(b => {
+    buttons: [...document.querySelectorAll('button[data-wb-transfer="export"]')].map(b => {
       const r = b.getBoundingClientRect(); return { left: r.left, right: r.right, top: r.top, bottom: r.bottom, overflow: b.scrollWidth > b.clientWidth + 1 };
     }) }));
-  assert(geometry.scroll <= geometry.width + 1); assert.equal(geometry.buttons.length, 2);
+  // With the dialog closed the page keeps exactly one export control: the 导出 button that opens it.
+  assert(geometry.scroll <= geometry.width + 1); assert.equal(geometry.buttons.length, 1);
   assert(geometry.buttons.every(b => b.left >= 0 && b.right <= geometry.width && !b.overflow));
   if (entry.name === 'saved-plan' && variant === '1920-light') await boundaries(data);
 }
@@ -115,8 +122,8 @@ async function boundaries(real) {
   });
   await page.evaluate(data => { window.czSynthetic = data; mountExport(data); }, data);
   const dto = path.join(output, 'synthetic-boundaries-dto.json'); fs.writeFileSync(dto, JSON.stringify(data, null, 2));
-  await download('导出对比', 'synthetic-boundaries', data); report.downloads[report.downloads.length - 1].dto = dto;
-  await download('导出原始数据', 'synthetic-boundaries', data);
+  await download(EXPORT_CSV, 'synthetic-boundaries', data); report.downloads[report.downloads.length - 1].dto = dto;
+  await download(EXPORT_JSON, 'synthetic-boundaries', data);
   const checks = await page.evaluate(() => {
     const before = JSON.stringify(czSynthetic), result = [];
     const verify = (name, patch) => {
@@ -141,11 +148,13 @@ async function boundaries(real) {
   const downloads = [];
   const listener = file => downloads.push(file.suggestedFilename()); page.on('download', listener);
   await page.evaluate(() => { const d = structuredClone(czSynthetic); d.comparison.batches.pop(); mountExport(d); });
-  await button('导出对比').click(); await page.getByRole('alert').getByText('批次对比不完整，无法导出。', { exact: true }).waitFor();
+  const incomplete = await exportDialog(); await incomplete.getByRole('button', { name: EXPORT_CSV, exact: true }).click();
+  await incomplete.getByRole('alert').getByText('批次对比不完整，无法导出。', { exact: true }).waitFor(); await closeExport();
   assert.deepEqual(downloads, []);
   await page.evaluate(() => { window.czClick = HTMLAnchorElement.prototype.click; HTMLAnchorElement.prototype.click = function () { throw Error('CZ simulated anchor failure'); }; mountExport(czSynthetic); });
-  try { await button('导出对比').click(); await page.getByText('CZ simulated anchor failure', { exact: true }).waitFor(); }
+  try { const failing = await exportDialog(); await failing.getByRole('button', { name: EXPORT_CSV, exact: true }).click(); await failing.getByText('CZ simulated anchor failure', { exact: true }).waitFor(); }
   finally { await page.evaluate(() => { HTMLAnchorElement.prototype.click = czClick; }); }
+  await closeExport();
   await page.waitForFunction(() => czBlobs.every(row => row.revoked));
   assert.equal(await page.locator('a[href^="blob:"]').count(), 0); assert.deepEqual(downloads, []); page.off('download', listener);
   report.boundary_checks.push({ name: 'visible-failure-no-download-and-url-anchor-cleanup', passed: true });

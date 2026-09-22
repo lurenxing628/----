@@ -80,7 +80,7 @@
       value: "inactive"
     }, "\u505C\u7528"), /*#__PURE__*/React.createElement("option", {
       value: "unknown"
-    }, "\u65E7\u72B6\u6001\u672A\u77E5"))), /*#__PURE__*/React.createElement(Button, {
+    }, "\u65E7\u72B6\u6001 / \u539F\u56E0\u672A\u77E5"))), /*#__PURE__*/React.createElement(Button, {
       icon: "refresh-cw",
       "aria-label": "\u5237\u65B0\u5217\u8868",
       disabled: disabled,
@@ -132,7 +132,7 @@
       className: 'pill ' + (entity.status === 'active' ? 'ok' : entity.status === 'inactive' ? 'off' : 'warn')
     }, /*#__PURE__*/React.createElement("span", {
       className: "dot"
-    }), entity.status === 'active' ? '启用' : entity.status === 'inactive' ? '停用' : '旧状态未知')), /*#__PURE__*/React.createElement("td", null, M.memberCount(kind, entity) === null ? '未读取' : M.memberCount(kind, entity)), kind === 'shift_profile' && /*#__PURE__*/React.createElement("td", null, entity.fields.cycle_days), /*#__PURE__*/React.createElement("td", {
+    }), entity.status === 'active' ? '启用' : entity.status === 'inactive' ? '停用' : '旧状态 / 原因未知')), /*#__PURE__*/React.createElement("td", null, M.memberCount(kind, entity) === null ? '未读取' : M.memberCount(kind, entity)), kind === 'shift_profile' && /*#__PURE__*/React.createElement("td", null, entity.fields.cycle_days), /*#__PURE__*/React.createElement("td", {
       className: "wb-col-actions"
     }, /*#__PURE__*/React.createElement("div", {
       className: "rowact"
@@ -404,7 +404,7 @@
         setReview(null);
         load(editor.action, editor.ref, true);
       }
-    }, "\u5237\u65B0\u6700\u65B0\u8D44\u6599"), reason && /*#__PURE__*/React.createElement("p", {
+    }, window.WorkbenchTerms.refresh_latest), reason && /*#__PURE__*/React.createElement("p", {
       role: "status"
     }, reason), review && /*#__PURE__*/React.createElement("div", {
       className: "match-note rc-note"
@@ -415,7 +415,7 @@
       icon: "check",
       disabled: locked,
       onClick: acceptReview
-    }, "\u5DF2\u6838\u5BF9\uFF0C\u7EE7\u7EED\u7F16\u8F91"))))));
+    }, window.WorkbenchTerms.accept_latest))))));
   }
   window.ResourceCatalog = ResourceCatalog;
 })();

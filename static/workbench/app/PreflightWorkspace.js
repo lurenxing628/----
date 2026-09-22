@@ -46,19 +46,10 @@
       "aria-label": "\u6392\u4EA7\u68C0\u67E5\u660E\u7EC6"
     }, /*#__PURE__*/React.createElement("caption", {
       className: "wb-visually-hidden"
-    }, "\u6392\u4EA7\u68C0\u67E5\u660E\u7EC6"), /*#__PURE__*/React.createElement("colgroup", null, /*#__PURE__*/React.createElement("col", {
-      style: {
-        width: '18%'
-      }
-    }), /*#__PURE__*/React.createElement("col", {
-      style: {
-        width: '20%'
-      }
-    }), /*#__PURE__*/React.createElement("col", {
-      style: {
-        width: '15%'
-      }
-    }), /*#__PURE__*/React.createElement("col", null)), /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
+    }, "\u6392\u4EA7\u68C0\u67E5\u660E\u7EC6"), /*#__PURE__*/React.createElement("colgroup", null, ['batch', 'operation', 'status', 'reason'].map(key => /*#__PURE__*/React.createElement("col", {
+      key: key,
+      className: 'pf-col-' + key
+    }))), /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
       scope: "col"
     }, "\u6279\u6B21"), /*#__PURE__*/React.createElement("th", {
       scope: "col"
@@ -314,6 +305,8 @@
       className: currentStep === 2 ? 'btn primary' : 'btn',
       busy: busy,
       disabled: !!initial.error,
+      reason: !initial.error && !value.batch_refs.length ? '请先选择要排产的批次。' : '',
+      reasonDisplay: "tooltip",
       onClick: check
     }, data ? '重新检查' : '开始排产检查'), !renderRunPanel && /*#__PURE__*/React.createElement(Button, {
       icon: "play",

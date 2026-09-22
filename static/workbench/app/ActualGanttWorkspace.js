@@ -16,7 +16,14 @@
     Chain,
     describe
   } = window.ActualGanttControls;
-  const sessions = new Map();
+  // Remembered view positions per navigation context; capped so a long session does not keep growing this map.
+  const sessions = new Map(),
+    SESSION_LIMIT = 20;
+  function remember(key, value) {
+    sessions.delete(key);
+    sessions.set(key, value);
+    while (sessions.size > SESSION_LIMIT) sessions.delete(sessions.keys().next().value);
+  }
   function savedView(value) {
     if (value === undefined) return null;
     const object = item => item !== null && typeof item === 'object' && !Array.isArray(item);
@@ -96,6 +103,7 @@
     const [relatedChain, setRelatedChain] = React.useState(null);
     const lastChain = React.useRef(null);
     const [exportError, setExportError] = React.useState(null),
+      [exportNotice, setExportNotice] = React.useState(''),
       [restore, setRestore] = React.useState(saved ? saved.position : seed.persisted ? seed.persisted.position : null);
     const board = React.useRef(null),
       frame = React.useRef(null),
@@ -166,7 +174,7 @@
     const data = result && result.data;
     const captionPlan = !loading && !error && data && data.plan;
     const captionStatus = captionPlan && {
-      official: captionPlan.is_current_official ? '当前正式采用' : '历史正式计划',
+      official: captionPlan.is_current_official ? window.WorkbenchTerms.current_official : window.WorkbenchTerms.historical_official,
       candidate: window.WorkbenchTerms.candidate,
       scenario: window.WorkbenchTerms.trial_scenario
     }[captionPlan.kind];
@@ -175,7 +183,7 @@
       label: '对照计划',
       name: captionPlan.display_name,
       status: captionStatus,
-      version: captionPlan.kind === 'official' && Number.isSafeInteger(captionPlan.version) ? '正式 v' + captionPlan.version : undefined,
+      version: captionPlan.kind === 'official' && Number.isSafeInteger(captionPlan.version) ? window.WorkbenchTerms.plan_version(captionPlan.version) : undefined,
       range: data.scope.plan_finish_date_from && data.scope.plan_finish_date_to ? '计划完工 ' + data.scope.plan_finish_date_from + ' 至 ' + data.scope.plan_finish_date_to : undefined
     } : null);
     const model = React.useMemo(() => data ? M.layout(data, view, result.meta.as_of) : null, [data, view, result]);
@@ -260,7 +268,7 @@
       measure();
     }, [width, model, restore, position.width]);
     React.useEffect(() => {
-      if (snapshotPosition && !restore) sessions.set(key, {
+      if (snapshotPosition && !restore) remember(key, {
         scope,
         view,
         zoom,
@@ -276,6 +284,19 @@
         center: W.anchor(data, model, view.selected, view.report)
       };
       setZoom(Math.max(1, Math.min(1024, next)));
+    }
+    function fitView() {
+      pending.current = {
+        center: .5
+      };
+      setZoom(1);
+      pan(0);
+    }
+    function zoomKeys(event) {
+      const action = window.ResourceControls.timelineZoomKey(event);
+      if (!action) return;
+      event.preventDefault();
+      if (action === 'fit') fitView();else zoomTo(window.ResourceControls.timelineZoomStep(zoom, action === 'in' ? 1 : -1, 1024));
     }
     function pan(left) {
       if (board.current) {
@@ -310,6 +331,7 @@
           collapsed: {}
         });
         setError(null);
+        setExportNotice('');
       } catch (failure) {
         setError(failure);
       }
@@ -325,6 +347,7 @@
       setLoading(true);
       setScope(next);
       setRefresh(n => n + 1);
+      setExportNotice('');
     }
     function select(item, report) {
       patch({
@@ -401,9 +424,10 @@
         if (!output || !output.blob || !output.blob.size || output.contentType.split(';')[0] !== 'text/csv' || !/^attachment;/i.test(output.disposition)) throw window.APSResourceContract.failure('下载不是有效的 CSV 附件。');
         const url = URL.createObjectURL(output.blob),
           a = document.createElement('a');
+        const name = '现场实际甘特-' + M.fileStamp(result.meta.as_of) + '.csv';
         try {
           a.href = url;
-          a.download = '现场实际甘特-' + result.meta.as_of.replace(/:/g, '') + '.csv';
+          a.download = name;
           document.body.appendChild(a);
           a.click();
         } finally {
@@ -411,6 +435,7 @@
           setTimeout(() => URL.revokeObjectURL(url), 1000);
         }
         setExporting(false);
+        setExportNotice(window.WorkbenchTerms.download_started(name));
       } catch (failure) {
         if (!controller.signal.aborted) setExportError(failure);
       } finally {
@@ -435,7 +460,7 @@
       };
       // Actual uses [] for all batches; Field represents that scope by omission.
       if (viewName === 'field' && Array.isArray(destinationScope.batch_ids) && destinationScope.batch_ids.length === 0) delete destinationScope.batch_ids;
-      if (snapshotPosition) sessions.set(JSON.stringify(returnContext), {
+      if (snapshotPosition) remember(JSON.stringify(returnContext), {
         scope,
         view,
         zoom,
@@ -461,7 +486,7 @@
       className: "wb-page-title"
     }, "\u73B0\u573A\u5B9E\u9645\u7518\u7279"), /*#__PURE__*/React.createElement("span", {
       className: "fg-muted wb-page-context"
-    }, data ? data.plan.display_name + ' · 数据截至 ' + M.time(result.meta.as_of) : loading ? '正在读取计划与现场记录' : '计划与现场记录')), /*#__PURE__*/React.createElement("div", {
+    }, data ? data.plan.display_name + ' · ' + window.WorkbenchTerms.data_as_of(M.time(result.meta.as_of)) : loading ? '正在读取计划与现场记录' : '计划与现场记录')), /*#__PURE__*/React.createElement("div", {
       className: "wb-actions"
     }, /*#__PURE__*/React.createElement(Button, {
       icon: "refresh-cw",
@@ -480,11 +505,15 @@
         const target = initialContext.return_to;
         if (['gantt', 'field', 'analysis', 'reports', 'review', 'dashboard'].includes(target.view)) onNavigate(target.view, target.context || {});
       }
-    }, "\u56DE\u6765\u6E90"))), /*#__PURE__*/React.createElement(ErrorBox, {
+    }, "\u8FD4\u56DE"))), /*#__PURE__*/React.createElement(ErrorBox, {
       error: error
     }), !data && /*#__PURE__*/React.createElement(window.WorkbenchControls.EmptyState, {
-      kind: loading ? 'loading' : 'empty',
-      title: loading ? '正在读取计划与现场记录…' : error ? '现场实际甘特未读取成功' : '暂无现场实际甘特数据'
+      kind: loading ? 'loading' : error ? 'error' : 'empty',
+      title: loading ? '正在读取计划与现场记录…' : error ? '现场实际甘特未读取成功' : '暂无现场实际甘特数据',
+      action: error && !loading ? /*#__PURE__*/React.createElement(Button, {
+        icon: "refresh-cw",
+        onClick: reload
+      }, "\u5237\u65B0") : undefined
     }), !data && !loading && onNavigate && /*#__PURE__*/React.createElement(Button, {
       icon: "chart-gantt",
       onClick: () => onNavigate('analysis', {})
@@ -501,11 +530,15 @@
       "aria-label": "\u5F53\u524D\u8303\u56F4\u6982\u51B5"
     }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u6574\u9053\u5DF2\u5B8C\u5DE5"), /*#__PURE__*/React.createElement("dd", null, stats.complete === null ? '暂无数据' : stats.complete)), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u5DF2\u62A5\u5DE5 \xB7 \u672A\u6574\u9053\u5B8C\u5DE5"), /*#__PURE__*/React.createElement("dd", null, stats.reported === null ? '暂无数据' : stats.reported)), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u5F85\u62A5\u5DE5"), /*#__PURE__*/React.createElement("dd", null, stats.pending === null ? '暂无数据' : stats.pending)), /*#__PURE__*/React.createElement("div", {
       title: "\u4EC5\u7EDF\u8BA1\u6709\u786E\u8BA4\u5B8C\u5DE5\u65F6\u95F4\u7684\u5DF2\u5B8C\u5DE5\u5DE5\u5E8F"
-    }, /*#__PURE__*/React.createElement("dt", null, "\u5E73\u5747\u6574\u9053\u5B8C\u5DE5\u504F\u5DEE\uFF08\u5206\u949F\uFF09"), /*#__PURE__*/React.createElement("dd", null, stats.average === null ? '暂无数据' : (stats.average > 0 ? '+' : '') + window.WorkbenchFormat.number(Math.round(stats.average) + 0, {
+    }, /*#__PURE__*/React.createElement("dt", null, "\u5E73\u5747\u6574\u9053\u5B8C\u5DE5\u504F\u5DEE"), /*#__PURE__*/React.createElement("dd", null, stats.average === null ? '暂无数据' : (stats.average > 0 ? '+' : '') + window.WorkbenchFormat.number(Math.round(stats.average) + 0, {
       digits: 0
-    }) + ' 分钟'))), /*#__PURE__*/React.createElement("section", {
+    }) + ' 分钟'))), exportNotice && /*#__PURE__*/React.createElement("p", {
+      className: "fg-note",
+      role: "status"
+    }, exportNotice), /*#__PURE__*/React.createElement("section", {
       className: "gb-workspace fg-workspace",
-      "aria-label": "\u73B0\u573A\u5B9E\u9645\u7518\u7279\u5DE5\u4F5C\u533A"
+      "aria-label": "\u73B0\u573A\u5B9E\u9645\u7518\u7279\u5DE5\u4F5C\u533A",
+      onKeyDown: zoomKeys
     }, /*#__PURE__*/React.createElement(Toolbar, {
       view,
       patch,
@@ -514,16 +547,11 @@
       zoom,
       width,
       onZoom: zoomTo,
-      onFit: () => {
-        pending.current = {
-          center: .5
-        };
-        setZoom(1);
-        pan(0);
-      },
+      onFit: fitView,
       onLocate: () => locate(),
       onExport: () => {
         setExportError(null);
+        setExportNotice('');
         setExporting(true);
       },
       busy: exportBusy
@@ -549,6 +577,7 @@
       className: "fg-note"
     }, "\u539F\u62A5\u5DE5\u8BB0\u5F55\u4E0D\u5728\u6240\u9009\u5DE5\u5E8F\u4E2D\uFF0C\u672A\u6539\u6307\u5176\u4ED6\u8BB0\u5F55\u3002"), view.details && /*#__PURE__*/React.createElement("div", {
       className: "fg-details",
+      role: "region",
       "aria-label": "\u5DE5\u5E8F\u8BE6\u60C5"
     }, selected ? /*#__PURE__*/React.createElement(React.Fragment, null, describe(selected, model.labels, report).map((line, i) => /*#__PURE__*/React.createElement("span", {
       key: i
@@ -571,7 +600,7 @@
       "aria-label": "\u5B9A\u4F4D\u672C\u6B21\u62A5\u5DE5",
       disabled: !report || !report.actual_start,
       onClick: () => locate()
-    })), selected.execution.remaining_plan && /*#__PURE__*/React.createElement("span", null, "\u5269\u4F59\u5B89\u6392\uFF1A", M.time(selected.execution.remaining_plan.start), " \u2192 ", M.time(selected.execution.remaining_plan.end)), selected.execution.data_gaps.map((gap, i) => /*#__PURE__*/React.createElement("span", {
+    })), selected.execution.remaining_plan && /*#__PURE__*/React.createElement("span", null, "\u5269\u4F59\u5B89\u6392\uFF1A", M.time(selected.execution.remaining_plan.start), " \u81F3 ", M.time(selected.execution.remaining_plan.end)), selected.execution.data_gaps.map((gap, i) => /*#__PURE__*/React.createElement("span", {
       key: 'gap' + i
     }, gap.message || '报工记录待核对')), report && /*#__PURE__*/React.createElement("span", null, "\u767B\u8BB0\uFF1A", M.time(report.recorded_at), " \xB7 \u5386\u53F2\u7248\u672C ", report.correction_history.length, " \u6761"))) : /*#__PURE__*/React.createElement("span", null, "\u672A\u9009\u4E2D\u5DE5\u5E8F")), /*#__PURE__*/React.createElement("div", {
       className: "fg-board",
@@ -597,11 +626,8 @@
     }, /*#__PURE__*/React.createElement("div", {
       className: "fg-corner"
     }, M.views[view.mode], " / \u5DE5\u5E8F", /*#__PURE__*/React.createElement("small", {
-      className: "fg-muted",
-      style: {
-        display: 'block'
-      }
-    }, "\u8FDE\u7EED\u8DE8\u591C")), /*#__PURE__*/React.createElement("div", {
+      className: "fg-muted fg-corner-note"
+    }, "\u542B\u591C\u95F4")), /*#__PURE__*/React.createElement("div", {
       className: "fg-ticks",
       style: {
         width
@@ -680,10 +706,8 @@
         onClick: download
       }, "\u4E0B\u8F7D CSV"))
     }, /*#__PURE__*/React.createElement("div", {
-      style: {
-        padding: 16
-      }
-    }, /*#__PURE__*/React.createElement("p", null, "\u6309\u5F53\u524D\u67E5\u8BE2\u8303\u56F4\u548C\u672C\u6B21\u8BFB\u53D6\u7684\u6570\u636E\u5BFC\u51FA\u5168\u90E8 ", model.items.length, " \u9053\u5339\u914D\u5DE5\u5E8F\u53CA\u5176\u9010\u6B21\u62A5\u5DE5\uFF0C\u4E0D\u53D7\u6EDA\u52A8\u3001\u6298\u53E0\u548C\u8BE6\u60C5\u5F00\u5173\u5F71\u54CD\u3002"), /*#__PURE__*/React.createElement("p", null, "\u672C\u5730\u641C\u7D22\uFF1A", view.query.trim() || '无', "\uFF1B\u665A\u671F\uFF1A", M.lateLabels[view.late], "\uFF1B\u4EC5\u9009\u4E2D\uFF1A", view.onlySelected ? '是' : '否', "\u3002"), /*#__PURE__*/React.createElement("p", null, "\u8BA1\u5212\u5B8C\u5DE5\u65E5\u671F\uFF1A", scope.plan_finish_date_from || '不限', " \u81F3 ", scope.plan_finish_date_to || '不限', "\uFF1B\u6570\u636E\u622A\u81F3 ", M.time(result.meta.as_of), "\u3002\u6570\u636E\u53D8\u5316\u65F6\u4E0B\u8F7D\u4F1A\u8981\u6C42\u5237\u65B0\u3002"), /*#__PURE__*/React.createElement(ErrorBox, {
+      className: "modal-b"
+    }, /*#__PURE__*/React.createElement("p", null, "\u6309\u5F53\u524D\u67E5\u8BE2\u8303\u56F4\u548C\u672C\u6B21\u8BFB\u53D6\u7684\u6570\u636E\u5BFC\u51FA\u5168\u90E8 ", model.items.length, " \u9053\u5339\u914D\u5DE5\u5E8F\u53CA\u5176\u9010\u6B21\u62A5\u5DE5\uFF0C\u4E0D\u53D7\u6EDA\u52A8\u3001\u6298\u53E0\u548C\u8BE6\u60C5\u5F00\u5173\u5F71\u54CD\u3002"), /*#__PURE__*/React.createElement("p", null, "\u672C\u5730\u641C\u7D22\uFF1A", view.query.trim() || '无', "\uFF1B", window.WorkbenchTerms.overdue, "\uFF1A", M.lateLabels[view.late], "\uFF1B\u4EC5\u9009\u4E2D\uFF1A", view.onlySelected ? '是' : '否', "\u3002"), /*#__PURE__*/React.createElement("p", null, "\u8BA1\u5212\u5B8C\u5DE5\u65E5\u671F\uFF1A", scope.plan_finish_date_from || '不限', " \u81F3 ", scope.plan_finish_date_to || '不限', "\uFF1B\u6570\u636E\u622A\u81F3 ", M.time(result.meta.as_of), "\u3002\u6570\u636E\u53D8\u5316\u65F6\u4E0B\u8F7D\u4F1A\u8981\u6C42\u5237\u65B0\u3002"), /*#__PURE__*/React.createElement(ErrorBox, {
       error: exportError
     }))));
   }

@@ -38,10 +38,10 @@ async function exercise(p) {
     await quantity.press('ArrowDown'); assert.equal(await quantity.inputValue(), '3');
   });
   await p.step(['WBP-FIELD-007.A007'], 'minimum-maximum-zero-and-empty', async () => {
-    await page.getByRole('button', { name: '最小', exact: true }).click(); assert.equal(await quantity.inputValue(), '0');
+    await page.getByRole('button', { name: '填 0', exact: true }).click(); assert.equal(await quantity.inputValue(), '0');
     await page.waitForFunction(() => document.querySelector('button[aria-label="减少本次完成数量"]').disabled);
     assert(await page.getByRole('button', { name: '减少本次完成数量', exact: true }).isDisabled());
-    await page.getByRole('button', { name: '最大', exact: true }).click(); assert.equal(await quantity.inputValue(), '10');
+    await page.getByRole('button', { name: '填剩余数', exact: true }).click(); assert.equal(await quantity.inputValue(), '10');
     await quantity.fill(''); assert.equal(await quantity.inputValue(), '');
   });
   await p.step(['WBP-FIELD-008.A001', 'WBP-FIELD-008.A002', 'WBP-FIELD-009.A006'], 'manual-wall-clock-values-do-not-create-hours', async () => {

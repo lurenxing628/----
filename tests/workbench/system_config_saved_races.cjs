@@ -40,12 +40,7 @@ module.exports = async function races(page, H) {
   await page.getByRole('button', {name: 'config', exact: true}).click(); await ready(page); await clean(page, 121);
   passed('acknowledging-on-other-tab-defers-read-until-config-is-active');
 
-  await resetPage(page); await interval(page).fill('121');
-  await page.evaluate(() => window.configSavedProbe.setSource('sample')); await flush(page);
-  const sampleReads = report.requests.length; await page.evaluate(() => window.configSavedProbe.bump()); await flush(page);
-  assert.equal(report.requests.length, sampleReads);
-  await page.evaluate(() => window.configSavedProbe.setSource('current')); await settled(page); await conflict(page, 121);
-  passed('sample-source-suspends-reads-without-dropping-draft');
+  // 「管理样例」数据源已下线（2026-09-21，SystemSampleControls 删除）：不再有 source 切换，相关暂停读取的用例随之退役。
 
   await resetPage(page); await externalSave(page, {auto_backup_interval_minutes: 122});
   await page.evaluate(() => {

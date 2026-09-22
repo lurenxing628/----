@@ -2,14 +2,17 @@
   'use strict';
   // Axis marks label the 0 / 50% / 100% positions of the bar track with the counts they stand for.
   const tick = value => window.WorkbenchFormat.number(value, { digits: 1, trim: true });
+  const UNIT = '道';
   function DistributionChart({ items, label }) {
     const id = React.useId(), maximum = Math.max(1, ...items.map(row => row.count || 0));
+    // 各档都是 0 时没有可比较的分布，不画 0 / 0.5 / 1 这种假刻度，直接说暂无数据。
+    const hasData = items.some(row => row.count > 0);
     return <figure className="aw-chart aw-distribution" aria-labelledby={id}><figcaption className="aw-caption" id={id}>{label}</figcaption>
-      {items.length ? <>
+      {hasData ? <>
         <ul className="aw-bars">{items.map(row => <li key={row.id}><div className="aw-bar-row"><span className="aw-bar-label">{row.label}</span>
-          <span className="aw-bar-track" aria-hidden="true"><i data-tone={row.tone} style={{ width: row.count / maximum * 100 + '%' }} /></span><strong>{row.count}</strong></div></li>)}</ul>
+          <span className="aw-bar-track" aria-hidden="true"><i data-tone={row.tone} style={{ width: row.count / maximum * 100 + '%' }} /></span><strong>{row.count} {UNIT}</strong></div></li>)}</ul>
         <div className="aw-bar-row aw-scale" aria-hidden="true"><span /><span className="aw-scale-ticks">
-          {[0, maximum / 2, maximum].map(value => <span key={value}>{tick(value)}</span>)}</span><strong className="aw-scale-gutter">{maximum}</strong></div>
+          {[0, maximum / 2, maximum].map((value, index) => <span key={value}>{tick(value)}{index === 2 ? ' ' + UNIT : ''}</span>)}</span><strong className="aw-scale-gutter">{maximum} {UNIT}</strong></div>
       </> : <window.WorkbenchListControls.EmptyState kind="empty" title="当前范围暂无数据" />}</figure>;
   }
   function TrendChart({ points, label }) {
@@ -21,18 +24,19 @@
     const series = [['planned', '计划累计完工'], ['actual', '已确认整道完工']];
     return <figure className="aw-chart aw-trend" aria-labelledby={id}><figcaption id={id} className="aw-caption">{label}</figcaption>
       <div className="aw-legend">{series.map(([key, title]) => <span key={key}><i className={'aw-swatch aw-' + key} />{title}</span>)}</div>
-      <div className="aw-chart-body"><div className="aw-y-axis"><span style={{ top: 0 }}>{tick(max)}</span><span style={{ top: '50%' }}>{tick(max / 2)}</span><span style={{ bottom: 0 }}>{tick(0)}</span></div>
+      <div className="aw-chart-body"><div className="aw-y-axis"><span style={{ top: 0 }}>{tick(max)} {UNIT}</span><span style={{ top: '50%' }}>{tick(max / 2)}</span><span style={{ bottom: 0 }}>{tick(0)}</span></div>
         <div className="aw-plot"><svg className="aw-plot-svg" viewBox="0 0 600 200" preserveAspectRatio="none" role="img" aria-label={label}>
           {[0, max / 2, max].map(value => <line key={value} className="aw-gridline" x1={0} x2={600} y1={y(value)} y2={y(value)} />)}
           {series.map(([key, title]) => { const known = points.filter(row => row[key] !== null); return <g key={key} className={'aw-series aw-' + key}>
             <path d={known.map((row, index) => (index ? 'L' : 'M') + x(row) + ' ' + y(row[key])).join(' ')} fill="none" vectorEffect="non-scaling-stroke" />
-            {known.map(row => <circle key={row.time} cx={x(row)} cy={y(row[key])} r={3} vectorEffect="non-scaling-stroke"><title>{row.label} · {title} {row[key]} 道</title></circle>)}</g>; })}
+            {known.map(row => <circle key={row.time} cx={x(row)} cy={y(row[key])} r={3} vectorEffect="non-scaling-stroke"><title>{row.label} · {title} {row[key]} {UNIT}</title></circle>)}</g>; })}
         </svg></div></div>
       <div className="aw-x-axis"><span>{points[0].label}</span><span>{points[points.length - 1].label}</span></div>
-      <details className="aw-data"><summary>图表数据</summary><div className="aw-data-scroll wb-table-frame" tabIndex={0} role="region" aria-label="累计完工趋势数据"><table><caption className="wb-visually-hidden">{label}</caption><thead><tr><th scope="col">日期</th><th scope="col">计划累计完工</th><th scope="col">已确认整道完工</th></tr></thead><tbody>{points.map(row => <tr key={row.time}><th scope="row">{window.WorkbenchFormat.date(row.label)}</th><td>{row.planned}</td><td>{row.actual == null ? '未知' : row.actual}</td></tr>)}</tbody></table></div></details>
+      <details className="aw-data"><summary>图表数据</summary><div className="aw-data-scroll wb-table-frame" tabIndex={0} role="region" aria-label="累计完工趋势数据"><table><caption className="wb-visually-hidden">{label}</caption><thead><tr><th scope="col">日期</th><th scope="col">计划累计完工（道）</th><th scope="col">已确认整道完工（道）</th></tr></thead><tbody>{points.map(row => <tr key={row.time}><th scope="row">{window.WorkbenchFormat.date(row.label)}</th><td>{row.planned}</td><td>{row.actual == null ? '未知' : row.actual}</td></tr>)}</tbody></table></div></details>
     </figure>;
   }
-  const resourceColumns = [['resource_label', '实际资源'], ['operations', '涉及工序'], ['events', '旧现场事件数'],
+  // 列名里的「历史现场记录」从词表取，所以做成函数，在渲染时再读。
+  const resourceColumns = () => [['resource_label', '实际资源'], ['operations', '涉及工序'], ['events', window.WorkbenchTerms.legacy_field_records + '数'],
     ['production_reports', '逐次报工数'], ['records', '全部记录数'], ['effective_processing_hours', '有效加工工时（小时）'],
     ['known_effective_processing_hours', '已知工时小计（小时）'], ['unknown_hour_events', '工时未知记录数']].map(([key, label]) => ({ key, label }));
   window.ReviewChartViews = { DistributionChart, TrendChart, resourceColumns };

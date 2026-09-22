@@ -44,14 +44,16 @@ def _register_api_response_boundary(state):
 
 
 def _unavailable(message: str, status: int):
-    response = current_app.make_response((render_template("workbench/unavailable.html", message=message), status))
+    # 404 是“这个地址没有对应页面”，标题直说页面不存在；其余情况才是工作台暂时打不开。
+    title = "页面不存在" if status == 404 else "工作台暂不可用"
+    response = current_app.make_response((render_template("workbench/unavailable.html", message=message, title=title), status))
     response.headers["Cache-Control"] = "no-store"
     return response
 
 
 def _host(view: str):
     if view not in VIEW_TITLES:
-        return _unavailable("这个页面不存在，页面没有打开。请从侧栏重新进入。", 404)
+        return _unavailable("这个页面不存在，页面没有打开。请点「打开工作台」从侧栏进入。", 404)
     try:
         navigation = read_navigation(view, request.args)
     except WorkbenchNavigationInvalid as exc:

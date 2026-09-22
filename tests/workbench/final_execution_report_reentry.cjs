@@ -135,19 +135,24 @@ async function exercise(p, view) {
     await restart(1, legacy);
     const start = await checkpoint(); await page.reload(); result = await assertRestored('new-pid-original-read-view', start);
     assert.notEqual(result.meta.snapshot_ref, legacy.snapshot_ref);
-    const waiting = page.waitForResponse(response => new URL(response.url()).pathname.endsWith('/analytics/export'));
-    const downloaded = await p.download(() => page.getByRole('button', { name: '导出范围', exact: true }).click(), view + '-page2-fullscope');
-    const response = await waiting;
-    assert.equal(response.status(), 200); assert.equal(new URL(response.url()).searchParams.get('snapshot_ref'), result.meta.snapshot_ref);
-    assert.equal(response.headers()['x-workbench-as-of'], result.meta.as_of);
-    assert.deepEqual(fs.readFileSync(downloaded), await response.body());
-    p.report.export = { url: response.url(), headers: response.headers(), path: downloaded };
+    if (view === 'review') {
+      // 执行复盘不再提供导出范围（2026-09-21）；完整范围的导出在报表中心做，由 view=reports 这一组覆盖。
+      assert.equal(await page.getByRole('button', { name: '导出范围', exact: true }).count(), 0); p.report.export = null;
+    } else {
+      const waiting = page.waitForResponse(response => new URL(response.url()).pathname.endsWith('/analytics/export'));
+      const downloaded = await p.download(() => page.getByRole('button', { name: '导出范围', exact: true }).click(), view + '-page2-fullscope');
+      const response = await waiting;
+      assert.equal(response.status(), 200); assert.equal(new URL(response.url()).searchParams.get('snapshot_ref'), result.meta.snapshot_ref);
+      assert.equal(response.headers()['x-workbench-as-of'], result.meta.as_of);
+      assert.deepEqual(fs.readFileSync(downloaded), await response.body());
+      p.report.export = { url: response.url(), headers: response.headers(), path: downloaded };
+    }
   });
   await p.step(['WBP-SCOPE-005.A005', 'WBP-REPORT-008.A004'], view + '-live-expired-export-detail-page-errors-never-auto-rebind', async () => {
     await restart(2, await page.evaluate(() => history.state.workbench.context));
     const first = await checkpoint();
-    const downloadError = await p.read(() => page.getByRole('button', { name: '导出范围', exact: true }).click(), '/analytics/export', 409);
-    assert.equal(downloadError.error.code, 'snapshot_stale');
+    const downloadError = view === 'review' ? null : await p.read(() => page.getByRole('button', { name: '导出范围', exact: true }).click(), '/analytics/export', 409);
+    if (downloadError) assert.equal(downloadError.error.code, 'snapshot_stale');
     await drain();
     assert.equal(events.length, first, 'Export failure must not refresh the list automatically');
     await page.locator('.rw-detail').getByRole('button', { name: /^关闭/ }).click();

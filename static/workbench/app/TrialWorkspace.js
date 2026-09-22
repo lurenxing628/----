@@ -268,7 +268,7 @@
       className: "tt-heading"
     }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h2", {
       className: "wb-page-title"
-    }, "\u6392\u4EA7\u65B9\u6848\u8BD5\u8C03"), /*#__PURE__*/React.createElement("span", {
+    }, "\u8BD5\u8C03\u6392\u4EA7\u65B9\u6848"), /*#__PURE__*/React.createElement("span", {
       className: "tt-muted wb-page-context"
     }, title, data && ' · ' + U.statusLabel(data.status))), /*#__PURE__*/React.createElement("div", {
       className: "tt-tools"

@@ -48,7 +48,7 @@ def _case(case, view, selectors, texts, *, action="", **checks):
 
 GEOMETRY_CASES = (
     _case("dashboard", "dashboard", ['[data-dashboard-workspace][data-ready="true"]'],
-          ["计划员值班台"], ready='[data-dashboard-workspace][data-ready="true"][aria-busy="false"]'),
+          ["值班台"], ready='[data-dashboard-workspace][data-ready="true"][aria-busy="false"]'),
     _case("run-preflight", "run", ["[data-preflight-workspace]", 'table[aria-label="排产检查明细"]'],
           ["排产检查", BATCH], action="preflight",
           controls={READY_RADIOS: 2, RESOURCE_RADIOS: 2}, tables=['table[aria-label="排产检查明细"]'],
@@ -64,7 +64,7 @@ GEOMETRY_CASES = (
     _case("batch-detail", "batches", ["[data-batch-detail]", 'table[aria-label="批次工序"]'],
           ["批次详情", BATCH], batch_scope=True),
     _case("batch-import", "batches", ['[role="dialog"] input[type="file"]'],
-          ["批量维护批次", "新批次导入后需生成工序"], action="batch-import"),
+          ["批量导入批次", "新批次导入后需生成工序"], action="batch-import"),
     _case("system-config", "system", ['#sm-panel-config', '#sm-maintenance-auto_backup_enabled'],
           ["本机自动维护配置"], action="system-config",
           controls={'#sm-maintenance-auto_backup_enabled': 1,

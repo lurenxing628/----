@@ -112,13 +112,20 @@ async function readControls(h) {
   await page.getByRole('button', { name: '放弃草稿', exact: true }).click();
   await mark('WBP-SYS-017.discard-confirm', () => request('/system/config', () => page.getByRole('dialog').getByRole('button', { name: '放弃并刷新', exact: true }).click()));
   assert.equal(await page.locator('#sm-maintenance-auto_backup_interval_minutes').inputValue(), original);
-  await page.getByRole('radio', { name: '管理样例', exact: true }).check();
-  await page.locator('#sm-auto_backup_interval_minutes').fill('53');
-  await mark('WBP-SYS-017.validate', () => page.getByRole('button', { name: '检查参数', exact: true }).click());
-  await mark('WBP-SYS-017.unsaved-preview', async () => { await page.getByText('样例草稿检查通过 · 未保存', { exact: true }).waitFor(); });
-  assert.equal(await page.locator('.sm-preview dd').count(), 8);
+  // 管理样例已下线（2026-09-21）：参数检查直接在本机正式配置的草稿上做，填错不保存、填对也只是“有未保存修改”。
+  const posts = () => report.responses.filter(row => row.method === 'POST').length, postsBefore = posts();
+  await page.locator('#sm-maintenance-auto_backup_interval_minutes').fill('0');
+  await mark(['WBP-SYS-017.validate', 'WBP-SYS-017.invalid-fields'], async () => {
+    await page.getByRole('button', { name: '保存维护配置', exact: true }).click();
+    await page.getByText('有几项填得不对，配置没有保存。请修正标红的项。', { exact: true }).waitFor(); assert.equal(posts(), postsBefore);
+  });
+  await page.locator('#sm-maintenance-auto_backup_interval_minutes').fill('53');
+  await mark('WBP-SYS-017.unsaved-preview', async () => { await page.getByText('有未保存修改', { exact: true }).waitFor(); assert.equal(posts(), postsBefore); });
   await page.locator('.sm-maintenance-config:visible').getByText('生效范围与自动维护规则', { exact: true }).click();
   await mark('WBP-SYS-019.skipped', async () => { await page.getByText(/备份失败时会跳过本轮备份清理，保底规则不会删掉全部近期副本。/).waitFor(); });
-  await shot('sample-validation-is-explicitly-unsaved');
+  await shot('config-validation-is-explicitly-unsaved');
+  await page.getByRole('button', { name: '放弃草稿', exact: true }).click();
+  await request('/system/config', () => page.getByRole('dialog').getByRole('button', { name: '放弃并刷新', exact: true }).click());
+  assert.equal(await page.locator('#sm-maintenance-auto_backup_interval_minutes').inputValue(), original);
 }
 module.exports = { readControls };

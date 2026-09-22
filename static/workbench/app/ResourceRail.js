@@ -19,6 +19,10 @@
   const amount = value => window.WorkbenchFormat.number(value, {
     digits: 1
   });
+  const integer = value => window.WorkbenchFormat.number(value, {
+    digits: 0
+  });
+  const hoursOrNone = value => value == null ? '暂无数据' : window.WorkbenchFormat.hours(value);
   const countLabels = {
     active: '启用',
     inactive: '停用',
@@ -28,21 +32,37 @@
     unknown: '未知'
   };
   const chipOrder = ['process', 'material', 'op_int', 'machine', 'operator', 'op_ext', 'supplier'];
+  // 视口高度不超过这个值时，进入某个节点后产能链默认收起，把高度留给下方列表；用户展开 / 收起的选择在本页会话内记住。
+  const MEDIUM_SCREEN_MAX_PX = 1000,
+    COLLAPSED_CHOICE_KEY = 'aps_resource_rail_collapsed';
   function shortScreenMedia() {
     // 阈值来自样式令牌，与 10-shell.css 里的 @media (max-height) 保持同一数值；令牌缺失说明样式没加载，直接报错。
     const value = getComputedStyle(document.documentElement).getPropertyValue('--wb-short-screen-max').trim();
     if (!value) throw new Error('样式令牌 --wb-short-screen-max 缺失，无法判断矮屏布局。');
     return window.matchMedia('(max-height: ' + value + ')');
   }
-  function useShortScreen() {
-    const media = React.useMemo(shortScreenMedia, []);
-    const [short, setShort] = React.useState(media.matches);
+  function mediumScreenMedia() {
+    return window.matchMedia('(max-height: ' + MEDIUM_SCREEN_MAX_PX + 'px)');
+  }
+  function useMediaMatch(factory) {
+    const media = React.useMemo(factory, []);
+    const [matches, setMatches] = React.useState(media.matches);
     React.useEffect(() => {
-      const sync = () => setShort(media.matches);
+      const sync = () => setMatches(media.matches);
       media.addEventListener('change', sync);
       return () => media.removeEventListener('change', sync);
     }, [media]);
-    return short;
+    return matches;
+  }
+  function useShortScreen() {
+    return useMediaMatch(shortScreenMedia);
+  }
+  function useMediumScreen() {
+    return useMediaMatch(mediumScreenMedia);
+  }
+  function readCollapsedChoice() {
+    const value = sessionStorage.getItem(COLLAPSED_CHOICE_KEY);
+    return value === 'true' ? true : value === 'false' ? false : null;
   }
   function processText(item, total, loading) {
     const unavailable = {
@@ -99,12 +119,14 @@
       status: 'unavailable',
       issues: []
     }));
-    const rest = stats && stats.rest_days != null ? stats.rest_days + ' 天' : pending;
+    const rest = stats && stats.rest_days != null ? integer(stats.rest_days) + ' 天' : pending;
     const holiday = value && value.holiday_default_efficiency;
     const caption = value ? value.week_start + ' 至 ' + value.week_end : '本周排班 · ' + pending;
+    // 大按钮里的汇总文字很长，可访问名称只保留短标题；明细仍以可见文字和 title 提供。
     return /*#__PURE__*/React.createElement("button", {
       type: "button",
       className: 'hb-block hero hb-cal-block' + (node === 'calendar' ? ' on' : ''),
+      "aria-label": "\u5DE5\u4F5C\u65E5\u5386 \xB7 \u5168\u5C40",
       style: {
         font: 'inherit',
         color: 'inherit',
@@ -136,9 +158,9 @@
     }, "\u5DE5\u65F6 / \u8C03\u4F11 / \u52A0\u73ED"), /*#__PURE__*/React.createElement("span", {
       className: "hb-cl2",
       title: value ? value.basis : error
-    }, stats ? '本周单独设置 ' + stats.configured_days + ' 天 · 按默认 ' + stats.default_days + ' 天' : error || pending))), /*#__PURE__*/React.createElement("span", {
+    }, stats ? '本周单独设置 ' + integer(stats.configured_days) + ' 天 · 按默认 ' + integer(stats.default_days) + ' 天' : error || pending))), /*#__PURE__*/React.createElement("span", {
       className: "hb-cal-stats"
-    }, [[standardText, '标准工时 / 日', standard && standard.message], [stats && stats.work_days != null ? stats.work_days + ' 天' : pending, '本周工作日', '有工时且至少允许普通件或急件的班次起始日'], [rest, '休息 / 不许排产', stats && stats.known_rest_dates.join('、')]].map(([text, label, title]) => /*#__PURE__*/React.createElement("span", {
+    }, [[standardText, '标准工时 / 日', standard && standard.message], [stats && stats.work_days != null ? integer(stats.work_days) + ' 天' : pending, '本周工作日', '有工时且至少允许普通件或急件的班次起始日'], [rest, '休息 / 不许排产', stats && stats.known_rest_dates.join('、')]].map(([text, label, title]) => /*#__PURE__*/React.createElement("span", {
       className: "hb-cs",
       key: label,
       style: {
@@ -181,16 +203,16 @@
         "aria-label": value ? dayText(day) : weekdays[day.weekday] + ' ' + pending
       }), /*#__PURE__*/React.createElement("span", {
         className: "hb-sl"
-      }, effective ? rest ? effective.rest_reason === 'priorities_disabled' ? '禁排' : '休' : window.WorkbenchFormat.hours(effective.effective_hours) : '?'), /*#__PURE__*/React.createElement("span", {
+      }, effective ? rest ? effective.rest_reason === 'priorities_disabled' ? '禁排' : '休' : window.WorkbenchFormat.hours(effective.effective_hours) : '未知'), /*#__PURE__*/React.createElement("span", {
         className: "hb-sl"
-      }, value ? day.explicit ? '单独' : '默认' : '?'));
+      }, value ? day.explicit ? '单独' : '默认' : '未知'));
     })), value && /*#__PURE__*/React.createElement("span", {
       className: "hb-cl2",
       title: value.basis,
       "data-calendar-week-hours": true
-    }, "\u672C\u5468\u6709\u6548 ", stats.effective_hours == null ? '暂无数据' : window.WorkbenchFormat.hours(stats.effective_hours), " \xB7 \u666E\u901A ", amount(stats.normal_effective_hours), " / \u6025\u4EF6 ", window.WorkbenchFormat.hours(stats.urgent_effective_hours), /*#__PURE__*/React.createElement("br", null), "\u5DE5\u5382\u65E5\u671F ", value.factory_today, " \xB7 \u6309\u73ED\u6B21\u8D77\u59CB\u65E5\u7EDF\u8BA1", /*#__PURE__*/React.createElement("br", null), /*#__PURE__*/React.createElement("span", {
+    }, "\u672C\u5468\u6709\u6548 ", hoursOrNone(stats.effective_hours), " \xB7 \u666E\u901A ", hoursOrNone(stats.normal_effective_hours), " / \u6025\u4EF6 ", hoursOrNone(stats.urgent_effective_hours), /*#__PURE__*/React.createElement("br", null), "\u5DE5\u5382\u65E5\u671F ", value.factory_today, " \xB7 \u6309\u73ED\u6B21\u8D77\u59CB\u65E5\u7EDF\u8BA1", /*#__PURE__*/React.createElement("br", null), /*#__PURE__*/React.createElement("span", {
       title: holiday.basis + (holiday.issues.length ? '；' + holiday.issues.map(issue => issue.message).join('；') : '')
-    }, "\u5047\u671F\u5F55\u5165\u9ED8\u8BA4\u6548\u7387\uFF1A", holiday.status === 'known' ? amount(holiday.value * 100) + '%' : labels[holiday.status]), stats.unavailable_days > 0 && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("br", null), stats.unavailable_days, " \u5929\u6682\u65E0\u6570\u636E"))));
+    }, "\u5047\u671F\u5F55\u5165\u9ED8\u8BA4\u6548\u7387\uFF1A", holiday.status === 'known' ? amount(holiday.value * 100) + '%' : labels[holiday.status]), stats.unavailable_days > 0 && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("br", null), integer(stats.unavailable_days), " \u5929\u6682\u65E0\u6570\u636E"))));
   }
   function ResourceRail({
     node,
@@ -204,25 +226,21 @@
       readiness = value.readiness;
     const items = readiness && readiness.items || {};
     const process = processText(items.process, counts.process && counts.process.total, summary.loading);
-    const short = useShortScreen();
-    // 矮屏且已进入某个节点时默认收起成一行快捷切换，把高度留给下方列表；节点之间切换尊重用户当前的展开 / 收起选择。
-    const [collapsed, setCollapsed] = React.useState(short && !!node);
-    const previous = React.useRef({
-      node,
-      short
-    });
-    React.useEffect(() => {
-      const was = previous.current;
-      previous.current = {
-        node,
-        short
-      };
-      if (short !== was.short || !node || !was.node) setCollapsed(short && !!node);
-    }, [node, short]);
-    const compact = short && !!node && collapsed;
+    const short = useShortScreen(),
+      medium = useMediumScreen();
+    // 视口不高（≤ 1000px，含 820px 以内的矮屏）且已进入某个节点时，默认收起成一行快捷切换，把高度留给下方列表；
+    // 用户点过展开 / 收起后，本页会话内一直按用户的选择来，节点之间切换不再重置。
+    const collapsible = (short || medium) && !!node;
+    const [choice, setChoice] = React.useState(readCollapsedChoice);
+    const compact = collapsible && (choice === null ? true : choice);
+    function toggle() {
+      const next = !compact;
+      sessionStorage.setItem(COLLAPSED_CHOICE_KEY, String(next));
+      setChoice(next);
+    }
     const countText = key => {
-      const count = counts[key];
-      return count && number(count.total) ? count.total + ' ' + C.nodes[key].unit : summary.loading ? '未读取' : '暂无数据';
+      const item = counts[key];
+      return item && number(item.total) ? integer(item.total) + ' ' + C.nodes[key].unit : summary.loading ? '未读取' : '暂无数据';
     };
     const tile = (key, tone) => {
       const item = items[key],
@@ -297,6 +315,7 @@
     }), /*#__PURE__*/React.createElement("span", null, label), key !== 'calendar' && /*#__PURE__*/React.createElement("b", null, countText(key)));
     return /*#__PURE__*/React.createElement("section", {
       className: 'rail' + (compact ? ' rail-collapsed' : ''),
+      "data-collapsed": compact ? 'true' : 'false',
       "aria-label": "\u4EA7\u80FD\u94FE",
       "aria-busy": !!summary.loading
     }, /*#__PURE__*/React.createElement("div", {
@@ -305,11 +324,11 @@
       className: "rail-cap"
     }, "\u4EA7\u80FD\u94FE"), /*#__PURE__*/React.createElement("span", {
       className: "rail-status muted"
-    }, "\u57FA\u7840\u8D44\u6599 \xB7 ", summary.error ? '暂无数据' : summary.loading ? '读取中' : '只读汇总'), short && !!node && /*#__PURE__*/React.createElement(Button, {
+    }, "\u57FA\u7840\u8D44\u6599 \xB7 ", summary.error ? '暂无数据' : summary.loading ? '读取中' : '只读汇总'), collapsible && /*#__PURE__*/React.createElement(Button, {
       className: "btn link rail-toggle",
       icon: compact ? 'chevron-down' : 'chevron-up',
       "aria-expanded": !compact,
-      onClick: () => setCollapsed(!collapsed)
+      onClick: toggle
     }, compact ? '展开产能链' : '收起产能链')), compact && /*#__PURE__*/React.createElement("div", {
       className: "seg rail-compact",
       role: "group",

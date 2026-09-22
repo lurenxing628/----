@@ -5,6 +5,11 @@
    ============================================================ */
 
 .gb { --gb-rescol: 212px; --gb-rowh: 60px; --gb-dayw: 132px; --gb-sub: 1; --gb-trackw: calc(7 * var(--gb-dayw)); position: relative; }
+/* Chrome 109 不认 color-mix()，细分刻度线与“今天”底纹用带透明度的字面值：
+   --gb-subline 等价 color-mix(in srgb, var(--ui-border) 42%, transparent)（浅色 #e2e8f0 / 深色 #334155）；
+   --gb-today-wash 等价 color-mix(in srgb, var(--ui-primary) 6%, transparent)（浅色 #2563eb / 深色 #3b82f6）。 */
+.gb { --gb-subline: rgb(226 232 240 / .42); --gb-today-wash: rgb(37 99 235 / .06); }
+html[data-theme="dark"] .gb { --gb-subline: rgb(51 65 85 / .42); --gb-today-wash: rgb(59 130 246 / .06); }
 
 .gb-main { letter-spacing: 0; }
 .gb-main *, .gb-main *::before, .gb-main *::after { letter-spacing: 0; }
@@ -81,7 +86,7 @@
 .gb-scale { display: grid; grid-template-columns: var(--gb-rescol) minmax(var(--gb-trackw), 1fr); min-width: calc(var(--gb-rescol) + var(--gb-trackw)); background: var(--ui-surface-muted); border-bottom: 1px solid var(--ui-border); position: sticky; top: 0; z-index: 6; }
 .gb-corner { position: sticky; left: 0; z-index: 8; display: flex; align-items: center; gap: 8px; padding: 0 16px; font-size: var(--font-size-1); font-weight: 700; color: var(--ui-muted); background: var(--ui-surface-muted); border-right: 1px solid var(--ui-border); }
 .gb-corner .gb-corner-sub { font-weight: 500; color: var(--ui-muted); opacity: .8; }
-.gb-days { display: grid; grid-template-columns: repeat(7, 1fr); position: relative; background-image: linear-gradient(to right, color-mix(in srgb, var(--ui-border) 42%, transparent) 1px, transparent 1px); background-size: calc(100% / (7 * var(--gb-sub, 1))) 100%; }
+.gb-days { display: grid; grid-template-columns: repeat(7, 1fr); position: relative; background-image: linear-gradient(to right, var(--gb-subline) 1px, transparent 1px); background-size: calc(100% / (7 * var(--gb-sub, 1))) 100%; }
 .gb-day { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; padding: 9px 4px; border-right: 1px solid var(--ui-border); }
 .gb-day:last-child { border-right: 0; }
 .gb-day b { font-size: var(--font-size-2); font-weight: 700; color: var(--ui-text); }
@@ -120,8 +125,8 @@
 .gb-res-pctlabel { font-size: var(--font-size-1); font-weight: 600; color: var(--ui-muted); letter-spacing: .03em; }
 
 /* ---- 轨道 ---- */
-.gb-track { position: relative; min-height: var(--gb-rowh); padding: 0; background-image: linear-gradient(to right, var(--ui-border) 1px, transparent 1px), linear-gradient(to right, color-mix(in srgb, var(--ui-border) 42%, transparent) 1px, transparent 1px); background-size: calc(100% / 7) 100%, calc(100% / (7 * var(--gb-sub, 1))) 100%; }
-.gb-today { position: absolute; top: 0; bottom: 0; width: calc(100% / 7); background: color-mix(in srgb, var(--ui-primary) 6%, transparent); pointer-events: none; }
+.gb-track { position: relative; min-height: var(--gb-rowh); padding: 0; background-image: linear-gradient(to right, var(--ui-border) 1px, transparent 1px), linear-gradient(to right, var(--gb-subline) 1px, transparent 1px); background-size: calc(100% / 7) 100%, calc(100% / (7 * var(--gb-sub, 1))) 100%; }
+.gb-today { position: absolute; top: 0; bottom: 0; width: calc(100% / 7); background: var(--gb-today-wash); pointer-events: none; }
 .gb-nowline { position: absolute; top: 0; bottom: 0; width: 0; border-left: 1.5px dashed var(--ui-danger); pointer-events: none; z-index: 4; }
 .gb-nowline::before { content: "现在"; position: absolute; top: 2px; left: 3px; font-size: var(--font-size-1); font-weight: 700; color: var(--ui-danger); white-space: nowrap; }
 .gb-down-band { position: absolute; inset: 8px 6px; border-radius: var(--wb-radius-control); display: flex; align-items: center; padding: 0 12px; font-size: var(--font-size-1); font-weight: 700; color: var(--ui-danger-text); background-color: var(--ui-danger-bg); background-image: repeating-linear-gradient(45deg, var(--ui-danger-bg) 0 6px, var(--ui-surface-muted) 6px 12px); border: 2px dashed var(--ui-danger-text); }

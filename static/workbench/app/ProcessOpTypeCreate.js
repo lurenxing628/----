@@ -47,7 +47,11 @@
       setError(null);
       try {
         const next = C.query(await adapter.list('op_type', scope, controller.signal), 'list');
-        if (!controller.signal.aborted) setReview(next);
+        if (controller.signal.aborted || !command.reset()) return;
+        // 刷新即采用：新读到的建档资料直接接进保存路径，复核区只展示当前资料。
+        // 与 ResourceWorkspace.reloadContext 走同一条路，ResourceForms 不需要单独的“采用”步骤。
+        setContext(next);
+        setReview(next);
       } catch (failure) {
         if (!controller.signal.aborted) setError(failure);
       } finally {
@@ -109,14 +113,14 @@
     }, "\u6B63\u5728\u8BFB\u53D6\u5DE5\u79CD\u5EFA\u6863\u8D44\u6599\u2026"), list.error && /*#__PURE__*/React.createElement(Button, {
       icon: "refresh-cw",
       onClick: list.reload
-    }, "\u5237\u65B0\u8D44\u6599"), !initialized && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", null, "\u53E6\u4E00\u4E2A\u64CD\u4F5C\u8FD8\u6CA1\u5904\u7406\u5B8C\uFF0C\u8BF7\u5148\u67E5\u8BE2\u4E0A\u6B21\u7ED3\u679C\u3002"), /*#__PURE__*/React.createElement(window.ResourceForms.Feedback, {
+    }, window.WorkbenchTerms.refresh_latest), !initialized && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", null, "\u53E6\u4E00\u4E2A\u64CD\u4F5C\u8FD8\u6CA1\u5904\u7406\u5B8C\uFF0C\u8BF7\u5148\u67E5\u8BE2\u4E0A\u6B21\u7ED3\u679C\u3002"), /*#__PURE__*/React.createElement(window.ResourceForms.Feedback, {
       command: command
     }))));
     return /*#__PURE__*/React.createElement(window.ResourceForms, {
       adapter: adapter,
       kind: "op_type",
       action: "create",
-      writeContext: review ? null : context.data.create_context,
+      writeContext: context.data.create_context,
       source: context.meta.source,
       command: command,
       onClose: close,
@@ -124,11 +128,6 @@
       contextBusy: busy || refresh.loading,
       contextError: error,
       contextReview: review,
-      onAcceptContext: () => {
-        setContext(review);
-        setReview(null);
-        setError(null);
-      },
       refreshState: refresh,
       onRefresh: readSaved
     });

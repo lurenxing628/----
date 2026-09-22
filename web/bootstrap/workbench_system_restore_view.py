@@ -2,6 +2,7 @@
 
 import json
 from pathlib import Path
+from urllib.parse import quote
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from werkzeug.wrappers import Request, Response
@@ -11,6 +12,9 @@ from core.models.workbench_command import WorkbenchCommandRejected
 from .paths import runtime_base_dir
 
 BASE = "/api/workbench/v1/system"
+DIAGNOSTIC_FILENAME = "维护诊断.json"
+# 恢复各阶段与数据库来源的叫法必须和 frontend/workbench/app/SystemRestoreStatus.js 的 labels / origins 逐字相同，
+# 冷启动维护页和工作台里的维护面板才会说同一句话；tests/workbench/test_du_system_restore_view.py 锁住这一致性。
 LABELS = {"accepted": "已接收", "checking": "检查中", "protecting": "生成保护副本", "restoring": "恢复中",
           "verifying": "完整性检查中", "rolling_back": "还原中", "succeeded": "已完成", "failed": "操作失败",
           "rolled_back": "恢复失败，已还原", "rollback_failed": "还原失败，需人工核对",
@@ -63,13 +67,16 @@ def recovery_response(environ, journal, status, lookup):
             "note": "这一页只显示本次读到的维护状态，不含数据库内容和完整日志；打开这一页不会改动任何数据。"}
     headers = {"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer"}
     if request.method == "GET" and request.args.get("download") == "diagnostic" and code != 400:
-        headers["Content-Disposition"] = 'attachment; filename="aps-restore-maintenance-diagnostic.json"'
+        # 与工作台里的「导出维护诊断」同名：维护诊断.json；ASCII 备用名给不认 UTF-8 文件名的浏览器。
+        headers["Content-Disposition"] = ("attachment; filename=\"maintenance-diagnostic.json\"; "
+                                          "filename*=UTF-8''" + quote(DIAGNOSTIC_FILENAME))
         return Response(json.dumps(data, ensure_ascii=True, indent=2), content_type="application/json", headers=headers)
     root = Path(runtime_base_dir(anchor_file=str(Path(__file__).resolve().parents[2] / "app.py")))
     templates = Environment(loader=FileSystemLoader(str(root / "templates")), autoescape=select_autoescape(("html",)))
     html = templates.get_template("workbench/recovery.html").render(
         host=status, result=result, operation=operation, error=error, history_error=history_error, rows=rows,
         kind=kind, reference=reference, uncertain=uncertain, labels=LABELS, origins=ORIGINS)
-    headers["Content-Security-Policy"] = ("default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; "
+    # img-src data: 只为页面里内联的图标；维护期间 /static 不可用，所以图标不走外部地址。
+    headers["Content-Security-Policy"] = ("default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; "
                                          "form-action 'self'; base-uri 'none'; frame-ancestors 'none'")
     return Response(html, status=code, content_type="text/html; charset=utf-8", headers=headers)

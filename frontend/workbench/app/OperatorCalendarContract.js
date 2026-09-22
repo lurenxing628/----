@@ -79,13 +79,14 @@
   }
   function hours(value) {
     if (!value || !value.explicit) return '';
-    return (Math.round(value.shift_hours * 100) / 100) + ' 小时';
+    return window.WorkbenchFormat.hours(value.shift_hours, { digits: 2, trim: true });
   }
   function tag(value) {
     if (!value || !value.explicit) return { tone: 'none', text: '按班次' };
     if (value.shift_hours <= 0 || value.allow_normal === 'no' && value.allow_urgent === 'no')
       return { tone: 'rest', text: '休息' };
-    return { tone: 'cfg', text: value.shift_start + '–' + (value.shift_end || '?') };
+    // 没填班次结束时只写“几点起”，不用问号占位。
+    return { tone: 'cfg', text: value.shift_end ? value.shift_start + '–' + value.shift_end : value.shift_start + ' 起' };
   }
   function rangeInput(range) {
     if (!isDate(range.start_date) || !isDate(range.end_date))

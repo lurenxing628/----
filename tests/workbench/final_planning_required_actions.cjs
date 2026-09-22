@@ -134,7 +134,10 @@ async function nativeExportFailure(page, ready, report, h, flush) {
           finally { URL.createObjectURL = original; }
         };
       });
-      await h.button('导出对比').click(); await flush();
+      // One 导出 button opens the format dialog; the CSV starts from 下载 CSV（方案对比） inside it and a failure keeps the dialog open.
+      await h.button('导出', page.locator('[data-trial-workspace]')).click();
+      const exportDialog = page.getByRole('dialog', { name: '导出试调方案', exact: true }); await exportDialog.waitFor();
+      await h.button('下载 CSV（方案对比）', exportDialog).click(); await flush();
       const failure = await page.evaluate(() => {
         const value = window.__dNativeExport;
         return { calls: value.calls, received_blob: value.received_blob, bytes: value.bytes,
@@ -150,8 +153,9 @@ async function nativeExportFailure(page, ready, report, h, flush) {
       const data = h.last(value => value.scenario_ref === ready.expected.required.scenario_ref && value.tasks);
       const expected = await page.evaluate(value => window.TrialExport.csv(value).text, data);
       const downloading = page.waitForEvent('download');
-      await h.button('导出对比').click();
+      await h.button('下载 CSV（方案对比）', exportDialog).click();
       const file = await downloading, destination = path.join(ready.root, 'downloads', 'required-retry.csv');
+      await exportDialog.waitFor({ state: 'hidden' });
       await file.saveAs(destination); assert.equal(await file.failure(), null);
       assert.deepEqual(fs.readFileSync(destination), Buffer.from(expected, 'utf8'));
       assert.equal(await page.getByRole('alert').filter({ hasText: failure.message }).count(), 0);

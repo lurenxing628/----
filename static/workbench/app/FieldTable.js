@@ -29,11 +29,9 @@
       "aria-label": "\u73B0\u573A\u4EFB\u52A1\u5217\u8868"
     }, /*#__PURE__*/React.createElement("caption", {
       className: "wb-visually-hidden"
-    }, "\u5F53\u524D\u8303\u56F4\u7684\u5DE5\u5E8F\u5B89\u6392\u3001\u7D2F\u8BA1\u5B9E\u9645\u62A5\u5DE5\u548C\u62A5\u5DE5\u64CD\u4F5C"), /*#__PURE__*/React.createElement("colgroup", null, [22, 16, 18, 12, 8, 12, 12].map((width, index) => /*#__PURE__*/React.createElement("col", {
-      key: index,
-      style: {
-        width: width + '%'
-      }
+    }, "\u5F53\u524D\u8303\u56F4\u7684\u5DE5\u5E8F\u5B89\u6392\u3001\u7D2F\u8BA1\u5B9E\u9645\u62A5\u5DE5\u548C\u62A5\u5DE5\u64CD\u4F5C"), /*#__PURE__*/React.createElement("colgroup", null, ['task', 'resource', 'time', 'quantity', 'remaining', 'state', 'actions'].map(key => /*#__PURE__*/React.createElement("col", {
+      key: key,
+      className: 'field-task-col-' + key
     }))), /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, ['批次 / 工序', '计划设备 / 人员', '计划开工 / 完工', '累计完成 / 计划应做', '执行剩余', '状态', '操作'].map((label, index) => /*#__PURE__*/React.createElement("th", {
       key: label,
       scope: "col",

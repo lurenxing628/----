@@ -5,7 +5,7 @@
   const own = (value, key) => Object.prototype.hasOwnProperty.call(value, key);
   const position = value => typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : 0;
   function check(value) {
-    if (!value) throw new Error('页面定位信息无效，没有自动切换记录或扩大范围。请从侧栏重新打开工作区。');
+    if (!value) throw new Error('页面地址里的定位信息无效，没有自动改成别的记录或范围。请从侧栏重新打开。');
   }
   function same(left, right) {
     if (left === right) return true;
@@ -97,9 +97,15 @@
   }
   function helpUrl(boot, page) {
     // The manual page renders its "返回" link from src; without it help exits the shell with no way back.
+    // A run-history list is hosted by analysis/gantt/delay for shell reuse, but its instructions live under 6.2 执行排产.
+    // Other alias views keep their own id and therefore continue to open their own manual chapter.
+    const history = historyView(page),
+      manualPage = history ? 'run' : page.view;
     const url = new URL(boot.help_url, location.origin);
     url.searchParams.set('src', href(boot, page.view));
-    return url.pathname + url.search;
+    url.searchParams.set('page', manualPage);
+    if (history) url.hash = '排产记录';
+    return url.pathname + url.search + url.hash;
   }
   function auxiliary(state) {
     const result = {};
@@ -121,19 +127,38 @@
     });
     return result;
   }
-  function remember(boot, page) {
+  function captureScroll() {
+    const main = document.querySelector('.main-content');
+    return {
+      windowTop: position(window.scrollY),
+      windowLeft: position(window.scrollX),
+      mainTop: main ? position(main.scrollTop) : 0,
+      mainLeft: main ? position(main.scrollLeft) : 0,
+      containers: containerPositions(main)
+    };
+  }
+  function normalizedScroll(value) {
+    check(object(value) && object(value.containers));
+    const containers = {};
+    Object.keys(value.containers).forEach(key => {
+      const saved = value.containers[key];
+      check(typeof key === 'string' && !!key && Array.isArray(saved) && saved.length === 2);
+      containers[key] = [position(saved[0]), position(saved[1])];
+    });
+    return {
+      windowTop: position(value.windowTop),
+      windowLeft: position(value.windowLeft),
+      mainTop: position(value.mainTop),
+      mainLeft: position(value.mainLeft),
+      containers
+    };
+  }
+  function remember(boot, page, captured) {
     const current = read(boot);
     check(current.view === page.view && current.key === page.key);
-    const main = document.querySelector('.main-content');
     const saved = {
       ...current,
-      scroll: {
-        windowTop: position(window.scrollY),
-        windowLeft: position(window.scrollX),
-        mainTop: main ? position(main.scrollTop) : 0,
-        mainLeft: main ? position(main.scrollLeft) : 0,
-        containers: containerPositions(main)
-      }
+      scroll: captured === undefined ? captureScroll() : normalizedScroll(captured)
     };
     const state = history.state || {};
     check(!own(state, 'workbenchPages') || object(state.workbenchPages));
@@ -239,6 +264,34 @@
     });
     return cancel;
   }
+  // Continuous scrolling used to call history.replaceState on every animation frame; Chrome rate-limits that call and
+  // silently drops the excess writes. One trailing write per `delay` keeps the remembered position fresh, and flush()
+  // writes once more before the page is hidden.
+  function scrollMemory(save, delay = 200) {
+    if (typeof save !== 'function' || !Number.isFinite(delay) || delay < 0) throw new TypeError('scroll_memory_invalid');
+    let timer = 0;
+    function cancel() {
+      if (timer) {
+        clearTimeout(timer);
+        timer = 0;
+      }
+    }
+    function schedule() {
+      if (!timer) timer = setTimeout(() => {
+        timer = 0;
+        save();
+      }, delay);
+    }
+    function flush() {
+      cancel();
+      save();
+    }
+    return {
+      schedule,
+      flush,
+      cancel
+    };
+  }
   function guardHistory(boot, {
     hasDirty,
     confirmLeave,
@@ -338,6 +391,8 @@
     validateBoot,
     title,
     historyView,
-    guardHistory
+    guardHistory,
+    scrollMemory,
+    captureScroll
   };
 })();

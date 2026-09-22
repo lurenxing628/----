@@ -17,6 +17,37 @@
     handler: '经办人',
     recorder: '记录人',
     owner: '责任人',
+    // 2026-09-21 全站收口：同一概念只留一个叫法，各工作区从这里取，不再各写一份。
+    refresh_latest: '刷新最新资料',
+    accept_latest: '已核对，继续编辑',
+    personal_calendar: '个人日历',
+    name_missing: '名称未填写',
+    legacy_field_records: '历史现场记录',
+    shared_operation: '共同工序',
+    overdue: '超期',
+    current_official: '当前正式',
+    historical_official: '历史正式',
+    baseline_plan: '排产时的正式计划',
+    initial_plan: '初始计划',
+    // 排产记录状态与候选方案状态：值班台、执行排产、排产记录、试调列表共用同一套叫法。
+    run_statuses: Object.freeze({
+      queued: '等待计算',
+      running: '正在计算',
+      complete: '计算完成',
+      partial: '部分完成',
+      failed: '计算失败',
+      interrupted: '已中断'
+    }),
+    candidate_statuses: Object.freeze({
+      completed: '已完成',
+      partial: '部分完成',
+      failed: '失败',
+      skipped: '已跳过'
+    }),
+    // 页头身份标签允许 v3；句子里写“第 3 版”。
+    plan_version: version => '正式 v' + version,
+    download_started: name => '已交给浏览器下载：' + name,
+    data_as_of: time => '数据截至 ' + time,
     // 逐次报工的动作名：现场、报表、校准三个工作区共用，不再各写一份。
     report_actions: Object.freeze({
       create: '新增',

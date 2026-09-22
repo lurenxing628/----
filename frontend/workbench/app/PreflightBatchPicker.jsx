@@ -26,7 +26,7 @@
     function toggle(ref) {
       if (busy) return;
       const next = chosen.has(ref) ? selected.filter(item => item !== ref) : selected.concat(ref);
-      if (!C.refs(next)) { setError(C.fail('最多选择5000个批次，请先缩小范围。')); return; }
+      if (!C.refs(next)) { setError(C.fail('最多选择 5000 个批次，请先缩小范围。')); return; }
       onChange(next);
     }
     async function select(mode) {

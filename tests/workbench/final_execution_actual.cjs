@@ -17,13 +17,14 @@ async function actual(p) {
     const { windowSpan: initialWindow, centerAt } = initialView.position;
     const hasPoints = reading.data.items.some(item => item.task.start === item.task.end || item.execution?.reports.some(row => row.actual_start && (!row.actual_end || row.actual_start === row.actual_end)));
     const renderedSpan = axisSpan + (hasPoints ? 2 * Math.max(60000, axisSpan * .04) : 0);
-    const largestUsefulWindow = Math.max(planSpan * 1.2, renderedSpan / 1024);
+    // The default window follows the plan dates but its zoom is capped at 64x (ActualGanttWindow.initial); manual zoom still reaches 1024x.
+    const largestUsefulWindow = Math.max(planSpan * 1.2, renderedSpan / 64);
     assert(initialWindow >= planSpan && initialWindow <= largestUsefulWindow + 1 && initialWindow < axisSpan,
       'The default window must show the plan at a useful scale while the full axis retains historical reports and as_of');
     assert(centerAt - initialWindow / 2 <= planStart && centerAt + initialWindow / 2 >= planEnd,
       'The default visible window must contain the plan dates, not only have the right duration');
-    if (initialWindow > planSpan * 1.2) assert.equal(initialView.zoom, 1024, 'Only the renderer zoom cap may widen the plan window');
-    assert.equal(await page.getByLabel('时间轴缩放模式', { exact: true }).innerText(), '手动');
+    if (initialWindow > planSpan * 1.2) assert.equal(initialView.zoom, 64, 'Only the default zoom cap may widen the plan window');
+    assert.notEqual(await page.locator('.wb-zoom-level').innerText(), '1×');
     p.report.initial_actual_window = { axis_span: reading.data.axis_span, plan_span: reading.data.plan_span,
       as_of: reading.meta.as_of, visible_duration_ms: initialWindow, center_at: centerAt, zoom: initialView.zoom };
     await page.getByRole('button', { name: '定位选中工序', exact: true }).click();
@@ -56,12 +57,12 @@ async function actual(p) {
     await page.getByRole('checkbox', { name: '只看选中', exact: true }).check();
     assert((await page.locator('[data-actual-count]').innerText()).includes('1 / 33'));
     await page.getByRole('checkbox', { name: '只看选中', exact: true }).uncheck();
-    await page.getByRole('button', { name: '适应全部', exact: true }).click();
-    assert.equal(await page.getByLabel('时间轴缩放模式', { exact: true }).innerText(), '自动');
+    await (async () => { const fit = page.getByRole('button', { name: '显示完整时间范围', exact: true }); await fit.waitFor(); if (await fit.isEnabled()) await fit.click(); })();
+    assert.equal(await page.locator('.wb-zoom-level').innerText(), '1×');
     const automaticStep = Number(await page.getByLabel('时间轴刻度', { exact: true }).getAttribute('data-tick-step'));
     await page.getByRole('button', { name: '放大时间轴', exact: true }).click();
     await page.getByRole('button', { name: '放大时间轴', exact: true }).click();
-    assert.equal(await page.getByLabel('时间轴缩放模式', { exact: true }).innerText(), '手动');
+    assert.equal(await page.locator('.wb-zoom-level').innerText(), '4×');
     const manualStep = Number(await page.getByLabel('时间轴刻度', { exact: true }).getAttribute('data-tick-step'));
     assert(manualStep > 0 && manualStep < automaticStep);
     await page.getByLabel('时间轴水平位置', { exact: true }).focus(); await page.keyboard.press('End');
@@ -69,15 +70,15 @@ async function actual(p) {
     await p.shot('actual-keyboard-pan');
     await page.getByRole('button', { name: '缩小时间轴', exact: true }).click();
     await page.getByRole('button', { name: '定位选中工序', exact: true }).click();
-    await page.getByRole('button', { name: '适应全部', exact: true }).click();
-    assert.equal(await page.getByLabel('时间轴缩放模式', { exact: true }).innerText(), '自动');
+    await (async () => { const fit = page.getByRole('button', { name: '显示完整时间范围', exact: true }); await fit.waitFor(); if (await fit.isEnabled()) await fit.click(); })();
+    assert.equal(await page.locator('.wb-zoom-level').innerText(), '1×');
     assert.equal(Number(await page.getByLabel('时间轴刻度', { exact: true }).getAttribute('data-tick-step')), automaticStep);
     p.report.scale_states = { automaticStep, manualStep, restoredStep: automaticStep,
       basis: 'Original prototype presents mode and tick interval as scale status, not independent toggles.' };
-    const late = await page.getByLabel('晚期筛选', { exact: true }).locator('option').evaluateAll(nodes => nodes.map(n => n.value));
+    const late = await page.getByLabel('超期筛选', { exact: true }).locator('option').evaluateAll(nodes => nodes.map(n => n.value));
     assert.equal(late.length, 4);
-    for (const value of late) await p.choose('晚期筛选', value);
-    await p.choose('晚期筛选', 'all');
+    for (const value of late) await p.choose('超期筛选', value);
+    await p.choose('超期筛选', 'all');
   });
   await p.step(['WBP-FG-002', 'WBP-FG-004', 'WBP-FG-013', 'WBP-FG-014'], 'server-date-scope-empty-reset-visible-filter-export', async () => {
     await page.getByLabel('计划完工开始日', { exact: true }).fill('2026-09-08');
@@ -85,7 +86,7 @@ async function actual(p) {
     const empty = await p.read(() => page.getByRole('button', { name: '应用范围', exact: true }).click(), '/actual-gantt');
     assert.equal(empty.data.task_count, 0);
     await page.getByText('当前范围没有匹配的工序。', { exact: true }).waitFor();
-    assert(await page.getByRole('button', { name: '导出 CSV', exact: true }).isDisabled());
+    assert(await page.getByRole('button', { name: '导出', exact: true }).isDisabled());
     await p.shot('actual-empty-scope');
     const restored = await p.read(() => page.getByRole('button', { name: '清除来源范围', exact: true }).click(), '/actual-gantt');
     assert.equal(restored.data.plan.plan_ref, ready.expected.final_e.plan_ref); assert.equal(restored.data.task_count, 33);
@@ -94,7 +95,7 @@ async function actual(p) {
     const report = item.execution.reports[0];
     await page.getByLabel('搜索现场甘特', { exact: true }).fill(report.report_no);
     assert((await page.locator('[data-actual-count]').innerText()).includes('1 / 33'));
-    await page.getByRole('button', { name: '导出 CSV', exact: true }).click();
+    await page.getByRole('button', { name: '导出', exact: true }).click();
     await p.download(() => page.getByRole('button', { name: '下载 CSV', exact: true }).click(), 'actual-visible-scope');
     await page.getByLabel('搜索现场甘特', { exact: true }).fill('NO-SUCH-ACTUAL');
     await page.getByText('当前范围没有匹配的工序。', { exact: true }).waitFor();
@@ -102,7 +103,7 @@ async function actual(p) {
     p.report.actual_final = restored;
   });
   await p.step(['WBP-FG-002', 'WBP-FIELD-004'], 'return-to-original-field-identity-and-browser-refresh', async () => {
-    const current = await p.read(() => page.getByRole('button', { name: '回来源', exact: true }).click(), '/execution/tasks');
+    const current = await p.read(() => page.getByRole('button', { name: '返回', exact: true }).click(), '/execution/tasks');
     assert(current.data.tasks.some(row => row.task_ref === ref));
     await page.locator('[data-field-task="' + ref + '"]').waitFor();
     const reload = await p.read(() => page.reload(), '/execution/tasks');

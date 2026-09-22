@@ -4,7 +4,8 @@
   const C = window.APSResourceContract, P = window.APSPlanContract, S = window.APSResourceSession;
   function Identity({ plan }) {
     const unavailable = !plan.capabilities.view;
-    const text = plan.is_current_official ? '当前正式' : plan.kind === 'official' ? '历史正式' : plan.kind === 'candidate' ? '候选方案' : '试调方案';
+    const T = window.WorkbenchTerms;
+    const text = plan.is_current_official ? T.current_official : plan.kind === 'official' ? T.historical_official : plan.kind === 'candidate' ? T.candidate : T.trial_scenario;
     return <span className={'plan-state ' + (unavailable ? 'unavailable' : plan.is_current_official ? 'official' : '')}>{text}{unavailable ? ' · 不可查看' : ''}</span>;
   }
   function Catalog({ adapter, selectedRef, onSelect, autoSelect = false, disabled = false, actions }) {
@@ -53,7 +54,7 @@
       {result && <Issues issues={result.warnings} />}
       {!collapsed && <div className="plan-catalog-scroll wb-table-frame" data-wb-scroll-key="plan-catalog" data-sticky-head data-sticky-actions><table className="wb-table" aria-label="可选排产方案" aria-busy={read.loading}>
         <caption className="wb-visually-hidden">可选排产方案</caption><thead><tr><th className="wb-col-key" scope="col">计划 / 方案</th><th scope="col">版本</th><th scope="col">类型</th><th scope="col">记录状态</th></tr></thead>
-        <tbody>{data && data.plans.map((plan, row) => <tr key={plan.plan_ref || 'unavailable-' + row} aria-selected={!!plan.plan_ref && plan.plan_ref === selectedRef}>
+        <tbody>{data && data.plans.map((plan, row) => <tr key={plan.plan_ref || 'unavailable-' + row} aria-current={!!plan.plan_ref && plan.plan_ref === selectedRef ? 'true' : undefined}>
           <td className="wb-col-key"><label title={plan.blocked_reasons.map(reason => reason.message).join('\n')}><input type="radio" name="plan-choice" aria-label={'选择 ' + plan.display_name} checked={!!plan.plan_ref && plan.plan_ref === selectedRef}
             disabled={disabled || !plan.capabilities.view} onChange={() => choose(plan)} /><strong>{plan.display_name}</strong></label></td>
           <td>{plan.version === null ? '未记录' : String(plan.version)}</td><td><Identity plan={plan} /></td>

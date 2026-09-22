@@ -4,6 +4,12 @@ WORKBENCH_UI_REQUIRED_TESTS = (
     "tests/workbench/test_style_build_sources.py",
     "tests/workbench/test_ui_refinement_style_gate.py",
     "tests/workbench/test_ui_refinement_node_contracts.py",
+    # 2026-09-21 弹窗关闭后焦点回到启动器/工作区容器、tooltip 原因按钮 aria-disabled 的 vm 合同。
+    "tests/workbench/test_modal_focus_restore_contract.py",
+    # 2026-09-21 新增工种弹窗“刷新最新资料”后仍可保存的 vm 合同（编译组件 + 最小 hooks 运行时）。
+    "tests/workbench/test_process_op_type_create_contract.py",
+    # 2026-09-21 现场报工“填 0 / 填剩余数”只填草稿不写入的 vm 合同。
+    "tests/workbench/test_field_editor_fill_contract.py",
     "tests/workbench/test_ui_refinement_evidence_contract.py",
     "tests/workbench/test_ui_refinement_browser_dependencies.py",
     "tests/gate_meta/test_daily_ui_refinement_opt_in.py",
@@ -46,6 +52,8 @@ WORKBENCH_UI_REQUIRED_REGRESSION_GROUPS = ({
         "tests/workbench/analysis_ui_contract.cjs",
         "tests/_support/workbench_browser_contract.py", "tests/_support/workbench_browser_probe.cjs",
         "tests/workbench/handler_memory_probe.cjs", "tests/workbench/deletion_icon_contract.cjs",
+        "tests/workbench/modal_focus_restore_contract.cjs", "tests/workbench/process_op_type_create_contract.cjs",
+        "tests/workbench/field_editor_fill_contract.cjs",
         "core/services/workbench/run/progress.py", "core/services/workbench/run/jobs.py", "core/services/workbench/run/worker.py",
         "core/services/scheduler/run/schedule_candidate_runner.py",
         # 文案词表（test_ui_copy_glossary.py）扫的是 tools/ui_copy_glossary.json 里那四类范围，
@@ -56,6 +64,18 @@ WORKBENCH_UI_REQUIRED_REGRESSION_GROUPS = ({
         "static/docs/scheduler_manual.md", "static/docs/aps_three_gap_user_guide.md",
         "templates/workbench/**/*.html", "templates/error.html", "templates/error_base.html",
         "core/services/workbench/**/*.py", "web/routes/workbench/*.py", "web/routes/workbench/**/*.py",
+        # 2026-09-21 执行台账的 gap 提示直接上屏（现场记录详情、报表中心数据缺口列），词表扫描范围同步加了这里。
+        "core/services/execution/*.py", "core/services/execution/**/*.py",
+        # 2026-09-21 工艺定额锁定与模板来源的拒绝文案写在 core/services/process、core/services/scheduler 的共享策略模块里，
+        # 经 core/services/workbench 适配层原样上屏（api_endpoint 直接 str(exc)），词表扫描范围同步加了这三个文件。
+        "core/services/process/quota_protection.py",
+        "core/services/scheduler/template_lineage.py", "core/services/scheduler/template_lineage_query.py",
+        # 2026-09-21 工种/供应商/零件/批次领域服务的 BusinessError 经 _domain_failure 原样透出 exc.message，执行记录适配器的 AppError 经试调锚点 / 排产准入取 exc.message 上屏（原先是 str(exc)，会带错误码前缀），词表同步加了这五个文件。
+        "core/services/process/op_type_service.py", "core/services/process/supplier_service.py", "core/services/process/part_service.py",
+        "core/services/batch/service.py", "core/services/scheduler/execution/execution_ledger_adapter.py",
+        # 2026-09-21 设备/人员领域服务的 BusinessError 同样经 resource/entities.py 的 create/delete → _domain_failure 透出 exc.message；班组服务当前没有工作台入口，为让整文件扫描归零一并纳入。词表同步加了这三个文件。
+        "core/services/equipment/machine_service.py", "core/services/personnel/operator_service.py",
+        "core/services/personnel/resource_team_service.py",
         "frontend/workbench/prototype/ui_kits/workbench/*.jsx",
         "frontend/workbench/prototype/ui_kits/workbench/*.js",
         "frontend/workbench/prototype/ui_kits/workbench/assets/*.js",

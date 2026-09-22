@@ -25,9 +25,12 @@
     if (!adapterIds.has(adapter)) adapterIds.set(adapter, ++nextAdapter);
     return adapterIds.get(adapter);
   }
+  // The three plan-centre tabs share the heading and task detail; the body differs: analysis = projection tables,
+  // gantt = the gantt board, delay = projection tables plus resource overlap. Selecting a batch or a related task on a
+  // tab without the gantt only selects it for the task detail; the gantt locates it when that tab is shown.
   function WorkspaceSession({
     adapter,
-    view,
+    view = 'analysis',
     planRef,
     initialContext = {},
     disabled = false,
@@ -73,7 +76,7 @@
         task,
         before: false,
         result,
-        ...(relatedRef ? {
+        ...(relatedRef || view === 'gantt' ? {
           locate: true
         } : {})
       });else setRangeError(C.failure(relatedRef ? '此计划中未找到相关工序。' : '要恢复的工序不在当前范围内。'));
@@ -116,12 +119,15 @@
       setSelected(null);
       read.reload();
     }
-    function selectTask(task, before = false) {
+    function selectTask(task, before = false, locate = false) {
       initialTaskRef.current = null;
       setSelected({
         task,
         before,
-        result
+        result,
+        ...(locate ? {
+          locate: true
+        } : {})
       });
     }
     function selectRelated(ref) {
@@ -174,14 +180,14 @@
     const risks = data && data.projections.delivery_risks.items;
     const ready = !!data && !disabled;
     const includesPlanEnd = data && data.scope.range_start === null && data.plan_span.end_inclusive === true;
-    const scopeCaption = !data ? '' : includesPlanEnd && data.plan_span.start === data.plan_span.end ? `计划时刻：${M.timeLabel(data.plan_span.start)}` : `计划时间范围：${M.timeLabel(data.time_scope.range_start)} → ${M.timeLabel(data.time_scope.range_end)}（${includesPlanEnd ? '包含末端零工时工序' : '不含结束时刻'}）`;
+    const scopeCaption = !data ? '' : includesPlanEnd && data.plan_span.start === data.plan_span.end ? `计划时刻：${M.timeLabel(data.plan_span.start)}` : `计划时间范围：${M.timeLabel(data.time_scope.range_start)} 至 ${M.timeLabel(data.time_scope.range_end)}（${includesPlanEnd ? '包含末端零工时工序' : '不含结束时刻'}）`;
     window.WorkbenchCaption.useCaption(data && !read.loading && !read.error && !paused ? {
       reference: data.plan.plan_ref,
       label: '正式计划',
       name: data.plan.display_name,
-      status: data.plan.is_current_official ? '当前正式' : data.plan.kind === 'official' ? '历史正式' : data.plan.kind === 'candidate' ? '候选方案' : '试调方案',
+      status: data.plan.is_current_official ? window.WorkbenchTerms.current_official : data.plan.kind === 'official' ? window.WorkbenchTerms.historical_official : data.plan.kind === 'candidate' ? window.WorkbenchTerms.candidate : window.WorkbenchTerms.trial_scenario,
       ...(data.plan.kind === 'official' && data.plan.version !== null ? {
-        version: '第 ' + data.plan.version + ' 版'
+        version: window.WorkbenchTerms.plan_version(data.plan.version)
       } : {}),
       range: scopeCaption
     } : null);
@@ -310,8 +316,8 @@
       className: "sv wb-metric-value"
     }, value))))), data && /*#__PURE__*/React.createElement("div", {
       className: "plan-main"
-    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(window.PlanGantt, {
-      key: 'gantt:' + result.meta.snapshot_ref,
+    }, /*#__PURE__*/React.createElement("div", null, view === 'gantt' && /*#__PURE__*/React.createElement(window.PlanGantt, {
+      key: 'gantt:' + data.plan.plan_ref,
       data: data,
       asOf: result.meta.as_of,
       selected: chosen,
@@ -319,14 +325,14 @@
       query: query,
       onQuery: setQuery,
       disabled: disabled
-    }), /*#__PURE__*/React.createElement(ProjectionTables, {
+    }), view !== 'gantt' && /*#__PURE__*/React.createElement(ProjectionTables, {
       key: 'risk:' + result.meta.snapshot_ref,
       data: data,
       onResource: setQuery,
       onBatch: batch => {
         setQuery(batch);
         const task = data.tasks.find(row => row.batch_id === batch);
-        if (task) selectTask(task);
+        if (task) selectTask(task, false, true);
       }
     }), view === 'delay' && /*#__PURE__*/React.createElement(Conflicts, {
       key: 'conflicts:' + result.meta.snapshot_ref,

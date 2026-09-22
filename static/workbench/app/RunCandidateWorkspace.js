@@ -53,6 +53,7 @@
     for (const key of ['range_start', 'range_end']) if (value && A.time(value[key])) result[key] = value[key];
     return result;
   }
+  // One 导出 button opens the format dialog, the same walk as the plan, trial and actual-gantt exports.
   function Export({
     adapter,
     result,
@@ -61,16 +62,24 @@
   }) {
     const [busy, setBusy] = React.useState(false),
       [error, setError] = React.useState(null),
-      [done, setDone] = React.useState('');
+      [done, setDone] = React.useState(''),
+      [format, setFormat] = React.useState(null);
     const active = React.useRef(null);
     React.useEffect(() => () => {
       if (active.current) active.current.abort();
     }, []);
     const d = result.data,
       allowed = d.capabilities.export === true && d.candidate.capabilities.export === true && typeof adapter.export === 'function';
-    async function save(fmt) {
-      if (!allowed || active.current) return;
-      const controller = new AbortController();
+    function cancel() {
+      if (active.current) active.current.abort();
+      active.current = null;
+      setBusy(false);
+      setFormat(null);
+    }
+    async function save() {
+      if (!allowed || active.current || !format) return;
+      const fmt = format,
+        controller = new AbortController();
       active.current = controller;
       setBusy(true);
       setError(null);
@@ -86,7 +95,8 @@
         link.click();
         link.remove();
         setTimeout(() => URL.revokeObjectURL(url), 1000);
-        setDone('已下载 ' + file.row_count + ' 条记录（安排 ' + d.task_count + '，未安排 ' + (d.unplanned_operation_count === null ? '未知' : d.unplanned_operation_count) + '）。');
+        setDone(window.WorkbenchTerms.download_started(file.filename) + '，共 ' + file.row_count + ' 条记录（安排 ' + d.task_count + '，未安排 ' + (d.unplanned_operation_count === null ? '未知' : d.unplanned_operation_count) + '）。');
+        setFormat(null);
       } catch (e) {
         if (!controller.signal.aborted) setError(e);
       } finally {
@@ -98,18 +108,48 @@
     }
     return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
       className: "rc-tools"
-    }, ['csv', 'xlsx'].map(fmt => /*#__PURE__*/React.createElement(C.Button, {
-      key: fmt,
-      icon: "download",
-      title: "\u5BFC\u51FA\u5F53\u524D\u8BFB\u53D6\u8303\u56F4\u5168\u90E8\u5B89\u6392\u4E0E\u672A\u5B89\u6392\u8BB0\u5F55",
-      disabled: !allowed,
+    }, /*#__PURE__*/React.createElement(C.Button, {
+      transfer: "export",
+      reason: allowed ? '' : '当前还不能导出这个候选方案。',
+      reasonDisplay: "tooltip",
       busy: busy,
-      onClick: () => save(fmt)
-    }, fmt.toUpperCase()))), query.trim() && /*#__PURE__*/React.createElement("small", null, "\u641C\u7D22\u4E0D\u6539\u53D8\u5BFC\u51FA\u8303\u56F4"), /*#__PURE__*/React.createElement(C.ErrorBox, {
-      error: error
-    }), done && /*#__PURE__*/React.createElement("small", {
+      onClick: () => {
+        setFormat('csv');
+        setError(null);
+        setDone('');
+      }
+    }, "\u5BFC\u51FA")), query.trim() && /*#__PURE__*/React.createElement("small", null, "\u641C\u7D22\u4E0D\u6539\u53D8\u5BFC\u51FA\u8303\u56F4"), done && /*#__PURE__*/React.createElement("small", {
       role: "status"
-    }, done));
+    }, done), format && /*#__PURE__*/React.createElement(window.ResourceControls.Modal, {
+      title: "\u5BFC\u51FA\u5019\u9009\u65B9\u6848",
+      icon: "download",
+      onClose: cancel,
+      footer: /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(C.Button, {
+        onClick: cancel
+      }, busy ? '取消导出' : '取消'), /*#__PURE__*/React.createElement(C.Button, {
+        transfer: "export",
+        className: "btn primary",
+        busy: busy,
+        onClick: save
+      }, "\u4E0B\u8F7D ", format.toUpperCase()))
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "modal-b rc-export-summary"
+    }, /*#__PURE__*/React.createElement("div", {
+      role: "radiogroup",
+      "aria-label": "\u5019\u9009\u5BFC\u51FA\u683C\u5F0F",
+      className: "rc-export-format"
+    }, [['csv', 'CSV'], ['xlsx', 'XLSX']].map(([key, text]) => /*#__PURE__*/React.createElement("label", {
+      key: key
+    }, /*#__PURE__*/React.createElement("input", {
+      type: "radio",
+      name: "rc-export-format",
+      value: key,
+      checked: format === key,
+      disabled: busy,
+      onChange: () => setFormat(key)
+    }), text))), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("strong", null, d.candidate.label || window.WorkbenchTerms.name_missing)), /*#__PURE__*/React.createElement("p", null, "\u5BFC\u51FA\u5F53\u524D\u8BFB\u53D6\u8303\u56F4\u5168\u90E8\u5B89\u6392\u4E0E\u672A\u5B89\u6392\u8BB0\u5F55\uFF1A\u5B89\u6392 ", d.task_count, " \u9053\uFF0C\u672A\u5B89\u6392 ", d.unplanned_operation_count === null ? '未知' : d.unplanned_operation_count + ' 道', "\u3002\u641C\u7D22\u4E0D\u6539\u53D8\u5BFC\u51FA\u8303\u56F4\u3002"), /*#__PURE__*/React.createElement(C.ErrorBox, {
+      error: error
+    }))));
   }
   function Session({
     adapter,
@@ -176,13 +216,8 @@
       reference: shown.candidate.candidate_ref,
       label: '当前候选',
       name: shown.candidate.label,
-      status: '候选方案 · ' + ({
-        completed: '已完成',
-        partial: '部分完成',
-        failed: '失败',
-        skipped: '已跳过'
-      }[shown.candidate.status] || '状态待确认'),
-      range: (scope.range_start ? M.timeLabel(scope.range_start) + ' 至 ' + M.timeLabel(scope.range_end) + '（不含结束）' : '完整候选范围') + ' · ' + shown.task_count + ' / ' + shown.candidate_task_count + ' 道安排'
+      status: window.WorkbenchTerms.candidate + ' · ' + (window.WorkbenchTerms.candidate_statuses[shown.candidate.status] || '状态待确认'),
+      range: (scope.range_start ? M.timeLabel(scope.range_start) + ' 至 ' + M.timeLabel(scope.range_end) + '（不含结束时刻）' : '完整候选范围') + ' · ' + shown.task_count + ' / ' + shown.candidate_task_count + ' 道安排'
     } : null);
     const tasks = React.useMemo(() => shown ? M.matching(shown.tasks, query) : [], [shown, query]);
     const unplanned = React.useMemo(() => shown ? M.matching(shown.unplanned_operations || [], query) : [], [shown, query]);
@@ -283,7 +318,9 @@
       className: "rc-heading"
     }, /*#__PURE__*/React.createElement("div", {
       className: "rc-tools"
-    }, /*#__PURE__*/React.createElement("h2", null, view === 'delay' ? '候选交付风险' : view === 'gantt' ? '候选甘特' : '候选排产结果'), /*#__PURE__*/React.createElement("span", {
+    }, /*#__PURE__*/React.createElement("h2", {
+      className: "wb-page-title"
+    }, view === 'delay' ? '候选交付风险' : view === 'gantt' ? '候选甘特' : '候选排产结果'), /*#__PURE__*/React.createElement("span", {
       className: "rc-muted"
     }, "\u5DF2\u4FDD\u5B58\u7684\u5019\u9009\u65B9\u6848")), /*#__PURE__*/React.createElement("div", {
       className: "rc-tools"
@@ -446,7 +483,7 @@
       error: rangeError
     }), /*#__PURE__*/React.createElement("div", {
       className: "rc-scope"
-    }, /*#__PURE__*/React.createElement("span", null, "\u8BFB\u53D6\u8303\u56F4\uFF1A", scope.range_start ? M.timeLabel(scope.range_start) + ' 至 ' + M.timeLabel(scope.range_end) + '（不含结束）' : '全部时间', scope.batch_ref && ' · 指定批次', ' · 安排 ' + shown.task_count + ' / 候选共 ' + shown.candidate_task_count + ' 道 · 未安排 ' + (shown.unplanned_operation_count === null ? '未知（未记录）' : shown.unplanned_operation_count + ' 道')), scope.batch_ref && /*#__PURE__*/React.createElement(window.WorkbenchReference, {
+    }, /*#__PURE__*/React.createElement("span", null, "\u8BFB\u53D6\u8303\u56F4\uFF1A", scope.range_start ? M.timeLabel(scope.range_start) + ' 至 ' + M.timeLabel(scope.range_end) + '（不含结束时刻）' : '全部时间', scope.batch_ref && ' · 指定批次', ' · 安排 ' + shown.task_count + ' / 候选共 ' + shown.candidate_task_count + ' 道 · 未安排 ' + (shown.unplanned_operation_count === null ? '未知（未记录）' : shown.unplanned_operation_count + ' 道')), scope.batch_ref && /*#__PURE__*/React.createElement(window.WorkbenchReference, {
       entries: {
         '筛选批次编号': scope.batch_ref
       }
@@ -455,9 +492,7 @@
       onLast: lastOperation
     }), /*#__PURE__*/React.createElement("div", {
       className: "rc-main",
-      style: ['delivery', 'history'].includes(tab) ? {
-        gridTemplateColumns: 'minmax(0,1fr)'
-      } : undefined
+      "data-single-column": ['delivery', 'history'].includes(tab) ? 'true' : undefined
     }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(window.RunCandidateGantt, {
       data: shown,
       query: query,
@@ -470,14 +505,32 @@
     }, /*#__PURE__*/React.createElement("div", {
       role: "tablist",
       className: "rc-tabs",
-      "aria-label": "\u5019\u9009\u660E\u7EC6\u7C7B\u522B"
+      "aria-label": "\u5019\u9009\u660E\u7EC6\u7C7B\u522B",
+      onKeyDown: event => {
+        if (event.altKey || event.ctrlKey || event.metaKey) return;
+        const tabs = Array.from(event.currentTarget.querySelectorAll('[role="tab"]')),
+          index = tabs.indexOf(document.activeElement);
+        const target = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : event.key === 'ArrowRight' ? (index + 1) % tabs.length : event.key === 'ArrowLeft' ? (index + tabs.length - 1) % tabs.length : -1;
+        if (target >= 0) {
+          event.preventDefault();
+          tabs[target].focus();
+          tabs[target].click();
+        }
+      }
     }, ['tasks', 'unplanned', ...(view === 'delay' ? [] : ['delivery', 'history'])].map(t => /*#__PURE__*/React.createElement(C.Button, {
       key: t,
       role: "tab",
+      id: 'rc-detail-tab-' + t,
+      "aria-controls": "rc-detail-panel",
+      tabIndex: tab === t ? 0 : -1,
       icon: t === 'tasks' ? 'chart-gantt' : t === 'history' ? 'history' : 'circle-alert',
       "aria-selected": tab === t,
       onClick: () => setTab(t)
-    }, t === 'tasks' ? '任务安排' : t === 'delivery' ? '交付风险' : t === 'history' ? '采用记录' : '未安排明细')))), tab === 'history' ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(C.ErrorBox, {
+    }, t === 'tasks' ? '任务安排' : t === 'delivery' ? '交付风险' : t === 'history' ? '采用记录' : '未安排明细')))), /*#__PURE__*/React.createElement("div", {
+      role: "tabpanel",
+      id: "rc-detail-panel",
+      "aria-labelledby": 'rc-detail-tab-' + tab
+    }, tab === 'history' ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(C.ErrorBox, {
       error: historyRead.error
     }), historyRead.result && /*#__PURE__*/React.createElement(Analysis.History, {
       data: historyRead.result.data,
@@ -505,7 +558,7 @@
       selected: chosen,
       onSelect: select,
       planned: tab === 'tasks'
-    }))), !['delivery', 'history'].includes(tab) && /*#__PURE__*/React.createElement(C.Detail, {
+    })))), !['delivery', 'history'].includes(tab) && /*#__PURE__*/React.createElement(C.Detail, {
       task: chosen,
       onClose: () => setSelected(null)
     })), analysis && /*#__PURE__*/React.createElement(Analysis.Overview, {

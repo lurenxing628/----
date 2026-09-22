@@ -18,8 +18,8 @@
   }
   function displayValue(key, value) {
     if (typeof value === 'number' && Number.isFinite(value)) {
-      if (key === 'default_days') return value + ' 天';
-      if (key === 'default_hours') return value + ' 小时';
+      if (key === 'default_days') return window.WorkbenchFormat.number(value, { digits: 4, trim: true }) + ' 天';
+      if (key === 'default_hours') return window.WorkbenchFormat.hours(value, { digits: 4, trim: true });
     }
     if (!C.own(detailFields, key)) return undefined;
     if (!value.length) return '未选';

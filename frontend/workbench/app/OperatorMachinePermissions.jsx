@@ -86,7 +86,7 @@
           {read.result && read.result.data.page.total > 20 && <span className="muted">显示前 20 台，请输入编号或名称缩小范围。</span>}
         </form>}
         <ErrorBox error={read.error} />
-        <div className="wb-table-frame"><table className="wb-table"><caption>全部可操作设备（{rows.length} 台）</caption><thead><tr><th>设备</th><th>技能等级</th><th>主操设备</th><th>操作</th></tr></thead>
+        <div className="wb-table-frame"><table className="wb-table"><caption>全部可操作设备（{rows.length} 台）</caption><thead><tr><th scope="col">设备</th><th scope="col">技能等级</th><th scope="col">主操设备</th><th scope="col">操作</th></tr></thead>
           <tbody>{rows.map(row => <tr key={row.machine_ref}><td>{row.business_code} · {row.label}</td><td><PermissionSelect value={row.skill_level} choices={levels} label={'技能等级 ' + row.business_code} disabled={disabled} onChange={value => edit(row.machine_ref, 'skill_level', value)} /></td>
             <td><PermissionSelect value={row.is_primary} choices={primaries} label={'主操设备 ' + row.business_code} disabled={disabled} onChange={value => edit(row.machine_ref, 'is_primary', value)} /></td>
             <td><Button disabled={disabled} onClick={() => change(rows.filter(item => item.machine_ref !== row.machine_ref))}>解除关联</Button></td></tr>)}</tbody></table>
@@ -97,7 +97,7 @@
             {row.result === 'update' && Object.entries(row.changes).map(([key, pair]) => <span key={key}>；{key === 'skill_level' ? '技能等级' : '主操设备'}：{display(key, pair[0])} → {display(key, pair[1])}</span>)}</li>)}</ul> : <p>设备关联没有变化。</p>}
           <p className="muted">保存后，新的资源分配按这份设备关联判断；已保存的计划和报工记录保留。</p></section>}
         <ErrorBox error={error} /><Feedback command={command} />
-        {!done && (error || command.error) && <Button icon="refresh-cw" disabled={disabled} onClick={reload}>刷新设备关联</Button>}
+        {!done && (error || command.error) && <Button icon="refresh-cw" disabled={disabled} onClick={reload}>{window.WorkbenchTerms.refresh_latest}</Button>}
         {done && <><p role="status">{refreshState.done ? '已刷新人员资料，设备关联已保存。' : refreshState.loading ? '正在刷新人员资料…' : '请刷新保存结果，核对人员资料。'}</p>
           <ErrorBox error={refreshState.error} />{refreshState.error && <Button icon="refresh-cw" onClick={onRefresh}>刷新保存结果</Button>}</>}
       </div>

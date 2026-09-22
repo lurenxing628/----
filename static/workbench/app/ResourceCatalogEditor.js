@@ -163,7 +163,7 @@
       className: "rc-facts"
     }, /*#__PURE__*/React.createElement("div", {
       className: "rc-section-head"
-    }, /*#__PURE__*/React.createElement("b", null, entity.business_code, " \xB7 ", entity.label), /*#__PURE__*/React.createElement("span", null, entity.status === 'active' ? '启用' : entity.status === 'inactive' ? '停用' : '旧状态未知')), /*#__PURE__*/React.createElement("p", null, "\u5DF2\u5173\u8054", kind === 'machine_group' ? '设备' : '人员', "\uFF1A", count === null ? '未读取' : count), kind === 'shift_profile' && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", null, "\u5468\u671F\u8D77\u59CB\u65E5\u671F\uFF1A", window.WorkbenchFormat.date(entity.fields.anchor_date), " \xB7 \u8F6E\u6362\u5929\u6570\uFF1A", entity.fields.cycle_days), /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("b", null, entity.business_code, " \xB7 ", entity.label), /*#__PURE__*/React.createElement("span", null, entity.status === 'active' ? '启用' : entity.status === 'inactive' ? '停用' : '旧状态 / 原因未知')), /*#__PURE__*/React.createElement("p", null, "\u5DF2\u5173\u8054", kind === 'machine_group' ? '设备' : '人员', "\uFF1A", count === null ? '未读取' : count), kind === 'shift_profile' && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", null, "\u5468\u671F\u8D77\u59CB\u65E5\u671F\uFF1A", window.WorkbenchFormat.date(entity.fields.anchor_date), " \xB7 \u8F6E\u6362\u5929\u6570\uFF1A", entity.fields.cycle_days), /*#__PURE__*/React.createElement("div", {
       className: "wb-table-frame rc-pattern-scroll",
       "data-sticky-head": true,
       "data-sticky-actions": true
@@ -261,7 +261,7 @@
       value: "inactive"
     }, "\u505C\u7528"), value.status && !['active', 'inactive'].includes(value.status) && /*#__PURE__*/React.createElement("option", {
       value: value.status
-    }, "\u65E7\u72B6\u6001\u672A\u77E5\uFF08\u4FDD\u6301\u539F\u503C\uFF09"))), kind === 'shift_profile' && /*#__PURE__*/React.createElement(React.Fragment, null, field('anchor_date', '周期起始日期', {
+    }, "\u65E7\u72B6\u6001 / \u539F\u56E0\u672A\u77E5\uFF08\u4FDD\u6301\u539F\u503C\uFF09"))), kind === 'shift_profile' && /*#__PURE__*/React.createElement(React.Fragment, null, field('anchor_date', '周期起始日期', {
       required: true,
       type: 'date'
     }), field('cycle_days', '轮换天数', {

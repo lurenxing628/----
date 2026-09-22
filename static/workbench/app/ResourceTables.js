@@ -162,13 +162,6 @@
       render: entity => /*#__PURE__*/React.createElement("button", {
         type: "button",
         className: "lnk",
-        style: {
-          border: 0,
-          padding: 0,
-          background: 'none',
-          font: 'inherit',
-          textAlign: 'left'
-        },
         disabled: disabled,
         onClick: () => onOpen(entity.ref)
       }, entity.business_code)
@@ -302,7 +295,7 @@
     }, kind === 'op_type' ? entity.fields.category === 'internal' ? '查看绑定' : entity.fields.category === 'external' ? '查看供应商' : '查看/编辑' : '查看/编辑'), /*#__PURE__*/React.createElement(Button, {
       className: "mini danger",
       icon: "trash-2",
-      reasonDisplay: "inline",
+      reasonDisplay: "tooltip",
       reason: disabled ? '正在处理，请稍候。' : C.blocked(entity.write_context, kind, 'delete', source),
       onClick: () => onDelete(entity.ref)
     }, "\u5220\u9664"))))), !entities.length && /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", {

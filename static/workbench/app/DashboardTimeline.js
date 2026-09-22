@@ -54,7 +54,8 @@
       board.current.scrollTop = Math.max(0, location.top - 60);
       const left = (location.item.start - model.start) / (model.end - model.start) * width;
       if (left < position.left || left > position.left + viewport) board.current.scrollLeft = Math.max(0, left - viewport / 3);
-    }, [selectedBatch, focusTask, model]);
+      // Only a new selection scrolls; zoom and resize rebuild the model but must keep the user's own position.
+    }, [selectedBatch, focusTask]);
     const ticks = M.ticks(model.start, model.end, width, position.left, viewport);
     const rows = M.visibleRows(model.rows, Math.max(0, position.top - 60), position.top + position.height + 60);
     const rangeStart = model.start + position.left / width * (model.end - model.start),
@@ -136,11 +137,7 @@
       style: {
         left: tick.x
       }
-    }, window.WorkbenchFormat.dateTime(tick.label, {
-      seconds: true
-    }).slice(0, 10), /*#__PURE__*/React.createElement("small", null, window.WorkbenchFormat.dateTime(tick.label, {
-      seconds: true
-    }).slice(11)))))), rows.map(row => {
+    }, M.timeLabel(tick.label).slice(0, 10), /*#__PURE__*/React.createElement("small", null, M.timeLabel(tick.label).slice(11)))))), rows.map(row => {
       const items = row.point ? window.PointGanttModel.visible(row.items, rangeStart, rangeEnd, width / (model.end - model.start)) : M.visibleItems(row.items, rangeStart, rangeEnd);
       return /*#__PURE__*/React.createElement("div", {
         key: row.key,

@@ -70,7 +70,7 @@
           anchor.remove();
           window.setTimeout(() => URL.revokeObjectURL(url), 1000);
         }
-        setNotice('已发起下载：' + name);
+        setNotice(window.WorkbenchTerms.download_started(name));
         setFormat(null);
       } catch (failure) {
         if (!controller.signal.aborted && active.current === controller) setError(failure);
@@ -113,7 +113,7 @@
       label: "\u8BA1\u5212\u5BFC\u51FA\u683C\u5F0F",
       disabled: busy,
       onChange: setFormat
-    }), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("strong", null, result.data.plan.display_name)), /*#__PURE__*/React.createElement("p", null, "\u5BFC\u51FA\u65F6\u95F4\u8303\u56F4\uFF1A", M.timeLabel(result.data.time_scope.range_start), " \u2192 ", M.timeLabel(result.data.time_scope.range_end), "\uFF08\u4E0D\u542B\u7ED3\u675F\u65F6\u523B\uFF09"), /*#__PURE__*/React.createElement("p", null, "\u5171 ", result.data.task_count, " \u9053\u5DE5\u5E8F\u5B89\u6392\uFF0C\u6309\u5F53\u524D\u8BFB\u53D6\u7684\u8BA1\u5212\u5185\u5BB9\u5BFC\u51FA\u3002"), query.trim() && /*#__PURE__*/React.createElement("p", {
+    }), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("strong", null, result.data.plan.display_name)), /*#__PURE__*/React.createElement("p", null, "\u5BFC\u51FA\u65F6\u95F4\u8303\u56F4\uFF1A", M.timeLabel(result.data.time_scope.range_start), " \u81F3 ", M.timeLabel(result.data.time_scope.range_end), "\uFF08\u4E0D\u542B\u7ED3\u675F\u65F6\u523B\uFF09"), /*#__PURE__*/React.createElement("p", null, "\u5171 ", result.data.task_count, " \u9053\u5DE5\u5E8F\u5B89\u6392\uFF0C\u6309\u5F53\u524D\u8BFB\u53D6\u7684\u8BA1\u5212\u5185\u5BB9\u5BFC\u51FA\u3002"), query.trim() && /*#__PURE__*/React.createElement("p", {
       className: "plan-danger"
     }, "\u641C\u7D22\u201C", query, "\u201D\u627E\u5230 ", matched, " \u9053\u5B89\u6392\uFF1B\u672C\u6B21\u5BFC\u51FA\u5305\u542B\u6240\u9009\u65F6\u95F4\u8303\u56F4\u7684\u5168\u90E8 ", result.data.task_count, " \u9053\u5B89\u6392\u3002"), /*#__PURE__*/React.createElement(ErrorBox, {
       error: error

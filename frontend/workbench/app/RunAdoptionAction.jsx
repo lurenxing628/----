@@ -112,7 +112,7 @@
       <U.Button icon={pending ? 'refresh-cw' : 'check'} className="btn primary" disabled={!intent && (!A.ref(candidateRef) || !!storageError)} onClick={() => {
         if (intent) { setOpen(true); if (pending && !result) refresh(); }
         else inspect();
-      }} aria-expanded={open} busy={busy && !intent}> {label.trim()} </U.Button>
+      }} aria-expanded={open} busy={busy && !intent}>{label.trim()}</U.Button>
       {storageError && !open && <span className="ra-inline" role="alert">{storageError}<U.Button icon="refresh-cw" disabled={busy} onClick={() => { readStorage(); refresh(); }}>刷新上次操作记录</U.Button></span>}
       {intent && !open && <span className="ra-inline">{result ? '采用结果已确认。' : pending ? '上次操作已保留，结果待确认。' : '上次没有采用，请重新预检。'}</span>}
       {open && <U.Dialog value={display} intent={intent} result={result} preview={preview} draft={draft} consent={consent} busy={busy || checking}

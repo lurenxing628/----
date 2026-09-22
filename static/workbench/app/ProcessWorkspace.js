@@ -48,7 +48,7 @@
       route: '路线',
       source: '归属',
       hours: '工时'
-    }[key], " \xB7 ", w[key].state === 'confirmed' ? '已确认' : w[key].state === 'locked' ? key === 'source' ? '待路线' : '待归属' : w[key].state === 'present' ? '已有记录' : w[key].state === 'missing' ? '待录入' : '未确认'))));
+    }[key], " \xB7 ", P.workflowStateLabel(key, w[key].state)))));
   }
   function TableEmpty({
     loading,
@@ -66,6 +66,7 @@
     });
     if (error) return /*#__PURE__*/React.createElement(EmptyState, {
       kind: "error",
+      error: error,
       action: /*#__PURE__*/React.createElement(Button, {
         icon: "refresh-cw",
         onClick: onRetry
@@ -188,6 +189,7 @@
       }));
     }), /*#__PURE__*/React.createElement("th", {
       scope: "col",
+      className: "wb-col-actions",
       "data-column": "__actions",
       style: {
         width: widths ? widths.__actions : 190
@@ -217,7 +219,9 @@
       className: "r"
     }, row.relationships.operation_count), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Pipeline, {
       entity: row
-    })), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("div", {
+    })), /*#__PURE__*/React.createElement("td", {
+      className: "wb-col-actions"
+    }, /*#__PURE__*/React.createElement("div", {
       className: "wb-actions",
       style: {
         flexWrap: 'wrap'
@@ -444,13 +448,12 @@
       className: "process-list-controls"
     }, /*#__PURE__*/React.createElement("div", {
       className: "subtabs",
-      role: "tablist",
-      "aria-label": "\u5DE5\u827A\u9636\u6BB5"
+      role: "group",
+      "aria-label": "\u6309\u5DE5\u827A\u9636\u6BB5\u7B5B\u9009"
     }, P.stages.map(([stage, label, key]) => /*#__PURE__*/React.createElement(Button, {
       key: key,
       className: 'subtab' + ((scope.stage || '') === stage ? ' on' : ''),
-      role: "tab",
-      "aria-selected": (scope.stage || '') === stage,
+      "aria-pressed": (scope.stage || '') === stage,
       disabled: blocked,
       onClick: () => filter({
         stage: stage || undefined
@@ -525,12 +528,6 @@
       reason: deleteReason,
       onClick: () => action('bulk')
     }, "\u6279\u91CF\u5220\u9664"))), /*#__PURE__*/React.createElement(ErrorBox, {
-      error: list.error
-    }), list.error && /*#__PURE__*/React.createElement(Button, {
-      icon: "refresh-cw",
-      disabled: blocked,
-      onClick: () => filter({})
-    }, "\u5237\u65B0\u5217\u8868"), /*#__PURE__*/React.createElement(ErrorBox, {
       error: recoveryError
     }), !dialog && command.locked && /*#__PURE__*/React.createElement(window.ResourceForms.Feedback, {
       command: command

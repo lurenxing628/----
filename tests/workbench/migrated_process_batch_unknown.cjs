@@ -20,7 +20,7 @@ async function unknownWorkflow({p, page, processArea, openProcess, closeProcess,
   await p.type(d.locator('input[name="label"]'), 'AN待建工种');
   await p.select(d.locator('select[name="category"]'), '自制');
   await p.shot('unknown-create-op-type'); await saved('create', b(d, '保存')); await p.click(b(d, '关闭'));
-  await p.click(b(source, '采用最新资料'));
+  await p.click(b(source, '已核对，继续编辑'));
   await p.click(source.getByRole('group', {name: '工序 10 归属', exact: true}).getByRole('button', {name: '自制', exact: true}));
   await p.click(b(source, '选择工序 10 工种')); d = page.getByRole('dialog', {name: '选择自制工种 · 工序 10', exact: true});
   await p.type(d.getByRole('searchbox'), 'AN待建工种');

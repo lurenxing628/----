@@ -67,6 +67,8 @@
       uncertain
     };
   }
+  // 三种诊断文件各有一个名字：诊断包（日志 ZIP）、页面诊断（系统管理页）、维护诊断（恢复维护页）。
+  const DIAGNOSTIC_FILENAME = '维护诊断.json';
   function download(host, result, error) {
     const payload = {
       scope: 'read_only_maintenance',
@@ -83,7 +85,7 @@
     const url = URL.createObjectURL(blob),
       link = document.createElement('a');
     link.href = url;
-    link.download = '恢复维护诊断.json';
+    link.download = DIAGNOSTIC_FILENAME;
     try {
       document.body.appendChild(link);
       link.click();
@@ -101,6 +103,7 @@
     describe,
     download,
     labels,
-    origins
+    origins,
+    DIAGNOSTIC_FILENAME
   };
 })();

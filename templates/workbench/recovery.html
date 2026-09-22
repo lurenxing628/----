@@ -4,28 +4,31 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>系统维护 · APS 智能排产</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2296%22 height=%2296%22 viewBox=%220 0 96 96%22 role=%22img%22 aria-label=%22APS %E6%99%BA%E8%83%BD%E6%8E%92%E4%BA%A7%22%3E%3Crect x=%226%22 y=%226%22 width=%2284%22 height=%2284%22 rx=%2220%22 fill=%22%232563eb%22%3E%3C/rect%3E%3Crect x=%2224%22 y=%2230%22 width=%2236%22 height=%2211%22 rx=%225.5%22 fill=%22%23ffffff%22%3E%3C/rect%3E%3Crect x=%2234%22 y=%2244.5%22 width=%2242%22 height=%2211%22 rx=%225.5%22 fill=%22%23ffffff%22 fill-opacity=%220.92%22%3E%3C/rect%3E%3Crect x=%2224%22 y=%2259%22 width=%2226%22 height=%2211%22 rx=%225.5%22 fill=%22%23ffffff%22 fill-opacity=%220.78%22%3E%3C/rect%3E%3C/svg%3E">
   <style>
-    :root{color-scheme:light;--bg:#fff;--muted-bg:#f8fafc;--text:#0f172a;--muted:#64748b;--line:#e2e8f0;--warning:#92400e;--info:#1d4ed8;--success:#15803d}
-    [data-theme="dark"]{color-scheme:dark;--bg:#1e293b;--muted-bg:#162032;--text:#f1f5f9;--muted:#cbd5e1;--line:#475569;--warning:#fde68a;--info:#93c5fd;--success:#a7f3d0}
-    *{box-sizing:border-box;letter-spacing:0}body{margin:0;background:var(--bg);color:var(--text);font:13px/1.6 "Segoe UI","Microsoft YaHei",sans-serif}
-    header{padding:12px 24px;background:var(--muted-bg);border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px}
+    /* 沿用工作台色系；浅色 muted 稍加深以满足对比度。维护期间 /static 不可用，图标内联在上面。 */
+    :root{color-scheme:light;--page:#f1f5f9;--surface:#ffffff;--surface-muted:#f8fafc;--text:#0f172a;--muted:#5f6f82;--line:#e2e8f0;--warning:#b45309;--accent:#2563eb;--success:#15803d}
+    [data-theme="dark"]{color-scheme:dark;--page:#0f172a;--surface:#1e293b;--surface-muted:#162032;--text:#f1f5f9;--muted:#94a3b8;--line:#334155;--warning:#fde68a;--accent:#60a5fa;--success:#a7f3d0}
+    *{box-sizing:border-box;letter-spacing:0}body{margin:0;background:var(--page);color:var(--text);font:13px/1.6 "Segoe UI","Microsoft YaHei",sans-serif}
+    header{padding:12px 24px;background:var(--surface);border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px}
     main{max-width:1160px;margin:0 auto;padding:24px;min-width:0}h1{font-size:22px;line-height:30px;margin:0 0 8px}h2{font-size:16px;line-height:24px;margin:0}
     p{margin:6px 0;overflow-wrap:anywhere}section{padding:16px 0;border-bottom:1px solid var(--line)}.muted,dt,small{color:var(--muted);font-size:12px}
-    .warning{color:var(--warning)}.success{color:var(--success)}.notice{padding:10px 12px;border-left:3px solid var(--warning);background:var(--muted-bg);margin:12px 0}
+    .warning{color:var(--warning)}.success{color:var(--success)}.notice{padding:10px 12px;border-left:3px solid var(--warning);background:var(--surface);margin:12px 0}
     .facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 28px;margin:16px 0}.facts div{min-width:0}dd{margin:4px 0 0;font-size:14px;overflow-wrap:anywhere}
     fieldset{margin:0;padding:0;border:0;display:flex;align-items:center;gap:14px;flex-wrap:wrap;min-width:0}legend{float:left;color:var(--muted);margin-right:14px;padding:0}
-    label{display:inline-flex;align-items:center;gap:8px}input[type="radio"]{accent-color:var(--info);width:15px;height:15px;margin:0}
+    .choice-gap{margin-top:12px}
+    label{display:inline-flex;align-items:center;gap:8px}input[type="radio"]{accent-color:var(--accent);width:15px;height:15px;margin:0}
     .query{display:flex;align-items:end;gap:12px;flex-wrap:wrap;margin-top:12px}.field{display:flex;flex-direction:column;align-items:stretch;gap:4px;flex:1 1 420px;min-width:0}
-    input[type="text"],button{font:13px/20px "Segoe UI","Microsoft YaHei",sans-serif;border:1px solid var(--line);border-radius:4px;background:var(--bg);color:var(--text);min-height:32px;padding:5px 10px;max-width:100%}
-    button{cursor:pointer;overflow-wrap:anywhere}button:hover{background:var(--muted-bg)}button:disabled{cursor:default;color:var(--muted);background:var(--muted-bg)}
-    :focus-visible{outline:2px solid var(--info);outline-offset:2px}.actions{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-top:14px}
-    a{color:var(--info);overflow-wrap:anywhere}code{font-size:12px;overflow-wrap:anywhere;white-space:normal}details{margin-top:16px;color:var(--muted)}summary{cursor:pointer;color:var(--info)}
-    table{width:100%;table-layout:fixed;border-collapse:collapse;margin-top:12px}th,td{text-align:left;vertical-align:top;padding:9px 8px;border-bottom:1px solid var(--line);overflow-wrap:anywhere}th{font-weight:500;color:var(--muted);background:var(--muted-bg)}
+    input[type="text"],button{font:13px/20px "Segoe UI","Microsoft YaHei",sans-serif;border:1px solid var(--line);border-radius:4px;background:var(--surface);color:var(--text);min-height:32px;padding:5px 10px;max-width:100%}
+    button{cursor:pointer;overflow-wrap:anywhere}button:hover{background:var(--surface-muted)}button:disabled{cursor:default;color:var(--muted);background:var(--surface-muted)}
+    :focus-visible{outline:2px solid var(--accent);outline-offset:2px}.actions{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-top:14px}
+    a{color:var(--accent);overflow-wrap:anywhere}code{font-size:12px;overflow-wrap:anywhere;white-space:normal}details{margin-top:16px;color:var(--muted)}summary{cursor:pointer;color:var(--accent)}
+    table{width:100%;table-layout:fixed;border-collapse:collapse;margin-top:12px;background:var(--surface)}th,td{text-align:left;vertical-align:top;padding:9px 8px;border-bottom:1px solid var(--line);overflow-wrap:anywhere}th{font-weight:500;color:var(--muted);background:var(--surface-muted)}
     th:first-child{width:170px}th:nth-child(2){width:150px}th:last-child{width:120px}.table-scroll{overflow-x:auto}table{min-width:680px}
     @media(max-width:700px){main{padding:16px}.facts{grid-template-columns:minmax(0,1fr)}header{padding:12px 16px}}
   </style>
   <script>
-    (function(){try{var theme=localStorage.getItem('aps_theme')||localStorage.getItem('aps_kit_theme');if(theme==='dark'||theme==='light')document.documentElement.dataset.theme=theme;}catch(error){document.documentElement.dataset.theme='light';}})();
+    (function(){try{var preferred=localStorage.getItem('aps_theme');var legacy=localStorage.getItem('aps_kit_theme');var theme=preferred==='dark'||preferred==='light'?preferred:legacy==='dark'||legacy==='light'?legacy:null;if(theme)document.documentElement.dataset.theme=theme;}catch(error){document.documentElement.dataset.theme='light';document.documentElement.dataset.preferenceError='true';}})();
   </script>
 </head>
 <body data-restore-maintenance="cold">
@@ -46,17 +49,17 @@
         <div><dt>该次维护记录的数据库来源</dt><dd>{{ origins.get(operation.database_origin, origins.unconfirmed) if operation else origins.unconfirmed }}</dd></div>
         <div><dt>选定备份</dt><dd>{{ operation.filename if operation and operation.filename else '维护记录尚未确认' }}</dd></div>
         <div><dt>恢复前保护副本</dt><dd>{{ operation.protection_filename if operation and operation.protection_filename else '保护副本状态待确认' }}</dd></div>
-        <div><dt>业务审计</dt><dd>{{ '已留存' if operation and operation.audit_persisted else '未确认留存' }}</dd></div>
-        <div><dt>软件状态</dt><dd>业务操作已停用。请先确认维护结果，再重启整个软件</dd></div>
+        <div><dt>操作记录</dt><dd>{{ '已留存' if operation and operation.audit_persisted else '未确认留存' }}</dd></div>
+        <div><dt>软件状态</dt><dd>业务操作已停用。请先确认维护结果，再重启整个软件。</dd></div>
       </dl>
       {% if operation %}<p class="muted">更新时间 {{ operation.updated_at.replace('T', ' ') }}</p>{% endif %}
       {% if operation and host.request_key != operation.request_key %}
       <p class="muted">当前显示历史维护记录；软件仍处于维护停止状态。</p>{% endif %}
       <div class="actions"><form action="/workbench" method="get"><input type="hidden" name="reference" value="{{ reference }}"><input type="hidden" name="kind" value="{{ kind }}"><button type="submit" name="download" value="diagnostic">导出维护诊断</button></form><a href="/workbench?view=system">返回工作台</a></div>
-      <p class="muted">返回入口会重新查询维护状态。</p>
+      <p class="muted">点「返回工作台」会重新查询维护状态；需要重启或人工核对时仍然停在维护页。</p>
     </section>
     <section aria-label="按编号查询"><h2>查询维护结果</h2><form action="/workbench" method="get">
-      <fieldset style="margin-top:12px"><legend>编号类型</legend><label><input type="radio" name="kind" value="request"{% if kind == 'request' %} checked{% endif %}>操作编号</label><label><input type="radio" name="kind" value="job"{% if kind == 'job' %} checked{% endif %}>维护记录编号</label></fieldset>
+      <fieldset class="choice-gap"><legend>编号类型</legend><label><input type="radio" name="kind" value="request"{% if kind == 'request' %} checked{% endif %}>操作编号</label><label><input type="radio" name="kind" value="job"{% if kind == 'job' %} checked{% endif %}>维护记录编号</label></fieldset>
       <div class="query"><label class="field"><span>查询编号</span><input id="reference" type="text" name="reference" value="{{ reference }}" maxlength="128" autocomplete="off" spellcheck="false"></label><button type="submit">查询维护结果</button></div>
       <p class="muted" id="local-note">输入操作编号或维护记录编号，查询本次结果。</p>
     </form></section>
@@ -66,7 +69,7 @@
       <p>维护记录编号：<code>{{ operation.job_ref }}</code> · 结果代码：<code>{{ operation.code }}</code></p>
       {% for step in operation.history %}<p>{{ step.time.replace('T', ' ') }} · {{ labels[step.state] }}</p>{% endfor %}
       {% for label, field in [('所选备份 SHA-256', 'target_sha256'), ('保护副本 SHA-256', 'protection_sha256'), ('维护结束数据库 SHA-256', 'database_after_sha256')] %}<p>{{ label }}：<code>{{ operation.get(field) or '未确认' }}</code></p>{% endfor %}
-      <p>以上指纹记录于本次维护过程中。</p>
+      <p>上面的指纹来自维护记录，本页没有重新打开或检查数据库。数据库里旧的结果可能已被恢复覆盖。</p>
     </details>{% endif %}
     <section aria-label="最近维护记录"><h2>最近维护记录</h2><p class="muted">最多列出最近 20 条。</p>
       {% if history_error %}<p role="alert" class="warning">{{ history_error }}</p>
@@ -81,6 +84,7 @@
   <script>
     (function(){
       var choices=document.querySelectorAll('#themes input');
+      if(document.documentElement.dataset.preferenceError==='true')document.getElementById('theme-note').textContent='读不到上次的深浅色设置，本页按浅色显示。';
       choices.forEach(function(input){input.checked=input.value===document.documentElement.dataset.theme;input.addEventListener('change',function(){
         document.documentElement.dataset.theme=input.value;
         try{localStorage.setItem('aps_theme',input.value);localStorage.setItem('aps_kit_theme',input.value);}catch(error){document.getElementById('theme-note').textContent='深浅色已切换，但这台电脑没能记住这个设置。';}

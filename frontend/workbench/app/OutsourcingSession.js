@@ -61,7 +61,8 @@
           save(original, null);
           try { accept(await api.command(original, d.write_context.write_token), original); }
           catch (e) {
-            if (C.isRejected(e)) save({ ...original, phase: 'rejected' }, original);
+            // 明确被拒的登记什么都没写入：直接放弃这条待确认记录，表单回到可编辑状态，改好后重新预检提交。
+            if (C.isRejected(e)) save(null, original);
             if (mounted.current) { setError(e); setNotice(C.isRejected(e) ? window.WorkbenchTerms.outcomes.rejected('外协登记', e.message) : window.WorkbenchTerms.outcomes.unknown('外协登记')); }
           }
         });

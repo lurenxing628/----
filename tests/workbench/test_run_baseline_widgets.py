@@ -43,6 +43,21 @@ def test_run_baseline_widgets_real_browser(candidate_case):
     assert report["browser"].startswith("109.")
     assert not report["errors"] and not report["external"] and not report["dialogs"]
     assert len(report["variants"]) == 4 and all(r["passed"] for r in report["variants"])
+    assert len(report["prints"]) == 2
+    prints = {item["kind"]: item for item in report["prints"]}
+    assert set(prints) == {"baseline-segments-and-default-zoom-canvas", "baseline-capacity-native-print"}
+    capacity_print = prints["baseline-capacity-native-print"]
+    before, after = capacity_print["events"]
+    assert before["rows"] == before["uniqueOperationRefs"] == 500
+    assert after["rows"] == after["uniqueOperationRefs"] <= 12
+    assert [item["matches"] for item in capacity_print["mediaTransitions"]] == [True, False]
+    active_print = capacity_print["mediaTransitions"][0]
+    assert active_print["rows"] == active_print["uniqueOperationRefs"] == 500
+    assert active_print["visibleButtons"] == 0
+    for item in report["prints"]:
+        pdf = Path(item["path"]).read_bytes()
+        assert pdf.startswith(b"%PDF-")
+        assert hashlib.sha256(pdf).hexdigest() == item["sha256"]
     assert proof["source_data_retained"] and proof["all_connections_isolated"] and proof["read_only_http"]
     assert all(r["schema_version"] == CURRENT_SCHEMA_VERSION and r["schema_contract_issues"] == []
                for r in proof["databases"])

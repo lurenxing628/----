@@ -6,7 +6,10 @@
       Issues
     } = window.ResourceControls,
     M = window.DashboardTimelineModel;
-  const value = v => v === null || v === undefined ? '未知' : typeof v === 'number' ? M.number(v) : String(v);
+  // Counts stay whole numbers; hours and other measured values keep two decimals.
+  const value = v => v === null || v === undefined ? '未知' : typeof v === 'number' ? M.number(v, {
+    digits: Number.isInteger(v) ? 0 : 2
+  }) : String(v);
   const risk = row => row.risk === 'overdue' ? '超期 ' + value(row.delay_hours) + ' 小时' : row.risk === 'on_time' ? '预计准时' : '交付未知';
   function Batch({
     row,
@@ -153,9 +156,9 @@
     }[row.ready_status] || '未知'), /*#__PURE__*/React.createElement("td", null, value(row.ready_date))))))), !p.items.length && /*#__PURE__*/React.createElement(window.WorkbenchListControls.EmptyState, {
       kind: "empty",
       title: p.count === 0 ? '当前没有待排批次。' : '待排批次没有完整读到，数量可能不全。'
-    }), /*#__PURE__*/React.createElement("h3", null, "\u672C\u6B21\u6392\u4EA7\u7EA6\u675F"), /*#__PURE__*/React.createElement("dl", {
-      className: "dy-facts"
-    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u5F53\u524D\u8303\u56F4"), /*#__PURE__*/React.createElement("dd", null, "\u672C\u673A\u5168\u90E8\u5F85\u6392\u6279\u6B21")), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u6392\u4EA7\u8F93\u5165"), /*#__PURE__*/React.createElement("dd", null, "\u5F53\u524D\u672A\u9009\u5B9A")), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u9F50\u5957\u68C0\u67E5"), /*#__PURE__*/React.createElement("dd", null, "\u672A\u9009\u5B9A\u6392\u4EA7\u8F93\u5165")), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u7F3A\u8BBE\u5907\u4EBA\u5458 / \u5DF2\u5F00\u5DE5\u7684\u89C4\u5219"), /*#__PURE__*/React.createElement("dd", null, "\u672A\u9009\u5B9A\u6392\u4EA7\u8F93\u5165"))));
+    }), /*#__PURE__*/React.createElement("div", {
+      className: "dy-context"
+    }, "\u5F53\u524D\u8303\u56F4\uFF1A\u5168\u90E8\u5F85\u6392\u6279\u6B21 \xB7 \u9F50\u5957\u68C0\u67E5\u548C\u7F3A\u8BBE\u5907\u4EBA\u5458\u7684\u89C4\u5219\u5728\u300C\u6267\u884C\u6392\u4EA7\u300D\u91CC\u6309\u672C\u6B21\u9009\u62E9\u8BBE\u5B9A\uFF0C\u5DF2\u4FDD\u5B58\u5019\u9009\u65B9\u6848\u7684\u89C4\u5219\u89C1\u300C\u65B9\u6848\u5BF9\u6BD4\u300D\u3002"));
   }
   function Actual({
     data,
@@ -205,7 +208,7 @@
           context,
           enabled: true
         })
-      }, "\u73B0\u573A\u5B9E\u9645")));
+      }, "\u73B0\u573A\u5B9E\u9645\u7518\u7279")));
     })))));
   }
   window.DashboardAnalysisPanels = {

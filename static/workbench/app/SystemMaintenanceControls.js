@@ -2,6 +2,8 @@
   'use strict';
 
   const A = window.SystemMaintenanceAPI;
+  // 恢复各阶段的叫法只在 SystemRestoreStatus.labels 维护一份；后端 web/bootstrap/workbench_system_restore_view.py 与之逐字对齐。
+  const labels = window.SystemRestoreStatus.labels;
   function Button({
     children,
     icon,
@@ -94,11 +96,8 @@
         onClick: onConfirm
       }, "\u786E\u8BA4", action === 'create' ? '新增' : action === 'delete' ? '删除' : '恢复'))
     }, /*#__PURE__*/React.createElement("div", {
-      className: "modal-b form scroll",
-      style: {
-        overflowWrap: 'anywhere'
-      }
-    }, row && /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("strong", null, row.filename), /*#__PURE__*/React.createElement("br", null), "\u6587\u4EF6\u4FEE\u6539\u65F6\u95F4 ", window.WorkbenchFormat.dateTime(row.time), " \xB7 ", row.size_bytes, " \u5B57\u8282", /*#__PURE__*/React.createElement("br", null), "\u6587\u4EF6\u5B58\u5728\uFF0C\u5C1A\u65E0\u672C\u6B21\u5B8C\u6574\u6027\u6821\u9A8C\u8BC1\u636E\u3002"), /*#__PURE__*/React.createElement("p", null, action === 'create' ? '备份当前数据库。' : action === 'delete' ? '仅删除此备份文件，删除后不能撤销。' : '将用所选备份替换当前数据库。系统会先生成保护副本；完整性检查不通过时自动还原。'), action === 'restore' && /*#__PURE__*/React.createElement("p", {
+      className: "modal-b form scroll sm-wrap-anywhere"
+    }, row && /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("strong", null, row.filename), /*#__PURE__*/React.createElement("br", null), "\u6587\u4EF6\u4FEE\u6539\u65F6\u95F4 ", window.WorkbenchFormat.dateTime(row.time), " \xB7 ", row.size_bytes, " \u5B57\u8282", /*#__PURE__*/React.createElement("br", null), "\u6587\u4EF6\u5B58\u5728\uFF0C\u672C\u6B21\u8FD8\u6CA1\u6709\u505A\u5B8C\u6574\u6027\u68C0\u67E5\u3002"), /*#__PURE__*/React.createElement("p", null, action === 'create' ? '备份当前数据库。' : action === 'delete' ? '仅删除此备份文件，删除后不能撤销。' : '将用所选备份替换当前数据库。系统会先生成保护副本；完整性检查不通过时自动还原。'), action === 'restore' && /*#__PURE__*/React.createElement("p", {
       className: "sm-notice"
     }, "\u4E00\u65E6\u63D0\u4EA4\u6062\u590D\uFF0C\u4E1A\u52A1\u64CD\u4F5C\u4F1A\u505C\u7528\u3002\u65E0\u8BBA\u6062\u590D\u6210\u529F\u8FD8\u662F\u5DF2\u8FD8\u539F\uFF0C\u90FD\u8981\u5173\u95ED\u6574\u4E2A\u8F6F\u4EF6\u518D\u542F\u52A8\uFF1B\u53EA\u5237\u65B0\u6D4F\u89C8\u5668\u4E0D\u7B97\u91CD\u542F\u3002"), destructive && /*#__PURE__*/React.createElement("label", {
       className: "sm-inline-label"
@@ -107,29 +106,20 @@
       checked: checked,
       onChange: event => setChecked(event.target.checked)
     }), "\u6211\u5DF2\u6838\u5BF9\u6240\u9009\u6587\u4EF6\u4E0E\u64CD\u4F5C\u5F71\u54CD"), action === 'restore' && /*#__PURE__*/React.createElement("label", {
-      className: "field",
-      style: {
-        marginTop: 16
-      }
-    }, /*#__PURE__*/React.createElement("span", null, "\u8F93\u5165\u201C\u6062\u590D\u201D\u786E\u8BA4"), /*#__PURE__*/React.createElement("input", {
+      className: "field sm-field-gap"
+    }, /*#__PURE__*/React.createElement("span", null, "\u8F93\u5165\u300C\u6062\u590D\u300D\u786E\u8BA4"), /*#__PURE__*/React.createElement("input", {
       value: typed,
       onChange: event => setTyped(event.target.value)
     })), reason && /*#__PURE__*/React.createElement(ErrorBox, {
       error: reason
     })));
   }
-  const labels = {
-    accepted: '已接收',
-    checking: '检查中',
-    protecting: '生成保护副本',
-    restoring: '恢复中',
-    verifying: '完整性检查中',
-    rolling_back: '还原中',
-    succeeded: '已完成',
-    failed: '操作失败',
-    rolled_back: '恢复失败，已还原',
-    rollback_failed: '还原失败，需人工核对',
-    recovery_required: '需人工核对'
+  // 系统拒绝提交时，按这次要做的事说清楚什么没有发生。
+  const rejectedText = {
+    create: '系统拒绝了这次提交，没有新增备份。',
+    delete: '系统拒绝了这次提交，没有删除备份。',
+    restore: '系统拒绝了这次提交，没有开始恢复。',
+    config: '系统拒绝了这次提交，配置没有改动。'
   };
   function Outcome({
     command
@@ -145,13 +135,7 @@
     const op = result && result.kind === 'file_operation' && result.operation;
     return /*#__PURE__*/React.createElement("section", {
       className: "sm-section sm-maintenance-outcome",
-      "aria-label": "\u4E0A\u6B21\u7EF4\u62A4\u64CD\u4F5C\u7684\u7ED3\u679C",
-      style: {
-        padding: '12px 20px',
-        background: 'var(--ui-card-bg)',
-        borderBottom: '1px solid var(--ui-border)',
-        overflowWrap: 'anywhere'
-      }
+      "aria-label": "\u4E0A\u6B21\u7EF4\u62A4\u64CD\u4F5C\u7684\u7ED3\u679C"
     }, /*#__PURE__*/React.createElement("div", {
       className: "sm-section-head"
     }, /*#__PURE__*/React.createElement("h3", null, intent ? intent.summary : '上次操作记录不可用'), /*#__PURE__*/React.createElement("div", {
@@ -181,7 +165,7 @@
         '维护编号': op.job_ref,
         '结果代码': op.code
       }
-    }), /*#__PURE__*/React.createElement("p", null, "\u66F4\u65B0\u65F6\u95F4\uFF1A", window.WorkbenchFormat.dateTime(op.updated_at), /*#__PURE__*/React.createElement("br", null), "\u4E1A\u52A1\u5BA1\u8BA1\uFF1A", op.audit_persisted ? '已留存' : '未确认留存', op.replayed ? ' · 查询上次结果' : ''), op.filename && /*#__PURE__*/React.createElement("p", null, "\u76EE\u6807\u6587\u4EF6\uFF1A", op.filename), op.protection_filename && /*#__PURE__*/React.createElement("p", null, "\u4FDD\u62A4\u526F\u672C\uFF1A", op.protection_filename), /*#__PURE__*/React.createElement("details", {
+    }), /*#__PURE__*/React.createElement("p", null, "\u66F4\u65B0\u65F6\u95F4\uFF1A", window.WorkbenchFormat.dateTime(op.updated_at), /*#__PURE__*/React.createElement("br", null), "\u64CD\u4F5C\u8BB0\u5F55\uFF1A", op.audit_persisted ? '已留存' : '未确认留存', op.replayed ? ' · 查询上次结果' : ''), op.filename && /*#__PURE__*/React.createElement("p", null, "\u76EE\u6807\u6587\u4EF6\uFF1A", op.filename), op.protection_filename && /*#__PURE__*/React.createElement("p", null, "\u4FDD\u62A4\u526F\u672C\uFF1A", op.protection_filename), /*#__PURE__*/React.createElement("details", {
       className: "sm-rules"
     }, /*#__PURE__*/React.createElement("summary", null, "\u7EF4\u62A4\u9636\u6BB5"), op.history.map((step, index) => /*#__PURE__*/React.createElement("p", {
       key: index
@@ -192,10 +176,11 @@
       value: result.command.receipt_ref
     }), result.command.replayed && /*#__PURE__*/React.createElement("p", null, "\u67E5\u8BE2\u4E0A\u6B21\u7ED3\u679C")) : result && result.kind === 'rejected' ? /*#__PURE__*/React.createElement("p", {
       role: "status"
-    }, "\u7CFB\u7EDF\u62D2\u7EDD\u4E86\u8FD9\u6B21\u63D0\u4EA4\uFF0C\u914D\u7F6E\u6CA1\u6709\u6539\u52A8\u3002\u8BF7\u6309\u4E0A\u9762\u7684\u63D0\u793A\u6539\u597D\u540E\u91CD\u65B0\u63D0\u4EA4\u3002") : null, intent && !(result && result.terminal) && /*#__PURE__*/React.createElement("p", {
+    }, rejectedText[intent && intent.action] || rejectedText.config, "\u8BF7\u6309\u4E0A\u9762\u7684\u63D0\u793A\u6539\u597D\u540E\u91CD\u65B0\u63D0\u4EA4\u3002") : null, intent && !(result && result.terminal) && /*#__PURE__*/React.createElement("p", {
       className: "sm-note"
-    }, result && result.kind === 'not_recorded' ? result.message : '上次操作还没有确认结果。', " \u8BF7\u70B9\u300C\u67E5\u8BE2\u7ED3\u679C\u300D\uFF0C\u52FF\u91CD\u590D\u63D0\u4EA4\u3002", intent.action === 'restore' ? ' 确认恢复结果前，业务操作暂停。' : ''));
+    }, result && result.kind === 'not_recorded' ? result.message : '上次操作还没有确认结果。', "\u8BF7\u70B9\u300C\u67E5\u8BE2\u7ED3\u679C\u300D\uFF0C\u52FF\u91CD\u590D\u63D0\u4EA4\u3002", intent.action === 'restore' ? '确认恢复结果前，业务操作暂停。' : ''));
   }
+  // 叫法与顶栏一致：顶栏是「切换深色 / 切换浅色」和「紧凑表格」。
   function Preferences({
     theme,
     onSetTheme,
@@ -212,7 +197,7 @@
       className: "sm-session-settings"
     }, /*#__PURE__*/React.createElement("fieldset", {
       className: "sm-choice"
-    }, /*#__PURE__*/React.createElement("legend", null, "\u4E3B\u9898"), [['light', '浅色'], ['dark', '深色']].map(([value, label]) => /*#__PURE__*/React.createElement("label", {
+    }, /*#__PURE__*/React.createElement("legend", null, "\u5207\u6362\u6DF1\u8272\u6216\u6D45\u8272"), [['light', '浅色'], ['dark', '深色']].map(([value, label]) => /*#__PURE__*/React.createElement("label", {
       key: value
     }, /*#__PURE__*/React.createElement("input", {
       type: "radio",
@@ -235,7 +220,7 @@
       type: "checkbox",
       checked: compact,
       onChange: event => onCompact(event.target.checked)
-    }), "\u7D27\u51D1\u884C\u8DDD")));
+    }), "\u7D27\u51D1\u8868\u683C")));
   }
   window.SystemMaintenanceControls = {
     Button,

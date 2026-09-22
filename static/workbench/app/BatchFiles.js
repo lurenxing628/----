@@ -3,12 +3,16 @@
 
   const B = window.APSBatchContract,
     C = window.APSResourceContract,
+    T = window.WorkbenchTerms,
     {
       Button,
       Modal,
       ErrorBox,
-      Issues
+      Issues,
+      Icon
     } = window.ResourceControls;
+  const TEMPLATE_NAME = '批次导入模板.xlsx',
+    EXPORT_NAME = '批次清单.xlsx';
   function saveDownload(download, filename) {
     if (!download || !download.blob || !download.blob.size) throw C.failure('未收到有效下载文件。');
     const url = URL.createObjectURL(download.blob),
@@ -53,7 +57,8 @@
   }) {
     const [mode, setMode] = React.useState('overwrite'),
       [file, setFile] = React.useState(null),
-      [preview, setPreview] = React.useState(null);
+      [preview, setPreview] = React.useState(null),
+      [acknowledged, setAcknowledged] = React.useState(false);
     const [selection, setSelection] = React.useState(selected.length ? 'selected' : 'filtered');
     const [busy, setBusy] = React.useState(false),
       [error, setError] = React.useState(null),
@@ -65,6 +70,12 @@
     const importing = operation === 'import',
       done = command.phase === 'done',
       locked = disabled || command.locked || busy || done;
+    // 已选文件或已有预检结果就算没做完：关闭前先确认，避免误关丢掉文件和预检。
+    const guardOwner = window.WorkbenchGuards.useDirtyGuard({
+      dirty: importing && !done && (!!file || !!preview),
+      locked: command.locked || busy,
+      message: '批次导入还没有完成，离开会放弃已选文件和预检结果。'
+    });
     React.useEffect(() => () => {
       alive.current = false;
       serial.current++;
@@ -79,11 +90,26 @@
         setError(error);
       }
     }, [done, command.result]);
-    function changeMode(value) {
-      setMode(value);
+    function invalidate() {
       setPreview(null);
       setError(null);
+      setAcknowledged(false);
       serial.current++;
+    }
+    function changeMode(value) {
+      setMode(value);
+      invalidate();
+    }
+    function chooseFile(list) {
+      setFile(list && list[0] || null);
+      invalidate();
+    }
+    async function close(detail) {
+      if (command.locked || busy) return;
+      if (!(detail && detail.guardConfirmed === true && detail.guardOwner === guardOwner) && !(await window.WorkbenchGuards.confirmLeave({
+        owner: guardOwner
+      }))) return;
+      onClose();
     }
     async function work(action) {
       if (locked) return;
@@ -92,7 +118,10 @@
       setError(null);
       setNotice('');
       try {
-        if (action === 'template') saveDownload(await adapter.downloadTemplate(), '批次导入模板.xlsx');else if (action === 'preview') {
+        if (action === 'template') {
+          saveDownload(await adapter.downloadTemplate(), TEMPLATE_NAME);
+          if (alive.current && id === serial.current) setNotice(T.download_started(TEMPLATE_NAME));
+        } else if (action === 'preview') {
           const result = await adapter.importPreview(file, mode, scope, snapshot);
           const data = result && result.data;
           if (!data || data.operation !== 'batch.import_confirm' || data.mode !== mode || !Array.isArray(data.rows) || !Array.isArray(data.deleted) || typeof data.can_confirm !== 'boolean' || data.can_confirm && (!data.write_context || !B.context(data.write_context))) throw C.failure('读到的导入预检结果不完整，没有写入批次。请再点一次「开始预检」。');
@@ -104,8 +133,10 @@
           }, selected);
           if (!result.data || typeof result.data.export_ref !== 'string' || !Number.isSafeInteger(result.data.count)) throw C.failure('导出范围没有确认，文件没有生成。请刷新批次列表后重试。');
           const downloaded = await adapter.downloadExport(result.data.export_ref);
-          saveDownload(downloaded, '批次清单.xlsx');
-          if (alive.current) setNotice('已生成 ' + result.data.count + ' 个批次的清单。');
+          saveDownload(downloaded, EXPORT_NAME);
+          if (alive.current && id === serial.current) setNotice(T.download_started(EXPORT_NAME) + '（共 ' + window.WorkbenchFormat.number(result.data.count, {
+            digits: 0
+          }) + ' 个批次）');
         }
       } catch (error) {
         if (alive.current && id === serial.current) setError(error);
@@ -113,13 +144,19 @@
         if (alive.current && id === serial.current) setBusy(false);
       }
     }
-    return /*#__PURE__*/React.createElement(Modal, {
-      title: importing ? '批量维护批次' : '导出批次清单',
+    // 「先清除全部批次再重导」会删掉表格以外的所有批次：主按钮按危险动作着色，且必须先核对勾选。
+    const replacing = mode === 'replace',
+      replaceReason = replacing && !acknowledged ? '请先核对将删除的全部批次，并勾选确认。' : '';
+    return /*#__PURE__*/React.createElement("div", {
+      className: 'plana rm-actions' + (preview ? ' rm-wide' : '')
+    }, /*#__PURE__*/React.createElement(Modal, {
+      title: importing ? '批量导入批次' : '导出批次清单',
       icon: "box",
       locked: command.locked || busy,
-      onClose: onClose,
+      guardOwner: guardOwner,
+      onClose: close,
       footer: /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Button, {
-        onClick: onClose,
+        onClick: () => close(),
         disabled: command.locked || busy
       }, done ? '关闭' : '取消'), importing ? !done && /*#__PURE__*/React.createElement(React.Fragment, null, !preview ? /*#__PURE__*/React.createElement(Button, {
         transfer: "import",
@@ -127,8 +164,9 @@
         onClick: () => work('preview')
       }, "\u5F00\u59CB\u9884\u68C0") : /*#__PURE__*/React.createElement(Button, {
         transfer: "import",
-        className: "btn primary",
+        className: 'btn ' + (replacing ? 'danger' : 'primary'),
         disabled: locked || !preview.can_confirm,
+        reason: replaceReason,
         onClick: () => command.submit('batch', 'import_confirm', preview.preview_ref, preview.write_context, {
           preview_ref: preview.preview_ref
         })
@@ -143,11 +181,22 @@
       error: error
     }), notice && /*#__PURE__*/React.createElement("p", {
       role: "status"
-    }, notice), importing ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Button, {
+    }, notice), importing ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+      className: "tmpl-row"
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "tmpl-ico"
+    }, /*#__PURE__*/React.createElement(Icon, {
+      name: "file-input"
+    })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+      className: "tmpl-t"
+    }, TEMPLATE_NAME), /*#__PURE__*/React.createElement("div", {
+      className: "tmpl-s"
+    }, "\u7A7A\u767D\u8868\u5934\u6A21\u677F\uFF0C\u4E0D\u542B\u793A\u4F8B\u6279\u6B21")), /*#__PURE__*/React.createElement(Button, {
+      className: "mini",
       transfer: "template",
       disabled: locked,
       onClick: () => work('template')
-    }, "\u4E0B\u8F7D\u6A21\u677F"), /*#__PURE__*/React.createElement("div", {
+    }, "\u4E0B\u8F7D\u6A21\u677F")), /*#__PURE__*/React.createElement("div", {
       className: "batch-fields",
       style: {
         marginTop: 16
@@ -164,19 +213,52 @@
       value: "append"
     }, "\u53EA\u65B0\u589E\u6CA1\u6709\u7684\u6279\u6B21\uFF08\u5DF2\u6709\u7684\u8DF3\u8FC7\uFF09"), /*#__PURE__*/React.createElement("option", {
       value: "replace"
-    }, "\u5148\u6E05\u9664\u5168\u90E8\u6279\u6B21\uFF0C\u518D\u6309\u8868\u683C\u91CD\u5BFC"))), /*#__PURE__*/React.createElement(window.BatchControls.Field, {
-      label: "\u9009\u62E9\u6587\u4EF6"
-    }, /*#__PURE__*/React.createElement("input", {
+    }, "\u5148\u6E05\u9664\u5168\u90E8\u6279\u6B21\uFF0C\u518D\u6309\u8868\u683C\u91CD\u5BFC")))), !preview && /*#__PURE__*/React.createElement("div", {
+      className: 'drop rm-upload' + (file ? ' has' : ''),
+      "aria-disabled": locked,
+      onDragOver: event => event.preventDefault(),
+      onDrop: event => {
+        event.preventDefault();
+        if (!locked) chooseFile(event.dataTransfer.files);
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "di"
+    }, /*#__PURE__*/React.createElement(Icon, {
+      name: "file-input"
+    })), /*#__PURE__*/React.createElement("div", {
+      className: "dt"
+    }, file ? file.name : '选择 XLSX 文件'), /*#__PURE__*/React.createElement("div", {
+      className: "ds"
+    }, file ? window.WorkbenchFormat.number(file.size, {
+      digits: 0
+    }) + ' 字节 · 只接受 .xlsx 文件' : '只接受 .xlsx 文件，也可以把文件拖到这里'), /*#__PURE__*/React.createElement("input", {
       type: "file",
+      "aria-label": "\u9009\u62E9\u6587\u4EF6",
       accept: ".xlsx",
       disabled: locked,
       onChange: event => {
-        setFile(event.target.files[0] || null);
-        setPreview(null);
-        setError(null);
-        serial.current++;
+        chooseFile(event.target.files);
+        event.target.value = '';
       }
-    }))), /*#__PURE__*/React.createElement("p", null, "\u53EA\u63A5\u53D7 .xlsx \u6587\u4EF6\u3002\u65B0\u6279\u6B21\u5BFC\u5165\u540E\u9700\u751F\u6210\u5DE5\u5E8F\uFF1B\u66F4\u65B0\u65F6\u7A7A\u767D\u5355\u5143\u683C\u4FDD\u7559\u539F\u503C\u3002"), preview && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", null, preview.count, " \u884C \xB7 ", preview.can_confirm ? '全部核对通过，一起保存' : '存在未通过检查的行，请修正'), /*#__PURE__*/React.createElement("div", {
+    })), /*#__PURE__*/React.createElement("p", {
+      className: "iohint"
+    }, "\u65B0\u6279\u6B21\u5BFC\u5165\u540E\u9700\u751F\u6210\u5DE5\u5E8F\uFF1B\u66F4\u65B0\u65F6\u7A7A\u767D\u5355\u5143\u683C\u4FDD\u7559\u539F\u503C\u3002"), preview && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+      className: "tmpl-row"
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "tmpl-ico"
+    }, /*#__PURE__*/React.createElement(Icon, {
+      name: "file-input"
+    })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+      className: "tmpl-t"
+    }, file && file.name), /*#__PURE__*/React.createElement("div", {
+      className: "tmpl-s"
+    }, window.WorkbenchFormat.number(preview.count, {
+      digits: 0
+    }), " \u884C \xB7 ", preview.can_confirm ? '全部核对通过，一起保存' : '存在未通过检查的行，请修正')), /*#__PURE__*/React.createElement(Button, {
+      icon: "file-input",
+      onClick: invalidate,
+      disabled: locked
+    }, "\u66F4\u6362\u6587\u4EF6")), /*#__PURE__*/React.createElement("div", {
       className: "batch-preview wb-table-frame",
       "data-sticky-head": true
     }, /*#__PURE__*/React.createElement("table", {
@@ -197,10 +279,14 @@
       key: row.entity_ref
     }, row.before.business_code, " \xB7 ", row.before.operations.length, " \u9053\u5DE5\u5E8F", row.errors.length ? ' · ' + row.errors.join('；') : ''))), /*#__PURE__*/React.createElement(Issues, {
       issues: preview.warnings
-    }), /*#__PURE__*/React.createElement(Button, {
-      onClick: () => setPreview(null),
-      disabled: locked
-    }, "\u66F4\u6362\u6587\u4EF6"))) : /*#__PURE__*/React.createElement("div", {
+    }), replacing && !done && /*#__PURE__*/React.createElement("label", {
+      className: "rm-check"
+    }, /*#__PURE__*/React.createElement("input", {
+      type: "checkbox",
+      checked: acknowledged,
+      disabled: locked,
+      onChange: event => setAcknowledged(event.target.checked)
+    }), /*#__PURE__*/React.createElement("span", null, "\u5DF2\u6838\u5BF9\u5C06\u5220\u9664\u7684\u5168\u90E8\u6279\u6B21\u548C\u5BFC\u5165\u660E\u7EC6\uFF0C\u786E\u8BA4\u5148\u6E05\u9664\u518D\u91CD\u5BFC\u3002")))) : /*#__PURE__*/React.createElement("div", {
       className: "batch-value-list"
     }, /*#__PURE__*/React.createElement("label", null, /*#__PURE__*/React.createElement("input", {
       type: "radio",
@@ -216,7 +302,7 @@
       onChange: () => setSelection('filtered')
     }), "\u5BFC\u51FA\u5F53\u524D\u7B5B\u9009\u5168\u90E8\u6279\u6B21")), /*#__PURE__*/React.createElement(window.ResourceForms.Feedback, {
       command: command
-    })));
+    }))));
   }
   window.BatchFiles = BatchFiles;
 })();

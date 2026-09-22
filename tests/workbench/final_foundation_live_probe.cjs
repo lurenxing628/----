@@ -200,7 +200,8 @@ async function navigate(page, view, record) {
   await page.locator('.sidebar-nav').getByRole('link', {name: label, exact: true}).click();
   await settle(page, record);
   if (parent !== view) {
-    await page.locator(parent === 'analysis' ? '[data-plan-gantt]' : '.rw-workbench[data-ready="true"]').waitFor();
+    // 计划中心的默认页签（选择排产方案）不渲染甘特板，等工作区外壳即可。
+    await page.locator(parent === 'analysis' ? '.wb-current-plan[data-plan-ref]' : '.rw-workbench[data-ready="true"]').waitFor();
     await record.flush(page); responseStart = record.data.api_responses.length;
     const tabs = page.getByRole('tablist', {name: parent === 'analysis' ? '计划中心视图' : '统计分析视图', exact: true});
     await tabs.getByRole('tab', {name: view === 'delay' ? '交付风险' : NAV.find(row => row[0] === view)[1], exact: true}).click();

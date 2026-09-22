@@ -26,7 +26,7 @@
       "aria-expanded": s.open
     }, label), s.saved && !s.open && /*#__PURE__*/React.createElement("span", {
       className: "cad-inline"
-    }, s.saved.phase === 'committed' ? '采用与锁定结果已恢复。' : '上次操作已保留，请先查询结果。'), s.storageError && !s.open && /*#__PURE__*/React.createElement("span", {
+    }, s.saved.phase === 'committed' ? '上次采用结果已找回。' : '上次操作已保留，请先查询结果。'), s.storageError && !s.open && /*#__PURE__*/React.createElement("span", {
       className: "cad-inline",
       role: "alert"
     }, s.storageError, /*#__PURE__*/React.createElement(U.Button, {

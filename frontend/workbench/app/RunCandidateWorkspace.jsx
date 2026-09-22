@@ -20,25 +20,36 @@
     for (const key of ['range_start', 'range_end']) if (value && A.time(value[key])) result[key] = value[key];
     return result;
   }
+  // One 导出 button opens the format dialog, the same walk as the plan, trial and actual-gantt exports.
   function Export({ adapter, result, scope, query }) {
-    const [busy, setBusy] = React.useState(false), [error, setError] = React.useState(null), [done, setDone] = React.useState('');
+    const [busy, setBusy] = React.useState(false), [error, setError] = React.useState(null), [done, setDone] = React.useState(''), [format, setFormat] = React.useState(null);
     const active = React.useRef(null);
     React.useEffect(() => () => { if (active.current) active.current.abort(); }, []);
     const d = result.data, allowed = d.capabilities.export === true && d.candidate.capabilities.export === true && typeof adapter.export === 'function';
-    async function save(fmt) {
-      if (!allowed || active.current) return;
-      const controller = new AbortController(); active.current = controller; setBusy(true); setError(null); setDone('');
+    function cancel() { if (active.current) active.current.abort(); active.current = null; setBusy(false); setFormat(null); }
+    async function save() {
+      if (!allowed || active.current || !format) return;
+      const fmt = format, controller = new AbortController(); active.current = controller; setBusy(true); setError(null); setDone('');
       try {
         const file = A.download(await adapter.export(d.candidate.candidate_ref, scope, result.meta.snapshot_ref, fmt, controller.signal), result, fmt);
         if (controller.signal.aborted) return;
         const url = URL.createObjectURL(file.blob), link = document.createElement('a'); link.href = url; link.download = file.filename;
         document.body.appendChild(link); link.click(); link.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
-        setDone('已下载 ' + file.row_count + ' 条记录（安排 ' + d.task_count + '，未安排 ' + (d.unplanned_operation_count === null ? '未知' : d.unplanned_operation_count) + '）。');
+        setDone(window.WorkbenchTerms.download_started(file.filename) + '，共 ' + file.row_count + ' 条记录（安排 ' + d.task_count + '，未安排 ' + (d.unplanned_operation_count === null ? '未知' : d.unplanned_operation_count) + '）。');
+        setFormat(null);
       } catch (e) { if (!controller.signal.aborted) setError(e); }
       finally { if (!controller.signal.aborted) { active.current = null; setBusy(false); } }
     }
-    return <div><div className="rc-tools">{['csv', 'xlsx'].map(fmt => <C.Button key={fmt} icon="download" title="导出当前读取范围全部安排与未安排记录" disabled={!allowed} busy={busy} onClick={() => save(fmt)}>{fmt.toUpperCase()}</C.Button>)}</div>
-      {query.trim() && <small>搜索不改变导出范围</small>}<C.ErrorBox error={error} />{done && <small role="status">{done}</small>}</div>;
+    return <div><div className="rc-tools"><C.Button transfer="export" reason={allowed ? '' : '当前还不能导出这个候选方案。'} reasonDisplay="tooltip" busy={busy} onClick={() => { setFormat('csv'); setError(null); setDone(''); }}>导出</C.Button></div>
+      {query.trim() && <small>搜索不改变导出范围</small>}{done && <small role="status">{done}</small>}
+      {format && <window.ResourceControls.Modal title="导出候选方案" icon="download" onClose={cancel} footer={<>
+        <C.Button onClick={cancel}>{busy ? '取消导出' : '取消'}</C.Button><C.Button transfer="export" className="btn primary" busy={busy} onClick={save}>下载 {format.toUpperCase()}</C.Button></>}>
+        <div className="modal-b rc-export-summary"><div role="radiogroup" aria-label="候选导出格式" className="rc-export-format">{[['csv', 'CSV'], ['xlsx', 'XLSX']].map(([key, text]) =>
+          <label key={key}><input type="radio" name="rc-export-format" value={key} checked={format === key} disabled={busy} onChange={() => setFormat(key)} />{text}</label>)}</div>
+          <p><strong>{d.candidate.label || window.WorkbenchTerms.name_missing}</strong></p>
+          <p>导出当前读取范围全部安排与未安排记录：安排 {d.task_count} 道，未安排 {d.unplanned_operation_count === null ? '未知' : d.unplanned_operation_count + ' 道'}。搜索不改变导出范围。</p>
+          <C.ErrorBox error={error} /></div></window.ResourceControls.Modal>}
+    </div>;
   }
   function Session({ adapter, view = 'analysis', initialContext = {}, onNavigate, renderAdoption, renderTrial }) {
     const M = window.RunCandidateModel, Analysis = window.RunCandidateAnalysis, AnalysisAPI = window.RunCandidateAnalysisAPI;
@@ -70,8 +81,8 @@
     const analysis = shown && analysisRead.result && analysisRead.result.data.run_ref === shown.candidate.run_ref ? analysisRead.result.data : null;
     window.WorkbenchCaption.useCaption(shown && !read.busy && !read.error && shown.candidate.label ? {
       reference: shown.candidate.candidate_ref, label: '当前候选', name: shown.candidate.label,
-      status: '候选方案 · ' + ({ completed: '已完成', partial: '部分完成', failed: '失败', skipped: '已跳过' }[shown.candidate.status] || '状态待确认'),
-      range: (scope.range_start ? M.timeLabel(scope.range_start) + ' 至 ' + M.timeLabel(scope.range_end) + '（不含结束）' : '完整候选范围')
+      status: window.WorkbenchTerms.candidate + ' · ' + (window.WorkbenchTerms.candidate_statuses[shown.candidate.status] || '状态待确认'),
+      range: (scope.range_start ? M.timeLabel(scope.range_start) + ' 至 ' + M.timeLabel(scope.range_end) + '（不含结束时刻）' : '完整候选范围')
         + ' · ' + shown.task_count + ' / ' + shown.candidate_task_count + ' 道安排',
     } : null);
     const tasks = React.useMemo(() => shown ? M.matching(shown.tasks, query) : [], [shown, query]);
@@ -105,7 +116,7 @@
       } catch (error) { setRangeError(error); }
     }
     return <div className="plana run-candidate-workspace" data-run-candidate-workspace><C.Styles />
-      <div className="rc-heading"><div className="rc-tools"><h2>{view === 'delay' ? '候选交付风险' : view === 'gantt' ? '候选甘特' : '候选排产结果'}</h2><span className="rc-muted">已保存的候选方案</span></div><div className="rc-tools">
+      <div className="rc-heading"><div className="rc-tools"><h2 className="wb-page-title">{view === 'delay' ? '候选交付风险' : view === 'gantt' ? '候选甘特' : '候选排产结果'}</h2><span className="rc-muted">已保存的候选方案</span></div><div className="rc-tools">
         <div className="rc-nav">
           {onNavigate && <C.Button icon="chevron-left" className="btn link" onClick={() => onNavigate('run', { ...returnContext(initialContext.return_run_context), ...(runRef ? { run_ref: runRef } : {}) })}>返回排产记录</C.Button>}
           {onNavigate && initialContext.return_plan_context && A.ref(initialContext.return_plan_context.plan_ref) && <C.Button icon="chevron-left" className="btn link" onClick={() => onNavigate('analysis', returnContext(initialContext.return_plan_context))}>返回正式计划</C.Button>}</div>
@@ -135,19 +146,24 @@
         {rangeOpen && <form className="rc-range" onSubmit={rangeSubmit}><label>开始（包含）<input type="datetime-local" step="1" aria-label="候选读取开始" value={range.start} onChange={e => setRange({ ...range, start: e.target.value })} /></label>
           <label>结束（不含）<input type="datetime-local" step="1" aria-label="候选读取结束" value={range.end} onChange={e => setRange({ ...range, end: e.target.value })} /></label>
           <C.Button icon="check" type="submit">应用范围</C.Button><C.Button icon="chart-gantt" onClick={() => { setScope({}); setRange({ start: '', end: '' }); setRangeError(null); }}>完整候选</C.Button></form>}
-        <C.ErrorBox error={rangeError} /><div className="rc-scope"><span>读取范围：{scope.range_start ? M.timeLabel(scope.range_start) + ' 至 ' + M.timeLabel(scope.range_end) + '（不含结束）' : '全部时间'}{scope.batch_ref && ' · 指定批次'}
+        <C.ErrorBox error={rangeError} /><div className="rc-scope"><span>读取范围：{scope.range_start ? M.timeLabel(scope.range_start) + ' 至 ' + M.timeLabel(scope.range_end) + '（不含结束时刻）' : '全部时间'}{scope.batch_ref && ' · 指定批次'}
           {' · 安排 ' + shown.task_count + ' / 候选共 ' + shown.candidate_task_count + ' 道 · 未安排 ' + (shown.unplanned_operation_count === null ? '未知（未记录）' : shown.unplanned_operation_count + ' 道')}</span>
           {scope.batch_ref && <window.WorkbenchReference entries={{ '筛选批次编号': scope.batch_ref }} />}
           <details><summary>范围与导出说明</summary><div>时间筛选按重叠读取，保留每道安排完整起止；未安排项没有时间区间，仍随范围保留。搜索只影响页面显示和明细，不改变导出范围。导出当前读取范围全部安排与未安排记录。</div></details></div>
         {view === 'delay' && <C.Delivery data={shown.delivery_risks} onLast={lastOperation} />}
-        <div className="rc-main" style={['delivery', 'history'].includes(tab) ? { gridTemplateColumns: 'minmax(0,1fr)' } : undefined}><div><window.RunCandidateGantt data={shown} query={query} selected={chosen} onSelect={select} />
-          <section aria-label="候选明细"><div className="rc-heading"><div role="tablist" className="rc-tabs" aria-label="候选明细类别">
-            {['tasks', 'unplanned', ...(view === 'delay' ? [] : ['delivery', 'history'])].map(t => <C.Button key={t} role="tab" icon={t === 'tasks' ? 'chart-gantt' : t === 'history' ? 'history' : 'circle-alert'} aria-selected={tab === t} onClick={() => setTab(t)}>{t === 'tasks' ? '任务安排' : t === 'delivery' ? '交付风险' : t === 'history' ? '采用记录' : '未安排明细'}</C.Button>)}</div></div>
-            {tab === 'history' ? <><C.ErrorBox error={historyRead.error} />{historyRead.result && <Analysis.History data={historyRead.result.data}
+        <div className="rc-main" data-single-column={['delivery', 'history'].includes(tab) ? 'true' : undefined}><div><window.RunCandidateGantt data={shown} query={query} selected={chosen} onSelect={select} />
+          <section aria-label="候选明细"><div className="rc-heading"><div role="tablist" className="rc-tabs" aria-label="候选明细类别" onKeyDown={event => {
+            if (event.altKey || event.ctrlKey || event.metaKey) return;
+            const tabs = Array.from(event.currentTarget.querySelectorAll('[role="tab"]')), index = tabs.indexOf(document.activeElement);
+            const target = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : event.key === 'ArrowRight' ? (index + 1) % tabs.length : event.key === 'ArrowLeft' ? (index + tabs.length - 1) % tabs.length : -1;
+            if (target >= 0) { event.preventDefault(); tabs[target].focus(); tabs[target].click(); }
+          }}>
+            {['tasks', 'unplanned', ...(view === 'delay' ? [] : ['delivery', 'history'])].map(t => <C.Button key={t} role="tab" id={'rc-detail-tab-' + t} aria-controls="rc-detail-panel" tabIndex={tab === t ? 0 : -1} icon={t === 'tasks' ? 'chart-gantt' : t === 'history' ? 'history' : 'circle-alert'} aria-selected={tab === t} onClick={() => setTab(t)}>{t === 'tasks' ? '任务安排' : t === 'delivery' ? '交付风险' : t === 'history' ? '采用记录' : '未安排明细'}</C.Button>)}</div></div>
+            <div role="tabpanel" id="rc-detail-panel" aria-labelledby={'rc-detail-tab-' + tab}>{tab === 'history' ? <><C.ErrorBox error={historyRead.error} />{historyRead.result && <Analysis.History data={historyRead.result.data}
               onPlan={onNavigate && (plan => onNavigate('analysis', { plan_ref: plan.plan_ref }))} />}</> :
               tab === 'delivery' ? analysis && <Analysis.Batches key={analysis.candidate_ref} data={analysis} onLast={task => { lastOperation(task); setTab('tasks'); }}
                 onBatch={onNavigate && (row => onNavigate('gantt', { run_ref: analysis.run_ref, candidate_ref: analysis.candidate_ref, batch_ref: row.batch_ref, candidate_tab: 'tasks' }))} /> : tab === 'unplanned' && shown.unplanned_operations === null ? <div className="rc-notice">未记录排产时的未排工序明细。</div> :
-              <window.RunCandidateGantt.TaskList key={tab + ':' + query + ':' + result.meta.snapshot_ref} tasks={tab === 'tasks' ? tasks : unplanned} selected={chosen} onSelect={select} planned={tab === 'tasks'} />}</section>
+              <window.RunCandidateGantt.TaskList key={tab + ':' + query + ':' + result.meta.snapshot_ref} tasks={tab === 'tasks' ? tasks : unplanned} selected={chosen} onSelect={select} planned={tab === 'tasks'} />}</div></section>
         </div>{!['delivery', 'history'].includes(tab) && <C.Detail task={chosen} onClose={() => setSelected(null)} />}</div>
         {analysis && <Analysis.Overview data={analysis} />}</>}
     </div>;

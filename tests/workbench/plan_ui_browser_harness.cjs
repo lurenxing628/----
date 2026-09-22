@@ -11,6 +11,7 @@ let mounted;
 function Harness({spec}) {
   const [view,setView] = React.useState(spec.view || 'analysis'), [theme,setTheme] = React.useState(spec.theme || 'light');
   const [adapterVersion,setAdapterVersion] = React.useState(0), [context,setContext] = React.useState(spec.context || {});
+  const remember = React.useCallback(next => { fixture.context = F.clone(next); }, []);
   fixture.replaceAdapter = () => setAdapterVersion(n=>n+1);
   const adapter = React.useMemo(()=>{
     async function call(type,reference,scope,signal) {
@@ -50,14 +51,14 @@ function Harness({spec}) {
   fixture.adapter = adapter;
   React.useLayoutEffect(()=>{document.documentElement.dataset.theme=theme;},[theme]);
   const navigate=(next,ctx)=>{fixture.navigations.push({next,context:ctx});setView(next);if(ctx)setContext(ctx);};
-  return React.createElement(React.Fragment,null,
+  return React.createElement(WorkbenchPageContext.Provider,{remember},React.createElement(React.Fragment,null,
     React.createElement(WorkbenchControlStyles),React.createElement(WorkbenchControls),React.createElement(WorkbenchNumberControls),
     React.createElement(AppShell,{active:view,onNav:navigate,theme,onToggleTheme:()=>setTheme(t=>t==='light'?'dark':'light'),operations:true,showCapsule:false,title:view==='gantt'?'计划甘特':'选择排产方案'},
-      React.createElement(PlanWorkspace,{adapter,view,onNavigate:navigate,initialContext:context,disabled:!!spec.disabled})));
+      React.createElement(PlanWorkspace,{adapter,view,onNavigate:navigate,initialContext:context,disabled:!!spec.disabled}))));
 }
 window.mountPlan = spec => {
   if(mounted)mounted.unmount();
-  window.fixture={spec,calls:[],held:[],writes:0,navigations:[]};
+  window.fixture={spec,calls:[],held:[],writes:0,navigations:[],context:null};
   mounted=ReactDOM.createRoot(document.getElementById('fixture-root'));
   mounted.render(React.createElement(Harness,{spec}));
 };

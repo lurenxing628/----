@@ -58,10 +58,10 @@
       <form id={form} ref={formElement} className="modal-b form" onSubmit={submit} noValidate>
         <BaseFields value={value} setValue={next => { setValue(next); setError(null); }} entity={entity} disabled={locked} choices={choices.result && choices.result.data} error={currentError} errors={fieldErrors} />
         <ErrorBox error={error} excludePaths={paths} /><ErrorBox error={choices.error} /><window.ResourceForms.Feedback command={command} excludePaths={error ? [] : paths} />
-        {command.phase !== 'done' && <Button icon="refresh-cw" disabled={locked} onClick={reload}>刷新并核对</Button>}
-        {review && <div className="batch-band"><Issues issues={[{ message: '已读到最新资料，您填写的内容没有被覆盖。' }]} />
+        {command.phase !== 'done' && <Button icon="refresh-cw" disabled={locked} onClick={reload}>{window.WorkbenchTerms.refresh_latest}</Button>}
+        {review && <div className="batch-band"><Issues issues={[{ message: '已读到最新资料，已填写的内容没有被覆盖。' }]} />
           {entity && <dl>{B.fields.map(key => <React.Fragment key={key}><dt>{B.fieldNames[key]}</dt><dd>{window.BatchControls.display(key, review.data.fields[key])}</dd></React.Fragment>)}</dl>}
-          <Button onClick={acceptReview} disabled={locked}>采用最新资料</Button></div>}
+          <Button onClick={acceptReview} disabled={locked}>{window.WorkbenchTerms.accept_latest}</Button></div>}
       </form>
     </Modal>;
   }
@@ -82,7 +82,7 @@
       <p>确认后，将用上表中的工艺工序替换本批次现有工序。</p></>;
   }
   function Preview({ preview, command, onClose, onCommitted, disabled }) {
-    const seen = React.useRef(null), [error, setError] = React.useState(null);
+    const seen = React.useRef(null), [error, setError] = React.useState(null), [acknowledged, setAcknowledged] = React.useState(false);
     const action = preview.operation.split('.')[1], subject = action === 'bulk_confirm' ? preview.preview_ref : preview.entity_ref;
     React.useEffect(() => {
       if (command.phase !== 'done' || seen.current === command.result.receipt_ref) return;
@@ -94,13 +94,20 @@
         {Object.values(op.resources).filter(Boolean).map(resource => resource.label).join(' / ')} · 换型 {window.WorkbenchFormat.hours(op.setup_hours, ENTERED_HOURS)} / 单件 {window.WorkbenchFormat.hours(op.unit_hours, ENTERED_HOURS)} / 周期 {window.WorkbenchFormat.number(op.external_days, ENTERED_DAYS)} · {B.label('status', op.status)}</div>)}
       <div>物料需求 {row.relationships.material_requirement_count} 项</div></> : '删除';
     const deleting = action === 'bulk_confirm' && preview.action === 'delete';
-    return <Modal title={action === 'sync_confirm' ? '确认更新批次工序' : '确认批量' + ({ update: '修改', delete: '删除', copy: '复制' })[preview.action]} icon={deleting ? 'trash-2' : 'check'} locked={command.locked} onClose={onClose}
-      footer={<><Button onClick={onClose} disabled={command.locked}>{command.phase === 'done' ? '关闭' : '取消'}</Button>{command.phase !== 'done' && <Button icon={deleting ? 'trash-2' : 'check'} className="btn primary" disabled={disabled || command.locked}
+    // 只删一个批次时标题直接点名；删除要先核对明细并勾选，主按钮按危险动作着色。
+    const single = deleting && preview.rows.length === 1 && preview.rows[0].before ? preview.rows[0].before.business_code : null;
+    const title = action === 'sync_confirm' ? '确认更新批次工序' : single ? '确认删除批次 ' + single : '确认批量' + ({ update: '修改', delete: '删除', copy: '复制' })[preview.action];
+    const reason = deleting && !acknowledged ? '请先核对明细并勾选确认删除。' : '';
+    return <Modal title={title} icon={deleting ? 'trash-2' : 'check'} locked={command.locked} onClose={onClose}
+      footer={<><Button onClick={onClose} disabled={command.locked}>{command.phase === 'done' ? '关闭' : '取消'}</Button>{command.phase !== 'done' && <Button icon={deleting ? 'trash-2' : 'check'} className={'btn ' + (deleting ? 'danger' : 'primary')} disabled={disabled || command.locked} reason={reason}
         onClick={() => command.submit('batch', action, subject, preview.write_context, { preview_ref: preview.preview_ref })}>{action === 'sync_confirm' ? '确认更新工序' : deleting ? '确认删除' : '确认变更'}</Button>}</>}>
       <div className="modal-b">{action === 'sync_confirm' ? <SyncPreview preview={preview} /> : <div className="batch-preview wb-table-frame" data-sticky-head><table className="tbl wb-table"><caption className="wb-visually-hidden">批次变更前后对照</caption><thead><tr><th scope="col">原记录</th><th scope="col">确认后</th></tr></thead><tbody>
         {preview.rows.map(row => <tr key={row.entity_ref}><td>{value(row.before)}</td><td>{value(row.after)}</td></tr>)}
       </tbody></table></div>}
-        <Issues issues={preview.warnings || []} /><ErrorBox error={error} /><window.ResourceForms.Feedback command={command} action={deleting ? 'delete' : 'save'} /></div>
+        <Issues issues={preview.warnings || []} /><ErrorBox error={error} />
+        {deleting && command.phase !== 'done' && <label className="batch-check"><input type="checkbox" checked={acknowledged} disabled={disabled || command.locked} onChange={event => setAcknowledged(event.target.checked)} />
+          {single ? '已核对明细，确认删除批次 ' + single + '。' : '已核对全部明细，确认删除这 ' + window.WorkbenchFormat.number(preview.rows.length, { digits: 0 }) + ' 个批次。'}</label>}
+        <window.ResourceForms.Feedback command={command} action={deleting ? 'delete' : 'save'} /></div>
     </Modal>;
   }
   window.BatchForms = { BaseEditor, Preview };

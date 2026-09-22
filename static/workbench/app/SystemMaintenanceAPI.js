@@ -220,13 +220,13 @@
   }
   function pageContext(value = {}) {
     check(object(value) && Object.keys(value).every(key => ['source', 'tab', 'page_size', 'records'].includes(key)), '上次的页面状态无法恢复。请从侧栏重新打开系统管理。');
-    const source = value.source === undefined ? 'current' : value.source,
-      tab = value.tab === undefined ? 'overview' : value.tab;
-    const size = value.page_size === undefined ? 10 : value.page_size,
-      records = value.records === undefined ? {} : value.records;
-    check(['current', 'sample'].includes(source) && ['overview', 'backups', 'logs', 'config'].includes(tab) && [10, 25, 50].includes(size) && object(records) && Object.keys(records).every(key => ['backups', 'logs'].includes(key)), '上次的页面状态不完整，无法恢复。请从侧栏重新打开系统管理。');
+    // `sample` 是下线前唯一发布过的旧来源。只迁移这个精确值，并清空其样例记录状态；未知来源仍 fail closed。
+    const legacySample = value.source === 'sample';
+    const tab = value.tab === undefined ? 'overview' : value.tab;
+    const size = value.page_size === undefined ? 10 : value.page_size;
+    const records = legacySample || value.records === undefined ? {} : value.records;
+    check((value.source === undefined || value.source === 'current' || legacySample) && ['overview', 'backups', 'logs', 'config'].includes(tab) && [10, 25, 50].includes(size) && object(records) && Object.keys(records).every(key => ['backups', 'logs'].includes(key)), '上次的页面状态不完整，无法恢复。请从侧栏重新打开系统管理。');
     return {
-      source,
       tab,
       page_size: size,
       records: Object.fromEntries(Object.entries(records).map(([kind, item]) => [kind, recordContext(item, kind)]))
@@ -346,7 +346,7 @@
           check(response.ok && mime === expected && blob.type.split(';')[0].trim().toLowerCase() === expected, '下载的文件类型不对，没有保存。请刷新后重试。');
           const magic = new Uint8Array(await blob.slice(0, 4).arrayBuffer());
           check(format === 'zip' ? magic[0] === 80 && magic[1] === 75 && magic[2] === 3 && magic[3] === 4 : magic[0] === 239 && magic[1] === 187 && magic[2] === 191 && prefix.startsWith('来源,时间,'), '下载内容与日志文件格式不符。');
-          const filename = format === 'csv' ? '系统日志片段.csv' : '系统诊断包-已脱敏.zip';
+          const filename = format === 'csv' ? '系统日志片段.csv' : '诊断包.zip';
           const url = URL.createObjectURL(blob),
             link = document.createElement('a');
           link.href = url;

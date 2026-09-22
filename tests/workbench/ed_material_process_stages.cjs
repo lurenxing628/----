@@ -5,7 +5,7 @@ async function processPage(p, page) {
   await page.goto(p.ready.url + '/workbench?view=process');
   // Since 2026-09-13 the workspace restores the last open detail dialog after a reload, which keeps the rail disabled;
   // dismiss it so this helper always starts from the list.
-  const tile = page.locator('.hb-tile').filter({hasText: /^工艺/}); await tile.waitFor();
+  const tile = page.locator('[data-rail-node="process"]'); await tile.waitFor();
   for (let i = 0; i < 40 && await tile.isDisabled(); i++) {
     const restored = page.locator('[role="dialog"][aria-modal="true"]:visible').last();
     if (await restored.count()) { p.step('close-restored-dialog', await restored.getAttribute('aria-label')); await page.keyboard.press('Escape'); }
@@ -44,20 +44,23 @@ async function processStages(p, page, data) {
   await p.click(page.getByRole('tab', {name: /^1 /})); await p.click(b(page, '录入路线'));
   let entry = page.getByRole('dialog', {name: /^录入工艺路线 · /});
   assert(await entry.getByRole('button', {name: /^确认保存路线/}).isDisabled());
-  await p.click(entry.getByRole('tab', {name: '逐行表格', exact: true}));
+  await p.click(entry.getByRole('button', {name: '逐行表格', exact: true}));
   await p.type(entry.getByLabel('第 1 行工序号', {exact: true}), '0'); await p.click(b(entry, '预检路线'));
   await entry.getByRole('alert').first().waitFor(); await p.shot('route-invalid-sequence-rejected');
   await p.type(entry.getByLabel('第 1 行工序号', {exact: true}), '10');
   await p.type(entry.getByLabel('第 1 行工种', {exact: true}), data.long_operation);
   await p.click(b(entry, '新增工序')); await p.type(entry.getByLabel('第 5 行工序号', {exact: true}), '50');
   await p.type(entry.getByLabel('第 5 行工种', {exact: true}), '检验'); await p.click(b(entry, '删除第 5 行'));
-  await p.click(entry.getByRole('tab', {name: '整条录入', exact: true}));
+  await p.click(entry.getByRole('button', {name: '整条录入', exact: true}));
   await p.type(entry.getByRole('textbox', {name: '路线文字', exact: true}), data.route);
   const preview = await p.response('/route-preview', () => p.click(b(entry, '预检路线')));
   assert.equal(preview.data.affected_groups.length, 0); assert.equal(preview.data.counts.operations, 4);
   await p.shot('route-real-preview'); await saved(p, 'route_confirm', b(entry, '确认保存路线'));
   source = page.locator('[data-process-source-editor]:visible'); await source.waitFor();
+  const sourceChoice = source.getByRole('group', {name: '工序 10 归属', exact: true});
+  await p.click(sourceChoice.getByRole('button', {name: '外协', exact: true}));
   await p.click(b(source, '保存归属并继续')); await source.getByRole('alert').first().waitFor(); await p.shot('source-unconfirmed-rejected');
+  await p.click(sourceChoice.getByRole('button', {name: '自制', exact: true}));
   await p.click(b(source, '选择工序 10 工种'));
   let picker = page.getByRole('dialog', {name: '选择自制工种 · 工序 10', exact: true});
   await p.type(picker.getByRole('searchbox'), 'ED确实不存在的工种');
@@ -103,7 +106,7 @@ async function protectedAndEmpty(p, page) {
   await p.type(hours.getByLabel('工序 1 单件工时', {exact: true}), '4');
   const rejected = await p.response('/hours_confirm', () => p.click(b(hours, '保存工时')), 409);
   assert.equal(rejected.error.code, 'calibration_quota_locked'); assert.equal(rejected.committed, false);
-  await page.getByText('已采纳的单件定额已锁定，普通保存不能覆盖。', {exact: true}).waitFor();
+  await page.getByText('这道工序的单件工时已锁定（来自工时校准），普通保存不能覆盖，这次没有保存。锁定后这个模板的单件工时不能再改。', {exact: true}).waitFor();
   await p.shot('calibration-lock-real-rejection');
   await p.click(b(page, '关闭详情')); await p.click(b(page.getByRole('dialog', {name: '放弃未保存的工艺草稿？', exact: true}), '放弃草稿并关闭'));
   await openProcess(p, page, p.ready.expected.ed.empty_part);

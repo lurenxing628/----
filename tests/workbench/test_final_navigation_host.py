@@ -112,6 +112,8 @@ def test_html_boot_escapes_script_end_without_changing_query(navigation_client):
 def test_unknown_view_and_missing_assets_keep_no_store(navigation_client, tmp_path, monkeypatch):
     response = navigation_client.get("/workbench?view=unknown")
     assert response.status_code == 404 and response.headers["Cache-Control"] == "no-store"
+    text = response.get_data(as_text=True)
+    assert "<h1>页面不存在</h1>" in text and "请点「打开工作台」从侧栏进入" in text and "工作台暂不可用" not in text
     monkeypatch.setattr(navigation_client.application, "static_folder", str(tmp_path / "missing"))
     response = navigation_client.get("/workbench?view=system")
     assert response.status_code == 503 and response.headers["Cache-Control"] == "no-store"

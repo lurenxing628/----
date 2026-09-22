@@ -22,11 +22,15 @@
     value
   }) {
     if (!value) return /*#__PURE__*/React.createElement("div", null, title, "\uFF1A\u672A\u8BB0\u5F55");
+    // 状态与说明用报工记录和候选页同一套叫法；不把内部取值原样上屏。
+    const R = window.RunCandidateModel,
+      F = window.FieldContract;
+    const rows = [['target_quantity', U.number(value.target_quantity)], ['known_completed_quantity', U.number(value.known_completed_quantity)], ['remaining_quantity', U.number(value.remaining_quantity)], ['execution_state', F.states[value.execution_state] || R.executionValue(value.execution_state)], ['data_quality', R.executionValue(value.data_quality)], ['target_basis', R.executionValue(value.target_basis)]];
     return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h4", null, title), /*#__PURE__*/React.createElement("dl", {
       className: "tt-facts"
-    }, [['目标量', value.target_quantity], ['已知完成量', value.known_completed_quantity], ['剩余量', value.remaining_quantity], ['执行状态', value.execution_state], ['数据质量', value.data_quality], ['目标依据', value.target_basis]].map(([label, v]) => /*#__PURE__*/React.createElement(React.Fragment, {
-      key: label
-    }, /*#__PURE__*/React.createElement("dt", null, label), /*#__PURE__*/React.createElement("dd", null, U.number(v))))));
+    }, rows.map(([key, v]) => /*#__PURE__*/React.createElement(React.Fragment, {
+      key: key
+    }, /*#__PURE__*/React.createElement("dt", null, R.executionLabels[key]), /*#__PURE__*/React.createElement("dd", null, v)))));
   }
   function Editor({
     data,
@@ -211,11 +215,11 @@
       className: "tt-notice"
     }, task.execution_anchor.message), /*#__PURE__*/React.createElement("dl", {
       className: "tt-facts"
-    }, [['分件', task.piece_id || '整批'], ['原目标量', U.number(task.quantity)], ['批次数量', U.number(task.batch_quantity)], ...(window.PointContract.isPoint(task) ? [['安排类型', '零工时工序'], ['本工序占用', '0 小时 · 不占设备人员']] : []), ['优先级', {
+    }, [['分件', task.piece_id || window.WorkbenchTerms.shared_operation], ['原目标量', U.number(task.quantity)], ['批次数量', U.number(task.batch_quantity)], ...(window.PointContract.isPoint(task) ? [['安排类型', '零工时工序'], ['本工序占用', '0 小时 · 不占设备人员']] : []), ['优先级', {
       normal: '普通',
       urgent: '急件',
       critical: '特急'
-    }[task.priority] || '未知'], ['交付截至日', task.due_date || '未记录'], ['来源', task.source === 'internal' ? '自制' : '外协'], ['当前设备', name(task.machine_ref)], ['当前人员', name(task.operator_ref)], ['当前开工', U.timeLabel(task.start)], ['当前完工', U.timeLabel(task.end)], ['原设备', name(task.original.machine_ref)], ['原人员', name(task.original.operator_ref)], ['原开工', U.timeLabel(task.original.start)], ['原完工', U.timeLabel(task.original.end)], ['原准备工时', U.number(task.hours.setup_hours)], ['原单件工时', U.number(task.hours.unit_hours)], ['原总工时', U.number(task.hours.total_hours)], ['工时依据', hoursBasis(task.hours.basis)], ...(task.source === 'external' ? [['原周期（天）', U.number(task.hours.days)]] : [])].map(([label, value]) => /*#__PURE__*/React.createElement(React.Fragment, {
+    }[task.priority] || '未知'], ['交期', task.due_date || '未记录'], ['来源', task.source === 'internal' ? '自制' : '外协'], ['当前设备', name(task.machine_ref)], ['当前人员', name(task.operator_ref)], ['当前开工', U.timeLabel(task.start)], ['当前完工', U.timeLabel(task.end)], ['原设备', name(task.original.machine_ref)], ['原人员', name(task.original.operator_ref)], ['原开工', U.timeLabel(task.original.start)], ['原完工', U.timeLabel(task.original.end)], ['原准备工时', U.hours(task.hours.setup_hours)], ['原单件工时', U.hours(task.hours.unit_hours)], ['原总工时', U.hours(task.hours.total_hours)], ['工时依据', hoursBasis(task.hours.basis)], ...(task.source === 'external' ? [['原周期（天）', U.number(task.hours.days)]] : [])].map(([label, value]) => /*#__PURE__*/React.createElement(React.Fragment, {
       key: label
     }, /*#__PURE__*/React.createElement("dt", null, label), /*#__PURE__*/React.createElement("dd", null, value)))), /*#__PURE__*/React.createElement("div", {
       className: "tt-tools"
@@ -229,19 +233,9 @@
         title: label,
         "aria-label": label,
         onClick: () => onSelect(ref),
-        style: {
-          minWidth: 0,
-          maxWidth: '100%',
-          height: 'auto',
-          whiteSpace: 'normal',
-          textAlign: 'left'
-        }
+        className: "btn tt-relation-button"
       }, /*#__PURE__*/React.createElement("span", {
-        style: {
-          minWidth: 0,
-          overflowWrap: 'anywhere',
-          wordBreak: 'break-word'
-        }
+        className: "tt-relation-label"
       }, label));
     })), /*#__PURE__*/React.createElement("section", null, /*#__PURE__*/React.createElement("h4", null, "\u5DE5\u5E8F\u7EA6\u675F"), !task.issues.length && /*#__PURE__*/React.createElement("p", {
       className: "tt-muted"

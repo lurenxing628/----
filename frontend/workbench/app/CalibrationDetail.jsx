@@ -1,7 +1,9 @@
 (function () {
   'use strict';
-  const { Button, ErrorBox, Page, text, hours, writeReason } = window.CalibrationControls;
+  const { Button, ErrorBox, Page, text, amount, hours, unitHours, writeReason } = window.CalibrationControls;
   const fields = [['actual_start', '实际开工'], ['actual_end', '本次结束'], ['completed_quantity', '完成数量'], ['effective_processing_hours', '有效加工工时（小时）'], ['remark', '备注']];
+  // 工时列已在表头写明单位，格子里只放整形后的数字；其余项照原值显示。
+  const cell = (key, value) => key === 'effective_processing_hours' ? amount(value) : text(value);
   function Refs({ rows }) {
     // 编号、版本号一律进折叠的「编号」区，正文只留人看得懂的内容。
     const visible = rows.filter(([label]) => !/(编号|版本)$/.test(label));
@@ -13,12 +15,12 @@
     return <details><summary>报工 · {report.actual_end ? window.WorkbenchFormat.dateTime(report.actual_end) : '结束时间未知'} · 数量 {text(report.completed_quantity)} · {hours(report.effective_processing_hours, '工时未知')}</summary>
       <Refs rows={[["单号", report.report_no], ["记录编号", report.report_ref], ["记录人", report.local_operator], ["经办人", report.declared_operator],
         ["登记时间", report.recorded_at], ["原计划记录编号", report.recorded_against_plan_ref], ["原任务记录编号", report.recorded_against_task_ref], ["当前版本编号", report.revision_ref]]} />
-      <Refs rows={fields.map(([key, label]) => [label, report[key]])} /><window.WorkbenchReference entries={{ '设备编号': report.actual_machine_ref, '人员编号': report.actual_operator_ref, '报工来源': report.source }} />
+      <Refs rows={fields.map(([key, label]) => [label, cell(key, report[key])])} /><window.WorkbenchReference entries={{ '设备编号': report.actual_machine_ref, '人员编号': report.actual_operator_ref, '报工来源': report.source }} />
       <h4>登记与更正记录（{report.correction_history.length} 条）</h4>
       {report.correction_history.map(revision => <details key={revision.revision_ref}><summary>{window.WorkbenchTerms.report_actions[revision.action] || revision.action} · {window.WorkbenchFormat.dateTime(revision.recorded_at)}</summary>
         <Refs rows={[["更正原因", revision.reason || '无'], ["记录人", revision.local_operator], ["经办人", revision.declared_operator], ["版本编号", revision.revision_ref], ["结果编号", revision.receipt_ref]]} />
         <div className="ca-table-scroll wb-table-frame"><table className="ca-table" aria-label="更正前后值"><caption className="wb-visually-hidden">逐次报工更正前后的值</caption><thead><tr><th scope="col">项目</th><th scope="col">更正前</th><th scope="col">更正后</th></tr></thead><tbody>{fields.map(([key, label]) =>
-          <tr key={key}><th scope="row">{label}</th><td>{revision.before === null ? '新增，无原值' : text(revision.before && revision.before[key])}</td><td>{text(revision.after && revision.after[key])}</td></tr>)}</tbody></table></div>
+          <tr key={key}><th scope="row">{label}</th><td>{revision.before === null ? '新增，无原值' : cell(key, revision.before && revision.before[key])}</td><td>{cell(key, revision.after && revision.after[key])}</td></tr>)}</tbody></table></div>
         <window.WorkbenchReference entries={{ '原设备编号': revision.before && revision.before.actual_machine_ref, '新设备编号': revision.after && revision.after.actual_machine_ref,
           '原人员编号': revision.before && revision.before.actual_operator_ref, '新人员编号': revision.after && revision.after.actual_operator_ref }} />
       </details>)}
@@ -31,11 +33,11 @@
     }}><summary>{state} · {sample.batch_code} · {sample.confirmed_finish ? window.WorkbenchFormat.dateTime(sample.confirmed_finish) : '完工时间未知'} · 已知数量 {text(sample.completed_quantity)}
       {sample.unknown_record_count > 0 && ' · ' + sample.unknown_record_count + ' 条数量未知'} · {hours(sample.effective_processing_hours, '工时未知')}</summary>
       {opened && <><Refs rows={[["批次", sample.batch_code], ["工序单号", sample.operation_code], ["完工记录编号", sample.execution_operation_ref], ["来源模板编号", sample.template_operation_ref],
-        ["来源模板版本", sample.template_revision], ["来源证据编号", sample.lineage_evidence_ref], ["记录版本", sample.sample_revision]]} />
-        <p>单件工时：{hours(sample.unit_hours, '未知')}；数量未知记录 {sample.unknown_record_count} 条。</p>
+        ["来源模板版本", sample.template_revision], ["来源记录编号", sample.lineage_evidence_ref], ["记录版本", sample.sample_revision]]} />
+        <p>单件工时：{unitHours(sample.unit_hours, '未知')}；数量未知记录 {sample.unknown_record_count} 条。</p>
         <ul>{sample.exclusion_reasons.map((reason, index) => <li key={reason.code + ':' + index}>{reason.message}</li>)}</ul>
         <h4>逐次报工（{sample.reports.length} 条）</h4>{sample.reports.map(report => <Report key={report.report_ref} report={report} />)}
-        <h4>历史现场记录（{sample.legacy_facts.length} 条）</h4>{sample.legacy_facts.map((fact, index) => <details key={fact.legacy_fact_ref || index}><summary>历史现场记录 {index + 1}</summary><window.ReportEvidence.StructuredFacts value={fact} /></details>)}
+        <h4>{window.WorkbenchTerms.legacy_field_records}（{sample.legacy_facts.length} 条）</h4>{sample.legacy_facts.map((fact, index) => <details key={fact.legacy_fact_ref || index}><summary>{window.WorkbenchTerms.legacy_field_records} {index + 1}</summary><window.ReportEvidence.LegacyRecord value={fact} /></details>)}
         {!!sample.data_gaps.length && <><h4>数据缺口</h4><ul>{sample.data_gaps.map((gap, index) => <li key={index}>{gap.message || <window.ReportEvidence.StructuredFacts value={gap} />}</li>)}</ul></>}
       </>}
     </details>;
@@ -65,10 +67,10 @@
     return <window.WorkbenchDetailPanel className="ca-detail" detailKey={selected} title={row ? row.part_no + ' · ' + row.sequence + ' ' + row.operation_label : '已选校准记录'}
       subtitle="校准详情" actions={actions} onClose={onClose}>
       {!row && <Refs rows={[["已选记录编号", selected], ["已选完工记录编号", sampleRef]]} />}
-      <ErrorBox error={error} />{stale && <p className="ca-note">数据已更新，请刷新所选记录。</p>}
+      <ErrorBox error={error} />{stale && <p className="ca-note">{window.WorkbenchTerms.outcomes.stale}</p>}
       {(error || stale) && <Button icon="refresh-cw" onClick={onRefresh}>刷新所选记录</Button>}
       {busy && <window.WorkbenchListControls.EmptyState kind="loading" title="正在读取完工记录来源" />}
-      {row && <><dl className="ca-facts"><div><dt>原定额</dt><dd>{hours(row.old_unit_hours)} / 件</dd></div><div><dt>建议定额</dt><dd>{hours(row.suggested_unit_hours, '暂无建议')}</dd></div>
+      {row && <><dl className="ca-facts"><div><dt>原定额</dt><dd>{unitHours(row.old_unit_hours)}</dd></div><div><dt>建议定额</dt><dd>{unitHours(row.suggested_unit_hours, '暂无建议')}</dd></div>
         <div><dt>可用记录数</dt><dd>{row.sample_count} 条</dd></div><div><dt>核对记录总数</dt><dd>{row.candidate_count} 条</dd></div></dl>
         {row.suggested_unit_hours === null && <p className="ca-note">同模板、同版本的可用完工记录不足 5 条，暂无建议。</p>}
         <details className="ca-evidence"><summary>定额记录与计算依据</summary>

@@ -1,7 +1,7 @@
 (function () {
   'use strict';
   const { Button, Modal } = window.ResourceControls, A = window.RunJobAPI;
-  const labels = { queued: '等待计算', running: '正在计算', complete: '计算完成', partial: '部分完成', failed: '计算失败', interrupted: '排产中断' };
+  const labels = window.WorkbenchTerms.run_statuses;
   function Progress({ run }) {
     const [now, setNow] = React.useState(Date.now);
     React.useEffect(() => {
@@ -79,14 +79,14 @@
       {catalog && <>
       <div className="rj-table wb-table-frame" data-sticky-head data-sticky-actions><table className="wb-table" aria-label="已保存候选"><caption className="wb-visually-hidden">已保存候选</caption><thead><tr><th scope="col" className="wb-col-key">候选</th><th scope="col">状态</th><th scope="col">已保存工序</th><th scope="col" className="wb-col-actions">操作</th></tr></thead><tbody>
         {catalog.candidates.map(row => <tr key={row.candidate_ref} data-candidate-ref={row.candidate_ref}>
-          <td className="wb-col-key"><div className="rj-name"><span>{row.label || '生成时名称未填写'}{selected.has(row.candidate_ref) && <span className="rj-selected">本次选中</span>}</span><window.WorkbenchReference value={row.candidate_ref} /></div></td>
-          <td>{{ completed: '已完成', partial: '部分完成', failed: '失败', skipped: '已跳过' }[row.status]}{row.completeness === 'unknown' && <small>完整性尚未确认</small>}</td><td>{row.task_count}</td>
+          <td className="wb-col-key"><div className="rj-name"><span>{row.label || window.WorkbenchTerms.name_missing}{selected.has(row.candidate_ref) && <span className="rj-selected">本次选中</span>}</span><window.WorkbenchReference value={row.candidate_ref} /></div></td>
+          <td>{window.WorkbenchTerms.candidate_statuses[row.status]}{row.completeness === 'unknown' && <small>完整性尚未确认</small>}</td><td>{row.task_count}</td>
           <td className="wb-col-actions"><Button icon="eye" className="mini" reasonDisplay="tooltip" reason={canOpen ? '' : window.WorkbenchTerms.outcomes.unavailable}
             onClick={() => api.openCandidate({ candidate_ref: row.candidate_ref, run_ref: row.run_ref })}>详情</Button></td></tr>)}</tbody></table></div>
       {catalog.page.total > 20 && <window.WorkbenchListControls.Pager page={catalog.page} size={20} unit="项" label="候选" busy={busy}
         onPage={page => setQuery({ page, snapshot_ref: catalog.snapshot_ref })} />}</>}</section>;
   }
-  function Record({ run, intent, paused, retryPaused, lastChecked, resolution, checking, verified, api }) {
+  function Record({ run, intent, paused, retryPaused, retryHint = '可点「查询结果」再次核对原记录。', lastChecked, resolution, checking, verified, api }) {
     const replaced = resolution === 'context_replaced';
     const queryLabel = checking ? '正在查询结果' : replaced ? '数据库已恢复' : resolution === 'lookup_failed' ? '查询失败' : '暂未查到这次排产记录';
     return <section aria-label="这次排产记录" className="rj-record"><div className="rj-heading"><h3>最近排产记录</h3>{run ? <Status run={run} /> : <span role="status" data-query-state={checking ? 'querying' : resolution}>{queryLabel}</span>}</div>
@@ -100,7 +100,7 @@
         {run.error && <div className="rj-notice" role="alert">{A.message(run.error)}</div>}<Candidates key={run.run_ref} run={run} api={api} /></>}
       {!replaced && <p className="rj-muted rj-query-summary" role="status">
         {lastChecked && <span>最近查询：{window.WorkbenchFormat.dateTime(new Date(lastChecked).toLocaleString('sv-SE').replace(' ', 'T'))}</span>}
-        {retryPaused ? <span>已暂停自动查询。可点「查询结果」再次核对原记录。</span> : !A.terminal(run) && <span>{paused ? '页面已切走，返回后继续查询。' : checking ? '正在读取排产记录。' : '等待下次查询。'}</span>}
+        {retryPaused ? <span>已暂停自动查询。{retryHint}</span> : !A.terminal(run) && <span>{paused ? '页面已切走，返回后继续查询。' : checking ? '正在读取排产记录。' : '等待下次查询。'}</span>}
       </p>}
     </section>;
   }

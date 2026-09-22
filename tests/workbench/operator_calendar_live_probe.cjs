@@ -53,7 +53,9 @@ async function operatorCalendar(page,state,helpers,root,report){
     await panel.locator('[data-operator-calendar-date="'+first+'"]').getByText('09:00–17:30',{exact:true}).waitFor();
     await panel.locator('[data-operator-calendar-date="'+first+'"]').click();
     assert.equal(await panel.getByLabel('效率（%）',{exact:true}).inputValue(),'90');
-    await saved(page,panel,'/calendar/delete','清除这一天');
+    // 清除走两步：先点「清除单独设置」进入确认，再点「确认清除，恢复默认」才真正提交。
+    await panel.getByRole('button',{name:'清除单独设置',exact:true}).click();
+    await saved(page,panel,'/calendar/delete','确认清除，恢复默认');
   });
   await run(page,state,'operator-calendar-range-clear',async()=>{
     let panel=await reopen(page);

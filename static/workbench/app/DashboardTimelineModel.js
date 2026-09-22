@@ -45,7 +45,7 @@
     };
   }
   function title(task) {
-    return [task.batch_id + ' · ' + task.sequence + ' ' + task.process_label, window.WorkbenchFormat.dateTime(task.start) + ' 至 ' + window.WorkbenchFormat.dateTime(task.end), '计划时长 ' + window.WorkbenchFormat.hours(task.span_hours), task.start === task.end ? '零工时工序，不占设备人员' : null, '设备：' + (task.machine_label || '名称未填写')].filter(Boolean).join('\n');
+    return [task.batch_id + ' · ' + task.sequence + ' ' + task.process_label, G.timeLabel(task.start) + ' 至 ' + G.timeLabel(task.end), '计划时长 ' + window.WorkbenchFormat.hours(task.span_hours), task.start === task.end ? '零工时工序，不占设备人员' : null, '设备：' + (task.machine_label || '名称未填写')].filter(Boolean).join('\n');
   }
   window.DashboardTimelineModel = {
     layout,
@@ -55,7 +55,7 @@
     ticks: G.ticks,
     visibleRows: G.visibleRows,
     visibleItems: G.visibleItems,
-    number: value => window.WorkbenchFormat.number(value),
-    timeLabel: value => window.WorkbenchFormat.dateTime(value)
+    number: (value, options) => window.WorkbenchFormat.number(value, options),
+    timeLabel: G.timeLabel
   };
 })();

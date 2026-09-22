@@ -74,7 +74,7 @@
       }
       return value;
     } catch (error) {
-      if (controller.signal.aborted && !(signal && signal.aborted)) throw new Error(window.WorkbenchTerms.outcomes.unknown('试调操作'));
+      if (controller.signal.aborted && !(signal && signal.aborted)) throw new Error(options.body === undefined ? '读取超时，请刷新重试。' : window.WorkbenchTerms.outcomes.unknown('试调操作'));
       throw error;
     } finally {
       clearTimeout(timer);

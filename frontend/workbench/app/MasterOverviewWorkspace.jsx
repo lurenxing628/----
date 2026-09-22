@@ -45,6 +45,7 @@
     const [search, setSearch] = useState(initial.scope.query), [column, setColumn] = useState(null), [columnText, setColumnText] = useState('');
     const [message, setMessage] = useState(''), [actionError, setActionError] = useState(null), [exporting, setExporting] = useState(false), [stale, setStale] = useState(false);
     const opener = useRef(null), listRef = useRef(null), listHeight = useRef(0), exportController = useRef(null), alive = useRef(true);
+    const domainsId = React.useId();
     const detailFocus = useRef(!!(initial.initial || initial.selected));
     const pending = loading || completedRequest !== request, readError = completedRequest === request ? error : null;
     const data = result && (completedRequest === request || request.keep) ? result.data : null, scope = data ? data.scope : request.scope;
@@ -124,21 +125,21 @@
       const controller = new AbortController(); exportController.current = controller; setExporting(true); setMessage(''); setActionError(null);
       try {
         const file = await api.export(data.scope, result.meta.snapshot_ref, data.page.total, controller.signal);
-        if (alive.current && !controller.signal.aborted) { window.APSMasterOverviewAPI.save(file); setMessage('已发起下载：' + file.filename + '，共 ' + file.count + ' 条。'); }
+        if (alive.current && !controller.signal.aborted) { window.APSMasterOverviewAPI.save(file); setMessage(window.WorkbenchTerms.download_started(file.filename) + '（共 ' + file.count + ' 条）。'); }
       } catch (failure) { if (alive.current && failure.name !== 'AbortError') setActionError(failure); }
       finally { if (alive.current) setExporting(false); }
     }
     const overview = summary && summary.overview, metrics = overview && overview.stats;
     const empty = { scope, rows: [], page: { number: 1, size: scope.size, total: 0, pages: 1 } };
     return <section className="plana master-overview" aria-label="资料总览"><window.MasterOverviewStyles />
-      <header className="mo-heading"><div><h2 className="wb-page-title">资料总览</h2><p className="wb-page-context">{summary ? '基础资料 · 本机记录 · ' + window.WorkbenchFormat.dateTime(summary.asOf) : '基础资料 · 未读取'}</p></div>
+      <header className="mo-heading"><div><h2 className="wb-page-title">资料总览</h2><p className="wb-page-context">{summary ? '基础资料 · ' + window.WorkbenchTerms.data_as_of(window.WorkbenchFormat.dateTime(summary.asOf)) : '基础资料 · 未读取'}</p></div>
         <div className="mo-actions"><Button reasonDisplay="inline" className="btn mo-icon" icon="refresh-cw" aria-label="刷新资料" onClick={refresh} />
           <Button reasonDisplay="inline" transfer="export" disabled={!data || !data.page.total || pending || exporting} onClick={exportRows}>导出筛选结果</Button>
           <Button reasonDisplay="inline" className="btn primary" reason={typeof onNavigate !== 'function' ? window.WorkbenchTerms.outcomes.unavailable : ''} onClick={async () => { try { await onNavigate('process', { source: 'production' }); } catch (failure) { setActionError(failure); } }}>维护基础资料</Button></div></header>
       <div className="wb-metrics mo-metrics" aria-label="总览状态">{[['entities', overview && !overview.complete ? '已读取资料' : '资料条数'], ['issues', '待维护项'], ['affected', '涉及资料'], ['relations', '已关联对数']].map(([key, label]) => <div className="wb-metric" key={key} data-tone={key === 'issues' ? 'warn' : undefined}>
         <span className="wb-metric-label">{label}</span><strong className="wb-metric-value">{metrics ? C.value(metrics[key]) : '未读取'}</strong></div>)}</div>
-      <div className="wb-metrics mo-domains" aria-label="资料类别数量">{C.domains.map(([id, label], index) => { const domain = overview && overview.domains[index]; return <button type="button" className="wb-metric mo-domain" key={id} aria-pressed={scope.domain === id} aria-label={'查看资料类别 ' + label}
-        onClick={() => filter({ domain: scope.domain === id ? 'all' : id })}><span className="wb-metric-label">{label}</span><strong className="wb-metric-value">{domain && domain.loaded ? domain.count : '未读取'}</strong><span className="wb-metric-helper">{domain && domain.loaded ? domain.attention + ' 条需维护' + (domain.unknown ? ' · ' + domain.unknown + ' 条未确认' : '') : '来源未读取'}</span></button>; })}</div>
+      <div className="wb-metrics mo-domains" aria-label="资料类别数量">{C.domains.map(([id, label], index) => { const domain = overview && overview.domains[index], countId = domainsId + '-' + id; return <button type="button" className="wb-metric mo-domain" key={id} aria-pressed={scope.domain === id} aria-label={'查看资料类别 ' + label} aria-describedby={countId + '-count ' + countId + '-helper'}
+        onClick={() => filter({ domain: scope.domain === id ? 'all' : id })}><span className="wb-metric-label">{label}</span><strong className="wb-metric-value" id={countId + '-count'}>{domain && domain.loaded ? domain.count : '未读取'}</strong><span className="wb-metric-helper" id={countId + '-helper'}>{domain && domain.loaded ? domain.attention + ' 条需维护' + (domain.unknown ? ' · ' + domain.unknown + ' 条未确认' : '') : '来源未读取'}</span></button>; })}</div>
       {overview && overview.gaps.length > 0 && <details className="mo-gaps" open><summary>原始数据缺口 {overview.gaps.length} 项</summary><ul>{overview.gaps.map((gap, index) => <li key={index}>{gap.message}</li>)}</ul></details>}
       <ErrorBox error={readError || actionError} />{message && <div className="mo-message" role="status">{message}</div>}
       {stale && !pending && data && <div className="mo-message mo-stale" role="status" data-master-stale><span>切回本页后资料可能已更新，当前页、选中项和详情都还保留着。</span><Button icon="refresh-cw" onClick={refreshInPlace}>刷新本页</Button></div>}

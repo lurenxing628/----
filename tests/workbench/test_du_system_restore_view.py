@@ -35,7 +35,7 @@ def test_true_cold_readonly_page_and_diagnostic_never_open_database(tmp_path, da
             assert 'data-restore-maintenance="cold"' in page and "系统已暂停" in page
             assert 'src="/static/' not in page and "nonce" not in page
             assert '<a href="/workbench?view=system">返回工作台</a>' in page
-            assert '返回入口会重新查询维护状态' in page
+            assert '点「返回工作台」会重新查询维护状态；需要重启或人工核对时仍然停在维护页。' in page
         query = "/workbench?" + urlencode({"kind": "request", "reference": KEY})
         status, page = host.request(query)
         assert status == 503 and KEY in page.decode("utf-8")
@@ -85,3 +85,39 @@ def test_warm_page_and_original_receipt_are_readonly_even_when_all_db_connects_f
     assert response.status_code == 200 and response.mimetype == "application/json"
     assert json.loads(response.data)["result"]["operation"]["state"] == "succeeded"
     assert {str(path): file_fingerprint(str(path)) for path in paths} == before
+
+
+def _js_object_literal(source, name):
+    """读出 SystemRestoreStatus.js 里 `const <name> = { key: '中文', ... };` 这一份词表。"""
+    import re
+
+    body = re.search(r"const " + name + r" = \{(.*?)\};", source, re.S).group(1)
+    return dict(re.findall(r"(\w+): '([^']*)'", body))
+
+
+def test_cold_page_labels_match_the_workbench_restore_status_word_for_word():
+    """冷启动维护页（后端模板）和工作台维护面板（前端）对同一阶段必须说同一句话。"""
+    from web.bootstrap.workbench_system_restore_view import DIAGNOSTIC_FILENAME, LABELS, ORIGINS
+
+    source = (Path(__file__).resolve().parents[2] / "frontend/workbench/app/SystemRestoreStatus.js").read_text(encoding="utf-8")
+    assert _js_object_literal(source, "labels") == LABELS
+    assert _js_object_literal(source, "origins") == ORIGINS
+    assert "DIAGNOSTIC_FILENAME = '" + DIAGNOSTIC_FILENAME + "'" in source
+
+
+def test_cold_diagnostic_download_uses_the_same_filename_as_the_workbench(tmp_path):
+    from urllib.parse import quote
+
+    from web.bootstrap.workbench_system_restore_view import DIAGNOSTIC_FILENAME, recovery_response
+
+    class Journal:
+        def records(self):
+            return []
+
+    status = {"state": "restart_required", "request_key": None}
+    response = recovery_response({"REQUEST_METHOD": "GET", "PATH_INFO": "/workbench", "QUERY_STRING": "download=diagnostic",
+                                  "SERVER_NAME": "localhost", "SERVER_PORT": "80", "wsgi.url_scheme": "http"},
+                                 Journal(), status, lambda path, status: None)
+    disposition = response.headers["Content-Disposition"]
+    assert disposition.startswith("attachment; filename=\"maintenance-diagnostic.json\"")
+    assert "filename*=UTF-8''" + quote(DIAGNOSTIC_FILENAME) in disposition

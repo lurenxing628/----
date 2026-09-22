@@ -35,11 +35,12 @@
       .preflight-workspace .pf-segment span {display:flex;align-items:center;justify-content:center;min-height:32px;padding:var(--space-1);font-size:var(--font-size-1);color:var(--ui-info-muted);border:1px solid var(--ui-border);border-radius:var(--wb-radius-control);background:var(--ui-card-bg)}
       .preflight-workspace .pf-segment .selected span {background:var(--ui-primary-soft);color:var(--ui-info-text);border-color:var(--ui-primary);font-weight:600}
       .preflight-workspace .pf-segment input:focus-visible+span {outline:2px solid var(--ui-primary);outline-offset:2px}
-      .preflight-workspace .pf-segment input:disabled+span {opacity:.5;cursor:not-allowed}
+      /* 不可用态与 20-controls 合同同一套：底色 surface-muted、字色 info-muted、保留边框、不透明、cursor default；已选中的不可用项保留信息色底，仍能看出当前值。 */
+      .preflight-workspace .pf-segment input:disabled+span {color:var(--ui-info-muted);background:var(--ui-surface-muted);border-color:var(--ui-border);cursor:default}
+      .preflight-workspace .pf-segment .selected input:disabled+span {color:var(--ui-info-text);background:var(--ui-info-bg);border-color:var(--ui-border)}
       .preflight-workspace .pf-picker {padding:var(--space-4) 0;border-bottom:1px solid var(--ui-border);background:var(--ui-surface-muted)}
       .preflight-workspace .pf-picker-row {min-width:800px;display:grid;grid-template-columns:22px minmax(90px,1fr) minmax(110px,1.4fr) 70px 145px 115px 90px;align-items:center;gap:var(--space-3);min-height:40px;border-top:1px solid var(--ui-border);padding:7px 10px;font-size:var(--font-size-2)}
       .preflight-workspace .pf-picker-row>* {min-width:0;overflow-wrap:anywhere}
-      .preflight-workspace .pf-picker-row input {width:15px;height:15px}
       .preflight-workspace .pf-picker-list {margin:var(--space-3) 0;max-height:360px;overflow:auto}
       .preflight-workspace .pf-tools {padding:6px 0}
       .preflight-workspace .pf-tools input[type=search] {width:260px;max-width:100%;min-width:0}
@@ -47,6 +48,8 @@
       .preflight-workspace .pf-detail {padding:14px 0;border-bottom:1px solid var(--ui-border)}
       .preflight-workspace .pf-detail summary {cursor:pointer;font-size:var(--font-size-2);font-weight:600}
       .preflight-workspace .pf-results {max-height:340px;overflow:auto;margin-top:var(--space-3)}
+      /* 列宽（原内联 colgroup）：批次 18% / 工序 20% / 状态 15%，原因列吃剩余。 */
+      .preflight-workspace .pf-results col.pf-col-batch {width:18%}.preflight-workspace .pf-results col.pf-col-operation {width:20%}.preflight-workspace .pf-results col.pf-col-status {width:15%}
       .preflight-workspace table {width:100%;table-layout:fixed}
       .preflight-workspace th,.preflight-workspace td {white-space:normal;overflow-wrap:anywhere;vertical-align:top}
       .preflight-workspace .pf-results p {margin:2px 0;font-size:var(--font-size-1);line-height:1.6}
@@ -67,13 +70,13 @@
       .run-job-panel h2{font-size:var(--font-size-3);line-height:var(--wb-line-body);margin:0}.run-job-panel h3{font-size:var(--font-size-3);line-height:var(--wb-line-body);margin:0}
       .run-job-panel .rj-heading,.run-job-panel .rj-tools{display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap;min-width:0}
       .run-job-panel .rj-heading{justify-content:space-between;padding:var(--space-2) 0}.run-job-panel .rj-tools{padding:6px 0}
-      .run-job-panel .rj-record{border-top:1px solid var(--ui-border);margin-top:var(--space-2);padding-bottom:var(--space-2)}
+      /* 两处 .rj-record 定义已合并（RunHistoryControls 段原以 border-top:0 / margin-top:var(--space-3) 覆盖本条），保留生效值。 */
+      .run-job-panel .rj-record{border-top:0;margin-top:var(--space-3);padding-bottom:var(--space-2)}
       .run-job-panel .rj-muted{color:var(--ui-info-muted);font-size:var(--font-size-1);line-height:var(--wb-line-relaxed)}
       .run-job-panel .rj-notice{padding:10px var(--space-3);margin:var(--space-2) 0;border-left:3px solid var(--ui-warning);background:var(--ui-surface-muted);line-height:var(--wb-line-relaxed);overflow-wrap:anywhere}
       .run-job-panel .rj-scope{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:var(--space-3);margin:0;padding:var(--space-3) 0;border-top:1px solid var(--ui-border);border-bottom:1px solid var(--ui-border)}
       .run-job-panel dt{font-size:var(--font-size-1);color:var(--ui-info-muted)}.run-job-panel dd{margin:5px 0 0;overflow-wrap:anywhere}
-      .run-job-panel .rj-identity{overflow-wrap:anywhere;font-size:var(--font-size-1);line-height:1.8;color:var(--ui-info-muted);font-variant-numeric:tabular-nums}
-      .run-job-panel .rj-name{display:flex;align-items:baseline;gap:var(--space-2) var(--space-4);flex-wrap:wrap;min-width:0}.run-job-panel .rj-id{font-size:var(--font-size-1);color:var(--ui-info-muted);min-width:0}.run-job-panel .rj-id[open]{flex-basis:100%}.run-job-panel .rj-id code{display:block;overflow-wrap:anywhere;font-size:var(--font-size-1);color:var(--ui-text)}.run-job-panel .rj-id summary,.run-job-panel .rj-identity summary{margin:0}
+      .run-job-panel .rj-name{display:flex;align-items:baseline;gap:var(--space-2) var(--space-4);flex-wrap:wrap;min-width:0}
       .run-job-panel .pill.ok{color:var(--ui-success-text);background:var(--ui-success-bg)}.run-job-panel .pill.warn{color:var(--ui-warning-text);background:var(--ui-warning-bg)}
       .run-job-panel .rj-table{width:100%;overflow:auto}.run-job-panel table{width:100%;table-layout:fixed;border-collapse:collapse}
       .run-job-panel th,.run-job-panel td{text-align:left;padding:var(--wb-table-cell-py) var(--wb-table-cell-px);border-bottom:1px solid var(--ui-border);white-space:normal;overflow-wrap:anywhere;vertical-align:middle}
@@ -88,7 +91,6 @@
 .run-job-panel .rj-actions{padding:var(--space-2) 0 var(--space-3);border-bottom:1px solid var(--ui-border)}
 .run-job-panel .rj-actions>.rj-tools{padding:0;gap:var(--space-3)}
 .run-job-panel .rj-action-reason{margin:var(--space-2) 0 0;max-width:72ch}
-.run-job-panel .rj-record{border-top:0;margin-top:var(--space-3)}
 .run-job-panel .rj-record>.wb-ref{margin:var(--space-2) 0}
 .run-job-panel .rj-query-summary{display:flex;gap:var(--space-3);flex-wrap:wrap;margin:var(--space-2) 0}
 .run-job-panel .rj-record>.rj-heading{align-items:center;gap:var(--space-3)}
@@ -101,20 +103,20 @@
       .run-history-workspace .rh-muted,.run-history-workspace small{color:var(--ui-info-muted);font-size:var(--font-size-1);line-height:var(--wb-line-relaxed)}.run-history-workspace small{display:block;overflow-wrap:anywhere}
       .run-history-workspace .rh-filters{padding:14px 0;border-bottom:1px solid var(--ui-border)}.run-history-workspace .rh-filter-row{display:flex;gap:var(--space-3);align-items:flex-end;flex-wrap:wrap}
       .run-history-workspace label{display:grid;gap:var(--space-2);font-size:var(--font-size-1);color:var(--ui-info-muted)}.run-history-workspace .rh-filter-row select{width:126px}.run-history-workspace input[type=date]{width:156px}
-      .run-history-workspace select,.run-history-workspace input{font:inherit;color:var(--ui-text);background:var(--ui-surface);border:1px solid var(--ui-border);border-radius:var(--wb-radius-control);min-height:32px;max-width:100%;padding:5px var(--space-2)}
       .run-history-workspace button{max-width:100%;white-space:nowrap}.run-history-workspace .rh-pagination label{display:flex;align-items:center;gap:var(--space-2)}.run-history-workspace .rh-pagination select{width:74px}
       .run-history-workspace .rh-source{display:flex;justify-content:space-between;gap:var(--space-3);flex-wrap:wrap;padding:10px 0;line-height:1.8;color:var(--ui-info-muted);font-size:var(--font-size-1)}
       .run-history-workspace .rh-notice{padding:10px var(--space-3);margin:var(--space-2) 0;background:var(--ui-surface-muted);border-left:3px solid var(--ui-warning);line-height:var(--wb-line-relaxed);overflow-wrap:anywhere}
       .run-history-workspace .rh-error,.run-history-workspace .rh-danger{color:var(--ui-danger-text)}.run-history-workspace .rh-error{border-color:var(--ui-danger)}
       .run-history-workspace .rh-warning{color:var(--ui-warning-text)}.run-history-workspace .rh-success{color:var(--ui-success-text)}.run-history-workspace .rh-accent{color:var(--ui-info-text);font-weight:600}
       .run-history-workspace .rh-state{font-size:var(--font-size-2);font-weight:600}.run-history-workspace .rh-table{width:100%;overflow:auto;max-height:calc(100vh - 450px);min-height:130px;border-top:1px solid var(--ui-border);border-bottom:1px solid var(--ui-border)}
-      .run-history-workspace .rh-table .btn{width:32px;height:32px;min-width:32px;padding:0;flex:none}
+      /* 列宽（原内联 colgroup）：提交时间 19 / 状态 18 / 范围 25 / 起止 19 / 候选数 6 / 安排数 6 / 操作 7%。 */
+      .rh-table col.rh-col-submitted{width:19%}.rh-table col.rh-col-state{width:18%}.rh-table col.rh-col-scope{width:25%}.rh-table col.rh-col-times{width:19%}.rh-table col.rh-col-candidates{width:6%}.rh-table col.rh-col-tasks{width:6%}.rh-table col.rh-col-actions{width:7%}
       .run-history-workspace table{border-collapse:separate;border-spacing:0;table-layout:fixed;width:100%;min-width:960px}.run-history-workspace th,.run-history-workspace td{text-align:left;padding:var(--space-2) 10px;border-bottom:1px solid var(--ui-border);vertical-align:middle;white-space:normal;overflow-wrap:anywhere;line-height:var(--wb-line-relaxed)}
       .run-history-workspace th{position:sticky;top:0;z-index:var(--wb-z-sticky);background:var(--ui-surface-muted);font-size:var(--font-size-1);color:var(--ui-info-muted);font-weight:500}.run-history-workspace tbody tr:last-child td{border-bottom:0}
-      .run-history-workspace tbody tr:hover{background:var(--ui-surface-muted)}.run-history-workspace code{display:block;overflow-wrap:anywhere;font-size:var(--font-size-1);line-height:var(--wb-line-relaxed);color:var(--ui-text);margin-top:var(--space-1);font-family:monospace}.run-history-workspace .rh-id{color:var(--ui-info-muted)}
+      .run-history-workspace tbody tr:hover{background:var(--ui-surface-muted)}.run-history-workspace code{display:block;overflow-wrap:anywhere;font-size:var(--font-size-1);line-height:var(--wb-line-relaxed);color:var(--ui-text);margin-top:var(--space-1);font-family:monospace}
       .run-history-workspace time,.run-history-workspace .rh-num{font-variant-numeric:tabular-nums}.run-history-workspace .rh-num{text-align:right}.run-history-workspace td.rh-num{font-size:var(--font-size-3)}
-      .run-history-workspace summary{cursor:pointer;font-size:var(--font-size-1)}.run-history-workspace .rh-empty{padding:48px var(--space-3);text-align:center;border-block:1px solid var(--ui-border);line-height:1.8;color:var(--ui-info-muted)}
-      .run-history-workspace .rh-empty strong{display:block;font-size:var(--font-size-3);color:var(--ui-text);margin-bottom:6px}.run-history-workspace .rh-pagination{font-size:var(--font-size-1);color:var(--ui-info-muted)}
+      .run-history-workspace summary{cursor:pointer;font-size:var(--font-size-1)}
+      .run-history-workspace .rh-pagination{font-size:var(--font-size-1);color:var(--ui-info-muted)}
       @media(max-width:760px){.run-history-workspace .rh-filter-row{gap:var(--space-2)}.run-history-workspace .rh-table{max-height:500px}.run-history-workspace input[type=date]{width:148px}}
 
 /* RunCandidateControls.jsx */
@@ -126,12 +128,14 @@
       .run-candidate-workspace .rc-meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(195px,1fr));gap:var(--space-3);margin:var(--space-2) 0}.run-candidate-workspace dd{margin:var(--space-1) 0 var(--space-2);overflow-wrap:anywhere}.run-candidate-workspace .rc-pending{color:var(--ui-warning-text);font-size:var(--font-size-1)}
       .run-candidate-workspace .rc-notice{background:var(--ui-surface-muted);border-left:3px solid var(--ui-warning);padding:10px var(--space-3);line-height:var(--wb-line-relaxed);margin:var(--space-2) 0;overflow-wrap:anywhere}.run-candidate-workspace .rc-error{color:var(--ui-danger-text);border-color:var(--ui-danger)}
       .run-candidate-workspace .rc-reasons{font-size:var(--font-size-1);line-height:1.8;margin:var(--space-2) 0;overflow-wrap:anywhere}.run-candidate-workspace summary{cursor:pointer;font-weight:600}
-      .run-candidate-workspace .rc-name,.run-candidate-workspace .rc-source-summary{display:flex;align-items:baseline;gap:var(--space-2) var(--space-4);flex-wrap:wrap;min-width:0}.run-candidate-workspace .rc-name>span{min-width:0}.run-candidate-workspace .rc-id{font-size:var(--font-size-1);color:var(--ui-info-muted);min-width:0}.run-candidate-workspace .rc-id[open]{flex-basis:100%}.run-candidate-workspace .rc-id code{display:block;font-size:var(--font-size-1);color:var(--ui-text)}
+      .run-candidate-workspace .rc-name,.run-candidate-workspace .rc-source-summary{display:flex;align-items:baseline;gap:var(--space-2) var(--space-4);flex-wrap:wrap;min-width:0}.run-candidate-workspace .rc-name>span{min-width:0}
       .run-candidate-workspace .rc-source-summary .rc-reasons{margin:var(--space-1) 0}.run-candidate-workspace .rc-source-summary .rc-reasons[open]{flex-basis:100%}.run-candidate-workspace .rc-metric summary{font-weight:400}.run-candidate-workspace .rc-scope{display:flex;align-items:baseline;gap:var(--space-2) var(--space-4);flex-wrap:wrap;padding:6px 0;border-bottom:1px solid var(--ui-border);line-height:var(--wb-line-relaxed);overflow-wrap:anywhere}.run-candidate-workspace .rc-scope details{font-size:var(--font-size-1);color:var(--ui-info-muted)}.run-candidate-workspace .rc-scope details[open]{flex-basis:100%}
       .run-candidate-workspace .pill.ok{color:var(--ui-success-text);background:var(--ui-success-bg)}.run-candidate-workspace .pill.warn{color:var(--ui-warning-text);background:var(--ui-warning-bg)}
       .run-candidate-workspace .rc-table{width:100%;overflow:auto}.run-candidate-workspace table{width:100%;table-layout:fixed;border-collapse:collapse;min-width:760px}.run-candidate-workspace th,.run-candidate-workspace td{padding:var(--space-2);border-bottom:1px solid var(--ui-border);text-align:left;white-space:normal;overflow-wrap:anywhere;vertical-align:middle}.run-candidate-workspace th{color:var(--ui-info-muted);font-size:var(--font-size-1)}.run-candidate-workspace th:first-child{width:27%}.run-candidate-workspace tr[aria-selected=true]{background:var(--ui-primary-soft)}
       .run-candidate-workspace .rc-main{display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:var(--space-4)}.run-candidate-workspace .rc-main>div{min-width:0}.run-candidate-workspace .rc-detail{min-width:0;border-left:1px solid var(--ui-border);padding-left:var(--space-4)}.run-candidate-workspace .rc-detail dl>div{padding:var(--space-1) 0;border-bottom:1px solid var(--ui-border)}
-      .run-candidate-workspace input,.run-candidate-workspace select{font:inherit;max-width:100%;color:var(--ui-text);background:var(--ui-surface);border:1px solid var(--ui-border);border-radius:var(--wb-radius-control);min-height:32px;padding:5px var(--space-2)}.run-candidate-workspace input[type=range]{padding:0;min-height:20px}.run-candidate-workspace input[type=search]{width:240px}.run-candidate-workspace button{max-width:100%;white-space:normal}.run-candidate-workspace .rc-range{padding:10px 0;display:flex;align-items:end;gap:var(--space-2);flex-wrap:wrap}.run-candidate-workspace .rc-range label{display:grid;gap:var(--space-1);font-size:var(--font-size-1)}
+      /* 交付 / 历史页签只有主列，没有右侧详情栏。 */
+      .run-candidate-workspace .rc-main[data-single-column]{grid-template-columns:minmax(0,1fr)}
+      .run-candidate-workspace input[type=search]{width:240px}.run-candidate-workspace button{max-width:100%;white-space:normal}.run-candidate-workspace .rc-range{padding:10px 0;display:flex;align-items:end;gap:var(--space-2);flex-wrap:wrap}.run-candidate-workspace .rc-range label{display:grid;gap:var(--space-1);font-size:var(--font-size-1)}
       .run-candidate-workspace .rc-tabs{display:flex;gap:3px;flex-wrap:wrap}.run-candidate-workspace .rc-tabs button[aria-pressed=true],.run-candidate-workspace .rc-tabs button[aria-selected=true]{background:var(--ui-primary-soft);color:var(--ui-primary);border-color:var(--ui-primary)}
       .run-candidate-workspace .rc-empty{padding:var(--space-5) 0;color:var(--ui-info-muted)}.run-candidate-workspace .rc-list{height:320px;overflow:auto;position:relative;border-top:1px solid var(--ui-border)}.run-candidate-workspace .rc-list-row{height:44px;display:grid;grid-template-columns:1.2fr 1fr 1.5fr 1.5fr 80px;align-items:center;gap:var(--space-2);padding:0 var(--space-2);border-bottom:1px solid var(--ui-border);font-size:var(--font-size-1);min-width:720px}.run-candidate-workspace .rc-list-row>span{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}.run-candidate-workspace .rc-list-row[aria-selected=true]{background:var(--ui-primary-soft)}
       @media(max-width:1280px){.run-candidate-workspace .rc-main{grid-template-columns:minmax(0,1fr)}.run-candidate-workspace .rc-detail{border-left:0;border-top:1px solid var(--ui-border);padding:0}.run-candidate-workspace .rc-detail dl{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:var(--space-3)}}
@@ -139,13 +143,13 @@
 /* RunCandidateGantt.jsx */
 .rc-gantt{min-width:0}.rc-gantt .rc-axis{height:40px;overflow:hidden;border-bottom:1px solid var(--ui-border);position:relative;margin-left:156px}.rc-gantt .rc-tick{position:absolute;top:0;white-space:nowrap;color:var(--ui-info-muted);font-size:var(--font-size-1);line-height:18px;border-left:1px solid var(--ui-border);padding-left:var(--space-1)}
       .rc-gantt .rc-scroll{height:310px;overflow:auto;position:relative;border-bottom:1px solid var(--ui-border);outline-offset:-2px}.rc-gantt .rc-lane{position:absolute;left:0;right:0;border-bottom:1px solid var(--ui-border);height:48px}.rc-gantt .rc-lane-label{position:sticky;left:0;width:156px;height:47px;padding:7px var(--space-2);background:var(--ui-surface);border-right:1px solid var(--ui-border);z-index:var(--wb-z-sticky);font-size:var(--font-size-1);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.rc-gantt .rc-lane-label small{white-space:nowrap}.rc-gantt .rc-bar-space{position:absolute;left:156px;top:0;height:48px}
-      .rc-gantt .rc-overview{width:100%;height:32px;border-bottom:1px solid var(--ui-border)}.run-candidate-workspace .rc-tooltip{position:fixed;pointer-events:none;z-index:var(--wb-z-dropdown);max-width:350px;max-height:calc(100vh - 16px);overflow:auto;padding:10px var(--space-3);border:1px solid var(--ui-border);border-radius:var(--wb-radius-control);background:var(--ui-surface);color:var(--ui-text);white-space:pre-wrap;overflow-wrap:anywhere;font-size:var(--font-size-1);line-height:1.6;box-shadow:var(--ui-shadow-md)}
+      .run-candidate-workspace .rc-tooltip{position:fixed;pointer-events:none;z-index:var(--wb-z-popup);max-width:350px;max-height:calc(100vh - 16px);overflow:auto;padding:10px var(--space-3);border:1px solid var(--ui-border);border-radius:var(--wb-radius-control);background:var(--ui-surface);color:var(--ui-text);white-space:pre-wrap;overflow-wrap:anywhere;font-size:var(--font-size-1);line-height:1.6;box-shadow:var(--ui-shadow-md)}
 
 /* RunBaselineControls.jsx */
-.rc-gantt .rb-toggle{display:inline-flex;align-items:center;gap:var(--space-1);white-space:nowrap;font-size:var(--font-size-1);margin:0}.rc-gantt .rb-toggle input{width:14px;height:14px;min-height:14px;padding:0;margin:0;accent-color:var(--ui-primary)}
+.rc-gantt .rb-toggle{display:inline-flex;align-items:center;gap:var(--space-1);white-space:nowrap;font-size:var(--font-size-1);margin:0}
       .rc-gantt .rb-legend{display:flex;gap:var(--space-4);flex-wrap:wrap;font-size:var(--font-size-1);color:var(--ui-info-muted);padding:var(--space-1) 0}.rb-legend span{display:inline-flex;align-items:center;gap:var(--space-1)}.rb-legend i{display:inline-block;width:22px;height:9px;background:var(--wb-gantt-primary-fill);border:1px solid var(--wb-gantt-primary-edge)}.rb-legend .rb-before{height:5px;background:transparent;border:1px dashed var(--ui-text)}.rb-legend .rb-selected{border:2px solid var(--wb-gantt-gold)}
-      .rc-gantt .rb-panel{border-bottom:1px solid var(--ui-border);font-size:var(--font-size-1);min-width:0}.rb-panel summary{cursor:pointer;padding:6px 0}.rb-panel small{display:block}.rc-gantt .rb-list{max-height:240px;overflow:auto;position:relative;border-block:1px solid var(--ui-border)}.rc-gantt .rb-row{position:absolute;left:0;right:0;height:40px;display:grid;grid-template-columns:minmax(80px,1fr) minmax(120px,1.5fr) 108px 120px 36px;align-items:center;gap:var(--space-2);padding:0 5px;border-bottom:1px solid var(--ui-border)}.rb-row span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.rb-row[aria-selected=true]{outline:1px solid var(--wb-gantt-gold);outline-offset:-1px}
-      .rc-gantt .rb-detail{padding:var(--space-2) 0;line-height:var(--wb-line-relaxed);overflow-wrap:anywhere}.rc-gantt .rb-reference{font-size:var(--font-size-1);color:var(--ui-info-muted)}.rc-gantt .rb-segments{max-height:180px;overflow:auto;border-block:1px solid var(--ui-border);margin:6px 0}.rc-gantt .rb-segment{position:absolute;left:0;right:0;height:76px;border-bottom:1px solid var(--ui-border);padding:var(--space-1) 6px;overflow:auto}.rb-segment[aria-selected=true]{border-left:2px solid var(--wb-gantt-gold)}
+      .rc-gantt .rb-panel{border-bottom:1px solid var(--ui-border);font-size:var(--font-size-1);min-width:0}.rb-panel summary{cursor:pointer;padding:6px 0}.rb-panel small{display:block}.rc-gantt .rb-list{max-height:240px;overflow:auto;position:relative;border-block:1px solid var(--ui-border)}.rc-gantt .rb-row{position:absolute;left:0;right:0;height:40px;display:grid;grid-template-columns:minmax(80px,1fr) minmax(120px,1.5fr) 108px 120px 36px;align-items:center;gap:var(--space-2);padding:0 5px;border-bottom:1px solid var(--ui-border)}.rb-row span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.rb-row[aria-current=true]{outline:1px solid var(--wb-gantt-gold);outline-offset:-1px}
+      .rc-gantt .rb-detail{padding:var(--space-2) 0;line-height:var(--wb-line-relaxed);overflow-wrap:anywhere}.rc-gantt .rb-segments{max-height:180px;overflow:auto;border-block:1px solid var(--ui-border);margin:6px 0}.rc-gantt .rb-segment{position:absolute;left:0;right:0;height:76px;border-bottom:1px solid var(--ui-border);padding:var(--space-1) 6px;overflow:auto}.rb-segment[aria-current=true]{border-left:2px solid var(--wb-gantt-gold)}
 
 /* RunAdoptionControls.jsx */
 .plana.run-adoption-action{display:inline-flex;align-items:center;gap:var(--space-2);flex-wrap:wrap;max-width:100%;width:auto;padding:0;min-width:0;color:var(--ui-text);letter-spacing:0}
@@ -161,10 +165,10 @@
       .run-adoption-action .ra-fields{display:grid;gap:var(--space-3);padding:var(--space-3) 0}
       .run-adoption-action .field{min-width:0;margin:0;display:grid;gap:var(--space-1)}
       .run-adoption-action .field label{color:var(--ui-text)}
-      .run-adoption-action .field input,.run-adoption-action textarea{width:100%;min-width:0;color:var(--ui-text);background:var(--ui-card-bg);font:inherit;border:1px solid var(--ui-border);border-radius:var(--wb-radius-control);padding:var(--space-2) 10px}
-      .run-adoption-action textarea{resize:vertical;min-height:84px;max-height:220px}
+      .run-adoption-action .field input,.run-adoption-action textarea{width:100%}
+      .run-adoption-action textarea{max-height:220px}
       .run-adoption-action .ra-consent{display:flex;gap:9px;align-items:flex-start;color:var(--ui-text);line-height:var(--wb-line-relaxed)}
-      .run-adoption-action .ra-consent input{flex:none;width:16px;height:16px;margin-top:var(--space-1);accent-color:var(--ui-info-text)}
+      .run-adoption-action .ra-consent input{margin-top:var(--space-1)}
       .run-adoption-action .ra-notice{padding:10px var(--space-3);margin:var(--space-2) 0;border-left:3px solid var(--ui-warning);background:var(--ui-surface-muted);overflow-wrap:anywhere}
       .run-adoption-action .ra-records{padding-top:10px;color:var(--ui-info-muted);font-size:var(--font-size-1);overflow-wrap:anywhere}
       .run-adoption-action .ra-result{color:var(--ui-success-text);padding:10px 0}.run-adoption-action .ra-result p{color:var(--ui-info-muted);font-size:var(--font-size-1);margin:var(--space-1) 0}
@@ -173,13 +177,16 @@
 
 /* SchedulingWorkspace.jsx */
 .scheduling-navigation{display:flex;align-items:center;flex-wrap:wrap;gap:var(--space-2);padding:0;margin-bottom:var(--space-3);min-width:0;color:var(--ui-text)}
-      .scheduling-navigation .btn[aria-pressed="true"]{color:var(--ui-info-text);background:var(--ui-info-bg);border-color:var(--ui-primary)}
+      /* .scheduling-navigation .btn[aria-pressed="true"] 的按下态被 20-controls 合同的 !important 底色/字色压住，已作为覆盖条目搬到 20-controls.css。 */
       .scheduling-navigation .scheduling-source{font-size:var(--font-size-1);color:var(--ui-info-muted);margin-left:auto}
+      /* 当前页“候选方案”是 span.btn（不是按钮，也不在 20-controls 的按钮合同里）：照 .btn[aria-pressed="true"] 的按下态画，几何与合同一致。 */
+      body.aps-workbench .scheduling-navigation .scheduling-current{display:inline-flex;align-items:center;justify-content:center;gap:var(--space-2);box-sizing:border-box;min-height:var(--wb-control-height);height:auto;max-width:100%;padding:5px 10px;border:1px solid var(--ui-primary);border-radius:var(--wb-radius-control);color:var(--ui-info-text);background:var(--ui-info-bg);font:500 var(--font-size-2)/20px var(--font-family);white-space:normal;overflow-wrap:anywhere;cursor:default}
+      body.aps-workbench .scheduling-navigation .scheduling-current svg{flex:none}
 
 .pf-stepper{display:flex;gap:var(--space-3);list-style:none;margin:0;padding:var(--space-3) 0;border-bottom:1px solid var(--ui-border)}
 .pf-stepper li{display:flex;align-items:center;gap:var(--space-2);flex:1;min-width:0;color:var(--ui-info-muted);font-size:var(--font-size-2)}
 .pf-stepper li>span{display:inline-flex;justify-content:center;align-items:center;width:26px;height:26px;border:1px solid var(--ui-border);border-radius:var(--wb-radius-control);flex:none}
-.pf-stepper li[aria-current=step]{color:var(--ui-primary);font-weight:600}
+.pf-stepper li[aria-current=step]{color:var(--ui-info-text);font-weight:600}
 .pf-stepper li[aria-current=step]>span{background:var(--ui-primary-soft);border-color:var(--ui-primary)}
 .pf-stepper li[data-step-state=complete]{color:var(--ui-success-text)}
 .pf-recheck{padding:10px var(--space-3);border-left:3px solid var(--ui-warning);background:var(--ui-surface-muted);color:var(--ui-warning-text)}
@@ -207,10 +214,13 @@
 /* 候选页行动区分组：导航类靠左弱化，动作类靠右并与导航类留出分隔。 */
 .run-candidate-workspace .rc-nav,.run-candidate-workspace .rc-actions{display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap;min-width:0}
 .run-candidate-workspace .rc-nav:not(:empty)+.rc-actions{margin-left:var(--space-5);padding-left:var(--space-4);border-left:1px solid var(--ui-border)}
+/* 候选导出弹窗里的格式单选组。 */
+.rc-export-format{display:flex;flex-wrap:wrap;gap:var(--space-3)}.rc-export-format label{display:inline-flex;align-items:center;gap:var(--space-2)}
 
 /* RunCandidateGantt legend: swatches must teach the same channels the canvas paints. */
 .rc-gantt .rc-legend{display:flex;gap:var(--space-4);flex-wrap:wrap;align-items:center;padding:var(--space-1) 0}
 .rc-legend span{display:inline-flex;align-items:center;gap:var(--space-1)}
 .rc-legend i{display:inline-block;width:22px;height:9px;flex:none;background:var(--wb-gantt-primary-fill);border:1px solid var(--wb-gantt-primary-edge)}
 .rc-legend i.rc-overlap{background:var(--wb-gantt-overlap-stripe),var(--wb-gantt-overlap-fill);border-color:var(--wb-gantt-overlap-edge)}
-.rc-legend i.rc-external{background:var(--wb-gantt-plan-fill);border-color:var(--wb-gantt-plan-edge)}
+/* 外协：画布画的是 tone 底色 + 4/3 虚线边 + --wb-gantt-plan-edge 稀疏斜纹；CSS 边框只能 dashed，斜纹用 00-tokens 的 --wb-gantt-external-stripe。 */
+.rc-legend i.rc-external{border-style:dashed;background:var(--wb-gantt-external-stripe),var(--wb-gantt-primary-fill)}

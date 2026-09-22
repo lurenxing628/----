@@ -41,7 +41,8 @@
       [reading, setReading] = React.useState(false);
     const command = S.useCommand(adapter),
       notified = React.useRef(null),
-      controller = React.useRef(null);
+      controller = React.useRef(null),
+      formId = React.useId();
     const create = original.mode === 'create',
       recovery = original.recovery === true;
     let saved = null,
@@ -154,7 +155,8 @@
     if (!create && !reason && !ack) reason = '请先核对并勾选完整删除范围。';
     if (review) reason = '请先核对新读取的资料。';
     if (command.phase === 'rejected') reason = create ? '本次未保存，请刷新资料后再试。' : '本次未删除，请重新预检。';
-    function confirm() {
+    function confirm(event) {
+      if (event && typeof event.preventDefault === 'function') event.preventDefault();
       if (disabled || locked || done || reason || recovery) return;
       setError(null);
       try {
@@ -186,7 +188,9 @@
         className: 'btn ' + (create ? 'primary' : 'danger'),
         disabled: disabled || locked || preview.loading,
         reason: reason,
-        onClick: confirm
+        type: create ? 'submit' : 'button',
+        form: create ? formId : undefined,
+        onClick: create ? undefined : confirm
       }, create ? '保存零件' : '确认删除'), done && create && /*#__PURE__*/React.createElement(Button, {
         icon: "arrow-right",
         className: "btn primary",
@@ -196,8 +200,10 @@
       }, "\u6253\u5F00\u5DE5\u827A\u8BE6\u60C5"))
     }, /*#__PURE__*/React.createElement("div", {
       className: "modal-b scroll rm-body"
-    }, create && !recovery && !done && /*#__PURE__*/React.createElement("div", {
-      className: "fgrid"
+    }, create && !recovery && !done && /*#__PURE__*/React.createElement("form", {
+      id: formId,
+      className: "fgrid",
+      onSubmit: confirm
     }, [['business_code', '图号'], ['label', '零件名称'], ['route_raw', '路线文字（选填）'], ['remark', '备注（选填）']].map(([key, label]) => /*#__PURE__*/React.createElement("label", {
       className: 'field' + (['route_raw', 'remark'].includes(key) ? ' full' : ''),
       key: key
@@ -223,7 +229,7 @@
       icon: "refresh-cw",
       disabled: disabled || locked,
       onClick: readCurrent
-    }, "\u5237\u65B0\u8D44\u6599")), review && /*#__PURE__*/React.createElement("div", {
+    }, window.WorkbenchTerms.refresh_latest)), review && /*#__PURE__*/React.createElement("div", {
       role: "status"
     }, /*#__PURE__*/React.createElement("p", null, "\u5DF2\u8BFB\u53D6\u6700\u65B0\u8D44\u6599\uFF0C\u586B\u5199\u5185\u5BB9\u672A\u6539\u3002\u8BF7\u6838\u5BF9\u540E\u7EE7\u7EED\u4FDD\u5B58\u3002"), /*#__PURE__*/React.createElement(Button, {
       disabled: locked,
@@ -233,7 +239,7 @@
           setReview(null);
         }
       }
-    }, "\u5DF2\u6838\u5BF9\uFF0C\u7EE7\u7EED\u7F16\u8F91")), !create && !recovery && /*#__PURE__*/React.createElement("p", null, "\u672C\u6B21\u9009\u4E2D ", original.refs.length, " \u4E2A\u96F6\u4EF6\uFF0C\u5305\u542B\u5176\u4ED6\u9875\u7684\u9009\u62E9\uFF1B\u5DF2\u88AB\u6279\u6B21\u4F7F\u7528\u7684\u96F6\u4EF6\u4E0D\u80FD\u5220\u9664\u3002\u6709\u4E00\u9879\u4E0D\u80FD\u5220\uFF0C\u672C\u6B21\u5C31\u4E00\u9879\u4E5F\u4E0D\u5220\u3002"), recovery && /*#__PURE__*/React.createElement("p", null, "\u6B63\u5728\u67E5\u8BE2\u4E0A\u6B21\u64CD\u4F5C\u7ED3\u679C\uFF0C\u8BF7\u7A0D\u5019\u3002"), !!job && preview.loading && /*#__PURE__*/React.createElement("p", {
+    }, window.WorkbenchTerms.accept_latest)), !create && !recovery && /*#__PURE__*/React.createElement("p", null, "\u672C\u6B21\u9009\u4E2D ", original.refs.length, " \u4E2A\u96F6\u4EF6\uFF0C\u5305\u542B\u5176\u4ED6\u9875\u7684\u9009\u62E9\uFF1B\u5DF2\u88AB\u6279\u6B21\u4F7F\u7528\u7684\u96F6\u4EF6\u4E0D\u80FD\u5220\u9664\u3002\u6709\u4E00\u9879\u4E0D\u80FD\u5220\uFF0C\u672C\u6B21\u5C31\u4E00\u9879\u4E5F\u4E0D\u5220\u3002"), recovery && /*#__PURE__*/React.createElement("p", null, "\u6B63\u5728\u67E5\u8BE2\u4E0A\u6B21\u64CD\u4F5C\u7ED3\u679C\uFF0C\u8BF7\u7A0D\u5019\u3002"), !!job && preview.loading && /*#__PURE__*/React.createElement("p", {
       role: "status"
     }, "\u6B63\u5728\u68C0\u67E5\u5B8C\u6574\u5220\u9664\u8303\u56F4\uFF0C\u5C1A\u672A\u5220\u9664\u2026"), /*#__PURE__*/React.createElement(ErrorBox, {
       error: error

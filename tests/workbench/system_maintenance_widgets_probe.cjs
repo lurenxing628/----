@@ -18,15 +18,14 @@ function reset() { mode = 'default'; resultMode = 'normal'; downloadMode = 'norm
   host = {state:'ready',request_key:null,restart_required:false,automatic_resume:false,operations_available:true,result_source:'external_maintenance_journal',references:'reload_from_database_after_process_restart'}; }
 reset();
 const boot = `
-function ProbeApp(){const [tab,setTab]=React.useState('backups'),[source,setSource]=React.useState('current'),[size,setSize]=React.useState(10),[compact,setCompact]=React.useState(true),[theme,setTheme]=React.useState(document.documentElement.dataset.theme);
+function ProbeApp(){const [tab,setTab]=React.useState('backups'),[size,setSize]=React.useState(10),[compact,setCompact]=React.useState(true),[theme,setTheme]=React.useState(document.documentElement.dataset.theme);
 const tabs=[['overview','概况'],['backups','备份恢复'],['logs','运行日志'],['config','配置']];
 const setColor=value=>{window.APSWorkbenchTheme.set(value);setTheme(value);};
 return React.createElement(AppShell,{active:'system',title:'系统管理组件夹具（mock）',theme,showCapsule:false},
-React.createElement('div',{className:'sm-workbench'+(compact?' sm-compact':''),'data-source':source},
+React.createElement('div',{className:'sm-workbench'+(compact?' sm-compact':''),'data-source':'current'},
 React.createElement('header',{className:'sm-header'},React.createElement('div',null,React.createElement('h2',null,'系统管理'),React.createElement('p',null,'临时后端 DTO · 独立 mock 界面'))),
-React.createElement('div',{className:'sm-source-bar'},['current','sample'].map(value=>React.createElement('label',{className:'sm-inline-label',key:value},React.createElement('input',{type:'radio',name:'source',checked:source===value,onChange:()=>setSource(value)}),value==='current'?'本机数据':'管理样例'))),
 React.createElement('div',{className:'sm-tabs',role:'tablist'},tabs.map(([key,label])=>React.createElement('button',{type:'button',key,className:'sm-tab'+(tab===key?' sm-active':''),role:'tab','aria-selected':tab===key,onClick:()=>setTab(key)},label))),
-React.createElement('div',{className:'sm-tab-panel'},React.createElement(window.SystemMaintenanceWorkspace,{tab,source,theme,onSetTheme:setColor,pageSize:size,onPageSize:setSize,compact,onCompact:setCompact,onReadSuspendedChange:value=>{window.systemReadSuspended=value;}},React.createElement('p',null,source==='sample'?'独立管理样例，不写本机数据。':'概况由 SystemLive 保留。')))),
+React.createElement('div',{className:'sm-tab-panel'},React.createElement(window.SystemMaintenanceWorkspace,{tab,theme,onSetTheme:setColor,pageSize:size,onPageSize:setSize,compact,onCompact:setCompact,onReadSuspendedChange:value=>{window.systemReadSuspended=value;}},React.createElement('p',null,'概况由 SystemLive 保留。')))),
 React.createElement(window.WorkbenchControlStyles),React.createElement(window.WorkbenchControls),React.createElement(window.WorkbenchNumberControls));}
 ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(ProbeApp));`;
 const html = '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
@@ -128,7 +127,8 @@ async function newPage(browser, viewport, theme, intent) {
       await detail.waitFor(); assert(await detail.getByRole('button', { name: /^恢复备份/ }).isDisabled());
       assert((await detail.textContent()).includes(fixture.backups.data.capabilities.restore_reason));
       await detail.scrollIntoViewIfNeeded(); await shot(page, variant + '-backup-detail'); await detail.press('Escape');
-      await page.locator('tbody tr').first().press('Enter'); await detail.waitFor(); await detail.getByRole('button', { name: '关闭详情' }).click(); passed('whole-row-pointer-and-keyboard-default-restore-disabled', variant);
+      // 键盘停靠点只剩行尾「查看详情」按钮（2026-09-21），整行仍可用鼠标点开。
+      await page.locator('tbody tr').first().getByRole('button', { name: /^查看详情 / }).press('Enter'); await detail.waitFor(); await detail.getByRole('button', { name: '关闭详情' }).click(); passed('row-pointer-and-detail-button-keyboard-default-restore-disabled', variant);
       await page.getByLabel('每页数量', { exact: true }).selectOption('10'); await page.getByRole('button', { name: '下一页', exact: true }).click();
       await page.waitForFunction(() => document.querySelector('.sm-pager')?.textContent.includes('2 / 2'));
       await page.getByRole('button', { name: '上一页', exact: true }).click();
@@ -149,13 +149,13 @@ async function newPage(browser, viewport, theme, intent) {
       await logDetail.scrollIntoViewIfNeeded(); await shot(page, variant + '-log-detail'); await logDetail.getByRole('button', { name: '关闭详情' }).click();
       await page.getByRole('tab', { name: '配置', exact: true }).click(); await page.getByLabel('备份检查间隔', { exact: true }).waitFor();
       await page.getByRole('tab', { name: '运行日志', exact: true }).click(); assert.equal(await page.getByLabel('日志来源').inputValue(), 'aps.log'); passed('bounded-truncated-missing-error-and-source-filter-retained', variant);
-      await page.getByLabel('管理样例', { exact: true }).check(); const sampleStart = report.requests.length;
-      await page.getByText('独立管理样例，不写本机数据。', { exact: true }).waitFor(); assert.equal(await page.getByRole('button', { name: '导出这段日志 CSV' }).count(), 0);
-      await page.getByLabel('本机数据', { exact: true }).check(); await page.getByRole('region', { name: '运行日志与操作记录' }).locator('tbody tr').first().waitFor();
-      assert.equal(await page.getByLabel('日志来源').inputValue(), 'aps.log'); assert(report.requests.slice(sampleStart).every(row => row.method === 'GET')); passed('sample-mode-no-business-write-and-filter-retained', variant);
+      // 管理样例已下线（2026-09-21）：页面只读本机数据，切页签来回后筛选仍保留。
+      await page.getByRole('tab', { name: '配置', exact: true }).click(); const filterStart = report.requests.length;
+      await page.getByRole('tab', { name: '运行日志', exact: true }).click(); await page.getByRole('region', { name: '运行日志与操作记录' }).locator('tbody tr').first().waitFor();
+      assert.equal(await page.getByLabel('日志来源').inputValue(), 'aps.log'); assert(report.requests.slice(filterStart).every(row => row.method === 'GET')); passed('tab-switch-no-business-write-and-filter-retained', variant);
       await page.getByRole('region', { name: '运行日志与操作记录' }).locator('tbody tr').first().waitFor();
       for (const format of ['csv', 'zip']) {
-        const wait = page.waitForEvent('download'); await page.getByRole('button', { name: format === 'csv' ? '导出这段日志 CSV' : '脱敏诊断 ZIP' }).click();
+        const wait = page.waitForEvent('download'); await page.getByRole('button', { name: format === 'csv' ? '导出这段日志 CSV' : '导出诊断包' }).click();
         const download = await wait, file = path.join(output, variant + '.' + format); await download.saveAs(file);
         assert.deepEqual(fs.readFileSync(file), Buffer.from(fixture.downloads[format], 'base64'));
       }
@@ -174,9 +174,9 @@ async function newPage(browser, viewport, theme, intent) {
       await page.getByRole('tab', { name: '配置', exact: true }).click(); await page.getByLabel('备份检查间隔', { exact: true }).waitFor();
       assert((await page.getByRole('heading', { name: '本机自动维护配置' }).locator('..').locator('..').textContent()).includes('旧配置异常'));
       const beforePreferences = report.requests.filter(row => row.method === 'POST').length;
-      await page.getByLabel(theme === 'light' ? '深色' : '浅色', { exact: true }).check(); await page.getByLabel('紧凑行距', { exact: true }).uncheck();
+      await page.getByLabel(theme === 'light' ? '深色' : '浅色', { exact: true }).check(); await page.getByLabel('紧凑表格', { exact: true }).uncheck();
       assert.equal(report.requests.filter(row => row.method === 'POST').length, beforePreferences);
-      await page.getByLabel(theme === 'light' ? '浅色' : '深色', { exact: true }).check(); await page.getByLabel('紧凑行距', { exact: true }).check();
+      await page.getByLabel(theme === 'light' ? '浅色' : '深色', { exact: true }).check(); await page.getByLabel('紧凑表格', { exact: true }).check();
       await page.getByLabel('备份检查间隔', { exact: true }).fill('0'); await page.getByRole('button', { name: '保存维护配置', exact: true }).click();
       await page.getByText('有几项填得不对，配置没有保存。请修正标红的项。').waitFor(); assert.equal(report.requests.filter(row => row.method === 'POST').length, beforePreferences);
       await page.getByLabel('备份检查间隔', { exact: true }).fill('37'); await shot(page, variant + '-config');
@@ -336,20 +336,12 @@ async function newPage(browser, viewport, theme, intent) {
           filename: kind === 'backups' ? row.filename : 'format-' + index + '.log', modified_at: row.time, size_bytes: row.size_bytes })) }])));
       window.systemSizeFixture = { payload, files, before: JSON.stringify({ payload, files }) };
       const target = document.createElement('div'); target.id = 'system-size-format-probe'; document.body.appendChild(target);
+      // SystemLiveFiles 已随管理样例一起删除（2026-09-21）：文件大小格式只在本机维护记录表里核对。
       ReactDOM.createRoot(target).render(React.createElement('div', { className: 'sm-workbench' },
-        ...['backups', 'logs'].map(kind => React.createElement('div', { key: kind, id: 'system-size-live-' + kind },
-          React.createElement(SystemLiveFiles, { kind, data: files[kind], pageSize: 10, onPageSize: () => {} }))),
         React.createElement('div', { id: 'system-size-maintenance' }, React.createElement(window.SystemMaintenanceRecords, {
           api: { read: async () => window.SystemMaintenanceAPI.collection(payload, 'backups') }, kind: 'backups', pageSize: 10,
           onPageSize: () => {}, revision: 0, command: { locked: false } }))));
     }, fixture.format_backups);
-    const sizes = {};
-    for (const kind of ['backups', 'logs']) {
-      const area = test.page.locator('#system-size-live-' + kind); await area.locator('tbody tr').nth(3).waitFor();
-      sizes[kind] = await area.locator('tbody tr').evaluateAll(rows => rows.map(row => row.cells[3].textContent));
-      assert.deepEqual(sizes[kind], expectedSizes); await area.scrollIntoViewIfNeeded(); await shot(test.page, 'size-format-live-' + kind);
-      passed('system-live-' + kind + '-size-format', 'format-consumer');
-    }
     const records = test.page.locator('#system-size-maintenance'); await records.locator('tbody tr').nth(4).waitFor();
     const values = await records.locator('tbody tr[data-record-kind="backup_file"]').evaluateAll(rows => rows.map(row => ({ filename: row.cells[3].textContent, size: row.cells[4].textContent })).sort((a, b) => a.filename.localeCompare(b.filename)));
     assert.deepEqual(values.map(row => row.size), expectedSizes);
@@ -362,7 +354,7 @@ async function newPage(browser, viewport, theme, intent) {
       return files.backups.files.map(row => row.size_bytes);
     });
     assert.deepEqual(originalSizes, [0, 1024, 1536, 1264256]); assert.equal(JSON.stringify(fixture.format_backups), sizeInput);
-    report.file_size_format = { source: 'real-WorkbenchFormat.js', input_bytes: originalSizes, live: sizes,
+    report.file_size_format = { source: 'real-WorkbenchFormat.js', input_bytes: originalSizes,
       maintenance: values.map(row => row.size), event_size: '事件记录', dto_unchanged: true };
     await records.scrollIntoViewIfNeeded(); await shot(test.page, 'size-format-maintenance-event');
     passed('maintenance-backup-size-format-preserves-event-and-dto', 'format-consumer'); await test.context.close();

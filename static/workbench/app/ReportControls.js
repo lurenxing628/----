@@ -14,18 +14,19 @@
       className: 'wb-action ' + className
     });
   }
-  const names = {
+  // 排序列名在渲染时才读词表里的「历史现场记录」，避免加载顺序依赖。
+  const names = () => ({
     batch_label: '批次',
     planned_end: '计划完工',
     finish_deviation_minutes: '完工偏差（分钟）',
     effective_processing_hours: '有效工时（小时）',
-    event_time: '实际结束或事件时间',
-    quantity_done: '本次数量或旧登记量',
+    event_time: '实际结束或记录时间',
+    quantity_done: '本次数量或登记数量',
     resource_label: '资源',
-    events: '旧现场事件数',
-    event_count: '旧现场事件数',
+    events: window.WorkbenchTerms.legacy_field_records + '数',
+    event_count: window.WorkbenchTerms.legacy_field_records + '数',
     data_quality: '完整性'
-  };
+  });
   // 「清除某个筛选」按钮的可读名字，不用内部键名。
   const scopeNames = {
     plan_finish_date_from: '计划完工起日',
@@ -35,6 +36,11 @@
     resource_type: '资源类型',
     resource_ref: '关联资源',
     focus: '分析范围'
+  };
+  // 已选条件摘要里，找不到名称的编号按条件种类说明，不笼统写「已选资源」。
+  const selectedFallback = {
+    batch_ref: '已选批次',
+    resource_ref: '已选资源'
   };
   const focuses = [['all', '全部工序'], ['unreported', '待报工'], ['unclosed', '到期未确认完成'], ['late_open', '超时未确认完成'], ['finish_late', '已确认晚完成'], ['complete', '已确认整道完工'], ['data_gaps', '数据待补']];
   function Styles() {
@@ -170,7 +176,7 @@
       className: "aw-scope-summary"
     }, /*#__PURE__*/React.createElement("ul", null, Object.entries(value).filter(([key, item]) => !['source', 'plan_ref'].includes(key) && item && item !== 'all').map(([key, item]) => /*#__PURE__*/React.createElement("li", {
       key: key
-    }, /*#__PURE__*/React.createElement("span", null, key === 'query' ? item : key === 'focus' ? (focuses.find(row => row[0] === item) || [null, item])[1] : key.endsWith('_ref') ? Object.values(choices).flat().find(row => row.ref === item)?.label || '已选资源' : item === 'machine' ? '设备' : item === 'operator' ? '人员' : item), /*#__PURE__*/React.createElement("button", {
+    }, /*#__PURE__*/React.createElement("span", null, key === 'query' ? item : key === 'focus' ? (focuses.find(row => row[0] === item) || [null, item])[1] : key.endsWith('_ref') ? item === 'unassigned' ? '未填写' : Object.values(choices).flat().find(row => row.ref === item)?.label || selectedFallback[key] || '已选条件' : item === 'machine' ? '设备' : item === 'operator' ? '人员' : item), /*#__PURE__*/React.createElement("button", {
       type: "button",
       "aria-label": '清除' + (scopeNames[key] || '筛选项'),
       onClick: () => {
@@ -244,6 +250,7 @@
     state,
     onChange
   }) {
+    const labels = names();
     return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("label", null, "\u6392\u5E8F", /*#__PURE__*/React.createElement("select", {
       "aria-label": "\u6392\u5E8F\u5217",
       value: state.sort,
@@ -254,7 +261,7 @@
     }, window.ReportAPI.sorts[topic].map(key => /*#__PURE__*/React.createElement("option", {
       value: key,
       key: key
-    }, names[key])))), /*#__PURE__*/React.createElement("label", null, "\u987A\u5E8F", /*#__PURE__*/React.createElement("select", {
+    }, labels[key])))), /*#__PURE__*/React.createElement("label", null, "\u987A\u5E8F", /*#__PURE__*/React.createElement("select", {
       "aria-label": "\u6392\u5E8F\u65B9\u5411",
       value: state.direction,
       onChange: event => onChange({

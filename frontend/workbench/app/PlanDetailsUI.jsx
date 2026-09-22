@@ -15,7 +15,7 @@
     const [open, setOpen] = React.useState(false), [page, setPage] = React.useState(0);
     if (windows === null) return '暂无数据';
     return <div><Button className="linkbtn" aria-expanded={open} onClick={() => setOpen(!open)}>{windows.length} 段</Button>
-      {open && <>{windows.slice(page * 10, page * 10 + 10).map((item, index) => <div key={index}>{M.timeLabel(item.start)} → {M.timeLabel(item.end)}
+      {open && <>{windows.slice(page * 10, page * 10 + 10).map((item, index) => <div key={index}>{M.timeLabel(item.start)} 至 {M.timeLabel(item.end)}
         <div className="plan-muted">普通{item.allow_normal ? '允许' : '禁止'} · 急件{item.allow_urgent ? '允许' : '禁止'} · 效率 {M.number(item.efficiency)}</div></div>)}
         {windows.length > 10 && <div className="plan-pager"><Button className="btn plan-icon" icon="chevron-left" aria-label="可工作时段上一段" disabled={!page} onClick={() => setPage(page - 1)} />
           <span>{page + 1}</span><Button className="btn plan-icon" icon="chevron-right" aria-label="可工作时段下一段" disabled={(page + 1) * 10 >= windows.length} onClick={() => setPage(page + 1)} /></div>}</>}
@@ -30,7 +30,7 @@
         const task = row.task, prefix = kind === 'previous' ? '前序' : '后序';
         const label = task ? prefix + ' ' + task.batch_id + ' · ' + task.sequence + ' ' + task.process_label + ' · ' + M.pieceLabel(task) : prefix + '安排在当前读取范围外';
         return row.task_ref ? <Button key={row.task_ref} icon={kind === 'previous' ? 'chevron-left' : 'chevron-right'} title={label} aria-label={label}
-          disabled={!onRelated} onClick={() => onRelated(row.task_ref)} style={{ height: 'auto', minHeight: 32, whiteSpace: 'normal', textAlign: 'left', overflowWrap: 'anywhere' }}>
+          disabled={!onRelated} onClick={() => onRelated(row.task_ref)} className="btn plan-relation-button">
           {task ? label : '读取完整计划并定位' + prefix}</Button> : <span key={'unplanned:' + index} className="plan-muted">{prefix}未在本计划安排</span>;
       })}</div>
     </div>) : <p className="plan-muted">{!selected ? '尚未选中任务' : selected.before ? '这里的前后序只属于所选计划，初始安排的前后序没有单独查询。' : order.issues.map(row => row.message).join('；') || '暂无该工序的前后序信息。'}</p>}</section>;
@@ -42,13 +42,13 @@
     const risk = task && data.projections.delivery_risks.items.find(row => row.batch_id === task.batch_id);
     const resources = task ? data.projections.occupancy.resources.filter(row => [task.machine_ref, task.operator_ref].includes(row.resource_ref)) : [];
     return <aside className="plan-inspector" aria-label="任务详情" data-plan-inspector data-wb-scroll-key="plan-inspector">
-      <section><h2>任务详情</h2>{!task ? <div className="plan-empty">尚未选中任务。选中甘特中的安排后，这里显示工艺前后序、初始计划对照、交付风险和资源占用。</div> : <>
-        <div className="plan-muted" style={{ marginTop: 9 }}>{selected.before ? '初始计划安排' : '当前所选计划安排'}</div>
-        <h3 style={{ marginTop: 4, overflowWrap: 'anywhere' }}>{task.batch_id} · {task.sequence}</h3><p style={{ overflowWrap: 'anywhere' }}>{task.process_label}</p>
+      <section><h2>任务详情</h2>{!task ? <div className="plan-empty">尚未选中任务。在计划甘特里点一道安排，或在交付风险列表里点批次，这里会显示工艺前后序、初始计划对照、交付风险和资源占用。</div> : <>
+        <div className="plan-muted plan-inspector-kind">{selected.before ? '初始计划安排' : '当前所选计划安排'}</div>
+        <h3 className="plan-inspector-title">{task.batch_id} · {task.sequence}</h3><p className="plan-wrap">{task.process_label}</p>
         <Facts items={[
-          ['分件', <span style={{ overflowWrap: 'anywhere' }}>{M.pieceLabel(task)}</span>],
+          ['分件', <span className="plan-wrap">{M.pieceLabel(task)}</span>],
           ['本工序目标量', M.quantityLabel(task.quantity)], ['计划来源整批量', M.quantityLabel(task.batch_quantity)],
-          ['数量依据', task.quantity_reason ? M.quantityReasons[task.quantity_reason] : task.quantity_basis === 'run_admission' ? '来自上次排产候选方案的数据，已核对采用记录' : '来自建试调草稿时的数据，已核对采用记录'],
+          ['数量依据', task.quantity_reason ? M.quantityReasons[task.quantity_reason] : task.quantity_basis === 'run_admission' ? '来自上次排产候选方案的数据，已核对采用记录' : '来自新增试调草稿时的数据，已核对采用记录'],
           ...(window.PointContract.isPoint(task) ? [['安排类型', '零工时工序'], ['本工序占用', '0 小时 · 不占设备人员']] : []),
           ['计划开始', M.timeLabel(task.start)], ['计划结束', M.timeLabel(task.end)], ['时长', window.WorkbenchFormat.hours((M.instant(task.end) - M.instant(task.start)) / 3600000, 2)],
           ['设备', M.resourceLabel(task, 'machine', labels)], ['人员', M.resourceLabel(task, 'operator', labels)],
@@ -77,7 +77,7 @@
           ['判定', <span className={risk.risk === 'overdue' ? 'plan-danger' : ''}>{riskLabel[risk.risk]}</span>],
           ['交期', risk.due_date || '未记录'], ['计划完工', M.timeLabel(risk.planned_finish)],
           [window.WorkbenchTerms.delay_hours, risk.delay_hours === null ? '未知' : window.WorkbenchFormat.hours(risk.delay_hours, 2)],
-          ['未排工序', M.number(risk.unscheduled_operation_count)]
+          ['未排工序', M.count(risk.unscheduled_operation_count)]
         ]} />
         {risk.partial_planned_finish && <p className="plan-muted">已排工序结束时间：{M.timeLabel(risk.partial_planned_finish)}</p>}
         {risk.issues.length > 0 && <p className="plan-muted">{issueText(risk.issues)}</p>}
@@ -86,7 +86,7 @@
         <strong>{row.label || labels.get(row.resource_ref) || '资源名称未填写'}</strong>
         <Facts items={[
           ['班表内占用', row.available_occupied_hours === null ? '暂无数据' : window.WorkbenchFormat.hours(row.available_occupied_hours, 2)], ['可用时间', row.available_hours === null ? '暂无数据' : window.WorkbenchFormat.hours(row.available_hours, 2)],
-          ['占用率', row.utilization === null ? '暂无数据' : M.number(row.utilization * 100) + '%'],
+          ['占用率', row.utilization === null ? '暂无数据' : window.WorkbenchFormat.percent(row.utilization, 2)],
           ['重叠时间', <span className={row.has_overlap ? 'plan-danger' : ''}>{window.WorkbenchFormat.hours(row.overlap_hours, 2)}</span>],
           ['班表外占用', row.outside_available_hours === null ? '暂无数据' : window.WorkbenchFormat.hours(row.outside_available_hours, 2)]
         ]} />
@@ -131,7 +131,7 @@
     const empty = !known ? '资料不完整，暂无法核对资源重叠。'
       : !projection.resources.length ? '当前读取范围没有资源占用记录。' : '当前读取范围未发现资源安排重叠。';
     return <section className="plan-projections" aria-label="资源重叠明细"><h3>资源重叠明细</h3>
-      <div className="plan-note">{M.timeLabel(scope.range_start)} 至 {M.timeLabel(scope.range_end)}（不含结束）
+      <div className="plan-note">{M.timeLabel(scope.range_start)} 至 {M.timeLabel(scope.range_end)}（不含结束时刻）
         {data.scope.range_start !== null ? ' · 所选时间范围' : ' · 完整计划读取范围'}
         {!known && <div>资料不完整，以下为已读取的重叠时段。</div>}</div>
       <Issues issues={projection.issues} />

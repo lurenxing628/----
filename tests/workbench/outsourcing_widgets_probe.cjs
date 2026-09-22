@@ -240,7 +240,12 @@ async function boundaries() {
     if (['drift', 'rollback'].includes(name)) assert.equal((await context.request.post(origin + '/__outsourcing_fixture__/mutate')).status(), 200);
     if (name === 'lost') fault = 'before'; if (name === 'malformed') { fault = 'malformed'; blockReceipts = true; }
     if (name === 'lost') await dialog(page).getByRole('button', { name: '确认保存外协登记', exact: true }).click(); else await send(page, name === 'drift' ? 409 : name === 'rollback' ? 500 : 200);
-    if (name === 'drift') { await dialog(page).getByText('上次外协登记没有生效，填写内容已保留。改好后重新提交。', { exact: true }).waitFor(); report.boundaries.stale_preview_rejected = true; }
+    if (name === 'drift') {
+      // 明确被拒：待确认记录被丢弃，表单回到可编辑状态且填写内容保留，重新预检后才能再提交。
+      await dialog(page).getByText(/^上次外协登记没有生效：.+填写内容已保留，改好后重新提交。$/).waitFor();
+      await dialog(page).getByRole('button', { name: '预检核对', exact: true }).waitFor(); assert.equal(await dialog(page).getByRole('button', { name: '确认保存外协登记', exact: true }).count(), 0);
+      assert.equal(await dialog(page).getByLabel('外协核实原因', { exact: true }).inputValue(), '边界核实 drift'); assert.equal(await page.evaluate(() => window.OutsourcingSession.read()), null);
+      report.boundaries.stale_preview_rejected = true; }
     else {
       await dialog(page).getByText('上次外协登记的结果还没查到，可能已经生效。请点「查询结果」，不要重复提交。', { exact: true }).first().waitFor(); assert.equal(await dialog(page).getByRole('button', { name: '确认保存外协登记', exact: true }).count(), 0);
       if (name === 'malformed') { fault = ''; blockReceipts = false; await dialog(page).getByRole('button', { name: '查询结果', exact: true }).click(); await confirmed(page); report.boundaries.malformed200_not_success = true; }

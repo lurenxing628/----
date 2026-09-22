@@ -35,7 +35,7 @@ sys.path.insert(0, sys.argv[1])
 guard = install_path_guard(root)
 app = importlib.import_module('app').app
 from core.infrastructure.database import get_connection
-from core.services.scheduler.calendar_service import CalendarService
+from core.services.scheduler.calendar.service import CalendarService
 from flask import request, jsonify
 from werkzeug.serving import make_server
 conn = get_connection(app.config['DATABASE_PATH'])
@@ -95,6 +95,14 @@ const adapter={
   command:async(kind,action,ref,body,signal)=>{calendarProbe.commands.push({kind,action,ref,body});
     return readJSON('/api/workbench/v1/calendar/'+(action==='confirm'?'range/confirm':action),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),signal});},
   lookup:async(key,signal)=>readJSON('/api/workbench/v1/commands/'+key,{signal}),
+  // 图例里的默认规则从班表汇总读；夹具给一份固定的、通过 calendarSummary 校验的汇总。
+  summary:async()=>{const day=(date,weekday)=>({date,weekday,explicit:false,issues:[],status:'known',source:'default',effective:{hours:8,efficiency:1,effective_hours:8,normal_effective_hours:8,urgent_effective_hours:8,
+      is_working:true,is_rest:false,allow_normal:true,allow_urgent:true,crosses_midnight:false,window_start:date+'T08:00:00',window_end:date+'T16:00:00'}});
+    return {ok:true,schema_version:1,data:{counts:{},calendar:{time_basis:'factory_local',factory_today:'2026-09-09',as_of:'2026-09-09T12:00:00',basis:'夹具汇总：全局班次按起始日期归到那一天。',
+      week_start:'2026-09-07',week_end:'2026-09-13',standard_hours:{status:'known',value:8,source:'fixture',message:'夹具标准工时'},holiday_default_efficiency:{status:'known',value:1,basis:'夹具默认效率',issues:[]},
+      stats:{configured_days:0,default_days:7,unavailable_days:0,work_days:7,rest_days:0,effective_hours:56,normal_effective_hours:56,urgent_effective_hours:56,known_rest_dates:[],issues:[]},
+      days:['07','08','09','10','11','12','13'].map((d,i)=>day('2026-09-'+d,i))}},
+      meta:{source:'production',time_basis:'factory_local',snapshot_ref:'s'.repeat(32),request_ref:'calendar-fixture-summary',as_of:'2026-09-09T12:00:00'},warnings:[]};},
   readPending:()=>JSON.parse(localStorage.getItem(storageKey)||'null'),
   savePending:intent=>localStorage.setItem(storageKey,JSON.stringify(intent)),
   clearPending:()=>localStorage.removeItem(storageKey)
@@ -146,7 +154,8 @@ async function changeOutside(page,date,fields) {
 }
 async function done(page) {
   await page.getByText('已刷新，显示最新工作日历。',{exact:true}).waitFor();
-  assert(await page.getByText(/保存已完成。|内容没有变化，已确认。/).isVisible());
+  // 清除单独设置走 ResourceForms.Feedback 的动作名映射，完成句是「清除单独设置已完成。」。
+  assert(await page.getByText(/保存已完成。|清除单独设置已完成。|内容没有变化，已确认。/).isVisible());
 }
 async function closeDialog(page) { await page.getByRole('dialog').getByRole('button',{name:'关闭',exact:true}).last().click(); await page.getByRole('dialog').waitFor({state:'hidden'}); }
 async function openDay(page,date) { await page.getByRole('button',{name:new RegExp('^'+date+' ')}).click(); await page.getByRole('dialog').waitFor(); }
@@ -192,7 +201,7 @@ async function geometry(page,viewport) {
       let state=await monthJSON(page), night=state.days.find(row=>row.date==='2026-09-09');
       assert.equal(night.stored.shift_start,'22:30');assert.equal(night.stored.shift_end,'06:30');assert.equal(night.stored.efficiency,.875);
       assert.deepEqual(await page.evaluate(()=>calendarProbe.commands[0].body.input.fields),{note:'中文夜班备注 '+id});
-      await closeDialog(page);await openDay(page,'2026-09-09');await page.getByRole('button',{name:'清除配置',exact:true}).click();
+      await closeDialog(page);await openDay(page,'2026-09-09');await page.getByRole('button',{name:'清除单独设置',exact:true}).click();
       await page.getByRole('button',{name:'确认清除，恢复默认',exact:true}).click();await done(page);await closeDialog(page);
       state=await monthJSON(page);assert.equal(state.days[8].calendar_ref,null);assert.equal(state.days[8].entity,null);
       await openDay(page,'2026-09-10');await page.getByLabel('可排工时（小时）').fill('9');await page.getByLabel('效率（%）').fill('90');
@@ -247,7 +256,7 @@ async function geometry(page,viewport) {
       await page.getByText('全部命中 0 天',{exact:true}).waitFor();assert(await page.getByRole('button',{name:/^确认全部 0 天/}).isDisabled());
       await page.getByRole('button',{name:'返回修改范围',exact:true}).click();
       await page.getByLabel('开始日期',{exact:false}).fill('2027-01-01');await page.getByLabel('结束日期',{exact:false}).fill('2028-01-01');
-      await page.getByRole('button',{name:'范围内每天',exact:true}).click();await page.getByRole('button',{name:'清除配置，恢复默认',exact:true}).click();
+      await page.getByRole('button',{name:'范围内每天',exact:true}).click();await page.getByRole('button',{name:'清除单独设置，恢复默认',exact:true}).click();
       await page.getByRole('button',{name:'预览变更',exact:true}).click();await page.getByText('全部命中 366 天',{exact:true}).waitFor();
       await page.getByRole('button',{name:'确认全部 366 天',exact:true}).click();await done(page);await closeDialog(page);
       assert((await monthJSON(page,2027,1)).days.every(row=>row.calendar_ref===null));
@@ -267,7 +276,7 @@ async function geometry(page,viewport) {
         assert.equal((await monthJSON(page)).days[9].fields.note,'Receipt uncertainty');
       }
       await page.getByRole('button',{name:'上一月',exact:true}).click();await page.getByText('2026 年 8 月',{exact:true}).waitFor();
-      await page.getByRole('button',{name:'今天',exact:true}).click();await page.getByRole('button',{name:/^2026-09-09 /}).waitFor();
+      await page.getByRole('button',{name:'本月',exact:true}).click();await page.getByRole('button',{name:/^2026-09-09 /}).waitFor();
       report.cases.push({viewport,theme,geometry:initial,full_366_day_preview:true,stale_preserves_draft_and_unedited_fields:true,night_fields_preserved:true,actual_commands:true});
       await context.close();
     }

@@ -104,7 +104,7 @@
       }
     }, /*#__PURE__*/React.createElement("div", {
       className: "field-editor-heading"
-    }, /*#__PURE__*/React.createElement("h3", null, "\u64A4\u9500\u8FD9\u6B21\u62A5\u5DE5 \xB7 ", record.report_no)), /*#__PURE__*/React.createElement("p", null, "\u672C\u6B21\u6570\u91CF ", C.display(record.completed_quantity), " \u4EF6 \xB7 \u6709\u6548\u5DE5\u65F6 ", C.display(record.effective_processing_hours), " \u5C0F\u65F6\u3002\u64A4\u9500\u540E\u4E0D\u518D\u8BA1\u5165\u8FDB\u5EA6\u548C\u5DE5\u65F6\uFF0C\u539F\u8BB0\u5F55\u53CA\u66F4\u6B63\u5386\u53F2\u4FDD\u7559\u3002"), /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("h3", null, "\u64A4\u9500\u8FD9\u6B21\u62A5\u5DE5 \xB7 ", record.report_no)), /*#__PURE__*/React.createElement("p", null, "\u672C\u6B21\u6570\u91CF ", C.display(record.completed_quantity), " \u4EF6 \xB7 \u6709\u6548\u5DE5\u65F6 ", C.hours(record.effective_processing_hours), " \u5C0F\u65F6\u3002\u64A4\u9500\u540E\u4E0D\u518D\u8BA1\u5165\u8FDB\u5EA6\u548C\u5DE5\u65F6\uFF0C\u539F\u8BB0\u5F55\u53CA\u66F4\u6B63\u5386\u53F2\u4FDD\u7559\u3002"), /*#__PURE__*/React.createElement("div", {
       className: "field-extra"
     }, /*#__PURE__*/React.createElement(window.ResourceControls.Field, {
       label: "\u64A4\u9500\u539F\u56E0",
@@ -124,7 +124,7 @@
       path: "declared_operator",
       error: error
     }, /*#__PURE__*/React.createElement("input", {
-      "aria-label": "\u64A4\u9500\u7ECF\u529E\u4EBA",
+      "aria-label": "\u7ECF\u529E\u4EBA",
       maxLength: "2000",
       value: draft.declared_operator,
       disabled: locked,

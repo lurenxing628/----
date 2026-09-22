@@ -215,13 +215,14 @@ def test_manuals_keep_backend_supported_english_aliases_but_mark_them_as_compati
     assert normalize_calendar_day_type_value("weekend") == CalendarDayType.HOLIDAY.value
 
     static_manual = _read("static/docs/scheduler_manual.md")
-    assert "发现问题就停下" in static_manual
+    assert "只要预检里有一行被拒绝，确认按钮就点不下去" in static_manual
     # 文件导入侧的"资料不完整就停下"开关随第 1 章重写退役：工作台的导入对话框没有这个勾选项，
     # 缺工种/缺供应商由预检逐行指出。排产面板那一个参数开关仍在，见第 6 章。
     assert "预检会指出是哪一道工序对不上，先把工种补齐再导" in static_manual
     assert "route_raw 自动补建模板" not in static_manual
-    assert "未指定设备或人员时，系统自动分配" in static_manual
-    assert "智能派工规则" in static_manual
+    # 2026-09-21 起自动分配是“本次排产规则”里的缺资源工序选项，说明书按页面控件写。
+    assert "缺资源工序" in static_manual
+    assert "自动分配 / 暂不排" in static_manual
     assert "dispatch_mode / dispatch_rule / auto_assign_enabled" not in static_manual
 
 
@@ -319,7 +320,7 @@ def test_frontend_scripts_keep_internal_details_out_of_user_messages() -> None:
         "拖拽调整功能尚未开放",
     ):
         assert phrase in manual_viewmodel
-    assert "便于点击的命中区域" in manual
+    assert "没有结束时间的记录按点表示" in manual
     assert "后续页面入口接好并放行后再开放" not in manual
     assert "后续草稿和校验链路完成后再开放" not in manual
     for phrase in (
@@ -330,7 +331,7 @@ def test_frontend_scripts_keep_internal_details_out_of_user_messages() -> None:
         "不能放进文件名的符号",
     ):
         assert phrase in manual_viewmodel
-    assert "不能放进下载文件名的符号" in manual
+    assert "现场报工导出.xlsx" in manual
 
 
 def test_process_and_scheduler_errors_use_chinese_terms() -> None:

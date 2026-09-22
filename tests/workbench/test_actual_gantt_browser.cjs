@@ -60,6 +60,18 @@ function server() {
           window.actualProbeData=dto.data;return dto;
         }};
       }
+      if(spec.contracts) {
+        window.actualContractCalls={loads:[],exports:[]};
+        adapter={load:async scope=>{
+          actualContractCalls.loads.push(JSON.parse(JSON.stringify(scope)));
+          const dto=JSON.parse(JSON.stringify(liveResponse));
+          for(const key of Object.keys(dto.data.scope))if(key!=='kind')dto.data.scope[key]=key==='source'?'production':key==='batch_ids'?(scope[key]||[]).slice().sort():scope[key]==null?null:scope[key];
+          window.actualProbeData=dto.data;return dto;
+        },export:async scope=>{
+          actualContractCalls.exports.push(JSON.parse(JSON.stringify(scope)));
+          return {blob:new Blob(['batch_id,report_no\\r\\nWO 123,FG-001\\r\\n'],{type:'text/csv;charset=utf-8'}),contentType:'text/csv;charset=utf-8',disposition:'attachment; filename="actual.csv"'};
+        }};
+      }
       function Harness(){const[theme,setTheme]=React.useState(spec.theme||'light');React.useLayoutEffect(()=>{document.documentElement.dataset.theme=theme},[theme]);
         return React.createElement(React.Fragment,null,React.createElement(WorkbenchControlStyles),React.createElement(WorkbenchControls),React.createElement(WorkbenchNumberControls),
           React.createElement(AppShell,{active:'fieldgantt',theme,onToggleTheme:()=>setTheme(t=>t==='light'?'dark':'light'),onNav:(view,context)=>navigations.push({view,context}),operations:true,title:'现场实际甘特'},
@@ -117,13 +129,14 @@ async function main() {
         }), 'Search and view switch have one border and aligned contents');
         assert.equal(await page.locator('[data-actual-mark=point]').count(), 1);
         assert.equal(await page.locator('[data-actual-mark=plan]').count(), 1);
-        assert.ok(await page.getByText('待续排', { exact: false }).count());
+        assert.ok(await page.getByText('剩余数量还没安排', { exact: false }).count());
         assert.equal(await page.locator('.fg-reference-band').count(), 0);
         assert.equal(await page.locator('.fg-tick').evaluateAll(nodes => nodes.some(node => node.scrollWidth > node.clientWidth + 1)), false);
         const overflow = await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1); assert.equal(overflow, false);
         const expected = await page.evaluate(() => {
           const data = liveResponse.data, start = Date.parse(data.axis_span.start + 'Z'), end = Date.parse(data.axis_span.end + 'Z');
-          const pad = Math.max(60000, (end - start) * .04), label = at => new Date(at).toISOString().slice(0, 19).replace('T', ' ');
+          // Same rule as FieldContract.date: minute precision, seconds shown only when they are not :00.
+          const pad = Math.max(60000, (end - start) * .04), label = at => new Date(at).toISOString().slice(0, 19).replace('T', ' ').replace(/:00$/, '');
           return {start: label(start - pad), end: label(end + pad), axis_span: data.axis_span, pad,
             hours: data.items.map(item => item.execution.reports.map(row => row.effective_processing_hours))};
         });
@@ -166,7 +179,7 @@ async function main() {
         const a = board.getBoundingClientRect(), b = fixed.getBoundingClientRect(); return Math.abs(a.left - b.left) < 2 && document.elementFromPoint(b.left + 60, b.top + 20).closest('.fg-frozen'); }));
       await shot(page, 'horizontal-frozen');
       await page.getByRole('button', { name: '定位选中工序', exact: true }).click();
-      await page.getByRole('button', { name: '适应全部', exact: true }).click();
+      await (async () => { const fit = page.getByRole('button', { name: '显示完整时间范围', exact: true }); await fit.waitFor(); if (await fit.isEnabled()) await fit.click(); })();
     });
     await action('server-range-and-local-export-real-csv', async () => {
       await page.evaluate(() => {
@@ -205,17 +218,35 @@ async function main() {
       await page.getByLabel('资源范围', { exact: true }).selectOption(label);
       await page.getByRole('button', { name: '应用范围', exact: true }).click(); await wait(page);
       await page.getByLabel('搜索现场甘特').fill('FG-003');
-      await page.getByRole('button', { name: '导出 CSV', exact: true }).click();
+      await page.getByRole('button', { name: '导出', exact: true }).click();
       const pending = page.waitForEvent('download'); await page.getByRole('button', { name: '下载 CSV', exact: true }).click();
       const download = await pending, file = path.join(output, 'actual.csv'); await download.saveAs(file);
       const csv = fs.readFileSync(file, 'utf8'); assert.ok(csv.includes('FG-001') && csv.includes('FG-002') && csv.includes('FG-003')); assert.equal(csv.trim().split('\r\n').length, 4);
       await page.getByLabel('搜索现场甘特').fill('not present'); assert.ok((await page.locator('[data-actual-count]').innerText()).includes('0 / 1'));
       await page.getByLabel('搜索现场甘特').fill('');
-      await page.getByLabel('晚期筛选').selectOption('finishLate'); assert.ok((await page.locator('[data-actual-count]').innerText()).includes('0 / 1'));
-      await page.getByLabel('晚期筛选').selectOption('unclosed'); assert.ok((await page.locator('[data-actual-count]').innerText()).includes('1 / 1'));
-      await page.getByLabel('晚期筛选').selectOption('all');
+      await page.getByLabel('超期筛选').selectOption('finishLate'); assert.ok((await page.locator('[data-actual-count]').innerText()).includes('0 / 1'));
+      await page.getByLabel('超期筛选').selectOption('unclosed'); assert.ok((await page.locator('[data-actual-count]').innerText()).includes('1 / 1'));
+      await page.getByLabel('超期筛选').selectOption('all');
       await page.getByRole('button', { name: '现场记录', exact: true }).click(); assert.equal(await page.evaluate(() => navigations.at(-1).view), 'field');
       assert.equal(await page.evaluate(() => navigations.at(-1).context.return_to.context.return_to), undefined);
+    });
+    await action('batch-spaces-and-export-notice-follow-current-snapshot', async () => {
+      await page.evaluate(() => mountActual({ contracts: true, key: 'contracts' })); await wait(page);
+      await page.getByLabel('批次范围', { exact: true }).fill(' WO 123，B 2, LOT-3 ');
+      await page.getByRole('button', { name: '应用范围', exact: true }).click(); await wait(page);
+      assert.deepEqual(await page.evaluate(() => actualContractCalls.loads.at(-1).batch_ids), ['WO 123', 'B 2', 'LOT-3'], 'Spaces inside batch identifiers are data, not separators');
+      await page.getByRole('button', { name: '导出', exact: true }).click();
+      let pending = page.waitForEvent('download'); await page.getByRole('button', { name: '下载 CSV', exact: true }).click(); await pending;
+      await page.getByText(/^已交给浏览器下载：现场实际甘特-/).waitFor();
+      await page.getByRole('button', { name: '刷新实际甘特', exact: true }).click(); await wait(page);
+      assert.equal(await page.getByText(/^已交给浏览器下载：现场实际甘特-/).count(), 0, 'Refresh clears success tied to the previous snapshot');
+      await page.getByRole('button', { name: '导出', exact: true }).click();
+      pending = page.waitForEvent('download'); await page.getByRole('button', { name: '下载 CSV', exact: true }).click(); await pending;
+      await page.getByText(/^已交给浏览器下载：现场实际甘特-/).waitFor();
+      await page.getByLabel('批次范围', { exact: true }).fill('WO 123');
+      await page.getByRole('button', { name: '应用范围', exact: true }).click(); await wait(page);
+      assert.equal(await page.getByText(/^已交给浏览器下载：现场实际甘特-/).count(), 0, 'Applying a new scope clears success tied to the previous snapshot');
+      assert.equal(await page.evaluate(() => actualContractCalls.exports.length), 2, 'Clearing stale feedback does not break later exports');
     });
     await action('default-current-plan-and-demo-never-substituted', async () => {
       await page.evaluate(() => mountActual({ noPlan: true, key: 'default' })); await wait(page);
@@ -263,7 +294,7 @@ async function main() {
       assert(Math.abs(geometry.face - geometry.duration) < .02, 'Painted duration never grows to the hitbox');
       await mark.click({ position: { x: 3, y: 20 } });
       assert.equal(await mark.getAttribute('aria-pressed'), 'true');
-      await page.getByRole('button', { name: '适应全部', exact: true }).click();
+      await (async () => { const fit = page.getByRole('button', { name: '显示完整时间范围', exact: true }); await fit.waitFor(); if (await fit.isEnabled()) await fit.click(); })();
       assert.equal(await page.locator('[data-actual-scroll]').evaluate(node => node.scrollLeft), 0);
       assert.equal(await page.locator('[data-actual-scroll]').evaluate(node => Math.round(node.scrollWidth - node.clientWidth)), 0, 'Fit includes the complete model axis');
       report.narrow_hit_geometry = geometry; report.default_window_geometry = windowGeometry;
@@ -278,9 +309,14 @@ async function main() {
       await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
       const geometry = await page.evaluate(() => {
         const board=document.querySelector('[data-actual-scroll]'),frame=board.getBoundingClientRect(),bar=document.querySelector('[data-actual-mark=plan]').getBoundingClientRect();
-        return {start:bar.left,end:bar.right,visibleStart:frame.left+parseFloat(board.style.getPropertyValue('--fg-label')),visibleEnd:frame.right,width:document.querySelector('.fg-ticks').getBoundingClientRect().width};
+        const labelWidth=parseFloat(board.style.getPropertyValue('--fg-label')),viewport=board.clientWidth-labelWidth,width=document.querySelector('.fg-ticks').getBoundingClientRect().width;
+        // The default window is re-derived from the new response (ActualGanttWindow.initial, capped at 64x); the foot labels carry the model axis.
+        const clock=value=>Date.parse(value.replace(' ','T')+'Z'),[modelStart,modelEnd]=Array.from(document.querySelectorAll('.fg-foot > span'),node=>clock(node.textContent));
+        return {start:bar.left,end:bar.right,visibleStart:frame.left+labelWidth,visibleEnd:frame.right,width,zoom:width/viewport,
+          expectedZoom:window.ActualGanttWindow.initial(window.actualProbeData,{start:modelStart,end:modelEnd}).zoom};
       });
-      assert(geometry.width > originalWidth * 5, 'One-hour new scope gets its own zoom instead of retaining old eight-hour scope');
+      assert(geometry.expectedZoom > 1 && Math.abs(geometry.zoom - geometry.expectedZoom) < geometry.expectedZoom * .01,
+        'One-hour new scope gets its own default window instead of retaining the old eight-hour scope: ' + JSON.stringify(geometry));
       assert(geometry.start >= geometry.visibleStart - 1 && geometry.end <= geometry.visibleEnd + 1, 'The new plan range is fully visible');
       report.scope_transition_geometry = {originalWidth,...geometry};
     });
@@ -325,7 +361,7 @@ async function main() {
       assert.equal(await page.locator('[data-actual-mark=remaining]').count(), 1);
       await shot(page, 'remaining-evidence-fixture');
       await page.evaluate(() => mountActual({ unavailable: true, key: 'unavailable' })); await wait(page);
-      assert.equal(await page.getByRole('button', { name: '导出 CSV', exact: true }).isDisabled(), true);
+      assert.equal(await page.getByRole('button', { name: '导出', exact: true }).isDisabled(), true);
       assert.ok((await page.locator('[data-actual-gantt]').innerText()).includes('新报工执行投影尚未安装'));
       await shot(page, 'unavailable');
       await page.evaluate(() => mountActual({ malformed: true, key: 'malformed' }));

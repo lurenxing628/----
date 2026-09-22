@@ -34,10 +34,14 @@ const trial = nodes(read('TrialControls.jsx'), node => node.type === 'VariableDe
 host.U = { timeLabel: vm.runInContext(sources.get('TrialControls.jsx').slice(trial.init.start, trial.init.end), host) };
 const cases = [
   ['PlanGantt.jsx', 'PlanGanttModel', 'M.timeLabel(', ['2026-09-09', '23:59:59'], ['2026-09-10', '00:00:01'], ['tick.label.slice(0, 10)', 'tick.label.slice(11)']],
-  ['DashboardTimeline.jsx', 'DashboardTimelineModel', 'window.WorkbenchFormat.dateTime(', ['2026-09-09', '23:59:59'], ['2026-09-10', '00:00:01'], ['tick.label.slice(0, 10)', 'tick.label.slice(11)']],
-  ['RunCandidateGantt.jsx', 'RunCandidateModel', 'window.WorkbenchFormat.dateTime(', ['09-09', '23:59:59'], ['09-10', '00:00:01'], ['t.label.slice(5, 10)', 't.label.slice(11)']],
+  ['DashboardTimeline.jsx', 'DashboardTimelineModel', 'M.timeLabel(', ['2026-09-09', '23:59:59'], ['2026-09-10', '00:00:01'], ['tick.label.slice(0, 10)', 'tick.label.slice(11)']],
+  ['RunCandidateGantt.jsx', 'RunCandidateModel', 'M.timeLabel(', ['09-09', '23:59:59'], ['09-10', '00:00:01'], ['t.label.slice(5, 10)', 't.label.slice(11)']],
   ['ActualGanttWorkspace.jsx', 'ActualGanttModel', 'M.time(', ['2026-09-09', '23:59:59'], ['2026-09-10', '00:00:01'], ['tick.label.slice(0, 10)', 'tick.label.slice(11, 19)']],
+  // The trial gantt now shares PlanGanttModel.ticks; its labels go through TrialControls.timeLabel (host.U below).
+  ['TrialGantt.jsx', 'PlanGanttModel', 'U.timeLabel(', ['09-09', '23:59:59'], ['09-10', '00:00:01'], ['tick.label.slice(5, 10)', 'tick.label.slice(11)']],
 ];
+// The formal-plan contract retains second precision; field/trial displays keep their existing compact whole-minute labels.
+const wholeMinute = [['PlanGantt.jsx', 'PlanGanttModel', 'M.timeLabel(', '08:30:00'], ['ActualGanttWorkspace.jsx', 'ActualGanttModel', 'M.time(', '08:30'], ['TrialGantt.jsx', 'PlanGanttModel', 'U.timeLabel(', '08:30']];
 function legacySource(name, expressions) {
   if (!baselineRoot) return;
   const file = path.join(baselineRoot, 'frontend/workbench/app', name), original = fs.readFileSync(file, 'utf8');
@@ -56,15 +60,17 @@ for (const [name, model, prefix, before, after, legacy] of cases) {
     evidence.cases.push({ component: name, input: stamp, expected, actual, legacy_output: original, expressions: fragments, legacy_expressions: legacy });
   }
 }
-const trialTick = expression('TrialGantt.jsx', code => code.startsWith('U.timeLabel(')); assert.equal(trialTick.length, 1);
-const legacyTrial = "new Date(bounds.start + (bounds.end - bounds.start) * i / 3).toISOString().slice(5, 16).replace('T', ' ')";
-legacySource('TrialGantt.jsx', [legacyTrial]);
-host.bounds = { start: Date.parse('2026-09-09T23:59:58Z'), end: Date.parse('2026-09-10T00:00:04Z') };
-const trialExpected = ['09-09 23:59', '09-10 00:00', '09-10 00:00', '09-10 00:00'];
-const trialActual = [0, 1, 2, 3].map(i => { host.i = i; const actual = vm.runInContext(trialTick[0], host); assert.equal(actual, vm.runInContext(legacyTrial, host)); return actual; });
-assert.deepEqual(trialActual, trialExpected);
-evidence.cases.push({ component: 'TrialGantt.jsx', input: host.bounds, expected: trialExpected, actual: trialActual, expressions: trialTick, legacy_expressions: [legacyTrial] });
-assert(calls.slice(-4).every(value => /^2026-09-\d{2}T\d{2}:\d{2}:\d{2}$/.test(value)), 'Trial passes a local full-second wire string without Z');
+for (const [name, model, prefix, expected] of wholeMinute) {
+  const fragments = expression(name, code => code.startsWith(prefix) && code.includes('.slice(')); host.M = host.window[model];
+  host.tick = host.t = { label: '2026-09-10T08:30:00' };
+  const actual = vm.runInContext(fragments[1], host);
+  assert.equal(actual, expected, name + ' keeps its documented whole-minute precision');
+  evidence.cases.push({ component: name, input: '2026-09-10T08:30:00', expected, actual, expressions: fragments });
+}
+const trialTicks = nodes(read('TrialGantt.jsx'), node => node.type === 'CallExpression' && node.callee.type === 'MemberExpression' && node.callee.property.name === 'ticks');
+assert(trialTicks.some(node => sources.get('TrialGantt.jsx').slice(node.start, node.end).startsWith('window.PlanGanttModel.ticks(')), 'Trial ticks come from the shared plan gantt ladder');
+const trialCss = fs.readFileSync(path.join(app, 'styles/32-process-trial.css'), 'utf8');
+assert(/\.tt-tick\s+small\s*\{[^}]*display\s*:\s*block/.test(trialCss), 'Trial tick date and time are separated onto two visual lines');
 const average = expression('ActualGanttWorkspace.jsx', code => code.startsWith("stats.average === null ? '暂无数据'")); assert.equal(average.length, 1);
 // 词表把「未核实」改成「暂无数据」、把 m 改成分钟；数值语义仍与冻结源逐值对齐，只在比较前抹平这两处措辞。
 const sameNumber = value => value.replace(/,/g, '').replace(' 分钟', 'm').replace('暂无数据', '未核实');
@@ -79,7 +85,7 @@ for (const value of [NaN, Infinity, -Infinity]) {
   host.stats = { average: value }; assert.throws(() => vm.runInContext(average[0], host), error => error.name === 'TypeError');
   evidence.cases.push({ component: 'ActualGanttWorkspace.jsx average', input: String(value), expected: 'TypeError', actual: 'TypeError', expressions: average });
 }
-const product = cases.map(row => row[0]).concat('TrialGantt.jsx');
+const product = Array.from(new Set(cases.map(row => row[0]).concat('TrialGantt.jsx')));
 const built = compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'), sources: product.map(name => ({ path: name, code: sources.get(name) })), check_combined: true });
 if (reportFile) {
   const directory = path.dirname(path.resolve(reportFile)); fs.mkdirSync(path.join(directory, 'compiled'), { recursive: true });
@@ -89,4 +95,4 @@ if (reportFile) {
   built.outputs.forEach(item => fs.writeFileSync(path.join(directory, 'compiled', item.path + '.js'), item.code));
   fs.writeFileSync(path.join(directory, 'compile.json'), JSON.stringify({ babel_version: built.babel_version, target: built.target, passed: true, outputs: built.outputs.map(item => ({ path: 'compiled/' + item.path + '.js', sha256: hash(item.code) })) }, null, 2));
 }
-console.log(JSON.stringify({ passed: true, tick_consumers: 5, cross_midnight: true, average_cases: 11, rejected_nonfinite: 3, chrome_target: 109 }));
+console.log(JSON.stringify({ passed: true, tick_consumers: 5, cross_midnight: true, whole_minute: wholeMinute.length, average_cases: 11, rejected_nonfinite: 3, chrome_target: 109 }));

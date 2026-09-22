@@ -6,6 +6,37 @@
     {
       Button
     } = window.RunCandidateControls;
+  function usePrintLayout() {
+    const [printing, setPrinting] = React.useState(() => typeof window.matchMedia === 'function' && window.matchMedia('print').matches);
+    React.useLayoutEffect(() => {
+      const media = typeof window.matchMedia === 'function' ? window.matchMedia('print') : null;
+      function commit(value, synchronous) {
+        if (synchronous && window.ReactDOM && typeof window.ReactDOM.flushSync === 'function') window.ReactDOM.flushSync(() => setPrinting(value));else setPrinting(value);
+      }
+      function beforePrint() {
+        commit(true, true);
+      }
+      function afterPrint() {
+        commit(false, true);
+      }
+      function mediaChanged(event) {
+        commit(event.matches, false);
+      }
+      window.addEventListener('beforeprint', beforePrint);
+      window.addEventListener('afterprint', afterPrint);
+      if (media) {
+        if (typeof media.addEventListener === 'function') media.addEventListener('change', mediaChanged);else media.addListener(mediaChanged);
+      }
+      return () => {
+        window.removeEventListener('beforeprint', beforePrint);
+        window.removeEventListener('afterprint', afterPrint);
+        if (media) {
+          if (typeof media.removeEventListener === 'function') media.removeEventListener('change', mediaChanged);else media.removeListener(mediaChanged);
+        }
+      };
+    }, []);
+    return printing;
+  }
   function useBaseline(data) {
     const [enabled, setEnabled] = React.useState(false),
       [revision, refresh] = React.useReducer(v => v + 1, 0);
@@ -70,15 +101,17 @@
       type: "checkbox",
       checked: state.enabled,
       onChange: e => state.toggle(e.target.checked)
-    }), "\u521D\u59CB\u8BA1\u5212");
+    }), window.WorkbenchTerms.initial_plan);
   }
   function Segments({
     row,
     chosen
   }) {
-    const [top, setTop] = React.useState(0),
+    const printing = usePrintLayout(),
+      [top, setTop] = React.useState(0),
       host = React.useRef(null),
-      first = Math.max(0, Math.floor(top / 76) - 2);
+      first = printing ? 0 : Math.max(0, Math.floor(top / 76) - 2);
+    const segments = printing ? row.baseline_segments : row.baseline_segments.slice(first, first + 6);
     React.useEffect(() => {
       const index = chosen ? row.baseline_segments.findIndex(s => s.row_ref === chosen.row_ref) : 0;
       if (host.current) host.current.scrollTop = Math.max(0, index) * 76;
@@ -96,14 +129,14 @@
         position: 'relative',
         minWidth: 510
       }
-    }, row.baseline_segments.slice(first, first + 6).map((s, i) => /*#__PURE__*/React.createElement("div", {
+    }, segments.map((s, i) => /*#__PURE__*/React.createElement("div", {
       key: s.row_ref,
       "data-baseline-segment": s.row_ref,
       className: "rb-segment",
       style: {
         top: (first + i) * 76
       },
-      "aria-selected": !!chosen && chosen.row_ref === s.row_ref
+      "aria-current": !!chosen && chosen.row_ref === s.row_ref ? 'true' : undefined
     }, /*#__PURE__*/React.createElement("div", null, M.timeLabel(s.start), " \u81F3 ", M.timeLabel(s.end), !s.interval_comparable && ' · 起止不可比较'), /*#__PURE__*/React.createElement("div", null, "\u8BBE\u5907 ", s.machine && s.machine.label || '未记录', " \xB7 \u4EBA\u5458 ", s.operator && s.operator.label || '未记录', " \xB7 \u8D77\u6B62\u65F6\u957F ", M.number(s.elapsed_hours), " \u5C0F\u65F6"), /*#__PURE__*/React.createElement("small", null, s.data_gaps.map(g => g.message).join(' · ')), /*#__PURE__*/React.createElement(window.WorkbenchReference, {
       value: s.row_ref
     })))), !row.baseline_segments.length && /*#__PURE__*/React.createElement("div", null, "\u521D\u59CB\u8BA1\u5212\u6CA1\u6709\u8BE5\u5DE5\u5E8F\u5B89\u6392\u3002"));
@@ -140,9 +173,11 @@
     chosen,
     onChoose
   }) {
-    const [top, setTop] = React.useState(0),
+    const printing = usePrintLayout(),
+      [top, setTop] = React.useState(0),
       host = React.useRef(null),
-      first = Math.max(0, Math.floor(top / 40) - 2);
+      first = printing ? 0 : Math.max(0, Math.floor(top / 40) - 2);
+    const visible = printing ? rows : rows.slice(first, first + 12);
     React.useEffect(() => {
       const index = chosen ? rows.findIndex(r => r.operation_ref === chosen.comparison.operation_ref) : -1,
         node = host.current;
@@ -161,14 +196,14 @@
         minWidth: 570,
         position: 'relative'
       }
-    }, rows.slice(first, first + 12).map((r, i) => /*#__PURE__*/React.createElement("div", {
+    }, visible.map((r, i) => /*#__PURE__*/React.createElement("div", {
       className: "rb-row",
       "data-baseline-operation": r.operation_ref,
       key: r.operation_ref,
       style: {
         top: (first + i) * 40
       },
-      "aria-selected": !!chosen && chosen.comparison.operation_ref === r.operation_ref
+      "aria-current": !!chosen && chosen.comparison.operation_ref === r.operation_ref ? 'true' : undefined
     }, /*#__PURE__*/React.createElement("span", {
       title: r.batch_label || '未记录'
     }, r.batch_label || '未记录'), /*#__PURE__*/React.createElement("span", {
@@ -204,13 +239,12 @@
       role: "alert"
     }, state.error.message, /*#__PURE__*/React.createElement(Button, {
       icon: "refresh-cw",
-      "aria-label": "\u5237\u65B0\u521D\u59CB\u8BA1\u5212",
       onClick: state.retry
-    })), d && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+    }, "\u5237\u65B0\u521D\u59CB\u8BA1\u5212")), d && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
       className: "rb-legend"
     }, /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("i", null), "\u5019\u9009\u5B89\u6392"), /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("i", {
       className: "rb-before"
-    }), "\u521D\u59CB\u8BA1\u5212"), /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("i", {
+    }), window.WorkbenchTerms.initial_plan), /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("i", {
       className: "rb-selected"
     }), "\u5DF2\u9009\u5DE5\u5E8F")), /*#__PURE__*/React.createElement("details", {
       className: "rb-panel",
@@ -236,6 +270,7 @@
   }
   window.RunBaselineControls = {
     useBaseline,
+    usePrintLayout,
     Toggle,
     Panel
   };

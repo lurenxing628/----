@@ -80,12 +80,7 @@
       "data-candidate-status": candidate.status
     }, /*#__PURE__*/React.createElement("span", {
       className: "dot"
-    }), {
-      completed: '已完成',
-      partial: '部分完成',
-      failed: '失败',
-      skipped: '已跳过'
-    }[candidate.status], candidate.completeness === 'unknown' && ' · 完整性未知');
+    }), window.WorkbenchTerms.candidate_statuses[candidate.status], candidate.completeness === 'unknown' && ' · 完整性未知');
   }
   function Catalog({
     result,
@@ -122,7 +117,7 @@
       onChange: e => onQuery({
         status: e.target.value
       })
-    }, [['all', '全部'], ['completed', '已完成'], ['partial', '部分完成'], ['failed', '失败'], ['skipped', '已跳过']].map(([v, t]) => /*#__PURE__*/React.createElement("option", {
+    }, [['all', '全部'], ...Object.entries(window.WorkbenchTerms.candidate_statuses)].map(([v, t]) => /*#__PURE__*/React.createElement("option", {
       key: v,
       value: v
     }, t)))), /*#__PURE__*/React.createElement("label", null, "\u6392\u5E8F ", /*#__PURE__*/React.createElement("select", {
@@ -166,12 +161,12 @@
     }, "\u64CD\u4F5C"))), /*#__PURE__*/React.createElement("tbody", null, d.candidates.map((c, index) => /*#__PURE__*/React.createElement("tr", {
       key: c.candidate_ref,
       "data-candidate-ref": c.candidate_ref,
-      "aria-selected": c.candidate_ref === selectedRef
+      "aria-current": c.candidate_ref === selectedRef ? 'true' : undefined
     }, /*#__PURE__*/React.createElement("td", {
       className: "wb-col-key"
     }, /*#__PURE__*/React.createElement("div", {
       className: "rc-name"
-    }, /*#__PURE__*/React.createElement("span", null, c.label || '生成时名称未填写'), /*#__PURE__*/React.createElement(window.WorkbenchReference, {
+    }, /*#__PURE__*/React.createElement("span", null, c.label || window.WorkbenchTerms.name_missing), /*#__PURE__*/React.createElement(window.WorkbenchReference, {
       value: c.candidate_ref
     }))), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Status, {
       candidate: c
@@ -218,7 +213,7 @@
       className: "rc-heading"
     }, /*#__PURE__*/React.createElement("div", {
       className: "rc-tools"
-    }, /*#__PURE__*/React.createElement("h3", null, "\u5F53\u524D\uFF1A", data.candidate.label || '名称未填写'), /*#__PURE__*/React.createElement(Status, {
+    }, /*#__PURE__*/React.createElement("h3", null, "\u5F53\u524D\uFF1A", data.candidate.label || window.WorkbenchTerms.name_missing), /*#__PURE__*/React.createElement(Status, {
       candidate: data.candidate
     }), /*#__PURE__*/React.createElement("span", {
       className: "rc-pending"
@@ -231,7 +226,7 @@
     }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u63D0\u4EA4 / \u7ED3\u675F\u65F6\u95F4"), /*#__PURE__*/React.createElement("dd", null, M.timeLabel(g.accepted_at), /*#__PURE__*/React.createElement("small", null, M.timeLabel(g.finished_at)))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u9F50\u5957\u68C0\u67E5 / \u7F3A\u8D44\u6E90"), /*#__PURE__*/React.createElement("dd", null, input.ready_check === null ? '未记录' : input.ready_check ? '开启' : '关闭', " / ", {
       auto_assign: '自动分配',
       exclude: '暂不排'
-    }[input.missing_resource_policy] || '未记录')), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u5DF2\u6709\u6267\u884C / \u5F53\u65F6\u7684\u6B63\u5F0F\u8BA1\u5212"), /*#__PURE__*/React.createElement("dd", null, input.completed_policy === 'preserve_actuals' ? '保留已有开工和完工记录' : '执行规则未记录', /*#__PURE__*/React.createElement("small", null, g.baseline.captured_task_count === null ? '正式计划安排数未知' : '已保留 ' + g.baseline.captured_task_count + ' 道正式计划安排')))), /*#__PURE__*/React.createElement("div", {
+    }[input.missing_resource_policy] || '未记录')), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, '已有执行 / ' + window.WorkbenchTerms.baseline_plan), /*#__PURE__*/React.createElement("dd", null, input.completed_policy === 'preserve_actuals' ? '保留已有开工和完工记录' : '执行规则未记录', /*#__PURE__*/React.createElement("small", null, g.baseline.captured_task_count === null ? '正式计划安排数未知' : '已保留 ' + g.baseline.captured_task_count + ' 道正式计划安排')))), /*#__PURE__*/React.createElement("div", {
       className: "rc-muted"
     }, "\u540D\u79F0\u3001\u8D44\u6E90\u3001\u4EA4\u671F\u548C\u6267\u884C\u72B6\u6001\u6765\u81EA\u751F\u6210\u65F6\u4FDD\u5B58\u7684\u8D44\u6599\uFF0C\u672A\u8BFB\u53D6\u540E\u6765\u7684\u4FEE\u6539\u3002", analysis ? analysis.baseline.reason && analysis.baseline.reason.message : g.baseline.reason.message), /*#__PURE__*/React.createElement("div", {
       className: "rc-muted"
@@ -322,7 +317,7 @@
       "aria-label": "\u5019\u9009\u4EA4\u4ED8\u98CE\u9669\u5217\u8868"
     }, /*#__PURE__*/React.createElement("caption", {
       className: "wb-visually-hidden"
-    }, "\u5019\u9009\u4EA4\u4ED8\u98CE\u9669\u5217\u8868"), /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, ['批次 / 零件', '批量 / 工序覆盖', '交付截至日', '全批计划完工', '预计交付', '末端工序 / 依据'].map(label => /*#__PURE__*/React.createElement("th", {
+    }, "\u5019\u9009\u4EA4\u4ED8\u98CE\u9669\u5217\u8868"), /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, ['批次 / 零件', '批量 / 工序覆盖', '交期', '全批计划完工', '预计交付', '末端工序 / 依据'].map(label => /*#__PURE__*/React.createElement("th", {
       scope: "col",
       key: label
     }, label)))), /*#__PURE__*/React.createElement("tbody", null, data.items.slice((current - 1) * 20, current * 20).map(row => /*#__PURE__*/React.createElement("tr", {

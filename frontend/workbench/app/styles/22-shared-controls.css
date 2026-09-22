@@ -5,6 +5,7 @@ body.aps-workbench .wb-field-error { display: block; overflow-wrap: anywhere; ma
 body.aps-workbench .wb-field-error { color: var(--ui-danger-text); font-size: var(--font-size-1); }
 body.aps-workbench .wb-field [aria-invalid="true"] { border-color: var(--ui-danger-text); }
 body.aps-workbench .wb-button-reason { display: inline-flex; flex-wrap: wrap; gap: var(--space-2) var(--space-2); align-items: center; min-width: 0; max-width: 100%; }
+body.aps-workbench .wb-button-host { display: inline-flex; max-width: 100%; }
 body.aps-workbench .wb-reason { min-width: 0; max-width: 100%; white-space: normal; color: var(--ui-info-muted); font-size: var(--font-size-1); line-height: var(--wb-line-body); overflow-wrap: anywhere; }
 body.aps-workbench .wb-empty { min-width: 0; padding: var(--space-5) var(--space-4); text-align: center; color: var(--ui-info-muted); }
 body.aps-workbench .wb-empty-title { margin: 0; color: var(--ui-text); font-weight: 600; }
@@ -29,7 +30,7 @@ body.aps-workbench .wb-detail-heading p { margin: 5px 0 0; color: var(--ui-info-
 body.aps-workbench .wb-detail-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-3); }
 body.aps-workbench .wb-detail-body { padding-top: var(--space-3); overflow-wrap: anywhere; }
 body.aps-workbench .wb-detail-body > :first-child { margin-top: 0; }
-@media (max-width: 1279px) {
+@media (max-width: 1280px) {
   body.aps-workbench .wb-detail-layout { grid-template-columns: minmax(0, 1fr); }
   body.aps-workbench .wb-detail { width: 100%; scroll-margin-top: calc(var(--wb-header-height) + 16px); }
 }
@@ -62,6 +63,21 @@ body.aps-workbench .wb-resource-review-identity > .pill { flex: none; max-width:
 body.aps-workbench .wb-resource-review .wb-resource-facts { padding-top: 0; }
 body.aps-workbench .wb-resource-review .wb-resource-stock strong { font-size: var(--font-size-4); }
 @media (max-width: 560px) { body.aps-workbench .wb-resource-facts { grid-template-columns: minmax(0, 1fr); } }
+/* ResourceControls 共享件（Modal / Issues / Status / Relation / Choice）：原内联样式改成类名后在这里落地。 */
+body.aps-workbench .wb-modal-title { min-width: 0; overflow-wrap: anywhere; }
+body.aps-workbench .wb-modal-close { flex: none; margin-left: auto; }
+body.aps-workbench .wb-modal-footer { flex-wrap: wrap; width: 100%; margin-left: 0; box-sizing: border-box; }
+/* 原型 .plana .match-note 是 flex：多行提示 / 多条问题按块排。 */
+body.aps-workbench .match-note:is(.is-block,.wb-issues) { display: block; }
+body.aps-workbench .match-note.wb-issues { overflow-wrap: anywhere; }
+body.aps-workbench .pill.wb-status { white-space: normal; }
+body.aps-workbench .wb-chip-link { white-space: normal; overflow-wrap: anywhere; text-align: left; }
+body.aps-workbench .chip.wb-chip-wrap { white-space: normal; overflow-wrap: anywhere; }
+body.aps-workbench .wb-choice { min-width: 0; }
+body.aps-workbench .wb-choice-search { flex: 1 1 auto; min-width: 0; max-width: 100%; }
+body.aps-workbench .wb-choice-options { max-height: 160px; overflow-y: auto; }
+body.aps-workbench .wb-choice-option { display: inline-flex; align-items: center; gap: 6px; white-space: normal; overflow-wrap: anywhere; }
+/* .wb-choice-check 原内联 15px 被 20-controls 复选框合同（16px !important、flex:none）钉死，从未生效，不另写规则。 */
 .wb-date-picker[data-picker-view="months"]:not([data-picker-type="month"]) .wb-picker-grid { height: 250px; grid-template-rows: repeat(4,minmax(0,1fr)); }
 .wb-date-picker[data-picker-view="months"]:not([data-picker-type="month"]) .wb-picker-day { height: 100%; min-height: 0; max-height: none; }
 .wb-date-picker[data-picker-view="months"] .wb-picker-day[data-view-month="true"]:not([aria-selected="true"]) { border-color: var(--ui-border); }

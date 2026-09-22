@@ -26,7 +26,8 @@ TRIAL_WIDGET_SOURCES = (
     "resource-contract.js", "ResourceControls.jsx", "WorkbenchGuardHost.jsx", "WorkbenchControlStyles.jsx",
     "WorkbenchControlBridge.js", "WorkbenchSelectMenu.jsx", "WorkbenchDatePickerModel.js", "WorkbenchDatePicker.jsx",
     "WorkbenchControls.jsx", "WorkbenchListControls.jsx", "WorkbenchNumberControls.jsx",
-    "PointContract.js", "PointGantt.jsx",
+    # TrialGantt ticks come from PlanGanttModel; TrialDetails labels execution facts through FieldContract and RunCandidateModel.
+    "PointContract.js", "PointGantt.jsx", "PlanGanttModel.js", "FieldContract.js", "RunCandidateModel.js",
     "WorkbenchCaption.jsx", "WorkbenchPageContext.jsx", "TrialContract.js", "TrialAPI.js", "TrialSession.js", "TrialExport.js",
     "TrialControls.jsx", "TrialViewState.js", "TrialCatalog.jsx", "TrialGantt.jsx", "TrialDetails.jsx",
     "TrialResults.jsx", "TrialStyles.jsx", "TrialWorkspace.jsx",

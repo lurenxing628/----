@@ -62,7 +62,7 @@
       className: "rc-heading"
     }, /*#__PURE__*/React.createElement("h3", null, "\u6279\u6B21\u4EA4\u4ED8\u5BF9\u7167"), /*#__PURE__*/React.createElement("span", {
       className: "rc-muted"
-    }, "\u5B8C\u6574\u6392\u4EA7\u6279\u6B21 \xB7 \u5019\u9009\u51CF\u6392\u4EA7\u65F6\u7684\u6B63\u5F0F\u8BA1\u5212")), /*#__PURE__*/React.createElement("div", {
+    }, "\u5B8C\u6574\u6392\u4EA7\u6279\u6B21 \xB7 \u53D8\u5316 = \u5019\u9009\u65B9\u6848 \u2212 \u6392\u4EA7\u65F6\u7684\u6B63\u5F0F\u8BA1\u5212")), /*#__PURE__*/React.createElement("div", {
       className: "rc-table wb-table-frame",
       "data-sticky-head": true,
       "data-sticky-actions": true
@@ -71,7 +71,7 @@
       "aria-label": "\u5019\u9009\u6279\u6B21\u4EA4\u4ED8\u5BF9\u7167"
     }, /*#__PURE__*/React.createElement("caption", {
       className: "wb-visually-hidden"
-    }, "\u5019\u9009\u6279\u6B21\u4EA4\u4ED8\u5BF9\u7167"), /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, ['批次 / 零件', '交付截至日', '对比基准完工', '候选完工', '超期变化（小时）', '甘特定位'].map(label => /*#__PURE__*/React.createElement("th", {
+    }, "\u5019\u9009\u6279\u6B21\u4EA4\u4ED8\u5BF9\u7167"), /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, ['批次 / 零件', '交期', '对比基准完工', '候选完工', '超期变化（小时）', '甘特定位'].map(label => /*#__PURE__*/React.createElement("th", {
       scope: "col",
       key: label
     }, label)))), /*#__PURE__*/React.createElement("tbody", null, data.batches.slice((current - 1) * 20, current * 20).map(row => /*#__PURE__*/React.createElement("tr", {

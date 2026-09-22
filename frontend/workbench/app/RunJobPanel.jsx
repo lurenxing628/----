@@ -136,7 +136,7 @@
     const selected = preflight && preflight.normalized_input && preflight.normalized_input.batch_refs;
     const reason = storageError || (!inputRef ? '请先完成排产检查。' : selected && !selected.length ? '请先选择要排产的批次。' : pendingActive ? '上次排产尚未确认结果，请先查询。' : unavailable);
     return <section className="plana run-job-panel" data-run-job-panel="true" aria-label="候选排产"><U.Styles />
-      <div className="rj-heading"><div><h2>候选排产</h2><p className="rj-muted">选择范围并完成检查后，计算本次候选方案。</p></div></div>
+      <div className="rj-heading"><div><h3>候选排产</h3><p className="rj-muted">选择范围并完成检查后，计算本次候选方案。</p></div></div>
       <div className="rj-actions"><div className="rj-tools">
         <U.Button icon="play" className={inputRef && selected && selected.length ? 'btn primary' : 'btn'} reason={reason} reasonDisplay="tooltip" busy={busy} onClick={inspect}>核对并开始排产</U.Button>
         {unavailable && <U.Button icon="refresh-cw" busy={busy} onClick={inspect}>重新核对排产条件</U.Button>}

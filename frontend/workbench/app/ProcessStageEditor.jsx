@@ -74,8 +74,7 @@
     const result = [], old = new Map(before.operations.map(row => [row.ref, row]));
     const oldGroups = new Map(before.external_groups.map(row => [row.ref, row])), newGroups = new Map(after.external_groups.map(row => [row.ref, row]));
     const range = group => group ? value(group.start_sequence) + ' 至 ' + value(group.end_sequence) : '范围未填写';
-    const state = item => ({ missing: '未录入', present: '已有记录，未人工确认', locked: '待前一步确认', unconfirmed: '未人工确认', confirmed: '已确认' })[item] || '状态未明确';
-    const stage = item => ({ route: '工艺路线', source: '归属', hours: '工时定额', ready: '已就绪' })[item] || '阶段未明确';
+    const stage = item => P.stageLabel(item);
     const cycleMode = item => ({ merged: '合并设置', separate: '分别设置' })[item] || (item === null ? '未设置' : '原周期算法未明确');
     function field(label, previous, current, format = value) {
       if (!same(previous, current)) result.push({ label, previous: format(previous), current: format(current) });
@@ -87,8 +86,8 @@
       if (previousRef && currentRef && previousRef !== currentRef && previous === current) current += '（关联记录已更换）';
       result.push({ label, previous, current });
     }
-    function confirmation(label, previous, current) {
-      field(label + '状态', previous.state, current.state, state);
+    function confirmation(label, previous, current, key) {
+      field(label + '状态', previous.state, current.state, item => P.workflowStateLabel(key, item));
       field(label + '时间', previous.confirmed_at, current.confirmed_at, confirmationTime);
       if (previous.confirmed_by !== current.confirmed_by) result.push({ label: label + '记录', previous: '原确认记录', current: '确认记录已更新' });
     }
@@ -103,8 +102,8 @@
         relation(prefix + '工种', previous.op_type_ref, row.op_type_ref, previous.op_type_label, row.op_type_label);
         relation(prefix + '供应商', previous.supplier_ref, row.supplier_ref, previous.supplier_label, row.supplier_label);
         relation(prefix + '外协组', previous.external_group_ref, row.external_group_ref, range(oldGroups.get(previous.external_group_ref)), range(newGroups.get(row.external_group_ref)));
-        confirmation(prefix + '归属确认', previous.confirmation.source, row.confirmation.source);
-        confirmation(prefix + '工时确认', previous.confirmation.hours, row.confirmation.hours);
+        confirmation(prefix + '归属确认', previous.confirmation.source, row.confirmation.source, 'source');
+        confirmation(prefix + '工时确认', previous.confirmation.hours, row.confirmation.hours, 'hours');
       }
     });
     old.forEach(row => result.push({ label: '工序 ' + row.sequence, previous: row.label, current: '已移除' }));
@@ -119,16 +118,16 @@
     field('当前阶段', before.workflow.stage, after.workflow.stage, stage);
     field('工艺就绪状态', before.workflow.ready, after.workflow.ready, ready => ready ? '已就绪' : '未就绪');
     field('工艺记录来源', before.workflow.origin, after.workflow.origin, origin => ({ legacy: '原有工艺记录', managed: '三阶段工艺记录' })[origin] || '来源未明确');
-    ['route', 'source', 'hours'].forEach(key => confirmation(stage(key) + ' · 确认', before.workflow[key], after.workflow[key]));
+    ['route', 'source', 'hours'].forEach(key => confirmation(stage(key) + ' · 确认', before.workflow[key], after.workflow[key], key));
     return result;
   }
   function Review({ before, after, onAccept, disabled }) {
     const rows = React.useMemo(() => changes(before, after), [before, after]), paging = usePage(rows);
-    return <section className="match-note" style={{ display: 'block' }} role="status">
-      <p>最新资料已读取，草稿没有被替换。差异 {rows.length} 项，请核对下表和当前草稿。点「采用最新资料」后：您改过的项保留，其余按最新值；有变化的工序要重新确认，已移除的工序不再提交。</p>
+    return <section className="match-note is-block" role="status">
+      <p>最新资料已读取，草稿没有被替换。差异 {rows.length} 项，请核对下表和当前草稿。点「{window.WorkbenchTerms.accept_latest}」后：已改过的项保留，其余按最新值；有变化的工序要重新确认，已移除的工序不再提交。</p>
       {!!rows.length && <><div className="card-scroll"><table className="tbl wb-table" aria-label="最新资料差异" style={{ tableLayout: 'fixed', width: '100%' }}><caption className="wb-visually-hidden">{"最新资料差异"}</caption><thead><tr><th scope="col">项目</th><th scope="col">编辑前资料</th><th scope="col">最新资料</th></tr></thead>
         <tbody>{paging.rows.map((row, index) => <tr key={index}><td>{row.label}</td><td style={{ overflowWrap: 'anywhere' }}>{row.previous}</td><td style={{ overflowWrap: 'anywhere' }}>{row.current}</td></tr>)}</tbody></table></div><Pager paging={paging} disabled={disabled} /></>}
-      <Button icon="check" disabled={disabled} onClick={onAccept}>采用最新资料</Button>
+      <Button icon="check" disabled={disabled} onClick={onAccept}>{window.WorkbenchTerms.accept_latest}</Button>
     </section>;
   }
   function useDraft({ result, adapter, stage, build, reconcile, saved, onDirty }) {
@@ -162,7 +161,7 @@
     const page = model.error && model.error.locate_page;
     return <><ErrorBox error={model.error} />
       {page && paging && <Button icon="arrow-right" disabled={disabled} onClick={() => { paging.setQuery(''); paging.setNumber(page); }}>定位到第 {page} 页</Button>}
-      <Button icon="refresh-cw" busy={model.busy} disabled={disabled} onClick={model.reload}>刷新详情并保留草稿</Button>
+      <Button icon="refresh-cw" busy={model.busy} disabled={disabled} onClick={model.reload}>{window.WorkbenchTerms.refresh_latest}</Button>
       {model.review && <Review before={model.base.data} after={model.review.data} disabled={disabled || model.busy} onAccept={model.accept} />}</>;
   }
   // Unconfirmed operations are reported with the page they sit on (unfiltered order, current page size),

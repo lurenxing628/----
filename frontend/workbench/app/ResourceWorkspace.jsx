@@ -285,7 +285,6 @@
             {selected.length > 0 && <p className="muted" aria-live="polite">已选择 <b data-resource-selection-count>{selected.length}</b> 条{data && selected.some(ref => !data.entities.some(row => row.ref === ref)) && <> · <span>含非当前页记录</span></>}</p>}
             <Toolbar config={config} scope={scope} onFilter={filter} loading={list.loading} disabled={blocked} onRefresh={refresh} onCreate={() => open('create')}
               createReason={C.blocked(data && data.create_context, config.kind, 'create', list.result && list.result.meta.source)} onExternal={openExternal} adapter={adapter} selected={selected} ready={!!data} onClearSelection={() => setSelected([])} />
-            {data && data.entities.length > 0 && <ErrorBox error={list.error} />}
             {data && <Issues issues={list.result.warnings} />}
             <Tables key={node} kind={config.kind} category={config.category} entities={data ? data.entities : []} source={list.result && list.result.meta.source} selected={selected} onSelect={setSelected}
               disabled={blocked || list.loading} headerDisabled={blocked} loading={list.loading} error={list.error} adapter={adapter} scope={scope} matchingCount={data && data.page.total}

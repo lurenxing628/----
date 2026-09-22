@@ -6,10 +6,10 @@ let checks = 0;
 function runtime(state = null, url = 'http://127.0.0.1:59991/workbench') {
   let location = new URL(url), now = 0;
   const panes = [];
-  const entries = [{state, url: location.href}], frames = new Map(), events = new Map();
+  const entries = [{state, url: location.href}], frames = new Map(), events = new Map(), timers = new Map();
   // Inner panes are addressed by data-wb-scroll-key, so the fake .main-content answers querySelectorAll like the real element.
   const main = {scrollTop: 0, scrollLeft: 0, querySelectorAll: () => panes};
-  let index = 0, frame = 0;
+  let index = 0, frame = 0, timer = 0;
   const context = vm.createContext({URL, performance: {now: () => now}, document: {querySelector: () => main},
     get location() { return location; },
     history: {get state() { return entries[index].state; },
@@ -17,13 +17,16 @@ function runtime(state = null, url = 'http://127.0.0.1:59991/workbench') {
       pushState(next, _title, nextURL) { entries.splice(++index); entries.push({state: structuredClone(next), url: new URL(nextURL, location).href}); location = new URL(entries[index].url); }},
     scrollY: 0, scrollX: 0, scrollTo(x, y) { context.scrollX = x; context.scrollY = y; },
     requestAnimationFrame(fn) { frames.set(++frame, fn); return frame; }, cancelAnimationFrame(id) { frames.delete(id); },
+    setTimeout(fn, delay) { timers.set(++timer, {fn, delay}); return timer; }, clearTimeout(id) { timers.delete(id); },
     addEventListener(name, fn) { if (!events.has(name)) events.set(name, new Set()); events.get(name).add(fn); },
     removeEventListener(name, fn) { if (events.has(name)) events.get(name).delete(fn); }});
   context.window = context;
   vm.runInContext(source, context);
   const pane = key => { const node = {scrollTop: 0, scrollLeft: 0, getAttribute: name => name === 'data-wb-scroll-key' ? key : null}; panes.push(node); return node; };
-  return {context, main, panes, pane, api: context.WorkbenchNavigation, entries,
+  return {context, main, panes, pane, api: context.WorkbenchNavigation, entries, timers,
+    runTimers() { const pending = [...timers.values()]; timers.clear(); pending.forEach(item => item.fn()); },
     back() { index--; location = new URL(entries[index].url); },
+    forward() { index++; location = new URL(entries[index].url); },
     flush() { for (let step = 0; frames.size && step < 250; step++) { const pending = [...frames.values()]; frames.clear(); now += 16; pending.forEach(fn => fn()); } },
     event(name) { [...(events.get(name) || [])].forEach(fn => fn()); },
     setState(next) { entries[index].state = next; }};
@@ -146,5 +149,36 @@ check('arrays preserve order and types when binding server navigation', () => {
   assert.deepEqual(JSON.parse(JSON.stringify(r.api.read(expected).context)), navigation.context);
   for (const context of [{...navigation.context, values: ['b', 'a']}, {...navigation.context, count: '0'},
     {...navigation.context, enabled: 0}]) assert.throws(() => r.api.read({...boot, navigation: {...navigation, context}}));
+});
+check('help link carries the view id for the manual chapter next to the return address', () => {
+  const r = runtime(), help = {...boot, help_url: '/scheduler/config/manual'};
+  assert.equal(r.api.helpUrl(help, {view: 'reports', context: {}}), '/scheduler/config/manual?src=%2Fworkbench%3Fview%3Dreports&page=reports');
+  assert.equal(r.api.helpUrl(help, {view: 'trial', context: {}}), '/scheduler/config/manual?src=%2Fworkbench%2Ftrial&page=trial');
+});
+check('continuous scrolling writes history once per throttle window; flush writes at once and cancel drops the write', () => {
+  const r = runtime(); let writes = 0;
+  const memory = r.api.scrollMemory(() => writes++);
+  for (let step = 0; step < 10; step++) memory.schedule();
+  assert.equal(writes, 0); assert.equal(r.timers.size, 1); assert.equal([...r.timers.values()][0].delay, 200);
+  r.runTimers(); assert.equal(writes, 1);
+  memory.schedule(); memory.flush(); assert.equal(writes, 2); assert.equal(r.timers.size, 0);
+  memory.schedule(); memory.cancel(); r.runTimers(); assert.equal(writes, 2);
+  assert.throws(() => r.api.scrollMemory(null)); assert.throws(() => r.api.scrollMemory(() => {}, -1));
+});
+check('a sub-throttle scroll snapshot is restored only when its original history entry becomes current again', () => {
+  const r = runtime(), report = r.api.navigate(boot, r.api.read(boot), 'reports', {}), board = r.pane('report-table');
+  r.context.scrollY = 20; r.main.scrollTop = 100; board.scrollLeft = 30; r.api.remember(boot, report);
+  r.api.navigate(boot, r.api.read(boot), 'process', {});
+  r.back();
+  r.context.scrollY = 240; r.main.scrollTop = 900; board.scrollLeft = 760;
+  const latest = r.api.captureScroll();
+  r.back();
+  assert.equal(r.api.read(boot).view, 'dashboard');
+  assert.notEqual(r.context.history.state.workbench.scroll && r.context.history.state.workbench.scroll.mainTop, 900,
+    'the Back target must not receive the outgoing entry scroll');
+  r.forward();
+  const returned = r.api.read(boot); r.api.remember(boot, returned, latest); r.main.scrollTop = 0; board.scrollLeft = 0;
+  const refreshed = r.api.read(boot); r.api.restore(refreshed, () => {}); r.flush();
+  assert.equal(r.context.scrollY, 240); assert.equal(r.main.scrollTop, 900); assert.equal(board.scrollLeft, 760);
 });
 process.stdout.write(JSON.stringify({checks, passed: checks, browser: false, production: false}) + '\n');

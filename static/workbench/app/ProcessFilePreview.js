@@ -221,7 +221,10 @@
       checked: selected.includes(row.ref),
       disabled: disabled,
       onChange: event => onChange(event.target.checked ? selected.concat(row.ref) : selected.filter(ref => ref !== row.ref))
-    })), /*#__PURE__*/React.createElement("td", null, row.business_code), /*#__PURE__*/React.createElement("td", null, row.start_sequence, " \u81F3 ", row.end_sequence), /*#__PURE__*/React.createElement("td", null, row.merge_mode === 'merged' ? '合并周期' : row.merge_mode === 'separate' ? '逐序周期' : row.merge_mode === null ? '未填写' : row.merge_mode), /*#__PURE__*/React.createElement("td", null, row.total_days === null ? '未填写' : row.total_days + ' 天'), /*#__PURE__*/React.createElement("td", null, row.supplier_label === null ? '未选' : row.supplier_label), /*#__PURE__*/React.createElement("td", null, row.remark === null ? '未填写' : row.remark, /*#__PURE__*/React.createElement(Issues, {
+    })), /*#__PURE__*/React.createElement("td", null, row.business_code), /*#__PURE__*/React.createElement("td", null, row.start_sequence, " \u81F3 ", row.end_sequence), /*#__PURE__*/React.createElement("td", null, row.merge_mode === 'merged' ? '合并周期' : row.merge_mode === 'separate' ? '逐序周期' : row.merge_mode === null ? '未填写' : row.merge_mode), /*#__PURE__*/React.createElement("td", null, row.total_days === null ? '未填写' : window.WorkbenchFormat.number(row.total_days, {
+      digits: 4,
+      trim: true
+    }) + ' 天'), /*#__PURE__*/React.createElement("td", null, row.supplier_label === null ? '未选' : row.supplier_label), /*#__PURE__*/React.createElement("td", null, row.remark === null ? '未填写' : row.remark, /*#__PURE__*/React.createElement(Issues, {
       issues: row.issues
     }))))))), /*#__PURE__*/React.createElement("div", {
       className: "rm-pagination"

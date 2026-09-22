@@ -88,7 +88,7 @@
       context = item && item.write_context;
     const disabledReason = !context || context.capabilities[action] !== true ? '这条记录现在不能处置，请刷新后重试。' : '';
     return /*#__PURE__*/React.createElement(Modal, {
-      title: saved ? '上次处置结果' : reopen ? '独立重开处置' : '登记条目处置',
+      title: saved ? '上次处置结果' : reopen ? '重新打开处置' : '登记条目处置',
       icon: reopen ? 'refresh-cw' : 'square-pen',
       locked: command.busy,
       onClose: onClose,
@@ -103,7 +103,7 @@
         busy: command.busy,
         reason: disabledReason || (command.storageError ? '上次操作记录还没确认' : ''),
         onClick: submit
-      }, reopen ? '确认独立重开' : '提交处置'))
+      }, reopen ? '确认重新打开' : '提交处置'))
     }, /*#__PURE__*/React.createElement("div", {
       className: "dy-dialog-body"
     }, /*#__PURE__*/React.createElement(ErrorBox, {

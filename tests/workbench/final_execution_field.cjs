@@ -41,7 +41,7 @@ async function exercise(p, phase) {
       await page.getByText('逐项复核有效工时', { exact: false }).waitFor();
       await p.shot('restart-original-report-history');
     });
-    await p.read(() => page.getByRole('button', { name: '实际甘特', exact: true }).click(), '/actual-gantt');
+    await p.read(() => page.getByRole('button', { name: '现场实际甘特', exact: true }).click(), '/actual-gantt');
     await actual(p, { includeWrites: false });
     return;
   }
@@ -103,14 +103,14 @@ async function exercise(p, phase) {
     await page.getByRole('spinbutton', { name: '有效工时（小时）', exact: true }).fill('0.75');
     await p.choose('实际设备', seed.machine_ref); await p.choose('实际人员', seed.operator_ref);
     await page.getByLabel('作业备注', { exact: true }).fill('三件首批真实报工');
-    await page.getByLabel('补齐或更正原因', { exact: true }).fill('根据原始报工单补齐');
+    await page.getByLabel('补齐原因', { exact: true }).fill('根据原始报工单补齐');
     await p.shot('supplement-input');
     const { saved } = await saveAndRead('保存报工', '/reports/' + p.report.created.report_ref + '/supplement');
     p.report.receipts.push(saved);
   });
   await p.step(['WBP-FIELD-005', 'WBP-FIELD-012'], 'correction-required-reason-and-three-original-revisions', async () => {
     await page.getByRole('button', { name: '更正 ' + p.report.created.report_no, exact: true }).click();
-    const reason = page.getByLabel('补齐或更正原因', { exact: true });
+    const reason = page.getByLabel('更正原因', { exact: true });
     assert.equal(await reason.getAttribute('required'), '');
     await page.getByRole('spinbutton', { name: '本次完成数量', exact: true }).fill('2');
     await page.getByRole('spinbutton', { name: '有效工时（小时）', exact: true }).fill('0.5');
@@ -173,7 +173,8 @@ async function exercise(p, phase) {
     await page.getByRole('spinbutton', { name: '有效工时（小时）', exact: true }).fill('1.5');
     await page.locator('.field-editor details > summary').click();
     await p.choose('实际设备', seed.machine_ref); await p.choose('实际人员', seed.operator_ref);
-    const { saved, after } = await saveAndRead('剩余全部完工', detail + '/reports');
+    await page.getByRole('button', { name: '填剩余数', exact: true }).click();
+    const { saved, after } = await saveAndRead('保存报工', detail + '/reports');
     p.report.receipts.push(saved);
     const current = after.data.tasks.find(row => row.task_ref === taskRef);
     assert.equal(current.execution.reports.find(row => row.report_ref === saved.data.rows[0].report_ref).completed_quantity, 8);
@@ -184,7 +185,7 @@ async function exercise(p, phase) {
   });
   await files(p);
   await open();
-  await p.read(() => page.getByRole('button', { name: '实际甘特', exact: true }).click(), '/actual-gantt');
+  await p.read(() => page.getByRole('button', { name: '现场实际甘特', exact: true }).click(), '/actual-gantt');
   await actual(p, { includeWrites: false });
 }
 async function visuals(p) {

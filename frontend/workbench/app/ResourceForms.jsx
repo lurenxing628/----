@@ -8,13 +8,13 @@
     const phase = command.phase, intent = command.intent || {}, operation = action || intent.action;
     const bulkDelete = operation === 'confirm' && ['material_bulk', 'op_type_bulk', 'machine_bulk', 'operator_bulk', 'supplier_bulk', 'process_bulk'].includes(intent.kind);
     const batchAction = command.result && command.result.data && command.result.data.action;
-    const verb = intent.kind === 'calendar' && operation === 'delete' ? '清除日历配置'
+    const verb = intent.kind === 'calendar' && operation === 'delete' ? '清除单独设置'
       : operation === 'delete' || bulkDelete ? '删除' : operation === 'unlink' ? '解除关联'
         : intent.kind === 'batch' && operation === 'bulk_confirm' ? ['delete', 'update', 'copy'].includes(batchAction) ? ({ delete: '删除', update: '保存', copy: '复制' })[batchAction] : '批次操作'
           : operation === 'machine_permissions' ? '设备关联保存' : operation === 'import' ? '导入' : '保存';
     return <>
       {['sending', 'checking'].includes(phase) && <p role="status">{phase === 'sending' ? '正在提交' + verb + '，请勿重复操作…' : '正在查询上次' + verb + '的结果…'}</p>}
-      {phase === 'pending' && <div role="status" className="match-note" style={{ display: 'block' }}>
+      {phase === 'pending' && <div role="status" className="match-note is-block">
         <p>{window.WorkbenchTerms.outcomes.pending(verb)}</p>
         <Button icon="history" onClick={command.check}>{window.WorkbenchTerms.actions.query_result}</Button>
       </div>}
@@ -32,7 +32,7 @@
     if (Array.isArray(permissions)) return <div className="field full"><label>可操作设备</label>
       {permissions.length ? <div className="chipline">{permissions.map(item => <span className="chip" key={item.machine_ref} style={{ whiteSpace: 'normal' }}>
         {item.business_code} · {item.label}{item.is_primary === 'yes' ? '（主操）' : ''}</span>)}</div> : <span className="fhint">尚未设置可操作设备。</span>}
-      <span className="fhint">在人员详情中点“编辑可操作设备”维护设备关联。</span></div>;
+      <span className="fhint">在人员详情中点「编辑可操作设备」维护设备关联。</span></div>;
     const facts = entity.relationships.legacy_machine_authorizations;
     return <div className="field full"><label>既有设备授权（只读）</label>
       {Array.isArray(facts) ? facts.length ? <div className="chipline">{facts.map((item, index) => <span className="chip" key={item.ref || index} style={{ whiteSpace: 'normal' }}>
@@ -138,7 +138,7 @@
       {!C.statuses[kind].some(row => row[0] === draft.fields.status && row[0] !== 'unknown') && draft.fields.status && <option value={draft.fields.status}>旧状态 / 原因未知（保持原值）</option>}</select></Field>;
     return <Modal title={adjustingStock ? '调整库存' : (action === 'create' ? '新增' : action === 'delete' ? '删除' : '编辑') + C.resourceName(kind, opCategory)} icon={action === 'delete' ? 'trash-2' : icons[kind]} onClose={close} guardOwner={guardOwner} locked={command.locked || catalogBusy || contextBusy} suspended={catalogBusy}
       footer={<><Button onClick={close} reason={command.locked ? '结果还没确认，暂时不能关闭。' : contextBusy ? '正在读取最新资料。' : ''} disabled={catalogBusy}>{done ? '关闭' : '取消'}</Button>
-        {!done && <Button form={formId} type="submit" icon={action === 'delete' ? 'trash-2' : 'check'} className={'btn primary wb-action wb-primary'} reason={reason || confirmReason} busy={disabled}>
+        {!done && <Button form={formId} type="submit" icon={action === 'delete' ? 'trash-2' : 'check'} className={action === 'delete' ? 'btn danger' : 'btn primary wb-action wb-primary'} reason={reason || confirmReason} busy={disabled}>
           {action === 'delete' ? '确认删除' : '保存'}</Button>}</>}>
       <form id={formId} ref={form} className="modal-b form scroll" onSubmit={submit} noValidate>
         {action === 'delete' ? <><p>确认删除 <b>{entity.business_code} · {entity.label}</b>？系统会再次核对关联关系和删除条件。</p>
@@ -167,9 +167,9 @@
         <Issues issues={entity && entity.issues || []} />
         <ErrorBox error={error} excludePaths={fieldPaths} /><Feedback command={command} action={action} excludePaths={error ? [] : fieldPaths} /><ErrorBox error={contextError} />
         {reason && <p role="status">{reason}</p>}
-        {!done && !command.locked && onReloadContext && <Button icon="refresh-cw" busy={contextBusy} disabled={catalogBusy} onClick={onReloadContext}>刷新最新资料</Button>}
+        {!done && !command.locked && onReloadContext && <Button icon="refresh-cw" busy={contextBusy} disabled={catalogBusy} onClick={onReloadContext}>{window.WorkbenchTerms.refresh_latest}</Button>}
         {contextReview && !done && <div className="wb-resource-review" role="status">
-          <p>最新资料已刷新。你修改的内容已保留，未修改的项已更新；下方显示当前已保存的资料。</p>
+          <p>最新资料已刷新。已修改的内容保留，未修改的项已更新；下方显示当前已保存的资料。</p>
           {contextReview.data.ref ? <><div className="wb-resource-review-identity"><strong>{contextReview.data.business_code} · {contextReview.data.label}</strong>{kind !== 'op_type' && <Status kind={kind} entity={contextReview.data} />}</div>
             <CurrentFields kind={kind} entity={contextReview.data} />
             {(C.relations[kind] || []).map(field => <p key={field.key}>{field.label}：<Relation entity={contextReview.data} field={field.key} /></p>)}</> : <p>当前资料总数：{contextReview.data.page.total}</p>}
@@ -182,7 +182,7 @@
   function Detail({ adapter, kind, result, onClose, onEdit, onDelete, onAdjustStock, onMachinePermissions, onOperatorCalendar, onRelated, onBack, busy, error, onRetry }) {
     const entity = result && result.data;
     return <Modal title={C.resourceName(kind, entity && entity.fields.category) + '详情'} icon={icons[kind]} onClose={onClose} footer={<>{onBack && <Button icon="chevron-left" onClick={onBack}>返回上一条详情</Button>}<Button onClick={onClose}>关闭</Button>
-      {entity && <><Button icon="trash-2" reason={C.blocked(entity.write_context, kind, 'delete', result.meta.source)} onClick={onDelete}>删除</Button>
+      {entity && <><Button icon="trash-2" className="btn danger" reason={C.blocked(entity.write_context, kind, 'delete', result.meta.source)} onClick={onDelete}>删除</Button>
         {kind === 'material' && <Button icon="square-pen" reason={C.blocked(entity.write_context, kind, 'update', result.meta.source) || (typeof onAdjustStock !== 'function' ? '调整库存尚未开通。' : '')} onClick={onAdjustStock}>调整库存</Button>}
         <Button icon="square-pen" className="btn primary" reason={C.blocked(entity.write_context, kind, 'update', result.meta.source)} onClick={onEdit}>编辑</Button></>}</>}>
       <div className="modal-b scroll wb-resource-detail">{busy && <p role="status">正在读取详情…</p>}<ErrorBox error={error} />{error && <Button onClick={onRetry}>刷新</Button>}
@@ -193,11 +193,11 @@
               onOpen={!field.catalog && onRelated ? ref => onRelated(field.kind, ref, field.category) : undefined} /></div>)}
             {kind === 'operator' && <LegacyFacts entity={entity} />}</div>}<Remark kind={kind} entity={entity} /><Issues issues={entity.issues} />
           {kind === 'operator' && <Button icon="machine" reason={C.blocked(entity.write_context, kind, 'update', result.meta.source)
-            || (typeof onMachinePermissions !== 'function' ? '设备关联编辑未连接。' : '')} onClick={onMachinePermissions}>编辑可操作设备</Button>}
+            || (typeof onMachinePermissions !== 'function' ? window.WorkbenchTerms.outcomes.unavailable : '')} onClick={onMachinePermissions}>编辑可操作设备</Button>}
           {kind === 'operator' && <Button icon="calendar-days" reason={C.blocked(entity.write_context, kind, 'update', result.meta.source)
-            || (typeof onOperatorCalendar !== 'function' ? '个人日历编辑未连接。' : '')} onClick={onOperatorCalendar}>编辑个人日历</Button>}
+            || (typeof onOperatorCalendar !== 'function' ? window.WorkbenchTerms.outcomes.unavailable : '')} onClick={onOperatorCalendar}>编辑{window.WorkbenchTerms.personal_calendar}</Button>}
           {kind === 'op_type' && ['internal', 'external'].includes(entity.fields.category) && <window.ResourceDetailRelations key={entity.ref + ':' + result.meta.snapshot_ref} adapter={adapter} entity={entity} onOpen={onRelated} />}
-          <Issues issues={result.warnings} /><p className="wb-resource-read-time">读取时间：<time dateTime={result.meta.as_of}>{window.WorkbenchFormat.dateTime(result.meta.as_of)}</time></p></>}</div></Modal>;
+          <Issues issues={result.warnings} /><p className="wb-resource-read-time">{window.WorkbenchTerms.data_as_of(window.WorkbenchFormat.dateTime(result.meta.as_of))}</p></>}</div></Modal>;
   }
   ResourceForms.Detail = Detail;
   ResourceForms.Feedback = Feedback;

@@ -227,7 +227,15 @@
       className: "wb-table-frame"
     }, /*#__PURE__*/React.createElement("table", {
       className: "wb-table"
-    }, /*#__PURE__*/React.createElement("caption", null, "\u5168\u90E8\u53EF\u64CD\u4F5C\u8BBE\u5907\uFF08", rows.length, " \u53F0\uFF09"), /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "\u8BBE\u5907"), /*#__PURE__*/React.createElement("th", null, "\u6280\u80FD\u7B49\u7EA7"), /*#__PURE__*/React.createElement("th", null, "\u4E3B\u64CD\u8BBE\u5907"), /*#__PURE__*/React.createElement("th", null, "\u64CD\u4F5C"))), /*#__PURE__*/React.createElement("tbody", null, rows.map(row => /*#__PURE__*/React.createElement("tr", {
+    }, /*#__PURE__*/React.createElement("caption", null, "\u5168\u90E8\u53EF\u64CD\u4F5C\u8BBE\u5907\uFF08", rows.length, " \u53F0\uFF09"), /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u8BBE\u5907"), /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u6280\u80FD\u7B49\u7EA7"), /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u4E3B\u64CD\u8BBE\u5907"), /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u64CD\u4F5C"))), /*#__PURE__*/React.createElement("tbody", null, rows.map(row => /*#__PURE__*/React.createElement("tr", {
       key: row.machine_ref
     }, /*#__PURE__*/React.createElement("td", null, row.business_code, " \xB7 ", row.label), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(PermissionSelect, {
       value: row.skill_level,
@@ -267,7 +275,7 @@
       icon: "refresh-cw",
       disabled: disabled,
       onClick: reload
-    }, "\u5237\u65B0\u8BBE\u5907\u5173\u8054"), done && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", {
+    }, window.WorkbenchTerms.refresh_latest), done && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", {
       role: "status"
     }, refreshState.done ? '已刷新人员资料，设备关联已保存。' : refreshState.loading ? '正在刷新人员资料…' : '请刷新保存结果，核对人员资料。'), /*#__PURE__*/React.createElement(ErrorBox, {
       error: refreshState.error

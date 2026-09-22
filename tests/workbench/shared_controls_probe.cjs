@@ -8,7 +8,7 @@ if (!output || path.resolve(output).startsWith(root + path.sep)) throw new Error
 fs.mkdirSync(output, { recursive: true });
 const names = ['resource-contract.js', 'WorkbenchReferences.jsx', 'WorkbenchGuards.js', 'ResourceControls.jsx', 'WorkbenchGuardHost.jsx',
   'WorkbenchControlBridge.js', 'WorkbenchControls.jsx', 'WorkbenchControlStyles.jsx', 'WorkbenchListControls.jsx', 'WorkbenchDetailPanel.jsx',
-  'ProcessContract.js', 'ProcessStageEditor.jsx', 'PreflightContract.js', 'PreflightControls.jsx', 'PreflightBatchPicker.jsx', 'SystemMaintenanceControls.jsx', 'SystemSampleControls.jsx'];
+  'ProcessContract.js', 'ProcessStageEditor.jsx', 'PreflightContract.js', 'PreflightControls.jsx', 'PreflightBatchPicker.jsx', 'SystemRestoreStatus.js', 'SystemMaintenanceAPI.js', 'SystemMaintenanceControls.jsx'];
 const sources = names.map(name => ({ path: 'frontend/workbench/app/' + name, code: fs.readFileSync(path.join(root, 'frontend/workbench/app', name), 'utf8') }));
 const compiled = compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'), sources, check_combined: true });
 const styles = fs.readdirSync(path.join(root, 'frontend/workbench/app/styles')).filter(name => /^(00|20|21|22)-/.test(name))
@@ -38,7 +38,7 @@ const cases={fields:()=>h(Fields),duplicate:()=>h(DuplicateSummary),detail:()=>h
  icons:()=>h('div',null,['chevron-up','chevron-down','trash-2','arrow-left','copy','filter'].map(icon=>h(R.Button,{icon,key:icon},icon)),
    h(R.Button,{icon:'arrow-right',className:'linkbtn'},h('span',null,'确认路线')),
    h(SystemMaintenanceControls.Button,{icon:'trash-2'},'删除备份'),h(R.Button,{icon:'x','aria-label':'关闭'}),h(R.Button,{icon:'minus','aria-label':'缩小'})),
- sample:()=>h(SMRecords,{kind:'backups',source:'sample',pageSize:20,onPageSize:()=>{},exportLogs:()=>{},downloadReady:true}),
+ maintenanceReason:()=>h(SystemMaintenanceControls.Button,{icon:'trash-2',reason:'上次维护操作还没有确认结果。请先点「查询结果」。'},'删除备份'),
  search:()=>h(ProcessStageEditor.Search,{paging:{query:'',setQuery:query=>probe.calls.push(query)}}),
  filters:()=>h('div',{className:'preflight-workspace'},h(PreflightBatchPicker,{adapter:{list:async scope=>({data:{entities:[],page:{number:1,size:20,total:0,pages:0}},meta:{snapshot_ref:'snapshot'}})},selected:[],onChange:()=>{}})),
  editor:()=>h(ProcessStageEditor.Groups,{rows:[{ref:'group',start_sequence:5,end_sequence:20,merge_mode:'merged',supplier_label:'表处理厂',remark:'',issues:[]}],totals:{group:'2'},onTotal:()=>{}}),
@@ -46,7 +46,7 @@ const cases={fields:()=>h(Fields),duplicate:()=>h(DuplicateSummary),detail:()=>h
  pager:()=>h(L.Pager,{page:{number:2,pages:3,total:64,size:25},sizes:[10,25,50],unit:'条',label:'系统',sizeLabel:'每页数量',showPageJump:true,jumpActionLabel:'跳转系统页',onPage:page=>probe.calls.push({page}),onSize:size=>probe.calls.push({size})}),
  cursor:()=>h(L.Pager,{mode:'cursor',label:'计划目录',hasPrevious:false,hasNext:true,onPrevious:()=>probe.calls.push('previous'),onNext:()=>probe.calls.push('next')}),
  loading:()=>h(L.EmptyState,{kind:'loading'}),filtered:()=>h(L.EmptyState,{kind:'filtered',action:h(R.Button,{onClick:()=>probe.calls.push('clear')},'清除筛选')}),
- reason:()=>h('div',null,h(R.Button,{reason:'请先选择记录。'},'导出'),h(R.Button,{reason:'既有可见说明。',reasonDisplay:'tooltip'},'旧入口')),
+ reason:()=>h('div',null,h(R.Button,{reason:'请先选择记录。'},'导出'),h(R.Button,{reason:'既有可见说明。',reasonDisplay:'tooltip',onClick:()=>probe.calls.push('old')},'旧入口')),
  reasonNarrow:()=>h('div',{id:'reason-cell',style:{width:110,whiteSpace:'nowrap'}},h(R.Button,{reason:'批次已有计划或执行事实，不能删除；请先核实当前记录。'},'删除'))};
 window.mount=name=>{if(host)host.unmount();probe.calls=[];probe.closed=0;host=ReactDOM.createRoot(document.getElementById('fixture'));
  host.render(h(React.Fragment,null,h(WorkbenchControlStyles),h(WorkbenchGuardHost),cases[name]()));};
@@ -93,10 +93,15 @@ async function mount(name) { await page.evaluate(name => window.mount(name), nam
         return {gap:label.left-icon.right,offset:Math.abs((icon.top+icon.bottom-label.top-label.bottom)/2)};
       });
       assert(geometry.gap>=4 && geometry.offset<=1,JSON.stringify(geometry));
-      await mount('sample');
+      // 管理样例（SystemSampleControls）已删除：系统管理自己的 Button 带原因时固定为 inline 说明，正文只留「删除备份」、原因放旁边的 .wb-reason，
+      // 同时把「标签：原因」拼进 aria-label（SystemMaintenanceControls.Button），所以按名字找仍是「删除备份：…」。
+      await mount('maintenanceReason');
       const deletion=page.getByRole('button',{name:/^删除备份：/});
+      assert.equal(await deletion.getAttribute('aria-label'),'删除备份：上次维护操作还没有确认结果。请先点「查询结果」。');
       assert(await deletion.isDisabled());assert.equal(await deletion.locator('svg').getAttribute('data-wb-icon'),'trash-2');
       assert.equal((await deletion.textContent()).trim(),'删除备份');
+      assert.equal(await deletion.getAttribute('data-wb-disabled-reason'),'上次维护操作还没有确认结果。请先点「查询结果」。');
+      assert.equal(await page.locator('.wb-button-reason > .wb-reason').innerText(),'上次维护操作还没有确认结果。请先点「查询结果」。');
     });
     await check('process-search-icon-stays-inside-padding',async()=>{
       await mount('search');
@@ -163,8 +168,12 @@ async function mount(name) { await page.evaluate(name => window.mount(name), nam
       const id = await button.getAttribute('aria-describedby'); assert(id); assert.equal(await page.locator('[id="' + id + '"]').innerText(), '请先选择记录。');
       assert.equal(await button.getAttribute('data-wb-disabled-reason'), '请先选择记录。');
       // tooltip mode: reason stays out of the visible row (title + visually hidden description), name still carries it.
+      // The button stays focusable (aria-disabled) so keyboard users can reach the reason; activation is ignored.
       const tooltip = page.getByRole('button', { name: '旧入口：既有可见说明。', exact: true });
       assert(await tooltip.isDisabled()); assert.equal(await tooltip.getAttribute('title'), '既有可见说明。');
+      assert.equal(await tooltip.getAttribute('aria-disabled'), 'true'); assert.equal(await tooltip.evaluate(node => node.disabled), false);
+      await tooltip.focus(); assert(await tooltip.evaluate(node => node === document.activeElement), 'tooltip reason must be reachable by keyboard');
+      await tooltip.dispatchEvent('click'); assert.deepEqual(await page.evaluate(() => probe.calls), [], 'aria-disabled button must ignore activation');
       const hidden = await tooltip.getAttribute('aria-describedby'); assert(hidden);
       const description = page.locator('[id="' + hidden + '"]');
       assert.equal(await description.evaluate(node => node.textContent), '既有可见说明。');

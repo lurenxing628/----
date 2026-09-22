@@ -6,8 +6,8 @@
     S = window.TrialAdoptionHistoryState;
   const labels = {
     all: '全部采用',
-    current: '当前正式',
-    historical: '历史正式',
+    current: window.WorkbenchTerms.current_official,
+    historical: window.WorkbenchTerms.historical_official,
     unavailable: '计划不可用'
   };
   const text = value => value === null ? '暂无数据' : value;

@@ -105,13 +105,14 @@ async function selectFirstPlanTask(page) {
 async function plans(page) {
   await page.goto(origin);
   await check('plan-read-loading-cancel-failure-missing', async () => {
-    await mountPlan(page, { hold: 'workspace' });
+    // The board lives on the gantt tab now; cases that read bars or the search box mount that tab explicitly.
+    await mountPlan(page, { view: 'gantt', hold: 'workspace' });
     await page.getByText('正在读取所选计划、工序安排和分析结果…', { exact: true }).waitFor();
     await page.getByRole('button', { name: '取消计划读取', exact: true }).click();
     await page.getByText('计划读取已取消。', { exact: true }).waitFor();
     await page.evaluate(() => { fixture.held.splice(0).forEach(resolve => resolve()); });
     assert.equal(await page.locator('[data-plan-gantt]').count(), 0);
-    await mountPlan(page, { workspaceFailure: '所选计划读取失败。' });
+    await mountPlan(page, { view: 'gantt', workspaceFailure: '所选计划读取失败。' });
     await page.getByText('所选计划读取失败。', { exact: true }).waitFor();
     assert.equal(await page.locator('[data-plan-gantt]').count(), 0);
     await page.evaluate(() => { fixture.spec.workspaceFailure = null; delete fixture.adapter.workspace; });
@@ -119,7 +120,7 @@ async function plans(page) {
     await page.getByText('暂时无法读取计划，请稍后重试。', { exact: true }).waitFor();
   });
   await check('plan-scope-export-not-search-no-json-change', async () => {
-    await mountPlan(page, { context: { plan_ref: F.ref(1), range_start: '2026-09-09T23:00:00', range_end: '2026-09-10T01:00:00' } });
+    await mountPlan(page, { view: 'gantt', context: { plan_ref: F.ref(1), range_start: '2026-09-09T23:00:00', range_end: '2026-09-10T01:00:00' } });
     await page.locator('[data-plan-gantt]').waitFor();
     await page.getByText(/显示所选时间段内的工序安排/).waitFor();
     await page.getByRole('searchbox').fill('钻孔');
@@ -147,18 +148,21 @@ async function plans(page) {
     await page.getByRole('dialog').getByRole('button', { name: '取消', exact: true }).click();
   });
   await check('plan-unknown-analysis-not-zero-or-complete', async () => {
-    await mountPlan(page, { unknown: true }); await page.locator('[data-plan-gantt]').waitFor();
+    // The projection tables live on the analysis tab; the task detail is reached through the board on the gantt tab.
+    await mountPlan(page, { unknown: true }); await page.locator('section[aria-label="计划分析"]').waitFor();
+    assert.equal(await page.locator('[data-plan-gantt]').count(), 0);
     const table = page.getByRole('table', { name: '交付风险列表' });
     assert((await table.innerText()).includes('暂无数据')); assert((await table.innerText()).includes('已安排部分结束于'));
-    await selectFirstPlanTask(page);
-    assert((await page.locator('[data-plan-inspector]').innerText()).includes('已排工序结束时间：'));
     await page.getByRole('button', { name: '资源负荷', exact: true }).click();
     assert((await page.getByRole('region', { name: '计划分析', exact: true }).innerText()).includes('占用率 = 班表内已占时间 ÷ 可用时间'));
     assert((await page.getByRole('table', { name: '资源负荷列表' }).innerText()).includes('无法核实'));
     await shot(page, 'plan-unknown-analysis');
+    await mountPlan(page, { view: 'gantt', unknown: true }); await page.locator('[data-plan-gantt]').waitFor();
+    await selectFirstPlanTask(page);
+    assert((await page.locator('[data-plan-inspector]').innerText()).includes('已排工序结束时间：'));
   });
   await check('plan-initial-comparison-keeps-unverified-boundaries', async () => {
-    await mountPlan(page, { context: { plan_ref: F.ref(3) } }); await page.locator('[data-plan-gantt]').waitFor();
+    await mountPlan(page, { view: 'gantt', context: { plan_ref: F.ref(3) } }); await page.locator('[data-plan-gantt]').waitFor();
     await selectFirstPlanTask(page);
     await page.getByRole('button', { name: '查看初始安排', exact: true }).click();
     const detail = page.locator('[data-plan-inspector]');

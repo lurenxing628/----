@@ -30,12 +30,16 @@
     if (plan) return plan;
     return range(data.items.flatMap(item => item.execution ? item.execution.reports.flatMap(report => [M.instant(report.actual_start), M.instant(report.actual_end)]) : []));
   }
+  // The default window follows the data but never opens beyond 64x: a few hours inside a months-long axis otherwise
+  // started at 1024x with a board hundreds of thousands of pixels wide and a scrollbar thumb too small to grab.
+  // Manual zoom still reaches 1024.
+  const INITIAL_ZOOM_MAX = 64;
   function initial(data, model) {
     const target = dataRange(data);
     if (!target) return { zoom: 1, center: .5 };
     const span = model.end - model.start, pad = Math.max(60000, (target.end - target.start) * .08);
     const start = Math.max(model.start, target.start - pad), end = Math.min(model.end, target.end + pad);
-    return { zoom: Math.max(1, Math.min(1024, span / Math.max(60000, end - start))), center: ((start + end) / 2 - model.start) / span };
+    return { zoom: Math.max(1, Math.min(INITIAL_ZOOM_MAX, span / Math.max(60000, end - start))), center: ((start + end) / 2 - model.start) / span };
   }
   function anchor(data, model, selectedRef, reportRef) {
     const selected = data.items.find(item => item.task.task_ref === selectedRef);

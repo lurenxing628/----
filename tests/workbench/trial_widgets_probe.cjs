@@ -52,17 +52,22 @@ const evidence = async () => (await page.request.get(origin + '/fixture/evidence
 const control = action => page.request.post(origin + '/fixture/control', { data: { action } });
 const state = () => page.evaluate(() => TrialAPI.pending());
 async function shot(name) { const file = path.join(output, variant + '-' + name + '.png'); await page.screenshot({ path: file, fullPage: true, animations: 'disabled' }); report.screenshots.push(file); }
+// One 导出 button opens the format dialog; each file starts from its own button inside it and the dialog closes on success.
+const EXPORT_CSV = '下载 CSV（方案对比）', EXPORT_JSON = '下载 JSON（原始数据）';
+async function exportDialog() { await button('导出').click(); const dialog = page.getByRole('dialog', { name: '导出试调方案', exact: true }); await dialog.waitFor(); return dialog; }
 async function exportsFor(data, entry) {
   const expected = JSON.parse(JSON.stringify(data, (key, value) => key === 'write_context' ? undefined : value));
   const dto = path.join(output, variant + '-' + entry + '-dto.json'); fs.writeFileSync(dto, JSON.stringify(expected, null, 2));
   const before = await evidence();
-  for (const name of ['导出对比', '导出原始数据']) {
-    const pending = page.waitForEvent('download'); await button(name).click(); const download = await pending;
+  for (const name of [EXPORT_CSV, EXPORT_JSON]) {
+    const dialog = await exportDialog();
+    const pending = page.waitForEvent('download'); await dialog.getByRole('button', { name, exact: true }).click(); const download = await pending;
     const filename = download.suggestedFilename(), dest = path.join(output, variant + '-' + entry + '-' + filename);
-    await download.saveAs(dest);
+    await download.saveAs(dest); await dialog.waitFor({ state: 'hidden' });
+    await page.getByRole('status').filter({ hasText: '已交给浏览器下载：' + filename }).waitFor();
     const item = { variant, entry, button: name, filename, path: dest, dto, task_count: data.task_count };
     report.downloads.push(item);
-    if (name === '导出对比') {
+    if (name === EXPORT_CSV) {
       assert.equal(filename, '方案试调对比.csv');
       const bytes = fs.readFileSync(dest); assert.deepEqual([...bytes.subarray(0, 3)], [239, 187, 191]);
       assert(!bytes.toString('utf8').includes('write_context')); assert(!bytes.toString('utf8').includes('write_token'));
@@ -210,7 +215,7 @@ async function basic() {
   await page.getByRole('tab', { name: '人员', exact: true }).click(); await shortTaskCoverage(draft, 'person-gantt', await geometry('person-gantt'));
   await page.getByRole('tab', { name: '批次', exact: true }).click(); await shortTaskCoverage(draft, 'batch-gantt', await geometry('batch-gantt'));
   await page.getByRole('tab', { name: '设备', exact: true }).click();
-  await button('放大甘特').click(); await button('缩小甘特').click();
+  await button('放大试调时间轴').click(); await button('缩小试调时间轴').click();
   await selectTask('B2', 1); assert(await button('调整此工序').isDisabled());
   await editor(); await fill(); await geometry('editor'); await shot('editor');
   const changed = await saveChange(), task = changed.tasks.find(t => t.batch_id === 'B1' && t.sequence === 1), original = draft.tasks.find(t => t.task_ref === task.task_ref);
@@ -224,7 +229,8 @@ async function basic() {
     return alterations.map(alter => { const copy = JSON.parse(JSON.stringify(data)); alter(copy); try { TrialContract.workspace(copy); return false; } catch (_) { return true; } });
   }, changed); assert(rejected.every(Boolean)); done('incomplete-or-wrong-identity-dto-rejected');
   await page.getByRole('tab', { name: '调整记录', exact: true }).click(); await page.getByRole('table', { name: '调整记录', exact: true }).waitFor();
-  assert((await page.getByRole('table', { name: '调整记录', exact: true }).innerText()).includes('13:00:00'));
+  const adjustments = await page.getByRole('table', { name: '调整记录', exact: true }).innerText();
+  assert(adjustments.includes('2026-09-09 13:00') && !adjustments.includes('2026-09-09 13:00:00'), 'Adjustment times keep minute precision');
   await page.getByRole('tab', { name: '资源占用', exact: true }).click(); await page.getByRole('table', { name: '资源占用', exact: true }).waitFor(); await geometry('capacity'); await shot('capacity');
   await page.getByRole('tab', { name: '约束问题', exact: true }).click();
   assert.equal(await page.getByText('此功能尚未开通：保存只留下试调方案，不会改变正式计划。', { exact: true }).count(), 0);

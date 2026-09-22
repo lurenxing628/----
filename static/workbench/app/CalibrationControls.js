@@ -6,14 +6,30 @@
     Icon,
     ErrorBox
   } = window.ResourceControls;
-  const text = (value, missing = '未知') => value === null || value === undefined ? missing : String(value);
-  const hours = (value, missing = '未填写') => value === null ? missing : text(value) + ' 小时';
+  const missingValue = value => value === null || value === undefined;
+  const text = (value, missing = '未知') => missingValue(value) ? missing : String(value);
+  // 数字一律走 WorkbenchFormat：小时最多 3 位小数、去掉尾零；缺值只写缺值说明，不拼单位。
+  const amount = (value, missing = '未知') => missingValue(value) ? missing : window.WorkbenchFormat.number(value, {
+    digits: 3,
+    trim: true
+  });
+  const hours = (value, missing = '未填写') => missingValue(value) ? missing : window.WorkbenchFormat.hours(value, {
+    digits: 3,
+    trim: true
+  });
+  const unitHours = (value, missing = '未填写') => missingValue(value) ? missing : hours(value) + '/件';
+  const percent = (value, missing = '未计算') => missingValue(value) ? missing : (value > 0 ? '+' : '') + window.WorkbenchFormat.percent(value / 100, {
+    digits: 1,
+    trim: true
+  });
   const source = value => ({
     internal: '自制',
     external: '外协',
     unknown: '未确认'
   })[value] || '未确认';
+  const statusText = value => value === 'insufficient_data' ? '数据不足' : '已有建议';
   const writeReason = '请先检查所选模板是否可采用。';
+  const viewReason = '当前来源暂不能查看。';
   function useRead(load, identity, adapter, enabled = true) {
     const [state, setState] = React.useState({
       result: null,
@@ -185,7 +201,10 @@
     onResize,
     total
   }) {
-    const columns = [['part_no', '图号 / 零件', 240], ['operation_label', '工序 / 来源', 210], ['old_unit_hours', '原定额（小时/件）', 175], ['suggested_unit_hours', '建议（小时/件）', 160], ['sample_count', '可用记录数', 125], ['absolute_deviation_percent', '偏差', 125], ['status', '状态', 125]];
+    // 默认列宽（B1 样式包 2026-09-21 核定）：905 + 详情列 60 = 965，1280 视口整表放得下；
+    // 每个表头文字按 13px 字号加 16px 内距都放得进对应宽度，放不下时缩短文案而不是压宽度。
+    const columns = [['part_no', '图号 / 零件', 190], ['operation_label', '工序 / 来源', 160], ['old_unit_hours', '原定额（小时/件）', 145], ['suggested_unit_hours', '建议（小时/件）', 130], ['sample_count', '可用记录数', 95], ['absolute_deviation_percent', '偏差', 90], ['status', '状态', 95]];
+    const actionWidth = 60;
     const width = (key, value) => widths[key] || value;
     return /*#__PURE__*/React.createElement("div", {
       className: "ca-table-scroll wb-table-frame",
@@ -196,7 +215,7 @@
       className: "ca-table",
       "aria-label": "\u6821\u51C6\u660E\u7EC6",
       style: {
-        minWidth: 60 + columns.reduce((sum, [key,, value]) => sum + width(key, value), 0)
+        minWidth: actionWidth + columns.reduce((sum, [key,, value]) => sum + width(key, value), 0)
       }
     }, /*#__PURE__*/React.createElement("caption", {
       className: "wb-visually-hidden"
@@ -228,7 +247,10 @@
       scopeTransform: window.CalibrationAPI.facetScope
     }))), /*#__PURE__*/React.createElement("th", {
       scope: "col",
-      className: "ca-action"
+      className: "ca-action",
+      style: {
+        width: actionWidth
+      }
     }, "\u8BE6\u60C5"))), /*#__PURE__*/React.createElement("tbody", null, rows.map(row => /*#__PURE__*/React.createElement("tr", {
       key: row.suggestion_ref,
       "data-ref": row.suggestion_ref,
@@ -240,22 +262,21 @@
       onClick: () => onPart(row)
     }, row.part_no), /*#__PURE__*/React.createElement("small", null, row.part_name)), /*#__PURE__*/React.createElement("td", null, row.sequence, " \xB7 ", row.operation_label, /*#__PURE__*/React.createElement("small", null, source(row.source))), /*#__PURE__*/React.createElement("td", {
       className: "ca-number"
-    }, text(row.old_unit_hours, '未填写')), /*#__PURE__*/React.createElement("td", {
+    }, amount(row.old_unit_hours, '未填写')), /*#__PURE__*/React.createElement("td", {
       className: "ca-number"
-    }, text(row.suggested_unit_hours, '暂无建议')), /*#__PURE__*/React.createElement("td", {
+    }, amount(row.suggested_unit_hours, '暂无建议')), /*#__PURE__*/React.createElement("td", {
       className: "ca-number"
     }, row.sample_count), /*#__PURE__*/React.createElement("td", {
-      className: "ca-number",
-      style: {
-        color: row.over_20_percent ? 'var(--ui-danger-text)' : 'var(--ui-info-muted)'
-      }
-    }, row.deviation_percent === null ? '未计算' : (row.deviation_percent > 0 ? '+' : '') + row.deviation_percent + '%'), /*#__PURE__*/React.createElement("td", null, row.status === 'insufficient_data' ? '数据不足' : '待复核'), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Button, {
+      className: 'ca-number ' + (row.over_20_percent ? 'ca-deviation-over' : 'ca-deviation-within')
+    }, percent(row.deviation_percent)), /*#__PURE__*/React.createElement("td", null, statusText(row.status)), /*#__PURE__*/React.createElement("td", {
+      className: "ca-action"
+    }, /*#__PURE__*/React.createElement(Button, {
       icon: "arrow-right",
       className: "mini",
       "aria-label": '查看 ' + row.part_no + ' ' + row.sequence + ' ' + row.operation_label,
       disabled: disabled,
       reasonDisplay: "tooltip",
-      reason: canView && row.capabilities.view === true ? '' : '查看权限尚未确认，暂不能打开。',
+      reason: canView && row.capabilities.view === true ? '' : viewReason,
       onClick: () => onSelect(row.suggestion_ref)
     })))))), !rows.length && /*#__PURE__*/React.createElement(window.WorkbenchListControls.EmptyState, {
       kind: "empty",
@@ -273,8 +294,13 @@
     Table,
     useRead,
     text,
+    amount,
     hours,
+    unitHours,
+    percent,
     source,
-    writeReason
+    statusText,
+    writeReason,
+    viewReason
   };
 })();

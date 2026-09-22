@@ -4,12 +4,7 @@
   const A = window.RunHistoryAPI;
   const labels = {
     all: '全部状态',
-    queued: '等待计算',
-    running: '正在计算',
-    complete: '计算完成',
-    partial: '部分完成',
-    failed: '计算失败',
-    interrupted: '已中断'
+    ...window.WorkbenchTerms.run_statuses
   };
   const fields = {
     start_date: '排产起日',
@@ -198,11 +193,9 @@
       "aria-label": "\u6392\u4EA7\u8BB0\u5F55"
     }, /*#__PURE__*/React.createElement("caption", {
       className: "wb-visually-hidden"
-    }, "\u6392\u4EA7\u8BB0\u5F55"), /*#__PURE__*/React.createElement("colgroup", null, [19, 18, 25, 19, 6, 6, 7].map((width, i) => /*#__PURE__*/React.createElement("col", {
-      key: i,
-      style: {
-        width: width + '%'
-      }
+    }, "\u6392\u4EA7\u8BB0\u5F55"), /*#__PURE__*/React.createElement("colgroup", null, ['submitted', 'state', 'scope', 'times', 'candidates', 'tasks', 'actions'].map(key => /*#__PURE__*/React.createElement("col", {
+      key: key,
+      className: 'rh-col-' + key
     }))), /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
       scope: "col",
       className: "wb-col-key"

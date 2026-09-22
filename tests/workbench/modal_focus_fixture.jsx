@@ -56,9 +56,15 @@
       </div></Modal>;
   }
   function Stack({ spec }) {
-    const [open, setOpen] = React.useState(false);
-    focusFixture.setOpen = setOpen;
-    return <><Button id="flow-trigger" disabled={spec.disableTrigger && open} onClick={() => setOpen(true)}>打开层 1</Button>{open && <Layer level={1} spec={spec} />}</>;
+    const [open, setOpen] = React.useState(false), [busy, setBusy] = React.useState(false), [trigger, setTrigger] = React.useState(true);
+    focusFixture.setOpen = setOpen; focusFixture.removeTrigger = () => setTrigger(false);
+    function launch() {
+      if (!spec.asyncOpen) { setOpen(true); return; }
+      // Mirrors a workspace preview: a busy commit disables the launcher first and the dialog opens only after the reply.
+      setBusy(true); setTimeout(() => { setBusy(false); setOpen(true); }, 30);
+    }
+    const stack = <>{trigger && <Button id="flow-trigger" disabled={spec.disableTrigger && open || busy} onClick={launch}>打开层 1</Button>}{open && <Layer level={1} spec={spec} />}</>;
+    return spec.panel ? <div id="focus-panel" tabIndex={-1}>{stack}</div> : stack;
   }
   function Siblings() {
     const [open, setOpen] = React.useState(false), [child, setChild] = React.useState(false);

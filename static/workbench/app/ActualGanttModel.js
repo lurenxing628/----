@@ -5,9 +5,10 @@
   // UTC is only a numeric coordinate system here, never the wire time zone.
   const instant = value => value ? Date.parse(value + 'Z') : NaN;
   const wire = value => new Date(value).toISOString().slice(0, 19);
-  const time = value => window.WorkbenchFormat.dateTime(value, {
-    seconds: true
-  });
+  // Same label rule as the field records: minute precision, seconds shown only when they are not :00.
+  const time = value => window.FieldContract.date(value);
+  // Readable file stamp for downloads: 2026-09-21_1646 instead of the raw wire time.
+  const fileStamp = value => value.slice(0, 10) + '_' + value.slice(11, 16).replace(':', '');
   const number = value => window.WorkbenchFormat.number(value, {
     digits: 2
   });
@@ -16,11 +17,7 @@
   });
   const pieceLabel = task => task.piece_id === null ? '共同工序' : '分件 ' + task.piece_id;
   const taskLabel = task => task.batch_id + ' · ' + task.sequence + ' ' + task.process_label + ' · ' + pieceLabel(task);
-  const quantityReasons = {
-    plan_target_not_recorded: '旧计划未记录原数量证据',
-    plan_target_unavailable: '原计划数量证据不可用',
-    plan_target_invalid: '原计划数量证据无效'
-  };
+  const quantityReasons = window.FieldContract.quantityReasons;
   // 报工状态只有 FieldContract 那一份词表，本页不再另起一套叫法。
   const states = window.FieldContract.states;
   const views = {
@@ -295,12 +292,12 @@
   function describe(item, labels, report) {
     const t = item.task,
       e = item.execution;
-    const result = [taskLabel(t), '计划应做：' + number(t.quantity) + ' 件 · 批次：' + number(t.batch_quantity) + ' 件', '原计划：' + time(t.start) + ' → ' + time(t.end), '计划资源：' + (labels.get(t.machine_ref) || '设备未填写') + ' / ' + (labels.get(t.operator_ref) || '人员未填写')];
+    const result = [taskLabel(t), '计划应做：' + number(t.quantity) + ' 件 · 批次：' + number(t.batch_quantity) + ' 件', '原计划：' + time(t.start) + ' 至 ' + time(t.end), '计划资源：' + (labels.get(t.machine_ref) || '设备未填写') + ' / ' + (labels.get(t.operator_ref) || '人员未填写')];
     if (window.PointContract.isPoint(t)) result.push('零工时工序，无资源占用。');
     if (t.quantity_reason) result.push(quantityReasons[t.quantity_reason]);
     if (!e) return result.concat('报工记录不可用');
     result.push(states[e.execution_state] + ' · 已知完成 ' + number(e.known_completed_quantity) + ' 件', '整道实际完工：' + time(e.confirmed_finish), '剩余数量：' + number(e.remaining_quantity), e.completion_basis === 'legacy_finish_event' ? '历史完工记录确认完成；当时的数量与工时可能没有记录' : '完成依据：逐次报工记录');
-    if (report) result.push('本次报工：' + report.report_no, '实际：' + time(report.actual_start) + ' → ' + (report.actual_end ? time(report.actual_end) : '本次结束未填写'), '本次数量：' + number(report.completed_quantity) + ' 件 · 有效工时：' + hours(report.effective_processing_hours), '实际资源：' + (labels.get(report.actual_machine_ref) || '设备未填写') + ' / ' + (labels.get(report.actual_operator_ref) || '人员未填写'), '备注：' + (report.remark || '未填写'));
+    if (report) result.push('本次报工：' + report.report_no, '实际：' + time(report.actual_start) + ' 至 ' + (report.actual_end ? time(report.actual_end) : '本次结束未填写'), '本次数量：' + number(report.completed_quantity) + ' 件 · 有效工时：' + hours(report.effective_processing_hours), '实际资源：' + (labels.get(report.actual_machine_ref) || '设备未填写') + ' / ' + (labels.get(report.actual_operator_ref) || '人员未填写'), '备注：' + (report.remark || '未填写'));
     return result;
   }
   function markTitle(mark, item, labels) {
@@ -328,6 +325,7 @@
     instant,
     wire,
     time,
+    fileStamp,
     number,
     hours,
     pieceLabel,

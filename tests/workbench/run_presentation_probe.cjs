@@ -55,13 +55,18 @@ async function checkLayout(name, gantt = true) {
   assert.deepEqual(failures, []); await shot(name);
 }
 async function download(fmt, data, name) {
-  const pending = page.waitForEvent('download'); await button(fmt.toUpperCase()).click(); const file = await pending;
+  // One 导出 button opens the format dialog; the file starts from 下载 CSV / 下载 XLSX inside it.
+  await page.locator('[data-run-candidate-workspace]').getByRole('button', { name: '导出', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: '导出候选方案', exact: true }); await dialog.waitFor();
+  await dialog.getByRole('radio', { name: fmt.toUpperCase(), exact: true }).check();
+  const pending = page.waitForEvent('download'); await dialog.getByRole('button', { name: '下载 ' + fmt.toUpperCase(), exact: true }).click(); const file = await pending;
+  await dialog.waitFor({ state: 'hidden' });
   const filename = path.join(output, variant + '-' + name + '.' + fmt); await file.saveAs(filename); assert.equal(await file.failure(), null);
   const unplanned = data.unplanned_operations || [];
   report.downloads.push({ path: filename, format: fmt, task_count: data.task_count, row_count: data.task_count + unplanned.length,
     candidate_ref: data.candidate.candidate_ref, run_ref: data.candidate.run_ref, row_refs: data.tasks.map(t => t.row_ref),
     operation_refs: [...data.tasks, ...unplanned].map(t => t.operation_ref), starts: data.tasks.map(t => t.start) });
-  await page.getByText(/^已下载 \d+ 条记录/).waitFor(); done('verified-download-' + fmt + '-' + name);
+  await page.getByText(/^已交给浏览器下载：.+，共 \d+ 条记录/).waitFor(); done('verified-download-' + fmt + '-' + name);
 }
 async function candidates() {
   await restore(fixtures.complete); await page.locator('[data-candidate-lane]').first().waitFor();
@@ -113,7 +118,7 @@ async function candidates() {
   for (const ref of fixtures.complete.refs) {
     await catalog();
     await button('查看候选 ' + ref).click();
-    await page.waitForFunction(ref => document.querySelector('[data-candidate-ref="' + ref + '"]')?.getAttribute('aria-selected') === 'true', ref);
+    await page.waitForFunction(ref => document.querySelector('[data-candidate-ref="' + ref + '"]')?.getAttribute('aria-current') === 'true', ref);
     await page.getByRole('heading', { name: '候选工作区', exact: true }).waitFor();
     const data = (await realWorkspace(ref)).data;
     assert.equal(await page.locator('[data-candidate-task-list] [data-row-ref]').count(), data.task_count);

@@ -28,7 +28,7 @@ for (const lane of tracks) {
 }
 const model = M.layout(data, view, '2026-03-08T06:00:00'); assert.equal(model.groups.length, 2);
 assert.ok(M.describe(item, model.labels).some(line => line.includes('计划应做：未知 件 · 批次：未知 件')));
-assert.ok(M.describe(item, model.labels).some(line => line.includes('旧计划未记录原数量证据')));
+assert.ok(M.describe(item, model.labels).some(line => line.includes('原计划未记录应做数量')));
 const axisStart = M.instant(data.axis_span.start), axisEnd = M.instant(data.axis_span.end);
 const pad = Math.max(60000, (axisEnd - axisStart) * .04);
 assert.equal(axisEnd - axisStart, 8 * 3600000, 'Original business span remains eight hours');

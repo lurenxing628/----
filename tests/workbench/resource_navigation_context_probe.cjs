@@ -7,7 +7,7 @@ if (!output) throw new Error('Pass a temporary artifact directory');
 fs.mkdirSync(output, { recursive: true });
 const files = ['WorkbenchPageContext.jsx', 'resource-contract.js', 'resource-api.js', 'resource-session.js', 'WorkbenchFormat.js', 'WorkbenchTerms.js', 'WorkbenchReferences.jsx', 'WorkbenchGuards.js', 'ResourceControls.jsx', 'WorkbenchGuardHost.jsx', 'WorkbenchControlBridge.js', 'WorkbenchControls.jsx','WorkbenchListControls.jsx',
   'ResourceTableFilterModel.js', 'ResourceTableFilter.jsx', 'ResourceTableHeader.jsx', 'ResourceDetailRelations.jsx', 'ResourceForms.jsx', 'ResourceTables.jsx', 'ResourceMetrics.jsx', 'ResourceRail.jsx',
-  'CalendarContract.js', 'ResourceWorkspace.jsx', 'CalendarFields.jsx', 'CalendarDayDialog.jsx', 'CalendarRangeDialog.jsx', 'ResourceCalendar.jsx',
+  'CalendarContract.js', 'OperatorCalendarContract.js', 'ResourceWorkspace.jsx', 'CalendarFields.jsx', 'CalendarDayDialog.jsx', 'CalendarRangeDialog.jsx', 'ResourceCalendar.jsx', 'OperatorCalendarPanel.jsx',
   'ResourceMaterialContract.js', 'ResourceFileContract.js', 'ResourceMaterialPreview.jsx', 'ResourceMaterialActions.jsx', 'ResourceFileActions.jsx', 'ResourceCatalogModel.js', 'ResourceCatalogEditor.jsx', 'ResourceCatalog.jsx',
   // ResourceLive.jsx 的 familyLabel 直接读 window.APSCalendarFile.labels / window.APSRelationFile.labels，
   // 这两个模块不在清单里时人员页的附属文件按钮会抛 "Cannot read properties of undefined"。
@@ -43,7 +43,14 @@ function monthData(year,month){const K=APSCalendarContract,days=Array.from({leng
     fields:{type:'work',hours:8,eff:100,allowNormal:'yes',allowUrgent:'yes',note:'原日期说明'},stored:explicit?{day_type:'workday',shift_start:'08:00',shift_end:'16:00',shift_hours:8,efficiency:1,allow_normal:'yes',allow_urgent:'yes'}:null,write_context:wc,
     effective:{is_working:true,window_start:date+'T08:00:00',window_end:date+'T16:00:00'},issues:[]};});
   const cells=[...Array(days[0].weekday).fill(null),...days.map(row=>({date:row.date}))];while(cells.length%7)cells.push(null);
-  return {year,month,time_basis:'factory_local',as_of:'2026-09-09T12:00:00',days,cells,stats:{work_days:days.length,configured:1,overrides:0,weekend_rest:0},previous_month:null,next_month:null};}
+  const previous_month=month===1?{year:year-1,month:12}:{year,month:month-1},next_month=month===12?{year:year+1,month:1}:{year,month:month+1};
+  return {year,month,time_basis:'factory_local',as_of:'2026-09-09T12:00:00',days,cells,stats:{work_days:days.length,configured:1,overrides:0,weekend_rest:0},previous_month,next_month};}
+function operatorMonthData(year,month){const K=APSCalendarContract,days=Array.from({length:K.monthDays(year,month)},(_,i)=>{const date=K.monthKey(year,month)+'-'+String(i+1).padStart(2,'0'),weekday=(new Date(date+'T12:00:00').getDay()+6)%7;
+  return {date,day:i+1,weekday,is_weekend:weekday>=5,is_today:false,explicit:false,calendar_ref:null,day_type:null,shift_start:null,shift_end:null,shift_hours:null,efficiency:null,allow_normal:null,allow_urgent:null,remark:null};});
+  const cells=[...Array(days[0].weekday).fill(null),...days];while(cells.length%7)cells.push(null);
+  const previous_month=month===1?{year:year-1,month:12}:{year,month:month-1},next_month=month===12?{year:year+1,month:1}:{year,month:month+1};
+  return {operator_ref:R(3),year,month,days,cells,stats:{configured:0,work_days:0},previous_month,next_month,
+    write_context:{write_token:'o'.repeat(32),capabilities:Object.fromEntries(APSOperatorCalendar.ACTIONS.map(action=>[action,true])),blocked_reasons:[]}};}
 function list(kind,scope){f.reads.push({type:'list',kind,scope:copy(scope)});const entities=kind==='part'?[part(5),part(6)]:f.records.filter(row=>row.kind===kind&&(!scope.category||row.fields.category===scope.category));
   return env({entities,page:{number:scope.page,size:scope.size,total:entities.length,pages:1,sort:kind==='part'?APSProcessContract.ordering(scope):[]},create_context:wc,
     capabilities:caps,metrics:{counts:{total:2,route:0,source:0,hours:0,ready:2}}});}
@@ -54,7 +61,7 @@ async function detail(kind,ref){f.reads.push({type:'detail',kind,ref});const n=p
   return env(entity,f.spec.demo?'demo':'production');}
 const originalCreate=APSResourceAPI.create;
 APSResourceAPI.create=function(namespace='resources'){const api=originalCreate(namespace);f.adapters[namespace]=api;
-  api.query=async(path,scope)=>{if(path.endsWith('/month')){f.reads.push({type:'month',scope:copy(scope)});return env(monthData(scope.year,scope.month),f.spec.demo?'demo':'production');}
+  api.query=async(path,scope)=>{if(path.endsWith('/month')){f.reads.push({type:'month',scope:copy(scope)});if(f.spec.delayMonth&&scope.month===8)await new Promise(resolve=>f.releaseMonth=resolve);return env(monthData(scope.year,scope.month),f.spec.demo?'demo':'production');}
     const segments=path.split('/');if(segments[0]==='entities'){const decoded={...scope};if(segments[1]==='part')for(const field of ['sort','column_filters'])if(typeof decoded[field]==='string')decoded[field]=JSON.parse(decoded[field]);return segments.length===3?detail(segments[1],segments[2]):list(segments[1],decoded);}
     throw APSResourceContract.failure('Unexpected query '+path);};
   api.list=async(kind,scope)=>list(kind,scope);api.detail=detail;
@@ -73,6 +80,10 @@ window.mountFixture=(spec={})=>{if(viewRoot)viewRoot.unmount();sessionStorage.cl
   f.records=[record('material',1),record('material',12),record('machine',2),record('operator',3),record('supplier',4),record('op_type',10,'internal'),record('op_type',11,'external')];
   if(spec.deleted&&spec.context){f.records=f.records.filter(row=>row.ref!==spec.context.entity_ref);if(spec.context.kind!=='part')f.records.push(record(spec.context.kind,999,spec.context.category));}
   (spec.pending||[]).forEach(pending);viewRoot=ReactDOM.createRoot(document.getElementById('root'));viewRoot.render(h(Harness));};
+window.mountOperatorFixture=()=>{if(viewRoot)viewRoot.unmount();sessionStorage.clear();f=window.fixture={spec:{},reads:[],lookups:[],writes:0,adapters:{},resolved:false,receipts:{},originalPending:{},closed:0};
+  const adapter={query:async(_path,scope)=>{f.reads.push({type:'operator-month',scope:copy(scope)});if(f.spec.delayOperatorRefresh)await new Promise((resolve,reject)=>{f.releaseOperatorRefresh=resolve;f.rejectOperatorRefresh=()=>reject(APSResourceContract.failure('夹具刷新失败'));});if(f.spec.delayOperatorMonth)await new Promise(resolve=>f.releaseOperatorMonth=resolve);return env(operatorMonthData(scope.year,scope.month));}};
+  const command={phase:'idle',locked:false,error:null,result:null,reset:()=>true,submit:()=>{f.writes++;}};
+  viewRoot=ReactDOM.createRoot(document.getElementById('root'));viewRoot.render(h(React.Fragment,null,h(WorkbenchGuardHost),h(OperatorCalendarPanel,{adapter,entity:{ref:R(3),business_code:'OP-3'},source:'production',command,onClose:()=>f.closed++,refreshState:{},onRefresh:()=>{},Feedback:()=>null})));};
 `;
 const html = '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="icon" href="/static/' + manifest.icon + '">' +
   '<script src="/static/' + manifest.theme_script + '"></script>' + manifest.styles.map(file => '<link rel="stylesheet" href="/static/' + file + '">').join('') + '<style>' + sharedStyles.map(item=>item.code).join('\n') + '</style>' +
@@ -155,12 +166,41 @@ async function cases() {
     for (const spec of [{ deletedOperation: true }, { deleted: true }, { wrongRef: true }, { demo: true }]) { await mount({ ...spec, context: ctx('part', 5, { template_operation_ref: ref(51116) }) }); await page.getByRole('dialog').getByRole('alert').waitFor(); assert.equal(await page.locator('[data-process-navigation-stage]').count(), 0); }
   });
   await run('locked-stage-readonly-cannot-confirm', async () => { await mount({ locked: true, context: ctx('part', 5, { stage: 'hours', template_operation_ref: ref(51116) }) }); await focused(ref(51116));
-    await page.getByText('前置路线或归属尚未确认；当前只读定位，不能确认工时。', { exact: true }).first().waitFor(); assert(await page.getByRole('button', { name: /^开始维护/ }).isDisabled()); assert.equal(await page.getByRole('dialog').getByRole('checkbox').count(), 0); await shot('locked-hours');
+    await page.getByText('前置路线或归属尚未确认；当前只能查看，不能确认工时。', { exact: true }).first().waitFor(); assert(await page.getByRole('button', { name: /^开始维护/ }).isDisabled()); assert.equal(await page.getByRole('dialog').getByRole('checkbox').count(), 0); await shot('locked-hours');
   });
   await run('calendar-date-readonly-and-explicit-edit', async () => { await mount({ context: { source: 'production', kind: 'calendar', month: '2026-09', date: '2026-09-09' } });
     await page.getByRole('dialog', { name: '2026-09-09 · 日历详情', exact: true }).waitFor(); assert.equal(await page.getByRole('dialog').locator('input,select,textarea').count(), 0); await shot('calendar-date');
     await button('维护此日').click(); await button('保存配置').waitFor(); await button('取消').click(); assert.equal(await page.getByRole('dialog').count(), 0);
     await mount({ context: { source: 'production', kind: 'calendar', month: '2024-02' } }); await page.getByText('2024 年 2 月', { exact: true }).waitFor(); await idle(); assert.equal(await page.getByRole('dialog').count(), 0);
+  });
+  await run('calendar-new-month-title-never-covers-stale-grid', async () => {
+    await mount({ delayMonth: true, context: { source: 'production', kind: 'calendar', month: '2026-09' } });
+    await page.locator('[data-calendar-date="2026-09-09"]').waitFor(); await button('上一月').click();
+    await page.getByText('2026 年 8 月', { exact: true }).waitFor(); await page.waitForFunction(() => typeof fixture.releaseMonth === 'function');
+    assert.equal(await page.locator('[data-calendar-date^="2026-09-"]').count(), 0);
+    await page.evaluate(() => fixture.releaseMonth()); await page.locator('[data-calendar-date="2026-08-09"]').waitFor();
+  });
+  await run('operator-calendar-dirty-guard-protects-day-and-month-transitions', async () => {
+    await page.evaluate(() => mountOperatorFixture()); const panel=page.getByRole('dialog',{name:'OP-3 · 个人日历',exact:true});
+    await panel.locator('[data-operator-calendar-date]').first().waitFor(); const dates=await panel.locator('[data-operator-calendar-date]').evaluateAll(nodes=>nodes.slice(0,2).map(node=>node.dataset.operatorCalendarDate));
+    await panel.locator('[data-operator-calendar-date="'+dates[0]+'"]').click();await panel.getByLabel('备注',{exact:true}).fill('未保存换日');
+    await panel.locator('[data-operator-calendar-date="'+dates[1]+'"]').click();let guard=page.getByRole('dialog',{name:'离开前确认',exact:true});await guard.waitFor();
+    await guard.getByRole('button',{name:'留在当前页面',exact:true}).click();assert.equal(await panel.getByLabel('备注',{exact:true}).inputValue(),'未保存换日');
+    await panel.locator('[data-operator-calendar-date="'+dates[1]+'"]').click();guard=page.getByRole('dialog',{name:'离开前确认',exact:true});await guard.waitFor();await guard.getByRole('button',{name:'放弃未保存内容并继续',exact:true}).click();
+    await panel.getByText(new RegExp('^'+dates[1]+' ·')).waitFor();await panel.locator('[data-operator-calendar-date="'+dates[0]+'"]').click();await panel.getByLabel('备注',{exact:true}).fill('未保存切模式');
+    await panel.getByRole('button',{name:'按日期范围清除',exact:true}).click();guard=page.getByRole('dialog',{name:'离开前确认',exact:true});await guard.waitFor();await guard.getByRole('button',{name:'放弃未保存内容并继续',exact:true}).click();
+    await panel.getByText('按日期范围清除',{exact:true}).last().waitFor();await panel.getByRole('button',{name:'返回按天维护',exact:true}).click();await panel.getByText('点一天开始维护。',{exact:true}).waitFor();
+    await panel.locator('[data-operator-calendar-date="'+dates[0]+'"]').click();assert.equal(await panel.getByLabel('备注',{exact:true}).inputValue(),'');await panel.getByLabel('备注',{exact:true}).fill('未保存翻月');
+    const title=await panel.locator('.cal-title').innerText(),month=dates[0].slice(0,7);await page.evaluate(()=>{fixture.spec.delayOperatorMonth=true;});await panel.getByRole('button',{name:'上一月',exact:true}).click();guard=page.getByRole('dialog',{name:'离开前确认',exact:true});await guard.waitFor();
+    await guard.getByRole('button',{name:'留在当前页面',exact:true}).click();assert.equal(await panel.locator('.cal-title').innerText(),title);assert.equal(await panel.getByLabel('备注',{exact:true}).inputValue(),'未保存翻月');
+    await panel.getByRole('button',{name:'上一月',exact:true}).click();guard=page.getByRole('dialog',{name:'离开前确认',exact:true});await guard.waitFor();await guard.getByRole('button',{name:'放弃未保存内容并继续',exact:true}).click();
+    await page.waitForFunction(()=>typeof fixture.releaseOperatorMonth==='function');assert.equal(await panel.locator('[data-operator-calendar-date^="'+month+'-"]').count(),0);await page.evaluate(()=>fixture.releaseOperatorMonth());await panel.locator('[data-operator-calendar-date]').first().waitFor();
+  });
+  await run('operator-calendar-dirty-guard-survives-refresh-pending-and-failure', async () => {
+    await page.evaluate(() => mountOperatorFixture());const panel=page.getByRole('dialog',{name:'OP-3 · 个人日历',exact:true});await panel.locator('[data-operator-calendar-date]').first().click();await panel.getByLabel('备注',{exact:true}).fill('刷新也不能丢的草稿');
+    await page.evaluate(()=>{fixture.spec.delayOperatorRefresh=true;});await panel.getByRole('button',{name:'刷新本月',exact:true}).click();await page.waitForFunction(()=>typeof fixture.rejectOperatorRefresh==='function');
+    await panel.locator('.modal-f').getByRole('button',{name:'关闭',exact:true}).click();let guard=page.getByRole('dialog',{name:'离开前确认',exact:true});await guard.waitFor();await guard.getByRole('button',{name:'留在当前页面',exact:true}).click();assert.equal(await page.evaluate(()=>fixture.closed),0);
+    await page.evaluate(()=>fixture.rejectOperatorRefresh());await panel.getByText('夹具刷新失败',{exact:true}).waitFor();await panel.locator('.modal-f').getByRole('button',{name:'关闭',exact:true}).click();guard=page.getByRole('dialog',{name:'离开前确认',exact:true});await guard.waitFor();await guard.getByRole('button',{name:'留在当前页面',exact:true}).click();assert.equal(await page.evaluate(()=>fixture.closed),0);
   });
   await run('calendar-deleted-or-demo-no-default-substitution', async () => { for (const spec of [{ deletedDate: true }, { demo: true }]) { await mount({ ...spec, context: { source: 'production', kind: 'calendar', month: '2026-09', date: '2026-09-09' } }); await page.getByRole('alert').waitFor(); assert.equal(await page.getByRole('dialog').count(), 0); } });
   await run('base-pending-remount-resolve-explicit-continue', async () => {

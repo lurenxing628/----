@@ -18,19 +18,30 @@
     const [record, setRecord] = React.useState(null),
       [error, setError] = React.useState('');
     const [checking, setChecking] = React.useState(false),
-      [verified, setVerified] = React.useState(false);
+      [verified, setVerified] = React.useState(false),
+      [retryPaused, setRetryPaused] = React.useState(false);
     const [paused, setPaused] = React.useState(document.hidden),
       [revision, refresh] = React.useReducer(v => v + 1, 0);
     React.useEffect(() => {
       if (!A.ref(runRef)) return undefined;
+      setRetryPaused(false);
       let disposed = false,
         timer,
         controller,
         querying = false,
         done = false,
-        attempt = 0;
+        attempt = 0,
+        unsettledSince = null;
       function schedule() {
         if (!disposed && !done && !document.hidden) timer = setTimeout(read, A.pollDelay(attempt++));
+      }
+      // Same rule as the candidate panel: 60 seconds of failed reads stop the automatic query; the refresh button restarts it.
+      function unresolved(started) {
+        if (unsettledSince === null) unsettledSince = started;
+        if (Date.now() - unsettledSince >= 60000) {
+          done = true;
+          setRetryPaused(true);
+        }
       }
       async function read() {
         if (disposed || querying || document.hidden || done) return;
@@ -38,17 +49,20 @@
         controller = new AbortController();
         setChecking(true);
         setVerified(false);
+        const started = Date.now();
         try {
           const value = A.run(A.envelope(await api.get(runRef, controller.signal)), runRef);
           if (disposed || controller.signal.aborted) return;
           setRecord(value);
           setVerified(true);
           setError('');
+          unsettledSince = null;
           done = A.terminal(value);
         } catch (problem) {
           if (!disposed && !controller.signal.aborted) {
             setError(A.message(problem));
             setVerified(false);
+            unresolved(started);
           }
         } finally {
           querying = false;
@@ -103,11 +117,13 @@
       paused: paused,
       checking: checking,
       verified: verified,
+      retryPaused: retryPaused,
+      retryHint: "\u8BF7\u70B9\u53F3\u4E0A\u89D2\u7684\u5237\u65B0\u6309\u94AE\u518D\u6B21\u6838\u5BF9\u3002",
       api: api
     }), !record && /*#__PURE__*/React.createElement("p", {
       role: "status",
       className: "rj-muted"
-    }, checking ? '正在读取这次排产。' : paused ? '返回本页后继续读取这次排产。' : '还没读到这次排产的结果。请点右上角的刷新按钮。')));
+    }, checking ? '正在读取这次排产。' : paused ? '返回本页后继续读取这次排产。' : retryPaused ? '已暂停自动查询。请点右上角的刷新按钮再次核对。' : '暂未查到这次排产记录。请点右上角的刷新按钮。')));
   }
   function Navigation({
     children
@@ -132,7 +148,7 @@
     return specified ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Navigation, null, history, /*#__PURE__*/React.createElement(U.Button, {
       icon: "plus",
       onClick: () => onNavigate('run', {})
-    }, "\u5F00\u59CB\u65B0\u6392\u4EA7")), /*#__PURE__*/React.createElement(ReadRun, {
+    }, "\u6267\u884C\u6392\u4EA7")), /*#__PURE__*/React.createElement(ReadRun, {
       key: initialContext.run_ref,
       runRef: initialContext.run_ref,
       api: api
@@ -201,11 +217,12 @@
           history_query: historyQuery
         } : {})
       })
-    }, "\u6392\u4EA7\u8BB0\u5F55"), candidate && /*#__PURE__*/React.createElement(U.Button, {
-      icon: "chart",
-      "aria-pressed": true,
+    }, "\u6392\u4EA7\u8BB0\u5F55"), candidate && /*#__PURE__*/React.createElement("span", {
+      className: "btn scheduling-current",
       "aria-current": "page"
-    }, "\u5019\u9009\u65B9\u6848"), candidate && /*#__PURE__*/React.createElement("span", {
+    }, /*#__PURE__*/React.createElement(window.ResourceControls.Icon, {
+      name: "chart"
+    }), window.WorkbenchTerms.candidate), candidate && /*#__PURE__*/React.createElement("span", {
       className: "scheduling-source"
     }, "\u4E0D\u662F\u6B63\u5F0F\u8BA1\u5212"));
     return /*#__PURE__*/React.createElement(React.Fragment, null, (candidate || history) && navigation, candidate ? /*#__PURE__*/React.createElement(window.RunCandidateWorkspace, {

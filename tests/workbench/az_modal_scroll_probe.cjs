@@ -39,6 +39,8 @@ async function mouseClick(page, selector) {
         await page.getByLabel('选择文件').setInputFiles({ name: 'az-replace.xlsx', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', buffer: Buffer.from('AZ explicit component mock; no parser or persistence assertion') });
         await H.settle(page); await mouseClick(page, '.modal-f button[data-wb-transfer="import"]');
         await page.getByRole('table', { name: '批次导入预检' }).waitFor(); await H.settle(page);
+        // 「先清除再重导」必须先勾选核对，确认按钮才会启用；勾完把弹窗正文滚回顶部，后面的滚轮证明从头开始。
+        await page.getByRole('checkbox', { name: /确认先清除再重导/ }).check(); await page.evaluate(() => { document.querySelector('.modal-b').scrollTop = 0; }); await H.settle(page);
         row.before = await geometry(page); await h.shot(page, variant.name + '-' + action + '-before');
         // Wheel over the nested preview table itself: once the table is exhausted the wheel must chain to the modal body
         // (table frames inside .modal-b do not contain overscroll, 21-table-frame.css), otherwise the footer is unreachable.
@@ -66,6 +68,14 @@ async function mouseClick(page, selector) {
         const target = action === 'confirm' ? g.buttons[1] : g.buttons[0];
         assert.equal(g.buttons[1].disabled, action === 'rejected');
         await page.mouse.click(target.x, target.y);
+        // Choosing a file makes the import dialog dirty. The production shell now asks before discarding it;
+        // mount the real guard host in this component fixture and complete that flow for both non-submit cases.
+        if (action !== 'confirm') {
+          const guard = page.getByRole('dialog', { name: '离开前确认', exact: true });
+          await guard.waitFor();
+          await guard.getByRole('button', { name: '放弃未保存内容并继续', exact: true }).click();
+          row.discard_guard = true;
+        }
         await page.waitForFunction(confirm => confirm ? az.submissions.length === 1 : az.cancelled === 1, action === 'confirm');
         row.outcome = await page.evaluate(() => ({ submissions: az.submissions, cancelled: az.cancelled, previews: az.previews }));
         assert.equal(row.outcome.submissions.length, action === 'confirm' ? 1 : 0);

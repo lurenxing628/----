@@ -85,7 +85,11 @@
       type: "search"
     }));
   }
+  // The Button activated most recently. A busy commit may disable (and Chrome then blurs) a launcher before the dialog
+  // it asked for opens, so Modal falls back to this element when focus has already dropped to <body>.
+  let launcher = null;
   // reasonDisplay: 'inline' shows the reason next to the control; 'tooltip' keeps it in the title and a hidden description (table cells, toolbars).
+  // A tooltip-only reason is reachable only through the button itself, so that button stays focusable (aria-disabled) and just ignores clicks.
   function Button({
     icon,
     transfer,
@@ -94,35 +98,36 @@
     reasonDisplay = 'inline',
     busy,
     className = 'btn',
+    onClick,
     ...props
   }) {
     if (reasonDisplay !== 'inline' && reasonDisplay !== 'tooltip') throw new TypeError('Unknown reasonDisplay: ' + reasonDisplay);
     const reasonId = React.useId(),
       inlineReason = reason && reasonDisplay === 'inline',
       hiddenReason = reason && reasonDisplay === 'tooltip';
+    const blocked = !!hiddenReason && !busy && !props.disabled;
     const title = reason || props.title || (typeof children === 'string' ? children : props['aria-label']);
     if (className.split(/\s+/).includes('primary')) className = Array.from(new Set(className.split(/\s+/).concat(['wb-action', 'wb-primary']))).join(' ');
+    function activate(event) {
+      launcher = event.currentTarget;
+      if (blocked) {
+        event.preventDefault();
+        return;
+      }
+      if (onClick) onClick(event);
+    }
     return /*#__PURE__*/React.createElement("span", {
       title: title,
-      className: inlineReason ? 'wb-button-reason' : undefined,
-      style: inlineReason ? undefined : {
-        display: 'inline-flex',
-        maxWidth: '100%'
-      }
+      className: inlineReason ? 'wb-button-reason' : 'wb-button-host'
     }, /*#__PURE__*/React.createElement("button", {
       ...props,
       type: props.type || 'button',
       className: className + (transfer ? ' wb-action wb-transfer' : ''),
       "data-wb-transfer": transfer,
       "data-wb-disabled-reason": reason || undefined,
-      disabled: !!reason || busy || props.disabled,
-      style: className.startsWith('mini') ? {
-        display: 'inline-flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: 5,
-        ...props.style
-      } : props.style,
+      disabled: busy || props.disabled || !!reason && !blocked,
+      "aria-disabled": blocked || undefined,
+      onClick: activate,
       title: title,
       "aria-label": props['aria-label'] || (reason && !inlineReason && typeof children === 'string' ? children + '：' + reason : undefined),
       "aria-busy": busy || undefined,
@@ -240,12 +245,8 @@
       });
     }
     return rows.length ? /*#__PURE__*/React.createElement("div", {
-      className: "match-note",
-      role: "status",
-      style: {
-        display: 'block',
-        overflowWrap: 'anywhere'
-      }
+      className: "match-note wb-issues",
+      role: "status"
     }, rows.map(row => /*#__PURE__*/React.createElement("div", {
       key: row.text
     }, row.text, row.count > 1 && /*#__PURE__*/React.createElement("span", {
@@ -259,10 +260,7 @@
     const value = entity.status,
       tone = value === 'active' ? 'ok' : value === 'inactive' && entity.fields.inactive_reason !== 'unknown' ? 'off' : 'warn';
     return /*#__PURE__*/React.createElement("span", {
-      className: 'pill ' + tone,
-      style: {
-        whiteSpace: 'normal'
-      }
+      className: 'pill wb-status ' + tone
     }, /*#__PURE__*/React.createElement("span", {
       className: "dot"
     }), C.statusLabel(kind, value, entity.fields));
@@ -310,25 +308,43 @@
     const target = [preferred, entry.last].find(node => modalFocusable(node) && entry.root.contains(node)) || items.find(node => node.matches('input,select,textarea')) || items[0] || entry.root;
     if (document.activeElement !== target) target.focus();
   }
+  // Where a dialog's focus came from: the launcher (or the last activated Button once focus has already dropped to
+  // <body>) followed by its containers, nearest first and stopping before <body>. Captured while the launcher is mounted.
+  function focusOrigin() {
+    const active = document.activeElement,
+      start = active && active !== document.body ? active : launcher;
+    launcher = null;
+    const origin = [];
+    for (let node = start; node && node !== document.body; node = node.parentElement) origin.push(node);
+    return origin;
+  }
+  // Which node regains focus once dialogs close: the newest dialog's launcher, then each parent dialog's launcher. Outside
+  // any dialog a launcher React has since replaced yields to its nearest still-mounted container (the workspace panel
+  // carries tabindex="-1" for this), so keyboard focus never silently lands on <body>.
+  function restoreCandidate(entries, nested, focusable) {
+    for (const entry of entries) {
+      for (let item = entry; item; item = item.parent) {
+        const node = (nested ? item.origin.slice(0, 1) : item.origin).find(focusable);
+        if (node) return node;
+      }
+    }
+    return null;
+  }
   function syncModalFocus() {
     if (modalFocusQueued) return;
     modalFocusQueued = true;
     // React may clean up parents before children, or replay effects. Restore only after the commit settles.
     queueMicrotask(() => {
       modalFocusQueued = false;
-      const restores = modalRestores;
+      const restores = modalRestores.reverse();
       modalRestores = [];
-      const top = topModal(),
-        candidates = [];
+      const top = topModal();
       if (top && !modalScrollStyles.length) lockModalScroll();else if (!top && modalScrollStyles.length) unlockModalScroll();
-      restores.reverse().forEach(entry => {
-        for (let item = entry; item; item = item.parent) candidates.push(item.previous);
-      });
       if (top) {
-        const previous = candidates.find(node => modalFocusable(node) && top.root.contains(node));
+        const previous = restoreCandidate(restores, true, node => modalFocusable(node) && top.root.contains(node));
         if (previous || !top.root.contains(document.activeElement) || !modalFocusable(document.activeElement)) focusModal(top, previous);
       } else {
-        const previous = candidates.find(node => modalFocusable(node) && !modalStack.some(entry => entry.root.contains(node)));
+        const previous = restoreCandidate(restores, false, node => modalFocusable(node) && !modalStack.some(entry => entry.root.contains(node)));
         if (previous) previous.focus();
       }
     });
@@ -394,12 +410,13 @@
     guardOwner,
     guardBypass = false
   }) {
-    // Capture before this commit disables the launcher and moves focus back to the body.
+    // Capture during the first render, before this commit disables the launcher and moves focus back to the body.
     const ref = React.useRef(null),
-      entry = React.useRef({
-        previous: document.activeElement
-      }),
+      entry = React.useRef(null),
       parent = React.useContext(ModalFocusParent);
+    if (!entry.current) entry.current = {
+      origin: focusOrigin()
+    };
     const backdropStart = React.useRef(false),
       id = React.useId();
     const closing = React.useRef(false);
@@ -431,7 +448,7 @@
       syncModalFocus();
     });
     React.useLayoutEffect(() => {
-      entry.current.parent = parent || modalStack.slice().reverse().find(item => item.root.contains(entry.current.previous)) || null;
+      entry.current.parent = parent || modalStack.slice().reverse().find(item => item.root.contains(entry.current.origin[0] || null)) || null;
       return mountModal(entry.current);
     }, []);
     const canClose = () => topModal() === entry.current && !entry.current.locked;
@@ -470,17 +487,12 @@
     }, /*#__PURE__*/React.createElement(Icon, {
       name: icon
     })), /*#__PURE__*/React.createElement("div", {
-      style: {
-        minWidth: 0,
-        overflowWrap: 'anywhere'
-      }
+      className: "wb-modal-title"
     }, /*#__PURE__*/React.createElement("div", {
       className: "modal-h2",
       id: labelId || id
     }, title)), /*#__PURE__*/React.createElement("span", {
-      style: {
-        marginLeft: 'auto'
-      }
+      className: "wb-modal-close"
     }, /*#__PURE__*/React.createElement(Button, {
       className: "modal-x",
       icon: "x",
@@ -490,13 +502,7 @@
       },
       reason: locked ? '操作结果还没确认，请保留当前页面。' : ''
     }))), children, /*#__PURE__*/React.createElement("div", {
-      className: "modal-f wb-actions",
-      style: {
-        flexWrap: 'wrap',
-        marginLeft: 0,
-        width: '100%',
-        boxSizing: 'border-box'
-      }
+      className: "modal-f wb-actions wb-modal-footer"
     }, footer))));
   }
   function relationLabels(entity, key) {
@@ -547,21 +553,12 @@
       className: "chipline"
     }, items.map(item => onOpen ? /*#__PURE__*/React.createElement(Button, {
       key: item.ref,
-      className: "mini",
+      className: "mini wb-chip-link",
       icon: "arrow-right",
-      onClick: () => onOpen(item.ref),
-      style: {
-        whiteSpace: 'normal',
-        overflowWrap: 'anywhere',
-        textAlign: 'left'
-      }
+      onClick: () => onOpen(item.ref)
     }, item.label || '名称未填写') : /*#__PURE__*/React.createElement("span", {
-      className: "chip",
-      key: item.ref,
-      style: {
-        whiteSpace: 'normal',
-        overflowWrap: 'anywhere'
-      }
+      className: "chip wb-chip-wrap",
+      key: item.ref
     }, item.label || '名称未填写'))) : /*#__PURE__*/React.createElement("span", {
       className: "muted"
     }, entity.relationships[field] === null || Array.isArray(entity.relationships[field]) ? '未选' : '未读取');
@@ -644,22 +641,14 @@
     };
     const options = Array.from(available.values());
     return /*#__PURE__*/React.createElement("div", {
-      className: 'field wb-field' + (field.multiple ? ' full' : '') + (invalid ? ' err' : ''),
-      style: {
-        minWidth: 0
-      },
+      className: 'field wb-field wb-choice' + (field.multiple ? ' full' : '') + (invalid ? ' err' : ''),
       "data-field-path": 'relationships.' + field.key
     }, /*#__PURE__*/React.createElement("label", {
       htmlFor: id
     }, field.label), /*#__PURE__*/React.createElement("div", {
       className: "rowact"
     }, /*#__PURE__*/React.createElement("div", {
-      className: "search",
-      style: {
-        maxWidth: '100%',
-        flex: '1 1 auto',
-        minWidth: 0
-      }
+      className: "search wb-choice-search"
     }, /*#__PURE__*/React.createElement("span", {
       className: "ic"
     }, /*#__PURE__*/React.createElement(Icon, {
@@ -687,29 +676,13 @@
       "aria-invalid": invalid || undefined,
       "aria-describedby": describedBy,
       tabIndex: invalid ? -1 : undefined,
-      className: "fchips",
-      style: {
-        maxHeight: 160,
-        overflowY: 'auto'
-      }
+      className: "fchips wb-choice-options"
     }, options.map(item => /*#__PURE__*/React.createElement("label", {
       key: item.ref,
-      className: 'fchip' + (selected.includes(item.ref) ? ' on' : ''),
-      style: {
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: 6,
-        whiteSpace: 'normal',
-        overflowWrap: 'anywhere'
-      }
+      className: 'fchip wb-choice-option' + (selected.includes(item.ref) ? ' on' : '')
     }, /*#__PURE__*/React.createElement("input", {
       type: "checkbox",
-      style: {
-        width: 15,
-        height: 15,
-        padding: 0,
-        flex: 'none'
-      },
+      className: "wb-choice-check",
       checked: selected.includes(item.ref),
       disabled: disabled || !selected.includes(item.ref) && !selectable(item),
       onChange: event => choose(item.ref, event.target.checked)
@@ -772,6 +745,10 @@
   }) {
     if (!Object.prototype.hasOwnProperty.call(titles, kind)) throw new TypeError('empty_state_kind_unknown: ' + kind);
     if ((kind === 'filtered' || kind === 'error') && !action) throw new TypeError('empty_state_requires_action: ' + kind);
+    // A bare <button> action inside a form must not submit it; the shared Button already defaults to type="button".
+    const actions = React.Children.map(action, child => child && child.type === 'button' && !child.props.type ? React.cloneElement(child, {
+      type: 'button'
+    }) : child);
     return /*#__PURE__*/React.createElement("div", {
       className: 'wb-empty wb-empty-' + kind,
       role: kind === 'error' ? undefined : 'status',
@@ -784,7 +761,7 @@
       error: error
     }), action && /*#__PURE__*/React.createElement("div", {
       className: "wb-empty-action"
-    }, action));
+    }, actions));
   }
   function Pager({
     page = 1,
@@ -985,6 +962,8 @@
     Pager,
     TimelineZoom,
     timelineZoomKey,
-    timelineZoomStep
+    timelineZoomStep,
+    focusOrigin,
+    restoreCandidate
   };
 })();

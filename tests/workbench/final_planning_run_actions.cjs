@@ -162,10 +162,12 @@ async function runActions(page, ready, report, h, flush) {
     const data = last(value => value.candidate && value.tasks);
     assert.equal(data.generation.formal_version_allocated, false);
     assert(!Object.prototype.hasOwnProperty.call(data.candidate, 'plan_ref'));
-    const waiting = page.waitForEvent('download'); await button('CSV').click();
+    await button('导出', page.locator('[data-run-candidate-workspace]')).click();
+    const exportDialog = page.getByRole('dialog', { name: '导出候选方案', exact: true }); await exportDialog.waitFor();
+    const waiting = page.waitForEvent('download'); await button('下载 CSV', exportDialog).click();
     const file = await waiting, destination = path.join(ready.root, 'downloads', file.suggestedFilename());
     await file.saveAs(destination); assert.equal(await file.failure(), null);
-    await page.getByText(/^已下载 13 条记录/).waitFor();
+    await exportDialog.waitFor({ state: 'hidden' }); await page.getByText(/^已交给浏览器下载：.+，共 13 条记录/).waitFor();
     report.candidate_download = { path: destination, candidate_ref: data.candidate.candidate_ref,
       run_ref: data.candidate.run_ref, tasks: data.tasks };
     report.downloads.push(destination); await shot('candidate-csv-downloaded');

@@ -37,7 +37,7 @@
       ['该次维护记录的数据库来源', description.origin],
       ['选定备份', op && op.filename || (!query && command.selection ? command.selection.filename + '（页面上选的，还没有确认）' : '维护记录尚未确认')],
       ['恢复前保护副本', op && op.protection_filename || '保护副本状态待确认'],
-      ['业务审计', op && op.audit_persisted ? '维护记录报告已留存；当前数据库内容仍需重启后读取' : '未确认留存'],
+      ['操作记录', op && op.audit_persisted ? '已留存；当前数据库内容仍需重启后读取' : '未确认留存'],
       ['软件状态', command.hostError || !host ? '无法读取维护状态，当前页面已暂停业务读写' : host.restart_required ? '业务操作已停用，须重启整个软件' : '维护状态还没有确认，当前页面已暂停业务读写']
     ];
     return ReactDOM.createPortal(<div className="sm-workbench sm-maintenance-workspace plana sm-restore-screen" data-restore-maintenance="warm" ref={screen} tabIndex={-1}>
@@ -55,11 +55,11 @@
           {op && (!host || host.request_key !== op.request_key) && <p className="sm-note">当前显示历史维护记录；软件仍处于维护停止状态。</p>}
           {op && <><window.WorkbenchReference label="这条结果的操作编号" value={op.request_key} /><p className="sm-meta">更新时间 {window.WorkbenchFormat.dateTime(op.updated_at)}</p></>}
           <div className="sm-actions"><C.Button icon="refresh-cw" busy={waiting} onClick={() => { setQuery(null); setError(null); intent ? command.lookup() : command.inspectHost(); }}>{window.WorkbenchTerms.actions.query_result}</C.Button>
-            <C.Button transfer="export" onClick={() => { try { R.download(host, result, problem); setNotice('已导出本次维护诊断，不含数据库或完整业务日志。'); } catch (problem) { setError(problem); } }}>导出维护诊断</C.Button>
+            <C.Button transfer="export" onClick={() => { try { R.download(host, result, problem); setNotice(window.WorkbenchTerms.download_started(R.DIAGNOSTIC_FILENAME) + '，不含数据库和完整日志。'); } catch (problem) { setError(problem); } }}>导出维护诊断</C.Button>
             <a href="/workbench?view=system">返回工作台</a></div><p className="sm-meta">点「返回工作台」会重新查询维护状态；需要重启或人工核对时仍然停在维护页。</p>
         </section>
         <section aria-label="按编号查询"><h2>查询其他维护结果</h2><form onSubmit={lookup}>
-          <fieldset className="sm-choice" style={{ marginTop: 12 }}><legend>编号类型</legend>{[['request', '操作编号'], ['job', '维护记录编号']].map(([value, label]) =>
+          <fieldset className="sm-choice sm-choice-gap"><legend>编号类型</legend>{[['request', '操作编号'], ['job', '维护记录编号']].map(([value, label]) =>
             <label key={value}><input type="radio" name="restore-reference-kind" checked={kind === value} onChange={() => setKind(value)} />{label}</label>)}</fieldset>
           <div className="sm-restore-query"><label className="sm-field"><span>{kind === 'request' ? '操作编号' : '维护记录编号'}</span><input aria-label="查询编号" value={reference} maxLength={128} autoComplete="off" spellCheck={false} onChange={event => setReference(event.target.value)} /></label>
             <C.Button icon="search" type="submit" busy={waiting} disabled={!reference.trim()}>查询维护结果</C.Button></div>

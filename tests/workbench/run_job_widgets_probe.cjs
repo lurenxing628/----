@@ -165,7 +165,9 @@ async function variants() {
   await page.locator('[data-candidate-ref]').first().waitFor();
   assert.equal(await page.locator('[data-candidate-ref]').count(), 4);
   assert.equal(await page.getByRole('button', { name: /查看正式计划/ }).count(), 0);
-  assert.equal(await page.locator('[data-candidate-ref] button:not(:disabled)').count(), 0);
+  // 详情 carries a tooltip-only reason: it stays focusable (aria-disabled) and ignores clicks instead of being disabled.
+  assert.equal(await page.locator('[data-candidate-ref] button:not(:disabled):not([aria-disabled="true"])').count(), 0);
+  assert.equal(await page.locator('[data-candidate-ref] button[aria-disabled="true"][data-wb-disabled-reason="此功能尚未开通。"]').count(), 4);
   assert.equal(await page.locator('progress,[role="progressbar"]').count(), 0); await layout(); await shot('complete'); caseDone('real-persisted-candidates-no-fake-plans-or-percent');
   await contracts();
   const terminalLookup = '**/scheduling/requests/' + first.request_key + '*';
@@ -175,7 +177,7 @@ async function variants() {
   await page.getByText('下面是上次查到的结果，这次查询还没确认。', { exact: true }).waitFor();
   await page.unroute(terminalLookup); await refresh(); await page.getByText('下面是上次查到的结果，这次查询还没确认。', { exact: true }).waitFor({ state: 'hidden' }); caseDone('terminal-pending-released-recent-lookup-failure-does-not-block-new-run');
   await page.evaluate(() => window.mountRun(window.currentPreflight, { ...RunJobAPI.create(), openCandidate: value => { window.candidateLink = value; } }));
-  await page.locator('[data-candidate-ref] button:not(:disabled)').first().waitFor();
+  await page.locator('[data-candidate-ref] button:not(:disabled):not([aria-disabled="true"])').first().waitFor();
   await page.locator('[data-candidate-ref] button').first().click();
   const link = await page.evaluate(() => window.candidateLink);
   assert.deepEqual(Object.keys(link).sort(), ['candidate_ref', 'run_ref']); assert.equal(link.run_ref, first.run_ref); caseDone('explicit-candidate-handler-only-permanent-identities');

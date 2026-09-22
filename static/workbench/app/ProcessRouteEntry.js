@@ -13,6 +13,23 @@
     ErrorBox,
     Issues
   } = window.ResourceControls;
+  // 依据可能是结构化的：数组按行列出，对应关系按「名：值」逐项列出，不把 JSON 直接上屏；原文折叠进编号区备查。
+  const basisText = item => item === null || item === undefined ? '未填写' : typeof item === 'object' ? JSON.stringify(item) : String(item);
+  function BasisRows({
+    value
+  }) {
+    const rows = Array.isArray(value) ? value.map(basisText) : Object.keys(value).map(key => key + '：' + basisText(value[key]));
+    return /*#__PURE__*/React.createElement(React.Fragment, null, rows.length ? rows.map((row, index) => /*#__PURE__*/React.createElement("div", {
+      key: index
+    }, row)) : /*#__PURE__*/React.createElement("span", {
+      className: "muted"
+    }, "\u672A\u586B\u5199"), /*#__PURE__*/React.createElement(window.WorkbenchReference, {
+      label: "\u4F9D\u636E\u539F\u6587",
+      entries: {
+        '依据原文': value
+      }
+    }));
+  }
   function Preview({
     result
   }) {
@@ -25,16 +42,13 @@
     }), /*#__PURE__*/React.createElement("p", {
       role: "status"
     }, d.can_confirm_route ? '输入有效，尚未保存。' : '输入存在待处理问题，尚未保存。', " \u5DE5\u5E8F ", d.counts.operations, " \xB7 \u5DF2\u8BC6\u522B ", d.counts.recognized, " \xB7 \u672A\u8BC6\u522B ", d.counts.unknown), d.diagnostics.length > 0 && /*#__PURE__*/React.createElement("div", {
-      className: "match-note",
-      role: "alert",
-      style: {
-        display: 'block'
-      }
+      className: "match-note is-block",
+      role: "alert"
     }, d.diagnostics.map((row, index) => /*#__PURE__*/React.createElement("div", {
       key: index
     }, row.severity === 'error' ? '错误' : '警告', row.sequence !== undefined ? ' · 工序 ' + row.sequence : '', "\uFF1A", row.message))), /*#__PURE__*/React.createElement("dl", {
       className: "process-fields"
-    }, /*#__PURE__*/React.createElement("dt", null, "\u89C4\u8303\u5316\u8F93\u5165"), /*#__PURE__*/React.createElement("dd", null, d.normalized_input)), /*#__PURE__*/React.createElement("p", null, "\u539F\u6A21\u677F\uFF1A\u5DE5\u5E8F ", d.baseline.operation_count, " \xB7 \u5916\u534F\u7EC4 ", d.baseline.external_group_count, " \xB7 ", d.baseline.has_published_template ? '已有发布模板' : '无发布模板'), /*#__PURE__*/React.createElement("dl", {
+    }, /*#__PURE__*/React.createElement("dt", null, "\u6574\u7406\u540E\u7684\u8DEF\u7EBF"), /*#__PURE__*/React.createElement("dd", null, d.normalized_input)), /*#__PURE__*/React.createElement("p", null, "\u539F\u6A21\u677F\uFF1A\u5DE5\u5E8F ", d.baseline.operation_count, " \xB7 \u5916\u534F\u7EC4 ", d.baseline.external_group_count, " \xB7 ", d.baseline.has_published_template ? '已有发布模板' : '无发布模板'), /*#__PURE__*/React.createElement("dl", {
       className: "process-fields"
     }, [['added', '新增序号'], ['removed', '移除序号'], ['retained', '保留序号'], ['same_sequence_changed', '同序号内容变化']].map(([key, label]) => /*#__PURE__*/React.createElement(React.Fragment, {
       key: key
@@ -81,7 +95,9 @@
       key: index
     }, /*#__PURE__*/React.createElement("td", null, row.sequence), /*#__PURE__*/React.createElement("td", null, row.op_type_name, /*#__PURE__*/React.createElement("div", {
       className: "muted"
-    }, row.op_type_ref === null ? '未识别' : '已识别')), /*#__PURE__*/React.createElement("td", null, P.sourceLabel(row.source_suggestion)), /*#__PURE__*/React.createElement("td", null, row.supplier_label === null ? '未选' : row.supplier_label), /*#__PURE__*/React.createElement("td", null, P.valueText(row.external_days)), /*#__PURE__*/React.createElement("td", null, typeof row.basis === 'string' ? row.basis : JSON.stringify(row.basis), /*#__PURE__*/React.createElement(Issues, {
+    }, row.op_type_ref === null ? '未识别' : '已识别')), /*#__PURE__*/React.createElement("td", null, P.sourceLabel(row.source_suggestion)), /*#__PURE__*/React.createElement("td", null, row.supplier_label === null ? '未选' : row.supplier_label), /*#__PURE__*/React.createElement("td", null, P.valueText(row.external_days)), /*#__PURE__*/React.createElement("td", null, typeof row.basis === 'string' ? row.basis : /*#__PURE__*/React.createElement(BasisRows, {
+      value: row.basis
+    }), /*#__PURE__*/React.createElement(Issues, {
       issues: row.issues
     }))))))), /*#__PURE__*/React.createElement(E.Pager, {
       paging: paging
@@ -283,15 +299,14 @@
       className: "modal-b scroll"
     }, /*#__PURE__*/React.createElement("div", {
       className: "seg re-mode",
-      role: "tablist",
+      role: "group",
       "aria-label": "\u8DEF\u7EBF\u5F55\u5165\u6A21\u5F0F",
       style: {
         marginBottom: 16
       }
     }, [['text', '整条录入'], ['rows', '逐行表格']].map(([value, label]) => /*#__PURE__*/React.createElement(Button, {
       key: value,
-      role: "tab",
-      "aria-selected": mode === value,
+      "aria-pressed": mode === value,
       className: mode === value ? 'on' : '',
       disabled: blocked,
       onClick: () => {
@@ -382,7 +397,7 @@
       })
     })), /*#__PURE__*/React.createElement("td", {
       className: "muted"
-    }, "\u5F85\u670D\u52A1\u9884\u68C0"), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Button, {
+    }, "\u5F85\u9884\u68C0"), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Button, {
       className: "mini danger",
       icon: "trash-2",
       "aria-label": '删除第 ' + ((paging.page.number - 1) * paging.page.size + index + 1) + ' 行',
@@ -423,7 +438,7 @@
       disabled: blocked || state.busy,
       reason: typeof adapter.detail !== 'function' ? window.WorkbenchTerms.outcomes.unavailable : '',
       onClick: reloadDetail
-    }, "\u5237\u65B0\u8BE6\u60C5\u5E76\u4FDD\u7559\u8349\u7A3F"), review && /*#__PURE__*/React.createElement(E.Review, {
+    }, window.WorkbenchTerms.refresh_latest), review && /*#__PURE__*/React.createElement(E.Review, {
       before: context.data,
       after: review.data,
       disabled: blocked,

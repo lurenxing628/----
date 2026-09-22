@@ -62,6 +62,8 @@ async function run(page,state,name,fn){let passed=false;try{await fn();await sho
   for(const viewport of [{width:1920,height:1080},{width:1392,height:924}])for(const theme of ['light','dark']){
     const state=viewport.width+'-'+theme,context=await browser.newContext({viewport});
     await context.addInitScript(theme=>{localStorage.setItem('aps_theme',theme);localStorage.setItem('aps_kit_theme',theme);},theme);
+    // 视口高度 <= 1000px 时选中节点后产能链默认收起，.hb-tile 不再渲染；这里按 ResourceRail.jsx 记住的会话选择预置为展开，节点切换全走完整的产能链卡片。
+    await context.addInitScript(()=>{sessionStorage.setItem('aps_resource_rail_collapsed','false');});
     const page=await context.newPage();page.setDefaultTimeout(10000);page.on('pageerror',error=>report.errors.push(error.message));
     await page.route('**/*',route=>{if(!route.request().url().startsWith(origin+'/')){report.external.push(route.request().url());return route.abort();}return route.continue();});
     await page.goto(origin);

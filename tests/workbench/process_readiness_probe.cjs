@@ -101,6 +101,8 @@ async function inspect(page) {
       await page.goto(origin);
       await page.locator('#fixture-process-commit').waitFor();
       await page.waitForFunction(() => document.querySelector('.rail').getAttribute('aria-busy') === 'false');
+      // 视口高度 <= 1000px 时产能链默认收起（ResourceRail.jsx MEDIUM_SCREEN_MAX_PX），只剩快捷切换芯片；先展开再读工艺阶段全文。
+      if (await page.locator('section.rail').getAttribute('data-collapsed') === 'true') { await page.getByRole('button', { name: '展开产能链', exact: true }).click(); await page.getByRole('button', { name: '收起产能链', exact: true }).waitFor(); }
       await page.evaluate(() => document.fonts.ready);
       const tile = page.locator('[data-rail-node="process"]');
       check((await tile.innerText()).includes('1 项暂无确认记录，其中 1 项已有路线资料'), 'Legacy evidence must not become confirmation');

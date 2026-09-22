@@ -33,9 +33,9 @@ async function main(){
   });
   await run('supplement has no fresh defaults and focuses field errors',async()=>{
    const task=await latest(5),record=task.execution.reports[0];await exact('补齐 '+record.report_no).click();assert.equal(await page.getByLabel('实际开工',{exact:true}).inputValue(),'');assert.equal(await page.getByLabel('本次实际完工',{exact:true}).inputValue(),'');assert.equal(await page.locator('.field-suggestion').count(),0);
-   await page.getByLabel('有效工时（小时）',{exact:true}).fill('0');await exact('保存报工').click();await page.locator('[aria-invalid="true"]').waitFor();assert.equal(await page.getByLabel('补齐或更正原因',{exact:true}).evaluate(node=>document.activeElement===node),true);
+   await page.getByLabel('有效工时（小时）',{exact:true}).fill('0');await exact('保存报工').click();await page.locator('[aria-invalid="true"]').waitFor();assert.equal(await page.getByLabel('补齐原因',{exact:true}).evaluate(node=>document.activeElement===node),true);
    await page.screenshot({path:path.join(output,'field-editor-validation.png'),fullPage:false});
-   await page.getByLabel('补齐或更正原因',{exact:true}).fill('保留未知起止，仅补零工时');await save('保存报工');await page.locator('.field-editor').waitFor({state:'hidden'});const after=await latest(5);assert.equal(after.execution.reports[0].actual_end,null);assert.equal(after.execution.reports[0].effective_processing_hours,0);
+   await page.getByLabel('补齐原因',{exact:true}).fill('保留未知起止，仅补零工时');await save('保存报工');await page.locator('.field-editor').waitFor({state:'hidden'});const after=await latest(5);assert.equal(after.execution.reports[0].actual_end,null);assert.equal(after.execution.reports[0].effective_processing_hours,0);
   });
   await run('save continue waits for fresh write context and creates another request',async()=>{
    await exact('新增本次报工').click();await page.getByLabel('本次完成数量',{exact:true}).fill('1');await save('保存并继续');

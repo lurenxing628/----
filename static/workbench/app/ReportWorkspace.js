@@ -56,7 +56,7 @@
       data = response && response.data;
     const captionPlan = !request.busy && !request.error && data && data.plan;
     const captionStatus = captionPlan && {
-      official: captionPlan.is_current_official ? '当前正式采用' : '历史正式计划',
+      official: captionPlan.is_current_official ? window.WorkbenchTerms.current_official : window.WorkbenchTerms.historical_official,
       candidate: window.WorkbenchTerms.candidate,
       scenario: window.WorkbenchTerms.trial_scenario
     }[captionPlan.kind];
@@ -65,7 +65,7 @@
       label: mode === 'review' ? '复盘计划' : '报表计划',
       name: captionPlan.display_name,
       status: captionStatus,
-      version: captionPlan.kind === 'official' && Number.isSafeInteger(captionPlan.version) ? '正式 v' + captionPlan.version : undefined,
+      version: captionPlan.kind === 'official' && Number.isSafeInteger(captionPlan.version) ? window.WorkbenchTerms.plan_version(captionPlan.version) : undefined,
       range: data.scope.plan_finish_date_from && data.scope.plan_finish_date_to ? '计划完工 ' + data.scope.plan_finish_date_from + ' 至 ' + data.scope.plan_finish_date_to : undefined
     } : null);
     window.WorkbenchPageContext.useSnapshot(data ? {
@@ -172,14 +172,16 @@
           snapshot_ref: response.meta.snapshot_ref,
           format
         });
-        setNotice('已交给浏览器下载：' + result.filename + '（当前筛选全部 ' + data.page.total + ' 项）。');
+        setNotice(window.WorkbenchTerms.download_started(result.filename) + '（当前筛选全部 ' + data.page.total + ' 项）。');
       } catch (failure) {
         setError(failure);
       } finally {
         setDownloading(false);
       }
     }
-    const title = mode === 'review' ? '执行复盘' : '报表中心';
+    // 执行复盘以图表分析为主体：图表直接展开放最前，不显示报表子页签和导出范围，表格放在后面；报表中心保持原样。
+    const review = mode === 'review';
+    const title = review ? '执行复盘' : '报表中心';
     React.useLayoutEffect(() => {
       if (pendingViewFocus !== mode) return;
       const tab = document.getElementById('analytics-view-' + mode);
@@ -261,7 +263,7 @@
     }
     return /*#__PURE__*/React.createElement("section", {
       ref: root,
-      className: mode === 'review' ? 'er-workbench rw-workbench' : 'rw-workbench',
+      className: review ? 'er-workbench rw-workbench' : 'rw-workbench',
       "aria-label": title,
       "data-source": "production",
       "data-ready": !!data
@@ -273,7 +275,7 @@
       className: "wb-page-context"
     }, data ? data.plan.display_name + ' · 当前正式计划与报工记录' : '当前正式计划', response && /*#__PURE__*/React.createElement("span", {
       className: "rw-asof"
-    }, "\u6570\u636E\u622A\u81F3 ", window.WorkbenchFormat.dateTime(response.meta.as_of)))), /*#__PURE__*/React.createElement("div", {
+    }, window.WorkbenchTerms.data_as_of(window.WorkbenchFormat.dateTime(response.meta.as_of))))), /*#__PURE__*/React.createElement("div", {
       className: "rw-actions"
     }, initialContext.returnTo && initialContext.returnTo.view === 'calib' && /*#__PURE__*/React.createElement(Button, {
       icon: "arrow-left",
@@ -327,9 +329,15 @@
       id: "analytics-view-panel",
       role: "tabpanel",
       "aria-labelledby": 'analytics-view-' + mode
-    }, /*#__PURE__*/React.createElement("div", {
+    }, data && review && /*#__PURE__*/React.createElement(window.ReviewCharts, {
+      data: data,
+      expanded: true,
+      resourceView: resourceView,
+      onResourceView: setResourceView,
+      onDrill: typeof onNav === 'function' ? drill : undefined
+    }), /*#__PURE__*/React.createElement("div", {
       className: "rw-results wb-surface"
-    }, mode !== 'review' && /*#__PURE__*/React.createElement(Tabs, {
+    }, !review && /*#__PURE__*/React.createElement(Tabs, {
       topic: state.topic,
       onChange: changeTopic
     }), /*#__PURE__*/React.createElement(ErrorBox, {
@@ -345,8 +353,8 @@
       title: "\u6B63\u5728\u8BFB\u53D6\u5F53\u524D\u8303\u56F4"
     }), data && /*#__PURE__*/React.createElement("div", {
       id: "report-topic-panel",
-      role: mode === 'review' ? undefined : 'tabpanel',
-      "aria-labelledby": mode === 'review' ? undefined : 'report-tab-' + state.topic
+      role: review ? undefined : 'tabpanel',
+      "aria-labelledby": review ? undefined : 'report-tab-' + state.topic
     }, /*#__PURE__*/React.createElement("div", {
       className: "rw-summary"
     }, /*#__PURE__*/React.createElement(Metrics, {
@@ -358,13 +366,13 @@
       className: "rw-table-heading wb-surface-row wb-surface-divider"
     }, /*#__PURE__*/React.createElement("div", {
       className: "rw-table-title"
-    }, /*#__PURE__*/React.createElement("h3", null, state.topic === 'records' ? '逐次报工与旧现场事件' : ['machines', 'people'].includes(state.topic) ? '实际资源记录' : '范围内工序'), /*#__PURE__*/React.createElement("span", null, data.page.total, " \u9879")), /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("h3", null, state.topic === 'records' ? '逐次报工与' + window.WorkbenchTerms.legacy_field_records : ['machines', 'people'].includes(state.topic) ? '实际资源记录' : '范围内工序'), /*#__PURE__*/React.createElement("span", null, data.page.total, " \u9879")), /*#__PURE__*/React.createElement("div", {
       className: "rw-filters"
     }, /*#__PURE__*/React.createElement(Sort, {
       topic: state.topic,
       state: state,
       onChange: changePage
-    }), /*#__PURE__*/React.createElement("label", null, "\u683C\u5F0F", /*#__PURE__*/React.createElement("select", {
+    }), !review && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("label", null, "\u683C\u5F0F", /*#__PURE__*/React.createElement("select", {
       "aria-label": "\u5BFC\u51FA\u683C\u5F0F",
       value: format,
       onChange: event => setFormat(event.target.value)
@@ -379,7 +387,7 @@
       reasonDisplay: "inline",
       reason: !data.page.total ? '当前范围没有可导出的结果。' : '',
       onClick: download
-    }, "\u5BFC\u51FA\u8303\u56F4"))), /*#__PURE__*/React.createElement("div", {
+    }, "\u5BFC\u51FA\u8303\u56F4")))), /*#__PURE__*/React.createElement("div", {
       className: 'rw-result-content' + (selected ? ' wb-detail-layout' : '')
     }, /*#__PURE__*/React.createElement("div", {
       className: "rw-list-pane"
@@ -410,7 +418,7 @@
       initialView: detailView,
       onView: setDetailView,
       onOpenOperation: onOpenOperation || (typeof onNav === 'function' ? navigateOperation : undefined)
-    })))), data && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(window.ReviewCharts, {
+    })))), data && /*#__PURE__*/React.createElement(React.Fragment, null, !review && /*#__PURE__*/React.createElement(window.ReviewCharts, {
       data: data,
       open: chartsOpen,
       onChange: setChartsOpen,

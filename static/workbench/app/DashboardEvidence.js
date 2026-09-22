@@ -81,6 +81,15 @@
     unavailable: '无法读取',
     on_time: '预计准时',
     overdue: '预计超期',
+    manual: '手工',
+    excel: 'Excel',
+    internal: '自制',
+    external: '外协',
+    current: '当前',
+    not_currently_evaluated: '现在没有评估',
+    single: '单条',
+    merged: '合并',
+    outsourcing_receipt: '外协物流登记',
     complete_report_processing_hours_vs_operation_unit_hours_times_target: '完整报工加工工时与单件定额乘以目标数量对照'
   };
   // Only diagnostics and opaque references fold into the reference summary. Business identifiers such as
@@ -98,8 +107,11 @@
       digits: Number.isInteger(value) ? 0 : 2
     });
     if (/^\d{4}-\d\d-\d\d[T ]\d\d:\d\d/.test(value)) return F.dateTime(value);
-    return values[value] || String(value);
+    if (/^\d{4}-\d\d-\d\d$/.test(value)) return F.date(value);
+    const C = window.DashboardContract;
+    return values[value] || C.categories[value] || C.statuses[value] || C.states[value] || String(value);
   }
+  const technical = item => item === null || item === undefined ? '' : typeof item === 'object' ? JSON.stringify(item) : String(item);
   function Structure({
     value,
     title
@@ -114,16 +126,18 @@
     if (!value || typeof value !== 'object') return /[a-f0-9]{32,}/i.test(String(value)) ? /*#__PURE__*/React.createElement(window.WorkbenchReference, {
       value: value
     }) : /*#__PURE__*/React.createElement("span", null, display(value));
+    // Only keys with a label become visible facts. Opaque references, diagnostics and keys without a label fold into the
+    // reference summary, so a raw key or internal value never reads as a label on screen.
     const refs = {},
       fields = [];
     Object.entries(value).forEach(([key, item]) => {
-      if (referenceField(key, item)) refs[labels[key] || key] = item;else fields.push([key, item]);
+      if (Object.prototype.hasOwnProperty.call(labels, key) && !referenceField(key, item)) fields.push([key, item]);else refs[labels[key] || key] = technical(item);
     });
     return /*#__PURE__*/React.createElement(React.Fragment, null, title && /*#__PURE__*/React.createElement("h4", null, title), /*#__PURE__*/React.createElement("dl", {
       className: "dy-source-facts"
     }, fields.map(([key, item]) => /*#__PURE__*/React.createElement("div", {
       key: key
-    }, /*#__PURE__*/React.createElement("dt", null, labels[key] || key), /*#__PURE__*/React.createElement("dd", null, /*#__PURE__*/React.createElement(Structure, {
+    }, /*#__PURE__*/React.createElement("dt", null, labels[key]), /*#__PURE__*/React.createElement("dd", null, /*#__PURE__*/React.createElement(Structure, {
       value: item
     }))))), Object.keys(refs).length > 0 && /*#__PURE__*/React.createElement(window.WorkbenchReference, {
       entries: refs

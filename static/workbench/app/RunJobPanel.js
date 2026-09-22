@@ -307,7 +307,7 @@
       "aria-label": "\u5019\u9009\u6392\u4EA7"
     }, /*#__PURE__*/React.createElement(U.Styles, null), /*#__PURE__*/React.createElement("div", {
       className: "rj-heading"
-    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h2", null, "\u5019\u9009\u6392\u4EA7"), /*#__PURE__*/React.createElement("p", {
+    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h3", null, "\u5019\u9009\u6392\u4EA7"), /*#__PURE__*/React.createElement("p", {
       className: "rj-muted"
     }, "\u9009\u62E9\u8303\u56F4\u5E76\u5B8C\u6210\u68C0\u67E5\u540E\uFF0C\u8BA1\u7B97\u672C\u6B21\u5019\u9009\u65B9\u6848\u3002"))), /*#__PURE__*/React.createElement("div", {
       className: "rj-actions"

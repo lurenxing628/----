@@ -34,7 +34,7 @@ async function cycleSave(p, page, data) {
   await labels(source, before); await p.shot('source-valid-null-members');
   await p.click(page.getByRole('tab', {name: /^1 /})); await p.click(b(page, '录入路线'));
   const entry = page.getByRole('dialog', {name: /^录入工艺路线 · /});
-  await p.click(entry.getByRole('tab', {name: '整条录入', exact: true}));
+  await p.click(entry.getByRole('button', {name: '整条录入', exact: true}));
   await p.type(entry.getByRole('textbox', {name: '路线文字', exact: true}), data.route);
   const preview = await p.response('/route-preview', () => p.click(b(entry, '预检路线')));
   assert.equal(preview.data.counts.operations, 5); assert.deepEqual(preview.data.affected_groups, []);
@@ -48,7 +48,9 @@ async function cycleSave(p, page, data) {
   assert.equal(await total.inputValue(), '6.75');
   assert.equal(await hours.getByLabel('外协组 40 至 40 总周期', {exact: true}).inputValue(), '9.5');
   await page.waitForFunction(() => document.querySelector('[aria-label="外协组 20 至 25 总周期"]').classList.contains('wb-number-input'));
-  assert.equal(await hours.getByRole('button', {name: '增加外协组 20 至 25 总周期', exact: true}).count(), 1);
+  const increment = hours.getByRole('button', {name: '增加外协组 20 至 25 总周期', exact: true});
+  await increment.waitFor();
+  assert.equal(await increment.count(), 1);
   await p.type(total, '7.25');
   assert.equal(await hours.getByRole('checkbox', {name: /^确认(本页|工序)/}).count(), 0);
   assert.equal(await hours.getByLabel('外协组 40 至 40 总周期', {exact: true}).inputValue(), '9.5');

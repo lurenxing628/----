@@ -51,7 +51,7 @@
     React.useEffect(() => { if (selectAll.current) selectAll.current.indeterminate = !all && entities.some(item => selected.includes(item.ref)); }, [all, entities, selected]);
     const opCategory = category || (entities.length && entities.every(item => item.fields.category === entities[0].fields.category) ? entities[0].fields.category : null);
     const cols = [
-      { key: 'business_code', title: C.codeLabel(kind), width: 130, sortable: true, render: entity => <button type="button" className="lnk" style={{ border: 0, padding: 0, background: 'none', font: 'inherit', textAlign: 'left' }} disabled={disabled} onClick={() => onOpen(entity.ref)}>{entity.business_code}</button> },
+      { key: 'business_code', title: C.codeLabel(kind), width: 130, sortable: true, render: entity => <button type="button" className="lnk" disabled={disabled} onClick={() => onOpen(entity.ref)}>{entity.business_code}</button> },
       { key: 'label', title: C.nameLabel(kind), width: 160, sortable: true, render: entity => entity.label },
       ...(kind === 'op_type' ? opColumns(opCategory) : columns[kind] || []),
       ...(kind === 'op_type' ? [] : [{ key: 'status', title: '状态', width: 145, render: entity => <Status kind={kind} entity={entity} /> }])
@@ -82,7 +82,7 @@
           {col.key === 'label' && entity.issues.some(issue => issue.scope !== 'collection') && <span className="muted" style={{ display: 'block', fontSize: 12 }}>待核对 {entity.issues.filter(issue => issue.scope !== 'collection').length} 项</span>}</td>)}
         <td className="actcol wb-col-actions"><div className="rowact">
           <Button className="mini" icon="search" disabled={disabled} onClick={() => onOpen(entity.ref)}>{kind === 'op_type' ? entity.fields.category === 'internal' ? '查看绑定' : entity.fields.category === 'external' ? '查看供应商' : '查看/编辑' : '查看/编辑'}</Button>
-          <Button className="mini danger" icon="trash-2" reasonDisplay="inline" reason={disabled ? '正在处理，请稍候。' : C.blocked(entity.write_context, kind, 'delete', source)} onClick={() => onDelete(entity.ref)}>删除</Button>
+          <Button className="mini danger" icon="trash-2" reasonDisplay="tooltip" reason={disabled ? '正在处理，请稍候。' : C.blocked(entity.write_context, kind, 'delete', source)} onClick={() => onDelete(entity.ref)}>删除</Button>
         </div></td></tr>)}{!entities.length && <tr><td colSpan={cols.length + 2}><window.WorkbenchControls.EmptyState kind={loading ? 'loading' : error ? 'error' : filtered ? 'filtered' : 'empty'} error={error}
           action={error ? <Button onClick={onRetry}>刷新</Button> : filtered ? <Button onClick={onClear}>清除筛选</Button> : undefined} /></td></tr>}</tbody>
     </table></div></div>;

@@ -16,12 +16,16 @@ async function firstViews(entry, record) {
       while (view !== 'run' && reads().length === 0 && Date.now() < deadline) {
         await new Promise(resolve => setTimeout(resolve, 40)); await record.flush(page);
       }
+      // 2026-09-21：计划中心三个页签分工，只有「计划甘特」渲染甘特板，另外两个是投影表。
       if (['analysis', 'gantt'].includes(view)) {
-        await page.locator('[data-plan-gantt]').waitFor();
+        await page.locator(view === 'gantt' ? '[data-plan-gantt]' : '[data-plan-workspace] .plan-projections').first().waitFor();
         await page.locator('.wb-current-plan[data-plan-ref]').waitFor();
       }
       if (['reports', 'review'].includes(view)) await page.locator('.rw-workbench[data-ready="true"]').waitFor();
       await settle(page, record);
+      // 2026-09-21：计划中心的三个页签分工后，这套夹具里它们都放得下；资料总览内容最高，
+      // 用它取一次真实的滚动样本，证明支持的视口里主内容确实会滚。
+      if (view === 'basedata') await userScroll(page, record);
       const layout = await geometry(page, record);
       const responses = reads();
       if (view === 'run') {
@@ -48,7 +52,7 @@ async function caption(page, state, reference, record) {
   record.equal(await node.locator('.wb-current-name').innerText(), plan.display_name);
   record.equal(await node.locator('.wb-current-name').getAttribute('title'), plan.display_name);
   record.ok((await node.innerText()).includes(plan.is_current_official ? '当前正式' : '历史正式'));
-  record.ok((await node.innerText()).includes('第 ' + plan.version + ' 版'));
+  record.ok((await node.innerText()).includes('正式 v' + plan.version));
   record.ok((await node.locator('.wb-current-range').innerText()).includes('计划时间'));
   return {plan, caption: await node.innerText(), workspace_response: response.file};
 }
@@ -90,12 +94,14 @@ async function assertRestored(entry, original, record, view = 'gantt') {
   await settle(page, record); await shell(page, view, record);
   await caption(page, state, original.caption.reference, record);
   try {
+    // 搜索框只在「计划甘特」页签里；另外两个页签只核对滚动位置的恢复。
     await page.waitForFunction(expected => {
       const input = document.querySelector('input[aria-label="搜索批次、工序、设备、人员"]');
       const main = document.querySelector('.main-content');
-      return input && input.value === expected.query && Math.abs(main.scrollTop - expected.scroll.mainTop) <= 2
+      return (expected.view === 'gantt' ? input && input.value === expected.query : true)
+        && Math.abs(main.scrollTop - expected.scroll.mainTop) <= 2
         && Math.abs(window.scrollY - expected.scroll.windowTop) <= 2;
-    }, original);
+    }, {...original, view});
   } finally {
     record.data.restoration_observations.push({state: state.id, expected: original, actual: await remembered(page)});
     record.save();

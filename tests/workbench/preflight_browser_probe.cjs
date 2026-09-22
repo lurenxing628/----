@@ -66,8 +66,14 @@ async function cases() {
   assert((await page.locator('.pf-stepper [aria-current="step"]').innerText()).includes('选批次和日期'));
   assert((await page.locator('.pf-picker-row').first().innerText()).includes('交期：'));
   assert((await page.locator('.pf-picker-row').first().innerText()).includes('优先级：'));
-  let data = await checked(); assert.equal(data.counts.selected_tasks, 0); assert.equal(data.eligible_tasks, 0);
+  // With no batch selected the check is blocked by a tooltip reason (focusable, click ignored) instead of running an empty preflight.
+  const blockedCheck = page.getByRole('button', { name: '开始排产检查：请先选择要排产的批次。', exact: true }); await blockedCheck.waitFor();
+  assert.equal(await blockedCheck.getAttribute('aria-disabled'), 'true'); assert.equal(await button('开始排产检查').count(), 0);
+  const preflightRequests = () => report.requests.filter(row => row.url.includes('/scheduling/preflight')).length, beforeBlockedClick = preflightRequests();
+  await blockedCheck.click({ force: true }); await page.evaluate(() => new Promise(resolve => setTimeout(resolve, 200)));
+  assert.equal(preflightRequests(), beforeBlockedClick, 'An ignored click must not run the preflight');
   assert(await button('开始排产').isDisabled()); await button('收起范围').click(); await layout(); await shot('empty');
+  let data;
   await mounted();
   await page.getByRole('checkbox', { name: '选择 PF-0000', exact: true }).check(); await button('批次下一页').click();
   assert((await page.locator('.pf-stepper [aria-current="step"]').innerText()).includes('检查'));

@@ -9,7 +9,7 @@ async function caption(page, plan, label) {
   assert.equal(await node.getAttribute('data-plan-ref'), plan.plan_ref);
   const text = await node.innerText();
   assert(text.includes(label) && text.includes(plan.display_name));
-  assert(text.includes(plan.is_current_official ? '当前正式采用' : '历史正式计划'));
+  assert(text.includes(plan.is_current_official ? '当前正式' : '历史正式'));
   assert(text.includes('正式 v' + plan.version));
 }
 

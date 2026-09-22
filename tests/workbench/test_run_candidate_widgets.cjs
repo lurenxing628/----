@@ -16,7 +16,7 @@ const scripts = new Map(compiled.outputs.map((row, i) => ['/source/' + files[i],
 const manifest = JSON.parse(fs.readFileSync(path.join(root, 'static/workbench/asset-manifest.json')));
 const assets = new Map(manifest.files.map(row => ['/static/' + row.path, { ...row, bytes: fs.readFileSync(path.join(root, 'static', row.path)) }]));
 const staticScripts = manifest.scripts.filter(file => file.startsWith('workbench/vendor/') || file.startsWith('workbench/assets/foundation-'));
-const report = { browser: null, variants: [], cases: [], screenshots: [], errors: [], external: [], dialogs: [], requests: [], downloads: [], capacity: [],
+const report = { browser: null, variants: [], cases: [], screenshots: [], errors: [], external: [], dialogs: [], requests: [], downloads: [], capacity: [], prints: [],
   catalog_checks: [],
   compile: { global_build: false, target: 'chrome109' }, sources: sources.map(row => ({ path: row.path, sha256: crypto.createHash('sha256').update(row.code).digest('hex') })) };
 const boot = `let fixtureRoot;window.mountCandidate=(initialContext={},adapter)=>{if(fixtureRoot)fixtureRoot.unmount();fixtureRoot=ReactDOM.createRoot(document.getElementById('fixture-root'));
@@ -77,14 +77,18 @@ async function layout() {
   assert.equal(value.overflow, false, JSON.stringify(value)); assert.deepEqual(value.clipped, []); assert.deepEqual(value.icons, []);
   assert(Math.abs(value.width - value.available) < 2, JSON.stringify(value));
 }
+// One 导出 button opens the format dialog; the file starts from 下载 CSV / 下载 XLSX inside it.
+async function exportDialog() { await button('导出').click(); const dialog = page.getByRole('dialog', { name: '导出候选方案', exact: true }); await dialog.waitFor(); return dialog; }
 async function download(fmt, expected) {
-  const started = page.waitForEvent('download'); await button(fmt.toUpperCase()).click(); const file = await started;
+  const dialog = await exportDialog(); await dialog.getByRole('radio', { name: fmt.toUpperCase(), exact: true }).check();
+  const started = page.waitForEvent('download'); await dialog.getByRole('button', { name: '下载 ' + fmt.toUpperCase(), exact: true }).click(); const file = await started;
+  await dialog.waitFor({ state: 'hidden' });
   const target = path.join(output, variant + '-' + report.downloads.length + '.' + fmt); await file.saveAs(target); assert.equal(await file.failure(), null);
   report.downloads.push({ path: target, format: fmt, task_count: expected.data.task_count,
     row_count: Math.max(1, expected.data.task_count + (expected.data.unplanned_operation_count || 0)),
     row_refs: expected.data.tasks.map(t => t.row_ref), operation_refs: expected.data.tasks.map(t => t.operation_ref), starts: expected.data.tasks.map(t => t.start),
     candidate_ref: expected.data.candidate.candidate_ref, run_ref: expected.data.candidate.run_ref });
-  await page.getByText(/^已下载 \d+ 条记录/).waitFor(); done('real-' + fmt + '-download-full-scope-' + expected.data.task_count);
+  await page.getByText(/^已交给浏览器下载：.+，共 \d+ 条记录/).waitFor(); done('real-' + fmt + '-download-full-scope-' + expected.data.task_count);
 }
 async function contracts() {
   const result = await page.evaluate(async () => {
@@ -135,11 +139,11 @@ async function baseline() {
   assert.equal(originalRefs.length, 4); assert(originalRefs.includes(fixtures.complete.candidate_ref));
   await catalog.locator(':scope > summary').click(); await catalogState(false); await openCatalog();
   assert.deepEqual(await catalog.locator('[data-candidate-ref]').evaluateAll(rows => rows.map(row => row.dataset.candidateRef)), originalRefs);
-  assert.equal(await catalog.locator('[data-candidate-ref="' + fixtures.complete.candidate_ref + '"]').getAttribute('aria-selected'), 'true');
+  assert.equal(await catalog.locator('[data-candidate-ref="' + fixtures.complete.candidate_ref + '"]').getAttribute('aria-current'), 'true');
   report.catalog_checks.push({ variant, name: 'summary-reopens-same-catalog-and-selection', passed: true });
   const otherRef = originalRefs.find(ref => ref !== fixtures.complete.candidate_ref); await button('查看候选 ' + otherRef).click(); await catalogState(false);
   assert(await catalog.locator(':scope > summary').evaluate(node => document.activeElement === node), 'Collapsing the selected candidate must return focus to its visible catalog summary');
-  await page.waitForFunction(ref => document.querySelector('[data-candidate-ref="' + ref + '"]').getAttribute('aria-selected') === 'true', otherRef);
+  await page.waitForFunction(ref => document.querySelector('[data-candidate-ref="' + ref + '"]').getAttribute('aria-current') === 'true', otherRef);
   await openCatalog(); assert.deepEqual(await catalog.locator('[data-candidate-ref]').evaluateAll(rows => rows.map(row => row.dataset.candidateRef)), originalRefs);
   report.catalog_checks.push({ variant, name: 'different-candidate-closes-without-changing-directory', focus_returned_to_summary: true, passed: true });
   done('explicit-run-manual-candidate-selection');
@@ -211,14 +215,17 @@ async function baseline() {
   await page.getByRole('listbox').getByRole('option', { name: '失败', exact: true }).click(); await page.getByText('这次排产在当前筛选下没有候选方案。', { exact: true }).waitFor(); done('workbench-dropdown-empty-filter-not-latest');
   await mount('complete'); const pattern = '**/scheduling/candidates/' + fixtures.complete.candidate_ref + '/workspace?*';
   await page.route(pattern, route => route.fulfill({ status: 500, contentType: 'text/html', body: 'Unavailable' })); await button('刷新候选方案').click();
-  await page.getByRole('alert').waitFor(); assert.equal(await page.locator('[data-candidate-lane]').count(), 0); assert.equal(await button('CSV').count(), 0);
+  await page.getByRole('alert').waitFor(); assert.equal(await page.locator('[data-candidate-lane]').count(), 0); assert.equal(await button('导出').count(), 0);
   await page.unroute(pattern); await button('刷新候选方案').click(); await page.getByRole('heading', { name: '候选工作区', exact: true }).waitFor(); done('failed-refresh-clears-old-data-and-export');
-  await page.request.post(origin + '/fixture/restart'); await button('CSV').click(); await page.getByRole('alert').waitFor(); done('expired-read-token-download-not-faked');
+  await page.request.post(origin + '/fixture/restart'); const expired = await exportDialog(); await expired.getByRole('button', { name: '下载 CSV', exact: true }).click();
+  await expired.getByRole('alert').waitFor(); await expired.getByRole('button', { name: '取消', exact: true }).click(); await expired.waitFor({ state: 'hidden' }); done('expired-read-token-download-not-faked');
   await button('刷新候选方案').click(); await page.getByRole('heading', { name: '候选工作区', exact: true }).waitFor();
   await page.evaluate(() => { const api = RunCandidateAnalysisAPI.create(); window.mountCandidate(fixtureSource, { ...api, workspace: async (...args) => { const v = await api.workspace(...args); v.data.capabilities.view = false; return v; } }); });
-  await page.getByText('当前不能查看这个候选方案。', { exact: false }).waitFor(); assert.equal(await button('CSV').count(), 0); assert.equal(await page.locator('[data-candidate-lane]').count(), 0); done('view-capability-false-no-content-or-export');
+  await page.getByText('当前不能查看这个候选方案。', { exact: false }).waitFor(); assert.equal(await button('导出').count(), 0); assert.equal(await page.locator('[data-candidate-lane]').count(), 0); done('view-capability-false-no-content-or-export');
   await page.evaluate(() => { const api = RunCandidateAnalysisAPI.create(); window.mountCandidate(fixtureSource, { ...api, workspace: async (...args) => { const v = await api.workspace(...args); v.data.capabilities.export = false; return v; } }); });
-  await button('CSV').waitFor(); assert(await button('CSV').isDisabled()); assert(await button('XLSX').isDisabled()); done('export-capability-false-disabled');
+  // A tooltip-only reason keeps 导出 focusable (aria-disabled) and folds the reason into its accessible name.
+  const blockedExport = page.getByRole('button', { name: '导出：当前还不能导出这个候选方案。', exact: true }); await blockedExport.waitFor();
+  assert.equal(await blockedExport.getAttribute('aria-disabled'), 'true'); assert.equal(await button('导出').count(), 0); done('export-capability-false-disabled');
   const history = await (await page.request.get(origin + '/api/workbench/v1/scheduling/runs')).json();
   assert(history.ok); const old = history.data.runs.find(r => r.run_ref === fixtures.complete.run_ref); assert(old);
   assert.equal(old.constraint_verification, 'not_checked_by_history'); assert.equal(old.task_count_basis, 'persisted_rows_across_candidates');
@@ -244,7 +251,100 @@ async function capacity() {
   await page.locator('[data-candidate-task-list] [data-row-ref="' + full.data.tasks[4999].row_ref + '"]').waitFor();
   assert(await page.locator('[data-candidate-task-list] [data-row-ref]').count() <= 16);
   await button('工序详情 ' + full.data.tasks[4999].row_ref).click(); await UI.reference(page.getByRole('complementary'), full.data.tasks[4999].row_ref);
-  await layout(); await shot('5000'); await page.getByLabel('搜索候选工序').fill('CAP-099');
+  await layout(); await shot('5000'); await page.getByLabel('搜索候选工序').fill('CAP-09');
+  await page.waitForFunction(() => document.querySelector('[role="table"][aria-label="候选任务安排"]').getAttribute('aria-rowcount') === '501');
+  const printSelection = page.locator('[data-candidate-task-list] [data-row-ref]').first();
+  const printSelectionRef = await printSelection.getAttribute('data-row-ref'); assert(printSelectionRef);
+  await printSelection.locator('button').click(); await page.waitForFunction(ref => {
+    const selected = document.querySelector('[data-candidate-task-list] [aria-selected="true"]'); return selected && selected.dataset.rowRef === ref;
+  }, printSelectionRef);
+  if (variant === '1392-dark') {
+    assert.equal(await page.locator('.rc-tools .wb-zoom-level').innerText(), '1×');
+    const trackedCanvas = page.locator('[data-candidate-lane]').first();
+    const screenPaint = await trackedCanvas.evaluate(canvas => {
+      canvas.dataset.printProbe = 'tracked'; canvas.__printPaints = [];
+      const token = getComputedStyle(canvas).getPropertyValue('--wb-gantt-primary-fill').trim(), sample = document.createElement('span');
+      sample.style.color = token; document.body.appendChild(sample); const resolved = getComputedStyle(sample).color; sample.remove();
+      const context = document.createElement('canvas').getContext('2d'); context.fillStyle = resolved;
+      return { token, expected: context.fillStyle, fill: canvas.__fills[0] && canvas.__fills[0].color };
+    });
+    await page.evaluate(() => {
+      window.__candidatePrint = [];
+      const snapshot = event => {
+        const root = document.querySelector('[data-candidate-task-list]'), rows = [...root.querySelectorAll('[data-row-ref]')];
+        const chunks = [...root.querySelectorAll('[data-print-chunk]')], lanes = [...document.querySelectorAll('[data-candidate-track]')];
+        const canvas = document.querySelector('[data-candidate-lane]'), space = canvas && canvas.closest('.rc-bar-space');
+        const selected = root.querySelector('[aria-selected="true"]');
+        window.__candidatePrint.push({ event: event.type, trusted: event.isTrusted, theme: document.documentElement.getAttribute('data-theme'),
+          rows: rows.length, chunks: chunks.length, maxChunkRows: Math.max(0, ...chunks.map(chunk => chunk.querySelectorAll('[data-row-ref]').length)),
+          uniqueRowRefs: new Set(rows.map(row => row.dataset.rowRef)).size, selectedRowRef: selected && selected.dataset.rowRef,
+          zoom: document.querySelector('.rc-tools .wb-zoom-level').textContent.trim(), lanes: lanes.length, expectedLanes: 10,
+          canvasWidth: canvas && canvas.getBoundingClientRect().width, spaceWidth: space && space.getBoundingClientRect().width });
+      };
+      window.addEventListener('beforeprint', snapshot, { once: true }); window.addEventListener('afterprint', snapshot, { once: true });
+    });
+    const target = path.join(output, 'candidate-native-print.pdf'), bytes = await page.pdf({ path: target, printBackground: true });
+    assert.equal(bytes.subarray(0, 5).toString(), '%PDF-'); await page.waitForFunction(() => window.__candidatePrint.length === 2);
+    const events = await page.evaluate(() => window.__candidatePrint), printed = events[0], restored = events[1];
+    assert.deepEqual(events.map(row => [row.event, row.trusted, row.theme]), [['beforeprint', true, 'dark'], ['afterprint', true, 'dark']]);
+    assert.equal(printed.rows, 500); assert.equal(printed.uniqueRowRefs, printed.rows); assert.equal(printed.chunks, Math.ceil(printed.rows / 12)); assert.equal(printed.maxChunkRows, 12);
+    assert.equal(printed.selectedRowRef, printSelectionRef); assert.equal(restored.selectedRowRef, printSelectionRef);
+    assert.equal(printed.zoom, '1×'); assert.equal(restored.zoom, '1×');
+    assert.equal(printed.lanes, printed.expectedLanes); assert(printed.lanes > restored.lanes);
+    assert(Math.abs(printed.canvasWidth - printed.spaceWidth) < 2, JSON.stringify(printed));
+    assert.equal(restored.chunks, 0); assert.equal(restored.uniqueRowRefs, restored.rows); assert(restored.rows <= 16);
+    assert(Math.abs(restored.canvasWidth - restored.spaceWidth) < 2, JSON.stringify(restored)); assert.equal(await page.locator('.rc-tools .wb-zoom-level').innerText(), '1×');
+    await page.waitForFunction(screen => {
+      const canvas = document.querySelector('[data-print-probe="tracked"]'), paints = canvas && canvas.__printPaints || [];
+      const printIndex = paints.findIndex(row => row.printMedia && row.fills.includes(row.expected));
+      return printIndex >= 0 && paints.some((row, index) => index > printIndex && !row.printMedia && row.token === screen.token && row.fills.includes(screen.expected));
+    }, screenPaint);
+    const paints = await trackedCanvas.evaluate(canvas => canvas.__printPaints), printIndex = paints.findIndex(row => row.printMedia && row.fills.includes(row.expected));
+    assert(printIndex >= 0, JSON.stringify({ screenPaint, paints }));
+    const restoreIndex = paints.findIndex((row, index) => index > printIndex && !row.printMedia && row.token === screenPaint.token && row.fills.includes(screenPaint.expected));
+    assert(restoreIndex > printIndex, JSON.stringify({ screenPaint, paints })); assert.notEqual(paints[printIndex].fills[0], screenPaint.fill);
+    await page.emulateMedia({ media: 'print' }); await page.waitForFunction(() => document.querySelectorAll('[data-candidate-task-list] [data-row-ref]').length === 500);
+    const media = await page.evaluate(() => {
+      const root = document.querySelector('[data-candidate-task-list]'), rows = [...root.querySelectorAll('[data-row-ref]')];
+      const tables = [...root.querySelectorAll('table.rc-print-table')], lanes = [...document.querySelectorAll('[data-candidate-track]')];
+      const canvas = document.querySelector('[data-candidate-lane]'), space = canvas.closest('.rc-bar-space'), selected = root.querySelector('[aria-selected="true"]');
+      const selectedStyle = getComputedStyle(selected), rgb = value => value.match(/[\d.]+/g).slice(0, 3).map(Number);
+      const luminance = value => rgb(value).map(channel => {
+        channel /= 255; return channel <= .04045 ? channel / 12.92 : ((channel + .055) / 1.055) ** 2.4;
+      }).reduce((sum, channel, index) => sum + channel * [.2126, .7152, .0722][index], 0);
+      const foreground = luminance(selectedStyle.color), background = luminance(selectedStyle.backgroundColor);
+      const taskTable = tables[0], tableStyle = getComputedStyle(taskTable), tableBox = taskTable.getBoundingClientRect();
+      return { mainDisplay: getComputedStyle(document.querySelector('.rc-main')).display,
+        taskTable: { tag: taskTable.tagName, minWidth: tableStyle.minWidth, width: tableBox.width },
+        uniqueRowRefs: new Set(rows.map(row => row.dataset.rowRef)).size,
+        chunks: tables.map(table => ({ rows: table.querySelectorAll('[data-row-ref]').length, headers: table.querySelectorAll('th').length,
+          breakBefore: getComputedStyle(table).breakBefore, breakInside: getComputedStyle(table).breakInside })),
+        rowPositions: [...new Set(rows.map(row => getComputedStyle(row).position))], lanePositions: [...new Set(lanes.map(row => getComputedStyle(row).position))],
+        overflow: tableStyle.overflow,
+        taskRows: rows.map(row => { const box = row.getBoundingClientRect(), style = getComputedStyle(row), cell = row.querySelector('[role="cell"]'), ownTable = row.closest('table').getBoundingClientRect(); return {
+          breakInside: style.breakInside, left: box.left, right: box.right, tableLeft: ownTable.left, tableRight: ownTable.right,
+          firstCell: cell.textContent, cellOverflow: getComputedStyle(cell).overflow, smallDisplay: getComputedStyle(cell.querySelector('small')).display }; }),
+        color: getComputedStyle(document.querySelector('.run-candidate-workspace')).color,
+        selected: { rowRef: selected.dataset.rowRef, color: selectedStyle.color, backgroundColor: selectedStyle.backgroundColor,
+          foregroundLuminance: foreground, backgroundLuminance: background,
+          contrast: (Math.max(foreground, background) + .05) / (Math.min(foreground, background) + .05) },
+        canvasWidth: canvas.getBoundingClientRect().width, spaceWidth: space.getBoundingClientRect().width };
+    });
+    assert.equal(media.mainDisplay, 'block'); assert.equal(media.taskTable.tag, 'TABLE'); assert.equal(media.taskTable.minWidth, '0px');
+    assert.equal(media.uniqueRowRefs, 500); assert.equal(media.chunks.length, Math.ceil(500 / 12));
+    assert(media.chunks.every(chunk => chunk.rows > 0 && chunk.rows <= 12 && chunk.headers === 4 && chunk.breakBefore === 'page' && chunk.breakInside === 'avoid'), JSON.stringify(media.chunks));
+    assert.deepEqual(media.rowPositions, ['static']); assert.deepEqual(media.lanePositions, ['relative']); assert.equal(media.overflow, 'visible');
+    assert(media.taskRows.every(row => row.breakInside === 'avoid' && row.cellOverflow === 'visible' && row.smallDisplay === 'block'
+      && row.left >= row.tableLeft - 1 && row.right <= row.tableRight + 1), JSON.stringify(media.taskRows.filter(row => row.left < row.tableLeft - 1 || row.right > row.tableRight + 1)));
+    assert(Math.abs(media.canvasWidth - media.spaceWidth) < 2, JSON.stringify(media));
+    assert(media.color.match(/[\d.]+/g).slice(0, 3).map(Number).reduce((sum, value) => sum + value, 0) < 384, media.color);
+    assert.equal(media.selected.rowRef, printSelectionRef); assert(media.selected.foregroundLuminance < media.selected.backgroundLuminance, JSON.stringify(media.selected));
+    assert(media.selected.contrast >= 4.5, JSON.stringify(media.selected));
+    await page.emulateMedia({ media: 'screen' }); await page.waitForFunction(() => document.querySelectorAll('[data-candidate-task-list] [data-row-ref]').length <= 16);
+    report.prints.push({ variant, kind: 'chunked-candidate-tables-and-default-zoom-canvas', path: target,
+      sha256: crypto.createHash('sha256').update(bytes).digest('hex'), events, paints, media });
+    done('native-print-chunked-full-window-dark-paper-default-zoom-canvas-and-afterprint-restore');
+  }
   await download('csv', full); await download('xlsx', full); done('5000-source-tasks-bounded-dom-and-complete-download');
   await page.reload(); await page.getByText(/尚未指定排产或候选方案/).waitFor();
   await mount(null, { candidate_ref: fixtures.capacity.candidate_ref }); await catalogState(false); await openCatalog(); await page.locator('[data-candidate-ref]').first().waitFor();
@@ -263,8 +363,24 @@ async function capacity() {
       await context.addInitScript(theme => { localStorage.setItem('aps_theme', theme); localStorage.setItem('aps_kit_theme', theme); }, theme);
       await context.addInitScript(() => {
         const transform = CanvasRenderingContext2D.prototype.setTransform, fill = CanvasRenderingContext2D.prototype.fillRect;
-        CanvasRenderingContext2D.prototype.setTransform = function(...args) { if (this.canvas.hasAttribute('data-candidate-lane')) this.canvas.__fixtureRects = []; return transform.apply(this, args); };
-        CanvasRenderingContext2D.prototype.fillRect = function(...args) { if (this.canvas.hasAttribute('data-candidate-lane')) this.canvas.__fixtureRects.push(args); return fill.apply(this, args); };
+        CanvasRenderingContext2D.prototype.setTransform = function(...args) {
+          if (this.canvas.hasAttribute('data-candidate-lane')) {
+            this.canvas.__fixtureRects = []; this.canvas.__fills = [];
+            const token = getComputedStyle(this.canvas).getPropertyValue('--wb-gantt-primary-fill').trim();
+            const sample = document.createElement('span'); sample.style.color = token; document.body.appendChild(sample);
+            const resolved = getComputedStyle(sample).color, context = document.createElement('canvas').getContext('2d'); sample.remove(); context.fillStyle = resolved;
+            const paint = { printMedia: matchMedia('print').matches, token, expected: context.fillStyle, fills: [] };
+            (this.canvas.__printPaints || (this.canvas.__printPaints = [])).push(paint); this.canvas.__currentPrintPaint = paint;
+          }
+          return transform.apply(this, args);
+        };
+        CanvasRenderingContext2D.prototype.fillRect = function(...args) {
+          if (this.canvas.hasAttribute('data-candidate-lane')) {
+            this.canvas.__fixtureRects.push(args); this.canvas.__fills.push({ args, color: this.fillStyle });
+            if (this.canvas.__currentPrintPaint) this.canvas.__currentPrintPaint.fills.push(this.fillStyle);
+          }
+          return fill.apply(this, args);
+        };
       });
       page = await context.newPage(); page.setDefaultTimeout(20000);
       page.on('pageerror', error => report.errors.push(error.message)); page.on('dialog', dialog => { report.dialogs.push(dialog.type()); dialog.dismiss(); });

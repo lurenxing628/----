@@ -20,7 +20,8 @@ const data = { items: [{ task: { task_ref: 'task', start: '2026-01-01T08:00:00',
   execution: { reports: [{ report_ref: 'report', actual_start: '2026-01-01T10:00:00', actual_end: '2026-01-01T11:00:00' }] } }] };
 const model = { start: M.instant('2026-01-01T00:00:00'), end: M.instant('2026-09-12T12:00:00'), asOf: M.instant('2026-09-12T12:00:00') };
 const before = JSON.stringify({ data, model }), initial = W.initial(data, model);
-assert(initial.zoom > 100 && initial.zoom <= 1024, 'Remote as_of does not compress default plan window');
+// An 8-hour task inside a Jan–Sep axis: the window follows the data but the default zoom is capped at 64x so the board stays usable.
+assert(initial.zoom > 16 && initial.zoom <= 64, 'Remote as_of does not compress the default window; the default zoom stays within the 64x cap');
 const span = (model.end - model.start) / initial.zoom, center = model.start + initial.center * (model.end - model.start);
 const captured = W.capture({ left: 50000, top: 300 }, 1400, model, initial.zoom);
 const advanced = { ...model, start: model.start - 3600000, end: model.end + 86400000 };

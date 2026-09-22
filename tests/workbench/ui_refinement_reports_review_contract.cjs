@@ -4,8 +4,11 @@ const { compile } = require('../../scripts/workbench/compile.cjs');
 const root = path.resolve(__dirname, '../..'), base = path.join(root, 'frontend/workbench/app');
 const React = { createElement: (type, props, ...children) => ({ type, props: props || {}, children }), Fragment: 'fragment' };
 const context = { React, window: { React, ResourceControls: {}, ReportControls: {}, WorkbenchFormat: {
-  number: (value) => value == null ? '未知' : String(value), dateTime: value => value == null ? '未知' : value.replace('T', ' ')
-} } };
+  number: (value) => value == null ? '未知' : String(value),
+  // 与真 WorkbenchFormat.dateTime 一样：格式不对就抛错，不静默原样返回。
+  dateTime: value => { if (value == null) return '未知'; if (!/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}/.test(value)) throw new TypeError('无法显示：日期时间格式不正确。'); return value.replace('T', ' '); },
+  hours: value => String(value) + ' 小时'
+}, WorkbenchTerms: { legacy_field_records: '历史现场记录', report_actions: {}, outcomes: { unavailable: '此功能尚未开通。' } } } };
 vm.createContext(context);
 context.window.DashboardContract = { categories: { external: '外协', actual: '现场' } };
 context.window.ResourceControls.Issues = function Issues() {};
@@ -55,6 +58,20 @@ assert(visible.includes('备注' + reference), 'A business remark is not an inte
 assert(visible.includes('说明 ' + reference), 'Only a complete hexadecimal value is collected');
 assert(visible.includes('本次完成数量0')); assert(!visible.includes('fingerprint'));
 assert(!visible.includes(arrayReference));
+// 历史现场记录：白名单项配中文标签，英文代号换成说法，编号折叠进编号区，键名不上屏。
+const legacyRecord = E.LegacyRecord({ value: { legacy_fact_ref: 'd4'.repeat(16), operation_ref: 'e5'.repeat(24), recorded_against_task_ref: null,
+  recorded_against_plan_ref: 'f6'.repeat(24), event_type: 'finish', reported_status: 'completed', event_time: '2026-09-09T10:00:00', quantity_done: 3,
+  quantity_scrapped: null, reason_code: null, reason_detail: null, severity: null, impact_minutes: null, handling_status: null, suggest_reschedule: null,
+  remark: '现场补记', created_by: '张三', created_at: '2026-09-09 02:00:00', actual_machine_ref: null, actual_operator_ref: 'a7'.repeat(24),
+  effective_processing_hours: null, unavailable_fields: [{ field: 'severity', storage_type: 'bytes' }], created_at_time_basis: 'legacy_storage', created_at_default_basis: 'utc' } });
+const legacyVisible = visibleText(legacyRecord), legacyRefs = Object.assign({}, ...nodes(legacyRecord).filter(node => node.type === context.window.WorkbenchReference).map(node => node.props.entries));
+for (const text of ['记录类型整道完工', '登记状态已完工', '记录时间2026-09-09 10:00', '登记数量3', '备注现场补记', '记录人张三', '登记时间2026-09-09 02:00:00（历史系统导入的原始时间）', '有 1 项原值的格式无法显示'])
+  assert(legacyVisible.includes(text), text);
+for (const raw of ['finish', 'completed', 'legacy_storage', 'utc', 'event_type', 'quantity_scrapped', 'unavailable_fields', '报废数量', '异常原因']) assert(!legacyVisible.includes(raw), raw);
+assert.equal(legacyRefs['历史记录编号'], 'd4'.repeat(16)); assert.equal(legacyRefs['人员编号'], 'a7'.repeat(24)); assert.equal(legacyRefs['原计划编号'], 'f6'.repeat(24));
+assert.equal(legacyRefs['无法显示的项 1'], 'severity'); assert(!('设备编号' in legacyRefs));
+assert.equal(E.legacyText('event_type', 'teleport'), '执行事件'); assert.equal(E.legacyText('suggest_reschedule', 'yes'), '建议重新排程');
+assert.equal(E.legacyText('impact_minutes', 15), '15 分钟'); assert.equal(E.legacyText('event_time', 'not-a-time'), 'not-a-time（原始格式，无法换算）');
 const calls = [];
 context.window.WorkbenchListControls = { Pager: () => null };
 const reportPage = context.window.ReportControls.Page({ page: { number: 2, size: 10, pages: 4, total: 31 }, onChange: patch => calls.push(patch) });

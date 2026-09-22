@@ -5,7 +5,7 @@ const root = path.resolve(__dirname, '../..'), input = JSON.parse(fs.readFileSyn
 const vendor = path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor');
 const context = vm.createContext({ console }); context.window = context; context.self = context;
 vm.runInContext(fs.readFileSync(path.join(vendor, 'react-18.3.1.js'), 'utf8'), context);
-const names = ['WorkbenchFormat.js', 'WorkbenchTerms.js', 'WorkbenchReferences.jsx', 'WorkbenchGuards.js', 'PointContract.js', 'ResourceControls.jsx', 'TrialControls.jsx', 'TrialGantt.jsx', 'TrialDetails.jsx'];
+const names = ['WorkbenchFormat.js', 'WorkbenchTerms.js', 'WorkbenchReferences.jsx', 'WorkbenchGuards.js', 'PointContract.js', 'ResourceControls.jsx', 'PlanGanttModel.js', 'TrialControls.jsx', 'TrialGantt.jsx', 'TrialDetails.jsx'];
 const sources = names.map(name => ({ path: 'frontend/workbench/app/' + name,
   code: fs.readFileSync(path.join(root, 'frontend/workbench/app', name), 'utf8') }));
 const compiled = compile({ babel_path: path.join(vendor, 'babel-7.29.0.min.js'), sources, check_combined: true });
@@ -45,12 +45,12 @@ rendered.forEach((element, index) => {
   const button = element, label = input.labels[index];
   assert.equal(button.props.title, label); assert.equal(button.props['aria-label'], label);
   assert.equal(text(button), label); assert.equal(button.props.icon, 'chevron-left');
-  const style = button.props.style;
-  assert.equal(style.minWidth, 0); assert.equal(style.maxWidth, '100%');
-  assert.equal(style.height, 'auto'); assert.equal(style.whiteSpace, 'normal'); assert.equal(style.textAlign, 'left');
+  // 2026-09-21：折行/宽度约束从内联样式挪进 32-process-trial.css 的 .tt-relation-button / .tt-relation-label，这里只认类名。
+  assert.equal(button.props.style, undefined, 'No inline style; wrapping comes from the class');
+  assert.ok(String(button.props.className || '').split(/\s+/).includes('tt-relation-button'));
   const spans = nodes(button, node => node.type === 'span' && text(node) === label);
-  assert.equal(spans.length, 1); assert.equal(spans[0].props.style.minWidth, 0);
-  assert.equal(spans[0].props.style.overflowWrap, 'anywhere'); assert.equal(spans[0].props.style.wordBreak, 'break-word');
+  assert.equal(spans.length, 1); assert.equal(spans[0].props.className, 'tt-relation-label');
+  assert.equal(spans[0].props.style, undefined);
   wrapContracts++;
   button.props.onClick();
   assert.equal(navigation[index], original[index], 'Navigate by the original ref, never label or index');

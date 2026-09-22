@@ -140,7 +140,7 @@ def verify(root):
             if topic in ("delivery", "quality"):
                 assert {row["工序编号"] for row in values} == operations
                 assert sum(int(row["逐次报工数"]) for row in values) == 27
-                assert sum(int(row["旧现场事件数"]) for row in values) == 6
+                assert sum(int(row["历史现场记录数"]) for row in values) == 6
             elif topic == "records":
                 result["source_verified"] = verify_records(rows, reports, revisions)
             else:

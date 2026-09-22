@@ -117,9 +117,9 @@ async function layout(page, record) {
 
 async function diagnostic(page, state, label, last, expected, record) {
   const wait=page.waitForEvent('download');
-  await page.getByRole('button',{name:'导出诊断文件',exact:true}).click();
+  await page.getByRole('button',{name:'导出页面诊断',exact:true}).click();
   const download=await wait;
-  record.equal(download.suggestedFilename(),'系统诊断.json');
+  record.equal(download.suggestedFilename(),'页面诊断.json');
   const file=path.join(record.root,'downloads',state+'-'+label+'.json');
   await download.saveAs(file);
   record.equal(await download.failure(),null);

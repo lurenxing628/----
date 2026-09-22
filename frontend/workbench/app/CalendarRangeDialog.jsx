@@ -8,7 +8,7 @@
   function RangePreview({ result, page, setPage, onBack, disabled }) {
     const data = result.data, size = 10, pages = Math.max(1, Math.ceil(data.days.length / size));
     return <>
-      <div className="match-note" style={{ display: 'block' }}><b>全部命中 {data.counts.selected} 天</b> · 变更 {data.counts.changed} 天 · 不变 {data.counts.unchanged} 天
+      <div className="match-note is-block"><b>全部命中 {data.counts.selected} 天</b> · 变更 {data.counts.changed} 天 · 不变 {data.counts.unchanged} 天
         <div>{data.request.start_date} 至 {data.request.end_date} · {({ all: '范围内每天', weekday: '仅周一至周五', weekend: '仅周六、周日' })[data.request.scope]}</div>
         <div>确认作用于全部 {data.counts.selected} 天，包含其他分页日期。</div><div className="muted">预览变更有效至 {window.WorkbenchFormat.dateTime(data.expires_at)}</div></div>
       <Pager page={{ number: page, pages, total: data.days.length, size }} sizes={[size]} unit="天" label="预览变更" onPage={setPage} showPageSelect />
@@ -69,11 +69,11 @@
             end_date: K.monthKey(month.year, month.month) + '-' + K.monthDays(month.year, month.month) })}>当前整月</Button>
           <Segment label="应用到" value={range.scope} disabled={disabled} options={[["all", "范围内每天"], ["weekday", "仅周一至周五"], ["weekend", "仅周六、周日"]]}
             onChange={scope => setRange({ ...range, scope })} />
-          <Segment label="维护方式" value={range.operation} disabled={disabled} options={[["upsert", "设置日历"], ["delete", "清除配置，恢复默认"]]}
+          <Segment label="维护方式" value={range.operation} disabled={disabled} options={[["upsert", "设置日历"], ["delete", "清除单独设置，恢复默认"]]}
             onChange={operation => setRange({ ...range, operation })} />
           {range.operation === 'upsert' ? <><label style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '12px 0' }}>
             <input type="checkbox" checked={replaceNote} disabled={disabled} style={{ width: 15, height: 15 }} onChange={event => setReplaceNote(event.target.checked)} />
-            同时替换备注（留空即清除）</label><Fields value={value} error={error} showSummary={false} onChange={next => { setValue(next); setError(null); }} disabled={disabled} noteEnabled={replaceNote} /></> : <p>清除范围内命中日期的全局日历配置，恢复默认规则。人员专属日历和班次不变。</p>}</>}
+            同时替换备注（留空即清除）</label><Fields value={value} error={error} showSummary={false} onChange={next => { setValue(next); setError(null); }} disabled={disabled} noteEnabled={replaceNote} /></> : <p>清除范围内命中日期的单独设置，恢复默认规则。{window.WorkbenchTerms.personal_calendar}和班次不变。</p>}</>}
         {loading && <p role="status">正在读取全部命中日期并计算变更前后配置…</p>}
         {result && <RangePreview result={result} page={page} setPage={setPage} onBack={back} disabled={disabled} />}
         <ErrorBox error={error} excludePaths={result ? [] : ['start_date', 'end_date'].concat(range.operation === 'upsert' ? window.CalendarFields.fieldPaths : [])} />

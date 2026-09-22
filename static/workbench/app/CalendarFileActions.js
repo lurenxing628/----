@@ -55,7 +55,8 @@
     value,
     onChange,
     disabled,
-    refs = []
+    refs = [],
+    error = null
   }) {
     const id = React.useId();
     const set = (key, next) => onChange({
@@ -81,6 +82,7 @@
     }, /*#__PURE__*/React.createElement(Field, {
       label: "\u5F00\u59CB\u65E5\u671F",
       path: "start_date",
+      error: error,
       required: true
     }, /*#__PURE__*/React.createElement("input", {
       id: id + '-from',
@@ -91,6 +93,7 @@
     })), /*#__PURE__*/React.createElement(Field, {
       label: "\u7ED3\u675F\u65E5\u671F",
       path: "end_date",
+      error: error,
       required: true
     }, /*#__PURE__*/React.createElement("input", {
       id: id + '-to',
@@ -100,7 +103,7 @@
       onChange: event => set('end_date', event.target.value)
     }))), /*#__PURE__*/React.createElement("p", {
       className: "iohint"
-    }, "\u53EA\u5BFC\u51FA\u8FD9\u6BB5\u65F6\u95F4\u91CC\u5355\u72EC\u914D\u7F6E\u8FC7\u7684\u65E5\u671F\u3002\u6CA1\u6709\u5355\u72EC\u914D\u7F6E\u8FC7\u7684\u65E5\u671F\u6309\u9ED8\u8BA4\u89C4\u5219\u7B97\uFF0C\u4E0D\u4F1A\u51FA\u73B0\u5728\u6587\u4EF6\u91CC\uFF0C \u6240\u4EE5\u5BFC\u51FA\u7684\u6587\u4EF6\u539F\u6837\u5BFC\u56DE\u6765\u4E0D\u4F1A\u6709\u4EFB\u4F55\u6539\u52A8\u3002")));
+    }, "\u53EA\u5BFC\u51FA\u8FD9\u6BB5\u65F6\u95F4\u91CC\u5355\u72EC\u8BBE\u7F6E\u8FC7\u7684\u65E5\u671F\u3002\u6CA1\u6709\u5355\u72EC\u8BBE\u7F6E\u8FC7\u7684\u65E5\u671F\u6309\u9ED8\u8BA4\u89C4\u5219\u7B97\uFF0C\u4E0D\u4F1A\u51FA\u73B0\u5728\u6587\u4EF6\u91CC\uFF0C \u6240\u4EE5\u5BFC\u51FA\u7684\u6587\u4EF6\u539F\u6837\u5BFC\u56DE\u6765\u4E0D\u4F1A\u6709\u4EFB\u4F55\u6539\u52A8\u3002")));
   }
   function CalendarFileActions({
     kind,
@@ -119,6 +122,8 @@
           people: refs.length ? 'selected' : 'all'
         } : {})
       },
+      // 日期范围填错时错误标到对应的日期项上，总错误框只留一句话，不再重复逐项说明。
+      exportFieldPaths: ['start_date', 'end_date'],
       ExportScope
     }), [kind, people, refs.length, month && month.year, month && month.month]);
     return /*#__PURE__*/React.createElement(window.ResourceFileActionFlow, {

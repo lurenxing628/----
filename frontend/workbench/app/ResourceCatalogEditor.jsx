@@ -49,7 +49,7 @@
   }
   function Facts({ kind, entity }) {
     const count = M.memberCount(kind, entity);
-    return <section className="rc-facts"><div className="rc-section-head"><b>{entity.business_code} · {entity.label}</b><span>{entity.status === 'active' ? '启用' : entity.status === 'inactive' ? '停用' : '旧状态未知'}</span></div>
+    return <section className="rc-facts"><div className="rc-section-head"><b>{entity.business_code} · {entity.label}</b><span>{entity.status === 'active' ? '启用' : entity.status === 'inactive' ? '停用' : '旧状态 / 原因未知'}</span></div>
       <p>已关联{kind === 'machine_group' ? '设备' : '人员'}：{count === null ? '未读取' : count}</p>
       {kind === 'shift_profile' && <><p>周期起始日期：{window.WorkbenchFormat.date(entity.fields.anchor_date)} · 轮换天数：{entity.fields.cycle_days}</p>
         <div className="wb-table-frame rc-pattern-scroll" data-sticky-head data-sticky-actions><table className="tbl wb-table"><caption className="wb-visually-hidden">班次档现有逐日轮换规则</caption><thead><tr><th scope="col" className="wb-col-key">轮换日</th><th scope="col">工作 / 休息</th><th scope="col">开始</th><th scope="col">结束</th></tr></thead><tbody>
@@ -69,7 +69,7 @@
       {field('business_code', '编号', { required: action === 'create', readOnly: action !== 'create' })}{field('label', '名称', { required: true })}
       <Field name="status" label="状态" required error={error}><select value={value.status} disabled={disabled} onChange={event => onChange('status', event.target.value)}>
         <option value="" disabled>请选择状态</option><option value="active">启用</option><option value="inactive">停用</option>
-        {value.status && !['active', 'inactive'].includes(value.status) && <option value={value.status}>旧状态未知（保持原值）</option>}</select></Field>
+        {value.status && !['active', 'inactive'].includes(value.status) && <option value={value.status}>旧状态 / 原因未知（保持原值）</option>}</select></Field>
       {kind === 'shift_profile' && <>{field('anchor_date', '周期起始日期', { required: true, type: 'date' })}{field('cycle_days', '轮换天数', { required: true, type: 'number' })}</>}
       {field('remark', '备注', { area: true, full: true })}</div>
       {kind === 'shift_profile' && <Pattern value={value} onChange={onChange} disabled={disabled} error={error} onValidationError={onValidationError} />}

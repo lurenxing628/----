@@ -27,7 +27,7 @@ const scripts = new Map(compiled.outputs.map(row => ['/probe/' + row.path, row.c
 const boot = `
 window.configSavedNetwork = { queue: [], held: {} };
 function ConfigSavedProbe() {
-  const [tab, setTab] = React.useState('config'), [source, setSource] = React.useState('current'), [revision, bump] = React.useReducer(v => v + 1, 0);
+  const [tab, setTab] = React.useState('config'), [revision, bump] = React.useReducer(v => v + 1, 0);
   const [theme, setTheme] = React.useState('light'), [pageSize, setSize] = React.useState(10), [compact, setCompact] = React.useState(true);
   const api = React.useMemo(() => {
     const live = window.SystemMaintenanceAPI.create();
@@ -43,10 +43,10 @@ function ConfigSavedProbe() {
       }));
     }};
   }, []);
-  window.configSavedProbe = { bump, setTab, setSource };
+  window.configSavedProbe = { bump, setTab };
   return React.createElement('div', {className: 'sm-workbench'},
     React.createElement('nav', null, ['config', 'overview'].map(value => React.createElement('button', {key: value, onClick: () => setTab(value)}, value))),
-    React.createElement(window.SystemMaintenanceWorkspace, {api, tab, source, revision, theme, pageSize, compact,
+    React.createElement(window.SystemMaintenanceWorkspace, {api, tab, revision, theme, pageSize, compact,
       onSetTheme: setTheme, onPageSize: setSize, onCompact: setCompact}, React.createElement('p', null, 'overview')));
 }
 ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(ConfigSavedProbe));`;

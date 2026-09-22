@@ -18,7 +18,7 @@ def test_theme_preference_contract_and_failure_visibility():
         "Theme VM probe failed:\n" + result.stdout + "\n" + result.stderr
     )
     report = json.loads(result.stdout)
-    assert report["checks"] == report["passed"] == 23
+    assert report["checks"] == report["passed"] == 24
     assert report["failed"] == 0 and report["failures"] == []
     assert report["network"] == "none" and report["browser"] is False
     assert report["production"] is False

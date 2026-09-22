@@ -12,7 +12,7 @@ const scripts = new Map(compiled.outputs.map((row, i) => ['/source/' + files[i],
 const manifest = JSON.parse(fs.readFileSync(path.join(root, 'static/workbench/asset-manifest.json')));
 const assets = new Map(manifest.files.map(row => ['/static/' + row.path, { ...row, bytes: fs.readFileSync(path.join(root, 'static', row.path)) }]));
 const staticScripts = manifest.scripts.filter(file => file.startsWith('workbench/vendor/') || file.startsWith('workbench/assets/foundation-'));
-const report = { browser: null, variants: [], checks: [], screenshots: [], errors: [], external: [], dialogs: [], requests: [], capacity: [],
+const report = { browser: null, variants: [], checks: [], screenshots: [], errors: [], external: [], dialogs: [], requests: [], capacity: [], prints: [],
   compile: { global_build: false, target: 'chrome109' }, sources: sources.map(row => ({ path: row.path, sha256: crypto.createHash('sha256').update(row.code).digest('hex') })) };
 const boot = `let fixtureRoot;function Fixture(props){const [data,setData]=React.useState(props.data),[selected,setSelected]=React.useState(null),[query,setQuery]=React.useState('');
 window.setBaselineData=d=>{window.fixtureData=d;setData(d);setSelected(null);};window.setBaselineSearch=setQuery;window.fixtureData=data;
@@ -132,8 +132,45 @@ async function small() {
   await page.getByRole('region', { name: '初始计划工序对照', exact: true }).waitFor(); done('baseline-keyboard-own-detail');
   const gold = await baselineLane.evaluate(n => n.__strokes.some(s => s.color === getComputedStyle(n).getPropertyValue('--wb-gantt-gold').trim() && s.lineWidth === 2)); assert(gold); done('selected-baseline-gold-border');
   const multiRef = await page.evaluate(() => baselineEnvelope.data.comparisons.find(r => r.baseline_segments.length > 1).operation_ref);
-  await button('初始计划对照 ' + multiRef).click(); assert.equal(await page.locator('[data-baseline-segment]').count(), 2);
+  const multiCount = await page.evaluate(ref => baselineEnvelope.data.comparisons.find(r => r.operation_ref === ref).baseline_segments.length, multiRef); assert.equal(multiCount, 8);
+  await button('初始计划对照 ' + multiRef).click(); assert(await page.locator('[data-baseline-segment]').count() <= 6);
   await page.getByText('此工序在初始计划中有多段安排，请逐段查看。', { exact: true }).waitFor(); await shot('multi-segment-detail'); done('multiple-segments-not-merged');
+  if (variant === '1392-dark') {
+    assert.equal(await page.locator('.rc-tools .wb-zoom-level').innerText(), '1×');
+    const screenPaint = await candidateLane.evaluate(canvas => {
+      canvas.dataset.printProbe = 'tracked'; canvas.__printPaints = [];
+      const token = getComputedStyle(canvas).getPropertyValue('--wb-gantt-primary-fill').trim(), context = document.createElement('canvas').getContext('2d');
+      context.fillStyle = token; return { token, expected: context.fillStyle, fill: canvas.__fills[0].color };
+    });
+    await page.evaluate(() => {
+      window.__baselineSegmentPrint = [];
+      const snapshot = event => window.__baselineSegmentPrint.push({ event: event.type, trusted: event.isTrusted,
+        segments: document.querySelectorAll('[data-baseline-segment]').length,
+        paint: document.querySelector('[data-print-probe="tracked"]').__printPaints.slice(-1)[0] });
+      window.addEventListener('beforeprint', snapshot, { once: true }); window.addEventListener('afterprint', snapshot, { once: true });
+    });
+    const target = path.join(output, 'baseline-segments-native-print.pdf'), bytes = await page.pdf({ path: target, printBackground: true });
+    assert.equal(bytes.subarray(0, 5).toString(), '%PDF-');
+    await page.waitForFunction(() => window.__baselineSegmentPrint.length === 2 && [...document.querySelectorAll('[data-print-probe="tracked"]')].some(canvas => canvas.__printPaints.some(row => row.printMedia)));
+    const { events, paints, tracked } = await page.evaluate(() => {
+      const canvases = [...document.querySelectorAll('[data-print-probe="tracked"]')]; return { events: window.__baselineSegmentPrint, paints: canvases[0].__printPaints, tracked: canvases.length };
+    });
+    assert.deepEqual(events.map(row => [row.event, row.trusted]), [['beforeprint', true], ['afterprint', true]]);
+    assert.equal(events[0].segments, multiCount); assert(events[1].segments <= 6);
+    assert.equal(tracked, 1); const printIndex = paints.findIndex(row => row.printMedia && row.fills.includes(row.expected));
+    assert(printIndex >= 0, JSON.stringify({ screenPaint, paints }));
+    const restoreIndex = paints.findIndex((row, index) => index > printIndex && !row.printMedia && row.token === screenPaint.token && row.fills.includes(screenPaint.expected));
+    assert(restoreIndex > printIndex, JSON.stringify({ screenPaint, paints })); assert.notEqual(paints[printIndex].fills[0], screenPaint.fill);
+    assert(events[1].paint.fills.includes(screenPaint.expected), JSON.stringify(events[1].paint));
+    await page.emulateMedia({ media: 'print' }); await page.waitForFunction(count => document.querySelectorAll('[data-baseline-segment]').length === count, multiCount);
+    const printLayout = await page.evaluate(() => ({
+      segmentPositions: [...new Set([...document.querySelectorAll('[data-baseline-segment]')].map(node => getComputedStyle(node).position))],
+      segmentHeights: [...document.querySelectorAll('[data-baseline-segment]')].map(node => ({ scroll: node.scrollHeight, client: node.clientHeight, overflow: getComputedStyle(node).overflow, breakInside: getComputedStyle(node).breakInside })) }));
+    assert.deepEqual(printLayout.segmentPositions, ['static']); assert(printLayout.segmentHeights.every(row => row.scroll <= row.client + 1 && row.overflow === 'visible' && row.breakInside === 'avoid'), JSON.stringify(printLayout));
+    await page.emulateMedia({ media: null }); await page.waitForFunction(() => !matchMedia('print').matches && document.querySelectorAll('[data-baseline-segment]').length <= 6);
+    report.prints.push({ variant, kind: 'baseline-segments-and-default-zoom-canvas', path: target, sha256: crypto.createHash('sha256').update(bytes).digest('hex'), events, paints, printLayout });
+    done('native-print-all-baseline-segments-default-zoom-canvas-and-afterprint-restore');
+  }
   const unplannedRef = await page.evaluate(() => baselineEnvelope.data.comparisons.find(r => r.status === 'unscheduled').operation_ref);
   await button('初始计划对照 ' + unplannedRef).click(); await page.getByText('此候选方案未安排该工序。', { exact: true }).first().waitFor(); done('unscheduled-is-not-improvement');
   const onlyRef = await page.evaluate(() => baselineEnvelope.data.comparisons.find(r => r.status === 'baseline_only').operation_ref);
@@ -215,6 +252,75 @@ async function capacity() {
   const lastRef = await page.evaluate(() => baselineEnvelope.data.comparisons[4999].operation_ref);
   await button('初始计划对照 ' + lastRef).click(); await UI.reference(page.getByRole('region', { name: '初始计划工序对照', exact: true }), lastRef);
   assert(await page.locator('[data-baseline-operation]').count() <= 12); await layout(); await shot('5000-last-track-and-detail'); done('5000-virtual-rows-last-track-and-detail');
+  await page.evaluate(() => setBaselineSearch('BZ-09'));
+  await page.waitForFunction(() => document.querySelector('.rb-panel summary').textContent.includes('500'));
+  if (variant === '1392-dark') {
+    await button('放大候选时间轴').click(); assert.equal(await page.locator('.rc-tools .wb-zoom-level').innerText(), '2×');
+    assert.equal(await page.evaluate(() => matchMedia('print').matches), false);
+    const trackedCanvas = page.locator('[data-candidate-lane]').first();
+    const screenPaint = await trackedCanvas.evaluate(canvas => {
+      canvas.dataset.baselineCapacityPrint = 'tracked'; canvas.__printPaints = [];
+      const token = getComputedStyle(canvas).getPropertyValue('--wb-gantt-primary-fill').trim(), context = document.createElement('canvas').getContext('2d');
+      context.fillStyle = token; return { token, expected: context.fillStyle, fill: canvas.__fills[0].color };
+    });
+    await page.evaluate(() => {
+      window.__baselinePrint = []; window.__baselinePrintMedia = [];
+      const media = matchMedia('print');
+      media.addEventListener('change', event => {
+        const workspace = document.querySelector('.run-candidate-workspace'), rows = [...document.querySelectorAll('[data-baseline-operation]')];
+        window.__baselinePrintMedia.push({ matches: event.matches, rows: rows.length,
+          uniqueOperationRefs: new Set(rows.map(row => row.dataset.baselineOperation)).size,
+          visibleButtons: [...document.querySelectorAll('button')].filter(button => getComputedStyle(button).display !== 'none').length,
+          color: workspace && getComputedStyle(workspace).color });
+      });
+      const snapshot = event => {
+        const rows = [...document.querySelectorAll('[data-baseline-operation]')], lanes = [...document.querySelectorAll('.rc-lane')];
+        const canvas = document.querySelector('.rc-gantt canvas'), space = canvas && canvas.closest('.rc-bar-space');
+        window.__baselinePrint.push({ event: event.type, trusted: event.isTrusted, theme: document.documentElement.getAttribute('data-theme'),
+          rows: rows.length, uniqueOperationRefs: new Set(rows.map(row => row.dataset.baselineOperation)).size, lanes: lanes.length,
+          canvasWidth: canvas && canvas.getBoundingClientRect().width, spaceWidth: space && space.getBoundingClientRect().width });
+      };
+      window.addEventListener('beforeprint', snapshot, { once: true }); window.addEventListener('afterprint', snapshot, { once: true });
+    });
+    const target = path.join(output, 'baseline-native-print.pdf'), bytes = await page.pdf({ path: target, printBackground: true });
+    assert.equal(bytes.subarray(0, 5).toString(), '%PDF-'); await page.waitForFunction(() => window.__baselinePrint.length === 2
+      && window.__baselinePrintMedia.some(row => row.matches) && window.__baselinePrintMedia.slice(-1)[0].matches === false);
+    await page.waitForFunction(screen => {
+      const canvas = document.querySelector('[data-baseline-capacity-print="tracked"]'), paints = canvas && canvas.__printPaints || [];
+      const printIndex = paints.findIndex(row => row.printMedia && row.fills.includes(row.expected));
+      return printIndex >= 0 && paints.some((row, index) => index > printIndex && !row.printMedia && row.token === screen.token && row.fills.includes(screen.expected));
+    }, screenPaint);
+    const { events, mediaTransitions, paints } = await page.evaluate(() => ({ events: window.__baselinePrint,
+      mediaTransitions: window.__baselinePrintMedia, paints: document.querySelector('[data-baseline-capacity-print="tracked"]').__printPaints }));
+    const printed = events[0], restored = events[1];
+    assert.deepEqual(events.map(row => [row.event, row.trusted, row.theme]), [['beforeprint', true, 'dark'], ['afterprint', true, 'dark']]);
+    assert.deepEqual(mediaTransitions.map(row => row.matches), [true, false]);
+    const activePrint = mediaTransitions.find(row => row.matches); assert.equal(activePrint.rows, 500); assert.equal(activePrint.uniqueOperationRefs, 500);
+    assert.equal(activePrint.visibleButtons, 0); assert(activePrint.color.match(/[\d.]+/g).slice(0, 3).map(Number).reduce((sum, value) => sum + value, 0) < 384, JSON.stringify(activePrint));
+    assert.equal(printed.rows, 500); assert.equal(printed.uniqueOperationRefs, printed.rows); assert(printed.lanes > restored.lanes);
+    assert(Math.abs(printed.canvasWidth - printed.spaceWidth) < 2, JSON.stringify(printed));
+    assert(restored.rows <= 12); assert.equal(restored.uniqueOperationRefs, restored.rows); assert.equal(await page.locator('.rc-tools .wb-zoom-level').innerText(), '2×');
+    const printIndex = paints.findIndex(row => row.printMedia && row.fills.includes(row.expected)); assert(printIndex >= 0, JSON.stringify({ screenPaint, paints }));
+    const restoreIndex = paints.findIndex((row, index) => index > printIndex && !row.printMedia && row.token === screenPaint.token && row.fills.includes(screenPaint.expected));
+    assert(restoreIndex > printIndex, JSON.stringify({ screenPaint, paints })); assert.notEqual(paints[printIndex].fills[0], screenPaint.fill);
+    await page.emulateMedia({ media: 'print' }); await page.waitForFunction(() => document.querySelectorAll('[data-baseline-operation]').length === 500);
+    const media = await page.evaluate(() => {
+      const rows = [...document.querySelectorAll('[data-baseline-operation]')], lanes = [...document.querySelectorAll('.rc-lane')];
+      const canvas = document.querySelector('.rc-gantt canvas'), space = canvas.closest('.rc-bar-space');
+      return { rowPositions: [...new Set(rows.map(row => getComputedStyle(row).position))], lanePositions: [...new Set(lanes.map(row => getComputedStyle(row).position))],
+        overflow: getComputedStyle(document.querySelector('[data-baseline-list]')).overflow,
+        color: getComputedStyle(document.querySelector('.run-candidate-workspace')).color,
+        canvasWidth: canvas.getBoundingClientRect().width, spaceWidth: space.getBoundingClientRect().width };
+    });
+    assert.deepEqual(media.rowPositions, ['static']); assert.deepEqual(media.lanePositions, ['relative']); assert.equal(media.overflow, 'visible');
+    assert(Math.abs(media.canvasWidth - media.spaceWidth) < 2, JSON.stringify(media));
+    assert(media.color.match(/[\d.]+/g).slice(0, 3).map(Number).reduce((sum, value) => sum + value, 0) < 384, media.color);
+    await page.emulateMedia({ media: null }); await page.waitForFunction(() => !matchMedia('print').matches && document.querySelectorAll('[data-baseline-operation]').length <= 12);
+    report.prints.push({ variant, kind: 'baseline-capacity-native-print', path: target,
+      sha256: crypto.createHash('sha256').update(bytes).digest('hex'), events, mediaTransitions, paints, media });
+    await button('显示完整候选时间范围').click(); done('native-print-full-baseline-window-dark-paper-and-afterprint-restore');
+  }
+  await page.evaluate(() => setBaselineSearch('')); await page.waitForFunction(() => document.querySelector('.rb-panel summary').textContent.includes('5000'));
   await toggle().uncheck(); await page.locator('.rc-scroll').evaluate(n => { n.scrollTop = n.scrollHeight; });
   const lastCandidate = await page.evaluate(() => { const row = RunCandidateModel.layout(fixtureData, 'batch', '').rows.slice(-1)[0]; return { key: row.key, ref: row.items.slice(-1)[0].task.row_ref }; });
   const lastLane = page.locator('[data-candidate-track="' + lastCandidate.key + '"] canvas'); await lastLane.waitFor(); await lastLane.focus(); await page.keyboard.press('End');
@@ -231,8 +337,22 @@ async function capacity() {
       await context.addInitScript(theme => { localStorage.setItem('aps_theme', theme); localStorage.setItem('aps_kit_theme', theme); }, theme);
       await context.addInitScript(() => {
         const transform = CanvasRenderingContext2D.prototype.setTransform, fill = CanvasRenderingContext2D.prototype.fillRect, stroke = CanvasRenderingContext2D.prototype.strokeRect;
-        CanvasRenderingContext2D.prototype.setTransform = function(...args) { this.canvas.__fills = []; this.canvas.__strokes = []; return transform.apply(this, args); };
-        CanvasRenderingContext2D.prototype.fillRect = function(...args) { this.canvas.__fills.push({ args, color: this.fillStyle }); return fill.apply(this, args); };
+        CanvasRenderingContext2D.prototype.setTransform = function(...args) {
+          this.canvas.__fills = []; this.canvas.__strokes = [];
+          if (this.canvas.hasAttribute('data-candidate-lane')) {
+            const token = getComputedStyle(this.canvas).getPropertyValue('--wb-gantt-primary-fill').trim();
+            const sample = document.createElement('span'); sample.style.color = token; document.body.appendChild(sample);
+            const resolved = getComputedStyle(sample).color, context = document.createElement('canvas').getContext('2d'); sample.remove(); context.fillStyle = resolved;
+            const paint = { printMedia: matchMedia('print').matches, token, expected: context.fillStyle, fills: [] };
+            (this.canvas.__printPaints || (this.canvas.__printPaints = [])).push(paint); this.canvas.__currentPrintPaint = paint;
+          }
+          return transform.apply(this, args);
+        };
+        CanvasRenderingContext2D.prototype.fillRect = function(...args) {
+          this.canvas.__fills.push({ args, color: this.fillStyle });
+          if (this.canvas.__currentPrintPaint) this.canvas.__currentPrintPaint.fills.push(this.fillStyle);
+          return fill.apply(this, args);
+        };
         CanvasRenderingContext2D.prototype.strokeRect = function(...args) { this.canvas.__strokes.push({ args, color: this.strokeStyle, lineWidth: this.lineWidth, dash: this.getLineDash() }); return stroke.apply(this, args); };
         const send = window.fetch; window.baselineAborts = 0;
         window.fetch = function(url, options) { if (String(url).includes('/baseline?') && options && options.signal) options.signal.addEventListener('abort', () => window.baselineAborts++); return send.apply(this, arguments); };

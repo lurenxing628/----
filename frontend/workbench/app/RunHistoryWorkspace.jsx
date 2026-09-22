@@ -47,7 +47,7 @@
           hint={data.run_count === 0 ? '排产提交后会保留在这个列表里。' : data.page.total === 0 ? '其他排产没有包含在当前筛选里。' : '翻页位置已失效，请回到第 1 页重新查询。'}
           action={data.run_count > 0 && <C.Button icon="chevron-left" onClick={() => data.page.total > 0 ? change({ page: 1 }, true) : apply(A.scope({ size: query.size }))}>{data.page.total > 0 ? '返回第 1 页' : '清除全部筛选'}</C.Button>} />}
         <C.Pager page={data.page} busy={read.busy} onChange={change} />
-        <div className="rh-muted">安排行数是各候选方案已保存行的合计，不是不重复的工序道数。计算完成只表示排产结束；约束和任务内容要在候选方案里核对。</div></>}
+        {data.runs.length > 0 && <div className="rh-muted">安排行数是各候选方案已保存行的合计，不是不重复的工序道数。计算完成只表示排产结束；约束和任务内容要在候选方案里核对。</div>}</>}
     </div>;
   }
   function RunHistoryWorkspace({ initialContext = {}, onNavigate, adapter }) {

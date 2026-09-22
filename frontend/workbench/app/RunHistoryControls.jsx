@@ -1,7 +1,7 @@
 (function () {
   'use strict';
   const A = window.RunHistoryAPI;
-  const labels = { all: '全部状态', queued: '等待计算', running: '正在计算', complete: '计算完成', partial: '部分完成', failed: '计算失败', interrupted: '已中断' };
+  const labels = { all: '全部状态', ...window.WorkbenchTerms.run_statuses };
   const fields = { start_date: '排产起日', end_date: '排产止日', ready_check: '齐套检查', missing_resource_policy: '缺设备人员时的规则', completed_policy: '执行规则', batch_count: '所选批次' };
   function Button({ className = '', ...props }) { return <window.ResourceControls.Button {...props} className={'btn wb-action ' + className} />; }
   const timeLabel = v => window.WorkbenchFormat.dateTime(v);
@@ -51,7 +51,7 @@
   }
   function Table({ runs, onOpen, canNavigate }) {
     return <div className="rh-table wb-table-frame" data-sticky-head data-sticky-actions tabIndex={0} aria-label="排产记录表格滚动区域"><table className="wb-table" aria-label="排产记录"><caption className="wb-visually-hidden">排产记录</caption>
-      <colgroup>{[19, 18, 25, 19, 6, 6, 7].map((width, i) => <col key={i} style={{ width: width + '%' }} />)}</colgroup>
+      <colgroup>{['submitted', 'state', 'scope', 'times', 'candidates', 'tasks', 'actions'].map(key => <col key={key} className={'rh-col-' + key} />)}</colgroup>
       <thead><tr><th scope="col" className="wb-col-key">提交时间</th><th scope="col">排产状态</th><th scope="col">排产范围</th><th scope="col">开始 / 结束时间</th><th scope="col" className="rh-num">候选数</th><th scope="col" className="rh-num">安排数</th><th scope="col" className="wb-col-actions">操作</th></tr></thead>
       <tbody>{runs.map(run => <tr key={run.run_ref} data-run-ref={run.run_ref} data-run-state={run.state}>
         <td className="wb-col-key"><time>{timeLabel(run.accepted_at)}</time><window.WorkbenchReference value={run.run_ref} label="记录编号" /></td><td><Status run={run} /></td>

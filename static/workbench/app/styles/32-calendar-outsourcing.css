@@ -32,9 +32,6 @@
     .outsourcing-live summary {cursor:pointer;color:var(--ui-info-text);overflow-wrap:anywhere;}
     .outsourcing-live .os-form {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--space-3);margin-top:var(--space-4);}
     .outsourcing-live .os-form label {display:flex;flex-direction:column;gap:var(--space-1);min-width:0;}.outsourcing-live .os-form .wide {grid-column:1/-1;}
-    .outsourcing-live input,.outsourcing-live select,.outsourcing-live textarea {color:var(--ui-text);background:var(--ui-card-bg);border:1px solid var(--ui-border);border-radius:var(--wb-radius-control);min-width:0;max-width:100%;padding:6px 9px;}
-    .outsourcing-live input,.outsourcing-live select {height:var(--wb-control-height);}.outsourcing-live textarea {min-height:76px;resize:vertical;}
-    .outsourcing-live input[type=radio],.outsourcing-live input[type=checkbox] {height:16px;width:16px;padding:0;flex:none;vertical-align:middle;}
     .outsourcing-live .os-modes label {display:flex;align-items:center;gap:var(--space-2);cursor:pointer;}.outsourcing-live .os-clear {display:flex;align-items:flex-end;}
     .outsourcing-live .os-pick-scroll {max-height:248px;}.outsourcing-live .os-pick-table {min-width:570px;}.outsourcing-live .os-pick-table th:first-child {width:52px;}.outsourcing-live .os-pick-table th:last-child {width:145px;}
     .outsourcing-live .modal {display:flex;flex-direction:column;width:850px;max-width:calc(100vw - 32px);max-height:calc(100vh - 32px);color:var(--ui-text);background:var(--ui-card-bg);}
@@ -43,6 +40,8 @@
     .outsourcing-live :focus-visible {outline:2px solid var(--ui-primary);outline-offset:2px;}
     @media(max-width:650px) {.outsourcing-live .os-form,.outsourcing-live .os-facts {grid-template-columns:minmax(0,1fr);}.outsourcing-live .os-dialog-body {padding:var(--space-3);}}
 
+/* 原型 plana.css 给周末日期裸 --ui-danger（浅色白底 4.5:1 临界、深色卡底不足）；周末 / 休息 / 已设置三种 tone 互斥，只换周末这档成文本级红。 */
+body.aps-workbench .plana .cal-cell.we .d { color: var(--ui-danger-text); }
 .plana .calendar-range-dialog.is-preview .modal.lg { width: 960px; max-width: calc(100vw - 32px); }
 .plana .cal-preview-scroll { --wb-table-max-height: min(52vh, 460px); --wb-table-min: 610px; }
 .plana .cal-preview-table { min-width: 610px; width: 100%; table-layout: fixed; }
@@ -68,7 +67,8 @@ body.aps-workbench .outsourcing-live .wb-table-frame[data-sticky-actions] > tabl
 .resource-catalog .rc-toolbar { flex-wrap:wrap; gap:var(--space-2); margin-bottom:var(--space-4); }
 .resource-catalog .rc-toolbar .search { flex:1 1 180px; min-width:120px; max-width:270px; }
 .resource-catalog .rc-toolbar .field { min-width:130px; }
-.resource-catalog .rc-toolbar .field select { height:32px; }
+/* 工具栏里的选择框走 32px 标准档（.field 内默认是 36px 编辑档，改高度变量才能连 min-height 一起降下来，与旁边的搜索框同高）。 */
+.resource-catalog .rc-toolbar .field select { --wb-field-height: var(--wb-control-height); }
 .resource-catalog table.tbl { min-width:0; width:100%; table-layout:fixed; }
 .resource-catalog .rc-list th:first-child { width:40%; }
 .resource-catalog .rc-list th:last-child { width:112px; }
@@ -81,13 +81,12 @@ body.aps-workbench .outsourcing-live .wb-table-frame[data-sticky-actions] > tabl
 .resource-catalog .rc-pattern-table th:first-child { width:12%; }
 .resource-catalog .rc-pattern-table th:last-child { width:18%; }
 .resource-catalog .rc-pattern-table td.field { display:table-cell; }
-.resource-catalog .rc-pattern-table .field input, .resource-catalog .rc-pattern-table select { padding-left:6px; padding-right:6px; min-width:0; height:32px; }
-.resource-catalog .rc-pattern-table select { padding-right:var(--space-5); }
+.resource-catalog .rc-pattern-table .field input, .resource-catalog .rc-pattern-table select { padding-left:6px; padding-right:6px; min-width:0; }
 .resource-catalog .rc-note { display:block; margin-top:var(--space-3); }
 .resource-catalog .rc-facts { overflow-wrap:anywhere; }
 .resource-catalog .rc-list td, .resource-catalog .rc-pattern-table td { vertical-align:middle; }
 .resource-catalog .rc-list .rowact { gap:var(--space-2); }
-.resource-catalog .rc-list .mini { width:var(--wb-control-mini-height); height:var(--wb-control-mini-height); padding:0; flex:none; }
+.resource-catalog .rc-list .mini { flex:none; }
 .resource-catalog .rc-list .mini svg { width:18px; height:18px; flex:none; }
 .resource-catalog .rc-pattern-table td { padding:var(--space-2) 6px; }
 .resource-catalog .rc-list-scroll { --wb-table-max-height: 44vh; --wb-table-min: 540px; }

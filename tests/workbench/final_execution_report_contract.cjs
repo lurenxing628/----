@@ -33,6 +33,18 @@ async function main() {
     await assert.rejects(api.readView({ read: async value => { calls.push(value); return response(1, '2'.repeat(48)); } }, input), /计划或专题/);
     assert.equal(calls.length, 1);
   });
+  await test('review-mode-leads-with-expanded-charts-and-hides-topic-tabs-and-export', () => {
+    // 执行复盘：图表区直接展开放在结果区之前；报表子页签与导出范围只在报表中心出现；报表中心保持可折叠图表。
+    const workspace = fs.readFileSync(path.resolve(__dirname, '../../frontend/workbench/app/ReportWorkspace.jsx'), 'utf8');
+    const charts = fs.readFileSync(path.resolve(__dirname, '../../frontend/workbench/app/ReviewCharts.jsx'), 'utf8');
+    const expandedAt = workspace.indexOf('{data && review && <window.ReviewCharts data={data} expanded'), resultsAt = workspace.indexOf('<div className="rw-results wb-surface">');
+    assert(expandedAt >= 0 && resultsAt > expandedAt);
+    assert(workspace.includes("{!review && <Tabs topic={state.topic} onChange={changeTopic} />}"));
+    assert(workspace.includes("{!review && <><label>格式"));
+    assert(workspace.includes("{!review && <window.ReviewCharts data={data} open={chartsOpen} onChange={setChartsOpen}"));
+    assert(charts.includes("if (expanded) return <section className=\"er-chart-disclosure er-chart-expanded\" data-expanded=\"true\""));
+    assert(charts.includes('role="group" aria-label="资源工时类型"') && !charts.includes('role="tab"'));
+  });
   fs.writeFileSync(path.join(process.argv[2], 'report-read-view-unit.json'), JSON.stringify(report, null, 2));
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

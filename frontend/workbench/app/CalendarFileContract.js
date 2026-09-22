@@ -18,7 +18,7 @@
       importHint: '按日期增量更新：文件里列出的日期会被改写，没列出的日期完全不动。'
         + '空格子表示这一项保持原样；备注要清除请填 \\N（大写）。类型填工作日或假期，'
         + '允许普通件和允许急件填是或否，效率按百分比填。'
-        + '这张表只管已经单独配置过的日期；要把某一天恢复成默认规则，请在日历页用批量维护里的清除。'
+        + '这张表只管已经单独设置过的日期；要把某一天恢复成默认规则，请在日历页用批量维护里的清除。'
     },
     operator_calendar: {
       scopeLabel: '人员和日期范围',
@@ -33,11 +33,14 @@
   function days(range) {
     return Math.round((Date.parse(range.end_date + 'T00:00:00Z') - Date.parse(range.start_date + 'T00:00:00Z')) / 86400000) + 1;
   }
+  // 日期范围的错误带上项路径，弹窗里对应的日期项会标红；总错误框只保留这一句话。
   function checkRange(value) {
     if (!C.object(value) || !K.isDate(value.start_date) || !K.isDate(value.end_date))
-      throw C.failure('请先选好开始和结束日期，没有开始下载。');
-    if (value.start_date > value.end_date) throw C.failure('结束日期不能早于开始日期，没有开始下载。');
-    if (days(value) > MAX_RANGE_DAYS) throw C.failure('一次最多导出 ' + MAX_RANGE_DAYS + ' 天，没有开始下载。请把范围缩小后重试。');
+      throw C.failure('请先选好开始和结束日期，没有开始下载。',
+        [{ path: !C.object(value) || !K.isDate(value.start_date) ? 'start_date' : 'end_date', message: '请按 2026-09-13 这样填写日期。' }]);
+    if (value.start_date > value.end_date) throw C.failure('结束日期不能早于开始日期，没有开始下载。', [{ path: 'end_date', message: '结束日期不能早于开始日期。' }]);
+    if (days(value) > MAX_RANGE_DAYS) throw C.failure('一次最多导出 ' + MAX_RANGE_DAYS + ' 天，没有开始下载。请把范围缩小后重试。',
+      [{ path: 'end_date', message: '一次最多导出 ' + MAX_RANGE_DAYS + ' 天。' }]);
     return { start_date: value.start_date, end_date: value.end_date };
   }
   // 导出请求体只在这里拼一次，导出预检回来也拿它对账，免得两边各写一份人员范围的判断。

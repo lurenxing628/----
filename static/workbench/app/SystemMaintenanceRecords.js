@@ -22,20 +22,11 @@
     runtime: '运行日志',
     operation: '操作记录'
   };
+  // 恢复各阶段的叫法只在 SystemRestoreStatus.labels 维护一份；这里只补备份文件自己的两个状态。
   const states = {
     unverified: '未校验',
     unknown: '结果不确定',
-    accepted: '已接收',
-    checking: '检查中',
-    protecting: '生成保护副本',
-    restoring: '恢复中',
-    verifying: '完整性检查中',
-    rolling_back: '还原中',
-    succeeded: '已完成',
-    failed: '失败',
-    rolled_back: '已还原',
-    rollback_failed: '还原失败',
-    recovery_required: '需人工核对'
+    ...window.SystemRestoreStatus.labels
   };
   const levels = {
     INFO: '信息',
@@ -111,11 +102,7 @@
         [key]: event.target.value
       })
     }))), /*#__PURE__*/React.createElement("div", {
-      className: "sm-actions",
-      style: {
-        gridColumn: '1 / -1',
-        justifyContent: 'flex-end'
-      }
+      className: "sm-actions sm-filter-actions"
     }, /*#__PURE__*/React.createElement(C.Button, {
       icon: "x",
       "aria-label": "\u6E05\u9664\u7B5B\u9009",
@@ -135,7 +122,7 @@
     }, /*#__PURE__*/React.createElement("p", {
       className: "sm-note"
     }, item.message), item.code && /*#__PURE__*/React.createElement(window.WorkbenchReference, {
-      label: "\u6765\u6E90\u6838\u5BF9\u4EE3\u7801",
+      label: "\u6821\u9A8C\u7801",
       value: item.code
     })));
     const labels = {
@@ -146,28 +133,14 @@
     };
     return /*#__PURE__*/React.createElement("div", {
       className: "sm-log-sources",
-      "aria-label": "\u65E5\u5FD7\u8BFB\u53D6\u8303\u56F4",
-      style: {
-        borderBottom: '1px solid var(--ui-border)',
-        paddingBottom: 12,
-        marginBottom: 12
-      }
+      "aria-label": "\u65E5\u5FD7\u8BFB\u53D6\u8303\u56F4"
     }, /*#__PURE__*/React.createElement("p", {
       className: "sm-note"
     }, "\u6309\u6761\u4EF6\u7B5B\u9009\u6700\u8FD1\u8BFB\u53D6\u7684\u65E5\u5FD7\u3002"), /*#__PURE__*/React.createElement("div", {
-      style: {
-        display: 'flex',
-        flexWrap: 'wrap',
-        gap: '8px 24px'
-      }
+      className: "sm-source-list"
     }, data.sources.map(item => /*#__PURE__*/React.createElement("div", {
       key: item.source,
-      style: {
-        flex: '1 1 210px',
-        minWidth: 0,
-        overflowWrap: 'anywhere',
-        fontSize: 13
-      }
+      className: "sm-source-item"
     }, /*#__PURE__*/React.createElement("strong", null, sourceText(item.source)), /*#__PURE__*/React.createElement("span", {
       className: ['error', 'missing'].includes(item.state) ? 'sm-tone-warning' : 'sm-meta'
     }, " \xB7 ", labels[item.state]), /*#__PURE__*/React.createElement("div", null, "\u6700\u8FD1 ", item.window, " \u6761 \xB7 ", item.count === null ? '数量未知' : '读取 ' + item.count + ' 条', item.truncated ? ' · 已截断' : ' · 没有截断'), item.boundary_unknown && /*#__PURE__*/React.createElement("div", {
@@ -208,10 +181,7 @@
     }, /*#__PURE__*/React.createElement("div", {
       className: "sm-section-head"
     }, /*#__PURE__*/React.createElement("h3", {
-      style: {
-        overflowWrap: 'anywhere',
-        minWidth: 0
-      }
+      className: "sm-detail-title"
     }, kind === 'logs' ? '日志详情' : file ? row.filename : row.summary), /*#__PURE__*/React.createElement(C.Button, {
       icon: "x",
       "aria-label": "\u5173\u95ED\u8BE6\u60C5",
@@ -222,19 +192,15 @@
       className: "sm-note"
     }, {
       external_maintenance_journal: '维护记录',
-      operation_audit: '操作审计',
+      operation_audit: '操作记录',
       latest_job_state_only: '仅最近一次维护状态'
     }[row.event_source]), /*#__PURE__*/React.createElement(window.WorkbenchReference, {
       label: "\u7EF4\u62A4\u4E8B\u4EF6\u7F16\u53F7",
       value: row.event_ref
     })), /*#__PURE__*/React.createElement("p", {
-      style: {
-        overflowWrap: 'anywhere'
-      }
+      className: "sm-detail-summary"
     }, row.summary), /*#__PURE__*/React.createElement("pre", {
-      style: {
-        fontSize: 13
-      }
+      className: "sm-detail-body"
     }, row.body), row.content_truncated && /*#__PURE__*/React.createElement("p", {
       className: "sm-tone-warning"
     }, "\u672C\u6761\u8BE6\u60C5\u5DF2\u622A\u65AD\uFF0C\u4E0D\u662F\u5B8C\u6574\u539F\u59CB\u5185\u5BB9\u3002"), file && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", {
@@ -442,7 +408,7 @@
       disabled: !data || request.loading,
       busy: downloadBusy,
       onClick: () => download('zip')
-    }, "\u8131\u654F\u8BCA\u65AD ZIP")))), /*#__PURE__*/React.createElement(C.ErrorBox, {
+    }, "\u5BFC\u51FA\u8BCA\u65AD\u5305")))), /*#__PURE__*/React.createElement(C.ErrorBox, {
       error: request.error || error
     }), notice && /*#__PURE__*/React.createElement("p", {
       className: "sm-notice",
@@ -463,7 +429,7 @@
       kind: kind
     }), /*#__PURE__*/React.createElement("div", {
       className: "sm-meta"
-    }, "\u6570\u636E\u622A\u81F3 ", window.WorkbenchFormat.dateTime(payload.meta.as_of)), data.rows.length ? /*#__PURE__*/React.createElement("div", {
+    }, window.WorkbenchTerms.data_as_of(window.WorkbenchFormat.dateTime(payload.meta.as_of))), data.rows.length ? /*#__PURE__*/React.createElement("div", {
       className: "wb-table-shell wb-table-frame",
       "data-sticky-head": "true",
       "data-sticky-actions": "true"
@@ -489,20 +455,9 @@
       className: "wb-col-actions"
     }, "\u8BE6\u60C5"))), /*#__PURE__*/React.createElement("tbody", null, data.rows.map(row => /*#__PURE__*/React.createElement("tr", {
       key: row.key,
+      className: "sm-record-row",
       "data-record-kind": row.record_kind,
-      tabIndex: 0,
-      "aria-label": '查看详情 ' + row.summary,
-      "aria-expanded": !!selected && selected.key === row.key,
-      style: {
-        cursor: 'pointer'
-      },
-      onClick: () => setSelected(row),
-      onKeyDown: event => {
-        if (event.target === event.currentTarget && ['Enter', ' '].includes(event.key)) {
-          event.preventDefault();
-          setSelected(row);
-        }
-      }
+      onClick: () => setSelected(row)
     }, /*#__PURE__*/React.createElement("td", {
       className: "wb-col-key"
     }, /*#__PURE__*/React.createElement("time", {
@@ -514,13 +469,9 @@
     }, levelText(row.level))), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("div", {
       className: "sm-summary"
     }, /*#__PURE__*/React.createElement("strong", {
-      style: {
-        fontSize: 14
-      }
+      className: "sm-summary-title"
     }, row.summary), kind === 'logs' && /*#__PURE__*/React.createElement("small", null, sourceText(row.file), row.content_truncated ? ' · 详情已截断' : ''))), kind === 'backups' && /*#__PURE__*/React.createElement("td", {
-      style: {
-        textAlign: 'right'
-      }
+      className: "sm-col-size"
     }, row.record_kind === 'backup_file' ? window.WorkbenchFormat.number(row.size_bytes / 1024, {
       digits: 1
     }) + ' KB' : '事件记录'), /*#__PURE__*/React.createElement("td", {
@@ -529,6 +480,7 @@
       icon: "chevron-right",
       className: "mini",
       "aria-label": '查看详情 ' + row.summary,
+      "aria-expanded": !!selected && selected.key === row.key,
       onClick: event => {
         event.stopPropagation();
         setSelected(row);

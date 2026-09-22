@@ -172,10 +172,25 @@ async function verifyCells(page, payload) {
       assert(await detail.getByRole('button', { name: /^采用/ }).isDisabled()); assert(await detail.getByRole('button', { name: /^锁定/ }).isDisabled());
       assert.equal(selected.legacy_facts.length, 3);
       await sample.locator('details > summary').filter({ hasText: /^历史现场记录 1$/ }).click();
-      const evidenceText = await sample.locator('.rw-evidence-facts').first().textContent();
-      const leaves = value => value && typeof value === 'object' ? Object.values(value).flatMap(leaves) :
-        [value === null ? '未知' : typeof value === 'boolean' ? value ? '是' : '否' : String(value)];
-      for (const value of leaves(selected.legacy_facts[0])) assert(evidenceText.includes(value), value);
+      // 历史现场记录（ReportEvidence.LegacyRecord）只列登记过中文名的项，值经 legacyText 换成说法；
+      // created_at_time_basis 这类内部标记不进正文，编号折叠进「编号」区。
+      const fact = selected.legacy_facts[0], legacyRecord = sample.locator('.rw-legacy-record').first();
+      const legacyFields = [['event_type', '记录类型'], ['reported_status', '登记状态'], ['event_time', '记录时间'], ['quantity_done', '登记数量'],
+        ['quantity_scrapped', '报废数量'], ['reason_code', '异常原因'], ['reason_detail', '原因说明'], ['severity', '严重程度'], ['impact_minutes', '影响时长'],
+        ['handling_status', '处理状态'], ['suggest_reschedule', '是否建议重新排程'], ['remark', '备注'], ['created_by', '记录人'], ['created_at', '登记时间']];
+      const legacyAlways = ['event_type', 'event_time', 'quantity_done', 'created_at'], blank = value => value === null || value === undefined || value === '';
+      const shown = legacyFields.filter(([key]) => legacyAlways.includes(key) || !blank(fact[key]));
+      assert.deepEqual(await legacyRecord.locator(':scope > dl > dt').allTextContents(), shown.map(([, label]) => label));
+      const expectedValues = await page.evaluate(({ fact, keys }) => keys.map(key => window.ReportEvidence.legacyText(key, fact[key])), { fact, keys: shown.map(([key]) => key) });
+      assert.deepEqual(await legacyRecord.locator(':scope > dl > dd').allTextContents(), expectedValues);
+      const evidenceText = await legacyRecord.textContent();
+      if (!blank(fact.created_at)) assert(evidenceText.includes(String(fact.created_at) + '（历史系统导入的原始时间）'));
+      for (const key of ['created_at_time_basis', 'created_at_default_basis']) assert(!evidenceText.includes(String(fact[key])), key + ' 的内部值不该显示');
+      for (const key of ['created_at_time_basis', 'created_at_default_basis', 'unavailable_fields', 'effective_processing_hours']) assert(!evidenceText.includes(key), key + ' 的英文键名不该显示');
+      const refs = await legacyRecord.locator('.wb-ref').count() ? await legacyRecord.locator('.wb-ref').textContent() : '';
+      for (const [key, label] of [['legacy_fact_ref', '历史记录编号'], ['operation_ref', '工序编号'], ['recorded_against_task_ref', '原任务编号'], ['recorded_against_plan_ref', '原计划编号']]) {
+        if (!blank(fact[key])) assert(refs.includes(label) && refs.includes(String(fact[key])), key + ' 应折叠在编号区');
+      }
       const sourceGeometry = await sample.evaluate(node => ({ scroll: document.documentElement.scrollWidth, width: innerWidth,
         clipped: Array.from(node.querySelectorAll('dd,td')).filter(item => item.scrollWidth > item.clientWidth + 1).map(item => item.textContent) }));
       assert(sourceGeometry.scroll <= sourceGeometry.width); assert.deepEqual(sourceGeometry.clipped, []);
@@ -215,7 +230,7 @@ async function verifyCells(page, payload) {
     const page = await browser.newPage();
     await listAfter(page, () => page.goto(origin + '/unknown'));
     assert(await page.getByRole('button', { name: /^导出全部筛选/ }).isDisabled());
-    await page.getByText('导出权限尚未确认，暂不能导出。', { exact: true }).waitFor(); record.unknown_permission_disabled = true;
+    await page.getByText('当前来源暂不能导出。', { exact: true }).waitFor(); record.unknown_permission_disabled = true;
     let saves = 0; page.on('download', () => saves++);
     for (const name of ['x-workbench-snapshot', 'x-workbench-row-count']) {
       await listAfter(page, () => page.goto(origin)); headerFault = name;

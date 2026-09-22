@@ -107,7 +107,7 @@
     }
     const resources = Array.from(resourceMap.values());
     let baseline = { state: 'unavailable', reason_code: 'not_recorded', reason: '未记录独立的初始基线，不能用当前安排替代。', baseline_plan: null, items: [], item_count: 0, items_complete: false };
-    if (header.kind === 'scenario') {
+    if (header.kind === 'scenario' && !options.baselineUnavailable) {
       const items = all.map((after, index) => {
         const before = { ...after, plan_ref: ref(1), task_ref: ref(4000000 + index), start: wire(instant(after.start) - 7200000), end: wire(instant(after.end) - 7200000) };
         return { operation_ref: after.operation_ref, change: 'changed', changed_fields: ['start', 'end'], before, after,

@@ -53,14 +53,16 @@
       uncertain
     };
   }
+  // 三种诊断文件各有一个名字：诊断包（日志 ZIP）、页面诊断（系统管理页）、维护诊断（恢复维护页）。
+  const DIAGNOSTIC_FILENAME = '维护诊断.json';
   function download(host, result, error) {
     const payload = { scope: 'read_only_maintenance', result_source: source, host, result,
       query_error: error ? error.message : null, database_checked_by_page: false,
       note: '导出当前维护状态。' };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' });
     const url = URL.createObjectURL(blob), link = document.createElement('a');
-    link.href = url; link.download = '恢复维护诊断.json';
+    link.href = url; link.download = DIAGNOSTIC_FILENAME;
     try { document.body.appendChild(link); link.click(); } finally { link.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000); }
   }
-  window.SystemRestoreStatus = { validateHost, envelope, host, operation, referencePath, describe, download, labels, origins };
+  window.SystemRestoreStatus = { validateHost, envelope, host, operation, referencePath, describe, download, labels, origins, DIAGNOSTIC_FILENAME };
 })();

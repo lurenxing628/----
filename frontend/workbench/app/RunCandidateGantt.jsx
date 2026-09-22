@@ -11,7 +11,7 @@
         onSelect={() => onSelect(item.task)} onHover={event => onHover(event ? { text: M.title(item.task), x: event.clientX, y: event.clientY } : null)} />)}
     </div>;
   }
-  function Lane({ row, model, width, left, viewport, selected, baselineSelected, onSelect, onBaselineSelect, onHover }) {
+  function Lane({ row, model, width, left, viewport, printing, selected, baselineSelected, onSelect, onBaselineSelect, onHover }) {
     const ref = React.useRef(null), scale = width / (model.end - model.start);
     const items = M.visibleItems(row.items, model.start + left / scale, model.start + (left + viewport) / scale);
     React.useLayoutEffect(() => {
@@ -38,19 +38,38 @@
             for (let stripe = -33; stripe < barWidth; stripe += 6) { ctx.beginPath(); ctx.moveTo(x + stripe, 40); ctx.lineTo(x + stripe + 33, 7); ctx.stroke(); }
             ctx.restore();
           }
+          const external = item.task.source === 'external';
+          if (external) {
+            // External operations differ by shape as well as colour: a sparse hatch and a dashed edge (the legend swatch matches).
+            ctx.save(); ctx.beginPath(); ctx.rect(x, 7, barWidth, 33); ctx.clip();
+            ctx.strokeStyle = value('--wb-gantt-plan-edge'); ctx.lineWidth = 1;
+            for (let stripe = -33; stripe < barWidth; stripe += 10) { ctx.beginPath(); ctx.moveTo(x + stripe, 7); ctx.lineTo(x + stripe + 33, 40); ctx.stroke(); }
+            ctx.restore();
+          }
           ctx.strokeStyle = value(chosen ? '--wb-gantt-gold' : '--wb-gantt-' + tone + '-edge');
-          ctx.lineWidth = Math.min(barWidth, chosen ? 2 : 1);
-          ctx.strokeRect(x + ctx.lineWidth / 2, 7 + ctx.lineWidth / 2, Math.max(0, barWidth - ctx.lineWidth), 33 - ctx.lineWidth);
+          ctx.lineWidth = Math.min(barWidth, chosen ? 2 : 1); ctx.setLineDash(external ? [4, 3] : []);
+          ctx.strokeRect(x + ctx.lineWidth / 2, 7 + ctx.lineWidth / 2, Math.max(0, barWidth - ctx.lineWidth), 33 - ctx.lineWidth); ctx.setLineDash([]);
           if (barWidth > 80) {
             ctx.save(); ctx.beginPath(); ctx.rect(Math.max(0, x + 4), 9, Math.max(0, Math.min(w, x + barWidth) - Math.max(0, x + 4) - 4), 28); ctx.clip();
-            ctx.fillStyle = value('--ui-text'); ctx.font = '11px sans-serif';
+            ctx.fillStyle = value('--ui-text'); ctx.font = value('--wb-gantt-font') || '11px sans-serif';
             ctx.fillText(M.pieceLabel(item.task) + ' · ' + (item.task.batch_label || '未记录') + ' · ' + M.number(item.task.sequence), Math.max(4, x + 5), 28); ctx.restore();
           }
         }
       }
-      paint(); const theme = new MutationObserver(paint); theme.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'class'] });
-      return () => theme.disconnect();
-    }, [row, model, width, left, viewport, selected, baselineSelected]);
+      paint(); const theme = new MutationObserver(paint), media = typeof matchMedia === 'function' ? matchMedia('print') : null;
+      theme.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'class'] });
+      if (media) {
+        if (typeof media.addEventListener === 'function') media.addEventListener('change', paint);
+        else media.addListener(paint);
+      }
+      return () => {
+        theme.disconnect();
+        if (media) {
+          if (typeof media.removeEventListener === 'function') media.removeEventListener('change', paint);
+          else media.removeListener(paint);
+        }
+      };
+    }, [row, model, width, left, viewport, printing, selected, baselineSelected]);
     function hit(event) { const box = ref.current.getBoundingClientRect(), at = model.start + (event.clientX - box.left + left) / scale; return M.visibleItems(row.items, at, at + 0.001)[0]; }
     const choose = item => row.baseline ? onBaselineSelect(item) : onSelect(item.task);
     const selectedItem = row.items.find(item => !row.baseline && selected && item.task.row_ref === selected.row_ref);
@@ -65,29 +84,48 @@
         choose(row.items[next]);
       }} />;
   }
+  function TaskCells({ task: t, planned, onSelect, print }) {
+    const Cell = print ? 'td' : 'span';
+    return <><Cell role="cell" title={(t.batch_label || '未记录') + '\n' + (t.part_label || '未记录')}>{t.batch_label || '未记录'}<small>{t.part_label || '未记录'}</small></Cell>
+      <Cell role="cell" title={M.number(t.sequence) + ' ' + (t.process_label || '未记录') + '\n' + M.pieceLabel(t)}>{M.pieceLabel(t)}<small>{M.number(t.sequence)} {t.process_label || '未记录'}</small></Cell>
+      <Cell role="cell" title={planned ? M.title(t) : t.reason.message}>{planned ? <>{M.timeLabel(t.start)}<small>{window.PointContract.isPoint(t) ? '零工时工序 · 不占设备人员' : M.timeLabel(t.end)}</small></> : t.reason.message}</Cell>
+      <Cell role="cell" title={planned ? (t.machine && t.machine.label || '未记录') + '\n' + (t.operator && t.operator.label || '未记录') : ''}>{planned ? <>{t.machine && t.machine.label || '未记录'}<small>{t.operator && t.operator.label || '未记录'}</small></> : t.execution_at_generation ? M.executionValue(t.execution_at_generation.execution_state) : '未记录'}</Cell>
+      {!print && <Cell role="cell"><Button icon="search" className="mini" aria-label={'工序详情 ' + (t.batch_label || '批次未记录') + ' ' + M.number(t.sequence) + ' ' + (t.process_label || '工序未记录') + ' ' + M.pieceLabel(t)} onClick={() => onSelect(t)}>详情</Button></Cell>}</>;
+  }
   function TaskList({ tasks, selected, onSelect, planned }) {
-    const [top, setTop] = React.useState(0), height = 44, first = Math.max(0, Math.floor(top / height) - 3), end = Math.min(tasks.length, first + 16);
-    const head = React.useRef(null);
+    const printing = BC.usePrintLayout(), [top, setTop] = React.useState(0), height = 44;
+    const first = printing ? 0 : Math.max(0, Math.floor(top / height) - 3), end = printing ? tasks.length : Math.min(tasks.length, first + 16);
+    const head = React.useRef(null), labels = ['批次 / 零件', '工序', planned ? '开始 / 结束' : '状态 / 原因', planned ? '设备 / 人员' : '生成时执行'];
+    if (printing) return <><div className="rc-muted">{tasks.length} 道{planned ? '安排' : '未安排工序'}</div>
+      <div className="rc-print-tables" data-candidate-task-list data-print-row-count={tasks.length}>
+        {Array.from({ length: Math.ceil(tasks.length / 12) }, (_, chunk) => {
+          const rows = tasks.slice(chunk * 12, (chunk + 1) * 12);
+          return <table key={chunk} className="rc-print-table rc-print-chunk" data-print-chunk={chunk + 1}
+            aria-label={(planned ? '候选任务安排' : '候选未安排明细') + '，第 ' + (chunk + 1) + ' 组'} aria-rowcount={rows.length + 1} aria-colcount={4}>
+            <thead><tr>{labels.map(label => <th key={label}>{label}</th>)}</tr></thead><tbody>{rows.map(t => <tr key={t.row_ref || t.operation_ref}
+              data-row-ref={t.row_ref || undefined} data-operation-ref={t.operation_ref} aria-selected={selected && (t.row_ref ? selected.row_ref === t.row_ref : selected.operation_ref === t.operation_ref)}>
+              <TaskCells task={t} planned={planned} print /></tr>)}</tbody>
+          </table>;
+        })}
+      </div>
+      {!tasks.length && <window.WorkbenchListControls.EmptyState title="当前范围没有匹配记录" />}</>;
     return <><div className="rc-muted">{tasks.length} 道{planned ? '安排' : '未安排工序'}</div>
       <div className="rc-virtual-table" role="table" aria-label={planned ? '候选任务安排' : '候选未安排明细'} aria-rowcount={tasks.length + 1} aria-colcount={5}>
-      <div className="rc-list-head" ref={head} role="rowgroup"><div className="rc-list-row rc-muted" role="row" aria-rowindex={1}>{['批次 / 零件', '工序', planned ? '开始 / 结束' : '状态 / 原因', planned ? '设备 / 人员' : '生成时执行', '详情'].map(label => <span role="columnheader" key={label}>{label}</span>)}</div></div>
+      <div className="rc-list-head" ref={head} role="rowgroup"><div className="rc-list-row rc-muted" role="row" aria-rowindex={1}>{labels.concat('详情').map(label => <span role="columnheader" key={label}>{label}</span>)}</div></div>
       <div className="rc-list" data-candidate-task-list role="rowgroup" tabIndex={0} aria-label={planned ? '候选任务安排滚动区' : '候选未安排明细滚动区'} onScroll={e => { setTop(e.currentTarget.scrollTop); if (head.current) head.current.scrollLeft = e.currentTarget.scrollLeft; }}>
         <div role="presentation" style={{ height: tasks.length * height, position: 'relative', minWidth: 720 }}>
           {tasks.slice(first, end).map((t, i) => <div key={t.row_ref || t.operation_ref} className="rc-list-row" data-row-ref={t.row_ref || undefined} data-operation-ref={t.operation_ref}
             role="row" aria-rowindex={first + i + 2} aria-selected={selected && (t.row_ref ? selected.row_ref === t.row_ref : selected.operation_ref === t.operation_ref)} style={{ position: 'absolute', top: (first + i) * height, left: 0, right: 0 }}>
-            <span role="cell" title={(t.batch_label || '未记录') + '\n' + (t.part_label || '未记录')}>{t.batch_label || '未记录'}<small>{t.part_label || '未记录'}</small></span>
-            <span role="cell" title={M.number(t.sequence) + ' ' + (t.process_label || '未记录') + '\n' + M.pieceLabel(t)}>{M.pieceLabel(t)}<small>{M.number(t.sequence)} {t.process_label || '未记录'}</small></span>
-            <span role="cell" title={planned ? M.title(t) : t.reason.message}>{planned ? <>{M.timeLabel(t.start)}<small>{window.PointContract.isPoint(t) ? '零工时工序 · 不占设备人员' : M.timeLabel(t.end)}</small></> : t.reason.message}</span>
-            <span role="cell" title={planned ? (t.machine && t.machine.label || '未记录') + '\n' + (t.operator && t.operator.label || '未记录') : ''}>{planned ? <>{t.machine && t.machine.label || '未记录'}<small>{t.operator && t.operator.label || '未记录'}</small></> : t.execution_at_generation ? M.executionValue(t.execution_at_generation.execution_state) : '未记录'}</span>
-            <span role="cell"><Button icon="search" className="mini" aria-label={'工序详情 ' + (t.batch_label || '批次未记录') + ' ' + M.number(t.sequence) + ' ' + (t.process_label || '工序未记录') + ' ' + M.pieceLabel(t)} onClick={() => onSelect(t)}>详情</Button></span></div>)}
+            <TaskCells task={t} planned={planned} onSelect={onSelect} /></div>)}
         </div></div></div>{!tasks.length && <window.WorkbenchListControls.EmptyState title="当前范围没有匹配记录" />}</>;
   }
   function RunCandidateGantt({ data, query, selected, onSelect }) {
     const [mode, setMode] = React.useState('machine'), [zoom, setZoom] = React.useState(1), [viewport, setViewport] = React.useState(600);
     const [scroll, setScroll] = React.useState({ left: 0, top: 0 }), [hover, setHover] = React.useState(null), host = React.useRef(null), owner = React.useRef(null);
+    const printing = BC.usePrintLayout();
     const baseline = BC.useBaseline(data), [selection, setSelection] = React.useState(null), result = baseline.result;
     const chosen = selection && selection.result === result && B.matching([selection.item.comparison], query).length ? selection.item : null;
-    const labelWidth = 156, width = Math.max(1, viewport) * zoom;
+    const labelWidth = 156, width = Math.max(1, viewport) * (printing ? 1 : zoom);
     const candidate = React.useMemo(() => M.layout(data, mode, query, width), [data, mode, query, width]);
     const model = React.useMemo(() => window.PointGanttModel.candidateRows(B.compose(candidate, result && result.data, mode, query), width), [candidate, result, mode, query, width]);
     function selectBaseline(item) { setSelection(item ? { item, result } : null); if (item) onSelect(null); setHover(null); }
@@ -112,20 +150,21 @@
       event.preventDefault();
       if (action === 'fit') fit(); else setZoom(z => timelineZoomStep(z, action === 'in' ? 1 : -1, ZOOM_MAX));
     }
-    const visible = M.visibleRows(model.rows, scroll.top - 48, scroll.top + 384);
-    const tickRows = model.start === null ? [] : M.ticks(model.start, model.end, width, scroll.left, viewport);
+    const renderLeft = printing ? 0 : scroll.left, renderViewport = printing ? width : viewport;
+    const visible = printing ? model.rows : M.visibleRows(model.rows, scroll.top - 48, scroll.top + 384);
+    const tickRows = model.start === null ? [] : M.ticks(model.start, model.end, width, renderLeft, renderViewport);
     return <section ref={host} className="rc-gantt" aria-label="候选甘特图" onKeyDown={zoomKeys}><window.PointGantt.Styles /><div className="rc-heading"><div role="group" className="rc-tabs" aria-label="候选甘特维度">{Object.entries(M.kindLabels).map(([key, label]) =>
       <Button key={key} aria-pressed={mode === key} onClick={() => setMode(key)}>{label}</Button>)}</div>
       <div className="rc-tools"><BC.Toggle state={baseline} /><TimelineZoom zoom={zoom} max={ZOOM_MAX} scope="候选" onZoom={setZoom} onFit={fit} /></div></div>
       <BC.Panel state={baseline} rows={model.comparisons || []} chosen={chosen} onChoose={selectBaseline} workspace={data} />
       <div className="rc-legend rc-muted"><span>{model.groupCount} 组 · {model.rows.length} 轨</span><span><i />安排</span><span><i className="rc-overlap" />时间重叠的安排（分行显示）</span><span><i className="rc-external" />外协工序</span></div>
       {model.start !== null && <div className="rc-heading rc-muted"><span>{M.timeLabel(M.wire(model.start))}</span><span>{M.timeLabel(M.wire(model.end))}</span></div>}
-      <div className="rc-axis">{tickRows.map(t => <span key={t.at} className="rc-tick" style={{ left: t.x - scroll.left }}>{window.WorkbenchFormat.dateTime(t.label, { seconds: true }).slice(5, 10)}<br />{window.WorkbenchFormat.dateTime(t.label, { seconds: true }).slice(11)}</span>)}</div>
+      <div className="rc-axis">{tickRows.map(t => <span key={t.at} className="rc-tick" style={{ left: t.x - renderLeft }}>{M.timeLabel(t.label).slice(5, 10)}<br />{M.timeLabel(t.label).slice(11)}</span>)}</div>
       <div ref={owner} className="rc-scroll" data-candidate-gantt-scroll role="region" aria-label="候选时间安排" tabIndex={0}
         onScroll={e => { setScroll({ left: e.currentTarget.scrollLeft, top: e.currentTarget.scrollTop }); setHover(null); }}>
         <div style={{ position: 'relative', width: width + labelWidth, height: Math.max(288, model.height) }}>
           {visible.map(row => <div key={row.key} className="rc-lane" data-candidate-track={row.baseline ? undefined : row.key} data-baseline-track={row.baseline ? row.key : undefined} style={{ top: row.top, height: row.height }}><div className="rc-lane-label" style={{ height: row.height - 1, paddingTop: row.baseline ? 5 : 7 }} title={row.label + (row.baseline ? ' · 初始计划' : '')}>{row.label}{row.baseline ? ' · 初始' : <small>第 {row.lane + 1} / {row.laneCount} 轨 · {row.items.length} 道安排</small>}</div>
-            <div className="rc-bar-space" style={{ width, height: row.height, overflow: 'hidden' }}>{React.createElement(row.point ? PointLane : Lane, { row, model, width, left: scroll.left, viewport, selected, baselineSelected: chosen, onSelect: selectCandidate, onBaselineSelect: selectBaseline, onHover: setHover })}</div></div>)}
+            <div className="rc-bar-space" style={{ width, height: row.height, overflow: 'hidden' }}>{React.createElement(row.point ? PointLane : Lane, { row, model, width, left: renderLeft, viewport: renderViewport, printing, selected, baselineSelected: chosen, onSelect: selectCandidate, onBaselineSelect: selectBaseline, onHover: setHover })}</div></div>)}
           {!model.rows.length && <div className="rc-empty">没有可绘制的匹配安排；未安排与失败记录仍保留在明细中。</div>}</div></div>
       <input type="range" aria-label="候选时间轴水平位置" style={{ width: '100%' }} min="0" max={Math.max(0, width - viewport)} step="any" value={Math.min(scroll.left, Math.max(0, width - viewport))} disabled={zoom === 1} onChange={e => pan(Number(e.target.value))} />
       {window.PointContract.isPoint(selected) && <dl className="rc-meta" data-candidate-point-facts><div><dt>安排类型</dt><dd>零工时工序</dd></div><div><dt>发生时间</dt><dd>{M.timeLabel(selected.start)}</dd></div><div><dt>本工序占用</dt><dd>0 小时 · 不占设备人员</dd></div></dl>}

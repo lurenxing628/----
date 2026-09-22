@@ -3,6 +3,14 @@
   const K = window.APSCalendarContract, S = window.APSResourceSession;
   const { Button, ErrorBox, Issues, Modal } = window.ResourceControls;
   const { RefreshResult, Policy } = window.CalendarFields;
+  const statusLabels = { not_configured: '未填写', unknown: '未知', unavailable: '暂无数据' };
+  // 默认规则只写班表汇总里真实读到的值：没有的项写“未填写 / 暂无数据”，不再把 8 小时、周末休息这类假设写死在图例里。
+  function DefaultRules({ value }) {
+    const standard = value.standard_hours, holiday = value.holiday_default_efficiency;
+    const standardText = standard.status === 'known' ? window.WorkbenchFormat.hours(standard.value) : standard.message || statusLabels[standard.status] || '暂无数据';
+    const holidayText = holiday.status === 'known' ? window.WorkbenchFormat.number(holiday.value * 100, { digits: 1, trim: true }) + '%' : statusLabels[holiday.status] || '暂无数据';
+    return <><p>未单独设置的日期按默认规则排产。标准工时 / 日：{standardText}；假期录入默认效率：{holidayText}。</p><p className="muted">{value.basis}</p></>;
+  }
   function ResourceCalendar({ adapter, onCommitted, initialContext, onNavigationReady, onOpenFile, rememberEnabled = true }) {
     const [target] = React.useState(() => {
       if (initialContext == null) return { context: null };
@@ -17,6 +25,12 @@
     const [navigationError, setNavigationError] = React.useState(target.error || null), located = React.useRef(false), root = React.useRef(null);
     const request = S.useQuery(async signal => K.month(await adapter.query(K.path + '/month', month, signal), month.year, month.month), [adapter, month.year, month.month]);
     const result = request.result, data = result && result.data, source = result && result.meta.source;
+    // 刷新本月时继续显示同月数据并标 aria-busy；翻月时不把旧月网格放到新标题下。
+    const last = React.useRef(null); if (result) last.current = result;
+    const previous = last.current && last.current.data;
+    const view = data || (request.loading && previous && previous.year === month.year && previous.month === month.month ? previous : null);
+    const [summaryRevision, bumpSummary] = React.useReducer(value => value + 1, 0);
+    const summary = S.useSummary(adapter, summaryRevision), rules = summary.result && summary.result.data;
     window.WorkbenchPageContext.useSnapshot({ source: 'production', kind: 'calendar', month: String(month.year).padStart(4, '0') + '-' + String(month.month).padStart(2, '0'),
       ...(dialog && dialog.mode === 'view' ? { date: dialog.day.date } : {}) },
       rememberEnabled && !!data && !request.loading && !request.error && !navigationError && !deferred && command.phase === 'idle'
@@ -32,7 +46,7 @@
         setDialog({ mode: 'view', day, source });
       }
     }, [data, source, command.phase, deferred, target]);
-    function refresh() { awaitingRefresh.current = { previous: request.result }; setRefreshState({ loading: true }); request.reload(); }
+    function refresh() { awaitingRefresh.current = { previous: request.result }; setRefreshState({ loading: true }); request.reload(); bumpSummary(); }
     React.useEffect(() => {
       if (command.phase !== 'done' || handled.current === command.result.receipt_ref) return;
       handled.current = command.result.receipt_ref; refresh();
@@ -56,7 +70,7 @@
       <div className="crumb"><span>产能链</span><span className="sep">/</span><span>全局</span><span className="sep">/</span><span>工作日历</span></div>
       <div className="chead wb-page-heading"><div><h2>工作日历</h2><p className="cdesc">全局工作时间、效率与可排产范围</p></div></div>
       <div className="statline wb-metrics" style={{ '--wb-columns': 4 }}>{stats.map(([key, label, tone]) => <div key={key} className="stat wb-metric" data-tone={tone}>
-        <span className="sl wb-metric-label">{label}</span><span className="sv wb-metric-value">{data ? data.stats[key] : '未读取'}</span></div>)}</div>
+        <span className="sl wb-metric-label">{label}</span><span className="sv wb-metric-value">{view ? window.WorkbenchFormat.number(view.stats[key], { digits: 0 }) : '未读取'}</span></div>)}</div>
       <ErrorBox error={request.error} /><Issues issues={result && result.warnings || []} />
       <ErrorBox error={navigationError} />{deferred && <div role="status"><p>上次工作日历操作还没处理完，暂时没有跳转。</p><Button icon="arrow-right" onClick={continueNavigation}>继续跳转</Button></div>}
       <div className="cal-wrap" style={{ marginTop: 18 }}>
@@ -66,7 +80,7 @@
             <span className="cal-title">{month.year} 年 {month.month} 月</span>
             <Button className="cal-nav" icon="chevron-right" aria-label="下一月" disabled={blocked || request.loading || !data || !data.next_month} onClick={() => setMonth(data.next_month)} />
             <Button className="cal-nav cal-today-btn" title="回到本月" style={{ width: 'auto', padding: '0 10px', fontSize: 12, fontWeight: 600 }} disabled={blocked}
-              onClick={() => { const now = new Date(); setMonth({ year: now.getFullYear(), month: now.getMonth() + 1 }); request.reload(); }}>今天</Button>
+              onClick={() => { const now = new Date(); setMonth({ year: now.getFullYear(), month: now.getMonth() + 1 }); request.reload(); }}>本月</Button>
             <Button icon="refresh-cw" aria-label="刷新本月" busy={request.loading} disabled={blocked} onClick={request.reload} />
             <span className="tb-spacer" style={{ flex: 1 }} />
             <Button icon="file-input" transfer="import" disabled={blocked || !data || request.loading}
@@ -78,13 +92,14 @@
             <Button icon="calendar-days" className="btn cal-batch" disabled={blocked || !data || request.loading}
               reason={source && source !== 'production' ? '当前不是生产数据，不能维护。' : ''} onClick={() => open({ mode: 'range' })}>批量维护</Button>
           </div>
-          {request.loading && <window.WorkbenchControls.EmptyState kind="loading" title="正在读取工作日历…" />}
-          {data && <div className="cal-grid">{['一', '二', '三', '四', '五', '六', '日'].map(day => <div className="cal-wd" key={day}>{day}</div>)}
-            {data.cells.map((cell, index) => {
+          {request.loading && !view && <window.WorkbenchControls.EmptyState kind="loading" title="正在读取工作日历…" />}
+          {request.loading && view && <p role="status" className="muted">正在刷新工作日历…</p>}
+          {view && <div className="cal-grid" aria-busy={request.loading}>{['一', '二', '三', '四', '五', '六', '日'].map(day => <div className="cal-wd" key={day}>{day}</div>)}
+            {view.cells.map((cell, index) => {
               if (!cell) return <div key={'empty-' + index} className="cal-cell empty" />;
-              const row = data.days.find(day => day.date === cell.date), meta = K.tag(row);
+              const row = view.days.find(day => day.date === cell.date), meta = K.tag(row);
               return <button key={row.date} type="button" className={'cal-cell ' + meta.tone + (row.is_today ? ' today' : '')}
-                style={{ minWidth: 0, textAlign: 'left', color: 'inherit', fontFamily: 'inherit' }} disabled={blocked}
+                style={{ minWidth: 0, textAlign: 'left', color: 'inherit', fontFamily: 'inherit' }} disabled={blocked || request.loading}
                 data-calendar-date={row.date} aria-current={target.context && target.context.date === row.date ? 'date' : undefined}
                 aria-label={row.date + ' ' + (row.explicit ? '单独设置' : '默认规则') + ' ' + meta.text} title={row.date + ' · ' + (row.explicit ? '单独设置' : '默认规则')}
                 onClick={() => open({ mode: 'day', day: row, source })}><span className="d">{row.day}</span>
@@ -93,9 +108,12 @@
         </div>
         <div className="cal-panel cal-side"><h3>图例</h3><div className="cal-leg"><div><span className="sw cfg" />已单独设置工时</div>
           <div><span className="sw rest" />调休 / 加班</div><div><span className="sw we" />周末（默认非工作）</div></div>
-          <h3>默认规则</h3><p>未单独设置的日期：周一至周五按 8 小时、效率 100%，普通件和急件都可排产；周末默认不排产。</p>
-          <h3>规则来源</h3><p>本页维护全局工作日历；人员班表和班次单独设置。</p>
-          {data && <p>本机数据截至 {window.WorkbenchFormat.dateTime(data.as_of)}</p>}</div>
+          <h3>默认规则</h3>
+          {rules && rules.calendar ? <DefaultRules value={rules.calendar} /> : summary.loading ? <p role="status">正在读取默认规则…</p>
+            : <p>默认规则暂无数据{rules && rules.calendar_error ? '：' + rules.calendar_error : ''}</p>}
+          <ErrorBox error={summary.error} />
+          <h3>规则来源</h3><p>本页维护全局工作日历；{window.WorkbenchTerms.personal_calendar}和班次单独设置。</p>
+          {view && <p>{window.WorkbenchTerms.data_as_of(window.WorkbenchFormat.dateTime(view.as_of))}</p>}</div>
       </div>
       {dialog && dialog.mode === 'view' && <Modal title={dialog.day.date + ' · 日历详情'} icon="calendar-days" onClose={close}
         footer={<><Button onClick={close}>关闭</Button><Button icon="square-pen" onClick={() => open({ ...dialog, mode: 'day' })}>维护此日</Button></>}>

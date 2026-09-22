@@ -105,6 +105,7 @@
       listHeight = useRef(0),
       exportController = useRef(null),
       alive = useRef(true);
+    const domainsId = React.useId();
     const detailFocus = useRef(!!(initial.initial || initial.selected));
     const pending = loading || completedRequest !== request,
       readError = completedRequest === request ? error : null;
@@ -336,7 +337,7 @@
         const file = await api.export(data.scope, result.meta.snapshot_ref, data.page.total, controller.signal);
         if (alive.current && !controller.signal.aborted) {
           window.APSMasterOverviewAPI.save(file);
-          setMessage('已发起下载：' + file.filename + '，共 ' + file.count + ' 条。');
+          setMessage(window.WorkbenchTerms.download_started(file.filename) + '（共 ' + file.count + ' 条）。');
         }
       } catch (failure) {
         if (alive.current && failure.name !== 'AbortError') setActionError(failure);
@@ -365,7 +366,7 @@
       className: "wb-page-title"
     }, "\u8D44\u6599\u603B\u89C8"), /*#__PURE__*/React.createElement("p", {
       className: "wb-page-context"
-    }, summary ? '基础资料 · 本机记录 · ' + window.WorkbenchFormat.dateTime(summary.asOf) : '基础资料 · 未读取')), /*#__PURE__*/React.createElement("div", {
+    }, summary ? '基础资料 · ' + window.WorkbenchTerms.data_as_of(window.WorkbenchFormat.dateTime(summary.asOf)) : '基础资料 · 未读取')), /*#__PURE__*/React.createElement("div", {
       className: "mo-actions"
     }, /*#__PURE__*/React.createElement(Button, {
       reasonDisplay: "inline",
@@ -406,22 +407,26 @@
       className: "wb-metrics mo-domains",
       "aria-label": "\u8D44\u6599\u7C7B\u522B\u6570\u91CF"
     }, C.domains.map(([id, label], index) => {
-      const domain = overview && overview.domains[index];
+      const domain = overview && overview.domains[index],
+        countId = domainsId + '-' + id;
       return /*#__PURE__*/React.createElement("button", {
         type: "button",
         className: "wb-metric mo-domain",
         key: id,
         "aria-pressed": scope.domain === id,
         "aria-label": '查看资料类别 ' + label,
+        "aria-describedby": countId + '-count ' + countId + '-helper',
         onClick: () => filter({
           domain: scope.domain === id ? 'all' : id
         })
       }, /*#__PURE__*/React.createElement("span", {
         className: "wb-metric-label"
       }, label), /*#__PURE__*/React.createElement("strong", {
-        className: "wb-metric-value"
+        className: "wb-metric-value",
+        id: countId + '-count'
       }, domain && domain.loaded ? domain.count : '未读取'), /*#__PURE__*/React.createElement("span", {
-        className: "wb-metric-helper"
+        className: "wb-metric-helper",
+        id: countId + '-helper'
       }, domain && domain.loaded ? domain.attention + ' 条需维护' + (domain.unknown ? ' · ' + domain.unknown + ' 条未确认' : '') : '来源未读取'));
     })), overview && overview.gaps.length > 0 && /*#__PURE__*/React.createElement("details", {
       className: "mo-gaps",

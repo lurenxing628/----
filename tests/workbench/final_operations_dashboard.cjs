@@ -40,11 +40,11 @@ async function lifecycle(h, kind = 'delivery', label = '交期风险') {
     assert.equal(item.risk.active, true);
   });
   await shot(kind + '-closed-risk-still-active');
-  await mark('WBP-DASH-005.open-reopen', () => region.getByRole('button', { name: '独立重开', exact: true }).click());
-  await mark('WBP-DASH-005.require-reason', async () => { await modal().getByRole('button', { name: '确认独立重开', exact: true }).click(); await modal().getByRole('alert').waitFor(); });
+  await mark('WBP-DASH-005.open-reopen', () => region.getByRole('button', { name: '重新打开处置', exact: true }).click());
+  await mark('WBP-DASH-005.require-reason', async () => { await modal().getByRole('button', { name: '确认重新打开', exact: true }).click(); await modal().getByRole('alert').waitFor(); });
   await mark('WBP-DASH-005.cancel-reopen', async () => { await page.keyboard.press('Escape'); await modal().waitFor({ state: 'hidden' }); });
-  await region.getByRole('button', { name: '独立重开', exact: true }).click(); await modal().getByLabel('重开原因', { exact: true }).fill('F risk remains, separate reopening request');
-  const reopened = await mark('WBP-DASH-005.confirm-reopen', () => request('/dashboard/items/' + ref + '/reopen', () => modal().getByRole('button', { name: '确认独立重开', exact: true }).click(), 200, 'POST'));
+  await region.getByRole('button', { name: '重新打开处置', exact: true }).click(); await modal().getByLabel('重开原因', { exact: true }).fill('F risk remains, separate reopening request');
+  const reopened = await mark('WBP-DASH-005.confirm-reopen', () => request('/dashboard/items/' + ref + '/reopen', () => modal().getByRole('button', { name: '确认重新打开', exact: true }).click(), 200, 'POST'));
   assert.equal(reopened.data.handling.completed_at, null); await finish();
   const history = await mark(['WBP-DASH-006.open-history', 'WBP-DASH-001.tab-records'], () => request('/dashboard/items/' + ref + '/history', () => region.getByRole('button', { name: '查看处置历史', exact: true }).click()));
   assert.equal(history.data.history.items.length, 3); assert.deepEqual(history.data.history.items.map(row => row.sequence), [3, 2, 1]);
@@ -99,9 +99,9 @@ async function dashboard(h) {
   await detail('actual', '执行偏差'); await shot('actual-evidence');
   await mark('WBP-DASH-008.actual-comparison-navigation', async () => {
     await page.locator('[data-detail-ref]').getByRole('button', { name: '现场实际甘特', exact: true }).click();
-    await page.waitForURL('**view=fieldgantt'); await page.getByRole('button', { name: '回来源', exact: true }).waitFor();
+    await page.waitForURL('**view=fieldgantt'); await page.getByRole('button', { name: '返回', exact: true }).waitFor();
     const state = await page.evaluate(() => history.state.workbench); assert.equal(state.context.return_to.view, 'dashboard');
-    await page.getByRole('button', { name: '回来源', exact: true }).click(); await page.locator('[data-detail-ref]').waitFor();
+    await page.getByRole('button', { name: '返回', exact: true }).click(); await page.locator('[data-detail-ref]').waitFor();
   });
   await capabilities(h);
   await page.locator('[data-run-ref]').first().waitFor(); await shot('candidate-directory');

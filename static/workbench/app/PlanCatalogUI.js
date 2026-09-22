@@ -13,7 +13,8 @@
     plan
   }) {
     const unavailable = !plan.capabilities.view;
-    const text = plan.is_current_official ? '当前正式' : plan.kind === 'official' ? '历史正式' : plan.kind === 'candidate' ? '候选方案' : '试调方案';
+    const T = window.WorkbenchTerms;
+    const text = plan.is_current_official ? T.current_official : plan.kind === 'official' ? T.historical_official : plan.kind === 'candidate' ? T.candidate : T.trial_scenario;
     return /*#__PURE__*/React.createElement("span", {
       className: 'plan-state ' + (unavailable ? 'unavailable' : plan.is_current_official ? 'official' : '')
     }, text, unavailable ? ' · 不可查看' : '');
@@ -167,7 +168,7 @@
       scope: "col"
     }, "\u8BB0\u5F55\u72B6\u6001"))), /*#__PURE__*/React.createElement("tbody", null, data && data.plans.map((plan, row) => /*#__PURE__*/React.createElement("tr", {
       key: plan.plan_ref || 'unavailable-' + row,
-      "aria-selected": !!plan.plan_ref && plan.plan_ref === selectedRef
+      "aria-current": !!plan.plan_ref && plan.plan_ref === selectedRef ? 'true' : undefined
     }, /*#__PURE__*/React.createElement("td", {
       className: "wb-col-key"
     }, /*#__PURE__*/React.createElement("label", {

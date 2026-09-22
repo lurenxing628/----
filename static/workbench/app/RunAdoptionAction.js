@@ -251,7 +251,7 @@
       },
       "aria-expanded": open,
       busy: busy && !intent
-    }, " ", label.trim(), " "), storageError && !open && /*#__PURE__*/React.createElement("span", {
+    }, label.trim()), storageError && !open && /*#__PURE__*/React.createElement("span", {
       className: "ra-inline",
       role: "alert"
     }, storageError, /*#__PURE__*/React.createElement(U.Button, {

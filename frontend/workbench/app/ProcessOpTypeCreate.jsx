@@ -13,7 +13,13 @@
     async function reload() {
       if (busy || command.locked) return;
       const controller = new AbortController(); request.current = controller; setBusy(true); setError(null);
-      try { const next = C.query(await adapter.list('op_type', scope, controller.signal), 'list'); if (!controller.signal.aborted) setReview(next); }
+      try {
+        const next = C.query(await adapter.list('op_type', scope, controller.signal), 'list');
+        if (controller.signal.aborted || !command.reset()) return;
+        // 刷新即采用：新读到的建档资料直接接进保存路径，复核区只展示当前资料。
+        // 与 ResourceWorkspace.reloadContext 走同一条路，ResourceForms 不需要单独的“采用”步骤。
+        setContext(next); setReview(next);
+      }
       catch (failure) { if (!controller.signal.aborted) setError(failure); }
       finally { if (!controller.signal.aborted) setBusy(false); if (request.current === controller) request.current = null; }
     }
@@ -35,10 +41,10 @@
     React.useEffect(() => { if (initialized && command.phase === 'done') readSaved(); }, [initialized, command.phase, command.result && command.result.receipt_ref]);
     function close() { if (!command.locked && !busy && !refresh.loading && command.reset()) onClose(); }
     if (!context) return <Modal title="新增工种" icon="plus" onClose={close} locked={command.locked || busy} footer={<Button onClick={close} disabled={command.locked || busy}>取消</Button>}>
-      <div className="modal-b"><ErrorBox error={list.error} />{list.loading && <p role="status">正在读取工种建档资料…</p>}{list.error && <Button icon="refresh-cw" onClick={list.reload}>刷新资料</Button>}
+      <div className="modal-b"><ErrorBox error={list.error} />{list.loading && <p role="status">正在读取工种建档资料…</p>}{list.error && <Button icon="refresh-cw" onClick={list.reload}>{window.WorkbenchTerms.refresh_latest}</Button>}
         {!initialized && <><p>另一个操作还没处理完，请先查询上次结果。</p><window.ResourceForms.Feedback command={command} /></>}</div></Modal>;
-    return <window.ResourceForms adapter={adapter} kind="op_type" action="create" writeContext={review ? null : context.data.create_context} source={context.meta.source} command={command}
-      onClose={close} onReloadContext={reload} contextBusy={busy || refresh.loading} contextError={error} contextReview={review} onAcceptContext={() => { setContext(review); setReview(null); setError(null); }}
+    return <window.ResourceForms adapter={adapter} kind="op_type" action="create" writeContext={context.data.create_context} source={context.meta.source} command={command}
+      onClose={close} onReloadContext={reload} contextBusy={busy || refresh.loading} contextError={error} contextReview={review}
       refreshState={refresh} onRefresh={readSaved} />;
   }
   window.ProcessOpTypeCreate = ProcessOpTypeCreate;

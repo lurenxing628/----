@@ -64,37 +64,37 @@ def test_partial_lineage_storage_is_unavailable_not_repaired():
 
 def test_broken_identity_storage_blocks_copies(monkeypatch):
     writer = _writer(monkeypatch, identity_schema_broken=lambda: True)
-    assert "未使用不可靠修订" in _expect("template_lineage_unavailable", 409, writer.require_ready)
+    assert "没有用不可靠的版本继续" in _expect("template_lineage_unavailable", 409, writer.require_ready)
     missing = _writer(monkeypatch, schema_state=lambda: "missing")
-    assert "尚未安装" in _expect("template_lineage_schema_missing", 409, missing.require_ready)
+    assert "还没安装" in _expect("template_lineage_schema_missing", 409, missing.require_ready)
 
 
 @pytest.mark.parametrize("row", [None, {"template_operation_ref": None, "part_ref": REF}, {"template_operation_ref": REF, "part_ref": None}])
 def test_template_without_permanent_identity_is_unavailable(monkeypatch, row):
     writer = _writer(monkeypatch, template=lambda template_id: row)
-    assert "不能按图号或工序号补配" in _expect("template_lineage_unavailable", 409, lambda: writer.template(1))
+    assert "不会按图号或工序号猜着匹配" in _expect("template_lineage_unavailable", 409, lambda: writer.template(1))
 
 
 @pytest.mark.parametrize("row", [None, dict(_instance(), batch_ref=None), dict(_instance(), part_ref=None)])
 def test_instance_without_permanent_refs_is_unavailable(monkeypatch, row):
     writer = _writer(monkeypatch, instance=lambda op_id: row)
-    assert "来源没有补配" in _expect("template_lineage_unavailable", 409, lambda: writer.instance(7))
+    assert "模板来源没有自动补上" in _expect("template_lineage_unavailable", 409, lambda: writer.instance(7))
 
 
 # ---- template_lineage_not_new ----
 
 def test_executed_instances_cannot_receive_or_rebind_an_origin(monkeypatch):
     writer = _writer(monkeypatch, has_execution_facts=lambda ref: True)
-    assert "已发生执行" in _expect("template_lineage_not_new", 409, lambda: writer._require_unexecuted(_instance()))
+    assert "已开工的工序" in _expect("template_lineage_not_new", 409, lambda: writer._require_unexecuted(_instance()))
     legacy = _writer(monkeypatch, has_legacy_execution_events=lambda op_id: True)
-    assert "旧执行记录" in _expect("template_lineage_not_new", 409, lambda: legacy._require_unexecuted(_instance()))
+    assert "历史报工记录" in _expect("template_lineage_not_new", 409, lambda: legacy._require_unexecuted(_instance()))
 
 
 @pytest.mark.parametrize("events", [[], [{"event_type": "updated"}], [{"event_type": "created"}, {"event_type": "updated"}]])
 def test_origin_is_only_recorded_for_a_freshly_created_unchanged_instance(monkeypatch, events):
     writer = _writer(monkeypatch)
     monkeypatch.setattr(template_lineage, "read_events", lambda repo, refs: {REF: events})
-    assert "旧实例不得追溯补填" in _expect("template_lineage_not_new", 409,
+    assert "原有的工序不能往前补" in _expect("template_lineage_not_new", 409,
                                        lambda: writer.record_origin(_instance(), _template(), "{}"))
 
 
@@ -103,7 +103,7 @@ def test_origin_is_only_recorded_for_a_freshly_created_unchanged_instance(monkey
 def test_copying_a_template_into_another_parts_batch_is_a_mismatch(monkeypatch):
     writer = _writer(monkeypatch, template=lambda template_id: _template(REF),
                      insert_instance=lambda payload: _instance(part_ref=OTHER))
-    assert "未按图号猜配" in _expect("template_lineage_mismatch", 409, lambda: writer.copy_template("B1", 1))
+    assert "没有按图号猜着匹配" in _expect("template_lineage_mismatch", 409, lambda: writer.copy_template("B1", 1))
 
 
 def test_copying_an_instance_whose_origin_belongs_to_another_part_is_a_mismatch(monkeypatch):
@@ -112,7 +112,7 @@ def test_copying_an_instance_whose_origin_belongs_to_another_part_is_a_mismatch(
     monkeypatch.setattr(template_lineage, "TemplateLineageQuery", lambda conn: SimpleNamespace(read=lambda refs: facts))
     monkeypatch.setattr(template_lineage, "validate_origin", lambda origin, events: (_template(OTHER), None))
     writer = _writer(monkeypatch, instance=lambda op_id: _instance(REF), insert_instance=lambda payload: _instance(REF, op_id=8))
-    assert "不属于原来源模板零件" in _expect("template_lineage_mismatch", 409, lambda: writer.copy_instance("B1", 7))
+    assert "不是原来源模板的零件" in _expect("template_lineage_mismatch", 409, lambda: writer.copy_instance("B1", 7))
 
 
 # ---- calibration_source_unavailable ----

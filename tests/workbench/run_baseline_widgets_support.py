@@ -23,8 +23,8 @@ def record(case, settings=None):
     return {"run_ref": run, "candidate_ref": refs[0], "refs": refs}
 
 
-def historical_segment(case, run_ref, operation):
-    """Historical-shape injection, matching BU's test; never alter the live schema."""
+def historical_segments(case, run_ref, operation, extra_count=7):
+    """Inject archived multi-segment shape; current admission still rejects duplicates."""
     raw = case.conn.execute("SELECT facts_json,baseline_json FROM WorkbenchRunJobs WHERE run_ref=?", (run_ref,)).fetchone()
     facts, baseline = json.loads(raw[0]), json.loads(raw[1])
 
@@ -33,20 +33,29 @@ def historical_segment(case, run_ref, operation):
         return _columns(sql, table)
 
     old = next(r for r in baseline["rows"] if r["op_id"] == operation)
-    new = dict(old, id=max(r["id"] for r in baseline["rows"]) + 1, start_time="2026-09-12T09:00:00", end_time="2026-09-12T11:00:00")
-    baseline["rows"].append(new)
-    facts["tables"]["Schedule"].append([new[k] for k in columns("Schedule")])
+    next_id = max(r["id"] for r in baseline["rows"]) + 1
     names = columns("WorkbenchPlanSourceRefs")
-    source = list(next(r for r in facts["tables"]["WorkbenchPlanSourceRefs"] if r[names.index("kind")] == "schedule_row" and r[names.index("source_key")] == str(old["id"])))
-    old_ref, new_ref = source[names.index("ref")], secrets.token_hex(24)
-    source[names.index("ref")] = new_ref
-    source[names.index("source_key")] = str(new["id"])
-    facts["tables"]["WorkbenchPlanSourceRefs"].append(source)
-    names = columns("WorkbenchTaskRefs")
-    task = list(next(r for r in facts["tables"]["WorkbenchTaskRefs"] if r[names.index("row_ref")] == old_ref))
-    task[names.index("ref")] = secrets.token_hex(24)
-    task[names.index("row_ref")] = new_ref
-    facts["tables"]["WorkbenchTaskRefs"].append(task)
+    source_template = next(r for r in facts["tables"]["WorkbenchPlanSourceRefs"]
+                           if r[names.index("kind")] == "schedule_row" and r[names.index("source_key")] == str(old["id"]))
+    old_ref = source_template[names.index("ref")]
+    task_names = columns("WorkbenchTaskRefs")
+    task_template = next(r for r in facts["tables"]["WorkbenchTaskRefs"] if r[task_names.index("row_ref")] == old_ref)
+    start = datetime(2026, 9, 12, 8, 1)
+    for index in range(extra_count):
+        segment_start = start + timedelta(minutes=index * 10)
+        new = dict(old, id=next_id + index, start_time=segment_start.isoformat(),
+                   end_time=(segment_start + timedelta(minutes=15)).isoformat())
+        baseline["rows"].append(new)
+        facts["tables"]["Schedule"].append([new[k] for k in columns("Schedule")])
+        new_ref = secrets.token_hex(24)
+        source = list(source_template)
+        source[names.index("ref")] = new_ref
+        source[names.index("source_key")] = str(new["id"])
+        facts["tables"]["WorkbenchPlanSourceRefs"].append(source)
+        task = list(task_template)
+        task[task_names.index("ref")] = secrets.token_hex(24)
+        task[task_names.index("row_ref")] = new_ref
+        facts["tables"]["WorkbenchTaskRefs"].append(task)
     encoded = json.dumps(facts, ensure_ascii=False)
     corrupt_update(case.conn, "WorkbenchRunJobs", "UPDATE WorkbenchRunJobs SET facts_json=?,facts_hash=?,baseline_json=? WHERE run_ref=?",
                    (encoded, hashlib.sha256(encoded.encode("utf-8")).hexdigest(), json.dumps(baseline), run_ref))
@@ -72,7 +81,7 @@ def small_cases(case):
     result["mixed"] = record(case, case.settings("B1", "UNREADY"))
     case.command("create", case.task(7, case.op_id), case.values(3, effective_processing_hours=0))
     result["execution"] = record(case, case.settings("B1", "UNREADY"))
-    historical_segment(case, result["mixed"]["run_ref"], multi)
+    historical_segments(case, result["mixed"]["run_ref"], multi)
     case.conn.execute("UPDATE Machines SET name='CURRENT RENAMED MACHINE'")
     case.conn.execute("UPDATE Operators SET name='CURRENT RENAMED OPERATOR'")
     case.conn.execute("UPDATE Parts SET part_name='CURRENT RENAMED PART'")

@@ -9,9 +9,13 @@
   }
   function Execution({ title, value }) {
     if (!value) return <div>{title}：未记录</div>;
-    return <div><h4>{title}</h4><dl className="tt-facts">{[['目标量', value.target_quantity], ['已知完成量', value.known_completed_quantity],
-      ['剩余量', value.remaining_quantity], ['执行状态', value.execution_state], ['数据质量', value.data_quality], ['目标依据', value.target_basis]].map(([label, v]) =>
-        <React.Fragment key={label}><dt>{label}</dt><dd>{U.number(v)}</dd></React.Fragment>)}</dl></div>;
+    // 状态与说明用报工记录和候选页同一套叫法；不把内部取值原样上屏。
+    const R = window.RunCandidateModel, F = window.FieldContract;
+    const rows = [['target_quantity', U.number(value.target_quantity)], ['known_completed_quantity', U.number(value.known_completed_quantity)],
+      ['remaining_quantity', U.number(value.remaining_quantity)], ['execution_state', F.states[value.execution_state] || R.executionValue(value.execution_state)],
+      ['data_quality', R.executionValue(value.data_quality)], ['target_basis', R.executionValue(value.target_basis)]];
+    return <div><h4>{title}</h4><dl className="tt-facts">{rows.map(([key, v]) =>
+        <React.Fragment key={key}><dt>{R.executionLabels[key]}</dt><dd>{v}</dd></React.Fragment>)}</dl></div>;
   }
   function Editor({ data, task, commands, onEditing, onRecheck, guardOwner, editorRevision }) {
     const [editing, setEditing] = React.useState(false), [form, setForm] = React.useState(null), [error, setError] = React.useState(null), [reviewed, setReviewed] = React.useState(false);
@@ -58,13 +62,13 @@
       <h4>{task.batch_id} · {task.process_label}</h4><p>{task.part_no} · {task.part_name || '零件名称未填写'}</p>
       <Editor key={task.task_ref} {...{ data, task, commands, onEditing, onRecheck, guardOwner, editorRevision }} />
       {task.execution_anchor && <p className="tt-notice">{task.execution_anchor.message}</p>}
-      <dl className="tt-facts">{[['分件', task.piece_id || '整批'], ['原目标量', U.number(task.quantity)], ['批次数量', U.number(task.batch_quantity)],
+      <dl className="tt-facts">{[['分件', task.piece_id || window.WorkbenchTerms.shared_operation], ['原目标量', U.number(task.quantity)], ['批次数量', U.number(task.batch_quantity)],
         ...(window.PointContract.isPoint(task) ? [['安排类型', '零工时工序'], ['本工序占用', '0 小时 · 不占设备人员']] : []),
-        ['优先级', { normal: '普通', urgent: '急件', critical: '特急' }[task.priority] || '未知'], ['交付截至日', task.due_date || '未记录'],
+        ['优先级', { normal: '普通', urgent: '急件', critical: '特急' }[task.priority] || '未知'], ['交期', task.due_date || '未记录'],
         ['来源', task.source === 'internal' ? '自制' : '外协'], ['当前设备', name(task.machine_ref)], ['当前人员', name(task.operator_ref)],
         ['当前开工', U.timeLabel(task.start)], ['当前完工', U.timeLabel(task.end)], ['原设备', name(task.original.machine_ref)], ['原人员', name(task.original.operator_ref)],
-        ['原开工', U.timeLabel(task.original.start)], ['原完工', U.timeLabel(task.original.end)], ['原准备工时', U.number(task.hours.setup_hours)],
-        ['原单件工时', U.number(task.hours.unit_hours)], ['原总工时', U.number(task.hours.total_hours)], ['工时依据', hoursBasis(task.hours.basis)],
+        ['原开工', U.timeLabel(task.original.start)], ['原完工', U.timeLabel(task.original.end)], ['原准备工时', U.hours(task.hours.setup_hours)],
+        ['原单件工时', U.hours(task.hours.unit_hours)], ['原总工时', U.hours(task.hours.total_hours)], ['工时依据', hoursBasis(task.hours.basis)],
         ...(task.source === 'external' ? [['原周期（天）', U.number(task.hours.days)]] : [])].map(([label, value]) =>
           <React.Fragment key={label}><dt>{label}</dt><dd>{value}</dd></React.Fragment>)}</dl>
       <div className="tt-tools">{task.predecessor_refs.map(ref => {
@@ -72,9 +76,8 @@
         const piece = typeof t.piece_id === 'string' && t.piece_id.trim() ? '分件 ' + t.piece_id :
           t.piece_id === null && !t.data_gaps.some(g => g.field === 'piece_id') ? '共同工序' : '分件未记录';
         const label = '前序 ' + piece + ' · ' + t.process_label + ' ' + t.sequence;
-        return <U.Button key={ref} icon="chevron-left" title={label} aria-label={label} onClick={() => onSelect(ref)}
-          style={{ minWidth: 0, maxWidth: '100%', height: 'auto', whiteSpace: 'normal', textAlign: 'left' }}>
-          <span style={{ minWidth: 0, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>{label}</span></U.Button>;
+        return <U.Button key={ref} icon="chevron-left" title={label} aria-label={label} onClick={() => onSelect(ref)} className="btn tt-relation-button">
+          <span className="tt-relation-label">{label}</span></U.Button>;
       })}</div>
       <section><h4>工序约束</h4>{!task.issues.length && <p className="tt-muted">此工序未报告单项问题，仍须核对整体约束。</p>}<U.Issues rows={task.issues} onSelect={onSelect} /><U.Issues rows={task.data_gaps} /></section>
       <details><summary>执行依据</summary><Execution title="建草稿时的报工记录" value={task.execution_at_creation} /><Execution title="本次读取的报工记录" value={task.execution} /></details>

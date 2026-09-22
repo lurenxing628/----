@@ -14,7 +14,7 @@ body.aps-workbench .wb-surface-row {
 }
 body.aps-workbench .wb-surface-body { min-width:0; padding:var(--wb-section-padding); }
 body.aps-workbench .wb-surface-divider { border-top:1px solid var(--ui-border); }
-body.aps-workbench .page-content :is(.plana,.resource-live,.rc-workspace,.dashboard-workbench,.mo-workbench,.report-workbench,.re-workbench,.sm-workbench) {
+body.aps-workbench .page-content :is(.plana,.resource-live,.dashboard-workbench,.report-workbench,.sm-workbench) {
   min-width: 0; max-width: 100%;
 }
 body.aps-workbench .page-content :is(.toolbar,.rc-toolbar,.table-tools,.sm-filters) { min-width: 0; flex-wrap: wrap; }

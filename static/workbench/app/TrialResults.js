@@ -10,9 +10,7 @@
       className: "tt-summary"
     }, [[c.late_count, window.WorkbenchTerms.overdue_count], [c.total_delay_hours, window.WorkbenchTerms.total_tardiness_hours + '（小时）'], [c.changed_operations, '调整工序'], [c.moved_operations, '换设备工序']].map(([value, label]) => /*#__PURE__*/React.createElement("div", {
       key: label
-    }, /*#__PURE__*/React.createElement("span", null, label), /*#__PURE__*/React.createElement("strong", null, U.number(value)))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", null, "\u6362\u578B\u6B21\u6570"), /*#__PURE__*/React.createElement("strong", {
-      title: c.changeovers === null ? c.changeover_reason : undefined
-    }, c.changeovers === null ? '未评估' : U.number(c.changeovers))));
+    }, /*#__PURE__*/React.createElement("span", null, label), /*#__PURE__*/React.createElement("strong", null, U.number(value)))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", null, "\u6362\u578B\u6B21\u6570"), /*#__PURE__*/React.createElement("strong", null, c.changeovers === null ? '未评估' : U.number(c.changeovers)), c.changeovers === null && c.changeover_reason && /*#__PURE__*/React.createElement("small", null, c.changeover_reason)));
   }
   function Calendar({
     resource
@@ -66,7 +64,10 @@
     const [entry, setEntry] = React.useState(readEntry),
       name = window.TrialGantt.resourceNames(data),
       c = data.comparison;
-    const tab = entry.tab || preferences.value && preferences.value.result_tab;
+    // When the local preference cannot be read, the result still renders with defaults and the tab choice stays on this page.
+    const [local, setLocal] = React.useState(null),
+      values = preferences.value || local || V.defaults(data);
+    const tab = entry.tab || values.result_tab;
     function clearEntry() {
       try {
         const current = history.state,
@@ -87,7 +88,10 @@
       }
     }
     function selectTab(next) {
-      preferences.change({
+      if (!preferences.change({
+        result_tab: next
+      })) setLocal({
+        ...values,
         result_tab: next
       });
       try {
@@ -105,13 +109,15 @@
         });
       }
     }
-    if (!preferences.value || entry.error) return /*#__PURE__*/React.createElement("section", {
+    // A malformed page-history entry keeps the recovery notice in place of the results (contract: the entry must be cleared first);
+    // an unreadable local preference no longer hides the results: they render with defaults under the notice.
+    if (entry.error) return /*#__PURE__*/React.createElement("section", {
       className: "tt-results",
       "aria-label": "\u8BD5\u8C03\u7ED3\u679C\u6062\u590D"
     }, /*#__PURE__*/React.createElement(V.Notice, {
       state: preferences,
       label: "\u8BD5\u8C03\u7ED3\u679C\u67E5\u770B\u504F\u597D"
-    }), entry.error && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(U.ErrorBox, {
+    }), /*#__PURE__*/React.createElement(U.ErrorBox, {
       error: entry.error
     }), /*#__PURE__*/React.createElement("div", {
       className: "tt-tools"
@@ -121,7 +127,7 @@
     }, "\u5237\u65B0\u672C\u9875\u9875\u7B7E\u8BB0\u5F55"), /*#__PURE__*/React.createElement(U.Button, {
       icon: "rotate-ccw",
       onClick: clearEntry
-    }, "\u6E05\u9664\u672C\u9875\u9875\u7B7E\u8BB0\u5F55"))));
+    }, "\u6E05\u9664\u672C\u9875\u9875\u7B7E\u8BB0\u5F55")));
     const arrangement = r => /*#__PURE__*/React.createElement(React.Fragment, null, name(r.machine_ref), /*#__PURE__*/React.createElement("br", null), name(r.operator_ref), /*#__PURE__*/React.createElement("br", null), U.timeLabel(r.start), /*#__PURE__*/React.createElement("br", null), U.timeLabel(r.end));
     return /*#__PURE__*/React.createElement("section", {
       className: "tt-results"
@@ -132,9 +138,13 @@
       value: tab,
       onChange: selectTab,
       label: "\u8BD5\u8C03\u7ED3\u679C",
+      idPrefix: "tt-result-tab-",
+      panelId: "tt-result-panel",
       options: [['delivery', '批次对比'], ['capacity', '资源占用'], ['history', '调整记录'], ['adoptions', '采用记录'], ['issues', '约束问题'], ['tasks', '完整任务'], ['unplanned', '未排工序']]
     }), /*#__PURE__*/React.createElement("div", {
-      role: "tabpanel"
+      role: "tabpanel",
+      id: "tt-result-panel",
+      "aria-labelledby": 'tt-result-tab-' + tab
     }, tab === 'adoptions' && (window.TrialAdoptionHistory ? /*#__PURE__*/React.createElement(window.TrialAdoptionHistory, {
       data: data
     }) : /*#__PURE__*/React.createElement("p", {
@@ -144,7 +154,7 @@
     }, "\u5BF9\u6BD4\u65B9\u6848\uFF1A", data.base_identity.display_name || '原试调来源'), /*#__PURE__*/React.createElement(U.Table, {
       rows: c.batches,
       label: "\u6279\u6B21\u4EA4\u4ED8\u5BF9\u6BD4",
-      columns: [['批次 / 零件', r => /*#__PURE__*/React.createElement(React.Fragment, null, r.batch_id, /*#__PURE__*/React.createElement("br", null), r.part_name)], ['批次数量', r => U.number(r.quantity)], ['交付截至日', r => /*#__PURE__*/React.createElement("span", {
+      columns: [['批次 / 零件', r => /*#__PURE__*/React.createElement(React.Fragment, null, r.batch_id, /*#__PURE__*/React.createElement("br", null), r.part_name)], ['批次数量', r => U.number(r.quantity)], ['交期', r => /*#__PURE__*/React.createElement("span", {
         title: "\u4EA4\u671F\u622A\u81F3\u5F53\u65E5\u7ED3\u675F\uFF0C\u6B21\u65E5\u96F6\u70B9\u8D77\u8BA1\u4E3A\u8D85\u671F\u3002"
       }, r.due_date || '未知')], ['原完工', r => U.timeLabel(r.baseline_finish)], ['试调完工', r => U.timeLabel(r.finish)], ['提前（小时）', r => U.number(r.improvement_hours)], ['预计交付', r => ({
         on_time: '可按期',
@@ -159,7 +169,7 @@
     }, data.capacity.reason), /*#__PURE__*/React.createElement(U.Table, {
       label: "\u8D44\u6E90\u5360\u7528",
       rows: data.capacity.resources,
-      columns: [['资源', r => (r.resource_type === 'machine' ? '设备 ' : '人员 ') + name(r.resource_ref)], ['安排（小时）', r => U.number(r.arranged_hours)], ['班表内占用（小时）', r => U.number(r.available_occupied_hours)], ['重叠时间（小时）', r => U.number(r.overlap_hours)], ['可用（小时）', r => U.number(r.available_hours)], ['班表外占用（小时）', r => U.number(r.outside_available_hours)], ['班表内占用率', r => r.utilization === null ? '暂无数据' : U.number(r.utilization * 100) + '%'], ['依据', r => /*#__PURE__*/React.createElement(Calendar, {
+      columns: [['资源', r => (r.resource_type === 'machine' ? '设备 ' : '人员 ') + name(r.resource_ref)], ['安排（小时）', r => U.number(r.arranged_hours)], ['班表内占用（小时）', r => U.number(r.available_occupied_hours)], ['重叠时间（小时）', r => U.number(r.overlap_hours)], ['可用（小时）', r => U.number(r.available_hours)], ['班表外占用（小时）', r => U.number(r.outside_available_hours)], ['班表内占用率', r => U.percent(r.utilization)], ['依据', r => /*#__PURE__*/React.createElement(Calendar, {
         resource: r
       })]]
     })), tab === 'history' && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(U.Table, {
@@ -180,15 +190,16 @@
       columns: [['批次 / 工序', t => /*#__PURE__*/React.createElement(U.Button, {
         icon: "arrow-right",
         onClick: () => onSelect(t.task_ref)
-      }, t.batch_id + ' · ' + t.process_label + ' ' + t.sequence)], ['分件', t => t.piece_id || '整批'], ['目标量', t => U.number(t.quantity)], ['设备 / 人员', t => /*#__PURE__*/React.createElement(React.Fragment, null, name(t.machine_ref), /*#__PURE__*/React.createElement("br", null), name(t.operator_ref))], ['开始', t => U.timeLabel(t.start)], ['结束', t => U.timeLabel(t.end)], ['变更', t => t.changed ? '已调整' : '未变']]
+      }, t.batch_id + ' · ' + t.process_label + ' ' + t.sequence)], ['分件', t => t.piece_id || window.WorkbenchTerms.shared_operation], ['目标量', t => U.number(t.quantity)], ['设备 / 人员', t => /*#__PURE__*/React.createElement(React.Fragment, null, name(t.machine_ref), /*#__PURE__*/React.createElement("br", null), name(t.operator_ref))], ['开始', t => U.timeLabel(t.start)], ['结束', t => U.timeLabel(t.end)], ['变更', t => t.changed ? '已调整' : '未变']]
     }), tab === 'unplanned' && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", {
       className: "tt-muted"
     }, "\u672A\u6392\u5DE5\u5E8F ", data.unplanned_operations.length, " \u9053"), /*#__PURE__*/React.createElement(U.Table, {
       label: "\u672A\u6392\u5DE5\u5E8F",
       rows: data.unplanned_operations,
-      columns: [['工序顺序', r => r.sequence], ['分件', r => r.piece_id || '整批'], ['原因', r => r.reason.message], ['工序编号', r => /*#__PURE__*/React.createElement("span", {
-        className: "tt-ref"
-      }, r.operation_ref)]]
+      columns: [['工序顺序', r => r.sequence], ['分件', r => r.piece_id || window.WorkbenchTerms.shared_operation], ['原因', r => r.reason.message], ['编号', r => /*#__PURE__*/React.createElement(window.WorkbenchReference, {
+        value: r.operation_ref,
+        label: "\u5DE5\u5E8F\u7F16\u53F7"
+      })]]
     }))));
   }
   window.TrialResults = {

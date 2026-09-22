@@ -13,7 +13,10 @@
   }
   function notify() { listeners.slice().forEach(function (listener) { listener({ theme: current, error: error }); }); }
   function refresh() {
-    var result = read(); current = result.theme; error = result.error;
+    var result = read();
+    // Window focus and pageshow re-read the preference; an unchanged value must not re-render the whole shell.
+    if (result.theme === current && result.error === error) return;
+    current = result.theme; error = result.error;
     document.documentElement.setAttribute('data-theme', current); notify();
   }
   function set(value) {

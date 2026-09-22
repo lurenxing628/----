@@ -95,13 +95,18 @@
     const error = command.error;
     return command.phase === 'rejected' && ['stale_write', 'snapshot_stale'].includes(error && (error.code || error.error && error.error.code));
   }
+  // 月历格子里的工时带单位显示，数字格式和单位统一走 WorkbenchFormat，不在这里手拼“小时”。
+  const hoursText = value => window.WorkbenchFormat.hours(value, {
+    digits: 4,
+    trim: true
+  });
   function tag(row) {
     const working = row.effective.is_working;
-    let text = working ? displayNumber(row.fields.hours) + ' 小时' : '休';
+    let text = working ? hoursText(row.fields.hours) : '休';
     let tone = row.is_weekend ? 'we' : '';
     if (row.explicit) {
       tone = row.is_weekend === working ? 'rest' : working ? 'cfg' : 'we';
-      text = row.is_weekend && working ? '加班 ' + displayNumber(row.fields.hours) + ' 小时' : !row.is_weekend && !working ? '调休' : text;
+      text = row.is_weekend && working ? '加班 ' + hoursText(row.fields.hours) : !row.is_weekend && !working ? '调休' : text;
       if (working && row.fields.allowNormal !== row.fields.allowUrgent) text += row.fields.allowNormal === 'yes' ? ' · 仅普通件' : ' · 仅急件';
     }
     return {

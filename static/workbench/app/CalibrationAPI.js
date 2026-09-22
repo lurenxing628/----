@@ -109,7 +109,7 @@
     return result;
   }
   function exportReason(data, format) {
-    if (!data || !data.capabilities || data.capabilities.export !== true) return '导出权限尚未确认，暂不能导出。';
+    if (!data || !data.capabilities || data.capabilities.export !== true) return '当前来源暂不能导出。';
     if (!data.summary.total) return '当前筛选没有可导出的记录。';
     if (!data.exports.formats.includes(format)) return '当前来源不支持此导出格式。';
     return '';

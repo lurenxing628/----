@@ -30,7 +30,7 @@
     const number = window.APSCalendarContract.displayNumber;
     const yesNo = item => ({ yes: '可排', no: '不可排' })[item] || String(item);
     return <div style={{ overflowWrap: 'anywhere', lineHeight: 1.65 }}>
-      <div><b>{value.explicit ? '单独配置' : '默认规则'}</b> · {value.effective.is_working ? '可排产' : '不排产'}</div>
+      <div><b>{value.explicit ? '单独设置' : '默认规则'}</b> · {value.effective.is_working ? '可排产' : '不排产'}</div>
       <div>{number(fields.hours)} 小时 · 效率 {number(fields.eff)}% · 普通件{fields.allowNormal === 'yes' ? '可排' : '不可排'} · 急件{fields.allowUrgent === 'yes' ? '可排' : '不可排'}</div>
       <div className="muted">有效时段：{window.WorkbenchFormat.dateTime(value.effective.window_start)} 至 {window.WorkbenchFormat.dateTime(value.effective.window_end)}</div>
       {raw && stored && <div className="muted">原始配置（只读）：{({ workday: '工作日', holiday: '休息日' })[stored.day_type] || String(stored.day_type)}；起止 {stored.shift_start == null ? '未设置' : stored.shift_start} / {stored.shift_end == null ? '未设置' : stored.shift_end}；

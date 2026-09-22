@@ -56,7 +56,7 @@
     }, [api, baselineApi, comparisonApi, signature, revision]);
     const current = read.signature === signature ? read : null, result = current && current.data;
     const data = result && result.comparison.data, options = list.run === choice.run_ref && list.data;
-    const caption = data ? { reference: data.candidate.candidate_ref, label: '比较方案', name: data.candidate.label || '候选方案名称未填写',
+    const caption = data ? { reference: data.candidate.candidate_ref, label: '比较方案', name: data.candidate.label || window.WorkbenchTerms.name_missing,
       status: data.baseline.available ? '已保存候选方案 · 与排产时的正式计划对照' : '已保存候选方案 · 排产时没有正式计划' } : null;
     const captionKey = JSON.stringify(caption);
     React.useLayoutEffect(() => { if (onState) onState({ context: choice, caption }); }, [onState, signature, captionKey]);
@@ -90,7 +90,7 @@
       {options && <fieldset className="dy-candidate-options"><legend>候选方案</legend>{options.candidates.map(row => <label key={row.candidate_ref} data-candidate-choice={row.candidate_ref}>
         <input type="radio" name="dashboard-candidate" value={row.candidate_ref} checked={choice.candidate_ref === row.candidate_ref}
           onChange={() => setChoice({ ...choice, candidate_ref: row.candidate_ref })} />
-        <span><b>{row.label || '候选方案名称未填写'}</b><small>{({ completed: '计算完成', partial: '部分完成', failed: '失败', skipped: '已跳过' })[row.status]} · {row.task_count} 道安排</small></span>
+        <span><b>{row.label || window.WorkbenchTerms.name_missing}</b><small>{window.WorkbenchTerms.candidate_statuses[row.status]} · {row.task_count} 道安排</small></span>
       </label>)}{!options.candidates.length && <window.WorkbenchListControls.EmptyState kind="empty" title="这次排产还没有保存候选方案。" />}</fieldset>}
       {choice.run_ref && <form className="dy-compare-range" onSubmit={applyRange}><label>共同开始<input type="datetime-local" step="1" aria-label="候选比较共同开始" value={range.start} onChange={event => setRange({ ...range, start: event.target.value })} /></label>
         <label>共同结束<input type="datetime-local" step="1" aria-label="候选比较共同结束" value={range.end} onChange={event => setRange({ ...range, end: event.target.value })} /></label><Button reasonDisplay="inline" icon="check" type="submit">应用范围</Button></form>}
@@ -99,7 +99,7 @@
         <span>{data.batch_refs.length} 个排产时的批次 · 完工按完整工序计算</span></div>
         {!data.baseline.available && <p className="dy-note warning">缺少排产时的正式计划，无法比较变化量。</p>}
         <P.Metrics data={data} /><P.Batches data={data} selected={selectedBatch} onSelect={onSelectBatch} />
-        <div className="dy-heading"><h3>{data.candidate.label || '候选方案名称未填写'}</h3><Button reasonDisplay="inline" icon="chart-gantt" onClick={() => setSummary(true)}>查看方案摘要</Button></div>
+        <div className="dy-heading"><h3>{data.candidate.label || window.WorkbenchTerms.name_missing}</h3><Button reasonDisplay="inline" icon="chart-gantt" onClick={() => setSummary(true)}>查看方案摘要</Button></div>
         <details className="dy-evidence"><summary>排产时的约束</summary><dl className="dy-facts"><div><dt>齐套检查</dt><dd>{data.generation.input.ready_check ? '开启' : '关闭'}</dd></div>
           <div><dt>缺设备人员时的规则</dt><dd>{data.generation.input.missing_resource_policy === 'auto_assign' ? '按匹配规则自动分配' : '排除缺设备人员的工序'}</dd></div>
           <div><dt>已开工工序的规则</dt><dd>保留已登记的实际数据和受保护的安排</dd></div></dl><window.WorkbenchReference entries={{ '排产编号': data.generation.run_ref }} /></details>

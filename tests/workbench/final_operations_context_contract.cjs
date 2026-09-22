@@ -43,7 +43,13 @@ assert(!/snapshot_ref|backup_ref/.test(JSON.stringify(result))); assert.deepEqua
 const orphan = W.SystemMaintenanceAPI.pageContext({ ...oldSystem, records: { backups: { page: 2, snapshot_ref: 'old', selection: { backup_ref: 'legacy-only-token' } } } });
 assert.equal(orphan.records.backups.selection.record_kind, 'backup_file'); assert.equal(orphan.records.backups.selection.key, undefined);
 assert(!/legacy-only-token|backup_ref/.test(JSON.stringify(orphan)));
+const legacySample = W.SystemMaintenanceAPI.pageContext({ ...oldSystem, source: 'sample', tab: 'logs', records: {
+  logs: { page: 2, filters: { query: 'sample-only' }, selection: { key: 'sample-log-1' } }
+} });
+assert.deepEqual(JSON.parse(JSON.stringify(legacySample)), { tab: 'logs', page_size: 10, records: {} });
+assert.throws(() => W.SystemMaintenanceAPI.pageContext({ ...oldSystem, source: 'unknown' }));
 assert.throws(() => W.SystemMaintenanceAPI.pageContext({ records: { backups: { snapshot_ref: 17 } } }));
 assert.throws(() => W.SystemMaintenanceAPI.pageContext({ records: { logs: { selection: { backup_ref: 'not-a-log-key' } } } }));
 process.stdout.write(JSON.stringify({ passed: true, dashboard_negative: negative.length + 2, system_negative: 2,
-  legacy_file_lease_not_identity: true, source: 'compiled production boundary functions; not a browser acceptance substitute' }) + '\n');
+  legacy_file_lease_not_identity: true, legacy_sample_migrated_in_place: true, legacy_unknown_source_rejected: true,
+  source: 'compiled production boundary functions; not a browser acceptance substitute' }) + '\n');

@@ -70,14 +70,30 @@ async function exercise(p) {
     result = await p.read(() => p.choose('每页条数', '50'), suffix);
     const first = result;
     result = await p.read(() => work.locator('#report-topic-panel .rw-list-pane > .wb-pager').getByRole('button', { name: '下一页', exact: true }).click(), suffix);
-    assert.equal(result.data.rows.length, 16); p.report.export_source = [first, result];
+    assert.equal(result.data.rows.length, 16); assert.equal(first.meta.snapshot_ref, result.meta.snapshot_ref);
+    // 执行复盘不再显示导出范围；完整范围的导出在报表中心做，范围与复盘一致。
+    assert.equal(await work.getByRole('button', { name: '导出范围', exact: true }).count(), 0);
+    let center = await p.read(() => work.getByRole('tablist', { name: '统计分析视图', exact: true }).getByRole('tab', { name: '报表中心', exact: true }).click(), suffix);
+    // 导出按报表中心这次读取的数据版本生成，而「到期未确认已过（分钟）」随每次读取的 as_of 变化；
+    // 核对 CSV 的来源要用同一数据版本的两页，不能拿执行复盘早先那次读取。
+    assert.equal(center.data.topic, 'delivery');
+    if (center.data.page.size !== 50) center = await p.read(() => p.choose('每页条数', '50'), suffix);
+    const pager = work.locator('#report-topic-panel .rw-list-pane > .wb-pager');
+    const centerPages = center.data.page.number === 1 ? [center, await p.read(() => pager.getByRole('button', { name: '下一页', exact: true }).click(), suffix)]
+      : [await p.read(() => pager.getByRole('button', { name: '上一页', exact: true }).click(), suffix), center];
+    assert.equal(centerPages.reduce((sum, row) => sum + row.data.rows.length, 0), 66);
+    assert(centerPages.every(row => row.meta.snapshot_ref === center.meta.snapshot_ref)); p.report.export_source = centerPages;
     await p.download(() => work.getByRole('button', { name: '导出范围', exact: true }).click(), 'review-complete-csv');
     const exported = p.report.downloads[p.report.downloads.length - 1];
     await work.getByText('已交给浏览器下载：' + exported.filename + '（当前筛选全部 66 项）。', { exact: true }).waitFor();
+    await p.read(() => work.getByRole('tablist', { name: '统计分析视图', exact: true }).getByRole('tab', { name: '执行复盘', exact: true }).click(), suffix);
+    // 切回执行复盘会先按记住的上下文补一次读取；等它落地再改每页条数，免得把迟到的响应当成本次结果。
+    // 执行复盘就是 work 这个 section 自己（className 为 er-workbench rw-workbench），不是它的后代。
+    await page.locator('.rw-workbench.er-workbench[data-ready="true"]').waitFor(); await page.waitForLoadState('networkidle');
     result = await p.read(() => p.choose('每页条数', '20'), suffix);
   });
   await p.step(['WBP-SCOPE-006', 'WBP-REVIEW-006', 'WBP-REVIEW-007', 'WBP-REVIEW-008', 'WBP-REVIEW-009'], 'real-trend-title-table-distribution-and-current-drill-affordances', async () => {
-    await work.locator('.er-chart-disclosure > summary').click();
+    await work.locator('.er-chart-disclosure[data-expanded="true"]').waitFor();
     const circles = work.locator('.aw-series circle'); assert.equal(await circles.count(), 2);
     await circles.first().hover(); assert((await circles.first().locator('title').textContent()).includes('66 道'));
     await work.locator('.aw-data > summary').click();
@@ -98,7 +114,7 @@ async function exercise(p) {
     }
     p.report.resource_drills = [];
     for (const [kind, label, collection] of [['machine', '设备', 'machines'], ['operator', '人员', 'people']]) {
-      await work.getByRole('tablist', { name: '资源工时类型', exact: true }).getByRole('tab', { name: label, exact: true }).click();
+      await work.getByRole('group', { name: '资源工时类型', exact: true }).getByRole('button', { name: label, exact: true }).click();
       const section = work.getByRole('region', { name: '实际资源工时', exact: true });
       assert.equal(await section.locator('.er-resource-row').count(), 2);
       assert(await section.getByRole('button', { name: '资源工时下一页', exact: true }).isDisabled());
@@ -115,7 +131,7 @@ async function exercise(p) {
         await p.shot('resource-drill-' + kind + '-' + resourceRef);
         const returned = await p.read(() => work.locator('.rw-header').getByRole('button', { name: '返回来源', exact: true }).click(), suffix);
         returnedView(p, returned, original);
-        await section.waitFor(); assert.equal(await work.getByRole('tablist', { name: '资源工时类型', exact: true }).getByRole('tab', { selected: true }).innerText(), label);
+        await section.waitFor(); assert.equal(await work.getByRole('group', { name: '资源工时类型', exact: true }).getByRole('button', { pressed: true }).innerText(), label);
         p.report.resource_drills.push({ kind, resourceRef, opened, returned });
       }
     }
@@ -158,10 +174,10 @@ async function exercise(p) {
     assert.equal(await page.getByLabel('选择报工详情', { exact: true }).inputValue(), report.report_ref);
     await page.locator('[data-task-row="' + operation.task_ref + '"].is-selected').first().waitFor();
     await p.shot('report-exact-record-actual-gantt');
-    const restored = await p.read(() => page.getByRole('button', { name: '回来源', exact: true }).click(), suffix);
+    const restored = await p.read(() => page.getByRole('button', { name: '返回', exact: true }).click(), suffix);
     returnedView(p, restored, original);
     await detail.getByText('整道完成', { exact: true }).waitFor();
-    assert((await detail.locator('.wb-detail-body > .wb-pager').innerText()).includes('第 2 / 2 页'));
+    assert((await detail.locator('.wb-detail-body .rw-detail-pager > .wb-pager').innerText()).includes('第 2 / 2 页'));
     assert.equal(await work.getByRole('searchbox', { name: '搜索批次或工序', exact: true }).inputValue(), 'OP1');
     p.report.operation_navigation = { original, field, actual, restored, task_ref: operation.task_ref, report_ref: report.report_ref };
     await p.shot('report-original-detail-page-restored');

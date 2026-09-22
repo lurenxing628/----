@@ -117,7 +117,18 @@ async function cases() {
     assert.equal(await page.getByRole('textbox', { name: '图号', exact: true }).inputValue(), 'NEW-01'); assert.equal(await page.evaluate(() => fixture.commands.length), 0);
     await button('保存零件').click(); await page.getByText('零件已登记，工艺仍待确认。打开详情前会先刷新这条零件。', { exact: true }).waitFor();
     assert.equal(await page.evaluate(() => fixture.commands.length), 1); await shot('create'); await button('打开工艺详情').click();
-    await page.getByRole('dialog', { name: 'NEW-01 · 新增零件', exact: true }).waitFor(); assert(await page.getByText('待录入路线', { exact: true }).isVisible());
+    const detail = page.getByRole('dialog', { name: 'NEW-01 · 新增零件', exact: true }); await detail.waitFor();
+    const tabs = detail.getByRole('tablist', { name: '零件工艺步骤', exact: true });
+    const route = tabs.getByRole('tab', { name: /^1 / }), source = tabs.getByRole('tab', { name: /^2 / }), hours = tabs.getByRole('tab', { name: /^3 / });
+    assert(await route.getByText('待录入', { exact: true }).isVisible()); assert.equal(await tabs.getByRole('tab').count(), 3);
+    assert.equal(await tabs.getByRole('tab', { name: /^4 / }).count(), 0); assert.equal(await tabs.locator('[role="tab"][aria-selected="true"]').count(), 1); assert.equal(await tabs.locator('[role="tab"][tabindex="0"]').count(), 1);
+    for (const tab of await tabs.getByRole('tab').all()) {
+      const tabId = await tab.getAttribute('id'), controls = await tab.getAttribute('aria-controls'); const panel = detail.locator('[id="' + controls + '"]');
+      assert(tabId && controls); assert.equal(await panel.getAttribute('role'), 'tabpanel'); assert.equal(await panel.getAttribute('aria-labelledby'), tabId);
+    }
+    await route.focus(); await route.press('ArrowRight'); assert.equal(await source.getAttribute('aria-selected'), 'true'); assert(await source.evaluate(node => document.activeElement === node));
+    await source.press('End'); assert.equal(await hours.getAttribute('aria-selected'), 'true'); assert(await hours.evaluate(node => document.activeElement === node));
+    await hours.press('Home'); assert.equal(await route.getAttribute('aria-selected'), 'true'); assert(await route.evaluate(node => document.activeElement === node));
     assert.equal(await page.evaluate(() => fixture.reads.filter(r => r.type === 'detail').at(-1).ref), (900).toString(16).padStart(48, '0')); await button('关闭详情').click();
   });
   await run('pending-receipt-remount-never-resubmits', async () => {

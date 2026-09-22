@@ -121,7 +121,7 @@
     }
     return <>
       <window.ResourceControls.ErrorBox error={hostError || boot.target.error || boot.error} />
-      {deferred && <div role="status" className="match-note" style={{ display: 'block', margin: 12 }}><p>上次操作还没处理完，暂时没有跳转到指定记录。刚才的提交没有被覆盖。</p>
+      {deferred && <div role="status" className="match-note is-block wb-resource-live-note"><p>上次操作还没处理完，暂时没有跳转到指定记录。刚才的提交没有被覆盖。</p>
         <window.ResourceControls.Button icon="arrow-right" onClick={continueNavigation}>继续跳转</window.ResourceControls.Button></div>}
       <ResourceWorkspace key={initialNode + ':' + navigationKey} adapter={adapters.base} onNavigate={onNavigate} initialNode={initialNode} externalRevision={revision}
         rememberEnabled={!auxiliary && !deferred && !hostError && !boot.error && !boot.target.error}
