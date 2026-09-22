@@ -131,7 +131,7 @@ class SupplierService:
         sremark = self._normalize_text(remark)
 
         if self.repo.get(sid):
-            raise BusinessError(ErrorCode.DUPLICATE_ENTRY, f"供应商编号“{sid}”已存在，不能重复添加。")
+            raise BusinessError(ErrorCode.DUPLICATE_ENTRY, f"供应商编号“{sid}”已存在，这次没有保存。请改用别的编号，或去修改已有的那家供应商。")
 
         with self.tx_manager.transaction():
             self.repo.create(
@@ -189,11 +189,11 @@ class SupplierService:
 
         # 若被引用，则禁止删除（零件工序清单/批次工序）
         if self.repo.has_part_operation_reference(sid):
-            raise BusinessError(ErrorCode.PERMISSION_DENIED, "该供应商已被零件工序清单引用，不能删除。建议改为“停用”。")
+            raise BusinessError(ErrorCode.PERMISSION_DENIED, "还有零件工序清单在用这家供应商，没有删除。请把这家供应商改成“停用”，或先把这些工序改成别的供应商。")
         if self.repo.has_batch_operation_reference(sid):
-            raise BusinessError(ErrorCode.PERMISSION_DENIED, "该供应商已被批次工序引用，不能删除。建议改为“停用”。")
+            raise BusinessError(ErrorCode.PERMISSION_DENIED, "还有批次工序在用这家供应商，没有删除。请把这家供应商改成“停用”，或先把这些批次工序改成别的供应商。")
         if self.repo.has_external_group_reference(sid):
-            raise BusinessError(ErrorCode.PERMISSION_DENIED, "该供应商已被外协工序组引用，不能删除。建议改为“停用”。")
+            raise BusinessError(ErrorCode.PERMISSION_DENIED, "还有外协工序组在用这家供应商，没有删除。请把这家供应商改成“停用”，或先把这些外协工序组改成别的供应商。")
 
         with self.tx_manager.transaction():
             self.repo.delete(sid)
@@ -232,8 +232,8 @@ class SupplierService:
         若已被零件工序清单/批次工序/外部组引用，则禁止清空。
         """
         if self.repo.has_any_part_operation_reference():
-            raise BusinessError(ErrorCode.PERMISSION_DENIED, "已有零件工序清单引用了供应商，不能执行“清空本类数据后重导”。请先解除引用或改用“更新已有，新增缺少”。")
+            raise BusinessError(ErrorCode.PERMISSION_DENIED, "还有零件工序清单在用供应商，不能先清除全部供应商再重导，这次没有导入。请先解除这些关联，或改用“已有的就更新，没有的就新增”。")
         if self.repo.has_any_batch_operation_reference():
-            raise BusinessError(ErrorCode.PERMISSION_DENIED, "已有批次工序引用了供应商，不能执行“清空本类数据后重导”。请先解除引用或改用“更新已有，新增缺少”。")
+            raise BusinessError(ErrorCode.PERMISSION_DENIED, "还有批次工序在用供应商，不能先清除全部供应商再重导，这次没有导入。请先解除这些关联，或改用“已有的就更新，没有的就新增”。")
         if self.repo.has_any_external_group_reference():
-            raise BusinessError(ErrorCode.PERMISSION_DENIED, "已有外协工序组绑定了供应商，不能执行“清空本类数据后重导”。请先解除引用或改用“更新已有，新增缺少”。")
+            raise BusinessError(ErrorCode.PERMISSION_DENIED, "还有外协工序组在用供应商，不能先清除全部供应商再重导，这次没有导入。请先解除这些关联，或改用“已有的就更新，没有的就新增”。")

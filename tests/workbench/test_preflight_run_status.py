@@ -4,7 +4,9 @@ from contextlib import closing
 
 import pytest
 
+from core.errors import AppError, ErrorCode
 from core.infrastructure.database import get_connection
+from core.services.workbench.run import input_admission
 from core.services.workbench.run.preflight import PreflightService
 from tests.workbench.preflight_support import (
     deny_writes,
@@ -124,3 +126,28 @@ def test_preflight_run_status_real_factory_http_keeps_admission_separate(status_
     with closing(get_connection(path)) as conn:
         assert snapshot(conn) == before
         assert [tuple(row) for row in conn.execute("SELECT * FROM sqlite_master ORDER BY name")] == schema
+
+
+def test_piece_admission_issue_surfaces_app_error_message_without_code_prefix(monkeypatch):
+    """排产阻断项显示的是 AppError.message，不带“[6003] ”这类错误码前缀。
+
+    piece_admission_issues 把 prepare_candidate_run_input 抛出的 AppError 转成 blockers 里的一行，
+    经 WorkbenchRunService._resolve / _reasons 进 write_context.blocked_reasons，前端原样显示 message。
+    2026-09-21 之前这里取 str(exc)，而 AppError.__str__ 会拼上“[错误码] ”。
+    """
+    class _Facts:
+        def __init__(self, conn):
+            self.conn = conn
+
+        def piece_batch_refs(self):
+            return ["batch-1"]
+
+    def _prepare(conn, settings, projections):
+        raise AppError(ErrorCode.SCHEDULE_CONFLICT, "报工记录还没有准备好，这次操作没有完成。",
+                       details={"reason": "execution_ledger_scope_missing"})
+
+    monkeypatch.setattr(input_admission, "WorkbenchRunFactsRepository", _Facts)
+    monkeypatch.setattr(input_admission, "run_execution_projections", lambda conn, settings: [])
+    monkeypatch.setattr(input_admission, "prepare_candidate_run_input", _prepare)
+    issues = input_admission.piece_admission_issues(object(), {"batch_refs": ["batch-1"]})
+    assert issues == [{"code": "execution_ledger_scope_missing", "message": "报工记录还没有准备好，这次操作没有完成。"}]

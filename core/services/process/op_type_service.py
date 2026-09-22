@@ -104,9 +104,9 @@ class OpTypeService:
         ot_remark = self._normalize_text(remark)
 
         if self.repo.get(ot_id):
-            raise BusinessError(ErrorCode.DUPLICATE_ENTRY, f"工种编号“{ot_id}”已存在，不能重复添加。")
+            raise BusinessError(ErrorCode.DUPLICATE_ENTRY, f"工种编号“{ot_id}”已存在，这次没有保存。请改用别的编号，或去修改已有的那条工种。")
         if self.repo.get_by_name(ot_name):
-            raise BusinessError(ErrorCode.DUPLICATE_ENTRY, f"工种名称“{ot_name}”已存在，不能重复添加。")
+            raise BusinessError(ErrorCode.DUPLICATE_ENTRY, f"工种名称“{ot_name}”已存在，这次没有保存。请改用别的名称，或去修改已有的那条工种。")
 
         with self.tx_manager.transaction():
             self.repo.create({"op_type_id": ot_id, "name": ot_name, "category": ot_category or SourceType.INTERNAL.value, "remark": ot_remark})
@@ -144,13 +144,13 @@ class OpTypeService:
 
         # 若被引用，禁止删除（避免断链）
         if self.repo.has_machine_reference(ot_id):
-            raise BusinessError(ErrorCode.PERMISSION_DENIED, "该工种已被设备引用，不能删除。建议改为自制/外协归属或调整引用后再试。")
+            raise BusinessError(ErrorCode.PERMISSION_DENIED, "还有设备在用这个工种，没有删除。请先把这些设备改成别的工种，再删除。")
         if self.repo.has_supplier_reference(ot_id):
-            raise BusinessError(ErrorCode.PERMISSION_DENIED, "该工种已被供应商引用，不能删除。建议改为自制/外协归属或调整引用后再试。")
+            raise BusinessError(ErrorCode.PERMISSION_DENIED, "还有供应商在用这个工种，没有删除。请先解除供应商和这个工种的关联，再删除。")
         if self.repo.has_part_operation_reference(ot_id):
-            raise BusinessError(ErrorCode.PERMISSION_DENIED, "该工种已被零件工序清单引用，不能删除。建议改为自制/外协归属或调整引用后再试。")
+            raise BusinessError(ErrorCode.PERMISSION_DENIED, "还有零件工序清单在用这个工种，没有删除。请先把这些工序改成别的工种，再删除。")
         if self.repo.has_batch_operation_reference(ot_id):
-            raise BusinessError(ErrorCode.PERMISSION_DENIED, "该工种已被批次工序引用，不能删除。建议改为自制/外协归属或调整引用后再试。")
+            raise BusinessError(ErrorCode.PERMISSION_DENIED, "还有批次工序在用这个工种，没有删除。请先把这些批次工序改成别的工种，再删除。")
 
         with self.tx_manager.transaction():
             self.repo.delete(ot_id)
@@ -175,10 +175,10 @@ class OpTypeService:
         若已被设备/供应商/工序清单/批次工序引用，则禁止清空。
         """
         if self.repo.has_any_machine_reference():
-            raise BusinessError(ErrorCode.PERMISSION_DENIED, "已有设备引用了工种，不能执行“清空本类数据后重导”。请先解除引用或改用“更新已有，新增缺少”。")
+            raise BusinessError(ErrorCode.PERMISSION_DENIED, "还有设备在用工种，不能先清除全部工种再重导，这次没有导入。请先解除这些关联，或改用“已有的就更新，没有的就新增”。")
         if self.repo.has_any_supplier_reference():
-            raise BusinessError(ErrorCode.PERMISSION_DENIED, "已有供应商绑定了工种，不能执行“清空本类数据后重导”。请先解除引用或改用“更新已有，新增缺少”。")
+            raise BusinessError(ErrorCode.PERMISSION_DENIED, "还有供应商在用工种，不能先清除全部工种再重导，这次没有导入。请先解除这些关联，或改用“已有的就更新，没有的就新增”。")
         if self.repo.has_any_part_operation_reference():
-            raise BusinessError(ErrorCode.PERMISSION_DENIED, "已有零件工序清单引用了工种，不能执行“清空本类数据后重导”。请先解除引用或改用“更新已有，新增缺少”。")
+            raise BusinessError(ErrorCode.PERMISSION_DENIED, "还有零件工序清单在用工种，不能先清除全部工种再重导，这次没有导入。请先解除这些关联，或改用“已有的就更新，没有的就新增”。")
         if self.repo.has_any_batch_operation_reference():
-            raise BusinessError(ErrorCode.PERMISSION_DENIED, "已有批次工序引用了工种，不能执行“清空本类数据后重导”。请先解除引用或改用“更新已有，新增缺少”。")
+            raise BusinessError(ErrorCode.PERMISSION_DENIED, "还有批次工序在用工种，不能先清除全部工种再重导，这次没有导入。请先解除这些关联，或改用“已有的就更新，没有的就新增”。")

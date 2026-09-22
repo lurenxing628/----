@@ -58,7 +58,7 @@ def project_execution(operation, reports, legacy, *, current_task, comparison_ta
     finish, completion_basis = _completion(reports, evidence, complete_reports)
     remaining = None if target is None or totals.unknown or quality == "invalid" else target - totals.known
     if state not in ("complete", "unreported"):
-        gaps.append(gap("remaining_plan_unavailable", "尚无已核实的剩余安排；没有按剩余数量推算时长。"))
+        gaps.append(gap("remaining_plan_unavailable", "这道工序还没做完的部分暂无确认的安排，系统没有按剩余数量推算时长。"))
     return ExecutionProjection(
         operation_ref=operation["operation_ref"], current_task_ref=current_task["task_ref"] if current_task else None,
         comparison_task_ref=comparison_task["task_ref"] if comparison_task else None, plan_identity=plan_identity,

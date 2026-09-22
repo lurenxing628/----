@@ -4,7 +4,13 @@ from dataclasses import replace
 
 import pytest
 
-from core.models.workbench_calibration import CalibrationCandidate, CalibrationLineage, CalibrationQuery
+from core.models.workbench_calibration import (
+    METHOD_VERSION,
+    SUGGESTION_BELOW_PRECISION_CODE,
+    CalibrationCandidate,
+    CalibrationLineage,
+    CalibrationQuery,
+)
 from core.services.workbench.calibration.method import build_suggestion, summarize_samples
 from core.services.workbench.calibration.samples import review_sample
 from core.services.workbench.calibration.service import filtered_suggestions
@@ -27,14 +33,15 @@ def test_minimum_latest_twenty_and_median(calibration_case, count):
         assert all(row["exclusion_reasons"][0]["code"] == "outside_recent_20" for row in samples[:5])
 
 
-@pytest.mark.parametrize("old,suggested,expected", [(1, 1.2, False), (1, 1.200001, True),
-    (1, .8, False), (1, .799999, True), (1, 0, True), (0, 1, False), (None, 1, False), (1e-310, 1, True)])
-def test_strict_absolute_twenty_and_zero_unknown(calibration_case, old, suggested, expected):
+@pytest.mark.parametrize("old,raw_suggested,published,expected", [(1, 1.2, 1.2, False), (1, 1.200001, 1.2, True),
+    (1, .8, .8, False), (1, .799999, .8, True), (1, 0, 0, True), (0, 1, 1, False),
+    (None, 1, 1, False), (1e-310, 1, 1, True)])
+def test_strict_absolute_twenty_uses_raw_median(calibration_case, old, raw_suggested, published, expected):
     case = calibration_case
     template = replace(case.template, old_unit_hours=old)
-    rows = reviewed(case, complete_reports(case, [suggested] * 5)[0], template=template)
+    rows = reviewed(case, complete_reports(case, [raw_suggested] * 5)[0], template=template)
     result = build_suggestion(template, summarize_samples(rows), generated_at=NOW.isoformat())
-    assert result["suggested_unit_hours"] == suggested
+    assert result["suggested_unit_hours"] == published
     assert result["over_20_percent"] is expected
     if old in (0, None) or old == 1e-310:
         assert result["deviation_percent"] is None
@@ -161,3 +168,50 @@ def test_duplicate_execution_instance_is_not_counted_twice(calibration_case):
     sample = reviewed(case, complete_reports(case, [.1])[0])[0]
     with pytest.raises(ValueError, match="重复"):
         summarize_samples([sample, sample])
+
+
+# 夹具把单件工时乘 10 再写成报工工时，所以第 4 位是 5 的用例要选二进制里能精确表示的数（x.0625）。
+@pytest.mark.parametrize("hours,unit_hours,deviation,over_twenty", [
+    (2.0625, 2.063, 106.25, True),
+    (1.0625, 1.063, 6.25, False),
+    (1 / 3, 0.333, -66.667, True),
+    (1.2004, 1.2, 20.04, True),
+])
+def test_published_values_are_quantized_but_deviation_uses_raw_median(
+        calibration_case, hours, unit_hours, deviation, over_twenty):
+    """建议值按显示精度发布，偏差和严格阈值仍以未舍入的中位数计算。"""
+    case = calibration_case
+    samples = reviewed(case, complete_reports(case, [hours] * 5)[0])
+    assert all(sample["unit_hours"] == unit_hours for sample in samples)
+    summary = summarize_samples(samples)
+    assert summary["suggested_unit_hours"] == unit_hours
+    result = build_suggestion(replace(case.template, old_unit_hours=1), summary, generated_at=NOW.isoformat())
+    assert result["suggested_unit_hours"] == unit_hours
+    assert result["deviation_percent"] == deviation and result["absolute_deviation_percent"] == abs(deviation)
+    assert result["over_20_percent"] is over_twenty
+    assert result["method_version"] == METHOD_VERSION == "d05-median-effective-hours-v2"
+
+
+def test_positive_sub_quantum_median_is_published_as_zero_but_blocks_adoption(calibration_case):
+    case = calibration_case
+    samples = reviewed(case, complete_reports(case, [0.0004] * 5)[0])
+    assert all(sample["unit_hours"] == 0 for sample in samples)
+    summary = summarize_samples(samples)
+    assert summary["suggested_unit_hours"] == 0
+    result = build_suggestion(case.template, summary, generated_at=NOW.isoformat())
+    assert result["suggested_unit_hours"] == 0
+    precision = [reason for reason in result["blocked_reasons"]
+                 if reason["code"] == SUGGESTION_BELOW_PRECISION_CODE]
+    assert len(precision) == 1 and "非零工时永久写成 0" in precision[0]["message"]
+    assert not any(key.startswith("_raw_") for key in result)
+
+
+def test_quantize_keeps_none_and_huge_values_without_precision_error():
+    from decimal import Decimal
+
+    from core.services.workbench.calibration.samples import quantize
+
+    assert quantize(None) is None
+    assert quantize(Decimal("10") / Decimal("3")) == Decimal("3.333")
+    assert quantize(Decimal("2.0005")) == Decimal("2.001")
+    assert quantize(Decimal("1e312")) == Decimal("1e312")

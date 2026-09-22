@@ -35,7 +35,7 @@ def _predecessor_issue(row, previous_ref, previous, live):
     if previous is None:
         actual = live["execution"].get(previous_ref)
         if not actual or actual["execution_state"] != "complete" or not actual["confirmed_finish"]:
-            return issue("predecessor_missing", "前序未在完整草稿中，且无可信完工证据。", row["task_ref"])
+            return issue("predecessor_missing", "前一道工序不在这份草稿里，现场也没有它已确认完工的记录，系统定不了这道工序的开工时间。请把前一道工序也放进草稿。", row["task_ref"])
         end = actual["confirmed_finish"]
     else:
         end = previous["current"]["end"]

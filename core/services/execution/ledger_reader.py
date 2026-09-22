@@ -23,7 +23,7 @@ from .quality import gap
 
 def _attach_source_changes(projection, source):
     changes = source["changes"].get(projection.operation_ref, [])
-    gaps = [gap("legacy_source_changed", "旧原表与保留归档已不同；仍按归档展示，原完成证据未撤销。", **change)
+    gaps = [gap("legacy_source_changed", "这条旧记录的来源数据后来被改过，界面仍按当时保存下来的内容显示，原完工记录没有撤销。", **change)
             for change in changes]
     return replace(projection, data_gaps=projection.data_gaps + gaps) if gaps else projection
 
@@ -79,7 +79,7 @@ class ExecutionLedgerReader:
         result = {}
         for row in self.repo.task_rows(operation_refs, plan_ref):
             if row["operation_ref"] in result:
-                reject("同一计划中工序安排身份重复。", "constraint_conflict", 409)
+                reject("同一份计划里这道工序出现了两条安排，系统没有继续读取，请联系维护人员核对数据。", "constraint_conflict", 409)
             result[row["operation_ref"]] = row
         return result
 
@@ -140,7 +140,7 @@ class ExecutionLedgerReader:
                 plan_identity=facts["plan"], now=now, unresolved=ref in facts["unresolved"])
             result.append(_attach_source_changes(replace(projection, voided_reports=voided), facts["legacy_source"]))
         if len(canonical_json([row.to_dict() for row in result]).encode("utf-8")) > MAX_REPORT_BYTES:
-            reject("执行投影超过本次响应大小上限，未截断历史。", "query_too_large", 413)
+            reject("这次要读的报工记录超过了单次读取上限，系统没有截断历史，请缩小工序范围后再读。", "query_too_large", 413)
         return result
 
     def project_operations(self, operation_refs, *, comparison_plan_ref=None):

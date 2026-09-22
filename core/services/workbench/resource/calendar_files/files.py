@@ -268,7 +268,12 @@ class WorkbenchCalendarFileService:
     def _rows_for(self, start_date: str, end_date: str) -> List[Dict[str, Any]]:
         """只导出这段时间里单独配置过的日期；没配置过的天按默认规则走，导出来回导会把默认固化成数据。"""
         states = self.calendar.range_states(start_date, end_date)
-        return [self._public(state["row"]) for _, state in sorted(states.items()) if state["row"] is not None]
+        rows: List[Dict[str, Any]] = []
+        for _, state in sorted(states.items()):
+            public = self._public(state["row"])
+            if public is not None:
+                rows.append(public)
+        return rows
 
     def preview_export(self, *, start_date: str, end_date: str):
         if not self.conn.in_transaction:

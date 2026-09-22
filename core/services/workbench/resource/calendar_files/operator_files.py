@@ -360,7 +360,7 @@ class WorkbenchOperatorCalendarFileService:
             raise RuntimeError("个人日历导出预览必须在已验证的查询快照事务中执行。")
         check_range(start_date, end_date)
         count = len(self._rows_for(start_date, end_date, self._codes_for(selected_refs)))
-        arguments = {"start_date": start_date, "end_date": end_date}
+        arguments: Dict[str, Any] = {"start_date": start_date, "end_date": end_date}
         if selected_refs is not None:
             arguments["selected_refs"] = resource_refs(selected_refs, allow_empty=True)
         return arguments, count

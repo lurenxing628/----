@@ -5,6 +5,7 @@ import json
 import pytest
 
 from core.infrastructure.transaction import TransactionManager
+from core.models.workbench_calibration import SUGGESTION_BELOW_PRECISION_CODE
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_template_lineage import restore_snapshot
 from core.services.workbench.calibration.adoption_policy import require_unlocked
@@ -146,3 +147,20 @@ def test_zero_suggested_quota_is_real_known_zero_not_missing(adoption_case):
     completed(case, [0, 0, 0, 0, 0])
     result = service(case.conn).confirm(case.template_ref, token(case), KEY, INTENT)
     assert result["data"]["new_unit_hours"] == 0 and result["data"]["locked"] is True
+
+
+def test_positive_sub_quantum_suggestion_fails_closed_without_persisting_zero(adoption_case):
+    case = adoption_case
+    # 0.00025 小时/件低于 3 位小数精度；夹具的 10 件加工时长正好是 9 秒，不产生非法微秒时间。
+    completed(case, [0.00025] * 5)
+    before = snapshot(case.conn)
+    preview = service(case.conn).preview(case.template_ref, PREVIEW_INTENT)
+    assert preview["suggestion"]["suggested_unit_hours"] == 0
+    assert preview["validation"]["can_adopt"] is False
+    assert preview["write_context"]["write_token"] is None
+    assert preview["validation"]["issues"] == preview["write_context"]["blocked_reasons"]
+    assert SUGGESTION_BELOW_PRECISION_CODE in {reason["code"] for reason in preview["validation"]["issues"]}
+    with pytest.raises(WorkbenchCommandRejected) as error:
+        service(case.conn, context_validator=lambda *_: None).confirm(case.template_ref, "test-write-token", KEY, INTENT)
+    assert error.value.code == SUGGESTION_BELOW_PRECISION_CODE
+    assert snapshot(case.conn) == before

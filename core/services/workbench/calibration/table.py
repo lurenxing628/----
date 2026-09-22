@@ -14,7 +14,7 @@ def cells(row):
             "suggested_unit_hours": number_cell(row["suggested_unit_hours"], missing="暂无建议"),
             "sample_count": number_cell(row["sample_count"]),
             "absolute_deviation_percent": number_cell(row["deviation_percent"], "%", missing="未计算"),
-            "status": text_cell("数据不足" if row["status"] == "insufficient_data" else "待复核")}
+            "status": text_cell("数据不足" if row["status"] == "insufficient_data" else "已有建议")}
 
 
 def filter_rows(rows, rules):

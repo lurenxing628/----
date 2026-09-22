@@ -158,7 +158,7 @@ class PartService:
         if not name:
             raise ValidationError("“名称”不能为空", field="名称")
         if self.part_repo.get(pn):
-            raise BusinessError(ErrorCode.PART_ALREADY_EXISTS, f"图号“{pn}”已存在，不能重复添加。")
+            raise BusinessError(ErrorCode.PART_ALREADY_EXISTS, f"图号“{pn}”已存在，这次没有保存。请改用别的图号，或去修改已有的那个零件。")
 
         parse_result: Optional[ParseResult] = None
         if rr and str(rr).strip() and strict_mode:
@@ -188,7 +188,7 @@ class PartService:
                 safe_warning(self.logger, f"零件“{pn}”路线文字生成工序清单失败，已保留零件：{detail}")
                 append_unique_text_messages(
                     user_warnings,
-                    f"零件已创建，但工序清单未成功生成，请检查路线文字并重新生成工序清单。原因：{detail}",
+                    f"零件已新增，但工序清单没有生成成功。请检查路线文字后重新生成工序清单。原因：{detail}",
                 )
 
         return self._get_or_raise(pn)
@@ -223,7 +223,7 @@ class PartService:
 
         # 若被批次引用则禁止删除（避免排产数据断链）
         if self.process_query_repo.batch_references_part(pn):
-            raise BusinessError(ErrorCode.PERMISSION_DENIED, "该零件已被批次引用，不能删除。")
+            raise BusinessError(ErrorCode.PERMISSION_DENIED, "还有批次在用这个零件，没有删除。请先删掉或改掉这些批次，再删除零件。")
 
         with self.tx_manager.transaction():
             self.part_repo.delete(pn)
@@ -415,7 +415,7 @@ class PartService:
             if current["source"] != "internal":
                 raise ValidationError("只能编辑内部工序工时", field="工序")
             if current["part_no"] != pn or current["seq"] != s or current["id"] != op.id:
-                raise BusinessError(ErrorCode.NOT_FOUND, "原模板工序已变化，未更新同号新对象")
+                raise BusinessError(ErrorCode.NOT_FOUND, "这道模板工序已经变了，同工序号现在是另一条记录，这次没有更新工时。请刷新后重新核对再保存。")
             fields = {key: value for key, value in {"setup_hours": float(sh), "unit_hours": float(uh)}.items()
                       if current[key] != value}
             self.op_repo.update(pn, s, fields)

@@ -30,7 +30,7 @@ def verify_exports(evidence):
         assert len(rows) == export["total"] + 1, path
         if "records15" in path.name:
             records = [dict(zip(rows[0], row)) for row in rows[1:]]
-            assert sum(row["记录来源"] == "现场事件" for row in records) == 2
+            assert sum(row["记录来源"] == "历史现场记录" for row in records) == 2
             assert sum(row["记录来源"] == "逐次报工" for row in records) == 13
             revised = next(row for row in records if row["备注"] == "BC corrected quantity and hours")
             history = json.loads(revised["完整更正记录"])

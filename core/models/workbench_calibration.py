@@ -8,7 +8,8 @@ from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_execution import ExecutionProjection
 from core.models.workbench_execution_input import public_ref
 
-METHOD_VERSION = "d05-median-effective-hours-v1"
+METHOD_VERSION = "d05-median-effective-hours-v2"
+SUGGESTION_BELOW_PRECISION_CODE = "calibration_suggestion_below_precision"
 MIN_SAMPLES = 5
 MAX_SAMPLES = 20
 MAX_TEMPLATES = 10000

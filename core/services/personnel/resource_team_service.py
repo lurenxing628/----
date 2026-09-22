@@ -133,10 +133,10 @@ class ResourceTeamService:
         tremark = self._normalize_text(remark)
 
         if self.repo.exists(tid):
-            raise BusinessError(ErrorCode.TEAM_ALREADY_EXISTS, f"班组编号“{tid}”已存在，不能重复添加。")
+            raise BusinessError(ErrorCode.TEAM_ALREADY_EXISTS, f"班组编号“{tid}”已存在，这次没有保存。请改用别的编号，或去修改已有的那个班组。")
         existing = self.repo.get_by_name(tname)
         if existing:
-            raise BusinessError(ErrorCode.TEAM_ALREADY_EXISTS, f"班组名称{tname}已存在，不能重复添加。")
+            raise BusinessError(ErrorCode.TEAM_ALREADY_EXISTS, f"班组名称“{tname}”已存在，这次没有保存。请改用别的名称，或去修改已有的那个班组。")
 
         with self.tx_manager.transaction():
             self.repo.create(
@@ -190,7 +190,7 @@ class ResourceTeamService:
         if operator_count > 0 or machine_count > 0:
             raise BusinessError(
                 ErrorCode.TEAM_IN_USE,
-                f"该班组仍被引用：人员 {operator_count} 个，设备 {machine_count} 台，不能删除。",
+                f"还有 {operator_count} 个人员、{machine_count} 台设备在用这个班组，没有删除。请先把这些人员和设备改到别的班组，再删除。",
             )
 
         with self.tx_manager.transaction():

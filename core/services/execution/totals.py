@@ -32,7 +32,7 @@ def report_totals(reports, source):
         missing = [key for key in required if getattr(report, key) is None]
         if missing:
             totals.records_complete = False
-            totals.gaps.append(gap("report_fields_missing", "逐次报工尚有必要字段未填写。", report_ref=report.report_ref, fields=missing))
+            totals.gaps.append(gap("report_fields_missing", "这条逐次报工还有必填项没填，系统按记录不完整处理，请补齐。", report_ref=report.report_ref, fields=missing))
         if report.actual_start:
             totals.starts.append(report.actual_start)
     return totals
@@ -48,7 +48,7 @@ def _finish_quantities(totals, finishes):
         else:
             quantities.append(quantity)
         if supplement and row["quantity_done"] is not None and row["quantity_done"] != quantity:
-            totals.gaps.append(gap("legacy_quantity_conflict", "补充数量与原完工证据矛盾，原完成事实仍保留。"))
+            totals.gaps.append(gap("legacy_quantity_conflict", "补填的数量和原来的完工记录对不上，原完工记录仍然保留，请核对后更正。"))
     return quantities
 
 
@@ -60,20 +60,20 @@ def merge_legacy_totals(totals, evidence):
         # A legacy finish confirms a cumulative quantity, not an additional lot.
         totals.known += max(quantities)
         if len(set(quantities)) > 1:
-            totals.gaps.append(gap("legacy_quantity_conflict", "同工序跨版本的旧累计确认数量不一致，未重复相加。"))
+            totals.gaps.append(gap("legacy_quantity_conflict", "这道工序在不同计划版本里的旧完工累计数量不一致，系统只取其中最大的一个，没有重复相加，请核对。"))
     totals.legacy_uncovered = bool(evidence.records) and (not evidence.finishes or any(
         row["legacy_fact_ref"] not in totals.linked for row in evidence.finishes))
     if totals.legacy_uncovered:
         if evidence.finishes:
             totals.records_complete = False
-        totals.gaps.append(gap("legacy_fields_unknown", "旧事实未证明逐次加工小时及完整数量，未补成零或伪造报工。"))
+        totals.gaps.append(gap("legacy_fields_unknown", "这道工序的旧记录没有完整的逐次报工明细。能够确认的完工累计数量仍会计入；缺失的加工小时或数量按未知处理，没有当成 0，也没有补造报工。"))
     totals.starts.extend(evidence.starts)
 
 
 def quantity_consistency(totals, target, finishes):
     gaps = []
     if target is not None and totals.known > target:
-        gaps.append(gap("quantity_exceeded", "已知累计数量超过工序目标，需核对；旧完成证据不撤销。"))
+        gaps.append(gap("quantity_exceeded", "已报的累计完工数量超过了这道工序的目标数量，旧完工记录仍然保留，请核对数量。"))
     if finishes and target is not None and totals.unknown == 0 and totals.known != target:
-        gaps.append(gap("legacy_target_conflict", "旧完工证据与已知目标数量不一致，完成事实仍保留并待复核。"))
+        gaps.append(gap("legacy_target_conflict", "旧完工记录的数量和目标数量对不上，完工记录仍然保留，请核对后更正。"))
     return gaps

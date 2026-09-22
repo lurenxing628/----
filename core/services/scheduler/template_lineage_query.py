@@ -21,19 +21,19 @@ MAX_EVENTS = 50000
 
 
 def _invalid() -> NoReturn:
-    raise WorkbenchCommandRejected("template_lineage_corrupt", "模板来源证据与实例历史不一致，未猜配或静默忽略。", 500)
+    raise WorkbenchCommandRejected("template_lineage_corrupt", "模板来源记录和这道工序的历史记录对不上，系统没有猜着匹配，也没有忽略。请联系维护人员。", 500)
 
 
 def check_evidence_size(size):
     if size > MAX_EVIDENCE_BYTES:
-        raise WorkbenchCommandRejected("query_too_large", "模板来源证据超过16MB，请缩小范围；未截断原始内容。", 413)
+        raise WorkbenchCommandRejected("query_too_large", "要读的模板来源记录超过 16 MB，系统没有截断处理，这次没有读取。请缩小范围后重试。", 413)
 
 
 def lineage_available(repo):
     """False when lineage storage was never installed; partial or altered DDL is rejected, never repaired."""
     state = repo.schema_state()
     if state == "invalid":
-        raise WorkbenchCommandRejected("template_lineage_unavailable", "模板来源结构不完整，请恢复完整资料；本次没有自动补表。")
+        raise WorkbenchCommandRejected("template_lineage_unavailable", "模板来源记录的数据表不完整，系统没有自动补表，这次没有读取。请恢复完整资料后重试。")
     return state == "loaded"
 
 
@@ -47,11 +47,11 @@ def read_events(repo, refs):
     result = {}
     for rows in repo.event_chunks(refs, MAX_EVENTS):
         if len(rows) > MAX_EVENTS:
-            raise WorkbenchCommandRejected("query_too_large", "模板来源变更超过50000条，请缩小范围；未截断证据。", 413)
+            raise WorkbenchCommandRejected("query_too_large", "模板来源的变更记录超过 50000 条，系统没有截断处理，这次没有读取。请缩小范围后重试。", 413)
         for row in rows:
             result.setdefault(row["operation_ref"], []).append(row)
     if sum(map(len, result.values())) > MAX_EVENTS:
-        raise WorkbenchCommandRejected("query_too_large", "模板来源变更超过50000条，请缩小范围。", 413)
+        raise WorkbenchCommandRejected("query_too_large", "模板来源的变更记录超过 50000 条，系统没有截断处理，这次没有读取。请缩小范围后重试。", 413)
     return result
 
 
@@ -98,13 +98,13 @@ def _problems(origin, events, current):
     _, initial = validate_origin(origin, events)
     reasons = []
     if not origin["source_eligible"]:
-        reasons.append(issue("template_copy_source_unqualified", "所复制实例的来源已污染或撤回，复制不能把它变成合格模板样本。"))
+        reasons.append(issue("template_copy_source_unqualified", "复制来源那道工序的模板来源已失效或已撤回，复制过来的这道工序也不能当作可用的完工记录。"))
     if any(row["event_type"] == "withdrawn" for row in events):
-        reasons.append(issue("template_lineage_withdrawn", "来源已明确撤回，原证据保留但不再用于校准。"))
+        reasons.append(issue("template_lineage_withdrawn", "模板来源已撤回，原来的记录保留，但不再用于校准。"))
     if current is None or any(row["event_type"] == "retired" for row in events):
-        reasons.append(issue("template_instance_retired", "原工序实例已删除或替换，不会转指同号新实例。"))
+        reasons.append(issue("template_instance_retired", "原来那道工序已删除或被替换，不会改指同号的新工序，不再用于校准。"))
     if any(row["affects_calibration"] and row["event_type"] in ("updated", "batch_changed") for row in events):
-        reasons.append(issue("template_instance_modified", "实例工艺或所属批次资料曾被修改；即使改回原值也不能充作未污染样本。"))
+        reasons.append(issue("template_instance_modified", "这道工序的工艺资料或所属批次改过，即使改回原值也不能当作可用的完工记录。"))
     _validate_current(initial, events, current, reasons)
     return reasons
 
@@ -180,4 +180,4 @@ class TemplateLineageQuery:
                                     for row in origins.values()))
             if len(origins) > MAX_OPERATIONS:
                 break
-        raise WorkbenchCommandRejected("query_too_large", "模板复制来源超过100层或10000实例，请缩小范围。", 413)
+        raise WorkbenchCommandRejected("query_too_large", "模板复制来源超过 100 层或 10000 道工序，这次没有读取。请缩小范围后重试。", 413)

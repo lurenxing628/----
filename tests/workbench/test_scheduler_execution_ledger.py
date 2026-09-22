@@ -128,6 +128,19 @@ def test_cross_version_old_finish_still_protects_completed(ledger_case):
     assert not fact.execution_protection_reasons
 
 
+def test_known_legacy_finish_quantity_is_counted_while_missing_details_stay_unknown(ledger_case):
+    case = ledger_case
+    case.event(case.op_id, "start")
+    case.event(case.op_id, "finish", quantity=4)
+    case.install()
+    projection = case.ledger.get_task(case.task(1, case.op_id))
+    assert projection.known_completed_quantity == 4
+    assert projection.unknown_record_count == 0
+    data_gap = next(row for row in projection.data_gaps if row["code"] == "legacy_fields_unknown")
+    assert "能够确认的完工累计数量仍会计入" in data_gap["message"]
+    assert "缺失的加工小时或数量按未知处理" in data_gap["message"]
+
+
 def test_scope_mapping_rejects_wrong_batch_version_and_nonmatching_row(ledger_case):
     case = ledger_case
     case.install()
@@ -137,6 +150,8 @@ def test_scope_mapping_rejects_wrong_batch_version_and_nonmatching_row(ledger_ca
         with pytest.raises(AppError) as error:
             ExecutionFactProvider(case.conn).facts_by_scope([invalid])
         assert error.value.details["reason"] == "execution_ledger_scope_missing"
+        assert "无法用这些记录确认排产约束" in error.value.message
+        assert "没有改动任何数据" not in error.value.message
     foreign = replace(scope, source_table="candidate_rows", effective_plan_role="baseline_best")
     assert ExecutionFactProvider(case.conn).facts_by_scope([foreign])[foreign].actual_status == "not_started"
 

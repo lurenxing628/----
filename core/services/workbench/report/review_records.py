@@ -3,6 +3,8 @@
 from .review_values import local_time
 
 EVENT_LABELS = {"start": "开工", "finish": "整道完工", "pause": "暂停", "resume": "恢复", "exception": "异常"}
+# 与前端 WorkbenchTerms.legacy_field_records 同一个词：历史系统留下的现场记录，不是逐次报工。
+LEGACY_RECORD_LABEL = "历史现场记录"
 
 
 def resource_directory(facts):
@@ -27,7 +29,7 @@ def project_records(projection, operation, directory, as_of):
     for index, event in enumerate(projection["legacy_facts"]):
         time = local_time(event["event_time"])
         records.append({**event, **common, "projection_index": index, "record_kind": "legacy_event",
-            "record_kind_label": "现场事件", "report_ref": None, "report_no": None,
+            "record_kind_label": LEGACY_RECORD_LABEL, "report_ref": None, "report_no": None,
             "event_label": EVENT_LABELS.get(event["event_type"], "执行事件"), "event_time": time,
             "event_time_raw": event["event_time"], "event_time_basis": "factory_local",
             "recorded_at": event["created_at"], "recorded_at_time_basis": event["created_at_time_basis"],

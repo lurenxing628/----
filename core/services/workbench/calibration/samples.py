@@ -2,10 +2,14 @@
 
 import math
 from datetime import datetime
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal, localcontext
 
 from core.models.workbench_calibration import issue
 from core.models.workbench_command import WorkbenchCommandRejected, input_fingerprint
+
+# 除法结果（单件工时、建议定额、偏差百分比）统一整形到 3 位小数，四舍五入；
+# 求和不整形，因为报工里填的小时数在 Decimal 里相加本来就是精确的。
+QUANTUM = Decimal("0.001")
 
 
 def number(value):
@@ -14,6 +18,18 @@ def number(value):
     if type(value) not in (float, int) or not math.isfinite(value) or value < 0:
         raise WorkbenchCommandRejected("storage_failure", "报工数量或工时无效，请核对报工记录。", 500)
     return Decimal(str(value))
+
+
+def quantize(value):
+    """把 Decimal 除法结果按 3 位小数四舍五入（ROUND_HALF_UP），None 原样返回。
+
+    精度放宽到 400 位，保证 float 能表示的任何量级都能整形，不会因为默认 28 位精度抛错。
+    """
+    if value is None:
+        return None
+    with localcontext() as context:
+        context.prec = 400
+        return value.quantize(QUANTUM, rounding=ROUND_HALF_UP)
 
 
 def _lineage_reasons(lineage, template):
@@ -92,7 +108,7 @@ def _processing_values(projection):
         reasons.append(issue("quantity_unknown", "至少有一次报工的数量暂无数据。"))
     elif reported_quantity is not None and reported_quantity != quantity:
         reasons.append(issue("processing_basis_unconfirmed", "逐次报工数量与累计完工数量不一致。"))
-    ratio = total / quantity if total is not None and quantity else None
+    ratio = quantize(total / quantity) if total is not None and quantity else None
     return {"completed_quantity": projection.known_completed_quantity, "unknown_record_count": projection.unknown_record_count,
             "effective_processing_hours": float(total) if total is not None else None,
             "unit_hours": float(ratio) if ratio is not None else None}, reasons

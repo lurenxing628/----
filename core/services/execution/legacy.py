@@ -53,14 +53,14 @@ def _public_legacy(row):
 def _display_gaps(raw, public):
     result = []
     if public["unavailable_fields"]:
-        result.append(gap("legacy_field_not_displayable", "旧事实含无法展示的存储类型，原值已保留，未转换成业务文字。",
+        result.append(gap("legacy_field_not_displayable", "这条旧记录有部分内容的格式无法在界面显示，原值已保留，没有改写。",
                           legacy_fact_ref=public["legacy_fact_ref"], fields=public["unavailable_fields"]))
     missing = []
     for kind in ("machine", "operator"):
         if raw.get("actual_" + kind + "_id") is not None and public["actual_" + kind + "_ref"] is None:
             missing.append("actual_" + kind + "_ref")
     if missing:
-        result.append(gap("legacy_resource_identity_unresolved", "旧实际资源的永久身份无法无歧义确认，不能按同号现值筛选。",
+        result.append(gap("legacy_resource_identity_unresolved", "这条旧记录里的实际设备或人员对不上现在的资料。筛选需要判断这条记录的实际设备或人员时，系统会停止并提示，避免静默漏掉这条记录；请先核对资料。",
                           legacy_fact_ref=public["legacy_fact_ref"], fields=missing))
     return result
 
@@ -78,7 +78,7 @@ def legacy_evidence(rows, now):
         try:
             _validate_group(group, now)
         except ValueError:
-            evidence.gaps.append(gap("invalid_legacy_sequence", "旧事件身份、顺序或时间无效，需核对原事实。"))
+            evidence.gaps.append(gap("invalid_legacy_sequence", "这些旧现场记录的归属、先后顺序或时间不对，系统没有采用它们，请核对原始记录。"))
             continue
         evidence.starts.extend(parse_operation_event_time(row["event_time"]).isoformat(timespec="seconds") for row in group if row["event_type"] == "start")
         evidence.finishes.extend(row for row in group if row["event_type"] == "finish")

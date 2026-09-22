@@ -155,7 +155,7 @@ class OperatorService:
         op_remark = self._normalize_text(remark)
 
         if self.repo.exists(op_id):
-            raise BusinessError(ErrorCode.OPERATOR_ALREADY_EXISTS, f"工号{op_id}已存在，不能重复添加。")
+            raise BusinessError(ErrorCode.OPERATOR_ALREADY_EXISTS, f"工号“{op_id}”已存在，这次没有保存。请改用别的工号，或去修改已有的那个人员。")
 
         with self.tx_manager.transaction():
             self.repo.create(
@@ -227,14 +227,14 @@ class OperatorService:
         if self.repo.is_referenced_by_batch_operations(op_id):
             raise BusinessError(
                 ErrorCode.OPERATOR_IN_USE,
-                "该人员已被批次工序引用，不能删除。请先解除引用或改为停用。",
+                "还有批次工序在用这个人员，没有删除。请先把这些批次工序改成别的人员，或把这个人员改成“停用”。",
             )
 
         # 若被排程引用，则禁止删除（否则会触发 Schedule.operator_id 外键错误）
         if self.repo.is_referenced_by_schedule(op_id):
             raise BusinessError(
                 ErrorCode.OPERATOR_IN_USE,
-                "该人员已被排程结果引用，不能删除。请改为停用。",
+                "排产结果里还在用这个人员，没有删除。请把这个人员改成“停用”。",
             )
 
         with self.tx_manager.transaction():
@@ -252,10 +252,10 @@ class OperatorService:
         if self.repo.has_any_batch_operations_operator_reference():
             raise BusinessError(
                 ErrorCode.OPERATOR_IN_USE,
-                "已有批次工序引用了人员，不能执行“清空本类数据后重导”。请先解除引用或改用“更新已有，新增缺少”。",
+                "还有批次工序在用人员，不能先清除全部人员再重导，这次没有导入。请先解除这些关联，或改用“已有的就更新，没有的就新增”。",
             )
         if self.repo.has_any_schedule_operator_reference():
             raise BusinessError(
                 ErrorCode.OPERATOR_IN_USE,
-                "已有排程结果引用了人员，不能执行“清空本类数据后重导”。请先解除引用或改用“更新已有，新增缺少”。",
+                "排产结果里还在用人员，不能先清除全部人员再重导，这次没有导入。请先解除这些关联，或改用“已有的就更新，没有的就新增”。",
             )

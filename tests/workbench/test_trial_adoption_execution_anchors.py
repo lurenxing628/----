@@ -10,9 +10,11 @@ from pathlib import Path
 
 import pytest
 
+from core.errors import AppError, ErrorCode
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_trial_codec import dump, fingerprint
 from core.services.workbench.facts.trial_policy import load_draft
+from core.services.workbench.trial.execution_anchors import anchor_issue
 from data.repositories.workbench_trial_repo import WorkbenchTrialRepository
 from tests.workbench.run_candidate_support import corrupt_update
 from tests.workbench.trial_adoption_support import BASE, INTENT, api, assert_retained, full_plan
@@ -286,3 +288,32 @@ def test_five_completed_batches_and_three_changed_chains_publish_with_all_facts_
         assert all(row in after[table] for row in production[table])
     assert len(after["WorkbenchProductionReports"]) == 5
     assert case.conn.execute("SELECT COUNT(*) FROM Schedule WHERE version=1").fetchone()[0] == 16
+
+
+def test_anchor_issue_describes_trial_draft_semantics_without_code_prefix():
+    exc = AppError(ErrorCode.SCHEDULE_CONFLICT, "报工记录还没有准备好，系统无法确认排产约束。",
+                   details={"reason": "execution_ledger_scope_missing"})
+    actual = anchor_issue(exc)
+    assert actual["code"] == "execution_anchor_unproven" and actual["severity"] == "blocker"
+    assert "不阻止新增或保留试调草稿" in actual["message"]
+    assert "当前不能正式采用" in actual["message"]
+    assert "没有改动任何数据" not in actual["message"] and "[6003]" not in actual["message"]
+    assert anchor_issue(KeyError("machine"))["message"] == "已开工工序的实际时间或资源不完整，请检查现场记录后重新发起试调。"
+
+
+def test_execution_anchor_failure_commits_blocked_draft_with_scene_specific_message(trial_case, monkeypatch):
+    import core.services.workbench.trial.execution_anchors as anchor_module
+
+    case = trial_case
+
+    def unavailable(*_args, **_kwargs):
+        raise AppError(ErrorCode.SCHEDULE_CONFLICT, "报工记录还没有准备好，这次操作没有完成，没有改动任何数据。",
+                       details={"reason": "execution_ledger_scope_missing"})
+
+    monkeypatch.setattr(anchor_module, "execution_anchors", unavailable)
+    draft = create(case)
+    problem = next(row for row in draft["validation"]["issues"] if row["code"] == "execution_anchor_unproven")
+    assert "不阻止新增或保留试调草稿" in problem["message"]
+    assert "没有改动任何数据" not in problem["message"]
+    assert draft["validation"]["constraints_status"] == "blocked"
+    assert case.conn.execute("SELECT COUNT(*) FROM WorkbenchTrialDrafts WHERE draft_ref=?", (draft["draft_ref"],)).fetchone()[0] == 1

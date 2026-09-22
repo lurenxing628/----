@@ -170,7 +170,7 @@ class MachineService:
         mc_category = self._normalize_text(category)
 
         if self.repo.exists(mc_id):
-            raise BusinessError(ErrorCode.MACHINE_ALREADY_EXISTS, f"设备编号{mc_id}已存在，不能重复添加。")
+            raise BusinessError(ErrorCode.MACHINE_ALREADY_EXISTS, f"设备编号“{mc_id}”已存在，这次没有保存。请改用别的编号，或去修改已有的那台设备。")
 
         with self.tx_manager.transaction():
             self.repo.create(
@@ -248,9 +248,9 @@ class MachineService:
 
         # 若被批次工序引用，则禁止删除（避免排产数据断链）
         if self.repo.is_referenced_by_batch_operations(mc_id):
-            raise BusinessError(ErrorCode.MACHINE_IN_USE, "该设备已被批次工序引用，不能删除。请先解除引用或改为停用。")
+            raise BusinessError(ErrorCode.MACHINE_IN_USE, "还有批次工序在用这台设备，没有删除。请先把这些批次工序改成别的设备，或把这台设备改成“停用”。")
         if self.repo.is_referenced_by_schedule(mc_id):
-            raise BusinessError(ErrorCode.MACHINE_IN_USE, "该设备已被排程结果引用，不能删除。请改为停用。")
+            raise BusinessError(ErrorCode.MACHINE_IN_USE, "排产结果里还在用这台设备，没有删除。请把这台设备改成“停用”。")
 
         with self.tx_manager.transaction():
             self.repo.delete(mc_id)
@@ -273,10 +273,10 @@ class MachineService:
         if self.repo.has_any_batch_operations_machine_reference():
             raise BusinessError(
                 ErrorCode.MACHINE_IN_USE,
-                "已有批次工序引用了设备，不能执行“清空本类数据后重导”。请先解除引用或改用“更新已有，新增缺少”。",
+                "还有批次工序在用设备，不能先清除全部设备再重导，这次没有导入。请先解除这些关联，或改用“已有的就更新，没有的就新增”。",
             )
         if self.repo.has_any_schedule_machine_reference():
             raise BusinessError(
                 ErrorCode.MACHINE_IN_USE,
-                "已有排程结果引用了设备，不能执行“清空本类数据后重导”。请先解除引用或改用“更新已有，新增缺少”。",
+                "排产结果里还在用设备，不能先清除全部设备再重导，这次没有导入。请先解除这些关联，或改用“已有的就更新，没有的就新增”。",
             )

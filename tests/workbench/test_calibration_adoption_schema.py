@@ -113,6 +113,16 @@ def test_lock_requires_matching_audit_and_missing_lock_is_not_unlocked(ready_ado
     assert error.value.code == "calibration_lock_corrupt"
 
 
+@pytest.mark.parametrize("refs", ["one-template-ref", b"one-template-ref"])
+def test_lock_query_rejects_a_single_text_value_as_a_ref_collection(adoption_case, refs):
+    repo = WorkbenchCalibrationAdoptionRepository(adoption_case.conn)
+    with pytest.raises(WorkbenchCommandRejected) as error:
+        read_quota_locks(repo, refs)
+    assert error.value.code == "invalid_input" and error.value.status == 400
+    assert "必须提供一组模板工序" in str(error.value)
+    assert "不能只传一条文字值" in str(error.value)
+
+
 def test_unregistered_hook_does_not_alter_current_schema_version(adoption_case):
     case = adoption_case
     before = case.conn.execute("PRAGMA user_version").fetchone()[0]

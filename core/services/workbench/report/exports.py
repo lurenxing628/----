@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import io
+from datetime import datetime
 
 import openpyxl
 from openpyxl.cell import WriteOnlyCell
@@ -16,6 +17,24 @@ from core.services.report.report_engine import ReportExport
 from core.services.workbench.facts.execution_projection import COMPLETION_BASIS_TEXT, DATA_QUALITY_TEXT
 
 # 导出标题与列名都是用户直接看到的文字，统一走词表，不再暴露专题代号。
+
+
+def export_stamp(as_of):
+    """文件名里的数据截至时间写成 2026-09-21_1646，不带秒，也不带 T 和冒号。
+
+    as_of 形如 2026-09-21T16:46:05（现场本地时间，不带时区）。
+    """
+    if type(as_of) is not str:
+        raise ValueError("导出文件名需要形如 2026-09-21T16:46:05 的数据截至时间。")
+    try:
+        parsed = datetime.strptime(as_of, "%Y-%m-%dT%H:%M:%S")
+    except ValueError:
+        raise ValueError("导出文件名需要形如 2026-09-21T16:46:05 的数据截至时间。") from None
+    if parsed.strftime("%Y-%m-%dT%H:%M:%S") != as_of:
+        raise ValueError("导出文件名需要形如 2026-09-21T16:46:05 的数据截至时间。")
+    return parsed.strftime("%Y-%m-%d_%H%M")
+
+
 TOPIC_TITLES = {"delivery": "工序完成情况", "records": "报工记录", "machines": "设备工时",
                 "people": "人员工时", "quality": "数据完整性",
                 "overdue": "超期批次", "utilization": "资源负荷", "downtime": "停机影响"}
@@ -91,7 +110,7 @@ def export_table(engine, data, rows, snapshot, format_name):
     decision = ensure_export_size(engine, len(rows))
     columns = data["columns"]
     values = _export_values(columns, rows, format_name)
-    filename = TOPIC_TITLES[data["topic"]] + "-" + snapshot["as_of"].replace(":", "")
+    filename = TOPIC_TITLES[data["topic"]] + "-" + export_stamp(snapshot["as_of"])
     if format_name == "csv":
         output = io.StringIO(newline="")
         writer = csv.writer(output)

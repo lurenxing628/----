@@ -19,5 +19,5 @@ def piece_admission_issues(conn, settings):
     except (CandidateRunInputError, CandidateAdoptionBlocked) as exc:
         return [{"code": exc.code, "message": str(exc)}]
     except AppError as exc:
-        return [{"code": (exc.details or {}).get("reason", "piece_input_unproven"), "message": str(exc)}]
+        return [{"code": (exc.details or {}).get("reason", "piece_input_unproven"), "message": exc.message}]
     return []

@@ -97,7 +97,9 @@ def test_installed_ambiguous_old_schedule_is_not_bound_to_replacement_or_latest(
     assert first["status"] == "blocked" and second["status"] == "skipped"
     assert first["execution"]["execution_state"] == "unreported" and first["execution"]["data_quality"] == "invalid"
     assert first["execution"]["confirmed_finish"] is None and first["execution"]["remaining_quantity"] is None
-    assert "legacy_identity_unresolved" in {row["code"] for row in first["issues"]}
+    identity_issue = next(row for row in first["issues"] if row["code"] == "legacy_identity_unresolved")
+    assert "当前工作台不能直接修改这类归属" in identity_issue["message"]
+    assert "归到正确的工序" not in identity_issue["message"]
     assert second["issues"][-1]["related_operation_ref"] == first["operation_ref"]
     assert data["counts"]["blocked_tasks"] == 1 and data["eligible_tasks"] == 0
     assert case.conn.execute("SELECT count(*) FROM WorkbenchProductionReports").fetchone()[0] == 0

@@ -3,7 +3,13 @@
 from datetime import datetime
 from typing import Callable
 
-from core.models.workbench_calibration import MAX_SAMPLES, MIN_SAMPLES, CalibrationQuery, issue
+from core.models.workbench_calibration import (
+    MAX_SAMPLES,
+    MIN_SAMPLES,
+    SUGGESTION_BELOW_PRECISION_CODE,
+    CalibrationQuery,
+    issue,
+)
 from core.models.workbench_calibration_adoption import MAX_EVIDENCE_BYTES, CalibrationAdoptionEvidence
 from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
 from core.models.workbench_template_lineage import snapshot
@@ -34,7 +40,9 @@ def read_evidence(conn, repo, template_ref, intent, clock: Callable[[], datetime
         preview_intent = {key: intent[key] for key in ("reason", "declared_operator")}
         binding = {"source": "production", "intent": preview_intent, "template": snapshot(template),
                    "facts_fingerprint": facts["fingerprint"], "suggestion": suggestion, "locks": locks}
-        blockers = _blockers(template, suggestion, samples, facts["lineage_available"], locks)
+        method_blockers = [reason for reason in row["blocked_reasons"]
+                           if reason["code"] == SUGGESTION_BELOW_PRECISION_CODE]
+        blockers = _blockers(template, suggestion, samples, facts["lineage_available"], locks, method_blockers)
         evidence = CalibrationAdoptionEvidence(template, suggestion, samples, binding, as_of.isoformat(timespec="seconds"), blockers)
         encoded = canonical_json({"snapshot": binding, "suggestion": suggestion, "samples": samples})
         if len(encoded.encode("utf-8")) > MAX_EVIDENCE_BYTES:
@@ -42,7 +50,7 @@ def read_evidence(conn, repo, template_ref, intent, clock: Callable[[], datetime
         return evidence
 
 
-def _blockers(template, suggestion, samples, lineage_available, locks):
+def _blockers(template, suggestion, samples, lineage_available, locks, method_blockers):
     blockers = []
     if locks:
         blockers.append(issue("calibration_quota_locked", "这个模板的定额已经采用并锁定，不能重复采用或覆盖。"))
@@ -53,6 +61,7 @@ def _blockers(template, suggestion, samples, lineage_available, locks):
     value = number(suggestion["suggested_unit_hours"])
     if value is None or not MIN_SAMPLES <= suggestion["sample_count"] <= MAX_SAMPLES:
         blockers.append(issue("insufficient_samples", "这个模板版本下合格的整道完工记录不足 5 条，不能采用。"))
+    blockers.extend(method_blockers)
     if len(samples) != suggestion["sample_count"] or any(not row["eligible"] for row in samples):
         raise WorkbenchCommandRejected("calibration_source_unavailable", "所选完工记录和统计依据对不上，没有执行采用。请刷新后重试。", 500)
     return blockers

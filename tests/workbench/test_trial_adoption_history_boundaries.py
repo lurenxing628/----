@@ -54,6 +54,45 @@ def test_all_directory_and_payload_bounds_are_explicit(trial_case, monkeypatch, 
     assert error.value.code == "query_too_large"
 
 
+def test_payload_bound_errors_name_the_actual_evidence_kind():
+    class ReceiptRepo:
+        @staticmethod
+        def receipt_size(_key):
+            return {"bytes": -1}
+
+    class HistoryRepo:
+        @staticmethod
+        def history_heads(_version):
+            return [{"id": 1, "bytes": -1}]
+
+    class ScenarioRepo:
+        @staticmethod
+        def sized_scenario_header(_scenario_ref):
+            return {"draft_ref": "draft-ref", "bytes": limits.MAX_SCENARIO_BYTES + 1}
+
+    class DraftRepo:
+        @staticmethod
+        def sized_scenario_header(_scenario_ref):
+            return {"draft_ref": "draft-ref", "bytes": 1}
+
+        @staticmethod
+        def sized_draft_header(_draft_ref):
+            return {"bytes": -1}
+
+    cases = (
+        (lambda: limits.load_receipt(ReceiptRepo(), "request-key"), "命令保存结果", "adoption_history_invalid"),
+        (lambda: limits.load_history(HistoryRepo(), 1), "排产历史摘要", "adoption_history_invalid"),
+        (lambda: limits.load_scenario_headers(ScenarioRepo(), "scenario-ref"), "试调方案内容", "query_too_large"),
+        (lambda: limits.load_scenario_headers(DraftRepo(), "scenario-ref"), "试调原始草稿内容", "adoption_history_invalid"),
+    )
+    for invoke, subject, code in cases:
+        with pytest.raises(WorkbenchCommandRejected) as error:
+            invoke()
+        assert error.value.code == code
+        assert subject in str(error.value)
+        assert "采用记录" not in str(error.value)
+
+
 @pytest.mark.parametrize("field", ["scenario_ref", "draft_ref", "base", "baseline"])
 def test_saved_snapshot_must_match_original_save_receipt(trial_case, field):
     saved, _ = seeded(trial_case)

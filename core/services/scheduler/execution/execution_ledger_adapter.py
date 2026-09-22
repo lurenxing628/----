@@ -22,7 +22,8 @@ def _unavailable(reason, *, op_id=None):
     if op_id is not None:
         details["op_id"] = op_id
     return AppError(ErrorCode.SCHEDULE_CONFLICT,
-                    "执行台账或任务身份不完整，本次没有写入排程。请核对迁移与原报工记录。", details=details)
+                    "报工记录还没有准备好，或和排产任务对不上，系统无法用这些记录确认排产约束。请刷新重试；仍不行请联系维护人员。",
+                    details=details)
 
 
 def _ledger_required(conn):

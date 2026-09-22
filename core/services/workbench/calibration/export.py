@@ -10,6 +10,7 @@ from core.models.workbench_command import WorkbenchCommandRejected, canonical_js
 from core.services.common.excel_templates import _sanitize_export_cell
 from core.services.report.exporters.xlsx import _append_write_only_row
 from core.services.report.report_engine import ReportExport
+from core.services.workbench.report.exports import export_stamp
 
 COLUMNS = (("part_no", "图号"), ("part_name", "零件名称"), ("sequence", "工序号"),
            ("operation_label", "工序名称"), ("template_operation_ref", "模板工序编号"),
@@ -88,5 +89,5 @@ def export_calibration(data, rows, snapshot, format_name):
     if output.tell() > MAX_EXPORT_BYTES:
         raise WorkbenchCommandRejected("export_too_large", "完整导出超过 16 MB，请缩小范围后重试；系统没有截断内容。", 413)
     output.seek(0)
-    filename = "工时校准明细-" + snapshot["as_of"].replace(":", "") + "." + format_name
+    filename = "工时校准明细-" + export_stamp(snapshot["as_of"]) + "." + format_name
     return ReportExport(filename, mime, output, estimated_rows=len(rows))

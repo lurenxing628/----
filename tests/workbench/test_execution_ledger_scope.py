@@ -107,3 +107,5 @@ def test_ambiguous_legacy_resource_ref_is_null_with_filter_gap(ledger_case):
     assert all(row["actual_machine_ref"] is None for row in projection.legacy_facts)
     gaps = [row for row in projection.data_gaps if row["code"] == "legacy_resource_identity_unresolved"]
     assert len(gaps) == 2 and all(row["fields"] == ["actual_machine_ref"] for row in gaps)
+    assert all("系统会停止并提示" in row["message"] for row in gaps)
+    assert all("不会包含" not in row["message"] for row in gaps)

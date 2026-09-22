@@ -68,7 +68,11 @@ def execution_anchors(conn, rows, live):
 
 
 def anchor_issue(exc):
-    message = str(exc) if isinstance(exc, AppError) else "已开工工序的实际时间或资源不完整，请检查现场记录后重新发起试调。"
+    if isinstance(exc, AppError):
+        message = ("已有报工工序的实际时间或资源没有通过校验。这不阻止新增或保留试调草稿，"
+                   "但草稿会标记为当前不能正式采用；请核对现场记录后重新发起试调，仍不行请联系维护人员。")
+    else:
+        message = "已开工工序的实际时间或资源不完整，请检查现场记录后重新发起试调。"
     return issue("execution_anchor_unproven", message)
 
 

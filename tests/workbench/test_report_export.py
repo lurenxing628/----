@@ -73,3 +73,45 @@ def test_real_catalog_xlsx_roundtrip(report_api, kind):
 def test_catalog_rejects_implicit_finish_date_to_window_conversion(report_api):
     response = report_api.client.get("/api/workbench/v1/reports/utilization", query_string={"plan_finish_date_from": "2026-09-02", "plan_finish_date_to": "2026-09-02"})
     assert_error(response, "invalid_input", 400)
+
+
+def test_export_filename_stamp_is_date_underscore_hour_minute():
+    from core.services.workbench.report.exports import export_stamp
+
+    assert export_stamp("2026-09-21T16:46:05") == "2026-09-21_1646"
+    assert export_stamp("2026-01-02T03:04:59") == "2026-01-02_0304"
+    for bad in (
+        "2026-09-21 16:46:05",
+        "2026/09/21T16:46:05",
+        "2026-09-21T16-46-05",
+        "2026-09-21T16:46",
+        "2026-09-21T16:46:05+08:00",
+        "2026-02-30T16:46:05",
+        "2026-09-21T24:00:00",
+        "2026-09-21T16:60:00",
+        "2026-09-21T16:46:60",
+        "",
+        None,
+    ):
+        with pytest.raises(ValueError):
+            export_stamp(bad)
+
+
+def test_export_headers_use_the_stamp_and_a_readable_legacy_label(report_api):
+    first = report_api.read(topic="records", size=10)
+    response = report_api.get("/export", topic="records", size=10, snapshot_ref=first["meta"]["snapshot_ref"], format="csv")
+    assert response.status_code == 200, response.get_data(as_text=True)
+    stamp = first["meta"]["as_of"][:10] + "_" + first["meta"]["as_of"][11:13] + first["meta"]["as_of"][14:16]
+    assert stamp in response.headers["Content-Disposition"] and "T" + first["meta"]["as_of"][11:13] not in response.headers["Content-Disposition"]
+    header = list(csv.reader(io.StringIO(response.data.decode("utf-8-sig"))))[0]
+    assert "历史现场记录报废数量" in header and not any("旧" in label for label in header)
+
+
+def test_hour_totals_add_decimal_hours_without_float_tails():
+    from core.services.workbench.report.review_values import hour_totals
+
+    rows = [{"effective_processing_hours": 0.1}, {"effective_processing_hours": 0.2}, {"effective_processing_hours": None}]
+    assert hour_totals(rows) == {"effective_processing_hours": None, "known_effective_processing_hours": 0.3, "unknown_hour_events": 1}
+    assert hour_totals([{"effective_processing_hours": 1.005}, {"effective_processing_hours": 2}]) == {
+        "effective_processing_hours": 3.005, "known_effective_processing_hours": 3.005, "unknown_hour_events": 0}
+    assert hour_totals([]) == {"effective_processing_hours": None, "known_effective_processing_hours": None, "unknown_hour_events": 0}

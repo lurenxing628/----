@@ -9,11 +9,11 @@ MAX_RECEIPT_BYTES = 64 * 1024
 MAX_SCENARIO_BYTES = 32 * 1024 * 1024
 
 
-def bound(size, limit):
+def bound(size, limit, subject="历史内容"):
     if type(size) is not int or size < 0:
-        reject("adoption_history_invalid", "历史证据字段缺失或类型无效。")
+        reject("adoption_history_invalid", subject + "的内容大小无效，系统没有读取它。请联系维护人员核对数据。")
     if size > limit:
-        reject("query_too_large", "历史证据超过本批读取大小上限，未截断或转换原值。", 413)
+        reject("query_too_large", subject + "超过了单次读取上限，系统没有截断，也没有改动原记录。请联系维护人员核对数据。", 413)
 
 
 def load_receipt(repo, key, limit=MAX_SCENARIO_BYTES):
@@ -21,7 +21,7 @@ def load_receipt(repo, key, limit=MAX_SCENARIO_BYTES):
     size = repo.receipt_size(key)
     if size is None:
         reject("adoption_history_invalid", "原命令回执缺失，不能证明保存来源。")
-    bound(size["bytes"], limit)
+    bound(size["bytes"], limit, "命令保存结果")
     row = repo.receipt_row(key)
     if row is None:
         reject("adoption_history_invalid", "原命令回执缺失，不能证明保存来源。")
@@ -53,7 +53,7 @@ def load_history(repo, version):
     heads = repo.history_heads(version)
     if len(heads) != 1:
         return None
-    bound(heads[0]["bytes"], MAX_RECEIPT_BYTES)
+    bound(heads[0]["bytes"], MAX_RECEIPT_BYTES, "排产历史摘要")
     return repo.history_row(heads[0]["id"])
 
 
@@ -62,9 +62,9 @@ def load_scenario_headers(repo, scenario_ref):
     header = repo.sized_scenario_header(scenario_ref)
     if header is None:
         reject("entity_not_found", "未找到指定试调场景，未改查最新场景。", 404)
-    bound(header.pop("bytes"), MAX_SCENARIO_BYTES)
+    bound(header.pop("bytes"), MAX_SCENARIO_BYTES, "试调方案内容")
     draft = repo.sized_draft_header(header["draft_ref"])
     if draft is None:
         reject("adoption_history_invalid", "场景的原永久草稿缺失。")
-    bound(draft.pop("bytes"), MAX_SCENARIO_BYTES)
+    bound(draft.pop("bytes"), MAX_SCENARIO_BYTES, "试调原始草稿内容")
     return header, draft

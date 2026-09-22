@@ -224,7 +224,7 @@ class BatchService:
         if not batch_id_text:
             raise ValidationError("“批次号”不能为空", field="批次号")
         if self.batch_repo.get(batch_id_text):
-            raise BusinessError(ErrorCode.BATCH_ALREADY_EXISTS, f"批次号“{batch_id_text}”已存在，不能重复添加。")
+            raise BusinessError(ErrorCode.BATCH_ALREADY_EXISTS, f"批次号“{batch_id_text}”已存在，这次没有保存。请改用别的批次号，或去修改已有的那个批次。")
 
         payload = batch_write_rules.build_create_payload(
             self,
