@@ -39,6 +39,9 @@ def test_archive_preserves_complete_payload_and_publishes_verified_checksum(payl
         readme = archive.read("APS_Portable/README_PORTABLE.txt")
         assert readme.startswith(b"\xef\xbb\xbf")
         assert "绿色便携版" in readme.decode("utf-8-sig")
+        acceptance = archive.read("APS_Portable/WIN7_ACCEPTANCE.txt")
+        assert acceptance.startswith(b"\xef\xbb\xbf")
+        assert "TEST-W7" in acceptance.decode("utf-8-sig")
         assert archive.testzip() is None
 
 
@@ -58,7 +61,8 @@ def test_archive_rejects_user_data_without_deleting_it(payload, tmp_path, relati
 
 
 @pytest.mark.parametrize("relative", ["tools/chrome109/chrome.exe", "python38.dll",
-                                     "tools/chrome109/locales/zh-CN.pak", "aps-portable.txt"])
+                                     "tools/chrome109/locales/zh-CN.pak", "aps-portable.txt",
+                                     "WIN7_ACCEPTANCE.txt"])
 def test_archive_refuses_incomplete_portable_payload(payload, tmp_path, relative):
     release.prepare_portable_directory(payload)
     (payload / relative).unlink()

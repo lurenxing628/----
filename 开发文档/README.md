@@ -26,6 +26,7 @@ py -3.8 -m venv .venv
 说明：
 
 - `requirements.txt` 是程序运行依赖，`requirements-dev.txt` 是本地检查和托管门禁依赖，`requirements-optimizer-lite-win7.txt` 是图分析/候选方案增强需要的轻量优化依赖；新环境三份都要装。
+- 上述三份适用于开发检查环境。Win7 出包使用独立 `.venv-win7-build` 和带哈希的 `requirements-win7-build.txt`；离线材料下载、准备和绿色便携构建见 `../DELIVERY_WIN7.md`，不把开发检查工具装入构建环境。
 - `PyYAML` 是 CodeStable YAML 工具的开发期依赖；缺失时工具只支持极简 Markdown frontmatter，不能校验 checklist / manifest 这类纯 YAML 文件。
 - `ruff` 版本口径固定为 `>=0.15,<0.16`。
 - 若未先在项目 `.venv` 中安装 `requirements.txt`、`requirements-dev.txt` 和 `requirements-optimizer-lite-win7.txt`，`.pre-commit-config.yaml` 中的 `ruff`、提交说明检查、推送前快门禁、图分析增强以及本地启动都可能无法正常运行。

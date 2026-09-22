@@ -22,6 +22,7 @@ APS_Portable/
   排产系统.exe              后台服务
   aps-portable.txt           便携标记，必须保留
   README_PORTABLE.txt        随包使用说明
+  WIN7_ACCEPTANCE.txt        实机逐项验收及结果记录表
   tools/chrome109/           专用浏览器
   static/、templates/…      程序资源
   user-data/                首次启动自动生成
@@ -40,15 +41,33 @@ APS_Portable/
 
 打包机基线：**Win7 SP1 x64、Python 3.8.x x64、PyInstaller 4.10、Windows PowerShell 5.1**。目标机按本次确认的 Windows PowerShell 5.1 环境使用，不依赖 PowerShell 7。
 
-先离线安装三份依赖，并准备 Chrome109：
+### 联网准备机
+
+先用 Python 3.8 或以上版本执行 `python scripts/prepare_win7_offline.py download`，再执行 `python scripts/prepare_win7_offline.py verify`。支持在 Windows / macOS / Linux 准备材料，下载不会安装或执行第三方程序。
+
+文件保存到 `offline/win7/`，包括 Python 3.8.10 x64 离线安装器、22 个运行及打包 wheel、ungoogled-chromium 109.0.5414.120-1.1 x64 ZIP。下载器通过 HTTPS 获取，逐文件核对大小及 SHA-256；缺失或损坏就停止，不静默覆盖已有错误文件。完整来源和哈希见 [`packaging/win7/offline-manifest.json`](packaging/win7/offline-manifest.json)。
+
+来源：[Python 官方发行页](https://www.python.org/downloads/release/python-3810/)、[PyInstaller 4.10 / PyPI](https://pypi.org/project/pyinstaller/4.10/)、[Chromium 发布仓库](https://github.com/ungoogled-software/ungoogled-chromium-windows/releases/tag/109.0.5414.120-1.1)及其[校验清单](https://raw.githubusercontent.com/ungoogled-software/ungoogled-chromium-binaries/master/config/platforms/windows/64bit/109.0.5414.120-1.ini)。运行依赖沿用当前项目版本，完整构建依赖固定在 `requirements-win7-build.txt`，仍须经 Win7 冷启动验收。
+
+将源码和整个 `offline/win7/` 一起带到现场，保持目录关系。大型第三方文件不进 Git；只拿 GitHub 源码不能离线打包。**这些是构建材料，不是已经完成的便携 EXE。**
+
+### Win7 打包机
+
+先确认 Win7 SP1 x64 和 PowerShell 5.1 已就绪。没有 Python 时，用 `offline\win7\installers\python-3.8.10-amd64.exe` 安装到打包机，确保新命令窗口的 `python` 指向 3.8 x64。脚本不会代装系统更新或修改全局安全策略。
 
 ```bat
-python -m pip install --no-index --find-links C:\wheelhouse -r requirements.txt -r requirements-dev.txt -r requirements-optimizer-lite-win7.txt
+setup_win7_build.bat
 ```
+
+该命令核验全部材料，创建 `.venv-win7-build`，按哈希离线安装依赖，执行 `pip check`，把已核验浏览器 ZIP 放到 `tools/`。绿色构建入口会自动激活此环境。不要往这里安装 `requirements-dev.txt`；开发检查继续使用原有 `.venv`。
+
+手工维护时的安装命令：`python -m pip install --no-index --find-links offline\win7\wheels --require-hashes -r requirements-win7-build.txt`。
 
 - 浏览器源目录：`tools\Chrome.109.0.5414.120.x64\chrome.exe`，或离线 `tools\ungoogled-chromium_109*.zip`。
 - 默认图分析需要 `networkx==3.1`；`build_win7_onedir.bat` 会从 `vendor/wheels` 离线安装并核对版本。
 - 不需要 Inno Setup、注册表写入或安装器权限配置。
+- 构建预检核对 Win7 SP1、Python 3.8 x64 和全部锁定依赖，不符合时在清理 `build/dist` 前停止。
+- 静态资源已经提交，打包不要求 Node.js。已有浏览器源目录优先于 ZIP；验证固定材料时请使用新的源码目录。
 
 仓库根目录执行：
 
@@ -56,7 +75,7 @@ python -m pip install --no-index --find-links C:\wheelhouse -r requirements.txt 
 build_win7_portable.bat
 ```
 
-等价命令：
+激活 `.venv-win7-build` 后的等价命令：
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .limcode/skills/aps-package-win7/scripts/package_win7.ps1
@@ -94,5 +113,13 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .limcode/skills/aps-package-
 - Win7 / PowerShell 5.1 现场还须验证：中文＋空格目录解压、双击启动、再次启动、正常退出、备份恢复、关闭后整目录搬迁、存在旧安装记录及切换账户后的路径隔离。
 - 启动失败先看 `user-data/logs/launcher.log`，再看同目录 `aps_launch_error.txt`；不要通过删除运行锁来强行开启第二个实例。
 - macOS 上的路径、打包合同、静态编码测试不等于 Windows EXE 或 PowerShell 5.1 真机通过。
+
+现场按随包 [`WIN7_ACCEPTANCE.txt`](assets/WIN7_ACCEPTANCE.txt) 填写，覆盖离线启动、资料导入导出、排产和采用、甘特图、报工、报表打印、备份恢复、搬迁及账户占用。用 `TEST-W7` 前缀的样例，只操作测试目录，未测项如实保留。
+
+若同一台 Win7 先安装 Python 用于打包，再运行成品，只能据此记录该环境的功能结果；“目标机无需安装 Python”须另在未安装 Python 的 Win7 环境验收，并在记录表中注明。
+
+打包人员提供源码提交号、ZIP SHA-256 和打包日志。在 PowerShell 5.1 中运行 `Get-FileHash -Algorithm SHA256 .\APS_Portable_Win7_x64.zip`，与同名 `.sha256` 比较，不一致就停止。源码版本用 `git rev-parse HEAD` 记录；源码归档使用提供方附带的提交号。
+
+失败时保留时间、截图、复现步骤、脱敏输入及错误日志片段。不要将整个 `user-data`、业务备份或含密钥的日志目录提交到公开 GitHub。
 
 原双安装包仅保留为维护入口：`package_win7.ps1 -Installer`；`-MainOnly`、`-ChromeOnly`、`-Legacy` 继续显式可用，详见 [历史安装版说明](installer/README_WIN7_INSTALLER.md)。

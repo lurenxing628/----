@@ -13,9 +13,9 @@ chcp 65001 >nul 2>&1
 echo [build] repo: %CD%
 
 rem 1) Check Python and PyInstaller before deleting build artifacts
-python -c "import platform, sys, PyInstaller; ok=sys.version_info[:2]==(3,8) and platform.architecture()[0]=='64bit' and PyInstaller.__version__=='4.10'; print('Python {}.{}.{} {}, PyInstaller {}'.format(sys.version_info[0], sys.version_info[1], sys.version_info[2], platform.architecture()[0], PyInstaller.__version__)); sys.exit(0 if ok else 1)"
+python scripts\check_win7_build.py
 if not %errorlevel%==0 (
-  echo [build] Win7 package must use Python 3.8 x64 and PyInstaller==4.10. Please fix the active python first.
+  echo [build] Win7 build preflight failed. Run setup_win7_build.bat first.
   popd >nul 2>&1
   endlocal & exit /b 2
 )

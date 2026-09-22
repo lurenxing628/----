@@ -1,0 +1,223 @@
+{
+  "format_version": 1,
+  "target": "Win7 SP1 x64 / CPython 3.8.10 x64 / PowerShell 5.1",
+  "files": [
+    {
+      "name": "Flask",
+      "version": "2.3.3",
+      "path": "wheels/flask-2.3.3-py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/fd/56/26f0be8adc2b4257df20c1c4260ddd0aa396cf8e75d90ab2f7ff99bc34f9/flask-2.3.3-py3-none-any.whl",
+      "sha256": "f69fcd559dc907ed196ab9df0e48471709175e696d6e698dd4dbe940f96ce66b",
+      "size": 96112,
+      "source": "https://pypi.org/pypi/Flask/2.3.3/json"
+    },
+    {
+      "name": "Werkzeug",
+      "version": "2.3.7",
+      "path": "wheels/werkzeug-2.3.7-py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/9b/59/a7c32e3d8d0e546a206e0552a2c04444544f15c1da4a01df8938d20c6ffc/werkzeug-2.3.7-py3-none-any.whl",
+      "sha256": "effc12dba7f3bd72e605ce49807bbe692bd729c3bb122a3b91747a6ae77df528",
+      "size": 242216,
+      "source": "https://pypi.org/pypi/Werkzeug/2.3.7/json"
+    },
+    {
+      "name": "openpyxl",
+      "version": "3.0.10",
+      "path": "wheels/openpyxl-3.0.10-py2.py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/7b/60/9afac4fd6feee0ac09339de4101ee452ea643d26e9ce44c7708a0023f503/openpyxl-3.0.10-py2.py3-none-any.whl",
+      "sha256": "0ab6d25d01799f97a9464630abacbb34aafecdcaa0ef3cba6d6b3499867d0355",
+      "size": 242144,
+      "source": "https://pypi.org/pypi/openpyxl/3.0.10/json"
+    },
+    {
+      "name": "python-dateutil",
+      "version": "2.8.2",
+      "path": "wheels/python_dateutil-2.8.2-py2.py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/36/7a/87837f39d0296e723bb9b62bbb257d0355c7f6128853c78955f57342a56d/python_dateutil-2.8.2-py2.py3-none-any.whl",
+      "sha256": "961d03dc3453ebbc59dbdea9e4e11c5651520a876d0f4db161e8674aae935da9",
+      "size": 247702,
+      "source": "https://pypi.org/pypi/python-dateutil/2.8.2/json"
+    },
+    {
+      "name": "networkx",
+      "version": "3.1",
+      "path": "wheels/networkx-3.1-py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/a8/05/9d4f9b78ead6b2661d6e8ea772e111fc4a9fbd866ad0c81906c11206b55e/networkx-3.1-py3-none-any.whl",
+      "sha256": "4f33f68cb2afcf86f28a45f43efc27a9386b535d567d2127f8f61d51dec58d36",
+      "size": 2072251,
+      "source": "https://pypi.org/pypi/networkx/3.1/json"
+    },
+    {
+      "name": "Jinja2",
+      "version": "3.1.6",
+      "path": "wheels/jinja2-3.1.6-py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/62/a1/3d680cbfd5f4b8f15abc1d571870c5fc3e594bb582bc3b64ea099db13e56/jinja2-3.1.6-py3-none-any.whl",
+      "sha256": "85ece4451f492d0c13c5dd7c13a64681a86afae63a5f347908daf103ce6d2f67",
+      "size": 134899,
+      "source": "https://pypi.org/pypi/Jinja2/3.1.6/json"
+    },
+    {
+      "name": "MarkupSafe",
+      "version": "2.1.5",
+      "path": "wheels/MarkupSafe-2.1.5-cp38-cp38-win_amd64.whl",
+      "url": "https://files.pythonhosted.org/packages/92/21/357205f03514a49b293e214ac39de01fadd0970a6e05e4bf1ddd0ffd0881/MarkupSafe-2.1.5-cp38-cp38-win_amd64.whl",
+      "sha256": "619bc166c4f2de5caa5a633b8b7326fbe98e0ccbfacabd87268a2b15ff73a029",
+      "size": 17206,
+      "source": "https://pypi.org/pypi/MarkupSafe/2.1.5/json"
+    },
+    {
+      "name": "click",
+      "version": "8.1.8",
+      "path": "wheels/click-8.1.8-py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/7e/d4/7ebdbd03970677812aac39c869717059dbb71a4cfc033ca6e5221787892c/click-8.1.8-py3-none-any.whl",
+      "sha256": "63c132bbbed01578a06712a2d1f497bb62d9c1c0d329b7903a866228027263b2",
+      "size": 98188,
+      "source": "https://pypi.org/pypi/click/8.1.8/json"
+    },
+    {
+      "name": "blinker",
+      "version": "1.8.2",
+      "path": "wheels/blinker-1.8.2-py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/bb/2a/10164ed1f31196a2f7f3799368a821765c62851ead0e630ab52b8e14b4d0/blinker-1.8.2-py3-none-any.whl",
+      "sha256": "1779309f71bf239144b9399d06ae925637cf6634cf6bd131104184531bf67c01",
+      "size": 9456,
+      "source": "https://pypi.org/pypi/blinker/1.8.2/json"
+    },
+    {
+      "name": "itsdangerous",
+      "version": "2.2.0",
+      "path": "wheels/itsdangerous-2.2.0-py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/04/96/92447566d16df59b2a776c0fb82dbc4d9e07cd95062562af01e408583fc4/itsdangerous-2.2.0-py3-none-any.whl",
+      "sha256": "c6242fc49e35958c8b15141343aa660db5fc54d4f13a1db01a3f5891b98700ef",
+      "size": 16234,
+      "source": "https://pypi.org/pypi/itsdangerous/2.2.0/json"
+    },
+    {
+      "name": "importlib-metadata",
+      "version": "8.5.0",
+      "path": "wheels/importlib_metadata-8.5.0-py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/a0/d9/a1e041c5e7caa9a05c925f4bdbdfb7f006d1f74996af53467bc394c97be7/importlib_metadata-8.5.0-py3-none-any.whl",
+      "sha256": "45e54197d28b7a7f1559e60b95e7c567032b602131fbd588f1497f47880aa68b",
+      "size": 26514,
+      "source": "https://pypi.org/pypi/importlib-metadata/8.5.0/json"
+    },
+    {
+      "name": "zipp",
+      "version": "3.20.2",
+      "path": "wheels/zipp-3.20.2-py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/62/8b/5ba542fa83c90e09eac972fc9baca7a88e7e7ca4b221a89251954019308b/zipp-3.20.2-py3-none-any.whl",
+      "sha256": "a817ac80d6cf4b23bf7f2828b7cabf326f15a001bea8b1f9b49631780ba28350",
+      "size": 9200,
+      "source": "https://pypi.org/pypi/zipp/3.20.2/json"
+    },
+    {
+      "name": "et-xmlfile",
+      "version": "2.0.0",
+      "path": "wheels/et_xmlfile-2.0.0-py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/c1/8b/5fe2cc11fee489817272089c4203e679c63b570a5aaeb18d852ae3cbba6a/et_xmlfile-2.0.0-py3-none-any.whl",
+      "sha256": "7a91720bc756843502c3b7504c77b8fe44217c85c537d85037f0f536151b2caa",
+      "size": 18059,
+      "source": "https://pypi.org/pypi/et-xmlfile/2.0.0/json"
+    },
+    {
+      "name": "six",
+      "version": "1.17.0",
+      "path": "wheels/six-1.17.0-py2.py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/b7/ce/149a00dd41f10bc29e5921b496af8b574d8413afcd5e30dfa0ed46c2cc5e/six-1.17.0-py2.py3-none-any.whl",
+      "sha256": "4721f391ed90541fddacab5acf947aa0d3dc7d27b2e1e8eda2be8970586c3274",
+      "size": 11050,
+      "source": "https://pypi.org/pypi/six/1.17.0/json"
+    },
+    {
+      "name": "colorama",
+      "version": "0.4.6",
+      "path": "wheels/colorama-0.4.6-py2.py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/d1/d6/3965ed04c63042e047cb6a3e6ed1a63a35087b6a609aa3a15ed8ac56c221/colorama-0.4.6-py2.py3-none-any.whl",
+      "sha256": "4f1d9991f5acc0ca119f9d443620b77f9d6b33703e51011c16baf57afb285fc6",
+      "size": 25335,
+      "source": "https://pypi.org/pypi/colorama/0.4.6/json"
+    },
+    {
+      "name": "pip",
+      "version": "24.3.1",
+      "path": "wheels/pip-24.3.1-py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/ef/7d/500c9ad20238fcfcb4cb9243eede163594d7020ce87bd9610c9e02771876/pip-24.3.1-py3-none-any.whl",
+      "sha256": "3790624780082365f47549d032f3770eeb2b1e8bd1f7b2e02dace1afa361b4ed",
+      "size": 1822182,
+      "source": "https://pypi.org/pypi/pip/24.3.1/json"
+    },
+    {
+      "name": "setuptools",
+      "version": "59.8.0",
+      "path": "wheels/setuptools-59.8.0-py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/8d/25/88b377b99ffb4ad0fc44ff5735fd6be605b2183f743d1ff5c10b7790cea5/setuptools-59.8.0-py3-none-any.whl",
+      "sha256": "608a7885b664342ae9fafc43840b29d219c5a578876f6f7e00c4e2612160587f",
+      "size": 952779,
+      "source": "https://pypi.org/pypi/setuptools/59.8.0/json"
+    },
+    {
+      "name": "PyInstaller",
+      "version": "4.10",
+      "path": "wheels/pyinstaller-4.10-py3-none-win_amd64.whl",
+      "url": "https://files.pythonhosted.org/packages/96/9e/6dbf706e8110a442c840d93d501acbf99040cc79d162018b3dedf17537c1/pyinstaller-4.10-py3-none-win_amd64.whl",
+      "sha256": "0dcaf6557cdb2da763c46e06e95a94a7634ab03fb09d91bc77988b01ee05c907",
+      "size": 1957160,
+      "source": "https://pypi.org/pypi/PyInstaller/4.10/json"
+    },
+    {
+      "name": "pyinstaller-hooks-contrib",
+      "version": "2022.3",
+      "path": "wheels/pyinstaller_hooks_contrib-2022.3-py2.py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/0e/80/5de7a4f1c5f01476e4c79ccc2dc58752c15a004b466972a1fcc88f4e3e17/pyinstaller_hooks_contrib-2022.3-py2.py3-none-any.whl",
+      "sha256": "9765e68552803327d58f6c5eca970bb245b7cdf073e2f912a2a3cb50360bc2d8",
+      "size": 227145,
+      "source": "https://pypi.org/pypi/pyinstaller-hooks-contrib/2022.3/json"
+    },
+    {
+      "name": "altgraph",
+      "version": "0.17.4",
+      "path": "wheels/altgraph-0.17.4-py2.py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/4d/3f/3bc3f1d83f6e4a7fcb834d3720544ca597590425be5ba9db032b2bf322a2/altgraph-0.17.4-py2.py3-none-any.whl",
+      "sha256": "642743b4750de17e655e6711601b077bc6598dbfa3ba5fa2b2a35ce12b508dff",
+      "size": 21212,
+      "source": "https://pypi.org/pypi/altgraph/0.17.4/json"
+    },
+    {
+      "name": "pefile",
+      "version": "2023.2.7",
+      "path": "wheels/pefile-2023.2.7-py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/55/26/d0ad8b448476d0a1e8d3ea5622dc77b916db84c6aa3cb1e1c0965af948fc/pefile-2023.2.7-py3-none-any.whl",
+      "sha256": "da185cd2af68c08a6cd4481f7325ed600a88f6a813bad9dea07ab3ef73d8d8d6",
+      "size": 71791,
+      "source": "https://pypi.org/pypi/pefile/2023.2.7/json"
+    },
+    {
+      "name": "pywin32-ctypes",
+      "version": "0.2.2",
+      "path": "wheels/pywin32_ctypes-0.2.2-py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/a4/bc/78b2c00cc64c31dbb3be42a0e8600bcebc123ad338c3b714754d668c7c2d/pywin32_ctypes-0.2.2-py3-none-any.whl",
+      "sha256": "bf490a1a709baf35d688fe0ecf980ed4de11d2b3e37b51e5442587a75d9957e7",
+      "size": 30152,
+      "source": "https://pypi.org/pypi/pywin32-ctypes/0.2.2/json"
+    },
+    {
+      "name": "Python installer",
+      "version": "3.8.10",
+      "path": "installers/python-3.8.10-amd64.exe",
+      "url": "https://www.python.org/ftp/python/3.8.10/python-3.8.10-amd64.exe",
+      "sha256": "7628244cb53408b50639d2c1287c659f4e29d3dfdb9084b11aed5870c0c6a48a",
+      "size": 28296784,
+      "source": "https://www.python.org/downloads/release/python-3810/",
+      "published_md5": "62cf1a12a5276b0259e8761d4cf4fe42"
+    },
+    {
+      "name": "ungoogled-chromium",
+      "version": "109.0.5414.120-1.1",
+      "path": "tools/ungoogled-chromium_109.0.5414.120-1.1_windows_x64.zip",
+      "url": "https://github.com/ungoogled-software/ungoogled-chromium-windows/releases/download/109.0.5414.120-1.1/ungoogled-chromium_109.0.5414.120-1.1_windows_x64.zip",
+      "sha256": "655b53273ef0b35fa2db5d224af8039131e254296e51a8618f26088ae5e57cba",
+      "size": 116550704,
+      "source": "https://raw.githubusercontent.com/ungoogled-software/ungoogled-chromium-binaries/master/config/platforms/windows/64bit/109.0.5414.120-1.ini"
+    }
+  ]
+}

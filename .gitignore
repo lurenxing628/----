@@ -6,6 +6,10 @@ __pycache__/
 .ruff_cache/
 .Python
 .venv/
+.venv-win7-build/
+# Verified external build materials; reproduce with scripts/prepare_win7_offline.py.
+/offline/
+/tools/ungoogled-chromium_109*.zip
 venv/
 env/
 

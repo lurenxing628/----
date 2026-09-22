@@ -29,3 +29,4 @@ APS 排产系统 · Win7 x64 绿色便携版
 
 启动失败时，查看 user-data\logs\launcher.log 和 aps_launch_error.txt。
 排产系统.exe 是后台服务；日常启动请使用上述 bat 文件。
+实机验证请填写同目录 WIN7_ACCEPTANCE.txt，包含业务操作、备份恢复和搬迁检查。

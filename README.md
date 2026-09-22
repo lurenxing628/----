@@ -42,12 +42,13 @@ py -3.8 -m venv .venv
 
 ### 绿色便携版交付
 
-- Win7 x64 / Python 3.8 / Windows PowerShell 5.1 打包机运行 `build_win7_portable.bat`，生成 `dist/APS_Portable_Win7_x64.zip` 及 SHA-256 校验文件，无需 Inno Setup。
+- 联网准备机运行 `python scripts/prepare_win7_offline.py download`，把源码与 `offline/win7/` 一起带到 Win7 SP1 x64 / PowerShell 5.1 打包机；执行 `setup_win7_build.bat` 后运行 `build_win7_portable.bat`，生成 `dist/APS_Portable_Win7_x64.zip` 及 SHA-256 校验文件，无需 Inno Setup。
 - 目标机完整解压后双击 `启动_排产系统_Chrome.bat`；无需管理员安装，也无需选择本地账户或域账户。
 - 数据库、备份、日志和浏览器配置统一放在便携目录内的 `user-data/`；目录必须对当前账户可写，同一份数据一次只允许一个实例使用。
 - `aps-portable.txt` 标记阻止便携版读取旧安装的注册表目录及数据路径环境变量；旧数据通过系统备份/恢复转入，首次启动不会自动迁移旧库。
 - Chrome109 运行时只保证打开 APS 本地页面，不承诺完整桌面 Chrome 能力。
 - 构建、升级、数据迁移与 PowerShell 5.1 编码约定见 `DELIVERY_WIN7.md`。
+- 构建依赖锁定在 `requirements-win7-build.txt`；随包 `WIN7_ACCEPTANCE.txt` 提供实机验收及记录表。只拿 GitHub 源码不能离线出包，须先备齐上述材料。
 - 原双安装包保留为显式 `-Installer` 维护入口，历史安装版说明见 `installer/README_WIN7_INSTALLER.md`。
 
 ## 开发与质量门禁

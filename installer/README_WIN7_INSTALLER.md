@@ -14,7 +14,7 @@
 - **Windows 7 x64（建议 SP1）**
 - **Python 3.8.x x64**
 - **PyInstaller 4.10**（必须严格 4.10，不是任意 4.x）
-- **离线 Python 依赖已安装完整**：打包前必须在打包机的 Python 3.8 环境中安装 `requirements.txt`、`requirements-dev.txt` 和 `requirements-optimizer-lite-win7.txt`。当前图分析默认开启，`requirements-optimizer-lite-win7.txt` 中的 `networkx==3.1` 必须存在；`build_win7_onedir.bat` 的 `--hidden-import networkx` 只负责把已安装的 NetworkX 带进包里，不会自动联网下载。
+- **离线 Python 依赖已安装完整**：按 `DELIVERY_WIN7.md` 准备离线材料，使用独立构建环境安装 `requirements-win7-build.txt`；不要混入 `requirements-dev.txt`。当前图分析默认开启，锁定清单包含 `networkx==3.1`，打包脚本还会核对仓库附带的 NetworkX wheel。显式安装版命令需先激活 `.venv-win7-build`。
 - **Inno Setup 6.x（Unicode）**：需要 `ISCC.exe`
 - 浏览器运行时包 / legacy 全量包额外需要以下之一：
   - `tools\Chrome.109.0.5414.120.x64\chrome.exe`
@@ -23,7 +23,7 @@
 离线安装依赖示例：
 
 ```bat
-python -m pip install --no-index --find-links C:\wheelhouse -r requirements.txt -r requirements-dev.txt -r requirements-optimizer-lite-win7.txt
+python -m pip install --no-index --find-links offline\win7\wheels --require-hashes -r requirements-win7-build.txt
 ```
 
 ## 目录约定

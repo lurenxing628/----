@@ -14,6 +14,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 MARKER = "aps-portable.txt"
 LAUNCHER = "启动_排产系统_Chrome.bat"
 README = "README_PORTABLE.txt"
+ACCEPTANCE = "WIN7_ACCEPTANCE.txt"
 ARCHIVE_ROOT = "APS_Portable"
 REQUIRED_FILES = (
     "排产系统.exe", "python38.dll", "base_library.zip", "schema.sql",
@@ -51,8 +52,9 @@ def prepare_portable_directory(dist_dir: Path) -> None:
     payload_files(dist_dir)
     shutil.copyfile(REPO_ROOT / "assets" / LAUNCHER, dist_dir / LAUNCHER)
     # Win7 Notepad needs a BOM to recognize the Chinese readme reliably.
-    readme_text = (REPO_ROOT / "assets" / README).read_text(encoding="utf-8")
-    (dist_dir / README).write_text(readme_text, encoding="utf-8-sig")
+    for name in (README, ACCEPTANCE):
+        text = (REPO_ROOT / "assets" / name).read_text(encoding="utf-8")
+        (dist_dir / name).write_text(text, encoding="utf-8-sig")
     (dist_dir / MARKER).write_text("APS portable directory, format 1. Do not remove this file.\n", encoding="ascii")
 
 
@@ -62,7 +64,7 @@ def write_portable_archive(dist_dir: Path, output: Path) -> str:
     if dist_dir == output or dist_dir in output.parents:
         raise ValueError("ZIP output must be outside the portable payload directory")
     files = payload_files(dist_dir)
-    for name in (MARKER, LAUNCHER, README):
+    for name in (MARKER, LAUNCHER, README, ACCEPTANCE):
         if not (dist_dir / name).is_file() or (dist_dir / name).stat().st_size == 0:
             raise ValueError("Portable directory is not prepared: " + name)
     output.parent.mkdir(parents=True, exist_ok=True)
