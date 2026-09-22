@@ -10,7 +10,7 @@ from core.models.workbench_command import WorkbenchCommandRejected, canonical_js
 from core.services.common.excel_templates import _sanitize_export_cell
 from core.services.report.exporters.xlsx import _append_write_only_row
 from core.services.report.report_engine import ReportExport
-from core.services.workbench.report.exports import export_stamp
+from core.services.workbench.facts.export_names import export_stamp
 
 COLUMNS = (("part_no", "图号"), ("part_name", "零件名称"), ("sequence", "工序号"),
            ("operation_label", "工序名称"), ("template_operation_ref", "模板工序编号"),

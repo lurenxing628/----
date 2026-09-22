@@ -96,7 +96,7 @@ def request_case(db_path):
 @contextmanager
 def http_server(app):
     server = make_server("127.0.0.1", 0, app, threaded=True, request_handler=WorkbenchRequestHandler)
-    assert server.server_port not in (63938, 51093)
+    assert 0 < server.server_port == server.socket.getsockname()[1]
     server.daemon_threads = False
     thread = threading.Thread(target=server.serve_forever)
     thread.start()
@@ -147,7 +147,7 @@ def production_server(app, monkeypatch):
         assert ready.wait(10) and not errors, errors
         server = created[0]
         assert server.RequestHandlerClass is WorkbenchRequestHandler
-        assert server.server_port not in (63938, 51093)
+        assert 0 < server.server_port == server.socket.getsockname()[1]
         yield server.server_port
     finally:
         if created:

@@ -102,7 +102,6 @@ def test_preflight_run_status_real_factory_http_keeps_admission_separate(status_
 
     monkeypatch.setattr(factory, "get_connection", connect)
     with http_server(app) as port:
-        assert port not in (53144, 51093, 56264, 52155, 51733)
         status, packet = http_json(port, BASE + "/preflight", settings)
         assert status == 200, packet
         data = packet["data"]

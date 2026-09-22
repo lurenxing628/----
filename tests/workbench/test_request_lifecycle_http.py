@@ -5,6 +5,7 @@ import sqlite3
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from flask import Response, abort, g, stream_with_context
@@ -13,6 +14,46 @@ from tests.workbench.request_lifecycle_support import PATHS, http_json, http_ser
 from tests.workbench.request_lifecycle_support import request_case as _request_case  # noqa: F401
 from web.bootstrap.launcher_paths import db_scope_lock_path
 from web.bootstrap.launcher_runtime_lock import acquire_runtime_lock, release_runtime_lock
+
+
+@pytest.mark.parametrize("port", [63938, 51093])
+@pytest.mark.parametrize("production", [False, True])
+def test_os_assigned_available_ports_are_not_rejected_by_old_examples(port, production, monkeypatch):
+    from tests.workbench import request_lifecycle_support as support
+    from web.bootstrap import factory
+
+    stopped = threading.Event()
+    closed = []
+
+    class Server:
+        server_port = port
+        socket = SimpleNamespace(getsockname=lambda: ("127.0.0.1", port))
+        RequestHandlerClass = support.WorkbenchRequestHandler
+
+        def serve_forever(self):
+            assert stopped.wait(10)
+
+        def shutdown(self):
+            stopped.set()
+
+        def server_close(self):
+            closed.append(True)
+
+    def make(host, requested_port, app, **kwargs):
+        assert (host, requested_port) == ("127.0.0.1", 0)
+        return Server()
+
+    def serve(app, host, requested_port):
+        factory.make_server(host, requested_port, app).serve_forever()
+
+    monkeypatch.setattr(support, "make_server", make)
+    monkeypatch.setattr(factory, "make_server", make)
+    monkeypatch.setattr(factory, "serve_runtime_app", serve)
+    context = support.production_server(object(), monkeypatch) if production else support.http_server(object())
+    with context as assigned:
+        assert assigned == port
+        assert not closed
+    assert closed == [True]
 
 
 @pytest.mark.parametrize("rollback", [False, True])

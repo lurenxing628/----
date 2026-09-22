@@ -299,9 +299,10 @@ class WorkbenchAssetsBuildTest(unittest.TestCase):
     def test_rebuild_removes_only_retired_generated_assets(self):
         target = self.root / "retired-output"
         shutil.copytree(self.output, target)
-        retired = [target / "app/SystemSampleControls.js", target / "app/styles/retired.css",
-                   target / "assets/foundation-deadbeefdeadbeef.js"]
-        preserved = [target / "app/operator-note.txt", target / "assets/manual.js"]
+        app, assets = target / "app", target / "assets"
+        retired = [app / "SystemSampleControls.js", app / "styles" / "retired.css",
+                   assets / "foundation-deadbeefdeadbeef.js"]
+        preserved = [app / "operator-note.txt", assets / "manual.js"]
         for file in retired + preserved:
             file.parent.mkdir(parents=True, exist_ok=True)
             file.write_text("manual fixture", encoding="utf-8")

@@ -76,7 +76,7 @@ def test_catalog_rejects_implicit_finish_date_to_window_conversion(report_api):
 
 
 def test_export_filename_stamp_is_date_underscore_hour_minute():
-    from core.services.workbench.report.exports import export_stamp
+    from core.services.workbench.facts.export_names import export_stamp
 
     assert export_stamp("2026-09-21T16:46:05") == "2026-09-21_1646"
     assert export_stamp("2026-01-02T03:04:59") == "2026-01-02_0304"

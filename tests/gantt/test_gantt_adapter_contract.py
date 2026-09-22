@@ -18,7 +18,7 @@ for (const kind of ['official','scenario']) {
     const minus=view.nodes.find(node=>node.type==='button' && node.props['aria-label']==='缩小时间轴');
     assert.strictEqual(!!plus.props.disabled,zoom===1024);
     assert.strictEqual(!!minus.props.disabled,zoom===1);
-    plus.props.onClick(); minus.props.onClick();
+    plus.props.onClick({currentTarget:plus}); minus.props.onClick({currentTarget:minus});
     const values=h.updates().filter(item=>item.name==='PlanGantt' && item.index===2).map(item=>item.value);
     h.equal(values,[Math.min(1024,zoom*2),Math.max(1,zoom/2)]);
     for (const node of view.nodes.filter(node=>node.props['data-plan-task'])) {

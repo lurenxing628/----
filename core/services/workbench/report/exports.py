@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import csv
 import io
-from datetime import datetime
 
 import openpyxl
 from openpyxl.cell import WriteOnlyCell
@@ -15,24 +14,9 @@ from core.services.common.excel_templates import _sanitize_export_cell
 from core.services.report.exporters.xlsx import SUMMARY_IDENTITY_LABELS, _append_write_only_row
 from core.services.report.report_engine import ReportExport
 from core.services.workbench.facts.execution_projection import COMPLETION_BASIS_TEXT, DATA_QUALITY_TEXT
+from core.services.workbench.facts.export_names import export_stamp
 
 # 导出标题与列名都是用户直接看到的文字，统一走词表，不再暴露专题代号。
-
-
-def export_stamp(as_of):
-    """文件名里的数据截至时间写成 2026-09-21_1646，不带秒，也不带 T 和冒号。
-
-    as_of 形如 2026-09-21T16:46:05（现场本地时间，不带时区）。
-    """
-    if type(as_of) is not str:
-        raise ValueError("导出文件名需要形如 2026-09-21T16:46:05 的数据截至时间。")
-    try:
-        parsed = datetime.strptime(as_of, "%Y-%m-%dT%H:%M:%S")
-    except ValueError:
-        raise ValueError("导出文件名需要形如 2026-09-21T16:46:05 的数据截至时间。") from None
-    if parsed.strftime("%Y-%m-%dT%H:%M:%S") != as_of:
-        raise ValueError("导出文件名需要形如 2026-09-21T16:46:05 的数据截至时间。")
-    return parsed.strftime("%Y-%m-%d_%H%M")
 
 
 TOPIC_TITLES = {"delivery": "工序完成情况", "records": "报工记录", "machines": "设备工时",
