@@ -2,6 +2,11 @@
 
 2026-09-18 旧排产配置页随旧路由层删除，说明书页与原文下载从 scheduler_config 抽到这里，
 端点名保持 ``scheduler.config_manual_page`` / ``scheduler.config_manual_download``。
+
+2026-09-21 “本页说明”通道改为按工作台视图 id 工作：顶栏「帮助」带 ``page=<视图 id>`` 和
+``src=<返回地址>`` 打开本页时，先按 ``page_manuals_registry`` 登记的标题在说明书原文里截取对应
+章节（标题到下一个同级或更高级标题之间的正文），并给出整本说明书的锚点链接；``page`` 没登记或
+章节读不到时退化为整本说明书并用页面提示说明，不报错。
 """
 
 from __future__ import annotations
@@ -13,18 +18,16 @@ from typing import Any, Dict, List, Optional, Tuple
 from flask import current_app, flash, g, redirect, render_template, request, send_file, url_for
 
 from core.services.workbench.messages import beijing_text
-from web.manual_src_security import (
-    get_full_manual_section_url,
-    get_manual_url,
-    normalize_manual_src_context,
-)
-from web.viewmodels.page_manuals import (
-    MANUAL_ENTRY_ENDPOINTS,
-    build_page_fallback_text,
-    build_page_manual_bundle,
-)
+from web.manual_src_security import normalize_manual_src_context
+from web.viewmodels.page_manuals_registry import manual_entry
 
 from .legacy_blueprints import scheduler_bp as bp
+from .legacy_presentation import manual_blocks
+
+PAGE_NOT_REGISTERED_WARNING = "这一页还没有单独的说明，已经打开整本说明书。"
+PAGE_SECTION_MISSING_WARNING = "这一页的说明章节暂时读不到，已经打开整本说明书。"
+FULL_MANUAL_LABEL = "阅读整本说明书"
+FULL_MANUAL_TITLE = "系统使用说明"
 
 
 def _resolve_scheduler_manual_md_path() -> Tuple[Optional[str], List[str]]:
@@ -75,21 +78,31 @@ def _build_manual_page_url(raw_src: Optional[str], raw_page: Optional[str]) -> s
     return url_for("scheduler.config_manual_page", **values)
 
 
-def _normalize_scheduler_manual_args(raw_src: Optional[str], raw_page: Optional[str]) -> Tuple[Optional[str], Optional[str], Optional[Dict[str, Any]], Optional[str]]:
+def _build_full_manual_section_url(link_src: str, anchor: str) -> str:
+    """整本说明书里对应章节的锚点链接；没有锚点时返回空串，模板据此不显示链接。"""
+    if not anchor:
+        return ""
+    return _build_manual_page_url(link_src, None) + "#" + anchor
+
+
+def _normalize_scheduler_manual_args(
+    raw_src: Optional[str], raw_page: Optional[str]
+) -> Tuple[Optional[str], Optional[str], Optional[Dict[str, Any]], Optional[str]]:
+    """返回 (安全的返回地址, 已登记的视图 id, 登记条目, 页面提示)；未登记的 page 不回显原文。"""
     safe_src = normalize_manual_src_context(raw_src)
-    bundle = build_page_manual_bundle(raw_page) if raw_page else None
-    safe_page = raw_page if bundle else None
+    entry = manual_entry(raw_page) if raw_page else None
+    safe_page = entry["view"] if entry else None
     page_warning = None
-    if raw_page and safe_page is None:
-        page_warning = "这一页还没有单独的说明，已经打开整本说明书。"
-    return safe_src, safe_page, bundle, page_warning
+    if raw_page and entry is None:
+        page_warning = PAGE_NOT_REGISTERED_WARNING
+    return safe_src, safe_page, entry, page_warning
 
 
-def _resolve_manual_entry_endpoint(manual_id: Optional[str]) -> Optional[str]:
-    target = str(manual_id or "").strip()
-    if not target:
-        return None
-    return MANUAL_ENTRY_ENDPOINTS.get(target)
+def _workbench_view_url(view_id: str) -> str:
+    """视图 id 对应的工作台地址：试调是独立路径，其余都是 ``/workbench?view=<id>``。"""
+    if view_id == "trial":
+        return url_for("workbench.trial")
+    return url_for("workbench.index", view=view_id)
 
 
 def _format_manual_mtime(manual_path: str) -> Optional[str]:
@@ -101,6 +114,13 @@ def _format_manual_mtime(manual_path: str) -> Optional[str]:
 
 
 def _load_manual_text_and_mtime(manual_path: Optional[str], candidates: List[str]) -> Tuple[str, Optional[str]]:
+    """旧签名：只返回 (正文或错误提示, 文件时间)。路由用 ``_load_manual_source``，这里留给既有调用方。"""
+    manual_text, manual_mtime, _available = _load_manual_source(manual_path, candidates)
+    return manual_text, manual_mtime
+
+
+def _load_manual_source(manual_path: Optional[str], candidates: List[str]) -> Tuple[str, Optional[str], bool]:
+    """返回 (正文或错误提示, 文件时间, 说明书是否可用)；不可用时正文就是给用户看的提示句。"""
     if not manual_path:
         if not candidates:
             try:
@@ -110,21 +130,22 @@ def _load_manual_text_and_mtime(manual_path: Optional[str], candidates: List[str
             return (
                 "找不到说明书文件：本机安装信息不完整。请联系维护人员检查安装目录。",
                 None,
+                False,
             )
 
         try:
             current_app.logger.warning("系统使用说明文件不存在（candidates=%s）", candidates)
         except Exception:
             g._aps_scheduler_manual_warning_status = "log_warning_failed"
-        return "找不到说明书文件，可能安装包里没带或文件被删了。请联系维护人员。", None
+        return "找不到说明书文件，可能安装包里没带或文件被删了。请联系维护人员。", None, False
 
     try:
         with open(manual_path, encoding="utf-8") as f:
             manual_text = f.read()
-        return manual_text, _format_manual_mtime(manual_path)
+        return manual_text, _format_manual_mtime(manual_path), True
     except Exception:
         current_app.logger.exception("读取系统使用说明失败")
-        return "说明书加载失败。请刷新重试；仍不行请联系维护人员。", None
+        return "说明书加载失败。请刷新重试；仍不行请联系维护人员。", None, False
 
 
 def _build_manual_download_url(manual_path: Optional[str], safe_src: Optional[str], safe_page: Optional[str]) -> Optional[str]:
@@ -139,67 +160,109 @@ def _build_manual_download_url(manual_path: Optional[str], safe_src: Optional[st
     return url_for("scheduler.config_manual_download", **download_values)
 
 
-def _build_related_manual_links(related_manuals: List[Dict[str, Any]], link_src: str) -> List[Dict[str, Any]]:
+def _manual_section_map(manual_text: str) -> Dict[str, Dict[str, Any]]:
+    """把说明书按标题切块：{标题文字: {"anchor", "level", "source"}}。
+
+    每一段的 source 从该标题起，一直收到下一个同级或更高级标题之前，所以子标题会跟着父章节一起
+    显示。同名标题只认第一个；注册表测试保证登记的标题在说明书里唯一。
+    """
+    blocks = manual_blocks(manual_text)
+    sections: Dict[str, Dict[str, Any]] = {}
+    for index, block in enumerate(blocks):
+        title = block["title"]
+        if not title or title in sections:
+            continue
+        parts = [block["source"]]
+        for follower in blocks[index + 1:]:
+            if follower["level"] <= block["level"]:
+                break
+            parts.append(follower["source"])
+        sections[title] = {"anchor": block["anchor"], "level": block["level"], "source": "".join(parts)}
+    return sections
+
+
+def _build_related_manual_links(
+    entry: Dict[str, Any], link_src: str, sections: Dict[str, Dict[str, Any]]
+) -> List[Dict[str, Any]]:
     out: List[Dict[str, Any]] = []
-    for item in related_manuals:
-        entry_endpoint = _resolve_manual_entry_endpoint(item.get("manual_id"))
-        enriched = dict(item)
-        enriched["entry_endpoint"] = entry_endpoint
-        enriched["url"] = get_manual_url(endpoint=entry_endpoint, src=link_src) if entry_endpoint else None
-        enriched["full_manual_section_url"] = (
-            get_full_manual_section_url(endpoint=entry_endpoint, src=link_src) if entry_endpoint else ""
-        )
-        enriched["full_manual_section_url"] = enriched["full_manual_section_url"] or ""
-        out.append(enriched)
+    for view_id in entry.get("related", ()):
+        related = manual_entry(view_id)
+        if related is None:
+            raise ValueError(f"page_manuals_registry related view is not registered: {view_id!r}")
+        section = sections.get(related["heading"])
+        out.append({
+            "view": view_id,
+            "manual_id": view_id,
+            "title": related["title"],
+            "summary": related["summary"],
+            "url": _build_manual_page_url(link_src, view_id),
+            "full_manual_section_url": _build_full_manual_section_url(link_src, section["anchor"]) if section else "",
+            "preview_sections": [],
+        })
     return out
 
 
-def _resolve_page_back_action(raw_page: str, back_url: Optional[str]) -> Tuple[str, str]:
+def _resolve_page_back_action(entry: Dict[str, Any], back_url: Optional[str]) -> Tuple[str, str]:
+    """有站内 src 就回刚才页面；没有就回这个视图本身，按钮文字带视图名。"""
     if back_url:
         return back_url, "返回刚才页面"
-    if raw_page.startswith("scheduler."):
-        return url_for("scheduler.batches_page"), "返回排产首页"
-    return url_for("dashboard.index"), "返回首页"
+    return _workbench_view_url(entry["view"]), "返回" + entry["title"]
 
 
 def _build_manual_page_view_state(
     *,
-    raw_page: str,
-    bundle: Optional[Dict[str, Any]],
+    entry: Optional[Dict[str, Any]],
     manual_text: str,
+    manual_available: bool,
     link_src: str,
     back_url: Optional[str],
-    show_scheduler_nav: bool,
 ) -> Dict[str, Any]:
-    base_state: Dict[str, Any] = {
+    state: Dict[str, Any] = {
         "manual_mode": "full",
         "current_manual": None,
         "related_manuals": [],
         "fallback_text": manual_text,
         "full_manual_section_url": "",
-        "page_title": "系统使用说明",
+        "page_title": FULL_MANUAL_TITLE,
         "download_button_label": "下载说明书原文",
         "back_button_label": "返回刚才页面",
         "back_url": back_url,
-        "show_scheduler_nav": show_scheduler_nav,
+        "page_warning": None,
     }
-    if not bundle:
-        return base_state
+    if entry is None:
+        return state
 
-    current_manual = bundle["current_manual"]
-    resolved_back_url, back_button_label = _resolve_page_back_action(raw_page, back_url)
-    return {
+    state["back_url"], state["back_button_label"] = _resolve_page_back_action(entry, back_url)
+    sections = _manual_section_map(manual_text) if manual_available else {}
+    section = sections.get(entry["heading"])
+    if section is None:
+        # 说明书读不到时正文已经是错误提示，不再叠加提示；能读到却找不到标题说明注册表和原文脱节，
+        # 记日志并退化为整本，让用户至少能看到全文。
+        if manual_available:
+            current_app.logger.warning(
+                "page manual heading %r for view %r not found in scheduler manual", entry["heading"], entry["view"]
+            )
+            state["page_warning"] = PAGE_SECTION_MISSING_WARNING
+        return state
+
+    state.update({
         "manual_mode": "page",
-        "current_manual": current_manual,
-        "related_manuals": _build_related_manual_links(bundle["related_manuals"], link_src),
-        "fallback_text": build_page_fallback_text(raw_page, bundle=bundle) or manual_text,
-        "full_manual_section_url": get_full_manual_section_url(endpoint=raw_page, src=link_src) or "",
-        "page_title": f"本页说明 - {current_manual['title']}",
+        "current_manual": {
+            "view": entry["view"],
+            "manual_id": entry["view"],
+            "title": entry["title"],
+            "summary": entry["summary"],
+            "heading": entry["heading"],
+            "anchor": section["anchor"],
+            "full_manual_label": FULL_MANUAL_LABEL,
+        },
+        "related_manuals": _build_related_manual_links(entry, link_src, sections),
+        "fallback_text": section["source"],
+        "full_manual_section_url": _build_full_manual_section_url(link_src, section["anchor"]),
+        "page_title": "本页说明 - " + entry["title"],
         "download_button_label": "下载整本说明书",
-        "back_button_label": back_button_label,
-        "back_url": resolved_back_url,
-        "show_scheduler_nav": False,
-    }
+    })
+    return state
 
 
 @bp.get("/scheduler/config/manual")
@@ -207,38 +270,38 @@ def config_manual_page():
     """
     系统使用说明（面向计划/工艺新手）。
     - 页内把 Markdown 转成 HTML 后展示（转换器在 legacy_presentation，不新增依赖）
+    - ``page=<视图 id>`` 时先显示该视图的章节，并给整本说明书的锚点
     - 提供下载原始 md
     """
     raw_src = (request.args.get("src") or "").strip()
     raw_page = (request.args.get("page") or "").strip()
-    safe_src, safe_page, bundle, page_warning = _normalize_scheduler_manual_args(raw_src, raw_page)
-    if page_warning:
-        flash(page_warning, "warning")
+    safe_src, safe_page, entry, page_warning = _normalize_scheduler_manual_args(raw_src, raw_page)
     link_src = safe_src or ""
     back_url = _resolve_manual_back_url(safe_src)
-    show_scheduler_nav = not back_url or back_url.startswith("/scheduler")
     manual_path, candidates = _resolve_scheduler_manual_md_path()
-    manual_text, manual_mtime = _load_manual_text_and_mtime(manual_path, candidates)
+    manual_text, manual_mtime, manual_available = _load_manual_source(manual_path, candidates)
     download_url = _build_manual_download_url(manual_path, safe_src, safe_page)
     view_state = _build_manual_page_view_state(
-        raw_page=raw_page,
-        bundle=bundle,
+        entry=entry,
         manual_text=manual_text,
+        manual_available=manual_available,
         link_src=link_src,
         back_url=back_url,
-        show_scheduler_nav=show_scheduler_nav,
     )
+    for warning in (page_warning, view_state["page_warning"]):
+        if warning:
+            flash(warning, "warning")
 
     return render_template(
         'workbench/manual.html',
         title=view_state["page_title"],
         manual_mode=view_state["manual_mode"],
         manual_text=manual_text,
+        manual_available=manual_available,
         fallback_text=view_state["fallback_text"],
         manual_mtime=manual_mtime,
         download_url=download_url,
         back_url=view_state["back_url"],
-        show_scheduler_nav=view_state["show_scheduler_nav"],
         current_manual=view_state["current_manual"],
         related_manuals=view_state["related_manuals"],
         full_manual_section_url=view_state["full_manual_section_url"],
@@ -254,7 +317,7 @@ def config_manual_download():
     """
     raw_src = (request.args.get("src") or "").strip()
     raw_page = (request.args.get("page") or "").strip()
-    safe_src, safe_page, _bundle, _page_warning = _normalize_scheduler_manual_args(raw_src, raw_page)
+    safe_src, safe_page, _entry, _page_warning = _normalize_scheduler_manual_args(raw_src, raw_page)
     manual_path, candidates = _resolve_scheduler_manual_md_path()
     if not manual_path:
         if not candidates:

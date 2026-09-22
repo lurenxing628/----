@@ -1,11 +1,8 @@
-"""回归测试：守护系统使用说明书（static/docs/scheduler_manual.md）与 config_manual.js/模板的契约——必备口径与边界说明在场（排产历史不承诺导出/恢复、资源排班现场记录当前直接导入、截止日期是严格限制等）、逐表指南 12 张表逐一给出工作台入口、内部锚点全部命中、JS 过滤危险协议并对数字前缀 hash 不崩，且真实请求下整本/页面级两种说明书形态的 JSON 数据块与 noscript 回退正确。"""
+"""回归测试：守护系统使用说明书（static/docs/scheduler_manual.md）与说明书页的契约——必备口径在场（本次排产规则、排产检查五种结果、采用即锁定、试调不影响正式计划、备份恢复要重启等）、逐表指南 12 张表逐一给出工作台入口、内部锚点全部命中、旧 Excel 入口叫法和已退役页面不再出现，且真实请求下整本 / 页面级两种说明书形态渲染正确、恶意 Markdown 被转义、文件读不到时给出明确错误。"""
 
 from __future__ import annotations
 
-import json
-import os
 import re
-import subprocess
 from typing import Any, List, Set, Tuple
 
 from flask import url_for
@@ -47,11 +44,6 @@ def _find_repo_root() -> str:
     return REPO_ROOT_STR
 
 
-def _read(path: str) -> str:
-    with open(path, "r", encoding="utf-8") as f:
-        return f.read()
-
-
 def _slugify_heading(text: str) -> str:
     t = (text or "").strip()
     t = re.sub(r"`([^`]+)`", r"\1", t)
@@ -59,7 +51,7 @@ def _slugify_heading(text: str) -> str:
     t = re.sub(r"\*([^*]+)\*", r"\1", t)
     t = re.sub(r"^(\d+)\s*[\.．。]\s*", r"\1-", t)
     t = t.lower()
-    t = re.sub(r"[^\w\u4e00-\u9fa5-]+", "", t)
+    t = re.sub(r"[^\w一-龥-]+", "", t)
     t = re.sub(r"-+", "-", t).strip("-")
     return t or "section"
 
@@ -83,6 +75,13 @@ def _extract_internal_hashes(markdown_text: str) -> List[str]:
     return refs
 
 
+def _is_historical_legacy_entry_note(line: str, term: str) -> bool:
+    if term not in ("Excel 导入导出", "Excel导入导出"):
+        return False
+    # 「老资料」「旧入口」两个词就足以认出这是历史说明那一行。
+    return "老资料" in line and "旧入口" in line
+
+
 def _find_legacy_excel_entry_terms(markdown_text: str) -> List[str]:
     hits: List[str] = []
     for line_no, line in enumerate(markdown_text.splitlines(), start=1):
@@ -93,14 +92,6 @@ def _find_legacy_excel_entry_terms(markdown_text: str) -> List[str]:
                 hits.append(f"{line_no}: {term} -> {line.strip()}")
                 break
     return hits
-
-
-def _is_historical_legacy_entry_note(line: str, term: str) -> bool:
-    if term not in ("Excel 导入导出", "Excel导入导出"):
-        return False
-    # 「老资料」「旧入口」两个词就足以认出这是历史说明那一行。原来还要求它含
-    # 「批量维护」，但那一行现在写的是各页真实按钮名（批量导入 / 报工文件）。
-    return "老资料" in line and "旧入口" in line
 
 
 def _find_heading_entry_line(markdown_text: str, section_name: str) -> str:
@@ -133,263 +124,19 @@ def _assert_manual_table_guide_entries(markdown_text: str) -> None:
     assert not missing_entry, "逐表指南的进入方式必须从工作台导航写起：\n" + "\n".join(missing_entry)
 
 
-def _run_hash_runtime_check(js_path: str, mode: str) -> dict:
-    node_code = r"""
-const fs = require("fs");
-
-const jsPath = String(process.env.APS_CONFIG_MANUAL_JS || "");
-const runtimeMode = String(process.env.APS_CONFIG_MANUAL_RUNTIME_MODE || "full");
-if (!jsPath) {
-  console.error("APS_CONFIG_MANUAL_JS missing");
-  process.exit(2);
-}
-const src = fs.readFileSync(jsPath, "utf8");
-const config = runtimeMode === "page"
-  ? {
-      mode: "page",
-      manualText: "",
-      currentManual: {
-        title: "甘特图",
-        summary: "页面模式摘要",
-        sections: [
-          { title: "进入前准备", body_md: "- 先选版本\n- 再选视角" },
-          { title: "视图切换", body_md: "- 设备视角看负荷\n- 人员视角看排班" },
-        ],
-      },
-      relatedManuals: [],
-    }
-  : {
-      mode: "full",
-      manualText: "## 1. 测试标题\n\n段落内容",
-      currentManual: null,
-      relatedManuals: [],
-    };
-
-function makeClassList() {
-  const bucket = new Set();
-  return {
-    add(cls) { bucket.add(String(cls)); },
-    remove(cls) { bucket.delete(String(cls)); },
-    contains(cls) { return bucket.has(String(cls)); },
-  };
-}
-
-const runtime = {
-  querySelectorCalls: 0,
-  scrolled: false,
-};
-const headingById = Object.create(null);
-const tocAnchors = [];
-
-const contentEl = {
-  id: "content",
-  innerHTML: "",
-  querySelectorAll(selector) {
-    if (selector !== "h2, h3, h4" && selector !== "h2, h3") return [];
-    const nodes = [];
-    const re = /<h([234])\s+id="([^"]+)">([\s\S]*?)<\/h\1>/g;
-    let m;
-    while ((m = re.exec(this.innerHTML))) {
-      const level = String(m[1] || "");
-      const id = String(m[2] || "");
-      const text = String(m[3] || "").replace(/<[^>]+>/g, "");
-      let el = headingById[id];
-      if (!el) {
-        el = {
-          id,
-          tagName: level === "2" ? "H2" : (level === "3" ? "H3" : "H4"),
-          textContent: text,
-          scrollIntoView() {
-            runtime.scrolled = true;
-          },
-        };
-        headingById[id] = el;
-      } else {
-        el.tagName = level === "2" ? "H2" : (level === "3" ? "H3" : "H4");
-        el.textContent = text;
-      }
-      nodes.push(el);
-    }
-    return nodes;
-  },
-};
-
-function createElement(tagName) {
-  const tag = String(tagName || "").toUpperCase();
-  const el = {
-    tagName: tag,
-    children: [],
-    attributes: {},
-    textContent: "",
-    className: "",
-    classList: makeClassList(),
-    addEventListener() {},
-    appendChild(child) {
-      this.children.push(child);
-    },
-    setAttribute(name, value) {
-      const k = String(name || "");
-      const v = String(value || "");
-      this.attributes[k] = v;
-      this[k] = v;
-    },
-    getAttribute(name) {
-      const k = String(name || "");
-      if (Object.prototype.hasOwnProperty.call(this, k)) return this[k];
-      if (Object.prototype.hasOwnProperty.call(this.attributes, k)) return this.attributes[k];
-      return null;
-    },
-  };
-  if (tag === "A") tocAnchors.push(el);
-  return el;
-}
-
-const tocListEl = {
-  id: "toc-list",
-  textContent: "",
-  children: [],
-  appendChild(child) {
-    this.children.push(child);
-  },
-};
-const tocToggleBtn = { id: "tocToggleBtn", addEventListener() {} };
-const tocEl = { id: "toc", classList: { toggle() {} } };
-
-const documentStub = {
-  readyState: "complete",
-  getElementById(id) {
-    const key = String(id || "");
-    if (key === "aps-config-manual-data") {
-      return { id: key, textContent: JSON.stringify(config) };
-    }
-    if (key === "content") return contentEl;
-    if (key === "toc-list") return tocListEl;
-    if (key === "tocToggleBtn") return tocToggleBtn;
-    if (key === "toc") return tocEl;
-    return headingById[key] || null;
-  },
-  querySelector(selector) {
-    runtime.querySelectorCalls += 1;
-    if (String(selector || "") === "#1-测试标题") {
-      throw new SyntaxError("invalid selector for leading digit id");
-    }
-    return null;
-  },
-  querySelectorAll(selector) {
-    if (String(selector || "") === ".manual-toc a") return tocAnchors;
-    return [];
-  },
-  createElement,
-  createDocumentFragment() {
-    return {
-      children: [],
-      appendChild(child) {
-        this.children.push(child);
-      },
-    };
-  },
-  addEventListener(_evt, cb) {
-    if (typeof cb === "function") cb();
-  },
-};
-
-global.document = documentStub;
-global.window = {
-  __APS_CONFIG_MANUAL__: config,
-  location: {
-    hash: runtimeMode === "page" ? "#%E8%BF%9B%E5%85%A5%E5%89%8D%E5%87%86%E5%A4%87" : "#1-%E6%B5%8B%E8%AF%95%E6%A0%87%E9%A2%98",
-  },
-};
-global.history = { pushState() {} };
-global.setTimeout = function (fn) {
-  if (typeof fn === "function") fn();
-  return 1;
-};
-
-let errorMsg = "";
-try {
-  eval(src);
-} catch (err) {
-  errorMsg = String((err && err.message) || err || "");
-}
-
-const hashId = decodeURIComponent(global.window.location.hash || "").slice(1);
-const activeMatched = tocAnchors.some((a) => {
-  return a.getAttribute("href") === ("#" + hashId) && a.classList.contains("active");
-});
-const targetExists = Boolean(headingById[hashId]);
-const contentOk = runtimeMode === "page"
-  ? contentEl.innerHTML.includes("甘特图") && contentEl.innerHTML.includes("页面模式摘要")
-  : contentEl.innerHTML.includes("测试标题");
-const ok = (!errorMsg) && targetExists && runtime.scrolled && activeMatched;
-process.stdout.write(JSON.stringify({
-  ok: ok && contentOk,
-  errorMsg,
-  targetExists,
-  scrolled: runtime.scrolled,
-  activeMatched,
-  querySelectorCalls: runtime.querySelectorCalls,
-  contentOk,
-}));
-"""
-    env = dict(os.environ)
-    env["APS_CONFIG_MANUAL_JS"] = js_path
-    env["APS_CONFIG_MANUAL_RUNTIME_MODE"] = mode
-    p = subprocess.run(
-        ["node", "-"],
-        input=node_code,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        env=env,
-    )
-    if p.returncode != 0:
-        raise RuntimeError(f"node 执行失败：rc={p.returncode} stderr={p.stderr[:500]!r}")
-    try:
-        return json.loads(p.stdout or "{}")
-    except Exception as e:
-        raise RuntimeError(f"node 输出解析失败：{e} stdout={p.stdout[:500]!r}")
-
-
 def _build_url(app, endpoint: str, **values: Any) -> str:
     with app.test_request_context():
         return url_for(endpoint, **values)
 
 
-def _extract_json_config(html_text: str) -> dict:
-    m = re.search(
-        r'<script id="aps-config-manual-data" type="application/json">([\s\S]*?)</script>',
-        html_text,
-        flags=re.S,
-    )
-    if not m:
-        raise RuntimeError("页面缺少 aps-config-manual-data JSON 数据块")
-    raw = (m.group(1) or "").strip()
-    if not raw:
-        raise RuntimeError("aps-config-manual-data JSON 数据块为空")
-    return json.loads(raw)
-
-
-def _extract_paragraph_containing(markdown_text: str, needle: str) -> str:
-    for paragraph in re.split(r"\n\s*\n", markdown_text):
-        if needle in paragraph:
-            return paragraph.strip()
-    raise AssertionError(f"说明书缺少段落：{needle}")
-
-
 def _extract_section(markdown_text: str, heading: str) -> str:
-    start = markdown_text.find(heading)
+    start = markdown_text.find(heading + "\n")
     assert start >= 0, f"说明书缺少章节：{heading}"
     heading_level = len(heading) - len(heading.lstrip("#"))
     rest = markdown_text[start + len(heading) :]
-
-    def _same_or_higher_heading(match: re.Match) -> bool:
-        return len(match.group(1)) <= heading_level
-
     next_heading = None
     for candidate in re.finditer(r"^(#{1,6})\s+", rest, flags=re.M):
-        if _same_or_higher_heading(candidate):
+        if len(candidate.group(1)) <= heading_level:
             next_heading = candidate
             break
     end = start + len(heading) + next_heading.start() if next_heading else len(markdown_text)
@@ -423,188 +170,92 @@ def _assert_ordered_phrases(markdown_text: str, label: str, phrases: Tuple[str, 
         cursor = idx
 
 
-def _assert_history_section_does_not_claim_export_or_restore(markdown_text: str, label: str) -> None:
-    section = _extract_section(markdown_text, "### 10.3 排产记录")
-    for needle in ("不能导出版本", "不能恢复某个排产版本"):
-        assert needle in section, f"{label} 排产历史章节缺少边界说明：{needle}"
-    forbidden_positive_phrases = (
-        "用来查看、导出、恢复这些版本",
-        "可以导出排产历史",
-        "可以恢复排产历史",
-        "支持导出排产历史",
-        "支持恢复排产历史",
-        "导出历史版本",
-        "恢复此版本",
-    )
-    for phrase in forbidden_positive_phrases:
-        assert phrase not in section, f"{label} 排产历史章节仍像是在承诺导出/恢复能力：{phrase}"
+def _assert_section_contracts(markdown_text: str, label: str) -> None:
+    run_section = _extract_section(markdown_text, "### 6.2 执行排产")
+    for needle in ("选批次和日期", "开始排产检查", "核对并开始排产", "本次跳过", "已开工保护", "自动分配待补",
+                   "采用方案", "确认正式采用", "试调不影响正式计划", "不能导出，也不能把某次排产恢复成当前数据"):
+        assert needle in run_section, f"{label} 执行排产章节缺少：{needle}"
+    for forbidden in ("本次排产会报错并停止", "排产截止日期", "发现参数问题就停止排产", "先做一次 **试调**"):
+        assert forbidden not in run_section, f"{label} 执行排产章节仍是旧口径：{forbidden}"
 
+    rules_section = _extract_section(markdown_text, "## 7. 排产规则：每个开关的作用")
+    for needle in ("齐套检查", "开启 / 关闭", "缺资源工序", "自动分配 / 暂不排", "保留记录（不可修改）", "规则仅用于本次排产"):
+        assert needle in rules_section, f"{label} 排产规则章节缺少本次排产规则口径：{needle}"
+    for forbidden in ("保存为方案", "恢复默认", "优先级权重 0.4"):
+        assert forbidden not in rules_section, f"{label} 排产规则章节仍在讲已退役的设置页：{forbidden}"
 
-def _assert_resource_dispatch_site_record_section(markdown_text: str, label: str) -> None:
-    section = _extract_section(markdown_text, "### 6.6 现场记录")
-    for needle in (
-        "任务明细/日历矩阵/排布图/现场记录",
-        "页面里有任务明细、日历矩阵、排布图和现场记录四种看法",
-        "现场记录只对当前最新的正式计划开放",
-        "填写实际情况",
-        # 报工文件弹窗把模板下载、导出和导入放在一起；导入与其他 11 张表一样分两步，
-        # 早先这里锁着"当前是直接导入，不走预检和二次确认"，是一条被测试钉住的错话。
-        "报工文件 → 下载模板",
-        "报工文件 → 开始预检 → 确认导入",
-        "查看现场记录",
-        "查看计划和实际",
-    ):
-        assert needle in section, f"{label} 资源排班章节缺少现场记录当前口径：{needle}"
+    field_section = _extract_section(markdown_text, "### 9.1 现场记录")
+    for needle in ("新增本次报工", "补齐", "更正", "撤销这次报工", "报工文件", "开始预检", "确认导入", "保存并继续", "复制上一条"):
+        assert needle in field_section, f"{label} 现场记录章节缺少：{needle}"
+    for forbidden in ("继续生产", "报异常", "任务明细", "日历矩阵", "排布图"):
+        assert forbidden not in field_section, f"{label} 现场记录章节仍在讲旧页面：{forbidden}"
 
-    for forbidden in (
-        "现场反馈常用动作",
-        "| 开工 |",
-        "| 暂停 |",
-        "| 继续生产 |",
-        "| 报异常 |",
-        "| 完工 |",
-        "继续生产",
-        "报异常",
-    ):
-        assert forbidden not in section, f"{label} 资源排班章节不应继续误导旧实时动作：{forbidden}"
+    calib_section = _extract_section(markdown_text, "### 10.4 工时定额校准")
+    for needle in ("预检并采用模板定额", "确认采用并锁定", "不能撤销", "不能重复采用", "只用于以后新增的工序", "已有批次"):
+        assert needle in calib_section, f"{label} 工时定额校准章节缺少锁定口径：{needle}"
+    assert "解除锁定" not in markdown_text, f"{label} 定额锁定后没有解锁动作，说明书不能再写解除锁定"
 
+    system_section = _extract_section(markdown_text, "## 11. 系统管理")
+    for needle in ("概况", "备份恢复", "运行日志", "配置", "新增备份", "输入“恢复”", "关闭整个软件再启动", "脱敏诊断 ZIP"):
+        assert needle in system_section, f"{label} 系统管理章节缺少：{needle}"
+    assert "管理样例" not in markdown_text, f"{label} 管理样例已下线，说明书不能写它"
 
-def _assert_scheduler_manual_closeout_contracts(markdown_text: str, label: str) -> None:
-    for needle in (
-        "**本页说明**",
-        "只打开当前页面的速览卡片",
-        # 设备表的列不再由手写段落宣告：第 1 章的列说明由表描述生成，改列就改说明，无需在这里复述列名。
-        "`自制工种编号` 一台设备只能绑一个，而且必须是自制工种",
-    ):
-        assert needle in markdown_text, f"{label} 缺少本轮说明书收口内容：{needle}"
-
-    resource_load_section = _extract_section(markdown_text, "### 9.2 资源负荷与利用率")
-    for needle in (
-        "设备、人员的负荷",
-        "设备和人员两个工作表",
-        "设备负荷",
-        "人员负荷",
-    ):
-        assert needle in resource_load_section, f"{label} 资源负荷章节缺少设备/人员两张表口径：{needle}"
-
-    config_section = _extract_section(markdown_text, "## 7. 排产规则：每个开关的作用")
-    for needle in (
-        "优化目标",
-        "最少超期",
-        "最少超期小时",
-        "最少加权超期小时",
-        "最少换型次数",
-    ):
-        assert needle in config_section, f"{label} 高级设置章节缺少优化目标口径：{needle}"
-
-    scheduler_section = _extract_section(markdown_text, "### 6.3 执行排产与试调")
-    for needle in ("排产截止日期", "这是严格限制，不是普通备注"):
-        assert needle in scheduler_section, f"{label} 执行排产章节缺少截止日期严格限制口径：{needle}"
-    for forbidden in (
-        "超过截止日期就一定失败",
-        "超过截止日期必然失败",
-        "截止日期一定会导致排产失败",
-        "截止日期必然导致失败",
-        "排产截止日期不是严格限制",
-        "截止日期不是严格限制",
-        "不算严格限制",
-    ):
-        assert forbidden not in scheduler_section, f"{label} 截止日期说明写得过死或写反：{forbidden}"
-
-    gantt_section = _extract_section(markdown_text, "### 6.4 计划甘特")
-    assert "版本留空或版本为空字符串，都表示看最新排产记录" in gantt_section, f"{label} 计划甘特章节缺少版本留空说法"
-    assert "`latest` 是英文，意思就是“最新”" not in gantt_section, f"{label} 计划甘特章节不能再教用户填写 latest"
+    for heading in ("### 5.8 资料总览", "### 6.5 交付风险", "### 6.6 试调排产方案", "### 9.2 现场实际甘特", "### 10.2 执行复盘"):
+        assert len(_extract_section(markdown_text, heading).strip().splitlines()) >= 5, f"{label} 新增章节内容过少：{heading}"
 
 
 def _assert_scheduler_manual_required_content(markdown_text: str, label: str) -> None:
     for needle in (
-        # 2026-09 第 1 章按工作台重写：模板不再由启动期生成，资源四张表的固定选项也从中文改成英文代号。
         "“导出 → 改 → 导回”是最稳的改法",
         "只填代号：internal 自制 / external 外协",
-        # 2026-09 手册整改删掉了“提醒去向要分清”整段，改由排产记录与结果状态表两处说明提醒去哪里看。
-        "只看版本摘要、提醒和结果概况",
-        "先看页面展示的提醒，再去排产记录看完整摘要",
-        "版本留空或版本为空字符串，都表示看最新排产记录",
-        "输入不存在的数字版本时",
-        "输入 `abc` 这类不是数字的版本号",
-        # 工时留空的语义 2026-09 改了：以前空着按 0 小时，现在空着表示保持原样，要清零得明确填 0。
         "工时留空不会自动补零",
         "这一天原来没配置过、类型又留空时，按这个日期的默认规则定",
-        "合并周期只改原来那个外协组的周期，不新增组，也不调整组的范围。",
-        "执行排产 → 排产记录** 只看版本摘要、提醒和结果概况",
-        "选择查看最近 10 条、50 条这类记录",
+        "合并周期只改原来那个外协组的周期",
         "值班台怎么看",
-        "如果停机时间填错，先取消原来的停机，再按正确时间新增一条",
-        "保存补齐资源",
-        "报表首页的两个数字只做快速速览",
-        "同一批次里，同一个物料只能新增一次",
-        "物料下拉框只显示状态为“可用”的物料",
-        "批次齐套日期会自动清除",
-        "趋势图只使用有排产指标的版本",
-        "只有历史摘要读取失败时，页面才会提示读取失败的版本数量",
-        "正式排产和试调都算",
-        "按这个最新版本的超期清单统计范围重新计算",
-        "查询结果表包含 10 列",
-        "任务明细表有 14 列",
-        "| 现场状态 | 显示待开工、生产中、暂停中、异常中、已完工等现场记录状态 |",
-        "| 最近异常 | 显示最近一次异常的中文摘要；没有异常时显示暂无异常 |",
-        "| 影响资源 | 显示异常影响到的设备或人员；没有填写时显示未填写 |",
-        "任务明细/日历矩阵/排布图/现场记录",
-        "页面里有任务明细、日历矩阵、排布图和现场记录四种看法",
-        "填写实际情况",
-        "报工文件 → 开始预检 → 确认导入",
-        "查看现场记录",
-        "| 查询目标 | 当前视角正在看的人员、设备或班组 |",
-        "| 日志序号 | 当前查询结果里的顺序，不是固定不变的数据库编号 |",
-        "导入批次时“自动生成工序”覆盖了手工补的数据怎么办？",
-        "版本下拉为空或提示“暂无排产记录”怎么办？",
-        "恢复备份后数据和之前不一样？",
-        "排产成功但计划甘特上看不到任务？",
-        "系统默认按待排批次查看",
-        "先确认状态筛选是 **待排**",
-        "试调之后页面不会记住上一次的临时勾选，所以正式排产前一定要重新勾选",
-        "备份/恢复",
-        "深度优化 + 深度优化尝试时间",
+        "顶栏“帮助”打开的 **本页说明**",
+        "阅读整本说明书",
+        "下载整本说明书",
+        "产能链",
+        "预检工序更新",
+        "清除单独设置",
+        "确认清除，恢复默认",
+        "本次排产规则",
+        "排产检查",
+        "候选方案",
+        "采用后这个模板工序的单件工时就锁定了",
+        "基础资料待维护项.csv",
+        "**从哪里进**：",
     ):
         assert needle in markdown_text, f"{label} 缺少说明书必备内容：{needle}"
-    assert "用来查看、导出、恢复这些版本" not in markdown_text, f"{label} 不应再写排产历史可以导出或恢复版本"
-    assert "模拟方案报表只能在页面上查看" not in markdown_text, f"{label} 不应再写模拟方案报表不能导出"
-    assert "导出的 Excel 也会按这份试调方案生成" in markdown_text, f"{label} 缺少试调方案导出说法"
     for forbidden in (
         "备份与恢复",
         "默认是全部",
-        "默认选中\"（全部）\"",
-        "默认选中“（全部）”",
         "单件时间",
-        "换型工时",
         "均匀程度 CV",
         "启用 OR-Tools",
         "OR-Tools 尝试时间",
         "贪心",
+        "证据",
+        "导出周计划",
+        "停机计划",
+        "批次物料需求",
+        "班组管理",
+        "管理样例",
+        "常用方案",
+        "只打开当前页面的速览卡片",
+        "系统管理 → 使用说明",
+        "个人工作日历",
+        "批量维护批次",
     ):
         assert forbidden not in markdown_text, f"{label} 不应继续出现旧说明口径：{forbidden}"
-    _assert_scheduler_manual_closeout_contracts(markdown_text, label)
-    _assert_resource_dispatch_site_record_section(markdown_text, label)
-
-    # 2026-09 手册整改后，提醒条数的截断说明只保留在排产记录的版本详情里。
-    batch_warning_paragraph = _extract_paragraph_containing(markdown_text, "如果提醒或错误很多，当前页可能只展开前几条")
-    assert "另有多少条未展开" in batch_warning_paragraph
-    assert "系统历史" not in batch_warning_paragraph, f"{label} 的批次剩余提醒口径不应再要求去系统历史：{batch_warning_paragraph}"
+    _assert_section_contracts(markdown_text, label)
 
     full_flow_section = _extract_section(markdown_text, "## 6. 排产操作：完整指南")
     _assert_ordered_phrases(
         full_flow_section,
         f"{label} 完整排产流程",
-        (
-            "先建基础资料",
-            "再建批次",
-            "生成并补齐批次工序",
-            "先试调",
-            "再正式排产",
-            "最后复盘和下发",
-        ),
+        ("先建基础资料", "再建批次", "补齐批次工序", "执行排产生成候选方案", "采用为正式计划", "微调和复盘"),
     )
-    _assert_history_section_does_not_claim_export_or_restore(markdown_text, label)
 
 
 def test_config_manual_markdown_contract(app_client, monkeypatch, tmp_path) -> None:
@@ -655,7 +306,6 @@ def test_config_manual_markdown_contract(app_client, monkeypatch, tmp_path) -> N
     root = Path(_find_repo_root())
     manual_path = root / "static/docs/scheduler_manual.md"
     manual_text = manual_path.read_text(encoding="utf-8")
-    # All source-content and terminology assertions remain unchanged.
     assert manual_text.startswith("# 系统使用说明")
     _assert_scheduler_manual_required_content(manual_text, "主说明书")
     _assert_manual_table_guide_entries(manual_text)
@@ -686,37 +336,35 @@ def test_config_manual_markdown_contract(app_client, monkeypatch, tmp_path) -> N
             assert "说明书正文" in html and "说明书章节" in html
             return html, parsed, captured[0][1]
 
-        material_src = _build_url(app, "material.materials_page") + "?"
-        full_url = _build_url(app, "scheduler.config_manual_page", src=material_src)
+        process_src = _build_url(app, "workbench.index", view="process")
+        full_url = _build_url(app, "scheduler.config_manual_page", src=process_src)
         full_html, full, state = read(full_url)
-        # Old embedded JSON assertions now check the actual render context AND emitted text.
-        assert state["manual_mode"] == "full" and state["manual_text"] == manual_text
+        assert state["manual_mode"] == "full" and state["manual_text"] == manual_text and state["manual_available"] is True
         assert state["current_manual"] is None and state["related_manuals"] == []
-        assert material_src in full.hrefs
+        assert process_src in full.hrefs
         assert heading_ids <= full.ids and set(internal_hashes) <= full.ids
-        # The manual is now rendered: every source line stays readable, the markers do not.
+        # The manual is rendered: every source line stays readable, the markers do not.
         _assert_rendered_text_covers_source(full, manual_text)
         assert "<table>" in full_html and "<strong>" in full_html and "<li>" in full_html
         assert "|---|" not in "".join(full.body) and "**" not in "".join(full.body)
         assert "相关说明" not in full_html
 
-        page_url = _build_url(app, "scheduler.config_manual_page", page="material.materials_page", src=material_src)
+        page_url = _build_url(app, "scheduler.config_manual_page", page="process", src=process_src)
         page_html, page, page_state = read(page_url)
-        assert page_state["manual_mode"] == "page"
-        assert page_state["current_manual"]["title"] == "物料主数据"
+        assert page_state["manual_mode"] == "page" and page_state["manual_available"] is True
+        assert page_state["current_manual"]["title"] == "基础资料" and page_state["current_manual"]["view"] == "process"
+        assert page_state["fallback_text"].startswith("## 5. 数据准备：排产前必须做的事\n")
+        assert "## 6. 排产操作" not in page_state["fallback_text"] and "### 5.8 资料总览" in page_state["fallback_text"]
         related = page_state["related_manuals"]
-        assert related and any(item.get("preview_sections") for item in related)
-        assert all(len(item.get("preview_sections") or []) <= 2 for item in related)
-        assert "物料主数据" in page_html and "相关说明" in page_html
-        assert material_src in page.hrefs and page_state["full_manual_section_url"] in page.hrefs
-        assert "说明书正文" in page_html and page.body
-        sections = page_state["current_manual"]["sections"]
-        assert sections and sections[0]["title"] in page_html
-        assert _slugify_heading("物料主数据") in page.ids
+        assert [item["view"] for item in related] == ["basedata", "batches"]
+        assert "本页说明 - 基础资料" in page_html and "相关说明" in page_html
+        assert process_src in page.hrefs and page_state["full_manual_section_url"] in page.hrefs
+        assert page_state["full_manual_section_url"].endswith("#" + _slugify_heading("5. 数据准备：排产前必须做的事"))
+        assert _slugify_heading("5. 数据准备：排产前必须做的事") in page.ids and _slugify_heading("5.8 资料总览") in page.ids
+        assert _slugify_heading("6. 排产操作：完整指南") not in page.ids
+        _assert_rendered_text_covers_source(page, page_state["fallback_text"])
         for item in related:
-            assert item["url"] in page.hrefs and item["title"] in page_html
-            for section in item.get("preview_sections") or []:
-                _assert_rendered_text_covers_source(page, section["body_md"])
+            assert item["url"] in page.hrefs and item["title"] in page_html and item["preview_sections"] == []
         for url in (state["download_url"], page_state["download_url"]):
             download = client.get(url)
             assert download.status_code == 200 and "attachment" in download.headers["Content-Disposition"]
@@ -725,19 +373,20 @@ def test_config_manual_markdown_contract(app_client, monkeypatch, tmp_path) -> N
 
         malicious = "# 1. 数字章节\n[危险](javascript:alert(1))\n<img src=x onerror=alert(1)>\n"
         with monkeypatch.context() as patch:
-            patch.setattr(route_mod, "_load_manual_text_and_mtime", lambda *_: (malicious, None))
+            patch.setattr(route_mod, "_load_manual_source", lambda *_: (malicious, None, True))
             html, parsed, _ = read(full_url)
             assert "1-数字章节" in parsed.ids
             assert "[危险](javascript:alert(1))" in "".join(parsed.body)
             assert "<img" not in html and "&lt;img" in html
             assert not [tag for tag, attrs in parsed.tags if tag in ("img", "iframe")]
             assert len(parsed.scripts) == 1 and "alert(1)" not in parsed.scripts[0]
-        # A real open failure remains an explicit readable error without old JS/noscript dependencies.
+        # A real open failure remains an explicit readable error and tells the template the manual is unavailable.
         blocked = tmp_path / "unreadable-manual.md"
         blocked.mkdir()
         with monkeypatch.context() as patch:
             patch.setattr(route_mod, "_resolve_scheduler_manual_md_path", lambda: (str(blocked), [str(blocked)]))
-            failed, parsed, _ = read(full_url)
+            failed, parsed, failed_state = read(full_url)
             assert "说明书加载失败" in failed and parsed.body
+            assert failed_state["manual_available"] is False and failed_state["download_url"] is not None
     finally:
         template_rendered.disconnect(rendered, app)

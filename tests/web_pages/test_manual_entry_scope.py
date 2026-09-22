@@ -1,216 +1,193 @@
-"""Retained manual pages keep full/page scope, exact source text and safe downloads.
-
-The old floating help popover is retired. The current standalone manual must
-still cover every registered page without losing its original return context.
-"""
+"""回归测试：说明书页“本页说明”通道——顶栏「帮助」带 ``page=<视图 id>`` 与 ``src=<返回地址>`` 打开时，15 个视图都能先显示自己那一章（只截到下一个同级或更高级标题），“返回刚才页面”回到 src、没有安全 src 时回到该视图本身，“下载整本说明书”保留 page 与 src，“阅读整本说明书”带章节锚点；未登记的 page 退化为整本并提示但不回显页面标识；说明书文件读不到时页面仍能打开并把 ``manual_available`` 传给模板。"""
 
 from __future__ import annotations
 
-import html
-import importlib
-import re
-import tempfile
 from html.parser import HTMLParser
-from pathlib import Path
-from unittest.mock import patch
-from urllib.parse import parse_qs, quote, urlsplit
+from typing import Dict, List, Tuple
+from urllib.parse import parse_qs, urlsplit
 
-from flask import url_for
+import pytest
+from flask import template_rendered
 
-from tests._support.excel_templates import point_env_at_shared
-from tests._support.gantt_retirement import _business_state
+import web.routes.workbench.manual_page as route_mod
 from tests._support.paths import REPO_ROOT
-from tests._support.workbench_web_contract import canonical_boot
+from web.viewmodels.page_manuals_registry import MANUAL_VIEW_IDS, VIEW_MANUALS
 
-LEGACY_EXCEL_ENTRY_TERMS = (
-    "零件工艺路线（Excel导入/导出）", "零件工序工时（Excel导入/导出）",
-    "人员基本信息（Excel导入/导出）", "设备信息（Excel导入/导出）",
-    "人员设备关联（Excel）", "设备人员关联（Excel）",
-    "Excel 导入/导出", "Excel导入/导出", "Excel 导入导出", "Excel导入导出",
-)
+MANUAL_PATH = REPO_ROOT / "static/docs/scheduler_manual.md"
+MANUAL_URL = "/scheduler/config/manual"
+DOWNLOAD_URL = "/scheduler/config/manual/download"
 
 
-class _ManualHTML(HTMLParser):
-    """Collect source text, safe links and unique anchors from the served manual."""
-
-    def __init__(self, body):
-        super().__init__()
-        self.text, self.links, self.ids = [], [], []
-        self._skip, self._anchor = None, None
-        self.feed(body)
+class Page(HTMLParser):
+    def __init__(self, text: str):
+        super().__init__(convert_charrefs=True)
+        self.links: List[Tuple[str, str]] = []
+        self.ids: set = set()
+        self.title = ""
+        self._link: List[str] = []
+        self._in_title = False
+        self.feed(text)
 
     def handle_starttag(self, tag, attrs):
         attrs = dict(attrs)
-        if tag in ("script", "style"):
-            self._skip = tag
         if attrs.get("id"):
-            self.ids.append(attrs["id"])
+            self.ids.add(attrs["id"])
         if tag == "a":
-            self._anchor = [attrs.get("href", ""), []]
+            self._link = [attrs.get("href") or ""]
+        if tag == "title":
+            self._in_title = True
 
     def handle_endtag(self, tag):
-        if tag == self._skip:
-            self._skip = None
-        if tag == "a" and self._anchor is not None:
-            self.links.append((self._anchor[0], "".join(self._anchor[1]).strip()))
-            self._anchor = None
+        if tag == "a" and self._link:
+            self.links.append((self._link[0], "".join(self._link[1:]).strip()))
+            self._link = []
+        if tag == "title":
+            self._in_title = False
 
-    def handle_data(self, value):
-        if not self._skip:
-            self.text.append(value)
-            if self._anchor is not None:
-                self._anchor[1].append(value)
+    def handle_data(self, data):
+        if self._link:
+            self._link.append(data)
+        if self._in_title:
+            self.title += data
 
-
-def _url(app, endpoint, **values):
-    """Build a local URL through the actual Flask registry."""
-    with app.test_request_context():
-        return url_for(endpoint, **values)
-
-
-def _page(client, **query):
-    """Require the standalone manual, unique anchors and local navigation."""
-    response = client.get("/scheduler/config/manual", query_string=query)
-    assert response.status_code == 200, response.get_data(as_text=True)
-    assert response.headers["Cache-Control"] == "no-store"
-    body = response.get_data(as_text=True)
-    assert 'aria-label="说明书正文"' in body and 'class="manual-source"' in body
-    assert 'data-workbench-legacy-response="true"' in body
-    assert "floating-manual-btn" not in body and "scheduler-subnav-main" not in body
-    parsed = _ManualHTML(body)
-    assert len(parsed.ids) == len(set(parsed.ids))
-    for href, _label in parsed.links:
-        assert not urlsplit(href).scheme and not urlsplit(href).netloc
-    for href, _label in parsed.links:
-        if href.startswith("#"):
-            assert href[1:] in parsed.ids
-    return parsed, body
+    def href(self, label: str) -> str:
+        matches = [href for href, text in self.links if text == label]
+        assert len(matches) == 1, (label, self.links)
+        return matches[0]
 
 
-def _markdown_pieces(line):
-    """Drop the Markdown markers the page now renders, keep every readable piece."""
-    raw = line.strip()
-    if not raw or re.match(r"^(?:\|[\s:|-]+\|$|-{3,}$|\*{3,}$|_{3,}$|```)", raw):
-        return ()
-    body = re.sub(r"^(?:#{1,6}\s+|>\s?|[-*+]\s+|\d+[.)]\s+)", "", raw)
-    cells = body.strip("|").split("|") if raw.startswith("|") else [body]
-    return tuple(cell.strip().replace("**", "").replace("`", "") for cell in cells)
+def _view_url(view: str) -> str:
+    return "/workbench/trial" if view == "trial" else "/workbench?view=" + view
 
 
-def _source_visible(parsed, source):
-    """Every retained Markdown line must remain visible, not just a short excerpt."""
-    text = "".join(parsed.text)
-    for line in source.splitlines():
-        for expected in _markdown_pieces(line):
-            if expected:
-                assert expected in text, expected
+def _render(client, url: str) -> Tuple[str, Page, Dict]:
+    captured: List[Dict] = []
+
+    def rendered(sender, template, context, **extra):
+        captured.append(context)
+
+    app = client.application
+    template_rendered.connect(rendered, app, weak=False)
+    try:
+        response = client.get(url)
+    finally:
+        template_rendered.disconnect(rendered, app)
+    html = response.get_data(as_text=True)
+    assert response.status_code == 200, html
+    assert len(captured) == 1, len(captured)
+    return html, Page(html), captured[0]
 
 
-def _link(parsed, label):
-    """Require an explicitly named action in the parsed manual."""
-    values = [href for href, text in parsed.links if text == label]
-    assert values, (label, parsed.links)
-    return values[0]
+def _query(url: str) -> Dict[str, List[str]]:
+    return parse_qs(urlsplit(url).query, keep_blank_values=True)
 
 
-def _check_entry_terms(source):
-    """Keep the public bulk-maintenance vocabulary, including historical notes."""
-    for line in source.splitlines():
-        for term in LEGACY_EXCEL_ENTRY_TERMS:
-            # 「老资料」「旧入口」两个词就足以认出这是历史说明那一行。原来还要求它含
-            # 「批量维护」，但那一行现在写的是各页真实按钮名（批量导入 / 报工文件）。
-            if term in ("Excel 导入导出", "Excel导入导出") and all(value in line for value in ("老资料", "旧入口")):
+def test_manual_uses_current_operator_and_calibration_status_labels() -> None:
+    manual = MANUAL_PATH.read_text(encoding="utf-8")
+    assert "人员状态有在岗、请假、停用" in manual
+    assert "人员状态有启用" not in manual
+    assert "状态（数据不足 / 已有建议）" in manual
+    assert "状态（数据不足 / 待复核）" not in manual
+
+
+def test_every_registered_view_opens_its_own_section(app_client) -> None:
+    manual_text = MANUAL_PATH.read_text(encoding="utf-8")
+    sections = route_mod._manual_section_map(manual_text)
+    for view in MANUAL_VIEW_IDS:
+        entry = VIEW_MANUALS[view]
+        src = _view_url(view)
+        html, page, context = _render(app_client, MANUAL_URL + "?page=" + view + "&src=" + src)
+        assert context["manual_mode"] == "page" and context["manual_available"] is True, view
+        assert context["current_manual"]["view"] == view and context["title"] == "本页说明 - " + entry["title"], view
+        assert "本页说明 - " + entry["title"] in page.title, view
+        assert route_mod.PAGE_NOT_REGISTERED_WARNING not in html and route_mod.PAGE_SECTION_MISSING_WARNING not in html, view
+        section = sections[entry["heading"]]
+        assert context["fallback_text"] == section["source"], view
+        assert section["anchor"] in page.ids, view
+        # 只截当前章节：别的登记章节只有作为子章节（比如 5. 数据准备里的 5.8）时才会出现在本页说明里。
+        for other_view, other in VIEW_MANUALS.items():
+            if other_view == view:
                 continue
-            assert term not in line
-    assert "批量维护" in source
+            child = sections[other["heading"]]["source"] in section["source"]
+            assert (sections[other["heading"]]["anchor"] in page.ids) == child, (view, other_view)
+        assert page.href("返回刚才页面") == src, view
+        download = page.href("下载整本说明书")
+        assert urlsplit(download).path == DOWNLOAD_URL and _query(download) == {"page": [view], "src": [src]}, view
+        full = page.href("阅读整本说明书")
+        assert urlsplit(full).path == MANUAL_URL and urlsplit(full).fragment == section["anchor"], view
+        assert _query(full) == {"src": [src]}, view
+        related = context["related_manuals"]
+        assert [item["view"] for item in related] == list(entry["related"]), view
+        for item in related:
+            link = page.href(item["title"])
+            assert urlsplit(link).path == MANUAL_URL and _query(link) == {"page": [item["view"]], "src": [src]}, (view, item)
+            assert item["full_manual_section_url"].endswith("#" + sections[VIEW_MANUALS[item["view"]]["heading"]]["anchor"]), (view, item)
 
 
-def main(monkeypatch) -> None:
-    directory = Path(tempfile.mkdtemp(prefix="aps-manual-scope-"))
-    for env, leaf in (("APS_DB_PATH", "fixture.db"), ("APS_LOG_DIR", "logs"), ("APS_BACKUP_DIR", "backups")):
-        monkeypatch.setenv(env, str(directory / leaf))
-    monkeypatch.setenv("APS_ENV", "development")
-    monkeypatch.setenv("SECRET_KEY", "aps-manual-entry-scope")
-    point_env_at_shared(monkeypatch)
-    app = importlib.import_module("app").create_app()
-    client = app.test_client()
-    manuals = importlib.import_module("web.viewmodels.page_manuals")
-    raw = (REPO_ROOT / "static/docs/scheduler_manual.md").read_text(encoding="utf-8")
-    _check_entry_terms(raw)
-    canonical_boot(client, "/", "dashboard", {})
-    # Normal legacy requests initialize maintenance defaults; freeze after that existing lifecycle step.
-    before = _business_state(client)
-
-    endpoints = sorted({rule.endpoint for rule in app.url_map.iter_rules()
-                        if rule.endpoint in manuals.ENDPOINT_TO_MANUAL_ID and "GET" in rule.methods and not rule.arguments})
-    assert endpoints
-    for endpoint in endpoints:
-        path = _url(app, endpoint)
-        src = path if "?" in path else path + "?"
-        parsed, body = _page(client, page=endpoint, src=src)
-        manual = manuals.build_manual_for_endpoint(endpoint, include_sections=True)
-        assert "本页说明 - " + manual["title"] in "".join(parsed.text)
-        _source_visible(parsed, manuals.build_page_fallback_text(endpoint))
-        assert _link(parsed, "返回刚才页面") == src
-        download = _link(parsed, "下载整本说明书")
-        query = parse_qs(urlsplit(download).query, keep_blank_values=True)
-        assert query["page"] == [endpoint] and query["src"] == [src]
-        assert "Win7 单机版" not in body and "sidebar-footnote" not in body
-
-    for source in ("/material/materials?", "/scheduler/config?"):
-        parsed, body = _page(client, src=source)
-        assert "系统使用说明" in "".join(parsed.text)
-        assert len("".join(parsed.text)) >= 100
-        _source_visible(parsed, raw)
-        assert _link(parsed, "返回刚才页面") == source
-        assert "相关说明" not in [text for _href, text in parsed.links]
-        assert "page=" not in _link(parsed, "下载说明书原文")
-
-    for endpoint, title, default_return in (
-        ("material.materials_page", "物料主数据", "返回首页"),
-        ("scheduler.config_page", "高级设置", "返回排产首页"),
-        ("dashboard.index", "第一次使用路线图", "返回首页"),
-    ):
-        parsed, _body = _page(client, page=endpoint)
-        assert "本页说明 - " + title in "".join(parsed.text)
-        assert _link(parsed, default_return) == ("/scheduler/" if endpoint.startswith("scheduler.") else "/")
-        _source_visible(parsed, manuals.build_page_fallback_text(endpoint))
-        full_links = [href for href, _label in parsed.links if urlsplit(href).fragment and not href.startswith("#")]
-        assert full_links
-        for href in full_links:
-            full, _ = _page(client, **{key: values[0] for key, values in parse_qs(urlsplit(href).query).items()})
-            assert urlsplit(href).fragment in full.ids
-
-    parsed, _ = _page(client, page="dashboard.index", src="/?")
-    for text in ("先准备资料", "先模拟，再正式排产", "排完去哪里看", "不在这里导出或恢复版本", "当前页只展示前 5 条"):
-        assert text in "".join(parsed.text)
-
-    for unsafe in ("http://evil.example/x", "//evil.example/x"):
-        parsed, body = _page(client, page="material.materials_page", src=unsafe)
-        assert _link(parsed, "返回首页") == "/"
-        assert "evil.example" not in body
-        assert "page=material.materials_page" in _link(parsed, "下载整本说明书")
-        assert all("src=" not in href for href, _label in parsed.links)
-
-    invalid, body = _page(client, page="unknown.endpoint", src="/material/materials?")
-    assert "系统使用说明" in "".join(invalid.text)
-    assert "本页说明 -" not in body
-    assert "unknown.endpoint" not in _link(invalid, "下载说明书原文")
-    _source_visible(invalid, raw)
-    download = client.get("/scheduler/config/manual/download", query_string={"page": "material.materials_page", "src": "/material/materials?"})
-    assert download.status_code == 200
-    assert quote("系统使用说明.md", safe="") in download.headers["Content-Disposition"]
-    assert download.data == (REPO_ROOT / "static/docs/scheduler_manual.md").read_bytes()
-
-    with patch("web.routes.workbench.manual_page._resolve_scheduler_manual_md_path", return_value=(None, [])):
-        response = client.get("/scheduler/config/manual/download", query_string={"page": "unknown.endpoint", "src": "http://evil.example/x"})
-    assert response.status_code in (302, 303)
-    assert "evil.example" not in response.headers["Location"] and "unknown.endpoint" not in response.headers["Location"]
-    assert _business_state(client) == before
+def test_run_manual_section_contains_run_history_instructions(app_client) -> None:
+    html, _page, context = _render(app_client, MANUAL_URL + "?page=run&src=" + _view_url("analysis"))
+    assert context["manual_mode"] == "page" and context["current_manual"]["view"] == "run"
+    assert "排产记录" in context["fallback_text"] and "这里不能导出" in context["fallback_text"]
+    assert route_mod.PAGE_NOT_REGISTERED_WARNING not in html
 
 
-def test_manual_entry_scope_contract(monkeypatch) -> None:
-    main(monkeypatch)
+@pytest.mark.parametrize("view", ("dashboard", "trial", "gantt"))
+def test_page_without_src_returns_to_the_view_itself(app_client, view: str) -> None:
+    html, page, context = _render(app_client, MANUAL_URL + "?page=" + view)
+    assert context["manual_mode"] == "page"
+    assert page.href("返回" + VIEW_MANUALS[view]["title"]) == _view_url(view)
+    assert "返回刚才页面" not in html
+    assert _query(page.href("下载整本说明书")) == {"page": [view]}
+    assert _query(page.href("阅读整本说明书")) == {}
+
+
+def test_unsafe_src_is_dropped_and_never_echoed(app_client) -> None:
+    html, page, _context = _render(app_client, MANUAL_URL + "?page=field&src=http://evil.example/x")
+    assert page.href("返回现场记录") == _view_url("field")
+    assert "evil.example" not in html
+
+
+def test_unknown_page_falls_back_to_full_manual_with_notice(app_client) -> None:
+    src = _view_url("dashboard")
+    html, page, context = _render(app_client, MANUAL_URL + "?page=nope.page&src=" + src)
+    assert context["manual_mode"] == "full" and context["current_manual"] is None and context["related_manuals"] == []
+    assert context["title"] == route_mod.FULL_MANUAL_TITLE and "本页说明 -" not in page.title
+    assert route_mod.PAGE_NOT_REGISTERED_WARNING in html and "nope.page" not in html
+    assert page.href("返回刚才页面") == src
+    assert _query(page.href("下载说明书原文")) == {"src": [src]}
+    assert context["manual_text"] == MANUAL_PATH.read_text(encoding="utf-8")
+
+
+def test_download_keeps_page_and_src_and_redirects_when_file_missing(app_client, monkeypatch) -> None:
+    src = _view_url("field")
+    download = app_client.get(DOWNLOAD_URL + "?page=field&src=" + src)
+    assert download.status_code == 200 and "attachment" in download.headers["Content-Disposition"]
+    assert download.data == MANUAL_PATH.read_bytes()
+    download.close()
+    with monkeypatch.context() as patch:
+        patch.setattr(route_mod, "_resolve_scheduler_manual_md_path", lambda: (None, ["/nonexistent/scheduler_manual.md"]))
+        redirected = app_client.get(DOWNLOAD_URL + "?page=field&src=" + src)
+    assert redirected.status_code == 302
+    location = redirected.headers["Location"]
+    assert urlsplit(location).path == MANUAL_URL and _query(location) == {"page": ["field"], "src": [src]}
+
+
+def test_unavailable_manual_still_opens_page_request(app_client, monkeypatch) -> None:
+    with monkeypatch.context() as patch:
+        patch.setattr(route_mod, "_resolve_scheduler_manual_md_path", lambda: (None, ["/nonexistent/scheduler_manual.md"]))
+        html, page, context = _render(app_client, MANUAL_URL + "?page=field")
+    assert context["manual_available"] is False and context["manual_mode"] == "full"
+    assert context["download_url"] is None and "找不到说明书文件" in html
+    assert route_mod.PAGE_SECTION_MISSING_WARNING not in html
+    assert page.href("返回现场记录") == _view_url("field")
+
+
+def test_heading_drift_degrades_to_full_manual_with_notice(app_client, monkeypatch) -> None:
+    with monkeypatch.context() as patch:
+        patch.setattr(route_mod, "_load_manual_source", lambda *_: ("# 系统使用说明\n\n## 1. 无关章节\n\n正文\n", None, True))
+        html, page, context = _render(app_client, MANUAL_URL + "?page=field&src=" + _view_url("field"))
+    assert context["manual_mode"] == "full" and context["manual_available"] is True
+    assert route_mod.PAGE_SECTION_MISSING_WARNING in html and "本页说明 -" not in page.title
 
 
 def test_manual_quote_rendering_stops_at_the_next_block_and_preserves_inline_text() -> None:
@@ -222,9 +199,3 @@ def test_manual_quote_rendering_stops_at_the_next_block_and_preserves_inline_tex
         "<p>普通段落</p><blockquote><p>第二段引文</p></blockquote>"
     )
     assert render_manual_markdown(">\n正文") == "<blockquote><p></p></blockquote><p>正文</p>"
-
-
-if __name__ == "__main__":
-    import pytest
-
-    raise SystemExit(pytest.main([__file__]))

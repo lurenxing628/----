@@ -6,7 +6,8 @@
 {% if manual_mode == "page" and full_manual_section_url %}<a href="{{ full_manual_section_url }}">{{ current_manual.full_manual_label or "阅读整本说明书" }}</a>{% endif %}
 </nav>
 {% if manual_mtime %}<p class="muted">说明书文件更新时间：{{ manual_mtime }}</p>{% endif %}
-{% if not download_url %}<p class="notice" data-level="warning">说明书文件现在下载不了。下面的说明内容没有变化，可以继续看。</p>{% endif %}
+{# manual_available 由 manual_page.py 传入：文件读得到时下面才是说明书正文；读不到时正文本身就是错误说明，不能再说“内容没有变化”。 #}
+{% if not download_url %}{% if manual_available is defined and not manual_available %}<p class="notice" data-level="warning">说明书文件现在读不到，下面显示的是读取失败的原因；下载也暂时不可用。</p>{% else %}<p class="notice" data-level="warning">说明书文件现在下载不了。下面的说明内容没有变化，可以继续看。</p>{% endif %}{% endif %}
 {% set blocks = (fallback_text if manual_mode == "page" else manual_text)|legacy_manual_blocks %}
 <nav class="manual-outline" aria-label="说明书章节">
 <ul>{% for item in blocks|legacy_manual_outline %}
