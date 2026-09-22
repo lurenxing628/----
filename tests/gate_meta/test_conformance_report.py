@@ -10,36 +10,19 @@
 
 from __future__ import annotations
 
-import importlib.util
-import sys
-from typing import Any, List
+from typing import List
 
-from tests._support.paths import REPO_ROOT, REPO_ROOT_STR
-
-
-def _load_report_module() -> Any:
-    """tests/gate_meta 没有 __init__.py，按目录里既有写法用文件路径加载。"""
-    if REPO_ROOT_STR not in sys.path:
-        sys.path.insert(0, REPO_ROOT_STR)
-    module_name = "tests.generate_conformance_report"
-    sys.modules.pop(module_name, None)
-    module_path = REPO_ROOT / "tests" / "gate_meta" / "generate_conformance_report.py"
-    spec = importlib.util.spec_from_file_location(module_name, module_path)
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"无法加载模块：{module_path}")
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[module_name] = module
-    spec.loader.exec_module(module)
-    return module
+from tests._support.paths import REPO_ROOT_STR
+from tests.gate_meta.generate_conformance_report import CheckResult, generate_report
 
 
-def _failures(checks: List[Any], severity: str) -> List[str]:
+def _failures(checks: List[CheckResult], severity: str) -> List[str]:
     return [f"{check.name}：{check.details or '详见报告证据'}"
             for check in checks if not check.ok and check.severity == severity]
 
 
 def test_implementation_matches_documented_conformance_checks() -> None:
-    _, checks = _load_report_module().generate_report(REPO_ROOT_STR)
+    _, checks = generate_report(REPO_ROOT_STR)
     assert checks, "一致性检查一项都没跑，说明登记表被清空了"
     blocking = _failures(checks, "BLOCKER") + _failures(checks, "MAJOR")
     assert not blocking, "实现和开发文档对不上：\n" + "\n".join("- " + item for item in blocking)
@@ -47,7 +30,7 @@ def test_implementation_matches_documented_conformance_checks() -> None:
 
 def test_minor_conformance_gaps_are_reported_without_blocking() -> None:
     """MINOR 不拦门禁，但必须还能被报出来——否则这一档形同虚设。"""
-    _, checks = _load_report_module().generate_report(REPO_ROOT_STR)
+    _, checks = generate_report(REPO_ROOT_STR)
     assert {check.severity for check in checks} <= {"BLOCKER", "MAJOR", "MINOR", "INFO"}
     for check in checks:
         assert check.ok == (check.severity == "INFO"), (

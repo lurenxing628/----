@@ -15,6 +15,9 @@ The project is delivered on Python 3.8.10, so this tool has two jobs:
    annotations like ``tuple[*Ts]`` (3.11).
 
 The script itself intentionally uses Python 3.8-compatible syntax.
+Deferred annotations are reported separately: evaluating them via get_type_hints
+may fail, but defining/calling their functions is valid. Function-local variable
+annotations are never evaluated and do not create a runtime finding.
 """
 
 from __future__ import annotations
@@ -38,7 +41,7 @@ PY38_FEATURE_VERSION = (3, 8)
 # semantics/runtime support only arrived later.
 NEW_SYNTAX_REFERENCE = (
     ("3.9", "PEP 584", "dict merge/update operators", "explicit AST check: DICT_MERGE_OPERATOR"),
-    ("3.9", "PEP 585", "built-in/stdlib collection generic aliases", "explicit annotation check"),
+    ("3.9", "PEP 585", "built-in/stdlib collection generic aliases", "explicit annotation/runtime expression check"),
     ("3.10", "PEP 604", "X | Y union type operator", "explicit annotation/isinstance check"),
     ("3.10", "PEP 634/635/636", "structural pattern matching", "parser feature_version=(3, 8)"),
     ("3.11", "PEP 646", "starred variadic-generic annotations", "explicit annotation check"),
@@ -136,6 +139,7 @@ class Finding:
     introduced_in: str = ""
     future_annotations: bool = False
     host_parser_accepts: bool = False
+    annotation_evaluation_required: bool = False
 
 
 @dataclass(frozen=True)
@@ -143,6 +147,10 @@ class ScanResult:
     scanned_files: int
     skipped_files: int
     findings: Tuple[Finding, ...]
+
+    @property
+    def blocking_findings(self) -> Tuple[Finding, ...]:
+        return tuple(finding for finding in self.findings if not finding.annotation_evaluation_required)
 
 
 def normalize_repo_path(path: str) -> str:
@@ -331,6 +339,9 @@ class AnnotationRiskScanner(ast.NodeVisitor):
     def _add(self, node: ast.AST, rule: str, message: str, detail: str = "", introduced_in: str = "") -> None:
         line = int(getattr(node, "lineno", 0) or 0)
         column = int(getattr(node, "col_offset", 0) or 0) + 1 if line else 0
+        deferred = self.future_annotations and rule in {"PEP585_GENERIC_ALIAS", "PEP604_UNION_TYPE"}
+        if deferred:
+            message = "延迟注解可在 Python 3.8 定义和调用；仅在 get_type_hints/eval 解析注解时存在兼容风险"
         self.findings.append(
             Finding(
                 rel_path=self.rel_path,
@@ -343,6 +354,7 @@ class AnnotationRiskScanner(ast.NodeVisitor):
                 snippet=_source_line(self.source, line),
                 future_annotations=self.future_annotations,
                 host_parser_accepts=True,
+                annotation_evaluation_required=deferred,
             )
         )
 
@@ -403,14 +415,21 @@ class AnnotationRiskScanner(ast.NodeVisitor):
         self.generic_visit(node)
 
     def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
-        self._scan_annotation(node.annotation, "variable")
+        # The nearest lexical scope matters: a class nested in a function still
+        # evaluates its class annotations, whereas function locals never do.
+        parent = getattr(node, "_ast_parent", None)
+        while parent is not None and not isinstance(parent, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+            parent = getattr(parent, "_ast_parent", None)
+        if not isinstance(parent, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            self._scan_annotation(node.annotation, "variable")
         self.generic_visit(node)
 
 
 class RuntimeSyntaxRiskScanner(ast.NodeVisitor):
-    def __init__(self, rel_path: str, source: str) -> None:
+    def __init__(self, rel_path: str, source: str, import_aliases: Dict[str, str]) -> None:
         self.rel_path = rel_path
         self.source = source
+        self.import_aliases = import_aliases
         self.findings: List[Finding] = []
 
     def _add(self, node: ast.AST, rule: str, message: str, detail: str = "", introduced_in: str = "") -> None:
@@ -429,6 +448,14 @@ class RuntimeSyntaxRiskScanner(ast.NodeVisitor):
                 host_parser_accepts=True,
             )
         )
+
+    def visit_Subscript(self, node: ast.Subscript) -> None:
+        target = _qualified_name(node.value, self.import_aliases)
+        if not _is_annotation_context(node) and target in PEP585_QUALIFIED_TARGETS:
+            self._add(node, "PEP585_GENERIC_ALIAS",
+                      "运行时代码使用内置/标准库泛型别名；Python 3.8 不支持该写法",
+                      "runtime expression -> " + target, "3.9 / PEP 585")
+        self.generic_visit(node)
 
     def visit_BinOp(self, node: ast.BinOp) -> None:
         if isinstance(node.op, ast.BitOr):
@@ -515,11 +542,12 @@ def scan_source(rel_path: str, source: str, include_annotation_runtime: bool = T
     if tree is None:
         return tuple(findings)
     if include_annotation_runtime:
-        runtime_scanner = RuntimeSyntaxRiskScanner(rel_path, source)
+        import_aliases = _collect_import_aliases(tree)
+        runtime_scanner = RuntimeSyntaxRiskScanner(rel_path, source, import_aliases)
         runtime_scanner.visit(tree)
         findings.extend(runtime_scanner.findings)
         future_annotations = _has_future_annotations(tree)
-        scanner = AnnotationRiskScanner(rel_path, source, future_annotations, _collect_import_aliases(tree))
+        scanner = AnnotationRiskScanner(rel_path, source, future_annotations, import_aliases)
         scanner.visit(tree)
         findings.extend(scanner.findings)
     return tuple(sorted(findings, key=lambda item: (item.rel_path, item.line, item.column, item.rule)))
@@ -567,14 +595,17 @@ def format_text_report(result: ScanResult, max_examples: int) -> str:
     findings = list(result.findings)
     by_rule = _summary_by_rule(findings)
     syntax_count = by_rule.get("PY38_PARSE_REJECTED", 0)
-    soft_count = len(findings) - syntax_count
+    deferred_count = sum(finding.annotation_evaluation_required for finding in findings)
+    runtime_count = len(result.blocking_findings) - syntax_count - result.skipped_files
     lines = [
         "Python 3.8.10 兼容语法扫描结果",
         "================================",
         f"扫描文件数: {result.scanned_files}",
         f"读取失败数: {result.skipped_files}",
         f"Python 3.8 解析器拒绝: {syntax_count}",
-        f"解析可过但 Python 3.8 运行/语义风险: {soft_count}",
+        f"解析可过但 Python 3.8 运行/语义风险: {runtime_count}",
+        f"需显式解析延迟注解才触发的风险（非阻断）: {deferred_count}",
+        f"阻断项数: {len(result.blocking_findings)}",
         f"总发现数: {len(findings)}",
         "",
         "规则来源:",
@@ -597,7 +628,8 @@ def format_text_report(result: ScanResult, max_examples: int) -> str:
             future_note = " future_annotations" if finding.future_annotations else ""
             host_note = " host_parser_accepts" if finding.host_parser_accepts else ""
             position = f"{finding.rel_path}:{finding.line}:{finding.column}"
-            lines.append(f"- [{finding.rule}]{future_note}{host_note} {position} {finding.message}")
+            level = "提示" if finding.annotation_evaluation_required else "阻断"
+            lines.append(f"- [{finding.rule}][{level}]{future_note}{host_note} {position} {finding.message}")
             if finding.introduced_in:
                 lines.append(f"  introduced_in: {finding.introduced_in}")
             if finding.detail:
@@ -614,6 +646,8 @@ def format_json_report(result: ScanResult) -> str:
         "scanned_files": result.scanned_files,
         "skipped_files": result.skipped_files,
         "total_findings": len(result.findings),
+        "blocking_findings": len(result.blocking_findings),
+        "annotation_evaluation_risks": sum(finding.annotation_evaluation_required for finding in result.findings),
         "by_rule": _summary_by_rule(result.findings),
         "by_file": _summary_by_file(result.findings),
         "findings": [asdict(finding) for finding in result.findings],
@@ -634,7 +668,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--json", action="store_true", help="输出 JSON 报告。")
     parser.add_argument("--max-examples", type=int, default=50, help="文本报告最多展示多少条示例。")
-    parser.add_argument("--fail-on-hit", action="store_true", help="发现问题时以退出码 1 结束，便于接入门禁。")
+    parser.add_argument("--fail-on-hit", action="store_true", help="发现语法/运行错误时以退出码 1 结束；延迟注解反射风险仅提示。")
     return parser
 
 
@@ -650,7 +684,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         print(format_json_report(result))
     else:
         print(format_text_report(result, max_examples=max(0, int(args.max_examples))))
-    if args.fail_on_hit and result.findings:
+    if args.fail_on_hit and result.blocking_findings:
         return 1
     return 0
 

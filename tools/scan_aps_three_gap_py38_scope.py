@@ -23,6 +23,7 @@ DEFAULT_BASE_REF = "d4589d77"
 HOST_TOOL_PYTHON_PREFIXES: Tuple[str, ...] = (
     ".codestable/",
     ".limcode/skills/",
+    ".limcode/hooks/",
 )
 
 
@@ -35,7 +36,7 @@ def is_aps_py38_scope_path(path: str) -> bool:
 
 def _git_changed_python_files(base_ref: str, root: str) -> List[str]:
     proc = subprocess.run(
-        ["git", "diff", "--name-only", str(base_ref), "--", "*.py"],
+        ["git", "diff", "--no-renames", "--name-only", "--diff-filter=d", "-z", str(base_ref), "--", "*.py"],
         cwd=root,
         capture_output=True,
         text=True,
@@ -44,7 +45,7 @@ def _git_changed_python_files(base_ref: str, root: str) -> List[str]:
     if proc.returncode != 0:
         raise RuntimeError((proc.stderr or proc.stdout or "git diff failed").strip())
     paths = []
-    for line in proc.stdout.splitlines():
+    for line in proc.stdout.split("\0"):
         rel_path = scan_py38plus_syntax.normalize_repo_path(line)
         if is_aps_py38_scope_path(rel_path) and os.path.isfile(os.path.join(root, rel_path)):
             paths.append(rel_path)
@@ -67,9 +68,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     args = build_arg_parser().parse_args(argv)
     root = os.path.abspath(args.root)
     paths = _git_changed_python_files(str(args.base_ref), root)
-    result = scan_py38plus_syntax.scan_paths(root, paths, include_annotation_runtime=True)
+    result = (scan_py38plus_syntax.scan_paths(root, paths, include_annotation_runtime=True)
+              if paths else scan_py38plus_syntax.ScanResult(0, 0, ()))
     print(scan_py38plus_syntax.format_text_report(result, max_examples=50))
-    if result.findings:
+    if result.blocking_findings:
         return 1
     return 0
 

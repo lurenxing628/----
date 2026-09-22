@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import argparse
 import datetime
-import fnmatch
 import json
 import subprocess
 import sys
@@ -27,14 +26,7 @@ from typing import List, Optional, Sequence
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from scripts.run_workbench_opt_in_browser import parse_summary, runtime_environment, skipped_reasons  # noqa: E402
-from tools.browser_lane_files import BROWSER_LANE_FILES, iter_test_files  # noqa: E402
-from tools.full_test_debt_shards import PERF_FILE_PATTERNS  # noqa: E402
-
-
-def lane_targets() -> List[str]:
-    perf_files = [path for path in iter_test_files() if any(fnmatch.fnmatch(path, pattern) for pattern in PERF_FILE_PATTERNS)]
-    return sorted(set(BROWSER_LANE_FILES) | set(perf_files))
+from tools.browser_lane_support import lane_targets, parse_summary, runtime_environment, skipped_reasons  # noqa: E402
 
 
 def select_targets(targets: Sequence[str], only: Sequence[str]) -> List[str]:

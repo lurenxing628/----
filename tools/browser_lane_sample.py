@@ -32,8 +32,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from scripts.run_browser_test_lane import lane_targets  # noqa: E402
-from scripts.run_workbench_opt_in_browser import runtime_environment  # noqa: E402
+from tools.browser_lane_support import lane_targets, runtime_environment  # noqa: E402
 
 CURSOR_PATH = ROOT / "evidence" / "browser-lane" / "sample-cursor.json"
 DEFAULT_COUNT = 2

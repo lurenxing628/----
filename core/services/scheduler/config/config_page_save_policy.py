@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Sequence, Tuple, cast
+from typing import Any, Dict, List, Optional, Sequence, Set, Tuple, cast
 
 from core.errors import ValidationError
 
@@ -30,7 +30,7 @@ class ConfigPageSavePolicy:
         return getattr(form_values, key, None)
 
     @classmethod
-    def submitted_fields(cls, form_values: Any) -> set[str]:
+    def submitted_fields(cls, form_values: Any) -> Set[str]:
         keys_getter = getattr(form_values, "keys", None)
         if callable(keys_getter):
             raw_keys = list(cast(Sequence[Any], keys_getter()))
@@ -75,7 +75,7 @@ class ConfigPageSavePolicy:
         )
 
     @staticmethod
-    def write_values(snapshot: ScheduleConfigSnapshot, *, submitted_fields: set[str]) -> Dict[str, Any]:
+    def write_values(snapshot: ScheduleConfigSnapshot, *, submitted_fields: Set[str]) -> Dict[str, Any]:
         values = snapshot.to_dict()
         write_fields = {key for key in CONFIG_PAGE_WRITE_FIELDS if key in submitted_fields}
         if "priority_weight" in submitted_fields or "due_weight" in submitted_fields:

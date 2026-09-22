@@ -1,4 +1,4 @@
-"""回归测试：tools/scan_py38plus_syntax 扫描器能识别 Python 3.8 之上才有的语法/运行期特性——match-case 等无法被 3.8 解析的语法报 PY38_PARSE_REJECTED，PEP585 泛型别名、PEP604 联合类型、PEP584 字典合并/更新、PEP646 变长泛型等各按规则计数并标注 introduced_in/future_annotations；--syntax-only/include_annotation_runtime=False 时压制注解运行期风险；CLI 的 --json/--fail-on-hit 命中时退出码为 1 并输出 by_rule 统计。"""
+"""Python 3.8 checks distinguish runtime errors, deferred hints and unevaluated locals."""
 
 from __future__ import annotations
 
@@ -7,6 +7,8 @@ import subprocess
 import sys
 import textwrap
 from pathlib import Path
+
+import pytest
 
 from tests._support.paths import REPO_ROOT
 from tools import scan_py38plus_syntax as py38scan
@@ -51,9 +53,74 @@ def test_scan_source_reports_common_new_annotation_runtime_risks() -> None:
     )
 
     rules = [finding.rule for finding in findings]
-    assert rules.count("PEP585_GENERIC_ALIAS") == 4
+    assert rules.count("PEP585_GENERIC_ALIAS") == 3
     assert rules.count("PEP604_UNION_TYPE") == 2
     assert all(finding.future_annotations for finding in findings)
+    assert all(finding.annotation_evaluation_required for finding in findings)
+    assert py38scan.ScanResult(1, 0, findings).blocking_findings == ()
+
+
+@pytest.mark.parametrize("prefix", ["", "from __future__ import annotations\n"])
+def test_function_local_annotations_are_not_runtime_expressions(prefix) -> None:
+    source = prefix + textwrap.dedent("""\
+        def collect():
+            cache: set[str] = set()
+            if True:
+                rows: list[int] = [1]
+            return cache, rows
+    """)
+    assert py38scan.scan_source("sample.py", source) == ()
+    namespace = {}
+    exec(compile(source, "sample.py", "exec", dont_inherit=True), namespace)
+    assert namespace["collect"]() == (set(), [1])
+
+
+@pytest.mark.parametrize("source", [
+    "def collect(items: set[str]) -> list[int]:\n    return []\n",
+    "ROWS: list[int] = []\n",
+    "class C:\n    rows: list[int] = []\n",
+    "def outer():\n    class C:\n        rows: list[int] = []\n",
+    "def outer():\n    def inner(rows: list[int]):\n        return rows\n",
+])
+def test_eager_annotations_still_block_in_their_own_lexical_scope(source) -> None:
+    findings = py38scan.scan_source("sample.py", source)
+    assert findings
+    assert all(not finding.annotation_evaluation_required for finding in findings)
+    assert all(finding.rule == "PEP585_GENERIC_ALIAS" for finding in findings)
+
+
+def test_eager_union_annotation_remains_blocking() -> None:
+    findings = py38scan.scan_source("sample.py", "def normalize(value: int | str):\n    return value\n")
+    assert len(findings) == 1
+    assert findings[0].rule == "PEP604_UNION_TYPE"
+    assert not findings[0].annotation_evaluation_required
+
+
+def test_read_failure_remains_blocking(tmp_path, monkeypatch) -> None:
+    source = tmp_path / "sample.py"
+    source.write_text("value = 1\n", encoding="utf-8")
+
+    def fail_read(_path):
+        raise OSError("cannot read source")
+
+    monkeypatch.setattr(py38scan, "read_python_source", fail_read)
+    result = py38scan.scan_paths(str(tmp_path), [source.name])
+    assert result.skipped_files == len(result.blocking_findings) == 1
+    assert result.blocking_findings[0].rule == "READ_ERROR"
+
+
+@pytest.mark.parametrize("expression", [
+    "Alias = list[str]", "value = set[str]()", "value: set[str] = set[str]()",
+    "from collections.abc import Sequence as Seq\nAlias = Seq[int]",
+    "from typing import cast\nvalue = cast(list[str], [])",
+    "class C(list[str]):\n    pass",
+])
+def test_future_annotations_do_not_hide_runtime_generic_expressions(expression) -> None:
+    source = "from __future__ import annotations\n" + expression + "\n"
+    findings = py38scan.scan_source("sample.py", source)
+    blockers = py38scan.ScanResult(1, 0, findings).blocking_findings
+    assert len(blockers) == 1
+    assert blockers[0].rule == "PEP585_GENERIC_ALIAS"
 
 
 def test_scan_source_reports_non_parser_new_runtime_semantics() -> None:
@@ -121,7 +188,7 @@ def test_syntax_only_suppresses_runtime_semantic_risks() -> None:
 
 def test_cli_json_output_and_fail_on_hit(tmp_path: Path) -> None:
     target = tmp_path / "sample.py"
-    target.write_text("from __future__ import annotations\nVALUE: list[str] = []\n", encoding="utf-8")
+    target.write_text("VALUE: list[str] = []\n", encoding="utf-8")
 
     proc = subprocess.run(
         [sys.executable, str(SCAN_TOOL), "--root", str(tmp_path), "--json", "--fail-on-hit"],
@@ -137,3 +204,19 @@ def test_cli_json_output_and_fail_on_hit(tmp_path: Path) -> None:
     assert payload["by_rule"] == {"PEP585_GENERIC_ALIAS": 1}
     assert payload["findings"][0]["rel_path"] == "sample.py"
     assert payload["findings"][0]["introduced_in"] == "3.9 / PEP 585"
+    assert payload["blocking_findings"] == 1
+    assert payload["annotation_evaluation_risks"] == 0
+
+
+def test_cli_reports_deferred_risks_without_treating_them_as_runtime_failures(tmp_path: Path) -> None:
+    target = tmp_path / "sample.py"
+    target.write_text("from __future__ import annotations\ndef rows() -> list[str]:\n    return []\n", encoding="utf-8")
+    proc = subprocess.run(
+        [sys.executable, str(SCAN_TOOL), "--root", str(tmp_path), "--json", "--fail-on-hit"],
+        capture_output=True, text=True, encoding="utf-8",
+    )
+    assert proc.returncode == 0, proc.stderr
+    payload = json.loads(proc.stdout)
+    assert payload["total_findings"] == payload["annotation_evaluation_risks"] == 1
+    assert payload["blocking_findings"] == 0
+    assert payload["findings"][0]["annotation_evaluation_required"] is True

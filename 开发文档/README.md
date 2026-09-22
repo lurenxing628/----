@@ -79,6 +79,8 @@ long gate cache 不是跳过正式门禁。命中前会校验 command、fingerpr
 
 快速静态预检入口是 `.venv\Scripts\python scripts\run_quality_gate.py --fast-precheck`。它只检查本次改动相关的 Python 文件，默认纳入 staged、unstaged、untracked 三类本地改动，并只跑局部 ruff；pyright 默认跳过，因为局部 pyright 不能代表正式 `pyright_gate_full` 或 `pyright_tools_full`。这只是提前提醒，不能当作完整质量门禁、clean proof 或 long gate proof。
 
+Python 3.8 兼容扫描把语法错误、立即求值的不兼容注解和运行时泛型表达式列为阻断项；启用 `from __future__ import annotations` 的函数/模块/类注解若仅在 `get_type_hints()` 或 `eval()` 时有风险，会单列为非阻断提示。函数局部变量注解不求值，不列为运行风险。`tools/scan_py38plus_syntax.py --fail-on-hit` 按阻断项决定退出码，JSON 的 `blocking_findings` 与 `annotation_evaluation_risks` 分别给出两类数量；解析注解的调用方仍须验证真实反射行为。路线图范围扫描排除 Git 删除项及 `.codestable/`、`.limcode/skills/`、`.limcode/hooks/` 宿主工具，不受本机残留旧文件影响。
+
 ### 治理台账写入口
 
 ```powershell

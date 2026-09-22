@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import io
+from types import ModuleType
 
 import openpyxl
 import pytest
@@ -19,6 +20,13 @@ from core.services.common.excel_cell_values import (
     is_formula_or_error,
     is_percent_format,
 )
+from core.services.workbench.batch import file_codec as batch_codec
+from core.services.workbench.execution import field_report_files_codec as field_codec
+from core.services.workbench.facts import file_codec as facts_codec
+from core.services.workbench.material import file_codec as material_codec
+from core.services.workbench.process import file_reader as process_reader
+from core.services.workbench.resource.calendar_files import file_codec as calendar_codec
+from core.services.workbench.resource.relation_files import file_codec as relation_codec
 
 
 def _cell(value, number_format=None):
@@ -88,21 +96,19 @@ def test_formula_and_error_cells_are_reported() -> None:
 # ---------------------------------------------------------------------------
 
 READER_MODULES = (
-    "core.services.workbench.facts.file_codec",
-    "core.services.workbench.resource.calendar_files.file_codec",
-    "core.services.workbench.resource.relation_files.file_codec",
-    "core.services.workbench.material.file_codec",
-    "core.services.workbench.process.file_reader",
-    "core.services.workbench.batch.file_codec",
-    "core.services.workbench.execution.field_report_files_codec",
+    facts_codec,
+    calendar_codec,
+    relation_codec,
+    material_codec,
+    process_reader,
+    batch_codec,
+    field_codec,
 )
 
 
-@pytest.mark.parametrize("module_name", READER_MODULES)
-def test_every_xlsx_reader_goes_through_the_shared_translation(module_name: str) -> None:
-    import importlib
-
-    module = importlib.import_module(module_name)
+@pytest.mark.parametrize("module", READER_MODULES, ids=lambda module: module.__name__)
+def test_every_xlsx_reader_goes_through_the_shared_translation(module: ModuleType) -> None:
+    module_name = module.__name__
     assert getattr(module, "cell_value", None) is cell_value, (
         f"{module_name} 没有走共用的单元格翻译层；直接读 cell.value 会漏掉数字格式，"
         f"效率列那个 100 倍缩小就是这么来的"
@@ -112,13 +118,12 @@ def test_every_xlsx_reader_goes_through_the_shared_translation(module_name: str)
 
 def test_no_xlsx_reader_still_judges_formula_cells_by_hand() -> None:
     """各家族不得再自己写 data_type in ("f", "e")，否则判定会再次各走各的。"""
-    import importlib
     import inspect
 
-    for module_name in READER_MODULES:
-        source = inspect.getsource(importlib.import_module(module_name))
-        assert 'data_type in ("f", "e")' not in source, module_name
-        assert "data_type in (TYPE_FORMULA, TYPE_ERROR)" not in source, module_name
+    for module in READER_MODULES:
+        source = inspect.getsource(module)
+        assert 'data_type in ("f", "e")' not in source, module.__name__
+        assert "data_type in (TYPE_FORMULA, TYPE_ERROR)" not in source, module.__name__
 
 
 # ---------------------------------------------------------------------------
