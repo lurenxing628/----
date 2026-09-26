@@ -10,8 +10,10 @@ async function post(page,suffix,click){
   const response=page.waitForResponse(res=>new URL(res.url()).pathname.endsWith(suffix)&&res.request().method()==='POST');
   await click();const value=await response;assert.equal(value.status(),200,await value.text());return value.json();
 }
-async function dismiss(page){
+async function dismiss(page,discard=false){
   await page.getByRole('dialog').getByRole('button',{name:/^(完成|取消)$/}).first().click();
+  if(discard){const guard=page.getByRole('dialog',{name:'离开前确认',exact:true});await guard.waitFor();
+    await guard.getByRole('button',{name:'放弃未保存内容并继续',exact:true}).click();}
   await page.getByRole('dialog').waitFor({state:'detached'});
 }
 async function save(page,dialog){
@@ -47,7 +49,7 @@ async function calendarFiles(page,state,helpers,root,report){
     const {dialog,data}=await upload(page,[row(FIRST,'工作日','25','','','','')]);
     assert.equal(data.summary.rejected,1);assert.equal(data.can_confirm,false);
     assert(await dialog.getByRole('button',{name:'确认导入',exact:true}).isDisabled());
-    await shot(page,state+'-calendar-import-rejected');await dismiss(page);
+    await shot(page,state+'-calendar-import-rejected');await dismiss(page,true);
   });
   await run(page,state,'calendar-files-import-with-holiday-overtime',async()=>{
     // 第二行是假期带工时：界面上设不出来，文件能存，但必须在预检里说明它会显示成工作日。

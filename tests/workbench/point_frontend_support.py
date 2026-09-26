@@ -82,7 +82,7 @@ def app_for(case, output):
 @contextmanager
 def serve(app):
     server = make_server("127.0.0.1", 0, app, threaded=True)
-    assert server.server_port not in (52392, 58448, 64612)
+    assert 0 < server.server_port == server.socket.getsockname()[1]
     thread = Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:

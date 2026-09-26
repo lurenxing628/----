@@ -38,9 +38,12 @@
       });
       const resize = new ResizeObserver(draw);
       resize.observe(ref.current);
+      const media = window.matchMedia('print');
+      if (typeof media.addEventListener === 'function') media.addEventListener('change', draw);else media.addListener(draw);
       return () => {
         theme.disconnect();
         resize.disconnect();
+        if (typeof media.removeEventListener === 'function') media.removeEventListener('change', draw);else media.removeListener(draw);
       };
     }, deps);
   }
@@ -50,6 +53,7 @@
     width,
     viewport,
     left,
+    printing,
     selectedRef,
     risks,
     onSelect,
@@ -60,9 +64,10 @@
     const G = window.PointGanttModel;
     const items = row.point ? G.visible(row.items, model.start + left / scale, model.start + (left + viewport) / scale, scale) : M.visibleItems(row.items, model.start + left / scale, model.start + (left + viewport) / scale);
     usePaint(ref, (ctx, w, h, colors) => {
+      const paintScale = (printing ? w : width) / (model.end - model.start);
       for (const item of items) {
-        const x = (item.start - model.start) * scale - left,
-          barWidth = (item.end - item.start) * scale;
+        const x = (item.start - model.start) * paintScale - left,
+          barWidth = (item.end - item.start) * paintScale;
         const inset = Math.min(2, barWidth * 0.1),
           painted = Math.max(0, barWidth - inset * 2);
         const tone = row.before ? 'plan' : M.tone(item.task, model.conflicts, risks),
@@ -90,7 +95,7 @@
           ctx.restore();
         }
       }
-    }, [items, selectedRef, width, left, viewport, risks]);
+    }, [items, selectedRef, width, left, viewport, printing, risks]);
     function hit(event) {
       const box = ref.current.getBoundingClientRect(),
         at = model.start + (event.clientX - box.left + left) / scale;

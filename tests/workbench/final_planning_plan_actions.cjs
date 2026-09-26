@@ -4,6 +4,8 @@ const { processOrderActions } = require('./final_planning_process_order.cjs');
 
 async function planActions(page, report, h, flush) {
   const { action, button, shot, last } = h;
+  await page.getByRole('tablist', { name: '计划中心视图', exact: true }).getByRole('tab', { name: '计划甘特', exact: true }).click();
+  await page.locator('[data-plan-gantt]').waitFor();
   await action(['WBP-PLAN-002.identity', 'WBP-GANTT-002.click', 'WBP-GANTT-003.details', 'WBP-GANTT-003.quantities'], async () => {
     await h.formalDetails(); await h.pixels('[data-plan-workspace] .plan-main', 'official');
     report.first_official = last(data => data.plan && data.tasks);
@@ -96,9 +98,10 @@ async function planActions(page, report, h, flush) {
   });
   await action(['WBP-DELAY-001.metrics', 'WBP-DELAY-002.select-batch', 'WBP-GANTT-003.resources',
     'WBP-GANTT-004.batch-focus'], async () => {
+    await page.getByRole('searchbox', { name: '搜索批次、工序、设备、人员', exact: true }).fill('');
+    await page.getByRole('tablist', { name: '计划中心视图', exact: true }).getByRole('tab', { name: '选择排产方案', exact: true }).click();
     await button('B1', page.getByRole('table', { name: '交付风险列表', exact: true })).click();
     assert((await page.locator('[data-plan-inspector]').innerText()).includes('B1'));
-    await page.getByRole('searchbox', { name: '搜索批次、工序、设备、人员', exact: true }).fill('');
     const group = page.getByRole('group', { name: '计划分析视图', exact: true });
     await button('资源负荷', group).click();
     await page.getByRole('table', { name: '资源负荷列表', exact: true }).waitFor(); await shot('resource-load');

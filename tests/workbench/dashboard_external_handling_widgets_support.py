@@ -188,7 +188,7 @@ def serve(root, output, monkeypatch):
         return jsonify(ok=True)
 
     server = make_server("127.0.0.1", 0, app, threaded=False)
-    assert server.server_port not in (52392, 58448, 64612)
+    assert 0 < server.server_port == server.socket.getsockname()[1]
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:

@@ -12,11 +12,13 @@ async function runActions(page, ready, report, h, flush) {
   await page.locator('[data-preflight-workspace]').getByRole('heading', { name: '执行排产', exact: true }).waitFor();
   if (await page.locator('html').getAttribute('data-theme') !== report.theme) await page.getByRole('button', { name: /^切换(?:深色|浅色)$/ }).click();
   await action(['WBP-RUN-001.open-picker', 'WBP-RUN-002.empty-guard'], async () => {
-    await button('开始排产检查').click();
-    await page.locator('[data-reason-group="no_eligible_tasks"]').waitFor();
-    assert.equal(await button('核对并开始排产：请先选择要排产的批次。').isDisabled(), true);
-    await page.locator('.rj-action-reason').getByText('请先选择要排产的批次。', { exact: true }).waitFor();
+    const check = button('开始排产检查：请先选择要排产的批次。');
+    assert(await check.isDisabled());
+    await check.focus(); await check.press('Enter');
+    assert.equal(await button('核对并开始排产：请先完成排产检查。').isDisabled(), true);
+    await page.locator('.rj-action-reason').getByText('请先完成排产检查。', { exact: true }).waitFor();
     await flush();
+    assert(!report.requests.some(row => row.method === 'POST' && row.url.endsWith('/scheduling/preflight')));
     assert.equal(await page.getByRole('button', { name: '确认开始排产', exact: true }).count(), 0);
     assert(!report.requests.some(row => row.method === 'POST' && row.url.endsWith('/scheduling/runs')));
     await button('选择批次').click();

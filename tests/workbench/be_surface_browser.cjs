@@ -97,8 +97,8 @@ async function preflight(page, variant) {
   await page.evaluate(spec => mountPreflight(spec), variant);
   await page.getByRole('button', { name: '开始排产检查', exact: true }).click();
   await page.locator('[data-reason-group=operation_blocked]').waitFor();
-  assert.equal(await page.locator('[data-reason-group=operation_blocked]').innerText(), '19道工序缺必填资料');
-  assert.equal(await page.locator('[data-reason-group=execution_review_required]').innerText(), '2道工序已有执行记录待核对');
+  assert.equal(await page.locator('[data-reason-group=operation_blocked]').innerText(), '19 道工序缺必填资料');
+  assert.equal(await page.locator('[data-reason-group=execution_review_required]').innerText(), '2 道工序已有执行记录待核对');
   const runButton = page.getByRole('button', { name: '开始排产', exact: true });
   assert.equal(await runButton.isDisabled(), true);
   assert.equal(await runButton.evaluate(button => document.getElementById(button.getAttribute('aria-describedby')).textContent),
@@ -175,7 +175,7 @@ async function edgeCases(page) {
   await page.evaluate(() => mountPreflight({ theme: 'dark', extra: true }));
   await page.getByRole('button', { name: '开始排产检查', exact: true }).click();
   await page.locator('[data-reason-group=be_tail_reason]').waitFor();
-  assert.equal(await page.locator('[data-reason-group=operation_blocked]').innerText(), '19道工序缺必填资料');
+  assert.equal(await page.locator('[data-reason-group=operation_blocked]').innerText(), '19 道工序缺必填资料');
   await page.locator('.pf-reasons > summary').click();
   assert.ok((await page.locator('.pf-reason-list').innerText()).includes('同类原因仍保留原文'));
   assert.ok((await page.locator('.pf-reason-list').innerText()).includes('末项原因不能因截断丢失'));

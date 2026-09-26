@@ -1,32 +1,7 @@
 (function () {
   'use strict';
   const M = window.RunCandidateModel, B = window.RunBaselineModel, { Button } = window.RunCandidateControls;
-  function usePrintLayout() {
-    const [printing, setPrinting] = React.useState(() => typeof window.matchMedia === 'function' && window.matchMedia('print').matches);
-    React.useLayoutEffect(() => {
-      const media = typeof window.matchMedia === 'function' ? window.matchMedia('print') : null;
-      function commit(value, synchronous) {
-        if (synchronous && window.ReactDOM && typeof window.ReactDOM.flushSync === 'function') window.ReactDOM.flushSync(() => setPrinting(value));
-        else setPrinting(value);
-      }
-      function beforePrint() { commit(true, true); }
-      function afterPrint() { commit(false, true); }
-      function mediaChanged(event) { commit(event.matches, false); }
-      window.addEventListener('beforeprint', beforePrint); window.addEventListener('afterprint', afterPrint);
-      if (media) {
-        if (typeof media.addEventListener === 'function') media.addEventListener('change', mediaChanged);
-        else media.addListener(mediaChanged);
-      }
-      return () => {
-        window.removeEventListener('beforeprint', beforePrint); window.removeEventListener('afterprint', afterPrint);
-        if (media) {
-          if (typeof media.removeEventListener === 'function') media.removeEventListener('change', mediaChanged);
-          else media.removeListener(mediaChanged);
-        }
-      };
-    }, []);
-    return printing;
-  }
+  function usePrintLayout() { return window.WorkbenchControls.usePrintLayout(); }
   function useBaseline(data) {
     const [enabled, setEnabled] = React.useState(false), [revision, refresh] = React.useReducer(v => v + 1, 0);
     const [state, setState] = React.useState({ result: null, error: null, busy: false }), request = React.useRef(null);

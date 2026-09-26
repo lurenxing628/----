@@ -17,6 +17,7 @@ from tests.workbench.run_live_server_support import (
     BASE,
     FORBIDDEN_PORTS,
     attach_journal,
+    bound_server_port,
     database_state,
     freeze_built_assets,
     inside,
@@ -105,11 +106,10 @@ class LiveRunServer:
         attach_journal(self.app, self.directory / "server-requests.jsonl")
         # HTTP requests finish before shutdown proceeds; computations use the real worker.
         self.server = make_server("127.0.0.1", port, self.app, threaded=False, request_handler=WorkbenchRequestHandler)
-        if self.server.server_port in FORBIDDEN_PORTS:
-            raise ValueError("OS allocated a reserved port; restart on another free port")
+        bound_port = bound_server_port(self.server)
         self.worker = threading.Thread(target=self.server.serve_forever, name="run-fixture-http", daemon=True)
         self.worker.start()
-        url = "http://127.0.0.1:" + str(self.server.server_port)
+        url = "http://127.0.0.1:" + str(bound_port)
         self.ready = {"schema_version": 1, "schema_database_version": before["SchemaVersion"][0]["version"],
                       "url": url, "workbench_url": url + "/workbench", "run_url": url + "/workbench?view=run",
                       "root": str(self.root), "pid": os.getpid(), "session": self.session,

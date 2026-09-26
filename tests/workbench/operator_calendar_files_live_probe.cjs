@@ -14,8 +14,10 @@ async function post(page,suffix,click){
   const response=page.waitForResponse(res=>new URL(res.url()).pathname.endsWith(suffix)&&res.request().method()==='POST');
   await click();const value=await response;assert.equal(value.status(),200,await value.text());return value.json();
 }
-async function dismiss(page){
+async function dismiss(page,discard=false){
   await page.getByRole('dialog').getByRole('button',{name:/^(完成|取消|关闭)$/}).first().click();
+  if(discard){const guard=page.getByRole('dialog',{name:'离开前确认',exact:true});await guard.waitFor();
+    await guard.getByRole('button',{name:'放弃未保存内容并继续',exact:true}).click();}
   await page.getByRole('dialog').waitFor({state:'detached'});
 }
 async function save(page,dialog){
@@ -68,7 +70,7 @@ async function operatorCalendarFiles(page,state,helpers,root,report){
                                            row(CODE,SECOND,'工作日','','','','','','')]);
     assert.equal(data.summary.rejected,2);assert.equal(data.can_confirm,false);
     assert(await dialog.getByRole('button',{name:'确认导入',exact:true}).isDisabled());
-    await shot(page,state+'-operator-calendar-import-rejected');await dismiss(page);
+    await shot(page,state+'-operator-calendar-import-rejected');await dismiss(page,true);
   });
   await run(page,state,'operator-calendar-files-import-overrides-the-rotation',async()=>{
     const {dialog,data}=await upload(page,[row(CODE,FIRST,'工作日','09:00','17:30','90','是','否','个人早班'),

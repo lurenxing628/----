@@ -188,6 +188,7 @@
       rows: data.tasks,
       size: 50,
       columns: [['批次 / 工序', t => /*#__PURE__*/React.createElement(U.Button, {
+        "data-wb-print-value": true,
         icon: "arrow-right",
         onClick: () => onSelect(t.task_ref)
       }, t.batch_id + ' · ' + t.process_label + ' ' + t.sequence)], ['分件', t => t.piece_id || window.WorkbenchTerms.shared_operation], ['目标量', t => U.number(t.quantity)], ['设备 / 人员', t => /*#__PURE__*/React.createElement(React.Fragment, null, name(t.machine_ref), /*#__PURE__*/React.createElement("br", null), name(t.operator_ref))], ['开始', t => U.timeLabel(t.start)], ['结束', t => U.timeLabel(t.end)], ['变更', t => t.changed ? '已调整' : '未变']]

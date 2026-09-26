@@ -20,7 +20,7 @@
   }
   function Batches({ data, selected, onSelect }) { return <section aria-label="逐批交期变化"><h3>逐批交期变化</h3><div className="dy-scroll"><table className="dy-analysis-table"><caption className="wb-sr-only">逐批交期变化</caption>
     <thead><tr><th scope="col">批次 / 零件</th><th scope="col">交期</th><th scope="col">排产时计划完工</th><th scope="col">候选计划完工</th><th scope="col">排产时 / 候选</th><th scope="col">超期变化（小时）</th></tr></thead><tbody>{data.batches.map(row => <tr key={row.batch_ref} data-comparison-batch={row.batch_ref} data-selected={selected === row.batch_ref}>
-      <td><Button reasonDisplay="inline" className="mini" icon="search" aria-pressed={selected === row.batch_ref} onClick={() => onSelect(row.batch_ref)}>{row.batch_id}</Button><small>{row.part_label || '名称未填写'}</small></td>
+      <td><Button data-wb-print-value reasonDisplay="inline" className="mini" icon="search" aria-pressed={selected === row.batch_ref} onClick={() => onSelect(row.batch_ref)}>{row.batch_id}</Button><small>{row.part_label || '名称未填写'}</small></td>
       <td>{row.after.due_date || '未知'}</td><td>{row.before.planned_finish ? window.WorkbenchFormat.dateTime(row.before.planned_finish) : '工序未排完'}</td>
       <td>{row.after.planned_finish ? window.WorkbenchFormat.dateTime(row.after.planned_finish) : '工序未排完'}</td><td>{risk(row.before)} / {risk(row.after)}</td><td>{signed(row.delay_delta_hours)}</td>
     </tr>)}</tbody></table></div></section>; }

@@ -1,6 +1,32 @@
 (function () {
   'use strict';
   const B = window.APSWorkbenchControlBridge;
+  function usePrintLayout() {
+    const [printing, setPrinting] = React.useState(() => typeof window.matchMedia === 'function' && window.matchMedia('print').matches);
+    React.useLayoutEffect(() => {
+      const media = typeof window.matchMedia === 'function' ? window.matchMedia('print') : null;
+      function commit(value, synchronous) {
+        if (synchronous && window.ReactDOM && typeof window.ReactDOM.flushSync === 'function') window.ReactDOM.flushSync(() => setPrinting(value));
+        else setPrinting(value);
+      }
+      function beforePrint() { commit(true, true); }
+      function afterPrint() { commit(false, true); }
+      function mediaChanged(event) { commit(event.matches, false); }
+      window.addEventListener('beforeprint', beforePrint); window.addEventListener('afterprint', afterPrint);
+      if (media) {
+        if (typeof media.addEventListener === 'function') media.addEventListener('change', mediaChanged);
+        else media.addListener(mediaChanged);
+      }
+      return () => {
+        window.removeEventListener('beforeprint', beforePrint); window.removeEventListener('afterprint', afterPrint);
+        if (media) {
+          if (typeof media.removeEventListener === 'function') media.removeEventListener('change', mediaChanged);
+          else media.removeListener(mediaChanged);
+        }
+      };
+    }, []);
+    return printing;
+  }
   function WorkbenchControls() {
     const [opened, setOpened] = React.useState(null), current = React.useRef(null), popup = React.useRef(null), menu = React.useRef(null);
     const [position, setPosition] = React.useState({ left: 0, top: 0, visibility: 'hidden' });
@@ -134,5 +160,6 @@
           label={B.label(owner)} onCommit={commit} onClose={() => close(true)} />}
     </div>, opened.portal);
   }
+  WorkbenchControls.usePrintLayout = usePrintLayout;
   window.WorkbenchControls = WorkbenchControls;
 })();

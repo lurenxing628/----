@@ -101,6 +101,7 @@ BROWSER_LANE_FILES: Tuple[str, ...] = (
     "tests/workbench/test_piece_main_browser.py",
     "tests/workbench/test_piece_presentation_browser.py",
     "tests/workbench/test_plan_adoption_baseline_browser.py",
+    "tests/workbench/test_plan_print.py",
     "tests/workbench/test_plan_scope_caption.py",
     "tests/workbench/test_plan_ui.py",
     "tests/workbench/test_point_dense_canvas.py",
@@ -124,6 +125,7 @@ BROWSER_LANE_FILES: Tuple[str, ...] = (
     "tests/workbench/test_resource_file_widgets.py",
     "tests/workbench/test_resource_live_browser.py",
     "tests/workbench/test_resource_navigation_context.py",
+    "tests/workbench/test_resource_rail_storage.py",
     "tests/workbench/test_resource_readiness.py",
     "tests/workbench/test_resource_table_header_widgets.py",
     "tests/workbench/test_round1_field_piece_files_browser.py",
@@ -148,6 +150,7 @@ BROWSER_LANE_FILES: Tuple[str, ...] = (
     "tests/workbench/test_wbui_plan_first_screen.py",
     "tests/workbench/test_wbui_plan_gantt_models.py",
     "tests/workbench/test_workbench_plain_language.py",
+    "tests/workbench/test_workbench_print_values.py",
     "tests/workbench/test_workbench_visual_controls.py",
     "tests/workbench/test_workspace_primitive_styles.py",
 )

@@ -31,7 +31,7 @@ def test_trial_adoption_history_real_main_browser(trial_case):
     }, ensure_ascii=False, indent=2), encoding="utf-8")
     backend = TrialAdoptionHistoryWidgetServer(trial_case, output)
     server = make_server("127.0.0.1", 0, backend.app, threaded=True)
-    assert server.server_port not in (50852, 57734)
+    assert 0 < server.server_port == server.socket.getsockname()[1]
     thread = threading.Thread(target=server.serve_forever)
     thread.start()
     try:

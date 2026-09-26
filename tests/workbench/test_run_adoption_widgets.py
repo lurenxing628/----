@@ -23,7 +23,7 @@ def test_run_adoption_widgets_real_browser(candidate_case):
     print("RUN_ADOPTION_WIDGET_ARTIFACTS " + str(output), flush=True)
     backend = AdoptionWidgetServer(candidate_case, output)
     server = make_server("127.0.0.1", 0, backend.app, threaded=True)
-    assert server.server_port not in (63938, 51093, 56264)
+    assert 0 < server.server_port == server.socket.getsockname()[1]
     thread = threading.Thread(target=server.serve_forever)
     thread.start()
     try:

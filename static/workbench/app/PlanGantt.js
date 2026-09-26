@@ -45,6 +45,7 @@
     item,
     model,
     width,
+    printing,
     selectedRef,
     risks,
     onSelect,
@@ -52,13 +53,15 @@
   }) {
     const task = item.task,
       size = (item.end - item.start) / (model.end - model.start) * width;
+    const at = value => (value - model.start) / (model.end - model.start) * (printing ? 100 : width);
+    const left = printing ? at(item.start) + '%' : at(item.start);
     const title = (item.baseline ? '初始计划\n' : '') + M.taskTitle(task, model.labels, !item.baseline && model.conflicts.has(task.task_ref));
     if (window.PointContract.isPoint(task)) return /*#__PURE__*/React.createElement(window.PointGantt.Marker, {
       task: task,
       "data-plan-task": task.task_ref,
       "data-before": item.baseline || undefined,
       title: title,
-      x: (item.start - model.start) / (model.end - model.start) * width,
+      x: left,
       top: item.baseline ? 1 : 15,
       selected: selectedRef === task.task_ref,
       tone: item.baseline ? 'before' : M.tone(task, model.conflicts, risks),
@@ -79,8 +82,8 @@
       "aria-pressed": selectedRef === task.task_ref,
       title: title,
       style: {
-        left: (item.start - model.start) / (model.end - model.start) * width,
-        width: size
+        left,
+        width: printing ? at(item.end) - at(item.start) + '%' : size
       },
       onClick: () => onSelect(task, item.baseline),
       onMouseEnter: event => onHover({
@@ -119,30 +122,48 @@
         height: 440
       }),
       [hover, setHover] = React.useState(null);
+    const printing = window.WorkbenchControls.usePrintLayout();
     const board = React.useRef(null),
       search = React.useRef(null),
       pending = React.useRef(null),
       frame = React.useRef(null),
       expandButton = React.useRef(null);
+    const printState = React.useRef(false),
+      printPosition = React.useRef(null),
+      restorePosition = React.useRef(null);
+    if (printing && !printState.current) printPosition.current = position;
+    if (!printing && printState.current) restorePosition.current = printPosition.current;
+    printState.current = printing;
     const labelWidth = position.width < 550 ? 125 : 170,
       viewport = Math.max(100, position.width - labelWidth);
     const before = data.projections.baseline,
       showBaseline = before.state === 'available';
     const displayBaseline = showBaseline && baseline,
       displayChangedOnly = showBaseline && changedOnly;
-    const width = viewport * zoom,
+    // Print uses a normalized axis for tick/point layout; CSS maps its percentages to the actual paper width.
+    // It must not inherit a wide screen or expanded board's pixel width.
+    const width = printing ? 640 : viewport * zoom,
       selectedRef = selected && selected.task.task_ref;
+    const renderLeft = printing ? 0 : position.left,
+      renderViewport = printing ? width : viewport;
     const model = React.useMemo(() => M.layout(data, mode, query, displayBaseline, width, displayChangedOnly), [data, mode, query, displayBaseline, width, displayChangedOnly]);
     const risks = React.useMemo(() => new Map((data.projections.delivery_risks.items || []).map(row => [row.batch_id, row.risk])), [data]);
-    const ticks = M.ticks(model.start, model.end, width, position.left, viewport);
+    const ticks = M.ticks(model.start, model.end, width, renderLeft, renderViewport);
     const today = M.instant(asOf.slice(0, 10) + 'T00:00:00'),
       now = M.instant(asOf);
     const timeX = at => (at - model.start) / (model.end - model.start) * width;
-    const visibleRows = M.visibleRows(model.rows, Math.max(0, position.top - 90), position.top + position.height + 90);
-    const rangeStart = model.start + position.left / width * (model.end - model.start);
-    const rangeEnd = model.start + (position.left + viewport) / width * (model.end - model.start);
+    const axisLeft = at => printing ? timeX(at) / width * 100 + '%' : timeX(at);
+    const visibleRows = printing ? model.rows : M.visibleRows(model.rows, Math.max(0, position.top - 90), position.top + position.height + 90);
+    const rangeStart = model.start + renderLeft / width * (model.end - model.start);
+    const rangeEnd = model.start + (renderLeft + renderViewport) / width * (model.end - model.start);
     const measure = () => {
       const el = board.current;
+      if (printState.current || typeof window.matchMedia === 'function' && window.matchMedia('print').matches) return;
+      if (el && restorePosition.current) {
+        el.scrollLeft = restorePosition.current.left;
+        el.scrollTop = restorePosition.current.top;
+        restorePosition.current = null;
+      }
       if (el) setPosition({
         left: el.scrollLeft,
         top: el.scrollTop,
@@ -160,12 +181,14 @@
       };
     }, []);
     React.useLayoutEffect(() => {
+      if (printing) return;
       if (pending.current !== null) {
         board.current.scrollLeft = pending.current * width - viewport / 2;
         pending.current = null;
       }
       measure();
-    }, [width, model]);
+      if (restorePosition.current) frame.current = requestAnimationFrame(measure);
+    }, [width, model, printing]);
     React.useEffect(() => {
       setHover(null);
     }, [query, mode, baseline, changedOnly, expanded]);
@@ -248,6 +271,7 @@
     return /*#__PURE__*/React.createElement("div", {
       className: 'plan-gantt' + (expanded ? ' plan-expanded' : ''),
       "data-plan-gantt": true,
+      "data-printing": printing || undefined,
       onKeyDown: event => {
         if (disabled || event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey || event.target.closest('input,textarea,select,[role=dialog]')) return;
         if (event.key === '/') {
@@ -353,8 +377,8 @@
       model: model,
       tasks: data.tasks,
       width: width,
-      viewport: viewport,
-      left: position.left,
+      viewport: renderViewport,
+      left: renderLeft,
       onPan: left => {
         board.current.scrollLeft = Math.max(0, left);
         measure();
@@ -394,7 +418,7 @@
       className: "plan-tick",
       key: tick.at,
       style: {
-        left: tick.x
+        left: axisLeft(tick.at)
       }
     }, M.timeLabel(tick.label).slice(0, 10), /*#__PURE__*/React.createElement("small", null, M.timeLabel(tick.label).slice(11)))))), visibleRows.map(row => {
       const items = row.point ? window.PointGanttModel.visible(row.items, rangeStart, rangeEnd, width / (model.end - model.start)) : M.visibleItems(row.items, rangeStart, rangeEnd);
@@ -418,14 +442,15 @@
         key: tick.at,
         className: "plan-gridline",
         style: {
-          left: tick.x
+          left: axisLeft(tick.at)
         }
       })), items.length > 70 ? /*#__PURE__*/React.createElement(DenseRow, {
         row: row,
         model: model,
         width: width,
-        viewport: viewport,
-        left: position.left,
+        printing: printing,
+        viewport: renderViewport,
+        left: renderLeft,
         selectedRef: selectedRef,
         risks: risks,
         onSelect: select,
@@ -435,6 +460,7 @@
         item: item,
         model: model,
         width: width,
+        printing: printing,
         selectedRef: selectedRef,
         risks: risks,
         onSelect: select,
@@ -448,7 +474,7 @@
       "aria-label": label + ' ' + M.timeLabel(M.wire(at)),
       title: label + ' ' + M.timeLabel(M.wire(at)),
       style: {
-        left: labelWidth + timeX(at),
+        left: printing ? 'calc(' + labelWidth * (1 - timeX(at) / width) + 'px + ' + axisLeft(at) + ')' : labelWidth + timeX(at),
         top: 52,
         height: model.height
       }

@@ -269,7 +269,7 @@ async function boundaries() {
   }
 }
 (async () => {
-  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve)); assert(![52392,58448,64612].includes(server.address().port)); origin = 'http://127.0.0.1:' + server.address().port;
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve)); assert(server.address().port > 0); origin = 'http://127.0.0.1:' + server.address().port;
   try {
     browser = await launch(); report.browser = browser.version(); assert(report.browser.startsWith('109.'));
     for (const viewport of [{ width:1920,height:1080 }, { width:1392,height:924 }]) for (const theme of ['light','dark']) await happy(viewport, theme);

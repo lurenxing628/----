@@ -5,11 +5,19 @@ async function originEdges(page, report, h, flush, draft, mapped, canonical) {
   const { button, shot, last } = h, origin = report.task_origin.origin;
   const before = report.requests.length;
   await button('返回方案').click(); await page.locator('[data-plan-workspace] .plan-main').waitFor(); await flush();
+  await page.getByRole('tablist', { name: '计划中心视图', exact: true }).getByRole('tab', { name: '计划甘特', exact: true }).click();
+  await page.locator('[data-plan-gantt]').waitFor();
   const catalog = last(value => value.plans && value.plans.some(plan => plan.version === 4 && plan.kind === 'official' && plan.capabilities.view));
   const otherPlan = catalog.plans.find(plan => plan.version === 4 && plan.kind === 'official' && plan.capabilities.view);
   await page.locator('[data-plan-task="' + origin.task_ref + '"]:not([data-before])').click();
+  const previewResponse = page.waitForResponse(row => row.request().method() === 'POST' && row.url().endsWith('/trial/drafts/preview'));
   await button('调整此工序', page.locator('[data-plan-inspector]')).click();
   const dialog = page.getByRole('dialog', { name: '从原来源新增试调', exact: true });
+  const response = await previewResponse, preview = await response.json();
+  assert.equal(response.status(), 200); assert.equal(preview.ok, true);
+  assert.deepEqual(preview.data.base, { plan_ref: origin.plan_ref });
+  assert.equal(preview.data.task_count, draft.task_count);
+  await dialog.getByRole('checkbox', { name: '确认基于此来源新增独立草稿，正式计划保持不变', exact: true }).waitFor();
   await button('打开已有草稿', dialog).click();
   await dialog.waitFor({ state: 'hidden' }); await flush();
   const fixed = page.getByRole('checkbox', { name: '仅此原来源', exact: true });
@@ -59,7 +67,10 @@ async function originEdges(page, report, h, flush, draft, mapped, canonical) {
   await page.goto(canonical); await page.locator('[data-trial-workspace] .tt-main').waitFor(); await flush();
   assert.equal(await page.locator('.tt-gantt [data-task-ref][aria-pressed="true"]').getAttribute('data-task-ref'), mapped.task_ref);
   assert.deepEqual(last(value => value.draft_ref === draft.draft_ref && value.tasks).tasks, draft.tasks);
-  assert(report.requests.slice(before).every(row => row.method === 'GET'));
+  const posts = report.requests.slice(before).filter(row => row.method !== 'GET');
+  assert.equal(posts.length, 1, 'Opening an existing draft only checks its source; it must not create or change a draft');
+  assert.equal(posts[0].method, 'POST'); assert.equal(posts[0].url, response.url());
+  assert.deepEqual(posts[0].input.base, { plan_ref: origin.plan_ref });
   report.task_origin.existing_draft = { draft_ref: draft.draft_ref, task_ref: mapped.task_ref, read_only: true };
 }
 module.exports = { originEdges };

@@ -135,7 +135,8 @@ class FoundationHost:
                     continue
                 if value["pid"] == self.process.pid:
                     self.ready = value
-                    assert not value["url"].endswith(":53144")
+                    assert value["url"].startswith("http://127.0.0.1:")
+                    assert 0 < int(value["url"].rsplit(":", 1)[1]) <= 65535
                     return value
             time.sleep(0.05)
         raise TimeoutError("Main foundation host did not become ready")

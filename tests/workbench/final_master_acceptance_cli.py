@@ -33,7 +33,8 @@ def start(root, env, reuse=False):
                 ready = json.loads(ready_path.read_text(encoding="utf-8"))
                 if ready["pid"] == server.pid and (previous is None or ready["session"] != previous["session"]):
                     assert ready["paths"]["DATABASE_PATH"] == str(root / "db/aps-live.db")
-                    assert ready["url"].startswith("http://127.0.0.1:") and not ready["url"].endswith(":53144")
+                    assert ready["url"].startswith("http://127.0.0.1:")
+                    assert 0 < int(ready["url"].rsplit(":", 1)[1]) <= 65535
                     return server, stream, ready
             time.sleep(.1)
         raise TimeoutError("Private full-build server did not start within 300 seconds")

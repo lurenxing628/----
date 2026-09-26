@@ -70,7 +70,7 @@
           ['当时约束', r => U.statusLabel(r.validation.constraints_status)], ['记录依据', r => <details><summary>编号</summary><div className="tt-ref">{r.change_ref}</div><div className="tt-ref">{r.task_ref}</div></details>]]} /></>}
         {tab === 'issues' && <><p>整体约束：{U.statusLabel(data.validation.constraints_status)}</p><U.Issues rows={data.validation.issues} onSelect={onSelect} /></>}
         {tab === 'tasks' && <U.Table label="完整任务明细" rows={data.tasks} size={50} columns={[
-          ['批次 / 工序', t => <U.Button icon="arrow-right" onClick={() => onSelect(t.task_ref)}>{t.batch_id + ' · ' + t.process_label + ' ' + t.sequence}</U.Button>],
+          ['批次 / 工序', t => <U.Button data-wb-print-value icon="arrow-right" onClick={() => onSelect(t.task_ref)}>{t.batch_id + ' · ' + t.process_label + ' ' + t.sequence}</U.Button>],
           ['分件', t => t.piece_id || window.WorkbenchTerms.shared_operation], ['目标量', t => U.number(t.quantity)], ['设备 / 人员', t => <>{name(t.machine_ref)}<br />{name(t.operator_ref)}</>],
           ['开始', t => U.timeLabel(t.start)], ['结束', t => U.timeLabel(t.end)], ['变更', t => t.changed ? '已调整' : '未变']]} />}
         {tab === 'unplanned' && <><p className="tt-muted">未排工序 {data.unplanned_operations.length} 道</p><U.Table label="未排工序" rows={data.unplanned_operations} columns={[

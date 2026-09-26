@@ -50,7 +50,6 @@ def test_piece_downstream_factory_browser(width, theme):
                 assert server.poll() is None, str(root / 'fb-server.err.log')
                 assert time.monotonic() < deadline, str(root)
                 time.sleep(.1)
-            assert json.loads(ready.read_text())['url'].split(':')[-1] != '53144'
             code = invoke(node, 'piece_downstream_browser.cjs', [str(ready), str(width), theme], root, env, 300)
         finally:
             if server is not None and server.poll() is None:

@@ -570,7 +570,7 @@ body.aps-workbench .rw-detail-pager .wb-pager button.btn { min-height: var(--wb-
   body.aps-workbench { --sidebar-width: 0px; --wb-modal-backdrop-dim: none; background: transparent; }
   /* 壳层、弹窗遮罩、浮层、提示、分页器、列头工具、数值步进与各类操作按钮不打印；承载列名的表头排序按钮与页签 / 分段 / 状态筛选保留。 */
   body.aps-workbench :is(.sidebar, .top-header, .modal-bg, .wb-guard-host, .wb-control-popup, .toast, .bd-toast, [role="tooltip"], .wb-pager, .pager, .wb-detail-actions, .wb-number-stepper, .wb-th-filter, .wb-th-resize, .wb-th-action, .aps-filter-btn, .aps-sort-facetbtn, .wb-column-filter, .batch-column-resizer, input[type="range"]),
-  body.aps-workbench :is(button.btn, button.wb-action, button.mini, button.pg, button.modal-x, button.sm-button, button.hdr-pill, a.hdr-pill, button.fg-icon-button, button.rw-icon-button) {
+  body.aps-workbench :is(button.btn, button.wb-action, button.mini, button.pg, button.modal-x, button.sm-button, button.hdr-pill, a.hdr-pill, button.fg-icon-button, button.rw-icon-button):not([data-wb-print-value]) {
     /* override: 上面合同给按钮的 display:inline-flex !important; 打印时这些元素整体不出现。 */
     display: none !important;
   }
@@ -583,6 +583,34 @@ body.aps-workbench .rw-detail-pager .wb-pager button.btn { min-height: var(--wb-
   /* Chrome 109 会把跨页 grid item 的后续 fragment 错移到纸边；候选主区打印时降为普通块流。 */
   body.aps-workbench .run-candidate-workspace .rc-main { display: block; }
   body.aps-workbench .run-candidate-workspace .rc-main > div { width: 100%; min-width: 0; }
+  body.aps-workbench .plan-workspace .plan-main { display: block; }
+  body.aps-workbench .plan-workspace .plan-expanded { position: static; display: block; }
+  body.aps-workbench .plan-workspace .plan-board-frame { overflow: visible; }
+  body.aps-workbench .plan-workspace .plan-expanded .plan-board-frame { display: block; }
+  body.aps-workbench .plan-workspace .plan-board-inner {
+    /* override: JSX 的完整模型占位高度；beforeprint 已同步挂载全部行，打印改由行内容撑开。 */
+    height: auto !important;
+  }
+  body.aps-workbench .plan-workspace :is(.plan-board-inner, .plan-lane) {
+    /* override: JSX 的屏幕像素宽；打印必须使用扣除页边距后的纸面宽度。 */
+    width: 100% !important;
+  }
+  body.aps-workbench .plan-workspace :is(.plan-ticks, .plan-track) {
+    /* override: JSX 的时间轴坐标宽；条形与刻度已按百分比投影到纸面剩余宽度。 */
+    width: calc(100% - var(--plan-label)) !important;
+  }
+  body.aps-workbench .plan-workspace .plan-row-canvas {
+    /* override: JSX 的画布视窗宽；位图按整个时间范围绘制，再匹配纸面轨道。 */
+    width: 100% !important;
+  }
+  body.aps-workbench .plan-workspace .plan-tick { max-width: 20%; }
+  body.aps-workbench .plan-workspace .plan-lane {
+    /* override: 虚拟甘特行的绝对定位和内联 top；打印按自然行流分页，不能留下屏幕窗口外的空白。 */
+    position: relative !important;
+    /* override: JSX 的屏幕虚拟行偏移；自然分页不保留 top 坐标。 */
+    top: auto !important;
+    break-inside: avoid;
+  }
   /* 候选明细打印拆成短 table；每块单独起页，绕开 Chrome 109 对长 grid/table continuation fragment 的横向错位。 */
   body.aps-workbench .run-candidate-workspace .rc-print-tables { width: 100%; min-width: 0; }
   body.aps-workbench .run-candidate-workspace table.rc-print-table { width: 100%; min-width: 0; table-layout: fixed; border-collapse: collapse; }

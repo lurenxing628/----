@@ -90,7 +90,8 @@ async function prepareCurrentScenario(expected) {
     await tableReady('table[aria-label="可选排产方案"]');
   }
   async function gantt() {
-    await plan();
+    await planCatalog();
+    await present('[data-plan-gantt]');
     const label = expected.dimension === 'operator' ? '人员' : '设备';
     await button(label, '[aria-label="甘特分组"]');
     await value('input[aria-label="搜索批次、工序、设备、人员"]', expected.identity.batch_id);

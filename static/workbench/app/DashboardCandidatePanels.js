@@ -79,6 +79,7 @@
       "data-comparison-batch": row.batch_ref,
       "data-selected": selected === row.batch_ref
     }, /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Button, {
+      "data-wb-print-value": true,
       reasonDisplay: "inline",
       className: "mini",
       icon: "search",

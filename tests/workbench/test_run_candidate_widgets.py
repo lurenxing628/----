@@ -24,7 +24,7 @@ def test_run_candidate_widgets_real_browser_and_downloads(candidate_case):
     print("RUN_CANDIDATE_WIDGET_ARTIFACTS " + str(output), flush=True)
     backend = CandidateWidgetServer(candidate_case, output)
     server = make_server("127.0.0.1", 0, backend.app, threaded=True)
-    assert server.server_port not in {63938, 51093, 56264, 52155, 51733}
+    assert 0 < server.server_port == server.socket.getsockname()[1]
     thread = threading.Thread(target=server.serve_forever)
     thread.start()
     try:

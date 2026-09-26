@@ -209,7 +209,8 @@ const data=h.fixture(), before=h.clone(data);
 for(let zoom=1;zoom<=1024;zoom*=2) {
  const result=h.gantt(data,{states:{PlanGantt:{2:zoom}}}), get=label=>result.nodes.find(n=>n.props['aria-label']===label);
  assert.strictEqual(get('缩小时间轴').props.disabled,zoom===1);assert.strictEqual(get('放大时间轴').props.disabled,zoom===1024);
- get('放大时间轴').props.onClick();get('缩小时间轴').props.onClick();
+ const plus=get('放大时间轴'),minus=get('缩小时间轴');
+ plus.props.onClick({currentTarget:plus});minus.props.onClick({currentTarget:minus});
  h.equal(h.updates().filter(v=>v.name==='PlanGantt'&&v.index===2).map(v=>v.value),[Math.min(1024,zoom*2),Math.max(1,zoom/2)]);
  assert(h.text(result.tree).includes(zoom+'×'));
 }

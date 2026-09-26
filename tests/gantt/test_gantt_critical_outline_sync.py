@@ -156,6 +156,7 @@ const canvas = { getBoundingClientRect: () => ({ width:720,height:56,left:0,top:
 const forbidden = () => { throw new Error('No timer or DOM sweep is allowed for outline synchronization'); };
 const runtime = vm.createContext({ console,
   document: { documentElement: {}, querySelectorAll: forbidden },
+  matchMedia: () => ({matches:false,addEventListener() {},removeEventListener() {}}),
   setInterval: forbidden, setTimeout: forbidden,
   React: { useRef: () => ({current:canvas}), useLayoutEffect: fn => effects.push(fn()),
     createElement: (tag,props) => ({tag,props}) },

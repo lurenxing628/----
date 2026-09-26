@@ -4,7 +4,7 @@
   // Counts stay whole numbers; hours and other measured values keep two decimals.
   const value = v => v === null || v === undefined ? '未知' : typeof v === 'number' ? M.number(v, { digits: Number.isInteger(v) ? 0 : 2 }) : String(v);
   const risk = row => row.risk === 'overdue' ? '超期 ' + value(row.delay_hours) + ' 小时' : row.risk === 'on_time' ? '预计准时' : '交付未知';
-  function Batch({ row, selected, onSelect }) { return <Button reasonDisplay="inline" className="mini" icon="search" data-analysis-select-batch={row.batch_ref}
+  function Batch({ row, selected, onSelect }) { return <Button data-wb-print-value reasonDisplay="inline" className="mini" icon="search" data-analysis-select-batch={row.batch_ref}
     aria-pressed={selected === row.batch_ref} onClick={() => onSelect(row.batch_ref)}>{row.batch_id}</Button>; }
   function Delivery({ data, selected, onSelect, onCompare }) { return <>
     <window.DashboardTimeline data={data} selectedBatch={selected} onSelect={onSelect} />

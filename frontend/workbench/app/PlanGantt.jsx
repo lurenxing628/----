@@ -11,17 +11,19 @@
       onChange(options[next][0]); event.currentTarget.querySelectorAll('button')[next].focus();
     }}>{options.map(([id, text]) => <Button key={id} className="plan-segment-button" disabled={disabled} aria-pressed={value === id} tabIndex={value === id ? 0 : -1} onClick={() => onChange(id)}>{text}</Button>)}</div>;
   }
-  function Bar({ item, model, width, selectedRef, risks, onSelect, onHover }) {
+  function Bar({ item, model, width, printing, selectedRef, risks, onSelect, onHover }) {
     const task = item.task, size = (item.end - item.start) / (model.end - model.start) * width;
+    const at = value => (value - model.start) / (model.end - model.start) * (printing ? 100 : width);
+    const left = printing ? at(item.start) + '%' : at(item.start);
     const title = (item.baseline ? '初始计划\n' : '') + M.taskTitle(task, model.labels, !item.baseline && model.conflicts.has(task.task_ref));
     if (window.PointContract.isPoint(task)) return <window.PointGantt.Marker task={task} data-plan-task={task.task_ref} data-before={item.baseline || undefined}
-      title={title} x={(item.start - model.start) / (model.end - model.start) * width} top={item.baseline ? 1 : 15}
+      title={title} x={left} top={item.baseline ? 1 : 15}
       selected={selectedRef === task.task_ref} tone={item.baseline ? 'before' : M.tone(task, model.conflicts, risks)}
       onSelect={() => onSelect(task, item.baseline)} onHover={event => onHover(event ? { task, before: item.baseline, x: event.clientX, y: event.clientY } : null)} />;
     return <button type="button" data-plan-task={task.task_ref} data-before={item.baseline || undefined}
       className={'plan-bar ' + (item.baseline ? 'before' : M.tone(task, model.conflicts, risks)) + (model.conflicts.has(task.task_ref) && !item.baseline ? ' conflict' : '')}
       aria-label={title} aria-pressed={selectedRef === task.task_ref} title={title}
-      style={{ left: (item.start - model.start) / (model.end - model.start) * width, width: size }}
+      style={{ left, width: printing ? at(item.end) - at(item.start) + '%' : size }}
       onClick={() => onSelect(task, item.baseline)}
       onMouseEnter={event => onHover({ task, before: item.baseline, x: event.clientX, y: event.clientY })} onMouseLeave={() => onHover(null)}>
       <span className="plan-bar-face" style={{ padding: !item.baseline && size >= 28 ? 2 : 0, borderWidth: size < 4 ? 0 : 1 }}>{!item.baseline && size >= 28 && <><strong>{task.batch_id}</strong>
@@ -32,28 +34,43 @@
     const [mode, setMode] = React.useState('machine'), [baseline, setBaseline] = React.useState(false), [zoom, setZoom] = React.useState(1);
     const [changedOnly, setChangedOnly] = React.useState(false), [expanded, setExpanded] = React.useState(false);
     const [position, setPosition] = React.useState({ left: 0, top: 0, width: 1000, height: 440 }), [hover, setHover] = React.useState(null);
+    const printing = window.WorkbenchControls.usePrintLayout();
     const board = React.useRef(null), search = React.useRef(null), pending = React.useRef(null), frame = React.useRef(null), expandButton = React.useRef(null);
+    const printState = React.useRef(false), printPosition = React.useRef(null), restorePosition = React.useRef(null);
+    if (printing && !printState.current) printPosition.current = position;
+    if (!printing && printState.current) restorePosition.current = printPosition.current;
+    printState.current = printing;
     const labelWidth = position.width < 550 ? 125 : 170, viewport = Math.max(100, position.width - labelWidth);
     const before = data.projections.baseline, showBaseline = before.state === 'available';
     const displayBaseline = showBaseline && baseline, displayChangedOnly = showBaseline && changedOnly;
-    const width = viewport * zoom, selectedRef = selected && selected.task.task_ref;
+    // Print uses a normalized axis for tick/point layout; CSS maps its percentages to the actual paper width.
+    // It must not inherit a wide screen or expanded board's pixel width.
+    const width = printing ? 640 : viewport * zoom, selectedRef = selected && selected.task.task_ref;
+    const renderLeft = printing ? 0 : position.left, renderViewport = printing ? width : viewport;
     const model = React.useMemo(() => M.layout(data, mode, query, displayBaseline, width, displayChangedOnly), [data, mode, query, displayBaseline, width, displayChangedOnly]);
     const risks = React.useMemo(() => new Map((data.projections.delivery_risks.items || []).map(row => [row.batch_id, row.risk])), [data]);
-    const ticks = M.ticks(model.start, model.end, width, position.left, viewport);
+    const ticks = M.ticks(model.start, model.end, width, renderLeft, renderViewport);
     const today = M.instant(asOf.slice(0, 10) + 'T00:00:00'), now = M.instant(asOf);
     const timeX = at => (at - model.start) / (model.end - model.start) * width;
-    const visibleRows = M.visibleRows(model.rows, Math.max(0, position.top - 90), position.top + position.height + 90);
-    const rangeStart = model.start + position.left / width * (model.end - model.start);
-    const rangeEnd = model.start + (position.left + viewport) / width * (model.end - model.start);
+    const axisLeft = at => printing ? timeX(at) / width * 100 + '%' : timeX(at);
+    const visibleRows = printing ? model.rows : M.visibleRows(model.rows, Math.max(0, position.top - 90), position.top + position.height + 90);
+    const rangeStart = model.start + renderLeft / width * (model.end - model.start);
+    const rangeEnd = model.start + (renderLeft + renderViewport) / width * (model.end - model.start);
     const measure = () => {
       const el = board.current;
+      if (printState.current || typeof window.matchMedia === 'function' && window.matchMedia('print').matches) return;
+      if (el && restorePosition.current) {
+        el.scrollLeft = restorePosition.current.left; el.scrollTop = restorePosition.current.top; restorePosition.current = null;
+      }
       if (el) setPosition({ left: el.scrollLeft, top: el.scrollTop, width: el.clientWidth, height: el.clientHeight });
     };
     React.useLayoutEffect(() => { measure(); const resize = new ResizeObserver(measure); resize.observe(board.current); return () => { resize.disconnect(); cancelAnimationFrame(frame.current); }; }, []);
     React.useLayoutEffect(() => {
+      if (printing) return;
       if (pending.current !== null) { board.current.scrollLeft = pending.current * width - viewport / 2; pending.current = null; }
       measure();
-    }, [width, model]);
+      if (restorePosition.current) frame.current = requestAnimationFrame(measure);
+    }, [width, model, printing]);
     React.useEffect(() => { setHover(null); }, [query, mode, baseline, changedOnly, expanded]);
     React.useEffect(() => {
       if (!showBaseline) { setBaseline(false); setChangedOnly(false); }
@@ -99,7 +116,7 @@
       if (next) { onSelect(next, false); locate(next.task_ref); }
     }
     const currentIndex = model.tasks.findIndex(task => task.task_ref === selectedRef);
-    return <div className={'plan-gantt' + (expanded ? ' plan-expanded' : '')} data-plan-gantt onKeyDown={event => {
+    return <div className={'plan-gantt' + (expanded ? ' plan-expanded' : '')} data-plan-gantt data-printing={printing || undefined} onKeyDown={event => {
       if (disabled || event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey || event.target.closest('input,textarea,select,[role=dialog]')) return;
       if (event.key === '/') { event.preventDefault(); search.current.focus(); }
       const zoomAction = timelineZoomKey(event);
@@ -125,27 +142,27 @@
       </div>
       {!showBaseline && <div className="plan-note">初始计划：{before.reason || '暂无数据'}</div>}
       <div className="plan-board-frame">
-        <Overview model={model} tasks={data.tasks} width={width} viewport={viewport} left={position.left} onPan={left => { board.current.scrollLeft = Math.max(0, left); measure(); }} />
+        <Overview model={model} tasks={data.tasks} width={width} viewport={renderViewport} left={renderLeft} onPan={left => { board.current.scrollLeft = Math.max(0, left); measure(); }} />
         <div ref={board} className="plan-board" data-plan-scroll data-wb-scroll-key="plan-board" tabIndex={0} aria-label={M.kindLabels[mode] + '甘特时间轴'} onScroll={() => {
           if (frame.current) cancelAnimationFrame(frame.current); frame.current = requestAnimationFrame(measure);
         }} style={{ '--plan-label': labelWidth + 'px' }}>
           <div className="plan-board-inner" style={{ width: labelWidth + width, height: model.height + 52 }}>
             <div className="plan-axis"><div className="plan-corner">{M.kindLabels[mode]} / 工序<small className="plan-muted plan-corner-count">{model.groupCount} 组</small></div>
-              <div className="plan-ticks" style={{ width }}>{ticks.map(tick => <div className="plan-tick" key={tick.at} style={{ left: tick.x }}>
+              <div className="plan-ticks" style={{ width }}>{ticks.map(tick => <div className="plan-tick" key={tick.at} style={{ left: axisLeft(tick.at) }}>
                 {M.timeLabel(tick.label).slice(0, 10)}<small>{M.timeLabel(tick.label).slice(11)}</small></div>)}</div></div>
             {visibleRows.map(row => {
               const items = row.point ? window.PointGanttModel.visible(row.items, rangeStart, rangeEnd, width / (model.end - model.start)) : M.visibleItems(row.items, rangeStart, rangeEnd);
               return <div key={row.key} className={'plan-lane' + (row.before ? ' baseline' : '')} style={{ top: row.top + 52, height: row.height, width: labelWidth + width }}>
                 <div className="plan-resource" title={row.label + ' · ' + (row.before ? '初始计划' : row.tasks.length + ' 道安排 · 子轨 ' + (row.track + 1) + '/' + row.trackCount + (row.overlap ? ' · 存在重叠' : ''))}><strong>{row.label}</strong>{!row.before && <small>{row.tasks.length} 道安排{row.trackCount > 1 ? ' · 子轨 ' + (row.track + 1) + '/' + row.trackCount : ''}{row.overlap ? ' · 重叠' : ''}</small>}{row.before && <small>初始计划</small>}</div>
-                <div className="plan-track" style={{ width }}>{ticks.map(tick => <i key={tick.at} className="plan-gridline" style={{ left: tick.x }} />)}
-                  {items.length > 70 ? <DenseRow row={row} model={model} width={width} viewport={viewport} left={position.left} selectedRef={selectedRef} risks={risks} onSelect={select} onHover={setHover} /> :
-                    items.map(item => <Bar key={item.task.task_ref} item={item} model={model} width={width} selectedRef={selectedRef} risks={risks} onSelect={select} onHover={setHover} />)}
+                <div className="plan-track" style={{ width }}>{ticks.map(tick => <i key={tick.at} className="plan-gridline" style={{ left: axisLeft(tick.at) }} />)}
+                  {items.length > 70 ? <DenseRow row={row} model={model} width={width} printing={printing} viewport={renderViewport} left={renderLeft} selectedRef={selectedRef} risks={risks} onSelect={select} onHover={setHover} /> :
+                    items.map(item => <Bar key={item.task.task_ref} item={item} model={model} width={width} printing={printing} selectedRef={selectedRef} risks={risks} onSelect={select} onHover={setHover} />)}
                 </div>
               </div>;
             })}
             {[['today', today, '今日零点（按数据日期）'], ['as-of', now, '数据时点']].filter(([, at]) => at >= model.start && at <= model.end).map(([kind, at, label]) =>
               <i key={kind} className={'plan-time-line ' + kind} data-plan-time-line={kind} data-time-value={M.wire(at)} aria-label={label + ' ' + M.timeLabel(M.wire(at))} title={label + ' ' + M.timeLabel(M.wire(at))}
-                style={{ left: labelWidth + timeX(at), top: 52, height: model.height }} />)}
+                style={{ left: printing ? 'calc(' + labelWidth * (1 - timeX(at) / width) + 'px + ' + axisLeft(at) + ')' : labelWidth + timeX(at), top: 52, height: model.height }} />)}
             {!model.rows.length && <div style={{ position: 'sticky', left: 0, width: position.width }}><window.WorkbenchControls.EmptyState kind={query || displayChangedOnly ? 'filtered' : 'empty'} title={displayChangedOnly ? '当前范围没有匹配的变更安排。' : query ? '没有匹配安排，完整计划的时间范围保持不变。' : '该读取范围没有安排。'}
               action={query || displayChangedOnly ? <Button onClick={() => { onQuery(''); setChangedOnly(false); }}>清除筛选</Button> : undefined} /></div>}
           </div>

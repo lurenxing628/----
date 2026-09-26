@@ -23,9 +23,9 @@ async function capabilities(h) {
   await ready(); const pending = page.getByRole('region', { name: '待排批次与齐套日期', exact: true });
   await mark(['batch', 'quantity', 'due-date', 'ready-status', 'ready-date', 'constraints'].map(s => 'WBP-DASH-012.' + s), async () => {
     const row = pending.locator('tbody tr').filter({ has: page.getByText('B1', { exact: true }) }), cells = row.locator('td');
-    assert.equal(await cells.nth(1).innerText(), '2.0'); assert.equal(await cells.nth(2).innerText(), '2026-09-08');
+    assert.equal(await cells.nth(1).innerText(), '2'); assert.equal(await cells.nth(2).innerText(), '2026-09-08');
     assert.equal(await cells.nth(3).innerText(), '未齐套'); assert.equal(await cells.nth(4).innerText(), '未知');
-    await pending.getByText('当前未选定', { exact: true }).waitFor();
+    await pending.getByText('当前范围：全部待排批次 · 齐套检查和缺设备人员的规则在「执行排产」里按本次选择设定，已保存候选方案的规则见「方案对比」。', { exact: true }).waitFor();
   });
   await shot('pending-batches-and-readiness');
   await h.category('执行偏差'); await page.getByRole('tab', { name: '影响分析', exact: true }).click(); await ready();

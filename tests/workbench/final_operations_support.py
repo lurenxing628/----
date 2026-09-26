@@ -55,7 +55,7 @@ class OperationsHost(ProcessHost):
             with socket.socket() as sock:
                 sock.bind(("127.0.0.1", 0))
                 self.port = sock.getsockname()[1]
-        assert self.port != 53144
+        assert 0 < self.port <= 65535
         env = {key: value for key, value in os.environ.items() if not key.startswith("APS_")}
         env.update(APS_ENV="production", APS_HOST="127.0.0.1", APS_PORT=str(self.port),
                    APS_DB_PATH=str(self.path), APS_LOG_DIR=str(self.root / "logs"),

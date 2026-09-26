@@ -61,8 +61,18 @@
     return useMediaMatch(mediumScreenMedia);
   }
   function readCollapsedChoice() {
-    const value = sessionStorage.getItem(COLLAPSED_CHOICE_KEY);
-    return value === 'true' ? true : value === 'false' ? false : null;
+    try {
+      const value = sessionStorage.getItem(COLLAPSED_CHOICE_KEY);
+      return {
+        collapsed: value === 'true' ? true : value === 'false' ? false : null,
+        error: ''
+      };
+    } catch (_) {
+      return {
+        collapsed: null,
+        error: '无法读取产能链显示设置，当前按屏幕大小显示，仍可展开或收起。'
+      };
+    }
   }
   function processText(item, total, loading) {
     const unavailable = {
@@ -232,11 +242,19 @@
     // 用户点过展开 / 收起后，本页会话内一直按用户的选择来，节点之间切换不再重置。
     const collapsible = (short || medium) && !!node;
     const [choice, setChoice] = React.useState(readCollapsedChoice);
-    const compact = collapsible && (choice === null ? true : choice);
+    const compact = collapsible && (choice.collapsed === null ? true : choice.collapsed);
     function toggle() {
       const next = !compact;
-      sessionStorage.setItem(COLLAPSED_CHOICE_KEY, String(next));
-      setChoice(next);
+      let error = '';
+      try {
+        sessionStorage.setItem(COLLAPSED_CHOICE_KEY, String(next));
+      } catch (_) {
+        error = '无法保存产能链显示设置，当前显示已切换；重新打开时可能恢复原设置。';
+      }
+      setChoice({
+        collapsed: next,
+        error
+      });
     }
     const countText = key => {
       const item = counts[key];
@@ -329,7 +347,10 @@
       icon: compact ? 'chevron-down' : 'chevron-up',
       "aria-expanded": !compact,
       onClick: toggle
-    }, compact ? '展开产能链' : '收起产能链')), compact && /*#__PURE__*/React.createElement("div", {
+    }, compact ? '展开产能链' : '收起产能链')), choice.error && /*#__PURE__*/React.createElement("p", {
+      className: "muted",
+      role: "alert"
+    }, choice.error), compact && /*#__PURE__*/React.createElement("div", {
       className: "seg rail-compact",
       role: "group",
       "aria-label": "\u4EA7\u80FD\u94FE\u5FEB\u6377\u5207\u6362"

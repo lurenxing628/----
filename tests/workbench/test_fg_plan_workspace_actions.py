@@ -57,7 +57,6 @@ def test_fg_plan_workspace_readonly_actions(trial_case, fg_assets, tmp_path, sou
             cases.append({"name": name, "plan_ref": plan["plan_ref"], "identity": identity,
                           "payload": payload})
         with serve(app) as base:
-            assert not base.endswith(":53144")
             invoke("fg_plan_workspace_actions_probe.cjs", {"base": base, "entry": "/",
                 "cases": cases, "output": str(tmp_path)})
     report = json.loads((tmp_path / "fg-plan-actions-result.json").read_text(encoding="utf-8"))

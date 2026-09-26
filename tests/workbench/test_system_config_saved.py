@@ -42,7 +42,7 @@ def run_browser(api, scenario):
     output = api.root / ("system_config_saved_" + scenario)
     output.mkdir()
     server = make_server("127.0.0.1", 0, api.app, threaded=True)
-    assert server.server_port != 60086
+    assert 0 < server.server_port == server.socket.getsockname()[1]
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     node, browser, modules = runtime_tools()
     thread.start()

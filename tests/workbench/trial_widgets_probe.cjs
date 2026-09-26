@@ -49,6 +49,16 @@ let page, origin, variant, refs;
 const button = name => page.getByRole('button', { name, exact: true });
 const done = name => report.checks.push({ variant, name, passed: true });
 const evidence = async () => (await page.request.get(origin + '/fixture/evidence')).json();
+async function waitForEvidence(predicate, label) {
+  const deadline = Date.now() + 15000;
+  while (Date.now() < deadline) {
+    const response = await page.request.get(origin + '/fixture/evidence', { timeout: Math.max(1, deadline - Date.now()) });
+    const value = await response.json();
+    if (predicate(value)) return value;
+    await new Promise(resolve => setTimeout(resolve, 50));
+  }
+  throw new Error('Fixture evidence did not become ready: ' + label);
+}
 const control = action => page.request.post(origin + '/fixture/control', { data: { action } });
 const state = () => page.evaluate(() => TrialAPI.pending());
 async function shot(name) { const file = path.join(output, variant + '-' + name + '.png'); await page.screenshot({ path: file, fullPage: true, animations: 'disabled' }); report.screenshots.push(file); }
@@ -264,16 +274,16 @@ async function uncertain() {
   await page.request.post(origin + '/probe/drop-next-write-reply'); await button('保存调整').click();
   await page.getByRole('region', { name: '待确认的试调提交' }).waitFor(); const key = await state(); assert(/^trial-/.test(key));
   await page.getByText('上次提交的结果还没查到，可能已经生效。请点「查询结果」，不要重复提交。', { exact: true }).waitFor();
-  await page.waitForFunction(async key => (await (await fetch('/fixture/evidence')).json()).receipts.some(r => r.request_key === key), key);
+  await waitForEvidence(value => value.receipts.some(r => r.request_key === key), 'lost reply receipt ' + key);
   const before = (await evidence()).journal.filter(r => r.request_key === key).length;
   await page.reload(); await page.getByRole('region', { name: '待确认的试调提交' }).waitFor(); assert(await button('新增试调').isDisabled()); await shot('unknown-restored');
   assert.equal(await state(), key); await button('查询结果').click(); await ready(); assert.equal(await state(), null);
   assert.equal((await evidence()).journal.filter(r => r.request_key === key).length, before); done('lost-real-commit-reply-reloaded-key-only-and-no-rewrite');
   await reset(); await create(); await editor(); await fill(); await control('pause'); await button('保存调整').click();
-  await page.waitForFunction(async () => (await (await fetch('/fixture/evidence')).json()).started);
+  await waitForEvidence(value => value.started, 'paused write started');
   const paused = await state(); await page.reload(); await button('查询结果').click(); await page.getByText('上次提交的结果还没查到，可能已经生效。请点「查询结果」，不要重复提交。', { exact: true }).waitFor();
   assert.equal(await state(), paused); assert(await button('新增试调').isDisabled()); await control('release');
-  await page.waitForFunction(async key => (await (await fetch('/fixture/evidence')).json()).receipts.some(r => r.request_key === key), paused);
+  await waitForEvidence(value => value.receipts.some(r => r.request_key === paused), 'released write receipt ' + paused);
   await button('查询结果').click(); await ready(); assert.equal((await evidence()).journal.filter(r => r.request_key === paused).length, 1);
   done('not-observed-does-not-retry-inflight-command');
 }

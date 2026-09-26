@@ -31,6 +31,8 @@ async function adoption(page, kind, screenshot, record, report, flush) {
 
 async function trialChain(page, ready, report, screenshot, record, flush) {
   assert(await adoption(page, 'candidate', screenshot, record, report, flush));
+  await page.getByRole('tablist', { name: '计划中心视图', exact: true }).getByRole('tab', { name: '计划甘特', exact: true }).click();
+  await page.locator('[data-plan-gantt]').waitFor();
   await screenshot(page, '05-formal');
   await ganttPixels(page, '[data-plan-workspace] .plan-main', 'official', report);
   await formalDetails(page, report, screenshot);
@@ -44,6 +46,7 @@ async function trialChain(page, ready, report, screenshot, record, flush) {
     id: 'EQ-FORMAL-PIECE-QUANTITY', message: 'Official per-piece and batch quantities must retain original run-admission evidence', sample: pieces, screenshot: report.screenshots.at(-1) });
   await page.locator('[data-plan-workspace] .plan-catalog').getByRole('button', { name: '试调', exact: true }).click();
   let dialog = page.getByRole('dialog');
+  await dialog.getByRole('checkbox', { name: '确认基于此来源新增独立草稿，正式计划保持不变', exact: true }).waitFor();
   await dialog.getByRole('button', { name: '核对原来源', exact: true }).click();
   await dialog.getByRole('checkbox', { name: '确认基于此来源新增独立草稿，正式计划保持不变', exact: true }).check();
   await flush();

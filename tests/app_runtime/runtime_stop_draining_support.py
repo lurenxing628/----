@@ -165,7 +165,7 @@ def serve_runtime(root: Path, mode: str) -> int:
     server = ThreadingHTTPServer(("127.0.0.1", 0), _handler_type(root, mode, shutdown))
     server.daemon_threads = False
     port = server.server_address[1]
-    assert port not in {63938, 51093, 56264}
+    assert 0 < port == server.socket.getsockname()[1]
     write_runtime_host_port_files(str(root), str(state_dir), "127.0.0.1", port, str(db_path))
     write_runtime_contract_file(
         str(root), "127.0.0.1", port, db_path=str(db_path), shutdown_token=TOKEN,

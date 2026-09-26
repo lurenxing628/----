@@ -7,6 +7,7 @@ import sys
 import time
 from contextlib import closing
 from pathlib import Path
+from types import SimpleNamespace
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
@@ -16,7 +17,7 @@ from core.infrastructure.migration_state import CURRENT_SCHEMA_VERSION, current_
 from tests.workbench.live_environment import REPO, create_root
 from tests.workbench.run_live_server_support import (
     BASE,
-    FORBIDDEN_PORTS,
+    bound_server_port,
     loaded_python_sources,
     prepare_root,
     source_comparison,
@@ -27,6 +28,20 @@ SCRIPT = REPO / "tests/workbench/run_live_server.py"
 
 def read_json(path):
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+@pytest.mark.parametrize("assigned_port", [51093, 53144, 52392, 63938])
+def test_dynamic_http_socket_accepts_prior_port_examples(assigned_port):
+    server = SimpleNamespace(server_port=assigned_port, socket=SimpleNamespace(
+        getsockname=lambda: ("127.0.0.1", assigned_port)))
+    assert bound_server_port(server) == assigned_port
+
+
+def test_dynamic_http_socket_rejects_mismatched_bound_port():
+    server = SimpleNamespace(server_port=51093, socket=SimpleNamespace(
+        getsockname=lambda: ("127.0.0.1", 51094)))
+    with pytest.raises(ValueError, match="bound port"):
+        bound_server_port(server)
 
 
 class Process:
@@ -102,7 +117,7 @@ def test_real_http_four_candidates_exit_backup_and_explicit_restart(tmp_path):
             assert current_schema_contract_issues(conn) == []
         assert ready["runtime"]["ready"] and ready["runtime"]["reason"] == "ready"
         assert str(REPO / "web/bootstrap/workbench_run_runtime.py") in ready["loaded_python_sources"]
-        assert int(ready["url"].rsplit(":", 1)[1]) not in FORBIDDEN_PORTS
+        assert int(ready["url"].rsplit(":", 1)[1]) > 0
         assert Path(ready["runtime_lock"]["path"]).exists() and Path(ready["db_lock"]).exists()
         for value in list(ready["paths"].values()) + [ready["stop_file"], ready["assets"]["static"]]:
             Path(value).resolve().relative_to(root)

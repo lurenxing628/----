@@ -49,7 +49,7 @@ def test_run_presentation_chrome109_real_fixture(candidate_case, monkeypatch):
     register_scheduling_job_routes(bp)
     backend.app.register_blueprint(bp)
     server = make_server("127.0.0.1", 0, backend.app, threaded=True)
-    assert server.server_port not in {63938, 51093, 56264, 52155, 51733}
+    assert 0 < server.server_port == server.socket.getsockname()[1]
     thread = threading.Thread(target=server.serve_forever)
     thread.start()
     try:

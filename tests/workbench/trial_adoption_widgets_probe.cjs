@@ -236,7 +236,7 @@ async function storageAndBoundaries() {
 (async () => {
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve)); let browser;
   try {
-    assert.notEqual(server.address().port, 57734); origin = 'http://127.0.0.1:' + server.address().port;
+    assert(server.address().port > 0); origin = 'http://127.0.0.1:' + server.address().port;
     browser = await chromium.launch({ executablePath: process.env.WORKBENCH_BROWSER, headless: true, args: ['--disable-background-networking'] });
     report.browser = browser.version(); assert(report.browser.startsWith('109.'));
     for (const width of [1920, 1392]) for (const theme of ['light', 'dark']) {

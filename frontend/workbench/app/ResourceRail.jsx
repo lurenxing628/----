@@ -32,8 +32,12 @@
   function useShortScreen() { return useMediaMatch(shortScreenMedia); }
   function useMediumScreen() { return useMediaMatch(mediumScreenMedia); }
   function readCollapsedChoice() {
-    const value = sessionStorage.getItem(COLLAPSED_CHOICE_KEY);
-    return value === 'true' ? true : value === 'false' ? false : null;
+    try {
+      const value = sessionStorage.getItem(COLLAPSED_CHOICE_KEY);
+      return { collapsed: value === 'true' ? true : value === 'false' ? false : null, error: '' };
+    } catch (_) {
+      return { collapsed: null, error: '无法读取产能链显示设置，当前按屏幕大小显示，仍可展开或收起。' };
+    }
   }
   function processText(item, total, loading) {
     const unavailable = { lead: loading ? '工艺阶段未读取' : '工艺阶段暂无数据', lines: [] };
@@ -122,8 +126,14 @@
     // 用户点过展开 / 收起后，本页会话内一直按用户的选择来，节点之间切换不再重置。
     const collapsible = (short || medium) && !!node;
     const [choice, setChoice] = React.useState(readCollapsedChoice);
-    const compact = collapsible && (choice === null ? true : choice);
-    function toggle() { const next = !compact; sessionStorage.setItem(COLLAPSED_CHOICE_KEY, String(next)); setChoice(next); }
+    const compact = collapsible && (choice.collapsed === null ? true : choice.collapsed);
+    function toggle() {
+      const next = !compact;
+      let error = '';
+      try { sessionStorage.setItem(COLLAPSED_CHOICE_KEY, String(next)); }
+      catch (_) { error = '无法保存产能链显示设置，当前显示已切换；重新打开时可能恢复原设置。'; }
+      setChoice({ collapsed: next, error });
+    }
     const countText = key => { const item = counts[key]; return item && number(item.total) ? integer(item.total) + ' ' + C.nodes[key].unit : summary.loading ? '未读取' : '暂无数据'; };
     const tile = (key, tone) => {
       const item = items[key], text = countText(key), count = counts[key];
@@ -147,6 +157,7 @@
     return <section className={'rail' + (compact ? ' rail-collapsed' : '')} data-collapsed={compact ? 'true' : 'false'} aria-label="产能链" aria-busy={!!summary.loading}>
       <div className="rail-bar"><span className="rail-cap">产能链</span><span className="rail-status muted">基础资料 · {summary.error ? '暂无数据' : summary.loading ? '读取中' : '只读汇总'}</span>
         {collapsible && <Button className="btn link rail-toggle" icon={compact ? 'chevron-down' : 'chevron-up'} aria-expanded={!compact} onClick={toggle}>{compact ? '展开产能链' : '收起产能链'}</Button>}</div>
+      {choice.error && <p className="muted" role="alert">{choice.error}</p>}
       {compact && <div className="seg rail-compact" role="group" aria-label="产能链快捷切换">
         {chipOrder.map(key => chip(key, C.nodes[key].label, C.nodes[key].icon))}{chip('calendar', '工作日历', 'calendar-days')}</div>}
       {!compact && <><div className="flow"><div className="hb-hub" style={{ width: '100%' }}>

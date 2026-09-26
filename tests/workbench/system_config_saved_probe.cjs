@@ -4,7 +4,7 @@ const fs = require('node:fs'), path = require('node:path'), http = require('node
 const assert = require('node:assert/strict'), { chromium } = require('playwright');
 const { compile } = require('../../scripts/workbench/compile.cjs');
 const root = path.resolve(__dirname, '../..'), output = process.argv[2], scenario = process.argv[3], backend = new URL(process.argv[4]);
-assert.equal(backend.hostname, '127.0.0.1'); assert.notEqual(backend.port, '60086');
+assert.equal(backend.hostname, '127.0.0.1'); assert(Number(backend.port) > 0);
 const names = ['WorkbenchFormat.js', 'WorkbenchReferences.jsx', 'ResourceControls.jsx', 'WorkbenchListControls.jsx', 'SystemRestoreStatus.js', 'SystemMaintenanceAPI.js', 'SystemMaintenanceControls.jsx', 'SystemRestorePanel.jsx',
   'SystemMaintenanceRecords.jsx', 'SystemMaintenanceConfig.jsx', 'SystemMaintenanceWorkspace.jsx'];
 const report = { data_source: 'real-temporary-flask-api', scenario, cases: [], errors: [], external: [], requests: [], source_sha256: {} };

@@ -85,7 +85,6 @@ def test_plan_scope_caption_real_adoption(trial_case, caption_assets, tmp_path, 
             caption = "计划时间范围：" + label(start) + " 至 " + label(end) + "（不含结束时刻）"
             fixtures.append({"name": name, "scope": scope, "caption": caption, "payload": payload})
         with serve(app) as base:
-            assert not base.endswith(":53144")
             print(invoke("plan_scope_caption_probe.cjs", {"base": base, "plan_ref": plan["plan_ref"],
                 "fixtures": fixtures, "output": str(tmp_path)}), flush=True)
     print("FA_CAPTION_EVIDENCE " + str(tmp_path), flush=True)

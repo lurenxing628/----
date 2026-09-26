@@ -7,15 +7,18 @@ async function candidateDownloadFailure(page, report, h, flush) {
     let downloads = 0;
     const observed = () => { downloads++; };
     page.on('download', observed);
+    await h.button('导出', page.locator('[data-run-candidate-workspace]')).click();
+    const dialog = page.getByRole('dialog', { name: '导出候选方案', exact: true });
+    await dialog.waitFor();
     try {
       await page.context().setOffline(true);
       assert.equal(await page.evaluate(() => navigator.onLine), false);
-      await h.button('CSV').click();
-      const error = page.locator('[data-run-candidate-workspace] [role="alert"]').first();
+      await h.button('下载 CSV', dialog).click();
+      const error = dialog.getByRole('alert');
       await error.waitFor(); await flush();
       assert((await error.innerText()).length > 0);
       assert.equal(downloads, 0);
-      assert.equal(await page.getByText(/^已下载 13 条记录/).count(), 0);
+      assert.equal(await page.getByText(/^已交给浏览器下载：.+，共 13 条记录/).count(), 0);
       const failed = report.failed_requests.slice(before);
       assert.equal(failed.length, 1);
       const request = failed[0];
@@ -27,7 +30,7 @@ async function candidateDownloadFailure(page, report, h, flush) {
       await h.shot('candidate-real-network-export-failure');
     } finally { await page.context().setOffline(false); page.off('download', observed); }
     assert.equal(await page.evaluate(() => navigator.onLine), true);
-    const waiting = page.waitForEvent('download'); await h.button('CSV').click(); const file = await waiting;
+    const waiting = page.waitForEvent('download'); await h.button('下载 CSV', dialog).click(); const file = await waiting;
     assert.equal(await file.failure(), null);
     const target = path.join(path.dirname(report.candidate_download.path), 'offline-retry-' + file.suggestedFilename());
     await file.saveAs(target);

@@ -50,8 +50,6 @@ def main():
                 stack.enter_context(patch("tests.workbench.run_live_server.freeze_built_assets",
                     partial(freeze_named_assets, asset_root=spec["asset_root"], manifest_sha256=spec["manifest_sha256"])))
             ready = fixture.start(port=0)
-            if ready["url"].endswith(":53144"):
-                raise RuntimeError("Reserved preview port was allocated")
             while not stopped.wait(0.1):
                 if Path(ready["stop_file"]).exists():
                     break

@@ -17,6 +17,7 @@ const fills = [], canvas = { getBoundingClientRect: () => ({ width: 720, height:
   getContext: () => new Proxy({ fillRect: (x,y,w,h) => fills.push({x,y,w,h}) }, { get: (o,k) => o[k] || (() => {}) }) };
 const runtime = vm.createContext({ window: {}, console, document: { documentElement: {} },
   React: { useRef: () => ({ current: canvas }), useLayoutEffect: fn => fn(), createElement: () => ({}) },
+  matchMedia: () => ({ matches: false, addEventListener() {}, removeEventListener() {} }),
   MutationObserver: class { observe() {} disconnect() {} },
   ResizeObserver: class { observe() {} disconnect() {} },
   getComputedStyle: () => ({ getPropertyValue: () => '#000' }) });

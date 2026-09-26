@@ -38,6 +38,9 @@ WORKBENCH_UI_SUPPLEMENTAL_TESTS = (
     "tests/workbench/test_short_screen_layout.py",
     "tests/workbench/test_workbench_visual_controls.py",
     "tests/workbench/test_operator_machine_permissions_widgets.py",
+    "tests/workbench/test_plan_print.py",
+    "tests/workbench/test_resource_rail_storage.py",
+    "tests/workbench/test_workbench_print_values.py",
 )
 
 WORKBENCH_UI_REQUIRED_REGRESSION_GROUPS = ({
@@ -103,6 +106,8 @@ WORKBENCH_UI_SUPPLEMENTAL_REGRESSION_GROUPS = ({
         "tests/workbench/test_live_browser.py", "tests/workbench/live_environment.py",
         "tests/workbench/short_screen_layout_probe.cjs",
         "tests/workbench/operator_machine_permissions_probe.cjs",
+        "tests/workbench/test_plan_print.cjs", "tests/workbench/test_resource_rail_storage.cjs",
+        "tests/workbench/workbench_print_values.cjs",
         "tests/conftest.py", "tests/workbench/fixtures/schema-v28.sql", "schema.sql",
         "tests/_support/workbench_browser_contract.py", "tests/_support/workbench_browser_probe.cjs",
         "tests/_support/workbench_web_contract.py", "tests/_support/excel_templates.py",

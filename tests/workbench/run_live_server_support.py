@@ -25,6 +25,13 @@ BASE = "/api/workbench/v1/scheduling"
 FORBIDDEN_PORTS = {51093, 56264, 52155, 51733}
 
 
+def bound_server_port(server):
+    host, port = server.socket.getsockname()[:2]
+    if host != "127.0.0.1" or not 0 < port == server.server_port:
+        raise ValueError("HTTP fixture bound port does not match its loopback socket")
+    return port
+
+
 def inside(root, path):
     path = Path(path).resolve()
     path.relative_to(Path(root).resolve())

@@ -31,7 +31,7 @@ async function run(page,state,name,fn){
 async function type(field,text){await field.click();await field.fill('');await field.pressSequentially(text,{delay:5});}
 async function search(page,query){await type(page.getByRole('searchbox',{name:'搜索编号或名称'}),query);await page.getByRole('button',{name:'搜索',exact:true}).click();}
 async function rail(page,label){
-  await page.locator('.hb-tile').filter({has:page.locator('.hb-tname').getByText(label,{exact:true})}).click();
+  await page.locator('[data-rail-node]').filter({has:page.getByText(label,{exact:true})}).click();
   await page.getByRole('button',{name:'新增'+label,exact:true}).waitFor();
   await page.getByRole('button',{name:'新增'+label,exact:true}).isEnabled();
 }

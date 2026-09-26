@@ -13,7 +13,7 @@ async function receipt(page,suffix,name,verb='保存'){
 }
 async function calendar(page,state,helpers){
   const {run,close,type,shot,layout,recordExpected}=helpers;
-  await page.locator('.hb-cal-block').click();await page.locator('.resource-calendar .cal-grid').waitFor();
+  await page.locator('section.rail').getByRole('button',{name:/^工作日历(?: · 全局)?$/}).click();await page.locator('.resource-calendar .cal-grid').waitFor();
   await run(page,state,'calendar-month-and-day',async()=>{
     const title=await page.locator('.resource-calendar .cal-title').innerText();
     await page.getByRole('button',{name:'下一月',exact:true}).click();await page.locator('.resource-calendar .cal-title').filter({hasNotText:title}).waitFor();

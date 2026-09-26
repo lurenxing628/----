@@ -96,8 +96,9 @@ tasks.forEach(task=>task.dependencies='X9'); const before=h.clone(data);
 const middle=P.relationships(data,{task:tasks[1],before:false});
 h.equal(middle.previous.map(row=>row.task_ref),[tasks[0].task_ref]);h.equal(middle.next.map(row=>row.task_ref),[tasks[2].task_ref]);
 const picked=[]; const tree=h.render(h.runtime.PlanDetailsUI.TaskDetail,{data,selected:{task:tasks[1],before:false},onRelated:ref=>picked.push(ref)});
-h.walk(tree).find(n=>n.type==='button'&&String(n.props['aria-label']).startsWith('后序 ')).props.onClick();
-h.walk(tree).find(n=>n.type==='button'&&String(n.props['aria-label']).startsWith('前序 ')).props.onClick();
+const next=h.walk(tree).find(n=>n.type==='button'&&String(n.props['aria-label']).startsWith('后序 '));
+const previous=h.walk(tree).find(n=>n.type==='button'&&String(n.props['aria-label']).startsWith('前序 '));
+next.props.onClick({currentTarget:next});previous.props.onClick({currentTarget:previous});
 h.equal(picked,[tasks[2].task_ref,tasks[0].task_ref]);assert.strictEqual(P.relationships(data,{task:tasks[0]}).previous.length,0);h.equal(data,before);
 """)
 
@@ -112,7 +113,7 @@ const P=h.runtime.PlanProcessOrder;assert(P.validate(data.projections.process_or
 const relations=P.relationships(data,{task:original[0]});h.equal(relations.next,[{task_ref:original[1].task_ref,task:null}]);
 const tree=h.render(h.runtime.PlanDetailsUI.TaskDetail,{data,selected:{task:original[0]},onRelated:ref=>picked.push(ref)});
 const button=h.walk(tree).find(n=>n.type==='button'&&n.props['aria-label']==='后序安排在当前读取范围外');
-assert(button);assert.strictEqual(h.text(button),'读取完整计划并定位后序');button.props.onClick();h.equal(picked,[original[1].task_ref]);h.equal(data,before);
+assert(button);assert.strictEqual(h.text(button),'读取完整计划并定位后序');button.props.onClick({currentTarget:button});h.equal(picked,[original[1].task_ref]);h.equal(data,before);
 """)
 
 

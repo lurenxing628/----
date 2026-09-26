@@ -9,8 +9,10 @@ async function post(page,suffix,click){
   const response=page.waitForResponse(res=>new URL(res.url()).pathname.endsWith(suffix)&&res.request().method()==='POST');
   await click();const value=await response;assert.equal(value.status(),200,await value.text());return value.json();
 }
-async function dismiss(page){
+async function dismiss(page,discard=false){
   await page.getByRole('dialog').getByRole('button',{name:/^(完成|取消)$/}).first().click();
+  if(discard){const guard=page.getByRole('dialog',{name:'离开前确认',exact:true});await guard.waitFor();
+    await guard.getByRole('button',{name:'放弃未保存内容并继续',exact:true}).click();}
   await page.getByRole('dialog').waitFor({state:'detached'});
 }
 async function save(page,suffix,dialog){
@@ -69,7 +71,7 @@ async function relationFiles(page,state,helpers,root,report){
     assert.equal(data.summary.rejected,1);assert.equal(data.can_confirm,false);
     assert(await dialog.getByRole('button',{name:'确认导入',exact:true}).isDisabled());
     await dialog.getByText('系统里找不到这个编号，这一行没有导入。请先在基础资料里维护好再导入。').first().waitFor();
-    await shot(page,state+'-relation-import-rejected');await dismiss(page);
+    await shot(page,state+'-relation-import-rejected');await dismiss(page,true);
   });
   await run(page,state,'relation-files-create-links',async()=>{
     const {dialog,data}=await upload(page,[

@@ -46,6 +46,8 @@ async function readonlyActions(page, ready, report, h, flush) {
     assert.equal(data.plan.plan_ref, ready.expected.original_plan_ref);
     assert.equal(data.plan.version, 4);
     assert.notEqual(data.projections.baseline.state, 'available');
+    await page.getByRole('tablist', { name: '计划中心视图', exact: true }).getByRole('tab', { name: '计划甘特', exact: true }).click();
+    await page.locator('[data-plan-gantt]').waitFor();
     const changed = page.getByRole('checkbox', { name: '仅变更', exact: true });
     assert(await changed.isDisabled()); assert(!(await changed.isChecked()));
     assert((await changed.locator('..').getAttribute('title')).length > 0);

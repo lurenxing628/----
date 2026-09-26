@@ -17,6 +17,7 @@
     onSelect
   }) {
     return /*#__PURE__*/React.createElement(Button, {
+      "data-wb-print-value": true,
       reasonDisplay: "inline",
       className: "mini",
       icon: "search",

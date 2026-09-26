@@ -98,7 +98,7 @@ for(const page of [0,1]) {
  assert.strictEqual(rows.length,page===0?20:5);seen.push(...rows.map(row=>h.text(h.walk(row).find(n=>n.type==='button'))));
  assert(h.text(tree).includes('25 项'));assert(h.text(tree).includes('占用率 = 班表内已占时间 ÷ 可用时间'));
  const next=h.walk(tree).find(n=>n.props['aria-label']==='分析下一页');assert.strictEqual(next.props.disabled,page===1);
- if(!page){next.props.onClick();assert(h.updates().some(row=>row.name==='ProjectionTables'&&row.index===1&&row.value===1));}
+ if(!page){next.props.onClick({currentTarget:next});assert(h.updates().some(row=>row.name==='ProjectionTables'&&row.index===1&&row.value===1));}
 }
 h.equal(seen,data.projections.occupancy.resources.map(row=>row.label));h.equal(data,before);
 """)
@@ -165,7 +165,7 @@ def test_popup_filters_day_tasks_and_renders_links(app_client):
 const data=sourceData.data, picked=[], before=h.clone(data);
 const tree=h.render(h.runtime.PlanDetailsUI.ProjectionTables,{data,onResource:label=>picked.push(label)},{ProjectionTables:{0:'load'}});
 const table=h.walk(tree).find(n=>n.type==='tbody'), buttons=h.walk(table).filter(n=>n.type==='button');
-assert.strictEqual(buttons.length,2);buttons.forEach(button=>button.props.onClick());h.equal(picked,['设备一','人员一']);
+assert.strictEqual(buttons.length,2);buttons.forEach(button=>button.props.onClick({currentTarget:button}));h.equal(picked,['设备一','人员一']);
 assert(!h.walk(tree).some(n=>n.type==='a'&&n.props.href===''));assert(!h.text(tree).includes('设备二'));h.equal(data,before);
 """, payload)
     assert _business_state(app_client) == before

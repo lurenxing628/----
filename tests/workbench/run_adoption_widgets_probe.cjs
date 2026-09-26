@@ -75,6 +75,12 @@ async function fill(reason = '生产负责人复核：覆盖完整批次，按�
 }
 async function success() { await page.getByRole('dialog', { name: '正式采用结果' }).waitFor(); await page.getByText('已确认：本次生成第 41 版正式计划，共 2 道工序。', { exact: false }).waitFor(); }
 async function layout() {
+  // The primary button changes from disabled to enabled after form input; measure its settled colors.
+  await page.evaluate(async () => {
+    const dialogs = [...document.querySelectorAll('[role="dialog"]')], dialog = dialogs[dialogs.length - 1];
+    const button = dialog.querySelector('button.btn.primary');
+    await Promise.all(button.getAnimations().map(animation => animation.finished.catch(() => {})));
+  });
   const result = await page.evaluate(() => {
     const dialogs = [...document.querySelectorAll('[role="dialog"]')], dialog = dialogs[dialogs.length - 1], r = dialog.getBoundingClientRect();
     const body = dialog.querySelector('.ra-body'), style = getComputedStyle(body), input = dialog.querySelector('textarea');
@@ -189,7 +195,7 @@ async function focusAndStorage() {
 (async () => {
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve)); let browser;
   try {
-    assert(![63938, 51093, 56264].includes(server.address().port));
+    assert(server.address().port > 0);
     browser = await chromium.launch({ executablePath: process.env.WORKBENCH_BROWSER, headless: true, args: ['--disable-background-networking'] });
     report.browser = browser.version(); assert(report.browser.startsWith('109.')); origin = 'http://127.0.0.1:' + server.address().port;
     for (const width of [1920, 1392]) for (const theme of ['light', 'dark']) {

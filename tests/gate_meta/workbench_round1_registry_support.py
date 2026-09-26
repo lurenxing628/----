@@ -119,6 +119,9 @@ UI_SUPPLEMENTAL_TARGETS = (
     "tests/workbench/test_short_screen_layout.py",
     "tests/workbench/test_workbench_visual_controls.py",
     "tests/workbench/test_operator_machine_permissions_widgets.py",
+    "tests/workbench/test_plan_print.py",
+    "tests/workbench/test_resource_rail_storage.py",
+    "tests/workbench/test_workbench_print_values.py",
 )
 UI_GROUP_IDS = ("workbench_ui_refinement", "workbench_ui_refinement_browser")
 
