@@ -322,6 +322,7 @@ WORKBENCH_REQUIRED_REGRESSION_GROUPS = (
         "test_batch_commands.py",
         "test_batch_detached_snapshot.py",
         "test_batch_read_budget.py",
+        "test_run_compute_process.py",
         "test_batch_actions.py",
         "test_batch_files.py",
         "test_batch_execution_ledger_projection.py",

@@ -23,11 +23,13 @@ from .worker_snapshot import computation_database
 
 
 class WorkbenchRunWorker:
-    def __init__(self, conn, *, clock=None):
+    def __init__(self, conn, *, clock=None, compute_runner=None, progress_sink=None):
         self.conn = conn
         self.clock = clock or datetime.now
         self.repo = WorkbenchRunRepository(conn)
         self.results = WorkbenchRunResultRepository(conn)
+        self.compute_runner = compute_runner
+        self.progress_sink = progress_sink
 
     def _now(self):
         return self.clock().isoformat(timespec="seconds")
@@ -60,13 +62,15 @@ class WorkbenchRunWorker:
             lock.release()
 
     def _compute(self, row):
+        progress = self.progress_sink or (lambda done, total: report_progress(row["run_ref"], done, total, self._now()))
+        if self.compute_runner is not None:
+            return self.compute_runner(self.conn, row, on_progress=progress)
         with computation_database(self.conn) as snapshot, candidate_read_snapshot(snapshot):
             self._check_facts(row, snapshot)
             projections = restore_execution_projections(json.loads(row["execution_json"]))
-            run_ref = row["run_ref"]
             computation = compute_candidate_run(
                 snapshot, json.loads(row["normalized_input_json"]), projections,
-                on_progress=lambda done, total: report_progress(run_ref, done, total, self._now()))
+                on_progress=progress)
             identities = {int(item[0]): item[1] for item in WorkbenchRunFactsRepository(snapshot).operation_identity_refs()}
             return prepare_run_result(computation, identities)
 

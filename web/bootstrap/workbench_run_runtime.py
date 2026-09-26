@@ -41,6 +41,11 @@ class WorkbenchRunRuntime:
         self._pending = set()
         self._stop = threading.Event()
         self._thread = None
+        self._compute_runner = None
+        if os.name == "nt" and getattr(sys, "frozen", False):
+            from .run_compute_process import run_compute_in_process
+
+            self._compute_runner = run_compute_in_process
         self._closed = False
         self._ready = False
         self._reason = "runtime_lock_not_supplied"
@@ -164,6 +169,7 @@ class WorkbenchRunRuntime:
                     original = capture_claim_retry_state(conn, run_ref)
                 try:
                     worker = WorkbenchRunWorker(conn)
+                    worker.compute_runner = self._compute_runner
                     if claim_failures:
                         worker.execute(run_ref, retry_original=original)
                     else:

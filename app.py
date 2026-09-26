@@ -47,7 +47,7 @@ def create_app() -> Flask:
     return _entrypoint_module().create_app_with_mode("default")
 
 
-if __name__ != "__main__":
+if __name__ not in ("__main__", "__mp_main__"):
     try:
         app = create_app()
     except Exception as exc:
@@ -65,4 +65,7 @@ def main(argv=None, deps=None) -> int:
 
 
 if __name__ == "__main__":
+    import multiprocessing
+
+    multiprocessing.freeze_support()
     raise SystemExit(main())
