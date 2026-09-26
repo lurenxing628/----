@@ -4,6 +4,7 @@ from __future__ import annotations
 import os
 import sqlite3
 import sys
+from contextlib import closing
 from types import SimpleNamespace
 
 import pytest
@@ -53,14 +54,14 @@ def test_portable_factory_and_lock_use_local_paths_under_any_account(portable_di
 def test_moving_portable_directory_preserves_data_and_resolves_new_paths(portable_dir):
     original_db = portable_dir / "user-data" / "db" / "aps.db"
     original_db.parent.mkdir(parents=True)
-    with sqlite3.connect(str(original_db)) as conn:
+    with closing(sqlite3.connect(str(original_db))) as conn, conn:
         conn.execute("CREATE TABLE preserved (value TEXT)")
         conn.execute("INSERT INTO preserved VALUES (?)", ("原有数据",))
     moved = portable_dir.with_name("移动后 排产系统")
     portable_dir.rename(moved)
     moved_db = launcher_paths.resolve_runtime_db_path(str(moved))
     assert moved_db == str(moved / "user-data" / "db" / "aps.db")
-    with sqlite3.connect(moved_db) as conn:
+    with closing(sqlite3.connect(moved_db)) as conn:
         assert conn.execute("SELECT value FROM preserved").fetchone() == ("原有数据",)
     assert not portable_dir.exists()
 

@@ -54,6 +54,7 @@
     viewport,
     left,
     printing,
+    printNumbers,
     selectedRef,
     risks,
     onSelect,
@@ -83,15 +84,15 @@
         ctx.lineWidth = Math.min(item.task.task_ref === selectedRef ? 2 : 1, painted);
         ctx.setLineDash(row.before || model.conflicts.has(item.task.task_ref) ? [3, 2] : []);
         if (painted > 0) ctx.strokeRect(x + inset + ctx.lineWidth / 2, y + ctx.lineWidth / 2, painted - ctx.lineWidth, height - ctx.lineWidth);
-        if (!row.before && painted > 60) {
+        if (!row.before && painted > (printing ? 20 : 60)) {
           ctx.save();
           ctx.beginPath();
           ctx.rect(Math.max(0, x + inset + 3), y, Math.max(0, Math.min(w, x + barWidth - inset) - Math.max(0, x + inset + 3) - 3), height);
           ctx.clip();
           ctx.fillStyle = colors.text;
           ctx.font = colors.font;
-          ctx.fillText(item.task.batch_id, Math.max(3, x + inset + 4), y + 16);
-          if (painted > 100) ctx.fillText(item.task.sequence + ' ' + item.task.process_label + ' · ' + M.pieceLabel(item.task), Math.max(3, x + inset + 4), y + 31);
+          ctx.fillText(printing ? printNumbers.get(item.task.task_ref) : item.task.batch_id, Math.max(3, x + inset + 4), y + 16);
+          if (!printing && painted > 100) ctx.fillText(item.task.sequence + ' ' + item.task.process_label + ' · ' + M.pieceLabel(item.task), Math.max(3, x + inset + 4), y + 31);
           ctx.restore();
         }
       }

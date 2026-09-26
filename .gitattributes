@@ -1,6 +1,15 @@
-# Preserve the tested script bytes on Windows checkouts, including autocrlf=true.
-/assets/*.bat text eol=lf
-/build_win7_portable.bat text eol=lf
-/setup_win7_build.bat text eol=lf
-/build_win7_onedir.bat text eol=lf
+# Windows cmd entry points require CRLF; Git keeps their canonical blobs as LF.
+# Source archives must also normalize these scripts to CRLF before execution.
+/assets/*.bat text eol=crlf
+/build_win7_portable.bat text eol=crlf
+/setup_win7_build.bat text eol=crlf
+/build_win7_onedir.bat text eol=crlf
 /.limcode/skills/aps-package-win7/scripts/package_win7.ps1 text eol=lf
+
+# Offline manifests hash source and published bytes; keep text deterministic.
+# text=auto retains binary fonts/images without newline conversion.
+/frontend/workbench/** text=auto eol=lf
+/static/workbench/** text=auto eol=lf
+/scripts/workbench/** text=auto eol=lf
+# Historical migration fixtures are verified by their exact canonical hashes.
+/tests/workbench/fixtures/*.sql text eol=lf

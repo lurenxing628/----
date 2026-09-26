@@ -401,3 +401,14 @@ def test_output_signature_handles_mixed_op_id_without_crash() -> None:
     second = build_candidate_fingerprint(candidate, objective_name=_OBJECTIVE, parent_fingerprint=None, seen_output_fingerprints=set())
     assert first.output_fingerprint
     assert first.output_fingerprint == second.output_fingerprint  # 确定性:同输入恒同签名
+
+
+def test_microsecond_shift_has_distinct_output_fingerprint() -> None:
+    first = _candidate(order=["B1", "B2"], results=_base_results(), metrics=_metrics())
+    shifted = _base_results()
+    shifted[0].start_time += timedelta(microseconds=1)
+    shifted[0].end_time += timedelta(microseconds=1)
+    second = _candidate(order=["B1", "B2"], results=shifted, metrics=_metrics())
+    fingerprints = [build_candidate_fingerprint(value, objective_name=_OBJECTIVE,
+        parent_fingerprint=None, seen_output_fingerprints=set()) for value in (first, second)]
+    assert fingerprints[0].output_fingerprint != fingerprints[1].output_fingerprint

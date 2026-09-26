@@ -237,8 +237,13 @@ def test_microsecond_candidate_never_gets_rounded_into_official_rows(candidate_c
     case.conn.execute("UPDATE BatchOperations SET unit_hours=0.001")
     case.conn.commit()
     ref = candidate(case)
-    data = service(case.conn).preview(ref)
-    assert data["validation"]["issues"][0]["code"] == "candidate_time_precision_unsupported"
+    token = preview(case, ref)
+    result = service(case.conn).adopt(ref, token, KEY, INTENT)
+    row = case.conn.execute("SELECT start_time,end_time FROM Schedule WHERE version=?",
+                           (result["data"]["official_plan"]["version"],)).fetchone()
+    start, end = (datetime.fromisoformat(value) for value in row)
+    assert (end - start).total_seconds() == 10.8
+    assert end.microsecond == 800000
 
 
 @pytest.mark.parametrize("summary", [b"\x00\xffbroken-current", '{"is_simulation":true}'])

@@ -10,7 +10,8 @@
     if (!value) throw new Error(message);
   }
   function time(v) {
-    return typeof v === 'string' && /^(?!0000)\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(v) && Number.isFinite(Date.parse(v + 'Z')) && new Date(v + 'Z').toISOString().slice(0, 19) === v;
+    // Keep the wire value intact: Date only validates the calendar part, never serializes business time.
+    return typeof v === 'string' && /^(?!0000)\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.(?!000000$)\d{6})?(?![\s\S])/.test(v) && Number.isFinite(Date.parse(v.slice(0, 19) + 'Z')) && new Date(v.slice(0, 19) + 'Z').toISOString().slice(0, 19) === v.slice(0, 19);
   }
   function base(v) {
     check(object(v) && Object.keys(v).length === 1 && ['plan_ref', 'candidate_ref'].some(k => ref(v[k])));

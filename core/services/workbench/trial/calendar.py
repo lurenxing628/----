@@ -65,7 +65,7 @@ def estimate(engine, original, arrangement, *, allow_point=False):
     duration = original_duration(original, allow_point=allow_point)
     start = datetime.fromisoformat(arrangement["start"])
     if duration["basis"] == "calendar_days":
-        return start, _second_precision(engine.add_calendar_days(start, duration["days"]))
+        return start, engine.add_calendar_days(start, duration["days"])
     if arrangement["machine_ref"] is None or arrangement["operator_ref"] is None:
         reject("resource_required", "请选择设备和人员。", 422)
     if duration["total_hours"] == 0:
@@ -85,11 +85,5 @@ def estimate(engine, original, arrangement, *, allow_point=False):
     if slot.efficiency_fallback_used:
         reject("calendar_efficiency_unknown", "班表效率缺失，请核对工作日历。", 422)
     if slot.end_time <= slot.start_time:
-        reject("duration_precision_unsupported", "这道工序有实际工时，但算出来不足 1 秒，不能按零工时工序保存。", 422)
-    return slot.start_time, _second_precision(slot.end_time)
-
-
-def _second_precision(value):
-    if value.microsecond:
-        reject("duration_precision_unsupported", "计算结果包含不足一秒的部分，无法按整秒精度保存。", 422)
-    return value
+        reject("duration_precision_unsupported", "这道工序有实际工时，但计算结果没有形成正时长，不能按零工时工序保存。", 422)
+    return slot.start_time, slot.end_time

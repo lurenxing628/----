@@ -11,8 +11,8 @@
   阻断/超时文案不允许再出现『清理运行时信号』这类教用户删活实例信号文件的
   危险指引,只给『稍候重试/重启电脑/联系维护人员并附 launcher.log』的安全指引。
   异 owner 拒启与 healthy_without_owner_proof 的安全语义保持不变。
-- 编码合同: 该 bat 刻意保持 UTF-8 无 BOM + LF 行尾 + 第 2 行 chcp 65001,
-  任何工具链把它改成带 BOM/CRLF 都会在 Win7 cmd 下产生乱码或解析怪病。
+- 编码合同: UTF-8 无 BOM + 第 2 行 chcp 65001；Git 内部规范化为 LF，
+  Windows checkout / 交付包使用 CRLF。真实 cmd 行为另由执行测试覆盖。
 
 这是文本合同测试:断言的是脚本源码里的关键 token 与结构,不是运行时行为。
 """
@@ -47,7 +47,7 @@ class TestB06LockActivityImageNameContract:
     def test_lock_is_active_compares_image_name_not_only_pid(self) -> None:
         """锁活性判定必须包含『映像名+PID』组合匹配 token,不允许退回只查 PID。"""
         section = _section(_bat_text(), ":lock_is_active")
-        assert '\\"!APP_EXE_NAME!\\",\\"!LOCK_PID!\\",' in section, (
+        assert 'if "%%~O"=="!LOCK_PID!"' in section and 'if /I "%%~N"=="!APP_EXE_NAME!"' in section, (
             ":lock_is_active 必须用 tasklist CSV 的映像名列与 APP_EXE_NAME 组合比对,"
             "防止崩溃残留锁的 PID 被无关进程复用后误判为活实例(B06)"
         )
@@ -113,11 +113,15 @@ class TestB11StartupWindowContract:
 
 
 class TestBatEncodingContract:
-    def test_utf8_no_bom_lf_and_chcp65001(self) -> None:
-        """bat 刻意保持 UTF-8 无 BOM + LF 行尾 + 第 2 行 chcp 65001。"""
+    def test_utf8_no_bom_and_chcp65001(self) -> None:
+        """源码可按 Git 规范化为 LF，执行入口的 CRLF 由 Git 属性和打包保证。"""
         raw = _bat_bytes()
         assert not raw.startswith(b"\xef\xbb\xbf"), "bat 不允许带 UTF-8 BOM"
-        assert b"\r" not in raw, "bat 必须保持 LF 行尾,不允许 CRLF"
-        lines = raw.split(b"\n")
+        raw.decode("utf-8", errors="strict")
+        lines = raw.splitlines()
         assert lines[0] == b"@echo off"
         assert lines[1].startswith(b"chcp 65001")
+
+    def test_windows_launcher_checkout_uses_crlf(self) -> None:
+        attributes = (REPO_ROOT / ".gitattributes").read_text(encoding="utf-8")
+        assert "/assets/*.bat text eol=crlf" in attributes

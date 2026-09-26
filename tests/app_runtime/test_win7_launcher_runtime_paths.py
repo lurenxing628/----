@@ -1171,6 +1171,7 @@ def test_stop_aps_chrome_processes_fails_closed_when_pid_list_unavailable(monkey
 
 def test_windows_pid_state_unknown_when_tasklist_unavailable(monkeypatch, capsys):
     processes = _import_launcher_processes()
+    monkeypatch.setattr(processes.launcher_win32, "available", lambda: False)
     # Exercise only this module's Windows branch; pathlib keeps the host OS.
     monkeypatch.setattr(processes, "os", SimpleNamespace(name="nt"))
 

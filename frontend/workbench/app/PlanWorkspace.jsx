@@ -104,8 +104,8 @@
           {read.loading && <Button icon="x" aria-label="取消计划读取" onClick={() => setPaused(true)}>取消读取</Button>}</div>
       </div>
       {rangeOpen && <form className="plan-range wb-surface-body wb-surface-divider" onSubmit={applyRange}>
-        <label className="field"><span>开始（包含）</span><input type="datetime-local" step="1" aria-label="读取开始时间" value={range.start} onChange={event => setRange({ ...range, start: event.target.value })} /></label>
-        <label className="field"><span>结束（不含）</span><input type="datetime-local" step="1" aria-label="读取结束时间" value={range.end} onChange={event => setRange({ ...range, end: event.target.value })} /></label>
+        <label className="field"><span>开始（包含）</span><input type="text" placeholder="2026-09-13T08:30:00" spellCheck={false} aria-label="读取开始时间" value={range.start} onChange={event => setRange({ ...range, start: event.target.value })} /></label>
+        <label className="field"><span>结束（不含）</span><input type="text" placeholder="2026-09-13T08:30:00.800000" spellCheck={false} aria-label="读取结束时间" value={range.end} onChange={event => setRange({ ...range, end: event.target.value })} /></label>
         <Button type="submit" icon="check" disabled={disabled || read.loading}>应用范围</Button><Button icon="chart-gantt" disabled={disabled || read.loading} onClick={() => { initialTaskRef.current = null; setScope({}); setRange({ start: '', end: '' }); setRangeError(null); setPaused(false); read.reload(); }}>完整计划</Button>
       </form>}
       {(rangeError || read.error || result && result.warnings.length > 0 || !data || paused) && <div className="wb-surface-body plan-read-state">

@@ -4,29 +4,17 @@ from datetime import date, datetime, time, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
 from core.services.common.degradation import DegradationCollector
+from core.shared.local_datetime import format_local_datetime, parse_local_datetime
 
 BAD_TIME_EMPTY_REASON = "all_rows_filtered_by_invalid_time"
 
 
 def parse_dt(value: Any) -> Optional[datetime]:
-    if value is None:
-        return None
-    if isinstance(value, datetime):
-        return value
-    text = str(value).strip().replace("/", "-")
-    if not text:
-        return None
-    text = text.replace("T", " ").replace("：", ":")
-    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
-        try:
-            return datetime.strptime(text, fmt)
-        except Exception:
-            continue
-    return None
+    return parse_local_datetime(value)
 
 
 def fmt_dt(dt: datetime) -> str:
-    return dt.strftime("%Y-%m-%d %H:%M:%S")
+    return format_local_datetime(dt)
 
 
 def duration_minutes(st: datetime, et: datetime) -> int:

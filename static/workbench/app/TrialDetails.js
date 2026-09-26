@@ -91,7 +91,7 @@
         start: form.start.length === 16 ? form.start + ':00' : form.start
       };
       try {
-        C.check(C.time(value.start), '开工时间请按 2026-09-13 08:30 这样填。');
+        C.check(C.time(value.start), '开工时间请按 2026-09-13T08:30:00 填写；需要小数秒时保留六位，例如 08:30:00.800000。');
         C.check(external ? value.machine_ref === null && value.operator_ref === null : C.ref(value.machine_ref) && C.ref(value.operator_ref), '请选择设备和人员。');
         const ok = await commands.execute({
           action: 'change',
@@ -135,9 +135,10 @@
       value: r.ref,
       disabled: r.status !== 'active'
     }, r.business_code, " \xB7 ", r.label || '名称未填写', r.status !== 'active' ? '（不可用）' : ''))))), /*#__PURE__*/React.createElement("label", null, "\u8C03\u6574\u5F00\u5DE5", /*#__PURE__*/React.createElement("input", {
-      type: "datetime-local",
-      step: "1",
+      type: "text",
       "aria-label": "\u8C03\u6574\u5F00\u5DE5",
+      placeholder: "2026-09-13T08:30:00",
+      spellCheck: false,
       required: true,
       value: form.start,
       disabled: commands.busy,
@@ -147,7 +148,7 @@
       })
     })), /*#__PURE__*/React.createElement("div", {
       className: "tt-muted"
-    }, "\u6309\u73ED\u8868\u8BA1\u7B97\u5B8C\u5DE5\u65F6\u95F4\uFF1B\u5176\u4ED6\u5DE5\u5E8F\u9700\u5206\u522B\u8C03\u6574\u3002"), !external && !data.resources.authorizations.some(r => r.machine_ref === form.machine_ref && r.operator_ref === form.operator_ref) && /*#__PURE__*/React.createElement("p", {
+    }, "\u4F7F\u7528\u5DE5\u5382\u672C\u5730\u65F6\u95F4\uFF0C\u65E5\u671F\u4E0E\u65F6\u95F4\u4E4B\u95F4\u586B T\uFF1B\u5DF2\u6709\u5C0F\u6570\u79D2\u4F1A\u5B8C\u6574\u4FDD\u7559\u3002\u6309\u73ED\u8868\u8BA1\u7B97\u5B8C\u5DE5\u65F6\u95F4\uFF1B\u5176\u4ED6\u5DE5\u5E8F\u9700\u5206\u522B\u8C03\u6574\u3002"), !external && !data.resources.authorizations.some(r => r.machine_ref === form.machine_ref && r.operator_ref === form.operator_ref) && /*#__PURE__*/React.createElement("p", {
       className: "tt-notice"
     }, "\u6240\u9009\u4EBA\u5458\u5C1A\u672A\u53D6\u5F97\u8BE5\u8BBE\u5907\u7684\u64CD\u4F5C\u6388\u6743\u3002"), /*#__PURE__*/React.createElement(U.ErrorBox, {
       error: error

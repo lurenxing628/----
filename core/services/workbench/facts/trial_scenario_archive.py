@@ -98,8 +98,8 @@ def _saved_row(task, source):
     for name in ("start", "end"):
         raw = current[name]
         parsed = datetime.fromisoformat(raw)
-        if parsed.tzinfo is not None or parsed.microsecond or parsed.isoformat(timespec="seconds") != raw:
-            _invalid("试调方案里的时间只能精确到秒，请按 2026-09-13 08:30:00 这样填写。")
+        if parsed.tzinfo is not None or parsed.isoformat() != raw:
+            _invalid("试调方案里的时间格式无效，不能正式采用。请刷新后重试。")
     return {**source, "row_ref": task["row_ref"], "task_ref": task["task_ref"],
             "current": current, "original": deepcopy(original)}
 

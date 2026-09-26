@@ -26,6 +26,8 @@ ASCII_EXE_PATH = "C:\\APS\\aps.exe"
 
 @pytest.fixture
 def launcher_log_path(monkeypatch, tmp_path: Path):
+    # Retain the legacy transport contract on hosts without the Win32 API.
+    monkeypatch.setattr(processes.launcher_win32, "available", lambda: False)
     state_dir = tmp_path / "logs"
     processes.set_process_log_context(state_dir=str(state_dir))
     monkeypatch.setattr("web.bootstrap.launcher_processes.os.name", "nt")

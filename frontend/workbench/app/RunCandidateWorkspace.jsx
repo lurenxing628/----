@@ -143,8 +143,8 @@
           <span className="rc-muted">匹配安排 {tasks.length} / {shown.task_count}</span></div>
         <div className="rc-tools"><C.Button icon="calendar-days" aria-expanded={rangeOpen} onClick={() => setRangeOpen(!rangeOpen)}>读取范围</C.Button>
           <Export key={result.meta.snapshot_ref} adapter={adapter} result={result} scope={scope} query={query} /></div></div>
-        {rangeOpen && <form className="rc-range" onSubmit={rangeSubmit}><label>开始（包含）<input type="datetime-local" step="1" aria-label="候选读取开始" value={range.start} onChange={e => setRange({ ...range, start: e.target.value })} /></label>
-          <label>结束（不含）<input type="datetime-local" step="1" aria-label="候选读取结束" value={range.end} onChange={e => setRange({ ...range, end: e.target.value })} /></label>
+        {rangeOpen && <form className="rc-range" onSubmit={rangeSubmit}><label>开始（包含）<input type="text" placeholder="2026-09-13T08:30:00" spellCheck={false} aria-label="候选读取开始" value={range.start} onChange={e => setRange({ ...range, start: e.target.value })} /></label>
+          <label>结束（不含）<input type="text" placeholder="2026-09-13T08:30:00.800000" spellCheck={false} aria-label="候选读取结束" value={range.end} onChange={e => setRange({ ...range, end: e.target.value })} /></label>
           <C.Button icon="check" type="submit">应用范围</C.Button><C.Button icon="chart-gantt" onClick={() => { setScope({}); setRange({ start: '', end: '' }); setRangeError(null); }}>完整候选</C.Button></form>}
         <C.ErrorBox error={rangeError} /><div className="rc-scope"><span>读取范围：{scope.range_start ? M.timeLabel(scope.range_start) + ' 至 ' + M.timeLabel(scope.range_end) + '（不含结束时刻）' : '全部时间'}{scope.batch_ref && ' · 指定批次'}
           {' · 安排 ' + shown.task_count + ' / 候选共 ' + shown.candidate_task_count + ' 道 · 未安排 ' + (shown.unplanned_operation_count === null ? '未知（未记录）' : shown.unplanned_operation_count + ' 道')}</span>

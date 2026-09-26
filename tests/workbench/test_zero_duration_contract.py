@@ -50,7 +50,7 @@ def test_point_dto_preserves_time_and_has_no_display_epsilon():
         "event_kind": "point", "duration_seconds": 0, "occupies_resources": False}
 
 
-@pytest.mark.parametrize("kind", ["positive", "negative", "timezone", "microsecond", "string", "unknown"])
+@pytest.mark.parametrize("kind", ["positive", "negative", "timezone", "string", "unknown"])
 def test_point_dto_refuses_lossy_or_nonpoint_times(kind):
     start = end = datetime(2026, 9, 9, 9)
     if kind == "positive":
@@ -59,8 +59,6 @@ def test_point_dto_refuses_lossy_or_nonpoint_times(kind):
         end -= timedelta(seconds=1)
     elif kind == "timezone":
         start = end = start.replace(tzinfo=timezone.utc)
-    elif kind == "microsecond":
-        start = end = start.replace(microsecond=1)
     elif kind == "string":
         start = end = start.isoformat()
     else:
@@ -78,3 +76,10 @@ def test_original_payload_still_blocks_points_including_mixed_results():
     for rows in ([point], [point, positive]):
         with pytest.raises(ValidationError):
             build_validated_schedule_payload(rows, allowed_op_ids={1, 2})
+
+
+def test_point_dto_keeps_subsecond_instant_without_occupying_time():
+    moment = datetime(2026, 9, 9, 9, 17, 31, 123456)
+    dto = point_event_dto(moment, moment)
+    assert dto["start"] == dto["end"] == "2026-09-09T09:17:31.123456"
+    assert dto["duration_seconds"] == 0 and dto["occupies_resources"] is False

@@ -21,7 +21,7 @@ def test_plan_print_prepares_all_rows_and_restores_screen(tmp_path):
     report = json.loads((output / "plan-print-result.json").read_text(encoding="utf-8"))
     assert result.returncode == 0, result.stdout + result.stderr + report.get("failure", "")
     assert report["browser"].startswith("109.")
-    assert len(report["cases"]) == 5
+    assert len(report["cases"]) == 9
     assert report["production_persistence_tested"] is False
     for row in report["cases"]:
         assert Path(row["pdf"]).read_bytes().startswith(b"%PDF-")

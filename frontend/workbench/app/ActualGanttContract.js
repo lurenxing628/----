@@ -5,8 +5,16 @@
   const ref = value => typeof value === 'string' && /^[0-9a-f]{48}$/.test(value);
   const fail = text => { throw window.APSResourceContract.failure(text); };
   function local(value) {
-    if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(value)) return false;
-    const at = Date.parse(value + 'Z'); return Number.isFinite(at) && new Date(at).toISOString().slice(0, 19) === value;
+    if (typeof value !== 'string' || !/^(?!0000)\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.(?!000000$)\d{6})?(?![\s\S])/.test(value)) return false;
+    const base = value.slice(0, 19), at = Date.parse(base + 'Z');
+    return Number.isFinite(at) && new Date(at).toISOString().slice(0, 19) === base;
+  }
+  function gapMinutes(start, end) {
+    const seconds = (Date.parse(end.slice(0, 19) + 'Z') - Date.parse(start.slice(0, 19) + 'Z')) / 1000;
+    const minutes = Math.floor(seconds / 60);
+    const remainder = (seconds - minutes * 60) * 1000000
+      + Number(end.slice(20) || 0) - Number(start.slice(20) || 0);
+    return minutes - (remainder < 0 ? 1 : 0);
   }
   const nullableTime = value => value === null || local(value);
   const nullableRef = value => value === null || ref(value);
@@ -107,7 +115,7 @@
           || !['process', 'machine', 'operator'].includes(edge.edge_type) || typeof edge.reason !== 'string' || !edge.reason
           || !Number.isInteger(edge.gap_minutes)) fail('关键链连线或分钟数无效。');
         const from = nodes.get(edge.from_task_ref), to = nodes.get(edge.to_task_ref);
-        if (edge.gap_minutes !== Math.floor((Date.parse(to.start + 'Z') - Date.parse(from.end + 'Z')) / 60000)) fail('关键链连线间隔与计划记录不一致。');
+        if (edge.gap_minutes !== gapMinutes(from.end, to.start)) fail('关键链连线间隔与计划记录不一致。');
       });
       if (chain.visible_node_count !== chain.nodes.filter(node => node.in_scope).length || !Number.isInteger(chain.plan_task_count)
         || chain.plan_task_count < d.task_count || chain.plan_task_count < chain.nodes.length || chain.makespan_end !== chain.nodes[chain.nodes.length - 1].end

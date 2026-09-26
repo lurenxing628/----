@@ -34,7 +34,7 @@
       e.preventDefault(); setError(null);
       const value = { ...form, start: form.start.length === 16 ? form.start + ':00' : form.start };
       try {
-        C.check(C.time(value.start), '开工时间请按 2026-09-13 08:30 这样填。');
+        C.check(C.time(value.start), '开工时间请按 2026-09-13T08:30:00 填写；需要小数秒时保留六位，例如 08:30:00.800000。');
         C.check(external ? value.machine_ref === null && value.operator_ref === null : C.ref(value.machine_ref) && C.ref(value.operator_ref), '请选择设备和人员。');
         const ok = await commands.execute({ action: 'change', draft_ref: data.draft_ref, input: { task_ref: task.task_ref, ...value } }, data.write_context.write_token);
         if (ok) close(); else setReviewed(false);
@@ -46,8 +46,8 @@
           onChange={e => setForm({ ...form, [kind + '_ref']: e.target.value || null })}>
           <option value="">{external ? '外协，无内部资源' : '请选择'}</option>{form[kind + '_ref'] && !data.resources[listKey].some(r => r.ref === form[kind + '_ref']) && <option value={form[kind + '_ref']}>原资源（已不可读）</option>}
           {data.resources[listKey].map(r => <option key={r.ref} value={r.ref} disabled={r.status !== 'active'}>{r.business_code} · {r.label || '名称未填写'}{r.status !== 'active' ? '（不可用）' : ''}</option>)}</select></label>)}
-        <label>调整开工<input type="datetime-local" step="1" aria-label="调整开工" required value={form.start} disabled={commands.busy} onChange={e => setForm({ ...form, start: e.target.value })} /></label>
-        <div className="tt-muted">按班表计算完工时间；其他工序需分别调整。</div>
+        <label>调整开工<input type="text" aria-label="调整开工" placeholder="2026-09-13T08:30:00" spellCheck={false} required value={form.start} disabled={commands.busy} onChange={e => setForm({ ...form, start: e.target.value })} /></label>
+        <div className="tt-muted">使用工厂本地时间，日期与时间之间填 T；已有小数秒会完整保留。按班表计算完工时间；其他工序需分别调整。</div>
         {!external && !data.resources.authorizations.some(r => r.machine_ref === form.machine_ref && r.operator_ref === form.operator_ref) && <p className="tt-notice">所选人员尚未取得该设备的操作授权。</p>}
         <U.ErrorBox error={error} /><U.ErrorBox error={commands.error} />
         <label className="tt-check"><input type="checkbox" checked={reviewed} onChange={e => setReviewed(e.target.checked)} />已核对当前工序与保留输入</label>

@@ -47,7 +47,16 @@ class WorkbenchCommandService:
         if self.conn.in_transaction:
             raise RuntimeError("工作台命令必须拥有最外层事务，不能在调用方未提交的事务中声称已保存。")
         try:
+            # Receipts are immutable and committed atomically with their mutation.
+            # A completed SELECT is enough to replay one: taking a write lock here
+            # needlessly competes with the worker and long-lived DELETE readers.
+            row = self.repo.get(request_key)
+            if row:
+                self._check_replay(row, action, context_ref, fingerprint)
+                return self.repo.public_result(row, replayed=True)
             with self.tx.transaction(begin_immediate=True):
+                # Another connection may have admitted this intent after the
+                # read-only lookup. Keep the second lookup under the write lock.
                 row = self.repo.get(request_key)
                 if row:
                     self._check_replay(row, action, context_ref, fingerprint)

@@ -42,9 +42,7 @@ def _rows(tasks, candidate, prepared):
             parsed = datetime.fromisoformat(raw)
             if parsed.tzinfo is not None or parsed.isoformat() != raw:
                 raise CandidateAdoptionBlocked("candidate_artifact_invalid", "这个候选方案里的时间格式不对，不能采用。请重新排产后再试。")
-            # Schedule's legacy formatter retains seconds only. Do not round a proof.
-            if parsed.microsecond:
-                raise CandidateAdoptionBlocked("candidate_time_precision_unsupported", "这个候选方案的时间精确到了秒以下，正式计划存不了这么细，没有采用。请重新排产后再试。")
+            # Official TEXT storage and every schedule reader preserve this exact instant.
             value[field] = parsed
         if set(value) != {"op_id", "machine_id", "operator_id", "start_time", "end_time", "source"}:
             raise CandidateAdoptionBlocked("candidate_artifact_invalid", "这个候选方案的工序明细有缺项或多出认不出的项，不能采用。请重新排产后再试。")

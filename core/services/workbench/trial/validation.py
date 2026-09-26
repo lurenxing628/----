@@ -149,7 +149,7 @@ class TrialValidator:
         if row["original"]["operation"]["source"] == "external" and any(intent[key] is not None for key in ("machine_ref", "operator_ref")):
             reject("external_internal_resource", "外协工序必须明确使用空内部资源。", 422)
         end = self._adjusted_end(row, current)
-        current["end"] = end.isoformat(timespec="seconds")
+        current["end"] = end.isoformat()
         return current
 
     def _requested_arrangement(self, intent):

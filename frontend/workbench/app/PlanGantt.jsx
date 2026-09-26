@@ -11,7 +11,21 @@
       onChange(options[next][0]); event.currentTarget.querySelectorAll('button')[next].focus();
     }}>{options.map(([id, text]) => <Button key={id} className="plan-segment-button" disabled={disabled} aria-pressed={value === id} tabIndex={value === id ? 0 : -1} onClick={() => onChange(id)}>{text}</Button>)}</div>;
   }
-  function Bar({ item, model, width, printing, selectedRef, risks, onSelect, onHover }) {
+  function PrintTasks({ items, labels }) {
+    return <section className="plan-print-tasks" aria-label="打印任务明细"><h3>任务明细（图中编号）</h3>
+      {Array.from({ length: Math.ceil(items.length / 10) }, (_, chunk) => <table key={chunk} className="plan-print-table plan-print-chunk">
+        <colgroup><col style={{ width: '8%' }} /><col style={{ width: '27%' }} /><col style={{ width: '22%' }} /><col style={{ width: '25%' }} /><col style={{ width: '18%' }} /></colgroup>
+        <thead><tr>{['编号', '批次 / 分件', '工序', '开始 / 结束', '设备 / 人员'].map(label => <th key={label}>{label}</th>)}</tr></thead>
+        <tbody>{items.slice(chunk * 10, (chunk + 1) * 10).map(({ task, baseline }, index) => <tr key={task.task_ref} data-plan-print-task={task.task_ref}>
+          <td>{chunk * 10 + index + 1}{baseline && <small>初始</small>}</td>
+          <td>{task.batch_id}<small>{M.pieceLabel(task)}</small></td>
+          <td>{task.sequence} {task.process_label}{window.PointContract.isPoint(task) && <small>零工时工序</small>}</td>
+          <td>{M.timeLabel(task.start)}<small>{M.timeLabel(task.end)}</small></td>
+          <td>{M.resourceLabel(task, 'machine', labels)}<small>{M.resourceLabel(task, 'operator', labels)}</small></td>
+        </tr>)}</tbody></table>)}
+    </section>;
+  }
+  function Bar({ item, model, width, printing, printNumbers, selectedRef, risks, onSelect, onHover }) {
     const task = item.task, size = (item.end - item.start) / (model.end - model.start) * width;
     const at = value => (value - model.start) / (model.end - model.start) * (printing ? 100 : width);
     const left = printing ? at(item.start) + '%' : at(item.start);
@@ -26,7 +40,7 @@
       style={{ left, width: printing ? at(item.end) - at(item.start) + '%' : size }}
       onClick={() => onSelect(task, item.baseline)}
       onMouseEnter={event => onHover({ task, before: item.baseline, x: event.clientX, y: event.clientY })} onMouseLeave={() => onHover(null)}>
-      <span className="plan-bar-face" style={{ padding: !item.baseline && size >= 28 ? 2 : 0, borderWidth: size < 4 ? 0 : 1 }}>{!item.baseline && size >= 28 && <><strong>{task.batch_id}</strong>
+      <span className="plan-bar-face" style={{ padding: !item.baseline && size >= 28 ? 2 : 0, borderWidth: size < 4 ? 0 : 1 }}>{printing && !item.baseline ? <strong>{printNumbers.get(task.task_ref)}</strong> : !item.baseline && size >= 28 && <><strong>{task.batch_id}</strong>
         {size >= 75 && <small>{task.sequence} {task.process_label} · {M.pieceLabel(task)}</small>}</>}</span>
     </button>;
   }
@@ -48,6 +62,8 @@
     const width = printing ? 640 : viewport * zoom, selectedRef = selected && selected.task.task_ref;
     const renderLeft = printing ? 0 : position.left, renderViewport = printing ? width : viewport;
     const model = React.useMemo(() => M.layout(data, mode, query, displayBaseline, width, displayChangedOnly), [data, mode, query, displayBaseline, width, displayChangedOnly]);
+    const printItems = printing ? model.rows.flatMap(row => row.items) : [];
+    const printNumbers = new Map(printItems.map((item, index) => [item.task.task_ref, index + 1]));
     const risks = React.useMemo(() => new Map((data.projections.delivery_risks.items || []).map(row => [row.batch_id, row.risk])), [data]);
     const ticks = M.ticks(model.start, model.end, width, renderLeft, renderViewport);
     const today = M.instant(asOf.slice(0, 10) + 'T00:00:00'), now = M.instant(asOf);
@@ -155,8 +171,8 @@
               return <div key={row.key} className={'plan-lane' + (row.before ? ' baseline' : '')} style={{ top: row.top + 52, height: row.height, width: labelWidth + width }}>
                 <div className="plan-resource" title={row.label + ' · ' + (row.before ? '初始计划' : row.tasks.length + ' 道安排 · 子轨 ' + (row.track + 1) + '/' + row.trackCount + (row.overlap ? ' · 存在重叠' : ''))}><strong>{row.label}</strong>{!row.before && <small>{row.tasks.length} 道安排{row.trackCount > 1 ? ' · 子轨 ' + (row.track + 1) + '/' + row.trackCount : ''}{row.overlap ? ' · 重叠' : ''}</small>}{row.before && <small>初始计划</small>}</div>
                 <div className="plan-track" style={{ width }}>{ticks.map(tick => <i key={tick.at} className="plan-gridline" style={{ left: axisLeft(tick.at) }} />)}
-                  {items.length > 70 ? <DenseRow row={row} model={model} width={width} printing={printing} viewport={renderViewport} left={renderLeft} selectedRef={selectedRef} risks={risks} onSelect={select} onHover={setHover} /> :
-                    items.map(item => <Bar key={item.task.task_ref} item={item} model={model} width={width} printing={printing} selectedRef={selectedRef} risks={risks} onSelect={select} onHover={setHover} />)}
+                  {items.length > 70 ? <DenseRow row={row} model={model} width={width} printing={printing} printNumbers={printNumbers} viewport={renderViewport} left={renderLeft} selectedRef={selectedRef} risks={risks} onSelect={select} onHover={setHover} /> :
+                    items.map(item => <Bar key={item.task.task_ref} item={item} model={model} width={width} printing={printing} printNumbers={printNumbers} selectedRef={selectedRef} risks={risks} onSelect={select} onHover={setHover} />)}
                 </div>
               </div>;
             })}
@@ -176,6 +192,7 @@
             <span>{currentIndex < 0 ? '未选任务' : '第 ' + (currentIndex + 1) + ' 道匹配'}</span><Button className="btn plan-icon" icon="chevron-right" aria-label="下一匹配任务" disabled={!model.tasks.length || currentIndex >= model.tasks.length - 1} onClick={() => move(1)} /></span>
         </div>
       </div>
+      {printing && printItems.length > 0 && <PrintTasks items={printItems} labels={model.labels} />}
       {hover && <div role="tooltip" className="plan-tooltip" style={{ left: Math.max(8, Math.min(hover.x + 12, window.innerWidth - 335)), top: Math.max(8, Math.min(hover.y + 16, window.innerHeight - 300)), maxHeight: 'calc(100vh - 16px)', overflow: 'auto', overflowWrap: 'anywhere' }}>
         {(hover.before ? '初始计划\n' : '') + M.taskTitle(hover.task, model.labels, !hover.before && model.conflicts.has(hover.task.task_ref))}</div>}
     </div>;

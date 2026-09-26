@@ -3,19 +3,11 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
+from core.shared.local_datetime import parse_local_datetime
+
 
 def parse_dt(value: Any) -> Optional[datetime]:
-    if value is None:
-        return None
-    if isinstance(value, datetime):
-        return value
-    text = str(value).strip().replace("/", "-").replace("T", " ").replace("：", ":")
-    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
-        try:
-            return datetime.strptime(text, fmt)
-        except Exception:
-            continue
-    return None
+    return parse_local_datetime(value)
 
 
 def due_exclusive(due_dt: Optional[datetime]) -> datetime:

@@ -12,7 +12,7 @@
   function parts(value, dateOnly) {
     if (typeof value !== 'string') return invalid('日期时间');
     const match = /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,6}))?)?)?$/.exec(value);
-    if (!match || !dateOnly && match[4] === undefined) return invalid('日期时间');
+    if (!match || match[0] !== value || !dateOnly && match[4] === undefined) return invalid('日期时间');
     const year = Number(match[1]),
       month = Number(match[2]),
       day = Number(match[3]);
@@ -22,12 +22,14 @@
     return match;
   }
   function dateTime(value, {
-    seconds = false
+    seconds = false,
+    fractions = false
   } = {}) {
     if (empty(value)) return unknown;
-    if (typeof seconds !== 'boolean') return invalid('日期时间选项');
+    if (typeof seconds !== 'boolean' || typeof fractions !== 'boolean') return invalid('日期时间选项');
     const p = parts(value, false);
-    return p[1] + '-' + p[2] + '-' + p[3] + ' ' + p[4] + ':' + p[5] + (seconds ? ':' + (p[6] || '00') : '');
+    const fraction = fractions && p[7] && /[1-9]/.test(p[7]) ? '.' + p[7] : '';
+    return p[1] + '-' + p[2] + '-' + p[3] + ' ' + p[4] + ':' + p[5] + (seconds || fraction ? ':' + (p[6] || '00') + fraction : '');
   }
   function date(value) {
     if (empty(value)) return unknown;

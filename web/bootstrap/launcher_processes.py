@@ -6,6 +6,7 @@ import os
 import subprocess
 from typing import Optional, Tuple
 
+from . import launcher_win32
 from .launcher_observability import launcher_log_warning
 
 _PROCESS_LOG_STATE_DIR = ""
@@ -37,6 +38,12 @@ def _parse_pid(pid: int) -> int:
 
 
 def _windows_pid_state(pid_i: int) -> Optional[bool]:
+    if launcher_win32.available():
+        try:
+            return launcher_win32.pid_exists(pid_i)
+        except OSError as exc:
+            _log_warning(None, "Windows pid 探测失败，运行时身份状态未知：pid=%s error=%s", pid_i, exc)
+            return None
     try:
         result = subprocess.run(
             ["tasklist", "/FI", f"PID eq {pid_i}", "/NH", "/FO", "CSV"],
@@ -221,6 +228,13 @@ def _query_process_executable_path(pid: int) -> Optional[str]:
         return None
     if os.name != "nt":
         return None
+    if launcher_win32.available():
+        try:
+            path = launcher_win32.executable_path(pid_i)
+            return os.path.normcase(os.path.abspath(path)) if path else ""
+        except OSError as exc:
+            _log_warning(None, "查询进程路径失败，无法确认运行时身份：pid=%s error=%s", pid_i, exc)
+            return None
     script = (
         "$ErrorActionPreference='Stop';"
         f"$pid0={pid_i};"

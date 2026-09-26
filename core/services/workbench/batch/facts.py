@@ -4,13 +4,14 @@ from contextlib import contextmanager
 
 from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_command import WorkbenchCommandRejected, input_fingerprint
-from core.services.process.workflow_state import workflow_snapshot
+from core.models.workbench_identity import WorkbenchEntityIdentity
+from core.services.process.workflow_state import load_workflow_snapshot, project_workflow_snapshot
 from core.services.workbench.process.queries import _plain
 from data.repositories.workbench_batch_facts_repo import WorkbenchBatchFactsRepository
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
 from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
 
-from .execution import old_event_bindings, protects_execution, read_execution
+from .execution import load_execution, old_event_bindings, project_execution_snapshot, protects_execution
 
 PLAN_TABLES = ("Schedule", "ScheduleCandidateRows", "ScheduleAdjustmentChange", "ScheduleAdjustmentScenarioRow")
 
@@ -28,10 +29,11 @@ class BatchFacts:
             return self._facts
         with TransactionManager(self.conn).transaction():
             tables = self.repo.whole_tables()
-            workflow = workflow_snapshot(self.conn)
+            workflow = load_workflow_snapshot(self.conn)
             operation_refs = self.plan_refs.get_operation_refs(row["id"] for row in tables["BatchOperations"])
-            return {**tables, "workflow": workflow, "operation_refs": operation_refs,
-                    "execution": read_execution(self.conn, operation_refs.values())}
+            execution = load_execution(self.conn, operation_refs.values())
+        return {**tables, "workflow": project_workflow_snapshot(workflow), "operation_refs": operation_refs,
+                "execution": project_execution_snapshot(execution)}
 
     def fingerprint(self):
         return input_fingerprint(_plain(self.load()))
@@ -46,11 +48,29 @@ class BatchFacts:
             finally:
                 self._facts = previous
 
+    @contextmanager
+    def detached_read_snapshot(self):
+        """Keep one materialized snapshot while projection runs without a DB lock.
+
+        Commands and previews that perform additional SQL use read_snapshot instead.
+        An existing caller transaction is never committed or released here.
+        """
+        previous = self._facts
+        try:
+            self._facts = self.load()
+            yield self.fingerprint()
+        finally:
+            self._facts = previous
+
     def resolve(self, ref, kind="batch"):
         from core.models.workbench_batch import public_ref
 
         public_ref(ref)
-        identity = self.identities.get(ref)
+        if self._facts is None:
+            identity = self.identities.get(ref)
+        else:
+            row = next((row for row in self._facts["WorkbenchEntityRefs"] if row["ref"] == ref), None)
+            identity = WorkbenchEntityIdentity(row["ref"], row["kind"], row["entity_key"], int(row["revision"]), bool(row["active"])) if row else None
         if identity is None or not identity.active or identity.kind != kind:
             raise WorkbenchCommandRejected("entity_not_found", "这条记录已经不在了，请重新选择。请刷新后重新选择。", 404)
         return identity

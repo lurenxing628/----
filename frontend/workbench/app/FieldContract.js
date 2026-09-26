@@ -26,8 +26,11 @@
   }
   function planned(value) {
     const row = { ...value, start: value.planned_start, end: value.planned_end };
-    const validTime = at => typeof at === 'string' && time(at) && Number.isFinite(Date.parse(at + 'Z')) && new Date(at + 'Z').toISOString().slice(0, 19) === at;
-    return validTime(row.start) && validTime(row.end) && window.PointContract.arrangement(row);
+    const planTime = at => typeof at === 'string'
+      && /^(?!0000)\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.(?!000000$)\d{6})?(?![\s\S])/.test(at)
+      && Number.isFinite(Date.parse(at.slice(0, 19) + 'Z'))
+      && new Date(at.slice(0, 19) + 'Z').toISOString().slice(0, 19) === at.slice(0, 19);
+    return planTime(row.start) && planTime(row.end) && window.PointContract.arrangement(row);
   }
   function report(value) {
     return C.object(value) && ref(value.report_ref) && ref(value.revision_ref) && ref(value.operation_ref) && ref(value.recorded_against_task_ref) && ref(value.recorded_against_plan_ref)
@@ -101,6 +104,6 @@
   // Report times are second-precision (see the time pattern and step="1" inputs): seconds stay visible whenever they are
   // not :00, so nothing is lost while whole-minute times read as minutes. WorkbenchFormat has no auto option yet.
   const hasSeconds = value => typeof value === 'string' && /:\d\d:(?!00(?:\.0+)?$)\d\d(?:\.\d+)?$/.test(value);
-  const date = value => window.WorkbenchFormat.dateTime(value, { seconds: hasSeconds(value) });
+  const date = value => window.WorkbenchFormat.dateTime(value, { seconds: hasSeconds(value), fractions: true });
   window.FieldContract = { states, reportActions, fields, ref, task, report, query, blocked, draft, input, saveFile, display, date, hasSeconds, quantity, hours, pieceLabel, planQuantity, quantityReasons, validTime };
 })();

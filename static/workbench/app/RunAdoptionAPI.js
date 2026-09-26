@@ -19,9 +19,10 @@
     return object(v) && required.every(k => Object.prototype.hasOwnProperty.call(v, k)) && Object.keys(v).every(k => required.concat(optional).includes(k));
   }
   function time(v) {
-    if (!text(v) || !/^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d$/.test(v)) return false;
-    const d = new Date(v + 'Z');
-    return Number.isFinite(d.getTime()) && d.toISOString().slice(0, 19) === v;
+    if (!text(v) || !/^(?!0000)\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.(?!000000$)\d{6})?(?![\s\S])/.test(v)) return false;
+    const calendar = v.slice(0, 19),
+      d = new Date(calendar + 'Z');
+    return Number.isFinite(d.getTime()) && d.toISOString().slice(0, 19) === calendar;
   }
   const issues = v => Array.isArray(v) && v.every(r => shape(r, ['code', 'message', 'severity']) && text(r.code) && text(r.message) && r.severity === 'blocker');
   function summary(v) {

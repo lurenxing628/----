@@ -79,13 +79,18 @@ def _chrome_pid_query_script(profile_dir: str) -> str:
 
 def _parse_chrome_pid_output(output: str) -> List[int]:
     pids: List[int] = []
-    for line in str(output or "").splitlines():
+    text = str(output or "")
+    # Win7 PowerShell 2 emits a UTF-8 BOM before the first PID. Only the
+    # stream-leading marker is encoding metadata; never strip markers in rows.
+    if text.startswith("\ufeff"):
+        text = text[1:]
+    for line in text.splitlines():
         value = str(line or "").strip()
         if not value:
             continue
         if value.startswith("ProcessId="):
             value = value.split("=", 1)[1].strip()
-        if value.isdigit():
+        if value.isascii() and value.isdigit():
             pid_i = int(value)
             if pid_i > 0 and pid_i not in pids:
                 pids.append(pid_i)

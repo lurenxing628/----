@@ -18,6 +18,7 @@
   const gaps = v => Array.isArray(v) && v.every(g => shape(g, ['field', 'code', 'message']) && Object.values(g).every(text));
   const resource = v => v === null || shape(v, ['ref', 'label']) && nullable(ref)(v.ref) && nullable(text)(v.label);
   const stamp = v => Date.parse(v + 'Z');
+  const timeKey = v => v.slice(0, 19) + '.' + (v.split('.')[1] || '').padEnd(6, '0');
   const statuses = ['matched', 'newly_scheduled', 'unscheduled', 'baseline_only', 'not_comparable'];
   const deltaKeys = ['start_hours', 'end_hours', 'elapsed_hours', 'machine_changed', 'operator_changed', 'supplier_changed', 'effective_processing_hours'];
   function check(ok) {
@@ -42,8 +43,8 @@
   function interval(v, baseline) {
     const keys = ['row_ref', 'start', 'end', 'elapsed_hours', 'machine', 'operator', 'supplier', 'effective_processing_hours', 'data_gaps'];
     check(shape(v, keys.concat(baseline ? ['interval_comparable'] : ['source', 'locked', ...(P.isPoint(v) ? P.fields : [])])) && ref(v.row_ref) && [v.start, v.end].every(nullable(time)) && nullable(finite)(v.elapsed_hours) && ['machine', 'operator', 'supplier'].every(k => resource(v[k])) && v.effective_processing_hours === null && gaps(v.data_gaps));
-    if (v.start !== null && v.end !== null) check(stamp(v.start) <= stamp(v.end) && Math.abs(v.elapsed_hours - (stamp(v.end) - stamp(v.start)) / 3600000) < 0.000001);else check(v.elapsed_hours === null);
-    const valid = v.start !== null && v.end !== null && (stamp(v.start) < stamp(v.end) || !baseline && P.isPoint(v));
+    if (v.start !== null && v.end !== null) check(timeKey(v.start) <= timeKey(v.end) && Math.abs(v.elapsed_hours - (stamp(v.end) - stamp(v.start)) / 3600000) < 0.000001);else check(v.elapsed_hours === null);
+    const valid = v.start !== null && v.end !== null && (timeKey(v.start) < timeKey(v.end) || !baseline && P.isPoint(v));
     if (baseline) check(v.interval_comparable === valid && v.supplier === null);else check(valid && ['internal', 'external'].includes(v.source) && typeof v.locked === 'boolean');
   }
   function comparison(row, q, seen, segments, candidateRefs) {

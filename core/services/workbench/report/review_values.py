@@ -10,7 +10,7 @@ def local_time(value):
     parsed = calculations.parse_dt(value)
     if parsed is None or parsed.tzinfo is not None:
         return None
-    return parsed.strftime("%Y-%m-%dT%H:%M:%S")
+    return parsed.isoformat()
 
 
 def minutes(planned, actual):

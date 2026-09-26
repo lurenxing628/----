@@ -66,8 +66,7 @@ def _supplier(suppliers, supplier_id, op_type_id):
     return fact, fact["status"] == "active" and fact["capable"] and fact["inactive_reason"] is None
 
 
-def _groups(repo, part_no, operations):
-    groups = repo.active_external_groups(part_no)
+def _groups(groups, operations):
     members = {}
     for op in operations:
         members.setdefault((op["part_no"], op["ext_group_id"]), []).append([op["ref"], op["seq"], op["source"]])
@@ -139,14 +138,24 @@ def _operation_facts(part, op, group, suppliers):
 
 def _load_facts(conn, part_no=None):
     """One bulk read per fact collection, regardless of the number of parts."""
+    return _project_facts(_read_facts(conn, part_no))
+
+
+def _read_facts(conn, part_no=None):
     repo = WorkbenchProcessWorkflowRepository(conn)
-    operations = repo.active_operations(part_no)
-    groups = _groups(repo, part_no, operations)
-    suppliers = {row["supplier_id"]: dict(row, capabilities={row["op_type_id"]}) for row in repo.supplier_facts()}
-    for row in repo.supplier_op_types():
+    return {"operations": repo.active_operations(part_no), "groups": repo.active_external_groups(part_no),
+            "suppliers": repo.supplier_facts(), "capabilities": repo.supplier_op_types(),
+            "records": repo.confirmations(part_no)}
+
+
+def _project_facts(raw):
+    operations = raw["operations"]
+    groups = _groups([dict(row) for row in raw["groups"]], operations)
+    suppliers = {row["supplier_id"]: dict(row, capabilities={row["op_type_id"]}) for row in raw["suppliers"]}
+    for row in raw["capabilities"]:
         if row["supplier_id"] in suppliers:
             suppliers[row["supplier_id"]]["capabilities"].add(row["op_type_id"])
-    records = repo.confirmations(part_no)
+    records = raw["records"]
     by_part, by_ref = {}, {}
     for op in operations:
         by_part.setdefault(op["part_no"], []).append(op)
@@ -236,19 +245,30 @@ def operation_confirmations(conn, part_no) -> dict:
 def workflow_snapshot(conn) -> dict:
     """Load JSON-safe workflow and per-operation states for the whole part catalog."""
     with TransactionManager(conn).transaction():
-        _schema(conn)
-        repo = WorkbenchProcessWorkflowRepository(conn)
-        parts = repo.parts_with_refs()
-        stored = {row["part_ref"]: row for row in repo.stored_workflows()}
-        loaded = _load_facts(conn)
-        result = {}
-        for part in parts:
-            if not isinstance(part["part_no"], str):
-                raise RuntimeError("Invalid process part number; expected text.")
-            facts = _facts(part, loaded)
-            result[part["part_no"]] = {"workflow": _view(stored.get(_ref(part["ref"])), facts),
-                                       "operations": _operation_states(facts[2], facts[3])}
-        return result
+        raw = load_workflow_snapshot(conn)
+    return project_workflow_snapshot(raw)
+
+
+def load_workflow_snapshot(conn) -> dict:
+    """Capture stored inputs; callers own the encompassing read transaction."""
+    _require_transaction(conn)
+    _schema(conn)
+    repo = WorkbenchProcessWorkflowRepository(conn)
+    return {"parts": repo.parts_with_refs(), "stored": repo.stored_workflows(), "facts": _read_facts(conn)}
+
+
+def project_workflow_snapshot(raw) -> dict:
+    """Project a captured catalog without retaining a SQLite read lock."""
+    stored = {row["part_ref"]: row for row in raw["stored"]}
+    loaded = _project_facts(raw["facts"])
+    result = {}
+    for part in raw["parts"]:
+        if not isinstance(part["part_no"], str):
+            raise RuntimeError("Invalid process part number; expected text.")
+        facts = _facts(part, loaded)
+        result[part["part_no"]] = {"workflow": _view(stored.get(_ref(part["ref"])), facts),
+                                   "operations": _operation_states(facts[2], facts[3])}
+    return result
 
 
 def _require_transaction(conn):

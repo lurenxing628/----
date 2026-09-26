@@ -17,8 +17,8 @@
     return typeof value === 'string' && /^[1-9][0-9]*$/.test(value) && (value.length > 16 || value.length === 16 && value > '9007199254740991') && (value.length < 19 || value.length === 19 && value <= '9223372036854775807');
   }
   function localTime(value) {
-    if (typeof value !== 'string' || !/^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}$/.test(value)) return false;
-    const [year, month, day, hour, minute, second] = value.split(/[-T:]/).map(Number);
+    if (typeof value !== 'string' || !/^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.(?!000000$)[0-9]{6})?(?![\s\S])/.test(value)) return false;
+    const [year, month, day, hour, minute, second] = value.slice(0, 19).split(/[-T:]/).map(Number);
     const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
     const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
     return year >= 1 && month >= 1 && month <= 12 && day >= 1 && day <= days[month - 1] && hour < 24 && minute < 60 && second < 60;
