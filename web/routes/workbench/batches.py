@@ -1,7 +1,6 @@
 """Independent batch route registration. Global mounting belongs to the host."""
 
 from contextlib import contextmanager
-from threading import BoundedSemaphore
 
 from flask import current_app, g, jsonify, request
 
@@ -17,19 +16,20 @@ from web.api_responses import query_success
 
 from .api_responses import api_endpoint
 from .batch_context import command_body, json_body, load_preview, read_scope, save_preview
+from .read_budget import ReadBudget
 from .read_context import bind_read_snapshot
 from .write_context import issue_write_context, validate_write_context
 
 COLLECTION = "batch:create"
-_BATCH_READ_SLOTS = BoundedSemaphore(2)
+_BATCH_READ_SLOTS = ReadBudget(1)
 
 
 @contextmanager
 def _read_snapshot(reader):
-    # Each batch view projects the complete ledger, even for a short page. Keep
-    # queued views outside SQLite transactions so CPU-heavy readers cannot crowd
-    # out run previews/worker claims on the Win7 Python 3.8 runtime.
-    with _BATCH_READ_SLOTS:
+    # Each batch view projects the complete ledger, even for a short page. One
+    # reader avoids per-row SQLite/GIL handoff contention between large scans.
+    # FIFO waiters hold no SQLite transaction and cannot starve behind newcomers.
+    with _BATCH_READ_SLOTS.slot():
         with reader.detached_read_snapshot() as fingerprint:
             yield fingerprint
 

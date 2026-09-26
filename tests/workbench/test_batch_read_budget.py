@@ -18,7 +18,7 @@ def test_queued_batch_reads_leave_database_available_and_keep_complete_results(b
     conn.close()
     app = batch_client.application
     arrival = threading.Barrier(9)
-    two_projecting, release = threading.Event(), threading.Event()
+    one_projecting, release = threading.Event(), threading.Event()
     lock = threading.Lock()
     entered = []
     active, peak = 0, 0
@@ -43,8 +43,8 @@ def test_queued_batch_reads_leave_database_available_and_keep_complete_results(b
             entered.append(threading.get_ident())
             active += 1
             peak = max(peak, active)
-            if len(entered) == 2:
-                two_projecting.set()
+            if len(entered) == 1:
+                one_projecting.set()
         try:
             assert release.wait(timeout=10)
             return original(raw)
@@ -64,22 +64,63 @@ def test_queued_batch_reads_leave_database_available_and_keep_complete_results(b
         tasks = [pool.submit(request) for _ in range(8)]
         try:
             arrival.wait(timeout=10)
-            assert two_projecting.wait(timeout=10)
+            assert one_projecting.wait(timeout=10)
             with lock:
-                assert len(entered) == 2
-            # Even the queued six HTTP requests must not hold SQLite SHARED locks.
+                assert len(entered) == 1
+            # Even the queued seven HTTP requests must not hold SQLite SHARED locks.
             with sqlite3.connect(path, timeout=0.1) as writer:
                 writer.execute("UPDATE Batches SET remark='after-budget-read' WHERE batch_id='FREE-001'")
                 writer.commit()
         finally:
             release.set()
         results = [future.result(timeout=20) for future in tasks]
-    assert peak == 2
+    assert peak == 1
     assert len(entered) == len(results) == 8
     remarks = []
     for result in results:
         rows = [row for row in result["entities"] if row["business_code"] == "FREE-001"]
         assert len(rows) == 1 and len(rows[0]["operations"]) == 1
         remarks.append(rows[0]["fields"]["remark"])
-    assert remarks.count("keep-hidden") == 2
-    assert remarks.count("after-budget-read") == 6
+    assert remarks.count("keep-hidden") == 1
+    assert remarks.count("after-budget-read") == 7
+
+
+def test_fifo_budget_serves_waiters_before_a_returning_reader():
+    from web.routes.workbench.read_budget import ReadBudget
+
+    budget = ReadBudget(1)
+    order = []
+    threads = []
+    # Hold admission while enqueueing deterministic arrivals, then immediately
+    # try again from the releasing reader. A semaphore can let that reader barge.
+    with budget.slot():
+        for number in range(6):
+            def read(index=number):
+                with budget.slot():
+                    order.append(index)
+            with budget._condition:
+                previous = len(budget._waiting)
+                thread = threading.Thread(target=read)
+                thread.start()
+                assert budget._condition.wait_for(lambda: len(budget._waiting) > previous, timeout=5)
+            threads.append(thread)
+    with budget.slot():
+        order.append(6)
+    for thread in threads:
+        thread.join(timeout=5)
+        assert not thread.is_alive()
+    assert order == list(range(7))
+
+
+def test_read_budget_releases_after_projection_error():
+    import pytest
+
+    from web.routes.workbench.read_budget import ReadBudget
+
+    budget = ReadBudget(1)
+    with pytest.raises(ValueError):
+        with budget.slot():
+            raise ValueError("invalid facts")
+    with budget.slot():
+        assert budget._available == 0
+    assert budget._available == 1

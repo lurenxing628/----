@@ -31,6 +31,7 @@ QUALITY_GATE_STARTUP_REGRESSION_ARGS = (
     "tests/app_runtime/test_app_new_ui_session_contract.py",
     "tests/app_runtime/test_app_new_ui_security_hardening_enabled.py",
     "tests/app_runtime/test_app_factory_runtime_env_refresh.py",
+    "tests/app_runtime/test_thread_scheduling.py",
     "tests/app_runtime/test_runtime_stop_cli.py",
     "tests/app_runtime/test_runtime_stop_draining.py",
 )

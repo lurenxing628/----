@@ -41,6 +41,7 @@ from .plugins import bootstrap_plugins
 from .security import apply_session_cookie_hardening, ensure_secret_key, register_security_headers
 from .startup_config import resolve_config_class
 from .static_versioning import install_versioned_url_for
+from .thread_scheduling import responsive_thread_scheduling
 from .workbench_request_lifecycle import (
     WorkbenchRequestHandler,
     close_workbench_request_connection,
@@ -167,13 +168,14 @@ def serve_runtime_app(app: Flask, host: str, port: int) -> None:
     with _RUNTIME_SERVER_LOCK:
         _RUNTIME_SERVER = server
         _RUNTIME_SERVER_SHUTDOWN_REQUESTED = False
-    try:
-        server.serve_forever()
-    finally:
-        server.server_close()
-        with _RUNTIME_SERVER_LOCK:
-            _RUNTIME_SERVER = None
-            _RUNTIME_SERVER_SHUTDOWN_REQUESTED = False
+    with responsive_thread_scheduling():
+        try:
+            server.serve_forever()
+        finally:
+            server.server_close()
+            with _RUNTIME_SERVER_LOCK:
+                _RUNTIME_SERVER = None
+                _RUNTIME_SERVER_SHUTDOWN_REQUESTED = False
 
 
 def request_runtime_server_shutdown(logger=None) -> bool:
