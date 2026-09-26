@@ -141,6 +141,12 @@ def _adopted_quantities(conn, plan_ref):
 
 def read_adopted_source(conn, plan_ref):
     """Read the audited immutable source; callers retain their read transaction."""
+    from core.infrastructure.read_evidence import verified_read
+
+    return verified_read(conn, ("adopted_plan_source", plan_ref), lambda: _read_adopted_source(conn, plan_ref))
+
+
+def _read_adopted_source(conn, plan_ref):
     from data.repositories.workbench_plan_baseline_repo import WorkbenchPlanBaselineRepository
     from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
 

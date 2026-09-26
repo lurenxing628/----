@@ -356,6 +356,7 @@ WORKBENCH_REQUIRED_REGRESSION_GROUPS = (
         "test_plan_public_projection.py",
         "test_plan_runtime_dates.py",
         "test_plan_workspace_projections.py",
+        "test_plan_read_evidence.py",
         "test_plan_query_api.py",
         "test_plan_export_api.py",
         "test_plan_transport.py",

@@ -5,6 +5,7 @@ from datetime import datetime
 from types import SimpleNamespace
 from typing import NoReturn
 
+from core.infrastructure.read_evidence import verified_read
 from core.models.workbench_trial import MAX_TRIAL_TASKS, reference
 from core.models.workbench_trial_adoption import TrialAdoptionBlocked
 from core.models.workbench_trial_codec import fingerprint
@@ -20,6 +21,10 @@ def _invalid(message) -> NoReturn:
 
 def load_saved_scenario(conn, scenario_ref):
     reference(scenario_ref)
+    return verified_read(conn, ("saved_trial_scenario", scenario_ref), lambda: _load_saved_scenario(conn, scenario_ref))
+
+
+def _load_saved_scenario(conn, scenario_ref):
     repo = WorkbenchTrialRepository(conn)
     saved = load_scenario(repo, scenario_ref)
     header = repo.scenario_header(scenario_ref)

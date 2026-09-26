@@ -5,6 +5,7 @@ from __future__ import annotations
 from contextlib import contextmanager
 from typing import Dict, Union
 
+from core.infrastructure.read_evidence import read_evidence_scope
 from core.infrastructure.transaction import TransactionManager
 from core.models.schedule_adjustment import ScheduleAdjustmentScenario
 from core.models.schedule_plan_role import (
@@ -213,6 +214,10 @@ class WorkbenchPlanQueryService:
         return resources, state
 
     def workspace(self, scope):
+        with read_evidence_scope(self.conn):
+            return self._workspace(scope)
+
+    def _workspace(self, scope):
         repo, entry, span = self._selected(scope.plan_ref)
         rows = self._task_rows(repo, entry, scope)
         task_refs = self.references.get_task_refs(scope.plan_ref, rows)
