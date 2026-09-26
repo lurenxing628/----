@@ -1,0 +1,79 @@
+{
+  "source": "D:\\Github\\----\\evidence\\Win7Acceptance\\20260926\\stress\\snapshots\\pressure5000-mixed-after-ui\\aps.db",
+  "python": "3.8.10 (tags/v3.8.10:3d8993a, May  3 2021, 11:48:03) [MSC v.1928 64 bit (AMD64)]",
+  "sqlite": "3.35.5",
+  "results": [
+    {
+      "mode": "held",
+      "iteration": 1,
+      "elapsed_seconds": 0.982394,
+      "start": null,
+      "held_seconds": 0.9823517999999999,
+      "statements": 171,
+      "fingerprint": "5cc4a4b7eefeebfe4156acda18f6d29639f2517a8e99ad8e4d0bdde7757d16f9",
+      "returned": 20,
+      "total": 100,
+      "operations": 5000
+    },
+    {
+      "mode": "detached",
+      "iteration": 1,
+      "elapsed_seconds": 1.028259,
+      "start": null,
+      "held_seconds": 0.14678500000000017,
+      "statements": 169,
+      "fingerprint": "5cc4a4b7eefeebfe4156acda18f6d29639f2517a8e99ad8e4d0bdde7757d16f9",
+      "returned": 20,
+      "total": 100,
+      "operations": 5000
+    },
+    {
+      "mode": "held",
+      "iteration": 2,
+      "elapsed_seconds": 1.0519666,
+      "start": null,
+      "held_seconds": 1.0519224,
+      "statements": 171,
+      "fingerprint": "5cc4a4b7eefeebfe4156acda18f6d29639f2517a8e99ad8e4d0bdde7757d16f9",
+      "returned": 20,
+      "total": 100,
+      "operations": 5000
+    },
+    {
+      "mode": "detached",
+      "iteration": 2,
+      "elapsed_seconds": 1.0112837000000003,
+      "start": null,
+      "held_seconds": 0.15529579999999976,
+      "statements": 169,
+      "fingerprint": "5cc4a4b7eefeebfe4156acda18f6d29639f2517a8e99ad8e4d0bdde7757d16f9",
+      "returned": 20,
+      "total": 100,
+      "operations": 5000
+    },
+    {
+      "mode": "held",
+      "iteration": 3,
+      "elapsed_seconds": 0.9701512999999995,
+      "start": null,
+      "held_seconds": 0.9701038000000004,
+      "statements": 171,
+      "fingerprint": "5cc4a4b7eefeebfe4156acda18f6d29639f2517a8e99ad8e4d0bdde7757d16f9",
+      "returned": 20,
+      "total": 100,
+      "operations": 5000
+    },
+    {
+      "mode": "detached",
+      "iteration": 3,
+      "elapsed_seconds": 0.9877039999999999,
+      "start": null,
+      "held_seconds": 0.14587859999999964,
+      "statements": 169,
+      "fingerprint": "5cc4a4b7eefeebfe4156acda18f6d29639f2517a8e99ad8e4d0bdde7757d16f9",
+      "returned": 20,
+      "total": 100,
+      "operations": 5000
+    }
+  ]
+}

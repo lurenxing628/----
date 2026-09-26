@@ -1,0 +1,48 @@
+         9126373 function calls (8261364 primitive calls) in 4.514 seconds
+
+   Ordered by: cumulative time
+   List reduced from 334 to 40 due to restriction <40>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        1    0.000    0.000    4.535    4.535 C:\Users\lurenxing\.codex\worktrees\win7-acceptance-fixes\----\core\services\workbench\batch\facts.py:27(load)
+      121    0.000    0.000    2.759    0.023 C:\Users\lurenxing\.codex\worktrees\win7-acceptance-fixes\----\data\repositories\base_repo.py:68(fetchall)
+        1    0.001    0.001    2.694    2.694 C:\Users\lurenxing\.codex\worktrees\win7-acceptance-fixes\----\data\repositories\workbench_plan_identity_repo.py:266(get_operation_refs)
+        1    0.002    0.002    1.680    1.680 C:\Users\lurenxing\.codex\worktrees\win7-acceptance-fixes\----\core\services\workbench\batch\execution.py:41(project_execution_snapshot)
+        1    0.003    0.003    1.539    1.539 C:\Users\lurenxing\.codex\worktrees\win7-acceptance-fixes\----\core\services\workbench\batch\execution.py:46(<dictcomp>)
+      137    1.472    0.011    1.472    0.011 {method 'fetchall' of 'sqlite3.Cursor' objects}
+      158    1.254    0.008    1.254    0.008 {method 'execute' of 'sqlite3.Connection' objects}
+      135    0.000    0.000    1.254    0.009 C:\Users\lurenxing\.codex\worktrees\win7-acceptance-fixes\----\data\repositories\base_repo.py:43(execute)
+    15000    0.004    0.000    1.247    0.000 C:\Users\lurenxing\.codex\worktrees\win7-acceptance-fixes\----\core\models\workbench_execution.py:59(to_dict)
+    15000    0.007    0.000    1.243    0.000 C:\Users\LURENX~1\AppData\Local\Temp\aps-win7-fixes-py38-20260926\lib\dataclasses.py:1052(asdict)
+540000/15000    0.519    0.000    1.232    0.000 C:\Users\LURENX~1\AppData\Local\Temp\aps-win7-fixes-py38-20260926\lib\dataclasses.py:1076(_asdict_inner)
+        1    0.002    0.002    1.120    1.120 C:\Users\lurenxing\.codex\worktrees\win7-acceptance-fixes\----\core\services\workbench\execution\ledger.py:57(project_loaded)
+        1    0.015    0.015    0.576    0.576 C:\Users\lurenxing\.codex\worktrees\win7-acceptance-fixes\----\core\services\execution\ledger_reader.py:126(project_loaded)
+        1    0.001    0.001    0.417    0.417 C:\Users\lurenxing\.codex\worktrees\win7-acceptance-fixes\----\core\services\workbench\execution\ledger.py:61(<listcomp>)
+        1    0.001    0.001    0.416    0.416 C:\Users\lurenxing\.codex\worktrees\win7-acceptance-fixes\----\core\services\execution\ledger_reader.py:142(<listcomp>)
+120000/75000    0.041    0.000    0.395    0.000 C:\Users\LURENX~1\AppData\Local\Temp\aps-win7-fixes-py38-20260926\lib\dataclasses.py:1110(<genexpr>)
+   405000    0.199    0.000    0.292    0.000 C:\Users\LURENX~1\AppData\Local\Temp\aps-win7-fixes-py38-20260926\lib\copy.py:128(deepcopy)
+   560000    0.082    0.000    0.193    0.000 C:\Users\LURENX~1\AppData\Local\Temp\aps-win7-fixes-py38-20260926\lib\dataclasses.py:1040(_is_dataclass_instance)
+   105000    0.011    0.000    0.173    0.000 C:\Users\LURENX~1\AppData\Local\Temp\aps-win7-fixes-py38-20260926\lib\dataclasses.py:1108(<genexpr>)
+  2770243    0.133    0.000    0.133    0.000 {built-in method builtins.isinstance}
+   560000    0.111    0.000    0.111    0.000 {built-in method builtins.hasattr}
+ 150001/1    0.047    0.000    0.102    0.102 C:\Users\lurenxing\.codex\worktrees\win7-acceptance-fixes\----\core\services\workbench\process\queries.py:17(_plain)
+  15001/1    0.020    0.000    0.102    0.102 C:\Users\lurenxing\.codex\worktrees\win7-acceptance-fixes\----\core\services\workbench\process\queries.py:21(<dictcomp>)
+        4    0.000    0.000    0.094    0.024 C:\Users\lurenxing\.codex\worktrees\win7-acceptance-fixes\----\core\models\workbench_command.py:29(canonical_json)
+        4    0.001    0.000    0.094    0.024 C:\Users\LURENX~1\AppData\Local\Temp\aps-win7-fixes-py38-20260926\lib\json\__init__.py:183(dumps)
+        4    0.000    0.000    0.093    0.023 C:\Users\LURENX~1\AppData\Local\Temp\aps-win7-fixes-py38-20260926\lib\json\encoder.py:182(encode)
+        1    0.002    0.002    0.093    0.093 C:\Users\lurenxing\.codex\worktrees\win7-acceptance-fixes\----\core\services\workbench\execution\ledger.py:59(<listcomp>)
+     5000    0.003    0.000    0.090    0.000 C:\Users\lurenxing\.codex\worktrees\win7-acceptance-fixes\----\core\services\workbench\execution\ledger.py:51(fact_snapshot)
+        4    0.090    0.022    0.090    0.022 C:\Users\LURENX~1\AppData\Local\Temp\aps-win7-fixes-py38-20260926\lib\json\encoder.py:204(iterencode)
+130000/5000    0.046    0.000    0.086    0.000 C:\Users\lurenxing\.codex\worktrees\win7-acceptance-fixes\----\core\services\workbench\facts\plan_serialization.py:7(plain_plan_facts)
+10000/5000    0.014    0.000    0.083    0.000 C:\Users\lurenxing\.codex\worktrees\win7-acceptance-fixes\----\core\services\workbench\facts\plan_serialization.py:10(<dictcomp>)
+        1    0.000    0.000    0.080    0.080 C:\Users\lurenxing\.codex\worktrees\win7-acceptance-fixes\----\core\services\workbench\batch\execution.py:21(load_execution)
+      314    0.000    0.000    0.075    0.000 C:\Users\lurenxing\.codex\worktrees\win7-acceptance-fixes\----\core\infrastructure\workbench_metadata_schema.py:215(_canonical_sql)
+      314    0.000    0.000    0.073    0.000 C:\Users\lurenxing\.codex\worktrees\win7-acceptance-fixes\----\core\infrastructure\workbench_metadata_schema.py:194(_normalized_sql)
+        1    0.000    0.000    0.067    0.067 C:\Users\lurenxing\.codex\worktrees\win7-acceptance-fixes\----\core\services\workbench\batch\execution.py:37(<listcomp>)
+        1    0.000    0.000    0.067    0.067 C:\Users\lurenxing\.codex\worktrees\win7-acceptance-fixes\----\core\services\execution\ledger_reader.py:110(load)
+     5000    0.017    0.000    0.063    0.000 C:\Users\lurenxing\.codex\worktrees\win7-acceptance-fixes\----\core\services\execution\projection.py:47(project_execution)
+      314    0.038    0.000    0.060    0.000 C:\Users\lurenxing\.codex\worktrees\win7-acceptance-fixes\----\core\infrastructure\workbench_metadata_schema.py:147(_strip_line_comments)
+        1    0.001    0.001    0.057    0.057 C:\Users\lurenxing\.codex\worktrees\win7-acceptance-fixes\----\core\services\execution\ledger_reader.py:62(operation_rows)
+    15000    0.027    0.000    0.053    0.000 C:\Users\LURENX~1\AppData\Local\Temp\aps-win7-fixes-py38-20260926\lib\dataclasses.py:1022(fields)
+
+
