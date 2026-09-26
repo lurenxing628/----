@@ -56,6 +56,11 @@ class ExecutionLedgerService(ExecutionLedgerReader):
 
     def project_loaded(self, facts, *, contexts=True):
         projections = super().project_loaded(facts)
+        if not contexts or self.context_factory is None:
+            # The neutral reader has already enforced MAX_REPORT_BYTES. With
+            # no write-context factory attach_context returns these same DTOs;
+            # do not rebuild and serialize an unchanged 5000-operation ledger.
+            return projections
         result = [attach_context(row, self.context_factory if contexts else None,
                                  self.fact_snapshot(facts, row.operation_ref)) for row in projections]
         if len(canonical_json([row.to_dict() for row in result]).encode("utf-8")) > MAX_REPORT_BYTES:

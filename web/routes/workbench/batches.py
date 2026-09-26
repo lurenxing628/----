@@ -1,5 +1,8 @@
 """Independent batch route registration. Global mounting belongs to the host."""
 
+from contextlib import contextmanager
+from threading import BoundedSemaphore
+
 from flask import current_app, g, jsonify, request
 
 from core.models.workbench_batch import normalize_operation_input, object_fields, public_ref
@@ -18,6 +21,17 @@ from .read_context import bind_read_snapshot
 from .write_context import issue_write_context, validate_write_context
 
 COLLECTION = "batch:create"
+_BATCH_READ_SLOTS = BoundedSemaphore(2)
+
+
+@contextmanager
+def _read_snapshot(reader):
+    # Each batch view projects the complete ledger, even for a short page. Keep
+    # queued views outside SQLite transactions so CPU-heavy readers cannot crowd
+    # out run previews/worker claims on the Win7 Python 3.8 runtime.
+    with _BATCH_READ_SLOTS:
+        with reader.detached_read_snapshot() as fingerprint:
+            yield fingerprint
 
 
 def entity_context(entity, fingerprint):
@@ -46,7 +60,7 @@ def entity_context(entity, fingerprint):
 
 def _list(scope):
     reader = WorkbenchBatchQueryService(g.db, current_app.logger)
-    with reader.detached_read_snapshot() as fingerprint:
+    with _read_snapshot(reader) as fingerprint:
         snapshot = bind_read_snapshot(snapshot_scope(scope), fingerprint, scope.get("snapshot_ref"))
         data = reader.page(scope)
         data["entities"] = [entity_context(entity, fingerprint) for entity in data["entities"]]
@@ -70,7 +84,7 @@ def batch_selection():
     if not scope.get("snapshot_ref"):
         raise WorkbenchCommandRejected("invalid_input", "数据已更新，还没有全选。请点「刷新」后重新点「全选当前筛选」。", 400)
     reader = WorkbenchBatchQueryService(g.db, current_app.logger)
-    with reader.detached_read_snapshot() as fingerprint:
+    with _read_snapshot(reader) as fingerprint:
         snapshot = bind_read_snapshot(snapshot_scope(scope), fingerprint, scope["snapshot_ref"])
         data = reader.selection(scope)
     return query_success(data, snapshot)
@@ -80,7 +94,7 @@ def batch_selection():
 def batch_detail(ref):
     object_fields(dict(request.args), ("snapshot_ref",))
     reader = WorkbenchBatchQueryService(g.db, current_app.logger)
-    with reader.detached_read_snapshot() as fingerprint:
+    with _read_snapshot(reader) as fingerprint:
         snapshot = bind_read_snapshot({"kind": "batch", "ref": ref}, fingerprint, request.args.get("snapshot_ref"))
         data = entity_context(reader.detail(ref), fingerprint)
     return query_success(data, snapshot)
@@ -91,7 +105,7 @@ def batch_choices():
     if request.args:
         raise WorkbenchCommandRejected("invalid_input", "这个下拉列表不需要其他条件。请刷新页面后重试。", 400)
     reader = WorkbenchBatchQueryService(g.db, current_app.logger)
-    with reader.detached_read_snapshot() as fingerprint:
+    with _read_snapshot(reader) as fingerprint:
         data = reader.choices()
         snapshot = bind_read_snapshot({"kind": "batch_choices"}, fingerprint)
     return query_success(data, snapshot)
@@ -155,7 +169,7 @@ def batch_facets():
     if body["field"] not in SORTS or not scope.get("snapshot_ref"):
         raise WorkbenchCommandRejected("invalid_input", "要筛选的列不对或数据已更新，筛选没有变化。请点「刷新」后重新打开列筛选。", 400)
     reader = WorkbenchBatchQueryService(g.db, current_app.logger)
-    with reader.detached_read_snapshot() as fingerprint:
+    with _read_snapshot(reader) as fingerprint:
         snapshot = bind_read_snapshot(snapshot_scope(scope), fingerprint, scope["snapshot_ref"])
         filters = {key: values for key, values in scope["column_filters"].items() if key != body["field"]}
         rows = reader.matched({**scope, "column_filters": filters})

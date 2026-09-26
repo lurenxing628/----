@@ -321,6 +321,7 @@ WORKBENCH_REQUIRED_REGRESSION_GROUPS = (
     _group("workbench_batches", "Workbench batch commands, files and ledger guards", (
         "test_batch_commands.py",
         "test_batch_detached_snapshot.py",
+        "test_batch_read_budget.py",
         "test_batch_actions.py",
         "test_batch_files.py",
         "test_batch_execution_ledger_projection.py",
@@ -444,6 +445,7 @@ WORKBENCH_REQUIRED_REGRESSION_GROUPS = (
     )),
     _group("workbench_execution_ledger", "Execution ledger: eight domain contract files", (
         "test_execution_ledger.py",
+        "test_execution_snapshot_serialization.py",
         "test_execution_ledger_contracts.py",
         "test_execution_ledger_commands.py",
         "test_execution_ledger_constraints.py",
