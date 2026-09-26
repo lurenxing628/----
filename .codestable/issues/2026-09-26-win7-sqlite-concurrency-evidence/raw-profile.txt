@@ -44,5 +44,3 @@
       314    0.038    0.000    0.060    0.000 C:\Users\lurenxing\.codex\worktrees\win7-acceptance-fixes\----\core\infrastructure\workbench_metadata_schema.py:147(_strip_line_comments)
         1    0.001    0.001    0.057    0.057 C:\Users\lurenxing\.codex\worktrees\win7-acceptance-fixes\----\core\services\execution\ledger_reader.py:62(operation_rows)
     15000    0.027    0.000    0.053    0.000 C:\Users\LURENX~1\AppData\Local\Temp\aps-win7-fixes-py38-20260926\lib\dataclasses.py:1022(fields)
-
-
