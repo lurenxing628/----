@@ -1,0 +1,796 @@
+{
+  "scope": "Final frozen d1307cb8 on original Win7 SP1 x64 VM and guest Chrome 109",
+  "evidence_root": "output/playwright/win7-workflows-20260927",
+  "note": "Original failed reports remain failed. Continuations and independently verified native snapshots provide completion evidence.",
+  "matrix_unique_passed": 113,
+  "matrix_by_kind": {
+    "batch": 15,
+    "calendar": 14,
+    "field": 9,
+    "hours": 12,
+    "machine": 12,
+    "material": 13,
+    "operator_calendar": 14,
+    "relation": 12,
+    "route": 12
+  },
+  "matrix_cases": [
+    {
+      "kind": "batch",
+      "case": "corrupted-workbook",
+      "passed_in": "process-errors-run01"
+    },
+    {
+      "kind": "batch",
+      "case": "duplicate-business-key",
+      "passed_in": "process-errors-run01"
+    },
+    {
+      "kind": "batch",
+      "case": "duplicate-header",
+      "passed_in": "process-errors-run01"
+    },
+    {
+      "kind": "batch",
+      "case": "empty-file",
+      "passed_in": "process-errors-run01"
+    },
+    {
+      "kind": "batch",
+      "case": "excel-date-leap-day",
+      "passed_in": "process-errors-run02"
+    },
+    {
+      "kind": "batch",
+      "case": "extra-data-cell",
+      "passed_in": "process-errors-run01"
+    },
+    {
+      "kind": "batch",
+      "case": "extra-sheet-ignored",
+      "passed_in": "process-errors-run01"
+    },
+    {
+      "kind": "batch",
+      "case": "formula-cell",
+      "passed_in": "process-errors-run01"
+    },
+    {
+      "kind": "batch",
+      "case": "invalid-calendar-date",
+      "passed_in": "process-errors-run02"
+    },
+    {
+      "kind": "batch",
+      "case": "missing-identity-column",
+      "passed_in": "process-errors-run01"
+    },
+    {
+      "kind": "batch",
+      "case": "over-5000-rows",
+      "passed_in": "process-errors-run02"
+    },
+    {
+      "kind": "batch",
+      "case": "oversized-file",
+      "passed_in": "process-errors-run02"
+    },
+    {
+      "kind": "batch",
+      "case": "oversized-valid-workbook",
+      "passed_in": "process-errors-run02"
+    },
+    {
+      "kind": "batch",
+      "case": "unknown-extra-column",
+      "passed_in": "process-errors-run01"
+    },
+    {
+      "kind": "batch",
+      "case": "valid-preview-cancel",
+      "passed_in": "process-errors-run01"
+    },
+    {
+      "kind": "calendar",
+      "case": "corrupted-workbook",
+      "passed_in": "resource-errors-run01"
+    },
+    {
+      "kind": "calendar",
+      "case": "duplicate-business-key",
+      "passed_in": "resource-errors-run01"
+    },
+    {
+      "kind": "calendar",
+      "case": "duplicate-header",
+      "passed_in": "resource-errors-run01"
+    },
+    {
+      "kind": "calendar",
+      "case": "empty-file",
+      "passed_in": "resource-errors-run01"
+    },
+    {
+      "kind": "calendar",
+      "case": "excel-date-leap-day",
+      "passed_in": "resource-errors-run01"
+    },
+    {
+      "kind": "calendar",
+      "case": "extra-data-cell",
+      "passed_in": "resource-errors-run01"
+    },
+    {
+      "kind": "calendar",
+      "case": "extra-sheet-ignored",
+      "passed_in": "resource-errors-run01"
+    },
+    {
+      "kind": "calendar",
+      "case": "formula-cell",
+      "passed_in": "resource-errors-run01"
+    },
+    {
+      "kind": "calendar",
+      "case": "invalid-calendar-date",
+      "passed_in": "resource-errors-run01"
+    },
+    {
+      "kind": "calendar",
+      "case": "missing-identity-column",
+      "passed_in": "resource-errors-run01"
+    },
+    {
+      "kind": "calendar",
+      "case": "oversized-file",
+      "passed_in": "resource-errors-run01"
+    },
+    {
+      "kind": "calendar",
+      "case": "oversized-valid-workbook",
+      "passed_in": "resource-size-boundary-run02"
+    },
+    {
+      "kind": "calendar",
+      "case": "unknown-extra-column",
+      "passed_in": "resource-errors-run01"
+    },
+    {
+      "kind": "calendar",
+      "case": "valid-preview-cancel",
+      "passed_in": "resource-errors-run01"
+    },
+    {
+      "kind": "field",
+      "case": "corrupted-workbook",
+      "passed_in": "field-errors-run01"
+    },
+    {
+      "kind": "field",
+      "case": "duplicate-header",
+      "passed_in": "field-errors-run01"
+    },
+    {
+      "kind": "field",
+      "case": "empty-file",
+      "passed_in": "field-errors-run01"
+    },
+    {
+      "kind": "field",
+      "case": "extra-data-cell",
+      "passed_in": "field-errors-run01"
+    },
+    {
+      "kind": "field",
+      "case": "formula-cell",
+      "passed_in": "field-errors-run01"
+    },
+    {
+      "kind": "field",
+      "case": "missing-identity-column",
+      "passed_in": "field-errors-run01"
+    },
+    {
+      "kind": "field",
+      "case": "oversized-valid-workbook",
+      "passed_in": "field-errors-run01"
+    },
+    {
+      "kind": "field",
+      "case": "unknown-extra-column",
+      "passed_in": "field-errors-run01"
+    },
+    {
+      "kind": "field",
+      "case": "valid-preview-cancel",
+      "passed_in": "field-errors-run01"
+    },
+    {
+      "kind": "hours",
+      "case": "corrupted-workbook",
+      "passed_in": "process-errors-run01"
+    },
+    {
+      "kind": "hours",
+      "case": "duplicate-business-key",
+      "passed_in": "process-errors-run01"
+    },
+    {
+      "kind": "hours",
+      "case": "duplicate-header",
+      "passed_in": "process-errors-run01"
+    },
+    {
+      "kind": "hours",
+      "case": "empty-file",
+      "passed_in": "process-errors-run01"
+    },
+    {
+      "kind": "hours",
+      "case": "extra-data-cell",
+      "passed_in": "process-errors-run01"
+    },
+    {
+      "kind": "hours",
+      "case": "extra-sheet-ignored",
+      "passed_in": "process-errors-run01"
+    },
+    {
+      "kind": "hours",
+      "case": "formula-cell",
+      "passed_in": "process-errors-run01"
+    },
+    {
+      "kind": "hours",
+      "case": "missing-identity-column",
+      "passed_in": "process-errors-run01"
+    },
+    {
+      "kind": "hours",
+      "case": "oversized-file",
+      "passed_in": "process-errors-run02"
+    },
+    {
+      "kind": "hours",
+      "case": "oversized-valid-workbook",
+      "passed_in": "process-errors-run02"
+    },
+    {
+      "kind": "hours",
+      "case": "unknown-extra-column",
+      "passed_in": "process-errors-run01"
+    },
+    {
+      "kind": "hours",
+      "case": "valid-preview-cancel",
+      "passed_in": "process-errors-run01"
+    },
+    {
+      "kind": "machine",
+      "case": "corrupted-workbook",
+      "passed_in": "resource-errors-run01"
+    },
+    {
+      "kind": "machine",
+      "case": "duplicate-business-key",
+      "passed_in": "resource-errors-run01"
+    },
+    {
+      "kind": "machine",
+      "case": "duplicate-header",
+      "passed_in": "resource-errors-run01"
+    },
+    {
+      "kind": "machine",
+      "case": "empty-file",
+      "passed_in": "resource-errors-run01"
+    },
+    {
+      "kind": "machine",
+      "case": "extra-data-cell",
+      "passed_in": "resource-errors-run01"
+    },
+    {
+      "kind": "machine",
+      "case": "extra-sheet-ignored",
+      "passed_in": "resource-errors-run01"
+    },
+    {
+      "kind": "machine",
+      "case": "formula-cell",
+      "passed_in": "resource-errors-run01"
+    },
+    {
+      "kind": "machine",
+      "case": "missing-identity-column",
+      "passed_in": "resource-errors-run01"
+    },
+    {
+      "kind": "machine",
+      "case": "oversized-file",
+      "passed_in": "resource-errors-run01"
+    },
+    {
+      "kind": "machine",
+      "case": "oversized-valid-workbook",
+      "passed_in": "resource-size-boundary-run02"
+    },
+    {
+      "kind": "machine",
+      "case": "unknown-extra-column",
+      "passed_in": "resource-errors-run01"
+    },
+    {
+      "kind": "machine",
+      "case": "valid-preview-cancel",
+      "passed_in": "resource-errors-run01"
+    },
+    {
+      "kind": "material",
+      "case": "corrupted-workbook",
+      "passed_in": "resource-errors-run01"
+    },
+    {
+      "kind": "material",
+      "case": "duplicate-business-key",
+      "passed_in": "resource-errors-run01"
+    },
+    {
+      "kind": "material",
+      "case": "duplicate-header",
+      "passed_in": "resource-errors-run01"
+    },
+    {
+      "kind": "material",
+      "case": "empty-file",
+      "passed_in": "resource-errors-run01"
+    },
+    {
+      "kind": "material",
+      "case": "extra-data-cell",
+      "passed_in": "resource-errors-run01"
+    },
+    {
+      "kind": "material",
+      "case": "extra-sheet-ignored",
+      "passed_in": "resource-errors-run01"
+    },
+    {
+      "kind": "material",
+      "case": "formula-cell",
+      "passed_in": "resource-errors-run01"
+    },
+    {
+      "kind": "material",
+      "case": "missing-identity-column",
+      "passed_in": "resource-errors-run01"
+    },
+    {
+      "kind": "material",
+      "case": "numeric-text-cell",
+      "passed_in": "resource-errors-run01"
+    },
+    {
+      "kind": "material",
+      "case": "oversized-file",
+      "passed_in": "resource-errors-run01"
+    },
+    {
+      "kind": "material",
+      "case": "oversized-valid-workbook",
+      "passed_in": "resource-size-boundary-run02"
+    },
+    {
+      "kind": "material",
+      "case": "unknown-extra-column",
+      "passed_in": "resource-errors-run01"
+    },
+    {
+      "kind": "material",
+      "case": "valid-preview-cancel",
+      "passed_in": "resource-errors-run01"
+    },
+    {
+      "kind": "operator_calendar",
+      "case": "corrupted-workbook",
+      "passed_in": "resource-errors-run01"
+    },
+    {
+      "kind": "operator_calendar",
+      "case": "duplicate-business-key",
+      "passed_in": "resource-errors-run01"
+    },
+    {
+      "kind": "operator_calendar",
+      "case": "duplicate-header",
+      "passed_in": "resource-errors-run01"
+    },
+    {
+      "kind": "operator_calendar",
+      "case": "empty-file",
+      "passed_in": "resource-errors-run01"
+    },
+    {
+      "kind": "operator_calendar",
+      "case": "excel-date-leap-day",
+      "passed_in": "resource-errors-run01"
+    },
+    {
+      "kind": "operator_calendar",
+      "case": "extra-data-cell",
+      "passed_in": "resource-errors-run01"
+    },
+    {
+      "kind": "operator_calendar",
+      "case": "extra-sheet-ignored",
+      "passed_in": "resource-errors-run01"
+    },
+    {
+      "kind": "operator_calendar",
+      "case": "formula-cell",
+      "passed_in": "resource-errors-run01"
+    },
+    {
+      "kind": "operator_calendar",
+      "case": "invalid-calendar-date",
+      "passed_in": "resource-errors-run01"
+    },
+    {
+      "kind": "operator_calendar",
+      "case": "missing-identity-column",
+      "passed_in": "resource-errors-run01"
+    },
+    {
+      "kind": "operator_calendar",
+      "case": "oversized-file",
+      "passed_in": "resource-errors-run01"
+    },
+    {
+      "kind": "operator_calendar",
+      "case": "oversized-valid-workbook",
+      "passed_in": "resource-size-boundary-run02"
+    },
+    {
+      "kind": "operator_calendar",
+      "case": "unknown-extra-column",
+      "passed_in": "resource-errors-run01"
+    },
+    {
+      "kind": "operator_calendar",
+      "case": "valid-preview-cancel",
+      "passed_in": "resource-errors-run01"
+    },
+    {
+      "kind": "relation",
+      "case": "corrupted-workbook",
+      "passed_in": "resource-errors-run01"
+    },
+    {
+      "kind": "relation",
+      "case": "duplicate-business-key",
+      "passed_in": "resource-errors-run01"
+    },
+    {
+      "kind": "relation",
+      "case": "duplicate-header",
+      "passed_in": "resource-errors-run01"
+    },
+    {
+      "kind": "relation",
+      "case": "empty-file",
+      "passed_in": "resource-errors-run01"
+    },
+    {
+      "kind": "relation",
+      "case": "extra-data-cell",
+      "passed_in": "resource-errors-run01"
+    },
+    {
+      "kind": "relation",
+      "case": "extra-sheet-ignored",
+      "passed_in": "resource-errors-run01"
+    },
+    {
+      "kind": "relation",
+      "case": "formula-cell",
+      "passed_in": "resource-errors-run01"
+    },
+    {
+      "kind": "relation",
+      "case": "missing-identity-column",
+      "passed_in": "resource-errors-run01"
+    },
+    {
+      "kind": "relation",
+      "case": "oversized-file",
+      "passed_in": "resource-errors-run01"
+    },
+    {
+      "kind": "relation",
+      "case": "oversized-valid-workbook",
+      "passed_in": "resource-size-boundary-run02"
+    },
+    {
+      "kind": "relation",
+      "case": "unknown-extra-column",
+      "passed_in": "resource-errors-run01"
+    },
+    {
+      "kind": "relation",
+      "case": "valid-preview-cancel",
+      "passed_in": "resource-errors-run01"
+    },
+    {
+      "kind": "route",
+      "case": "corrupted-workbook",
+      "passed_in": "process-errors-run01"
+    },
+    {
+      "kind": "route",
+      "case": "duplicate-business-key",
+      "passed_in": "process-errors-run01"
+    },
+    {
+      "kind": "route",
+      "case": "duplicate-header",
+      "passed_in": "process-errors-run01"
+    },
+    {
+      "kind": "route",
+      "case": "empty-file",
+      "passed_in": "process-errors-run01"
+    },
+    {
+      "kind": "route",
+      "case": "extra-data-cell",
+      "passed_in": "process-errors-run01"
+    },
+    {
+      "kind": "route",
+      "case": "extra-sheet-ignored",
+      "passed_in": "process-errors-run01"
+    },
+    {
+      "kind": "route",
+      "case": "formula-cell",
+      "passed_in": "process-errors-run01"
+    },
+    {
+      "kind": "route",
+      "case": "missing-identity-column",
+      "passed_in": "process-errors-run01"
+    },
+    {
+      "kind": "route",
+      "case": "oversized-file",
+      "passed_in": "process-errors-run02"
+    },
+    {
+      "kind": "route",
+      "case": "oversized-valid-workbook",
+      "passed_in": "process-errors-run02"
+    },
+    {
+      "kind": "route",
+      "case": "unknown-extra-column",
+      "passed_in": "process-errors-run01"
+    },
+    {
+      "kind": "route",
+      "case": "valid-preview-cancel",
+      "passed_in": "process-errors-run01"
+    }
+  ],
+  "reports": [
+    {
+      "path": "resources-run02/resource-probe-results.json",
+      "sha256": "8e0071b9b4bc703a2b125a91fdf4f0aa194fd049ed6d8a19f1e0d73c5950505f",
+      "bytes": 43638
+    },
+    {
+      "path": "resources-run03/resource-probe-results.json",
+      "sha256": "f9f58fc7c70020adf5f50d48f9fa242a84ced348dad928fdc2204af4873154a5",
+      "bytes": 127553
+    },
+    {
+      "path": "resources-xlsx-run01/resource-probe-results.json",
+      "sha256": "cced5d85bf0d3a8518fde96b91801991175f6ba226dca724c298e6a9365f8c65",
+      "bytes": 19492
+    },
+    {
+      "path": "resources-xlsx-run02/resource-probe-results.json",
+      "sha256": "b2abf3735a3ec115c4442803e2bce9b51e8ce79ee7246013723fe87b4283a8ca",
+      "bytes": 68394
+    },
+    {
+      "path": "process-run02/an-process-batch-report.json",
+      "sha256": "8298d44575f5568357c9b5e0d386ded2b15ee0a17106fffbc88a2eb68f5fbc74",
+      "bytes": 2868155
+    },
+    {
+      "path": "process-run03/an-process-batch-report.json",
+      "sha256": "c93e4bc15072dc80076b162aae435eae22da9525663f2a119d9a731545e350fa",
+      "bytes": 1393418
+    },
+    {
+      "path": "process-run04/an-process-batch-report.json",
+      "sha256": "6d311a5d2c8e403fe1ddeed21ee20ba6ad4b50ae203c764c22bf40405b679256",
+      "bytes": 1391002
+    },
+    {
+      "path": "process-run02/verified-utf8-snapshots/verification.json",
+      "sha256": "dc91e2ac95e772d99fd1be37a1ce1166db2f6c7cede0df9395b7254d71231136",
+      "bytes": 7354
+    },
+    {
+      "path": "process-run03/verified-utf8-snapshots/verification.json",
+      "sha256": "36c80786b57ff9fd098507a82244b3ec5047ec675a836e20e688efb1ecc9abe6",
+      "bytes": 3997
+    },
+    {
+      "path": "batch-modes-run01/batch-modes-initial.json",
+      "sha256": "30cb6bd4d84865850177391997c291753d390591252ff5729cbb511d181d796b",
+      "bytes": 5437
+    },
+    {
+      "path": "batch-modes-run02/batch-modes-initial.json",
+      "sha256": "48d15db530fd05da02ecee738d268bf84b78b05d0fedc85701f0646494f911ae",
+      "bytes": 36041
+    },
+    {
+      "path": "batch-modes-run02/batch-modes-restart.json",
+      "sha256": "9daaf4f67a0dd0f1dc25aa2746958a0b854217fa572ebdcbc23da6e2b39e06b6",
+      "bytes": 2080
+    },
+    {
+      "path": "field-run03/final-field-initial.json",
+      "sha256": "b39b37635bf6381aca991677a94270d112359c3ba454e0597329516bed72dbf3",
+      "bytes": 1987465
+    },
+    {
+      "path": "field-run04/final-field-initial.json",
+      "sha256": "ab85e600f77f0ef6a5330c1964b8eab3829bd8addb0f093c38c9da6f6e42ca9e",
+      "bytes": 1966098
+    },
+    {
+      "path": "field-run04/final-field-restart.json",
+      "sha256": "6e8aaf96f558bf205c0650d83ab7547af9d0eebb8585ff1e0c6818e878cfcf6e",
+      "bytes": 1933071
+    },
+    {
+      "path": "field-run04/reported-batch-protection.json",
+      "sha256": "9730c55698211c72a8099b3b95da96462a5ca37e96d8b1d25c1cdbdc7050d69f",
+      "bytes": 183288
+    },
+    {
+      "path": "field-run04/download-content-verification.json",
+      "sha256": "8b15c9cb146b6dab9670e4dde1b00c2e84c37140da17158486f02ae814fe18a6",
+      "bytes": 1971
+    },
+    {
+      "path": "trial-run02/trial-initial.json",
+      "sha256": "d9139fbb3dd2d57d844869b94fb009d712f19ee60cb471210b9a1c0a05d6e306",
+      "bytes": 1759678
+    },
+    {
+      "path": "trial-run02/trial-continue.json",
+      "sha256": "1f59233cfe3d201b9a93b617b70259142178cf5577e1dacfcc94a3bc1ae1c9c2",
+      "bytes": 219519
+    },
+    {
+      "path": "trial-run02/trial-restart.json",
+      "sha256": "d7d6bc7851e1bd89c7cc132c696d1d132f10f7bb3a40ffea9cadccec5e5ef625",
+      "bytes": 219516
+    },
+    {
+      "path": "quota-run02/quota-import.json",
+      "sha256": "f4fbbf3975b7d6162cf02f72761fc5c47cc470bd83618046655a3593de5257a8",
+      "bytes": 45091
+    },
+    {
+      "path": "quota-run02/quota-content-verification.json",
+      "sha256": "7712dc4ddac2668e6818a34605277ea5bac87571fb6057f7f6151118aaaac848",
+      "bytes": 837
+    },
+    {
+      "path": "field-visual-recheck03/visual-recheck.json",
+      "sha256": "f1dc0f4374e96bd99c9b1d64bb193ec844520167a08144f335d25c60aa6df9c2",
+      "bytes": 9651
+    },
+    {
+      "path": "resource-restart/report.json",
+      "sha256": "2243f06e0f1bbbffcae7203d70a82692e37fec569f85b72a75fa71aea2e7b87e",
+      "bytes": 1172
+    },
+    {
+      "path": "process-restart/report.json",
+      "sha256": "a8c9d4a8c824f5e2da3bbea6ceaac472fd375204610f9d8aa1120c124d2995cf",
+      "bytes": 33867
+    },
+    {
+      "path": "field-errors-no-write.json",
+      "sha256": "934a3c1ce6b209e5326b5d9f8072e418173d9eb1c7cacf881d01b3e200ac35b3",
+      "bytes": 6383
+    },
+    {
+      "path": "process-errors-combined-no-write.json",
+      "sha256": "66ace54cdd813a2c5686419bca9c97b1fd0fe9e872536458f47c276f574e1f28",
+      "bytes": 6396
+    },
+    {
+      "path": "resource-errors-run01/error-matrix-report.json",
+      "sha256": "9403b23a83df48b8da8a301fb2d548be35d5714a7c8e30631963d6d6d3094525",
+      "bytes": 234757
+    },
+    {
+      "path": "resource-size-boundary-run02/error-matrix-report.json",
+      "sha256": "58220f677c846fa2188246a6ff1c869a6f0c5ed138d0937a7f7b94bc5a6ee089",
+      "bytes": 17293
+    },
+    {
+      "path": "process-errors-run01/error-matrix-report.json",
+      "sha256": "f76e26c50f4741705247a1e5b2fd90b6d2593cf3d196eab0148f389499569f76",
+      "bytes": 116146
+    },
+    {
+      "path": "process-errors-run02/error-matrix-report.json",
+      "sha256": "c5ecd40f468d3ae2de4d78d3867793c1956bebe71e3429867cbb49907fece0ec",
+      "bytes": 20615
+    },
+    {
+      "path": "field-errors-run01/error-matrix-report.json",
+      "sha256": "681518c53e0b028857f66d6c4df70deccdbd4c8ac42b487d02fc6bc09f3a3beb",
+      "bytes": 18471
+    },
+    {
+      "path": "resources-restart-verification.json",
+      "sha256": "f5cbc7f61879cb31d3544ea516d156d15ea1b0e5c36872094ee43727f833308c",
+      "bytes": 6359
+    },
+    {
+      "path": "process-restart-verification.json",
+      "sha256": "1464fee13fcb5ab340eddb26ee273e56346ea4a24cdfbb0f39b7b74c7544c707",
+      "bytes": 6368
+    },
+    {
+      "path": "batch-modes-restart-verification.json",
+      "sha256": "7282f2a166868c6fcca2e3df46c01b459f44e2490a61da3f3aa72ccc1b5faca9",
+      "bytes": 6360
+    },
+    {
+      "path": "field-restart-verification.json",
+      "sha256": "bc43d6fbe6038463b6fdd5f452a9c03a092c1a1306e7846d6bd3c6fd31385e13",
+      "bytes": 6355
+    },
+    {
+      "path": "trial-restart-verification.json",
+      "sha256": "35985944334ad02eed8fee66969d1f0d303f26d3e08168a1016537ca50d3e791",
+      "bytes": 6369
+    },
+    {
+      "path": "quota-restart-verification.json",
+      "sha256": "9a8338fa491a73de21de4078cd28c265a5190afb7bca4c280fef87390d4de618",
+      "bytes": 6353
+    },
+    {
+      "path": "error-inputs/manifest.json",
+      "sha256": "691842413ed4a1df1388df1b6a5c25c4e555ec763a72ebbc37dafece4da0cbff",
+      "bytes": 49038
+    },
+    {
+      "path": "exchange/cleanup/complete.txt",
+      "sha256": "b314796536c3ff143db3b3591566ff886a51e8cc49b6e079d5e95dea8d465c1c",
+      "bytes": 113
+    },
+    {
+      "path": "exchange/cleanup/original-health.json",
+      "sha256": "6be597151229450ae8c97c3f121977f7bbbca83149bf07fe5ef2a3dd77c0a43a",
+      "bytes": 115
+    },
+    {
+      "path": "exchange/cleanup/original-db-byte-identical.sha256",
+      "sha256": "4a3b439bbff8f4833b88026f04b0eb6965475cd78737273115a53e61dfbac777",
+      "bytes": 64
+    }
+  ]
+}

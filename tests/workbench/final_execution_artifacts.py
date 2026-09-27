@@ -81,7 +81,7 @@ def _calibration(content, name, query, report):
     return {"rows": len(expected), "source_snapshot": snapshot, "all_suggestion_fields_equal": True}
 
 
-def _field(content, name, query, report):
+def _field(content, name, query, report, source_reading=None):
     book = load_workbook(BytesIO(content), read_only=True, data_only=True)
     try:
         first = book.active
@@ -100,7 +100,7 @@ def _field(content, name, query, report):
         assert name == "saved-records"
         # 导出文件也带填写说明表，位置固定在数据表后面（roadmap 4.8）。
         assert book.sheetnames == ["报工记录", "填写说明", "工序汇总", "录入信息"]
-        source = _readings(report, query["snapshot_ref"][0], "tasks")[-1]
+        source = source_reading or _readings(report, query["snapshot_ref"][0], "tasks")[-1]
         tasks = source["data"]["tasks"]
         assert len(tasks) == source["data"]["page"]["total"] == 33
         original = {row["report_no"]: (task, row) for task in tasks for row in task["execution"]["reports"]}
