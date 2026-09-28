@@ -60,3 +60,13 @@ summary: 外协完工以空本厂资源进入排产和试调，保留自制资�
 - 第一轮失败对应函数及完整参数组共 567 项：565 passed / 2 failed（`first-failures-final.log`）；补齐容量指标口径、第二套校准样本的前序和工艺确认后，最终对应 3 项全部通过（`last-failures-final.log`）。其间合同回归为 330 passed / 3 failed，修正后的补充组为 160 passed / 1 failed，失败均由上述最终复验覆盖。
 - 更新后的两项 Chrome109 定向浏览器验收均通过，覆盖默认时间、班次、能力、用料、拆分、停机及精度维护（`browser-repairs.log`）；临时服务已退出、零隔离违规。
 - 产品局部 Pyright 0 errors / 0 warnings，修改的 Python 文件 Ruff 与 Python 3.8 语法检查通过。
+
+## 第二次推送检查与架构修复
+
+第二次推送仍由正常钩子拦截，远端未更新：并行必需回归为 11,419 passed / 1 skipped，串行为 970 passed / 2 failed（`push-second-failure.log`）。剩余两项分别是包依赖环和 5 个函数超过复杂度 15，未放宽阈值或加入豁免。
+
+- 冻结外协段的稳定编号计算移至纯模型 `batch_external_context.py`，调度原入口显式转出同一函数，物料改为依赖模型，解除 `material → scheduler → material`；字段顺序、哈希和原编号完全保留。
+- 将物料行的工序绑定、保存与数量核对分别表达；拆批的待排状态校验、归档日历策略解析、分件物料与齐套日期检查各自提取为局部函数。事务持有、写入顺序、错误代码和保护条件保留，所有相关函数复杂度不超过 15。
+- 说明书只调整新分批功能的用语，恢复既有页面的“预览变更”按钮名称及历史入口名称，避免文档与页面不一致。
+
+实际验证：架构与说明书 28 passed（`architecture-and-manual-final.log`）；物料、拆分、外协及分件采用 222 passed（`architecture-related-regressions.log`）；归档候选对比与分件持久化 29 passed（`architecture-candidate-regressions.log`）；重新执行真实 Chrome109 灵活生产 8 个流程通过（`browser-material-refactor.log`）。本次产品局部 Pyright 0 errors / 0 warnings，Ruff 通过。
