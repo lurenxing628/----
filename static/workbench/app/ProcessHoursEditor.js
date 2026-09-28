@@ -90,6 +90,7 @@
     command,
     disabled,
     saved,
+    groupSaved = 0,
     onDirty,
     onOverlay,
     onFileAction
@@ -106,7 +107,8 @@
     const entity = model.base.data,
       draft = model.draft,
       paging = E.usePage(entity.operations),
-      [zero, setZero] = React.useState(null);
+      [zero, setZero] = React.useState(null),
+      [groupsOpen, setGroupsOpen] = React.useState(false);
     const blocked = disabled || command.locked || command.phase === 'done',
       stageReason = E.reason(model, adapter, 'hours');
     const editBlocked = blocked || entity.workflow.source.state !== 'confirmed' || entity.capabilities.stage_confirm !== true;
@@ -114,11 +116,19 @@
       setZero(null);
     }, [draft, model.base, model.review, disabled]);
     React.useEffect(() => {
-      if (onOverlay) onOverlay(!!zero);
+      setGroupsOpen(false);
+    }, [groupSaved]);
+    // A verified receipt already confirms the group write. Close its overlay even
+    // if the following detail read fails, so the parent's recovery control is reachable.
+    React.useEffect(() => {
+      if (command.phase === 'done' && command.intent && command.intent.action === 'groups_confirm') setGroupsOpen(false);
+    }, [command.phase, command.intent]);
+    React.useEffect(() => {
+      if (onOverlay) onOverlay(!!zero || groupsOpen);
       return () => {
         if (onOverlay) onOverlay(false);
       };
-    }, [!!zero, onOverlay]);
+    }, [!!zero, groupsOpen, onOverlay]);
     function change(ref, patch) {
       model.edit(current => ({
         ...current,
@@ -247,7 +257,17 @@
     }, "\u5F53\u524D\u9875\u6CA1\u6709\u81EA\u5236\u5DE5\u5E8F\u3002")))))), /*#__PURE__*/React.createElement("section", {
       className: "process-hours-section",
       "aria-label": "\u5916\u534F\u5468\u671F"
-    }, /*#__PURE__*/React.createElement("h3", null, "\u5916\u534F\u5468\u671F"), /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "toolbar"
+    }, /*#__PURE__*/React.createElement("h3", null, "\u5916\u534F\u5468\u671F"), /*#__PURE__*/React.createElement("span", {
+      className: "tb-spacer"
+    }), /*#__PURE__*/React.createElement(Button, {
+      icon: "square-pen",
+      disabled: blocked || entity.workflow.route.state !== 'confirmed' || entity.capabilities.stage_confirm !== true,
+      onClick: () => setGroupsOpen(true)
+    }, "\u7BA1\u7406\u5916\u534F\u6BB5")), /*#__PURE__*/React.createElement("p", {
+      className: "muted"
+    }, "\u540C\u4E00\u6B21\u9001\u51FA\u7684\u8FDE\u7EED\u5916\u534F\u5DE5\u5E8F\u53EF\u8BBE\u4E3A\u4E00\u6BB5\uFF0C\u6574\u6BB5\u53EA\u8BA1\u7B97\u4E00\u6B21\u7EDF\u4E00\u5468\u671F\u3002\u4E2D\u95F4\u56DE\u5382\u52A0\u5DE5\u540E\u518D\u9001\u51FA\u7684\u5DE5\u5E8F\u8BF7\u53E6\u5EFA\u4E00\u6BB5\u3002"), /*#__PURE__*/React.createElement("div", {
       className: "wb-table-frame"
     }, /*#__PURE__*/React.createElement("table", {
       className: "tbl wb-table wb-table--editable",
@@ -292,7 +312,8 @@
       rows: mergedGroups(entity),
       totals: draft.groups,
       disabled: editBlocked,
-      onTotal: changeGroup
+      onTotal: changeGroup,
+      title: "\u5916\u534F\u6BB5\u7EDF\u4E00\u5468\u671F"
     })), /*#__PURE__*/React.createElement(E.Pager, {
       paging: paging,
       disabled: blocked
@@ -310,7 +331,14 @@
       disabled: blocked,
       reason: stageReason,
       onClick: () => save()
-    }, "\u4FDD\u5B58\u5DE5\u65F6")), zero && ReactDOM.createPortal(/*#__PURE__*/React.createElement("div", {
+    }, "\u4FDD\u5B58\u5DE5\u65F6")), groupsOpen && /*#__PURE__*/React.createElement(window.ProcessGroupEditor, {
+      adapter: adapter,
+      result: result,
+      command: command,
+      disabled: blocked,
+      onDirty: onDirty,
+      onClose: () => setGroupsOpen(false)
+    }), zero && ReactDOM.createPortal(/*#__PURE__*/React.createElement("div", {
       className: "plana process-detail"
     }, /*#__PURE__*/React.createElement(Modal, {
       title: "\u6309\u96F6\u5355\u4EF6\u5DE5\u65F6\u4FDD\u5B58",

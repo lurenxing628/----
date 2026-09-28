@@ -7,7 +7,7 @@
   const text = value => typeof value === 'string', nullableText = value => value === null || text(value);
   const fields = ['quantity', 'due_date', 'priority', 'ready_status', 'ready_date', 'remark'];
   const fieldNames = { quantity: '数量', due_date: '交期', priority: '优先级', ready_status: '齐套显示', ready_date: '齐套日期', remark: '备注' };
-  const actions = ['create', 'update', 'delete', 'operation_update', 'sync_confirm', 'bulk_confirm', 'import_confirm'];
+  const actions = ['create', 'update', 'delete', 'operation_update', 'materials_update', 'split_confirm', 'sync_confirm', 'bulk_confirm', 'import_confirm'];
   const priority = [['normal', '普通'], ['urgent', '急件'], ['critical', '特急']];
   const ready = [['yes', '齐套'], ['partial', '部分齐套'], ['no', '未齐套']];
   const statuses = [['pending', '待排'], ['scheduled', '已排'], ['processing', '加工中'], ['completed', '已完成'], ['cancelled', '已取消']];
@@ -70,6 +70,10 @@
       && object(data.change_counts) && ['added', 'removed', 'updated', 'unchanged'].every(key => count(data.change_counts[key]))
       && Array.isArray(data.changes) && data.changes.every(row => object(row) && ['added', 'removed', 'updated', 'unchanged'].includes(row.change))
       && Array.isArray(data.cleared_resources) && data.cleared_resources.every(row => object(row) && ref(row.operation_ref) && text(row.business_code));
+    if (valid && action === 'split') valid = data.entity_ref === expectedRef && Number.isSafeInteger(data.original_quantity)
+      && Number.isSafeInteger(data.quantity) && data.quantity > 0 && data.remaining_quantity > 0
+      && data.quantity + data.remaining_quantity === data.original_quantity && data.as_of_date === input.as_of_date
+      && Array.isArray(data.materials) && data.materials.every(row => finite(row.child_required) && finite(row.source_required));
     if (!valid) throw C.failure('读到的预检结果和所选批次或操作不一致，没有确认。请重新预检。');
     return data;
   }
@@ -78,6 +82,7 @@
     if (!ctx || ctx.capabilities['batch.' + action] !== true) return (ctx && ctx.blocked_reasons.find(row => row.action === 'batch.' + action) || {}).message || '当前资料不允许此操作。';
     return '';
   }
+  function readyStatus(entity) { return Object.prototype.hasOwnProperty.call(entity, 'display_ready_status') ? entity.display_ready_status : entity.fields.ready_status; }
   function label(key, value) {
     const options = { priority, ready_status: ready, status: statuses }[key];
     return value === null || value === undefined || value === '' ? '未填写' : options ? (options.find(row => row[0] === value) || ['', '原标记待核对'])[1] : String(value);
@@ -119,5 +124,5 @@
     }
     return errors;
   }
-  window.APSBatchContract = { ref, context, operation, entity, list, detail, receipt, preview, reason, label, draft, input, inputErrors, fields, fieldNames, actions, priority, ready, statuses, columns };
+  window.APSBatchContract = { ref, context, operation, entity, list, detail, receipt, preview, reason, readyStatus, label, draft, input, inputErrors, fields, fieldNames, actions, priority, ready, statuses, columns };
 })();

@@ -50,7 +50,7 @@
       className: "os-members"
     }, target.operations.map(o => /*#__PURE__*/React.createElement("span", {
       key: o.operation_ref
-    }, value(o.business_code), " \xB7 ", value(o.label), o.piece !== null ? ' · 分件 ' + value(o.piece) : ''))), target.source_resolution && target.source_resolution.basis === 'current_relation' && /*#__PURE__*/React.createElement("div", {
+    }, "\u7B2C ", value(o.sequence), " \u5E8F \xB7 ", value(o.label), " \xB7 ", value(o.business_code), o.piece !== null ? ' · 分件 ' + value(o.piece) : ' · 整批'))), target.source_resolution && target.source_resolution.basis === 'current_relation' && /*#__PURE__*/React.createElement("div", {
       className: "os-muted"
     }, "\u8FD9\u6279\u65E7\u5DE5\u5E8F\u6309\u672C\u9875\u5217\u51FA\u7684\u6279\u6B21\u767B\u8BB0\u3002"));
   }
@@ -85,14 +85,14 @@
     const result = read.result,
       data = result && result.data;
     function change(patch, paging = false) {
-      setQuery({
+      const next = {
         ...q,
         ...patch,
-        page: paging ? patch.page : 1,
-        ...(paging ? {
-          snapshot_ref: result.meta.snapshot_ref
-        } : {})
-      });
+        page: paging ? patch.page : 1
+      };
+      delete next.snapshot_ref;
+      if (paging) next.snapshot_ref = result.meta.snapshot_ref;
+      setQuery(next);
     }
     function reset() {
       const next = {
@@ -132,7 +132,21 @@
       busy: read.loading,
       disabled: disabled,
       onClick: reset
-    })), /*#__PURE__*/React.createElement(ErrorBox, {
+    })), /*#__PURE__*/React.createElement("label", {
+      className: "os-search"
+    }, "\u67E5\u627E\u5DE5\u5E8F", /*#__PURE__*/React.createElement("input", {
+      type: "search",
+      "aria-label": "\u67E5\u627E\u5916\u534F\u5DE5\u5E8F",
+      maxLength: 200,
+      placeholder: "\u6279\u6B21\u53F7\u3001\u56FE\u53F7\u3001\u5DE5\u5E8F\u3001\u5206\u4EF6\u6216\u4F9B\u5E94\u5546",
+      value: q.query || '',
+      disabled: disabled,
+      onChange: e => change({
+        query: e.target.value
+      })
+    })), /*#__PURE__*/React.createElement("p", {
+      className: "os-muted"
+    }, "\u540C\u4E00\u6B21\u53D1\u51FA\u7684\u8FDE\u7EED\u5916\u534F\u5DE5\u5E8F\u53EF\u4EE5\u5408\u5E76\uFF1B\u4E2D\u95F4\u9700\u8981\u56DE\u5382\u52A0\u5DE5\u65F6\uFF0C\u8BF7\u5206\u6B21\u767B\u8BB0\u3002"), /*#__PURE__*/React.createElement(ErrorBox, {
       error: read.error
     }), read.loading && /*#__PURE__*/React.createElement(EmptyState, {
       kind: "loading",
@@ -159,7 +173,7 @@
     }, "\u767B\u8BB0\u60C5\u51B5"))), /*#__PURE__*/React.createElement("tbody", null, data.items.map((r, index) => {
       const chosen = selected.some(s => s.operation_ref === r.operation_ref),
         first = selected[0];
-      const other = mode === 'merged' && first && (first.batch_ref !== r.batch_ref || first.supplier_ref !== r.supplier_ref);
+      const other = mode === 'merged' ? S.memberConflict(first, r) : '';
       return /*#__PURE__*/React.createElement("tr", {
         key: r.operation_ref || index,
         "data-target-ref": r.operation_ref,
@@ -176,7 +190,9 @@
         onChange: e => choose(r, e.target.checked)
       })), /*#__PURE__*/React.createElement("td", {
         className: "wb-col-key os-operation-key"
-      }, /*#__PURE__*/React.createElement("b", null, value(r.business_code)), /*#__PURE__*/React.createElement("div", null, value(r.label))), /*#__PURE__*/React.createElement("td", null, r.batch ? (r.batch.business_code || '编号未填写') + ' · ' + (r.batch.label || '名称未填写') : '批次未读取', /*#__PURE__*/React.createElement("div", {
+      }, /*#__PURE__*/React.createElement("b", null, "\u7B2C ", value(r.sequence), " \u5E8F \xB7 ", value(r.label)), /*#__PURE__*/React.createElement("div", null, value(r.business_code)), /*#__PURE__*/React.createElement("div", {
+        className: "os-muted"
+      }, r.piece === null ? '整批工序' : '分件 ' + value(r.piece))), /*#__PURE__*/React.createElement("td", null, r.batch ? (r.batch.business_code || '编号未填写') + ' · ' + (r.batch.label || '名称未填写') : '批次未读取', /*#__PURE__*/React.createElement("div", {
         className: "os-muted"
       }, r.supplier && r.supplier.label || '供应商名称未填写')), /*#__PURE__*/React.createElement("td", {
         className: "wb-col-actions"
@@ -185,26 +201,29 @@
         icon: "arrow-right",
         disabled: disabled,
         onClick: () => onOpen(r.outsourcing_ref)
-      }, "\u6253\u5F00\u5DF2\u6709\u767B\u8BB0") : r.can_register ? other ? '不同批次 / 供应商' : '可登记' : '不可登记', /*#__PURE__*/React.createElement(Issues, {
+      }, "\u6253\u5F00\u5DF2\u6709\u767B\u8BB0") : r.can_register ? other || '可登记' : '不可登记', /*#__PURE__*/React.createElement(Issues, {
         issues: r.issues
       })));
     })))), !data.items.length && /*#__PURE__*/React.createElement(EmptyState, {
-      kind: "empty",
-      title: "\u6CA1\u6709\u53EF\u8BFB\u53D6\u7684\u5916\u534F\u5DE5\u5E8F",
-      hint: "\u53EF\u5237\u65B0\u5DE5\u5E8F\u5217\u8868\uFF0C\u6216\u8FD4\u56DE\u8D44\u6E90\u8D44\u6599\u6838\u5BF9\u5916\u534F\u5DE5\u827A\u3002"
+      kind: q.query ? 'filtered' : 'empty',
+      title: q.query ? '没有匹配的外协工序' : '没有可读取的外协工序',
+      hint: "\u53EF\u4FEE\u6539\u67E5\u627E\u6761\u4EF6\u3001\u5237\u65B0\u5DE5\u5E8F\u5217\u8868\uFF0C\u6216\u8FD4\u56DE\u8D44\u6E90\u8D44\u6599\u6838\u5BF9\u5916\u534F\u5DE5\u827A\u3002"
     }), /*#__PURE__*/React.createElement(Pager, {
       page: data.page,
       label: "\u5DE5\u5E8F",
       busy: disabled || read.loading,
       onPage: page => change({
         page
-      }, true)
+      }, true),
+      onSize: size => change({
+        size
+      })
     }), /*#__PURE__*/React.createElement("div", {
       className: "os-selected",
       "aria-label": "\u5DF2\u9009\u62E9\u6210\u5458"
     }, /*#__PURE__*/React.createElement("b", null, "\u5DF2\u9009 ", selected.length, " \u9053"), selected.map(r => /*#__PURE__*/React.createElement("span", {
       key: r.operation_ref
-    }, value(r.business_code), " \xB7 ", value(r.label), /*#__PURE__*/React.createElement(Button, {
+    }, "\u7B2C ", value(r.sequence), " \u5E8F \xB7 ", value(r.label), " \xB7 ", r.piece === null ? '整批' : '分件 ' + value(r.piece), " \xB7 ", value(r.business_code), /*#__PURE__*/React.createElement(Button, {
       className: "mini",
       icon: "x",
       "aria-label": '移除工序 ' + value(r.business_code),

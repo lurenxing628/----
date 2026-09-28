@@ -12,7 +12,7 @@ const variants = [1920, 1392].flatMap(width => ['light', 'dark'].map(theme => ({
 // the 2026-09-13 UI refresh made these components read WorkbenchFormat / WorkbenchTerms / WorkbenchControls and more).
 const appFiles = ['WorkbenchFormat.js', 'WorkbenchTerms.js', 'WorkbenchReferences.jsx', 'WorkbenchGuards.js',
   'resource-contract.js', 'resource-api.js', 'ProcessContract.js', 'resource-session.js', 'ResourceControls.jsx',
-  'WorkbenchControlBridge.js', 'CalendarContract.js', 'WorkbenchSelectMenu.jsx', 'WorkbenchDatePickerModel.js',
+  'WorkbenchControlBridge.js', 'WorkPeriods.js', 'WorkPeriodFields.jsx', 'CalendarContract.js', 'WorkbenchSelectMenu.jsx', 'WorkbenchDatePickerModel.js',
   'WorkbenchDatePicker.jsx', 'WorkbenchControls.jsx', 'ResourceTableFilterModel.js', 'ResourceTableFilter.jsx',
   'WorkbenchGuardHost.jsx', 'ResourceTableHeader.jsx', 'ResourceDetailRelations.jsx', 'ResourceForms.jsx', 'ResourceTables.jsx', 'ProcessAPI.js',
   'ProcessStageEditor.jsx', 'ProcessOpTypeCreate.jsx', 'ProcessSourceEditor.jsx', 'BatchContract.js', 'BatchControls.jsx',
@@ -80,7 +80,7 @@ async function setup(kind) {
     .concat(report.styles.map(row => row.public_path));
   const watch = ['schema.sql', 'frontend/workbench/app/main.jsx', 'scripts/workbench/build.py',
     'frontend/workbench/prototype/ui_kits/workbench/plana.css', 'frontend/workbench/app/ProcessDetail.jsx',
-    'frontend/workbench/app/ProcessWorkspace.jsx', 'frontend/workbench/app/ProcessRouteEntry.jsx',
+    'frontend/workbench/app/ProcessWorkspace.jsx', 'frontend/workbench/app/ProcessRouteDraft.js', 'frontend/workbench/app/ProcessRouteEntry.jsx',
     'frontend/workbench/app/ResourceControls.jsx'];
   report.shared = watch.map(name => ({ path: name, before: sha(freeze(name)) }));
   const shared = manifest.scripts.filter(file => file.startsWith('workbench/vendor/') || file.startsWith('workbench/assets/foundation-'));

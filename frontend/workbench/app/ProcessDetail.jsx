@@ -68,7 +68,7 @@
     React.useEffect(() => () => { if (request.current) request.current.abort(); }, []);
     const intent = command.intent, fileKind = intent && intent.action === 'confirm' && typeof intent.ref === 'string' && /^[A-Za-z0-9_-]{32}$/.test(intent.ref) &&
       ['process_route_import', 'process_hours_import'].includes(intent.kind) ? intent.kind === 'process_route_import' ? 'route' : 'hours' : null;
-    const expectedStage = intent && intent.kind === 'process' && ['route_confirm', 'source_confirm', 'hours_confirm'].includes(intent.action) ? intent.action.replace('_confirm', '') : null;
+    const expectedStage = intent && intent.kind === 'process' && ['route_confirm', 'source_confirm', 'hours_confirm', 'groups_confirm'].includes(intent.action) ? intent.action.replace('_confirm', '') : null;
     const receiptMatches = command.phase === 'done' && expectedStage && command.intent.kind === 'process' && command.intent.ref === partRef &&
       C.object(command.result.data) && command.result.data.entity_ref === partRef && command.result.data.stage === expectedStage && ['committed', 'unchanged'].includes(command.result.result);
     const needsReceiptCheck = command.phase === 'done' && !fileKind && !receiptMatches;
@@ -124,7 +124,7 @@
         const fresh = await loadPart(controller.signal);
         if (controller.signal.aborted) return;
         const key = expectedStage;
-        setCurrent(fresh); setStage(fresh.data.workflow.stage); setSaved(old => ({ ...old, [key]: old[key] + 1 })); onDirty(key, false);
+        setCurrent(fresh); setStage(fresh.data.workflow.stage); setSaved(old => ({ ...old, [key]: (old[key] || 0) + 1 })); onDirty(key, false);
         if (key === 'route') { setEntry(false); setEntryStarted(false); }
         setReceipt(command.result); setRefresh({ done: true });
         if (!command.reset()) setRefresh({ error: C.failure('保存已确认，但本机还留着上次操作记录。请点「查询结果」重试。') });
@@ -184,7 +184,7 @@
             {!browsing && <>{entity.workflow.ready && <div className="toolbar"><span className="pill ok">三阶段已确认 · 已就绪</span><Button icon="check" onClick={() => setStage('ready')} disabled={editingBlocked}>查看汇总</Button></div>}
             <div hidden={selected !== 'route'} role="tabpanel" id={panelId + '-route'} aria-labelledby={panelId + '-tab-route'}><RouteView entity={entity} disabled={editingBlocked} onFileAction={openFile} previewAvailable={typeof adapter.routePreview === 'function'} onEntry={() => { setEntryStarted(true); setEntry(true); }} /></div>
             <div hidden={selected !== 'source'} role="tabpanel" id={panelId + '-source'} aria-labelledby={panelId + '-tab-source'}><window.ProcessSourceEditor key={saved.source} adapter={adapter} result={result} command={visibleCommand} disabled={editorDisabled} saved={saved.source} onDirty={onDirty} onOverlay={setOverlay} onResourceCommitted={onCommitted} /></div>
-            <div hidden={selected !== 'hours'} role="tabpanel" id={panelId + '-hours'} aria-labelledby={panelId + '-tab-hours'}><window.ProcessHoursEditor key={saved.hours} adapter={adapter} result={result} command={visibleCommand} disabled={editorDisabled} saved={saved.hours} onDirty={onDirty} onOverlay={setOverlay} onFileAction={openFile} /></div>
+            <div hidden={selected !== 'hours'} role="tabpanel" id={panelId + '-hours'} aria-labelledby={panelId + '-tab-hours'}><window.ProcessHoursEditor key={saved.hours} adapter={adapter} result={result} command={visibleCommand} disabled={editorDisabled} saved={saved.hours} groupSaved={saved.groups || 0} onDirty={onDirty} onOverlay={setOverlay} onFileAction={openFile} /></div>
             {entity.workflow.ready && <div hidden={selected !== 'ready'} role="tabpanel" id={panelId + '-ready'} aria-labelledby={panelId + '-tab-ready'}><Operations entity={entity} hours /><E.Groups rows={entity.external_groups} /><p><E.Confirmation record={entity.workflow.hours} /></p></div>}</>}
           </>}
         </div>

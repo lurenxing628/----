@@ -26,6 +26,15 @@
       && value.counts.operations === value.counts.recognized + value.counts.unknown && typeof value.can_confirm_route === 'boolean'
       && Array.isArray(value.diagnostics) && value.diagnostics.every(row => C.object(row) && text(row.code) && text(row.message)
         && ['error', 'warning'].includes(row.severity) && (!C.own(row, 'sequence') || sequence(row.sequence)))
+      && Array.isArray(value.operations) && value.operations.length === value.counts.operations
+      && value.operations.every(row => C.object(row) && sequence(row.sequence) && text(row.op_type_name) && row.op_type_name.trim()
+        && [null, 'internal', 'external'].includes(row.source_suggestion) && (row.supplier_label === null || text(row.supplier_label))
+        && (row.external_days === null || Number.isFinite(row.external_days) && row.external_days > 0))
+      && Array.isArray(value.differences) && value.differences.every(row => C.object(row) && sequence(row.sequence)
+        && ['added', 'removed', 'changed', 'retained'].includes(row.change) && (row.before === null || text(row.before))
+        && (row.after === null || text(row.after)) && (row.before !== null || row.after !== null))
+      && (!value.can_confirm_route || value.differences.filter(row => row.after !== null).length === value.operations.length
+        && value.operations.every(op => value.differences.some(row => row.sequence === op.sequence && row.after === op.op_type_name)))
       && (!value.can_confirm_route || !value.diagnostics.some(row => row.severity === 'error'));
   }
   function publicColumns(data) {

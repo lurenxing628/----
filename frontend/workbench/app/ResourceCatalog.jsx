@@ -22,7 +22,7 @@
           <td><span className={'pill ' + (entity.status === 'active' ? 'ok' : entity.status === 'inactive' ? 'off' : 'warn')}><span className="dot" />{entity.status === 'active' ? '启用' : entity.status === 'inactive' ? '停用' : '旧状态 / 原因未知'}</span></td>
           <td>{M.memberCount(kind, entity) === null ? '未读取' : M.memberCount(kind, entity)}</td>{kind === 'shift_profile' && <td>{entity.fields.cycle_days}</td>}
           <td className="wb-col-actions"><div className="rowact"><Button className="mini" icon="square-pen" aria-label={'编辑 ' + entity.business_code} disabled={disabled} reasonDisplay="tooltip" reason={C.blocked(entity.write_context, kind, 'update', list.result.meta.source)} onClick={() => onOpen('update', entity.ref)} />
-            <Button className="mini danger" icon="trash-2" aria-label={'删除 ' + entity.business_code} disabled={disabled} reasonDisplay="tooltip" reason={C.blocked(entity.write_context, kind, 'delete', list.result.meta.source)} onClick={() => onOpen('delete', entity.ref)}>删除</Button></div></td></tr>)}
+            <Button className="mini danger" icon="trash-2" aria-label={'删除 ' + entity.business_code} disabled={disabled} reasonDisplay="tooltip" reason={C.blocked(entity.write_context, kind, 'delete', list.result.meta.source)} onClick={() => onOpen('delete', entity.ref)} /></div></td></tr>)}
         </tbody></table></div>
         {!data.entities.length && <EmptyState kind={scope.query || scope.status ? 'filtered' : 'empty'} title="当前范围没有记录"
           hint="可清除搜索和状态筛选后查看全部记录。" action={scope.query || scope.status ? <Button disabled={disabled} onClick={() => { setSearch(''); filter({ query: '', status: '' }); }}>清除筛选</Button> : undefined} />}
@@ -62,9 +62,11 @@
         const result = ref ? C.query(await adapter.detail(kind, ref, new AbortController().signal), 'entity') :
           C.query(await adapter.list(kind, { ...scope, page: 1, snapshot_ref: undefined }, new AbortController().signal), 'list');
         if (ref && result.data.ref !== ref) throw C.failure('读到的记录与所选记录不一致，请刷新后重试。');
+        const defaults = kind === "shift_profile" && action !== "delete" ? await adapter.query("/api/workbench/v1/calendar/defaults", {}, new AbortController().signal) : null;
+        if (defaults && (!defaults.data || window.APSWorkPeriods.validate(defaults.data.periods))) throw C.failure("默认工作时间读取不完整，请刷新重试。");
         if (!alive.current || ticket !== generation.current) return;
         if (reviewing) setReview(result);
-        else setEditor({ action, ref, base: ref ? result.data : null, draft: M.draft(ref ? result.data : null),
+        else setEditor({ action, ref, defaultPeriods: defaults && defaults.data.periods, base: ref ? result.data : null, draft: M.draft(ref ? result.data : null),
           context: ref ? result.data.write_context : result.data.create_context, source: result.meta.source });
       } catch (failure) { if (alive.current && ticket === generation.current) setError(failure); }
       finally { if (alive.current && ticket === generation.current) setBusy(false); }

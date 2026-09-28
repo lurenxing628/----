@@ -13,7 +13,7 @@ const files = ['WorkbenchFormat.js', 'WorkbenchTerms.js', 'WorkbenchReferences.j
   'WorkbenchDatePicker.jsx', 'WorkbenchControls.jsx', 'WorkbenchListControls.jsx', 'WorkbenchNumberControls.jsx',
   'ProcessContract.js', 'ProcessReadView.js', 'ProcessActionContract.js', 'ProcessActionPreview.jsx', 'ProcessCollectionActions.jsx',
   'ProcessFileContract.js', 'ProcessFilePreview.jsx', 'ProcessFileActions.jsx', 'ProcessControls.jsx',
-  'ProcessStageEditor.jsx', 'ProcessSourceEditor.jsx', 'ProcessHoursEditor.jsx', 'ProcessOpTypeCreate.jsx', 'ProcessRouteEntry.jsx', 'ProcessDetail.jsx', 'ProcessWorkspace.jsx'];
+  'ProcessStageEditor.jsx', 'ProcessSourceEditor.jsx', 'ProcessGroupEditor.jsx', 'ProcessHoursEditor.jsx', 'ProcessOpTypeCreate.jsx', 'ProcessRouteDraft.js', 'ProcessRouteEntry.jsx', 'ProcessDetail.jsx', 'ProcessWorkspace.jsx'];
 const styleSources = JSON.parse(fs.readFileSync(path.join(root, 'scripts/workbench/build-order.json'), 'utf8')).styles.map(name => {
   const file = 'frontend/workbench/app/styles/' + name; return { path: file, code: fs.readFileSync(path.join(root, file), 'utf8') };
 });
@@ -43,25 +43,35 @@ function record(spec={}) {
     external_groups:[{ref:ref(400),start_sequence:10,end_sequence:10,merge_mode:'merged',total_days:3,supplier_ref:ref(300),supplier_label:'Original supplier',remark:'原周期规则备注 KEEP',issues:[]}],capabilities:{...caps}};
   return part;
 }
-function resource(n,label,category) {return {ref:ref(n),business_code:'R'+n,label,status:category?null:'active',fields:category?{category,default_merge_mode:null,remark:null}:{},relationships:{},issues:[],write_context:null};}
+function resource(n,label,category) {return {ref:ref(n),business_code:'R'+n,label,status:category?null:'active',fields:category?{category,default_merge_mode:null,remark:null}:{},relationships:category?{}:{op_type_refs:[ref(102),ref(103)],op_types:[{ref:ref(102),label:'Polish'},{ref:ref(103),label:'New Polish'}]},issues:[],write_context:null};}
 function listing(rows,scope,extra={}) {return envelope({entities:rows.slice((scope.page-1)*scope.size,scope.page*scope.size),page:{number:scope.page,size:scope.size,total:rows.length,pages:Math.max(1,Math.ceil(rows.length/scope.size)),sort:Array.isArray(scope.sort)?copy(scope.sort):[{field:scope.sort||'business_code',direction:scope.direction||'asc'}]},...extra});}
 function assertFixture(ok,message){if(!ok)throw APSResourceContract.failure('MOCK CONTRACT: '+message);}
-function detail() {const d=copy(fixtureState.part);d.write_context=wc('hours_confirm');return envelope(d);}
+function detail() {const d=copy(fixtureState.part);d.write_context=wc('hours_confirm');
+  d.operations.forEach(row=>{const group=d.external_groups.find(item=>item.ref===row.external_group_ref);const grouped=row.source==='external'&&row.status==='active'&&group&&group.merge_mode==='merged'&&group.total_days>0&&!group.issues.length;
+    if(grouped){row.external_days=null;row.external_days_source='group';}else row.external_days_source=row.external_days===null?null:'operation';});
+  return envelope(d);}
 function preview(partRef,body){const f=fixtureState;const operations=(body.mode==='rows'?body.rows:[{seq:5,op_type_name:'Turn'},{seq:10,op_type_name:'Polish'},{seq:15,op_type_name:'Turn'}]).map(row=>({sequence:row.seq,op_type_name:row.op_type_name,op_type_ref:ref(row.op_type_name==='Polish'?102:101),source_suggestion:row.op_type_name==='Polish'?'external':'internal',supplier_ref:null,supplier_label:null,external_days:null,basis:'真实工种目录现值的测试替身',issues:[]}));
   const affected=f.spec.affectRoute?copy(f.part.external_groups):[];const token=wc('route_confirm');f.tokens[token.write_token]={input:copy(body),affected:affected.map(row=>row.ref)};
   return envelope({part_ref:partRef,mode:body.mode,route_raw:body.route_raw||'',normalized_input:body.route_raw||'rows',can_confirm_route:true,operations,diagnostics:[],counts:{operations:operations.length,recognized:operations.length,unknown:0},baseline:{operation_count:f.part.operations.length,external_group_count:f.part.external_groups.length,has_published_template:true},changes:{added:[],removed:[],retained:[5,10,15],same_sequence_changed:[]},affected_groups:affected,write_context:token});}
 function applyCommand(action,body){const f=fixtureState,p=f.part,input=body.input;
+  if(action==='groups_confirm') {
+    const bound=f.tokens[body.write_token];assertFixture(bound&&JSON.stringify(bound.input)===JSON.stringify(input),'group input must match its preview');
+    input.groups.forEach(row=>{const group=p.external_groups.find(item=>item.ref===row.ref);assertFixture(!!group,'test edits an existing group');const members=p.operations.filter(op=>row.operation_refs.includes(op.ref));
+      Object.assign(group,{total_days:row.total_days,supplier_ref:row.supplier_ref,start_sequence:members[0].sequence,end_sequence:members[members.length-1].sequence});members.forEach(op=>{op.supplier_ref=row.supplier_ref;op.confirmation.hours=stamp();});});
+    p.workflow.hours=stamp();p.workflow.stage='hours';p.workflow.ready=false;f.revision++;
+    const receipt={ok:true,result:'committed',receipt_ref:'receipt-'+f.commands.length,data:{entity_ref:p.ref,business_code:p.business_code,stage:'groups'},warnings:[]};f.receipts[body.request_key]=receipt;return receipt;
+  }
   if(action!=='hours_confirm') {const bound=f.tokens[body.write_token];assertFixture(!!bound,'preview token required');const sent=action==='route_confirm'?input.route:{operations:input.operations,discard_group_refs:[]};const expected=copy(bound.input);delete expected.snapshot_ref;assertFixture(JSON.stringify(sent)===JSON.stringify(expected),'token input mismatch');assertFixture(JSON.stringify(input.discard_group_refs.slice().sort())===JSON.stringify(bound.affected.slice().sort()),'affected groups exactset');p.external_groups=p.external_groups.filter(row=>!input.discard_group_refs.includes(row.ref));p.operations.forEach(row=>{if(input.discard_group_refs.includes(row.external_group_ref))row.external_group_ref=null;});}
   if(action==='route_confirm'){p.workflow.origin='managed';p.workflow.route=stamp('confirmed');p.workflow.source=stamp();p.workflow.hours=stamp('locked');p.workflow.stage='source';p.workflow.ready=false;p.fields.route_raw=input.route.route_raw||p.fields.route_raw;}
   else {const active=p.operations.filter(row=>row.status==='active');assertFixture(input.operations.length===active.length,'all active operations required');const refs=new Set(input.operations.map(row=>row.ref));assertFixture(active.every(row=>refs.has(row.ref)),'active exactset');
-    const byRef=new Map(p.operations.map(row=>[row.ref,row]));input.operations.forEach(row=>{const op=byRef.get(row.ref);Object.assign(op,row);delete op.confirmed;op.confirmation[action==='source_confirm'?'source':'hours']=stamp('confirmed');});
-    if(action==='source_confirm'){p.workflow.source=stamp('confirmed');p.workflow.hours=stamp();p.workflow.stage='hours';p.workflow.ready=false;}else{const groups=new Set(active.map(row=>row.external_group_ref));assertFixture(input.groups.length===p.external_groups.filter(row=>row.merge_mode==='merged'&&groups.has(row.ref)).length,'all active merged groups required');input.groups.forEach(row=>p.external_groups.find(item=>item.ref===row.ref).total_days=row.total_days);
-      // This is the post-command projection DTO. A blank member delegates only to its valid merged group.
+    const byRef=new Map(p.operations.map(row=>[row.ref,row]));input.operations.forEach(row=>{const op=byRef.get(row.ref);const fields={...row};if(action==='hours_confirm'&&p.external_groups.some(group=>group.ref===op.external_group_ref&&group.merge_mode==='merged'))delete fields.external_days;Object.assign(op,fields);delete op.confirmed;op.confirmation[action==='source_confirm'?'source':'hours']=stamp('confirmed');});
+    if(action==='source_confirm'){p.external_groups.forEach(group=>{const members=active.filter(row=>row.external_group_ref===group.ref);if(members.length){assertFixture(new Set(members.map(row=>row.supplier_ref)).size===1,'group suppliers must agree');group.supplier_ref=members[0].supplier_ref;}});p.workflow.source=stamp('confirmed');p.workflow.hours=stamp();p.workflow.stage='hours';p.workflow.ready=false;}else{const groups=new Set(active.map(row=>row.external_group_ref));assertFixture(input.groups.length===p.external_groups.filter(row=>row.merge_mode==='merged'&&groups.has(row.ref)).length,'all active merged groups required');input.groups.forEach(row=>p.external_groups.find(item=>item.ref===row.ref).total_days=row.total_days);
+      // Member history stays stored; detail() projects the merged total independently.
       active.filter(row=>row.source==='external').forEach(row=>{const group=p.external_groups.find(item=>item.ref===row.external_group_ref);
         const grouped=group&&group.merge_mode==='merged'&&group.total_days>0&&!group.issues.length
           &&active.filter(item=>item.external_group_ref===group.ref).every(item=>item.source==='external'&&item.sequence>=group.start_sequence&&item.sequence<=group.end_sequence);
         assertFixture(row.external_days!==null||grouped,'blank external cycle requires a valid merged group');
-        row.external_days_source=row.external_days===null?'group':'operation';});
+        row.external_days_source=grouped?'group':row.external_days===null?null:'operation';});
       p.workflow.hours=stamp('confirmed');p.workflow.stage='ready';p.workflow.ready=true;}}
   f.revision++;
   const receipt={ok:true,result:'committed',receipt_ref:'receipt-'+f.commands.length,data:{entity_ref:p.ref,business_code:p.business_code,stage:action.replace('_confirm','')},warnings:[]};f.receipts[body.request_key]=receipt;return receipt;
@@ -71,7 +81,10 @@ function makeAdapter(){const f=fixtureState;return {
   detail:async(kind,id)=>{f.reads.push({type:'detail',ref:id});if(f.spec.failDetail)throw APSResourceContract.failure('MOCK detail unavailable');assertFixture(id===f.part.ref,'wrong detail part');const response=detail();if(f.spec.holdInitial&&f.reads.filter(row=>row.type==='detail').length===1)await new Promise(resolve=>f.releaseInitial=resolve);return response;},
   routePreview:async(id,body,signal)=>{f.reads.push({type:'routePreview',body:copy(body)});if(f.spec.holdPreview)await new Promise(resolve=>f.releasePreview=resolve);return preview(id,body);},
   stagePreview:async(id,action,input,snapshot,signal)=>{f.reads.push({type:'stagePreview',input:copy(input),snapshot});if(f.spec.rejectPreview)throw APSResourceContract.failure('MOCK stale preview');if(f.spec.holdPreview)await new Promise(resolve=>f.releasePreview=resolve);
-    const oldByRef=new Map(f.part.operations.map(row=>[row.ref,row]));const affected=f.part.external_groups.filter(g=>input.operations.some(row=>{const old=oldByRef.get(row.ref);return old.external_group_ref===g.ref&&['source','op_type_ref','supplier_ref'].some(key=>old[key]!==row[key]);}));
+    if(action==='groups_confirm'){const token=wc(action);f.tokens[token.write_token]={input:copy(input)};const facts=(group,refs,supplier,total)=>({operation_refs:refs,sequences:refs.map(id=>String(f.part.operations.find(row=>row.ref===id).sequence)),supplier_id:supplier,total_days:total,merge_mode:group?group.merge_mode:'merged'});
+      const changes=input.groups.map(row=>{const old=f.part.external_groups.find(item=>item.ref===row.ref);return {ref:row.ref,action:'update',before:facts(old,f.part.operations.filter(op=>op.external_group_ref===old.ref).map(op=>op.ref),old.supplier_ref,old.total_days),after:facts(null,row.operation_refs,row.supplier_ref,row.total_days)};});
+      return envelope({part_ref:id,action,affected_groups:[],changes,write_context:token});}
+    const oldByRef=new Map(f.part.operations.map(row=>[row.ref,row]));const affected=f.part.external_groups.filter(g=>input.operations.some(row=>{const old=oldByRef.get(row.ref);return old.external_group_ref===g.ref&&row.source!=='external';}));
     const token=wc(action);f.tokens[token.write_token]={input:copy(input),affected:affected.map(row=>row.ref)};return envelope({part_ref:id,action,affected_groups:copy(affected),write_context:token});},
   choices:async(kind,scope)=>{f.reads.push({type:'choices',kind,scope:copy(scope)});let rows=kind==='supplier'?[resource(300,'Original supplier'),resource(301,'Second supplier')]:[resource(101,'Turn','internal'),resource(102,'Polish','external'),...f.created];if(scope.category)rows=rows.filter(row=>row.fields.category===scope.category);if(scope.query)rows=rows.filter(row=>row.label.includes(scope.query));return listing(rows,scope);},
   command:async(kind,action,id,body)=>{f.commands.push({kind,action,ref:id,body:copy(body)});if(f.spec.reject){f.spec.reject=false;throw APSResourceContract.failure('MOCK stale snapshot');}if(f.spec.holdCommand)await new Promise(resolve=>f.releaseCommand=resolve);const receipt=applyCommand(action,body);if(f.part.operations.length<2000)sessionStorage.setItem('stage-server',JSON.stringify({part:f.part,receipts:f.receipts,revision:f.revision}));if(f.spec.failAfterSave)f.spec.failDetail=true;if(f.spec.pending)throw new Error('MOCK reply lost');const delivered=copy(receipt);if(f.spec.missingReceiptRef)delete delivered.data.entity_ref;if(f.spec.wrongReceiptRef)delivered.data.entity_ref=ref(999);if(f.spec.missingReceiptStage)delete delivered.data.stage;if(f.spec.wrongReceiptStage)delivered.data.stage='route';return delivered;},
@@ -131,11 +144,10 @@ async function cases() {
     await page.getByRole('textbox',{name:'路线文字',exact:true}).fill('5Turn10Polish15Turn ');assert.equal(await page.locator('[data-process-preview]').count(),0);assert(await page.getByRole('button',{name:/^确认保存路线/}).isDisabled());
     await button('预检路线').click();await check('解除外协组 10 至 10').waitFor();assert(!(await check('解除外协组 10 至 10').isChecked()));await check('解除外协组 10 至 10').check();await button('确认保存路线').click();await button('保存归属并继续').waitFor();assert.equal((await lastCommand()).body.input.discard_group_refs.length,1);
   });
-  await caseOf('source-choice-single-picker-and-exact-ack', async () => {
+  await caseOf('source-choice-preserves-whole-group-without-discard', async () => {
     await mount({stage:'source',matched:true});await open();assert.equal(await check('确认工序 5 归属').count(),0);assert.equal(await check('确认工序 10 归属').count(),0);
-    await button('选择工序 10 供应商').click();await button('采用 Second supplier').click();assert.equal(await check('确认工序 10 归属').count(),0);await button('保存归属并继续').click();await check('解除外协组 10 至 10').waitFor();
-    assert(await page.getByRole('button',{name:/^保存归属/}).isDisabled());await check('解除外协组 10 至 10').check();await button('保存归属并继续').click();await button('保存工时').waitFor();
-    const cmd=await lastCommand();assert(cmd.body.write_token.startsWith('TOKEN:source_confirm:'));assert.equal(cmd.body.input.discard_group_refs.length,1);assert.equal(cmd.body.input.operations[1].supplier_ref,'12d'.padStart(48,'0'));
+    await button('选择工序 10 供应商').click();await button('采用 Second supplier').click();assert.equal(await check('确认工序 10 归属').count(),0);await button('保存归属并继续').click();await button('保存工时').waitFor();assert.equal(await check('解除外协组 10 至 10').count(),0);
+    const cmd=await lastCommand();assert(cmd.body.write_token.startsWith('TOKEN:source_confirm:'));assert.equal(cmd.body.input.discard_group_refs.length,0);assert.equal(cmd.body.input.operations[1].supplier_ref,'12d'.padStart(48,'0'));
   });
   await caseOf('draft-tab-close-and-latest-context-review', async () => {
     await mount({stage:'hours'});await open();const unit=page.getByRole('spinbutton',{name:'工序 5 单件工时',exact:true});await unit.fill('8.5');await page.getByRole('tab',{name:/^2 归属/}).click();await page.getByRole('tab',{name:/工时定额/}).click();assert.equal(await unit.inputValue(),'8.5');
@@ -147,10 +159,10 @@ async function cases() {
     const times=await page.evaluate(()=>[null,'2026-09-09T13:21:16.397888Z','2026-09-09T15:00:00'].map(window.ProcessStageEditor.confirmationTime));
     assert.deepEqual(times,['未填写','2026-09-09 21:21:16','2026-09-09 15:00:00']);
     assert(await page.evaluate(() => { try { ProcessStageEditor.confirmationTime('invalid-time'); return false; } catch(error) { return error instanceof TypeError; } }));
-    await mount({stage:'hours',blank:true,zero:true});await open();await button('保存工时').click();await page.getByText(/必须填写大于等于 0 的数/).waitFor();assert.equal(await page.evaluate(()=>fixtureState.commands.length),0);
+    await mount({stage:'hours',blank:true,zero:true});await page.evaluate(()=>{const p=fixtureState.part;Object.assign(p.operations[2],{source:'external',op_type_ref:ref(102),op_type_label:'Polish',supplier_ref:ref(300),supplier_label:'Original supplier',external_days:2,external_days_source:'operation'});p.relationships.internal_count=1;p.relationships.external_count=2;});await open();await button('保存工时').click();await page.getByText(/必须填写大于等于 0 的数/).waitFor();assert.equal(await page.evaluate(()=>fixtureState.commands.length),0);
     await page.getByRole('spinbutton',{name:'工序 5 换型工时',exact:true}).fill('0');await button('保存工时').click();await button('按 0 保存').waitFor();assert.equal(await page.evaluate(()=>fixtureState.commands.length),0);await button('返回修改').click();
-    await page.getByRole('spinbutton',{name:'工序 10 外协周期',exact:true}).fill('0');await button('保存工时').click();await page.getByText('工序 10 外协周期必须填写大于 0 的数。',{exact:true}).waitFor();
-    await page.getByRole('spinbutton',{name:'工序 10 外协周期',exact:true}).fill('2.5');await page.getByRole('spinbutton',{name:'外协组 10 至 10 总周期',exact:true}).fill('7');await button('保存工时').click();await button('按 0 保存').click();await page.getByText('三阶段已确认 · 已就绪',{exact:true}).waitFor();
+    await page.getByRole('spinbutton',{name:'工序 15 外协周期',exact:true}).fill('0');await button('保存工时').click();await page.getByText('工序 15 外协周期必须填写大于 0 的数。',{exact:true}).waitFor();
+    await page.getByRole('spinbutton',{name:'工序 15 外协周期',exact:true}).fill('2.5');await page.getByRole('spinbutton',{name:'外协组 10 至 10 总周期',exact:true}).fill('7');await button('保存工时').click();await button('按 0 保存').click();await page.getByText('三阶段已确认 · 已就绪',{exact:true}).waitFor();
     const cmd=await lastCommand();assert.equal(cmd.body.input.operations[0].unit_hours,0);assert.equal(cmd.body.input.operations[0].setup_hours,0);assert.equal(cmd.body.input.confirm_zero_unit_hours,true);assert.equal(cmd.body.input.groups[0].total_days,7);
   });
   await caseOf('confirmed-zero-saves-directly-and-changed-content-prompts-once', async () => {
@@ -174,12 +186,12 @@ async function cases() {
     await page.evaluate(()=>fixtureState.allowLookup=true);await button('查询结果').click();await button('保存工时').waitFor();assert.equal(await page.evaluate(()=>fixtureState.commands.length),0);assert(await page.evaluate(key=>fixtureState.lookups.every(item=>item===key),key));assert.equal(await page.evaluate(()=>sessionStorage.getItem('stage-pending')),null);
   });
   await caseOf('merged-members-null-use-group-total', async () => {
-    // An existing operation cycle remains editable; after saving NULL the DTO renders the exact group label instead.
-    await mount({stage:'hours'});await open();const cycle=page.getByRole('spinbutton',{name:'工序 10 外协周期',exact:true});await cycle.fill('');assert.equal(await cycle.getAttribute('placeholder'),'大于 0');
+    // Existing member history is never edited as an effective duration for a merged stage.
+    await mount({stage:'hours'});await open();const cycle=page.getByRole('spinbutton',{name:'工序 10 外协周期',exact:true});assert.equal(await cycle.count(),0);
     await button('保存工时').click();await page.getByText('三阶段已确认 · 已就绪',{exact:true}).waitFor();const cmd=await lastCommand();assert.equal(cmd.body.input.operations[1].external_days,null);assert.equal(cmd.body.input.groups[0].total_days,3);
-    assert.equal(await page.evaluate(()=>fixtureState.part.operations[1].external_days_source),'group');
+    assert.equal(await page.evaluate(()=>fixtureState.part.operations[1].external_days_source),'group');assert.equal(await page.evaluate(()=>fixtureState.part.operations[1].external_days),2);
     await page.getByRole('tab',{name:/工时定额/}).click();assert.equal(await cycle.count(),0);
-    assert((await page.locator('[data-process-hours-editor] [data-process-cycle-group]').innerText()).includes('按外协组周期 · 10 至 10'));
+    assert((await page.locator('[data-process-hours-editor] [data-process-cycle-group]').innerText()).includes('整段 3 天 · 工序 10 至 10'));
   });
   await caseOf('source-preview-edit-abort-and-source-category-binding', async () => {
     await mount({stage:'source',holdPreview:true});await open();await button('保存归属并继续').click();await page.waitForFunction(()=>!!fixtureState.releasePreview);
@@ -236,27 +248,38 @@ async function cases() {
     for(const label of ['关联记录已更换','自制','外协','工序范围','周期算法','合并设置','分别设置','总周期（天）','供应商','服务器新备注','新增组备注','原组删除前备注','已移除','工时定额','已就绪','2026-09-09 15:00:00'])assert(text.includes(label),label);
     await review.locator('tbody tr').first().scrollIntoViewIfNeeded();await shot('source-review');await button('已核对，继续编辑').click();const rows=page.getByRole('table',{name:'归属明细'}).locator('tbody tr');assert((await rows.nth(1).innerText()).includes('New Polish'));
     assert.equal(await page.getByRole('checkbox',{name:/^确认工序 /}).count(),0);
-    await button('保存归属并继续').click();await check('解除外协组 10 至 15').check();await button('保存归属并继续').click();await button('保存工时').waitFor();const body=(await lastCommand()).body.input;
-    assert.equal(body.operations[0].op_type_ref,'68'.padStart(48,'0'),'Untouched op type adopts replacement record even when label matches');assert.equal(body.operations[1].op_type_ref,'67'.padStart(48,'0'),'User-selected op type is retained');assert.equal(body.operations[1].supplier_ref,'12d'.padStart(48,'0'),'Untouched supplier adopts server replacement');assert.equal(body.operations[2].source,'external');
+    await button('选择工序 10 供应商').click();await button('采用 Second supplier').click();await button('保存归属并继续').click();await button('保存工时').waitFor();const body=(await lastCommand()).body.input;
+    assert.equal(body.operations[0].op_type_ref,'68'.padStart(48,'0'),'Untouched op type adopts replacement record even when label matches');assert.equal(body.operations[1].op_type_ref,'67'.padStart(48,'0'),'User-selected op type is retained');assert.equal(body.operations[1].supplier_ref,'12d'.padStart(48,'0'),'Changed operation type requires an explicit capable supplier selection');assert.equal(body.operations[2].source,'external');
   });
   await caseOf('source-supplier-edit-retains-new-server-optype-and-label', async () => {
     await mount({stage:'hours'});await open('^2 归属');await button('选择工序 10 供应商').click();await button('采用 Second supplier').click();
     await page.evaluate(()=>{const p=fixtureState.part;p.operations[0].op_type_label='Renamed Turn';p.operations[1].op_type_ref=ref(103);p.operations[1].op_type_label='Server Polish';fixtureState.revision++;});await button('刷新最新资料').click();await button('已核对，继续编辑').click();
     const rows=page.getByRole('table',{name:'归属明细'}).locator('tbody tr');assert((await rows.first().innerText()).includes('Renamed Turn'));assert((await rows.nth(1).innerText()).includes('Server Polish'));assert((await rows.nth(1).innerText()).includes('Second supplier'));assert.equal(await check('确认工序 10 归属').count(),0);assert.equal(await check('确认工序 15 归属').count(),0);
-    await button('保存归属并继续').click();await check('解除外协组 10 至 10').check();await button('保存归属并继续').click();await button('保存工时').waitFor();const row=(await lastCommand()).body.input.operations[1];assert.equal(row.op_type_ref,'67'.padStart(48,'0'));assert.equal(row.supplier_ref,'12d'.padStart(48,'0'));
+    await button('保存归属并继续').click();await button('保存工时').waitFor();const row=(await lastCommand()).body.input.operations[1];assert.equal(row.op_type_ref,'67'.padStart(48,'0'));assert.equal(row.supplier_ref,'12d'.padStart(48,'0'));
   });
   await caseOf('hours-fieldwise-rebase-keeps-user-values-and-server-updates', async () => {
-    await mount({stage:'ready'});await open('工时定额');await page.getByRole('spinbutton',{name:'工序 5 单件工时',exact:true}).fill('8.5');await page.getByRole('spinbutton',{name:'工序 10 外协周期',exact:true}).fill('2.5');
+    await mount({stage:'ready'});await open('工时定额');await page.getByRole('spinbutton',{name:'工序 5 单件工时',exact:true}).fill('8.5');assert.equal(await page.getByRole('spinbutton',{name:'工序 10 外协周期',exact:true}).count(),0);
     await page.evaluate(()=>{const p=fixtureState.part;p.operations[0].setup_hours=6;p.operations[0].unit_hours=3;p.operations[1].external_days=4;p.operations[2].unit_hours=4;p.external_groups[0].total_days=9;p.external_groups[0].remark='服务器更新的周期备注';fixtureState.revision++;});await button('刷新最新资料').click();await page.getByRole('table',{name:'最新资料差异'}).locator('tbody tr').first().scrollIntoViewIfNeeded();await shot('hours-review');await button('已核对，继续编辑').click();
-    for(const [label,expected] of [['工序 5 换型工时','6'],['工序 5 单件工时','8.5'],['工序 10 外协周期','2.5'],['工序 15 单件工时','4'],['外协组 10 至 10 总周期','9']])assert.equal(await page.getByRole('spinbutton',{name:label,exact:true}).inputValue(),expected,label);
+    for(const [label,expected] of [['工序 5 换型工时','6'],['工序 5 单件工时','8.5'],['工序 15 单件工时','4'],['外协组 10 至 10 总周期','9']])assert.equal(await page.getByRole('spinbutton',{name:label,exact:true}).inputValue(),expected,label);
     assert.equal(await page.getByRole('checkbox',{name:/^确认工序 /}).count(),0);await button('保存工时').click();await page.getByRole('table',{name:'已就绪工序汇总'}).waitFor();const body=(await lastCommand()).body.input;
-    assert.deepEqual(body.operations[0],{ref:'3e8'.padStart(48,'0'),setup_hours:6,unit_hours:8.5});assert.equal(body.operations[1].external_days,2.5);assert.equal(body.operations[2].unit_hours,4);assert.equal(body.groups[0].total_days,9);assert.equal(await page.evaluate(()=>fixtureState.part.external_groups[0].remark),'服务器更新的周期备注');
+    assert.deepEqual(body.operations[0],{ref:'3e8'.padStart(48,'0'),setup_hours:6,unit_hours:8.5});assert.equal(body.operations[1].external_days,null);assert.equal(await page.evaluate(()=>fixtureState.part.operations[1].external_days),4);assert.equal(body.operations[2].unit_hours,4);assert.equal(body.groups[0].total_days,9);assert.equal(await page.evaluate(()=>fixtureState.part.external_groups[0].remark),'服务器更新的周期备注');
   });
   await caseOf('hours-source-reset-and-dirty-group-total-only', async () => {
     await mount({stage:'ready'});await open('工时定额');await page.getByRole('spinbutton',{name:'工序 5 单件工时',exact:true}).fill('8.5');await page.getByRole('spinbutton',{name:'外协组 10 至 10 总周期',exact:true}).fill('7');
     await page.evaluate(()=>{const p=fixtureState.part;Object.assign(p.operations[0],{source:'external',op_type_ref:ref(102),op_type_label:'Polish',supplier_ref:ref(300),supplier_label:'Original supplier',external_days:6,external_days_source:'operation',setup_hours:30,unit_hours:40});p.operations[1].external_days=5;p.external_groups[0].total_days=9;p.relationships.internal_count=1;p.relationships.external_count=2;fixtureState.revision++;});
-    await button('刷新最新资料').click();await button('已核对，继续编辑').click();assert.equal(await page.getByRole('spinbutton',{name:'工序 5 单件工时',exact:true}).count(),0);assert.equal(await page.getByRole('spinbutton',{name:'工序 5 外协周期',exact:true}).inputValue(),'6');assert.equal(await page.getByRole('spinbutton',{name:'工序 10 外协周期',exact:true}).inputValue(),'5');assert.equal(await page.getByRole('spinbutton',{name:'外协组 10 至 10 总周期',exact:true}).inputValue(),'7');
-    assert.equal(await check('确认工序 5 工时').count(),0);assert.equal(await check('确认工序 10 工时').count(),0);assert.equal(await check('确认工序 15 工时').count(),0);await button('保存工时').click();await page.getByRole('table',{name:'已就绪工序汇总'}).waitFor();const body=(await lastCommand()).body.input;assert.deepEqual(body.operations[0],{ref:'3e8'.padStart(48,'0'),external_days:6});assert.equal(body.operations[1].external_days,5);assert.equal(body.groups[0].total_days,7);
+    await button('刷新最新资料').click();await button('已核对，继续编辑').click();assert.equal(await page.getByRole('spinbutton',{name:'工序 5 单件工时',exact:true}).count(),0);assert.equal(await page.getByRole('spinbutton',{name:'工序 5 外协周期',exact:true}).inputValue(),'6');assert.equal(await page.getByRole('spinbutton',{name:'工序 10 外协周期',exact:true}).count(),0);assert.equal(await page.getByRole('spinbutton',{name:'外协组 10 至 10 总周期',exact:true}).inputValue(),'7');
+    assert.equal(await check('确认工序 5 工时').count(),0);assert.equal(await check('确认工序 10 工时').count(),0);assert.equal(await check('确认工序 15 工时').count(),0);await button('保存工时').click();await page.getByRole('table',{name:'已就绪工序汇总'}).waitFor();const body=(await lastCommand()).body.input;assert.deepEqual(body.operations[0],{ref:'3e8'.padStart(48,'0'),external_days:6});assert.equal(body.operations[1].external_days,null);assert.equal(await page.evaluate(()=>fixtureState.part.operations[1].external_days),5);assert.equal(body.groups[0].total_days,7);
+  });
+  await caseOf('group-receipt-detail-failure-keeps-recovery-and-hours-draft', async () => {
+    await mount({stage:'ready',failAfterSave:true});await open('工时定额');await page.getByRole('spinbutton',{name:'工序 5 单件工时',exact:true}).fill('8.5');
+    await button('管理外协段').click();await button('修改范围 / 供应商').click();await page.getByRole('spinbutton',{name:'整段外协周期',exact:true}).fill('7.75');
+    await button('预检外协段').click();await page.getByRole('table',{name:'外协段变更预检'}).waitFor();await button('确认保存外协段').click();
+    await button('查询结果').waitFor();assert.equal(await page.locator('[data-process-group-editor]').count(),0);assert.equal(await page.getByRole('spinbutton',{name:'工序 5 单件工时',exact:true}).inputValue(),'8.5');
+    assert.equal(await page.evaluate(()=>fixtureState.commands.length),1);assert.equal(await page.evaluate(()=>fixtureState.part.external_groups[0].total_days),7.75);await shot('group-recovery');
+    await page.evaluate(()=>{fixtureState.spec.failDetail=false;fixtureState.spec.failAfterSave=false;});await button('查询结果').click();await page.getByRole('table',{name:'最新资料差异'}).waitFor();
+    assert.equal(await page.getByRole('spinbutton',{name:'工序 5 单件工时',exact:true}).inputValue(),'8.5');await button('已核对，继续编辑').click();
+    assert.equal(await page.getByRole('spinbutton',{name:'外协组 10 至 10 总周期',exact:true}).inputValue(),'7.75');assert.equal(await page.evaluate(()=>fixtureState.commands.length),1);
+    await button('保存工时').click();await page.getByRole('table',{name:'已就绪工序汇总'}).waitFor();const payload=(await lastCommand()).body.input;assert.equal(payload.operations[0].unit_hours,8.5);assert.equal(payload.groups[0].total_days,7.75);assert.equal(await page.evaluate(()=>fixtureState.commands.filter(row=>row.action==='groups_confirm').length),1);
   });
   await caseOf('receipt-missing-ref-or-wrong-stage-stays-pending', async () => {
     for(const fault of ['missingReceiptRef','wrongReceiptRef','missingReceiptStage','wrongReceiptStage']) {

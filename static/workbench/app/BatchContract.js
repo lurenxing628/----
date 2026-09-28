@@ -17,7 +17,7 @@
     ready_date: '齐套日期',
     remark: '备注'
   };
-  const actions = ['create', 'update', 'delete', 'operation_update', 'sync_confirm', 'bulk_confirm', 'import_confirm'];
+  const actions = ['create', 'update', 'delete', 'operation_update', 'materials_update', 'split_confirm', 'sync_confirm', 'bulk_confirm', 'import_confirm'];
   const priority = [['normal', '普通'], ['urgent', '急件'], ['critical', '特急']];
   const ready = [['yes', '齐套'], ['partial', '部分齐套'], ['no', '未齐套']];
   const statuses = [['pending', '待排'], ['scheduled', '已排'], ['processing', '加工中'], ['completed', '已完成'], ['cancelled', '已取消']];
@@ -62,6 +62,7 @@
     let valid = object(result) && result.ok === true && result.schema_version === 1 && object(result.meta) && result.meta.source === 'production' && object(data) && data.operation === name && text(data.preview_ref) && /^[A-Za-z0-9_-]{32}$/.test(data.preview_ref) && context(data.write_context) && data.write_context && data.write_context.capabilities[name] === true && data.commit_policy === 'atomic';
     if (valid && action === 'bulk') valid = data.action === input.action && Array.isArray(data.rows) && data.count === input.refs.length && data.rows.length === data.count && new Set(data.rows.map(row => row.entity_ref)).size === data.count && data.rows.every(row => input.refs.includes(row.entity_ref) && entity(row.before) && row.before.ref === row.entity_ref && (input.action === 'delete' ? row.after === null : object(row.after) && object(row.after.fields) && Array.isArray(row.after.operations)));
     if (valid && action === 'sync') valid = data.entity_ref === expectedRef && data.completeness_checked === true && Array.isArray(data.before) && data.before.every(operation) && Array.isArray(data.after) && data.after.every(row => object(row) && text(row.label) && ['setup_hours', 'unit_hours', 'external_days'].every(key => finite(row[key]))) && object(data.change_counts) && ['added', 'removed', 'updated', 'unchanged'].every(key => count(data.change_counts[key])) && Array.isArray(data.changes) && data.changes.every(row => object(row) && ['added', 'removed', 'updated', 'unchanged'].includes(row.change)) && Array.isArray(data.cleared_resources) && data.cleared_resources.every(row => object(row) && ref(row.operation_ref) && text(row.business_code));
+    if (valid && action === 'split') valid = data.entity_ref === expectedRef && Number.isSafeInteger(data.original_quantity) && Number.isSafeInteger(data.quantity) && data.quantity > 0 && data.remaining_quantity > 0 && data.quantity + data.remaining_quantity === data.original_quantity && data.as_of_date === input.as_of_date && Array.isArray(data.materials) && data.materials.every(row => finite(row.child_required) && finite(row.source_required));
     if (!valid) throw C.failure('读到的预检结果和所选批次或操作不一致，没有确认。请重新预检。');
     return data;
   }
@@ -69,6 +70,9 @@
     if (source !== 'production') return '当前不是可写生产资料。';
     if (!ctx || ctx.capabilities['batch.' + action] !== true) return (ctx && ctx.blocked_reasons.find(row => row.action === 'batch.' + action) || {}).message || '当前资料不允许此操作。';
     return '';
+  }
+  function readyStatus(entity) {
+    return Object.prototype.hasOwnProperty.call(entity, 'display_ready_status') ? entity.display_ready_status : entity.fields.ready_status;
   }
   function label(key, value) {
     const options = {
@@ -149,6 +153,7 @@
     receipt,
     preview,
     reason,
+    readyStatus,
     label,
     draft,
     input,

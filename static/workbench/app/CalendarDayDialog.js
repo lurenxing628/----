@@ -104,7 +104,7 @@
       const previous = K.draft(original.current),
         merged = K.draft(review.day);
       Object.keys(previous).forEach(key => {
-        if (value[key] !== previous[key]) merged[key] = value[key];
+        if (JSON.stringify(value[key]) !== JSON.stringify(previous[key])) merged[key] = value[key];
       });
       original.current = review.day;
       setValue(merged);

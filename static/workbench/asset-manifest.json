@@ -69,6 +69,8 @@
     "workbench/app/ResourceControls.js",
     "workbench/app/WorkbenchGuardHost.js",
     "workbench/app/WorkbenchControlBridge.js",
+    "workbench/app/WorkPeriods.js",
+    "workbench/app/WorkPeriodFields.js",
     "workbench/app/CalendarContract.js",
     "workbench/app/OperatorCalendarContract.js",
     "workbench/app/WorkbenchSelectMenu.js",
@@ -84,6 +86,7 @@
     "workbench/app/OperatorMachinePermissions.js",
     "workbench/app/OperatorCalendarPanel.js",
     "workbench/app/ResourceForms.js",
+    "workbench/app/MachineDowntimePanel.js",
     "workbench/app/ResourceTables.js",
     "workbench/app/ResourceMetrics.js",
     "workbench/app/ResourceRail.js",
@@ -91,6 +94,7 @@
     "workbench/app/ResourceWorkspace.js",
     "workbench/app/CalendarFields.js",
     "workbench/app/CalendarDayDialog.js",
+    "workbench/app/CalendarDefaultsDialog.js",
     "workbench/app/CalendarRangeDialog.js",
     "workbench/app/ResourceCalendar.js",
     "workbench/app/ResourceMaterialContract.js",
@@ -116,7 +120,9 @@
     "workbench/app/ProcessStageEditor.js",
     "workbench/app/ProcessOpTypeCreate.js",
     "workbench/app/ProcessSourceEditor.js",
+    "workbench/app/ProcessGroupEditor.js",
     "workbench/app/ProcessHoursEditor.js",
+    "workbench/app/ProcessRouteDraft.js",
     "workbench/app/ProcessRouteEntry.js",
     "workbench/app/ProcessDetail.js",
     "workbench/app/ProcessWorkspace.js",
@@ -126,6 +132,7 @@
     "workbench/app/BatchControls.js",
     "workbench/app/BatchForms.js",
     "workbench/app/BatchOperationEditor.js",
+    "workbench/app/BatchMaterialEditor.js",
     "workbench/app/BatchDetail.js",
     "workbench/app/BatchTable.js",
     "workbench/app/BatchFiles.js",
@@ -165,6 +172,7 @@
     "workbench/app/PreflightContract.js",
     "workbench/app/PreflightAPI.js",
     "workbench/app/PreflightControls.js",
+    "workbench/app/BatchSplitPanel.js",
     "workbench/app/PreflightBatchPicker.js",
     "workbench/app/PreflightWorkspace.js",
     "workbench/app/RunJobAPI.js",
@@ -827,8 +835,8 @@
     },
     {
       "path": "workbench/app/BatchAPI.js",
-      "sha256": "c54e263cb07390eb2f705d86c9568bb46340a2cd583a3c32d52046bdd706fdf6",
-      "bytes": 3542,
+      "sha256": "73d1afb5419a92956143027857ce6ce653284919a11d704c8400ef08177c0121",
+      "bytes": 3988,
       "mime": "application/javascript",
       "dependencies": [
         "workbench/app/BatchContract.js",
@@ -866,7 +874,7 @@
           "source_files": [
             {
               "path": "frontend/workbench/app/BatchAPI.js",
-              "sha256": "559f56f13b238705d1a4911ea3c8fb9f30078dd8020be2d61a9c452494dade5f"
+              "sha256": "619350da0f3d2fe5ab026bcac86d19625b09448e59b3bfc08d94b8b8074bac7a"
             }
           ],
           "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
@@ -875,14 +883,14 @@
       "source_files": [
         {
           "path": "frontend/workbench/app/BatchAPI.js",
-          "sha256": "559f56f13b238705d1a4911ea3c8fb9f30078dd8020be2d61a9c452494dade5f"
+          "sha256": "619350da0f3d2fe5ab026bcac86d19625b09448e59b3bfc08d94b8b8074bac7a"
         }
       ]
     },
     {
       "path": "workbench/app/BatchContract.js",
-      "sha256": "ed790570a4798400d526814c0bf29d846374bf6fc4c22da06f6058992e8cba86",
-      "bytes": 10395,
+      "sha256": "9fdaea3499514ee33f2e97c7fb653ba9c140b6b12afbaad806fdbcb1cd54185d",
+      "bytes": 11076,
       "mime": "application/javascript",
       "dependencies": [
         "workbench/app/WorkbenchTerms.js",
@@ -913,7 +921,7 @@
           "source_files": [
             {
               "path": "frontend/workbench/app/BatchContract.js",
-              "sha256": "c8aa44d0a4f4e091b87eecd7c65a490ca46e1effc367fbd1cdf2d280b69cbf52"
+              "sha256": "82d42e78789c49283cf6bed971d45058ed106dca2af3c189d7334a72cce982f3"
             }
           ],
           "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
@@ -922,14 +930,14 @@
       "source_files": [
         {
           "path": "frontend/workbench/app/BatchContract.js",
-          "sha256": "c8aa44d0a4f4e091b87eecd7c65a490ca46e1effc367fbd1cdf2d280b69cbf52"
+          "sha256": "82d42e78789c49283cf6bed971d45058ed106dca2af3c189d7334a72cce982f3"
         }
       ]
     },
     {
       "path": "workbench/app/BatchControls.js",
-      "sha256": "3854330f184752c0d574d0b980b2c5f02be722f5f5a096c0a23ca3879e8478cd",
-      "bytes": 4163,
+      "sha256": "2f96f35895d3c013b4e1b10ba8ef0eec71a5cb69048c549701382c11850b31bd",
+      "bytes": 4673,
       "mime": "application/javascript",
       "dependencies": [
         "workbench/app/BatchContract.js",
@@ -981,7 +989,7 @@
           "source_files": [
             {
               "path": "frontend/workbench/app/BatchControls.jsx",
-              "sha256": "3f2dcda2861b07505dee0ce3713de14efb481abeee6d3978a424f66651307947"
+              "sha256": "7a48b2003180fdd208d5cc814c57d0afe906dda02a5160a3dd754882dcee11ab"
             }
           ],
           "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
@@ -990,14 +998,14 @@
       "source_files": [
         {
           "path": "frontend/workbench/app/BatchControls.jsx",
-          "sha256": "3f2dcda2861b07505dee0ce3713de14efb481abeee6d3978a424f66651307947"
+          "sha256": "7a48b2003180fdd208d5cc814c57d0afe906dda02a5160a3dd754882dcee11ab"
         }
       ]
     },
     {
       "path": "workbench/app/BatchDetail.js",
-      "sha256": "7a8ed50eef8cb464eb744131a16d4693703c1f7643a060557035bc71e5c0b1e7",
-      "bytes": 14514,
+      "sha256": "080012c4a1ce06fcb83e299b057a592d9332c74c5f2337d354f95646bdbcd688",
+      "bytes": 15105,
       "mime": "application/javascript",
       "dependencies": [
         "workbench/app/BatchContract.js",
@@ -1056,7 +1064,7 @@
           "source_files": [
             {
               "path": "frontend/workbench/app/BatchDetail.jsx",
-              "sha256": "406eda6c94ae101b4ae2e8061bf2eb79bea7e67f964350a692587d642f638baf"
+              "sha256": "3101d8e572f1cdd5421987c71d9b269b5ec8aa90e4f4f0724ea5c826f01fb291"
             }
           ],
           "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
@@ -1065,7 +1073,7 @@
       "source_files": [
         {
           "path": "frontend/workbench/app/BatchDetail.jsx",
-          "sha256": "406eda6c94ae101b4ae2e8061bf2eb79bea7e67f964350a692587d642f638baf"
+          "sha256": "3101d8e572f1cdd5421987c71d9b269b5ec8aa90e4f4f0724ea5c826f01fb291"
         }
       ]
     },
@@ -1167,8 +1175,8 @@
     },
     {
       "path": "workbench/app/BatchForms.js",
-      "sha256": "101b432dcfd299a49a1500b72456f7379c00b03f52daea117de759c6b928108b",
-      "bytes": 16514,
+      "sha256": "da2d97cdf7db79ae10c6b0ae7d8e7fe099ba57ee36fa5a279f2a066571d55503",
+      "bytes": 16827,
       "mime": "application/javascript",
       "dependencies": [
         "workbench/app/BatchContract.js",
@@ -1255,7 +1263,7 @@
           "source_files": [
             {
               "path": "frontend/workbench/app/BatchForms.jsx",
-              "sha256": "99439bceb725656c305b99b9ad758e38d55a328b9103c6d5a4f988c58720e605"
+              "sha256": "0444eb5754dccfc2d852cc57b3eea4dfa13e98bfc17dccf395db1e611422926b"
             }
           ],
           "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
@@ -1264,14 +1272,110 @@
       "source_files": [
         {
           "path": "frontend/workbench/app/BatchForms.jsx",
-          "sha256": "99439bceb725656c305b99b9ad758e38d55a328b9103c6d5a4f988c58720e605"
+          "sha256": "0444eb5754dccfc2d852cc57b3eea4dfa13e98bfc17dccf395db1e611422926b"
+        }
+      ]
+    },
+    {
+      "path": "workbench/app/BatchMaterialEditor.js",
+      "sha256": "b0c8cc58afd1182d07cdc2db8c3814e60ee6542802654b79083431cf2c316280",
+      "bytes": 12890,
+      "mime": "application/javascript",
+      "dependencies": [
+        "workbench/app/BatchContract.js",
+        "workbench/app/ResourceControls.js",
+        "workbench/app/ResourceForms.js",
+        "workbench/app/WorkbenchControls.js",
+        "workbench/app/WorkbenchGuards.js",
+        "workbench/app/WorkbenchTerms.js",
+        "workbench/app/resource-contract.js",
+        "workbench/app/resource-session.js",
+        "workbench/vendor/react-18.3.1.production.min.js"
+      ],
+      "dependency_symbols": [
+        {
+          "path": "workbench/app/BatchContract.js",
+          "symbols": [
+            "APSBatchContract"
+          ]
+        },
+        {
+          "path": "workbench/app/ResourceControls.js",
+          "symbols": [
+            "ResourceControls"
+          ]
+        },
+        {
+          "path": "workbench/app/ResourceForms.js",
+          "symbols": [
+            "ResourceForms"
+          ]
+        },
+        {
+          "path": "workbench/app/WorkbenchControls.js",
+          "symbols": [
+            "WorkbenchControls"
+          ]
+        },
+        {
+          "path": "workbench/app/WorkbenchGuards.js",
+          "symbols": [
+            "WorkbenchGuards"
+          ]
+        },
+        {
+          "path": "workbench/app/WorkbenchTerms.js",
+          "symbols": [
+            "WorkbenchTerms"
+          ]
+        },
+        {
+          "path": "workbench/app/resource-contract.js",
+          "symbols": [
+            "APSResourceContract"
+          ]
+        },
+        {
+          "path": "workbench/app/resource-session.js",
+          "symbols": [
+            "APSResourceSession"
+          ]
+        },
+        {
+          "path": "workbench/vendor/react-18.3.1.production.min.js",
+          "symbols": [
+            "React"
+          ]
+        }
+      ],
+      "license_sources": [
+        {
+          "component": "Workbench project content",
+          "status": "unknown",
+          "identifiers": [],
+          "requires_review": true,
+          "source": null,
+          "scope": "Only the listed source content; no license inferred from dependencies.",
+          "source_files": [
+            {
+              "path": "frontend/workbench/app/BatchMaterialEditor.jsx",
+              "sha256": "16fc380d15db8b2847f39f1686e90aed1d1fa50b4350ce732078c9d07ce154c2"
+            }
+          ],
+          "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
+        }
+      ],
+      "source_files": [
+        {
+          "path": "frontend/workbench/app/BatchMaterialEditor.jsx",
+          "sha256": "16fc380d15db8b2847f39f1686e90aed1d1fa50b4350ce732078c9d07ce154c2"
         }
       ]
     },
     {
       "path": "workbench/app/BatchOperationEditor.js",
-      "sha256": "1bda007732c8d991c71f4c6a79825653f1186c524c279372bd2ff567c3efc981",
-      "bytes": 7455,
+      "sha256": "30e236ce7d37e786f057efa78ba163fb62119abc5d72aa127408cb9d92447927",
+      "bytes": 8779,
       "mime": "application/javascript",
       "dependencies": [
         "workbench/app/BatchContract.js",
@@ -1351,7 +1455,7 @@
           "source_files": [
             {
               "path": "frontend/workbench/app/BatchOperationEditor.jsx",
-              "sha256": "b3b8746f008a95e2fcd4724fbd5b49b289787b224062ac0f811df5f784b7dd30"
+              "sha256": "58c3d3ec6a9f12b8f6028f5ce64e2b411a9696eaca9a24590c23e7412ba49f15"
             }
           ],
           "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
@@ -1360,14 +1464,110 @@
       "source_files": [
         {
           "path": "frontend/workbench/app/BatchOperationEditor.jsx",
-          "sha256": "b3b8746f008a95e2fcd4724fbd5b49b289787b224062ac0f811df5f784b7dd30"
+          "sha256": "58c3d3ec6a9f12b8f6028f5ce64e2b411a9696eaca9a24590c23e7412ba49f15"
+        }
+      ]
+    },
+    {
+      "path": "workbench/app/BatchSplitPanel.js",
+      "sha256": "b86d9e99abe37bc16bf267d061c73f1198160a5c0e1681b27bbbde2e7174e932",
+      "bytes": 7366,
+      "mime": "application/javascript",
+      "dependencies": [
+        "workbench/app/BatchAPI.js",
+        "workbench/app/BatchContract.js",
+        "workbench/app/ResourceControls.js",
+        "workbench/app/ResourceForms.js",
+        "workbench/app/WorkbenchGuards.js",
+        "workbench/app/resource-contract.js",
+        "workbench/app/resource-session.js",
+        "workbench/vendor/react-18.3.1.production.min.js",
+        "workbench/vendor/react-dom-18.3.1.production.min.js"
+      ],
+      "dependency_symbols": [
+        {
+          "path": "workbench/app/BatchAPI.js",
+          "symbols": [
+            "APSBatchAPI"
+          ]
+        },
+        {
+          "path": "workbench/app/BatchContract.js",
+          "symbols": [
+            "APSBatchContract"
+          ]
+        },
+        {
+          "path": "workbench/app/ResourceControls.js",
+          "symbols": [
+            "ResourceControls"
+          ]
+        },
+        {
+          "path": "workbench/app/ResourceForms.js",
+          "symbols": [
+            "ResourceForms"
+          ]
+        },
+        {
+          "path": "workbench/app/WorkbenchGuards.js",
+          "symbols": [
+            "WorkbenchGuards"
+          ]
+        },
+        {
+          "path": "workbench/app/resource-contract.js",
+          "symbols": [
+            "APSResourceContract"
+          ]
+        },
+        {
+          "path": "workbench/app/resource-session.js",
+          "symbols": [
+            "APSResourceSession"
+          ]
+        },
+        {
+          "path": "workbench/vendor/react-18.3.1.production.min.js",
+          "symbols": [
+            "React"
+          ]
+        },
+        {
+          "path": "workbench/vendor/react-dom-18.3.1.production.min.js",
+          "symbols": [
+            "ReactDOM"
+          ]
+        }
+      ],
+      "license_sources": [
+        {
+          "component": "Workbench project content",
+          "status": "unknown",
+          "identifiers": [],
+          "requires_review": true,
+          "source": null,
+          "scope": "Only the listed source content; no license inferred from dependencies.",
+          "source_files": [
+            {
+              "path": "frontend/workbench/app/BatchSplitPanel.jsx",
+              "sha256": "0ac0ea94909bb19ae12760e2b70f173510abcf0334dbc992bca8488c99daea32"
+            }
+          ],
+          "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
+        }
+      ],
+      "source_files": [
+        {
+          "path": "frontend/workbench/app/BatchSplitPanel.jsx",
+          "sha256": "0ac0ea94909bb19ae12760e2b70f173510abcf0334dbc992bca8488c99daea32"
         }
       ]
     },
     {
       "path": "workbench/app/BatchTable.js",
-      "sha256": "3e5bae5bff9d98d27f23f560e67e0b192962760c3def22eac23ea6431345bf1d",
-      "bytes": 11434,
+      "sha256": "7a5b6281e26996db849bd7857e153ef0f3a6ff2ca2e36d5c5c3ec59ff2c8010e",
+      "bytes": 11483,
       "mime": "application/javascript",
       "dependencies": [
         "workbench/app/BatchContract.js",
@@ -1433,7 +1633,7 @@
           "source_files": [
             {
               "path": "frontend/workbench/app/BatchTable.jsx",
-              "sha256": "08743b4dcf0331427fddbf084329106332f3d9702d9d288ea711f675a257c665"
+              "sha256": "174e23e320a2fafe191a8be7cfbf30aa27608dcea619aab9bc5c620fbb4d591e"
             }
           ],
           "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
@@ -1442,14 +1642,14 @@
       "source_files": [
         {
           "path": "frontend/workbench/app/BatchTable.jsx",
-          "sha256": "08743b4dcf0331427fddbf084329106332f3d9702d9d288ea711f675a257c665"
+          "sha256": "174e23e320a2fafe191a8be7cfbf30aa27608dcea619aab9bc5c620fbb4d591e"
         }
       ]
     },
     {
       "path": "workbench/app/BatchWorkspace.js",
-      "sha256": "22f3f42dea9ea8cbc5975ce4f1ae9f944862ac7b87b09af48fb121a20b91737d",
-      "bytes": 25520,
+      "sha256": "9ea30b8b8ef86f66c417868669cc6afa9972b6811eabca6d78dbcfb7103dabdd",
+      "bytes": 25929,
       "mime": "application/javascript",
       "dependencies": [
         "workbench/app/BatchContract.js",
@@ -1457,6 +1657,7 @@
         "workbench/app/BatchDetail.js",
         "workbench/app/BatchFiles.js",
         "workbench/app/BatchForms.js",
+        "workbench/app/BatchMaterialEditor.js",
         "workbench/app/BatchOperationEditor.js",
         "workbench/app/BatchTable.js",
         "workbench/app/ResourceControls.js",
@@ -1498,6 +1699,12 @@
           "path": "workbench/app/BatchForms.js",
           "symbols": [
             "BatchForms"
+          ]
+        },
+        {
+          "path": "workbench/app/BatchMaterialEditor.js",
+          "symbols": [
+            "BatchMaterialEditor"
           ]
         },
         {
@@ -1578,7 +1785,7 @@
           "source_files": [
             {
               "path": "frontend/workbench/app/BatchWorkspace.jsx",
-              "sha256": "c710d40acc28c90e5bf632d009fe27910ff8a8d795581d0c675a79f057420b40"
+              "sha256": "622dc0ac1e4cd4a7068e1ba3001867ddeb898c50a4846bef9bda9f0b8de7979f"
             }
           ],
           "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
@@ -1587,24 +1794,24 @@
       "source_files": [
         {
           "path": "frontend/workbench/app/BatchWorkspace.jsx",
-          "sha256": "c710d40acc28c90e5bf632d009fe27910ff8a8d795581d0c675a79f057420b40"
+          "sha256": "622dc0ac1e4cd4a7068e1ba3001867ddeb898c50a4846bef9bda9f0b8de7979f"
         }
       ]
     },
     {
       "path": "workbench/app/CalendarContract.js",
-      "sha256": "448cd1019267ef7cca1fa2cd410b1ad08cb837be7b310ea80cfe41a88728fe53",
-      "bytes": 8462,
+      "sha256": "e74c455d2c4d31b3edaf38b7018ebf5ec0ff61a9798d4c2c3fa2dbfd458e6dba",
+      "bytes": 9582,
       "mime": "application/javascript",
       "dependencies": [
-        "workbench/app/WorkbenchFormat.js",
+        "workbench/app/WorkPeriods.js",
         "workbench/app/resource-contract.js"
       ],
       "dependency_symbols": [
         {
-          "path": "workbench/app/WorkbenchFormat.js",
+          "path": "workbench/app/WorkPeriods.js",
           "symbols": [
-            "WorkbenchFormat"
+            "APSWorkPeriods"
           ]
         },
         {
@@ -1625,7 +1832,7 @@
           "source_files": [
             {
               "path": "frontend/workbench/app/CalendarContract.js",
-              "sha256": "6e02c81a93c96d167f62da0fe21f1f11bd9a67f6280c239b55886510f904b288"
+              "sha256": "cc1985be551653572752110bfef6a104bb239e45ced97143a5eb2cd753d148a3"
             }
           ],
           "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
@@ -1634,14 +1841,14 @@
       "source_files": [
         {
           "path": "frontend/workbench/app/CalendarContract.js",
-          "sha256": "6e02c81a93c96d167f62da0fe21f1f11bd9a67f6280c239b55886510f904b288"
+          "sha256": "cc1985be551653572752110bfef6a104bb239e45ced97143a5eb2cd753d148a3"
         }
       ]
     },
     {
       "path": "workbench/app/CalendarDayDialog.js",
-      "sha256": "0dbf55d4d35da7bc8424fd9670ca448be92ab8b2cfcf0d8a19969c5de60da861",
-      "bytes": 7448,
+      "sha256": "6e6f187609d76518f521ff3fff41469b804cea5edc819714c3f0d881abb2bd4c",
+      "bytes": 7480,
       "mime": "application/javascript",
       "dependencies": [
         "workbench/app/CalendarContract.js",
@@ -1714,7 +1921,7 @@
           "source_files": [
             {
               "path": "frontend/workbench/app/CalendarDayDialog.jsx",
-              "sha256": "37e31e37798c2085d5fed09a6bf5ab2f04431a51c1119e1991d7ab8a0c164823"
+              "sha256": "3d6370bb45aa5918c9a85840fb2cacbcc395f30f3f837a9006d0f77f541e8b58"
             }
           ],
           "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
@@ -1723,18 +1930,116 @@
       "source_files": [
         {
           "path": "frontend/workbench/app/CalendarDayDialog.jsx",
-          "sha256": "37e31e37798c2085d5fed09a6bf5ab2f04431a51c1119e1991d7ab8a0c164823"
+          "sha256": "3d6370bb45aa5918c9a85840fb2cacbcc395f30f3f837a9006d0f77f541e8b58"
+        }
+      ]
+    },
+    {
+      "path": "workbench/app/CalendarDefaultsDialog.js",
+      "sha256": "fc0b61d0f74a16d9ac7325f2a62a61c3be333be9d4a7f47bf7400d764b4359d8",
+      "bytes": 4808,
+      "mime": "application/javascript",
+      "dependencies": [
+        "workbench/app/CalendarFields.js",
+        "workbench/app/ResourceControls.js",
+        "workbench/app/ResourceForms.js",
+        "workbench/app/WorkPeriodFields.js",
+        "workbench/app/WorkPeriods.js",
+        "workbench/app/WorkbenchGuards.js",
+        "workbench/app/resource-contract.js",
+        "workbench/app/resource-session.js",
+        "workbench/vendor/react-18.3.1.production.min.js"
+      ],
+      "dependency_symbols": [
+        {
+          "path": "workbench/app/CalendarFields.js",
+          "symbols": [
+            "CalendarFields"
+          ]
+        },
+        {
+          "path": "workbench/app/ResourceControls.js",
+          "symbols": [
+            "ResourceControls"
+          ]
+        },
+        {
+          "path": "workbench/app/ResourceForms.js",
+          "symbols": [
+            "ResourceForms"
+          ]
+        },
+        {
+          "path": "workbench/app/WorkPeriodFields.js",
+          "symbols": [
+            "WorkPeriodFields"
+          ]
+        },
+        {
+          "path": "workbench/app/WorkPeriods.js",
+          "symbols": [
+            "APSWorkPeriods"
+          ]
+        },
+        {
+          "path": "workbench/app/WorkbenchGuards.js",
+          "symbols": [
+            "WorkbenchGuards"
+          ]
+        },
+        {
+          "path": "workbench/app/resource-contract.js",
+          "symbols": [
+            "APSResourceContract"
+          ]
+        },
+        {
+          "path": "workbench/app/resource-session.js",
+          "symbols": [
+            "APSResourceSession"
+          ]
+        },
+        {
+          "path": "workbench/vendor/react-18.3.1.production.min.js",
+          "symbols": [
+            "React"
+          ]
+        }
+      ],
+      "license_sources": [
+        {
+          "component": "Workbench project content",
+          "status": "unknown",
+          "identifiers": [],
+          "requires_review": true,
+          "source": null,
+          "scope": "Only the listed source content; no license inferred from dependencies.",
+          "source_files": [
+            {
+              "path": "frontend/workbench/app/CalendarDefaultsDialog.jsx",
+              "sha256": "6f7ae750cc7534a08e34bd6c60d8edda4c34da56e1925251be351a37939f899e"
+            }
+          ],
+          "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
+        }
+      ],
+      "source_files": [
+        {
+          "path": "frontend/workbench/app/CalendarDefaultsDialog.jsx",
+          "sha256": "6f7ae750cc7534a08e34bd6c60d8edda4c34da56e1925251be351a37939f899e"
         }
       ]
     },
     {
       "path": "workbench/app/CalendarFields.js",
-      "sha256": "1294d1f673e73807d088eaa22ed3ee7a64630a700e1d6622a278b20dd1baeb11",
-      "bytes": 6310,
+      "sha256": "907fb055107b53435f1ea2391043cbbdbfb7ebecc600bcdd72cb63bc42f1ed09",
+      "bytes": 8517,
       "mime": "application/javascript",
       "dependencies": [
         "workbench/app/CalendarContract.js",
         "workbench/app/ResourceControls.js",
+        "workbench/app/WorkPeriodFields.js",
+        "workbench/app/WorkPeriods.js",
         "workbench/app/WorkbenchFormat.js",
         "workbench/vendor/react-18.3.1.production.min.js"
       ],
@@ -1749,6 +2054,18 @@
           "path": "workbench/app/ResourceControls.js",
           "symbols": [
             "ResourceControls"
+          ]
+        },
+        {
+          "path": "workbench/app/WorkPeriodFields.js",
+          "symbols": [
+            "WorkPeriodFields"
+          ]
+        },
+        {
+          "path": "workbench/app/WorkPeriods.js",
+          "symbols": [
+            "APSWorkPeriods"
           ]
         },
         {
@@ -1775,7 +2092,7 @@
           "source_files": [
             {
               "path": "frontend/workbench/app/CalendarFields.jsx",
-              "sha256": "14896031d492408ea135b11bf0616b652e8a42f72931920f50a6120376e0f4e0"
+              "sha256": "f013e30b150345223ddb7b286589074f8370e0bc1e4c69de62067d42639e0895"
             }
           ],
           "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
@@ -1784,7 +2101,7 @@
       "source_files": [
         {
           "path": "frontend/workbench/app/CalendarFields.jsx",
-          "sha256": "14896031d492408ea135b11bf0616b652e8a42f72931920f50a6120376e0f4e0"
+          "sha256": "f013e30b150345223ddb7b286589074f8370e0bc1e4c69de62067d42639e0895"
         }
       ]
     },
@@ -1912,14 +2229,15 @@
     },
     {
       "path": "workbench/app/CalendarRangeDialog.js",
-      "sha256": "fe9ad451105db05fa187380775c63fa59c3c9ae3512640aa66b685c311a2a004",
-      "bytes": 13594,
+      "sha256": "125f197adce780742f67247a16e390bfb57e0b69c8aef65888a1016a3a8b498c",
+      "bytes": 13722,
       "mime": "application/javascript",
       "dependencies": [
         "workbench/app/CalendarContract.js",
         "workbench/app/CalendarFields.js",
         "workbench/app/ResourceControls.js",
         "workbench/app/ResourceForms.js",
+        "workbench/app/WorkPeriods.js",
         "workbench/app/WorkbenchFormat.js",
         "workbench/app/WorkbenchGuards.js",
         "workbench/app/WorkbenchListControls.js",
@@ -1950,6 +2268,12 @@
           "path": "workbench/app/ResourceForms.js",
           "symbols": [
             "ResourceForms"
+          ]
+        },
+        {
+          "path": "workbench/app/WorkPeriods.js",
+          "symbols": [
+            "APSWorkPeriods"
           ]
         },
         {
@@ -2000,7 +2324,7 @@
           "source_files": [
             {
               "path": "frontend/workbench/app/CalendarRangeDialog.jsx",
-              "sha256": "8b368ce9cc7f89f7244063b0c0f56cae3536609963f7f07b3d497932fac17af8"
+              "sha256": "ccb6d03c9fcfe34632d3846abf441a34d84d4a51973471b64722245bf0920796"
             }
           ],
           "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
@@ -2009,7 +2333,7 @@
       "source_files": [
         {
           "path": "frontend/workbench/app/CalendarRangeDialog.jsx",
-          "sha256": "8b368ce9cc7f89f7244063b0c0f56cae3536609963f7f07b3d497932fac17af8"
+          "sha256": "ccb6d03c9fcfe34632d3846abf441a34d84d4a51973471b64722245bf0920796"
         }
       ]
     },
@@ -4544,6 +4868,88 @@
       ]
     },
     {
+      "path": "workbench/app/MachineDowntimePanel.js",
+      "sha256": "3cb8178d308bf1534b045513f4f656aa6863a0b921a267ab9c643b77d7527789",
+      "bytes": 9517,
+      "mime": "application/javascript",
+      "dependencies": [
+        "workbench/app/ResourceControls.js",
+        "workbench/app/ResourceForms.js",
+        "workbench/app/WorkbenchFormat.js",
+        "workbench/app/WorkbenchGuards.js",
+        "workbench/app/resource-contract.js",
+        "workbench/app/resource-session.js",
+        "workbench/vendor/react-18.3.1.production.min.js"
+      ],
+      "dependency_symbols": [
+        {
+          "path": "workbench/app/ResourceControls.js",
+          "symbols": [
+            "ResourceControls"
+          ]
+        },
+        {
+          "path": "workbench/app/ResourceForms.js",
+          "symbols": [
+            "ResourceForms"
+          ]
+        },
+        {
+          "path": "workbench/app/WorkbenchFormat.js",
+          "symbols": [
+            "WorkbenchFormat"
+          ]
+        },
+        {
+          "path": "workbench/app/WorkbenchGuards.js",
+          "symbols": [
+            "WorkbenchGuards"
+          ]
+        },
+        {
+          "path": "workbench/app/resource-contract.js",
+          "symbols": [
+            "APSResourceContract"
+          ]
+        },
+        {
+          "path": "workbench/app/resource-session.js",
+          "symbols": [
+            "APSResourceSession"
+          ]
+        },
+        {
+          "path": "workbench/vendor/react-18.3.1.production.min.js",
+          "symbols": [
+            "React"
+          ]
+        }
+      ],
+      "license_sources": [
+        {
+          "component": "Workbench project content",
+          "status": "unknown",
+          "identifiers": [],
+          "requires_review": true,
+          "source": null,
+          "scope": "Only the listed source content; no license inferred from dependencies.",
+          "source_files": [
+            {
+              "path": "frontend/workbench/app/MachineDowntimePanel.jsx",
+              "sha256": "c918d2766c9e685dce7e59589116399740f8f38165aa1e79a376be80e32f8d52"
+            }
+          ],
+          "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
+        }
+      ],
+      "source_files": [
+        {
+          "path": "frontend/workbench/app/MachineDowntimePanel.jsx",
+          "sha256": "c918d2766c9e685dce7e59589116399740f8f38165aa1e79a376be80e32f8d52"
+        }
+      ]
+    },
+    {
       "path": "workbench/app/MasterOverviewAPI.js",
       "sha256": "573d3f97e479f759542f0ad3e3f36132828555123072aec005abbd295af9176e",
       "bytes": 4205,
@@ -4914,14 +5320,21 @@
     },
     {
       "path": "workbench/app/OperatorCalendarContract.js",
-      "sha256": "473954868b47e4b95290b3df5789f67cb1bbd6b6f5f67f6595895853a3d4aac9",
-      "bytes": 7240,
+      "sha256": "9de069f7f32fca57ca624b922debfa833afe97e4eaa7d0fd74033541e28ddc16",
+      "bytes": 8163,
       "mime": "application/javascript",
       "dependencies": [
+        "workbench/app/WorkPeriods.js",
         "workbench/app/WorkbenchFormat.js",
         "workbench/app/resource-contract.js"
       ],
       "dependency_symbols": [
+        {
+          "path": "workbench/app/WorkPeriods.js",
+          "symbols": [
+            "APSWorkPeriods"
+          ]
+        },
         {
           "path": "workbench/app/WorkbenchFormat.js",
           "symbols": [
@@ -4946,7 +5359,7 @@
           "source_files": [
             {
               "path": "frontend/workbench/app/OperatorCalendarContract.js",
-              "sha256": "9c172d857c9438b5cdea110653449a2303643c6a474afb7f87b6903b34caf7b2"
+              "sha256": "cd53894466ed8c5ae0eae2e1759a0ccef6a61b264d0656fedc3387187b315ae7"
             }
           ],
           "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
@@ -4955,18 +5368,20 @@
       "source_files": [
         {
           "path": "frontend/workbench/app/OperatorCalendarContract.js",
-          "sha256": "9c172d857c9438b5cdea110653449a2303643c6a474afb7f87b6903b34caf7b2"
+          "sha256": "cd53894466ed8c5ae0eae2e1759a0ccef6a61b264d0656fedc3387187b315ae7"
         }
       ]
     },
     {
       "path": "workbench/app/OperatorCalendarPanel.js",
-      "sha256": "d7fd20ae5eca0c32c9924d30306ec23d1d0675db6868331116b425b25ef0e9eb",
-      "bytes": 23243,
+      "sha256": "1bf1a2c5310d33aef08012bef3d70d6c79a07a5a6b86af2296e72135ab76d2b4",
+      "bytes": 24984,
       "mime": "application/javascript",
       "dependencies": [
         "workbench/app/OperatorCalendarContract.js",
         "workbench/app/ResourceControls.js",
+        "workbench/app/WorkPeriodFields.js",
+        "workbench/app/WorkPeriods.js",
         "workbench/app/WorkbenchControls.js",
         "workbench/app/WorkbenchGuards.js",
         "workbench/app/WorkbenchTerms.js",
@@ -4985,6 +5400,18 @@
           "path": "workbench/app/ResourceControls.js",
           "symbols": [
             "ResourceControls"
+          ]
+        },
+        {
+          "path": "workbench/app/WorkPeriodFields.js",
+          "symbols": [
+            "WorkPeriodFields"
+          ]
+        },
+        {
+          "path": "workbench/app/WorkPeriods.js",
+          "symbols": [
+            "APSWorkPeriods"
           ]
         },
         {
@@ -5035,7 +5462,7 @@
           "source_files": [
             {
               "path": "frontend/workbench/app/OperatorCalendarPanel.jsx",
-              "sha256": "89ee7b156abe0f4dc6be539a6db16fb6b77b706adbe1df1d10a951aa084521a8"
+              "sha256": "aa0241b989fe385eecf0e769cfe1f19c1b6754b24726638791d62e0103d21f4d"
             }
           ],
           "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
@@ -5044,7 +5471,7 @@
       "source_files": [
         {
           "path": "frontend/workbench/app/OperatorCalendarPanel.jsx",
-          "sha256": "89ee7b156abe0f4dc6be539a6db16fb6b77b706adbe1df1d10a951aa084521a8"
+          "sha256": "aa0241b989fe385eecf0e769cfe1f19c1b6754b24726638791d62e0103d21f4d"
         }
       ]
     },
@@ -5125,8 +5552,8 @@
     },
     {
       "path": "workbench/app/OutsourcingContract.js",
-      "sha256": "045b6e1c6abb206762f0381a57466a076f30197c9f9dfd602aefa22f690a385b",
-      "bytes": 15024,
+      "sha256": "455962e54e31f9c7a7dac771e4eae92b60d3d8c78f716458e92ab6c28ef482b9",
+      "bytes": 15185,
       "mime": "application/javascript",
       "dependencies": [],
       "dependency_symbols": [],
@@ -5141,7 +5568,7 @@
           "source_files": [
             {
               "path": "frontend/workbench/app/OutsourcingContract.js",
-              "sha256": "18f98ccc3a5db4c660be117a83ec849ff3c78b90b953f43d5aaca8bafb0d61ad"
+              "sha256": "c427d3e981bfe82e9115f2b634db87f3b7839a12704ff844cb2988e983aacfbf"
             }
           ],
           "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
@@ -5150,14 +5577,14 @@
       "source_files": [
         {
           "path": "frontend/workbench/app/OutsourcingContract.js",
-          "sha256": "18f98ccc3a5db4c660be117a83ec849ff3c78b90b953f43d5aaca8bafb0d61ad"
+          "sha256": "c427d3e981bfe82e9115f2b634db87f3b7839a12704ff844cb2988e983aacfbf"
         }
       ]
     },
     {
       "path": "workbench/app/OutsourcingControls.js",
-      "sha256": "038ff54000b03259b5ab355b0f92f0e53e5c16af36ce4bf64bc11542ccde8061",
-      "bytes": 20289,
+      "sha256": "e9e622843115afd0634e1d5167f05e5f0ff0d16a63f8500c1ab26e6d951c6b07",
+      "bytes": 21521,
       "mime": "application/javascript",
       "dependencies": [
         "workbench/app/OutsourcingContract.js",
@@ -5237,7 +5664,7 @@
           "source_files": [
             {
               "path": "frontend/workbench/app/OutsourcingControls.jsx",
-              "sha256": "121ccdddbe81ba49f531180ace5f05afdb1b6baa578d7a1d95060d8d951bd07f"
+              "sha256": "f1589dc24dfbc2fec1164b3b82d8c010a6360792ceecc6aa98b083c386a225ac"
             }
           ],
           "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
@@ -5246,14 +5673,14 @@
       "source_files": [
         {
           "path": "frontend/workbench/app/OutsourcingControls.jsx",
-          "sha256": "121ccdddbe81ba49f531180ace5f05afdb1b6baa578d7a1d95060d8d951bd07f"
+          "sha256": "f1589dc24dfbc2fec1164b3b82d8c010a6360792ceecc6aa98b083c386a225ac"
         }
       ]
     },
     {
       "path": "workbench/app/OutsourcingSession.js",
-      "sha256": "d83966ff350ee7f1c94231f053a625da17f167f3b8f6bb454f9e40e1d354ea33",
-      "bytes": 8698,
+      "sha256": "fb15e4d322daf21877483fa4cd489ee5daad533c1504cecc6d71b3a55f08154d",
+      "bytes": 8965,
       "mime": "application/javascript",
       "dependencies": [
         "workbench/app/OutsourcingContract.js",
@@ -5298,7 +5725,7 @@
           "source_files": [
             {
               "path": "frontend/workbench/app/OutsourcingSession.js",
-              "sha256": "fd9a56314e9119a9136d585ca466f133c93ed268775345fe79b73fe93b9ff1a3"
+              "sha256": "9e086ed838e286920fc68e9b30f57e01c7f459380690a369c8ec216b4bf6a5d2"
             }
           ],
           "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
@@ -5307,7 +5734,7 @@
       "source_files": [
         {
           "path": "frontend/workbench/app/OutsourcingSession.js",
-          "sha256": "fd9a56314e9119a9136d585ca466f133c93ed268775345fe79b73fe93b9ff1a3"
+          "sha256": "9e086ed838e286920fc68e9b30f57e01c7f459380690a369c8ec216b4bf6a5d2"
         }
       ]
     },
@@ -6434,8 +6861,8 @@
     },
     {
       "path": "workbench/app/PreflightBatchPicker.js",
-      "sha256": "18af305f026bd91965ad7a7d484a1b63fdeaff6bd6d3bd794e5901a98742db24",
-      "bytes": 9145,
+      "sha256": "135241909c5d194cd16c71defad2ed35f645f8b0cdb2603c1da69885f1b1ce56",
+      "bytes": 9162,
       "mime": "application/javascript",
       "dependencies": [
         "workbench/app/BatchContract.js",
@@ -6508,7 +6935,7 @@
           "source_files": [
             {
               "path": "frontend/workbench/app/PreflightBatchPicker.jsx",
-              "sha256": "9e353cd6160d397dcd63306f9069db45bb35a53cb1e2b9eb4eb363dff185d5c0"
+              "sha256": "45b619d25e712a3df0f72600523ef1751a0cb321945041dde82d5692aa9e87ad"
             }
           ],
           "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
@@ -6517,14 +6944,14 @@
       "source_files": [
         {
           "path": "frontend/workbench/app/PreflightBatchPicker.jsx",
-          "sha256": "9e353cd6160d397dcd63306f9069db45bb35a53cb1e2b9eb4eb363dff185d5c0"
+          "sha256": "45b619d25e712a3df0f72600523ef1751a0cb321945041dde82d5692aa9e87ad"
         }
       ]
     },
     {
       "path": "workbench/app/PreflightContract.js",
-      "sha256": "e092b5383f37b53528ea7c47fa61cef07cded5dea345146a6f1df609c9d00f20",
-      "bytes": 8879,
+      "sha256": "bef8bfb64861f1c45d93b3a6a470dae762ed3261906cc47cc94b1f0ba6ab6bb9",
+      "bytes": 9265,
       "mime": "application/javascript",
       "dependencies": [
         "workbench/app/WorkbenchTerms.js"
@@ -6548,7 +6975,7 @@
           "source_files": [
             {
               "path": "frontend/workbench/app/PreflightContract.js",
-              "sha256": "e753aaa82707bb87f213f256bad4bb4b4d3beef350c0a9d2a6f664a85542fce3"
+              "sha256": "4b85c8a8eb74f950303e9ca386a3f04dbfaab498a89b5d8c1f5dbff95aa58e10"
             }
           ],
           "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
@@ -6557,14 +6984,14 @@
       "source_files": [
         {
           "path": "frontend/workbench/app/PreflightContract.js",
-          "sha256": "e753aaa82707bb87f213f256bad4bb4b4d3beef350c0a9d2a6f664a85542fce3"
+          "sha256": "4b85c8a8eb74f950303e9ca386a3f04dbfaab498a89b5d8c1f5dbff95aa58e10"
         }
       ]
     },
     {
       "path": "workbench/app/PreflightControls.js",
-      "sha256": "4569905fd36a5fe84ababd753e9920e9f4860bb21a38f51a5d02ae17c655a81a",
-      "bytes": 6059,
+      "sha256": "fa4f9dd0466dbdda3dbb269e6c5b203f9f6c75b09d32e0be2f4936d3667b8293",
+      "bytes": 7061,
       "mime": "application/javascript",
       "dependencies": [
         "workbench/app/ResourceControls.js",
@@ -6602,7 +7029,7 @@
           "source_files": [
             {
               "path": "frontend/workbench/app/PreflightControls.jsx",
-              "sha256": "dabff98d84550321926a20b6d6eacd6239b369fbf3ede400d42796df72e83fd5"
+              "sha256": "bae35ab3537cc06cfd8643cc7e6df0937a828e5fbd856db52490c84edc00d6c8"
             }
           ],
           "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
@@ -6611,16 +7038,17 @@
       "source_files": [
         {
           "path": "frontend/workbench/app/PreflightControls.jsx",
-          "sha256": "dabff98d84550321926a20b6d6eacd6239b369fbf3ede400d42796df72e83fd5"
+          "sha256": "bae35ab3537cc06cfd8643cc7e6df0937a828e5fbd856db52490c84edc00d6c8"
         }
       ]
     },
     {
       "path": "workbench/app/PreflightWorkspace.js",
-      "sha256": "9c5848f1c5661848c82b43c49420a9712b9c7dd096e9b82e99487f805e4faf62",
-      "bytes": 15831,
+      "sha256": "a832b5634b5f2b2d3018de8ee8f7d9556b44d621cb9d86360db6e9e7019a4503",
+      "bytes": 16328,
       "mime": "application/javascript",
       "dependencies": [
+        "workbench/app/BatchSplitPanel.js",
         "workbench/app/PreflightAPI.js",
         "workbench/app/PreflightBatchPicker.js",
         "workbench/app/PreflightContract.js",
@@ -6633,6 +7061,12 @@
         "workbench/vendor/react-18.3.1.production.min.js"
       ],
       "dependency_symbols": [
+        {
+          "path": "workbench/app/BatchSplitPanel.js",
+          "symbols": [
+            "BatchSplitPanel"
+          ]
+        },
         {
           "path": "workbench/app/PreflightAPI.js",
           "symbols": [
@@ -6705,7 +7139,7 @@
           "source_files": [
             {
               "path": "frontend/workbench/app/PreflightWorkspace.jsx",
-              "sha256": "61a641db139bac7e5036394c650d50e5d76373b00fd21ef4aba6ea5dc5386af1"
+              "sha256": "d23e4dd352e5fdc8139a1d59dfcc9e862f08dc9d45160c4474763a44db677570"
             }
           ],
           "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
@@ -6714,14 +7148,14 @@
       "source_files": [
         {
           "path": "frontend/workbench/app/PreflightWorkspace.jsx",
-          "sha256": "61a641db139bac7e5036394c650d50e5d76373b00fd21ef4aba6ea5dc5386af1"
+          "sha256": "d23e4dd352e5fdc8139a1d59dfcc9e862f08dc9d45160c4474763a44db677570"
         }
       ]
     },
     {
       "path": "workbench/app/ProcessAPI.js",
-      "sha256": "2c83cc0366d1258af53db290eddd784d19c31e8e1469f5433d76df47b3110772",
-      "bytes": 4849,
+      "sha256": "cbfbec86f6995db252daf72a9b8156069eee7e9b926d5f75ff00b11f977aacca",
+      "bytes": 4894,
       "mime": "application/javascript",
       "dependencies": [
         "workbench/app/ProcessContract.js",
@@ -6759,7 +7193,7 @@
           "source_files": [
             {
               "path": "frontend/workbench/app/ProcessAPI.js",
-              "sha256": "7b1acec71dca49c8f2bd6139eedf0165419775f788a3cabeee998ac77756297f"
+              "sha256": "3cd2bde5c345663c9dd0d62b441f4be0548aecb6ce15264d95fd5353b27ca2fb"
             }
           ],
           "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
@@ -6768,14 +7202,14 @@
       "source_files": [
         {
           "path": "frontend/workbench/app/ProcessAPI.js",
-          "sha256": "7b1acec71dca49c8f2bd6139eedf0165419775f788a3cabeee998ac77756297f"
+          "sha256": "3cd2bde5c345663c9dd0d62b441f4be0548aecb6ce15264d95fd5353b27ca2fb"
         }
       ]
     },
     {
       "path": "workbench/app/ProcessActionContract.js",
-      "sha256": "b8aea82afbad5ba580daae579d1595d257b69423bd3c47e5544c19defee933ef",
-      "bytes": 8376,
+      "sha256": "5f43e749b651bc5d6f4ee5e7f16bb157d810bb49cfd884774f3a71988a6dee74",
+      "bytes": 8394,
       "mime": "application/javascript",
       "dependencies": [
         "workbench/app/ProcessContract.js",
@@ -6827,7 +7261,7 @@
           "source_files": [
             {
               "path": "frontend/workbench/app/ProcessActionContract.js",
-              "sha256": "d94cf5479e5ea945408a4ede9cf3faef3220f62904751bf1f84f7d69bbc94dea"
+              "sha256": "1877f9f61999563cea676e6783ade373bd21237896de825a617fe666fbe6d08a"
             }
           ],
           "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
@@ -6836,7 +7270,7 @@
       "source_files": [
         {
           "path": "frontend/workbench/app/ProcessActionContract.js",
-          "sha256": "d94cf5479e5ea945408a4ede9cf3faef3220f62904751bf1f84f7d69bbc94dea"
+          "sha256": "1877f9f61999563cea676e6783ade373bd21237896de825a617fe666fbe6d08a"
         }
       ]
     },
@@ -7006,8 +7440,8 @@
     },
     {
       "path": "workbench/app/ProcessContract.js",
-      "sha256": "4a2103ffde850e0db397b0fbf34516d9b707b9a115c3f6496bd61f55e80bb2ea",
-      "bytes": 14838,
+      "sha256": "5180e508183e2b7117f827cb8acb51ec617cba2a001c29f32af1c3a36b401e4f",
+      "bytes": 15607,
       "mime": "application/javascript",
       "dependencies": [
         "workbench/app/WorkbenchFormat.js",
@@ -7045,7 +7479,7 @@
           "source_files": [
             {
               "path": "frontend/workbench/app/ProcessContract.js",
-              "sha256": "2cf9056ca29e54f820a09b5cbc1c5fba5b300b1a174b5e2ec512e2fe427a527a"
+              "sha256": "9f8bc72779af640ddf1e781c693cf02817f508054d7bd81ad6b2ff9772f043db"
             }
           ],
           "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
@@ -7054,7 +7488,7 @@
       "source_files": [
         {
           "path": "frontend/workbench/app/ProcessContract.js",
-          "sha256": "2cf9056ca29e54f820a09b5cbc1c5fba5b300b1a174b5e2ec512e2fe427a527a"
+          "sha256": "9f8bc72779af640ddf1e781c693cf02817f508054d7bd81ad6b2ff9772f043db"
         }
       ]
     },
@@ -7114,8 +7548,8 @@
     },
     {
       "path": "workbench/app/ProcessDetail.js",
-      "sha256": "288e1e961751638f15f8846a9e22f0d64117b31f79f55ce8d11646f76738274a",
-      "bytes": 29064,
+      "sha256": "8c8ff37ec3e09b87e1142ff3cf5e968b2e6445ca7b93d22c7a56a408a04b6cba",
+      "bytes": 29126,
       "mime": "application/javascript",
       "dependencies": [
         "workbench/app/ProcessContract.js",
@@ -7244,7 +7678,7 @@
           "source_files": [
             {
               "path": "frontend/workbench/app/ProcessDetail.jsx",
-              "sha256": "60802f6a7a200d2f865349b03e3131f68dcab984966bdf18f4af68eb7a91ca68"
+              "sha256": "76789ee98155c392c3ab7f263546b8ac0395f83403fa5825f4ac1b12c91ee383"
             }
           ],
           "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
@@ -7253,7 +7687,7 @@
       "source_files": [
         {
           "path": "frontend/workbench/app/ProcessDetail.jsx",
-          "sha256": "60802f6a7a200d2f865349b03e3131f68dcab984966bdf18f4af68eb7a91ca68"
+          "sha256": "76789ee98155c392c3ab7f263546b8ac0395f83403fa5825f4ac1b12c91ee383"
         }
       ]
     },
@@ -7384,8 +7818,8 @@
     },
     {
       "path": "workbench/app/ProcessFileContract.js",
-      "sha256": "27594793a8ca31552d1761162f17e06f1d4313edae12a7357dea1b982de7d629",
-      "bytes": 13382,
+      "sha256": "84a421fd072c33ad43130d46cae92e79903faef15a457ca5c152b9a1abfac1b9",
+      "bytes": 14381,
       "mime": "application/javascript",
       "dependencies": [
         "workbench/app/ProcessActionContract.js",
@@ -7437,7 +7871,7 @@
           "source_files": [
             {
               "path": "frontend/workbench/app/ProcessFileContract.js",
-              "sha256": "8a4697c52af6c2a2fcf549e7823c1513745f715a8d2dcb2d7d2dc7ec8031eedf"
+              "sha256": "07017bb5e682bebdb40f3309b3958a85d9412a3dc7fcc238bd447aa0e5762f29"
             }
           ],
           "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
@@ -7446,14 +7880,14 @@
       "source_files": [
         {
           "path": "frontend/workbench/app/ProcessFileContract.js",
-          "sha256": "8a4697c52af6c2a2fcf549e7823c1513745f715a8d2dcb2d7d2dc7ec8031eedf"
+          "sha256": "07017bb5e682bebdb40f3309b3958a85d9412a3dc7fcc238bd447aa0e5762f29"
         }
       ]
     },
     {
       "path": "workbench/app/ProcessFilePreview.js",
-      "sha256": "de792d01dd152328207859c1d10dfe295aaf8e39c35c6cdd0a4c594e22bfd94f",
-      "bytes": 15932,
+      "sha256": "991db3afc5e69d93a7949f8cac69e3ee871be0a0e43cfdd4103ec074540af110",
+      "bytes": 19025,
       "mime": "application/javascript",
       "dependencies": [
         "workbench/app/ProcessActionPreview.js",
@@ -7512,7 +7946,7 @@
           "source_files": [
             {
               "path": "frontend/workbench/app/ProcessFilePreview.jsx",
-              "sha256": "d384443ebfa9b470f768405e866078d089d079571dbcf7aa31b47c2444c690f1"
+              "sha256": "10be608c07545338f60d40b1489b4a3db8982018d86c407b0e044020a9ba2b4a"
             }
           ],
           "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
@@ -7521,18 +7955,108 @@
       "source_files": [
         {
           "path": "frontend/workbench/app/ProcessFilePreview.jsx",
-          "sha256": "d384443ebfa9b470f768405e866078d089d079571dbcf7aa31b47c2444c690f1"
+          "sha256": "10be608c07545338f60d40b1489b4a3db8982018d86c407b0e044020a9ba2b4a"
+        }
+      ]
+    },
+    {
+      "path": "workbench/app/ProcessGroupEditor.js",
+      "sha256": "a9fe74b74528e57bbaa59e3cf2ad3725d2c3be3dd1d061385c3eb89345a68462",
+      "bytes": 18160,
+      "mime": "application/javascript",
+      "dependencies": [
+        "workbench/app/ProcessContract.js",
+        "workbench/app/ProcessSourceEditor.js",
+        "workbench/app/ProcessStageEditor.js",
+        "workbench/app/ResourceControls.js",
+        "workbench/app/ResourceForms.js",
+        "workbench/app/resource-contract.js",
+        "workbench/vendor/react-18.3.1.production.min.js",
+        "workbench/vendor/react-dom-18.3.1.production.min.js"
+      ],
+      "dependency_symbols": [
+        {
+          "path": "workbench/app/ProcessContract.js",
+          "symbols": [
+            "APSProcessContract"
+          ]
+        },
+        {
+          "path": "workbench/app/ProcessSourceEditor.js",
+          "symbols": [
+            "ProcessSourcePicker"
+          ]
+        },
+        {
+          "path": "workbench/app/ProcessStageEditor.js",
+          "symbols": [
+            "ProcessStageEditor"
+          ]
+        },
+        {
+          "path": "workbench/app/ResourceControls.js",
+          "symbols": [
+            "ResourceControls"
+          ]
+        },
+        {
+          "path": "workbench/app/ResourceForms.js",
+          "symbols": [
+            "ResourceForms"
+          ]
+        },
+        {
+          "path": "workbench/app/resource-contract.js",
+          "symbols": [
+            "APSResourceContract"
+          ]
+        },
+        {
+          "path": "workbench/vendor/react-18.3.1.production.min.js",
+          "symbols": [
+            "React"
+          ]
+        },
+        {
+          "path": "workbench/vendor/react-dom-18.3.1.production.min.js",
+          "symbols": [
+            "ReactDOM"
+          ]
+        }
+      ],
+      "license_sources": [
+        {
+          "component": "Workbench project content",
+          "status": "unknown",
+          "identifiers": [],
+          "requires_review": true,
+          "source": null,
+          "scope": "Only the listed source content; no license inferred from dependencies.",
+          "source_files": [
+            {
+              "path": "frontend/workbench/app/ProcessGroupEditor.jsx",
+              "sha256": "d939ac9c5289cc9fd1220dbc3023e3288965c7ce7b36f0dad1e8e1523eaedaba"
+            }
+          ],
+          "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
+        }
+      ],
+      "source_files": [
+        {
+          "path": "frontend/workbench/app/ProcessGroupEditor.jsx",
+          "sha256": "d939ac9c5289cc9fd1220dbc3023e3288965c7ce7b36f0dad1e8e1523eaedaba"
         }
       ]
     },
     {
       "path": "workbench/app/ProcessHoursEditor.js",
-      "sha256": "4632b5866ce1bbf5075a4d985cd3afe36341bd1c04ca835c11200ed3f1db2bd9",
-      "bytes": 15369,
+      "sha256": "c33202e96904d2704787c76b738e3c7eb2bc9219a58b93d554e1aa26cdf404fe",
+      "bytes": 17018,
       "mime": "application/javascript",
       "dependencies": [
         "workbench/app/ProcessContract.js",
         "workbench/app/ProcessControls.js",
+        "workbench/app/ProcessGroupEditor.js",
         "workbench/app/ProcessStageEditor.js",
         "workbench/app/ResourceControls.js",
         "workbench/app/resource-contract.js",
@@ -7550,6 +8074,12 @@
           "path": "workbench/app/ProcessControls.js",
           "symbols": [
             "ProcessFileButtons"
+          ]
+        },
+        {
+          "path": "workbench/app/ProcessGroupEditor.js",
+          "symbols": [
+            "ProcessGroupEditor"
           ]
         },
         {
@@ -7594,7 +8124,7 @@
           "source_files": [
             {
               "path": "frontend/workbench/app/ProcessHoursEditor.jsx",
-              "sha256": "b3f85498c014508a36de540096e0ce0de698225bf69e17db19d86777383b61b9"
+              "sha256": "3996b577e62334f54768edf94ea13cf7e1d8b4cfd2e830d3e88f7bad117e13d9"
             }
           ],
           "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
@@ -7603,7 +8133,7 @@
       "source_files": [
         {
           "path": "frontend/workbench/app/ProcessHoursEditor.jsx",
-          "sha256": "b3f85498c014508a36de540096e0ce0de698225bf69e17db19d86777383b61b9"
+          "sha256": "3996b577e62334f54768edf94ea13cf7e1d8b4cfd2e830d3e88f7bad117e13d9"
         }
       ]
     },
@@ -7737,12 +8267,44 @@
       ]
     },
     {
+      "path": "workbench/app/ProcessRouteDraft.js",
+      "sha256": "e552954157bd77ae430f31661d90644c44b10a02fe9f687098167405f0d89a78",
+      "bytes": 1909,
+      "mime": "application/javascript",
+      "dependencies": [],
+      "dependency_symbols": [],
+      "license_sources": [
+        {
+          "component": "Workbench project content",
+          "status": "unknown",
+          "identifiers": [],
+          "requires_review": true,
+          "source": null,
+          "scope": "Only the listed source content; no license inferred from dependencies.",
+          "source_files": [
+            {
+              "path": "frontend/workbench/app/ProcessRouteDraft.js",
+              "sha256": "b28e986ae5efedb9ce62882eb8ac3a0c247bad93e9937ac5af2c2795a91f06a4"
+            }
+          ],
+          "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
+        }
+      ],
+      "source_files": [
+        {
+          "path": "frontend/workbench/app/ProcessRouteDraft.js",
+          "sha256": "b28e986ae5efedb9ce62882eb8ac3a0c247bad93e9937ac5af2c2795a91f06a4"
+        }
+      ]
+    },
+    {
       "path": "workbench/app/ProcessRouteEntry.js",
-      "sha256": "9bd663671d7bcded539b28b08e0ca2f3dd14cf99c786574536230b1c30ade0ba",
-      "bytes": 19888,
+      "sha256": "d5c4b6a43121ba3075b6098166ee24a0b95c4f40d377054662c176fb9113d5f9",
+      "bytes": 25906,
       "mime": "application/javascript",
       "dependencies": [
         "workbench/app/ProcessContract.js",
+        "workbench/app/ProcessRouteDraft.js",
         "workbench/app/ProcessStageEditor.js",
         "workbench/app/ResourceControls.js",
         "workbench/app/ResourceForms.js",
@@ -7757,6 +8319,12 @@
           "path": "workbench/app/ProcessContract.js",
           "symbols": [
             "APSProcessContract"
+          ]
+        },
+        {
+          "path": "workbench/app/ProcessRouteDraft.js",
+          "symbols": [
+            "ProcessRouteDraft"
           ]
         },
         {
@@ -7819,7 +8387,7 @@
           "source_files": [
             {
               "path": "frontend/workbench/app/ProcessRouteEntry.jsx",
-              "sha256": "27c98883e8ef2cdc794b48592d8f141258b974115f71e4c0f32cc45450d0259f"
+              "sha256": "bc83d1908c6f09645de411052432d9abb632672098332deacde65a3c84694c0a"
             }
           ],
           "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
@@ -7828,14 +8396,14 @@
       "source_files": [
         {
           "path": "frontend/workbench/app/ProcessRouteEntry.jsx",
-          "sha256": "27c98883e8ef2cdc794b48592d8f141258b974115f71e4c0f32cc45450d0259f"
+          "sha256": "bc83d1908c6f09645de411052432d9abb632672098332deacde65a3c84694c0a"
         }
       ]
     },
     {
       "path": "workbench/app/ProcessSourceEditor.js",
-      "sha256": "4b4f69ee53f37c14ea985a6b7a11564e8087cc1ff024fd4f0ea525460247c0b4",
-      "bytes": 18924,
+      "sha256": "a947f5238c56617a884730d5b4ffaa909b77ce5ec7ceed25df0dd01ca832a3ee",
+      "bytes": 24060,
       "mime": "application/javascript",
       "dependencies": [
         "workbench/app/ProcessContract.js",
@@ -7922,7 +8490,7 @@
           "source_files": [
             {
               "path": "frontend/workbench/app/ProcessSourceEditor.jsx",
-              "sha256": "8a902b51fd0d41d1857a92d5fdc0167fcc08bdc5a20ce86089595c3b569f65d6"
+              "sha256": "a636e464d8319ea76ca96611a37c9d13f9ce9b1fa55f5d1acdba8c9da0f67120"
             }
           ],
           "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
@@ -7931,7 +8499,7 @@
       "source_files": [
         {
           "path": "frontend/workbench/app/ProcessSourceEditor.jsx",
-          "sha256": "8a902b51fd0d41d1857a92d5fdc0167fcc08bdc5a20ce86089595c3b569f65d6"
+          "sha256": "a636e464d8319ea76ca96611a37c9d13f9ce9b1fa55f5d1acdba8c9da0f67120"
         }
       ]
     },
@@ -8839,17 +9407,19 @@
     },
     {
       "path": "workbench/app/ResourceCalendar.js",
-      "sha256": "d12d99585bbe2cde09d5451d3156459ab6d9bc7d365fcbe8fbf88cc8b194bf6d",
-      "bytes": 18678,
+      "sha256": "fd6c903edde5acd09d683db2028913967eed4595b9a920420c1e67256a26075b",
+      "bytes": 19544,
       "mime": "application/javascript",
       "dependencies": [
         "workbench/app/CalendarContract.js",
         "workbench/app/CalendarDayDialog.js",
+        "workbench/app/CalendarDefaultsDialog.js",
         "workbench/app/CalendarFields.js",
         "workbench/app/CalendarRangeDialog.js",
         "workbench/app/ResourceControls.js",
         "workbench/app/ResourceForms.js",
         "workbench/app/ResourceWorkspace.js",
+        "workbench/app/WorkPeriods.js",
         "workbench/app/WorkbenchControls.js",
         "workbench/app/WorkbenchFormat.js",
         "workbench/app/WorkbenchPageContext.js",
@@ -8870,6 +9440,12 @@
           "path": "workbench/app/CalendarDayDialog.js",
           "symbols": [
             "CalendarDayDialog"
+          ]
+        },
+        {
+          "path": "workbench/app/CalendarDefaultsDialog.js",
+          "symbols": [
+            "CalendarDefaultsDialog"
           ]
         },
         {
@@ -8900,6 +9476,12 @@
           "path": "workbench/app/ResourceWorkspace.js",
           "symbols": [
             "ResourceWorkspace"
+          ]
+        },
+        {
+          "path": "workbench/app/WorkPeriods.js",
+          "symbols": [
+            "APSWorkPeriods"
           ]
         },
         {
@@ -8962,7 +9544,7 @@
           "source_files": [
             {
               "path": "frontend/workbench/app/ResourceCalendar.jsx",
-              "sha256": "4e249e5fbcd87f04c4709ef1dc92d91268a768688dc9a4fb9b9bd3b8fe75a71f"
+              "sha256": "291637efacd3fad68d26ab108bf090a33f6e66067423bab35d3d70f73db1f10f"
             }
           ],
           "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
@@ -8971,20 +9553,21 @@
       "source_files": [
         {
           "path": "frontend/workbench/app/ResourceCalendar.jsx",
-          "sha256": "4e249e5fbcd87f04c4709ef1dc92d91268a768688dc9a4fb9b9bd3b8fe75a71f"
+          "sha256": "291637efacd3fad68d26ab108bf090a33f6e66067423bab35d3d70f73db1f10f"
         }
       ]
     },
     {
       "path": "workbench/app/ResourceCatalog.js",
-      "sha256": "e734ede57c723051969100835f43f6a06180584b28591de6ae965299519370f4",
-      "bytes": 17764,
+      "sha256": "dc5a08557d5b6d17523e9712e80f8e48d6866313bab0ec03ccffffca268cc1c5",
+      "bytes": 18159,
       "mime": "application/javascript",
       "dependencies": [
         "workbench/app/ResourceCatalogEditor.js",
         "workbench/app/ResourceCatalogModel.js",
         "workbench/app/ResourceControls.js",
         "workbench/app/ResourceForms.js",
+        "workbench/app/WorkPeriods.js",
         "workbench/app/WorkbenchGuards.js",
         "workbench/app/WorkbenchListControls.js",
         "workbench/app/WorkbenchReferences.js",
@@ -9016,6 +9599,12 @@
           "path": "workbench/app/ResourceForms.js",
           "symbols": [
             "ResourceForms"
+          ]
+        },
+        {
+          "path": "workbench/app/WorkPeriods.js",
+          "symbols": [
+            "APSWorkPeriods"
           ]
         },
         {
@@ -9072,7 +9661,7 @@
           "source_files": [
             {
               "path": "frontend/workbench/app/ResourceCatalog.jsx",
-              "sha256": "c0611898e0bd162435b6c1334efdd8487ff046240a356b74eb31a143cd95ff72"
+              "sha256": "4a98f3cf989b050d9dcb40cca1cdc4efca501c0e40c46545b4b59c480958b0e2"
             }
           ],
           "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
@@ -9081,18 +9670,20 @@
       "source_files": [
         {
           "path": "frontend/workbench/app/ResourceCatalog.jsx",
-          "sha256": "c0611898e0bd162435b6c1334efdd8487ff046240a356b74eb31a143cd95ff72"
+          "sha256": "4a98f3cf989b050d9dcb40cca1cdc4efca501c0e40c46545b4b59c480958b0e2"
         }
       ]
     },
     {
       "path": "workbench/app/ResourceCatalogEditor.js",
-      "sha256": "a5ffdc5c8abb837b7f09d6a2edf8f3e2d805c395cbef9bca5f4a1ebda4bcad68",
-      "bytes": 13143,
+      "sha256": "b1a59c258f7502deae0e79e8db783027380bf59fb70f871f65a3886da6ac4d16",
+      "bytes": 14921,
       "mime": "application/javascript",
       "dependencies": [
         "workbench/app/ResourceCatalogModel.js",
         "workbench/app/ResourceControls.js",
+        "workbench/app/WorkPeriodFields.js",
+        "workbench/app/WorkPeriods.js",
         "workbench/app/WorkbenchFormat.js",
         "workbench/app/WorkbenchListControls.js",
         "workbench/app/resource-contract.js",
@@ -9109,6 +9700,18 @@
           "path": "workbench/app/ResourceControls.js",
           "symbols": [
             "ResourceControls"
+          ]
+        },
+        {
+          "path": "workbench/app/WorkPeriodFields.js",
+          "symbols": [
+            "WorkPeriodFields"
+          ]
+        },
+        {
+          "path": "workbench/app/WorkPeriods.js",
+          "symbols": [
+            "APSWorkPeriods"
           ]
         },
         {
@@ -9147,7 +9750,7 @@
           "source_files": [
             {
               "path": "frontend/workbench/app/ResourceCatalogEditor.jsx",
-              "sha256": "47bcc2fab7acb1d8d31cc2f6b9c2b97e02cf76ccd0977bb3c2cbfd1a80e9c958"
+              "sha256": "3874545a048fe37716d444bd05cde553fce2582d76d33f403be0e7d2fbab4eca"
             }
           ],
           "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
@@ -9156,19 +9759,26 @@
       "source_files": [
         {
           "path": "frontend/workbench/app/ResourceCatalogEditor.jsx",
-          "sha256": "47bcc2fab7acb1d8d31cc2f6b9c2b97e02cf76ccd0977bb3c2cbfd1a80e9c958"
+          "sha256": "3874545a048fe37716d444bd05cde553fce2582d76d33f403be0e7d2fbab4eca"
         }
       ]
     },
     {
       "path": "workbench/app/ResourceCatalogModel.js",
-      "sha256": "96f090a322ed6d1d574db2390a90f1fbb990f18706a9c663fa41ef4029271114",
-      "bytes": 4830,
+      "sha256": "0c4c68ea53edd2dde00f27e0b81ab17c4e9e15b66f362a6be2832c345b4e5eaa",
+      "bytes": 5274,
       "mime": "application/javascript",
       "dependencies": [
+        "workbench/app/WorkPeriods.js",
         "workbench/app/resource-contract.js"
       ],
       "dependency_symbols": [
+        {
+          "path": "workbench/app/WorkPeriods.js",
+          "symbols": [
+            "APSWorkPeriods"
+          ]
+        },
         {
           "path": "workbench/app/resource-contract.js",
           "symbols": [
@@ -9187,7 +9797,7 @@
           "source_files": [
             {
               "path": "frontend/workbench/app/ResourceCatalogModel.js",
-              "sha256": "7d5eb255cbe75f8c2dea55b8e1abe89350116c0895d9f3525185db486f49bb6b"
+              "sha256": "787c4440a42532aca4464b92e5e01d639262f1e02133c49957406ff00419a8d0"
             }
           ],
           "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
@@ -9196,14 +9806,14 @@
       "source_files": [
         {
           "path": "frontend/workbench/app/ResourceCatalogModel.js",
-          "sha256": "7d5eb255cbe75f8c2dea55b8e1abe89350116c0895d9f3525185db486f49bb6b"
+          "sha256": "787c4440a42532aca4464b92e5e01d639262f1e02133c49957406ff00419a8d0"
         }
       ]
     },
     {
       "path": "workbench/app/ResourceControls.js",
-      "sha256": "9422c15c96097cbcb8c7245ca2f64c9ccbbd3411a4bc6146a4d3b3948ba762cc",
-      "bytes": 38734,
+      "sha256": "3b63b390fe140669021a2bff326c44946a87e4820febfbfeab82a79d90fc05db",
+      "bytes": 38750,
       "mime": "application/javascript",
       "dependencies": [
         "workbench/app/WorkbenchGuards.js",
@@ -9265,7 +9875,7 @@
           "source_files": [
             {
               "path": "frontend/workbench/app/ResourceControls.jsx",
-              "sha256": "785b60b8aed4826298939aae54de6bfb7807bfad66c5b8ff424e4dc40963f42b"
+              "sha256": "d9dfdc6490da51f24c360cd75d841ad8b62c3de680ded7d2d3555b8926acb50f"
             }
           ],
           "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
@@ -9274,14 +9884,14 @@
       "source_files": [
         {
           "path": "frontend/workbench/app/ResourceControls.jsx",
-          "sha256": "785b60b8aed4826298939aae54de6bfb7807bfad66c5b8ff424e4dc40963f42b"
+          "sha256": "d9dfdc6490da51f24c360cd75d841ad8b62c3de680ded7d2d3555b8926acb50f"
         }
       ]
     },
     {
       "path": "workbench/app/ResourceDetailRelations.js",
-      "sha256": "dc4e18f5b070de63dab9106e1296190e2806513a82fc29cf5b68197345185b03",
-      "bytes": 8872,
+      "sha256": "096fc28a56196891999fbd3e306071e65afafa56f23f6d888e93fc1a0fd2423e",
+      "bytes": 8965,
       "mime": "application/javascript",
       "dependencies": [
         "workbench/app/ResourceControls.js",
@@ -9333,7 +9943,7 @@
           "source_files": [
             {
               "path": "frontend/workbench/app/ResourceDetailRelations.jsx",
-              "sha256": "52d844c0d903e4fffb285a31d00c6f91034c9c22676add3ae8177551e63bf4f6"
+              "sha256": "a33df9e8296aeff4badd05f6dd3dac968750a6201c1368a140474de9877fe919"
             }
           ],
           "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
@@ -9342,7 +9952,7 @@
       "source_files": [
         {
           "path": "frontend/workbench/app/ResourceDetailRelations.jsx",
-          "sha256": "52d844c0d903e4fffb285a31d00c6f91034c9c22676add3ae8177551e63bf4f6"
+          "sha256": "a33df9e8296aeff4badd05f6dd3dac968750a6201c1368a140474de9877fe919"
         }
       ]
     },
@@ -9456,8 +10066,8 @@
     },
     {
       "path": "workbench/app/ResourceForms.js",
-      "sha256": "1a171ddabc3abd28d36e08957d43d5c1fb24ad1cb6fc6f8daa59daf2ed6b0ae9",
-      "bytes": 31618,
+      "sha256": "fc989cb1c727eca213c585876816c46691693551ae30f1dd9a488e29ae6aaa99",
+      "bytes": 32080,
       "mime": "application/javascript",
       "dependencies": [
         "workbench/app/ResourceControls.js",
@@ -9523,7 +10133,7 @@
           "source_files": [
             {
               "path": "frontend/workbench/app/ResourceForms.jsx",
-              "sha256": "7094910bd982d6db0d0af0e021831917970a02dcd12b04fa07ec8fd178c2e5d0"
+              "sha256": "459496a01d6b815ef394311bdb425a5fe83f4eae00659a3fd2f41cd3aa0ab838"
             }
           ],
           "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
@@ -9532,14 +10142,14 @@
       "source_files": [
         {
           "path": "frontend/workbench/app/ResourceForms.jsx",
-          "sha256": "7094910bd982d6db0d0af0e021831917970a02dcd12b04fa07ec8fd178c2e5d0"
+          "sha256": "459496a01d6b815ef394311bdb425a5fe83f4eae00659a3fd2f41cd3aa0ab838"
         }
       ]
     },
     {
       "path": "workbench/app/ResourceLive.js",
-      "sha256": "0b3c21ecf727761ebb13b07858809b1e8fe2a800d1141671c9c4df9e8684d5e3",
-      "bytes": 12753,
+      "sha256": "6ee8f35ddd3b3672573deebbd2a8513e05cd0b152c92142b546278d7232d17a8",
+      "bytes": 12765,
       "mime": "application/javascript",
       "dependencies": [
         "workbench/app/CalendarFileActions.js",
@@ -9661,7 +10271,7 @@
           "source_files": [
             {
               "path": "frontend/workbench/app/ResourceLive.jsx",
-              "sha256": "a9bb28b3ec82ee5118a51010ce623688f53be81aa9c7ce7af1df0cf9c2a16792"
+              "sha256": "8f1cfdc64f76b6a332d6faeeebb75fa779368534153dc2d7c983edb4f2d1e902"
             }
           ],
           "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
@@ -9670,7 +10280,7 @@
       "source_files": [
         {
           "path": "frontend/workbench/app/ResourceLive.jsx",
-          "sha256": "a9bb28b3ec82ee5118a51010ce623688f53be81aa9c7ce7af1df0cf9c2a16792"
+          "sha256": "8f1cfdc64f76b6a332d6faeeebb75fa779368534153dc2d7c983edb4f2d1e902"
         }
       ]
     },
@@ -10171,8 +10781,8 @@
     },
     {
       "path": "workbench/app/ResourceTables.js",
-      "sha256": "1531727564ee689733e3563d41d4ea6a419d333ded44b3e0ebbfa5204f9aa616",
-      "bytes": 12071,
+      "sha256": "385b9cc16acbc0dc1fe3254557f0473d46c5dc970688053871b49dae4809b065",
+      "bytes": 12150,
       "mime": "application/javascript",
       "dependencies": [
         "workbench/app/ResourceControls.js",
@@ -10231,7 +10841,7 @@
           "source_files": [
             {
               "path": "frontend/workbench/app/ResourceTables.jsx",
-              "sha256": "ef9b1dd0445bbe91fc98a50a280ebabcb99b7bc7d8dfc565e1d42beba65ca295"
+              "sha256": "520b39636a3884eab856fe94bcb63423e44a4b3a08b2c0b3f25016afcb8b7d7e"
             }
           ],
           "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
@@ -10240,17 +10850,18 @@
       "source_files": [
         {
           "path": "frontend/workbench/app/ResourceTables.jsx",
-          "sha256": "ef9b1dd0445bbe91fc98a50a280ebabcb99b7bc7d8dfc565e1d42beba65ca295"
+          "sha256": "520b39636a3884eab856fe94bcb63423e44a4b3a08b2c0b3f25016afcb8b7d7e"
         }
       ]
     },
     {
       "path": "workbench/app/ResourceWorkspace.js",
-      "sha256": "a14e655198dc3c664f0be45d635417c2f0417277e1d9dbf0d69fa8e7ee85dafe",
-      "bytes": 37006,
+      "sha256": "2bf46ce4fbacd1328b8c8a865f4c6f4d4b40a3944a3d343761bf3c1251783e43",
+      "bytes": 37342,
       "mime": "application/javascript",
       "dependencies": [
         "workbench/app/CalendarContract.js",
+        "workbench/app/MachineDowntimePanel.js",
         "workbench/app/OperatorCalendarPanel.js",
         "workbench/app/OperatorMachinePermissions.js",
         "workbench/app/ProcessReadView.js",
@@ -10270,6 +10881,12 @@
           "path": "workbench/app/CalendarContract.js",
           "symbols": [
             "APSCalendarContract"
+          ]
+        },
+        {
+          "path": "workbench/app/MachineDowntimePanel.js",
+          "symbols": [
+            "MachineDowntimePanel"
           ]
         },
         {
@@ -10362,7 +10979,7 @@
           "source_files": [
             {
               "path": "frontend/workbench/app/ResourceWorkspace.jsx",
-              "sha256": "e14c2bd99cc352cb6f3c1fd0170599a61a4fe7737616d344f588e42282d18bf7"
+              "sha256": "101b3afc3adb60cadb6b104abab256844cd8b7575118e02f7539a968c4d93be5"
             }
           ],
           "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
@@ -10371,7 +10988,7 @@
       "source_files": [
         {
           "path": "frontend/workbench/app/ResourceWorkspace.jsx",
-          "sha256": "e14c2bd99cc352cb6f3c1fd0170599a61a4fe7737616d344f588e42282d18bf7"
+          "sha256": "101b3afc3adb60cadb6b104abab256844cd8b7575118e02f7539a968c4d93be5"
         }
       ]
     },
@@ -10675,8 +11292,8 @@
     },
     {
       "path": "workbench/app/RunAdoptionControls.js",
-      "sha256": "9b384fe0b728ad101761144970784a6355b6369e2190ec0edd64fec5086e645c",
-      "bytes": 9181,
+      "sha256": "6b7cd5abf29a94040dd13b87934eaa933a9688c67c3eaacbce930a94d4d0392f",
+      "bytes": 9307,
       "mime": "application/javascript",
       "dependencies": [
         "workbench/app/ResourceControls.js",
@@ -10728,7 +11345,7 @@
           "source_files": [
             {
               "path": "frontend/workbench/app/RunAdoptionControls.jsx",
-              "sha256": "c1d531a3ce217de9a1b3939eae98212a8ae4b5b0c8475a7609cd48115322a3b8"
+              "sha256": "9861e8f840279814c79946faa63373d106a48ca6a99a0c65bc9f2166577804de"
             }
           ],
           "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
@@ -10737,7 +11354,7 @@
       "source_files": [
         {
           "path": "frontend/workbench/app/RunAdoptionControls.jsx",
-          "sha256": "c1d531a3ce217de9a1b3939eae98212a8ae4b5b0c8475a7609cd48115322a3b8"
+          "sha256": "9861e8f840279814c79946faa63373d106a48ca6a99a0c65bc9f2166577804de"
         }
       ]
     },
@@ -10919,8 +11536,8 @@
     },
     {
       "path": "workbench/app/RunCandidateAPI.js",
-      "sha256": "ff51994cf2e6f54b2d8b352c959ef6da4ea8ff482ce8e80c794e6a2cb989cd82",
-      "bytes": 23354,
+      "sha256": "29b10145d567dbd4a1630795f9c3b9dff34d435a06ca3faeca013d2bc1157efe",
+      "bytes": 23544,
       "mime": "application/javascript",
       "dependencies": [
         "workbench/app/PointContract.js"
@@ -10944,7 +11561,7 @@
           "source_files": [
             {
               "path": "frontend/workbench/app/RunCandidateAPI.js",
-              "sha256": "1434ae30948981df383a56fb902e0766697d78f672524b4b93a2cbf197304974"
+              "sha256": "06090d3690c164c8bfa35f035049a9a76047872a17bf041c96843095d4bf1eef"
             }
           ],
           "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
@@ -10953,7 +11570,7 @@
       "source_files": [
         {
           "path": "frontend/workbench/app/RunCandidateAPI.js",
-          "sha256": "1434ae30948981df383a56fb902e0766697d78f672524b4b93a2cbf197304974"
+          "sha256": "06090d3690c164c8bfa35f035049a9a76047872a17bf041c96843095d4bf1eef"
         }
       ]
     },
@@ -11074,8 +11691,8 @@
     },
     {
       "path": "workbench/app/RunCandidateControls.js",
-      "sha256": "17f2ae824323bb962bc0fe67bc3abc5b0e11736662c31966b97bc57d1bff591e",
-      "bytes": 21702,
+      "sha256": "b889ae9161d31aac41669ae6ac97c2494a86cf43941d1610a7f5e23b5f513c2e",
+      "bytes": 22072,
       "mime": "application/javascript",
       "dependencies": [
         "workbench/app/ResourceControls.js",
@@ -11141,7 +11758,7 @@
           "source_files": [
             {
               "path": "frontend/workbench/app/RunCandidateControls.jsx",
-              "sha256": "b38030bc8e94f15fc9bcdfef6bbf9a7f2378ff12f2ad880ea1973812fb9ea609"
+              "sha256": "fbe3f0eedac7b260b0256d455b3ab5d4ca64d95e1d5d9bf2c69eedfa762d7d36"
             }
           ],
           "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
@@ -11150,7 +11767,7 @@
       "source_files": [
         {
           "path": "frontend/workbench/app/RunCandidateControls.jsx",
-          "sha256": "b38030bc8e94f15fc9bcdfef6bbf9a7f2378ff12f2ad880ea1973812fb9ea609"
+          "sha256": "fbe3f0eedac7b260b0256d455b3ab5d4ca64d95e1d5d9bf2c69eedfa762d7d36"
         }
       ]
     },
@@ -11444,8 +12061,8 @@
     },
     {
       "path": "workbench/app/RunHistoryAPI.js",
-      "sha256": "e47e794a3ff7a84f80a861a9f974d49fdc8b73a8601f0c36b747773bed0d4cd4",
-      "bytes": 11181,
+      "sha256": "d6a96c6124bcffb45fbc9975a06f70de35b2e3486b51628aae2fb30d5f616713",
+      "bytes": 11359,
       "mime": "application/javascript",
       "dependencies": [
         "workbench/app/WorkbenchTerms.js"
@@ -11469,7 +12086,7 @@
           "source_files": [
             {
               "path": "frontend/workbench/app/RunHistoryAPI.js",
-              "sha256": "76e20ff0cedecf4181368a0f9ae938cf705c38971574120216cb7d7727a422b9"
+              "sha256": "26c1599c537a5ad96e29731cf7b7f0f88eebbfe54b7d6ea3ffea4d7f61a5473c"
             }
           ],
           "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
@@ -11478,14 +12095,14 @@
       "source_files": [
         {
           "path": "frontend/workbench/app/RunHistoryAPI.js",
-          "sha256": "76e20ff0cedecf4181368a0f9ae938cf705c38971574120216cb7d7727a422b9"
+          "sha256": "26c1599c537a5ad96e29731cf7b7f0f88eebbfe54b7d6ea3ffea4d7f61a5473c"
         }
       ]
     },
     {
       "path": "workbench/app/RunHistoryControls.js",
-      "sha256": "7643979d657c6e2afd8ede76a7ae641552f049ea905d3f64624d477a15763ad2",
-      "bytes": 11604,
+      "sha256": "e7c7e385b1905f4e139e2bb10270e30ce466e1220d4a559cd7ed536ea3ed948e",
+      "bytes": 11923,
       "mime": "application/javascript",
       "dependencies": [
         "workbench/app/ResourceControls.js",
@@ -11551,7 +12168,7 @@
           "source_files": [
             {
               "path": "frontend/workbench/app/RunHistoryControls.jsx",
-              "sha256": "ed36365d0447a08453eb20ea911754ff8d0c742b6644a140dee02a2587fa10eb"
+              "sha256": "27753a6269ac08d8bc9f605b2de43e26a5ac6e123bf839575e6d0b9905cb74bd"
             }
           ],
           "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
@@ -11560,7 +12177,7 @@
       "source_files": [
         {
           "path": "frontend/workbench/app/RunHistoryControls.jsx",
-          "sha256": "ed36365d0447a08453eb20ea911754ff8d0c742b6644a140dee02a2587fa10eb"
+          "sha256": "27753a6269ac08d8bc9f605b2de43e26a5ac6e123bf839575e6d0b9905cb74bd"
         }
       ]
     },
@@ -11634,8 +12251,8 @@
     },
     {
       "path": "workbench/app/RunJobAPI.js",
-      "sha256": "a3e9937a2dbc64ed744307a410bd2022c0de8e3221e3b8b7e137edf295d672b7",
-      "bytes": 22644,
+      "sha256": "39c2da8b7358a71ffcd4b908081016bc8b256c598566f5910272b0df580a9770",
+      "bytes": 22816,
       "mime": "application/javascript",
       "dependencies": [
         "workbench/app/WorkbenchTerms.js"
@@ -11659,7 +12276,7 @@
           "source_files": [
             {
               "path": "frontend/workbench/app/RunJobAPI.js",
-              "sha256": "1f02d3f757ba548c97591b72b12ccadba4ef08272ab6f7bdf6428ba2a314dd84"
+              "sha256": "1eae01d916556fde7b4ce013dd13930384d23d76514b3c6a0fc1003a480e330f"
             }
           ],
           "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
@@ -11668,14 +12285,14 @@
       "source_files": [
         {
           "path": "frontend/workbench/app/RunJobAPI.js",
-          "sha256": "1f02d3f757ba548c97591b72b12ccadba4ef08272ab6f7bdf6428ba2a314dd84"
+          "sha256": "1eae01d916556fde7b4ce013dd13930384d23d76514b3c6a0fc1003a480e330f"
         }
       ]
     },
     {
       "path": "workbench/app/RunJobControls.js",
-      "sha256": "6b404476d261150f3d041db1f32339490a1363d413848178f63502820db17435",
-      "bytes": 16638,
+      "sha256": "7a42ebdc0e715c0f770619492497cdcf6ea9df7d282bcae422232193053e8b4a",
+      "bytes": 16959,
       "mime": "application/javascript",
       "dependencies": [
         "workbench/app/ResourceControls.js",
@@ -11748,7 +12365,7 @@
           "source_files": [
             {
               "path": "frontend/workbench/app/RunJobControls.jsx",
-              "sha256": "cb1057ebb187d9c54e1e764d485fa3a4ff95d4772cf417e10eb8bed8f43ebdee"
+              "sha256": "f7a1b6bf6bfe17e62d943e30b1ec4509c49b87002cdfb2bd4b5d91855ec02327"
             }
           ],
           "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
@@ -11757,7 +12374,7 @@
       "source_files": [
         {
           "path": "frontend/workbench/app/RunJobControls.jsx",
-          "sha256": "cb1057ebb187d9c54e1e764d485fa3a4ff95d4772cf417e10eb8bed8f43ebdee"
+          "sha256": "f7a1b6bf6bfe17e62d943e30b1ec4509c49b87002cdfb2bd4b5d91855ec02327"
         }
       ]
     },
@@ -13861,6 +14478,91 @@
       ]
     },
     {
+      "path": "workbench/app/WorkPeriodFields.js",
+      "sha256": "d502b649a95dc01806ebdf44ded14d97e62bb1f2a9da43303b112b0d069363ab",
+      "bytes": 3438,
+      "mime": "application/javascript",
+      "dependencies": [
+        "workbench/app/ResourceControls.js",
+        "workbench/app/WorkPeriods.js",
+        "workbench/vendor/react-18.3.1.production.min.js"
+      ],
+      "dependency_symbols": [
+        {
+          "path": "workbench/app/ResourceControls.js",
+          "symbols": [
+            "ResourceControls"
+          ]
+        },
+        {
+          "path": "workbench/app/WorkPeriods.js",
+          "symbols": [
+            "APSWorkPeriods"
+          ]
+        },
+        {
+          "path": "workbench/vendor/react-18.3.1.production.min.js",
+          "symbols": [
+            "React"
+          ]
+        }
+      ],
+      "license_sources": [
+        {
+          "component": "Workbench project content",
+          "status": "unknown",
+          "identifiers": [],
+          "requires_review": true,
+          "source": null,
+          "scope": "Only the listed source content; no license inferred from dependencies.",
+          "source_files": [
+            {
+              "path": "frontend/workbench/app/WorkPeriodFields.jsx",
+              "sha256": "e368f1c20cc84b19de70888d3160c37921f6e2524e48ad46c78d512678d3f26a"
+            }
+          ],
+          "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
+        }
+      ],
+      "source_files": [
+        {
+          "path": "frontend/workbench/app/WorkPeriodFields.jsx",
+          "sha256": "e368f1c20cc84b19de70888d3160c37921f6e2524e48ad46c78d512678d3f26a"
+        }
+      ]
+    },
+    {
+      "path": "workbench/app/WorkPeriods.js",
+      "sha256": "baffee5fe0c2ab49dcd35254f3a9f1398b642f4d778354abf7561cee4fbbe757",
+      "bytes": 2103,
+      "mime": "application/javascript",
+      "dependencies": [],
+      "dependency_symbols": [],
+      "license_sources": [
+        {
+          "component": "Workbench project content",
+          "status": "unknown",
+          "identifiers": [],
+          "requires_review": true,
+          "source": null,
+          "scope": "Only the listed source content; no license inferred from dependencies.",
+          "source_files": [
+            {
+              "path": "frontend/workbench/app/WorkPeriods.js",
+              "sha256": "f58bfeaacf368e1dfac9a263fb3fcd90fa2c5419014b1a619cbb028de035eac2"
+            }
+          ],
+          "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
+        }
+      ],
+      "source_files": [
+        {
+          "path": "frontend/workbench/app/WorkPeriods.js",
+          "sha256": "f58bfeaacf368e1dfac9a263fb3fcd90fa2c5419014b1a619cbb028de035eac2"
+        }
+      ]
+    },
+    {
       "path": "workbench/app/WorkbenchBoundary.js",
       "sha256": "ea96f80a1da3159d08504f0a638fa54fa7f9dfe1c0c09a44aa275d790f95386d",
       "bytes": 1543,
@@ -15101,8 +15803,8 @@
     },
     {
       "path": "workbench/app/resource-api.js",
-      "sha256": "e6061e605a7aad8f165caf6b311c8595bd09b161c2644339f221c5b49b81b0ef",
-      "bytes": 15521,
+      "sha256": "6d3dfdb4d2a955118ba8f16772370fd86eb4b5d80ab089e9db96260e2ec295f0",
+      "bytes": 16615,
       "mime": "application/javascript",
       "dependencies": [],
       "dependency_symbols": [],
@@ -15117,7 +15819,7 @@
           "source_files": [
             {
               "path": "frontend/workbench/app/resource-api.js",
-              "sha256": "c1075b6217447171745e04f5cc69bdedf0b8bb66a74b265139cd99db5024d044"
+              "sha256": "71bab785ed0831951d87528304a6dbf791a61af97352e5bf045f793db5acfa5f"
             }
           ],
           "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
@@ -15126,14 +15828,14 @@
       "source_files": [
         {
           "path": "frontend/workbench/app/resource-api.js",
-          "sha256": "c1075b6217447171745e04f5cc69bdedf0b8bb66a74b265139cd99db5024d044"
+          "sha256": "71bab785ed0831951d87528304a6dbf791a61af97352e5bf045f793db5acfa5f"
         }
       ]
     },
     {
       "path": "workbench/app/resource-contract.js",
-      "sha256": "bbda6437229340071a3c3823c8a5d8b39cef7973f2188d925a7ff5af625344ba",
-      "bytes": 15636,
+      "sha256": "c607aeb174d5861bbfef64c946817dc62129eb41c7962b75eae6ece68566ac91",
+      "bytes": 15738,
       "mime": "application/javascript",
       "dependencies": [],
       "dependency_symbols": [],
@@ -15148,7 +15850,7 @@
           "source_files": [
             {
               "path": "frontend/workbench/app/resource-contract.js",
-              "sha256": "5413487e90d8cbc9e55261ca95a92bc10222c6eab8cb9094471508cad55e4f7a"
+              "sha256": "9a426f10b855568bad6e2bd65ea09001922a062c1d97c41f25040026adfd2df4"
             }
           ],
           "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
@@ -15157,7 +15859,7 @@
       "source_files": [
         {
           "path": "frontend/workbench/app/resource-contract.js",
-          "sha256": "5413487e90d8cbc9e55261ca95a92bc10222c6eab8cb9094471508cad55e4f7a"
+          "sha256": "9a426f10b855568bad6e2bd65ea09001922a062c1d97c41f25040026adfd2df4"
         }
       ]
     },
@@ -15465,8 +16167,8 @@
     },
     {
       "path": "workbench/app/styles/32-calendar-outsourcing.css",
-      "sha256": "c2e60f6e8b2eaa6315cb744b6faa7bd6664f9a275e5d6399dcad219314492223",
-      "bytes": 9653,
+      "sha256": "39fea9584e5636028729e640c012721d4a3fd996827b5c4251331be40514005b",
+      "bytes": 9837,
       "mime": "text/css",
       "dependencies": [],
       "dependency_symbols": [],
@@ -15481,7 +16183,7 @@
           "source_files": [
             {
               "path": "frontend/workbench/app/styles/32-calendar-outsourcing.css",
-              "sha256": "c2e60f6e8b2eaa6315cb744b6faa7bd6664f9a275e5d6399dcad219314492223"
+              "sha256": "39fea9584e5636028729e640c012721d4a3fd996827b5c4251331be40514005b"
             }
           ],
           "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
@@ -15490,7 +16192,7 @@
       "source_files": [
         {
           "path": "frontend/workbench/app/styles/32-calendar-outsourcing.css",
-          "sha256": "c2e60f6e8b2eaa6315cb744b6faa7bd6664f9a275e5d6399dcad219314492223"
+          "sha256": "39fea9584e5636028729e640c012721d4a3fd996827b5c4251331be40514005b"
         }
       ]
     },
@@ -15886,7 +16588,7 @@
             },
             {
               "path": "scripts/workbench/build-order.json",
-              "sha256": "5f89f4637a3a901c1af0e61606f8506a8c637f4a2da38d5197bd275b13db2e34"
+              "sha256": "78d89e9c3d66f15bec4af90279341ad278a78b21f6a07f6f6f72527334202e0d"
             }
           ],
           "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
@@ -15934,7 +16636,7 @@
         },
         {
           "path": "scripts/workbench/build-order.json",
-          "sha256": "5f89f4637a3a901c1af0e61606f8506a8c637f4a2da38d5197bd275b13db2e34"
+          "sha256": "78d89e9c3d66f15bec4af90279341ad278a78b21f6a07f6f6f72527334202e0d"
         }
       ]
     },
@@ -17482,15 +18184,15 @@
     },
     {
       "path": "frontend/workbench/app/resource-contract.js",
-      "sha256": "5413487e90d8cbc9e55261ca95a92bc10222c6eab8cb9094471508cad55e4f7a"
+      "sha256": "9a426f10b855568bad6e2bd65ea09001922a062c1d97c41f25040026adfd2df4"
     },
     {
       "path": "frontend/workbench/app/resource-api.js",
-      "sha256": "c1075b6217447171745e04f5cc69bdedf0b8bb66a74b265139cd99db5024d044"
+      "sha256": "71bab785ed0831951d87528304a6dbf791a61af97352e5bf045f793db5acfa5f"
     },
     {
       "path": "frontend/workbench/app/ProcessContract.js",
-      "sha256": "2cf9056ca29e54f820a09b5cbc1c5fba5b300b1a174b5e2ec512e2fe427a527a"
+      "sha256": "9f8bc72779af640ddf1e781c693cf02817f508054d7bd81ad6b2ff9772f043db"
     },
     {
       "path": "frontend/workbench/app/PointContract.js",
@@ -17514,7 +18216,7 @@
     },
     {
       "path": "frontend/workbench/app/ResourceControls.jsx",
-      "sha256": "785b60b8aed4826298939aae54de6bfb7807bfad66c5b8ff424e4dc40963f42b"
+      "sha256": "d9dfdc6490da51f24c360cd75d841ad8b62c3de680ded7d2d3555b8926acb50f"
     },
     {
       "path": "frontend/workbench/app/WorkbenchGuardHost.jsx",
@@ -17525,12 +18227,20 @@
       "sha256": "5223c948c29a9225ed652b798f57cff1f2d2fcd066fa8eaa54b63e3f46ce9844"
     },
     {
+      "path": "frontend/workbench/app/WorkPeriods.js",
+      "sha256": "f58bfeaacf368e1dfac9a263fb3fcd90fa2c5419014b1a619cbb028de035eac2"
+    },
+    {
+      "path": "frontend/workbench/app/WorkPeriodFields.jsx",
+      "sha256": "e368f1c20cc84b19de70888d3160c37921f6e2524e48ad46c78d512678d3f26a"
+    },
+    {
       "path": "frontend/workbench/app/CalendarContract.js",
-      "sha256": "6e02c81a93c96d167f62da0fe21f1f11bd9a67f6280c239b55886510f904b288"
+      "sha256": "cc1985be551653572752110bfef6a104bb239e45ced97143a5eb2cd753d148a3"
     },
     {
       "path": "frontend/workbench/app/OperatorCalendarContract.js",
-      "sha256": "9c172d857c9438b5cdea110653449a2303643c6a474afb7f87b6903b34caf7b2"
+      "sha256": "cd53894466ed8c5ae0eae2e1759a0ccef6a61b264d0656fedc3387187b315ae7"
     },
     {
       "path": "frontend/workbench/app/WorkbenchSelectMenu.jsx",
@@ -17570,7 +18280,7 @@
     },
     {
       "path": "frontend/workbench/app/ResourceDetailRelations.jsx",
-      "sha256": "52d844c0d903e4fffb285a31d00c6f91034c9c22676add3ae8177551e63bf4f6"
+      "sha256": "a33df9e8296aeff4badd05f6dd3dac968750a6201c1368a140474de9877fe919"
     },
     {
       "path": "frontend/workbench/app/OperatorMachinePermissions.jsx",
@@ -17578,15 +18288,19 @@
     },
     {
       "path": "frontend/workbench/app/OperatorCalendarPanel.jsx",
-      "sha256": "89ee7b156abe0f4dc6be539a6db16fb6b77b706adbe1df1d10a951aa084521a8"
+      "sha256": "aa0241b989fe385eecf0e769cfe1f19c1b6754b24726638791d62e0103d21f4d"
     },
     {
       "path": "frontend/workbench/app/ResourceForms.jsx",
-      "sha256": "7094910bd982d6db0d0af0e021831917970a02dcd12b04fa07ec8fd178c2e5d0"
+      "sha256": "459496a01d6b815ef394311bdb425a5fe83f4eae00659a3fd2f41cd3aa0ab838"
+    },
+    {
+      "path": "frontend/workbench/app/MachineDowntimePanel.jsx",
+      "sha256": "c918d2766c9e685dce7e59589116399740f8f38165aa1e79a376be80e32f8d52"
     },
     {
       "path": "frontend/workbench/app/ResourceTables.jsx",
-      "sha256": "ef9b1dd0445bbe91fc98a50a280ebabcb99b7bc7d8dfc565e1d42beba65ca295"
+      "sha256": "520b39636a3884eab856fe94bcb63423e44a4b3a08b2c0b3f25016afcb8b7d7e"
     },
     {
       "path": "frontend/workbench/app/ResourceMetrics.jsx",
@@ -17602,23 +18316,27 @@
     },
     {
       "path": "frontend/workbench/app/ResourceWorkspace.jsx",
-      "sha256": "e14c2bd99cc352cb6f3c1fd0170599a61a4fe7737616d344f588e42282d18bf7"
+      "sha256": "101b3afc3adb60cadb6b104abab256844cd8b7575118e02f7539a968c4d93be5"
     },
     {
       "path": "frontend/workbench/app/CalendarFields.jsx",
-      "sha256": "14896031d492408ea135b11bf0616b652e8a42f72931920f50a6120376e0f4e0"
+      "sha256": "f013e30b150345223ddb7b286589074f8370e0bc1e4c69de62067d42639e0895"
     },
     {
       "path": "frontend/workbench/app/CalendarDayDialog.jsx",
-      "sha256": "37e31e37798c2085d5fed09a6bf5ab2f04431a51c1119e1991d7ab8a0c164823"
+      "sha256": "3d6370bb45aa5918c9a85840fb2cacbcc395f30f3f837a9006d0f77f541e8b58"
+    },
+    {
+      "path": "frontend/workbench/app/CalendarDefaultsDialog.jsx",
+      "sha256": "6f7ae750cc7534a08e34bd6c60d8edda4c34da56e1925251be351a37939f899e"
     },
     {
       "path": "frontend/workbench/app/CalendarRangeDialog.jsx",
-      "sha256": "8b368ce9cc7f89f7244063b0c0f56cae3536609963f7f07b3d497932fac17af8"
+      "sha256": "ccb6d03c9fcfe34632d3846abf441a34d84d4a51973471b64722245bf0920796"
     },
     {
       "path": "frontend/workbench/app/ResourceCalendar.jsx",
-      "sha256": "4e249e5fbcd87f04c4709ef1dc92d91268a768688dc9a4fb9b9bd3b8fe75a71f"
+      "sha256": "291637efacd3fad68d26ab108bf090a33f6e66067423bab35d3d70f73db1f10f"
     },
     {
       "path": "frontend/workbench/app/ResourceMaterialContract.js",
@@ -17658,23 +18376,23 @@
     },
     {
       "path": "frontend/workbench/app/ResourceCatalogModel.js",
-      "sha256": "7d5eb255cbe75f8c2dea55b8e1abe89350116c0895d9f3525185db486f49bb6b"
+      "sha256": "787c4440a42532aca4464b92e5e01d639262f1e02133c49957406ff00419a8d0"
     },
     {
       "path": "frontend/workbench/app/ResourceCatalogEditor.jsx",
-      "sha256": "47bcc2fab7acb1d8d31cc2f6b9c2b97e02cf76ccd0977bb3c2cbfd1a80e9c958"
+      "sha256": "3874545a048fe37716d444bd05cde553fce2582d76d33f403be0e7d2fbab4eca"
     },
     {
       "path": "frontend/workbench/app/ResourceCatalog.jsx",
-      "sha256": "c0611898e0bd162435b6c1334efdd8487ff046240a356b74eb31a143cd95ff72"
+      "sha256": "4a98f3cf989b050d9dcb40cca1cdc4efca501c0e40c46545b4b59c480958b0e2"
     },
     {
       "path": "frontend/workbench/app/ProcessAPI.js",
-      "sha256": "7b1acec71dca49c8f2bd6139eedf0165419775f788a3cabeee998ac77756297f"
+      "sha256": "3cd2bde5c345663c9dd0d62b441f4be0548aecb6ce15264d95fd5353b27ca2fb"
     },
     {
       "path": "frontend/workbench/app/ProcessActionContract.js",
-      "sha256": "d94cf5479e5ea945408a4ede9cf3faef3220f62904751bf1f84f7d69bbc94dea"
+      "sha256": "1877f9f61999563cea676e6783ade373bd21237896de825a617fe666fbe6d08a"
     },
     {
       "path": "frontend/workbench/app/ProcessActionPreview.jsx",
@@ -17686,11 +18404,11 @@
     },
     {
       "path": "frontend/workbench/app/ProcessFileContract.js",
-      "sha256": "8a4697c52af6c2a2fcf549e7823c1513745f715a8d2dcb2d7d2dc7ec8031eedf"
+      "sha256": "07017bb5e682bebdb40f3309b3958a85d9412a3dc7fcc238bd447aa0e5762f29"
     },
     {
       "path": "frontend/workbench/app/ProcessFilePreview.jsx",
-      "sha256": "d384443ebfa9b470f768405e866078d089d079571dbcf7aa31b47c2444c690f1"
+      "sha256": "10be608c07545338f60d40b1489b4a3db8982018d86c407b0e044020a9ba2b4a"
     },
     {
       "path": "frontend/workbench/app/ProcessFileActions.jsx",
@@ -17710,19 +18428,27 @@
     },
     {
       "path": "frontend/workbench/app/ProcessSourceEditor.jsx",
-      "sha256": "8a902b51fd0d41d1857a92d5fdc0167fcc08bdc5a20ce86089595c3b569f65d6"
+      "sha256": "a636e464d8319ea76ca96611a37c9d13f9ce9b1fa55f5d1acdba8c9da0f67120"
+    },
+    {
+      "path": "frontend/workbench/app/ProcessGroupEditor.jsx",
+      "sha256": "d939ac9c5289cc9fd1220dbc3023e3288965c7ce7b36f0dad1e8e1523eaedaba"
     },
     {
       "path": "frontend/workbench/app/ProcessHoursEditor.jsx",
-      "sha256": "b3f85498c014508a36de540096e0ce0de698225bf69e17db19d86777383b61b9"
+      "sha256": "3996b577e62334f54768edf94ea13cf7e1d8b4cfd2e830d3e88f7bad117e13d9"
+    },
+    {
+      "path": "frontend/workbench/app/ProcessRouteDraft.js",
+      "sha256": "b28e986ae5efedb9ce62882eb8ac3a0c247bad93e9937ac5af2c2795a91f06a4"
     },
     {
       "path": "frontend/workbench/app/ProcessRouteEntry.jsx",
-      "sha256": "27c98883e8ef2cdc794b48592d8f141258b974115f71e4c0f32cc45450d0259f"
+      "sha256": "bc83d1908c6f09645de411052432d9abb632672098332deacde65a3c84694c0a"
     },
     {
       "path": "frontend/workbench/app/ProcessDetail.jsx",
-      "sha256": "60802f6a7a200d2f865349b03e3131f68dcab984966bdf18f4af68eb7a91ca68"
+      "sha256": "76789ee98155c392c3ab7f263546b8ac0395f83403fa5825f4ac1b12c91ee383"
     },
     {
       "path": "frontend/workbench/app/ProcessWorkspace.jsx",
@@ -17730,35 +18456,39 @@
     },
     {
       "path": "frontend/workbench/app/ResourceLive.jsx",
-      "sha256": "a9bb28b3ec82ee5118a51010ce623688f53be81aa9c7ce7af1df0cf9c2a16792"
+      "sha256": "8f1cfdc64f76b6a332d6faeeebb75fa779368534153dc2d7c983edb4f2d1e902"
     },
     {
       "path": "frontend/workbench/app/BatchContract.js",
-      "sha256": "c8aa44d0a4f4e091b87eecd7c65a490ca46e1effc367fbd1cdf2d280b69cbf52"
+      "sha256": "82d42e78789c49283cf6bed971d45058ed106dca2af3c189d7334a72cce982f3"
     },
     {
       "path": "frontend/workbench/app/BatchAPI.js",
-      "sha256": "559f56f13b238705d1a4911ea3c8fb9f30078dd8020be2d61a9c452494dade5f"
+      "sha256": "619350da0f3d2fe5ab026bcac86d19625b09448e59b3bfc08d94b8b8074bac7a"
     },
     {
       "path": "frontend/workbench/app/BatchControls.jsx",
-      "sha256": "3f2dcda2861b07505dee0ce3713de14efb481abeee6d3978a424f66651307947"
+      "sha256": "7a48b2003180fdd208d5cc814c57d0afe906dda02a5160a3dd754882dcee11ab"
     },
     {
       "path": "frontend/workbench/app/BatchForms.jsx",
-      "sha256": "99439bceb725656c305b99b9ad758e38d55a328b9103c6d5a4f988c58720e605"
+      "sha256": "0444eb5754dccfc2d852cc57b3eea4dfa13e98bfc17dccf395db1e611422926b"
     },
     {
       "path": "frontend/workbench/app/BatchOperationEditor.jsx",
-      "sha256": "b3b8746f008a95e2fcd4724fbd5b49b289787b224062ac0f811df5f784b7dd30"
+      "sha256": "58c3d3ec6a9f12b8f6028f5ce64e2b411a9696eaca9a24590c23e7412ba49f15"
+    },
+    {
+      "path": "frontend/workbench/app/BatchMaterialEditor.jsx",
+      "sha256": "16fc380d15db8b2847f39f1686e90aed1d1fa50b4350ce732078c9d07ce154c2"
     },
     {
       "path": "frontend/workbench/app/BatchDetail.jsx",
-      "sha256": "406eda6c94ae101b4ae2e8061bf2eb79bea7e67f964350a692587d642f638baf"
+      "sha256": "3101d8e572f1cdd5421987c71d9b269b5ec8aa90e4f4f0724ea5c826f01fb291"
     },
     {
       "path": "frontend/workbench/app/BatchTable.jsx",
-      "sha256": "08743b4dcf0331427fddbf084329106332f3d9702d9d288ea711f675a257c665"
+      "sha256": "174e23e320a2fafe191a8be7cfbf30aa27608dcea619aab9bc5c620fbb4d591e"
     },
     {
       "path": "frontend/workbench/app/BatchFiles.jsx",
@@ -17766,7 +18496,7 @@
     },
     {
       "path": "frontend/workbench/app/BatchWorkspace.jsx",
-      "sha256": "c710d40acc28c90e5bf632d009fe27910ff8a8d795581d0c675a79f057420b40"
+      "sha256": "622dc0ac1e4cd4a7068e1ba3001867ddeb898c50a4846bef9bda9f0b8de7979f"
     },
     {
       "path": "frontend/workbench/app/PointGanttModel.js",
@@ -17898,7 +18628,7 @@
     },
     {
       "path": "frontend/workbench/app/PreflightContract.js",
-      "sha256": "e753aaa82707bb87f213f256bad4bb4b4d3beef350c0a9d2a6f664a85542fce3"
+      "sha256": "4b85c8a8eb74f950303e9ca386a3f04dbfaab498a89b5d8c1f5dbff95aa58e10"
     },
     {
       "path": "frontend/workbench/app/PreflightAPI.js",
@@ -17906,23 +18636,27 @@
     },
     {
       "path": "frontend/workbench/app/PreflightControls.jsx",
-      "sha256": "dabff98d84550321926a20b6d6eacd6239b369fbf3ede400d42796df72e83fd5"
+      "sha256": "bae35ab3537cc06cfd8643cc7e6df0937a828e5fbd856db52490c84edc00d6c8"
+    },
+    {
+      "path": "frontend/workbench/app/BatchSplitPanel.jsx",
+      "sha256": "0ac0ea94909bb19ae12760e2b70f173510abcf0334dbc992bca8488c99daea32"
     },
     {
       "path": "frontend/workbench/app/PreflightBatchPicker.jsx",
-      "sha256": "9e353cd6160d397dcd63306f9069db45bb35a53cb1e2b9eb4eb363dff185d5c0"
+      "sha256": "45b619d25e712a3df0f72600523ef1751a0cb321945041dde82d5692aa9e87ad"
     },
     {
       "path": "frontend/workbench/app/PreflightWorkspace.jsx",
-      "sha256": "61a641db139bac7e5036394c650d50e5d76373b00fd21ef4aba6ea5dc5386af1"
+      "sha256": "d23e4dd352e5fdc8139a1d59dfcc9e862f08dc9d45160c4474763a44db677570"
     },
     {
       "path": "frontend/workbench/app/RunJobAPI.js",
-      "sha256": "1f02d3f757ba548c97591b72b12ccadba4ef08272ab6f7bdf6428ba2a314dd84"
+      "sha256": "1eae01d916556fde7b4ce013dd13930384d23d76514b3c6a0fc1003a480e330f"
     },
     {
       "path": "frontend/workbench/app/RunJobControls.jsx",
-      "sha256": "cb1057ebb187d9c54e1e764d485fa3a4ff95d4772cf417e10eb8bed8f43ebdee"
+      "sha256": "f7a1b6bf6bfe17e62d943e30b1ec4509c49b87002cdfb2bd4b5d91855ec02327"
     },
     {
       "path": "frontend/workbench/app/RunJobPanel.jsx",
@@ -17934,7 +18668,7 @@
     },
     {
       "path": "frontend/workbench/app/RunAdoptionControls.jsx",
-      "sha256": "c1d531a3ce217de9a1b3939eae98212a8ae4b5b0c8475a7609cd48115322a3b8"
+      "sha256": "9861e8f840279814c79946faa63373d106a48ca6a99a0c65bc9f2166577804de"
     },
     {
       "path": "frontend/workbench/app/RunAdoptionAction.jsx",
@@ -17942,7 +18676,7 @@
     },
     {
       "path": "frontend/workbench/app/RunCandidateAPI.js",
-      "sha256": "1434ae30948981df383a56fb902e0766697d78f672524b4b93a2cbf197304974"
+      "sha256": "06090d3690c164c8bfa35f035049a9a76047872a17bf041c96843095d4bf1eef"
     },
     {
       "path": "frontend/workbench/app/RunCandidateModel.js",
@@ -17950,7 +18684,7 @@
     },
     {
       "path": "frontend/workbench/app/RunCandidateControls.jsx",
-      "sha256": "b38030bc8e94f15fc9bcdfef6bbf9a7f2378ff12f2ad880ea1973812fb9ea609"
+      "sha256": "fbe3f0eedac7b260b0256d455b3ab5d4ca64d95e1d5d9bf2c69eedfa762d7d36"
     },
     {
       "path": "frontend/workbench/app/RunCandidateAnalysisAPI.js",
@@ -17982,11 +18716,11 @@
     },
     {
       "path": "frontend/workbench/app/RunHistoryAPI.js",
-      "sha256": "76e20ff0cedecf4181368a0f9ae938cf705c38971574120216cb7d7727a422b9"
+      "sha256": "26c1599c537a5ad96e29731cf7b7f0f88eebbfe54b7d6ea3ffea4d7f61a5473c"
     },
     {
       "path": "frontend/workbench/app/RunHistoryControls.jsx",
-      "sha256": "ed36365d0447a08453eb20ea911754ff8d0c742b6644a140dee02a2587fa10eb"
+      "sha256": "27753a6269ac08d8bc9f605b2de43e26a5ac6e123bf839575e6d0b9905cb74bd"
     },
     {
       "path": "frontend/workbench/app/RunHistoryWorkspace.jsx",
@@ -18206,15 +18940,15 @@
     },
     {
       "path": "frontend/workbench/app/OutsourcingContract.js",
-      "sha256": "18f98ccc3a5db4c660be117a83ec849ff3c78b90b953f43d5aaca8bafb0d61ad"
+      "sha256": "c427d3e981bfe82e9115f2b634db87f3b7839a12704ff844cb2988e983aacfbf"
     },
     {
       "path": "frontend/workbench/app/OutsourcingSession.js",
-      "sha256": "fd9a56314e9119a9136d585ca466f133c93ed268775345fe79b73fe93b9ff1a3"
+      "sha256": "9e086ed838e286920fc68e9b30f57e01c7f459380690a369c8ec216b4bf6a5d2"
     },
     {
       "path": "frontend/workbench/app/OutsourcingControls.jsx",
-      "sha256": "121ccdddbe81ba49f531180ace5f05afdb1b6baa578d7a1d95060d8d951bd07f"
+      "sha256": "f1589dc24dfbc2fec1164b3b82d8c010a6360792ceecc6aa98b083c386a225ac"
     },
     {
       "path": "frontend/workbench/app/OutsourcingStyles.jsx",
@@ -18334,7 +19068,7 @@
     },
     {
       "path": "frontend/workbench/app/styles/32-calendar-outsourcing.css",
-      "sha256": "c2e60f6e8b2eaa6315cb744b6faa7bd6664f9a275e5d6399dcad219314492223"
+      "sha256": "39fea9584e5636028729e640c012721d4a3fd996827b5c4251331be40514005b"
     },
     {
       "path": "frontend/workbench/app/styles/32-process-trial.css",
@@ -18402,7 +19136,7 @@
     },
     {
       "path": "scripts/workbench/build-order.json",
-      "sha256": "5f89f4637a3a901c1af0e61606f8506a8c637f4a2da38d5197bd275b13db2e34"
+      "sha256": "78d89e9c3d66f15bec4af90279341ad278a78b21f6a07f6f6f72527334202e0d"
     },
     {
       "path": "scripts/workbench/compile.cjs",
@@ -18468,6 +19202,8 @@
     "ResourceControls.jsx",
     "WorkbenchGuardHost.jsx",
     "WorkbenchControlBridge.js",
+    "WorkPeriods.js",
+    "WorkPeriodFields.jsx",
     "CalendarContract.js",
     "OperatorCalendarContract.js",
     "WorkbenchSelectMenu.jsx",
@@ -18483,6 +19219,7 @@
     "OperatorMachinePermissions.jsx",
     "OperatorCalendarPanel.jsx",
     "ResourceForms.jsx",
+    "MachineDowntimePanel.jsx",
     "ResourceTables.jsx",
     "ResourceMetrics.jsx",
     "ResourceRail.jsx",
@@ -18490,6 +19227,7 @@
     "ResourceWorkspace.jsx",
     "CalendarFields.jsx",
     "CalendarDayDialog.jsx",
+    "CalendarDefaultsDialog.jsx",
     "CalendarRangeDialog.jsx",
     "ResourceCalendar.jsx",
     "ResourceMaterialContract.js",
@@ -18515,7 +19253,9 @@
     "ProcessStageEditor.jsx",
     "ProcessOpTypeCreate.jsx",
     "ProcessSourceEditor.jsx",
+    "ProcessGroupEditor.jsx",
     "ProcessHoursEditor.jsx",
+    "ProcessRouteDraft.js",
     "ProcessRouteEntry.jsx",
     "ProcessDetail.jsx",
     "ProcessWorkspace.jsx",
@@ -18525,6 +19265,7 @@
     "BatchControls.jsx",
     "BatchForms.jsx",
     "BatchOperationEditor.jsx",
+    "BatchMaterialEditor.jsx",
     "BatchDetail.jsx",
     "BatchTable.jsx",
     "BatchFiles.jsx",
@@ -18564,6 +19305,7 @@
     "PreflightContract.js",
     "PreflightAPI.js",
     "PreflightControls.jsx",
+    "BatchSplitPanel.jsx",
     "PreflightBatchPicker.jsx",
     "PreflightWorkspace.jsx",
     "RunJobAPI.js",
@@ -18701,11 +19443,14 @@
       "workbench/app/BatchDetail.js",
       "workbench/app/BatchFiles.js",
       "workbench/app/BatchForms.js",
+      "workbench/app/BatchMaterialEditor.js",
       "workbench/app/BatchOperationEditor.js",
+      "workbench/app/BatchSplitPanel.js",
       "workbench/app/BatchTable.js",
       "workbench/app/BatchWorkspace.js",
       "workbench/app/CalendarContract.js",
       "workbench/app/CalendarDayDialog.js",
+      "workbench/app/CalendarDefaultsDialog.js",
       "workbench/app/CalendarFields.js",
       "workbench/app/CalendarFileActions.js",
       "workbench/app/CalendarFileContract.js",
@@ -18745,6 +19490,7 @@
       "workbench/app/FieldTable.js",
       "workbench/app/FieldVoidEditor.js",
       "workbench/app/FieldWorkspace.js",
+      "workbench/app/MachineDowntimePanel.js",
       "workbench/app/MasterOverviewAPI.js",
       "workbench/app/MasterOverviewContract.js",
       "workbench/app/MasterOverviewDetail.js",
@@ -18789,9 +19535,11 @@
       "workbench/app/ProcessFileActions.js",
       "workbench/app/ProcessFileContract.js",
       "workbench/app/ProcessFilePreview.js",
+      "workbench/app/ProcessGroupEditor.js",
       "workbench/app/ProcessHoursEditor.js",
       "workbench/app/ProcessOpTypeCreate.js",
       "workbench/app/ProcessReadView.js",
+      "workbench/app/ProcessRouteDraft.js",
       "workbench/app/ProcessRouteEntry.js",
       "workbench/app/ProcessSourceEditor.js",
       "workbench/app/ProcessStageEditor.js",
@@ -18877,6 +19625,8 @@
       "workbench/app/TrialStyles.js",
       "workbench/app/TrialViewState.js",
       "workbench/app/TrialWorkspace.js",
+      "workbench/app/WorkPeriodFields.js",
+      "workbench/app/WorkPeriods.js",
       "workbench/app/WorkbenchBoundary.js",
       "workbench/app/WorkbenchCaption.js",
       "workbench/app/WorkbenchControlBridge.js",
@@ -18952,5 +19702,5 @@
       "workbench/prototype/ui_kits/workbench/workbench-ui.css"
     ]
   },
-  "build_id": "c010a1b6810dfe1e6c9f96cf2ec12b0c8ba48bc50067b8ab1835fe8a744b0fb2"
+  "build_id": "3131628396d351afb41609b54ecb9b87077ceb427c2155087e27bb705761f1b0"
 }

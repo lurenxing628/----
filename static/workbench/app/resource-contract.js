@@ -86,10 +86,11 @@
   };
   const relations = {
     machine: [{
-      key: 'op_type_ref',
-      label: '绑定工种',
+      key: 'op_type_refs',
+      label: '可做工种',
       kind: 'op_type',
-      category: 'internal'
+      category: 'internal',
+      multiple: true
     }, {
       key: 'group_ref',
       label: '设备组',
@@ -134,7 +135,7 @@
     return Array.isArray(list) ? list.filter(row => row && text(row.path) && text(row.message)) : [];
   }
   function entity(value) {
-    return object(value) && text(value.ref) && !!value.ref && text(value.business_code) && text(value.label) && (text(value.status) || value.status === null) && object(value.fields) && object(value.relationships) && Array.isArray(value.issues) && (value.write_context === null || object(value.write_context)) && (!own(value, 'availability') || value.fields.category === 'internal' && availability(value.availability));
+    return object(value) && text(value.ref) && !!value.ref && text(value.business_code) && text(value.label) && (text(value.status) || value.status === null) && object(value.fields) && object(value.relationships) && Array.isArray(value.issues) && (value.write_context === null || object(value.write_context)) && (!own(value, 'availability') || ['internal', 'both'].includes(value.fields.category) && availability(value.availability));
   }
   function availability(value) {
     return object(value) && value.basis === 'enabled_authorized_matching' && count(value.machines) && count(value.operators);
@@ -221,7 +222,8 @@
     const values = {
       category: {
         internal: '自制',
-        external: '外协'
+        external: '外协',
+        both: '自制和外协都可'
       },
       default_merge_mode: {
         separate: '分别设置',
@@ -302,7 +304,7 @@
       if (!result.label) bad('label', '请填写名称。');
     }
     const writable = (textFields[kind] || []).concat(statuses[kind] ? ['status'] : [], kind === 'material' ? ['stock_qty'] : kind === 'supplier' ? ['default_days'] : []);
-    writable.filter(key => own(value.fields, key) && (key !== 'default_merge_mode' || value.fields.category === 'external')).forEach(key => {
+    writable.filter(key => own(value.fields, key) && (key !== 'default_merge_mode' || ['external', 'both'].includes(value.fields.category))).forEach(key => {
       const v = value.fields[key];
       if (!create && same(v, base.fields[key])) return;
       if (key === 'stock_qty' || key === 'default_days') {
@@ -315,7 +317,7 @@
       } else if (key === 'status') {
         if (!(statuses[kind] || []).some(item => item[0] === v && v !== 'unknown')) bad('fields.status', '请明确选择状态。');else fields.status = v;
       } else if (key === 'category') {
-        if (!['internal', 'external'].includes(v)) bad('fields.category', '请明确选择自制或外协。');else fields.category = v;
+        if (!['internal', 'external', 'both'].includes(v)) bad('fields.category', '请明确选择自制或外协。');else fields.category = v;
       } else if (key === 'default_merge_mode') {
         if (!['', 'separate', 'merged'].includes(v)) bad('fields.default_merge_mode', '请选择有效的周期规则。');else fields[key] = v || null;
       } else {

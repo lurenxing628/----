@@ -4,7 +4,7 @@ const UI = require('./run_ui_source.cjs');
 const assert = require('node:assert/strict'), fs = require('node:fs'), http = require('node:http'), path = require('node:path'), crypto = require('node:crypto');
 const { chromium } = require('playwright'), { compile } = require('../../scripts/workbench/compile.cjs');
 const root = path.resolve(__dirname, '../..'), output = process.argv[2], backend = process.argv[3];
-const files = UI.dependencies(['WorkbenchCaption.jsx', 'WorkbenchPageContext.jsx', 'resource-contract.js', 'ResourceControls.jsx', 'CalendarContract.js', 'PointContract.js', 'PointGanttModel.js', 'PointGantt.jsx', 'PlanGanttModel.js', 'RunHistoryAPI.js', 'RunHistoryControls.jsx', 'RunHistoryWorkspace.jsx',
+const files = UI.dependencies(['WorkbenchCaption.jsx', 'WorkbenchPageContext.jsx', 'resource-contract.js', 'ResourceControls.jsx', 'WorkPeriods.js', 'WorkPeriodFields.jsx', 'CalendarContract.js', 'PointContract.js', 'PointGanttModel.js', 'PointGantt.jsx', 'PlanGanttModel.js', 'RunHistoryAPI.js', 'RunHistoryControls.jsx', 'RunHistoryWorkspace.jsx',
   'RunCandidateAPI.js', 'RunCandidateModel.js', 'RunCandidateControls.jsx', 'RunCandidateAnalysisAPI.js', 'RunCandidateAnalysis.jsx', 'RunBaselineAPI.js', 'RunBaselineModel.js', 'RunBaselineControls.jsx', 'RunCandidateGantt.jsx', 'RunCandidateWorkspace.jsx',
   'WorkbenchControlBridge.js', 'WorkbenchControlStyles.jsx', 'WorkbenchSelectMenu.jsx', 'WorkbenchDatePickerModel.js', 'WorkbenchDatePicker.jsx', 'WorkbenchControls.jsx', 'WorkbenchNumberControls.jsx']);
 const sources = files.map(name => ({ path: 'frontend/workbench/app/' + name, code: fs.readFileSync(path.join(root, 'frontend/workbench/app', name), 'utf8') }));

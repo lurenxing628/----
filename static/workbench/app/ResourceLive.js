@@ -112,7 +112,7 @@
         catalog = window.APSResourceAPI.create('catalog');
       const imports = Object.fromEntries(importOnlyKinds.map(kind => [kind, importOnlyAdapter(kind)]));
       calendar.command = (kind, action, ref, body, signal) => {
-        if (kind !== 'calendar' || !['upsert', 'delete', 'confirm'].includes(action)) throw window.APSResourceContract.failure('工作日历操作不正确。');
+        if (kind !== 'calendar' || !['upsert', 'delete', 'confirm', 'defaults'].includes(action)) throw window.APSResourceContract.failure('工作日历操作不正确。');
         return calendar.execute('calendar/' + (action === 'confirm' ? 'range/confirm' : action), body, signal);
       };
       const open = (type, kind, request) => {

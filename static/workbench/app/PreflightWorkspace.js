@@ -61,7 +61,7 @@
       key: row.operation_ref
     }, /*#__PURE__*/React.createElement("td", null, row.batch_id), /*#__PURE__*/React.createElement("td", null, row.sequence, " \xB7 ", row.label, row.piece_id ? ' · ' + row.piece_id : ''), /*#__PURE__*/React.createElement("td", null, labels[row.status]), /*#__PURE__*/React.createElement("td", null, row.issues.map((item, index) => /*#__PURE__*/React.createElement("p", {
       key: index
-    }, item.message, item.predecessor_sequence ? ' 前序：' + item.predecessor_sequence : '')), row.execution.first_actual_start && /*#__PURE__*/React.createElement("p", null, "\u5B9E\u9645\u5F00\u5DE5\uFF1A", window.WorkbenchFormat.dateTime(row.execution.first_actual_start)), row.execution.confirmed_finish && /*#__PURE__*/React.createElement("p", null, "\u786E\u8BA4\u5B8C\u5DE5\uFF1A", window.WorkbenchFormat.dateTime(row.execution.confirmed_finish)), row.status === 'protected' && /*#__PURE__*/React.createElement("p", null, "\u5269\u4F59\u6570\u91CF\uFF1A", row.execution.remaining_quantity === null ? '未知' : row.execution.remaining_quantity))))))), pages > 1 && /*#__PURE__*/React.createElement(window.WorkbenchListControls.Pager, {
+    }, item.message, item.predecessor_sequence ? ' 前序：' + item.predecessor_sequence : '')), row.material_ready_date && /*#__PURE__*/React.createElement("p", null, "\u7528\u6599\u53EF\u7528\u65E5\u671F\uFF1A", window.WorkbenchFormat.date(row.material_ready_date)), row.execution.first_actual_start && /*#__PURE__*/React.createElement("p", null, "\u5B9E\u9645\u5F00\u5DE5\uFF1A", window.WorkbenchFormat.dateTime(row.execution.first_actual_start)), row.execution.confirmed_finish && /*#__PURE__*/React.createElement("p", null, "\u786E\u8BA4\u5B8C\u5DE5\uFF1A", window.WorkbenchFormat.dateTime(row.execution.confirmed_finish)), row.status === 'protected' && /*#__PURE__*/React.createElement("p", null, "\u5269\u4F59\u6570\u91CF\uFF1A", row.execution.remaining_quantity === null ? '未知' : row.execution.remaining_quantity))))))), pages > 1 && /*#__PURE__*/React.createElement(window.WorkbenchListControls.Pager, {
       page: page,
       pages: pages,
       total: data.tasks.length,
@@ -276,7 +276,13 @@
     }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("strong", null, title), /*#__PURE__*/React.createElement("p", null, description)), kind && /*#__PURE__*/React.createElement(Button, {
       disabled: !data || !onNavigate || busy || !(kind === 'resources' ? counts.missing_resource_tasks : kind === 'unready' ? counts.unready_batches : counts.blocked_tasks + counts.no_route_batches),
       onClick: () => navigate(kind)
-    }, action)))))), /*#__PURE__*/React.createElement(ErrorBox, {
+    }, action)))))), value.material_strategy === 'split' && window.BatchSplitPanel && /*#__PURE__*/React.createElement(window.BatchSplitPanel, {
+      refs: value.batch_refs,
+      day: value.start_date,
+      onCommitted: (child, source) => change({
+        batch_refs: value.batch_refs.map(ref => ref === source ? child : ref)
+      })
+    }), /*#__PURE__*/React.createElement(ErrorBox, {
       error: error
     }), needsRecheck && /*#__PURE__*/React.createElement("p", {
       className: "pf-recheck",

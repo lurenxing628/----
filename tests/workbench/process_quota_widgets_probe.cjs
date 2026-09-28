@@ -7,7 +7,7 @@ const names = ['WorkbenchFormat.js', 'WorkbenchTerms.js', 'WorkbenchReferences.j
   'ResourceDetailRelations.jsx', 'ResourceForms.jsx', 'ResourceMaterialContract.js', 'ResourceMaterialPreview.jsx',
   'WorkbenchControlBridge.js', 'WorkbenchControlStyles.jsx', 'WorkbenchSelectMenu.jsx', 'WorkbenchDatePickerModel.js', 'WorkbenchDatePicker.jsx', 'WorkbenchControls.jsx', 'WorkbenchListControls.jsx', 'WorkbenchNumberControls.jsx',
   'ProcessContract.js', 'ProcessAPI.js', 'ProcessActionContract.js', 'ProcessActionPreview.jsx', 'ProcessFileContract.js', 'ProcessFilePreview.jsx', 'ProcessFileActions.jsx', 'ProcessControls.jsx',
-  'ProcessStageEditor.jsx', 'ProcessSourceEditor.jsx', 'ProcessHoursEditor.jsx', 'ProcessRouteEntry.jsx', 'ProcessDetail.jsx',
+  'ProcessStageEditor.jsx', 'ProcessSourceEditor.jsx', 'ProcessGroupEditor.jsx', 'ProcessHoursEditor.jsx', 'ProcessRouteDraft.js', 'ProcessRouteEntry.jsx', 'ProcessDetail.jsx',
   'WorkbenchDetailPanel.jsx', 'ReportEvidence.jsx', 'CalibrationAPI.js', 'CalibrationControls.jsx', 'CalibrationAdoptionAPI.js', 'CalibrationAdoptionState.js', 'CalibrationAdoptionControls.jsx', 'CalibrationAdoptionAction.jsx', 'CalibrationDetail.jsx', 'CalibrationWorkspace.jsx'];
 const hash = value => crypto.createHash('sha256').update(value).digest('hex');
 const styleSources = JSON.parse(fs.readFileSync(path.join(root, 'scripts/workbench/build-order.json'), 'utf8')).styles.map(name => {

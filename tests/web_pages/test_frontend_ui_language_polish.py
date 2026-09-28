@@ -178,13 +178,12 @@ def test_manuals_keep_backend_supported_english_aliases_but_mark_them_as_compati
         full_manual,
     ))
 
-    # 2026-09 起工作台文件里填的是什么，说明书就写什么：资源四张表填英文代号，日历与关系表填中文。
-    # 旧的"一律填中文、英文只是兼容"说法已经不成立，改成按表说清楚，并挡住把两者混为一谈的写法。
-    assert "工种、供应商、人员、设备这四张资源表的状态和归属填英文代号" in full_manual
-    assert "日历、可操作设备、批次这几张表填中文" in full_manual
-    assert "只填代号：internal 自制 / external 外协" in full_manual
+    # 工作台模板使用中文业务值，旧英文文件仍兼容；说明书跟随真实文件合同。
+    assert "固定选项直接使用模板中的中文" in full_manual
+    assert "以前导出的英文代号仍然兼容" in full_manual
+    assert "归属和外协周期策略使用与页面相同的中文" in full_manual
     assert "初级 / 普通 / 熟练" in full_manual
-    assert "新文件请填中文" not in full_manual, "资源四张表已改英文代号，不能再笼统说新文件填中文"
+    assert "只填代号：internal 自制 / external 外协" not in full_manual
     assert "兼容英文标准值" not in manual_sources
     assert "`locked`" not in full_manual
     assert "`unlocked`" not in full_manual

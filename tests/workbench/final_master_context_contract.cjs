@@ -6,8 +6,8 @@ const vm = require('node:vm');
 const {compile} = require('../../scripts/workbench/compile.cjs');
 const root = path.resolve(__dirname, '../..');
 const files = ['resource-contract.js', 'ResourceTableFilterModel.js', 'ProcessContract.js', 'ProcessReadView.js', 'BatchContract.js',
-  'CalendarContract.js', 'MasterOverviewContract.js', 'ResourceWorkspace.jsx', 'ProcessWorkspace.jsx',
-  'ResourceCalendar.jsx', 'BatchWorkspace.jsx', 'MasterOverviewWorkspace.jsx'];
+  'WorkPeriods.js', 'WorkPeriodFields.jsx', 'CalendarContract.js', 'MasterOverviewContract.js', 'ResourceWorkspace.jsx', 'ProcessWorkspace.jsx',
+  'CalendarDefaultsDialog.jsx', 'ResourceCalendar.jsx', 'BatchWorkspace.jsx', 'MasterOverviewWorkspace.jsx'];
 const sources = files.map(name => ({path: 'app/' + name, code: fs.readFileSync(path.join(root, 'frontend/workbench/app', name), 'utf8')}));
 const compiled = compile({babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'), sources, check_combined: true});
 const window = {ResourceControls: {}, BatchControls: {}, CalendarFields: {}, MasterOverviewTable: {}};

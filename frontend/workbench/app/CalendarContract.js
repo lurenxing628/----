@@ -2,7 +2,7 @@
   'use strict';
   const C = window.APSResourceContract;
   const path = '/api/workbench/v1/calendar';
-  const keys = ['type', 'hours', 'eff', 'allowNormal', 'allowUrgent', 'note'];
+  const keys = ['type', 'hours', 'eff', 'allowNormal', 'allowUrgent', 'note', 'shiftStart', 'shiftEnd', 'periods'];
   const isDate = value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)
     && Number(value.slice(0, 4)) >= 1 && Number(value.slice(5, 7)) >= 1 && Number(value.slice(5, 7)) <= 12
     && Number(value.slice(8)) >= 1 && Number(value.slice(8)) <= monthDays(Number(value.slice(0, 4)), Number(value.slice(5, 7)));
@@ -82,7 +82,8 @@
     return result;
   }
   function draft(value) {
-    return { ...value.fields, hours: displayNumber(value.fields.hours), eff: displayNumber(value.fields.eff), note: value.fields.note || '' };
+    return { ...value.fields, defaultPeriods: value.default_periods, periods: value.fields.periods == null ? null : value.fields.periods.map(row => ({ ...row })), shiftStart: value.stored && value.stored.shift_start || value.effective.window_start.slice(11, 16),
+      shiftEnd: value.stored && value.stored.shift_end || '', hours: displayNumber(value.fields.hours), eff: displayNumber(value.fields.eff), note: value.fields.note || '' };
   }
   function number(value, key) {
     const result = Number(value);
@@ -96,12 +97,22 @@
     const converted = { type: value.type, note: value.note.trim() || null };
     if (value.type === 'work') Object.assign(converted, { hours: number(value.hours, 'hours'), eff: number(value.eff, 'eff'),
       allowNormal: value.allowNormal, allowUrgent: value.allowUrgent });
+    if (value.type === 'work' && value.shiftStart) converted.shiftStart = value.shiftStart;
+    if (value.type === 'work' && value.shiftEnd !== undefined) converted.shiftEnd = value.shiftEnd || null;
+    if (Array.isArray(value.periods)) {
+      const periods = value.type === 'rest' ? [] : value.periods, issue = window.APSWorkPeriods.validate(periods);
+      if (issue) throw C.failure(issue, [{ path: 'fields.periods', message: issue }]);
+      converted.periods = window.APSWorkPeriods.clone(periods);
+      delete converted.shiftStart; delete converted.shiftEnd;
+      if (value.type === 'work') converted.hours = window.APSWorkPeriods.hours(periods);
+    }
     // A default date has no stored row; creating it must not inherit different domain defaults.
     if (!original || !original.explicit) return converted;
     const output = {};
     keys.forEach(key => {
-      const before = original && (['hours', 'eff'].includes(key) ? Number(displayNumber(original.fields[key])) : original.fields[key]);
-      if (C.own(converted, key) && converted[key] !== before) output[key] = converted[key];
+      const before = ['shiftStart', 'shiftEnd'].includes(key) ? draft(original)[key] || null
+        : (['hours', 'eff'].includes(key) ? Number(displayNumber(original.fields[key])) : original.fields[key]);
+      if (C.own(converted, key) && JSON.stringify(converted[key]) !== JSON.stringify(before)) output[key] = converted[key];
     });
     return output;
   }
@@ -110,7 +121,7 @@
     return command.phase === 'rejected' && ['stale_write', 'snapshot_stale'].includes(error && (error.code || error.error && error.error.code));
   }
   // 月历格子里的工时带单位显示，数字格式和单位统一走 WorkbenchFormat，不在这里手拼“小时”。
-  const hoursText = value => window.WorkbenchFormat.hours(value, { digits: 4, trim: true });
+  const hoursText = value => window.APSWorkPeriods.duration(value);
   function tag(row) {
     const working = row.effective.is_working;
     let text = working ? hoursText(row.fields.hours) : '休';

@@ -6,7 +6,7 @@
     ErrorBox,
     Field
   } = window.ResourceControls;
-  const fieldPaths = ['fields.hours', 'fields.eff', 'fields.note'];
+  const fieldPaths = ['fields.hours', 'fields.eff', 'fields.note', 'fields.shiftStart', 'fields.shiftEnd', 'fields.periods'];
   function Segment({
     label,
     value,
@@ -42,10 +42,19 @@
     showSummary = true
   }) {
     const work = value.type === 'work';
-    const change = (key, next) => onChange({
-      ...value,
-      [key]: next
-    });
+    const change = (key, next) => {
+      if (key === 'type' && next === 'work' && value.type === 'rest' && !value.periods?.length) onChange({
+        ...value,
+        type: next,
+        periods: window.APSWorkPeriods.clone(value.defaultPeriods || window.APSWorkPeriods.defaults()),
+        hours: String(window.APSWorkPeriods.hours(value.defaultPeriods || window.APSWorkPeriods.defaults())),
+        allowNormal: 'yes',
+        allowUrgent: 'yes'
+      });else onChange({
+        ...value,
+        [key]: next
+      });
+    };
     const id = React.useId();
     return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Segment, {
       label: "\u8FD9\u4E00\u5929\u662F\u5426\u6392\u4EA7",
@@ -58,7 +67,38 @@
       style: work ? undefined : {
         opacity: .55
       }
-    }, /*#__PURE__*/React.createElement(Field, {
+    }, value.periods == null && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Field, {
+      label: "\u73ED\u6B21\u5F00\u59CB",
+      path: "fields.shiftStart",
+      error: error
+    }, /*#__PURE__*/React.createElement("input", {
+      type: "time",
+      value: value.shiftStart || '',
+      disabled: disabled || !work,
+      onChange: event => onChange({
+        ...value,
+        shiftStart: event.target.value,
+        shiftEnd: ''
+      })
+    })), /*#__PURE__*/React.createElement(Field, {
+      label: "\u73ED\u6B21\u7ED3\u675F\uFF08\u7A7A\u767D\u6309\u5DE5\u65F6\u63A8\u7B97\uFF09",
+      path: "fields.shiftEnd",
+      error: error
+    }, /*#__PURE__*/React.createElement("input", {
+      type: "time",
+      value: value.shiftEnd || '',
+      disabled: disabled || !work,
+      onChange: event => {
+        const end = event.target.value,
+          start = value.shiftStart;
+        const minute = text => Number(text.slice(0, 2)) * 60 + Number(text.slice(3));
+        onChange({
+          ...value,
+          shiftEnd: end,
+          hours: end && start ? String(((minute(end) - minute(start) + 1439) % 1440 + 1) / 60) : value.hours
+        });
+      }
+    })), /*#__PURE__*/React.createElement(Field, {
       label: "\u53EF\u6392\u5DE5\u65F6\uFF08\u5C0F\u65F6\uFF09",
       path: "fields.hours",
       error: error,
@@ -74,8 +114,22 @@
       "data-wb-step": "0.5",
       value: value.hours,
       disabled: disabled || !work,
-      onChange: event => change('hours', event.target.value)
-    })), /*#__PURE__*/React.createElement(Field, {
+      onChange: event => onChange({
+        ...value,
+        hours: event.target.value,
+        shiftEnd: ''
+      })
+    }))), /*#__PURE__*/React.createElement(window.WorkPeriodFields, {
+      value: value.periods,
+      start: value.shiftStart,
+      end: value.shiftEnd,
+      disabled: disabled || !work,
+      onChange: periods => onChange({
+        ...value,
+        periods,
+        hours: String(window.APSWorkPeriods.hours(periods) ?? value.hours)
+      })
+    }), /*#__PURE__*/React.createElement(Field, {
       label: "\u6548\u7387\uFF08%\uFF09",
       path: "fields.eff",
       error: error,
@@ -135,7 +189,7 @@
       }
     }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("b", null, value.explicit ? '单独设置' : '默认规则'), " \xB7 ", value.effective.is_working ? '可排产' : '不排产'), /*#__PURE__*/React.createElement("div", null, number(fields.hours), " \u5C0F\u65F6 \xB7 \u6548\u7387 ", number(fields.eff), "% \xB7 \u666E\u901A\u4EF6", fields.allowNormal === 'yes' ? '可排' : '不可排', " \xB7 \u6025\u4EF6", fields.allowUrgent === 'yes' ? '可排' : '不可排'), /*#__PURE__*/React.createElement("div", {
       className: "muted"
-    }, "\u6709\u6548\u65F6\u6BB5\uFF1A", window.WorkbenchFormat.dateTime(value.effective.window_start), " \u81F3 ", window.WorkbenchFormat.dateTime(value.effective.window_end)), raw && stored && /*#__PURE__*/React.createElement("div", {
+    }, "\u6709\u6548\u65F6\u6BB5\uFF1A", value.effective.periods != null ? window.APSWorkPeriods.describe(value.effective.periods) : window.WorkbenchFormat.dateTime(value.effective.window_start) + " 至 " + window.WorkbenchFormat.dateTime(value.effective.window_end)), raw && stored && /*#__PURE__*/React.createElement("div", {
       className: "muted"
     }, "\u539F\u59CB\u914D\u7F6E\uFF08\u53EA\u8BFB\uFF09\uFF1A", {
       workday: '工作日',

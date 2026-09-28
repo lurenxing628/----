@@ -53,12 +53,18 @@
         message: '第 ' + (index + 1) + ' 天：' + message
       });
       if (row.day_offset !== index || typeof row.is_rest !== 'boolean') bad('请明确选择工作或休息。');
-      if (!clockValid(row.shift_start) || !clockValid(row.shift_end)) bad('开始和结束请按 08:30 这样填。');
+      if (row.periods == null && (!clockValid(row.shift_start) || !clockValid(row.shift_end))) bad('开始和结束请按 08:30 这样填。');
+      if (Array.isArray(row.periods)) {
+        if (row.is_rest === false && !row.periods.length) bad('工作日请至少填写一个工作时段，或明确改为休息日。');
+        const issue = window.APSWorkPeriods.validate(row.periods);
+        if (issue) bad(issue);
+      }
       const next = pattern[(index + 1) % pattern.length];
       if (row.is_rest === false && next.is_rest === false && clockValid(row.shift_start) && clockValid(row.shift_end) && clockValid(next.shift_start)) {
         const start = minutes(row.shift_start),
           end = minutes(row.shift_end);
-        if (end + (end <= start ? 1440 : 0) > 1440 + minutes(next.shift_start)) bad('跨夜结束与下一轮换日开始重叠。');
+        const last = row.periods && row.periods.length ? window.APSWorkPeriods.bounds(row.periods[row.periods.length - 1])[1] : end + (end <= start ? 1440 : 0);
+        if (last > 1440 + minutes(next.shift_start)) bad('跨夜结束与下一轮换日开始重叠。');
       }
     });
     return errors;

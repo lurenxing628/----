@@ -115,14 +115,55 @@ def test_absent_plan_identity_rejects_before_source_lookup(trial_case, monkeypat
     assert error.value.code == "plan_unavailable" and snapshot(trial_case.conn) == before
 
 
-@pytest.mark.parametrize("table", ["PartOperations", "ExternalGroups"])
-def test_missing_candidate_table_rejects_without_substituting_current_facts(trial_case, table):
-    intent = candidate(trial_case)
+def _external_candidate(case):
+    case.conn.execute("INSERT INTO OpTypes(op_type_id,name,category) VALUES ('EXT','Coat','external')")
+    case.conn.execute("INSERT INTO Suppliers(supplier_id,name,op_type_id) VALUES ('S1','Coater','EXT')")
+    case.conn.execute("INSERT INTO ExternalGroups(group_id,part_no,start_seq,end_seq,merge_mode,total_days,supplier_id) "
+                      "VALUES ('G1','P1',1,1,'merged',2,'S1')")
+    case.conn.execute("INSERT INTO PartOperations(part_no,seq,op_type_id,op_type_name,source,supplier_id,ext_days,ext_group_id) "
+                      "VALUES ('P1',1,'EXT','Coat','external','S1',1,'G1')")
+    case.conn.execute("UPDATE BatchOperations SET source='external',op_type_id='EXT',op_type_name='Coat',"
+                      "supplier_id='S1',ext_days=1,machine_id=NULL,operator_id=NULL WHERE id=?", (case.op_id,))
+    case.conn.commit()
+    return candidate(case)
+
+
+@pytest.mark.parametrize("table,external", [
+    ("BatchExternalContexts", True), ("BatchOperations", True), ("BatchOperations", False),
+])
+def test_missing_candidate_table_rejects_without_substituting_current_facts(trial_case, table, external):
+    intent = _external_candidate(trial_case) if external else candidate(trial_case)
     edit_capture(trial_case, "facts_json", lambda facts: facts["tables"].pop(table))
     before = snapshot(trial_case.conn)
     with pytest.raises(WorkbenchCommandRejected) as error:
         service(trial_case.conn).preview_create(intent)
     assert error.value.code == "trial_base_incomplete" and snapshot(trial_case.conn) == before
+
+
+@pytest.mark.parametrize("external", [False, True])
+def test_complete_candidate_does_not_require_captured_template_tables(trial_case, external):
+    case = trial_case
+    intent = _external_candidate(case) if external else candidate(case)
+    for table in ("PartOperations", "ExternalGroups"):
+        edit_capture(case, "facts_json", lambda facts, name=table: facts["tables"].pop(name))
+    if external:
+        case.conn.execute("UPDATE PartOperations SET ext_days=99 WHERE part_no='P1'")
+        case.conn.execute("UPDATE ExternalGroups SET total_days=99 WHERE group_id='G1'")
+    case.conn.commit()
+    before = snapshot(case.conn)
+
+    preview = service(case.conn).preview_create(intent)
+    assert preview["task_count"] == 1 and preview["tasks_complete"] is True
+    assert preview["validation"]["constraints_status"] == "valid", preview["validation"]
+    _, rows, _ = trial_base.prepare_base(case.conn, intent)
+    original = rows[0]["original"]
+    assert original["template"] is None
+    if external:
+        assert original["operation"]["source"] == "external" and original["operation"]["ext_days"] == 1
+        assert original["external_group"]["total_days"] == 2
+    else:
+        assert original["operation"]["source"] == "internal" and original["external_group"] is None
+    assert snapshot(case.conn) == before
 
 
 @pytest.mark.parametrize("state", ["available", "empty", "unavailable"])

@@ -3,9 +3,9 @@
   const { Button, Modal } = window.ResourceControls;
   function Scope({ value, saved }) {
     return <><dl className="ra-scope"><div><dt>{saved ? '上次提交时核对的正式计划' : '当前正式计划（本次预检）'}</dt><dd>{value.baseline.version === null ? '尚无正式计划' : 'v' + value.baseline.version}</dd></div>
-      <div><dt>目标候选方案</dt><dd>当前核对的完整候选方案<window.WorkbenchReference value={value.candidate_ref} /></dd></div><div><dt>采用工序</dt><dd>{value.task_count} 道</dd></div>
-      <div><dt>采用范围</dt><dd>完整候选方案及全部当前正式安排</dd></div></dl>
-      <p className="ra-note">将完整候选方案采用为新一版正式计划，保留历史版本。恢复旧安排需重新排产并采用。</p></>;
+      <div><dt>目标候选方案</dt><dd>当前核对的候选方案<window.WorkbenchReference value={value.candidate_ref} /></dd></div><div><dt>采用工序</dt><dd>{value.task_count} 道</dd></div>
+      <div><dt>采用范围</dt><dd>本次可排工序及全部当前正式安排</dd></div></dl>
+      <p className="ra-note">将核对通过的安排采用为新一版正式计划，保留历史版本。分阶段放行时，缺料工序仍待排，不会标为完成。恢复旧安排需重新排产并采用。</p></>;
   }
   function Records({ value, intent, result }) {
     return <details className="ra-records wb-ref"><summary>编号</summary>

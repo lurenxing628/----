@@ -5,7 +5,7 @@ const root = path.resolve(__dirname, '../..'), input = JSON.parse(fs.readFileSyn
 assert(!output.startsWith(root + path.sep), 'Never publish shared assets');
 fs.mkdirSync(output, {recursive: true});
 const files = ['WorkbenchFormat.js', 'WorkbenchTerms.js', 'WorkbenchReferences.jsx', 'WorkbenchGuards.js',
-  'resource-contract.js', 'CalendarContract.js', 'PointContract.js', 'PlanProcessOrder.js', 'PlanContract.js', 'resource-session.js', 'ResourceControls.jsx', 'WorkbenchGuardHost.jsx',
+  'resource-contract.js', 'WorkPeriods.js', 'WorkPeriodFields.jsx', 'CalendarContract.js', 'PointContract.js', 'PlanProcessOrder.js', 'PlanContract.js', 'resource-session.js', 'ResourceControls.jsx', 'WorkbenchGuardHost.jsx',
   'PointGanttModel.js', 'PointGantt.jsx', 'PlanGanttModel.js', 'PlanLayout.jsx', 'PlanGanttCanvas.jsx', 'PlanGantt.jsx', 'PlanDetailsUI.jsx',
   'RunCandidateAPI.js', 'RunCandidateModel.js', 'RunCandidateControls.jsx', 'RunBaselineAPI.js', 'RunBaselineModel.js', 'RunBaselineControls.jsx', 'RunCandidateGantt.jsx',
   // TrialDetails 通过 FieldContract 与 RunCandidateModel 给执行依据配中文标签（2026-09-21 起）。

@@ -99,6 +99,18 @@ assert.throws(() => F.preview(envelope(filePreview), 'hours', 'xlsx', targetRequ
 assert.throws(() => F.preview(envelope(filePreview), 'hours', 'csv', { ...targetRequest, target_ref: r(1) }));
 assert.throws(() => F.preview(envelope({ ...filePreview, rows: [{ ...fileRow, before: { entity_key: 'hidden' } }] }), 'hours', 'csv', targetRequest));
 assert.throws(() => F.preview(envelope({ ...filePreview, rows: [{ ...fileRow, route_summary: { counts: { operations: 1, recognized: 0, unknown: 0 }, diagnostics: [], can_confirm_route: true } }] }), 'hours', 'csv', targetRequest));
+const routeSummary = { counts: { operations: 1, recognized: 1, unknown: 0 }, diagnostics: [], can_confirm_route: true,
+  operations: [{ sequence: 10, op_type_name: '3D打印', source_suggestion: 'internal', supplier_label: null, external_days: null }],
+  differences: [{ sequence: 10, change: 'added', before: null, after: '3D打印' }] };
+const routeFile = { ...plain(filePreview), kind: 'route', operation: 'process_route_import.confirm', zero_review_required: false,
+  columns: [{ key: 'route_raw', label: '工艺路线' }], rows: [{ ...plain(fileRow), before: { route_raw: null }, after: { route_raw: '10: 3D打印' },
+    changes: { route_raw: { before: null, after: '10: 3D打印' } }, route_summary: routeSummary }] };
+assert.equal(F.preview(envelope(routeFile), 'route', 'csv', targetRequest).data.rows[0].route_summary.operations[0].op_type_name, '3D打印');
+for (const mutate of [s => { delete s.operations; }, s => { delete s.differences; }, s => { s.operations = []; },
+  s => { s.differences[0].after = 'D打印'; }, s => { s.operations[0].sequence = 9007199254740992; }]) {
+  const bad = plain(routeFile); mutate(bad.rows[0].route_summary);
+  assert.throws(() => F.preview(envelope(bad), 'route', 'csv', targetRequest));
+}
 assert.equal(F.receipt(fileReceipt, fileIntent, 'hours', filePreview).skipped_count, 0);
 assert.deepEqual(plain(F.hoursCounts(filePreview)), { changed: 1, skipped: 0, unchanged: 0, rejected: 0 });
 const skip = { row: 3, code: 'calibration_quota_locked', template_operation_ref: r(30), adoption_ref: r(31), reason: 'Verified calibration', message: 'Locked quota preserved' };

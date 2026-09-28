@@ -44,9 +44,16 @@
     </section>;
   }
   function RouteSummary({ value }) {
+    const [page, setPage] = React.useState(1);
     if (!value) return null;
-    return <details><summary>路线识别结果</summary><p>工序 {value.counts.operations} · 已识别 {value.counts.recognized} · 未识别 {value.counts.unknown}</p>
+    const operations = new Map(value.operations.map(row => [String(row.sequence), row])), pages = Math.max(1, Math.ceil(value.differences.length / 50)), current = Math.min(page, pages);
+    const labels = { added: '新增', removed: '删除', changed: '修改', retained: '保留' };
+    return <details open><summary>路线识别结果与逐道变化</summary><p>工序 {value.counts.operations} · 已识别 {value.counts.recognized} · 未识别 {value.counts.unknown}</p>
       <p>{value.can_confirm_route ? '路线识别检查通过，尚未执行本次导入。' : '路线仍有待处理问题，本次不能确认。'}</p>
+      <div className="rm-table-wrap" tabIndex="0" role="region" aria-label="路线逐道识别结果"><table className="rm-table" aria-label="导入路线工序变化"><caption className="wb-visually-hidden">导入前后的工序和归属</caption><thead><tr><th scope="col">工序号</th><th scope="col">处理</th><th scope="col">原工序</th><th scope="col">导入后工序</th><th scope="col">识别归属</th><th scope="col">建议供应商</th></tr></thead><tbody>
+        {value.differences.slice((current - 1) * 50, current * 50).map(row => { const op = operations.get(String(row.sequence)); return <tr key={String(row.sequence)}><td>{row.sequence}</td><td>{labels[row.change]}</td><td>{row.before === null ? '无' : row.before}</td><td>{row.after === null ? '将删除' : row.after}</td><td>{op ? ({ internal: '自制', external: '外协' }[op.source_suggestion] || '待确认') : '—'}</td><td>{op && op.supplier_label || '—'}</td></tr>; })}
+      </tbody></table></div>
+      {pages > 1 && <div className="rm-pagination"><span>共 {value.differences.length} 道 · 第 {current} / {pages} 页</span><Button icon="chevron-left" aria-label="路线明细上一页" disabled={current <= 1} onClick={() => setPage(current - 1)} /><Button icon="chevron-right" aria-label="路线明细下一页" disabled={current >= pages} onClick={() => setPage(current + 1)} /></div>}
       {value.diagnostics.map((row, index) => <div key={index} className={row.severity === 'error' ? 'rm-danger' : undefined}>{row.sequence === undefined ? '' : '工序 ' + row.sequence + '：'}{row.message}</div>)}</details>;
   }
   function Groups({ rows, selected, onChange, disabled }) {

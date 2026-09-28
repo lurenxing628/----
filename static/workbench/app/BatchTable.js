@@ -212,8 +212,8 @@
     }, op.sequence, " \xB7 ", op.label, op.issues.length ? ' · 待补齐' : '')) : '尚未生成工序')), ['priority', 'ready_status', 'status'].map(key => /*#__PURE__*/React.createElement("td", {
       key: key
     }, /*#__PURE__*/React.createElement("span", {
-      className: 'pill ' + (key === 'ready_status' ? row.fields[key] === 'yes' ? 'ok' : 'warn' : key === 'priority' ? row.fields[key] === 'normal' ? 'off' : 'warn' : row.status === 'completed' ? 'ok' : row.status === 'processing' ? 'warn' : 'off')
-    }, B.label(key, key === 'status' ? row.status : row.fields[key])))), /*#__PURE__*/React.createElement("td", {
+      className: 'pill ' + (key === 'ready_status' ? B.readyStatus(row) === 'yes' ? 'ok' : 'warn' : key === 'priority' ? row.fields[key] === 'normal' ? 'off' : 'warn' : row.status === 'completed' ? 'ok' : row.status === 'processing' ? 'warn' : 'off')
+    }, B.label(key, key === 'status' ? row.status : key === 'ready_status' ? B.readyStatus(row) : row.fields[key])))), /*#__PURE__*/React.createElement("td", {
       className: "wb-col-actions"
     }, /*#__PURE__*/React.createElement("div", {
       className: "batch-head"

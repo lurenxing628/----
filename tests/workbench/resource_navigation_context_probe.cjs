@@ -7,13 +7,13 @@ if (!output) throw new Error('Pass a temporary artifact directory');
 fs.mkdirSync(output, { recursive: true });
 const files = ['WorkbenchPageContext.jsx', 'resource-contract.js', 'resource-api.js', 'resource-session.js', 'WorkbenchFormat.js', 'WorkbenchTerms.js', 'WorkbenchReferences.jsx', 'WorkbenchGuards.js', 'ResourceControls.jsx', 'WorkbenchGuardHost.jsx', 'WorkbenchControlBridge.js', 'WorkbenchControls.jsx','WorkbenchListControls.jsx',
   'ResourceTableFilterModel.js', 'ResourceTableFilter.jsx', 'ResourceTableHeader.jsx', 'ResourceDetailRelations.jsx', 'ResourceForms.jsx', 'ResourceTables.jsx', 'ResourceMetrics.jsx', 'ResourceRail.jsx',
-  'CalendarContract.js', 'OperatorCalendarContract.js', 'ResourceWorkspace.jsx', 'CalendarFields.jsx', 'CalendarDayDialog.jsx', 'CalendarRangeDialog.jsx', 'ResourceCalendar.jsx', 'OperatorCalendarPanel.jsx',
+  'WorkPeriods.js', 'WorkPeriodFields.jsx', 'CalendarContract.js', 'OperatorCalendarContract.js', 'ResourceWorkspace.jsx', 'CalendarFields.jsx', 'CalendarDayDialog.jsx', 'CalendarRangeDialog.jsx', 'CalendarDefaultsDialog.jsx', 'ResourceCalendar.jsx', 'OperatorCalendarPanel.jsx',
   'ResourceMaterialContract.js', 'ResourceFileContract.js', 'ResourceMaterialPreview.jsx', 'ResourceMaterialActions.jsx', 'ResourceFileActions.jsx', 'ResourceCatalogModel.js', 'ResourceCatalogEditor.jsx', 'ResourceCatalog.jsx',
   // ResourceLive.jsx 的 familyLabel 直接读 window.APSCalendarFile.labels / window.APSRelationFile.labels，
   // 这两个模块不在清单里时人员页的附属文件按钮会抛 "Cannot read properties of undefined"。
   'CalendarFileContract.js', 'RelationFileContract.js',
   'ProcessAPI.js', 'ProcessContract.js', 'ProcessReadView.js', 'ProcessActionContract.js', 'ProcessActionPreview.jsx', 'ProcessCollectionActions.jsx', 'ProcessFileContract.js', 'ProcessFilePreview.jsx', 'ProcessFileActions.jsx', 'ProcessControls.jsx',
-  'ProcessStageEditor.jsx', 'ProcessOpTypeCreate.jsx', 'ProcessSourceEditor.jsx', 'ProcessHoursEditor.jsx', 'ProcessRouteEntry.jsx', 'ProcessDetail.jsx', 'ProcessWorkspace.jsx', 'ResourceLive.jsx',
+  'ProcessStageEditor.jsx', 'ProcessOpTypeCreate.jsx', 'ProcessSourceEditor.jsx', 'ProcessGroupEditor.jsx', 'ProcessHoursEditor.jsx', 'ProcessRouteDraft.js', 'ProcessRouteEntry.jsx', 'ProcessDetail.jsx', 'ProcessWorkspace.jsx', 'ResourceLive.jsx',
    'WorkbenchControlStyles.jsx', 'WorkbenchSelectMenu.jsx', 'WorkbenchDatePickerModel.js', 'WorkbenchDatePicker.jsx',  'WorkbenchNumberControls.jsx'];
 const sources = files.map(file => ({ path: 'frontend/workbench/app/' + file, code: fs.readFileSync(path.join(root, 'frontend/workbench/app', file), 'utf8') }));
 const compiled = compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'), sources, check_combined: true });

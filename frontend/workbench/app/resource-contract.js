@@ -32,7 +32,7 @@
   };
   const relations = {
     machine: [
-      { key: 'op_type_ref', label: '绑定工种', kind: 'op_type', category: 'internal' },
+      { key: 'op_type_refs', label: '可做工种', kind: 'op_type', category: 'internal', multiple: true },
       { key: 'group_ref', label: '设备组', kind: 'machine_group', catalog: true }
     ],
     operator: [
@@ -59,7 +59,7 @@
     return object(value) && text(value.ref) && !!value.ref && text(value.business_code) && text(value.label)
       && (text(value.status) || value.status === null) && object(value.fields) && object(value.relationships) && Array.isArray(value.issues)
       && (value.write_context === null || object(value.write_context))
-      && (!own(value, 'availability') || value.fields.category === 'internal' && availability(value.availability));
+      && (!own(value, 'availability') || ['internal', 'both'].includes(value.fields.category) && availability(value.availability));
   }
   function availability(value) {
     return object(value) && value.basis === 'enabled_authorized_matching' && count(value.machines) && count(value.operators);
@@ -130,7 +130,7 @@
   function fieldValue(kind, key, value) {
     if (value == null || value === '') return '未填写';
     const values = {
-      category: { internal: '自制', external: '外协' }, default_merge_mode: { separate: '分别设置', merged: '合并设置' },
+      category: { internal: '自制', external: '外协', both: '自制和外协都可' }, default_merge_mode: { separate: '分别设置', merged: '合并设置' },
       inactive_reason: { unknown: '未知', disabled: '停用', leave: '请假', pending_review: '待复核' },
       legacy_status: { inactive: '原停用状态，原因未登记' }
     };
@@ -180,7 +180,7 @@
     }
     const writable = (textFields[kind] || []).concat(statuses[kind] ? ['status'] : [],
       kind === 'material' ? ['stock_qty'] : kind === 'supplier' ? ['default_days'] : []);
-    writable.filter(key => own(value.fields, key) && (key !== 'default_merge_mode' || value.fields.category === 'external')).forEach(key => {
+    writable.filter(key => own(value.fields, key) && (key !== 'default_merge_mode' || ['external', 'both'].includes(value.fields.category))).forEach(key => {
       const v = value.fields[key];
       if (!create && same(v, base.fields[key])) return;
       if (key === 'stock_qty' || key === 'default_days') {
@@ -195,7 +195,7 @@
         if (!(statuses[kind] || []).some(item => item[0] === v && v !== 'unknown')) bad('fields.status', '请明确选择状态。');
         else fields.status = v;
       } else if (key === 'category') {
-        if (!['internal', 'external'].includes(v)) bad('fields.category', '请明确选择自制或外协。');
+        if (!['internal', 'external', 'both'].includes(v)) bad('fields.category', '请明确选择自制或外协。');
         else fields.category = v;
       } else if (key === 'default_merge_mode') {
         if (!['', 'separate', 'merged'].includes(v)) bad('fields.default_merge_mode', '请选择有效的周期规则。');

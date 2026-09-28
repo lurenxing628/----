@@ -49,7 +49,7 @@
         owner: guardOwner
       }))) onClose();
     }
-    const choices = S.useQuery(signal => adapter.choices(signal), [adapter]);
+    const choices = S.useQuery(signal => adapter.operationChoices(entity.ref, operation.ref, signal), [adapter, entity.ref, operation.ref]);
     const catalogs = choices.result && choices.result.data;
     const names = {
       machine_ref: '设备',
@@ -67,6 +67,10 @@
     };
     const allowed = catalogs && draft.machine_ref ? catalogs.authorizations.filter(row => row.machine_ref === draft.machine_ref).map(row => row.operator_ref) : null;
     const mismatch = allowed && draft.operator_ref && !allowed.includes(draft.operator_ref);
+    const unsuitable = catalogs ? keys.filter(key => key.endsWith('_ref') && draft[key]).map(key => {
+      const row = catalogs[catalogKeys[key]].find(item => item.ref === draft[key]);
+      return row && (row.eligible === false || row.status !== 'active') ? names[key] + '：' + (row.unavailable_reason || '当前不可用') : null;
+    }).filter(Boolean) : [];
     React.useEffect(() => {
       if (!done || seen.current === command.result.receipt_ref) return;
       try {
@@ -80,7 +84,7 @@
     }, [done, command.result]);
     async function submit(event) {
       event.preventDefault();
-      if (locked || mismatch) return;
+      if (locked || mismatch || unsuitable.length || merged) return;
       try {
         const fields = {};
         for (const key of keys) {
@@ -114,12 +118,12 @@
       footer: /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Button, {
         onClick: close,
         disabled: command.locked
-      }, done ? '关闭' : '取消'), !done && /*#__PURE__*/React.createElement(Button, {
+      }, done || merged ? '关闭' : '取消'), !done && !merged && /*#__PURE__*/React.createElement(Button, {
         form: form,
         type: "submit",
         icon: "check",
         className: "btn primary",
-        disabled: locked || !catalogs || !!mismatch,
+        disabled: locked || !catalogs || !!mismatch || unsuitable.length > 0,
         reason: B.reason(entity.write_context, 'operation_update', source)
       }, "\u4FDD\u5B58\u5DE5\u5E8F"))
     }, /*#__PURE__*/React.createElement("form", {
@@ -137,7 +141,7 @@
       error: currentError
     }, key.endsWith('_ref') ? /*#__PURE__*/React.createElement("select", {
       value: draft[key],
-      disabled: locked || !catalogs,
+      disabled: locked || !catalogs || merged,
       onChange: event => setDraft({
         ...draft,
         [key]: event.target.value
@@ -147,8 +151,8 @@
     }, "\u672A\u9009"), catalogs && catalogs[catalogKeys[key]].map(row => /*#__PURE__*/React.createElement("option", {
       key: row.ref,
       value: row.ref,
-      disabled: row.status !== 'active'
-    }, row.business_code, " \xB7 ", row.label, row.status === 'active' ? '' : '（不可用）'))) : /*#__PURE__*/React.createElement("input", {
+      disabled: row.eligible === false || row.status !== 'active' || key === 'operator_ref' && allowed && !allowed.includes(row.ref)
+    }, row.business_code, " \xB7 ", row.label, row.unavailable_reason ? '（' + row.unavailable_reason + '）' : key === 'operator_ref' && allowed && !allowed.includes(row.ref) ? '（未获设备授权）' : ''))) : /*#__PURE__*/React.createElement("input", {
       value: draft[key],
       type: "text",
       inputMode: "decimal",
@@ -157,11 +161,16 @@
         ...draft,
         [key]: event.target.value
       })
-    })))), merged && /*#__PURE__*/React.createElement("p", null, "\u5408\u5E76\u5916\u534F\u7EC4 ", operation.external_group.business_code, " \xB7 \u6574\u7EC4\u5468\u671F ", window.WorkbenchFormat.number(operation.external_group.total_days), " \u5929\uFF08\u53EA\u8BFB\uFF09"), allowed && /*#__PURE__*/React.createElement("p", {
+    })))), merged && /*#__PURE__*/React.createElement("p", null, operation.external_group.start_sequence != null && operation.external_group.end_sequence != null ? '工序 ' + operation.external_group.start_sequence + ' 至 ' + operation.external_group.end_sequence : '合并外协段', " \xB7 \u6574\u6BB5\u5468\u671F ", window.WorkbenchFormat.number(operation.external_group.total_days, {
+      digits: 20,
+      trim: true
+    }), " \u5929\uFF08\u53EA\u8BFB\uFF09"), merged && /*#__PURE__*/React.createElement("p", null, "\u5408\u5E76\u5916\u534F\u6BB5\u4E0D\u80FD\u9010\u9053\u66F4\u6362\u4F9B\u5E94\u5546\u3002\u8BF7\u5728\u5DE5\u827A\u8D44\u6599\u4E2D\u6574\u6BB5\u6539\u6D3E\uFF0C\u518D\u5230\u6279\u6B21\u4E2D\u9884\u68C0\u5DE5\u5E8F\u66F4\u65B0\u3002"), allowed && /*#__PURE__*/React.createElement("p", {
       style: mismatch ? {
         color: 'var(--ui-danger-text)'
       } : undefined
-    }, mismatch ? '所选人员未获设备操作授权。' : '设备授权人员：', catalogs.operators.filter(row => allowed.includes(row.ref)).map(row => row.label).join('、') || '无'), /*#__PURE__*/React.createElement(ErrorBox, {
+    }, mismatch ? '所选人员未获设备操作授权。' : '设备授权人员：', catalogs.operators.filter(row => allowed.includes(row.ref)).map(row => row.label).join('、') || '无'), unsuitable.length > 0 && /*#__PURE__*/React.createElement("p", {
+      role: "status"
+    }, unsuitable.join('；')), /*#__PURE__*/React.createElement(ErrorBox, {
       error: error,
       excludePaths: paths
     }), /*#__PURE__*/React.createElement(ErrorBox, {

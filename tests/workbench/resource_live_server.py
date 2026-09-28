@@ -51,10 +51,10 @@ def seed_resources(app):
 
 
 def business_state(db):
-    tables = ("Materials", "OpTypes", "Machines", "Operators", "Suppliers", "ResourceTeams", "OperatorMachine", "OperatorSkill",
+    tables = ("MachineOpTypes", "BatchMaterials", "BatchMaterialReviews", "BatchMaterialStages", "BatchMaterialArrivals", "BatchQuantitySplits", "Batches", "BatchOperations", "Materials", "OpTypes", "Machines", "Operators", "Suppliers", "ResourceTeams", "OperatorMachine", "OperatorSkill",
               "WorkbenchMachineGroups", "WorkbenchShiftProfiles", "WorkbenchOperatorProfiles", "WorkbenchSupplierProfiles",
               "WorkbenchSupplierOpTypes", "WorkbenchMachineGroupMembers", "WorkbenchShiftPatternDays", "WorkbenchOpTypePolicies",
-              "WorkCalendar", "OperatorCalendar", "WorkbenchCommandReceipts")
+              "WorkCalendar", "OperatorCalendar", "WorkbenchCalendarDefaults", "WorkbenchShiftDayPeriods", "WorkbenchCommandReceipts")
     with sqlite3.connect(str(db)) as conn:
         conn.row_factory = sqlite3.Row
         return {table: [dict(row) for row in conn.execute('SELECT * FROM "' + table + '" ORDER BY rowid')] for table in tables}

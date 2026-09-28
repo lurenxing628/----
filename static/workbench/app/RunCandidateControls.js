@@ -223,7 +223,11 @@
       className: "rc-reasons rc-generation wb-ref"
     }, /*#__PURE__*/React.createElement("summary", null, "\u751F\u6210\u8D44\u6599\u4E0E\u8BB0\u5F55\u7F16\u53F7"), /*#__PURE__*/React.createElement("dl", {
       className: "rc-meta"
-    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u63D0\u4EA4 / \u7ED3\u675F\u65F6\u95F4"), /*#__PURE__*/React.createElement("dd", null, M.timeLabel(g.accepted_at), /*#__PURE__*/React.createElement("small", null, M.timeLabel(g.finished_at)))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u9F50\u5957\u68C0\u67E5 / \u7F3A\u8D44\u6E90"), /*#__PURE__*/React.createElement("dd", null, input.ready_check === null ? '未记录' : input.ready_check ? '开启' : '关闭', " / ", {
+    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u63D0\u4EA4 / \u7ED3\u675F\u65F6\u95F4"), /*#__PURE__*/React.createElement("dd", null, M.timeLabel(g.accepted_at), /*#__PURE__*/React.createElement("small", null, M.timeLabel(g.finished_at)))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u7269\u6599\u653E\u884C\u65B9\u5F0F"), /*#__PURE__*/React.createElement("dd", null, input.material_strategy === null ? '未记录' : {
+      strict: '整批齐套',
+      stage: '按工序齐套',
+      split: '预览确认分批'
+    }[input.material_strategy || 'strict'])), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u9F50\u5957\u68C0\u67E5 / \u7F3A\u8D44\u6E90"), /*#__PURE__*/React.createElement("dd", null, input.ready_check === null ? '未记录' : input.ready_check ? '开启' : '关闭', " / ", {
       auto_assign: '自动分配',
       exclude: '暂不排'
     }[input.missing_resource_policy] || '未记录')), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, '已有执行 / ' + window.WorkbenchTerms.baseline_plan), /*#__PURE__*/React.createElement("dd", null, input.completed_policy === 'preserve_actuals' ? '保留已有开工和完工记录' : '执行规则未记录', /*#__PURE__*/React.createElement("small", null, g.baseline.captured_task_count === null ? '正式计划安排数未知' : '已保留 ' + g.baseline.captured_task_count + ' 道正式计划安排')))), /*#__PURE__*/React.createElement("div", {

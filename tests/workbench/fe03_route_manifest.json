@@ -102,6 +102,53 @@
     "strict_slashes": true
   },
   {
+    "rule": "/api/workbench/v1/entities/machine/<ref>/downtimes",
+    "endpoint": "workbench.machine_downtimes",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/entities/machine/<ref>/downtimes/create",
+    "endpoint": "workbench.machine_downtime_create",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "defaults": {
+      "action": "create"
+    },
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/entities/machine/<ref>/downtimes/update",
+    "endpoint": "workbench.machine_downtime_update",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "defaults": {
+      "action": "update"
+    },
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/entities/machine/<ref>/downtimes/cancel",
+    "endpoint": "workbench.machine_downtime_cancel",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "defaults": {
+      "action": "cancel"
+    },
+    "strict_slashes": true
+  },
+  {
     "rule": "/api/workbench/v1/entities/<kind>",
     "endpoint": "workbench.resource_list",
     "methods": [
@@ -543,6 +590,27 @@
     "strict_slashes": true
   },
   {
+    "rule": "/api/workbench/v1/calendar/defaults",
+    "endpoint": "workbench.calendar_defaults_read",
+    "methods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/calendar/defaults",
+    "endpoint": "workbench.calendar_defaults_write",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "defaults": {},
+    "strict_slashes": true
+  },
+  {
     "rule": "/api/workbench/v1/calendar/month",
     "endpoint": "workbench.calendar_month",
     "methods": [
@@ -709,6 +777,18 @@
     "strict_slashes": true
   },
   {
+    "rule": "/api/workbench/v1/entities/batch/<ref>/materials_update",
+    "endpoint": "workbench.batch_materials_update",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "defaults": {
+      "action": "materials_update"
+    },
+    "strict_slashes": true
+  },
+  {
     "rule": "/api/workbench/v1/entities/batch/bulk-preview",
     "endpoint": "workbench.batch_bulk_preview",
     "methods": [
@@ -753,6 +833,30 @@
     ],
     "defaults": {
       "action": "sync_confirm"
+    },
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/entities/batch/<ref>/split-preview",
+    "endpoint": "workbench.batch_split_preview",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "defaults": {
+      "action": "split_confirm"
+    },
+    "strict_slashes": true
+  },
+  {
+    "rule": "/api/workbench/v1/entities/batch/<ref>/split-confirm",
+    "endpoint": "workbench.batch_split_confirm",
+    "methods": [
+      "OPTIONS",
+      "POST"
+    ],
+    "defaults": {
+      "action": "split_confirm"
     },
     "strict_slashes": true
   },

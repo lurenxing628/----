@@ -295,6 +295,13 @@
       onEdit: openEditor,
       onDelete: deletion,
       disabled: blocked,
+      onMaterials: entity => {
+        command.reset();
+        setDialog({
+          type: 'materials',
+          entity
+        });
+      },
       onOperation: (entity, operation) => {
         command.reset();
         setDialog({
@@ -472,6 +479,13 @@
       entity: dialog.entity,
       operation: dialog.operation,
       source: "production",
+      command: command,
+      onClose: close,
+      onCommitted: committed,
+      disabled: disabled
+    }), dialog && dialog.type === 'materials' && /*#__PURE__*/React.createElement(window.BatchMaterialEditor, {
+      adapter: adapter,
+      entity: dialog.entity,
       command: command,
       onClose: close,
       onCommitted: committed,

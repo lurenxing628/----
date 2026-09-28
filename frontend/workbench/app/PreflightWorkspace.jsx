@@ -13,6 +13,7 @@
         <thead><tr><th scope="col">批次</th><th scope="col">工序</th><th scope="col">检查结果</th><th scope="col">原因</th></tr></thead><tbody>{data.tasks.slice((page - 1) * 100, page * 100).map(row => <tr key={row.operation_ref}>
           <td>{row.batch_id}</td><td>{row.sequence} · {row.label}{row.piece_id ? ' · ' + row.piece_id : ''}</td><td>{labels[row.status]}</td>
           <td>{row.issues.map((item, index) => <p key={index}>{item.message}{item.predecessor_sequence ? ' 前序：' + item.predecessor_sequence : ''}</p>)}
+            {row.material_ready_date && <p>用料可用日期：{window.WorkbenchFormat.date(row.material_ready_date)}</p>}
             {row.execution.first_actual_start && <p>实际开工：{window.WorkbenchFormat.dateTime(row.execution.first_actual_start)}</p>}
             {row.execution.confirmed_finish && <p>确认完工：{window.WorkbenchFormat.dateTime(row.execution.confirmed_finish)}</p>}
             {row.status === 'protected' && <p>剩余数量：{row.execution.remaining_quantity === null ? '未知' : row.execution.remaining_quantity}</p>}</td>
@@ -84,6 +85,8 @@
         <section aria-labelledby="pf-check-title"><h3 id="pf-check-title">排产检查</h3><div className="pf-rows">{checks.map(([title, description, kind, action]) => <div className="pf-check" key={title}>
           <div><strong>{title}</strong><p>{description}</p></div>{kind && <Button disabled={!data || !onNavigate || busy || !(kind === 'resources' ? counts.missing_resource_tasks : kind === 'unready' ? counts.unready_batches : counts.blocked_tasks + counts.no_route_batches)} onClick={() => navigate(kind)}>{action}</Button>}
         </div>)}</div></section></div>
+      {value.material_strategy === 'split' && window.BatchSplitPanel && <window.BatchSplitPanel refs={value.batch_refs} day={value.start_date}
+        onCommitted={(child, source) => change({ batch_refs: value.batch_refs.map(ref => ref === source ? child : ref) })} />}
       <ErrorBox error={error} />{needsRecheck && <p className="pf-recheck" role="status">排产参数已变化，请重新检查后再开始计算。</p>}{busy && <p role="status">正在读取批次、设备人员和报工记录，还没开始排产。</p>}
       {data && <><p className="pf-muted" role="status">检查时间：{window.WorkbenchFormat.dateTime(result.meta.as_of)} · 结果有效至 {window.WorkbenchFormat.dateTime(data.input_expires_at)} · 班表未核对</p>
         <Details key={data.input_ref} data={data} />

@@ -21,10 +21,10 @@
           <td><Policy value={row.before} /></td><td><Policy value={row.after} /></td></tr>)}</tbody></table></div>
     </>;
   }
-  function CalendarRangeDialog({ adapter, month, source, command, onClose, refreshState, onRefresh }) {
+  function CalendarRangeDialog({ adapter, month, defaultPeriods, source, command, onClose, refreshState, onRefresh }) {
     const [range, setRange] = React.useState({ start_date: K.monthKey(month.year, month.month) + '-01',
       end_date: K.monthKey(month.year, month.month) + '-' + K.monthDays(month.year, month.month), scope: 'all', operation: 'upsert' });
-    const [value, setValue] = React.useState({ type: 'work', hours: '8', eff: '100', allowNormal: 'yes', allowUrgent: 'yes', note: '' });
+    const [value, setValue] = React.useState({ type: 'work', hours: String(window.APSWorkPeriods.hours(defaultPeriods)), periods: window.APSWorkPeriods.clone(defaultPeriods), eff: '100', allowNormal: 'yes', allowUrgent: 'yes', note: '' });
     const [replaceNote, setReplaceNote] = React.useState(false);
     const [result, setResult] = React.useState(null), [loading, setLoading] = React.useState(false), [error, setError] = React.useState(null), [page, setPage] = React.useState(1);
     const controller = React.useRef(null), mounted = React.useRef(true), formRef = React.useRef(null), formId = React.useId();

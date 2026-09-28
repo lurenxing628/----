@@ -86,7 +86,7 @@
     React.useEffect(() => { if (currentError) focusFirstInvalid(form.current); }, [currentError]);
     const fieldPaths = action === 'delete' ? [] : adjustingStock ? ['fields.stock_qty'] : ['business_code', 'label',
       ...(kind === 'material' ? ['fields.spec', 'fields.unit', 'fields.stock_qty', 'fields.remark'] : []),
-      ...(kind === 'op_type' ? ['fields.remark', ...(!['internal', 'external'].includes(entity ? entity.fields.category : category) ? ['fields.category'] : []),
+      ...(kind === 'op_type' ? ['fields.remark', 'fields.category',
         ...(opCategory === 'external' ? ['fields.default_merge_mode'] : [])] : []),
       ...(kind === 'supplier' ? ['fields.default_days'] : []), ...(C.statuses[kind] ? ['fields.status'] : []),
       ...(C.relations[kind] || []).flatMap(field => [field.key, 'relationships.' + field.key])];
@@ -149,10 +149,10 @@
           {text('label', C.nameLabel(kind), { top: true, required: true })}
           {kind === 'material' && <>{text('spec', '规格')}{text('unit', '单位')}{text('stock_qty', '库存数量', { number: true })}</>}
           {kind === 'op_type' && <>
-            {!['internal', 'external'].includes(entity ? entity.fields.category : category) && <Field label="归属" path="fields.category" error={currentError} required><select name="category" value={opCategory} disabled={disabled} onChange={event => change('fields', 'category', event.target.value)}>
-              <option value="" disabled>请选择归属</option><option value="internal">自制</option><option value="external">外协</option>
-              {opCategory && !['internal', 'external'].includes(opCategory) && <option value={opCategory}>原归属未识别（保持原值）</option>}</select></Field>}
-            {opCategory === 'external' && <Field label="默认周期规则" path="fields.default_merge_mode" error={currentError}><select name="default_merge_mode" value={draft.fields.default_merge_mode} disabled={disabled} onChange={event => change('fields', 'default_merge_mode', event.target.value)}>
+            {<Field label="适用归属" path="fields.category" error={currentError} required><select name="category" value={opCategory} disabled={disabled} onChange={event => change('fields', 'category', event.target.value)}>
+              <option value="" disabled>请选择归属</option><option value="internal">自制</option><option value="external">外协</option><option value="both">自制和外协都可</option>
+              {opCategory && !['internal', 'external', 'both'].includes(opCategory) && <option value={opCategory}>原归属未识别（保持原值）</option>}</select></Field>}
+            {['external', 'both'].includes(opCategory) && <Field label="默认周期规则" path="fields.default_merge_mode" error={currentError} hint="用于新增外协段的默认选择；已有外协段的周期规则保持不变。"><select name="default_merge_mode" value={draft.fields.default_merge_mode} disabled={disabled} onChange={event => change('fields', 'default_merge_mode', event.target.value)}>
               <option value="">未填写</option><option value="separate">分别设置</option><option value="merged">合并设置</option>
               {!['', 'separate', 'merged'].includes(draft.fields.default_merge_mode) && <option value={draft.fields.default_merge_mode}>原周期规则未识别（保持原值）</option>}</select></Field>}</>}
           {(C.relations[kind] || []).map(field => <Choice key={field.key} adapter={adapter} field={field} value={draft.relationships[field.key]} original={entity}
@@ -179,7 +179,7 @@
           {refreshState.error && <Button icon="refresh-cw" onClick={onRefresh}>刷新保存结果</Button>}</>}
       </form></Modal>;
   }
-  function Detail({ adapter, kind, result, onClose, onEdit, onDelete, onAdjustStock, onMachinePermissions, onOperatorCalendar, onRelated, onBack, busy, error, onRetry }) {
+  function Detail({ adapter, kind, result, onClose, onEdit, onDelete, onAdjustStock, onMachinePermissions, onOperatorCalendar, onDowntimes, onRelated, onBack, busy, error, onRetry }) {
     const entity = result && result.data;
     return <Modal title={C.resourceName(kind, entity && entity.fields.category) + '详情'} icon={icons[kind]} onClose={onClose} footer={<>{onBack && <Button icon="chevron-left" onClick={onBack}>返回上一条详情</Button>}<Button onClick={onClose}>关闭</Button>
       {entity && <><Button icon="trash-2" className="btn danger" reason={C.blocked(entity.write_context, kind, 'delete', result.meta.source)} onClick={onDelete}>删除</Button>
@@ -188,7 +188,7 @@
       <div className="modal-b scroll wb-resource-detail">{busy && <p role="status">正在读取详情…</p>}<ErrorBox error={error} />{error && <Button onClick={onRetry}>刷新</Button>}
         {entity && <><div className="wb-resource-identity"><div><div className="wb-resource-code">{entity.business_code}</div><h3>{entity.label}</h3></div>{kind !== 'op_type' && <Status kind={kind} entity={entity} />}</div>
           <CurrentFields kind={kind} entity={entity} includeRemark={false} />{(kind === 'op_type' || (C.relations[kind] || []).length > 0) && <div className="wb-resource-links fgrid">
-            {kind === 'op_type' && <div className="field"><label>排产方式</label><span>{entity.fields.category === 'internal' ? '工时（换型＋单件）' : entity.fields.category === 'external' ? '周期（天）' : '未明确'}</span></div>}
+            {kind === 'op_type' && <div className="field"><label>排产方式</label><span>{entity.fields.category === 'internal' ? '工时（换型＋单件）' : entity.fields.category === 'external' ? '周期（天）' : entity.fields.category === 'both' ? '按每道工序选择自制工时或外协周期' : '未明确'}</span></div>}
             {(C.relations[kind] || []).map(field => <div className="field" key={field.key}><label>{field.label}</label><Relation entity={entity} field={field.key}
               onOpen={!field.catalog && onRelated ? ref => onRelated(field.kind, ref, field.category) : undefined} /></div>)}
             {kind === 'operator' && <LegacyFacts entity={entity} />}</div>}<Remark kind={kind} entity={entity} /><Issues issues={entity.issues} />
@@ -196,7 +196,8 @@
             || (typeof onMachinePermissions !== 'function' ? window.WorkbenchTerms.outcomes.unavailable : '')} onClick={onMachinePermissions}>编辑可操作设备</Button>}
           {kind === 'operator' && <Button icon="calendar-days" reason={C.blocked(entity.write_context, kind, 'update', result.meta.source)
             || (typeof onOperatorCalendar !== 'function' ? window.WorkbenchTerms.outcomes.unavailable : '')} onClick={onOperatorCalendar}>编辑{window.WorkbenchTerms.personal_calendar}</Button>}
-          {kind === 'op_type' && ['internal', 'external'].includes(entity.fields.category) && <window.ResourceDetailRelations key={entity.ref + ':' + result.meta.snapshot_ref} adapter={adapter} entity={entity} onOpen={onRelated} />}
+          {kind === 'machine' && <Button icon="wrench" disabled={busy} onClick={onDowntimes}>维护停机计划</Button>}
+          {kind === 'op_type' && ['internal', 'external', 'both'].includes(entity.fields.category) && <window.ResourceDetailRelations key={entity.ref + ':' + result.meta.snapshot_ref} adapter={adapter} entity={entity} onOpen={onRelated} />}
           <Issues issues={result.warnings} /><p className="wb-resource-read-time">{window.WorkbenchTerms.data_as_of(window.WorkbenchFormat.dateTime(result.meta.as_of))}</p></>}</div></Modal>;
   }
   ResourceForms.Detail = Detail;

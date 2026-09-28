@@ -75,9 +75,9 @@
     return result;
   }
   function admission(s) {
-    const keys = ['start_date', 'end_date', 'ready_check', 'missing_resource_policy', 'completed_policy', 'batch_count'];
+    const keys = ['start_date', 'end_date', 'ready_check', 'missing_resource_policy', 'completed_policy', 'batch_count'].concat(s.material_strategy === undefined ? [] : ['material_strategy']);
     check(shape(s, keys.concat(['selection', 'basis', 'data_gaps'])) && s.selection === 'explicit_batches' && s.basis === 'captured_at_run_admission' && Array.isArray(s.data_gaps) && s.data_gaps.every(gap) && s.data_gaps.every(g => keys.includes(g.field) && ['not_recorded', 'invalid_stored_value'].includes(g.code)));
-    check(['start_date', 'end_date'].every(k => s[k] === null || date(s[k])) && (s.start_date === null || s.end_date === null || s.start_date <= s.end_date) && (s.ready_check === null || typeof s.ready_check === 'boolean') && [null, 'auto_assign', 'exclude'].includes(s.missing_resource_policy) && [null, 'preserve_actuals'].includes(s.completed_policy) && (s.batch_count === null || count(s.batch_count) && s.batch_count > 0));
+    check(['start_date', 'end_date'].every(k => s[k] === null || date(s[k])) && (s.start_date === null || s.end_date === null || s.start_date <= s.end_date) && (s.ready_check === null || typeof s.ready_check === 'boolean') && [null, 'auto_assign', 'exclude'].includes(s.missing_resource_policy) && (s.material_strategy === undefined || [null, 'strict', 'stage', 'split'].includes(s.material_strategy)) && [null, 'preserve_actuals'].includes(s.completed_policy) && (s.batch_count === null || count(s.batch_count) && s.batch_count > 0));
     check(keys.every(k => s.data_gaps.filter(g => g.field === k).length === (s[k] === null ? 1 : 0)));
   }
   function run(v) {

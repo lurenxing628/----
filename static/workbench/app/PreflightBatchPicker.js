@@ -216,7 +216,7 @@
       onChange: () => toggle(row.ref)
     }), /*#__PURE__*/React.createElement("strong", null, row.business_code), /*#__PURE__*/React.createElement("span", null, row.relationships.part_no, " \xB7 ", row.label), /*#__PURE__*/React.createElement("span", null, row.relationships.operation_count, " \u9053\u5DE5\u5E8F"), /*#__PURE__*/React.createElement(DueDate, {
       value: row.fields.due_date
-    }), /*#__PURE__*/React.createElement("span", null, "\u4F18\u5148\u7EA7\uFF1A", window.APSBatchContract.label('priority', row.fields.priority)), /*#__PURE__*/React.createElement("span", null, window.APSBatchContract.label('ready_status', row.fields.ready_status))))), data && /*#__PURE__*/React.createElement(window.WorkbenchListControls.Pager, {
+    }), /*#__PURE__*/React.createElement("span", null, "\u4F18\u5148\u7EA7\uFF1A", window.APSBatchContract.label('priority', row.fields.priority)), /*#__PURE__*/React.createElement("span", null, window.APSBatchContract.label('ready_status', window.APSBatchContract.readyStatus(row)))))), data && /*#__PURE__*/React.createElement(window.WorkbenchListControls.Pager, {
       page: data.page,
       size: scope.size,
       sizes: [20, 50, 100],

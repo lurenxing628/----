@@ -142,7 +142,7 @@
       const result = C.query(await adapter.detail(dialog.kind, dialog.ref, signal), 'entity');
       if (result.data.ref !== dialog.ref) throw C.failure('读到的详情与所选记录不一致，请刷新后重试。');
       if (dialog.navigation && (result.meta.source !== 'production' || C.own(result.data, 'kind') && result.data.kind !== dialog.kind
-          || dialog.kind === 'op_type' && result.data.fields.category !== dialog.category))
+          || dialog.kind === 'op_type' && ![dialog.category, "both"].includes(result.data.fields.category)))
         throw C.failure('这条记录的来源、类型或工种类别和定位不一致，没有打开别的记录。');
       return result;
     }, [adapter, dialog && dialog.ref, dialog && dialog.kind], !!(dialog && dialog.ref));
@@ -297,12 +297,13 @@
       {dialog && (dialog.action === 'view' || !editorReady) && <Forms.Detail key={dialog.kind + ':' + dialog.ref} adapter={adapter} kind={dialog.kind} result={detail.result} busy={detail.loading} error={detail.error} onRetry={detail.reload} onClose={close}
         onRelated={(kind, ref, category) => open('view', ref, { kind, category })} onBack={dialog.history && dialog.history.length ? back : null}
         onEdit={() => edit('update')} onAdjustStock={() => edit('update', true)} onMachinePermissions={() => edit('machine_permissions')}
-        onOperatorCalendar={() => edit('operator_calendar')} onDelete={() => edit('delete')} />}
+        onDowntimes={() => edit('downtimes')} onOperatorCalendar={() => edit('operator_calendar')} onDelete={() => edit('delete')} />}
       {editorReady && dialog.action === 'machine_permissions' && <window.OperatorMachinePermissions adapter={adapter} entity={editorEntity} source={detail.result.meta.source}
         command={command} onClose={close} refreshState={refreshState} onRefresh={readAfterCommand} Feedback={Forms.Feedback} />}
+      {editorReady && dialog.action === 'downtimes' && <window.MachineDowntimePanel adapter={adapter} entity={editorEntity} source={detail.result.meta.source} onClose={close} onCommitted={refresh} />}
       {editorReady && dialog.action === 'operator_calendar' && <window.OperatorCalendarPanel adapter={adapter} entity={editorEntity} source={detail.result.meta.source}
         command={command} onClose={close} refreshState={refreshState} onRefresh={readAfterCommand} Feedback={Forms.Feedback} />}
-      {editorReady && !['view', 'machine_permissions', 'operator_calendar'].includes(dialog.action) && <><Forms key={dialog.kind + ':' + (dialog.ref || 'create') + ':' + dialog.action} adapter={adapter} kind={dialog.kind} action={dialog.action} entity={editorEntity} category={dialog.category} stockOnly={!!dialog.stockOnly}
+      {editorReady && !['view', 'machine_permissions', 'operator_calendar', 'downtimes'].includes(dialog.action) && <><Forms key={dialog.kind + ':' + (dialog.ref || 'create') + ':' + dialog.action} adapter={adapter} kind={dialog.kind} action={dialog.action} entity={editorEntity} category={dialog.category} stockOnly={!!dialog.stockOnly}
         acceptedEntity={editContext && editContext.entity}
         writeContext={editContext ? editContext.context : editorEntity ? editorEntity.write_context : dialog.createContext} source={editContext ? editContext.source : editorEntity ? detail.result.meta.source : dialog.source}
         command={command} onClose={close} onReloadContext={reloadContext} refreshState={refreshState} onRefresh={readAfterCommand}

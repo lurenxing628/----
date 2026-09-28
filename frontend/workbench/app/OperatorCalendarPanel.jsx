@@ -39,8 +39,8 @@
     return <div className="iopane on">
       <div className="chead"><h3 style={{ margin: 0 }}>{day.date} · {day.explicit ? '已单独设置' : '未单独设置'}</h3></div>
       <Segment label="这一天" value={draft.type} disabled={disabled} options={[['work', '上班'], ['rest', '休息']]}
-        onChange={type => setDraft({ ...draft, type })} />
-      {!rest && <div className="fgrid">
+        onChange={type => setDraft({ ...draft, type, ...(type === 'work' && !draft.periods?.length ? { periods: window.APSWorkPeriods.clone(day.default_periods || window.APSWorkPeriods.defaults()) } : {}) })} />
+      {!rest && draft.periods == null && <div className="fgrid">
         <Field label="班次开始" path="fields.shiftStart" error={error} required>
           <input type="time" value={draft.shiftStart} disabled={disabled}
             onChange={event => setDraft({ ...draft, shiftStart: event.target.value })} /></Field>
@@ -48,7 +48,9 @@
           <input type="time" value={draft.shiftEnd} disabled={disabled}
             onChange={event => setDraft({ ...draft, shiftEnd: event.target.value })} /></Field>
       </div>}
-      {!rest && <p className="iohint">工时由班次起止算出来，不用单独填。结束时刻早于开始时刻表示跨零点的夜班。
+      {!rest && <window.WorkPeriodFields value={draft.periods} start={draft.shiftStart} end={draft.shiftEnd} disabled={disabled}
+        onChange={periods => setDraft({ ...draft, periods })} />}
+      {!rest && draft.periods == null && <p className="iohint">工时由班次起止算出来，不用单独填。结束时刻早于开始时刻表示跨零点的夜班。
         留空结束时刻时，由系统按默认班次时长推算。</p>}
       <div className="fgrid">
         <Field label="效率（%）" path="fields.eff" error={error} required>
@@ -96,6 +98,7 @@
   function OperatorCalendarPanel({ adapter, entity, source, command, onClose, refreshState, onRefresh, Feedback }) {
     const ref = entity.ref;
     const [month, setMonth] = React.useState(todayMonth);
+    const [editBase, setEditBase] = React.useState(null);
     const [selected, setSelected] = React.useState(null), [draft, setDraft] = React.useState(null);
     const [mode, setMode] = React.useState('day');
     const [range, setRange] = React.useState(() => ({ start_date: monthKey(month.year, month.month) + '-01',
@@ -120,10 +123,12 @@
     // baseline 只给草稿身份和 dirty guard 用；保存仍由下方 data 门禁只使用最新写入上下文。
     const current = baseline && selected ? baseline.days.find(day => day.date === selected) : null;
     React.useEffect(() => {
-      if (current) setDraft(value => value && value.date === current.date ? value : { ...O.draftOf(current), date: current.date });
+      if (current && (!draft || draft.date !== current.date)) { setDraft({ ...O.draftOf(current), date: current.date }); setEditBase(current); }
     }, [current && current.date, current && current.calendar_ref]);
+    const staleDraft = !!current && !!editBase && (current.calendar_ref !== editBase.calendar_ref
+      || JSON.stringify(O.draftOf(current)) !== JSON.stringify(O.draftOf(editBase)));
     const dirty = !done && mode === 'day' && !!current && !!draft && draft.date === current.date
-      && JSON.stringify(draft) !== JSON.stringify({ ...O.draftOf(current), date: current.date });
+      && JSON.stringify(draft) !== JSON.stringify({ ...O.draftOf(editBase || current), date: current.date });
     const owner = window.WorkbenchGuards.useDirtyGuard({ dirty, message: window.WorkbenchTerms.personal_calendar + '有尚未保存的修改。', locked: command.locked });
     async function close(detail) {
       if (command.locked) return;
@@ -139,7 +144,7 @@
       if (mode === 'day' && day.date === selected) return;
       if (!await confirmDraftTransition()) return;
       if (!command.reset()) return;
-      setError(null); setMode('day'); setClearing(false); setSelected(day.date); setDraft({ ...O.draftOf(day), date: day.date });
+      setError(null); setMode('day'); setClearing(false); setSelected(day.date); setEditBase(day); setDraft({ ...O.draftOf(day), date: day.date });
     }
     async function changeMonth(next) {
       if (!next || !await confirmDraftTransition()) return;
@@ -162,12 +167,12 @@
       return C.blocked(data.write_context, 'operator', action, source);
     }
     function save() {
-      if (disabled || !current) return;
+      if (disabled || !current || staleDraft) return;
       try {
         setError(null);
         if (!command.reset()) return;
         command.submit('operator', 'calendar_upsert', ref, data.write_context,
-          { date: current.date, fields: O.input(draft) });
+          { date: current.date, fields: O.input(draft, editBase || current) });
       } catch (failure) { setError(failure); }
     }
     function clearDay() {
@@ -192,9 +197,9 @@
       if (disabled || !preview || !preview.data.count) return;
       setError(null);
       if (!command.reset()) return;
-      command.submit('operator', 'calendar_range_clear', ref, preview.data.write_context, O.rangeInput(range));
+      command.submit('operator', 'calendar_range_clear', ref, preview.data.write_context, preview.data.range);
     }
-    const saveReason = capability('calendar_upsert');
+    const saveReason = staleDraft ? '这一天的配置已变化，请先采用最新配置后重新填写。' : capability('calendar_upsert');
     const clearReason = capability('calendar_delete');
     const rangeReason = !preview ? '请先预检要清除的日期。' : !preview.data.count ? '这段时间没有要清除的日期。'
       : capability('calendar_range_clear');
@@ -237,9 +242,10 @@
             disabled={disabled} error={error} onSave={save} onClear={clearDay} saveReason={saveReason} clearReason={clearReason}
             clearing={clearing && current.explicit} onClearing={value => { setClearing(value); setError(null); }} />}
           {data && mode === 'day' && !current && <p role="status">点一天开始维护。</p>}
-          {data && mode === 'range' && <RangeClear range={range} setRange={setRange} disabled={disabled} error={error}
+          {data && mode === 'range' && <RangeClear range={range} setRange={next => { setRange(next); setPreview(null); }} disabled={disabled} error={error}
             preview={preview} onPreview={previewRange} onConfirm={confirmRange} reason={rangeReason} busy={busy} />}
           <ErrorBox error={error} /><Feedback command={command} />
+          {staleDraft && !done && <div role="status"><p>这一天已被修改，旧草稿不会覆盖最新配置。采用最新配置会放弃本次未保存的内容。</p><Button disabled={command.locked || request.loading} onClick={() => { setDraft({ ...O.draftOf(current), date: current.date }); setEditBase(current); setError(null); command.reset(); }}>采用最新配置并重新填写</Button></div>}
           {done && <RefreshResult state={refreshState} onRefresh={onRefresh} />}
         </div></Modal></div>;
   }

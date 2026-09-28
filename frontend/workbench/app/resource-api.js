@@ -108,15 +108,18 @@
     if (!object(value) || typeof value.request_key !== 'string' || !/^resource-[0-9a-f]{48}$/.test(value.request_key)) return false;
     if (value.kind === 'operator' && (value.action === 'machine_permissions' || calendarActions.has(value.action)))
       return value.category === undefined && typeof value.ref === 'string' && /^[0-9a-f]{48}$/.test(value.ref);
+    if (value.kind === 'machine' && ['downtime_create', 'downtime_update', 'downtime_cancel'].includes(value.action))
+      return value.category === undefined && typeof value.ref === 'string' && /^[0-9a-f]{48}$/.test(value.ref);
     if (value.kind === 'calendar') return typeof value.ref === 'string' && (
       ['upsert', 'delete'].includes(value.action) && /^\d{4}-\d{2}-\d{2}$/.test(value.ref)
-      || value.action === 'confirm' && /^[0-9a-f]{32}$/.test(value.ref));
+      || value.action === 'confirm' && /^[0-9a-f]{32}$/.test(value.ref)
+      || value.action === 'defaults' && value.ref === 'calendar-defaults');
     if (value.kind === 'process') return value.category === undefined && (value.action === 'create' && value.ref === null
-      || ['route_confirm', 'source_confirm', 'hours_confirm'].includes(value.action) && typeof value.ref === 'string' && /^[0-9a-f]{48}$/.test(value.ref));
+      || ['route_confirm', 'source_confirm', 'hours_confirm', 'groups_confirm'].includes(value.action) && typeof value.ref === 'string' && /^[0-9a-f]{48}$/.test(value.ref));
     if (['process_bulk', 'process_route_import', 'process_hours_import'].includes(value.kind)) return value.action === 'confirm'
       && typeof value.ref === 'string' && /^[A-Za-z0-9_-]{32}$/.test(value.ref) && value.category === undefined;
     if (value.kind === 'batch') return value.category === undefined && (value.action === 'create' && value.ref === null
-      || ['update', 'delete', 'operation_update', 'sync_confirm'].includes(value.action) && typeof value.ref === 'string' && /^[0-9a-f]{48}$/.test(value.ref)
+      || ['update', 'delete', 'operation_update', 'materials_update', 'split_confirm', 'sync_confirm'].includes(value.action) && typeof value.ref === 'string' && /^[0-9a-f]{48}$/.test(value.ref)
       || ['bulk_confirm', 'import_confirm'].includes(value.action) && typeof value.ref === 'string' && /^[A-Za-z0-9_-]{32}$/.test(value.ref));
     if (value.kind === 'execution') return value.category === undefined && typeof value.ref === 'string'
       && (['create', 'supplement', 'correct', 'report_void'].includes(value.action) && /^[0-9a-f]{48}$/.test(value.ref)
@@ -129,7 +132,7 @@
       && (file[1] === 'op_type' ? ['internal', 'external'].includes(value.category) : value.category === undefined);
     return kinds.has(value.kind) && ['create', 'update', 'delete'].includes(value.action)
       && (value.action === 'create' ? value.ref === null : typeof value.ref === 'string' && /^[0-9a-f]{48}$/.test(value.ref))
-      && (value.category === undefined || ['internal', 'external'].includes(value.category));
+      && (value.category === undefined || ['internal', 'external', 'both'].includes(value.category));
   }
   function matchesNamespace(namespace, intent) {
     if (namespace === 'resources') return kinds.has(intent.kind);
@@ -164,7 +167,16 @@
       detail(kind, ref, signal) { return api.query(resource(kind, ref), {}, signal); },
       relations(ref, scope, signal) { return api.query(resource('op_type', ref) + '/relations', scope, signal); },
       summary(signal) { return api.query('resources/summary', {}, signal); },
+      async downtimes(ref, signal) {
+        const result = await api.query(resource('machine', ref) + '/downtimes', {}, signal), data = result.data;
+        if (data.entity_ref !== ref || !Array.isArray(data.rows) || !object(data.reasons) || !object(data.write_context)
+            || !data.rows.every(row => /^[0-9a-f]{48}$/.test(row.ref) && typeof row.start_time === 'string' && typeof row.end_time === 'string'))
+          throw problem('设备停机资料不完整，请刷新后重试。', false);
+        return result;
+      },
       command(kind, action, ref, body, signal) {
+        if (kind === 'machine' && ['downtime_create', 'downtime_update', 'downtime_cancel'].includes(action) && ref !== null)
+          return api.execute(resource(kind, ref) + '/downtimes/' + action.slice(9), body, signal);
         if (kind === 'operator' && action === 'machine_permissions' && ref !== null)
           return api.execute(resource(kind, ref) + '/machine-permissions/confirm', body, signal);
         if (kind === 'operator' && calendarActions.has(action) && ref !== null)

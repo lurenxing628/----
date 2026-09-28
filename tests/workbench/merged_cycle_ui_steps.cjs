@@ -10,12 +10,13 @@ function valid(raw, total = 6.75) {
     assert.equal(group.total_days, seq === 40 ? 9.5 : total); assert.deepEqual(group.issues, []);
   }
 }
-async function labels(area, raw, count = 3) {
+async function labels(area, raw, count = 3, changedTotal = null) {
   const cells = area.locator('[data-process-cycle-group]'); assert.equal(await cells.count(), count);
   for (const seq of [20, 25, 40]) {
-    const row = operation(raw, seq);
+    const row = operation(raw, seq), group = raw.data.external_groups.find(item => item.ref === row.external_group_ref);
+    const days = seq !== 40 && changedTotal !== null ? changedTotal : group.total_days;
     assert.equal(await area.getByLabel('工序 ' + seq + ' 外协周期', {exact: true}).count(), 0);
-    assert((await cells.filter({hasText: '按外协组周期'}).allTextContents()).some(text => text.includes(seq === 40 ? '40 至 40' : '20 至 25')));
+    assert((await cells.filter({hasText: '整段 ' + days + ' 天'}).allTextContents()).some(text => text.includes(seq === 40 ? '40 至 40' : '20 至 25')));
     assert(await area.locator('[data-process-cycle-group="' + row.external_group_ref + '"]').count() > 0);
   }
 }
@@ -61,7 +62,7 @@ async function cycleSave(p, page, data) {
   assert.equal(payload.groups.length, 2);
   for (const seq of [20, 25, 40]) assert.equal(payload.operations.find(row => row.ref === operation(before, seq).ref).external_days, null);
   await page.getByText('三阶段已确认 · 已就绪', {exact: true}).waitFor();
-  await labels(page.getByRole('table', {name: '已就绪工序汇总', exact: true}), before);
+  await labels(page.getByRole('table', {name: '已就绪工序汇总', exact: true}), before, 3, 7.25);
   await p.shot('ready-group-cycle-summary'); await p.click(b(page, '关闭详情'));
   const after = await openProcess(p, page, data.part); valid(after, 7.25); assert(after.data.workflow.ready);
   assert.deepEqual(after.data.fields, before.data.fields);
@@ -77,20 +78,31 @@ async function cycleSave(p, page, data) {
 async function damaged(p, page, data, kind) {
   await processPage(p, page); const raw = await openProcess(p, page, data.damaged[kind]), row = operation(raw, 20);
   const codes = row.issues.map(item => item.code);
-  if (kind === 'operation') { assert.equal(row.external_days_source, 'operation'); assert.equal(row.external_days, 3.25); }
+  const retained = ['operation', 'member_value'].includes(kind);
+  if (retained) {
+    assert.equal(row.external_days_source, 'group'); assert.equal(row.external_days, null); assert.deepEqual(codes, []);
+    assert.equal(raw.data.external_groups.find(group => group.ref === row.external_group_ref).total_days, 6.75);
+  }
   else {
-    assert.equal(row.external_days_source, null); assert(codes.includes(kind === 'member_value' ? 'value_invalid' : 'value_missing'));
+    assert.equal(row.external_days_source, null); assert(codes.includes('value_missing'));
     if (kind === 'cross_part') assert(codes.includes('external_group_part_mismatch'));
     if (['total', 'member'].includes(kind)) assert(codes.includes('external_group_invalid'));
   }
   assert.equal(operation(raw, 40).external_days_source, 'group');
   await p.click(page.getByRole('tab', {name: /^3 /}));
   const hours = page.locator('[data-process-hours-editor]:visible'); await hours.waitFor();
+  if (retained) {
+    assert.equal(await hours.getByLabel('工序 20 外协周期', {exact: true}).count(), 0);
+    assert((await hours.locator('[data-process-cycle-group="' + row.external_group_ref + '"]').allTextContents()).every(text => text.includes('整段 6.75 天')));
+    assert.equal(p.oracle().tables.PartOperations.find(op => op.part_no === data.damaged[kind] && op.seq === 20).ext_days, kind === 'operation' ? 3.25 : -1);
+    assert.equal(await hours.getByLabel('外协组 20 至 25 总周期', {exact: true}).inputValue(), '6.75');
+    await p.shot('real-' + kind + '-group-effective-history-retained'); await p.click(b(page, '关闭详情')); return;
+  }
   const member = hours.getByLabel('工序 20 外协周期', {exact: true}).locator('xpath=ancestor::tr'); await member.waitFor();
   assert.equal(await member.count(), 1); assert.equal(await member.locator('[data-process-cycle-group]').count(), 0);
   const text = await member.innerText();
   for (const issue of row.issues) assert(text.includes(issue.message), issue.message);
-  assert.equal(await hours.getByLabel('工序 20 外协周期', {exact: true}).inputValue(), kind === 'operation' ? '3.25' : '');
+  assert.equal(await hours.getByLabel('工序 20 外协周期', {exact: true}).inputValue(), '');
   assert.equal(await hours.getByLabel('外协组 40 至 40 总周期', {exact: true}).inputValue(), '9.5');
   await p.shot('real-' + kind + '-not-hidden'); await p.click(b(page, '关闭详情'));
 }

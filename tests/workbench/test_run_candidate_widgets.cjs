@@ -5,7 +5,7 @@ const assert = require('node:assert/strict'), fs = require('node:fs'), http = re
 const { chromium } = require('playwright'), { compile } = require('../../scripts/workbench/compile.cjs');
 const root = path.resolve(__dirname, '../..'), output = process.argv[2], backend = process.argv[3];
 const files = UI.dependencies(['WorkbenchCaption.jsx', 'WorkbenchPageContext.jsx', 'PointContract.js', 'PointGanttModel.js', 'PointGantt.jsx',
-  'resource-contract.js', 'ResourceControls.jsx', 'CalendarContract.js', 'PlanGanttModel.js', 'RunCandidateAPI.js', 'RunCandidateAnalysisAPI.js', 'RunCandidateModel.js', 'RunCandidateControls.jsx', 'RunCandidateAnalysis.jsx',
+  'resource-contract.js', 'ResourceControls.jsx', 'WorkPeriods.js', 'WorkPeriodFields.jsx', 'CalendarContract.js', 'PlanGanttModel.js', 'RunCandidateAPI.js', 'RunCandidateAnalysisAPI.js', 'RunCandidateModel.js', 'RunCandidateControls.jsx', 'RunCandidateAnalysis.jsx',
   'RunBaselineAPI.js', 'RunBaselineModel.js', 'RunBaselineControls.jsx',
   'RunCandidateGantt.jsx', 'RunCandidateWorkspace.jsx', 'WorkbenchControlBridge.js', 'WorkbenchControlStyles.jsx', 'WorkbenchSelectMenu.jsx',
   'WorkbenchDatePickerModel.js', 'WorkbenchDatePicker.jsx', 'WorkbenchControls.jsx', 'WorkbenchNumberControls.jsx']);

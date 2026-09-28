@@ -38,7 +38,7 @@
     function accept() {
       if (!review || review.source !== 'production' || !command.reset()) return;
       const previous = K.draft(original.current), merged = K.draft(review.day);
-      Object.keys(previous).forEach(key => { if (value[key] !== previous[key]) merged[key] = value[key]; });
+      Object.keys(previous).forEach(key => { if (JSON.stringify(value[key]) !== JSON.stringify(previous[key])) merged[key] = value[key]; });
       original.current = review.day; setValue(merged);
       setBase(review.day); setReview(null); setReadError(null); setError(null);
     }

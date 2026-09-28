@@ -208,7 +208,7 @@
     React.useEffect(() => {
       if (currentError) focusFirstInvalid(form.current);
     }, [currentError]);
-    const fieldPaths = action === 'delete' ? [] : adjustingStock ? ['fields.stock_qty'] : ['business_code', 'label', ...(kind === 'material' ? ['fields.spec', 'fields.unit', 'fields.stock_qty', 'fields.remark'] : []), ...(kind === 'op_type' ? ['fields.remark', ...(!['internal', 'external'].includes(entity ? entity.fields.category : category) ? ['fields.category'] : []), ...(opCategory === 'external' ? ['fields.default_merge_mode'] : [])] : []), ...(kind === 'supplier' ? ['fields.default_days'] : []), ...(C.statuses[kind] ? ['fields.status'] : []), ...(C.relations[kind] || []).flatMap(field => [field.key, 'relationships.' + field.key])];
+    const fieldPaths = action === 'delete' ? [] : adjustingStock ? ['fields.stock_qty'] : ['business_code', 'label', ...(kind === 'material' ? ['fields.spec', 'fields.unit', 'fields.stock_qty', 'fields.remark'] : []), ...(kind === 'op_type' ? ['fields.remark', 'fields.category', ...(opCategory === 'external' ? ['fields.default_merge_mode'] : [])] : []), ...(kind === 'supplier' ? ['fields.default_days'] : []), ...(C.statuses[kind] ? ['fields.status'] : []), ...(C.relations[kind] || []).flatMap(field => [field.key, 'relationships.' + field.key])];
     async function close(detail) {
       if (command.locked || catalogBusy || contextBusy) return;
       if (!(detail && detail.guardConfirmed === true && detail.guardOwner === guardOwner) && !(await window.WorkbenchGuards.confirmLeave({
@@ -385,8 +385,8 @@
       required: true
     }), kind === 'material' && /*#__PURE__*/React.createElement(React.Fragment, null, text('spec', '规格'), text('unit', '单位'), text('stock_qty', '库存数量', {
       number: true
-    })), kind === 'op_type' && /*#__PURE__*/React.createElement(React.Fragment, null, !['internal', 'external'].includes(entity ? entity.fields.category : category) && /*#__PURE__*/React.createElement(Field, {
-      label: "\u5F52\u5C5E",
+    })), kind === 'op_type' && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Field, {
+      label: "\u9002\u7528\u5F52\u5C5E",
       path: "fields.category",
       error: currentError,
       required: true
@@ -402,12 +402,15 @@
       value: "internal"
     }, "\u81EA\u5236"), /*#__PURE__*/React.createElement("option", {
       value: "external"
-    }, "\u5916\u534F"), opCategory && !['internal', 'external'].includes(opCategory) && /*#__PURE__*/React.createElement("option", {
+    }, "\u5916\u534F"), /*#__PURE__*/React.createElement("option", {
+      value: "both"
+    }, "\u81EA\u5236\u548C\u5916\u534F\u90FD\u53EF"), opCategory && !['internal', 'external', 'both'].includes(opCategory) && /*#__PURE__*/React.createElement("option", {
       value: opCategory
-    }, "\u539F\u5F52\u5C5E\u672A\u8BC6\u522B\uFF08\u4FDD\u6301\u539F\u503C\uFF09"))), opCategory === 'external' && /*#__PURE__*/React.createElement(Field, {
+    }, "\u539F\u5F52\u5C5E\u672A\u8BC6\u522B\uFF08\u4FDD\u6301\u539F\u503C\uFF09"))), ['external', 'both'].includes(opCategory) && /*#__PURE__*/React.createElement(Field, {
       label: "\u9ED8\u8BA4\u5468\u671F\u89C4\u5219",
       path: "fields.default_merge_mode",
-      error: currentError
+      error: currentError,
+      hint: "\u7528\u4E8E\u65B0\u589E\u5916\u534F\u6BB5\u7684\u9ED8\u8BA4\u9009\u62E9\uFF1B\u5DF2\u6709\u5916\u534F\u6BB5\u7684\u5468\u671F\u89C4\u5219\u4FDD\u6301\u4E0D\u53D8\u3002"
     }, /*#__PURE__*/React.createElement("select", {
       name: "default_merge_mode",
       value: draft.fields.default_merge_mode,
@@ -503,6 +506,7 @@
     onAdjustStock,
     onMachinePermissions,
     onOperatorCalendar,
+    onDowntimes,
     onRelated,
     onBack,
     busy,
@@ -557,7 +561,7 @@
       className: "wb-resource-links fgrid"
     }, kind === 'op_type' && /*#__PURE__*/React.createElement("div", {
       className: "field"
-    }, /*#__PURE__*/React.createElement("label", null, "\u6392\u4EA7\u65B9\u5F0F"), /*#__PURE__*/React.createElement("span", null, entity.fields.category === 'internal' ? '工时（换型＋单件）' : entity.fields.category === 'external' ? '周期（天）' : '未明确')), (C.relations[kind] || []).map(field => /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("label", null, "\u6392\u4EA7\u65B9\u5F0F"), /*#__PURE__*/React.createElement("span", null, entity.fields.category === 'internal' ? '工时（换型＋单件）' : entity.fields.category === 'external' ? '周期（天）' : entity.fields.category === 'both' ? '按每道工序选择自制工时或外协周期' : '未明确')), (C.relations[kind] || []).map(field => /*#__PURE__*/React.createElement("div", {
       className: "field",
       key: field.key
     }, /*#__PURE__*/React.createElement("label", null, field.label), /*#__PURE__*/React.createElement(Relation, {
@@ -579,7 +583,11 @@
       icon: "calendar-days",
       reason: C.blocked(entity.write_context, kind, 'update', result.meta.source) || (typeof onOperatorCalendar !== 'function' ? window.WorkbenchTerms.outcomes.unavailable : ''),
       onClick: onOperatorCalendar
-    }, "\u7F16\u8F91", window.WorkbenchTerms.personal_calendar), kind === 'op_type' && ['internal', 'external'].includes(entity.fields.category) && /*#__PURE__*/React.createElement(window.ResourceDetailRelations, {
+    }, "\u7F16\u8F91", window.WorkbenchTerms.personal_calendar), kind === 'machine' && /*#__PURE__*/React.createElement(Button, {
+      icon: "wrench",
+      disabled: busy,
+      onClick: onDowntimes
+    }, "\u7EF4\u62A4\u505C\u673A\u8BA1\u5212"), kind === 'op_type' && ['internal', 'external', 'both'].includes(entity.fields.category) && /*#__PURE__*/React.createElement(window.ResourceDetailRelations, {
       key: entity.ref + ':' + result.meta.snapshot_ref,
       adapter: adapter,
       entity: entity,

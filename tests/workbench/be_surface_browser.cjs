@@ -4,7 +4,7 @@ const { chromium } = require('playwright'), { compile } = require('../../scripts
 const root = path.resolve(__dirname, '../..'), output = process.argv[2], packet = JSON.parse(fs.readFileSync(path.join(output, 'dto.json')));
 const hash = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
 const files = ['WorkbenchFormat.js', 'WorkbenchTerms.js', 'WorkbenchReferences.jsx', 'WorkbenchGuards.js',
-  'WorkbenchCaption.jsx', 'WorkbenchPageContext.jsx', 'resource-contract.js', 'resource-api.js', 'resource-session.js', 'ResourceControls.jsx', 'CalendarContract.js',
+  'WorkbenchCaption.jsx', 'WorkbenchPageContext.jsx', 'resource-contract.js', 'resource-api.js', 'resource-session.js', 'ResourceControls.jsx', 'WorkPeriods.js', 'WorkPeriodFields.jsx', 'CalendarContract.js',
   'PointContract.js', 'PointGanttModel.js', 'PointGantt.jsx', 'PlanProcessOrder.js', 'PlanContract.js', 'PlanAPI.js',
   'FieldContract.js', 'ActualGanttModel.js', 'ActualGanttWindow.js', 'ActualGanttContract.js', 'ActualGanttAPI.js', 'ActualGanttControls.jsx', 'ActualGanttCanvas.jsx', 'ActualGanttRows.jsx', 'ActualGanttWorkspace.jsx',
   'RunPresentation.js', 'PreflightContract.js', 'PreflightAPI.js', 'PreflightControls.jsx', 'PreflightBatchPicker.jsx', 'PreflightWorkspace.jsx',

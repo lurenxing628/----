@@ -4,7 +4,7 @@
   const { Button, Modal, ErrorBox, Issues } = window.ResourceControls;
   const { BaseFields } = window.BatchControls;
   // The confirmation table shows quotas as entered (up to four decimals), never as a one-decimal summary.
-  const ENTERED_HOURS = { digits: 4, trim: true }, ENTERED_DAYS = { digits: 1, trim: true };
+  const ENTERED_HOURS = { digits: 4, trim: true }, ENTERED_DAYS = { digits: 20, trim: true };
   function BaseEditor({ adapter, entity: original, createContext, source, command, onClose, onCommitted, disabled = false }) {
     const [entity, setEntity] = React.useState(original), [value, setValue] = React.useState(() => B.draft(original));
     const [context, setContext] = React.useState(original ? original.write_context : createContext);
@@ -91,7 +91,9 @@
     }, [command.phase, command.result]);
     const value = row => row ? <><div>{[row.business_code, row.relationships.part_no, ...B.fields.map(key => window.BatchControls.display(key, row.fields[key]))].join(' · ')}</div>
       {row.operations.map((op, index) => <div key={index}>{op.business_code} · {op.sequence} · {op.label} · {op.source === 'external' ? '外协' : '自制'} ·
-        {Object.values(op.resources).filter(Boolean).map(resource => resource.label).join(' / ')} · 换型 {window.WorkbenchFormat.hours(op.setup_hours, ENTERED_HOURS)} / 单件 {window.WorkbenchFormat.hours(op.unit_hours, ENTERED_HOURS)} / 周期 {window.WorkbenchFormat.number(op.external_days, ENTERED_DAYS)} · {B.label('status', op.status)}</div>)}
+        {Object.values(op.resources).filter(Boolean).map(resource => resource.label).join(' / ')} · {op.source === 'internal'
+          ? <>换型 {window.WorkbenchFormat.hours(op.setup_hours, ENTERED_HOURS)} / 单件 {window.WorkbenchFormat.hours(op.unit_hours, ENTERED_HOURS)}</>
+          : <>{op.external_group && op.external_group.merge_mode === 'merged' ? '整组周期 ' + window.WorkbenchFormat.number(op.external_group.total_days, ENTERED_DAYS) : '本序周期 ' + window.WorkbenchFormat.number(op.external_days, ENTERED_DAYS)} 天</>} · {B.label('status', op.status)}</div>)}
       <div>物料需求 {row.relationships.material_requirement_count} 项</div></> : '删除';
     const deleting = action === 'bulk_confirm' && preview.action === 'delete';
     // 只删一个批次时标题直接点名；删除要先核对明细并勾选，主按钮按危险动作着色。

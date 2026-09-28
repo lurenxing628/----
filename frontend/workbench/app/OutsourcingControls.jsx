@@ -12,7 +12,7 @@
   function Target({ target }) { return <section className="os-target" aria-label="本次外协成员"><div className="os-heading"><b>{value(target.batch.business_code)} · {value(target.batch.label)}</b>
     <span>{value(target.supplier.label)} · {target.kind === 'merged' ? '合并发出' : '单工序'} · {target.operations.length} 道工序</span></div>
     {target.part && <div className="os-muted">图号：{value(target.part.business_code)} · {value(target.part.label)}</div>}
-    <div className="os-members">{target.operations.map(o => <span key={o.operation_ref}>{value(o.business_code)} · {value(o.label)}{o.piece !== null ? ' · 分件 ' + value(o.piece) : ''}</span>)}</div>
+    <div className="os-members">{target.operations.map(o => <span key={o.operation_ref}>第 {value(o.sequence)} 序 · {value(o.label)} · {value(o.business_code)}{o.piece !== null ? ' · 分件 ' + value(o.piece) : ' · 整批'}</span>)}</div>
     {target.source_resolution && target.source_resolution.basis === 'current_relation' && <div className="os-muted">这批旧工序按本页列出的批次登记。</div>}</section>; }
   function Facts({ facts, before }) { return <dl className="os-facts">{C.fields.map(k => <div key={k}><dt>{C.labels[k]}</dt><dd>
     {before && before[k] !== facts[k] && <del>{k === 'confirmedState' ? C.states[before[k]] : k === 'returned' && before[k] === null ? '未回厂' : when(before[k])}</del>}
@@ -21,24 +21,29 @@
     const [q, setQuery] = React.useState(() => ({ page: 1, size: 10, ...(batchRef ? { batch_ref: batchRef } : {}) }));
     const read = S.useRead(signal => api.read('targets', q, undefined, signal), [api, q]);
     const result = read.result, data = result && result.data;
-    function change(patch, paging = false) { setQuery({ ...q, ...patch, page: paging ? patch.page : 1, ...(paging ? { snapshot_ref: result.meta.snapshot_ref } : {}) }); }
+    function change(patch, paging = false) { const next = { ...q, ...patch, page: paging ? patch.page : 1 }; delete next.snapshot_ref;
+      if (paging) next.snapshot_ref = result.meta.snapshot_ref; setQuery(next); }
     function reset() { const next = { ...q, page: 1 }; delete next.snapshot_ref; setQuery(next); onSelect([]); }
     function choose(row, checked) { onSelect(mode === 'single' ? [row] : checked ? selected.concat(row) : selected.filter(r => r.operation_ref !== row.operation_ref)); }
     return <section aria-label="选择外协工序"><div className="os-heading"><div className="os-modes" role="radiogroup" aria-label="发出方式">
       {[['single', '单工序'], ['merged', '合并发出']].map(([k, label]) => <label key={k}><input type="radio" name="os-mode" value={k} checked={mode === k} disabled={disabled} onChange={() => { onSelect([]); onMode(k); }} />{label}</label>)}</div>
       <Button icon="refresh-cw" aria-label="刷新可登记工序" busy={read.loading} disabled={disabled} onClick={reset} /></div>
+      <label className="os-search">查找工序<input type="search" aria-label="查找外协工序" maxLength={200} placeholder="批次号、图号、工序、分件或供应商" value={q.query || ''}
+        disabled={disabled} onChange={e => change({ query: e.target.value })} /></label>
+      <p className="os-muted">同一次发出的连续外协工序可以合并；中间需要回厂加工时，请分次登记。</p>
       <ErrorBox error={read.error} />{read.loading && <EmptyState kind="loading" title="正在读取外协工序" />}
       {data && <><div className="os-scroll os-pick-scroll wb-table-shell wb-table-frame" data-sticky-head data-sticky-actions><table className="os-pick-table wb-table"><caption className="wb-visually-hidden">可登记的外协工序</caption><thead><tr><th scope="col" className="wb-col-key">选择</th><th scope="col" className="wb-col-key os-operation-key">工序 / 名称</th><th scope="col">批次 / 供应商</th><th scope="col" className="wb-col-actions">登记情况</th></tr></thead><tbody>
         {data.items.map((r, index) => { const chosen = selected.some(s => s.operation_ref === r.operation_ref), first = selected[0];
-          const other = mode === 'merged' && first && (first.batch_ref !== r.batch_ref || first.supplier_ref !== r.supplier_ref);
+          const other = mode === 'merged' ? S.memberConflict(first, r) : '';
           return <tr key={r.operation_ref || index} data-target-ref={r.operation_ref} data-selected={chosen} aria-selected={chosen}><td className="wb-col-key"><input type={mode === 'single' ? 'radio' : 'checkbox'} name="os-member"
             aria-label={'选择工序 ' + value(r.business_code)} checked={chosen} disabled={disabled || !r.can_register || !!other || !chosen && selected.length >= 200}
-            onChange={e => choose(r, e.target.checked)} /></td><td className="wb-col-key os-operation-key"><b>{value(r.business_code)}</b><div>{value(r.label)}</div></td>
+            onChange={e => choose(r, e.target.checked)} /></td><td className="wb-col-key os-operation-key"><b>第 {value(r.sequence)} 序 · {value(r.label)}</b><div>{value(r.business_code)}</div>
+              <div className="os-muted">{r.piece === null ? '整批工序' : '分件 ' + value(r.piece)}</div></td>
             <td>{r.batch ? (r.batch.business_code || '编号未填写') + ' · ' + (r.batch.label || '名称未填写') : '批次未读取'}<div className="os-muted">{r.supplier && r.supplier.label || '供应商名称未填写'}</div></td>
-            <td className="wb-col-actions">{r.outsourcing_ref ? <Button className="mini" icon="arrow-right" disabled={disabled} onClick={() => onOpen(r.outsourcing_ref)}>打开已有登记</Button> : r.can_register ? other ? '不同批次 / 供应商' : '可登记' : '不可登记'}<Issues issues={r.issues} /></td></tr>; })}
-      </tbody></table></div>{!data.items.length && <EmptyState kind="empty" title="没有可读取的外协工序" hint="可刷新工序列表，或返回资源资料核对外协工艺。" />}
-      <Pager page={data.page} label="工序" busy={disabled || read.loading} onPage={page => change({ page }, true)} />
-      <div className="os-selected" aria-label="已选择成员"><b>已选 {selected.length} 道</b>{selected.map(r => <span key={r.operation_ref}>{value(r.business_code)} · {value(r.label)}
+            <td className="wb-col-actions">{r.outsourcing_ref ? <Button className="mini" icon="arrow-right" disabled={disabled} onClick={() => onOpen(r.outsourcing_ref)}>打开已有登记</Button> : r.can_register ? other || '可登记' : '不可登记'}<Issues issues={r.issues} /></td></tr>; })}
+      </tbody></table></div>{!data.items.length && <EmptyState kind={q.query ? 'filtered' : 'empty'} title={q.query ? '没有匹配的外协工序' : '没有可读取的外协工序'} hint="可修改查找条件、刷新工序列表，或返回资源资料核对外协工艺。" />}
+      <Pager page={data.page} label="工序" busy={disabled || read.loading} onPage={page => change({ page }, true)} onSize={size => change({ size })} />
+      <div className="os-selected" aria-label="已选择成员"><b>已选 {selected.length} 道</b>{selected.map(r => <span key={r.operation_ref}>第 {value(r.sequence)} 序 · {value(r.label)} · {r.piece === null ? '整批' : '分件 ' + value(r.piece)} · {value(r.business_code)}
         <Button className="mini" icon="x" aria-label={'移除工序 ' + value(r.business_code)} disabled={disabled} onClick={() => onSelect(selected.filter(s => s.operation_ref !== r.operation_ref))} /></span>)}</div></>}
     </section>;
   }

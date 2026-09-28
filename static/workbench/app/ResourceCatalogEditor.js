@@ -35,12 +35,20 @@
   }
   function Pattern({
     value,
+    defaultPeriods,
     onChange,
     disabled,
     error,
     onValidationError
   }) {
     const [trim, setTrim] = React.useState(null);
+    const priorPeriods = React.useRef({});
+    function resize(length) {
+      Object.keys(priorPeriods.current).forEach(key => {
+        if (Number(key) >= length) delete priorPeriods.current[key];
+      });
+      onChange('pattern', M.resized(value.pattern, length));
+    }
     function generate() {
       onValidationError(null);
       try {
@@ -49,7 +57,7 @@
           setTrim(length);
           return;
         }
-        onChange('pattern', M.resized(value.pattern, length));
+        resize(length);
       } catch (failure) {
         onValidationError(failure);
       }
@@ -61,9 +69,22 @@
         row = rows[index];
       row[key] = next;
       // Rest has no working interval; retain existing times, canonicalize only empty rest markers.
+      if (key === 'periods') {
+        if (next.length) {
+          row.shift_start = next[0].start;
+          row.shift_end = next[next.length - 1].end;
+        }
+      }
       if (key === 'is_rest' && next === true) {
+        if (row.periods && row.periods.length) priorPeriods.current[index] = window.APSWorkPeriods.clone(row.periods);
+        if (row.periods != null) row.periods = [];
         if (!row.shift_start) row.shift_start = '00:00';
         if (!row.shift_end) row.shift_end = '00:00';
+      }
+      if (key === 'is_rest' && next === false && (Array.isArray(row.periods) && !row.periods.length || row.shift_start === '00:00' && row.shift_end === '00:00' || !row.shift_start && !row.shift_end)) {
+        row.periods = window.APSWorkPeriods.clone(priorPeriods.current[index] || defaultPeriods);
+        row.shift_start = row.periods[0].start;
+        row.shift_end = row.periods[row.periods.length - 1].end;
       }
       onChange('pattern', rows);
     }
@@ -93,7 +114,7 @@
       icon: "minus",
       disabled: disabled,
       onClick: () => {
-        onChange('pattern', M.resized(value.pattern, trim));
+        resize(trim);
         setTrim(null);
       }
     }, "\u786E\u8BA4\u79FB\u9664\u672B\u5C3E ", value.pattern.length - trim, " \u5929"))), !value.pattern.length ? /*#__PURE__*/React.createElement(window.WorkbenchListControls.EmptyState, {
@@ -138,7 +159,7 @@
       value: "work"
     }, "\u5DE5\u4F5C"), /*#__PURE__*/React.createElement("option", {
       value: "rest"
-    }, "\u4F11\u606F"))), ['shift_start', 'shift_end'].map((key, position) => /*#__PURE__*/React.createElement("td", {
+    }, "\u4F11\u606F"))), row.periods == null ? /*#__PURE__*/React.createElement(React.Fragment, null, ['shift_start', 'shift_end'].map((key, position) => /*#__PURE__*/React.createElement("td", {
       key: key
     }, /*#__PURE__*/React.createElement("div", {
       className: "field"
@@ -152,7 +173,20 @@
       "aria-invalid": C.fieldErrors(error).some(item => item.path === 'pattern.' + index) || undefined
     })))), /*#__PURE__*/React.createElement("td", {
       className: "muted"
-    }, row.is_rest === true ? '休息' : row.shift_start && row.shift_end ? row.shift_end <= row.shift_start ? '次日结束' : '当日结束' : '未填写')))))));
+    }, row.is_rest === true ? '休息' : row.shift_start && row.shift_end ? row.shift_end <= row.shift_start ? '次日结束' : '当日结束' : '未填写', row.is_rest === false && /*#__PURE__*/React.createElement(window.WorkPeriodFields, {
+      value: null,
+      start: row.shift_start,
+      end: row.shift_end,
+      disabled: disabled || trim !== null,
+      onChange: periods => rowChange(index, 'periods', periods)
+    }))) : /*#__PURE__*/React.createElement("td", {
+      colSpan: 3
+    }, /*#__PURE__*/React.createElement(window.WorkPeriodFields, {
+      label: '第 ' + (index + 1) + ' 天工作时段',
+      value: row.periods,
+      disabled: disabled || trim !== null || row.is_rest === true,
+      onChange: periods => rowChange(index, 'periods', periods)
+    }))))))));
   }
   function Facts({
     kind,
@@ -184,7 +218,9 @@
       key: row.day_offset
     }, /*#__PURE__*/React.createElement("td", {
       className: "wb-col-key"
-    }, "\u7B2C ", row.day_offset + 1, " \u5929"), /*#__PURE__*/React.createElement("td", null, row.is_rest ? '休息' : '工作'), /*#__PURE__*/React.createElement("td", null, row.shift_start), /*#__PURE__*/React.createElement("td", null, row.shift_end))))))), /*#__PURE__*/React.createElement("p", {
+    }, "\u7B2C ", row.day_offset + 1, " \u5929"), /*#__PURE__*/React.createElement("td", null, row.is_rest ? '休息' : '工作'), /*#__PURE__*/React.createElement("td", {
+      colSpan: 2
+    }, row.periods != null ? window.APSWorkPeriods.describe(row.periods) : row.shift_start + "–" + row.shift_end))))))), /*#__PURE__*/React.createElement("p", {
       className: "rc-wrap"
     }, "\u5907\u6CE8\uFF1A", entity.fields.remark || '未填写'), /*#__PURE__*/React.createElement(Issues, {
       issues: entity.issues
@@ -272,6 +308,7 @@
       full: true
     })), kind === 'shift_profile' && /*#__PURE__*/React.createElement(Pattern, {
       value: value,
+      defaultPeriods: editor.defaultPeriods,
       onChange: onChange,
       disabled: disabled,
       error: error,

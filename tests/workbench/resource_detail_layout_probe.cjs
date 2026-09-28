@@ -113,7 +113,7 @@ function prepareAssets() {
   report.asset_count = assets.size;
   const components = new Set(required.map(name => name.replace(/\.jsx$/, '.js')).concat([
     'WorkbenchControlBridge.js', 'WorkbenchControlStyles.js', 'WorkbenchSelectMenu.js', 'WorkbenchDatePickerModel.js',
-    'WorkbenchDatePicker.js', 'WorkbenchControls.js', 'WorkbenchNumberControls.js', 'CalendarContract.js'
+    'WorkbenchDatePicker.js', 'WorkbenchControls.js', 'WorkbenchNumberControls.js', 'WorkPeriods.js', 'WorkPeriodFields.jsx', 'CalendarContract.js'
   ]).map(name => 'workbench/app/' + name));
   const scripts = manifest.scripts.filter(name => name.startsWith('workbench/vendor/') || name.startsWith('workbench/assets/foundation-') || components.has(name));
   for (const component of components) assert(scripts.includes(component), 'Required built component missing: ' + component);

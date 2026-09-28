@@ -24,7 +24,7 @@
   }) {
     const standard = value.standard_hours,
       holiday = value.holiday_default_efficiency;
-    const standardText = standard.status === 'known' ? window.WorkbenchFormat.hours(standard.value) : standard.message || statusLabels[standard.status] || '暂无数据';
+    const standardText = standard.status === 'known' ? window.APSWorkPeriods.duration(standard.value) : standard.message || statusLabels[standard.status] || '暂无数据';
     const holidayText = holiday.status === 'known' ? window.WorkbenchFormat.number(holiday.value * 100, {
       digits: 1,
       trim: true
@@ -344,7 +344,14 @@
       className: "sw rest"
     }), "\u8C03\u4F11 / \u52A0\u73ED"), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", {
       className: "sw we"
-    }), "\u5468\u672B\uFF08\u9ED8\u8BA4\u975E\u5DE5\u4F5C\uFF09")), /*#__PURE__*/React.createElement("h3", null, "\u9ED8\u8BA4\u89C4\u5219"), rules && rules.calendar ? /*#__PURE__*/React.createElement(DefaultRules, {
+    }), "\u5468\u672B\uFF08\u9ED8\u8BA4\u975E\u5DE5\u4F5C\uFF09")), /*#__PURE__*/React.createElement("h3", null, "\u9ED8\u8BA4\u89C4\u5219"), data && data.default_periods && /*#__PURE__*/React.createElement("p", null, window.APSWorkPeriods.describe(data.default_periods), " \xB7 ", window.APSWorkPeriods.duration(window.APSWorkPeriods.hours(data.default_periods))), /*#__PURE__*/React.createElement(Button, {
+      icon: "square-pen",
+      disabled: blocked || !data || request.loading,
+      reason: source && source !== "production" ? "当前不是生产数据，不能修改。" : "",
+      onClick: () => open({
+        mode: "defaults"
+      })
+    }, "\u4FEE\u6539\u9ED8\u8BA4\u5DE5\u4F5C\u65F6\u95F4"), rules && rules.calendar ? /*#__PURE__*/React.createElement(DefaultRules, {
       value: rules.calendar
     }) : summary.loading ? /*#__PURE__*/React.createElement("p", {
       role: "status"
@@ -369,7 +376,13 @@
       value: dialog.day
     }), /*#__PURE__*/React.createElement(Issues, {
       issues: dialog.day.issues || []
-    }))), dialog && dialog.mode === 'day' && /*#__PURE__*/React.createElement(window.CalendarDayDialog, {
+    }))), dialog && dialog.mode === 'defaults' && /*#__PURE__*/React.createElement(window.CalendarDefaultsDialog, {
+      adapter: adapter,
+      command: command,
+      onClose: close,
+      refreshState: refreshState,
+      onRefresh: refresh
+    }), dialog && dialog.mode === 'day' && /*#__PURE__*/React.createElement(window.CalendarDayDialog, {
       adapter: adapter,
       day: dialog.day,
       source: dialog.source,
@@ -380,6 +393,7 @@
     }), dialog && dialog.mode === 'range' && /*#__PURE__*/React.createElement(window.CalendarRangeDialog, {
       adapter: adapter,
       month: month,
+      defaultPeriods: data && data.default_periods,
       source: source,
       command: command,
       onClose: close,

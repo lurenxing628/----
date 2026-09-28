@@ -3,7 +3,7 @@ const fs = require('node:fs'), path = require('node:path'), crypto = require('no
 const root = path.resolve(__dirname, '../..');
 function dependencies(files) {
   const result = ['WorkbenchFormat.js', 'WorkbenchTerms.js', 'WorkbenchHandlerMemory.js', 'WorkbenchReferences.jsx', 'RunPresentation.js',
-    'resource-contract.js', 'ResourceControls.jsx', 'WorkbenchGuards.js', 'CalendarContract.js', 'WorkbenchControlBridge.js',
+    'resource-contract.js', 'ResourceControls.jsx', 'WorkbenchGuards.js', 'WorkPeriods.js', 'WorkPeriodFields.jsx', 'CalendarContract.js', 'WorkbenchControlBridge.js',
     'WorkbenchControlStyles.jsx', 'WorkbenchSelectMenu.jsx', 'WorkbenchDatePickerModel.js', 'WorkbenchDatePicker.jsx',
     'WorkbenchControls.jsx', 'WorkbenchNumberControls.jsx', 'WorkbenchListControls.jsx', ...files];
   return [...new Set(result)];

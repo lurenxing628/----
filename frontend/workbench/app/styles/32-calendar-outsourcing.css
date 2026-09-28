@@ -21,6 +21,8 @@
     .outsourcing-live .os-pager select {width:72px;}
     .outsourcing-live .os-detail {border-top:1px solid var(--ui-border);margin-top:18px;padding-top:var(--space-4);}
     .outsourcing-live .os-members,.outsourcing-live .os-selected {display:flex;gap:var(--space-2);flex-wrap:wrap;overflow-wrap:anywhere;}
+    .outsourcing-live .os-search {display:flex;align-items:center;gap:var(--space-2);margin:var(--space-2) 0;min-width:0;}
+    .outsourcing-live .os-search input {flex:1;min-width:0;}
     .outsourcing-live .os-members>span {padding-right:var(--space-3);border-right:1px solid var(--ui-border);}
     .outsourcing-live .os-selected {margin:var(--space-2) 0;align-items:center;}.outsourcing-live .os-selected>span {display:inline-flex;align-items:center;gap:var(--space-1);}
     .outsourcing-live .os-target {padding:10px 0;}

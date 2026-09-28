@@ -193,6 +193,13 @@
   function useRead(load, deps, enabled = true) {
     return window.APSResourceSession.useQuery(load, deps, enabled);
   }
+  function memberConflict(first, row) {
+    if (!first) return '';
+    if (first.batch_ref !== row.batch_ref) return '不同批次';
+    if (first.supplier_ref !== row.supplier_ref) return '不同供应商';
+    if (first.piece !== row.piece) return '不同分件';
+    return '';
+  }
   function input(draft, selected, item, now) {
     const values = {
       sent: C.stamp(draft.sent),
@@ -212,7 +219,7 @@
         if (values[k] !== item[k]) p[k] = values[k];
       });
     } else {
-      C.check(selected.length > 0 && selected.every(r => r.can_register && r.batch_ref === selected[0].batch_ref && r.supplier_ref === selected[0].supplier_ref), '请选择同一批次、同一供应商的真实可登记工序。');
+      C.check(selected.length > 0 && selected.every(r => r.can_register && !memberConflict(selected[0], r)), '请选择同一批次、同一分件、同一供应商的真实可登记工序。');
       p.target = C.target({
         kind: draft.kind,
         batch_ref: selected[0].batch_ref,
@@ -230,6 +237,7 @@
     save,
     useCommand,
     useRead,
-    input
+    input,
+    memberConflict
   };
 })();

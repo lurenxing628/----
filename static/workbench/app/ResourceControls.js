@@ -624,7 +624,7 @@
       }
     });
     function selectable(item) {
-      return (item.status === 'active' || field.kind === 'op_type' && item.status === null) && (!field.category || item.fields.category === field.category);
+      return (item.status === 'active' || field.kind === 'op_type' && item.status === null) && (!field.category || [field.category, "both"].includes(item.fields.category));
     }
     function choose(ref, checked) {
       if (field.multiple) onChange(checked ? selected.concat(ref) : selected.filter(item => item !== ref));else onChange(ref);

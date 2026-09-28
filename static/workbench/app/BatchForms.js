@@ -19,7 +19,7 @@
       trim: true
     },
     ENTERED_DAYS = {
-      digits: 1,
+      digits: 20,
       trim: true
     };
   function BaseEditor({
@@ -246,7 +246,7 @@
     }, [command.phase, command.result]);
     const value = row => row ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", null, [row.business_code, row.relationships.part_no, ...B.fields.map(key => window.BatchControls.display(key, row.fields[key]))].join(' · ')), row.operations.map((op, index) => /*#__PURE__*/React.createElement("div", {
       key: index
-    }, op.business_code, " \xB7 ", op.sequence, " \xB7 ", op.label, " \xB7 ", op.source === 'external' ? '外协' : '自制', " \xB7", Object.values(op.resources).filter(Boolean).map(resource => resource.label).join(' / '), " \xB7 \u6362\u578B ", window.WorkbenchFormat.hours(op.setup_hours, ENTERED_HOURS), " / \u5355\u4EF6 ", window.WorkbenchFormat.hours(op.unit_hours, ENTERED_HOURS), " / \u5468\u671F ", window.WorkbenchFormat.number(op.external_days, ENTERED_DAYS), " \xB7 ", B.label('status', op.status))), /*#__PURE__*/React.createElement("div", null, "\u7269\u6599\u9700\u6C42 ", row.relationships.material_requirement_count, " \u9879")) : '删除';
+    }, op.business_code, " \xB7 ", op.sequence, " \xB7 ", op.label, " \xB7 ", op.source === 'external' ? '外协' : '自制', " \xB7", Object.values(op.resources).filter(Boolean).map(resource => resource.label).join(' / '), " \xB7 ", op.source === 'internal' ? /*#__PURE__*/React.createElement(React.Fragment, null, "\u6362\u578B ", window.WorkbenchFormat.hours(op.setup_hours, ENTERED_HOURS), " / \u5355\u4EF6 ", window.WorkbenchFormat.hours(op.unit_hours, ENTERED_HOURS)) : /*#__PURE__*/React.createElement(React.Fragment, null, op.external_group && op.external_group.merge_mode === 'merged' ? '整组周期 ' + window.WorkbenchFormat.number(op.external_group.total_days, ENTERED_DAYS) : '本序周期 ' + window.WorkbenchFormat.number(op.external_days, ENTERED_DAYS), " \u5929"), " \xB7 ", B.label('status', op.status))), /*#__PURE__*/React.createElement("div", null, "\u7269\u6599\u9700\u6C42 ", row.relationships.material_requirement_count, " \u9879")) : '删除';
     const deleting = action === 'bulk_confirm' && preview.action === 'delete';
     // 只删一个批次时标题直接点名；删除要先核对明细并勾选，主按钮按危险动作着色。
     const single = deleting && preview.rows.length === 1 && preview.rows[0].before ? preview.rows[0].before.business_code : null;

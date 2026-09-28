@@ -234,7 +234,7 @@
     }, []);
     const intent = command.intent,
       fileKind = intent && intent.action === 'confirm' && typeof intent.ref === 'string' && /^[A-Za-z0-9_-]{32}$/.test(intent.ref) && ['process_route_import', 'process_hours_import'].includes(intent.kind) ? intent.kind === 'process_route_import' ? 'route' : 'hours' : null;
-    const expectedStage = intent && intent.kind === 'process' && ['route_confirm', 'source_confirm', 'hours_confirm'].includes(intent.action) ? intent.action.replace('_confirm', '') : null;
+    const expectedStage = intent && intent.kind === 'process' && ['route_confirm', 'source_confirm', 'hours_confirm', 'groups_confirm'].includes(intent.action) ? intent.action.replace('_confirm', '') : null;
     const receiptMatches = command.phase === 'done' && expectedStage && command.intent.kind === 'process' && command.intent.ref === partRef && C.object(command.result.data) && command.result.data.entity_ref === partRef && command.result.data.stage === expectedStage && ['committed', 'unchanged'].includes(command.result.result);
     const needsReceiptCheck = command.phase === 'done' && !fileKind && !receiptMatches;
     const visibleCommand = fileKind ? {
@@ -345,7 +345,7 @@
         setStage(fresh.data.workflow.stage);
         setSaved(old => ({
           ...old,
-          [key]: old[key] + 1
+          [key]: (old[key] || 0) + 1
         }));
         onDirty(key, false);
         if (key === 'route') {
@@ -559,6 +559,7 @@
       command: visibleCommand,
       disabled: editorDisabled,
       saved: saved.hours,
+      groupSaved: saved.groups || 0,
       onDirty: onDirty,
       onOverlay: setOverlay,
       onFileAction: openFile

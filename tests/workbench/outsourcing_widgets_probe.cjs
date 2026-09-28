@@ -181,9 +181,33 @@ async function contracts(page, p, v, intent, list) {
     return n;
   }, { p, v, intent, list, targets });
 }
+async function targetSearch(page, name) {
+  const first = await action(page, '/targets', () => page.getByRole('button', { name: '新增外协登记', exact: true }).click());
+  assert.deepEqual(first.data.items.map(row => row.sequence), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+  await dialog(page).getByText('整批工序', { exact: true }).first().waitFor();
+  await action(page, '/targets', () => select(page, '工序每页数量', '2 项'));
+  await action(page, '/targets', () => dialog(page).getByRole('button', { name: '工序下一页', exact: true }).click());
+  const search = dialog(page).getByLabel('查找外协工序', { exact: true });
+  const filtered = await action(page, '/targets', () => search.fill('DN-B2'));
+  assert.equal(filtered.data.page.number, 1); assert.equal(filtered.data.page.total, 1);
+  assert.equal(filtered.data.items[0].business_code, 'DN-O25');
+  await action(page, '/targets', () => search.fill('DN-O01'));
+  await dialog(page).getByRole('radio', { name: '合并发出', exact: true }).check();
+  await dialog(page).getByLabel('选择工序 DN-O01', { exact: true }).check();
+  const piece = await action(page, '/targets', () => search.fill('DN-O24'));
+  assert.equal(piece.data.items[0].piece, '第二分件');
+  assert(await dialog(page).getByLabel('选择工序 DN-O24', { exact: true }).isDisabled());
+  await dialog(page).getByText('不同分件', { exact: true }).waitFor();
+  await dialog(page).getByText('分件 第二分件', { exact: true }).waitFor();
+  await shot(page, name + '-target-piece-filter');
+  await dialog(page).getByRole('button', { name: '移除工序 DN-O01', exact: true }).click();
+  await dialog(page).getByRole('radio', { name: '单工序', exact: true }).check();
+  await dialog(page).getByRole('button', { name: '取消', exact: true }).click();
+  report.boundaries.target_search_paging_and_piece_guard = true;
+}
 async function happy(viewport, theme) {
   const name = theme + '-' + viewport.width; let { context, page } = await fresh(name, viewport, theme);
-  await shot(page, name + '-empty'); await start(page); await dates(page); await operator(page, '单工序发出交接单 ' + name); await datePicker(page);
+  await shot(page, name + '-empty'); await targetSearch(page, name); await start(page); await dates(page); await operator(page, '单工序发出交接单 ' + name); await datePicker(page);
   await geometry(page, viewport); await shot(page, name + '-single-form'); await preview(page); const single = await send(page); await confirmed(page); await finish(page);
   await start(page, true, ['DN-O02', 'DN-O03']); await dates(page); await operator(page, '两道明确成员合并发出 ' + name);
   await geometry(page, viewport); await shot(page, name + '-merged-form'); const mergedPreview = await preview(page); await shot(page, name + '-preview');

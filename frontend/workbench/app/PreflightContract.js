@@ -4,7 +4,7 @@
   const ref = value => typeof value === 'string' && /^[0-9a-f]{48}$/.test(value);
   const token = value => typeof value === 'string' && /^[A-Za-z0-9_-]{32}$/.test(value);
   const count = value => Number.isSafeInteger(value) && value >= 0;
-  const fields = ['batch_refs', 'start_date', 'end_date', 'ready_check', 'missing_resource_policy', 'completed_policy'];
+  const fields = ['batch_refs', 'start_date', 'end_date', 'ready_check', 'material_strategy', 'missing_resource_policy', 'completed_policy'];
   function fail(message) { const error = new Error(message); error.committed = false; return error; }
   function date(value) {
     if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value) || value < '1900-01-01' || value >= '9999-12-31') return false;
@@ -13,8 +13,10 @@
   }
   function refs(value) { return Array.isArray(value) && value.length <= 5000 && value.every(ref) && new Set(value).size === value.length; }
   function input(value) {
+    if (object(value) && value.material_strategy === undefined) value = { ...value, material_strategy: 'strict' };
     if (!object(value) || Object.keys(value).length !== fields.length || !fields.every(key => Object.prototype.hasOwnProperty.call(value, key))
         || !refs(value.batch_refs) || !date(value.start_date) || !date(value.end_date) || value.start_date > value.end_date
+        || !['strict', 'stage', 'split'].includes(value.material_strategy) || value.material_strategy !== 'strict' && !value.ready_check
         || typeof value.ready_check !== 'boolean' || !['auto_assign', 'exclude'].includes(value.missing_resource_policy) || value.completed_policy !== 'preserve_actuals')
       throw fail('请核对已选批次、排产日期范围和本次排产规则。');
     return Object.fromEntries(fields.map(key => [key, key === 'batch_refs' ? value[key].slice().sort() : value[key]]));
@@ -22,7 +24,7 @@
   function defaults() {
     const today = new Date(), end = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 6);
     const local = d => [d.getFullYear(), String(d.getMonth() + 1).padStart(2, '0'), String(d.getDate()).padStart(2, '0')].join('-');
-    return { batch_refs: [], start_date: local(today), end_date: local(end), ready_check: true, missing_resource_policy: 'auto_assign', completed_policy: 'preserve_actuals' };
+    return { batch_refs: [], start_date: local(today), end_date: local(end), ready_check: true, material_strategy: 'strict', missing_resource_policy: 'auto_assign', completed_policy: 'preserve_actuals' };
   }
   function initial(context) {
     if (context === undefined) return defaults();
@@ -70,7 +72,7 @@
         || !Array.isArray(d.no_route_batches) || !Array.isArray(d.unready_batches)
         || !Array.isArray(d.included_batches) || !Array.isArray(d.excluded_batches)
         || !object(d.scope) || d.scope.source !== 'production' || !refs(d.scope.batch_refs) || JSON.stringify(d.scope.batch_refs) !== JSON.stringify(normalized.batch_refs)
-        || !object(d.effective_config) || !fields.slice(3).every(key => d.effective_config[key] === normalized[key])
+        || !object(d.effective_config) || !fields.slice(3).every(key => (key === 'material_strategy' ? d.effective_config[key] || 'strict' : d.effective_config[key]) === normalized[key])
         || d.effective_start !== normalized.start_date + 'T00:00:00') throw fail('排产检查结果与本次范围或能力不一致，不能继续。');
     const c = d.counts;
     ['ready_tasks', 'auto_assign_required', 'skipped_tasks', 'blocked_tasks', 'protected_tasks'].forEach((key, index) => {

@@ -93,6 +93,7 @@
   function CalendarRangeDialog({
     adapter,
     month,
+    defaultPeriods,
     source,
     command,
     onClose,
@@ -107,7 +108,8 @@
     });
     const [value, setValue] = React.useState({
       type: 'work',
-      hours: '8',
+      hours: String(window.APSWorkPeriods.hours(defaultPeriods)),
+      periods: window.APSWorkPeriods.clone(defaultPeriods),
       eff: '100',
       allowNormal: 'yes',
       allowUrgent: 'yes',

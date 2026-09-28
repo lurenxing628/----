@@ -47,9 +47,25 @@
       choices: [[true, '开启'], [false, '关闭']],
       disabled: disabled,
       onChange: ready_check => onChange({
-        ready_check
+        ready_check,
+        ...(ready_check ? {} : {
+          material_strategy: 'strict'
+        })
       })
     })), /*#__PURE__*/React.createElement("div", {
+      className: "pf-rule"
+    }, /*#__PURE__*/React.createElement("strong", null, "\u7269\u6599\u653E\u884C\u65B9\u5F0F"), /*#__PURE__*/React.createElement(Segment, {
+      label: "\u7269\u6599\u653E\u884C\u65B9\u5F0F",
+      value: value.material_strategy || 'strict',
+      choices: [["strict", '整批齐套'], ["stage", '按工序齐套'], ["split", '预览分批开工']],
+      disabled: disabled,
+      onChange: material_strategy => onChange({
+        material_strategy,
+        ready_check: true
+      })
+    })), /*#__PURE__*/React.createElement("div", {
+      className: "pf-rule pf-note"
+    }, "\u6309\u5DE5\u5E8F\u9F50\u5957\uFF1A\u53EA\u7B49\u5F85\u672C\u5E8F\u53CA\u524D\u5E8F\u9700\u8981\u7684\u7269\u6599\u3002\u5206\u6279\u5F00\u5DE5\uFF1A\u5148\u9884\u89C8\u53EF\u505A\u6570\u91CF\uFF0C\u786E\u8BA4\u4FDD\u5B58\u62C6\u5206\u540E\u518D\u6392\u4EA7\u3002"), /*#__PURE__*/React.createElement("div", {
       className: "pf-rule"
     }, /*#__PURE__*/React.createElement("strong", null, "\u7F3A\u8D44\u6E90\u5DE5\u5E8F"), /*#__PURE__*/React.createElement(Segment, {
       label: "\u7F3A\u8D44\u6E90\u5DE5\u5E8F",

@@ -8,7 +8,9 @@
       readPending: api.readPending, savePending: api.savePending, clearPending: api.clearPending, lookup: api.lookup,
       list(kind, scope, signal) { if (kind !== 'batch') throw window.APSResourceContract.failure('批次类别不正确。'); return api.preview(root + '/query', scope, signal); },
       detail(kind, ref, signal) { if (kind !== 'batch') throw window.APSResourceContract.failure('批次类别不正确。'); return api.query(entity(ref), {}, signal); },
+      operationChoices(batchRef, operationRef, signal) { return api.query(root + '/choices', { batch_ref: batchRef, operation_ref: operationRef }, signal); },
       choices(signal) { return api.query(root + '/choices', {}, signal); },
+      materialChoices(scope, signal) { return api.query('entities/material', { ...scope, status: 'active', size: 20 }, signal); },
       facets(scope, field, signal) { return api.preview(root + '/facets', { scope, field }, signal); },
       selection(scope, signal) { return api.preview(root + '/selection', scope, signal); },
       importPreview(file, mode, scope, snapshot, signal) {
@@ -20,7 +22,7 @@
       downloadExport(exportRef, signal) { return api.download(root + '/export', { export_ref: exportRef }, signal); },
       preview(action, ref, input, scope, snapshot, signal) {
         if (action === 'bulk') return api.preview(root + '/bulk-preview', { input, scope, snapshot_ref: snapshot }, signal);
-        if (action === 'sync') return api.preview(entity(ref) + '/sync-preview', { input, snapshot_ref: snapshot }, signal);
+        if (['sync', 'split'].includes(action)) return api.preview(entity(ref) + '/' + action + '-preview', { input, snapshot_ref: snapshot }, signal);
         throw window.APSResourceContract.failure('批次预检操作不正确。');
       },
       async command(kind, action, ref, body, signal) {
@@ -32,7 +34,7 @@
         } else if (['bulk_confirm', 'import_confirm'].includes(action)) {
           if (ref !== body.input.preview_ref) throw window.APSResourceContract.failure('批量确认与预检结果不一致。');
           path = root + (action === 'bulk_confirm' ? '/bulk-confirm' : '/import-confirm');
-        } else path = entity(ref) + '/' + (action === 'sync_confirm' ? 'sync-confirm' : action);
+        } else path = entity(ref) + '/' + (['sync_confirm', 'split_confirm'].includes(action) ? action.replace('_', '-') : action);
         const result = await api.execute(path, body, signal);
         C.receipt(result, action, ref);
         return result;

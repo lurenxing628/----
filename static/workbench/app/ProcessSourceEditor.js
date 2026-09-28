@@ -38,6 +38,26 @@
     });
     return next;
   }
+  function supplierMembers(entity, draft, row) {
+    const group = entity.external_groups.find(item => item.ref === row.external_group_ref);
+    return group && draft[row.ref].source === 'external' ? E.active(entity).filter(item => item.external_group_ref === group.ref && draft[item.ref].source === 'external') : [row];
+  }
+  function supplierReason(row, target) {
+    if (row.status !== 'active') return '供应商未启用，不能选择。';
+    const members = target.members || [target];
+    const missing = members.filter(item => !item.op_type_ref);
+    if (missing.length) return '请先为工序 ' + missing.map(item => item.sequence).join('、') + ' 选择外协工种。';
+    const refs = row.relationships.op_type_refs;
+    if (!Array.isArray(refs)) return '供应商承接工种资料未读取，暂时不能选择。';
+    const unsupported = members.filter(item => !refs.includes(item.op_type_ref));
+    return unsupported.length ? '不能承接：' + unsupported.map(item => '工序 ' + item.sequence + ' ' + item.op_type_label).join('、') + '。' : '';
+  }
+  function locateFailure(error, entity, pageSize) {
+    const paths = C.fieldErrors(error).map(row => row.path);
+    const index = entity.operations.findIndex(row => paths.some(path => path === 'operations.' + row.ref + '.supplier_ref'));
+    if (index >= 0) error.locate_page = Math.floor(index / pageSize) + 1;
+    return error;
+  }
   const complete = row => ['internal', 'external'].includes(row.source) && !!row.op_type_ref && (row.source === 'internal' || !!row.supplier_ref);
   function input(entity, draft, pageSize) {
     const operations = E.active(entity).map(row => {
@@ -88,8 +108,10 @@
     }, [adapter, target.kind, target.source, scope]);
     const data = read.result && read.result.data,
       title = target.kind === 'op_type' ? P.sourceLabel(target.source) + '工种' : '供应商';
+    const grouped = target.kind === 'supplier' && target.group;
+    const subject = grouped ? '外协段 ' + target.group.start_sequence + ' 至 ' + target.group.end_sequence : '工序 ' + target.sequence;
     return /*#__PURE__*/React.createElement(Modal, {
-      title: '选择' + title + ' · 工序 ' + target.sequence,
+      title: '选择' + title + ' · ' + subject,
       icon: "search",
       onClose: onClose,
       locked: disabled,
@@ -99,7 +121,7 @@
       }, "\u53D6\u6D88")
     }, /*#__PURE__*/React.createElement("div", {
       className: "modal-b scroll"
-    }, /*#__PURE__*/React.createElement("form", {
+    }, target.kind === 'supplier' && /*#__PURE__*/React.createElement("p", null, grouped ? '本次选择会统一用于本段全部工序：' : '请选择能承接本工序的供应商：', (target.members || [target]).map(row => row.sequence + ' ' + (row.op_type_label || '未选工种')).join('、'), "\u3002\u53EA\u6709\u80FD\u627F\u63A5\u5168\u90E8\u6240\u5217\u5DE5\u79CD\u7684\u542F\u7528\u4F9B\u5E94\u5546\u53EF\u4EE5\u91C7\u7528\u3002"), /*#__PURE__*/React.createElement("form", {
       className: "toolbar",
       onSubmit: event => {
         event.preventDefault();
@@ -151,17 +173,23 @@
       scope: "col"
     }, "\u7F16\u53F7"), /*#__PURE__*/React.createElement("th", {
       scope: "col"
-    }, "\u540D\u79F0"), /*#__PURE__*/React.createElement("th", {
+    }, "\u540D\u79F0"), target.kind === 'supplier' && /*#__PURE__*/React.createElement("th", {
       scope: "col"
-    }, "\u9009\u62E9"))), /*#__PURE__*/React.createElement("tbody", null, data.entities.map(row => /*#__PURE__*/React.createElement("tr", {
-      key: row.ref
-    }, /*#__PURE__*/React.createElement("td", null, row.business_code), /*#__PURE__*/React.createElement("td", null, row.label), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Button, {
-      icon: "check",
-      disabled: disabled || !(row.status === 'active' || target.kind === 'op_type' && row.status === null) || target.kind === 'op_type' && row.fields.category !== target.source,
-      "aria-label": '采用 ' + row.label,
-      onClick: () => onSelect(row)
-    }, "\u91C7\u7528")))), !data.entities.length && /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", {
-      colSpan: 3
+    }, "\u627F\u63A5\u5DE5\u79CD"), /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u9009\u62E9"))), /*#__PURE__*/React.createElement("tbody", null, data.entities.map(row => {
+      const reason = target.kind === 'supplier' ? supplierReason(row, target) : '';
+      return /*#__PURE__*/React.createElement("tr", {
+        key: row.ref
+      }, /*#__PURE__*/React.createElement("td", null, row.business_code), /*#__PURE__*/React.createElement("td", null, row.label), target.kind === 'supplier' && /*#__PURE__*/React.createElement("td", null, (row.relationships.op_types || []).map(item => item.label).join('、') || '未登记承接工种'), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Button, {
+        icon: "check",
+        reason: reason,
+        disabled: disabled || !(row.status === 'active' || target.kind === 'op_type' && row.status === null) || target.kind === 'op_type' && ![target.source, "both"].includes(row.fields.category),
+        "aria-label": '采用 ' + row.label,
+        onClick: () => onSelect(row)
+      }, "\u91C7\u7528")));
+    }), !data.entities.length && /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", {
+      colSpan: target.kind === 'supplier' ? 4 : 3
     }, "\u6CA1\u6709\u5339\u914D\u9009\u9879\u3002"))))), /*#__PURE__*/React.createElement(window.ResourceTables.Pager, {
       page: data.page,
       disabled: disabled || read.loading,
@@ -186,7 +214,8 @@
     saved,
     onDirty,
     onOverlay,
-    onResourceCommitted
+    onResourceCommitted,
+    focusRef = null
   }) {
     const model = E.useDraft({
       result,
@@ -200,7 +229,9 @@
     const entity = model.base.data,
       draft = model.draft,
       rows = entity.operations,
-      paging = E.usePage(rows);
+      paging = E.usePage(rows, focusRef),
+      root = React.useRef(null);
+    E.useFocus(root, focusRef, paging.page.number);
     const [picker, setPicker] = React.useState(null),
       [create, setCreate] = React.useState(null);
     const [preflightResult, setPreview] = React.useState(null),
@@ -235,10 +266,16 @@
       }));
     }
     function openPicker(row, kind) {
+      const members = supplierMembers(entity, draft, row).map(item => ({
+        ...item,
+        ...draft[item.ref]
+      }));
       setPicker({
         ...row,
+        ...draft[row.ref],
         kind,
-        source: draft[row.ref].source
+        members,
+        group: entity.external_groups.find(item => item.ref === row.external_group_ref)
       });
       onOverlay(true);
     }
@@ -247,14 +284,51 @@
       onOverlay(false);
     }
     function choose(row) {
-      change(picker.ref, picker.kind === 'op_type' ? {
-        op_type_ref: row.ref,
-        op_type_label: row.label
-      } : {
-        supplier_ref: row.ref,
-        supplier_label: row.label
+      invalidate();
+      model.edit(current => {
+        const next = {
+            ...current
+          },
+          members = supplierMembers(entity, current, picker);
+        if (picker.kind === 'supplier') members.forEach(item => {
+          next[item.ref] = {
+            ...next[item.ref],
+            supplier_ref: row.ref,
+            supplier_label: row.label
+          };
+        });else {
+          if (current[picker.ref].op_type_ref !== row.ref) members.forEach(item => {
+            next[item.ref] = {
+              ...next[item.ref],
+              supplier_ref: null,
+              supplier_label: null
+            };
+          });
+          next[picker.ref] = {
+            ...next[picker.ref],
+            op_type_ref: row.ref,
+            op_type_label: row.label
+          };
+        }
+        return next;
       });
       closePicker();
+    }
+    function clearSupplier(row) {
+      invalidate();
+      model.edit(current => {
+        const next = {
+          ...current
+        };
+        supplierMembers(entity, current, row).forEach(item => {
+          next[item.ref] = {
+            ...next[item.ref],
+            supplier_ref: null,
+            supplier_label: null
+          };
+        });
+        return next;
+      });
     }
     async function preflight(commit = false) {
       if (blocked || stageReason || checking) return;
@@ -279,7 +353,7 @@
         }
       } catch (error) {
         if (!controller.signal.aborted && request.current === controller) {
-          model.setError(error);
+          model.setError(locateFailure(error, entity, paging.page.size));
           setChecking(false);
         }
       } finally {
@@ -303,8 +377,11 @@
     }
     const active = E.active(entity);
     return /*#__PURE__*/React.createElement("section", {
+      ref: root,
       "data-process-source-editor": true
-    }, /*#__PURE__*/React.createElement("div", {
+    }, active.some(row => draft[row.ref] && row.op_type_ref !== draft[row.ref].op_type_ref) && /*#__PURE__*/React.createElement("p", {
+      role: "status"
+    }, "\u66F4\u6362\u5B9E\u9645\u5DE5\u79CD\u540E\uFF0C\u5C06\u6E05\u9664\u539F\u6362\u578B\u5DE5\u65F6\u3001\u5355\u4EF6\u5DE5\u65F6\u548C\u672C\u5E8F\u5916\u534F\u5468\u671F\uFF0C\u8BF7\u91CD\u65B0\u586B\u5199\u5E76\u786E\u8BA4\u3002"), /*#__PURE__*/React.createElement("div", {
       className: "toolbar"
     }, /*#__PURE__*/React.createElement(E.Search, {
       paging: paging,
@@ -358,7 +435,10 @@
         inactive = row.status !== 'active',
         cycle = current.source === row.source && P.groupCycle(row, entity.external_groups);
       return /*#__PURE__*/React.createElement("tr", {
-        key: row.ref
+        key: row.ref,
+        "data-process-location": row.ref,
+        tabIndex: row.ref === focusRef ? -1 : undefined,
+        "aria-current": row.ref === focusRef ? 'true' : undefined
       }, /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("b", null, row.sequence), " ", row.label, cycle && /*#__PURE__*/React.createElement("div", {
         className: "muted",
         "data-process-cycle-group": row.external_group_ref
@@ -393,12 +473,12 @@
       }), current.supplier_ref && /*#__PURE__*/React.createElement(Button, {
         icon: "x",
         "aria-label": '清除工序 ' + row.sequence + ' 供应商',
+        title: row.external_group_ref ? '清除本外协段所有工序的供应商' : '清除供应商',
         disabled: editBlocked || inactive,
-        onClick: () => change(row.ref, {
-          supplier_ref: null,
-          supplier_label: null
-        })
-      })))), /*#__PURE__*/React.createElement("td", null, inactive ? '已停用工序' : /*#__PURE__*/React.createElement("div", {
+        onClick: () => clearSupplier(row)
+      })), row.external_group_ref && /*#__PURE__*/React.createElement("div", {
+        className: "muted"
+      }, "\u9009\u62E9\u6216\u6E05\u9664\u4F9B\u5E94\u5546\u4F1A\u5E94\u7528\u5230\u672C\u5916\u534F\u6BB5\u3002"))), /*#__PURE__*/React.createElement("td", null, inactive ? '已停用工序' : /*#__PURE__*/React.createElement("div", {
         className: "muted"
       }, /*#__PURE__*/React.createElement(E.Confirmation, {
         record: row.confirmation && row.confirmation.source
@@ -416,7 +496,9 @@
       discarded: discarded,
       onDiscard: preview ? setDiscarded : undefined,
       disabled: blocked
-    }), preview && affected.length > 0 && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Issues, {
+    }), entity.external_groups.length > 0 && /*#__PURE__*/React.createElement("p", {
+      className: "muted"
+    }, "\u9700\u8981\u8BA9\u6BB5\u5185\u5DE5\u5E8F\u6539\u7528\u4E0D\u540C\u4F9B\u5E94\u5546\u6216\u6539\u4E3A\u81EA\u5236\u65F6\uFF0C\u8BF7\u5148\u5230\u5DE5\u65F6\u5B9A\u989D\u9875\u7BA1\u7406\u3001\u62C6\u5206\u5916\u534F\u6BB5\u3002"), preview && affected.length > 0 && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Issues, {
       issues: preview.response.warnings
     }), /*#__PURE__*/React.createElement("p", {
       role: "status"
@@ -459,4 +541,5 @@
     })), document.body));
   }
   window.ProcessSourceEditor = ProcessSourceEditor;
+  window.ProcessSourcePicker = Picker;
 })();

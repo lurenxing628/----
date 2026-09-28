@@ -17,7 +17,7 @@ const files = ['WorkbenchFormat.js', 'WorkbenchTerms.js', 'WorkbenchReferences.j
   'ProcessContract.js', 'ProcessReadView.js', 'ProcessActionContract.js', 'ProcessActionPreview.jsx', 'ProcessCollectionActions.jsx',
   'ProcessFileContract.js', 'ProcessFilePreview.jsx', 'ProcessFileActions.jsx',
   'ProcessControls.jsx', 'ProcessStageEditor.jsx', 'ProcessOpTypeCreate.jsx', 'ProcessSourceEditor.jsx',
-  'ProcessHoursEditor.jsx', 'ProcessRouteEntry.jsx', 'ProcessDetail.jsx', 'ProcessWorkspace.jsx'];
+  'ProcessGroupEditor.jsx', 'ProcessHoursEditor.jsx', 'ProcessRouteDraft.js', 'ProcessRouteEntry.jsx', 'ProcessDetail.jsx', 'ProcessWorkspace.jsx'];
 const styleSources = JSON.parse(fs.readFileSync(path.join(root, 'scripts/workbench/build-order.json'), 'utf8')).styles.map(name => {
   const file = 'frontend/workbench/app/styles/' + name; return { path: file, code: fs.readFileSync(path.join(root, file), 'utf8') };
 });
@@ -53,7 +53,8 @@ function detailPart(n,long=false,count) {
   p.capabilities={...caps};return p;
 }
 function previewData(partRef,body) {
-  let rows=body.mode==='rows'?body.rows:!body.route_raw?[]:body.route_raw==='SLOW'||body.route_raw==='FAST'?[{seq:5,op_type_name:body.route_raw}]:[{seq:5,op_type_name:'Turn'},{seq:10,op_type_name:body.route_raw.includes('Unknown')?'Unknown':'Polish'}];
+  let rows=body.mode==='rows'?body.rows:!body.route_raw?[]:body.route_raw==='SLOW'||body.route_raw==='FAST'?[{seq:5,op_type_name:body.route_raw}]:
+    Array.from(body.route_raw.matchAll(/([0-9]+)[: ]*([^0-9;；\\r\\n]+)/g), match=>({seq:match[1].length>15?match[1]:Number(match[1]),op_type_name:match[2].trim()}));
   const diagnostics=[], seen=new Set();
   rows.forEach(row=>{if(seen.has(row.seq))diagnostics.push({code:'duplicate_sequence',severity:'error',message:'工序号重复',sequence:row.seq});seen.add(row.seq);
     if(!row.op_type_name.trim())diagnostics.push({code:'missing_name',severity:'error',message:'工种名称缺失',sequence:row.seq});});
@@ -99,6 +100,12 @@ function Harness({spec}) {
       detail:async(kind,id,signal)=>{
         await call('detail',{kind,ref:id},signal);if(f.spec.failDetail)throw {ok:false,error:{message:'Mock 详情读取失败'}};
         const n=parseInt(id,16), d=detailPart(n,f.spec.long,f.spec.operationCount);d.capabilities={...caps,...f.spec.capabilities};
+        if(f.spec.latestOperations) {
+          const original=d.operations;
+          d.operations=f.spec.latestOperations.map((item,index)=>({...original.find(row=>row.sequence===item.seq)||original[0],ref:original.find(row=>row.sequence===item.seq)?.ref||ref(8000+index),sequence:item.seq,label:item.name}));
+          d.fields.route_raw=ProcessRouteDraft.serialize(f.spec.latestOperations.map(item=>({seq:String(item.seq),op_type_name:item.name})));
+          d.relationships.operation_count=d.operations.length;
+        }
         if(f.spec.largeSequence) {
           d.operations[0].sequence='9223372036854775807';d.operations[0].op_type_label='RenamedMaster';
           d.fields.route_raw='9223372036854775807Turn';d.external_groups[0].start_sequence='9007199254740992';d.external_groups[0].end_sequence='9223372036854775807';
@@ -289,8 +296,8 @@ async function cases() {
     assert.equal(await page.getByRole('spinbutton', { name: '工序 10 外协周期', exact: true }).inputValue(), '');
     assert.equal(await page.getByRole('spinbutton', { name: '外协组 10 至 10 总周期', exact: true }).inputValue(), '');
     assert((await page.getByRole('dialog').innerText()).includes('外协周期填的值不合法，请核对。'));
-    assert((await page.getByRole('table', { name: '外协组原记录', exact: true }).innerText()).includes('合并周期填的值不合法，请核对。'));
-    assert(await page.getByRole('table', { name: '外协组原记录', exact: true }).getByRole('cell', { name: '保留原外协规则', exact: true }).isVisible()); await shot('hours');
+    assert((await page.getByRole('table', { name: '外协段统一周期', exact: true }).innerText()).includes('合并周期填的值不合法，请核对。'));
+    assert(await page.getByRole('table', { name: '外协段统一周期', exact: true }).getByRole('cell', { name: '保留原外协规则', exact: true }).isVisible()); await shot('hours');
     await page.getByRole('tab', { name: /工艺路线/ }).click(); await shot('route-long');
     for (let i = 0; i < 12; i++) { await page.keyboard.press('Tab'); assert(await page.evaluate(() => document.querySelector('.process-detail [role="dialog"]').contains(document.activeElement))); }
     await page.keyboard.press('Escape'); assert.equal(await page.getByRole('dialog').count(), 0);
@@ -311,9 +318,16 @@ async function cases() {
     assert.equal(await page.locator('[data-process-preview]').count(), 0);
     await button('取消').click(); await closeDetail(true);
   });
-  await run('rows-preview-invalid-integer-duplicate-mode-drafts', async () => {
-    await mount(); await entry(2); const input = page.getByRole('textbox', { name: '路线文字', exact: true }); await type(input, 'TextDraft');
+  await run('rows-preview-invalid-integer-duplicate-shared-mode-draft', async () => {
+    await mount(); await entry(2); const input = page.getByRole('textbox', { name: '路线文字', exact: true });
+    await button('逐行表格').click(); assert.equal(await page.getByRole('textbox', { name: '第 1 行工序号', exact: true }).inputValue(), '');
+    await button('整条录入').click(); assert.equal(await input.inputValue(), '');
+    assert.equal(await page.evaluate(() => WorkbenchGuards.hasDirty()), false);
+    await type(input, 'TextDraft');
     await page.getByRole('button', { name: '逐行表格', exact: true }).click();
+    await page.getByText('当前输入还不能准确识别，已保留原输入。请按路线预检提示修正后再继续。', { exact: true }).waitFor();
+    assert.equal(await input.inputValue(), 'TextDraft');
+    await type(input, '5Turn'); await page.getByRole('button', { name: '逐行表格', exact: true }).click();
     const seq = page.getByRole('textbox', { name: '第 1 行工序号', exact: true }), name = page.getByRole('combobox', { name: '第 1 行工种', exact: true });
     // The op_type catalog is read once on entry and only suggests: free text still reaches the server preflight.
     await page.waitForFunction(() => document.querySelectorAll('.process-route-entry datalist option').length === 3);
@@ -322,13 +336,13 @@ async function cases() {
     assert.deepEqual(await page.evaluate(() => fixture.reads.find(x => x.type === 'choices').scope), { query: '', page: 1, size: 200 });
     assert.equal(await page.evaluate(() => document.querySelector('.process-route-entry datalist').id), await name.getAttribute('list'));
     await type(seq, '5.5'); await type(name, 'Turn'); await button('预检路线').click(); await page.getByText('第 1 行工序号必须是正整数。', { exact: true }).waitFor();
-    assert.equal(await page.evaluate(() => fixture.reads.filter(x => x.type === 'preview').length), 0);
+    assert.equal(await page.evaluate(() => fixture.reads.filter(x => x.type === 'preview').length), 2);
     await type(seq, '5'); await button('新增工序').click(); await type(page.getByRole('textbox', { name: '第 2 行工序号', exact: true }), '5');
     await type(page.getByRole('combobox', { name: '第 2 行工种', exact: true }), 'Unknown'); await preflight();
     assert(await page.getByText(/工序号重复/).isVisible()); assert((await page.locator('[data-process-preview]').innerText()).includes('输入存在待处理问题'));
     await type(page.getByRole('textbox', { name: '第 2 行工序号', exact: true }), '10'); await preflight();
     assert.deepEqual(await page.evaluate(() => fixture.reads.filter(x => x.type === 'preview').at(-1).body), { mode: 'rows', rows: [{ seq: 5, op_type_name: 'Turn' }, { seq: 10, op_type_name: 'Unknown' }], snapshot_ref: 'fixture-detail' });
-    await shot('rows-preview'); await page.getByRole('button', { name: '整条录入', exact: true }).click(); assert.equal(await input.inputValue(), 'TextDraft');
+    await shot('rows-preview'); await page.getByRole('button', { name: '整条录入', exact: true }).click(); assert.equal(await input.inputValue(), '5: Turn；10: Unknown');
     assert.equal(await page.locator('[data-process-preview]').count(), 0); await page.getByRole('button', { name: '逐行表格', exact: true }).click(); assert.equal(await name.inputValue(), 'Turn');
     await button('删除第 1 行').click(); assert.equal(await name.inputValue(), 'Unknown');
     await page.keyboard.press('Escape'); assert.equal(await page.getByRole('dialog').count(), 1);
@@ -421,7 +435,7 @@ async function cases() {
     assert.equal(await page.getByRole('combobox', { name: '第 1 行工种', exact: true }).inputValue(), 'Turn', 'original operation name, not renamed master label');
     assert.equal(await page.getByRole('table', { name: '逐行路线录入' }).locator('tbody tr').count(), 3, 'deleted record not resurrected into draft');
     await button('预检路线').click(); await page.getByText(/行工序号太大，请改用整条文字预检/).waitFor();
-    assert.equal(await page.evaluate(() => fixture.reads.filter(x => x.type === 'preview').length), 1);
+    assert.equal(await page.evaluate(() => fixture.reads.filter(x => x.type === 'preview').length), 2);
     assert.equal(await page.getByRole('textbox', { name: '第 1 行工序号', exact: true }).inputValue(), '9223372036854775807');
     const check = await page.evaluate(() => {
       const checks = [], bad = [1.5, 9007199254740992, '', null, undefined, true, Infinity];
@@ -437,7 +451,10 @@ async function cases() {
       return { checks, value: body.rows[0].seq };
     });
     assert(check.checks.every(Boolean)); assert.equal(check.value, Number.MAX_SAFE_INTEGER);
-    await shot('int64-rows-rejected'); await button('取消').click();
+    await shot('int64-rows-rejected');
+    await button('整条录入').click();
+    assert((await page.getByRole('textbox', { name: '路线文字', exact: true }).inputValue()).includes('9223372036854775807: Turn'));
+    await button('取消').click();
     assert.equal(await page.evaluate(() => WorkbenchGuards.hasDirty()), false, 'Changing display mode without editing facts is not a dirty draft');
     await closeDetail();
   });
@@ -448,9 +465,24 @@ async function cases() {
     await button('刷新最新资料').click(); await page.getByText('已刷新详情，录入内容保留；请核对后重新预检。', { exact: true }).waitFor();
     assert.equal(await input.inputValue(), '5Turn10Unknown'); assert(await button('预检路线').isDisabled());
     await button('已核对，继续编辑').click();
-    assert.equal(await input.inputValue(), '5Turn10Unknown'); await preflight();
+    await page.waitForFunction(() => document.querySelector('textarea.re-text').value === '5: Turn；10: Unknown');
+    assert.equal(await input.inputValue(), '5: Turn；10: Unknown'); await preflight();
     assert.equal(await page.evaluate(() => fixture.reads.filter(x => x.type === 'preview').at(-1).body.snapshot_ref), 'fresh-detail');
     assert(await page.getByRole('button', { name: /^确认保存路线/ }).isDisabled());
+    await button('取消').click(); await closeDetail(true);
+    await mount(); await entry();
+    await page.evaluate(() => { fixture.spec.detailSnapshot = 'added-route'; fixture.spec.latestOperations = [{ seq: 5, name: 'Turn' }, { seq: 10, name: 'Polish' }, { seq: 15, name: 'Unknown' }, { seq: 20, name: 'Grind' }]; });
+    await button('刷新最新资料').click(); await button('已核对，继续编辑').click();
+    await page.waitForFunction(() => document.querySelector('textarea.re-text').value === '5: Turn；10: Polish；15: Unknown；20: Grind');
+    assert.equal(await page.evaluate(() => WorkbenchGuards.hasDirty()), false, 'Untouched fields adopt remote additions');
+    await type(input, '5: Rough；10: Anneal；15: Unknown；20: Grind');
+    await page.evaluate(() => { fixture.spec.detailSnapshot = 'removed-route'; fixture.spec.latestOperations = [{ seq: 5, name: 'Turn' }, { seq: 15, name: 'Unknown' }, { seq: 20, name: 'Grind' }]; });
+    await button('刷新最新资料').click(); await button('已核对，继续编辑').click();
+    await page.getByRole('group', { name: '工序 10', exact: true }).waitFor();
+    assert((await input.inputValue()).includes('10: Anneal'), 'Conflict must not silently remove local edit');
+    await page.getByRole('radio', { name: '采用最新资料：移除这道工序', exact: true }).check();
+    await button('已核对，继续编辑').click();
+    await page.waitForFunction(() => document.querySelector('textarea.re-text').value === '5: Rough；15: Unknown；20: Grind');
     await button('取消').click(); await closeDetail(true);
   });
   await run('bad-stored-sequences-stay-visible-zero-setup-normal', async () => {

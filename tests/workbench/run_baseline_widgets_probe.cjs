@@ -4,7 +4,7 @@ const UI = require('./run_ui_source.cjs');
 const assert = require('node:assert/strict'), fs = require('node:fs'), http = require('node:http'), path = require('node:path'), crypto = require('node:crypto');
 const { chromium } = require('playwright'), { compile } = require('../../scripts/workbench/compile.cjs');
 const root = path.resolve(__dirname, '../..'), output = process.argv[2], backend = process.argv[3];
-const files = UI.dependencies(['resource-contract.js', 'ResourceControls.jsx', 'CalendarContract.js', 'PointContract.js', 'PointGanttModel.js', 'PointGantt.jsx', 'PlanGanttModel.js', 'RunCandidateAPI.js', 'RunCandidateModel.js', 'RunCandidateControls.jsx',
+const files = UI.dependencies(['resource-contract.js', 'ResourceControls.jsx', 'WorkPeriods.js', 'WorkPeriodFields.jsx', 'CalendarContract.js', 'PointContract.js', 'PointGanttModel.js', 'PointGantt.jsx', 'PlanGanttModel.js', 'RunCandidateAPI.js', 'RunCandidateModel.js', 'RunCandidateControls.jsx',
   'RunBaselineAPI.js', 'RunBaselineModel.js', 'RunBaselineControls.jsx', 'RunCandidateGantt.jsx']);
 const sources = files.map(name => ({ path: 'frontend/workbench/app/' + name, code: fs.readFileSync(path.join(root, 'frontend/workbench/app', name), 'utf8') }));
 const compiled = compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'), sources, check_combined: true });

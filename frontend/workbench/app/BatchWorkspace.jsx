@@ -129,6 +129,7 @@
       {!dialog && (command.locked || command.phase === 'done') && <div className="batch-band"><window.ResourceForms.Feedback command={command} />
         {command.phase === 'done' && <Button onClick={() => { committed(command.result); command.reset(); }}>刷新列表</Button>}</div>}
       {opened ? <window.BatchDetail adapter={adapter} batchRef={opened} revision={revision} onBack={() => setOpened(null)} onEdit={openEditor} onDelete={deletion} disabled={blocked}
+        onMaterials={entity => { command.reset(); setDialog({ type: 'materials', entity }); }}
         onOperation={(entity, operation) => { command.reset(); setDialog({ type: 'operation', entity, operation }); }} onSync={(entity, snapshot) => preview('sync', {}, entity, snapshot)} /> : <>
         <div className="batch-list-controls"><form className="toolbar" onSubmit={event => { event.preventDefault(); if (!blocked) filter({ query }); }}><h2 className="wb-page-title">批次列表</h2>
           <label className="search"><window.ResourceControls.Icon name="search" /><input type="search" aria-label="搜索批次号、图号、零件名" placeholder="搜索批次号、图号、零件名…" value={query} disabled={blocked} onChange={event => setQuery(event.target.value)} /></label>
@@ -155,6 +156,7 @@
       {dialog && dialog.type === 'base' && <window.BatchForms.BaseEditor adapter={adapter} entity={dialog.entity} createContext={data && data.create_context} source={list.result && list.result.meta.source}
         command={command} onClose={close} onCommitted={committed} disabled={disabled} />}
       {dialog && dialog.type === 'operation' && <window.BatchOperationEditor adapter={adapter} entity={dialog.entity} operation={dialog.operation} source="production" command={command} onClose={close} onCommitted={committed} disabled={disabled} />}
+      {dialog && dialog.type === 'materials' && <window.BatchMaterialEditor adapter={adapter} entity={dialog.entity} command={command} onClose={close} onCommitted={committed} disabled={disabled} />}
       {dialog && dialog.type === 'preview' && <window.BatchForms.Preview preview={dialog.preview} command={command} onClose={close} onCommitted={committed} disabled={disabled} />}
       {dialog && dialog.type === 'files' && <window.BatchFiles adapter={adapter} mode={dialog.mode} scope={dialog.scope} selected={selected} snapshot={dialog.snapshot} command={command} onClose={close} onCommitted={committed} disabled={disabled} />}
       {dialog && dialog.type === 'column' && <window.BatchTable.ColumnFilter adapter={adapter} scope={dialog.scope} field={dialog.field} onClose={close} onApply={values => {

@@ -25,7 +25,9 @@
         : <>{input('business_code', '批次号')}<Field label="图号" path="part_ref" error={error} errors={errors} required><select value={value.part_ref} disabled={disabled || !choices} onChange={event => set('part_ref', event.target.value)}>
           <option value="">请选择图号</option>{choices && choices.parts.map(row => <option key={row.ref} value={row.ref}>{row.business_code} · {row.label}</option>)}</select></Field></>}
       {input('quantity', '数量', 'number')}{input('due_date', '交期', 'date')}{select('priority', '优先级', B.priority)}
-      {select('ready_status', '齐套显示', B.ready)}{input('ready_date', '齐套日期', 'date')}{input('remark', '备注')}
+      {entity && entity.relationships.material_requirement_count > 0
+        ? <Field label="齐套显示"><input readOnly value={B.label('ready_status', value.ready_status)} /><span className="fhint">请在物料需求中核对；修改数量后需要重新确认齐套。</span></Field>
+        : select('ready_status', '齐套显示', B.ready)}{input('ready_date', '齐套日期', 'date')}{input('remark', '备注')}
     </div>;
   }
   function Styles() { return null; }

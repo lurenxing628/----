@@ -89,7 +89,7 @@
     if (!group || group.merge_mode !== 'merged' || !Number.isFinite(group.total_days) || group.total_days <= 0 || group.issues.length
         || row.external_days !== null || row.source !== 'external' || row.status !== 'active' || !within(row.sequence, group.start_sequence, group.end_sequence))
       throw C.failure('工序周期和指定外协组不一致，请刷新后重试。');
-    return '按外协组周期 · ' + group.start_sequence + ' 至 ' + group.end_sequence;
+    return '整段 ' + String(group.total_days) + ' 天 · 工序 ' + group.start_sequence + ' 至 ' + group.end_sequence;
   }
   function list(result, scope) {
     C.query(result, 'list');
@@ -144,9 +144,17 @@
         || result.meta.source !== 'production' || result.meta.time_basis !== 'factory_local' || !token(result.meta.snapshot_ref)
         || !token(result.meta.request_ref) || !text(result.meta.as_of) || !Array.isArray(result.warnings)) throw C.failure('归属检查结果不完整，请重新检查。');
     const d = result.data;
-    if (!C.object(d) || action !== 'source_confirm' || d.action !== action || d.part_ref !== expectedRef
+    if (!C.object(d) || !['source_confirm', 'groups_confirm'].includes(action) || d.action !== action || d.part_ref !== expectedRef
         || !writeContext(d.write_context, action) || !Array.isArray(d.affected_groups) || !d.affected_groups.every(externalGroup) || !uniqueRefs(d.affected_groups))
       throw C.failure('归属检查与当前零件不一致，请重新检查。');
+    if (action === 'groups_confirm') {
+      const facts = value => C.object(value) && Array.isArray(value.operation_refs) && value.operation_refs.every(ref)
+        && Array.isArray(value.sequences) && value.sequences.every(sequence) && value.operation_refs.length === value.sequences.length
+        && nullableText(value.supplier_id) && number(value.total_days) && nullableText(value.merge_mode);
+      if (!Array.isArray(d.changes) || !d.changes.every(row => C.object(row) && nullableRef(row.ref)
+          && ['create', 'update', 'discard'].includes(row.action) && (row.before === null || facts(row.before)) && (row.after === null || facts(row.after))))
+        throw C.failure('外协段预检结果不完整，请重新检查。');
+    }
     return result;
   }
   function previewBody(mode, routeRaw, rows, snapshot) {

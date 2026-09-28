@@ -86,12 +86,13 @@
   }
   function query(kind, value = {}) {
     const allowed = ['page', 'size', 'snapshot_ref'].concat(['targets', 'receipts'].includes(kind) ? ['batch_ref'] : []).concat(kind === 'receipts' ? ['status'] : []);
+    if (kind === 'targets') allowed.push('query');
     const q = {
       page: 1,
       size: 10,
       ...value
     };
-    check(object(value) && Object.keys(q).every(k => allowed.includes(k)) && Number.isSafeInteger(q.page) && q.page >= 1 && q.page <= 1000000 && Number.isSafeInteger(q.size) && q.size >= 1 && q.size <= 100 && (q.batch_ref === undefined || ref(q.batch_ref)) && (q.status === undefined || ['all', 'awaiting', 'overdue', 'returned'].includes(q.status)) && (q.snapshot_ref === undefined || text(q.snapshot_ref)) && (q.page === 1 || text(q.snapshot_ref)), '外协的筛选或翻页条件无效，当前范围没有变化。请重新选择。');
+    check(object(value) && Object.keys(q).every(k => allowed.includes(k)) && Number.isSafeInteger(q.page) && q.page >= 1 && q.page <= 1000000 && Number.isSafeInteger(q.size) && q.size >= 1 && q.size <= 100 && (q.batch_ref === undefined || ref(q.batch_ref)) && (q.status === undefined || ['all', 'awaiting', 'overdue', 'returned'].includes(q.status)) && (q.snapshot_ref === undefined || text(q.snapshot_ref)) && (q.query === undefined || typeof q.query === 'string' && q.query.length <= 200 && !q.query.includes('\0')) && (q.page === 1 || text(q.snapshot_ref)), '外协的筛选或翻页条件无效，当前范围没有变化。请重新选择。');
     return q;
   }
   function envelope(v, q, preview = false) {

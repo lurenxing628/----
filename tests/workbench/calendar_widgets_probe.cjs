@@ -13,7 +13,7 @@ const manifest = JSON.parse(fs.readFileSync(path.join(root, 'static/workbench/as
 const records = new Map(manifest.files.map(item => [item.path, { ...item, content: fs.readFileSync(path.join(root, 'static', item.path)) }]));
 const files = ['resource-contract.js', 'resource-session.js', 'WorkbenchGuards.js', 'ResourceControls.jsx', 'WorkbenchGuardHost.jsx', 'ResourceForms.jsx',
   'WorkbenchControlBridge.js', 'WorkbenchControls.jsx', 'WorkbenchListControls.jsx', 'WorkbenchFormat.js', 'WorkbenchReferences.jsx',
-  'CalendarContract.js', 'CalendarFields.jsx', 'CalendarDayDialog.jsx', 'CalendarRangeDialog.jsx', 'ResourceCalendar.jsx'];
+  'WorkPeriods.js', 'WorkPeriodFields.jsx', 'CalendarContract.js', 'CalendarFields.jsx', 'CalendarDayDialog.jsx', 'CalendarRangeDialog.jsx', 'CalendarDefaultsDialog.jsx', 'ResourceCalendar.jsx'];
 const styleSources = ['00-tokens.css', '21-table-frame.css', '22-shared-controls.css', '31-batches-resources.css', '32-calendar-outsourcing.css'].map(name =>
   ({ name: 'styles/' + name, code: fs.readFileSync(path.join(root, 'frontend/workbench/app/styles', name), 'utf8') }));
 const compiled = compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'),

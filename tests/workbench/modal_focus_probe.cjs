@@ -8,7 +8,7 @@ if (!output) throw new Error('Pass an output directory');
 fs.mkdirSync(output, { recursive: true });
 const hash = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
 const names = ['WorkbenchGuards.js', 'WorkbenchFormat.js', 'WorkbenchTerms.js', 'WorkbenchReferences.jsx', 'WorkbenchControlBridge.js',
-  'resource-contract.js', 'resource-session.js', 'CalendarContract.js', 'ResourceControls.jsx', 'WorkbenchControls.jsx', 'WorkbenchListControls.jsx', 'WorkbenchDetailPanel.jsx', 'WorkbenchGuardHost.jsx', 'ResourceForms.jsx', 'ProcessOpTypeCreate.jsx',
+  'resource-contract.js', 'resource-session.js', 'WorkPeriods.js', 'WorkPeriodFields.jsx', 'CalendarContract.js', 'ResourceControls.jsx', 'WorkbenchControls.jsx', 'WorkbenchListControls.jsx', 'WorkbenchDetailPanel.jsx', 'WorkbenchGuardHost.jsx', 'ResourceForms.jsx', 'ProcessOpTypeCreate.jsx',
   'WorkbenchControlStyles.jsx', 'WorkbenchDatePickerModel.js', 'WorkbenchDatePicker.jsx',
   'WorkbenchSelectMenu.jsx', 'WorkbenchNumberControls.jsx'];
 const sources = names.map(name => ({ path: 'frontend/workbench/app/' + name, code: fs.readFileSync(

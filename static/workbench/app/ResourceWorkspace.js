@@ -302,7 +302,7 @@
       if (typeof adapter.detail !== 'function') throw C.failure('dependency not wired: adapter.detail');
       const result = C.query(await adapter.detail(dialog.kind, dialog.ref, signal), 'entity');
       if (result.data.ref !== dialog.ref) throw C.failure('读到的详情与所选记录不一致，请刷新后重试。');
-      if (dialog.navigation && (result.meta.source !== 'production' || C.own(result.data, 'kind') && result.data.kind !== dialog.kind || dialog.kind === 'op_type' && result.data.fields.category !== dialog.category)) throw C.failure('这条记录的来源、类型或工种类别和定位不一致，没有打开别的记录。');
+      if (dialog.navigation && (result.meta.source !== 'production' || C.own(result.data, 'kind') && result.data.kind !== dialog.kind || dialog.kind === 'op_type' && ![dialog.category, "both"].includes(result.data.fields.category))) throw C.failure('这条记录的来源、类型或工种类别和定位不一致，没有打开别的记录。');
       return result;
     }, [adapter, dialog && dialog.ref, dialog && dialog.kind], !!(dialog && dialog.ref));
     const data = list.result && list.result.data;
@@ -746,6 +746,7 @@
       onEdit: () => edit('update'),
       onAdjustStock: () => edit('update', true),
       onMachinePermissions: () => edit('machine_permissions'),
+      onDowntimes: () => edit('downtimes'),
       onOperatorCalendar: () => edit('operator_calendar'),
       onDelete: () => edit('delete')
     }), editorReady && dialog.action === 'machine_permissions' && /*#__PURE__*/React.createElement(window.OperatorMachinePermissions, {
@@ -757,6 +758,12 @@
       refreshState: refreshState,
       onRefresh: readAfterCommand,
       Feedback: Forms.Feedback
+    }), editorReady && dialog.action === 'downtimes' && /*#__PURE__*/React.createElement(window.MachineDowntimePanel, {
+      adapter: adapter,
+      entity: editorEntity,
+      source: detail.result.meta.source,
+      onClose: close,
+      onCommitted: refresh
     }), editorReady && dialog.action === 'operator_calendar' && /*#__PURE__*/React.createElement(window.OperatorCalendarPanel, {
       adapter: adapter,
       entity: editorEntity,
@@ -766,7 +773,7 @@
       refreshState: refreshState,
       onRefresh: readAfterCommand,
       Feedback: Forms.Feedback
-    }), editorReady && !['view', 'machine_permissions', 'operator_calendar'].includes(dialog.action) && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Forms, {
+    }), editorReady && !['view', 'machine_permissions', 'operator_calendar', 'downtimes'].includes(dialog.action) && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Forms, {
       key: dialog.kind + ':' + (dialog.ref || 'create') + ':' + dialog.action,
       adapter: adapter,
       kind: dialog.kind,

@@ -4,7 +4,7 @@ const UI = require('./run_ui_source.cjs');
 const assert = require('node:assert/strict'), fs = require('node:fs'), http = require('node:http'), path = require('node:path'), crypto = require('node:crypto');
 const { chromium } = require('playwright'), { compile } = require('../../scripts/workbench/compile.cjs');
 const root = path.resolve(__dirname, '../..'), output = process.argv[2], backend = process.argv[3];
-const files = UI.dependencies(['WorkbenchPageContext.jsx', 'resource-contract.js', 'resource-api.js', 'ResourceControls.jsx', 'BatchContract.js', 'BatchAPI.js', 'CalendarContract.js',
+const files = UI.dependencies(['WorkbenchPageContext.jsx', 'resource-contract.js', 'resource-api.js', 'ResourceControls.jsx', 'BatchContract.js', 'BatchAPI.js', 'WorkPeriods.js', 'WorkPeriodFields.jsx', 'CalendarContract.js',
   'WorkbenchControlBridge.js', 'WorkbenchControlStyles.jsx', 'WorkbenchSelectMenu.jsx', 'WorkbenchDatePickerModel.js',
   'WorkbenchDatePicker.jsx', 'WorkbenchControls.jsx', 'WorkbenchNumberControls.jsx',
   'PreflightContract.js', 'PreflightAPI.js', 'PreflightControls.jsx', 'PreflightBatchPicker.jsx', 'PreflightWorkspace.jsx']);

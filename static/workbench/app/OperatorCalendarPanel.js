@@ -118,9 +118,12 @@
       options: [['work', '上班'], ['rest', '休息']],
       onChange: type => setDraft({
         ...draft,
-        type
+        type,
+        ...(type === 'work' && !draft.periods?.length ? {
+          periods: window.APSWorkPeriods.clone(day.default_periods || window.APSWorkPeriods.defaults())
+        } : {})
       })
-    }), !rest && /*#__PURE__*/React.createElement("div", {
+    }), !rest && draft.periods == null && /*#__PURE__*/React.createElement("div", {
       className: "fgrid"
     }, /*#__PURE__*/React.createElement(Field, {
       label: "\u73ED\u6B21\u5F00\u59CB",
@@ -147,7 +150,16 @@
         ...draft,
         shiftEnd: event.target.value
       })
-    }))), !rest && /*#__PURE__*/React.createElement("p", {
+    }))), !rest && /*#__PURE__*/React.createElement(window.WorkPeriodFields, {
+      value: draft.periods,
+      start: draft.shiftStart,
+      end: draft.shiftEnd,
+      disabled: disabled,
+      onChange: periods => setDraft({
+        ...draft,
+        periods
+      })
+    }), !rest && draft.periods == null && /*#__PURE__*/React.createElement("p", {
       className: "iohint"
     }, "\u5DE5\u65F6\u7531\u73ED\u6B21\u8D77\u6B62\u7B97\u51FA\u6765\uFF0C\u4E0D\u7528\u5355\u72EC\u586B\u3002\u7ED3\u675F\u65F6\u523B\u65E9\u4E8E\u5F00\u59CB\u65F6\u523B\u8868\u793A\u8DE8\u96F6\u70B9\u7684\u591C\u73ED\u3002 \u7559\u7A7A\u7ED3\u675F\u65F6\u523B\u65F6\uFF0C\u7531\u7CFB\u7EDF\u6309\u9ED8\u8BA4\u73ED\u6B21\u65F6\u957F\u63A8\u7B97\u3002"), /*#__PURE__*/React.createElement("div", {
       className: "fgrid"
@@ -301,6 +313,7 @@
   }) {
     const ref = entity.ref;
     const [month, setMonth] = React.useState(todayMonth);
+    const [editBase, setEditBase] = React.useState(null);
     const [selected, setSelected] = React.useState(null),
       [draft, setDraft] = React.useState(null);
     const [mode, setMode] = React.useState('day');
@@ -341,13 +354,17 @@
     // baseline 只给草稿身份和 dirty guard 用；保存仍由下方 data 门禁只使用最新写入上下文。
     const current = baseline && selected ? baseline.days.find(day => day.date === selected) : null;
     React.useEffect(() => {
-      if (current) setDraft(value => value && value.date === current.date ? value : {
-        ...O.draftOf(current),
-        date: current.date
-      });
+      if (current && (!draft || draft.date !== current.date)) {
+        setDraft({
+          ...O.draftOf(current),
+          date: current.date
+        });
+        setEditBase(current);
+      }
     }, [current && current.date, current && current.calendar_ref]);
+    const staleDraft = !!current && !!editBase && (current.calendar_ref !== editBase.calendar_ref || JSON.stringify(O.draftOf(current)) !== JSON.stringify(O.draftOf(editBase)));
     const dirty = !done && mode === 'day' && !!current && !!draft && draft.date === current.date && JSON.stringify(draft) !== JSON.stringify({
-      ...O.draftOf(current),
+      ...O.draftOf(editBase || current),
       date: current.date
     });
     const owner = window.WorkbenchGuards.useDirtyGuard({
@@ -377,6 +394,7 @@
       setMode('day');
       setClearing(false);
       setSelected(day.date);
+      setEditBase(day);
       setDraft({
         ...O.draftOf(day),
         date: day.date
@@ -412,13 +430,13 @@
       return C.blocked(data.write_context, 'operator', action, source);
     }
     function save() {
-      if (disabled || !current) return;
+      if (disabled || !current || staleDraft) return;
       try {
         setError(null);
         if (!command.reset()) return;
         command.submit('operator', 'calendar_upsert', ref, data.write_context, {
           date: current.date,
-          fields: O.input(draft)
+          fields: O.input(draft, editBase || current)
         });
       } catch (failure) {
         setError(failure);
@@ -454,9 +472,9 @@
       if (disabled || !preview || !preview.data.count) return;
       setError(null);
       if (!command.reset()) return;
-      command.submit('operator', 'calendar_range_clear', ref, preview.data.write_context, O.rangeInput(range));
+      command.submit('operator', 'calendar_range_clear', ref, preview.data.write_context, preview.data.range);
     }
-    const saveReason = capability('calendar_upsert');
+    const saveReason = staleDraft ? '这一天的配置已变化，请先采用最新配置后重新填写。' : capability('calendar_upsert');
     const clearReason = capability('calendar_delete');
     const rangeReason = !preview ? '请先预检要清除的日期。' : !preview.data.count ? '这段时间没有要清除的日期。' : capability('calendar_range_clear');
     return /*#__PURE__*/React.createElement("div", {
@@ -576,7 +594,10 @@
       role: "status"
     }, "\u70B9\u4E00\u5929\u5F00\u59CB\u7EF4\u62A4\u3002"), data && mode === 'range' && /*#__PURE__*/React.createElement(RangeClear, {
       range: range,
-      setRange: setRange,
+      setRange: next => {
+        setRange(next);
+        setPreview(null);
+      },
       disabled: disabled,
       error: error,
       preview: preview,
@@ -588,7 +609,20 @@
       error: error
     }), /*#__PURE__*/React.createElement(Feedback, {
       command: command
-    }), done && /*#__PURE__*/React.createElement(RefreshResult, {
+    }), staleDraft && !done && /*#__PURE__*/React.createElement("div", {
+      role: "status"
+    }, /*#__PURE__*/React.createElement("p", null, "\u8FD9\u4E00\u5929\u5DF2\u88AB\u4FEE\u6539\uFF0C\u65E7\u8349\u7A3F\u4E0D\u4F1A\u8986\u76D6\u6700\u65B0\u914D\u7F6E\u3002\u91C7\u7528\u6700\u65B0\u914D\u7F6E\u4F1A\u653E\u5F03\u672C\u6B21\u672A\u4FDD\u5B58\u7684\u5185\u5BB9\u3002"), /*#__PURE__*/React.createElement(Button, {
+      disabled: command.locked || request.loading,
+      onClick: () => {
+        setDraft({
+          ...O.draftOf(current),
+          date: current.date
+        });
+        setEditBase(current);
+        setError(null);
+        command.reset();
+      }
+    }, "\u91C7\u7528\u6700\u65B0\u914D\u7F6E\u5E76\u91CD\u65B0\u586B\u5199")), done && /*#__PURE__*/React.createElement(RefreshResult, {
       state: refreshState,
       onRefresh: onRefresh
     }))));

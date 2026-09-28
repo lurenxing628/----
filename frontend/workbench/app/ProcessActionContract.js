@@ -96,7 +96,7 @@
     if (intent.kind === 'process_bulk' && intent.action === 'confirm' && token(intent.ref)) return { mode: 'bulk', recovery: true };
     if (['process_route_import', 'process_hours_import'].includes(intent.kind) && intent.action === 'confirm' && token(intent.ref))
       return { mode: 'import', fileKind: intent.kind === 'process_route_import' ? 'route' : 'hours', recovery: true };
-    if (intent.kind === 'process' && ref(intent.ref) && ['route_confirm', 'source_confirm', 'hours_confirm'].includes(intent.action)) return { ref: intent.ref };
+    if (intent.kind === 'process' && ref(intent.ref) && ['route_confirm', 'source_confirm', 'hours_confirm', 'groups_confirm'].includes(intent.action)) return { ref: intent.ref };
     return null;
   }
   window.APSProcessActions = { fields, ref, token, scope, facetScope, filters, selection, listContext, deleteBody, createInput, createReason, deletePreview, blocked, receipt, restored };

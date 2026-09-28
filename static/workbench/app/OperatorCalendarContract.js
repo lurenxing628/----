@@ -31,24 +31,28 @@
   function draftOf(value) {
     if (!value || !value.explicit) return {
       type: 'work',
-      shiftStart: '08:00',
-      shiftEnd: '16:00',
+      shiftStart: '08:30',
+      shiftEnd: '17:30',
       eff: '100',
       allowNormal: 'yes',
       allowUrgent: 'yes',
-      note: ''
+      note: '',
+      periods: window.APSWorkPeriods.clone(value && value.default_periods || window.APSWorkPeriods.defaults())
     };
     return {
+      periods: value.periods == null ? null : value.periods.map(row => ({
+        ...row
+      })),
       type: value.day_type === 'holiday' ? 'rest' : 'work',
       shiftStart: value.shift_start || '08:00',
       shiftEnd: value.shift_end || '',
-      eff: String(Math.round(value.efficiency * 1000) / 10),
+      eff: String(Number((value.efficiency * 100).toPrecision(15))),
       allowNormal: value.allow_normal,
       allowUrgent: value.allow_urgent,
       note: value.remark || ''
     };
   }
-  function input(draft) {
+  function input(draft, original) {
     const fields = {
       type: draft.type,
       allowNormal: draft.allowNormal,
@@ -63,7 +67,7 @@
     if (draft.type === 'rest') {
       fields.allowNormal = 'no';
       fields.allowUrgent = 'no';
-    } else {
+    } else if (!Array.isArray(draft.periods)) {
       if (!isClock(draft.shiftStart)) throw C.failure('请填写班次开始时刻。', [{
         path: 'fields.shiftStart',
         message: '格式为 08:00。'
@@ -75,10 +79,22 @@
           message: '格式为 16:00，跨零点填第二天的时刻。'
         }]);
         fields.shiftEnd = draft.shiftEnd;
-      }
+      } else fields.shiftEnd = null;
+    }
+    if (Array.isArray(draft.periods)) {
+      const periods = draft.type === 'rest' ? [] : draft.periods,
+        issue = window.APSWorkPeriods.validate(periods);
+      if (issue) throw C.failure(issue, [{
+        path: 'fields.periods',
+        message: issue
+      }]);
+      fields.periods = window.APSWorkPeriods.clone(periods);
+      delete fields.shiftStart;
+      delete fields.shiftEnd;
     }
     const note = String(draft.note == null ? '' : draft.note).trim();
     fields.note = note || null;
+    if (original && original.explicit && draft.eff === draftOf(original).eff) delete fields.eff;
     return fields;
   }
   function hours(value) {
@@ -96,6 +112,10 @@
     if (value.shift_hours <= 0 || value.allow_normal === 'no' && value.allow_urgent === 'no') return {
       tone: 'rest',
       text: '休息'
+    };
+    if (Array.isArray(value.periods)) return {
+      tone: 'cfg',
+      text: window.APSWorkPeriods.describe(value.periods)
     };
     // 没填班次结束时只写“几点起”，不用问号占位。
     return {

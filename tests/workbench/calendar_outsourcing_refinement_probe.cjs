@@ -7,7 +7,7 @@ if (!out) throw new Error('Pass an artifact directory');
 fs.mkdirSync(out, { recursive: true });
 const manifest = JSON.parse(fs.readFileSync(path.join(root, 'static/workbench/asset-manifest.json')));
 const names = ['resource-contract.js', 'resource-session.js', 'WorkbenchGuards.js', 'ResourceControls.jsx', 'WorkbenchGuardHost.jsx', 'ResourceForms.jsx',
-  'WorkbenchControlBridge.js', 'WorkbenchControls.jsx', 'WorkbenchListControls.jsx', 'WorkbenchFormat.js', 'WorkbenchReferences.jsx', 'CalendarContract.js', 'CalendarFields.jsx',
+  'WorkbenchControlBridge.js', 'WorkbenchControls.jsx', 'WorkbenchListControls.jsx', 'WorkbenchFormat.js', 'WorkbenchReferences.jsx', 'WorkPeriods.js', 'WorkPeriodFields.jsx', 'CalendarContract.js', 'CalendarFields.jsx',
   'CalendarDayDialog.jsx', 'CalendarRangeDialog.jsx', 'OutsourcingContract.js', 'OutsourcingSession.js', 'OutsourcingControls.jsx',
   'ResourceCatalogModel.js', 'ResourceCatalogEditor.jsx', 'ResourceCatalog.jsx'];
 const sources = names.map(name => ({ path: 'app/' + name, code: fs.readFileSync(path.join(root, 'frontend/workbench/app', name), 'utf8') }));

@@ -152,7 +152,7 @@
       reasonDisplay: "tooltip",
       reason: C.blocked(entity.write_context, kind, 'delete', list.result.meta.source),
       onClick: () => onOpen('delete', entity.ref)
-    }, "\u5220\u9664")))))))), !data.entities.length && /*#__PURE__*/React.createElement(EmptyState, {
+    })))))))), !data.entities.length && /*#__PURE__*/React.createElement(EmptyState, {
       kind: scope.query || scope.status ? 'filtered' : 'empty',
       title: "\u5F53\u524D\u8303\u56F4\u6CA1\u6709\u8BB0\u5F55",
       hint: "\u53EF\u6E05\u9664\u641C\u7D22\u548C\u72B6\u6001\u7B5B\u9009\u540E\u67E5\u770B\u5168\u90E8\u8BB0\u5F55\u3002",
@@ -242,10 +242,13 @@
           snapshot_ref: undefined
         }, new AbortController().signal), 'list');
         if (ref && result.data.ref !== ref) throw C.failure('读到的记录与所选记录不一致，请刷新后重试。');
+        const defaults = kind === "shift_profile" && action !== "delete" ? await adapter.query("/api/workbench/v1/calendar/defaults", {}, new AbortController().signal) : null;
+        if (defaults && (!defaults.data || window.APSWorkPeriods.validate(defaults.data.periods))) throw C.failure("默认工作时间读取不完整，请刷新重试。");
         if (!alive.current || ticket !== generation.current) return;
         if (reviewing) setReview(result);else setEditor({
           action,
           ref,
+          defaultPeriods: defaults && defaults.data.periods,
           base: ref ? result.data : null,
           draft: M.draft(ref ? result.data : null),
           context: ref ? result.data.write_context : result.data.create_context,

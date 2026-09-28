@@ -10,7 +10,8 @@
   const cell = (entity, key) => entity.fields[key] == null ? /*#__PURE__*/React.createElement("span", {
     className: "muted"
   }, "\u672A\u77E5") : typeof entity.fields[key] === 'number' ? window.WorkbenchFormat.number(entity.fields[key], {
-    digits: 1
+    digits: 20,
+    trim: true
   }) : String(entity.fields[key]);
   const columns = {
     material: [{
@@ -115,7 +116,7 @@
       key: 'category',
       title: '归属',
       width: 90,
-      render: entity => entity.fields.category === 'internal' ? '自制' : entity.fields.category === 'external' ? '外协' : '待归类'
+      render: entity => entity.fields.category === 'internal' ? '自制' : entity.fields.category === 'external' ? '外协' : entity.fields.category === 'both' ? '自制和外协都可' : '待归类'
     }, {
       key: 'remark',
       title: '备注',

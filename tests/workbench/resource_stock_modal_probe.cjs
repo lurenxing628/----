@@ -5,7 +5,7 @@ const {chromium}=require('playwright'),{compile}=require('../../scripts/workbenc
 const root=path.resolve(__dirname,'../..'),output=process.argv[2];
 if(!output)throw new Error('Pass an output directory');fs.mkdirSync(output,{recursive:true});
 const manifest=JSON.parse(fs.readFileSync(path.join(root,'static/workbench/asset-manifest.json')));
-const names=['resource-contract.js','resource-session.js','CalendarContract.js','WorkbenchFormat.js','WorkbenchTerms.js','WorkbenchReferences.jsx','WorkbenchGuards.js','ResourceControls.jsx', 'WorkbenchGuardHost.jsx','WorkbenchControlBridge.js', 'WorkbenchControls.jsx','WorkbenchListControls.jsx','ResourceDetailRelations.jsx','ResourceForms.jsx',
+const names=['resource-contract.js','resource-session.js','WorkPeriods.js', 'WorkPeriodFields.jsx', 'CalendarContract.js','WorkbenchFormat.js','WorkbenchTerms.js','WorkbenchReferences.jsx','WorkbenchGuards.js','ResourceControls.jsx', 'WorkbenchGuardHost.jsx','WorkbenchControlBridge.js', 'WorkbenchControls.jsx','WorkbenchListControls.jsx','ResourceDetailRelations.jsx','ResourceForms.jsx',
   'WorkbenchControlStyles.jsx','WorkbenchDatePickerModel.js','WorkbenchDatePicker.jsx','WorkbenchSelectMenu.jsx','WorkbenchNumberControls.jsx'];
 const sources=names.map(name=>({path:'frontend/workbench/app/'+name,code:fs.readFileSync(path.join(root,'frontend/workbench/app',name),'utf8')}));
 const compiled=compile({babel_path:path.join(root,'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'),sources,check_combined:true}).outputs.map(row=>row.code).join('\n;\n');

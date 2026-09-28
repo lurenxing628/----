@@ -13,7 +13,7 @@ fs.mkdirSync(output, { recursive: true });
 const manifest = JSON.parse(fs.readFileSync(path.join(root, 'static/workbench/asset-manifest.json')));
 const files = ['resource-contract.js', 'resource-api.js', 'resource-session.js', 'WorkbenchGuards.js', 'ResourceControls.jsx', 'WorkbenchGuardHost.jsx', 'ResourceForms.jsx',
   'WorkbenchControlBridge.js', 'WorkbenchControls.jsx', 'WorkbenchListControls.jsx', 'WorkbenchFormat.js', 'WorkbenchTerms.js', 'WorkbenchReferences.jsx',
-  'ResourceCatalogModel.js', 'ResourceCatalogEditor.jsx', 'ResourceCatalog.jsx'];
+  'WorkPeriods.js', 'WorkPeriodFields.jsx', 'ResourceCatalogModel.js', 'ResourceCatalogEditor.jsx', 'ResourceCatalog.jsx'];
 const sources = files.map(file => ({ path: 'frontend/workbench/app/' + file, code: fs.readFileSync(path.join(root, 'frontend/workbench/app', file), 'utf8') }));
 const styleSources = ['00-tokens.css', '21-table-frame.css', '22-shared-controls.css', '32-calendar-outsourcing.css'].map(name =>
   ({ path: 'frontend/workbench/app/styles/' + name, code: fs.readFileSync(path.join(root, 'frontend/workbench/app/styles', name), 'utf8') }));
@@ -33,6 +33,7 @@ let renderRoot;
 function Harness({spec}) {
  const adapter=React.useMemo(()=>{
   const api=APSResourceAPI.create('catalog');
+  api.query=async()=>envelope({periods:APSWorkPeriods.defaults(),hours:22/3,write_context:{}});
   api.list=async(kind,scope)=>{fixture.reads.push({type:'list',kind,scope});let rows=fixture.rows.filter(row=>(!scope.query||row.business_code.includes(scope.query)||row.label.includes(scope.query))&&(!scope.status||scope.status===row.status));
    return envelope({entities:rows.slice((scope.page-1)*scope.size,scope.page*scope.size),page:{number:scope.page,size:scope.size,total:rows.length,pages:Math.ceil(rows.length/scope.size),sort:[]},create_context:context('create-token',kind)},spec.source||'production');};
   api.detail=async(kind,id)=>{fixture.reads.push({type:'detail',kind,id});const row=fixture.rows.find(row=>row.ref===id);if(!row)throw APSResourceContract.failure('记录已删除。');const value=JSON.parse(JSON.stringify(row));
@@ -104,6 +105,7 @@ async function screenshot(name) {
   const file=variant+'-'+name+'.png';await page.screenshot({path:path.join(output,file)});return {screenshot:file,geometry};
 }
 async function run(name,fn) {
+  if(process.env.CATALOG_CASE_FILTER && !new RegExp(process.env.CATALOG_CASE_FILTER).test(name)) return;
   try {await fn();result.cases.push({variant,name,passed:true});}
   catch(error) {result.cases.push({variant,name,passed:false,message:error.message});await page.screenshot({path:path.join(output,variant+'-'+name+'-failure.png')});throw error;}
 }
@@ -171,11 +173,15 @@ async function cases() {
     await page.getByLabel('周期起始日期',{exact:true}).fill('2026-09-09');await page.getByLabel('轮换天数',{exact:true}).fill('2');await save();assert.equal(await page.evaluate(()=>fixture.calls.length),0);
     await page.getByRole('button',{name:'生成逐日规则',exact:true}).click();
     assert.equal(await page.getByLabel('第 1 天工作安排',{exact:true}).inputValue(),'');assert.equal(await page.getByLabel('第 1 天开始',{exact:true}).inputValue(),'');
-    await page.getByLabel('第 1 天工作安排',{exact:true}).selectOption('work');await page.getByLabel('第 1 天开始',{exact:true}).fill('22:00');await page.getByLabel('第 1 天结束',{exact:true}).fill('06:00');
+    await page.getByLabel('第 1 天工作安排',{exact:true}).selectOption('work');
+    const periods=page.getByRole('group',{name:'第 1 天工作时段',exact:true});
+    assert.equal(await periods.getByLabel('第 1 天工作时段第 1 段开始',{exact:true}).inputValue(),'08:30');
+    await periods.getByRole('button',{name:'移除第 2 段',exact:true}).click();
+    await periods.getByLabel('第 1 天工作时段第 1 段开始',{exact:true}).fill('22:00');await periods.getByLabel('第 1 天工作时段第 1 段结束',{exact:true}).fill('06:00');
     await page.getByLabel('第 2 天工作安排',{exact:true}).selectOption('rest');assert(await page.getByLabel('第 2 天开始',{exact:true}).isDisabled());
-    assert(await page.getByRole('cell',{name:'次日结束',exact:true}).isVisible());result.cases.push({variant,name:'shift-pattern-visual',...await screenshot('shift')});
+    assert(await periods.getByText('跨到下一天结束',{exact:true}).isVisible());result.cases.push({variant,name:'shift-pattern-visual',...await screenshot('shift')});
     await save();assert.deepEqual(await lastInput(),{business_code:'SHIFT-NEW',label:'跨夜轮班',fields:{status:'active',anchor_date:'2026-09-09',cycle_days:2,pattern:[
-      {day_offset:0,is_rest:false,shift_start:'22:00',shift_end:'06:00'},{day_offset:1,is_rest:true,shift_start:'00:00',shift_end:'00:00'}]}});
+      {day_offset:0,is_rest:false,shift_start:'22:00',shift_end:'06:00',periods:[{start:'22:00',end:'06:00',day_offset:0}]},{day_offset:1,is_rest:true,shift_start:'00:00',shift_end:'00:00'}]}});
   });
   await run('shrink-confirm-and-append-preserve',async()=>{
     await mount({kind:'shift_profile'});await open('shift_profile');await page.getByLabel('轮换天数',{exact:true}).fill('2');await page.getByRole('button',{name:'调整逐日规则',exact:true}).click();
@@ -188,11 +194,42 @@ async function cases() {
   });
   await run('cyclic-neighbor-overlap-and-rest-toggle',async()=>{
     await mount({kind:'shift_profile'});await open('shift_profile');await page.getByLabel('第 2 天工作安排',{exact:true}).selectOption('work');
-    await page.getByLabel('第 2 天开始',{exact:true}).fill('05:00');await page.getByLabel('第 2 天结束',{exact:true}).fill('10:00');await save();assert.equal(await page.evaluate(()=>fixture.calls.length),0);
+    const periods=page.getByRole('group',{name:'第 2 天工作时段',exact:true});
+    await periods.getByRole('button',{name:'移除第 2 段',exact:true}).click();
+    await periods.getByLabel('第 2 天工作时段第 1 段开始',{exact:true}).fill('05:00');await periods.getByLabel('第 2 天工作时段第 1 段结束',{exact:true}).fill('10:00');await save();assert.equal(await page.evaluate(()=>fixture.calls.length),0);
     assert(await page.getByText('第 1 天：跨夜结束与下一轮换日开始重叠。',{exact:true}).isVisible());
     await page.getByLabel('第 2 天工作安排',{exact:true}).selectOption('rest');await page.getByLabel('第 2 天工作安排',{exact:true}).selectOption('work');
-    assert.equal(await page.getByLabel('第 2 天开始',{exact:true}).inputValue(),'05:00');await page.getByLabel('第 2 天开始',{exact:true}).fill('06:00');await save();
+    assert.equal(await periods.getByLabel('第 2 天工作时段第 1 段开始',{exact:true}).inputValue(),'05:00');await periods.getByLabel('第 2 天工作时段第 1 段开始',{exact:true}).fill('06:00');await save();
     const input=await lastInput();assert.equal(input.fields.pattern[1].shift_start,'06:00');assert(!('hidden_legacy' in input.fields));
+  });
+  await run('multi-period-work-rest-work-preserves-original-shift',async()=>{
+    await mount({kind:'shift_profile'});
+    const original=[{start:'09:00',end:'12:00',day_offset:0},{start:'14:00',end:'18:00',day_offset:0}];
+    await page.evaluate(value=>{Object.assign(fixture.rows[1].fields.pattern[2],{periods:value,shift_start:'09:00',shift_end:'18:00'});},original);
+    await open('shift_profile');
+    for(let i=0;i<2;i++){
+      await page.getByLabel('第 3 天工作安排',{exact:true}).selectOption('rest');
+      await page.getByLabel('第 3 天工作安排',{exact:true}).selectOption('work');
+    }
+    const periods=page.getByRole('group',{name:'第 3 天工作时段',exact:true});
+    assert.equal(await periods.getByLabel('第 3 天工作时段第 1 段开始',{exact:true}).inputValue(),'09:00');
+    assert.equal(await periods.getByLabel('第 3 天工作时段第 2 段结束',{exact:true}).inputValue(),'18:00');
+    await periods.scrollIntoViewIfNeeded();await page.screenshot({path:path.join(output,variant+'-rest-roundtrip.png')});
+    await page.getByLabel('备注',{exact:true}).fill('复核原工作时段');await save();
+    const input=await lastInput();assert.equal(input.fields.remark,'复核原工作时段');
+    // Unchanged periods need no patch; a changed period proves the restored draft is submitted.
+    await mount({kind:'shift_profile'});
+    await page.evaluate(value=>{Object.assign(fixture.rows[1].fields.pattern[2],{periods:value,shift_start:'09:00',shift_end:'18:00'});},original);
+    await open('shift_profile');await page.getByLabel('第 3 天工作安排',{exact:true}).selectOption('rest');await page.getByLabel('第 3 天工作安排',{exact:true}).selectOption('work');
+    await page.getByLabel('第 3 天工作时段第 2 段结束',{exact:true}).fill('18:30');await save();
+    assert.deepEqual((await lastInput()).fields.pattern[2].periods,[original[0],{...original[1],end:'18:30'}]);
+  });
+  await run('empty-work-periods-block-save',async()=>{
+    await mount({kind:'shift_profile'});await open('shift_profile');await page.getByLabel('第 2 天工作安排',{exact:true}).selectOption('work');
+    const periods=page.getByRole('group',{name:'第 2 天工作时段',exact:true});
+    await periods.getByRole('button',{name:'移除第 2 段',exact:true}).click();await periods.getByRole('button',{name:'移除第 1 段',exact:true}).click();
+    await save();assert.equal(await page.evaluate(()=>fixture.calls.length),0);
+    assert(await page.getByText('第 2 天：工作日请至少填写一个工作时段，或明确改为休息日。',{exact:true}).isVisible());
   });
   await run('stale-retains-draft-review-then-patch',async()=>{
     await mount({kind:'machine_group',stale:true});await open('machine_group');await page.getByLabel('名称',{exact:true}).fill('待保存名称');await save();await lastInput();
@@ -232,6 +269,7 @@ async function cases() {
   });
 }
 (async()=>{
+  if(process.env.CATALOG_CASE_FILTER) result.case_filter=process.env.CATALOG_CASE_FILTER;
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));let browser;
   try {
     browser=await chromium.launch({executablePath:process.env.WORKBENCH_BROWSER,headless:true,args:['--disable-background-networking']});

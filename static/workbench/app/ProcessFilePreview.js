@@ -163,8 +163,62 @@
   function RouteSummary({
     value
   }) {
+    const [page, setPage] = React.useState(1);
     if (!value) return null;
-    return /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "\u8DEF\u7EBF\u8BC6\u522B\u7ED3\u679C"), /*#__PURE__*/React.createElement("p", null, "\u5DE5\u5E8F ", value.counts.operations, " \xB7 \u5DF2\u8BC6\u522B ", value.counts.recognized, " \xB7 \u672A\u8BC6\u522B ", value.counts.unknown), /*#__PURE__*/React.createElement("p", null, value.can_confirm_route ? '路线识别检查通过，尚未执行本次导入。' : '路线仍有待处理问题，本次不能确认。'), value.diagnostics.map((row, index) => /*#__PURE__*/React.createElement("div", {
+    const operations = new Map(value.operations.map(row => [String(row.sequence), row])),
+      pages = Math.max(1, Math.ceil(value.differences.length / 50)),
+      current = Math.min(page, pages);
+    const labels = {
+      added: '新增',
+      removed: '删除',
+      changed: '修改',
+      retained: '保留'
+    };
+    return /*#__PURE__*/React.createElement("details", {
+      open: true
+    }, /*#__PURE__*/React.createElement("summary", null, "\u8DEF\u7EBF\u8BC6\u522B\u7ED3\u679C\u4E0E\u9010\u9053\u53D8\u5316"), /*#__PURE__*/React.createElement("p", null, "\u5DE5\u5E8F ", value.counts.operations, " \xB7 \u5DF2\u8BC6\u522B ", value.counts.recognized, " \xB7 \u672A\u8BC6\u522B ", value.counts.unknown), /*#__PURE__*/React.createElement("p", null, value.can_confirm_route ? '路线识别检查通过，尚未执行本次导入。' : '路线仍有待处理问题，本次不能确认。'), /*#__PURE__*/React.createElement("div", {
+      className: "rm-table-wrap",
+      tabIndex: "0",
+      role: "region",
+      "aria-label": "\u8DEF\u7EBF\u9010\u9053\u8BC6\u522B\u7ED3\u679C"
+    }, /*#__PURE__*/React.createElement("table", {
+      className: "rm-table",
+      "aria-label": "\u5BFC\u5165\u8DEF\u7EBF\u5DE5\u5E8F\u53D8\u5316"
+    }, /*#__PURE__*/React.createElement("caption", {
+      className: "wb-visually-hidden"
+    }, "\u5BFC\u5165\u524D\u540E\u7684\u5DE5\u5E8F\u548C\u5F52\u5C5E"), /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u5DE5\u5E8F\u53F7"), /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u5904\u7406"), /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u539F\u5DE5\u5E8F"), /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u5BFC\u5165\u540E\u5DE5\u5E8F"), /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u8BC6\u522B\u5F52\u5C5E"), /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u5EFA\u8BAE\u4F9B\u5E94\u5546"))), /*#__PURE__*/React.createElement("tbody", null, value.differences.slice((current - 1) * 50, current * 50).map(row => {
+      const op = operations.get(String(row.sequence));
+      return /*#__PURE__*/React.createElement("tr", {
+        key: String(row.sequence)
+      }, /*#__PURE__*/React.createElement("td", null, row.sequence), /*#__PURE__*/React.createElement("td", null, labels[row.change]), /*#__PURE__*/React.createElement("td", null, row.before === null ? '无' : row.before), /*#__PURE__*/React.createElement("td", null, row.after === null ? '将删除' : row.after), /*#__PURE__*/React.createElement("td", null, op ? {
+        internal: '自制',
+        external: '外协'
+      }[op.source_suggestion] || '待确认' : '—'), /*#__PURE__*/React.createElement("td", null, op && op.supplier_label || '—'));
+    })))), pages > 1 && /*#__PURE__*/React.createElement("div", {
+      className: "rm-pagination"
+    }, /*#__PURE__*/React.createElement("span", null, "\u5171 ", value.differences.length, " \u9053 \xB7 \u7B2C ", current, " / ", pages, " \u9875"), /*#__PURE__*/React.createElement(Button, {
+      icon: "chevron-left",
+      "aria-label": "\u8DEF\u7EBF\u660E\u7EC6\u4E0A\u4E00\u9875",
+      disabled: current <= 1,
+      onClick: () => setPage(current - 1)
+    }), /*#__PURE__*/React.createElement(Button, {
+      icon: "chevron-right",
+      "aria-label": "\u8DEF\u7EBF\u660E\u7EC6\u4E0B\u4E00\u9875",
+      disabled: current >= pages,
+      onClick: () => setPage(current + 1)
+    })), value.diagnostics.map((row, index) => /*#__PURE__*/React.createElement("div", {
       key: index,
       className: row.severity === 'error' ? 'rm-danger' : undefined
     }, row.sequence === undefined ? '' : '工序 ' + row.sequence + '：', row.message)));

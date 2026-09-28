@@ -25,7 +25,7 @@ for (const [table, old] of Object.entries(before)) {
   });
 }
 for (const old of before.WorkbenchCommandReceipts) assert.deepEqual(after.WorkbenchCommandReceipts.find(r => r.request_key === old.request_key), old);
-const files = ['ResourceForms.jsx', 'ProcessStageEditor.jsx', 'ProcessSourceEditor.jsx', 'ProcessHoursEditor.jsx'].map(name => {
+const files = ['ResourceForms.jsx', 'ProcessStageEditor.jsx', 'ProcessSourceEditor.jsx', 'ProcessGroupEditor.jsx', 'ProcessHoursEditor.jsx'].map(name => {
   const file = path.join(repo, 'frontend/workbench/app', name);
   return {path: file, sha256: crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex')};
 });

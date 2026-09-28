@@ -24,7 +24,7 @@
   // Progress is the worker's count of finished candidate plans; it only exists while the run is computing.
   const progress = v => shape(v, ['done', 'total', 'updated_at']) && count(v.done) && count(v.total) && v.done <= v.total && time(v.updated_at);
   function input(v) {
-    check(shape(v, ['batch_refs', 'start_date', 'end_date', 'ready_check', 'missing_resource_policy', 'completed_policy'])
+    check(shape(v, ['batch_refs', 'start_date', 'end_date', 'ready_check', 'missing_resource_policy', 'completed_policy'].concat(v.material_strategy === undefined ? [] : ['material_strategy'])) && (v.material_strategy === undefined || ['strict', 'stage', 'split'].includes(v.material_strategy))
       && Array.isArray(v.batch_refs) && v.batch_refs.length <= 5000 && v.batch_refs.every(ref) && new Set(v.batch_refs).size === v.batch_refs.length
       && date(v.start_date) && date(v.end_date) && v.start_date <= v.end_date && typeof v.ready_check === 'boolean'
       && ['auto_assign', 'exclude'].includes(v.missing_resource_policy) && v.completed_policy === 'preserve_actuals');

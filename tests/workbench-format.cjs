@@ -61,6 +61,9 @@ if (process.argv[2] === '--timezone') {
   assert.equal(F.number(1234.5678, { digits: 3, trim: true }), '1,234.568');
   assert.equal(F.hours(0.05, { digits: 3, trim: true }), '0.05 小时');
   assert.equal(F.hours(3.25, { digits: 2 }), '3.25 小时');
+  for (const days of [0.00001, 0.04, 0.25, 3.25, 6.75]) {
+    assert.equal(F.number(days, { digits: 20, trim: true }), String(days), 'entered external days must remain visible');
+  }
   assert.equal(F.percent(0.5, { digits: 2 }), '50.00%');
   assert.equal(F.percent(0.5, { digits: 2, trim: true }), '50%');
   for (const options of [{ trim: 'yes' }, { digits: 21 }, null, 'x']) invalid(() => F.number(1, options));

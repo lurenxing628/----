@@ -4,7 +4,8 @@
   const C = window.APSResourceContract,
     P = window.APSProcessContract,
     S = window.APSResourceSession;
-  const E = window.ProcessStageEditor;
+  const E = window.ProcessStageEditor,
+    D = window.ProcessRouteDraft;
   // The op_type page caps at 200 rows (core/models/workbench_resource_query.py), so a single read is the whole candidate list it can offer.
   const OP_TYPE_PAGE_SIZE = 200;
   const {
@@ -118,24 +119,17 @@
     const entity = context.data,
       sequence = React.useRef(0),
       request = React.useRef(null);
+    const initialRows = React.useRef(D.fromEntity(entity));
     const [mode, setMode] = React.useState('text'),
-      [routeRaw, setRouteRaw] = React.useState(entity.fields.route_raw === null ? '' : entity.fields.route_raw);
-    const [rows, setRows] = React.useState(() => {
-      const active = entity.operations.filter(row => row.status === 'active');
-      return active.length ? active.map(row => ({
-        key: ++sequence.current,
-        seq: String(row.sequence),
-        op_type_name: row.label
-      })) : [{
-        key: ++sequence.current,
-        seq: '',
-        op_type_name: ''
-      }];
-    });
-    const draftText = JSON.stringify({
-        routeRaw,
-        rows
-      }),
+      [routeRaw, setRouteRaw] = React.useState(() => initialRows.current.length ? D.serialize(initialRows.current) : entity.fields.route_raw || '');
+    const [rows, setRows] = React.useState(() => (initialRows.current.length ? initialRows.current : [{
+      seq: '',
+      op_type_name: ''
+    }]).map(row => ({
+      ...row,
+      key: ++sequence.current
+    })));
+    const draftText = mode === 'text' ? routeRaw : D.serialize(rows),
       baselineDraft = React.useRef(draftText);
     React.useLayoutEffect(() => {
       if (onDirty) onDirty('route', draftText !== baselineDraft.current);
@@ -147,6 +141,8 @@
     });
     const [discarded, setDiscarded] = React.useState([]),
       [review, setReview] = React.useState(null);
+    const [mergeReview, setMergeReview] = React.useState(null),
+      [mergeChoices, setMergeChoices] = React.useState({});
     const paging = E.usePage(rows),
       locked = !!command && (command.locked || command.phase === 'done');
     const blocked = disabled || locked;
@@ -168,7 +164,11 @@
       invalidate();
     }, [adapter, result, disabled, active, command && command.error]);
     React.useEffect(() => {
-      if (result !== context) setReview(result);
+      if (result !== context) {
+        setReview(result);
+        setMergeReview(null);
+        setMergeChoices({});
+      }
     }, [result]);
     function invalidate() {
       abort();
@@ -181,6 +181,8 @@
     }
     function edited() {
       invalidate();
+      setMergeReview(null);
+      setMergeChoices({});
     }
     function close() {
       abort();
@@ -192,6 +194,132 @@
         ...row,
         ...patch
       } : row));
+    }
+    async function parsedDraft(snapshot) {
+      const controller = new AbortController();
+      request.current = controller;
+      try {
+        const body = P.previewBody('text', mode === 'rows' ? D.serialize(rows) : routeRaw, rows, snapshot);
+        const response = P.preview(await adapter.routePreview(entity.ref, body, controller.signal), entity.ref, body);
+        if (controller.signal.aborted || request.current !== controller) return null;
+        const syntaxInvalid = !response.data.operations.length || response.data.diagnostics.some(row => row.severity === 'error' && !['calibration_quota_locked', 'legacy_sequence_invalid'].includes(row.code));
+        if (syntaxInvalid) {
+          setState({
+            busy: false,
+            result: response,
+            error: C.failure('当前输入还不能准确识别，已保留原输入。请按路线预检提示修正后再继续。')
+          });
+          return null;
+        }
+        return response.data.operations.map(row => ({
+          seq: String(row.sequence),
+          op_type_name: row.op_type_name
+        }));
+      } catch (error) {
+        if (!controller.signal.aborted) throw error;
+        return null;
+      } finally {
+        if (request.current === controller) request.current = null;
+      }
+    }
+    async function switchMode(next) {
+      if (next === mode || blocked || review || state.busy) return;
+      if (!(mode === 'rows' ? D.serialize(rows) : routeRaw).trim()) {
+        invalidate();
+        setRows([{
+          key: ++sequence.current,
+          seq: '',
+          op_type_name: ''
+        }]);
+        setRouteRaw('');
+        setMode(next);
+        return;
+      }
+      if (P.reason(entity.capabilities, 'route_preview', typeof adapter.routePreview === 'function')) return;
+      invalidate();
+      setState({
+        busy: true,
+        result: null,
+        error: null
+      });
+      try {
+        const parsed = await parsedDraft(context.meta.snapshot_ref);
+        if (!parsed) return;
+        setRows(parsed.map(row => ({
+          ...row,
+          key: ++sequence.current
+        })));
+        setRouteRaw(D.serialize(parsed));
+        setMode(next);
+        setState({
+          busy: false,
+          result: null,
+          error: null
+        });
+      } catch (error) {
+        setState({
+          busy: false,
+          result: null,
+          error
+        });
+      }
+    }
+    function acceptMerged(mergedRows) {
+      const nextRows = mergedRows.map(row => ({
+          ...row,
+          key: ++sequence.current
+        })),
+        text = D.serialize(mergedRows);
+      initialRows.current = D.fromEntity(review.data);
+      baselineDraft.current = D.serialize(initialRows.current);
+      setRows(nextRows);
+      setRouteRaw(text);
+      setContext(review);
+      setReview(null);
+      setMergeReview(null);
+      setMergeChoices({});
+      invalidate();
+    }
+    async function acceptLatest() {
+      if (blocked || state.busy) return;
+      if (mergeReview) {
+        try {
+          acceptMerged(D.resolve(mergeReview, mergeChoices));
+        } catch (error) {
+          setState({
+            busy: false,
+            result: null,
+            error: C.failure(error.message)
+          });
+        }
+        return;
+      }
+      abort();
+      setState({
+        busy: true,
+        result: null,
+        error: null
+      });
+      try {
+        const parsed = await parsedDraft(review.meta.snapshot_ref);
+        if (!parsed) return;
+        const merged = D.merge(initialRows.current, parsed, D.fromEntity(review.data));
+        if (merged.conflicts.length) {
+          setMergeReview(merged);
+          setMergeChoices({});
+          setState({
+            busy: false,
+            result: null,
+            error: null
+          });
+        } else acceptMerged(merged.rows);
+      } catch (error) {
+        setState({
+          busy: false,
+          result: null,
+          error
+        });
+      }
     }
     async function preflight() {
       if (blocked || review || state.busy || P.reason(entity.capabilities, 'route_preview', typeof adapter.routePreview === 'function')) return;
@@ -243,6 +371,8 @@
         const fresh = P.detail(await adapter.detail('part', entity.ref, controller.signal), entity.ref);
         if (!controller.signal.aborted && request.current === controller) {
           setReview(fresh);
+          setMergeReview(null);
+          setMergeChoices({});
           setState({
             busy: false,
             result: null,
@@ -308,14 +438,12 @@
       key: value,
       "aria-pressed": mode === value,
       className: mode === value ? 'on' : '',
-      disabled: blocked,
-      onClick: () => {
-        if (mode !== value) {
-          edited();
-          setMode(value);
-        }
-      }
-    }, label))), mode === 'text' ? /*#__PURE__*/React.createElement("label", {
+      disabled: blocked || !!review || state.busy,
+      reason: P.reason(entity.capabilities, 'route_preview', typeof adapter.routePreview === 'function'),
+      onClick: () => switchMode(value)
+    }, label))), /*#__PURE__*/React.createElement("p", {
+      className: "muted"
+    }, "\u6574\u6761\u548C\u9010\u884C\u7EF4\u62A4\u7684\u662F\u540C\u4E00\u6761\u8DEF\u7EBF\u3002\u53EF\u76F4\u63A5\u586B\u5199\u201C10: \u8F66\u524A\uFF1B20: \u70ED\u5904\u7406\uFF1B30: \u7CBE\u78E8\u201D\uFF1B\u539F\u6765\u7684\u201C10\u8F66\u524A20\u70ED\u5904\u7406\u201D\u4E5F\u80FD\u8BC6\u522B\u3002\u540D\u79F0\u542B\u6570\u5B57\u6216\u7A7A\u683C\u65F6\uFF0C\u4FDD\u7559\u5DE5\u5E8F\u53F7\u540E\u7684\u5192\u53F7\u5373\u53EF\u3002"), mode === 'text' ? /*#__PURE__*/React.createElement("label", {
       className: "field full"
     }, "\u8DEF\u7EBF\u6587\u5B57", /*#__PURE__*/React.createElement("textarea", {
       "aria-label": "\u8DEF\u7EBF\u6587\u5B57",
@@ -441,13 +569,28 @@
     }, window.WorkbenchTerms.refresh_latest), review && /*#__PURE__*/React.createElement(E.Review, {
       before: context.data,
       after: review.data,
-      disabled: blocked,
-      onAccept: () => {
-        setContext(review);
-        setReview(null);
-        invalidate();
+      disabled: blocked || state.busy,
+      onAccept: acceptLatest
+    }), mergeReview && /*#__PURE__*/React.createElement("section", {
+      className: "match-note is-block",
+      role: "alert"
+    }, /*#__PURE__*/React.createElement("p", null, "\u4EE5\u4E0B\u5DE5\u5E8F\u540C\u65F6\u88AB\u672C\u6B21\u8349\u7A3F\u548C\u6700\u65B0\u8D44\u6599\u4FEE\u6539\uFF0C\u8BF7\u9010\u9879\u9009\u62E9\u540E\uFF0C\u518D\u70B9\u201C\u5DF2\u6838\u5BF9\uFF0C\u7EE7\u7EED\u7F16\u8F91\u201D\u3002\u5176\u4F59\u5DE5\u5E8F\u4F1A\u4FDD\u7559\u672C\u5730\u4FEE\u6539\u5E76\u91C7\u7528\u6700\u65B0\u8D44\u6599\u3002"), mergeReview.conflicts.map(row => /*#__PURE__*/React.createElement("fieldset", {
+      key: row.seq
+    }, /*#__PURE__*/React.createElement("legend", null, "\u5DE5\u5E8F ", row.seq), [['local', '保留我的修改'], ['latest', '采用最新资料']].map(([choice, label]) => /*#__PURE__*/React.createElement("label", {
+      key: choice,
+      style: {
+        display: 'block'
       }
-    }), state.result && /*#__PURE__*/React.createElement(Preview, {
+    }, /*#__PURE__*/React.createElement("input", {
+      type: "radio",
+      name: 'route-conflict-' + row.seq,
+      checked: mergeChoices[row.seq] === choice,
+      disabled: blocked,
+      onChange: () => setMergeChoices(current => ({
+        ...current,
+        [row.seq]: choice
+      }))
+    }), label, "\uFF1A", row[choice] ? row[choice].op_type_name : '移除这道工序'))))), state.result && /*#__PURE__*/React.createElement(Preview, {
       result: state.result
     }), state.result && /*#__PURE__*/React.createElement(E.Groups, {
       title: "\u53D7\u5F71\u54CD\u5916\u534F\u7EC4",

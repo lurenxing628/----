@@ -304,7 +304,7 @@
         available.set(ref, known[ref] || { ref, label: old && old.label || '原关联（未在当前选项中）', status: 'missing', fields: {} });
       }
     });
-    function selectable(item) { return (item.status === 'active' || field.kind === 'op_type' && item.status === null) && (!field.category || item.fields.category === field.category); }
+    function selectable(item) { return (item.status === 'active' || field.kind === 'op_type' && item.status === null) && (!field.category || [field.category, "both"].includes(item.fields.category)); }
     function choose(ref, checked) {
       if (field.multiple) onChange(checked ? selected.concat(ref) : selected.filter(item => item !== ref));
       else onChange(ref);

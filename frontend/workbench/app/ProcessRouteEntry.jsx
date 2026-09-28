@@ -1,7 +1,7 @@
 (function () {
   'use strict';
   const C = window.APSResourceContract, P = window.APSProcessContract, S = window.APSResourceSession;
-  const E = window.ProcessStageEditor;
+  const E = window.ProcessStageEditor, D = window.ProcessRouteDraft;
   // The op_type page caps at 200 rows (core/models/workbench_resource_query.py), so a single read is the whole candidate list it can offer.
   const OP_TYPE_PAGE_SIZE = 200;
   const { Button, Modal, ErrorBox, Issues } = window.ResourceControls;
@@ -33,15 +33,14 @@
   function ProcessRouteEntry({ adapter, result, command, onClose, onDirty, refreshState = {}, onRefresh, active = true, disabled = false }) {
     const [context, setContext] = React.useState(result);
     const entity = context.data, sequence = React.useRef(0), request = React.useRef(null);
-    const [mode, setMode] = React.useState('text'), [routeRaw, setRouteRaw] = React.useState(entity.fields.route_raw === null ? '' : entity.fields.route_raw);
-    const [rows, setRows] = React.useState(() => {
-      const active = entity.operations.filter(row => row.status === 'active');
-      return active.length ? active.map(row => ({ key: ++sequence.current, seq: String(row.sequence), op_type_name: row.label })) : [{ key: ++sequence.current, seq: '', op_type_name: '' }];
-    });
-    const draftText = JSON.stringify({ routeRaw, rows }), baselineDraft = React.useRef(draftText);
+    const initialRows = React.useRef(D.fromEntity(entity));
+    const [mode, setMode] = React.useState('text'), [routeRaw, setRouteRaw] = React.useState(() => initialRows.current.length ? D.serialize(initialRows.current) : entity.fields.route_raw || '');
+    const [rows, setRows] = React.useState(() => (initialRows.current.length ? initialRows.current : [{ seq: '', op_type_name: '' }]).map(row => ({ ...row, key: ++sequence.current })));
+    const draftText = mode === 'text' ? routeRaw : D.serialize(rows), baselineDraft = React.useRef(draftText);
     React.useLayoutEffect(() => { if (onDirty) onDirty('route', draftText !== baselineDraft.current); }, [draftText, onDirty]);
     const [state, setState] = React.useState({ busy: false, result: null, error: null });
     const [discarded, setDiscarded] = React.useState([]), [review, setReview] = React.useState(null);
+    const [mergeReview, setMergeReview] = React.useState(null), [mergeChoices, setMergeChoices] = React.useState({});
     const paging = E.usePage(rows), locked = !!command && (command.locked || command.phase === 'done');
     const blocked = disabled || locked;
     // Read the op_type catalog once on entry so the row inputs can suggest real names. Free text stays allowed and
@@ -54,11 +53,55 @@
     function abort() { if (request.current) request.current.abort(); request.current = null; }
     React.useEffect(() => () => abort(), []);
     React.useEffect(() => { invalidate(); }, [adapter, result, disabled, active, command && command.error]);
-    React.useEffect(() => { if (result !== context) setReview(result); }, [result]);
+    React.useEffect(() => { if (result !== context) { setReview(result); setMergeReview(null); setMergeChoices({}); } }, [result]);
     function invalidate() { abort(); setState({ busy: false, result: null, error: null }); setDiscarded([]); }
-    function edited() { invalidate(); }
+    function edited() { invalidate(); setMergeReview(null); setMergeChoices({}); }
     function close() { abort(); onClose(); }
     function changeRow(key, patch) { edited(); setRows(current => current.map(row => row.key === key ? { ...row, ...patch } : row)); }
+    async function parsedDraft(snapshot) {
+      const controller = new AbortController(); request.current = controller;
+      try {
+        const body = P.previewBody('text', mode === 'rows' ? D.serialize(rows) : routeRaw, rows, snapshot);
+        const response = P.preview(await adapter.routePreview(entity.ref, body, controller.signal), entity.ref, body);
+        if (controller.signal.aborted || request.current !== controller) return null;
+        const syntaxInvalid = !response.data.operations.length || response.data.diagnostics.some(row => row.severity === 'error' && !['calibration_quota_locked', 'legacy_sequence_invalid'].includes(row.code));
+        if (syntaxInvalid) { setState({ busy: false, result: response, error: C.failure('当前输入还不能准确识别，已保留原输入。请按路线预检提示修正后再继续。') }); return null; }
+        return response.data.operations.map(row => ({ seq: String(row.sequence), op_type_name: row.op_type_name }));
+      } catch (error) { if (!controller.signal.aborted) throw error; return null; }
+      finally { if (request.current === controller) request.current = null; }
+    }
+    async function switchMode(next) {
+      if (next === mode || blocked || review || state.busy) return;
+      if (!(mode === 'rows' ? D.serialize(rows) : routeRaw).trim()) {
+        invalidate(); setRows([{ key: ++sequence.current, seq: '', op_type_name: '' }]); setRouteRaw(''); setMode(next); return;
+      }
+      if (P.reason(entity.capabilities, 'route_preview', typeof adapter.routePreview === 'function')) return;
+      invalidate(); setState({ busy: true, result: null, error: null });
+      try {
+        const parsed = await parsedDraft(context.meta.snapshot_ref);
+        if (!parsed) return;
+        setRows(parsed.map(row => ({ ...row, key: ++sequence.current }))); setRouteRaw(D.serialize(parsed)); setMode(next);
+        setState({ busy: false, result: null, error: null });
+      } catch (error) { setState({ busy: false, result: null, error }); }
+    }
+    function acceptMerged(mergedRows) {
+      const nextRows = mergedRows.map(row => ({ ...row, key: ++sequence.current })), text = D.serialize(mergedRows);
+      initialRows.current = D.fromEntity(review.data);
+      baselineDraft.current = D.serialize(initialRows.current);
+      setRows(nextRows); setRouteRaw(text); setContext(review); setReview(null); setMergeReview(null); setMergeChoices({}); invalidate();
+    }
+    async function acceptLatest() {
+      if (blocked || state.busy) return;
+      if (mergeReview) { try { acceptMerged(D.resolve(mergeReview, mergeChoices)); } catch (error) { setState({ busy: false, result: null, error: C.failure(error.message) }); } return; }
+      abort(); setState({ busy: true, result: null, error: null });
+      try {
+        const parsed = await parsedDraft(review.meta.snapshot_ref);
+        if (!parsed) return;
+        const merged = D.merge(initialRows.current, parsed, D.fromEntity(review.data));
+        if (merged.conflicts.length) { setMergeReview(merged); setMergeChoices({}); setState({ busy: false, result: null, error: null }); }
+        else acceptMerged(merged.rows);
+      } catch (error) { setState({ busy: false, result: null, error }); }
+    }
     async function preflight() {
       if (blocked || review || state.busy || P.reason(entity.capabilities, 'route_preview', typeof adapter.routePreview === 'function')) return;
       abort(); const controller = new AbortController(); request.current = controller;
@@ -77,7 +120,7 @@
       setState({ busy: true, result: null, error: null, reading: true });
       try {
         const fresh = P.detail(await adapter.detail('part', entity.ref, controller.signal), entity.ref);
-        if (!controller.signal.aborted && request.current === controller) { setReview(fresh); setState({ busy: false, result: null, error: null, refreshed: true }); }
+        if (!controller.signal.aborted && request.current === controller) { setReview(fresh); setMergeReview(null); setMergeChoices({}); setState({ busy: false, result: null, error: null, refreshed: true }); }
       } catch (error) {
         if (!controller.signal.aborted && request.current === controller) setState({ busy: false, result: null, error });
       } finally { if (request.current === controller) request.current = null; }
@@ -95,8 +138,9 @@
         <Button icon="check" className="btn primary" disabled={blocked} reason={saveReason} onClick={save}>确认保存路线</Button></>}>
       <div className="modal-b scroll">
         <div className="seg re-mode" role="group" aria-label="路线录入模式" style={{ marginBottom: 16 }}>
-          {[['text', '整条录入'], ['rows', '逐行表格']].map(([value, label]) => <Button key={value} aria-pressed={mode === value} className={mode === value ? 'on' : ''} disabled={blocked} onClick={() => { if (mode !== value) { edited(); setMode(value); } }}>{label}</Button>)}
+          {[['text', '整条录入'], ['rows', '逐行表格']].map(([value, label]) => <Button key={value} aria-pressed={mode === value} className={mode === value ? 'on' : ''} disabled={blocked || !!review || state.busy} reason={P.reason(entity.capabilities, 'route_preview', typeof adapter.routePreview === 'function')} onClick={() => switchMode(value)}>{label}</Button>)}
         </div>
+        <p className="muted">整条和逐行维护的是同一条路线。可直接填写“10: 车削；20: 热处理；30: 精磨”；原来的“10车削20热处理”也能识别。名称含数字或空格时，保留工序号后的冒号即可。</p>
         {mode === 'text' ? <label className="field full">路线文字<textarea aria-label="路线文字" className="re-text" rows={5} value={routeRaw} disabled={blocked} onChange={event => { edited(); setRouteRaw(event.target.value); }} style={{ width: '100%', resize: 'vertical' }} /></label> : <>
           {opTypeNames.length > 0 && <datalist id={opTypeListId}>{opTypeNames.map(name => <option key={name} value={name} />)}</datalist>}
           {opTypeNames.length > 0 && <p className="muted">工种输入会提示已登记的工种{opTypes.result.data.page.total > opTypeNames.length ? '，现有工种较多，只提示前 ' + opTypeNames.length + ' 个' : ''}；未登记的工种也可以直接输入。</p>}
@@ -112,7 +156,9 @@
         {state.refreshed && <p role="status">已刷新详情，录入内容保留；请核对后重新预检。</p>}
         {state.error && <Button icon="refresh-cw" disabled={blocked || !!review} onClick={preflight}>重试预检</Button>}
         <Button icon="refresh-cw" disabled={blocked || state.busy} reason={typeof adapter.detail !== 'function' ? window.WorkbenchTerms.outcomes.unavailable : ''} onClick={reloadDetail}>{window.WorkbenchTerms.refresh_latest}</Button>
-        {review && <E.Review before={context.data} after={review.data} disabled={blocked} onAccept={() => { setContext(review); setReview(null); invalidate(); }} />}
+        {review && <E.Review before={context.data} after={review.data} disabled={blocked || state.busy} onAccept={acceptLatest} />}
+        {mergeReview && <section className="match-note is-block" role="alert"><p>以下工序同时被本次草稿和最新资料修改，请逐项选择后，再点“已核对，继续编辑”。其余工序会保留本地修改并采用最新资料。</p>
+          {mergeReview.conflicts.map(row => <fieldset key={row.seq}><legend>工序 {row.seq}</legend>{[['local', '保留我的修改'], ['latest', '采用最新资料']].map(([choice, label]) => <label key={choice} style={{ display: 'block' }}><input type="radio" name={'route-conflict-' + row.seq} checked={mergeChoices[row.seq] === choice} disabled={blocked} onChange={() => setMergeChoices(current => ({ ...current, [row.seq]: choice }))} />{label}：{row[choice] ? row[choice].op_type_name : '移除这道工序'}</label>)}</fieldset>)}</section>}
         {state.result && <Preview result={state.result} />}
         {state.result && <E.Groups title="受影响外协组" empty="本次预检未发现受影响外协组。" rows={affected} affected={affected.map(row => row.ref)} discarded={discarded} onDiscard={setDiscarded} disabled={blocked} />}
         {command && <window.ResourceForms.Feedback command={command} />}

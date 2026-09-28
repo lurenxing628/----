@@ -3,7 +3,7 @@
   const C = window.APSResourceContract;
   const { Button, Status, Relation } = window.ResourceControls;
   const cell = (entity, key) => entity.fields[key] == null ? <span className="muted">未知</span> : typeof entity.fields[key] === 'number'
-    ? window.WorkbenchFormat.number(entity.fields[key], { digits: 1 }) : String(entity.fields[key]);
+    ? window.WorkbenchFormat.number(entity.fields[key], { digits: 20, trim: true }) : String(entity.fields[key]);
   const columns = {
     material: [
       { key: 'spec', title: '规格', render: entity => cell(entity, 'spec') },
@@ -40,7 +40,7 @@
       { key: 'remark', title: '备注', render: entity => cell(entity, 'remark') }
     ];
     return [
-      { key: 'category', title: '归属', width: 90, render: entity => entity.fields.category === 'internal' ? '自制' : entity.fields.category === 'external' ? '外协' : '待归类' },
+      { key: 'category', title: '归属', width: 90, render: entity => entity.fields.category === 'internal' ? '自制' : entity.fields.category === 'external' ? '外协' : entity.fields.category === 'both' ? '自制和外协都可' : '待归类' },
       { key: 'remark', title: '备注', render: entity => cell(entity, 'remark') }
     ];
   }

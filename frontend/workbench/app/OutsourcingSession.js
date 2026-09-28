@@ -78,6 +78,13 @@
     return { saved, storageError, error, notice, busy, sync, submit, lookup, finish };
   }
   function useRead(load, deps, enabled = true) { return window.APSResourceSession.useQuery(load, deps, enabled); }
+  function memberConflict(first, row) {
+    if (!first) return '';
+    if (first.batch_ref !== row.batch_ref) return '不同批次';
+    if (first.supplier_ref !== row.supplier_ref) return '不同供应商';
+    if (first.piece !== row.piece) return '不同分件';
+    return '';
+  }
   function input(draft, selected, item, now) {
     const values = { sent: C.stamp(draft.sent), planned: C.stamp(draft.planned), returned: draft.returned ? C.stamp(draft.returned) : null, confirmedState: draft.confirmedState };
     C.facts(values, now);
@@ -85,10 +92,10 @@
     C.check(p.declared_operator && p.declared_operator.length <= 200 && !p.declared_operator.includes('\0') && p.reason && p.reason.length <= 2000 && !p.reason.includes('\0'), '请填写经办人和本次核实 / 更正原因。');
     if (item) { p.outsourcing_ref = item.outsourcing_ref; C.fields.forEach(k => { if (values[k] !== item[k]) p[k] = values[k]; }); }
     else {
-      C.check(selected.length > 0 && selected.every(r => r.can_register && r.batch_ref === selected[0].batch_ref && r.supplier_ref === selected[0].supplier_ref), '请选择同一批次、同一供应商的真实可登记工序。');
+      C.check(selected.length > 0 && selected.every(r => r.can_register && !memberConflict(selected[0], r)), '请选择同一批次、同一分件、同一供应商的真实可登记工序。');
       p.target = C.target({ kind: draft.kind, batch_ref: selected[0].batch_ref, supplier_ref: selected[0].supplier_ref, operation_refs: selected.map(r => r.operation_ref) }); Object.assign(p, values);
     }
     return p;
   }
-  window.OutsourcingSession = { KEY, valid, read, save, useCommand, useRead, input };
+  window.OutsourcingSession = { KEY, valid, read, save, useCommand, useRead, input, memberConflict };
 })();

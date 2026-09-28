@@ -89,11 +89,11 @@ def test_eu_process_read_mock_preserves_invalid_zero_projection(merged_cycle_api
 
 
 @pytest.mark.parametrize("stage", ("route", "source", "hours", "ready"))
-def test_eu_process_stage_existing_cycle_is_operation_not_group(merged_cycle_api, stage):
+def test_eu_process_stage_existing_history_uses_effective_group(merged_cycle_api, stage):
     merged_cycle_api.execute("UPDATE PartOperations SET ext_days=2 WHERE part_no='PROC-001' AND seq=20")
     data = fixture_detail("process_stage_widgets_probe.cjs", "fixture",
                           "fixtureState={revision:1,part:record({stage:" + json.dumps(stage) + "})}; detail()")
-    assert cycle(data["operations"][1]) == cycle(operation(readonly_detail(merged_cycle_api))) == (2, "operation")
+    assert cycle(data["operations"][1]) == cycle(operation(readonly_detail(merged_cycle_api))) == (None, "group")
     assert all(cycle(row) == (None, None) for row in data["operations"] if row["source"] == "internal")
 
 

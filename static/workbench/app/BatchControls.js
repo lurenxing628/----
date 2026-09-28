@@ -102,7 +102,14 @@
     }, "\u8BF7\u9009\u62E9\u56FE\u53F7"), choices && choices.parts.map(row => /*#__PURE__*/React.createElement("option", {
       key: row.ref,
       value: row.ref
-    }, row.business_code, " \xB7 ", row.label))))), input('quantity', '数量', 'number'), input('due_date', '交期', 'date'), select('priority', '优先级', B.priority), select('ready_status', '齐套显示', B.ready), input('ready_date', '齐套日期', 'date'), input('remark', '备注'));
+    }, row.business_code, " \xB7 ", row.label))))), input('quantity', '数量', 'number'), input('due_date', '交期', 'date'), select('priority', '优先级', B.priority), entity && entity.relationships.material_requirement_count > 0 ? /*#__PURE__*/React.createElement(Field, {
+      label: "\u9F50\u5957\u663E\u793A"
+    }, /*#__PURE__*/React.createElement("input", {
+      readOnly: true,
+      value: B.label('ready_status', value.ready_status)
+    }), /*#__PURE__*/React.createElement("span", {
+      className: "fhint"
+    }, "\u8BF7\u5728\u7269\u6599\u9700\u6C42\u4E2D\u6838\u5BF9\uFF1B\u4FEE\u6539\u6570\u91CF\u540E\u9700\u8981\u91CD\u65B0\u786E\u8BA4\u9F50\u5957\u3002")) : select('ready_status', '齐套显示', B.ready), input('ready_date', '齐套日期', 'date'), input('remark', '备注'));
   }
   function Styles() {
     return null;

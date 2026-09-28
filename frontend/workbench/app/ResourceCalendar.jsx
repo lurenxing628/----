@@ -7,7 +7,7 @@
   // 默认规则只写班表汇总里真实读到的值：没有的项写“未填写 / 暂无数据”，不再把 8 小时、周末休息这类假设写死在图例里。
   function DefaultRules({ value }) {
     const standard = value.standard_hours, holiday = value.holiday_default_efficiency;
-    const standardText = standard.status === 'known' ? window.WorkbenchFormat.hours(standard.value) : standard.message || statusLabels[standard.status] || '暂无数据';
+    const standardText = standard.status === 'known' ? window.APSWorkPeriods.duration(standard.value) : standard.message || statusLabels[standard.status] || '暂无数据';
     const holidayText = holiday.status === 'known' ? window.WorkbenchFormat.number(holiday.value * 100, { digits: 1, trim: true }) + '%' : statusLabels[holiday.status] || '暂无数据';
     return <><p>未单独设置的日期按默认规则排产。标准工时 / 日：{standardText}；假期录入默认效率：{holidayText}。</p><p className="muted">{value.basis}</p></>;
   }
@@ -109,6 +109,9 @@
         <div className="cal-panel cal-side"><h3>图例</h3><div className="cal-leg"><div><span className="sw cfg" />已单独设置工时</div>
           <div><span className="sw rest" />调休 / 加班</div><div><span className="sw we" />周末（默认非工作）</div></div>
           <h3>默认规则</h3>
+          {data && data.default_periods && <p>{window.APSWorkPeriods.describe(data.default_periods)} · {window.APSWorkPeriods.duration(window.APSWorkPeriods.hours(data.default_periods))}</p>}
+          <Button icon="square-pen" disabled={blocked || !data || request.loading} reason={source && source !== "production" ? "当前不是生产数据，不能修改。" : ""}
+            onClick={() => open({ mode: "defaults" })}>修改默认工作时间</Button>
           {rules && rules.calendar ? <DefaultRules value={rules.calendar} /> : summary.loading ? <p role="status">正在读取默认规则…</p>
             : <p>默认规则暂无数据{rules && rules.calendar_error ? '：' + rules.calendar_error : ''}</p>}
           <ErrorBox error={summary.error} />
@@ -118,8 +121,9 @@
       {dialog && dialog.mode === 'view' && <Modal title={dialog.day.date + ' · 日历详情'} icon="calendar-days" onClose={close}
         footer={<><Button onClick={close}>关闭</Button><Button icon="square-pen" onClick={() => open({ ...dialog, mode: 'day' })}>维护此日</Button></>}>
         <div className="modal-b form scroll"><Policy value={dialog.day} /><Issues issues={dialog.day.issues || []} /></div></Modal>}
+      {dialog && dialog.mode === 'defaults' && <window.CalendarDefaultsDialog adapter={adapter} command={command} onClose={close} refreshState={refreshState} onRefresh={refresh} />}
       {dialog && dialog.mode === 'day' && <window.CalendarDayDialog adapter={adapter} day={dialog.day} source={dialog.source} command={command} onClose={close} refreshState={refreshState} onRefresh={refresh} />}
-      {dialog && dialog.mode === 'range' && <window.CalendarRangeDialog adapter={adapter} month={month} source={source} command={command} onClose={close} refreshState={refreshState} onRefresh={refresh} />}
+      {dialog && dialog.mode === 'range' && <window.CalendarRangeDialog adapter={adapter} month={month} defaultPeriods={data && data.default_periods} source={source} command={command} onClose={close} refreshState={refreshState} onRefresh={refresh} />}
       {orphan && <Modal title="工作日历操作结果" icon="history" locked={command.locked} onClose={close} footer={<Button disabled={command.locked} onClick={close}>关闭</Button>}>
         <div className="modal-b form scroll">{command.intent ? <><p>{command.intent.action === 'confirm' ? '批量维护工作日历' : '维护单日设置'}</p>
           <window.WorkbenchReference entries={{ '操作编号': command.intent.request_key, '日期编号': command.intent.ref }} /></> : <p>读不到上次操作记录</p>}

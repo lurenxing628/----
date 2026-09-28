@@ -126,7 +126,7 @@
       fileKind: intent.kind === 'process_route_import' ? 'route' : 'hours',
       recovery: true
     };
-    if (intent.kind === 'process' && ref(intent.ref) && ['route_confirm', 'source_confirm', 'hours_confirm'].includes(intent.action)) return {
+    if (intent.kind === 'process' && ref(intent.ref) && ['route_confirm', 'source_confirm', 'hours_confirm', 'groups_confirm'].includes(intent.action)) return {
       ref: intent.ref
     };
     return null;

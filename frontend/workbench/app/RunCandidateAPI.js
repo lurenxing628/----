@@ -189,7 +189,7 @@
       && g.run_ref === d.candidate.run_ref && time(g.accepted_at) && (g.finished_at === null || time(g.finished_at))
       && g.metadata_basis === 'captured_at_run_admission' && g.execution_basis === 'captured_at_run_admission'
       && g.current_entities_consulted === false && g.formal_version_allocated === false && gaps(g.data_gaps)
-      && shape(g.input, ['start_date', 'end_date', 'ready_check', 'missing_resource_policy', 'completed_policy'])
+      && shape(g.input, ['start_date', 'end_date', 'ready_check', 'missing_resource_policy', 'completed_policy'].concat(g.input.material_strategy === undefined ? [] : ['material_strategy'])) && (g.input.material_strategy === undefined || ['strict', 'stage', 'split'].includes(g.input.material_strategy))
       && ['start_date', 'end_date', 'missing_resource_policy', 'completed_policy'].every(k => nullableText(g.input[k]))
       && (g.input.ready_check === null || typeof g.input.ready_check === 'boolean')
       && shape(g.baseline, ['captured_task_count', 'comparison_available', 'reason']) && (g.baseline.captured_task_count === null || count(g.baseline.captured_task_count))

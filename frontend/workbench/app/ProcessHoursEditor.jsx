@@ -48,13 +48,19 @@
       return row.unit_hours === 0 && (old.confirmation.hours.state !== 'confirmed' || old.unit_hours !== row.unit_hours || old.setup_hours !== row.setup_hours);
     }).map(row => before.get(row.ref));
   }
-  function ProcessHoursEditor({ adapter, result, command, disabled, saved, onDirty, onOverlay, onFileAction }) {
+  function ProcessHoursEditor({ adapter, result, command, disabled, saved, groupSaved = 0, onDirty, onOverlay, onFileAction }) {
     const model = E.useDraft({ result, adapter, stage: 'hours', build, reconcile, saved, onDirty });
-    const entity = model.base.data, draft = model.draft, paging = E.usePage(entity.operations), [zero, setZero] = React.useState(null);
+    const entity = model.base.data, draft = model.draft, paging = E.usePage(entity.operations), [zero, setZero] = React.useState(null), [groupsOpen, setGroupsOpen] = React.useState(false);
     const blocked = disabled || command.locked || command.phase === 'done', stageReason = E.reason(model, adapter, 'hours');
     const editBlocked = blocked || entity.workflow.source.state !== 'confirmed' || entity.capabilities.stage_confirm !== true;
     React.useEffect(() => { setZero(null); }, [draft, model.base, model.review, disabled]);
-    React.useEffect(() => { if (onOverlay) onOverlay(!!zero); return () => { if (onOverlay) onOverlay(false); }; }, [!!zero, onOverlay]);
+    React.useEffect(() => { setGroupsOpen(false); }, [groupSaved]);
+    // A verified receipt already confirms the group write. Close its overlay even
+    // if the following detail read fails, so the parent's recovery control is reachable.
+    React.useEffect(() => {
+      if (command.phase === 'done' && command.intent && command.intent.action === 'groups_confirm') setGroupsOpen(false);
+    }, [command.phase, command.intent]);
+    React.useEffect(() => { if (onOverlay) onOverlay(!!zero || groupsOpen); return () => { if (onOverlay) onOverlay(false); }; }, [!!zero, groupsOpen, onOverlay]);
     function change(ref, patch) { model.edit(current => ({ ...current, operations: { ...current.operations, [ref]: { ...current.operations[ref], ...patch } } })); }
     function changeGroup(ref, total) { model.edit(current => ({ ...current, groups: { ...current.groups, [ref]: total } })); }
     async function save(acknowledged = false) {
@@ -80,15 +86,16 @@
           <thead><tr><th scope="col">工序 / 工种</th><th scope="col">换型工时（小时）</th><th scope="col">单件工时（小时）</th><th scope="col">保存记录</th></tr></thead>
           <tbody>{internal.map(row => <tr key={row.ref}><td>{operation(row)}</td><td>{cell(row, 'setup_hours', '换型工时')}</td><td>{cell(row, 'unit_hours', '单件工时')}</td><td>{record(row)}</td></tr>)}
             {!internal.length && <tr><td colSpan={4}>当前页没有自制工序。</td></tr>}</tbody></table></div></section>
-      <section className="process-hours-section" aria-label="外协周期"><h3>外协周期</h3>
+      <section className="process-hours-section" aria-label="外协周期"><div className="toolbar"><h3>外协周期</h3><span className="tb-spacer" /><Button icon="square-pen" disabled={blocked || entity.workflow.route.state !== 'confirmed' || entity.capabilities.stage_confirm !== true} onClick={() => setGroupsOpen(true)}>管理外协段</Button></div><p className="muted">同一次送出的连续外协工序可设为一段，整段只计算一次统一周期。中间回厂加工后再送出的工序请另建一段。</p>
         <div className="wb-table-frame"><table className="tbl wb-table wb-table--editable" aria-label="外协周期明细"><caption className="wb-visually-hidden">外协周期明细</caption><colgroup><col style={{ width: '32%' }} /><col style={{ width: '22%' }} /><col style={{ width: '22%' }} /><col style={{ width: '24%' }} /></colgroup>
           <thead><tr><th scope="col">工序 / 工种</th><th scope="col">供应商</th><th scope="col">周期（天）</th><th scope="col">保存记录</th></tr></thead>
           <tbody>{external.map(row => { const cycle = P.groupCycle(row, entity.external_groups); return <tr key={row.ref}><td>{operation(row)}</td><td>{row.supplier_label || '未选供应商'}</td>
             <td>{cycle ? <span className="process-group-cycle" data-process-cycle-group={row.external_group_ref}>{cycle}<small>在下方外协组填写统一周期</small></span> : cell(row, 'external_days', '外协周期', true)}</td><td>{record(row)}</td></tr>; })}
             {!external.length && <tr><td colSpan={4}>当前页没有外协工序。</td></tr>}</tbody></table></div>
-        {!!mergedGroups(entity).length && <E.Groups rows={mergedGroups(entity)} totals={draft.groups} disabled={editBlocked} onTotal={changeGroup} />}</section>
+        {!!mergedGroups(entity).length && <E.Groups rows={mergedGroups(entity)} totals={draft.groups} disabled={editBlocked} onTotal={changeGroup} title="外协段统一周期" />}</section>
       <E.Pager paging={paging} disabled={blocked} />
       <E.Feedback model={model} disabled={blocked} paging={paging} /><div className="pd-foot"><span className="muted">保存全部 {active.length} 道有效工序，包含其他页和筛选隐藏的工序。</span><Button className="btn primary" icon="check" disabled={blocked} reason={stageReason} onClick={() => save()}>保存工时</Button></div>
+      {groupsOpen && <window.ProcessGroupEditor adapter={adapter} result={result} command={command} disabled={blocked} onDirty={onDirty} onClose={() => setGroupsOpen(false)} />}
       {zero && ReactDOM.createPortal(<div className="plana process-detail"><Modal title="按零单件工时保存" icon="check" onClose={() => setZero(null)} locked={blocked} footer={<><Button disabled={blocked} onClick={() => setZero(null)}>返回修改</Button><Button className="btn primary" icon="check" disabled={blocked} onClick={() => save(true)}>按 0 保存</Button></>}>
         <div className="modal-b"><p>以下工序的单件工时为 0，排产只计算换型工时，数量增加不会增加加工时长。</p><ul>{zero.map(row => <li key={row.ref}>工序 {row.sequence} · {row.label}</li>)}</ul></div></Modal></div>, document.body)}
     </section>;

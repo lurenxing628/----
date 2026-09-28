@@ -22,8 +22,21 @@
         if (kind !== 'batch') throw window.APSResourceContract.failure('批次类别不正确。');
         return api.query(entity(ref), {}, signal);
       },
+      operationChoices(batchRef, operationRef, signal) {
+        return api.query(root + '/choices', {
+          batch_ref: batchRef,
+          operation_ref: operationRef
+        }, signal);
+      },
       choices(signal) {
         return api.query(root + '/choices', {}, signal);
+      },
+      materialChoices(scope, signal) {
+        return api.query('entities/material', {
+          ...scope,
+          status: 'active',
+          size: 20
+        }, signal);
       },
       facets(scope, field, signal) {
         return api.preview(root + '/facets', {
@@ -65,7 +78,7 @@
           scope,
           snapshot_ref: snapshot
         }, signal);
-        if (action === 'sync') return api.preview(entity(ref) + '/sync-preview', {
+        if (['sync', 'split'].includes(action)) return api.preview(entity(ref) + '/' + action + '-preview', {
           input,
           snapshot_ref: snapshot
         }, signal);
@@ -80,7 +93,7 @@
         } else if (['bulk_confirm', 'import_confirm'].includes(action)) {
           if (ref !== body.input.preview_ref) throw window.APSResourceContract.failure('批量确认与预检结果不一致。');
           path = root + (action === 'bulk_confirm' ? '/bulk-confirm' : '/import-confirm');
-        } else path = entity(ref) + '/' + (action === 'sync_confirm' ? 'sync-confirm' : action);
+        } else path = entity(ref) + '/' + (['sync_confirm', 'split_confirm'].includes(action) ? action.replace('_', '-') : action);
         const result = await api.execute(path, body, signal);
         C.receipt(result, action, ref);
         return result;
