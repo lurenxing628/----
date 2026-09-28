@@ -52,6 +52,8 @@ class CalendarFacts:
         return result
 
     def calendar(self, first, last, operators):
+        self.rows["legacy_defaults"] = self.repo.schema_version() < 34
+        self.select("defaults", self.repo.defaults)
         self.select("global", self.repo.global_calendar, first, last)
         self.keyed("personal", self.repo.personal_calendar, operators, (first, last))
         self.keyed("profiles", self.repo.operator_profiles, operators)
@@ -60,9 +62,10 @@ class CalendarFacts:
 
     def resources(self, machine_ids, operator_ids, operation_ids, start, end):
         self.keyed("machines", self.repo.machines, machine_ids)
+        self.keyed("machine_capabilities", self.repo.machine_capabilities, machine_ids)
         self.keyed("operators", self.repo.operators, operator_ids)
         self.keyed("operations", self.repo.operations, operation_ids)
-        types = {row["op_type_id"] for name in ("machines", "operations") for row in self.rows[name]
+        types = {row["op_type_id"] for name in ("machines", "operations", "machine_capabilities") for row in self.rows[name]
                  if row["op_type_id"] is not None}
         self.keyed("work_types", self.repo.work_types, types)
         self.keyed("authorizations", self.repo.authorizations, operator_ids)

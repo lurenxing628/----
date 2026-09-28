@@ -7,6 +7,7 @@ import pytest
 
 from core.algorithm_contracts.dispatch_rules import DispatchRule
 from core.algorithm_contracts.types import ScheduleResult
+from core.algorithm_runtime.piece_input import operation_dispatch_state
 from core.algorithm_runtime.run_state import ScheduleRunState
 from core.algorithms.greedy.dispatch import sgs
 
@@ -36,3 +37,18 @@ def test_seed_end_times_require_explicit_piece_scope(monkeypatch, piece, context
     elif graph is not None:
         assert "end_time_by_op_id" not in graph
     assert state.results[0].end_time == seed_end
+
+
+@pytest.mark.parametrize("ready_check", [False, True])
+@pytest.mark.parametrize("checkpoint", [False, True])
+def test_piece_dispatch_and_checkpoint_keep_readiness_policy_and_predecessors(ready_check, checkpoint):
+    state = ScheduleRunState(base_time=datetime(2026, 9, 9), readiness_gate_enabled=ready_check)
+    state.batch_progress["B1"] = datetime(2026, 9, 20)
+    if checkpoint:
+        state = state.clone()
+    graph = {"end_time_by_op_id": {1: datetime(2026, 9, 10)}, "predecessor_op_ids_by_op_id": {2: {1}}}
+    op = SimpleNamespace(id=2, batch_id="B1")
+    batch = SimpleNamespace(ready_date="2026-09-15")
+    dispatched = operation_dispatch_state(state, graph, op, batch)
+    assert dispatched.prev_end("B1") == datetime(2026, 9, 15 if ready_check else 10)
+    assert state.prev_end("B1") == datetime(2026, 9, 20)

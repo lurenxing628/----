@@ -134,7 +134,7 @@ def machine_status_label(value: Any) -> str:
 
 def normalize_op_type_category(value: Any) -> str:
     """
-    标准化工种归属（OpTypes.category / SourceType）。
+    标准化工种适用归属（OpTypes.category，可自制及外协均可）。
 
     约定（保持既有 Excel 导入口径）：
     - 空值默认 internal
@@ -150,8 +150,10 @@ def normalize_op_type_category(value: Any) -> str:
     if v in ("外部", "外", "外协", "外包"):
         return SourceType.EXTERNAL.value
 
+    if v in ("自制和外协都可", "自制、外协均可", "两者均可"):
+        return "both"
     v_lower = v.lower()
-    if v_lower in (SourceType.INTERNAL.value, SourceType.EXTERNAL.value):
+    if v_lower in (SourceType.INTERNAL.value, SourceType.EXTERNAL.value, "both"):
         return v_lower
     return v
 

@@ -16,6 +16,8 @@ always recomputed.
 import math
 from datetime import datetime
 
+from core.algorithm_contracts.material_release import released_start
+
 from . import busy_block_skip, internal_slot
 from .calendar_timing_memo import MemoizedTimingCalendar
 from .owned_timeline import owned_segment_certificate, owned_segment_round_reader
@@ -128,7 +130,7 @@ class SharedSlotEstimateCache:
                         total_hours, end_dt_exclusive, machine_downtimes)
         if key is None:
             return compute()
-        earliest = calendar.adjust_to_working_time(max(prev_end, state.base_time), priority=priority, operator_id=operator_id)
+        earliest = calendar.adjust_to_working_time(released_start(op, max(prev_end, state.base_time)), priority=priority, operator_id=operator_id)
         if not _instant(earliest):
             return compute()
         entry = self._entries.get(key)

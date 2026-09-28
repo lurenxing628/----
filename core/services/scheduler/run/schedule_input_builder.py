@@ -211,6 +211,9 @@ def _build_algo_operations_outcome(
     - `completed/skipped` 之类的终态过滤由 `ScheduleService` 统一负责；
     - 本层只消费调用方传入的 `reschedulable_operations`，不再自行扩散状态语义。
     """
+    cache = getattr(svc, "_aps_schedule_input_cache", None)
+    if isinstance(cache, dict) and not cache.get("external_contexts_bound"):
+        cache.pop("external_members", None)
     collector = DegradationCollector()
     algo_ops: List[OpForScheduleAlgo] = []
     for op in reschedulable_operations:

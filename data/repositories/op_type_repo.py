@@ -27,7 +27,7 @@ class OpTypeRepository(BaseRepository):
     def list(self, category: Optional[str] = None) -> List[OpType]:
         if category:
             rows = self.fetchall(
-                "SELECT op_type_id, name, category, default_hours, remark, created_at FROM OpTypes WHERE category = ? ORDER BY name",
+                "SELECT op_type_id, name, category, default_hours, remark, created_at FROM OpTypes WHERE (category = ? OR category = 'both') ORDER BY name",
                 (category,),
             )
         else:

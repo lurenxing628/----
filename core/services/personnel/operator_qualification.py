@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional, Sequence, Set
 
 from core.errors import AppError, ValidationError
+from core.models.resource_capabilities import machine_types, supports_source
 from data.repositories.operator_machine_repo import OperatorMachineRepository
 from data.repositories.operator_qualification_repo import OperatorQualificationRepository
 
@@ -73,7 +74,7 @@ class OperatorQualificationService:
             raise _invalid_facts("人员资格对应的人员记录不存在，不能按旧授权名单继续排产。")
         for row in skills:
             oid, op_type_id = _identifier(row["operator_id"]), _identifier(row["op_type_id"])
-            if row["category"] != "internal":
+            if not supports_source(row["category"], "internal"):
                 raise _invalid_facts(f"人员“{oid}”的技能工种“{op_type_id}”不存在或不是自制工种，请核对资料。")
             current = qualifications[oid]
             if current is None:
@@ -87,14 +88,14 @@ class OperatorQualificationService:
                        operations: Sequence[Any]) -> List[Dict[str, Any]]:
         qualifications = self.load(sorted(active_operator_ids))
         _require_explicit_auto_work_types(operations, rows, qualifications)
-        machine_types = {machine.machine_id: machine.op_type_id for machine in machines}
+        capabilities = {machine.machine_id: set(machine_types(machine)) for machine in machines}
         result = []
         for row in rows:
             oid, mid = row["operator_id"], row["machine_id"]
-            if oid not in qualifications or mid not in machine_types:
+            if oid not in qualifications or mid not in capabilities:
                 continue
             skills = qualifications[oid]
-            if skills is None or machine_types[mid] in skills:
+            if skills is None or capabilities[mid] & skills:
                 result.append(row)
         return result
 

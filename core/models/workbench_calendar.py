@@ -9,14 +9,17 @@ from datetime import date, timedelta
 from typing import Any, Dict, List
 
 from core.errors import ValidationError
+from core.models.calendar_periods import normalize_periods
+from core.models.workbench_operator_calendar import operator_clock
 
 # Reuse CalendarEngine.MAX_CALENDAR_DAYS' domain magnitude, counting inclusive dates.
 # The prototype has no day-count cap; this is an adapter admission bound, not a UI limit.
 MAX_CALENDAR_RANGE_DAYS = 36500
 CALENDAR_PREVIEW_TTL_SECONDS = 900
-_FIELDS = frozenset(("type", "hours", "eff", "allowNormal", "allowUrgent", "note"))
-_DOMAIN_FIELDS = {"hours": "shift_hours", "eff": "efficiency", "allowNormal": "allow_normal",
-                  "allowUrgent": "allow_urgent", "note": "remark", "type": "day_type"}
+_FIELDS = frozenset(("type", "hours", "eff", "allowNormal", "allowUrgent", "note", "shiftStart", "shiftEnd", "periods"))
+_DOMAIN_FIELDS = {"periods": "periods", "hours": "shift_hours", "eff": "efficiency", "allowNormal": "allow_normal",
+                  "allowUrgent": "allow_urgent", "note": "remark", "type": "day_type",
+                  "shiftStart": "shift_start", "shiftEnd": "shift_end"}
 _INPUTS = {
     "upsert": frozenset(("date", "fields")),
     "delete": frozenset(("date",)),
@@ -57,8 +60,12 @@ def _number(value: Any, field: str, maximum: float, *, positive: bool = False) -
 
 def _field_value(key: str, raw: Any) -> Any:
     path = "fields." + key
+    if key == "periods":
+        return normalize_periods(raw)
     if key in ("hours", "eff"):
         return _number(raw, path, 24 if key == "hours" else 200, positive=key == "eff")
+    if key in ("shiftStart", "shiftEnd"):
+        return None if raw is None and key == "shiftEnd" else operator_clock(raw, path)
     if key == "note":
         if raw is None:
             return None
@@ -78,6 +85,8 @@ def _fields(value: Any) -> Dict[str, Any]:
         rest = {"hours": 0.0, "allowNormal": "no", "allowUrgent": "no"}
         if any(key in result and result[key] != expected for key, expected in rest.items()):
             raise ValidationError("休息日必须为零工时，且普通件和急件均不可排产。", field="fields")
+        if result.get("periods"):
+            raise ValidationError("休息日不能填写工作时段。", field="fields.periods")
         result.update(rest)
     return result
 

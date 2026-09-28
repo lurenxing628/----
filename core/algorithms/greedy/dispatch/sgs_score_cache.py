@@ -34,7 +34,7 @@ _UNCLASSIFIED = object()
 # or descriptor on any of them means reads may vary between steps, so such records are never cached.
 _RECORD_FIELDS = (
     "id", "seq", "batch_id", "piece_id", "source", "machine_id", "operator_id", "op_type_id", "op_type_name",
-    "setup_hours", "unit_hours", "quantity", "priority", "due_date", "ready_date", "ready_status", "created_at",
+    "setup_hours", "unit_hours", "quantity", "priority", "due_date", "ready_date", "material_ready_date", "ready_status", "created_at",
 )
 _AUTO_ASSIGN_CALLBACKS = (
     ("auto_assign_callback", "_auto_assign_internal_resources"),

@@ -17,6 +17,19 @@ _UNSET = _UnsetType()
 class BatchMaterialRepository(BaseRepository):
     """批次物料需求仓库（BatchMaterials）。"""
 
+    def copy_requirements(self, source_batch_id, target_batch_id, operation_map=None):
+        """Copy demand and exact use-operation binding, never another batch's arrivals."""
+        from .batch_material_stage_repo import BatchMaterialStageRepository
+        stages = BatchMaterialStageRepository(self.conn)
+        for row in self.fetchall("SELECT * FROM BatchMaterials WHERE batch_id=? ORDER BY id", (source_batch_id,)):
+            detail = stages.details(row["id"])
+            operation_id = detail["operation_id"]
+            if operation_id is not None and (operation_map is None or operation_id not in operation_map):
+                raise ValueError("复制物料需求时缺少使用工序的对应关系，未保存。")
+            created = self.add(target_batch_id, row["material_id"], required_qty=row["required_qty"], available_qty=0, ready_status="no")
+            if operation_id is not None and operation_map is not None:
+                stages.replace(created.id, operation_map[operation_id], [])
+
     def get(self, bm_id: int) -> Optional[BatchMaterial]:
         row = self.fetchone(
             "SELECT id, batch_id, material_id, required_qty, available_qty, ready_status FROM BatchMaterials WHERE id = ?",
@@ -135,4 +148,3 @@ class BatchMaterialRepository(BaseRepository):
     def delete_by_batch(self, batch_id: str) -> int:
         cur = self.execute("DELETE FROM BatchMaterials WHERE batch_id = ?", (str(batch_id),))
         return int(getattr(cur, "rowcount", 0) or 0)
-

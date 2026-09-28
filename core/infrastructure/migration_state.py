@@ -3,6 +3,14 @@ from __future__ import annotations
 import sqlite3
 from typing import Dict, List, Optional, Set
 
+from .batch_external_context_schema import contract_issues as batch_external_context_contract_issues
+from .batch_external_context_schema import objects as batch_external_context_objects
+from .calendar_periods_schema import contract_issues as calendar_periods_contract_issues
+from .calendar_periods_schema import objects as calendar_periods_objects
+from .machine_capabilities_schema import contract_issues as machine_capabilities_contract_issues
+from .machine_capabilities_schema import objects as machine_capabilities_objects
+from .material_stages_schema import contract_issues as material_stages_contract_issues
+from .material_stages_schema import objects as material_stages_objects
 from .migration_common import MigrationOutcome, column_exists, fallback_log, table_exists
 from .migration_operation_execution_contract import operation_execution_event_contract_issues
 from .schema_declaration import declared_columns, load_schema_sql
@@ -32,7 +40,7 @@ from .workbench_run_schema import workbench_run_contract_issues, workbench_run_o
 from .workbench_template_lineage_schema import template_lineage_contract_issues, template_lineage_objects
 from .workbench_trial_schema import workbench_trial_contract_issues, workbench_trial_objects
 
-CURRENT_SCHEMA_VERSION = 32
+CURRENT_SCHEMA_VERSION = 36
 
 
 class MigrationContractError(RuntimeError):
@@ -211,7 +219,7 @@ _SUBSYSTEM_OBJECT_SOURCES = (
     plan_identity_write_guard_objects, execution_ledger_objects, execution_void_objects, workbench_run_objects,
     template_lineage_objects, workbench_trial_objects, lineage_lookup_objects, calibration_adoption_objects,
     workbench_dashboard_objects, workbench_dashboard_external_objects, workbench_outsourcing_objects,
-    workbench_outsourcing_source_objects,
+    workbench_outsourcing_source_objects, batch_external_context_objects, calendar_periods_objects, machine_capabilities_objects, material_stages_objects,
 )
 # 有专用合并标签的核心表，不再单独报 missing_table。
 _CORE_TABLES_WITH_DEDICATED_LABEL = ("SystemConfig", "SystemJobState")
@@ -277,6 +285,10 @@ def current_schema_contract_issues(conn: sqlite3.Connection, *, schema_sql: Opti
     issues.extend(dashboard_external_contract_issues(conn))
     issues.extend(workbench_outsourcing_source_contract_issues(conn))
     issues.extend(execution_void_contract_issues(conn))
+    issues.extend(batch_external_context_contract_issues(conn))
+    issues.extend(calendar_periods_contract_issues(conn))
+    issues.extend(machine_capabilities_contract_issues(conn))
+    issues.extend(material_stages_contract_issues(conn))
     return issues
 
 

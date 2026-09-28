@@ -91,6 +91,10 @@ class ProcessQuotaProtection:
         """Validate proposed unit_hours against live rows, not a caller's old snapshot."""
         if not self.conn.in_transaction:
             raise RuntimeError("普通定额保存必须在调用方写事务中重核。")
+        return self.check_changes(values)
+
+    def check_changes(self, values):
+        """Read-only preview of the same live quota checks; writes still require_changes."""
         current, locks = self.current(values)
         if any(ref in locks and value != current[ref]["unit_hours"] for ref, value in values.items()):
             raise WorkbenchCommandRejected("calibration_quota_locked", "这道工序的单件工时已锁定（来自工时校准），普通保存不能覆盖，这次没有保存。锁定后这个模板的单件工时不能再改。")

@@ -82,13 +82,13 @@ def _observe_production(monkeypatch):
 
 
 @pytest.mark.parametrize("dispatch_mode", ["batch_order", "sgs"])
-def test_production_partial_frozen_group_keeps_identity_and_all_results(db_path, monkeypatch, dispatch_mode):
+def test_template_change_does_not_merge_existing_partially_frozen_work(db_path, monkeypatch, dispatch_mode):
     conn = get_connection(db_path)
     try:
         config, first = _prepare_plan(conn, dispatch_mode=dispatch_mode)
         old_rows = _rows(conn, first["version"])
         old_history = dict(conn.execute("SELECT * FROM ScheduleHistory WHERE version=?", (first["version"],)).fetchone())
-        # A real version-to-version template change leaves only the first group member in the window.
+        # Only the first member is in the window; the later template edit cannot merge old batch work.
         conn.execute("UPDATE ExternalGroups SET merge_mode='merged' WHERE group_id='G1'")
         conn.commit()
         config.set_freeze_window("yes", 1)
@@ -108,7 +108,7 @@ def test_production_partial_frozen_group_keeps_identity_and_all_results(db_path,
             results, summary, _, _ = outcome
             assert summary.failed_ops == 0
             assert len(results) == summary.total_ops == summary.scheduled_ops == 3
-            assert stats["fallback_counts"].get("seed_external_group_cache_rebuilt_count") == 1
+            assert stats["fallback_counts"].get("seed_external_group_cache_rebuilt_count", 0) == 0
             assert all(type(row) is ScheduleResult for row in results)
             assert asdict(results[0]) == asdict(kwargs["seed_results"][0])
             assert not any(key.startswith("_external_group") for row in results for key in vars(row))
@@ -118,9 +118,8 @@ def test_production_partial_frozen_group_keeps_identity_and_all_results(db_path,
         assert new_rows[0]["lock_status"] == "locked"
         assert new_rows[1]["lock_status"] == "unlocked"
         assert [(row["start_time"], row["end_time"]) for row in new_rows[:2]] == [
-            (old_rows[0]["start_time"], old_rows[0]["end_time"]),
-        ] * 2
-        assert new_rows[2]["start_time"] == old_rows[0]["end_time"]
+            (row["start_time"], row["end_time"]) for row in old_rows[:2]]
+        assert new_rows[2]["start_time"] == old_rows[1]["end_time"]
         assert _rows(conn, first["version"]) == old_rows
         assert dict(conn.execute("SELECT * FROM ScheduleHistory WHERE version=?", (first["version"],)).fetchone()) == old_history
         assert conn.execute("SELECT COUNT(*) FROM OperationExecutionEvents").fetchone()[0] == 0

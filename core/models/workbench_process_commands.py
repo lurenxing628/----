@@ -10,7 +10,7 @@ from typing import Dict, Optional, Union
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_process_route import normalize_route_preview_input
 
-PROCESS_ACTIONS = ("route_confirm", "source_confirm", "hours_confirm")
+PROCESS_ACTIONS = ("route_confirm", "source_confirm", "hours_confirm", "groups_confirm")
 MAX_STAGE_ITEMS = 10000
 
 
@@ -38,7 +38,7 @@ def process_number(value, *, positive=False):
     return number
 
 
-def _list(value):
+def process_list(value):
     if type(value) is not list:
         raise WorkbenchCommandRejected("invalid_input", "必须提交完整的列表。", 422)
     if len(value) > MAX_STAGE_ITEMS:
@@ -46,7 +46,7 @@ def _list(value):
     return value
 
 
-def _unique(rows, *, refs_only=False):
+def process_unique(rows, *, refs_only=False):
     refs = [process_ref(row if refs_only else row["ref"]) for row in rows]
     if len(refs) != len(set(refs)):
         raise WorkbenchCommandRejected("invalid_input", "同一记录不能重复提交。", 422)
@@ -55,7 +55,7 @@ def _unique(rows, *, refs_only=False):
 
 def _source_operations(rows):
     result = []
-    for row in _list(rows):
+    for row in process_list(rows):
         process_object(row, {"ref", "source", "op_type_ref", "supplier_ref", "confirmed"})
         if type(row["source"]) is not str or row["source"] not in ("internal", "external") or row["confirmed"] is not True:
             raise WorkbenchCommandRejected("invalid_input", "每道工序都需要选定归属并确认。", 422)
@@ -66,12 +66,12 @@ def _source_operations(rows):
         else:
             process_ref(row["supplier_ref"])
         result.append(dict(row))
-    return _unique(result)
+    return process_unique(result)
 
 
 def _hours_operations(rows):
     result = []
-    for row in _list(rows):
+    for row in process_list(rows):
         if type(row) is not dict:
             raise WorkbenchCommandRejected("invalid_input", "工序工时的填写格式不对。", 400)
         keys = {"ref", "external_days"} if "external_days" in row else {"ref", "setup_hours", "unit_hours"}
@@ -81,27 +81,31 @@ def _hours_operations(rows):
             value = row[key]
             normalized[key] = None if key == "external_days" and value is None else process_number(value, positive=key == "external_days")
         result.append(normalized)
-    return _unique(result)
+    return process_unique(result)
 
 
 def normalize_process_input(action, payload):
     if type(action) is not str or action not in PROCESS_ACTIONS:
         raise WorkbenchCommandRejected("invalid_input", "不支持的工艺阶段操作。", 400)
+    if action == "groups_confirm":
+        from core.models.workbench_process_groups import normalize_group_input
+
+        return normalize_group_input(payload)
     if action == "hours_confirm":
         process_object(payload, {"operations", "groups", "confirm_zero_unit_hours"})
         if type(payload["confirm_zero_unit_hours"]) is not bool:
             raise WorkbenchCommandRejected("invalid_input", "零单件工时的保存选项必须是明确的是或否。", 422)
         operations = _hours_operations(payload["operations"])
         groups = []
-        for row in _list(payload["groups"]):
+        for row in process_list(payload["groups"]):
             process_object(row, {"ref", "total_days"})
             groups.append({"ref": process_ref(row["ref"]), "total_days": process_number(row["total_days"], positive=True)})
-        return {"operations": operations, "groups": _unique(groups),
+        return {"operations": operations, "groups": process_unique(groups),
                 "confirm_zero_unit_hours": payload["confirm_zero_unit_hours"]}
     field = "route" if action == "route_confirm" else "operations"
     if type(payload) is not dict or field not in payload or set(payload) - {field, "discard_group_refs"}:
         raise WorkbenchCommandRejected("invalid_input", "提交内容缺少必填项或含有多余项，这次操作没有执行。请刷新页面后重试。", 400)
-    discarded = _unique(_list(payload.get("discard_group_refs", [])), refs_only=True)
+    discarded = process_unique(process_list(payload.get("discard_group_refs", [])), refs_only=True)
     if action == "source_confirm":
         return {field: _source_operations(payload[field]), "discard_group_refs": discarded}
     # The existing normalizer validates shape/capacity without erasing raw spaces.

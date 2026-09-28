@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from typing import Any, Dict, List, Optional, Tuple
 
 from core.models.enums import SupplierStatus
+from core.models.resource_capabilities import supports_source
 from core.services.common.enum_normalizers import normalize_supplier_status
 from core.services.common.safe_logging import safe_warning
 from core.services.process.route_parser_errors import (
@@ -106,7 +107,7 @@ class SupplierConstraintResolver:
             self.global_issues.append(SupplierGlobalIssue(op_type_id=op_type_id, message=message))
             safe_warning(self.logger, message)
             return None
-        if getattr(supplier, "explicit", False) and getattr(op_type, "category", None) != "external":
+        if getattr(supplier, "explicit", False) and not supports_source(getattr(op_type, "category", None), "external"):
             message = f"供应商“{supplier_id}”工种映射加载失败（op_type_id={supplier.op_type_id!r}），显式关系不是外协工种。"
             self.global_issues.append(SupplierGlobalIssue(op_type_id=op_type_id, message=message))
             safe_warning(self.logger, message)

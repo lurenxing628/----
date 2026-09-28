@@ -311,7 +311,7 @@ def test_calendar_ddl_cannot_reuse_a_signature_just_because_total_changes_is_unc
     checkpoints, _digest = _capture(case, order, [3])
     conn = case.input.cal_svc.conn
     changes = conn.total_changes
-    columns = "date,day_type,shift_start,shift_end,shift_hours,efficiency*0.5 AS efficiency,allow_normal,allow_urgent,remark"
+    columns = "date,day_type,shift_start,shift_end,shift_hours,efficiency*0.5 AS efficiency,allow_normal,allow_urgent,remark,periods_json"
     if temporary:
         conn.execute("CREATE TEMP VIEW WorkCalendar AS SELECT " + columns + " FROM main.WorkCalendar")
     else:

@@ -4,6 +4,7 @@ from copy import copy
 from dataclasses import dataclass
 from typing import Any, Dict, Iterator, List, Optional, Tuple, cast
 
+from core.algorithm_contracts.operator_eligibility import qualified_operators
 from core.errors import ValidationError
 
 from .repair_neighbors import repair_priority_context
@@ -159,6 +160,8 @@ def _pool_maps(resource_pool: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         if not isinstance(value, dict):
             _invalid("resource_pool." + key)
         out[key] = value
+    if "operator_skills" in resource_pool:
+        out["operator_skills"] = resource_pool["operator_skills"]
     return out
 
 
@@ -185,7 +188,7 @@ def _qualified_pairs(op: Any, pool: Dict[str, Any]) -> Iterator[Tuple[str, str]]
     machines = (fixed_machine,) if fixed_machine else _resource_ids(pool["machines_by_op_type"].get(op_type, ()))
     for machine_id in machines:
         operators = _resource_ids(pool["operators_by_machine"].get(machine_id, ()))
-        for operator_id in operators:
+        for operator_id in qualified_operators(pool, operators, op_type):
             if fixed_operator and operator_id != fixed_operator:
                 continue
             if _pair_is_qualified(op, machine_id, operator_id, pool):
@@ -195,6 +198,8 @@ def _qualified_pairs(op: Any, pool: Dict[str, Any]) -> Iterator[Tuple[str, str]]
 def _pair_is_qualified(op: Any, machine_id: str, operator_id: str, pool: Dict[str, Any]) -> bool:
     fixed_machine, fixed_operator = _fixed_resources(op)
     op_type = str(getattr(op, "op_type_id", None) or "").strip()
+    if not qualified_operators(pool, [operator_id], op_type):
+        return False
     machines_by_type = pool["machines_by_op_type"]
     # The original fixed machine is an input constraint, as in auto_assign.py.
     # A newly selected machine always needs explicit operation-type evidence.

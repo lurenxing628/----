@@ -13,12 +13,16 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from .base_repo import BaseRepository
+    from .batch_external_context_repo import BatchExternalContextRepository
     from .batch_material_repo import BatchMaterialRepository
+    from .batch_material_stage_repo import BatchMaterialStageRepository
     from .batch_operation_repo import BatchOperationRepository
     from .batch_repo import BatchRepository
+    from .calendar_defaults_repo import CalendarDefaultsRepository
     from .calendar_repo import CalendarRepository
     from .config_repo import ConfigRepository
     from .external_group_repo import ExternalGroupRepository
+    from .machine_capability_repo import MachineCapabilityRepository
     from .machine_downtime_repo import MachineDowntimeRepository
     from .machine_repo import MachineRepository
     from .material_repo import MaterialRepository
@@ -37,16 +41,22 @@ if TYPE_CHECKING:
     from .supplier_repo import SupplierRepository
     from .system_config_repo import SystemConfigRepository
     from .system_job_state_repo import SystemJobStateRepository
+    from .workbench_downtime_repo import WorkbenchDowntimeRepository
 
 _EXPORTS = {
+    "WorkbenchDowntimeRepository": ".workbench_downtime_repo",
     "BaseRepository": ".base_repo",
+    "BatchExternalContextRepository": ".batch_external_context_repo",
     "BatchMaterialRepository": ".batch_material_repo",
+    "BatchMaterialStageRepository": ".batch_material_stage_repo",
     "BatchOperationRepository": ".batch_operation_repo",
     "BatchRepository": ".batch_repo",
+    "CalendarDefaultsRepository": ".calendar_defaults_repo",
     "CalendarRepository": ".calendar_repo",
     "ConfigRepository": ".config_repo",
     "ExternalGroupRepository": ".external_group_repo",
     "MachineDowntimeRepository": ".machine_downtime_repo",
+    "MachineCapabilityRepository": ".machine_capability_repo",
     "MachineRepository": ".machine_repo",
     "MaterialRepository": ".material_repo",
     "OpTypeRepository": ".op_type_repo",
@@ -68,14 +78,18 @@ _EXPORTS = {
 }
 
 __all__ = [
+    "WorkbenchDowntimeRepository",
     "BaseRepository",
     "BatchMaterialRepository",
+    "BatchMaterialStageRepository",
     "BatchOperationRepository",
     "BatchRepository",
+    "CalendarDefaultsRepository",
     "CalendarRepository",
     "ConfigRepository",
     "ExternalGroupRepository",
     "MachineDowntimeRepository",
+    "MachineCapabilityRepository",
     "MachineRepository",
     "MaterialRepository",
     "OpTypeRepository",

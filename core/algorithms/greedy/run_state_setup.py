@@ -34,6 +34,7 @@ def _prepare_run_state(
 ) -> ScheduleRunState:
     state = (ScheduleRunState(base_time=params.base_time) if owned_timelines else
              ScheduleRunState(base_time=params.base_time, machine_timeline=SlotReuseTimeline(), operator_timeline={}))
+    state.readiness_gate_enabled = bool(readiness_gate_enabled)
     if bool(readiness_gate_enabled):
         _initialize_ready_progress(calendar, state=state, batches=batches, strict_mode=strict_mode)
     if seed_results:

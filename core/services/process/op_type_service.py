@@ -5,7 +5,8 @@ from typing import Any, Dict, List, Optional, Tuple
 from core.errors import BusinessError, ErrorCode, ValidationError
 from core.infrastructure.transaction import TransactionManager
 from core.models import OpType
-from core.models.enums import SOURCE_TYPE_VALUES, SourceType
+from core.models.enums import SourceType
+from core.models.resource_capabilities import OP_TYPE_CATEGORIES
 from core.services.common.enum_normalizers import source_type_label
 from core.services.common.normalize import normalize_text
 from data.repositories import OpTypeRepository
@@ -46,8 +47,8 @@ class OpTypeService:
             if not ot_category:
                 ot_category = SourceType.INTERNAL.value
 
-        if ot_category is not None and ot_category not in SOURCE_TYPE_VALUES:
-            raise ValidationError("“归属”不正确，请选择：自制 / 外协。", field="归属")
+        if ot_category is not None and ot_category not in OP_TYPE_CATEGORIES:
+            raise ValidationError("“适用归属”不正确，请选择：自制 / 外协 / 自制和外协都可。", field="归属")
 
         return ot_id, ot_name, ot_category
 
@@ -165,7 +166,7 @@ class OpTypeService:
                 "工种编号": ot.op_type_id,
                 "工种名称": ot.name,
                 "归属": ot.category,
-                "归属显示": source_type_label(ot.category),
+                "归属显示": "自制和外协都可" if ot.category == "both" else source_type_label(ot.category),
             }
         return existing
 

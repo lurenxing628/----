@@ -33,15 +33,16 @@ MATERIAL_COLUMNS = ("material_id", "name", "spec", "unit", "stock_qty", "status"
 READONLY = ("created_at",)
 REQUIRED = ("business_code",)
 NULLABLE = ("spec", "unit", "remark")
-#: 文件里的状态写英文代号，和界面上的中文标签不是一回事。
-ENUMS = {"status": ("active", "inactive")}
+STATUS_LABELS = {"active": "启用", "inactive": "停用"}
+STATUS_VALUES = {label: key for key, label in STATUS_LABELS.items()}
+ENUMS = {"status": tuple(STATUS_LABELS.values())}
 _VALUE_HINTS = {
     "business_code": "物料编号，例如 MAT-001；不填就不知道改哪一条",
     "label": "名称；新增时必须填，已有的留空保持原样",
     "spec": "规格；要清除请填 \\N（大写）",
     "unit": "单位，例如 kg；要清除请填 \\N（大写）",
     "stock_qty": "库存数量，填数字，不要带单位或千分位逗号",
-    "status": "只填代号：active 启用 / inactive 停用",
+    "status": "填写启用或停用；兼容旧文件的 active、inactive",
     "remark": "随便写；要清除请填 \\N（大写）",
     "created_at": "导出时带出的创建时间，导入时不看这一列",
 }
@@ -51,7 +52,7 @@ _ERROR_HINTS = {
     "spec": "填了 \\N 以外的清除写法",
     "unit": "填了 \\N 以外的清除写法",
     "stock_qty": "不是数字，或者带了单位、「是/否」、千分位逗号",
-    "status": "填了中文，或者填了 active、inactive 以外的代号",
+    "status": "填了启用、停用及其旧英文代号以外的词",
     "remark": "填了 \\N 以外的清除写法",
     "created_at": "这一列不校验",
 }
@@ -59,12 +60,12 @@ _GENERAL_RULES = (
     "一次最多导入 " + str(IMPORT_ROW_LIMIT) + " 行。",
     "按编号增量更新：编号已有的更新，没有的新增，文件里没写的物料完全不动，不会被删除。",
     "空格子表示这一项保持原样，不是清除；要清除规格、单位或备注请填 \\N（大写）。",
-    "状态这一列填英文代号，不要填界面上看到的中文。",
+    "状态填写与页面相同的启用、停用；旧文件的英文代号仍可导入。",
     "只读列仅供参考，不导入。",
 )
 _SAMPLE_ROWS = (
-    ("MAT-001", "45# 圆钢", "D25", "kg", "12.375", "active", "常备料"),
-    ("MAT-002", "铝板", "3mm", "张", "40", "inactive", ""),
+    ("MAT-001", "45# 圆钢", "D25", "kg", "12.375", "启用", "常备料"),
+    ("MAT-002", "铝板", "3mm", "张", "40", "停用", ""),
 )
 
 

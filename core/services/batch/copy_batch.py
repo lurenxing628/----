@@ -6,6 +6,7 @@ from core.errors import BusinessError, ErrorCode, ValidationError
 from core.models import Batch
 from core.models.enums import BatchStatus
 from core.services.scheduler.template_lineage import TemplateLineageWriter
+from data.repositories.batch_material_repo import BatchMaterialRepository
 from data.repositories.schedule_batch_copy_repo import ScheduleBatchCopyRepository
 
 
@@ -16,7 +17,8 @@ def copy_batch(svc, source_batch_id: Any, new_batch_id: Any) -> Batch:
     规则：
     - 新批次 status 固定为 pending
     - 新批次工序 status 固定为 pending（不复制 scheduled 等状态）
-    - 其它字段尽量保持一致（图号/数量/交期/优先级/齐套/备注/工序补充信息等）
+    - 物料需求复制，实到数量清零，齐套状态和日期重新确认
+    - 其它字段尽量保持一致（图号/数量/交期/优先级/备注/工序补充信息等）
     """
     src = svc._normalize_text(source_batch_id)
     dst = svc._normalize_text(new_batch_id)
@@ -43,8 +45,8 @@ def copy_batch(svc, source_batch_id: Any, new_batch_id: Any) -> Batch:
                 "quantity": int(b.quantity),
                 "due_date": b.due_date,
                 "priority": b.priority,
-                "ready_status": b.ready_status,
-                "ready_date": b.ready_date,
+                "ready_status": "no",
+                "ready_date": None,
                 "status": BatchStatus.PENDING.value,
                 "remark": b.remark,
             }
@@ -52,7 +54,7 @@ def copy_batch(svc, source_batch_id: Any, new_batch_id: Any) -> Batch:
 
         # 与批次共用事务，保留原始工序及复制时的来源版本。
         writer = TemplateLineageWriter(svc.conn)
-        for source_id in source_ids:
-            writer.copy_instance(dst, source_id)
+        mapping = {source_id: writer.copy_instance(dst, source_id) for source_id in source_ids}
+        BatchMaterialRepository(svc.conn).copy_requirements(src, dst, mapping)
 
     return svc._get_or_raise(dst)

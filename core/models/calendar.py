@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, Optional, Tuple
 
 from ._helpers import RowLike, as_dict, get, parse_float_or_default
+from .calendar_periods import decode_periods, encode_periods
 from .enums import CalendarDayType, YesNo
 
 
@@ -26,6 +27,8 @@ class WorkCalendar:
     allow_normal: str = YesNo.YES.value  # yes/no
     allow_urgent: str = YesNo.YES.value  # yes/no
     remark: Optional[str] = None
+
+    periods_json: Optional[str] = None
 
     @classmethod
     def from_row(cls, row: RowLike) -> WorkCalendar:
@@ -53,6 +56,7 @@ class WorkCalendar:
             allow_normal=(str(get(row, "allow_normal") or YesNo.YES.value).strip().lower() or YesNo.YES.value),
             allow_urgent=(str(get(row, "allow_urgent") or YesNo.YES.value).strip().lower() or YesNo.YES.value),
             remark=get(row, "remark"),
+            periods_json=encode_periods(decode_periods(get(row, "periods_json"))),
         )
 
     def to_dict(self) -> Dict[str, Any]:
@@ -67,6 +71,7 @@ class WorkCalendar:
                 "allow_normal": self.allow_normal,
                 "allow_urgent": self.allow_urgent,
                 "remark": self.remark,
+                "periods_json": self.periods_json,
             }
         )
 
@@ -91,6 +96,8 @@ class OperatorCalendar:
     allow_normal: str = YesNo.YES.value  # yes/no
     allow_urgent: str = YesNo.YES.value  # yes/no
     remark: Optional[str] = None
+
+    periods_json: Optional[str] = None
 
     @classmethod
     def from_row(cls, row: RowLike) -> OperatorCalendar:
@@ -119,6 +126,7 @@ class OperatorCalendar:
             allow_normal=(str(get(row, "allow_normal") or YesNo.YES.value).strip().lower() or YesNo.YES.value),
             allow_urgent=(str(get(row, "allow_urgent") or YesNo.YES.value).strip().lower() or YesNo.YES.value),
             remark=get(row, "remark"),
+            periods_json=encode_periods(decode_periods(get(row, "periods_json"))),
         )
 
     def to_dict(self) -> Dict[str, Any]:
@@ -134,5 +142,6 @@ class OperatorCalendar:
                 "allow_normal": self.allow_normal,
                 "allow_urgent": self.allow_urgent,
                 "remark": self.remark,
+                "periods_json": self.periods_json,
             }
         )

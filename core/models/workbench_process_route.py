@@ -6,6 +6,7 @@ from collections import Counter
 from dataclasses import dataclass
 from typing import Any, Dict, List, Tuple
 
+from core.models.process_route_text import serialize_route_rows
 from core.models.workbench_command import WorkbenchCommandRejected
 
 MAX_ROUTE_OPERATIONS = 2000
@@ -67,7 +68,7 @@ def _row_input(rows):
     if type(rows) is not list:
         raise WorkbenchCommandRejected("invalid_input", "工艺内容必须逐行提交。", 422)
     check_route_capacity(len(rows))
-    operations, diagnostics, raw_lines, sequences = [], [], [], []
+    operations, diagnostics, raw_rows, sequences = [], [], [], []
     for index, row in enumerate(rows, 1):
         _object(row, {"seq", "op_type_name"})
         seq, name = row["seq"], row["op_type_name"]
@@ -76,15 +77,14 @@ def _row_input(rows):
         # Check magnitude before formatting potentially enormous Python integers.
         if route_sequence(seq) is None:
             diagnostics.append(route_diagnostic("invalid_sequence", f"第 {index} 行的工序号必须是正整数，而且不能过大。"))
-            raw_lines.append("[invalid sequence] " + name)
             continue
-        raw_lines.append(str(seq) + name)
+        raw_rows.append((seq, name.strip()))
         sequences.append(seq)
         if not name.strip():
             diagnostics.append(route_diagnostic("missing_operation_name", f"工序{seq}缺少工种名称。", sequence=seq))
             continue
         operations.append((seq, name.strip()))
-    raw = "\n".join(raw_lines)
+    raw = serialize_route_rows(raw_rows)
     check_route_text(raw)
     append_duplicate_diagnostics(sequences, diagnostics)
     return ProcessRoutePreviewInput("rows", raw, operations, diagnostics)

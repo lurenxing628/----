@@ -5,7 +5,8 @@ from core.algorithm_runtime.calendar_timing_memo import member_identity_guard
 from .engine import NATIVE_TIMING_METHODS, CalendarEngine
 
 _SERVICE_METHODS = ("get_efficiency", "adjust_to_working_time", "add_working_hours")
-_ENGINE_METHODS = _SERVICE_METHODS + ("policy_for_datetime", "_policy_for_datetime", "_policy_for_date")
+_ENGINE_METHODS = _SERVICE_METHODS + ("policy_for_datetime", "_policy_for_datetime", "_policy_for_date",
+                                      "_effective_segments", "_allowed_segments")
 _ATTRIBUTE_HOOKS = ("__getattribute__", "__getattr__", "__dict__")
 _MEMO_SERVICE_METHODS = _SERVICE_METHODS + ("certified_slot_window", "working_hours_between")
 

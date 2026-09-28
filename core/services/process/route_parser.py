@@ -6,6 +6,7 @@ from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple
 
 from core.models.enums import SourceType
+from core.models.resource_capabilities import supports_source
 from core.services.common.safe_logging import safe_info
 from core.services.process.route_parser_constraints import SupplierConstraintResolver, SupplierGlobalIssue
 from core.services.process.route_parser_errors import (
@@ -25,9 +26,12 @@ from core.services.process.route_parser_tokens import (
     SEPARATORS as ROUTE_SEPARATORS,
 )
 from core.services.process.route_parser_tokens import (
+    compact_name_ambiguities,
+    parse_explicit_route,
     preprocess_route_string,
     route_format_errors,
     route_tokens,
+    serialize_route_rows,
 )
 
 
@@ -104,6 +108,48 @@ class RouteParseContext:
     supplier_global_issues: List[SupplierGlobalIssue]
 
 
+def _explicit_format_errors(rows):
+    errors, seen = [], set()
+    for seq, name in rows:
+        if len(seq) > 19 or not 0 < int(seq) <= (1 << 63) - 1:
+            errors.append("工序号必须是正整数，而且不能超出可用范围。")
+        elif int(seq) in seen:
+            errors.append("工序号 " + seq + " 重复，请核对。")
+        seen.add(int(seq) if len(seq) <= 19 else seq)
+        if not name.strip():
+            errors.append("工序 " + seq + " 缺少工种名称。")
+    return errors
+
+
+def _route_matches(explicit, normalized, op_types, errors):
+    matches = explicit if explicit is not None else route_tokens(normalized)
+    if explicit is None:
+        errors.extend(message for _, message in compact_name_ambiguities(matches, op_types))
+    if explicit is not None and errors:
+        return []
+    return matches
+
+
+def _empty_parse_result(original_input, normalized, warnings, errors):
+    return ParseResult(status=ParseStatus.FAILED, operations=[], external_groups=[], warnings=warnings, errors=errors,
+                       stats={"total": 0, SourceType.INTERNAL.value: 0, SourceType.EXTERNAL.value: 0, "unknown": 0},
+                       original_input=original_input, normalized_input=normalized)
+
+
+def _validate_compact_format(normalized):
+    if not normalized:
+        return False, "工艺路线不能为空"
+    if re.match(r"^\d", normalized) is None:
+        return False, "格式无效：必须以工序号开头"
+    tail_m = re.search(r"(\d+)$", normalized)
+    if tail_m:
+        return False, f"格式无效：尾部工序号 {tail_m.group(1)} 缺少工种名"
+    matches = re.findall(r"(\d+)([^\d]+)", normalized)
+    if not matches:
+        return False, "格式无效，请使用“工序号+工种名”格式"
+    return True, f"格式有效，识别到 {len(matches)} 道工序"
+
+
 class RouteParser:
     """
     工艺路线解析器（按开发文档 7.x“预处理 + 容错 + 报告”保留核心逻辑）。
@@ -142,29 +188,20 @@ class RouteParser:
         warnings: List[str] = []
         errors: List[str] = []
         original_input = route_string or ""
-        normalized = self._preprocess(route_string)
-
-        if not normalized:
-            return ParseResult(
-                status=ParseStatus.FAILED,
-                operations=[],
-                external_groups=[],
-                warnings=[],
-                errors=[EMPTY_ROUTE_ERROR],
-                stats={"total": 0, SourceType.INTERNAL.value: 0, SourceType.EXTERNAL.value: 0, "unknown": 0},
-                original_input=original_input,
-                normalized_input="",
-            )
-
-        errors.extend(route_format_errors(normalized))
+        normalized, explicit = self._read_route_input(route_string, errors)
+        if not normalized and not errors:
+            return _empty_parse_result(original_input, "", [], [EMPTY_ROUTE_ERROR])
+        if explicit is None:
+            errors.extend(route_format_errors(normalized))
+        else:
+            errors.extend(_explicit_format_errors(explicit))
         # 单次解析 context=None → 每次重建（行为与历史逐字一致）；批量解析传入循环外构建的 context 复用，消除 N+1。
         ctx = context if context is not None else self.build_parse_context()
         op_types = ctx.op_types
         suppliers = ctx.suppliers
         supplier_issues = ctx.supplier_issues
         supplier_global_issues = ctx.supplier_global_issues
-        matches = route_tokens(normalized)
-
+        matches = _route_matches(explicit, normalized, op_types, errors)
         if not matches:
             self._apply_supplier_global_issues(
                 supplier_global_issues=supplier_global_issues,
@@ -176,16 +213,7 @@ class RouteParser:
             final_errors = list(errors or [])
             if GENERIC_FORMAT_ERROR not in final_errors:
                 final_errors.append(GENERIC_FORMAT_ERROR)
-            return ParseResult(
-                status=ParseStatus.FAILED,
-                operations=[],
-                external_groups=[],
-                warnings=warnings,
-                errors=final_errors,
-                stats={"total": 0, SourceType.INTERNAL.value: 0, SourceType.EXTERNAL.value: 0, "unknown": 0},
-                original_input=original_input,
-                normalized_input=normalized,
-            )
+            return _empty_parse_result(original_input, normalized, warnings, final_errors)
 
         operations, stats = self._parse_operations(
             matches=matches,
@@ -204,8 +232,19 @@ class RouteParser:
             errors=errors,
             strict_mode=strict_mode,
         )
-        external_groups = self._identify_external_groups(operations, part_no)
+        return self._completed_parse(part_no, original_input, normalized, operations, stats, warnings, errors)
 
+    def _read_route_input(self, route_string, errors):
+        try:
+            explicit = parse_explicit_route(route_string or "")
+        except ValueError as exc:
+            explicit = []
+            errors.append(str(exc))
+        normalized = serialize_route_rows(explicit) if explicit is not None else self._preprocess(route_string)
+        return normalized, explicit
+
+    def _completed_parse(self, part_no, original_input, normalized, operations, stats, warnings, errors):
+        external_groups = self._identify_external_groups(operations, part_no)
         if errors:
             status = ParseStatus.FAILED
         elif warnings:
@@ -315,7 +354,7 @@ class RouteParser:
                     str(getattr(op_type, "category", None) or SourceType.INTERNAL.value).strip().lower()
                     or SourceType.INTERNAL.value
                 )
-                is_internal = cat == SourceType.INTERNAL.value
+                is_internal = supports_source(cat, SourceType.INTERNAL.value)
                 is_recognized = True
             else:
                 is_internal = False
@@ -400,20 +439,12 @@ class RouteParser:
         if not route_string or not str(route_string).strip():
             return False, "工艺路线不能为空"
 
-        normalized = self._preprocess(route_string)
-        if not normalized:
-            return False, "工艺路线不能为空"
-
-        if re.match(r"^\d", normalized) is None:
-            return False, "格式无效：必须以工序号开头"
-        tail_m = re.search(r"(\d+)$", normalized)
-        if tail_m:
-            return False, f"格式无效：尾部工序号 {tail_m.group(1)} 缺少工种名"
-
-        pattern = r"(\d+)([^\d]+)"
-        matches = re.findall(pattern, normalized)
-
-        if not matches:
-            return False, "格式无效，请使用“工序号+工种名”格式"
-
-        return True, f"格式有效，识别到 {len(matches)} 道工序"
+        try:
+            explicit = parse_explicit_route(route_string)
+        except ValueError as exc:
+            return False, str(exc)
+        if explicit is not None:
+            if _explicit_format_errors(explicit):
+                return False, "工序号必须为不重复的正整数，每道工序都要有名称。"
+            return True, f"格式有效，识别到 {len(explicit)} 道工序"
+        return _validate_compact_format(self._preprocess(route_string))

@@ -77,14 +77,14 @@ def _naive(engine: CalendarEngine, start: datetime, end: datetime, priority=None
 
 def test_weekend_gap_counts_only_working_hours_and_is_signed():
     engine = _default_engine()
-    assert engine.working_hours_between(FRI_16, TUE_00) == 8.0          # only Monday's shift
-    assert engine.working_hours_between(datetime(2026, 1, 12, 12), datetime(2026, 1, 14)) == 12.0
-    assert engine.working_hours_between(TUE_00, FRI_16) == -8.0
+    assert engine.working_hours_between(FRI_16, TUE_00) == pytest.approx(53 / 6)          # Friday 1.5 h plus Monday 7 h 20 min
+    assert engine.working_hours_between(datetime(2026, 1, 12, 12), datetime(2026, 1, 14)) == pytest.approx(34 / 3)
+    assert engine.working_hours_between(TUE_00, FRI_16) == pytest.approx(-53 / 6)
     assert engine.working_hours_between(FRI_16, FRI_16) == 0.0
     assert engine.working_hours_between(datetime(2026, 1, 10), datetime(2026, 1, 12)) == 0.0
     assert engine.working_hours_between(datetime(2026, 1, 12, 9), datetime(2026, 1, 12, 11, 30)) == 2.5
-    assert engine.working_hours_between(datetime(2026, 1, 12, 8), datetime(2026, 1, 19, 8)) == 40.0
-    assert engine.working_hours_between(datetime(2026, 1, 12, 6), datetime(2026, 1, 12, 20)) == 8.0
+    assert engine.working_hours_between(datetime(2026, 1, 12, 8), datetime(2026, 1, 19, 8)) == pytest.approx(110 / 3)
+    assert engine.working_hours_between(datetime(2026, 1, 12, 6), datetime(2026, 1, 12, 20)) == pytest.approx(22 / 3)
 
 
 @pytest.mark.parametrize("priority", [None, "normal", "urgent", "critical", "Urgent"])
@@ -110,9 +110,9 @@ def test_night_shift_hours_after_midnight_belong_to_the_shift_start_day():
 
 def test_prefix_cache_is_cleared_with_the_policy_cache():
     engine = _default_engine()
-    assert engine.working_hours_between(FRI_16, TUE_00) == 8.0
+    assert engine.working_hours_between(FRI_16, TUE_00) == pytest.approx(53 / 6)
     engine._resolve_calendar_row = lambda date_str, _op_id: _off_row(date_str)  # type: ignore[method-assign]
-    assert engine.working_hours_between(FRI_16, TUE_00) == 8.0   # still served from the prefix
+    assert engine.working_hours_between(FRI_16, TUE_00) == pytest.approx(53 / 6)   # still served from the prefix
     engine.clear_policy_cache()
     assert engine.working_hours_between(FRI_16, TUE_00) == 0.0
 
@@ -129,8 +129,8 @@ def test_memo_answers_repeats_and_an_override_breaks_the_native_certificate():
     engine = _default_engine()
     memo = MemoizedTimingCalendar(engine)
     first = memo.working_hours_between(FRI_16, TUE_00, priority=None, operator_id=None)
-    assert first == 8.0
-    assert memo.working_hours_between(FRI_16, TUE_00, priority=None, operator_id=None) == 8.0
+    assert first == pytest.approx(53 / 6)
+    assert memo.working_hours_between(FRI_16, TUE_00, priority=None, operator_id=None) == pytest.approx(53 / 6)
     assert (memo.hits, memo.misses) == (1, 1)
     assert "working_hours_between" in NATIVE_TIMING_METHODS
     assert native_timing_calendar(engine)
@@ -147,4 +147,4 @@ def test_every_production_calendar_exposes_the_working_hour_span():
     assert CalendarService.working_hours_between is not None
     assert _ContinuousCalendar().working_hours_between(FRI_16, TUE_00, priority=None, operator_id=None) == 80.0
     wrapped = ExecutionResourceCalendar(engine, [])
-    assert wrapped.working_hours_between(FRI_16, TUE_00, priority=None, operator_id=None) == 8.0
+    assert wrapped.working_hours_between(FRI_16, TUE_00, priority=None, operator_id=None) == pytest.approx(53 / 6)

@@ -14,6 +14,7 @@ from core.infrastructure.workbench_metadata_schema import workbench_metadata_con
 from core.infrastructure.workbench_process_schema import workbench_process_contract_issues
 from core.infrastructure.workbench_process_workflow_schema import workbench_process_workflow_contract_issues
 from core.infrastructure.workbench_resource_schema import workbench_resource_contract_issues
+from core.models.resource_capabilities import supports_source
 from data.repositories.workbench_process_workflow_repo import WorkbenchProcessWorkflowRepository
 
 _STAGES = ("route", "source", "hours")
@@ -106,16 +107,20 @@ def _group_source(group, part_no, op_type_id, suppliers):
 def _source_facts(part, op, group, suppliers):
     group_fact, group_supplier, valid_group = _group_source(group, part["part_no"], op["op_type_id"], suppliers)
     source_valid = (op["source"] in ("internal", "external") and op["type_name"] is not None
-                    and op["category"] == op["source"])
+                    and supports_source(op["category"], op["source"]))
     if op["type_name"] is not None:
         _ref(op["type_ref"])
     supplier, valid_supplier = _supplier(suppliers, op["supplier_id"], op["op_type_id"])
     if op["source"] == "external":
         source_valid = source_valid and valid_supplier and valid_group and (op["ext_group_id"] is None or group is not None)
+        if group is not None and group["supplier_id"] is not None:
+            source_valid = source_valid and group["supplier_id"] == op["supplier_id"]
     else:
         source_valid = source_valid and op["supplier_id"] is None and op["ext_group_id"] is None
-    values = [op["source"], op["op_type_id"], op["type_ref"], op["type_name"], op["category"],
-              op["default_merge_mode"], op["supplier_id"], supplier, group_fact, group_supplier]
+    # This slot used to contain the resource's default policy. Defaults only seed
+    # new groups; the actual group facts above govern existing confirmations.
+    values = [op["source"], op["op_type_id"], op["type_ref"], op["type_name"], op["source"] if supports_source(op["category"], op["source"]) else op["category"],
+              None, op["supplier_id"], supplier, group_fact, group_supplier]
     return values, source_valid
 
 
@@ -123,17 +128,44 @@ def _valid_hours(op, group):
     if op["source"] == "internal":
         return _number(op["setup_hours"]) and _number(op["unit_hours"])
     if group and group["merge_mode"] == "merged":
-        # Legacy merged groups can retain an independent per-operation duration.
-        return _number(group["total_days"], positive=True) and (op["ext_days"] is None or _number(op["ext_days"], positive=True))
+        # A merged group owns the duration. Retained per-operation history is not
+        # an effective cycle and must not prevent confirming its valid total.
+        return _number(group["total_days"], positive=True)
     return _number(op["ext_days"], positive=True)
 
 
-def _operation_facts(part, op, group, suppliers):
+def _source_signature(route, values, source_valid, old):
+    """Verify current source facts, including the former default-policy slot."""
+    source = _digest(["source-v1", route, values]) if source_valid else None
+    if source and old is not None and old["signature"] != source:
+        # Verify all current business facts before accepting an old signature.
+        # Only the former default-policy slot may differ; never rewrite evidence
+        # during reads or carry a confirmation across actual supplier/group edits.
+        for mode in ("separate", "merged"):
+            legacy = _digest(["source-v1", route, values[:5] + [mode] + values[6:]])
+            if old["signature"] == legacy:
+                source = legacy
+                break
+    return source
+
+
+def _hours_signature(source, op, group, old_hours):
+    """Use effective hours while recognizing equivalent historical signatures."""
+    merged = group is not None and group["merge_mode"] == "merged"
+    hours = _digest(["hours-v1", source, op["setup_hours"], op["unit_hours"], None if merged else op["ext_days"],
+                     group["total_days"] if group else None]) if source and _valid_hours(op, group) else None
+    if hours and merged and old_hours is not None and old_hours["signature"] != hours:
+        legacy = _digest(["hours-v1", source, op["setup_hours"], op["unit_hours"], op["ext_days"], group["total_days"]])
+        if old_hours["signature"] == legacy:
+            hours = legacy
+    return hours
+
+
+def _operation_facts(part, op, group, suppliers, records):
     route = [part["ref"], _ref(op["ref"]), op["seq"], op["op_type_name"]]
     values, source_valid = _source_facts(part, op, group, suppliers)
-    source = _digest(["source-v1", route, values]) if source_valid else None
-    hours = _digest(["hours-v1", source, op["setup_hours"], op["unit_hours"], op["ext_days"],
-                     group["total_days"] if group else None]) if source and _valid_hours(op, group) else None
+    source = _source_signature(route, values, source_valid, records.get((op["ref"], "source")))
+    hours = _hours_signature(source, op, group, records.get((op["ref"], "hours")))
     return route, {"source": source, "hours": hours}
 
 
@@ -158,9 +190,10 @@ def _load_facts(conn, part_no=None):
 def _facts(part, loaded):
     by_part, groups, suppliers, by_ref = loaded
     operations = by_part.get(part["part_no"], [])
+    records = by_ref.get(part["ref"], {})
     routes, per_op = [], {}
     for op in operations:
-        route, signatures = _operation_facts(part, op, groups.get(op["ext_group_id"]), suppliers)
+        route, signatures = _operation_facts(part, op, groups.get(op["ext_group_id"]), suppliers, records)
         routes.append(route)
         per_op[op["ref"]] = signatures
     valid_route = bool(operations) and all(type(op["seq"]) is int and op["seq"] > 0
@@ -172,7 +205,7 @@ def _facts(part, loaded):
         values = [[ref, signatures[stage]] for ref, signatures in per_op.items()]
         previous = _digest([stage + "-v1", previous, values]) if previous and all(value for _, value in values) else None
         signatures[stage] = previous
-    return operations, signatures, per_op, by_ref.get(part["ref"], {})
+    return operations, signatures, per_op, records
 
 
 def _confirmation(row, signature, prefix=""):

@@ -212,7 +212,7 @@ def canonical_ddl_parts(sql: str) -> List[str]:
     return _split_top_level(text[start:end]) if start >= 0 else []
 
 
-def _canonical_sql(sql: str) -> str:
+def canonical_sql(sql: str) -> str:
     """DDL 文本规范化：去 SQL 注释与 IF NOT EXISTS、压空白与标点周围空白；CREATE TABLE 的列/约束按文本排序。
 
     列的物理顺序不是契约：ALTER TABLE ADD COLUMN 只能追加，迁移链与 schema.sql 新库的列序天然不同，按列名访问不受影响。
@@ -223,6 +223,10 @@ def _canonical_sql(sql: str) -> str:
     if start >= 0:
         text = text[:start] + ",".join(sorted(_split_top_level(text[start:end]))) + text[end:]
     return text
+
+
+# Compatibility for the existing migration contracts; new callers use the public helper.
+_canonical_sql = canonical_sql
 
 
 def workbench_metadata_contract_issues(conn) -> List[str]:

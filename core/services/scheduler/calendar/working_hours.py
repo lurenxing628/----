@@ -5,19 +5,18 @@ working hours. The calendar answers "how many allowed working hours lie between 
 and ``end``" through a per-(operator, priority) prefix of daily window hours: after the
 first walk over a span, later spans over the same days cost two dictionary lookups.
 
-The result is signed: ``end`` before ``start`` gives the negated span. A day's window may
-run into the next calendar day (night shift) but never beyond it, matching the one-day
-look-back of ``CalendarEngine._policy_for_datetime``.
+The result is signed: ``end`` before ``start`` gives the negated span. Resolvers supply disjoint effective windows clipped to each natural day; night-shift
+tails and overlapping policies are resolved by CalendarEngine before accumulation.
 """
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
 from core.errors import ValidationError
 
 Window = Optional[Tuple[datetime, datetime]]
-WindowResolver = Callable[[date], Window]
+WindowResolver = Callable[[date], Sequence[Tuple[datetime, datetime]]]
 # Same magnitude bound as add_calendar_days: spans beyond a century are input errors, not schedules.
 MAX_SPAN_DAYS = 36500
 
@@ -49,20 +48,16 @@ class WorkingHoursPrefix:
         # _forward[i] = hours of days anchor .. anchor+i-1; _backward[i] = hours of days anchor-i .. anchor-1.
         self._forward: List[float] = [0.0]
         self._backward: List[float] = [0.0]
-        self._windows: Dict[date, Window] = {}
+        self._windows: Dict[date, Sequence[Tuple[datetime, datetime]]] = {}
 
-    def window(self, day: date) -> Window:
-        found = self._windows.get(day)
-        if found is None and day not in self._windows:
-            found = self._resolve(day)
-            self._windows[day] = found
-        return found
+    def window(self, day: date) -> Sequence[Tuple[datetime, datetime]]:
+        if day not in self._windows:
+            self._windows[day] = self._resolve(day)
+        return self._windows[day]
 
     def _hours(self, day: date) -> float:
         window = self.window(day)
-        if window is None:
-            return 0.0
-        return (window[1] - window[0]).total_seconds() / 3600.0
+        return sum((end - start).total_seconds() / 3600.0 for start, end in window)
 
     def cumulative(self, day: date) -> float:
         if self._anchor is None:
@@ -82,9 +77,7 @@ class WorkingHoursPrefix:
     def hours_until(self, instant: datetime) -> float:
         """Signed working hours from the anchor up to ``instant``."""
         day = instant.date()
-        previous = day - timedelta(days=1)
-        return (self.cumulative(previous) + clip_window_hours(self.window(previous), instant)
-                + clip_window_hours(self.window(day), instant))
+        return self.cumulative(day) + sum(clip_window_hours(window, instant) for window in self.window(day))
 
     def between(self, start: datetime, end: datetime) -> float:
         if type(start) is not datetime or type(end) is not datetime:

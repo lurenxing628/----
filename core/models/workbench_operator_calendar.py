@@ -12,11 +12,12 @@ from datetime import date, timedelta
 from typing import Any, Dict, List, Optional
 
 from core.errors import ValidationError
+from core.models.calendar_periods import normalize_periods
 
 #: 一次范围清除最多覆盖的天数，与日历文件的跨度上限一致。
 MAX_OPERATOR_RANGE_DAYS = 1096
-_FIELDS = frozenset(("type", "shiftStart", "shiftEnd", "eff", "allowNormal", "allowUrgent", "note"))
-_DOMAIN_FIELDS = {"shiftStart": "shift_start", "shiftEnd": "shift_end", "eff": "efficiency",
+_FIELDS = frozenset(("type", "shiftStart", "shiftEnd", "eff", "allowNormal", "allowUrgent", "note", "periods"))
+_DOMAIN_FIELDS = {"periods": "periods", "shiftStart": "shift_start", "shiftEnd": "shift_end", "eff": "efficiency",
                   "allowNormal": "allow_normal", "allowUrgent": "allow_urgent", "note": "remark",
                   "type": "day_type"}
 _INPUTS = {
@@ -85,6 +86,8 @@ def _choice(key: str, raw: Any, path: str) -> str:
 
 def _field_value(key: str, raw: Any) -> Any:
     path = "fields." + key
+    if key == "periods":
+        return normalize_periods(raw)
     if key == "eff":
         return _efficiency(raw, path)
     if key in ("shiftStart", "shiftEnd"):
@@ -101,10 +104,12 @@ def _fields(value: Any) -> Dict[str, Any]:
         rest = {"allowNormal": "no", "allowUrgent": "no"}
         if any(key in result and result[key] != expected for key, expected in rest.items()):
             raise ValidationError("休息日的普通件和急件都不可排产。", field="fields")
+        if result.get("periods"):
+            raise ValidationError("休息日不能填写工作时段。", field="fields.periods")
         result.update(rest)
         # 休息日没有班次可言，交给领域层按零工时处理。
         result.pop("shiftEnd", None)
-    elif "shiftStart" not in result:
+    elif "shiftStart" not in result and "periods" not in result:
         raise ValidationError("上班的日子必须填班次开始时刻。", field="fields.shiftStart")
     return result
 

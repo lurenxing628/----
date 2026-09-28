@@ -72,7 +72,7 @@ def normalize_material_input(action: str, payload: Any) -> Dict[str, Any]:
         else:
             status = _text(value, "fields.status")
             if status not in STATUS_VALUES:
-                raise ValidationError("状态仅允许 active 或 inactive。", field="fields.status")
+                raise ValidationError("状态请选择启用或停用。", field="fields.status")
             normalized[key] = status
     result["fields"] = normalized
     return result

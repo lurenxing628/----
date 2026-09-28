@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from core.errors import ValidationError
 from core.models.enums import MachineStatus, OperatorStatus, SourceType, YesNo
+from core.models.resource_capabilities import machine_types
 from core.services.common.enum_normalizers import skill_rank as _skill_rank_common
 from core.services.common.safe_logging import safe_warning
 from core.services.personnel.operator_qualification import OperatorQualificationError, OperatorQualificationService
@@ -52,12 +53,12 @@ def _machines_by_op_type(
     machines_by_op_type: Dict[str, List[str]] = {}
     for m in machines:
         mid = str(m.machine_id or "").strip()
-        ot = str(m.op_type_id or "").strip()
         if not mid or mid not in active_machines:
             continue
-        if op_type_ids and ot and ot not in op_type_ids:
-            continue
-        machines_by_op_type.setdefault(ot, []).append(mid)
+        for ot in machine_types(m) or ("",):
+            if op_type_ids and ot and ot not in op_type_ids:
+                continue
+            machines_by_op_type.setdefault(ot, []).append(mid)
     return machines_by_op_type
 
 
@@ -335,6 +336,10 @@ def build_resource_pool(
             "machines_by_operator": machines_by_operator,
             "pair_rank": pair_rank,
         }
+        if any(len(machine_types(machine)) > 1 for machine in machines):
+            qualifications = OperatorQualificationService(svc.conn, logger=svc.logger).load(sorted(active_ops))
+            resource_pool["operator_skills"] = {key: sorted(value) if value is not None else None
+                                                for key, value in qualifications.items()}
         if meta is not None:
             meta["resource_pool_build_ok"] = True
     except OperatorQualificationError as exc:

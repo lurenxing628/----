@@ -196,7 +196,7 @@ CREATE TABLE IF NOT EXISTS WorkCalendar (
     allow_normal    TEXT DEFAULT 'yes',
     allow_urgent    TEXT DEFAULT 'yes',
     remark          TEXT
-);
+, periods_json TEXT);
 CREATE TABLE IF NOT EXISTS OperatorCalendar (
     operator_id     TEXT NOT NULL,
     date            DATE NOT NULL,
@@ -207,7 +207,7 @@ CREATE TABLE IF NOT EXISTS OperatorCalendar (
     efficiency      REAL DEFAULT 1.0,
     allow_normal    TEXT DEFAULT 'yes',
     allow_urgent    TEXT DEFAULT 'yes',
-    remark          TEXT,
+    remark          TEXT, periods_json TEXT,
     PRIMARY KEY (operator_id, date),
     FOREIGN KEY (operator_id) REFERENCES Operators(operator_id) ON DELETE CASCADE
 );
@@ -1512,5 +1512,99 @@ CREATE TRIGGER IF NOT EXISTS wb_execution_voids_no_replace BEFORE INSERT ON Work
             BEGIN SELECT RAISE(ABORT, 'execution void cannot be replaced'); END;
 CREATE TRIGGER IF NOT EXISTS wb_execution_voids_no_update BEFORE UPDATE ON WorkbenchProductionReportVoids BEGIN SELECT RAISE(ABORT, 'execution ledger is append-only'); END;
 CREATE TRIGGER IF NOT EXISTS wb_execution_voids_no_delete BEFORE DELETE ON WorkbenchProductionReportVoids BEGIN SELECT RAISE(ABORT, 'execution ledger is append-only'); END;
+CREATE TABLE IF NOT EXISTS BatchExternalContexts (
+            operation_id INTEGER PRIMARY KEY,
+            part_no TEXT NOT NULL, sequence INTEGER NOT NULL,
+            template_operation_id INTEGER, template_status TEXT,
+            group_id TEXT, group_part_no TEXT, start_sequence INTEGER, end_sequence INTEGER,
+            merge_mode TEXT, total_days REAL, supplier_id TEXT, group_ref TEXT,
+            template_operation_ref TEXT,
+            origin TEXT NOT NULL CHECK(origin IN ('creation','template_copy','instance_copy','migration_v33')),
+            captured_at TEXT NOT NULL,
+            FOREIGN KEY(operation_id) REFERENCES BatchOperations(id) ON DELETE CASCADE);
+CREATE TRIGGER IF NOT EXISTS batch_external_context_created
+            AFTER INSERT ON BatchOperations WHEN lower(trim(NEW.source))='external' BEGIN INSERT INTO BatchExternalContexts SELECT o.id,b.part_no,o.seq,t.id,t.status,t.ext_group_id,
+        g.part_no,g.start_seq,g.end_seq,g.merge_mode,g.total_days,g.supplier_id,r.ref,tr.ref,
+        'creation',CURRENT_TIMESTAMP
+        FROM (SELECT * FROM BatchOperations WHERE id=NEW.id) o JOIN Batches b ON b.batch_id=o.batch_id
+        LEFT JOIN PartOperations t ON t.part_no=b.part_no AND t.seq=o.seq
+        LEFT JOIN ExternalGroups g ON g.group_id=t.ext_group_id
+        LEFT JOIN WorkbenchEntityRefs tr ON tr.kind='template_operation'
+            AND tr.entity_key=CAST(t.id AS TEXT) AND tr.active=1
+        LEFT JOIN WorkbenchEntityRefs r ON r.kind='template_external_group'
+            AND r.entity_key=g.group_id AND r.active=1
+        WHERE lower(trim(o.source))='external'; END;
+CREATE TRIGGER IF NOT EXISTS batch_external_context_source_changed
+            AFTER UPDATE OF source ON BatchOperations WHEN lower(trim(NEW.source))='external'
+                AND lower(trim(OLD.source)) IS NOT lower(trim(NEW.source))
+            BEGIN DELETE FROM BatchExternalContexts WHERE operation_id=NEW.id; INSERT INTO BatchExternalContexts SELECT o.id,b.part_no,o.seq,t.id,t.status,t.ext_group_id,
+        g.part_no,g.start_seq,g.end_seq,g.merge_mode,g.total_days,g.supplier_id,r.ref,tr.ref,
+        'creation',CURRENT_TIMESTAMP
+        FROM (SELECT * FROM BatchOperations WHERE id=NEW.id) o JOIN Batches b ON b.batch_id=o.batch_id
+        LEFT JOIN PartOperations t ON t.part_no=b.part_no AND t.seq=o.seq
+        LEFT JOIN ExternalGroups g ON g.group_id=t.ext_group_id
+        LEFT JOIN WorkbenchEntityRefs tr ON tr.kind='template_operation'
+            AND tr.entity_key=CAST(t.id AS TEXT) AND tr.active=1
+        LEFT JOIN WorkbenchEntityRefs r ON r.kind='template_external_group'
+            AND r.entity_key=g.group_id AND r.active=1
+        WHERE lower(trim(o.source))='external'; END;
+CREATE TABLE IF NOT EXISTS WorkbenchCalendarDefaults (
+            singleton INTEGER PRIMARY KEY CHECK(singleton=1),
+            state_ref TEXT NOT NULL DEFAULT (lower(hex(randomblob(24)))),
+            revision INTEGER NOT NULL DEFAULT 1 CHECK(revision>0), periods_json TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS WorkbenchShiftDayPeriods (
+            profile_id TEXT NOT NULL, day_offset INTEGER NOT NULL, periods_json TEXT NOT NULL,
+            PRIMARY KEY(profile_id, day_offset),
+            FOREIGN KEY(profile_id, day_offset) REFERENCES WorkbenchShiftPatternDays(profile_id, day_offset)
+                ON DELETE CASCADE);
+CREATE TRIGGER IF NOT EXISTS wb_shift_periods_insert
+            AFTER INSERT ON WorkbenchShiftDayPeriods BEGIN
+                UPDATE WorkbenchEntityRefs SET revision=revision+1
+                    WHERE kind='shift_profile' AND active=1 AND entity_key=NEW.profile_id;
+            END;
+CREATE TRIGGER IF NOT EXISTS wb_shift_periods_update
+            AFTER UPDATE ON WorkbenchShiftDayPeriods BEGIN
+                UPDATE WorkbenchEntityRefs SET revision=revision+1
+                    WHERE kind='shift_profile' AND active=1 AND entity_key=NEW.profile_id;
+            END;
+CREATE TRIGGER IF NOT EXISTS wb_shift_periods_delete
+            AFTER DELETE ON WorkbenchShiftDayPeriods BEGIN
+                UPDATE WorkbenchEntityRefs SET revision=revision+1
+                    WHERE kind='shift_profile' AND active=1 AND entity_key=OLD.profile_id;
+            END;
+CREATE TABLE IF NOT EXISTS MachineOpTypes (
+            machine_id TEXT NOT NULL REFERENCES Machines(machine_id) ON DELETE CASCADE,
+            op_type_id TEXT NOT NULL REFERENCES OpTypes(op_type_id),
+            PRIMARY KEY(machine_id, op_type_id));
+CREATE INDEX IF NOT EXISTS idx_machine_op_types_type ON MachineOpTypes(op_type_id);
+CREATE TRIGGER IF NOT EXISTS wb_machine_types_insert AFTER INSERT ON MachineOpTypes BEGIN
+            UPDATE WorkbenchEntityRefs SET revision=revision+1 WHERE active=1 AND ((kind='machine' AND entity_key=NEW.machine_id) OR (kind='op_type' AND entity_key=NEW.op_type_id));
+        END;
+CREATE TRIGGER IF NOT EXISTS wb_machine_types_update AFTER UPDATE ON MachineOpTypes BEGIN
+            UPDATE WorkbenchEntityRefs SET revision=revision+1 WHERE active=1 AND ((kind='machine' AND entity_key=OLD.machine_id) OR (kind='machine' AND entity_key=NEW.machine_id) OR (kind='op_type' AND entity_key=OLD.op_type_id) OR (kind='op_type' AND entity_key=NEW.op_type_id));
+        END;
+CREATE TRIGGER IF NOT EXISTS wb_machine_types_delete AFTER DELETE ON MachineOpTypes BEGIN
+            UPDATE WorkbenchEntityRefs SET revision=revision+1 WHERE active=1 AND ((kind='machine' AND entity_key=OLD.machine_id) OR (kind='op_type' AND entity_key=OLD.op_type_id));
+        END;
+CREATE TABLE IF NOT EXISTS BatchMaterialReviews (
+            requirement_id INTEGER PRIMARY KEY REFERENCES BatchMaterials(id) ON DELETE CASCADE,
+            batch_quantity INTEGER NOT NULL CHECK(batch_quantity >= 0));
+CREATE TABLE IF NOT EXISTS BatchMaterialStages (
+            requirement_id INTEGER PRIMARY KEY REFERENCES BatchMaterials(id) ON DELETE CASCADE,
+            operation_id INTEGER NOT NULL REFERENCES BatchOperations(id) ON DELETE RESTRICT);
+CREATE TABLE IF NOT EXISTS BatchMaterialArrivals (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            requirement_id INTEGER NOT NULL REFERENCES BatchMaterials(id) ON DELETE CASCADE,
+            arrival_date TEXT NOT NULL,
+            quantity REAL NOT NULL CHECK(quantity > 0));
+CREATE INDEX IF NOT EXISTS idx_material_arrival_requirement ON BatchMaterialArrivals(requirement_id);
+CREATE TABLE IF NOT EXISTS BatchQuantitySplits (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            source_batch_id TEXT NOT NULL REFERENCES Batches(batch_id),
+            child_batch_id TEXT NOT NULL UNIQUE REFERENCES Batches(batch_id),
+            original_quantity INTEGER NOT NULL,
+            split_quantity INTEGER NOT NULL,
+            allocation_date TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
 INSERT INTO WorkbenchPlanIdentityClock(singleton, revision) SELECT 1, CASE WHEN NOT EXISTS (SELECT 1 FROM "WorkbenchPlanSourceRefs" LIMIT 1) AND NOT EXISTS (SELECT 1 FROM "WorkbenchTaskRefs" LIMIT 1) AND NOT EXISTS (SELECT 1 FROM "ScheduleHistory" LIMIT 1) AND NOT EXISTS (SELECT 1 FROM "BatchOperations" LIMIT 1) AND NOT EXISTS (SELECT 1 FROM "ScheduleCandidate" LIMIT 1) AND NOT EXISTS (SELECT 1 FROM "ScheduleCandidateSelection" LIMIT 1) AND NOT EXISTS (SELECT 1 FROM "ScheduleAdjustmentScenario" LIMIT 1) AND NOT EXISTS (SELECT 1 FROM "Schedule" LIMIT 1) AND NOT EXISTS (SELECT 1 FROM "ScheduleCandidateRows" LIMIT 1) AND NOT EXISTS (SELECT 1 FROM "ScheduleAdjustmentScenarioRow" LIMIT 1) THEN 1 ELSE 0 END WHERE NOT EXISTS (SELECT 1 FROM WorkbenchPlanIdentityClock);
 INSERT INTO WorkbenchExecutionLedgerClock(singleton, revision, next_report_no) SELECT 1, CASE WHEN NOT EXISTS (SELECT 1 FROM WorkbenchExecutionLegacyFacts LIMIT 1) AND NOT EXISTS (SELECT 1 FROM WorkbenchProductionReports LIMIT 1) AND NOT EXISTS (SELECT 1 FROM WorkbenchProductionReportRevisions LIMIT 1) AND NOT EXISTS (SELECT 1 FROM OperationExecutionEvents LIMIT 1) AND NOT EXISTS (SELECT 1 FROM WorkbenchCommandReceipts WHERE action GLOB 'execution.*' LIMIT 1) THEN 1 ELSE 0 END, 1 WHERE NOT EXISTS (SELECT 1 FROM WorkbenchExecutionLedgerClock);

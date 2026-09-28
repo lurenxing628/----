@@ -7,7 +7,7 @@ MAX_ROWS = 5000
 MAX_BYTES = 10 * 1024 * 1024
 MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 #: 导出时会多带一列「状态」供核对，导入时不看它；这里按导入列目录给。
-REQUIRED = ("business_code", "part_no", "quantity", "due_date")
+REQUIRED = ("business_code",)
 ENUMS = {"priority": ("普通", "急件", "特急"), "ready_status": ("齐套", "未齐套", "部分齐套")}
 _VALUE_HINTS = {
     "business_code": "批次号，例如 B001；不填就不知道改哪一条",
@@ -23,7 +23,7 @@ _ERROR_HINTS = {
     "business_code": "留空、有首尾空格、或同一份文件里出现了两次",
     "part_no": "留空，或者这个图号在系统里找不到",
     "quantity": "不是正整数，或者填了「是/否」",
-    "due_date": "留空、不是真实日期、或者带了时分",
+    "due_date": "不是真实日期、或者带了时分",
     "priority": "填了普通、急件、特急以外的词",
     "ready_status": "填了齐套、未齐套、部分齐套以外的词",
     "ready_date": "不是真实日期，或者带了时分",
@@ -32,7 +32,9 @@ _ERROR_HINTS = {
 _GENERAL_RULES = (
     "一次最多 " + str(MAX_ROWS) + " 行。",
     "批次号、图号必须是文本；日期只填年月日，不要带时分。",
-    "已有批次的空格子不覆盖原值；新批次不会自动生成工序。",
+    "更新已有批次可只保留批次号和要修改的列；空格子不覆盖原值。",
+    "新增或清除重导须填写图号和数量；交期可稍后补充，新批次不会自动生成工序。",
+    "已有物料需求的批次调整数量后须重新核对需求和实到数量，不能仅修改齐套标记。",
     "导出文件会多一列「状态」供核对，导入时不看这一列。",
 )
 _SAMPLE_ROWS = (

@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
+from core.algorithm_contracts.material_release import released_start
 from core.algorithm_contracts.types import ScheduleResult
 from core.algorithm_contracts.value_domains import EXTERNAL, MERGED
 from core.algorithm_runtime.algo_stats import increment_counter
@@ -135,7 +136,7 @@ def schedule_external(
 
 
     bid = str(getattr(op, "batch_id", "") or "").strip()
-    prev_end = batch_progress.get(bid, base_time)
+    prev_end = released_start(op, batch_progress.get(bid, base_time))
 
     # merged 外部组：整组作为一个时间块（组内工序同起止）
     merge_mode = str(getattr(op, "ext_merge_mode", None) or "").strip().lower()

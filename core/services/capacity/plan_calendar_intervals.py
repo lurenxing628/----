@@ -1,6 +1,6 @@
 """Half-open interval algebra shared by plan calendar and occupancy projections."""
 
-from bisect import bisect_right
+from bisect import bisect_left, bisect_right
 from collections import defaultdict
 from datetime import datetime
 
@@ -87,7 +87,14 @@ class IntervalIndex:
     def hours_between(self, start, end):
         return (self._before(end) - self._before(start)) / 3600.0
 
+    def contains(self, at, *, ending=False):
+        """A finish may touch a period's end; a start must be inside [start,end)."""
+        index = (bisect_left if ending else bisect_right)(self.starts, at) - 1
+        if index < 0:
+            return False
+        start, end = self.intervals[index]
+        return start < at <= end if ending else start <= at < end
+
 
 def public_intervals(intervals):
     return [{"start": wire(start), "end": wire(end)} for start, end in intervals]
-

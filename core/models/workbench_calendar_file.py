@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, Optional, Tuple
 
 from core.errors import ValidationError
+from core.models.calendar_period_columns import PERIOD_CLOCKS, PERIOD_COLUMNS, PERIOD_DAYS, period_column_label
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_table_descriptor import (
     DEFAULT_IMPORT_BYTE_LIMIT,
@@ -19,7 +20,7 @@ MAX_RANGE_DAYS = 1096
 CALENDAR_KINDS = ("work_calendar", "operator_calendar")
 
 WRITABLE: Dict[str, Tuple[str, ...]] = {
-    "work_calendar": ("date", "day_type", "shift_hours", "efficiency", "allow_normal", "allow_urgent", "remark"),
+    "work_calendar": ("date", "day_type", "shift_hours", "efficiency", "allow_normal", "allow_urgent", "remark", "shift_start", "shift_end"),
     # 个人日历以班次起止为准，工时由系统算出来，所以工时是只读列，不在可写列里。
     "operator_calendar": ("operator_code", "date", "day_type", "shift_start", "shift_end", "efficiency",
                           "allow_normal", "allow_urgent", "remark"),
@@ -33,9 +34,9 @@ REQUIRED: Dict[str, Tuple[str, ...]] = {
 NUMERIC: Dict[str, Tuple[str, ...]] = {
     "work_calendar": ("shift_hours", "efficiency"), "operator_calendar": ("efficiency",),
 }
-NULLABLE: Dict[str, Tuple[str, ...]] = {"work_calendar": ("remark",), "operator_calendar": ("remark", "shift_end")}
+NULLABLE: Dict[str, Tuple[str, ...]] = {"work_calendar": ("remark", "shift_end"), "operator_calendar": ("remark", "shift_end")}
 DATE_FIELDS: Dict[str, Tuple[str, ...]] = {"work_calendar": ("date",), "operator_calendar": ("date",)}
-CLOCK_FIELDS: Dict[str, Tuple[str, ...]] = {"work_calendar": (), "operator_calendar": ("shift_start", "shift_end")}
+CLOCK_FIELDS: Dict[str, Tuple[str, ...]] = {"work_calendar": ("shift_start", "shift_end"), "operator_calendar": ("shift_start", "shift_end")}
 CODE_FIELDS: Dict[str, Tuple[str, ...]] = {"work_calendar": (), "operator_calendar": ("operator_code",)}
 
 LABELS = {
@@ -52,7 +53,8 @@ ENUMS = {
 #: 领域层字段名对应的界面字段名；两个日历服务的 proposed_row 收的都是各自的界面字段名。
 UI_FIELDS = {
     "work_calendar": {"day_type": "type", "shift_hours": "hours", "efficiency": "eff",
-                      "allow_normal": "allowNormal", "allow_urgent": "allowUrgent", "remark": "note"},
+                      "allow_normal": "allowNormal", "allow_urgent": "allowUrgent", "remark": "note",
+                      "shift_start": "shiftStart", "shift_end": "shiftEnd"},
     "operator_calendar": {"day_type": "type", "shift_start": "shiftStart", "shift_end": "shiftEnd",
                           "efficiency": "eff", "allow_normal": "allowNormal", "allow_urgent": "allowUrgent",
                           "remark": "note"},
@@ -64,7 +66,9 @@ _VALUE_HINTS = {
     "work_calendar": {
         "date": "YYYY-MM-DD，例如 2026-10-01；也接受 Excel 的日期格子",
         "day_type": "工作日 / 假期；留空保持原样，这一天原来没配置过就按默认规则定",
-        "shift_hours": "0 到 24 的数字；留空保持原样，新配置的工作日按 8 小时",
+        "shift_hours": "0 到 24 的数字；只改工时时按班次开始重新推算结束；同时填起止时须一致",
+        "shift_start": "24 小时制 HH:MM；留空不改；新增且未填时段或工时，采用页面配置的默认工作时间",
+        "shift_end": "24 小时制 HH:MM；不晚于开始表示次日；清除填 \\N，按工时推算",
         "efficiency": "大于 0 且不超过 200 的数字，按百分比填；留空保持原样",
         "allow_normal": "是 / 否；留空保持原样",
         "allow_urgent": "是 / 否；留空保持原样",
@@ -75,7 +79,7 @@ _VALUE_HINTS = {
         "date": "YYYY-MM-DD，例如 2026-10-01；也接受 Excel 的日期格子",
         "day_type": "工作日 / 假期；留空按工作日处理",
         "shift_start": "24 小时制的 HH:MM，例如 09:00；这一天原来就上班可以留空保持原样，其余上班的日子必须填",
-        "shift_end": "24 小时制的 HH:MM；比开始早表示跨零点的夜班；留空按 8 小时推算",
+        "shift_end": "24 小时制的 HH:MM；不晚于开始表示次日；旧单时段格式留空按工时推算",
         "efficiency": "大于 0 且不超过 200 的数字，按百分比填；留空保持原样",
         "allow_normal": "是 / 否；留空保持原样",
         "allow_urgent": "是 / 否；留空保持原样",
@@ -86,6 +90,8 @@ _VALUE_HINTS = {
 }
 _ERROR_HINTS = {
     "work_calendar": {
+        "shift_start": "不是 08:00 这样的时刻",
+        "shift_end": "不是 16:00 这样的时刻，或与所填工时不一致",
         "date": "留空、不是真实日期、或同一个日期在文件里出现了两次",
         "day_type": "填了工作日和假期以外的词",
         "shift_hours": "不是数字、小于 0 或大于 24",
@@ -125,11 +131,11 @@ _GENERAL_RULES = {
         "文件不会取消任何一天的特殊安排；要取消请到人员详情的「编辑个人日历」里按日期范围清除。",
     ),
 }
-_SAMPLE_ROWS = {
+_SAMPLE_ROWS: Dict[str, Tuple[Tuple[str, ...], ...]] = {
     "work_calendar": (
-        ("2026-10-01", "假期", "0", "", "否", "否", "国庆"),
-        ("2026-10-11", "工作日", "8", "100", "是", "是", "调休上班"),
-        ("2026-12-31", "假期", "4", "80", "是", "否", "放假加班半天"),
+        ("2026-10-01", "假期", "0", "", "否", "否", "国庆", "08:00", ""),
+        ("2026-10-11", "工作日", "8", "100", "是", "是", "调休上班", "08:00", "16:00"),
+        ("2026-12-31", "假期", "4", "80", "是", "否", "放假加班半天", "08:00", "12:00"),
     ),
     "operator_calendar": (
         ("OP001", "2026-10-11", "工作日", "09:00", "17:30", "100", "是", "是", "调休上班"),
@@ -137,6 +143,21 @@ _SAMPLE_ROWS = {
         ("OP002", "2026-10-11", "假期", "", "", "", "否", "否", "调休"),
     ),
 }
+
+
+# Existing start/end columns are the first period when a period count is supplied.
+for _kind in CALENDAR_KINDS:
+    WRITABLE[_kind] += PERIOD_COLUMNS
+    CLOCK_FIELDS[_kind] += PERIOD_CLOCKS
+    for _key in PERIOD_COLUMNS:
+        LABELS[_key] = period_column_label(_key)
+        _VALUE_HINTS[_kind][_key] = ("0 至 8；分段设置须填写总段数，0 表示不工作；留空保持原有设置"
+                                   if _key == "period_count" else "当天 / 次日；留空按当天" if _key in PERIOD_DAYS
+                                   else "HH:MM；分段设置时须完整填写所选各段的起止，首段使用班次开始和班次结束列")
+        _ERROR_HINTS[_kind][_key] = "段数与所填时段不一致、重叠、倒序或跨越超过 24 小时"
+    _SAMPLE_ROWS[_kind] = tuple(tuple(row) + ("",) * len(PERIOD_COLUMNS) for row in _SAMPLE_ROWS[_kind])
+for _key in PERIOD_DAYS:
+    ENUMS[_key] = {"当天": "当天", "次日": "次日"}
 
 
 def calendar_kind(kind: str) -> str:

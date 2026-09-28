@@ -121,6 +121,8 @@ def _segments(values):
 
 
 def _record(value):
+    if getattr(value, "material_ready_date", None) is not None:
+        return UNSUPPORTED
     if type(value) is Batch and (not _native_model_fields(Batch, _BATCH_FIELDS) or not _BATCH_GUARD(value)):
         return UNSUPPORTED
     if type(value) is BatchOperation and (not _native_model_fields(BatchOperation, _OP_FIELDS) or not _OP_GUARD(value)):

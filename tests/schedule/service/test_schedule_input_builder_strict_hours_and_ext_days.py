@@ -8,12 +8,14 @@ import pytest
 
 from core.errors import ValidationError
 from core.services.scheduler.run.schedule_input_builder import build_algo_operations
+from tests.schedule.service.external_context_support import snapshot
 
 
 class _StubSvc:
     def __init__(self):
         self.part_op_repo = self
         self.group_repo = self
+        self._aps_schedule_input_cache = {"external_contexts": {2: snapshot()}}
 
     def _get_batch_or_raise(self, batch_id):
         return SimpleNamespace(batch_id=batch_id, part_no="P001")

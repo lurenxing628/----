@@ -84,6 +84,7 @@ class CalendarService:
         allow_normal: Any = None,
         allow_urgent: Any = None,
         remark: Any = None,
+        periods: Any = None,
     ) -> WorkCalendar:
         row = self._admin.upsert(
             date_value=date_value,
@@ -95,6 +96,7 @@ class CalendarService:
             allow_normal=allow_normal,
             allow_urgent=allow_urgent,
             remark=remark,
+            periods=periods,
         )
         self._engine.clear_policy_cache()
         return row
@@ -136,6 +138,7 @@ class CalendarService:
         allow_normal: Any = None,
         allow_urgent: Any = None,
         remark: Any = None,
+        periods: Any = None,
     ) -> OperatorCalendar:
         row = self._admin.upsert_operator_calendar(
             operator_id=operator_id,
@@ -148,6 +151,7 @@ class CalendarService:
             allow_normal=allow_normal,
             allow_urgent=allow_urgent,
             remark=remark,
+            periods=periods,
         )
         self._engine.clear_policy_cache()
         return row
@@ -275,14 +279,18 @@ class CalendarService:
         policy = self._engine.policy_for_datetime(dt, operator_id=operator_id)
         if policy.date_str != dt.date().isoformat() or not policy.is_priority_allowed(priority):
             return None
-        start, end = policy.work_window()
-        if not start <= dt < end:
+        window = next(((start, end) for start, end in policy.work_windows() if start <= dt < end), None)
+        if window is None:
             return None
+        start, end = window
         if end.date() != dt.date():
             end = datetime.combine(end.date(), datetime.min.time())
             if (end - dt).days:
                 return None
         return start, end
+
+    def capacity_hours_between(self, start: datetime, end: datetime, *, priority=None, operator_id=None) -> float:
+        return self._engine.capacity_hours_between(start, end, priority=priority, operator_id=operator_id)
 
     def certified_sgs_policy_snapshot(self, operator_id):
         """Exact native policy contents used to invalidate one SGS candidate."""
@@ -301,7 +309,7 @@ _NATIVE_SERVICE_TIMING = {name: getattr(CalendarService, name) for name in
                           ("get_efficiency", "adjust_to_working_time", "add_working_hours")}
 _NATIVE_ENGINE_TIMING = {name: getattr(CalendarEngine, name) for name in
                          ("get_efficiency", "adjust_to_working_time", "add_working_hours",
-                          "policy_for_datetime", "_policy_for_datetime", "_policy_for_date")}
+                          "policy_for_datetime", "_policy_for_datetime", "_policy_for_date", "_effective_segments", "_allowed_segments")}
 _NATIVE_METHODS_UNCHANGED = make_native_method_guard(CalendarService)
 _SGS_SERVICE_GUARD = make_class_guard(CalendarService)
 register_sgs_calendar_certificate(CalendarService, CalendarService.certified_sgs_policy_snapshot)

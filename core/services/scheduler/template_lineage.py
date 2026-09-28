@@ -7,6 +7,7 @@ missing storage, broken identities, executed instances and withdrawal inputs is 
 from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_template_lineage import copy_payload, snapshot, state_snapshot
+from data.repositories.batch_external_context_repo import BatchExternalContextRepository
 from data.repositories.workbench_template_lineage_repo import WorkbenchTemplateLineageRepository
 
 from .template_lineage_query import (
@@ -54,6 +55,11 @@ class TemplateLineageWriter:
             instance = _instance_row(self.repo.insert_instance(copy_payload(template, batch_id, from_template=True)))
             if instance["part_ref"] != template["part_ref"]:
                 raise WorkbenchCommandRejected("template_lineage_mismatch", "目标批次不是这个来源模板的零件，系统没有按图号猜着匹配，这次没有复制。请重新选择批次。")
+            if instance["source"] == "external":
+                contexts = BatchExternalContextRepository(self.conn)
+                contexts.mark_template_copy(instance["id"])
+                if contexts.get(instance["id"]) is None:
+                    raise WorkbenchCommandRejected("external_context_missing", "没有保存这道外协工序的周期记录，这次没有复制。请先完成版本升级。")
             self.record_origin(instance, template, snapshot(template))
             return instance["id"]
 
@@ -61,8 +67,18 @@ class TemplateLineageWriter:
         self.require_ready()
         with TransactionManager(self.conn).transaction():
             original = self.instance(operation_id)
+            contexts = BatchExternalContextRepository(self.conn)
+            if original["source"] == "external":
+                context = contexts.get(original["id"])
+                if context is None:
+                    raise WorkbenchCommandRejected("external_context_missing", "原工序缺少外协周期记录，不能按当前模板猜着复制。请先核对原批次。")
+                # Copy is not scheduling: preserve existing incomplete facts and their diagnostics.
             facts = TemplateLineageQuery(self.conn).read([original["operation_ref"]])
             instance = _instance_row(self.repo.insert_instance(copy_payload(original, batch_id, from_template=False)))
+            if original["source"] == "external":
+                if original["part_ref"] != instance["part_ref"]:
+                    raise WorkbenchCommandRejected("template_lineage_mismatch", "目标批次不是原外协周期记录的零件，这次没有复制。")
+                contexts.copy(original["id"], instance["id"])
             origin = facts["origins"].get(original["operation_ref"])
             # Known but polluted origins remain known and polluted after copying.
             if origin is not None:

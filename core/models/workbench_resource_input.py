@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import re
-from datetime import date
+from datetime import date, timedelta
 from typing import Literal, Optional, overload
 
 from core.errors import ValidationError
+from core.models.calendar_periods import normalize_periods, period_summary, period_windows
+from core.models.resource_capabilities import OP_TYPE_CATEGORIES
 
 _FIELDS = {
     "op_type": {"category", "remark", "default_merge_mode"},
@@ -15,13 +17,13 @@ _FIELDS = {
     "machine_group": {"status", "remark"},
     "shift_profile": {"status", "remark", "anchor_date", "cycle_days", "pattern"},
 }
-_RELATIONS = {"op_type": set(), "machine": {"op_type_ref", "group_ref"},
+_RELATIONS = {"op_type": set(), "machine": {"op_type_ref", "op_type_refs", "group_ref"},
               "operator": {"skill_refs", "shift_profile_ref"}, "machine_group": set(), "shift_profile": set()}
 _STATUS = {"machine": ("active", "maintain", "inactive"), "operator": ("active", "leave", "inactive"),
            "machine_group": ("active", "inactive"), "shift_profile": ("active", "inactive")}
 #: 工种的归属与默认合并方式。原来内联在 _validate_field 的一行三元里，
 #: 描述符那份在 workbench_resource_file.ENUMS["op_type"]，两份分叉要能被测出来。
-_CATEGORY = ("internal", "external")
+_CATEGORY = OP_TYPE_CATEGORIES
 _MERGE_MODE = ("separate", "merged")
 
 
@@ -61,16 +63,7 @@ def resource_ref(value, path, *, nullable=False):
 def _pattern(value):
     if type(value) is not list or not 1 <= len(value) <= 366:
         raise ValidationError("班次周期必须包含1至366条日期规则。", field="fields.pattern")
-    days = []
-    for row in value:
-        resource_object(row, {"day_offset", "is_rest", "shift_start", "shift_end"}, "fields.pattern")
-        offset = row.get("day_offset")
-        if type(offset) is not int or not 0 <= offset <= 365 or type(row.get("is_rest")) is not bool:
-            raise ValidationError("班次日期序号和休息标记不正确。", field="fields.pattern")
-        for key in ("shift_start", "shift_end"):
-            if type(row.get(key)) is not str or re.fullmatch(r"(?:[01][0-9]|2[0-3]):[0-5][0-9]", row[key]) is None:
-                raise ValidationError("班次开始和结束必须为HH:MM。", field="fields.pattern." + key)
-        days.append(dict(row))
+    days = [_pattern_day(row) for row in value]
     days.sort(key=lambda row: row["day_offset"])
     if [row["day_offset"] for row in days] != list(range(len(days))):
         raise ValidationError("班次周期必须从第0天连续填写，不能重复或遗漏日期。", field="fields.pattern")
@@ -78,18 +71,39 @@ def _pattern(value):
     return days
 
 
+
+def _pattern_day(row):
+    resource_object(row, {"day_offset", "is_rest", "shift_start", "shift_end", "periods"}, "fields.pattern")
+    row = dict(row)
+    row["periods"] = normalize_periods(row.get("periods"))
+    if row["periods"] is not None:
+        if row.get("is_rest") and row["periods"]:
+            raise ValidationError("休息日不能填写工作时段。", field="fields.pattern")
+        if row.get("is_rest") is False and not row["periods"]:
+            raise ValidationError("工作日请至少填写一个工作时段，或明确改为休息日。", field="fields.pattern")
+        row["shift_start"], end, _ = period_summary(row["periods"], row.get("shift_start") or "00:00")
+        row["shift_end"] = end or row["shift_start"]
+    offset = row.get("day_offset")
+    if type(offset) is not int or not 0 <= offset <= 365 or type(row.get("is_rest")) is not bool:
+        raise ValidationError("班次日期序号和休息标记不正确。", field="fields.pattern")
+    for key in ("shift_start", "shift_end"):
+        if type(row.get(key)) is not str or re.fullmatch(r"(?:[01][0-9]|2[0-3]):[0-5][0-9]", row[key]) is None:
+            raise ValidationError("班次开始和结束必须为HH:MM。", field="fields.pattern." + key)
+    return row
+
+
 def _validate_adjacent_shifts(days):
     for index, day in enumerate(days):
         following = days[(index + 1) % len(days)]
         if day["is_rest"] or following["is_rest"]:
             continue
-        start, end, next_start = [_clock_minutes(value) for value in (day["shift_start"], day["shift_end"], following["shift_start"])]
-        finish = end + (1440 if end <= start else 0)
-        if finish > 1440 + next_start:
+        base = date(2000, 1, 1)
+        current = day["periods"] if day["periods"] is not None else [{"start": day["shift_start"], "end": day["shift_end"], "day_offset": 0}]
+        following_periods = following["periods"] if following["periods"] is not None else [{"start": following["shift_start"], "end": following["shift_end"], "day_offset": 0}]
+        left, right = period_windows(base, current), period_windows(base + timedelta(days=1), following_periods)
+        if left and right and left[-1][1] > right[0][0]:
             raise ValidationError("相邻轮换日期的班次时间重叠，请核对跨午夜结束时间。", field="fields.pattern")
-def _clock_minutes(value):
-    hour, minute = value.split(":")
-    return int(hour) * 60 + int(minute)
+
 
 
 def _field(kind, name, value):
@@ -139,14 +153,16 @@ def normalize_resource_input(kind, action, payload):
 
 def _normalize_relations(kind, value):
     relations = resource_object(value, _RELATIONS[kind], "relationships")
+    if "op_type_ref" in relations and "op_type_refs" in relations:
+        raise ValidationError("设备工种请使用同一份选择列表，不能同时提交两种设置。", field="relationships.op_type_refs")
     normalized = {}
     for key, value in relations.items():
-        if key == "skill_refs":
+        if key in ("skill_refs", "op_type_refs"):
             if type(value) is not list or len(value) > 2000:
-                raise ValidationError("技能工种必须是明确选择的记录列表。", field="relationships.skill_refs")
-            refs = [resource_ref(item, "relationships.skill_refs") for item in value]
+                raise ValidationError("工种必须是明确选择的记录列表。", field="relationships." + key)
+            refs = [resource_ref(item, "relationships." + key) for item in value]
             if len(set(refs)) != len(refs):
-                raise ValidationError("技能工种不能重复。", field="relationships.skill_refs")
+                raise ValidationError("工种不能重复。", field="relationships." + key)
             normalized[key] = sorted(refs)
         else:
             normalized[key] = resource_ref(value, "relationships." + key, nullable=True)

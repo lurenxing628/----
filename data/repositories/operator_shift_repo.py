@@ -13,5 +13,7 @@ class OperatorShiftRepository(BaseRepository):
             WHERE p.operator_id=? AND p.shift_profile_id IS NOT NULL""", (operator_id,))
 
     def pattern_day(self, profile_id, offset):
-        return self.fetchone("""SELECT day_offset,is_rest,shift_start,shift_end FROM WorkbenchShiftPatternDays
-            WHERE profile_id=? AND day_offset=?""", (profile_id, offset))
+        return self.fetchone("""SELECT d.day_offset,d.is_rest,d.shift_start,d.shift_end,p.periods_json
+            FROM WorkbenchShiftPatternDays d LEFT JOIN WorkbenchShiftDayPeriods p
+            ON p.profile_id=d.profile_id AND p.day_offset=d.day_offset
+            WHERE d.profile_id=? AND d.day_offset=?""", (profile_id, offset))

@@ -36,6 +36,7 @@ class ScheduleRunState:
     missing_seed_operator_samples: List[str] = field(default_factory=list)
     failure_details: List[Dict[str, Any]] = field(default_factory=list)
     batch_failure_sources: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+    readiness_gate_enabled: bool = False
 
     @classmethod
     def from_legacy(
@@ -89,6 +90,7 @@ class ScheduleRunState:
         types = self.last_op_type_by_machine
         return ScheduleRunState(
             base_time=self.base_time,
+            readiness_gate_enabled=self.readiness_gate_enabled,
             batch_progress=dict(self.batch_progress),
             external_group_cache=dict(self.external_group_cache),
             machine_timeline=clone_timeline(self.machine_timeline),

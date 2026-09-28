@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 from ._helpers import RowLike, as_dict, get
 from .enums import MachineStatus
@@ -18,6 +18,8 @@ class Machine:
     team_id: Optional[str] = None
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
+
+    op_type_ids: Tuple[str, ...] = ()
 
     @classmethod
     def from_row(cls, row: RowLike) -> Machine:
@@ -36,6 +38,7 @@ class Machine:
             team_id=str(team_id) if team_id is not None and team_id != "" else None,
             created_at=get(row, "created_at"),
             updated_at=get(row, "updated_at"),
+            op_type_ids=tuple(get(row, "op_type_ids") or ()),
         )
 
     def to_dict(self) -> Dict[str, Any]:

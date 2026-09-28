@@ -1,167 +1,48 @@
-"""回归测试：lookup_template_group_context_for_op 解析批次工序对应的外协模板与连续外协组——非严格模式下模板缺失/模板已删除/外协组缺失/part_no 或 seq 区间不匹配各产出对应的降级事件(template_missing/external_group_missing, merge_context_degraded=True)并填正确 field，无 ext_group_id 或组存在时返回 template/group 且不降级；严格模式下这些缺失路径改为抛 ValidationError（field 正确、可见消息含"已停止排产"且不泄漏单道兜底话术与 SECRET_TOKEN），并按 batch+(part_no,seq)+group 复用缓存只查一次。"""
-
-from __future__ import annotations
-
-from types import SimpleNamespace
+"""Lookup consumes captured batch facts, including stable identities and local cache."""
 
 import pytest
 
 from core.errors import ValidationError
-from core.models.enums import MergeMode
+from core.services.scheduler.contracts.external_context import context_group_key
 from core.services.scheduler.run.schedule_template_lookup import lookup_template_group_context_for_op
-
-
-class _Repo:
-    def __init__(self, values):
-        self.values = dict(values)
-        self.calls = []
-
-    def get(self, *args):
-        self.calls.append(tuple(args))
-        key = tuple(args) if len(args) != 1 else args[0]
-        return self.values.get(key)
-
-
-class _LookupSvc:
-    def __init__(self, *, template=None, groups=None, cache=None):
-        self.batch_repo_calls = []
-        self.part_op_repo = _Repo({("P001", 20): template})
-        self.group_repo = _Repo(groups or {})
-        self._aps_schedule_input_cache = cache
-
-    def _get_batch_or_raise(self, batch_id):
-        self.batch_repo_calls.append(batch_id)
-        return SimpleNamespace(batch_id=batch_id, part_no="P001")
-
-
-def _op():
-    return SimpleNamespace(id=2, op_code="OP_EXT_01", batch_id="B001", seq=20)
-
-
-def _template(ext_group_id, *, status="active"):
-    return SimpleNamespace(ext_group_id=ext_group_id, status=status)
-
-
-def _group(*, merge_mode=MergeMode.MERGED.value, total_days=4.0, part_no="P001", start_seq=20, end_seq=20):
-    return SimpleNamespace(
-        part_no=part_no,
-        start_seq=start_seq,
-        end_seq=end_seq,
-        merge_mode=merge_mode,
-        total_days=total_days,
-    )
-
-
-def _codes(outcome):
-    return [event.code for event in outcome.events]
-
-
-def test_lookup_template_missing_non_strict_returns_degraded_event() -> None:
-    outcome = lookup_template_group_context_for_op(_LookupSvc(template=None), _op(), strict_mode=False)
-
-    assert outcome.template is None
-    assert outcome.group is None
-    assert outcome.merge_context_degraded is True
-    assert _codes(outcome) == ["template_missing"]
-    assert outcome.events[0].field == "template"
-
-
-def test_lookup_without_ext_group_id_returns_template_without_degradation() -> None:
-    template = _template(None)
-
-    outcome = lookup_template_group_context_for_op(_LookupSvc(template=template), _op(), strict_mode=False)
-
-    assert outcome.template is template
-    assert outcome.group is None
-    assert outcome.merge_context_degraded is False
-    assert outcome.events == []
-
-
-@pytest.mark.parametrize("merge_mode", [MergeMode.MERGED.value, MergeMode.SEPARATE.value])
-def test_lookup_existing_group_returns_template_and_group_without_degradation(merge_mode) -> None:
-    template = _template("G001")
-    group = _group(merge_mode=merge_mode)
-
-    outcome = lookup_template_group_context_for_op(
-        _LookupSvc(template=template, groups={"G001": group}),
-        _op(),
-        strict_mode=False,
-    )
-
-    assert outcome.template is template
-    assert outcome.group is group
-    assert outcome.merge_context_degraded is False
-    assert outcome.events == []
-
-
-def test_lookup_external_group_missing_non_strict_returns_degraded_event() -> None:
-    template = _template("G404")
-
-    outcome = lookup_template_group_context_for_op(_LookupSvc(template=template, groups={}), _op(), strict_mode=False)
-
-    assert outcome.template is template
-    assert outcome.group is None
-    assert outcome.merge_context_degraded is True
-    assert _codes(outcome) == ["external_group_missing"]
-    assert outcome.events[0].field == "ext_group_id"
-
-
-@pytest.mark.parametrize(
-    ("template", "groups", "expected_code", "expected_field"),
-    [
-        (_template("G001", status="deleted"), {"G001": _group()}, "template_missing", "template"),
-        (_template("G001"), {"G001": _group(part_no="P999")}, "external_group_missing", "ext_group_id"),
-        (_template("G001"), {"G001": _group(start_seq=30, end_seq=40)}, "external_group_missing", "ext_group_id"),
-    ],
+from tests.schedule.service.external_context_support import (
+    SnapshotService,
+    external_operation,
+    merged_snapshot,
+    snapshot,
 )
-def test_lookup_unusable_context_non_strict_returns_degraded_event(
-    template,
-    groups,
-    expected_code,
-    expected_field,
-) -> None:
-    outcome = lookup_template_group_context_for_op(_LookupSvc(template=template, groups=groups), _op(), strict_mode=False)
-
-    assert outcome.group is None
-    assert outcome.merge_context_degraded is True
-    assert _codes(outcome) == [expected_code]
-    assert outcome.events[0].field == expected_field
 
 
-@pytest.mark.parametrize(
-    ("template", "groups", "expected_field"),
-    [
-        (None, {}, "template"),
-        (_template("G404"), {}, "ext_group_id"),
-        (_template("G001", status="deleted"), {"G001": _group()}, "template"),
-        (_template("G001"), {"G001": _group(part_no="P999")}, "ext_group_id"),
-        (_template("G001"), {"G001": _group(start_seq=30, end_seq=40)}, "ext_group_id"),
-    ],
-)
-def test_lookup_missing_paths_raise_in_strict_mode(template, groups, expected_field) -> None:
-    with pytest.raises(ValidationError) as exc_info:
-        lookup_template_group_context_for_op(_LookupSvc(template=template, groups=groups), _op(), strict_mode=True)
-
-    assert exc_info.value.field == expected_field
-    visible_message = str((exc_info.value.details or {}).get("user_message") or exc_info.value.message)
-    assert "已停止排产" in visible_message
-    assert "本次先按单道外协周期排产" not in visible_message
-    assert "SECRET_TOKEN" not in visible_message
+@pytest.mark.parametrize("mode", [None, "merged", "separate"])
+def test_lookup_uses_frozen_facts_without_reading_live_template(mode):
+    row = snapshot() if mode is None else merged_snapshot(merge_mode=mode)
+    svc = SnapshotService(row)
+    first = lookup_template_group_context_for_op(svc, external_operation())
+    second = lookup_template_group_context_for_op(svc, external_operation())
+    assert first.template.ext_group_id == context_group_key(row)
+    assert second.template.ext_group_id == first.template.ext_group_id
+    assert (first.group is None) == (mode is None)
+    if first.group:
+        assert first.group.total_days == row["total_days"]
+        assert first.group.merge_mode == mode
+    assert first.events == [] and not first.merge_context_degraded
+    assert svc.batch_calls == ["B001"]
 
 
-def test_lookup_reuses_batch_template_and_group_cache() -> None:
-    cache = {}
-    template = _template("G001")
-    group = _group()
-    svc = _LookupSvc(template=template, groups={"G001": group}, cache=cache)
+@pytest.mark.parametrize("strict", [False, True])
+@pytest.mark.parametrize("row", [
+    None, snapshot(template_status="deleted"), merged_snapshot(group_part_no="P999"),
+    merged_snapshot(start_sequence=30), merged_snapshot(group_ref=None),
+])
+def test_missing_or_invalid_facts_stop_lookup_without_fallback(row, strict):
+    with pytest.raises(ValidationError) as error:
+        lookup_template_group_context_for_op(SnapshotService(row), external_operation(), strict_mode=strict)
+    assert error.value.field == "external_context"
+    assert "SECRET_TOKEN" not in error.value.message
 
-    first = lookup_template_group_context_for_op(svc, _op(), strict_mode=False)
-    second = lookup_template_group_context_for_op(svc, _op(), strict_mode=False)
 
-    assert first.template is template
-    assert first.group is group
-    assert second.template is template
-    assert second.group is group
-    assert svc.batch_repo_calls == ["B001"]
-    assert svc.part_op_repo.calls == [("P001", 20)]
-    assert svc.group_repo.calls == [("G001",)]
+def test_distinct_permanent_group_or_frozen_rule_cannot_share_group_key():
+    original = merged_snapshot()
+    assert context_group_key(original) != context_group_key(merged_snapshot(group_ref="b" * 48))
+    assert context_group_key(original) != context_group_key(merged_snapshot(total_days=9))
+    assert context_group_key(original) == context_group_key(merged_snapshot(origin="instance_copy"))

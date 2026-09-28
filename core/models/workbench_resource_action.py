@@ -5,6 +5,7 @@ import json
 from dataclasses import dataclass
 
 from core.errors import ValidationError
+from core.models.resource_capabilities import supports_source
 from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
 from core.models.workbench_resource_query import ResourcePageRequest
 
@@ -37,7 +38,7 @@ def resource_refs(refs, *, allow_empty=False):
 
 
 def check_category(kind, raw, scope):
-    if kind == "op_type" and scope["category"] is not None and raw["category"] != scope["category"]:
+    if kind == "op_type" and scope["category"] is not None and not supports_source(raw["category"], scope["category"]):
         raise WorkbenchCommandRejected("constraint_conflict", "工种不属于本次自制/外协范围，请重新选择。")
 
 

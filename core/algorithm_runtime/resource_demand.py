@@ -10,6 +10,8 @@ from inspect import getattr_static
 from types import GetSetDescriptorType, MemberDescriptorType, SimpleNamespace
 from typing import Any, Dict, FrozenSet, Optional, Tuple
 
+from core.algorithm_contracts.operator_eligibility import qualified_operators
+
 _MISSING = object()
 _FIELDS = ("id", "batch_id", "piece_id", "source", "machine_id", "operator_id", "op_type_id")
 _RELATIONS = ("machines_by_op_type", "operators_by_machine", "machines_by_operator")
@@ -74,7 +76,7 @@ def _native_pair(pair: Any) -> bool:
     return type(pair) in (list, tuple) and len(pair) == 2 and all(type(value) is str for value in pair)
 
 
-def _pool_snapshot(pool: Any) -> Optional[Dict[str, Dict[str, Tuple[str, ...]]]]:
+def _pool_snapshot(pool: Any) -> Optional[Dict[str, Dict[str, Any]]]:
     if type(pool) is not dict or any(type(key) is not str for key in pool):
         return None
     result = {}
@@ -94,6 +96,25 @@ def _pool_snapshot(pool: Any) -> Optional[Dict[str, Dict[str, Tuple[str, ...]]]]
                 return None
             frozen[key] = tuple(str(value) for value in values if str(value).strip())
         result[name] = frozen
+    if "operator_skills" in pool:
+        skills = _skills_snapshot(pool["operator_skills"])
+        if skills is None or any(oid not in skills for values in result["operators_by_machine"].values() for oid in values):
+            return None
+        result["operator_skills"] = skills
+    return result
+
+
+def _skills_snapshot(skills):
+    if type(skills) is not dict or any(type(key) is not str for key in skills):
+        return None
+    result = {}
+    for key, values in skills.items():
+        if values is None:
+            result[key] = None
+        elif type(values) in (list, tuple) and all(type(value) is str for value in values):
+            result[key] = tuple(values)
+        else:
+            return None
     return result
 
 
@@ -126,7 +147,7 @@ def _qualified_pairs(fields: Dict[str, Any], pool: Dict[str, Any]) -> FrozenSet[
     return frozenset(
         (mid, oid)
         for mid in candidates
-        for oid in pool["operators_by_machine"].get(mid, ())
+        for oid in qualified_operators(pool, pool["operators_by_machine"].get(mid, ()), op_type)
         if not operator or oid == operator
     )
 

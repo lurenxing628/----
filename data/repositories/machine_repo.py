@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional, Union
 from core.models import Machine
 
 from .base_repo import BaseRepository
+from .machine_capability_repo import MachineCapabilityRepository
 from .reference_checks import exists_any_nonblank_reference, exists_value_reference
 
 
@@ -16,7 +17,7 @@ class MachineRepository(BaseRepository):
             "SELECT machine_id, name, op_type_id, category, status, remark, team_id, created_at, updated_at FROM Machines WHERE machine_id = ?",
             (machine_id,),
         )
-        return Machine.from_row(row) if row else None
+        return self._models([row])[0] if row else None
 
     def list(
         self,
@@ -32,8 +33,8 @@ class MachineRepository(BaseRepository):
             where.append("status = ?")
             params.append(status)
         if op_type_id:
-            where.append("op_type_id = ?")
-            params.append(op_type_id)
+            where.append("(op_type_id = ? OR machine_id IN (SELECT machine_id FROM MachineOpTypes WHERE op_type_id=?))")
+            params.extend((op_type_id, op_type_id))
         if category:
             where.append("category = ?")
             params.append(category)
@@ -44,7 +45,11 @@ class MachineRepository(BaseRepository):
             sql += " WHERE " + " AND ".join(where)
         sql += " ORDER BY machine_id"
         rows = self.fetchall(sql, tuple(params))
-        return [Machine.from_row(r) for r in rows]
+        return self._models(rows)
+
+    def _models(self, rows):
+        capabilities = MachineCapabilityRepository(self.conn).by_machines(row["machine_id"] for row in rows)
+        return [Machine.from_row(dict(row, op_type_ids=capabilities[row["machine_id"]])) for row in rows]
 
     def exists(self, machine_id: str) -> bool:
         return bool(self.fetchvalue("SELECT 1 FROM Machines WHERE machine_id = ? LIMIT 1", (machine_id,)))

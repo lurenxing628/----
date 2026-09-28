@@ -26,7 +26,7 @@ from .sgs_score_cache import plain_record_class
 from .sgs_scoring import _parse_due_date
 
 _FIELDS = ("id", "seq", "batch_id", "piece_id", "source", "machine_id", "operator_id", "op_type_name",
-           "setup_hours", "unit_hours", "quantity", "priority", "due_date", "ready_date", "ready_status")
+           "setup_hours", "unit_hours", "quantity", "priority", "due_date", "ready_date", "material_ready_date", "ready_status")
 
 
 def _blank_or_text(value):

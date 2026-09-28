@@ -6,6 +6,7 @@ from dataclasses import dataclass, replace
 from datetime import datetime
 from typing import Any, Mapping, NoReturn, Optional, Sequence, Tuple
 
+from core.algorithm_contracts.material_release import released_start
 from core.errors import ValidationError
 from core.shared.field_labels import display_field_label
 
@@ -335,7 +336,7 @@ def estimate_internal_slot(
     )
     max_shifts = _max_shift_count(segment_groups)
 
-    earliest = max(prev_end, base_time)
+    earliest = released_start(op, max(prev_end, base_time))
     earliest = _adjust_slot_start(calendar, earliest, priority=priority, operator_id=operator_id)
     abort_result = _abort_after_result(
         earliest=earliest,

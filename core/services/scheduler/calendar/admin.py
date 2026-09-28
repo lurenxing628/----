@@ -6,6 +6,12 @@ from typing import Any, Dict, List, Optional, Tuple
 from core.errors import ValidationError
 from core.infrastructure.transaction import TransactionManager
 from core.models import OperatorCalendar, WorkCalendar
+from core.models.calendar_periods import (
+    encode_periods,
+    normalize_periods,
+    payload_periods,
+    period_summary,
+)
 from core.models.enums import CALENDAR_DAY_TYPE_STORED_VALUES, CalendarDayType, YesNo
 from core.services.common.datetime_normalize import normalize_date, normalize_hhmm
 from core.services.common.normalization_matrix import (
@@ -16,6 +22,8 @@ from core.services.common.normalize import normalize_text
 from core.services.scheduler.config.config_service import ConfigService
 from core.shared.number_utils import parse_finite_float
 from data.repositories import CalendarRepository, OperatorCalendarRepository
+
+from .defaults import read_default_periods
 
 #: 没有单独设置开工时刻时采用的默认值。工作台据此判断某天的班次结束是推出来的还是真实班表。
 DEFAULT_SHIFT_START = "08:00"
@@ -129,6 +137,7 @@ class CalendarAdmin:
         allow_normal: Any = None,
         allow_urgent: Any = None,
         remark: Any = None,
+        periods: Any = None,
     ) -> WorkCalendar:
         d = self._normalize_date(date_value)
         dt = self._validate_day_type(day_type)
@@ -152,6 +161,11 @@ class CalendarAdmin:
             shift_start=shift_start,
             shift_end=shift_end,
         )
+        if periods is None and all(value is None for value in (shift_start, shift_end, shift_hours)) and dt == CalendarDayType.WORKDAY.value:
+            periods = read_default_periods(self.conn)
+        periods = normalize_periods(periods)
+        if periods is not None:
+            ss, se, sh_value = period_summary(periods, ss)
         return WorkCalendar(
             date=d,
             day_type=dt,
@@ -162,6 +176,7 @@ class CalendarAdmin:
             allow_normal=an,
             allow_urgent=au,
             remark=rmk,
+            periods_json=encode_periods(periods),
         )
 
     def _build_work_calendar_from_payload(self, calendar_payload: Any) -> WorkCalendar:
@@ -176,6 +191,7 @@ class CalendarAdmin:
                 allow_normal=calendar_payload.allow_normal,
                 allow_urgent=calendar_payload.allow_urgent,
                 remark=calendar_payload.remark,
+                periods=payload_periods(calendar_payload.to_dict()),
             )
         payload = dict(calendar_payload or {})
         return self._build_work_calendar(
@@ -188,6 +204,7 @@ class CalendarAdmin:
             allow_normal=payload.get("allow_normal"),
             allow_urgent=payload.get("allow_urgent"),
             remark=payload.get("remark"),
+            periods=payload_periods(payload),
         )
 
     def _build_operator_calendar(
@@ -203,6 +220,7 @@ class CalendarAdmin:
         allow_normal: Any = None,
         allow_urgent: Any = None,
         remark: Any = None,
+        periods: Any = None,
     ) -> OperatorCalendar:
         op_id = self._normalize_text(operator_id)
         if not op_id:
@@ -229,6 +247,11 @@ class CalendarAdmin:
             shift_start=shift_start,
             shift_end=shift_end,
         )
+        if periods is None and all(value is None for value in (shift_start, shift_end, shift_hours)) and dt == CalendarDayType.WORKDAY.value:
+            periods = read_default_periods(self.conn)
+        periods = normalize_periods(periods)
+        if periods is not None:
+            ss, se, sh_value = period_summary(periods, ss)
         return OperatorCalendar(
             operator_id=op_id,
             date=d,
@@ -240,6 +263,7 @@ class CalendarAdmin:
             allow_normal=an,
             allow_urgent=au,
             remark=rmk,
+            periods_json=encode_periods(periods),
         )
 
     def _build_operator_calendar_from_payload(self, calendar_payload: Any) -> OperatorCalendar:
@@ -255,6 +279,7 @@ class CalendarAdmin:
                 allow_normal=calendar_payload.allow_normal,
                 allow_urgent=calendar_payload.allow_urgent,
                 remark=calendar_payload.remark,
+                periods=payload_periods(calendar_payload.to_dict()),
             )
         payload = dict(calendar_payload or {})
         return self._build_operator_calendar(
@@ -268,6 +293,7 @@ class CalendarAdmin:
             allow_normal=payload.get("allow_normal"),
             allow_urgent=payload.get("allow_urgent"),
             remark=payload.get("remark"),
+            periods=payload_periods(payload),
         )
 
     # -------------------------
@@ -292,6 +318,7 @@ class CalendarAdmin:
         allow_normal: Any = None,
         allow_urgent: Any = None,
         remark: Any = None,
+        periods: Any = None,
     ) -> WorkCalendar:
         cal = self._build_work_calendar(
             date_value=date_value,
@@ -303,6 +330,7 @@ class CalendarAdmin:
             allow_normal=allow_normal,
             allow_urgent=allow_urgent,
             remark=remark,
+            periods=periods,
         )
         with self.tx_manager.transaction():
             self.repo.upsert(cal.to_dict())
@@ -358,6 +386,7 @@ class CalendarAdmin:
         allow_normal: Any = None,
         allow_urgent: Any = None,
         remark: Any = None,
+        periods: Any = None,
     ) -> OperatorCalendar:
         cal = self._build_operator_calendar(
             operator_id=operator_id,
@@ -370,6 +399,7 @@ class CalendarAdmin:
             allow_normal=allow_normal,
             allow_urgent=allow_urgent,
             remark=remark,
+            periods=periods,
         )
         with self.tx_manager.transaction():
             self.operator_calendar_repo.upsert(cal.to_dict())

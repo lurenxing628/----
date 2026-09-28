@@ -1,253 +1,45 @@
-"""回归测试：build_algo_operations 解析外部工序合并周期上下文的契约——内部工序跳过模板/外部组查询且合并字段为空；外部无组/separate 组用工序 ext_days，merged 组改用 group.total_days 并清空成员 ext_days；模板缺失/外部组缺失/total_days 非法/模板被删/组 part_no 或 seq 区间不匹配等场景，非严格模式记 merge_context 事件并降级回落 ext_days，严格模式按对应 field 抛 ValidationError。"""
-
-from __future__ import annotations
-
-from types import SimpleNamespace
+"""Frozen external contexts: separate uses member days; merged uses its captured total."""
 
 import pytest
 
 from core.errors import ValidationError
-from core.models.enums import MergeMode
+from core.services.scheduler.contracts.external_context import context_group_key
 from core.services.scheduler.run.schedule_input_builder import build_algo_operations
-
-
-class _Repo:
-    def __init__(self, values):
-        self.values = dict(values)
-        self.calls = []
-
-    def get(self, *args):
-        self.calls.append(tuple(args))
-        key = tuple(args) if len(args) != 1 else args[0]
-        return self.values.get(key)
-
-
-class _BuilderSvc:
-    def __init__(self, *, template=None, groups=None):
-        self.batch_calls = []
-        self.part_op_repo = _Repo({("P001", 20): template})
-        self.group_repo = _Repo(groups or {})
-        self._aps_schedule_input_cache = {}
-
-    def _get_batch_or_raise(self, batch_id):
-        self.batch_calls.append(batch_id)
-        return SimpleNamespace(batch_id=batch_id, part_no="P001")
-
-
-class _FailingRepo:
-    def get(self, *args):
-        raise AssertionError(f"内部工序不应查模板或外部组：{args!r}")
-
-
-class _InternalSvc:
-    part_op_repo = _FailingRepo()
-    group_repo = _FailingRepo()
-    _aps_schedule_input_cache = {}
-
-    def _get_batch_or_raise(self, batch_id):
-        raise AssertionError(f"内部工序不应查批次模板：{batch_id!r}")
-
-
-def _op(*, source="external", ext_days=2.5):
-    return SimpleNamespace(
-        id=2,
-        op_code="OP_EXT_01",
-        batch_id="B001",
-        seq=20,
-        op_type_id="OT_EXT",
-        op_type_name="外协",
-        source=source,
-        machine_id=None,
-        operator_id=None,
-        supplier_id="SUP01",
-        setup_hours=0.0,
-        unit_hours=0.0,
-        ext_days=ext_days,
-    )
-
-
-def _template(ext_group_id, *, status="active"):
-    return SimpleNamespace(ext_group_id=ext_group_id, status=status)
-
-
-def _group(*, merge_mode=MergeMode.MERGED.value, total_days=4.0, part_no="P001", start_seq=20, end_seq=20):
-    return SimpleNamespace(
-        part_no=part_no,
-        start_seq=start_seq,
-        end_seq=end_seq,
-        merge_mode=merge_mode,
-        total_days=total_days,
-    )
-
-
-def _single_result(outcome):
-    assert len(outcome.value) == 1
-    return outcome.value[0]
-
-
-def _event_codes(outcome):
-    return [event.code for event in outcome.events]
-
-
-def test_internal_op_skips_template_lookup_and_has_empty_merge_fields() -> None:
-    outcome = build_algo_operations(_InternalSvc(), [_op(source="internal", ext_days=None)], return_outcome=True)
-
-    algo_op = _single_result(outcome)
-    assert outcome.events == []
-    assert algo_op.ext_days is None
-    assert algo_op.ext_group_id is None
-    assert algo_op.ext_merge_mode is None
-    assert algo_op.ext_group_total_days is None
-    assert algo_op.merge_context_degraded is False
-    assert algo_op.merge_context_events == []
-
-
-def test_external_without_group_uses_ext_days_without_degradation() -> None:
-    svc = _BuilderSvc(template=_template(None))
-
-    outcome = build_algo_operations(svc, [_op(ext_days=2.5)], return_outcome=True)
-
-    algo_op = _single_result(outcome)
-    assert outcome.events == []
-    assert algo_op.ext_days == 2.5
-    assert algo_op.ext_group_id is None
-    assert algo_op.ext_merge_mode is None
-    assert algo_op.ext_group_total_days is None
-    assert algo_op.merge_context_degraded is False
-    assert algo_op.merge_context_events == []
-    assert svc.part_op_repo.calls == [("P001", 20)]
-    assert svc.group_repo.calls == []
-
-
-def test_external_separate_group_uses_ext_days_without_merged_semantics() -> None:
-    svc = _BuilderSvc(
-        template=_template("G001"),
-        groups={"G001": _group(merge_mode=MergeMode.SEPARATE.value, total_days=9.0)},
-    )
-
-    outcome = build_algo_operations(svc, [_op(ext_days=2.5)], return_outcome=True)
-
-    algo_op = _single_result(outcome)
-    assert outcome.events == []
-    assert algo_op.ext_days == 2.5
-    assert algo_op.ext_group_id == "G001"
-    assert algo_op.ext_merge_mode == MergeMode.SEPARATE.value
-    assert algo_op.ext_group_total_days is None
-    assert algo_op.merge_context_degraded is False
-    assert algo_op.merge_context_events == []
-
-
-def test_external_merged_group_uses_total_days_and_ignores_member_ext_days() -> None:
-    svc = _BuilderSvc(
-        template=_template("G001"),
-        groups={"G001": _group(merge_mode=MergeMode.MERGED.value, total_days=4.0)},
-    )
-
-    outcome = build_algo_operations(svc, [_op(ext_days=2.5)], return_outcome=True)
-
-    algo_op = _single_result(outcome)
-    assert outcome.events == []
-    assert algo_op.ext_days is None
-    assert algo_op.ext_group_id == "G001"
-    assert algo_op.ext_merge_mode == MergeMode.MERGED.value
-    assert algo_op.ext_group_total_days == 4.0
-    assert algo_op.merge_context_degraded is False
-    assert algo_op.merge_context_events == []
-
-
-def test_template_missing_non_strict_records_event_and_falls_back_to_ext_days() -> None:
-    svc = _BuilderSvc(template=None)
-
-    outcome = build_algo_operations(svc, [_op(ext_days=2.5)], return_outcome=True)
-
-    algo_op = _single_result(outcome)
-    assert "template_missing" in _event_codes(outcome)
-    assert algo_op.ext_days == 2.5
-    assert algo_op.ext_group_id is None
-    assert algo_op.ext_merge_mode is None
-    assert algo_op.ext_group_total_days is None
-    assert algo_op.merge_context_degraded is True
-    assert [event["code"] for event in algo_op.merge_context_events] == ["template_missing"]
-
-
-def test_external_group_missing_non_strict_records_event_and_falls_back_to_ext_days() -> None:
-    svc = _BuilderSvc(template=_template("G404"), groups={})
-
-    outcome = build_algo_operations(svc, [_op(ext_days=2.5)], return_outcome=True)
-
-    algo_op = _single_result(outcome)
-    assert "external_group_missing" in _event_codes(outcome)
-    assert algo_op.ext_days == 2.5
-    assert algo_op.ext_group_id is None
-    assert algo_op.ext_merge_mode is None
-    assert algo_op.ext_group_total_days is None
-    assert algo_op.merge_context_degraded is True
-    assert [event["code"] for event in algo_op.merge_context_events] == ["external_group_missing"]
-
-
-def test_invalid_group_total_days_non_strict_clears_merge_fields_and_records_merge_event() -> None:
-    svc = _BuilderSvc(
-        template=_template("G001"),
-        groups={"G001": _group(merge_mode=MergeMode.MERGED.value, total_days="bad-number")},
-    )
-
-    outcome = build_algo_operations(svc, [_op(ext_days=2.5)], return_outcome=True)
-
-    algo_op = _single_result(outcome)
-    assert "invalid_number" in _event_codes(outcome)
-    assert algo_op.ext_days == 2.5
-    assert algo_op.ext_group_id is None
-    assert algo_op.ext_merge_mode is None
-    assert algo_op.ext_group_total_days is None
-    assert algo_op.merge_context_degraded is True
-    assert [event["code"] for event in algo_op.merge_context_events] == ["invalid_number"]
-    assert [event["field"] for event in algo_op.merge_context_events] == ["ext_group_total_days"]
-
-
-@pytest.mark.parametrize(
-    ("template", "group", "expected_code", "expected_field"),
-    [
-        (_template("G001", status="deleted"), _group(), "template_missing", "template"),
-        (_template("G001"), _group(part_no="P999"), "external_group_missing", "ext_group_id"),
-        (_template("G001"), _group(start_seq=30, end_seq=40), "external_group_missing", "ext_group_id"),
-    ],
+from tests.schedule.service.external_context_support import (
+    SnapshotService,
+    external_operation,
+    merged_snapshot,
+    snapshot,
 )
-def test_unusable_template_group_context_non_strict_clears_merge_fields_and_falls_back_to_ext_days(
-    template,
-    group,
-    expected_code,
-    expected_field,
-) -> None:
-    svc = _BuilderSvc(template=template, groups={"G001": group})
-
-    outcome = build_algo_operations(svc, [_op(ext_days=2.5)], return_outcome=True)
-
-    algo_op = _single_result(outcome)
-    assert expected_code in _event_codes(outcome)
-    assert algo_op.ext_days == 2.5
-    assert algo_op.ext_group_id is None
-    assert algo_op.ext_merge_mode is None
-    assert algo_op.ext_group_total_days is None
-    assert algo_op.merge_context_degraded is True
-    assert [event["code"] for event in algo_op.merge_context_events] == [expected_code]
-    assert [event["field"] for event in algo_op.merge_context_events] == [expected_field]
 
 
-@pytest.mark.parametrize(
-    ("template", "groups", "expected_field"),
-    [
-        (None, {}, "template"),
-        (_template("G404"), {}, "ext_group_id"),
-        (_template("G001"), {"G001": _group(merge_mode=MergeMode.MERGED.value, total_days="bad-number")}, "ext_group_total_days"),
-        (_template("G001", status="deleted"), {"G001": _group()}, "template"),
-        (_template("G001"), {"G001": _group(part_no="P999")}, "ext_group_id"),
-        (_template("G001"), {"G001": _group(start_seq=30, end_seq=40)}, "ext_group_id"),
-    ],
-)
-def test_merge_context_failures_raise_in_strict_mode(template, groups, expected_field) -> None:
-    svc = _BuilderSvc(template=template, groups=groups)
+def test_internal_op_does_not_access_external_context():
+    outcome = build_algo_operations(object(), [external_operation(source="internal")], return_outcome=True)
+    op = outcome.value[0]
+    assert outcome.events == [] and op.ext_days is None
+    assert op.ext_group_id is None and op.ext_merge_mode is None
 
-    with pytest.raises(ValidationError) as exc_info:
-        build_algo_operations(svc, [_op(ext_days=2.5)], strict_mode=True, return_outcome=True)
 
-    assert exc_info.value.field == expected_field
+@pytest.mark.parametrize("mode", [None, "separate", "merged"])
+def test_algorithm_uses_frozen_context_and_never_active_template(mode):
+    row = snapshot() if mode is None else merged_snapshot(merge_mode=mode)
+    outcome = build_algo_operations(SnapshotService(row), [external_operation()], return_outcome=True)
+    op = outcome.value[0]
+    assert outcome.events == [] and op.merge_context_degraded is False
+    assert op.ext_days == (None if mode == "merged" else 2.5)
+    assert op.ext_group_total_days == (4 if mode == "merged" else None)
+    assert op.ext_group_id == context_group_key(row)
+
+
+@pytest.mark.parametrize("strict", [False, True])
+@pytest.mark.parametrize("row", [
+    None, snapshot(template_operation_id=None), snapshot(template_status="deleted"),
+    merged_snapshot(group_part_no="P999"), merged_snapshot(start_sequence=30, end_sequence=40),
+    merged_snapshot(total_days="bad-number"), merged_snapshot(total_days=None),
+    merged_snapshot(merge_mode="unknown"), merged_snapshot(group_ref=None),
+    merged_snapshot(group_id=None), merged_snapshot(template_operation_ref=None),
+])
+def test_unproven_context_never_falls_back_to_single_days(row, strict):
+    with pytest.raises(ValidationError) as error:
+        build_algo_operations(SnapshotService(row), [external_operation()], strict_mode=strict)
+    assert error.value.field == "external_context"

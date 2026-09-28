@@ -11,6 +11,7 @@ from dataclasses import replace
 from datetime import date, datetime, timedelta
 
 from core.errors import ValidationError
+from core.models.calendar_periods import decode_periods, period_hours
 from core.services.common.datetime_normalize import normalize_hhmm
 from data.repositories.operator_shift_repo import OperatorShiftRepository
 
@@ -42,7 +43,10 @@ class OperatorShiftCalendar:
         if finish <= begin:
             finish += timedelta(days=1)
         hours = 0.0 if day["is_rest"] else (finish - begin).total_seconds() / 3600
-        return replace(policy, shift_start=start_time, shift_hours=min(policy.shift_hours, hours))
+        periods_json = day["periods_json"]
+        if periods_json is not None:
+            hours = 0.0 if day["is_rest"] else period_hours(decode_periods(periods_json))
+        return replace(policy, shift_start=start_time, shift_hours=min(policy.shift_hours, hours), periods_json=periods_json)
 
     @staticmethod
     def _validate_profile(profile):

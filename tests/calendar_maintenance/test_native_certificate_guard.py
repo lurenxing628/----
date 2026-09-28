@@ -83,7 +83,7 @@ def test_native_method_proof_avoids_bound_method_reflection(monkeypatch):
         assert calls == []
         with patch.object(calendar, "get_efficiency", calendar.get_efficiency):
             assert calendar.certified_slot_window(BASE, priority="normal", operator_id="O1") == expected
-        assert len(calls) == 18
+        assert len(calls) == 2 * (len(service_module._NATIVE_SERVICE_TIMING) + len(service_module._NATIVE_ENGINE_TIMING))
 
 
 def test_engine_property_keeps_legacy_read_order():

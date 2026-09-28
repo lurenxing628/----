@@ -17,12 +17,24 @@ _DOWNTIMES_SQL = ("SELECT machine_id,start_time,end_time,status FROM MachineDown
 
 
 class CalendarFactsRepository(BaseRepository):
+    def schema_version(self):
+        if not hasattr(self, "_read_schema_version"):
+            self._read_schema_version = self.fetchvalue("SELECT version FROM SchemaVersion WHERE id=1")
+            if type(self._read_schema_version) is not int:
+                raise ValueError("Calendar schema version is missing or invalid")
+        return self._read_schema_version
+
     def _bounded(self, sql: str, params: Sequence[Any], limit: int) -> List[Dict[str, Any]]:
         return self.fetchall(sql + " LIMIT ?", list(params) + [limit])
 
     def _keyed(self, sql: str, keys: Sequence[Any], extra: Sequence[Any], limit: int) -> List[Dict[str, Any]]:
         marks = ",".join("?" for _ in keys)
         return self._bounded(sql.format(marks=marks), list(keys) + list(extra), limit)
+
+    def defaults(self, *, limit: int) -> List[Dict[str, Any]]:
+        if self.schema_version() < 34:
+            return []
+        return self._bounded("SELECT * FROM WorkbenchCalendarDefaults ORDER BY singleton", (), limit)
 
     def global_calendar(self, first: str, last: str, *, limit: int) -> List[Dict[str, Any]]:
         return self._bounded("SELECT * FROM WorkCalendar WHERE date>=? AND date<=? ORDER BY date", (first, last), limit)
@@ -38,12 +50,21 @@ class CalendarFactsRepository(BaseRepository):
                            operator_ids, (), limit)
 
     def shift_patterns(self, profile_ids: Sequence[str], *, limit: int) -> List[Dict[str, Any]]:
-        return self._keyed("SELECT * FROM WorkbenchShiftPatternDays WHERE profile_id IN ({marks}) "
-                           "ORDER BY profile_id,day_offset", profile_ids, (), limit)
+        if self.schema_version() < 34:
+            return self._keyed("SELECT d.*,NULL AS periods_json FROM WorkbenchShiftPatternDays d WHERE d.profile_id IN ({marks}) ORDER BY d.profile_id,d.day_offset", profile_ids, (), limit)
+        return self._keyed("SELECT d.*,p.periods_json FROM WorkbenchShiftPatternDays d LEFT JOIN WorkbenchShiftDayPeriods p "
+                           "ON p.profile_id=d.profile_id AND p.day_offset=d.day_offset WHERE d.profile_id IN ({marks}) "
+                           "ORDER BY d.profile_id,d.day_offset", profile_ids, (), limit)
 
     def machines(self, machine_ids: Sequence[str], *, limit: int) -> List[Dict[str, Any]]:
         return self._keyed("SELECT machine_id,name,status,op_type_id FROM Machines "
                            "WHERE machine_id IN ({marks}) ORDER BY machine_id", machine_ids, (), limit)
+
+    def machine_capabilities(self, machine_ids: Sequence[str], *, limit: int) -> List[Dict[str, Any]]:
+        if self.schema_version() < 35:
+            return []
+        return self._keyed("SELECT machine_id,op_type_id FROM MachineOpTypes WHERE machine_id IN ({marks}) "
+                           "ORDER BY machine_id,op_type_id", machine_ids, (), limit)
 
     def machine_states(self, machine_ids: Sequence[str], *, limit: int) -> List[Dict[str, Any]]:
         return self._keyed("SELECT machine_id,name,status FROM Machines WHERE machine_id IN ({marks}) ORDER BY machine_id",

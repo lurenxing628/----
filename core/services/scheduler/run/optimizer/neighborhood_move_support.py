@@ -180,7 +180,7 @@ def copy_resource_pool(resource_pool: Optional[Dict[str, Any]]) -> Dict[str, Any
     if not isinstance(resource_pool, dict):
         return {}
     out: Dict[str, Any] = {}
-    for key in ("machines_by_op_type", "operators_by_machine", "machines_by_operator", "pair_rank"):
+    for key in ("machines_by_op_type", "operators_by_machine", "machines_by_operator", "pair_rank") + (("operator_skills",) if "operator_skills" in resource_pool else ()):
         value = resource_pool.get(key)
         if isinstance(value, dict):
             out[key] = {

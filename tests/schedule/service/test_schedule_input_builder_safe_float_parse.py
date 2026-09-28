@@ -5,6 +5,7 @@ from types import SimpleNamespace
 import pytest
 
 from core.errors import ValidationError
+from tests.schedule.service.external_context_support import snapshot
 
 
 class _StubSvc:
@@ -12,6 +13,7 @@ class _StubSvc:
         self.template_lookup_keys = []
         self.part_op_repo = self
         self.group_repo = self
+        self._aps_schedule_input_cache = {"external_contexts": {2: snapshot(sequence=2)}}
 
     def _get_batch_or_raise(self, batch_id):
         return SimpleNamespace(batch_id=batch_id, part_no="P001")
@@ -82,7 +84,7 @@ def test_schedule_input_builder_safe_float_parse() -> None:
     outcome = build_algo_operations(svc, [internal, external], return_outcome=True)
     out = outcome.value
     assert len(out) == 2, f"build_algo_operations 输出数量异常：{len(out)}"
-    assert svc.template_lookup_keys == [("P001", 2)], "external 工序应触发真实模板查找（source 大小写需容错）"
+    assert svc.template_lookup_keys == [], "external 工序只能读取冻结的批次上下文"
     assert outcome.has_events is True, "兼容读取坏值后应保留结构化退化事件"
 
     op0 = out[0]

@@ -3,6 +3,8 @@ from __future__ import annotations
 from collections.abc import Mapping as MappingABC
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Set, Tuple
 
+from core.algorithm_contracts.operator_eligibility import qualified_operators
+
 from .id_policy import GraphNodeIdError, make_operation_node_id
 from .types import OperationGraphNode
 
@@ -28,6 +30,7 @@ def build_operation_nodes_from_rows(
 
 class _ResourcePoolView:
     def __init__(self, resource_pool: Optional[Mapping[str, Any]]) -> None:
+        self.skills_pool = resource_pool
         self.machines_by_op_type = _mapping_part(resource_pool, "machines_by_op_type")
         self.operators_by_machine = _mapping_part(resource_pool, "operators_by_machine")
         self.machines_by_operator = _mapping_part(resource_pool, "machines_by_operator")
@@ -294,17 +297,17 @@ def _candidate_operator_ids(
     fixed_operator = _optional_text(_read_field(row, "operator_id"))
     if fixed_operator:
         if not candidate_machine_ids:
-            return (fixed_operator,)
+            return tuple(qualified_operators(resource_pool.skills_pool, [fixed_operator], _read_field(row, "op_type_id")))
         for machine_id in candidate_machine_ids:
             if fixed_operator in _text_list(resource_pool.operators_by_machine.get(machine_id)):
-                return (fixed_operator,)
+                return tuple(qualified_operators(resource_pool.skills_pool, [fixed_operator], _read_field(row, "op_type_id")))
         return ()
     if not candidate_machine_ids:
         return ()
     candidates: List[str] = []
     for machine_id in candidate_machine_ids:
         candidates.extend(_text_list(resource_pool.operators_by_machine.get(machine_id)))
-    return _unique_text_tuple(candidates)
+    return _unique_text_tuple(qualified_operators(resource_pool.skills_pool, candidates, _read_field(row, "op_type_id")))
 
 
 def _text_list(values: Any) -> List[str]:

@@ -5,6 +5,8 @@ from datetime import date
 
 from core.errors import ValidationError
 from core.models.calendar import OperatorCalendar, WorkCalendar
+from core.models.calendar_periods import encode_periods
+from core.services.scheduler.calendar.defaults import default_periods_from_row
 from core.services.scheduler.calendar.engine import CalendarEngine
 from core.services.scheduler.calendar.operator_shift import OperatorShiftCalendar
 from data.repositories.operator_shift_repo import OperatorShiftRepository
@@ -15,7 +17,7 @@ class _ShiftRows(OperatorShiftRepository):
 
     def __init__(self, facts):
         self.profiles = {row["operator_id"]: dict(row) for row in facts["profiles"]}
-        self.patterns = {(row["profile_id"], row["day_offset"]): row for row in facts["patterns"]}
+        self.patterns = {(row["profile_id"], row["day_offset"]): dict(row, periods_json=row.get("periods_json")) for row in facts["patterns"]}
         offsets = defaultdict(list)
         for row in facts["patterns"]:
             offsets[row["profile_id"]].append(row["day_offset"])
@@ -72,11 +74,19 @@ def _calendar_index(rows, *, personal=False):
 class SnapshotCalendarEngine(CalendarEngine):
     def __init__(self, facts):
         super().__init__(None)
+        self._default_periods_json = encode_periods(default_periods_from_row(next(iter(facts.get("defaults", [])), None)))
+        self.legacy_defaults = facts.get("legacy_defaults", False)
         self.global_rows = _calendar_index(facts["global"])
         self.personal_rows = _calendar_index(facts["personal"], personal=True)
         self.operator_shift_calendar = OperatorShiftCalendar(None)
         self._shift_rows = _ShiftRows(facts)
         self.operator_shift_calendar.repo = self._shift_rows
+
+    def _default_for_date(self, date_str):
+        row = super()._default_for_date(date_str)
+        if self.legacy_defaults and row.day_type == "workday":
+            row.shift_start, row.shift_end, row.shift_hours, row.periods_json = "08:00", "16:00", 8.0, None
+        return row
 
     def _resolve_calendar_row(self, date_str, op_id):
         personal = self.personal_rows.get((op_id, date_str))

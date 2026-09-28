@@ -68,13 +68,13 @@ def policy_projection(engine, first_day, last_day, start, end, operator_id=None)
             policy = engine._policy_for_date(day.isoformat(), operator_id)
             if policy.shift_hours > 24:
                 return unavailable(basis, "calendar_window_limit")
-            low, high = policy.work_window()
-            low, high = max(low, start), min(high, end)
-            if low < high:
-                windows.append({"start": wire(low), "end": wire(high), "policy_date": day.isoformat(),
-                                "allow_normal": policy.is_priority_allowed("normal"),
-                                "allow_urgent": policy.is_priority_allowed("urgent"),
-                                "efficiency": policy.efficiency, "provenance": engine.provenance(day.isoformat(), operator_id)})
+            for low, high in policy.work_windows():
+                low, high = max(low, start), min(high, end)
+                if low < high:
+                    windows.append({"start": wire(low), "end": wire(high), "policy_date": day.isoformat(),
+                                    "allow_normal": policy.is_priority_allowed("normal"),
+                                    "allow_urgent": policy.is_priority_allowed("urgent"),
+                                    "efficiency": policy.efficiency, "provenance": engine.provenance(day.isoformat(), operator_id)})
         except (ValidationError, ValueError, TypeError, OverflowError):
             failures.append(day)
         if day == last_day:

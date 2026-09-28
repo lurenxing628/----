@@ -30,7 +30,7 @@ def local_date(value):
 
 
 def normalize_preflight_input(value):
-    if not isinstance(value, dict) or set(value) != set(INPUT_FIELDS):
+    if not isinstance(value, dict) or set(value) - {"material_strategy"} != set(INPUT_FIELDS):
         reject("排产检查的条件不完整或有多余项，请刷新页面后重新选择。")
     refs = value["batch_refs"]
     if not isinstance(refs, list) or len(refs) > MAX_BATCH_REFS or not all(public_ref(ref) for ref in refs):
@@ -44,6 +44,11 @@ def normalize_preflight_input(value):
         reject("齐套检查或缺设备人员时的规则不正确，请重新选择。")
     if value["completed_policy"] != "preserve_actuals":
         reject("已开工和已完工的记录必须保留，不能取消保护。")
+    strategy = value.get("material_strategy", "strict")
+    if strategy not in ("strict", "stage", "split"):
+        reject("请选择整批齐套、按工序齐套或预览分批开工。")
+    if strategy != "strict" and not value["ready_check"]:
+        reject("按工序放行和分批开工需要开启齐套检查。")
     return {**value, "batch_refs": sorted(refs)}
 
 

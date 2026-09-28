@@ -6,6 +6,7 @@ from datetime import datetime, time, timedelta
 from inspect import Parameter, signature
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
+from core.algorithm_contracts.operator_eligibility import qualified_operators
 from core.algorithms.value_domains import INTERNAL
 from core.errors import ValidationError
 
@@ -236,9 +237,9 @@ def _candidate_machine_ids(op: Any, *, resource_pool: Optional[Dict[str, Any]]) 
 def _candidate_operator_ids(op: Any, *, machine_id: str, resource_pool: Optional[Dict[str, Any]]) -> Tuple[str, ...]:
     fixed_operator = _text(getattr(op, "operator_id", None))
     if fixed_operator:
-        return (fixed_operator,)
+        return tuple(qualified_operators(resource_pool, [fixed_operator], getattr(op, "op_type_id", None)))
     pool = _ResourcePoolView(resource_pool)
-    return _unique_text_tuple(_text_list(pool.operators_by_machine.get(machine_id)))
+    return _unique_text_tuple(qualified_operators(resource_pool, _text_list(pool.operators_by_machine.get(machine_id)), getattr(op, "op_type_id", None)))
 
 class _ResourcePoolView:
     def __init__(self, resource_pool: Optional[Dict[str, Any]]) -> None:
@@ -331,6 +332,10 @@ def _calendar_capacity_hours(
 ) -> float:
     if end_dt <= start_dt:
         return 0.0
+    capacity = getattr(calendar_service, "capacity_hours_between", None)
+    if callable(capacity):
+        return _non_negative_float(capacity(start_dt, end_dt, priority=priority, operator_id=operator_id),
+                                   field="calendar_capacity_hours")
     policy_for_datetime = getattr(calendar_service, "policy_for_datetime", None)
     if not callable(policy_for_datetime):
         return _wall_hours(start_dt, end_dt)
@@ -351,7 +356,7 @@ def _calendar_capacity_hours(
                 if supports_operator_id is True or not _is_unexpected_operator_id_type_error(exc):
                     raise
                 policy = policy_for_datetime(cursor)
-        window_start, window_end = policy.work_window()
+        window_start, window_end = _next_work_window(policy, cursor)
         if not _policy_allows(policy, priority) or _policy_efficiency(policy) <= 0.0:
             cursor = _next_calendar_day(cursor, end_dt)
             continue
@@ -365,6 +370,14 @@ def _calendar_capacity_hours(
         total += _wall_hours(cursor, segment_end) * _policy_efficiency(policy)
         cursor = segment_end
     return float(total)
+
+
+def _next_work_window(policy: Any, cursor: datetime):
+    periods = getattr(policy, "work_windows", None)
+    if callable(periods):
+        windows: Any = periods()
+        return next(((start, end) for start, end in windows if end > cursor), (cursor, cursor))
+    return policy.work_window()
 
 
 def _policy_for_datetime_supports_operator_id(policy_for_datetime: Any) -> Optional[bool]:

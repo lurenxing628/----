@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict, List, NamedTuple, Optional, Tuple
 
+from core.algorithm_contracts.operator_eligibility import qualified_operators
 from core.algorithm_runtime.algo_stats import increment_counter
 from core.algorithm_runtime.auto_assign_contract import (
     AUTO_ASSIGN_REASON_INVALID_INTERNAL_HOURS,
@@ -168,7 +169,7 @@ def eligible_auto_assign_resources(op: Any, resource_pool: Any) -> Optional[Tupl
     operators = [
         operator_id
         for machine_id in choice.values
-        for operator_id in _operator_candidates_for_machine(machine_id, fixed_operator=fixed_operator, pool=pool)
+        for operator_id in _operator_candidates_for_machine(machine_id, fixed_operator=fixed_operator, pool=pool, op_type_id=op_type_id)
     ]
     return tuple(choice.values), tuple(dict.fromkeys(operators))
 
@@ -189,6 +190,7 @@ def _coerce_resource_pool(resource_pool: Dict[str, Any]) -> Dict[str, Any]:
         "operators_by_machine": _dict_part(resource_pool, "operators_by_machine"),
         "machines_by_operator": _dict_part(resource_pool, "machines_by_operator"),
         "pair_rank": _dict_part(resource_pool, "pair_rank"),
+        **({"operator_skills": resource_pool["operator_skills"]} if "operator_skills" in resource_pool else {}),
     }
 
 
@@ -307,7 +309,8 @@ def _choose_best_pair(
     prev_end = batch_progress.get(str(getattr(op, "batch_id", "") or "").strip(), base_time)
     handoff = current_sgs_handoff()
     for machine_id in machine_candidates:
-        operator_candidates = _operator_candidates_for_machine(machine_id, fixed_operator=fixed_operator, pool=pool)
+        operator_candidates = _operator_candidates_for_machine(machine_id, fixed_operator=fixed_operator, pool=pool,
+                                                                op_type_id=str(getattr(op, "op_type_id", "") or ""))
         if not operator_candidates:
             continue
         seen_operator = True
@@ -374,8 +377,9 @@ def _pair_failure_attempt(
     return AutoAssignAttempt(reason=AUTO_ASSIGN_REASON_NO_FEASIBLE_PAIR, pair_tie_occurred=False)
 
 
-def _operator_candidates_for_machine(machine_id: str, *, fixed_operator: str, pool: Dict[str, Any]) -> List[str]:
+def _operator_candidates_for_machine(machine_id: str, *, fixed_operator: str, pool: Dict[str, Any], op_type_id="") -> List[str]:
     qualified = [str(x) for x in (pool["operators_by_machine"].get(machine_id) or []) if str(x).strip()]
+    qualified = qualified_operators(pool, qualified, op_type_id)
     if not fixed_operator:
         return qualified
     return [fixed_operator] if fixed_operator in qualified else []

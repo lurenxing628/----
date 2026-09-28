@@ -94,7 +94,8 @@ class _WalkRecordingCalendar(_WeekdayCalendar):
 
     def _resolve(self, day):
         self.days_resolved.add(day)
-        return self._window(day)
+        window = self._window(day)
+        return (window,) if window else ()
 
     def working_hours_between(self, start, end, priority=None, machine_id=None, operator_id=None):
         return self.prefix.between(start, end)

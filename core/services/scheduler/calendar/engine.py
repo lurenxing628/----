@@ -9,13 +9,20 @@ from typing import Any, Dict, Optional, Tuple
 from core.algorithm_runtime.calendar_timing_memo import make_lineage_timing_guard, register_calendar_timing_guard
 from core.errors import BusinessError, ErrorCode, ValidationError
 from core.models import OperatorCalendar, WorkCalendar
+from core.models.calendar_periods import (
+    decode_periods,
+    encode_periods,
+    period_hours,
+    period_windows,
+)
 from core.models.enums import BATCH_PRIORITY_VALUES, BatchPriority, CalendarDayType, YesNo
 from core.services.common.datetime_normalize import normalize_hhmm
 from core.services.common.normalize import normalize_text
 from data.repositories import CalendarRepository, OperatorCalendarRepository
 
+from .defaults import read_default_periods
 from .operator_shift import OperatorShiftCalendar
-from .working_hours import Window, WorkingHoursPrefix
+from .working_hours import WorkingHoursPrefix
 
 # add_calendar_days 的业务量级上界：100 年（365 天 × 100）。
 # 依据：外协周期按自然日计，业务上不可能超过百年量级；而 datetime + timedelta 在
@@ -24,7 +31,8 @@ from .working_hours import Window, WorkingHoursPrefix
 MAX_CALENDAR_DAYS = 36500.0
 # Engine members whose identity certifies native timing; certificates and the per-decode memo both rely on it.
 NATIVE_TIMING_METHODS = ("get_efficiency", "adjust_to_working_time", "add_working_hours", "policy_for_datetime",
-                         "_policy_for_datetime", "_policy_for_date", "certified_slot_window", "working_hours_between")
+                         "_policy_for_datetime", "_policy_for_date", "_effective_segments", "_allowed_segments",
+                         "certified_slot_window", "working_hours_between", "default_periods")
 _NORMAL_PRIORITY = BatchPriority.NORMAL.value
 _ALLOWED_FLAG = YesNo.YES.value
 
@@ -32,6 +40,18 @@ _ALLOWED_FLAG = YesNo.YES.value
 @lru_cache(maxsize=4096)
 def _native_date_isoformat(value: date) -> str:
     return value.isoformat()
+
+
+@lru_cache(maxsize=4096)
+def _dated_period_windows(date_str, periods_json, hours):
+    remaining, result = hours, []
+    for start, end in period_windows(date.fromisoformat(date_str), decode_periods(periods_json)):
+        if remaining <= 0:
+            break
+        end = min(end, start + timedelta(hours=remaining))
+        result.append((start, end))
+        remaining -= (end - start).total_seconds() / 3600
+    return tuple(result)
 
 
 @dataclass
@@ -55,11 +75,24 @@ class DayPolicy:
     shift_start: time = time(8, 0, 0)
     _window_start: Optional[datetime] = None
     _window_end: Optional[datetime] = None
+    periods_json: Optional[str] = None
 
     def __post_init__(self) -> None:
         d = datetime.strptime(self.date_str, "%Y-%m-%d").date()
         self._window_start = datetime.combine(d, self.shift_start)
         self._window_end = self._window_start + timedelta(hours=float(self.shift_hours or 0.0))
+        if self.periods_json is not None:
+            windows = self.work_windows()
+            if windows:
+                self._window_start, self._window_end = windows[0][0], windows[-1][1]
+            else:
+                self._window_end = self._window_start
+
+    def work_windows(self) -> tuple:
+        if self.periods_json is not None:
+            return _dated_period_windows(self.date_str, self.periods_json, self.shift_hours)
+        start, end = self.work_window()
+        return ((start, end),) if start < end else ()
 
     def is_priority_allowed(self, priority: Optional[str]) -> bool:
         if priority is None or (type(priority) is str and priority == _NORMAL_PRIORITY):
@@ -104,7 +137,9 @@ class CalendarEngine:
         self.operator_calendar_repo = OperatorCalendarRepository(conn, logger=logger)
         self.operator_shift_calendar = OperatorShiftCalendar(conn, logger=logger)
         # 每次排产会对同一日期重复查询多次；按 (operator_id, date_str) 做轻量缓存可显著减少 DB 访问
+        self._default_periods_json: Optional[str] = None
         self._policy_cache: Dict[Tuple[str, str], DayPolicy] = {}
+        self._segment_cache: Dict[Tuple[str, date], tuple] = {}
         # 工作小时差按 (operator_id, 优先级类别) 维护逐日窗口前缀，与策略缓存同生命周期。
         self._working_hours_prefix: Dict[Tuple[str, str], WorkingHoursPrefix] = {}
 
@@ -115,7 +150,9 @@ class CalendarEngine:
         说明：缓存用于排产过程加速，但当 WorkCalendar/OperatorCalendar 被修改后，
         必须清空缓存以保证“立即生效”（回归用例依赖该语义）。
         """
+        self._default_periods_json = None
         self._policy_cache.clear()
+        self._segment_cache.clear()
         self._working_hours_prefix.clear()
 
     @staticmethod
@@ -125,9 +162,17 @@ class CalendarEngine:
             return value.strip() or None
         return normalize_text(value)
 
+    def default_periods(self):
+        if self._default_periods_json is None:
+            self._default_periods_json = encode_periods(read_default_periods(self.conn))
+        periods = decode_periods(self._default_periods_json)
+        if not periods:
+            raise ValidationError("默认工作时间至少需要一个工作时段。", field="periods")
+        return periods
+
     def _default_for_date(self, date_str: str) -> WorkCalendar:
         d = datetime.strptime(date_str, "%Y-%m-%d").date()
-        # 周末默认不排产（shift_hours=0），工作日默认 8h
+        # 周末默认不排产；工作日按上午和下午两段，午休不计工时。
         if d.weekday() >= 5:
             return WorkCalendar(
                 date=date_str,
@@ -138,10 +183,13 @@ class CalendarEngine:
                 allow_urgent=YesNo.NO.value,
                 remark="默认周末（未配置）",
             )
+        periods = self.default_periods()
         return WorkCalendar(
             date=date_str,
             day_type=CalendarDayType.WORKDAY.value,
-            shift_hours=8.0,
+            shift_start=periods[0]["start"], shift_end=periods[-1]["end"],
+            shift_hours=period_hours(periods),
+            periods_json=encode_periods(periods),
             efficiency=1.0,
             allow_normal=YesNo.YES.value,
             allow_urgent=YesNo.YES.value,
@@ -220,6 +268,9 @@ class CalendarEngine:
         # shift_start/shift_end：默认 08:00；若提供 shift_end 则优先用其推导 shift_hours
         ss_t = self._parse_shift_start(cal)
         shift_hours = self._override_shift_hours_by_shift_end(cal, date_str=date_str, shift_start_t=ss_t, shift_hours=shift_hours)
+        periods_json = getattr(cal, "periods_json", None)
+        if periods_json is not None:
+            shift_hours = period_hours(decode_periods(periods_json))
 
         p = DayPolicy(
             date_str=getattr(cal, "date", None) or date_str,
@@ -229,6 +280,7 @@ class CalendarEngine:
             allow_normal=cal.allow_normal,
             allow_urgent=cal.allow_urgent,
             shift_start=ss_t,
+            periods_json=periods_json,
         )
         if op_id and not isinstance(cal, OperatorCalendar):
             p = self.operator_shift_calendar.apply_policy(p, op_id)
@@ -247,16 +299,14 @@ class CalendarEngine:
         today = dt.date()
         today_str = _native_date_isoformat(today) if type(today) is date else today.isoformat()
         p_today = self._policy_for_date(today_str, operator_id=operator_id)
-        start_today, end_today = p_today.work_window()
-        if start_today <= dt < end_today:
+        if any(start <= dt < end for start, end in p_today.work_windows()):
             return p_today
 
         # Today's empty/rest window may start at 00:00 while yesterday's night shift is still running.
         if dt.date() > date.min:
             prev_str = (dt.date() + timedelta(days=-1)).isoformat()
             p_prev = self._policy_for_date(prev_str, operator_id=operator_id)
-            start_prev, end_prev = p_prev.work_window()
-            if start_prev <= dt < end_prev:
+            if any(start <= dt < end for start, end in p_prev.work_windows()):
                 return p_prev
 
         return p_today
@@ -270,38 +320,57 @@ class CalendarEngine:
     def get_efficiency(self, dt: datetime, machine_id: Optional[str] = None, operator_id: Optional[str] = None) -> float:
         return float(self._policy_for_datetime(dt, operator_id=operator_id).efficiency or 1.0)
 
+    def capacity_hours_between(self, start: datetime, end: datetime, *, priority=None, operator_id=None) -> float:
+        """Efficiency-weighted capacity over the same disjoint pieces used by scheduling."""
+        day, total = start.date(), 0.0
+        if (end.date() - day).days > 4000:
+            raise ValidationError("产能计算日期范围过长。", field="calendar")
+        while day <= end.date() and start < end:
+            for low, high, policy in self._effective_segments(day, operator_id):
+                low, high = max(start, low), min(end, high)
+                if low < high and policy.is_priority_allowed(priority):
+                    total += (high - low).total_seconds() / 3600 * policy.efficiency
+            if day == date.max:
+                break
+            day += timedelta(days=1)
+        return total
+
+    def _effective_segments(self, day: date, operator_id: Optional[str] = None) -> tuple:
+        """Disjoint natural-day pieces; today's window overrides yesterday's tail."""
+        key = (self._normalize_text(operator_id) or "", day)
+        if key in self._segment_cache:
+            return self._segment_cache[key]
+        lo = datetime.combine(day, time.min)
+        hi = datetime.max if day == date.max else lo + timedelta(days=1)
+        policies = [self._policy_for_date(day.isoformat(), operator_id=operator_id)]
+        if day > date.min:
+            policies.append(self._policy_for_date((day - timedelta(days=1)).isoformat(), operator_id=operator_id))
+        windows = [(p, max(lo, start), min(hi, end)) for p in policies for start, end in p.work_windows()]
+        windows = [(p, start, end) for p, start, end in windows if start < end]
+        edges = sorted({point for _, start, end in windows for point in (start, end)})
+        segments = []
+        for start, end in zip(edges, edges[1:]):
+            owner = next((p for p, left, right in windows if left <= start < right), None)
+            if owner is not None:
+                segments.append((start, end, owner))
+        result = tuple(segments)
+        self._segment_cache[key] = result
+        return result
+
     def adjust_to_working_time(
-        self,
-        dt: datetime,
-        priority: Optional[str] = None,
-        machine_id: Optional[str] = None,
-        operator_id: Optional[str] = None,
+        self, dt: datetime, priority: Optional[str] = None,
+        machine_id: Optional[str] = None, operator_id: Optional[str] = None,
     ) -> datetime:
-        """
-        把任意时间调整到“允许排产的工作时间窗口内”的最早时刻。
-        """
+        """Advance to the earliest allowed segment, including today's later shift."""
         cur = dt
-        guard = 0
-        while True:
-            guard += 1
-            if guard > 3660:  # 防御：避免死循环
-                raise BusinessError(ErrorCode.CALENDAR_ERROR, "工作日历计算异常：循环次数过多，请检查日历配置。")
-
-            p = self._policy_for_datetime(cur, operator_id=operator_id)
-            if not p.is_priority_allowed(priority) or p.shift_hours <= 0:
-                # 跳到下一天：使用 00:00 触发“下一天 policy”，避免沿用当天 shift_start
-                next_day = cur.date() + timedelta(days=1)
-                cur = datetime.combine(next_day, time(0, 0, 0))
-                continue
-
-            start, end = p.work_window()
-            if cur < start:
-                return start
-            if cur >= end:
-                next_day = cur.date() + timedelta(days=1)
-                cur = datetime.combine(next_day, time(0, 0, 0))
-                continue
-            return cur
+        for _ in range(3660):
+            for start, end in self._allowed_segments(cur.date(), priority=priority, operator_id=operator_id):
+                if cur < end:
+                    return max(cur, start)
+            if cur.date() == date.max:
+                raise BusinessError(ErrorCode.CALENDAR_ERROR, "已到可表示日期上限，没有后续可排产时间。")
+            cur = datetime.combine(cur.date() + timedelta(days=1), time.min)
+        raise BusinessError(ErrorCode.CALENDAR_ERROR, "工作日历计算异常：循环次数过多，请检查日历配置。")
 
     def add_working_hours(
         self,
@@ -340,27 +409,9 @@ class CalendarEngine:
             if guard > 36600:
                 raise BusinessError(ErrorCode.CALENDAR_ERROR, "工作日历计算异常：循环次数过多，请检查日历配置。")
 
-            p = self._policy_for_datetime(cur, operator_id=operator_id)
-            if not p.is_priority_allowed(priority) or p.shift_hours <= 0:
-                cur = self.adjust_to_working_time(cur, priority=priority, operator_id=operator_id)
-                continue
-
-            start_w, end_w = p.work_window()
-            if cur < start_w:
-                cur = start_w
-            if cur >= end_w:
-                # 下一天
-                cur = datetime.combine(cur.date() + timedelta(days=1), time(0, 0, 0))
-                cur = self.adjust_to_working_time(cur, priority=priority, operator_id=operator_id)
-                continue
-
+            end_w = next(end for left, end in self._allowed_segments(
+                cur.date(), priority=priority, operator_id=operator_id) if left <= cur < end)
             available = (end_w - cur).total_seconds() / 3600.0
-            if available <= 0:
-                # 防御：避免跨午夜班次下回退到 00:00 造成重复计时
-                cur = end_w
-                cur = self.adjust_to_working_time(cur, priority=priority, operator_id=operator_id)
-                continue
-
             if remaining <= available + 1e-9:
                 return cur + timedelta(hours=remaining)
 
@@ -377,11 +428,9 @@ class CalendarEngine:
         text = str(priority or _NORMAL_PRIORITY).strip().lower()
         return "urgent" if text in ("urgent", "critical") else _NORMAL_PRIORITY
 
-    def _allowed_window(self, day: date, *, priority: Optional[str], operator_id: Optional[str]) -> Window:
-        policy = self._policy_for_date(day.isoformat(), operator_id=operator_id)
-        if not policy.is_priority_allowed(priority) or policy.shift_hours <= 0:
-            return None
-        return policy.work_window()
+    def _allowed_segments(self, day: date, *, priority: Optional[str], operator_id: Optional[str]) -> tuple:
+        return tuple((start, end) for start, end, policy in self._effective_segments(day, operator_id)
+                     if policy.is_priority_allowed(priority))
 
     def working_hours_between(
         self,
@@ -401,7 +450,7 @@ class CalendarEngine:
         key = ((op_id or ""), self._priority_class(priority))
         prefix = self._working_hours_prefix.get(key)
         if prefix is None:
-            prefix = WorkingHoursPrefix(lambda day: self._allowed_window(day, priority=priority, operator_id=op_id))
+            prefix = WorkingHoursPrefix(lambda day: self._allowed_segments(day, priority=priority, operator_id=op_id))
             self._working_hours_prefix[key] = prefix
         return prefix.between(start, end)
 

@@ -13,7 +13,7 @@ class OperatorCalendarRepository(BaseRepository):
     def get(self, operator_id: str, date: str) -> Optional[OperatorCalendar]:
         row = self.fetchone(
             """
-            SELECT operator_id, date, day_type, shift_start, shift_end, shift_hours, efficiency, allow_normal, allow_urgent, remark
+            SELECT operator_id, date, day_type, shift_start, shift_end, shift_hours, efficiency, allow_normal, allow_urgent, remark, periods_json
             FROM OperatorCalendar
             WHERE operator_id = ? AND date = ?
             """,
@@ -24,7 +24,7 @@ class OperatorCalendarRepository(BaseRepository):
     def list_by_operator(self, operator_id: str) -> List[OperatorCalendar]:
         rows = self.fetchall(
             """
-            SELECT operator_id, date, day_type, shift_start, shift_end, shift_hours, efficiency, allow_normal, allow_urgent, remark
+            SELECT operator_id, date, day_type, shift_start, shift_end, shift_hours, efficiency, allow_normal, allow_urgent, remark, periods_json
             FROM OperatorCalendar
             WHERE operator_id = ?
             ORDER BY date
@@ -36,7 +36,7 @@ class OperatorCalendarRepository(BaseRepository):
     def list_all(self) -> List[OperatorCalendar]:
         rows = self.fetchall(
             """
-            SELECT operator_id, date, day_type, shift_start, shift_end, shift_hours, efficiency, allow_normal, allow_urgent, remark
+            SELECT operator_id, date, day_type, shift_start, shift_end, shift_hours, efficiency, allow_normal, allow_urgent, remark, periods_json
             FROM OperatorCalendar
             ORDER BY operator_id, date
             """
@@ -47,8 +47,8 @@ class OperatorCalendarRepository(BaseRepository):
         c = calendar if isinstance(calendar, OperatorCalendar) else OperatorCalendar.from_row(calendar)
         self.execute(
             """
-            INSERT INTO OperatorCalendar (operator_id, date, day_type, shift_start, shift_end, shift_hours, efficiency, allow_normal, allow_urgent, remark)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO OperatorCalendar (operator_id, date, day_type, shift_start, shift_end, shift_hours, efficiency, allow_normal, allow_urgent, remark, periods_json)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(operator_id, date) DO UPDATE SET
               day_type=excluded.day_type,
               shift_start=excluded.shift_start,
@@ -57,7 +57,8 @@ class OperatorCalendarRepository(BaseRepository):
               efficiency=excluded.efficiency,
               allow_normal=excluded.allow_normal,
               allow_urgent=excluded.allow_urgent,
-              remark=excluded.remark
+              remark=excluded.remark,
+              periods_json=excluded.periods_json
             """,
             (
                 c.operator_id,
@@ -70,6 +71,7 @@ class OperatorCalendarRepository(BaseRepository):
                 c.allow_normal,
                 c.allow_urgent,
                 c.remark,
+                c.periods_json,
             ),
         )
         return c

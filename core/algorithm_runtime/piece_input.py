@@ -37,7 +37,8 @@ def operation_dispatch_state(state, graph_state, op, batch):
     if any(key not in ends for key in predecessors):
         raise ValidationError("A ready operation lacks predecessor completion evidence.", field="graph_ready_context")
     earliest = max([state.base_time] + [ends[key] for key in predecessors])
-    ready = parse_optional_date(getattr(batch, "ready_date", None), field="ready_date")
-    if ready is not None:
-        earliest = max(earliest, datetime.combine(ready, datetime.min.time()))
+    if state.readiness_gate_enabled:
+        ready = parse_optional_date(getattr(batch, "ready_date", None), field="ready_date")
+        if ready is not None:
+            earliest = max(earliest, datetime.combine(ready, datetime.min.time()))
     return replace(state, batch_progress={op.batch_id: earliest})
