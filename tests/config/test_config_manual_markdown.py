@@ -224,6 +224,8 @@ def _assert_scheduler_manual_required_content(markdown_text: str, label: str) ->
         "候选方案",
         "采用后这个模板工序的单件工时就锁定了",
         "基础资料待维护项.csv",
+        "维护停机计划",
+        "取消这段停机",
         "**从哪里进**：",
     ):
         assert needle in markdown_text, f"{label} 缺少说明书必备内容：{needle}"
@@ -237,7 +239,6 @@ def _assert_scheduler_manual_required_content(markdown_text: str, label: str) ->
         "贪心",
         "证据",
         "导出周计划",
-        "停机计划",
         "批次物料需求",
         "班组管理",
         "管理样例",

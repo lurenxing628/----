@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import sqlite3
-from datetime import datetime
 from typing import Any, Optional
+
+from core.shared.local_datetime import format_local_datetime, parse_local_datetime
 
 _SQL_PARSE_FUNCTION = "aps_parse_dt"
 
@@ -17,22 +18,13 @@ def _time_text(alias: Optional[str], name: str) -> str:
 
 def time_dt(alias: Optional[str], name: str) -> str:
     # 使用注册到 SQLite 连接上的 Python 解析函数，避免 SQLite datetime()
-    # 对不存在日期、24 点、毫秒等值过于宽松，和上层 Python 解析口径漂移。
+    # 对不存在日期、24 点、超出微秒精度等值过于宽松，和上层 Python 解析口径漂移。
     return f"{_SQL_PARSE_FUNCTION}({_time_text(alias, name)})"
 
 
 def parse_dt_for_sql(value: Any) -> Optional[str]:
-    if value is None:
-        return None
-    if isinstance(value, datetime):
-        return value.strftime("%Y-%m-%d %H:%M:%S")
-    text = str(value).strip().replace("/", "-").replace("T", " ").replace("：", ":")
-    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
-        try:
-            return datetime.strptime(text, fmt).strftime("%Y-%m-%d %H:%M:%S")
-        except Exception:
-            continue
-    return None
+    parsed = parse_local_datetime(value)
+    return format_local_datetime(parsed) if parsed is not None else None
 
 
 def require_dt_for_sql(value: Any, error_message: str) -> str:

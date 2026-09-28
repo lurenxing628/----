@@ -3,6 +3,7 @@
 from collections import defaultdict
 
 from core.infrastructure.schema_probe import object_names
+from core.infrastructure.transaction import TransactionManager
 from core.infrastructure.workbench_execution_ledger_schema import execution_ledger_objects
 from core.models.workbench_command import WorkbenchCommandRejected, input_fingerprint
 from core.models.workbench_execution_input import MAX_OPERATIONS
@@ -12,6 +13,15 @@ from data.repositories.workbench_execution_repo import WorkbenchExecutionReposit
 
 
 def read_execution(conn, operation_refs):
+    with TransactionManager(conn).transaction():
+        raw = load_execution(conn, operation_refs)
+    return project_execution_snapshot(raw)
+
+
+def load_execution(conn, operation_refs):
+    """Read all ledger inputs under the batch caller's single snapshot."""
+    if not conn.in_transaction:
+        raise RuntimeError("Batch execution inputs require a caller read transaction.")
     names = object_names(conn)
     if not names.intersection(execution_ledger_objects()):
         repo = WorkbenchExecutionRepository(conn)
@@ -22,15 +32,22 @@ def read_execution(conn, operation_refs):
         return {"available": False, "projections": {}, "snapshot_facts": {"schema_version": version["version"]},
                 "issues": [{"code": "execution_ledger_not_installed", "message": "这个数据库还没装报工记录表；现在只保留旧的状态标记和删除保护，逐次进度暂无数据。"}]}
     ledger = ExecutionLedgerService(conn)
-    refs, projections = list(operation_refs), {}
+    refs = list(operation_refs)
     with ledger.read_snapshot() as clock:
-        for start in range(0, len(refs), MAX_OPERATIONS):
-            for row in ledger.project_operations(refs[start:start + MAX_OPERATIONS]):
-                projections[row.operation_ref] = row.to_dict()
-        if set(projections) != set(refs):
-            raise WorkbenchCommandRejected("execution_ledger_unavailable", "有工序的报工记录读取失败，请联系维护人员核对。")
-        return {"available": True, "projections": projections, "issues": [],
-                "snapshot_facts": {**clock, "projection_hash": input_fingerprint(_plain(projections))}}
+        chunks = [ledger.load(refs[start:start + MAX_OPERATIONS]) for start in range(0, len(refs), MAX_OPERATIONS)]
+        return {"available": True, "refs": refs, "clock": clock, "chunks": chunks, "now": ledger.clock()}
+
+
+def project_execution_snapshot(raw):
+    """The ledger projector consumes captured inputs and performs no SQL."""
+    if not raw["available"]:
+        return raw
+    ledger = ExecutionLedgerService(None, clock=lambda: raw["now"])
+    projections = {row.operation_ref: row.to_dict() for facts in raw["chunks"] for row in ledger.project_loaded(facts)}
+    if set(projections) != set(raw["refs"]):
+        raise WorkbenchCommandRejected("execution_ledger_unavailable", "有工序的报工记录读取失败，请联系维护人员核对。")
+    return {"available": True, "projections": projections, "issues": [],
+            "snapshot_facts": {**raw["clock"], "projection_hash": input_fingerprint(_plain(projections))}}
 
 
 def protects_execution(projection):

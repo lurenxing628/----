@@ -32,8 +32,8 @@ def _active_entity_refs(tables):
 
 def _seed_arrangement(seed, refs):
     """Fix the actual start/end and the machine/operator the seed already used."""
-    arrangement = {"start": seed["start_time"].isoformat(timespec="seconds"),
-                   "end": seed["end_time"].isoformat(timespec="seconds")}
+    arrangement = {"start": seed["start_time"].isoformat(),
+                   "end": seed["end_time"].isoformat()}
     for kind in ("machine", "operator"):
         key = seed[kind + "_id"]
         arrangement[kind + "_id"] = key

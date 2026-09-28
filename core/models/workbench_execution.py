@@ -1,7 +1,28 @@
 """Public execution ledger DTOs. No database keys or internal revision numbers."""
 
-from dataclasses import asdict, dataclass, field
+from copy import deepcopy
+from dataclasses import dataclass, field, fields, is_dataclass
 from typing import Any, Dict, List, Optional
+
+_IMMUTABLE_SCALARS = frozenset((str, int, float, bool, bytes, type(None)))
+
+
+def _snapshot_value(value: Any) -> Any:
+    # Python 3.8 asdict calls deepcopy for every immutable scalar. A ledger read
+    # serializes thousands of projections several times for its existing size
+    # guards and response; these scalars need no copying. Mutable children still
+    # receive independent snapshots, including report histories and write tokens.
+    if type(value) in _IMMUTABLE_SCALARS:
+        return value
+    if is_dataclass(value) and not isinstance(value, type):
+        return {item.name: _snapshot_value(getattr(value, item.name)) for item in fields(value)}
+    if isinstance(value, tuple) and hasattr(value, "_fields"):
+        return type(value)(*(_snapshot_value(item) for item in value))
+    if isinstance(value, (list, tuple)):
+        return type(value)(_snapshot_value(item) for item in value)
+    if isinstance(value, dict):
+        return type(value)((_snapshot_value(key), _snapshot_value(item)) for key, item in value.items())
+    return deepcopy(value)
 
 
 @dataclass(frozen=True)
@@ -28,7 +49,7 @@ class ProductionReport:
     declared_operator: str = ""
 
     def to_dict(self) -> Dict[str, Any]:
-        return asdict(self)
+        return _snapshot_value(self)
 
 
 @dataclass(frozen=True)
@@ -57,4 +78,4 @@ class ExecutionProjection:
     voided_reports: List[Dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
-        return asdict(self)
+        return _snapshot_value(self)

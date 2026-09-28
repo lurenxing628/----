@@ -55,10 +55,21 @@ async function resourceTableControls(page,state,helpers,root,report){
         }
         const reset=await clearFilter(page,config.kind,key);assert.equal(reset.data.page.total,facets.data.row_count);
         const grip=th.getByRole('separator');await grip.scrollIntoViewIfNeeded();
+        // A fixed actions column can cover an in-viewport handle. Reveal it by
+        // scrolling the actual table before sending raw pointer coordinates.
+        const targetable=()=>grip.evaluate(node=>{const r=node.getBoundingClientRect();return node.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2));});
+        if(!await targetable()){
+          const initial=await grip.boundingBox();await page.mouse.move(initial.x+initial.width/2,initial.y+initial.height/2);await page.mouse.wheel(600,0);
+          await page.waitForFunction(column=>{const node=document.querySelector('th[data-column="'+column+'"] [role="separator"]');const r=node.getBoundingClientRect();return node.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2));},key);
+        }
+        assert(await targetable(),'Resize handle must receive the actual pointer');
         const before=(await th.boundingBox()).width,box=await grip.boundingBox();
         await page.mouse.move(box.x+box.width/2,box.y+box.height/2);await page.mouse.down();await page.mouse.move(box.x+box.width/2+24,box.y+box.height/2,{steps:5});await page.mouse.up();
+        await page.waitForFunction(({key,width})=>Math.abs(document.querySelector('th[data-column="'+key+'"]').getBoundingClientRect().width-width)<=2,{key,width:before+24});
         assert(Math.abs((await th.boundingBox()).width-before-24)<=2,'Pointer resize '+key);
-        await grip.focus();await grip.press('ArrowLeft');assert(Math.abs((await th.boundingBox()).width-before-16)<=2,'Keyboard resize '+key);
+        await grip.focus();await grip.press('ArrowLeft');
+        await page.waitForFunction(({key,width})=>Math.abs(document.querySelector('th[data-column="'+key+'"]').getBoundingClientRect().width-width)<=2,{key,width:before+16});
+        assert(Math.abs((await th.boundingBox()).width-before-16)<=2,'Keyboard resize '+key);
         await grip.press('ArrowLeft');await grip.press('ArrowLeft');
         report.table_actions.push({state,kind:config.kind,category:config.category,column:key,sort_cycle:true,filter_total:option.count,empty_filter:true,clear:true,pointer_resize:true,keyboard_resize:true});
       }

@@ -10,9 +10,12 @@
     return object(v) && required.every(k => Object.prototype.hasOwnProperty.call(v, k)) && Object.keys(v).every(k => required.concat(optional).includes(k));
   }
   function time(v) {
-    if (!text(v) || !/^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{1,6})?$/.test(v)) return false;
-    const n = Date.parse(v + 'Z'); return Number.isFinite(n) && new Date(n).toISOString().slice(0, 19) === v.slice(0, 19);
+    if (!text(v) || !/^(?!0000)\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{1,6})?(?![\s\S])/.test(v)) return false;
+    const calendar = v.slice(0, 19), n = Date.parse(calendar + 'Z');
+    return Number.isFinite(n) && new Date(n).toISOString().slice(0, 19) === calendar;
   }
+  // Legacy scopes accept 1–6 fractional digits. Compare without Date's millisecond truncation or rewriting the supplied scope.
+  const timeKey = value => value.slice(0, 19) + '.' + (value.split('.')[1] || '').padEnd(6, '0');
   const gap = v => shape(v, ['field', 'code', 'message']) && [v.field, v.code, v.message].every(text);
   const gaps = v => Array.isArray(v) && v.every(gap);
   const nullableText = v => v === null || text(v);
@@ -71,7 +74,7 @@
     check(['sequence', 'start', 'end'].includes(q.sort) && ['asc', 'desc'].includes(q.order)
       && (q.batch_ref === undefined || ref(q.batch_ref)) && (q.snapshot_ref === undefined || token(q.snapshot_ref)));
     if (q.range_start !== undefined || q.range_end !== undefined) check(time(q.range_start) && time(q.range_end)
-      && Date.parse(q.range_start + 'Z') < Date.parse(q.range_end + 'Z'), '读取范围需要成对时间，开始须早于结束。');
+      && timeKey(q.range_start) < timeKey(q.range_end), '读取范围需要成对时间，开始须早于结束。');
     return q;
   }
   const operationKeys = ['operation_ref', 'batch_ref', 'batch_label', 'part_label', 'sequence', 'process_label', 'piece_id', 'quantity', 'batch_quantity', 'due_date', 'execution_at_generation', 'data_gaps'];
@@ -97,12 +100,12 @@
       && ['target_quantity', 'known_completed_quantity', 'remaining_quantity'].every(k => nullableNumber(e[k]))
       && ['execution_state', 'data_quality', 'target_basis'].every(k => nullableText(e[k])));
     if (planned) {
-      check(ref(v.row_ref) && time(v.start) && time(v.end) && (P.isPoint(v) || Date.parse(v.start + 'Z') < Date.parse(v.end + 'Z'))
+      check(ref(v.row_ref) && time(v.start) && time(v.end) && (P.isPoint(v) || timeKey(v.start) < timeKey(v.end))
         && ['internal', 'external'].includes(v.source) && typeof v.locked === 'boolean');
       for (const k of ['machine', 'operator', 'supplier']) check(v[k] === null || shape(v[k], ['ref', 'label']) && (v[k].ref === null || ref(v[k].ref)) && nullableText(v[k].label));
     } else check(v.row_ref === null && ['skipped', 'unscheduled'].includes(v.status) && shape(v.reason, ['code', 'message']) && text(v.reason.code) && text(v.reason.message));
   }
-  function span(v) { return v === null || shape(v, ['start', 'end']) && time(v.start) && time(v.end) && Date.parse(v.start + 'Z') <= Date.parse(v.end + 'Z'); }
+  function span(v) { return v === null || shape(v, ['start', 'end']) && time(v.start) && time(v.end) && timeKey(v.start) <= timeKey(v.end); }
   function delivery(v, data, query) {
     check(shape(v, ['candidate_ref', 'scope', 'state', 'items', 'items_complete', 'batch_count', 'issues', 'summary', 'basis'])
       && v.candidate_ref === data.candidate.candidate_ref && shape(v.scope, ['kind', 'candidate_ref', 'range_start', 'range_end', 'batch_ref', 'sort', 'order'])
@@ -138,7 +141,7 @@
       row.last_operations.forEach(task => {
         check(shape(task, ['row_ref', 'operation_ref', 'sequence', 'piece_id', 'process_label', 'start', 'end', 'machine', 'operator'])
           && ref(task.row_ref) && ref(task.operation_ref) && nullableNumber(task.sequence) && nullableText(task.piece_id) && nullableText(task.process_label)
-          && time(task.start) && time(task.end) && task.start <= task.end && row.planned_finish !== null && task.end.slice(0, 19) === row.planned_finish.slice(0, 19));
+          && time(task.start) && time(task.end) && timeKey(task.start) <= timeKey(task.end) && row.planned_finish !== null && timeKey(task.end) === timeKey(row.planned_finish));
         const original = tasks.get(task.row_ref);
         for (const kind of ['machine', 'operator']) check(task[kind] === null || shape(task[kind], ['ref', 'label'])
           && (task[kind].ref === null || ref(task[kind].ref)) && nullableText(task[kind].label));
@@ -169,14 +172,18 @@
       && d.time_scope.range_start === (q.range_start || null) && d.time_scope.range_end === (q.range_end || null)
       && d.time_scope.interval === 'half_open_overlap' && d.time_scope.time_basis === 'factory_local' && d.time_scope.unplanned_policy === 'included_without_time_interval');
     d.tasks.forEach(t => { operation(t, true); check(!q.batch_ref || t.batch_ref === q.batch_ref);
-      check(!q.range_start || P.overlaps(t, q.range_start, q.range_end)); });
+      if (q.range_start) {
+        const low = timeKey(q.range_start), high = timeKey(q.range_end), start = timeKey(t.start), end = timeKey(t.end);
+        check(P.isPoint(t) ? low <= start && start < high : start < high && end > low);
+      }
+    });
     check(new Set(d.tasks.map(t => t.row_ref)).size === d.task_count && new Set(d.tasks.map(t => t.operation_ref)).size === d.task_count);
     if (!q.range_start && !q.batch_ref) check(d.task_count === d.candidate_task_count);
     if (d.task_count) {
-      let start = Infinity, end = -Infinity;
-      d.tasks.forEach(t => { start = Math.min(start, Date.parse(t.start + 'Z')); end = Math.max(end, Date.parse(t.end + 'Z')); });
-      check(start === Date.parse(d.task_span.start + 'Z') && end === Date.parse(d.task_span.end + 'Z')
-        && start >= Date.parse(d.candidate_span.start + 'Z') && end <= Date.parse(d.candidate_span.end + 'Z'));
+      let start = timeKey(d.tasks[0].start), end = timeKey(d.tasks[0].end);
+      d.tasks.forEach(t => { const low = timeKey(t.start), high = timeKey(t.end); if (low < start) start = low; if (high > end) end = high; });
+      check(start === timeKey(d.task_span.start) && end === timeKey(d.task_span.end)
+        && start >= timeKey(d.candidate_span.start) && end <= timeKey(d.candidate_span.end));
     }
     if (d.unplanned_operations === null) check(d.unplanned_operation_count === null && d.data_gaps.some(g => g.field === 'unplanned_operations'));
     else {

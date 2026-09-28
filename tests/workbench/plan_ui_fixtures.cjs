@@ -33,8 +33,8 @@
       const offset = options.dense ? i * 60000 : options.concurrent ? 0 : Math.floor(i / 6) * 9 * 3600000 + i % 6 * 1800000;
       const duration = options.dense ? 50000 : options.concurrent ? 3600000 : i === 1 || options.processOrder && i % 3 !== 2 ? 30 * 60000 : (i % 5 + 1) * 3600000;
       return { task_ref: ref(10000 + i + Number.parseInt(planRef.slice(-4), 16) * 20000), operation_ref: ref(2000000 + i), plan_ref: planRef,
-        batch_id: options.dense || options.concurrent ? 'BATCH-' + String(i).padStart(5, '0') : 'D2609-' + String(Math.floor(i / 3) + 1).padStart(3, '0'),
-        sequence: i + 1, process_label: ['粗车端面', '钻孔', '精车外圆', '磨削', '检验', '装配'][i % 6],
+        batch_id: options.longLabels ? 'TEST-W7-CAL-20260926A-B' + (i + 1) : options.dense || options.concurrent ? 'BATCH-' + String(i).padStart(5, '0') : 'D2609-' + String(Math.floor(i / 3) + 1).padStart(3, '0'),
+        sequence: i + 1, process_label: options.longLabels ? 'Turning 完整工序说明末尾-' + (i + 1) : ['粗车端面', '钻孔', '精车外圆', '磨削', '检验', '装配'][i % 6],
         piece_id: null, quantity: null, batch_quantity: null, quantity_basis: 'unknown', quantity_reason: 'plan_target_not_recorded',
         machine_ref: ref(500 + (options.dense || options.concurrent ? 0 : i % 4)), operator_ref: ref(600 + (options.dense || options.concurrent ? 0 : i % 5)), supplier_ref: null,
         start: wire(start + offset), end: wire(start + offset + duration) };

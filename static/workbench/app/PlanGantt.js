@@ -41,11 +41,54 @@
       onClick: () => onChange(id)
     }, text)));
   }
+  function PrintTasks({
+    items,
+    labels
+  }) {
+    return /*#__PURE__*/React.createElement("section", {
+      className: "plan-print-tasks",
+      "aria-label": "\u6253\u5370\u4EFB\u52A1\u660E\u7EC6"
+    }, /*#__PURE__*/React.createElement("h3", null, "\u4EFB\u52A1\u660E\u7EC6\uFF08\u56FE\u4E2D\u7F16\u53F7\uFF09"), Array.from({
+      length: Math.ceil(items.length / 10)
+    }, (_, chunk) => /*#__PURE__*/React.createElement("table", {
+      key: chunk,
+      className: "plan-print-table plan-print-chunk"
+    }, /*#__PURE__*/React.createElement("colgroup", null, /*#__PURE__*/React.createElement("col", {
+      style: {
+        width: '8%'
+      }
+    }), /*#__PURE__*/React.createElement("col", {
+      style: {
+        width: '27%'
+      }
+    }), /*#__PURE__*/React.createElement("col", {
+      style: {
+        width: '22%'
+      }
+    }), /*#__PURE__*/React.createElement("col", {
+      style: {
+        width: '25%'
+      }
+    }), /*#__PURE__*/React.createElement("col", {
+      style: {
+        width: '18%'
+      }
+    })), /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, ['编号', '批次 / 分件', '工序', '开始 / 结束', '设备 / 人员'].map(label => /*#__PURE__*/React.createElement("th", {
+      key: label
+    }, label)))), /*#__PURE__*/React.createElement("tbody", null, items.slice(chunk * 10, (chunk + 1) * 10).map(({
+      task,
+      baseline
+    }, index) => /*#__PURE__*/React.createElement("tr", {
+      key: task.task_ref,
+      "data-plan-print-task": task.task_ref
+    }, /*#__PURE__*/React.createElement("td", null, chunk * 10 + index + 1, baseline && /*#__PURE__*/React.createElement("small", null, "\u521D\u59CB")), /*#__PURE__*/React.createElement("td", null, task.batch_id, /*#__PURE__*/React.createElement("small", null, M.pieceLabel(task))), /*#__PURE__*/React.createElement("td", null, task.sequence, " ", task.process_label, window.PointContract.isPoint(task) && /*#__PURE__*/React.createElement("small", null, "\u96F6\u5DE5\u65F6\u5DE5\u5E8F")), /*#__PURE__*/React.createElement("td", null, M.timeLabel(task.start), /*#__PURE__*/React.createElement("small", null, M.timeLabel(task.end))), /*#__PURE__*/React.createElement("td", null, M.resourceLabel(task, 'machine', labels), /*#__PURE__*/React.createElement("small", null, M.resourceLabel(task, 'operator', labels)))))))));
+  }
   function Bar({
     item,
     model,
     width,
     printing,
+    printNumbers,
     selectedRef,
     risks,
     onSelect,
@@ -99,7 +142,7 @@
         padding: !item.baseline && size >= 28 ? 2 : 0,
         borderWidth: size < 4 ? 0 : 1
       }
-    }, !item.baseline && size >= 28 && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("strong", null, task.batch_id), size >= 75 && /*#__PURE__*/React.createElement("small", null, task.sequence, " ", task.process_label, " \xB7 ", M.pieceLabel(task)))));
+    }, printing && !item.baseline ? /*#__PURE__*/React.createElement("strong", null, printNumbers.get(task.task_ref)) : !item.baseline && size >= 28 && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("strong", null, task.batch_id), size >= 75 && /*#__PURE__*/React.createElement("small", null, task.sequence, " ", task.process_label, " \xB7 ", M.pieceLabel(task)))));
   }
   function PlanGantt({
     data,
@@ -147,6 +190,8 @@
     const renderLeft = printing ? 0 : position.left,
       renderViewport = printing ? width : viewport;
     const model = React.useMemo(() => M.layout(data, mode, query, displayBaseline, width, displayChangedOnly), [data, mode, query, displayBaseline, width, displayChangedOnly]);
+    const printItems = printing ? model.rows.flatMap(row => row.items) : [];
+    const printNumbers = new Map(printItems.map((item, index) => [item.task.task_ref, index + 1]));
     const risks = React.useMemo(() => new Map((data.projections.delivery_risks.items || []).map(row => [row.batch_id, row.risk])), [data]);
     const ticks = M.ticks(model.start, model.end, width, renderLeft, renderViewport);
     const today = M.instant(asOf.slice(0, 10) + 'T00:00:00'),
@@ -449,6 +494,7 @@
         model: model,
         width: width,
         printing: printing,
+        printNumbers: printNumbers,
         viewport: renderViewport,
         left: renderLeft,
         selectedRef: selectedRef,
@@ -461,6 +507,7 @@
         model: model,
         width: width,
         printing: printing,
+        printNumbers: printNumbers,
         selectedRef: selectedRef,
         risks: risks,
         onSelect: select,
@@ -539,7 +586,10 @@
       "aria-label": "\u4E0B\u4E00\u5339\u914D\u4EFB\u52A1",
       disabled: !model.tasks.length || currentIndex >= model.tasks.length - 1,
       onClick: () => move(1)
-    })))), hover && /*#__PURE__*/React.createElement("div", {
+    })))), printing && printItems.length > 0 && /*#__PURE__*/React.createElement(PrintTasks, {
+      items: printItems,
+      labels: model.labels
+    }), hover && /*#__PURE__*/React.createElement("div", {
       role: "tooltip",
       className: "plan-tooltip",
       style: {

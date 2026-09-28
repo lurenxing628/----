@@ -250,8 +250,9 @@
     }, /*#__PURE__*/React.createElement("label", {
       className: "field"
     }, /*#__PURE__*/React.createElement("span", null, "\u5F00\u59CB\uFF08\u5305\u542B\uFF09"), /*#__PURE__*/React.createElement("input", {
-      type: "datetime-local",
-      step: "1",
+      type: "text",
+      placeholder: "2026-09-13T08:30:00",
+      spellCheck: false,
       "aria-label": "\u8BFB\u53D6\u5F00\u59CB\u65F6\u95F4",
       value: range.start,
       onChange: event => setRange({
@@ -261,8 +262,9 @@
     })), /*#__PURE__*/React.createElement("label", {
       className: "field"
     }, /*#__PURE__*/React.createElement("span", null, "\u7ED3\u675F\uFF08\u4E0D\u542B\uFF09"), /*#__PURE__*/React.createElement("input", {
-      type: "datetime-local",
-      step: "1",
+      type: "text",
+      placeholder: "2026-09-13T08:30:00.800000",
+      spellCheck: false,
       "aria-label": "\u8BFB\u53D6\u7ED3\u675F\u65F6\u95F4",
       value: range.end,
       onChange: event => setRange({

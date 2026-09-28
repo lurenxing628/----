@@ -9,7 +9,7 @@ def create_app() -> Flask:
     return create_app_with_mode("new_ui")
 
 
-if __name__ != "__main__":
+if __name__ not in ("__main__", "__mp_main__"):
     app = create_app()
 
 
@@ -19,4 +19,7 @@ def main(argv=None, deps=None) -> int:
 
 
 if __name__ == "__main__":
+    import multiprocessing
+
+    multiprocessing.freeze_support()
     raise SystemExit(main())

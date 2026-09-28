@@ -84,7 +84,7 @@ def _schedule_completion(rows, operations, intervals, incomplete, uncertain):
 
 
 def _finish_fields(complete, finish):
-    value = finish.isoformat(timespec="seconds") if finish is not None else None
+    value = finish.isoformat() if finish is not None else None
     return {"planned_finish": value if complete else None,
             "partial_planned_finish": None if complete else value}
 

@@ -25,10 +25,11 @@ def plan_reference(value):
 
 
 def local_time(value) -> str:
-    if type(value) is not str or re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}", value) is None:
+    if type(value) is not str or re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]{6})?", value) is None:
         invalid_scope("时间格式不对，请按 2026-09-13 08:30:00 这样填写。")
     try:
-        datetime.fromisoformat(value)
+        if datetime.fromisoformat(value).isoformat() != value:
+            raise ValueError("Noncanonical local time")
     except ValueError as exc:
         raise WorkbenchCommandRejected("invalid_input", "时间不存在，请核对日期和时分秒。", 400) from exc
     return value

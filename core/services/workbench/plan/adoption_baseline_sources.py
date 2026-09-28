@@ -1,5 +1,6 @@
 """Reuse RunBaseline verification and CQ's immutable saved-scenario contract."""
 
+from core.infrastructure.read_evidence import verified_read
 from core.models.workbench_command import input_fingerprint
 from core.models.workbench_trial_codec import fingerprint
 from core.services.workbench.facts.candidate_archive import load_adoption_candidate
@@ -66,6 +67,11 @@ def _candidate_tables(archive):
 
 
 def trial_source(conn, audit):
+    key = ("trial_adoption_source", input_fingerprint(audit))
+    return verified_read(conn, key, lambda: _trial_source(conn, audit))
+
+
+def _trial_source(conn, audit):
     _tables_exist(conn, ("WorkbenchTrialScenarios", "WorkbenchTrialDrafts", "WorkbenchTrialRows", "WorkbenchTrialScenarioRows"))
     _source_exists(conn, "WorkbenchTrialScenarios", "scenario_ref", audit["scenario_ref"])
     _source_exists(conn, "WorkbenchTrialDrafts", "draft_ref", audit["draft_ref"])

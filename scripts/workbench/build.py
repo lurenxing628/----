@@ -297,7 +297,7 @@ def build(root, output, node):
         retired.unlink()
     output.mkdir(parents=True, exist_ok=True)
     marker = output / "asset-manifest.json.building"
-    marker.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    marker.write_bytes((json.dumps(manifest, ensure_ascii=False, indent=2) + "\n").encode("utf-8"))
     os.replace(str(marker), str(output / "asset-manifest.json"))
     return {"status": "built", "manifest": str(output / "asset-manifest.json"),
             "build_id": manifest["build_id"], "files": len(files), "target": manifest["target"]}

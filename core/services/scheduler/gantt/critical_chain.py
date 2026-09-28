@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
 from core.services.common.degradation import DegradationCollector
@@ -8,25 +8,13 @@ from core.services.scheduler._sched_display_utils import fmt_dt as _fmt_dt
 from core.services.scheduler._sched_display_utils import record_bad_time_row as _record_bad_time_row
 from core.services.scheduler._sched_utils import _safe_int
 from core.services.scheduler.dispatch_task_ids import public_task_id as _public_task_id
+from core.shared.local_datetime import parse_local_datetime
 
 from .task_labels import public_task_label as _public_task_label
 
 
 def _parse_dt(value: Any) -> Optional[datetime]:
-    if value is None:
-        return None
-    if isinstance(value, datetime):
-        return value
-    s = str(value).strip().replace("/", "-")
-    if not s:
-        return None
-    s = s.replace("T", " ").replace("：", ":")
-    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
-        try:
-            return datetime.strptime(s, fmt)
-        except Exception:
-            continue
-    return None
+    return parse_local_datetime(value)
 
 
 def _clean_text(value: Any) -> str:
@@ -47,7 +35,7 @@ def _minutes_between(a: Optional[datetime], b: Optional[datetime]) -> Optional[i
     if not a or not b:
         return None
     try:
-        return int((b - a).total_seconds() // 60)
+        return (b - a) // timedelta(minutes=1)
     except Exception:
         return None
 

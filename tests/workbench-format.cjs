@@ -28,6 +28,11 @@ if (process.argv[2] === '--timezone') {
   assert.equal(F.date('2024-02-29T23:59:59.123456'), '2024-02-29');
   assert.equal(F.dateTime('2000-02-29T08:03', { seconds: true }), '2000-02-29 08:03:00');
   assert.equal(F.dateTime('0001-01-01 00:00'), '0001-01-01 00:00');
+  assert.equal(F.dateTime('2026-09-12T08:03:00.123456', { fractions: true }), '2026-09-12 08:03:00.123456');
+  assert.equal(F.dateTime('2026-09-12T08:03:09.000001', { seconds: true, fractions: true }), '2026-09-12 08:03:09.000001');
+  assert.equal(F.dateTime('2026-09-12T08:03:09', { seconds: true, fractions: true }), '2026-09-12 08:03:09');
+  invalid(() => F.dateTime('2026-09-12T08:03:09.123456\n', { fractions: true }));
+  invalid(() => F.dateTime('2026-09-12T08:03:09', { fractions: 1 }));
   for (const value of ['2026-02-29', '1900-02-29', '2026-04-31', '2026-00-01', '2026-13-01', '2026-01-00',
     '0000-01-01', '2026-9-12', '2026/09/12', ' 2026-09-12', '2026-09-12 ', 0, false, {}, []]) invalid(() => F.date(value));
   for (const value of ['2026-09-12', '2026-09-12T24:00', '2026-09-12T08:60', '2026-09-12T08:00:60',

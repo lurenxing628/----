@@ -5,6 +5,7 @@ from datetime import datetime
 from types import SimpleNamespace
 from typing import NoReturn
 
+from core.infrastructure.read_evidence import verified_read
 from core.models.workbench_trial import MAX_TRIAL_TASKS, reference
 from core.models.workbench_trial_adoption import TrialAdoptionBlocked
 from core.models.workbench_trial_codec import fingerprint
@@ -21,6 +22,10 @@ def _invalid(message) -> NoReturn:
 
 def load_saved_scenario(conn, scenario_ref):
     reference(scenario_ref)
+    return verified_read(conn, ("saved_trial_scenario", scenario_ref), lambda: _load_saved_scenario(conn, scenario_ref))
+
+
+def _load_saved_scenario(conn, scenario_ref):
     repo = WorkbenchTrialRepository(conn)
     saved = load_scenario(repo, scenario_ref)
     header = repo.scenario_header(scenario_ref)
@@ -112,8 +117,8 @@ def _saved_row(task, source):
     for name in ("start", "end"):
         raw = current[name]
         parsed = datetime.fromisoformat(raw)
-        if parsed.tzinfo is not None or parsed.microsecond or parsed.isoformat(timespec="seconds") != raw:
-            _invalid("试调方案里的时间只能精确到秒，请按 2026-09-13 08:30:00 这样填写。")
+        if parsed.tzinfo is not None or parsed.isoformat() != raw:
+            _invalid("试调方案里的时间格式无效，不能正式采用。请刷新后重试。")
     return {**source, "row_ref": task["row_ref"], "task_ref": task["task_ref"],
             "current": current, "original": deepcopy(original)}
 

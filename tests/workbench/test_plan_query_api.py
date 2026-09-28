@@ -159,7 +159,11 @@ def test_query_only_zero_database_changes_and_persisted_refs_survive_restart(pla
     plan_api.read()
     plan_api.read(collection="scenario")
     assert plan_api.state() == before
+    # Snapshot evidence reuse reads connection metadata and reasserts query_only.
+    # Never allow query_only=OFF or arbitrary PRAGMA writes in a public read.
+    safe_pragmas = {"PRAGMA DATA_VERSION", "PRAGMA QUERY_ONLY", "PRAGMA QUERY_ONLY=ON"}
     unexpected = [sql for sql in plan_api.statements if not sql.startswith("-- PRAGMA ")
+                  and sql.strip().upper() not in safe_pragmas
                   and sql.lstrip().split()[0].upper() not in {"SELECT", "WITH", "BEGIN", "COMMIT"}]
     assert unexpected == []
     restarted = make_api(plan_api.path)

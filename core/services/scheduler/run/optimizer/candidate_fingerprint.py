@@ -222,7 +222,7 @@ def _score_tuple(score: Any) -> Tuple[float, ...]:
 
 def _time_text(value: Any) -> str:
     if isinstance(value, datetime):
-        return value.isoformat(timespec="seconds")
+        return value.isoformat()
     if isinstance(value, date):
         return value.isoformat()
     return str(value or "")

@@ -273,8 +273,10 @@ class WorkbenchPlanIdentityRepository(BaseRepository):
         for start in range(0, len(keys), 400):
             chunk = keys[start:start + 400]
             marks = ",".join("?" for _ in chunk)
+            # Keep the bounded primary-key set outermost. SQLite 3.35 can otherwise
+            # scan every active ref once per chunk through the CAST expression.
             rows = self.fetchall("SELECT bo.id, m.ref FROM BatchOperations bo "
-                                 "JOIN WorkbenchPlanSourceRefs m ON m.kind = 'operation' AND m.active = 1 "
+                                 "CROSS JOIN WorkbenchPlanSourceRefs m ON m.kind = 'operation' AND m.active = 1 "
                                  f"AND m.source_key = CAST(bo.id AS TEXT) WHERE bo.id IN ({marks})", chunk)
             output.update((row["id"], row["ref"]) for row in rows)
         if len(output) != len(keys):

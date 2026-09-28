@@ -93,7 +93,8 @@ def install_path_guard(root):
     """Reject every non-isolated SQLite connection and server-side filesystem write."""
     import sqlite3
     import sys
-    from urllib.parse import unquote, urlsplit
+    from urllib.parse import urlsplit
+    from urllib.request import url2pathname
 
     root = Path(root).resolve()
     evidence = {"sqlite_connections": [], "violations": []}
@@ -114,7 +115,11 @@ def install_path_guard(root):
             if value == ":memory:":
                 evidence["sqlite_connections"].append(value)
                 return
-            file = unquote(urlsplit(value).path) if value.startswith("file:") else value
+            if value.startswith("file:"):
+                parts = urlsplit(value)
+                file = url2pathname(("//" + parts.netloc if parts.netloc else "") + parts.path)
+            else:
+                file = value
             require_inside(file, event)
             evidence["sqlite_connections"].append(str(Path(file).resolve()))
         elif event == "open":

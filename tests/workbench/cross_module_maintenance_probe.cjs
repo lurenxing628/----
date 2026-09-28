@@ -81,19 +81,24 @@ async function main() {
     const changed = (await api(base+'/month?year='+year+'&month='+month)).data.days.find(row=>row.date===day);
     assert.equal(changed.shift_start,'10:00'); assert.equal(changed.efficiency,.8);
   });
-  await run('shift-rest-to-work-requires-new-times', async () => {
+  await run('shift-rest-to-work-loads-editable-default-periods', async () => {
     await resource('operator','RT-O'); await button(dialog(),'编辑').click(); await button(dialog(),'维护班次').click();
     await button(dialog(),'新增班次档').click();
+    await dialog().getByLabel('状态',{exact:true}).locator('option[value="active"]').waitFor({state:'attached'});
     await select(dialog().getByLabel('状态',{exact:true}),'active');
     await dialog().getByLabel('编号',{exact:true}).fill('CROSS-SH'); await dialog().getByLabel('名称',{exact:true}).fill('验证轮换');
     await dialog().getByLabel('周期起始日期',{exact:true}).fill('2026-10-01');
     await dialog().getByLabel('轮换天数',{exact:true}).fill('1'); await button(dialog(),'生成逐日规则').click();
     const arrangement=dialog().getByLabel('第 1 天工作安排',{exact:true});
+    await arrangement.locator('option[value="rest"]').waitFor({state:'attached'});
     await select(arrangement,'rest'); await select(arrangement,'work');
-    assert.equal(await dialog().getByLabel('第 1 天开始',{exact:true}).inputValue(),'');
-    assert.equal(await dialog().getByLabel('第 1 天结束',{exact:true}).inputValue(),'');
-    await dialog().getByLabel('第 1 天开始',{exact:true}).fill('08:00'); await dialog().getByLabel('第 1 天结束',{exact:true}).fill('16:00');
-    await saved('/entities/shift_profile/create',()=>button(dialog(),'保存').click());
+    const period=(number,edge)=>dialog().getByLabel('第 1 天工作时段第 '+number+' 段'+edge,{exact:true});
+    assert.equal(await period(1,'开始').inputValue(),'08:30'); assert.equal(await period(1,'结束').inputValue(),'11:50');
+    assert.equal(await period(2,'开始').inputValue(),'13:30'); assert.equal(await period(2,'结束').inputValue(),'17:30');
+    await period(1,'开始').fill('08:00'); await period(1,'结束').fill('12:00'); await period(2,'结束').fill('16:00');
+    const created=await saved('/entities/shift_profile/create',()=>button(dialog(),'保存').click());
+    const profile=(await api('entities/shift_profile/'+created.data.entity_ref)).data;
+    assert.deepEqual(profile.fields.pattern[0].periods,[{start:'08:00',end:'12:00',day_offset:0},{start:'13:30',end:'16:00',day_offset:0}]);
     await button(dialog(),'完成并返回').click(); await button(dialog(),'取消').click();
   });
   await run('global-night-shift-hours-and-window-edit', async () => {

@@ -1,5 +1,7 @@
 """Independent batch route registration. Global mounting belongs to the host."""
 
+from contextlib import contextmanager
+
 from flask import current_app, g, jsonify, request
 
 from core.models.workbench_batch import normalize_operation_input, object_fields, public_ref
@@ -17,10 +19,23 @@ from web.api_responses import query_success
 
 from .api_responses import api_endpoint
 from .batch_context import command_body, json_body, load_preview, read_scope, save_preview
+from .read_budget import ReadBudget
 from .read_context import bind_read_snapshot
 from .write_context import issue_write_context, validate_write_context
 
 COLLECTION = "batch:create"
+_BATCH_READ_SLOTS = ReadBudget(1)
+
+
+@contextmanager
+def _read_snapshot(reader, *, detached=True):
+    # Each batch view projects the complete ledger, even for a short page. One
+    # reader avoids per-row SQLite/GIL handoff contention between large scans.
+    # FIFO waiters hold no SQLite transaction and cannot starve behind newcomers.
+    with _BATCH_READ_SLOTS.slot():
+        context = reader.detached_read_snapshot() if detached else reader.read_snapshot()
+        with context as fingerprint:
+            yield fingerprint
 
 
 def entity_context(entity, fingerprint):
@@ -54,7 +69,7 @@ def entity_context(entity, fingerprint):
 
 def _list(scope):
     reader = WorkbenchBatchQueryService(g.db, current_app.logger)
-    with reader.read_snapshot() as fingerprint:
+    with _read_snapshot(reader) as fingerprint:
         snapshot = bind_read_snapshot(snapshot_scope(scope), fingerprint, scope.get("snapshot_ref"))
         data = reader.page(scope)
         data["entities"] = [entity_context(entity, fingerprint) for entity in data["entities"]]
@@ -78,7 +93,7 @@ def batch_selection():
     if not scope.get("snapshot_ref"):
         raise WorkbenchCommandRejected("invalid_input", "数据已更新，还没有全选。请点「刷新」后重新点「全选当前筛选」。", 400)
     reader = WorkbenchBatchQueryService(g.db, current_app.logger)
-    with reader.read_snapshot() as fingerprint:
+    with _read_snapshot(reader) as fingerprint:
         snapshot = bind_read_snapshot(snapshot_scope(scope), fingerprint, scope["snapshot_ref"])
         data = reader.selection(scope)
     return query_success(data, snapshot)
@@ -88,7 +103,7 @@ def batch_selection():
 def batch_detail(ref):
     object_fields(dict(request.args), ("snapshot_ref",))
     reader = WorkbenchBatchQueryService(g.db, current_app.logger)
-    with reader.read_snapshot() as fingerprint:
+    with _read_snapshot(reader) as fingerprint:
         snapshot = bind_read_snapshot({"kind": "batch", "ref": ref}, fingerprint, request.args.get("snapshot_ref"))
         data = entity_context(reader.detail(ref), fingerprint)
     return query_success(data, snapshot)
@@ -100,7 +115,9 @@ def batch_choices():
     if set(args) - {"batch_ref", "operation_ref"} or any(len(args.getlist(key)) != 1 for key in args) or bool(args.get("batch_ref")) != bool(args.get("operation_ref")):
         raise WorkbenchCommandRejected("invalid_input", "请选择完整的批次及工序后再读取候选资源。", 400)
     reader = WorkbenchBatchQueryService(g.db, current_app.logger)
-    with reader.read_snapshot() as fingerprint:
+    # Operation choices read qualifications/capabilities after the batch snapshot.
+    # Keep those reads in the same transaction; plain catalog choices can detach.
+    with _read_snapshot(reader, detached=not bool(args)) as fingerprint:
         data = reader.choices(args.get("batch_ref"), args.get("operation_ref"))
         snapshot = bind_read_snapshot({"kind": "batch_choices", **dict(args)}, fingerprint)
     return query_success(data, snapshot)
@@ -176,7 +193,7 @@ def batch_facets():
     if body["field"] not in SORTS or not scope.get("snapshot_ref"):
         raise WorkbenchCommandRejected("invalid_input", "要筛选的列不对或数据已更新，筛选没有变化。请点「刷新」后重新打开列筛选。", 400)
     reader = WorkbenchBatchQueryService(g.db, current_app.logger)
-    with reader.read_snapshot() as fingerprint:
+    with _read_snapshot(reader) as fingerprint:
         snapshot = bind_read_snapshot(snapshot_scope(scope), fingerprint, scope["snapshot_ref"])
         filters = {key: values for key, values in scope["column_filters"].items() if key != body["field"]}
         rows = reader.matched({**scope, "column_filters": filters})

@@ -604,6 +604,13 @@ body.aps-workbench .rw-detail-pager .wb-pager button.btn { min-height: var(--wb-
     width: 100% !important;
   }
   body.aps-workbench .plan-workspace .plan-tick { max-width: 20%; }
+  body.aps-workbench .plan-workspace [data-plan-inspector-empty] { display: none; }
+  body.aps-workbench .plan-print-table { width: 100%; min-width: 0; table-layout: fixed; border-collapse: collapse; }
+  body.aps-workbench .plan-print-chunk { break-inside: avoid; page-break-inside: avoid; }
+  body.aps-workbench .plan-print-chunk + .plan-print-chunk { break-before: page; page-break-before: always; }
+  body.aps-workbench .plan-print-table tr { break-inside: avoid; page-break-inside: avoid; }
+  body.aps-workbench .plan-print-table :is(th, td) { padding: 4px; border: 1px solid var(--ui-border); white-space: normal; overflow-wrap: anywhere; vertical-align: top; text-align: left; font-size: var(--font-size-1); }
+  body.aps-workbench .plan-print-table small { display: block; }
   body.aps-workbench .plan-workspace .plan-lane {
     /* override: 虚拟甘特行的绝对定位和内联 top；打印按自然行流分页，不能留下屏幕窗口外的空白。 */
     position: relative !important;
@@ -668,6 +675,16 @@ body.aps-workbench .rw-detail-pager .wb-pager button.btn { min-height: var(--wb-
     /* override: 候选甘特内层的内联固定 height; beforeprint 已挂载全量轨道，打印按轨道自然撑开。 */
     height: auto !important;
     min-height: 0;
+    /* override: JSX screen width; the whole time range must fit inside the paper, including portrait. */
+    width: 100% !important;
+  }
+  body.aps-workbench .rc-gantt .rc-bar-space {
+    /* override: JSX normalized drawing width; leave the same resource-label column as the axis. */
+    width: calc(100% - 156px) !important;
+  }
+  body.aps-workbench .rc-bar-space > :is(canvas, [data-candidate-point-lane]) {
+    /* override: JSX viewport width; scale the complete bitmap or point lane, never crop its right edge. */
+    width: 100% !important;
   }
   body.aps-workbench .rc-gantt .rc-lane {
     /* override: .rc-gantt .rc-lane 和 JSX 的 absolute/top; 打印时每条轨道进入文档流且继续作为画布定位容器。 */

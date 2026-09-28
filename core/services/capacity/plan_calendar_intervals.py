@@ -15,7 +15,7 @@ def instant(value):
 
 
 def wire(value):
-    return value.isoformat(timespec="seconds")
+    return value.isoformat()
 
 
 def union(intervals):

@@ -45,6 +45,9 @@ async function run(page, name, spec, expected) {
       });
       printEvents.push({ event: event.type, trusted: event.isTrusted, printing: document.querySelector('[data-plan-gantt]').dataset.printing === 'true',
         rows: document.querySelectorAll('.plan-lane').length, taskRefs: bars.map(node => node.dataset.planTask),
+        printTasks: Array.from(document.querySelectorAll('[data-plan-print-task]')).map(node => ({ ref: node.dataset.planPrintTask, text: node.textContent })),
+        emptyInspector: !!document.querySelector('[data-plan-inspector-empty]'),
+        inspectorDisplay: getComputedStyle(document.querySelector('[data-plan-inspector]')).display,
         baselineBars: bars.filter(node => node.hasAttribute('data-before')).length, pixels,
         drawCount: window.printCanvasMarks.length, count: document.querySelector('[data-plan-search-count]').textContent,
         left: board.scrollLeft, top: board.scrollTop });
@@ -59,6 +62,15 @@ async function run(page, name, spec, expected) {
   assert.deepEqual(events.map(row => [row.event, row.trusted, row.printing]), [['beforeprint', true, true], ['afterprint', true, false]]);
   const printed = events[0];
   assert.equal(printed.count, expected.count);
+  assert.equal(printed.printTasks.length, expected.tasks, 'Every printed bar, including dense and baseline arrangements, needs a complete task record');
+  assert.equal(new Set(printed.printTasks.map(row => row.ref)).size, expected.tasks);
+  if (spec.longLabels) {
+    for (let index = 1; index <= 5; index++) {
+      const text = printed.printTasks.find(row => row.text.includes('TEST-W7-CAL-20260926A-B' + index));
+      assert(text && text.text.includes('Turning 完整工序说明末尾-' + index));
+    }
+    assert(printed.emptyInspector, 'This case must cover an unselected task detail');
+  }
   if (expected.dense) {
     assert.equal(printed.rows, 1); assert.equal(printed.pixels.length, 1);
     assert.equal(printed.drawCount, expected.tasks, 'All matching dense tasks must be painted, including those outside the screen viewport');
@@ -85,10 +97,13 @@ async function run(page, name, spec, expected) {
     const marks = Array.from(document.querySelectorAll('[data-plan-task], [data-plan-dense-row]')).map(node => node.getBoundingClientRect());
     return { frameRight: frame.right, innerRight: inner.right, frameWidth: frame.width,
       trackRight: Math.max(...tracks.map(box => box.right)), markRight: Math.max(...marks.map(box => box.right)),
+      emptyInspectorVisible: !!document.querySelector('[data-plan-inspector-empty]') && getComputedStyle(document.querySelector('[data-plan-inspector-empty]')).display !== 'none',
+      clippedPrintCells: Array.from(document.querySelectorAll('.plan-print-table td')).filter(node => node.scrollWidth > node.clientWidth + 1).length,
       viewport: innerWidth };
   });
   assert(paper.innerRight <= paper.frameRight + 1 && paper.trackRight <= paper.frameRight + 1 && paper.markRight <= paper.frameRight + 1, JSON.stringify(paper));
   assert(paper.frameRight <= paper.viewport + 1, JSON.stringify(paper));
+  assert.equal(paper.emptyInspectorVisible, false); assert.equal(paper.clippedPrintCells, 0);
   // Clear the override instead of forcing screen: the next native PDF must still activate real print CSS.
   await page.emulateMedia({ media: null }); await page.setViewportSize(screenSize); await settle(page);
   report.cases.push({ name, before, after, events, pdf: filename, pages, expected, paper });
@@ -127,6 +142,10 @@ async function main() {
       context: { plan_ref: ref(1), selected_task_ref: ref(30011) } }, { expanded: true, tasks: 12, count: '12 / 12 道安排' });
     await run(page, 'wide-expanded-portrait', { theme: 'dark', count: 400, dense: true,
       context: { plan_ref: ref(1), selected_task_ref: ref(30399) } }, { expanded: true, landscape: false, dense: true, tasks: 400, count: '400 / 400 道安排' });
+    for (const theme of ['light', 'dark']) for (const landscape of [true, false]) {
+      await run(page, 'long-labels-' + theme + '-' + (landscape ? 'landscape' : 'portrait'), { theme, count: 5, dense: true, longLabels: true,
+        context: { plan_ref: ref(1) } }, { landscape, tasks: 5, count: '5 / 5 道安排' });
+    }
     assert.deepEqual(report.errors, []); assert.deepEqual(report.external, []); assert.deepEqual(report.unexpected_requests, []);
   } finally { await browser.close(); await new Promise(resolve => web.close(resolve)); }
 }

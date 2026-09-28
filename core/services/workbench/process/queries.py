@@ -14,8 +14,12 @@ from data.repositories.workbench_process_query_repo import WorkbenchProcessQuery
 from .projection import capabilities, project_group, project_operation, project_part, public_sequence
 from .route_choices import preview_existing_route
 
+_PLAIN_SCALARS = frozenset((str, int, bool, type(None)))
+
 
 def _plain(value):
+    if type(value) in _PLAIN_SCALARS:
+        return value
     if isinstance(value, (date, datetime)):
         return {"storage_type": type(value).__name__, "iso": value.isoformat()}
     if isinstance(value, dict):

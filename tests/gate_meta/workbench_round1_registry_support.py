@@ -120,6 +120,8 @@ UI_SUPPLEMENTAL_TARGETS = (
     "tests/workbench/test_workbench_visual_controls.py",
     "tests/workbench/test_operator_machine_permissions_widgets.py",
     "tests/workbench/test_plan_print.py",
+    "tests/workbench/test_candidate_print_regressions.py",
+    "tests/workbench/test_trial_microsecond_editor.py",
     "tests/workbench/test_resource_rail_storage.py",
     "tests/workbench/test_workbench_print_values.py",
 )

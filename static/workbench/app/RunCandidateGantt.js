@@ -19,6 +19,7 @@
     width,
     left,
     viewport,
+    printing,
     selected,
     baselineSelected,
     onSelect,
@@ -40,7 +41,7 @@
       key: item.task.row_ref,
       task: item.task,
       title: M.title(item.task),
-      x: (item.start - model.start) * scale - left,
+      x: printing ? (item.start - model.start) / (model.end - model.start) * 100 + '%' : (item.start - model.start) * scale - left,
       selected: baselineSelected ? baselineSelected.comparison.operation_ref === item.task.operation_ref : selected && selected.row_ref === item.task.row_ref,
       onSelect: () => onSelect(item.task),
       onHover: event => onHover(event ? {
@@ -355,12 +356,19 @@
       host = React.useRef(null),
       owner = React.useRef(null);
     const printing = BC.usePrintLayout();
+    const printState = React.useRef(false),
+      savedScroll = React.useRef(null),
+      restoreScroll = React.useRef(null);
+    if (printing && !printState.current) savedScroll.current = scroll;
+    if (!printing && printState.current) restoreScroll.current = savedScroll.current;
+    printState.current = printing;
     const baseline = BC.useBaseline(data),
       [selection, setSelection] = React.useState(null),
       result = baseline.result;
     const chosen = selection && selection.result === result && B.matching([selection.item.comparison], query).length ? selection.item : null;
+    // Draw the complete print range once; CSS maps this normalized axis onto the paper width.
     const labelWidth = 156,
-      width = Math.max(1, viewport) * (printing ? 1 : zoom);
+      width = printing ? 640 : Math.max(1, viewport) * zoom;
     const candidate = React.useMemo(() => M.layout(data, mode, query, width), [data, mode, query, width]);
     const model = React.useMemo(() => window.PointGanttModel.candidateRows(B.compose(candidate, result && result.data, mode, query), width), [candidate, result, mode, query, width]);
     function selectBaseline(item) {
@@ -376,11 +384,28 @@
       onSelect(task);
     }
     React.useLayoutEffect(() => {
-      const observe = new ResizeObserver(() => setViewport(Math.max(1, owner.current.clientWidth - labelWidth)));
+      const measure = () => {
+        if (printState.current || window.matchMedia('print').matches) return;
+        setViewport(Math.max(1, owner.current.clientWidth - labelWidth));
+      };
+      const observe = new ResizeObserver(measure);
       observe.observe(host.current);
       observe.observe(owner.current);
       return () => observe.disconnect();
     }, []);
+    React.useLayoutEffect(() => {
+      if (printing || !restoreScroll.current) return;
+      const position = restoreScroll.current;
+      const restore = () => {
+        owner.current.scrollLeft = position.left;
+        owner.current.scrollTop = position.top;
+        setScroll(position);
+      };
+      restore();
+      restoreScroll.current = null;
+      const frame = requestAnimationFrame(restore);
+      return () => cancelAnimationFrame(frame);
+    }, [printing]);
     React.useLayoutEffect(() => {
       if (owner.current) {
         owner.current.scrollTop = 0;
@@ -395,11 +420,11 @@
     React.useLayoutEffect(() => {
       const loc = chosen && chosen.segment ? model.baselineLocations.get(chosen.segment.row_ref) : selected && model.locations.get(selected.row_ref),
         node = owner.current;
-      if (!node || !loc) return;
+      if (!node || !loc || printing || restoreScroll.current) return;
       if (loc.top < node.scrollTop || loc.top + 48 > node.scrollTop + 288) node.scrollTop = loc.top;
       const x = (loc.item.start - model.start) / (model.end - model.start) * width;
       if (x < node.scrollLeft || x > node.scrollLeft + viewport) node.scrollLeft = Math.max(0, x - viewport / 3);
-    }, [selected, chosen, model, width, viewport]);
+    }, [selected, chosen, model, width, viewport, printing]);
     function pan(left) {
       if (owner.current) owner.current.scrollLeft = Math.max(0, Math.min(width - viewport, left));
     }
@@ -416,7 +441,8 @@
     const renderLeft = printing ? 0 : scroll.left,
       renderViewport = printing ? width : viewport;
     const visible = printing ? model.rows : M.visibleRows(model.rows, scroll.top - 48, scroll.top + 384);
-    const tickRows = model.start === null ? [] : M.ticks(model.start, model.end, width, renderLeft, renderViewport);
+    // Leave room for the last printed tick label; the exact end remains in the range heading above.
+    const tickRows = model.start === null ? [] : M.ticks(model.start, model.end, width, renderLeft, renderViewport).filter(tick => !printing || tick.x <= width * 0.85);
     return /*#__PURE__*/React.createElement("section", {
       ref: host,
       className: "rc-gantt",
@@ -462,7 +488,7 @@
       key: t.at,
       className: "rc-tick",
       style: {
-        left: t.x - renderLeft
+        left: printing ? t.x / width * 100 + '%' : t.x - renderLeft
       }
     }, M.timeLabel(t.label).slice(5, 10), /*#__PURE__*/React.createElement("br", null), M.timeLabel(t.label).slice(11)))), /*#__PURE__*/React.createElement("div", {
       ref: owner,
@@ -472,7 +498,7 @@
       "aria-label": "\u5019\u9009\u65F6\u95F4\u5B89\u6392",
       tabIndex: 0,
       onScroll: e => {
-        setScroll({
+        if (!printState.current && !window.matchMedia('print').matches) setScroll({
           left: e.currentTarget.scrollLeft,
           top: e.currentTarget.scrollTop
         });

@@ -171,6 +171,7 @@ WORKBENCH_REQUIRED_REGRESSION_GROUPS = (
         "test_identity_replacements.py",
         "test_identity_key_codec.py",
         "test_commands.py",
+        "test_commands_replay_lock.py",
         "test_read_context.py",
         "test_write_context.py",
         "test_foundation_dependency_scope.py",
@@ -334,6 +335,9 @@ WORKBENCH_REQUIRED_REGRESSION_GROUPS = (
     _group("workbench_batches", "Workbench batch commands, files and ledger guards", (
         "test_batch_commands.py",
         "test_batch_material_maintenance.py",
+        "test_batch_detached_snapshot.py",
+        "test_batch_read_budget.py",
+        "test_run_compute_process.py",
         "test_batch_actions.py",
         "test_batch_files.py",
         "test_batch_execution_ledger_projection.py",
@@ -368,9 +372,11 @@ WORKBENCH_REQUIRED_REGRESSION_GROUPS = (
         "test_plan_occupancy.py",
         "test_plan_page.py",
         "test_plan_persistent_identity.py",
+        "test_plan_operation_refs_query_cost.py",
         "test_plan_public_projection.py",
         "test_plan_runtime_dates.py",
         "test_plan_workspace_projections.py",
+        "test_plan_read_evidence.py",
         "test_plan_query_api.py",
         "test_plan_export_api.py",
         "test_plan_transport.py",
@@ -461,6 +467,7 @@ WORKBENCH_REQUIRED_REGRESSION_GROUPS = (
     )),
     _group("workbench_execution_ledger", "Execution ledger: eight domain contract files", (
         "test_execution_ledger.py",
+        "test_execution_snapshot_serialization.py",
         "test_execution_ledger_contracts.py",
         "test_execution_ledger_commands.py",
         "test_execution_ledger_constraints.py",
@@ -611,6 +618,7 @@ WORKBENCH_REQUIRED_REGRESSION_GROUPS = (
         "test_run_jobs_recovery.py",
         "test_run_jobs_restart.py",
         "test_run_runtime.py",
+        "test_run_claim_retry_guards.py", "test_run_runtime_claim_contention.py",
         "test_run_runtime_lock.py",
         "test_run_runtime_recovery.py",
         "test_run_runtime_lifecycle.py",
@@ -647,6 +655,16 @@ WORKBENCH_REQUIRED_REGRESSION_GROUPS = (
         "frontend/workbench/app/RunCandidateAPI.js",
         "frontend/workbench/app/RunCandidateAnalysisAPI.js",
     )),
+    _group("workbench_subsecond_time", "Lossless schedule time across storage, adoption and consumers", (
+        "test_subsecond_time_contract.py", "test_subsecond_candidate_flow.py",
+        "test_time_precision_contracts.py", "test_downstream_subsecond_contracts.py",
+    ), (
+        *_RUN_SCOPES, *_TRIAL_SCOPES,
+        "core/services/workbench/**/*.py", "core/services/capacity/**/*.py",
+        "core/services/common/**/*.py", "core/services/report/**/*.py",
+        "frontend/workbench/app/*.js", "frontend/workbench/app/*.jsx",
+        "tests/workbench/*subsecond*.cjs", "tests/workbench/*time_precision*.cjs",
+    )),
     _group("workbench_calibration", "Readonly calibration provenance, method and exports", (
         "test_calibration_method.py", "test_calibration_integrity.py", "test_calibration_routes.py",
     ), (
@@ -662,6 +680,7 @@ WORKBENCH_REQUIRED_REGRESSION_GROUPS = (
     _group("workbench_trial", "Trial drafts, validation, atomic writes and catalog APIs", (
         "test_trial_lifecycle.py", "test_trial_validation.py", "test_trial_atomic.py",
         "test_trial_archived_external_context.py",
+        "test_trial_subsecond_precision.py",
         "test_trial_api_schema.py", "test_trial_edges.py", "test_trial_catalog.py",
         "test_ep_trial_fixture_contracts.py",
         "test_trial_predecessor_labels.py",

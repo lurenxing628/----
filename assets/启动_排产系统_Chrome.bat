@@ -458,13 +458,13 @@ set "PORT=%CONTRACT_PORT%"
 call :probe_health
 if not defined HEALTH_OK exit /b 0
 
-if /I "%CONTRACT_OWNER%"=="%CURRENT_OWNER%" (
+if "%CONTRACT_OWNER_MATCH%"=="1" (
   set "CAN_REUSE_EXISTING=1"
   call :log existing_reuse=contract_owner_match
 ) else (
   set "BLOCKED_BY_OTHER=1"
-  set "LOCK_OWNER=%CONTRACT_OWNER%"
-  call :log existing_reuse_blocked=contract_owner_mismatch owner="%CONTRACT_OWNER%"
+  set "LOCK_OWNER="
+  call :log existing_reuse_blocked=contract_owner_mismatch owner_utf8_base64="%CONTRACT_OWNER_BASE64%"
 )
 exit /b 0
 
@@ -535,7 +535,8 @@ for /f "usebackq tokens=1,* delims==" %%A in ("%LOCK_FILE%") do (
 exit /b 0
 
 :read_runtime_contract
-set "CONTRACT_OWNER="
+set "CONTRACT_OWNER_BASE64="
+set "CONTRACT_OWNER_MATCH="
 set "CONTRACT_PID="
 set "CONTRACT_VERSION="
 set "CONTRACT_HOST="
@@ -549,7 +550,10 @@ if not defined HAS_POWERSHELL (
 )
 set "CONTRACT_TMP=%TEMP%\aps_contract_%RANDOM%_%RANDOM%.tmp"
 set "APS_RUNTIME_CONTRACT_FILE=%RUNTIME_CONTRACT_FILE%"
-powershell -NoProfile -Command "$ErrorActionPreference='Stop'; $path=$env:APS_RUNTIME_CONTRACT_FILE; $json=[System.IO.File]::ReadAllText($path,[System.Text.Encoding]::UTF8); $obj=$null; if (Get-Command ConvertFrom-Json -ErrorAction SilentlyContinue) { $obj=$json | ConvertFrom-Json } else { Add-Type -AssemblyName System.Web.Extensions; $obj=(New-Object System.Web.Script.Serialization.JavaScriptSerializer).DeserializeObject($json) }; function Get-ContractValue([string]$name) { if ($obj -is [System.Collections.IDictionary]) { return $obj[$name] }; $prop=$obj.PSObject.Properties[$name]; if ($null -ne $prop) { return $prop.Value }; return $null }; Write-Output ('owner=' + [string](Get-ContractValue 'owner')); Write-Output ('pid=' + [string](Get-ContractValue 'pid')); Write-Output ('contract_version=' + [string](Get-ContractValue 'contract_version')); Write-Output ('host=' + [string](Get-ContractValue 'host')); Write-Output ('port=' + [string](Get-ContractValue 'port'))" >"!CONTRACT_TMP!" 2>nul
+set "APS_RUNTIME_CONTRACT_OUTPUT=%CONTRACT_TMP%"
+REM Keep owner comparison inside PowerShell; emit an ASCII-only file directly.
+REM Win7 console encoding/BOM cannot corrupt the account used as identity proof.
+powershell -NoProfile -Command "$ErrorActionPreference='Stop'; $path=$env:APS_RUNTIME_CONTRACT_FILE; $json=[System.IO.File]::ReadAllText($path,[System.Text.Encoding]::UTF8); $obj=$null; if (Get-Command ConvertFrom-Json -ErrorAction SilentlyContinue) { $obj=$json | ConvertFrom-Json } else { Add-Type -AssemblyName System.Web.Extensions; $obj=(New-Object System.Web.Script.Serialization.JavaScriptSerializer).DeserializeObject($json) }; function Get-ContractValue([string]$name) { if ($obj -is [System.Collections.IDictionary]) { return $obj[$name] }; $prop=$obj.PSObject.Properties[$name]; if ($null -ne $prop) { return $prop.Value }; return $null }; $owner=[string](Get-ContractValue 'owner'); $owner64=[Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($owner)); $ownerMatch=0; if ($owner.Length -gt 0 -and [string]::Equals($owner,$env:CURRENT_OWNER,[System.StringComparison]::OrdinalIgnoreCase)) { $ownerMatch=1 }; $lines=@(('owner_utf8_base64=' + $owner64),('owner_match=' + $ownerMatch),('pid=' + [string](Get-ContractValue 'pid')),('contract_version=' + [string](Get-ContractValue 'contract_version')),('host=' + [string](Get-ContractValue 'host')),('port=' + [string](Get-ContractValue 'port'))); foreach ($line in $lines) { if ($line -match '[^\x20-\x7e]') { throw 'Invalid contract protocol value' } }; [System.IO.File]::WriteAllLines($env:APS_RUNTIME_CONTRACT_OUTPUT,[string[]]$lines,[System.Text.Encoding]::ASCII)" >nul 2>nul
 set "CONTRACT_RC=%ERRORLEVEL%"
 if not "!CONTRACT_RC!"=="0" (
   del /f /q "!CONTRACT_TMP!" >nul 2>&1
@@ -557,14 +561,15 @@ if not "!CONTRACT_RC!"=="0" (
   exit /b 0
 )
 for /f "usebackq tokens=1,* delims==" %%A in ("!CONTRACT_TMP!") do (
-  if /I "%%A"=="owner" set "CONTRACT_OWNER=%%B"
+  if /I "%%A"=="owner_utf8_base64" set "CONTRACT_OWNER_BASE64=%%B"
+  if /I "%%A"=="owner_match" set "CONTRACT_OWNER_MATCH=%%B"
   if /I "%%A"=="pid" set "CONTRACT_PID=%%B"
   if /I "%%A"=="contract_version" set "CONTRACT_VERSION=%%B"
   if /I "%%A"=="host" set "CONTRACT_HOST=%%B"
   if /I "%%A"=="port" set "CONTRACT_PORT=%%B"
 )
 del /f /q "!CONTRACT_TMP!" >nul 2>&1
-call :log contract_owner_normalized="%CONTRACT_OWNER%"
+call :log contract_owner_match="%CONTRACT_OWNER_MATCH%" owner_utf8_base64="%CONTRACT_OWNER_BASE64%"
 
 if defined CONTRACT_PID (
   echo(!CONTRACT_PID!| findstr /R "^[0-9][0-9]*$" >nul
@@ -576,13 +581,15 @@ if defined CONTRACT_PORT (
 )
 if not "%CONTRACT_VERSION%"=="1" (
   set "CONTRACT_READ_ERROR=contract_version_invalid"
-  set "CONTRACT_OWNER="
+  set "CONTRACT_OWNER_BASE64="
+  set "CONTRACT_OWNER_MATCH="
   set "CONTRACT_PID="
   set "CONTRACT_HOST="
   set "CONTRACT_PORT="
   exit /b 0
 )
-if defined CONTRACT_OWNER if defined CONTRACT_PID set "CONTRACT_VALID=1"
+if defined CONTRACT_OWNER_BASE64 if defined CONTRACT_PID if "%CONTRACT_OWNER_MATCH%"=="0" set "CONTRACT_VALID=1"
+if defined CONTRACT_OWNER_BASE64 if defined CONTRACT_PID if "%CONTRACT_OWNER_MATCH%"=="1" set "CONTRACT_VALID=1"
 if not defined CONTRACT_VALID set "CONTRACT_READ_ERROR=contract_missing_fields"
 exit /b 0
 
@@ -612,27 +619,19 @@ set "LOCK_ROW_IMAGE="
 REM B06: PID existing is not enough. A crash-leftover lock PID can be reused by
 REM an unrelated process, so the CSV image-name column must match APP_EXE_NAME.
 REM PID found but image mismatch => treat as stale lock (LOCK_ACTIVE stays 0).
-for /f "usebackq delims=" %%L in ("%LOCK_QUERY_TMP%") do (
-  set "LOCK_QUERY_ROW=%%L"
-  if not "!LOCK_QUERY_ROW!"=="" (
-    echo !LOCK_QUERY_ROW! | findstr /R /C:"^\"" >nul
-    if !errorlevel!==0 (
-      echo !LOCK_QUERY_ROW! | findstr /C:",\"!LOCK_PID!\"," >nul
-      if !errorlevel!==0 (
-        echo !LOCK_QUERY_ROW! | findstr /I /C:"\"!APP_EXE_NAME!\",\"!LOCK_PID!\"," >nul
-        if !errorlevel!==0 (
-          set "LOCK_ACTIVE=1"
-        ) else (
-          set "LOCK_PID_IMAGE_MISMATCH=1"
-        )
-      )
+REM Parse CSV columns instead of passing backslash-escaped quotes to FINDSTR:
+REM cmd does not use C-style quote escaping and can turn >nul into a filename.
+for /f "usebackq tokens=1,2 delims=," %%N in ("%LOCK_QUERY_TMP%") do (
+  if "%%~O"=="!LOCK_PID!" (
+    if /I "%%~N"=="!APP_EXE_NAME!" (
+      set "LOCK_ACTIVE=1"
+    ) else (
+      set "LOCK_PID_IMAGE_MISMATCH=1"
+      set "LOCK_ROW_IMAGE=%%~N"
     )
   )
 )
 if defined LOCK_PID_IMAGE_MISMATCH if not "!LOCK_ACTIVE!"=="1" (
-  for /f "usebackq tokens=1 delims=," %%N in ("%LOCK_QUERY_TMP%") do (
-    if not defined LOCK_ROW_IMAGE set "LOCK_ROW_IMAGE=%%~N"
-  )
   call :log lock_pid_image_mismatch=stale pid=!LOCK_PID! image="!LOCK_ROW_IMAGE!" expected="!APP_EXE_NAME!"
 )
 del /f /q "%LOCK_QUERY_TMP%" >nul 2>&1

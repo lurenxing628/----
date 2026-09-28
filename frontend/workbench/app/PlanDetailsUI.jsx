@@ -41,7 +41,7 @@
     const comparison = task && baseline.state === 'available' && baseline.items.find(item => item.operation_ref === task.operation_ref);
     const risk = task && data.projections.delivery_risks.items.find(row => row.batch_id === task.batch_id);
     const resources = task ? data.projections.occupancy.resources.filter(row => [task.machine_ref, task.operator_ref].includes(row.resource_ref)) : [];
-    return <aside className="plan-inspector" aria-label="任务详情" data-plan-inspector data-wb-scroll-key="plan-inspector">
+    return <aside className="plan-inspector" aria-label="任务详情" data-plan-inspector data-plan-inspector-empty={!task || undefined} data-wb-scroll-key="plan-inspector">
       <section><h2>任务详情</h2>{!task ? <div className="plan-empty">尚未选中任务。在计划甘特里点一道安排，或在交付风险列表里点批次，这里会显示工艺前后序、初始计划对照、交付风险和资源占用。</div> : <>
         <div className="plan-muted plan-inspector-kind">{selected.before ? '初始计划安排' : '当前所选计划安排'}</div>
         <h3 className="plan-inspector-title">{task.batch_id} · {task.sequence}</h3><p className="plan-wrap">{task.process_label}</p>

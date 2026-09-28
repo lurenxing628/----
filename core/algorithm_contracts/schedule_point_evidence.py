@@ -24,7 +24,7 @@ class SchedulePointEvidence:
                 and all(type(value) in (int, float) and 0 <= value <= 9007199254740991
                         and math.isfinite(value) for value in values)
                 and self.setup_hours == 0 and (self.unit_hours == 0 or self.quantity == 0)
-                and isinstance(self.at, datetime) and self.at.tzinfo is None and self.at.microsecond == 0
+                and isinstance(self.at, datetime) and self.at.tzinfo is None
                 and all(type(key) is str and key and key.strip() == key
                         for key in (self.machine_id, self.operator_id))
                 and row.source == "internal" and row.op_id == self.op_id

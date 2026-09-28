@@ -116,6 +116,7 @@
       className: "plan-inspector",
       "aria-label": "\u4EFB\u52A1\u8BE6\u60C5",
       "data-plan-inspector": true,
+      "data-plan-inspector-empty": !task || undefined,
       "data-wb-scroll-key": "plan-inspector"
     }, /*#__PURE__*/React.createElement("section", null, /*#__PURE__*/React.createElement("h2", null, "\u4EFB\u52A1\u8BE6\u60C5"), !task ? /*#__PURE__*/React.createElement("div", {
       className: "plan-empty"

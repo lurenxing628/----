@@ -17,6 +17,7 @@ from core.models.workbench_run_job import TERMINAL_STATES, validate_run_ref
 from core.services.scheduler import schedule_service
 from core.services.workbench.run.jobs import WorkbenchRunService
 from core.services.workbench.run.worker import WorkbenchRunWorker
+from core.services.workbench.run.worker_claim import RunClaimBusy, capture_claim_retry_state, require_retryable_claim
 
 from .launcher_paths import _normalize_db_path_for_runtime
 from .workbench_request_lifecycle import lookup_workbench_request_lifecycle
@@ -40,6 +41,11 @@ class WorkbenchRunRuntime:
         self._pending = set()
         self._stop = threading.Event()
         self._thread = None
+        self._compute_runner = None
+        if os.name == "nt" and getattr(sys, "frozen", False):
+            from .run_compute_process import run_compute_in_process
+
+            self._compute_runner = run_compute_in_process
         self._closed = False
         self._ready = False
         self._reason = "runtime_lock_not_supplied"
@@ -145,21 +151,47 @@ class WorkbenchRunRuntime:
                 self._queue.put(run_ref)
 
     def _execute(self, run_ref):
+        claim_failures, original = 0, None
         while not self._stop.is_set():
             self._verify()
+            retry_claim = False
             with closing(get_connection(self.db_path)) as conn:
+                if claim_failures:
+                    require_retryable_claim(conn, original)
+                    self._verify()
                 row = WorkbenchRunService(conn).get(run_ref)
                 if row["state"] != "queued" or row["stage"] != "queued":
                     if row["state"] not in TERMINAL_STATES:
                         self._disable("awaiting_reconciliation: " + run_ref)
                         self._stop.set()
                     return
+                if original is None:
+                    original = capture_claim_retry_state(conn, run_ref)
                 try:
-                    WorkbenchRunWorker(conn).execute(run_ref)
+                    worker = WorkbenchRunWorker(conn)
+                    worker.compute_runner = self._compute_runner
+                    if claim_failures:
+                        worker.execute(run_ref, retry_original=original)
+                    else:
+                        worker.execute(run_ref)
                     return
+                except RunClaimBusy:
+                    claim_failures += 1
+                    if claim_failures >= 3:
+                        raise
+                    retry_claim = True
                 except WorkbenchCommandRejected as exc:
                     if exc.code != "scheduling_busy":
                         raise
+            if retry_claim:
+                # The failed connection is closed before waiting. Only this
+                # unstarted claim may retry; all compute/commit uncertainty
+                # still takes _run_one's original reconciliation path.
+                self.app.logger.warning("Workbench run claim busy; verify before retry: run_ref=%s attempt=%s",
+                                        run_ref, claim_failures + 1)
+                if self._stop.wait(0.1 * claim_failures):
+                    return
+                continue
             # Never hold a DB transaction while waiting. The worker must acquire
             # the original non-reentrant lock itself, so release this wait probe.
             lock = schedule_service._RUN_SCHEDULE_LOCK

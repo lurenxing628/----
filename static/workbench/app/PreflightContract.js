@@ -66,7 +66,7 @@
   }
   const issues = rows => Array.isArray(rows) && rows.every(row => object(row) && typeof row.code === 'string' && typeof row.message === 'string');
   const nullableCount = value => value === null || count(value);
-  const localTime = value => value === null || typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(value) && date(value.slice(0, 10));
+  const localTime = value => value === null || typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.(?!000000$)\d{6})?(?![\s\S])/.test(value) && date(value.slice(0, 10));
   function execution(value) {
     return object(value) && ['unreported', 'started', 'partial', 'paused', 'exception', 'complete'].includes(value.execution_state) && [null, 'complete_reports', 'legacy_finish_event'].includes(value.completion_basis) && ['complete', 'incomplete', 'legacy_incomplete', 'invalid'].includes(value.data_quality) && ['first_actual_start', 'confirmed_finish'].every(key => localTime(value[key])) && ['remaining_quantity', 'known_completed_quantity', 'unknown_record_count'].every(key => nullableCount(value[key]));
   }

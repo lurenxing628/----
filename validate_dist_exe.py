@@ -8,7 +8,8 @@
   - 进程可启动
   - 运行时 host/port 文件可生成并可解析
   - 健康检查接口可访问（GET /system/health）
-  - 可访问关键页面（/personnel/ /equipment/ /process/ /scheduler/ /system/backup）
+  - 当前工作台入口、各视图的 HTML 引导与本地脚本/样式引用正确
+  - 无条件的旧页面入口保持明确的 410 退役响应
   - static 关键载荷已打进包且可通过 HTTP 取到非空内容
     （static 缺失时运行时只降级警告、页面照常 200，必须在验收层直接断言）
 
@@ -26,7 +27,9 @@ import subprocess
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
+from html.parser import HTMLParser
 from pathlib import Path
 from typing import Optional, Tuple
 
@@ -39,8 +42,15 @@ _EXPECTED_CONTRACT_VERSION = 1
 # 仓库 static/、列入 manifest 且由实际入口模板加载，不能保留已退役的旧资源。
 _STATIC_BUNDLE_ANCHORS = (
     "static/workbench/prototype/styles.css",
+    "static/workbench/app/theme.js",
     "static/workbench/app/main.js",
 )
+
+_WORKBENCH_VIEWS = (
+    "dashboard", "process", "batches", "run", "analysis", "gantt", "delay",
+    "field", "fieldgantt", "review", "reports", "calib", "basedata", "system", "trial",
+)
+_RETIRED_PAGE_PATHS = ("/personnel/", "/equipment/", "/process/", "/scheduler/", "/system/backup")
 
 
 def _is_port_open(host: str, port: int) -> bool:
@@ -71,6 +81,101 @@ def _http_get_bytes(url: str, timeout: float = 2.5) -> bytes:
     req = urllib.request.Request(url, method="GET")
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         return resp.read()
+
+
+def _http_get_page(url: str, timeout: float = 3.0) -> Tuple[int, str, str]:
+    req = urllib.request.Request(url, method="GET")
+    try:
+        response = urllib.request.urlopen(req, timeout=timeout)
+    except urllib.error.HTTPError as exc:
+        response = exc
+    with response:
+        return int(response.code), response.read().decode("utf-8"), response.geturl()
+
+
+class _PageMarkup(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.workbench_body = False
+        self.root_count = 0
+        self.boot_count = 0
+        self.boot_parts = []
+        self.in_boot = False
+        self.assets = set()
+        self.script_assets = set()
+        self.style_assets = set()
+        self.legacy_response = False
+        self.text_parts = []
+
+    def handle_starttag(self, tag, attrs):
+        values = dict(attrs)
+        if tag == "body" and "aps-workbench" in values.get("class", "").split():
+            self.workbench_body = True
+        if tag == "div" and values.get("id") == "root":
+            self.root_count += 1
+        if tag == "script" and values.get("id") == "workbench-boot":
+            self.boot_count += 1
+            self.in_boot = values.get("type") == "application/json" and not values.get("src")
+        if tag == "script" and values.get("src"):
+            self.assets.add(values["src"])
+            self.script_assets.add(values["src"])
+        if tag == "link" and values.get("rel") == "stylesheet" and values.get("href"):
+            self.assets.add(values["href"])
+            self.style_assets.add(values["href"])
+        if tag == "main" and values.get("data-workbench-legacy-response") == "true":
+            self.legacy_response = True
+
+    def handle_data(self, data):
+        self.text_parts.append(data)
+        if self.in_boot:
+            self.boot_parts.append(data)
+
+    def handle_endtag(self, tag):
+        if tag == "script":
+            self.in_boot = False
+
+
+def _assert_workbench_page(base_url: str, path: str, view: str) -> None:
+    status, body, final_url = _http_get_page(base_url + path)
+    print(f"[validate] GET {path} -> {status}")
+    target, origin = urllib.parse.urlsplit(final_url), urllib.parse.urlsplit(base_url)
+    if (status != 200 or (target.scheme, target.netloc) != (origin.scheme, origin.netloc)
+            or target.path not in ("/workbench", "/workbench/trial")):
+        raise RuntimeError(f"工作台入口响应不正确：{path} -> {status} {final_url}")
+    markup = _PageMarkup()
+    markup.feed(body)
+    markup.close()
+    if not markup.workbench_body or markup.root_count != 1 or markup.boot_count != 1:
+        raise RuntimeError(f"工作台 HTML 缺少唯一挂载节点或引导配置：{path}")
+    try:
+        boot = json.loads("".join(markup.boot_parts))
+    except ValueError as exc:
+        raise RuntimeError(f"工作台引导配置不是有效 JSON：{path}") from exc
+    if (not isinstance(boot, dict) or boot.get("schema_version") != 1 or boot.get("view") != view
+            or not isinstance(boot.get("enabled_views"), list) or view not in boot["enabled_views"]):
+        raise RuntimeError(f"工作台引导配置与请求视图不一致：{path}")
+    for asset in markup.assets:
+        parts = urllib.parse.urlsplit(asset)
+        if parts.scheme or parts.netloc or not parts.path.startswith("/static/workbench/"):
+            raise RuntimeError(f"工作台引用了非本机交付资源：{asset}")
+    styles = {urllib.parse.urlsplit(asset).path for asset in markup.style_assets}
+    scripts = {urllib.parse.urlsplit(asset).path for asset in markup.script_assets}
+    missing = ["/" + rel for rel in _STATIC_BUNDLE_ANCHORS
+               if "/" + rel not in (styles if rel.endswith(".css") else scripts)]
+    if missing:
+        raise RuntimeError(f"工作台 HTML 未引用关键脚本或样式：{missing}")
+
+
+def _assert_retired_page(base_url: str, path: str) -> None:
+    status, body, final_url = _http_get_page(base_url + path)
+    print(f"[validate] GET {path} -> {status} (expected retired)")
+    markup = _PageMarkup()
+    markup.feed(body)
+    markup.close()
+    text = "".join(markup.text_parts)
+    if (status != 410 or final_url != base_url + path or not markup.legacy_response
+            or "旧入口已退役" not in text or "原业务数据、保存的配置和历史记录仍保留" not in text):
+        raise RuntimeError(f"旧入口未返回明确的 410 退役页：{path}")
 
 
 def _normalize_db_path(path: str) -> str:
@@ -191,20 +296,54 @@ def _assert_health(base_url: str, timeout: float = 3.0) -> dict:
     return payload
 
 
-def _assert_networkx_bundled(exe_dir: str) -> None:
-    """确认离线包内含 NetworkX 包目录。
+_NETWORKX_MODULE_ANCHORS = (
+    "networkx",
+    "networkx.classes.graph",
+    "networkx.classes.digraph",
+    "networkx.algorithms.dag",
+    "networkx.algorithms.cycles",
+    "networkx.algorithms.components.weakly_connected",
+    "networkx.algorithms.traversal.breadth_first_search",
+    "networkx.algorithms.bipartite.matching",
+)
 
-    默认 graph_analysis_mode=on 依赖 NetworkX；onedir 打包会把纯 Python 的
-    networkx 收进 exe 同级目录(PyInstaller 4.10)或 _internal 子目录(6+)。
-    缺包会在运行时触发 NetworkXUnavailable，因此交付前必须可审。
+
+def _assert_networkx_bundled(exe_path: str) -> None:
+    """校验目标 EXE 内的 NetworkX 字节码，不依赖构建机安装或磁盘源码。
+
+    当前交付锁定 PyInstaller 4.10；默认 onedir 将纯 Python 模块放在
+    EXE 内的 PYZ。这里只证明关键载荷可解码，实际图运算另由实机验收覆盖。
     """
-    root = Path(exe_dir)
-    for base in (root, root / "_internal"):
-        if (base / "networkx" / "__init__.py").is_file():
-            return
-    raise RuntimeError(
-        "离线包内未发现 NetworkX 包目录；默认 graph_analysis_mode=on 会在运行时报 NetworkXUnavailable。"
-    )
+    from types import CodeType
+
+    try:
+        from PyInstaller.archive.readers import CArchiveReader
+        from PyInstaller.loader.pyimod02_archive import ZlibArchiveReader
+
+        archive = CArchiveReader(str(exe_path))
+        found = set()
+        for offset, _length, _size, compressed, kind, name in archive.toc:
+            if kind != "z":
+                continue
+            if compressed:
+                raise RuntimeError(f"不支持压缩的内嵌 PYZ：{name}")
+            pyz = ZlibArchiveReader(str(exe_path), offset=archive.pkg_start + offset)
+            for module in _NETWORKX_MODULE_ANCHORS:
+                entry = pyz.extract(module)
+                if entry is None:
+                    continue
+                expected_kind = 1 if module == "networkx" else 0
+                if entry[0] != expected_kind or not isinstance(entry[1], CodeType):
+                    raise RuntimeError(f"NetworkX 模块不是有效字节码：{module}")
+                found.add(module)
+        missing = sorted(set(_NETWORKX_MODULE_ANCHORS) - found)
+        if missing:
+            raise RuntimeError(f"PYZ 缺少 NetworkX 关键模块：{missing}")
+    except Exception as exc:
+        raise RuntimeError(
+            "离线包 NetworkX 字节码验收失败；请使用锁定的 PyInstaller 4.10 构建环境检查目标 EXE。"
+            f"详情：{exc}"
+        ) from exc
 
 
 def _assert_static_bundled(exe_dir: str) -> None:
@@ -261,7 +400,7 @@ def main() -> int:
     log_dir = resolve_prelaunch_log_dir(cwd, frozen=True)
 
     try:
-        _assert_networkx_bundled(cwd)
+        _assert_networkx_bundled(exe_path)
         _assert_static_bundled(cwd)
     except Exception as e:
         print(f"[validate] 验收失败：{e}")
@@ -299,20 +438,13 @@ def main() -> int:
             f"app={health.get('app')} status={health.get('status')} contract={health.get('contract_version')}"
         )
 
-        urls = [
-            ("/", 200),
-            ("/personnel/", 200),
-            ("/equipment/", 200),
-            ("/process/", 200),
-            ("/scheduler/", 200),
-            ("/system/backup", 200),
-        ]
-        for path, expect in urls:
-            code = _http_get(base + path, timeout=3.0)
-            print(f"[validate] GET {path} -> {code}")
-            if code != expect:
-                print("[validate] 验收失败：页面不可访问。")
-                return 6
+        _assert_workbench_page(base, "/", "dashboard")
+        _assert_workbench_page(base, "/workbench", "dashboard")
+        for view in _WORKBENCH_VIEWS:
+            _assert_workbench_page(base, "/workbench?view=" + view, view)
+        _assert_workbench_page(base, "/workbench/trial", "trial")
+        for path in _RETIRED_PAGE_PATHS:
+            _assert_retired_page(base, path)
 
         for rel in _STATIC_BUNDLE_ANCHORS:
             static_url = "/" + rel
@@ -329,7 +461,7 @@ def main() -> int:
             print(f"[validate] GET {static_url} -> 200 ({len(payload)} bytes)")
 
         _assert_process_running(p, "页面检查通过后进程已退出。")
-        print("[validate] 验收通过：exe 冷启动、运行时 host/port/db 契约、健康检查与 static 关键载荷均正常。")
+        print("[validate] 验收通过：exe 冷启动、运行时契约、工作台 HTML 引导、旧入口退役与 static 关键载荷均正常。")
         return 0
     except Exception as e:
         print(f"[validate] 验收失败：{e}")

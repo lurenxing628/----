@@ -30,9 +30,9 @@ def _overlaps(windows, identities, low, high):
     details = []
     for start, end, row in windows:
         if start < high and end > low:
-            details.append({"downtime_ref": identities[row["id"]]["ref"], "start": start.isoformat(timespec="seconds"),
-                            "end": end.isoformat(timespec="seconds"), "overlap_start": max(start, low).isoformat(timespec="seconds"),
-                            "overlap_end": min(end, high).isoformat(timespec="seconds"),
+            details.append({"downtime_ref": identities[row["id"]]["ref"], "start": start.isoformat(),
+                            "end": end.isoformat(), "overlap_start": max(start, low).isoformat(),
+                            "overlap_end": min(end, high).isoformat(),
                             "reason": row["reason_detail"] if type(row["reason_detail"]) is str else None})
     return details
 

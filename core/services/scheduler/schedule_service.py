@@ -12,7 +12,7 @@ from core.services.common.normalize import normalize_text
 from core.shared.number_utils import parse_finite_float
 
 from . import operation_edit_service as op_edit
-from ._sched_display_utils import fmt_dt
+from ._sched_display_utils import fmt_dt, parse_dt
 from .repository_bundle import build_schedule_repository_bundle
 from .resource_pool_builder import build_resource_pool, extend_downtime_map_for_resource_pool, load_machine_downtimes
 from .run.freeze_window import build_freeze_window_seed
@@ -116,20 +116,7 @@ class ScheduleService:
 
     @staticmethod
     def _normalize_datetime(value: Any) -> Optional[datetime]:
-        if value is None:
-            return None
-        if isinstance(value, datetime):
-            return value
-        s = str(value).strip()
-        if not s:
-            return None
-        s = s.replace("/", "-").replace("T", " ").replace("：", ":")
-        for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
-            try:
-                return datetime.strptime(s, fmt)
-            except Exception:
-                continue
-        return None
+        return parse_dt(value)
 
     # -------------------------
     # 查询

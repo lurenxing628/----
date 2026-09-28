@@ -64,8 +64,6 @@ def point_event_dto(start, end):
         raise PointEventError("point_time_invalid", "零工时工序的开始和结束时间必须是完整时刻。")
     if start.tzinfo is not None or end.tzinfo is not None or start != end:
         raise PointEventError("point_time_invalid", "零工时工序的开始和结束时间必须相同。")
-    if start.microsecond or end.microsecond:
-        raise PointEventError("duration_precision_unsupported", "零工时工序的时间带了秒以下的零头，不能保存，请改成整秒。")
     return {"event_kind": "point", "start": start.isoformat(), "end": end.isoformat(),
             "duration_seconds": 0, "occupies_resources": False}
 

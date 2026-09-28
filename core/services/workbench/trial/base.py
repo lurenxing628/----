@@ -39,11 +39,17 @@ def _arrangement(payload, refs):
         raw = payload.get(source)
         try:
             parsed = datetime.fromisoformat(raw)
-            if parsed.tzinfo is not None or parsed.microsecond:
-                raise ValueError("Not second-precision factory time")
-            result[field] = parsed.isoformat(timespec="seconds")
+            canonical = parsed.isoformat()
+            accepted = {canonical}
+            if parsed.second == 0 and parsed.microsecond == 0:
+                accepted.add(parsed.isoformat(timespec="minutes"))
+                if parsed.hour == parsed.minute == 0:
+                    accepted.add(parsed.date().isoformat())
+            if parsed.tzinfo is not None or raw.replace(" ", "T") not in accepted:
+                raise ValueError("Not canonical factory-local time")
+            result[field] = canonical
         except (ValueError, TypeError):
-            reject("trial_base_time_invalid", "基础安排的时间不对或带了秒以下的零头，这里不猜时长。请刷新后重试。")
+            reject("trial_base_time_invalid", "基础安排的时间格式不对，这里不猜时长。请刷新后重试。")
     for kind in ("machine", "operator"):
         key = payload.get(kind + "_id")
         result[kind + "_id"] = key

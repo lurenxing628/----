@@ -31,4 +31,4 @@ def test_app_new_ui_create_app_smoke(db_env, monkeypatch) -> None:
     assert "dashboard" in boot["enabled_views"]
 
     r2 = client.get("/excel-demo/")
-    retired_response(r2)
+    retired_response(r2, no_context=True)

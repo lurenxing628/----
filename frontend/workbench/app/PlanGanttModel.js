@@ -2,8 +2,9 @@
   'use strict';
   // Factory-local wall-clock coordinates, deliberately independent of browser DST.
   const instant = value => Date.parse(value + 'Z');
+  // Axis labels only. Business task/scope strings bypass Date so all six fractional digits remain intact.
   const wire = value => new Date(value).toISOString().slice(0, 19);
-  const timeLabel = value => window.WorkbenchFormat.dateTime(value, { seconds: true });
+  const timeLabel = value => window.WorkbenchFormat.dateTime(value, { seconds: true, fractions: true });
   const number = value => window.WorkbenchFormat.number(value, { digits: 2 });
   const count = value => window.WorkbenchFormat.number(value, { digits: 0 });
   const quantityLabel = value => value === null ? '未知' : typeof value === 'string' ? value : number(value);

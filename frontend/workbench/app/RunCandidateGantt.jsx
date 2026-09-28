@@ -2,12 +2,12 @@
   'use strict';
   const M = window.RunCandidateModel, B = window.RunBaselineModel, BC = window.RunBaselineControls, { Button } = window.RunCandidateControls;
   const { TimelineZoom, timelineZoomKey, timelineZoomStep } = window.ResourceControls, ZOOM_MAX = 128;
-  function PointLane({ row, model, width, left, viewport, selected, baselineSelected, onSelect, onHover }) {
+  function PointLane({ row, model, width, left, viewport, printing, selected, baselineSelected, onSelect, onHover }) {
     const scale = width / (model.end - model.start), G = window.PointGanttModel;
     const items = G.visible(row.items, model.start + left / scale, model.start + (left + viewport) / scale, scale);
     return <div data-candidate-point-lane style={{ position: 'absolute', left, width: viewport, height: row.height, overflow: 'hidden' }}>
       {items.map(item => <window.PointGantt.Marker key={item.task.row_ref} task={item.task} title={M.title(item.task)}
-        x={(item.start - model.start) * scale - left} selected={baselineSelected ? baselineSelected.comparison.operation_ref === item.task.operation_ref : selected && selected.row_ref === item.task.row_ref}
+        x={printing ? (item.start - model.start) / (model.end - model.start) * 100 + '%' : (item.start - model.start) * scale - left} selected={baselineSelected ? baselineSelected.comparison.operation_ref === item.task.operation_ref : selected && selected.row_ref === item.task.row_ref}
         onSelect={() => onSelect(item.task)} onHover={event => onHover(event ? { text: M.title(item.task), x: event.clientX, y: event.clientY } : null)} />)}
     </div>;
   }
@@ -123,25 +123,41 @@
     const [mode, setMode] = React.useState('machine'), [zoom, setZoom] = React.useState(1), [viewport, setViewport] = React.useState(600);
     const [scroll, setScroll] = React.useState({ left: 0, top: 0 }), [hover, setHover] = React.useState(null), host = React.useRef(null), owner = React.useRef(null);
     const printing = BC.usePrintLayout();
+    const printState = React.useRef(false), savedScroll = React.useRef(null), restoreScroll = React.useRef(null);
+    if (printing && !printState.current) savedScroll.current = scroll;
+    if (!printing && printState.current) restoreScroll.current = savedScroll.current;
+    printState.current = printing;
     const baseline = BC.useBaseline(data), [selection, setSelection] = React.useState(null), result = baseline.result;
     const chosen = selection && selection.result === result && B.matching([selection.item.comparison], query).length ? selection.item : null;
-    const labelWidth = 156, width = Math.max(1, viewport) * (printing ? 1 : zoom);
+    // Draw the complete print range once; CSS maps this normalized axis onto the paper width.
+    const labelWidth = 156, width = printing ? 640 : Math.max(1, viewport) * zoom;
     const candidate = React.useMemo(() => M.layout(data, mode, query, width), [data, mode, query, width]);
     const model = React.useMemo(() => window.PointGanttModel.candidateRows(B.compose(candidate, result && result.data, mode, query), width), [candidate, result, mode, query, width]);
     function selectBaseline(item) { setSelection(item ? { item, result } : null); if (item) onSelect(null); setHover(null); }
     function selectCandidate(task) { setSelection(null); onSelect(task); }
     React.useLayoutEffect(() => {
-      const observe = new ResizeObserver(() => setViewport(Math.max(1, owner.current.clientWidth - labelWidth))); observe.observe(host.current); observe.observe(owner.current);
+      const measure = () => {
+        if (printState.current || window.matchMedia('print').matches) return;
+        setViewport(Math.max(1, owner.current.clientWidth - labelWidth));
+      };
+      const observe = new ResizeObserver(measure); observe.observe(host.current); observe.observe(owner.current);
       return () => observe.disconnect();
     }, []);
+    React.useLayoutEffect(() => {
+      if (printing || !restoreScroll.current) return;
+      const position = restoreScroll.current;
+      const restore = () => { owner.current.scrollLeft = position.left; owner.current.scrollTop = position.top; setScroll(position); };
+      restore(); restoreScroll.current = null;
+      const frame = requestAnimationFrame(restore); return () => cancelAnimationFrame(frame);
+    }, [printing]);
     React.useLayoutEffect(() => { if (owner.current) { owner.current.scrollTop = 0; owner.current.scrollLeft = 0; } setScroll({ left: 0, top: 0 }); setHover(null); }, [mode, query, data, result]);
     React.useLayoutEffect(() => {
       const loc = chosen && chosen.segment ? model.baselineLocations.get(chosen.segment.row_ref) : selected && model.locations.get(selected.row_ref), node = owner.current;
-      if (!node || !loc) return;
+      if (!node || !loc || printing || restoreScroll.current) return;
       if (loc.top < node.scrollTop || loc.top + 48 > node.scrollTop + 288) node.scrollTop = loc.top;
       const x = (loc.item.start - model.start) / (model.end - model.start) * width;
       if (x < node.scrollLeft || x > node.scrollLeft + viewport) node.scrollLeft = Math.max(0, x - viewport / 3);
-    }, [selected, chosen, model, width, viewport]);
+    }, [selected, chosen, model, width, viewport, printing]);
     function pan(left) { if (owner.current) owner.current.scrollLeft = Math.max(0, Math.min(width - viewport, left)); }
     function fit() { setZoom(1); pan(0); }
     function zoomKeys(event) {
@@ -152,16 +168,18 @@
     }
     const renderLeft = printing ? 0 : scroll.left, renderViewport = printing ? width : viewport;
     const visible = printing ? model.rows : M.visibleRows(model.rows, scroll.top - 48, scroll.top + 384);
-    const tickRows = model.start === null ? [] : M.ticks(model.start, model.end, width, renderLeft, renderViewport);
+    // Leave room for the last printed tick label; the exact end remains in the range heading above.
+    const tickRows = model.start === null ? [] : M.ticks(model.start, model.end, width, renderLeft, renderViewport)
+      .filter(tick => !printing || tick.x <= width * 0.85);
     return <section ref={host} className="rc-gantt" aria-label="候选甘特图" onKeyDown={zoomKeys}><window.PointGantt.Styles /><div className="rc-heading"><div role="group" className="rc-tabs" aria-label="候选甘特维度">{Object.entries(M.kindLabels).map(([key, label]) =>
       <Button key={key} aria-pressed={mode === key} onClick={() => setMode(key)}>{label}</Button>)}</div>
       <div className="rc-tools"><BC.Toggle state={baseline} /><TimelineZoom zoom={zoom} max={ZOOM_MAX} scope="候选" onZoom={setZoom} onFit={fit} /></div></div>
       <BC.Panel state={baseline} rows={model.comparisons || []} chosen={chosen} onChoose={selectBaseline} workspace={data} />
       <div className="rc-legend rc-muted"><span>{model.groupCount} 组 · {model.rows.length} 轨</span><span><i />安排</span><span><i className="rc-overlap" />时间重叠的安排（分行显示）</span><span><i className="rc-external" />外协工序</span></div>
       {model.start !== null && <div className="rc-heading rc-muted"><span>{M.timeLabel(M.wire(model.start))}</span><span>{M.timeLabel(M.wire(model.end))}</span></div>}
-      <div className="rc-axis">{tickRows.map(t => <span key={t.at} className="rc-tick" style={{ left: t.x - renderLeft }}>{M.timeLabel(t.label).slice(5, 10)}<br />{M.timeLabel(t.label).slice(11)}</span>)}</div>
+      <div className="rc-axis">{tickRows.map(t => <span key={t.at} className="rc-tick" style={{ left: printing ? t.x / width * 100 + '%' : t.x - renderLeft }}>{M.timeLabel(t.label).slice(5, 10)}<br />{M.timeLabel(t.label).slice(11)}</span>)}</div>
       <div ref={owner} className="rc-scroll" data-candidate-gantt-scroll role="region" aria-label="候选时间安排" tabIndex={0}
-        onScroll={e => { setScroll({ left: e.currentTarget.scrollLeft, top: e.currentTarget.scrollTop }); setHover(null); }}>
+        onScroll={e => { if (!printState.current && !window.matchMedia('print').matches) setScroll({ left: e.currentTarget.scrollLeft, top: e.currentTarget.scrollTop }); setHover(null); }}>
         <div style={{ position: 'relative', width: width + labelWidth, height: Math.max(288, model.height) }}>
           {visible.map(row => <div key={row.key} className="rc-lane" data-candidate-track={row.baseline ? undefined : row.key} data-baseline-track={row.baseline ? row.key : undefined} style={{ top: row.top, height: row.height }}><div className="rc-lane-label" style={{ height: row.height - 1, paddingTop: row.baseline ? 5 : 7 }} title={row.label + (row.baseline ? ' · 初始计划' : '')}>{row.label}{row.baseline ? ' · 初始' : <small>第 {row.lane + 1} / {row.laneCount} 轨 · {row.items.length} 道安排</small>}</div>
             <div className="rc-bar-space" style={{ width, height: row.height, overflow: 'hidden' }}>{React.createElement(row.point ? PointLane : Lane, { row, model, width, left: renderLeft, viewport: renderViewport, printing, selected, baselineSelected: chosen, onSelect: selectCandidate, onBaselineSelect: selectBaseline, onHover: setHover })}</div></div>)}

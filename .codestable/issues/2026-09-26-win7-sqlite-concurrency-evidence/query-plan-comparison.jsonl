@@ -1,0 +1,2 @@
+{"join": "JOIN", "plan": [[4, 0, 0, "SEARCH TABLE WorkbenchPlanSourceRefs AS m USING INDEX idx_wb_plan_source_parent (kind=?)"], [9, 0, 0, "SEARCH TABLE BatchOperations AS bo USING COVERING INDEX idx_wb_lineage_operation_id_text (<expr>=? AND rowid=?)"]], "seconds": 0.2143529, "rows": 400}
+{"join": "CROSS JOIN", "plan": [[4, 0, 0, "SEARCH TABLE BatchOperations AS bo USING INTEGER PRIMARY KEY (rowid=?)"], [1213, 0, 0, "SEARCH TABLE WorkbenchPlanSourceRefs AS m USING INDEX idx_wb_plan_source_key (kind=? AND source_key=?)"]], "seconds": 0.0007715999999999834, "rows": 400}

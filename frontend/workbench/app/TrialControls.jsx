@@ -2,7 +2,7 @@
   'use strict';
   const { Button, Icon, Modal } = window.ResourceControls;
   // Minute precision; seconds stay visible when they are not :00. The check is inline so the display-format contract can evaluate this declarator alone.
-  const timeLabel = v => v ? window.WorkbenchFormat.dateTime(v, { seconds: /:\d\d:(?!00(?:\.0+)?$)\d\d(?:\.\d+)?$/.test(v) }) : '未记录';
+  const timeLabel = v => v ? window.WorkbenchFormat.dateTime(v, { seconds: /:\d\d:(?!00(?:\.0+)?$)\d\d(?:\.\d+)?$/.test(v), fractions: true }) : '未记录';
   const number = v => v === null || v === undefined ? '暂无数据' : typeof v === 'number' ? window.WorkbenchFormat.number(v, { digits: Number.isInteger(v) ? 0 : 2 }) : String(v);
   const percent = v => v === null || v === undefined ? '暂无数据' : window.WorkbenchFormat.percent(v, 2);
   const hours = v => v === null || v === undefined ? '暂无数据' : window.WorkbenchFormat.hours(v, { digits: 2, trim: true });

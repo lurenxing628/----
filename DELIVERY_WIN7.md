@@ -2,6 +2,8 @@
 
 默认交付 `APS_Portable_Win7_x64.zip`：完整解压后，双击 `启动_排产系统_Chrome.bat` 即可使用。主程序、Python 运行时和 APS 专用 Chrome109 都在包内，目标机不需要安装这些组件，也不需要管理员安装或区分本地账户与域账户。
 
+需要单文件小于 80 MB 时，可使用已核验的分包交付：把编号 ZIP 放在同一目录，解压第一包并运行随包 `Install.cmd`，它会使用内置工具读取后续包、核对全部文件并部署到新目录，再运行 `Application/Start.cmd`。分包部署入口已在 Win7 自带 PowerShell 2.0 上验证；下文 PowerShell 5.1 要求仍适用于原构建流水线。详见 [2026-09-28 用户交付记录](.codestable/audits/2026-09-28-win7-user-delivery.md)。
+
 ## 使用与数据位置
 
 解压到当前账户可读写的本机目录，例如 `D:\APS`。不要在 ZIP 内直接启动，也不要放到当前账户不可写的 `Program Files`。Windows 文件夹权限仍然生效；同一目录供其他账户使用时，也须允许其读写。
