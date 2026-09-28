@@ -7,13 +7,13 @@ freshness checks and result persistence. A failed child is never recomputed here
 import logging
 import multiprocessing
 import os
-import sqlite3
 import tempfile
 import threading
-from contextlib import closing
 from pathlib import Path
 
+from core.infrastructure.connection_guards import query_only
 from core.infrastructure.logging import safe_log
+from core.infrastructure.snapshot_connection import backup_to_file, open_readonly_immutable
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_run_compute import CandidateRunInputError
 
@@ -53,9 +53,7 @@ def _compute_child(snapshot_path, row, sender, control):
 
         # Only this owned, consistent copy enters the child. The production path,
         # host runtime locks and the parent's writable connection are not passed.
-        uri = Path(snapshot_path).resolve().as_uri() + "?mode=ro"
-        with closing(sqlite3.connect(uri, uri=True)) as snapshot:
-            snapshot.execute("PRAGMA query_only=ON")
+        with open_readonly_immutable(snapshot_path) as snapshot, query_only(snapshot):
             worker = WorkbenchRunWorker(snapshot,
                 progress_sink=lambda done, total: sender.send(("progress", done, total)))
             result = worker._compute(row)
@@ -99,8 +97,7 @@ def run_compute_in_process(source, row, *, on_progress):
     # used as a path. Cleanup occurs after the child has released all file handles.
     with tempfile.TemporaryDirectory(prefix="aps-run-compute-") as temporary:
         path = str(Path(temporary) / "snapshot.db")
-        with closing(sqlite3.connect(path)) as destination:
-            source.backup(destination)
+        backup_to_file(source, path)
         context = multiprocessing.get_context("spawn")
         receiver, sender = context.Pipe(duplex=False)
         child_control, parent_control = context.Pipe(duplex=False)

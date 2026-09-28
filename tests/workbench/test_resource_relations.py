@@ -366,7 +366,7 @@ def test_two_thousand_related_objects_use_batched_reads_not_per_row_scans(relati
         _, data = read_page(relation_conn, relation, code, size=200, number=2)
     assert len(data["entities"]) == 200 and data["page"]["total"] >= 2000
     selects = [sql for sql in large["statements"] if sql.lstrip().upper().startswith(("SELECT", "WITH"))]
-    assert len(selects) <= 35
+    assert len(selects) <= 36  # Includes the single bulk read of additional machine work types.
     assert large["vm_steps"] < max(small["vm_steps"], 1000) * 15
     assert stored_state(relation_conn) == before
     record_property(relation + "_2000", {"selects": len(selects), "vm_steps": large["vm_steps"], "seconds": large["seconds"]})

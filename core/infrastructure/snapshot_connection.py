@@ -22,6 +22,12 @@ def open_readonly_immutable(path: str) -> Iterator[sqlite3.Connection]:
         yield conn
 
 
+def backup_to_file(source: sqlite3.Connection, path: str) -> None:
+    """Materialize a consistent caller-owned database copy and release its handles."""
+    with closing(sqlite3.connect(path)) as destination:
+        source.backup(destination)
+
+
 def _restricted_authorizer(name: str):
     def authorize(action, first, second, database, source):
         if action == sqlite3.SQLITE_CREATE_TABLE and first in (name, "sqlite_sequence") and database == "main":

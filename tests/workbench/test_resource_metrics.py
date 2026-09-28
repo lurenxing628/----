@@ -35,9 +35,10 @@ def test_qualification_is_shared_and_read_once_per_population(metrics_conn, monk
     original = OperatorQualificationService.eligible_links
     calls = []
 
-    def recorded(self, rows, machines, active_operator_ids, operations):
+    def recorded(self, rows, machines, active_operator_ids, operations, **kwargs):
         calls.append((len(rows), len(machines), active_operator_ids, operations))
-        return original(self, rows, machines, active_operator_ids, operations)
+        assert set(kwargs["qualifications"]) == active_operator_ids
+        return original(self, rows, machines, active_operator_ids, operations, **kwargs)
 
     monkeypatch.setattr(OperatorQualificationService, "eligible_links", recorded)
     rows, _ = page(metrics_conn, category="internal", size=200)

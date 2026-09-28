@@ -158,8 +158,8 @@ class WorkbenchResourceMetricsService:
         if others:
             qualification.load(others)
         # The planning service remains the sole interpreter of explicit/legacy skills.
-        links = qualification.eligible_links(self.facts["authorizations"], machines, active, [])
         skills = qualification.load(sorted(active))
+        links = qualification.eligible_links(self.facts["authorizations"], machines, active, [], qualifications=skills)
         for link in links:
             for work_type in capabilities[link["machine_id"]]:
                 if skills[link["operator_id"]] is None or work_type in skills[link["operator_id"]]:

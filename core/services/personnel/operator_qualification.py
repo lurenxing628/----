@@ -85,8 +85,9 @@ class OperatorQualificationService:
         return qualifications
 
     def eligible_links(self, rows: List[Dict[str, Any]], machines: List[Any], active_operator_ids: Set[str],
-                       operations: Sequence[Any]) -> List[Dict[str, Any]]:
-        qualifications = self.load(sorted(active_operator_ids))
+                       operations: Sequence[Any], *,
+                       qualifications: Optional[Dict[str, Optional[Set[str]]]] = None) -> List[Dict[str, Any]]:
+        qualifications = self.load(sorted(active_operator_ids)) if qualifications is None else qualifications
         _require_explicit_auto_work_types(operations, rows, qualifications)
         capabilities = {machine.machine_id: set(machine_types(machine)) for machine in machines}
         result = []
