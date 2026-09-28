@@ -85,7 +85,7 @@ def test_external_requirements_never_autofilled(pf):
     pf.conn.commit()
     data = checked(pf, missing_resource_policy="exclude")
     assert data["counts"]["blocked_tasks"] == 1
-    assert {row["code"] for row in data["tasks"][0]["issues"]} == {"supplier_missing", "external_days_missing"}
+    assert {row["code"] for row in data["tasks"][0]["issues"]} == {"supplier_missing", "external_days_missing", "source_category_mismatch"}
 
 
 @pytest.mark.parametrize("setup_hours", [0, 2])

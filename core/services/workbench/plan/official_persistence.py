@@ -32,6 +32,8 @@ def persist_official_plan_in_tx(conn, *, prepared, payload, baseline, audit, app
                  version=version, validation="valid", row_count=len(rows),
                  application_operator=application_operator,
                  adopted_at=datetime.now().isoformat(timespec="seconds"), is_simulation=False)
+    audit["material_policy"] = {"ready_check": prepared.normalized_input["ready_check"],
+                                "material_strategy": prepared.normalized_input.get("material_strategy", "strict")}
     # Legacy publishers own transactions or update master status. Only their
     # append repositories are composable with the caller's durable receipt.
     history.create({"version": version, "strategy": "manual", "batch_count": len(prepared.batches),

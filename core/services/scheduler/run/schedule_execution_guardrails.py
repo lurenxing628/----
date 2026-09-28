@@ -85,7 +85,13 @@ def _build_execution_seed_result(
     else:
         end_time = actual_start_time + _planned_duration(schedule_row, svc, op_id=op_id)
 
-    machine_id, operator_id = _execution_seed_resources(fact, op_id=op_id)
+    if op.source == SourceType.EXTERNAL.value:
+        if fact.actual_machine_id is not None or fact.actual_operator_id is not None:
+            raise _execution_conflict("外协报工不能占用本厂设备或人员，请核对实际资源记录。",
+                                      reason="external_actual_resource_conflict", op_id=op_id)
+        machine_id, operator_id = None, None
+    else:
+        machine_id, operator_id = _execution_seed_resources(fact, op_id=op_id)
     return {
         "op_id": op_id,
         "op_code": getattr(op, "op_code", None),

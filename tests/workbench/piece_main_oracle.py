@@ -1,4 +1,4 @@
-"""Read-only 79-table retention and business proofs for the browser's actual writes."""
+"""Read-only 80-table retention and business proofs for the browser's actual writes."""
 
 import json
 import re
@@ -37,7 +37,8 @@ def verify(root):
         if not condition:
             result["errors"].append(message)
 
-    check(len(before) == 79 and set(before) == set(after), "Expected exactly the same 79 schema tables")
+    check(len(before) == 80 and "BatchExternalContexts" in before and set(before) == set(after),
+          "Expected exactly the same 80 schema tables, including frozen external contexts")
     for name, rows in before.items():
         now = after[name]
         if rows == now:

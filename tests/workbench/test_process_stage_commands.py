@@ -157,7 +157,7 @@ def test_source_preview_and_apply_share_basic_validation(stage_conn, change):
     assert storage(stage_conn) == before
 
 
-def test_source_changes_only_selected_fields_never_global_category_or_hours(stage_conn):
+def test_source_type_change_clears_old_hours_without_changing_global_category(stage_conn):
     prepare_stages(stage_conn, source=False)
     before_ops, before_groups, batches = op_rows(stage_conn), group_rows(stage_conn), downstream(stage_conn)
     payload = source_input(stage_conn)
@@ -173,7 +173,7 @@ def test_source_changes_only_selected_fields_never_global_category_or_hours(stag
     assert exc.value.code == "group_discard_required" and storage(stage_conn) == before
     payload["discard_group_refs"] = affected
     run_stage(stage_conn, "source_confirm", payload)
-    assert op_rows(stage_conn) == {**before_ops, 20: {**before_ops[20], "source": "internal", "op_type_id": "PROC-IN", "supplier_id": None, "ext_group_id": None}}
+    assert op_rows(stage_conn) == {**before_ops, 20: {**before_ops[20], "source": "internal", "op_type_id": "PROC-IN", "supplier_id": None, "ext_group_id": None, "setup_hours": None, "unit_hours": None, "ext_days": None}}
     assert before_groups and group_rows(stage_conn) == {} and downstream(stage_conn) == batches
     assert stage_conn.execute("SELECT category FROM OpTypes WHERE op_type_id='PROC-EX'").fetchone()[0] == "external"
 
@@ -188,16 +188,20 @@ def test_supplier_capabilities_use_legacy_and_explicit_union(stage_conn):
     assert read_workflow(stage_conn, "PROC-001")["source"]["state"] == "confirmed"
 
 
-def test_hours_keep_per_operation_and_merged_totals_independent(stage_conn):
+def test_hours_edit_effective_merged_total_and_keep_member_history(stage_conn):
     prepare_stages(stage_conn)
     before_ops, before_groups, batches = op_rows(stage_conn), group_rows(stage_conn), downstream(stage_conn)
     payload = hours_input(stage_conn)
     payload["operations"][0].update(setup_hours=0, unit_hours=2.125)
     payload["operations"][1]["external_days"] = 4.25
     payload["groups"][0]["total_days"] = 9.5
+    before = storage(stage_conn)
+    with pytest.raises(WorkbenchCommandRejected) as exc:
+        run_stage(stage_conn, "hours_confirm", payload)
+    assert exc.value.code == "group_cycle_only" and storage(stage_conn) == before
+    payload["operations"][1]["external_days"] = None
     run_stage(stage_conn, "hours_confirm", payload)
-    assert op_rows(stage_conn) == {**before_ops, 10: {**before_ops[10], "setup_hours": 0, "unit_hours": 2.125},
-                                  20: {**before_ops[20], "ext_days": 4.25}}
+    assert op_rows(stage_conn) == {**before_ops, 10: {**before_ops[10], "setup_hours": 0, "unit_hours": 2.125}}
     assert group_rows(stage_conn) == {"PROC-G": {**before_groups["PROC-G"], "total_days": 9.5}}
     assert downstream(stage_conn) == batches and read_workflow(stage_conn, "PROC-001")["ready"]
 
@@ -362,7 +366,7 @@ def test_unchanged_group_stays_byte_for_byte_when_another_group_is_discarded(sta
     prepare_stages(stage_conn, source=False)
     before, unchanged_ref = group_rows(stage_conn), ref_for(stage_conn, "template_external_group", "OTHER-G")
     payload = source_input(stage_conn)
-    payload["operations"][1]["supplier_ref"] = ref_for(stage_conn, "supplier", "PROC-S2")
+    payload["operations"][1].update(source="internal", op_type_ref=ref_for(stage_conn, "op_type", "PROC-IN"), supplier_ref=None)
     affected = WorkbenchProcessMutationService(stage_conn).affected_groups("source_confirm", payload, identity_for(stage_conn))
     assert unchanged_ref not in affected
     payload["discard_group_refs"] = affected

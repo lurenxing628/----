@@ -89,8 +89,8 @@ class WorkbenchRunCandidateQueryService:
 def _generation(run, capture):
     settings = capture["input"]
     values, gaps = {}, []
-    domains = {"missing_resource_policy": ("auto_assign", "exclude"), "completed_policy": ("preserve_actuals",)}
-    for key in ("start_date", "end_date", "ready_check", "missing_resource_policy", "completed_policy"):
+    domains = {"missing_resource_policy": ("auto_assign", "exclude"), "completed_policy": ("preserve_actuals",), "material_strategy": ("strict", "stage", "split")}
+    for key in ("start_date", "end_date", "ready_check", "missing_resource_policy", "completed_policy") + (("material_strategy",) if "material_strategy" in settings else ()):
         value = settings.get(key)
         if key in domains:
             valid = type(value) is str and value in domains[key]

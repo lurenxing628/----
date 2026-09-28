@@ -155,3 +155,32 @@ def test_invalid_input_is_rejected_without_writing(client, payload):
 def test_unknown_operator_reference_is_rejected(client):
     assert client.get(BASE + "f" * 48 + "/calendar/month",
                       query_string={"year": 2026, "month": 10}).status_code != 200
+
+
+def test_stale_month_cannot_overwrite_new_day_and_exact_request_replays(client):
+    ref = ref_of(client, 'OP001')
+    old = month(client, ref)['write_context']['write_token']
+    newer = dict(WORK, shiftStart='10:00', shiftEnd='18:00', eff=80)
+    first = command(client, ref, 'upsert', {'date': DAY, 'fields': newer}, old, key='calendar-newer-request-01')
+    assert first.status_code == 200, first.get_json()
+    replay = command(client, ref, 'upsert', {'date': DAY, 'fields': newer}, old, key='calendar-newer-request-01')
+    assert replay.get_json()['replayed'] is True
+    stale = command(client, ref, 'upsert', {'date': DAY, 'fields': WORK}, old, key='calendar-older-request-01')
+    assert stale.status_code == 409 and stale.get_json()['error']['code'] == 'stale_write'
+    assert stored(client, 'OP001', DAY)['shift_start'] == '10:00'
+
+
+def test_range_clear_binds_original_range_and_concurrent_dates(client):
+    ref = ref_of(client, 'OP001')
+    for index, day in enumerate((DAY, OTHER)):
+        token = month(client, ref)['write_context']['write_token']
+        assert command(client, ref, 'upsert', {'date': day, 'fields': WORK}, token, key='range-prepare-request-0' + str(index)).status_code == 200
+    scope = {'start_date': DAY, 'end_date': DAY}
+    response = client.post(BASE + ref + '/calendar/range-preview', json={'input': scope})
+    token = response.get_json()['data']['write_context']['write_token']
+    changed = command(client, ref, 'range-clear', {'start_date': DAY, 'end_date': OTHER}, token, key='range-tampered-request-01')
+    assert changed.status_code == 409
+    assert stored(client, 'OP001', DAY) and stored(client, 'OP001', OTHER)
+    token2 = month(client, ref)['write_context']['write_token']
+    assert command(client, ref, 'upsert', {'date': DAY, 'fields': dict(WORK, note='并发修改')}, token2, key='range-change-request-01').status_code == 200
+    assert command(client, ref, 'range-clear', scope, token, key='range-stale-request-01').status_code == 409

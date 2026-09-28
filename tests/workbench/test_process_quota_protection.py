@@ -145,3 +145,17 @@ def test_schema28_is_not_treated_as_no_locks(raw_schema28_quota_conn):
     assert after == before
     for table in before:
         assert after[table] == before[table], table
+
+
+def test_source_type_change_cannot_clear_a_calibrated_locked_quota(locked_quota_case):
+    from tests.workbench.process_commands_support import source_input
+
+    case = locked_quota_case
+    case.conn.execute("INSERT INTO OpTypes(op_type_id,name,category) VALUES ('MILL','铣削','internal')")
+    case.conn.commit()
+    payload = source_input(case.conn, 'P1')
+    payload['operations'][0]['op_type_ref'] = case.ref('op_type', 'MILL')
+    before = snapshot(case.conn)
+    assert_rejected('calibration_quota_locked', lambda: run_stage(case.conn, 'source_confirm', payload,
+        identity=WorkbenchProcessQueryService(case.conn).resolve(case.ref('part', 'P1'))))
+    assert snapshot(case.conn) == before

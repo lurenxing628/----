@@ -1,5 +1,6 @@
 """Explicit raw template copies and guarded resource edits, without default hours."""
 
+from core.models.resource_capabilities import supports_source
 from core.models.workbench_batch import normalize_operation_input, object_fields
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
 from core.services.personnel.operator_qualification import OperatorQualificationService
@@ -45,6 +46,9 @@ class WorkbenchBatchOperationService:
         batch = self.reader.batch(ref)
         facts = self.reader.load()
         require_unreferenced(facts, batch)
+        bound = {row["operation_id"] for row in facts.get("BatchMaterialStages", [])}
+        if any(row["id"] in bound for row in facts["BatchOperations"] if row["batch_id"] == batch["batch_id"]):
+            raise WorkbenchCommandRejected("constraint_conflict", "物料需求已绑定本批使用工序，请先在物料需求中改为开工前用料，再更新工艺并重新选择使用工序。")
         status = template_status(facts, batch)
         if status["diagnostics"]:
             raise WorkbenchCommandRejected("constraint_conflict", "\n".join(row["message"] for row in status["diagnostics"]))
@@ -104,6 +108,9 @@ class WorkbenchBatchOperationService:
 
     def _validate(self, batch, row, internal, changes):
         projection = BatchProjection(self.reader.load())
+        work_type = projection.catalogs["op_type"].get(row["op_type_id"])
+        if work_type is None or not supports_source(work_type["category"], row["source"]):
+            raise WorkbenchCommandRejected("constraint_conflict", "该工种不支持本序归属，请先核对工艺。")
         for kind in ("machine", "operator") if internal else ("supplier",):
             key = row[kind + "_id"]
             if key is not None:
@@ -117,7 +124,7 @@ class WorkbenchBatchOperationService:
 
     def _validate_internal(self, projection, row):
         machine = projection.catalogs["machine"].get(row["machine_id"])
-        if machine and machine["op_type_id"] != row["op_type_id"]:
+        if machine and row["op_type_id"] not in projection.machine_types.get(row["machine_id"], set()):
             raise WorkbenchCommandRejected("constraint_conflict", "设备与工序工种不匹配。")
         if row["operator_id"]:
             OperatorQualificationService(self.conn, self.logger).require(operator_id=row["operator_id"],
@@ -127,6 +134,8 @@ class WorkbenchBatchOperationService:
         group = projection.group(batch, row)
         if group and group["merge_mode"] == "merged" and "ext_days" in changes:
             raise WorkbenchCommandRejected("constraint_conflict", "合并外协组不能逐道改周期；请保留整组周期规则。")
+        if group and group["merge_mode"] == "merged" and "supplier_id" in changes:
+            raise WorkbenchCommandRejected("constraint_conflict", "合并外协段不能单独更换供应商。请在工艺资料中整段改派，再预检并更新本批次工序。")
         if row["supplier_id"]:
             capable = {(r["supplier_id"], r["op_type_id"]) for r in SupplierRepository(self.conn).list_capabilities(status="active") if not r["missing_supplier"]}
             if (row["supplier_id"], row["op_type_id"]) not in capable:

@@ -64,12 +64,18 @@ class WorkbenchOutsourcingSourceRepository:
     def plan_identity_revision(self):
         return self.conn.execute("SELECT revision FROM WorkbenchPlanIdentityClock WHERE singleton=1").fetchone()[0]
 
-    def external_operation_rows(self, batch_id, limit):
+    def route_rows(self, batch_id, piece_id):
+        """Actual operation order for one piece, including shared batch operations."""
+        return [dict(row) for row in self.conn.execute(
+            "SELECT id,op_code,seq,piece_id,source,supplier_id FROM BatchOperations "
+            "WHERE batch_id=? AND (piece_id IS ? OR piece_id IS NULL) ORDER BY seq,id", (batch_id, piece_id))]
+
+    def external_operation_rows(self, batch_id, limit, query=""):
         """Up to limit + 1 external operations (optionally of one batch) with identity, membership and receipt refs."""
         params, where = (), ""
         if batch_id is not None:
             where, params = " AND o.batch_id=?", (batch_id,)
-        rows = self.conn.execute("""SELECT r.ref AS operation_ref, o.op_code, o.op_type_name, b.ref AS batch_ref,
+        rows = self.conn.execute("""SELECT r.ref AS operation_ref, o.op_code, o.op_type_name, o.seq, o.piece_id, b.ref AS batch_ref,
             s.ref AS supplier_ref, m.outsourcing_ref,
             h.batch_ref AS receipt_batch_ref, h.supplier_ref AS receipt_supplier_ref FROM BatchOperations o
             LEFT JOIN WorkbenchPlanSourceRefs r ON r.kind='operation' AND r.active=1 AND r.source_key=CAST(o.id AS TEXT)
@@ -77,5 +83,18 @@ class WorkbenchOutsourcingSourceRepository:
             LEFT JOIN WorkbenchEntityRefs s ON s.kind='supplier' AND s.active=1 AND s.entity_key=o.supplier_id
             LEFT JOIN WorkbenchOutsourcingMembers m ON m.operation_ref=r.ref
             LEFT JOIN WorkbenchOutsourcingReceipts h ON h.outsourcing_ref=m.outsourcing_ref
-            WHERE o.source='external'""" + where + " ORDER BY r.ref LIMIT ?", params + (limit + 1,)).fetchall()
+            LEFT JOIN Batches batch ON batch.batch_id=o.batch_id
+            LEFT JOIN Parts part ON part.part_no=batch.part_no
+            LEFT JOIN Suppliers supplier ON supplier.supplier_id=o.supplier_id
+            WHERE o.source='external'""" + where + """ AND (?='' OR
+                instr(lower(COALESCE(o.op_code,'')),lower(?))>0 OR
+                instr(lower(COALESCE(o.op_type_name,'')),lower(?))>0 OR
+                instr(lower(COALESCE(o.batch_id,'')),lower(?))>0 OR
+                instr(lower(COALESCE(batch.part_no,'')),lower(?))>0 OR
+                instr(lower(COALESCE(part.part_name,'')),lower(?))>0 OR
+                instr(lower(COALESCE(o.supplier_id,'')),lower(?))>0 OR
+                instr(lower(COALESCE(supplier.name,'')),lower(?))>0 OR
+                instr(lower(COALESCE(o.piece_id,'')),lower(?))>0)
+            ORDER BY o.batch_id COLLATE NOCASE,o.piece_id COLLATE NOCASE,o.seq,o.id LIMIT ?""",
+            params + (query,) * 9 + (limit + 1,)).fetchall()
         return [dict(row) for row in rows]

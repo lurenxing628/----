@@ -1,5 +1,7 @@
 """Public entity fields are explicitly selected from private raw state."""
 
+from core.models.calendar_periods import shift_pattern_fields
+from core.models.resource_capabilities import supports_source
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_supplier import supplier_state
 from core.services.personnel.operator_machine_query_service import OperatorMachineQueryService
@@ -27,7 +29,7 @@ def project_resource(kind, identity, state, *, availability=None, availability_i
         return _supplier(entity, raw)
     {"op_type": _op_type, "machine": _machine, "operator": _operator,
      "machine_group": _machine_group, "shift_profile": _shift_profile}[kind](entity, raw, state)
-    if kind == "op_type" and raw["category"] == "internal" and availability is not None:
+    if kind == "op_type" and supports_source(raw["category"], "internal") and availability is not None:
         entity["availability"] = dict(availability)
     entity["issues"].extend(dict(issue) for issue in availability_issues)
     if entity["status"] == "unknown":
@@ -53,7 +55,9 @@ def _machine(entity, raw, state):
         related = _related(state[name])
         relations[name] = related
         relations[name + "_ref"] = related["ref"] if related else None
-    if state["op_type"] and state["op_type"]["record"]["category"] != "internal":
+    relations["op_types"] = [_related(item) for item in state["op_types"]]
+    relations["op_type_refs"] = [item["ref"] for item in relations["op_types"]]
+    if any(not supports_source(item["record"]["category"], "internal") for item in state["op_types"]):
         entity["issues"].append({"code": "machine_work_type_invalid", "message": "这台设备绑的工种不是自制工种，没有算成自制产能。请重新选一个自制工种。"})
 
 
@@ -71,7 +75,7 @@ def _operator(entity, raw, state):
         from .operator_machine_permissions import permission_rows
         relations["machine_permissions"] = permission_rows(state)
     entity["issues"].extend(_authorization_issues(state["machine_authorizations"]))
-    if any(item["record"]["category"] != "internal" for item in state["skill_types"]):
+    if any(not supports_source(item["record"]["category"], "internal") for item in state["skill_types"]):
         entity["issues"].append({"code": "operator_skill_invalid", "message": "这个人登记的技能里有不是自制的工种，没有算成自制资格。请核对技能登记。"})
     if relations["skills_declared"] and not relations["skill_refs"]:
         entity["issues"].append({"code": "skills_empty", "message": "这个人的技能登记是空的，现在没有任何自制工种资格。"})
@@ -89,7 +93,7 @@ def _shift_profile(entity, raw, state):
     if raw["status"] not in ("active", "inactive"):
         entity["status"] = "unknown"
     entity["fields"].update({key: raw[key] for key in ("anchor_date", "cycle_days")})
-    entity["fields"]["pattern"] = [{**{key: row[key] for key in ("day_offset", "shift_start", "shift_end")}, "is_rest": bool(row["is_rest"])} for row in state["pattern"]]
+    entity["fields"]["pattern"] = [shift_pattern_fields(row) for row in state["pattern"]]
     entity["relationships"]["operator_count"] = len(state["members"])
 
 
@@ -103,7 +107,7 @@ def _supplier(entity, raw):
             raise WorkbenchCommandRejected("storage_failure", "这家供应商关联的工种在资料里查不到编号，这条没有打开。请到资料总览核对后重试。", 500)
         refs.append({"ref": row["ref"], "business_code": row["op_type_id"], "label": row["name"],
                      "legacy": bool(row["legacy"]), "explicit": bool(row["explicit"])})
-        if row["category"] != "external":
+        if not supports_source(row["category"], "external"):
             entity["issues"].append({"code": "supplier_capability_invalid", "message": "这家供应商关联的工种不是外协工种，没有算成外协能力。请重新选一个外协工种。"})
     entity["relationships"] = {"op_types": refs, "op_type_refs": [row["ref"] for row in refs],
                                 "counts": {key: len(rows) for key, rows in raw["references"].items()}}

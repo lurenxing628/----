@@ -7,6 +7,24 @@ from core.models.workbench_preflight import issue
 from .preflight_checks import number
 
 
+def material_deferred_ids(rows, settings):
+    """Only explicit material waits may remain pending in a stage plan.
+
+    Resource gaps, closed operations, invalid material facts and arbitrary
+    omissions never acquire the same adoption permission.
+    """
+    if settings.get("material_strategy") != "stage" or settings.get("ready_check") is not True:
+        return set()
+    material_codes = {"material_not_ready", "material_after_window"}
+    result = set()
+    for row in rows:
+        codes = {item.get("code") for item in row.get("issues", [])}
+        if (row["status"] == "skipped" and codes & material_codes
+                and codes <= material_codes | {"predecessor_excluded"}):
+            result.add(row["op_id"])
+    return result
+
+
 def predecessor_satisfied(row):
     if row["status"] in ("eligible", "auto_assign_required"):
         return True

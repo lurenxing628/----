@@ -4,6 +4,8 @@ import sqlite3
 
 import pytest
 
+from core.infrastructure.calendar_periods_schema import install as install_calendar_periods
+from core.infrastructure.machine_capabilities_schema import install as install_machine_capabilities
 from core.infrastructure.migration_state import set_schema_version
 from core.infrastructure.workbench_execution_ledger_schema import install_execution_ledger
 from core.infrastructure.workbench_execution_void_schema import install_execution_voids
@@ -31,6 +33,8 @@ def ledger_case(tmp_path):
     conn = raw_connection(tmp_path)
     conn.execute("BEGIN")
     install_metadata(conn)
+    install_machine_capabilities(conn)
+    install_calendar_periods(conn)
     install_plan_identity(conn)
     conn.execute("INSERT INTO OpTypes(op_type_id,name) VALUES ('T1','Turning')")
     conn.execute("INSERT INTO Machines(machine_id,name,op_type_id) VALUES ('M1','Lathe','T1')")
@@ -54,6 +58,8 @@ def install_case(conn):
     conn.commit()
     conn.execute("BEGIN")
     install_metadata(conn)
+    install_machine_capabilities(conn)
+    install_calendar_periods(conn)
     install_plan_identity(conn)
     install_execution_ledger(conn)
     install_execution_voids(conn)

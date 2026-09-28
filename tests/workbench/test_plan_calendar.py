@@ -9,11 +9,12 @@ from core.errors import AppError
 from core.models.workbench_command import input_fingerprint
 from core.services.capacity.plan_calendar_intervals import instant
 from core.services.scheduler.calendar.engine import CalendarEngine
+from core.services.scheduler.calendar.service import CalendarService
 from core.services.workbench.plan.calendar import project_plan_calendar
 from tests.workbench.plan_calendar_support import codes, measured, plan_calendar_case, resource
 
 
-def test_default_is_domain_policy_not_sample_capacity(calendar_case):
+def test_configured_factory_default_is_domain_policy_not_sample_capacity(calendar_case):
     calendar, _, facts, _ = calendar_case.project()
     assert calendar["state"] == "available"
     assert calendar["global"]["available_hours"] == 8
@@ -252,3 +253,19 @@ def test_same_read_transaction_keeps_calendar_resource_and_downtime_snapshot(cal
         calendar_case.conn = original
         reader.close()
         writer.close()
+def test_split_work_periods_are_valid_pauses_and_not_a_capacity_shortfall(calendar_case):
+    CalendarService(calendar_case.conn).upsert("2026-09-09", periods=[
+        {"start": "08:30", "end": "11:50"}, {"start": "13:30", "end": "17:30"}])
+    calendar_case.execute("UPDATE Schedule SET start_time='2026-09-09 08:30:00',end_time='2026-09-09 17:30:00'")
+    _, occupancy, _, _ = calendar_case.project()
+    assert "assignment_outside_calendar" not in codes(occupancy["issues"])
+    for kind in ("machine", "operator"):
+        item = resource(occupancy, kind)
+        assert item["available_occupied_hours"] == pytest.approx(22 / 3)
+        assert item["capacity_shortfall_hours"] == 0 and item["capacity_insufficient"] is False
+    # A viewport lying wholly inside lunch is not the actual job's start/end.
+    _, clipped, _, _ = calendar_case.project("2026-09-09T12:00:00", "2026-09-09T13:00:00")
+    assert "assignment_outside_calendar" not in codes(clipped["issues"])
+    assert resource(clipped)["capacity_insufficient"] is False
+    calendar_case.execute("UPDATE Schedule SET start_time='2026-09-09 12:00:00'")
+    assert "assignment_outside_calendar" in codes(calendar_case.project()[1]["issues"])

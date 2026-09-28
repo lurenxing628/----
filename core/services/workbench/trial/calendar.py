@@ -19,8 +19,10 @@ def calendar_engine(tables):
             profile = profiles.get(row["shift_profile_id"])
             selected.append({"operator_id": row["operator_id"], "shift_profile_id": row["shift_profile_id"],
                              **(profile or {"profile_id": None, "status": None, "anchor_date": None, "cycle_days": None})})
+    periods = {(row["profile_id"], row["day_offset"]): row["periods_json"] for row in tables.get("WorkbenchShiftDayPeriods", [])}
+    patterns = [dict(row, periods_json=periods.get((row["profile_id"], row["day_offset"]))) for row in tables["WorkbenchShiftPatternDays"]]
     return SnapshotCalendarEngine({"global": tables["WorkCalendar"], "personal": tables["OperatorCalendar"],
-                                   "profiles": selected, "patterns": tables["WorkbenchShiftPatternDays"]})
+                                   "profiles": selected, "patterns": patterns, "defaults": tables.get("WorkbenchCalendarDefaults", [])})
 
 
 def original_duration(original, *, allow_point=False):

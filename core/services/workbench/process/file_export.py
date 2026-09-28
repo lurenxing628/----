@@ -4,6 +4,7 @@ from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_process_file import check_format, file_columns, file_error
 from core.models.workbench_process_table_query import process_table_request, process_table_scope
 from core.models.workbench_resource_action import resource_refs
+from core.services.process.route_parser_tokens import serialize_route_rows
 from core.services.workbench.facts.file_writer import XLSX_MAX_ROWS
 
 from .file_values import export_value
@@ -44,19 +45,29 @@ def select_export_parts(reader, *, selection, scope, refs=None, target_ref=None)
 
 def process_export_rows(kind, parts, facts):
     file_columns(kind)
-    if kind == "route":
-        for part in parts:
-            yield {"business_code": part["part_no"], "label": part["part_name"],
-                   "route_raw": part["route_raw"], "remark": part["remark"]}
-        return
     grouped = {}
     for row in facts["operations"]:
         if row["status"] == "active":
             grouped.setdefault(row["part_no"], []).append(row)
+    if kind == "route":
+        for part in parts:
+            operations = grouped.get(part["part_no"], [])
+            raw = serialize_route_rows([(row["seq"], row["op_type_name"]) for row in
+                                        sorted(operations, key=lambda row: row["seq"])]) if operations else part["route_raw"]
+            yield {"business_code": part["part_no"], "label": part["part_name"],
+                   "route_raw": raw, "remark": part["remark"]}
+        return
     groups = {row["group_id"]: row for row in facts["groups"]}
     for part in parts:
-        for row in grouped.get(part["part_no"], []):
-            yield _hours_export_row(part["part_no"], row, groups)
+        written_groups = set()
+        for row in sorted(grouped.get(part["part_no"], []), key=lambda row: row["seq"]):
+            exported = _hours_export_row(part["part_no"], row, groups)
+            if row["ext_group_id"] in written_groups:
+                exported.pop("group_total_days", None)
+            elif exported.get("group_total_days") is not None:
+                written_groups.add(row["ext_group_id"])
+            # Missing values are incomplete work, not requests to clear them on re-import.
+            yield {key: value for key, value in exported.items() if value is not None}
 
 
 def _hours_export_row(part_no, row, groups):

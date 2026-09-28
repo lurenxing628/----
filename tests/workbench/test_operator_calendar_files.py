@@ -82,6 +82,19 @@ def test_blank_cells_keep_current_values(file_env):
     assert saved["efficiency"] == 0.9 and saved["remark"] == "原备注" and saved["allow_urgent"] == "no"
 
 
+def test_note_only_file_patch_preserves_legacy_four_hour_shift(file_env):
+    conn = file_env[0]
+    conn.execute("INSERT INTO OperatorCalendar(operator_id,date,shift_start,shift_hours,remark) VALUES (?,?,?,4,?)",
+                 (OPERATOR, DAY, "09:00", "原备注"))
+    conn.commit()
+    rows = [(OPERATOR, DAY, "", "", "", "", "", "", "只改备注")]
+    document = preview(file_env, rows)
+    assert results(document) == [(2, "update")]
+    confirm(file_env, document, rows)
+    saved = stored(conn, DAY)
+    assert saved["remark"] == "只改备注" and saved["shift_hours"] == 4 and saved["shift_end"] == "13:00"
+
+
 def test_overnight_shift_is_supported(file_env):
     conn = file_env[0]
     rows = [(OPERATOR, DAY, "工作日", "22:00", "06:00", "100", "是", "是", "")]

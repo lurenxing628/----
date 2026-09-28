@@ -50,7 +50,7 @@ def test_real_codec_preview_is_read_only_and_public_contract_is_canonical(route_
     assert rows[0]["after"] == {**rows[0]["before"], "label": "changed name", "route_raw": ROUTE + "40新工种"}
     public = public_action_row(rows[0])
     assert not {"input", "expected", "related", "stage"} & public.keys()
-    assert set(public["route_summary"]) == {"counts", "diagnostics", "can_confirm_route"}
+    assert set(public["route_summary"]) == {"counts", "diagnostics", "can_confirm_route", "operations", "differences"}
     assert public["route_summary"]["counts"] == {"operations": 4, "recognized": 3, "unknown": 1}
     assert public["route_summary"]["can_confirm_route"]
     assert any(item["code"] == "unknown_op_type" for item in public["route_summary"]["diagnostics"])

@@ -46,6 +46,20 @@ def test_shift_window_drives_hours(calendar_env):
     assert saved["allow_normal"] == "yes" and saved["allow_urgent"] == "no" and saved["remark"] == "早班"
 
 
+def test_note_only_patch_preserves_legacy_duration_then_rest_clears_it(calendar_env):
+    conn = calendar_env[0]
+    conn.execute("INSERT INTO OperatorCalendar(operator_id,date,shift_start,shift_hours,remark) VALUES (?,?,?,4,?)",
+                 (OPERATOR, DAY, "09:00", "原备注"))
+    conn.commit()
+    proposed = service(calendar_env).proposed_row({"note": "只改备注"}, service(calendar_env).snapshot(DAY))
+    assert proposed["shift_hours"] == 4
+    run(calendar_env, "upsert", {"date": DAY, "fields": {"type": "work", "shiftStart": "09:00", "note": "只改备注"}})
+    saved = stored(conn, DAY)
+    assert saved["shift_hours"] == 4 and saved["shift_end"] == "13:00" and saved["remark"] == "只改备注"
+    run(calendar_env, "upsert", {"date": DAY, "fields": {"type": "rest"}})
+    assert stored(conn, DAY)["shift_hours"] == 0
+
+
 def test_overnight_shift_is_supported(calendar_env):
     conn = calendar_env[0]
     run(calendar_env, "upsert", {"date": DAY, "fields": {**WORK, "shiftStart": "22:00", "shiftEnd": "06:00"}})

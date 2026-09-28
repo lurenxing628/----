@@ -92,7 +92,12 @@ def write_migration_evidence(directory):
     """New disposable fixture only; retain full raw/DDL snapshots and real backup."""
     from core.infrastructure.database import ensure_schema
     from core.infrastructure.migration_state import CURRENT_SCHEMA_VERSION, current_schema_contract_issues
-    from tests.workbench.legacy_migration_current_support import V32_TABLES, assert_v32_empty
+    from tests.workbench.legacy_migration_current_support import (
+        V32_TABLES,
+        V33_TABLES,
+        assert_v32_empty,
+        assert_v33_contexts,
+    )
 
     directory = Path(directory)
     directory.mkdir(parents=True, exist_ok=False)
@@ -104,8 +109,9 @@ def write_migration_evidence(directory):
         after, new_ddl = snapshot(conn), source_ddl(conn)
         assert get_schema_version(conn) == CURRENT_SCHEMA_VERSION and not current_schema_contract_issues(conn)
         assert_v31_receipt_maps_only(conn)
-        assert set(after) - set(before) == set(V31_TABLES + V32_TABLES)
+        assert set(after) - set(before) == set(V31_TABLES + V32_TABLES + V33_TABLES)
         assert_v32_empty(conn)
+        assert_v33_contexts(conn)
         assert {key: rows for key, rows in before.items() if key != "SchemaVersion"} == {
             key: after[key] for key in before if key != "SchemaVersion"}
         assert [row for row in new_ddl if row[1] in {old[1] for old in old_ddl}] == old_ddl

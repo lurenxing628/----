@@ -10,7 +10,7 @@ from core.models.workbench_preflight import issue
 from core.models.workbench_run_compute import CandidateRunInputError
 
 from .preflight_checks import PreflightChecks, number, stored_date
-from .preflight_dependencies import link_predecessors
+from .preflight_dependencies import link_predecessors, material_deferred_ids
 
 _BATCH_STATES = {"pending", "scheduled", "processing", "completed", "cancelled"}
 _OP_STATES = {"pending", "scheduled", "processing", "completed", "skipped"}
@@ -87,7 +87,7 @@ def classify_rows(facts, settings, raw_batches, operations, projections, guarded
         rows.append({"operation_ref": ref, "op_id": op.id, "batch_ref": batch["ref"], "batch_id": op.batch_id,
                      "piece_id": op.piece_id, "sequence": op.seq, "status": status, "issues": reasons,
                      "predecessor_refs": [], "execution": projection.to_dict()})
-    _link_dispositions(rows, batches, piece_scope)
+    _link_dispositions(rows, batches, piece_scope, settings)
     blocked = [row for row in rows if row["status"] == "blocked"]
     if blocked:
         raise CandidateRunInputError("input_blocked", "排产资料还有缺项，不能开始。请先补齐下方列出的项。", issues=blocked)
@@ -98,7 +98,7 @@ def classify_rows(facts, settings, raw_batches, operations, projections, guarded
     return rows, mutable
 
 
-def _link_dispositions(rows, batches, piece_scope):
+def _link_dispositions(rows, batches, piece_scope, settings):
     by_batch = defaultdict(list)
     for row in rows:
         by_batch[row["batch_id"]].append(row)
@@ -109,7 +109,8 @@ def _link_dispositions(rows, batches, piece_scope):
         by_id = {row["op_id"]: row for row in rows}
         for work in piece_scope.operations:
             by_id[work.op_id]["predecessor_refs"] = [by_id[key]["operation_ref"] for key in work.predecessor_op_ids]
-        if any(row["status"] not in ("eligible", "auto_assign_required", "protected") for row in rows):
+        deferred = material_deferred_ids(rows, settings)
+        if any(row["status"] not in ("eligible", "auto_assign_required", "protected") and row["op_id"] not in deferred for row in rows):
             fail("piece_scope_incomplete", "单件排产要把这条链上的公共工序和单件工序都选上，或者都保持原安排，这次排产没有开始。请重新选择范围。")
     for batch_id, batch in batches.items():
         if batch_id not in by_batch:
@@ -135,7 +136,7 @@ def _mutable_classification(checks, batch, op, settings):
         return "skipped", [issue("closed", "批次已结束，或者这道工序标了跳过，本次不排它。")]
     if batch["quantity"] == 0 and op["source"] != "internal":
         return "skipped", [issue("zero_quantity", "这道外协工序的目标数量是 0，本次不排它。")]
-    ready = checks.readiness(batch, settings["ready_check"])
+    ready, _release = checks.operation_readiness(batch, op, settings)
     if ready:
         return "skipped", ready
     ready_day = stored_date(batch["ready_date"])

@@ -54,7 +54,7 @@ def test_hours_save_removes_false_warning_without_rewriting_members(merged_cycle
 
 
 @pytest.mark.parametrize("damage", ("total", "member"))
-def test_saved_confirmation_is_not_fabricated_after_fact_damage(merged_cycle_api, damage):
+def test_confirmation_tracks_effective_total_and_preserves_unused_member_history(merged_cycle_api, damage):
     api = merged_cycle_api
     api.prepare()
     api.confirm("hours_confirm", api.hours())
@@ -63,10 +63,15 @@ def test_saved_confirmation_is_not_fabricated_after_fact_damage(merged_cycle_api
     api.execute("UPDATE ExternalGroups SET total_days=NULL WHERE group_id='PROC-G'" if damage == "total" else
                 "UPDATE PartOperations SET ext_days=-1 WHERE part_no='PROC-001' AND seq=20")
     entity = readonly_detail(api)
-    assert entity["workflow"]["stage"] == "hours" and not entity["workflow"]["ready"]
     row = operation(entity)
-    assert row["confirmation"]["hours"]["state"] == "unconfirmed"
-    assert ("value_missing" if damage == "total" else "value_invalid") in issue_codes(row)
+    if damage == "total":
+        assert entity["workflow"]["stage"] == "hours" and not entity["workflow"]["ready"]
+        assert row["confirmation"]["hours"]["state"] == "unconfirmed" and "value_missing" in issue_codes(row)
+    else:
+        assert entity["workflow"]["stage"] == "ready" and entity["workflow"]["ready"]
+        assert row["confirmation"]["hours"]["state"] == "confirmed"
+        assert_group_cycle(entity, 20, 6.75)
+        assert api.rows("PartOperations", "part_no=? AND seq=20", (PART,))[0]["ext_days"] == -1
     assert api.rows("WorkbenchProcessOperationConfirmations") == stored_confirmations
     assert api.rows("WorkbenchProcessWorkflow") == stored_workflow
 

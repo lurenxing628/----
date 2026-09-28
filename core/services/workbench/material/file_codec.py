@@ -32,6 +32,8 @@ from core.models.workbench_material_file import (
     HEADER_FIELDS,
     HEADERS,
     IMPORT_ROW_LIMIT,
+    STATUS_LABELS,
+    STATUS_VALUES,
     MaterialFileDownload,
     table_descriptor,
 )
@@ -120,7 +122,7 @@ def _decode_value(value, field, file_format):
             if _NUMBER.fullmatch(value) is None:
                 raise ValidationError("库存数量只填数字，不要带单位、「是/否」或千分位逗号。", field="stock_qty")
             value = float(value)
-    return value
+    return STATUS_VALUES.get(value, value) if field == "status" and type(value) is str else value
 
 
 def _parse_row(number, values, cell_errors, fields, file_format):
@@ -166,6 +168,8 @@ def _export_value(value, field, number, file_format):
         if value is not None and (type(value) not in (int, float) or not math.isfinite(value) or value < 0):
             raise _file_error("存着的库存数量不是 0 或大于 0 的有效数字，请核对数量。", number, field)
         return value
+    if field == "status" and type(value) is str:
+        value = STATUS_LABELS.get(value, value)
     if value is None:
         return r"\N" if field in _CLEARABLE else None
     if type(value) is not str:

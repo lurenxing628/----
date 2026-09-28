@@ -24,10 +24,13 @@ from tests.workbench.legacy_migration_current_support import (
     V30_TABLES,
     V31_TABLES,
     V32_TABLES,
+    V33_TABLES,
     assert_v30_source_maps_only,
     assert_v31_receipt_maps_only,
     assert_v32_empty,
+    assert_v33_contexts,
     missing_v32_issues,
+    missing_v33_issues,
 )
 from tests.workbench.schema29_regression_support import V29_TABLES, assert_v29_source_maps_only, missing_v29_issues
 
@@ -68,7 +71,7 @@ def assert_v22_schema(conn):
         (plan_identity_write_guard_objects(), "missing_workbench_plan_write_guard: "),
         (workbench_dashboard_external_objects(), "missing_dashboard_external_schema:"),
     )
-    expected_issues = missing_v29_issues() | missing_v32_issues()
+    expected_issues = missing_v29_issues() | missing_v32_issues() | missing_v33_issues()
     for objects, prefix in generations:
         assert not set(objects) & actual.keys()
         expected_issues.update(prefix + name for name in objects)
@@ -153,7 +156,7 @@ def assert_old_tables_preserved(conn, before, objects):
 
 
 def assert_new_metadata(conn, old_tables):
-    new_tables = set(WORKFLOW_TABLES + RUN_TABLES + V27_TABLES + V29_TABLES + V30_TABLES + V31_TABLES + V32_TABLES) | {
+    new_tables = set(WORKFLOW_TABLES + RUN_TABLES + V27_TABLES + V29_TABLES + V30_TABLES + V31_TABLES + V32_TABLES + V33_TABLES) | {
         "WorkbenchPlanSourceRefs", "WorkbenchTaskRefs", "WorkbenchPlanIdentityClock",
         "WorkbenchExecutionLedgerClock", "WorkbenchExecutionLegacyFacts",
         "WorkbenchProductionReports", "WorkbenchProductionReportRevisions",
@@ -165,6 +168,7 @@ def assert_new_metadata(conn, old_tables):
     assert_v30_source_maps_only(conn)
     assert_v31_receipt_maps_only(conn)
     assert_v32_empty(conn)
+    assert_v33_contexts(conn)
     assert table_rows(conn, "WorkbenchPlanIdentityClock") == [(1, 1)]
     assert table_rows(conn, "WorkbenchExecutionLedgerClock") == [(1, 3, 1)]
     assert typed_rows(conn, "WorkbenchExecutionLegacyFacts", LEGACY_COLUMNS) == typed_rows(conn, "OperationExecutionEvents", LEGACY_COLUMNS)

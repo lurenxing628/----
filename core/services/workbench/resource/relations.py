@@ -6,6 +6,7 @@ from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 
 from core.infrastructure.transaction import TransactionManager
+from core.models.resource_capabilities import OP_TYPE_CATEGORIES, supports_source
 from core.models.workbench_command import WorkbenchCommandRejected, input_fingerprint
 from core.models.workbench_identity import WorkbenchEntityIdentity
 from core.models.workbench_resource_query import ResourcePageRequest
@@ -56,9 +57,9 @@ class WorkbenchResourceRelationService:
         parent = self.repo.parent(identity.entity_key)
         if parent is None:
             raise WorkbenchCommandRejected("entity_not_found", "这个工种记录已经不存在，列表没有打开。请从工种列表重新选择。", 404)
-        if parent["category"] not in ("internal", "external"):
+        if parent["category"] not in OP_TYPE_CATEGORIES:
             _invalid_facts("这个工种的自制或外协归属填得不对")
-        allowed = ("machines", "operators") if parent["category"] == "internal" else ("suppliers",)
+        allowed = (("machines", "operators") if supports_source(parent["category"], "internal") else ()) + (("suppliers",) if supports_source(parent["category"], "external") else ())
         if relation not in allowed:
             raise WorkbenchCommandRejected("invalid_input", "这个工种的归属看不了这一类关联，查询范围没有变。请换一个关联类型。", 400)
         return identity, parent
@@ -92,18 +93,20 @@ class WorkbenchResourceRelationService:
     def _validate_facts(self, relation, rows, facts):
         if relation == "suppliers":
             for row in rows:
-                if row["legacy_type"] is not None and row["legacy_category"] != "external":
+                if row["legacy_type"] is not None and not supports_source(row["legacy_category"], "external"):
                     _invalid_facts("供应商的旧单工种不存在，或者不是外协工种")
-            if any(row["category"] != "external" for row in facts["capabilities"]):
+            if any(not supports_source(row["category"], "external") for row in facts["capabilities"]):
                 _invalid_facts("供应商单独设置的能力工种不存在，或者不是外协工种")
         elif relation == "operators":
+            if any(not supports_source(row["category"], "internal") for row in facts["machine_capabilities"]):
+                _invalid_facts("设备加工能力关联的工种不存在或不能自制")
             seen = set()
             for row in facts["authorizations"]:
                 key = (row["operator_id"], row["machine_id"])
                 if key in seen or row["machine_name"] is None:
                     _invalid_facts("设备授权有重复，或者指向的设备已经不存在")
                 seen.add(key)
-                if row["op_type_id"] is not None and row["work_type_category"] != "internal":
+                if row["op_type_id"] is not None and not supports_source(row["work_type_category"], "internal"):
                     _invalid_facts("被授权设备的工种不存在，或者不是自制工种")
 
     def _qualifications(self, relation, codes):
@@ -119,9 +122,12 @@ class WorkbenchResourceRelationService:
         pages = max(1, (total + query.size - 1) // query.size)
         if query.number > pages:
             raise WorkbenchCommandRejected("snapshot_stale", "翻页位置已失效，请回到第 1 页重新查询。")
+        machine_types = defaultdict(set)
+        for row in facts.get("machine_capabilities", []):
+            machine_types[row["machine_id"]].add(row["op_type_id"])
         authorizations = defaultdict(list)
         for row in facts.get("authorizations", []):
-            authorizations[row["operator_id"]].append(row)
+            authorizations[row["operator_id"]].append(dict(row, op_type_ids=sorted(machine_types[row["machine_id"]])))
         entities = []
         for code in codes:
             row = records[code]

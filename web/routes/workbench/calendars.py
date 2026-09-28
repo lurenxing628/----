@@ -23,6 +23,7 @@ from core.services.workbench.resource.calendars import WorkbenchCalendarService
 from web.api_responses import failure, query_success
 
 from .api_responses import api_endpoint
+from .calendar_defaults import register_calendar_defaults_routes
 from .calendars_preview import calendar_now, release_preview, resolve_preview, retain_preview
 from .calendars_projection import calendar_day, calendar_preview, calendar_snapshot
 from .materials import _command_body
@@ -63,7 +64,7 @@ def calendar_month():
         public["write_context"] = issue_write_context(_day_subject(day["date"]), ["calendar.upsert", "calendar.delete"], state)
         days.append(public)
     by_date = {day["date"]: day for day in days}
-    data = {key: month[key] for key in ("year", "month", "as_of", "time_basis", "previous_month", "next_month", "stats")}
+    data = {key: month[key] for key in ("year", "month", "as_of", "time_basis", "previous_month", "next_month", "stats", "default_periods")}
     data.update(days=days, cells=[by_date[cell["date"]] if cell is not None else None for cell in month["cells"]])
     return query_success(data, snapshot)
 
@@ -137,6 +138,7 @@ def calendar_range_confirm():
 
 
 def register_calendar_routes(bp):
+    register_calendar_defaults_routes(bp)
     bp.add_url_rule("/api/workbench/v1/calendar/month", view_func=calendar_month, methods=["GET"])
     for action in ("upsert", "delete"):
         bp.add_url_rule("/api/workbench/v1/calendar/" + action, endpoint="calendar_" + action,

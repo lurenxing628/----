@@ -32,8 +32,8 @@ class MasterOverviewGraph:
     def add(self, domain, key, code, label, *, category=None):
         ref = self.facts.ref(KINDS[domain], key)
         context = {"source": "production", "kind": KINDS[domain], "entity_ref": ref}
-        if category in ("internal", "external"):
-            context["category"] = category
+        if category in ("internal", "external", "both"):
+            context["category"] = "internal" if category == "both" else category
         if domain == "calendar":
             context = {"source": "production", "kind": "calendar", "month": text(code)[:7], "date": text(code)}
         entity = {"key": domain + ":" + ref, "ref": ref, "domain": domain, "business_code": text(code),

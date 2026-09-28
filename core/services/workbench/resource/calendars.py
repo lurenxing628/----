@@ -10,6 +10,7 @@ from typing import Any, Callable, Dict, List, Optional
 from core.errors import ValidationError
 from core.infrastructure.transaction import TransactionManager, in_transaction_context
 from core.models.calendar import WorkCalendar
+from core.models.calendar_periods import decode_periods, encode_periods
 from core.models.workbench_calendar import (
     CALENDAR_PREVIEW_TTL_SECONDS,
     CalendarRangePreview,
@@ -19,7 +20,6 @@ from core.models.workbench_calendar import (
     normalize_calendar_input,
 )
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected, input_fingerprint
-from core.services.scheduler.calendar.admin import DEFAULT_SHIFT_START
 from core.services.scheduler.calendar.engine import CalendarEngine
 from core.services.scheduler.calendar.service import CalendarService
 from data.repositories.workbench_calendar_query_repo import WorkbenchCalendarQueryRepository
@@ -38,17 +38,18 @@ def _date_key(value: Any) -> str:
 class _CalendarProjection(CalendarEngine):
     """Overlay one raw/proposed global row on the existing engine, without SQL writes."""
 
-    def __init__(self, row: Optional[Dict[str, Any]]):
+    def __init__(self, row: Optional[Dict[str, Any]], periods=None):
         super().__init__(None)
+        self._default_periods_json = encode_periods(periods)
         self._row = WorkCalendar.from_row(row) if row is not None else None
 
     def _resolve_calendar_row(self, date_str: str, op_id: Optional[str]) -> WorkCalendar:
         return self._row if self._row is not None else self._default_for_date(date_str)
 
 
-def _effective(day: str, row: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+def _effective(day: str, row: Optional[Dict[str, Any]], periods=None) -> Dict[str, Any]:
     # Date-key policy is deliberate: midnight may still belong to yesterday's shift.
-    policy = _CalendarProjection(row)._policy_for_date(day)
+    policy = _CalendarProjection(row, periods)._policy_for_date(day)
     normal, urgent = policy.is_priority_allowed("normal"), policy.is_priority_allowed("urgent")
     working = policy.shift_hours > 0 and (normal or urgent)
     start, end = policy.work_window()
@@ -57,6 +58,8 @@ def _effective(day: str, row: Optional[Dict[str, Any]]) -> Dict[str, Any]:
             "effective_hours": policy.shift_hours * policy.efficiency if working else 0.0,
             "efficiency": policy.efficiency, "eff": policy.efficiency * 100,
             "allowNormal": "yes" if normal else "no", "allowUrgent": "yes" if urgent else "no",
+            "periods": decode_periods(policy.periods_json),
+            "windows": [{"start": left.isoformat(), "end": right.isoformat()} for left, right in policy.work_windows()],
             "window_start": start.isoformat(timespec="seconds"), "window_end": end.isoformat(timespec="seconds")}
 
 
@@ -97,6 +100,7 @@ class WorkbenchCalendarService:
         and identity=None; a GET never invents a ref. A stored date that is not a real
         local date, or a row whose active refs are not exactly one, is a data conflict.
         """
+        self._calendar._engine.clear_policy_cache()
         rows: Dict[str, Dict[str, Any]] = {}
         for row in self._query.calendar_rows(start_date, end_date):
             row["date"] = _date_key(row["date"])
@@ -114,14 +118,14 @@ class WorkbenchCalendarService:
             result[day] = {"row": row, "identity": active[0] if active else None, "history": history}
         return result
 
-    @staticmethod
-    def _snapshot(day: str, states: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
+    def _snapshot(self, day: str, states: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
         state = states.get(day, {"row": None, "identity": None, "history": []})
         identity = state["identity"]
         return {"date": day, "explicit": state["row"] is not None,
                 "calendar_ref": identity["ref"] if identity else None,
                 "revision": identity["revision"] if identity else None,
-                **state, "effective": _effective(day, state["row"])}
+                **state, "default_periods": self._calendar._engine.default_periods(),
+                "effective": _effective(day, state["row"], self._calendar._engine.default_periods())}
 
     def snapshot(self, date_value: str) -> Dict[str, Any]:
         """Private full guard state, not public DTO: raw row, ref/revision and tombstones.
@@ -159,7 +163,7 @@ class WorkbenchCalendarService:
         return {"year": year, "month": month, "as_of": now.isoformat(timespec="seconds"),
                 "time_basis": "factory_local", "days": days, "cells": cells,
                 "previous_month": self._adjacent(year, month, -1), "next_month": self._adjacent(year, month, 1),
-                "stats": _month_stats(days)}
+                "default_periods": self._calendar._engine.default_periods(), "stats": _month_stats(days)}
 
     @staticmethod
     def _adjacent(year: int, month: int, delta: int) -> Optional[Dict[str, int]]:
@@ -193,34 +197,29 @@ class WorkbenchCalendarService:
             return row
         payload = dict(row) if row is not None else {"date": before["date"]}
         if row is None and "type" not in fields:
-            default = _CalendarProjection(None)._default_for_date(before["date"])
+            default = self._calendar._engine._default_for_date(before["date"])
             payload.update(default.to_dict())
             payload["remark"] = None
         patch = calendar_domain_fields(fields)
+        if row is None and "periods" not in patch and {"shift_hours", "shift_start", "shift_end"} & patch.keys():
+            payload["periods_json"] = None
+        if row is not None and payload.get("periods_json") is not None and "periods" not in patch:
+            if fields.get("type") == "rest":
+                patch["periods"] = []
+            elif {"shift_hours", "shift_start", "shift_end"} & patch.keys():
+                raise ValidationError("这一天已按多时段设置，请修改逐段起止时间。", field="fields.periods")
         payload.update(patch)
         derived = self._shift_window_is_derived(patch, row)
         if derived:
-            # 只填工时保存时，CalendarAdmin 会用“班次开始 + 工时”推出班次结束并一起存库。这一天的班次
-            # 结束属于上次工时的派生结果时，留着它会被反过来当成事实：把新工时算回旧值（改工时被拒），
-            # 或在休息改上班时凭空多出一个未改项（保存被拒）。清掉让它按新工时重推。
+            # 工时或开工时刻改变而未明确结束时刻时，按当前开始时刻重新推算结束。
             payload["shift_end"] = None
         proposed = self._calendar._admin._build_work_calendar_from_payload(payload).to_dict()
         self._check_proposed(before, patch, proposed, derived_shift_window=derived)
         return proposed
 
-    @classmethod
-    def _shift_window_is_derived(cls, patch: Dict[str, Any], row: Optional[Dict[str, Any]]) -> bool:
-        """这一天的班次结束是不是上一次按默认开工时刻推出来的派生值。
-
-        本页只让改工时，不让单独设置班次起止，所以开工时刻仍是默认值的那些天，班次结束必然是推出来的，
-        改工时时应当跟着重推。开工时刻不是默认值的（例如跨夜班表 22:30 到 06:30）是真实班表，只填工时
-        会与它冲突，仍要拒绝并让用户先核对班表。库里没有单独记录"班次是谁设的"，只能这样判断。
-        """
-        if "shift_hours" not in patch or "shift_start" in patch or "shift_end" in patch:
-            return False
-        if row is None:
-            return True
-        return (row.get("shift_start") or DEFAULT_SHIFT_START) == DEFAULT_SHIFT_START
+    @staticmethod
+    def _shift_window_is_derived(patch: Dict[str, Any], row: Optional[Dict[str, Any]]) -> bool:
+        return "shift_end" not in patch and bool({"shift_hours", "shift_start"} & patch.keys())
 
     def _check_proposed(self, before: Dict[str, Any], patch: Dict[str, Any], proposed: Dict[str, Any],
                         *, derived_shift_window: bool = False) -> None:
@@ -233,6 +232,10 @@ class WorkbenchCalendarService:
         row = before["row"]
         if row is not None:
             derived_names = {"shift_end"} if derived_shift_window else set()
+            if "periods" in patch:
+                derived_names.update(("periods_json", "shift_start", "shift_end", "shift_hours"))
+            if "shift_start" in patch or "shift_end" in patch:
+                derived_names.add("shift_hours")
             if any(proposed.get(name) != value for name, value in row.items()
                    if name not in patch and name not in derived_names):
                 raise WorkbenchCommandRejected("constraint_conflict", "这一天没改的项会被规则改写，所以没有保存；请先核对原来的配置。")
@@ -290,7 +293,7 @@ class WorkbenchCalendarService:
                 raise WorkbenchCommandRejected("snapshot_stale", "范围里的日历已经变了，请重新点「预览变更」。")
             row = self._proposed(request["fields"], before) if request["operation"] == "upsert" else None
             days.append({"date": day, "before": before,
-                         "after": {"explicit": row is not None, "row": row, "effective": _effective(day, row)}})
+                         "after": {"explicit": row is not None, "row": row, "default_periods": self._calendar._engine.default_periods(), "effective": _effective(day, row, self._calendar._engine.default_periods())}})
         return {"request": request, "dates": dates, "days": days}
 
     def preview(self, payload: Dict[str, Any]) -> CalendarRangePreview:

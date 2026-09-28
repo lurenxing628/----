@@ -5,12 +5,15 @@ from __future__ import annotations
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
 from core.models.workbench_identity import WorkbenchEntityIdentity
 from core.models.workbench_process_commands import normalize_process_input
+from data.repositories.external_group_repo import ExternalGroupRepository
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
 from data.repositories.workbench_process_query_repo import WorkbenchProcessQueryRepository
 
+from .group_apply import apply_groups, group_changes, prepare_groups
+from .group_defaults import apply_default_groups
 from .projection import require_ref
 from .route_apply import affected_group_rows, apply_route, discard_groups, prepare_route, require_group_ack
-from .stage_apply import apply_hours, apply_source, prepare_source
+from .stage_apply import apply_hours, apply_source, prepare_source, source_group_changes
 
 
 class WorkbenchProcessMutationService:
@@ -57,9 +60,16 @@ class WorkbenchProcessMutationService:
     def _prepare(self, action, payload, operations, groups):
         if action == "route_confirm":
             prepared, sequences = prepare_route(self.conn, self.logger, payload, operations)
-        else:
-            prepared, sequences = prepare_source(self.conn, self.logger, payload, operations, self.identities)
-        return prepared, affected_group_rows(groups, operations, sequences)
+            return prepared, affected_group_rows(groups, operations, sequences)
+        prepared, _ = prepare_source(self.conn, self.logger, payload, operations, self.identities)
+        affected, _ = source_group_changes(prepared, operations, groups)
+        return prepared, affected
+
+    def preview_groups(self, input, identity):
+        payload = self.normalize("groups_confirm", input)
+        _, operations, groups = self._snapshot(identity)
+        prepared, discarded = prepare_groups(self.conn, payload, operations, groups, self.identities)
+        return group_changes(self.conn, prepared, discarded, operations)
 
     def affected_groups(self, action, input, identity):
         """Read-only preview; caller owns a consistent read snapshot and token scope.
@@ -68,11 +78,36 @@ class WorkbenchProcessMutationService:
         apply re-reads the same facts and checks the exact set under the write lock.
         """
         payload = self.normalize(action, input)
-        if action == "hours_confirm":
+        if action not in ("route_confirm", "source_confirm"):
             raise WorkbenchCommandRejected("invalid_input", "仅路线和归属操作会解除外协组。", 400)
         _, operations, groups = self._snapshot(identity)
         _, affected = self._prepare(action, payload, operations, groups)
         return sorted(row["ref"] for row in affected)
+
+    def _apply_group_action(self, payload, identity, part, operations, groups, workflow):
+        from core.services.process.workflow_state import record_confirmation
+
+        if workflow["route"]["state"] != "confirmed":
+            raise WorkbenchCommandRejected("stage_not_ready", "请先确认路线，再维护外协段。")
+        prepared, discarded = prepare_groups(self.conn, payload, operations, groups, self.identities)
+        changed = apply_groups(self.conn, part["part_no"], prepared, discarded, operations)
+        if changed and workflow["source"]["state"] == "confirmed":
+            record_confirmation(self.conn, part["part_no"], "source")
+        return WorkbenchCommandOutcome("committed" if changed else "unchanged", {
+            "entity_ref": identity.ref, "business_code": part["part_no"], "stage": "groups"})
+
+    def _apply_source_changes(self, part_no, prepared, operations, groups):
+        _, supplier_updates = source_group_changes(prepared, operations, groups)
+        apply_source(self.conn, prepared, operations)
+        for group_id, supplier_id in supplier_updates:
+            ExternalGroupRepository(self.conn).update(group_id, {"supplier_id": supplier_id})
+        by_id = {row["id"]: row for row in operations}
+        new_external = {by_id[change[3]]["seq"] for change in prepared if change[0] == "external"
+            and (by_id[change[3]]["source"] != "external" or by_id[change[3]]["op_type_id"] != change[1]
+                 or by_id[change[3]]["supplier_id"] is None)
+            and by_id[change[3]]["ext_group_id"] is None}
+        grouped = apply_default_groups(self.conn, part_no, new_external)
+        return bool(prepared or supplier_updates or grouped)
 
     def apply(self, action, input, identity):
         if not self.conn.in_transaction:
@@ -84,6 +119,8 @@ class WorkbenchProcessMutationService:
 
         stage = action[:-len("_confirm")]
         workflow = read_workflow(self.conn, part["part_no"])
+        if stage == "groups":
+            return self._apply_group_action(payload, identity, part, operations, groups, workflow)
         if stage != "route":
             previous = "route" if stage == "source" else "source"
             if workflow[previous]["state"] != "confirmed":
@@ -97,8 +134,7 @@ class WorkbenchProcessMutationService:
             if stage == "route":
                 changed = apply_route(self.conn, part, operations, prepared, self.identities) or bool(affected)
             else:
-                apply_source(self.conn, prepared)
-                changed = bool(prepared or affected)
+                changed = self._apply_source_changes(part["part_no"], prepared, operations, groups) or bool(affected)
         result = "unchanged" if not changed and workflow[stage]["state"] == "confirmed" else "committed"
         # Route confirmation also retires records for removed operations.
         if result != "unchanged" or stage == "route":

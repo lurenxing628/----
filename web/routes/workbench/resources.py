@@ -104,6 +104,9 @@ def resource_summary():
 
 
 def register_resource_routes(bp):
+    from .downtimes import register_downtime_routes
+
+    register_downtime_routes(bp)
     bp.add_url_rule("/api/workbench/v1/entities/<kind>", view_func=resource_list, methods=["GET"])
     bp.add_url_rule("/api/workbench/v1/entities/<kind>/<ref>", view_func=resource_detail, methods=["GET"])
     bp.add_url_rule("/api/workbench/v1/entities/<kind>/create", endpoint="resource_create", view_func=resource_command,

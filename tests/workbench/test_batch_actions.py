@@ -127,8 +127,8 @@ def test_operations_patch_preserves_null_zero_and_rejects_wrong_authorization(ba
 
 def test_merged_external_period_never_overridden(batch_client):
     client = batch_client
-    client.batch_conn.execute("UPDATE BatchOperations SET source='external',supplier_id='S1' WHERE batch_id='FREE-001'")
     client.batch_conn.execute("UPDATE ExternalGroups SET merge_mode='merged',total_days=7")
+    client.batch_conn.execute("UPDATE BatchOperations SET source='external',supplier_id='S1' WHERE batch_id='FREE-001'")
     client.batch_conn.commit()
     op = detail(client)["data"]["operations"][0]
     before = state(client)

@@ -25,6 +25,7 @@ def _resource_state(facts, kind, code, counts, patterns):
     result = {"identity": asdict(facts.identity(kind, code)), "record": raw, "profile": profile, "dependencies": counts}
     if kind == "machine":
         result["op_type"] = facts.related("op_type", raw["op_type_id"])
+        result["op_types"] = [facts.related("op_type", item) for item in facts.machine_types(code)]
         result["group"] = facts.related("machine_group", profile["group_id"]) if profile else None
     else:
         result["skills"] = facts.grouped("skills", "operator_id")[code]

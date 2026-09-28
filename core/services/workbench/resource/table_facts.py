@@ -59,10 +59,15 @@ class ResourceTableFacts:
         explicit = {row["op_type_id"] for row in self.grouped("capabilities", "supplier_id")[code]}
         return sorted(explicit | ({legacy} if legacy not in (None, "") else set()))
 
+    def machine_types(self, code):
+        legacy = self.records("machine")[code]["op_type_id"]
+        explicit = {row["op_type_id"] for row in self.grouped("machine_capabilities", "machine_id")[code]}
+        return sorted(explicit | ({legacy} if legacy else set()))
+
     def _relation_labels(self, kind, code, raw):
         if kind == "machine":
             member = self.mapped("groups", "machine_id").get(code)
-            return {"op_type_ref": ("op_type", [raw["op_type_id"]] if raw["op_type_id"] is not None else []),
+            return {"op_type_ref": ("op_type", self.machine_types(code)),
                     "group_ref": ("machine_group", [member["group_id"]] if member else [])}
         if kind == "operator":
             profile = self.mapped("operator_profiles", "operator_id").get(code)

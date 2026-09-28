@@ -3,6 +3,7 @@
 from datetime import datetime
 
 from core.errors import AppError
+from core.models.resource_capabilities import supports_source
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_trial import issue, reject, validation
 from core.models.workbench_trial_codec import fingerprint
@@ -14,6 +15,7 @@ from core.services.workbench.run.piece_adoption_trial import trial_piece_issues
 from .calendar import calendar_engine, estimate
 from .constraints import interval, relation_issues, resource_issues
 from .execution_anchors import anchor_issue, execution_anchors
+from .materials import material_issues, run_policy
 from .protection import TrialProtection
 
 
@@ -57,7 +59,7 @@ class TrialValidator:
         for row in self.rows:
             issues.extend(self._row(row))
         issues.extend(relation_issues(self.rows, self.live))
-        issues.extend(trial_piece_issues(self.rows, self.live))
+        issues.extend(trial_piece_issues(self.rows, self.live, run_policy(self.admission)))
         issues.extend(resource_issues(self.rows, self.live, conn=self.conn))
         unique = {fingerprint(item): item for item in issues}
         return validation(list(unique.values()))
@@ -75,6 +77,8 @@ class TrialValidator:
                 issues.append(protected)
         issues.extend(self._resources(row))
         issues.extend(self._times(row, protected))
+        if protected is None:
+            issues.extend(material_issues(self.admission, self.checks, row))
         return issues
 
     def _resources(self, row):
@@ -87,7 +91,6 @@ class TrialValidator:
         issues.extend(self._qualification(op, ref))
         if op["source"] == "external" and (current["machine_ref"] is not None or current["operator_ref"] is not None):
             issues.append(issue("external_internal_resource", "外协工序不能带内部设备人员安排。", ref))
-        issues.extend(dict(item, task_ref=ref, severity="warning") for item in self.checks.readiness(batch, True))
         return issues
 
     def _times(self, row, protected):
@@ -99,7 +102,8 @@ class TrialValidator:
                 estimated_start, estimated_end = estimate(self.engine, original, current)
                 if start != estimated_start or end != estimated_end:
                     issues.append(issue("calendar_duration_conflict", "开完工与原工时、真实日历或效率不一致。", ref))
-            if batch["ready_date"] and start < datetime.fromisoformat(batch["ready_date"]):
+            if (original["operation"]["id"] not in self.anchors and run_policy(self.admission)["ready_check"]
+                    and batch["ready_date"] and start < datetime.fromisoformat(batch["ready_date"])):
                 issues.append(issue("before_ready_date", "安排早于原批次可开工日期。", ref))
             issues.extend(self._downtimes(row, start, end))
         except WorkbenchCommandRejected as exc:
@@ -126,7 +130,7 @@ class TrialValidator:
         if op["source"] != "internal" or not op["operator_id"]:
             return []
         kind = self.checks.catalogs["op_type"].get(op["op_type_id"])
-        if kind is None or kind["category"] != "internal":
+        if kind is None or not supports_source(kind["category"], "internal"):
             return [issue("work_type_invalid", "自制工序需要真实自制工种。", ref)]
         key = op["operator_id"], op["machine_id"], op["op_type_id"]
         if key not in self.qualification_cache:

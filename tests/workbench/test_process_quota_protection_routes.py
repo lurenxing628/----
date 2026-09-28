@@ -35,19 +35,20 @@ def test_same_workbench_template_route_edit_keeps_quota_blob_and_lock(locked_quo
     assert_rejected("calibration_quota_locked", lambda: PartService(case.conn).update_internal_hours("P1", 1, 0, 99))
 
 
-def test_source_switch_keeps_hidden_locked_quota_on_the_same_ref(locked_quota_case):
+def test_source_switch_cannot_discard_locked_quota_on_the_same_ref(locked_quota_case):
     case = locked_quota_case
     case.conn.execute("INSERT INTO OpTypes(op_type_id,name,category) VALUES('E1','Coating','external')")
     case.conn.execute("INSERT INTO Suppliers(supplier_id,name,op_type_id) VALUES('S1','Supplier','E1')")
     case.conn.commit()
     identity = WorkbenchProcessQueryService(case.conn).resolve(case.ref("part", "P1"))
-    original = source_input(case.conn, "P1")
     external = source_input(case.conn, "P1")
     external["operations"][0].update(source="external", op_type_ref=case.ref("op_type", "E1"),
                                      supplier_ref=case.ref("supplier", "S1"))
-    run_stage(case.conn, "source_confirm", external, identity=identity, key="cw-source-switch-external")
-    assert templates(case.conn)[1]["source"] == "external" and templates(case.conn)[1]["unit_hours"] == 3
-    run_stage(case.conn, "source_confirm", original, identity=identity, key="cw-source-switch-internal")
+    before = snapshot(case.conn)
+    assert_rejected("calibration_quota_locked", lambda: run_stage(case.conn, "source_confirm", external,
+        identity=identity, key="cw-source-switch-external"))
+    assert snapshot(case.conn) == before
+    assert templates(case.conn)[1]["source"] == "internal" and templates(case.conn)[1]["unit_hours"] == 3
     assert ProcessQuotaProtection(case.conn).bind("P1", 1) == case.template_ref
     assert_rejected("calibration_quota_locked", lambda: PartService(case.conn).update_internal_hours("P1", 1, 0, 99))
 

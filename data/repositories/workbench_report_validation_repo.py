@@ -8,6 +8,7 @@ from __future__ import annotations
 from typing import Any, Dict, Iterable, List, Optional
 
 from .base_repo import BaseRepository
+from .machine_capability_repo import MachineCapabilityRepository
 from .workbench_execution_repo import chunks
 
 
@@ -20,6 +21,10 @@ class WorkbenchReportValidationRepository(BaseRepository):
             result.extend(self.fetchall(f"""SELECT e.*, m.op_type_id AS machine_type FROM WorkbenchEntityRefs e
                 LEFT JOIN Machines m ON e.kind='machine' AND e.active=1 AND m.machine_id=e.entity_key
                 WHERE e.ref IN ({marks})""", chunk))
+        capabilities = MachineCapabilityRepository(self.conn).by_machines(
+            row["entity_key"] for row in result if row["kind"] == "machine")
+        for row in result:
+            row["op_type_ids"] = capabilities[row["entity_key"]] if row["kind"] == "machine" else []
         return result
 
     def successor_operation_rows(self, batch_id: str, piece_id: Optional[str], seq: int) -> List[Dict[str, Any]]:
@@ -28,6 +33,13 @@ class WorkbenchReportValidationRepository(BaseRepository):
         JOIN WorkbenchPlanSourceRefs o ON o.kind='operation' AND o.active=1 AND o.source_key=CAST(bo.id AS TEXT)
         WHERE bo.batch_id=? AND bo.piece_id IS ? AND bo.seq>? ORDER BY bo.seq LIMIT 10001""",
             (batch_id, piece_id, seq))
+
+    def batch_operation_rows(self, batch_id: str) -> List[Dict[str, Any]]:
+        """Complete batch route with explicit identity gaps; the service resolves dependencies."""
+        return self.fetchall("""SELECT bo.*,b.quantity AS batch_quantity,b.part_no,o.ref AS operation_ref
+            FROM BatchOperations bo JOIN Batches b ON b.batch_id=bo.batch_id
+            LEFT JOIN WorkbenchPlanSourceRefs o ON o.kind='operation' AND o.active=1 AND o.source_key=CAST(bo.id AS TEXT)
+            WHERE bo.batch_id=? ORDER BY bo.seq,bo.id LIMIT 10001""", (batch_id,))
 
     def calibration_adoptions_mentioning(self, report_ref: str) -> List[Dict[str, Any]]:
         """evidence_json 里出现过该报工编号的定额采用记录（最多 10001 行）。"""

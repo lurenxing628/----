@@ -8,14 +8,14 @@ _MACHINES = """
     FROM Machines AS m
     LEFT JOIN WorkbenchEntityRefs AS r
       ON r.kind='machine' AND r.entity_key=m.machine_id AND r.active=1
-    WHERE m.op_type_id=:op_type
+    WHERE (m.op_type_id=:op_type OR EXISTS (SELECT 1 FROM MachineOpTypes c WHERE c.machine_id=m.machine_id AND c.op_type_id=:op_type))
 """
 _OPERATORS = """
     WITH selected AS (
         SELECT operator_id FROM OperatorSkill WHERE op_type_id=:op_type
         UNION
         SELECT a.operator_id FROM OperatorMachine AS a
-        JOIN Machines AS m ON m.machine_id=a.machine_id WHERE m.op_type_id=:op_type
+        JOIN Machines AS m ON m.machine_id=a.machine_id WHERE (m.op_type_id=:op_type OR EXISTS (SELECT 1 FROM MachineOpTypes c WHERE c.machine_id=m.machine_id AND c.op_type_id=:op_type))
     )
     SELECT selected.operator_id AS business_code,o.name,o.status,o.remark,
            p.skills_declared,p.inactive_reason,p.operator_id AS profile_operator_id,
@@ -49,6 +49,9 @@ _SUPPLIERS = """
 """
 _QUERIES = {"machines": _MACHINES, "operators": _OPERATORS, "suppliers": _SUPPLIERS}
 _OPERATOR_FACTS = {
+    "machine_capabilities": """SELECT DISTINCT a.machine_id,c.op_type_id,t.category FROM OperatorMachine a
+        JOIN MachineOpTypes c ON c.machine_id=a.machine_id LEFT JOIN OpTypes t ON t.op_type_id=c.op_type_id
+        WHERE a.operator_id IN ({marks}) ORDER BY a.machine_id,c.op_type_id""",
     "skills": """SELECT s.*,t.category FROM OperatorSkill AS s
         LEFT JOIN OpTypes AS t ON t.op_type_id=s.op_type_id
         WHERE s.operator_id IN ({marks}) ORDER BY s.operator_id,s.op_type_id,s.id""",

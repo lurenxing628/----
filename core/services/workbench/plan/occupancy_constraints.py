@@ -2,6 +2,7 @@
 
 from collections import defaultdict
 
+from core.models.resource_capabilities import machine_type_index, supports_source
 from core.services.capacity.plan_calendar_engine import SnapshotCalendarEngine
 from core.services.capacity.plan_calendar_intervals import IntervalIndex, instant
 from core.services.capacity.plan_calendar_windows import available_intervals
@@ -50,6 +51,7 @@ class TaskConstraints:
         self.records = {kind: {row[kind + "_id"]: row for row in facts[kind + "s"]}
                         for kind in ("machine", "operator")}
         self.operations = {row["id"]: row for row in facts["operations"]}
+        self.machine_types = machine_type_index(facts["machines"], facts.get("machine_capabilities", []))
         self.work_types = {row["op_type_id"]: row for row in facts["work_types"]}
         self.qualification = OperatorQualificationService(None)
         self.qualification.repo = _SkillFacts(facts)
@@ -88,7 +90,7 @@ class TaskConstraints:
             # capacity denominator. Night-shift personnel do not fail this check
             # merely because their machine's display calendar is a day shift.
             if not point and kind == "operator" and priority in ("normal", "urgent", "critical"):
-                self._check_calendar(kind, key, priority, op_id, start, end)
+                self._check_calendar(kind, key, priority, row, start, end)
         if not point:
             self._check_downtime(row, start, end)
         self._check_type_and_qualification(row)
@@ -123,7 +125,8 @@ class TaskConstraints:
         elif index.hours_between(start, end) > 1e-9:
             self._add("assignment_machine_downtime", row["op_id"])
 
-    def _check_calendar(self, kind, key, priority, op_id, start, end):
+    def _check_calendar(self, kind, key, priority, row, start, end):
+        op_id = row["op_id"]
         mode = "normal" if priority == "normal" else "urgent"
         cache_key = kind, key, mode
         if cache_key not in self.indexes:
@@ -133,7 +136,9 @@ class TaskConstraints:
         index = self.indexes[cache_key]
         if index is None:
             self._add("assignment_calendar_unavailable", op_id)
-        elif index.hours_between(start, end) + 1e-9 < (end - start).total_seconds() / 3600:
+        # Native jobs pause between work periods. View clipping is not a real job boundary.
+        elif ((start == instant(row["start_time"]) and not index.contains(start))
+              or (end == instant(row["end_time"]) and not index.contains(end, ending=True))):
             self._add("assignment_outside_calendar", op_id)
 
     def _check_type_and_qualification(self, row):
@@ -141,9 +146,9 @@ class TaskConstraints:
         operation, machine = self.operations.get(op_id), self.records["machine"].get(mid)
         code = operation["op_type_id"] if operation is not None else None
         work_type = self.work_types.get(code)
-        if work_type is None or machine is None or machine["op_type_id"] is None:
+        if work_type is None or machine is None or not self.machine_types.get(mid):
             self._add("assignment_work_type_unknown", op_id)
-        elif work_type["category"] != "internal" or machine["op_type_id"] != code:
+        elif not supports_source(work_type["category"], "internal") or code not in self.machine_types[mid]:
             self._add("assignment_work_type_mismatch", op_id)
         if oid in (None, ""):
             return

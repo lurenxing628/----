@@ -7,6 +7,7 @@ from contextlib import closing
 import pytest
 
 from core.infrastructure import database
+from core.infrastructure.batch_external_context_schema import objects as external_context_objects
 from core.infrastructure.migration_common import MigrationOutcome
 from core.infrastructure.migration_state import (
     CURRENT_SCHEMA_VERSION,
@@ -29,15 +30,25 @@ from tests.workbench.dashboard_external_migration_support import (
     seed_v30,
 )
 from tests.workbench.dashboard_support import api, follow
+from tests.workbench.flexible_migration_support import TABLES as FLEXIBLE_TABLES
+from tests.workbench.flexible_migration_support import legacy_ddl, legacy_rows
+from tests.workbench.flexible_migration_support import missing_issues as missing_flexible_issues
 from tests.workbench.frozen_business_seed_support import append_v31_handling_fact
-from tests.workbench.legacy_migration_current_support import V32_TABLES, assert_v32_empty, missing_v32_issues
+from tests.workbench.legacy_migration_current_support import (
+    V32_TABLES,
+    V33_TABLES,
+    assert_v32_empty,
+    assert_v33_contexts,
+    missing_v32_issues,
+    missing_v33_issues,
+)
 from tests.workbench.run_schema_migration_support import connect, snapshot, source_ddl
 from tests.workbench.schema32_migration_support import objects as v32_objects
 
 
 def test_frozen_v30_and_fresh_current_share_exact_thirteen_object_extension(tmp_path, schema_path, monkeypatch):
     assert hashlib.sha256(FIXTURE_V30.read_bytes()).hexdigest() == FIXTURE_V30_SHA
-    assert CURRENT_SCHEMA_VERSION == 32 and MIGRATIONS[31] is v31.run
+    assert CURRENT_SCHEMA_VERSION == 36 and MIGRATIONS[31] is v31.run
     definitions = objects()
     assert len(definitions) == 13
     assert {name for name, sql in definitions.items() if sql.startswith("CREATE TABLE")} == set(V31_TABLES)
@@ -49,9 +60,12 @@ def test_frozen_v30_and_fresh_current_share_exact_thirteen_object_extension(tmp_
     database.ensure_schema(str(path), schema_path=schema_path)
     with closing(connect(path)) as fresh, closing(fixed_v30_connection(tmp_path / "old.db")) as old:
         assert get_schema_version(fresh) == CURRENT_SCHEMA_VERSION and not current_schema_contract_issues(fresh)
-        assert set(current_schema_contract_issues(old)) == missing_v31_issues() | missing_v32_issues()
+        assert set(current_schema_contract_issues(old)) == missing_v31_issues() | missing_v32_issues() | missing_v33_issues() | missing_flexible_issues()
         assert v31.run(old) == MigrationOutcome.APPLIED and get_schema_version(old) == 30
-        assert list(map(canonical_object, [row for row in source_ddl(fresh) if row[1] not in set(v32_objects()) and row[2] not in V32_TABLES])) == list(map(canonical_object, source_ddl(old)))
+        later_objects = set(v32_objects()) | set(external_context_objects())
+        fresh_v31 = [row for row in legacy_ddl(source_ddl(fresh))
+                     if row[1] not in later_objects and row[2] not in V32_TABLES + V33_TABLES]
+        assert list(map(canonical_object, fresh_v31)) == list(map(canonical_object, source_ddl(old)))
         assert_v31_receipt_maps_only(fresh)
         assert not any(snapshot(fresh)[name] for name in V31_TABLES)
         before, changes = snapshot(fresh), fresh.total_changes
@@ -80,11 +94,12 @@ def test_real_nonempty_v30_upgrade_preserves_every_typed_row_ddl_backup_and_rest
     with closing(connect(path)) as conn:
         after = snapshot(conn)
         assert get_schema_version(conn) == CURRENT_SCHEMA_VERSION and not current_schema_contract_issues(conn)
-        assert set(after) - set(before) == set(V31_TABLES + V32_TABLES)
-        assert {key: after[key] for key in before if key != "SchemaVersion"} == {
+        assert set(after) - set(before) == set(V31_TABLES + V32_TABLES + V33_TABLES + FLEXIBLE_TABLES)
+        assert legacy_rows(after, before) == {
             key: rows for key, rows in before.items() if key != "SchemaVersion"}
-        assert [row for row in source_ddl(conn) if row[1] in {old[1] for old in ddl}] == ddl
+        assert list(map(canonical_object, legacy_ddl([row for row in source_ddl(conn) if row[1] in {old[1] for old in ddl}]))) == list(map(canonical_object, ddl))
         assert_v31_receipt_maps_only(conn)
+        assert_v33_contexts(conn)
         case = external_case_for(path, conn)
         with case.app.app_context():
             workspace = case.read()[0]
@@ -193,9 +208,11 @@ def test_explicit_v30_extension_and_recorded_handling_survive_real_upgrade_exact
     with closing(connect(path)) as conn:
         after = snapshot(conn)
         assert get_schema_version(conn) == CURRENT_SCHEMA_VERSION and not current_schema_contract_issues(conn)
-        assert [row for row in source_ddl(conn) if row[1] in {old[1] for old in ddl}] == ddl
+        assert list(map(canonical_object, legacy_ddl([row for row in source_ddl(conn) if row[1] in {old[1] for old in ddl}]))) == list(map(canonical_object, ddl))
         assert_v32_empty(conn)
-        assert {key: rows for key, rows in after.items() if key != "SchemaVersion" and key not in V32_TABLES} == {
+        assert_v33_contexts(conn)
+        assert set(after) - set(before) == set(V32_TABLES + V33_TABLES + FLEXIBLE_TABLES)
+        assert legacy_rows(after, before) == {
             key: rows for key, rows in before.items() if key != "SchemaVersion"}
     copies = list(backups.glob(f"*before_migrate_v30_to_v{CURRENT_SCHEMA_VERSION}*.db"))
     assert len(copies) == 1
@@ -203,7 +220,7 @@ def test_explicit_v30_extension_and_recorded_handling_survive_real_upgrade_exact
         assert snapshot(conn) == before and source_ddl(conn) == ddl
     database.ensure_schema(str(path), schema_path=schema_path, backup_dir=str(backups))
     with closing(connect(path)) as conn:
-        assert snapshot(conn) == after and [row for row in source_ddl(conn) if row[1] in {old[1] for old in ddl}] == ddl
+        assert snapshot(conn) == after and list(map(canonical_object, legacy_ddl([row for row in source_ddl(conn) if row[1] in {old[1] for old in ddl}]))) == list(map(canonical_object, ddl))
     assert len(list(backups.glob("*.db"))) == 1
 
 

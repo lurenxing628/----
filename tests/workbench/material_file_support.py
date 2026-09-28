@@ -128,6 +128,8 @@ def _expected_file_values(row, file_format):
     result = []
     for field, column in zip(COLUMNS, MATERIAL_COLUMNS):
         value = _local_created_at(row[column]) if field == "created_at" else row[column]
+        if field == "status":
+            value = {"active": "启用", "inactive": "停用"}.get(value, value)
         if field == "stock_qty":
             if file_format == "csv":
                 value = "" if value is None else str(value)

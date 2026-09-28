@@ -79,14 +79,15 @@ class PreflightService:
                 ops = grouped[batch["batch_id"]]
                 if not ops:
                     no_route.append(batch)
-                ready_reasons = checks.readiness(batch, settings["ready_check"])
                 if checks.readiness(batch, True):
                     unready.append({"batch_ref": batch["ref"], "batch_id": batch["batch_id"]})
                 batch_rows = []
                 for op in ops:
                     projection = projections[self.facts.operation_ref(op)]
                     row = task_row(self.facts, batch, op, projection)
-                    row["status"], row["issues"] = classify(checks, batch, op, projection, settings, ready_reasons)
+                    op_ready, release_day = checks.operation_readiness(batch, op, settings)
+                    row["material_ready_date"] = release_day if release_day != "1900-01-01" else None
+                    row["status"], row["issues"] = classify(checks, batch, op, projection, settings, op_ready)
                     batch_rows.append(row)
                 link_predecessors(batch_rows)
                 rows.extend(batch_rows)

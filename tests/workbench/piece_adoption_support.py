@@ -68,7 +68,7 @@ def lower_input(case, *batch_ids):
                      "execution": projected[refs[work.op_id]]} for work in scope.operations]
     locks = _locked_seeds(svc, [op for op in operations if op.id not in fixed | completed], version)
     tables = {name: [dict(row) for row in case.conn.execute('SELECT * FROM "' + name + '"')]
-              for name in ("PartOperations", "ExternalGroups")}
+              for name in ("BatchExternalContexts", "BatchOperations")}
     prime_template_cache(svc, tables, batches, operations)
     return SimpleNamespace(normalized_batch_ids=ids, normalized_input=case.settings(*ids),
         operations=operations, batches=batches, dispositions=dispositions,

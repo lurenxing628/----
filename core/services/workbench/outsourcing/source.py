@@ -78,7 +78,21 @@ class WorkbenchOutsourcingSourceService:
         binding = resolve_source_binding(self.repo, ref, origin, batch_ref)
         return {"identity": identity, "origin": origin, "row": row, "binding": binding}
 
-    def load(self, target):
+    def require_contiguous(self, operations):
+        """Validate new shipment membership; historical receipts keep their original membership."""
+        if len(operations) < 2:
+            return
+        first = operations[0]["row"]
+        route = self.repo.route_rows(first["batch_id"], first["piece_id"])
+        selected = {op["row"]["id"] for op in operations}
+        positions = [index for index, row in enumerate(route) if row["id"] in selected]
+        if len(positions) != len(selected):
+            reject("所选工序的工艺顺序已变化，请刷新后重新选择。", "identity_drift", 409)
+        between = route[min(positions):max(positions) + 1]
+        if any(row["id"] not in selected for row in between):
+            reject("合并发出必须选择同一次外协的连续工序，不能跨过自制工序或漏选中间工序。请按实际发出阶段分别登记。", "constraint_conflict", 409)
+
+    def load(self, target, *, new_registration=False):
         batch = self.entity(target["batch_ref"], "batch")
         supplier = self.entity(target["supplier_ref"], "supplier")
         part = self.entity(self._active_ref("part", batch["row"]["part_no"]), "part")
@@ -91,6 +105,8 @@ class WorkbenchOutsourcingSourceService:
                 reject("登记供应商与工序承接供应商不一致，请核对。", "constraint_conflict", 409)
         if len({op["row"]["piece_id"] for op in operations}) != 1:
             reject("合并发出的工序须属于同一批次分件。", "constraint_conflict", 409)
+        if new_registration:
+            self.require_contiguous(operations)
         identity = {"batch_ref": target["batch_ref"], "part_ref": part["identity"]["ref"],
                     "supplier_ref": target["supplier_ref"], "members": [
                         {"operation_ref": op["identity"]["ref"], **{key: op["row"][key] for key in MEMBER_KEYS}}
@@ -126,17 +142,18 @@ class WorkbenchOutsourcingSourceService:
         code, name = ("batch_id", "part_name") if kind == "batch" else ("supplier_id", "name")
         return {"ref": ref, "business_code": _target_text(source[code]), "label": _target_text(source[name])}
 
-    def targets(self, batch_ref=None):
+    def targets(self, batch_ref=None, query=""):
         """Add nullable batch/supplier {ref, business_code, label}; unknown text stays null."""
         batch_id = None
         if batch_ref is not None:
             batch_id = self.entity(batch_ref, "batch")["row"]["batch_id"]
-        rows = self.repo.external_operation_rows(batch_id, MAX_ROWS)
+        rows = self.repo.external_operation_rows(batch_id, MAX_ROWS, query)
         if len(rows) > MAX_ROWS:
-            reject("外协工序超过10000项，请限定批次。", "query_too_large", 413)
+            reject("外协工序超过10000项，请按批次号或工序查找，缩小范围。", "query_too_large", 413)
         result = []
         for row in rows:
             item = {"operation_ref": row["operation_ref"], "business_code": label(row["op_code"]),
+                    "sequence": label(row["seq"]), "piece": label(row["piece_id"]),
                     "label": label(row["op_type_name"]), "batch_ref": row["batch_ref"], "supplier_ref": row["supplier_ref"],
                     "outsourcing_ref": row["outsourcing_ref"], "can_register": False, "issues": [],
                     "batch": None, "supplier": None, "part": None, "source_resolution": None}

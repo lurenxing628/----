@@ -13,9 +13,10 @@ from core.models.workbench_execution_input import (
 )
 from data.repositories.workbench_execution_report_repo import new_ref
 
+from .production_report_dependencies import ReportDependencies
 from .production_report_validation import (
     ReportResourceValidator,
-    correction_conflicts,
+    execution_conflicts,
     require_current,
     validate_legacy_link,
     validate_projection_change,
@@ -127,6 +128,7 @@ class ReportBatchPreparation:
             except WorkbenchCommandRejected as exc:
                 _reject_row(exc, index)
         self.projections = self.ledger.project_loaded(self.facts, contexts=False)
+        dependencies = ReportDependencies(self.ledger, self.projections)
         changed_by_operation = {}
         for row in self.appended:
             changed_by_operation.setdefault(row["operation_ref"], []).append(row)
@@ -135,9 +137,10 @@ class ReportBatchPreparation:
             try:
                 validate_projection_change(before[after.operation_ref], after)
                 revisions = [row for row in changed if row["sequence"] > 1]
-                conflicts = correction_conflicts(self.conn, self.ledger, self.facts, before[after.operation_ref], after, revisions) if revisions else []
+                conflicts = execution_conflicts(self.ledger, self.facts, before[after.operation_ref], after, revisions,
+                    dependencies=dependencies, protect_plan=bool(revisions))
                 if conflicts:
-                    raise ReportBatchRejected("constraint_conflict", "这次更正会影响后道工序或已采用的排产安排。请先处理下面列出的影响。", conflicts=conflicts)
+                    raise ReportBatchRejected("constraint_conflict", "这次报工会影响前后道工序或已采用的排产安排。请先处理下面列出的影响。", conflicts=conflicts)
             except WorkbenchCommandRejected as exc:
                 _reject_row(exc, max(row["row_number"] for row in self.rows if row["operation_ref"] == after.operation_ref))
         return self

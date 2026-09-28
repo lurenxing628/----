@@ -4,7 +4,7 @@ from core.models.workbench_batch import normalize_batch_input
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
 from core.services.batch.service import BatchService
 
-from .facts import BatchFacts, related, require_unreferenced
+from .facts import BatchFacts, related, require_deletable, require_unreferenced
 
 
 class WorkbenchBatchService:
@@ -32,15 +32,23 @@ class WorkbenchBatchService:
             return WorkbenchCommandOutcome("committed", {"entity_ref": identity.ref, "business_code": batch.batch_id})
         batch = self.facts.batch(ref)
         if action == "delete":
-            require_unreferenced(self.facts.load(), batch)
-            if related(self.facts.load(), batch)["materials"]:
-                raise WorkbenchCommandRejected("constraint_conflict", "这个批次还挂着物料需求，不能直接删除。")
+            require_deletable(self.facts.load(), batch)
             self.domain.delete(batch["batch_id"])
         else:
-            changes = {key: value for key, value in payload["fields"].items() if batch[key] != value}
-            if not changes:
-                return WorkbenchCommandOutcome("unchanged", {"entity_ref": ref, "business_code": batch["batch_id"]})
-            if "quantity" in changes:
-                require_unreferenced(self.facts.load(), batch)
-            self.domain.update(batch["batch_id"], **changes)
+            return self._update(ref, batch, payload)
+        return WorkbenchCommandOutcome("committed", {"entity_ref": ref, "business_code": batch["batch_id"]})
+
+
+    def _update(self, ref, batch, payload):
+        changes = {key: value for key, value in payload["fields"].items() if batch[key] != value}
+        if not changes:
+            return WorkbenchCommandOutcome("unchanged", {"entity_ref": ref, "business_code": batch["batch_id"]})
+        if "quantity" in changes:
+            require_unreferenced(self.facts.load(), batch)
+        materials = related(self.facts.load(), batch)["materials"]
+        if materials and "ready_status" in changes and ("quantity" not in changes or changes["ready_status"] != "no"):
+            raise WorkbenchCommandRejected("constraint_conflict", "此批次的齐套按物料需求计算，请在物料需求中核对需求量和到料量。")
+        if materials and "quantity" in changes:
+            changes["ready_status"] = "no"
+        self.domain.update(batch["batch_id"], **changes)
         return WorkbenchCommandOutcome("committed", {"entity_ref": ref, "business_code": batch["batch_id"]})

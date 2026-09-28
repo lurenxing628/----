@@ -14,8 +14,17 @@ from core.infrastructure.migration_state import (
 from core.infrastructure.migrations import MIGRATIONS, v30
 from core.infrastructure.workbench_outsourcing_schema import objects as outsourcing_objects
 from core.infrastructure.workbench_plan_identity_write_guard import objects as guard_objects
+from tests.workbench.calibration_dashboard_migration_support import canonical_object
 from tests.workbench.dashboard_external_migration_support import V31_TABLES, assert_v31_receipt_maps_only
-from tests.workbench.legacy_migration_current_support import V32_TABLES, assert_v32_empty
+from tests.workbench.flexible_migration_support import TABLES as FLEXIBLE_TABLES
+from tests.workbench.flexible_migration_support import legacy_ddl, legacy_rows
+from tests.workbench.flexible_migration_support import missing_issues as missing_flexible_issues
+from tests.workbench.legacy_migration_current_support import (
+    V32_TABLES,
+    V33_TABLES,
+    assert_v32_empty,
+    assert_v33_contexts,
+)
 from tests.workbench.outsourcing_identity_migration_support import (
     FIXTURE_V29,
     FIXTURE_V29_SHA,
@@ -31,7 +40,7 @@ def added_tables():
 
 def test_fixed_v29_and_fresh_current_outsourcing_storage(tmp_path, schema_path):
     assert hashlib.sha256(FIXTURE_V29.read_bytes()).hexdigest() == FIXTURE_V29_SHA
-    assert CURRENT_SCHEMA_VERSION == 32 and MIGRATIONS[30] is v30.run
+    assert CURRENT_SCHEMA_VERSION == 36 and MIGRATIONS[30] is v30.run
     path = tmp_path / "fresh.db"
     ensure_schema(str(path), schema_path=schema_path)
     with connect(path) as conn:
@@ -56,13 +65,14 @@ def test_real_v29_upgrade_retains_all_old_rows_and_only_maps_recorded_births(tmp
     with connect(path) as conn:
         after = snapshot(conn)
         assert get_schema_version(conn) == CURRENT_SCHEMA_VERSION and current_schema_contract_issues(conn) == []
-        assert set(after) - set(before) == added_tables() | set(V31_TABLES + V32_TABLES)
+        assert set(after) - set(before) == added_tables() | set(V31_TABLES + V32_TABLES + V33_TABLES + FLEXIBLE_TABLES)
         assert_v31_receipt_maps_only(conn)
         assert_v32_empty(conn)
-        assert {key: after[key] for key in before if key != "SchemaVersion"} == {
+        assert_v33_contexts(conn)
+        assert legacy_rows(after, before) == {
             key: value for key, value in before.items() if key != "SchemaVersion"}
         old_names = {row[1] for row in ddl}
-        assert [row for row in source_ddl(conn) if row[1] in old_names] == ddl
+        assert list(map(canonical_object, legacy_ddl([row for row in source_ddl(conn) if row[1] in old_names]))) == list(map(canonical_object, ddl))
         assert set(map(tuple, conn.execute("SELECT operation_ref,batch_ref FROM WorkbenchOutsourcingOperationOrigins"))) == origins
         for name in added_tables() - {"WorkbenchOutsourcingOperationOrigins"}:
             assert after[name] == [], name

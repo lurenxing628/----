@@ -4,6 +4,7 @@ import math
 from dataclasses import asdict
 
 from core.errors import ValidationError
+from core.models.resource_capabilities import supports_source
 from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
 from core.models.workbench_resource_file import (
     LABELS,
@@ -59,17 +60,27 @@ class ResourceFileInput:
                 payload["fields"][key] = value
         normalized = self.reader.domain.normalize_input(action, payload)
         self._unique_name(code, normalized)
-        self._policy(normalized, scope)
+        self._policy(normalized, {"category": normalized["fields"].get("category", (before or {}).get("category", scope["category"]))})
         return normalized, related
 
     def _changes(self, values, before, scope):
-        if self.kind == "op_type" and "category" in values and values["category"] != scope["category"]:
+        if self.kind == "op_type" and "category" in values and not supports_source(values["category"], scope["category"]):
             raise ValidationError("文件里的归属和这次导入选的归属不一样，这一行没有导入。请分开导入自制和外协工种。", field="category")
         changes = {key: value for key, value in values.items() if key in WRITABLE[self.kind]
                    and key != "business_code" and (before is None or not _same_column(key, value, before[key]))}
+        if self.kind == "machine" and "op_type_codes" in values:
+            self._machine_columns(values, before, changes)
         if self._declares_empty_skills(values, before):
             changes["skill_codes"] = []
         return changes
+
+    @staticmethod
+    def _machine_columns(values, before, changes):
+        legacy = values.get("op_type_code")
+        changed = before is not None and "op_type_code" in changes
+        if changed or (before is None and legacy is not None and legacy not in values["op_type_codes"]):
+            raise ValidationError("请只修改可做工种编号，不要同时修改旧单工种列。", field="op_type_codes")
+        changes.pop("op_type_code", None)
 
     def _declares_empty_skills(self, values, before):
         # An exported provenance column keeps an unchanged empty skill list unchanged.
@@ -79,14 +90,14 @@ class ResourceFileInput:
 
     def _new_fields(self, changes, scope):
         if self.kind == "op_type":
-            changes["category"] = scope["category"]
+            changes.setdefault("category", scope["category"])
         elif "status" not in changes:
             raise ValidationError("新增的记录必须填状态，这一行没有导入。请在" + _column("status") + "里填好状态。", field="status")
 
     def _clear_fields(self, changes):
         for key, value in changes.items():
             if value is None and key not in NULLABLE:
-                raise ValidationError(_column(key) + "不能用 \\N 清除，这一行没有导入。要改成一组空编号请填 []。", field=key)
+                raise ValidationError(_column(key) + "不能用 \\N 清除，这一行没有导入。要移除全部工种请填清除。", field=key)
             if type(value) is str and not value.strip():
                 raise ValidationError(_column(key) + "只填了空格，这不算清除，这一行没有导入。要清除请填 \\N（大写），要留着原值请把格子空着。", field=key)
 
@@ -123,7 +134,7 @@ class ResourceFileInput:
     @staticmethod
     def _policy(payload, scope):
         mode = payload["fields"].get("default_merge_mode")
-        if mode is not None and scope["category"] != "external":
+        if mode is not None and not supports_source(scope["category"], "external"):
             raise WorkbenchCommandRejected("constraint_conflict", "自制工种不能设置外协周期规则，没有导入。请把归属改成外协，或者清掉" + _column("default_merge_mode") + "。")
 
 
@@ -137,6 +148,8 @@ def proposed_fields(kind, code, before, payload, related):
             after[field] = sorted(item["identity"]["entity_key"] for item in facts)
         else:
             after[field] = facts["identity"]["entity_key"] if facts else None
+    if kind == "machine" and "op_type_codes" in related:
+        after.pop("op_type_code", None)
     if before is not None:
         # Server-generated timestamp and changed relation provenance are not known until commit.
         after.pop("updated_at", None)

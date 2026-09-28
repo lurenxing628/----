@@ -89,7 +89,7 @@ def test_month_has_all_real_dates_and_readonly_domain_defaults(calendar_env, yea
     assert [day for day in result["cells"] if day] == result["days"] and len(result["cells"]) % 7 == 0
     for day in result["days"]:
         assert not day["explicit"] and day["row"] is None and day["calendar_ref"] is None and day["revision"] is None
-        assert day["effective"]["hours"] == (0 if day["is_weekend"] else 8)
+        assert day["effective"]["hours"] == pytest.approx(0 if day["is_weekend"] else 22 / 3)
         assert day["effective"]["eff"] == 100
     assert result["stats"]["configured"] == 0
     assert result["as_of"] == "2024-02-29T12:34:56"
@@ -121,12 +121,12 @@ def test_holidays_overtime_actual_policies_and_date_key_not_midnight(calendar_en
     assert days["2024-02-10"]["effective"]["effective_hours"] == 2
     assert days["2024-02-12"]["effective"]["is_rest"]
     assert month["stats"] == {"configured": 2, "configured_work_days": 1, "work_days": 21,
-                              "rest_days": 8, "overrides": 2, "weekend_rest": 7, "effective_hours": 162}
+                              "rest_days": 8, "overrides": 2, "weekend_rest": 7, "effective_hours": pytest.approx(446 / 3)}
     # A weekday named a national holiday is not magically a holiday without configuration.
-    assert adapter.snapshot("2026-01-01")["effective"]["hours"] == 8
+    assert adapter.snapshot("2026-01-01")["effective"]["hours"] == pytest.approx(22 / 3)
     night, next_day = adapter.snapshot(NIGHT), adapter.snapshot("2026-09-10")
     assert night["effective"]["window_end"] == "2026-09-10T06:30:00"
-    assert next_day["effective"]["window_start"] == "2026-09-10T08:00:00"
+    assert next_day["effective"]["window_start"] == "2026-09-10T08:30:00"
     assert night["row"] == row_for(conn) and night["revision"] == 1 and len(night["calendar_ref"]) == 48
     assert night["effective"]["efficiency"] == 0.875  # Not the personal exception's 0.625.
 
@@ -156,8 +156,8 @@ def test_crossnight_omissions_preserved_and_other_tables_untouched(calendar_env)
         key: value for key, value in before.items() if key != "WorkCalendar"}
 
 
-@pytest.mark.parametrize("fields", ({"hours": 6}, {"type": "rest"}))
-def test_hidden_end_conflict_never_claims_input_hours_saved(calendar_env, fields):
+@pytest.mark.parametrize("fields", ({"hours": 6, "shiftEnd": "06:30"}, {"type": "rest", "shiftEnd": "06:30"}))
+def test_explicit_end_conflict_never_claims_input_hours_saved(calendar_env, fields):
     conn, adapter, _ = calendar_env
     before = stored_state(conn)
     with pytest.raises(WorkbenchCommandRejected, match="算出 8 小时") as error:
@@ -191,15 +191,16 @@ def test_rest_day_returns_to_work_without_untouched_field_conflict(calendar_env)
 
 
 def test_range_preview_matches_single_day_on_derived_window(calendar_env):
-    """范围维护与单日保存同一口径：派生班次不挡改工时，真实班表只填工时仍然拒绝。"""
+    """范围维护和单日保存都按原开工时刻推算新的结束时刻。"""
     conn, adapter, _ = calendar_env
     day = "2024-02-28"
     run_day(calendar_env, "upsert", {"date": day, "fields": WORK}, key=KEY + "-range-base")
     preview = adapter.preview(range_input(start_date=day, end_date=day, fields={"hours": 10}))
     assert [item["after"]["row"]["shift_end"] for item in preview.days] == ["18:00"]
     assert [item["after"]["row"]["shift_hours"] for item in preview.days] == [10]
-    with pytest.raises(WorkbenchCommandRejected, match="算出 8 小时"):
-        adapter.preview(range_input(start_date=NIGHT, end_date=NIGHT, fields={"hours": 10}))
+    night = adapter.preview(range_input(start_date=NIGHT, end_date=NIGHT, fields={"hours": 10}))
+    assert night.days[0]["after"]["row"]["shift_start"] == "22:30"
+    assert night.days[0]["after"]["row"]["shift_end"] == "08:30"
 
 
 def test_rest_is_zero_unavailable_and_clear_restores_default_with_new_lifetime(calendar_env):
@@ -211,7 +212,7 @@ def test_rest_is_zero_unavailable_and_clear_restores_default_with_new_lifetime(c
     assert rest["effective"]["is_rest"] and rest["row"]["allow_normal"] == rest["row"]["allow_urgent"] == "no"
     cleared = run_day(calendar_env, "delete", {"date": day}, key=KEY + "-clear")
     default = adapter.snapshot(day)
-    assert not default["explicit"] and default["effective"]["hours"] == 8 and row_for(conn, day) is None
+    assert not default["explicit"] and default["effective"]["hours"] == pytest.approx(22 / 3) and row_for(conn, day) is None
     assert default["history"][0]["active"] == 0 and default["history"][0]["revision"] == 2
     assert cleared["data"]["calendar_ref"] == rest["calendar_ref"]
     run_day(calendar_env, "upsert", {"date": day, "fields": WORK}, key=KEY + "-new")
@@ -326,7 +327,7 @@ def test_annual_preview_confirm_measured_complete_and_preserves_resources(annual
     assert preview.dates == expected_range_dates(start, end) and len(preview.dates) == count
     assert (f"{year}-02-29" in preview.dates) == (count == 366)
     assert conn.total_changes == changes and business_snapshot(conn) == before
-    assert preview_measure["sql"] == {"BEGIN": 1, "SELECT": 2, "COMMIT": 1}
+    assert preview_measure["sql"] == {"BEGIN": 1, "SELECT": 3, "COMMIT": 1}
     result, confirm_measure = measure_calendar_call(conn, lambda: run_confirm(annual_env, preview))
     assert confirm_measure["sql"]["INSERT"] == count + 1  # Every date plus the one command receipt.
     assert_complete_calendar_write(conn, preview, result)

@@ -5,6 +5,7 @@ from datetime import datetime
 
 import pytest
 
+from core.infrastructure.machine_capabilities_schema import install as install_machine_capabilities
 from core.infrastructure.migration_state import set_schema_version
 from core.infrastructure.workbench_execution_ledger_schema import install_execution_ledger
 from core.infrastructure.workbench_execution_void_schema import install_execution_voids
@@ -88,6 +89,8 @@ def ledger_case(tmp_path):
     conn.commit()
     conn.execute("BEGIN")
     install_metadata(conn)
+    # Isolate ledger migrations while providing the resource contract used by report writes.
+    install_machine_capabilities(conn)
     install_plan_identity(conn)
     conn.execute("INSERT INTO OpTypes(op_type_id,name) VALUES ('T1','Turning')")
     conn.execute("INSERT INTO Machines(machine_id,name,op_type_id) VALUES ('M1','Lathe','T1')")

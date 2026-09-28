@@ -35,8 +35,8 @@ def test_fixed_night_shift_moves_clock_preserves_capacity_and_has_cross_midnight
     before = list(schema_conn.iterdump())
     start = service.adjust_to_working_time(datetime(2026, 9, 9, 9), operator_id="O-SHIFT")
     assert start == datetime(2026, 9, 9, 22)
-    finish = service.add_working_hours(start, 8, operator_id="O-SHIFT")
-    assert finish == datetime(2026, 9, 10, 6)
+    finish = service.add_working_hours(start, 22 / 3, operator_id="O-SHIFT")
+    assert finish == datetime(2026, 9, 10, 5, 20)
     policy = service.policy_for_datetime(datetime(2026, 9, 10, 2), operator_id="O-SHIFT")
     assert policy.date_str == "2026-09-09" and policy.work_window() == (start, finish)
     assert list(schema_conn.iterdump()) == before

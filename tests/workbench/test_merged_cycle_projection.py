@@ -74,17 +74,15 @@ def test_invalid_total_is_not_replaced_by_member_or_supplier_defaults(merged_cyc
 
 
 @pytest.mark.parametrize("value", (0, -1, "bad", float("inf"), 3.25))
-def test_nonnull_member_cycles_keep_their_own_validation(merged_cycle_api, value):
+def test_nonnull_member_history_never_overrides_effective_merged_total(merged_cycle_api, value):
     api = merged_cycle_api
     api.execute("UPDATE PartOperations SET ext_days=? WHERE part_no=? AND seq=20", (value, PART))
     entity = readonly_detail(api)
     row = operation(entity)
-    if value == 3.25:
-        assert row["external_days"] == value and row["external_days_source"] == "operation"
-        assert row["issues"] == []
-    else:
-        assert row["external_days"] is None and row["external_days_source"] is None
-        assert "value_invalid" in issue_codes(row) and "value_missing" not in issue_codes(row)
+    assert row["external_days"] is None and row["external_days_source"] == "group"
+    assert row["issues"] == []
+    assert_group_cycle(entity, 20, 6.75)
+    assert api.rows("PartOperations", "part_no=? AND seq=20", (PART,))[0]["ext_days"] == value
     assert_group_cycle(entity, 25)
 
 

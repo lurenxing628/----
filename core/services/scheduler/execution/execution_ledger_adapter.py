@@ -63,7 +63,7 @@ def _scope_tasks(conn, scopes):
         key = tuple(row[:4])
         if key in by_identity:
             raise _unavailable("execution_ledger_scope_ambiguous", op_id=row[2])
-        by_identity[key] = {"operation_ref": row[4], "task_ref": row[5], "plan_ref": row[6]}
+        by_identity[key] = {"operation_ref": row[4], "task_ref": row[5], "plan_ref": row[6], "source": row[7]}
     result = {}
     for scope in scopes:
         task = by_identity.get((scope.schedule_id, scope.schedule_version, scope.op_id, scope.batch_id))
@@ -113,7 +113,7 @@ def _adapt_scope_facts(legacy_facts, tasks, projections, plan, ledger_revision, 
         ):
             raise _unavailable("execution_ledger_current_task_mismatch", op_id=scope.op_id)
         fact = legacy_facts[scope]
-        changes = ledger_fact_changes(fact, projection, resources)
+        changes = ledger_fact_changes(fact, projection, resources, source=task["source"])
         if changes is None:
             continue
         projection_resources = {ref: resources.get(ref) for ref in _projection_resource_refs(projection)}

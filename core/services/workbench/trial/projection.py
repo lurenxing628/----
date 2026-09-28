@@ -90,7 +90,7 @@ def resources_projection(live):
     return result
 
 
-def comparison(tasks, checked):
+def comparison(tasks, checked, incomplete_batches=()):
     groups = defaultdict(list)
     for task in tasks:
         groups[task["batch_ref"]].append(task)
@@ -100,6 +100,8 @@ def comparison(tasks, checked):
         finish = max(row["end"] for row in group)
         original = max(row["original"]["end"] for row in group)
         risk, late, due_exclusive = _delivery_risk(first["due_date"], finish, checked)
+        if first["batch_id"] in incomplete_batches:
+            risk, late = "unavailable", None
         deliveries.append({"batch_ref": batch_ref, "batch_id": first["batch_id"], "part_name": first["part_name"],
             "quantity": first["batch_quantity"], "priority": first["priority"], "due_date": first["due_date"],
             "due_exclusive": due_exclusive, "baseline_finish": original, "finish": finish,
@@ -136,6 +138,16 @@ def _public_value(value):
     return None
 
 
+def _incomplete_batches(rows, all_operations):
+    planned, expected = defaultdict(set), defaultdict(set)
+    for row in rows:
+        op = row["original"]["operation"]
+        planned[op["batch_id"]].add(op["id"])
+    for op in all_operations:
+        expected[op["batch_id"]].add(op["id"])
+    return {batch_id for batch_id, ids in planned.items() if ids != expected[batch_id]}
+
+
 def _display_fields(task):
     task["data_gaps"] = []
     for key in ("part_no", "part_name", "process_label", "sequence", "piece_id", "source", "quantity", "priority", "due_date"):
@@ -167,7 +179,8 @@ def draft_projection(head, rows, checked, live, context_factory):
             "task_count": len(tasks), "tasks_complete": True, "validation": checked,
             "unplanned_operations": unplanned, "scope_complete": not unplanned,
             "validation_at_last_write": head["validation"], "write_context": context,
-            "resources": resources_projection(live), "comparison": comparison(tasks, checked),
+            "resources": resources_projection(live), "comparison": comparison(tasks, checked,
+                _incomplete_batches(rows, live["facts"]["tables"]["BatchOperations"])),
             "capacity": trial_capacity(rows, live),
             "time_scope": {"start": min(row["start"] for row in tasks), "end": max(row["end"] for row in tasks),
                            "time_basis": "factory_local", "selection": "complete_base"}}

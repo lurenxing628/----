@@ -7,6 +7,7 @@ from core.models.workbench_dashboard import MAX_ROWS, bounded
 from core.services.workbench.facts.preflight_checks import PreflightChecks, number, stored_date
 
 from .facts import source_issue, typed
+from .material_views import current_material_views
 
 
 def category(state="loaded", *, issues=None, assessed=0, unknown=0):
@@ -86,6 +87,10 @@ def material(facts):
     batches, requirements, materials = (facts.raw[key] for key in ("Batches", "BatchMaterials", "Materials"))
     if any(value is None for value in (batches, requirements, materials)):
         return [], category("unavailable", issues=[source_issue("source_not_read", "批次或物料需求来源尚未读取，齐套风险未知。")])
+    current = current_material_views(facts.raw, facts.now.date().isoformat())
+    if current is None:
+        return [], category("unavailable", issues=[source_issue("source_not_read", "分次到料的数据来源未读取，齐套风险未知。")])
+    batches, requirements = current
     bounded(batches, MAX_ROWS)
     refs = facts.entity_refs("batch", [row["batch_id"] for row in batches])
     facts.raw["material_batch_refs"] = refs

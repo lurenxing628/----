@@ -8,6 +8,7 @@ from collections import defaultdict
 from contextlib import contextmanager
 from types import SimpleNamespace
 
+from core.models.resource_capabilities import supports_source
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_process_route import (
     append_duplicate_diagnostics,
@@ -17,7 +18,14 @@ from core.models.workbench_process_route import (
     route_sequence,
 )
 from core.services.process.route_parser import RouteParser
-from core.services.process.route_parser_tokens import preprocess_route_string, route_format_errors, route_tokens
+from core.services.process.route_parser_tokens import (
+    compact_name_ambiguities,
+    parse_explicit_route,
+    preprocess_route_string,
+    route_format_errors,
+    route_tokens,
+    serialize_route_rows,
+)
 from data.repositories.supplier_repo import SupplierRepository
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
 from data.repositories.workbench_process_query_repo import WorkbenchProcessQueryRepository
@@ -49,7 +57,55 @@ def _segment_ambiguities(segment):
             or re.search(r"\d\s+\d|[^\d\s]\s+[^\d\s]", spacing) is not None)
 
 
-def _text_rows(raw, diagnostics):
+def _explicit_rows(explicit, diagnostics):
+    check_route_capacity(len(explicit))
+    result, sequences = [], []
+    for raw_seq, name in explicit:
+        seq = route_sequence(raw_seq)
+        if seq is None:
+            diagnostics.append(route_diagnostic("invalid_sequence", "工序号必须是正整数，而且不能超出可用范围。"))
+            continue
+        sequences.append(seq)
+        if not name.strip():
+            diagnostics.append(route_diagnostic("missing_operation_name", f"工序{seq}缺少工种名称。", sequence=seq))
+        else:
+            result.append((seq, name))
+    append_duplicate_diagnostics(sequences, diagnostics)
+    return result
+
+
+def _segment_diagnostics(segment, normalized, tail, diagnostics):
+    errors = route_format_errors(normalized)
+    for message in errors:
+        is_tail = tail is not None and message == errors[-1]
+        diagnostics.append(route_diagnostic(
+            "missing_operation_name" if is_tail else "missing_sequence", message,
+            sequence=route_sequence(tail.group(1)) if is_tail and tail is not None else None))
+    if _segment_ambiguities(segment):
+        diagnostics.append(route_diagnostic("ambiguous_route_format", "工艺路线里有符号、小数、指数或空格，拼不出明确的工序。请改用逐行填工序号和工种名。"))
+
+
+def _append_compact_tokens(tokens, operations, sequences, diagnostics):
+    for seq, name in tokens:
+        sequence = route_sequence(seq)
+        if sequence is None:
+            diagnostics.append(route_diagnostic("invalid_sequence", "工序号必须是正整数，而且不能超出可用范围。"))
+        else:
+            sequences.append(sequence)
+            operations.append((sequence, name.strip()))
+
+
+def _append_compact_tail(tail, sequences, diagnostics):
+    if tail is None:
+        return
+    sequence = route_sequence(tail.group(1))
+    if sequence is None:
+        diagnostics.append(route_diagnostic("invalid_sequence", "最后一道工序号必须是正整数，而且不能超出可用范围。"))
+    else:
+        sequences.append(sequence)
+
+
+def _compact_rows(raw, diagnostics):
     operations, sequences, input_count = [], [], 0
     # Hard boundaries must survive until each fragment's missing prefix/tail is diagnosed.
     for segment in re.split(r"[,，、;；\r\n]", raw):
@@ -63,29 +119,20 @@ def _text_rows(raw, diagnostics):
         tail = re.search(r"(\d+)$", normalized)
         input_count += max(1, len(tokens) + bool(tail))
         check_route_capacity(input_count)
-        errors = route_format_errors(normalized)
-        for message in errors:
-            is_tail = tail is not None and message == errors[-1]
-            diagnostics.append(route_diagnostic(
-                "missing_operation_name" if is_tail else "missing_sequence", message,
-                sequence=route_sequence(tail.group(1)) if is_tail and tail is not None else None))
-        if _segment_ambiguities(segment):
-            diagnostics.append(route_diagnostic("ambiguous_route_format", "工艺路线里有符号、小数、指数或空格，拼不出明确的工序。请改用逐行填工序号和工种名。"))
-        for seq, name in tokens:
-            sequence = route_sequence(seq)
-            if sequence is None:
-                diagnostics.append(route_diagnostic("invalid_sequence", "工序号必须是正整数，而且不能超出可用范围。"))
-            else:
-                sequences.append(sequence)
-                operations.append((sequence, name.strip()))
-        if tail:
-            sequence = route_sequence(tail.group(1))
-            if sequence is None:
-                diagnostics.append(route_diagnostic("invalid_sequence", "最后一道工序号必须是正整数，而且不能超出可用范围。"))
-            else:
-                sequences.append(sequence)
+        _segment_diagnostics(segment, normalized, tail, diagnostics)
+        _append_compact_tokens(tokens, operations, sequences, diagnostics)
+        _append_compact_tail(tail, sequences, diagnostics)
     append_duplicate_diagnostics(sequences, diagnostics)
     return operations
+
+
+def _text_rows(raw, diagnostics):
+    try:
+        explicit = parse_explicit_route(raw)
+    except ValueError as exc:
+        diagnostics.append(route_diagnostic("explicit_route_invalid", str(exc)))
+        return []
+    return _explicit_rows(explicit, diagnostics) if explicit is not None else _compact_rows(raw, diagnostics)
 
 
 def _structured_name_warnings(rows, diagnostics):
@@ -93,7 +140,7 @@ def _structured_name_warnings(rows, diagnostics):
         normalized = preprocess_route_string(str(seq) + name)
         if any(char.isdecimal() for char in name) or route_tokens(normalized) != [(str(seq), name)] or \
                 route_format_errors(normalized) or ";" in name or "；" in name:
-            diagnostics.append(route_diagnostic("structured_name_preserved", "工种名称已按逐行输入原样保留；名称含空格、数字或分隔符时，请继续用逐行模式修改。", severity="warning", sequence=seq))
+            diagnostics.append(route_diagnostic("structured_name_preserved", "工种名称已原样保留；系统会在整条路线中保留工序号和名称的边界，可直接导出后继续维护。", severity="warning", sequence=seq))
 
 
 def _persisted_refs(repo, kind, keys, cached=None):
@@ -165,17 +212,21 @@ class ProcessRoutePreviewService:
             _structured_name_warnings(rows, diagnostics)
         if not rows:
             diagnostics.append(route_diagnostic("empty_route", "这条工艺路线里没有可检查的工序。请先填写工序。"))
-        operations = self._interpret_operations(rows, diagnostics)
+        operations = self._interpret_operations(rows, diagnostics,
+                                                compact=request.mode == "text" and not re.search(r"[0-9０-９]\s*[:：]", request.route_raw))
         _append_operation_diagnostics(operations, diagnostics)
         recognized = sum(op["op_type_ref"] is not None for op in operations)
         return {"mode": request.mode, "route_raw": request.route_raw,
-                "normalized_input": "\n".join(str(seq) + " " + name for seq, name in rows) if request.mode == "rows" else preprocess_route_string(re.sub(r"[;；]", "", request.route_raw)),
+                "normalized_input": serialize_route_rows(rows),
                 "operations": operations, "diagnostics": diagnostics,
                 "can_confirm_route": bool(operations) and not any(d["severity"] == "error" for d in diagnostics),
                 "counts": {"operations": len(operations), "recognized": recognized, "unknown": len(operations) - recognized}}
 
-    def _interpret_operations(self, rows, diagnostics):
+    def _interpret_operations(self, rows, diagnostics, compact=False):
         types, capabilities, context, suppliers = self._reference_facts() if self._batch is None else self._batch["facts"]
+        if compact:
+            diagnostics.extend(route_diagnostic("ambiguous_numeric_name", message, sequence=seq)
+                               for seq, message in compact_name_ambiguities(rows, context.op_types))
         op_refs, supplier_refs = self._route_refs(context, {name for _, name in rows})
         candidates = self._candidates(types, capabilities) if self._batch is None else self._batch["candidates"]
         for issue in context.supplier_global_issues:
@@ -199,7 +250,7 @@ class ProcessRoutePreviewService:
         candidates = {}
         for row in capabilities:
             ot = types.get(row["op_type_id"])
-            if ot is not None and ot.category == "external" and not row["missing_supplier"]:
+            if ot is not None and supports_source(ot.category, "external") and not row["missing_supplier"]:
                 candidates.setdefault(ot.name, {})[row["supplier_id"]] = row
         return candidates
 
@@ -213,12 +264,12 @@ class ProcessRoutePreviewService:
             result["issues"].append({"code": "unknown_op_type", "message": "这个工种还没登记，工艺路线可以先确认；归属要先建档，暂时不能据此排产。"})
             return result
         result["op_type_ref"] = op_refs[ot.op_type_id]
-        if ot.category not in ("internal", "external"):
+        if ot.category not in ("internal", "external", "both"):
             result["basis"] = "已登记工种的类别无效，系统不猜是自制还是外协。"
             result["issues"].append({"code": "invalid_op_type_category", "message": "工种类别既不是自制也不是外协，归属还要核对。"})
             return result
-        result["source_suggestion"] = ot.category
-        result["basis"] = "按工种类别匹配；可在归属步骤修改。"
+        result["source_suggestion"] = "internal" if ot.category == "both" else ot.category
+        result["basis"] = "该工种自制和外协都可，当前建议自制，请在归属步骤确认。" if ot.category == "both" else "按工种类别匹配；可在归属步骤修改。"
         if ot.category == "external":
             ProcessRoutePreviewService._supplier_suggestion(result, context, candidates, suppliers, supplier_refs)
         return result

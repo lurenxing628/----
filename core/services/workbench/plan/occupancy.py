@@ -47,7 +47,7 @@ def _occupancy_groups(rows, start, end, constraints):
     return groups, unknown
 
 
-def _resource_occupancy(kind, key, operations, calendar, resources, label):
+def _resource_occupancy(kind, key, operations, calendar, resources, label, invalid_operations):
     intervals = [interval for fragments in operations.values() for interval in union(fragments)]
     swept = segments(intervals)
     arranged_hours, occupied_hours, overlap_hours = _occupancy_hours(intervals, swept)
@@ -55,7 +55,8 @@ def _resource_occupancy(kind, key, operations, calendar, resources, label):
     row["label"] = calendar["label"] if calendar is not None else label
     available = available_intervals(calendar) if calendar is not None else None
     metrics = _bounding_window_metrics(intervals, available)
-    capacity_measures, utilization, insufficient = _capacity_measures(metrics, arranged_hours)
+    invalid_outside = bool(set(operations) & invalid_operations) or bool(calendar and calendar.get("status") != "active")
+    capacity_measures, utilization, insufficient = _capacity_measures(metrics, invalid_outside)
     measures = {"arranged_hours": arranged_hours, "occupied_hours": occupied_hours,
                 "overlap_hours": overlap_hours, "excess_arranged_hours": arranged_hours - occupied_hours,
                 **capacity_measures}
@@ -87,17 +88,18 @@ def _bounding_window_metrics(intervals, available):
     return ResourceUtilizationMetrics(intervals, available).window(first, last)
 
 
-def _capacity_measures(metrics, arranged_hours):
+def _capacity_measures(metrics, invalid_outside):
     if metrics["available_hours"] is None:
         return {"available_hours": None, "available_occupied_hours": None,
                 "outside_available_hours": None, "capacity_shortfall_hours": None}, None, None
     capacity = metrics["available_hours"]
     in_calendar = metrics["occupied_hours"]
     outside = metrics["outside_calendar_hours"]
-    shortage = max(0.0, arranged_hours - capacity)
+    # Elapsed reservation spans may include lunch/night waits. They are not processing load.
+    shortage = max(0.0, metrics["summed_load_hours"] - capacity)
     utilization = metrics["utilization_ratio"]
     return {"available_hours": capacity, "available_occupied_hours": in_calendar,
-            "outside_available_hours": outside, "capacity_shortfall_hours": shortage}, utilization, outside > 1e-9 or shortage > 1e-9
+            "outside_available_hours": outside, "capacity_shortfall_hours": shortage}, utilization, (invalid_outside and outside > 1e-9) or shortage > 1e-9
 
 
 def project_plan_occupancy(conn, *, entry, scope, rows, resources, plan_span, calendar_facts):
@@ -108,9 +110,10 @@ def project_plan_occupancy(conn, *, entry, scope, rows, resources, plan_span, ca
     constraints = TaskConstraints(calendar_facts)
     groups, unknown = _occupancy_groups(rows, start, end, constraints)
     calendars = calendar_facts["resources"]
+    invalid_operations = constraints.issues.get("assignment_outside_calendar", set()) | constraints.issues.get("assignment_machine_downtime", set())
     labels = {(kind, str(row[kind + "_id"])): row[kind + "_name"] for row in rows for kind in ("machine", "operator")}
     public = [_resource_occupancy(kind, key, operations, calendars[kind].get(key) if calendars is not None else None,
-                                  resources, labels[kind, key])
+                                  resources, labels[kind, key], invalid_operations)
               for (kind, key), operations in sorted(groups.items())]
     issues = constraints.public()
     if unknown:

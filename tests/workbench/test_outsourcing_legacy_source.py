@@ -59,6 +59,8 @@ def test_mixed_birth_and_legacy_group_keeps_stable_identity(legacy_source_case):
                       "VALUES ('NEW','XB1',11,'XT1','Heat treatment','external','XS1')")
     case.conn.commit()
     payload = case.payload(merged=True)
+    # The last legacy operation and newly appended operation are one real continuous stage.
+    payload["target"]["operation_refs"][0] = case.operation_ref("XO10")
     payload["target"]["operation_refs"][1] = case.operation_ref("NEW")
     preview = case.preview(payload)
     first = case.confirm(preview)

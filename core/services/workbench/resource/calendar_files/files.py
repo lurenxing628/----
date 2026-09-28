@@ -12,7 +12,9 @@ from typing import Any, Dict, List, Optional
 
 from core.errors import ValidationError
 from core.infrastructure.transaction import TransactionManager
+from core.models.calendar_period_columns import export_period_columns, parse_period_columns
 from core.models.workbench_calendar_file import (
+    CLOCK_FIELDS,
     ENUMS,
     MAX_RANGE_DAYS,
     NULLABLE,
@@ -30,6 +32,7 @@ from core.models.workbench_command import (
     WorkbenchCommandRejected,
     input_fingerprint,
 )
+from core.models.workbench_operator_calendar import operator_clock
 from core.models.workbench_resource_action import (
     ResourceActionPreview,
     action_row,
@@ -38,7 +41,7 @@ from core.models.workbench_resource_action import (
 )
 
 from ..calendars import WorkbenchCalendarService
-from .file_codec import read_calendar_file, read_date, read_number
+from .file_codec import read_calendar_file, read_clock, read_date, read_number
 from .file_writer import check_capacity, write_calendar_file
 
 _LIMITS = {"shift_hours": (0.0, 24.0, False), "efficiency": (0.0, 200.0, True)}
@@ -53,7 +56,7 @@ def _blocked(row) -> bool:
 
 def _text(value: float) -> str:
     """数字写进文件时不要留浮点尾巴：8.0 写成 8，7.5 还是 7.5。"""
-    return f"{value:f}".rstrip("0").rstrip(".") or "0"
+    return str(value) if value % 1 else str(int(value))
 
 
 def range_fingerprint(states: Dict[str, Dict[str, Any]]) -> str:
@@ -126,6 +129,8 @@ class WorkbenchCalendarFileService:
             if key not in NULLABLE[self.kind]:
                 raise ValidationError("这一项不能清除，留空表示保持原样。要把整天恢复成默认规则请到日历页用范围清除。", field=key)
             return None
+        if key in CLOCK_FIELDS[self.kind]:
+            return operator_clock(read_clock(raw, key), key)
         if key in ("date",):
             return read_date(raw, key)
         if key in NUMERIC[self.kind]:
@@ -176,8 +181,9 @@ class WorkbenchCalendarFileService:
             return
         day = row["values"]["date"]
         before = self.calendar.day_state(day, states)
-        fields = {UI_FIELDS[self.kind][key]: value for key, value in row["values"].items() if key != "date"}
+        fields = {UI_FIELDS[self.kind][key]: value for key, value in row["values"].items() if key in UI_FIELDS[self.kind]}
         try:
+            fields.update(parse_period_columns(row["values"]))
             after = self.calendar.proposed_row(fields, before)
         except WorkbenchCommandRejected as exc:
             reject_action_row(row, str(exc), code=exc.code, field="date")
@@ -224,7 +230,8 @@ class WorkbenchCalendarFileService:
         return {"date": row["date"], "day_type": _DAY_TYPE_TEXT[row["day_type"]],
                 "shift_hours": _text(row["shift_hours"]), "efficiency": _text(row["efficiency"] * 100),
                 "allow_normal": _YES_NO_TEXT[row["allow_normal"]], "allow_urgent": _YES_NO_TEXT[row["allow_urgent"]],
-                "remark": row["remark"]}
+                "remark": row["remark"], "shift_start": row["shift_start"], "shift_end": row["shift_end"],
+                **export_period_columns(row)}
 
     def confirm_import(self, preview, content, *, file_format, mode="upsert"):
         if not self.conn.in_transaction:

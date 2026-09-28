@@ -3,6 +3,7 @@
 import math
 import re
 
+from core.models.resource_capabilities import supports_source
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.process.workflow_state import _group_facts
 
@@ -81,14 +82,15 @@ def _setup_and_unit_hours(row, source, issues):
     return setup, unit
 
 
-def _external_days(row, source, group_ref, group, issues):
+def project_external_days(row, source, group_ref, group, issues):
+    """Share the effective operation/group cycle between detail and route previews."""
     if group is not None and group["issues"]:
         issues.append(issue("external_group_invalid", "关联的外协组规则不合法，这道工序仍用自己的周期。请核对外协组的起止序、成员和周期。"))
     group_cycle = (source == "external" and row["status"] == "active" and group_ref is not None
                    and group is not None and group["ref"] == group_ref and group["merge_mode"] == "merged"
                    and group["total_days"] is not None and not group["issues"])
-    # Only an absent member value delegates to the group; non-NULL values still need validation.
-    if row["ext_days"] is None and group_cycle:
+    # The scheduler uses the merged total even when a historical member value exists.
+    if group_cycle:
         return None, "group"
     days = _number(row["ext_days"], "外协周期", issues, positive=source == "external") if source == "external" or row["ext_days"] is not None else None
     return days, "operation" if days is not None else None
@@ -109,10 +111,10 @@ def project_operation(row, confirmation, group=None):
     if group_ref and row["group_part_no"] != row["part_no"]:
         issues.append(issue("external_group_part_mismatch", "关联的外协组属于别的零件，这里不拿它当本模板的规则。请到基础资料核对外协组。"))
         group_ref = None
-    if op_ref and row["op_type_category"] != source:
+    if op_ref and not supports_source(row["op_type_category"], source):
         issues.append(issue("source_category_mismatch", "当前工种类别与本序原归属不一致，请核对；未修改任何一方。"))
     setup, unit = _setup_and_unit_hours(row, source, issues)
-    days, days_source = _external_days(row, source, group_ref, group, issues)
+    days, days_source = project_external_days(row, source, group_ref, group, issues)
     if source == "internal" and unit == 0 and confirmation["hours"]["state"] != "confirmed":
         issues.append(issue("zero_unit_hours_review", "单件工时为 0，排产只计算换型工时。"))
     if row["status"] not in ("active", "deleted"):

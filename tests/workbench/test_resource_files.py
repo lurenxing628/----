@@ -129,7 +129,7 @@ def test_group_shift_and_explicit_clears_cover_current_form_relations(resource_c
 @pytest.mark.parametrize("kind,code,field,value", [
     ("machine", "M1", "op_type_code", "EXT"), ("machine", "M1", "op_type_code", "missing"),
     ("operator", "O1", "skill_codes", '["EXT"]'), ("supplier", "S1", "op_type_codes", '["OT2"]'),
-    ("operator", "O1", "skill_codes", "OT1,OT2"), ("operator", "O1", "skill_codes", '["OT1","OT1"]'),
+    ("operator", "O1", "skill_codes", "OT1,,OT2"), ("operator", "O1", "skill_codes", '["OT1","OT1"]'),
     ("operator", "O1", "skill_codes", r"\N"), ("machine", "M1", "status", r"\N"),
     ("op_type", "OT1", "category", "external"), ("op_type", "EXT", "category", "internal"),
     ("op_type", "OT1", "remark", "   "), ("op_type", "OT1", "default_merge_mode", "merged"),

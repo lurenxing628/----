@@ -49,12 +49,15 @@ def test_real_fifty_batches_three_operations_keep_lineage_plans_and_execution(le
             assert child["template_snapshot"] == parent["template_snapshot"]
             assert child["template_revision"] == parent["template_revision"]
         batch = dict(case.conn.execute("SELECT * FROM Batches WHERE batch_id=?", (destination,)).fetchone())
+        assert batch["ready_status"] == "no" and batch["ready_date"] is None
+        materials = case.conn.execute("SELECT required_qty,available_qty,ready_status FROM BatchMaterials WHERE batch_id=?", (destination,)).fetchall()
+        assert [tuple(row) for row in materials] == [(10, 0, "no")]
         original = dict(case.conn.execute("SELECT * FROM Batches WHERE batch_id=?", (code,)).fetchone())
-        for key in set(original) - {"batch_id", "status", "created_at", "updated_at"}:
+        for key in set(original) - {"batch_id", "status", "ready_status", "ready_date", "created_at", "updated_at"}:
             assert batch[key] == original[key], key
     after = stored_state(case.conn)
     assert after[0] == before[0]
-    assert_only_copy_appends(before[1], after[1], 50, 150)
+    assert_only_copy_appends(before[1], after[1], 50, 150, material_count=50)
     assert not case.conn.in_transaction
 
 

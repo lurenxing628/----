@@ -2,6 +2,8 @@
 
 from collections import defaultdict
 
+from core.models.resource_capabilities import supports_source
+
 from .overview_graph import number, text
 
 PARSED_TEXT = {"yes": "已解析", "no": "未解析"}
@@ -95,7 +97,7 @@ def _operation(graph, route, op, ref, groups, state):
     if source not in ("internal", "external"):
         issue("operation.source", "归属未明确", "资料里记的归属是「" + text(source) + "」，只能填自制或外协。")
     target = graph.related(route, "opType", op["op_type_id"], "工序使用工种", "PartOperations.op_type_id", "使用它的路线", required=True, operation_ref=ref, stage="source")
-    if target and graph.facts.index("OpTypes", "op_type_id")[op["op_type_id"]]["category"] != source:
+    if target and not supports_source(graph.facts.index("OpTypes", "op_type_id")[op["op_type_id"]]["category"], source):
         issue("operation.category", "归属与工种类别不一致", "这道工序用的工种是" + target["business_code"] + "，和工序自己填的归属不是一回事。")
     if source == "internal":
         for key, label in (("setup_hours", "换型工时"), ("unit_hours", "单件工时")):

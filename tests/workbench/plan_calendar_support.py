@@ -5,11 +5,13 @@ from time import perf_counter
 
 import pytest
 
+from core.models.calendar_periods import encode_periods
 from core.models.workbench_plan_reference import WorkbenchPlanLocator
 from core.models.workbench_plan_scope import PlanReadScope
 from core.services.workbench.plan.calendar import project_plan_calendar
 from core.services.workbench.plan.occupancy import project_plan_occupancy
 from core.services.workbench.plan.queries import WorkbenchPlanQueryService
+from data.repositories.calendar_defaults_repo import CalendarDefaultsRepository
 from tests.workbench.plan_catalog_support import history, seed_operation
 from tests.workbench.plan_read_support import assert_no_private_facts
 
@@ -19,6 +21,9 @@ START, END = "2026-09-09T00:00:00", "2026-09-10T00:00:00"
 class CalendarCase:
     def __init__(self, conn):
         self.conn = conn
+        # Occupancy math uses an explicitly configured eight-hour fixture day.
+        # The unconfigured factory default is covered by test_calendar_periods.
+        CalendarDefaultsRepository(conn).set_periods(encode_periods([{ "start": "08:00", "end": "16:00", "day_offset": 0 }]))
         self.op_id = seed_operation(conn)
         conn.executemany("INSERT INTO OpTypes(op_type_id,name,category) VALUES (?,?,'internal')",
                          [("INT", "Turning"), ("OTHER", "Grinding")])

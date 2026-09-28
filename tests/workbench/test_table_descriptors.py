@@ -153,9 +153,12 @@ def _accepts(name, key, choice):
     from core.models.workbench_process_file import SOURCE_VALUES
     from core.models.workbench_resource_input import _CATEGORY, _MERGE_MODE, _STATUS
     from core.models.workbench_supplier import STATUS_VALUES as supplier_status
+    from core.services.workbench.facts.file_codec import _decode
 
     if name == "batch":
         return _batch_accepts(key, choice)
+    if name in ("machine", "operator", "supplier", "op_type"):
+        choice = _decode(choice, key, "xlsx")
     if name in ("machine", "operator"):
         return choice in _STATUS[name]
     if name == "supplier":
@@ -163,7 +166,9 @@ def _accepts(name, key, choice):
     if name == "op_type":
         return choice in (_CATEGORY if key == "category" else _MERGE_MODE)
     if name == "material":
-        return choice in material_status
+        from core.services.workbench.material.file_codec import _decode_value
+
+        return _decode_value(choice, key, "xlsx") in material_status
     if name in ("route", "hours"):
         return choice in SOURCE_VALUES
     if name == "operator_machine":

@@ -65,7 +65,7 @@ def test_preview_does_not_write_and_confirm_commits_once(client):
     assert preview["operation"] == KIND + ".import" and preview["commit_policy"] == "atomic"
     assert preview["can_confirm"] and preview["mode"] == "upsert"
     assert [row["result"] for row in preview["rows"]] == ["new", "new"]
-    assert [item["label"] for item in preview["columns"]] == list(HEADERS)
+    assert [item["label"] for item in preview["columns"]] == list(HEADERS) + ["班次开始", "班次结束"]
     assert "entity_key" not in json.dumps(preview) and "revision" not in json.dumps(preview)
 
     first = confirm(client, preview)
@@ -106,7 +106,7 @@ def test_template_download_has_headers_only(client, fmt):
         content = response.get_data()
 
     headers, rows = decode(Download(), fmt)
-    assert headers == list(HEADERS) and rows == []
+    assert headers == list(HEADERS) + ["班次开始", "班次结束"] and rows == []
 
 
 @pytest.mark.parametrize("fmt", ("csv", "xlsx"))

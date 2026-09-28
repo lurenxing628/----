@@ -11,6 +11,7 @@ from core.models.workbench_trial_adoption import TrialAdoptionBlocked, TrialAdop
 from core.models.workbench_trial_codec import fingerprint
 from core.services.scheduler.schedule_service import ScheduleService
 from core.services.workbench.facts.candidate_archive import require_adoption_schema
+from core.services.workbench.facts.preflight_dependencies import material_deferred_ids
 from core.services.workbench.facts.run_input_readonly import candidate_read_snapshot
 from core.services.workbench.facts.trial_scenario_archive import load_saved_scenario, schedule_rows
 from core.services.workbench.run.candidate_adoption_storage import _require_official_baseline
@@ -21,6 +22,7 @@ from data.repositories.workbench_trial_query_repo import WorkbenchTrialQueryRepo
 
 from .adoption_input import prepare_trial_adoption_input
 from .facts import live_context
+from .materials import run_policy
 from .validation import TrialValidator
 
 
@@ -37,13 +39,13 @@ def validate_trial_adoption(conn, scenario_ref):
             issues = [row for row in checked["issues"] if row["code"] != "scenario_adoption_not_connected"]
             if issues:
                 raise TrialAdoptionBlocked("scenario_constraint_unproven", "试调方案没有通过当前的完整核对，正式计划没有改变。", issues)
-            settings = _settings(rows)
+            settings = {**_settings(rows), **run_policy(admission)}
             projections = run_execution_projections(conn, settings)
             _require_official_baseline(live["baseline"], projections)
             prepared = prepare_trial_adoption_input(conn, settings, projections, live)
             _complete_scope(rows, prepared)
             payload = validate_candidate(prepared, schedule_rows(rows), [])
-            if payload.scheduled_op_ids != {op.id for op in prepared.operations}:
+            if payload.scheduled_op_ids != prepared.schedule_output_allowed_op_ids:
                 raise TrialAdoptionBlocked("scenario_scope_incomplete", "试调方案没有覆盖所选批次的全部工序，正式计划没有改变。")
             svc = ScheduleService(conn)
             _require_official_scope(svc, prepared.prev_version, payload.scheduled_op_ids)
@@ -120,9 +122,11 @@ def _settings(rows):
 
 def _complete_scope(rows, prepared):
     saved = {row["operation_ref"]: row for row in rows}
-    if set(saved) != {item["operation_ref"] for item in prepared.dispositions}:
+    deferred = material_deferred_ids(prepared.dispositions, prepared.normalized_input)
+    expected = [item for item in prepared.dispositions if item["op_id"] not in deferred]
+    if set(saved) != {item["operation_ref"] for item in expected}:
         raise TrialAdoptionBlocked("scenario_scope_incomplete", "试调方案未覆盖批次的全部工序，无法正式采用。")
-    for item in prepared.dispositions:
+    for item in expected:
         original = saved[item["operation_ref"]]["original"]
         if (original["operation"]["id"] != item["op_id"]
                 or original["predecessor_operation_refs"] != item["predecessor_refs"]):

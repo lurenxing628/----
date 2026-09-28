@@ -4,8 +4,9 @@ import re
 
 from core.models.workbench_batch import MAX_INTEGER, normalize_batch_input, object_fields, public_ref
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
+from data.repositories.batch_material_repo import BatchMaterialRepository
 
-from .facts import BatchFacts, index_relations, related, require_unreferenced
+from .facts import BatchFacts, index_relations, require_deletable
 from .operations import insert_operation, operation_code
 from .projection import BatchProjection
 from .service import WorkbenchBatchService
@@ -52,9 +53,7 @@ class WorkbenchBatchBulkService:
             before = projection.entity(batch)
             after = None
             if payload["action"] == "delete":
-                require_unreferenced(facts, batch)
-                if related(facts, batch)["materials"]:
-                    raise WorkbenchCommandRejected("constraint_conflict", "所选批次里还有挂着物料需求的，系统一条都没有删除。")
+                require_deletable(facts, batch)
             elif payload["action"] == "update":
                 after = {**before, "fields": {**before["fields"], **payload["patch"]}}
             else:
@@ -62,15 +61,19 @@ class WorkbenchBatchBulkService:
                 used.add(code)
                 operations = [copied_operation(op, code) for op in before["operations"]]
                 after = {**before, "ref": None, "business_code": code, "status": "pending", "stored_status": "pending",
+                         "fields": {**before["fields"], "ready_status": "no", "ready_date": None},
                          "protected": False, "all_operations_complete": False,
                          "relationships": {**before["relationships"], "completed_count": 0, "plan_reference_count": 0,
+                                           "outsourcing_reference_count": 0,
                                            "gap_count": sum(bool(op["issues"]) for op in operations),
                                            "report_count": 0, "legacy_fact_count": 0,
-                                           "execution_reference_count": 0, "material_requirement_count": 0},
+                                           "execution_reference_count": 0},
                          "operations": operations,
                          "issues": [issue for issue in before["issues"] if issue["code"] != "completion_inconsistent"]}
             rows.append({"entity_ref": ref, "before": before, "after": after})
-        return {"operation": "batch.bulk_confirm", "action": payload["action"], "rows": rows, "count": len(rows), "commit_policy": "atomic"}
+        return {"operation": "batch.bulk_confirm", "action": payload["action"], "rows": rows, "count": len(rows), "commit_policy": "atomic",
+                "warnings": ([{"code": "copied_materials_unconfirmed", "message": "复制时保留物料需求，到料量从 0 开始，齐套和齐套日期需要重新核对。"}]
+                             if payload["action"] == "copy" else [])}
 
     @staticmethod
     def _copy_code(code, used):
@@ -105,9 +108,11 @@ class WorkbenchBatchBulkService:
             else:
                 batch = source_batches[row["before"]["business_code"]]
                 code = row["after"]["business_code"]
-                self.domain.domain.create(code, batch["part_no"], **{key: batch[key] for key in ("quantity", "due_date", "priority", "ready_status", "ready_date", "remark", "part_name")})
-                for op in source_relations[batch["batch_id"]]["operations"]:
-                    insert_operation(self.conn, code, op)
+                fields = {key: batch[key] for key in ("quantity", "due_date", "priority", "remark", "part_name")}
+                self.domain.domain.create(code, batch["part_no"], **fields, ready_status="no", ready_date=None)
+                mapping = {op["id"]: insert_operation(self.conn, code, op)
+                           for op in source_relations[batch["batch_id"]]["operations"]}
+                BatchMaterialRepository(self.conn).copy_requirements(batch["batch_id"], code, mapping)
                 identity = self.reader.identities.find_active("batch", code)
                 if identity is None:
                     raise RuntimeError("复制批次缺少永久引用。")

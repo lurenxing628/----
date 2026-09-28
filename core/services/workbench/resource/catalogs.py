@@ -1,6 +1,7 @@
 """Real equipment groups and fully specified fixed/rotating shift catalogs."""
 
 from core.errors import ValidationError
+from core.models.calendar_periods import shift_pattern_fields
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
 from core.models.workbench_resource_input import normalize_resource_input
 
@@ -70,7 +71,7 @@ class WorkbenchResourceCatalogService:
         old_pattern = self.repo.pattern(code) if self.kind == "shift_profile" else []
         self._check_pattern({**raw, **fields}, pattern if pattern is not None else old_pattern)
         changes = {key: value for key, value in fields.items() if raw[key] != value}
-        changed_pattern = pattern is not None and pattern != [{key: row[key] for key in ("day_offset", "is_rest", "shift_start", "shift_end")} for row in old_pattern]
+        changed_pattern = pattern is not None and pattern != [shift_pattern_fields(row) for row in old_pattern]
         self.repo.update_catalog(self.kind, code, changes)
         if changed_pattern:
             self.repo.set_pattern(code, pattern)

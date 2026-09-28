@@ -23,7 +23,7 @@ def test_current_http_labels_preserve_old_fields_and_all_storage(targets_case, m
         assert item["supplier"] == {"ref": case.entity_ref("supplier", "XS1"), "business_code": "XS1", "label": "Supplier"}
         assert item["part"] == {"ref": case.entity_ref("part", "XP1"), "business_code": "XP1", "label": "Part"}
         assert item["source_resolution"] == {"basis": "birth_record", "confirmation_ref": None}
-        assert {key: value for key, value in item.items() if key not in ("batch", "supplier", "part", "source_resolution")} == {
+        assert {key: value for key, value in item.items() if key not in ("batch", "supplier", "part", "source_resolution", "sequence", "piece")} == {
             "operation_ref": case.operation_ref(item["business_code"]), "business_code": item["business_code"],
             "label": "Heat treatment", "batch_ref": item["batch"]["ref"], "supplier_ref": item["supplier"]["ref"],
             "outsourcing_ref": None, "can_register": True, "issues": []}

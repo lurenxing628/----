@@ -3,6 +3,7 @@
 from contextlib import closing
 
 from core.infrastructure.database import get_connection
+from core.infrastructure.migration_state import CURRENT_SCHEMA_VERSION
 from core.services.workbench.plan.point_evidence import official_point_work
 from tests.workbench.ea_zero_duration_support import adoption_service, trial_adoption_service
 from tests.workbench.round1_piece_point_support import (
@@ -62,5 +63,5 @@ def test_managed_mixed_piece_points_adopt_move_save_read_and_recover(point_case)
             replay = svc(reopened).adopt(source, "expired", key, INTENT)
             assert replay["replayed"] and replay["receipt_ref"] == receipt["receipt_ref"]
         assert snapshot(reopened) == before
-        assert reopened.execute("SELECT version FROM SchemaVersion").fetchone()[0] == 32
+        assert reopened.execute("SELECT version FROM SchemaVersion").fetchone()[0] == CURRENT_SCHEMA_VERSION
         assert not reopened.execute("PRAGMA foreign_key_check").fetchall()

@@ -87,14 +87,20 @@ def test_external_cycle_uses_calendar_days_and_no_internal_resources(trial_case)
     case = trial_case
     case.conn.execute("INSERT INTO OpTypes(op_type_id,name,category) VALUES ('EXT','Coat','external')")
     case.conn.execute("INSERT INTO Suppliers(supplier_id,name,op_type_id) VALUES ('S1','Coater','EXT')")
+    case.conn.execute("""INSERT INTO PartOperations
+        (part_no,seq,op_type_id,op_type_name,source,supplier_id,ext_days)
+        VALUES ('P1',1,'EXT','Coat','external','S1',2)""")
     case.conn.execute("UPDATE BatchOperations SET source='external',op_type_id='EXT',supplier_id='S1',ext_days=2,machine_id=NULL,operator_id=NULL WHERE id=?", (case.op_id,))
     case.conn.commit()
+    context = case.conn.execute("SELECT * FROM BatchExternalContexts WHERE operation_id=?", (case.op_id,)).fetchone()
+    assert context["template_operation_id"] is not None and context["group_id"] is None
     value = official(case, end="2026-09-11T08:00:00")
     case.conn.execute("UPDATE Schedule SET machine_id=NULL,operator_id=NULL")
     case.conn.commit()
     draft = create(case, value)
     changed = change(case, draft, machine=None, operator=None)["data"]
     assert changed["tasks"][0]["source"] == "external"
+    assert changed["tasks"][0]["machine_ref"] is None and changed["tasks"][0]["operator_ref"] is None
     assert changed["tasks"][0]["end"] == "2026-09-11T13:00:00"
     assert changed["tasks"][0]["hours"]["days"] == 2
     assert changed["validation"]["constraints_status"] == "valid", changed["validation"]

@@ -71,12 +71,15 @@ def validate_adoption_constraints(conn, prepared, payload):
         # validate_candidate + execution guard retain its exact seed and identity.
         if row.op_id in actual_ids:
             continue
-        if checks.readiness(asdict(batch), prepared.readiness_gate_enabled):
+        material_issues, material_day = checks.operation_readiness(asdict(batch), raw, prepared.normalized_input)
+        if material_issues:
             _block("candidate_material_not_ready", "候选仍有未齐套物料，不能正式采用。")
         # SQLite DECLTYPES returns date objects in the application; snapshots use ISO text.
         # batch_model has already rejected invalid dates using the same parser.
+        if material_day and row.start_time < datetime.fromisoformat(material_day):
+            _block("candidate_before_material", "候选安排早于本工序物料到齐日期。")
         ready_day = stored_date(batch.ready_date)
-        if ready_day is not None and row.start_time < datetime.fromisoformat(ready_day):
+        if prepared.normalized_input["ready_check"] and ready_day is not None and row.start_time < datetime.fromisoformat(ready_day):
             _block("candidate_before_ready_date", "候选安排早于实际可开工日期。")
         if row.source == "internal":
             _internal(prepared, row, algo_ops[row.op_id], batch, validate_point)

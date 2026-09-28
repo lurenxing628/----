@@ -99,7 +99,10 @@ def archived_calendars(capture, facts, refs, start, end):
     if global_rows is None or stops is None:
         return {ref: unavailable("admission_machine_calendar", "calendar_unavailable") for ref in refs}
     try:
-        engine = SnapshotCalendarEngine({"global": global_rows, "personal": [], "profiles": [], "patterns": []})
+        versions = _table(archive, "SchemaVersion") or []
+        legacy_defaults = not versions or versions[0]["version"] < 34
+        engine = SnapshotCalendarEngine({"global": global_rows, "personal": [], "profiles": [], "patterns": [],
+                                         "legacy_defaults": legacy_defaults, "defaults": _table(archive, "WorkbenchCalendarDefaults") or []})
         base = policy_projection(engine, first, last, calendar_start, calendar_end)
     except (ValidationError, ValueError, TypeError, KeyError):
         base = unavailable("admission_machine_calendar", "calendar_invalid")

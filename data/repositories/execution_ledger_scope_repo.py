@@ -23,13 +23,13 @@ class ExecutionLedgerScopeRepository(BaseRepository):
         return row is not None
 
     def scope_task_rows(self, schedule_ids: Sequence[int]) -> List[Tuple[Any, ...]]:
-        """(schedule_id, version, op_id, batch_id, operation_ref, task_ref, plan_ref) per adopted schedule row."""
+        """Schedule identity, permanent refs and the operation's actual internal/external source."""
         rows: List[Tuple[Any, ...]] = []
         # Keep the bounded primary-key lookup first on older SQLite planners too.
         for part in chunks(schedule_ids):
             marks = ",".join("?" for _ in part)
             cursor = self.execute(f"""SELECT s.id, s.version, s.op_id, bo.batch_id,
-                r.operation_ref, t.ref AS task_ref, p.ref AS plan_ref
+                r.operation_ref, t.ref AS task_ref, p.ref AS plan_ref, bo.source
                 FROM Schedule s CROSS JOIN BatchOperations bo ON bo.id=s.op_id
                 CROSS JOIN WorkbenchPlanSourceRefs r ON r.kind='schedule_row' AND r.active=1
                     AND r.source_key=CAST(s.id AS TEXT) AND r.version=s.version AND r.operation_id=s.op_id

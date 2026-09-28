@@ -1,5 +1,7 @@
 """Current-official and unified execution adapters under one caller read snapshot."""
 
+from typing import Any
+
 from core.models.workbench_command import WorkbenchCommandRejected, input_fingerprint
 from core.models.workbench_plan_reference import WorkbenchPlanLocator, WorkbenchPlanReferenceError
 from core.models.workbench_plan_scope import PlanReadScope
@@ -18,7 +20,7 @@ UNAVAILABLE = {"identity_missing", "plan_binding_invalid", "task_binding_invalid
                "execution_ledger_unavailable", "constraint_conflict", "entity_not_found"}
 
 
-def typed(value):
+def typed(value: Any) -> Any:
     if isinstance(value, set):
         return sorted(typed(item) for item in value)
     if isinstance(value, dict):
@@ -47,7 +49,7 @@ class DashboardFacts:
         return read_entity_refs(self.repo, kind, keys)
 
     def load(self):
-        for table in ("Batches", "BatchMaterials", "Materials", "MachineDowntimes", "Machines", "WorkbenchDashboardDowntimeRefs"):
+        for table in ("SchemaVersion", "BatchMaterialReviews", "BatchMaterialArrivals", "Batches", "BatchMaterials", "Materials", "MachineDowntimes", "Machines", "WorkbenchDashboardDowntimeRefs"):
             self.raw[table] = self.repo.table(table)
         self._plan()
         if self.plan_state == "loaded":

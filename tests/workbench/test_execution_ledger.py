@@ -63,7 +63,8 @@ def test_invalid_reports_write_nothing(ledger_case, patch):
 
 def test_piece_target_is_one_not_batch_quantity(ledger_case):
     case = ledger_case
-    piece = case.op("PIECE", seq=1, piece="unit-1")
+    pieces = [case.op("PIECE-" + str(index), seq=2, piece="unit-" + str(index)) for index in range(1, 11)]
+    piece = pieces[0]
     case.plan(2, [piece])
     case.install()
     task = case.task(2, piece)

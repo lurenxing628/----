@@ -6,10 +6,10 @@ from core.models.workbench_command import WorkbenchCommandOutcome, input_fingerp
 from core.models.workbench_execution_input import closed_write_context, normalize_report_void_input, reject
 from data.repositories.workbench_execution_report_repo import WorkbenchExecutionReportRepository, new_ref
 
+from .production_report_dependencies import ReportDependencies
 from .production_report_prepare import ReportBatchRejected
 from .production_report_validation import (
-    _successor_refs,
-    correction_conflicts,
+    execution_conflicts,
     require_current,
     validate_projection_change,
 )
@@ -17,14 +17,16 @@ from .production_report_void_dependencies import adopted_quota_impacts
 
 
 def _downstream_impacts(conn, ledger, facts, before, after, report):
-    impacts = correction_conflicts(conn, ledger, facts, before, after, [report])
-    refs = _successor_refs(conn, facts["operations"][before.operation_ref])
-    downstream = ledger.project_operations(refs) if refs else []
+    dependencies = ReportDependencies(ledger, [after])
+    impacts = execution_conflicts(ledger, facts, before, after, [report], dependencies=dependencies)
+    refs = dependencies.relatives(facts["operations"][before.operation_ref])
+    downstream = dependencies.projections(refs)
     for row in downstream:
         if row.execution_state != "unreported" and not any(item["operation_ref"] == row.operation_ref for item in impacts):
             impacts.append({"code": "downstream_execution_exists", "operation_ref": row.operation_ref})
     labels = ledger.operation_rows(list(dict.fromkeys(item["operation_ref"] for item in impacts))) if impacts else {}
-    messages = {"downstream_execution_exists": "后道工序已有开工或报工记录",
+    messages = {"upstream_time_conflict": "前道工序的实际完工时间与撤销后保留的开工记录冲突",
+                "downstream_execution_exists": "后道工序已有开工或报工记录",
                 "downstream_requires_completion": "后道工序的执行或正式安排依赖本工序完工",
                 "downstream_time_conflict": "后道工序时间与撤销后的完工记录冲突",
                 "adopted_execution_basis_changed": "当前正式计划使用了这次报工的数量或开工记录",

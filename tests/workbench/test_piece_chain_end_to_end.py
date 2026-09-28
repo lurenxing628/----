@@ -4,6 +4,7 @@ import json
 
 import pytest
 
+from core.infrastructure.migration_state import CURRENT_SCHEMA_VERSION
 from core.models.workbench_plan_scope import PlanReadScope
 from core.services.workbench.plan.queries import WorkbenchPlanQueryService
 from tests.workbench.piece_chain_support import (
@@ -80,7 +81,7 @@ def test_real_complete_chain_preserves_raw_source_old_scene_and_receipts(trial_c
         after = workspace(final_connection, next_plan["plan_ref"])
         assert {row["operation_ref"] for row in after["tasks"]} == {row["operation_ref"] for row in read["tasks"]}
         assert any(row["start"] == "2026-09-09T13:00:00" for row in after["tasks"])
-        assert final_connection.execute("SELECT version FROM SchemaVersion WHERE id=1").fetchone()[0] == 32
+        assert final_connection.execute("SELECT version FROM SchemaVersion WHERE id=1").fetchone()[0] == CURRENT_SCHEMA_VERSION
     finally:
         final_connection.close()
 

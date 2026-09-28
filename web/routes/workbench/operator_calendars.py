@@ -1,6 +1,6 @@
 """个人工作日历的读写路由。
 
-写入照「编辑可操作设备」那条已跑通的链路：先用人员详情的写令牌确认这个人没被人改过，再进命令服务。
+写入照「编辑可操作设备」那条已跑通的链路：先用月份或范围的写令牌确认人员及日历事实没有变化，再进命令服务。
 范围清除是两段式（先只读预览命中哪些天，再确认），单日保存和清除是一段式，与全局日历页一致。
 """
 
@@ -48,26 +48,32 @@ def _month_input():
     return values
 
 
+def _month_binding(record, month):
+    return {"resource": record.state, "year": month["year"], "month": month["month"],
+            "default_periods": month["default_periods"],
+            "days": [{key: day[key] for key in ("date", "row", "identity", "history")} for day in month["days"]]}
+
+
 @read_endpoint
 def operator_calendar_month(ref):
     values = _month_input()
     reader = _reader()
-    with reader.read_snapshot() as fingerprint:
+    with reader.read_snapshot():
         record = reader.detail(ref)
         service = _service(_operator_code(reader, ref))
         month = service.month(**values)
         days = []
         for day in month["days"]:
-            public = {**WorkbenchOperatorCalendarService.public_day(day),
+            public = {**WorkbenchOperatorCalendarService.public_day(day), "default_periods": month["default_periods"],
                       **{key: day[key] for key in ("day", "weekday", "is_weekend", "is_today")}}
             days.append(public)
         by_date = {day["date"]: day for day in days}
         data = {key: month[key] for key in ("year", "month", "as_of", "time_basis", "previous_month", "next_month", "stats")}
         data.update(operator_ref=ref, days=days,
                     cells=[by_date[cell["date"]] if cell is not None else None for cell in month["cells"]])
-        # 写能力绑在人员本身的状态上：人员被改过或被停用，界面就该先刷新再改日历。
-        data["write_context"] = issue_write_context(ref, list(ACTIONS.values()), record.state)
-        snapshot = bind_read_snapshot({"kind": "operator_calendar", "ref": ref, **values}, fingerprint,
+        binding = _month_binding(record, month)
+        data["write_context"] = issue_write_context(ref, [ACTIONS["upsert"], ACTIONS["delete"], ACTIONS["range_clear"]], binding)
+        snapshot = bind_read_snapshot({"kind": "operator_calendar", "ref": ref, **values}, input_fingerprint(binding),
                                       request.args.get("snapshot_ref"))
     return query_success(data, snapshot)
 
@@ -79,11 +85,19 @@ def _command_body(extra=()):
     return body
 
 
-def _guarded(ref, action, write_token, state_of):
-    """人员详情的写令牌先挡一道，再取个人日历这一天的完整状态做并发守卫。"""
+def _guarded_day(ref, action, write_token, service, day):
+    """Bind the original month, including calendar revisions and absence history."""
     record = _reader().detail(ref)
-    validate_write_context(write_token, ref, ACTIONS[action], record.state)
-    return state_of()
+    month = service.month(int(day[:4]), int(day[5:7]))
+    validate_write_context(write_token, ref, ACTIONS[action], _month_binding(record, month))
+    return service.snapshot(day)
+
+
+def _guarded_range(ref, write_token, service, payload):
+    record = _reader().detail(ref)
+    preview = service.preview_range_clear(payload)
+    validate_write_context(write_token, ref, ACTIONS["range_clear"], {"resource": record.state, "preview": preview})
+    return preview
 
 
 @api_endpoint
@@ -95,7 +109,7 @@ def operator_calendar_command(ref, action):
     outcome = WorkbenchCommandService(g.db, current_app.logger).execute(
         request_key=body["request_key"], action=ACTIONS[action], context_ref=ref,
         normalized_input={"operator_ref": ref, **payload},
-        guard=lambda: _guarded(ref, action, body["write_token"], lambda: service.snapshot(payload["date"])),
+        guard=lambda: _guarded_day(ref, action, body["write_token"], service, payload["date"]),
         mutate=lambda checked: service.apply(action, payload, checked))
     return jsonify(outcome)
 
@@ -110,7 +124,7 @@ def operator_calendar_range_preview(ref):
         preview = service.preview_range_clear(body["input"])
         data = {"operator_ref": ref, "range": preview["request"], "count": preview["count"],
                 "days": [WorkbenchOperatorCalendarService.public_day(day) for day in preview["days"]],
-                "write_context": issue_write_context(ref, [ACTIONS["range_clear"]], reader.detail(ref).state)}
+                "write_context": issue_write_context(ref, [ACTIONS["range_clear"]], {"resource": reader.detail(ref).state, "preview": preview})}
         snapshot = bind_read_snapshot({"kind": "operator_calendar_range", "ref": ref, **preview["request"]},
                                       input_fingerprint(preview["days"]))
     return query_success(data, snapshot)
@@ -125,7 +139,7 @@ def operator_calendar_range_clear(ref):
     outcome = WorkbenchCommandService(g.db, current_app.logger).execute(
         request_key=body["request_key"], action=ACTIONS["range_clear"], context_ref=ref,
         normalized_input={"operator_ref": ref, **payload},
-        guard=lambda: _guarded(ref, "range_clear", body["write_token"], lambda: None),
+        guard=lambda: _guarded_range(ref, body["write_token"], service, payload),
         mutate=lambda checked: service.apply("range_clear", payload, checked))
     return jsonify(outcome)
 

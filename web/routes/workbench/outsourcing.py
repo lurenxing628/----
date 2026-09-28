@@ -39,6 +39,8 @@ def _arguments(kind):
     allowed = {"snapshot_ref", "page", "size"}
     if kind in ("targets", "receipts"):
         allowed.add("batch_ref")
+    if kind == "targets":
+        allowed.add("query")
     if kind == "receipts":
         allowed.add("status")
     if set(request.args) - allowed or any(len(request.args.getlist(key)) != 1 for key in request.args):

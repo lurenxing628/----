@@ -12,6 +12,7 @@ from data.repositories.workbench_identity_repo import WorkbenchIdentityRepositor
 from data.repositories.workbench_process_query_repo import WorkbenchProcessQueryRepository
 
 from .projection import capabilities, project_group, project_operation, project_part, public_sequence
+from .route_choices import preview_existing_route
 
 
 def _plain(value):
@@ -149,6 +150,8 @@ class WorkbenchProcessQueryService:
 
     def route_difference(self, ref, preview):
         entity = self.detail(ref)
+        preview = preview_existing_route(self.conn, preview, [row for row in self.facts()["operations"]
+                                                              if row["part_no"] == entity["business_code"]])
         active = [row for row in entity["operations"] if row["status"] == "active"]
         changes, invalid = _route_changes(active, preview["operations"])
         result = {**preview, "part_ref": ref, "baseline": {"operation_count": len(active),

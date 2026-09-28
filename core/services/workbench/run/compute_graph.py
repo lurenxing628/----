@@ -33,7 +33,7 @@ def piece_graph_preparer(prepared):
             resource_pool=prepared.resource_pool, frozen_op_ids=prepared.frozen_op_ids))
     by_id = {node.raw["id"]: node.node_id for node in nodes}
     edges = [OperationGraphEdge(by_id[previous], by_id[work.op_id], "precedence")
-             for work in scope.operations for previous in work.predecessor_op_ids]
+             for work in scope.operations if work.op_id in by_id for previous in work.predecessor_op_ids]
     graph = build_precedence_graph(nodes, edges)
     generations = get_topological_generations(graph)
     order = [key for group in generations for key in group]

@@ -1,5 +1,6 @@
 """Legacy domain CRUD with explicit workbench resource relationships."""
 
+from core.models.resource_capabilities import supports_source
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
 from core.models.workbench_resource_input import normalize_resource_input
 from core.services.equipment.machine_service import MachineService
@@ -75,9 +76,9 @@ class WorkbenchResourceService:
         marker = "default_merge_mode" in fields
         mode = fields.pop("default_merge_mode", None)
         category = fields.get("category", raw.get("category", "internal"))
-        if marker and mode is not None and category != "external":
+        if marker and mode is not None and not supports_source(category, "external"):
             raise WorkbenchCommandRejected("constraint_conflict", "自制工种不能设置外协周期规则，没有保存。请把归属改成外协，或者去掉周期设置。")
-        if action != "create" and category != raw["category"] and any(self.repo.op_type_dependencies(code).values()):
+        if action != "create" and category != raw["category"] and category != "both" and any(self.repo.op_type_dependencies(code).values()):
             raise WorkbenchCommandRejected("constraint_conflict", "还有设备人员或工序在用这个工种，不能直接改自制或外协归属，没有保存。请先解除这些关联。")
         profile = self.repo.get_profile("op_type", code)
         old_mode = profile["default_merge_mode"] if profile else None
@@ -93,7 +94,13 @@ class WorkbenchResourceService:
         group = self.state.selected("machine_group", relations["group_ref"]) if "group_ref" in relations else old_group
         if "op_type_ref" in relations:
             fields["op_type_id"] = self.state.selected("op_type", relations["op_type_ref"], category="internal")
+        codes = None
+        if "op_type_refs" in relations:
+            codes = [self.state.selected("op_type", ref, category="internal") for ref in relations["op_type_refs"]]
+            fields["op_type_id"] = raw.get("op_type_id") if raw.get("op_type_id") in codes else (codes[0] if codes else None)
         changed = self._domain_save(action, code, raw, fields)
+        if codes is not None:
+            changed = self.repo.set_machine_capabilities(code, codes, fields["op_type_id"]) or changed
         if group != old_group:
             self.repo.set_machine_group(code, group)
             changed = True

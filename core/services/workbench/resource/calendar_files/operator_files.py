@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Optional
 
 from core.errors import ValidationError
 from core.infrastructure.transaction import TransactionManager
+from core.models.calendar_period_columns import export_period_columns, parse_period_columns
 from core.models.workbench_calendar_file import (
     CLOCK_FIELDS,
     CODE_FIELDS,
@@ -59,7 +60,7 @@ def _blocked(row) -> bool:
 
 
 def _text(value: float) -> str:
-    return f"{value:f}".rstrip("0").rstrip(".") or "0"
+    return str(value) if value % 1 else str(int(value))
 
 
 def check_range(start_date: str, end_date: str) -> None:
@@ -236,11 +237,16 @@ class WorkbenchOperatorCalendarFileService:
         """把这一行的取值翻成人员详情用的字段名；人员详情存不了的组合在这里就挡住，返回 None。"""
         fields = {UI_FIELDS[self.kind][key]: value for key, value in row["values"].items()
                   if key in UI_FIELDS[self.kind]}
+        try:
+            fields.update(parse_period_columns(row["values"]))
+        except ValidationError as exc:
+            reject_action_row(row, exc.message, field=exc.field or "period_count")
+            return None
         fields.setdefault("type", "rest" if (before["row"] or {}).get("day_type") == "holiday" else "work")
         # 人员详情存不了"上班却没挑班次开始"的一天（见 workbench_operator_calendar._fields），文件也不能存。
         # 领域层对缺失的开始时刻会补 08:00，所以判据只能放在填进来的值上：原来就上班才有已确认的窗口可留空继承，
         # 新建的一天和从假期改回上班的一天都必须自己填，不能让 08:00 悄悄替用户做主。
-        if fields["type"] == "work" and fields.get("shiftStart") is None \
+        if fields["type"] == "work" and fields.get("shiftStart") is None and "periods" not in fields \
                 and (before["row"] or {}).get("day_type") != "workday":
             reject_action_row(row, "这一天原来不上班，改成上班必须填班次开始时刻，这一行没有导入。"
                                    "要让这一天休息请把类型填成「假期」。", field="shift_start")
@@ -289,7 +295,8 @@ class WorkbenchOperatorCalendarFileService:
                 "shift_start": row["shift_start"], "shift_end": row["shift_end"],
                 "efficiency": _text(row["efficiency"] * 100),
                 "allow_normal": _YES_NO_TEXT[row["allow_normal"]], "allow_urgent": _YES_NO_TEXT[row["allow_urgent"]],
-                "remark": row["remark"], "operator_label": label, "shift_hours": _text(row["shift_hours"])}
+                "remark": row["remark"], "operator_label": label, "shift_hours": _text(row["shift_hours"]),
+                **export_period_columns(row)}
 
     def confirm_import(self, preview, content, *, file_format, mode="upsert"):
         if not self.conn.in_transaction:

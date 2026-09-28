@@ -49,7 +49,8 @@ def flat_resource(kind, identity, expected, repo):
         result["team_code"] = raw["team_id"]
         result["machine_authorizations"] = [_authorization(row) for row in repo.authorizations(kind, identity.entity_key)]
     if kind == "machine":
-        result.update(op_type_code=raw["op_type_id"], group_code=_related_code(state["group"]))
+        result.update(op_type_code=raw["op_type_id"], group_code=_related_code(state["group"]),
+                      op_type_codes=sorted(item["identity"]["entity_key"] for item in state["op_types"]))
     if kind == "operator":
         result.update(_operator_fields(state, entity))
     if kind == "supplier":

@@ -64,7 +64,7 @@ def validate_adoption(conn, candidate_ref):
             rows = _rows(tasks, candidate, prepared)
             payload = validate_candidate(prepared, rows, [])
             _check_artifact_payload(candidate, payload)
-            if payload.scheduled_op_ids != {op.id for op in prepared.operations}:
+            if payload.scheduled_op_ids != prepared.schedule_output_allowed_op_ids:
                 raise CandidateAdoptionBlocked("candidate_scope_incomplete", "这个候选方案没有排全选中的工序，不能采用。请重新排产后再试。")
             svc = ScheduleService(conn)
             _require_official_scope(svc, prepared.prev_version, payload.scheduled_op_ids)

@@ -9,8 +9,10 @@ import openpyxl
 
 from core.errors import ValidationError
 from core.models.workbench_resource_file import (
+    ENUM_LABELS,
     IMPORT_ROW_LIMIT,
     JSON_FIELDS,
+    LEGACY_LABELS,
     MULTI_CODES,
     NUMERIC_FIELDS,
     READONLY,
@@ -19,6 +21,8 @@ from core.models.workbench_resource_file import (
 )
 from core.models.workbench_table_descriptor import extra_sheet_notice
 from core.services.common.excel_cell_values import cell_value, is_formula_or_error
+
+from .file_lists import decode_code_list
 
 NUMBER = re.compile(r"[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?\Z")
 
@@ -65,6 +69,7 @@ def _source_rows(content, fmt, state):
 def _headers(kind, values):
     names = {column["label"]: column["key"] for column in public_columns(kind)}
     names.update({key: key for key in file_columns(kind)})
+    names.update({label: field for label, field in LEGACY_LABELS.items() if field in file_columns(kind)})
     fields = []
     for value in values:
         if type(value) is not str or value not in names:
@@ -83,12 +88,22 @@ def _decode(value, field, fmt):
             return None
         if value.startswith("\\\\"):
             value = value[1:]
-    if field in JSON_FIELDS:
-        value = _decode_json(value, field)
+    value = _decode_field(value, field)
     if field in NUMERIC_FIELDS and fmt == "csv":
         if type(value) is not str or NUMBER.fullmatch(value) is None:
             raise ValidationError("这个格子只能填数字，不能带单位、是或否、千分位逗号，没有导入。请改成纯数字。", field=field)
         value = float(value)
+    return value
+
+
+def _decode_field(value, field):
+    """Interpret a value after the transport escaping has been removed."""
+    if field in MULTI_CODES and not (type(value) is str and value.lstrip().startswith("[")):
+        return decode_code_list(value, field)
+    if field in JSON_FIELDS:
+        return _decode_json(value, field)
+    if field in ENUM_LABELS and type(value) is str:
+        return {label: code for code, label in ENUM_LABELS[field].items()}.get(value, value)
     return value
 
 

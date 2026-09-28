@@ -22,6 +22,7 @@ from core.services.scheduler.run.schedule_payload_contract import build_validate
 from core.services.scheduler.schedule_service import ScheduleService
 from core.services.workbench.facts.piece_scope import block
 from core.services.workbench.facts.preflight_checks import PreflightChecks, stored_date
+from core.services.workbench.facts.preflight_dependencies import material_deferred_ids
 from core.services.workbench.facts.run_input_readonly import candidate_read_snapshot
 from core.services.workbench.facts.zero_duration import (
     PointEventError,
@@ -77,7 +78,7 @@ def _validate_piece_adoption(conn, prepared, payload):
 
 
 def _payload(prepared, payload, scope):
-    ids = {work.op_id for work in scope.operations}
+    ids = {work.op_id for work in scope.operations} - material_deferred_ids(prepared.dispositions, prepared.normalized_input)
     if (prepared.schedule_output_allowed_op_ids != ids or payload.scheduled_op_ids != ids
             or len(payload.schedule_rows) != len(ids)):
         block("piece_scope_incomplete", "排产结果没有把共同工序和每个分件各排一次，本次没有采用。请回「执行排产」重新排一次。")
@@ -94,8 +95,12 @@ def _payload(prepared, payload, scope):
 def _precedence(payload, scope, ops):
     rows = {row.op_id: row for row in payload.schedule_rows}
     for work in scope.operations:
-        row = rows[work.op_id]
+        row = rows.get(work.op_id)
+        if row is None:
+            continue
         for predecessor in work.predecessor_op_ids:
+            if predecessor not in rows:
+                block("piece_precedence_violation", "有已排工序缺少前道安排，本次没有采用。请重新排产。")
             previous, left, right = rows[predecessor], ops[predecessor], ops[work.op_id]
             merged = (left.source == right.source == "external" and left.piece_id == right.piece_id
                       and left.ext_merge_mode == right.ext_merge_mode == "merged"
@@ -116,6 +121,7 @@ def _constraints(conn, prepared, payload, scope, algo_ops):
     checks = PreflightChecks(WorkbenchPieceAdoptionRepository(conn).preflight_tables())
     quantities = {work.op_id: work.target_quantity for work in scope.operations}
     ops = {op.id: op for op in prepared.operations}
+    _material_deferrals(prepared, checks, ops)
     actual = prepared.execution_fixed_op_ids | prepared.execution_completed_op_ids
     seeds = {row["op_id"] for row in prepared.seed_results}
     high = datetime.combine(prepared.end_date_norm + timedelta(days=1), datetime.min.time())
@@ -132,6 +138,20 @@ def _constraints(conn, prepared, payload, scope, algo_ops):
         _duration(calendar, downtime, row, algo, batch, quantities[row.op_id])
 
 
+def _material_deferrals(prepared, checks, ops):
+    deferred = material_deferred_ids(prepared.dispositions, prepared.normalized_input)
+    current = []
+    for op_id in deferred:
+        op = ops[op_id]
+        batch, raw = asdict(prepared.batches[op.batch_id]), asdict(op)
+        if checks.fields(batch, raw):
+            block("piece_resource_invalid", "待料工序的原始资料不完整，请核对后重新排产。")
+        problems, _day = checks.operation_readiness(batch, raw, prepared.normalized_input)
+        current.append({"op_id": op_id, "status": "skipped", "issues": problems})
+    if material_deferred_ids(current, prepared.normalized_input) != deferred:
+        block("piece_scope_incomplete", "被暂缓的工序没有当前缺料依据，请重新排产。")
+
+
 def _mutable_work(prepared, checks, row, op, batch, quantity, seeds, high):
     if op.status in ("processing", "completed", "skipped") or batch.status in ("completed", "cancelled"):
         block("piece_execution_unprotected", "已开工、已完工或已取消的工序没有对应的报工记录保护，本次没有采用。请刷新现场记录后重新排产。")
@@ -140,9 +160,12 @@ def _mutable_work(prepared, checks, row, op, batch, quantity, seeds, high):
     if row.op_id not in seeds and (row.start_time < prepared.start_dt_norm or row.end_time > high
                                   or row.start_time == high):
         block("piece_outside_window", "有工序排到了这次排产日期范围之外，本次没有采用。请回「执行排产」重新排一次。")
-    if checks.readiness(asdict(batch), prepared.readiness_gate_enabled):
+    material_issues, material_day = checks.operation_readiness(asdict(batch), asdict(op), prepared.normalized_input)
+    if material_issues:
         block("piece_material_not_ready", "批次齐套条件不满足，本次没有采用。请到批次管理核对齐套状态后重新排产。")
-    if batch.ready_date is not None:
+    if material_day and row.start_time < datetime.fromisoformat(material_day):
+        block("piece_before_material", "有工序早于本序物料到齐日期，本次没有采用。请重新排产。")
+    if prepared.normalized_input["ready_check"] and batch.ready_date is not None:
         ready = stored_date(batch.ready_date)
         if ready is None:
             block("piece_ready_date_invalid", "原齐套日期格式不对，本次没有采用。请到批次管理核对后重新排产。")

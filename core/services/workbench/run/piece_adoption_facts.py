@@ -4,6 +4,7 @@ from dataclasses import asdict
 
 from core.services.workbench.facts.piece_scope import block, build_piece_adoption_scope
 from core.services.workbench.facts.preflight_checks import stored_date
+from core.services.workbench.facts.preflight_dependencies import material_deferred_ids
 from core.services.workbench.facts.run_input_rows import batch_model, operation_model
 from data.repositories.workbench_piece_adoption_repo import WorkbenchPieceAdoptionRepository
 from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
@@ -62,6 +63,7 @@ def _dispositions(prepared, scope, refs, batch_refs):
     if any(type(row["op_id"]) is not int or type(row["sequence"]) is not int for row in rows):
         block("piece_identity_invalid", "处置记录里的工序编号或顺序号类型不对，本次没有采用。请回「执行排产」重新排一次。")
     by_id = {row["op_id"]: row for row in rows}
+    deferred = material_deferred_ids(rows, prepared.normalized_input)
     if len(rows) != len(by_id) or set(by_id) != set(refs):
         block("piece_scope_incomplete", "处置记录没有覆盖当前每一道工序，本次没有采用。请回「执行排产」重新排一次。")
     for work in scope.operations:
@@ -70,9 +72,12 @@ def _dispositions(prepared, scope, refs, batch_refs):
                     "batch_id": work.batch_id, "piece_id": work.piece_id, "sequence": work.sequence}
         if any(row[key] != value for key, value in expected.items()):
             block("piece_identity_changed", "处置记录已经对不上原来的分件工序，本次没有采用。请回「执行排产」重新排一次。")
-        predecessors = row["predecessor_refs"]
-        if (type(predecessors) is not list or len(predecessors) != len(set(predecessors))
-                or set(predecessors) != {refs[op_id] for op_id in work.predecessor_op_ids}):
-            block("piece_dependency_mismatch", "工序先后关系漏了共同工序，或者串到了别的分件，本次没有采用。请回「执行排产」重新排一次。")
-        if row["status"] not in ("eligible", "auto_assign_required", "protected"):
+        _require_predecessors(row["predecessor_refs"], work, refs)
+        if row["status"] not in ("eligible", "auto_assign_required", "protected") and work.op_id not in deferred:
             block("piece_scope_incomplete", "有工序缺资料被排除在外，系统不会默默跳过，本次没有采用。请先在排产检查里补齐资料。")
+
+
+def _require_predecessors(predecessors, work, refs):
+    if (type(predecessors) is not list or len(predecessors) != len(set(predecessors))
+            or set(predecessors) != {refs[op_id] for op_id in work.predecessor_op_ids}):
+        block("piece_dependency_mismatch", "工序先后关系漏了共同工序，或者串到了别的分件，本次没有采用。请回「执行排产」重新排一次。")

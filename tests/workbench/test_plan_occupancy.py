@@ -222,6 +222,6 @@ def test_sparse_year_span_keeps_full_range_without_per_day_sql(calendar_case):
     assert occupancy["time_scope"]["range_end"] == "2027-09-09T09:00:00"
     assert resource(occupancy)["arranged_hours"] == resource(occupancy)["occupied_hours"] == 9
     assert len(resource(occupancy)["segments"]) == 2
-    assert len(stats["sql"]) <= 12 and stats["vm_steps"] < 10000
+    assert len(stats["sql"]) <= 15 and stats["vm_steps"] < 10000
     assert stats["seconds"] < 3
     print("plan-projection sparse: days=366 tasks=2 sql={} seconds={:.3f}".format(len(stats["sql"]), stats["seconds"]))

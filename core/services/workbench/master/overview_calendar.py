@@ -3,6 +3,9 @@
 import re
 from datetime import date
 
+from core.errors import ValidationError
+from core.models.calendar_periods import decode_periods, period_hours
+
 from .overview_facts import plain
 from .overview_graph import number, text
 
@@ -46,6 +49,9 @@ def add_calendar(graph):
 
 
 def _window(graph, entity, row):
+    if row.get("periods_json") is not None:
+        _periods(graph, entity, row)
+        return
     start, end = _time(row["shift_start"]), _time(row["shift_end"])
     for key in ("shift_start", "shift_end"):
         graph.field(entity, "班次开始" if key == "shift_start" else "班次结束", row[key], "WorkCalendar." + key, required=False)
@@ -59,3 +65,17 @@ def _window(graph, entity, row):
                         "按起止算出 " + text(hours) + " 小时，资料里记的是 " + text(row["shift_hours"]) + " 小时，系统没有改写原值。")
     else:
         graph.field(entity, "班次起止时间", "未填写", "WorkCalendar.shift_start / shift_end", required=False)
+
+
+def _periods(graph, entity, row):
+    try:
+        periods = decode_periods(row["periods_json"])
+    except ValidationError as exc:
+        graph.issue(entity, "calendar.periods_invalid", "工作时段无效", exc.message)
+        return
+    label = "、".join(("次日 " if p["day_offset"] else "") + p["start"] + " 至 "
+                     + ("次日 " if p["end"] <= p["start"] else "") + p["end"] for p in (periods or []))
+    graph.field(entity, "实际工作时段", label or "无工作时段", "WorkCalendar.periods_json", required=False)
+    hours = period_hours(periods)
+    if number(row["shift_hours"]) and abs(hours - row["shift_hours"]) > 1e-9:
+        graph.issue(entity, "calendar.window_conflict", "工作时段与记录工时冲突", "请按逐段时间重新核对可排工时。")

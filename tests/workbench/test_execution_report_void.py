@@ -7,7 +7,7 @@ import pytest
 from core.models.workbench_command import WorkbenchCommandRejected, WorkbenchCommandUncertain, input_fingerprint
 from core.services.workbench.execution.production_report import WorkbenchProductionReportService
 from data.repositories.workbench_execution_report_repo import WorkbenchExecutionReportRepository
-from tests.workbench.execution_ledger_support import START, all_rows
+from tests.workbench.execution_ledger_support import END, START, all_rows
 from tests.workbench.execution_ledger_support import ledger_case as ledger_fixture
 from tests.workbench.scheduler_execution_ledger_support import read_facts
 
@@ -113,7 +113,7 @@ def test_downstream_started_blocks_even_if_parent_was_only_partial(ledger_case, 
     case.plan(2, [case.op_id, successor])
     case.install()
     row = case.command("create", case.task(2, case.op_id), case.values(quantity))["data"]["rows"][0]
-    case.command("create", case.task(2, successor), {"actual_start": START, "completed_quantity": 0})
+    case.command("create", case.task(2, successor), {"actual_start": END, "completed_quantity": 0})
     before = all_rows(case.conn)
     preview = case.writer.preview("report_void", row["report_ref"], intent(row))
     assert not preview["can_confirm"] and preview["downstream_impacts"]

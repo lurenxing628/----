@@ -7,6 +7,7 @@ import pytest
 
 from core.errors import ValidationError
 from core.infrastructure.transaction import TransactionManager
+from core.models.calendar_period_columns import PERIOD_COLUMNS, period_column_label
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.common.excel_validators import _normalize_batch_date_cell
 from core.services.workbench.commands import WorkbenchCommandService
@@ -62,7 +63,7 @@ def test_blank_cells_keep_current_values(calendar_env):
     changed = [(DAY, "", "6", "", "", "", "")]
     document = preview(calendar_env, changed)
     body = document.as_dict()["rows"][0]
-    assert body["result"] == "update" and set(body["changes"]) == {"shift_hours"}
+    assert body["result"] == "update" and set(body["changes"]) == {"shift_hours", "shift_end"}
     confirm(calendar_env, document, changed)
     saved = stored_day(conn, DAY)
     assert saved["shift_hours"] == 6 and saved["efficiency"] == 0.8
@@ -130,16 +131,16 @@ def test_missing_type_on_a_new_weekend_day_follows_the_default_rule(calendar_env
     assert document.as_dict()["rows"][0]["after"]["day_type"] == "假期"
 
 
-def test_real_night_shift_still_rejects_hours_only_change(calendar_env):
-    """夹具里那天是用户设过的跨夜班表，只填工时与它对不上，必须拒绝而不是悄悄改成白班。"""
+def test_night_shift_hours_change_preserves_start_and_recalculates_end(calendar_env):
     conn = calendar_env[0]
     before = stored_day(conn, NIGHT)
     rows = [(NIGHT, "", "6", "", "", "", "")]
     document = preview(calendar_env, rows)
-    assert results(document) == [(2, "rejected")]
-    with pytest.raises(WorkbenchCommandRejected):
-        confirm(calendar_env, document, rows)
-    assert stored_day(conn, NIGHT) == before
+    assert results(document) == [(2, "update")]
+    confirm(calendar_env, document, rows)
+    after = stored_day(conn, NIGHT)
+    assert after["shift_start"] == before["shift_start"] == "22:30"
+    assert after["shift_end"] == "04:30" and after["shift_hours"] == 6
 
 
 def test_duplicate_dates_are_rejected(calendar_env):
@@ -196,7 +197,7 @@ def test_export_lists_only_configured_days_and_round_trips(calendar_env, fmt):
     # 夹具里的 2026-09-09 也配置过，所以是三天；没配置过的日子一行都不该出现。
     assert download.row_count == 3
     headers, exported = decode(download, fmt)
-    assert headers == list(HEADERS)
+    assert headers == list(HEADERS) + ["班次开始", "班次结束"] + [period_column_label(key) for key in PERIOD_COLUMNS]
     assert [row[0] for row in exported] == [NIGHT, DAY, OTHER]
     again = service(calendar_env).preview_import(download.content, file_format=fmt)
     assert [row["result"] for row in again.as_dict()["rows"]] == ["unchanged"] * 3
@@ -233,7 +234,7 @@ def test_template_has_headers_and_no_rows(calendar_env, fmt):
     download = WorkbenchCalendarFileService.template(KIND, fmt)
     assert download.row_count == 0 and download.filename == "工作日历导入模板." + fmt
     headers, rows = decode(download, fmt)
-    assert headers == list(HEADERS) and rows == []
+    assert headers == list(HEADERS) + ["班次开始", "班次结束"] + [period_column_label(key) for key in PERIOD_COLUMNS] and rows == []
 
 
 def test_unknown_headers_are_rejected(calendar_env):
@@ -342,3 +343,26 @@ def test_backslash_n_is_still_the_way_to_clear_a_remark(calendar_env):
     rows = [(DAY, "", "", "", "", "", r"\N")]
     confirm(calendar_env, preview(calendar_env, rows), rows)
     assert stored_day(conn, DAY)["remark"] is None
+
+
+@pytest.mark.parametrize('fmt', ['csv', 'xlsx'])
+def test_minute_hours_and_precise_efficiency_roundtrip_with_editable_window(calendar_env, fmt):
+    conn = calendar_env[0]
+    rows = [(DAY, '工作日', '', '87.6543219', '是', '是', '夜班', '22:30', '06:40')]
+    headers = HEADERS + ('班次开始', '班次结束')
+    content = file_bytes(rows, fmt, headers)
+    document = service(calendar_env).preview_import(content, file_format=fmt)
+    confirm(calendar_env, document, rows, fmt, headers)
+    saved = stored_day(conn, DAY)
+    assert saved['shift_hours'] == 8 + 1 / 6 and saved['shift_end'] == '06:40'
+    with TransactionManager(conn).transaction():
+        download = service(calendar_env).export(fmt, start_date=DAY, end_date=DAY)
+    again = service(calendar_env).preview_import(download.content, file_format=fmt)
+    assert results(again) == [(2, 'unchanged')]
+
+
+@pytest.mark.parametrize('start,end', [('08:00:59', '16:00:59'), ('2026-10-01 08:00', '16:00')])
+def test_global_file_rejects_time_information_loss(calendar_env, start, end):
+    document = preview(calendar_env, [(DAY, start, end)], headers=('日期', '班次开始', '班次结束'))
+    assert results(document) == [(2, 'rejected')]
+    assert stored_day(calendar_env[0], DAY) is None

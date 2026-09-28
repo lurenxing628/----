@@ -22,8 +22,10 @@ from tests.workbench.dashboard_external_migration_support import V31_TABLES, ass
 from tests.workbench.legacy_migration_current_support import (
     V30_TABLES,
     V32_TABLES,
+    V33_TABLES,
     assert_v30_source_maps_only,
     assert_v32_empty,
+    assert_v33_contexts,
 )
 from tests.workbench.run_jobs_support import JobCase
 from tests.workbench.run_schema_migration_support import connect, snapshot, source_ddl
@@ -62,7 +64,7 @@ def test_real_upgrade_keeps_all_typed_rows_trial_history_and_refs(tmp_path, sche
     with connect(path) as conn:
         after = snapshot(conn)
         assert get_schema_version(conn) == CURRENT_SCHEMA_VERSION and current_schema_contract_issues(conn) == []
-        assert set(after) - set(before) == set(V29_TABLES + V30_TABLES + V31_TABLES + V32_TABLES)
+        assert set(after) - set(before) == set(V29_TABLES + V30_TABLES + V31_TABLES + V32_TABLES + V33_TABLES)
         assert {key: after[key] for key in before if key != "SchemaVersion"} == {
             key: value for key, value in before.items() if key != "SchemaVersion"}
         old_names = {row[1] for row in ddl}
@@ -72,6 +74,7 @@ def test_real_upgrade_keeps_all_typed_rows_trial_history_and_refs(tmp_path, sche
         assert_v30_source_maps_only(conn)
         assert_v31_receipt_maps_only(conn)
         assert_v32_empty(conn)
+        assert_v33_contexts(conn)
     files = list(backups.glob(f"*before_migrate_v27_to_v{CURRENT_SCHEMA_VERSION}*.db"))
     assert len(files) == 1
     with connect(files[0]) as conn:

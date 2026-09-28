@@ -85,9 +85,8 @@ def test_zero_piece_payload_is_proven_by_original_work_not_equal_interval(candid
 def test_real_external_periods_and_merged_intervals_remain_piece_local(candidate_case, merged):
     case = candidate_case
     ids = split(case, common=False, quantity=2)
+    case.conn.execute("UPDATE OpTypes SET category='both' WHERE op_type_id='T1'")
     case.conn.execute("INSERT INTO Suppliers(supplier_id,name,op_type_id) VALUES ('S1','Supplier','T1')")
-    case.conn.execute("UPDATE BatchOperations SET source='external',supplier_id='S1',ext_days=1,"
-                      "machine_id=NULL,operator_id=NULL")
     group = "G1" if merged else None
     if merged:
         case.conn.execute("INSERT INTO ExternalGroups(group_id,part_no,start_seq,end_seq,merge_mode,total_days,supplier_id) "
@@ -95,6 +94,8 @@ def test_real_external_periods_and_merged_intervals_remain_piece_local(candidate
     for seq in (20, 30):
         case.conn.execute("INSERT INTO PartOperations(part_no,seq,op_type_id,op_type_name,source,supplier_id,ext_days,ext_group_id) "
                           "VALUES ('P1',?,'T1','Turning','external','S1',1,?)", (seq, group))
+    case.conn.execute("UPDATE BatchOperations SET source='external',supplier_id='S1',ext_days=1,"
+                      "machine_id=NULL,operator_id=NULL")
     case.conn.commit()
     prepared = lower_input(case)
     results = []

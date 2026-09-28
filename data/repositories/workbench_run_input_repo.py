@@ -12,9 +12,9 @@ from .base_repo import BaseRepository
 from .schedule_time_sql import time_dt
 
 CALENDAR_TABLES = ("WorkCalendar", "OperatorCalendar")
-ADOPTION_CHECK_TABLES = ("Machines", "Operators", "Suppliers", "OpTypes", "OperatorMachine", "OperatorSkill",
+ADOPTION_CHECK_TABLES = ("Machines", "MachineOpTypes", "Operators", "Suppliers", "OpTypes", "OperatorMachine", "OperatorSkill",
                          "WorkbenchOperatorProfiles", "WorkbenchSupplierOpTypes", "PartOperations", "ExternalGroups",
-                         "BatchMaterials")
+                         "BatchMaterials", "BatchMaterialReviews", "BatchMaterialStages", "BatchMaterialArrivals", "BatchQuantitySplits", "BatchExternalContexts", "BatchOperations")
 _POINT_CHUNK = 900
 
 

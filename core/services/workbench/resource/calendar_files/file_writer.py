@@ -11,6 +11,7 @@ from openpyxl.comments import Comment
 from openpyxl.styles import Font
 from openpyxl.utils import get_column_letter
 
+from core.models.calendar_period_columns import PERIOD_COLUMNS
 from core.models.workbench_calendar_file import (
     CalendarFileDownload,
     file_columns,
@@ -69,7 +70,8 @@ def _csv(kind, rows, filename):
         writer.writerow([item["label"] for item in public_columns(kind)])
         for count, row in enumerate(rows, 1):
             values = [_value(row[field], field, count + 1, "csv") for field in file_columns(kind)]
-            writer.writerow(["'" + value if type(value) is str else value for value in values])
+            writer.writerow(["" if field in PERIOD_COLUMNS and value == "" else "'" + value
+                             for field, value in zip(file_columns(kind), values)])
         text.flush()
         buffer.seek(0)
         return CalendarFileDownload(filename + ".csv", "text/csv; charset=utf-8", buffer.read(), count)

@@ -1,6 +1,14 @@
 """Copy the explicit complete base, including private legacy row fields."""
 
+from core.models.workbench_run_adoption import CandidateAdoptionBlocked
 from core.models.workbench_trial import MAX_TRIAL_TASKS, issue, reject
+from core.services.scheduler.contracts.external_context import (
+    context_group_key,
+    context_problem,
+    member_index,
+    merged_supplier_problem,
+)
+from core.services.workbench.facts.candidate_archive import require_candidate_scope
 from core.services.workbench.facts.candidate_facts import GenerationFacts, _table
 from core.services.workbench.facts.candidate_projection import candidate_summary, dispositions, validate_manifest
 from core.services.workbench.facts.candidate_store import CandidateStore
@@ -17,8 +25,10 @@ from data.repositories.workbench_trial_query_repo import WorkbenchTrialQueryRepo
 from data.repositories.workbench_trial_raw_repo import WorkbenchTrialRawPlanRepository
 from data.repositories.workbench_trial_repo import new_ref
 
+from .archived_external_context import archived_contexts
 from .execution_anchors import attach_execution_anchors
 from .facts import entity_maps, live_context
+from .materials import plan_material_policy
 
 
 def _arrangement(payload, refs):
@@ -89,7 +99,8 @@ def _plan(conn, ref):
         _attach_parts(facts, result)
         operations = {int(row["source_key"]): row["ref"] for row in facts.active_operation_source_refs()}
         issues = [] if entry.completeness == "complete" else [issue("trial_base_incomplete", "基础方案不完整，暂无法评估交期。")]
-        return result, {"identity": project_plan(entry, ref), "source_table": table}, tables["BatchOperations"], operations, issues
+        return result, {"identity": project_plan(entry, ref), "source_table": table,
+                        "material_policy": plan_material_policy(conn, entry.locator.version)}, tables["BatchOperations"], operations, issues
 
 
 def _date_issues(rows):
@@ -147,7 +158,11 @@ def _candidate(conn, ref):
         scope = dispositions(receipt)
         summary = candidate_summary(candidate, scope)
         issues = []
-        if scope is None or {row["operation_ref"] for row in result} != set(scope) or summary["completeness"] != "complete":
+        try:
+            expected = require_candidate_scope(run, candidates, candidate, scope, capture)
+            if {row["original"]["operation"]["id"] for row in result} != expected:
+                raise CandidateAdoptionBlocked("candidate_scope_incomplete", "候选任务范围不完整。")
+        except CandidateAdoptionBlocked:
             issues.append(issue("trial_base_incomplete", "候选方案没有覆盖排产时的全部工序，没排上的工序也照样列出。"))
         extra = {"identity": {"candidate_ref": ref, "run_ref": run_ref, "kind": "candidate",
                                "display_name": summary["label"], "completeness": summary["completeness"]},
@@ -172,23 +187,43 @@ def prepare_base(conn, intent):
     return admission, rows, live
 
 
+def _original_external_facts(rows, original_tables, live):
+    contexts = (_table(original_tables, "BatchExternalContexts") if original_tables is not None
+                else live["facts"]["tables"].get("BatchExternalContexts"))
+    if contexts is None and original_tables is not None:
+        selected = {row["original"]["operation"]["id"] for row in rows
+                    if row["original"]["operation"]["source"] == "external"}
+        contexts = archived_contexts(original_tables, selected)
+    by_operation = {item["operation_id"]: item for item in contexts or []}
+    operations = (_table(original_tables, "BatchOperations") if original_tables is not None
+                  else live["facts"]["tables"]["BatchOperations"])
+    return by_operation, member_index(by_operation, operations or [])
+
+
 def _attach_original_context(rows, source, key, live):
     original_execution = ({row["operation_ref"]: row for row in source["capture"]["execution"]}
                           if key == "candidate_ref" else live["execution"])
     original_tables = (stored_json(source["capture"]["facts_text"])
                        if key == "candidate_ref" else None)
-    templates = _table(original_tables, "PartOperations") if original_tables is not None else live["facts"]["tables"]["PartOperations"]
-    groups = _table(original_tables, "ExternalGroups") if original_tables is not None else live["facts"]["tables"]["ExternalGroups"]
-    if templates is None or groups is None:
-        reject("trial_base_incomplete", "生成候选时的工艺或外协组资料缺失。")
-    template_by_key = {(item["part_no"], item["seq"]): item for item in templates if item["status"] == "active"}
-    group_by_key = {item["group_id"]: item for item in groups}
+    by_operation, members = _original_external_facts(rows, original_tables, live)
     for row in rows:
         original = row["original"]
         original.setdefault("execution", original_execution.get(row["operation_ref"]))
-        template = template_by_key.get((original["batch"]["part_no"], original["operation"]["seq"]))
-        original["template"] = template
-        original["external_group"] = group_by_key.get(template["ext_group_id"]) if template else None
+        original["template"], original["external_group"] = None, None
+        op = original["operation"]
+        if op["source"] == "external":
+            context = by_operation.get(op["id"])
+            problem = context_problem(context, operation_id=op["id"],
+                                      part_no=original["batch"]["part_no"], sequence=op["seq"])
+            if context is None or problem:
+                reject("trial_base_incomplete", problem)
+            original["external_context_origin"] = context["origin"]
+            problem = merged_supplier_problem(context, op["supplier_id"],
+                members.get((op["batch_id"], context_group_key(context), op["piece_id"])))
+            if problem:
+                reject("trial_base_incomplete", problem)
+            if context["group_id"] is not None:
+                original["external_group"] = dict(context, group_id=context_group_key(context))
 
 
 def _attach_point_work(row, work):

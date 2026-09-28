@@ -3,10 +3,13 @@
 from flask import current_app, g, jsonify, request
 
 from core.models.workbench_batch import normalize_operation_input, object_fields, public_ref
+from core.models.workbench_batch_material import normalize_material_changes
 from core.models.workbench_batch_query import batch_scope, snapshot_scope
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.workbench.batch.bulk import WorkbenchBatchBulkService, normalize_bulk
+from core.services.workbench.batch.materials import WorkbenchBatchMaterialService
 from core.services.workbench.batch.operations import WorkbenchBatchOperationService
+from core.services.workbench.batch.quantity_split import WorkbenchQuantitySplitService, normalize_split
 from core.services.workbench.batch.queries import WorkbenchBatchQueryService
 from core.services.workbench.batch.service import WorkbenchBatchService
 from core.services.workbench.commands import WorkbenchCommandService
@@ -21,17 +24,22 @@ COLLECTION = "batch:create"
 
 
 def entity_context(entity, fingerprint):
-    actions = ["batch.update"]
+    actions = ["batch.update", "batch.materials_update"]
     blocked = []
     if not entity["protected"]:
         actions.extend(("batch.sync_confirm", "batch.operation_update"))
-        if not entity["relationships"]["material_requirement_count"]:
+        if entity["relationships"].get("quantity_split_reference_count", 0):
+            blocked.append({"action": "batch.delete", "message": "这个批次有数量拆分记录，需保留原批与子批以核对数量，不能删除。"})
+        elif not entity["relationships"]["material_requirement_count"]:
             actions.append("batch.delete")
         else:
             blocked.append({"action": "batch.delete", "message": "批次还挂着物料需求，不能删除。请先清除这个批次的物料需求，再删除批次。"})
     else:
+        reason = ("已有外协发出或回厂登记，不能删除、重建或编辑工序，以免原登记无法继续核对回厂。"
+                  if entity["relationships"].get("outsourcing_reference_count", 0)
+                  else "已有排产、报工或执行状态记录，暂不能删除、替换或编辑工序。")
         for action in ("delete", "sync_confirm", "operation_update"):
-            blocked.append({"action": "batch." + action, "message": "已有排产、报工或执行状态记录，暂不能删除、替换或编辑工序。"})
+            blocked.append({"action": "batch." + action, "message": reason})
     template = entity.get("template")
     if not entity["protected"] and template is not None and not template["complete"]:
         actions.remove("batch.sync_confirm")
@@ -88,12 +96,13 @@ def batch_detail(ref):
 
 @api_endpoint
 def batch_choices():
-    if request.args:
-        raise WorkbenchCommandRejected("invalid_input", "这个下拉列表不需要其他条件。请刷新页面后重试。", 400)
+    args = request.args
+    if set(args) - {"batch_ref", "operation_ref"} or any(len(args.getlist(key)) != 1 for key in args) or bool(args.get("batch_ref")) != bool(args.get("operation_ref")):
+        raise WorkbenchCommandRejected("invalid_input", "请选择完整的批次及工序后再读取候选资源。", 400)
     reader = WorkbenchBatchQueryService(g.db, current_app.logger)
     with reader.read_snapshot() as fingerprint:
-        data = reader.choices()
-        snapshot = bind_read_snapshot({"kind": "batch_choices"}, fingerprint)
+        data = reader.choices(args.get("batch_ref"), args.get("operation_ref"))
+        snapshot = bind_read_snapshot({"kind": "batch_choices", **dict(args)}, fingerprint)
     return query_success(data, snapshot)
 
 
@@ -101,7 +110,10 @@ def batch_choices():
 def batch_command(action, ref=None):
     body = command_body()
     domain = WorkbenchBatchService(g.db, current_app.logger)
-    normalized = normalize_operation_input(body["input"]) if action == "operation_update" else domain.normalize(action, body["input"])
+    if action == "materials_update":
+        normalized = normalize_material_changes(body["input"])
+    else:
+        normalized = normalize_operation_input(body["input"]) if action == "operation_update" else domain.normalize(action, body["input"])
     subject = COLLECTION if action == "create" else public_ref(ref)
     reader = WorkbenchBatchQueryService(g.db, current_app.logger)
 
@@ -111,6 +123,8 @@ def batch_command(action, ref=None):
         validate_write_context(body["write_token"], subject, "batch." + action, reader.fingerprint())
 
     def mutate(_checked):
+        if action == "materials_update":
+            return WorkbenchBatchMaterialService(g.db, current_app.logger).apply(ref, normalized)
         if action == "operation_update":
             return WorkbenchBatchOperationService(g.db, current_app.logger).update(ref, normalized)
         return domain.apply(action, normalized, ref)
@@ -126,12 +140,19 @@ def batch_preview(action, ref=None):
     object_fields(body, required, required)
     if not isinstance(body["snapshot_ref"], str) or not body["snapshot_ref"]:
         raise WorkbenchCommandRejected("invalid_input", "数据已更新，还没有保存。请刷新页面后重新点「预览变更」。", 400)
-    payload = normalize_bulk(body["input"]) if action == "bulk_confirm" else WorkbenchBatchOperationService.normalize_sync(body["input"])
+    payload = (normalize_bulk(body["input"]) if action == "bulk_confirm" else
+               normalize_split(body["input"]) if action == "split_confirm" else
+               WorkbenchBatchOperationService.normalize_sync(body["input"]))
     reader = WorkbenchBatchQueryService(g.db, current_app.logger)
     with reader.read_snapshot() as fingerprint:
-        if action == "sync_confirm":
+        if action in ("sync_confirm", "split_confirm"):
             bind_read_snapshot({"kind": "batch", "ref": ref}, fingerprint, body["snapshot_ref"])
-            data = WorkbenchBatchOperationService(g.db, current_app.logger).sync_preview(ref, payload)
+            if action == "split_confirm":
+                data = WorkbenchQuantitySplitService(g.db, current_app.logger).plan(ref, payload)
+                data["materials"] = [{"business_code": row["material_id"], **{key: value for key, value in row.items()
+                                     if key not in ("requirement_id", "operation_id", "material_id")}} for row in data["materials"]]
+            else:
+                data = WorkbenchBatchOperationService(g.db, current_app.logger).sync_preview(ref, payload)
         else:
             scope = batch_scope(body["scope"])
             bind_read_snapshot(snapshot_scope(scope), fingerprint, body["snapshot_ref"])
@@ -183,6 +204,8 @@ def batch_confirm(action, ref=None):
         return binding["input"]
 
     def mutate(payload):
+        if action == "split_confirm":
+            return WorkbenchQuantitySplitService(g.db, current_app.logger).apply(ref, payload)
         if action == "bulk_confirm":
             return WorkbenchBatchBulkService(g.db, current_app.logger).apply(payload)
         return WorkbenchBatchOperationService(g.db, current_app.logger).sync(ref, payload)
@@ -199,9 +222,9 @@ def register_batch_routes(bp):
                                    ("/choices", batch_choices, "GET"), ("/<ref>", batch_detail, "GET")):
         bp.add_url_rule(base + path, view_func=endpoint, methods=[method])
     bp.add_url_rule(base + "/create", endpoint="batch_create", view_func=batch_command, defaults={"action": "create"}, methods=["POST"])
-    for action in ("update", "delete", "operation_update"):
+    for action in ("update", "delete", "operation_update", "materials_update"):
         bp.add_url_rule(base + "/<ref>/" + action, endpoint="batch_" + action, view_func=batch_command, defaults={"action": action}, methods=["POST"])
-    for name, path in (("bulk", ""), ("sync", "/<ref>")):
+    for name, path in (("bulk", ""), ("sync", "/<ref>"), ("split", "/<ref>")):
         for suffix, func in (("preview", batch_preview), ("confirm", batch_confirm)):
             bp.add_url_rule(base + path + "/" + name + "-" + suffix, endpoint="batch_" + name + "_" + suffix,
                             view_func=func, defaults={"action": name + "_confirm"}, methods=["POST"])

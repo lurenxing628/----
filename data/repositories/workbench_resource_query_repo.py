@@ -36,7 +36,7 @@ class WorkbenchResourceQueryRepository(BaseRepository):
             conditions.append(_public_status(query.kind) + "=?")
             params.append(query.status)
         if query.category is not None:
-            conditions.append("source.category=?")
+            conditions.append("(source.category=? OR source.category='both')" if query.kind == "op_type" else "source.category=?")
             params.append(query.category)
         where = " WHERE " + " AND ".join(conditions) if conditions else ""
         return key, source, where, params
@@ -67,6 +67,6 @@ class WorkbenchResourceQueryRepository(BaseRepository):
         result = {kind: int(self.fetchvalue(f"SELECT COUNT(*) FROM {table}", default=0)) for kind, (table, _) in _TABLES.items()}
         result["part"] = int(self.fetchvalue("SELECT COUNT(*) FROM Parts", default=0))
         result["material"] = int(self.fetchvalue("SELECT COUNT(*) FROM Materials", default=0))
-        result["internal_op_types"] = int(self.fetchvalue("SELECT COUNT(*) FROM OpTypes WHERE category='internal'", default=0))
-        result["external_op_types"] = int(self.fetchvalue("SELECT COUNT(*) FROM OpTypes WHERE category='external'", default=0))
+        result["internal_op_types"] = int(self.fetchvalue("SELECT COUNT(*) FROM OpTypes WHERE category IN ('internal','both')", default=0))
+        result["external_op_types"] = int(self.fetchvalue("SELECT COUNT(*) FROM OpTypes WHERE category IN ('external','both')", default=0))
         return result

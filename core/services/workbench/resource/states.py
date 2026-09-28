@@ -3,6 +3,7 @@
 from dataclasses import asdict
 from typing import Any, Dict, Optional, overload
 
+from core.models.resource_capabilities import supports_source
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_identity import WorkbenchEntityIdentity
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
@@ -51,6 +52,8 @@ class WorkbenchResourceStateService:
         elif kind == "machine":
             result["dependencies"] = self.repo.assigned_dependencies(kind, code)
             result["op_type"] = self.related("op_type", raw["op_type_id"])
+            types = set(self.repo.machine_capabilities(code)) | ({raw["op_type_id"]} if raw["op_type_id"] else set())
+            result["op_types"] = [self.related("op_type", item) for item in sorted(types)]
             result["group"] = self.related("machine_group", result["profile"]["group_id"]) if result["profile"] else None
         elif kind == "operator":
             result["dependencies"] = self.repo.assigned_dependencies(kind, code)
@@ -81,7 +84,7 @@ class WorkbenchResourceStateService:
         identity, raw = self.by_ref(kind, ref)
         if raw.get("status", "active") != "active":
             raise WorkbenchCommandRejected("constraint_conflict", "选中的关联资源已经停用，没有保存。请重新选择一个在用的。")
-        if category is not None and raw.get("category") != category:
+        if category is not None and not supports_source(raw.get("category"), category):
             raise WorkbenchCommandRejected("constraint_conflict", "选中工种的自制或外协归属和当前资源不匹配，没有保存。请换一个工种。")
         if identity.entity_key != identity.entity_key.strip():
             raise WorkbenchCommandRejected("constraint_conflict", "关联编号前后带空格，没有保存，以免写错到别的记录上。请去掉前后的空格。")

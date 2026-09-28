@@ -23,10 +23,11 @@ def test_real_resource_calendar_and_protected_seed_contracts(candidate_case, mod
     elif mode == "multiday":
         case.conn.execute("UPDATE BatchOperations SET unit_hours=5")
     elif mode == "external":
+        case.conn.execute("UPDATE OpTypes SET category='both' WHERE op_type_id='T1'")
         case.conn.execute("INSERT INTO Suppliers(supplier_id,name,op_type_id) VALUES ('S1','Supplier','T1')")
-        case.conn.execute("UPDATE BatchOperations SET source='external',supplier_id='S1',ext_days=2,machine_id=NULL,operator_id=NULL")
         case.conn.execute("INSERT INTO PartOperations(part_no,seq,op_type_id,op_type_name,source,supplier_id,ext_days) "
                           "VALUES ('P1',1,'T1','Turning','external','S1',2)")
+        case.conn.execute("UPDATE BatchOperations SET source='external',supplier_id='S1',ext_days=2,machine_id=NULL,operator_id=NULL")
     elif mode == "locked":
         case.operation(seq=2)
         case.plan(1, [case.op_id], end="2026-09-09T08:45:00")

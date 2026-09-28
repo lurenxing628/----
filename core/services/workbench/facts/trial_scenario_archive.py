@@ -11,6 +11,7 @@ from core.models.workbench_trial_codec import fingerprint
 from data.repositories.workbench_command_repo import WorkbenchCommandRepository
 from data.repositories.workbench_trial_repo import WorkbenchTrialRepository
 
+from .preflight_dependencies import material_deferred_ids
 from .trial_policy import load_draft, load_scenario
 
 
@@ -49,7 +50,7 @@ def _require_head(saved, header, head, originals):
             or saved["name"] != header["name"] or saved["saved_at"] != header["saved_at"]
             or head["revision"] != header["revision"] + 1):
         _invalid("试调方案和它的草稿编号或版本对不上。请刷新后重试。")
-    _require_saved_scope(saved, originals)
+    _require_saved_scope(saved, originals, admission)
     for key, expected in (("base", admission["input"]["base"]), ("scope", admission["input"]["scope"]),
                           ("base_identity", admission["source"]["identity"]),
                           ("baseline", {name: admission["baseline"][name] for name in ("plan_ref", "version")})):
@@ -57,12 +58,25 @@ def _require_head(saved, header, head, originals):
             _invalid("试调方案的来源、范围或建草稿时的正式计划对不上。请刷新后重试。")
 
 
-def _require_saved_scope(saved, originals):
-    if (saved["tasks_complete"] is not True or saved["scope_complete"] is not True
-            or saved["unplanned_operations"] or not 0 < len(originals) <= MAX_TRIAL_TASKS
+def _require_saved_scope(saved, originals, admission):
+    full = saved["scope_complete"] is True and not saved["unplanned_operations"]
+    if (saved["tasks_complete"] is not True or (not full and not _material_stage_scope(saved, originals, admission))
+            or not 0 < len(originals) <= MAX_TRIAL_TASKS
             or type(saved["task_count"]) is not int or saved["task_count"] != len(originals)
             or len(saved["tasks"]) != len(originals)):
         raise TrialAdoptionBlocked("scenario_scope_incomplete", "试调方案没有覆盖原来的全部范围，不能正式采用。")
+
+
+def _material_stage_scope(saved, originals, admission):
+    source = admission["source"]
+    scope = source.get("dispositions") or {}
+    settings = source.get("capture", {}).get("input", {})
+    deferred = material_deferred_ids(scope.values(), settings)
+    pending = {ref for ref, row in scope.items() if row["op_id"] in deferred}
+    unplanned = saved["unplanned_operations"]
+    return bool(deferred) and (saved["scope_complete"] is False
+        and len(unplanned) == len(pending) and {row["operation_ref"] for row in unplanned} == pending
+        and {row["operation_ref"] for row in originals} == set(scope) - pending)
 
 
 def _require_receipts(conn, saved, header, head):

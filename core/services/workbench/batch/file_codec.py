@@ -61,9 +61,8 @@ def _read_first_sheet(workbook):
     while headers and headers[-1] is None:
         headers.pop()
     reference_status = "状态" in headers
-    expected = HEADERS + (("状态",) if reference_status else ())
-    if len(headers) != len(expected) or set(headers) != set(expected):
-        raise ValidationError("请使用批次信息模板的八列，或系统导出清单的九列（含只读状态）；不接受其他列或缺列。", field="headers")
+    if len(headers) != len(set(headers)) or "批次号" not in headers or set(headers) - set(HEADERS + ("状态",)):
+        raise ValidationError("表头必须包含批次号，其余请使用模板中的列名，不能有重复列或未知列。", field="headers")
     rows = []
     for line, cells in enumerate(iterator, 2):
         if not any(cell.value is not None for cell in cells):

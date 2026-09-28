@@ -47,7 +47,7 @@ def test_download_shape_chinese_headers_and_header_only_template(fmt, kind):
                                 else "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
     assert tuple(next(source_cells(result.content, fmt))) == tuple(LABELS[field] for field in COLUMNS[kind])
     assert decode_rows(kind=kind, content=result.content, fmt=fmt) == []
-    assert TEMPLATE_VERSION == 1 and "\\N" in INSTRUCTIONS[kind]
+    assert TEMPLATE_VERSION == 1 and "保持原样" in INSTRUCTIONS[kind]
     assert tuple(item["key"] for item in public_columns(kind)) == file_columns(kind)
 
 
@@ -180,12 +180,12 @@ def test_headers_fail_closed(fmt, kind, headers):
 
 
 @pytest.mark.parametrize("fmt", ("csv", "xlsx"))
-def test_empty_records_duplicate_keys_and_extra_columns_are_never_discarded(fmt):
+def test_empty_records_are_skipped_but_duplicates_and_extra_columns_are_diagnosed(fmt):
     content = file_bytes(["图号", "名称"], [["甲", "首行\n次行"], [None, None], ["甲", "末行"]], fmt)
     rows = decode_rows("route", content, fmt)
-    assert len(rows) == 3 and all(row["errors"] for row in rows)
-    assert rows[0]["errors"][0]["code"] == rows[2]["errors"][0]["code"] == "duplicate_entry"
-    assert [row["row"] for row in rows] == ([2, 4, 5] if fmt == "csv" else [2, 3, 4])
+    assert len(rows) == 2 and all(row["errors"] for row in rows)
+    assert rows[0]["errors"][0]["code"] == rows[1]["errors"][0]["code"] == "duplicate_entry"
+    assert [row["row"] for row in rows] == ([2, 5] if fmt == "csv" else [2, 4])
     content = file_bytes(["图号", "工序"], [["甲|乙", "01"], ["甲|乙", 1], ["甲", 1], ["甲", 2]], fmt)
     rows = decode_rows("hours", content, fmt)
     assert [bool(row["errors"]) for row in rows] == [True, True, False, False]
@@ -195,8 +195,8 @@ def test_empty_records_duplicate_keys_and_extra_columns_are_never_discarded(fmt)
 
 def test_csv_physical_blank_lines_and_missing_bom():
     rows = decode_rows("route", "图号\n\n甲\n\n".encode(), "csv")
-    assert [row["row"] for row in rows] == [2, 3, 4]
-    assert [bool(row["errors"]) for row in rows] == [True, False, True]
+    assert [row["row"] for row in rows] == [3]
+    assert not rows[0]["errors"]
 
 
 @pytest.mark.parametrize("content,fmt", ((b"", "csv"), (b"\xff", "csv"), (b'"unclosed', "csv"),
@@ -436,7 +436,5 @@ def test_csv_nul_and_nonbytes_inputs_rejected_with_source_diagnostic():
         encode_process_file("route", [{"business_code": "甲", "remark": "x\x00y"}], "csv")
 
 
-def test_all_blank_records_still_count_towards_import_limit():
-    with pytest.raises(ValidationError, match="2000") as caught:
-        decode_rows("route", "图号\n".encode() + b"\n" * 2010, "csv")
-    assert caught.value.details["row"] == 2002
+def test_blank_records_do_not_consume_the_business_row_limit():
+    assert decode_rows("route", "图号\n".encode() + b"\n" * 2010, "csv") == []

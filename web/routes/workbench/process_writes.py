@@ -18,7 +18,14 @@ from .write_context import issue_write_context, validate_write_context
 def reviewed_input(action, normalized):
     if action == "route_confirm":
         return normalized["route"]
-    return {key: value for key, value in normalized.items() if key != "discard_group_refs"}
+    return {key: value for key, value in normalized.items() if key != "discard_group_refs"} if action == "source_confirm" else normalized
+
+
+def _operation_failure(exc):
+    field = {"zero_unit_hours_confirmation_required": "unit_hours", "group_cycle_only": "external_days",
+             "group_not_contiguous": "external_group_ref", "group_overlap": "external_group_ref"}.get(exc.code, "supplier_ref")
+    return failure(exc.code, str(exc), exc.status, fields=[
+        {"path": "operations." + ref + "." + field, "message": str(exc)} for ref in exc.operation_refs])
 
 
 @api_endpoint
@@ -27,7 +34,7 @@ def process_stage_preview(ref):
 
     try:
         body = read_process_json("归属检查", 4 * 1024 * 1024)
-        if set(body) != {"action", "input", "snapshot_ref"} or body["action"] != "source_confirm":
+        if set(body) != {"action", "input", "snapshot_ref"} or body["action"] not in ("source_confirm", "groups_confirm"):
             raise WorkbenchCommandRejected("invalid_input", "提交的内容不完整或有多余项，归属没有保存。请刷新页面后重新点「保存归属并继续」。", 400)
         domain = WorkbenchProcessMutationService(g.db, current_app.logger)
         normalized = domain.normalize(body["action"], body["input"])
@@ -37,17 +44,24 @@ def process_stage_preview(ref):
             bind_read_snapshot({"kind": "part", "entity_ref": ref}, state, body["snapshot_ref"])
             if entity["workflow"]["route"]["state"] != "confirmed":
                 raise WorkbenchCommandRejected("stage_locked", "工艺路线还没有确认，归属没有保存。请先点「确认保存路线」，再点「保存归属并继续」。")
-            affected = set(domain.affected_groups("source_confirm", normalized, reader.resolve(ref)))
-            binding = {"state": state, "input": reviewed_input("source_confirm", normalized)}
-            data = {"part_ref": ref, "action": "source_confirm",
+            action = body["action"]
+            affected = set(domain.affected_groups(action, normalized, reader.resolve(ref))) if action == "source_confirm" else set()
+            binding = {"state": state, "input": reviewed_input(action, normalized)}
+            data = {"part_ref": ref, "action": action,
                     "affected_groups": [row for row in entity["external_groups"] if row["ref"] in affected],
-                    "write_context": issue_write_context(ref, ["process.source_confirm"], binding)}
+                    "write_context": issue_write_context(ref, ["process." + action], binding)}
+            if action == "groups_confirm":
+                data["changes"] = domain.preview_groups(normalized, reader.resolve(ref))
             snapshot = bind_read_snapshot({"kind": "process_stage_preview", "entity_ref": ref,
                                            "input_hash": input_fingerprint(normalized)}, state)
         response = query_success(data, snapshot)
         response.headers["Cache-Control"] = "no-store"
         return response
-    except (WorkbenchCommandRejected, AppError, HTTPException):
+    except WorkbenchCommandRejected as exc:
+        if exc.operation_refs:
+            return _operation_failure(exc)
+        raise
+    except (AppError, HTTPException):
         raise
     except Exception as exc:
         raise WorkbenchCommandRejected("storage_failure", "归属检查没有完成，工艺资料没有改动。请刷新重试；仍不行请联系维护人员，并告知下方编号。", 500) from exc
@@ -57,7 +71,7 @@ def process_stage_preview(ref):
 def process_stage_command(ref, action):
     from core.services.workbench.process.mutations import WorkbenchProcessMutationService
 
-    if action not in ("route_confirm", "source_confirm", "hours_confirm"):
+    if action not in ("route_confirm", "source_confirm", "hours_confirm", "groups_confirm"):
         raise WorkbenchCommandRejected("invalid_input", "这个操作入口不对，工艺资料没有改动。请刷新页面后重试。", 400)
     body = read_process_json("工艺保存", 4 * 1024 * 1024)
     if set(body) != {"request_key", "write_token", "input"}:
@@ -82,11 +96,9 @@ def process_stage_command(ref, action):
             request_key=body["request_key"], action="process." + action, context_ref=ref,
             normalized_input=normalized, guard=guard, mutate=lambda identity: domain.apply(action, normalized, identity))
     except WorkbenchCommandRejected as exc:
-        if exc.code != "zero_unit_hours_confirmation_required":
+        if not exc.operation_refs:
             raise
-        return failure(exc.code, str(exc), exc.status, fields=[
-            {"path": "operations." + operation_ref + ".unit_hours", "message": str(exc)}
-            for operation_ref in exc.operation_refs])
+        return _operation_failure(exc)
     return jsonify(outcome)
 
 

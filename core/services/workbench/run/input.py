@@ -28,6 +28,7 @@ from core.services.workbench.facts.run_input_rows import (
 from .input_config import candidate_config
 from .input_execution import execution_guards
 from .input_external import prime_template_cache
+from .input_materials import bind_material_releases
 from .input_piece import input_piece_scope, piece_seed_metadata
 from .input_runtime import build_runtime
 from .preflight_facts import PreflightFacts
@@ -94,6 +95,8 @@ def _prepare(conn, settings, facts, fingerprint, raw_batches, batches, operation
     guarded = [op for op in operations if op.id in set(fixed) | set(completed)]
     prime_template_cache(svc, facts.tables, batches, mutable + guarded)
     algo_outcome = build_algo_operations(svc, mutable + guarded, strict_mode=True, return_outcome=True)
+    bind_material_releases([op for op in algo_outcome.value if op.id not in set(fixed) | set(completed)],
+                           facts.tables, batches, settings)
     reservations = build_execution_resource_reservations(
         svc, facts=execution_facts, selected_op_ids={op.id for op in operations}, start_dt=start,
     )

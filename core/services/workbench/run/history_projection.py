@@ -139,7 +139,7 @@ def _gap(field, value):
 
 
 def _scope_value_valid(key, value):
-    domains = {"missing_resource_policy": ("auto_assign", "exclude"), "completed_policy": ("preserve_actuals",)}
+    domains = {"missing_resource_policy": ("auto_assign", "exclude"), "completed_policy": ("preserve_actuals",), "material_strategy": ("strict", "stage", "split")}
     if key in domains:
         return type(value) is str and value in domains[key]
     if key == "ready_check":
@@ -166,7 +166,7 @@ def _scope_batch_count(refs, gaps):
 
 def scope_summary(raw):
     settings, result, gaps = stored_json(raw), {}, []
-    for key in ("start_date", "end_date", "ready_check", "missing_resource_policy", "completed_policy"):
+    for key in ("start_date", "end_date", "ready_check", "missing_resource_policy", "completed_policy") + (("material_strategy",) if "material_strategy" in settings else ()):
         value = settings.get(key)
         valid = _scope_value_valid(key, value)
         result[key] = value if valid else None

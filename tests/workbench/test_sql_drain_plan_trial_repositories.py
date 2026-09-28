@@ -15,7 +15,6 @@ import pytest
 from core.infrastructure.workbench_run_schema import RUN_TABLES
 from core.infrastructure.workbench_trial_schema import TRIAL_TABLES
 from core.models.workbench_trial_catalog import TrialCatalogScope
-from core.services.workbench.run.candidate_adoption_constraints import _TABLES as CONSTRAINT_TABLES
 from data.repositories.workbench_piece_adoption_repo import (
     PREFLIGHT_TABLES,
     TEMPLATE_TABLES,
@@ -322,17 +321,33 @@ def test_piece_adoption_repository_current_rows(schema_conn) -> None:
     op_a = schema_conn.execute("INSERT INTO BatchOperations(op_code,batch_id,seq,op_type_name,piece_id) "
                                "VALUES ('PB-1','PROC-B',1,'车削','P1')").lastrowid
     op_b = schema_conn.execute("INSERT INTO BatchOperations(op_code,batch_id,seq,op_type_name) VALUES ('PB-2','PROC-B',2,'检验')").lastrowid
+    op_external = schema_conn.execute(
+        "INSERT INTO BatchOperations(op_code,batch_id,seq,op_type_id,op_type_name,source,supplier_id,ext_days) "
+        "VALUES ('PB-20','PROC-B',20,'PROC-EX','热处理','external','PROC-S',3.25)").lastrowid
+    template_id = schema_conn.execute(
+        "SELECT id FROM PartOperations WHERE part_no='PROC-001' AND seq=20").fetchone()[0]
+    schema_conn.execute("UPDATE ExternalGroups SET total_days=9 WHERE group_id='PROC-G'")
     schema_conn.execute("INSERT INTO ScheduleHistory(version, strategy) VALUES (1, 'seed')")
     schedule_id = schema_conn.execute("INSERT INTO Schedule(version,op_id,start_time,end_time,lock_status) VALUES (1,?,?,?,'locked')",
                                       (op_a, SECOND_START, SECOND_END)).lastrowid
     repo = WorkbenchPieceAdoptionRepository(schema_conn)
 
-    assert PREFLIGHT_TABLES == CONSTRAINT_TABLES, "白名单必须与候选采用约束读的表一致"
+    assert TEMPLATE_TABLES == ("BatchExternalContexts", "BatchOperations")
+    assert PREFLIGHT_TABLES == (
+        "Machines", "Operators", "Suppliers", "OpTypes", "OperatorMachine", "OperatorSkill",
+        "WorkbenchOperatorProfiles", "WorkbenchSupplierOpTypes", "BatchExternalContexts", "BatchOperations", "BatchMaterials")
     templates = repo.template_tables()
     assert tuple(templates) == TEMPLATE_TABLES
-    assert len(templates["PartOperations"]) == 5 and templates["ExternalGroups"][0]["group_id"] == "PROC-G"
+    assert [(row["operation_id"], row["part_no"], row["sequence"], row["template_operation_id"],
+             row["group_id"], row["merge_mode"], row["total_days"], row["origin"])
+            for row in templates["BatchExternalContexts"]] == [
+        (op_external, "PROC-001", 20, template_id, "PROC-G", "merged", 6.75, "creation")]
+    assert [(row["id"], row["op_code"], row["source"], row["ext_days"])
+            for row in templates["BatchOperations"]] == [
+        (op_a, "PB-1", "internal", None), (op_b, "PB-2", "internal", None), (op_external, "PB-20", "external", 3.25)]
     preflight = repo.preflight_tables()
     assert tuple(preflight) == PREFLIGHT_TABLES
+    assert {name: preflight[name] for name in TEMPLATE_TABLES} == templates
     assert [row["machine_id"] for row in preflight["Machines"]] == ["PIECE-M"]
     assert all(type(rows) is list for rows in preflight.values())
 
@@ -343,7 +358,7 @@ def test_piece_adoption_repository_current_rows(schema_conn) -> None:
     assert repo.active_batch_refs("PROC-B") == [expected_ref]
     assert repo.active_batch_refs("NOPE") == []
     operations = repo.list_batch_operations("PROC-B")
-    assert [(row["id"], row["piece_id"]) for row in operations] == [(op_a, "P1"), (op_b, None)]
+    assert [(row["id"], row["piece_id"]) for row in operations] == [(op_a, "P1"), (op_b, None), (op_external, None)]
     assert "op_type_name" in operations[0]
     old = repo.get_schedule_row(schedule_id)
     assert (old["op_id"], old["lock_status"]) == (op_a, "locked")

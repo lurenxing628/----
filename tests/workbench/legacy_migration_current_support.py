@@ -1,5 +1,6 @@
 """Exact additive metadata allowed by historical-fixture upgrades to current."""
 
+from core.infrastructure.batch_external_context_schema import objects as external_context_objects
 from core.infrastructure.workbench_dashboard_external_schema import objects as dashboard_external_objects
 from core.infrastructure.workbench_execution_void_schema import execution_void_objects
 from core.infrastructure.workbench_outsourcing_schema import workbench_outsourcing_objects
@@ -12,6 +13,24 @@ V30_EMPTY_TABLES = (
 V30_TABLES = ("WorkbenchOutsourcingOperationOrigins",) + V30_EMPTY_TABLES
 V31_TABLES = ("WorkbenchDashboardExternalItems", "WorkbenchDashboardExternalStates", "WorkbenchDashboardExternalHistory")
 V32_TABLES = ("WorkbenchOutsourcingSourceConfirmations", "WorkbenchProductionReportVoids")
+V33_TABLES = ("BatchExternalContexts",)
+
+
+def missing_v33_issues():
+    return {"missing_batch_external_context:" + name for name in external_context_objects()}
+
+
+def assert_v33_contexts(conn):
+    """Capture exactly the external operations visible at upgrade, never their birth history."""
+    expected = {(operation_id, part_no, sequence, "migration_v33")
+                for operation_id, part_no, sequence, source in conn.execute(
+                    "SELECT o.id,b.part_no,o.seq,o.source FROM BatchOperations o "
+                    "JOIN Batches b ON b.batch_id=o.batch_id")
+                if str(source or "").strip().lower() == "external"}
+    actual = [tuple(row) for row in conn.execute(
+        "SELECT operation_id,part_no,sequence,origin FROM BatchExternalContexts")]
+    assert len(actual) == len(expected) and set(actual) == expected
+    assert not conn.execute("PRAGMA foreign_key_check").fetchall()
 
 
 def missing_v32_issues():

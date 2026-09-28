@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+from core.models.calendar_periods import encode_periods
+
 from .base_repo import BaseRepository
+from .machine_capability_repo import MachineCapabilityRepository
+from .workbench_resource_dependencies import DEPENDENCIES
 
 RESOURCE_KEYS = {"op_type": ("OpTypes", "op_type_id"), "machine": ("Machines", "machine_id"),
                  "operator": ("Operators", "operator_id"), "machine_group": ("WorkbenchMachineGroups", "group_id"),
@@ -21,7 +25,8 @@ class WorkbenchResourceStateRepository(BaseRepository):
         return self.fetchone(f'SELECT * FROM "{table}" WHERE "{key}" = ?', (code,))
 
     def pattern(self, profile_id):
-        return self.fetchall("SELECT * FROM WorkbenchShiftPatternDays WHERE profile_id=? ORDER BY day_offset", (profile_id,))
+        return self.fetchall("""SELECT d.*,p.periods_json FROM WorkbenchShiftPatternDays d LEFT JOIN WorkbenchShiftDayPeriods p
+            ON p.profile_id=d.profile_id AND p.day_offset=d.day_offset WHERE d.profile_id=? ORDER BY d.day_offset""", (profile_id,))
 
     def skills(self, operator_id):
         return self.fetchall("SELECT * FROM OperatorSkill WHERE operator_id=? ORDER BY op_type_id", (operator_id,))
@@ -29,16 +34,23 @@ class WorkbenchResourceStateRepository(BaseRepository):
     def authorizations(self, operator_id):
         return self.fetchall("SELECT * FROM OperatorMachine WHERE operator_id=? ORDER BY machine_id", (operator_id,))
 
+    def machine_capabilities(self, code):
+        return MachineCapabilityRepository(self.conn).by_machines([code])[code]
+
+    def set_machine_capabilities(self, code, types, primary):
+        return MachineCapabilityRepository(self.conn).replace(code, types, primary=primary)
+
     def op_type_dependencies(self, code):
-        tables = {"machines": "Machines", "legacy_suppliers": "Suppliers", "supplier_capabilities": "WorkbenchSupplierOpTypes",
+        tables = {"machine_capabilities": "MachineOpTypes", "machines": "Machines", "legacy_suppliers": "Suppliers", "supplier_capabilities": "WorkbenchSupplierOpTypes",
                   "skills": "OperatorSkill", "part_operations": "PartOperations", "batch_operations": "BatchOperations"}
         return {name: int(self.fetchvalue(f"SELECT COUNT(*) FROM {table} WHERE op_type_id=?", (code,), default=0))
                 for name, table in tables.items()}
 
     def assigned_dependencies(self, kind, code):
-        column = {"machine": "machine_id", "operator": "operator_id"}[kind]
-        return {name: int(self.fetchvalue(f"SELECT COUNT(*) FROM {table} WHERE {column}=?", (code,), default=0))
-                for name, table in (("batch_operations", "BatchOperations"), ("schedule", "Schedule"))}
+        names = {"BatchOperations": "batch_operations", "Schedule": "schedule"}
+        return {names.get(table, table + "." + column): int(self.fetchvalue(
+                    f"SELECT COUNT(*) FROM {table} WHERE {column}=?", (code,), default=0))
+                for table, column in DEPENDENCIES[kind]}
 
     def catalog_by_name(self, kind, name):
         if kind not in ("machine_group", "shift_profile"):
@@ -107,3 +119,7 @@ class WorkbenchResourceStateRepository(BaseRepository):
         for day in days:
             self.execute("""INSERT INTO WorkbenchShiftPatternDays(profile_id,day_offset,is_rest,shift_start,shift_end)
                 VALUES (?,?,?,?,?)""", (profile_id, day["day_offset"], int(day["is_rest"]), day["shift_start"], day["shift_end"]))
+
+            if day.get("periods") is not None:
+                self.execute("INSERT INTO WorkbenchShiftDayPeriods(profile_id,day_offset,periods_json) VALUES (?,?,?)",
+                             (profile_id, day["day_offset"], encode_periods(day["periods"])))

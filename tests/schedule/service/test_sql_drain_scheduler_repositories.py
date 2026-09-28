@@ -13,6 +13,7 @@ import pytest
 
 from core.errors import AppError
 from core.models.schedule_plan_role import SOURCE_SCHEDULE
+from data.repositories.batch_external_context_repo import BatchExternalContextRepository
 from data.repositories.calendar_checkpoint_repo import CalendarCheckpointRepository
 from data.repositories.calendar_facts_repo import CalendarFactsRepository
 from data.repositories.execution_ledger_scope_repo import ExecutionLedgerScopeRepository
@@ -25,6 +26,42 @@ from data.repositories.workbench_process_workflow_repo import WorkbenchProcessWo
 from tests.workbench.execution_ledger_support import ledger_case as ledger_case  # noqa: F401
 from tests.workbench.process_query_support import seed_process
 from tests.workbench.process_workflow_support import confirm_all, seed_workflow
+
+
+def test_batch_external_context_repository_copies_frozen_rows_and_retains_migration_origin(schema_conn):
+    conn = schema_conn
+    seed_process(conn)
+    for code, piece in (("SOURCE", "a"), ("COPY", "b")):
+        conn.execute("INSERT INTO BatchOperations(op_code,batch_id,piece_id,seq,op_type_name,source) VALUES(?,?,?,20,'热处理','external')",
+                     (code, "PROC-B", piece))
+    source, target = [row[0] for row in conn.execute("SELECT id FROM BatchOperations ORDER BY id")]
+    repo = BatchExternalContextRepository(conn)
+    assert repo.available() and repo.get(-1) is None
+    repo.mark_template_copy(source)
+    first = repo.get(source)
+    assert first["origin"] == "template_copy" and first["total_days"] == 6.75
+    members = repo.group_members("PROC-B", first["group_ref"], "a")
+    assert len(members) == 1 and members[0]["operation_id"] == source
+    assert members[0]["current_source"] == "external" and members[0]["current_sequence"] == 20
+    assert repo.group_members("OTHER", first["group_ref"], "a") == []
+    conn.execute("UPDATE ExternalGroups SET total_days=90")
+    repo.copy(source, target)
+    assert repo.get(target) == dict(first, operation_id=target, origin="instance_copy")
+    conn.execute("UPDATE BatchExternalContexts SET origin='migration_v33' WHERE operation_id=?", (source,))
+    repo.copy(source, target)
+    assert repo.get(target)["origin"] == "migration_v33"
+    assert [row["operation_id"] for row in repo.rows_for_readonly_preflight()] == [source, target]
+
+
+def test_external_context_legacy_readonly_seam_does_not_hide_current_schema_damage(mem_conn):
+    conn = mem_conn
+    conn.execute("CREATE TABLE SchemaVersion(id INTEGER PRIMARY KEY,version INTEGER)")
+    conn.execute("INSERT INTO SchemaVersion VALUES(1,32)")
+    repo = BatchExternalContextRepository(conn)
+    assert not repo.available() and repo.rows_for_readonly_preflight() == []
+    conn.execute("UPDATE SchemaVersion SET version=33")
+    with pytest.raises(RuntimeError, match="missing"):
+        repo.rows_for_readonly_preflight()
 
 
 def _seed_resources(conn) -> None:
@@ -65,13 +102,15 @@ def test_calendar_signature_rows_keep_query_order_and_raw_storage_values(schema_
     _seed_resources(schema_conn)
     _seed_calendar(schema_conn)
     rows = CalendarCheckpointRepository(schema_conn).calendar_signature_rows()
-    assert len(rows) == 5 and all(type(group) is tuple for group in rows)
-    assert [tuple(map(str, row[:2])) for row in rows[0]] == [("2026-09-20", "rest"), ("2026-09-21", "workday")]
-    assert rows[0][1][2:] == ("08:00", "17:00", 8.0, 1.0, "yes", "yes"), "remark 不进证书"
-    assert [(row[0], str(row[1]), row[3], row[4]) for row in rows[1]] == [("O1", "2026-09-21", "09:00", "18:00")]
-    assert rows[2] == (("O1", "SP1"), ("O2", None))
-    assert [(row[0], str(row[1]), row[2], row[3]) for row in rows[3]] == [("SP1", "2026-09-01", 2, "active")]
-    assert rows[4] == (("SP1", 0, 0, "08:00", "16:00"), ("SP1", 1, 1, "", ""))
+    assert len(rows) == 7 and all(type(group) is tuple for group in rows)
+    assert rows[0] == ()
+    assert [tuple(map(str, row[:2])) for row in rows[1]] == [("2026-09-20", "rest"), ("2026-09-21", "workday")]
+    assert rows[1][1][2:] == ("08:00", "17:00", 8.0, 1.0, "yes", "yes", None), "remark 不进证书"
+    assert [(row[0], str(row[1]), row[3], row[4]) for row in rows[2]] == [("O1", "2026-09-21", "09:00", "18:00")]
+    assert rows[3] == (("O1", "SP1"), ("O2", None))
+    assert [(row[0], str(row[1]), row[2], row[3]) for row in rows[4]] == [("SP1", "2026-09-01", 2, "active")]
+    assert rows[5] == (("SP1", 0, 0, "08:00", "16:00"), ("SP1", 1, 1, "", ""))
+    assert rows[6] == ()
     assert CalendarCheckpointRepository(sqlite3.connect(":memory:")).__class__ is CalendarCheckpointRepository
 
 
@@ -142,7 +181,7 @@ def test_execution_ledger_scope_reads(ledger_case) -> None:
     schedule_id = case.conn.execute("SELECT id FROM Schedule WHERE version=1").fetchone()[0]
     assert repo.scope_task_rows([]) == []
     assert repo.scope_task_rows([schedule_id, 987654]) == [
-        (schedule_id, 1, case.op_id, "B1", _operation_ref(case.conn, case.op_id), case.task(1, case.op_id), case.plan_ref(1))]
+        (schedule_id, 1, case.op_id, "B1", _operation_ref(case.conn, case.op_id), case.task(1, case.op_id), case.plan_ref(1), "internal")]
 
 
 def test_execution_ledger_reported_operation_without_schedule_row(ledger_case) -> None:

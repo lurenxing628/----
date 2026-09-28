@@ -50,6 +50,7 @@ def seed(conn):
     for index in range(1, 26):
         conn.execute("INSERT INTO BatchOperations(op_code,batch_id,seq,op_type_id,op_type_name,source,supplier_id,ext_days) "
                      "VALUES (?,?,?,'DN-T','外协热处理','external','DN-S',2)", (f"DN-O{index:02d}", "DN-B2" if index == 25 else "DN-B1", index))
+    conn.execute("UPDATE BatchOperations SET piece_id='第二分件' WHERE op_code='DN-O24'")
     conn.execute("INSERT INTO ScheduleHistory(version,strategy,result_status,result_summary,schedule_time) VALUES (1,'dn-preserved','success','{}','2026-09-07T12:00:00')")
     conn.execute("INSERT INTO Schedule(version,op_id,start_time,end_time) VALUES (1,1,'2026-09-07T08:00:00','2026-09-09T12:00:00')")
     conn.execute("INSERT INTO OperationExecutionEvents(schedule_version,schedule_id,op_id,batch_id,source_table,effective_plan_role,event_type,reported_status,event_time,created_by,idempotency_key,request_fingerprint,previous_state_revision,remark) "

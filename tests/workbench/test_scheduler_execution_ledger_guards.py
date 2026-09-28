@@ -26,7 +26,7 @@ def test_old_run_cannot_skip_partial_or_started_new_reports(tmp_path, simulate, 
     conn = raw_connection(tmp_path)
     try:
         _seed_two_operation_plan(conn)
-        conn.execute("UPDATE BatchOperations SET piece_id=NULL WHERE id=10")
+        conn.execute("UPDATE BatchOperations SET piece_id=NULL WHERE batch_id='B1'")
         case = install_case(conn)
         case.command("create", case.task(1, 10), payload)
         before = formal_rows(conn)

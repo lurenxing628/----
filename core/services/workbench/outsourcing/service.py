@@ -113,13 +113,16 @@ class WorkbenchOutsourcingService:
         return bounded({**page(rows, number, size), "fingerprint": input_fingerprint(bounded(snapshots)),
                         "as_of": now.isoformat(timespec="seconds"), "tracking_basis": "manual_receipt_facts"})
 
-    def targets(self, *, batch_ref=None, number=1, size=20):
+    def targets(self, *, batch_ref=None, query="", number=1, size=20):
         if batch_ref is not None:
             reference(batch_ref)
+        if type(query) is not str or len(query) > 200 or "\x00" in query:
+            reject("查找内容须为不超过 200 字的文字。", status=400)
+        query = query.strip()
         pagination(number, size)
         if not self.conn.in_transaction:
             raise RuntimeError("Outsourcing targets require a caller-owned snapshot")
-        rows = self.sources.targets(batch_ref)
+        rows = self.sources.targets(batch_ref, query)
         clock = self.repo.plan_identity_revision()
-        return bounded({**page(rows, number, size), "fingerprint": input_fingerprint({"rows": rows, "clock": clock}),
+        return bounded({**page(rows, number, size), "fingerprint": input_fingerprint({"rows": rows, "clock": clock, "query": query}),
                         "grouping_basis": "explicit_receipt_membership", "dates_inferred": False})

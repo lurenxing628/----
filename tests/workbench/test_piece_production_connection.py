@@ -37,7 +37,8 @@ def test_worker_new_connection_trial_adopts_under_begin_immediate(production_cas
     case = production_case
     ids, rival, old_receipt = seed_history(case)
     before = snapshot(case.conn)
-    assert len(before) == 79  # v32 新增 WorkbenchOutsourcingSourceConfirmations / WorkbenchProductionReportVoids
+    assert len(before) == 80  # v33 新增 BatchExternalContexts，继续完整比较全部表。
+    assert "BatchExternalContexts" in before
     for table in ("Batches", "BatchOperations", "WorkbenchProductionReports",
                   "WorkbenchProductionReportRevisions", "WorkbenchCommandReceipts", "ScheduleCandidate",
                   "ScheduleCandidateRows", "ScheduleAdjustmentScenario", "ScheduleAdjustmentScenarioRow"):

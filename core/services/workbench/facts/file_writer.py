@@ -14,7 +14,10 @@ from openpyxl.utils import get_column_letter
 
 from core.models.workbench_command import canonical_json
 from core.models.workbench_resource_file import (
+    ENUM_CODES,
+    ENUM_LABELS,
     JSON_FIELDS,
+    MULTI_CODES,
     NUMERIC_FIELDS,
     ResourceFileDownload,
     file_columns,
@@ -29,6 +32,8 @@ from core.services.common.excel_instruction_sheet import (
 )
 
 from .file_codec import file_error
+from .file_lists import encode_code_list
+from .process_file_xml import preserve_carriage_returns
 
 XLSX_MAX_ROWS = 1048576
 XLSX_MAX_CELL_CHARACTERS = 32767
@@ -44,10 +49,15 @@ def check_capacity(count, fmt):
         raise file_error("行数超过 XLSX 能放的 1048576 行（含表头），请改用 CSV。", count + 1)
 
 
-def _value(value, field, row, fmt):
+def _value(value, field, row, fmt, kind=None):
     if value is None:
         return r"\N"
-    if field in JSON_FIELDS:
+    if field in MULTI_CODES:
+        try:
+            value = encode_code_list(value)
+        except ValueError as exc:
+            raise file_error("工种编号列表里有无效内容，没有导出。请到资料总览核对。", row, field) from exc
+    elif field in JSON_FIELDS:
         value = canonical_json(value)
     elif field in NUMERIC_FIELDS:
         if type(value) not in (int, float) or not math.isfinite(value):
@@ -55,6 +65,13 @@ def _value(value, field, row, fmt):
         return value
     elif type(value) is not str:
         raise file_error("这个格子里存的内容不是文字，没有导出。请到资料总览修正后重试。", row, field)
+    if kind is not None and field in ENUM_CODES[kind]:
+        value = ENUM_LABELS[field].get(value, value)
+    return _escaped_text(value, field, row, fmt)
+
+
+def _escaped_text(value, field, row, fmt):
+    """Keep literal backslashes reversible and validate the selected file format."""
     if value.startswith("\\"):
         value = "\\" + value
     if fmt == "xlsx" and (ILLEGAL.search(value) or len(value) > XLSX_MAX_CELL_CHARACTERS):
@@ -81,7 +98,7 @@ def _csv(kind, rows, filename):
         writer = csv.writer(text, lineterminator="\r\n")
         writer.writerow([item["label"] for item in public_columns(kind)])
         for count, row in enumerate(rows, 1):
-            values = [_value(row[field], field, count + 1, "csv") for field in file_columns(kind)]
+            values = [_value(row[field], field, count + 1, "csv", kind) for field in file_columns(kind)]
             writer.writerow(["'" + value if type(value) is str else value for value in values])
         text.flush()
         buffer.seek(0)
@@ -112,7 +129,7 @@ def _xlsx(kind, rows, filename, template, descriptor):
             check_capacity(count, "xlsx")
             cells = []
             for field in file_columns(kind):
-                value = _value(row[field], field, count + 1, "xlsx")
+                value = _value(row[field], field, count + 1, "xlsx", kind)
                 cell = WriteOnlyCell(ws, value=value)
                 if type(value) is str:
                     cell.data_type, cell.number_format = "s", "@"
@@ -120,6 +137,7 @@ def _xlsx(kind, rows, filename, template, descriptor):
             ws.append(cells)
         ws.auto_filter.ref = "A1:" + get_column_letter(len(file_columns(kind))) + str(count + 1)
         add_enum_dropdowns(ws, descriptor, count, write_only=True)
+        preserve_carriage_returns(ws)
         sheets.append(append_instruction_sheet(wb, descriptor))
         with SpooledTemporaryFile(max_size=4 * 1024 * 1024, mode="w+b") as buffer:
             wb.save(buffer)

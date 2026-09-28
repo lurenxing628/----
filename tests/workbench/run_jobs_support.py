@@ -64,6 +64,9 @@ def job_case(schema_conn, tmp_path):
     install_execution_voids(conn)
     install_workbench_run_schema(conn)
     conn.commit()
+    # Existing candidate/locked-plan fixtures use an explicit 08:00-16:00 shift.
+    conn.execute("INSERT INTO WorkbenchCalendarDefaults(singleton,periods_json) VALUES (1,?)",
+                 ('[{"start":"08:00","end":"16:00","day_offset":0}]',))
     conn.execute("INSERT INTO OpTypes(op_type_id,name) VALUES ('T1','Turning')")
     conn.execute("INSERT INTO Machines(machine_id,name,op_type_id) VALUES ('M1','Lathe','T1')")
     conn.execute("INSERT INTO Operators(operator_id,name) VALUES ('O1','Operator')")

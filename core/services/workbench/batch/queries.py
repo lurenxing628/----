@@ -9,15 +9,17 @@ from .template_validation import template_status
 
 
 def cell(entity, key):
+    if key == "ready_status":
+        return entity.get("display_ready_status", entity["fields"][key])
     if key == "part_no":
         return entity["relationships"][key]
     return entity[key] if key in ("business_code", "status") else entity["fields"][key]
 
 
 def matches_entity(query, batch, entity):
-    if query["status"] and query["status"] != entity["status"] or query["ready_status"] and query["ready_status"] != batch["ready_status"]:
+    if query["status"] and query["status"] != entity["status"] or query["ready_status"] and query["ready_status"] != cell(entity, "ready_status"):
         return False
-    if query["focus"] == "unready" and batch["ready_status"] == "yes":
+    if query["focus"] == "unready" and cell(entity, "ready_status") == "yes":
         return False
     if query["focus"] == "gaps" and entity["operations"] and not entity["relationships"]["gap_count"]:
         return False
@@ -62,14 +64,19 @@ class WorkbenchBatchQueryService(BatchFacts):
         entity["template"] = template_status(self.load(), row)
         return entity
 
-    def choices(self):
+    def choices(self, batch_ref=None, operation_ref=None):
         projection = BatchProjection(self.load())
         parts = [{"ref": projection.ref("part", row["part_no"]), "business_code": row["part_no"], "label": row["part_name"]}
                  for row in self.load()["Parts"]]
-        return {"parts": parts, **{name: [projection.resource(kind, key) for key in projection.catalogs[kind]]
+        choices = {"parts": parts, **{name: [projection.resource(kind, key) for key in projection.catalogs[kind]]
                                   for name, kind in (("machines", "machine"), ("operators", "operator"), ("suppliers", "supplier"))},
                 "authorizations": [{"machine_ref": projection.ref("machine", mid), "operator_ref": projection.ref("operator", oid)}
                                    for oid, mid in sorted(projection.links)]}
+        if batch_ref is not None:
+            from .resource_choices import operation_choices
+
+            return operation_choices(self, batch_ref, operation_ref, choices)
+        return choices
 
     def selection(self, scope):
         rows = self.matched(scope)

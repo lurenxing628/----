@@ -4,6 +4,7 @@ from collections import Counter, defaultdict
 from types import SimpleNamespace
 from typing import Dict
 
+from core.models.resource_capabilities import OP_TYPE_CATEGORIES, machine_type_index, supports_source
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.personnel.operator_qualification import OperatorQualificationError, OperatorQualificationService
 from data.repositories.workbench_resource_metrics_repo import WorkbenchResourceMetricsRepository
@@ -11,10 +12,10 @@ from data.repositories.workbench_resource_metrics_repo import WorkbenchResourceM
 AVAILABILITY_BASIS = "enabled_authorized_matching"
 _KEYS = {"op_type": "op_type_id", "machine": "machine_id", "operator": "operator_id",
          "supplier": "supplier_id", "machine_group": "group_id", "shift_profile": "profile_id"}
-_INTERNAL = {"op_type", "machine", "operator", "operator_profiles", "skills", "authorizations"}
+_INTERNAL = {"op_type", "machine_capabilities", "machine", "operator", "operator_profiles", "skills", "authorizations"}
 _EXTERNAL = {"op_type", "supplier", "supplier_profiles", "capabilities", "policies"}
 _READ_FACTS = {
-    "machine": {"machine", "op_type", "groups", "machine_group"},
+    "machine": {"machine", "machine_capabilities", "op_type", "groups", "machine_group"},
     "operator": {"operator", "operator_profiles", "skills", "authorizations", "op_type", "shift_profile"},
     "supplier": _EXTERNAL,
     "machine_group": {"machine_group", "groups", "machine"},
@@ -112,6 +113,9 @@ class WorkbenchResourceMetricsService:
     def _validate_internal(self):
         for row in self.records["machine"].values():
             self._work_type(row["op_type_id"], "internal", nullable=True)
+        for row in self.facts["machine_capabilities"]:
+            _relation(row["machine_id"], self.records["machine"], "设备加工能力")
+            self._work_type(row["op_type_id"], "internal")
         for row in self.facts["authorizations"]:
             _relation(row["operator_id"], self.records["operator"], "设备操作授权")
             _relation(row["machine_id"], self.records["machine"], "设备操作授权")
@@ -122,7 +126,7 @@ class WorkbenchResourceMetricsService:
 
     def _work_type(self, code, category, *, nullable=False):
         _relation(code, self.records["op_type"], "资源工种关联", nullable=nullable)
-        if code is not None and self.records["op_type"][code]["category"] != category:
+        if code is not None and not supports_source(self.records["op_type"][code]["category"], category):
             _invalid("资源关联的工种，自制或外协归属对不上")
 
     def _validate_suppliers(self):
@@ -140,13 +144,14 @@ class WorkbenchResourceMetricsService:
             self._records(kind)
         self._validate_internal()
         machines = []
+        capabilities = machine_type_index(self.records["machine"].values(), self.facts["machine_capabilities"])
         for code, row in self.records["machine"].items():
-            work_type = row["op_type_id"]
-            if work_type is not None:
+            for work_type in capabilities[code]:
                 self.linked_machines[work_type].add(code)
                 if row["status"] == "active":
                     self.active_machines[work_type].add(code)
-                    machines.append(SimpleNamespace(machine_id=code, op_type_id=work_type))
+            if row["status"] == "active":
+                machines.append(SimpleNamespace(machine_id=code, op_type_id=row["op_type_id"], op_type_ids=tuple(capabilities[code])))
         qualification = OperatorQualificationService(self.conn, logger=self.logger)
         active = {code for code, status in self._statuses("operator").items() if status == "active"}
         others = sorted(set(self.records["operator"]) - active)
@@ -154,9 +159,11 @@ class WorkbenchResourceMetricsService:
             qualification.load(others)
         # The planning service remains the sole interpreter of explicit/legacy skills.
         links = qualification.eligible_links(self.facts["authorizations"], machines, active, [])
+        skills = qualification.load(sorted(active))
         for link in links:
-            work_type = self.records["machine"][link["machine_id"]]["op_type_id"]
-            self.available_operators[work_type].add(link["operator_id"])
+            for work_type in capabilities[link["machine_id"]]:
+                if skills[link["operator_id"]] is None or work_type in skills[link["operator_id"]]:
+                    self.available_operators[work_type].add(link["operator_id"])
         self._computed.add("internal")
 
     def _external_capacity(self):
@@ -178,7 +185,7 @@ class WorkbenchResourceMetricsService:
         return self._records("op_type")
 
     def availability(self, code):
-        if self._records("op_type")[code]["category"] != "internal":
+        if not supports_source(self._records("op_type")[code]["category"], "internal"):
             return None
         if not self._ensure_capacity("internal"):
             return None
@@ -186,7 +193,7 @@ class WorkbenchResourceMetricsService:
                 "basis": AVAILABILITY_BASIS}
 
     def availability_issues(self, code):
-        if self._records("op_type")[code]["category"] != "internal" or self._ensure_capacity("internal"):
+        if not supports_source(self._records("op_type")[code]["category"], "internal") or self._ensure_capacity("internal"):
             return []
         return [{"code": "resource_availability_unavailable", "message": self._failed["internal"]}]
 
@@ -249,10 +256,10 @@ class WorkbenchResourceMetricsService:
 
     def _work_type_counts(self, codes):
         self.op_type_records()
-        if any(self.records["op_type"][code]["category"] not in ("internal", "external") for code in codes):
+        if any(self.records["op_type"][code]["category"] not in OP_TYPE_CATEGORIES for code in codes):
             _invalid("工种的自制或外协归属填得不对")
-        internal = {code for code in codes if self.records["op_type"][code]["category"] == "internal"}
-        external = codes - internal
+        internal = {code for code in codes if supports_source(self.records["op_type"][code]["category"], "internal")}
+        external = {code for code in codes if supports_source(self.records["op_type"][code]["category"], "external")}
         counts = {"total": len(codes), "internal": len(internal), "external": len(external)}
         if not internal or self._ensure_capacity("internal"):
             counts.update(self._internal_counts(internal))
@@ -262,7 +269,7 @@ class WorkbenchResourceMetricsService:
         return counts
 
     def _internal_counts(self, codes):
-        return {"linked_machines": sum(len(self.linked_machines[code]) for code in codes),
+        return {"linked_machines": len(set().union(*(self.linked_machines[code] for code in codes))),
                 "available_operators": len(set().union(*(self.available_operators[code] for code in codes))),
                 "without_machines": sum(not self.linked_machines[code] for code in codes)}
 

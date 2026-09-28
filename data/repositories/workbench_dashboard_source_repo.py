@@ -2,7 +2,7 @@
 
 from core.models.workbench_dashboard import MAX_BYTES, MAX_FACT_ROWS, bounded
 
-TABLES = {"Batches", "BatchMaterials", "Materials", "MachineDowntimes", "Machines",
+TABLES = {"SchemaVersion", "BatchMaterialReviews", "BatchMaterialArrivals", "Batches", "BatchMaterials", "Materials", "MachineDowntimes", "Machines",
           "WorkbenchDashboardDowntimeRefs", "ScheduleHistory", "Schedule", "BatchOperations"}
 VERSIONED_TABLES = {"Schedule", "ScheduleHistory"}
 # Fixed identifier expansion: caller-supplied names only select an entry, never reach SQL text.

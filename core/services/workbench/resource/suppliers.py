@@ -7,6 +7,7 @@ from dataclasses import asdict
 from typing import Any, Dict, Optional
 
 from core.errors import AppError, ErrorCode, ValidationError
+from core.models.resource_capabilities import supports_source
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
 from core.models.workbench_identity import WorkbenchEntityIdentity
 from core.models.workbench_supplier import normalize_supplier_input, supplier_state
@@ -54,7 +55,7 @@ class WorkbenchSupplierService:
             op_type = self._query.get_op_type_by_ref(ref)
             if op_type is None:
                 raise WorkbenchCommandRejected("entity_not_found", "所选工种已失效，请刷新后重新选择。", 404)
-            if op_type["category"] != "external":
+            if not supports_source(op_type["category"], "external"):
                 raise ValidationError("供应商只能绑定外协工种。", field="relationships.op_type_refs")
             keys.add(op_type["op_type_id"])
         return keys

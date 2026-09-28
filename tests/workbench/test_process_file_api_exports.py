@@ -71,7 +71,7 @@ def test_exact_text_null_zero_int64_and_formula_export(file_api, fmt):
     target = file_api.ref(code=code)
     _, _, response = file_api.export("route", fmt=fmt, selection="explicit", refs=[target], target=target)
     assert decode_rows("route", response.data, fmt)[0]["values"] == {
-        "business_code": code, "label": "=1+1", "route_raw": "  10\u8f66\u524a\r\n20\u68c0\u9a8c\rEND  ", "remark": "@SUM(A1:A2)"}
+        "business_code": code, "label": "=1+1", "route_raw": '9223372036854775807: "+formula\r\ntext"', "remark": "@SUM(A1:A2)"}
     if fmt == "xlsx":
         wb = openpyxl.load_workbook(BytesIO(response.data), read_only=True, data_only=False)
         try:
@@ -81,7 +81,7 @@ def test_exact_text_null_zero_int64_and_formula_export(file_api, fmt):
     _, _, hours = file_api.export("hours", fmt=fmt, selection="explicit", refs=[target], target=target)
     values = decode_rows("hours", hours.data, fmt)[0]["values"]
     assert values["sequence"] == INT64_MAX and values["setup_hours"] == values["unit_hours"] == 0
-    assert values["external_days"] is None and values["group_start"] is None
+    assert "external_days" not in values and "group_start" not in values
 
 
 @pytest.mark.parametrize("kind", ["route", "hours"])

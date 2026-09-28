@@ -31,7 +31,7 @@ def test_fixed_and_rotating_patterns_roundtrip_exact_explicit_times(resource_con
     assert row == {"profile_id": "SHIFT1", "name": "SHIFT1", "status": "active", "remark": None,
                    "anchor_date": fields["anchor_date"], "cycle_days": fields["cycle_days"],
                    "created_at": row["created_at"]}
-    expected = [{"profile_id": "SHIFT1", **day, "is_rest": int(day["is_rest"])} for day in fields["pattern"]]
+    expected = [{"profile_id": "SHIFT1", "periods_json": None, **day, "is_rest": int(day["is_rest"])} for day in fields["pattern"]]
     assert snapshot["pattern"] == expected and snapshot["members"] == []
     run_resource(conn, "operator", "update", {"relationships": {"shift_profile_ref": identity.ref}})
     operator = resource_service(conn, "operator").snapshot(identity_for(conn, "operator"))
@@ -77,6 +77,15 @@ def test_pattern_requires_each_day_offset_boolean_and_valid_explicit_times(resou
     fields["pattern"][0].update(bad)
     before = stored_state(resource_conn)
     with pytest.raises(ValidationError):
+        create_catalog(resource_conn, "shift_profile", fields=fields)
+    assert stored_state(resource_conn) == before
+
+
+def test_work_day_cannot_save_an_empty_period_list(resource_conn):
+    fields = deepcopy(FIXED_FIELDS)
+    fields["pattern"][0]["periods"] = []
+    before = stored_state(resource_conn)
+    with pytest.raises(ValidationError, match="至少填写一个工作时段"):
         create_catalog(resource_conn, "shift_profile", fields=fields)
     assert stored_state(resource_conn) == before
 

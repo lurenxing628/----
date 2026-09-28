@@ -20,8 +20,8 @@ def test_unconfigured_days_are_actual_service_defaults_not_explicit_or_standard_
     value = summary(schema_conn)
     assert value["factory_today"] == "2026-09-09"
     assert (value["week_start"], value["week_end"]) == ("2026-09-07", "2026-09-13")
-    assert value["standard_hours"]["status"] == "not_configured"
-    assert value["standard_hours"]["value"] is None
+    assert value["standard_hours"]["status"] == "known"
+    assert value["standard_hours"]["value"] == pytest.approx(7 + 1 / 3)
     assert value["holiday_default_efficiency"]["status"] == "not_configured"
     service = CalendarService(schema_conn)
     for day in value["days"]:
@@ -143,7 +143,7 @@ def test_calendar_personal_rules_are_excluded_and_changes_refresh_without_proces
     first = summary(schema_conn)
     service.upsert("2026-09-09", shift_hours=6.5, efficiency=.8)
     changed = summary(schema_conn)
-    assert first["days"][2]["effective"]["hours"] == 8
+    assert first["days"][2]["effective"]["hours"] == pytest.approx(7 + 1 / 3)
     assert changed["days"][2]["effective"]["effective_hours"] == pytest.approx(5.2)
     service.delete("2026-09-09")
     assert summary(schema_conn)["days"][2] == first["days"][2]

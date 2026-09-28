@@ -1,5 +1,7 @@
 """Resource fields follow existing explicit profiles, not inferred UI status."""
 
+from core.models.resource_capabilities import machine_type_index, supports_source
+
 from .overview_graph import number, text
 
 CATALOGS = (("opType", "OpTypes", "op_type_id"), ("equipment", "Machines", "machine_id"),
@@ -67,12 +69,12 @@ def _status(graph, entity, row, domain, table):
 
 def _op_type(graph, entity, row):
     category = row["category"]
-    graph.field(entity, "工种归属", {"internal": "自制", "external": "外协"}.get(category, category), "OpTypes.category",
-                valid=category in ("internal", "external"))
-    if category not in ("internal", "external"):
+    graph.field(entity, "工种归属", {"internal": "自制", "external": "外协", "both": "自制、外协均可"}.get(category, category), "OpTypes.category",
+                valid=category in ("internal", "external", "both"))
+    if category not in ("internal", "external", "both"):
         graph.issue(entity, "category.unknown", "工种归属未明确", "资料里记的工种归属是「" + text(category) + "」，只能填自制或外协。")
         entity["target"]["unavailable_reason"] = "工种归属还没填自制或外协，系统不知道该跳到哪个维护页。"
-    if category == "external":
+    if supports_source(category, "external"):
         if not graph.facts.available("WorkbenchOpTypePolicies"):
             graph.unknown(entity, "周期算法", "WorkbenchOpTypePolicies")
             return
@@ -97,12 +99,13 @@ def _material(graph, entity, row):
 
 def resource_links(graph):
     facts = graph.facts
+    machine_types = machine_type_index(facts.rows("Machines"), facts.rows("MachineOpTypes"))
     for row in facts.rows("Machines"):
         entity = graph.by_key[("equipment", row["machine_id"])]
-        target = graph.related(entity, "opType", row["op_type_id"], "绑定工种", "Machines.op_type_id", "关联设备", required=True)
-        if target and facts.index("OpTypes", "op_type_id")[row["op_type_id"]]["category"] != "internal":
-            graph.issue(entity, "machine.category", "设备绑定非自制工种",
-                        "这台设备绑的工种是" + target["business_code"] + "，不是自制工种，不能算成自制产能。")
+        for code in sorted(machine_types[row["machine_id"]]) or [None]:
+            target = graph.related(entity, "opType", code, "可做工种", "Machines + MachineOpTypes", "关联设备", required=True)
+            if target and not supports_source(facts.index("OpTypes", "op_type_id")[code]["category"], "internal"):
+                graph.issue(entity, "machine.category", "设备能力不支持自制", "请核对设备所选工种的适用归属。")
     _explicit_links(graph, "OperatorSkill", "personnel", "operator_id", "opType", "op_type_id", "登记技能", "技能人员")
     _explicit_links(graph, "OperatorMachine", "personnel", "operator_id", "equipment", "machine_id", "设备操作授权", "获授权人员")
     for row in facts.rows("Suppliers"):
@@ -146,7 +149,7 @@ def _qualification_fields(graph):
                                 "请登记该人员具备的技能工种。" if domain == "personnel"
                                 else "这家供应商没有登记任何可做的外协工种。")
             expected = "internal" if domain == "personnel" else "external"
-            if any(types[item["business_code"]]["category"] != expected for item in bound):
+            if any(not supports_source(types[item["business_code"]]["category"], expected) for item in bound):
                 graph.issue(entity, "qualification.category", "绑定工种类别不符",
                             "人员请选择自制工种，供应商请选择外协工种。")
             if domain == "personnel":
@@ -181,8 +184,11 @@ def _person_fields(graph, entity, row, profiles, shifts):
 def _op_resources(graph):
     for row in graph.facts.rows("OpTypes"):
         entity = graph.by_key[("opType", row["op_type_id"])]
-        checks = (("关联供应商", "Suppliers", "供应商"),) if row["category"] == "external" else (
-            ("关联设备", "Machines", "设备"), ("技能人员", "OperatorSkill", "技能人员"))
+        checks = []
+        if supports_source(row["category"], "internal"):
+            checks.extend((("关联设备", "Machines", "设备"), ("技能人员", "OperatorSkill", "技能人员")))
+        if supports_source(row["category"], "external"):
+            checks.append(("关联供应商", "Suppliers", "供应商"))
         for relation, source, label in checks:
             if not graph.facts.available(source):
                 graph.unknown(entity, label + "关联数", source, relation=True)

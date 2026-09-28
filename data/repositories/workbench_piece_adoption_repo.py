@@ -5,15 +5,15 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional
 
 from .base_repo import BaseRepository
+from .workbench_run_input_repo import ADOPTION_CHECK_TABLES
 
-TEMPLATE_TABLES = ("PartOperations", "ExternalGroups")
-PREFLIGHT_TABLES = ("Machines", "Operators", "Suppliers", "OpTypes", "OperatorMachine", "OperatorSkill",
-                    "WorkbenchOperatorProfiles", "WorkbenchSupplierOpTypes", "PartOperations", "ExternalGroups", "BatchMaterials")
+TEMPLATE_TABLES = ("BatchExternalContexts", "BatchOperations")
+PREFLIGHT_TABLES = ADOPTION_CHECK_TABLES
 
 
 class WorkbenchPieceAdoptionRepository(BaseRepository):
     def template_tables(self) -> Dict[str, List[Dict[str, Any]]]:
-        """Whole PartOperations / ExternalGroups rows for the template cache."""
+        """Frozen batch contexts for the shared scheduling cache."""
         return {name: self.fetchall('SELECT * FROM "' + name + '"') for name in TEMPLATE_TABLES}
 
     def preflight_tables(self) -> Dict[str, List[Dict[str, Any]]]:

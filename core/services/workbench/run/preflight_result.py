@@ -51,7 +51,7 @@ def summarize(settings, batches, rows, no_route, unready, ledger_reasons):
             "skipped_tasks": counts["skipped_tasks"], "blockers": blockers, "warnings": result_warnings(settings, counts),
             "no_route_batches": [{"batch_ref": row["ref"], "batch_id": row["batch_id"]} for row in no_route],
             "unready_batches": unready, "effective_config": {key: settings[key] for key in (
-                "ready_check", "missing_resource_policy", "completed_policy")}, "config_scope": "single_run",
+                "ready_check", "missing_resource_policy", "completed_policy") + (("material_strategy",) if "material_strategy" in settings else ())}, "config_scope": "single_run",
             "effective_start": start, "effective_end_exclusive": end, "effective_start_basis": "window_lower_bound_not_calendar_slot",
             "calendar_check": "not_evaluated", "execution_projection_source": "legacy_guard_only" if ledger_reasons else "execution_ledger",
             "run_blocked": True, "run_blocked_reasons": [issue("schedule_not_computed", "尚未生成排产结果。")]

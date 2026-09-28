@@ -100,9 +100,9 @@ def assert_raw_copy(source, copied, destination_code):
     assert copied["id"] != source["id"]
 
 
-def assert_only_copy_appends(before, after, batch_count, operation_count):
+def assert_only_copy_appends(before, after, batch_count, operation_count, material_count=0):
     assert before.keys() == after.keys()
-    appended = {"Batches": batch_count, "BatchOperations": operation_count,
+    appended = {"Batches": batch_count, "BatchOperations": operation_count, "BatchMaterials": material_count,
                 "WorkbenchEntityRefs": batch_count, "WorkbenchPlanSourceRefs": operation_count,
                 "WorkbenchTemplateLineageOrigins": operation_count, "WorkbenchTemplateLineageEvents": operation_count,
                 "WorkbenchDashboardItems": batch_count * 2, "WorkbenchOutsourcingOperationOrigins": operation_count}
@@ -112,10 +112,13 @@ def assert_only_copy_appends(before, after, batch_count, operation_count):
             assert len(after[table]) == len(rows) + appended[table], table
         elif table == "WorkbenchPlanIdentityClock":
             assert after[table] == [(1, rows[0][1] + operation_count)]
-        elif table == "sqlite_sequence" and operation_count:
+        elif table == "sqlite_sequence" and (operation_count or material_count):
             expected = dict(rows)
-            expected["BatchOperations"] += operation_count
-            expected["WorkbenchTemplateLineageEvents"] += operation_count
+            if operation_count:
+                expected["BatchOperations"] += operation_count
+                expected["WorkbenchTemplateLineageEvents"] += operation_count
+            if material_count:
+                expected["BatchMaterials"] = expected.get("BatchMaterials", 0) + material_count
             assert dict(after[table]) == expected
         else:
             assert after[table] == rows, table

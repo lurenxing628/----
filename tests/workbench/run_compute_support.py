@@ -59,6 +59,10 @@ def run_case(schema_conn):
     install_execution_ledger(conn)
     install_execution_voids(conn)
     conn.commit()
+    # These fixtures model an explicit historical 08:00-16:00 factory shift.
+    # Unconfigured split-day defaults are exercised by calendar/material tests.
+    conn.execute("INSERT INTO WorkbenchCalendarDefaults(singleton,periods_json) VALUES (1,?)",
+                 ('[{"start":"08:00","end":"16:00","day_offset":0}]',))
     conn.execute("INSERT INTO OpTypes(op_type_id,name) VALUES ('T1','Turning')")
     conn.execute("INSERT INTO Machines(machine_id,name,op_type_id) VALUES ('M1','Lathe','T1')")
     conn.execute("INSERT INTO Operators(operator_id,name) VALUES ('O1','Operator')")

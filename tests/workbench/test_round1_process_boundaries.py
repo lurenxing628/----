@@ -120,10 +120,14 @@ def test_route_difference_keeps_raw_unknown_and_read_transaction(private_process
         assert conn.in_transaction and preview == unchanged and body == original_input
         assert result["changes"] == {"added": [40], "removed": [30],
                                      "retained": [10], "same_sequence_changed": [20]}
-        assert result["counts"] == {"operations": 3, "recognized": 2, "unknown": 1}
+        assert preview["counts"] == {"operations": 3, "recognized": 2, "unknown": 1}
+        assert result["counts"] == {"operations": 3, "recognized": 3, "unknown": 0}
         assert result["can_confirm_route"] and result["write_context"] is None
-        assert result["operations"][1]["source_suggestion"] is None
-        assert result["operations"][1]["issues"][0]["code"] == "unknown_op_type"
+        assert result["operations"][1]["op_type_name"] == "待建工种"
+        assert result["operations"][1]["source_suggestion"] == "external"
+        assert result["operations"][1]["op_type_ref"] == ref_for(conn, "op_type", "PROC-EX")
+        assert "保留" in result["operations"][1]["basis"] and "热处理" in result["operations"][1]["basis"]
+        assert not any(issue["code"] == "unknown_op_type" for issue in result["operations"][1]["issues"])
     assert all_table_snapshot(conn) == before and not conn.in_transaction
 
 

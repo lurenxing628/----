@@ -37,7 +37,7 @@ def _seed_arrangement(seed, refs):
     for kind in ("machine", "operator"):
         key = seed[kind + "_id"]
         arrangement[kind + "_id"] = key
-        arrangement[kind + "_ref"] = refs[kind, key]
+        arrangement[kind + "_ref"] = refs[kind, key] if key is not None else None
     return arrangement
 
 

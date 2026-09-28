@@ -40,6 +40,8 @@ __all__ = ["decode_process_file", "encode_process_file", "public_columns", "file
 
 def _headers(kind, values):
     names = {LABELS[field]: field for field in file_columns(kind)}
+    if kind == "route":
+        names["工艺路线字符串"] = "route_raw"
     names.update({field: field for field in file_columns(kind)})
     fields = []
     for value in values:
@@ -110,6 +112,8 @@ def decode_process_file(kind, content, fmt):
         fields = _headers(kind, header[1])
         rows = []
         for number, values, errors in source:
+            if not errors and all(value is None or value == "" for value in values):
+                continue
             if len(rows) == IMPORT_ROW_LIMIT:
                 raise file_error("一次最多导入 2000 行。请拆分文件后重新导入。", number)
             rows.append(_parse_row(kind, number, values, errors, fields, fmt))

@@ -19,7 +19,7 @@ SOURCES = {
 RELATIONS = ("OperatorSkill", "OperatorMachine", "WorkbenchOperatorProfiles", "WorkbenchSupplierOpTypes",
              "WorkbenchSupplierProfiles", "WorkbenchMachineGroupMembers", "WorkbenchMachineGroups",
              "WorkbenchShiftProfiles", "WorkbenchShiftPatternDays", "WorkbenchOpTypePolicies",
-             "Batches", "BatchMaterials", "OperatorCalendar")
+             "Batches", "BatchMaterials", "OperatorCalendar", "MachineOpTypes")
 WORKFLOW = ("WorkbenchProcessWorkflow", "WorkbenchProcessOperationConfirmations")
 # 整表白名单归仓储所有；合同测试锁定它等于 SOURCES/RELATIONS/WORKFLOW 的展开顺序。
 TABLES = MASTER_OVERVIEW_TABLES

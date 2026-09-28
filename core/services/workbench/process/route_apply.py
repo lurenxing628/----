@@ -9,11 +9,13 @@ from data.repositories.external_group_repo import ExternalGroupRepository
 from data.repositories.part_operation_repo import PartOperationRepository
 from data.repositories.part_repo import PartRepository
 
+from .quota_protection import ProcessQuotaProtection
+from .route_choices import preview_existing_route
 from .route_preview import ProcessRoutePreviewService
 
 
 def prepare_route(conn, logger, payload, operations):
-    preview = ProcessRoutePreviewService(conn, logger).preview(payload["route"])
+    preview = preview_existing_route(conn, ProcessRoutePreviewService(conn, logger).preview(payload["route"]), operations)
     if not preview["can_confirm_route"]:
         raise WorkbenchCommandRejected("route_invalid", "路线预检未通过，请核对完整诊断后重新确认。", 422)
     existing = {row["seq"]: row for row in operations}
@@ -57,25 +59,27 @@ def _suggested_key(identities, ref, kind):
     return identity.entity_key
 
 
-def apply_route(conn, part, operations, preview, identities):
-    op_repo = PartOperationRepository(conn)
-    existing = {row["seq"]: row for row in operations}
-    incoming = {row["sequence"] for row in preview["operations"]}
+def _protected_replacements(conn, operations, proposed):
+    replaced = {row["sequence"] for row in proposed if row.get("replace_existing_choices")}
+    if replaced:
+        ProcessQuotaProtection(conn).require_changes({old["ref"]: None for old in operations if old["seq"] in replaced})
+    return replaced
+
+
+def _remove_absent_operations(op_repo, operations, incoming):
     changed = False
     for row in operations:
         if row["status"] == "active" and row["seq"] not in incoming:
             op_repo.mark_deleted_by_id(row["id"])
             changed = True
-    for row in preview["operations"]:
-        old = existing.get(row["sequence"])
-        if old is not None:
-            # A renamed/restored sequence retains all previous choices and hidden facts.
-            if old["op_type_name"] != row["op_type_name"] or old["status"] != "active":
-                op_repo.restore_with_op_type_name(old["id"], row["op_type_name"])
-                changed = True
-            continue
+    return changed
+
+
+def _persist_route_operation(op_repo, part_no, row, old, replaced, identities):
+    """Return (changed, apply_defaults), keeping each row's persistence policy explicit."""
+    if old is None:
         op_repo.insert_route_operation(
-            part_no=part["part_no"],
+            part_no=part_no,
             seq=row["sequence"],
             op_type_name=row["op_type_name"],
             source=row["source_suggestion"],
@@ -83,8 +87,44 @@ def apply_route(conn, part, operations, preview, identities):
             supplier_id=_suggested_key(identities, row["supplier_ref"], "supplier"),
             ext_days=row["external_days"],
         )
-        changed = True
+        return True, True
+    if replaced:
+        op_repo.update_fields_by_id(old["id"], {
+            "op_type_name": row["op_type_name"], "status": "active", "source": row["source_suggestion"],
+            "op_type_id": _suggested_key(identities, row["op_type_ref"], "op_type"),
+            "supplier_id": _suggested_key(identities, row["supplier_ref"], "supplier"),
+            "ext_days": row["external_days"], "setup_hours": None, "unit_hours": None,
+        })
+        return True, True
+    # Cosmetic/unknown renames retain intentional manual choices.
+    if old["op_type_name"] != row["op_type_name"] or old["status"] != "active":
+        op_repo.restore_with_op_type_name(old["id"], row["op_type_name"])
+        return True, False
+    return False, False
+
+
+def apply_route(conn, part, operations, preview, identities):
+    if not preview.get("_choices_projected"):
+        preview = preview_existing_route(conn, preview, operations)
+    if not preview["can_confirm_route"]:
+        raise WorkbenchCommandRejected("route_invalid", "路线中的工种或定额保护已变化，请重新预检。", 422)
+    op_repo = PartOperationRepository(conn)
+    existing = {row["seq"]: row for row in operations}
+    incoming = {row["sequence"] for row in preview["operations"]}
+    replaced = _protected_replacements(conn, operations, preview["operations"])
+    changed = _remove_absent_operations(op_repo, operations, incoming)
+    defaults = set()
+    for row in preview["operations"]:
+        row_changed, apply_defaults = _persist_route_operation(
+            op_repo, part["part_no"], row, existing.get(row["sequence"]), row["sequence"] in replaced, identities)
+        changed = row_changed or changed
+        if apply_defaults:
+            defaults.add(row["sequence"])
     if part["route_raw"] != preview["route_raw"] or part["route_parsed"] != "yes":
         PartRepository(conn).update(part["part_no"], {"route_raw": preview["route_raw"], "route_parsed": "yes"})
         changed = True
+    if defaults:
+        from .group_defaults import apply_default_groups
+
+        changed = apply_default_groups(conn, part["part_no"], defaults) or changed
     return changed

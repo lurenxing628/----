@@ -35,6 +35,9 @@ def candidate_case(tmp_path):
     conn = connect(path)
     assert conn.execute("SELECT version FROM SchemaVersion WHERE id=1").fetchone()[0] == CURRENT_SCHEMA_VERSION
     assert current_schema_contract_issues(conn) == []
+    # Historical locked plans in this fixture were made for an explicit 08:00-16:00 shift.
+    conn.execute("INSERT INTO WorkbenchCalendarDefaults(singleton,periods_json) VALUES (1,?)",
+                 ('[{"start":"08:00","end":"16:00","day_offset":0}]',))
     conn.execute("INSERT INTO OpTypes(op_type_id,name) VALUES ('T1','Turning')")
     conn.execute("INSERT INTO Machines(machine_id,name,op_type_id) VALUES ('M1','Original lathe','T1')")
     conn.execute("INSERT INTO Operators(operator_id,name) VALUES ('O1','Original operator')")

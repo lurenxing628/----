@@ -13,8 +13,6 @@ def test_real_external_group_and_frozen_seeds_are_piece_local(trial_case, merged
     case = trial_case
     ids = piece_layout(case, common=False)
     case.conn.execute("INSERT INTO Suppliers(supplier_id,name,op_type_id) VALUES ('S1','Supplier','T1')")
-    case.conn.execute("UPDATE BatchOperations SET source='external',supplier_id='S1',ext_days=0.25,"
-                      "machine_id=NULL,operator_id=NULL")
     group = "G1" if merged else None
     if merged:
         case.conn.execute("INSERT INTO ExternalGroups(group_id,part_no,start_seq,end_seq,merge_mode,total_days,supplier_id) "
@@ -22,6 +20,8 @@ def test_real_external_group_and_frozen_seeds_are_piece_local(trial_case, merged
     for seq in (20, 30):
         case.conn.execute("INSERT INTO PartOperations(part_no,seq,op_type_id,op_type_name,source,supplier_id,ext_days,ext_group_id) "
                           "VALUES ('P1',?,'T1','Turning','external','S1',0.25,?)", (seq, group))
+    case.conn.execute("UPDATE BatchOperations SET source='external',supplier_id='S1',ext_days=0.25,"
+                      "machine_id=NULL,operator_id=NULL")
     for index, piece in enumerate(("item-A", "item-B", "item-C")):
         ids[piece, 10] = case.operation(seq=10, piece_id=piece, op_code=piece + "-10", setup_hours=index,
                                        machine_id="M" + str(index + 1), operator_id="O" + str(index + 1))

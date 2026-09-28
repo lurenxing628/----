@@ -31,7 +31,7 @@ from tests.workbench.process_route_support import (
 def test_text_variants_use_real_op_types_and_v21_capabilities(route_conn, text):
     result = preview(route_conn, text)
     assert result["can_confirm_route"] is True
-    assert result["route_raw"] == text and result["normalized_input"] == "10数铣20热处理30表处理"
+    assert result["route_raw"] == text and result["normalized_input"] == "10: 数铣；20: 热处理；30: 表处理"
     assert result["counts"] == {"operations": 3, "recognized": 3, "unknown": 0}
     assert [(op["sequence"], op["source_suggestion"], op["external_days"]) for op in result["operations"]] == [
         (10, "internal", None), (20, "external", 3.75), (30, "external", 3.75)]
@@ -254,11 +254,13 @@ def test_missing_name_does_not_hide_duplicate_sequence(route_conn, body):
     assert [op["sequence"] for op in result["operations"]] == [10, 20]
 
 
-@pytest.mark.parametrize("name", ["数 铣", "工种二;新工种", "含3轴", "9" * (MAX_ROUTE_TEXT_BYTES - 1)])
+@pytest.mark.parametrize("name", ["数 铣", "工种二;新工种", "含3轴", "9" * (MAX_ROUTE_TEXT_BYTES - 3)],
+                         ids=["spaces", "separator", "digits", "capacity"])
 def test_structured_row_name_is_preserved_without_text_reparsing(route_conn, name):
     result = ProcessRoutePreviewService(route_conn).preview({"mode": "rows", "rows": [{"seq": 1, "op_type_name": name}]})
     assert result["can_confirm_route"] and result["operations"][0]["op_type_name"] == name
-    assert result["normalized_input"] == "1 " + name
+    reparsed = preview(route_conn, result["normalized_input"])
+    assert reparsed["can_confirm_route"] and [(row["sequence"], row["op_type_name"]) for row in reparsed["operations"]] == [(1, name)]
     assert "structured_name_preserved" in {d["code"] for d in result["diagnostics"]}
     assert not any(d["severity"] == "error" for d in result["diagnostics"])
 

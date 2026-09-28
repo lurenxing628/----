@@ -35,7 +35,7 @@ def test_month_switching_is_real_complete_and_read_only(calendar_api, year, mont
     assert len(data["cells"]) % 7 == 0 and data["stats"]["configured"] == 0
     for day in data["days"]:
         assert day["entity"] is None and day["calendar_ref"] is None and day["stored"] is None
-        assert day["fields"]["hours"] == (0 if date.fromisoformat(day["date"]).weekday() >= 5 else 8)
+        assert day["fields"]["hours"] == pytest.approx(0 if date.fromisoformat(day["date"]).weekday() >= 5 else 22 / 3)
         assert day["fields"]["eff"] == 100
     assert calendar_api.state() == before
     assert_no_private_facts(response)
@@ -61,7 +61,7 @@ def test_actual_night_policy_readonly_fields_and_public_identity(calendar_api):
     assert day["fields"]["eff"] == 87.5 and day["effective"]["efficiency"] == 0.875
     assert day["effective"]["window_end"] == "2026-09-10T06:30:00"
     assert day["effective"]["allowNormal"] == "no" and day["effective"]["allowUrgent"] == "yes"
-    assert calendar_api.day("2026-09-10")["effective"]["window_start"] == "2026-09-10T08:00:00"
+    assert calendar_api.day("2026-09-10")["effective"]["window_start"] == "2026-09-10T08:30:00"
     assert_no_private_facts(day)
 
 
@@ -79,18 +79,17 @@ def test_day_save_preserves_hidden_windows_and_personal_profile_priority(calenda
         assert personal.date_str == NIGHT and personal.efficiency == 0.625 and personal.shift_hours == 8.5
         assert personal.work_window()[0] == datetime(2026, 9, 9, 23, 15)
         profile = service.policy_for_datetime(datetime(2026, 9, 10, 22), operator_id="CAL-O")
-        assert profile.work_window() == (datetime(2026, 9, 10, 21, 15), datetime(2026, 9, 11, 5, 15))
+        assert profile.work_window() == (datetime(2026, 9, 10, 21, 15), datetime(2026, 9, 11, 4, 35))
         assert [tuple(row) for row in conn.execute("SELECT * FROM OperatorCalendar")] == preserved
 
 
 @pytest.mark.parametrize("fields", [{"hours": 6}, {"type": "rest"}])
-def test_incompatible_hidden_end_rejects_save_and_preview(calendar_api, fields):
-    before = calendar_api.state()
-    assert_error(calendar_api.save(fields), "constraint_conflict")
-    response = calendar_api.client.post(BASE + "/range/preview", json={"input": {
-        "start_date": NIGHT, "end_date": NIGHT, "fields": fields}})
-    assert_error(response, "constraint_conflict")
-    assert calendar_api.state() == before
+def test_night_shift_hours_or_rest_change_is_editable(calendar_api, fields):
+    response = calendar_api.save(fields)
+    assert response.status_code == 200, response.get_json()
+    row = calendar_api.row()
+    assert row["shift_start"] == "22:30"
+    assert row["shift_hours"] == (0 if fields.get("type") == "rest" else fields["hours"])
 
 
 def test_rest_delete_recreate_uses_new_identity_and_aba_stale_guards(calendar_api):
@@ -101,7 +100,7 @@ def test_rest_delete_recreate_uses_new_identity_and_aba_stale_guards(calendar_ap
     assert stored["effective"]["is_rest"] and stored["fields"]["hours"] == 0
     delete = calendar_api.day_body(day, action="delete")
     assert calendar_api.client.post(BASE + "/delete", json=delete).status_code == 200
-    assert calendar_api.row(day) is None and calendar_api.day(day)["effective"]["hours"] == 8
+    assert calendar_api.row(day) is None and calendar_api.day(day)["effective"]["hours"] == pytest.approx(22 / 3)
     assert_error(calendar_api.client.post(BASE + "/upsert", json=original), "stale_write")
     assert calendar_api.save(WORK, day).status_code == 200
     assert calendar_api.day(day)["calendar_ref"] != stored["calendar_ref"]
@@ -300,7 +299,7 @@ def test_configured_holiday_and_weekend_overtime_use_real_policy_counts(calendar
         service.upsert("2024-02-12", day_type="holiday", shift_hours=0, efficiency=0.75, allow_normal="no", allow_urgent="no")
     data = calendar_api.month(2024, 2)["data"]
     assert data["stats"] == {"configured": 2, "configured_work_days": 1, "work_days": 21,
-                              "rest_days": 8, "overrides": 2, "weekend_rest": 7, "effective_hours": 162}
+                              "rest_days": 8, "overrides": 2, "weekend_rest": 7, "effective_hours": pytest.approx(446 / 3)}
     holiday = next(item for item in data["days"] if item["date"] == "2024-02-12")
     assert holiday["explicit"] and holiday["stored"]["day_type"] == "holiday" and holiday["fields"]["type"] == "rest"
 

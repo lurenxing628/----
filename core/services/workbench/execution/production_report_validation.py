@@ -1,10 +1,13 @@
 """Resource and lifecycle constraints, rechecked under the outer command lock."""
 
+from core.models.resource_capabilities import machine_types
 from core.models.workbench_execution_input import reject
 from core.models.workbench_identity import WorkbenchEntityIdentity
 from core.services.personnel.operator_qualification import OperatorQualificationError, OperatorQualificationService
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
 from data.repositories.workbench_report_validation_repo import WorkbenchReportValidationRepository
+
+from .production_report_dependencies import ReportDependencies
 
 
 class ReportResourceValidator:
@@ -20,7 +23,7 @@ class ReportResourceValidator:
         for row in self.repo.entity_rows_with_machine_type(refs):
             self.entities[row["ref"]] = WorkbenchEntityIdentity(row["ref"], row["kind"], row["entity_key"], row["revision"], bool(row["active"]))
             if row["kind"] == "machine":
-                self.machine_types[row["entity_key"]] = row["machine_type"]
+                self.machine_types[row["entity_key"]] = set(machine_types({"op_type_id": row["machine_type"], "op_type_ids": row["op_type_ids"]}))
 
     def resolve(self, ref, kind):
         if ref is None:
@@ -39,7 +42,7 @@ class ReportResourceValidator:
         machine = self.resolve(values.get("actual_machine_ref"), "machine")
         operator = self.resolve(values.get("actual_operator_ref"), "operator")
         if machine is not None:
-            if not operation["op_type_id"] or self.machine_types.get(machine) != operation["op_type_id"]:
+            if not operation["op_type_id"] or operation["op_type_id"] not in self.machine_types.get(machine, set()):
                 reject("填的设备工种和这道工序对不上。请到资料总览核对设备工种。", "constraint_conflict", 409)
         if operator is not None:
             try:
@@ -93,14 +96,7 @@ def _constraint_signature(projection):
               r.actual_operator_ref) for r in projection.reports])
 
 
-def _successor_refs(conn, op):
-    rows = WorkbenchReportValidationRepository(conn).successor_operation_rows(op["batch_id"], op["piece_id"], op["seq"])
-    if len(rows) > 10000:
-        reject("本次报工涉及工序过多，请缩小范围。", "query_too_large", 413)
-    return [row["operation_ref"] for row in rows]
-
-
-def _downstream_conflicts(before, after, downstream, plans):
+def _downstream_conflicts(before, after, downstream, plans, dependencies):
     conflicts = []
     reopened = before.execution_state == "complete" and after.execution_state != "complete"
     for projection in downstream:
@@ -111,9 +107,18 @@ def _downstream_conflicts(before, after, downstream, plans):
         starts = [projection.first_actual_start]
         if planned:
             starts.append(planned["start_time"].replace(" ", "T"))
-        if finish and any(start and finish > start for start in starts):
+        if (finish and not dependencies.same_merged_cycle(after.operation_ref, projection.operation_ref)
+                and any(start and finish > start for start in starts)):
             conflicts.append({"code": "downstream_time_conflict", "operation_ref": projection.operation_ref})
     return conflicts
+
+
+def _upstream_conflicts(after, upstream, dependencies):
+    if after.first_actual_start is None:
+        return []
+    return [{"code": "upstream_time_conflict", "operation_ref": row.operation_ref} for row in upstream
+            if row.confirmed_finish and row.confirmed_finish > after.first_actual_start
+            and not dependencies.same_merged_cycle(after.operation_ref, row.operation_ref)]
 
 
 def _adopted_conflicts(before, after, current, revisions):
@@ -131,12 +136,17 @@ def _adopted_conflicts(before, after, current, revisions):
     return conflicts
 
 
-def correction_conflicts(conn, ledger, facts, before, after, revisions):
-    """Protect factual downstream production and adopted schedules, not inferred IDs."""
+def execution_conflicts(ledger, facts, before, after, revisions, *, dependencies=None, protect_plan=True):
+    """Check final actual neighbours; corrections also retain adopted-plan protection."""
     if _constraint_signature(before) == _constraint_signature(after):
         return []
-    refs = _successor_refs(conn, facts["operations"][before.operation_ref])
-    downstream = ledger.project_operations(refs) if refs else []
+    dependencies = dependencies or ReportDependencies(ledger, [after])
+    operation = facts["operations"][before.operation_ref]
+    refs = dependencies.relatives(operation)
+    upstream = dependencies.projections(dependencies.relatives(operation, predecessors=True))
+    downstream = dependencies.projections(refs)
     current = facts["current_tasks"].get(before.operation_ref)
-    plans = ledger.task_map(refs, facts["plan"]["plan_ref"])
-    return _downstream_conflicts(before, after, downstream, plans) + _adopted_conflicts(before, after, current, revisions)
+    plans = ledger.task_map(refs, facts["plan"]["plan_ref"]) if protect_plan else {}
+    return (_upstream_conflicts(after, upstream, dependencies)
+            + _downstream_conflicts(before, after, downstream, plans, dependencies)
+            + _adopted_conflicts(before, after, current, revisions))

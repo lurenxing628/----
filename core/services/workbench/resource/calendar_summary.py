@@ -4,6 +4,7 @@ import math
 from datetime import datetime, timedelta
 
 from core.errors import ValidationError
+from core.models.calendar_periods import period_hours
 from core.services.scheduler.calendar.service import CalendarService
 from core.services.scheduler.config.config_field_spec import MISSING_POLICY_ERROR, coerce_config_field
 from data.repositories.config_repo import ConfigRepository
@@ -47,6 +48,7 @@ def _effective(policy):
             "normal_effective_hours": hours if normal else 0.0, "urgent_effective_hours": hours if urgent else 0.0,
             "allow_normal": normal, "allow_urgent": urgent, "is_working": working, "is_rest": not working,
             "window_start": start.isoformat(timespec="seconds"), "window_end": end.isoformat(timespec="seconds"),
+            "windows": [{"start": left.isoformat(), "end": right.isoformat()} for left, right in policy.work_windows()],
             "crosses_midnight": end.date() > start.date(),
             "rest_reason": None if working else "zero_hours" if policy.shift_hours == 0 else "priorities_disabled"}
 
@@ -106,6 +108,7 @@ def resource_calendar_summary(conn, logger=None, *, clock=None):
             "time_basis": "factory_local", "week_start": first.isoformat(), "week_end": last.isoformat(),
             "basis": "全局班次按起始日期归到那一天；有效工时 = 班次时长 × 效率，普通件和急件按许可分别算。"
                      "跨夜不拆成两天；不算人员专属班表、班次、设备停机和当前占用；外协周期仍按自然日算。",
-            "standard_hours": {"status": "not_configured", "value": None, "source": None,
-                               "message": "尚未设置每天标准工时。"},
+            "standard_hours": {"status": "known", "value": period_hours(service._engine.default_periods()),
+                               "source": "factory_default_calendar", "message": "未单独设置的工作日按默认工作时段计算。"},
+            "default_periods": service._engine.default_periods(),
             "holiday_default_efficiency": _holiday_efficiency(conn, logger), "days": days, "stats": stats}

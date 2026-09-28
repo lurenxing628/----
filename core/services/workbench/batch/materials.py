@@ -1,0 +1,115 @@
+"""Maintain batch material requirements inside the guarded command transaction."""
+
+from datetime import date
+
+from core.models.enums import ReadyStatus
+from core.models.workbench_batch import number
+from core.models.workbench_batch_material import material_row_key, normalize_material_changes
+from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
+from core.services.material.stage_availability import covers_quantity, quantity
+from data.repositories.batch_material_repo import BatchMaterialRepository
+from data.repositories.batch_material_stage_repo import BatchMaterialStageRepository
+from data.repositories.batch_repo import BatchRepository
+
+from .facts import BatchFacts
+
+
+class WorkbenchBatchMaterialService:
+    def __init__(self, conn, logger=None):
+        self.conn = conn
+        self.reader = BatchFacts(conn, logger)
+        self.repo = BatchMaterialRepository(conn, logger)
+        self.batches = BatchRepository(conn, logger)
+        self.stages = BatchMaterialStageRepository(conn, logger)
+
+    def _proposed(self, ref, payload, batch, facts):
+        old = {material_row_key(ref, row): {**row, **self.stages.details(row["id"])}
+               for row in facts["BatchMaterials"] if row["batch_id"] == batch["batch_id"]}
+        if set(payload["removed_keys"]) - set(old):
+            raise WorkbenchCommandRejected("stale_write", "要移除的物料需求已变化，请刷新后重新核对。")
+        final = {key: dict(row) for key, row in old.items() if key not in payload["removed_keys"]}
+        materials = {row["material_id"]: row for row in facts["Materials"]}
+        for index, item in enumerate(payload["rows"]):
+            key = item["row_key"]
+            final[key or "new:" + str(index)] = self._material_row(item, key, old, materials, batch, facts)
+        return old, final
+
+    def _material_row(self, item, key, old, materials, batch, facts):
+        if key is not None and key not in old:
+            raise WorkbenchCommandRejected("stale_write", "要修改的物料需求已变化，请刷新后重新核对。")
+        identity = self.reader.resolve(item["material_ref"], "material")
+        if key is not None and old[key]["material_id"] != identity.entity_key:
+            raise WorkbenchCommandRejected("constraint_conflict", "已有需求不能直接更换物料，请明确移除后重新新增。")
+        if key is None and materials[identity.entity_key]["status"] != "active":
+            raise WorkbenchCommandRejected("constraint_conflict", "所选物料已停用，请选择启用的物料。")
+        operation = old[key]["operation_id"] if key else None
+        if "operation_ref" in item:
+            operation = None
+            if item["operation_ref"] is not None:
+                match = next((row for row in facts["BatchOperations"] if row["batch_id"] == batch["batch_id"]
+                              and facts["operation_refs"][row["id"]] == item["operation_ref"]), None)
+                if match is None or match.get("piece_id") is not None:
+                    raise WorkbenchCommandRejected("constraint_conflict", "请选择本批次有效的整批用料工序。")
+                operation = match["id"]
+        return {"id": old[key]["id"] if key else None, "operation_id": operation,
+            "arrivals": item.get("arrivals", old[key]["arrivals"] if key else []),
+            "batch_id": batch["batch_id"], "material_id": identity.entity_key,
+            "required_qty": item["required_quantity"], "available_qty": item["available_quantity"]}
+
+    @staticmethod
+    def _ready(rows):
+        codes, flags = set(), []
+        for row in rows:
+            if (row["material_id"], row["operation_id"]) in codes:
+                raise WorkbenchCommandRejected("constraint_conflict", "同一物料在同一道用料工序只能保留一条需求，请合并后再保存。")
+            codes.add((row["material_id"], row["operation_id"]))
+            required = number(row["required_qty"], "required_quantity", positive=True)
+            available = number(row["available_qty"], "available_quantity")
+            if required is None or available is None:
+                raise WorkbenchCommandRejected("invalid_input", "需求量和到料量不能为空，请明确填写。", 422)
+            available = quantity(available) + sum(quantity(item["quantity"]) for item in row["arrivals"] if item["arrival_date"] <= date.today().isoformat())
+            row["ready_status"] = ReadyStatus.YES.value if covers_quantity(available, quantity(required)) else ReadyStatus.NO.value
+            flags.append((row["ready_status"] == ReadyStatus.YES.value, available > 0))
+        if flags and all(flag[0] for flag in flags):
+            return ReadyStatus.YES.value
+        return ReadyStatus.PARTIAL.value if any(flag[1] for flag in flags) else ReadyStatus.NO.value
+
+    def apply(self, ref, payload):
+        if not self.conn.in_transaction:
+            raise RuntimeError("物料需求维护必须由工作台命令事务持有。")
+        payload = normalize_material_changes(payload)
+        batch, facts = self.reader.batch(ref), self.reader.load()
+        if type(batch["quantity"]) is not int or batch["quantity"] < 0:
+            raise WorkbenchCommandRejected("constraint_conflict", "请先在批次基础信息中填好数量，再核对物料需求。")
+        old, final = self._proposed(ref, payload, batch, facts)
+        ready = self._ready(list(final.values()))
+        changed = ready != batch["ready_status"] or bool(payload["removed_keys"])
+        for key in payload["removed_keys"]:
+            self.repo.delete(old[key]["id"])
+        for key, row in final.items():
+            fields = {name: row[name] for name in ("required_qty", "available_qty", "ready_status")}
+            if row["id"] is None:
+                created = self.repo.add(batch["batch_id"], row["material_id"], **fields)
+                row["id"] = created.id
+                self.stages.replace(row["id"], row["operation_id"], row["arrivals"])
+                changed = True
+            elif any(old[key][name] != value for name, value in fields.items()):
+                self.repo.update_qty(row["id"], **fields)
+                changed = True
+            if key in old and any(old[key][name] != row[name] for name in ("operation_id", "arrivals")):
+                self.stages.replace(row["id"], row["operation_id"], row["arrivals"])
+                changed = True
+            if key not in old or any(item["row_key"] == key for item in payload["rows"]):
+                previous = next((item["batch_quantity"] for item in facts.get("BatchMaterialReviews", []) if item["requirement_id"] == row["id"]), None)
+                if previous != batch["quantity"]:
+                    self.stages.review(row["id"], batch["quantity"])
+                    changed = True
+        reviewed = {item["requirement_id"]: item["batch_quantity"] for item in facts.get("BatchMaterialReviews", [])}
+        touched = {item["row_key"] for item in payload["rows"]}
+        if any(key not in touched and key in old and reviewed.get(row["id"], batch["quantity"]) != batch["quantity"]
+               for key, row in final.items()):
+            ready = "no"
+        if changed:
+            self.batches.update(batch["batch_id"], {"ready_status": ready})
+        return WorkbenchCommandOutcome("committed" if changed else "unchanged", {
+            "entity_ref": ref, "business_code": batch["batch_id"], "material_count": len(final), "ready_status": ready})

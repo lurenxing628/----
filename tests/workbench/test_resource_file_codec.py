@@ -115,9 +115,9 @@ def test_xlsx_template_carries_the_instruction_sheet_and_one_line_notes(resource
             assert ws.max_row == 1 and result.row_count == 0
             assert all(cell.comment and "填写说明" in cell.comment.text for cell in ws[1])
             assert all(len(cell.comment.text) < 80 for cell in ws[1])
-            # 多值列的示例必须是 JSON 数组，否则用户会照着逗号写。
+            # 多值列直接使用计划员熟悉的编号列表。
             if kind in ("operator", "supplier"):
-                assert any(cell.comment and '["OT' in cell.comment.text for cell in ws[1])
+                assert any(cell.comment and 'OT' in cell.comment.text and '["' not in cell.comment.text for cell in ws[1])
         finally:
             wb.close()
 

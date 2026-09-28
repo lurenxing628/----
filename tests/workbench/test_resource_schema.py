@@ -41,8 +41,10 @@ from tests.workbench.legacy_migration_current_support import (
     V30_TABLES,
     V31_TABLES,
     V32_TABLES,
+    V33_TABLES,
     assert_v30_source_maps_only,
     assert_v31_receipt_maps_only,
+    assert_v33_contexts,
 )
 from tests.workbench.plan_identity_support import IDENTITY_TABLES, LEDGER_TABLES, load_v24_schema, table_snapshot
 from tests.workbench.resource_entity_support import (
@@ -64,12 +66,13 @@ def _assert_v20_upgrade_metadata(conn, before):
     assert {name: after[name] for name in before} == before
     empty_tables = set(NEW_TABLES) | set(WORKFLOW_TABLES + LEDGER_TABLES[1:] + RUN_TABLES + V27_TABLES
                                        + V29_EMPTY_TABLES + V30_EMPTY_TABLES)
-    added_tables = empty_tables | set(IDENTITY_TABLES + LEDGER_TABLES + V29_TABLES + V30_TABLES + V31_TABLES + V32_TABLES)
+    added_tables = empty_tables | set(IDENTITY_TABLES + LEDGER_TABLES + V29_TABLES + V30_TABLES + V31_TABLES + V32_TABLES + V33_TABLES)
     assert set(after) - set(before) == added_tables
     assert all(not table_rows(conn, table) for table in empty_tables)
     assert_v29_source_maps_only(conn)
     assert_v30_source_maps_only(conn)
     assert_v31_receipt_maps_only(conn)
+    assert_v33_contexts(conn)
 
 
 def test_real_v20_upgrade_is_additive_preserves_refs_and_matches_fresh_ddl(schema_conn, mem_conn, tmp_path, schema_path):

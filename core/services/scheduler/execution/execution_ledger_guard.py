@@ -1,6 +1,7 @@
 """Represent only verified ledger intervals in the single-row scheduler contract."""
 
 from core.errors import AppError, ErrorCode
+from core.models.enums import SourceType
 from core.models.operation_execution_event import parse_operation_event_time
 
 _STATUSES = {"unreported": "not_started", "started": "processing", "partial": "processing",
@@ -76,15 +77,22 @@ def _protected_intervals(projection, status, reasons):
     return intervals
 
 
-def ledger_fact_changes(fact, projection, resources):
+def ledger_fact_changes(fact, projection, resources, *, source):
     if not _requires_ledger_projection(fact, projection):
         return None
     reasons = []
     status = _protected_status(projection, reasons)
     intervals = _protected_intervals(projection, status, reasons)
     evidence = [report.to_dict() for report in projection.reports] + projection.legacy_facts
-    machine = _resource_id([row["actual_machine_ref"] for row in evidence], resources, "machine", reasons)
-    operator = _resource_id([row["actual_operator_ref"] for row in evidence], resources, "operator", reasons)
+    machine, operator = None, None
+    if source == SourceType.EXTERNAL.value:
+        if any(row["actual_machine_ref"] is not None or row["actual_operator_ref"] is not None for row in evidence):
+            reasons.append("execution_ledger_external_resource_conflict")
+    elif source == SourceType.INTERNAL.value:
+        machine = _resource_id([row["actual_machine_ref"] for row in evidence], resources, "machine", reasons)
+        operator = _resource_id([row["actual_operator_ref"] for row in evidence], resources, "operator", reasons)
+    else:
+        reasons.append("execution_ledger_operation_source_invalid")
     return {"actual_status": status, "actual_start_time": _actual_time(projection.first_actual_start),
             "actual_end_time": _actual_time(projection.confirmed_finish), "actual_machine_id": machine,
             "actual_operator_id": operator, "ledger_operation_ref": projection.operation_ref,

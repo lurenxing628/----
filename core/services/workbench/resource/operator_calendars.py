@@ -14,6 +14,7 @@ from typing import Any, Callable, Dict, List, Optional
 
 from core.errors import ValidationError
 from core.infrastructure.transaction import TransactionManager, in_transaction_context
+from core.models.calendar_periods import decode_periods
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
 from core.models.workbench_operator_calendar import (
     normalize_operator_calendar_input,
@@ -21,11 +22,25 @@ from core.models.workbench_operator_calendar import (
     operator_domain_fields,
     operator_range_dates,
 )
+from core.services.scheduler.calendar.defaults import read_default_periods
 from core.services.scheduler.calendar.service import CalendarService
 from data.repositories.workbench_calendar_query_repo import WorkbenchCalendarQueryRepository
 
 _PUBLIC_FIELDS = ("day_type", "shift_start", "shift_end", "shift_hours", "efficiency",
                   "allow_normal", "allow_urgent", "remark")
+
+
+def _patch_day_hours(payload, fields, before):
+    payload.update(operator_domain_fields(fields))
+    if "shiftEnd" in fields and fields["shiftEnd"] is None:
+        payload.pop("shift_hours", None)
+    if fields.get("type") == "work" and before["row"] is not None and before["row"]["day_type"] == "holiday":
+        payload.pop("shift_hours", None)
+    if payload.get("day_type") == "holiday":
+        payload["shift_start"] = payload["shift_end"] = None
+        payload["shift_hours"] = 0
+        if payload.get("periods_json") is not None or "periods" in payload:
+            payload["periods"] = []
 
 
 def _date_key(value: Any) -> str:
@@ -109,7 +124,7 @@ class WorkbenchOperatorCalendarService:
         cells += [None] * (-len(cells) % 7)
         return {"operator_code": self.operator_code, "year": year, "month": month,
                 "as_of": now.isoformat(timespec="seconds"), "time_basis": "factory_local",
-                "days": days, "cells": cells,
+                "days": days, "cells": cells, "default_periods": read_default_periods(self.conn),
                 "previous_month": self._adjacent(year, month, -1), "next_month": self._adjacent(year, month, 1),
                 "stats": {"configured": sum(day["explicit"] for day in days),
                           "work_days": sum(day["explicit"] and day["row"]["shift_hours"] > 0 for day in days)}}
@@ -145,17 +160,18 @@ class WorkbenchOperatorCalendarService:
     def _proposed(self, fields: Dict[str, Any], before: Dict[str, Any]) -> Dict[str, Any]:
         """以这一天的原行为基底再打补丁，没给的项保持原样。
 
-        工时不进基底：它由领域层按班次起止重算。改成休息日时要把班次清掉，否则基底里的班次会把工时带回来，
-        变成"休息日还有 8.5 小时"。
+        旧行可能只保存开始和工时；非时间修改须保留这段工时。
+        明确填写起止或多时段时由领域层重算；改休息日时清空班次和工时。
         """
         payload: Dict[str, Any] = {"operator_id": self.operator_code, "date": before["date"]}
         if before["row"] is not None:
             payload.update({key: before["row"][key] for key in
-                            ("day_type", "shift_start", "shift_end", "efficiency",
-                             "allow_normal", "allow_urgent", "remark")})
-        payload.update(operator_domain_fields(fields))
-        if payload.get("day_type") == "holiday":
-            payload["shift_start"] = payload["shift_end"] = None
+                            ("day_type", "shift_start", "shift_end", "shift_hours", "efficiency",
+                             "allow_normal", "allow_urgent", "remark", "periods_json")})
+        if payload.get("periods_json") is not None and "periods" not in fields and fields.get("type") != "rest":
+            if {"shiftStart", "shiftEnd"} & fields.keys():
+                raise ValidationError("这一天已按多时段设置，请修改逐段起止时间。", field="fields.periods")
+        _patch_day_hours(payload, fields, before)
         proposed = self._calendar._admin._build_operator_calendar_from_payload(payload).to_dict()
         if self._calendar._admin._build_operator_calendar_from_payload(proposed).to_dict() != proposed:
             raise WorkbenchCommandRejected("constraint_conflict", "填的班次换算后存不稳，请核对班次起止。")
@@ -218,5 +234,6 @@ class WorkbenchOperatorCalendarService:
         row = state["row"]
         return {"date": state["date"], "explicit": state["explicit"],
                 "calendar_ref": state["calendar_ref"],
+                "periods": decode_periods(row.get("periods_json")) if row is not None else None,
                 **({key: row[key] for key in _PUBLIC_FIELDS} if row is not None
                    else {key: None for key in _PUBLIC_FIELDS})}

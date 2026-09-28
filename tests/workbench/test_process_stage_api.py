@@ -26,7 +26,7 @@ def test_detail_preview_and_three_confirmations_preserve_every_business_row(stag
     api = stage_api
     api.execute("UPDATE PartOperations SET op_type_id='PROC-Q',setup_hours=5.5,unit_hours=6.75 WHERE part_no=? AND seq=10", (PART,))
     if mode == "rows":
-        api.execute("UPDATE Parts SET route_raw=? WHERE part_no=?", ("10车削\n20热处理\n30检验", PART))
+        api.execute("UPDATE Parts SET route_raw=? WHERE part_no=?", ("10: 车削；20: 热处理；30: 检验", PART))
     before = api.preserved()
     original = api.detail()
     assert original["data"]["workflow"]["origin"] == "legacy"
@@ -130,7 +130,7 @@ def test_exact_group_ack_is_required_and_unrelated_history_is_preserved(stage_ap
         if old["part_no"] == PART and old["seq"] == 20:
             expected["ext_group_id"] = None
             expected.update({"status": "deleted"} if action == "route_confirm" else
-                            {"source": "internal", "op_type_id": "PROC-IN", "supplier_id": None})
+                            {"source": "internal", "op_type_id": "PROC-IN", "supplier_id": None, "setup_hours": None, "unit_hours": None, "ext_days": None})
         assert new == expected
     for table in ("Batches", "BatchOperations", "Schedule", "OpTypes", "Suppliers"):
         assert api.snapshot()[1][table] == before[1][table]
@@ -472,8 +472,7 @@ def test_merged_external_null_keeps_group_total_and_reaches_ready(stage_api, pre
     api.confirm("hours_confirm", payload)
     assert api.detail()["data"]["workflow"]["ready"]
     assert api.rows("ExternalGroups") == old_groups
-    for old, new in zip(old_ops, api.rows("PartOperations")):
-        assert new == ({**old, "ext_days": None} if old["part_no"] == PART and old["seq"] == 20 else old)
+    assert api.rows("PartOperations") == old_ops
 
 
 @pytest.mark.parametrize("grouped", (False, True))

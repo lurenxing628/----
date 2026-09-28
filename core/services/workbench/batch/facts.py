@@ -28,10 +28,26 @@ class BatchFacts:
             return self._facts
         with TransactionManager(self.conn).transaction():
             tables = self.repo.whole_tables()
+            tables.update(self._versioned_tables())
             workflow = workflow_snapshot(self.conn)
             operation_refs = self.plan_refs.get_operation_refs(row["id"] for row in tables["BatchOperations"])
             return {**tables, "workflow": workflow, "operation_refs": operation_refs,
                     "execution": read_execution(self.conn, operation_refs.values())}
+
+    def _versioned_tables(self):
+        state = self.repo.versioned_facts()
+        version = state["version"]["version"] if state["version"] else None
+        result = {}
+        for name, since in (("WorkbenchOutsourcingReceipts", 30), ("BatchExternalContexts", 33)):
+            rows = state["tables"][name]
+            if rows is None:
+                if (type(version) is not int or version >= since or
+                        name == "WorkbenchOutsourcingReceipts" and state["has_outsourcing_commands"]):
+                    raise WorkbenchCommandRejected("batch_facts_unavailable", "批次外协资料结构不完整，不能继续维护，请联系维护人员核对。", 503)
+                # An explicitly older schema has never supplied this table; no current records are inferred.
+                rows = []
+            result[name] = rows
+        return result
 
     def fingerprint(self):
         return input_fingerprint(_plain(self.load()))
@@ -73,19 +89,44 @@ def related(facts, batch):
 
 
 def require_unreferenced(facts, batch):
-    if related(facts, batch)["protected"]:
+    relations = related(facts, batch)
+    if relations["outsourcing_receipts"]:
+        raise WorkbenchCommandRejected("constraint_conflict", "这个批次已有外协发出或回厂登记，不能删除、重建工序、改数量或更换工序供应商，以免原登记无法继续核对回厂。")
+    if relations["protected"]:
         raise WorkbenchCommandRejected("constraint_conflict", "这个批次已经进了计划、试调或现场报工，不能删除、重建工序或改数量。")
 
 
 def group_protected(group, batch):
-    return bool(group["plans"] or group["events"] or group["execution_protected"]
+    return bool(group["plans"] or group["events"] or group["execution_protected"] or group["outsourcing_receipts"]
                 or batch["status"] in ("scheduled", "processing", "completed")
                 or any(row["status"] != "pending" for row in group["operations"]))
 
 
+def require_deletable(facts, batch):
+    require_unreferenced(facts, batch)
+    relations = related(facts, batch)
+    if relations["quantity_splits"]:
+        raise WorkbenchCommandRejected("constraint_conflict", "这个批次有数量拆分记录，需保留原批与子批以核对数量，不能删除。")
+    if relations["materials"]:
+        raise WorkbenchCommandRejected("constraint_conflict", "这个批次还挂着物料需求，不能直接删除。")
+
+
+def _index_outsourcing_receipts(facts, result):
+    batch_refs = {row["ref"]: row["entity_key"] for row in facts["WorkbenchEntityRefs"] if row["kind"] == "batch" and row["active"]}
+    for receipt in facts["WorkbenchOutsourcingReceipts"]:
+        owner = batch_refs.get(receipt["batch_ref"])
+        if owner in result:
+            result[owner]["outsourcing_receipts"].append(receipt)
+
+
 def index_relations(facts):
     result = {row["batch_id"]: {"operations": [], "plans": [], "events": [], "reports": [], "materials": [],
-                              "execution_protected": False} for row in facts["Batches"]}
+                              "outsourcing_receipts": [], "quantity_splits": [], "execution_protected": False} for row in facts["Batches"]}
+    _index_outsourcing_receipts(facts, result)
+    for row in facts["BatchQuantitySplits"]:
+        for owner in {row["source_batch_id"], row["child_batch_id"]}:
+            if owner in result:
+                result[owner]["quantity_splits"].append(row)
     owners = {}
     execution = facts["execution"]
     legacy = {} if execution["available"] else old_event_bindings(facts)

@@ -41,6 +41,9 @@ def trial_case(tmp_path):
     conn.execute("BEGIN IMMEDIATE")
     install_workbench_trial_schema(conn)
     conn.commit()
+    # The saved plans in this fixture explicitly use the historical eight-hour shift.
+    conn.execute("INSERT INTO WorkbenchCalendarDefaults(singleton,periods_json) VALUES (1,?)",
+                 ('[{"start":"08:00","end":"16:00","day_offset":0}]',))
     conn.execute("INSERT INTO OpTypes(op_type_id,name) VALUES ('T1','Turning')")
     conn.execute("INSERT INTO Parts(part_no,part_name) VALUES ('P1','Original part')")
     for i in (1, 2, 3):

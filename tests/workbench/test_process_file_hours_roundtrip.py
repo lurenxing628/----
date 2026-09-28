@@ -38,9 +38,10 @@ def test_real_export_null_na_roundtrip_preserves_hidden_facts_and_stamps(hours_c
     decoded = decode_rows("hours", content, fmt)
     assert all(not row["errors"] for row in decoded)
     values = {row["values"]["sequence"]: row["values"] for row in decoded}
-    assert values[1]["external_days"] is None and values[1]["group_total_days"] is None
-    assert values[3]["setup_hours"] is None and values[3]["unit_hours"] is None
-    assert values[3]["group_total_days"] == (6.75 if mode == "merged" else None)
+    assert "external_days" not in values[1] and "group_total_days" not in values[1]
+    assert "setup_hours" not in values[3] and "unit_hours" not in values[3]
+    assert values[3].get("group_total_days") == (6.75 if mode == "merged" else None)
+    assert "group_total_days" not in values[5]
     before = snapshot(hours_conn)
     service = WorkbenchProcessFileService(hours_conn)
     preview, extra = service.preview_import("hours", content, file_format=fmt, target_ref=part_ref(hours_conn))

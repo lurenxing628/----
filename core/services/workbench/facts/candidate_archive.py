@@ -8,6 +8,7 @@ from data.repositories.workbench_run_repo import WorkbenchRunRepository
 
 from .candidate_projection import candidate_summary, dispositions, scheduled_ids, validate_manifest
 from .candidate_store import CandidateStore
+from .preflight_dependencies import material_deferred_ids
 from .run_policy import require_admission
 
 
@@ -31,18 +32,27 @@ def load_adoption_candidate(conn, candidate_ref):
     validate_manifest(run, candidates, receipt)
     candidate = next(row for row in candidates if row["candidate_ref"] == candidate_ref)
     scope = dispositions(receipt)
-    summary = candidate_summary(candidate, scope)
-    if run["state"] != "complete" or candidate["status"] != "completed" or summary["completeness"] != "complete":
-        raise CandidateAdoptionBlocked("candidate_incomplete", "这次排产或这个候选方案没有排完，不能采用。请重新排产后再试。")
-    ids = scheduled_ids(candidate)
-    if not ids or scope is None or ids != {row["op_id"] for row in scope.values()}:
-        raise CandidateAdoptionBlocked("candidate_scope_incomplete", "这个候选方案没有排全排产时选定的工序，不能采用。请重新排产后再试。")
-    artifact = candidate["artifact"]
-    _require_complete_summary(artifact, ids)
+    capture = store.capture(run_ref)
+    ids = require_candidate_scope(run, candidates, candidate, scope, capture)
     tasks = store.tasks(candidate_ref)
     if len(tasks) != len(ids):
         raise CandidateAdoptionBlocked("candidate_artifact_invalid", "这个候选方案的工序明细条数对不上，不能采用。请重新排产后再试。")
-    return candidate, scope, tasks, store.capture(run_ref)
+    return candidate, scope, tasks, capture
+
+
+def require_candidate_scope(run, candidates, candidate, scope, capture):
+    """Same archived scope proof for direct adoption and candidate-based trials."""
+    summary = candidate_summary(candidate, scope)
+    deferred = material_deferred_ids(scope.values(), capture["input"]) if scope is not None else set()
+    stage_scope = bool(deferred) and run["state"] in ("complete", "partial") and all(row["status"] == "completed" for row in candidates)
+    if (candidate["status"] != "completed" or
+            ((run["state"] != "complete" or summary["completeness"] != "complete") and not stage_scope)):
+        raise CandidateAdoptionBlocked("candidate_incomplete", "这次排产或这个候选方案没有排完，不能采用。请重新排产后再试。")
+    ids = scheduled_ids(candidate)
+    if not ids or scope is None or ids != {row["op_id"] for row in scope.values()} - deferred:
+        raise CandidateAdoptionBlocked("candidate_scope_incomplete", "这个候选方案没有排全排产时选定的工序，不能采用。请重新排产后再试。")
+    _require_complete_summary(candidate["artifact"], ids)
+    return ids
 
 
 def _require_complete_summary(artifact, ids):

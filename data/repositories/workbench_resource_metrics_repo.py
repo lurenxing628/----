@@ -8,6 +8,7 @@ class WorkbenchResourceMetricsRepository(BaseRepository):
         sources = {
             "op_type": ("OpTypes", "op_type_id"),
             "machine": ("Machines", "machine_id"),
+            "machine_capabilities": ("MachineOpTypes", "machine_id,op_type_id"),
             "operator": ("Operators", "operator_id"),
             "supplier": ("Suppliers", "supplier_id"),
             "machine_group": ("WorkbenchMachineGroups", "group_id"),
@@ -28,7 +29,7 @@ class WorkbenchResourceMetricsRepository(BaseRepository):
             return {}
         if len(codes) > 200:
             raise ValueError("Resource projection pages are limited to 200 work types")
-        tables = {"machines": "Machines", "legacy_suppliers": "Suppliers",
+        tables = {"machine_capabilities": "MachineOpTypes", "machines": "Machines", "legacy_suppliers": "Suppliers",
                   "supplier_capabilities": "WorkbenchSupplierOpTypes", "skills": "OperatorSkill",
                   "part_operations": "PartOperations", "batch_operations": "BatchOperations"}
         result = {code: dict.fromkeys(tables, 0) for code in codes}

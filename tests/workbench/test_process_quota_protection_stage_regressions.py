@@ -10,7 +10,7 @@ from tests.workbench.process_commands_support import stage_database
 
 @pytest.mark.parametrize("check", [
     legacy.test_zero_hours_need_explicit_unit_review_but_setup_zero_is_normal,
-    legacy.test_hours_keep_per_operation_and_merged_totals_independent,
+    legacy.test_hours_edit_effective_merged_total_and_keep_member_history,
     legacy.test_separate_group_hidden_total_never_reset_by_hours,
     legacy.test_merged_group_with_only_total_days_accepts_null_member_cycle,
     legacy.test_10000_existing_operations_can_confirm_source_and_hours_without_truncation,

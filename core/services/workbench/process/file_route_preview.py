@@ -13,6 +13,7 @@ from .file_values import typed_value
 from .part_actions import WorkbenchProcessPartActionService
 from .projection import project_group, public_sequence, require_ref
 from .route_apply import affected_group_rows
+from .route_choices import preview_existing_route, route_choice_context
 from .route_preview import ProcessRoutePreviewService
 
 
@@ -44,11 +45,28 @@ def _changed_sequences(operations, preview):
     return changed
 
 
-def _route_summary(preview):
+def _same_template_route(part, existing, preview):
+    return (part is not None and part["route_parsed"] == "yes"
+            and sorted((op["seq"], op["op_type_name"]) for op in existing if op["status"] == "active")
+            == sorted((op["sequence"], op["op_type_name"]) for op in preview["operations"]))
+
+
+def _route_summary(preview, existing):
     diagnostics = [{**row, **({"sequence": public_sequence(row["sequence"])} if "sequence" in row else {})}
                    for row in preview["diagnostics"]]
+    before = {row["seq"]: row["op_type_name"] for row in existing if row["status"] == "active"}
+    after = {row["sequence"]: row["op_type_name"] for row in preview["operations"]}
+    differences = []
+    for sequence in sorted(set(before) | set(after)):
+        change = "added" if sequence not in before else "removed" if sequence not in after else \
+            "retained" if before[sequence] == after[sequence] else "changed"
+        differences.append({"sequence": public_sequence(sequence), "change": change,
+                            "before": before.get(sequence), "after": after.get(sequence)})
     return {"counts": dict(preview["counts"]), "diagnostics": diagnostics,
-            "can_confirm_route": preview["can_confirm_route"]}
+            "can_confirm_route": preview["can_confirm_route"], "differences": differences,
+            "operations": [{"sequence": public_sequence(row["sequence"]), "op_type_name": row["op_type_name"],
+                            "source_suggestion": row["source_suggestion"], "supplier_label": row["supplier_label"],
+                            "external_days": row["external_days"]} for row in preview["operations"]]}
 
 
 class RouteFilePreview:
@@ -68,6 +86,7 @@ class RouteFilePreview:
         self.target_ref, self.stack = target_ref, stack
         self.parser = ProcessRoutePreviewService(conn, logger)
         self.parser_ready = False
+        self.choices = None
 
     def row(self, source):
         row = action_row(source["row"])
@@ -121,6 +140,7 @@ class RouteFilePreview:
         route_changed = after["route_raw"] is not None if part is None else after["route_raw"] != before["route_raw"]
         if route_changed:
             self._route(row, part)
+            route_changed = row["related"]["route"] is not None
         row["changes"] = {} if before is None else {
             key: {"before": before[key], "after": after[key]} for key in COLUMNS["route"] if before[key] != after[key]}
         row["result"] = "new" if part is None else "update" if row["changes"] else "unchanged"
@@ -170,22 +190,39 @@ class RouteFilePreview:
         raw = row["after"]["route_raw"]
         if raw is None:
             raise ValidationError("已有工艺路线不能用 \\N 清除；文件导入不会据此删掉原模板。请到基础资料操作。", field="route_raw")
-        if not self.parser_ready:
-            self.stack.enter_context(self.parser.reference_snapshot())
-            self.parser_ready = True
-        preview = self.parser.preview({"mode": "text", "route_raw": raw})
-        row["route_summary"] = _route_summary(preview)
+        code = row["business_code"]
+        existing = self.operations[code] if part is not None else []
+        preview = self._parse_route(raw, existing)
+        row["route_summary"] = _route_summary(preview, existing)
         if not preview["can_confirm_route"]:
             raise WorkbenchCommandRejected("route_invalid", "工艺路线无效，这批不能导入。请按下面的逐条提示改好后重新预检。", 422)
-        code = row["business_code"]
+        if _same_template_route(part, existing, preview):
+            # The readable export may use a different spelling of the same route.
+            # Keep existing confirmations and the original stored text on a semantic no-op.
+            row["after"]["route_raw"] = row["before"]["route_raw"]
+            return []
         operations, groups = self._check_template(code) if part is not None else ([], [])
         affected = affected_group_rows(groups, operations, _changed_sequences(operations, preview))
         row["related"] = {"route": preview, "affected_groups": [{"ref": group["ref"], "group_id": group["group_id"]}
                                                                for group in affected]}
         if part is not None:
-            row["expected"]["operations"] = [{key: op[key] for key in ("id", "seq", "status", "op_type_name")}
-                                              for op in operations]
+            fields = ("id", "seq", "status", "op_type_name", "op_type_id", "source", "supplier_id", "ext_days",
+                      "setup_hours", "unit_hours", "ref", "ext_group_id", "part_no")
+            row["expected"]["operations"] = [{key: op[key] for key in fields} for op in operations]
         return affected
+
+    def _parse_route(self, raw, existing):
+        """Reuse one file-wide reference snapshot and retain explicit choices."""
+        if not self.parser_ready:
+            self.stack.enter_context(self.parser.reference_snapshot())
+            self.parser_ready = True
+        preview = self.parser.preview({"mode": "text", "route_raw": raw})
+        if not existing:
+            return preview
+        if self.choices is None:
+            self.choices = route_choice_context(self.parser.conn,
+                                                [op for rows in self.operations.values() for op in rows])
+        return preview_existing_route(self.parser.conn, preview, existing, context=self.choices)
 
     def affected_groups(self, rows):
         refs = {group["ref"] for row in rows if row["result"] != "rejected"
