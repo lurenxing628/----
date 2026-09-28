@@ -172,7 +172,7 @@
     return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", null, value.start_date || '起日未记录', " \u81F3 ", value.end_date || '止日未记录'), /*#__PURE__*/React.createElement("small", null, "\u7269\u6599\u653E\u884C\uFF1A", value.material_strategy === null ? '未记录' : {
       strict: '整批齐套',
       stage: '按工序齐套',
-      split: '预览确认分批'
+      split: '预检确认分批'
     }[value.material_strategy || 'strict']), /*#__PURE__*/React.createElement("small", null, "\u9009\u6279 ", value.batch_count === null ? '未记录' : number(value.batch_count) + ' 批', " \xB7 \u9F50\u5957", value.ready_check === null ? '未记录' : value.ready_check ? '开启' : '关闭'), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "\u6392\u4EA7\u8BBE\u7F6E"), /*#__PURE__*/React.createElement("small", null, "\u7F3A\u8D44\u6E90\uFF1A", {
       auto_assign: '自动分配',
       exclude: '暂不排'

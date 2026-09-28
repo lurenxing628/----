@@ -41,7 +41,7 @@ def allocate(row, entries, needed, day):
             source.append({"arrival_date": arrival["arrival_date"], "quantity": float(amount - used)})
         remaining -= used
     if remaining and not covers_quantity(needed - remaining, needed):
-        raise WorkbenchCommandRejected("material_not_ready", "可用物料不足，请重新预览可开工数量。")
+        raise WorkbenchCommandRejected("material_not_ready", "可用物料不足，请重新预检可开工数量。")
     return float(take), float(initial - take), child, source
 
 

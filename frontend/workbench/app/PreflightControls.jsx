@@ -11,9 +11,9 @@
     return <section aria-labelledby="pf-rules-title"><h3 id="pf-rules-title">本次排产规则</h3><div className="pf-rows">
       <div className="pf-rule"><strong>齐套检查</strong><Segment label="齐套检查" value={value.ready_check} choices={[[true, '开启'], [false, '关闭']]} disabled={disabled} onChange={ready_check => onChange({ ready_check, ...(ready_check ? {} : { material_strategy: 'strict' }) })} /></div>
       <div className="pf-rule"><strong>物料放行方式</strong><Segment label="物料放行方式" value={value.material_strategy || 'strict'}
-        choices={[["strict", '整批齐套'], ["stage", '按工序齐套'], ["split", '预览分批开工']]} disabled={disabled}
+        choices={[["strict", '整批齐套'], ["stage", '按工序齐套'], ["split", '预检分批开工']]} disabled={disabled}
         onChange={material_strategy => onChange({ material_strategy, ready_check: true })} /></div>
-      <div className="pf-rule pf-note">按工序齐套：只等待本序及前序需要的物料。分批开工：先预览可做数量，确认保存拆分后再排产。</div>
+      <div className="pf-rule pf-note">按工序齐套：只等待本序及前序需要的物料。分批开工：先预检可做数量，确认保存拆分后再排产。</div>
       <div className="pf-rule"><strong>缺资源工序</strong><Segment label="缺资源工序" value={value.missing_resource_policy} choices={[["auto_assign", '自动分配'], ['exclude', '暂不排']]} disabled={disabled} onChange={missing_resource_policy => onChange({ missing_resource_policy })} /></div>
       <div className="pf-rule"><span className="pf-fixed">已开工工序：保留记录（不可修改）</span></div>
       <div className="pf-rule pf-note">规则仅用于本次排产。</div>

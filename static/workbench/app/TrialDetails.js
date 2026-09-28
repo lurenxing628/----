@@ -148,7 +148,7 @@
       })
     })), /*#__PURE__*/React.createElement("div", {
       className: "tt-muted"
-    }, "\u4F7F\u7528\u5DE5\u5382\u672C\u5730\u65F6\u95F4\uFF0C\u65E5\u671F\u4E0E\u65F6\u95F4\u4E4B\u95F4\u586B T\uFF1B\u5DF2\u6709\u5C0F\u6570\u79D2\u4F1A\u5B8C\u6574\u4FDD\u7559\u3002\u6309\u73ED\u8868\u8BA1\u7B97\u5B8C\u5DE5\u65F6\u95F4\uFF1B\u5176\u4ED6\u5DE5\u5E8F\u9700\u5206\u522B\u8C03\u6574\u3002"), !external && !data.resources.authorizations.some(r => r.machine_ref === form.machine_ref && r.operator_ref === form.operator_ref) && /*#__PURE__*/React.createElement("p", {
+    }, "\u8BF7\u6309 2026-09-13T08:30 \u8FD9\u6837\u586B\uFF1B\u5DF2\u6709\u5C0F\u6570\u79D2\u4F1A\u5B8C\u6574\u4FDD\u7559\u3002\u6309\u73ED\u8868\u8BA1\u7B97\u5B8C\u5DE5\u65F6\u95F4\uFF1B\u5176\u4ED6\u5DE5\u5E8F\u9700\u5206\u522B\u8C03\u6574\u3002"), !external && !data.resources.authorizations.some(r => r.machine_ref === form.machine_ref && r.operator_ref === form.operator_ref) && /*#__PURE__*/React.createElement("p", {
       className: "tt-notice"
     }, "\u6240\u9009\u4EBA\u5458\u5C1A\u672A\u53D6\u5F97\u8BE5\u8BBE\u5907\u7684\u64CD\u4F5C\u6388\u6743\u3002"), /*#__PURE__*/React.createElement(U.ErrorBox, {
       error: error

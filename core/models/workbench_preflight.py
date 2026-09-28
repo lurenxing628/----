@@ -46,7 +46,7 @@ def normalize_preflight_input(value):
         reject("已开工和已完工的记录必须保留，不能取消保护。")
     strategy = value.get("material_strategy", "strict")
     if strategy not in ("strict", "stage", "split"):
-        reject("请选择整批齐套、按工序齐套或预览分批开工。")
+        reject("请选择整批齐套、按工序齐套或预检分批开工。")
     if strategy != "strict" and not value["ready_check"]:
         reject("按工序放行和分批开工需要开启齐套检查。")
     return {**value, "batch_refs": sorted(refs)}

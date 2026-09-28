@@ -24,7 +24,7 @@
       try {
         command.reset();
         const count = quantity.trim() ? Number(quantity) : null;
-        if (count !== null && (!Number.isSafeInteger(count) || count <= 0)) throw window.APSResourceContract.failure('请填写正整数数量，留空则按当前物料可做数量预览。');
+        if (count !== null && (!Number.isSafeInteger(count) || count <= 0)) throw window.APSResourceContract.failure('请填写正整数数量，留空则按当前物料可做数量预检。');
         const detail = await adapter.detail('batch', refs[0]), input = { as_of_date: day, quantity: count };
         B.detail(detail, refs[0]);
         const response = await adapter.preview('split', refs[0], input, null, detail.meta.snapshot_ref);
@@ -33,11 +33,11 @@
       } catch (e) { if (id === serial.current) setError(e); }
       finally { setBusy(false); }
     }
-    return <section aria-label="分批开工预览">
+    return <section aria-label="分批开工预检">
       <div className="toolbar"><Field label="本次先做数量（可留空）"><input inputMode="numeric" aria-label="本次先做数量" value={quantity} disabled={busy || command.locked}
         onChange={e => { setQuantity(e.target.value); setPreview(null); }} /></Field>
-        <Button busy={busy} disabled={command.locked || refs.length !== 1} onClick={inspect}>预览可开工数量</Button></div>
-      <p>一次选择一个批次预览；按排产开始日期 {day} 前的到料计算。确认后才保存为两个批次，并选中可开工子批。需求量按件数比例分配，设备换型和外协周期在每个子批分别计算。</p>
+        <Button busy={busy} disabled={command.locked || refs.length !== 1} onClick={inspect}>预检可开工数量</Button></div>
+      <p>一次选择一个批次预检；按排产开始日期 {day} 前的到料计算。确认后才保存为两个批次，并选中可开工子批。需求量按件数比例分配，设备换型和外协周期在每个子批分别计算。</p>
       {refs.length !== 1 && <p>请先选择一个要拆分的待排批次。</p>}
       <ErrorBox error={error} /><window.ResourceForms.Feedback command={command} />
       {preview && ReactDOM.createPortal(<div className="plana"><Modal title="确认分批开工" icon="box" guardOwner={owner} locked={command.locked} onClose={() => { if (!command.locked) setPreview(null); }}

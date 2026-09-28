@@ -152,7 +152,7 @@
       reasonDisplay: "tooltip",
       reason: C.blocked(entity.write_context, kind, 'delete', list.result.meta.source),
       onClick: () => onOpen('delete', entity.ref)
-    })))))))), !data.entities.length && /*#__PURE__*/React.createElement(EmptyState, {
+    }, "\u5220\u9664")))))))), !data.entities.length && /*#__PURE__*/React.createElement(EmptyState, {
       kind: scope.query || scope.status ? 'filtered' : 'empty',
       title: "\u5F53\u524D\u8303\u56F4\u6CA1\u6709\u8BB0\u5F55",
       hint: "\u53EF\u6E05\u9664\u641C\u7D22\u548C\u72B6\u6001\u7B5B\u9009\u540E\u67E5\u770B\u5168\u90E8\u8BB0\u5F55\u3002",

@@ -54,7 +54,7 @@
       try {
         command.reset();
         const count = quantity.trim() ? Number(quantity) : null;
-        if (count !== null && (!Number.isSafeInteger(count) || count <= 0)) throw window.APSResourceContract.failure('请填写正整数数量，留空则按当前物料可做数量预览。');
+        if (count !== null && (!Number.isSafeInteger(count) || count <= 0)) throw window.APSResourceContract.failure('请填写正整数数量，留空则按当前物料可做数量预检。');
         const detail = await adapter.detail('batch', refs[0]),
           input = {
             as_of_date: day,
@@ -71,7 +71,7 @@
       }
     }
     return /*#__PURE__*/React.createElement("section", {
-      "aria-label": "\u5206\u6279\u5F00\u5DE5\u9884\u89C8"
+      "aria-label": "\u5206\u6279\u5F00\u5DE5\u9884\u68C0"
     }, /*#__PURE__*/React.createElement("div", {
       className: "toolbar"
     }, /*#__PURE__*/React.createElement(Field, {
@@ -89,7 +89,7 @@
       busy: busy,
       disabled: command.locked || refs.length !== 1,
       onClick: inspect
-    }, "\u9884\u89C8\u53EF\u5F00\u5DE5\u6570\u91CF")), /*#__PURE__*/React.createElement("p", null, "\u4E00\u6B21\u9009\u62E9\u4E00\u4E2A\u6279\u6B21\u9884\u89C8\uFF1B\u6309\u6392\u4EA7\u5F00\u59CB\u65E5\u671F ", day, " \u524D\u7684\u5230\u6599\u8BA1\u7B97\u3002\u786E\u8BA4\u540E\u624D\u4FDD\u5B58\u4E3A\u4E24\u4E2A\u6279\u6B21\uFF0C\u5E76\u9009\u4E2D\u53EF\u5F00\u5DE5\u5B50\u6279\u3002\u9700\u6C42\u91CF\u6309\u4EF6\u6570\u6BD4\u4F8B\u5206\u914D\uFF0C\u8BBE\u5907\u6362\u578B\u548C\u5916\u534F\u5468\u671F\u5728\u6BCF\u4E2A\u5B50\u6279\u5206\u522B\u8BA1\u7B97\u3002"), refs.length !== 1 && /*#__PURE__*/React.createElement("p", null, "\u8BF7\u5148\u9009\u62E9\u4E00\u4E2A\u8981\u62C6\u5206\u7684\u5F85\u6392\u6279\u6B21\u3002"), /*#__PURE__*/React.createElement(ErrorBox, {
+    }, "\u9884\u68C0\u53EF\u5F00\u5DE5\u6570\u91CF")), /*#__PURE__*/React.createElement("p", null, "\u4E00\u6B21\u9009\u62E9\u4E00\u4E2A\u6279\u6B21\u9884\u68C0\uFF1B\u6309\u6392\u4EA7\u5F00\u59CB\u65E5\u671F ", day, " \u524D\u7684\u5230\u6599\u8BA1\u7B97\u3002\u786E\u8BA4\u540E\u624D\u4FDD\u5B58\u4E3A\u4E24\u4E2A\u6279\u6B21\uFF0C\u5E76\u9009\u4E2D\u53EF\u5F00\u5DE5\u5B50\u6279\u3002\u9700\u6C42\u91CF\u6309\u4EF6\u6570\u6BD4\u4F8B\u5206\u914D\uFF0C\u8BBE\u5907\u6362\u578B\u548C\u5916\u534F\u5468\u671F\u5728\u6BCF\u4E2A\u5B50\u6279\u5206\u522B\u8BA1\u7B97\u3002"), refs.length !== 1 && /*#__PURE__*/React.createElement("p", null, "\u8BF7\u5148\u9009\u62E9\u4E00\u4E2A\u8981\u62C6\u5206\u7684\u5F85\u6392\u6279\u6B21\u3002"), /*#__PURE__*/React.createElement(ErrorBox, {
       error: error
     }), /*#__PURE__*/React.createElement(window.ResourceForms.Feedback, {
       command: command

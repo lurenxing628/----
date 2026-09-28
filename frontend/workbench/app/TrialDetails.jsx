@@ -47,7 +47,7 @@
           <option value="">{external ? '外协，无内部资源' : '请选择'}</option>{form[kind + '_ref'] && !data.resources[listKey].some(r => r.ref === form[kind + '_ref']) && <option value={form[kind + '_ref']}>原资源（已不可读）</option>}
           {data.resources[listKey].map(r => <option key={r.ref} value={r.ref} disabled={r.status !== 'active'}>{r.business_code} · {r.label || '名称未填写'}{r.status !== 'active' ? '（不可用）' : ''}</option>)}</select></label>)}
         <label>调整开工<input type="text" aria-label="调整开工" placeholder="2026-09-13T08:30:00" spellCheck={false} required value={form.start} disabled={commands.busy} onChange={e => setForm({ ...form, start: e.target.value })} /></label>
-        <div className="tt-muted">使用工厂本地时间，日期与时间之间填 T；已有小数秒会完整保留。按班表计算完工时间；其他工序需分别调整。</div>
+        <div className="tt-muted">请按 2026-09-13T08:30 这样填；已有小数秒会完整保留。按班表计算完工时间；其他工序需分别调整。</div>
         {!external && !data.resources.authorizations.some(r => r.machine_ref === form.machine_ref && r.operator_ref === form.operator_ref) && <p className="tt-notice">所选人员尚未取得该设备的操作授权。</p>}
         <U.ErrorBox error={error} /><U.ErrorBox error={commands.error} />
         <label className="tt-check"><input type="checkbox" checked={reviewed} onChange={e => setReviewed(e.target.checked)} />已核对当前工序与保留输入</label>
