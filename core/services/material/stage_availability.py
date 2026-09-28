@@ -6,6 +6,7 @@ from collections import defaultdict
 from datetime import date
 from decimal import ROUND_FLOOR, Decimal
 
+from core.models.batch_external_context import context_group_key
 from core.models.workbench_command import WorkbenchCommandRejected
 
 
@@ -65,7 +66,6 @@ class MaterialAvailability:
             raise WorkbenchCommandRejected("material_stage_invalid", "分阶段用料请选择整批工序，单件分支须先合并核对。")
         context = self.contexts.get(op_id)
         if context and context["merge_mode"] == "merged":
-            from core.services.scheduler.contracts.external_context import context_group_key
             key = context_group_key(context)
             return min(item["seq"] for item in self.operations.values() if item["batch_id"] == op["batch_id"]
                        and item["id"] in self.contexts and context_group_key(self.contexts[item["id"]]) == key)

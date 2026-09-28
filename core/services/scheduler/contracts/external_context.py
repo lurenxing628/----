@@ -1,10 +1,9 @@
 """One interpretation of frozen external facts for scheduling, preflight and display."""
 
-import hashlib
-import json
 import math
 
 from core.errors import ValidationError
+from core.models.batch_external_context import context_group_key as context_group_key
 from core.models.enums import BatchExternalContextOrigin
 
 _MISSING_CONTEXT = "批次外协周期记录缺失。请先完成版本升级；已升级的批次请核对来源后从工艺模板更新工序。"
@@ -65,16 +64,6 @@ def group_from_context(row):
     return {"ref": row["group_ref"], "business_code": row["group_id"],
             "merge_mode": row["merge_mode"], "total_days": row["total_days"],
             "start_sequence": row["start_sequence"], "end_sequence": row["end_sequence"]}
-
-
-def context_group_key(row):
-    if row["group_id"] is None:
-        return None
-    values = [row[key] for key in ("group_ref", "group_part_no", "start_sequence", "end_sequence",
-                                  "merge_mode", "supplier_id")]
-    values.append(row["total_days"] if row["merge_mode"] == "merged" else None)
-    encoded = json.dumps(values, ensure_ascii=True, allow_nan=False, separators=(",", ":"))
-    return row["group_ref"] + ":" + hashlib.sha256(encoded.encode("ascii")).hexdigest()[:16]
 
 
 def origin_notice(row):

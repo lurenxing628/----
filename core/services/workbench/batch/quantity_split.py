@@ -45,6 +45,14 @@ def allocate(row, entries, needed, day):
     return float(take), float(initial - take), child, source
 
 
+def _require_splittable_batch(batch, facts):
+    operations = [op for op in facts["BatchOperations"] if op["batch_id"] == batch["batch_id"]]
+    if batch["status"] != "pending" or not operations or any(op["status"] != "pending" or op["piece_id"] is not None for op in operations):
+        raise WorkbenchCommandRejected("constraint_conflict", "仅支持已有整批工序、尚未排产和开工的待排批次拆分数量。")
+    if type(batch["quantity"]) is not int or batch["quantity"] <= 1:
+        raise WorkbenchCommandRejected("constraint_conflict", "批次数量必须是大于 1 的整数。")
+
+
 class WorkbenchQuantitySplitService:
     def __init__(self, conn, logger=None):
         self.conn = conn
@@ -54,12 +62,8 @@ class WorkbenchQuantitySplitService:
         payload = normalize_split(payload)
         batch, facts = self.reader.batch(ref), self.reader.load()
         require_unreferenced(facts, batch)
-        operations = [op for op in facts["BatchOperations"] if op["batch_id"] == batch["batch_id"]]
-        if batch["status"] != "pending" or not operations or any(op["status"] != "pending" or op["piece_id"] is not None for op in operations):
-            raise WorkbenchCommandRejected("constraint_conflict", "仅支持已有整批工序、尚未排产和开工的待排批次拆分数量。")
+        _require_splittable_batch(batch, facts)
         original = batch["quantity"]
-        if type(original) is not int or original <= 1:
-            raise WorkbenchCommandRejected("constraint_conflict", "批次数量必须是大于 1 的整数。")
         availability = MaterialAvailability(facts)
         maximum = availability.splittable_quantity(batch, payload["as_of_date"])
         count = payload["quantity"] if payload["quantity"] is not None else maximum

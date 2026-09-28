@@ -42,19 +42,23 @@ class WorkbenchBatchMaterialService:
             raise WorkbenchCommandRejected("constraint_conflict", "已有需求不能直接更换物料，请明确移除后重新新增。")
         if key is None and materials[identity.entity_key]["status"] != "active":
             raise WorkbenchCommandRejected("constraint_conflict", "所选物料已停用，请选择启用的物料。")
-        operation = old[key]["operation_id"] if key else None
-        if "operation_ref" in item:
-            operation = None
-            if item["operation_ref"] is not None:
-                match = next((row for row in facts["BatchOperations"] if row["batch_id"] == batch["batch_id"]
-                              and facts["operation_refs"][row["id"]] == item["operation_ref"]), None)
-                if match is None or match.get("piece_id") is not None:
-                    raise WorkbenchCommandRejected("constraint_conflict", "请选择本批次有效的整批用料工序。")
-                operation = match["id"]
+        operation = self._operation_id(item, old[key]["operation_id"] if key else None, batch, facts)
         return {"id": old[key]["id"] if key else None, "operation_id": operation,
             "arrivals": item.get("arrivals", old[key]["arrivals"] if key else []),
             "batch_id": batch["batch_id"], "material_id": identity.entity_key,
             "required_qty": item["required_quantity"], "available_qty": item["available_quantity"]}
+
+    @staticmethod
+    def _operation_id(item, previous, batch, facts):
+        if "operation_ref" not in item:
+            return previous
+        if item["operation_ref"] is None:
+            return None
+        match = next((row for row in facts["BatchOperations"] if row["batch_id"] == batch["batch_id"]
+                      and facts["operation_refs"][row["id"]] == item["operation_ref"]), None)
+        if match is None or match.get("piece_id") is not None:
+            raise WorkbenchCommandRejected("constraint_conflict", "请选择本批次有效的整批用料工序。")
+        return match["id"]
 
     @staticmethod
     def _ready(rows):
@@ -86,26 +90,9 @@ class WorkbenchBatchMaterialService:
         changed = ready != batch["ready_status"] or bool(payload["removed_keys"])
         for key in payload["removed_keys"]:
             self.repo.delete(old[key]["id"])
-        for key, row in final.items():
-            fields = {name: row[name] for name in ("required_qty", "available_qty", "ready_status")}
-            if row["id"] is None:
-                created = self.repo.add(batch["batch_id"], row["material_id"], **fields)
-                row["id"] = created.id
-                self.stages.replace(row["id"], row["operation_id"], row["arrivals"])
-                changed = True
-            elif any(old[key][name] != value for name, value in fields.items()):
-                self.repo.update_qty(row["id"], **fields)
-                changed = True
-            if key in old and any(old[key][name] != row[name] for name in ("operation_id", "arrivals")):
-                self.stages.replace(row["id"], row["operation_id"], row["arrivals"])
-                changed = True
-            if key not in old or any(item["row_key"] == key for item in payload["rows"]):
-                previous = next((item["batch_quantity"] for item in facts.get("BatchMaterialReviews", []) if item["requirement_id"] == row["id"]), None)
-                if previous != batch["quantity"]:
-                    self.stages.review(row["id"], batch["quantity"])
-                    changed = True
         reviewed = {item["requirement_id"]: item["batch_quantity"] for item in facts.get("BatchMaterialReviews", [])}
         touched = {item["row_key"] for item in payload["rows"]}
+        changed = self._save_requirements(batch, old, final, touched, reviewed) or changed
         if any(key not in touched and key in old and reviewed.get(row["id"], batch["quantity"]) != batch["quantity"]
                for key, row in final.items()):
             ready = "no"
@@ -113,3 +100,27 @@ class WorkbenchBatchMaterialService:
             self.batches.update(batch["batch_id"], {"ready_status": ready})
         return WorkbenchCommandOutcome("committed" if changed else "unchanged", {
             "entity_ref": ref, "business_code": batch["batch_id"], "material_count": len(final), "ready_status": ready})
+
+    def _save_requirements(self, batch, old, final, touched, reviewed):
+        changed = False
+        for key, row in final.items():
+            changed = self._save_row(batch, row, old.get(key)) or changed
+            if (key not in old or key in touched) and reviewed.get(row["id"]) != batch["quantity"]:
+                self.stages.review(row["id"], batch["quantity"])
+                changed = True
+        return changed
+
+    def _save_row(self, batch, row, previous):
+        fields = {name: row[name] for name in ("required_qty", "available_qty", "ready_status")}
+        if row["id"] is None:
+            row["id"] = self.repo.add(batch["batch_id"], row["material_id"], **fields).id
+            self.stages.replace(row["id"], row["operation_id"], row["arrivals"])
+            return True
+        changed = False
+        if any(previous[name] != value for name, value in fields.items()):
+            self.repo.update_qty(row["id"], **fields)
+            changed = True
+        if any(previous[name] != row[name] for name in ("operation_id", "arrivals")):
+            self.stages.replace(row["id"], row["operation_id"], row["arrivals"])
+            changed = True
+        return changed

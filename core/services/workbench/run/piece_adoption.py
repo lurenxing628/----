@@ -160,6 +160,10 @@ def _mutable_work(prepared, checks, row, op, batch, quantity, seeds, high):
     if row.op_id not in seeds and (row.start_time < prepared.start_dt_norm or row.end_time > high
                                   or row.start_time == high):
         block("piece_outside_window", "有工序排到了这次排产日期范围之外，本次没有采用。请回「执行排产」重新排一次。")
+    _release_dates(prepared, checks, row, op, batch)
+
+
+def _release_dates(prepared, checks, row, op, batch):
     material_issues, material_day = checks.operation_readiness(asdict(batch), asdict(op), prepared.normalized_input)
     if material_issues:
         block("piece_material_not_ready", "批次齐套条件不满足，本次没有采用。请到批次管理核对齐套状态后重新排产。")

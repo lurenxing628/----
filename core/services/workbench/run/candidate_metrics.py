@@ -86,6 +86,17 @@ def _downtime_rows(rows, machine, start, end):
     return selected
 
 
+def _archived_policy(archive, global_rows, first, last, calendar_start, calendar_end):
+    try:
+        versions = _table(archive, "SchemaVersion") or []
+        legacy_defaults = not versions or versions[0]["version"] < 34
+        engine = SnapshotCalendarEngine({"global": global_rows, "personal": [], "profiles": [], "patterns": [],
+                                         "legacy_defaults": legacy_defaults, "defaults": _table(archive, "WorkbenchCalendarDefaults") or []})
+        return policy_projection(engine, first, last, calendar_start, calendar_end)
+    except (ValidationError, ValueError, TypeError, KeyError):
+        return unavailable("admission_machine_calendar", "calendar_invalid")
+
+
 def archived_calendars(capture, facts, refs, start, end):
     low, high, days = range_days(start, end)
     if days > 3660 or days * len(refs) > MAX_RESOURCE_DAYS:
@@ -98,14 +109,7 @@ def archived_calendars(capture, facts, refs, start, end):
     global_rows, stops = _global_rows(archive, first, last), _table(archive, "MachineDowntimes")
     if global_rows is None or stops is None:
         return {ref: unavailable("admission_machine_calendar", "calendar_unavailable") for ref in refs}
-    try:
-        versions = _table(archive, "SchemaVersion") or []
-        legacy_defaults = not versions or versions[0]["version"] < 34
-        engine = SnapshotCalendarEngine({"global": global_rows, "personal": [], "profiles": [], "patterns": [],
-                                         "legacy_defaults": legacy_defaults, "defaults": _table(archive, "WorkbenchCalendarDefaults") or []})
-        base = policy_projection(engine, first, last, calendar_start, calendar_end)
-    except (ValidationError, ValueError, TypeError, KeyError):
-        base = unavailable("admission_machine_calendar", "calendar_invalid")
+    base = _archived_policy(archive, global_rows, first, last, calendar_start, calendar_end)
     keys = {ref: key for (kind, key), ref in facts.entity_refs.items() if kind == "machine"}
     return {ref: apply_resource(base, facts.tables["Machines"].get(keys.get(ref)), "machine",
                                 _downtime_rows(stops, keys.get(ref), calendar_start, calendar_end), calendar_start, calendar_end) for ref in refs}
