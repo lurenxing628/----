@@ -27,7 +27,7 @@ def ready(app, case, key):
     task = draft["tasks"][0]
     changed = client.post("/api/workbench/v1/trial/drafts/" + draft["draft_ref"] + "/change", json={
         "input": {"task_ref": task["task_ref"], "machine_ref": task["machine_ref"], "operator_ref": task["operator_ref"],
-                  "start": "2026-09-09T13:00:00"}, "request_key": "change-" + key,
+                  "start": "2026-09-09T13:30:00"}, "request_key": "change-" + key,
         "write_token": draft["write_context"]["write_token"]})
     assert changed.status_code == 200, changed.get_json()
     draft = changed.get_json()["data"]
@@ -68,7 +68,7 @@ def test_real_managed_host_adopts_saved_arrangement_without_fixture_enable_flag(
         assert harness.run() == 0
         assert observed["app"].config["WORKBENCH_CANDIDATE_ADOPTION_ENABLED"] is False
         with get_connection(str(job_case.path)) as conn:
-            assert conn.execute("SELECT start_time FROM Schedule").fetchone()[0] == "2026-09-09 13:00:00"
+            assert conn.execute("SELECT start_time FROM Schedule").fetchone()[0] == "2026-09-09 13:30:00"
             assert conn.execute("SELECT COUNT(*) FROM ScheduleHistory").fetchone()[0] == 1
         harness.exit()
         assert not Path(db_scope_lock_path(str(job_case.path))).exists()

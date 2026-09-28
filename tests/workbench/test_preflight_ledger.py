@@ -126,8 +126,10 @@ def test_installed_archived_unknown_finish_survives_source_drift(ledger_case, ch
 
 def test_installed_piece_completion_does_not_use_batch_target(ledger_case):
     case = ledger_case
+    case.conn.execute("UPDATE BatchOperations SET piece_id='unit-0' WHERE id=?", (case.op_id,))
     piece = case.op("PIECE", piece="unit-1")
-    case.plan(2, [piece])
+    others = [case.op("PIECE-" + str(index), piece="unit-" + str(index)) for index in range(2, 10)]
+    case.plan(2, [case.op_id, piece] + others)
     case.install()
     case.command("create", case.task(2, piece), case.values(1))
     row = next(row for row in evaluate(case)["tasks"] if row["piece_id"] == "unit-1")

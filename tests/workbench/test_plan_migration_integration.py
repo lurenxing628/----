@@ -19,6 +19,7 @@ from core.infrastructure.workbench_template_lineage_schema import template_linea
 from core.infrastructure.workbench_trial_schema import workbench_trial_objects
 from tests.workbench.dashboard_external_migration_support import V31_TABLES, assert_v31_receipt_maps_only
 from tests.workbench.execution_ledger_migration_support import V27_TABLES
+from tests.workbench.flexible_migration_support import TABLES as FLEXIBLE_TABLES
 from tests.workbench.identity_metadata_support import connect_temp, copy_to_temp, table_rows
 from tests.workbench.legacy_migration_current_support import (
     V30_TABLES,
@@ -92,7 +93,7 @@ def test_real_v23_upgrade_backs_up_all_rows_and_keeps_plan_refs_across_restart(m
         assert get_schema_version(upgraded) == CURRENT_SCHEMA_VERSION and current_schema_contract_issues(upgraded) == []
         after = table_snapshot(upgraded, exclude=("SchemaVersion",))
         assert {name: after[name] for name in before} == before
-        assert set(after) - set(before) == set(IDENTITY_TABLES + LEDGER_TABLES + RUN_TABLES + V27_TABLES + V29_TABLES + V30_TABLES + V31_TABLES + V32_TABLES + V33_TABLES)
+        assert set(after) - set(before) == set(IDENTITY_TABLES + LEDGER_TABLES + RUN_TABLES + V27_TABLES + V29_TABLES + V30_TABLES + V31_TABLES + V32_TABLES + V33_TABLES + FLEXIBLE_TABLES)
         assert_v29_source_maps_only(upgraded)
         assert_v30_source_maps_only(upgraded)
         assert_v31_receipt_maps_only(upgraded)

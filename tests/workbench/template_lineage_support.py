@@ -6,6 +6,9 @@ from pathlib import Path
 
 import pytest
 
+from core.infrastructure.calendar_periods_schema import install as install_calendar_periods
+from core.infrastructure.machine_capabilities_schema import install as install_machine_capabilities
+from core.infrastructure.material_stages_schema import install as install_material_stages
 from core.infrastructure.transaction import TransactionManager
 from core.infrastructure.workbench_execution_ledger_schema import execution_ledger_objects
 from core.infrastructure.workbench_metadata_schema import install_metadata
@@ -40,6 +43,9 @@ def ledger_fixture(tmp_path):
             conn.execute('DROP ' + row[0].upper() + ' "' + name + '"')
     with TransactionManager(conn).transaction():
         install_metadata(conn)
+        install_calendar_periods(conn)
+        install_machine_capabilities(conn)
+        install_material_stages(conn)
         install_plan_identity(conn)
         conn.execute("INSERT INTO OpTypes(op_type_id,name) VALUES ('T1','Turning')")
         conn.execute("INSERT INTO Machines(machine_id,name,op_type_id) VALUES ('M1','Lathe','T1')")

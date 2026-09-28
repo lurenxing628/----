@@ -38,13 +38,13 @@ def test_real_http_preview_confirm_and_receipt(trial_case):
 
 
 @pytest.mark.parametrize("ready_status", ["no", "partial"])
-def test_readiness_warning_becomes_visible_adoption_blocker(trial_case, ready_status):
+def test_readiness_remains_visible_blocker_through_trial_and_adoption(trial_case, ready_status):
     case = trial_case
     case.conn.execute("UPDATE Batches SET ready_status=?", (ready_status,))
     case.conn.commit()
     saved = saved_scenario(case, changed=False)
     original_issues = saved["validation"]["issues"]
-    assert original_issues and all(row["severity"] == "warning" for row in original_issues)
+    assert original_issues and all(row["severity"] == "blocker" for row in original_issues)
     client = api(case)
     before = snapshot(case.conn)
     response = client.post(BASE + saved["scenario_ref"] + "/adopt-preview", json={})

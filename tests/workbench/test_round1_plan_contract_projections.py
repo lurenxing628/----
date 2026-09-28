@@ -73,12 +73,13 @@ def test_schedule_completion_is_separate_from_missing_due_or_label():
 def test_occupancy_distinguishes_unknown_and_zero_calendar_capacity(known_zero):
     operations = {10: [(datetime(2026, 9, 9, 8), datetime(2026, 9, 9, 9))]}
     resources = {"machine": {"M1": SimpleNamespace(ref="machine-ref")}}
-    calendar = {"state": "available", "basis": "global_calendar", "label": "Machine", "windows": [], "issues": []}
-    item = _resource_occupancy("machine", "M1", operations, calendar if known_zero else None, resources, "Machine")
+    calendar = {"state": "available", "status": "active", "basis": "global_calendar", "label": "Machine", "windows": [], "issues": []}
+    item = _resource_occupancy("machine", "M1", operations, calendar if known_zero else None, resources, "Machine", {10} if known_zero else set())
     assert item["arranged_hours"] == item["occupied_hours"] == 1
     assert item["overlap_hours"] == 0 and item["utilization"] is None
     assert item["state"] == ("available" if known_zero else "unavailable")
     assert item["available_hours"] == (0 if known_zero else None)
-    assert item["capacity_shortfall_hours"] == (1 if known_zero else None)
+    # Outside-calendar elapsed time is not processing load; the invalid assignment remains a blocker.
+    assert item["capacity_shortfall_hours"] == (0 if known_zero else None)
     assert item["outside_available_hours"] == (1 if known_zero else None)
     assert item["capacity_insufficient"] is (True if known_zero else None)

@@ -33,6 +33,7 @@ from core.infrastructure.workbench_trial_schema import workbench_trial_contract_
 from tests._support.sqlite_snapshot import schema_snapshot as schema_snapshot
 from tests._support.sqlite_snapshot import table_rows as table_rows
 from tests.workbench.execution_ledger_migration_support import V27_TABLES
+from tests.workbench.flexible_migration_support import missing_issues as missing_flexible_issues
 from tests.workbench.legacy_migration_current_support import (
     missing_v30_issues,
     missing_v31_issues,
@@ -234,7 +235,8 @@ def remove_metadata_for_v19(conn):
         | {"missing_template_lineage:" + name for name in template_lineage_objects()}
         | {"missing_trial_schema:" + name for name in workbench_trial_objects()}
         | {"missing_lineage_lookup:" + name for name in lineage_lookup_objects()}
-        | missing_v29_issues() | missing_v30_issues() | missing_v31_issues() | missing_v32_issues() | missing_v33_issues())
+        | missing_v29_issues() | missing_v30_issues() | missing_v31_issues() | missing_v32_issues() | missing_v33_issues()
+        | missing_flexible_issues())
 
 
 @pytest.fixture(name="v19_conn")

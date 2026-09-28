@@ -80,7 +80,8 @@ def test_real_api_preserves_captured_quantities_pagination_and_baseline(trial_ca
     assert item["before"]["quantity"] == item["before"]["batch_quantity"] == 3
     assert api.state() == before
     assert api.statements
-    assert all(sql.lstrip().upper().startswith(("SELECT", "WITH", "BEGIN", "COMMIT", "--")) for sql in api.statements)
+    assert all(sql.lstrip().upper().startswith(("SELECT", "WITH", "BEGIN", "COMMIT", "--")) or sql.strip().upper().replace(" ", "") in {"PRAGMADATA_VERSION", "PRAGMAQUERY_ONLY", "PRAGMAQUERY_ONLY=ON", "PRAGMAQUERY_ONLY=OFF"}
+               for sql in api.statements)
 
 
 @pytest.mark.parametrize("source", ["candidate", "trial"])

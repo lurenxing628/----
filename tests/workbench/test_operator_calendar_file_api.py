@@ -16,6 +16,8 @@ OTHER = "2026-10-06"
 HEADERS = ("工号", "日期", "类型", "班次开始", "班次结束", "效率（%）", "允许普通件", "允许急件", "备注",
            "人员姓名（只读）", "可排工时（小时）（只读）")
 WRITABLE = HEADERS[:9]
+PERIOD_HEADERS = tuple("第" + str(index) + "段" + field for index in range(2, 9) for field in ("开始", "结束", "开始日期"))
+HEADERS = HEADERS[:9] + ("工作时段数",) + PERIOD_HEADERS + HEADERS[9:]
 
 
 @pytest.fixture(name="client")
@@ -144,7 +146,7 @@ def test_export_by_date_range_round_trips(client, fmt):
     headers, rows = decode(Download(), fmt)
     assert headers == list(HEADERS)
     assert [str(value) for value in rows[0][:4]] == ["OP001", DAY, "工作日", "09:00"]
-    assert rows[0][9] == "张三" and str(rows[0][10]) == "8.5"
+    assert rows[0][-2] == "张三" and str(rows[0][-1]) == "8.5"
 
     fields = {"file": (BytesIO(download.get_data()), "back." + fmt), "format": fmt, "mode": "upsert"}
     again = client.post(BASE + "/" + KIND + "/preview", data=fields, content_type="multipart/form-data")

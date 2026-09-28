@@ -19,6 +19,9 @@ from core.infrastructure.workbench_run_schema import RUN_TABLES, workbench_run_o
 from core.infrastructure.workbench_template_lineage_schema import template_lineage_objects
 from core.infrastructure.workbench_trial_schema import workbench_trial_objects
 from tests.workbench.execution_ledger_migration_support import V27_TABLES
+from tests.workbench.flexible_migration_support import CALENDARS, legacy_ddl, legacy_rows
+from tests.workbench.flexible_migration_support import TABLES as FLEXIBLE_TABLES
+from tests.workbench.flexible_migration_support import missing_issues as missing_flexible_issues
 from tests.workbench.identity_metadata_support import insert_row, seed_resources, table_rows
 from tests.workbench.legacy_migration_current_support import (
     V30_TABLES,
@@ -71,7 +74,7 @@ def assert_v22_schema(conn):
         (plan_identity_write_guard_objects(), "missing_workbench_plan_write_guard: "),
         (workbench_dashboard_external_objects(), "missing_dashboard_external_schema:"),
     )
-    expected_issues = missing_v29_issues() | missing_v32_issues() | missing_v33_issues()
+    expected_issues = missing_v29_issues() | missing_v32_issues() | missing_v33_issues() | missing_flexible_issues()
     for objects, prefix in generations:
         assert not set(objects) & actual.keys()
         expected_issues.update(prefix + name for name in objects)
@@ -145,18 +148,28 @@ def assert_old_tables_preserved(conn, before, objects):
         if table == "SchemaVersion":
             assert after[table][:2] == state[:2]
         else:
-            assert after[table] == state, table
+            actual_state = after[table]
+            if table in CALENDARS and len(actual_state[0]) == len(state[0]) + 1:
+                assert actual_state[0][-1][1:] == ("periods_json", "TEXT", 0, None, 0)
+                old_rows = legacy_rows({table: actual_state[2]}, {table: state[2]})[table]
+                actual_state = (actual_state[0][:-1], actual_state[1], old_rows)
+            assert actual_state == state, table
     actual, current = ddl_snapshot(conn), process_objects()
     for name, value in objects.items():
         if name in current:
             assert actual[name][:2] == value[:2]
             assert _canonical_sql(actual[name][2]) == _canonical_sql(current[name]), name
+        elif name in CALENDARS:
+            kind, table, sql = actual[name]
+            normalized = legacy_ddl([(kind, name, table, sql)])[0]
+            assert normalized[0::2] == (value[0], value[1]), name
+            assert _canonical_sql(normalized[3]) == _canonical_sql(value[2]), name
         else:
             assert actual[name] == value, name
 
 
 def assert_new_metadata(conn, old_tables):
-    new_tables = set(WORKFLOW_TABLES + RUN_TABLES + V27_TABLES + V29_TABLES + V30_TABLES + V31_TABLES + V32_TABLES + V33_TABLES) | {
+    new_tables = set(WORKFLOW_TABLES + RUN_TABLES + V27_TABLES + V29_TABLES + V30_TABLES + V31_TABLES + V32_TABLES + V33_TABLES + FLEXIBLE_TABLES) | {
         "WorkbenchPlanSourceRefs", "WorkbenchTaskRefs", "WorkbenchPlanIdentityClock",
         "WorkbenchExecutionLedgerClock", "WorkbenchExecutionLegacyFacts",
         "WorkbenchProductionReports", "WorkbenchProductionReportRevisions",

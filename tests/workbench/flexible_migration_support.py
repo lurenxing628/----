@@ -44,3 +44,15 @@ def legacy_rows(after, before):
             values.append(row)
         result[table] = values
     return result
+
+
+def legacy_business(after, before):
+    """Prove old PRAGMA columns and rowids/values survive the nullable addition."""
+    result = {key: after[key] for key in before}
+    for name in CALENDARS & set(result):
+        columns, rows = result[name]
+        if len(columns) == len(before[name][0]) + 1:
+            assert columns[-1][1:] == ("periods_json", "TEXT", 0, None, 0)
+            assert all(row[-1] is None for row in rows)
+            result[name] = (columns[:-1], tuple(row[:-1] for row in rows))
+    return result

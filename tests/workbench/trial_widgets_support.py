@@ -55,6 +55,9 @@ def seed(path, app):
     root = Path(__file__).resolve().parents[2]
     ensure_schema(str(path), schema_path=str(root / "schema.sql"), backup_dir=None)
     with connect(path) as conn, app.app_context():
+        # This fixture's stored reference plan explicitly represents an 08:00-16:00 shop.
+        conn.execute("INSERT INTO WorkbenchCalendarDefaults(singleton,periods_json) VALUES (1,?)",
+                     ('[{"start":"08:00","end":"16:00","day_offset":0}]',))
         conn.execute("INSERT INTO OpTypes(op_type_id,name) VALUES ('T1','精加工')")
         conn.execute("INSERT INTO Parts(part_no,part_name) VALUES ('P1','回转壳体与定位组件')")
         for i in (1, 2, 3):

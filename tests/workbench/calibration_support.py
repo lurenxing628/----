@@ -30,6 +30,11 @@ def calibration_case(ledger_case):
 def complete_reports(case, unit_hours):
     ids = [case.op_id]
     ids.extend(case.op("CAL-" + str(index), seq=index + 2) for index in range(len(unit_hours) - 1))
+    # Calibration samples belong to independent batches, not overlapping sequential work.
+    for index, op_id in enumerate(ids[1:], 1):
+        batch = "CAL-SAMPLE-" + str(index)
+        case.conn.execute("INSERT INTO Batches(batch_id,part_no,quantity) VALUES (?,'P1',10)", (batch,))
+        case.conn.execute("UPDATE BatchOperations SET batch_id=? WHERE id=?", (batch, op_id))
     case.plan(2, ids)
     saved = []
     for index, (op_id, hours) in enumerate(zip(ids, unit_hours)):

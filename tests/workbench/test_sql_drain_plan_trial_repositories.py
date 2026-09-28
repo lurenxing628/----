@@ -334,8 +334,10 @@ def test_piece_adoption_repository_current_rows(schema_conn) -> None:
 
     assert TEMPLATE_TABLES == ("BatchExternalContexts", "BatchOperations")
     assert PREFLIGHT_TABLES == (
-        "Machines", "Operators", "Suppliers", "OpTypes", "OperatorMachine", "OperatorSkill",
-        "WorkbenchOperatorProfiles", "WorkbenchSupplierOpTypes", "BatchExternalContexts", "BatchOperations", "BatchMaterials")
+        "Machines", "MachineOpTypes", "Operators", "Suppliers", "OpTypes", "OperatorMachine", "OperatorSkill",
+        "WorkbenchOperatorProfiles", "WorkbenchSupplierOpTypes", "PartOperations", "ExternalGroups",
+        "BatchMaterials", "BatchMaterialReviews", "BatchMaterialStages", "BatchMaterialArrivals", "BatchQuantitySplits",
+        "BatchExternalContexts", "BatchOperations")
     templates = repo.template_tables()
     assert tuple(templates) == TEMPLATE_TABLES
     assert [(row["operation_id"], row["part_no"], row["sequence"], row["template_operation_id"],

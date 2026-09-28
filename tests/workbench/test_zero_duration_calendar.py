@@ -11,11 +11,11 @@ from tests.workbench.zero_duration_support import arrangement, engine, original_
 
 
 @pytest.mark.parametrize("start,expected", [
-    ("2026-09-09T07:59:00", "2026-09-09T08:00:00"),
-    ("2026-09-09T08:00:00", "2026-09-09T08:00:00"),
+    ("2026-09-09T07:59:00", "2026-09-09T08:30:00"),
+    ("2026-09-09T08:00:00", "2026-09-09T08:30:00"),
     ("2026-09-09T09:17:31", "2026-09-09T09:17:31"),
-    ("2026-09-09T16:00:00", "2026-09-10T08:00:00"),
-    ("2026-09-12T09:00:00", "2026-09-14T08:00:00"),
+    ("2026-09-09T17:30:00", "2026-09-10T08:30:00"),
+    ("2026-09-12T09:00:00", "2026-09-14T08:30:00"),
 ])
 def test_point_uses_actual_shift_boundaries(start, expected):
     first, last = estimate(engine(), original_work(), arrangement(start), allow_point=True)
@@ -40,7 +40,7 @@ def test_personal_calendar_and_priority_apply_to_points():
         datetime(2026, 9, 9, 13), datetime(2026, 9, 9, 13))
     row["allow_normal"] = "no"
     denied = engine(personal_rows=[row])
-    assert estimate(denied, original_work(), arrangement(), allow_point=True)[0] == datetime(2026, 9, 10, 8)
+    assert estimate(denied, original_work(), arrangement(), allow_point=True)[0] == datetime(2026, 9, 10, 8, 30)
     assert estimate(denied, original_work(priority="urgent"), arrangement(), allow_point=True)[0] == datetime(2026, 9, 9, 13)
 
 

@@ -12,6 +12,7 @@ from tests.workbench.run_candidate_support import compute
 def test_real_external_group_and_frozen_seeds_are_piece_local(trial_case, merged):
     case = trial_case
     ids = piece_layout(case, common=False)
+    case.conn.execute("UPDATE OpTypes SET category='both' WHERE op_type_id='T1'")
     case.conn.execute("INSERT INTO Suppliers(supplier_id,name,op_type_id) VALUES ('S1','Supplier','T1')")
     group = "G1" if merged else None
     if merged:

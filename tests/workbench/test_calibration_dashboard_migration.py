@@ -16,6 +16,8 @@ from core.infrastructure.workbench_calibration_adoption_schema import objects as
 from core.infrastructure.workbench_dashboard_schema import objects as dashboard_objects
 from tests.workbench.calibration_dashboard_migration_support import FIXTURE_V28, FIXTURE_V28_SHA, seed_v28
 from tests.workbench.dashboard_external_migration_support import V31_TABLES, assert_v31_receipt_maps_only
+from tests.workbench.flexible_migration_support import TABLES as FLEXIBLE_TABLES
+from tests.workbench.flexible_migration_support import legacy_ddl
 from tests.workbench.legacy_migration_current_support import (
     V30_EMPTY_TABLES,
     V30_TABLES,
@@ -57,7 +59,7 @@ def test_real_v28_upgrade_preserves_old_typed_rows_and_all_persistent_identities
     with connect(path) as conn:
         after = snapshot(conn)
         assert get_schema_version(conn) == CURRENT_SCHEMA_VERSION and current_schema_contract_issues(conn) == []
-        assert set(after) - set(before) == added_tables() | set(V30_TABLES + V31_TABLES + V32_TABLES + V33_TABLES)
+        assert set(after) - set(before) == added_tables() | set(V30_TABLES + V31_TABLES + V32_TABLES + V33_TABLES + FLEXIBLE_TABLES)
         assert_v30_source_maps_only(conn)
         assert_v31_receipt_maps_only(conn)
         assert_v32_empty(conn)
@@ -65,7 +67,7 @@ def test_real_v28_upgrade_preserves_old_typed_rows_and_all_persistent_identities
         assert {key: after[key] for key in before if key != "SchemaVersion"} == {
             key: value for key, value in before.items() if key != "SchemaVersion"}
         old_names = {row[1] for row in ddl}
-        assert [row for row in source_ddl(conn) if row[1] in old_names] == ddl
+        assert legacy_ddl([row for row in source_ddl(conn) if row[1] in old_names]) == ddl
         expected = {(category, row[0], None) for row in batches for category in ("delivery", "material")}
         expected |= {(category, None, row[0]) for row in tasks for category in ("actual", "downtime")}
         assert set(map(tuple, conn.execute("SELECT category,batch_ref,task_ref FROM WorkbenchDashboardItems"))) == expected

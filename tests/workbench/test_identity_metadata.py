@@ -39,6 +39,8 @@ from core.services.personnel.operator_service import OperatorService
 from core.services.workbench.commands import WorkbenchCommandService
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
 from tests.workbench.execution_ledger_migration_support import V27_TABLES
+from tests.workbench.flexible_migration_support import TABLES as FLEXIBLE_TABLES
+from tests.workbench.flexible_migration_support import legacy_business
 from tests.workbench.identity_metadata_support import (
     METADATA_TABLES,
     RESOURCE_CASES,
@@ -96,11 +98,11 @@ def test_full_schema_and_v19_upgrade_have_identical_structure_and_keep_every_fie
         assert get_schema_version(upgraded) == CURRENT_SCHEMA_VERSION
         assert schema_snapshot(upgraded) == fresh
         actual_business = business_snapshot(upgraded)
-        assert {name: actual_business[name] for name in before} == before
+        assert legacy_business(actual_business, before) == before
         from core.infrastructure.workbench_process_workflow_schema import WORKFLOW_TABLES
         empty_tables = set(RESOURCE_TABLE_NAMES + WORKFLOW_TABLES + LEDGER_TABLES[1:] + RUN_TABLES + V27_TABLES
                            + V29_EMPTY_TABLES + V30_EMPTY_TABLES + V31_TABLES + V32_TABLES)
-        added_tables = empty_tables | set(IDENTITY_TABLES + LEDGER_TABLES + V29_TABLES + V30_TABLES + V33_TABLES)
+        added_tables = empty_tables | set(IDENTITY_TABLES + LEDGER_TABLES + V29_TABLES + V30_TABLES + V33_TABLES + FLEXIBLE_TABLES)
         assert set(actual_business) - set(before) == added_tables
         assert all(not table_rows(upgraded, table) for table in empty_tables)
         assert_v29_source_maps_only(upgraded)

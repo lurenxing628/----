@@ -17,6 +17,10 @@ PIECES = ('分件甲', '分件乙', '0')
 
 def seed_pieces(api):
     case = api.case
+    # Keep the common row independent; identical labels within B1 remain piece-ambiguous.
+    case.conn.execute("INSERT INTO Batches(batch_id,part_no,quantity) VALUES ('COMMON-B','P1',10)")
+    case.conn.execute("UPDATE BatchOperations SET batch_id='COMMON-B' WHERE id=?", (case.op_id,))
+    case.conn.execute("UPDATE Batches SET quantity=3 WHERE batch_id='B1'")
     ids = [case.op_id] + [case.op('R1B-' + piece, piece=piece) for piece in PIECES]
     case.plan(2, ids)
     case.conn.execute("UPDATE Machines SET name='中文车床' WHERE machine_id='M1'")

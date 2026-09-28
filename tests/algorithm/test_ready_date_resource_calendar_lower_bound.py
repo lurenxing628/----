@@ -60,7 +60,7 @@ def test_sunday_readiness_respects_actual_operator_calendar(schema_conn, dispatc
         calendar, batch=_batch(priority=priority), readiness_gate_enabled=True,
         dispatch_mode=dispatch_mode, strict_mode=strict_mode,
     )
-    expected = datetime(2026, 9, 6 if personal else 7, 8)
+    expected = datetime(2026, 9, 6 if personal else 7, 8, 0 if personal else 30)
     assert summary.failed_ops == 0, summary.errors
     assert len(results) == 1
     assert results[0].start_time == expected
@@ -76,7 +76,7 @@ def test_readiness_keeps_normal_and_urgent_permissions(schema_conn, dispatch_mod
         calendar, batch=_batch(priority=priority), readiness_gate_enabled=True, dispatch_mode=dispatch_mode,
     )
     assert summary.failed_ops == 0, summary.errors
-    assert results[0].start_time == datetime(2026, 9, expected_day, 8)
+    assert results[0].start_time == datetime(2026, 9, expected_day, 8, 30 if expected_day == 7 else 0)
 
 
 @pytest.mark.parametrize("dispatch_mode", ["batch_order", "sgs"])
@@ -189,7 +189,7 @@ def test_disabled_readiness_gate_ignores_future_ready_date(schema_conn, source):
         calendar, operations=[_operation(source=source)], start_dt=start, readiness_gate_enabled=False,
     )
     assert summary.failed_ops == 0, summary.errors
-    assert results[0].start_time == start
+    assert results[0].start_time == (start.replace(minute=30) if source == "internal" else start)
 
 
 @pytest.mark.parametrize("strict_mode", [False, True])

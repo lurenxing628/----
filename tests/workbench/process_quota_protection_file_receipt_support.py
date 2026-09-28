@@ -11,6 +11,7 @@ from flask import Blueprint, g
 from core.services.workbench.process.file_codec import encode_process_file
 from tests.workbench.calibration_adoption_support import INTENT, KEY, service, token
 from tests.workbench.process_quota_protection_support import adopt, connect
+from tests.workbench.process_workflow_support import confirm_all
 from web.routes.workbench.materials import command_receipt
 from web.routes.workbench.process_files import register_process_file_routes
 
@@ -97,8 +98,13 @@ def assert_tables_preserved(before, after, allowed=("WorkbenchCommandReceipts",)
 
 
 def adopt_second(case):
-    ids = [case.conn.execute("""SELECT second.id FROM BatchOperations first JOIN BatchOperations second
-        ON second.batch_id=first.batch_id AND second.seq=2 WHERE first.id=?""", (key,)).fetchone()[0] for key in case.ids]
+    # Independent samples must not overlap already-completed predecessors in the first sample batches.
+    confirm_all(case.conn)
+    ids = []
+    for index in range(5):
+        batch = "SECOND-SAMPLE-" + str(index)
+        case.batch_service.create_batch_from_template(batch, "P1", 10)
+        ids.append(case.conn.execute("SELECT id FROM BatchOperations WHERE batch_id=? AND seq=2", (batch,)).fetchone()[0])
     case.plan(3, ids)
     for index, (op_id, value) in enumerate(zip(ids, [4, 5, 6, 7, 8])):
         end = datetime(2026, 9, 9, 10) + timedelta(minutes=index)

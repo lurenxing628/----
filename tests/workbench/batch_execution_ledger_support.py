@@ -2,6 +2,9 @@
 
 import pytest
 
+from core.infrastructure.calendar_periods_schema import install as install_calendar_periods
+from core.infrastructure.machine_capabilities_schema import install as install_machine_capabilities
+from core.infrastructure.material_stages_schema import install as install_material_stages
 from core.infrastructure.migration_state import get_schema_version, set_schema_version
 from core.infrastructure.workbench_execution_ledger_schema import install_execution_ledger
 from core.infrastructure.workbench_execution_void_schema import install_execution_voids
@@ -26,6 +29,11 @@ def batch_ledger_fixture(batch_client):
 @pytest.fixture(name="legacy_batch_ledger")
 def legacy_batch_ledger(mem_conn):
     conn = load_v24_schema(mem_conn)
+    # Isolate the old ledger contract while current batch queries use current catalogs.
+    conn.execute("BEGIN")
+    install_calendar_periods(conn)
+    install_machine_capabilities(conn)
+    install_material_stages(conn)
     set_schema_version(conn, 24)
     conn.commit()
     case = build_case(create_batch_client(conn))

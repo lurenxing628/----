@@ -17,6 +17,8 @@ from core.infrastructure.migrations import v27
 from core.infrastructure.workbench_template_lineage_schema import template_lineage_objects
 from core.infrastructure.workbench_trial_schema import workbench_trial_objects
 from tests.workbench.dashboard_external_migration_support import V31_TABLES, assert_v31_receipt_maps_only
+from tests.workbench.flexible_migration_support import TABLES as FLEXIBLE_TABLES
+from tests.workbench.flexible_migration_support import legacy_ddl
 from tests.workbench.legacy_migration_current_support import (
     V30_TABLES,
     V32_TABLES,
@@ -59,7 +61,7 @@ def test_real_upgrade_keeps_completed_runs_old_execution_rows_types_and_all_refs
     with connect(path) as conn:
         after = snapshot(conn)
         assert get_schema_version(conn) == CURRENT_SCHEMA_VERSION and current_schema_contract_issues(conn) == []
-        assert set(after) - set(before) == new_tables() | set(V29_TABLES + V30_TABLES + V31_TABLES + V32_TABLES + V33_TABLES)
+        assert set(after) - set(before) == new_tables() | set(V29_TABLES + V30_TABLES + V31_TABLES + V32_TABLES + V33_TABLES + FLEXIBLE_TABLES)
         assert_v29_source_maps_only(conn)
         assert_v30_source_maps_only(conn)
         assert_v31_receipt_maps_only(conn)
@@ -68,7 +70,7 @@ def test_real_upgrade_keeps_completed_runs_old_execution_rows_types_and_all_refs
         assert {name: after[name] for name in before if name != "SchemaVersion"} == {
             name: rows for name, rows in before.items() if name != "SchemaVersion"}
         assert all(after[name] == [] for name in new_tables())
-        assert [row for row in source_ddl(conn) if row[1] in {item[1] for item in ddl}] == ddl
+        assert legacy_ddl([row for row in source_ddl(conn) if row[1] in {item[1] for item in ddl}]) == ddl
         assert not conn.execute("PRAGMA foreign_key_check").fetchall()
     files = list(backups.glob(f"*before_migrate_v26_to_v{CURRENT_SCHEMA_VERSION}*.db"))
     assert len(files) == 1

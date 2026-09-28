@@ -63,7 +63,8 @@ def test_exact_workspace_tasks_and_source_in_file(plan_api, fmt, role, scenario,
         assert values[22] == task['start'] and values[23] == task['end']
     assert plan_api.state() == before
     assert not any(sql.lstrip().split()[0].upper() not in {'SELECT', 'WITH', 'BEGIN', 'COMMIT'}
-                   for sql in plan_api.statements if not sql.startswith('-- PRAGMA '))
+                   for sql in plan_api.statements if not sql.startswith('-- PRAGMA ') and sql.strip().upper().replace(' ', '') not in
+                   {'PRAGMADATA_VERSION', 'PRAGMAQUERY_ONLY', 'PRAGMAQUERY_ONLY=ON', 'PRAGMAQUERY_ONLY=OFF'})
 
 
 @pytest.mark.parametrize('fmt', ['csv', 'xlsx'])

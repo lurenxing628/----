@@ -62,7 +62,7 @@ def test_managed_point_candidate_then_trial_adoption_and_shutdown(job_case, tmp_
         task, = draft["tasks"]
         draft = post(client, TRIAL + "/drafts/" + draft["draft_ref"] + "/change", {
             "input": {"task_ref": task["task_ref"], "machine_ref": task["machine_ref"],
-                      "operator_ref": task["operator_ref"], "start": "2026-09-09T13:00:00"},
+                      "operator_ref": task["operator_ref"], "start": "2026-09-09T13:30:00"},
             "request_key": "point-host-move-0001", "write_token": draft["write_context"]["write_token"]})["data"]
         saved = post(client, TRIAL + "/drafts/" + draft["draft_ref"] + "/save", {
             "input": {"name": "Managed point scenario"}, "request_key": "point-host-save-0001",
@@ -76,7 +76,7 @@ def test_managed_point_candidate_then_trial_adoption_and_shutdown(job_case, tmp_
         assert replay["replayed"] and replay["receipt_ref"] == second["receipt_ref"]
         changed = read_point(client, second["data"]["official_plan"])
         assert changed["operation_ref"] == original["operation_ref"] and changed["task_ref"] != original["task_ref"]
-        assert changed["start"] == changed["end"] == "2026-09-09T13:00:00"
+        assert changed["start"] == changed["end"] == "2026-09-09T13:30:00"
         assert read_point(client, first_plan) == original
         observed["app"] = app
 
