@@ -208,6 +208,8 @@ SCHEDULER_REQUIRED_REGRESSION_GROUPS = (
             "tests/algorithm/test_sgs_working_hour_slack_dispatch.py",
             "tests/resource_dispatch/test_dispatch_rules_working_hour_priority_contract.py",
             "tests/calendar_maintenance/test_calendar_working_hours_between.py",
+            "tests/calendar_maintenance/test_calendar_effective_segments.py",
+        "tests/calendar_maintenance/test_calendar_periods.py",
             "tests/algorithm/test_ready_date_resource_calendar_lower_bound.py",
             "tests/algorithm/test_sgs_slot_reuse_contract.py",
             "tests/algorithm/test_sgs_slot_reuse_equivalence.py",

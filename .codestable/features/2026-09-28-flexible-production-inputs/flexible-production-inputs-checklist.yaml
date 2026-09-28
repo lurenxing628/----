@@ -1,0 +1,17 @@
+feature: flexible-production-inputs
+status: completed
+steps:
+  - {id: schema, title: 向前迁移和兼容数据契约, status: completed}
+  - {id: periods, title: 多工作时段计算和维护闭环, status: completed}
+  - {id: capabilities, title: 多工种设备及双归属工种全链路, status: completed}
+  - {id: materials, title: 分阶段用料到料及确认拆批, status: completed}
+  - {id: run_options, title: 本次排产策略和保存采用约束, status: completed}
+  - {id: verify, title: 相关组合场景测试和浏览器及文档验收, status: completed}
+checks:
+  - {id: material_conservation, title: 100件拆40和60且用料到料守恒, status: completed}
+  - {id: stage_release, title: 前序放行和后序待料受策略控制, status: completed}
+  - {id: multi_capability, title: 设备多工种与人员双重资格, status: completed}
+  - {id: dual_source, title: 同工种可明确自制或外协, status: completed}
+  - {id: periods_consistent, title: 午休跨日推进累计及产能一致, status: completed}
+  - {id: legacy, title: 迁移保留历史且损坏结构拒绝, status: completed}
+  - {id: browser, title: 实际页面及文件维护闭环, status: completed}

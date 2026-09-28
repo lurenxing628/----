@@ -207,10 +207,10 @@ def _assert_section_contracts(markdown_text: str, label: str) -> None:
 def _assert_scheduler_manual_required_content(markdown_text: str, label: str) -> None:
     for needle in (
         "“导出 → 改 → 导回”是最稳的改法",
-        "只填代号：internal 自制 / external 外协",
+        "归属和外协周期策略使用与页面相同的中文",
         "工时留空不会自动补零",
         "这一天原来没配置过、类型又留空时，按这个日期的默认规则定",
-        "合并周期只改原来那个外协组的周期",
+        "合并周期在每组第一道工序填一次",
         "值班台怎么看",
         "顶栏“帮助”打开的 **本页说明**",
         "阅读整本说明书",
