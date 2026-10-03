@@ -263,6 +263,13 @@ def _build_algo_input_or_raise(
     return algo_input_outcome, algo_ops
 
 
+def _algo_input_operations(reschedulable_operations, operations, execution_completed_op_ids):
+    """Preserve completed external group facts without making completed work reschedulable."""
+    completed_external = [op for op in operations if _op_id(op) in execution_completed_op_ids
+                          and op.source == SourceType.EXTERNAL.value]
+    return reschedulable_operations + completed_external
+
+
 def collect_schedule_run_input(
     svc: Any,
     *,
@@ -333,7 +340,8 @@ def collect_schedule_run_input(
     algo_input_outcome, algo_ops = _build_algo_input_or_raise(
         build_algo_operations_fn=build_algo_operations_fn,
         svc=svc,
-        reschedulable_operations=reschedulable_operations,
+        reschedulable_operations=_algo_input_operations(
+            reschedulable_operations, operations, execution_completed_op_ids),
         strict_mode=bool(strict_mode),
         run_label=run_label,
     )

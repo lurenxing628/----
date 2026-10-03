@@ -132,20 +132,36 @@ def test_reference_authorizations_cannot_change_permissions_and_unknown_columns_
 
 def test_batch_actual_export_reimports_status_as_reference(batch_client):
     client = batch_client
+    conn = client.batch_conn
+    conn.execute("INSERT INTO BatchMaterialReviews(requirement_id,batch_quantity) VALUES(51,17)")
+    conn.execute("INSERT INTO BatchMaterialArrivals(requirement_id,arrival_date,quantity) VALUES(51,'1900-01-01',16.5)")
+    conn.commit()
     listed = list_data(client)
-    approved = client.post(BASE + "/export-preview", json={"selection": "selected", "refs": [ref_for(client)],
+    selected = ref_for(client, key="B1")
+    approved = client.post(BASE + "/export-preview", json={"selection": "selected", "refs": [selected],
         "scope": {"size": 20, "snapshot_ref": listed["meta"]["snapshot_ref"]}}).get_json()["data"]
     export = client.get(BASE + "/export", query_string={"export_ref": approved["export_ref"]})
     assert export.status_code == 200
     before = state(client)
     document = uploaded(client, [], content=export.data).get_json()["data"]
     assert document["can_confirm"] and state(client) == before
-    # 导出文件带着「填写说明」表回导，所以除了状态参考列还会多一条只读第一张表的告知。
-    assert [item["code"] for item in document["warnings"]] == ["first_sheet_only", "reference_column_ignored"]
-    assert "status" not in document["rows"][0]["input"]["fields"]
-    original = detail(client)["data"]["status"]
-    assert confirm_batch(client, document).status_code == 200
-    assert detail(client)["data"]["status"] == original
+    # 两列只读记录都不导入；导出的「填写说明」表另有只读第一张表的告知。
+    assert [item["code"] for item in document["warnings"]] == [
+        "first_sheet_only", "reference_column_ignored", "reference_column_ignored"]
+    references = document["warnings"][1:]
+    assert "“状态”" in references[0]["message"]
+    assert "“当前有效齐套（只读）”" in references[1]["message"]
+    fields = document["rows"][0]["input"]["fields"]
+    assert "status" not in fields and "display_ready_status" not in fields
+    original = detail(client, selected)["data"]
+    assert original["display_ready_status"] == "yes" and original["fields"]["ready_status"] == "no"
+    assert fields["ready_status"] == original["fields"]["ready_status"]
+    saved = confirm_batch(client, document)
+    assert saved.status_code == 200 and saved.get_json()["result"] == "unchanged", saved.get_json()
+    after = detail(client, selected)["data"]
+    assert after["status"] == original["status"]
+    assert after["fields"]["ready_status"] == original["fields"]["ready_status"]
+    assert state(client)[1]["Batches"] == before[1]["Batches"]
 
 
 def test_batch_reference_status_cannot_create_completed_state_or_accept_unknown_column(batch_client):

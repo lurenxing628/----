@@ -60,8 +60,8 @@ def install_execution_voids(conn):
     required = {"WorkbenchProductionReports", "WorkbenchProductionReportRevisions", "WorkbenchExecutionLedgerClock", "WorkbenchCommandReceipts"}
     if not required <= names:
         raise RuntimeError("Execution void prerequisites are missing.")
-    from core.infrastructure.workbench_execution_ledger_schema import execution_ledger_contract_issues
-    if execution_ledger_contract_issues(conn):
+    from core.infrastructure.workbench_execution_ledger_schema import execution_ledger_migration_contract_issues
+    if execution_ledger_migration_contract_issues(conn):
         raise RuntimeError("Execution ledger prerequisites do not match their schema contract.")
     if conn.execute("SELECT 1 FROM WorkbenchCommandReceipts WHERE action='execution.report_void' LIMIT 1").fetchone():
         raise RuntimeError("Report void receipts remain without facts; restore the complete ledger.")

@@ -14,6 +14,12 @@
   const columns = [['business_code', '批次号', 155], ['part_no', '图号', 190], ['quantity', '数量', 80], ['due_date', '交期', 140],
     ['progress', '工序进度', 170], ['priority', '优先级', 115], ['ready_status', '齐套显示', 120], ['status', '状态', 115]];
   const issueRows = rows => Array.isArray(rows) && rows.every(row => object(row) && text(row.code) && text(row.message));
+  const sequence = value => typeof value === 'number' && Number.isInteger(value) && value > 0 || text(value) && /^[1-9][0-9]*$/.test(value);
+  function externalGroup(row) {
+    return object(row) && nullableText(row.piece_id) && sequence(row.start_sequence) && sequence(row.end_sequence)
+      && ['merged', 'separate'].includes(row.merge_mode) && finite(row.total_days)
+      && Array.isArray(row.member_sequences) && row.member_sequences.length > 0 && row.member_sequences.every(sequence);
+  }
   function context(value) { return value === null || object(value) && text(value.write_token) && !!value.write_token && object(value.capabilities) && Array.isArray(value.blocked_reasons); }
   function operation(row) {
     return object(row) && ref(row.ref) && row.operation_ref === row.ref && text(row.business_code) && text(row.label)
@@ -69,6 +75,7 @@
       && Array.isArray(data.after) && data.after.every(row => object(row) && text(row.label) && ['setup_hours', 'unit_hours', 'external_days'].every(key => finite(row[key])))
       && object(data.change_counts) && ['added', 'removed', 'updated', 'unchanged'].every(key => count(data.change_counts[key]))
       && Array.isArray(data.changes) && data.changes.every(row => object(row) && ['added', 'removed', 'updated', 'unchanged'].includes(row.change))
+      && object(data.external_groups) && ['before', 'after'].every(key => Array.isArray(data.external_groups[key]) && data.external_groups[key].every(externalGroup))
       && Array.isArray(data.cleared_resources) && data.cleared_resources.every(row => object(row) && ref(row.operation_ref) && text(row.business_code));
     if (valid && action === 'split') valid = data.entity_ref === expectedRef && Number.isSafeInteger(data.original_quantity)
       && Number.isSafeInteger(data.quantity) && data.quantity > 0 && data.remaining_quantity > 0

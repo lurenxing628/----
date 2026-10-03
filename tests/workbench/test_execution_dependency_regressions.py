@@ -1,16 +1,19 @@
 """Actual HTTP writes and final-state batches over current-schema adopted routes."""
 
-from datetime import datetime
+import json
+from dataclasses import replace
+from datetime import datetime, timedelta
 
 import pytest
 
 from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.scheduler.template_lineage import TemplateLineageWriter
+from core.services.workbench.run.preflight import PreflightService
 from core.services.workbench.run.worker import WorkbenchRunWorker
 from tests.workbench.field_workspace_support import BASE, FieldAPI, success
 from tests.workbench.piece_adoption_support import split
-from tests.workbench.run_candidate_adoption_support import INTENT, KEY, preview, service, snapshot
+from tests.workbench.run_candidate_adoption_support import INTENT, KEY, preview, rewrite_candidate, service, snapshot
 from tests.workbench.run_candidate_support import candidate_case as _case  # noqa: F401
 from tests.workbench.run_candidate_support import compute
 
@@ -174,8 +177,7 @@ def test_late_actual_does_not_use_unstarted_planned_successor_as_a_blocker(candi
     assert create(api, version, second, values(case, "2026-09-09T13:00:00", "2026-09-09T13:45:00")).status_code == 200
 
 
-def test_merged_external_actuals_can_share_one_period(candidate_case):
-    case = candidate_case
+def merged_external_route(case, piece=False):
     case.conn.execute("UPDATE OpTypes SET category='both' WHERE op_type_id='T1'")
     case.conn.execute("INSERT INTO Suppliers(supplier_id,name,op_type_id) VALUES ('S1','供应商','T1')")
     case.conn.execute("INSERT INTO ExternalGroups(group_id,part_no,start_seq,end_seq,merge_mode,total_days,supplier_id) VALUES ('G','P1',2,3,'merged',1,'S1')")
@@ -185,7 +187,16 @@ def test_merged_external_actuals_can_share_one_period(candidate_case):
             cursor = case.conn.execute("INSERT INTO PartOperations(part_no,seq,op_type_id,op_type_name,source,supplier_id,ext_group_id,setup_hours,unit_hours) "
                                       "VALUES ('P1',?,'T1','Turning','external','S1','G',0,0)", (seq,))
             copied.append(TemplateLineageWriter(case.conn).copy_template("B1", cursor.lastrowid))
+    if piece:
+        case.conn.execute("UPDATE Batches SET quantity=1 WHERE batch_id='B1'")
+        case.conn.execute("UPDATE BatchOperations SET piece_id='unit-A' WHERE batch_id='B1'")
     case.conn.commit()
+    return copied
+
+
+def test_merged_external_actuals_can_share_one_period(candidate_case):
+    case = candidate_case
+    copied = merged_external_route(case)
     version = adopt(case)
     report_plan(case, version, {case.op_id})
     api = FieldAPI(case)
@@ -194,6 +205,194 @@ def test_merged_external_actuals_can_share_one_period(candidate_case):
         payload.update(actual_machine_ref=None, actual_operator_ref=None)
         response = create(api, version, operation, payload)
         assert response.status_code == 200, response.get_json()
+
+
+@pytest.mark.parametrize("piece,all_members,locked,extra_hours,start_date", [
+    pytest.param(False, False, False, 0, "2026-09-09", id="batch-one"),
+    pytest.param(False, True, False, 0, "2026-09-09", id="batch-all"),
+    pytest.param(True, False, False, 0, "2026-09-09", id="piece-one"),
+    pytest.param(True, True, False, 0, "2026-09-09", id="piece-all"),
+    pytest.param(False, False, True, 0, "2026-09-09", id="batch-one-locked"),
+    pytest.param(False, False, False, 2, "2026-09-09", id="batch-actual-26-hours"),
+    pytest.param(True, False, False, 2, "2026-09-09", id="piece-actual-26-hours"),
+    pytest.param(False, False, False, 0, "2026-09-11", id="batch-actual-before-window"),
+    pytest.param(True, False, False, 0, "2026-09-11", id="piece-actual-before-window"),
+])
+def test_merged_external_actuals_preserve_group_period_on_replan_and_adoption(candidate_case, piece, all_members, locked, extra_hours, start_date):
+    case = candidate_case
+    copied = merged_external_route(case, piece)
+    version = adopt(case)
+    original = {row["op_id"]: (row["start_time"], row["end_time"]) for row in case.conn.execute(
+        "SELECT op_id,start_time,end_time FROM Schedule WHERE version=? AND op_id IN (?,?)", (version, *copied))}
+    assert set(original) == set(copied) and len(set(original.values())) == 1
+    report_plan(case, version, {case.op_id})
+    api = FieldAPI(case)
+    for operation in copied if all_members else copied[:1]:
+        start, end = original[operation]
+        actual_end = datetime.fromisoformat(end) + timedelta(hours=extra_hours)
+        payload = values(case, start.replace(" ", "T"), actual_end.isoformat(), 1 if piece else 3)
+        payload.update(actual_machine_ref=None, actual_operator_ref=None)
+        assert case.writer.preview("create", case.task(version, operation), payload)["can_confirm"] is True
+        assert success(create(api, version, operation, payload))["result"] == "committed"
+    if locked:
+        case.conn.execute("UPDATE Schedule SET lock_status='locked' WHERE version=? AND op_id=?", (version, copied[1]))
+    case.batch("B2")
+    case.operation("B2")
+    case.conn.commit()
+    accepted = case.accept(key="merged-actual-next-run-001", settings=case.settings("B1", "B2", start_date=start_date))
+    run = WorkbenchRunWorker(case.conn).execute(accepted["run_ref"])
+    assert run["state"] == "complete" and run["candidates"]
+    expected = {op_id: (datetime.fromisoformat(period[0]), datetime.fromisoformat(period[1]) + timedelta(hours=extra_hours))
+                for op_id, period in original.items()}
+    for candidate in run["candidates"]:
+        rows = (json.loads(row[0]) for row in case.conn.execute(
+            "SELECT payload_json FROM WorkbenchRunCandidateTasks WHERE candidate_ref=?", (candidate["candidate_ref"],)))
+        periods = {row["op_id"]: (datetime.fromisoformat(row["start_time"]), datetime.fromisoformat(row["end_time"]))
+                   for row in rows if row["op_id"] in copied}
+        assert periods == expected
+    ref = run["candidates"][0]["candidate_ref"]
+    result = service(case.conn).adopt(ref, preview(case, ref), "merged-actual-adopt-002", INTENT)
+    assert result["result"] == "committed"
+    stored = {row["op_id"]: (datetime.fromisoformat(row["start_time"]), datetime.fromisoformat(row["end_time"]))
+              for row in case.conn.execute("SELECT op_id,start_time,end_time FROM Schedule WHERE version=? AND op_id IN (?,?)",
+                                           (result["data"]["official_plan"]["version"], *copied))}
+    assert stored == expected
+    if locked:
+        assert case.conn.execute("SELECT lock_status FROM Schedule WHERE version=? AND op_id=?",
+                                 (result["data"]["official_plan"]["version"], copied[1])).fetchone()[0] == "locked"
+
+
+def late_merged_actual(case, piece=False, member=0):
+    copied = merged_external_route(case, piece)
+    version = adopt(case)
+    report_plan(case, version, {case.op_id})
+    start, end = (datetime.fromisoformat(value) for value in case.conn.execute(
+        "SELECT start_time,end_time FROM Schedule WHERE version=? AND op_id=?", (version, copied[member])).fetchone())
+    end += timedelta(hours=2)
+    payload = values(case, start.isoformat(), end.isoformat(), 1 if piece else 3)
+    payload.update(actual_machine_ref=None, actual_operator_ref=None)
+    case.command("create", case.task(version, copied[member]), payload)
+    return version, copied, (start, end)
+
+
+@pytest.mark.parametrize("piece", [False, True])
+def test_actual_merged_cycle_only_ignores_later_ready_and_material_dates(candidate_case, piece):
+    from core.services.workbench.batch.materials import WorkbenchBatchMaterialService
+    from tests.workbench.test_material_stage_release import add_requirement
+    from tests.workbench.trial_adoption_support import INTENT as trial_intent
+    from tests.workbench.trial_adoption_support import preview as trial_preview
+    from tests.workbench.trial_adoption_support import saved_scenario
+    from tests.workbench.trial_adoption_support import service as trial_adoption
+
+    case = candidate_case
+    _, copied, period = late_merged_actual(case, piece)
+    # The physical cycle is already in actual history. A later master-data
+    # release date must not turn its remaining unreported member into new work.
+    if not piece:
+        add_requirement(case, copied[1], [{"arrival_date": "2030-01-01", "quantity": 3}])
+        case.conn.execute("INSERT INTO WorkbenchCalendarDefaults(singleton,periods_json) VALUES (1,?)",
+                          ('[{"start":"08:00","end":"16:00","day_offset":0}]',))
+    else:
+        case.conn.execute("INSERT INTO Materials(material_id,name,unit) VALUES ('STEEL','钢材','件')")
+        case.conn.commit()
+        with TransactionManager(case.conn).transaction():
+            WorkbenchBatchMaterialService(case.conn).apply(case.ref("batch", "B1"), {"removed_keys": [], "rows": [{
+                "row_key": None, "material_ref": case.ref("material", "STEEL"), "required_quantity": 1,
+                "available_quantity": 0, "operation_ref": None,
+                "arrivals": [{"arrival_date": "2030-01-01", "quantity": 1}]}]})
+    case.conn.execute("UPDATE Batches SET ready_date='2026-09-20',ready_status='no' WHERE batch_id='B1'")
+    case.conn.commit()
+    settings = case.settings(material_strategy="stage", start_date="2026-09-11", end_date="2026-09-15")
+    checked, _ = PreflightService(case.conn).evaluate(settings)
+    assert checked["blockers"] == [] and checked["counts"]["eligible_tasks"] == 0
+    assert checked["included_batches"] == [{"batch_ref": case.ref("batch", "B1"), "batch_id": "B1"}]
+    assert all("op_id" not in row and "external_execution_cycle" not in row for row in checked["tasks"])
+    accepted = case.accept(key="merged-cycle-only-run-001", settings=settings)
+    run = WorkbenchRunWorker(case.conn).execute(accepted["run_ref"])
+    assert run["state"] == "complete" and run["candidates"]
+    ref = run["candidates"][0]["candidate_ref"]
+    assert service(case.conn).preview(ref)["validation"]["can_adopt"]
+    saved = saved_scenario(case, {"base": {"candidate_ref": ref}}, changed=False)
+    result = trial_adoption(case.conn).adopt(saved["scenario_ref"], trial_preview(case, saved), "merged-cycle-only-trial-001", trial_intent)
+    assert {tuple(datetime.fromisoformat(value) for value in row) for row in case.conn.execute(
+        "SELECT start_time,end_time FROM Schedule WHERE version=? AND op_id IN (?,?)",
+        (result["data"]["official_plan"]["version"], *copied))} == {period}
+
+
+@pytest.mark.parametrize("member", [0, 1])
+def test_actual_cycle_conflicts_with_existing_frozen_member_in_either_direction(candidate_case, member):
+    from core.errors import AppError
+    from core.services.scheduler.schedule_service import ScheduleService
+
+    case = candidate_case
+    late_merged_actual(case, member=member)
+    case.batch("B2")
+    case.operation("B2")
+    case.conn.commit()
+    case.config(freeze_window_enabled="yes", freeze_window_days=3)
+    before = snapshot(case.conn)
+    with pytest.raises(AppError) as caught:
+        ScheduleService(case.conn).run_schedule(["B1", "B2"], start_dt=datetime(2026, 9, 9), end_date=datetime(2026, 9, 25).date())
+    assert caught.value.details["reason"] == "execution_merged_group_split"
+    assert snapshot(case.conn) == before
+
+
+def test_persistence_guard_rejects_split_cycle_before_completed_later_member(candidate_case):
+    from core.errors import AppError
+    from core.services.scheduler.run.schedule_execution_persistence_guard import validate_execution_guard_before_persist
+    from core.services.scheduler.run.schedule_payload_contract import build_validated_schedule_payload
+    from core.services.scheduler.schedule_service import ScheduleService
+    from core.services.workbench.run.compute import compute_candidate_run
+
+    case = candidate_case
+    _, copied, period = late_merged_actual(case, member=1)
+    computation = compute_candidate_run(case.conn, case.settings(), case.projections())
+    prepared = computation.schedule_input
+    original = next(iter(computation.candidate_payloads.values()))
+    rows = [replace(row, end_time=period[1] - timedelta(hours=2)) if row.op_id == copied[0] else row
+            for row in original.schedule_rows]
+    bad = build_validated_schedule_payload(rows, allowed_op_ids=original.scheduled_op_ids, operations=prepared.operations)
+    before = snapshot(case.conn)
+    with pytest.raises(AppError) as caught:
+        validate_execution_guard_before_persist(ScheduleService(case.conn), validated_schedule_payload=bad,
+            execution_guard_state_revisions=prepared.execution_guard_state_revisions, execution_facts=prepared.execution_facts,
+            execution_fixed_op_ids=prepared.execution_fixed_op_ids, execution_completed_op_ids=prepared.execution_completed_op_ids,
+            execution_snapshot_revision=prepared.execution_snapshot_revision, execution_snapshot_op_ids=prepared.execution_snapshot_op_ids,
+            payload_validation_operations=prepared.operations)
+    assert caught.value.details["reason"] == "execution_merged_group_split"
+    assert snapshot(case.conn) == before
+
+
+@pytest.mark.parametrize("other_actual_group", [False, True])
+def test_unreported_group_cannot_borrow_another_cycles_actual_duration(candidate_case, other_actual_group):
+    case = candidate_case
+    if other_actual_group:
+        late_merged_actual(case)
+        case.batch("B2")
+        case.operation("B2")
+        templates = list(case.conn.execute("SELECT id FROM PartOperations WHERE part_no='P1' ORDER BY seq"))
+        with TransactionManager(case.conn).transaction():
+            for row in templates:
+                TemplateLineageWriter(case.conn).copy_template("B2", row[0])
+        selected = ("B1", "B2")
+        target = {row[0] for row in case.conn.execute("SELECT id FROM BatchOperations WHERE batch_id='B2' AND source='external'")}
+    else:
+        target = set(merged_external_route(case))
+        selected = ("B1",)
+    case.conn.commit()
+    _, refs = compute(case, case.settings(*selected)) if not other_actual_group else next_cycle_run(case, selected)
+    ref = refs[0]
+    rewrite_candidate(case, ref, lambda row: row.update(end_time=(datetime.fromisoformat(row["end_time"]) + timedelta(hours=2)).isoformat())
+                      if row["op_id"] in target else None)
+    checked = service(case.conn).preview(ref)
+    assert checked["validation"]["can_adopt"] is False
+    assert checked["validation"]["issues"][0]["code"] == "candidate_external_duration_conflict"
+
+
+def next_cycle_run(case, selected):
+    accepted = case.accept(key="other-cycle-run-000001", settings=case.settings(*selected))
+    computed = WorkbenchRunWorker(case.conn).execute(accepted["run_ref"])
+    return computed["run_ref"], [row["candidate_ref"] for row in computed["candidates"]]
 
 
 def external_route(case, piece=False):

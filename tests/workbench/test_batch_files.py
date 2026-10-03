@@ -2,12 +2,13 @@
 
 import json
 import zipfile
+from datetime import date
 from io import BytesIO
 
 import openpyxl
 import pytest
 
-from core.models.workbench_batch_file import HEADERS
+from core.models.workbench_batch_file import FILE_HEADERS, HEADERS
 from core.services.workbench.batch.file_codec import write_batch_file
 from tests.workbench.batch_support import BASE, assert_error, batch_database, body, detail, list_data, ref_for, state
 from tests.workbench.legacy_batch_lineage_copy_support import assert_dashboard_copy_items
@@ -99,7 +100,7 @@ def test_template_bytes_and_selected_export_preserve_text_and_scope(batch_client
     client = batch_client
     before = state(client)
     template = client.get(BASE + "/template")
-    assert tuple(data_rows(template)[0]) == HEADERS
+    assert tuple(data_rows(template)[0]) == FILE_HEADERS
     assert state(client) == before
     conn = client.batch_conn
     conn.execute("UPDATE Batches SET remark='=FORMULA_NOT_EXECUTED' WHERE batch_id='FREE-001'")
@@ -165,3 +166,69 @@ def test_corrupt_xlsx_is_known_rejection_not_unknown_commit(batch_client):
         archive.writestr("[Content_Types].xml", b"<invalid xml")
     assert_error(uploaded(batch_client, [], content=content.getvalue()), "invalid_input")
     assert state(batch_client) == before
+
+
+def test_filtered_export_shows_effective_readiness_and_original_roundtrip_value(batch_client, monkeypatch):
+    from core.services.workbench.batch import projection
+
+    current_day = [date(2026, 10, 3)]
+    class CurrentDay(date):
+        @classmethod
+        def today(cls):
+            return current_day[0]
+
+    monkeypatch.setattr(projection, "date", CurrentDay)
+    client, conn = batch_client, batch_client.batch_conn
+    conn.execute("INSERT INTO BatchMaterialReviews(requirement_id,batch_quantity) VALUES(51,17)")
+    conn.execute("INSERT INTO BatchMaterialArrivals(requirement_id,arrival_date,quantity) VALUES(51,'2026-10-04',16.5)")
+    conn.commit()
+    assert list_data(client, ready_status="yes")["data"]["entities"] == []
+    current_day[0] = date(2026, 10, 4)
+    filtered = list_data(client, ready_status="yes")
+    assert [row["business_code"] for row in filtered["data"]["entities"]] == ["B1"]
+    response = client.post(BASE + "/export-preview", json={"selection": "filtered", "scope": {
+        "ready_status": "yes", "snapshot_ref": filtered["meta"]["snapshot_ref"]}})
+    assert response.status_code == 200, response.get_json()
+    exported = client.get(BASE + "/export", query_string={"export_ref": response.get_json()["data"]["export_ref"]})
+    rows = data_rows(exported)
+    assert tuple(rows[0]) == FILE_HEADERS
+    assert rows[1][0] == "B1"
+    assert rows[1][rows[0].index("维护齐套标记")] == "未齐套"
+    assert rows[1][rows[0].index("当前有效齐套（只读）")] == "齐套"
+    original = state(client)
+    preview = uploaded(client, [], content=exported.data).get_json()["data"]
+    assert preview["can_confirm"], preview
+    saved = confirm(client, preview, key="effective-ready-roundtrip-01")
+    assert saved.status_code == 200 and saved.get_json()["result"] == "unchanged", saved.get_json()
+    assert state(client)[1]["Batches"] == original[1]["Batches"]
+    assert conn.execute("SELECT ready_status FROM Batches WHERE batch_id='B1'").fetchone()[0] == "no"
+    workbook = openpyxl.load_workbook(BytesIO(exported.data))
+    sheet = workbook.worksheets[0]
+    sheet.cell(2, FILE_HEADERS.index("当前有效齐套（只读）") + 1, '=IF(1=1,"齐套","未齐套")')
+    modified = BytesIO()
+    workbook.save(modified)
+    ignored = uploaded(client, [], content=modified.getvalue()).get_json()["data"]
+    assert ignored["can_confirm"] and ignored["rows"][0]["input"]["fields"]["ready_status"] == "no"
+    sheet.cell(2, FILE_HEADERS.index("维护齐套标记") + 1, "齐套")
+    modified = BytesIO()
+    workbook.save(modified)
+    rejected = uploaded(client, [], content=modified.getvalue()).get_json()["data"]
+    assert not rejected["can_confirm"]
+    assert "齐套按物料需求计算" in rejected["rows"][0]["errors"][0]
+    workbook.close()
+
+
+def test_legacy_ready_header_remains_writable_and_duplicate_aliases_are_rejected(batch_client):
+    workbook = openpyxl.Workbook()
+    sheet = workbook.active
+    sheet.append(HEADERS)
+    sheet.append(["FREE-001", "P1", 5, None, "普通", "齐套", None, "legacy header"])
+    output = BytesIO()
+    workbook.save(output)
+    preview = uploaded(batch_client, [], content=output.getvalue()).get_json()["data"]
+    assert preview["can_confirm"] and preview["rows"][0]["input"]["fields"]["ready_status"] == "yes"
+    sheet.cell(1, 9, "维护齐套标记")
+    output = BytesIO()
+    workbook.save(output)
+    assert_error(uploaded(batch_client, [], content=output.getvalue()), "invalid_input")
+    workbook.close()

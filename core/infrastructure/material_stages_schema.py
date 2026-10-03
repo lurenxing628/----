@@ -7,7 +7,7 @@ def objects():
     return {
         "BatchMaterialReviews": """CREATE TABLE BatchMaterialReviews (
             requirement_id INTEGER PRIMARY KEY REFERENCES BatchMaterials(id) ON DELETE CASCADE,
-            batch_quantity INTEGER NOT NULL CHECK(batch_quantity >= 0))""",
+            batch_quantity INTEGER CHECK(batch_quantity >= 0))""",
         "BatchMaterialStages": """CREATE TABLE BatchMaterialStages (
             requirement_id INTEGER PRIMARY KEY REFERENCES BatchMaterials(id) ON DELETE CASCADE,
             operation_id INTEGER NOT NULL REFERENCES BatchOperations(id) ON DELETE RESTRICT)""",
@@ -25,6 +25,21 @@ def objects():
             split_quantity INTEGER NOT NULL,
             allocation_date TEXT NOT NULL,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)""",
+        "wb_material_quantity_basis": """CREATE TRIGGER wb_material_quantity_basis
+            AFTER UPDATE OF quantity ON Batches
+            WHEN NEW.quantity IS NOT OLD.quantity
+            BEGIN
+                INSERT OR IGNORE INTO BatchMaterialReviews(requirement_id,batch_quantity)
+                    SELECT id, CASE WHEN typeof(OLD.quantity) = 'integer' AND OLD.quantity >= 0
+                        THEN OLD.quantity ELSE NULL END
+                    FROM BatchMaterials WHERE batch_id = NEW.batch_id;
+                UPDATE Batches SET ready_status = 'no'
+                    WHERE batch_id = NEW.batch_id AND EXISTS (
+                        SELECT 1 FROM BatchMaterials m
+                        JOIN BatchMaterialReviews r ON r.requirement_id = m.id
+                        WHERE m.batch_id = NEW.batch_id
+                            AND (r.batch_quantity IS NULL OR r.batch_quantity IS NOT NEW.quantity));
+            END""",
     }
 
 

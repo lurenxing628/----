@@ -62,12 +62,14 @@
     if (source === null || typeof source !== 'object') return invalid(kind);
     const {
       digits = 1,
-      trim = false
+      trim = false,
+      exact = false
     } = source;
-    if (!Number.isInteger(digits) || digits < 0 || digits > 20 || typeof trim !== 'boolean') return invalid(kind);
+    if (!Number.isInteger(digits) || digits < 0 || digits > 20 || typeof trim !== 'boolean' || typeof exact !== 'boolean') return invalid(kind);
     return {
       digits,
-      trim
+      trim,
+      exact
     };
   }
   function signedZero(value, digits) {
@@ -78,9 +80,11 @@
     if (empty(value)) return unknown;
     const {
       digits,
-      trim
+      trim,
+      exact
     } = numberOptions(options, '数值');
     if (typeof value !== 'number' || !Number.isFinite(value)) return invalid('数值');
+    if (exact) return String(value === 0 ? 0 : value);
     return signedZero(value, digits).toLocaleString('zh-CN', {
       minimumFractionDigits: trim ? 0 : digits,
       maximumFractionDigits: digits

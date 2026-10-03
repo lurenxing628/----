@@ -41,10 +41,10 @@ function preview(input){const old=fixtureState.entity.external_groups,ops=fixtur
 }
 let renderRoot;
 window.mountFixture=(spec={})=>{if(renderRoot)renderRoot.unmount();const current=entity();window.fixtureState={entity:current,commands:[],previews:[],dirty:[],closed:false};
- const adapter={command:async()=>{},detail:async()=>envelope(current),choices:async(kind,scope)=>envelope({entities:suppliers.filter(row=>!scope.query||row.label.includes(scope.query)),page:{number:1,size:50,total:3,pages:1,sort:[]}}),
+ const adapter={command:async()=>{},detail:async()=>envelope(copy(current)),choices:async(kind,scope)=>envelope({entities:suppliers.filter(row=>!scope.query||row.label.includes(scope.query)),page:{number:1,size:50,total:3,pages:1,sort:[]}}),
  stagePreview:async(part,action,input)=>{fixtureState.previews.push(copy(input));return envelope({part_ref:current.ref,action,affected_groups:[],changes:preview(input),write_context:{write_token:'GROUP-TOKEN',capabilities:{'process.groups_confirm':true},blocked_reasons:[]}});}};
  const command={locked:false,phase:'idle',submit:async(kind,action,id,context,input)=>fixtureState.commands.push({kind,action,id,input:copy(input)})};
- const props={adapter,result:envelope(current),command,saved:0,onDirty:(key,value)=>fixtureState.dirty.push({key,value}),onOverlay:()=>{},onClose:()=>{fixtureState.closed=true;renderRoot.render(null);}};
+ const props={adapter,result:envelope(copy(current)),command,saved:0,onDirty:(key,value)=>fixtureState.dirty.push({key,value}),onOverlay:()=>{},onClose:()=>{fixtureState.closed=true;renderRoot.render(null);}};
  renderRoot=ReactDOM.createRoot(document.getElementById('fixture-root'));renderRoot.render(React.createElement('div',{className:'plana process-detail'},React.createElement(spec.hours?ProcessHoursEditor:ProcessGroupEditor,props)));};
 `;
 const html = '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
@@ -99,6 +99,32 @@ async function cases() {
   await run('effective-cycle-shown-and-member-input-absent',async()=>{
     await mount({hours:true});const table=page.getByRole('table',{name:'外协周期明细'});assert((await table.innerText()).includes('整段 6.75 天 · 工序 20 至 21'));assert.equal(await page.getByRole('spinbutton',{name:'工序 20 外协周期',exact:true}).count(),0);
     assert(await page.getByRole('spinbutton',{name:'工序 40 外协周期',exact:true}).isVisible());await button('管理外协段').click();await page.locator('[data-process-group-editor]').waitFor();
+  });
+  await run('deleted-stage-rebase-removes-invalid-draft-and-permits-fresh-edit',async()=>{
+    await mount();await button('修改范围 / 供应商').first().click();await page.getByRole('spinbutton',{name:'整段外协周期',exact:true}).fill('8.5');
+    await page.evaluate(()=>{const e=fixtureState.entity;e.external_groups=[];e.operations.forEach(row=>{if(row.source==='external'){row.status='deleted';row.external_group_ref=null;row.external_days_source=row.external_days===null?null:'operation';}});e.relationships.operation_count=2;e.relationships.external_count=0;});
+    await button('刷新最新资料').click();await page.getByText(/接受后会移除失效段的编辑/).waitFor();await button('已核对，继续编辑').click();
+    assert.equal(await button('编辑本次第 1 段').count(),0);assert.equal(await button('选择整段供应商').count(),0);
+    assert(await button('预检外协段').isDisabled());
+    await button('新增外协段').click();assert(await button('选择整段供应商').isDisabled());await button('撤销本次编辑').click();
+    await button('返回工时').click();assert.equal(await page.evaluate(()=>fixtureState.closed),true);assert.equal(await page.evaluate(()=>fixtureState.commands.length),0);
+  });
+  await run('new-stage-rebase-prunes-deleted-member-and-keeps-valid-user-cycle',async()=>{
+    await mount();await button('新增外协段').click();await page.getByRole('checkbox',{name:'外协段包含工序 40',exact:true}).check();await page.getByRole('checkbox',{name:'外协段包含工序 50',exact:true}).check();
+    await button('选择整段供应商').click();await button('采用 共同供应商').click();await page.getByRole('spinbutton',{name:'整段外协周期',exact:true}).fill('8.5');
+    await page.evaluate(()=>{const e=fixtureState.entity;e.operations.find(row=>row.sequence===50).status='deleted';e.relationships.operation_count=5;e.relationships.external_count=3;});
+    await button('刷新最新资料').click();await page.getByText(/接受后会移除失效段的编辑/).waitFor();await button('已核对，继续编辑').click();
+    assert.equal(await page.getByRole('spinbutton',{name:'整段外协周期',exact:true}).inputValue(),'8.5');
+    await button('选择整段供应商').click();await button('采用 共同供应商').click();
+    await button('预检外协段').click();await page.getByRole('table',{name:'外协段变更预检'}).waitFor();await button('确认保存外协段').click();await page.waitForFunction(()=>fixtureState.commands.length===1);
+    const row=await page.evaluate(()=>fixtureState.commands[0].input.groups[0]);assert.equal(row.ref,null);assert.equal(row.total_days,8.5);assert.deepEqual(row.operation_refs,[(1040).toString(16).padStart(48,'0')]);
+  });
+  await run('same-members-rebase-preserves-legitimate-stage-draft',async()=>{
+    await mount();await button('修改范围 / 供应商').first().click();await page.getByRole('spinbutton',{name:'整段外协周期',exact:true}).fill('8.5');
+    await page.evaluate(()=>{fixtureState.entity.external_groups[0].total_days=7.5;});await button('刷新最新资料').click();await button('已核对，继续编辑').click();
+    assert.equal(await page.getByRole('spinbutton',{name:'整段外协周期',exact:true}).inputValue(),'8.5');
+    await button('预检外协段').click();await page.getByRole('table',{name:'外协段变更预检'}).waitFor();await button('确认保存外协段').click();await page.waitForFunction(()=>fixtureState.commands.length===1);
+    const row=await page.evaluate(()=>fixtureState.commands[0].input.groups[0]);assert.equal(row.ref,(400).toString(16).padStart(48,'0'));assert.equal(row.total_days,8.5);assert.equal(row.operation_refs.length,2);
   });
 }
 (async () => {

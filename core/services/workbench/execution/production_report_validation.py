@@ -35,7 +35,17 @@ class ReportResourceValidator:
             reject("设备或人员已失效，请刷新重选。", "constraint_conflict", 409)
         return entity.entity_key
 
-    def validate(self, operation, values):
+    def validate(self, operation, values, *, previous_values=None):
+        # An existing report is evidence for its original actual resources and
+        # interval. Maintaining quantity/hours/remark must retain their permanent
+        # identities, but must not reapply today's capabilities or permissions.
+        preserved_actual = previous_values is not None and all(
+            values.get(field) == previous_values.get(field) for field in
+            ("actual_machine_ref", "actual_operator_ref", "actual_start", "actual_end"))
+        if preserved_actual:
+            self.resolve(values.get("actual_machine_ref"), "machine")
+            self.resolve(values.get("actual_operator_ref"), "operator")
+            return  # Historical validation never fills the current-qualification cache.
         key = (operation["source"], operation["op_type_id"], values.get("actual_machine_ref"), values.get("actual_operator_ref"))
         if key in self.checked:
             return

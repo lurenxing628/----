@@ -1051,7 +1051,7 @@ CREATE TABLE IF NOT EXISTS WorkbenchProductionReports (
             report_no TEXT NOT NULL UNIQUE CHECK(length(report_no) BETWEEN 1 AND 64),
             operation_ref TEXT NOT NULL, recorded_against_task_ref TEXT NOT NULL,
             recorded_against_plan_ref TEXT NOT NULL, source TEXT NOT NULL CHECK(source IN ('manual', 'excel')),
-            legacy_fact_ref TEXT UNIQUE, recorded_at TEXT NOT NULL,
+            legacy_fact_ref TEXT, recorded_at TEXT NOT NULL,
             FOREIGN KEY(operation_ref) REFERENCES WorkbenchPlanSourceRefs(ref),
             FOREIGN KEY(recorded_against_task_ref) REFERENCES WorkbenchTaskRefs(ref),
             FOREIGN KEY(recorded_against_plan_ref) REFERENCES WorkbenchPlanSourceRefs(ref),
@@ -1087,6 +1087,13 @@ CREATE TRIGGER IF NOT EXISTS wb_execution_revisions_clock AFTER INSERT ON Workbe
 CREATE TRIGGER IF NOT EXISTS wb_execution_legacy_no_update BEFORE UPDATE ON WorkbenchExecutionLegacyFacts BEGIN SELECT RAISE(ABORT, 'execution ledger is append-only'); END;
 CREATE TRIGGER IF NOT EXISTS wb_execution_legacy_no_delete BEFORE DELETE ON WorkbenchExecutionLegacyFacts BEGIN SELECT RAISE(ABORT, 'execution ledger is append-only'); END;
 CREATE TRIGGER IF NOT EXISTS wb_execution_legacy_clock AFTER INSERT ON WorkbenchExecutionLegacyFacts BEGIN UPDATE WorkbenchExecutionLedgerClock SET revision = revision + 1 WHERE singleton = 1; END;
+CREATE INDEX IF NOT EXISTS idx_wb_execution_reports_legacy ON WorkbenchProductionReports(legacy_fact_ref) WHERE legacy_fact_ref IS NOT NULL;
+CREATE TRIGGER IF NOT EXISTS wb_execution_legacy_link_active_unique
+            BEFORE INSERT ON WorkbenchProductionReports
+            WHEN NEW.legacy_fact_ref IS NOT NULL AND EXISTS (
+                SELECT 1 FROM WorkbenchProductionReports r WHERE r.legacy_fact_ref=NEW.legacy_fact_ref
+                AND NOT EXISTS (SELECT 1 FROM WorkbenchProductionReportVoids v WHERE v.report_ref=r.report_ref))
+            BEGIN SELECT RAISE(ABORT, 'legacy finish already has an active report'); END;
 CREATE TRIGGER IF NOT EXISTS wb_execution_capture_legacy AFTER INSERT ON OperationExecutionEvents BEGIN INSERT INTO WorkbenchExecutionLegacyFacts
         (legacy_fact_ref, operation_ref, recorded_against_task_ref, recorded_against_plan_ref,
          actual_machine_ref, actual_operator_ref, id, schedule_version, schedule_id, op_id, batch_id, source_table, effective_plan_role, scenario_id, event_type, reported_status, event_time, actual_machine_id, actual_operator_id, quantity_done, quantity_scrapped, reason_code, reason_detail, severity, impact_minutes, affected_machine_id, affected_operator_id, handling_status, suggest_reschedule, remark, created_by, idempotency_key, request_fingerprint, previous_state_revision, created_at)
@@ -1588,7 +1595,7 @@ CREATE TRIGGER IF NOT EXISTS wb_machine_types_delete AFTER DELETE ON MachineOpTy
         END;
 CREATE TABLE IF NOT EXISTS BatchMaterialReviews (
             requirement_id INTEGER PRIMARY KEY REFERENCES BatchMaterials(id) ON DELETE CASCADE,
-            batch_quantity INTEGER NOT NULL CHECK(batch_quantity >= 0));
+            batch_quantity INTEGER CHECK(batch_quantity >= 0));
 CREATE TABLE IF NOT EXISTS BatchMaterialStages (
             requirement_id INTEGER PRIMARY KEY REFERENCES BatchMaterials(id) ON DELETE CASCADE,
             operation_id INTEGER NOT NULL REFERENCES BatchOperations(id) ON DELETE RESTRICT);
@@ -1606,5 +1613,20 @@ CREATE TABLE IF NOT EXISTS BatchQuantitySplits (
             split_quantity INTEGER NOT NULL,
             allocation_date TEXT NOT NULL,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE TRIGGER IF NOT EXISTS wb_material_quantity_basis
+            AFTER UPDATE OF quantity ON Batches
+            WHEN NEW.quantity IS NOT OLD.quantity
+            BEGIN
+                INSERT OR IGNORE INTO BatchMaterialReviews(requirement_id,batch_quantity)
+                    SELECT id, CASE WHEN typeof(OLD.quantity) = 'integer' AND OLD.quantity >= 0
+                        THEN OLD.quantity ELSE NULL END
+                    FROM BatchMaterials WHERE batch_id = NEW.batch_id;
+                UPDATE Batches SET ready_status = 'no'
+                    WHERE batch_id = NEW.batch_id AND EXISTS (
+                        SELECT 1 FROM BatchMaterials m
+                        JOIN BatchMaterialReviews r ON r.requirement_id = m.id
+                        WHERE m.batch_id = NEW.batch_id
+                            AND (r.batch_quantity IS NULL OR r.batch_quantity IS NOT NEW.quantity));
+            END;
 INSERT INTO WorkbenchPlanIdentityClock(singleton, revision) SELECT 1, CASE WHEN NOT EXISTS (SELECT 1 FROM "WorkbenchPlanSourceRefs" LIMIT 1) AND NOT EXISTS (SELECT 1 FROM "WorkbenchTaskRefs" LIMIT 1) AND NOT EXISTS (SELECT 1 FROM "ScheduleHistory" LIMIT 1) AND NOT EXISTS (SELECT 1 FROM "BatchOperations" LIMIT 1) AND NOT EXISTS (SELECT 1 FROM "ScheduleCandidate" LIMIT 1) AND NOT EXISTS (SELECT 1 FROM "ScheduleCandidateSelection" LIMIT 1) AND NOT EXISTS (SELECT 1 FROM "ScheduleAdjustmentScenario" LIMIT 1) AND NOT EXISTS (SELECT 1 FROM "Schedule" LIMIT 1) AND NOT EXISTS (SELECT 1 FROM "ScheduleCandidateRows" LIMIT 1) AND NOT EXISTS (SELECT 1 FROM "ScheduleAdjustmentScenarioRow" LIMIT 1) THEN 1 ELSE 0 END WHERE NOT EXISTS (SELECT 1 FROM WorkbenchPlanIdentityClock);
 INSERT INTO WorkbenchExecutionLedgerClock(singleton, revision, next_report_no) SELECT 1, CASE WHEN NOT EXISTS (SELECT 1 FROM WorkbenchExecutionLegacyFacts LIMIT 1) AND NOT EXISTS (SELECT 1 FROM WorkbenchProductionReports LIMIT 1) AND NOT EXISTS (SELECT 1 FROM WorkbenchProductionReportRevisions LIMIT 1) AND NOT EXISTS (SELECT 1 FROM OperationExecutionEvents LIMIT 1) AND NOT EXISTS (SELECT 1 FROM WorkbenchCommandReceipts WHERE action GLOB 'execution.*' LIMIT 1) THEN 1 ELSE 0 END, 1 WHERE NOT EXISTS (SELECT 1 FROM WorkbenchExecutionLedgerClock);

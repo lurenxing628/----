@@ -20,10 +20,11 @@ def result_blockers(rows, no_route, counts):
     for row in rows:
         if row["status"] == "blocked":
             blockers.append(issue("operation_blocked", "这道工序有必填资料没填。请在下面的明细里补齐后重新检查。", operation_ref=row["operation_ref"], batch_ref=row["batch_ref"]))
-        if row["status"] == "protected" and (row["execution"]["execution_state"] != "complete" or row["execution"]["data_quality"] == "invalid"):
+        if (row["status"] == "protected" and not row.get("external_execution_cycle")
+                and (row["execution"]["execution_state"] != "complete" or row["execution"]["data_quality"] == "invalid")):
             blockers.append(issue("execution_review_required", "已开工工序的报工记录要先复核，暂时不能解除保护。请到现场记录核对。", operation_ref=row["operation_ref"], batch_ref=row["batch_ref"]))
     blockers.extend(issue("route_not_generated", "这批还没有生成工艺。请到批次管理按工艺模板生成工序。", batch_ref=row["ref"], batch_id=row["batch_id"]) for row in no_route)
-    if not counts["eligible_tasks"]:
+    if not counts["eligible_tasks"] and not any(row["status"] == "protected" and row.get("external_execution_cycle") for row in rows):
         blockers.append(issue("no_eligible_tasks", "当前选择范围里没有能排产的工序。请重新勾选批次，或先补齐缺的资料。"))
     return blockers
 
@@ -37,10 +38,15 @@ def result_warnings(settings, counts):
     return warnings
 
 
-def summarize(settings, batches, rows, no_route, unready, ledger_reasons):
+def summarize(settings, batches, rows, no_route, unready, ledger_reasons, dependency_reasons=()):
     counts = result_counts(batches, rows, no_route, unready)
     blockers = result_blockers(rows, no_route, counts)
-    included_refs = {row["batch_ref"] for row in rows if row["status"] in ("eligible", "auto_assign_required")}
+    blockers.extend(dependency_reasons)
+    included_refs = {row["batch_ref"] for row in rows if row["status"] in ("eligible", "auto_assign_required")
+                     or (row["status"] == "protected" and row.get("external_execution_cycle"))}
+    for row in rows:
+        row.pop("op_id", None)
+        row.pop("external_execution_cycle", None)
     included = [{"batch_ref": row["ref"], "batch_id": row["batch_id"]} for row in batches if row["ref"] in included_refs]
     excluded = [{"batch_ref": row["ref"], "batch_id": row["batch_id"], "reason": "这批没有可排的工序。具体原因见工序明细，或者这批还没生成工艺。"}
                 for row in batches if row["ref"] not in included_refs]

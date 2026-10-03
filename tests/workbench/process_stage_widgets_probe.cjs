@@ -115,7 +115,7 @@ async function mount(spec = {}) {await page.evaluate(spec => mountFixture(spec),
 async function open(stage) {await button('查看 PART-001').click();await page.locator('.stepper').waitFor();if (stage) await page.getByRole('tab', { name: new RegExp(stage) }).click();}
 async function lastCommand() {return page.evaluate(() => fixtureState.commands[fixtureState.commands.length - 1]);}
 async function sourceCheck() {assert.equal(await check('确认本页已核对工序').count(),0);}
-async function caseOf(name, run) {try {await run();report.cases.push({ variant, name, passed: true });} catch (error) {report.cases.push({ variant, name, passed: false, error: error.message });await page.screenshot({ path: path.join(output, variant + '-' + name + '-failure.png') });fs.writeFileSync(path.join(output, variant + '-' + name + '-failure.html'), await page.content());throw error;}}
+async function caseOf(name, run) {if(process.env.WORKBENCH_PROCESS_STAGE_CASES&&!new RegExp(process.env.WORKBENCH_PROCESS_STAGE_CASES).test(name))return;try {await run();report.cases.push({ variant, name, passed: true });} catch (error) {report.cases.push({ variant, name, passed: false, error: error.message });await page.screenshot({ path: path.join(output, variant + '-' + name + '-failure.png') });fs.writeFileSync(path.join(output, variant + '-' + name + '-failure.html'), await page.content());throw error;}}
 async function shot(name) {
   await page.evaluate(() => document.fonts.ready);
   await page.waitForFunction(() => Array.from(document.querySelectorAll('.modal-bg')).filter(el => el.getClientRects().length && getComputedStyle(el).visibility !== 'hidden').every(el => getComputedStyle(el).opacity === '1'));
@@ -202,7 +202,7 @@ async function cases() {
   await caseOf('independent-op-type-create-keeps-source-draft', async () => {
     await mount({stage:'source',unknown:true});await open();await page.getByRole('table',{name:'归属明细'}).locator('tbody tr').first().getByRole('button',{name:'外协',exact:true}).click();await button('新增工种').click();await page.getByRole('textbox',{name:'名称',exact:true}).waitFor();
     await page.getByRole('textbox',{name:'工种编号',exact:true}).fill('NEW-OP');await page.getByRole('textbox',{name:'名称',exact:true}).fill('New type');
-    const category=page.getByRole('combobox',{name:'归属',exact:true});await category.selectOption('internal');await button('保存').click();await page.getByText('已刷新到最新数据。',{exact:true}).waitFor();await page.locator('.modal-f').getByRole('button',{name:'关闭',exact:true}).click();
+    await page.getByRole('combobox',{name:'适用归属',exact:true}).selectOption('internal');await button('保存').click();await page.getByText('已刷新到最新数据。',{exact:true}).waitFor();await page.locator('.modal-f').getByRole('button',{name:'关闭',exact:true}).click();
     await page.getByText(/最新资料已读取，草稿没有被替换/).waitFor();assert.equal(await check('确认工序 5 归属').count(),0);assert.equal(await page.evaluate(()=>fixtureState.commands.length),0);assert.equal(await page.evaluate(()=>fixtureState.resourceCommands.length),1);assert.equal(await page.evaluate(()=>fixtureState.committed.length),1);
     await button('已核对，继续编辑').click();await page.getByRole('table',{name:'归属明细'}).locator('tbody tr').first().getByRole('button',{name:'自制',exact:true}).click();await button('选择工序 5 工种').click();await button('采用 Turn').click();await button('选择工序 15 工种').click();await button('采用 New type').click();await sourceCheck();await button('保存归属并继续').click();await button('保存工时').waitFor();assert.equal((await lastCommand()).body.input.operations[2].op_type_ref,'1f4'.padStart(48,'0'));
   });
@@ -259,10 +259,27 @@ async function cases() {
   });
   await caseOf('hours-fieldwise-rebase-keeps-user-values-and-server-updates', async () => {
     await mount({stage:'ready'});await open('工时定额');await page.getByRole('spinbutton',{name:'工序 5 单件工时',exact:true}).fill('8.5');assert.equal(await page.getByRole('spinbutton',{name:'工序 10 外协周期',exact:true}).count(),0);
-    await page.evaluate(()=>{const p=fixtureState.part;p.operations[0].setup_hours=6;p.operations[0].unit_hours=3;p.operations[1].external_days=4;p.operations[2].unit_hours=4;p.external_groups[0].total_days=9;p.external_groups[0].remark='服务器更新的周期备注';fixtureState.revision++;});await button('刷新最新资料').click();await page.getByRole('table',{name:'最新资料差异'}).locator('tbody tr').first().scrollIntoViewIfNeeded();await shot('hours-review');await button('已核对，继续编辑').click();
+    await page.evaluate(()=>{const p=fixtureState.part;p.operations[0].op_type_label='Renamed Turn';p.operations[0].setup_hours=6;p.operations[0].unit_hours=3;p.operations[1].external_days=4;p.operations[2].unit_hours=4;p.external_groups[0].total_days=9;p.external_groups[0].remark='服务器更新的周期备注';fixtureState.revision++;});await button('刷新最新资料').click();await page.getByRole('table',{name:'最新资料差异'}).locator('tbody tr').first().scrollIntoViewIfNeeded();await shot('hours-review');await button('已核对，继续编辑').click();
     for(const [label,expected] of [['工序 5 换型工时','6'],['工序 5 单件工时','8.5'],['工序 15 单件工时','4'],['外协组 10 至 10 总周期','9']])assert.equal(await page.getByRole('spinbutton',{name:label,exact:true}).inputValue(),expected,label);
     assert.equal(await page.getByRole('checkbox',{name:/^确认工序 /}).count(),0);await button('保存工时').click();await page.getByRole('table',{name:'已就绪工序汇总'}).waitFor();const body=(await lastCommand()).body.input;
     assert.deepEqual(body.operations[0],{ref:'3e8'.padStart(48,'0'),setup_hours:6,unit_hours:8.5});assert.equal(body.operations[1].external_days,null);assert.equal(await page.evaluate(()=>fixtureState.part.operations[1].external_days),4);assert.equal(body.operations[2].unit_hours,4);assert.equal(body.groups[0].total_days,9);assert.equal(await page.evaluate(()=>fixtureState.part.external_groups[0].remark),'服务器更新的周期备注');
+  });
+  await caseOf('hours-worktype-change-clears-old-type-draft', async () => {
+    await mount({stage:'ready'});await open('工时定额');
+    await page.getByRole('spinbutton',{name:'工序 5 换型工时',exact:true}).fill('8.5');
+    await page.getByRole('spinbutton',{name:'工序 5 单件工时',exact:true}).fill('9.5');
+    await page.evaluate(()=>{Object.assign(fixtureState.part.operations[0],{op_type_ref:ref(105),op_type_label:'Milling',setup_hours:null,unit_hours:null});fixtureState.revision++;});
+    await button('刷新最新资料').click();await page.getByText(/原工种未保存的工时不会沿用/).waitFor();
+    const review=page.getByRole('table',{name:'最新资料差异'});assert((await review.innerText()).includes('Milling'));
+    assert.equal(await page.getByRole('spinbutton',{name:'工序 5 单件工时',exact:true}).inputValue(),'9.5');
+    await button('已核对，继续编辑').click();
+    assert.equal(await page.getByRole('spinbutton',{name:'工序 5 换型工时',exact:true}).inputValue(),'');
+    assert.equal(await page.getByRole('spinbutton',{name:'工序 5 单件工时',exact:true}).inputValue(),'');
+    await button('保存工时').click();assert.equal(await page.evaluate(()=>fixtureState.commands.length),0);
+    await page.getByRole('spinbutton',{name:'工序 5 换型工时',exact:true}).fill('1.25');
+    await page.getByRole('spinbutton',{name:'工序 5 单件工时',exact:true}).fill('2.25');
+    await shot('hours-worktype-cleared');await button('保存工时').click();await page.getByRole('table',{name:'已就绪工序汇总'}).waitFor();
+    const body=(await lastCommand()).body.input;assert.equal(body.operations[0].setup_hours,1.25);assert.equal(body.operations[0].unit_hours,2.25);
   });
   await caseOf('hours-source-reset-and-dirty-group-total-only', async () => {
     await mount({stage:'ready'});await open('工时定额');await page.getByRole('spinbutton',{name:'工序 5 单件工时',exact:true}).fill('8.5');await page.getByRole('spinbutton',{name:'外协组 10 至 10 总周期',exact:true}).fill('7');

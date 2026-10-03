@@ -44,6 +44,7 @@ MISC_REQUIRED_REGRESSION_GROUPS = (
             "tests/migration_db/test_batch_external_context_v33.py",
         "tests/migration_db/test_calendar_periods_v34.py",
         "tests/migration_db/test_flexible_resources_v35_v36.py",
+            "tests/migration_db/test_execution_legacy_links_v37.py",
             "tests/migration_db/test_migrations.py",
             "tests/migration_db/test_schema_parity.py",
             "tests/migration_db/test_infrastructure_probes.py",

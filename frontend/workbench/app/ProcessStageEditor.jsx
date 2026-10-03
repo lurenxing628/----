@@ -124,7 +124,7 @@
   function Review({ before, after, onAccept, disabled }) {
     const rows = React.useMemo(() => changes(before, after), [before, after]), paging = usePage(rows);
     return <section className="match-note is-block" role="status">
-      <p>最新资料已读取，草稿没有被替换。差异 {rows.length} 项，请核对下表和当前草稿。点「{window.WorkbenchTerms.accept_latest}」后：已改过的项保留，其余按最新值；有变化的工序要重新确认，已移除的工序不再提交。</p>
+      <p>最新资料已读取，草稿没有被替换。差异 {rows.length} 项，请核对下表和当前草稿。点「{window.WorkbenchTerms.accept_latest}」后：已改过且仍适用的项保留，其余按最新值；有变化的工序要重新确认，已移除的工序不再提交。</p>
       {!!rows.length && <><div className="card-scroll"><table className="tbl wb-table" aria-label="最新资料差异" style={{ tableLayout: 'fixed', width: '100%' }}><caption className="wb-visually-hidden">{"最新资料差异"}</caption><thead><tr><th scope="col">项目</th><th scope="col">编辑前资料</th><th scope="col">最新资料</th></tr></thead>
         <tbody>{paging.rows.map((row, index) => <tr key={index}><td>{row.label}</td><td style={{ overflowWrap: 'anywhere' }}>{row.previous}</td><td style={{ overflowWrap: 'anywhere' }}>{row.current}</td></tr>)}</tbody></table></div><Pager paging={paging} disabled={disabled} /></>}
       <Button icon="check" disabled={disabled} onClick={onAccept}>{window.WorkbenchTerms.accept_latest}</Button>

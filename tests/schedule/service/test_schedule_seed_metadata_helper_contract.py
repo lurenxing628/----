@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from core.services.scheduler.run.schedule_input_seed_metadata import with_frozen_external_seed_metadata
+from core.services.scheduler.run.schedule_input_seed_metadata import with_external_seed_metadata
 from core.services.scheduler.run.schedule_seed_contracts import coerce_seed_result_item
 
 
@@ -29,7 +29,7 @@ def test_seed_enrichment_preserves_order_aliasing_and_input_payload(mode):
     seeds = [untouched, external]
     before = deepcopy(seeds)
     op = SimpleNamespace(id=1, batch_id="B1", seq=1, source="external", ext_merge_mode=mode, ext_group_id="G1")
-    result = with_frozen_external_seed_metadata(seeds, frozen_op_ids={1}, algo_ops=[op])
+    result = with_external_seed_metadata(seeds, algo_ops=[op])
     assert seeds == before
     assert result[0] is untouched
     if mode == "merged":
@@ -37,4 +37,5 @@ def test_seed_enrichment_preserves_order_aliasing_and_input_payload(mode):
         assert result[1]["_external_group_metadata"] == {"op_id": 1, "batch_id": "B1", "ext_group_id": "G1"}
     else:
         assert result[1] is external
-    assert with_frozen_external_seed_metadata(seeds, frozen_op_ids=set(), algo_ops=[]) is seeds
+    internal_seeds = [untouched]
+    assert with_external_seed_metadata(internal_seeds, algo_ops=[]) is internal_seeds

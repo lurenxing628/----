@@ -85,11 +85,13 @@ class ReportDependencies:
             self.merged[op["operation_ref"]] = (op["batch_id"], op["piece_id"], context_group_key(context))
 
     def relatives(self, operation, *, predecessors=False):
+        """Cycle members are peers; retain transitive dependencies outside the cycle."""
         parents, children = self._route(operation["batch_id"])
         ref = operation["operation_ref"]
         if ref not in parents:
             reject("原工序不在当前工艺中，未修改报工。", "execution_dependencies_unproven", 409)
-        return _reachable(parents if predecessors else children, ref)
+        reachable = _reachable(parents if predecessors else children, ref)
+        return [other for other in reachable if not self.same_merged_cycle(ref, other)]
 
     def projections(self, refs):
         missing = [ref for ref in refs if ref not in self.projected]

@@ -105,7 +105,7 @@ def test_ambiguous_or_incomplete_piece_facts(candidate_case, change, code):
     ("missing_common", "piece_dependency_mismatch"),
     ("missing_row", "piece_scope_incomplete"),
     ("wrong_source", "invalid_schedule_rows"),
-    ("fractional_second", "piece_time_unrepresentable"),
+    ("fractional_duration_change", "piece_calendar_duration_conflict"),
 ])
 def test_malformed_prepared_or_payload_is_not_adoption_evidence(candidate_case, change, code):
     case = candidate_case
@@ -123,9 +123,9 @@ def test_malformed_prepared_or_payload_is_not_adoption_evidence(candidate_case, 
     elif change == "missing_row":
         value = replace(value, schedule_rows=value.schedule_rows[:-1])
     else:
-        row = value.schedule_rows[0]
+        row = value.schedule_rows[-1]
         patch = {"source": "external"} if change == "wrong_source" else {"end_time": row.end_time + timedelta(microseconds=1)}
-        value = replace(value, schedule_rows=[replace(row, **patch)] + value.schedule_rows[1:])
+        value = replace(value, schedule_rows=value.schedule_rows[:-1] + [replace(row, **patch)])
     with pytest.raises(Exception) as caught:
         check(case, prepared, value)
     error = caught.value

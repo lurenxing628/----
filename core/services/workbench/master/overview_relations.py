@@ -1,5 +1,7 @@
 """Batch requirements are explicit cross-page facts, never stock reservations."""
 
+from core.services.material.stage_availability import covers_quantity, quantity
+
 from .overview_graph import number, text
 
 READY_TEXT = {"yes": "已齐套", "no": "未齐套"}
@@ -50,7 +52,8 @@ def _requirement_fields(graph, entity, row, batch):
                                "批次 " + code + " 的" + label + "填的是" + text(value) + "。", action="核对批次物料需求", related_ref=evidence_key)
             item["target"] = batch["target"]
     graph.field(entity, code + " 齐套状态", READY_TEXT.get(row["ready_status"], row["ready_status"]), "BatchMaterials.ready_status", required=False)
-    if number(row["required_qty"], True) and number(row["available_qty"]) and row["available_qty"] < row["required_qty"]:
+    if (number(row["required_qty"], True) and number(row["available_qty"])
+            and not covers_quantity(quantity(row["available_qty"]), quantity(row["required_qty"]))):
         item = graph.issue(entity, "batch_material.pending", "批次到料记录不足",
                            "批次 " + code + " 需求 " + text(row["required_qty"]) + "，已到料 " + text(row["available_qty"]) + "；库存不算预留也不算到料。",
                            action="核对批次物料需求", related_ref=evidence_key)

@@ -12,9 +12,12 @@ from openpyxl.utils import get_column_letter
 
 from core.errors import ValidationError
 from core.models.workbench_batch_file import (
+    FILE_HEADERS,
     HEADERS,
     MAX_BYTES,
     MAX_ROWS,
+    PUBLIC_HEADERS,
+    READONLY_HEADERS,
     table_descriptor,
 )
 from core.models.workbench_table_descriptor import cell_notes, extra_sheet_notice
@@ -36,11 +39,13 @@ def read_batch_file(content):
             if sum(item.file_size for item in archive.infolist()) > 64 * 1024 * 1024:
                 raise ValidationError("Excel展开后超过64MB，请拆分文件。", field="file")
         workbook = openpyxl.load_workbook(BytesIO(content), read_only=True, data_only=False, keep_links=False)
-        rows, reference_status = _read_first_sheet(workbook)
+        rows, reference_columns = _read_first_sheet(workbook)
         # 多表提示与其余 11 张表同一句话，见 core/models/workbench_table_descriptor.py。
         warnings = extra_sheet_notice(len(workbook.worksheets))
-        if reference_status:
+        if "状态" in reference_columns:
             warnings.append({"code": "reference_column_ignored", "message": "文件中的“状态”仅供参考，不导入；已有批次保留当前状态，新批次从待排开始。"})
+        if READONLY_HEADERS[1] in reference_columns:
+            warnings.append({"code": "reference_column_ignored", "message": "文件中的“当前有效齐套（只读）”仅供参考，不导入；“维护齐套标记”保留原维护值，不会被有效齐套覆盖。"})
         return rows, warnings
     except ValidationError:
         raise
@@ -57,11 +62,12 @@ def _read_first_sheet(workbook):
     sheet = workbook.worksheets[0]
     sheet.reset_dimensions()
     iterator = sheet.iter_rows()
-    headers = [cell.value for cell in next(iterator, ())]
+    aliases = dict(zip(PUBLIC_HEADERS, HEADERS))
+    headers = [aliases.get(cell.value, cell.value) for cell in next(iterator, ())]
     while headers and headers[-1] is None:
         headers.pop()
-    reference_status = "状态" in headers
-    if len(headers) != len(set(headers)) or "批次号" not in headers or set(headers) - set(HEADERS + ("状态",)):
+    reference_columns = [header for header in headers if header in READONLY_HEADERS]
+    if len(headers) != len(set(headers)) or "批次号" not in headers or set(headers) - set(HEADERS + READONLY_HEADERS):
         raise ValidationError("表头必须包含批次号，其余请使用模板中的列名，不能有重复列或未知列。", field="headers")
     rows = []
     for line, cells in enumerate(iterator, 2):
@@ -70,12 +76,13 @@ def _read_first_sheet(workbook):
         if len(rows) == MAX_ROWS:
             raise ValidationError("一次最多导入 5000 行；这次一行都没有写入。", field="file")
         rows.append(_read_data_row(line, cells, headers))
-    return rows, reference_status
+    return rows, reference_columns
 
 
 def _read_data_row(line, cells, headers):
     errors = []
-    if any(is_formula_or_error(cell) for cell in cells):
+    if any(is_formula_or_error(cell) for index, cell in enumerate(cells)
+           if index < len(headers) and headers[index] in HEADERS):
         errors.append("不能导入公式或错误单元格，请提供实际值。")
     if any(cell.value is not None for cell in cells[len(headers):]):
         errors.append("数据行里有表头之外的多余列。")
@@ -92,12 +99,12 @@ def write_batch_file(rows, *, template=False):
     sheet = workbook.worksheets[0]
     sheet.title = descriptor["sheet_name"]
     sheet.freeze_panes = "A2"
-    headers = HEADERS if template else HEADERS + ("状态",)
+    headers = FILE_HEADERS
     sheet.append(headers)
     for index, _header in enumerate(headers, 1):
         cell = sheet.cell(1, index)
         cell.font = Font(bold=True)
-        if template and index <= len(notes):
+        if index <= len(notes):
             cell.comment = Comment(notes[index - 1], "APS")
         sheet.column_dimensions[get_column_letter(index)].width = (22 if index < 3 else 16) if index != 8 else 36
     for number, row in enumerate(rows, 2):

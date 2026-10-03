@@ -5,7 +5,6 @@ from contextlib import closing
 import pytest
 
 from core.infrastructure import database
-from core.infrastructure.batch_external_context_schema import objects as external_context_objects
 from core.infrastructure.migration_common import MigrationOutcome
 from core.infrastructure.migration_state import (
     CURRENT_SCHEMA_VERSION,
@@ -16,9 +15,8 @@ from core.infrastructure.migration_state import (
 from core.infrastructure.migrations import MIGRATIONS, v32
 from core.infrastructure.workbench_execution_void_schema import execution_void_contract_issues
 from core.infrastructure.workbench_outsourcing_source_schema import contract_issues as source_contract_issues
-from tests.workbench.calibration_dashboard_migration_support import canonical_object
 from tests.workbench.flexible_migration_support import TABLES as FLEXIBLE_TABLES
-from tests.workbench.flexible_migration_support import legacy_ddl, legacy_rows
+from tests.workbench.flexible_migration_support import assert_migrated_legacy_ddl, legacy_rows, missing_v37_issues
 from tests.workbench.flexible_migration_support import missing_issues as missing_flexible_issues
 from tests.workbench.legacy_migration_current_support import V33_TABLES, assert_v33_contexts, missing_v33_issues
 from tests.workbench.run_schema_migration_support import connect, snapshot, source_ddl
@@ -33,7 +31,7 @@ from tests.workbench.schema32_migration_support import (
 
 
 def test_frozen_v31_step_and_fresh_v32_have_identical_ddl(tmp_path, schema_path, monkeypatch):
-    assert CURRENT_SCHEMA_VERSION == 36 and MIGRATIONS[32] is v32.run
+    assert CURRENT_SCHEMA_VERSION == 37 and MIGRATIONS[32] is v32.run
     def forbidden(*args, **kwargs):
         pytest.fail("Fresh schema must not migrate or create historical evidence")
     monkeypatch.setattr(database, "_migrate_with_backup_impl", forbidden)
@@ -41,12 +39,10 @@ def test_frozen_v31_step_and_fresh_v32_have_identical_ddl(tmp_path, schema_path,
     database.ensure_schema(str(path), schema_path=schema_path)
     with closing(connect(path)) as fresh, closing(frozen_v31(":memory:")) as old:
         assert get_schema_version(fresh) == CURRENT_SCHEMA_VERSION and not current_schema_contract_issues(fresh)
-        assert set(current_schema_contract_issues(old)) == missing_v32_issues() | missing_v33_issues() | missing_flexible_issues()
+        assert set(current_schema_contract_issues(old)) == missing_v32_issues() | missing_v33_issues() | missing_flexible_issues() | missing_v37_issues()
         assert v32.run(old) == MigrationOutcome.APPLIED and get_schema_version(old) == 31
-        assert set(current_schema_contract_issues(old)) == missing_v33_issues() | missing_flexible_issues()
-        fresh_v32 = [row for row in legacy_ddl(source_ddl(fresh))
-                     if row[1] not in external_context_objects() and row[2] not in V33_TABLES]
-        assert list(map(canonical_object, source_ddl(old))) == list(map(canonical_object, fresh_v32))
+        assert set(current_schema_contract_issues(old)) == missing_v33_issues() | missing_flexible_issues() | missing_v37_issues()
+        assert_migrated_legacy_ddl(fresh, source_ddl(old), preserve_column_order=False)
         assert_v32_empty(fresh)
         before, changes = snapshot(fresh), fresh.total_changes
         fresh.execute("PRAGMA query_only=ON")
@@ -70,7 +66,7 @@ def test_v31_upgrade_preserves_typed_rows_old_ddl_backup_and_restart(tmp_path, s
         assert_v33_contexts(conn)
         assert legacy_rows(after, before) == {
             name: rows for name, rows in before.items() if name != "SchemaVersion"}
-        assert list(map(canonical_object, legacy_ddl([row for row in new_ddl if row[1] in {old[1] for old in ddl}]))) == list(map(canonical_object, ddl))
+        assert_migrated_legacy_ddl(conn, ddl)
         assert not conn.execute("PRAGMA foreign_key_check").fetchall()
     copies = list(backups.glob(f"*before_migrate_v31_to_v{CURRENT_SCHEMA_VERSION}*.db"))
     assert len(copies) == 1

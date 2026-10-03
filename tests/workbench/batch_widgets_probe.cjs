@@ -38,7 +38,7 @@ function adapter(){return {
  exportPreview:async(selection,scope,refs)=>{f.exports.push({selection,scope:clone(scope),refs:clone(refs)});return envelope({export_ref:'e'.repeat(32),count:selection==='selected'?refs.length:matching(scope).length,selection});},
  downloadTemplate:async()=>({blob:new Blob(['explicit component mock download'],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'})}),
  downloadExport:async()=>({blob:new Blob(['explicit component mock download'],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'})}),
- preview:async(action,id,input,scope,snapshot)=>{f.previews.push({action,id,input:clone(input),scope:clone(scope),snapshot});const token='a'.repeat(31)+(f.previews.length%10);f.tokens[token]={action,id,input:clone(input)};return envelope(action==='bulk'?{operation:'batch.bulk_confirm',action:input.action,preview_ref:token,write_context:wc(),rows:input.refs.map(ref=>{const before=clone(f.rows.find(r=>r.ref===ref));return {entity_ref:ref,before,after:input.action==='delete'?null:{...before,fields:{...before.fields,...input.patch}}};}),count:input.refs.length,commit_policy:'atomic',warnings:[]}:{operation:'batch.sync_confirm',entity_ref:id,completeness_checked:true,change_counts:{added:0,removed:0,updated:1,unchanged:0},changes:[{sequence:1,piece_id:null,change:'updated',before:f.rows.find(r=>r.ref===id).operations[0],after:{sequence:1,label:'精加工',source:'internal',setup_hours:0,unit_hours:0,external_days:null}}],cleared_resources:[{operation_ref:f.rows.find(r=>r.ref===id).operations[0].ref,business_code:'B001_01',sequence:1,machine:resource(100,'M-01','数控设备'),operator:resource(200,'O-01','人员甲')}],preview_ref:token,write_context:wc(),before:f.rows.find(r=>r.ref===id).operations,after:[{sequence:1,label:'精加工',setup_hours:null,unit_hours:0,external_days:null}],commit_policy:'atomic',warnings:[]});},
+ preview:async(action,id,input,scope,snapshot)=>{f.previews.push({action,id,input:clone(input),scope:clone(scope),snapshot});const token='a'.repeat(31)+(f.previews.length%10);f.tokens[token]={action,id,input:clone(input)};return envelope(action==='bulk'?{operation:'batch.bulk_confirm',action:input.action,preview_ref:token,write_context:wc(),rows:input.refs.map(ref=>{const before=clone(f.rows.find(r=>r.ref===ref));return {entity_ref:ref,before,after:input.action==='delete'?null:{...before,fields:{...before.fields,...input.patch}}};}),count:input.refs.length,commit_policy:'atomic',warnings:[]}:{operation:'batch.sync_confirm',entity_ref:id,completeness_checked:true,external_groups:{before:[],after:[]},change_counts:{added:0,removed:0,updated:1,unchanged:0},changes:[{sequence:1,piece_id:null,change:'updated',before:f.rows.find(r=>r.ref===id).operations[0],after:{sequence:1,label:'精加工',source:'internal',setup_hours:0,unit_hours:0,external_days:null}}],cleared_resources:[{operation_ref:f.rows.find(r=>r.ref===id).operations[0].ref,business_code:'B001_01',sequence:1,machine:resource(100,'M-01','数控设备'),operator:resource(200,'O-01','人员甲')}],preview_ref:token,write_context:wc(),before:f.rows.find(r=>r.ref===id).operations,after:[{sequence:1,label:'精加工',setup_hours:null,unit_hours:0,external_days:null}],commit_policy:'atomic',warnings:[]});},
  command:async(kind,action,id,body)=>{f.commands.push({kind,action,id,body:clone(body)});if(f.spec.stale){const e=APSResourceContract.failure('MOCK stale：资料已变化');e.committed=false;throw e;}let data={entity_ref:id};
    if(action==='create'){const row=record(f.rows.length+1);row.business_code=body.input.business_code;row.fields=clone(body.input.fields);row.operations=[];row.relationships.operation_count=0;row.relationships.gap_count=0;f.rows.push(row);data.entity_ref=row.ref;}
    if(action==='update')Object.assign(f.rows.find(r=>r.ref===id).fields,body.input.fields);
@@ -51,6 +51,14 @@ function adapter(){return {
 };}
 let root;
 window.mountFixture=(spec={})=>{if(root)root.unmount();window.f={spec,revision:1,rows:[],commands:[],reads:[],previews:[],tokens:{},receipts:{},selections:[],files:[],exports:[]};f.rows=Array.from({length:25},(_,i)=>record(i+1));root=ReactDOM.createRoot(document.getElementById('fixture-root'));root.render(React.createElement('section',{className:'plana',style:{padding:16,width:'calc(100vw - 289px)'}},React.createElement(WorkbenchControlStyles),React.createElement(BatchWorkspace,{adapter:adapter()}),React.createElement(WorkbenchGuardHost)));};
+window.mountSyncPreview=(before,after,groups={before:[],after:[]})=>{
+  const preview={operation:'batch.sync_confirm',entity_ref:ref(1),completeness_checked:true,preview_ref:'a'.repeat(32),write_context:wc(),before,after,
+    change_counts:{added:0,removed:0,updated:before.length,unchanged:0},changes:before.map((row,index)=>({sequence:row.sequence,piece_id:null,change:'updated',before:row,after:after[index]})),
+    cleared_resources:[],external_groups:groups,warnings:[],commit_policy:'atomic'};
+  APSBatchContract.preview(envelope(preview),'sync',ref(1),{});root.unmount();root=ReactDOM.createRoot(document.getElementById('fixture-root'));
+  root.render(React.createElement('section',{className:'plana batch-workspace'},React.createElement(WorkbenchControlStyles),React.createElement(BatchForms.Preview,
+    {preview,command:{phase:'idle',locked:false,submit:()=>{},error:null},onClose:()=>{},onCommitted:()=>{}})));
+};
 `;
 const styleSources = ['00-tokens.css', '20-controls.css', '21-table-frame.css', '22-shared-controls.css', '31-batches-resources.css']
   .map(name => ({ path: 'frontend/workbench/app/styles/' + name, code: fs.readFileSync(path.join(root, 'frontend/workbench/app/styles', name), 'utf8') }));
@@ -151,12 +159,63 @@ async function cases() {
     assert((await remark.innerText()).includes('备注内容保持完整'));
     await shot('detail-long-fields-blocked');
   });
+  await run('sync-preview-shows-real-group-split-and-members', async () => {
+    await mount();
+    await page.evaluate(() => {
+      const group=(start,end,members)=>({piece_id:null,start_sequence:start,end_sequence:end,member_sequences:members,merge_mode:'merged',total_days:6.75});
+      const oldGroup=group(20,21,[20,21]),nextGroups=[group(20,20,[20]),group(21,21,[21])];
+      const before=[20,21].map((seq,index)=>({...clone(f.rows[0].operations[0]),ref:ref(1020+index),operation_ref:ref(1020+index),sequence:seq,label:'热处理',source:'external',
+        external_group:{...oldGroup,ref:ref(600)},supplier_ref:ref(500),resources:{...f.rows[0].operations[0].resources,supplier:resource(500,'SUP','热处理厂')}}));
+      const after=before.map((row,index)=>({...clone(row),external_group:{...nextGroups[index],ref:ref(601+index)}}));
+      const preview={operation:'batch.sync_confirm',entity_ref:ref(1),completeness_checked:true,preview_ref:'a'.repeat(32),write_context:wc(),before,after,
+        change_counts:{added:0,removed:0,updated:2,unchanged:0},changes:before.map((row,index)=>({sequence:row.sequence,piece_id:null,change:'updated',before:row,after:after[index]})),
+        cleared_resources:[],external_groups:{before:[oldGroup],after:nextGroups},warnings:[],commit_policy:'atomic'};
+      APSBatchContract.preview(envelope(preview),'sync',ref(1),{});
+      root.unmount();root=ReactDOM.createRoot(document.getElementById('fixture-root'));
+      root.render(React.createElement('section',{className:'plana batch-workspace'},React.createElement(WorkbenchControlStyles),React.createElement(BatchForms.Preview,
+        {preview,command:{phase:'idle',locked:false,submit:()=>{},error:null},onClose:()=>{},onCommitted:()=>{}})));
+    });
+    const dialog=page.getByRole('dialog',{name:'确认更新批次工序'});await dialog.waitFor();
+    const groups=dialog.getByRole('region',{name:'外协段更新前后对照'}),text=await groups.innerText();
+    assert(text.includes('工序 20 至 21')&&text.includes('成员：20、21'));
+    assert(text.includes('工序 20 至 20')&&text.includes('工序 21 至 21'));
+    assert.equal(await groups.getByText(/整段只计算一次 6.75 天/).count(),3);
+    assert(!(text.match(/[0-9a-f]{48}/i)));assert((await dialog.locator('.batch-sync-summary').innerText()).includes('修改 2 道'));
+    await shot('sync-external-groups');
+  });
+  await run('sync-preview-preserves-large-frozen-sequence', async () => {
+    await mount();await page.evaluate(()=>{
+      const sequence='9007199254740993',group={piece_id:null,start_sequence:sequence,end_sequence:sequence,member_sequences:[sequence],merge_mode:'merged',total_days:6.75};
+      const operation={...clone(f.rows[0].operations[0]),sequence,source:'external',external_group:{...group,ref:ref(600)},supplier_ref:ref(500),resources:{...f.rows[0].operations[0].resources,supplier:resource(500,'SUP','热处理厂')}};
+      mountSyncPreview([operation],[clone(operation)],{before:[group],after:[group]});
+    });
+    const table=page.getByRole('table',{name:'工序更新前后对照',exact:true});await table.waitFor();const text=await table.innerText();
+    assert(text.includes('外协段：工序 9007199254740993 至 9007199254740993'));
+    assert(!text.includes('9007199254740992'));await shot('sync-large-frozen-sequence');
+  });
+  await run('sync-preview-preserves-accepted-hour-precision', async () => {
+    await mount();await page.evaluate(()=>{
+      const before={...clone(f.rows[0].operations[0]),setup_hours:1e-25,unit_hours:0.123451};
+      mountSyncPreview([before],[{...clone(before),unit_hours:0.123452}]);
+    });
+    const table=page.getByRole('table',{name:'工序更新前后对照',exact:true});await table.waitFor();const text=await table.innerText();
+    assert(text.includes('0.123451 小时')&&text.includes('0.123452 小时')&&text.includes('1e-25 小时'));
+    assert(!text.includes('0.1235 小时'));await shot('sync-accepted-hour-precision');
+  });
   await run('stale-edit-keeps-draft-explicit-review', async () => {
     await mount({ stale: true }); await button('B001').click(); await button('编辑基础信息').click(); await type('备注', '不能丢失的草稿'); await button('保存基础信息').click();
     await page.getByText('MOCK stale：资料已变化', { exact: true }).waitFor(); assert.equal(await page.getByRole('textbox', { name: '备注' }).inputValue(), '不能丢失的草稿');
     await button('刷新最新资料').click(); await button('已核对，继续编辑').waitFor(); assert(await button('保存基础信息').isDisabled());
     await button('已核对，继续编辑').click(); assert.equal(await page.getByRole('textbox', { name: '备注' }).inputValue(), '不能丢失的草稿'); await shot('stale-preserved');
     await page.evaluate(() => f.spec.stale = false); await button('保存基础信息').click(); await page.getByText('保存已完成。', { exact: true }).waitFor(); await button('关闭').last().click();
+  });
+  await run('material-ready-editor-shows-effective-state-without-changing-maintenance-draft',async()=>{
+    await mount();await page.evaluate(()=>{f.rows[0].relationships.material_requirement_count=1;f.rows[0].fields.ready_status='no';f.rows[0].display_ready_status='yes';});
+    await button('B001').click();await button('编辑基础信息').click();
+    assert.equal(await page.getByRole('textbox',{name:'当前有效齐套',exact:true}).inputValue(),'齐套');
+    await page.getByText(/原维护标记：未齐套/).waitFor();await type('备注','仅修改备注');await button('保存基础信息').click();await page.getByText('保存已完成。',{exact:true}).waitFor();
+    assert.deepEqual(await page.evaluate(()=>f.commands[0].body.input.fields),{remark:'仅修改备注'});
+    assert.equal(await page.evaluate(()=>f.rows[0].fields.ready_status),'no');
   });
   await run('bulk-preview-cancel-and-confirm', async () => {
     await mount(); await page.getByRole('checkbox', { name: '选择 B001', exact: true }).check(); await button('批量修改').click(); await type('批量备注', '批量实际输入');
@@ -177,7 +236,7 @@ async function cases() {
     await page.getByLabel('导入模式').selectOption('append'); assert.equal(await page.getByRole('table', { name: '批次导入预检' }).count(), 0); await button('开始预检').click(); await button('确认导入').waitFor();
     await shot('file-preview'); await button('确认导入').click(); await page.getByText('保存已完成。', { exact: true }).waitFor(); assert.equal(await page.evaluate(() => f.files[1].mode), 'append');
     assert.equal(await page.evaluate(() => f.commands[0].action), 'import_confirm'); await button('关闭').last().click();
-    await button('批量导出').click(); const downloading = page.waitForEvent('download'); await button('下载批次清单').click(); const file = await downloading; assert.equal(file.suggestedFilename(), '批次清单.xlsx');
+    await button('批量导出').click();await page.getByText(/维护齐套标记.*保留原维护值/).waitFor(); const downloading = page.waitForEvent('download'); await button('下载批次清单').click(); const file = await downloading; assert.equal(file.suggestedFilename(), '批次清单.xlsx');
     assert.equal(await page.evaluate(() => f.exports[0].selection), 'filtered'); await page.getByText('已交给浏览器下载：批次清单.xlsx（共 25 个批次）', { exact: true }).waitFor(); await button('取消').click();
   });
   await run('replace-errors-disable-confirmation', async () => {

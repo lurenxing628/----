@@ -13,10 +13,23 @@ import pytest
 from core.errors import AppError, ErrorCode
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_trial_codec import dump, fingerprint
+from core.services.equipment.machine_downtime_service import MachineDowntimeService
+from core.services.equipment.machine_service import MachineService
+from core.services.personnel.operator_machine_service import OperatorMachineService
+from core.services.personnel.operator_service import OperatorService
+from core.services.process.supplier_service import SupplierService
 from core.services.workbench.facts.trial_policy import load_draft
+from core.services.workbench.run.preflight import PreflightService
+from core.services.workbench.run.worker import WorkbenchRunWorker
 from core.services.workbench.trial.execution_anchors import anchor_issue
 from data.repositories.workbench_trial_repo import WorkbenchTrialRepository
+from tests.workbench.piece_adoption_support import split
+from tests.workbench.run_candidate_adoption_support import INTENT as candidate_intent
+from tests.workbench.run_candidate_adoption_support import candidate
+from tests.workbench.run_candidate_adoption_support import preview as candidate_preview
+from tests.workbench.run_candidate_adoption_support import service as candidate_adoption
 from tests.workbench.run_candidate_support import corrupt_update
+from tests.workbench.test_execution_dependency_regressions import external_route, late_merged_actual, next_cycle_run
 from tests.workbench.trial_adoption_support import BASE, INTENT, api, assert_retained, full_plan
 from tests.workbench.trial_adoption_support import service as adoption_service
 from tests.workbench.trial_support import change, create, snapshot
@@ -24,6 +37,150 @@ from tests.workbench.trial_support import service as trial_service
 from tests.workbench.trial_support import trial_case as trial_case
 
 PUBLIC_ARRANGEMENT = ("start", "end", "machine_ref", "operator_ref")
+
+
+@pytest.mark.parametrize("legacy", [False, True])
+def test_actual_anchor_preserves_completed_fact_across_past_maintenance(trial_case, legacy):
+    case = trial_case
+    case.operation(seq=2, machine_id="M2", operator_id="O2")
+    case.plan(1, [case.op_id])
+    if legacy:
+        case.event(case.op_id, "start")
+        case.event(case.op_id, "finish", quantity=3)
+    else:
+        case.command("create", case.task(1, case.op_id), case.values(3))
+    MachineDowntimeService(case.conn).create("M1", "2026-09-09 08:00", "2026-09-09 09:00", "maintenance")
+    ref = candidate(case)
+    assert candidate_adoption(case.conn).preview(ref)["validation"]["can_adopt"]
+    draft = create(case, {"base": {"candidate_ref": ref}})
+    saved = _save(case, draft, "past-maintenance")
+    checked = adoption_service(case.conn).preview(saved["scenario_ref"])
+    assert checked["validation"]["can_adopt"]
+    result = adoption_service(case.conn).adopt(saved["scenario_ref"], checked["write_context"]["write_token"],
+                                             "past-maintenance-adopt-001", INTENT)
+    assert tuple(case.conn.execute("SELECT start_time,end_time FROM Schedule WHERE version=? AND op_id=?",
+                                  (result["data"]["official_plan"]["version"], case.op_id)).fetchone()) == (
+        "2026-09-09 08:00:00", "2026-09-09 10:00:00")
+
+
+def _deactivate(case, change):
+    if change == "machine":
+        MachineService(case.conn).set_status("M1", "inactive")
+    elif change == "operator":
+        OperatorService(case.conn).set_status("O1", "inactive")
+    elif change == "authorization":
+        OperatorMachineService(case.conn).remove_link("O1", "M1")
+    else:
+        SupplierService(case.conn).update("S1", status="inactive")
+
+
+def _historical_resource_route(case, piece, supplier, reported):
+    if supplier:
+        external_route(case, piece)
+        ref = candidate(case)
+        result = candidate_adoption(case.conn).adopt(ref, candidate_preview(case, ref), "resource-initial-adopt-001", candidate_intent)
+        version = result["data"]["official_plan"]["version"]
+        case.batch("B2")
+        case.operation("B2", machine_id="M2", operator_id="O2")
+        case.conn.commit()
+    else:
+        if piece:
+            ids = split(case, common=False, quantity=1)
+            case.conn.execute("UPDATE BatchOperations SET machine_id='M2',operator_id='O2' WHERE id=?", (ids["item-A", 30],))
+            case.conn.commit()
+        else:
+            case.operation(seq=2, machine_id="M2", operator_id="O2")
+        case.plan(1, [case.op_id])
+        version = 1
+    if reported:
+        payload = case.values(1 if piece else 3)
+        if supplier:
+            payload.update(actual_machine_ref=None, actual_operator_ref=None)
+        case.command("create", case.task(version, case.op_id), payload)
+    else:
+        case.conn.execute("UPDATE Schedule SET lock_status='locked' WHERE version=?", (version,))
+        case.conn.commit()
+    return case.settings("B1", "B2") if supplier else case.settings()
+
+
+@pytest.mark.parametrize("piece", [False, True])
+@pytest.mark.parametrize("change", ["machine", "operator", "authorization", "supplier"])
+def test_actual_resource_identities_survive_current_qualification_changes(trial_case, piece, change):
+    case = trial_case
+    settings = _historical_resource_route(case, piece, change == "supplier", True)
+    _deactivate(case, change)
+    accepted = case.accept(key="historical-resource-run-001", settings=settings)
+    run = WorkbenchRunWorker(case.conn).execute(accepted["run_ref"])
+    assert run["state"] == "complete"
+    ref = run["candidates"][0]["candidate_ref"]
+    assert candidate_adoption(case.conn).preview(ref)["validation"]["can_adopt"]
+    draft = create(case, {"base": {"candidate_ref": ref}})
+    saved = _save(case, draft, "historical-resource")
+    checked = adoption_service(case.conn).preview(saved["scenario_ref"])
+    assert checked["validation"]["can_adopt"]
+    result = adoption_service(case.conn).adopt(saved["scenario_ref"], checked["write_context"]["write_token"],
+                                             "historical-resource-trial-001", INTENT)
+    actual = case.conn.execute("SELECT machine_id,operator_id,start_time,end_time FROM Schedule WHERE version=? AND op_id=?",
+                              (result["data"]["official_plan"]["version"], case.op_id)).fetchone()
+    resources = (None, None) if change == "supplier" else ("M1", "O1")
+    assert tuple(actual) == (*resources, "2026-09-09 08:00:00", "2026-09-09 10:00:00")
+
+
+@pytest.mark.parametrize("piece", [False, True])
+@pytest.mark.parametrize("change", ["machine", "operator", "authorization", "supplier"])
+def test_unexecuted_locked_resources_still_require_current_qualifications(trial_case, piece, change):
+    case = trial_case
+    settings = _historical_resource_route(case, piece, change == "supplier", False)
+    _deactivate(case, change)
+    before = snapshot(case.conn)
+    if change == "supplier":
+        checked, _ = PreflightService(case.conn).evaluate(settings)
+        assert checked["blockers"] and "supplier_missing" in {item["code"] for row in checked["tasks"] for item in row["issues"]}
+    else:
+        accepted = case.accept(key="locked-resource-run-001", settings=settings)
+        if piece:
+            with pytest.raises(Exception) as caught:
+                WorkbenchRunWorker(case.conn).execute(accepted["run_ref"])
+            assert caught.value.code == "piece_resource_invalid"
+        else:
+            run = WorkbenchRunWorker(case.conn).execute(accepted["run_ref"])
+            checked = candidate_adoption(case.conn).preview(run["candidates"][0]["candidate_ref"])
+            assert checked["validation"]["can_adopt"] is False
+            assert checked["validation"]["issues"][0]["code"] == "candidate_resource_invalid"
+        # Admission/failed-run bookkeeping may append; the executable history must not.
+        assert snapshot(case.conn)["Schedule"] == before["Schedule"]
+        assert snapshot(case.conn)["ScheduleHistory"] == before["ScheduleHistory"]
+
+
+@pytest.mark.parametrize("piece", [False, True])
+@pytest.mark.parametrize("base", ["official", "candidate"])
+def test_actual_external_group_anchors_are_fixed_in_real_trial_contract(trial_case, piece, base):
+    case = trial_case
+    case.conn.execute("UPDATE BatchOperations SET unit_hours=0.25")
+    case.conn.commit()
+    version, copied, period = late_merged_actual(case, piece)
+    if base == "official":
+        value = {"base": {"plan_ref": case.plan_ref(version)}}
+    else:
+        _, refs = next_cycle_run(case, ("B1",))
+        value = {"base": {"candidate_ref": refs[0]}}
+    draft = create(case, value)
+    derived = next(task for task in draft["tasks"] if (task.get("execution_anchor") or {}).get("basis") == "merged_external_actuals")
+    assert not derived["edit_context"]["can_change"] and derived["locked"]
+    before = snapshot(case.conn)
+    index = next(index for index, task in enumerate(draft["tasks"]) if task["task_ref"] == derived["task_ref"])
+    with pytest.raises(WorkbenchCommandRejected) as caught:
+        change(case, draft, task=index, machine=None, operator=None)
+    assert caught.value.code in ("task_locked", "execution_protected") and snapshot(case.conn) == before
+    saved = _save(case, draft, "merged-external-cycle")
+    _assert_public_contract(draft, saved)
+    checked = adoption_service(case.conn).preview(saved["scenario_ref"])
+    assert checked["validation"]["can_adopt"]
+    result = adoption_service(case.conn).adopt(saved["scenario_ref"], checked["write_context"]["write_token"],
+                                             "merged-external-cycle-adopt-001", INTENT)
+    assert {tuple(datetime.fromisoformat(value) for value in row) for row in case.conn.execute(
+        "SELECT start_time,end_time FROM Schedule WHERE version=? AND op_id IN (?,?)",
+        (result["data"]["official_plan"]["version"], *copied))} == {period}
 
 
 def _assert_public_contract(*workspaces):
@@ -37,13 +194,21 @@ for (const name of ['PointContract.js', 'TrialContract.js']) require(path.join(p
 for (const data of JSON.parse(fs.readFileSync(0, 'utf8'))) {
   window.TrialContract.workspace(data);
   assert(data.tasks.some(task => task.execution_anchor));
-  for (const kind of ['start', 'editable', 'basis']) {
-    const changed = JSON.parse(JSON.stringify(data));
-    const task = changed.tasks.find(task => task.execution_anchor);
-    if (kind === 'start') task.execution_anchor.start = '2026-09-09T09:30:00';
-    if (kind === 'editable') task.edit_context.can_change = true;
-    if (kind === 'basis') task.execution_anchor.basis = 'guessed_actuals';
-    assert.throws(() => window.TrialContract.workspace(changed));
+  const witnesses = new Map(data.tasks.filter(task => task.execution_anchor).map(task => [task.execution_anchor.basis, task.task_ref]));
+  for (const [basis, ref] of witnesses) {
+    for (const kind of ['start', 'editable', 'basis']) {
+      const changed = JSON.parse(JSON.stringify(data));
+      const task = changed.tasks.find(task => task.task_ref === ref);
+      if (kind === 'start') task.execution_anchor.start = '2026-09-09T09:30:00';
+      if (kind === 'editable') task.edit_context.can_change = true;
+      if (kind === 'basis') task.execution_anchor.basis = 'guessed_actuals';
+      assert.throws(() => window.TrialContract.workspace(changed));
+    }
+    if (basis === 'merged_external_actuals') {
+      const changed = JSON.parse(JSON.stringify(data));
+      changed.tasks.find(task => task.task_ref === ref).source = 'internal';
+      assert.throws(() => window.TrialContract.workspace(changed));
+    }
   }
 }
 """

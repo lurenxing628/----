@@ -98,7 +98,7 @@
       arrangement(t.original, t);
       if (t.execution_anchor !== undefined) {
         arrangement(t.execution_anchor, t);
-        check(['completed_actuals', 'started_actuals'].includes(t.execution_anchor.basis) && typeof t.execution_anchor.message === 'string' && t.execution_anchor.message.length > 0 && ['machine_ref', 'operator_ref', 'start', 'end'].every(k => t.execution_anchor[k] === t[k]) && t.edit_context.can_change === false, '实际执行固定安排不完整，请刷新试调。');
+        check(['completed_actuals', 'started_actuals', 'merged_external_actuals'].includes(t.execution_anchor.basis) && (t.execution_anchor.basis !== 'merged_external_actuals' || t.source === 'external') && typeof t.execution_anchor.message === 'string' && t.execution_anchor.message.length > 0 && ['machine_ref', 'operator_ref', 'start', 'end'].every(k => t.execution_anchor[k] === t[k]) && t.edit_context.can_change === false, '实际执行固定安排不完整，请刷新试调。');
       }
       if (d.base.candidate_ref && !d.scenario_ref) check(t.source_task_ref === null);
       check(['internal', 'external'].includes(t.source) && object(t.hours) && typeof t.changed === 'boolean' && Array.isArray(t.predecessor_refs) && t.predecessor_refs.every(ref) && Array.isArray(t.predecessor_operation_refs) && object(t.edit_context) && typeof t.edit_context.can_change === 'boolean');

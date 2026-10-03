@@ -10,7 +10,7 @@ from core.models.workbench_preflight import issue
 from core.models.workbench_run_compute import CandidateRunInputError
 
 from .preflight_checks import PreflightChecks, number, stored_date
-from .preflight_dependencies import link_predecessors, material_deferred_ids
+from .preflight_dependencies import link_predecessors, piece_scope_problem
 
 _BATCH_STATES = {"pending", "scheduled", "processing", "completed", "cancelled"}
 _OP_STATES = {"pending", "scheduled", "processing", "completed", "skipped"}
@@ -74,25 +74,28 @@ def validate_single_chain(operations):
             fail("dependency_ambiguous", "这个批次里有重复的工序号，前后顺序算不出来，这次排产没有开始。请到批次管理去掉重复的工序号。", batch_id=batch_id)
 
 
-def classify_rows(facts, settings, raw_batches, operations, projections, guarded_ids, *, piece_scope=None):
+def classify_rows(facts, settings, raw_batches, operations, projections, guarded_ids, *, piece_scope=None, external_cycles=None):
     checks = PreflightChecks(facts.tables)
     raw_by_id = {row["id"]: row for row in facts.tables["BatchOperations"]}
     batches = {row["batch_id"]: row for row in raw_batches}
+    cycles = external_cycles or {}
     rows = []
     for op in operations:
         raw, batch = raw_by_id[op.id], batches[op.batch_id]
         ref = facts.operation_ref(raw)
         projection = projections[ref]
-        status, reasons = _classification(checks, batch, raw, projection, settings, guarded_ids)
+        status, reasons = _classification(checks, batch, raw, projection, settings, guarded_ids, cycles)
         rows.append({"operation_ref": ref, "op_id": op.id, "batch_ref": batch["ref"], "batch_id": op.batch_id,
                      "piece_id": op.piece_id, "sequence": op.seq, "status": status, "issues": reasons,
                      "predecessor_refs": [], "execution": projection.to_dict()})
+        if op.id in cycles:
+            rows[-1]["external_execution_cycle"] = cycles[op.id]
     _link_dispositions(rows, batches, piece_scope, settings)
     blocked = [row for row in rows if row["status"] == "blocked"]
     if blocked:
         raise CandidateRunInputError("input_blocked", "排产资料还有缺项，不能开始。请先补齐下方列出的项。", issues=blocked)
     eligible = {row["op_id"] for row in rows if row["status"] in ("eligible", "auto_assign_required")}
-    if not eligible:
+    if not eligible and not cycles:
         raise CandidateRunInputError("no_eligible_operations", "选定范围内没有可排的工序。请调整范围后重试。", issues=rows)
     mutable = [_assignable_operation(op, checks.resources(raw_by_id[op.id])) for op in operations if op.id in eligible]
     return rows, mutable
@@ -106,28 +109,28 @@ def _link_dispositions(rows, batches, piece_scope, settings):
         for chain in by_batch.values():
             link_predecessors(chain)
     else:
-        by_id = {row["op_id"]: row for row in rows}
-        for work in piece_scope.operations:
-            by_id[work.op_id]["predecessor_refs"] = [by_id[key]["operation_ref"] for key in work.predecessor_op_ids]
-        deferred = material_deferred_ids(rows, settings)
-        if any(row["status"] not in ("eligible", "auto_assign_required", "protected") and row["op_id"] not in deferred for row in rows):
-            fail("piece_scope_incomplete", "单件排产要把这条链上的公共工序和单件工序都选上，或者都保持原安排，这次排产没有开始。请重新选择范围。")
+        link_predecessors(rows, piece_scope=piece_scope)
+        problem = piece_scope_problem(rows, settings)
+        if problem:
+            fail(problem["code"], problem["message"])
     for batch_id, batch in batches.items():
         if batch_id not in by_batch:
             fail("route_missing", "选中的批次还没有工序，这次排产没有开始。请先到批次管理给它生成工艺。", batch_ref=batch["ref"])
 
 
-def _classification(checks, batch, op, projection, settings, guarded_ids):
+def _classification(checks, batch, op, projection, settings, guarded_ids, cycles):
     if op["id"] in guarded_ids:
         return "protected", [issue("actuals_preserved", "已开工工序保留原安排。")]
     if (op["status"] in ("processing", "completed") or projection.execution_state != "unreported"
             or projection.reports or projection.legacy_facts or projection.first_actual_start or projection.confirmed_finish):
         return "blocked", [issue("execution_protection_unresolved", "这道工序已经有报工记录，这次排产保不住它的原安排，排产没有开始。请把它移出排产范围。")]
-    gaps = checks.fields(batch, op)
+    gaps = checks.protected_resources(op) if op["id"] in cycles else checks.fields(batch, op)
     if projection.data_quality == "invalid":
         gaps.extend(projection.data_gaps or [issue("execution_invalid", "这道工序的报工记录有问题，这次排产没有开始。请到现场记录核对后重试。")])
     if gaps:
         return "blocked", gaps
+    if op["id"] in cycles:
+        return "protected", [issue("external_group_actuals_preserved", "合并外协组已有实际记录，整组保留同一固定周期。")]
     return _mutable_classification(checks, batch, op, settings)
 
 

@@ -27,9 +27,9 @@ from core.services.workbench.facts.run_input_rows import (
 
 from .input_config import candidate_config
 from .input_execution import execution_guards
-from .input_external import prime_template_cache
+from .input_external import external_execution_cycles, prime_template_cache
 from .input_materials import bind_material_releases
-from .input_piece import input_piece_scope, piece_seed_metadata
+from .input_piece import input_piece_scope
 from .input_runtime import build_runtime
 from .preflight_facts import PreflightFacts
 
@@ -90,13 +90,11 @@ def _prepare(conn, settings, facts, fingerprint, raw_batches, batches, operation
     start = datetime.combine(local_date(settings["start_date"]), datetime.min.time())
     guards = execution_guards(svc, facts, operations, batches, projections, prev_version, piece_scope=piece_scope)
     execution_facts, fixed, completed, execution_seeds, revisions, snapshot = guards
+    cycles = external_execution_cycles(facts.tables, batches, operations, execution_seeds, set(fixed) | set(completed))
     dispositions, mutable = classify_rows(facts, settings, raw_batches, operations, projections,
-                                         set(fixed) | set(completed), piece_scope=piece_scope)
-    guarded = [op for op in operations if op.id in set(fixed) | set(completed)]
-    prime_template_cache(svc, facts.tables, batches, mutable + guarded)
-    algo_outcome = build_algo_operations(svc, mutable + guarded, strict_mode=True, return_outcome=True)
-    bind_material_releases([op for op in algo_outcome.value if op.id not in set(fixed) | set(completed)],
-                           facts.tables, batches, settings)
+                                         set(fixed) | set(completed), piece_scope=piece_scope, external_cycles=cycles)
+    guarded_ids = set(fixed) | set(completed) | set(cycles)
+    algo_outcome, runtime_mutable = _algorithm_scope(svc, facts, batches, operations, mutable, guarded_ids, cycles, settings)
     reservations = build_execution_resource_reservations(
         svc, facts=execution_facts, selected_op_ids={op.id for op in operations}, start_dt=start,
     )
@@ -105,12 +103,10 @@ def _prepare(conn, settings, facts, fingerprint, raw_batches, batches, operation
         calendar = ExecutionResourceCalendar(calendar, reservations)
     runtime = build_runtime(
         svc, cfg=cfg, prev_version=prev_version, start_dt=start, batches=batches, operations=operations,
-        mutable=mutable, algo_ops=algo_outcome.value, fixed_ids=fixed, completed_ids=completed,
+        mutable=runtime_mutable, algo_ops=algo_outcome.value, fixed_ids=fixed, completed_ids=completed,
         execution_seeds=execution_seeds, reservations=reservations,
     )
     frozen, seeds, warnings, freeze_meta, to_schedule, downtime_meta, pool_meta, downtime, pool, seed_version = runtime
-    if piece_scope is not None:
-        seeds = piece_seed_metadata(seeds, algo_outcome.value)
     missing_ids = _missing_internal_resources(mutable)
     return CandidateRunInput(
         normalized_batch_ids=[row["batch_id"] for row in raw_batches], start_dt_norm=start,
@@ -124,12 +120,23 @@ def _prepare(conn, settings, facts, fingerprint, raw_batches, batches, operation
         execution_guard_state_revisions=revisions, execution_snapshot_revision=snapshot.revision,
         execution_snapshot_op_ids=list(snapshot.op_ids), execution_snapshot_op_count=snapshot.op_count,
         execution_has_guarded_facts=bool(fixed or completed or reservations),
-        schedule_output_allowed_op_ids={op.id for op in mutable} | set(fixed) | set(completed),
+        schedule_output_allowed_op_ids={op.id for op in mutable} | guarded_ids,
         payload_validation_operations=operations, algo_warnings=warnings, freeze_meta=freeze_meta,
         algo_ops_to_schedule=to_schedule, downtime_meta=downtime_meta, resource_pool_meta=pool_meta,
         downtime_map=downtime, resource_pool=pool, optimizer_seed_version=seed_version,
         normalized_input=settings, dispositions=dispositions, facts_fingerprint=fingerprint,
     )
+
+
+def _algorithm_scope(svc, facts, batches, operations, mutable, guarded_ids, cycles, settings):
+    guarded = [op for op in operations if op.id in guarded_ids]
+    prime_template_cache(svc, facts.tables, batches, mutable + guarded)
+    outcome = build_algo_operations(svc, mutable + guarded, strict_mode=True, return_outcome=True)
+    bind_material_releases([op for op in outcome.value if op.id not in guarded_ids], facts.tables, batches, settings)
+    # Derived peers are fixed for calculation, but must still take part in the
+    # original lock/freeze lookup so their inherited locks cannot be overwritten.
+    runtime_mutable = mutable + [op for op in guarded if op.id in cycles]
+    return outcome, runtime_mutable
 
 
 def _missing_internal_resources(operations):

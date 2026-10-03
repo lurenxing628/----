@@ -27,7 +27,7 @@ from .calendar_context import public_resource, resource_ids, selected_context
 
 def _range_days(start, end):
     first = start.date() - timedelta(days=1) if start.date() > date.min else date.min
-    last = end.date() if start == end else (end - timedelta(seconds=1)).date()
+    last = end.date() if start == end else (end - timedelta(microseconds=1)).date()
     return first, last, (last - first).days + 1
 
 

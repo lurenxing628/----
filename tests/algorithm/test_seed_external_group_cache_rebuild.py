@@ -24,9 +24,12 @@ from core.algorithm_contracts.types import ScheduleResult
 from core.algorithms.greedy.external_groups import rebuild_external_group_cache_from_seeds
 from core.algorithms.greedy.scheduler import GreedyScheduler
 from core.algorithms.greedy.seed import seed_external_group_keys
-from core.errors import ValidationError
-from core.services.scheduler.run.schedule_input_runtime_support import _merge_execution_and_freeze_seed_results
-from core.services.scheduler.run.schedule_input_seed_metadata import with_frozen_external_seed_metadata
+from core.errors import AppError, ValidationError
+from core.services.scheduler.run.schedule_input_runtime_support import (
+    _merge_execution_and_freeze_seed_results,
+    _validate_completed_downstream_seed_constraints,
+)
+from core.services.scheduler.run.schedule_input_seed_metadata import with_external_seed_metadata
 from core.services.scheduler.run.schedule_seed_contracts import coerce_seed_results
 
 BASE = datetime(2026, 7, 20, 8, 0, 0)
@@ -270,18 +273,18 @@ def test_freeze_enrichment_requires_exact_current_operation(changes, cause):
     op = _merged_external_op(1, 1)
     vars(op).update(changes)
     with pytest.raises(ValidationError) as caught:
-        with_frozen_external_seed_metadata(
+        with_external_seed_metadata(
             [asdict(_external_seed(1, 1, BASE, BASE + timedelta(days=3)))],
-            frozen_op_ids={1}, algo_ops=[op],
+            algo_ops=[op],
         )
     assert caught.value.details["cause"] == cause
 
 
 def test_duplicate_frozen_operation_metadata_is_rejected():
     with pytest.raises(ValidationError) as caught:
-        with_frozen_external_seed_metadata(
+        with_external_seed_metadata(
             [asdict(_external_seed(1, 1, BASE, BASE + timedelta(days=3)))],
-            frozen_op_ids={1}, algo_ops=[_merged_external_op(1, 1), _merged_external_op(1, 1, group_id="G2")],
+            algo_ops=[_merged_external_op(1, 1), _merged_external_op(1, 1, group_id="G2")],
         )
     assert caught.value.details["cause"] == "duplicate_operation"
 
@@ -290,8 +293,8 @@ def test_missing_merge_context_is_not_assumed_separate():
     op = _merged_external_op(1, 1)
     del op.ext_merge_mode
     with pytest.raises(ValidationError) as caught:
-        with_frozen_external_seed_metadata(
-            [asdict(_external_seed(1, 1, BASE, BASE + timedelta(days=3)))], frozen_op_ids={1}, algo_ops=[op],
+        with_external_seed_metadata(
+            [asdict(_external_seed(1, 1, BASE, BASE + timedelta(days=3)))], algo_ops=[op],
         )
     assert caught.value.details["cause"] == "missing_merge_context"
 
@@ -307,11 +310,27 @@ def test_freeze_execution_merge_retains_fact_fields_and_does_not_mutate_inputs()
     execution = dict(frozen, seed_source="execution_fact", state_revision="1:7:3")
     before = deepcopy((frozen, execution))
     merged = _merge_execution_and_freeze_seed_results(execution_seed_results=[execution], freeze_seed_results=[frozen])
-    enriched = with_frozen_external_seed_metadata(merged, frozen_op_ids={1}, algo_ops=[_merged_external_op(1, 1)])
+    enriched = with_external_seed_metadata(merged, algo_ops=[_merged_external_op(1, 1)])
     seeds = coerce_seed_results(enriched, optimizer_algo_stats={})
     assert asdict(seeds[0]) == execution
     assert (frozen, execution) == before
     assert merged == [execution]
+
+
+@pytest.mark.parametrize("group_id,end_offset,reason", [
+    ("G1", 1, "execution_merged_group_split"),
+    ("G2", 0, "execution_completed_downstream_before_actual_finish"),
+])
+def test_completed_external_seed_does_not_relax_conflicting_group_or_downstream(group_id, end_offset, reason):
+    operations = [_merged_external_op(1, 1), _merged_external_op(2, 2, group_id=group_id)]
+    seeds = [asdict(_external_seed(1, 1, BASE, BASE + timedelta(days=3))),
+             asdict(_external_seed(2, 2, BASE, BASE + timedelta(days=3 + end_offset)))]
+    with pytest.raises(AppError) as caught:
+        _validate_completed_downstream_seed_constraints(
+            seed_results=seeds, operations=operations, algo_ops=operations, execution_completed_op_ids={1})
+    assert caught.value.details["reason"] == reason
+    assert caught.value.details["op_id"] == 2
+    assert caught.value.details["completed_op_id"] == 1
 
 
 @pytest.mark.parametrize("dispatch_mode", ["batch_order", "sgs"])

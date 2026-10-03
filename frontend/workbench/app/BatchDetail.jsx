@@ -2,8 +2,8 @@
   'use strict';
   const B = window.APSBatchContract, S = window.APSResourceSession;
   const { Button, ErrorBox, Issues } = window.ResourceControls;
-  // Quotas are shown as entered (up to four decimals); a one-decimal summary would hide non-zero unit hours.
-  const ENTERED_HOURS = { digits: 4, trim: true }, ENTERED_DAYS = { digits: 20, trim: true };
+  // Stored quotas keep the accepted numeric precision; estimates use the default formatter.
+  const ENTERED_HOURS = { exact: true }, ENTERED_DAYS = { exact: true };
   function BatchDetail({ adapter, batchRef, revision, onBack, onEdit, onDelete, onOperation, onSync, onMaterials, disabled }) {
     const read = S.useQuery(async signal => B.detail(await adapter.detail('batch', batchRef, signal), batchRef), [adapter, batchRef, revision]);
     const entity = read.result && read.result.data;

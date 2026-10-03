@@ -6,6 +6,7 @@ import pytest
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_plan_reference import WorkbenchPlanLocator
+from core.services.equipment.machine_downtime_service import MachineDowntimeService
 from core.services.workbench.execution.ledger import ExecutionLedgerService
 from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
 from tests.workbench.run_candidate_adoption_support import (
@@ -74,7 +75,8 @@ def test_all_old_rows_types_blobs_and_version_sequence_retained(candidate_case):
 
 
 @pytest.mark.parametrize("legacy", [False, True])
-def test_completed_actuals_and_original_identity_are_not_rewritten(candidate_case, legacy):
+@pytest.mark.parametrize("maintenance", [False, True])
+def test_completed_actuals_and_original_identity_are_not_rewritten(candidate_case, legacy, maintenance):
     case = candidate_case
     successor = case.operation(seq=2)
     case.plan(1, [case.op_id])
@@ -84,6 +86,8 @@ def test_completed_actuals_and_original_identity_are_not_rewritten(candidate_cas
         case.event(case.op_id, "finish")
     else:
         case.command("create", old_task, case.values(3))
+    if maintenance:
+        MachineDowntimeService(case.conn).create("M1", "2026-09-09 08:00", "2026-09-09 09:00", "maintenance")
     ref = candidate(case)
     token = preview(case, ref)
     before = snapshot(case.conn)

@@ -6,10 +6,24 @@ import pytest
 
 from core.models.workbench_command import WorkbenchCommandRejected, WorkbenchCommandUncertain, input_fingerprint
 from core.services.workbench.execution.production_report import WorkbenchProductionReportService
+from core.services.workbench.run.worker import WorkbenchRunWorker
 from data.repositories.workbench_execution_report_repo import WorkbenchExecutionReportRepository
 from tests.workbench.execution_ledger_support import END, START, all_rows
 from tests.workbench.execution_ledger_support import ledger_case as ledger_fixture
+from tests.workbench.field_workspace_support import BASE, FieldAPI
+from tests.workbench.run_candidate_adoption_support import INTENT
+from tests.workbench.run_candidate_adoption_support import preview as candidate_preview
+from tests.workbench.run_candidate_adoption_support import service as candidate_adoption
+from tests.workbench.run_candidate_support import candidate_case as candidate_fixture
 from tests.workbench.scheduler_execution_ledger_support import read_facts
+from tests.workbench.test_execution_dependency_regressions import (
+    adopt,
+    create,
+    merged_external_route,
+    report_plan,
+    task,
+    values,
+)
 
 
 def report(case, values=None):
@@ -180,6 +194,59 @@ def test_voided_history_cannot_be_corrected_reimported_or_replaced(ledger_case):
     assert all_rows(case.conn) == before
 
 
+def test_voided_legacy_supplement_can_be_replaced_by_one_new_effective_report(ledger_case):
+    case = ledger_case
+    case.event(case.op_id, "start")
+    case.event(case.op_id, "finish", quantity=10)
+    case.install()
+    task = case.task(1, case.op_id)
+    legacy_ref = case.ledger.get_task(task).legacy_facts[-1]["legacy_fact_ref"]
+    api = FieldAPI(case)
+    first = api.create(case.values(10, legacy_fact_ref=legacy_ref, reason="核对历史完工"))["data"]["rows"][0]
+    original_reports = all_rows(case.conn)["WorkbenchProductionReports"]
+    checked = api.client.post(BASE + "/reports/" + first["report_ref"] + "/void-preview", json={"input": intent(first)})
+    preview = checked.get_json()["data"]
+    assert checked.status_code == 200 and preview["can_confirm"]
+    withdrawn = api.client.post(BASE + "/reports/" + first["report_ref"] + "/void", json=api.body(preview["write_context"], intent(first)))
+    assert withdrawn.status_code == 200
+    second = api.create(case.values(10, legacy_fact_ref=legacy_ref, reason="重新核对原始工时", effective_processing_hours=1))["data"]["rows"][0]
+    projection = case.ledger.get_task(task)
+    assert projection.known_completed_quantity == 10 and projection.data_quality == "complete"
+    assert [row.report_ref for row in projection.reports] == [second["report_ref"]]
+    assert projection.reports[0].effective_processing_hours == 1
+    assert projection.voided_reports[0]["report"]["report_ref"] == first["report_ref"]
+    assert all_rows(case.conn)["WorkbenchProductionReports"][:1] == original_reports
+    before = all_rows(case.conn)
+    with pytest.raises(WorkbenchCommandRejected):
+        report(case, case.values(10, legacy_fact_ref=legacy_ref, reason="不能重复累计"))
+    assert all_rows(case.conn) == before
+    # The DB enforces the same effective-only rule even for a lower-level writer.
+    with pytest.raises(sqlite3.IntegrityError, match="active report"):
+        case.conn.execute("""INSERT INTO WorkbenchProductionReports SELECT ?,?,operation_ref,
+            recorded_against_task_ref,recorded_against_plan_ref,source,legacy_fact_ref,recorded_at
+            FROM WorkbenchProductionReports WHERE report_ref=?""", ("f" * 48, "duplicate-active", second["report_ref"]))
+    case.conn.rollback()
+    assert all_rows(case.conn) == before
+
+
+def test_batch_cannot_create_two_effective_supplements_after_legacy_report_void(ledger_case):
+    case = ledger_case
+    case.event(case.op_id, "start")
+    case.event(case.op_id, "finish", quantity=10)
+    case.install()
+    task = case.task(1, case.op_id)
+    legacy_ref = case.ledger.get_task(task).legacy_facts[-1]["legacy_fact_ref"]
+    first = report(case, case.values(10, legacy_fact_ref=legacy_ref, reason="核对历史完工"))
+    case.command("report_void", first["report_ref"], intent(first))
+    before = all_rows(case.conn)
+    items = [{"action": "create", "ref": task, "payload": case.values(10, legacy_fact_ref=legacy_ref,
+        reason="文件重新补齐", source="excel", report_no=number)} for number in ("renewed-1", "renewed-2")]
+    with pytest.raises(WorkbenchCommandRejected):
+        case.writer.execute_batch(items, context_ref=case.plan_ref(1), request_key="legacy-double-supplement-001",
+                                  validate_context=lambda *_: None)
+    assert all_rows(case.conn) == before
+
+
 def test_missing_void_table_never_reactivates_archived_reports(ledger_case):
     case = ledger_case
     case.install()
@@ -190,3 +257,101 @@ def test_missing_void_table_never_reactivates_archived_reports(ledger_case):
     with pytest.raises(WorkbenchCommandRejected) as error:
         case.ledger.get_task(case.task(1, case.op_id))
     assert error.value.code == "execution_ledger_unavailable"
+
+
+def _completed_merged_reports(case, piece, *, downstream=False):
+    members = merged_external_route(case, piece)
+    successor = case.operation(seq=4, piece_id="unit-A" if piece else None) if downstream else None
+    case.conn.commit()
+    version = adopt(case)
+    report_plan(case, version, {case.op_id})
+    api = FieldAPI(case)
+    for operation in members:
+        payload = values(case, "2026-09-09T10:00:00", "2026-09-10T10:00:00", 1 if piece else 3)
+        payload.update(actual_machine_ref=None, actual_operator_ref=None)
+        assert create(api, version, operation, payload).status_code == 200
+    if successor is not None:
+        assert create(api, version, successor,
+            values(case, "2026-09-10T10:00:00", "2026-09-10T11:00:00", 1 if piece else 3)).status_code == 200
+    return api, version, members, successor
+
+
+def _merged_change(api, version, operation, action, piece):
+    row = task(api, version, operation)["execution"]["reports"][0]
+    payload = {"original_revision_ref": row["revision_ref"], "reason": "原始报工数量核对"}
+    if action == "correct":
+        payload["completed_quantity"] = 0 if piece else 2
+        return api.client.post(BASE + "/reports/" + row["report_ref"] + "/correct", json=api.body(row["write_context"], payload))
+    checked = api.client.post(BASE + "/reports/" + row["report_ref"] + "/void-preview", json={"input": payload})
+    preview = checked.get_json()["data"]
+    assert checked.status_code == 200
+    if not preview["can_confirm"]:
+        return checked
+    return api.client.post(BASE + "/reports/" + row["report_ref"] + "/void", json=api.body(preview["write_context"], payload))
+
+
+@pytest.mark.parametrize("piece", [False, True])
+@pytest.mark.parametrize("member", [0, 1])
+@pytest.mark.parametrize("action", ["report_void", "correct"])
+def test_merged_cycle_peer_does_not_block_report_withdrawal_or_quantity_correction(candidate_case, piece, member, action):
+    case = candidate_case
+    api, version, members, _ = _completed_merged_reports(case, piece)
+    other = task(api, version, members[1 - member])["execution"]
+    before_reports = all_rows(case.conn)["WorkbenchProductionReports"]
+    response = _merged_change(api, version, members[member], action, piece)
+    assert response.status_code == 200, response.get_json()
+    assert response.get_json()["result"] == "committed", response.get_json()
+    changed = task(api, version, members[member])["execution"]
+    assert changed["execution_state"] == ("unreported" if action == "report_void" else "partial")
+    assert changed["known_completed_quantity"] == (0 if action == "report_void" or piece else 2)
+    peer = task(api, version, members[1 - member])["execution"]
+    assert peer["execution_state"] == "complete" and peer["known_completed_quantity"] == other["known_completed_quantity"]
+    assert peer["reports"][0]["revision_ref"] == other["reports"][0]["revision_ref"]
+    assert all_rows(case.conn)["WorkbenchProductionReports"] == before_reports
+
+
+@pytest.mark.parametrize("piece", [False, True])
+@pytest.mark.parametrize("action", ["report_void", "correct"])
+def test_merged_cycle_report_change_still_protects_real_successor_outside_group(candidate_case, piece, action):
+    case = candidate_case
+    api, version, members, successor = _completed_merged_reports(case, piece, downstream=True)
+    successor_ref = task(api, version, successor)["operation_ref"]
+    peer_ref = task(api, version, members[1])["operation_ref"]
+    before = all_rows(case.conn)
+    response = _merged_change(api, version, members[0], action, piece)
+    body = response.get_json()
+    if action == "report_void":
+        assert response.status_code == 200 and body["data"]["can_confirm"] is False
+        impacts = body["data"]["downstream_impacts"]
+    else:
+        assert response.status_code == 409 and body["committed"] is False
+        row = task(api, version, members[0])["execution"]["reports"][0]
+        with pytest.raises(WorkbenchCommandRejected) as error:
+            case.writer.preview("correct", row["report_ref"], {"original_revision_ref": row["revision_ref"],
+                "reason": "核对原始数量", "completed_quantity": 0 if piece else 2})
+        impacts = error.value.conflicts
+    assert successor_ref in {item["operation_ref"] for item in impacts}
+    assert peer_ref not in {item["operation_ref"] for item in impacts}
+    assert all_rows(case.conn) == before
+
+
+@pytest.mark.parametrize("piece", [False, True])
+def test_merged_cycle_peer_exemption_keeps_formally_adopted_report_dependency(candidate_case, piece):
+    case = candidate_case
+    api, _, members, _ = _completed_merged_reports(case, piece)
+    case.batch("B2")
+    case.operation("B2")
+    case.conn.commit()
+    accepted = case.accept(key="merged-report-second-run-001", settings=case.settings("B1", "B2"))
+    computed = WorkbenchRunWorker(case.conn).execute(accepted["run_ref"])
+    assert computed["state"] == "complete" and computed["candidates"]
+    candidate = computed["candidates"][0]["candidate_ref"]
+    adopted = candidate_adoption(case.conn).adopt(candidate, candidate_preview(case, candidate),
+        "merged-report-adopt-dependency-001", INTENT)
+    version = adopted["data"]["official_plan"]["version"]
+    before = all_rows(case.conn)
+    response = _merged_change(api, version, members[0], "report_void", piece)
+    body = response.get_json()
+    assert response.status_code == 200 and body["data"]["can_confirm"] is False
+    assert "adopted_completion_required" in {item["code"] for item in body["data"]["downstream_impacts"]}
+    assert all_rows(case.conn) == before

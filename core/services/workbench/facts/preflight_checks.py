@@ -7,7 +7,7 @@ from datetime import date, datetime
 from core.models.resource_capabilities import machine_type_index, supports_source
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_preflight import issue
-from core.services.material.stage_availability import MaterialAvailability
+from core.services.material.stage_availability import MaterialAvailability, covers_quantity, quantity
 from core.services.scheduler.contracts.external_context import (
     context_group_key,
     context_problem,
@@ -115,6 +115,28 @@ class PreflightChecks:
             missing.append(issue("machine_authorization_missing", "这个人员没有该设备的操作授权。请改派人员，或到资料总览补授权。"))
         return missing
 
+    def protected_resources(self, op):
+        """Actual history needs surviving identities, not today's qualifications.
+
+        Call only after the execution guard has proven this exact arrangement
+        or its shared actual external cycle. Ordinary locked plans use resources.
+        """
+        gaps = []
+        if op["op_type_id"] not in self.catalogs["op_type"]:
+            gaps.append(issue("op_type_missing", "实际工序的原工种身份缺失，请核对历史记录。"))
+        if op["source"] == "external":
+            kinds = ("supplier",)
+            if op["machine_id"] is not None or op["operator_id"] is not None:
+                gaps.append(issue("external_actual_resource_conflict", "外协实际记录不能占用本厂设备人员。"))
+        elif op["source"] == "internal":
+            kinds = ("machine", "operator")
+        else:
+            return gaps + [issue("source_missing", "实际工序的自制或外协归属缺失，请核对历史记录。")]
+        for kind in kinds:
+            if op[kind + "_id"] not in self.catalogs[kind]:
+                gaps.append(issue(kind + "_identity_missing", "实际记录的原设备、人员或供应商身份缺失，请核对历史记录。"))
+        return gaps
+
     def readiness(self, batch, enabled):
         if not enabled:
             return []
@@ -128,7 +150,7 @@ class PreflightChecks:
             required, available = row["required_qty"], row["available_qty"]
             if not number(required, positive=True) or not number(available):
                 reasons.append(issue("material_unknown", "物料需求量或到料数量没填，算不出齐不齐套。请到批次管理核对物料需求。"))
-            elif available < required or row["ready_status"] != "yes":
+            elif not covers_quantity(quantity(available), quantity(required)) or row["ready_status"] != "yes":
                 reasons.append(issue("material_not_ready", "这批的物料还没到齐。请到批次管理核对物料需求。"))
         return reasons
 

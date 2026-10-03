@@ -72,7 +72,7 @@ def test_fresh_current_is_current_without_legacy_migration(tmp_path, schema_path
         assert tuple(conn.execute("SELECT * FROM WorkbenchExecutionLedgerClock").fetchone()) == (1, 1, 1)
         actual = dict(conn.execute("SELECT name,sql FROM sqlite_master"))
         expected = execution_ledger_objects()
-        assert len(expected) == 22
+        assert len(expected) == 24
         assert all(_canonical_sql(actual[name]) == _canonical_sql(sql) for name, sql in expected.items())
     assert not list(backups.glob("*.db"))
 

@@ -1,10 +1,12 @@
 """Real official append, truthful scenario provenance and retained prior SQLite rows."""
 
 import json
+from datetime import datetime
 
 import pytest
 
 from core.models.workbench_command import WorkbenchCommandRejected
+from tests.workbench.piece_adoption_support import split
 from tests.workbench.trial_adoption_support import (
     INTENT,
     KEY,
@@ -15,7 +17,7 @@ from tests.workbench.trial_adoption_support import (
     service,
 )
 from tests.workbench.trial_adoption_support import trial_case as trial_case
-from tests.workbench.trial_support import candidate, snapshot
+from tests.workbench.trial_support import candidate, change, create, snapshot
 from tests.workbench.trial_support import service as trial_service
 
 
@@ -65,6 +67,22 @@ def test_narrow_display_scope_does_not_trim_adopted_full_snapshot(trial_case):
     assert case.conn.execute("SELECT COUNT(*) FROM Schedule WHERE version=2").fetchone()[0] == 2
 
 
+def test_valid_piece_trial_preserves_microseconds_through_save_and_official_adoption(trial_case):
+    case = trial_case
+    split(case, common=False, unit=0.25, quantity=1)
+    draft = create(case, candidate(case))
+    draft = change(case, draft, task=1, start="2026-09-09T13:00:00.000001", machine="M1", operator="O1")["data"]
+    assert draft["validation"]["constraints_status"] == "valid"
+    saved = trial_service(case.conn).save(draft["draft_ref"], {"name": "Precise piece trial"},
+        draft["write_context"]["write_token"], "piece-precision-save-00001")["data"]
+    assert saved["validation"]["constraints_status"] == "valid"
+    result = service(case.conn).adopt(saved["scenario_ref"], preview(case, saved), KEY, INTENT)
+    row = case.conn.execute("SELECT start_time,end_time FROM Schedule WHERE version=? ORDER BY start_time DESC LIMIT 1",
+                           (result["data"]["official_plan"]["version"],)).fetchone()
+    assert datetime.fromisoformat(row[0]) == datetime(2026, 9, 9, 13, 0, 0, 1)
+    assert datetime.fromisoformat(row[1]) == datetime(2026, 9, 9, 13, 15, 0, 1)
+
+
 @pytest.mark.parametrize("state", ["locked", "actual", "legacy"])
 def test_old_plans_execution_and_sqlite_types_retained(trial_case, state):
     case = trial_case
@@ -102,4 +120,3 @@ def test_one_key_cannot_change_intent_or_scenario(trial_case):
     with pytest.raises(WorkbenchCommandRejected):
         service(case.conn).lookup(second["scenario_ref"], KEY)
     assert snapshot(case.conn) == before
-

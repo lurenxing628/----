@@ -306,7 +306,7 @@
     return /*#__PURE__*/React.createElement("section", {
       className: "match-note is-block",
       role: "status"
-    }, /*#__PURE__*/React.createElement("p", null, "\u6700\u65B0\u8D44\u6599\u5DF2\u8BFB\u53D6\uFF0C\u8349\u7A3F\u6CA1\u6709\u88AB\u66FF\u6362\u3002\u5DEE\u5F02 ", rows.length, " \u9879\uFF0C\u8BF7\u6838\u5BF9\u4E0B\u8868\u548C\u5F53\u524D\u8349\u7A3F\u3002\u70B9\u300C", window.WorkbenchTerms.accept_latest, "\u300D\u540E\uFF1A\u5DF2\u6539\u8FC7\u7684\u9879\u4FDD\u7559\uFF0C\u5176\u4F59\u6309\u6700\u65B0\u503C\uFF1B\u6709\u53D8\u5316\u7684\u5DE5\u5E8F\u8981\u91CD\u65B0\u786E\u8BA4\uFF0C\u5DF2\u79FB\u9664\u7684\u5DE5\u5E8F\u4E0D\u518D\u63D0\u4EA4\u3002"), !!rows.length && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("p", null, "\u6700\u65B0\u8D44\u6599\u5DF2\u8BFB\u53D6\uFF0C\u8349\u7A3F\u6CA1\u6709\u88AB\u66FF\u6362\u3002\u5DEE\u5F02 ", rows.length, " \u9879\uFF0C\u8BF7\u6838\u5BF9\u4E0B\u8868\u548C\u5F53\u524D\u8349\u7A3F\u3002\u70B9\u300C", window.WorkbenchTerms.accept_latest, "\u300D\u540E\uFF1A\u5DF2\u6539\u8FC7\u4E14\u4ECD\u9002\u7528\u7684\u9879\u4FDD\u7559\uFF0C\u5176\u4F59\u6309\u6700\u65B0\u503C\uFF1B\u6709\u53D8\u5316\u7684\u5DE5\u5E8F\u8981\u91CD\u65B0\u786E\u8BA4\uFF0C\u5DF2\u79FB\u9664\u7684\u5DE5\u5E8F\u4E0D\u518D\u63D0\u4EA4\u3002"), !!rows.length && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
       className: "card-scroll"
     }, /*#__PURE__*/React.createElement("table", {
       className: "tbl wb-table",

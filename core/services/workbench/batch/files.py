@@ -63,5 +63,8 @@ class WorkbenchBatchFileService:
             if data["ready_status"] in ("yes", "partial", "no"):
                 data["ready_status"] = ready_status_label(data["ready_status"])
             status = {"pending": "待排", "scheduled": "已排", "processing": "加工中", "completed": "已完成", "cancelled": "已取消"}.get(entity["status"], entity["status"])
-            rows.append([data[key] for key in COLUMNS] + [status])
+            effective_ready = entity["display_ready_status"]
+            if effective_ready in ("yes", "partial", "no"):
+                effective_ready = ready_status_label(effective_ready)
+            rows.append([data[key] for key in COLUMNS] + [status, effective_ready])
         return write_batch_file(rows)

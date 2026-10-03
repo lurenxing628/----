@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Dict, List, Set, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from core.algorithm_runtime.internal_slot import validate_internal_hours
 from core.errors import AppError, ErrorCode, ValidationError
@@ -11,7 +11,12 @@ from core.services.personnel.operator_qualification import validate_fixed_operat
 
 from .schedule_execution_reservations import ExecutionResourceReservation, reserve_execution_machines
 from .schedule_input_contracts import _build_freeze_window_seed_with_meta, _op_seq
-from .schedule_input_seed_metadata import with_frozen_external_seed_metadata
+from .schedule_input_seed_metadata import (
+    merged_external_group_identity,
+    protected_interval_problem,
+    with_external_seed_metadata,
+    with_merged_actual_group_seeds,
+)
 
 
 def _algo_op_id(op: Any) -> int:
@@ -28,11 +33,16 @@ def _resolve_algo_ops_to_schedule(
     execution_fixed_op_ids: Set[int],
     run_label: str,
     raise_schedule_empty_result_fn: Any,
+    derived_group_op_ids: Optional[Set[int]] = None,
 ) -> List[Any]:
     fixed_seed_op_ids = set(frozen_op_ids) | set(execution_fixed_op_ids or set())
     algo_ops_to_schedule = [op for op in algo_ops if _algo_op_id(op) not in fixed_seed_op_ids]
     if algo_ops_to_schedule:
         return algo_ops_to_schedule
+    if derived_group_op_ids:
+        # Unreported members still produce a plan result, but their already
+        # started physical cycle has been represented by exact derived seeds.
+        return []
     algo_op_ids = {_algo_op_id(op) for op in list(algo_ops or []) if _algo_op_id(op) > 0}
     if algo_op_ids and algo_op_ids <= set(execution_fixed_op_ids or set()):
         raise_schedule_empty_result_fn(
@@ -164,21 +174,24 @@ def _build_runtime_support_inputs(
         execution_seed_results=list(execution_seed_results or []),
         freeze_seed_results=list(seed_results or []),
     )
+    seed_results, derived_group_ids = with_merged_actual_group_seeds(seed_results, algo_ops=algo_ops,
+        actual_op_ids=set(execution_fixed_op_ids or set()) | set(execution_completed_op_ids or set()))
+    frozen_op_ids = set(frozen_op_ids) | derived_group_ids
+    seed_results = with_external_seed_metadata(seed_results, algo_ops=algo_ops)
     validate_seeds = validate_completed_seed_constraints_fn or _validate_completed_downstream_seed_constraints
     validate_seeds(
         seed_results=seed_results,
         operations=operations,
+        algo_ops=algo_ops,
         execution_completed_op_ids=set(execution_completed_op_ids or set()),
-    )
-    seed_results = with_frozen_external_seed_metadata(
-        seed_results, frozen_op_ids=set(frozen_op_ids), algo_ops=algo_ops,
     )
     algo_ops_to_schedule = _resolve_algo_ops_to_schedule(
         algo_ops=algo_ops,
         frozen_op_ids=set(frozen_op_ids),
-        execution_fixed_op_ids=set(execution_fixed_op_ids or set()),
+        execution_fixed_op_ids=set(execution_fixed_op_ids or set()) | set(execution_completed_op_ids or set()),
         run_label=run_label,
         raise_schedule_empty_result_fn=raise_schedule_empty_result_fn,
+        derived_group_op_ids=derived_group_ids,
     )
     _ensure_internal_runtime_hours(batches, algo_ops_to_schedule)
     validate_fixed_operator_qualifications(svc.conn, algo_ops_to_schedule, logger=svc.logger)
@@ -232,10 +245,6 @@ def _seed_seq(seed: Dict[str, Any]) -> int:
         return 0
 
 
-def _seed_start(seed: Dict[str, Any]) -> Any:
-    return seed.get("start_time")
-
-
 def _seed_end(seed: Dict[str, Any]) -> Any:
     return seed.get("end_time")
 
@@ -257,15 +266,6 @@ def _downstream_operations(
     return out
 
 
-def _seed_starts_before_completed(seed: Dict[str, Any], completed_seed: Dict[str, Any]) -> bool:
-    return (
-        seed is not None
-        and isinstance(_seed_start(seed), datetime)
-        and isinstance(_seed_end(completed_seed), datetime)
-        and _seed_start(seed) < _seed_end(completed_seed)
-    )
-
-
 def _raise_downstream_seed_conflict(*, op_id: int, completed_op_id: int) -> None:
     raise AppError(
         ErrorCode.SCHEDULE_CONFLICT,
@@ -278,10 +278,26 @@ def _raise_downstream_seed_conflict(*, op_id: int, completed_op_id: int) -> None
     )
 
 
+def _raise_merged_seed_conflict(*, op_id: int, completed_op_id: int) -> None:
+    raise AppError(ErrorCode.SCHEDULE_CONFLICT,
+        "同一个合并外协组的原安排起止不一致，本次没有写入新排程。请核对现场记录和原安排。",
+        details={"reason": "execution_merged_group_split", "op_id": op_id, "completed_op_id": completed_op_id})
+
+
+def _validate_downstream_seed_pair(completed_seed, seed, *, completed_op_id, op_id, groups):
+    problem = protected_interval_problem(completed_seed, seed,
+        previous_group=groups.get(completed_op_id), current_group=groups.get(op_id))
+    if problem == "merged_group_split":
+        _raise_merged_seed_conflict(op_id=int(op_id), completed_op_id=int(completed_op_id))
+    if problem == "precedence_violation":
+        _raise_downstream_seed_conflict(op_id=int(op_id), completed_op_id=int(completed_op_id))
+
+
 def _validate_completed_downstream_seed_constraints(
     *,
     seed_results: List[Dict[str, Any]],
     operations: List[BatchOperation],
+    algo_ops: List[Any],
     execution_completed_op_ids: Set[int],
 ) -> None:
     if not seed_results or not execution_completed_op_ids:
@@ -291,6 +307,7 @@ def _validate_completed_downstream_seed_constraints(
         for seed in list(seed_results or [])
         if _seed_op_id(seed) > 0
     }
+    groups = {op.id: merged_external_group_identity(op) for op in algo_ops}
     for completed_op_id in sorted(set(execution_completed_op_ids or set())):
         completed_seed = seed_by_op_id.get(int(completed_op_id))
         if completed_seed is None or not isinstance(_seed_end(completed_seed), datetime):
@@ -309,8 +326,8 @@ def _validate_completed_downstream_seed_constraints(
             seed = seed_by_op_id.get(int(op_id))
             if seed is None:
                 continue
-            if _seed_starts_before_completed(seed, completed_seed):
-                _raise_downstream_seed_conflict(op_id=int(op_id), completed_op_id=int(completed_op_id))
+            _validate_downstream_seed_pair(completed_seed, seed,
+                completed_op_id=completed_op_id, op_id=op_id, groups=groups)
 
 
 def _seed_conflicts(execution_seed: Dict[str, Any], freeze_seed: Dict[str, Any]) -> bool:

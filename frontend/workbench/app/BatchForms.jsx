@@ -3,8 +3,8 @@
   const B = window.APSBatchContract, C = window.APSResourceContract, S = window.APSResourceSession;
   const { Button, Modal, ErrorBox, Issues } = window.ResourceControls;
   const { BaseFields } = window.BatchControls;
-  // The confirmation table shows quotas as entered (up to four decimals), never as a one-decimal summary.
-  const ENTERED_HOURS = { digits: 4, trim: true }, ENTERED_DAYS = { digits: 20, trim: true };
+  // Maintenance and confirmation values keep the accepted numeric precision.
+  const ENTERED_HOURS = { exact: true }, ENTERED_DAYS = { exact: true };
   function BaseEditor({ adapter, entity: original, createContext, source, command, onClose, onCommitted, disabled = false }) {
     const [entity, setEntity] = React.useState(original), [value, setValue] = React.useState(() => B.draft(original));
     const [context, setContext] = React.useState(original ? original.write_context : createContext);
@@ -70,12 +70,21 @@
     const operation = row => row ? <><div>{row.label} · {row.source === 'external' ? '外协' : '自制'}</div>
       {row.source === 'internal' ? <div>换型 {window.WorkbenchFormat.hours(row.setup_hours, ENTERED_HOURS)} / 单件 {window.WorkbenchFormat.hours(row.unit_hours, ENTERED_HOURS)}</div>
         : <><div>{row.external_group && row.external_group.merge_mode === 'merged' ? '整组周期 ' + window.WorkbenchFormat.number(row.external_group.total_days, ENTERED_DAYS) : '本序周期 ' + window.WorkbenchFormat.number(row.external_days, ENTERED_DAYS)} 天</div>
+          {row.external_group && <div>外协段：工序 {row.external_group.start_sequence} 至 {row.external_group.end_sequence}</div>}
           <div>供应商：{(row.supplier || row.resources && row.resources.supplier || {}).label || '未填写'}</div></>}</> : '—';
+    const groups = preview.external_groups, groupList = rows => rows.length ? <ul>{rows.map((row, index) => <li key={index}>
+      工序 {row.start_sequence} 至 {row.end_sequence}{row.piece_id ? ' · 分件 ' + row.piece_id : ''}；成员：{row.member_sequences.join('、')}；
+      {row.merge_mode === 'merged' ? '整段只计算一次 ' + window.WorkbenchFormat.number(row.total_days, ENTERED_DAYS) + ' 天' : '按各工序周期分别计算'}
+    </li>)}</ul> : '无外协段';
     return <><div className="batch-sync-summary">{Object.entries(changeNames).map(([key, label]) => <span key={key}>{label} <b>{preview.change_counts[key]}</b> 道</span>)}</div>
       <div className="batch-preview wb-table-frame" data-sticky-head><table className="tbl wb-table batch-sync-table" aria-label="工序更新前后对照"><caption className="wb-visually-hidden">工序更新前后对照</caption>
         <thead><tr><th scope="col" style={{ width: 90 }}>工序 / 变化</th><th scope="col">当前批次工序</th><th scope="col">更新后</th></tr></thead><tbody>
           {preview.changes.map((row, index) => <tr key={index}><td><div>{row.sequence}{row.piece_id ? ' · ' + row.piece_id : ''}</div><div>{changeNames[row.change]}</div></td><td>{operation(row.before)}</td><td>{operation(row.after)}</td></tr>)}
         </tbody></table></div>
+      {groups && (groups.before.length > 0 || groups.after.length > 0) && <section aria-label="外协段更新前后对照"><h3>外协段更新前后对照</h3>
+        <div className="wb-table-frame"><table className="tbl wb-table"><caption className="wb-visually-hidden">外协段更新前后对照</caption>
+          <thead><tr><th scope="col">当前批次外协段</th><th scope="col">更新后外协段</th></tr></thead>
+          <tbody><tr><td>{groupList(groups.before)}</td><td>{groupList(groups.after)}</td></tr></tbody></table></div></section>}
       <div className="batch-sync-resources"><h3>设备和人员指定</h3>{preview.cleared_resources.length ? <><p>以下 {preview.cleared_resources.length} 道工序的指定将被清除，更新后可重新指定。</p>
         <ul>{preview.cleared_resources.map(row => <li key={row.operation_ref}>{row.business_code}：{[row.machine && '设备 ' + row.machine.label, row.operator && '人员 ' + row.operator.label].filter(Boolean).join('；')}</li>)}</ul></>
         : <p>当前工序没有设备或人员指定，无需清除。</p>}</div>

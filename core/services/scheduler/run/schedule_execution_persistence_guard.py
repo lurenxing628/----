@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from core.errors import AppError, ErrorCode
+from core.models.enums import SourceType
 from core.models.operation_execution_scope import OperationExecutionScope
 from core.services.scheduler.execution.execution_fact_provider import ExecutionFact, ExecutionFactProvider
 from core.services.scheduler.execution.execution_ledger_guard import ensure_ledger_execution_schedulable
@@ -12,7 +13,9 @@ from core.services.scheduler.execution.execution_snapshot import build_execution
 from .schedule_execution_reservations import build_execution_resource_reservations
 from .schedule_execution_resource_facts import RESOURCE_SNAPSHOT_PREFIX, collect_resource_execution_facts
 from .schedule_input_contracts import _op_seq
+from .schedule_input_seed_metadata import merged_external_group_identity, protected_interval_problem
 from .schedule_payload_contract import ValidatedSchedulePayload, ValidatedScheduleRow
+from .schedule_template_lookup import lookup_template_group_context_for_op
 
 
 def _execution_guard_conflict(message: str, *, reason: str, op_id: Optional[int] = None) -> AppError:
@@ -215,6 +218,7 @@ def _completed_downstream_rows(
     operations: Optional[List[Any]],
     completed_op: Any,
     completed_op_id: int,
+    groups: Dict[int, Any],
 ) -> List[Tuple[int, ValidatedScheduleRow]]:
     out = []
     completed_batch_id = _op_batch_id(completed_op)
@@ -224,7 +228,8 @@ def _completed_downstream_rows(
     for op_id, op in _ops_by_id(operations).items():
         if int(op_id) == int(completed_op_id):
             continue
-        if _op_batch_id(op) != completed_batch_id or _op_seq(op) <= completed_seq:
+        same_cycle = groups.get(completed_op_id) is not None and groups.get(op_id) == groups[completed_op_id]
+        if not same_cycle and (_op_batch_id(op) != completed_batch_id or _op_seq(op) <= completed_seq):
             continue
         row = rows.get(int(op_id))
         if row is not None:
@@ -245,6 +250,7 @@ def _raise_completed_downstream_conflict(*, op_id: int, completed_op_id: int) ->
 
 def _validate_completed_downstream_constraints(
     *,
+    svc: Any,
     rows: Dict[int, ValidatedScheduleRow],
     operations: Optional[List[Any]],
     execution_facts: Dict[int, ExecutionFact],
@@ -253,6 +259,7 @@ def _validate_completed_downstream_constraints(
     if not execution_completed_op_ids or not operations:
         return
     op_by_id = _ops_by_id(operations)
+    groups = _execution_group_identities(svc, op_by_id, rows, execution_completed_op_ids)
     for completed_op_id in sorted(set(execution_completed_op_ids or set())):
         completed_op = op_by_id.get(int(completed_op_id))
         fact = execution_facts.get(int(completed_op_id))
@@ -263,9 +270,31 @@ def _validate_completed_downstream_constraints(
             operations=operations,
             completed_op=completed_op,
             completed_op_id=int(completed_op_id),
+            groups=groups,
         ):
-            if row.start_time < fact.actual_end_time:
+            completed_row = rows[int(completed_op_id)]
+            problem = protected_interval_problem(
+                {"start_time": completed_row.start_time, "end_time": fact.actual_end_time},
+                {"start_time": row.start_time, "end_time": row.end_time},
+                previous_group=groups.get(completed_op_id), current_group=groups.get(op_id))
+            if problem == "merged_group_split":
+                raise _execution_guard_conflict("同一个合并外协组的工序必须保持相同起止，本次没有写入新排程。",
+                    reason="execution_merged_group_split", op_id=op_id)
+            if problem == "precedence_violation":
                 _raise_completed_downstream_conflict(op_id=int(op_id), completed_op_id=int(completed_op_id))
+
+
+def _execution_group_identities(svc, operations, rows, completed_op_ids):
+    if not any(str(getattr(operations.get(op_id), "source", None) or "").strip().lower() == SourceType.EXTERNAL.value
+               for op_id in completed_op_ids):
+        return {}
+    groups = {}
+    for op_id, op in operations.items():
+        if op_id not in rows or str(getattr(op, "source", None) or "").strip().lower() != SourceType.EXTERNAL.value:
+            continue
+        lookup = lookup_template_group_context_for_op(svc, op, strict_mode=True)
+        groups[op_id] = merged_external_group_identity(op, group=lookup.group)
+    return groups
 
 
 def validate_execution_guard_before_persist(
@@ -320,6 +349,7 @@ def validate_execution_guard_before_persist(
             )
         _validate_completed_seed_row(row=row, fact=fact)
     _validate_completed_downstream_constraints(
+        svc=svc,
         rows=rows,
         operations=payload_validation_operations,
         execution_facts=execution_facts,

@@ -33,7 +33,7 @@
       const current = draft.operations[row.ref],
         previous = original.operations[row.ref],
         fresh = next.operations[row.ref];
-      if (!current || !previous || old.get(row.ref).source !== row.source) return;
+      if (!current || !previous || old.get(row.ref).source !== row.source || old.get(row.ref).op_type_ref !== row.op_type_ref) return;
       (row.source === 'internal' ? ['setup_hours', 'unit_hours'] : ['external_days']).forEach(key => {
         if (current[key] !== previous[key]) fresh[key] = current[key];
       });
@@ -112,6 +112,11 @@
     const blocked = disabled || command.locked || command.phase === 'done',
       stageReason = E.reason(model, adapter, 'hours');
     const editBlocked = blocked || entity.workflow.source.state !== 'confirmed' || entity.capabilities.stage_confirm !== true;
+    const originalTypes = new Map(entity.operations.map(row => [row.ref, row]));
+    const changedTypes = model.review ? E.active(model.review.data).filter(row => {
+      const old = originalTypes.get(row.ref);
+      return old && old.source === row.source && old.op_type_ref !== row.op_type_ref;
+    }) : [];
     React.useEffect(() => {
       setZero(null);
     }, [draft, model.base, model.review, disabled]);
@@ -317,7 +322,9 @@
     })), /*#__PURE__*/React.createElement(E.Pager, {
       paging: paging,
       disabled: blocked
-    }), /*#__PURE__*/React.createElement(E.Feedback, {
+    }), !!changedTypes.length && /*#__PURE__*/React.createElement("p", {
+      role: "status"
+    }, "\u5DE5\u5E8F ", changedTypes.map(row => row.sequence).join('、'), " \u7684\u5B9E\u9645\u5DE5\u79CD\u5DF2\u66F4\u6362\u3002\u63A5\u53D7\u6700\u65B0\u8D44\u6599\u540E\u5C06\u91C7\u7528\u65B0\u5DE5\u79CD\u7684\u5DE5\u65F6\uFF0C\u539F\u5DE5\u79CD\u672A\u4FDD\u5B58\u7684\u5DE5\u65F6\u4E0D\u4F1A\u6CBF\u7528\uFF0C\u8BF7\u91CD\u65B0\u6838\u5BF9\u586B\u5199\u3002"), /*#__PURE__*/React.createElement(E.Feedback, {
       model: model,
       disabled: blocked,
       paging: paging

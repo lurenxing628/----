@@ -85,6 +85,8 @@ class TrialValidator:
         original, current, ref = row["original"], row["current"], row["task_ref"]
         op = dict(original["operation"], machine_id=current["machine_id"], operator_id=current["operator_id"])
         batch = original["batch"]
+        if op["id"] in self.anchors:
+            return [dict(item, task_ref=ref, severity="blocker") for item in self.checks.protected_resources(op)]
         issues = [dict(item, task_ref=ref, severity="blocker") for item in self.checks.fields(batch, op) + self.checks.resources(op)]
         if batch["priority"] not in ("normal", "urgent", "critical"):
             issues.append(issue("priority_unknown", "原批次优先级无效，请核对批次资料。", ref))
@@ -96,16 +98,20 @@ class TrialValidator:
     def _times(self, row, protected):
         original, current, ref = row["original"], row["current"], row["task_ref"]
         batch, issues = original["batch"], []
+        anchor = self.anchors.get(original["operation"]["id"])
+        actual = anchor is not None and anchor["basis"] in ("completed_actuals", "started_actuals")
+        fixed_cycle = anchor is not None and anchor["basis"] == "merged_external_actuals"
         try:
             start, end = interval(current, original=original)
             if protected is None and self.engine is not None:
                 estimated_start, estimated_end = estimate(self.engine, original, current)
                 if start != estimated_start or end != estimated_end:
                     issues.append(issue("calendar_duration_conflict", "开完工与原工时、真实日历或效率不一致。", ref))
-            if (original["operation"]["id"] not in self.anchors and run_policy(self.admission)["ready_check"]
+            if (not actual and not fixed_cycle and run_policy(self.admission)["ready_check"]
                     and batch["ready_date"] and start < datetime.fromisoformat(batch["ready_date"])):
                 issues.append(issue("before_ready_date", "安排早于原批次可开工日期。", ref))
-            issues.extend(self._downtimes(row, start, end))
+            if not actual:
+                issues.extend(self._downtimes(row, start, end))
         except WorkbenchCommandRejected as exc:
             issues.append(issue(exc.code, str(exc), ref))
         except (AppError, ValueError, TypeError, OverflowError):

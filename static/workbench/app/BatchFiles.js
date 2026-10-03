@@ -242,7 +242,7 @@
       }
     })), /*#__PURE__*/React.createElement("p", {
       className: "iohint"
-    }, "\u65B0\u6279\u6B21\u5BFC\u5165\u540E\u9700\u751F\u6210\u5DE5\u5E8F\uFF1B\u66F4\u65B0\u65F6\u7A7A\u767D\u5355\u5143\u683C\u4FDD\u7559\u539F\u503C\u3002"), preview && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+    }, "\u65B0\u6279\u6B21\u5BFC\u5165\u540E\u9700\u751F\u6210\u5DE5\u5E8F\uFF1B\u66F4\u65B0\u65F6\u7A7A\u767D\u5355\u5143\u683C\u4FDD\u7559\u539F\u503C\u3002\u7EF4\u62A4\u9F50\u5957\u6807\u8BB0\u517C\u5BB9\u65E7\u201C\u9F50\u5957\u201D\u5217\uFF1B\u72B6\u6001\u548C\u5F53\u524D\u6709\u6548\u9F50\u5957\u53EA\u4F9B\u6838\u5BF9\uFF0C\u4E0D\u5BFC\u5165\u3002"), preview && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
       className: "tmpl-row"
     }, /*#__PURE__*/React.createElement("span", {
       className: "tmpl-ico"
@@ -288,7 +288,7 @@
       onChange: event => setAcknowledged(event.target.checked)
     }), /*#__PURE__*/React.createElement("span", null, "\u5DF2\u6838\u5BF9\u5C06\u5220\u9664\u7684\u5168\u90E8\u6279\u6B21\u548C\u5BFC\u5165\u660E\u7EC6\uFF0C\u786E\u8BA4\u5148\u6E05\u9664\u518D\u91CD\u5BFC\u3002")))) : /*#__PURE__*/React.createElement("div", {
       className: "batch-value-list"
-    }, /*#__PURE__*/React.createElement("label", null, /*#__PURE__*/React.createElement("input", {
+    }, /*#__PURE__*/React.createElement("p", null, "\u201C\u5F53\u524D\u6709\u6548\u9F50\u5957\uFF08\u53EA\u8BFB\uFF09\u201D\u4E0E\u5F53\u524D\u5217\u8868\u548C\u7B5B\u9009\u4E00\u81F4\uFF1B\u201C\u7EF4\u62A4\u9F50\u5957\u6807\u8BB0\u201D\u4FDD\u7559\u539F\u7EF4\u62A4\u503C\uFF0C\u539F\u6837\u56DE\u5BFC\u4E0D\u4F1A\u8986\u76D6\u6309\u7269\u6599\u8BA1\u7B97\u7684\u6709\u6548\u72B6\u6001\u3002"), /*#__PURE__*/React.createElement("label", null, /*#__PURE__*/React.createElement("input", {
       type: "radio",
       name: form,
       checked: selection === 'selected',

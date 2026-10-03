@@ -335,6 +335,7 @@ WORKBENCH_REQUIRED_REGRESSION_GROUPS = (
     _group("workbench_batches", "Workbench batch commands, files and ledger guards", (
         "test_batch_commands.py",
         "test_batch_material_maintenance.py",
+        "test_legacy_material_quantity_review.py",
         "test_batch_detached_snapshot.py",
         "test_batch_read_budget.py",
         "test_run_compute_process.py",
@@ -477,6 +478,7 @@ WORKBENCH_REQUIRED_REGRESSION_GROUPS = (
         "test_execution_ledger_scale.py",
         "test_round1_execution_contract.py",
         "test_execution_report_void.py",
+        "test_execution_report_resource_history.py",
         "test_execution_dependency_regressions.py",
     ), (
         "core/models/workbench_execution*.py",
@@ -527,6 +529,7 @@ WORKBENCH_REQUIRED_REGRESSION_GROUPS = (
         "test_preflight_ledger.py",
         "test_preflight_capacity.py",
         "test_preflight_run_status.py",
+        "test_preflight_piece_dependency_regressions.py",
     ), (
         *_RUN_SCOPES,
         "core/models/workbench_preflight.py", "core/services/workbench/run/preflight*.py", "core/services/workbench/facts/preflight_*.py",
@@ -742,6 +745,7 @@ WORKBENCH_REQUIRED_REGRESSION_GROUPS = (
         "core/errors.py", "core/services/workbench/trial/execution_anchors.py")),
     _group("workbench_dashboard", "Dashboard reads, commands, host connections and retained history", (
         "test_dashboard_schema.py", "test_dashboard_reads.py", "test_dashboard_candidates.py",
+        "test_readiness_projection_regressions.py",
         "test_dashboard_commands.py", "test_dashboard_atomic.py", "test_dashboard_api.py",
         "test_dashboard_host_connection.py", "test_dashboard_legacy.py",
         "test_dashboard_external_reads.py", "test_dashboard_external_identity.py", "test_dashboard_external_snapshot.py",

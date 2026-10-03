@@ -6,6 +6,12 @@ from datetime import datetime
 
 from core.algorithm_runtime.internal_slot import estimate_internal_slot
 from core.models.workbench_run_adoption import CandidateAdoptionBlocked
+from core.services.scheduler.resource_pool_builder import load_machine_downtimes
+from core.services.scheduler.run.schedule_input_seed_metadata import (
+    merged_actual_group_intervals,
+    merged_external_group_identity,
+)
+from core.services.scheduler.schedule_service import ScheduleService
 from core.services.workbench.facts.preflight_checks import PreflightChecks, stored_date
 from core.services.workbench.facts.zero_duration import candidate_point_validator
 from data.repositories.workbench_run_input_repo import ADOPTION_CHECK_TABLES, WorkbenchRunInputRepository
@@ -32,26 +38,56 @@ def _resource_overlaps(rows):
             previous_end = end
 
 
-def _internal(prepared, row, op, batch, validate_point):
+def adoption_downtimes(conn, prepared, payload):
+    actual = prepared.execution_fixed_op_ids | prepared.execution_completed_op_ids
+    rows = [row for row in payload.schedule_rows if row.source == "internal" and row.op_id not in actual]
+    if not rows:
+        return {}
+    # Locked seeds may precede the requested run window. Prove every planned
+    # arrangement against downtime at its own time and assigned machine.
+    return load_machine_downtimes(ScheduleService(conn), algo_ops=rows,
+                                 start_dt=min(row.start_time for row in rows))
+
+
+def _internal(prepared, row, op, batch, validate_point, downtime):
     if row.start_time == row.end_time:
         validate_point(row)
         return
     estimate = estimate_internal_slot(calendar=prepared.cal_svc, op=op, batch=batch,
         machine_id=row.machine_id, operator_id=row.operator_id, base_time=row.start_time,
         prev_end=row.start_time, machine_timeline=(), operator_timeline=(), end_dt_exclusive=None,
-        machine_downtimes=prepared.downtime_map.get(row.machine_id, ()),
+        machine_downtimes=downtime.get(row.machine_id, ()),
         last_op_type_by_machine=None, abort_after=None)
     if (estimate.efficiency_fallback_used or estimate.start_time != row.start_time
             or estimate.end_time != row.end_time):
         _block("candidate_calendar_duration_conflict", "候选开完工时间与真实班次、效率、停机或工时不一致。")
 
 
-def _external(prepared, row, op):
+def adoption_external_intervals(prepared, *, algo_ops=None):
+    groups = {op.id: merged_external_group_identity(op) for op in (prepared.algo_ops if algo_ops is None else algo_ops)}
+    actual = prepared.execution_fixed_op_ids | prepared.execution_completed_op_ids
+    cycles = merged_actual_group_intervals(groups, prepared.execution_seed_results, actual)
+    return {op_id: cycles[identity] for op_id, identity in groups.items() if identity in cycles}
+
+
+def _external(prepared, row, op, actual_intervals):
     if row.machine_id is not None or row.operator_id is not None:
         _block("candidate_external_resource_conflict", "外协候选带有未支持的内部资源占用。")
+    actual_period = actual_intervals.get(row.op_id)
     days = op.ext_group_total_days if op.ext_merge_mode == "merged" else op.ext_days
-    if prepared.cal_svc.add_calendar_days(row.start_time, days) != row.end_time:
+    expected = actual_period if actual_period is not None else (row.start_time, prepared.cal_svc.add_calendar_days(row.start_time, days))
+    if expected != (row.start_time, row.end_time):
         _block("candidate_external_duration_conflict", "外协候选与真实外协周期不一致。")
+
+
+def _protected_arrangement(prepared, checks, row, raw, algo, actual_ids, actual_intervals):
+    if row.op_id not in actual_ids and row.op_id not in actual_intervals:
+        return False
+    if checks.protected_resources(raw):
+        _block("candidate_resource_invalid", "实际安排的原资源身份或自制外协归属不完整，不能正式采用。")
+    if row.op_id not in actual_ids:
+        _external(prepared, row, algo, actual_intervals)
+    return True
 
 
 def validate_adoption_constraints(conn, prepared, payload):
@@ -60,17 +96,19 @@ def validate_adoption_constraints(conn, prepared, payload):
     algo_ops = {op.id: op for op in prepared.algo_ops}
     actual_ids = prepared.execution_fixed_op_ids | prepared.execution_completed_op_ids
     validate_point = candidate_point_validator(prepared)
+    downtime = adoption_downtimes(conn, prepared, payload)
+    actual_intervals = adoption_external_intervals(prepared)
     _resource_overlaps(payload.schedule_rows)
     for row in payload.schedule_rows:
         op, batch = ops[row.op_id], prepared.batches[ops[row.op_id].batch_id]
         raw = asdict(op)
         raw.update(machine_id=row.machine_id, operator_id=row.operator_id)
-        if checks.fields(asdict(batch), raw) or checks.resources(raw):
-            _block("candidate_resource_invalid", "候选实际使用的设备、人员资质、工种或供应商不合法。")
         # Actual production is a fact, not a duration that may be recomputed.
         # validate_candidate + execution guard retain its exact seed and identity.
-        if row.op_id in actual_ids:
+        if _protected_arrangement(prepared, checks, row, raw, algo_ops[row.op_id], actual_ids, actual_intervals):
             continue
+        if checks.fields(asdict(batch), raw) or checks.resources(raw):
+            _block("candidate_resource_invalid", "候选实际使用的设备、人员资质、工种或供应商不合法。")
         material_issues, material_day = checks.operation_readiness(asdict(batch), raw, prepared.normalized_input)
         if material_issues:
             _block("candidate_material_not_ready", "候选仍有未齐套物料，不能正式采用。")
@@ -82,6 +120,6 @@ def validate_adoption_constraints(conn, prepared, payload):
         if prepared.normalized_input["ready_check"] and ready_day is not None and row.start_time < datetime.fromisoformat(ready_day):
             _block("candidate_before_ready_date", "候选安排早于实际可开工日期。")
         if row.source == "internal":
-            _internal(prepared, row, algo_ops[row.op_id], batch, validate_point)
+            _internal(prepared, row, algo_ops[row.op_id], batch, validate_point, downtime)
         else:
-            _external(prepared, row, algo_ops[row.op_id])
+            _external(prepared, row, algo_ops[row.op_id], actual_intervals)

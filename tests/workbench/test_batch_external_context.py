@@ -89,6 +89,103 @@ def test_explicit_sync_previews_old_and_new_days_then_replaces_context(context_c
     assert inputs(conn)[1].ext_group_total_days == 9
 
 
+def merged_pair(conn):
+    conn.execute("UPDATE ExternalGroups SET end_seq=21 WHERE group_id='PROC-G'")
+    conn.execute("INSERT INTO PartOperations(part_no,seq,op_type_id,op_type_name,source,supplier_id,ext_days,ext_group_id) "
+                 "VALUES('PROC-001',21,'PROC-EX','热处理','external','PROC-S',3.25,'PROC-G')")
+    conn.commit()
+    with TransactionManager(conn).transaction():
+        for stage in ("route", "source", "hours"):
+            record_confirmation(conn, "PROC-001", stage)
+        WorkbenchBatchOperationService(conn).sync(ref_for(conn, "batch", "PROC-B"), {})
+
+
+def test_sync_preview_explains_split_groups_even_when_each_cycle_is_unchanged(context_conn):
+    conn = context_conn
+    merged_pair(conn)
+    repo = WorkbenchProcessQueryRepository(conn)
+    group = repo.template_groups_with_refs("PROC-001")[0]
+    members = [row for row in repo.template_operations_with_refs("PROC-001") if row["source"] == "external"]
+    payload = {"groups": [{"ref": group["ref"] if index == 0 else None,
+                           "operation_refs": [member["ref"]], "supplier_ref": ref_for(conn, "supplier", "PROC-S"),
+                           "total_days": 6.75} for index, member in enumerate(members)], "discard_group_refs": []}
+    with TransactionManager(conn).transaction():
+        identity = WorkbenchIdentityRepository(conn).get(ref_for(conn))
+        WorkbenchProcessMutationService(conn).apply("groups_confirm", payload, identity)
+        record_confirmation(conn, "PROC-001", "hours")
+    service = WorkbenchBatchOperationService(conn)
+    preview = service.sync_preview(ref_for(conn, "batch", "PROC-B"), {})
+    assert preview["change_counts"] == {"added": 0, "removed": 0, "updated": 2, "unchanged": 2}
+    old, new = preview["external_groups"]["before"], preview["external_groups"]["after"]
+    assert len(old) == 1 and old[0]["member_sequences"] == [20, 21]
+    assert [(group["start_sequence"], group["end_sequence"], group["member_sequences"]) for group in new] == [
+        (20, 20, [20]), (21, 21, [21])]
+    assert all(group["total_days"] == 6.75 for group in old + new)
+    with TransactionManager(conn).transaction():
+        service.sync(ref_for(conn, "batch", "PROC-B"), {})
+    assert len({row.ext_group_id for row in inputs(conn) if row.source == "external"}) == 2
+
+
+def test_sync_group_comparison_uses_members_and_range_instead_of_recreated_identity(context_conn):
+    conn = context_conn
+    merged_pair(conn)
+    conn.execute("UPDATE PartOperations SET ext_group_id=NULL WHERE ext_group_id='PROC-G'")
+    conn.execute("DELETE FROM ExternalGroups WHERE group_id='PROC-G'")
+    conn.execute("INSERT INTO ExternalGroups(group_id,part_no,start_seq,end_seq,merge_mode,total_days,supplier_id) "
+                 "VALUES('RECREATED','PROC-001',20,21,'merged',6.75,'PROC-S')")
+    conn.execute("UPDATE PartOperations SET ext_group_id='RECREATED' WHERE part_no='PROC-001' AND seq IN (20,21)")
+    conn.commit()
+    with TransactionManager(conn).transaction():
+        for stage in ("source", "hours"):
+            record_confirmation(conn, "PROC-001", stage)
+    preview = WorkbenchBatchOperationService(conn).sync_preview(ref_for(conn, "batch", "PROC-B"), {})
+    assert preview["change_counts"] == {"added": 0, "removed": 0, "updated": 0, "unchanged": 4}
+    assert preview["external_groups"]["before"] == preview["external_groups"]["after"]
+
+
+def test_sync_compares_actual_members_even_when_group_boundaries_are_unchanged(context_conn):
+    conn = context_conn
+    merged_pair(conn)
+    conn.execute("UPDATE PartOperations SET ext_group_id=NULL WHERE part_no='PROC-001' AND seq=21")
+    conn.commit()
+    with TransactionManager(conn).transaction():
+        for stage in ("source", "hours"):
+            record_confirmation(conn, "PROC-001", stage)
+    preview = WorkbenchBatchOperationService(conn).sync_preview(ref_for(conn, "batch", "PROC-B"), {})
+    external = [row for row in preview["changes"] if row["sequence"] in (20, 21)]
+    assert all(row["change"] == "updated" for row in external)
+    old, new = preview["external_groups"]["before"][0], preview["external_groups"]["after"][0]
+    assert old["start_sequence"] == new["start_sequence"] == 20
+    assert old["end_sequence"] == new["end_sequence"] == 21
+    assert old["member_sequences"] == [20, 21] and new["member_sequences"] == [20]
+
+
+def test_sync_group_members_keep_full_sqlite_sequence_precision(context_conn):
+    conn = context_conn
+    merged_pair(conn)
+    high = (1 << 63) - 1
+    conn.execute("UPDATE PartOperations SET seq=? WHERE part_no='PROC-001' AND seq=20", (high - 1,))
+    conn.execute("UPDATE PartOperations SET seq=? WHERE part_no='PROC-001' AND seq=21", (high,))
+    conn.execute("UPDATE ExternalGroups SET start_seq=?,end_seq=? WHERE group_id='PROC-G'", (high - 1, high))
+    conn.commit()
+    service = WorkbenchBatchOperationService(conn)
+    with TransactionManager(conn).transaction():
+        for stage in ("route", "source", "hours"):
+            record_confirmation(conn, "PROC-001", stage)
+        service.sync(ref_for(conn, "batch", "PROC-B"), {})
+    preview = service.sync_preview(ref_for(conn, "batch", "PROC-B"), {})
+    assert preview["change_counts"] == {"added": 0, "removed": 0, "updated": 0, "unchanged": 4}
+    assert preview["external_groups"]["before"] == preview["external_groups"]["after"]
+    group = preview["external_groups"]["after"][0]
+    assert group["start_sequence"] == str(high - 1) and group["end_sequence"] == str(high)
+    assert group["member_sequences"] == [str(high - 1), str(high)]
+    previous = next(row for row in preview["before"] if row["sequence"] == str(high))
+    assert previous["external_group"]["start_sequence"] == str(high - 1)
+    assert previous["external_group"]["end_sequence"] == str(high)
+    frozen = conn.execute("SELECT start_sequence,end_sequence FROM BatchExternalContexts WHERE sequence=?", (high,)).fetchone()
+    assert type(frozen[0]) is int and type(frozen[1]) is int
+
+
 def test_group_deletion_and_template_type_changes_do_not_break_batch_input(context_conn):
     conn = context_conn
     conn.execute("UPDATE PartOperations SET ext_group_id=NULL,source='internal',op_type_id='PROC-IN' WHERE seq=20")

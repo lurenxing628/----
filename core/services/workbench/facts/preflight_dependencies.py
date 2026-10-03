@@ -1,4 +1,4 @@
-"""Explain exclusion along the existing per-batch, per-piece sequence chain."""
+"""Explain exclusions over the same route relations used by candidate input."""
 
 from collections import defaultdict
 
@@ -28,24 +28,38 @@ def material_deferred_ids(rows, settings):
 def predecessor_satisfied(row):
     if row["status"] in ("eligible", "auto_assign_required"):
         return True
+    if row["status"] == "protected" and row.get("external_execution_cycle"):
+        return True
     return (row["status"] == "protected" and row["execution"]["execution_state"] == "complete"
             and bool(row["execution"]["confirmed_finish"]) and row["execution"]["data_quality"] != "invalid")
+
+
+def exclude_predecessors(row, predecessors):
+    row["predecessor_refs"] = [previous["operation_ref"] for previous in predecessors]
+    if row["status"] == "protected":
+        return
+    for previous in predecessors:
+        if not predecessor_satisfied(previous):
+            if row["status"] != "blocked":
+                row["status"] = "skipped"
+            row["issues"].append(issue("predecessor_excluded", "前道工序没有进这次排产，也没有可信的完工记录，后道工序不能跳过它单独排。",
+                                       related_operation_ref=previous["operation_ref"], predecessor_sequence=previous["sequence"]))
 
 
 def link_chain(chain):
     previous = None
     for row in sorted(chain, key=lambda item: item["sequence"]):
         if previous:
-            row["predecessor_refs"] = [previous["operation_ref"]]
-            if not predecessor_satisfied(previous) and row["status"] != "protected":
-                if row["status"] != "blocked":
-                    row["status"] = "skipped"
-                row["issues"].append(issue("predecessor_excluded", "前道工序没有进这次排产，也没有可信的完工记录，后道工序不能跳过它单独排。",
-                                           related_operation_ref=previous["operation_ref"], predecessor_sequence=previous["sequence"]))
+            exclude_predecessors(row, [previous])
         previous = row
 
 
-def link_predecessors(rows):
+def link_predecessors(rows, *, piece_scope=None):
+    if piece_scope is not None:
+        by_id = {row["op_id"]: row for row in rows}
+        for work in sorted(piece_scope.operations, key=lambda item: (item.sequence, item.op_id)):
+            exclude_predecessors(by_id[work.op_id], [by_id[key] for key in work.predecessor_op_ids])
+        return
     chains = defaultdict(list)
     for row in rows:
         chains[row["piece_id"] or ""].append(row)
@@ -59,3 +73,11 @@ def link_predecessors(rows):
                     row["issues"].append(issue("dependency_ambiguous", "同一个分件的工序顺序号缺失或重复，排不出前后关系。请到批次管理核对工序号。"))
         else:
             link_chain(chain)
+
+
+def piece_scope_problem(rows, settings):
+    deferred = material_deferred_ids(rows, settings)
+    if any(row["status"] not in ("eligible", "auto_assign_required", "protected")
+           and row["op_id"] not in deferred for row in rows):
+        return issue("piece_scope_incomplete", "单件排产要把这条链上的公共工序和单件工序都选上，或者都保持原安排，这次排产没有开始。请重新选择范围。")
+    return None

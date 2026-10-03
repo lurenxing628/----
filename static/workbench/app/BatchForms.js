@@ -13,14 +13,12 @@
   const {
     BaseFields
   } = window.BatchControls;
-  // The confirmation table shows quotas as entered (up to four decimals), never as a one-decimal summary.
+  // Maintenance and confirmation values keep the accepted numeric precision.
   const ENTERED_HOURS = {
-      digits: 4,
-      trim: true
+      exact: true
     },
     ENTERED_DAYS = {
-      digits: 20,
-      trim: true
+      exact: true
     };
   function BaseEditor({
     adapter,
@@ -192,7 +190,11 @@
       updated: '修改',
       unchanged: '内容不变'
     };
-    const operation = row => row ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", null, row.label, " \xB7 ", row.source === 'external' ? '外协' : '自制'), row.source === 'internal' ? /*#__PURE__*/React.createElement("div", null, "\u6362\u578B ", window.WorkbenchFormat.hours(row.setup_hours, ENTERED_HOURS), " / \u5355\u4EF6 ", window.WorkbenchFormat.hours(row.unit_hours, ENTERED_HOURS)) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", null, row.external_group && row.external_group.merge_mode === 'merged' ? '整组周期 ' + window.WorkbenchFormat.number(row.external_group.total_days, ENTERED_DAYS) : '本序周期 ' + window.WorkbenchFormat.number(row.external_days, ENTERED_DAYS), " \u5929"), /*#__PURE__*/React.createElement("div", null, "\u4F9B\u5E94\u5546\uFF1A", (row.supplier || row.resources && row.resources.supplier || {}).label || '未填写'))) : '—';
+    const operation = row => row ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", null, row.label, " \xB7 ", row.source === 'external' ? '外协' : '自制'), row.source === 'internal' ? /*#__PURE__*/React.createElement("div", null, "\u6362\u578B ", window.WorkbenchFormat.hours(row.setup_hours, ENTERED_HOURS), " / \u5355\u4EF6 ", window.WorkbenchFormat.hours(row.unit_hours, ENTERED_HOURS)) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", null, row.external_group && row.external_group.merge_mode === 'merged' ? '整组周期 ' + window.WorkbenchFormat.number(row.external_group.total_days, ENTERED_DAYS) : '本序周期 ' + window.WorkbenchFormat.number(row.external_days, ENTERED_DAYS), " \u5929"), row.external_group && /*#__PURE__*/React.createElement("div", null, "\u5916\u534F\u6BB5\uFF1A\u5DE5\u5E8F ", row.external_group.start_sequence, " \u81F3 ", row.external_group.end_sequence), /*#__PURE__*/React.createElement("div", null, "\u4F9B\u5E94\u5546\uFF1A", (row.supplier || row.resources && row.resources.supplier || {}).label || '未填写'))) : '—';
+    const groups = preview.external_groups,
+      groupList = rows => rows.length ? /*#__PURE__*/React.createElement("ul", null, rows.map((row, index) => /*#__PURE__*/React.createElement("li", {
+        key: index
+      }, "\u5DE5\u5E8F ", row.start_sequence, " \u81F3 ", row.end_sequence, row.piece_id ? ' · 分件 ' + row.piece_id : '', "\uFF1B\u6210\u5458\uFF1A", row.member_sequences.join('、'), "\uFF1B", row.merge_mode === 'merged' ? '整段只计算一次 ' + window.WorkbenchFormat.number(row.total_days, ENTERED_DAYS) + ' 天' : '按各工序周期分别计算'))) : '无外协段';
     return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
       className: "batch-sync-summary"
     }, Object.entries(changeNames).map(([key, label]) => /*#__PURE__*/React.createElement("span", {
@@ -216,7 +218,19 @@
       scope: "col"
     }, "\u66F4\u65B0\u540E"))), /*#__PURE__*/React.createElement("tbody", null, preview.changes.map((row, index) => /*#__PURE__*/React.createElement("tr", {
       key: index
-    }, /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("div", null, row.sequence, row.piece_id ? ' · ' + row.piece_id : ''), /*#__PURE__*/React.createElement("div", null, changeNames[row.change])), /*#__PURE__*/React.createElement("td", null, operation(row.before)), /*#__PURE__*/React.createElement("td", null, operation(row.after))))))), /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("div", null, row.sequence, row.piece_id ? ' · ' + row.piece_id : ''), /*#__PURE__*/React.createElement("div", null, changeNames[row.change])), /*#__PURE__*/React.createElement("td", null, operation(row.before)), /*#__PURE__*/React.createElement("td", null, operation(row.after))))))), groups && (groups.before.length > 0 || groups.after.length > 0) && /*#__PURE__*/React.createElement("section", {
+      "aria-label": "\u5916\u534F\u6BB5\u66F4\u65B0\u524D\u540E\u5BF9\u7167"
+    }, /*#__PURE__*/React.createElement("h3", null, "\u5916\u534F\u6BB5\u66F4\u65B0\u524D\u540E\u5BF9\u7167"), /*#__PURE__*/React.createElement("div", {
+      className: "wb-table-frame"
+    }, /*#__PURE__*/React.createElement("table", {
+      className: "tbl wb-table"
+    }, /*#__PURE__*/React.createElement("caption", {
+      className: "wb-visually-hidden"
+    }, "\u5916\u534F\u6BB5\u66F4\u65B0\u524D\u540E\u5BF9\u7167"), /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u5F53\u524D\u6279\u6B21\u5916\u534F\u6BB5"), /*#__PURE__*/React.createElement("th", {
+      scope: "col"
+    }, "\u66F4\u65B0\u540E\u5916\u534F\u6BB5"))), /*#__PURE__*/React.createElement("tbody", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", null, groupList(groups.before)), /*#__PURE__*/React.createElement("td", null, groupList(groups.after))))))), /*#__PURE__*/React.createElement("div", {
       className: "batch-sync-resources"
     }, /*#__PURE__*/React.createElement("h3", null, "\u8BBE\u5907\u548C\u4EBA\u5458\u6307\u5B9A"), preview.cleared_resources.length ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", null, "\u4EE5\u4E0B ", preview.cleared_resources.length, " \u9053\u5DE5\u5E8F\u7684\u6307\u5B9A\u5C06\u88AB\u6E05\u9664\uFF0C\u66F4\u65B0\u540E\u53EF\u91CD\u65B0\u6307\u5B9A\u3002"), /*#__PURE__*/React.createElement("ul", null, preview.cleared_resources.map(row => /*#__PURE__*/React.createElement("li", {
       key: row.operation_ref

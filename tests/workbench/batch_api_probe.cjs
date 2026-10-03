@@ -8,7 +8,7 @@ const context = { console, URL, FormData, Blob, AbortController, crypto: webcryp
 context.window = context;
 context.fetch = async (url, options) => {
   requests.push({ url, options }); const pathname = new URL(url).pathname;
-  const writing = /\/(create|update|delete|operation_update|sync-confirm|bulk-confirm|import-confirm)$/.test(pathname);
+  const writing = /\/(create|update|delete|operation_update|materials_update|split-confirm|sync-confirm|bulk-confirm|import-confirm)$/.test(pathname);
   const data = pathname.endsWith('/bulk-confirm') || pathname.endsWith('/import-confirm') ? { items: [{ entity_ref: ref, result: 'committed' }], count: 1 } : { entity_ref: ref };
   const payload = writing ? { ok: true, result: 'committed', receipt_ref: 'fixture-receipt', replayed: false, data, warnings: [] }
     : { ok: true, schema_version: 1, data: {}, meta: { source: 'production', time_basis: 'factory_local', snapshot_ref: 'snapshot', request_ref: 'request', as_of: '2026-09-09T12:00:00' }, warnings: [] };

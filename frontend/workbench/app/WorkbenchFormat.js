@@ -51,9 +51,9 @@
   function numberOptions(options, kind) {
     const source = options === undefined ? {} : typeof options === 'number' ? { digits: options } : options;
     if (source === null || typeof source !== 'object') return invalid(kind);
-    const { digits = 1, trim = false } = source;
-    if (!Number.isInteger(digits) || digits < 0 || digits > 20 || typeof trim !== 'boolean') return invalid(kind);
-    return { digits, trim };
+    const { digits = 1, trim = false, exact = false } = source;
+    if (!Number.isInteger(digits) || digits < 0 || digits > 20 || typeof trim !== 'boolean' || typeof exact !== 'boolean') return invalid(kind);
+    return { digits, trim, exact };
   }
   function signedZero(value, digits) {
     // A value that rounds to zero must not read as "-0.0": nothing was reduced.
@@ -61,8 +61,9 @@
   }
   function number(value, options) {
     if (empty(value)) return unknown;
-    const { digits, trim } = numberOptions(options, '数值');
+    const { digits, trim, exact } = numberOptions(options, '数值');
     if (typeof value !== 'number' || !Number.isFinite(value)) return invalid('数值');
+    if (exact) return String(value === 0 ? 0 : value);
     return signedZero(value, digits).toLocaleString('zh-CN', { minimumFractionDigits: trim ? 0 : digits, maximumFractionDigits: digits });
   }
   function integerText(value) {

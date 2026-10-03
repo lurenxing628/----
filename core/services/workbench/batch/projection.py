@@ -91,7 +91,11 @@ class BatchProjection:
         context = self.external_contexts.get(op["id"])
         if context_problem(context, operation_id=op["id"], part_no=batch["part_no"], sequence=op["seq"]):
             return None
-        return group_from_context(context)
+        group = group_from_context(context)
+        if group is not None:
+            group["start_sequence"] = public_sequence(group["start_sequence"])
+            group["end_sequence"] = public_sequence(group["end_sequence"])
+        return group
 
     def internal_issues(self, row, resources, numbers, issues):
         for key in ("setup_hours", "unit_hours"):

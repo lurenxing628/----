@@ -1,6 +1,6 @@
 """Unregistered next-version DDL; no business backfill or runtime installation."""
 
-from core.infrastructure.workbench_execution_ledger_schema import execution_ledger_contract_issues
+from core.infrastructure.workbench_execution_ledger_schema import execution_ledger_migration_contract_issues
 from core.infrastructure.workbench_metadata_schema import _canonical_sql, workbench_metadata_contract_issues
 from core.infrastructure.workbench_process_schema import workbench_process_contract_issues
 from core.infrastructure.workbench_template_lineage_schema import contract_issues as lineage_contract_issues
@@ -76,7 +76,7 @@ def install(conn):
     declared = objects()
     actual = {row[0] for row in conn.execute("SELECT name FROM sqlite_master")}
     issues = (workbench_metadata_contract_issues(conn) + workbench_process_contract_issues(conn) +
-              execution_ledger_contract_issues(conn) + lineage_contract_issues(conn))
+              execution_ledger_migration_contract_issues(conn) + lineage_contract_issues(conn))
     if actual & set(declared):
         issues += contract_issues(conn)
     if issues:

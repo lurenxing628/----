@@ -8,6 +8,7 @@ all revisions, the whole official snapshot and unselected resource reservations.
 from core.services.scheduler.run.schedule_execution_guardrails import _collect_execution_guardrails
 from core.services.scheduler.run.schedule_execution_persistence_guard import _validate_unselected_resource_overlap
 from core.services.scheduler.run.schedule_execution_resource_facts import _latest_plan_rows
+from core.services.scheduler.run.schedule_input_seed_metadata import MERGED_EXECUTION_GROUP_SOURCE
 from core.services.workbench.execution.ledger import ExecutionLedgerService
 from core.services.workbench.facts.piece_scope import block
 from core.services.workbench.facts.run_input_codec import restore_execution_projections
@@ -68,7 +69,8 @@ def _protected_arrangements(svc, prepared, payload, actual_seeds):
     for seed in seeds + actual_seeds:
         if any(getattr(rows[seed["op_id"]], key) != seed[key] for key in _FIELDS):
             block("piece_protected_seed_changed", "已开工或沿用的工序时间、设备、人员被改动了，本次没有采用。请回「执行排产」重新排一次。")
-    _original_locks(svc, prepared, rows, actual, protected)
+    derived = {seed["op_id"] for seed in seeds if seed.get("seed_source") == MERGED_EXECUTION_GROUP_SOURCE}
+    _original_locks(svc, prepared, rows, actual, protected, derived)
     return protected
 
 
@@ -88,7 +90,7 @@ def _quantities(scope, refs, projections):
             block("piece_execution_quantity_unproven", "有工序报了完工却没有确切完工数量，证明不了分件全部做完，本次没有采用。请到现场记录补齐完工数量。")
 
 
-def _original_locks(svc, prepared, rows, actual, protected):
+def _original_locks(svc, prepared, rows, actual, protected, derived):
     latest = _latest_plan_rows(svc, prepared.prev_version)
     if not set(latest) <= set(rows):
         block("official_scope_not_covered", "候选方案漏掉了正式计划里已有的部分工序，本次没有采用。请回「执行排产」重新排一次。")
@@ -101,11 +103,12 @@ def _original_locks(svc, prepared, rows, actual, protected):
             continue
         if old["lock_status"] == "locked" and op_id not in protected:
             block("piece_inherited_lock_missing", "原计划里已锁定的工序在新版本里没了锁定，本次没有采用。请回「执行排产」重新排一次。")
-        if op_id in protected:
+        if op_id in protected and (op_id not in derived or old["lock_status"] == "locked"):
             row = rows[op_id]
-            if (row.start_time != svc._normalize_datetime(old["start_time"])
-                    or row.end_time != svc._normalize_datetime(old["end_time"])
-                    or row.machine_id != old["machine_id"] or row.operator_id != old["operator_id"]):
+            current = row.start_time, row.end_time, row.machine_id, row.operator_id
+            original = (svc._normalize_datetime(old["start_time"]), svc._normalize_datetime(old["end_time"]),
+                        old["machine_id"], old["operator_id"])
+            if current != original:
                 block("piece_inherited_lock_changed", "锁定工序的时间、设备或人员和原正式计划不一致，本次没有采用。请回「执行排产」重新排一次。")
-    if protected - actual - set(latest):
+    if protected - actual - derived - set(latest):
         block("piece_inherited_lock_missing", "有锁定工序在原正式计划里找不到安排，本次没有采用。请刷新后重新排产。")

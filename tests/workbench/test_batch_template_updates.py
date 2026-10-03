@@ -81,7 +81,11 @@ def test_merged_cycle_uses_group_value_and_does_not_require_hidden_internal_hour
     response = sync_preview(client)
     assert response.status_code == 200, response.get_json()
     after = response.get_json()["data"]["after"][0]
-    assert after["external_group"] == {"merge_mode": "merged", "total_days": 2}
+    group = after["external_group"]
+    assert group["merge_mode"] == "merged" and group["total_days"] == 2
+    assert group["start_sequence"] == group["end_sequence"] == 1
+    assert len(group["ref"]) == 48
+    assert response.get_json()["data"]["external_groups"]["after"][0]["member_sequences"] == [1]
     assert after["setup_hours"] is None and after["unit_hours"] is None and after["external_days"] is None
     conn.execute("UPDATE ExternalGroups SET total_days=NULL")
     conn.commit()

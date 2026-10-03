@@ -34,6 +34,8 @@ class TrialProtection:
 
     def _execution(self, row):
         original, ref = row["original"], row["task_ref"]
+        if (original.get("execution_anchor") or {}).get("basis") == "merged_external_actuals":
+            return issue("execution_protected", "合并外协组已有实际记录，整组周期不能单独调整。", ref)
         execution = self.execution.get(row["operation_ref"])
         if execution is None or execution["data_quality"] == "invalid":
             return issue("execution_unproven", "这道工序的报工记录缺失或有坏数据，不能确认可以调整。", ref)

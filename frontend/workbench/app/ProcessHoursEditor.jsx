@@ -14,7 +14,7 @@
     const next = build(after), original = build(before), old = new Map(before.operations.map(row => [row.ref, row]));
     E.active(after).forEach(row => {
       const current = draft.operations[row.ref], previous = original.operations[row.ref], fresh = next.operations[row.ref];
-      if (!current || !previous || old.get(row.ref).source !== row.source) return;
+      if (!current || !previous || old.get(row.ref).source !== row.source || old.get(row.ref).op_type_ref !== row.op_type_ref) return;
       (row.source === 'internal' ? ['setup_hours', 'unit_hours'] : ['external_days']).forEach(key => { if (current[key] !== previous[key]) fresh[key] = current[key]; });
     });
     mergedGroups(after).forEach(row => {
@@ -53,6 +53,11 @@
     const entity = model.base.data, draft = model.draft, paging = E.usePage(entity.operations), [zero, setZero] = React.useState(null), [groupsOpen, setGroupsOpen] = React.useState(false);
     const blocked = disabled || command.locked || command.phase === 'done', stageReason = E.reason(model, adapter, 'hours');
     const editBlocked = blocked || entity.workflow.source.state !== 'confirmed' || entity.capabilities.stage_confirm !== true;
+    const originalTypes = new Map(entity.operations.map(row => [row.ref, row]));
+    const changedTypes = model.review ? E.active(model.review.data).filter(row => {
+      const old = originalTypes.get(row.ref);
+      return old && old.source === row.source && old.op_type_ref !== row.op_type_ref;
+    }) : [];
     React.useEffect(() => { setZero(null); }, [draft, model.base, model.review, disabled]);
     React.useEffect(() => { setGroupsOpen(false); }, [groupSaved]);
     // A verified receipt already confirms the group write. Close its overlay even
@@ -94,6 +99,7 @@
             {!external.length && <tr><td colSpan={4}>当前页没有外协工序。</td></tr>}</tbody></table></div>
         {!!mergedGroups(entity).length && <E.Groups rows={mergedGroups(entity)} totals={draft.groups} disabled={editBlocked} onTotal={changeGroup} title="外协段统一周期" />}</section>
       <E.Pager paging={paging} disabled={blocked} />
+      {!!changedTypes.length && <p role="status">工序 {changedTypes.map(row => row.sequence).join('、')} 的实际工种已更换。接受最新资料后将采用新工种的工时，原工种未保存的工时不会沿用，请重新核对填写。</p>}
       <E.Feedback model={model} disabled={blocked} paging={paging} /><div className="pd-foot"><span className="muted">保存全部 {active.length} 道有效工序，包含其他页和筛选隐藏的工序。</span><Button className="btn primary" icon="check" disabled={blocked} reason={stageReason} onClick={() => save()}>保存工时</Button></div>
       {groupsOpen && <window.ProcessGroupEditor adapter={adapter} result={result} command={command} disabled={blocked} onDirty={onDirty} onClose={() => setGroupsOpen(false)} />}
       {zero && ReactDOM.createPortal(<div className="plana process-detail"><Modal title="按零单件工时保存" icon="check" onClose={() => setZero(null)} locked={blocked} footer={<><Button disabled={blocked} onClick={() => setZero(null)}>返回修改</Button><Button className="btn primary" icon="check" disabled={blocked} onClick={() => save(true)}>按 0 保存</Button></>}>

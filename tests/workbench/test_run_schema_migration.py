@@ -16,7 +16,6 @@ from core.infrastructure.migration_state import (
 )
 from core.infrastructure.migrations import MIGRATIONS, v26, v27, v28, v29, v30, v31, v32, v33, v34, v35, v36
 from core.infrastructure.workbench_lineage_lookup_schema import lineage_lookup_objects
-from core.infrastructure.workbench_metadata_schema import _canonical_sql
 from core.infrastructure.workbench_run_schema import RUN_TABLES, install_workbench_run_schema, workbench_run_objects
 from core.infrastructure.workbench_template_lineage_schema import template_lineage_objects
 from core.infrastructure.workbench_trial_schema import workbench_trial_objects
@@ -27,7 +26,7 @@ from tests.workbench.dashboard_external_migration_support import (
 )
 from tests.workbench.execution_ledger_migration_support import V27_TABLES
 from tests.workbench.flexible_migration_support import TABLES as FLEXIBLE_TABLES
-from tests.workbench.flexible_migration_support import legacy_ddl
+from tests.workbench.flexible_migration_support import assert_migrated_legacy_ddl, legacy_ddl, missing_v37_issues
 from tests.workbench.flexible_migration_support import missing_issues as missing_flexible_issues
 from tests.workbench.legacy_migration_current_support import (
     V30_TABLES,
@@ -93,7 +92,7 @@ def test_real_upgrade_backs_up_and_retains_all_v25_facts_and_refs(tmp_path, sche
         assert_v32_empty(conn)
         assert_v33_contexts(conn)
         assert all(after[name] == [] for name in RUN_TABLES + V27_TABLES)
-        assert legacy_ddl([row for row in source_ddl(conn) if row[1] in {old[1] for old in ddl_before}]) == ddl_before
+        assert_migrated_legacy_ddl(conn, ddl_before)
         assert not conn.execute("PRAGMA foreign_key_check").fetchall()
     files = list(backups.glob(f"*before_migrate_v25_to_v{CURRENT_SCHEMA_VERSION}*.db"))
     assert len(files) == 1
@@ -124,10 +123,11 @@ def test_frozen_v25_and_current_schema_share_identical_old_objects(tmp_path, sch
         assert v35.run(old) == MigrationOutcome.APPLIED
         assert v36.run(old) == MigrationOutcome.APPLIED
         assert get_schema_version(old) == 25
-        actual = {row[1]: row[3] for row in source_ddl(fresh)}
-        expected = {row[1]: row[3] for row in source_ddl(old)}
-        assert actual.keys() == expected.keys()
-        assert all(_canonical_sql(actual[name] or "") == _canonical_sql(expected[name] or "") for name in actual)
+        old_ddl, current_ddl = source_ddl(old), source_ddl(fresh)
+        old_names, current_names = {row[1] for row in old_ddl}, {row[1] for row in current_ddl}
+        assert old_names - current_names == {"sqlite_autoindex_WorkbenchProductionReports_3"}
+        assert current_names - old_names == {"idx_wb_execution_reports_legacy", "wb_execution_legacy_link_active_unique"}
+        assert_migrated_legacy_ddl(fresh, old_ddl, preserve_column_order=False)
         assert len(workbench_run_objects()) == 14
 
 
@@ -145,7 +145,7 @@ def test_v26_step_preserves_v25_and_installs_only_empty_run_tables(tmp_path):
             {"missing_template_lineage:" + name for name in template_lineage_objects()} |
             {"missing_trial_schema:" + name for name in workbench_trial_objects()} |
             {"missing_lineage_lookup:" + name for name in lineage_lookup_objects()} |
-            missing_v29_issues() | missing_v30_issues() | missing_v31_issues() | missing_v32_issues() | missing_v33_issues() | missing_flexible_issues())
+            missing_v29_issues() | missing_v30_issues() | missing_v31_issues() | missing_v32_issues() | missing_v33_issues() | missing_flexible_issues() | missing_v37_issues())
         assert not conn.execute("PRAGMA foreign_key_check").fetchall()
         assert v26.run(conn) == MigrationOutcome.APPLIED
         assert snapshot(conn) == after

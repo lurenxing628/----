@@ -92,7 +92,8 @@ class MaterialAvailability:
     def verify_review(self, batch, *, required=False):
         for row in self.requirements[batch["batch_id"]]:
             reviewed = self.reviews.get(row["id"])
-            if (reviewed is not None and reviewed != batch["quantity"]) or (required and reviewed is None):
+            captured = row["id"] in self.reviews
+            if (captured and (reviewed is None or reviewed != batch["quantity"])) or (required and not captured):
                 raise WorkbenchCommandRejected("material_review_required", "批次数量或用料口径尚未核对，请在物料需求中核对并保存后再排产或拆批。")
 
     def readiness_state(self, batch, day):

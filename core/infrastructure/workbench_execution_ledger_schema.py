@@ -43,7 +43,7 @@ def _capture_sql(where):
         WHERE {where};"""
 
 
-def execution_ledger_objects():
+def execution_ledger_objects(*, legacy_link_unique=False):
     # No affinity: retain the original SQLite storage types, including damaged metadata.
     raw = ",\n".join(LEGACY_COLUMNS)
     objects = {
@@ -63,7 +63,7 @@ def execution_ledger_objects():
             report_no TEXT NOT NULL UNIQUE CHECK(length(report_no) BETWEEN 1 AND 64),
             operation_ref TEXT NOT NULL, recorded_against_task_ref TEXT NOT NULL,
             recorded_against_plan_ref TEXT NOT NULL, source TEXT NOT NULL CHECK(source IN ('manual', 'excel')),
-            legacy_fact_ref TEXT UNIQUE, recorded_at TEXT NOT NULL,
+            legacy_fact_ref TEXT{" UNIQUE" if legacy_link_unique else ""}, recorded_at TEXT NOT NULL,
             FOREIGN KEY(operation_ref) REFERENCES WorkbenchPlanSourceRefs(ref),
             FOREIGN KEY(recorded_against_task_ref) REFERENCES WorkbenchTaskRefs(ref),
             FOREIGN KEY(recorded_against_plan_ref) REFERENCES WorkbenchPlanSourceRefs(ref),
@@ -99,25 +99,50 @@ def execution_ledger_objects():
             objects[name] = f"CREATE TRIGGER {name} BEFORE {event.upper()} ON {table} BEGIN SELECT RAISE(ABORT, 'execution ledger is append-only'); END"
         name = "wb_execution_" + stem + "_clock"
         objects[name] = f"CREATE TRIGGER {name} AFTER INSERT ON {table} BEGIN UPDATE WorkbenchExecutionLedgerClock SET revision = revision + 1 WHERE singleton = 1; END"
+    if not legacy_link_unique:
+        objects["idx_wb_execution_reports_legacy"] = "CREATE INDEX idx_wb_execution_reports_legacy ON WorkbenchProductionReports(legacy_fact_ref) WHERE legacy_fact_ref IS NOT NULL"
+        objects["wb_execution_legacy_link_active_unique"] = """CREATE TRIGGER wb_execution_legacy_link_active_unique
+            BEFORE INSERT ON WorkbenchProductionReports
+            WHEN NEW.legacy_fact_ref IS NOT NULL AND EXISTS (
+                SELECT 1 FROM WorkbenchProductionReports r WHERE r.legacy_fact_ref=NEW.legacy_fact_ref
+                AND NOT EXISTS (SELECT 1 FROM WorkbenchProductionReportVoids v WHERE v.report_ref=r.report_ref))
+            BEGIN SELECT RAISE(ABORT, 'legacy finish already has an active report'); END"""
     objects["wb_execution_capture_legacy"] = ("CREATE TRIGGER wb_execution_capture_legacy AFTER INSERT ON OperationExecutionEvents BEGIN " +
                                                _capture_sql("e.id = NEW.id") + " END")
     return objects
 
 
-def execution_ledger_contract_issues(conn):
+def execution_ledger_contract_issues(conn, *, legacy_link_unique=False):
     """SELECT-only structural check. Missing/partial schemas are never repaired."""
     actual = {row[0]: row[1] for row in conn.execute(
         "SELECT name, sql FROM sqlite_master WHERE type IN ('table', 'index', 'trigger')")}
     issues = []
-    for name, sql in execution_ledger_objects().items():
+    declared = execution_ledger_objects(legacy_link_unique=legacy_link_unique)
+    for name, sql in declared.items():
         if name not in actual:
             issues.append("missing_execution_ledger:" + name)
         elif _canonical_sql(sql) != _canonical_sql(actual[name] or ""):
             issues.append("invalid_execution_ledger:" + name)
+    if legacy_link_unique:
+        current_only = execution_ledger_objects().keys() - declared.keys()
+        issues.extend("unexpected_execution_ledger:" + name for name in sorted(current_only) if name in actual)
     if not issues:
         rows = conn.execute("SELECT singleton, revision, next_report_no FROM WorkbenchExecutionLedgerClock LIMIT 2").fetchall()
         if len(rows) != 1 or rows[0][0] != 1 or any(type(x) is not int or x < 1 for x in rows[0][1:]):
             issues.append("invalid_execution_ledger:clock")
+    return issues
+
+
+def execution_ledger_migration_contract_issues(conn):
+    """Historical installers accept complete pre-v37 or current ledger DDL.
+
+    A real old database keeps its earlier contract until v37 changes it; a new
+    migration chain may already have installed the current definition at v25.
+    Runtime readers continue to require execution_ledger_contract_issues.
+    """
+    issues = execution_ledger_contract_issues(conn)
+    if issues and not execution_ledger_contract_issues(conn, legacy_link_unique=True):
+        return []
     return issues
 
 
@@ -133,7 +158,7 @@ def install_execution_ledger(conn):
     objects = execution_ledger_objects()
     names = {row[0] for row in conn.execute("SELECT name FROM sqlite_master")}
     if names & set(objects):
-        issues = execution_ledger_contract_issues(conn)
+        issues = execution_ledger_migration_contract_issues(conn)
         if issues:
             raise RuntimeError("Cannot repair partial execution ledger: " + "; ".join(issues))
         if conn.execute("SELECT 1 FROM OperationExecutionEvents e LEFT JOIN WorkbenchExecutionLegacyFacts f ON f.id=e.id WHERE f.id IS NULL LIMIT 1").fetchone():

@@ -107,7 +107,7 @@ async function smallWorkflow() {
   }, {times: 1});
   await entry().getByRole('button', {name: '预检路线', exact: true}).click();
   await entry().getByText('Stage fixture preview failure', {exact: true}).waitFor();
-  assert.equal(await field.inputValue(), text);
+  assert.equal(await field.inputValue(), '10: 车削；20: 热处理；30: 检验');
   await responseTo('/route-preview', () => entry().getByRole('button', {name: '重试预检', exact: true}).click());
   await snapshot('route-recovered');
   let detail = await saved('route_confirm', () => entry().getByRole('button', {name: '确认保存路线', exact: true}).click());
@@ -122,8 +122,9 @@ async function smallWorkflow() {
   assert.match(await source().getByRole('button', {name: '选择工序 10 工种', exact: true}).locator('xpath=ancestor::td').innerText(), /车削/);
   await snapshot('source-reviewed'); detail = await confirmSource();
   assert.equal(detail.data.workflow.source.state, 'confirmed'); await hours().waitFor();
+  const memberDays = detail.data.operations[1].external_days;
   await type(hours().getByLabel('工序 10 单件工时', {exact: true}), '2.125');
-  await type(hours().getByLabel('工序 20 外协周期', {exact: true}), '4.25');
+  assert.equal(await hours().getByLabel('工序 20 外协周期', {exact: true}).count(), 0);
   await type(hours().getByLabel('外协组 20 至 20 总周期', {exact: true}), '9.5');
   await reloadDraft(hours());
   assert.equal(await hours().getByLabel('工序 10 单件工时', {exact: true}).inputValue(), '2.125');
@@ -153,7 +154,7 @@ async function smallWorkflow() {
   await close();
   detail = await open('STAGE-' + state);
   assert(detail.data.workflow.ready); assert.equal(detail.data.operations[0].unit_hours, 2.125);
-  assert.equal(detail.data.operations[1].external_days, 4.25); assert.equal(detail.data.external_groups[0].total_days, 9.5);
+  assert.equal(detail.data.operations[1].external_days, memberDays); assert.equal(detail.data.external_groups[0].total_days, 9.5);
   await close();
 }
 async function scaleWorkflow(count) {

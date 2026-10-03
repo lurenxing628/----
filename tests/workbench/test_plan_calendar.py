@@ -37,6 +37,21 @@ def test_night_tail_intersection_and_next_day_shift_not_noon_sample(calendar_cas
     assert calendar["global"]["available_hours"] == 2
 
 
+def test_subsecond_midnight_tail_keeps_last_day_policy_and_capacity(calendar_case):
+    start, end = "2026-09-09T23:45:00.500000", "2026-09-10T00:00:00.500000"
+    for day in ("2026-09-09", "2026-09-10"):
+        calendar_case.calendar(day, "00:00", "00:00", hours=24)
+    calendar_case.execute("UPDATE Schedule SET start_time=?,end_time=?", (start, end))
+    calendar, occupancy, facts, _ = calendar_case.project(start, end)
+    assert {str(row["date"]) for row in facts["sources"]["global"]} == {"2026-09-09", "2026-09-10"}
+    assert calendar["global"]["windows"][-1]["end"] == end
+    assert "assignment_outside_calendar" not in codes(occupancy["issues"])
+    for kind in ("machine", "operator"):
+        assert resource(calendar, kind)["available_hours"] == 0.25
+        assert resource(occupancy, kind)["outside_available_hours"] == 0
+        assert resource(occupancy, kind)["capacity_insufficient"] is False
+
+
 def test_machine_global_calendar_does_not_infer_assigned_person_capacity(calendar_case):
     calendar_case.shift([("22:00", "06:00", 0)])
     calendar_case.execute("UPDATE Schedule SET start_time='2026-09-09 22:00:00',end_time='2026-09-10 06:00:00'")

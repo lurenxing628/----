@@ -6,8 +6,14 @@ from core.errors import AppError
 from core.models.workbench_trial import issue
 from core.services.scheduler.run.schedule_execution_guardrails import build_execution_guardrails_from_projections
 from core.services.scheduler.run.schedule_execution_resource_facts import _latest_plan_rows
+from core.services.scheduler.run.schedule_input_seed_metadata import (
+    merged_actual_group_intervals,
+    merged_external_group_identity,
+)
 from core.services.scheduler.schedule_service import ScheduleService
 from core.services.workbench.facts.run_input_codec import restore_execution_projections
+
+from .protection import TrialProtection
 
 
 def _selected_has_actuals(rows, live):
@@ -58,12 +64,31 @@ def execution_anchors(conn, rows, live):
     svc = ScheduleService(conn)
     projections = _prior_plan_projections(svc, version, live)
     operations = [SimpleNamespace(**row["original"]["operation"]) for row in rows]
-    _, _, completed, seeds, _, _ = build_execution_guardrails_from_projections(
+    _, fixed, completed, seeds, _, _ = build_execution_guardrails_from_projections(
         svc, operations, prev_version=version, execution_projections=projections)
     refs = _active_entity_refs(live["facts"]["tables"])
-    result = {}
+    result = _merged_group_anchors(rows, seeds, fixed | completed, refs)
     for seed in seeds:
         result[seed["op_id"]] = _seed_anchor(seed, refs, completed)
+    return result
+
+
+def _merged_group_anchors(rows, seeds, actual_ids, refs):
+    groups = {}
+    for row in rows:
+        original = row["original"]
+        op, group = SimpleNamespace(**original["operation"]), original.get("external_group")
+        groups[op.id] = merged_external_group_identity(op, group=SimpleNamespace(**group) if group else None)
+    periods = merged_actual_group_intervals(groups, seeds, actual_ids)
+    result = {}
+    for op_id, group in groups.items():
+        if op_id in actual_ids or group not in periods:
+            continue
+        start, end = periods[group]
+        arrangement = _seed_arrangement({"start_time": start, "end_time": end,
+                                        "machine_id": None, "operator_id": None}, refs)
+        result[op_id] = {"arrangement": arrangement, "basis": "merged_external_actuals",
+                        "message": "合并外协组已有实际记录，整组按同一实际周期固定。"}
     return result
 
 
@@ -81,9 +106,13 @@ def attach_execution_anchors(conn, rows, live):
         anchors = execution_anchors(conn, rows, live)
     except (AppError, ValueError, TypeError, KeyError, OverflowError) as exc:
         return [anchor_issue(exc)]
+    protection = TrialProtection(live)
     for row in rows:
         anchor = anchors.get(row["original"]["operation"]["id"])
         if anchor is not None:
             row["original"]["execution_anchor"] = anchor
+            protected = protection.check(row)
+            if anchor["basis"] == "merged_external_actuals" and protected and protected["code"] == "task_locked":
+                continue
             row["current"] = dict(anchor["arrangement"])
     return []

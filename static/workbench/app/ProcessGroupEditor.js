@@ -12,6 +12,23 @@
     groups: [],
     discard_group_refs: []
   });
+  function reconcile(draft, _before, after) {
+    const groupRefs = new Set(after.external_groups.map(row => row.ref));
+    const operationRefs = new Set(E.active(after).filter(row => row.source === 'external').map(row => row.ref));
+    const groups = [];
+    draft.groups.forEach(row => {
+      if (row.ref !== null && !groupRefs.has(row.ref)) return;
+      const refs = row.operation_refs.filter(ref => operationRefs.has(ref));
+      if (refs.length > 0 || row.operation_refs.length === 0) groups.push({
+        ...row,
+        operation_refs: refs
+      });
+    });
+    return {
+      groups,
+      discard_group_refs: draft.discard_group_refs.filter(ref => groupRefs.has(ref))
+    };
+  }
   function input(draft) {
     return {
       groups: draft.groups.map(row => {
@@ -39,7 +56,7 @@
       adapter,
       stage: 'groups',
       build,
-      reconcile: draft => draft,
+      reconcile,
       saved: 0,
       onDirty
     });
@@ -91,7 +108,8 @@
       }));
     }
     function members(row) {
-      return operations.filter(op => row.operation_refs.includes(op.ref));
+      const refs = new Set(row.operation_refs);
+      return operations.filter(op => op.source === 'external' && refs.has(op.ref));
     }
     function start(group) {
       const row = group ? {
@@ -166,6 +184,8 @@
     }
     const editedRefs = new Set(draft.groups.map(row => row.ref).filter(Boolean)),
       removedRefs = new Set(draft.discard_group_refs);
+    const currentMembers = current ? members(current) : [];
+    const losesSelections = model.review && !E.same(draft, reconcile(draft, entity, model.review.data));
     function label(fact) {
       return fact ? '工序 ' + (fact.sequences.join('、') || '无有效成员') + '；供应商 ' + (fact.supplier_label || fact.supplier_id || '未选') + '；' + (fact.merge_mode === 'merged' ? '整段 ' + E.value(fact.total_days) + ' 天' : '逐序周期') : '无';
     }
@@ -275,18 +295,17 @@
       className: "toolbar"
     }, /*#__PURE__*/React.createElement("span", null, "\u4F9B\u5E94\u5546\uFF1A", current.supplier_label || '未选择'), /*#__PURE__*/React.createElement(Button, {
       icon: "search",
-      disabled: blocked || checking || !current.operation_refs.length,
+      disabled: blocked || checking || !currentMembers.length,
       onClick: () => {
-        const rows = members(current);
         setPicker({
           kind: 'supplier',
           source: 'external',
-          sequence: rows[0].sequence,
+          sequence: currentMembers[0].sequence,
           group: {
-            start_sequence: rows[0].sequence,
-            end_sequence: rows[rows.length - 1].sequence
+            start_sequence: currentMembers[0].sequence,
+            end_sequence: currentMembers[currentMembers.length - 1].sequence
           },
-          members: rows
+          members: currentMembers
         });
       }
     }, "\u9009\u62E9\u6574\u6BB5\u4F9B\u5E94\u5546"), /*#__PURE__*/React.createElement("label", null, "\u6574\u6BB5\u5468\u671F\uFF08\u5929\uFF09", /*#__PURE__*/React.createElement("input", {
@@ -300,7 +319,9 @@
       onChange: event => patch({
         total_days: event.target.value
       })
-    })))), /*#__PURE__*/React.createElement(window.ResourceForms.Feedback, {
+    })))), losesSelections && /*#__PURE__*/React.createElement("p", {
+      role: "status"
+    }, "\u6700\u65B0\u8D44\u6599\u4E2D\u6709\u5916\u534F\u6BB5\u6216\u5DE5\u5E8F\u5DF2\u5931\u6548\u3002\u63A5\u53D7\u540E\u4F1A\u79FB\u9664\u5931\u6548\u6BB5\u7684\u7F16\u8F91\u3001\u89E3\u9664\u9009\u62E9\u548C\u5931\u6548\u5DE5\u5E8F\u9009\u62E9\uFF0C\u4FDD\u7559\u4ECD\u6709\u6548\u7684\u6BB5\u8349\u7A3F\u3002"), /*#__PURE__*/React.createElement(window.ResourceForms.Feedback, {
       command: command
     }), /*#__PURE__*/React.createElement(E.Feedback, {
       model: model,

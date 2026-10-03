@@ -24,7 +24,7 @@ def test_group_creation_split_release_supplier_and_cycle_widgets():
     assert report["scope"] == "process-group-component"
     assert not report["production_persistence_tested"] and not report["compile"]["global_build"]
     assert report["compile"]["target"] == {"chrome": "109"}
-    assert len(report["cases"]) == 24 and all(row["passed"] for row in report["cases"])
+    assert len(report["cases"]) == 36 and all(row["passed"] for row in report["cases"])
     assert report["errors"] == [] and report["external"] == []
     assert len(report["screenshots"]) == 4
     for source in report["sources"]:

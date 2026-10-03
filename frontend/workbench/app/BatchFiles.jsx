@@ -75,7 +75,7 @@
             <div className="di"><Icon name="file-input" /></div><div className="dt">{file ? file.name : '选择 XLSX 文件'}</div>
             <div className="ds">{file ? window.WorkbenchFormat.number(file.size, { digits: 0 }) + ' 字节 · 只接受 .xlsx 文件' : '只接受 .xlsx 文件，也可以把文件拖到这里'}</div>
             <input type="file" aria-label="选择文件" accept=".xlsx" disabled={locked} onChange={event => { chooseFile(event.target.files); event.target.value = ''; }} /></div>}
-          <p className="iohint">新批次导入后需生成工序；更新时空白单元格保留原值。</p>
+          <p className="iohint">新批次导入后需生成工序；更新时空白单元格保留原值。维护齐套标记兼容旧“齐套”列；状态和当前有效齐套只供核对，不导入。</p>
           {preview && <><div className="tmpl-row"><span className="tmpl-ico"><Icon name="file-input" /></span><div><div className="tmpl-t">{file && file.name}</div>
               <div className="tmpl-s">{window.WorkbenchFormat.number(preview.count, { digits: 0 })} 行 · {preview.can_confirm ? '全部核对通过，一起保存' : '存在未通过检查的行，请修正'}</div></div>
             <Button icon="file-input" onClick={invalidate} disabled={locked}>更换文件</Button></div>
@@ -85,7 +85,7 @@
             {preview.deleted.length > 0 && <div><h3>将删除的全部批次</h3>{preview.deleted.map(row => <div key={row.entity_ref}>{row.before.business_code} · {row.before.operations.length} 道工序{row.errors.length ? ' · ' + row.errors.join('；') : ''}</div>)}</div>}
             <Issues issues={preview.warnings} />
             {replacing && !done && <label className="rm-check"><input type="checkbox" checked={acknowledged} disabled={locked} onChange={event => setAcknowledged(event.target.checked)} /><span>已核对将删除的全部批次和导入明细，确认先清除再重导。</span></label>}</>}
-        </> : <div className="batch-value-list"><label><input type="radio" name={form} checked={selection === 'selected'} disabled={locked || !selected.length} onChange={() => setSelection('selected')} />导出选中 {selected.length} 个批次（含隐藏选中项）</label>
+        </> : <div className="batch-value-list"><p>“当前有效齐套（只读）”与当前列表和筛选一致；“维护齐套标记”保留原维护值，原样回导不会覆盖按物料计算的有效状态。</p><label><input type="radio" name={form} checked={selection === 'selected'} disabled={locked || !selected.length} onChange={() => setSelection('selected')} />导出选中 {selected.length} 个批次（含隐藏选中项）</label>
           <label><input type="radio" name={form} checked={selection === 'filtered'} disabled={locked} onChange={() => setSelection('filtered')} />导出当前筛选全部批次</label></div>}
         <window.ResourceForms.Feedback command={command} />
       </div></Modal></div>;

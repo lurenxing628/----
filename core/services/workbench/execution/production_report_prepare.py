@@ -165,7 +165,8 @@ class ReportBatchPreparation:
                        local_operator=self.actor, declared_operator=item["payload"]["declared_operator"],
                        revision_at=now.isoformat(timespec="seconds"), receipt_ref=None)
         validate_actual_values(row["values"], now)
-        self.resources.validate(self.facts["operations"][operation_ref], row["values"])
+        self.resources.validate(self.facts["operations"][operation_ref], row["values"],
+                                previous_values=old["values"] if old else None)
         validate_legacy_link(self.facts["legacy"].get(operation_ref, []), row["legacy_fact_ref"], row["values"])
         if old and row["values"] == old["values"]:
             self.rows.append(self._result(index, item, old, "unchanged", action=action))
@@ -199,7 +200,8 @@ class ReportBatchPreparation:
     def _check_link_unique(self, row):
         link = row["legacy_fact_ref"]
         if link and any(history[-1]["legacy_fact_ref"] == link and ref != row["report_ref"]
-                        for ref, history in self.facts["reports"].get(row["operation_ref"], {}).items()):
+                        for ref, history in self.facts["reports"].get(row["operation_ref"], {}).items()
+                        if ref not in self.facts["voids"]):
             reject("这条历史记录已经补过报工了，不能重复累计。请核对后重新提交。", "constraint_conflict", 409)
 
     @staticmethod
