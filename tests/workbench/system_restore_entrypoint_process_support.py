@@ -7,7 +7,8 @@ import sys
 import time
 from dataclasses import replace
 from pathlib import Path
-from urllib.parse import unquote, urlparse
+from urllib.parse import urlparse
+from urllib.request import url2pathname
 
 
 def main():
@@ -19,7 +20,11 @@ def main():
             raise AssertionError("Recovery startup opened SQLite")
         raw = os.fspath(path)
         if raw != ":memory:":
-            actual = unquote(urlparse(raw).path) if raw.startswith("file:") else raw
+            if raw.startswith("file:"):
+                uri = urlparse(raw)
+                actual = url2pathname(("//" + uri.netloc if uri.netloc else "") + uri.path)
+            else:
+                actual = raw
             Path(actual).resolve().relative_to(root)
         return original_connect(path, *args, **kwargs)
 

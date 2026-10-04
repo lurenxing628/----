@@ -6,12 +6,26 @@
 
 from __future__ import annotations
 
+import hashlib
+import os
 from abc import ABC, abstractmethod
 from typing import Any, Callable, Dict, Optional
 
 RUNTIME_HOST_EXTENSION = "aps.runtime_host"
 RESTORE_HOST_EXTENSION = "workbench_system_restore_host"
 RESTORE_HOST_GUARD = "workbench_system_restore_guard"
+
+
+def runtime_identity(app) -> Dict[str, Any]:
+    raw_path = str(app.config.get("DATABASE_PATH") or "").strip()
+    db_path = os.path.normcase(os.path.abspath(raw_path)) if raw_path else ""
+    token = str(app.config.get("APS_RUNTIME_SHUTDOWN_TOKEN") or "")
+    return {
+        "pid": os.getpid(),
+        "owner": str(app.config.get("APS_RUNTIME_OWNER") or ""),
+        "db_path_hash": hashlib.sha256(db_path.encode("utf-8")).hexdigest() if db_path else "",
+        "instance_id": hashlib.sha256(token.encode("utf-8")).hexdigest() if token else "",
+    }
 
 
 class SystemRestoreHost(ABC):

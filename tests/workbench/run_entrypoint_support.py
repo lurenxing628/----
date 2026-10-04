@@ -59,7 +59,8 @@ class EntryHarness:
         monkeypatch.setattr(atexit, "register", self.register)
         monkeypatch.setattr(factory, "_EXIT_BACKUP_REGISTERED", False)
         self.deps = replace(entrypoint._default_deps("default"), create_app=self.create,
-                            serve_runtime_app=serve, pick_port=lambda host, _port, **_kwargs: (host, 59995))
+                            serve_runtime_app=serve, prepare_runtime_server=None,
+                            pick_port=lambda host, _port, **_kwargs: (host, 59995))
 
     def register(self, callback, *args, **kwargs):
         self.handlers.append((callback, args, kwargs))

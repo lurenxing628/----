@@ -54,16 +54,32 @@ class ProcessHost:
                    APS_BACKUP_DIR=str(self.backups), APS_SYSTEM_JOURNAL_DIR=str(self.journal_dir),
                    APS_EXCEL_TEMPLATE_DIR=str(self.root / "templates"), SECRET_KEY="dp-disposable-process-key")
         env.pop("WERKZEUG_RUN_MAIN", None)
+        contract_path = self.root / "logs" / "aps_runtime.json"
+        previous_contract = contract_path.read_bytes() if contract_path.exists() else None
         (self.root / "ready.json").unlink(missing_ok=True)
         self.log = open(self.root / "process.log", "w", encoding="utf-8")
         self._process = subprocess.Popen([sys.executable, "-m",
             "tests.workbench.system_restore_entrypoint_process_support", str(self.root), self.mode],
             cwd=str(REPO), env=env, stdout=self.log, stderr=subprocess.STDOUT)
-        wait_for(lambda: (self.root / "ready.json").exists() or self.process.poll() is not None)
+        def published():
+            if self.process.poll() is not None:
+                return True
+            try:
+                ready = json.loads((self.root / "ready.json").read_text(encoding="utf-8"))
+                raw = contract_path.read_bytes()
+                contract = json.loads(raw.decode("utf-8"))
+            except (OSError, ValueError):
+                return False
+            if (ready["pid"] != self.process.pid or ready["port"] != self.port
+                    or contract.get("pid") != self.process.pid or contract.get("port") != self.port
+                    or raw == previous_contract):
+                return False
+            self.ready, self.contract = ready, contract
+            return True
+
+        wait_for(published)
         assert self.process.poll() is None, (self.root / "process.log").read_text()
-        self.ready = json.loads((self.root / "ready.json").read_text())
         assert self.ready["port"] == self.port and self.ready["pid"] == self.process.pid
-        self.contract = json.loads((self.root / "logs" / "aps_runtime.json").read_text())
         self.lock_paths = [self.root / "logs" / "aps_runtime.lock", Path(str(self.path) + ".lock")]
         self.lock_bytes = [path.read_bytes() for path in self.lock_paths]
         return self
