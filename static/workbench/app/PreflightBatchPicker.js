@@ -158,7 +158,7 @@
       value: ""
     }, "\u5168\u90E8"), /*#__PURE__*/React.createElement("option", {
       value: "yes"
-    }, "\u5DF2\u9F50\u5957"), /*#__PURE__*/React.createElement("option", {
+    }, "\u9F50\u5957"), /*#__PURE__*/React.createElement("option", {
       value: "partial"
     }, "\u90E8\u5206\u9F50\u5957"), /*#__PURE__*/React.createElement("option", {
       value: "no"
@@ -175,7 +175,7 @@
     }, "\u5168\u90E8\u5F85\u6392"), /*#__PURE__*/React.createElement(Button, {
       disabled: busy,
       onClick: () => select('ready')
-    }, "\u4EC5\u5DF2\u9F50\u5957"), /*#__PURE__*/React.createElement(Button, {
+    }, "\u4EC5\u9F50\u5957"), /*#__PURE__*/React.createElement(Button, {
       disabled: busy || !snapshot,
       onClick: () => select('filtered')
     }, "\u5168\u9009\u5F53\u524D\u7B5B\u9009"), /*#__PURE__*/React.createElement(Button, {

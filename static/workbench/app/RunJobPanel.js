@@ -300,6 +300,7 @@
       }
     }
     const selected = preflight && preflight.normalized_input && preflight.normalized_input.batch_refs;
+    const effective = preflight && preview && preflight.input_ref === preview.input_ref ? preflight.effective_config : null;
     const reason = storageError || (!inputRef ? '请先完成排产检查。' : selected && !selected.length ? '请先选择要排产的批次。' : pendingActive ? '上次排产尚未确认结果，请先查询。' : unavailable);
     return /*#__PURE__*/React.createElement("section", {
       className: "plana run-job-panel",
@@ -354,7 +355,8 @@
       className: "rj-notice",
       role: "status"
     }, notice), preview && !confirming && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(U.Scope, {
-      preview: preview
+      preview: preview,
+      effective: effective
     }), /*#__PURE__*/React.createElement(U.Reasons, {
       rows: preview.write_context.blocked_reasons
     })), intent && /*#__PURE__*/React.createElement(U.Record, {
@@ -369,6 +371,7 @@
       api: api
     }), confirming && preview && /*#__PURE__*/React.createElement(U.Confirmation, {
       preview: preview,
+      effective: effective,
       busy: busy,
       onConfirm: submit,
       onClose: () => {

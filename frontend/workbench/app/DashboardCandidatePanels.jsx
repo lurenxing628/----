@@ -1,9 +1,12 @@
 (function () {
   'use strict';
   const { Button, Modal } = window.ResourceControls;
-  const number = v => window.WorkbenchFormat.number(v, { digits: Number.isInteger(v) ? 0 : 2 });
-  const signed = (v, scale = 1) => v === null ? '未知' : v === 0 ? '0' : (v > 0 ? '+' : '') + number(v * scale);
-  const risk = row => row.risk === 'overdue' ? '超期 ' + number(row.delay_hours) + ' 小时' : row.risk === 'on_time' ? '预计准时' : '交付未知';
+  // 计量值保留两位小数；不足 0.01 的非零值写“不到 0.01”，不能读成 0（与执行排产候选对比的“不到 0.001”同一规则）。
+  const tiny = v => typeof v === 'number' && v !== 0 && Number(Math.abs(v).toFixed(2)) === 0;
+  const number = v => tiny(v) ? '不到 0.01' : window.WorkbenchFormat.number(v, { digits: Number.isInteger(v) ? 0 : 2 });
+  const signed = (v, scale = 1) => v === null ? '未知' : v === 0 ? '0' : (v > 0 ? '+' : '-') + number(Math.abs(v * scale));
+  const risks = window.WorkbenchTerms.delivery_risks;
+  const risk = row => row.risk === 'overdue' ? (tiny(row.delay_hours) ? '超期不到 0.01 小时' : '超期 ' + number(row.delay_hours) + ' 小时') : risks[row.risk] || risks.unknown;
   function Peak({ value }) { return value.peak_utilization !== null ? <>{window.WorkbenchFormat.percent(value.peak_utilization)}</> : value.state === 'available' ? <>零可用容量</> : <>容量未知</>; }
   function Metrics({ data }) {
     const old = data.summary.before, selected = data.summary.after;
@@ -14,7 +17,7 @@
         <td>{number(selected.changeovers.value)}{selected.changeovers.value === null && selected.changeovers.reason && <small>{selected.changeovers.reason}</small>}</td><td>{signed(data.summary.changeover_delta)}</td></tr>
       {data.resources.map(row => <tr key={row.resource_ref} data-comparison-resource={row.resource_ref}><td>{row.label || '名称未填写'} · 日峰值</td><td><Peak value={row.before} /></td><td><Peak value={row.after} /></td><td>{signed(row.delta, 100)} 个百分点</td></tr>)}
     </tbody></table></div>
-      <div className="dy-context"><span>交付未知：排产时的正式计划 {old.unknown_count} 批 / 候选方案 {selected.unknown_count} 批</span><span>资源日峰值：同范围自然日内可用时段占用率</span></div>
+      <div className="dy-context"><span>交付判断{risks.unknown}：排产时的正式计划 {old.unknown_count} 批 / 候选方案 {selected.unknown_count} 批</span><span>资源日峰值：同范围自然日内可用时段占用率</span></div>
       {!data.resource_scope_complete && <div className="dy-note warning">有 {data.resource_scope_unknown_rows} 条安排读不到所在资源，这部分没有计入负荷，实际占用可能更高。</div>}
     </section>;
   }
@@ -31,5 +34,5 @@
       <div><dt>同范围换型次数</dt><dd>{number(data.summary.after.changeovers.value)}</dd></div><div><dt>换设备工序</dt><dd>{number(data.machine_changes.count)} · 已确认 {data.machine_changes.known_count} · 未知 {data.machine_changes.unknown_count}</dd></div>
     </dl><window.WorkbenchReference entries={{ '候选编号': data.candidate.candidate_ref, '排产时正式计划编号': data.baseline.baseline_ref }} /><details className="wb-ref"><summary>换设备工序编号</summary>{data.machine_changes.operation_refs.map(ref => <p key={ref}>{ref}</p>)}{!data.machine_changes.operation_refs.length && <p>没有已确认换设备的工序。</p>}</details></div>
   </Modal>; }
-  window.DashboardCandidatePanels = { Metrics, Batches, Summary, number };
+  window.DashboardCandidatePanels = { Metrics, Batches, Summary, number, signed, risk };
 })();

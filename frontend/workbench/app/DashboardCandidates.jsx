@@ -2,6 +2,11 @@
   'use strict';
   const A = window.RunCandidateAPI, B = window.RunBaselineAPI, Q = window.DashboardCandidateComparisonAPI, C = window.DashboardContract;
   const P = window.DashboardCandidatePanels, { Button, ErrorBox, Issues } = window.ResourceControls;
+  // 排产时的不重排时段：没有这一项是旧记录；不是完整的起止时刻按记录无效显示。
+  function holdText(value) {
+    const valid = value === undefined || value === null || !!value && typeof value.start === 'string' && typeof value.end === 'string';
+    return window.WorkbenchTerms.hold_window(value, !valid);
+  }
   function rangeFor(input) {
     const start = input && input.start_date + 'T00:00:00', raw = input && input.end_date + 'T00:00:00';
     C.check(A.time(start) && A.time(raw), '这次排产没有有效的提交时间范围，无法比较。请重新选择排产记录。');
@@ -101,7 +106,9 @@
         <P.Metrics data={data} /><P.Batches data={data} selected={selectedBatch} onSelect={onSelectBatch} />
         <div className="dy-heading"><h3>{data.candidate.label || window.WorkbenchTerms.name_missing}</h3><Button reasonDisplay="inline" icon="chart-gantt" onClick={() => setSummary(true)}>查看方案摘要</Button></div>
         <details className="dy-evidence"><summary>排产时的约束</summary><dl className="dy-facts"><div><dt>齐套检查</dt><dd>{data.generation.input.ready_check ? '开启' : '关闭'}</dd></div>
+          <div><dt>物料放行方式</dt><dd>{window.WorkbenchTerms.material_strategies[data.generation.input.material_strategy || 'strict'] || '记录无效'}</dd></div>
           <div><dt>缺设备人员时的规则</dt><dd>{data.generation.input.missing_resource_policy === 'auto_assign' ? '按匹配规则自动分配' : '排除缺设备人员的工序'}</dd></div>
+          <div><dt>不重排时段</dt><dd>{holdText(data.generation.input.hold_window)}</dd></div>
           <div><dt>已开工工序的规则</dt><dd>保留已登记的实际数据和受保护的安排</dd></div></dl><window.WorkbenchReference entries={{ '排产编号': data.generation.run_ref }} /></details>
         {summary && <P.Summary data={data} onClose={() => setSummary(false)} />}
       </>}

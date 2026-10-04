@@ -123,7 +123,7 @@
     const labels = { spec: '规格', unit: '单位', stock_qty: '库存数量', remark: '备注', category: '归属',
       status: '原状态', legacy_status: '原始状态（只读）', inactive_reason: '停用原因', default_days: '默认周期（天）' };
     if (kind === 'op_type' && category === 'internal') labels.remark = '产能备注';
-    if (kind === 'op_type' && category === 'external') labels.default_merge_mode = '默认周期规则';
+    if (kind === 'op_type' && ['external', 'both'].includes(category)) labels.default_merge_mode = '默认周期规则';
     if (kind === 'machine') labels.category = '设备分类（只读）';
     return labels;
   }

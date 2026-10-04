@@ -1,6 +1,6 @@
 (function () {
   'use strict';
-  const C = window.PreflightContract, { Button, ErrorBox, Rules, Metrics, Reasons, Styles } = window.PreflightControls;
+  const C = window.PreflightContract, { Button, ErrorBox, Rules, Metrics, Reasons, HoldSummary, Styles } = window.PreflightControls;
   const labels = { eligible: '资料有效', auto_assign_required: '自动分配待补', skipped: '本次跳过', blocked: '缺资料', protected: '已开工保护' };
   function contextState(value) {
     try { return { value: C.initial(value), error: null }; }
@@ -16,7 +16,8 @@
             {row.material_ready_date && <p>用料可用日期：{window.WorkbenchFormat.date(row.material_ready_date)}</p>}
             {row.execution.first_actual_start && <p>实际开工：{window.WorkbenchFormat.dateTime(row.execution.first_actual_start)}</p>}
             {row.execution.confirmed_finish && <p>确认完工：{window.WorkbenchFormat.dateTime(row.execution.confirmed_finish)}</p>}
-            {row.status === 'protected' && <p>剩余数量：{row.execution.remaining_quantity === null ? '未知' : row.execution.remaining_quantity}</p>}</td>
+            {row.status === 'protected' && <p>剩余数量：{row.execution.remaining_quantity === null ? '未知' : row.execution.remaining_quantity}</p>}
+            {row.held && <p>{row.held.basis === 'locked' ? '正式计划里已锁定' : '因不重排时段'}，保持原安排：{window.WorkbenchFormat.dateTime(row.held.start)} 至 {window.WorkbenchFormat.dateTime(row.held.end)}</p>}</td>
         </tr>)}</tbody></table></div>
       {pages > 1 && <window.WorkbenchListControls.Pager page={page} pages={pages} total={data.tasks.length} size={100} unit="道" label="检查明细" onPage={setPage} />}
     </details>;
@@ -34,6 +35,8 @@
     const [value, setValue] = React.useState(initial.value), [error, setError] = React.useState(null), [result, setResult] = React.useState(null);
     const [busy, setBusy] = React.useState(false), [expanded, setExpanded] = React.useState(false);
     const [needsRecheck, setNeedsRecheck] = React.useState(false);
+    // 上次检查按交付设置推算出的不重排时段（从开始日期起算）；开始日期没变时继续用它填显示值。
+    const [holdDefault, setHoldDefault] = React.useState(null);
     const serial = React.useRef(0), active = React.useRef(null), context = React.useRef(initialContext);
     const remembered = React.useMemo(() => {
       try { return C.input(value); }
@@ -50,10 +53,14 @@
       if (busy || initial.error) return;
       invalidate(); const id = ++serial.current, controller = new AbortController(); active.current = controller;
       setBusy(true);
-      try { const input = C.input(value), response = await adapter.preflight(input, controller.signal); C.result(response, input); if (serial.current === id) { setResult(response); setNeedsRecheck(false); } }
+      try { const input = C.input(value), response = await adapter.preflight(input, controller.signal); C.result(response, input); if (serial.current === id) { setResult(response); setNeedsRecheck(false); rememberHold(input, response.data.effective_config); } }
       catch (problem) { if (serial.current === id) setError(problem); }
       finally { if (serial.current === id) setBusy(false); }
     }
+    function rememberHold(input, config) {
+      if (config.hold_window_source === 'default') setHoldDefault({ start_date: input.start_date, hold_window: config.hold_window });
+    }
+    const effectiveHold = holdDefault && holdDefault.start_date === value.start_date ? holdDefault : null;
     const data = result && result.data, counts = data && data.counts, currentStep = window.RunPresentation.step(remembered, data);
     const runBlocked = !data || data.write_context.capabilities['scheduling.run'] !== true || typeof adapter.run !== 'function';
     const runReason = data && data.run_blocked_reasons[0].message || window.WorkbenchTerms.outcomes.unavailable;
@@ -81,7 +88,7 @@
         <span>已选 {value.batch_refs.length} 批</span><Button icon={expanded ? 'chevron-up' : 'chevron-down'} className={currentStep === 1 ? 'btn primary' : 'btn'} disabled={!!initial.error} aria-expanded={expanded} onClick={() => setExpanded(old => !old)}>{expanded ? '收起范围' : '选择批次'}</Button></div>
       {expanded && !initial.error && <window.PreflightBatchPicker adapter={adapter} selected={value.batch_refs} onChange={batch_refs => change({ batch_refs })} disabled={busy} />}
       <Metrics counts={counts} /></section>
-      <section className="pf-review" aria-label="排产规则与检查"><div className="pf-body"><Rules value={value} onChange={change} disabled={!!initial.error} />
+      <section className="pf-review" aria-label="排产规则与检查"><div className="pf-body"><Rules value={value} effective={effectiveHold} onChange={change} disabled={!!initial.error} />
         <section aria-labelledby="pf-check-title"><h3 id="pf-check-title">排产检查</h3><div className="pf-rows">{checks.map(([title, description, kind, action]) => <div className="pf-check" key={title}>
           <div><strong>{title}</strong><p>{description}</p></div>{kind && <Button disabled={!data || !onNavigate || busy || !(kind === 'resources' ? counts.missing_resource_tasks : kind === 'unready' ? counts.unready_batches : counts.blocked_tasks + counts.no_route_batches)} onClick={() => navigate(kind)}>{action}</Button>}
         </div>)}</div></section></div>
@@ -89,6 +96,7 @@
         onCommitted={(child, source) => change({ batch_refs: value.batch_refs.map(ref => ref === source ? child : ref) })} />}
       <ErrorBox error={error} />{needsRecheck && <p className="pf-recheck" role="status">排产参数已变化，请重新检查后再开始计算。</p>}{busy && <p role="status">正在读取批次、设备人员和报工记录，还没开始排产。</p>}
       {data && <><p className="pf-muted" role="status">检查时间：{window.WorkbenchFormat.dateTime(result.meta.as_of)} · 结果有效至 {window.WorkbenchFormat.dateTime(data.input_expires_at)} · 班表未核对</p>
+        <HoldSummary key={'hold-' + data.input_ref} data={data} />
         <Details key={data.input_ref} data={data} />
         {!!data.no_route_batches.length && <NoRoutes key={data.input_ref} rows={data.no_route_batches} />}
         <Reasons data={data} /></>}

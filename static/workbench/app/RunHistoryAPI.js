@@ -74,18 +74,24 @@
     if (Object.keys(returnPlan).length) result.return_plan_context = returnPlan;
     return result;
   }
+  // 不重排时段：旧记录不带这一项；null 是“不设”，存的值读不出来时也是 null，并附一条资料缺项。
+  const minute = v => text(v) && date(v.slice(0, 10)) && /^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d$/.test(v);
+  const holdWindow = v => v === undefined || v === null || shape(v, ['start', 'end']) && minute(v.start) && minute(v.end) && v.start < v.end;
   function admission(s) {
     const keys = ['start_date', 'end_date', 'ready_check', 'missing_resource_policy', 'completed_policy', 'batch_count'].concat(s.material_strategy === undefined ? [] : ['material_strategy']);
-    check(shape(s, keys.concat(['selection', 'basis', 'data_gaps'])) && s.selection === 'explicit_batches' && s.basis === 'captured_at_run_admission' && Array.isArray(s.data_gaps) && s.data_gaps.every(gap) && s.data_gaps.every(g => keys.includes(g.field) && ['not_recorded', 'invalid_stored_value'].includes(g.code)));
+    const recorded = keys.concat(s.hold_window === undefined ? [] : ['hold_window']);
+    check(shape(s, recorded.concat(['selection', 'basis', 'data_gaps'])) && s.selection === 'explicit_batches' && s.basis === 'captured_at_run_admission' && Array.isArray(s.data_gaps) && s.data_gaps.every(gap) && s.data_gaps.every(g => recorded.includes(g.field) && ['not_recorded', 'invalid_stored_value'].includes(g.code)) && holdWindow(s.hold_window) && s.data_gaps.filter(g => g.field === 'hold_window').length <= (s.hold_window === null ? 1 : 0));
     check(['start_date', 'end_date'].every(k => s[k] === null || date(s[k])) && (s.start_date === null || s.end_date === null || s.start_date <= s.end_date) && (s.ready_check === null || typeof s.ready_check === 'boolean') && [null, 'auto_assign', 'exclude'].includes(s.missing_resource_policy) && (s.material_strategy === undefined || [null, 'strict', 'stage', 'split'].includes(s.material_strategy)) && [null, 'preserve_actuals'].includes(s.completed_policy) && (s.batch_count === null || count(s.batch_count) && s.batch_count > 0));
     check(keys.every(k => s.data_gaps.filter(g => g.field === k).length === (s[k] === null ? 1 : 0)));
   }
   function run(v) {
-    check(shape(v, ['run_ref', 'state', 'stage', 'accepted_at', 'started_at', 'finished_at', 'candidate_count', 'task_count', 'task_count_basis', 'counts_final', 'scope_summary', 'recovery_required', 'recovery_reason', 'completion_semantics', 'constraint_verification', 'task_content_verification']) && ref(v.run_ref) && states.includes(v.state) && time(v.accepted_at) && ['started_at', 'finished_at'].every(k => v[k] === null || time(v[k])) && count(v.candidate_count) && count(v.task_count) && v.task_count_basis === 'persisted_rows_across_candidates' && v.completion_semantics === 'execution_state_only' && v.constraint_verification === 'not_checked_by_history' && v.task_content_verification === 'candidate_workspace_required');
+    check(shape(v, ['run_ref', 'state', 'stage', 'accepted_at', 'started_at', 'finished_at', 'candidate_count', 'task_count', 'task_count_basis', 'counts_final', 'scope_summary', 'recovery_required', 'recovery_reason', 'error', 'completion_semantics', 'constraint_verification', 'task_content_verification']) && ref(v.run_ref) && states.includes(v.state) && time(v.accepted_at) && ['started_at', 'finished_at'].every(k => v[k] === null || time(v[k])) && count(v.candidate_count) && count(v.task_count) && v.task_count_basis === 'persisted_rows_across_candidates' && v.completion_semantics === 'execution_state_only' && v.constraint_verification === 'not_checked_by_history' && v.task_content_verification === 'candidate_workspace_required');
     const terminal = !['queued', 'running'].includes(v.state),
       succeeded = ['complete', 'partial'].includes(v.state);
     check(v.counts_final === terminal && v.finished_at !== null === terminal && (terminal ? v.stage === 'finished' : [v.state === 'queued' ? 'queued' : 'computing', 'awaiting_reconciliation'].includes(v.stage)) && (v.state !== 'queued' || v.started_at === null) && (v.state !== 'running' || v.started_at !== null) && (v.started_at === null || timeKey(v.started_at) >= timeKey(v.accepted_at)) && (v.finished_at === null || timeKey(v.finished_at) >= timeKey(v.started_at || v.accepted_at)) && (succeeded ? v.candidate_count > 0 : v.candidate_count === 0 && v.task_count === 0) && v.recovery_required === (v.stage === 'awaiting_reconciliation'));
     check(v.recovery_required ? shape(v.recovery_reason, ['code', 'message']) && v.recovery_reason.code === 'awaiting_reconciliation' && text(v.recovery_reason.message) : v.recovery_reason === null);
+    // 只有失败或中断的排产带原因；旧记录读不出原因时为空。
+    check(v.error === null || ['failed', 'interrupted'].includes(v.state) && shape(v.error, ['code', 'message']) && text(v.error.code) && v.error.code.length > 0 && text(v.error.message) && v.error.message.length > 0);
     admission(v.scope_summary);
     return v;
   }

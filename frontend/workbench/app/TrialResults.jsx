@@ -56,9 +56,9 @@
         {tab === 'adoptions' && (window.TrialAdoptionHistory ? <window.TrialAdoptionHistory data={data} /> : <p role="alert">{window.WorkbenchTerms.outcomes.unavailable}</p>)}
         {tab === 'delivery' && <><p className="tt-muted">对比方案：{data.base_identity.display_name || '原试调来源'}</p>
           <U.Table rows={c.batches} label="批次交付对比" columns={[
-            ['批次 / 零件', r => <>{r.batch_id}<br />{r.part_name}</>], ['批次数量', r => U.number(r.quantity)], ['交期', r => <span title="交期截至当日结束，次日零点起计为超期。">{r.due_date || '未知'}</span>],
+            ['批次 / 零件', r => <>{r.batch_id}<br />{r.part_name}</>], ['批次数量', r => U.number(r.quantity)], ['交期', r => r.risk === 'due_unspecified' ? '未指定交期' : <span title="交期截至当日结束，次日零点起计为超期。">{r.due_date || '未知'}</span>],
             ['原完工', r => U.timeLabel(r.baseline_finish)], ['试调完工', r => U.timeLabel(r.finish)], ['提前（小时）', r => U.number(r.improvement_hours)],
-            ['预计交付', r => ({ on_time: '可按期', overdue: '预计超期', unavailable: '有冲突，不能评估', invalid_data: '交期数据无效' }[r.risk] || '未知')],
+            ['预计交付', r => ({ ...window.WorkbenchTerms.delivery_risks, due_unspecified: window.WorkbenchTerms.delivery_risks.unknown, unavailable: '有冲突，不能评估', invalid_data: '交期数据无效' }[r.risk] || '未知')],
             ['超期（小时）', r => U.number(r.late_hours)]]} /></>}
         {tab === 'capacity' && <><p className="tt-muted">试调方案资源占用 · {U.timeLabel(data.capacity.start)} 至 {U.timeLabel(data.capacity.end)}</p>
           {data.capacity.reason && <p className="tt-notice">{data.capacity.reason}</p>}<U.Table label="资源占用" rows={data.capacity.resources} columns={[

@@ -248,7 +248,8 @@ def test_material_status_and_delete_messages_match_user_page_labels() -> None:
     material_page = _read("web/viewmodels/page_manuals_material.py")
     material_service = _read("core/services/material/material_service.py")
 
-    assert "状态为可用" in material_page
+    # 工作台物料页和物料文件都把 active 叫「启用」，物料导入也不认「可用」，说明书跟着页面说。
+    assert "状态为启用" in material_page and "可用" not in material_page
     assert "删除可能失败；这时先去处理引用它的批次物料需求" in material_page
     assert "请选择：可用 / 停用" in material_service
     assert "请选择：启用 / 停用" not in material_service

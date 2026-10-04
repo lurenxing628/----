@@ -134,6 +134,7 @@
       catch (e) { setStorageError(e.message); }
     }
     const selected = preflight && preflight.normalized_input && preflight.normalized_input.batch_refs;
+    const effective = preflight && preview && preflight.input_ref === preview.input_ref ? preflight.effective_config : null;
     const reason = storageError || (!inputRef ? '请先完成排产检查。' : selected && !selected.length ? '请先选择要排产的批次。' : pendingActive ? '上次排产尚未确认结果，请先查询。' : unavailable);
     return <section className="plana run-job-panel" data-run-job-panel="true" aria-label="候选排产"><U.Styles />
       <div className="rj-heading"><div><h3>候选排产</h3><p className="rj-muted">选择范围并完成检查后，计算本次候选方案。</p></div></div>
@@ -145,9 +146,9 @@
       </div>{reason && <p className="rj-muted rj-action-reason">{reason}</p>}</div>
       {storageError && <div className="rj-notice" role="alert">{storageError}<div className="rj-tools"><U.Button icon="refresh-cw" disabled={busy} onClick={rereadStorage}>刷新上次操作记录</U.Button></div></div>}
       {error && <div className="rj-notice" role="alert">{error}{errorDetails && <window.WorkbenchReference entries={errorDetails} />}</div>}{notice && <div className="rj-notice" role="status">{notice}</div>}
-      {preview && !confirming && <><U.Scope preview={preview} /><U.Reasons rows={preview.write_context.blocked_reasons} /></>}
+      {preview && !confirming && <><U.Scope preview={preview} effective={effective} /><U.Reasons rows={preview.write_context.blocked_reasons} /></>}
       {intent && <U.Record run={run} intent={intent} paused={paused} retryPaused={retryPaused} lastChecked={lastChecked} resolution={resolution} checking={checking} verified={verified} api={api} />}
-      {confirming && preview && <U.Confirmation preview={preview} busy={busy} onConfirm={submit} onClose={() => { if (!locked.current) { setConfirming(false); setPreview(null); } }} />}
+      {confirming && preview && <U.Confirmation preview={preview} effective={effective} busy={busy} onConfirm={submit} onClose={() => { if (!locked.current) { setConfirming(false); setPreview(null); } }} />}
     </section>;
   }
   window.RunJobPanel = RunJobPanel;

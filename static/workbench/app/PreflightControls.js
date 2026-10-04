@@ -28,8 +28,136 @@
       onChange: () => onChange(key)
     }), /*#__PURE__*/React.createElement("span", null, text))));
   }
+  // 不重排时段：没动过时不带这一项（按交付设置），检查后用本次生效的时段填显示值；改任一端就按本次单独填的发送，点「不设」发送 null。
+  function HoldWindow({
+    value,
+    effective,
+    onChange,
+    disabled
+  }) {
+    const C = window.PreflightContract,
+      explicit = value.hold_window !== undefined;
+    const shown = explicit ? value.hold_window : effective ? effective.hold_window : null,
+      bounds = C.holdBounds(value.start_date, value.end_date) || {};
+    let problem = '';
+    if (explicit) {
+      try {
+        C.holdWindow(value.hold_window, value.start_date, value.end_date);
+      } catch (error) {
+        problem = error.message;
+      }
+    }
+    const status = explicit ? value.hold_window === null ? '本次不设' : '本次单独填写' : effective ? effective.hold_window ? '（按交付设置）' : '（按交付设置：不设）' : '未填时按交付设置，检查后显示本次生效的时段';
+    function edit(key, text) {
+      // 按交付设置推算的时段可能超出这次的排产日期：只改一端时，带过来的另一端先截到日期范围内，免得没动过的一端报错。
+      const base = {
+        ...(shown || {
+          start: '',
+          end: ''
+        })
+      };
+      if (!explicit && shown && bounds.min && base.start < bounds.min) base.start = bounds.min;
+      if (!explicit && shown && bounds.max && base.end > bounds.max) base.end = bounds.max;
+      onChange({
+        hold_window: {
+          ...base,
+          [key]: text
+        }
+      });
+    }
+    return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+      className: "pf-rule pf-hold",
+      role: "group",
+      "aria-label": "\u4E0D\u91CD\u6392\u65F6\u6BB5"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "pf-hold-head"
+    }, /*#__PURE__*/React.createElement("strong", null, "\u4E0D\u91CD\u6392\u65F6\u6BB5"), /*#__PURE__*/React.createElement("span", {
+      className: "pf-muted",
+      "data-hold-source": explicit ? 'explicit' : effective ? 'default' : 'unchecked'
+    }, status)), /*#__PURE__*/React.createElement("div", {
+      className: "pf-hold-fields"
+    }, [['start', '开始'], ['end', '结束']].map(([key, label]) => /*#__PURE__*/React.createElement("label", {
+      key: key
+    }, label, /*#__PURE__*/React.createElement("input", {
+      type: "datetime-local",
+      "aria-label": '不重排时段' + label,
+      min: bounds.min,
+      max: bounds.max,
+      value: shown ? shown[key] : '',
+      disabled: disabled,
+      "aria-invalid": !!problem || undefined,
+      onChange: event => edit(key, event.target.value)
+    }))), /*#__PURE__*/React.createElement(Button, {
+      icon: "x",
+      disabled: disabled || explicit && value.hold_window === null,
+      onClick: () => onChange({
+        hold_window: null
+      })
+    }, "\u4E0D\u8BBE"), explicit && /*#__PURE__*/React.createElement(Button, {
+      icon: "rotate-ccw",
+      disabled: disabled,
+      onClick: () => onChange({
+        hold_window: undefined
+      })
+    }, "\u6309\u4EA4\u4ED8\u8BBE\u7F6E"))), /*#__PURE__*/React.createElement("div", {
+      className: "pf-rule pf-note"
+    }, "\u7518\u7279\u56FE\u4E0A\u843D\u5728\u8FD9\u6BB5\u65F6\u95F4\u91CC\u7684\u5DE5\u5E8F\u4FDD\u6301\u539F\u5B89\u6392\u4E0D\u52A8\uFF0C\u540C\u6279\u6B21\u6392\u5728\u524D\u9762\u7684\u5DE5\u5E8F\u4E5F\u4E00\u8D77\u4E0D\u52A8\uFF1B\u5176\u4F59\u7167\u5E38\u91CD\u6392\u3002"), problem && /*#__PURE__*/React.createElement("div", {
+      className: "pf-rule pf-note pf-hold-error",
+      role: "alert"
+    }, problem));
+  }
+  const minuteText = value => window.WorkbenchFormat.dateTime(value);
+  function HeldRows({
+    rows,
+    label
+  }) {
+    const [page, setPage] = React.useState(1),
+      pages = Math.max(1, Math.ceil(rows.length / 100));
+    return /*#__PURE__*/React.createElement("div", {
+      className: "pf-held-group"
+    }, /*#__PURE__*/React.createElement("strong", null, label, " \xB7 ", rows.length, " \u9053"), /*#__PURE__*/React.createElement("ul", null, rows.slice((page - 1) * 100, page * 100).map(row => /*#__PURE__*/React.createElement("li", {
+      key: row.operation_ref,
+      "data-held-basis": row.held.basis
+    }, row.batch_id, " \xB7 ", row.sequence, " ", row.label, row.piece_id ? ' · ' + row.piece_id : '', " \xB7 \u539F\u5B89\u6392 ", minuteText(row.held.start), " \u81F3 ", minuteText(row.held.end)))), pages > 1 && /*#__PURE__*/React.createElement(window.WorkbenchListControls.Pager, {
+      page: page,
+      pages: pages,
+      total: rows.length,
+      size: 100,
+      unit: "\u9053",
+      label: label,
+      onPage: setPage
+    }));
+  }
+  // 检查结果里的“本次不重排”一行；明细列出因不重排时段保持原安排的工序，正式计划里锁定的另列。
+  function HoldSummary({
+    data
+  }) {
+    const span = data.effective_config.hold_window,
+      kept = data.tasks.filter(row => row.held && row.held.basis === 'hold_window'),
+      locked = data.tasks.filter(row => row.held && row.held.basis === 'locked');
+    const text = span ? '本次不重排：' + window.WorkbenchTerms.hold_window(span) + '，共 ' + data.counts.hold_window_tasks + ' 道工序保持原安排' : '本次不设不重排时段';
+    const source = data.effective_config.hold_window_source === 'default' ? '（按交付设置）' : '';
+    if (!kept.length && !locked.length) return /*#__PURE__*/React.createElement("p", {
+      className: "pf-hold-summary",
+      "data-hold-summary": true,
+      role: "status"
+    }, text, source);
+    return /*#__PURE__*/React.createElement("details", {
+      className: "pf-detail pf-hold-summary",
+      "data-hold-summary": true
+    }, /*#__PURE__*/React.createElement("summary", null, text, source, locked.length ? '；正式计划里已锁定 ' + locked.length + ' 道' : '', " \xB7 \u67E5\u770B\u660E\u7EC6"), !!kept.length && /*#__PURE__*/React.createElement(HeldRows, {
+      key: "kept",
+      rows: kept,
+      label: "\u4E0D\u91CD\u6392\u65F6\u6BB5\u5185\u4FDD\u6301\u539F\u5B89\u6392"
+    }), !!locked.length && /*#__PURE__*/React.createElement(HeldRows, {
+      key: "locked",
+      rows: locked,
+      label: "\u6B63\u5F0F\u8BA1\u5212\u91CC\u5DF2\u9501\u5B9A"
+    }));
+  }
   function Rules({
     value,
+    effective,
     onChange,
     disabled
   }) {
@@ -57,7 +185,7 @@
     }, /*#__PURE__*/React.createElement("strong", null, "\u7269\u6599\u653E\u884C\u65B9\u5F0F"), /*#__PURE__*/React.createElement(Segment, {
       label: "\u7269\u6599\u653E\u884C\u65B9\u5F0F",
       value: value.material_strategy || 'strict',
-      choices: [["strict", '整批齐套'], ["stage", '按工序齐套'], ["split", '预检分批开工']],
+      choices: Object.entries(window.WorkbenchTerms.material_strategies),
       disabled: disabled,
       onChange: material_strategy => onChange({
         material_strategy,
@@ -75,7 +203,12 @@
       onChange: missing_resource_policy => onChange({
         missing_resource_policy
       })
-    })), /*#__PURE__*/React.createElement("div", {
+    })), /*#__PURE__*/React.createElement(HoldWindow, {
+      value: value,
+      effective: effective,
+      onChange: onChange,
+      disabled: disabled
+    }), /*#__PURE__*/React.createElement("div", {
       className: "pf-rule"
     }, /*#__PURE__*/React.createElement("span", {
       className: "pf-fixed"
@@ -152,6 +285,7 @@
     Rules,
     Metrics,
     Reasons,
+    HoldSummary,
     Styles
   };
 })();

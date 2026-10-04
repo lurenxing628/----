@@ -6,11 +6,7 @@
       Issues
     } = window.ResourceControls,
     M = window.PlanGanttModel;
-  const riskLabel = {
-    overdue: '预计超期',
-    on_time: '预计按期',
-    unknown: '暂无数据'
-  };
+  const riskLabel = window.WorkbenchTerms.delivery_risks;
   const deliveryIssues = {
     operations_unscheduled: '尚有工序未安排',
     operations_missing: '工序资料未记录',

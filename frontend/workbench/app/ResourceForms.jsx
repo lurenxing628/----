@@ -87,7 +87,7 @@
     const fieldPaths = action === 'delete' ? [] : adjustingStock ? ['fields.stock_qty'] : ['business_code', 'label',
       ...(kind === 'material' ? ['fields.spec', 'fields.unit', 'fields.stock_qty', 'fields.remark'] : []),
       ...(kind === 'op_type' ? ['fields.remark', 'fields.category',
-        ...(opCategory === 'external' ? ['fields.default_merge_mode'] : [])] : []),
+        ...(['external', 'both'].includes(opCategory) ? ['fields.default_merge_mode'] : [])] : []),
       ...(kind === 'supplier' ? ['fields.default_days'] : []), ...(C.statuses[kind] ? ['fields.status'] : []),
       ...(C.relations[kind] || []).flatMap(field => [field.key, 'relationships.' + field.key])];
     async function close(detail) {

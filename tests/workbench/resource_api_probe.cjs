@@ -221,6 +221,11 @@ async function main() {
     assert.throws(()=>executionOnly.create('execution').savePending({kind:'execution',action,ref:id,request_key:key}),e=>e.committed===false);checks++;
   }
   await rejects(()=>executionOnly.api.list('execution',{}),false);assert.equal(executionOnly.requests(),0);checks++;
+  // “自制和外协都可”的工种同样可以设置默认周期规则，详情页要显示这一项。
+  const contract=vm.createContext({console});contract.window=contract;
+  vm.runInContext(fs.readFileSync(path.join(__dirname,'../../frontend/workbench/app/resource-contract.js'),'utf8'),contract);
+  for(const category of ['external','both']){assert.equal(contract.APSResourceContract.fieldLabels('op_type',category).default_merge_mode,'默认周期规则');checks++;}
+  assert.equal('default_merge_mode' in contract.APSResourceContract.fieldLabels('op_type','internal'),false);checks++;
   console.log(JSON.stringify({checks,network:'mock-only',production:false,persisted_fields:['kind','action','ref','request_key','category']}));
 }
 main().catch(error=>{console.error(error);process.exitCode=1;});

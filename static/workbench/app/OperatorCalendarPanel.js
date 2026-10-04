@@ -116,13 +116,7 @@
       value: draft.type,
       disabled: disabled,
       options: [['work', '上班'], ['rest', '休息']],
-      onChange: type => setDraft({
-        ...draft,
-        type,
-        ...(type === 'work' && !draft.periods?.length ? {
-          periods: window.APSWorkPeriods.clone(day.default_periods || window.APSWorkPeriods.defaults())
-        } : {})
-      })
+      onChange: type => setDraft(O.switchType(day, draft, type))
     }), !rest && draft.periods == null && /*#__PURE__*/React.createElement("div", {
       className: "fgrid"
     }, /*#__PURE__*/React.createElement(Field, {

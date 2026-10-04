@@ -26,7 +26,8 @@ ALLOWED: Dict[str, Set[str]] = {
     "report": {"facts", "plan", "execution", "run", "trial"},
     "dashboard": {"facts", "plan", "execution", "run", "trial", "report", "outsourcing"},
 }
-ROOT_MODULES = {"commands", "messages"}
+# command_prefetch：看板处置与报工导入确认共用的"锁外预读、锁内核对版本"协调件，与 commands 同属命令执行层。
+ROOT_MODULES = {"commands", "command_prefetch", "messages"}
 
 
 def _cluster(parts: Tuple[str, ...]) -> str:

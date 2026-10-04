@@ -2,6 +2,7 @@
   'use strict';
 
   const F = window.WorkbenchFormat,
+    T = window.WorkbenchTerms,
     {
       Issues
     } = window.ResourceControls;
@@ -63,8 +64,20 @@
     basis: '计算依据',
     setup_or_elapsed_hours_included: '是否包括准备或停留时间'
   };
+  // 同一个取值在不同项里意思不同：齐套的 partial 是“部分齐套”，报工的 partial 是“部分完成”；执行状态的 complete 是“已完工”，
+  // 记录完整性的 complete 是“完整”。所以先按项取词表，查不到再用下面的通用词。
+  const fieldValues = {
+    ready_status: {
+      yes: '齐套',
+      no: '未齐套',
+      partial: '部分齐套'
+    },
+    execution_state: T.execution_states,
+    data_quality: T.data_quality,
+    risk: T.delivery_risks
+  };
   const values = {
-    yes: '已齐套',
+    yes: '齐套',
     no: '未齐套',
     partial: '部分完成',
     unreported: '待报工',
@@ -79,8 +92,8 @@
     unknown: '未知',
     missing: '缺少来源',
     unavailable: '无法读取',
-    on_time: '预计准时',
-    overdue: '预计超期',
+    on_time: T.delivery_risks.on_time,
+    overdue: T.delivery_risks.overdue,
     manual: '手工',
     excel: 'Excel',
     internal: '自制',
@@ -100,32 +113,42 @@
     if (diagnosticKeys.has(key) || /(?:_ref|_refs|_key|_snapshot)$/.test(key)) return true;
     return !businessKey(key) && typeof item === 'string' && /^[0-9a-f]{32,}$/i.test(item);
   }
-  function display(value) {
+  // 需求量、可用量等物料数量按批次详情的口径显示全部小数，0.004 不能读成 0.00；小时等其他计量值保留两位小数。
+  const quantityKey = key => typeof key === 'string' && /(?:^|_)quantity$/.test(key);
+  function display(value, key) {
     if (value === null || value === undefined || value === '') return '未知';
     if (typeof value === 'boolean') return value ? '是' : '否';
-    if (typeof value === 'number') return F.number(value, {
+    if (typeof value === 'number') return F.number(value, quantityKey(key) ? {
+      digits: 20,
+      trim: true
+    } : {
       digits: Number.isInteger(value) ? 0 : 2
     });
     if (/^\d{4}-\d\d-\d\d[T ]\d\d:\d\d/.test(value)) return F.dateTime(value);
     if (/^\d{4}-\d\d-\d\d$/.test(value)) return F.date(value);
+    const own = Object.prototype.hasOwnProperty.call(fieldValues, key) ? fieldValues[key] : null;
+    if (own && Object.prototype.hasOwnProperty.call(own, value)) return own[value];
     const C = window.DashboardContract;
     return values[value] || C.categories[value] || C.statuses[value] || C.states[value] || String(value);
   }
   const technical = item => item === null || item === undefined ? '' : typeof item === 'object' ? JSON.stringify(item) : String(item);
+  // field：这个值所在的项，按项取词和数量精度；列表里的每一项沿用列表所在的项。
   function Structure({
     value,
-    title
+    title,
+    field
   }) {
     if (Array.isArray(value)) return value.length ? /*#__PURE__*/React.createElement("ol", {
       className: "dy-source-list"
     }, value.map((item, index) => /*#__PURE__*/React.createElement("li", {
       key: index
     }, /*#__PURE__*/React.createElement(Structure, {
-      value: item
+      value: item,
+      field: field
     })))) : /*#__PURE__*/React.createElement("span", null, "\u65E0\u8BB0\u5F55");
     if (!value || typeof value !== 'object') return /[a-f0-9]{32,}/i.test(String(value)) ? /*#__PURE__*/React.createElement(window.WorkbenchReference, {
       value: value
-    }) : /*#__PURE__*/React.createElement("span", null, display(value));
+    }) : /*#__PURE__*/React.createElement("span", null, display(value, field));
     // Only keys with a label become visible facts. Opaque references, diagnostics and keys without a label fold into the
     // reference summary, so a raw key or internal value never reads as a label on screen.
     const refs = {},
@@ -138,7 +161,8 @@
     }, fields.map(([key, item]) => /*#__PURE__*/React.createElement("div", {
       key: key
     }, /*#__PURE__*/React.createElement("dt", null, labels[key]), /*#__PURE__*/React.createElement("dd", null, /*#__PURE__*/React.createElement(Structure, {
-      value: item
+      value: item,
+      field: key
     }))))), Object.keys(refs).length > 0 && /*#__PURE__*/React.createElement(window.WorkbenchReference, {
       entries: refs
     }));
@@ -167,7 +191,7 @@
       value: e
     }), source.execution_state && /*#__PURE__*/React.createElement("div", {
       className: "dy-note"
-    }, "\u6267\u884C\u72B6\u6001\uFF1A", display(source.execution_state), " \xB7 ", display(source.data_quality)), Object.keys(timeline).length > 0 && /*#__PURE__*/React.createElement(Structure, {
+    }, "\u6267\u884C\u72B6\u6001\uFF1A", display(source.execution_state, 'execution_state'), " \xB7 ", labels.data_quality, "\uFF1A", display(source.data_quality, 'data_quality')), Object.keys(timeline).length > 0 && /*#__PURE__*/React.createElement(Structure, {
       title: "\u5B89\u6392\u4E0E\u6267\u884C\u65F6\u95F4",
       value: timeline
     }), source.hours && /*#__PURE__*/React.createElement(Structure, {

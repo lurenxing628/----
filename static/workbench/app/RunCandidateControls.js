@@ -223,11 +223,9 @@
       className: "rc-reasons rc-generation wb-ref"
     }, /*#__PURE__*/React.createElement("summary", null, "\u751F\u6210\u8D44\u6599\u4E0E\u8BB0\u5F55\u7F16\u53F7"), /*#__PURE__*/React.createElement("dl", {
       className: "rc-meta"
-    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u63D0\u4EA4 / \u7ED3\u675F\u65F6\u95F4"), /*#__PURE__*/React.createElement("dd", null, M.timeLabel(g.accepted_at), /*#__PURE__*/React.createElement("small", null, M.timeLabel(g.finished_at)))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u7269\u6599\u653E\u884C\u65B9\u5F0F"), /*#__PURE__*/React.createElement("dd", null, input.material_strategy === null ? '未记录' : {
-      strict: '整批齐套',
-      stage: '按工序齐套',
-      split: '预检确认分批'
-    }[input.material_strategy || 'strict'])), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u9F50\u5957\u68C0\u67E5 / \u7F3A\u8D44\u6E90"), /*#__PURE__*/React.createElement("dd", null, input.ready_check === null ? '未记录' : input.ready_check ? '开启' : '关闭', " / ", {
+    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u63D0\u4EA4 / \u7ED3\u675F\u65F6\u95F4"), /*#__PURE__*/React.createElement("dd", null, M.timeLabel(g.accepted_at), /*#__PURE__*/React.createElement("small", null, M.timeLabel(g.finished_at)))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u7269\u6599\u653E\u884C\u65B9\u5F0F"), /*#__PURE__*/React.createElement("dd", null, input.material_strategy === null ? '未记录' : window.WorkbenchTerms.material_strategies[input.material_strategy || 'strict'])), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u4E0D\u91CD\u6392\u65F6\u6BB5"), /*#__PURE__*/React.createElement("dd", {
+      "data-hold-window": true
+    }, window.WorkbenchTerms.hold_window(input.hold_window, g.data_gaps.some(gap => gap.field === 'input.hold_window')))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u9F50\u5957\u68C0\u67E5 / \u7F3A\u8D44\u6E90"), /*#__PURE__*/React.createElement("dd", null, input.ready_check === null ? '未记录' : input.ready_check ? '开启' : '关闭', " / ", {
       auto_assign: '自动分配',
       exclude: '暂不排'
     }[input.missing_resource_policy] || '未记录')), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, '已有执行 / ' + window.WorkbenchTerms.baseline_plan), /*#__PURE__*/React.createElement("dd", null, input.completed_policy === 'preserve_actuals' ? '保留已有开工和完工记录' : '执行规则未记录', /*#__PURE__*/React.createElement("small", null, g.baseline.captured_task_count === null ? '正式计划安排数未知' : '已保留 ' + g.baseline.captured_task_count + ' 道正式计划安排')))), /*#__PURE__*/React.createElement("div", {
@@ -273,7 +271,7 @@
       }
     }), /*#__PURE__*/React.createElement("h4", null, "\u751F\u6210\u65F6\u7684\u5F00\u5DE5\u548C\u5B8C\u5DE5\u8BB0\u5F55"), task.execution_at_generation ? /*#__PURE__*/React.createElement("dl", null, Object.entries(task.execution_at_generation).map(([k, v]) => /*#__PURE__*/React.createElement("div", {
       key: k
-    }, /*#__PURE__*/React.createElement("dt", null, M.executionLabels[k]), /*#__PURE__*/React.createElement("dd", null, v === null ? '未知' : M.executionValue(v))))) : /*#__PURE__*/React.createElement("p", {
+    }, /*#__PURE__*/React.createElement("dt", null, M.executionLabels[k]), /*#__PURE__*/React.createElement("dd", null, v === null ? '未知' : M.executionValue(v, k))))) : /*#__PURE__*/React.createElement("p", {
       className: "rc-muted"
     }, "\u672A\u8BB0\u5F55\u6392\u4EA7\u65F6\u7684\u5F00\u5DE5\u548C\u5B8C\u5DE5\u72B6\u6001\u3002"), /*#__PURE__*/React.createElement(Reasons, {
       rows: task.data_gaps
@@ -326,11 +324,7 @@
       key: label
     }, label)))), /*#__PURE__*/React.createElement("tbody", null, data.items.slice((current - 1) * 20, current * 20).map(row => /*#__PURE__*/React.createElement("tr", {
       key: row.batch_ref
-    }, /*#__PURE__*/React.createElement("td", null, row.batch_id, /*#__PURE__*/React.createElement("small", null, row.part_no || '图号未记录', " \xB7 ", row.part_label || '名称未填写')), /*#__PURE__*/React.createElement("td", null, M.number(row.quantity), " \u4EF6", /*#__PURE__*/React.createElement("small", null, row.scheduled_operation_count, " / ", row.operation_count, " \u9053")), /*#__PURE__*/React.createElement("td", null, row.due_date || '未记录'), /*#__PURE__*/React.createElement("td", null, row.planned_finish ? M.timeLabel(row.planned_finish) : '暂无数据', row.partial_planned_finish && /*#__PURE__*/React.createElement("small", null, "\u5DF2\u6392\u5DE5\u5E8F\u7ED3\u675F\u65F6\u95F4\uFF1A", M.timeLabel(row.partial_planned_finish))), /*#__PURE__*/React.createElement("td", null, {
-      overdue: '预计超期',
-      on_time: '预计按期',
-      unknown: '暂无数据'
-    }[row.risk], /*#__PURE__*/React.createElement("small", null, M.number(row.delay_hours), " \u5C0F\u65F6")), /*#__PURE__*/React.createElement("td", null, row.last_operations.map(task => /*#__PURE__*/React.createElement(Button, {
+    }, /*#__PURE__*/React.createElement("td", null, row.batch_id, /*#__PURE__*/React.createElement("small", null, row.part_no || '图号未记录', " \xB7 ", row.part_label || '名称未填写')), /*#__PURE__*/React.createElement("td", null, M.number(row.quantity), " \u4EF6", /*#__PURE__*/React.createElement("small", null, row.scheduled_operation_count, " / ", row.operation_count, " \u9053")), /*#__PURE__*/React.createElement("td", null, row.due_date || '未记录'), /*#__PURE__*/React.createElement("td", null, row.planned_finish ? M.timeLabel(row.planned_finish) : '暂无数据', row.partial_planned_finish && /*#__PURE__*/React.createElement("small", null, "\u5DF2\u6392\u5DE5\u5E8F\u7ED3\u675F\u65F6\u95F4\uFF1A", M.timeLabel(row.partial_planned_finish))), /*#__PURE__*/React.createElement("td", null, window.WorkbenchTerms.delivery_risks[row.risk], /*#__PURE__*/React.createElement("small", null, M.number(row.delay_hours), " \u5C0F\u65F6")), /*#__PURE__*/React.createElement("td", null, row.last_operations.map(task => /*#__PURE__*/React.createElement(Button, {
       key: task.row_ref,
       icon: "search",
       className: "mini",

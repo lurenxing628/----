@@ -17,9 +17,12 @@
     urgent: '急件',
     critical: '特急'
   };
+  // 按期 / 超期 / 暂无数据与计划详情、执行排产、值班台同一套叫法；有冲突和交期无效是试调自己的两种判断。
+  // 未指定交期（9999-12-31）的批次交期列写“未指定交期”，交付风险和计划交付页一样记“暂无数据”。
   const risks = {
-    on_time: '可按期',
-    overdue: '预计超期',
+    on_time: window.WorkbenchTerms.delivery_risks.on_time,
+    overdue: window.WorkbenchTerms.delivery_risks.overdue,
+    due_unspecified: window.WorkbenchTerms.delivery_risks.unknown,
     unavailable: '有冲突，不能评估',
     invalid_data: '交期数据无效'
   };
@@ -59,7 +62,7 @@
     const constraints = '约束检查：' + label(data.validation.constraints_status, states) + '；整体状态：' + label(data.validation.constraints_status, states) + '；问题 ' + issues.length + ' 项';
     const common = [data.name || '未命名试调草稿', label(data.status, states), constraints, data.base_identity.display_name || '上次排产的候选方案', c.changeovers === null ? '未评估' : c.changeovers];
     const evidence = [data.draft_ref, data.scenario_ref, data.base.plan_ref ? '计划：' + data.base.plan_ref : '排产候选：' + data.base.candidate_ref, data.scenario_ref ? data.saved_at || '未记录' : undefined, note(data)];
-    const rows = c.batches.map(batch => common.concat([batch.batch_id, batch.part_name, batch.quantity, label(batch.priority, priorities), batch.due_date, batch.baseline_finish, batch.finish, batch.late_hours, batch.improvement_hours, batch.changed, batch.moved, label(batch.risk, risks)], evidence));
+    const rows = c.batches.map(batch => common.concat([batch.batch_id, batch.part_name, batch.quantity, label(batch.priority, priorities), batch.risk === 'due_unspecified' ? '未指定交期' : batch.due_date, batch.baseline_finish, batch.finish, batch.late_hours, batch.improvement_hours, batch.changed, batch.moved, label(batch.risk, risks)], evidence));
     return {
       filename: '方案试调对比.csv',
       mime: 'text/csv;charset=utf-8',

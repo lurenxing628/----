@@ -33,7 +33,7 @@ async function runActions(page, ready, report, h, flush) {
     await button('清除选择').click();
     assert(!await page.getByRole('checkbox', { name: '选择 B1', exact: true }).isChecked());
     assert(!await page.getByRole('checkbox', { name: '选择 B2', exact: true }).isChecked());
-    await button('仅已齐套').click(); await flush();
+    await button('仅齐套').click(); await flush();
     await page.locator('input[aria-label="选择 B1"]:checked').waitFor();
     await page.locator('input[aria-label="选择 B2"]:checked').waitFor();
     await page.getByRole('checkbox', { name: '选择 B2', exact: true }).uncheck();

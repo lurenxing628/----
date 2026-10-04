@@ -54,17 +54,22 @@
       className: "dot"
     }), run.recovery_required ? '等待核对排产记录' : labels[run.state]);
   }
+  // 不重排时段：本次没填时按交付设置，有同一次排产检查的结果就把推算出的时段一并写出来。
+  function holdText(value, effective) {
+    const T = window.WorkbenchTerms;
+    if (value.hold_window === undefined && effective && effective.hold_window_source === 'default') return '按交付设置：' + T.hold_window(effective.hold_window);
+    return T.hold_window(value.hold_window);
+  }
   function Scope({
-    preview
+    preview,
+    effective
   }) {
     const value = preview.normalized_input;
     return /*#__PURE__*/React.createElement("dl", {
       className: "rj-scope"
-    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u672C\u6B21\u6279\u6B21"), /*#__PURE__*/React.createElement("dd", null, value.batch_refs.length, " \u6279")), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u6392\u4EA7\u65E5\u671F"), /*#__PURE__*/React.createElement("dd", null, value.start_date, " \u81F3 ", value.end_date)), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u7269\u6599\u653E\u884C\u65B9\u5F0F"), /*#__PURE__*/React.createElement("dd", null, {
-      strict: '整批齐套',
-      stage: '按工序齐套',
-      split: '预检确认分批'
-    }[value.material_strategy || 'strict'])), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u9F50\u5957\u68C0\u67E5"), /*#__PURE__*/React.createElement("dd", null, value.ready_check ? '开启' : '关闭')), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u7F3A\u8D44\u6E90\u5DE5\u5E8F"), /*#__PURE__*/React.createElement("dd", null, value.missing_resource_policy === 'auto_assign' ? '自动分配' : '暂不排')), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u5DF2\u6709\u62A5\u5DE5"), /*#__PURE__*/React.createElement("dd", null, "\u4FDD\u7559\u5DF2\u5F00\u5DE5\u548C\u5DF2\u5B8C\u5DE5\u7684\u8BB0\u5F55")));
+    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u672C\u6B21\u6279\u6B21"), /*#__PURE__*/React.createElement("dd", null, value.batch_refs.length, " \u6279")), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u6392\u4EA7\u65E5\u671F"), /*#__PURE__*/React.createElement("dd", null, value.start_date, " \u81F3 ", value.end_date)), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u7269\u6599\u653E\u884C\u65B9\u5F0F"), /*#__PURE__*/React.createElement("dd", null, window.WorkbenchTerms.material_strategies[value.material_strategy || 'strict'])), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u9F50\u5957\u68C0\u67E5"), /*#__PURE__*/React.createElement("dd", null, value.ready_check ? '开启' : '关闭')), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u7F3A\u8D44\u6E90\u5DE5\u5E8F"), /*#__PURE__*/React.createElement("dd", null, value.missing_resource_policy === 'auto_assign' ? '自动分配' : '暂不排')), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u4E0D\u91CD\u6392\u65F6\u6BB5"), /*#__PURE__*/React.createElement("dd", {
+      "data-hold-window": true
+    }, holdText(value, effective))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u5DF2\u6709\u62A5\u5DE5"), /*#__PURE__*/React.createElement("dd", null, "\u4FDD\u7559\u5DF2\u5F00\u5DE5\u548C\u5DF2\u5B8C\u5DE5\u7684\u8BB0\u5F55")));
   }
   function Reasons({
     rows
@@ -89,6 +94,7 @@
   }
   function Confirmation({
     preview,
+    effective,
     busy,
     onConfirm,
     onClose
@@ -113,7 +119,8 @@
     }, /*#__PURE__*/React.createElement("div", {
       className: "modal-body run-job-panel rj-confirm"
     }, /*#__PURE__*/React.createElement(Scope, {
-      preview: preview
+      preview: preview,
+      effective: effective
     }), /*#__PURE__*/React.createElement("p", {
       className: "rj-muted"
     }, "\u8BA1\u7B97\u5B8C\u6210\u540E\u53EF\u6BD4\u8F83\u5019\u9009\u65B9\u6848\uFF0C\u518D\u9009\u62E9\u662F\u5426\u91C7\u7528\u4E3A\u6B63\u5F0F\u8BA1\u5212\u3002"), /*#__PURE__*/React.createElement("details", {
@@ -298,7 +305,7 @@
     }, "\u6B63\u5728\u6838\u5BF9\u4E0A\u6B21\u7684\u6392\u4EA7\u8BB0\u5F55\uFF0C\u7ED3\u679C\u8FD8\u6CA1\u786E\u8BA4\uFF0C\u6CA1\u6709\u91CD\u65B0\u8BA1\u7B97\u3002"), run.error && /*#__PURE__*/React.createElement("div", {
       className: "rj-notice",
       role: "alert"
-    }, A.message(run.error)), /*#__PURE__*/React.createElement(Candidates, {
+    }, A.failure(run.error)), /*#__PURE__*/React.createElement(Candidates, {
       key: run.run_ref,
       run: run,
       api: api

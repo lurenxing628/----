@@ -38,6 +38,7 @@
     return /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", null, row.row, " \xB7 ", row.business_code), /*#__PURE__*/React.createElement("td", null, {
       create: '新增',
       update: '更新',
+      unchanged: '不变',
       skipped: '跳过',
       rejected: '拒绝'
     }[row.action]), /*#__PURE__*/React.createElement("td", null, row.errors.length ? row.errors.join('；') : row.input && /*#__PURE__*/React.createElement("div", null, B.fields.filter(key => key in row.input.fields).map(key => /*#__PURE__*/React.createElement("div", {

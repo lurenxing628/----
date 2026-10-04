@@ -30,12 +30,16 @@
       </table></div><E.Pager paging={paging} />
     </section>;
   }
+  // Opening the editor and taking an unedited latest route follow one rule:
+  // a route without operations shows its saved route text and one blank row.
+  const openingText = (data, rows) => rows.length ? D.serialize(rows) : data.fields.route_raw || '';
+  const openingRows = rows => rows.length ? rows : [{ seq: '', op_type_name: '' }];
   function ProcessRouteEntry({ adapter, result, command, onClose, onDirty, refreshState = {}, onRefresh, active = true, disabled = false }) {
     const [context, setContext] = React.useState(result);
     const entity = context.data, sequence = React.useRef(0), request = React.useRef(null);
     const initialRows = React.useRef(D.fromEntity(entity));
-    const [mode, setMode] = React.useState('text'), [routeRaw, setRouteRaw] = React.useState(() => initialRows.current.length ? D.serialize(initialRows.current) : entity.fields.route_raw || '');
-    const [rows, setRows] = React.useState(() => (initialRows.current.length ? initialRows.current : [{ seq: '', op_type_name: '' }]).map(row => ({ ...row, key: ++sequence.current })));
+    const [mode, setMode] = React.useState('text'), [routeRaw, setRouteRaw] = React.useState(() => openingText(entity, initialRows.current));
+    const [rows, setRows] = React.useState(() => openingRows(initialRows.current).map(row => ({ ...row, key: ++sequence.current })));
     const draftText = mode === 'text' ? routeRaw : D.serialize(rows), baselineDraft = React.useRef(draftText);
     React.useLayoutEffect(() => { if (onDirty) onDirty('route', draftText !== baselineDraft.current); }, [draftText, onDirty]);
     const [state, setState] = React.useState({ busy: false, result: null, error: null });
@@ -90,9 +94,17 @@
       baselineDraft.current = D.serialize(initialRows.current);
       setRows(nextRows); setRouteRaw(text); setContext(review); setReview(null); setMergeReview(null); setMergeChoices({}); invalidate();
     }
+    function acceptFresh() {
+      const latest = D.fromEntity(review.data), text = openingText(review.data, latest), nextRows = openingRows(latest);
+      initialRows.current = latest;
+      baselineDraft.current = mode === 'text' ? text : D.serialize(nextRows);
+      setRows(nextRows.map(row => ({ ...row, key: ++sequence.current }))); setRouteRaw(text); setContext(review); setReview(null); setMergeReview(null); setMergeChoices({}); invalidate();
+    }
     async function acceptLatest() {
       if (blocked || state.busy) return;
       if (mergeReview) { try { acceptMerged(D.resolve(mergeReview, mergeChoices)); } catch (error) { setState({ busy: false, result: null, error: C.failure(error.message) }); } return; }
+      // Nothing was typed or changed locally: there is no draft to merge, so take the latest route as is.
+      if (draftText === baselineDraft.current || !draftText.trim() && !initialRows.current.length) { acceptFresh(); return; }
       abort(); setState({ busy: true, result: null, error: null });
       try {
         const parsed = await parsedDraft(review.meta.snapshot_ref);

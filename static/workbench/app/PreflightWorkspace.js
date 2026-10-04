@@ -8,6 +8,7 @@
       Rules,
       Metrics,
       Reasons,
+      HoldSummary,
       Styles
     } = window.PreflightControls;
   const labels = {
@@ -61,7 +62,7 @@
       key: row.operation_ref
     }, /*#__PURE__*/React.createElement("td", null, row.batch_id), /*#__PURE__*/React.createElement("td", null, row.sequence, " \xB7 ", row.label, row.piece_id ? ' · ' + row.piece_id : ''), /*#__PURE__*/React.createElement("td", null, labels[row.status]), /*#__PURE__*/React.createElement("td", null, row.issues.map((item, index) => /*#__PURE__*/React.createElement("p", {
       key: index
-    }, item.message, item.predecessor_sequence ? ' 前序：' + item.predecessor_sequence : '')), row.material_ready_date && /*#__PURE__*/React.createElement("p", null, "\u7528\u6599\u53EF\u7528\u65E5\u671F\uFF1A", window.WorkbenchFormat.date(row.material_ready_date)), row.execution.first_actual_start && /*#__PURE__*/React.createElement("p", null, "\u5B9E\u9645\u5F00\u5DE5\uFF1A", window.WorkbenchFormat.dateTime(row.execution.first_actual_start)), row.execution.confirmed_finish && /*#__PURE__*/React.createElement("p", null, "\u786E\u8BA4\u5B8C\u5DE5\uFF1A", window.WorkbenchFormat.dateTime(row.execution.confirmed_finish)), row.status === 'protected' && /*#__PURE__*/React.createElement("p", null, "\u5269\u4F59\u6570\u91CF\uFF1A", row.execution.remaining_quantity === null ? '未知' : row.execution.remaining_quantity))))))), pages > 1 && /*#__PURE__*/React.createElement(window.WorkbenchListControls.Pager, {
+    }, item.message, item.predecessor_sequence ? ' 前序：' + item.predecessor_sequence : '')), row.material_ready_date && /*#__PURE__*/React.createElement("p", null, "\u7528\u6599\u53EF\u7528\u65E5\u671F\uFF1A", window.WorkbenchFormat.date(row.material_ready_date)), row.execution.first_actual_start && /*#__PURE__*/React.createElement("p", null, "\u5B9E\u9645\u5F00\u5DE5\uFF1A", window.WorkbenchFormat.dateTime(row.execution.first_actual_start)), row.execution.confirmed_finish && /*#__PURE__*/React.createElement("p", null, "\u786E\u8BA4\u5B8C\u5DE5\uFF1A", window.WorkbenchFormat.dateTime(row.execution.confirmed_finish)), row.status === 'protected' && /*#__PURE__*/React.createElement("p", null, "\u5269\u4F59\u6570\u91CF\uFF1A", row.execution.remaining_quantity === null ? '未知' : row.execution.remaining_quantity), row.held && /*#__PURE__*/React.createElement("p", null, row.held.basis === 'locked' ? '正式计划里已锁定' : '因不重排时段', "\uFF0C\u4FDD\u6301\u539F\u5B89\u6392\uFF1A", window.WorkbenchFormat.dateTime(row.held.start), " \u81F3 ", window.WorkbenchFormat.dateTime(row.held.end)))))))), pages > 1 && /*#__PURE__*/React.createElement(window.WorkbenchListControls.Pager, {
       page: page,
       pages: pages,
       total: data.tasks.length,
@@ -108,6 +109,8 @@
     const [busy, setBusy] = React.useState(false),
       [expanded, setExpanded] = React.useState(false);
     const [needsRecheck, setNeedsRecheck] = React.useState(false);
+    // 上次检查按交付设置推算出的不重排时段（从开始日期起算）；开始日期没变时继续用它填显示值。
+    const [holdDefault, setHoldDefault] = React.useState(null);
     const serial = React.useRef(0),
       active = React.useRef(null),
       context = React.useRef(initialContext);
@@ -161,6 +164,7 @@
         if (serial.current === id) {
           setResult(response);
           setNeedsRecheck(false);
+          rememberHold(input, response.data.effective_config);
         }
       } catch (problem) {
         if (serial.current === id) setError(problem);
@@ -168,6 +172,13 @@
         if (serial.current === id) setBusy(false);
       }
     }
+    function rememberHold(input, config) {
+      if (config.hold_window_source === 'default') setHoldDefault({
+        start_date: input.start_date,
+        hold_window: config.hold_window
+      });
+    }
+    const effectiveHold = holdDefault && holdDefault.start_date === value.start_date ? holdDefault : null;
     const data = result && result.data,
       counts = data && data.counts,
       currentStep = window.RunPresentation.step(remembered, data);
@@ -262,6 +273,7 @@
       className: "pf-body"
     }, /*#__PURE__*/React.createElement(Rules, {
       value: value,
+      effective: effectiveHold,
       onChange: change,
       disabled: !!initial.error
     }), /*#__PURE__*/React.createElement("section", {
@@ -292,7 +304,10 @@
     }, "\u6B63\u5728\u8BFB\u53D6\u6279\u6B21\u3001\u8BBE\u5907\u4EBA\u5458\u548C\u62A5\u5DE5\u8BB0\u5F55\uFF0C\u8FD8\u6CA1\u5F00\u59CB\u6392\u4EA7\u3002"), data && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", {
       className: "pf-muted",
       role: "status"
-    }, "\u68C0\u67E5\u65F6\u95F4\uFF1A", window.WorkbenchFormat.dateTime(result.meta.as_of), " \xB7 \u7ED3\u679C\u6709\u6548\u81F3 ", window.WorkbenchFormat.dateTime(data.input_expires_at), " \xB7 \u73ED\u8868\u672A\u6838\u5BF9"), /*#__PURE__*/React.createElement(Details, {
+    }, "\u68C0\u67E5\u65F6\u95F4\uFF1A", window.WorkbenchFormat.dateTime(result.meta.as_of), " \xB7 \u7ED3\u679C\u6709\u6548\u81F3 ", window.WorkbenchFormat.dateTime(data.input_expires_at), " \xB7 \u73ED\u8868\u672A\u6838\u5BF9"), /*#__PURE__*/React.createElement(HoldSummary, {
+      key: 'hold-' + data.input_ref,
+      data: data
+    }), /*#__PURE__*/React.createElement(Details, {
       key: data.input_ref,
       data: data
     }), !!data.no_route_batches.length && /*#__PURE__*/React.createElement(NoRoutes, {

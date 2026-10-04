@@ -54,6 +54,10 @@
     });
     const timeHints = Object.keys(suggestions).length > 0,
       reasonLabel = action === 'supplement' || legacy ? '补齐原因' : '更正原因';
+    // 外协不占本厂设备和人员，不提供选择；旧记录里已填的仍显示，方便用「更正」清除（写入仍以服务端校验为准）。
+    const external = task.source === 'external',
+      held = key => !!draft[key] || !!(record && record[key]);
+    const resourceShown = key => !external || held(key);
     return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
       className: "field-entry-grid"
     }, /*#__PURE__*/React.createElement("section", null, /*#__PURE__*/React.createElement("h4", null, "\u4EA7\u51FA\u6570\u91CF"), /*#__PURE__*/React.createElement(Field, {
@@ -127,9 +131,12 @@
       "aria-label": "\u5DE5\u65F6\u5DEE\u989D"
     }, hours(difference))))), /*#__PURE__*/React.createElement("details", {
       open: action !== 'create' || !!legacy
-    }, /*#__PURE__*/React.createElement("summary", null, "\u5B9E\u9645\u8BBE\u5907 / \u4EBA\u5458 / \u5907\u6CE8", record || legacy ? ' / 原因' : ''), /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("summary", null, external ? '' : '实际设备 / 人员 / ', "\u5907\u6CE8", record || legacy ? ' / 原因' : ''), /*#__PURE__*/React.createElement("div", {
       className: "field-extra"
-    }, choices('actual_machine_ref', '实际设备', 'machine'), choices('actual_operator_ref', '实际人员', 'operator'), /*#__PURE__*/React.createElement(Field, {
+    }, external && /*#__PURE__*/React.createElement("p", {
+      className: "field-note",
+      role: "note"
+    }, held('actual_machine_ref') || held('actual_operator_ref') ? '外协工序不占用本厂设备和人员，实际设备、实际人员要留空；原记录已填的请用「更正」清除。跟进人请填在经办人里。' : '外协工序不占用本厂设备和人员，不用填实际设备和人员；跟进人请填在经办人里。'), resourceShown('actual_machine_ref') && choices('actual_machine_ref', '实际设备', 'machine'), resourceShown('actual_operator_ref') && choices('actual_operator_ref', '实际人员', 'operator'), /*#__PURE__*/React.createElement(Field, {
       label: "\u4F5C\u4E1A\u5907\u6CE8",
       path: "remark",
       error: error

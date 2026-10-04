@@ -8,7 +8,10 @@
     '草稿编号', '试调方案编号', '原来源编号', '试调方案保存时间', '核对提示'];
   const states = { editing: '可继续试调', saved: '已保存', discarded: '已放弃', valid: '通过', warning: '有提示', blocked: '有冲突，不能采用' };
   const priorities = { normal: '普通', urgent: '急件', critical: '特急' };
-  const risks = { on_time: '可按期', overdue: '预计超期', unavailable: '有冲突，不能评估', invalid_data: '交期数据无效' };
+  // 按期 / 超期 / 暂无数据与计划详情、执行排产、值班台同一套叫法；有冲突和交期无效是试调自己的两种判断。
+  // 未指定交期（9999-12-31）的批次交期列写“未指定交期”，交付风险和计划交付页一样记“暂无数据”。
+  const risks = { on_time: window.WorkbenchTerms.delivery_risks.on_time, overdue: window.WorkbenchTerms.delivery_risks.overdue,
+    due_unspecified: window.WorkbenchTerms.delivery_risks.unknown, unavailable: '有冲突，不能评估', invalid_data: '交期数据无效' };
   const label = (value, labels) => value == null ? null : Object.prototype.hasOwnProperty.call(labels, value) ? labels[value] : '未识别（' + String(value) + '）';
 
   function checkBatches(data) {
@@ -50,7 +53,7 @@
       (data.base.plan_ref ? '计划：' + data.base.plan_ref : '排产候选：' + data.base.candidate_ref),
       data.scenario_ref ? data.saved_at || '未记录' : undefined, note(data)];
     const rows = c.batches.map(batch => common.concat([batch.batch_id, batch.part_name, batch.quantity, label(batch.priority, priorities),
-      batch.due_date, batch.baseline_finish, batch.finish, batch.late_hours, batch.improvement_hours, batch.changed, batch.moved, label(batch.risk, risks)], evidence));
+      batch.risk === 'due_unspecified' ? '未指定交期' : batch.due_date, batch.baseline_finish, batch.finish, batch.late_hours, batch.improvement_hours, batch.changed, batch.moved, label(batch.risk, risks)], evidence));
     return { filename: '方案试调对比.csv', mime: 'text/csv;charset=utf-8',
       text: '\uFEFF' + headers.map(header => window.APSSystemWorkbench.csvCell(header)).join(',') + '\r\n' +
         rows.map(row => row.map(cell).join(',')).join('\r\n') + '\r\n' };

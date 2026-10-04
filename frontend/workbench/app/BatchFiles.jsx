@@ -9,7 +9,7 @@
   }
   function PreviewRow({ row }) {
     const names = { quantity: '数量', due_date: '交期', priority: '优先级', ready_status: '齐套', ready_date: '齐套日期', remark: '备注' };
-    return <tr><td>{row.row} · {row.business_code}</td><td>{({ create: '新增', update: '更新', skipped: '跳过', rejected: '拒绝' })[row.action]}</td>
+    return <tr><td>{row.row} · {row.business_code}</td><td>{({ create: '新增', update: '更新', unchanged: '不变', skipped: '跳过', rejected: '拒绝' })[row.action]}</td>
       <td>{row.errors.length ? row.errors.join('；') : row.input && <div>{B.fields.filter(key => key in row.input.fields).map(key =>
         <div key={key}>{names[key]}：{window.BatchControls.display(key, row.before && row.before.fields[key])} → {window.BatchControls.display(key, row.input.fields[key])}</div>)}</div>}</td></tr>;
   }

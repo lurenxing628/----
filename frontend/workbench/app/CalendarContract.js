@@ -82,8 +82,17 @@
     return result;
   }
   function draft(value) {
-    return { ...value.fields, defaultPeriods: value.default_periods, periods: value.fields.periods == null ? null : value.fields.periods.map(row => ({ ...row })), shiftStart: value.stored && value.stored.shift_start || value.effective.window_start.slice(11, 16),
+    // legacyShift：原记录是没有逐段时段的旧单班工作日，休息改回工作日时恢复原班次，不填默认时段。
+    return { ...value.fields, defaultPeriods: value.default_periods, legacyShift: value.fields.type === 'work' && value.fields.periods == null,
+      periods: value.fields.periods == null ? null : value.fields.periods.map(row => ({ ...row })), shiftStart: value.stored && value.stored.shift_start || value.effective.window_start.slice(11, 16),
       shiftEnd: value.stored && value.stored.shift_end || '', hours: displayNumber(value.fields.hours), eff: displayNumber(value.fields.eff), note: value.fields.note || '' };
+  }
+  // 切换「这一天是否排产」。休息改回工作日时：草稿里还留着逐段时段，或原记录是旧单班工作日（periods 为 null），
+  // 就原样恢复原班次起点和工时；原本是休息日、没单独设置或时段被清空时，才填默认工作时间。
+  function switchType(value, type) {
+    if (type !== 'work' || value.type !== 'rest' || value.periods?.length || value.periods == null && value.legacyShift) return { ...value, type };
+    const periods = value.defaultPeriods || window.APSWorkPeriods.defaults();
+    return { ...value, type, periods: window.APSWorkPeriods.clone(periods), hours: String(window.APSWorkPeriods.hours(periods)), allowNormal: 'yes', allowUrgent: 'yes' };
   }
   function number(value, key) {
     const result = Number(value);
@@ -110,6 +119,8 @@
     if (!original || !original.explicit) return converted;
     const output = {};
     keys.forEach(key => {
+      // 有逐段时段时工时由时段算出：时段没改就不比较、不提交工时，免得换算末位差异被当成改了工时。
+      if (key === 'hours' && C.own(converted, 'periods') && JSON.stringify(converted.periods) === JSON.stringify(original.fields.periods)) return;
       const before = ['shiftStart', 'shiftEnd'].includes(key) ? draft(original)[key] || null
         : (['hours', 'eff'].includes(key) ? Number(displayNumber(original.fields[key])) : original.fields[key]);
       if (C.own(converted, key) && JSON.stringify(converted[key]) !== JSON.stringify(before)) output[key] = converted[key];
@@ -133,5 +144,5 @@
     }
     return { tone, text };
   }
-  window.APSCalendarContract = { path, month, preview, monthDays, monthKey, isDate, draft, input, stale, tag, rangeDates, displayNumber };
+  window.APSCalendarContract = { path, month, preview, monthDays, monthKey, isDate, draft, switchType, input, stale, tag, rangeDates, displayNumber };
 })();

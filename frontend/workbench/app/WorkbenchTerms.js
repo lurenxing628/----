@@ -15,6 +15,17 @@
     // 排产记录状态与候选方案状态：值班台、执行排产、排产记录、试调列表共用同一套叫法。
     run_statuses: Object.freeze({ queued: '等待计算', running: '正在计算', complete: '计算完成', partial: '部分完成', failed: '计算失败', interrupted: '已中断' }),
     candidate_statuses: Object.freeze({ completed: '已完成', partial: '部分完成', failed: '失败', skipped: '已跳过' }),
+    // 物料放行方式：排产规则的选项与运行、记录、候选里的回显用同一套叫法。
+    material_strategies: Object.freeze({ strict: '整批齐套', stage: '按工序齐套', split: '预检分批开工' }),
+    // 不重排时段：排产检查、排产任务、排产记录、候选方案的回显用同一套说法。没有这一项的是旧记录，当时按交付设置。
+    hold_window: (value, invalid) => value === undefined ? '未记录（按当时的交付设置）' : invalid ? '记录无效' : value === null ? '不设'
+      : value.start.replace('T', ' ') + ' 至 ' + value.end.replace('T', ' '),
+    // 报工执行状态：现场记录、实际甘特、报表、校准、排产候选、试调和值班台共用；与后端导出的“排产时报工状态”一致。
+    execution_states: Object.freeze({ unreported: '待报工', started: '已开工', partial: '部分完成', paused: '已暂停', exception: '异常', complete: '已完工' }),
+    // 报工记录的数据完整性：与后端报表、实际甘特导出的叫法一致。complete 在这里是“完整”，不是执行状态的“已完工”。
+    data_quality: Object.freeze({ complete: '完整', incomplete: '不完整', legacy_incomplete: '历史资料不完整', invalid: '需复核' }),
+    // 交付判断：计划详情、执行排产、值班台、试调共用；与正式计划导出一致。
+    delivery_risks: Object.freeze({ overdue: '预计超期', on_time: '预计按期', unknown: '暂无数据' }),
     // 页头身份标签允许 v3；句子里写“第 3 版”。
     plan_version: version => '正式 v' + version,
     download_started: name => '已交给浏览器下载：' + name,

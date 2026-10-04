@@ -115,6 +115,17 @@ check('invalid-envelope-blocks-read-and-return', () => {
   assert.equal(value.state.queryEnabled, false); assert.equal(value.back.props.disabled, true); equal(value.calls, []);
   assert(value.all.some(node => node.type === ErrorBox && node.props.error && /批次来源或返回入口已失效/.test(node.props.error.message)));
 });
+// 拆分预检的物料表：数量按批次详情的口径显示全部小数，但不显示二进制尾差，也不把非零小数显示成 0。
+check('split-material-quantities-hide-binary-tails', () => {
+  const splitWindow = {ResourceControls: {}, APSBatchContract: {}}, splitVM = vm.createContext({...globals, window: splitWindow, React});
+  vm.runInContext(fs.readFileSync(path.join(root, 'frontend/workbench/app/WorkbenchFormat.js'), 'utf8'), splitVM);
+  const split = compile({babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'),
+    sources: [{path: 'app/BatchSplitPanel.jsx', code: fs.readFileSync(path.join(root, 'frontend/workbench/app/BatchSplitPanel.jsx'), 'utf8')}]});
+  split.outputs.forEach(item => vm.runInContext(item.code, splitVM, {filename: item.path}));
+  const amount = splitWindow.BatchSplitPanel.amount;
+  equal([0.3 + 0.6, 7 / 3, 0.004, 2.0005, 0.0000001, 12, 1234.5].map(amount),
+    ['0.9', '2.33333333333333', '0.004', '2.0005', '0.0000001', '12', '1,234.5']);
+});
 const failed = cases.filter(row => row.status === 'failed');
 console.log(JSON.stringify({scope: 'batch_dashboard_return', cases: cases.length, failed: failed.length, checks: cases}));
 if (failed.length) process.exitCode = 1;

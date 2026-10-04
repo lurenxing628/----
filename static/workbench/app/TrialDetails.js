@@ -25,7 +25,7 @@
     // 状态与说明用报工记录和候选页同一套叫法；不把内部取值原样上屏。
     const R = window.RunCandidateModel,
       F = window.FieldContract;
-    const rows = [['target_quantity', U.number(value.target_quantity)], ['known_completed_quantity', U.number(value.known_completed_quantity)], ['remaining_quantity', U.number(value.remaining_quantity)], ['execution_state', F.states[value.execution_state] || R.executionValue(value.execution_state)], ['data_quality', R.executionValue(value.data_quality)], ['target_basis', R.executionValue(value.target_basis)]];
+    const rows = [['target_quantity', U.number(value.target_quantity)], ['known_completed_quantity', U.number(value.known_completed_quantity)], ['remaining_quantity', U.number(value.remaining_quantity)], ['execution_state', F.states[value.execution_state] || R.executionValue(value.execution_state)], ['data_quality', R.executionValue(value.data_quality, 'data_quality')], ['target_basis', R.executionValue(value.target_basis, 'target_basis')]];
     return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h4", null, title), /*#__PURE__*/React.createElement("dl", {
       className: "tt-facts"
     }, rows.map(([key, v]) => /*#__PURE__*/React.createElement(React.Fragment, {

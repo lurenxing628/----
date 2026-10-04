@@ -52,6 +52,24 @@
       note: value.remark || ''
     };
   }
+  // 只有从休息改回上班才可能补默认时段，已经是上班时再点「上班」什么都不改。草稿里还有逐段时段，
+  // 或这一天原本是没有逐段时段的旧单班上班日，就恢复原班次起止；原本休息、没单独设置或时段被清空才填默认工作时间。
+  function switchType(day, draft, type) {
+    if (type !== 'work' || draft.type !== 'rest' || draft.periods?.length || draft.periods == null && day.explicit && day.day_type === 'workday' && day.periods == null) return {
+      ...draft,
+      type
+    };
+    return {
+      ...draft,
+      type,
+      periods: window.APSWorkPeriods.clone(day.default_periods || window.APSWorkPeriods.defaults())
+    };
+  }
+  // 旧行只存了开始和工时、没有结束时刻：开始时刻没动时不提交空结束，后端保留原来的工时；
+  // 原来有结束时刻被清空，或改了开始时刻，才按默认班次时长推算。
+  function keepsOpenEnd(draft, original) {
+    return !!original && original.explicit && original.day_type === 'workday' && original.periods == null && original.shift_end == null && draft.shiftStart === draftOf(original).shiftStart;
+  }
   function input(draft, original) {
     const fields = {
       type: draft.type,
@@ -79,7 +97,7 @@
           message: '格式为 16:00，跨零点填第二天的时刻。'
         }]);
         fields.shiftEnd = draft.shiftEnd;
-      } else fields.shiftEnd = null;
+      } else if (!keepsOpenEnd(draft, original)) fields.shiftEnd = null;
     }
     if (Array.isArray(draft.periods)) {
       const periods = draft.type === 'rest' ? [] : draft.periods,
@@ -149,6 +167,7 @@
     envelope,
     month,
     draftOf,
+    switchType,
     input,
     hours,
     tag,

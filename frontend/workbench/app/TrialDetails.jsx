@@ -13,7 +13,7 @@
     const R = window.RunCandidateModel, F = window.FieldContract;
     const rows = [['target_quantity', U.number(value.target_quantity)], ['known_completed_quantity', U.number(value.known_completed_quantity)],
       ['remaining_quantity', U.number(value.remaining_quantity)], ['execution_state', F.states[value.execution_state] || R.executionValue(value.execution_state)],
-      ['data_quality', R.executionValue(value.data_quality)], ['target_basis', R.executionValue(value.target_basis)]];
+      ['data_quality', R.executionValue(value.data_quality, 'data_quality')], ['target_basis', R.executionValue(value.target_basis, 'target_basis')]];
     return <div><h4>{title}</h4><dl className="tt-facts">{rows.map(([key, v]) =>
         <React.Fragment key={key}><dt>{R.executionLabels[key]}</dt><dd>{v}</dd></React.Fragment>)}</dl></div>;
   }

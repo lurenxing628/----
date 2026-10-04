@@ -11,6 +11,7 @@
     end_date: '排产止日',
     ready_check: '齐套检查',
     material_strategy: '物料放行方式',
+    hold_window: '不重排时段',
     missing_resource_policy: '缺设备人员时的规则',
     completed_policy: '执行规则',
     batch_count: '所选批次'
@@ -164,19 +165,19 @@
       partial: '保留部分结果，须查看候选',
       failed: '未保存可用候选',
       interrupted: '排产中断，未自动重跑'
-    }[run.state]), run.recovery_required && /*#__PURE__*/React.createElement("small", null, "\u539F\u72B6\u6001\uFF1A", labels[run.state]));
+    }[run.state]), run.recovery_required && /*#__PURE__*/React.createElement("small", null, "\u539F\u72B6\u6001\uFF1A", labels[run.state]), run.error && /*#__PURE__*/React.createElement("small", {
+      className: "rh-danger"
+    }, run.error.message));
   }
   function ScopeSummary({
     value
   }) {
-    return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", null, value.start_date || '起日未记录', " \u81F3 ", value.end_date || '止日未记录'), /*#__PURE__*/React.createElement("small", null, "\u7269\u6599\u653E\u884C\uFF1A", value.material_strategy === null ? '未记录' : {
-      strict: '整批齐套',
-      stage: '按工序齐套',
-      split: '预检确认分批'
-    }[value.material_strategy || 'strict']), /*#__PURE__*/React.createElement("small", null, "\u9009\u6279 ", value.batch_count === null ? '未记录' : number(value.batch_count) + ' 批', " \xB7 \u9F50\u5957", value.ready_check === null ? '未记录' : value.ready_check ? '开启' : '关闭'), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "\u6392\u4EA7\u8BBE\u7F6E"), /*#__PURE__*/React.createElement("small", null, "\u7F3A\u8D44\u6E90\uFF1A", {
+    return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", null, value.start_date || '起日未记录', " \u81F3 ", value.end_date || '止日未记录'), /*#__PURE__*/React.createElement("small", null, "\u7269\u6599\u653E\u884C\uFF1A", value.material_strategy === null ? '未记录' : window.WorkbenchTerms.material_strategies[value.material_strategy || 'strict']), /*#__PURE__*/React.createElement("small", null, "\u9009\u6279 ", value.batch_count === null ? '未记录' : number(value.batch_count) + ' 批', " \xB7 \u9F50\u5957", value.ready_check === null ? '未记录' : value.ready_check ? '开启' : '关闭'), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "\u6392\u4EA7\u8BBE\u7F6E"), /*#__PURE__*/React.createElement("small", null, "\u7F3A\u8D44\u6E90\uFF1A", {
       auto_assign: '自动分配',
       exclude: '暂不排'
-    }[value.missing_resource_policy] || '未记录', " \xB7 ", value.completed_policy === 'preserve_actuals' ? '保留开工和完工记录' : '执行规则未记录')), !!value.data_gaps.length && /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", {
+    }[value.missing_resource_policy] || '未记录', " \xB7 ", value.completed_policy === 'preserve_actuals' ? '保留开工和完工记录' : '执行规则未记录'), /*#__PURE__*/React.createElement("small", {
+      "data-hold-window": true
+    }, "\u4E0D\u91CD\u6392\u65F6\u6BB5\uFF1A", window.WorkbenchTerms.hold_window(value.hold_window, value.data_gaps.some(g => g.field === 'hold_window')))), !!value.data_gaps.length && /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", {
       className: "rh-warning"
     }, "\u6392\u4EA7\u65F6\u8D44\u6599\u7F3A\u9879 ", value.data_gaps.length), value.data_gaps.map(g => /*#__PURE__*/React.createElement("small", {
       key: g.field

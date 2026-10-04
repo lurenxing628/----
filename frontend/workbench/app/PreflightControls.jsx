@@ -7,14 +7,54 @@
       <input type="radio" name={id} checked={value === key} disabled={disabled || unavailable} onChange={() => onChange(key)} /><span>{text}</span>
     </label>)}</div>;
   }
-  function Rules({ value, onChange, disabled }) {
+  // 不重排时段：没动过时不带这一项（按交付设置），检查后用本次生效的时段填显示值；改任一端就按本次单独填的发送，点「不设」发送 null。
+  function HoldWindow({ value, effective, onChange, disabled }) {
+    const C = window.PreflightContract, explicit = value.hold_window !== undefined;
+    const shown = explicit ? value.hold_window : effective ? effective.hold_window : null, bounds = C.holdBounds(value.start_date, value.end_date) || {};
+    let problem = '';
+    if (explicit) { try { C.holdWindow(value.hold_window, value.start_date, value.end_date); } catch (error) { problem = error.message; } }
+    const status = explicit ? value.hold_window === null ? '本次不设' : '本次单独填写' : effective ? effective.hold_window ? '（按交付设置）' : '（按交付设置：不设）' : '未填时按交付设置，检查后显示本次生效的时段';
+    function edit(key, text) {
+      // 按交付设置推算的时段可能超出这次的排产日期：只改一端时，带过来的另一端先截到日期范围内，免得没动过的一端报错。
+      const base = { ...(shown || { start: '', end: '' }) };
+      if (!explicit && shown && bounds.min && base.start < bounds.min) base.start = bounds.min;
+      if (!explicit && shown && bounds.max && base.end > bounds.max) base.end = bounds.max;
+      onChange({ hold_window: { ...base, [key]: text } });
+    }
+    return <><div className="pf-rule pf-hold" role="group" aria-label="不重排时段">
+      <div className="pf-hold-head"><strong>不重排时段</strong><span className="pf-muted" data-hold-source={explicit ? 'explicit' : effective ? 'default' : 'unchecked'}>{status}</span></div>
+      <div className="pf-hold-fields">{[['start', '开始'], ['end', '结束']].map(([key, label]) => <label key={key}>{label}
+        <input type="datetime-local" aria-label={'不重排时段' + label} min={bounds.min} max={bounds.max} value={shown ? shown[key] : ''} disabled={disabled} aria-invalid={!!problem || undefined} onChange={event => edit(key, event.target.value)} /></label>)}
+        <Button icon="x" disabled={disabled || explicit && value.hold_window === null} onClick={() => onChange({ hold_window: null })}>不设</Button>
+        {explicit && <Button icon="rotate-ccw" disabled={disabled} onClick={() => onChange({ hold_window: undefined })}>按交付设置</Button>}</div></div>
+      <div className="pf-rule pf-note">甘特图上落在这段时间里的工序保持原安排不动，同批次排在前面的工序也一起不动；其余照常重排。</div>
+      {problem && <div className="pf-rule pf-note pf-hold-error" role="alert">{problem}</div>}</>;
+  }
+  const minuteText = value => window.WorkbenchFormat.dateTime(value);
+  function HeldRows({ rows, label }) {
+    const [page, setPage] = React.useState(1), pages = Math.max(1, Math.ceil(rows.length / 100));
+    return <div className="pf-held-group"><strong>{label} · {rows.length} 道</strong><ul>{rows.slice((page - 1) * 100, page * 100).map(row => <li key={row.operation_ref} data-held-basis={row.held.basis}>
+      {row.batch_id} · {row.sequence} {row.label}{row.piece_id ? ' · ' + row.piece_id : ''} · 原安排 {minuteText(row.held.start)} 至 {minuteText(row.held.end)}</li>)}</ul>
+      {pages > 1 && <window.WorkbenchListControls.Pager page={page} pages={pages} total={rows.length} size={100} unit="道" label={label} onPage={setPage} />}</div>;
+  }
+  // 检查结果里的“本次不重排”一行；明细列出因不重排时段保持原安排的工序，正式计划里锁定的另列。
+  function HoldSummary({ data }) {
+    const span = data.effective_config.hold_window, kept = data.tasks.filter(row => row.held && row.held.basis === 'hold_window'), locked = data.tasks.filter(row => row.held && row.held.basis === 'locked');
+    const text = span ? '本次不重排：' + window.WorkbenchTerms.hold_window(span) + '，共 ' + data.counts.hold_window_tasks + ' 道工序保持原安排' : '本次不设不重排时段';
+    const source = data.effective_config.hold_window_source === 'default' ? '（按交付设置）' : '';
+    if (!kept.length && !locked.length) return <p className="pf-hold-summary" data-hold-summary role="status">{text}{source}</p>;
+    return <details className="pf-detail pf-hold-summary" data-hold-summary><summary>{text}{source}{locked.length ? '；正式计划里已锁定 ' + locked.length + ' 道' : ''} · 查看明细</summary>
+      {!!kept.length && <HeldRows key="kept" rows={kept} label="不重排时段内保持原安排" />}{!!locked.length && <HeldRows key="locked" rows={locked} label="正式计划里已锁定" />}</details>;
+  }
+  function Rules({ value, effective, onChange, disabled }) {
     return <section aria-labelledby="pf-rules-title"><h3 id="pf-rules-title">本次排产规则</h3><div className="pf-rows">
       <div className="pf-rule"><strong>齐套检查</strong><Segment label="齐套检查" value={value.ready_check} choices={[[true, '开启'], [false, '关闭']]} disabled={disabled} onChange={ready_check => onChange({ ready_check, ...(ready_check ? {} : { material_strategy: 'strict' }) })} /></div>
       <div className="pf-rule"><strong>物料放行方式</strong><Segment label="物料放行方式" value={value.material_strategy || 'strict'}
-        choices={[["strict", '整批齐套'], ["stage", '按工序齐套'], ["split", '预检分批开工']]} disabled={disabled}
+        choices={Object.entries(window.WorkbenchTerms.material_strategies)} disabled={disabled}
         onChange={material_strategy => onChange({ material_strategy, ready_check: true })} /></div>
       <div className="pf-rule pf-note">按工序齐套：只等待本序及前序需要的物料。分批开工：先预检可做数量，确认保存拆分后再排产。</div>
       <div className="pf-rule"><strong>缺资源工序</strong><Segment label="缺资源工序" value={value.missing_resource_policy} choices={[["auto_assign", '自动分配'], ['exclude', '暂不排']]} disabled={disabled} onChange={missing_resource_policy => onChange({ missing_resource_policy })} /></div>
+      <HoldWindow value={value} effective={effective} onChange={onChange} disabled={disabled} />
       <div className="pf-rule"><span className="pf-fixed">已开工工序：保留记录（不可修改）</span></div>
       <div className="pf-rule pf-note">规则仅用于本次排产。</div>
     </div></section>;
@@ -53,5 +93,5 @@
   function Styles() {
     return null;
   }
-  window.PreflightControls = { Button, ErrorBox, Rules, Metrics, Reasons, Styles };
+  window.PreflightControls = { Button, ErrorBox, Rules, Metrics, Reasons, HoldSummary, Styles };
 })();

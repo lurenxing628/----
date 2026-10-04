@@ -39,7 +39,7 @@
     return <div className="iopane on">
       <div className="chead"><h3 style={{ margin: 0 }}>{day.date} · {day.explicit ? '已单独设置' : '未单独设置'}</h3></div>
       <Segment label="这一天" value={draft.type} disabled={disabled} options={[['work', '上班'], ['rest', '休息']]}
-        onChange={type => setDraft({ ...draft, type, ...(type === 'work' && !draft.periods?.length ? { periods: window.APSWorkPeriods.clone(day.default_periods || window.APSWorkPeriods.defaults()) } : {}) })} />
+        onChange={type => setDraft(O.switchType(day, draft, type))} />
       {!rest && draft.periods == null && <div className="fgrid">
         <Field label="班次开始" path="fields.shiftStart" error={error} required>
           <input type="time" value={draft.shiftStart} disabled={disabled}

@@ -30,8 +30,11 @@
   const issues = v => Array.isArray(v) && v.every(issue);
   // Progress is the worker's count of finished candidate plans; it only exists while the run is computing.
   const progress = v => shape(v, ['done', 'total', 'updated_at']) && count(v.done) && count(v.total) && v.done <= v.total && time(v.updated_at);
+  // 不重排时段：旧调用不带这一项（按交付设置），null 为本次不设，否则是精确到分的起止。
+  const minute = v => text(v) && /^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d$/.test(v) && date(v.slice(0, 10));
+  const holdWindow = v => v === undefined || v === null || shape(v, ['start', 'end']) && minute(v.start) && minute(v.end) && v.start < v.end;
   function input(v) {
-    check(shape(v, ['batch_refs', 'start_date', 'end_date', 'ready_check', 'missing_resource_policy', 'completed_policy'].concat(v.material_strategy === undefined ? [] : ['material_strategy'])) && (v.material_strategy === undefined || ['strict', 'stage', 'split'].includes(v.material_strategy)) && Array.isArray(v.batch_refs) && v.batch_refs.length <= 5000 && v.batch_refs.every(ref) && new Set(v.batch_refs).size === v.batch_refs.length && date(v.start_date) && date(v.end_date) && v.start_date <= v.end_date && typeof v.ready_check === 'boolean' && ['auto_assign', 'exclude'].includes(v.missing_resource_policy) && v.completed_policy === 'preserve_actuals');
+    check(shape(v, ['batch_refs', 'start_date', 'end_date', 'ready_check', 'missing_resource_policy', 'completed_policy'], ['material_strategy', 'hold_window']) && (v.material_strategy === undefined || ['strict', 'stage', 'split'].includes(v.material_strategy)) && holdWindow(v.hold_window) && Array.isArray(v.batch_refs) && v.batch_refs.length <= 5000 && v.batch_refs.every(ref) && new Set(v.batch_refs).size === v.batch_refs.length && date(v.start_date) && date(v.end_date) && v.start_date <= v.end_date && typeof v.ready_check === 'boolean' && ['auto_assign', 'exclude'].includes(v.missing_resource_policy) && v.completed_policy === 'preserve_actuals');
     return v;
   }
   function envelope(v) {
@@ -123,6 +126,10 @@
   };
   function message(error) {
     return messages[error && error.code] || OUTCOMES.unknown('排产');
+  }
+  // 已结束的排产失败是确定结果：不认识的失败原因照后端原话显示，不能说成“可能已经生效”。
+  function failure(error) {
+    return messages[error && error.code] || error && text(error.message) && error.message || messages.candidate_computation_failed;
   }
   function previewMessage(error) {
     return error && messages[error.code] && !['storage_failure', 'entity_not_found', 'run_result_inconsistent'].includes(error.code) ? messages[error.code] : '排产条件没有读出来，请重新检查。';
@@ -332,6 +339,7 @@
     catalog,
     envelope,
     message,
+    failure,
     previewMessage,
     details,
     isRejected: e => rejections.has(e),

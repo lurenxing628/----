@@ -213,7 +213,7 @@
       default_days: '默认周期（天）'
     };
     if (kind === 'op_type' && category === 'internal') labels.remark = '产能备注';
-    if (kind === 'op_type' && category === 'external') labels.default_merge_mode = '默认周期规则';
+    if (kind === 'op_type' && ['external', 'both'].includes(category)) labels.default_merge_mode = '默认周期规则';
     if (kind === 'machine') labels.category = '设备分类（只读）';
     return labels;
   }

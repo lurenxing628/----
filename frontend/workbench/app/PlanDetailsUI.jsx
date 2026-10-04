@@ -1,7 +1,7 @@
 (function () {
   'use strict';
   const { Button, Issues } = window.ResourceControls, M = window.PlanGanttModel;
-  const riskLabel = { overdue: '预计超期', on_time: '预计按期', unknown: '暂无数据' };
+  const riskLabel = window.WorkbenchTerms.delivery_risks;
   const deliveryIssues = {
     operations_unscheduled: '尚有工序未安排', operations_missing: '工序资料未记录', schedule_time_invalid: '安排时间无效',
     saved_plan_incomplete: '保存的计划不完整', due_date_missing: '交期未记录', due_date_invalid: '交期无效',

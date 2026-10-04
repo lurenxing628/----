@@ -7,10 +7,13 @@
     } = window.ResourceControls,
     M = window.DashboardTimelineModel;
   // Counts stay whole numbers; hours and other measured values keep two decimals.
-  const value = v => v === null || v === undefined ? '未知' : typeof v === 'number' ? M.number(v, {
+  // 不足 0.01 的非零值写“不到 0.01”，不能读成 0。
+  const tiny = v => typeof v === 'number' && v !== 0 && Number(Math.abs(v).toFixed(2)) === 0;
+  const value = v => v === null || v === undefined ? '未知' : tiny(v) ? '不到 0.01' : typeof v === 'number' ? M.number(v, {
     digits: Number.isInteger(v) ? 0 : 2
   }) : String(v);
-  const risk = row => row.risk === 'overdue' ? '超期 ' + value(row.delay_hours) + ' 小时' : row.risk === 'on_time' ? '预计准时' : '交付未知';
+  const risks = window.WorkbenchTerms.delivery_risks;
+  const risk = row => row.risk === 'overdue' ? tiny(row.delay_hours) ? '超期不到 0.01 小时' : '超期 ' + value(row.delay_hours) + ' 小时' : risks[row.risk] || risks.unknown;
   function Batch({
     row,
     selected,
@@ -151,7 +154,7 @@
       key: row.batch_ref,
       "data-pending-batch": row.batch_ref
     }, /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("b", null, row.batch_id), /*#__PURE__*/React.createElement("small", null, value(row.part_label))), /*#__PURE__*/React.createElement("td", null, value(row.quantity)), /*#__PURE__*/React.createElement("td", null, value(row.due_date)), /*#__PURE__*/React.createElement("td", null, {
-      yes: '已齐套',
+      yes: '齐套',
       no: '未齐套',
       partial: '部分齐套'
     }[row.ready_status] || '未知'), /*#__PURE__*/React.createElement("td", null, value(row.ready_date))))))), !p.items.length && /*#__PURE__*/React.createElement(window.WorkbenchListControls.EmptyState, {
@@ -217,6 +220,7 @@
     Downtime,
     Material,
     Actual,
-    value
+    value,
+    risk
   };
 })();

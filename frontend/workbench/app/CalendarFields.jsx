@@ -9,11 +9,7 @@
   }
   function CalendarFields({ value, onChange, disabled, error, noteEnabled = true, showSummary = true }) {
     const work = value.type === 'work';
-    const change = (key, next) => {
-      if (key === 'type' && next === 'work' && value.type === 'rest' && !value.periods?.length)
-        onChange({ ...value, type: next, periods: window.APSWorkPeriods.clone(value.defaultPeriods || window.APSWorkPeriods.defaults()), hours: String(window.APSWorkPeriods.hours(value.defaultPeriods || window.APSWorkPeriods.defaults())), allowNormal: 'yes', allowUrgent: 'yes' });
-      else onChange({ ...value, [key]: next });
-    };
+    const change = (key, next) => onChange(key === 'type' ? window.APSCalendarContract.switchType(value, next) : { ...value, [key]: next });
     const id = React.useId();
     return <>
       <Segment label="这一天是否排产" value={value.type} options={[["work", "工作日"], ["rest", "休息日"]]} onChange={next => change('type', next)} disabled={disabled} />

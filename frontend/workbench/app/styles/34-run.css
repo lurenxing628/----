@@ -224,3 +224,14 @@
 .rc-legend i.rc-overlap{background:var(--wb-gantt-overlap-stripe),var(--wb-gantt-overlap-fill);border-color:var(--wb-gantt-overlap-edge)}
 /* 外协：画布画的是 tone 底色 + 4/3 虚线边 + --wb-gantt-plan-edge 稀疏斜纹；CSS 边框只能 dashed，斜纹用 00-tokens 的 --wb-gantt-external-stripe。 */
 .rc-legend i.rc-external{border-style:dashed;background:var(--wb-gantt-external-stripe),var(--wb-gantt-primary-fill)}
+
+/* 不重排时段：两个“日期 + 时:分”输入放不进右侧 200px 的选项列，整行改成上下两层。 */
+.preflight-workspace .pf-rule.pf-hold{grid-template-columns:minmax(0,1fr);align-items:start;gap:var(--space-2)}
+.preflight-workspace .pf-hold-head{display:flex;align-items:baseline;gap:var(--space-2);flex-wrap:wrap}
+.preflight-workspace .pf-hold-fields{display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap}
+.preflight-workspace .pf-hold-fields label{display:flex;align-items:center;gap:var(--space-2);font-size:var(--font-size-1);color:var(--ui-info-muted)}
+.preflight-workspace .pf-hold-fields input{width:190px;max-width:100%;min-width:0}
+.preflight-workspace .pf-rule.pf-hold-error{color:var(--ui-danger-text)}
+.preflight-workspace p.pf-hold-summary{margin:var(--space-3) 0 0;font-size:var(--font-size-2)}
+.preflight-workspace .pf-held-group{margin-top:var(--space-3)}
+.preflight-workspace .pf-held-group ul{margin:var(--space-1) 0 0;padding-left:var(--space-4);max-height:240px;overflow:auto;font-size:var(--font-size-1);line-height:1.6}

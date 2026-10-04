@@ -1,8 +1,9 @@
 'use strict';
 const assert = require('node:assert/strict'), fs = require('node:fs'), path = require('node:path'), vm = require('node:vm');
 const root = path.resolve(__dirname, '../..'), input = JSON.parse(fs.readFileSync(process.argv[3], 'utf8'));
-const W = { WorkbenchTerms: { report_actions: {} } }, context = vm.createContext({ window: W, Date });
-for (const file of ['resource-contract.js', 'PointContract.js', 'WorkbenchFormat.js', 'FieldContract.js',
+// FieldContract 的报工状态与报工类型取自全站词表，这里加载真实的 WorkbenchTerms。
+const W = {}, context = vm.createContext({ window: W, Date });
+for (const file of ['WorkbenchTerms.js', 'resource-contract.js', 'PointContract.js', 'WorkbenchFormat.js', 'FieldContract.js',
   'ActualGanttContract.js', 'RunCandidateAPI.js', 'RunBaselineAPI.js']) {
   vm.runInContext(fs.readFileSync(path.join(root, 'frontend/workbench/app', file), 'utf8'), context, { filename: file });
 }

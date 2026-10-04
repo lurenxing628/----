@@ -17,7 +17,9 @@
     trim: true
   });
   const percent = value => typeof value === 'string' ? window.WorkbenchFormat.integerText(value + '00') + '%' : window.WorkbenchFormat.percent(value);
-  const signedChange = value => value === 0 ? '不变' : (value > 0 ? '增加 ' : '减少 ') + number(Math.abs(value));
+  // A real change below the three shown decimals must not read as "增加 0".
+  const tiny = value => typeof value === 'number' && Number(Math.abs(value).toFixed(3)) === 0;
+  const signedChange = value => value === 0 ? '不变' : (value > 0 ? '增加' : '减少') + (tiny(value) ? '不到 0.001' : ' ' + number(Math.abs(value)));
   const kindLabels = {
     machine: '设备',
     operator: '人员',
@@ -45,19 +47,16 @@
     data_quality: '数据质量',
     target_basis: '数量计算方式'
   };
-  const executionValue = v => ({
-    complete: '完成',
-    paused: '暂停',
-    exception: '异常',
-    partial: '部分完成',
-    started: '已开工',
-    unreported: '未报工',
-    invalid: '无效',
-    legacy_incomplete: '历史资料不完整',
-    incomplete: '不完整',
-    piece: '件',
-    batch: '批'
-  })[v] || (typeof v === 'string' ? v : number(v));
+  // 生成时的执行记录按项取词：执行状态与现场记录同一套叫法；数据质量的 complete 是“完整”，不能和执行状态的“已完工”混成一个词。
+  const executionTexts = {
+    execution_state: window.WorkbenchTerms.execution_states,
+    data_quality: window.WorkbenchTerms.data_quality,
+    target_basis: {
+      piece: '件',
+      batch: '批'
+    }
+  };
+  const executionValue = (v, key = 'execution_state') => Object.prototype.hasOwnProperty.call(executionTexts[key] || {}, v) ? executionTexts[key][v] : typeof v === 'string' ? v : number(v);
   const pieceLabel = t => t.piece_id === null ? (t.data_gaps || []).some(g => g.field === 'piece_id') ? '分件未记录' : '共同工序' : '分件 ' + t.piece_id;
   const searchText = t => [t.row_ref, t.operation_ref, t.batch_ref, t.batch_label, t.part_label, t.sequence, t.process_label, pieceLabel(t), t.machine && t.machine.label, t.operator && t.operator.label, t.reason && t.reason.message].filter(v => v != null).join(' ').toLocaleLowerCase();
   const matching = (tasks, query) => {

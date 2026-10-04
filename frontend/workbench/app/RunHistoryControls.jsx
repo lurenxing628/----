@@ -2,7 +2,7 @@
   'use strict';
   const A = window.RunHistoryAPI;
   const labels = { all: '全部状态', ...window.WorkbenchTerms.run_statuses };
-  const fields = { start_date: '排产起日', end_date: '排产止日', ready_check: '齐套检查', material_strategy: '物料放行方式', missing_resource_policy: '缺设备人员时的规则', completed_policy: '执行规则', batch_count: '所选批次' };
+  const fields = { start_date: '排产起日', end_date: '排产止日', ready_check: '齐套检查', material_strategy: '物料放行方式', hold_window: '不重排时段', missing_resource_policy: '缺设备人员时的规则', completed_policy: '执行规则', batch_count: '所选批次' };
   function Button({ className = '', ...props }) { return <window.ResourceControls.Button {...props} className={'btn wb-action ' + className} />; }
   const timeLabel = v => window.WorkbenchFormat.dateTime(v);
   const number = v => window.WorkbenchFormat.number(v, { digits: 0 });
@@ -40,13 +40,14 @@
     return <div><strong className={'rh-state ' + tone}>{run.recovery_required ? '等待核对' : labels[run.state]}</strong>
       <small>{run.recovery_required ? run.recovery_reason.message : { queued: '尚未开始计算', running: '排产尚未结束', complete: '计算结束，约束未核验',
         partial: '保留部分结果，须查看候选', failed: '未保存可用候选', interrupted: '排产中断，未自动重跑' }[run.state]}</small>
-      {run.recovery_required && <small>原状态：{labels[run.state]}</small>}</div>;
+      {run.recovery_required && <small>原状态：{labels[run.state]}</small>}{run.error && <small className="rh-danger">{run.error.message}</small>}</div>;
   }
   function ScopeSummary({ value }) {
     return <div><span>{value.start_date || '起日未记录'} 至 {value.end_date || '止日未记录'}</span>
-      <small>物料放行：{value.material_strategy === null ? '未记录' : { strict: '整批齐套', stage: '按工序齐套', split: '预检确认分批' }[value.material_strategy || 'strict']}</small>
+      <small>物料放行：{value.material_strategy === null ? '未记录' : window.WorkbenchTerms.material_strategies[value.material_strategy || 'strict']}</small>
       <small>选批 {value.batch_count === null ? '未记录' : number(value.batch_count) + ' 批'} · 齐套{value.ready_check === null ? '未记录' : value.ready_check ? '开启' : '关闭'}</small>
-      <details><summary>排产设置</summary><small>缺资源：{{ auto_assign: '自动分配', exclude: '暂不排' }[value.missing_resource_policy] || '未记录'} · {value.completed_policy === 'preserve_actuals' ? '保留开工和完工记录' : '执行规则未记录'}</small></details>
+      <details><summary>排产设置</summary><small>缺资源：{{ auto_assign: '自动分配', exclude: '暂不排' }[value.missing_resource_policy] || '未记录'} · {value.completed_policy === 'preserve_actuals' ? '保留开工和完工记录' : '执行规则未记录'}</small>
+        <small data-hold-window>不重排时段：{window.WorkbenchTerms.hold_window(value.hold_window, value.data_gaps.some(g => g.field === 'hold_window'))}</small></details>
       {!!value.data_gaps.length && <details><summary className="rh-warning">排产时资料缺项 {value.data_gaps.length}</summary>
         {value.data_gaps.map(g => <small key={g.field}>{fields[g.field]}：{g.message}</small>)}</details>}</div>;
   }

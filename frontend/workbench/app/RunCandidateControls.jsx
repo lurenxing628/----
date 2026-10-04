@@ -55,7 +55,7 @@
       <span>生成日期：{input.start_date || '未记录'} 至 {input.end_date || '未记录'}</span></div>
       <div className="rc-source-summary"><details className="rc-reasons rc-generation wb-ref"><summary>生成资料与记录编号</summary><dl className="rc-meta">
         <div><dt>提交 / 结束时间</dt><dd>{M.timeLabel(g.accepted_at)}<small>{M.timeLabel(g.finished_at)}</small></dd></div>
-        <div><dt>物料放行方式</dt><dd>{input.material_strategy === null ? '未记录' : { strict: '整批齐套', stage: '按工序齐套', split: '预检确认分批' }[input.material_strategy || 'strict']}</dd></div><div><dt>齐套检查 / 缺资源</dt><dd>{input.ready_check === null ? '未记录' : input.ready_check ? '开启' : '关闭'} / {{ auto_assign: '自动分配', exclude: '暂不排' }[input.missing_resource_policy] || '未记录'}</dd></div>
+        <div><dt>物料放行方式</dt><dd>{input.material_strategy === null ? '未记录' : window.WorkbenchTerms.material_strategies[input.material_strategy || 'strict']}</dd></div><div><dt>不重排时段</dt><dd data-hold-window>{window.WorkbenchTerms.hold_window(input.hold_window, g.data_gaps.some(gap => gap.field === 'input.hold_window'))}</dd></div><div><dt>齐套检查 / 缺资源</dt><dd>{input.ready_check === null ? '未记录' : input.ready_check ? '开启' : '关闭'} / {{ auto_assign: '自动分配', exclude: '暂不排' }[input.missing_resource_policy] || '未记录'}</dd></div>
         <div><dt>{'已有执行 / ' + window.WorkbenchTerms.baseline_plan}</dt><dd>{input.completed_policy === 'preserve_actuals' ? '保留已有开工和完工记录' : '执行规则未记录'}<small>{g.baseline.captured_task_count === null ? '正式计划安排数未知' : '已保留 ' + g.baseline.captured_task_count + ' 道正式计划安排'}</small></dd></div></dl>
       <div className="rc-muted">名称、资源、交期和执行状态来自生成时保存的资料，未读取后来的修改。{analysis ? analysis.baseline.reason && analysis.baseline.reason.message : g.baseline.reason.message}</div>
       <div className="rc-muted">{analysis ? '排产时选批：' + analysis.batches.map(row => row.batch_id).join(' / ') : '排产时的批次清单暂不可用。'}</div>
@@ -77,7 +77,7 @@
           ['外协商', task.supplier && task.supplier.label], ['来源', task.source === 'internal' ? '内部' : task.source === 'external' ? '外协' : null],
           ['生成时锁定', typeof task.locked === 'boolean' ? task.locked ? '是' : '否' : null], ['安排状态', task.reason ? task.reason.message : '已保存候选安排']].map(([k, v]) => <div key={k}><dt>{k}</dt><dd>{v == null ? '未记录' : v}</dd></div>)}</dl>
         <window.WorkbenchReference entries={{ '安排编号': task.row_ref, '工序编号': task.operation_ref, '批次编号': task.batch_ref }} />
-        <h4>生成时的开工和完工记录</h4>{task.execution_at_generation ? <dl>{Object.entries(task.execution_at_generation).map(([k, v]) => <div key={k}><dt>{M.executionLabels[k]}</dt><dd>{v === null ? '未知' : M.executionValue(v)}</dd></div>)}</dl> : <p className="rc-muted">未记录排产时的开工和完工状态。</p>}
+        <h4>生成时的开工和完工记录</h4>{task.execution_at_generation ? <dl>{Object.entries(task.execution_at_generation).map(([k, v]) => <div key={k}><dt>{M.executionLabels[k]}</dt><dd>{v === null ? '未知' : M.executionValue(v, k)}</dd></div>)}</dl> : <p className="rc-muted">未记录排产时的开工和完工状态。</p>}
         <Reasons rows={task.data_gaps} /></>}
     </aside>;
   }
@@ -102,7 +102,7 @@
           <td>{M.number(row.quantity)} 件<small>{row.scheduled_operation_count} / {row.operation_count} 道</small></td>
           <td>{row.due_date || '未记录'}</td><td>{row.planned_finish ? M.timeLabel(row.planned_finish) : '暂无数据'}
             {row.partial_planned_finish && <small>已排工序结束时间：{M.timeLabel(row.partial_planned_finish)}</small>}</td>
-          <td>{({ overdue: '预计超期', on_time: '预计按期', unknown: '暂无数据' })[row.risk]}<small>{M.number(row.delay_hours)} 小时</small></td>
+          <td>{window.WorkbenchTerms.delivery_risks[row.risk]}<small>{M.number(row.delay_hours)} 小时</small></td>
           <td>{row.last_operations.map(task => <Button key={task.row_ref} icon="search" className="mini" onClick={() => onLast(task)}
             aria-label={'定位末端工序 ' + row.batch_id + ' ' + task.sequence + (task.piece_id ? ' ' + task.piece_id : '')}>
             {M.number(task.sequence)} {task.process_label || '工序未记录'}{task.piece_id && ' · ' + task.piece_id}</Button>)}

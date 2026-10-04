@@ -8,6 +8,13 @@
     Field
   } = window.ResourceControls;
   const B = window.APSBatchContract;
+  // 物料数量按批次详情的口径显示全部小数、去掉末尾 0。按件数比例分出的需求量和页面上相加的到料会带二进制尾差
+  // （0.3 + 0.6、7 件拆出 1/3），先收到 15 位有效数字再显示，不出现 0.8999999999999999 这类数，也不会把非零小数显示成 0。
+  const amount = value => window.WorkbenchFormat.number(Number(value.toPrecision(15)), {
+    digits: 20,
+    trim: true
+  });
+  const arrived = (initial, arrivals) => amount(arrivals.reduce((n, a) => n + a.quantity, initial));
   function BatchSplitPanel({
     refs,
     day,
@@ -122,9 +129,10 @@
       "aria-label": "\u62C6\u5206\u7269\u6599\u5206\u914D"
     }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "\u7269\u6599"), /*#__PURE__*/React.createElement("th", null, "\u5B50\u6279\u9700\u6C42"), /*#__PURE__*/React.createElement("th", null, "\u5269\u4F59\u9700\u6C42"), /*#__PURE__*/React.createElement("th", null, "\u5B50\u6279\u5230\u6599"), /*#__PURE__*/React.createElement("th", null, "\u5269\u4F59\u5230\u6599"))), /*#__PURE__*/React.createElement("tbody", null, preview.materials.map((row, i) => /*#__PURE__*/React.createElement("tr", {
       key: i
-    }, /*#__PURE__*/React.createElement("td", null, row.business_code, " \xB7 ", row.label), /*#__PURE__*/React.createElement("td", null, row.child_required), /*#__PURE__*/React.createElement("td", null, row.source_required), /*#__PURE__*/React.createElement("td", null, row.child_available + row.child_arrivals.reduce((n, a) => n + a.quantity, 0)), /*#__PURE__*/React.createElement("td", null, row.source_available + row.source_arrivals.reduce((n, a) => n + a.quantity, 0))))))), /*#__PURE__*/React.createElement("p", null, "\u5230\u6599\u5206\u914D\u5305\u542B\u540E\u7EED\u5230\u6599\uFF0C\u6309\u5404\u81EA\u65E5\u671F\u53EF\u7528\u3002\u53D6\u6D88\u4E0D\u4F1A\u6539\u52A8\u6279\u6B21\uFF1B\u786E\u8BA4\u540E\u4ECD\u9700\u68C0\u67E5\u5E76\u5F00\u59CB\u8BA1\u7B97\u3002"), /*#__PURE__*/React.createElement(window.ResourceForms.Feedback, {
+    }, /*#__PURE__*/React.createElement("td", null, row.business_code, " \xB7 ", row.label), /*#__PURE__*/React.createElement("td", null, amount(row.child_required)), /*#__PURE__*/React.createElement("td", null, amount(row.source_required)), /*#__PURE__*/React.createElement("td", null, arrived(row.child_available, row.child_arrivals)), /*#__PURE__*/React.createElement("td", null, arrived(row.source_available, row.source_arrivals))))))), /*#__PURE__*/React.createElement("p", null, "\u5230\u6599\u5206\u914D\u5305\u542B\u540E\u7EED\u5230\u6599\uFF0C\u6309\u5404\u81EA\u65E5\u671F\u53EF\u7528\u3002\u53D6\u6D88\u4E0D\u4F1A\u6539\u52A8\u6279\u6B21\uFF1B\u786E\u8BA4\u540E\u4ECD\u9700\u68C0\u67E5\u5E76\u5F00\u59CB\u8BA1\u7B97\u3002"), /*#__PURE__*/React.createElement(window.ResourceForms.Feedback, {
       command: command
     })))), document.body));
   }
   window.BatchSplitPanel = BatchSplitPanel;
+  BatchSplitPanel.amount = amount;
 })();

@@ -5,11 +5,14 @@
     Button,
     Modal
   } = window.ResourceControls;
-  const number = v => window.WorkbenchFormat.number(v, {
+  // 计量值保留两位小数；不足 0.01 的非零值写“不到 0.01”，不能读成 0（与执行排产候选对比的“不到 0.001”同一规则）。
+  const tiny = v => typeof v === 'number' && v !== 0 && Number(Math.abs(v).toFixed(2)) === 0;
+  const number = v => tiny(v) ? '不到 0.01' : window.WorkbenchFormat.number(v, {
     digits: Number.isInteger(v) ? 0 : 2
   });
-  const signed = (v, scale = 1) => v === null ? '未知' : v === 0 ? '0' : (v > 0 ? '+' : '') + number(v * scale);
-  const risk = row => row.risk === 'overdue' ? '超期 ' + number(row.delay_hours) + ' 小时' : row.risk === 'on_time' ? '预计准时' : '交付未知';
+  const signed = (v, scale = 1) => v === null ? '未知' : v === 0 ? '0' : (v > 0 ? '+' : '-') + number(Math.abs(v * scale));
+  const risks = window.WorkbenchTerms.delivery_risks;
+  const risk = row => row.risk === 'overdue' ? tiny(row.delay_hours) ? '超期不到 0.01 小时' : '超期 ' + number(row.delay_hours) + ' 小时' : risks[row.risk] || risks.unknown;
   function Peak({
     value
   }) {
@@ -45,7 +48,7 @@
       value: row.after
     })), /*#__PURE__*/React.createElement("td", null, signed(row.delta, 100), " \u4E2A\u767E\u5206\u70B9")))))), /*#__PURE__*/React.createElement("div", {
       className: "dy-context"
-    }, /*#__PURE__*/React.createElement("span", null, "\u4EA4\u4ED8\u672A\u77E5\uFF1A\u6392\u4EA7\u65F6\u7684\u6B63\u5F0F\u8BA1\u5212 ", old.unknown_count, " \u6279 / \u5019\u9009\u65B9\u6848 ", selected.unknown_count, " \u6279"), /*#__PURE__*/React.createElement("span", null, "\u8D44\u6E90\u65E5\u5CF0\u503C\uFF1A\u540C\u8303\u56F4\u81EA\u7136\u65E5\u5185\u53EF\u7528\u65F6\u6BB5\u5360\u7528\u7387")), !data.resource_scope_complete && /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("span", null, "\u4EA4\u4ED8\u5224\u65AD", risks.unknown, "\uFF1A\u6392\u4EA7\u65F6\u7684\u6B63\u5F0F\u8BA1\u5212 ", old.unknown_count, " \u6279 / \u5019\u9009\u65B9\u6848 ", selected.unknown_count, " \u6279"), /*#__PURE__*/React.createElement("span", null, "\u8D44\u6E90\u65E5\u5CF0\u503C\uFF1A\u540C\u8303\u56F4\u81EA\u7136\u65E5\u5185\u53EF\u7528\u65F6\u6BB5\u5360\u7528\u7387")), !data.resource_scope_complete && /*#__PURE__*/React.createElement("div", {
       className: "dy-note warning"
     }, "\u6709 ", data.resource_scope_unknown_rows, " \u6761\u5B89\u6392\u8BFB\u4E0D\u5230\u6240\u5728\u8D44\u6E90\uFF0C\u8FD9\u90E8\u5206\u6CA1\u6709\u8BA1\u5165\u8D1F\u8377\uFF0C\u5B9E\u9645\u5360\u7528\u53EF\u80FD\u66F4\u9AD8\u3002"));
   }
@@ -119,6 +122,8 @@
     Metrics,
     Batches,
     Summary,
-    number
+    number,
+    signed,
+    risk
   };
 })();

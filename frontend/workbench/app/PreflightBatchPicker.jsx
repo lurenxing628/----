@@ -51,10 +51,10 @@
         <window.ResourceControls.Search aria-label="搜索排产批次" placeholder="批次号、图号、零件名" value={query} disabled={busy} onChange={event => setQuery(event.target.value)} />
         <Button icon="search" type="submit" disabled={busy}>搜索</Button>
         <label className="wb-inline-filter"><span>齐套</span><select aria-label="批次齐套筛选" disabled={busy} value={scope.ready_status || ''} onChange={event => filter({ ready_status: event.target.value || undefined })}>
-          <option value="">全部</option><option value="yes">已齐套</option><option value="partial">部分齐套</option><option value="no">未齐套</option>
+          <option value="">全部</option><option value="yes">齐套</option><option value="partial">部分齐套</option><option value="no">未齐套</option>
         </select></label><Button icon="refresh-cw" aria-label="刷新批次范围" disabled={busy} onClick={() => filter({})}>刷新范围</Button>
       </form>
-      <div className="pf-tools"><Button disabled={busy} onClick={() => select('all')}>全部待排</Button><Button disabled={busy} onClick={() => select('ready')}>仅已齐套</Button>
+      <div className="pf-tools"><Button disabled={busy} onClick={() => select('all')}>全部待排</Button><Button disabled={busy} onClick={() => select('ready')}>仅齐套</Button>
         <Button disabled={busy || !snapshot} onClick={() => select('filtered')}>全选当前筛选</Button><Button icon="x" disabled={disabled || selecting || !selected.length} onClick={() => onChange([])}>清除选择</Button>
         <span aria-live="polite">已选 {selected.length} 批{hidden > 0 ? ' · 含非当前页 ' + hidden + ' 批' : ''}</span></div>
       <ErrorBox error={error} />{error && <Button icon="refresh-cw" disabled={disabled || loading || selecting} onClick={() => filter({})}>刷新批次</Button>}

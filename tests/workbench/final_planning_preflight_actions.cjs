@@ -36,7 +36,7 @@ async function pickerActions(page, ready, report, h, flush) {
     await page.getByText('当前筛选没有待排批次', { exact: true }).waitFor();
     await query.fill(''); await button('搜索', picker).click(); await flush();
     assert.equal(await page.locator('.pf-picker-list input[type=checkbox]').count(), 2);
-    await button('仅已齐套').click(); await flush();
+    await button('仅齐套').click(); await flush();
     await page.locator('input[aria-label="选择 B1"]:checked').waitFor();
     await page.locator('input[aria-label="选择 B2"]:checked').waitFor();
     await page.getByLabel('批次齐套筛选', { exact: true }).selectOption(''); await flush();
@@ -88,7 +88,7 @@ async function preflightReturn(page, report, h, flush) {
     report.preflight_return.context = restored;
     await button('选择批次').click(); await flush();
     assert(await page.getByRole('checkbox', { name: '选择 Z-D-01', exact: true }).isChecked());
-    await button('仅已齐套').click(); await flush();
+    await button('仅齐套').click(); await flush();
     await page.locator('input[aria-label="选择 B1"]:checked').waitFor();
     await page.locator('input[aria-label="选择 B2"]:checked').waitFor();
   });

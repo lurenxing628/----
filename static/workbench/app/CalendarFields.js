@@ -42,19 +42,10 @@
     showSummary = true
   }) {
     const work = value.type === 'work';
-    const change = (key, next) => {
-      if (key === 'type' && next === 'work' && value.type === 'rest' && !value.periods?.length) onChange({
-        ...value,
-        type: next,
-        periods: window.APSWorkPeriods.clone(value.defaultPeriods || window.APSWorkPeriods.defaults()),
-        hours: String(window.APSWorkPeriods.hours(value.defaultPeriods || window.APSWorkPeriods.defaults())),
-        allowNormal: 'yes',
-        allowUrgent: 'yes'
-      });else onChange({
-        ...value,
-        [key]: next
-      });
-    };
+    const change = (key, next) => onChange(key === 'type' ? window.APSCalendarContract.switchType(value, next) : {
+      ...value,
+      [key]: next
+    });
     const id = React.useId();
     return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Segment, {
       label: "\u8FD9\u4E00\u5929\u662F\u5426\u6392\u4EA7",

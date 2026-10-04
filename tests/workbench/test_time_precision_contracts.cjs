@@ -72,6 +72,26 @@ function scopes() {
 function candidate() {
   const valid = input.candidate, candidateRef = valid.data.candidate.candidate_ref;
   R.workspace(valid, candidateRef);
+  // 存储的物料放行方式无效时，后端返回 null 并附数据缺口；页面显示“未记录”，不能整页读取失败。
+  const unrecorded = clone(valid);
+  unrecorded.data.generation.input.material_strategy = null;
+  assert.throws(() => R.workspace(clone(unrecorded), candidateRef));
+  unrecorded.data.generation.data_gaps.push({field: 'input.material_strategy', code: 'invalid_stored_value', message: '物料放行方式无效'});
+  R.workspace(unrecorded, candidateRef);
+  // 生成时的不重排时段：旧记录不带这一项；null 是“不设”；读不出来的记录为 null 并附 input.hold_window 资料缺项。
+  const span = {start: '2026-09-09T08:00', end: '2026-09-10T00:00'};
+  for (const value of [null, span]) {
+    const held = clone(valid); held.data.generation.input.hold_window = value; R.workspace(held, candidateRef);
+  }
+  const unreadable = clone(valid); unreadable.data.generation.input.hold_window = null;
+  unreadable.data.generation.data_gaps.push({field: 'input.hold_window', code: 'invalid_stored_value', message: '不重排时段无效'});
+  R.workspace(unreadable, candidateRef);
+  for (const value of [{start: span.end, end: span.start}, {start: span.start + ':00', end: span.end}, {start: span.start}, 'x']) {
+    const bad = clone(valid); bad.data.generation.input.hold_window = value;
+    assert.throws(() => R.workspace(bad, candidateRef), JSON.stringify(value));
+  }
+  const gapWithValue = clone(unreadable); gapWithValue.data.generation.input.hold_window = span;
+  assert.throws(() => R.workspace(gapWithValue, candidateRef));
   // Alter a real DTO coherently to isolate a one-microsecond, non-point interval.
   const micro = clone(valid), task = micro.data.tasks[0], delivery = micro.data.delivery_risks.items[0];
   assert.equal(micro.data.tasks.length, 1); assert.equal(delivery.last_operations.length, 1);
@@ -95,6 +115,9 @@ function candidate() {
   });
   const F = context.window.PreflightContract;
   F.result(input.preflight, input.settings);
+  // 没带不重排时段的检查按交付设置推算；每道工序都带 held（null 或原安排）。
+  assert.equal(input.preflight.data.effective_config.hold_window_source, 'default');
+  assert(input.preflight.data.tasks.every(row => Object.prototype.hasOwnProperty.call(row, 'held')));
   const observed = clone(input.preflight);
   observed.data.tasks[0].execution.first_actual_start = start;
   observed.data.tasks[0].execution.confirmed_finish = end;

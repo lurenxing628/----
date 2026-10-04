@@ -154,11 +154,11 @@
     }, "\u5BF9\u6BD4\u65B9\u6848\uFF1A", data.base_identity.display_name || '原试调来源'), /*#__PURE__*/React.createElement(U.Table, {
       rows: c.batches,
       label: "\u6279\u6B21\u4EA4\u4ED8\u5BF9\u6BD4",
-      columns: [['批次 / 零件', r => /*#__PURE__*/React.createElement(React.Fragment, null, r.batch_id, /*#__PURE__*/React.createElement("br", null), r.part_name)], ['批次数量', r => U.number(r.quantity)], ['交期', r => /*#__PURE__*/React.createElement("span", {
+      columns: [['批次 / 零件', r => /*#__PURE__*/React.createElement(React.Fragment, null, r.batch_id, /*#__PURE__*/React.createElement("br", null), r.part_name)], ['批次数量', r => U.number(r.quantity)], ['交期', r => r.risk === 'due_unspecified' ? '未指定交期' : /*#__PURE__*/React.createElement("span", {
         title: "\u4EA4\u671F\u622A\u81F3\u5F53\u65E5\u7ED3\u675F\uFF0C\u6B21\u65E5\u96F6\u70B9\u8D77\u8BA1\u4E3A\u8D85\u671F\u3002"
       }, r.due_date || '未知')], ['原完工', r => U.timeLabel(r.baseline_finish)], ['试调完工', r => U.timeLabel(r.finish)], ['提前（小时）', r => U.number(r.improvement_hours)], ['预计交付', r => ({
-        on_time: '可按期',
-        overdue: '预计超期',
+        ...window.WorkbenchTerms.delivery_risks,
+        due_unspecified: window.WorkbenchTerms.delivery_risks.unknown,
         unavailable: '有冲突，不能评估',
         invalid_data: '交期数据无效'
       })[r.risk] || '未知'], ['超期（小时）', r => U.number(r.late_hours)]]

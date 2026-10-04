@@ -2,8 +2,11 @@
   'use strict';
   const { Button, Issues } = window.ResourceControls, M = window.DashboardTimelineModel;
   // Counts stay whole numbers; hours and other measured values keep two decimals.
-  const value = v => v === null || v === undefined ? '未知' : typeof v === 'number' ? M.number(v, { digits: Number.isInteger(v) ? 0 : 2 }) : String(v);
-  const risk = row => row.risk === 'overdue' ? '超期 ' + value(row.delay_hours) + ' 小时' : row.risk === 'on_time' ? '预计准时' : '交付未知';
+  // 不足 0.01 的非零值写“不到 0.01”，不能读成 0。
+  const tiny = v => typeof v === 'number' && v !== 0 && Number(Math.abs(v).toFixed(2)) === 0;
+  const value = v => v === null || v === undefined ? '未知' : tiny(v) ? '不到 0.01' : typeof v === 'number' ? M.number(v, { digits: Number.isInteger(v) ? 0 : 2 }) : String(v);
+  const risks = window.WorkbenchTerms.delivery_risks;
+  const risk = row => row.risk === 'overdue' ? (tiny(row.delay_hours) ? '超期不到 0.01 小时' : '超期 ' + value(row.delay_hours) + ' 小时') : risks[row.risk] || risks.unknown;
   function Batch({ row, selected, onSelect }) { return <Button data-wb-print-value reasonDisplay="inline" className="mini" icon="search" data-analysis-select-batch={row.batch_ref}
     aria-pressed={selected === row.batch_ref} onClick={() => onSelect(row.batch_ref)}>{row.batch_id}</Button>; }
   function Delivery({ data, selected, onSelect, onCompare }) { return <>
@@ -34,7 +37,7 @@
     return <section aria-label="待排批次与齐套日期"><h3>待排批次与齐套日期</h3><div className="dy-context">待排 {value(p.count)} 批 · 已读取 {p.known_count} 批</div><Issues issues={p.issues} />
       <div className="dy-scroll"><table className="dy-analysis-table"><caption className="wb-sr-only">待排批次与齐套日期</caption><thead><tr><th scope="col">批次 / 零件</th><th scope="col">数量</th><th scope="col">交期</th><th scope="col">齐套状态</th><th scope="col">齐套日期</th></tr></thead><tbody>{p.items.map(row => <tr key={row.batch_ref} data-pending-batch={row.batch_ref}>
         <td><b>{row.batch_id}</b><small>{value(row.part_label)}</small></td><td>{value(row.quantity)}</td><td>{value(row.due_date)}</td>
-        <td>{({ yes: '已齐套', no: '未齐套', partial: '部分齐套' })[row.ready_status] || '未知'}</td><td>{value(row.ready_date)}</td></tr>)}</tbody></table></div>
+        <td>{({ yes: '齐套', no: '未齐套', partial: '部分齐套' })[row.ready_status] || '未知'}</td><td>{value(row.ready_date)}</td></tr>)}</tbody></table></div>
       {!p.items.length && <window.WorkbenchListControls.EmptyState kind="empty" title={p.count === 0 ? '当前没有待排批次。' : '待排批次没有完整读到，数量可能不全。'} />}
       <div className="dy-context">当前范围：全部待排批次 · 齐套检查和缺设备人员的规则在「执行排产」里按本次选择设定，已保存候选方案的规则见「方案对比」。</div>
     </section>;
@@ -46,5 +49,5 @@
         <td>{hours.overrun === true ? '已确认超耗' : hours.overrun === false ? '未超耗' : '暂无数据'}</td><td><Button reasonDisplay="inline" icon="square-pen" onClick={() => navigate({ view: 'field', context, enabled: true })}>现场记录</Button>
           <Button reasonDisplay="inline" icon="chart-gantt" onClick={() => navigate({ view: 'fieldgantt', context, enabled: true })}>现场实际甘特</Button></td></tr>;
     })}</tbody></table></div></section>; }
-  window.DashboardAnalysisPanels = { Delivery, Downtime, Material, Actual, value };
+  window.DashboardAnalysisPanels = { Delivery, Downtime, Material, Actual, value, risk };
 })();

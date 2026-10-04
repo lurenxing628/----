@@ -2,6 +2,10 @@
   'use strict';
   const { Button, Modal, ErrorBox, Field } = window.ResourceControls;
   const B = window.APSBatchContract;
+  // 物料数量按批次详情的口径显示全部小数、去掉末尾 0。按件数比例分出的需求量和页面上相加的到料会带二进制尾差
+  // （0.3 + 0.6、7 件拆出 1/3），先收到 15 位有效数字再显示，不出现 0.8999999999999999 这类数，也不会把非零小数显示成 0。
+  const amount = value => window.WorkbenchFormat.number(Number(value.toPrecision(15)), { digits: 20, trim: true });
+  const arrived = (initial, arrivals) => amount(arrivals.reduce((n, a) => n + a.quantity, initial));
   function BatchSplitPanel({ refs, day, onCommitted }) {
     const adapter = React.useMemo(() => window.APSBatchAPI.create(), []);
     const command = window.APSResourceSession.useCommand(adapter);
@@ -45,10 +49,11 @@
           onClick={() => command.submit('batch', 'split_confirm', preview.entity_ref, preview.write_context, { preview_ref: preview.preview_ref })}>确认拆分并选择可开工子批</Button></>}>
         <div className="modal-b"><p>{preview.source_code} 原有 {preview.original_quantity} 件：{preview.child_code} 先做 {preview.quantity} 件，原批保留 {preview.remaining_quantity} 件。</p>
           <div className="wb-table-frame"><table className="tbl wb-table" aria-label="拆分物料分配"><thead><tr><th>物料</th><th>子批需求</th><th>剩余需求</th><th>子批到料</th><th>剩余到料</th></tr></thead><tbody>
-            {preview.materials.map((row, i) => <tr key={i}><td>{row.business_code} · {row.label}</td><td>{row.child_required}</td><td>{row.source_required}</td><td>{row.child_available + row.child_arrivals.reduce((n, a) => n + a.quantity, 0)}</td><td>{row.source_available + row.source_arrivals.reduce((n, a) => n + a.quantity, 0)}</td></tr>)}</tbody></table></div>
+            {preview.materials.map((row, i) => <tr key={i}><td>{row.business_code} · {row.label}</td><td>{amount(row.child_required)}</td><td>{amount(row.source_required)}</td><td>{arrived(row.child_available, row.child_arrivals)}</td><td>{arrived(row.source_available, row.source_arrivals)}</td></tr>)}</tbody></table></div>
           <p>到料分配包含后续到料，按各自日期可用。取消不会改动批次；确认后仍需检查并开始计算。</p><window.ResourceForms.Feedback command={command} />
         </div></Modal></div>, document.body)}
     </section>;
   }
   window.BatchSplitPanel = BatchSplitPanel;
+  BatchSplitPanel.amount = amount;
 })();

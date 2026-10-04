@@ -18,6 +18,9 @@
   const timeKey = value => value.slice(0, 19) + '.' + (value.split('.')[1] || '').padEnd(6, '0');
   const gap = v => shape(v, ['field', 'code', 'message']) && [v.field, v.code, v.message].every(text);
   const gaps = v => Array.isArray(v) && v.every(gap);
+  // 生成时的不重排时段：旧记录不带这一项；null 是“不设”（存的值读不出来时也是 null，并附 input.hold_window 资料缺项）。
+  const minute = v => text(v) && /^(?!0000)\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d$/.test(v) && time(v + ':00');
+  const holdWindow = v => v === undefined || v === null || shape(v, ['start', 'end']) && minute(v.start) && minute(v.end) && v.start < v.end;
   const nullableText = v => v === null || text(v);
   const number = v => typeof v === 'number' && Number.isFinite(v) && v >= 0 || text(v) && /^[1-9]\d{15,}$/.test(v) && (v.length > 16 || v > '9007199254740991');
   const nullableNumber = v => v === null || number(v);
@@ -196,7 +199,9 @@
       && g.run_ref === d.candidate.run_ref && time(g.accepted_at) && (g.finished_at === null || time(g.finished_at))
       && g.metadata_basis === 'captured_at_run_admission' && g.execution_basis === 'captured_at_run_admission'
       && g.current_entities_consulted === false && g.formal_version_allocated === false && gaps(g.data_gaps)
-      && shape(g.input, ['start_date', 'end_date', 'ready_check', 'missing_resource_policy', 'completed_policy'].concat(g.input.material_strategy === undefined ? [] : ['material_strategy'])) && (g.input.material_strategy === undefined || ['strict', 'stage', 'split'].includes(g.input.material_strategy))
+      && shape(g.input, ['start_date', 'end_date', 'ready_check', 'missing_resource_policy', 'completed_policy'], ['material_strategy', 'hold_window']) && (g.input.material_strategy === undefined || ['strict', 'stage', 'split'].includes(g.input.material_strategy)
+        || g.input.material_strategy === null && g.data_gaps.some(gap => gap.field === 'input.material_strategy'))
+      && holdWindow(g.input.hold_window) && (g.input.hold_window === null || !g.data_gaps.some(gap => gap.field === 'input.hold_window'))
       && ['start_date', 'end_date', 'missing_resource_policy', 'completed_policy'].every(k => nullableText(g.input[k]))
       && (g.input.ready_check === null || typeof g.input.ready_check === 'boolean')
       && shape(g.baseline, ['captured_task_count', 'comparison_available', 'reason']) && (g.baseline.captured_task_count === null || count(g.baseline.captured_task_count))

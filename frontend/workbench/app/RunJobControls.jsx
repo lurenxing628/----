@@ -22,12 +22,19 @@
     return <span className={'pill ' + (run.state === 'complete' ? 'ok' : ['failed', 'partial', 'interrupted'].includes(run.state) ? 'warn' : 'off')} data-run-state={run.state} data-run-stage={run.stage}>
       <span className="dot" />{run.recovery_required ? '等待核对排产记录' : labels[run.state]}</span>;
   }
-  function Scope({ preview }) {
+  // 不重排时段：本次没填时按交付设置，有同一次排产检查的结果就把推算出的时段一并写出来。
+  function holdText(value, effective) {
+    const T = window.WorkbenchTerms;
+    if (value.hold_window === undefined && effective && effective.hold_window_source === 'default') return '按交付设置：' + T.hold_window(effective.hold_window);
+    return T.hold_window(value.hold_window);
+  }
+  function Scope({ preview, effective }) {
     const value = preview.normalized_input;
     return <dl className="rj-scope"><div><dt>本次批次</dt><dd>{value.batch_refs.length} 批</dd></div>
       <div><dt>排产日期</dt><dd>{value.start_date} 至 {value.end_date}</dd></div>
-      <div><dt>物料放行方式</dt><dd>{{ strict: '整批齐套', stage: '按工序齐套', split: '预检确认分批' }[value.material_strategy || 'strict']}</dd></div><div><dt>齐套检查</dt><dd>{value.ready_check ? '开启' : '关闭'}</dd></div>
+      <div><dt>物料放行方式</dt><dd>{window.WorkbenchTerms.material_strategies[value.material_strategy || 'strict']}</dd></div><div><dt>齐套检查</dt><dd>{value.ready_check ? '开启' : '关闭'}</dd></div>
       <div><dt>缺资源工序</dt><dd>{value.missing_resource_policy === 'auto_assign' ? '自动分配' : '暂不排'}</dd></div>
+      <div><dt>不重排时段</dt><dd data-hold-window>{holdText(value, effective)}</dd></div>
       <div><dt>已有报工</dt><dd>保留已开工和已完工的记录</dd></div></dl>;
   }
   function Reasons({ rows }) {
@@ -38,11 +45,11 @@
       <window.WorkbenchReference entries={A.details(row)} />
     </div>)}{groups.size > 20 && <div>另有 {groups.size - 20} 类原因，请返回排产检查核对。</div>}</div>;
   }
-  function Confirmation({ preview, busy, onConfirm, onClose }) {
+  function Confirmation({ preview, effective, busy, onConfirm, onClose }) {
     const [page, setPage] = React.useState(1), values = preview.normalized_input.batch_refs, pages = Math.max(1, Math.ceil(values.length / 20));
     return <Modal title="确认本次候选排产" icon="play" onClose={onClose} locked={busy} footer={<>
       <Button onClick={onClose} disabled={busy}>取消</Button><Button icon="play" className="btn primary" busy={busy} onClick={onConfirm}>确认开始排产</Button></>}>
-      <div className="modal-body run-job-panel rj-confirm"><Scope preview={preview} />
+      <div className="modal-body run-job-panel rj-confirm"><Scope preview={preview} effective={effective} />
         <p className="rj-muted">计算完成后可比较候选方案，再选择是否采用为正式计划。</p>
         <details className="wb-ref"><summary>批次内部编号 · {values.length} 批</summary><ol className="rj-refs" start={(page - 1) * 20 + 1}>
           {values.slice((page - 1) * 20, page * 20).map(value => <li key={value}>{value}</li>)}</ol>
@@ -97,7 +104,7 @@
         <span>提交：{window.WorkbenchFormat.dateTime(run.accepted_at)}</span>{run.started_at && <span>开始：{window.WorkbenchFormat.dateTime(run.started_at)}</span>}
         {run.finished_at && <span>结束：{window.WorkbenchFormat.dateTime(run.finished_at)}</span>}</div>
         {run.recovery_required && <p className="rj-notice">正在核对上次的排产记录，结果还没确认，没有重新计算。</p>}
-        {run.error && <div className="rj-notice" role="alert">{A.message(run.error)}</div>}<Candidates key={run.run_ref} run={run} api={api} /></>}
+        {run.error && <div className="rj-notice" role="alert">{A.failure(run.error)}</div>}<Candidates key={run.run_ref} run={run} api={api} /></>}
       {!replaced && <p className="rj-muted rj-query-summary" role="status">
         {lastChecked && <span>最近查询：{window.WorkbenchFormat.dateTime(new Date(lastChecked).toLocaleString('sv-SE').replace(' ', 'T'))}</span>}
         {retryPaused ? <span>已暂停自动查询。{retryHint}</span> : !A.terminal(run) && <span>{paused ? '页面已切走，返回后继续查询。' : checking ? '正在读取排产记录。' : '等待下次查询。'}</span>}

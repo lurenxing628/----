@@ -1,8 +1,8 @@
 (function () {
   'use strict';
   const C = window.APSResourceContract;
-  // 报工状态与报工类型的唯一词表：现场记录、现场实际甘特、报表中心、工时校准都从这里取，不再各自造词。
-  const states = { unreported: '待报工', started: '已开工', partial: '部分完成', paused: '已暂停', exception: '异常', complete: '已完工' };
+  // 报工状态与报工类型都取全站词表：现场记录、现场实际甘特、报表中心、工时校准与排产候选、值班台用同一套叫法，不再各自造词。
+  const states = window.WorkbenchTerms.execution_states;
   const reportActions = window.WorkbenchTerms.report_actions;
   const fields = ['completed_quantity', 'actual_start', 'actual_end', 'effective_processing_hours', 'actual_machine_ref', 'actual_operator_ref', 'remark'];
   const ref = value => typeof value === 'string' && /^[0-9a-f]{48}$/.test(value);

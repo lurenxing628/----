@@ -64,5 +64,17 @@ tree.props.onSubmit({ preventDefault() {} });
 (async () => {
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(submits, 1, '保存报工才调用 command.submit');
+  // 外协工序不占本厂设备和人员：不提供实际设备、人员选择；旧记录已填的仍显示，便于用「更正」清除。
+  const choiceKeys = value => nodes(value).filter(node => node.type === 'Choice').map(node => node.props.field.key);
+  const fresh = patch => { slots = []; Object.assign(props, patch); return render(); };
+  assert.deepEqual(choiceKeys(fresh({ task: { ...task, source: 'internal' } })), ['actual_machine_ref', 'actual_operator_ref'], '自制工序照常选实际设备和人员');
+  const external = fresh({ task: { ...task, source: 'external' } });
+  assert.deepEqual(choiceKeys(external), [], '外协工序不提供实际设备、人员选择');
+  assert(text(external).includes('不用填实际设备和人员') && text(external).includes('经办人'), '外协工序提示跟进人填经办人');
+  const held = { report_ref: ref, revision_ref: ref, report_no: 'R1', completed_quantity: 3, actual_start: '2026-09-01T08:00:00', actual_end: '2026-09-01T10:00:00',
+    effective_processing_hours: null, actual_machine_ref: ref, actual_operator_ref: null, remark: '', write_context: { write_token: 'token', capabilities: { correct: true }, blocked_reasons: [] } };
+  const correcting = fresh({ task: { ...task, source: 'external' }, record: held, action: 'correct' });
+  assert.deepEqual(choiceKeys(correcting), ['actual_machine_ref'], '外协旧记录已填的设备仍显示，便于清除');
+  assert(text(correcting).includes('请用「更正」清除'), '外协旧记录提示清除已填资源');
   console.log('field editor quantity shortcuts fill only; save is the single write path');
 })().catch(error => { console.error(error); process.exit(1); });

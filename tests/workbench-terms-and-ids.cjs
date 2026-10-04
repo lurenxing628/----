@@ -34,6 +34,10 @@ assert.deepEqual(JSON.parse(JSON.stringify(T)), {
   current_official: '当前正式', historical_official: '历史正式', baseline_plan: '排产时的正式计划', initial_plan: '初始计划',
   run_statuses: { queued: '等待计算', running: '正在计算', complete: '计算完成', partial: '部分完成', failed: '计算失败', interrupted: '已中断' },
   candidate_statuses: { completed: '已完成', partial: '部分完成', failed: '失败', skipped: '已跳过' },
+  material_strategies: { strict: '整批齐套', stage: '按工序齐套', split: '预检分批开工' },
+  execution_states: { unreported: '待报工', started: '已开工', partial: '部分完成', paused: '已暂停', exception: '异常', complete: '已完工' },
+  data_quality: { complete: '完整', incomplete: '不完整', legacy_incomplete: '历史资料不完整', invalid: '需复核' },
+  delivery_risks: { overdue: '预计超期', on_time: '预计按期', unknown: '暂无数据' },
   report_actions: { create: '新增', supplement: '补齐', correct: '更正' },
   actions: { add: '新增', save: '保存', confirm: '确认', cancel: '取消', clear: '清除', import: '导入', export: '导出', download: '下载',
     refresh: '刷新', query_result: '查询结果', adopt: '采用' },
@@ -41,6 +45,8 @@ assert.deepEqual(JSON.parse(JSON.stringify(T)), {
     failure: '操作没有完成。请刷新重试；仍不行请联系维护人员，并告知下方编号。' }
 });
 assert(Object.isFrozen(T.outcomes));
+// 执行状态、数据完整性、交付判断各只留一套叫法：现场记录、排产候选、试调、值班台都从这里取。
+assert(Object.isFrozen(T.execution_states) && Object.isFrozen(T.data_quality) && Object.isFrozen(T.delivery_risks));
 assert.equal(T.outcomes.pending('保存'), '上次保存的结果还没查到，可能已经生效。请点「查询结果」，不要重复提交。');
 assert.equal(T.outcomes.rejected('采用', '批次号重复'), '上次采用没有生效：批次号重复。填写内容已保留，改好后重新提交。');
 assert.equal(T.outcomes.rejected('采用', '批次号重复。'), '上次采用没有生效：批次号重复。填写内容已保留，改好后重新提交。');

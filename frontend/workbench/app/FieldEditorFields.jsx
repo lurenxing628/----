@@ -17,6 +17,9 @@
     // Span and difference are checked against entered hours; keep up to three decimals instead of a one-decimal summary.
     const hours = value => window.WorkbenchFormat.hours(value, { digits: 3, trim: true });
     const timeHints = Object.keys(suggestions).length > 0, reasonLabel = action === 'supplement' || legacy ? '补齐原因' : '更正原因';
+    // 外协不占本厂设备和人员，不提供选择；旧记录里已填的仍显示，方便用「更正」清除（写入仍以服务端校验为准）。
+    const external = task.source === 'external', held = key => !!draft[key] || !!(record && record[key]);
+    const resourceShown = key => !external || held(key);
     return <><div className="field-entry-grid">
       <section><h4>产出数量</h4><Field label="本次完成数量" path="completed_quantity" error={error}><input ref={first} type="number" min="0" step="1" aria-label="本次完成数量" value={draft.completed_quantity} disabled={readonly('completed_quantity')} onChange={event => change('completed_quantity', event.target.value)} /></Field>
         <div className="field-quantity-tools"><span>件</span><Button disabled={readonly('completed_quantity')} onClick={() => change('completed_quantity', '0')}>填 0</Button>
@@ -31,8 +34,11 @@
         <p className="field-note">作业时长 <output aria-label="作业时长">{hours(span)}</output></p>
         <p className={'field-note' + (difference !== null && difference < 0 ? ' field-hours-warning' : '')}>工时差额 <output aria-label="工时差额">{hours(difference)}</output></p></section>
     </div>
-    <details open={action !== 'create' || !!legacy}><summary>实际设备 / 人员 / 备注{record || legacy ? ' / 原因' : ''}</summary><div className="field-extra">
-      {choices('actual_machine_ref', '实际设备', 'machine')}{choices('actual_operator_ref', '实际人员', 'operator')}
+    <details open={action !== 'create' || !!legacy}><summary>{external ? '' : '实际设备 / 人员 / '}备注{record || legacy ? ' / 原因' : ''}</summary><div className="field-extra">
+      {external && <p className="field-note" role="note">{held('actual_machine_ref') || held('actual_operator_ref')
+        ? '外协工序不占用本厂设备和人员，实际设备、实际人员要留空；原记录已填的请用「更正」清除。跟进人请填在经办人里。'
+        : '外协工序不占用本厂设备和人员，不用填实际设备和人员；跟进人请填在经办人里。'}</p>}
+      {resourceShown('actual_machine_ref') && choices('actual_machine_ref', '实际设备', 'machine')}{resourceShown('actual_operator_ref') && choices('actual_operator_ref', '实际人员', 'operator')}
       <Field label="作业备注" path="remark" error={error}><textarea aria-label="作业备注" maxLength="2000" value={draft.remark} disabled={readonly('remark')} onChange={event => change('remark', event.target.value)} /></Field>
       {(record || legacy) && <Field label={reasonLabel} path="reason" error={error} required><textarea required aria-label={reasonLabel} maxLength="2000" value={draft.reason} disabled={disabled} onChange={event => change('reason', event.target.value)} /></Field>}
       <Field label="经办人" path="declared_operator" error={error}><input aria-label="经办人" maxLength="2000" value={draft.declared_operator} disabled={disabled} onChange={event => change('declared_operator', event.target.value)} /></Field>

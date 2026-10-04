@@ -64,6 +64,8 @@ assert.equal(legacy.severity, 'blocker');
 window.TrialContract.check = condition => { if (!condition) throw Error('invalid fixture'); };
 window.TrialContract.workspace = () => {};
 window.APSSystemWorkbench = { csvCell: value => '"' + value.replaceAll('"', '""') + '"' };
+// 交付风险的按期 / 超期取自全站词表。
+vm.runInContext(fs.readFileSync(path.join(root, 'frontend/workbench/app/WorkbenchTerms.js'), 'utf8'), context);
 vm.runInContext(fs.readFileSync(path.join(root, 'frontend/workbench/app/TrialExport.js'), 'utf8'), context);
 const historical = { status: 'saved', base: { candidate_ref: candidateRef }, base_identity: { display_name: '原候选' }, task_count: 1,
   validation: { status: 'blocked', constraints_status: 'valid', issues: [legacy] }, unplanned_operations: [],
@@ -76,4 +78,11 @@ assert.equal(JSON.stringify(JSON.parse(window.TrialExport.raw(historical).text))
 historical.validation.constraints_status = 'blocked'; historical.validation.issues.push(blocker);
 assert(window.TrialExport.csv(historical).text.includes('问题 1 项'));
 assert(window.TrialExport.csv(historical).text.includes('有冲突，不能采用'));
+// 交付风险和计划详情、执行排产、值班台同一叫法：预计按期。
+historical.comparison.batches[0].risk = 'on_time';
+assert(window.TrialExport.csv(historical).text.includes("'预计按期") && !window.TrialExport.csv(historical).text.includes('可按期'));
+// 未指定交期（9999-12-31）：交期列写“未指定交期”，交付风险和计划交付页一样记“暂无数据”，不再写成 9999-12-31 / 预计按期。
+Object.assign(historical.comparison.batches[0], { risk: 'due_unspecified', due_date: '9999-12-31', late_hours: 0 });
+const unspecified = window.TrialExport.csv(historical).text;
+assert(unspecified.includes("'未指定交期") && unspecified.includes("'暂无数据") && !unspecified.includes('9999-12-31') && !unspecified.includes('预计按期'));
 console.log('trial inherited source, exact preview identity and legacy capability presentation passed');

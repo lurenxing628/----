@@ -112,7 +112,9 @@
     ['machines', 'operators'].forEach(k => check(d.resources[k].every(r => ref(r.ref) && typeof r.business_code === 'string')));
     check(d.comparison.basis === 'draft_original' && Array.isArray(d.comparison.batches) && d.capacity.basis === 'selected_trial_only' && Array.isArray(d.capacity.resources) && Array.isArray(d.change_history) && d.time_scope.time_basis === 'factory_local');
     check(['late_count', 'total_delay_hours', 'changeovers'].every(k => measure(d.comparison[k])) && ['changed_operations', 'moved_operations'].every(k => count(d.comparison[k]) && d.comparison[k] <= d.task_count));
-    d.comparison.batches.forEach(r => check(ref(r.batch_ref) && time(r.baseline_finish) && time(r.finish) && ['on_time', 'overdue', 'unavailable', 'invalid_data'].includes(r.risk) && measure(r.late_hours) && measure(r.improvement_hours)));
+    d.comparison.batches.forEach(r => check(ref(r.batch_ref) && time(r.baseline_finish) && time(r.finish) && ['on_time', 'overdue', 'due_unspecified', 'unavailable', 'invalid_data'].includes(r.risk) && measure(r.late_hours) && measure(r.improvement_hours)
+    // 未指定交期（9999-12-31）不会超期：超期按 0 小时计，合计仍可计算。
+    && (r.risk !== 'due_unspecified' || r.late_hours === 0)));
     check(['available', 'partial', 'unavailable'].includes(d.capacity.state));
     d.capacity.resources.forEach(r => {
       check(ref(r.resource_ref) && ['machine', 'operator'].includes(r.resource_type) && Array.isArray(r.segments) && ['arranged_hours', 'occupied_hours', 'overlap_hours', 'available_hours', 'available_occupied_hours', 'outside_available_hours', 'utilization'].every(k => measure(r[k])));
