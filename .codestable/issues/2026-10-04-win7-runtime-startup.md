@@ -50,3 +50,11 @@ nine sharing keys restored, original two snapshots unchanged, power suspended.
 No original user applications/databases/snapshots were removed or replaced.
 Release ZIP SHA256:
 E2A49B43615124C2A3F4586FDE2E401D1721F5D5A81A8E6D9A26807F452A201C
+
+Merge follow-up on 2026-10-05 against main f9eec457:
+- The broader recovery lane exposed another Windows fixture URI guard. It now
+  uses url2pathname and retains the original temp-directory ownership check.
+- Native tasklist output in the cleanup helper is read as bytes, comparing
+  exact ASCII PID fields without decoding localized output as UTF-8.
+- Three PID-query regression cases and the affected startup/recovery cases pass
+  with reader-thread warnings treated as errors. Production files are unchanged.

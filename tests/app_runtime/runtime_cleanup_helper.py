@@ -54,15 +54,14 @@ def _pid_exists(pid: int) -> bool:
             result = subprocess.run(
                 ["tasklist", "/FI", f"PID eq {pid_i}", "/NH", "/FO", "CSV"],
                 capture_output=True,
-                text=True,
                 timeout=8,
                 check=False,
             )
         except Exception:
             return False
-        for line in (result.stdout or "").splitlines():
-            line_s = str(line or "").strip()
-            if line_s.startswith('"') and f',"{pid_i}",' in line_s:
+        for line in (result.stdout or b"").splitlines():
+            line_s = line.strip()
+            if line_s.startswith(b'"') and f',"{pid_i}",'.encode("ascii") in line_s:
                 return True
         return False
     try:
