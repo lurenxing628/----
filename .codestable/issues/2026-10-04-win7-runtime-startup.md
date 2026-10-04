@@ -58,3 +58,9 @@ Merge follow-up on 2026-10-05 against main f9eec457:
   exact ASCII PID fields without decoding localized output as UTF-8.
 - Three PID-query regression cases and the affected startup/recovery cases pass
   with reader-thread warnings treated as errors. Production files are unchanged.
+- The restore replay subprocess's duplicate URI guard was corrected too.
+- Merge verification: startup/entrypoint/recovery lane 260 passed; restore-host
+  lane 28 passed; repository smoke checks 8 passed. Three general gate failures
+  were reproduced unchanged on original main f9eec457: missing dead-path baseline
+  (two checks) and pre-existing schema-documentation debt (one check). No baseline
+  was refreshed to conceal these failures; this is not an all-green full gate.
