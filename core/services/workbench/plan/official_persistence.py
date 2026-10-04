@@ -11,7 +11,12 @@ from data.repositories.workbench_plan_baseline_repo import WorkbenchPlanBaseline
 from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
 
 
-def persist_official_plan_in_tx(conn, *, prepared, payload, baseline, audit, application_operator):
+def persist_official_plan_in_tx(conn, *, prepared, payload, baseline, audit, application_operator, run_window=None):
+    """``run_window`` holds the dates of the run that left stage work pending.
+
+    None means ``prepared`` is that run's own input (candidate adoption). A trial
+    passes its source's recorded dates, or {} so an older plan never gains invented ones.
+    """
     if not conn.in_transaction:
         raise RuntimeError("Official plan persistence requires the caller's write transaction")
     audit = dict(audit)
@@ -20,7 +25,11 @@ def persist_official_plan_in_tx(conn, *, prepared, payload, baseline, audit, app
         raise ValueError("Official plan audit requires an action and source")
     history = ScheduleHistoryRepository(conn)
     version = history.allocate_next_version()
-    locked_ids = prepared.frozen_op_ids | prepared.execution_fixed_op_ids | prepared.execution_completed_op_ids
+    # 不重排时段只管这一次排产：只因时段保留的工序按未锁定落库（时段另记在 material_policy 里，试调据此判断），
+    # 否则一旦采用就变成永久锁定，以后填"不设"也放不开。继承的锁定、已开工完工的照旧锁定。
+    window_only = set((getattr(prepared, "freeze_meta", None) or {}).get("hold_window_op_ids") or ())
+    locked_ids = ((set(prepared.frozen_op_ids) - window_only)
+                  | prepared.execution_fixed_op_ids | prepared.execution_completed_op_ids)
     rows = [{"op_id": row.op_id, "version": version, "machine_id": row.machine_id,
              "operator_id": row.operator_id, "start_time": row.start_time.isoformat(sep=" "),
              "end_time": row.end_time.isoformat(sep=" "),
@@ -32,8 +41,7 @@ def persist_official_plan_in_tx(conn, *, prepared, payload, baseline, audit, app
                  version=version, validation="valid", row_count=len(rows),
                  application_operator=application_operator,
                  adopted_at=datetime.now().isoformat(timespec="seconds"), is_simulation=False)
-    audit["material_policy"] = {"ready_check": prepared.normalized_input["ready_check"],
-                                "material_strategy": prepared.normalized_input.get("material_strategy", "strict")}
+    audit["material_policy"] = _material_policy(prepared.normalized_input, run_window)
     # Legacy publishers own transactions or update master status. Only their
     # append repositories are composable with the caller's durable receipt.
     history.create({"version": version, "strategy": "manual", "batch_count": len(prepared.batches),
@@ -54,3 +62,11 @@ def persist_official_plan_in_tx(conn, *, prepared, payload, baseline, audit, app
                 "capabilities": {"view": True, "edit_draft": False, "adopt": False, "report_actual": True},
                 "blocked_reasons": []}
     return {"official_plan": identity, "row_count": len(rows)}
+
+
+def _material_policy(settings, run_window):
+    # 排产起止日和不重排时段一起记下，从这份正式计划发起的试调按同一时段判断哪些原安排不能改。
+    if run_window is None:
+        run_window = {key: settings[key] for key in ("start_date", "end_date", "hold_window") if key in settings}
+    return {"ready_check": settings["ready_check"], "material_strategy": settings.get("material_strategy", "strict"),
+            **run_window}

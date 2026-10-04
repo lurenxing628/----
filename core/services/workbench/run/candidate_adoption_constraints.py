@@ -49,17 +49,22 @@ def adoption_downtimes(conn, prepared, payload):
                                  start_dt=min(row.start_time for row in rows))
 
 
+def calendar_duration_conflict(calendar, row, op, batch, machine_downtimes):
+    """按真实班次、效率、停机和工时从安排的开工时刻重算一遍；开完工对不上（或效率要兜底）即冲突。"""
+    estimate = estimate_internal_slot(calendar=calendar, op=op, batch=batch,
+        machine_id=row.machine_id, operator_id=row.operator_id, base_time=row.start_time,
+        prev_end=row.start_time, machine_timeline=(), operator_timeline=(), end_dt_exclusive=None,
+        machine_downtimes=machine_downtimes,
+        last_op_type_by_machine=None, abort_after=None)
+    return bool(estimate.efficiency_fallback_used or estimate.start_time != row.start_time
+                or estimate.end_time != row.end_time)
+
+
 def _internal(prepared, row, op, batch, validate_point, downtime):
     if row.start_time == row.end_time:
         validate_point(row)
         return
-    estimate = estimate_internal_slot(calendar=prepared.cal_svc, op=op, batch=batch,
-        machine_id=row.machine_id, operator_id=row.operator_id, base_time=row.start_time,
-        prev_end=row.start_time, machine_timeline=(), operator_timeline=(), end_dt_exclusive=None,
-        machine_downtimes=downtime.get(row.machine_id, ()),
-        last_op_type_by_machine=None, abort_after=None)
-    if (estimate.efficiency_fallback_used or estimate.start_time != row.start_time
-            or estimate.end_time != row.end_time):
+    if calendar_duration_conflict(prepared.cal_svc, row, op, batch, downtime.get(row.machine_id, ())):
         _block("candidate_calendar_duration_conflict", "候选开完工时间与真实班次、效率、停机或工时不一致。")
 
 
@@ -70,14 +75,48 @@ def adoption_external_intervals(prepared, *, algo_ops=None):
     return {op_id: cycles[identity] for op_id, identity in groups.items() if identity in cycles}
 
 
+def external_holds_resources(row):
+    """外协安排不能占本厂设备人员。"""
+    return row.machine_id is not None or row.operator_id is not None
+
+
 def _external(prepared, row, op, actual_intervals):
-    if row.machine_id is not None or row.operator_id is not None:
+    if external_holds_resources(row):
         _block("candidate_external_resource_conflict", "外协候选带有未支持的内部资源占用。")
     actual_period = actual_intervals.get(row.op_id)
     days = op.ext_group_total_days if op.ext_merge_mode == "merged" else op.ext_days
     expected = actual_period if actual_period is not None else (row.start_time, prepared.cal_svc.add_calendar_days(row.start_time, days))
     if expected != (row.start_time, row.end_time):
         _block("candidate_external_duration_conflict", "外协候选与真实外协周期不一致。")
+
+
+_ARRANGEMENT_MESSAGES = {
+    "candidate_resource_invalid": "候选实际使用的设备、人员资质、工种或供应商不合法。",
+    "candidate_material_not_ready": "候选仍有未齐套物料，不能正式采用。",
+    "candidate_before_material": "候选安排早于本工序物料到齐日期。",
+    "candidate_before_ready_date": "候选安排早于实际可开工日期。",
+}
+
+
+def arrangement_problem(checks, batch, raw, start_time, settings):
+    """一条非实际安排按现在的资料还成不成立：工序资料和设备人员资格、物料到齐日、齐套日期。
+
+    batch、raw 是原始行，raw 的设备人员换成安排行自己的。返回第一处不成立的原因码，都成立返回 None。
+    候选采用逐行复核与排产检查核对锁定、冻结保留的原安排共用这一口径。
+    """
+    if checks.fields(batch, raw) or checks.resources(raw):
+        return "candidate_resource_invalid"
+    material_issues, material_day = checks.operation_readiness(batch, raw, settings)
+    if material_issues:
+        return "candidate_material_not_ready"
+    # SQLite DECLTYPES returns date objects in the application; snapshots use ISO text.
+    # batch_model has already rejected invalid dates using the same parser.
+    if material_day and start_time < datetime.fromisoformat(material_day):
+        return "candidate_before_material"
+    ready_day = stored_date(batch["ready_date"])
+    if settings["ready_check"] and ready_day is not None and start_time < datetime.fromisoformat(ready_day):
+        return "candidate_before_ready_date"
+    return None
 
 
 def _protected_arrangement(prepared, checks, row, raw, algo, actual_ids, actual_intervals):
@@ -107,18 +146,9 @@ def validate_adoption_constraints(conn, prepared, payload):
         # validate_candidate + execution guard retain its exact seed and identity.
         if _protected_arrangement(prepared, checks, row, raw, algo_ops[row.op_id], actual_ids, actual_intervals):
             continue
-        if checks.fields(asdict(batch), raw) or checks.resources(raw):
-            _block("candidate_resource_invalid", "候选实际使用的设备、人员资质、工种或供应商不合法。")
-        material_issues, material_day = checks.operation_readiness(asdict(batch), raw, prepared.normalized_input)
-        if material_issues:
-            _block("candidate_material_not_ready", "候选仍有未齐套物料，不能正式采用。")
-        # SQLite DECLTYPES returns date objects in the application; snapshots use ISO text.
-        # batch_model has already rejected invalid dates using the same parser.
-        if material_day and row.start_time < datetime.fromisoformat(material_day):
-            _block("candidate_before_material", "候选安排早于本工序物料到齐日期。")
-        ready_day = stored_date(batch.ready_date)
-        if prepared.normalized_input["ready_check"] and ready_day is not None and row.start_time < datetime.fromisoformat(ready_day):
-            _block("candidate_before_ready_date", "候选安排早于实际可开工日期。")
+        code = arrangement_problem(checks, asdict(batch), raw, row.start_time, prepared.normalized_input)
+        if code is not None:
+            _block(code, _ARRANGEMENT_MESSAGES[code])
         if row.source == "internal":
             _internal(prepared, row, algo_ops[row.op_id], batch, validate_point, downtime)
         else:

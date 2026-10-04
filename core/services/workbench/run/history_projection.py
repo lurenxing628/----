@@ -1,10 +1,50 @@
-"""Verify directory claims and expose only admission-time public summaries."""
+"""Verify directory claims and expose only admission-time public summaries and failure reasons."""
 
 import json
 import math
 import re
 
+from core.models.workbench_preflight import stored_hold_window_valid
 from core.models.workbench_run_history import STATES, TERMINAL_STATES, inconsistent, local_date, local_datetime
+
+COMPUTATION_FAILED = "本次候选计算失败。请联系维护人员，再重新做排产检查。"
+# 旧版本把真实原因只记在诊断里，给用户的都是这一句。
+_LEGACY_FAILURE = "候选排产没有完成。请到「排产记录」查看原因，改好后重新做排产检查。"
+# 原话指着检查页列出的缺项，排产记录里没有这份清单，改成能照做的说法。
+_FAILURE_GUIDES = {
+    "input_blocked": "排产资料还有缺项，这次排产没有开始。请重新做排产检查，按检查结果补齐后再排产。",
+    # 下面几条原话是旧排产页面的“冻结窗口”说法；工作台改说不重排时段，并给出能照做的出路。
+    "all_operations_frozen": "要重排的工序都在正式计划里锁定、或因不重排时段保持原安排，没有可重排的工序，这次排产没有开始。"
+                             "请重新做排产检查，把不重排时段改短或不设。",
+}
+_HOLD_FAILURES = {
+    "freeze_window": "排产要原样保留不重排时段里的原安排，但正式计划里这段时间的安排读不出来或者对不上，这次排产没有完成。"
+                     "请重新做排产检查，把不重排时段改短或不设；仍不行请联系维护人员核对正式计划。",
+    "execution_seed_conflict": "现场报工和要原样保留的原安排（正式计划里锁定的或不重排时段里的）对不上，这次排产没有完成。"
+                               "请重新做排产检查，按检查结果处理后再排产。",
+    "execution_completed_downstream_before_actual_finish": "要原样保留的安排排在同批已完工前道的实际完工之前，这次排产没有完成。"
+                     "请重新做排产检查，按检查结果把不重排时段改短或不设，或到现场记录核对前道的实际完工时间。",
+}
+_CHINESE = re.compile(r"[\u4e00-\u9fff]")
+
+
+def hold_failure_message(exc):
+    """旧排产服务按“冻结窗口”说的失败（读原安排、现场报工与原安排对不上）：返回工作台的说法；不是这类返回 None。"""
+    details = getattr(exc, "details", None)
+    details = details if isinstance(details, dict) else {}
+    for key in (details.get("reason"), details.get("field")):
+        if key in _HOLD_FAILURES:
+            return _HOLD_FAILURES[key]
+    return None
+
+
+def failure_message(code, message):
+    """排产失败时给用户看的原因：写给用户的中文原因照原话；内部校验的英文原文只留在诊断里。"""
+    if code in _FAILURE_GUIDES:
+        return _FAILURE_GUIDES[code]
+    if type(message) is str and _CHINESE.search(message):
+        return message
+    return COMPUTATION_FAILED
 
 
 def _pairs(pairs):
@@ -125,12 +165,34 @@ def _manifest(row, candidates):
     if row["result_json"] is None:
         if row["state"] in TERMINAL_STATES or candidates or row["receipt_state"] is not None:
             inconsistent()
-        return
+        return None
     result = stored_json(row["result_json"])
     succeeded, manifest = _receipt_manifest(row, result, candidates)
     _manifest_candidates(manifest, candidates)
     if succeeded and not any(item["status"] == "completed" for item in candidates.values()):
         inconsistent()
+    return result
+
+
+def _stored_error(row, result):
+    error = result.get("error") if result is not None and row["state"] in ("failed", "interrupted") else None
+    if type(error) is dict and all(type(error.get(key)) is str and error[key] for key in ("code", "message")):
+        return error
+    return None
+
+
+def _failure(row, result):
+    """失败或中断的排产给出原因；读不出原因时不编造，留空。"""
+    error = _stored_error(row, result)
+    if error is None:
+        return None
+    message = error["message"]
+    if message == _LEGACY_FAILURE:
+        # 旧记录：只取当时本来就写给用户看的业务原因，其他异常原文不外露。
+        diagnostic = result.get("diagnostic") if type(result.get("diagnostic")) is dict else {}
+        written = diagnostic.get("exception_type") in ("CandidateRunInputError", "WorkbenchCommandRejected")
+        message = failure_message(error["code"], diagnostic.get("message") if written else None)
+    return {"code": error["code"], "message": message}
 
 
 def _gap(field, value):
@@ -139,6 +201,8 @@ def _gap(field, value):
 
 
 def _scope_value_valid(key, value):
+    if key == "hold_window":
+        return stored_hold_window_valid(value)
     domains = {"missing_resource_policy": ("auto_assign", "exclude"), "completed_policy": ("preserve_actuals",), "material_strategy": ("strict", "stage", "split")}
     if key in domains:
         return type(value) is str and value in domains[key]
@@ -166,7 +230,8 @@ def _scope_batch_count(refs, gaps):
 
 def scope_summary(raw):
     settings, result, gaps = stored_json(raw), {}, []
-    for key in ("start_date", "end_date", "ready_check", "missing_resource_policy", "completed_policy") + (("material_strategy",) if "material_strategy" in settings else ()):
+    optional = tuple(key for key in ("material_strategy", "hold_window") if key in settings)
+    for key in ("start_date", "end_date", "ready_check", "missing_resource_policy", "completed_policy") + optional:
         value = settings.get(key)
         valid = _scope_value_valid(key, value)
         result[key] = value if valid else None
@@ -181,7 +246,7 @@ def scope_summary(raw):
 def public_run(row, rows):
     _job(row)
     candidates = _candidates(rows)
-    _manifest(row, candidates)
+    result = _manifest(row, candidates)
     pending = row["stage"] == "awaiting_reconciliation"
     return {"run_ref": row["run_ref"], "state": row["state"], "stage": row["stage"],
             "accepted_at": row["accepted_at"], "started_at": row["started_at"], "finished_at": row["finished_at"],
@@ -189,5 +254,6 @@ def public_run(row, rows):
             "task_count_basis": "persisted_rows_across_candidates", "counts_final": row["state"] in TERMINAL_STATES,
             "scope_summary": scope_summary(row["normalized_input_json"]), "recovery_required": pending,
             "recovery_reason": {"code": "awaiting_reconciliation", "message": "运行状态待核对，本次读取未恢复或重跑。"} if pending else None,
+            "error": _failure(row, result),
             "completion_semantics": "execution_state_only", "constraint_verification": "not_checked_by_history",
             "task_content_verification": "candidate_workspace_required"}

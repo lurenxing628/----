@@ -131,3 +131,35 @@ def test_every_state_filter_is_exact(history_case, state):
     result = read(client, state=state)["data"]
     assert result["page"]["total"] == 1 and result["run_count"] == len(STATES)
     assert [row["run_ref"] for row in result["runs"]] == [refs[state]]
+
+
+def test_failed_runs_show_their_reason_and_old_records_only_recover_user_text(history_case, monkeypatch):
+    # 排产记录给出失败原因；旧版本只把原因记在诊断里，只取当时写给用户的业务原因，SQL、路径等原文不外露。
+    from core.models.workbench_run_compute import CandidateRunInputError
+    from core.services.workbench.run.worker import WorkbenchRunWorker
+
+    case = history_case
+    reason = "工作日历里有班次时间读不出来或者填得不对，这次排产没有开始。请到工作日历按 08:30 这样改好。"
+    legacy = {"code": "candidate_computation_failed", "message": "候选排产没有完成。请到「排产记录」查看原因，改好后重新做排产检查。"}
+
+    def failed(key, error, old=False):
+        def fail(conn, row, on_progress):
+            raise error
+        with monkeypatch.context() as patch:
+            if old:
+                patch.setattr(WorkbenchRunWorker, "_public_error", lambda self, exc: dict(legacy, code=getattr(exc, "reason", legacy["code"])))
+            accepted = case.accept(key=key)
+            with pytest.raises(type(error)):
+                WorkbenchRunWorker(case.conn, compute_runner=fail).execute(accepted["run_ref"])
+        return accepted["run_ref"]
+
+    current = failed("run-request-00000001", CandidateRunInputError("invalid_calendar_shift", reason))
+    old_input = failed("run-request-00000002", CandidateRunInputError("invalid_calendar_shift", reason), old=True)
+    old_bug = failed("run-request-00000003", RuntimeError("sqlite3.OperationalError: no such column x_y in /home/aps/x.py"), old=True)
+    complete, unrecorded = seed(case, "complete"), seed(case, "failed")
+    client, _ = api(case)
+    rows = {row["run_ref"]: row["error"] for row in read(client)["data"]["runs"]}
+    assert rows[current] == rows[old_input] == {"code": "invalid_calendar_shift", "message": reason}
+    assert rows[old_bug] == {"code": "candidate_computation_failed", "message": "本次候选计算失败。请联系维护人员，再重新做排产检查。"}
+    assert rows[complete] is None and rows[unrecorded] is None
+    assert "x_y" not in str(rows) and "排产记录」查看原因" not in str(rows)

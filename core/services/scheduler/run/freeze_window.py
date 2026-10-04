@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Set, Tuple
@@ -16,6 +17,7 @@ from .freeze_window_prefixes import (
     group_seed_operations_by_batch,
     max_seq_by_batch,
     prefix_op_ids_for_batch,
+    rows_in_window,
 )
 from .freeze_window_seed_rows import (
     build_seed_results as _build_seed_results,
@@ -54,6 +56,10 @@ class _FreezeSeedScope:
     seed_operations_by_batch: Dict[str, List[Any]]
     op_by_id: Dict[int, Any]
     op_ids_all: List[int]
+    # 调用方指定的时段：只有和 [anchor_start, anchor_end) 重叠的原安排算"要保留"，同批次前道从 start_str 起补齐。
+    # 为 None 时沿用旧口径：读到的窗口内原安排都算。
+    anchor_start: Optional[datetime] = None
+    anchor_end: Optional[datetime] = None
 
 
 def _init_freeze_meta(meta: Optional[Dict[str, Any]]) -> Dict[str, Any]:
@@ -225,6 +231,22 @@ def _empty_freeze_seed_result(
     return set(), [], warnings
 
 
+def _hold_window_days(hold_window: Tuple[datetime, datetime], start_dt: datetime, prev_version: int,
+                      meta: Dict[str, Any]) -> int:
+    """调用方指定时段时不看配置里的天数；天数只给旧诊断字段一个正数口径。"""
+    meta["freeze_enabled"] = True
+    meta["hold_window"] = (hold_window[0], hold_window[1])
+    days = math.ceil((hold_window[1] - start_dt).total_seconds() / 86400) if hold_window[1] > start_dt else 0
+    meta["freeze_days"] = int(days)
+    if days <= 0:
+        _set_freeze_disabled(meta, _FREEZE_DISABLED_NO_DAYS)
+        return 0
+    if int(prev_version or 0) <= 0:
+        _set_freeze_disabled(meta, _FREEZE_DISABLED_NO_PREVIOUS_VERSION)
+        return 0
+    return int(days)
+
+
 def _prepare_freeze_seed_scope(
     svc,
     *,
@@ -236,18 +258,22 @@ def _prepare_freeze_seed_scope(
     strict_mode: bool,
     freeze_meta: Dict[str, Any],
     warnings: List[str],
+    hold_window: Optional[Tuple[datetime, datetime]] = None,
 ) -> Optional[_FreezeSeedScope]:
-    freeze_days = _freeze_window_days(
-        cfg,
-        prev_version,
-        strict_mode=bool(strict_mode),
-        meta=freeze_meta,
-        warnings=warnings,
-    )
+    if hold_window is not None:
+        freeze_days = _hold_window_days(hold_window, start_dt, prev_version, freeze_meta)
+    else:
+        freeze_days = _freeze_window_days(
+            cfg,
+            prev_version,
+            strict_mode=bool(strict_mode),
+            meta=freeze_meta,
+            warnings=warnings,
+        )
     if freeze_days <= 0:
         return None
 
-    freeze_end = start_dt + timedelta(days=freeze_days)
+    freeze_end = hold_window[1] if hold_window is not None else start_dt + timedelta(days=freeze_days)
     seed_operations = reschedulable_operations if reschedulable_operations is not None else operations
     seed_operations_by_batch = group_seed_operations_by_batch(seed_operations)
     op_by_id: Dict[int, Any] = {int(op.id): op for op in seed_operations if op and op.id}
@@ -264,6 +290,8 @@ def _prepare_freeze_seed_scope(
         seed_operations_by_batch=seed_operations_by_batch,
         op_by_id=op_by_id,
         op_ids_all=op_ids_all,
+        anchor_start=hold_window[0] if hold_window is not None else None,
+        anchor_end=hold_window[1] if hold_window is not None else None,
     )
 
 
@@ -327,15 +355,22 @@ def _apply_freeze_prefixes(
     warnings: List[str],
     strict_mode: bool,
     point_validator: Any = None,
+    skip_incomplete_prefix: bool = False,
 ) -> Set[int]:
     frozen_op_ids: Set[int] = set()
-    max_seq_lookup = max_seq_by_batch(schedule_map, scope.op_by_id)
+    max_seq_lookup = max_seq_by_batch(
+        rows_in_window(svc, scope.anchor_start, scope.anchor_end, schedule_map), scope.op_by_id)
 
     for bid, max_seq in max_seq_lookup.items():
         if max_seq <= 0:
             continue
         prefix = prefix_op_ids_for_batch(scope.seed_operations_by_batch.get(bid, []), bid, max_seq)
         missing = [oid for oid in prefix if oid not in schedule_map]
+        if missing and skip_incomplete_prefix:
+            # 调用方明确接受：前道原安排不在冻结窗口里（窗口前还没报工，或者没排过）的批次整批不冻结、
+            # 照常重排，由调用方事先提醒；窗口内读到的行本身没有坏，严格模式下也不整次拒绝。
+            freeze_meta.setdefault("freeze_skipped_batch_ids", []).append(bid)
+            continue
         if missing:
             sample = ", ".join([str(x) for x in missing[:5]])
             _record_freeze_degradation(
@@ -400,7 +435,14 @@ def build_freeze_window_seed(
     meta: Optional[Dict[str, Any]] = None,
     point_validator: Any = None,
     schedule_rows_reader: Any = None,
+    skip_incomplete_prefix: bool = False,
+    hold_window: Optional[Tuple[datetime, datetime]] = None,
 ) -> Tuple[Set[int], List[Dict[str, Any]], List[str]]:
+    """skip_incomplete_prefix=True 时，前道原安排不在窗口里的批次不冻结、记进 meta["freeze_skipped_batch_ids"]。
+
+    hold_window=(开始, 结束) 时不看配置里的冻结开关和天数：和这段时间重叠的原安排保留，同批次排在前面的
+    从 start_dt 起读到的原安排一起保留；记进 meta["hold_window"]。为 None 时行为不变。
+    """
     warnings: List[str] = []
     freeze_meta = _init_freeze_meta(meta)
 
@@ -414,6 +456,7 @@ def build_freeze_window_seed(
         strict_mode=bool(strict_mode),
         freeze_meta=freeze_meta,
         warnings=warnings,
+        hold_window=hold_window,
     )
     if scope is None:
         return _empty_freeze_seed_result(freeze_meta, warnings)
@@ -440,6 +483,7 @@ def build_freeze_window_seed(
         warnings=warnings,
         strict_mode=bool(strict_mode),
         point_validator=point_validator,
+        skip_incomplete_prefix=bool(skip_incomplete_prefix),
     )
     return _finish_freeze_seed_result(
         frozen_op_ids,

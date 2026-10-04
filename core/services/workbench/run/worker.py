@@ -3,6 +3,7 @@
 import json
 from datetime import datetime
 
+from core.errors import AppError
 from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_command import WorkbenchCommandRejected, WorkbenchCommandUncertain
 from core.models.workbench_run_compute import CandidateRunInputError
@@ -16,20 +17,35 @@ from data.repositories.workbench_run_repo import WorkbenchRunRepository
 from data.repositories.workbench_run_result_repo import WorkbenchRunResultRepository, prepare_run_result
 
 from .compute import compute_candidate_run
+from .history_projection import COMPUTATION_FAILED, failure_message, hold_failure_message
 from .jobs_facts import run_facts_unchanged
 from .progress import clear_progress, report_progress
 from .worker_claim import claim_run
 from .worker_snapshot import computation_database
 
+# 计算子进程只把清洗后的提示带回 AppError，原异常类型和原文放在 internal_details 的这个键里，只进诊断。
+CHILD_EXCEPTION = "child_exception"
+
+
+def failure_diagnostic(exc):
+    """诊断记原异常类型和原文；子进程带回的 AppError 用它在子进程里的原样，和线程模式记的一致。"""
+    details = exc.internal_details if isinstance(exc, AppError) and isinstance(exc.internal_details, dict) else {}
+    carried = details.get(CHILD_EXCEPTION)
+    if isinstance(carried, dict) and all(type(carried.get(key)) is str for key in ("exception_type", "message")):
+        return {"exception_type": carried["exception_type"], "message": carried["message"]}
+    return {"exception_type": type(exc).__name__, "message": str(exc)}
+
 
 class WorkbenchRunWorker:
-    def __init__(self, conn, *, clock=None, compute_runner=None, progress_sink=None):
+    def __init__(self, conn, *, clock=None, compute_runner=None, progress_sink=None, app_error_message=None):
         self.conn = conn
         self.clock = clock or datetime.now
         self.repo = WorkbenchRunRepository(conn)
         self.results = WorkbenchRunResultRepository(conn)
         self.compute_runner = compute_runner
         self.progress_sink = progress_sink
+        # AppError 给用户看的提示由宿主传入的 web 层清洗函数给出；没传时按计算失败处理，不外露原文。
+        self.app_error_message = app_error_message
 
     def _now(self):
         return self.clock().isoformat(timespec="seconds")
@@ -90,13 +106,22 @@ class WorkbenchRunWorker:
             # A COMMIT acknowledgement can fail after persistence. Recovery decides.
             raise WorkbenchCommandUncertain(row["request_key"]) from exc
 
-    def _record_failure(self, row, exc):
-        code = "snapshot_stale" if isinstance(exc, WorkbenchCommandRejected) and exc.code == "snapshot_stale" else "candidate_computation_failed"
+    def _public_error(self, exc):
+        """这次失败的确定原因，原样给用户；内部异常的原文（堆栈、SQL、英文校验）只进 diagnostic。"""
+        if isinstance(exc, WorkbenchCommandRejected) and exc.code == "snapshot_stale":
+            return {"code": exc.code, "message": str(exc)}
         if isinstance(exc, CandidateRunInputError):
-            code = exc.reason
-        error = {"code": code, "message": "候选排产没有完成。请到「排产记录」查看原因，改好后重新做排产检查。"}
-        result = {"state": "failed", "result_persisted": False, "candidates": [], "error": error,
-                  "diagnostic": {"exception_type": type(exc).__name__, "message": str(exc)}}
+            return {"code": exc.reason, "message": failure_message(exc.reason, str(exc))}
+        held = hold_failure_message(exc) if isinstance(exc, AppError) else None
+        if held is not None:
+            return {"code": "candidate_input_invalid", "message": held}
+        if isinstance(exc, AppError) and self.app_error_message is not None:
+            return {"code": "candidate_input_invalid", "message": self.app_error_message(exc)}
+        return {"code": "candidate_computation_failed", "message": COMPUTATION_FAILED}
+
+    def _record_failure(self, row, exc):
+        result = {"state": "failed", "result_persisted": False, "candidates": [], "error": self._public_error(exc),
+                  "diagnostic": failure_diagnostic(exc)}
         try:
             with TransactionManager(self.conn).transaction(begin_immediate=True):
                 self.repo.finish(row["run_ref"], "failed", result, self._now())

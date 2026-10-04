@@ -1,6 +1,9 @@
 """Counts and public result assembly; no inferred scheduling feasibility."""
 
 from core.models.workbench_preflight import issue, preflight_window
+from core.services.workbench.facts.preflight_dependencies import material_deferred_ids
+
+from .input_config import window_text
 
 
 def result_counts(batches, rows, no_route, unready):
@@ -12,6 +15,8 @@ def result_counts(batches, rows, no_route, unready):
     counts["missing_resource_tasks"] = sum(any(item["code"] in resource_codes for item in row["issues"]) for row in rows)
     counts["eligible_tasks"] = counts["ready_tasks"] + counts["auto_assign_required"]
     counts["actual_fact_tasks"] = sum(row["has_execution_facts"] for row in rows)
+    counts["held_tasks"] = sum(row.get("held") is not None for row in rows)
+    counts["hold_window_tasks"] = sum((row.get("held") or {}).get("basis") == "hold_window" for row in rows)
     return counts
 
 
@@ -38,10 +43,33 @@ def result_warnings(settings, counts):
     return warnings
 
 
-def summarize(settings, batches, rows, no_route, unready, ledger_reasons, dependency_reasons=()):
+def adoption_warnings(settings, rows):
+    """采用要把选中批次的工序全部排上，只有「按工序齐套」下明确等料的工序可以留待以后排（与候选采用同一口径）。
+
+    其余本次跳过的工序会让这次结果只能查看、不能采用；按批次提醒，请用户先取消勾选或处理好跳过原因。
+    """
+    deferred = material_deferred_ids(rows, settings)
+    skipped = {}
+    for row in rows:
+        if row["status"] == "skipped" and row["op_id"] not in deferred:
+            skipped.setdefault(row["batch_id"], row["batch_ref"])
+    return [issue("skipped_not_adoptable", "这批有工序本次跳过，排出的结果只能查看、不能采用：采用时选中批次的工序要全部排上。"
+                  "要采用，请取消勾选这批，或先按工序明细处理好跳过原因，再重新检查。", batch_ref=ref, batch_id=batch_id)
+            for batch_id, ref in sorted(skipped.items())]
+
+
+def effective_config(settings, hold):
+    keys = ("ready_check", "missing_resource_policy", "completed_policy") + (
+        ("material_strategy",) if "material_strategy" in settings else ())
+    return {**{key: settings[key] for key in keys}, "hold_window": window_text(hold[0]), "hold_window_source": hold[1]}
+
+
+def summarize(settings, batches, rows, no_route, unready, ledger_reasons, dependency_reasons=(), notes=(), hold=(None, "default")):
+    """hold 是本次不重排时段 ((开始, 结束) 或 None, 来源 explicit/default)，原样写进 effective_config。"""
     counts = result_counts(batches, rows, no_route, unready)
     blockers = result_blockers(rows, no_route, counts)
     blockers.extend(dependency_reasons)
+    warnings = result_warnings(settings, counts) + adoption_warnings(settings, rows) + list(notes)
     included_refs = {row["batch_ref"] for row in rows if row["status"] in ("eligible", "auto_assign_required")
                      or (row["status"] == "protected" and row.get("external_execution_cycle"))}
     for row in rows:
@@ -54,10 +82,9 @@ def summarize(settings, batches, rows, no_route, unready, ledger_reasons, depend
     return {"normalized_input": settings, "scope": {"source": "production", "batch_refs": settings["batch_refs"]},
             "included_batches": included, "excluded_batches": excluded, "tasks": rows, "counts": counts,
             "eligible_tasks": counts["eligible_tasks"], "auto_assign_required": counts["auto_assign_required"],
-            "skipped_tasks": counts["skipped_tasks"], "blockers": blockers, "warnings": result_warnings(settings, counts),
+            "skipped_tasks": counts["skipped_tasks"], "blockers": blockers, "warnings": warnings,
             "no_route_batches": [{"batch_ref": row["ref"], "batch_id": row["batch_id"]} for row in no_route],
-            "unready_batches": unready, "effective_config": {key: settings[key] for key in (
-                "ready_check", "missing_resource_policy", "completed_policy") + (("material_strategy",) if "material_strategy" in settings else ())}, "config_scope": "single_run",
+            "unready_batches": unready, "effective_config": effective_config(settings, hold), "config_scope": "single_run",
             "effective_start": start, "effective_end_exclusive": end, "effective_start_basis": "window_lower_bound_not_calendar_slot",
             "calendar_check": "not_evaluated", "execution_projection_source": "legacy_guard_only" if ledger_reasons else "execution_ledger",
             "run_blocked": True, "run_blocked_reasons": [issue("schedule_not_computed", "尚未生成排产结果。")]

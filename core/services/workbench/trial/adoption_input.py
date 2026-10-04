@@ -6,7 +6,7 @@ from core.services.workbench.run.input import _prepare, _projection_map
 from core.services.workbench.run.preflight_facts import TABLES, PreflightFacts
 
 
-def prepare_trial_adoption_input(conn, settings, projections, live):
+def prepare_trial_adoption_input(conn, settings, projections, live, hold=None):
     if not conn.in_transaction:
         raise RuntimeError("Saved scenario input requires the caller's current read transaction")
     settings = normalize_preflight_input(settings)
@@ -23,4 +23,4 @@ def prepare_trial_adoption_input(conn, settings, projections, live):
     raw_ops = [row for row in facts.tables["BatchOperations"] if row["batch_id"] in batches]
     operations = [operation_model(row) for row in raw_ops]
     projected = _projection_map(projections, [facts.operation_ref(row) for row in raw_ops])
-    return _prepare(conn, settings, facts, live["facts_hash"], raw_batches, batches, operations, projected)
+    return _prepare(conn, settings, facts, live["facts_hash"], raw_batches, batches, operations, projected, hold=hold)

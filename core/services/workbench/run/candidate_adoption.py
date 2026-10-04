@@ -84,6 +84,12 @@ class WorkbenchRunCandidateAdoptionService:
             return persist_adoption_in_tx(self.conn, evidence, intent, request_key,
                                          application_operator=getpass.getuser())
 
+        # A retry of an already committed adoption replays its receipt even while a
+        # run computes; only new work is refused below.
+        replayed = commands.replay(request_key=request_key, action=ADOPT_ACTION, context_ref=candidate_ref,
+                                   normalized_input=intent)
+        if replayed is not None:
+            return replayed
         # Serialize short adoption requests, but do not wait behind a long worker.
         # BEGIN IMMEDIATE still serializes writers on independent connections.
         with _ADOPTION_LOCK:

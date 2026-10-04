@@ -69,10 +69,11 @@ class WorkbenchTrialService:
 
         def mutate(prepared):
             admission, rows, live = prepared
-            checked = TrialValidator(self.conn, admission, rows, live).evaluate()
+            validator = TrialValidator(self.conn, admission, rows, live)
+            checked = validator.evaluate()
             ref = self.repo.create(admission, rows, checked, request_key, self.actor_provider(), self._now())
             head, stored = load_draft(self.repo, ref)
-            return WorkbenchCommandOutcome("committed", self._projection(head, stored, live, checked))
+            return WorkbenchCommandOutcome("committed", self._projection(head, stored, live, (checked, validator.frozen)))
 
         return WorkbenchCommandService(self.conn).execute(request_key=request_key, action=CREATE,
             context_ref=base_ref, normalized_input=intent, guard=guard, mutate=mutate)
@@ -83,9 +84,11 @@ class WorkbenchTrialService:
         return head, rows, live
 
     def _projection(self, head, rows, live, checked=None):
+        """checked: (核对结果, 冻结的原安排)，与这些行同一次核对；不给时现核对。"""
         if checked is None:
-            checked = TrialValidator(self.conn, head["admission"], rows, live).evaluate()
-        result = draft_projection(head, rows, checked, live, self.context_factory)
+            validator = TrialValidator(self.conn, head["admission"], rows, live)
+            checked = validator.evaluate(), validator.frozen
+        result = draft_projection(head, rows, checked[0], live, self.context_factory, checked[1])
         changes = self.repo.changes(head["draft_ref"])
         for item in changes:
             for side in ("before", "after"):
@@ -123,10 +126,10 @@ class WorkbenchTrialService:
             row["current"] = validator.adjusted(row, intent)
             checked = validator.evaluate()
             if before == row["current"]:
-                return WorkbenchCommandOutcome("unchanged", self._projection(head, rows, live, checked))
+                return WorkbenchCommandOutcome("unchanged", self._projection(head, rows, live, (checked, validator.frozen)))
             require_advanced(self.repo.change(head, row, before, checked, request_key, self.actor_provider(), self._now()))
             current_head, current_rows = load_draft(self.repo, draft_ref)
-            return WorkbenchCommandOutcome("committed", self._projection(current_head, current_rows, live, checked))
+            return WorkbenchCommandOutcome("committed", self._projection(current_head, current_rows, live, (checked, validator.frozen)))
 
         return self._execute(CHANGE, draft_ref, intent, write_token, request_key, mutate)
 

@@ -11,11 +11,13 @@ import tempfile
 import threading
 from pathlib import Path
 
+from core.errors import AppError, ErrorCode
 from core.infrastructure.connection_guards import query_only
 from core.infrastructure.logging import safe_log
 from core.infrastructure.snapshot_connection import backup_to_file, open_readonly_immutable
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_run_compute import CandidateRunInputError
+from web.error_boundary import user_visible_app_error_message
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -35,6 +37,13 @@ def _error_message(exc):
         return ("rejected", exc.code, str(exc), exc.status)
     if isinstance(exc, CandidateRunInputError):
         return ("input", exc.reason, str(exc), exc.issues)
+    if isinstance(exc, AppError):
+        # Strings only cross (details may not pickle): the user-visible text, plus the
+        # original type and text that the parent records as diagnostic, as in thread mode.
+        from core.services.workbench.run.history_projection import hold_failure_message
+
+        message = hold_failure_message(exc) or user_visible_app_error_message(exc)
+        return ("app", exc.code.value, message, type(exc).__name__, str(exc))
     return ("failed", type(exc).__name__, str(exc))
 
 
@@ -43,6 +52,11 @@ def _raise_remote(error):
         raise WorkbenchCommandRejected(error[1], error[2], error[3])
     if error[0] == "input":
         raise CandidateRunInputError(error[1], error[2], issues=error[3])
+    if error[0] == "app":
+        from core.services.workbench.run.worker import CHILD_EXCEPTION
+
+        raise AppError(ErrorCode(error[1]), error[2],
+                       internal_details={CHILD_EXCEPTION: {"exception_type": error[3], "message": error[4]}})
     raise RuntimeError("Candidate child failed: " + error[1] + ": " + error[2])
 
 

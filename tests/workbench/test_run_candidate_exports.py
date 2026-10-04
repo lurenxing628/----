@@ -24,6 +24,34 @@ def decode(response, fmt):
 
 
 @pytest.mark.parametrize("fmt", ["csv", "xlsx"])
+def test_numbers_are_written_as_the_page_number_text(fmt):
+    from core.services.workbench.run.candidate_export import HEADERS, write_run_candidate_export
+
+    task = {"row_ref": "r" * 48, "operation_ref": "o" * 48, "batch_ref": "b" * 48, "batch_label": "B1", "part_label": "零件",
+            "sequence": 10.0, "process_label": "车", "quantity": 1e-07, "due_date": None, "start": "2026-09-09T08:00:00",
+            "end": "2026-09-09T09:00:00", "source": "internal", "locked": False, "data_gaps": []}
+    data = {"candidate": {"run_ref": "u" * 48, "candidate_ref": "c" * 48, "label": "方案", "status": "completed",
+                          "completeness": "complete", "data_gaps": []},
+            "generation": {"accepted_at": "2026-09-09T07:00:00", "data_gaps": []}, "data_gaps": [],
+            "time_scope": {"range_start": "2026-09-09T00:00:00", "range_end": "2026-09-10T00:00:00"},
+            "tasks": [task], "unplanned_operations": []}
+    content = write_run_candidate_export(data, {"snapshot_ref": "s" * 48, "as_of": "2026-09-09T08:00:00"}, fmt).content
+    columns = [HEADERS.index("工序顺序"), HEADERS.index("数量")]
+    if fmt == "csv":
+        row = list(csv.reader(StringIO(content.decode("utf-8-sig"))))[1]
+        # 数字写成页面上的最短十进制，不加防公式撇号。
+        assert [row[index] for index in columns] == ["10", "0.0000001"]
+        return
+    wb = openpyxl.load_workbook(BytesIO(content))
+    try:
+        row = next(wb.active.iter_rows(min_row=2))
+        # XLSX 仍是数字格（方便求和），数值原样。
+        assert [(row[index].value, row[index].data_type) for index in columns] == [(10, "n"), (1e-07, "n")]
+    finally:
+        wb.close()
+
+
+@pytest.mark.parametrize("fmt", ["csv", "xlsx"])
 def test_fullscope_export_matches_workspace_and_retains_partial_rows(candidate_case, fmt):
     case = candidate_case
     case.batch("B2", ready_status="no")

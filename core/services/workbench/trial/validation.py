@@ -15,8 +15,8 @@ from core.services.workbench.run.piece_adoption_trial import trial_piece_issues
 from .calendar import calendar_engine, estimate
 from .constraints import interval, relation_issues, resource_issues
 from .execution_anchors import anchor_issue, execution_anchors
-from .materials import material_issues, run_policy
-from .protection import TrialProtection
+from .materials import deferral_policy, material_issues, run_policy
+from .protection import TrialProtection, frozen_arrangements, frozen_issue, frozen_note, keeps_frozen
 
 
 class TrialValidator:
@@ -33,7 +33,7 @@ class TrialValidator:
         self.qualification = OperatorQualificationService(conn)
         self.qualification_cache = {}
         self.ops = {row["id"]: row for row in self.tables["BatchOperations"]}
-        self.protection = TrialProtection(live)
+        self._protect()
         self.anchors, self.anchor_error = {}, None
         try:
             self.anchors = execution_anchors(conn, rows, live)
@@ -43,10 +43,28 @@ class TrialValidator:
         for row in self.tables["MachineDowntimes"]:
             self.downtime.setdefault(row["machine_id"], []).append(row)
 
+    def _protect(self):
+        # 采用输入的起止日随试调行变化（不重排时段按它裁剪）：行改过就按当前各行重新找。
+        # 直接比较各行当前安排的副本（都是文本和编号），不为判断“改没改”去算摘要。
+        state = [dict(row["current"]) for row in self.rows]
+        if getattr(self, "_protected_state", None) == state:
+            return
+        self._protected_state = state
+        self.frozen, self.frozen_issue = {}, None
+        try:
+            self.frozen = frozen_arrangements(self.conn, self.admission, self.rows, self.live, self.checks)
+        except (AppError, ValueError, TypeError, KeyError, OverflowError):
+            self.frozen_issue = issue("freeze_window_unavailable", "正式采用要原样保留正式计划里锁定的、以及来源排产不重排时段里的原安排，"
+                                      "但正式计划里的这些安排读不出来或者对不上，不能正式采用。请联系维护人员核对正式计划。")
+        self.protection = TrialProtection(self.live, self.frozen)
+
     def evaluate(self):
+        self._protect()
         issues = list(self.admission["base_issues"])
         if self.calendar_issue:
             issues.append(self.calendar_issue)
+        if self.frozen_issue:
+            issues.append(self.frozen_issue)
         if self.anchor_error:
             issues.append(self.anchor_error)
         if any(row["operation_ref"] is None or row["recorded_against_task_ref"] is None
@@ -59,7 +77,8 @@ class TrialValidator:
         for row in self.rows:
             issues.extend(self._row(row))
         issues.extend(relation_issues(self.rows, self.live))
-        issues.extend(trial_piece_issues(self.rows, self.live, run_policy(self.admission)))
+        policy = deferral_policy(self.admission, self.rows, self.checks, self.live["execution"])
+        issues.extend(trial_piece_issues(self.rows, self.live, policy))
         issues.extend(resource_issues(self.rows, self.live, conn=self.conn))
         unique = {fingerprint(item): item for item in issues}
         return validation(list(unique.values()))
@@ -71,6 +90,8 @@ class TrialValidator:
         anchor = self.anchors.get(original["operation"]["id"])
         if anchor is not None and current != anchor["arrangement"]:
             issues.append(issue("scenario_execution_anchor_outdated", "这份试调保留的时间或资源与实际报工不同，请从当前正式计划重新发起试调。", row["task_ref"]))
+        if protected and protected["code"] == "task_frozen":
+            return issues + self._frozen_row(row, self.frozen[original["operation"]["id"]])
         if protected:
             expected = anchor["arrangement"] if anchor is not None else original["arrangement"]
             if protected["code"] not in ("task_locked", "execution_protected") or (anchor is None and current != expected):
@@ -80,6 +101,13 @@ class TrialValidator:
         if protected is None:
             issues.extend(material_issues(self.admission, self.checks, row))
         return issues
+
+    def _frozen_row(self, row, seed):
+        """按时段保留的工序试调不能改，但照常核对这个安排现在还成不成立（正式采用同样逐条复核）；
+        不成立的，提示里说清楚为什么改不了、该怎么办，免得反复重新核对也过不去。"""
+        issues = [] if keeps_frozen(row, seed) else [frozen_issue(row, seed, changed=True)]
+        found = self._resources(row) + self._times(row, None) + material_issues(self.admission, self.checks, row)
+        return issues + [frozen_note(item, seed) for item in found]
 
     def _resources(self, row):
         original, current, ref = row["original"], row["current"], row["task_ref"]

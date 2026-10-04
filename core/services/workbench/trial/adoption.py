@@ -81,13 +81,20 @@ class WorkbenchTrialAdoptionService:
             return persist_trial_adoption_in_tx(self.conn, evidence, intent, request_key,
                                                 application_operator=getpass.getuser())
 
+        commands = WorkbenchCommandService(self.conn)
+        # A retry of an already committed adoption replays its receipt even while a
+        # run computes; only new work is refused below.
+        replayed = commands.replay(request_key=request_key, action=ADOPT_ACTION, context_ref=scenario_ref,
+                                   normalized_input=intent)
+        if replayed is not None:
+            return replayed
         # Same admission mutex and global scheduler lock as real candidate adopt.
         with _ADOPTION_LOCK:
             lock = schedule_service._RUN_SCHEDULE_LOCK
             if not lock.acquire(blocking=False):
-                raise WorkbenchCommandRejected("scheduling_busy", "正在排产，这次采用没有执行。请等排产结束后重新点「采用」。")
+                raise WorkbenchCommandRejected("scheduling_busy", "正在排产，这次采用没有执行。请等排产结束后重新点「确认正式采用」。")
             try:
-                return WorkbenchCommandService(self.conn).execute(request_key=request_key, action=ADOPT_ACTION,
+                return commands.execute(request_key=request_key, action=ADOPT_ACTION,
                     context_ref=scenario_ref, normalized_input=intent, guard=guard, mutate=mutate)
             finally:
                 lock.release()

@@ -78,6 +78,33 @@ def test_child_stale_snapshot_error_retains_its_domain_code(job_case):
     assert service(job_case.conn).get(accepted["run_ref"])["error"]["code"] == "snapshot_stale"
 
 
+@pytest.mark.parametrize("mode", ["thread", "child"])
+def test_child_app_error_keeps_user_text_and_original_diagnostic(job_case, mode):
+    # 用户只看到清洗后的提示；诊断记原异常类型和原文，子进程模式和线程模式记的一样，维护人员查得到真实原因。
+    import json
+
+    from core.errors import AppError, ValidationError
+    from web.error_boundary import user_visible_app_error_message
+
+    original = ValidationError("start_date 晚于 end_date", field="start_date", details={"rows": object()})
+    error = process_module._error_message(original)
+    assert error == ("app", "1001", "开始日期填写不正确，请检查后重试。", "ValidationError", "[1001] start_date 晚于 end_date")
+
+    def fail(source, row, *, on_progress):
+        if mode == "thread":
+            raise original
+        process_module._raise_remote(error)
+
+    accepted = job_case.accept()
+    with pytest.raises(AppError):
+        WorkbenchRunWorker(job_case.conn, compute_runner=fail,
+                           app_error_message=user_visible_app_error_message).execute(accepted["run_ref"])
+    stored = json.loads(job_case.conn.execute("SELECT result_json FROM WorkbenchRunReceipts").fetchone()[0])
+    assert stored["error"] == {"code": "candidate_input_invalid", "message": "开始日期填写不正确，请检查后重试。"}
+    assert stored["diagnostic"] == {"exception_type": "ValidationError", "message": "[1001] start_date 晚于 end_date"}
+    assert service(job_case.conn).get(accepted["run_ref"])["error"] == stored["error"]
+
+
 def test_child_crash_is_terminal_failure_without_a_retry_or_partial_results(job_case, monkeypatch):
     accepted = job_case.accept()
     monkeypatch.setattr(process_module, "_compute_child", _crash_child)

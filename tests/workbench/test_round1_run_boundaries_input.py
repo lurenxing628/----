@@ -72,12 +72,12 @@ def runtime_conn(mem_conn):
 @pytest.mark.parametrize("table", ["WorkCalendar", "OperatorCalendar"])
 @pytest.mark.parametrize("field,value,reason", [
     ("date", "2026-02-30", "invalid_calendar_date"),
-    ("shift_hours", None, "invalid_calendar_number"),
+    ("shift_hours", "8", "invalid_calendar_number"),
+    ("shift_hours", -1, "invalid_calendar_number"),
     ("efficiency", 0, "invalid_calendar_number"),
     ("day_type", "unknown", "invalid_calendar_state"),
     ("allow_normal", None, "invalid_calendar_state"),
     ("allow_urgent", "unknown", "invalid_calendar_state"),
-    ("shift_start", None, "invalid_calendar_shift"),
     ("shift_start", "8:00", "invalid_calendar_shift"),
     ("shift_end", "24:00", "invalid_calendar_shift"),
 ])
@@ -89,6 +89,15 @@ def test_each_calendar_rejects_unknown_values_in_private_legacy_db(runtime_conn,
     assert error.value.reason == reason
     assert error.value.issues[0]["table"] == table
     assert runtime_conn.total_changes == before
+
+
+@pytest.mark.parametrize("table", ["WorkCalendar", "OperatorCalendar"])
+@pytest.mark.parametrize("field", ["shift_start", "shift_end", "shift_hours", "efficiency"])
+@pytest.mark.parametrize("value", [None, " "])
+def test_legacy_blank_calendar_values_follow_the_engine_defaults(runtime_conn, table, field, value):
+    """旧库升级加列没回填的空值，日历引擎和日历页都按默认值解释（08:00 开始、按起止推算否则 8 小时、效率 1），排产不另拒。"""
+    runtime_conn.execute("UPDATE " + table + " SET " + field + "=?", (value,))
+    _validate_stored_runtime(runtime_conn)
 
 
 @pytest.mark.parametrize("status,start,end,reason", [

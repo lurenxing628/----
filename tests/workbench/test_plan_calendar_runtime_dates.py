@@ -192,20 +192,20 @@ def test_real_damaged_explicit_row_is_unavailable_not_default_or_zero(runtime_ca
 
 
 @pytest.mark.parametrize("personal", [False, True])
-@pytest.mark.parametrize("day,code,status", [("2026-09-09 ", "invalid_input", 422),
-                                            ("2026-09-09T00:00:00", "storage_failure", 500)])
-def test_real_converted_duplicate_or_invalid_date_fails_workspace(runtime_calendar, personal, day, code, status):
+# 带时间的旧写法转不成日期，原样读回文本，由日历读取给出"日期格式不对"，不再是取数时的 500。
+@pytest.mark.parametrize("day,converted", [("2026-09-09 ", True), ("2026-09-09T00:00:00", False)])
+def test_real_converted_duplicate_or_invalid_date_fails_workspace(runtime_calendar, personal, day, converted):
     api = runtime_calendar
     operator = "PRIVATE-O1" if personal else None
     api.case.calendar(hours=7.5, operator=operator)
     api.case.calendar(day, hours=7.5, operator=operator)
-    if code == "invalid_input":
-        table = "OperatorCalendar" if personal else "WorkCalendar"
-        rows = api.case.conn.execute("SELECT date FROM " + table).fetchall()
-        assert len(rows) == 2 and all(row[0] == date(2026, 9, 9) for row in rows)
+    table = "OperatorCalendar" if personal else "WorkCalendar"
+    rows = [row[0] for row in api.case.conn.execute("SELECT date FROM " + table)]
+    assert len(rows) == 2 and rows[0] == date(2026, 9, 9)
+    assert rows[1] == (date(2026, 9, 9) if converted else day)
     response = api.client.get(BASE + "/" + api.ref + "/workspace", query_string={
         "range_start": "2026-09-09T00:00:00", "range_end": "2026-09-11T00:00:00"})
-    assert_error(response, code, status)
+    assert_error(response, "invalid_input", 422)
     assert "data" not in response.get_json()
 
 

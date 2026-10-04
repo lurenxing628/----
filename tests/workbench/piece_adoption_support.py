@@ -20,7 +20,7 @@ from core.services.workbench.facts.piece_scope import build_piece_adoption_scope
 from core.services.workbench.facts.run_input_rows import batch_model, operation_model
 from core.services.workbench.run.input_config import candidate_config
 from core.services.workbench.run.input_external import prime_template_cache
-from core.services.workbench.run.input_runtime import _locked_seeds
+from core.services.workbench.run.input_runtime import locked_seeds
 from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
 from tests.workbench.run_candidate_adoption_support import snapshot
 from tests.workbench.run_candidate_support import candidate_case as candidate_case  # noqa: F401
@@ -66,7 +66,7 @@ def lower_input(case, *batch_ids):
                      "sequence": work.sequence, "predecessor_refs": [refs[key] for key in work.predecessor_op_ids],
                      "status": "protected" if work.op_id in fixed | completed else "eligible", "issues": [],
                      "execution": projected[refs[work.op_id]]} for work in scope.operations]
-    locks = _locked_seeds(svc, [op for op in operations if op.id not in fixed | completed], version)
+    locks = locked_seeds(svc, [op for op in operations if op.id not in fixed | completed], version)
     tables = {name: [dict(row) for row in case.conn.execute('SELECT * FROM "' + name + '"')]
               for name in ("BatchExternalContexts", "BatchOperations")}
     prime_template_cache(svc, tables, batches, operations)

@@ -113,7 +113,7 @@ HEADERS = ['方案', '方案状态', '约束检查', '对比基准方案', '换�
            '草稿编号', '试调方案编号', '原来源编号', '试调方案保存时间', '核对提示']
 STATES = {'editing': '可继续试调', 'saved': '已保存', 'discarded': '已放弃', 'valid': '通过', 'warning': '有提示', 'blocked': '有冲突，不能采用'}
 PRIORITIES = {'normal': '普通', 'urgent': '急件', 'critical': '特急'}
-RISKS = {'on_time': '可按期', 'overdue': '预计超期', 'unavailable': '有冲突，不能评估', 'invalid_data': '交期数据无效'}
+RISKS = {'on_time': '预计按期', 'overdue': '预计超期', 'due_unspecified': '暂无数据', 'unavailable': '有冲突，不能评估', 'invalid_data': '交期数据无效'}
 MISSING = object()
 
 
@@ -139,7 +139,7 @@ def expected_rows(data):
                data['base_identity'].get('display_name') or '上次排产的候选方案',
                '未评估' if comparison['changeovers'] is None else comparison['changeovers'],
                batch['batch_id'], batch['part_name'], batch['quantity'], translated(batch['priority'], PRIORITIES),
-               batch['due_date'], batch['baseline_finish'], batch['finish'], batch['late_hours'], batch['improvement_hours'],
+               '未指定交期' if batch['risk'] == 'due_unspecified' else batch['due_date'], batch['baseline_finish'], batch['finish'], batch['late_hours'], batch['improvement_hours'],
                batch['changed'], batch['moved'], RISKS[batch['risk']], data['draft_ref'], data.get('scenario_ref', MISSING),
                source, (data.get('saved_at') or '未记录') if data.get('scenario_ref') else MISSING, expected_note(data)]
 

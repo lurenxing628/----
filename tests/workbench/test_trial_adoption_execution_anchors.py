@@ -19,6 +19,7 @@ from core.services.personnel.operator_machine_service import OperatorMachineServ
 from core.services.personnel.operator_service import OperatorService
 from core.services.process.supplier_service import SupplierService
 from core.services.workbench.facts.trial_policy import load_draft
+from core.services.workbench.run import preflight as preflight_module
 from core.services.workbench.run.preflight import PreflightService
 from core.services.workbench.run.worker import WorkbenchRunWorker
 from core.services.workbench.trial.execution_anchors import anchor_issue
@@ -128,7 +129,7 @@ def test_actual_resource_identities_survive_current_qualification_changes(trial_
 
 @pytest.mark.parametrize("piece", [False, True])
 @pytest.mark.parametrize("change", ["machine", "operator", "authorization", "supplier"])
-def test_unexecuted_locked_resources_still_require_current_qualifications(trial_case, piece, change):
+def test_unexecuted_locked_resources_still_require_current_qualifications(trial_case, piece, change, monkeypatch):
     case = trial_case
     settings = _historical_resource_route(case, piece, change == "supplier", False)
     _deactivate(case, change)
@@ -137,6 +138,10 @@ def test_unexecuted_locked_resources_still_require_current_qualifications(trial_
         checked, _ = PreflightService(case.conn).evaluate(settings)
         assert checked["blockers"] and "supplier_missing" in {item["code"] for row in checked["tasks"] for item in row["issues"]}
     else:
+        # 排产检查先按保留安排复核当前资格并阻断；绕过这一步后，计算与采用侧仍要拒绝（兜底不能放松）。
+        checked, _ = PreflightService(case.conn).evaluate(settings)
+        assert "locked_resource_invalid" in {item["code"] for item in checked["blockers"]}
+        monkeypatch.setattr(preflight_module, "held_arrangement_reasons", lambda *args: ([], [], {}))
         accepted = case.accept(key="locked-resource-run-001", settings=settings)
         if piece:
             with pytest.raises(Exception) as caught:

@@ -2,7 +2,9 @@
 
 import pytest
 
+from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_command import WorkbenchCommandRejected
+from core.services.workbench.batch.materials import WorkbenchBatchMaterialService
 from core.services.workbench.run.preflight import PreflightService
 from tests.workbench.piece_adoption_support import split
 from tests.workbench.run_candidate_adoption_support import INTENT, KEY, preview, service, snapshot
@@ -74,6 +76,17 @@ def test_piece_stage_prefix_can_be_adopted_and_readopted_as_trial(candidate_case
     assert result["data"]["row_count"] == expected
     assert case.conn.execute("SELECT count(*) FROM Schedule WHERE op_id=?", (later,)).fetchone()[0] == 0
     _readopt_trial(case, result)
+
+
+def test_stage_material_waits_are_not_flagged_as_unadoptable_skips(candidate_case):
+    """「按工序齐套」下明确等料的工序可以留待以后排，结果照样能采用，排产检查不提醒“只能查看”；整批齐套时同样缺料才提醒。"""
+    case = candidate_case
+    later = case.operation(seq=2)
+    add_requirement(case, later, [])
+    stage, _ = PreflightService(case.conn).evaluate(case.settings(material_strategy="stage"))
+    assert "skipped_not_adoptable" not in {row["code"] for row in stage["warnings"]}
+    strict, _ = PreflightService(case.conn).evaluate(case.settings())
+    assert [row["batch_id"] for row in strict["warnings"] if row["code"] == "skipped_not_adoptable"] == ["B1"]
 
 
 @pytest.mark.parametrize("missing", ["resource", "engine", "existing_plan"])
@@ -163,7 +176,8 @@ def test_ready_date_policy_survives_compute_adoption_and_trial(candidate_case, p
         "ready-policy-trial-adopt-001", trial_intent)
     assert adopted["result"] == "committed" and adopted["data"]["row_count"] == (8 if piece else 1)
     version = case.conn.execute("SELECT max(version) FROM ScheduleHistory").fetchone()[0]
-    assert plan_material_policy(case.conn, version) == {"ready_check": ready_check, "material_strategy": "strict"}
+    assert plan_material_policy(case.conn, version) == {"ready_check": ready_check, "material_strategy": "strict",
+                                                        "start_date": "2026-09-09", "end_date": "2026-09-25"}
     assert tuple(case.conn.execute("SELECT ready_status,ready_date FROM Batches").fetchone()) == (ready_status, "2026-09-15")
 
 
@@ -235,3 +249,158 @@ def test_enabling_readiness_keeps_completed_actuals_through_replan_and_trial(can
     rows = {row["op_id"]: dict(row) for row in case.conn.execute("SELECT * FROM Schedule WHERE version=?", (version,))}
     assert rows[first]["start_time"] == "2026-09-09 08:00:00" and rows[first]["end_time"] == "2026-09-09 08:45:00"
     assert all(row["start_time"] >= "2026-09-15" for op_id, row in rows.items() if op_id != first)
+
+
+def _stage_window_case(case):
+    """正式 v1 把 B2 锁在 09-16；按工序放行排 09-09～09-11，B1 第 2 序等 09-14 到料而暂缓。"""
+    from core.services.workbench.run.worker import WorkbenchRunWorker
+
+    case.batch("B2")
+    locked = case.operation(batch="B2", seq=1)
+    later = case.operation(seq=2)
+    add_requirement(case, later, [{"arrival_date": "2026-09-14", "quantity": 3}])
+    _run, refs = compute(case, case.settings("B2", start_date="2026-09-16", end_date="2026-09-16"))
+    service(case.conn).adopt(refs[0], preview(case, refs[0]), "stage-window-adopt-0001", INTENT)
+    case.conn.execute("UPDATE Schedule SET lock_status='locked' WHERE op_id=?", (locked,))
+    case.conn.commit()
+    settings = case.settings("B1", "B2", material_strategy="stage", start_date="2026-09-09", end_date="2026-09-11")
+    run = WorkbenchRunWorker(case.conn).execute(case.accept(key="stage-window-run-00002", settings=settings)["run_ref"])
+    return later, run["candidates"][0]["candidate_ref"]
+
+
+@pytest.mark.parametrize("origin", ["candidate", "official"])
+def test_trial_keeps_run_window_for_stage_pending_work(candidate_case, origin):
+    # 锁定行在 09-16 不能把本次排产止日 09-11 扩成 09-16，否则暂缓工序会被当成必须排。
+    from core.services.workbench.trial.materials import plan_material_policy
+    from tests.workbench.trial_adoption_support import INTENT as trial_intent
+    from tests.workbench.trial_adoption_support import preview as trial_preview
+    from tests.workbench.trial_adoption_support import saved_scenario
+    from tests.workbench.trial_adoption_support import service as trial_service
+
+    case = candidate_case
+    later, ref = _stage_window_case(case)
+    base = {"candidate_ref": ref}
+    if origin == "official":
+        adopted = service(case.conn).adopt(ref, preview(case, ref), "stage-window-adopt-0002", INTENT)
+        base = {"plan_ref": adopted["data"]["official_plan"]["plan_ref"]}
+    saved = saved_scenario(case, {"base": base}, changed=False)
+    result = trial_service(case.conn).adopt(saved["scenario_ref"], trial_preview(case, saved),
+        "stage-window-trial-adopt-01", trial_intent)
+    assert result["result"] == "committed" and result["data"]["row_count"] == 2
+    version = case.conn.execute("SELECT max(version) FROM ScheduleHistory").fetchone()[0]
+    assert case.conn.execute("SELECT count(*) FROM Schedule WHERE version=? AND op_id=?", (version, later)).fetchone()[0] == 0
+    assert plan_material_policy(case.conn, version) == {"ready_check": True, "material_strategy": "stage",
+                                                        "start_date": "2026-09-09", "end_date": "2026-09-11"}
+
+
+def test_trial_row_moved_past_run_end_stays_adoptable(candidate_case):
+    # 本次排产止日只决定哪些工序可以暂缓；试调里挪到止日之后的行仍按自身时间核对。
+    from tests.workbench.trial_adoption_support import INTENT as trial_intent
+    from tests.workbench.trial_adoption_support import preview as trial_preview
+    from tests.workbench.trial_adoption_support import service as trial_service
+    from tests.workbench.trial_support import change, create
+    from tests.workbench.trial_support import service as draft_service
+
+    case = candidate_case
+    later, ref = _stage_window_case(case)
+    draft = create(case, {"base": {"candidate_ref": ref}}, key="stage-window-create-0001")
+    task = next(index for index, row in enumerate(draft["tasks"]) if row["batch_id"] == "B1")
+    changed = change(case, draft, task=task, start="2026-09-15T08:30:00", machine="M1", operator="O1",
+                     key="stage-window-change-0001")["data"]
+    assert changed["validation"]["issues"] == []
+    saved = draft_service(case.conn).save(changed["draft_ref"], {"name": "Moved past run end"},
+        changed["write_context"]["write_token"], "stage-window-save-00001")["data"]
+    result = trial_service(case.conn).adopt(saved["scenario_ref"], trial_preview(case, saved),
+        "stage-window-trial-adopt-02", trial_intent)
+    assert result["result"] == "committed"
+    rows = dict(case.conn.execute("SELECT op_id,start_time FROM Schedule WHERE version=(SELECT max(version) FROM ScheduleHistory)"))
+    assert rows[case.op_id] == "2026-09-15 08:30:00" and later not in rows
+
+
+def test_actual_row_material_day_does_not_extend_pending_window(candidate_case):
+    # 已完工行不按窗口分类：它的整批到料日 09-12 不能把判定止日推过本次排产止日 09-11。
+    from core.services.workbench.run.worker import WorkbenchRunWorker
+    from tests.workbench.trial_adoption_support import INTENT as trial_intent
+    from tests.workbench.trial_adoption_support import preview as trial_preview
+    from tests.workbench.trial_adoption_support import saved_scenario
+    from tests.workbench.trial_adoption_support import service as trial_service
+
+    case = candidate_case
+    case.conn.execute("DELETE FROM WorkbenchCalendarDefaults")
+    case.batch("B2")
+    locked = case.operation(batch="B2", seq=1)
+    case.conn.commit()
+    _run, refs = compute(case, case.settings("B1", "B2", start_date="2026-09-16", end_date="2026-09-16"))
+    service(case.conn).adopt(refs[0], preview(case, refs[0]), "stage-actual-adopt-0001", INTENT)
+    version = case.conn.execute("SELECT max(version) FROM ScheduleHistory").fetchone()[0]
+    assert case.command("create", case.task(version, case.op_id), case.values(3, actual_start="2026-09-09T08:00:00",
+        actual_end="2026-09-09T08:45:00", effective_processing_hours=.75))["result"] == "committed"
+    case.conn.execute("UPDATE Schedule SET lock_status='locked' WHERE op_id=?", (locked,))
+    later = case.operation(seq=2)
+    case.batch("B3")
+    case.operation(batch="B3", seq=1)
+    case.conn.execute("INSERT INTO Materials(material_id,name,unit) VALUES ('STEEL','钢材','件')")
+    case.conn.commit()
+    with TransactionManager(case.conn).transaction():
+        WorkbenchBatchMaterialService(case.conn).apply(case.ref("batch", "B1"), {"removed_keys": [], "rows": [{
+            "row_key": None, "material_ref": case.ref("material", "STEEL"), "required_quantity": 3,
+            "available_quantity": 0, "operation_ref": None, "arrivals": [{"arrival_date": "2026-09-12", "quantity": 3}]}]})
+    settings = case.settings("B1", "B2", "B3", material_strategy="stage", start_date="2026-09-09", end_date="2026-09-11")
+    run = WorkbenchRunWorker(case.conn).execute(case.accept(key="stage-actual-run-00002", settings=settings)["run_ref"])
+    ref = run["candidates"][0]["candidate_ref"]
+    assert service(case.conn).preview(ref)["validation"]["can_adopt"] is True
+    saved = saved_scenario(case, {"base": {"candidate_ref": ref}}, changed=False)
+    result = trial_service(case.conn).adopt(saved["scenario_ref"], trial_preview(case, saved),
+        "stage-actual-trial-adopt-1", trial_intent)
+    assert result["result"] == "committed" and result["data"]["row_count"] == 3
+    version = case.conn.execute("SELECT max(version) FROM ScheduleHistory").fetchone()[0]
+    assert case.conn.execute("SELECT count(*) FROM Schedule WHERE version=? AND op_id=?", (version, later)).fetchone()[0] == 0
+
+
+def test_material_arriving_inside_run_window_after_run_is_not_pending(candidate_case):
+    # 排产后到料从 09-14 提前到 09-10（在本次止日 09-11 之内）：和直接采用一样不能再当暂缓工序。
+    from tests.workbench.trial_adoption_support import saved_scenario
+    from tests.workbench.trial_adoption_support import service as trial_service
+
+    case = candidate_case
+    later = case.operation(seq=2)
+    add_requirement(case, later, [{"arrival_date": "2026-09-14", "quantity": 3}])
+    _run, refs = compute(case, case.settings(material_strategy="stage", start_date="2026-09-09", end_date="2026-09-11"))
+    case.conn.execute("UPDATE BatchMaterialArrivals SET arrival_date='2026-09-10'")
+    case.conn.commit()
+    with pytest.raises(WorkbenchCommandRejected) as stale:
+        service(case.conn).preview(refs[0])
+    saved = saved_scenario(case, {"base": {"candidate_ref": refs[0]}}, changed=False)
+    assert saved["validation"]["constraints_status"] == "valid" and len(saved["unplanned_operations"]) == 1
+    before = snapshot(case.conn)
+    checked = trial_service(case.conn).preview(saved["scenario_ref"])
+    assert stale.value.code == "snapshot_stale" and checked["validation"]["can_adopt"] is False
+    assert [item["code"] for item in checked["validation"]["issues"]] == ["scenario_scope_incomplete"]
+    assert snapshot(case.conn) == before
+
+
+@pytest.mark.parametrize("window", ["strip", "partial", "bad"])
+def test_recorded_plan_window_is_optional_but_never_guessed(candidate_case, window):
+    # 旧计划没有起止日期时照旧试调；记录了却缺一半或写错，提示日期问题，不当作放行方式错误。
+    import json
+
+    from core.services.workbench.trial.materials import plan_material_policy
+    from tests.workbench.run_candidate_support import corrupt_update
+
+    case = candidate_case
+    _later, ref = _stage_window_case(case)
+    version = service(case.conn).adopt(ref, preview(case, ref), "stage-window-adopt-0002", INTENT)["data"]["official_plan"]["version"]
+    raw = json.loads(case.conn.execute("SELECT result_summary FROM ScheduleHistory WHERE version=?", (version,)).fetchone()[0])
+    policy = raw["material_policy"]
+    for key in {"strip": ("start_date", "end_date"), "partial": ("start_date",), "bad": ()}[window]:
+        policy.pop(key)
+    if window == "bad":
+        policy["end_date"] = "2026-9-11"
+    corrupt_update(case.conn, "ScheduleHistory", "UPDATE ScheduleHistory SET result_summary=? WHERE version=?",
+                   (json.dumps(raw, ensure_ascii=False), version))
+    if window == "strip":
+        assert plan_material_policy(case.conn, version) == {"ready_check": True, "material_strategy": "stage"}
+        return
+    with pytest.raises(WorkbenchCommandRejected) as error:
+        plan_material_policy(case.conn, version)
+    assert error.value.code == "material_policy_invalid" and "排产起止日期" in str(error.value)

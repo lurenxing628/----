@@ -224,6 +224,32 @@ def test_input_ref_binds_complete_input_and_full_facts(pf, change):
         pf.conn.rollback()
 
 
+_RECEIPT = ("INSERT INTO WorkbenchCommandReceipts(request_key,receipt_ref,action,context_ref,input_hash,outcome_json) "
+            "VALUES ('preflight-receipt-0001','" + "c" * 32 + "','{}','context','" + "d" * 64 + "','{{\"result\":\"{}\"}}')")
+
+
+@pytest.mark.parametrize("change,stale", [
+    ("INSERT INTO OperationLogs(log_level,module,action) VALUES ('INFO','system','export')", False),
+    (_RECEIPT.format("dashboard.transition", "committed"), False), (_RECEIPT.format("trial.save", "committed"), False),
+    (_RECEIPT.format("calendar.defaults", "unchanged"), False), (_RECEIPT.format("calendar.defaults", "committed"), True)])
+def test_input_ref_uses_the_run_worker_facts_scope(pf, change, stale):
+    # 检查到开始之间：日志、看板处置、试调和“无改动”回执排产都不读，和排产计算同一口径，不算现场变化；
+    # 其他已提交的回执仍保守地算变化。
+    data = checked(pf)
+    pf.conn.execute(change)
+    pf.conn.commit()
+    with pf.application.app_context():
+        pf.conn.execute("BEGIN")
+        try:
+            if stale:
+                with pytest.raises(WorkbenchCommandRejected, match="有变化"):
+                    resolve_preflight_input(pf.conn, data["input_ref"])
+            else:
+                assert resolve_preflight_input(pf.conn, data["input_ref"]) == payload(pf)
+        finally:
+            pf.conn.rollback()
+
+
 def test_expired_context_and_read_failure_stay_uncommitted(pf):
     checked(pf)
     with pf.application.app_context():

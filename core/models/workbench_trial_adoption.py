@@ -1,6 +1,6 @@
 """Saved scenario adoption has its own identity, never a candidate alias."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Dict
 
 from core.models.workbench_command import WorkbenchCommandRejected
@@ -25,3 +25,5 @@ class TrialAdoptionEvidence:
     snapshot: Dict[str, Any]
     prepared: Any
     payload: Any
+    # The source run's recorded dates ({} when never recorded); the new plan repeats them.
+    run_window: Dict[str, Any] = field(default_factory=dict)

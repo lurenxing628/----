@@ -25,7 +25,7 @@ from core.services.workbench.facts.run_input_rows import (
     validate_single_chain,
 )
 
-from .input_config import candidate_config
+from .input_config import candidate_config, hold_window
 from .input_execution import execution_guards
 from .input_external import external_execution_cycles, prime_template_cache
 from .input_materials import bind_material_releases
@@ -78,7 +78,9 @@ def prepare_candidate_run_input(conn, normalized_input: Dict[str, Any],
             return _prepare(conn, settings, facts, fingerprint, raw_batches, batches, operations, projections)
 
 
-def _prepare(conn, settings, facts, fingerprint, raw_batches, batches, operations, projections):
+def _prepare(conn, settings, facts, fingerprint, raw_batches, batches, operations, projections, hold=None):
+    """hold：判断哪些原安排保留时用的输入（试调采用传来源排产的起日），缺省同 settings。"""
+    hold = settings if hold is None else hold
     piece_scope = input_piece_scope(operations, batches)
     if piece_scope is None:
         validate_single_chain(operations)
@@ -104,13 +106,14 @@ def _prepare(conn, settings, facts, fingerprint, raw_batches, batches, operation
     runtime = build_runtime(
         svc, cfg=cfg, prev_version=prev_version, start_dt=start, batches=batches, operations=operations,
         mutable=runtime_mutable, algo_ops=algo_outcome.value, fixed_ids=fixed, completed_ids=completed,
-        execution_seeds=execution_seeds, reservations=reservations,
+        execution_seeds=execution_seeds, reservations=reservations, hold_window=hold_window(conn, hold)[0],
+        hold_start=datetime.combine(local_date(hold["start_date"]), datetime.min.time()),
     )
     frozen, seeds, warnings, freeze_meta, to_schedule, downtime_meta, pool_meta, downtime, pool, seed_version = runtime
     missing_ids = _missing_internal_resources(mutable)
     return CandidateRunInput(
         normalized_batch_ids=[row["batch_id"] for row in raw_batches], start_dt_norm=start,
-        end_date_norm=local_date(settings["end_date"]), created_by_text="system", run_label="candidate computation",
+        end_date_norm=local_date(settings["end_date"]), created_by_text="system", run_label="排产计算",
         t0=time.time(), cal_svc=calendar, cfg_svc=None, cfg=cfg, readiness_gate_enabled=settings["ready_check"],
         batches=batches, operations=operations, reschedulable_operations=mutable,
         reschedulable_op_ids={op.id for op in mutable}, missing_internal_resource_op_ids=missing_ids,

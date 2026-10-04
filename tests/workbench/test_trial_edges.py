@@ -1,6 +1,11 @@
 """Unknown legacy values, night shifts, source-specific duration and live drift."""
 
+import json
+import os
+import shutil
 import sqlite3
+import subprocess
+from pathlib import Path
 
 import pytest
 
@@ -13,6 +18,20 @@ from tests.workbench.trial_support import trial_case as trial_case
 
 def issue_codes(draft):
     return {item["code"] for item in draft["validation"]["issues"]}
+
+
+def browser_workspace_check(draft):
+    """用页面真实的 TrialContract 校验后端试调数据；校验不通过时页面会整页报“试调数据不完整”。"""
+    node = os.environ.get("WORKBENCH_NODE") or shutil.which("node")
+    assert node, "Node is required to verify the browser trial contract"
+    script = ("const fs = require('fs'), vm = require('vm'), context = vm.createContext({ window: {}, Date });"
+              "for (const name of ['resource-contract.js', 'PointContract.js', 'TrialContract.js'])"
+              " vm.runInContext(fs.readFileSync('frontend/workbench/app/' + name, 'utf8'), context);"
+              "context.window.TrialContract.workspace(JSON.parse(fs.readFileSync(0, 'utf8')));")
+    root = Path(__file__).resolve().parents[2]
+    result = subprocess.run([node, "-e", script], cwd=str(root), input=json.dumps(draft, ensure_ascii=False),
+                            capture_output=True, text=True, encoding="utf-8", timeout=30)
+    assert result.returncode == 0, result.stdout + result.stderr
 
 
 @pytest.mark.parametrize("hours", [None, sqlite3.Binary(b"invalid hours")])
@@ -141,6 +160,20 @@ def test_invalid_due_date_is_not_on_time(trial_case):
     assert result["batches"][0]["risk"] == "invalid_data"
 
 
+def test_unspecified_due_date_sentinel_is_not_invalid_data(trial_case):
+    # 9999-12-31 是“未指定交期”：不是坏数据，也不会超期，不给截止时刻。和计划交付风险页的
+    # due_date_unspecified 同一口径，单独记为 due_unspecified，不再冒充“预计按期”；超期记 0 小时，合计仍可计算。
+    case = trial_case
+    case.conn.execute("UPDATE Batches SET due_date='9999-12-31' WHERE batch_id='B1'")
+    case.conn.commit()
+    draft = create(case)
+    result = draft["comparison"]
+    batch = result["batches"][0]
+    assert (batch["risk"], batch["late_hours"], batch["due_exclusive"]) == ("due_unspecified", 0.0, None)
+    assert batch["due_date"] == "9999-12-31" and result["late_count"] == 0 and result["total_delay_hours"] == 0
+    browser_workspace_check(draft)
+
+
 def test_real_partial_candidate_keeps_unplanned_original_scope(trial_case):
     case = trial_case
     case.batch("B2", ready_status="no")
@@ -155,3 +188,23 @@ def test_real_partial_candidate_keeps_unplanned_original_scope(trial_case):
     assert draft["unplanned_operations"][0]["batch_ref"] == case.ref("batch", "B2")
     assert "trial_base_incomplete" in issue_codes(draft)
     assert draft["comparison"]["late_count"] is None
+
+
+@pytest.mark.parametrize("stage", ["after_check", "before_compute"])
+def test_saving_trial_scenario_does_not_make_run_stale(trial_case, stage):
+    # 试调草稿和方案排产不读（试调采用会改正式计划，仍会让排产作废）：排产检查之后、计算之前保存试调方案，
+    # 这次排产照常开始、照常保存结果。
+    from tests.workbench.run_jobs_support import service as run_service
+
+    case = trial_case
+    value = official(case)
+    ref, token = case.intent()
+    if stage == "before_compute":
+        accepted = run_service(case.conn).accept(ref, token, "run-request-00000001")
+    draft = create(case, value)
+    service(case.conn).save(draft["draft_ref"], {"name": "Trial during run"}, draft["write_context"]["write_token"], "trial-save-00000001")
+    assert case.conn.execute("SELECT COUNT(*) FROM WorkbenchTrialScenarios").fetchone()[0] == 1
+    if stage == "after_check":
+        accepted = run_service(case.conn).accept(ref, token, "run-request-00000001")
+    result = WorkbenchRunWorker(case.conn).execute(accepted["run_ref"])
+    assert result["state"] == "complete" and result["result_persisted"] is True

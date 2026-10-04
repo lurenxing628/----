@@ -100,6 +100,8 @@ def test_global_run_lock_and_sqlite_immediate_lock_both_apply(trial_case):
         with pytest.raises(WorkbenchCommandRejected) as error:
             service(case.conn).adopt(saved["scenario_ref"], token, KEY, INTENT)
     assert error.value.code == "scheduling_busy" and snapshot(case.conn) == before
+    # 试调采用弹窗里的按钮叫「确认正式采用」，提示要点名它。
+    assert str(error.value).endswith("请等排产结束后重新点「确认正式采用」。"), str(error.value)
     observations = []
 
     def trace(sql):
@@ -114,7 +116,15 @@ def test_global_run_lock_and_sqlite_immediate_lock_both_apply(trial_case):
 
     case.conn.set_trace_callback(trace)
     try:
-        service(case.conn).adopt(saved["scenario_ref"], token, KEY, INTENT)
+        first = service(case.conn).adopt(saved["scenario_ref"], token, KEY, INTENT)
     finally:
         case.conn.set_trace_callback(None)
     assert observations == [(True, "database is locked")]
+    # 已提交的采用用同一操作编号重放，不因正在排产而被说成“没有执行”；新的采用仍要等排产结束。
+    before = snapshot(case.conn)
+    with schedule_service._RUN_SCHEDULE_LOCK:
+        replay = service(case.conn).adopt(saved["scenario_ref"], token, KEY, INTENT)
+        with pytest.raises(WorkbenchCommandRejected) as busy:
+            service(case.conn).adopt(saved["scenario_ref"], token, "trial-adoption-request-0002", INTENT)
+    assert (replay["result"], replay["replayed"], replay["receipt_ref"]) == ("committed", True, first["receipt_ref"])
+    assert busy.value.code == "scheduling_busy" and snapshot(case.conn) == before

@@ -32,7 +32,8 @@ def trial_piece_issues(rows, live, policy=None):
         expected = trial_piece_predecessors(rows, operations, refs)
     except PieceAdoptionBlocked as exc:
         return [issue(exc.code, str(exc))]
-    settings = dict(policy or {}, end_date=max(row["current"]["end"][:10] for row in rows))
+    # A trial policy brings the end date that may leave stage work pending; otherwise use the saved span.
+    settings = {"end_date": max(row["current"]["end"][:10] for row in rows), **(policy or {})}
     if not _complete_or_deferred_scope(rows, expected, tables, operations, settings):
         return [issue("piece_scope_incomplete", "试调要包含全部共同工序和分件工序，现在有缺漏。请点「刷新当前试调」重新试调。")]
     issues = []

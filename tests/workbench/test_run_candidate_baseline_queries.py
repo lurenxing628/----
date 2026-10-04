@@ -217,7 +217,8 @@ def test_range_is_half_open_union_and_keeps_full_opposite_interval(candidate_cas
 
 def test_zero_deltas_are_real_numbers_not_missing(candidate_case):
     case = candidate_case
-    original_plan(case, start="2026-09-09T08:00:00", end="2026-09-09T10:00:00")
+    # 锁定安排须与工序按日历重算的开完工一致（3 件 × 0.25 小时），否则排产检查以 locked_calendar_conflict 阻断。
+    original_plan(case, start="2026-09-09T08:00:00", end="2026-09-09T08:45:00")
     case.operation(seq=2)
     case.conn.execute("UPDATE Schedule SET lock_status='locked'")
     case.conn.commit()

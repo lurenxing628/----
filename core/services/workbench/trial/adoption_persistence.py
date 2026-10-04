@@ -9,7 +9,8 @@ def persist_trial_adoption_in_tx(conn, evidence, intent, request_key, *, applica
              "request_key": request_key, "scenario_ref": evidence.scenario_ref, "draft_ref": evidence.draft_ref,
              "proof": evidence.snapshot, "reason": intent["reason"], "declared_operator": intent["declared_operator"]}
     result = persist_official_plan_in_tx(conn, prepared=evidence.prepared, payload=evidence.payload,
-        baseline=evidence.baseline, audit=audit, application_operator=application_operator)
+        baseline=evidence.baseline, audit=audit, application_operator=application_operator,
+        run_window=evidence.run_window)
     result["official_plan"].update(source_scenario_ref=evidence.scenario_ref, source_draft_ref=evidence.draft_ref)
     return WorkbenchCommandOutcome("committed", {"scenario_ref": evidence.scenario_ref,
         "draft_ref": evidence.draft_ref, **result})

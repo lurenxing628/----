@@ -107,6 +107,25 @@ def test_existing_worker_lock_rejects_without_waiting_or_writing(candidate_case)
     assert snapshot(case.conn) == before
 
 
+def test_committed_adoption_replays_while_worker_holds_run_lock(candidate_case):
+    # 已提交的采用用同一操作编号重放，不因正在排产而被说成“没有执行”；新的采用仍要等排产结束。
+    case = candidate_case
+    ref = candidate(case)
+    token = preview(case, ref)
+    first = service(case.conn).adopt(ref, token, KEY, INTENT)
+    before = snapshot(case.conn)
+    with schedule_service._RUN_SCHEDULE_LOCK:
+        replay = service(case.conn).adopt(ref, token, KEY, INTENT)
+        with pytest.raises(WorkbenchCommandRejected) as conflict:
+            service(case.conn).adopt(ref, token, KEY, dict(INTENT, reason="Another reason"))
+        with pytest.raises(WorkbenchCommandRejected) as busy:
+            service(case.conn).adopt(ref, token, "candidate-adoption-000002", INTENT)
+    assert (replay["result"], replay["replayed"], replay["receipt_ref"]) == ("committed", True, first["receipt_ref"])
+    assert replay["data"] == first["data"]
+    assert (conflict.value.code, busy.value.code) == ("request_key_conflict", "scheduling_busy")
+    assert snapshot(case.conn) == before
+
+
 def test_guard_and_mutation_hold_one_sqlite_writer_lock(candidate_case):
     case = candidate_case
     ref = candidate(case)

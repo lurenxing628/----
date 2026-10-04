@@ -35,7 +35,8 @@ def test_piece_point_lock_or_freeze_survives_next_managed_worker(point_case, fre
                             (plan["version"], point)).fetchone()
     new = case.conn.execute("SELECT start_time,end_time,machine_id,operator_id,lock_status FROM Schedule WHERE version=? AND op_id=?",
                             (next_plan["version"], point)).fetchone()
-    assert tuple(new) == tuple(old) + ("locked",)
+    # 安排原样保留；计划甘特里锁定的继续锁定，只因不重排时段保留的按未锁定落库（时段只管那一次排产）。
+    assert tuple(new) == tuple(old) + ("unlocked" if freeze else "locked",)
     assert new["start_time"] == new["end_time"]
     draft = create(case, {"base": {"plan_ref": next_plan["plan_ref"]}})
     ref = operation_ref(case, point)
@@ -43,7 +44,8 @@ def test_piece_point_lock_or_freeze_survives_next_managed_worker(point_case, fre
     before = snapshot(case.conn)
     with pytest.raises(WorkbenchCommandRejected) as caught:
         change(case, draft, task=index)
-    assert caught.value.code == "task_locked"
+    # 下一次试调同样不能动它：锁定的报“固定工序”，时段保留的说明是哪个不重排时段。
+    assert caught.value.code == ("task_frozen" if freeze else "task_locked")
     assert snapshot(case.conn) == before
 
 

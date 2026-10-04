@@ -44,7 +44,8 @@ def test_locked_or_frozen_point_survives_next_real_engine(trial_case, freeze):
     next_plan = adopt(case, persisted["candidates"][0]["candidate_ref"], key="ea-next-point-adopt-0001")
     point = case.conn.execute("SELECT * FROM Schedule WHERE version=? AND op_id=?", (next_plan["version"], case.op_id)).fetchone()
     assert point["start_time"] == point["end_time"]
-    assert point["lock_status"] == "locked"
+    # 计划甘特里锁定的继续锁定；只因不重排时段保留的按未锁定落库，时段只管那一次排产。
+    assert point["lock_status"] == ("unlocked" if freeze else "locked")
 
 
 def test_point_can_share_occupied_resource_without_hiding_positive_conflict(trial_case):

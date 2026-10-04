@@ -14,6 +14,7 @@ from core.models.workbench_command import canonical_json
 from core.models.workbench_resource_file import ResourceFileDownload
 from core.services.workbench.facts.file_writer import _value, check_capacity
 from core.services.workbench.facts.process_file_xml import preserve_carriage_returns
+from core.services.workbench.facts.table_cells import number_text
 
 HEADERS = ("记录类型", "排产编号", "候选方案编号", "候选方案名称", "候选方案状态", "候选方案完整性", "排产时间",
            "数据版本编号", "读取时间", "范围起点（含）", "范围终点（不含）", "行编号", "工序编号", "批次编号",
@@ -59,6 +60,11 @@ def _values(values, number, fmt):
     return [_value(value, "default_days" if type(value) in (int, float) else "text", number, fmt) for value in values]
 
 
+def _cell(value):
+    """CSV 里的数字写成页面上的最短十进制（不写 7.0、1e-07）；XLSX 仍是数字格，方便求和，与其它只读导出一致。"""
+    return number_text(value) if type(value) in (int, float) else value
+
+
 def write_run_candidate_export(data, snapshot, fmt):
     count = max(1, len(data["tasks"]) + len(data["unplanned_operations"] or []))
     check_capacity(count, fmt)
@@ -73,7 +79,8 @@ def _csv(data, snapshot):
         writer = csv.writer(text, lineterminator="\r\n")
         writer.writerow(HEADERS)
         for number, row in enumerate(export_rows(data, snapshot), 2):
-            writer.writerow(["'" + value if type(value) is str else value for value in _values(row, number, "csv")])
+            # 文字前加撇号防公式和自动转换；数字不加，打开时照样认作数字。
+            writer.writerow(["'" + value if type(value) is str else _cell(value) for value in _values(row, number, "csv")])
         text.flush()
         buffer.seek(0)
         return buffer.read()

@@ -10,6 +10,8 @@ from core.services.scheduler.schedule_service import ScheduleService
 from core.services.workbench.execution.ledger import ExecutionLedgerService
 from data.repositories.workbench_run_facts_repo import WorkbenchRunFactsRepository
 
+from .preflight_facts import NON_INPUT_TABLES, non_input_row
+
 
 def capture_run_facts(conn):
     schema, tables = WorkbenchRunFactsRepository(conn).admission_facts()
@@ -19,30 +21,36 @@ def capture_run_facts(conn):
     return hashlib.sha256(text.encode("utf-8")).hexdigest(), text
 
 
-def _production_facts(value):
-    """Exclude audit row contents only; retain every schema and business fact."""
-    tables = dict(value["tables"])
-    tables.pop("OperationLogs", None)
-    if "sqlite_sequence" in tables:
-        tables["sqlite_sequence"] = [row for row in tables["sqlite_sequence"]
-                                    if not (type(row) is list and len(row) == 2 and row[0] == "OperationLogs")]
+def _production_facts(value, receipt_columns):
+    """Exclude non-input contents only; retain every schema and business fact."""
+    tables = {name: [row for row in rows if not non_input_row(name, row, receipt_columns)]
+              for name, rows in value["tables"].items() if name not in NON_INPUT_TABLES}
     return {**value, "tables": tables}
 
 
 def run_facts_unchanged(conn, captured_text, captured_hash):
     """Prove archive integrity, then compare production inputs across audit writes.
 
-    Keep the original full archive and SHA unchanged, including older admissions.
-    OperationLogs is write-only telemetry for scheduling; its allocator is not
-    a production resource. All other tables (including unknown extensions),
-    sequence counters, and the complete schema remain part of this comparison.
+    Keep the original full archive and SHA unchanged, including older admissions:
+    the exclusions apply to both sides only while comparing, so an archive taken
+    before they existed still compares on the same terms. OperationLogs is
+    write-only telemetry for scheduling; its allocator is not a production
+    resource. An 'unchanged' command receipt only records that a command found
+    nothing to change. Trial drafts/scenarios and dashboard handling, with their
+    receipts, are never read by the run (see NON_INPUT_TABLES); a trial adoption
+    still changes the official plan tables. Every other committed or partial
+    receipt, all other tables (including unknown extensions), sequence counters,
+    and the complete schema remain part of this comparison.
     """
     if type(captured_text) is not str or hashlib.sha256(captured_text.encode("utf-8")).hexdigest() != captured_hash:
         return False
     current_hash, current_text = capture_run_facts(conn)
     if current_hash == captured_hash:
         return True
-    return canonical_json(_production_facts(json.loads(current_text))) == canonical_json(_production_facts(json.loads(captured_text)))
+    # The schema itself is compared, so the current column order also describes the archive whenever both can match.
+    columns = WorkbenchRunFactsRepository(conn).command_receipt_columns()
+    return (canonical_json(_production_facts(json.loads(current_text), columns))
+            == canonical_json(_production_facts(json.loads(captured_text), columns)))
 
 
 def run_execution_projections(conn, settings):

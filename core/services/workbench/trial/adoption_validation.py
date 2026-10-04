@@ -1,5 +1,6 @@
 """Revalidate exact saved arrangements against current production in one snapshot."""
 
+from dataclasses import replace
 from datetime import datetime
 
 from core.errors import AppError
@@ -11,6 +12,7 @@ from core.models.workbench_trial_adoption import TrialAdoptionBlocked, TrialAdop
 from core.models.workbench_trial_codec import fingerprint
 from core.services.scheduler.schedule_service import ScheduleService
 from core.services.workbench.facts.candidate_archive import require_adoption_schema
+from core.services.workbench.facts.preflight_checks import PreflightChecks
 from core.services.workbench.facts.preflight_dependencies import material_deferred_ids
 from core.services.workbench.facts.run_input_readonly import candidate_read_snapshot
 from core.services.workbench.facts.trial_scenario_archive import load_saved_scenario, schedule_rows
@@ -22,8 +24,18 @@ from data.repositories.workbench_trial_query_repo import WorkbenchTrialQueryRepo
 
 from .adoption_input import prepare_trial_adoption_input
 from .facts import live_context
-from .materials import run_policy
+from .materials import adoption_settings, hold_settings, run_window
 from .validation import TrialValidator
+
+_INPUT_UNPROVEN = ("scenario_constraint_unproven", "试调方案的排产输入没有通过核对，正式计划没有改变。请回到试调列表重新预检。")
+# 采用复核原样保留的安排：试调核对已按同一口径保护；仍对不上时说清楚原因，不让人反复重新预检。
+_INPUT_PROBLEMS = {
+    "protected_seed_changed": ("frozen_arrangement_changed",
+        "试调方案改动了正式采用要原样保留的安排（来源排产不重排时段里的原安排），正式计划没有改变。"
+        "请从当前正式计划重新发起试调；这些工序如要改排，请重新排产，并在排产检查里把不重排时段改短或不设。"),
+    "all_operations_frozen": ("scenario_nothing_to_adopt",
+        "试调方案里的工序都按锁定或来源排产的不重排时段原样保留，和当前正式计划一样，没有可以采用的调整，正式计划没有改变。"),
+}
 
 
 def validate_trial_adoption(conn, scenario_ref):
@@ -39,11 +51,13 @@ def validate_trial_adoption(conn, scenario_ref):
             issues = [row for row in checked["issues"] if row["code"] != "scenario_adoption_not_connected"]
             if issues:
                 raise TrialAdoptionBlocked("scenario_constraint_unproven", "试调方案没有通过当前的完整核对，正式计划没有改变。", issues)
-            settings = {**_settings(rows), **run_policy(admission)}
+            settings = adoption_settings(admission, rows, PreflightChecks(live["facts"]["tables"]), live["execution"])
             projections = run_execution_projections(conn, settings)
             _require_official_baseline(live["baseline"], projections)
-            prepared = prepare_trial_adoption_input(conn, settings, projections, live)
+            prepared = prepare_trial_adoption_input(conn, settings, projections, live, hold=hold_settings(admission, settings))
             _complete_scope(rows, prepared)
+            # Pending stage work follows the run's end date; the saved rows keep their own span.
+            prepared = replace(prepared, end_date_norm=_span_end(rows))
             payload = validate_candidate(prepared, schedule_rows(rows), [])
             if payload.scheduled_op_ids != prepared.schedule_output_allowed_op_ids:
                 raise TrialAdoptionBlocked("scenario_scope_incomplete", "试调方案没有覆盖所选批次的全部工序，正式计划没有改变。")
@@ -55,7 +69,8 @@ def validate_trial_adoption(conn, scenario_ref):
                      "facts_hash": live["facts_hash"], "execution_hash": fingerprint(live["execution"]),
                      "baseline_hash": fingerprint(live["baseline"]),
                      "rows_hash": fingerprint(rows), "validated_hash": fingerprint(durable_value(payload))}
-            return TrialAdoptionEvidence(scenario_ref, head["draft_ref"], live["baseline"], proof, prepared, payload)
+            return TrialAdoptionEvidence(scenario_ref, head["draft_ref"], live["baseline"], proof, prepared, payload,
+                                         run_window(admission))
     except TrialAdoptionBlocked:
         raise
     except CandidateAdoptionBlocked as exc:
@@ -67,9 +82,7 @@ def validate_trial_adoption(conn, scenario_ref):
     except WorkbenchCommandRejected:
         raise
     except CandidateRunInputError as exc:
-        raise TrialAdoptionBlocked(
-            "scenario_constraint_unproven",
-            "试调方案的排产输入没有通过核对，正式计划没有改变。请回到试调列表重新预检。") from exc
+        raise TrialAdoptionBlocked(*_INPUT_PROBLEMS.get(exc.reason, _INPUT_UNPROVEN)) from exc
     except (AppError, ValueError, TypeError, KeyError, OverflowError) as exc:
         raise TrialAdoptionBlocked("scenario_constraint_unproven", "试调方案的现场数据、编号或约束资料不完整，没有执行正式采用。") from exc
 
@@ -113,11 +126,8 @@ def _original_work(rows, live):
                 raise TrialAdoptionBlocked("scenario_resource_identity_changed", "试调方案中的设备或人员已删除或被替换。")
 
 
-def _settings(rows):
-    return {"batch_refs": sorted({row["original"]["batch_ref"] for row in rows}),
-            "start_date": min(datetime.fromisoformat(row["current"]["start"]).date() for row in rows).isoformat(),
-            "end_date": max(datetime.fromisoformat(row["current"]["end"]).date() for row in rows).isoformat(),
-            "ready_check": True, "missing_resource_policy": "auto_assign", "completed_policy": "preserve_actuals"}
+def _span_end(rows):
+    return max(datetime.fromisoformat(row["current"]["end"]).date() for row in rows)
 
 
 def _complete_scope(rows, prepared):

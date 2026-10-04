@@ -3,6 +3,7 @@
 from datetime import date
 
 from core.models.workbench_command import input_fingerprint
+from core.models.workbench_preflight import stored_hold_window_valid
 from core.models.workbench_run_candidate import blocked_reasons, read_capabilities
 from core.services.workbench.facts.candidate_facts import GenerationFacts
 from core.services.workbench.facts.candidate_projection import candidate_summary, dispositions, validate_manifest
@@ -90,10 +91,14 @@ def _generation(run, capture):
     settings = capture["input"]
     values, gaps = {}, []
     domains = {"missing_resource_policy": ("auto_assign", "exclude"), "completed_policy": ("preserve_actuals",), "material_strategy": ("strict", "stage", "split")}
-    for key in ("start_date", "end_date", "ready_check", "missing_resource_policy", "completed_policy") + (("material_strategy",) if "material_strategy" in settings else ()):
+    optional = tuple(key for key in ("material_strategy", "hold_window") if key in settings)
+    for key in ("start_date", "end_date", "ready_check", "missing_resource_policy", "completed_policy") + optional:
         value = settings.get(key)
         if key in domains:
             valid = type(value) is str and value in domains[key]
+        elif key == "hold_window":
+            # 不设（null）是合法记录，不算缺口；读不懂的才记缺口并回显 null。
+            valid = stored_hold_window_valid(value)
         elif key == "ready_check":
             valid = type(value) is bool
         else:

@@ -18,6 +18,7 @@ from core.services.scheduler import schedule_service
 from core.services.workbench.run.jobs import WorkbenchRunService
 from core.services.workbench.run.worker import WorkbenchRunWorker
 from core.services.workbench.run.worker_claim import RunClaimBusy, capture_claim_retry_state, require_retryable_claim
+from web.error_boundary import user_visible_app_error_message
 
 from .launcher_paths import _normalize_db_path_for_runtime
 from .workbench_request_lifecycle import lookup_workbench_request_lifecycle
@@ -168,7 +169,7 @@ class WorkbenchRunRuntime:
                 if original is None:
                     original = capture_claim_retry_state(conn, run_ref)
                 try:
-                    worker = WorkbenchRunWorker(conn)
+                    worker = WorkbenchRunWorker(conn, app_error_message=user_visible_app_error_message)
                     worker.compute_runner = self._compute_runner
                     if claim_failures:
                         worker.execute(run_ref, retry_original=original)

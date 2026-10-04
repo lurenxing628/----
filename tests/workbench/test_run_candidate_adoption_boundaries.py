@@ -6,6 +6,7 @@ import pytest
 
 from core.infrastructure.logging import OperationLogger
 from core.models.workbench_command import WorkbenchCommandRejected
+from core.services.workbench.run.preflight import PreflightService
 from tests.workbench.run_candidate_adoption_support import (
     INTENT,
     KEY,
@@ -170,6 +171,45 @@ def test_partial_and_broken_candidates_stay_blocked(candidate_case, kind):
     data = service(case.conn).preview(ref)
     assert data["validation"]["can_adopt"] is False and data["write_context"]["write_token"] is None
     assert snapshot(case.conn) == before
+
+
+@pytest.mark.parametrize("why", ["closed", "not_ready", "ready_after_window", "skip_missing_resource"])
+def test_skipped_batch_is_flagged_before_run_and_the_refusal_names_it(candidate_case, why):
+    """选了会本次跳过的批次：其它批次照常排，但采用要求选中批次的工序全部排上，结果只能查看。
+    排产检查先按批次提醒“只能查看、不能采用”；采用时的拒绝点名这批、让人取消勾选，不再叫人“重新排产后再试”（重排还是一样）。"""
+    case = candidate_case
+    case.batch("B2", ready_status="no" if why == "not_ready" else "yes", status="completed" if why == "closed" else "pending",
+               ready_date="2026-09-30" if why == "ready_after_window" else None)
+    case.operation(batch="B2", seq=1, **({"machine_id": None} if why == "skip_missing_resource" else {}))
+    case.conn.commit()
+    settings = case.settings("B1", "B2", **({"missing_resource_policy": "exclude"} if why == "skip_missing_resource" else {}))
+    checked, _ = PreflightService(case.conn).evaluate(settings)
+    assert checked["blockers"] == []
+    notice = [row for row in checked["warnings"] if row["code"] == "skipped_not_adoptable"]
+    assert [row["batch_id"] for row in notice] == ["B2"] and "只能查看、不能采用" in notice[0]["message"]
+    ref = candidate(case, settings)
+    before = snapshot(case.conn)
+    issues = service(case.conn).preview(ref)["validation"]["issues"]
+    assert [row["code"] for row in issues] == ["candidate_incomplete"]
+    assert "（B2）" in issues[0]["message"] and "取消勾选" in issues[0]["message"] and "后再试" not in issues[0]["message"]
+    # 只有跳过这一个原因时不多说别的。
+    assert "另外" not in issues[0]["message"]
+    assert snapshot(case.conn) == before
+
+
+def test_skipped_batch_refusal_also_names_operations_left_unscheduled(candidate_case):
+    """跳过批次的同时还有工序没排上：只取消勾选不够，提示要把另一个原因也说清。"""
+    case = candidate_case
+    case.batch("B2", ready_status="no")
+    case.operation(batch="B2", seq=1)
+    case.operation(seq=2, unit_hours=100)
+    case.conn.commit()
+    ref = candidate(case, case.settings("B1", "B2", end_date="2026-09-09"))
+    issues = service(case.conn).preview(ref)["validation"]["issues"]
+    assert [row["code"] for row in issues] == ["candidate_incomplete"]
+    message = issues[0]["message"]
+    assert "（B2）" in message and "取消勾选" in message
+    assert "另外，这个方案里还有别的工序没排上" in message and "「排产记录」" in message
 
 
 def test_no_token_wrong_candidate_and_no_schema_never_write(candidate_case):

@@ -2,10 +2,11 @@
 
 import math
 from collections import defaultdict
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_trial import ACTIONS
+from core.services.common.overdue_calculations import due_exclusive
 from core.services.workbench.facts.zero_duration import point_event_dto
 from core.services.workbench.facts.zero_duration_evidence import trial_point_evidence
 
@@ -14,9 +15,9 @@ from .capacity import trial_capacity
 from .protection import TrialProtection
 
 
-def tasks_projection(rows, draft_ref, checked, live):
+def tasks_projection(rows, draft_ref, checked, live, frozen=None):
     by_operation = {row["operation_ref"]: row["task_ref"] for row in rows}
-    protected_rows = TrialProtection(live)
+    protected_rows = TrialProtection(live, frozen)
     by_task = _task_issue_index(checked["issues"])
     return [_task_projection(row, draft_ref, by_operation, protected_rows, by_task, live) for row in rows]
 
@@ -99,9 +100,7 @@ def comparison(tasks, checked, incomplete_batches=()):
         first = group[0]
         finish = max(row["end"] for row in group)
         original = max(row["original"]["end"] for row in group)
-        risk, late, due_exclusive = _delivery_risk(first["due_date"], finish, checked)
-        if first["batch_id"] in incomplete_batches:
-            risk, late = "unavailable", None
+        risk, late, due_exclusive = _delivery_risk(first["due_date"], finish, checked, first["batch_id"] in incomplete_batches)
         deliveries.append({"batch_ref": batch_ref, "batch_id": first["batch_id"], "part_name": first["part_name"],
             "quantity": first["batch_quantity"], "priority": first["priority"], "due_date": first["due_date"],
             "due_exclusive": due_exclusive, "baseline_finish": original, "finish": finish,
@@ -117,17 +116,25 @@ def comparison(tasks, checked, incomplete_batches=()):
             "changeovers": None, "changeover_reason": "未计算换型次数。"}
 
 
-def _delivery_risk(value, finish, checked):
+def _delivery_risk(value, finish, checked, incomplete):
     try:
         due = date.fromisoformat(value)
-        limit = datetime.combine(due + timedelta(days=1), datetime.min.time())
+        # 9999-12-31 是“未指定交期”的哨兵值，不是坏数据，也不会超期：和计划交付风险页的
+        # unknown / due_date_unspecified、值班台的“暂无数据”同一口径，试调单独记为 due_unspecified，
+        # 页面和导出显示“未指定交期”；不给截止时刻，超期记 0 小时（工序没排全、有冲突时也一样），
+        # 合计仍可计算；不算“预计按期”，也不算“交期数据无效”。
+        if due == date.max:
+            return "due_unspecified", 0.0, None
+        limit = due_exclusive(due)
         late = max(0.0, (datetime.fromisoformat(finish) - limit).total_seconds() / 3600)
         risk = "overdue" if datetime.fromisoformat(finish) >= limit else "on_time"
         if checked["constraints_status"] == "blocked":
             risk, late = "unavailable", None
-        return risk, late, limit.isoformat()
+        deadline = limit.isoformat()
     except (ValueError, TypeError, OverflowError):
-        return "invalid_data", None, None
+        risk, late, deadline = "invalid_data", None, None
+    # 工序没排全的批次算不出整批完工，交付记为不能评估。
+    return ("unavailable", None, deadline) if incomplete else (risk, late, deadline)
 
 
 def _public_value(value):
@@ -157,7 +164,7 @@ def _display_fields(task):
         task[key] = value
 
 
-def draft_projection(head, rows, checked, live, context_factory):
+def draft_projection(head, rows, checked, live, context_factory, frozen=None):
     ref, admission = head["draft_ref"], head["admission"]
     binding = write_snapshot(head, rows, live)
     context = {"write_token": None, "expires_at": None,
@@ -166,7 +173,7 @@ def draft_projection(head, rows, checked, live, context_factory):
         context = context_factory(ref, ACTIONS, binding)
     else:
         context["blocked_reasons"] = [{"code": "draft_closed", "message": "该草稿已保存或明确放弃，只能读取原记录。"}]
-    tasks = tasks_projection(rows, ref, checked, live)
+    tasks = tasks_projection(rows, ref, checked, live, frozen)
     if head["status"] != "editing":
         for task in tasks:
             task["edit_context"]["can_change"] = False
