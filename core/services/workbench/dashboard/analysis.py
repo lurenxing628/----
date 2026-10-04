@@ -32,12 +32,12 @@ def _stored_time(value):
     """数据库 created_at 由 SQLite 按 UTC 写入；发给界面前统一走 messages.stored_utc_text 换算，外发格式仍是接口约定的 ISO。"""
     try:
         return messages.stored_utc_text(str(value)).replace(" ", "T")
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):  # 9999-12-31 16:00 以后换算北京时间会越过 9999 年
         return None
 
 
-def _pending(facts):
-    observations, state = safe_material(facts)
+def _pending(facts, material):
+    observations, state = material
     batches = facts.raw["Batches"]
     if batches is None or state["state"] == "unavailable":
         return {"state": "unavailable", "count": None, "known_count": 0, "items": [],
@@ -52,8 +52,7 @@ def _pending(facts):
 
 
 def _tasks(facts):
-    refs = facts.entity_refs("batch", [row["batch_id"] for row in facts.tasks])
-    facts.raw["analysis_batch_refs"] = refs
+    refs = facts.raw["analysis_batch_refs"]
     result = []
     for task, raw in zip(facts.tasks, facts.task_rows):
         result.append({**task, "batch_ref": refs[task["batch_id"]]["ref"],
@@ -125,8 +124,8 @@ def _downtimes(facts, tasks):
     return records, _downtime_overlaps(observations, tasks), issues + state["issues"]
 
 
-def _projection(facts):
-    pending = _pending(facts)
+def _projection(facts, material):
+    pending = _pending(facts, material)
     if facts.plan_state != "loaded":
         return {"plan": None, "state": facts.plan_state, "time_scope": None, "tasks": [], "resources": [],
                 "downtimes": [], "overlaps": [], "deliveries": [], "execution": [], "pending": pending,
@@ -153,8 +152,12 @@ def read_dashboard_analysis(conn, plan_ref=None):
         facts = DashboardFacts(conn, datetime.now().replace(microsecond=0)).load()
         if plan_ref is not None and (facts.plan_state != "loaded" or facts.plan is None or facts.plan["plan_ref"] != plan_ref):
             raise WorkbenchCommandRejected("snapshot_stale", "原正式计划已变化或无法读取，未切换到其他计划。", 409)
-        data = _projection(facts)
-        data.update(as_of=facts.now.isoformat(timespec="seconds"), capabilities={"view": True, "adopt": False},
-                    basis="current_official_plan_and_readiness_sources")
-        state = input_fingerprint(typed({"source": facts.fingerprint(), "data": {k: v for k, v in data.items() if k != "as_of"}}))
-        return payload_size(data), state
+        # 待排池和任务条要按批次查来源编号，留在读快照里；其余投影在读事务结束后只用已读出的事实。
+        material = safe_material(facts)
+        if facts.plan_state == "loaded":
+            facts.raw["analysis_batch_refs"] = facts.entity_refs("batch", [row["batch_id"] for row in facts.tasks])
+    data = _projection(facts.project(), material)
+    data.update(as_of=facts.now.isoformat(timespec="seconds"), capabilities={"view": True, "adopt": False},
+                basis="current_official_plan_and_readiness_sources")
+    state = input_fingerprint(typed({"source": facts.fingerprint(), "data": {k: v for k, v in data.items() if k != "as_of"}}))
+    return payload_size(data), state

@@ -53,3 +53,15 @@ def test_final_operations_analysis_does_not_substitute_wrong_plan_reference(tmp_
         read_dashboard_analysis(conn, "f" * 48)
     assert error.value.code == "snapshot_stale"
     assert Path(database).exists()
+
+
+@pytest.mark.parametrize("created", ("9999-12-31 16:00:00", "2026/10/01", ""))
+def test_unreadable_downtime_record_time_is_blank_not_500(tmp_path, created):
+    """停机登记时间换算不出来（旧写法，或换算北京时间越过 9999 年）时这一格留空，整页分析照常给出。"""
+    database = _fixture(tmp_path)
+    with closing(get_connection(str(database))) as conn:
+        conn.execute("UPDATE MachineDowntimes SET created_at=?", (created,))
+        conn.commit()
+        data, _ = read_dashboard_analysis(conn)
+        stop = data["downtimes"][0]
+        assert stop["recorded_at"] is None and stop["valid"] and stop["reason"] == "F maintenance record"

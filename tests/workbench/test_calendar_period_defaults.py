@@ -66,3 +66,15 @@ def test_invalid_defaults_do_not_change_saved_rules(calendar_api, periods):
     response = write(calendar_api, initial, periods)
     assert response.status_code in (400, 422), response.get_data(as_text=True)
     assert calendar_api.state() == before
+
+
+def test_overnight_defaults_make_last_representable_day_a_clear_input_error(calendar_api):
+    """默认工作时间跨夜后，9999-12-31 的班次会跨出系统能表示的日期：月视图和范围预览都给出中文说明，不报服务器错误。"""
+    assert write(calendar_api, read(calendar_api), [{"start": "22:00", "end": "06:00", "day_offset": 0}]).status_code == 200
+    assert calendar_api.month(9999, 11)["data"]["next_month"] == {"year": 9999, "month": 12}
+    month = calendar_api.client.get(BASE + "/month", query_string={"year": 9999, "month": 12})
+    preview = calendar_api.client.post(BASE + "/range/preview", json={"input": {
+        "start_date": "9999-12-30", "end_date": "9999-12-31", "scope": "all", "operation": "upsert", "fields": {"note": "夜班"}}})
+    for response in (month, preview):
+        assert response.status_code == 422, response.get_data(as_text=True)
+        assert "9999-12-31 的工作时段超出了系统能处理的最后日期" in response.get_json()["error"]["message"]

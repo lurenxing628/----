@@ -46,7 +46,7 @@ def _template(part_ref=REF):
 
 
 def _instance(part_ref=REF, op_id=7):
-    return {"id": op_id, "operation_ref": REF, "batch_ref": OTHER, "part_ref": part_ref, "seq": 1, "piece_id": None}
+    return {"id": op_id, "operation_ref": REF, "batch_ref": OTHER, "part_ref": part_ref, "seq": 1, "piece_id": None, "source": "internal"}
 
 
 # ---- template_lineage_unavailable ----
@@ -109,7 +109,7 @@ def test_copying_a_template_into_another_parts_batch_is_a_mismatch(monkeypatch):
 def test_copying_an_instance_whose_origin_belongs_to_another_part_is_a_mismatch(monkeypatch):
     origin = {"template_snapshot": "{}"}
     facts = {"origins": {REF: origin}, "events": {REF: [{"event_id": 1}]}, "problems": {REF: []}}
-    monkeypatch.setattr(template_lineage, "TemplateLineageQuery", lambda conn: SimpleNamespace(read=lambda refs: facts))
+    monkeypatch.setattr(template_lineage, "TemplateLineageQuery", lambda conn, repo=None: SimpleNamespace(read=lambda refs: facts))
     monkeypatch.setattr(template_lineage, "validate_origin", lambda origin, events: (_template(OTHER), None))
     writer = _writer(monkeypatch, instance=lambda op_id: _instance(REF), insert_instance=lambda payload: _instance(REF, op_id=8))
     assert "不是原来源模板的零件" in _expect("template_lineage_mismatch", 409, lambda: writer.copy_instance("B1", 7))

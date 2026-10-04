@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import datetime
 import logging
 import os
 import sqlite3
@@ -44,6 +45,22 @@ from .safe_files import (
 from .schema_declaration import resolve_schema_path as _resolve_schema_path_impl
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _convert_stored_date(value: bytes):
+    """DATE 列沿用 sqlite3 默认写法转成日期；转不了的原样返回文本。
+
+    默认转换器遇到 `2026/10/01`、`2026-02-30` 这类旧值会在取数时直接抛 ValueError，
+    读取端写好的"日期无效"提示就到不了用户面前，只剩一个 500。
+    """
+    text = value.decode("utf-8")
+    try:
+        return datetime.date(*map(int, value.split(b"-")))
+    except (TypeError, ValueError):
+        return text
+
+
+sqlite3.register_converter("DATE", _convert_stored_date)
 
 __all__ = [
     "CURRENT_SCHEMA_VERSION",

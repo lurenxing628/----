@@ -94,3 +94,66 @@ def test_new_official_never_retargets_old_actual_handling(dashboard_case):
     assert previous["source"]["task_ref"] == old["source"]["task_ref"]
     assert current["source"]["task_ref"] != old["source"]["task_ref"]
     assert not previous["navigation"][0]["enabled"]
+
+
+def _watch_prefetch(case, monkeypatch, unrelated_commits):
+    """Record whether another writer could take the write lock during each dashboard load."""
+    import sqlite3
+
+    from core.services.workbench.dashboard.service import WorkbenchDashboardService
+    from tests.workbench.dashboard_support import connect
+
+    loads, original_load, original_project = [], WorkbenchDashboardService.load, WorkbenchDashboardService.project
+
+    def other_writer(sql=None):
+        other = connect(case.path)
+        other.isolation_level = None
+        try:
+            other.execute("PRAGMA busy_timeout=0")
+            other.execute("BEGIN IMMEDIATE")
+            if sql:
+                other.execute(sql)
+            other.execute("COMMIT" if sql else "ROLLBACK")
+            return True
+        except sqlite3.OperationalError:
+            return False
+        finally:
+            other.close()
+
+    def load(self, *args, **kwargs):
+        loads.append(other_writer())
+        return original_load(self, *args, **kwargs)
+
+    def project(self, sources):
+        result = original_project(self, sources)
+        if not self.conn.in_transaction and len(loads) <= unrelated_commits:
+            # 锁外算完、拿锁之前有人提交了一条与值班台无关的写入：库版本变了，看板内容没变。
+            assert other_writer("INSERT INTO OperationLogs(log_level,module,action) VALUES ('info','test','unrelated')")
+        return result
+
+    monkeypatch.setattr(WorkbenchDashboardService, "load", load)
+    monkeypatch.setattr(WorkbenchDashboardService, "project", project)
+    return loads
+
+
+@pytest.mark.parametrize("unrelated_commits,expected", [(0, [True]), (1, [True, True]), (2, [True, True, False])])
+def test_guard_reuses_the_prefetched_dashboard_unless_the_database_changed(dashboard_case, monkeypatch, unrelated_commits, expected):
+    case = dashboard_case
+    item = case.item()
+    loads = _watch_prefetch(case, monkeypatch, unrelated_commits)
+    result = case.command(item, follow())
+    assert result["result"] == "committed"
+    # True：整份看板在写锁外读取，别的连接仍能拿写锁；库在拿锁前变了就回到锁外重算一次，
+    # 第二次仍变才在写锁里重算（False），保证命令总能完成。
+    assert loads == expected
+    assert len(case.history(item["item_ref"])) == 1
+
+
+def test_replay_returns_before_recomputing_the_dashboard(dashboard_case, monkeypatch):
+    case = dashboard_case
+    item = case.item()
+    first = case.command(item, follow(), key="dashboard-replay-prefetch-01")
+    loads = _watch_prefetch(case, monkeypatch, 0)
+    replay = case.command(item, follow(), key="dashboard-replay-prefetch-01")
+    assert replay["replayed"] and replay["receipt_ref"] == first["receipt_ref"]
+    assert loads == []

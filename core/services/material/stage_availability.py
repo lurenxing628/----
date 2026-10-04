@@ -99,7 +99,7 @@ class MaterialAvailability:
     def readiness_state(self, batch, day):
         rows = self.requirements[batch["batch_id"]]
         if not any(row["id"] in self.reviews for row in rows):
-            return batch["ready_status"], []
+            return self._unreviewed_state(batch, rows)
         try:
             self.verify_review(batch)
             amounts = [(self.available(row, day), quantity(row["required_qty"], positive=True)) for row in rows]
@@ -107,6 +107,23 @@ class MaterialAvailability:
             return None, [{"code": exc.code, "message": str(exc)}]
         return ("yes" if all(covers_quantity(available, required) for available, required in amounts) else
                 "partial" if any(available > 0 for available, _required in amounts) else "no"), []
+
+    @staticmethod
+    def _unreviewed_state(batch, rows):
+        """未核对（v36 前）的需求与排产检查同一规则：批次标记为齐套，且每条需求都已到齐。
+
+        这类需求没有分次到料记录，只看保存的到料数量和需求自身的齐套标记。
+        """
+        if batch["ready_status"] != "yes" or not rows:
+            return batch["ready_status"], []
+        try:
+            amounts = [(quantity(row["available_qty"]), quantity(row["required_qty"], positive=True)) for row in rows]
+        except WorkbenchCommandRejected as exc:
+            return None, [{"code": exc.code, "message": str(exc)}]
+        if all(covers_quantity(available, required) and row["ready_status"] == "yes"
+               for row, (available, required) in zip(rows, amounts)):
+            return "yes", []
+        return ("partial" if any(available > 0 for available, _required in amounts) else "no"), []
 
     def operation_release(self, batch, operation, strategy):
         self.verify_review(batch)

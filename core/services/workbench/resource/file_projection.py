@@ -16,7 +16,11 @@ def _local_time(value):
     """能认出来的存储时刻换算给用户看；认不出的旧值原样保留，不猜着换算也不改写。"""
     if type(value) is not str or _STORED_TIME_TEXT.match(value) is None:
         return value
-    return messages.stored_utc_text(value)
+    try:
+        return messages.stored_utc_text(value)
+    except (ValueError, OverflowError):
+        # 形似时刻却不是真实日期（例如 2026-02-30 08:00），或换算后越过 9999 年（9999-12-31 16:00 以后），同样原样保留
+        return value
 
 
 def resource_file_state(reader, repo, identity):

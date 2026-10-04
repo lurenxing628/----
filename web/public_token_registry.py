@@ -19,6 +19,7 @@
 
 from __future__ import annotations
 
+import heapq
 import secrets
 import threading
 import time
@@ -53,7 +54,8 @@ def _registry() -> Dict[str, Dict[str, Any]]:
 
 
 def _scope_state(scope: str) -> Dict[str, Any]:
-    """scope 内部结构：tokens(token→entry) + by_value(value→最新 token 的反向索引)。
+    """scope 内部结构：tokens(token→entry) + by_value(value→最新 token 的反向索引)
+    + next_expiry(不晚于 tokens 中最早 expires_at 的时刻，供摊销清理判断)。
 
     by_value 只指向该 value 最新签发的 token；改签后旧 token 仍留在 tokens 里按原
     expires_at 存活。所有删除必须走 _drop_token 以保持两个映射同步。
@@ -75,21 +77,31 @@ def _drop_token(state: Dict[str, Any], token: str) -> None:
         state["by_value"].pop(value, None)
 
 
+def _expires_at(entry: Dict[str, Any]) -> float:
+    return float(entry.get("expires_at") or 0)
+
+
 def _cleanup_scope(state: Dict[str, Any], now: float) -> None:
     tokens = state["tokens"]
-    expired = [token for token, entry in tokens.items() if float(entry.get("expires_at") or 0) <= now]
+    # 摊销清理:还没到最早到期时刻、也没超上限时不可能有可清的项,不逐条扫描整个作用域
+    # (每签发一个 token 都全量扫描,一次签发几千个就是平方级)。过期即拒由 resolve 现查,不受影响。
+    if len(tokens) <= _MAX_SCOPE_TOKENS and now < float(state.get("next_expiry", 0.0)):
+        return
+    expired = [token for token, entry in tokens.items() if _expires_at(entry) <= now]
     for token in expired:
         _drop_token(state, token)
+    state["next_expiry"] = min(map(_expires_at, tokens.values()), default=float("inf"))
     overflow = len(tokens) - _MAX_SCOPE_TOKENS
     if overflow <= 0:
         return
     # 上限淘汰是最后防线:过期项已在上面清掉,剩余按“最久未使用”淘汰
     # (last_used_at,兜底 created_at),避免把旧页面仍在活跃使用的入口挤出。
-    ordered = sorted(
+    ordered = heapq.nsmallest(
+        overflow,
         tokens.items(),
         key=lambda item: float(item[1].get("last_used_at") or item[1].get("created_at") or 0),
     )
-    for token, _entry in ordered[:overflow]:
+    for token, _entry in ordered:
         _drop_token(state, token)
 
 
@@ -127,6 +139,7 @@ def issue_public_token(scope: str, value: Any, *, ttl_seconds: int = _DEFAULT_TT
                     "expires_at": now + effective_ttl,
                 }
                 by_value[value_text] = token
+                state["next_expiry"] = min(float(state.get("next_expiry", float("inf"))), now + effective_ttl)
                 return token
     raise RuntimeError("无法生成唯一公开 token。")
 

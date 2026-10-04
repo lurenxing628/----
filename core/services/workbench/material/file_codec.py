@@ -5,7 +5,9 @@ Missing columns and empty cells mean omission. The literal \\N means null (only
 spec/unit/remark can be cleared). Double an initial backslash for literal text.
 CSV is UTF-8 (optional BOM); exported text has one reversible apostrophe prefix
 to prevent formula execution and automatic identifier/date coercion. XLSX text
-is explicitly typed as text, never formulas. Numeric XLSX IDs are rejected by
+is explicitly typed as text, never formulas. stock_qty is written as the shortest
+exact decimal text in both formats and text numbers are read back as numbers.
+Numeric XLSX IDs are rejected by
 the input contract, since any lost leading zeros cannot be recovered reliably.
 created_at is an optional reference column, not an importable timestamp.
 """
@@ -44,6 +46,7 @@ from core.services.common.excel_instruction_sheet import (
     append_instruction_sheet,
     close_write_only_sheets,
 )
+from core.services.workbench.facts.table_cells import number_text
 
 _NUMBER = re.compile(r"[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?\Z")
 _ILLEGAL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
@@ -118,7 +121,8 @@ def _decode_value(value, field, file_format):
             return None
         if value.startswith("\\\\"):
             value = value[1:]
-        if file_format == "csv" and field == "stock_qty":
+        # 导出的 XLSX 把库存写成文本格（保住全部有效数字），所以 XLSX 里的文本数字和 CSV 一样按数字读。
+        if field == "stock_qty":
             if _NUMBER.fullmatch(value) is None:
                 raise ValidationError("库存数量只填数字，不要带单位、「是/否」或千分位逗号。", field="stock_qty")
             value = float(value)
@@ -179,6 +183,12 @@ def _export_value(value, field, number, file_format):
     return value
 
 
+def _number_text(value):
+    """库存写成最短十进制文本，与工艺文件同一做法：openpyxl 的数字格只留 16 位有效数字，
+    3.3333333333333335 回导会变成 3.333333333333333，被当成改动并写回库里。"""
+    return number_text(value) if type(value) in (int, float) else value
+
+
 def _check_export_text(value, field, number, file_format):
     if file_format == "csv":
         if "\x00" in value:
@@ -212,7 +222,8 @@ def _write_csv(rows, filename):
         writer.writerow(HEADERS)
         for count, row in enumerate(rows, 1):
             values = [_export_value(row[field], field, count + 1, "csv") for field in COLUMNS]
-            writer.writerow(["'" + value if type(value) is str else value for value in values])
+            # 文字前加撇号防公式和自动转换；库存数字不加，写成和页面一样的 7、0.0000001。
+            writer.writerow(["'" + value if type(value) is str else _number_text(value) for value in values])
         text.flush()
         buffer.seek(0)
         content = buffer.read()
@@ -233,13 +244,11 @@ def _xlsx_headers(ws, template, descriptor):
 def _xlsx_row(ws, row, number):
     cells = []
     for field in COLUMNS:
-        value = _export_value(row[field], field, number, "xlsx")
+        value = _number_text(_export_value(row[field], field, number, "xlsx"))
         cell = WriteOnlyCell(ws, value=value)
         if type(value) is str:
             cell.data_type = TYPE_STRING
             cell.number_format = "@"
-        elif field == "stock_qty":
-            cell.number_format = "0.###############"
         cells.append(cell)
     return cells
 

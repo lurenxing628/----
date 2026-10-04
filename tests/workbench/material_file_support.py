@@ -4,6 +4,7 @@ import csv
 import json
 import tracemalloc
 from datetime import datetime, timedelta
+from decimal import Decimal
 from io import BytesIO, StringIO
 from itertools import zip_longest
 from time import perf_counter
@@ -131,8 +132,11 @@ def _expected_file_values(row, file_format):
         if field == "status":
             value = {"active": "启用", "inactive": "停用"}.get(value, value)
         if field == "stock_qty":
-            if file_format == "csv":
-                value = "" if value is None else str(value)
+            # 两种格式都写成能原样还原的最短十进制文本：2.0 写成 2，不用科学计数法。
+            if value is not None:
+                value = str(value) if type(value) is int else format(Decimal(repr(value)).normalize(), "f")
+            elif file_format == "csv":
+                value = ""
         else:
             if value is None:
                 value = r"\N" if field in ("spec", "unit", "remark") else None

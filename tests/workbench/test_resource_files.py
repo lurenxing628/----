@@ -1,5 +1,7 @@
 """Four-kind sparse upsert, explicit relations and lossless read-only roundtrips."""
 
+import re
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -192,3 +194,27 @@ def test_import_rollback_and_receipt_before_dead_preview(resource_conn, failure)
     first = confirm(resource_conn, "machine", preview, content, key="replay-resource-import")
     replay = confirm(resource_conn, "machine", preview, content, key="replay-resource-import", guard=lambda: pytest.fail("expired preview guard must not run"))
     assert replay == {**first, "replayed": True}
+
+
+def test_preview_hints_name_only_buttons_the_dialogs_have():
+    """资源、物料、日历、关系文件和工艺文件对话框的预检按钮只叫「开始预检」或「重新预检」（出了结果、被拒或读失败后改叫后者）。
+
+    提示不能让人去点不存在的「预检」；设备关联等对话框也共用其中的过期提示，按钮另有叫法，共用处只说"重新预检"不点名。
+    """
+    root = Path(__file__).resolve().parents[2]
+    buttons = set()
+    for name in ("ResourceMaterialActions.jsx", "ProcessFileActions.jsx"):
+        buttons |= set(re.findall(r"'(开始预检|重新预检)'", (root / "frontend/workbench/app" / name).read_text(encoding="utf-8")))
+    assert buttons == {"开始预检", "重新预检"}
+    sources = ("core/models/workbench_resource_action.py", "core/models/workbench_material_file.py",
+               "core/services/workbench/resource/bulk.py", "core/services/workbench/resource/files.py",
+               "core/services/workbench/resource/calendar_files/files.py",
+               "core/services/workbench/resource/calendar_files/operator_files.py",
+               "core/services/workbench/resource/relation_files/files.py",
+               "web/routes/workbench/resource_action_context.py", "web/routes/workbench/material_actions_context.py",
+               "web/routes/workbench/process_file_exports.py", "web/routes/workbench/process_files.py")
+    named = {}
+    for path in sources:
+        for label in re.findall(r"「([^」]*预检[^」]*)」", (root / path).read_text(encoding="utf-8")):
+            named.setdefault(label, set()).add(path)
+    assert set(named) <= buttons, named

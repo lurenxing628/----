@@ -1,9 +1,14 @@
 """Isolated real Flask/SQLite calendar fixtures; no production paths or fake service."""
 
+import json
+import os
+import shutil
 import sqlite3
+import subprocess
 import uuid
 from contextlib import contextmanager
 from datetime import datetime, timedelta
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -11,6 +16,23 @@ import pytest
 BASE = "/api/workbench/v1/calendar"
 NIGHT = "2026-09-09"
 WORK = {"type": "work", "hours": 8, "eff": 100, "allowNormal": "yes", "allowUrgent": "yes"}
+ROOT = Path(__file__).resolve().parents[2]
+_PAGE_CONTRACTS = ("resource-contract.js", "WorkPeriods.js", "CalendarContract.js", "OperatorCalendarContract.js")
+
+
+def page_contract(script, data):
+    """在 node 里跑页面的日历合同（纯 JS，不需要浏览器）：data 以 input 交给脚本，返回脚本打印的 JSON。"""
+    bundled = Path.home() / ".cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node"
+    node = os.environ.get("WORKBENCH_NODE") or shutil.which("node") or (str(bundled) if bundled.is_file() else None)
+    assert node, "Node is required for pure UI contracts; browser tooling is not needed"
+    boot = ("const fs=require('fs'),vm=require('vm');global.window={};"
+            "for(const name of " + json.dumps(_PAGE_CONTRACTS) + ")"
+            "vm.runInThisContext(fs.readFileSync('frontend/workbench/app/'+name,'utf8'),{filename:name});"
+            "const input=JSON.parse(fs.readFileSync(0,'utf8'));")
+    result = subprocess.run([node, "-e", boot + script], cwd=str(ROOT), input=json.dumps(data),
+                            capture_output=True, text=True, timeout=30)
+    assert result.returncode == 0, result.stdout + result.stderr
+    return json.loads(result.stdout)
 
 
 class CalendarApi:

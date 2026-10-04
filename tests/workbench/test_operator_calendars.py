@@ -129,6 +129,21 @@ def test_range_clear_only_touches_this_operator(calendar_env):
     assert stored(conn, DAY, "CO2") is not None
 
 
+def test_stale_range_clear_points_to_the_existing_preview_button(calendar_env):
+    """预检之后这段日期又被改过：不清除任何一天，提示要点的是页面上现有的「预检要清除的日期」按钮。"""
+    conn, domain = calendar_env[0], service(calendar_env)
+    run(calendar_env, "upsert", {"date": DAY, "fields": WORK})
+    payload = domain.normalize("range_clear", {"start_date": "2026-10-01", "end_date": "2026-10-31"})
+    checked = domain.preview_range_clear(payload)
+    run(calendar_env, "upsert", {"date": OTHER, "fields": WORK})
+    with pytest.raises(WorkbenchCommandRejected, match="请重新点「预检要清除的日期」"):
+        WorkbenchCommandService(conn).execute(
+            request_key="stale-range-" + uuid4().hex, action="operator.calendar_range_clear",
+            context_ref="operator:" + OPERATOR, normalized_input=payload, guard=lambda: checked,
+            mutate=lambda current: domain.apply("range_clear", payload, current))
+    assert stored(conn, DAY) is not None and stored(conn, OTHER) is not None
+
+
 def test_month_reports_only_configured_days(calendar_env):
     run(calendar_env, "upsert", {"date": DAY, "fields": WORK})
     month = service(calendar_env).month(2026, 10)

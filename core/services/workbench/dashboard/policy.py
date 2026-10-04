@@ -32,8 +32,9 @@ def require_external_schema(repo):
         raise WorkbenchCommandRejected("dashboard_external_unavailable", "外协处置台账未安装或结构不完整，需由主线明确迁移；未补表。", 503)
 
 
-def read_mappings(repo, category, refs):
-    result = repo.mappings(category, refs)
+def mapped_anchors(loaded, refs):
+    """loaded 是读快照里按候选来源读出的映射；这次真正评估到的来源必须每条都有映射。"""
+    result = {ref: loaded[ref] for ref in refs if ref in loaded}
     if set(result) != set(refs):
         corrupt()
     return result
@@ -75,7 +76,10 @@ def read_external_stored(repo):
 
 
 def require_identity(repo, item_ref):
-    row = repo.identity(reference(item_ref))
+    return found_identity(repo.identity(reference(item_ref)))
+
+
+def found_identity(row):
     if row is None:
         raise WorkbenchCommandRejected("entity_not_found", "条目不存在，未改指其他来源。", 404)
     return row

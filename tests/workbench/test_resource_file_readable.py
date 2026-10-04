@@ -85,3 +85,23 @@ def test_export_shows_chinese_status_and_plain_code_lists(resource_conn, fmt):
     preview = WorkbenchResourceFileService(resource_conn, "operator").preview_import(result.content, file_format=fmt, scope={})
     assert preview.as_dict()["summary"]["rejected"] == 0
     assert confirm(resource_conn, "operator", preview, result.content, fmt)["result"] == "unchanged"
+
+
+@pytest.mark.parametrize("fmt", ("csv", "xlsx"))
+@pytest.mark.parametrize("kind,code,word", (("operator", "O1", "在岗"), ("supplier", "S1", "启用")))
+def test_page_status_words_import_like_the_file_word(resource_conn, fmt, kind, code, word):
+    # 页面上人员显示「在岗」、供应商显示「启用」，和文件里的「可用」是同一个状态。
+    service = WorkbenchResourceFileService(resource_conn, kind)
+    page = service.preview_import(file_bytes([[code, word]], fmt, ("编号", "状态")), file_format=fmt, scope={}).as_dict()["rows"][0]
+    plain = service.preview_import(file_bytes([[code, "可用"]], fmt, ("编号", "状态")), file_format=fmt, scope={}).as_dict()["rows"][0]
+    assert page["errors"] == [] and (page["result"], page.get("changes"), page["input"]) == (plain["result"], plain.get("changes"), plain["input"])
+
+
+@pytest.mark.parametrize("kind,code,choices", (("machine", "M1", "可用、停机或停用"), ("operator", "O1", "可用（在岗）、请假或停用"),
+                                               ("supplier", "S1", "可用（启用）、待复核或停用")))
+def test_wrong_status_names_chinese_choices_instead_of_codes(resource_conn, kind, code, choices):
+    content = file_bytes([[code, "上班"]], "csv", ("编号", "状态"))
+    row = WorkbenchResourceFileService(resource_conn, kind).preview_import(content, file_format="csv", scope={}).as_dict()["rows"][0]
+    message = row["errors"][0]["message"]
+    assert row["result"] == "rejected" and "只能填" + choices in message
+    assert not any(code_word in message for code_word in ("active", "inactive", "pending_review", "maintain", "leave"))

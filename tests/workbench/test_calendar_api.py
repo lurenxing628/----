@@ -20,6 +20,7 @@ from tests.workbench.calendar_api_support import (
     assert_error,
     assert_no_private_facts,
     calendar_api_fixture,
+    page_contract,
 )
 
 
@@ -476,3 +477,44 @@ def test_short_token_validation_only_runs_under_command_write_transaction(calend
     with patch.object(calendars, "validate_write_context", guarded):
         assert calendar_api.client.post(path, json=body).status_code == 200
     assert seen == ["calendar.upsert" if operation == "day" else "calendar.confirm"]
+
+
+@pytest.mark.parametrize("periods", [
+    [{"start": "08:30", "end": "11:50", "day_offset": 0}, {"start": "13:30", "end": "17:30", "day_offset": 0}],
+    [{"start": "08:00", "end": "11:40", "day_offset": 0}, {"start": "13:00", "end": "17:00", "day_offset": 0}],
+])
+def test_page_note_or_efficiency_edit_on_multi_period_day_saves_without_derived_hours(calendar_api, periods):
+    """多时段日只改备注或效率：页面不再把由时段算出的工时（如 7⅓ 小时）当成改动提交，后端照常保存。"""
+    day = "2026-09-14"
+    with calendar_api.db() as conn:
+        CalendarService(conn).upsert(day, periods=periods, remark="旧备注")
+    original, before = calendar_api.day(day), calendar_api.row(day)
+    note, eff = page_contract("const K=window.APSCalendarContract,d=input;console.log(JSON.stringify("
+                              "[K.input({...K.draft(d),note:'只改备注'},d),K.input({...K.draft(d),eff:'90'},d)]))", original)
+    assert (note, eff) == ({"note": "只改备注"}, {"eff": 90})
+    assert calendar_api.save(note, day).status_code == 200
+    assert calendar_api.row(day) == {**before, "remark": "只改备注"}
+    assert calendar_api.save(eff, day).status_code == 200
+    assert calendar_api.row(day) == {**before, "remark": "只改备注", "efficiency": 0.9}
+
+
+def test_page_rest_then_work_restores_legacy_shift_and_defaults_only_rest_days(calendar_api):
+    """旧单班工作日（periods 为空值）切休息再切回工作日恢复原班次；只有原本休息的日期才填默认时段。"""
+    legacy, rest = "2026-09-12", "2026-09-15"
+    with calendar_api.db() as conn:
+        CalendarService(conn).upsert(legacy, shift_start="07:00", shift_hours=10, remark="周六加班")
+    assert calendar_api.save({"type": "rest", "periods": []}, rest).status_code == 200
+    days = [calendar_api.day(legacy), calendar_api.day(rest)]
+    assert days[0]["fields"]["periods"] is None and days[1]["fields"]["periods"] == []
+    result = page_contract("""const K=window.APSCalendarContract,[legacy,rest]=input,draft=K.draft(legacy);
+const back=K.switchType(K.switchType(draft,'rest'),'work'), again=K.switchType(K.draft(rest),'work');
+console.log(JSON.stringify({back,saved:K.input(back,legacy),same:JSON.stringify(K.switchType(draft,'work'))===JSON.stringify(draft),
+  again,created:K.input(again,rest)}));""", days)
+    assert result["back"]["periods"] is None and (result["back"]["shiftStart"], result["back"]["hours"]) == ("07:00", "10")
+    assert result["saved"] == {} and result["same"] is True
+    assert result["again"]["periods"] == days[1]["default_periods"]
+    assert (result["again"]["allowNormal"], result["again"]["allowUrgent"]) == ("yes", "yes")
+    assert calendar_api.save(result["created"], rest).status_code == 200
+    saved = calendar_api.row(rest)
+    assert saved["day_type"] == "workday" and saved["shift_hours"] == pytest.approx(22 / 3)
+    assert calendar_api.row(legacy)["shift_start"] == "07:00" and calendar_api.row(legacy)["shift_hours"] == 10

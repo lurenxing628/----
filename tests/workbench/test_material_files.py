@@ -117,7 +117,7 @@ def test_xlsx_never_guesses_types_for_text_columns(material_conn, value, header)
 
 
 @pytest.mark.parametrize("fmt,value", [("csv", x) for x in ("NaN", "Infinity", "-Infinity", "1e9999", "true", "false", "1,200 kg", -1)]
-                         + [("xlsx", x) for x in (True, False, "1.5", -1, datetime(2026, 1, 2))])
+                         + [("xlsx", x) for x in (True, False, "1.5 kg", "1,200", -1, datetime(2026, 1, 2))])
 def test_invalid_stock_never_turns_into_inventory(material_conn, fmt, value):
     content = file_bytes([["MAT2", "valid", value]], fmt, headers=("物料编号", "名称", "库存数量"))
     row = WorkbenchMaterialFileService(material_conn).preview_import(content, file_format=fmt, scope={}).as_dict()["rows"][0]
@@ -311,7 +311,8 @@ def test_export_all_filtered_and_explicit_selection_not_only_visible_page(materi
         assert selected.mime_type == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         assert list(wb.active.values)[0] == HEADERS and wb.active.max_row == 4
         assert [wb.active.cell(n, 1).value for n in (2, 3, 4)] == ["BULK00230", "BULK00001", "MAT1"]
-        assert wb.active["E4"].value == 12.375 and wb.active["D4"].value == "kg"
+        # 库存写成最短十进制文本格（openpyxl 的数字格只留 16 位有效数字），回导仍按数字读。
+        assert wb.active["E4"].value == "12.375" and wb.active["E4"].number_format == "@" and wb.active["D4"].value == "kg"
         wb.close()
 
 

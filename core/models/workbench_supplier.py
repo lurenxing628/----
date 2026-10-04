@@ -80,7 +80,7 @@ def normalize_supplier_input(action: str, payload: Any) -> Dict[str, Any]:
             normalized[key] = _text(value, "fields.remark", clearable=True)
         else:
             if type(value) is not str or value not in STATUS_VALUES:
-                raise ValidationError("状态仅允许 active、pending_review 或 inactive。", field="fields.status")
+                raise ValidationError("状态只能选启用、待复核或停用。", field="fields.status")
             normalized[key] = value
     if action == "create" and "default_days" not in normalized:
         raise ValidationError("新增供应商必须明确填写有效默认周期。", field="fields.default_days")

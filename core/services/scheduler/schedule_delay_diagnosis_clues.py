@@ -161,7 +161,7 @@ class ScheduleDelayDiagnosisClueBuilder:
                 DiagnosisClue(
                     clue_code="material_not_ready",
                     clue_label="物料线索待核对",
-                    plain_text="当前批次齐套状态不是已齐套，建议先复核物料明细；系统还不能判定延期一定由物料造成。",
+                    plain_text="当前批次是未齐套或部分齐套，建议先复核物料明细；系统还不能判定延期一定由物料造成。",
                     confidence="likely",
                     evidences=[self._material_evidence(row, plan_identity) for row in not_ready_rows],
                     data_gaps=["第一版只读取批次齐套和批次物料明细，不追溯采购、库存和在途。"],

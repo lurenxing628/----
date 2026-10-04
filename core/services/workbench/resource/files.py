@@ -114,7 +114,7 @@ class WorkbenchResourceFileService:
             try:
                 current = self.preview_import(content, file_format=file_format, scope=scope, mode=mode)
             except ValidationError as exc:
-                raise WorkbenchCommandRejected("stale_write", "文件或导入范围已经变了，没有导入。请重新点「预检」后再确认。") from exc
+                raise WorkbenchCommandRejected("stale_write", "文件或导入范围已经变了，没有导入。请点「重新预检」后再确认。") from exc
             check_resource_preview(preview, current)
             results = []
             for row in current.as_dict()["rows"]:

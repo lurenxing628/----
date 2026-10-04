@@ -42,3 +42,26 @@ def test_sqlite_detect_types_enabled():
         except Exception:
             pass
 
+
+
+def test_unparseable_stored_date_reads_back_as_text():
+    """库里 DATE 列存了非标准写法时，取数不能直接抛 ValueError；原文交给读取端判成"日期无效"。"""
+
+    from core.infrastructure.database import get_connection
+
+    conn = get_connection(":memory:")
+    try:
+        conn.execute("CREATE TABLE t_bad(d DATE)")
+        stored = ("2026/10/01", "2026-02-30", "2026-10-01 00:00:00")
+        conn.executemany("INSERT INTO t_bad(d) VALUES (?)", [(value,) for value in stored])
+        assert [row["d"] for row in conn.execute("SELECT d FROM t_bad ORDER BY rowid")] == list(stored)
+
+        # 默认转换器原来能读的写法（含不补零的旧值）继续返回日期。
+        conn.execute("DELETE FROM t_bad")
+        conn.executemany("INSERT INTO t_bad(d) VALUES (?)", [("2026-01-05",), ("2026-1-5",)])
+        values = [row["d"] for row in conn.execute("SELECT d FROM t_bad ORDER BY rowid")]
+        for value in values:
+            _assert_is_date(value, "可解析的 DATE 值")
+        assert values == [date(2026, 1, 5), date(2026, 1, 5)]
+    finally:
+        conn.close()

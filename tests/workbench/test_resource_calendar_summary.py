@@ -184,3 +184,31 @@ def test_overflowing_week_sum_is_unknown_without_discarding_good_daily_facts(sch
     assert value["stats"]["issues"][0]["code"] == "calendar_week_total_unavailable"
     assert value["stats"]["known_days"] == 7 and value["stats"]["work_days"] == 5
     assert value["days"][0]["effective"]["effective_hours"] == 8e307
+
+
+def test_night_tail_overlapping_next_shift_counts_once_like_the_engine(schema_conn):
+    """周一 22:00–次日 06:00 与周二 04:00–12:00 重叠 2 小时：重叠段归周二，本周有效工时与排产引擎一致。"""
+    service = CalendarService(schema_conn)
+    service.upsert("2026-09-07", periods=[{"start": "22:00", "end": "06:00", "day_offset": 0}])
+    service.upsert("2026-09-08", periods=[{"start": "04:00", "end": "12:00", "day_offset": 0}])
+    before = stored_state(schema_conn)
+    value = summary(schema_conn)
+    monday, tuesday = value["days"][0]["effective"], value["days"][1]["effective"]
+    assert monday["hours"] == 8 and monday["effective_hours"] == 6 and tuesday["effective_hours"] == 8
+    engine = service._engine
+    engine.clear_policy_cache()
+    week = engine.capacity_hours_between(datetime(2026, 9, 7), datetime(2026, 9, 14))
+    assert week == pytest.approx(6 + 8 + 22) and value["stats"]["effective_hours"] == pytest.approx(week)
+    assert stored_state(schema_conn) == before
+
+
+def test_night_tail_with_unreadable_next_day_is_unknown_instead_of_counted_twice(schema_conn):
+    """周日夜班的后半段归不归下周一，要看下周一的日历；下周一存坏了就如实报未知，其他日期不受影响。"""
+    CalendarService(schema_conn).upsert("2026-09-13", shift_start="22:00", shift_end="06:00")
+    schema_conn.execute("INSERT INTO WorkCalendar(date,efficiency) VALUES ('2026-09-14','bad')")
+    schema_conn.commit()
+    value = summary(schema_conn)
+    sunday = value["days"][6]
+    assert sunday["status"] == "unavailable" and "次日" in sunday["issues"][0]["message"]
+    assert all(day["status"] == "known" for day in value["days"][:6])
+    assert value["status"] == "partial" and value["stats"]["effective_hours"] is None

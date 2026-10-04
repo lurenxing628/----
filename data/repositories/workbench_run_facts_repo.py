@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Tuple
 
-from core.infrastructure.schema_probe import SchemaObject, schema_objects
+from core.infrastructure.schema_probe import SchemaObject, schema_objects, table_columns
 from core.infrastructure.workbench_run_schema import RUN_TABLES
 
 from .base_repo import BaseRepository
@@ -35,6 +35,10 @@ class WorkbenchRunFactsRepository(BaseRepository):
                 sql += " WHERE action <> 'scheduling.run'"
             tables[name] = [tuple(row) for row in self.execute(sql + " ORDER BY rowid")]
         return schema, tables
+
+    def command_receipt_columns(self) -> List[str]:
+        """WorkbenchCommandReceipts 的物理列序，与 admission_facts 行元组一致；没有这张表时为空列表。"""
+        return table_columns(self.conn, "WorkbenchCommandReceipts")
 
     def operation_identity_refs(self) -> List[Tuple[Any, ...]]:
         """[(source_key, ref)]：所有生效的工序永久身份。"""

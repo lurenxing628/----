@@ -200,3 +200,47 @@ def test_export_writes_the_same_words_the_dropdown_offers(relation_env, fmt):
     assert levels <= {"初级", "普通", "熟练"}, f"技能等级导出了下拉里没有的词：{levels}"
     assert primaries <= {"是", "否"}, f"主操设备导出了下拉里没有的词：{primaries}"
     assert ("RO1", "RM1", "熟练", "是") in {(r[0], r[1], r[level_at], r[primary_at]) for r in rows}
+
+
+def _legacy_two_primaries(conn):
+    # 规则收紧前留下的旧数据：同一个人两台设备都标成主操。
+    for machine in ("RM1", "RM2"):
+        conn.execute("INSERT INTO OperatorMachine(operator_id, machine_id, skill_level, is_primary) VALUES ('RO1', ?, 'expert', 'yes')",
+                     (machine,))
+    conn.commit()
+
+
+@pytest.mark.parametrize("fmt", ("csv", "xlsx"))
+def test_legacy_two_primaries_round_trip_is_unchanged_and_never_rewritten(relation_env, fmt):
+    conn = relation_env
+    _legacy_two_primaries(conn)
+    with TransactionManager(conn).transaction():
+        download = WorkbenchRelationFileService(conn, KIND).export(fmt, scope={})
+    document = WorkbenchRelationFileService(conn, KIND).preview_import(download.content, file_format=fmt)
+    body = document.as_dict()
+    assert [row["result"] for row in body["rows"]] == ["unchanged"] * download.row_count
+    assert not any(row["notes"] or row.get("requires_confirmation") for row in body["rows"])
+    outcome = WorkbenchCommandService(conn).execute(
+        request_key="relation-file-" + uuid4().hex, action=body["operation"], context_ref=document.digest,
+        normalized_input={"preview_ref": document.digest}, guard=lambda: None,
+        mutate=lambda _: WorkbenchRelationFileService(conn, KIND).confirm_import(document, download.content, file_format=fmt))
+    assert outcome["result"] == "unchanged"
+    assert links_of(conn, "RO1") == {"RM1": ("expert", "yes"), "RM2": ("expert", "yes")}
+
+
+def test_legacy_two_primaries_still_block_any_real_change_to_that_person(relation_env):
+    conn = relation_env
+    _legacy_two_primaries(conn)
+    # 有一行真要改（技能等级），确认时会写主操，就仍按一人一台主操的规则拒绝，不替用户挑一台。
+    document = preview(conn, [("RO1", "RM1", "熟练", "是"), ("RO1", "RM2", "普通", "是")])
+    assert results(document) == [(2, "rejected"), (3, "rejected")]
+    assert all("最多只能有一台主操" in row["errors"][0]["message"] for row in document.as_dict()["rows"])
+
+
+def test_new_second_primary_is_still_rejected_when_first_is_unchanged(relation_env):
+    conn = relation_env
+    seed = [("RO1", "RM1", "熟练", "是"), ("RO1", "RM2", "熟练", "否")]
+    confirm(conn, preview(conn, seed), rows=seed)
+    document = preview(conn, [("RO1", "RM1", "熟练", "是"), ("RO1", "RM2", "熟练", "是")])
+    assert results(document) == [(2, "rejected"), (3, "rejected")]
+    assert links_of(conn, "RO1") == {"RM1": ("expert", "yes"), "RM2": ("expert", "no")}

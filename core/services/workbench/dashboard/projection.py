@@ -6,7 +6,7 @@ from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_dashboard import MAX_ROWS, bounded
 from core.services.workbench.facts.preflight_checks import PreflightChecks, number, stored_date
 
-from .facts import source_issue, typed
+from .facts import source_issue
 from .material_views import current_material_views
 
 
@@ -16,8 +16,9 @@ def category(state="loaded", *, issues=None, assessed=0, unknown=0):
 
 
 def observation(category_name, source_ref, subject, source, active, code, message, facts):
+    # 来源事实只在条目真正列出时才规整（见 service._decorate）；几千条无风险观察不必逐条转换。
     return {"category": category_name, "anchor_ref": source_ref, "subject": subject,
-            "source": source, "risk": {"active": active, "code": code, "message": message}, "_facts": typed(facts)}
+            "source": source, "risk": {"active": active, "code": code, "message": message}, "_facts": facts}
 
 
 def delivery(facts):
@@ -44,10 +45,19 @@ def delivery(facts):
 class _MaterialChecks(PreflightChecks):
     """Reuse the exact readiness rule without loading unrelated resource catalogs."""
 
-    def __init__(self, requirements):
+    def __init__(self, requirements, stored_batches):
         self.materials = defaultdict(list)
         for row in requirements:
             self.materials[row["batch_id"]].append(row)
+        self.marks = {row["batch_id"]: row["ready_status"] for row in stored_batches}
+
+    def readiness(self, batch, enabled):
+        reasons = super().readiness(batch, enabled)
+        # 看板传进来的批次齐套是按当前到料算出的结果。批次管理里的维护标记已经是"齐套"、只是料没到够时，
+        # 缺口由逐条物料说明；不再说"这批还没确认齐套"，免得用户去批次管理看到标记明明是齐套。
+        if self.marks.get(batch["batch_id"]) == "yes" and len(reasons) > 1:
+            return [item for item in reasons if item["code"] != "batch_not_ready"]
+        return reasons
 
 
 def _material_requirement(row, value, material_refs):
@@ -74,7 +84,7 @@ def _material_batch(batch, checks, refs, by_material, material_refs):
               "ready_date": stored_date(batch["ready_date"]), "due_date": stored_date(batch["due_date"]),
               "quantity": batch["quantity"] if number(batch["quantity"], integer=True) else None,
               "requirements": [row for row, _ in projected], "readiness_issues": reasons, "basis": "batch_material_requirements_not_stock"}
-    code, message = {None: ("readiness_unknown", "齐套数据读不完整，算不出缺多少，也不能认定已齐套。"),
+    code, message = {None: ("readiness_unknown", "齐套数据读不完整，算不出缺多少，也不能当作齐套。"),
                      True: ("not_ready", "批次或已登记物料需求尚未确认齐套。"),
                      False: ("ready", "当前齐套检查无缺口。")}[active]
     label = batch["part_name"] if type(batch["part_name"]) is str else "未填写名称"
@@ -97,7 +107,7 @@ def material(facts):
     material_refs = facts.entity_refs("material", [row["material_id"] for row in materials])
     facts.raw["material_refs"] = material_refs
     by_material = {row["material_id"]: row for row in materials}
-    checks = _MaterialChecks(requirements)
+    checks = _MaterialChecks(requirements, facts.raw["Batches"])
     items = [_material_batch(batch, checks, refs, by_material, material_refs) for batch in batches]
     unknown = sum(row["risk"]["active"] is None for row in items)
     return items, category("loaded" if items else "no_data", assessed=len(items) - unknown, unknown=unknown)

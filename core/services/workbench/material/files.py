@@ -26,6 +26,7 @@ in header comments (no demo records that could accidentally be imported).
 
 from __future__ import annotations
 
+import re
 from contextlib import closing
 
 from core.errors import ValidationError
@@ -56,15 +57,23 @@ from .file_codec import check_export_capacity, read_material_file, write_materia
 from .queries import WorkbenchMaterialQueryService
 from .service import WorkbenchMaterialService
 
+# 与资源导出（resource/file_projection.py）同一条规则：认得出的存储时刻才换算。
+_STORED_TIME_TEXT = re.compile(r"\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(:\d{2}(\.\d+)?)?$")
 
-def _local_created_at(value):
-    """Materials.created_at 由数据库按 UTC 写入；导出时换算为工厂本地时间。"""
-    if value is None:
-        return None
+
+def local_created_at(value):
+    """Materials.created_at 由数据库按 UTC 写入；导出和导入预检的"原值"都换算为工厂本地时间。
+
+    创建时间只是导出带出的参考列，导入不看。认不出的旧写法（只有日期、斜杠日期、空串等）原样写出，
+    不猜着换算，也不因为这一格让整份物料导不出来、导入预检报错。
+    """
+    if type(value) is not str or _STORED_TIME_TEXT.match(value) is None:
+        return value
     try:
-        return messages.stored_utc_text(str(value))
-    except ValueError as exc:
-        raise WorkbenchCommandRejected("storage_failure", "物料的创建时间存得不对，读不出来。请刷新重试；仍不行请联系维护人员。", 500) from exc
+        return messages.stored_utc_text(value)
+    except (ValueError, OverflowError):
+        # 形似时刻却不是真实日期（例如 2026-02-30 08:00），或换算后越过 9999 年（9999-12-31 16:00 以后），同样原样写出
+        return value
 
 
 class WorkbenchMaterialFileService:
@@ -203,7 +212,7 @@ class WorkbenchMaterialFileService:
                 raise WorkbenchCommandRejected("storage_failure", "要导出的物料缺少系统编号，请联系维护人员核对资料。", 500)
             self.adapter.snapshot(identity)
             row = dict(zip(COLUMNS, (raw[key] for key in MATERIAL_COLUMNS)))
-            row["created_at"] = _local_created_at(raw["created_at"])
+            row["created_at"] = local_created_at(raw["created_at"])
             yield row
 
     @staticmethod

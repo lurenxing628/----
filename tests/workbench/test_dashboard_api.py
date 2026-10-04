@@ -91,3 +91,48 @@ def test_public_wire_has_no_database_keys_or_private_snapshots(dashboard_case, m
                 check(child)
 
     check(client.get(ROOT).get_json())
+
+
+def test_list_queues_on_the_plan_read_slot_and_projects_after_the_snapshot(dashboard_case, monkeypatch):
+    import sqlite3
+
+    from core.services.workbench.dashboard.service import WorkbenchDashboardService
+    from web.routes.workbench import read_budget
+
+    client = api(dashboard_case, monkeypatch)
+    original, projected = WorkbenchDashboardService.project, []
+
+    def project(self, sources):
+        projected.append((self.conn.in_transaction, read_budget.PLAN_READ_SLOTS._available))
+        self.conn.set_authorizer(lambda *_args: sqlite3.SQLITE_DENY)
+        try:
+            return original(self, sources)
+        finally:
+            self.conn.set_authorizer(lambda *_args: sqlite3.SQLITE_OK)
+
+    monkeypatch.setattr(WorkbenchDashboardService, "project", project)
+    item, snapshot = list_item(client)
+    history = client.get(ROOT + "/items/" + item["item_ref"] + "/history", query_string={"snapshot_ref": snapshot})
+    assert history.status_code == 200, history.get_json()
+    # 读事务已结束、额度仍占着：投影不挡写入提交，也不和别的整份计划重读抢 CPU。
+    assert projected == [(False, 0), (False, 0)]
+    assert read_budget.PLAN_READ_SLOTS._available == 1
+
+
+def test_candidate_comparison_queues_on_the_plan_read_slot(dashboard_case, monkeypatch):
+    from web.routes.workbench import dashboard_analysis, read_budget
+
+    client = api(dashboard_case, monkeypatch)
+    candidate_ref, compared = "a" * 48, []
+
+    def read_candidate_comparison(conn, scope):
+        compared.append((scope.candidate_ref, read_budget.PLAN_READ_SLOTS._available))
+        return {"candidate_ref": scope.candidate_ref}, "comparison-state"
+
+    monkeypatch.setattr(dashboard_analysis, "read_candidate_comparison", read_candidate_comparison)
+    response = client.get(ROOT + "/candidates/" + candidate_ref + "/comparison",
+                          query_string={"range_start": "2026-09-09T00:00:00", "range_end": "2026-09-26T00:00:00"})
+    assert response.status_code == 200, response.get_json()
+    # 整份候选加正式计划基线的重建和看板、现场页排同一个读额度，读完即归还。
+    assert compared == [(candidate_ref, 0)]
+    assert read_budget.PLAN_READ_SLOTS._available == 1

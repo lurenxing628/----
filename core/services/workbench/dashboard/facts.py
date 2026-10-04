@@ -43,18 +43,28 @@ class DashboardFacts:
         self.task_rows, self.execution_facts, self.delivery_facts = [], None, None
         self.pressure = {"state": "unavailable", "resources": None, "issues": []}
         self.candidates = {"state": "unavailable", "run_count": None, "issues": []}
+        self._ledger = None
 
     def entity_refs(self, kind, keys):
         """Active permanent refs keyed by business key; missing or duplicated keys are identity gaps."""
         return read_entity_refs(self.repo, kind, keys)
 
     def load(self):
+        """Read sources under the caller's snapshot; project() then works on them without SQLite."""
         for table in ("SchemaVersion", "BatchMaterialReviews", "BatchMaterialArrivals", "Batches", "BatchMaterials", "Materials", "MachineDowntimes", "Machines", "WorkbenchDashboardDowntimeRefs"):
             self.raw[table] = self.repo.table(table)
         self._plan()
         if self.plan_state == "loaded":
-            self._execution()
+            self._load_execution()
         self.candidates, self.raw["candidate_catalog"] = candidate_catalog(self.conn)
+        return self
+
+    def project(self):
+        """报工投影只用已读出的台账事实，可在读事务结束后做，不再碰数据库。"""
+        if self._ledger is not None:
+            ledger, facts = self._ledger
+            self._ledger = None
+            self._project_execution(ledger, facts)
         return self
 
     def _plan(self):
@@ -103,13 +113,18 @@ class DashboardFacts:
         self.plan_state, self.tasks = "unavailable", []
         self.plan_issues = [source_issue(code, message)]
 
-    def _execution(self):
+    def _load_execution(self):
         if self.plan is None:
             raise RuntimeError("Execution risk requires the resolved current official plan")
         ledger = ExecutionLedgerService(self.conn, clock=lambda: self.now)
         try:
             ledger.require_schema()
-            facts = ledger.load([task["operation_ref"] for task in self.tasks], comparison_plan_ref=self.plan["plan_ref"])
+            self._ledger = ledger, ledger.load([task["operation_ref"] for task in self.tasks], comparison_plan_ref=self.plan["plan_ref"])
+        except WorkbenchCommandRejected as exc:
+            self._execution_unavailable(exc)
+
+    def _project_execution(self, ledger, facts):
+        try:
             self.execution_facts = typed(facts)
             self.execution = {row.operation_ref: row.to_dict() for row in ledger.project_loaded(facts, contexts=False)}
             for task in self.tasks:
@@ -117,10 +132,13 @@ class DashboardFacts:
                 if projection["current_task_ref"] != task["task_ref"] or projection["comparison_task_ref"] != task["task_ref"]:
                     raise WorkbenchCommandRejected("task_binding_invalid", "报工记录对应的任务和当前正式计划里的安排不是同一条。请刷新后重试。")
         except WorkbenchCommandRejected as exc:
-            if exc.code not in UNAVAILABLE:
-                raise
-            self.execution = None
-            self.execution_issues = [source_issue(exc.code, str(exc))]
+            self._execution_unavailable(exc)
+
+    def _execution_unavailable(self, exc):
+        if exc.code not in UNAVAILABLE:
+            raise exc
+        self.execution = None
+        self.execution_issues = [source_issue(exc.code, str(exc))]
 
     def fingerprint(self):
         return input_fingerprint(typed({"raw": self.raw, "plan": self.plan, "state": self.plan_state,

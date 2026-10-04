@@ -78,15 +78,15 @@ def retain_context(namespace, document, content=None):
 
 def resolve_context(namespace, ref, code):
     try:
-        binding = json.loads(resolve_public_token(namespace, ref, message="预检结果已过期，数据没有改动。请重新点「开始预检」。", field="preview_ref"))
+        binding = json.loads(resolve_public_token(namespace, ref, message="预检结果已过期，数据没有改动。请重新预检。", field="preview_ref"))
     except (ValidationError, ValueError) as exc:
-        raise WorkbenchCommandRejected(code, "预检结果已过期，数据没有改动，范围也没有自动更换。请重新点「开始预检」。") from exc
+        raise WorkbenchCommandRejected(code, "预检结果已过期，数据没有改动，范围也没有自动更换。请重新预检。") from exc
     if binding.get("version") != 1 or binding.get("source") != "production":
-        raise WorkbenchCommandRejected(code, "预检结果和这次操作对不上，数据没有改动。请重新点「开始预检」。")
+        raise WorkbenchCommandRejected(code, "预检结果和这次操作对不上，数据没有改动。请重新预检。")
     with LOCK:
         value = _store().get(binding["context_key"])
         if value is None:
-            raise WorkbenchCommandRejected(code, "预检结果已过期，数据没有改动；系统没有拿页面上的内容凑一份。请重新点「开始预检」。")
+            raise WorkbenchCommandRejected(code, "预检结果已过期，数据没有改动；系统没有拿页面上的内容凑一份。请重新预检。")
         return value.document, value.content
 
 
@@ -98,7 +98,7 @@ def issue_preview(kind, preview, content=None):
     rejected = body["summary"]["rejected"] != 0
     if rejected:
         context["capabilities"][action] = False
-        context["blocked_reasons"] = [{"action": action, "code": "constraint_conflict", "message": "这一批里有不能提交的行，数据没有改动。请修好标红的行后重新点「开始预检」。"}]
+        context["blocked_reasons"] = [{"action": action, "code": "constraint_conflict", "message": "这一批里有不能提交的行，数据没有改动。请修好标红的行后重新预检。"}]
     result = {"preview_ref": ref, "expires_at": expires_at, "operation": action, "commit_policy": "atomic",
               "summary": body["summary"], "rows": [public_action_row(row) for row in body["rows"]],
               "can_confirm": not rejected, "write_context": context, "columns": public_columns(kind), "scope": body["request"]["scope"]}
@@ -120,7 +120,7 @@ def issue_file_preview(preview, content, *, columns, instructions, template_vers
     if rejected:
         context["capabilities"][action] = False
         context["blocked_reasons"] = [{"action": action, "code": "constraint_conflict",
-                                       "message": "这一批里有不能提交的行，数据没有改动。请修好标红的行后重新点「开始预检」。"}]
+                                       "message": "这一批里有不能提交的行，数据没有改动。请修好标红的行后重新预检。"}]
     return {"preview_ref": ref, "expires_at": expires_at, "operation": action, "commit_policy": "atomic",
             "summary": body["summary"], "rows": [public_action_row(row) for row in body["rows"]],
             "can_confirm": not rejected, "write_context": context, "columns": columns,
@@ -143,7 +143,7 @@ def upload_body(*, modes=("upsert",)):
     content = request.files["file"].read()
     limit = int(current_app.config.get("EXCEL_MAX_UPLOAD_BYTES") or current_app.config.get("MAX_CONTENT_LENGTH") or 0)
     if limit > 0 and len(content) > limit:
-        raise WorkbenchCommandRejected("invalid_input", "文件超过本机允许的大小，一行都没有导入。请缩小文件后重新点「开始预检」。", 413)
+        raise WorkbenchCommandRejected("invalid_input", "文件超过本机允许的大小，一行都没有导入。请缩小文件后重新选择，再点「开始预检」。", 413)
     return content, fmt, mode
 
 
@@ -181,7 +181,7 @@ def confirm_body():
     g.workbench_request_key = body["request_key"]
     opaque_ref(body["write_token"], "write_token")
     if type(body["input"]) is not dict or set(body["input"]) != {"preview_ref"}:
-        raise WorkbenchCommandRejected("invalid_input", "只能确认刚才预检过的那一批，数据没有改动。请重新点「开始预检」。", 400)
+        raise WorkbenchCommandRejected("invalid_input", "只能确认刚才预检过的那一批，数据没有改动。请点「重新预检」。", 400)
     opaque_ref(body["input"]["preview_ref"], "preview_ref")
     return body
 
@@ -193,7 +193,7 @@ def resolve_import_preview(ref, action, write_token):
     document, content = resolve_context(PREVIEW_SCOPE, ref, "stale_write")
     preview = ResourceActionPreview(document)
     if preview.as_dict()["operation"] != action:
-        raise WorkbenchCommandRejected("stale_write", "预检结果和这次操作对不上，数据没有改动。请重新点「开始预检」。")
+        raise WorkbenchCommandRejected("stale_write", "预检结果和这次操作对不上，数据没有改动。请点「重新预检」。")
     validate_write_context(write_token, ref, action, preview.intent())
     return preview, content
 
@@ -204,6 +204,6 @@ def resolve_preview(ref, action, write_token):
     document, content = resolve_context(PREVIEW_SCOPE, ref, "stale_write")
     preview = ResourceActionPreview(document)
     if preview.as_dict()["operation"] != action:
-        raise WorkbenchCommandRejected("stale_write", "预检结果和这次操作或这条记录对不上，数据没有改动。请重新点「开始预检」。")
+        raise WorkbenchCommandRejected("stale_write", "预检结果和这次操作或这条记录对不上，数据没有改动。请点「重新预检」。")
     validate_write_context(write_token, ref, action, preview.intent())
     return preview, content

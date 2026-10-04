@@ -470,14 +470,18 @@ def test_ref_survives_reconnect_and_reads_do_not_repair_missing_metadata(calenda
 
 
 def test_raw_null_fields_preserved_in_snapshot_and_not_silently_rewritten(calendar_env):
+    """快照如实显示空列；改效率时，空列只补成引擎本来就按的默认值（08:00 开始、按工时推出结束），
+    这一天的时段和工时不变，不算改写（旧库升级加列没回填的行因此能在日历页改好）。"""
     conn, adapter, _ = calendar_env
     conn.execute("UPDATE WorkCalendar SET shift_start = NULL, shift_end = NULL WHERE date = ?", (NIGHT,))
     conn.commit()
-    assert adapter.snapshot(NIGHT)["row"]["shift_start"] is None
-    before = stored_state(conn)
-    with pytest.raises(WorkbenchCommandRejected, match="没改的项"):
-        run_day(calendar_env, "upsert", {"date": NIGHT, "fields": {"eff": 50}})
-    assert stored_state(conn) == before
+    before = adapter.snapshot(NIGHT)
+    assert before["row"]["shift_start"] is None
+    assert run_day(calendar_env, "upsert", {"date": NIGHT, "fields": {"eff": 50}})["result"] == "committed"
+    saved = row_for(conn)
+    assert (saved["shift_start"], saved["shift_end"], saved["shift_hours"], saved["efficiency"]) == ("08:00", "16:00", 8, 0.5)
+    after = adapter.snapshot(NIGHT)["effective"]
+    assert (after["windows"], after["hours"]) == (before["effective"]["windows"], before["effective"]["hours"])
 
 
 def test_query_failure_propagates_without_fake_default_or_write(calendar_env):
@@ -588,3 +592,122 @@ def test_populated_d06_tables_and_personal_dates_unchanged_by_global_writes(cale
     after = business_snapshot(conn)
     assert {key: value for key, value in after.items() if key != "WorkCalendar"} == {
         key: value for key, value in before.items() if key != "WorkCalendar"}
+
+
+def test_expired_confirm_ref_points_to_the_existing_preview_button():
+    """确认时清单编号失效，提示要点的是页面上现有的「预览变更」按钮。"""
+    with pytest.raises(ValidationError, match="请重新点「预览变更」"):
+        WorkbenchCalendarService.normalize("confirm", {"preview_ref": "stale"})
+
+
+@pytest.mark.parametrize("fields,changed", (({"note": "只改备注"}, {"remark": "只改备注"}),
+                                            ({"eff": 90}, {"efficiency": 0.9})))
+def test_legacy_row_without_end_keeps_hours_when_only_note_or_efficiency_changes(calendar_env, fields, changed):
+    """旧行只存开始和工时（09:00 起 4 小时、结束为空）：只改备注或效率时补出结束 13:00，工时仍是 4 小时。"""
+    conn, adapter, _ = calendar_env
+    day = "2026-10-12"
+    CalendarService(conn).upsert(day, shift_start="09:00", shift_hours=4, remark="旧")
+    conn.execute("UPDATE WorkCalendar SET shift_end = NULL WHERE date = ?", (day,))
+    conn.commit()
+    before = row_for(conn, day)
+    assert run_day(calendar_env, "upsert", {"date": day, "fields": fields})["result"] == "committed"
+    assert row_for(conn, day) == {**before, "shift_end": "13:00", **changed}
+    assert adapter.snapshot(day)["effective"]["window_end"] == "2026-10-12T13:00:00"
+
+
+def test_rest_day_with_empty_periods_returns_to_single_shift_but_multi_period_day_still_guarded(calendar_env):
+    """休息日存成空时段后，填工时或班次起止就按单班改回工作日；真正按多时段设置的日期仍只能改逐段时段。"""
+    conn, _, _ = calendar_env
+    rest, periods = "2026-10-14", "2026-10-15"
+    run_day(calendar_env, "upsert", {"date": rest, "fields": {"type": "rest", "periods": []}}, key=KEY + "-rest")
+    assert row_for(conn, rest)["periods_json"] == "[]"
+    run_day(calendar_env, "upsert", {"date": rest, "fields": WORK}, key=KEY + "-hours")
+    saved = row_for(conn, rest)
+    assert (saved["day_type"], saved["shift_start"], saved["shift_end"], saved["shift_hours"]) == ("workday", "08:00", "16:00", 8)
+    assert saved["periods_json"] is None
+    CalendarService(conn).upsert(periods, periods=[{"start": "08:00", "end": "12:00", "day_offset": 0},
+                                                   {"start": "13:00", "end": "17:00", "day_offset": 0}])
+    with pytest.raises(ValidationError, match="已按多时段设置"):
+        run_day(calendar_env, "upsert", {"date": periods, "fields": {"hours": 6}}, key=KEY + "-periods")
+
+
+def test_month_total_counts_night_tail_overlap_once_like_the_engine(calendar_env):
+    """跨夜尾巴与次日班次重叠时重叠段归次日：月合计与排产引擎一致，月末尾巴被次月 1 日占用的部分同样扣掉。"""
+    conn, adapter, _ = calendar_env
+    domain = CalendarService(conn)
+    domain.upsert("2026-10-12", periods=[{"start": "22:00", "end": "06:00", "day_offset": 0}])
+    domain.upsert("2026-10-13", periods=[{"start": "04:00", "end": "12:00", "day_offset": 0}], efficiency=0.5)
+    domain.upsert("2026-10-31", shift_start="22:00", shift_end="06:00")
+    domain.upsert("2026-11-01", shift_start="05:00", shift_end="09:00")
+    october = adapter.month(2026, 10)
+    days = {item["date"]: item["effective"] for item in october["days"]}
+    assert days["2026-10-12"]["effective_hours"] == 8 and days["2026-10-13"]["effective_hours"] == 4
+    plain = sum(item["effective_hours"] for item in days.values())
+    # 10-12 的 04:00–06:00 归 10-13，10-31 的 05:00–06:00 归 11-01。
+    assert october["stats"]["effective_hours"] == pytest.approx(plain - 2 - 1)
+    engine = domain._engine
+    engine.clear_policy_cache()
+    assert engine.capacity_hours_between(datetime(2026, 10, 12), datetime(2026, 10, 14)) == pytest.approx(6 + 4)
+    conn.execute("UPDATE WorkCalendar SET efficiency = 'bad' WHERE date = '2026-11-01'")
+    conn.commit()
+    assert adapter.month(2026, 10)["stats"]["effective_hours"] is None
+
+
+def test_month_view_does_not_depend_on_next_month_integrity(calendar_env):
+    """月合计要看次月 1 日是否占用月末夜班尾巴，但只单独读那一行：次月 1 日的永久引用缺失、
+    本月以外存了不规范的日期，都不能让本月月视图读不出来。"""
+    conn, adapter, _ = calendar_env
+    domain = CalendarService(conn)
+    domain.upsert("2026-10-31", shift_start="22:00", shift_end="06:00")
+    domain.upsert("2026-11-01", shift_start="05:00", shift_end="09:00")
+    conn.execute("DELETE FROM WorkbenchEntityRefs WHERE kind = 'calendar' AND entity_key = '2026-11-01'")
+    conn.execute("INSERT INTO WorkCalendar(date, day_type, shift_hours, efficiency, allow_normal, allow_urgent) "
+                 "VALUES ('2026-10-31 00:00:00', 'workday', 8, 1, 'yes', 'yes')")
+    conn.commit()
+    october = adapter.month(2026, 10)
+    plain = sum(item["effective"]["effective_hours"] for item in october["days"])
+    assert october["stats"]["effective_hours"] == pytest.approx(plain - 1)
+    with pytest.raises(WorkbenchCommandRejected, match="永久引用不一致"):
+        adapter.month(2026, 11)
+
+
+def test_last_date_night_shift_is_rejected_before_any_write(calendar_env):
+    """9999-12-31 自己排夜班会跨出系统能处理的日期：保存前就拒绝并说明，库里不留半截数据。"""
+    conn = calendar_env[0]
+    before = stored_state(conn)
+    with pytest.raises(ValidationError, match="班次在当天结束"):
+        run_day(calendar_env, "upsert", {"date": "9999-12-31", "fields": {**WORK, "shiftStart": "22:00", "shiftEnd": "06:00"}})
+    assert stored_state(conn) == before
+
+
+@pytest.mark.parametrize("column", ["shift_start", "shift_hours", "efficiency"])
+@pytest.mark.parametrize("fields,changed", (({"note": "只改备注"}, {"remark": "只改备注"}),
+                                            ({"eff": 90}, {"efficiency": 0.9})))
+def test_legacy_blank_column_is_filled_with_the_engine_reading_not_rejected(calendar_env, column, fields, changed):
+    """旧库升级加列没回填：班次开始、工时或效率空着，日历页和排产都按默认值解释（08:00 开始、按时段 8 小时、效率 1）。
+    只改备注或效率时规则把空值补成同样的值，这一天的时段和工时不变，不算“没改的项被改写”。"""
+    conn, adapter, _ = calendar_env
+    day = "2026-10-12"
+    CalendarService(conn).upsert(day, shift_start="08:00", shift_hours=8, remark="旧")
+    conn.execute(f"UPDATE WorkCalendar SET {column} = NULL, shift_end = NULL WHERE date = ?", (day,))
+    conn.commit()
+    before = adapter.snapshot(day)["effective"]
+    assert run_day(calendar_env, "upsert", {"date": day, "fields": fields})["result"] == "committed"
+    saved = row_for(conn, day)
+    expected = {"shift_start": "08:00", "shift_end": "16:00", "shift_hours": 8, "efficiency": 1.0, "remark": "旧", **changed}
+    assert {key: saved[key] for key in expected} == expected
+    after = adapter.snapshot(day)["effective"]
+    assert (after["windows"], after["hours"]) == (before["windows"], before["hours"])
+
+
+def test_legacy_blank_column_whose_fill_would_change_the_day_is_still_rejected(calendar_env):
+    """补出来的值和引擎原来的解释不一样仍算改写：假期空着效率，引擎按 1 算，保存规则会补成假期默认效率。"""
+    conn = calendar_env[0]
+    day = "2026-10-13"
+    CalendarService(conn).upsert(day, day_type="holiday", shift_hours=0, remark="旧")
+    conn.execute("UPDATE WorkCalendar SET efficiency = NULL WHERE date = ?", (day,))
+    conn.commit()
+    before = row_for(conn, day)
+    with pytest.raises(WorkbenchCommandRejected, match="没改的项会被规则改写"):
+        run_day(calendar_env, "upsert", {"date": day, "fields": {"note": "只改备注"}})
+    assert row_for(conn, day) == before

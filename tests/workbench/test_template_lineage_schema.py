@@ -5,11 +5,14 @@ import sqlite3
 import pytest
 
 from core.infrastructure.transaction import TransactionManager
+from core.infrastructure.workbench_metadata_schema import metadata_objects
 from core.infrastructure.workbench_template_lineage_schema import contract_issues, install, objects
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_template_lineage import restore_snapshot, snapshot
 from core.services.batch.service import BatchService
+from core.services.workbench.calibration.template_lineage import TemplateLineageWriter
 from core.services.workbench.calibration.template_lineage_query import TemplateLineageQuery
+from data.repositories import workbench_template_lineage_repo as lineage_repo
 from tests.workbench.execution_ledger_support import all_rows
 from tests.workbench.template_lineage_support import create, lineage_case, origin
 from tests.workbench.template_lineage_support import ledger_fixture as _ledger_fixture
@@ -68,6 +71,32 @@ def test_partial_schema_fails_without_repair(lineage_case):
         TemplateLineageQuery(conn).read([])
     assert all_rows(conn) == before
     assert contract_issues(conn) == ["missing_template_lineage:wb_lineage_operation_update"]
+
+
+def test_shared_writer_parses_schema_once_and_rechecks_after_ddl(lineage_case, monkeypatch):
+    # 一条命令逐道复制共用写入器：表结构没变不重复解析整套 DDL；本连接改过表结构（含临时表遮挡）就重验，损坏照样拒绝。
+    conn = lineage_case.conn
+    calls, original = [], lineage_repo.contract_issues
+    monkeypatch.setattr(lineage_repo, "contract_issues", lambda c: calls.append(1) or original(c))
+    writer = TemplateLineageWriter(conn)
+    trigger = conn.execute("SELECT name FROM sqlite_master WHERE type='trigger' AND name IN (" +
+                           ",".join("?" for _ in metadata_objects()) + ") LIMIT 1", list(metadata_objects())).fetchone()[0]
+    damages = [("DROP TRIGGER wb_lineage_operation_update", "数据表不完整"),
+               ('DROP TRIGGER "' + trigger + '"', "记录结构已损坏"),
+               ("CREATE TEMP TABLE PartOperations(id INTEGER PRIMARY KEY)", "记录结构已损坏")]
+    for sql, message in damages:
+        conn.execute("BEGIN")
+        try:
+            for _ in range(3):
+                writer.require_ready()
+            conn.execute(sql)
+            with pytest.raises(WorkbenchCommandRejected, match=message) as exc:
+                writer.require_ready()
+            assert exc.value.code == "template_lineage_unavailable"
+        finally:
+            conn.rollback()
+    # 每轮：开头校验一次（回滚后结构复原，再验一次），损坏后重验一次；同一结构下不重复解析。
+    assert len(calls) == 2 * len(damages)
 
 
 @pytest.mark.parametrize("table", ["WorkbenchTemplateLineageOrigins", "WorkbenchTemplateLineageEvents"])

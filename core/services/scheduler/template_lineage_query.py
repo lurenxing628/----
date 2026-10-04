@@ -146,8 +146,9 @@ def _validate_template_revision(origin, templates):
 
 
 class TemplateLineageQuery:
-    def __init__(self, conn):
-        self.repo = WorkbenchTemplateLineageRepository(conn)
+    def __init__(self, conn, repo=None):
+        # 写入器逐道复制时把已校验过表结构的仓储传进来，避免每道工序重新解析整套 DDL。
+        self.repo = repo if repo is not None else WorkbenchTemplateLineageRepository(conn)
 
     def read(self, operation_refs):
         refs = sorted(set(operation_refs))

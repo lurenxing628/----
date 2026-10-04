@@ -6,14 +6,22 @@ from core.services.workbench.report.review_values import minutes
 from .projection import category, observation
 
 
-def _hours(projection, operation):
+def _reported_hours(projection):
     reports = projection["reports"]
-    target = projection["target_quantity"]
-    quota = operation["unit_hours"] * target if number(operation["unit_hours"], positive=True) and number(target, positive=True) else None
     complete = (projection["completion_basis"] == "complete_reports" and projection["records_complete"]
                 and projection["data_quality"] == "complete" and reports
                 and all(number(row["effective_processing_hours"]) for row in reports))
-    total = sum(row["effective_processing_hours"] for row in reports) if complete else None
+    return sum(row["effective_processing_hours"] for row in reports) if complete else None
+
+
+def _hours(projection, operation):
+    target = projection["target_quantity"]
+    total = _reported_hours(projection)
+    if operation["source"] == "external":
+        # 外协按外协周期交付，没有单件工时定额，不做超耗评估；晚完工、待反馈照常判断。
+        return {"effective_processing_hours": total, "quota_processing_hours": None, "overrun": None,
+                "basis": "not_currently_evaluated", "setup_or_elapsed_hours_included": False}
+    quota = operation["unit_hours"] * target if number(operation["unit_hours"], positive=True) and number(target, positive=True) else None
     return {"effective_processing_hours": total, "quota_processing_hours": quota,
             "overrun": total > quota * 1.2 if total is not None and quota is not None else None,
             "basis": "complete_report_processing_hours_vs_operation_unit_hours_times_target",
@@ -46,12 +54,23 @@ def _source(task, p, hours, codes, late):
                   "legacy_fact_refs": [row["legacy_fact_ref"] for row in p["legacy_facts"]]}
 
 
+def _uncertain(projection, operation, hours):
+    if projection["data_quality"] == "invalid":
+        return True
+    if not (projection["reports"] or projection["legacy_facts"]):
+        return False
+    if operation["source"] == "external":
+        # 外协不按工时评估：确认完工才算评估过；未完工和自制一样算还评估不全（超期未回厂由外协风险跟进）。
+        return projection["execution_state"] != "complete"
+    return hours["overrun"] is None
+
+
 def _operation(facts, task, raw_task):
     ref = task["operation_ref"]
     p, operation = facts.execution[ref], facts.execution_facts["operations"][ref]
     hours = _hours(p, operation)
     codes, missing, late = _risk_codes(task, p, hours, facts.now)
-    uncertain = p["data_quality"] == "invalid" or bool(p["reports"] or p["legacy_facts"]) and hours["overrun"] is None
+    uncertain = _uncertain(p, operation, hours)
     active = True if codes else None if uncertain else False
     source = _source(task, p, hours, codes, late)
     item = observation("actual", task["task_ref"], task["batch_id"] + " · " + task["process_label"], source,

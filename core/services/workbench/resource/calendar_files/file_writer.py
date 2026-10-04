@@ -3,6 +3,7 @@
 import codecs
 import csv
 import re
+import sys
 from tempfile import SpooledTemporaryFile
 
 import openpyxl
@@ -24,12 +25,27 @@ from core.services.common.excel_instruction_sheet import (
     append_instruction_sheet,
     close_write_only_sheets,
 )
+from core.services.workbench.facts.table_cells import number_text
 
 from .file_codec import file_error
 
 XLSX_MAX_ROWS = 1048576
 XLSX_MAX_CELL_CHARACTERS = 32767
 ILLEGAL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
+# 工时写法 number_text 与页面、其它文件共用（8.0 写成 8，0.00001 不写成 1e-05，能原样还原）；
+# 日历的导出、预检对比、回导都经本模块取，所以在这里一并导出。
+
+
+def percent_text(ratio: float) -> str:
+    """效率按百分数写：0.57 × 100 会是 56.99999999999999，只把这种换算尾巴按 15 位有效数字收掉，写成 57。
+
+    与页面显示同一口径，不改真实取值，回导仍判不变。工时不走这里，免得分钟工时被截成存不稳的小数。
+    """
+    value = ratio * 100
+    tidy = float(format(value, ".15g"))
+    if abs(value - tidy) <= abs(value) * sys.float_info.epsilon * 2:
+        value = tidy
+    return number_text(value)
 
 
 def check_capacity(count, fmt):

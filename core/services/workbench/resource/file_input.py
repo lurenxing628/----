@@ -7,12 +7,15 @@ from core.errors import ValidationError
 from core.models.resource_capabilities import supports_source
 from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
 from core.models.workbench_resource_file import (
+    ENUM_CODES,
     LABELS,
     MULTI_CODES,
     NULLABLE,
     NUMERIC_FIELDS,
     RELATIONS,
     WRITABLE,
+    file_status,
+    status_words,
 )
 
 from .states import WorkbenchResourceStateService
@@ -44,6 +47,7 @@ class ResourceFileInput:
     def normalize(self, action, code, values, before, scope):
         changes = self._changes(values, before, scope)
         self._clear_fields(changes)
+        self._status_choice(changes)
         payload, related = {"fields": {}}, {}
         if action == "create":
             payload["business_code"] = code
@@ -66,6 +70,9 @@ class ResourceFileInput:
     def _changes(self, values, before, scope):
         if self.kind == "op_type" and "category" in values and not supports_source(values["category"], scope["category"]):
             raise ValidationError("文件里的归属和这次导入选的归属不一样，这一行没有导入。请分开导入自制和外协工种。", field="category")
+        if "status" in values:
+            # 按页面叫法填的「在岗」「启用」先换成代号再比，和原值一样就是没改。
+            values = dict(values, status=file_status(self.kind, values["status"]))
         changes = {key: value for key, value in values.items() if key in WRITABLE[self.kind]
                    and key != "business_code" and (before is None or not _same_column(key, value, before[key]))}
         if self.kind == "machine" and "op_type_codes" in values:
@@ -93,6 +100,13 @@ class ResourceFileInput:
             changes.setdefault("category", scope["category"])
         elif "status" not in changes:
             raise ValidationError("新增的记录必须填状态，这一行没有导入。请在" + _column("status") + "里填好状态。", field="status")
+
+    def _status_choice(self, changes):
+        """要改的状态不在本表选项里时，用中文业务词说清能填什么，不把英文代号甩给用户。"""
+        allowed = ENUM_CODES[self.kind].get("status")
+        status = changes.get("status")
+        if allowed and type(status) is str and status.strip() and status not in allowed:
+            raise ValidationError(_column("status") + "只能填" + status_words(self.kind) + "，这一行没有导入。请照下拉选项填写。", field="status")
 
     def _clear_fields(self, changes):
         for key, value in changes.items():

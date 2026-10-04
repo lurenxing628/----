@@ -46,6 +46,31 @@ def test_saved_fractional_arrivals_have_one_readiness_rule(run_case, required, r
     unchanged(case, read)
 
 
+@pytest.mark.parametrize("available,row_ready,expected", [(0, "no", "no"), (2, "no", "partial"), (3, "no", "partial"), (3, "yes", "yes")])
+def test_unreviewed_legacy_demand_uses_preflight_readiness_rule(run_case, available, row_ready, expected):
+    # v36 前的需求没有核对记录：批次标记“齐套”不能盖过未到齐的需求，列表、排产检查、值班台一致。
+    case = run_case
+    case.conn.execute("INSERT INTO Materials(material_id,name,unit) VALUES ('STEEL','钢材','件')")
+    case.conn.execute("INSERT INTO BatchMaterials(batch_id,material_id,required_qty,available_qty,ready_status) "
+                      "VALUES ('B1','STEEL',3,?,?)", (available, row_ready))
+    case.conn.commit()
+    assert case.conn.execute("SELECT count(*) FROM BatchMaterialReviews").fetchone()[0] == 0
+    ready = expected == "yes"
+
+    def read():
+        batch_facts = BatchFacts(case.conn).load()
+        batch = next(row for row in batch_facts["Batches"] if row["batch_id"] == "B1")
+        assert BatchProjection(batch_facts).entity(batch)["display_ready_status"] == expected
+        data, _ = PreflightService(case.conn).evaluate(case.settings())
+        assert data["counts"]["ready_tasks"] == int(ready)
+        with TransactionManager(case.conn).transaction():
+            facts = DashboardFacts(case.conn, datetime(2026, 9, 25)).load()
+            items, _ = material(facts)
+        assert [(item["source"]["ready_status"], item["risk"]["active"]) for item in items] == [(expected, not ready)]
+
+    unchanged(case, read)
+
+
 @pytest.mark.parametrize("required,available,shortage", [(0.3, 0.29999999999999993, False),
     (0.3, 0.2999, True), (9007199254740991, 9007199254740990, True)])
 def test_master_overview_only_reports_real_material_shortages(overview_client, required, available, shortage):

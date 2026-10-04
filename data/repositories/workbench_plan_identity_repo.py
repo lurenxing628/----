@@ -275,9 +275,12 @@ class WorkbenchPlanIdentityRepository(BaseRepository):
             marks = ",".join("?" for _ in chunk)
             # Keep the bounded primary-key set outermost. SQLite 3.35 can otherwise
             # scan every active ref once per chunk through the CAST expression.
+            # "+bo.id" keeps the CAST off idx_wb_lineage_operation_id_text: SQLite
+            # 3.46 probes that index with the raw integer for a one-key chunk and
+            # returns no rows.
             rows = self.fetchall("SELECT bo.id, m.ref FROM BatchOperations bo "
                                  "CROSS JOIN WorkbenchPlanSourceRefs m ON m.kind = 'operation' AND m.active = 1 "
-                                 f"AND m.source_key = CAST(bo.id AS TEXT) WHERE bo.id IN ({marks})", chunk)
+                                 f"AND m.source_key = CAST(+bo.id AS TEXT) WHERE bo.id IN ({marks})", chunk)
             output.update((row["id"], row["ref"]) for row in rows)
         if len(output) != len(keys):
             _fail("identity_missing")

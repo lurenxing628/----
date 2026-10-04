@@ -113,3 +113,67 @@ def test_stored_completed_flag_does_not_erase_unready_facts(dashboard_case):
     assert item["risk"]["active"] is True
     assert item["source"]["ready_status"] == "no"
     assert item["source"]["requirements"][0]["available_quantity"] == 2
+
+
+@pytest.mark.parametrize("mark,codes", (("yes", ["material_not_ready"]), ("no", ["batch_not_ready", "material_not_ready"])))
+def test_unready_reasons_match_the_batch_mark(dashboard_case, mark, codes):
+    """批次管理里标的是齐套、只是料没到够：只说物料没到齐，不再说"这批还没确认齐套"；标的是未齐套时两条都说。"""
+    case = dashboard_case
+    case.conn.execute("UPDATE Batches SET ready_status=?", (mark,))
+    case.conn.commit()
+    item = case.item("material")
+    assert item["risk"]["active"] is True and item["source"]["ready_status"] in ("no", "partial")
+    assert [row["code"] for row in item["source"]["readiness_issues"]] == codes
+
+
+@pytest.mark.parametrize("actual_end,code", [("2026-09-09T10:00:00", None), ("2026-09-09T10:20:00", "finish_late"), (None, "unfinished")])
+def test_external_actuals_are_assessed_by_finish_not_hours_quota(dashboard_case, actual_end, code):
+    case = dashboard_case
+    case.conn.execute("UPDATE OpTypes SET category='external' WHERE op_type_id='DT1'")
+    case.conn.execute("INSERT INTO Suppliers(supplier_id,name,op_type_id) VALUES ('DS1','Supplier','DT1')")
+    case.conn.execute("UPDATE BatchOperations SET source='external',supplier_id='DS1',ext_days=1,unit_hours=NULL,setup_hours=NULL WHERE id=?",
+                      (case.op,))
+    case.conn.execute("UPDATE Schedule SET machine_id=NULL,operator_id=NULL WHERE op_id=?", (case.op,))
+    case.conn.commit()
+    if code == "unfinished":
+        # 已开工、计划完工早已过去却未确认完工：和自制同样算还评估不全，不能当成“没有偏差”。
+        case.report(None, actual_end=None, effective_processing_hours=None, actual_machine_ref=None, actual_operator_ref=None)
+        actual = case.read()[0]["categories"]["actual"]
+        assert (actual["assessed_count"], actual["unknown_count"], actual["risk_count"]) == (0, 1, None)
+        return
+    case.report(2, actual_end=actual_end, actual_machine_ref=None, actual_operator_ref=None)
+    data, _ = case.read()
+    # 外协没有单件工时定额：确认完工即算评估过，不再归为“数据不够”；晚完工照常判断。
+    actual = data["categories"]["actual"]
+    assert (actual["assessed_count"], actual["unknown_count"]) == (1, 0)
+    items = [row for row in data["items"] if row["category"] == "actual"]
+    if code is None:
+        assert actual["risk_count"] == 0 and items == []
+    else:
+        assert items[0]["risk"]["code"] == code and items[0]["source"]["risk_codes"] == [code]
+        assert items[0]["source"]["hours"]["quota_processing_hours"] is None and items[0]["source"]["hours"]["overrun"] is None
+
+
+def test_projection_after_the_read_snapshot_never_touches_sqlite(dashboard_case):
+    import sqlite3
+
+    from core.services.workbench.dashboard.service import WorkbenchDashboardService
+    from tests.workbench.dashboard_support import NOW
+
+    case = dashboard_case
+    case.command(case.item(), follow())
+    reader = WorkbenchDashboardService(case.conn, clock=lambda: NOW)
+    with reader.read_snapshot():
+        expected = reader.read()
+        sources = reader.load()
+    assert not case.conn.in_transaction
+    # 读事务结束后只做投影和指纹：拒绝一切 SQL 也必须算出与读快照内完全相同的看板。
+    case.conn.set_authorizer(lambda *_args: sqlite3.SQLITE_DENY)
+    try:
+        data = reader.project(sources)
+    finally:
+        case.conn.set_authorizer(lambda *_args: sqlite3.SQLITE_OK)
+    assert data["fingerprint"] == expected["fingerprint"]
+    assert [(row["item_ref"], row["_snapshot"]) for row in data["items"]] == [(row["item_ref"], row["_snapshot"]) for row in expected["items"]]
+    assert {row["category"] for row in data["items"]} == {"delivery", "actual", "material", "downtime"}
+    assert data["categories"] == expected["categories"]

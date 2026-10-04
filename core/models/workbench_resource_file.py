@@ -62,6 +62,21 @@ ENUM_LABELS = {
 }
 ENUMS = {kind: {field: tuple(ENUM_LABELS[field][code] for code in codes)
                for field, codes in fields.items()} for kind, fields in ENUM_CODES.items()}
+#: 页面上人员显示「在岗」、供应商显示「启用」，和文件里的「可用」是同一个状态，导入两种叫法都认。
+#: 导出和下拉仍写「可用」：模板的填写说明和说明书里的列说明都由这份表描述生成，改叫法要连说明书一起改。
+PAGE_STATUS_LABELS = {"operator": {"在岗": "active"}, "supplier": {"启用": "active"}}
+
+
+def file_status(kind, value):
+    """文件里填的状态：页面叫法换成代号，其余原样交给后面判断。"""
+    return PAGE_STATUS_LABELS.get(kind, {}).get(value, value) if type(value) is str else value
+
+
+def status_words(kind):
+    """提示里列出本表能填的状态，用中文业务词，页面叫法不同的括号注明，不给英文代号。"""
+    page = {code: label for label, code in PAGE_STATUS_LABELS.get(kind, {}).items()}
+    words = [ENUM_LABELS["status"][code] + ("（" + page[code] + "）" if code in page else "") for code in ENUM_CODES[kind]["status"]]
+    return "、".join(words[:-1]) + "或" + words[-1]
 LEGACY_LABELS = {"技能工种编号数组": "skill_codes", "外协工种编号数组": "op_type_codes"}
 DISPLAY_NAMES = {"op_type": "工种", "machine": "设备", "operator": "人员", "supplier": "供应商"}
 SHEET_NAME = "资源"

@@ -48,7 +48,7 @@ from data.repositories.workbench_resource_file_repo import WorkbenchResourceFile
 from ..operator_calendars import WorkbenchOperatorCalendarService
 from ..queries import WorkbenchResourceQueryService
 from .file_codec import read_calendar_file, read_clock, read_date, read_number
-from .file_writer import check_capacity, write_calendar_file
+from .file_writer import check_capacity, number_text, percent_text, write_calendar_file
 
 KIND = "operator_calendar"
 _DAY_TYPE_TEXT = {"workday": "工作日", "holiday": "假期"}
@@ -57,10 +57,6 @@ _YES_NO_TEXT = {"yes": "是", "no": "否"}
 
 def _blocked(row) -> bool:
     return bool(row["errors"])
-
-
-def _text(value: float) -> str:
-    return str(value) if value % 1 else str(int(value))
 
 
 def check_range(start_date: str, end_date: str) -> None:
@@ -277,8 +273,19 @@ class WorkbenchOperatorCalendarFileService:
                               for key in writable if row["before"][key] != row["after"][key]}
             row["result"] = "update" if row["changes"] else "unchanged"
         row["reference_count"] = 1 if before["row"] is not None else 0
-        # 每一行都要说明它会盖过班次轮换，不然用户看不出导进去的代价。
+        self._add_notes(row, after)
+
+    @staticmethod
+    def _add_notes(row, after) -> None:
+        # 不写入的行不提醒、也不要求确认，与全局日历文件和关系文件同一口径。
+        if row["result"] == "unchanged":
+            return
+        # 要写入的每一行都要说明它会盖过班次轮换，不然用户看不出导进去的代价。
         row["notes"].append("这一天这个人整天按这里的安排排产，不再套用他的班次轮换，也不看全局工作日历。")
+        if after["day_type"] == "workday" and not after["shift_hours"] and after["periods_json"] in (None, "[]"):
+            # 工作时段数填 0 又把类型填成工作日，会存成 0 工时的工作日；与全局日历文件同样在预检里说清楚。
+            row["notes"].append("这一天是工作日，但可排工时是 0，排产时这个人一道工序也排不进来。"
+                                "要上班请填班次起止或工作时段；要休息请把类型填成「假期」。")
         row["requires_confirmation"] = True
 
     @staticmethod
@@ -293,9 +300,9 @@ class WorkbenchOperatorCalendarFileService:
         return {"operator_code": row["operator_id"], "date": row["date"],
                 "day_type": _DAY_TYPE_TEXT[row["day_type"]],
                 "shift_start": row["shift_start"], "shift_end": row["shift_end"],
-                "efficiency": _text(row["efficiency"] * 100),
+                "efficiency": percent_text(row["efficiency"]),
                 "allow_normal": _YES_NO_TEXT[row["allow_normal"]], "allow_urgent": _YES_NO_TEXT[row["allow_urgent"]],
-                "remark": row["remark"], "operator_label": label, "shift_hours": _text(row["shift_hours"]),
+                "remark": row["remark"], "operator_label": label, "shift_hours": number_text(row["shift_hours"]),
                 **export_period_columns(row)}
 
     def confirm_import(self, preview, content, *, file_format, mode="upsert"):
@@ -306,12 +313,12 @@ class WorkbenchOperatorCalendarFileService:
                 current = self.preview_import(content, file_format=file_format, mode=mode)
             except ValidationError as exc:
                 raise WorkbenchCommandRejected(
-                    "stale_write", "文件或个人日历已经变了，没有导入。请重新点「开始预检」后再确认。") from exc
+                    "stale_write", "文件或个人日历已经变了，没有导入。请点「重新预检」后再确认。") from exc
             check_resource_preview(preview, current)
             body = current.as_dict()
             if body["summary"]["rejected"]:
                 raise WorkbenchCommandRejected(
-                    "constraint_conflict", "这一批里有不能导入的行，一行都没有导入。请修好标红的行后重新点「开始预检」。")
+                    "constraint_conflict", "这一批里有不能导入的行，一行都没有导入。请修好标红的行后重新预检。")
             results = []
             for row in body["rows"]:
                 if row["result"] == "unchanged":

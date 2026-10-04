@@ -74,18 +74,21 @@ def test_preview_times_match_export_without_changing_original_facts(material_act
 
 
 @pytest.mark.parametrize("operation", ("bulk", "import"))
-def test_invalid_stored_preview_time_is_explicit_error_without_writes(material_actions_client, operation):
+@pytest.mark.parametrize("stored", ("invalid stored time", "2026/10/01", "9999-12-31 16:00:00"))
+def test_unreadable_stored_preview_time_is_shown_as_is_without_writes(material_actions_client, operation, stored):
+    """认不出（旧写法）或换算北京时间越过 9999 年的创建时间：预检和导出一样原样给出，
+    不再让"导出再原样回导"的预检整批报错；创建时间只是参考列，不进改动。"""
     client = material_actions_client
     refs = seed(client, 1)
     with database(client) as conn:
-        conn.execute("UPDATE Materials SET created_at='invalid stored time'")
+        conn.execute("UPDATE Materials SET created_at=?", (stored,))
         conn.commit()
     before = snapshot(client)
-    response = (client.post(BASE + "/entities/material/bulk-preview", json={"action": "delete",
-                "refs": [refs["MAT00000"]], **list_context(client)}) if operation == "bulk"
-                else upload(client, file_bytes([["MAT00000", "改名"]], "csv", headers=("物料编号", "名称"))))
-    assert_failure(response, "storage_failure")
-    assert response.status_code == 500 and snapshot(client) == before
+    preview = (bulk_preview(client, [refs["MAT00000"]]) if operation == "bulk"
+               else import_preview(client, [["MAT00000", "改名"]]))
+    row = preview["rows"][0]
+    assert row["before"]["created_at"] == stored and "created_at" not in row["changes"]
+    assert snapshot(client) == before
 
 
 def test_bulk_hidden_selection_cancel_and_atomic_confirmation(material_actions_client):

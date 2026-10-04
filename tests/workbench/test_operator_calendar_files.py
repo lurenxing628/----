@@ -8,10 +8,11 @@ import pytest
 from core.errors import ValidationError
 from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_command import WorkbenchCommandRejected
+from core.services.scheduler.calendar.service import CalendarService
 from core.services.workbench.commands import WorkbenchCommandService
 from core.services.workbench.resource.calendar_files.operator_files import WorkbenchOperatorCalendarFileService
 from core.services.workbench.resource.operator_calendars import WorkbenchOperatorCalendarService
-from tests.workbench.calendar_file_support import file_bytes
+from tests.workbench.calendar_file_support import decode, file_bytes
 from tests.workbench.calendar_support import NIGHT, calendar_database, seed_d06_resources  # noqa: F401
 
 KIND = "operator_calendar"
@@ -128,6 +129,21 @@ def test_unchanged_row_is_not_written(file_env):
     assert confirm(file_env, document, rows)["result"] == "unchanged"
 
 
+def test_workday_with_zero_periods_is_flagged_only_when_written(file_env):
+    """工作时段数填 0 又填成工作日会存成 0 工时的工作日：预检和全局日历一样说清楚；原样再导一次不写入，不再提醒、不要求确认。"""
+    headers = HEADERS + ("工作时段数",)
+    rows = [(OPERATOR, DAY, "工作日", "", "", "", "是", "是", "", "0")]
+    document = preview(file_env, rows, headers=headers)
+    row = document.as_dict()["rows"][0]
+    assert row["result"] == "new" and row["requires_confirmation"], row["errors"]
+    assert any("可排工时是 0" in note for note in row["notes"]), row["notes"]
+    confirm(file_env, document, rows, headers=headers)
+    saved = stored(file_env[0], DAY)
+    assert (saved["day_type"], saved["shift_hours"]) == ("workday", 0)
+    again = preview(file_env, rows, headers=headers).as_dict()["rows"][0]
+    assert (again["result"], again["requires_confirmation"], again["notes"]) == ("unchanged", False, [])
+
+
 def test_rows_for_other_operators_are_independent(file_env):
     conn = file_env[0]
     conn.execute("INSERT INTO Operators (operator_id, name) VALUES ('CO2', 'other')")
@@ -219,6 +235,21 @@ def test_export_lists_only_configured_days_and_round_trips(file_env, fmt):
     assert [row["result"] for row in again.as_dict()["rows"]] == ["unchanged"] * 3
 
 
+@pytest.mark.parametrize("fmt", ("csv", "xlsx"))
+def test_export_efficiency_has_no_float_tail_and_round_trips(file_env, fmt):
+    """效率 57% 存成 0.57，乘回百分数是 56.99999999999999；导出写成 57，回导仍判不变。"""
+    conn = file_env[0]
+    rows = [(OPERATOR, DAY, "工作日", "09:00", "17:30", "57", "是", "是", "")]
+    confirm(file_env, preview(file_env, rows), rows)
+    assert stored(conn, DAY)["efficiency"] == 0.57
+    with TransactionManager(conn).transaction():
+        download = service(file_env).export(fmt, start_date=DAY, end_date=DAY)
+    headers, exported = decode(download, fmt)
+    assert [row[headers.index("效率（%）")] for row in exported] == ["57"]
+    again = service(file_env).preview_import(download.content, file_format=fmt)
+    assert results(again) == [(2, "unchanged")]
+
+
 def test_export_can_be_limited_to_selected_operators(file_env):
     conn = file_env[0]
     rows = [(OPERATOR, DAY, "工作日", "09:00", "17:30", "100", "是", "是", "")]
@@ -263,6 +294,20 @@ def test_turning_a_holiday_back_to_work_needs_a_shift_start(file_env):
     assert results(document) == [(2, "update")]
     confirm(file_env, document, back)
     assert stored(file_env[0], DAY)["shift_hours"] == 8.0
+
+
+def test_rest_day_saved_with_empty_periods_returns_to_work_from_shift_columns(file_env):
+    """面板把休息日存成空时段；文件填班次起止改回上班时按单班保存，不再误报"已按多时段设置"。"""
+    conn = file_env[0]
+    CalendarService(conn).upsert_operator_calendar(OPERATOR, DAY, day_type="holiday", efficiency=1,
+                                                   allow_normal="no", allow_urgent="no", periods=[])
+    assert stored(conn, DAY)["periods_json"] == "[]"
+    back = [(OPERATOR, DAY, "工作日", "08:00", "16:00", "", "是", "是", "")]
+    document = preview(file_env, back)
+    assert results(document) == [(2, "update")], document.as_dict()["rows"][0]["errors"]
+    confirm(file_env, document, back)
+    saved = stored(conn, DAY)
+    assert saved["day_type"] == "workday" and saved["shift_hours"] == 8.0 and saved["periods_json"] is None
 
 
 # ---------------------------------------------------------------------------

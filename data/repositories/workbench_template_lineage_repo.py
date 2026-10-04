@@ -2,6 +2,7 @@
 
 import secrets
 
+from core.infrastructure.connection_guards import SchemaContractMemo
 from core.infrastructure.workbench_metadata_schema import workbench_metadata_contract_issues
 from core.infrastructure.workbench_plan_identity_schema import workbench_plan_identity_contract_issues
 from core.infrastructure.workbench_process_schema import workbench_process_contract_issues
@@ -35,17 +36,34 @@ EXECUTION_FACT_PROBES = (
 )
 
 
+def _schema_state(conn):
+    names = {row[0] for row in conn.execute("SELECT name FROM sqlite_master")}
+    if not names & set(objects()):
+        return "missing"
+    return "invalid" if contract_issues(conn) else "loaded"
+
+
+def _identity_schema_broken(conn):
+    return bool(workbench_metadata_contract_issues(conn) or workbench_process_contract_issues(conn) or
+                workbench_plan_identity_contract_issues(conn))
+
+
+def _table_names(conn):
+    return frozenset(row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'"))
+
+
 class WorkbenchTemplateLineageRepository(BaseRepository):
+    def __init__(self, conn, logger=None):
+        super().__init__(conn, logger=logger)
+        # 同一命令逐道复制时共用这个仓储：表结构校验按 schema 版本只做一次，改过表结构就重验。
+        self.contracts = SchemaContractMemo(conn)
+
     def schema_state(self):
         """'missing' (no lineage objects), 'invalid' (partial/altered DDL) or 'loaded'."""
-        names = {row[0] for row in self.conn.execute("SELECT name FROM sqlite_master")}
-        if not names & set(objects()):
-            return "missing"
-        return "invalid" if contract_issues(self.conn) else "loaded"
+        return self.contracts.get(_schema_state)
 
     def identity_schema_broken(self):
-        return bool(workbench_metadata_contract_issues(self.conn) or workbench_process_contract_issues(self.conn) or
-                    workbench_plan_identity_contract_issues(self.conn))
+        return self.contracts.get(_identity_schema_broken)
 
     def template(self, template_id):
         """Active template row with permanent refs (may be NULL), or None."""
@@ -131,11 +149,11 @@ class WorkbenchTemplateLineageRepository(BaseRepository):
         return size
 
     def has_execution_facts(self, operation_ref):
-        names = {row[0] for row in self.conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        names = self.contracts.get(_table_names)
         return any(table in names and self.fetchone(sql, (operation_ref,)) for table, sql in EXECUTION_FACT_PROBES)
 
     def has_legacy_execution_events(self, operation_id):
-        names = {row[0] for row in self.conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        names = self.contracts.get(_table_names)
         return "OperationExecutionEvents" in names and self.fetchone(
             "SELECT 1 FROM OperationExecutionEvents WHERE op_id=? LIMIT 1", (operation_id,)) is not None
 

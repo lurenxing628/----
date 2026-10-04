@@ -9,6 +9,7 @@ from core.services.common.excel_service import ImportMode, ImportPreviewRow, Row
 from core.services.workbench.batch.bulk import WorkbenchBatchBulkService
 from core.services.workbench.calibration.template_lineage_query import TemplateLineageQuery
 from core.services.workbench.commands import WorkbenchCommandService
+from data.repositories import workbench_template_lineage_repo as lineage_repo
 from tests.workbench.execution_ledger_support import all_rows
 from tests.workbench.template_lineage_support import create, edit, lineage, lineage_case, origin, sync
 from tests.workbench.template_lineage_support import ledger_fixture as _ledger_fixture
@@ -45,6 +46,22 @@ def test_sync_retires_original_and_replay_does_not_create_new_identity(lineage_c
     retired = TemplateLineageQuery(case.conn).read([old["operation_ref"]])
     assert retired["origins"][old["operation_ref"]] == old
     assert retired["problems"][old["operation_ref"]][0]["code"] == "template_instance_retired"
+
+
+def test_sync_copies_every_operation_with_one_schema_check(lineage_case, monkeypatch):
+    # 同步工序整条命令共用一个写入器：几道工序都只解析一次表结构，不再每道重新解析（原来约 40ms/道）。
+    case = lineage_case
+    create(case)
+    for seq in (2, 3, 4):
+        case.conn.execute("INSERT INTO PartOperations(part_no,seq,op_type_id,op_type_name,source,setup_hours,unit_hours) "
+                          "VALUES ('P1',?,'T1','Turning','internal',0,1)", (seq,))
+    case.conn.commit()
+    calls, original = [], lineage_repo.contract_issues
+    monkeypatch.setattr(lineage_repo, "contract_issues", lambda conn: calls.append(1) or original(conn))
+    sync(case)
+    copied = case.conn.execute("SELECT id FROM BatchOperations WHERE batch_id='COPY-001' ORDER BY seq").fetchall()
+    assert len(copied) == 4 and all(origin(case, row[0])["source_operation_ref"] is None for row in copied)
+    assert len(calls) == 1
 
 
 def test_manual_edit_and_revert_are_permanent_contamination_with_same_origin(lineage_case):

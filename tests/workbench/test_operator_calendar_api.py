@@ -5,6 +5,9 @@ from contextlib import closing
 
 import pytest
 
+from core.services.scheduler.calendar.service import CalendarService
+from tests.workbench.calendar_api_support import page_contract
+
 BASE = "/api/workbench/v1/entities/operator/"
 DAY = "2026-10-05"
 OTHER = "2026-10-06"
@@ -184,3 +187,49 @@ def test_range_clear_binds_original_range_and_concurrent_dates(client):
     token2 = month(client, ref)['write_context']['write_token']
     assert command(client, ref, 'upsert', {'date': DAY, 'fields': dict(WORK, note='并发修改')}, token2, key='range-change-request-01').status_code == 200
     assert command(client, ref, 'range-clear', scope, token, key='range-stale-request-01').status_code == 409
+
+
+def test_page_work_toggle_keeps_legacy_shift_and_defaults_only_rest_days(client):
+    """已经上班时再点「上班」不改；旧单班（无逐段时段）休息后改回上班恢复原班次；原本休息才填默认时段。"""
+    with database(client) as conn:
+        service = CalendarService(conn)
+        service.upsert_operator_calendar("OP001", DAY, shift_start="07:00", shift_end="17:00")
+        service.upsert_operator_calendar("OP001", OTHER, day_type="holiday", shift_hours=0, efficiency=1,
+                                         allow_normal="no", allow_urgent="no")
+    days = {day["date"]: day for day in month(client, ref_of(client, "OP001"))["days"]}
+    assert days[DAY]["periods"] is None and days[OTHER]["periods"] is None
+    result = page_contract("""const O=window.APSOperatorCalendar,[legacy,rest]=input,draft=O.draftOf(legacy);
+const back=O.switchType(legacy,O.switchType(legacy,draft,'rest'),'work');
+console.log(JSON.stringify({twice:O.switchType(legacy,draft,'work'),back,saved:O.input(back,legacy),
+  rest:O.switchType(rest,O.draftOf(rest),'work')}));""", [days[DAY], days[OTHER]])
+    assert result["twice"]["periods"] is None and result["back"]["periods"] is None
+    assert (result["back"]["shiftStart"], result["back"]["shiftEnd"]) == ("07:00", "17:00")
+    assert result["saved"] == {"type": "work", "allowNormal": "yes", "allowUrgent": "yes",
+                               "shiftStart": "07:00", "shiftEnd": "17:00", "note": None}
+    assert result["rest"]["periods"] == days[OTHER]["default_periods"]
+
+
+@pytest.mark.parametrize("path,expected", [
+    ("note", ("07:00", "17:00", 10.0)),
+    ("rest_then_work", ("07:00", "17:00", 10.0)),
+    ("new_start", ("08:00", "16:00", 8.0)),
+])
+def test_page_save_of_open_ended_legacy_shift_keeps_its_hours(client, path, expected):
+    """旧行只存开始和 10 小时、没有结束：页面只改备注或休息后改回上班，提交里不带空结束，工时保持 10 小时；
+    改了开始时刻、结束仍留空，才按默认班次时长推算。"""
+    with database(client) as conn:
+        CalendarService(conn).upsert_operator_calendar("OP001", DAY, shift_start="07:00", shift_hours=10)
+        conn.execute("UPDATE OperatorCalendar SET shift_end = NULL WHERE operator_id = 'OP001' AND date = ?", (DAY,))
+        conn.commit()
+    ref = ref_of(client, "OP001")
+    data = month(client, ref)
+    day = next(item for item in data["days"] if item["date"] == DAY)
+    draft = {"note": "{...draft,note:'只改备注'}", "rest_then_work": "O.switchType(d,O.switchType(d,draft,'rest'),'work')",
+             "new_start": "{...draft,shiftStart:'08:00'}"}[path]
+    fields = page_contract("const O=window.APSOperatorCalendar,d=input,draft=O.draftOf(d);"
+                           "console.log(JSON.stringify(O.input(" + draft + ",d)));", day)
+    assert ("shiftEnd" in fields) is (path == "new_start")
+    response = command(client, ref, "upsert", {"date": DAY, "fields": fields}, data["write_context"]["write_token"])
+    assert response.status_code == 200, response.get_data(as_text=True)
+    row = stored(client, "OP001", DAY)
+    assert (row["shift_start"], row["shift_end"], row["shift_hours"]) == expected

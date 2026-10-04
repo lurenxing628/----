@@ -73,7 +73,7 @@ class TemplateLineageWriter:
                 if context is None:
                     raise WorkbenchCommandRejected("external_context_missing", "原工序缺少外协周期记录，不能按当前模板猜着复制。请先核对原批次。")
                 # Copy is not scheduling: preserve existing incomplete facts and their diagnostics.
-            facts = TemplateLineageQuery(self.conn).read([original["operation_ref"]])
+            facts = TemplateLineageQuery(self.conn, repo=self.repo).read([original["operation_ref"]])
             instance = _instance_row(self.repo.insert_instance(copy_payload(original, batch_id, from_template=False)))
             if original["source"] == "external":
                 if original["part_ref"] != instance["part_ref"]:

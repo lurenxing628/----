@@ -335,6 +335,9 @@ def test_delay_diagnosis_reports_overdue_clues_and_stays_readonly(tmp_path) -> N
         assert scheduled.suggested_operation_clue.op_id == 20
         assert scheduled.suggested_operation_clue.planned_end_time == "2026-05-04 11:00:00"
         assert {"material_not_ready", "material_status_missing", "downtime_impact", "suggested_operation_clue"} <= _clue_codes(scheduled)
+        # 用页面上的齐套状态叫法（齐套 / 部分齐套 / 未齐套），不说"已齐套"。
+        material_text = next(clue.plain_text for clue in scheduled.candidate_clues if clue.clue_code == "material_not_ready")
+        assert "未齐套或部分齐套" in material_text and "已齐套" not in material_text
         assert all(clue.evidences for clue in scheduled.candidate_clues)
         assert any(
             evidence.source_table == "schedule"

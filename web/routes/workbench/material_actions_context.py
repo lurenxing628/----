@@ -14,7 +14,7 @@ from core.errors import AppError, ValidationError
 from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
 from core.models.workbench_material_file import normalize_scope
 from core.models.workbench_material_query import MaterialPageRequest
-from core.services.workbench import messages
+from core.services.workbench.material.files import local_created_at
 from web.public_token_registry import issue_public_token_with_expiry, resolve_public_token
 
 from .api_responses import api_endpoint
@@ -80,12 +80,12 @@ def issue_binding(namespace, binding):
 
 def resolve_binding(namespace, token, *, field, code):
     try:
-        raw = resolve_public_token(namespace, token, message="预检结果已过期，物料没有改动。请重新点「开始预检」。", field=field)
+        raw = resolve_public_token(namespace, token, message="预检结果已过期，物料没有改动。请点「重新预检」。", field=field)
     except ValidationError as exc:
-        raise WorkbenchCommandRejected(code, "预检结果已过期，物料没有改动，范围也没有自动更换。请重新点「开始预检」。") from exc
+        raise WorkbenchCommandRejected(code, "预检结果已过期，物料没有改动，范围也没有自动更换。请点「重新预检」。") from exc
     binding = json.loads(raw)
     if binding["version"] != 1 or binding["source"] != "production":
-        raise WorkbenchCommandRejected(code, "预检结果和这次操作对不上，物料没有改动。请重新点「开始预检」。")
+        raise WorkbenchCommandRejected(code, "预检结果和这次操作对不上，物料没有改动。请点「重新预检」。")
     return binding
 
 
@@ -100,7 +100,7 @@ def issue_preview(preview, content=None):
     rejected = document["summary"]["rejected"] != 0
     if rejected:
         context["capabilities"][action] = False
-        context["blocked_reasons"] = [{"action": action, "code": "constraint_conflict", "message": "这一批里有不能提交的行，物料没有改动。请修好标红的行后重新点「开始预检」。"}]
+        context["blocked_reasons"] = [{"action": action, "code": "constraint_conflict", "message": "这一批里有不能提交的行，物料没有改动。请修好标红的行后重新预检。"}]
     result = {"preview_ref": ref, "expires_at": expires_at, "operation": action, "commit_policy": "atomic",
               "summary": document["summary"], "rows": [public_row(row) for row in document["rows"]],
               "can_confirm": not rejected, "write_context": context}
@@ -114,7 +114,7 @@ def resolve_preview(ref, action, write_token):
     binding = resolve_binding(PREVIEW_SCOPE, ref, field="preview_ref", code="stale_write")
     preview, content = stored_preview(binding["preview_key"])
     if preview.as_dict()["operation"] != action:
-        raise WorkbenchCommandRejected("stale_write", "预检结果不适用于这次操作，物料没有改动。请重新点「开始预检」。")
+        raise WorkbenchCommandRejected("stale_write", "预检结果不适用于这次操作，物料没有改动。请点「重新预检」。")
     validate_write_context(write_token, ref, action, preview.intent())
     return preview, content
 
@@ -127,8 +127,9 @@ _PUBLIC_FIELD_NAMES = {"material_id": "business_code", "name": "label", "spec": 
 def _public_before(expected):
     raw = expected["material"] if expected else None
     before = {public: raw[key] for key, public in _PUBLIC_FIELD_NAMES.items()} if raw else None
-    if before is not None and before["created_at"] is not None:
-        before["created_at"] = messages.stored_utc_text(str(before["created_at"]))
+    if before is not None:
+        # 与导出同一条换算：认不出的旧写法原样给，不让"导出再原样回导"的预检因为这一格报错。
+        before["created_at"] = local_created_at(before["created_at"])
     return before
 
 

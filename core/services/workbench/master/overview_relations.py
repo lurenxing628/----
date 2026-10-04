@@ -4,7 +4,7 @@ from core.services.material.stage_availability import covers_quantity, quantity
 
 from .overview_graph import number, text
 
-READY_TEXT = {"yes": "已齐套", "no": "未齐套"}
+READY_TEXT = {"yes": "齐套", "no": "未齐套"}
 
 
 def batch_relations(graph):

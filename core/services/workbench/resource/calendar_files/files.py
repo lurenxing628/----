@@ -42,7 +42,7 @@ from core.models.workbench_resource_action import (
 
 from ..calendars import WorkbenchCalendarService
 from .file_codec import read_calendar_file, read_clock, read_date, read_number
-from .file_writer import check_capacity, write_calendar_file
+from .file_writer import check_capacity, number_text, percent_text, write_calendar_file
 
 _LIMITS = {"shift_hours": (0.0, 24.0, False), "efficiency": (0.0, 200.0, True)}
 _DAY_TYPE_TEXT = {"workday": "工作日", "holiday": "假期"}
@@ -54,9 +54,9 @@ def _blocked(row) -> bool:
     return bool(row["errors"])
 
 
-def _text(value: float) -> str:
-    """数字写进文件时不要留浮点尾巴：8.0 写成 8，7.5 还是 7.5。"""
-    return str(value) if value % 1 else str(int(value))
+def _blank(value: Any) -> bool:
+    # 旧库升级加列时没有回填，工时、效率可能空着；日历引擎和日历页都按默认值解释它们。
+    return value is None or isinstance(value, str) and not value.strip()
 
 
 def range_fingerprint(states: Dict[str, Dict[str, Any]]) -> str:
@@ -180,9 +180,10 @@ class WorkbenchCalendarFileService:
         if _blocked(row):
             return
         day = row["values"]["date"]
-        before = self.calendar.day_state(day, states)
         fields = {UI_FIELDS[self.kind][key]: value for key, value in row["values"].items() if key in UI_FIELDS[self.kind]}
         try:
+            # 这一天的现状也可能算不出来（例如 9999-12-31 的班次跨到次日），只拒这一行。
+            before = self.calendar.day_state(day, states)
             fields.update(parse_period_columns(row["values"]))
             after = self.calendar.proposed_row(fields, before)
         except WorkbenchCommandRejected as exc:
@@ -210,7 +211,8 @@ class WorkbenchCalendarFileService:
 
     @staticmethod
     def _add_notes(row, after) -> None:
-        if after is None:
+        # 不写入的行不提醒、也不要求确认：原样再导一次已确认过的天，不必每次再勾一遍（与关系文件同一口径）。
+        if after is None or row["result"] == "unchanged":
             return
         if after["day_type"] == "holiday" and after["shift_hours"] > 0:
             row["notes"].append("这一天是假期但安排了工时，效率按排产设置里的假期效率算；日历页上会显示成工作日。")
@@ -222,13 +224,27 @@ class WorkbenchCalendarFileService:
             row["notes"].append("这一天安排了工时，但普通件和急件都不可排产，实际一道工序也排不进来。"
                                 "这两列留空时，没配置过的周末按假期默认成「否」；要让这天能排产请把它们填成「是」。")
             row["requires_confirmation"] = True
+        if after["day_type"] == "workday" and not after["shift_hours"] and after["periods_json"] in (None, "[]"):
+            # 假期只把类型改成工作日、工时留空时沿用假期的 0 工时；日历页切换类型会自动填默认班次，文件不替用户补。
+            row["notes"].append("这一天是工作日，但可排工时是 0，排产时一道工序也排不进来。"
+                                "要上班请填可排工时；要休息请把类型填成「假期」。")
+            row["requires_confirmation"] = True
 
     def _public(self, row: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
-        """把领域行翻成文件列口径，导出、预检对比、回导用的是同一份翻译。"""
+        """把领域行翻成文件列口径，导出、预检对比、回导用的是同一份翻译。
+
+        工时、效率空着的旧行按日历引擎的解释写出（工时按时段或起止推算否则 8 小时、效率 1），与日历页显示一致；
+        原样回导时这两格与引擎解释相同，不算改动。
+        """
         if row is None:
             return None
+        hours, ratio = row["shift_hours"], row["efficiency"]
+        if _blank(hours) or _blank(ratio):
+            effective = self.calendar.effective_day(row["date"], row)
+            hours = effective["hours"] if _blank(hours) else hours
+            ratio = effective["efficiency"] if _blank(ratio) else ratio
         return {"date": row["date"], "day_type": _DAY_TYPE_TEXT[row["day_type"]],
-                "shift_hours": _text(row["shift_hours"]), "efficiency": _text(row["efficiency"] * 100),
+                "shift_hours": number_text(hours), "efficiency": percent_text(ratio),
                 "allow_normal": _YES_NO_TEXT[row["allow_normal"]], "allow_urgent": _YES_NO_TEXT[row["allow_urgent"]],
                 "remark": row["remark"], "shift_start": row["shift_start"], "shift_end": row["shift_end"],
                 **export_period_columns(row)}
@@ -241,12 +257,12 @@ class WorkbenchCalendarFileService:
                 current = self.preview_import(content, file_format=file_format, mode=mode)
             except ValidationError as exc:
                 raise WorkbenchCommandRejected(
-                    "stale_write", "文件或日历已经变了，没有导入。请重新点「开始预检」后再确认。") from exc
+                    "stale_write", "文件或日历已经变了，没有导入。请点「重新预检」后再确认。") from exc
             check_resource_preview(preview, current)
             body = current.as_dict()
             if body["summary"]["rejected"]:
                 raise WorkbenchCommandRejected(
-                    "constraint_conflict", "这一批里有不能导入的行，一行都没有导入。请修好标红的行后重新点「开始预检」。")
+                    "constraint_conflict", "这一批里有不能导入的行，一行都没有导入。请修好标红的行后重新预检。")
             results = []
             for row in body["rows"]:
                 if row["result"] == "unchanged":

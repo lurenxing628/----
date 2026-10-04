@@ -61,7 +61,7 @@ class WorkbenchResourceBulkService:
             try:
                 current = self.preview_delete(refs, scope=scope)
             except ValidationError as exc:
-                raise WorkbenchCommandRejected("stale_write", "要删的记录或范围已经变了，没有删除。请重新点「预检」。") from exc
+                raise WorkbenchCommandRejected("stale_write", "要删的记录或范围已经变了，没有删除。请点「重新预检」。") from exc
             check_resource_preview(preview, current)
             results = []
             for row in current.as_dict()["rows"]:

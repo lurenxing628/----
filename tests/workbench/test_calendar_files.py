@@ -10,11 +10,12 @@ from core.infrastructure.transaction import TransactionManager
 from core.models.calendar_period_columns import PERIOD_COLUMNS, period_column_label
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.common.excel_validators import _normalize_batch_date_cell
+from core.services.scheduler.calendar.service import CalendarService
 from core.services.workbench.commands import WorkbenchCommandService
 from core.services.workbench.resource.calendar_files.file_codec import read_date
 from core.services.workbench.resource.calendar_files.files import WorkbenchCalendarFileService
 from tests.workbench.calendar_file_support import HEADERS, decode, file_bytes, stored_day, stored_days
-from tests.workbench.calendar_support import NIGHT, calendar_database  # noqa: F401
+from tests.workbench.calendar_support import NIGHT, calendar_database, run_day  # noqa: F401
 
 KIND = "work_calendar"
 DAY = "2026-10-01"
@@ -120,6 +121,60 @@ def test_holiday_without_hours_is_a_plain_rest_day(calendar_env):
     confirm(calendar_env, document, rows)
     saved = stored_day(conn, DAY)
     assert saved["day_type"] == "holiday" and saved["shift_hours"] == 0
+
+
+def test_holiday_switched_to_workday_without_hours_is_flagged(calendar_env):
+    """假期只把类型改成工作日、工时留空，会存成 0 工时的工作日；文件不替用户补班次，但预检要说清楚。"""
+    conn = calendar_env[0]
+    rest = [(DAY, "假期", "", "", "", "", "")]
+    confirm(calendar_env, preview(calendar_env, rest), rest)
+    rows = [(DAY, "工作日", "", "", "", "", "")]
+    document = preview(calendar_env, rows)
+    row = document.as_dict()["rows"][0]
+    assert row["result"] == "update" and row["requires_confirmation"]
+    assert any("可排工时是 0" in note for note in row["notes"]), row["notes"]
+    confirm(calendar_env, document, rows)
+    saved = stored_day(conn, DAY)
+    assert saved["day_type"] == "workday" and saved["shift_hours"] == 0
+    # 原样再导一次不再提醒，免得已确认过的行每次都要确认。
+    again = preview(calendar_env, rows).as_dict()["rows"][0]
+    assert again["result"] == "unchanged" and not again["requires_confirmation"]
+
+
+def test_unchanged_rows_are_not_flagged_or_confirmed_again(calendar_env):
+    """不写入的行不提醒、也不要求确认：假期带工时、有工时却不可排产的天原样再导一次，不必每次再勾。"""
+    rows = [(DAY, "假期", "4", "80", "是", "否", "放假加班半天"), (OTHER, "工作日", "4", "100", "否", "否", "停排")]
+    first = preview(calendar_env, rows)
+    assert all(row["requires_confirmation"] and row["notes"] for row in first.as_dict()["rows"])
+    confirm(calendar_env, first, rows)
+    again = preview(calendar_env, rows).as_dict()["rows"]
+    assert [(row["result"], row["requires_confirmation"], row["notes"]) for row in again] == [("unchanged", False, [])] * 2
+
+
+@pytest.mark.parametrize("column,header,text,filled", (("shift_hours", "可排工时（小时）", "8", 8),
+                                                       ("efficiency", "效率（%）", "100", 1.0)))
+def test_legacy_blank_hours_or_efficiency_follow_the_calendar_page(calendar_env, column, header, text, filled):
+    """旧库升级加列没回填，工时或效率空着：导出和预检按日历引擎的解释写出（与日历页显示一致），不再整份报错。"""
+    conn = calendar_env[0]
+    CalendarService(conn).upsert(DAY, shift_start="08:00", shift_end="16:00", shift_hours=8, remark="旧")
+    conn.execute(f"UPDATE WorkCalendar SET {column} = NULL WHERE date = ?", (DAY,))
+    conn.commit()
+    with TransactionManager(conn).transaction():
+        download = service(calendar_env).export("csv", start_date=DAY, end_date=DAY)
+    headers, exported = decode(download, "csv")
+    assert exported[0][headers.index(header)] == text
+    # 原样回导：这一格和引擎的解释相同，不算改动；只填日期的行沿用原行，同样不算改动。
+    again = service(calendar_env).preview_import(download.content, file_format="csv").as_dict()["rows"]
+    assert [(row["result"], row["errors"]) for row in again] == [("unchanged", [])]
+    blank = preview(calendar_env, [(DAY, "", "", "", "", "", "")]).as_dict()["rows"][0]
+    assert (blank["result"], blank["before"][column], blank["after"][column]) == ("unchanged", text, text)
+    assert stored_day(conn, DAY)[column] is None
+    rows = [(DAY, "", "", "", "", "", "只改备注")]
+    document = preview(calendar_env, rows)
+    row = document.as_dict()["rows"][0]
+    assert (row["result"], set(row["changes"]), row["before"][column]) == ("update", {"remark"}, text)
+    confirm(calendar_env, document, rows)
+    assert (stored_day(conn, DAY)["remark"], stored_day(conn, DAY)[column]) == ("只改备注", filled)
 
 
 def test_missing_type_on_a_new_weekend_day_follows_the_default_rule(calendar_env):
@@ -366,3 +421,83 @@ def test_global_file_rejects_time_information_loss(calendar_env, start, end):
     document = preview(calendar_env, [(DAY, start, end)], headers=('日期', '班次开始', '班次结束'))
     assert results(document) == [(2, 'rejected')]
     assert stored_day(calendar_env[0], DAY) is None
+
+
+@pytest.mark.parametrize("fmt", ("csv", "xlsx"))
+def test_export_efficiency_has_no_float_tail_and_round_trips(calendar_env, fmt):
+    """效率 57% 存成 0.57，乘回百分数是 56.99999999999999；导出写成 57，回导仍判不变。"""
+    conn = calendar_env[0]
+    for day, efficiency in ((DAY, 0.57), (OTHER, 0.29)):
+        CalendarService(conn).upsert(day, shift_start="08:00", shift_end="16:00", efficiency=efficiency)
+    with TransactionManager(conn).transaction():
+        download = service(calendar_env).export(fmt, start_date=DAY, end_date=OTHER)
+    headers, exported = decode(download, fmt)
+    assert [row[headers.index("效率（%）")] for row in exported] == ["57", "29"]
+    again = service(calendar_env).preview_import(download.content, file_format=fmt)
+    assert results(again) == [(2, "unchanged"), (3, "unchanged")]
+
+
+def test_calendar_numbers_share_the_page_number_text():
+    """工时与其它文件、页面同一写法；效率只多一道 15 位收尾，很小的数也不写成 1e-05。"""
+    from core.services.workbench.facts import table_cells
+    from core.services.workbench.resource.calendar_files import file_writer
+
+    assert file_writer.number_text is table_cells.number_text
+    assert [file_writer.number_text(value) for value in (8.0, 7.5, 8 + 1 / 6, 1e-05, 0)] == [
+        "8", "7.5", "8.166666666666666", "0.00001", "0"]
+    assert [file_writer.percent_text(value) for value in (0.57, 1.0, 1e-07, 0.123456789)] == ["57", "100", "0.00001", "12.3456789"]
+
+
+@pytest.mark.parametrize("headers,values", (
+    (("日期", "类型", "可排工时（小时）", "允许普通件", "允许急件"), (DAY, "工作日", "8", "是", "是")),
+    (("日期", "类型", "班次开始", "班次结束", "允许普通件", "允许急件"), (DAY, "工作日", "08:00", "16:00", "是", "是")),
+))
+def test_rest_day_saved_with_empty_periods_returns_to_work_from_single_shift_columns(calendar_env, headers, values):
+    """页面把休息日存成空时段；文件只填工时或班次起止也能改回工作日，不再误报"已按多时段设置"。"""
+    conn = calendar_env[0]
+    run_day(calendar_env, "upsert", {"date": DAY, "fields": {"type": "rest", "periods": []}})
+    assert stored_day(conn, DAY)["periods_json"] == "[]"
+    document = preview(calendar_env, [values], headers=headers)
+    assert results(document) == [(2, "update")], document.as_dict()["rows"][0]["errors"]
+    confirm(calendar_env, document, [values], headers=headers)
+    saved = stored_day(conn, DAY)
+    assert (saved["day_type"], saved["shift_start"], saved["shift_end"], saved["shift_hours"]) == ("workday", "08:00", "16:00", 8)
+    assert saved["periods_json"] is None
+
+
+def test_day_whose_shift_runs_past_the_last_date_is_rejected_on_its_own_row(calendar_env):
+    """默认工作时间跨夜时，9999-12-31 的班次会跨出系统能处理的日期：只拒这一行并说明原因，不报服务器错误。"""
+    conn = calendar_env[0]
+    conn.execute("INSERT INTO WorkbenchCalendarDefaults(singleton, periods_json) VALUES (1, ?)",
+                 ('[{"start":"22:00","end":"06:00","day_offset":0}]',))
+    conn.commit()
+    document = preview(calendar_env, [("9999-12-30", "", "", "", "", "", "夜班"), ("9999-12-31", "", "", "", "", "", "夜班")])
+    assert results(document) == [(2, "new"), (3, "rejected")]
+    assert "超出了系统能处理的最后日期" in document.as_dict()["rows"][1]["errors"][0]["message"]
+
+
+def test_file_night_shift_on_the_last_date_is_rejected_at_preview_not_at_confirm(calendar_env):
+    """默认时段不跨夜、文件给 9999-12-31 排夜班：预检就只拒这一行，不会预检通过、确认时整批回滚。"""
+    headers = ("日期", "类型", "班次开始", "班次结束", "允许普通件", "允许急件", "备注")
+    rows = [("9999-12-30", "工作日", "08:00", "16:00", "是", "是", "白班"),
+            ("9999-12-31", "工作日", "22:00", "06:00", "是", "是", "夜班")]
+    document = preview(calendar_env, rows, headers=headers)
+    assert results(document) == [(2, "new"), (3, "rejected")]
+    error = document.as_dict()["rows"][1]["errors"][0]
+    assert error["field"] == "date" and "班次在当天结束" in error["message"]
+
+
+@pytest.mark.parametrize("fmt", ("csv", "xlsx"))
+def test_export_keeps_minute_hours_exact_for_open_ended_legacy_rows(calendar_env, fmt):
+    """旧行只存开始和 7 小时 20 分（22/3 小时）、结束为空：工时按原值导出，回导只补出结束时刻，不会被判存不稳。"""
+    conn = calendar_env[0]
+    CalendarService(conn).upsert(DAY, shift_start="08:00", shift_hours=22 / 3)
+    conn.execute("UPDATE WorkCalendar SET shift_end = NULL WHERE date = ?", (DAY,))
+    conn.commit()
+    with TransactionManager(conn).transaction():
+        download = service(calendar_env).export(fmt, start_date=DAY, end_date=DAY)
+    headers, exported = decode(download, fmt)
+    assert exported[0][headers.index("可排工时（小时）")] == str(22 / 3)
+    rows = service(calendar_env).preview_import(download.content, file_format=fmt).as_dict()["rows"]
+    assert [(row["result"], row["errors"]) for row in rows] == [("update", [])]
+    assert rows[0]["changes"] == {"shift_end": {"before": None, "after": "15:20"}}

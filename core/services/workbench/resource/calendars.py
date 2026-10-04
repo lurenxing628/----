@@ -24,6 +24,8 @@ from core.services.scheduler.calendar.engine import CalendarEngine
 from core.services.scheduler.calendar.service import CalendarService
 from data.repositories.workbench_calendar_query_repo import WorkbenchCalendarQueryRepository
 
+from .calendar_summary import owned_hours
+
 
 def _date_key(value: Any) -> str:
     # get_connection enables SQLite DATE conversion. datetime is deliberately not a date key.
@@ -36,20 +38,27 @@ def _date_key(value: Any) -> str:
 
 
 class _CalendarProjection(CalendarEngine):
-    """Overlay one raw/proposed global row on the existing engine, without SQL writes."""
+    """Overlay raw/proposed global rows (keyed by date) on the existing engine, without SQL writes."""
 
-    def __init__(self, row: Optional[Dict[str, Any]], periods=None):
+    def __init__(self, rows: Dict[str, Dict[str, Any]], periods=None):
         super().__init__(None)
         self._default_periods_json = encode_periods(periods)
-        self._row = WorkCalendar.from_row(row) if row is not None else None
+        self._rows = rows
 
     def _resolve_calendar_row(self, date_str: str, op_id: Optional[str]) -> WorkCalendar:
-        return self._row if self._row is not None else self._default_for_date(date_str)
+        # 用到哪天才解析哪天：月合计多读的次月 1 日即使存坏了，也只让合计未知，不牵连本月。
+        row = self._rows.get(date_str)
+        return WorkCalendar.from_row(row) if row is not None else self._default_for_date(date_str)
 
 
 def _effective(day: str, row: Optional[Dict[str, Any]], periods=None) -> Dict[str, Any]:
     # Date-key policy is deliberate: midnight may still belong to yesterday's shift.
-    policy = _CalendarProjection(row, periods)._policy_for_date(day)
+    try:
+        policy = _CalendarProjection({day: row} if row is not None else {}, periods)._policy_for_date(day)
+    except OverflowError as exc:
+        raise ValidationError(f"{day} 的工作时段超出了系统能处理的最后日期 9999-12-31，算不出这一天的工作时间。"
+                              "请让这一天的班次在当天结束：单独设置过的改这一天，没设置过的改默认工作时间。",
+                              field="date") from exc
     normal, urgent = policy.is_priority_allowed("normal"), policy.is_priority_allowed("urgent")
     working = policy.shift_hours > 0 and (normal or urgent)
     start, end = policy.work_window()
@@ -63,7 +72,40 @@ def _effective(day: str, row: Optional[Dict[str, Any]], periods=None) -> Dict[st
             "window_start": start.isoformat(timespec="seconds"), "window_end": end.isoformat(timespec="seconds")}
 
 
-def _month_stats(days: List[Dict[str, Any]]) -> Dict[str, Any]:
+# 旧库升级加列时没有回填，这几列可能空着；日历引擎和日历页都按班表默认值解释它们。
+_LEGACY_BLANK_COLUMNS = ("shift_start", "shift_end", "shift_hours", "efficiency")
+
+
+def _defaulted_blanks(day: str, row: Dict[str, Any], proposed: Dict[str, Any]) -> set:
+    """旧行空着的班次列被保存规则补成具体值：这一天按引擎算出的时段、工时、效率都不变，就算推导列。
+
+    补出的值和引擎原来的解释不一样（例如假期空着效率，引擎按 1 算、保存规则补成假期默认效率）仍算改写，照旧拒绝。
+    """
+    blanks = {name for name in _LEGACY_BLANK_COLUMNS
+              if row.get(name) is None or isinstance(row.get(name), str) and not row[name].strip()}
+    if not blanks:
+        return set()
+    filled = {**row, **{name: proposed.get(name) for name in blanks}}
+    try:
+        return blanks if _effective(day, row) == _effective(day, filled) else set()
+    except ValidationError:
+        return set()
+
+
+def _owned_effective_hours(days: List[Dict[str, Any]], projection: CalendarEngine) -> Optional[float]:
+    """月合计按排产真正可用的时段算：跨夜尾巴和次日班次重叠的部分只算给次日一次。
+
+    逐日的 effective_hours 绑在写入快照里，只看这一天自己的配置，不在这里改。
+    次日（可能是下个月 1 日）的日历读不出来时合计记为未知，不拿可能重复的数字充数。
+    """
+    try:
+        return sum(owned_hours(projection, date.fromisoformat(day["date"])) * day["effective"]["efficiency"]
+                   for day in days if day["effective"]["is_working"])
+    except ValueError:
+        return None
+
+
+def _month_stats(days: List[Dict[str, Any]], projection: CalendarEngine) -> Dict[str, Any]:
     """Count explicit rows separately from configured capacity and default overrides."""
     return {"work_days": sum(day["effective"]["is_working"] for day in days),
             "configured": sum(day["explicit"] for day in days),
@@ -71,7 +113,7 @@ def _month_stats(days: List[Dict[str, Any]]) -> Dict[str, Any]:
             "rest_days": sum(day["effective"]["is_rest"] for day in days),
             "overrides": sum(day["explicit"] and day["is_weekend"] == day["effective"]["is_working"] for day in days),
             "weekend_rest": sum(day["is_weekend"] and day["effective"]["is_rest"] for day in days),
-            "effective_hours": sum(day["effective"]["effective_hours"] for day in days)}
+            "effective_hours": _owned_effective_hours(days, projection)}
 
 
 class WorkbenchCalendarService:
@@ -158,12 +200,30 @@ class WorkbenchCalendarService:
                 snapshot = self._snapshot(day.isoformat(), states)
                 days.append({**snapshot, "day": day.day, "weekday": day.weekday(),
                              "is_weekend": day.weekday() >= 5, "is_today": day == now.date()})
+            rows = {day: state["row"] for day, state in states.items() if state["row"] is not None}
+            rows.update(self._following_row(last, days[-1]))
         cells = [None] * first.weekday() + days
         cells += [None] * (-len(cells) % 7)
+        periods = self._calendar._engine.default_periods()
+        projection = _CalendarProjection(rows, periods)
         return {"year": year, "month": month, "as_of": now.isoformat(timespec="seconds"),
                 "time_basis": "factory_local", "days": days, "cells": cells,
                 "previous_month": self._adjacent(year, month, -1), "next_month": self._adjacent(year, month, 1),
-                "default_periods": self._calendar._engine.default_periods(), "stats": _month_stats(days)}
+                "default_periods": periods, "stats": _month_stats(days, projection)}
+
+    def _following_row(self, last: date, tail: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+        """月末班次跨过零点时，才补读次月 1 日那一行：重叠段归它，月合计要扣掉。
+
+        这一行只用于月合计，不进本月的日期状态，也不核对永久引用；读坏了只让合计未知，不牵连本月。
+        """
+        if last == date.max:
+            return {}
+        following = (last + timedelta(days=1)).isoformat()
+        if tail["effective"]["window_end"] <= following + "T00:00:00":
+            return {}
+        # 日期是主键，按这一天查最多一行。
+        rows = self._query.calendar_rows(following, following)
+        return {following: {**rows[0], "date": following}} if rows else {}
 
     @staticmethod
     def _adjacent(year: int, month: int, delta: int) -> Optional[Dict[str, int]]:
@@ -172,7 +232,7 @@ class WorkbenchCalendarService:
 
     # ---------- 供日历文件家族使用的公开入口 ----------
     # 文件导入要一次处理上千天，逐日调 snapshot() 会开上千次事务、查上万次库（见 roadmap 4.7），
-    # 所以这三个入口把"一次读回整段 / 算一天 / 写一天"拆开，由调用方持有一个事务。
+    # 所以这几个入口把"一次读回整段 / 算一天 / 写一天"拆开，由调用方持有一个事务。
 
     def day_state(self, day: str, states: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
         """某一天的完整状态。states 必须来自同一次 range_states。"""
@@ -184,12 +244,16 @@ class WorkbenchCalendarService:
         fields 用的是界面字段名（type/hours/eff/allowNormal/allowUrgent/note），不经过界面的
         输入模型，所以文件可以表达界面表达不了的组合（例如假期带工时），取值合法性由调用方自己校验。
         """
-        return self._proposed(fields, before)
+        return self._window_checked(before["date"], self._proposed(fields, before))
 
     def write_day(self, before: Dict[str, Any], after: Optional[Dict[str, Any]]) -> WorkbenchCommandOutcome:
         """写一天。必须由外层 WorkbenchCommandService 持有写事务。"""
         self._require_write_transaction()
         return self._write(before, after)
+
+    def effective_day(self, day: str, row: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+        """这一天按给定的行由日历引擎算出的实际安排（工时、效率、时间窗等），与日历页显示同一口径。"""
+        return _effective(day, row, self._calendar._engine.default_periods())
 
     def _proposed(self, fields: Dict[str, Any], before: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         row = before["row"]
@@ -201,13 +265,7 @@ class WorkbenchCalendarService:
             payload.update(default.to_dict())
             payload["remark"] = None
         patch = calendar_domain_fields(fields)
-        if row is None and "periods" not in patch and {"shift_hours", "shift_start", "shift_end"} & patch.keys():
-            payload["periods_json"] = None
-        if row is not None and payload.get("periods_json") is not None and "periods" not in patch:
-            if fields.get("type") == "rest":
-                patch["periods"] = []
-            elif {"shift_hours", "shift_start", "shift_end"} & patch.keys():
-                raise ValidationError("这一天已按多时段设置，请修改逐段起止时间。", field="fields.periods")
+        self._settle_periods(row, payload, patch, fields)
         payload.update(patch)
         derived = self._shift_window_is_derived(patch, row)
         if derived:
@@ -218,8 +276,50 @@ class WorkbenchCalendarService:
         return proposed
 
     @staticmethod
+    def _settle_periods(row: Optional[Dict[str, Any]], payload: Dict[str, Any], patch: Dict[str, Any],
+                        fields: Dict[str, Any]) -> None:
+        """补丁没给逐段时段时，决定原来的时段是保留、清空还是改回单班；多时段日只改班次列直接拒绝。"""
+        shift_patch = "periods" not in patch and bool({"shift_hours", "shift_start", "shift_end"} & patch.keys())
+        if row is None:
+            if shift_patch:
+                payload["periods_json"] = None
+            return
+        if payload.get("periods_json") is None or "periods" in patch:
+            return
+        if fields.get("type") == "rest":
+            patch["periods"] = []
+        elif shift_patch and payload["periods_json"] == "[]":
+            # 休息日存成空时段，没有逐段时间要保护；填了工时或班次起止就按单班保存，
+            # 与没配置过的日期、旧的休息日行同一种结果。
+            patch["periods"] = None
+        elif shift_patch:
+            raise ValidationError("这一天已按多时段设置，请修改逐段起止时间。", field="fields.periods")
+
+    def _window_checked(self, day: str, row: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        """保存前先把这一天的时间窗算一遍：算不出来（例如跨出 9999-12-31）就在预检和保存前拒绝，不等写库后整批回滚。
+
+        范围预览本来就逐日算保存后的时间窗，不走这里，免得大范围预览重复计算。
+        """
+        if row is not None:
+            _effective(day, row, self._calendar._engine.default_periods())
+        return row
+
+    @staticmethod
     def _shift_window_is_derived(patch: Dict[str, Any], row: Optional[Dict[str, Any]]) -> bool:
         return "shift_end" not in patch and bool({"shift_hours", "shift_start"} & patch.keys())
+
+    @staticmethod
+    def _derived_names(day: str, row: Dict[str, Any], patch: Dict[str, Any], proposed: Dict[str, Any],
+                       derived_shift_window: bool) -> set:
+        """跟着补丁或推算规则一起变的列，不算"没改的项被改写"。"""
+        # 旧行只存开始和工时时，结束时刻按开始加工时补出，班次没变，不算改写。
+        legacy_open_end = row["shift_end"] is None and row["shift_start"] is not None and row.get("periods_json") is None
+        names = {"shift_end"} if derived_shift_window or legacy_open_end else set()
+        if "periods" in patch:
+            names.update(("periods_json", "shift_start", "shift_end", "shift_hours"))
+        if "shift_start" in patch or "shift_end" in patch:
+            names.add("shift_hours")
+        return names | _defaulted_blanks(day, row, proposed)
 
     def _check_proposed(self, before: Dict[str, Any], patch: Dict[str, Any], proposed: Dict[str, Any],
                         *, derived_shift_window: bool = False) -> None:
@@ -231,11 +331,7 @@ class WorkbenchCalendarService:
                 f"和你填的 {patch['shift_hours']:g} 小时对不上，所以没有保存；请先核对原班次。")
         row = before["row"]
         if row is not None:
-            derived_names = {"shift_end"} if derived_shift_window else set()
-            if "periods" in patch:
-                derived_names.update(("periods_json", "shift_start", "shift_end", "shift_hours"))
-            if "shift_start" in patch or "shift_end" in patch:
-                derived_names.add("shift_hours")
+            derived_names = self._derived_names(before["date"], row, patch, proposed, derived_shift_window)
             if any(proposed.get(name) != value for name, value in row.items()
                    if name not in patch and name not in derived_names):
                 raise WorkbenchCommandRejected("constraint_conflict", "这一天没改的项会被规则改写，所以没有保存；请先核对原来的配置。")
@@ -262,7 +358,7 @@ class WorkbenchCalendarService:
         before = self.snapshot(payload["date"])
         if checked != before:
             raise WorkbenchCommandRejected("stale_write", "日历已变化，请刷新后重新核对。")
-        after = self._proposed(payload["fields"], before) if action == "upsert" else None
+        after = self._window_checked(payload["date"], self._proposed(payload["fields"], before)) if action == "upsert" else None
         return self._write(before, after)
 
     def _write(self, before: Dict[str, Any], after: Optional[Dict[str, Any]]) -> WorkbenchCommandOutcome:

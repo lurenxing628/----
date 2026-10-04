@@ -75,7 +75,7 @@ class ResourceActionPreview:
 
 def check_resource_preview(original, current):
     if not isinstance(original, ResourceActionPreview) or original.document != current.document:
-        raise WorkbenchCommandRejected("stale_write", "预检结果、文件或相关数据已更新，没有写入数据。请重新点「预检」并核对整批内容。")
+        raise WorkbenchCommandRejected("stale_write", "预检结果、文件或相关数据已更新，没有写入数据。请重新预检并核对整批内容。")
     if current.as_dict()["summary"]["rejected"]:
         raise WorkbenchCommandRejected("constraint_conflict", "预检里有不通过的行，这一批没有写入任何数据。请改好后重新预检。")
 

@@ -6,7 +6,8 @@
 
 1. 同 (scope, value) 有效期内重复签发返回同一 token，登记表不膨胀；
 2. TTL 语义不放宽：复用不延长 expires_at，过期即拒、过期后重签新 token；
-3. 上限淘汰先清已过期项，再按最久未使用（LRU）淘汰，不牺牲活跃入口。
+3. 上限淘汰先清已过期项，再按最久未使用（LRU）淘汰，不牺牲活跃入口；
+4. 清理是摊销式的：没有到期项也没超上限时签发不扫描整个作用域。
 """
 
 from __future__ import annotations
@@ -158,6 +159,49 @@ def test_overflow_evicts_least_recently_used_not_oldest_created(app, monkeypatch
         assert _resolve("s", tok_a) == "va"
         assert _resolve("s", tok_c) == "vc"
         assert _resolve("s", tok_d) == "vd"
+
+
+# ---------------------------------------------------------------------------
+# 合同 4：摊销清理——既没有到期项也没超上限时，签发不逐条扫描整个作用域
+# ---------------------------------------------------------------------------
+
+
+class _CountingTokens(dict):
+    """记录清理时整表遍历的次数（items/values 各算一次）。"""
+
+    scans = 0
+
+    def items(self):
+        self.scans += 1
+        return super().items()
+
+    def values(self):
+        self.scans += 1
+        return super().values()
+
+
+def test_issue_skips_full_scan_until_an_entry_expires(app, monkeypatch):
+    clock = _clock(monkeypatch)
+    with app.app_context():
+        first = registry.issue_public_token("s", "v0", ttl_seconds=3600)
+        state = app.extensions[registry._EXTENSION_KEY]["s"]
+        state["tokens"] = counting = _CountingTokens(state["tokens"])
+        for index in range(1, 300):
+            registry.issue_public_token("s", f"v{index}", ttl_seconds=3600)
+        # 一次签发几百个 token 不再每签一个就全量扫描（原来是平方级）
+        assert counting.scans == 0 and len(counting) == 300
+        clock["now"] += 10
+        short = registry.issue_public_token("s", "short", ttl_seconds=60)  # t=70 过期
+        clock["now"] += 61
+        fresh = registry.issue_public_token("s", "late", ttl_seconds=3600)
+        # 一有项到期就照常清理：过期项被清掉，过期即拒，其余不受影响
+        assert counting.scans > 0 and short not in counting and len(counting) == 301
+        with pytest.raises(ValidationError):
+            _resolve("s", short)
+        assert _resolve("s", first) == "v0" and _resolve("s", fresh) == "late"
+        clock["now"] += 3600
+        with pytest.raises(ValidationError):
+            _resolve("s", first)
 
 
 # ---------------------------------------------------------------------------

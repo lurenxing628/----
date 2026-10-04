@@ -24,8 +24,9 @@ from .external import external
 from .external_handling import DashboardExternalHandling
 from .facts import DashboardFacts, typed
 from .policy import (
+    found_identity,
+    mapped_anchors,
     read_history,
-    read_mappings,
     read_stored,
     require_dashboard_schema,
     require_external_schema,
@@ -69,6 +70,14 @@ def _category_counts(categories, observations, stored):
         summary["closed_count"] = sum(row["handling"]["status"] == "closed" for row in handled)
 
 
+class DashboardSources:
+    """Everything one dashboard read takes from SQLite; project() turns it into items without a connection."""
+
+    def __init__(self, facts, material, external, stored, mappings, identities):
+        self.facts, self.material, self.external = facts, material, external
+        self.stored, self.mappings, self.identities = stored, mappings, identities
+
+
 class WorkbenchDashboardService:
     def __init__(self, conn, *, clock=None, context_factory=None):
         self.conn, self.clock, self.context_factory = conn, clock or datetime.now, context_factory
@@ -104,46 +113,66 @@ class WorkbenchDashboardService:
                            reason=reason, request_key=request_key, now=now)
 
     def read(self, as_of=None):
+        """读快照内读完并投影；写命令在写锁里重算时也走这里。"""
+        return self.project(self.load(as_of))
+
+    def load(self, as_of=None):
+        """Read every source under the caller's snapshot; project() then needs no SQLite access."""
         if not self.conn.in_transaction:
             raise RuntimeError("Dashboard reads require a caller-owned snapshot")
         now = as_of or self.clock().replace(microsecond=0)
         if not isinstance(now, datetime) or now.tzinfo is not None:
             raise ValueError("Dashboard time must be factory local")
         facts = DashboardFacts(self.conn, now).load()
-        observations, categories = [], {}
-        for name, reader in (("delivery", delivery), ("actual", actual), ("downtime", downtime), ("material", safe_material)):
-            found, categories[name] = reader(facts)
-            observations.extend(found)
+        # 齐套要按批次查来源编号，留在读快照里判断；交期、报工、停机在 project() 里只用已读出的事实。
+        material = safe_material(facts)
         external_summary, facts.raw["external"] = external(self.conn, now)
         external_items, external_stored, facts.raw["external_handling"] = self.external_handling.read(external_summary, now)
+        stored = read_stored(self.repo)
+        return DashboardSources(facts, material, (external_summary, external_items, external_stored), stored,
+                                self._anchor_mappings(facts, material[0]), {ref: self.repo.identity(ref) for ref in stored})
+
+    def _anchor_mappings(self, facts, material):
+        """各类风险可能评估到的来源映射一次读出；是否条条有映射，投影时按实际评估到的来源核对。"""
+        tasks = [task["task_ref"] for task in facts.tasks]
+        anchors = {"delivery": [row["batch_ref"] for row in facts.delivery["items"]] if facts.plan_state == "loaded" else [],
+                   "actual": tasks, "downtime": tasks, "material": [row["anchor_ref"] for row in material]}
+        return {name: self.repo.mappings(name, refs) for name, refs in anchors.items()}
+
+    def project(self, sources):
+        """Pure projection of load(); callers may run it after their read snapshot has ended."""
+        facts = sources.facts.project()
+        observations, categories = [], {}
+        for name, reader in (("delivery", delivery), ("actual", actual), ("downtime", downtime)):
+            found, categories[name] = reader(facts)
+            observations.extend(found)
+        found, categories["material"] = sources.material
+        observations.extend(found)
+        external_summary, external_items, external_stored = sources.external
         categories["candidate"] = category(facts.candidates["state"], issues=facts.candidates["issues"])
         categories["candidate"].update(kind="directory_not_risk", run_count=facts.candidates["run_count"],
                                        entry={"view": "analysis", "target": "/api/workbench/v1/scheduling/runs", "enabled": True})
-        stored = read_stored(self.repo)
+        stored = sources.stored
         source_state = facts.fingerprint()
-        items = self._merge(observations, stored, source_state, now)
-        items.extend(self._decorate(item, saved, source_state, identity, now) for item, saved, identity in external_items)
+        items = self._merge(observations, sources, source_state, facts.now)
+        items.extend(self._decorate(item, saved, source_state, identity, facts.now) for item, saved, identity in external_items)
         bounded(items)
         _category_counts(categories, observations, stored)
         categories["external"] = external_summary
         fingerprint = input_fingerprint(typed({"source": source_state, "stored": stored, "external_stored": external_stored,
                                               "items": [(row["item_ref"], row["_snapshot"]) for row in items]}))
-        return {"plan": facts.plan, "as_of": now.isoformat(timespec="seconds"), "items": items,
+        return {"plan": facts.plan, "as_of": facts.now.isoformat(timespec="seconds"), "items": items,
                 "resource_pressure": facts.pressure, "candidate_catalog": facts.candidates,
                 "categories": {name: categories[name] for name in CATEGORIES}, "fingerprint": fingerprint}
 
-    def _merge(self, observations, stored, source_state, now):
-        found = {}
-        for name in ("delivery", "actual", "downtime", "material"):
-            selected = [row for row in observations if row["category"] == name]
-            mappings = read_mappings(self.repo, name, [row["anchor_ref"] for row in selected])
-            for item in selected:
-                identity = mappings[item["anchor_ref"]]
-                ref = identity["item_ref"]
-                if ref in found:
-                    raise WorkbenchCommandRejected("identity_missing", "同一个风险来源出现了重复条目，系统不会合并也不会丢掉。请刷新后重试。")
+    def _merge(self, observations, sources, source_state, now):
+        found, stored = self._identified(observations, sources.mappings), sources.stored
+        items = []
+        for ref, (item, identity) in found.items():
+            # 只列出当前有风险或已有处置的条目；其余几千条无风险观察不逐条规整、不签快照。
+            if item["risk"]["active"] is True or ref in stored:
                 item = dict(item, item_ref=ref, navigation=navigation(item), source_state="current")
-                found[ref] = self._decorate(item, stored.get(ref), source_state, identity, now)
+                items.append(self._decorate(item, stored.get(ref), source_state, identity, now))
         for ref, saved in stored.items():
             if ref in found:
                 continue
@@ -151,8 +180,22 @@ class WorkbenchDashboardService:
             item: Dict[str, Any] = dict(origin, source_state="not_currently_evaluated", risk={"active": None, "code": "source_not_currently_evaluated",
                         "message": "原来源当前未评估或已非当前正式，不能认定风险已消除。"}, _facts={"origin": origin})
             item["navigation"] = navigation(item, current=False)
-            found[ref] = self._decorate(item, saved, source_state, require_identity(self.repo, ref), now)
-        return bounded([item for ref, item in found.items() if item["risk"]["active"] is True or ref in stored])
+            identity = found_identity(sources.identities[reference(ref)])
+            items.append(self._decorate(item, saved, source_state, identity, now))
+        return bounded(items)
+
+    @staticmethod
+    def _identified(observations, loaded):
+        found = {}
+        for name in ("delivery", "actual", "downtime", "material"):
+            selected = [row for row in observations if row["category"] == name]
+            mappings = mapped_anchors(loaded[name], [row["anchor_ref"] for row in selected])
+            for item in selected:
+                identity = mappings[item["anchor_ref"]]
+                if identity["item_ref"] in found:
+                    raise WorkbenchCommandRejected("identity_missing", "同一个风险来源出现了重复条目，系统不会合并也不会丢掉。请刷新后重试。")
+                found[identity["item_ref"]] = item, identity
+        return found
 
     def _decorate(self, item, saved, source_state, identity, now):
         handling = saved["handling"] if saved else empty_handling()

@@ -162,7 +162,7 @@ class MaterialPreview:
 
 def check_request(preview, operation, request):
     if not isinstance(preview, MaterialPreview):
-        raise WorkbenchCommandRejected("stale_write", "找不到刚才的预检结果，没有写入数据。请重新点「预检」。")
+        raise WorkbenchCommandRejected("stale_write", "找不到刚才的预检结果，没有写入数据。请点「重新预检」。")
     body = preview.as_dict()
     if body["operation"] != operation or canonical_json(body["request"]) != canonical_json(request):
         raise WorkbenchCommandRejected("stale_write", "文件内容、模式或选择范围已变化，请重新预检。")
@@ -170,7 +170,7 @@ def check_request(preview, operation, request):
 
 def check_preview(original: MaterialPreview, current: MaterialPreview):
     if original.document != current.document:
-        raise WorkbenchCommandRejected("stale_write", "物料数据已更新，没有写入数据。请重新点「预检」并核对整批内容。")
+        raise WorkbenchCommandRejected("stale_write", "物料数据已更新，没有写入数据。请点「重新预检」并核对整批内容。")
     if current.as_dict()["summary"]["rejected"]:
         raise WorkbenchCommandRejected("constraint_conflict", "预检里有不通过的行，这一批没有写入任何数据。请改好后重新预检。")
 

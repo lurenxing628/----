@@ -1,7 +1,7 @@
 """Factory-local global shifts, never a resource-specific scheduling preflight."""
 
 import math
-from datetime import datetime, timedelta
+from datetime import date, datetime, time, timedelta
 
 from core.errors import ValidationError
 from core.models.calendar_periods import period_hours
@@ -32,14 +32,33 @@ def _holiday_efficiency(conn, logger):
     return result
 
 
-def _effective(policy):
+def owned_hours(engine, day):
+    """按开始日期归到这一天的班次里，排产真正归它用的小时数（不乘效率）。
+
+    次日班次与这一天的跨夜尾巴重叠时，排产引擎把重叠段判给次日（_effective_segments），
+    按日期相加的合计同样扣掉，不重复计时。零点前的部分总归这一天，不读前一天，坏掉的前一天不牵连它。
+    """
+    policy = engine._policy_for_date(day.isoformat())
+    midnight = datetime.max if day == date.max else datetime.combine(day + timedelta(days=1), time.min)
+    windows = policy.work_windows()
+    total = sum((min(end, midnight) - start).total_seconds() for start, end in windows if start < midnight)
+    if any(end > midnight for _, end in windows):
+        try:
+            segments = engine._effective_segments(day + timedelta(days=1))
+        except (ValidationError, ValueError, TypeError, OverflowError) as exc:
+            raise ValueError("次日的日历无法核实，这一天跨夜部分有多少归它排产算不出来。") from exc
+        total += sum((end - start).total_seconds() for start, end, owner in segments if owner is policy)
+    return total / 3600
+
+
+def _effective(policy, owned):
     if policy.day_type not in ("workday", "weekend", "holiday"):
         raise ValueError("日历类型无法核实。")
     if policy.allow_normal not in ("yes", "no") or policy.allow_urgent not in ("yes", "no"):
         raise ValueError("日历普通件或急件许可无法核实。")
     normal, urgent = policy.is_priority_allowed("normal"), policy.is_priority_allowed("urgent")
     working = policy.shift_hours > 0 and (normal or urgent)
-    hours = policy.shift_hours * policy.efficiency
+    hours = owned * policy.efficiency
     if not math.isfinite(hours):
         raise ValueError("日历有效工时超出可核实范围。")
     start, end = policy.work_window()
@@ -61,7 +80,7 @@ def _day_summary(service, day, row, today):
         # The datetime API can belong to yesterday's night shift. This rail groups
         # shift windows by their start date, using the facade's actual date policy.
         policy = service._engine._policy_for_date(day.isoformat())
-        result["effective"] = _effective(policy)
+        result["effective"] = _effective(policy, owned_hours(service._engine, day))
     except (ValidationError, ValueError, TypeError, OverflowError) as exc:
         result.update(status="unavailable", issues=[{"code": "calendar_day_unavailable", "message": str(exc)}])
     if row is not None:
@@ -107,7 +126,8 @@ def resource_calendar_summary(conn, logger=None, *, clock=None):
             "factory_today": today.isoformat(), "as_of": now.replace(microsecond=0).isoformat(),
             "time_basis": "factory_local", "week_start": first.isoformat(), "week_end": last.isoformat(),
             "basis": "全局班次按起始日期归到那一天；有效工时 = 班次时长 × 效率，普通件和急件按许可分别算。"
-                     "跨夜不拆成两天；不算人员专属班表、班次、设备停机和当前占用；外协周期仍按自然日算。",
+                     "跨夜不拆成两天，但与次日班次重叠的部分归次日，不重复计算；"
+                     "不算人员专属班表、班次、设备停机和当前占用；外协周期仍按自然日算。",
             "standard_hours": {"status": "known", "value": period_hours(service._engine.default_periods()),
                                "source": "factory_default_calendar", "message": "未单独设置的工作日按默认工作时段计算。"},
             "default_periods": service._engine.default_periods(),

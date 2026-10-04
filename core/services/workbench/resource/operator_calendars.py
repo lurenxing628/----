@@ -170,7 +170,10 @@ class WorkbenchOperatorCalendarService:
                              "allow_normal", "allow_urgent", "remark", "periods_json")})
         if payload.get("periods_json") is not None and "periods" not in fields and fields.get("type") != "rest":
             if {"shiftStart", "shiftEnd"} & fields.keys():
-                raise ValidationError("这一天已按多时段设置，请修改逐段起止时间。", field="fields.periods")
+                if payload["periods_json"] != "[]":
+                    raise ValidationError("这一天已按多时段设置，请修改逐段起止时间。", field="fields.periods")
+                # 休息日存成空时段，没有逐段时间要保护；填了班次起止就按单班保存。
+                payload["periods_json"] = None
         _patch_day_hours(payload, fields, before)
         proposed = self._calendar._admin._build_operator_calendar_from_payload(payload).to_dict()
         if self._calendar._admin._build_operator_calendar_from_payload(proposed).to_dict() != proposed:
@@ -222,7 +225,7 @@ class WorkbenchOperatorCalendarService:
     def _clear_range(self, payload: Dict[str, Any], checked: Any) -> WorkbenchCommandOutcome:
         current = self.preview_range_clear(payload)
         if checked is not None and checked != current:
-            raise WorkbenchCommandRejected("stale_write", "这段日期里的个人日历已变化，请重新点「预览变更」。")
+            raise WorkbenchCommandRejected("stale_write", "这段日期里的个人日历已变化，请重新点「预检要清除的日期」。")
         results = [self._write(state, None) for state in current["days"]]
         return WorkbenchCommandOutcome("committed" if any(item.result == "committed" for item in results) else "unchanged",
                                        {"dates": [{**item.data, "result": item.result} for item in results],

@@ -108,7 +108,7 @@ def normalize_calendar_input(action: str, payload: Any) -> Dict[str, Any]:
     if action == "confirm":
         ref = payload.get("preview_ref")
         if type(ref) is not str or re.fullmatch(r"[0-9a-f]{32}", ref) is None:
-            raise ValidationError("这次预检结果已失效，请重新点「预检」。", field="preview_ref")
+            raise ValidationError("这份变更清单已失效，请重新点「预览变更」。", field="preview_ref")
         return {"preview_ref": ref}
     if action in ("upsert", "delete"):
         result: Dict[str, Any] = {"date": calendar_date(payload.get("date"))}
