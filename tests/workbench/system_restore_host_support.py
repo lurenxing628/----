@@ -4,7 +4,8 @@ import os
 import sqlite3
 from contextlib import closing
 from pathlib import Path
-from urllib.parse import unquote, urlparse
+from urllib.parse import urlparse
+from urllib.request import url2pathname
 
 import pytest
 
@@ -60,7 +61,11 @@ def restore_host(db_env, tmp_path, monkeypatch):
     def isolated(database, *args, **kwargs):
         raw = os.fspath(database)
         if raw != ":memory:":
-            path = unquote(urlparse(raw).path) if raw.startswith("file:") else raw
+            if raw.startswith("file:"):
+                uri = urlparse(raw)
+                path = url2pathname(("//" + uri.netloc if uri.netloc else "") + uri.path)
+            else:
+                path = raw
             Path(path).resolve().relative_to(tmp_path.resolve())
         return connect(database, *args, **kwargs)
     monkeypatch.setattr(sqlite3, "connect", isolated)

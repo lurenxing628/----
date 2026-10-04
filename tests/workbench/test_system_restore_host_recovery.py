@@ -192,7 +192,8 @@ def test_confirmed_restore_replays_only_after_fresh_process_runtime_ownership(re
     script = r'''
 import atexit, json, os, sqlite3, sys
 from pathlib import Path
-from urllib.parse import unquote, urlparse
+from urllib.parse import urlparse
+from urllib.request import url2pathname
 from core.infrastructure.backup import BackupManager
 from core.services.workbench.facts.system_journal import assert_system_maintenance_ready
 from web.bootstrap import factory
@@ -204,7 +205,11 @@ connect = sqlite3.connect
 def isolated(path, *args, **kwargs):
     raw = os.fspath(path)
     if raw != ":memory:":
-        actual = unquote(urlparse(raw).path) if raw.startswith("file:") else raw
+        if raw.startswith("file:"):
+            uri = urlparse(raw)
+            actual = url2pathname(("//" + uri.netloc if uri.netloc else "") + uri.path)
+        else:
+            actual = raw
         Path(actual).resolve().relative_to(Path(database).resolve().parent)
     return connect(path, *args, **kwargs)
 sqlite3.connect = isolated

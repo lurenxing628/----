@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 
 from flask import current_app, request
 
-from web.runtime_host import request_shutdown
+from web.runtime_host import request_shutdown, runtime_identity
 
 from .legacy_blueprints import system_bp as bp
 
@@ -25,6 +25,7 @@ def health():
         "ui_mode": str(current_app.config.get("APP_UI_MODE") or "unknown"),
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
+    payload.update(runtime_identity(current_app))
     return current_app.response_class(
         json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
         mimetype="application/json",

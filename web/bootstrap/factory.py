@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any, Optional, cast
 
 from flask import Flask, current_app, g, request
-from werkzeug.serving import ThreadedWSGIServer, make_server
+from werkzeug.serving import ThreadedWSGIServer
 
 from core.infrastructure.backup import BackupManager, is_maintenance_window_active
 from core.infrastructure.database import ensure_schema, get_connection
@@ -38,6 +38,8 @@ from .launcher_shutdown import (
 )
 from .paths import runtime_base_dir
 from .plugins import bootstrap_plugins
+from .runtime_server import create_runtime_server, make_runtime_server
+from .runtime_server import prepare_runtime_server as _prepare_runtime_server
 from .security import apply_session_cookie_hardening, ensure_secret_key, register_security_headers
 from .startup_config import resolve_config_class
 from .static_versioning import install_versioned_url_for
@@ -57,6 +59,7 @@ _RUNTIME_SERVER_LOCK = threading.Lock()
 _RUNTIME_SERVER_SHUTDOWN_REQUESTED = False
 _FACTORY_ONCE_FLAGS_KEY = "aps.factory.once_flags"
 _PYINSTALLER_IMPORT_ANCHORS = (_scheduler_services_import_anchor,)
+make_server = make_runtime_server
 
 
 def _resolve_config_class():
@@ -157,13 +160,14 @@ def should_register_runtime_lifecycle_handlers(debug: bool) -> bool:
     return should_own_runtime_resources(debug=bool(debug))
 
 
-def serve_runtime_app(app: Flask, host: str, port: int) -> None:
+def prepare_runtime_server(app: Flask, host: str, port: int) -> ThreadedWSGIServer:
+    return _prepare_runtime_server(app, host, port, server_factory=make_server)
+
+
+def serve_runtime_app(app: Flask, host: str, port: int, *, server: Optional[ThreadedWSGIServer] = None) -> None:
     global _RUNTIME_SERVER, _RUNTIME_SERVER_SHUTDOWN_REQUESTED
-    transport = RuntimeHostStopTransport(app)
-    server = cast(ThreadedWSGIServer, make_server(
-        host, int(port), transport, threaded=True, request_handler=WorkbenchRequestHandler))
-    transport.server = server
-    server.daemon_threads = False
+    if server is None:
+        server = cast(ThreadedWSGIServer, create_runtime_server(app, host, port, server_factory=make_server))
     with _RUNTIME_SERVER_LOCK:
         _RUNTIME_SERVER = server
         _RUNTIME_SERVER_SHUTDOWN_REQUESTED = False
