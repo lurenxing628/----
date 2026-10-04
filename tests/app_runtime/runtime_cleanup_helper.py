@@ -108,7 +108,6 @@ def _force_kill_pid_tree(pid: int) -> None:
             subprocess.run(
                 ["taskkill", "/PID", str(pid_i), "/T", "/F"],
                 capture_output=True,
-                text=True,
                 timeout=15,
                 check=False,
             )

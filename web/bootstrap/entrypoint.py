@@ -13,6 +13,7 @@ from core.infrastructure.logging import safe_log
 
 from .factory import (
     create_app_core,
+    prepare_runtime_server,
     resolve_startup_debug_flag,
     serve_runtime_app,
     should_own_runtime_resources,
@@ -60,7 +61,7 @@ class EntryPointDeps:
     pick_bind_host: Callable[..., str]
     pick_port: Callable[..., Any]
     stop_runtime_from_dir: Callable[..., int]
-    serve_runtime_app: Callable[[Flask, str, int], Any]
+    serve_runtime_app: Callable[..., Any]
     should_use_runtime_reloader: Callable[[bool], bool]
     should_own_runtime_resources: Callable[[bool], bool]
     should_register_runtime_lifecycle_handlers: Callable[[bool], bool]
@@ -71,6 +72,7 @@ class EntryPointDeps:
     # 同源，合同测试锁定）；带默认值以兼容既有直接构造。
     resolve_runtime_db_path: Callable[[str], str] = resolve_runtime_db_path
     install_run_runtime: Optional[Callable[..., Any]] = None
+    prepare_runtime_server: Optional[Callable[..., Any]] = None
 
 
 def create_app_with_mode(ui_mode: str = "default") -> Flask:
@@ -115,6 +117,7 @@ def _default_deps(ui_mode: str) -> EntryPointDeps:
         resolve_startup_debug_flag=resolve_startup_debug_flag,
         resolve_runtime_db_path=resolve_runtime_db_path,
         install_run_runtime=install_workbench_run_runtime,
+        prepare_runtime_server=prepare_runtime_server if os.name == "nt" else None,
     )
 
 
@@ -270,6 +273,7 @@ def _serve_created_app(deps, app, *, ui_mode, runtime_dir, prelaunch_log_dir,
     recovery_required = app.config.get("WORKBENCH_RUN_RUNTIME_REASON") == RECOVERY
     use_reloader = deps.should_use_runtime_reloader(debug) and not recovery_required
     runtime = None
+    prepared_server = None
     try:
         if recovery_required and (not owns_runtime_resources or deps.install_run_runtime is None):
             _write_launch_error_with_observability(
@@ -289,7 +293,18 @@ def _serve_created_app(deps, app, *, ui_mode, runtime_dir, prelaunch_log_dir,
                 use_reloader = False
         raw_host = os.environ.get("APS_HOST")
         host = deps.pick_bind_host(raw_host, logger=app.logger)
-        host, port = _resolve_listen_endpoint(deps, host, prelaunch_log_dir, runtime_dir, logger=app.logger)
+        if deps.prepare_runtime_server is not None and not use_reloader:
+            try:
+                prepared_server = deps.prepare_runtime_server(app, host, _preferred_listen_port(logger=app.logger))
+                host, port = prepared_server.server_address[:2]
+            except Exception as exc:
+                _write_launch_error_with_observability(
+                    deps, runtime_dir, str(exc), prelaunch_log_dir, logger=app.logger,
+                    context="监听端口绑定失败",
+                )
+                return 16
+        else:
+            host, port = _resolve_listen_endpoint(deps, host, prelaunch_log_dir, runtime_dir, logger=app.logger)
         _writeback_listen_env(host, port, logger=app.logger)
 
         if owns_runtime_resources:
@@ -306,15 +321,20 @@ def _serve_created_app(deps, app, *, ui_mode, runtime_dir, prelaunch_log_dir,
         if use_reloader:
             app.run(host=host, port=port, debug=debug, use_reloader=True, request_handler=WorkbenchRequestHandler)
             return 0
-        deps.serve_runtime_app(app, host, port)
+        if prepared_server is None:
+            deps.serve_runtime_app(app, host, port)
+        else:
+            deps.serve_runtime_app(app, host, port, server=prepared_server)
         return 0
     finally:
-        stop_run_runtime(runtime or runtime_lock_state.get("runtime"))
+        try:
+            if prepared_server is not None:
+                prepared_server.server_close()
+        finally:
+            stop_run_runtime(runtime or runtime_lock_state.get("runtime"))
 
 
-def _resolve_listen_endpoint(deps, host, prelaunch_log_dir, runtime_dir, *, logger) -> Tuple[str, int]:
-    # 端口解析：APS_PORT 复合条件 + int 回退 5000（含非法告警）、pick_port 双签名兼容（TypeError 回退
-    # 少传 state_dir/runtime_dir，by-design 两路都保留不可统一）、host 回退告警。host 入参须为已 pick_bind_host 的值。
+def _preferred_listen_port(*, logger) -> int:
     raw_port = os.environ.get("APS_PORT")
     preferred_port = 5000
     if raw_port is not None and str(raw_port).strip() != "":
@@ -323,6 +343,11 @@ def _resolve_listen_endpoint(deps, host, prelaunch_log_dir, runtime_dir, *, logg
         except Exception as exc:
             preferred_port = 5000
             safe_log(logger, "warning", "APS_PORT=%r 非法，已回退到默认候选端口 5000：%s", raw_port, exc)
+    return preferred_port
+
+
+def _resolve_listen_endpoint(deps, host, prelaunch_log_dir, runtime_dir, *, logger) -> Tuple[str, int]:
+    preferred_port = _preferred_listen_port(logger=logger)
 
     requested_host = host
     try:

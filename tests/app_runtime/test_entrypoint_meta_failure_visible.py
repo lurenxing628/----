@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple, cast
 
@@ -390,3 +391,68 @@ def test_parent_skip_info_visible_when_logger_fails(tmp_path: Path, monkeypatch:
 
     assert rc == 0
     assert "开发重载父进程跳过获取运行时锁与运行时契约" in capsys.readouterr().err
+
+
+class _PreparedServer:
+    server_address = ("127.0.0.1", 6201)
+
+    def __init__(self, events):
+        self.events = events
+
+    def server_close(self):
+        self.events.append("close")
+
+
+def test_bound_endpoint_is_published_before_serving_and_closed(tmp_path, monkeypatch):
+    app, state, events = _App(tmp_path), _make_state(), []
+    prepared = _PreparedServer(events)
+
+    def prepare(app_obj, host, port):
+        events.append("bind")
+        return prepared
+
+    def publish(*args, **kwargs):
+        assert (kwargs["host"], kwargs["port"]) == prepared.server_address
+        events.append("publish")
+
+    def serve(app_obj, host, port, *, server):
+        assert server is prepared
+        assert (host, port) == prepared.server_address
+        events.append("serve")
+
+    deps = replace(_build_deps(app, state, should_own_runtime_resources=lambda debug: True,
+                              write_runtime_host_port_files=publish),
+                   prepare_runtime_server=prepare, serve_runtime_app=serve)
+    monkeypatch.delenv("APS_PORT", raising=False)
+    assert entrypoint_mod.app_main(anchor_file=_anchor_file(tmp_path), argv=[], deps=deps) == 0
+    assert events == ["bind", "publish", "serve", "close"]
+    assert state["pick_port"] == []
+
+
+def test_bind_failure_is_logged_without_publishing_endpoint(tmp_path):
+    app, state = _App(tmp_path), _make_state()
+
+    def prepare(*args):
+        raise RuntimeError("native bind failure")
+
+    deps = replace(_build_deps(app, state), prepare_runtime_server=prepare)
+    assert entrypoint_mod.app_main(anchor_file=_anchor_file(tmp_path), argv=[], deps=deps) == 16
+    log = (tmp_path / "prelaunch-logs" / "launcher.log").read_text(encoding="utf-8")
+    assert "native bind failure" in log
+    assert "监听端口绑定失败" in log
+    assert state["serve_runtime_app"] == []
+
+
+def test_contract_failure_releases_prepared_listener(tmp_path):
+    app, state, events = _App(tmp_path), _make_state(), []
+    prepared = _PreparedServer(events)
+
+    def fail_publish(*args, **kwargs):
+        raise RuntimeError("contract boom")
+
+    deps = replace(_build_deps(app, state, should_own_runtime_resources=lambda debug: True,
+                              write_runtime_host_port_files=fail_publish),
+                   prepare_runtime_server=lambda *args: prepared)
+    assert entrypoint_mod.app_main(anchor_file=_anchor_file(tmp_path), argv=[], deps=deps) == 15
+    assert events == ["close"]
+    assert state["serve_runtime_app"] == []

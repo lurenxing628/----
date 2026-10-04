@@ -144,7 +144,7 @@ def test_unconfirmed_shutdown_blocks_exit_backup_and_lock_release(tmp_path, monk
         return result
 
     runtime = SimpleNamespace(shutdown=shutdown)
-    monkeypatch.setitem(workbench_run_runtime._RUNTIMES, path, runtime)
+    monkeypatch.setitem(workbench_run_runtime._RUNTIMES, os.path.normcase(os.path.abspath(path)), runtime)
     touched = []
     monkeypatch.setattr(factory, "_is_exit_backup_enabled", lambda *_: touched.append("config-read") or True)
     manager: Any = SimpleNamespace(db_path=path, logger=logging.getLogger("entrypoint-guard"),

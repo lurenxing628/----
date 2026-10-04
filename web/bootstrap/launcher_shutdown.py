@@ -1,5 +1,6 @@
 """DB-free, exact-server stop transport, outside business HTTP admission."""
 
+import json
 import secrets
 import threading
 from typing import Optional
@@ -10,6 +11,7 @@ from werkzeug.wrappers import Response
 from core.infrastructure.backup import BackupManager, MaintenanceWindowError
 from core.infrastructure.migration_common import fallback_log
 from core.models.enums import YesNo
+from web.runtime_host import RESTORE_HOST_EXTENSION, runtime_identity
 
 HOST_STOP_PATH = "/system/runtime/host-stop"
 
@@ -22,6 +24,17 @@ class RuntimeHostStopTransport:
         self._requested = False
 
     def __call__(self, environ, start_response):
+        if environ.get("PATH_INFO") == "/system/health":
+            recovery = bool(self.app.extensions.get("workbench_system_restore_recovery"))
+            controller = self.app.extensions.get(RESTORE_HOST_EXTENSION)
+            if controller is not None:
+                recovery = recovery or bool(controller.status.get("restart_required"))
+            if recovery:
+                payload = {"app": "aps", "status": "recovery_required", "contract_version": 1,
+                           "operations_available": False}
+                payload.update(runtime_identity(self.app))
+                return Response(json.dumps(payload), status=503, content_type="application/json",
+                                headers={"Cache-Control": "no-store"})(environ, start_response)
         if environ.get("PATH_INFO") != HOST_STOP_PATH:
             return self.app(environ, start_response)
         status, code = self._stop(environ)
