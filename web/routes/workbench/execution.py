@@ -8,6 +8,7 @@ from core.services.workbench.execution.field_workspace_scope import PARAMETERS, 
 from core.services.workbench.facts.plan_serialization import plain_plan_facts
 from web.api_responses import query_success
 from web.routes.workbench.api_responses import api_endpoint
+from web.routes.workbench.read_budget import PLAN_READ_SLOTS
 from web.routes.workbench.read_context import bind_read_snapshot
 from web.routes.workbench.write_context import issue_write_context, validate_write_context
 
@@ -33,15 +34,20 @@ def field_query(task_ref=None):
     if number > 1 and not args.get('snapshot_ref'):
         raise WorkbenchCommandRejected('snapshot_required', '翻页位置已失效，请回到第 1 页重新查询。', 400)
     reader = FieldWorkspaceService(g.db, context_factory=field_context)
-    with reader.read_snapshot():
-        cohort, state = reader.cohort(scope)
-        snapshot = bind_read_snapshot({'kind': 'field', **cohort['scope']}, state, args.get('snapshot_ref'))
-        if args.get('task_ref'):
-            selected = reader.detail(cohort, args['task_ref'])['task']
-            if args.get('operation_ref') and selected['operation_ref'] != args['operation_ref']:
-                raise WorkbenchCommandRejected('constraint_conflict', '选中的工序和这条任务对不上，安排没有变化。请刷新页面后重新选择工序。')
-            number = next(index for index, row in enumerate(cohort['tasks']) if row['task_ref'] == selected['task_ref']) // size + 1
-        data = reader.detail(cohort, task_ref) if task_ref else reader.page(cohort, number, size)
+    with PLAN_READ_SLOTS.slot():
+        with reader.read_snapshot():
+            cohort, state = reader.cohort(scope)
+    # 读事务已结束：定位页码、给这一页签发报工令牌只用已算好的范围，不再占着读锁。
+    snapshot = bind_read_snapshot({'kind': 'field', **cohort['scope']}, state, args.get('snapshot_ref'))
+    if args.get('task_ref'):
+        # 定位页码只在已算好的范围里查，不签报工令牌；令牌由下面 page() 给这一页签发一次。
+        index = next((index for index, row in enumerate(cohort['tasks']) if row['task_ref'] == args['task_ref']), None)
+        if index is None:
+            raise WorkbenchCommandRejected('entity_not_found', '所选任务不在当前范围，请刷新后重选。', 404)
+        if args.get('operation_ref') and cohort['tasks'][index]['operation_ref'] != args['operation_ref']:
+            raise WorkbenchCommandRejected('constraint_conflict', '选中的工序和这条任务对不上，安排没有变化。请刷新页面后重新选择工序。')
+        number = index // size + 1
+    data = reader.detail(cohort, task_ref) if task_ref else reader.page(cohort, number, size)
     response = query_success(data, snapshot)
     response.headers['Cache-Control'] = 'no-store'
     return response

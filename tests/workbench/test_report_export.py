@@ -70,6 +70,36 @@ def test_real_catalog_xlsx_roundtrip(report_api, kind):
     workbook.close()
 
 
+@pytest.mark.parametrize("kind", ["overdue", "utilization", "downtime", "official-review"])
+def test_catalog_reads_queue_on_the_plan_read_slot_and_build_files_after_it(report_api, monkeypatch, kind):
+    from flask import g
+
+    from web.routes.workbench import read_budget, reports_catalog
+
+    seen = []
+
+    def watch(name):
+        original = getattr(reports_catalog, name)
+
+        def call(*args, **kwargs):
+            seen.append((name, g.db.in_transaction, read_budget.PLAN_READ_SLOTS._available))
+            return original(*args, **kwargs)
+
+        monkeypatch.setattr(reports_catalog, name, call)
+
+    for name in ("report_workspace", "catalog_workspace", "export_catalog_xlsx", "export_execution_review_xlsx"):
+        watch(name)
+    path = "/api/workbench/v1/reports/" + kind
+    data = report_api.client.get(path).get_json()
+    file = report_api.client.get(path + "/export", query_string={"snapshot_ref": data["meta"]["snapshot_ref"], "format": "xlsx"})
+    assert file.status_code == 200, file.get_data(as_text=True)
+    read, build = (("report_workspace", "export_execution_review_xlsx") if kind == "official-review"
+                   else ("catalog_workspace", "export_catalog_xlsx"))
+    # 整份计划重建在读快照里、占着读额度，不和看板、现场页并发；生成文件时读事务和读额度都已释放。
+    assert seen == [(read, True, 0), (read, True, 0), (build, False, 1)]
+    assert read_budget.PLAN_READ_SLOTS._available == 1
+
+
 def test_catalog_rejects_implicit_finish_date_to_window_conversion(report_api):
     response = report_api.client.get("/api/workbench/v1/reports/utilization", query_string={"plan_finish_date_from": "2026-09-02", "plan_finish_date_to": "2026-09-02"})
     assert_error(response, "invalid_input", 400)
@@ -115,3 +145,22 @@ def test_hour_totals_add_decimal_hours_without_float_tails():
     assert hour_totals([{"effective_processing_hours": 1.005}, {"effective_processing_hours": 2}]) == {
         "effective_processing_hours": 3.005, "known_effective_processing_hours": 3.005, "unknown_hour_events": 0}
     assert hour_totals([]) == {"effective_processing_hours": None, "known_effective_processing_hours": None, "unknown_hour_events": 0}
+
+
+def test_export_file_is_built_after_the_read_snapshot_and_slot(report_api, monkeypatch):
+    from flask import g
+
+    from web.routes.workbench import read_budget, reports
+
+    first = report_api.read(topic="records", size=10)
+    original, built = reports.export_table, []
+
+    def export_table(*args):
+        built.append((g.db.in_transaction, read_budget.PLAN_READ_SLOTS._available))
+        return original(*args)
+
+    monkeypatch.setattr(reports, "export_table", export_table)
+    response = report_api.get("/export", topic="records", size=10, snapshot_ref=first["meta"]["snapshot_ref"], format="xlsx")
+    assert response.status_code == 200, response.get_data(as_text=True)
+    # 统计结果在读事务里读完；编码 XLSX 时读事务和读额度都已释放，不挡别人提交写入。
+    assert built == [(False, 1)]

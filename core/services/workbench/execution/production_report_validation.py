@@ -1,5 +1,7 @@
 """Resource and lifecycle constraints, rechecked under the outer command lock."""
 
+from datetime import datetime
+
 from core.models.resource_capabilities import machine_types
 from core.models.workbench_execution_input import reject
 from core.models.workbench_identity import WorkbenchEntityIdentity
@@ -8,6 +10,14 @@ from data.repositories.workbench_identity_repo import WorkbenchIdentityRepositor
 from data.repositories.workbench_report_validation_repo import WorkbenchReportValidationRepository
 
 from .production_report_dependencies import ReportDependencies
+
+
+def _reject_external_resources(operation, values):
+    # 外协不占本厂设备和人员，排产守卫也按这条拒绝；保留原资源的更正同样不放行，
+    # 否则写进去的报工会让之后每次排产都被拦下。
+    if operation["source"] == "external" and (values.get("actual_machine_ref") or values.get("actual_operator_ref")):
+        reject("外协工序不占用本厂设备和人员，实际设备、实际人员请留空；原报工已填的，请用「更正」清除。跟进人请填在经办人里。",
+               "constraint_conflict", 409)
 
 
 class ReportResourceValidator:
@@ -36,6 +46,9 @@ class ReportResourceValidator:
         return entity.entity_key
 
     def validate(self, operation, values, *, previous_values=None):
+        if values != previous_values:
+            # 原样未改的旧行（如 Excel 导出后原样导回）不在这里拒绝，交给排产检查指出要更正的报工。
+            _reject_external_resources(operation, values)
         # An existing report is evidence for its original actual resources and
         # interval. Maintaining quantity/hours/remark must retain their permanent
         # identities, but must not reapply today's capabilities or permissions.
@@ -99,6 +112,68 @@ def validate_projection_change(before, after):
         reject("这道工序的目标数量读不出来，判断不了有没有超报。请到批次管理核对数量。", "constraint_conflict", 409)
 
 
+def _actual_period(projection):
+    return tuple(None if value is None else datetime.fromisoformat(value)
+                 for value in (projection.first_actual_start, projection.confirmed_finish))
+
+
+def _periods_conflict(mine, theirs):
+    return any(left is not None and right is not None and left != right for left, right in zip(mine, theirs))
+
+
+def _periods_agree(mine, theirs):
+    """两边都填了的时间都相同，且至少有一项两边都填了；只报了开工的那道也算和整组一致。"""
+    shared = [(left, right) for left, right in zip(mine, theirs) if left is not None and right is not None]
+    return bool(shared) and all(left == right for left, right in shared)
+
+
+def _period_text(period):
+    start, end = (value.isoformat(sep=" ") if value is not None else "未填" for value in period)
+    return "实际开工 " + start + "、实际完工 " + end
+
+
+def _joins_split_group(mine, periods):
+    """其余各道之间本来就对不上，而这道改成了和其中一道一致。"""
+    split = any(_periods_conflict(first, second) for index, first in enumerate(periods) for second in periods[index + 1:])
+    return split and any(_periods_agree(mine, theirs) for theirs in periods)
+
+
+def _cycle_blocker(peers, mine, previous, correcting):
+    """返回挡住这次登记的同组成员 (工序, 实际周期)；可以放行时返回 None。"""
+    conflicting = [peer for peer in peers if _periods_conflict(mine, peer[1])]
+    if not correcting:
+        return next(iter(conflicting), None)
+    # 原本和这道一致的成员先不管（整组逐道挪到新时间）；原本对不上的，更正后要对上。
+    parted = [peer for peer in conflicting if _periods_agree(previous, peer[1])]
+    unresolved = [peer for peer in conflicting if not _periods_agree(previous, peer[1])]
+    if not unresolved or not _joins_split_group(mine, [theirs for _, theirs in peers]):
+        return next(iter(unresolved), None)
+    # 其余各道之间本来就对不上（如三道时间各不相同的旧数据），一次更正不可能和每道都对上：
+    # 改成和其中一道一致、又没和原本一致的成员分开，就放行，再逐道改齐。
+    return next(iter(parted), None)
+
+
+def validate_merged_cycle(dependencies, operation, before, after, changed):
+    """合并外协组一起送出、一起回厂，排产只按同一个实际周期保留整组。
+
+    补登的时间必须和同组已登记的一致。更正允许先把原本一致的整组中的一道改到新时间，
+    再逐道改齐（排产检查会提示未改齐的组）；原本就对不上的，更正后必须对上；
+    其余各道之间也对不上时，更正后至少和其中一道对上。
+    """
+    mine, previous = _actual_period(after), _actual_period(before)
+    if operation["source"] != "external" or mine == previous:
+        return
+    correcting = bool(changed) and all(row["action"] == "correct" for row in changed)
+    refs = dependencies.cycle_peers(operation)
+    peers = [(ref, _actual_period(row)) for ref, row in zip(refs, dependencies.projections(refs))]
+    blocker = _cycle_blocker(peers, mine, previous, correcting)
+    if blocker is not None:
+        ref, theirs = blocker
+        reject("合并外协组的工序是一起送出、一起回厂的，同组各道的实际开工和实际完工要相同。同组第 "
+               + str(dependencies.sequences[ref]) + " 道已登记" + _period_text(theirs)
+               + "。请按相同时间填写；如果那道的时间不对，请先更正那条报工。", "constraint_conflict", 409)
+
+
 def _constraint_signature(projection):
     return (projection.execution_state, projection.first_actual_start, projection.confirmed_finish,
             projection.known_completed_quantity, projection.unknown_record_count,
@@ -131,7 +206,17 @@ def _upstream_conflicts(after, upstream, dependencies):
             and not dependencies.same_merged_cycle(after.operation_ref, row.operation_ref)]
 
 
-def _adopted_conflicts(before, after, current, revisions):
+def _actual_resources_changed(before, after, source):
+    before_resources = [(r.report_ref, r.actual_machine_ref, r.actual_operator_ref) for r in before.reports]
+    after_resources = [(r.report_ref, r.actual_machine_ref, r.actual_operator_ref) for r in after.reports]
+    if source == "external" and [row[0] for row in before_resources] == [row[0] for row in after_resources]:
+        # 外协不占本厂设备人员，排产也从不按外协报工的设备人员安排（守卫见外协带资源即拒绝）；
+        # 只把旧记录里的设备人员清空不算改了采用依据，否则这类旧数据既改不掉、也挡住所有排产。
+        after_resources = [previous if row[1:] == (None, None) else row for previous, row in zip(before_resources, after_resources)]
+    return before_resources != after_resources
+
+
+def _adopted_conflicts(before, after, current, revisions, source):
     if not current or not any(row["recorded_against_plan_ref"] != current["plan_ref"] for row in revisions):
         return []
     conflicts = []
@@ -139,9 +224,7 @@ def _adopted_conflicts(before, after, current, revisions):
         conflicts.append({"code": "adopted_execution_basis_changed", "operation_ref": before.operation_ref})
     if before.execution_state == "complete" and after.execution_state != "complete":
         conflicts.append({"code": "adopted_completion_required", "operation_ref": before.operation_ref})
-    before_resources = [(r.report_ref, r.actual_machine_ref, r.actual_operator_ref) for r in before.reports]
-    after_resources = [(r.report_ref, r.actual_machine_ref, r.actual_operator_ref) for r in after.reports]
-    if before_resources != after_resources:
+    if _actual_resources_changed(before, after, source):
         conflicts.append({"code": "adopted_actual_resource_changed", "operation_ref": before.operation_ref})
     return conflicts
 
@@ -159,4 +242,4 @@ def execution_conflicts(ledger, facts, before, after, revisions, *, dependencies
     plans = ledger.task_map(refs, facts["plan"]["plan_ref"]) if protect_plan else {}
     return (_upstream_conflicts(after, upstream, dependencies)
             + _downstream_conflicts(before, after, downstream, plans, dependencies)
-            + _adopted_conflicts(before, after, current, revisions))
+            + _adopted_conflicts(before, after, current, revisions, operation["source"]))

@@ -12,6 +12,7 @@ from core.services.workbench.execution.actual_gantt_scope import COHORT_KEYS, VI
 from web.api_responses import query_success
 
 from .api_responses import api_endpoint
+from .read_budget import PLAN_READ_SLOTS
 from .read_context import bind_read_snapshot
 
 
@@ -28,9 +29,10 @@ def _scope(export=False, related=False):
 
 def _read(scope, *, chain_target=None):
     reader = ActualGanttService(g.db, current_app.logger)
-    with reader.read_snapshot():
-        data, state = reader.workspace(scope, chain_target=chain_target)
-        snapshot = bind_read_snapshot(scope.scope(), state, request.args.get("snapshot_ref"))
+    with PLAN_READ_SLOTS.slot():
+        with reader.read_snapshot():
+            data, state = reader.workspace(scope, chain_target=chain_target)
+    snapshot = bind_read_snapshot(scope.scope(), state, request.args.get("snapshot_ref"))
     return bind_axis_time(data, snapshot["as_of"], snapshot["snapshot_ref"]), snapshot
 
 
@@ -61,7 +63,7 @@ def actual_gantt_related_chain():
 def actual_gantt_export():
     scope = _scope(export=True)
     if not request.args.get("snapshot_ref") or request.args.get("format") != "csv":
-        raise WorkbenchCommandRejected("invalid_input", "数据已更新，没有开始下载。请点「刷新」后重新点「导出 CSV」。", 400)
+        raise WorkbenchCommandRejected("invalid_input", "数据已更新，没有开始下载。请点「刷新」后重新点「导出」，再点「下载 CSV」。", 400)
     data, snapshot = _read(scope)
     content, rows, operations = actual_gantt_csv(data, snapshot, {key: request.args[key] for key in VIEW_KEYS if key in request.args})
     response = send_file(BytesIO(content), mimetype="text/csv;charset=utf-8", as_attachment=True,

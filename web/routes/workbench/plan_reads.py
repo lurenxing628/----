@@ -29,6 +29,7 @@ from web.api_responses import query_success
 from web.public_token_registry import issue_public_token, resolve_public_token
 
 from .api_responses import api_endpoint
+from .read_budget import PLAN_READ_SLOTS
 from .read_context import bind_read_snapshot
 
 _CURSOR_SCOPE = "workbench-plan-catalog-cursor-v1"
@@ -95,9 +96,10 @@ def plan_workspace(plan_ref):
     _arguments(("range_start", "range_end", "snapshot_ref"))
     scope = PlanReadScope(plan_ref, request.args.get("range_start"), request.args.get("range_end"))
     reader = WorkbenchPlanQueryService(g.db, current_app.logger)
-    with reader.read_snapshot():
-        data, state = reader.workspace(scope)
-        snapshot = bind_read_snapshot(scope.scope(), state, request.args.get("snapshot_ref"))
+    with PLAN_READ_SLOTS.slot():
+        with reader.read_snapshot():
+            data, state = reader.workspace(scope)
+    snapshot = bind_read_snapshot(scope.scope(), state, request.args.get("snapshot_ref"))
     return _response(data, snapshot)
 
 
@@ -109,12 +111,14 @@ def plan_export(plan_ref):
         raise WorkbenchCommandRejected("invalid_input", "没有选好导出格式，或数据已更新，没有开始下载。请点「刷新」后重新点「导出计划」。", 400)
     scope = PlanReadScope(plan_ref, request.args.get("range_start"), request.args.get("range_end"))
     reader = WorkbenchPlanQueryService(g.db, current_app.logger)
-    with reader.read_snapshot():
-        data, state = reader.workspace(scope)
-        snapshot = bind_read_snapshot(scope.scope(), state, token)
-        # Downloads obey the same aggregate HTTP envelope budget as workspace.
-        _response(data, snapshot)
-        download = write_plan_export(data, snapshot, fmt)
+    with PLAN_READ_SLOTS.slot():
+        with reader.read_snapshot():
+            data, state = reader.workspace(scope)
+    snapshot = bind_read_snapshot(scope.scope(), state, token)
+    # 读事务和读额度都已释放：大小检查和生成文件只用已读出的计划，不再占着读锁。
+    # Downloads obey the same aggregate HTTP envelope budget as workspace.
+    _response(data, snapshot)
+    download = write_plan_export(data, snapshot, fmt)
     response = send_file(BytesIO(download.content), mimetype=download.mime_type, as_attachment=True,
                          download_name=download.filename, max_age=0)
     response.headers["Cache-Control"] = "no-store"

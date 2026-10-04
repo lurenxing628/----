@@ -8,6 +8,7 @@ from core.services.workbench.dashboard.analysis import read_dashboard_analysis
 from core.services.workbench.run.candidate_comparison import read_candidate_comparison
 
 from .api_responses import api_endpoint
+from .read_budget import PLAN_READ_SLOTS
 from .read_context import bind_read_snapshot
 from .run_candidates import _response
 
@@ -21,7 +22,8 @@ def _arguments(allowed):
 def dashboard_analysis():
     _arguments(("plan_ref", "snapshot_ref"))
     plan_ref = request.args.get("plan_ref")
-    data, state = read_dashboard_analysis(g.db, plan_ref)
+    with PLAN_READ_SLOTS.slot():
+        data, state = read_dashboard_analysis(g.db, plan_ref)
     snapshot = bind_read_snapshot({"kind": "dashboard-analysis", "plan_ref": plan_ref}, state, request.args.get("snapshot_ref"))
     return _response(data, snapshot)
 
@@ -31,6 +33,8 @@ def dashboard_candidate_comparison(candidate_ref):
     _arguments(("range_start", "range_end", "batch_ref", "sort", "order", "snapshot_ref"))
     scope = RunCandidateReadScope(candidate_ref, request.args.get("range_start"), request.args.get("range_end"),
                                   request.args.get("batch_ref"), request.args.get("sort", "sequence"), request.args.get("order", "asc"))
-    data, state = read_candidate_comparison(g.db, scope)
+    # 整份候选加正式计划基线一起重建，和看板、现场页一起排读额度。
+    with PLAN_READ_SLOTS.slot():
+        data, state = read_candidate_comparison(g.db, scope)
     snapshot = bind_read_snapshot({**scope.scope(), "kind": "dashboard-candidate-comparison"}, state, request.args.get("snapshot_ref"))
     return _response(data, snapshot)

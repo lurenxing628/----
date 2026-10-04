@@ -11,6 +11,7 @@ from core.services.common.excel_templates import _sanitize_export_cell
 from core.services.report.exporters.xlsx import _append_write_only_row
 from core.services.report.report_engine import ReportExport
 from core.services.workbench.facts.export_names import export_stamp
+from core.services.workbench.facts.table_cells import number_text
 
 COLUMNS = (("part_no", "图号"), ("part_name", "零件名称"), ("sequence", "工序号"),
            ("operation_label", "工序名称"), ("template_operation_ref", "模板工序编号"),
@@ -47,7 +48,8 @@ def _csv(values, headers, output):
     writer = csv.writer(text)
     writer.writerow(headers)
     for row in values:
-        writer.writerow([_sanitize_export_cell(value) for value in row])
+        # 数字按页面上的最短十进制写（7 不写成 7.0，也不用 1e-07）；文字照旧防公式。
+        writer.writerow([number_text(value) if type(value) in (int, float) else _sanitize_export_cell(value) for value in row])
     output.write(text.getvalue().encode("utf-8-sig"))
     return "text/csv;charset=utf-8"
 

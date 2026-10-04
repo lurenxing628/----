@@ -38,7 +38,8 @@ def summary(operations, records):
 
 def resource_rows(records, kind):
     groups = {}
-    for event in records:
+    # 外协不占本厂设备和人员：资源工时只统计自制工序的记录，外协不混进「未填写」行。
+    for event in (row for row in records if row["operation_source"] != "external"):
         key = event[kind + "_ref"]
         group = groups.setdefault(key, {"resource_ref": key, "resource_label": event[kind + "_label"],
             "operations": set(), "batches": set(), "events": 0, "production_reports": 0, "records": []})

@@ -5,6 +5,7 @@ from contextlib import contextmanager
 from core.models.workbench_command import WorkbenchCommandRejected, input_fingerprint
 from core.models.workbench_plan_reference import WorkbenchPlanLocator
 from core.models.workbench_plan_scope import PlanReadScope
+from core.services.workbench.facts.execution_projection import attach_context
 from core.services.workbench.facts.plan_serialization import plain_plan_facts
 from core.services.workbench.plan.queries import WorkbenchPlanQueryService
 from data.repositories.workbench_execution_repo import WorkbenchExecutionRepository
@@ -23,6 +24,7 @@ class FieldWorkspaceService:
         self.repo = WorkbenchExecutionRepository(conn)
         self.queries = WorkbenchFieldQueryRepository(conn)
         self.plans = WorkbenchPlanQueryService(conn)
+        self._loaded = None
 
     @contextmanager
     def read_snapshot(self):
@@ -53,13 +55,21 @@ class FieldWorkspaceService:
             return {'plan': None, 'scope': dict(scope), 'tasks': [], 'summary': self._summary([])}, input_fingerprint(self.ledger.revision_clock())
         plan, plan_state = self.plans.workspace(PlanReadScope(plan_ref))
         refs = [task['operation_ref'] for task in plan['tasks']]
-        projections = {item.operation_ref: item.to_dict() for item in self.ledger.project_operations(refs, comparison_plan_ref=plan_ref)}
+        with self.ledger.read_snapshot():
+            facts = self.ledger.load(refs, comparison_plan_ref=plan_ref)
+            # 整份计划只投影、不签发写令牌：令牌只发给本次返回的那一页或那一条（page/detail）。
+            # 几千道任务逐条签发会把各页面共用的令牌登记表挤满，刚显示的报工令牌随即失效。
+            loaded = {item.operation_ref: item for item in self.ledger.project_loaded(facts, contexts=False)}
+        self._loaded = (facts, loaded)
+        projections = {ref: item.to_dict() for ref, item in loaded.items()}
         labels = self._labels(projections, plan)
         names = self.queries.batch_part_names()
         tasks, scope_tasks = [], []
         count_scope = {key: value for key, value in scope.items() if key != 'state'}
         for row in plan['tasks']:
             task = self._task(row, projections[row['operation_ref']], labels, names)
+            # 报工页据此对外协工序不提供实际设备、人员选择；写入时仍以服务端校验为准。
+            task['source'] = facts['operations'][row['operation_ref']]['source']
             if matches(task, count_scope):
                 scope_tasks.append(task)
                 if not scope.get('state') or task['execution']['execution_state'] == scope['state']:
@@ -118,18 +128,36 @@ class FieldWorkspaceService:
                 'effective_processing_hours': None if unknown else known,
                 'known_effective_processing_hours': known, 'unknown_hour_reports': unknown}
 
-    @staticmethod
-    def page(cohort, number, size):
+    def _with_contexts(self, tasks):
+        """Issue write contexts for the returned rows only; cohort tasks stay token-free."""
+        factory = self.ledger.context_factory
+        if factory is None or self._loaded is None:
+            return tasks
+        facts, loaded = self._loaded
+        result = []
+        for task in tasks:
+            ref = task['operation_ref']
+            attached = attach_context(loaded[ref], factory, self.ledger.fact_snapshot(facts, ref))
+            if attached is loaded[ref]:
+                result.append(task)
+                continue
+            execution = task['execution']
+            reports = [dict(report, write_context=row.write_context) for report, row in zip(execution['reports'], attached.reports)]
+            # 旧计划上的任务保留 _task 写明的“不能新增报工”；已有报工仍可补录、更正、作废。
+            context = attached.write_context if execution['current_task_ref'] == task['task_ref'] else execution['write_context']
+            result.append(dict(task, execution=dict(execution, reports=reports, write_context=context)))
+        return result
+
+    def page(self, cohort, number, size):
         total = len(cohort['tasks'])
         pages = max(1, (total + size - 1) // size)
         if number > pages:
             raise WorkbenchCommandRejected('invalid_input', '翻页位置已失效，请回到第 1 页重新查询。', 400)
-        return dict(cohort, tasks=cohort['tasks'][(number - 1) * size:number * size],
+        return dict(cohort, tasks=self._with_contexts(cohort['tasks'][(number - 1) * size:number * size]),
                     page={'number': number, 'size': size, 'total': total, 'pages': pages, 'sort': [{'field': 'batch_id', 'direction': 'asc'}]})
 
-    @staticmethod
-    def detail(cohort, task_ref):
+    def detail(self, cohort, task_ref):
         for task in cohort['tasks']:
             if task['task_ref'] == task_ref:
-                return {'task': task, 'scope': cohort['scope'], 'plan': cohort['plan']}
+                return {'task': self._with_contexts([task])[0], 'scope': cohort['scope'], 'plan': cohort['plan']}
         raise WorkbenchCommandRejected('entity_not_found', '所选任务不在当前范围，请刷新后重选。', 404)

@@ -42,8 +42,8 @@ class FieldReportFileService:
             raise WorkbenchCommandRejected('invalid_input', '填的设备或人员在系统里找不到，或者有重名分不清，请核对。', 422)
         return next(iter(options))
 
-    def _items(self, content, tasks):
-        rows = decode_reports(content)
+    def _items(self, content, tasks, decoded=None):
+        rows = decode_reports(content) if decoded is None else decoded
         by_scope, by_ref = task_indexes(tasks)
         resources, items, positions = self._resource_index(), [], []
         digest = hashlib.sha256(content).hexdigest()
@@ -78,8 +78,9 @@ class FieldReportFileService:
             payload.update(legacy_fact_ref=existing['legacy_fact_ref'], reason='Excel 核对已关联的历史完工记录')
         return {'action': 'create', 'ref': task['task_ref'], 'payload': payload}
 
-    def preview(self, content, cohort):
-        rows, items, positions = self._items(content, cohort['tasks'])
+    def preview(self, content, cohort, decoded=None):
+        """decoded: rows the caller already parsed from these bytes before its read snapshot (used once)."""
+        rows, items, positions = self._items(content, cohort['tasks'], decoded)
         check = None
         if not any(row['errors'] for row in rows):
             try:

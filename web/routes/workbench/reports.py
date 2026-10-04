@@ -21,6 +21,7 @@ from web.public_token_registry import issue_public_token, resolve_public_token
 
 from . import read_context
 from .api_responses import api_endpoint
+from .read_budget import PLAN_READ_SLOTS
 from .read_context import bind_read_snapshot
 
 
@@ -92,16 +93,16 @@ def _read(export=False, operation_ref=None):
         reference(operation_ref)
     reader = WorkbenchReportFacts(g.db, current_app.logger)
     as_of = report_read_time(token)
-    with reader.read_snapshot():
-        facts = reader.read(scope, as_of=as_of)
-        snapshot = bind_report_snapshot(facts["scope"].scope(), facts["fingerprint"], token, as_of)
-        data, rows, _ = report_workspace(reader, facts, snapshot, topic, page, operation_ref)
-        data["columns"] = public_columns(topic)
-        data["exports"] = {"url": "/api/workbench/v1/analytics/export", "formats": ["csv", "xlsx"], "scope": "all_filtered_rows"}
-        if export:
-            file = export_table(reader.engine, data, rows, snapshot, request.args.get("format", "csv"))
+    with PLAN_READ_SLOTS.slot():
+        with reader.read_snapshot():
+            facts = reader.read(scope, as_of=as_of)
+            snapshot = bind_report_snapshot(facts["scope"].scope(), facts["fingerprint"], token, as_of)
+            data, rows, _ = report_workspace(reader, facts, snapshot, topic, page, operation_ref)
+    data["columns"] = public_columns(topic)
+    data["exports"] = {"url": "/api/workbench/v1/analytics/export", "formats": ["csv", "xlsx"], "scope": "all_filtered_rows"}
     if export:
-        return download_response(file, snapshot)
+        # 读事务和读额度都已释放：文件只用已读出的结果生成，编码再久也不挡别人提交写入。
+        return download_response(export_table(reader.engine, data, rows, snapshot, request.args.get("format", "csv")), snapshot)
     response = query_success(data, snapshot)
     response.headers["Cache-Control"] = "no-store"
     if len(response.get_data()) > 8 * 1024 * 1024:

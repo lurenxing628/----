@@ -50,10 +50,11 @@ def test_all_actual_consumers_use_effective_reports_after_void(ledger_case):
     with reader.read_snapshot():
         actual, _ = reader.workspace(ActualGanttScope(case.plan_ref(1)))
     assert actual['report_count'] == 0 and actual['items'][0]['execution']['reports'] == []
-    operation = dict(operation_ref=p.operation_ref, batch_ref=case.ref('batch', 'B1'), batch_label='B1', operation_label='1 Turning')
+    operation = dict(operation_ref=p.operation_ref, batch_ref=case.ref('batch', 'B1'), batch_label='B1', operation_label='1 Turning',
+                     operation_source='internal')
     records = project_records(p.to_dict(), operation, {'machine': {}, 'operator': {}}, NOW)
     assert records == []
-    assert _hours(p.to_dict(), {'unit_hours': .1})['effective_processing_hours'] is None
+    assert _hours(p.to_dict(), {'unit_hours': .1, 'source': 'internal'})['effective_processing_hours'] is None
     reviewed = sample(p)
     assert not reviewed['eligible'] and reviewed['report_refs'] == [] and reviewed['effective_processing_hours'] is None
     codes = {reason['code'] for reason in reviewed['exclusion_reasons']}

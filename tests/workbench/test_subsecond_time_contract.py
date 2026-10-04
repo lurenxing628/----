@@ -93,3 +93,22 @@ def test_critical_chain_minute_floor_keeps_microseconds(start, end, expected):
     from core.services.scheduler.gantt.critical_chain import _minutes_between
 
     assert _minutes_between(start, end) == expected
+
+
+@pytest.mark.parametrize("text", ["2026-09-09 08:00:10", "2026-09-09T08:00:10.123456", "2026-09-09 08:00:10.123", "2026-09-09 08:00:10.8",
+    "2026-02-30 08:00:00", "2026-09-09 08:00:60", "2026-09-09 24:00:00", "2026-9-9 8:00:10", "2026-09-09 08:00", "2026-09-09",
+    "2026-09-09 08:00:10.", "2026-09-09 08:00:10.1234567", "0001-01-01 00:00:00", "9999-12-31 23:59:59.999999",
+    "２026-09-09 08:00:10", "2026-09-09 08:00:10+08:00"])
+def test_canonical_fast_path_matches_the_strptime_formats(text):
+    formats = ("%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d")
+
+    def strptime_only(value):
+        for fmt in formats if "." in value else formats[1:]:
+            try:
+                return datetime.strptime(value.replace("T", " "), fmt)
+            except ValueError:
+                continue
+        return None
+
+    # 标准写法改用 fromisoformat 只为提速：结果（含拒绝）必须和原来的 strptime 口径完全一致。
+    assert parse_local_datetime(text) == strptime_only(text)

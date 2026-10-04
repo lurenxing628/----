@@ -84,7 +84,8 @@ def test_lossless_formula_text_null_zero_date_and_int64(plan_api, fmt):
     assert row[15] == label
     assert row[16] == row[17] == row[20] == r'\N'
     assert row[25] == '2026-09-09T09:00:00' and row[27] == '2026-09-09'
-    assert row[29] == row[30] == ('0.0' if fmt == 'csv' else 0)
+    # 超期小时、天数：CSV 写成页面上的最短十进制（不再是 0.0）；XLSX 仍是数字格，方便求和。
+    assert row[29] == row[30] == ('0' if fmt == 'csv' else 0)
     if fmt == 'csv':
         raw = list(csv.reader(io.StringIO(response.data.decode('utf-8-sig'), newline='')))[1]
         assert raw[15] == "'" + label and raw[1] == "'" + str(version)
@@ -94,6 +95,40 @@ def test_lossless_formula_text_null_zero_date_and_int64(plan_api, fmt):
     snapshot = plan_api.read('/' + ref + '/workspace')['meta']['snapshot_ref']
     row = read_rows(plan_api.get('/' + ref + '/export', format=fmt, snapshot_ref=snapshot), fmt)[1]
     assert row[15] == r'\\N' and row[27] == row[29] == row[30] == r'\N'
+
+
+def _overdue_rows(fmt, delay_hours, delay_days):
+    from core.services.workbench.plan.export import write_plan_export
+
+    plan = {'plan_ref': 'p' * 48, 'version': 3, 'kind': 'official', 'display_name': '正式计划', 'is_current_official': True,
+            'completeness': 'complete'}
+    task = {'task_ref': 't' * 48, 'operation_ref': 'o' * 48, 'batch_id': 'B1', 'sequence': 1, 'process_label': '车',
+            'machine_ref': None, 'operator_ref': None, 'supplier_ref': None, 'start': '2026-09-09T08:00:00', 'end': '2026-09-09T09:00:00'}
+    item = {'batch_id': 'B1', 'risk': 'overdue', 'planned_finish': None, 'partial_planned_finish': None, 'due_date': None,
+            'delivery_deadline_exclusive': None, 'delay_hours': delay_hours, 'delay_days': delay_days, 'completeness': 'complete'}
+    data = {'plan': plan, 'resources': [], 'projections': {'delivery_risks': {'items': [item]}}, 'tasks': [task], 'task_count': 1,
+            'time_scope': {'range_start': '2026-09-09T00:00:00', 'range_end': '2026-09-10T00:00:00'}}
+    content = write_plan_export(data, {'snapshot_ref': 's' * 48, 'as_of': '2026-09-09T08:00:00'}, fmt).content
+    if fmt == 'csv':
+        return list(csv.reader(io.StringIO(content.decode('utf-8-sig'), newline='')))[1]
+    wb = openpyxl.load_workbook(io.BytesIO(content))
+    try:
+        return [(cell.value, cell.data_type, cell.number_format) for cell in next(wb.active.iter_rows(min_row=2))]
+    finally:
+        wb.close()
+
+
+@pytest.mark.parametrize('fmt', ['csv', 'xlsx'])
+@pytest.mark.parametrize('hours,days,texts', [(24.0, 1, ('24', '1')), (1e-07, 0.3000000000000001, ('0.0000001', '0.3000000000000001')),
+                                              (1e20, 2.5, ('100000000000000000000', '2.5'))])
+def test_overdue_numbers_are_written_as_the_page_number_text(fmt, hours, days, texts):
+    row = _overdue_rows(fmt, hours, days)
+    if fmt == 'csv':
+        # 数字不加防公式撇号，打开时照样认作数字。
+        assert (row[29], row[30]) == texts
+    else:
+        # XLSX 仍是数字格（方便求和），数值原样，与其它只读导出一致。
+        assert [(value, kind) for value, kind, _format in (row[29], row[30])] == [(hours, 'n'), (days, 'n')]
 
 
 @pytest.mark.parametrize('fmt', ['csv', 'xlsx'])
@@ -167,3 +202,24 @@ def test_10000_tasks_export_complete_and_real_8mib_aggregate_limit(plan_api):
         conn.execute("UPDATE BatchOperations SET op_type_name='Operation'")
         add_tasks(conn, 1)
     assert_error(plan_api.get('/' + ref + '/workspace'), 'query_too_large', 413)
+
+
+@pytest.mark.parametrize('fmt', ['csv', 'xlsx'])
+def test_file_is_written_after_the_read_snapshot_and_slot_are_released(plan_api, monkeypatch, fmt):
+    from flask import g
+
+    from web.routes.workbench import plan_reads, read_budget
+
+    prepare(plan_api)
+    ref = plan_api.ref()
+    snapshot = plan_api.read('/' + ref + '/workspace')['meta']['snapshot_ref']
+    original, written = plan_reads.write_plan_export, []
+
+    def write(data, pinned, export_format):
+        written.append((g.db.in_transaction, read_budget.PLAN_READ_SLOTS._available))
+        return original(data, pinned, export_format)
+
+    monkeypatch.setattr(plan_reads, 'write_plan_export', write)
+    read_rows(plan_api.get('/' + ref + '/export', format=fmt, snapshot_ref=snapshot), fmt)
+    # 整份计划在读额度和读快照里读完；生成文件时读事务和额度都已释放。
+    assert written == [(False, 1)]

@@ -9,6 +9,7 @@ from core.services.workbench.facts.execution_projection import (
     DATA_QUALITY_TEXT,
     EXECUTION_STATE_TEXT,
 )
+from core.services.workbench.facts.table_cells import number_text
 
 from .actual_gantt_scope import view_items
 
@@ -23,7 +24,8 @@ HEADERS = ["计划编号", "任务编号", "工序编号", "批次", "工序", "
 def _cell(value):
     if value is None:
         return ""
-    text = str(value)
+    # 数字按页面上的最短十进制写：7 不写成 7.0，也不用 1e-07 这种科学计数法。
+    text = number_text(value) if type(value) in (int, float) else str(value)
     if text.lstrip().startswith(("=", "+", "-", "@")):
         text = "'" + text
     return text

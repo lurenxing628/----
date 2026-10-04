@@ -25,10 +25,12 @@ from core.models.workbench_field_report_file import (
 from core.models.workbench_table_descriptor import INSTRUCTION_SHEET
 from core.services.common.excel_cell_values import cell_value, is_formula_or_error
 from core.services.common.excel_instruction_sheet import append_instruction_sheet
+from core.services.workbench.facts.table_cells import number_text
 
 from .field_report_files_xml import check_package
 
 MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+_NUMBER_FIELDS = ('completed_quantity', 'effective_processing_hours')
 
 
 def reject(message: str) -> NoReturn:
@@ -40,14 +42,16 @@ def _timestamp(value, epoch):
         if not math.isfinite(value) or value < 0:
             reject('Excel 里的日期时间填得不对。')
         value = from_excel(value, epoch)
+    # 和页面报工（factory_time）一样认到秒：页面新增报工默认填带秒的当前时间，导出和分次报工模板
+    # 都会原样带出秒，回导不能因此整份被拒。比秒更细的写法页面也不收，这里同样拒绝。
     if isinstance(value, datetime):
-        if value.tzinfo is not None or value.second or value.microsecond:
-            reject('实际时间只填到分钟，秒要写 00，例如 2026-09-13 08:30。')
+        if value.tzinfo is not None or value.microsecond:
+            reject('实际时间最多填到秒，例如 2026-09-13 08:30 或 2026-09-13 08:30:15。')
         return value.isoformat(timespec='seconds')
     if isinstance(value, date):
         reject('实际时间不能只有日期，请填写时分。')
-    if type(value) is not str or not re.fullmatch(r'\d{4}-\d\d-\d\d[ T]\d\d:\d\d(?::00)?', value.strip()):
-        reject('实际时间请按 2026-09-13 08:30 这样填。')
+    if type(value) is not str or not re.fullmatch(r'\d{4}-\d\d-\d\d[ T]\d\d:\d\d(?::\d\d)?', value.strip()):
+        reject('实际时间请按 2026-09-13 08:30 这样填，需要时可以带秒，例如 08:30:15。')
     try:
         parsed = datetime.fromisoformat(value.strip())
     except ValueError as exc:
@@ -129,6 +133,22 @@ def decode_reports(content):
         book.close()
 
 
+def _export_value(value, field):
+    """数量和工时写成最短十进制文本，与工艺文件同一做法：openpyxl 的数字格只留 16 位有效数字，
+    1.6666666666666667 回导会变成 1.666666666666667，被当成改过的报工整份拒掉。"""
+    if field in _NUMBER_FIELDS and type(value) in (int, float):
+        return number_text(value)
+    return value
+
+
+def _append_report(sheet, row, fields):
+    values = [_export_value(row.get(field), field) for field in fields]
+    sheet.append(values)
+    for column, (field, value) in enumerate(zip(fields, values), 1):
+        if field in _NUMBER_FIELDS and type(value) is str:
+            sheet.cell(sheet.max_row, column).number_format = '@'
+
+
 def _style(page, is_report):
     page.freeze_panes = 'A2'
     page.auto_filter.ref = page.dimensions
@@ -160,7 +180,7 @@ def encode_reports(rows, *, summaries=(), metadata=(), format_version=1):
     for number, row in enumerate(rows, 1):
         if number > ROW_LIMIT:
             reject('导出超过 5000 行，请缩小筛选范围。')
-        sheet.append([row.get(field) for field in fields])
+        _append_report(sheet, row, fields)
     # 模板和导出都带说明表，位置固定在数据表后面；回导时它会被当成多余的表忽略。
     append_instruction_sheet(book, table_descriptor(format_version))
     for title, values in [('工序汇总', summaries), ('录入信息', metadata)]:

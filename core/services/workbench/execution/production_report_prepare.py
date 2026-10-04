@@ -19,6 +19,7 @@ from .production_report_validation import (
     execution_conflicts,
     require_current,
     validate_legacy_link,
+    validate_merged_cycle,
     validate_projection_change,
 )
 
@@ -136,6 +137,8 @@ class ReportBatchPreparation:
             changed = changed_by_operation.get(after.operation_ref, [])
             try:
                 validate_projection_change(before[after.operation_ref], after)
+                validate_merged_cycle(dependencies, self.facts["operations"][after.operation_ref], before[after.operation_ref],
+                                      after, changed)
                 revisions = [row for row in changed if row["sequence"] > 1]
                 conflicts = execution_conflicts(self.ledger, self.facts, before[after.operation_ref], after, revisions,
                     dependencies=dependencies, protect_plan=bool(revisions))

@@ -54,6 +54,8 @@ class ReportDependencies:
         self.routes = {}
         self.projected = {row.operation_ref: row for row in projections}
         self.merged = {}
+        self.sequences = {}
+        self.cycles = defaultdict(list)
 
     def _route(self, batch_id):
         if batch_id in self.routes:
@@ -83,6 +85,8 @@ class ReportDependencies:
             op = external[context["operation_id"]]
             require_context(context, operation_id=op["id"], part_no=op["part_no"], sequence=op["seq"])
             self.merged[op["operation_ref"]] = (op["batch_id"], op["piece_id"], context_group_key(context))
+            self.sequences[op["operation_ref"]] = op["seq"]
+            self.cycles[self.merged[op["operation_ref"]]].append(op["operation_ref"])
 
     def relatives(self, operation, *, predecessors=False):
         """Cycle members are peers; retain transitive dependencies outside the cycle."""
@@ -103,3 +107,11 @@ class ReportDependencies:
 
     def same_merged_cycle(self, first, second):
         return first in self.merged and self.merged[first] == self.merged.get(second)
+
+    def cycle_peers(self, operation):
+        """同一合并外协周期（同批次、同组、同分件）的其他成员，按工序顺序。"""
+        self._route(operation["batch_id"])
+        ref = operation["operation_ref"]
+        if ref not in self.merged:
+            return []
+        return sorted((other for other in self.cycles[self.merged[ref]] if other != ref), key=lambda other: self.sequences[other])

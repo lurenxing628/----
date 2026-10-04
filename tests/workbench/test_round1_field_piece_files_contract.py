@@ -65,10 +65,18 @@ def test_csv_old_prefix_exact_positions_values_and_plan_fields(piece_file_api):
             report = execution['reports'][0]
             assert row[16:20] == [report['report_ref'], report['report_no'],
                                    report['recorded_against_plan_ref'], report['recorded_against_task_ref']]
-            assert row[22:24] == ['0', '0.0']
+            # 有效工时按页面上的最短十进制写：0.0 写成 0。
+            assert row[22:24] == ['0', '0']
         else:
             assert row[16:28] == [''] * 12
     assert all_rows(api.case.conn) == before
+
+
+def test_csv_numbers_use_the_page_number_text_and_text_keeps_its_formula_guard():
+    from core.services.workbench.execution.actual_gantt_export import _cell
+
+    assert [_cell(value) for value in (7.0, 1e-07, 2.5, 3, 1e20, None)] == ['7', '0.0000001', '2.5', '3', '100000000000000000000', '']
+    assert _cell('=1+1') == "'=1+1" and _cell(-2.0) == "'-2"
 
 
 def test_new_plan_export_reimport_keeps_original_refs_and_correction_history(piece_file_api):
@@ -86,7 +94,8 @@ def test_new_plan_export_reimport_keeps_original_refs_and_correction_history(pie
     sheet = book.active
     assert sheet is not None
     record = next(row for row in sheet.iter_rows(min_row=2, values_only=True) if row[0] == original['report_no'])
-    assert record[6] == 0.25 and record[10] != original['recorded_against_task_ref']
+    # 工时按最短十进制文本导出（与工艺文件同一做法），回导仍按数字读。
+    assert record[6] == '0.25' and record[10] != original['recorded_against_task_ref']
     metadata = list(book['录入信息'].iter_rows(min_row=2, values_only=True))
     assert metadata[0][3] == 1
     book.close()

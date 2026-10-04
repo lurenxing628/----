@@ -82,3 +82,16 @@ def test_csv_keeps_original_prefix_and_unknown_value_contract(schema_conn, ident
     assert records[0]["备注"] == "'=1+1" and records[1]["备注"] == "'-保留原转义"
     assert records[0]["工时"] == "未知" and records[1]["工时"] == "0"
     assert records[0]["工序"] == "中文工序"
+
+
+def test_csv_numbers_use_the_page_number_text_and_stay_numbers(schema_conn):
+    data, rows, snapshot = _export_fixture("中文标识")
+    rows = [{"label": "整数", "remark": None, "hours": 7.0}, {"label": "很小", "remark": None, "hours": 1e-07},
+            {"label": "负数", "remark": None, "hours": -2.5}]
+    exported = export_table(ReportEngine(schema_conn), data, rows, snapshot, "csv")
+    try:
+        records = list(csv.DictReader(io.StringIO(exported.data.read().decode("utf-8-sig"))))
+    finally:
+        exported.data.close()
+    # 7 不写成 7.0、不用 1e-07；数字不像文字那样加防公式撇号，负数也照样是数字。
+    assert [row["工时"] for row in records] == ["7", "0.0000001", "-2.5"]

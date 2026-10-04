@@ -23,7 +23,7 @@ def actual_resource(directory, kind, ref):
 
 
 def project_records(projection, operation, directory, as_of):
-    common = {key: operation[key] for key in ("operation_ref", "batch_ref", "batch_label", "operation_label")}
+    common = {key: operation[key] for key in ("operation_ref", "batch_ref", "batch_label", "operation_label", "operation_source")}
     records = []
     incomplete_reports = {gap.get("report_ref") for gap in projection["data_gaps"] if gap.get("report_ref")}
     for index, event in enumerate(projection["legacy_facts"]):

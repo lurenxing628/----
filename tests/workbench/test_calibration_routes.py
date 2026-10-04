@@ -127,7 +127,8 @@ def test_export_full_scope_snapshot_injection_and_unknown(calibration_api, forma
         workbook.close()
     assert len(rows) == 3
     assert all(row[1].startswith("'") and row[3].startswith("'") for row in rows[1:])
-    assert {str(row[7]) for row in rows[1:]} == {"0" if format_name == "xlsx" else "0.0", "暂无数据"}
+    # CSV 的数字也按页面上的最短十进制写：0 不写成 0.0。
+    assert {str(row[7]) for row in rows[1:]} == {"0", "暂无数据"}
     assert all(row[-2].lstrip("'") == token and json.loads(row[-1])["size"] == 1 for row in rows[1:])
     assert_no_writes(case)
 

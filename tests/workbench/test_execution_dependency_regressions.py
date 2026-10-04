@@ -177,13 +177,14 @@ def test_late_actual_does_not_use_unstarted_planned_successor_as_a_blocker(candi
     assert create(api, version, second, values(case, "2026-09-09T13:00:00", "2026-09-09T13:45:00")).status_code == 200
 
 
-def merged_external_route(case, piece=False):
+def merged_external_route(case, piece=False, members=2):
     case.conn.execute("UPDATE OpTypes SET category='both' WHERE op_type_id='T1'")
     case.conn.execute("INSERT INTO Suppliers(supplier_id,name,op_type_id) VALUES ('S1','供应商','T1')")
-    case.conn.execute("INSERT INTO ExternalGroups(group_id,part_no,start_seq,end_seq,merge_mode,total_days,supplier_id) VALUES ('G','P1',2,3,'merged',1,'S1')")
+    case.conn.execute("INSERT INTO ExternalGroups(group_id,part_no,start_seq,end_seq,merge_mode,total_days,supplier_id) "
+                      "VALUES ('G','P1',2,?,'merged',1,'S1')", (members + 1,))
     copied = []
     with TransactionManager(case.conn).transaction():
-        for seq in (2, 3):
+        for seq in range(2, members + 2):
             cursor = case.conn.execute("INSERT INTO PartOperations(part_no,seq,op_type_id,op_type_name,source,supplier_id,ext_group_id,setup_hours,unit_hours) "
                                       "VALUES ('P1',?,'T1','Turning','external','S1','G',0,0)", (seq,))
             copied.append(TemplateLineageWriter(case.conn).copy_template("B1", cursor.lastrowid))
@@ -448,9 +449,10 @@ def test_external_completion_allows_other_work_and_preserves_actuals_in_trial(ca
 
 
 @pytest.mark.parametrize("external", [False, True])
-def test_execution_resource_fix_does_not_relax_internal_or_discard_external_resources(candidate_case, external):
+def test_execution_resource_fix_does_not_relax_internal_or_discard_external_resources(candidate_case, monkeypatch, external):
     from core.errors import AppError
     from core.services.scheduler.execution.execution_ledger_guard import ensure_ledger_execution_schedulable
+    from core.services.workbench.execution import production_report_validation
     from tests.workbench.scheduler_execution_ledger_support import read_facts
 
     case = candidate_case
@@ -460,6 +462,14 @@ def test_execution_resource_fix_does_not_relax_internal_or_discard_external_reso
     payload = case.values(3)
     if not external:
         payload.update(actual_machine_ref=None, actual_operator_ref=None)
+    else:
+        # 外协报工带本厂设备人员在入口就拒绝；下面绕过入口模拟修复前已写进库的旧记录，守卫仍不放行。
+        before = snapshot(case.conn)
+        with pytest.raises(WorkbenchCommandRejected) as rejected:
+            case.command("create", case.task(version, case.op_id), payload)
+        assert rejected.value.code == "constraint_conflict" and "经办人" in str(rejected.value)
+        assert snapshot(case.conn) == before
+        monkeypatch.setattr(production_report_validation, "_reject_external_resources", lambda operation, values: None)
     case.command("create", case.task(version, case.op_id), payload)
     before = snapshot(case.conn)
     facts = read_facts(case.conn, version)
@@ -468,3 +478,355 @@ def test_execution_resource_fix_does_not_relax_internal_or_discard_external_reso
     expected = "execution_ledger_external_resource_conflict" if external else "execution_ledger_actual_resource_missing_or_multiple"
     assert expected in caught.value.details["data_gaps"]
     assert snapshot(case.conn) == before
+
+
+@pytest.mark.parametrize("kind", ["machine", "operator"])
+def test_old_external_report_holding_internal_resource_is_named_before_any_run(candidate_case, monkeypatch, kind):
+    from core.services.workbench.execution import production_report_validation
+
+    case = candidate_case
+    external_route(case)
+    version = adopt(case)
+    payload = values(case, "2026-09-09T08:00:00", "2026-09-09T10:00:00")
+    payload["actual_" + ("operator" if kind == "machine" else "machine") + "_ref"] = None
+    monkeypatch.setattr(production_report_validation, "_reject_external_resources", lambda operation, values: None)
+    report = case.command("create", case.task(version, case.op_id), payload)["data"]["rows"][0]
+    monkeypatch.undo()
+    case.batch("B2")
+    case.operation("B2")
+    case.conn.commit()
+    # 只排无关批次也会被正式计划里的这条外协报工拦下：预检先指出是哪条报工、该怎么改。
+    checked, _ = PreflightService(case.conn).evaluate(case.settings("B2"))
+    assert checked["execution_projection_source"] == "execution_ledger"
+    blocker = next(row for row in checked["blockers"] if row["code"] == "external_actual_resource_conflict")
+    assert (blocker["operation_ref"], blocker["batch_id"]) == (report["operation_ref"], "B1")
+    assert report["report_no"] in blocker["message"] and "更正" in blocker["message"]
+    keep = {"original_revision_ref": report["revision_ref"], "reason": "按回厂单核对", "remark": "只改备注"}
+    with pytest.raises(WorkbenchCommandRejected) as kept:
+        case.command("correct", report["report_ref"], keep)
+    assert "请用「更正」清除" in str(kept.value)
+    case.command("correct", report["report_ref"], {**keep, "actual_machine_ref": None, "actual_operator_ref": None})
+    checked, _ = PreflightService(case.conn).evaluate(case.settings("B2"))
+    assert checked["blockers"] == []
+    accepted = case.accept(key="external-resource-fixed-run-" + kind, settings=case.settings("B2"))
+    assert WorkbenchRunWorker(case.conn).execute(accepted["run_ref"])["state"] == "complete"
+
+
+def merged_member(case, start, end=None, quantity=3):
+    payload = values(case, start, end, quantity) if end else {"actual_start": start, "remark": ""}
+    payload.update(actual_machine_ref=None, actual_operator_ref=None)
+    return payload
+
+
+def test_merged_members_record_one_actual_period_on_create_and_supplement(candidate_case):
+    case = candidate_case
+    copied = merged_external_route(case)
+    version = adopt(case)
+    report_plan(case, version, {case.op_id})
+    start, end = (value.replace(" ", "T") for value in case.conn.execute(
+        "SELECT start_time,end_time FROM Schedule WHERE version=? AND op_id=?", (version, copied[0])).fetchone())
+    later = (datetime.fromisoformat(end) + timedelta(minutes=5)).isoformat()
+    case.command("create", case.task(version, copied[0]), merged_member(case, start, end))
+    before = snapshot(case.conn)
+    for call in (lambda: case.writer.preview("create", case.task(version, copied[1]), merged_member(case, start, later)),
+                 lambda: case.command("create", case.task(version, copied[1]), merged_member(case, start, later))):
+        with pytest.raises(WorkbenchCommandRejected) as caught:
+            call()
+        assert "同组第 2 道已登记" in str(caught.value) and end.replace("T", " ") in str(caught.value)
+    assert snapshot(case.conn) == before
+    started = case.command("create", case.task(version, copied[1]), merged_member(case, start))["data"]["rows"][0]
+    patch = {"original_revision_ref": started["revision_ref"], "reason": "补回厂时间", "completed_quantity": 3,
+             "effective_processing_hours": 1}
+    with pytest.raises(WorkbenchCommandRejected):
+        case.command("supplement", started["report_ref"], dict(patch, actual_end=later))
+    assert case.command("supplement", started["report_ref"], dict(patch, actual_end=end))["result"] == "committed"
+
+
+def test_merged_cycle_correction_moves_group_and_preflight_names_unfinished_moves(candidate_case):
+    case = candidate_case
+    copied = merged_external_route(case)
+    version = adopt(case)
+    report_plan(case, version, {case.op_id})
+    start, end = (value.replace(" ", "T") for value in case.conn.execute(
+        "SELECT start_time,end_time FROM Schedule WHERE version=? AND op_id=?", (version, copied[0])).fetchone())
+    reports = [case.command("create", case.task(version, op), merged_member(case, start, end))["data"]["rows"][0] for op in copied]
+    case.batch("B2")
+    case.operation("B2")
+    case.conn.commit()
+    settings = case.settings("B1", "B2")
+    moved = (datetime.fromisoformat(end) + timedelta(hours=1)).isoformat()
+
+    def correct(report, actual_end):
+        return case.command("correct", report["report_ref"], {"original_revision_ref": report["revision_ref"],
+                                                              "reason": "按回厂单核对", "actual_end": actual_end})
+
+    # 原本一致的整组可以逐道改到新时间；没改齐之前，排产检查明确指出是哪一组，而不是报“报工记录没准备好”。
+    correct(reports[0], moved)
+    checked, _ = PreflightService(case.conn).evaluate(settings)
+    assert checked["execution_projection_source"] == "execution_ledger"
+    split_cycle = next(row for row in checked["blockers"] if row["code"] == "external_cycle_actuals_differ")
+    assert split_cycle["operation_ref"] == reports[0]["operation_ref"] and split_cycle["batch_id"] == "B1"
+    assert "第 2 道" in split_cycle["message"] and "第 3 道" in split_cycle["message"]
+    with pytest.raises(WorkbenchCommandRejected) as caught:
+        correct(reports[1], (datetime.fromisoformat(moved) + timedelta(minutes=5)).isoformat())
+    assert "同组第 2 道已登记" in str(caught.value)
+    correct(reports[1], moved)
+    checked, _ = PreflightService(case.conn).evaluate(settings)
+    assert checked["blockers"] == []
+    accepted = case.accept(key="merged-cycle-moved-run-0001", settings=settings)
+    assert WorkbenchRunWorker(case.conn).execute(accepted["run_ref"])["state"] == "complete"
+
+
+def merged_period(case, version, operation):
+    return tuple(value.replace(" ", "T") for value in case.conn.execute(
+        "SELECT start_time,end_time FROM Schedule WHERE version=? AND op_id=?", (version, operation)).fetchone())
+
+
+def shifted(value, minutes):
+    return (datetime.fromisoformat(value) + timedelta(minutes=minutes)).isoformat()
+
+
+@pytest.mark.parametrize("first", [0, 1])
+def test_merged_cycle_with_a_start_only_member_can_be_moved_from_either_member(candidate_case, first):
+    case = candidate_case
+    copied = merged_external_route(case)
+    version = adopt(case)
+    report_plan(case, version, {case.op_id})
+    start, end = merged_period(case, version, copied[0])
+    # 第 2 道已回厂，第 3 道只报了开工：两道开工一致，只是第 3 道还没填完工。
+    reports = [case.command("create", case.task(version, copied[0]), merged_member(case, start, end))["data"]["rows"][0],
+               case.command("create", case.task(version, copied[1]), merged_member(case, start))["data"]["rows"][0]]
+    moved = shifted(start, 30)
+
+    def correct(index, actual_start):
+        patch = {"original_revision_ref": reports[index]["revision_ref"], "reason": "按送出单核对开工", "actual_start": actual_start}
+        if index == 0:  # 已回厂那道开工改晚，有效加工小时跟着缩到新的起止时长
+            patch["effective_processing_hours"] = (datetime.fromisoformat(end) - datetime.fromisoformat(actual_start)).total_seconds() / 3600
+        return case.command("correct", reports[index]["report_ref"], patch)
+
+    # 整组开工改晚半小时：先改哪一道都行（空着的完工不算对不上）；另一道只能跟着改到同一时间。
+    assert correct(first, moved)["result"] == "committed"
+    with pytest.raises(WorkbenchCommandRejected) as caught:
+        correct(1 - first, shifted(moved, 5))
+    assert "同组第 " + str(first + 2) + " 道已登记" in str(caught.value)
+    assert correct(1 - first, moved)["result"] == "committed"
+    api = FieldAPI(case)
+    assert [task(api, version, op)["execution"]["first_actual_start"] for op in copied] == [moved, moved]
+
+
+def test_merged_cycle_with_three_different_old_periods_can_be_corrected_one_by_one(candidate_case, monkeypatch):
+    from core.services.workbench.execution import production_report_prepare
+
+    case = candidate_case
+    copied = merged_external_route(case, members=3)
+    version = adopt(case)
+    report_plan(case, version, {case.op_id})
+    start, end = merged_period(case, version, copied[0])
+    finishes = [shifted(end, minutes) for minutes in (0, 10, 20)]
+    # 旧数据：同组三道的回厂时间各不相同（登记时还没有同组校验）。
+    monkeypatch.setattr(production_report_prepare, "validate_merged_cycle", lambda *args: None)
+    reports = [case.command("create", case.task(version, op), merged_member(case, start, finish))["data"]["rows"][0]
+               for op, finish in zip(copied, finishes)]
+    monkeypatch.undo()
+
+    def correct(index, actual_end):
+        report = reports[index]
+        result = case.command("correct", report["report_ref"], {"original_revision_ref": report["revision_ref"], "reason": "按回厂单核对",
+                                                                "actual_end": actual_end, "effective_processing_hours": 1})
+        reports[index] = dict(report, revision_ref=result["data"]["rows"][0]["revision_ref"])
+        return result
+
+    def rejected(index, actual_end):
+        before = snapshot(case.conn)
+        with pytest.raises(WorkbenchCommandRejected) as caught:
+            correct(index, actual_end)
+        assert "同组第 " in str(caught.value) and snapshot(case.conn) == before
+
+    # 改成和哪道都对不上的第四种时间，仍被拦下；改成和其中一道一致，就能逐道改齐。
+    rejected(0, shifted(end, 30))
+    assert correct(0, finishes[1])["result"] == "committed"
+    # 其余两道已经一致：第 4 道要和两道都对上，改成别的时间仍被拦下。
+    rejected(2, shifted(end, 30))
+    assert correct(2, finishes[1])["result"] == "committed"
+    checked, _ = PreflightService(case.conn).evaluate(case.settings())
+    assert "external_cycle_actuals_differ" not in {row["code"] for row in checked["blockers"]}
+    # 改齐后整组照常可以逐道挪；挪到一半时，另一道只能跟上，不能再改成第三种时间。
+    moved = shifted(end, 40)
+    assert correct(1, moved)["result"] == "committed"
+    rejected(2, shifted(end, 50))
+    assert correct(2, moved)["result"] == "committed"
+
+
+def test_merged_cycle_corrections_never_part_from_agreeing_members():
+    from core.services.workbench.execution import production_report_validation
+
+    blocker = production_report_validation._cycle_blocker
+    t = [datetime(2026, 9, 9, hour) for hour in range(8, 16)]
+    apart = [("C", (t[1], t[3])), ("D", (t[2], t[4]))]
+    # 其余各道本来就对不上：和其中一道对上就放行；对谁都对不上，或和原本一致的那道分开，都不放行。
+    assert blocker(apart, (t[1], t[3]), (t[5], t[6]), True) is None
+    assert blocker(apart, (t[5], t[7]), (t[5], t[6]), True) == apart[0]
+    agreeing = [("B", (t[0], None))] + apart
+    assert blocker(agreeing, (t[1], t[3]), (t[0], t[6]), True) == agreeing[0]
+    # 补登不走更正放行：和任何一道对不上都拦下；只报开工、两边都填了的时间相同就算一致。
+    assert blocker(agreeing, (t[1], t[3]), (None, None), False) == agreeing[0]
+    assert blocker([("B", (t[0], None))], (t[0], t[6]), (None, None), False) is None
+
+
+def test_locked_member_off_the_actual_cycle_is_a_preflight_blocker(candidate_case):
+    from tests.workbench.run_jobs_support import service as run_service
+
+    case = candidate_case
+    version, copied, period = late_merged_actual(case, member=0)
+    case.conn.execute("UPDATE Schedule SET lock_status='locked' WHERE version=? AND op_id=?", (version, copied[1]))
+    case.conn.commit()
+    checked, _ = PreflightService(case.conn).evaluate(case.settings())
+    assert checked["execution_projection_source"] == "execution_ledger"
+    locked = next(row for row in checked["blockers"] if row["code"] == "external_cycle_locked_conflict")
+    assert locked["operation_ref"] == next(row["operation_ref"] for row in checked["tasks"] if row["sequence"] == 3)
+    assert period[1].isoformat(sep=" ") in locked["message"] and "解锁" in locked["message"]
+    reasons = run_service(case.conn).preview(case.preflight())["write_context"]["blocked_reasons"]
+    assert "external_cycle_locked_conflict" in {row["code"] for row in reasons}
+    assert "execution_ledger_unavailable" not in {row["code"] for row in reasons}
+    case.conn.execute("UPDATE Schedule SET lock_status='unlocked' WHERE version=? AND op_id=?", (version, copied[1]))
+    case.conn.commit()
+    accepted = case.accept(key="locked-member-unlocked-run-01", settings=case.settings())
+    assert WorkbenchRunWorker(case.conn).execute(accepted["run_ref"])["state"] == "complete"
+
+
+def test_frozen_member_off_the_actual_cycle_is_a_preflight_blocker(candidate_case):
+    """同组未报工成员的原安排落在不重排时段里（这里来自交付设置的「锁定近期排程」3 天），排产会原样保留它，和已报工的实际周期对不上：
+    排产检查先拦下（冻结解不了锁，不提解锁），不再放行后让排产整次失败、把人引去核对现场记录。"""
+    case = candidate_case
+    _version, _copied, period = late_merged_actual(case, member=0)
+    case.config(freeze_window_enabled="yes", freeze_window_days=3)
+    checked, _ = PreflightService(case.conn).evaluate(case.settings())
+    frozen = [row for row in checked["blockers"] if row["code"] == "external_cycle_locked_conflict"]
+    assert [row["operation_ref"] for row in frozen] == [row["operation_ref"] for row in checked["tasks"] if row["sequence"] == 3]
+    assert all(period[1].isoformat(sep=" ") in row["message"] and "不重排时段（2026-09-09 00:00 至 2026-09-12 00:00）" in row["message"]
+               and "解锁" not in row["message"] for row in frozen)
+    case.config(freeze_window_enabled="no")
+    accepted = case.accept(key="frozen-member-unfrozen-run-1", settings=case.settings())
+    assert WorkbenchRunWorker(case.conn).execute(accepted["run_ref"])["state"] == "complete"
+
+
+def adopt_selected(case, key, *batches):
+    accepted = case.accept(key=key + "-run", settings=case.settings(*batches))
+    ref = WorkbenchRunWorker(case.conn).execute(accepted["run_ref"])["candidates"][0]["candidate_ref"]
+    service(case.conn).adopt(ref, preview(case, ref), key + "-adopt", INTENT)
+
+
+def make_external(case, op_id):
+    # 升级前的守卫把外协也当自制、要求填设备人员；升级后这道工序按外协核对。
+    case.conn.execute("INSERT INTO Suppliers(supplier_id,name,op_type_id) VALUES ('S1','供应商','T1')")
+    case.conn.execute("UPDATE OpTypes SET category='both' WHERE op_type_id='T1'")
+    case.conn.execute("UPDATE BatchOperations SET source='external',supplier_id='S1',ext_days=2 WHERE id=?", (op_id,))
+    case.conn.commit()
+
+
+def test_old_external_report_on_an_older_adopted_plan_can_still_be_cleared(candidate_case):
+    case = candidate_case
+    first = adopt(case)
+    report = case.command("create", case.task(first, case.op_id),
+                          values(case, "2026-09-09T08:00:00", "2026-09-09T10:00:00"))["data"]["rows"][0]
+    case.batch("B2")
+    case.operation("B2")
+    case.conn.commit()
+    adopt_selected(case, "older-plan-report-0001", "B1", "B2")
+    make_external(case, case.op_id)
+    clear = {"original_revision_ref": report["revision_ref"], "reason": "外协不占本厂资源", "actual_machine_ref": None, "actual_operator_ref": None}
+    # 只清空设备人员不算改了采用依据；同时改数量等其他采用依据仍按原规则拒绝。
+    with pytest.raises(WorkbenchCommandRejected) as changed:
+        case.command("correct", report["report_ref"], dict(clear, completed_quantity=2))
+    codes = {row["code"] for row in changed.value.conflicts}
+    assert "adopted_execution_basis_changed" in codes and "adopted_actual_resource_changed" not in codes
+    assert case.command("correct", report["report_ref"], clear)["result"] == "committed"
+    checked, _ = PreflightService(case.conn).evaluate(case.settings("B2"))
+    assert checked["blockers"] == []
+    accepted = case.accept(key="older-plan-report-cleared-1", settings=case.settings("B2"))
+    assert WorkbenchRunWorker(case.conn).execute(accepted["run_ref"])["state"] == "complete"
+
+
+def test_cycle_check_failure_is_a_blocker_and_keeps_the_resource_report_named(candidate_case, monkeypatch):
+    from core.services.workbench.execution import production_report_validation
+
+    case = candidate_case
+    copied = merged_external_route(case)
+    version = adopt(case)
+    report_plan(case, version, {case.op_id})
+    start, end = (value.replace(" ", "T") for value in case.conn.execute(
+        "SELECT start_time,end_time FROM Schedule WHERE version=? AND op_id=?", (version, copied[0])).fetchone())
+    case.command("create", case.task(version, copied[0]), merged_member(case, start, end))
+    monkeypatch.setattr(production_report_validation, "_reject_external_resources", lambda operation, values: None)
+    held = case.command("create", case.task(version, copied[1]), values(case, start, end))["data"]["rows"][0]
+    monkeypatch.undo()
+    checked, _ = PreflightService(case.conn).evaluate(case.settings())
+    # 周期核对不了不是“报工台账没准备好”；外协报工带本厂资源的具体提示照样列出。
+    assert checked["execution_projection_source"] == "execution_ledger"
+    codes = [row["code"] for row in checked["blockers"]]
+    assert "external_execution_cycle_unproven" in codes and "external_actual_resource_conflict" in codes
+    assert any(held["report_no"] in row["message"] for row in checked["blockers"])
+
+
+@pytest.mark.parametrize("replanned", [False, True])
+def test_old_external_events_holding_internal_resources_follow_the_guard_scope(candidate_case, replanned):
+    from core.errors import AppError
+    from core.services.workbench.run.compute import compute_candidate_run
+
+    case = candidate_case
+    first = adopt(case)
+    start, end = case.conn.execute("SELECT start_time,end_time FROM Schedule WHERE version=? AND op_id=?", (first, case.op_id)).fetchone()
+    case.event(case.op_id, "start", version=first, time=start)
+    case.event(case.op_id, "finish", version=first, time=end, quantity=3)
+    case.batch("B2")
+    case.operation("B2")
+    case.conn.commit()
+    if replanned:
+        adopt_selected(case, "old-events-replanned-0001", "B1", "B2")
+    make_external(case, case.op_id)
+    # 预检与守卫同口径：改过计划后要按记录核对，整次排产都拦；否则只有选上这批才拦。
+    for batches, blocked in ((("B2",), replanned), (("B1", "B2"), True)):
+        checked, _ = PreflightService(case.conn).evaluate(case.settings(*batches))
+        found = [row for row in checked["blockers"] if row["code"] == "external_actual_resource_conflict"]
+        assert bool(found) is blocked
+        if found:
+            assert "历史现场记录" in found[0]["message"] and "维护人员" in found[0]["message"]
+            assert ("只排其他批次也一样" in found[0]["message"]) is replanned
+            with pytest.raises(AppError):
+                compute_candidate_run(case.conn, case.settings(*batches), case.projections(*batches))
+        else:
+            accepted = case.accept(key="old-events-other-batch-0001", settings=case.settings(*batches))
+            assert WorkbenchRunWorker(case.conn).execute(accepted["run_ref"])["state"] == "complete"
+
+
+def test_held_arrangement_before_a_late_actual_finish_is_named_before_the_run(candidate_case):
+    """前道晚完工：后道按不重排时段保留的原安排早于前道实际完工，排产计算会整次拦下。
+    排产检查事先指出是哪道、给出路（时段改短或不设）；就算绕过检查，排产记录里也说不重排时段，不说冻结窗口。"""
+    from core.services.workbench.run import preflight as preflight_module
+
+    case = candidate_case
+    version, second = ordinary_route(case)
+    case.operation(seq=3)  # 时段外还有要排的工序，排产不会因"全都保留"停下
+    case.conn.commit()
+    plan = {row["op_id"]: row for row in case.conn.execute("SELECT op_id,start_time FROM Schedule WHERE version=?", (version,))}
+    start = datetime.fromisoformat(plan[second]["start_time"])
+    finish = (start + timedelta(minutes=30)).isoformat()
+    case.command("create", case.task(version, case.op_id), values(case, plan[case.op_id]["start_time"].replace(" ", "T"), finish))
+    window = {"start": start.strftime("%Y-%m-%dT%H:%M"), "end": (start + timedelta(minutes=10)).strftime("%Y-%m-%dT%H:%M")}
+    settings = case.settings(hold_window=window)
+    checked, _ = PreflightService(case.conn).evaluate(settings)
+    blocker = next(row for row in checked["blockers"] if row["code"] == "locked_predecessor_finish_conflict")
+    assert blocker["operation_ref"] == next(row["operation_ref"] for row in checked["tasks"] if row["sequence"] == 2)
+    assert "第 1 道" in blocker["message"] and finish.replace("T", " ") in blocker["message"] and "改短或不设" in blocker["message"]
+    original = preflight_module.held_arrangement_reasons
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(preflight_module, "held_arrangement_reasons", lambda *args: (
+            [row for row in original(*args)[0] if row["code"] != "locked_predecessor_finish_conflict"], [], {}))
+        accepted = case.accept(key="late-finish-held-run-0001", settings=settings)
+    with pytest.raises(Exception):
+        WorkbenchRunWorker(case.conn).execute(accepted["run_ref"])
+    error = json.loads(case.conn.execute("SELECT result_json FROM WorkbenchRunReceipts WHERE run_ref=?",
+                                         (accepted["run_ref"],)).fetchone()[0])["error"]
+    assert "已完工前道的实际完工" in error["message"] and "冻结" not in error["message"]
+    cleared, _ = PreflightService(case.conn).evaluate(case.settings(hold_window=None))
+    assert "locked_predecessor_finish_conflict" not in {row["code"] for row in cleared["blockers"]}

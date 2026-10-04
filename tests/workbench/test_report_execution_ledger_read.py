@@ -89,3 +89,41 @@ def test_external_reports_no_internal_resource_inference(report_ledger_api):
     assert row["complete"] and row["records_complete"] and row["data_quality"] == "complete"
     records = api.read(topic="records")["data"]["rows"]
     assert records[0]["machine_ref"] is None and records[0]["operator_ref"] is None
+
+
+def test_resource_hours_count_internal_work_and_external_is_not_unassigned(report_ledger_api):
+    api = report_ledger_api
+    with api.db() as conn:
+        second = LedgerCase(conn).op("OP2", seq=2)
+        conn.execute("UPDATE BatchOperations SET source='external' WHERE id=1")
+        conn.execute("UPDATE Schedule SET machine_id=NULL,operator_id=NULL WHERE op_id=1")
+        conn.execute("INSERT INTO Schedule(version,op_id,machine_id,operator_id,start_time,end_time) VALUES (1,?,'M1','O1',?,?)",
+                     (second, "2026-09-09T10:00:00", "2026-09-09T11:00:00"))
+    api.create(api.values(10, actual_machine_ref=None, actual_operator_ref=None, effective_processing_hours=None))
+    api.create(api.values(10, actual_start="2026-09-09T10:00:00", actual_end="2026-09-09T11:00:00",
+                          actual_machine_ref=None, effective_processing_hours=.5), op=second)
+    # 外协不占本厂设备和人员：资源工时只统计自制；「未填写」只剩漏填设备的自制报工，下钻结果与之一致。
+    machines = api.read(topic="machines")["data"]["rows"]
+    assert [(row["resource_label"], row["production_reports"], row["effective_processing_hours"]) for row in machines] == [("未填写", 1, .5)]
+    assert [(row["resource_label"], row["production_reports"]) for row in api.read(topic="people")["data"]["rows"]] == [("Operator", 1)]
+    drilled = api.read(topic="records", resource_type="machine", resource_ref="unassigned")["data"]["rows"]
+    assert [row["operation_ref"] for row in drilled] == [api.task(second)["operation_ref"]]
+    assert len(api.read(topic="records")["data"]["rows"]) == 2
+
+
+def test_old_external_record_with_machine_is_neither_summed_nor_drilled_by_that_machine(report_ledger_api, monkeypatch):
+    from core.services.workbench.execution import production_report_validation
+
+    api = report_ledger_api
+    with api.db() as conn:
+        conn.execute("UPDATE BatchOperations SET source='external' WHERE id=1")
+        conn.execute("UPDATE Schedule SET machine_id=NULL,operator_id=NULL WHERE op_id=1")
+    # 修复前写入的旧外协报工带了本厂设备：资源工时汇总不算它，按这台设备下钻也不该出现。
+    monkeypatch.setattr(production_report_validation, "_reject_external_resources", lambda operation, values: None)
+    api.create(api.values(10, effective_processing_hours=.5))
+    monkeypatch.undo()
+    assert api.read(topic="machines")["data"]["rows"] == []
+    machine_ref = api.read(topic="records")["data"]["rows"][0]["machine_ref"]
+    assert machine_ref is not None
+    for kind, ref in (("machine", machine_ref), ("machine", "unassigned")):
+        assert api.read(topic="records", resource_type=kind, resource_ref=ref)["data"]["rows"] == []

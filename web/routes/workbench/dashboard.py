@@ -16,6 +16,7 @@ from web.public_token_registry import issue_public_token, resolve_public_token
 
 from .api_responses import api_endpoint
 from .dashboard_analysis import dashboard_analysis, dashboard_candidate_comparison
+from .read_budget import PLAN_READ_SLOTS
 from .read_context import _SCOPE, bind_read_snapshot
 from .write_context import issue_write_context, validate_write_context
 
@@ -62,20 +63,34 @@ def _bind(query, data, token):
     return {"snapshot_ref": issue_public_token(_SCOPE, canonical_json(payload), ttl_seconds=900), "as_of": data["as_of"]}
 
 
+def _history(reader, item_ref, number, size):
+    """Read history in the same snapshot, but report it only after the item is known to be in scope."""
+    try:
+        return reader.history(item_ref, number, size), None
+    except WorkbenchCommandRejected as exc:
+        return None, exc
+
+
 def _read(item_ref=None, history=False):
     query, token, history_page = _arguments(item_ref is not None, history)
     reader = WorkbenchDashboardService(g.db, context_factory=issue_write_context)
-    with reader.read_snapshot():
-        data = reader.read(_time(token))
-        snapshot = _bind(query, data, token)
-        if item_ref is None:
-            result = reader.workspace(data, query)
-        else:
-            item = reader.detail(data, item_ref, query)
-            result = {"item": reader.public_item(item), "as_of": data["as_of"], "scope": query.scope()}
-            if history:
-                result["history"] = reader.history(item_ref, history_page, query.size)
-            payload_size(result)
+    with PLAN_READ_SLOTS.slot():
+        with reader.read_snapshot():
+            sources = reader.load(_time(token))
+            records = _history(reader, item_ref, history_page, query.size) if history else None
+        # 读事务到此结束：整份看板的投影和指纹只用已读出的事实，算多久都不挡别人提交写入。
+        data = reader.project(sources)
+    snapshot = _bind(query, data, token)
+    if item_ref is None:
+        result = reader.workspace(data, query)
+    else:
+        item = reader.detail(data, item_ref, query)
+        result = {"item": reader.public_item(item), "as_of": data["as_of"], "scope": query.scope()}
+        if records is not None:
+            result["history"], error = records
+            if error is not None:
+                raise error
+        payload_size(result)
     response = query_success(result, snapshot)
     payload_size(response.get_json())
     response.headers["Cache-Control"] = "no-store"
@@ -105,7 +120,7 @@ def _command(item_ref, action):
         raise WorkbenchCommandRejected("invalid_input", "提交的内容不完整或有多余项，处置还没有保存。请刷新页面后重新填写。", 400)
     g.workbench_request_key = body["request_key"]
     service = WorkbenchDashboardCommandService(g.db)
-    result = service.execute(action, item_ref, body["input"], request_key=body["request_key"],
+    result = service.execute(action, item_ref, body["input"], request_key=body["request_key"], admission=PLAN_READ_SLOTS.slot,
         validate_context=lambda subject, verb, facts: validate_write_context(body["write_token"], subject, verb, facts))
     response = jsonify(result)
     response.headers["Cache-Control"] = "no-store"

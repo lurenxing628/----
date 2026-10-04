@@ -99,4 +99,116 @@ def test_unknown_no_number_repeat_and_problem_download(field_api):
     rejected = success(api.upload(encode_reports(values)))
     response = api.client.get(BASE + '/files/errors', query_string={'preview_ref': rejected['data']['preview_ref']})
     assert response.status_code == 200
+    # 出了预检结果后报工文件弹窗里的按钮叫「重新预检」，不再是早已改名的「预检文件」。
+    missing = api.client.get(BASE + '/files/errors')
+    assert missing.status_code == 400 and missing.get_json()['error']['message'] == '预检结果已过期，没有开始下载。请点「重新预检」。'
     book = load_workbook(BytesIO(response.data)); assert book.active['A2'].value == 2; book.close()
+
+
+def test_unchanged_old_external_row_round_trips_and_new_resource_is_refused(field_api, monkeypatch):
+    from core.services.workbench.execution import production_report_validation
+
+    api = field_api
+    case = api.case
+    second = case.op("OP2", seq=2)
+    case.plan(2, [case.op_id, second])
+    case.conn.execute("UPDATE BatchOperations SET source='external' WHERE id=?", (case.op_id,))
+    case.conn.commit()
+    # 修复前写入的旧外协报工带了本厂设备人员：原样导出再导回不应整份被拒，交给排产检查指出。
+    monkeypatch.setattr(production_report_validation, "_reject_external_resources", lambda operation, values: None)
+    case.command("create", case.task(2, case.op_id), case.values(1))
+    monkeypatch.undo()
+    reading = api.read()
+    exported = api.client.get(BASE + '/files/export', query_string={**reading['data']['scope'],
+                              'snapshot_ref': reading['meta']['snapshot_ref'], 'page': 1, 'size': 50})
+    assert exported.status_code == 200
+    checked = success(api.upload(exported.data))['data']
+    assert checked['can_confirm'] and checked['summary']['unchanged'] == 1 and checked['summary']['rejected'] == 0
+    # 新登记的外协行带本厂设备人员仍在入口拒绝。
+    fresh = rows(1)
+    fresh[0].update(report_no='BG-EXCEL-EXTERNAL', operation_label='1 Turning')
+    refused = success(api.upload(encode_reports(fresh)))['data']
+    assert not refused['can_confirm'] and '经办人' in refused['rows'][0]['errors'][0]['message']
+
+
+def _other_writer_can_lock(path):
+    import sqlite3
+
+    other = sqlite3.connect(path, timeout=0)
+    other.isolation_level = None
+    try:
+        other.execute('BEGIN IMMEDIATE')
+        other.execute('ROLLBACK')
+        return True
+    except sqlite3.OperationalError:
+        return False
+    finally:
+        other.close()
+
+
+def test_confirm_rebuilds_the_cohort_outside_the_write_lock_and_reuses_it(field_api, monkeypatch):
+    from core.services.workbench.execution.field_workspace import FieldWorkspaceService
+
+    api = field_api
+    preview = success(api.upload(encode_reports(rows())))
+    built, original = [], FieldWorkspaceService.cohort
+
+    def cohort(self, scope):
+        built.append(_other_writer_can_lock(api.path))
+        return original(self, scope)
+
+    monkeypatch.setattr(FieldWorkspaceService, 'cohort', cohort)
+    result = success(api.client.post(BASE + '/files/confirm', json=api.confirm_body(preview)))
+    assert result['result'] == 'committed'
+    # 整份现场范围只在写锁外重建一次（这时别的连接仍能拿写锁）；写锁里库没变就直接沿用，只核对并写入报工。
+    assert built == [True]
+
+
+def test_preview_parses_before_the_slot_and_export_writes_after_it(field_api, monkeypatch):
+    from flask import g
+
+    from core.services.workbench.execution.field_report_files import FieldReportFileService
+    from web.routes.workbench import execution_files, read_budget
+
+    api = field_api
+    calls, decode, download = [], execution_files.decode_reports, FieldReportFileService.download
+
+    def parse(content):
+        calls.append(('parse', read_budget.PLAN_READ_SLOTS._available, g.db.in_transaction))
+        return decode(content)
+
+    def write(self, cohort, template=False):
+        calls.append(('write', read_budget.PLAN_READ_SLOTS._available, g.db.in_transaction))
+        return download(self, cohort, template)
+
+    monkeypatch.setattr(execution_files, 'decode_reports', parse)
+    monkeypatch.setattr(FieldReportFileService, 'download', write)
+    assert success(api.upload(encode_reports(rows())))['data']['can_confirm']
+    reading = api.read()
+    response = api.client.get(BASE + '/files/export', query_string={**reading['data']['scope'], 'snapshot_ref': reading['meta']['snapshot_ref']})
+    assert response.status_code == 200
+    # 解析在排队读现场范围之前，生成 XLSX 在读事务和读额度都释放之后。
+    assert calls == [('parse', 1, False), ('write', 1, False)]
+
+
+def test_retry_racing_its_own_commit_replays_instead_of_reporting_nothing_written(field_api, monkeypatch):
+    # R2 用同一请求编号重试时，锁外查回执那一刻 R1 还没提交；R1 提交后，R2 预取现场资料就会因数据已变被拒。
+    # 拒绝前要再查一次回执，按 R1 的结果重放，不能回"没有写入"。
+    from core.services.workbench.commands import WorkbenchCommandService
+
+    api = field_api
+    preview = success(api.upload(encode_reports(rows())))
+    body = api.confirm_body(preview)
+    first = success(api.client.post(BASE + '/files/confirm', json=body))
+    original, misses = WorkbenchCommandService.replay, []
+
+    def replay_once_missed(self, **intent):
+        if not misses:
+            misses.append(intent['request_key'])
+            return None
+        return original(self, **intent)
+
+    monkeypatch.setattr(WorkbenchCommandService, 'replay', replay_once_missed)
+    second = success(api.client.post(BASE + '/files/confirm', json=body))
+    assert misses and second['replayed'] and second['receipt_ref'] == first['receipt_ref']
+    assert api.task()['execution']['known_completed_quantity'] == 3

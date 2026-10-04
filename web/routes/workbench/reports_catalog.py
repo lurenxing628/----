@@ -16,6 +16,7 @@ from core.services.workbench.report.queries import report_workspace
 from web.api_responses import query_success
 
 from .api_responses import api_endpoint
+from .read_budget import PLAN_READ_SLOTS
 from .read_context import bind_read_snapshot
 from .reports import arguments, bind_report_snapshot, download_response, report_read_time
 
@@ -26,24 +27,27 @@ def _official(export):
         raise WorkbenchCommandRejected("invalid_input", "正式执行复盘只能按工序完成专题看，报表没有变化。请选择工序完成专题后重试。", 400)
     reader = WorkbenchReportFacts(g.db, current_app.logger)
     as_of = report_read_time(token)
-    with reader.read_snapshot():
-        facts = reader.read(scope, as_of=as_of)
-        snapshot = bind_report_snapshot(facts["scope"].scope(), facts["fingerprint"], token, as_of)
-        data, ordered, labels = report_workspace(reader, facts, snapshot, topic, page)
-        if not export:
-            response = query_success(data, snapshot)
-            response.headers["Cache-Control"] = "no-store"
-            return response
-        if request.args.get("format", "xlsx") != "xlsx":
-            raise WorkbenchCommandRejected("invalid_input", "正式执行复盘只提供 XLSX，没有开始下载。需要 CSV 请用五个专题的范围导出。", 400)
-        selected = [labels[row["operation_ref"]] for row in ordered]
-        if not selected:
-            raise WorkbenchCommandRejected("empty_export", "当前范围里没有可导出的正式工序，没有开始下载。请放宽筛选范围后重新点「导出 XLSX」。", 422)
-        ensure_export_size(reader.engine, len(selected))
-        file = reader.engine._build_xlsx_export(report_name="正式执行复盘", filename="正式执行复盘.xlsx",
-            estimated_rows=len(selected),
-            build_direct=lambda: export_execution_review_xlsx(selected, summary_rows=metadata(data, snapshot)),
-            build_stream=lambda: export_execution_review_xlsx(selected, summary_rows=metadata(data, snapshot), write_only=True))
+    # 与现场分析是同一份“整份正式计划 + 台账”重建，和看板、现场页一起排读额度。
+    with PLAN_READ_SLOTS.slot():
+        with reader.read_snapshot():
+            facts = reader.read(scope, as_of=as_of)
+            snapshot = bind_report_snapshot(facts["scope"].scope(), facts["fingerprint"], token, as_of)
+            data, ordered, labels = report_workspace(reader, facts, snapshot, topic, page)
+    if not export:
+        response = query_success(data, snapshot)
+        response.headers["Cache-Control"] = "no-store"
+        return response
+    if request.args.get("format", "xlsx") != "xlsx":
+        raise WorkbenchCommandRejected("invalid_input", "正式执行复盘只提供 XLSX，没有开始下载。需要 CSV 请用五个专题的范围导出。", 400)
+    selected = [labels[row["operation_ref"]] for row in ordered]
+    if not selected:
+        raise WorkbenchCommandRejected("empty_export", "当前范围里没有可导出的正式工序，没有开始下载。请放宽筛选范围后重新点「导出 XLSX」。", 422)
+    ensure_export_size(reader.engine, len(selected))
+    # 读事务和读额度都已释放：XLSX 只用已读出的结果生成，不再占着读锁。
+    file = reader.engine._build_xlsx_export(report_name="正式执行复盘", filename="正式执行复盘.xlsx",
+        estimated_rows=len(selected),
+        build_direct=lambda: export_execution_review_xlsx(selected, summary_rows=metadata(data, snapshot)),
+        build_stream=lambda: export_execution_review_xlsx(selected, summary_rows=metadata(data, snapshot), write_only=True))
     return download_response(file, snapshot)
 
 
@@ -69,15 +73,16 @@ def _catalog(kind, export=False):
     if (export or page.number > 1) and not token:
         raise WorkbenchCommandRejected("snapshot_required", messages.STALE, 400)
     reader = WorkbenchReportFacts(g.db, current_app.logger)
-    with reader.read_snapshot():
-        facts = catalog_facts(reader, scope)
-        snapshot = bind_read_snapshot(facts["scope"].scope(), facts["fingerprint"], token)
-        data, ordered, selected = catalog_workspace(reader, facts, snapshot, page)
-        data["exports"] = {"url": "/api/workbench/v1/reports/" + kind + "/export", "formats": ["csv", "xlsx"], "scope": "all_filtered_rows"}
-        if export:
-            format_name = request.args.get("format", "xlsx")
-            file = export_catalog_xlsx(reader, data, selected, snapshot) if format_name == "xlsx" else export_table(reader.engine, data, ordered, snapshot, format_name)
+    with PLAN_READ_SLOTS.slot():
+        with reader.read_snapshot():
+            facts = catalog_facts(reader, scope)
+            snapshot = bind_read_snapshot(facts["scope"].scope(), facts["fingerprint"], token)
+            data, ordered, selected = catalog_workspace(reader, facts, snapshot, page)
+            data["exports"] = {"url": "/api/workbench/v1/reports/" + kind + "/export", "formats": ["csv", "xlsx"], "scope": "all_filtered_rows"}
     if export:
+        # 读事务和读额度都已释放：文件只用已读出的结果生成。
+        format_name = request.args.get("format", "xlsx")
+        file = export_catalog_xlsx(reader, data, selected, snapshot) if format_name == "xlsx" else export_table(reader.engine, data, ordered, snapshot, format_name)
         return download_response(file, snapshot)
     response = query_success(data, snapshot)
     response.headers["Cache-Control"] = "no-store"

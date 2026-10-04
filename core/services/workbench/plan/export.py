@@ -17,6 +17,7 @@ from openpyxl.styles import Font
 from core.models.workbench_resource_file import ResourceFileDownload
 from core.services.workbench.facts.file_writer import _value, check_capacity
 from core.services.workbench.facts.process_file_xml import preserve_carriage_returns
+from core.services.workbench.facts.table_cells import number_text
 
 HEADERS = (
     "计划编号", "来源版本", "计划类型", "计划名称", "是否当前正式", "计划完整性", "数据版本", "读取时间",
@@ -60,6 +61,11 @@ def _values(values, number, fmt):
             for index, value in enumerate(values)]
 
 
+def _cell(value):
+    """CSV 里的数字写成页面上的最短十进制（不写 24.0、1e-07）；XLSX 仍是数字格，方便求和，与其它只读导出一致。"""
+    return number_text(value) if type(value) in (int, float) else value
+
+
 def write_plan_export(data, snapshot, fmt):
     check_capacity(data["task_count"], fmt)
     if fmt == "csv":
@@ -78,7 +84,8 @@ def _csv(data, snapshot):
         writer = csv.writer(text, lineterminator="\r\n")
         writer.writerow(HEADERS)
         for number, row in enumerate(export_rows(data, snapshot), 2):
-            writer.writerow(["'" + value if type(value) is str else value for value in _values(row, number, "csv")])
+            # 文字前加撇号防公式和自动转换；数字不加，打开时照样认作数字。
+            writer.writerow(["'" + value if type(value) is str else _cell(value) for value in _values(row, number, "csv")])
         text.flush()
         buffer.seek(0)
         return _download(buffer.read(), "csv", data["task_count"])

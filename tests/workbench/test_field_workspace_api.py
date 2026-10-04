@@ -4,6 +4,7 @@ from datetime import date, datetime
 
 import pytest
 
+import web.public_token_registry as registry
 from core.services.workbench.facts.plan_serialization import plain_plan_facts
 from tests.workbench.execution_ledger_support import all_rows
 from tests.workbench.field_workspace_support import BASE, FieldAPI, _ledger_fixture, success
@@ -70,6 +71,25 @@ def test_pages_filter_detail_scope_and_old_plan_identity(field_api):
     assert old['task_ref'] != current['task_ref']
 
 
+def test_list_issues_write_tokens_for_returned_rows_only(field_api):
+    # 汇总和指纹仍按整份计划算，写令牌只发给本次返回的行，不把各页面共用的令牌登记表挤满。
+    api = field_api
+    ids = [api.case.op_id] + [api.case.op('TOKEN-' + str(index), seq=index) for index in range(2, 27)]
+    api.case.plan(2, ids)
+    first = api.read(size=10)
+    page = [row['execution']['write_context']['write_token'] for row in first['data']['tasks']]
+    with api.app.app_context():
+        issued = set(registry._registry()['workbench-write-v1']['tokens'])
+    assert first['data']['page']['total'] == 26 and all(page) and issued == set(page)
+    later = api.read(size=10, page=3, snapshot_ref=first['meta']['snapshot_ref'], **first['data']['scope'])
+    api.create(task=later['data']['tasks'][-1])
+    api.create()  # 令牌绑定台账修订号，报工后要重新读取才能拿到新令牌
+    # 旧计划上的任务不能新增报工，但已有报工照旧能补录、更正、作废。
+    old = api.task(plan_ref=api.case.plan_ref(1))
+    assert not old['execution']['write_context']['capabilities']['create']
+    assert old['execution']['reports'][0]['write_context']['write_token']
+
+
 def test_cross_plan_reports_legacy_finish_and_raw_preservation(field_api):
     api = field_api
     api.create(api.case.values(2))
@@ -102,14 +122,25 @@ def test_blob_and_date_private_facts_are_typed(field_api):
     assert typed['date']['storage_type'] == 'date' and typed['blob']['hex'] == '00'
 
 
-def test_initial_cross_page_focus_and_common_gantt_scope(field_api):
+def test_initial_cross_page_focus_and_common_gantt_scope(field_api, monkeypatch):
+    from core.services.workbench.execution.field_workspace import FieldWorkspaceService
+
     api = field_api
     ids = [api.case.op_id] + [api.case.op('FOCUS-' + str(index), seq=index) for index in range(2, 30)]
     api.case.plan(2, ids)
     selected = api.case.task(2, ids[-1])
+    original, signed = FieldWorkspaceService._with_contexts, []
+
+    def with_contexts(self, tasks):
+        signed.extend(task['task_ref'] for task in tasks)
+        return original(self, tasks)
+
+    monkeypatch.setattr(FieldWorkspaceService, '_with_contexts', with_contexts)
     result = api.read(size=10, task_ref=selected, batch_ids='["B1"]', range_start='2026-09-09T07:00:00', range_end='2026-09-09T11:00:00')
     assert result['data']['page']['number'] == 3 and any(row['task_ref'] == selected for row in result['data']['tasks'])
-    wrong = api.client.get(BASE + '/tasks', query_string={'plan_ref': api.case.plan_ref(1), 'task_ref': selected})
+    # 定位页码只在已算好的范围里查：报工令牌只给返回的这一页签一次，选中任务不重复签。
+    assert signed == [row['task_ref'] for row in result['data']['tasks']]
+    wrong =api.client.get(BASE + '/tasks', query_string={'plan_ref': api.case.plan_ref(1), 'task_ref': selected})
     assert wrong.status_code == 404
 
 
@@ -154,3 +185,25 @@ def test_legacy_finish_explicit_supplement_and_preserved_events(field_api):
 def test_invalid_queries_do_not_fallback(field_api, query):
     response = field_api.client.get(BASE + '/tasks', query_string=query)
     assert response.status_code == 400 and response.get_json()['committed'] is False
+
+
+def test_page_tokens_are_issued_after_the_read_snapshot_without_sql(field_api, monkeypatch):
+    import sqlite3
+
+    from core.services.workbench.execution.field_workspace import FieldWorkspaceService
+    from web.routes.workbench import read_budget
+
+    original, paged = FieldWorkspaceService.page, []
+
+    def page(self, cohort, number, size):
+        paged.append((self.conn.in_transaction, read_budget.PLAN_READ_SLOTS._available))
+        self.conn.set_authorizer(lambda *_args: sqlite3.SQLITE_DENY)
+        try:
+            return original(self, cohort, number, size)
+        finally:
+            self.conn.set_authorizer(lambda *_args: sqlite3.SQLITE_OK)
+
+    monkeypatch.setattr(FieldWorkspaceService, 'page', page)
+    assert field_api.task()['execution']['write_context']['write_token']
+    # 整份范围在读额度和读快照里算完；给这一页签发报工令牌不再读库，也不再占着读锁和额度。
+    assert paged == [(False, 1)]

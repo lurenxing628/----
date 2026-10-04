@@ -15,6 +15,7 @@ from core.services.report.exporters.xlsx import SUMMARY_IDENTITY_LABELS, _append
 from core.services.report.report_engine import ReportExport
 from core.services.workbench.facts.execution_projection import COMPLETION_BASIS_TEXT, DATA_QUALITY_TEXT
 from core.services.workbench.facts.export_names import export_stamp
+from core.services.workbench.facts.table_cells import number_text
 
 # 导出标题与列名都是用户直接看到的文字，统一走词表，不再暴露专题代号。
 
@@ -43,6 +44,11 @@ def _value(value):
     if isinstance(value, bool):
         return "是" if value else "否"
     return value
+
+
+def _csv_cell(value):
+    """CSV 里的数字按页面上的最短十进制写（7 不写成 7.0，也不用 1e-07）；文字照旧防公式。"""
+    return number_text(value) if type(value) in (int, float) else _sanitize_export_cell(value)
 
 
 def _cell(column_key, value):
@@ -100,7 +106,7 @@ def export_table(engine, data, rows, snapshot, format_name):
         writer = csv.writer(output)
         writer.writerow([column["label"] for column in columns] + ["数据截至", IDENTITY_LABELS[1], "筛选范围", "数据来源", "统计说明与待补资料"])
         for row in values:
-            writer.writerow([_sanitize_export_cell(value) for value in row + [snapshot["as_of"], snapshot["snapshot_ref"], canonical_json(data["scope"]), data["provenance"], "；".join(data["data_gaps"])]])
+            writer.writerow([_csv_cell(value) for value in row + [snapshot["as_of"], snapshot["snapshot_ref"], canonical_json(data["scope"]), data["provenance"], "；".join(data["data_gaps"])]])
         return ReportExport(filename + ".csv", "text/csv;charset=utf-8", io.BytesIO(output.getvalue().encode("utf-8-sig")), estimated_rows=len(rows))
     workbook = openpyxl.Workbook(write_only=True)
     output = io.BytesIO()

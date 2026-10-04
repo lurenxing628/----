@@ -2,9 +2,11 @@
 
 import getpass
 import re
+from contextlib import nullcontext
 
-from core.models.workbench_command import WorkbenchCommandOutcome
+from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
 from core.models.workbench_execution_input import reject
+from core.services.workbench.command_prefetch import run_prefetched, write_stamp
 from core.services.workbench.commands import WorkbenchCommandService
 from data.repositories.workbench_execution_report_repo import WorkbenchExecutionReportRepository
 
@@ -70,20 +72,49 @@ class WorkbenchProductionReportService:
         if not isinstance(ref, str) or re.fullmatch(r"[A-Za-z0-9_-]{32,48}", ref) is None:
             reject("本页数据已过期，请刷新后重试。", status=400)
 
-    def execute_import(self, preview_ref, *, request_key, load_items, validate_context):
+    def execute_import(self, preview_ref, *, request_key, load_items, validate_context, admission=None):
         """Replay before resolving expiring retained bytes, with the same intent hash.
 
         load_items is server-owned: it must resolve the immutable original preview
         bytes/mode/rows or reject. It is never called for a committed replay.
+        It rebuilds the whole field cohort, so it runs in a read snapshot before the
+        write lock (inside the optional admission slot); the guard reuses its items
+        while the database is unchanged and only then prepares them under the lock.
         """
         self._batch_context(preview_ref)
+        intent = {"preview_ref": preview_ref}
 
-        def guard():
-            prepared = self._prepare(normalize_items(load_items()))
-            validate_context(preview_ref, "import_confirm", prepared.snapshot)
-            return prepared
+        def committed():
+            return self.commands.replay(request_key=request_key, action="execution.import_confirm",
+                                        context_ref=preview_ref, normalized_input=intent)
 
-        return self._execute({"preview_ref": preview_ref}, request_key, "execution.import_confirm", preview_ref, guard)
+        replayed = committed()
+        if replayed is not None:
+            return replayed
+
+        def prefetch():
+            with admission() if admission else nullcontext():
+                with self.ledger.read_snapshot():
+                    return normalize_items(load_items()), write_stamp(self.conn)
+
+        def command(prefetched):
+            def guard():
+                prepared = self._prepare(prefetched.current(lambda: normalize_items(load_items())))
+                validate_context(preview_ref, "import_confirm", prepared.snapshot)
+                return prepared
+
+            return self._execute(intent, request_key, "execution.import_confirm", preview_ref, guard)
+
+        try:
+            return run_prefetched(self.conn, prefetch, command)
+        except WorkbenchCommandRejected:
+            # A retry can race its own first attempt: the original commits while this one waits
+            # for the read slot, and the changed field facts then reject the old preview before
+            # the in-lock receipt check is reached. Answer with that commit, not "nothing written".
+            replayed = committed()
+            if replayed is not None:
+                return replayed
+            raise
 
     def _execute(self, items, request_key, action, context_ref, guard):
         def mutate(prepared):

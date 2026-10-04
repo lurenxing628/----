@@ -30,6 +30,7 @@ def project_operation(row, projection, label, facts, as_of):
     status = "invalid" if invalid_time and not complete else projection["execution_state"]
     return {"operation_ref": projection["operation_ref"], "task_ref": facts["task_refs"][row["schedule_id"]],
             "batch_ref": batch["ref"], "batch_label": batch["label"], "operation_label": label["operation_label"],
+            "operation_source": row.get("source"),
             "planned_start": planned_start, "planned_end": planned_end, "actual_start": projection["first_actual_start"],
             "confirmed_finish": confirmed_finish, "completion_basis": projection["completion_basis"],
             "execution_state": status, "ledger_execution_state": projection["execution_state"],
@@ -45,6 +46,15 @@ def project_operation(row, projection, label, facts, as_of):
             **legacy_review(projection)}
 
 
+def _resource_selected(scope, operation, events):
+    # 外协本来就不占本厂设备和人员：既不算「未填写」，旧记录里误填的设备人员也不算，与资源工时汇总同一口径。
+    if operation["operation_source"] == "external":
+        return False
+    key = scope.resource_type + "_ref"
+    values = [operation[key]] + [event[key] for event in events]
+    return (None if scope.resource_ref == "unassigned" else scope.resource_ref) in values
+
+
 def _selected(scope, operation, events):
     end = operation["planned_end"]
     if scope.plan_finish_date_from and (end is None or not scope.plan_finish_date_from <= end[:10] <= scope.plan_finish_date_to):
@@ -53,11 +63,8 @@ def _selected(scope, operation, events):
         return False
     if scope.query.strip().casefold() not in (operation["batch_label"] + " " + operation["operation_label"]).casefold():
         return False
-    if scope.resource_ref:
-        key = scope.resource_type + "_ref"
-        values = [operation[key]] + [event[key] for event in events]
-        if (None if scope.resource_ref == "unassigned" else scope.resource_ref) not in values:
-            return False
+    if scope.resource_ref and not _resource_selected(scope, operation, events):
+        return False
     if scope.focus == "unreported":
         return operation["execution_state"] == "unreported"
     if scope.focus == "data_gaps":
