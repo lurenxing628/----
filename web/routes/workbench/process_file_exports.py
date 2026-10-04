@@ -51,10 +51,12 @@ def process_file_export_preview(kind):
         snapshot = bind_read_snapshot(query_scope, state, token)
         parts, scope = select_export_parts(reader, selection=body["selection"], scope=body["scope"],
                                           refs=body.get("refs"), target_ref=body.get("target_ref"))
-        count = count_process_export_rows(kind, parts, reader.facts(), body["format"])
-        document = canonical_json({"kind": kind, "body": body, "query_scope": query_scope,
-                                   "state": state, "row_count": count, "part_count": len(parts)})
-        ref, expiry = retain_context(EXPORT_SCOPE, document)
+        facts = reader.facts()
+    # 读事务已结束：逐格试算导出只用读快照里的工艺资料。
+    count = count_process_export_rows(kind, parts, facts, body["format"])
+    document = canonical_json({"kind": kind, "body": body, "query_scope": query_scope,
+                               "state": state, "row_count": count, "part_count": len(parts)})
+    ref, expiry = retain_context(EXPORT_SCOPE, document)
     return query_success({"kind": kind, "export_ref": ref, "expires_at": expiry, "selection": body["selection"],
                           "scope": scope, "target_ref": body.get("target_ref"), "row_count": count,
                           "part_count": len(parts), "format": body["format"], "columns": public_columns(kind)}, snapshot)
@@ -72,18 +74,20 @@ def process_file_export(kind):
     document, _ = resolve_context(EXPORT_SCOPE, opaque_ref(request.args["export_ref"], "export_ref"), "snapshot_stale")
     saved = json.loads(document)
     if saved["kind"] != kind:
-        raise WorkbenchCommandRejected("snapshot_stale", "预检结果属于另一类工艺文件，没有开始下载；系统没有替你换内容。请重新点「开始预检」。")
+        raise WorkbenchCommandRejected("snapshot_stale", "预检结果属于另一类工艺文件，没有开始下载；系统没有替你换内容。请点「重新预检」。")
     body = saved["body"]
     reader = WorkbenchProcessQueryService(g.db, current_app.logger)
     with reader.read_snapshot() as state:
         snapshot = bind_read_snapshot(saved["query_scope"], state, body["snapshot_ref"])
         if state != saved["state"]:
-            raise WorkbenchCommandRejected("snapshot_stale", "预检之后工艺资料有变化，没有开始下载。请重新点「开始预检」。")
+            raise WorkbenchCommandRejected("snapshot_stale", "预检之后工艺资料有变化，没有开始下载。请点「重新预检」。")
         parts, _ = select_export_parts(reader, selection=body["selection"], scope=body["scope"],
                                       refs=body.get("refs"), target_ref=body.get("target_ref"))
-        download = encode_process_file(kind, process_export_rows(kind, parts, reader.facts()), body["format"])
-        if download.row_count != saved["row_count"] or len(parts) != saved["part_count"]:
-            raise WorkbenchCommandRejected("snapshot_stale", "导出范围里的记录条数有变化，一行都没有下载。请重新点「开始预检」。")
+        facts = reader.facts()
+    # 读事务已结束：文件只用读快照里的工艺资料生成，编码再久也不挡别人提交写入。
+    download = encode_process_file(kind, process_export_rows(kind, parts, facts), body["format"])
+    if download.row_count != saved["row_count"] or len(parts) != saved["part_count"]:
+        raise WorkbenchCommandRejected("snapshot_stale", "导出范围里的记录条数有变化，一行都没有下载。请点「重新预检」。")
     response = _response(download)
     response.headers["X-Workbench-Snapshot-Ref"] = snapshot["snapshot_ref"]
     response.headers["X-Workbench-As-Of"] = snapshot["as_of"]

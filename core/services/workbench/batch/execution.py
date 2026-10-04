@@ -5,10 +5,9 @@ from collections import defaultdict
 from core.infrastructure.schema_probe import object_names
 from core.infrastructure.transaction import TransactionManager
 from core.infrastructure.workbench_execution_ledger_schema import execution_ledger_objects
-from core.models.workbench_command import WorkbenchCommandRejected, input_fingerprint
+from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_execution_input import MAX_OPERATIONS
 from core.services.workbench.execution.ledger import ExecutionLedgerService
-from core.services.workbench.process.queries import _plain
 from data.repositories.workbench_execution_repo import WorkbenchExecutionRepository
 
 
@@ -46,8 +45,8 @@ def project_execution_snapshot(raw):
     projections = {row.operation_ref: row.to_dict() for facts in raw["chunks"] for row in ledger.project_loaded(facts)}
     if set(projections) != set(raw["refs"]):
         raise WorkbenchCommandRejected("execution_ledger_unavailable", "有工序的报工记录读取失败，请联系维护人员核对。")
-    return {"available": True, "projections": projections, "issues": [],
-            "snapshot_facts": {**raw["clock"], "projection_hash": input_fingerprint(_plain(projections))}}
+    # No separate projection hash: BatchFacts.fingerprint() already covers every projection above.
+    return {"available": True, "projections": projections, "issues": [], "snapshot_facts": {**raw["clock"]}}
 
 
 def protects_execution(projection):

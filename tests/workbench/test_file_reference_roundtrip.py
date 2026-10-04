@@ -1,9 +1,11 @@
 """Exported reference columns remain readable when importing into an older backup."""
 
+import csv
 import sqlite3
 from contextlib import closing
-from io import BytesIO
+from io import BytesIO, StringIO
 
+import openpyxl
 import pytest
 
 from core.errors import ValidationError
@@ -14,6 +16,7 @@ from core.services.workbench.material.files import WorkbenchMaterialFileService
 from core.services.workbench.resource.entities import WorkbenchResourceService
 from core.services.workbench.resource.files import WorkbenchResourceFileService
 from tests.workbench.batch_support import batch_database, detail, ref_for, state
+from tests.workbench.identity_metadata_support import business_snapshot, insert_row
 from tests.workbench.material_actions_api_support import material_actions_client, upload
 from tests.workbench.material_file_support import confirm_import, export_file, file_bytes
 from tests.workbench.material_support import material_row
@@ -151,11 +154,11 @@ def test_batch_actual_export_reimports_status_as_reference(batch_client):
     references = document["warnings"][1:]
     assert "“状态”" in references[0]["message"]
     assert "“当前有效齐套（只读）”" in references[1]["message"]
-    fields = document["rows"][0]["input"]["fields"]
-    assert "status" not in fields and "display_ready_status" not in fields
+    # 两列只读记录不导入，其余各格和导出时一样：整行判为不变、确认时不写，有效齐套不会写进维护标记。
+    row = document["rows"][0]
+    assert row["action"] == "unchanged" and row["input"] is None
     original = detail(client, selected)["data"]
     assert original["display_ready_status"] == "yes" and original["fields"]["ready_status"] == "no"
-    assert fields["ready_status"] == original["fields"]["ready_status"]
     saved = confirm_batch(client, document)
     assert saved.status_code == 200 and saved.get_json()["result"] == "unchanged", saved.get_json()
     after = detail(client, selected)["data"]
@@ -186,3 +189,63 @@ def test_batch_reference_status_cannot_create_completed_state_or_accept_unknown_
     response = uploaded(batch_client, [], content=content.getvalue())
     assert response.status_code == 422 and state(batch_client) == before
     workbook.close()
+
+
+# openpyxl 的数字格只留 16 位有效数字，CSV 原来又写成 7.0、1e-07；现在两种文件都写成页面上的最短十进制。
+STOCKS = {"MAT-THIRD": (10 / 3, "3.3333333333333335"), "MAT-SUM": (0.1 + 0.2, "0.30000000000000004"),
+          "MAT-TINY": (1e-07, "0.0000001"), "MAT-SEVEN": (7.0, "7"), "MAT-HUGE": (1e20, "100000000000000000000")}
+DAYS = {"S-SUM": (1.1 + 2.2, "3.3000000000000003"), "S-TWO": (2.0, "2")}
+
+
+def _written(content, fmt, column):
+    """文件里每个编号那一格写的文字，以及它是不是文本格（CSV 数字不加防公式撇号）。"""
+    if fmt == "csv":
+        rows = list(csv.reader(StringIO(content.decode("utf-8-sig"))))[1:]
+        return {row[0].lstrip("'"): (row[column], True) for row in rows}
+    book = openpyxl.load_workbook(BytesIO(content))
+    try:
+        return {row[0].value: (row[column].value, (row[column].data_type, row[column].number_format) == ("s", "@"))
+                for row in book.worksheets[0].iter_rows(min_row=2)}
+    finally:
+        book.close()
+
+
+@pytest.mark.parametrize("fmt", ("csv", "xlsx"))
+def test_numbers_are_written_as_exact_page_text_and_round_trip_unchanged(resource_conn, fmt):
+    conn = resource_conn
+    for code, (stock, _) in STOCKS.items():
+        insert_row(conn, "Materials", {"material_id": code, "name": code, "stock_qty": stock, "status": "active"})
+    for code, (days, _) in DAYS.items():
+        insert_row(conn, "Suppliers", {"supplier_id": code, "name": code, "op_type_id": "EXT", "default_days": days, "status": "active"})
+    conn.commit()
+    before = business_snapshot(conn)
+    material, supplier = export_file(conn, fmt, scope={}), exported(conn, "supplier", fmt)
+    written = _written(material.content, fmt, 4)
+    assert {code: written[code] for code in STOCKS} == {code: (text, True) for code, (_, text) in STOCKS.items()}
+    written = _written(supplier.content, fmt, 3)
+    assert {code: written[code] for code in DAYS} == {code: (text, True) for code, (_, text) in DAYS.items()}
+    preview = WorkbenchMaterialFileService(conn).preview_import(material.content, file_format=fmt, scope={})
+    assert preview.as_dict()["summary"]["unchanged"] == material.row_count
+    assert confirm_import(conn, preview, material.content, fmt)["result"] == "unchanged"
+    preview = WorkbenchResourceFileService(conn, "supplier").preview_import(supplier.content, file_format=fmt, scope={})
+    assert preview.as_dict()["summary"]["unchanged"] == supplier.row_count
+    assert confirm(conn, "supplier", preview, supplier.content, fmt)["result"] == "unchanged"
+    assert business_snapshot(conn) == before
+
+
+# 最后一个值换算北京时间会越过 9999 年（OverflowError，不是 ValueError），同样原样写出。
+@pytest.mark.parametrize("created", ("2026-01-01", "2026/01/01 08:00:00", "", "2026-02-30 08:00:00", "9999-12-31 16:00:00"))
+def test_unrecognized_legacy_created_at_is_exported_as_is_not_500(resource_conn, created):
+    conn = resource_conn
+    insert_row(conn, "Materials", {"material_id": "MAT-OLD", "name": "旧物料", "stock_qty": 1, "status": "active", "created_at": created})
+    insert_row(conn, "Suppliers", {"supplier_id": "S-OLD", "name": "旧供应商", "op_type_id": "EXT", "default_days": 2,
+                                   "status": "active", "created_at": created})
+    conn.commit()
+    material = export_file(conn, "csv", scope={})
+    rows = {row[0]: row for row in csv.reader(StringIO(material.content.decode("utf-8-sig")))}
+    assert rows["'MAT-OLD"][7] == "'" + created
+    preview = WorkbenchMaterialFileService(conn).preview_import(material.content, file_format="csv", scope={})
+    assert preview.as_dict()["summary"]["unchanged"] == material.row_count
+    supplier = exported(conn, "supplier", "csv")
+    rows = {row[0]: row for row in csv.reader(StringIO(supplier.content.decode("utf-8-sig")))}
+    assert rows["'S-OLD"][-1] == "'" + created

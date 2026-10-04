@@ -16,6 +16,7 @@ from core.models.workbench_process_file import (
     file_error,
 )
 from core.services.workbench.facts.file_codec import NUMBER
+from core.services.workbench.facts.table_cells import number_text
 
 _INTEGER = re.compile(r"[0-9]+\Z")
 _ILLEGAL_XML = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\ud800-\udfff\ufffe\uffff]")
@@ -111,8 +112,11 @@ def export_value(value, field, number, file_format) -> str:
     # Exported numbers are textual decimal values: openpyxl's numeric writer
     # rounds floats and large integers. Text preserves their exact input value.
     normalized = typed_value(value, field, number, "csv")
-    if field in INTEGER_FIELDS or field in NUMBER_FIELDS:
+    if field in INTEGER_FIELDS:
         text = str(normalized)
+    elif field in NUMBER_FIELDS:
+        # 与页面、其它文件同一写法：7 不写成 7.0，0.0000001 不写成 1e-07，回导仍是同一个数。
+        text = number_text(normalized)
     else:
         text = cast(str, normalized)
         if field == "source":

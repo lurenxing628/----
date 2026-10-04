@@ -141,3 +141,22 @@ def test_hours_int64_preview_and_receipt_are_precise_text(file_api, fmt):
     result = success(file_api.file_post("hours", "confirm", body))
     node_contract("receipt", result, "hours", body=body, preview=preview, target=target)
     assert result["data"]["rows"][0]["sequence"] == str(INT64_MAX)
+
+
+@pytest.mark.parametrize("kind", ["route", "hours"])
+def test_preview_parses_the_upload_before_its_read_snapshot(file_api, monkeypatch, kind):
+    from flask import g
+
+    from core.services.workbench.process import files
+
+    parsed, original = [], files.decode_process_file
+
+    def decode(*args):
+        parsed.append(g.db.in_transaction)
+        return original(*args)
+
+    monkeypatch.setattr(files, "decode_process_file", decode)
+    preview, _ = file_api.file_intent(kind, "xlsx")
+    # 先解析上传文件、再开读快照比对工艺资料：解析大文件期间不占读锁。
+    assert parsed == [False]
+    assert preview["meta"]["snapshot_ref"]

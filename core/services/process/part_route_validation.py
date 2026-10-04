@@ -62,8 +62,8 @@ def operation_source_or_raise(op: Any) -> str:
         return source
 
     seq = getattr(op, "seq", None)
-    seq_label = f"工序 {seq}" if seq not in (None, "") else "工序"
-    raise ValidationError(f"{seq_label}来源无效，只能是 internal 或 external", field="source")
+    seq_label = f"工序 {seq} " if seq not in (None, "") else "工序"
+    raise ValidationError(f"{seq_label}的来源无效，只能是自制或外协。", field="source")
 
 
 def save_template_no_tx(

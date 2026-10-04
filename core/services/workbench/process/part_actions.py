@@ -13,6 +13,7 @@ savepoints cannot commit it and undo all local writes even if the host catches.
 """
 
 from core.errors import ValidationError
+from core.infrastructure.connection_guards import SchemaContractMemo
 from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
 from core.models.workbench_process_actions import (
@@ -30,12 +31,14 @@ from .part_actions_facts import ProcessPartActionFacts, check_part_action_storag
 
 
 class WorkbenchProcessPartActionService:
-    def __init__(self, conn, logger=None):
+    def __init__(self, conn, logger=None, contracts=None):
         self.conn = conn
         self.domain = PartService(conn, logger=logger)
         self.facts = ProcessPartActionFacts(conn, logger=logger)
         self.identities = WorkbenchIdentityRepository(conn, logger=logger)
         self.tx = TransactionManager(conn)
+        # 文件导入逐行新建零件时由调用方传入同一个，表结构校验整条命令只做一次。
+        self.contracts = contracts if contracts is not None else SchemaContractMemo(conn)
 
     @staticmethod
     def normalize_create(input):
@@ -49,13 +52,13 @@ class WorkbenchProcessPartActionService:
         self._require_transaction()
         payload = self.normalize_create(input)
         with self.tx.transaction():
-            check_part_action_storage(self.conn)
+            check_part_action_storage(self.conn, self.contracts)
             # PartService.create parses any nonempty route, even in non-strict mode.
             part = self.domain.create(payload["business_code"], payload["label"], remark=payload["remark"])
             if payload["route_raw"] is not None:
                 self.domain.update(part.part_no, route_raw=payload["route_raw"])
             try:
-                workflow = start_workflow(self.conn, part.part_no)
+                workflow = start_workflow(self.conn, part.part_no, contracts=self.contracts)
             except RuntimeError as exc:
                 raise WorkbenchCommandRejected("storage_failure", "工艺确认流程没有建立，这次没有保存零件。请刷新重试；仍不行请联系维护人员。", 500) from exc
             identity = self.identities.find_active("part", part.part_no)
@@ -67,7 +70,7 @@ class WorkbenchProcessPartActionService:
     def preview_delete(self, refs, *, scope):
         request = {"refs": process_part_refs(refs), "scope": process_part_scope(scope)}
         with self.tx.transaction():
-            check_part_action_storage(self.conn)
+            check_part_action_storage(self.conn, self.contracts)
             rows = [self._delete_row(number, ref) for number, ref in enumerate(request["refs"], 1)]
             return ResourceActionPreview.build("part.bulk_delete", request, rows)
 

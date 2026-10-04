@@ -11,9 +11,14 @@ from core.models.workbench_command import WorkbenchCommandRejected
 from data.repositories.workbench_process_part_facts_repo import WorkbenchProcessPartFactsRepository
 
 
-def check_part_action_storage(conn):
-    issues = (workbench_metadata_contract_issues(conn) + workbench_process_contract_issues(conn)
-              + workbench_process_workflow_contract_issues(conn))
+def _storage_issues(conn):
+    return tuple(workbench_metadata_contract_issues(conn) + workbench_process_contract_issues(conn)
+                 + workbench_process_workflow_contract_issues(conn))
+
+
+def check_part_action_storage(conn, contracts=None):
+    # 表结构校验可按 schema 版本复用（contracts）；foreign_keys 是连接设置，每次现查。
+    issues = _storage_issues(conn) if contracts is None else contracts.get(_storage_issues)
     if not foreign_keys_enabled(conn) or issues:
         raise WorkbenchCommandRejected("storage_failure", "工艺数据的保存设置不完整，这次没有改动任何资料。请刷新重试；仍不行请联系维护人员。", 500)
 

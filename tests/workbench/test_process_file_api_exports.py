@@ -126,3 +126,25 @@ def test_preflight_rejects_unrepresentable_legacy_source_without_dropping_row(fi
     before = file_api.snapshot()
     rejected(file_api.file_post("hours", "export-preview", body), "invalid_input", 422)
     assert file_api.snapshot() == before
+
+
+def test_download_counts_and_encodes_after_the_read_snapshot(file_api, monkeypatch):
+    from flask import g
+
+    from web.routes.workbench import process_file_exports as route
+
+    calls, original_count, original_encode = [], route.count_process_export_rows, route.encode_process_file
+
+    def count(*args):
+        calls.append(("count", g.db.in_transaction))
+        return original_count(*args)
+
+    def encode(*args, **kwargs):
+        calls.append(("encode", g.db.in_transaction))
+        return original_encode(*args, **kwargs)
+
+    monkeypatch.setattr(route, "count_process_export_rows", count)
+    monkeypatch.setattr(route, "encode_process_file", encode)
+    file_api.export("route", fmt="xlsx")
+    # 逐格试算和生成文件都在读事务结束后：编码再久也不挡别人提交写入。
+    assert calls == [("count", False), ("encode", False)]

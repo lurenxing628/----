@@ -1,5 +1,6 @@
 """Captured batch queries release DELETE-journal locks before projection."""
 
+import re
 import sqlite3
 
 import pytest
@@ -8,6 +9,7 @@ from core.models.workbench_batch_query import batch_scope
 from core.services.personnel.operator_qualification import OperatorQualificationService
 from core.services.workbench.batch import facts as facts_module
 from core.services.workbench.batch.queries import WorkbenchBatchQueryService
+from core.services.workbench.process.queries import plain_fingerprint
 from tests.workbench.batch_support import BASE, batch_database, ref_for
 
 _batch_fixture = batch_database
@@ -125,3 +127,26 @@ def test_operation_choices_keep_qualification_reads_in_the_batch_snapshot(batch_
     assert captured
     assert all("eligible" in row for row in response.get_json()["data"]["operators"])
     assert not batch_client.batch_conn.in_transaction
+
+
+def test_fingerprint_covers_execution_projections_without_a_second_hash(batch_client, monkeypatch):
+    reader = WorkbenchBatchQueryService(batch_client.batch_conn)
+    facts = reader.load()
+    assert facts["execution"]["available"] and facts["execution"]["projections"]
+    assert "projection_hash" not in facts["execution"]["snapshot_facts"]
+    first = reader.fingerprint()
+    assert re.fullmatch(r"[0-9a-f]{64}", first) and first == reader.fingerprint() == plain_fingerprint(facts)
+    original = facts_module.project_execution_snapshot
+
+    def changed(raw):
+        result = original(raw)
+        ref = sorted(result["projections"])[0]
+        result["projections"][ref]["data_gaps"].append({"code": "probe", "message": "只改执行投影"})
+        return result
+
+    monkeypatch.setattr(facts_module, "project_execution_snapshot", changed)
+    assert reader.fingerprint() != first
+    monkeypatch.setattr(facts_module, "project_execution_snapshot", original)
+    batch_client.batch_conn.execute("UPDATE Batches SET due_date='2031-02-03' WHERE batch_id='FREE-001'")
+    assert reader.fingerprint() not in (first, None)
+    batch_client.batch_conn.rollback()

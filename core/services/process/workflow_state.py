@@ -20,9 +20,14 @@ from data.repositories.workbench_process_workflow_repo import WorkbenchProcessWo
 _STAGES = ("route", "source", "hours")
 
 
-def _schema(conn):
-    issues = (workbench_metadata_contract_issues(conn) + workbench_resource_contract_issues(conn)
-              + workbench_process_contract_issues(conn) + workbench_process_workflow_contract_issues(conn))
+def _schema_issues(conn):
+    return tuple(workbench_metadata_contract_issues(conn) + workbench_resource_contract_issues(conn)
+                 + workbench_process_contract_issues(conn) + workbench_process_workflow_contract_issues(conn))
+
+
+def _schema(conn, contracts=None):
+    # contracts（SchemaContractMemo）由逐行写入的调用方传入：同一命令里表结构只解析一次，改过就重验。
+    issues = _schema_issues(conn) if contracts is None else contracts.get(_schema_issues)
     if issues:
         raise RuntimeError("Invalid process workflow storage: " + "; ".join(issues))
 
@@ -33,8 +38,8 @@ def _ref(value):
     return value
 
 
-def _part(conn, part_no):
-    _schema(conn)
+def _part(conn, part_no, contracts=None):
+    _schema(conn, contracts)
     repo = WorkbenchProcessWorkflowRepository(conn)
     rows = repo.part_with_ref(part_no)
     if not rows:
@@ -262,9 +267,9 @@ def _view(stored, facts):
     return result
 
 
-def read_workflow(conn, part_no) -> dict:
+def read_workflow(conn, part_no, *, contracts=None) -> dict:
     with TransactionManager(conn).transaction():
-        part, stored = _part(conn, part_no)
+        part, stored = _part(conn, part_no, contracts)
         return _view(stored, _facts(part, _load_facts(conn, part_no)))
 
 
@@ -309,14 +314,14 @@ def _require_transaction(conn):
         raise RuntimeError("Process confirmations require a caller transaction.")
 
 
-def start_workflow(conn, part_no) -> dict:
+def start_workflow(conn, part_no, *, contracts=None) -> dict:
     """Enroll a newly controlled template, even before any route exists."""
     _require_transaction(conn)
     with TransactionManager(conn).transaction():
-        part, stored = _part(conn, part_no)
+        part, stored = _part(conn, part_no, contracts)
         if stored is None:
             WorkbenchProcessWorkflowRepository(conn).insert_workflow(part["ref"])
-        return read_workflow(conn, part_no)
+        return read_workflow(conn, part_no, contracts=contracts)
 
 
 def _save_operations(conn, part_ref, stage, per_op, records, stamp, person):
@@ -333,7 +338,7 @@ def _save_operations(conn, part_ref, stage, per_op, records, stamp, person):
                                      confirmed_at=stamp, confirmed_by=person)
 
 
-def record_confirmation(conn, part_no, stage, confirmed_by=None) -> dict:
+def record_confirmation(conn, part_no, stage, confirmed_by=None, *, contracts=None) -> dict:
     """Confirm facts already written by the domain owner, atomically in its transaction."""
     _require_transaction(conn)
     if stage not in _STAGES:
@@ -341,7 +346,7 @@ def record_confirmation(conn, part_no, stage, confirmed_by=None) -> dict:
     if confirmed_by is not None and (not isinstance(confirmed_by, str) or not confirmed_by.strip()):
         raise ValidationError("确认人必须是真实非空名称，未知时请传 null。", field="confirmed_by")
     with TransactionManager(conn).transaction():
-        part, stored = _part(conn, part_no)
+        part, stored = _part(conn, part_no, contracts)
         facts = _facts(part, _load_facts(conn, part_no))
         _, signatures, per_op, records = facts
         view = _view(stored, facts)
@@ -362,7 +367,7 @@ def record_confirmation(conn, part_no, stage, confirmed_by=None) -> dict:
         if _confirmation(stored, signature, stage + "_")["state"] != "confirmed":
             repo.set_stage_confirmation(part_ref=part["ref"], stage=stage, signature=signature,
                                         confirmed_at=stamp, confirmed_by=confirmed_by)
-        return read_workflow(conn, part_no)
+        return read_workflow(conn, part_no, contracts=contracts)
 
 
 def require_template_ready(conn, part_no) -> None:

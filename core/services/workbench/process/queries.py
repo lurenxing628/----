@@ -1,12 +1,14 @@
 """Snapshot-bound process reads and route differences, without template writes."""
 
+import hashlib
+import json
 import math
 from collections import defaultdict
 from contextlib import contextmanager
 from datetime import date, datetime
 
 from core.infrastructure.transaction import TransactionManager
-from core.models.workbench_command import WorkbenchCommandRejected, input_fingerprint
+from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.process.workflow_state import workflow_snapshot
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
 from data.repositories.workbench_process_query_repo import WorkbenchProcessQueryRepository
@@ -31,6 +33,28 @@ def _plain(value):
     if isinstance(value, bytes):
         return {"storage_type": "blob", "hex": value.hex()}
     return value
+
+
+def _plain_leaf(value):
+    """json.dumps fallback: dates, datetimes and blobs spelled the way _plain spells them."""
+    if isinstance(value, (date, datetime)):
+        return {"storage_type": type(value).__name__, "iso": value.isoformat()}
+    if isinstance(value, bytes):
+        return {"storage_type": "blob", "hex": value.hex()}
+    raise TypeError(f"Object of type {type(value).__name__} is not JSON serializable")
+
+
+def plain_fingerprint(value):
+    """Change detector for _plain(value) that writes the data once instead of copying it first.
+
+    The C encoder writes the whole tree in one pass, dates and blobs through _plain_leaf, so
+    the text is exactly canonical_json(_plain(value)); non-finite floats, which canonical_json
+    refuses, come out as the bare NaN/Infinity tokens no other value is written as. The digest
+    is taken straight from that text's UTF-8 bytes, the same 64-hex form input_fingerprint gives,
+    without JSON-quoting the whole text a second time; compare it only with digests from here.
+    """
+    text = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=_plain_leaf)
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
 def _route_changes(active, proposed):
@@ -72,7 +96,7 @@ class WorkbenchProcessQueryService:
             self._facts = self.facts()
             self._table = None
             try:
-                yield input_fingerprint(_plain(self._facts))
+                yield plain_fingerprint(self._facts)
             finally:
                 self._facts = previous
                 self._table = previous_table

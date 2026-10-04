@@ -101,9 +101,11 @@ class HoursFilePreview:
             row.update(entity_ref=part_ref, before=flat_hours(operation, group),
                        expected={"part_ref": part_ref, "operation_ref": operation["ref"], "operation": _plain(deepcopy(operation)),
                                  "group": _plain(deepcopy(group))})
-            self.source_ready(operation)
             assertions(values, operation, group)
             updates = hours_values(values, operation, group)
+            # 归属确认过期只挡真正改工时的行；原样导回的行判不变，和定额锁定的行一样不让整份文件卡住。
+            if any(updates[key] != row["before"][key] for key in updates):
+                self.source_ready(operation)
             row["input"] = {"values": deepcopy(values), "hours": updates}
         except ValidationError as exc:
             reject_action_row(row, exc.message, field=exc.field or "input")

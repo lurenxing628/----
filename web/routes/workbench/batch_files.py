@@ -16,7 +16,8 @@ from core.services.workbench.commands import WorkbenchCommandService
 from web.api_responses import query_success
 
 from .api_responses import api_endpoint
-from .batch_context import command_body, json_body, load_preview, save_preview
+from .batch_context import command_body, json_body, load_preview, retry_message, save_preview
+from .read_budget import batch_read_snapshot
 from .read_context import bind_read_snapshot
 from .write_context import issue_write_context, validate_write_context
 
@@ -31,7 +32,7 @@ def download(content, name, count):
 @api_endpoint
 def batch_template():
     if request.args:
-        raise WorkbenchCommandRejected("invalid_input", "模板下载不需要其他条件，没有开始下载。请直接点「下载批次模板」。", 400)
+        raise WorkbenchCommandRejected("invalid_input", "模板下载不需要其他条件，没有开始下载。请直接点「下载模板」。", 400)
     # 示例行移到了「填写说明」表，数据表只留表头，用户不用先删示例再填。
     return download(write_batch_file([], template=True), "批次导入模板.xlsx", 0)
 
@@ -39,27 +40,41 @@ def batch_template():
 @api_endpoint
 def batch_import_preview():
     if request.args or set(request.files) != {"file"} or len(request.files.getlist("file")) != 1:
-        raise WorkbenchCommandRejected("invalid_input", "请先选择一个批次 XLSX 文件，再点「导入预检」。", 400)
+        raise WorkbenchCommandRejected("invalid_input", "请先选择一个批次 XLSX 文件，再点「开始预检」。", 400)
     if set(request.form) != {"mode", "scope", "snapshot_ref"} or any(len(request.form.getlist(key)) != 1 for key in request.form):
         raise WorkbenchCommandRejected("invalid_input", "没有选好导入方式，或本页数据已过期，文件还没有导入。请刷新页面后重新选择文件。", 400)
     try:
         scope = batch_scope(json.loads(request.form["scope"]))
     except ValueError as exc:
-        raise WorkbenchCommandRejected("invalid_input", "文件导入范围不对，文件还没有导入。请刷新页面后重新点「导入预检」。", 400) from exc
+        raise WorkbenchCommandRejected("invalid_input", "文件导入范围不对，文件还没有导入。请刷新页面后重新点「开始预检」。", 400) from exc
     upload = request.files["file"]
     if not upload.filename or not upload.filename.lower().endswith(".xlsx") or not request.form["snapshot_ref"]:
         raise WorkbenchCommandRejected("invalid_input", "批次文件必须是 XLSX，并且要在当前页面数据下导入；文件还没有导入。请刷新页面后重新选择文件。", 400)
     content = upload.stream.read(MAX_BYTES + 1)
+    # Parse before queueing for the shared batch read slot; the workbook needs no ledger.
+    parsed = WorkbenchBatchFileService.read(content, request.form["mode"])
     reader = WorkbenchBatchQueryService(g.db, current_app.logger)
-    with reader.read_snapshot() as fingerprint:
+    # File checks only compare rows with the captured facts; no further SQL after the snapshot.
+    with batch_read_snapshot(reader) as fingerprint:
         bind_read_snapshot(snapshot_scope(scope), fingerprint, request.form["snapshot_ref"])
-        document = WorkbenchBatchFileService(g.db, current_app.logger).preview(content, request.form["mode"])
-        token = save_preview("import_confirm", None, document, fingerprint)
-        data = {**document, "preview_ref": token, "write_context": None}
-        if document["can_confirm"]:
-            data["write_context"] = issue_write_context(token, ["batch.import_confirm"], {"fingerprint": fingerprint, "input": document})
-        snapshot = bind_read_snapshot({"kind": "batch_import_preview", "preview_ref": token}, fingerprint)
+        document = WorkbenchBatchFileService(g.db, current_app.logger, reader=reader).preview(content, request.form["mode"], parsed)
+    # Issuing the tokens needs only the finished document, so other batch reads need not queue behind it.
+    token = save_preview("import_confirm", None, document, fingerprint)
+    data = {**document, "preview_ref": token, "write_context": None}
+    if document["can_confirm"]:
+        data["write_context"] = issue_write_context(token, ["batch.import_confirm"], _write_snapshot(fingerprint, token))
+    snapshot = bind_read_snapshot({"kind": "batch_import_preview", "preview_ref": token}, fingerprint)
     return query_success(data, snapshot)
+
+
+def _write_snapshot(fingerprint, token):
+    """What an import write token is bound to: the ledger fingerprint and the preview it confirms.
+
+    A preview token always resolves to the one document saved under it, so naming the token binds
+    that document too, without serializing every row (each carries its whole batch) once more here
+    and again in the confirm guard under the write lock.
+    """
+    return {"fingerprint": fingerprint, "preview_ref": token}
 
 
 @api_endpoint
@@ -68,18 +83,21 @@ def batch_import_confirm():
     normalized = dict(object_fields(body["input"], ("preview_ref",), ("preview_ref",)))
     token = normalized["preview_ref"]
     if not isinstance(token, str) or not token:
-        raise WorkbenchCommandRejected("invalid_input", "预检结果编号缺失，文件还没有导入。请重新点「导入预检」。", 400)
+        raise WorkbenchCommandRejected("invalid_input", retry_message("import_confirm", "预检结果编号缺失"), 400)
+    reader = WorkbenchBatchQueryService(g.db, current_app.logger)
 
     def guard():
         binding = load_preview(token, "import_confirm", None)
-        fingerprint = WorkbenchBatchQueryService(g.db, current_app.logger).fingerprint()
+        fingerprint = reader.fingerprint()
         if binding["fingerprint"] != fingerprint:
-            raise WorkbenchCommandRejected("stale_write", "预检之后批次资料有变化，文件还没有导入。请重新点「导入预检」。")
-        validate_write_context(body["write_token"], token, "batch.import_confirm", {"fingerprint": fingerprint, "input": binding["input"]})
+            raise WorkbenchCommandRejected("stale_write", retry_message("import_confirm", "预检之后批次资料有变化"))
+        validate_write_context(body["write_token"], token, "batch.import_confirm", _write_snapshot(fingerprint, token))
         return binding["input"]
 
-    return jsonify(WorkbenchCommandService(g.db, current_app.logger).execute(request_key=body["request_key"], action="batch.import_confirm",
-        context_ref=token, normalized_input=normalized, guard=guard, mutate=lambda document: WorkbenchBatchFileService(g.db, current_app.logger).apply(document)))
+    with reader.command_snapshot():
+        return jsonify(WorkbenchCommandService(g.db, current_app.logger).execute(request_key=body["request_key"], action="batch.import_confirm",
+            context_ref=token, normalized_input=normalized, guard=guard,
+            mutate=lambda document: WorkbenchBatchFileService(g.db, current_app.logger, reader=reader).apply(document)))
 
 
 @api_endpoint
@@ -89,7 +107,7 @@ def batch_export_preview():
     if body["selection"] not in ("selected", "filtered") or not scope.get("snapshot_ref"):
         raise WorkbenchCommandRejected("invalid_input", "请先选好导出当前筛选还是导出选中的批次，没有开始下载。数据已更新时请先点「刷新」，再点「下载批次清单」。", 400)
     reader = WorkbenchBatchQueryService(g.db, current_app.logger)
-    with reader.read_snapshot() as fingerprint:
+    with batch_read_snapshot(reader) as fingerprint:
         bind_read_snapshot(snapshot_scope(scope), fingerprint, scope["snapshot_ref"])
         if body["selection"] == "selected":
             refs = body.get("refs")
@@ -115,11 +133,12 @@ def batch_export():
         raise WorkbenchCommandRejected("invalid_input", "导出范围已过期，没有开始下载。请重新点「下载批次清单」。", 400)
     binding = load_preview(request.args["export_ref"], "export", None)
     reader = WorkbenchBatchQueryService(g.db, current_app.logger)
-    with reader.read_snapshot() as fingerprint:
+    # One projection serves every exported batch; the workbook is written after the read slot is released.
+    with batch_read_snapshot(reader) as fingerprint:
         if binding["fingerprint"] != fingerprint:
             raise WorkbenchCommandRejected("snapshot_stale", "导出范围里的批次有变化，没有开始下载。请重新点「下载批次清单」。")
-        entities = [reader.detail(ref) for ref in binding["input"]["refs"]]
-        content = WorkbenchBatchFileService.export(entities)
+        entities = reader.details(binding["input"]["refs"])
+    content = WorkbenchBatchFileService.export(entities)
     return download(content, "批次清单.xlsx", len(entities))
 
 

@@ -113,7 +113,8 @@ def test_part_service_save_template_rejects_unknown_parsed_operation_source() ->
         normalized_input="10旧来源工序",
     )
 
-    with pytest.raises(ValidationError, match="来源无效"):
+    # 提示上屏给业务人员看，用页面上的自制 / 外协，不露 internal / external 代号。
+    with pytest.raises(ValidationError, match="工序 10 的来源无效，只能是自制或外协。"):
         svc._save_template_no_tx(part_no="P1", parse_result=parse_result)
 
 

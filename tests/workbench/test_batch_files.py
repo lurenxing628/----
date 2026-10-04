@@ -133,6 +133,43 @@ def test_file_confirm_stale_rolls_back_and_duplicate_rejected(batch_client):
     assert state(client) == before
 
 
+def test_import_write_token_binds_the_preview_ref_and_is_issued_after_the_read_slot(batch_client, monkeypatch):
+    from web.routes.workbench import batch_files, read_budget
+
+    client = batch_client
+    original_issue, original_validate, original_save = batch_files.issue_write_context, batch_files.validate_write_context, batch_files.save_preview
+    calls = []
+
+    def issue(subject, actions, snapshot):
+        calls.append(("issue", sorted(snapshot), read_budget.BATCH_READ_SLOTS._available))
+        return original_issue(subject, actions, snapshot)
+
+    def validate(token, subject, action, snapshot):
+        calls.append(("validate", sorted(snapshot), None))
+        return original_validate(token, subject, action, snapshot)
+
+    def save(*args):
+        calls.append(("save", None, read_budget.BATCH_READ_SLOTS._available))
+        return original_save(*args)
+
+    monkeypatch.setattr(batch_files, "issue_write_context", issue)
+    monkeypatch.setattr(batch_files, "validate_write_context", validate)
+    monkeypatch.setattr(batch_files, "save_preview", save)
+    first = uploaded(client, [["FREE-001", "P1", 5, None, None, None, None, "first"]]).get_json()["data"]
+    second = uploaded(client, [["FREE-001", "P1", 5, None, None, None, None, "second"]]).get_json()["data"]
+    # Both tokens are issued once the shared batch read slot is free again, and the write token never
+    # serializes the document (every row carries its whole batch); the preview ref names it instead.
+    assert calls == [("save", None, 1), ("issue", ["fingerprint", "preview_ref"], 1)] * 2
+    before = state(client)
+    crossed = client.post(BASE + "/import-confirm", json=body(first["write_context"], {"preview_ref": second["preview_ref"]},
+                                                               "batch-file-crossed-0001"))
+    assert_error(crossed, "stale_write")
+    assert state(client) == before
+    assert confirm(client, second).status_code == 200
+    assert calls[-1] == ("validate", ["fingerprint", "preview_ref"], None)
+    assert detail(client)["data"]["fields"]["remark"] == "second"
+
+
 def test_first_sheet_only_formulas_and_bool_quantities(batch_client):
     client = batch_client
     workbook = openpyxl.Workbook()
@@ -208,7 +245,8 @@ def test_filtered_export_shows_effective_readiness_and_original_roundtrip_value(
     modified = BytesIO()
     workbook.save(modified)
     ignored = uploaded(client, [], content=modified.getvalue()).get_json()["data"]
-    assert ignored["can_confirm"] and ignored["rows"][0]["input"]["fields"]["ready_status"] == "no"
+    # 只读列不导入，其余各格和导出时一样，这一行判为不变，维护齐套标记仍是 no。
+    assert ignored["can_confirm"] and ignored["rows"][0]["action"] == "unchanged" and ignored["rows"][0]["input"] is None
     sheet.cell(2, FILE_HEADERS.index("维护齐套标记") + 1, "齐套")
     modified = BytesIO()
     workbook.save(modified)
@@ -232,3 +270,114 @@ def test_legacy_ready_header_remains_writable_and_duplicate_aliases_are_rejected
     workbook.save(output)
     assert_error(uploaded(batch_client, [], content=output.getvalue()), "invalid_input")
     workbook.close()
+
+
+def test_export_projects_once_in_the_shared_read_slot_and_writes_after_release(batch_client, monkeypatch):
+    import sqlite3
+
+    from core.services.workbench.batch.files import WorkbenchBatchFileService
+    from core.services.workbench.batch.projection import BatchProjection
+    from core.services.workbench.batch.queries import WorkbenchBatchQueryService
+    from web.routes.workbench import read_budget
+
+    client, conn = batch_client, batch_client.batch_conn
+    conn.execute("INSERT INTO Batches(batch_id,part_no,quantity) VALUES ('FREE-002','P1',2),('FREE-003','P1',3)")
+    conn.commit()
+    filtered = list_data(client)
+    response = client.post(BASE + "/export-preview", json={"selection": "filtered", "scope": {"snapshot_ref": filtered["meta"]["snapshot_ref"]}})
+    assert response.status_code == 200, response.get_json()
+    count = response.get_json()["data"]["count"]
+    assert count == 4
+    original_init, original_export, original_slot = BatchProjection.__init__, WorkbenchBatchFileService.export, read_budget.BATCH_READ_SLOTS.slot
+    original_details = WorkbenchBatchQueryService.details
+    projected, written, slots = [], [], []
+
+    def details(reader, refs):
+        # Template status, materials and every entity come from the captured facts only.
+        conn.set_authorizer(lambda *_args: sqlite3.SQLITE_DENY)
+        try:
+            return original_details(reader, refs)
+        finally:
+            conn.set_authorizer(None)
+
+    def project(projection, facts):
+        # Built once for the whole file, after the SQLite read lock was released.
+        assert not conn.in_transaction
+        projected.append(read_budget.BATCH_READ_SLOTS._available)
+        original_init(projection, facts)
+
+    def export(entities):
+        written.append((len(entities), read_budget.BATCH_READ_SLOTS._available, conn.in_transaction))
+        return original_export(entities)
+
+    def slot():
+        slots.append(True)
+        return original_slot()
+
+    monkeypatch.setattr(BatchProjection, "__init__", project)
+    monkeypatch.setattr(WorkbenchBatchQueryService, "details", details)
+    monkeypatch.setattr(WorkbenchBatchFileService, "export", staticmethod(export))
+    monkeypatch.setattr(read_budget.BATCH_READ_SLOTS, "slot", slot)
+    exported = client.get(BASE + "/export", query_string={"export_ref": response.get_json()["data"]["export_ref"]})
+    rows = data_rows(exported)
+    assert sorted(row[0] for row in rows[1:]) == ["B1", "FREE-001", "FREE-002", "FREE-003"]
+    assert projected == [0] and slots == [True]
+    assert written == [(count, 1, False)]
+
+
+# 旧数据：带时间的交期/齐套日期、斜杠日期、旧英文优先级与齐套写法、备注首尾空格。
+LEGACY_BATCHES = (("B-TIME", "2026-10-12 00:00:00", "normal", "yes", "2026-10-01 08:00:00", "带时间的日期"),
+                  ("B-SLASH", "2026/10/12", "high", "是", None, " 前后空格 "),
+                  ("B-EN", None, "URGENT", "YES", None, ""))
+
+
+def _legacy_export(client):
+    from tests.workbench.identity_metadata_support import insert_row
+
+    conn = client.batch_conn
+    for code, due, priority, ready, ready_date, remark in LEGACY_BATCHES:
+        insert_row(conn, "Batches", dict(batch_id=code, part_no="P1", quantity=3, part_name="x", status="pending", due_date=due,
+                                         priority=priority, ready_status=ready, ready_date=ready_date, remark=remark))
+    conn.commit()
+    listed = list_data(client, size=20)
+    refs = [ref_for(client, key=row[0]) for row in LEGACY_BATCHES]
+    approved = client.post(BASE + "/export-preview", json={"selection": "selected", "refs": refs,
+                           "scope": {"size": 20, "snapshot_ref": listed["meta"]["snapshot_ref"]}})
+    assert approved.status_code == 200, approved.get_json()
+    exported = client.get(BASE + "/export", query_string={"export_ref": approved.get_json()["data"]["export_ref"]})
+    assert exported.status_code == 200
+    return exported.data
+
+
+def test_legacy_values_round_trip_unchanged_and_are_never_normalized(batch_client):
+    client = batch_client
+    content = _legacy_export(client)
+    before = state(client)
+    document = uploaded(client, [], content=content).get_json()["data"]
+    assert document["can_confirm"], document
+    assert [(row["business_code"], row["action"], row["errors"]) for row in document["rows"]] == [
+        (row[0], "unchanged", []) for row in LEGACY_BATCHES]
+    saved = confirm(client, document, key="legacy-batch-roundtrip-01")
+    assert saved.status_code == 200 and saved.get_json()["result"] == "unchanged", saved.get_json()
+    assert state(client)[1]["Batches"] == before[1]["Batches"]
+
+
+def test_legacy_row_edit_writes_only_changed_cell_and_new_values_are_still_checked(batch_client):
+    client = batch_client
+    workbook = openpyxl.load_workbook(BytesIO(_legacy_export(client)))
+    sheet = workbook.worksheets[0]
+    line = next(row[0].row for row in sheet.iter_rows(min_row=2) if row[0].value == "B-SLASH")
+    sheet.cell(line, FILE_HEADERS.index("备注") + 1, " 新备注 ")
+    output = BytesIO()
+    workbook.save(output)
+    document = uploaded(client, [], content=output.getvalue()).get_json()["data"]
+    row = next(item for item in document["rows"] if item["business_code"] == "B-SLASH")
+    # 只写真正改了的备注；旧优先级 high、斜杠交期没动，既不校验也不写回。
+    assert document["can_confirm"] and row["action"] == "update" and row["input"] == {"fields": {"remark": "新备注"}}
+    sheet.cell(line, FILE_HEADERS.index("优先级") + 1, "很急")
+    output = BytesIO()
+    workbook.save(output)
+    workbook.close()
+    document = uploaded(client, [], content=output.getvalue()).get_json()["data"]
+    row = next(item for item in document["rows"] if item["business_code"] == "B-SLASH")
+    assert not document["can_confirm"] and row["action"] == "rejected" and "优先级" in row["errors"][0]

@@ -141,6 +141,8 @@ def test_rejected_row_blocks_all_rows_even_with_issued_write_token(collection_ap
     data = raw["data"]
     assert data["summary"]["delete"] == data["summary"]["rejected"] == 1
     assert not data["can_confirm"] and not data["write_context"]["capabilities"]["process_bulk.confirm"]
+    # 出了预检结果后弹窗里的按钮叫「重新预检」（预检前叫「检查删除范围」），提示要点名它。
+    assert data["write_context"]["blocked_reasons"][0]["message"].endswith("请修好标红的行后点「重新预检」。")
     body = {"request_key": "api-rejected-delete", "write_token": data["write_context"]["write_token"],
             "input": {"preview_ref": data["preview_ref"]}}
     rejected(api.send("bulk-confirm", body), "constraint_conflict")

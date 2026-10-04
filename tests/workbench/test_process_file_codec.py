@@ -123,6 +123,17 @@ def test_exact_int64_text_and_export_roundtrip(fmt, value, field):
     assert parsed["values"]["sequence"] == value and parsed["values"]["group_start"] == 1
 
 
+@pytest.mark.parametrize("value,text", ((7.0, "7"), (1e-07, "0.0000001"), (1e20, "100000000000000000000"),
+                                        (0.1 + 0.2, "0.30000000000000004")))
+def test_exported_hours_use_page_number_text_and_round_trip(value, text):
+    """工艺 CSV 和其它文件同一写法：7 不写成 7.0，也不写科学计数法；回导仍是同一个数。"""
+    original = {"business_code": "001", "sequence": 1, "unit_hours": value}
+    encoded = encode_process_file("hours", [original], "csv")
+    assert "'" + text in encoded.content.decode("utf-8-sig").splitlines()[1].split(",")
+    actual = decode_rows("hours", encoded.content, "csv")[0]
+    assert not actual["errors"] and actual["values"] == original
+
+
 @pytest.mark.parametrize("value,valid", ((str(2 ** 53), True), (str(2 ** 53 + 1), False),
                                         (str(INT64_MAX), False), ("1.0", True), ("1.25", False), ("1e309", False)))
 def test_xlsx_numbers_above_safe_integer_range_are_not_guessed(value, valid):
@@ -294,7 +305,7 @@ def test_complete_10000_export_is_one_pass_and_not_import_capped(fmt, kind):
         if first is None:
             first = record
         expected = [f"图{count:05d}", "零件", "10铣20检", "首行\n末行"] if kind == "route" else [
-            f"图{count:05d}", str(count + 1), "铣", "自制", "0.0", "0.12345678901234566", r"\N", r"\N", r"\N", r"\N"]
+            f"图{count:05d}", str(count + 1), "铣", "自制", "0", "0.12345678901234566", r"\N", r"\N", r"\N", r"\N"]
         assert list(record) == ["'" + value if fmt == "csv" else value for value in expected]
         count += 1
         last = record
@@ -335,6 +346,8 @@ def test_no_database_access_and_python38_syntax(monkeypatch, fmt):
     pure_services = codec_modules | {
         "core.services.workbench.facts.file_codec",
         "core.services.workbench.facts.file_writer",
+        # 页面和各导出文件共用的数字写法，只依赖 core.models 的指纹函数。
+        "core.services.workbench.facts.table_cells",
         # 12 张表共用的填写说明写法，只依赖 openpyxl 和列目录模型，不碰库也不碰 Flask。
         "core.services.common.excel_instruction_sheet",
         # 七个读取器共用的单元格翻译，纯函数，只依赖 re。

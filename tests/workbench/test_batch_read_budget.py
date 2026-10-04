@@ -2,11 +2,20 @@
 import sqlite3
 import threading
 from concurrent.futures import ThreadPoolExecutor
+from io import BytesIO
 
+import pytest
 from flask import g
 
 from core.services.workbench.batch import facts as facts_module
-from tests.workbench.batch_support import BASE, batch_database
+from core.services.workbench.batch.bulk import WorkbenchBatchBulkService
+from core.services.workbench.batch.file_codec import write_batch_file
+from core.services.workbench.batch.files import WorkbenchBatchFileService
+from core.services.workbench.batch.operations import WorkbenchBatchOperationService
+from core.services.workbench.batch.quantity_split import WorkbenchQuantitySplitService
+from core.services.workbench.batch.queries import WorkbenchBatchQueryService
+from data.repositories.workbench_batch_facts_repo import WorkbenchBatchFactsRepository
+from tests.workbench.batch_support import BASE, batch_database, detail, list_data, ref_for
 
 _batch_fixture = batch_database
 
@@ -124,3 +133,77 @@ def test_read_budget_releases_after_projection_error():
     with budget.slot():
         assert budget._available == 0
     assert budget._available == 1
+
+
+def _preview_request(client, route):
+    if route == "split":
+        from tests.workbench.test_batch_quantity_split import prepare
+
+        prepare(client)
+        snapshot = detail(client)["meta"]["snapshot_ref"]
+        return lambda: client.post(BASE + "/" + ref_for(client) + "/split-preview", json={"snapshot_ref": snapshot, "input": {"as_of_date": "2026-09-28"}})
+    if route == "sync":
+        snapshot = detail(client)["meta"]["snapshot_ref"]
+        return lambda: client.post(BASE + "/" + ref_for(client) + "/sync-preview", json={"snapshot_ref": snapshot, "input": {}})
+    snapshot = list_data(client)["meta"]["snapshot_ref"]
+    if route == "bulk":
+        return lambda: client.post(BASE + "/bulk-preview", json={"scope": {}, "snapshot_ref": snapshot,
+                                   "input": {"action": "update", "refs": [ref_for(client)], "patch": {"remark": "budget"}}})
+    if route == "export":
+        return lambda: client.post(BASE + "/export-preview", json={"selection": "filtered", "scope": {"snapshot_ref": snapshot}})
+    content = write_batch_file([["FREE-001", "P1", 5, None, None, None, None, "budget"]], template=True)
+    return lambda: client.post(BASE + "/import-preview", data={"file": (BytesIO(content), "batch.xlsx"), "mode": "overwrite",
+                               "scope": "{}", "snapshot_ref": snapshot}, content_type="multipart/form-data")
+
+
+@pytest.mark.parametrize("route,service,method,detached", [
+    ("split", WorkbenchQuantitySplitService, "plan", True), ("bulk", WorkbenchBatchBulkService, "plan", True),
+    ("export", WorkbenchBatchQueryService, "selection", True), ("import", WorkbenchBatchFileService, "preview", True),
+    # The sync preview re-reads the stored process workflow, so it keeps its read transaction.
+    ("sync", WorkbenchBatchOperationService, "sync_preview", False)])
+def test_batch_previews_queue_on_the_shared_slot_and_load_the_ledger_once(batch_client, monkeypatch, route, service, method, detached):
+    from web.routes.workbench import read_budget
+
+    send = _preview_request(batch_client, route)
+    conn = batch_client.batch_conn
+    loads, slots, computed = [], [], []
+    original_tables, original_slot, original_method = WorkbenchBatchFactsRepository.whole_tables, read_budget.BATCH_READ_SLOTS.slot, getattr(service, method)
+
+    def whole_tables(repo):
+        loads.append(True)
+        return original_tables(repo)
+
+    def slot():
+        slots.append(True)
+        return original_slot()
+
+    def compute(instance, *args, **kwargs):
+        computed.append((conn.in_transaction, read_budget.BATCH_READ_SLOTS._available))
+        return original_method(instance, *args, **kwargs)
+
+    monkeypatch.setattr(WorkbenchBatchFactsRepository, "whole_tables", whole_tables)
+    monkeypatch.setattr(read_budget.BATCH_READ_SLOTS, "slot", slot)
+    monkeypatch.setattr(service, method, compute)
+    response = send()
+    assert response.status_code == 200, response.get_json()
+    assert slots == [True] and loads == [True]
+    assert computed == [(not detached, 0)]
+    assert not conn.in_transaction
+
+
+def test_import_preview_parses_the_workbook_before_queueing_for_the_read_slot(batch_client, monkeypatch):
+    from core.services.workbench.batch import files as files_module
+    from web.routes.workbench import read_budget
+
+    send = _preview_request(batch_client, "import")
+    original, parsed = files_module.read_batch_file, []
+
+    def read_batch_file(content):
+        parsed.append((read_budget.BATCH_READ_SLOTS._available, batch_client.batch_conn.in_transaction))
+        return original(content)
+
+    monkeypatch.setattr(files_module, "read_batch_file", read_batch_file)
+    response = send()
+    assert response.status_code == 200, response.get_json()
+    assert response.get_json()["data"]["count"] == 1
+    assert parsed == [(1, False)]

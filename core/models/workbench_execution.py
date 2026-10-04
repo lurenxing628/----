@@ -2,9 +2,12 @@
 
 from copy import deepcopy
 from dataclasses import dataclass, field, fields, is_dataclass
+from operator import attrgetter
 from typing import Any, Dict, List, Optional
 
 _IMMUTABLE_SCALARS = frozenset((str, int, float, bool, bytes, type(None)))
+# The DTO classes below, mapped to (field names, one C-level reader for all of them).
+_DTO_FIELDS: Dict[type, Any] = {}
 
 
 def _snapshot_value(value: Any) -> Any:
@@ -12,8 +15,25 @@ def _snapshot_value(value: Any) -> Any:
     # serializes thousands of projections several times for its existing size
     # guards and response; these scalars need no copying. Mutable children still
     # receive independent snapshots, including report histories and write tokens.
-    if type(value) in _IMMUTABLE_SCALARS:
+    # Plain dicts, plain lists and the DTOs here are built in one pass that takes
+    # scalar children as they are; any other type keeps the generic path.
+    kind = type(value)
+    if kind in _IMMUTABLE_SCALARS:
         return value
+    if kind is dict:
+        return {key if type(key) in _IMMUTABLE_SCALARS else _snapshot_value(key):
+                item if type(item) in _IMMUTABLE_SCALARS else _snapshot_value(item) for key, item in value.items()}
+    if kind is list:
+        return [item if type(item) in _IMMUTABLE_SCALARS else _snapshot_value(item) for item in value]
+    dto = _DTO_FIELDS.get(kind)
+    if dto is not None:
+        names, read = dto
+        return {name: item if type(item) in _IMMUTABLE_SCALARS else _snapshot_value(item)
+                for name, item in zip(names, read(value))}
+    return _snapshot_other(value)
+
+
+def _snapshot_other(value: Any) -> Any:
     if is_dataclass(value) and not isinstance(value, type):
         return {item.name: _snapshot_value(getattr(value, item.name)) for item in fields(value)}
     if isinstance(value, tuple) and hasattr(value, "_fields"):
@@ -79,3 +99,11 @@ class ExecutionProjection:
 
     def to_dict(self) -> Dict[str, Any]:
         return _snapshot_value(self)
+
+
+def _dto_fields(dto: type) -> Any:
+    names = tuple(item.name for item in fields(dto))
+    return names, attrgetter(*names)
+
+
+_DTO_FIELDS.update({dto: _dto_fields(dto) for dto in (ProductionReport, ExecutionProjection)})

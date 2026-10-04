@@ -26,12 +26,19 @@ def text_cell(value, *, missing="未知"):
     return TableCell(input_fingerprint({"type": "text", "value": value}), value or "（空白）", (1, value))
 
 
+def number_text(value):
+    """页面和导出文件共用的数字写法：能原样还原的最短十进制，7 不写成 7.0，也不用 1e-07 这种科学计数法。"""
+    if type(value) is int:
+        return str(value)
+    return format(Decimal(repr(value)).normalize(), "f")
+
+
 def number_cell(value, unit="", *, missing="未知"):
     if value is None:
         return TableCell(input_fingerprint({"type": "number", "value": None}), missing, (0, 0))
     if type(value) not in (int, float) or not math.isfinite(value):
         raise WorkbenchCommandRejected("storage_failure", "这个格子里存的数字不合法，没有显示成 0。请到资料总览核对后重试。", 500)
-    number = format(Decimal(str(value)).normalize(), "f")
+    number = number_text(value)
     unit = text_value(unit) if unit else ""
     return TableCell(input_fingerprint({"type": "number", "value": number, "unit": unit}),
                      number + (" " + unit if unit else ""), (1, value))

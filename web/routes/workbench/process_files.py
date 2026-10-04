@@ -30,7 +30,7 @@ def _upload(kind):
     limit = min(IMPORT_BYTE_LIMIT, configured) if type(configured) is int and configured > 0 else IMPORT_BYTE_LIMIT
     content = request.files["file"].read(limit + 1)
     if len(content) > limit:
-        raise WorkbenchCommandRejected("invalid_input", "文件超过本机允许的大小，一行都没有导入，也没有只导入前半部分。请缩小文件后重新点「开始预检」。", 413)
+        raise WorkbenchCommandRejected("invalid_input", "文件超过本机允许的大小，一行都没有导入，也没有只导入前半部分。请缩小文件后重新选择，再点「开始预检」。", 413)
     return content, fmt, mode, request.form.get("target_ref")
 
 
@@ -38,12 +38,13 @@ def _upload(kind):
 def process_file_preview(kind):
     content, fmt, mode, target = _upload(kind)
     reader = WorkbenchProcessQueryService(g.db, current_app.logger)
-    with reader.read_snapshot() as state:
-        preview, extra = WorkbenchProcessFileService(g.db, current_app.logger, reader).preview_import(
-            kind, content, file_format=fmt, mode=mode, target_ref=target)
-        data = action_preview(preview, file_operation(kind), kind=kind, content=content, extra=extra)
-        snapshot = bind_read_snapshot({"kind": "process_file_import", "operation": file_operation(kind),
-                                       "preview_ref": data["preview_ref"], "target_ref": target}, state)
+    # preview_import 先解析文件、再自己开读快照比对工艺资料；这里不在外面先开事务，解析大文件时不占读锁。
+    preview, extra = WorkbenchProcessFileService(g.db, current_app.logger, reader).preview_import(
+        kind, content, file_format=fmt, mode=mode, target_ref=target)
+    state = preview.as_dict()["request"]["state"]
+    data = action_preview(preview, file_operation(kind), kind=kind, content=content, extra=extra)
+    snapshot = bind_read_snapshot({"kind": "process_file_import", "operation": file_operation(kind),
+                                   "preview_ref": data["preview_ref"], "target_ref": target}, state)
     return query_success(data, snapshot, preview.as_dict()["notices"])
 
 

@@ -89,7 +89,8 @@ def _decode(value, field, fmt):
         if value.startswith("\\\\"):
             value = value[1:]
     value = _decode_field(value, field)
-    if field in NUMERIC_FIELDS and fmt == "csv":
+    # 导出的 XLSX 把数字写成文本格（保住全部有效数字），所以 XLSX 里的文本数字和 CSV 一样按数字读。
+    if field in NUMERIC_FIELDS and (fmt == "csv" or type(value) is str):
         if type(value) is not str or NUMBER.fullmatch(value) is None:
             raise ValidationError("这个格子只能填数字，不能带单位、是或否、千分位逗号，没有导入。请改成纯数字。", field=field)
         value = float(value)

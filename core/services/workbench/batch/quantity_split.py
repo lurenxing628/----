@@ -6,6 +6,7 @@ from core.models.workbench_batch import number, object_fields
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
 from core.models.workbench_preflight import local_date
 from core.services.material.stage_availability import MaterialAvailability, covers_quantity, quantity
+from core.services.workbench.calibration.template_lineage import TemplateLineageWriter
 from core.services.workbench.facts.preflight_checks import stored_date
 from data.repositories.batch_material_repo import BatchMaterialRepository
 from data.repositories.batch_material_stage_repo import BatchMaterialStageRepository
@@ -54,9 +55,9 @@ def _require_splittable_batch(batch, facts):
 
 
 class WorkbenchQuantitySplitService:
-    def __init__(self, conn, logger=None):
+    def __init__(self, conn, logger=None, reader=None):
         self.conn = conn
-        self.reader = BatchFacts(conn, logger)
+        self.reader = reader if reader is not None else BatchFacts(conn, logger)
 
     def plan(self, ref, payload):
         payload = normalize_split(payload)
@@ -96,7 +97,8 @@ class WorkbenchQuantitySplitService:
             raise WorkbenchCommandRejected("constraint_conflict", "原批次齐套日期无效，请先核对后再拆分。")
         WorkbenchBatchService(self.conn).domain.create(code, batch["part_no"], **fields, quantity=plan["quantity"],
             ready_status="yes", ready_date=max(filter(None, (ready_day, plan["as_of_date"]))))
-        mapping = {op["id"]: insert_operation(self.conn, code, op) for op in facts["BatchOperations"] if op["batch_id"] == batch["batch_id"]}
+        writer = TemplateLineageWriter(self.conn)
+        mapping = {op["id"]: insert_operation(self.conn, code, op, writer=writer) for op in facts["BatchOperations"] if op["batch_id"] == batch["batch_id"]}
         repo, stages = BatchMaterialRepository(self.conn), BatchMaterialStageRepository(self.conn)
         source_rows, child_rows = [], []
         for row in plan["materials"]:

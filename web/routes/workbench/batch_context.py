@@ -47,11 +47,36 @@ def save_preview(action, ref, payload, fingerprint):
     return issue_public_token(PREVIEW_SCOPE, canonical_json({"action": action, "ref": ref, "input": payload, "fingerprint": fingerprint}), ttl_seconds=900)
 
 
+# 预检编号失效或对不上时：按动作说清没做成什么，并点名页面上真正用来重做这一步的按钮。
+_RETRY = {
+    "split_confirm": ("预检结果", "还没有保存", "重新点「预检可开工数量」"),
+    "sync_confirm": ("预检结果", "还没有保存", "重新点「预检工序更新」"),
+    # 批量修改、复制所选、删除所选和单个批次的删除（列表「删除」/详情「删除批次」）共用这一个确认动作；编号失效后分不出是哪一种。
+    "bulk_confirm": ("预检结果", "还没有保存", "按原来的操作重新点「预览变更」「复制所选」「删除所选」，或列表里该批次的「删除」、批次详情的「删除批次」"),
+    # 导入预检结果出来后「开始预检」会收起，要先点「更换文件」才会再出现。
+    "import_confirm": ("预检结果", "文件还没有导入", "点「更换文件」后重新点「开始预检」"),
+    "export": ("导出范围", "没有开始下载", "重新点「下载批次清单」"),
+}
+_BULK_RETRY = {"update": "重新点「预览变更」", "copy": "重新点「复制所选」", "delete": "重新点「删除所选」，或列表里该批次的「删除」、批次详情的「删除批次」"}
+
+
+def retry_hint(action, payload=None):
+    """重做这一步要点的按钮；批量操作读得出原动作时只点名那一个按钮。"""
+    bulk = payload.get("action") if action == "bulk_confirm" and isinstance(payload, dict) else None
+    return (_BULK_RETRY.get(bulk) if isinstance(bulk, str) else None) or _RETRY[action][2]
+
+
+def retry_message(action, reason, payload=None):
+    return reason + "，" + _RETRY[action][1] + "。请" + retry_hint(action, payload) + "。"
+
+
 def load_preview(token, action, ref):
+    noun = _RETRY[action][0]
+    expired = retry_message(action, noun + "已过期，系统没有自动重做")
     try:
-        binding = json.loads(resolve_public_token(PREVIEW_SCOPE, token, message="预检结果已过期，还没有保存。请重新点「预览变更」。", field="preview_ref"))
+        binding = json.loads(resolve_public_token(PREVIEW_SCOPE, token, message=expired, field="preview_ref"))
     except (ValidationError, ValueError, TypeError) as exc:
-        raise WorkbenchCommandRejected("stale_write", "预检结果已过期，系统没有自动重做，也没有保存。请重新点「预览变更」。") from exc
+        raise WorkbenchCommandRejected("stale_write", expired) from exc
     if not isinstance(binding, dict) or binding.get("action") != action or binding.get("ref") != ref:
-        raise WorkbenchCommandRejected("stale_write", "预检结果和当前批次操作对不上，还没有保存。请重新点「预览变更」。")
+        raise WorkbenchCommandRejected("stale_write", retry_message(action, noun + "和当前批次操作对不上"))
     return binding

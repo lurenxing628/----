@@ -1,15 +1,19 @@
 """Real SQLite process reads; states, references and unknowns remain distinct."""
 
+import hashlib
+import re
 import sqlite3
+from copy import deepcopy
+from datetime import date, datetime
 from time import perf_counter
 
 import pytest
 
 from core.infrastructure.transaction import TransactionManager
-from core.models.workbench_command import WorkbenchCommandRejected
+from core.models.workbench_command import WorkbenchCommandRejected, canonical_json, input_fingerprint
 from core.models.workbench_process_query import ProcessPageRequest
 from core.services.process.workflow_state import record_confirmation
-from core.services.workbench.process.queries import WorkbenchProcessQueryService
+from core.services.workbench.process.queries import WorkbenchProcessQueryService, _plain, plain_fingerprint
 from tests.workbench.process_query_support import process_read_database, ref_for, stored
 
 
@@ -177,9 +181,35 @@ def test_read_snapshot_is_consistent_while_another_connection_changes_template(p
         first.execute("PRAGMA journal_mode=WAL")
         reader = WorkbenchProcessQueryService(first)
         with reader.read_snapshot() as before:
+            # Same one-pass digest as the batch facts, never a _plain copy of the whole process ledger.
+            assert re.fullmatch(r"[0-9a-f]{64}", before) and before == plain_fingerprint(reader.facts())
             second.execute("UPDATE PartOperations SET unit_hours=9 WHERE part_no='PROC-001' AND seq=10"); second.commit()
             assert reader.detail(ref_for(first))["operations"][0]["unit_hours"] == .125
         with reader.read_snapshot() as after:
             assert before != after and reader.detail(ref_for(first))["operations"][0]["unit_hours"] == 9
     finally:
         first.close(); second.close()
+
+
+def test_plain_fingerprint_hashes_the_plain_text_once_and_tracks_every_change():
+    base = {"rows": [{"due": date(2026, 10, 4), "at": datetime(2026, 10, 4, 8, 0, 1, 2), "blob": b"\x00\xff",
+                      "qty": 1.5, "count": 3, "ok": True, "none": None, "name": "工序"}], "refs": {7: "key", 8: None}}
+    first = plain_fingerprint(base)
+    assert re.fullmatch(r"[0-9a-f]{64}", first) and plain_fingerprint(deepcopy(base)) == first
+    # The one pass writes exactly the text the old _plain copy serialized to, and digests that text
+    # itself rather than a second JSON quoting of it.
+    assert first == hashlib.sha256(canonical_json(_plain(base)).encode("utf-8")).hexdigest()
+    assert first != input_fingerprint(canonical_json(_plain(base)))
+    changes = [("due", date(2026, 10, 5)), ("due", datetime(2026, 10, 4)), ("at", datetime(2026, 10, 4, 8, 0, 1, 3)),
+               ("blob", b"\x00\xfe"), ("blob", "00ff"), ("qty", 1.25), ("qty", 2), ("count", 3.0), ("ok", 1),
+               ("none", ""), ("name", "工序 ")]
+    digests = set()
+    for key, value in changes:
+        changed = deepcopy(base)
+        changed["rows"][0][key] = value
+        digests.add(plain_fingerprint(changed))
+    assert first not in digests and len(digests) == len(changes)
+    special = [float("inf"), float("-inf"), float("nan"), "Infinity", "NaN", None]
+    assert len({plain_fingerprint({"v": value}) for value in special}) == len(special)
+    with pytest.raises(TypeError):
+        plain_fingerprint({"v": {1, 2}})

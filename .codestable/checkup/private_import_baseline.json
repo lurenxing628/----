@@ -359,16 +359,6 @@
       "count": 1
     },
     {
-      "path": "core/services/workbench/batch/execution.py",
-      "kind": "private_symbol",
-      "count": 1
-    },
-    {
-      "path": "core/services/workbench/batch/facts.py",
-      "kind": "private_symbol",
-      "count": 1
-    },
-    {
       "path": "core/services/workbench/calibration/export.py",
       "kind": "private_symbol",
       "count": 2

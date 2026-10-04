@@ -57,12 +57,20 @@ class WorkbenchBatchQueryService(BatchFacts):
                 "create_context": None}
 
     def detail(self, ref):
-        row = self.batch(ref)
-        projection = BatchProjection(self.load())
-        entity = projection.entity(row)
-        entity["materials"] = projection.materials(row)
-        entity["template"] = template_status(self.load(), row)
-        return entity
+        return self.details([ref])[0]
+
+    def details(self, refs):
+        """Project the whole ledger once for every requested batch, e.g. a file export."""
+        rows = [self.batch(ref) for ref in refs]
+        facts = self.load()
+        projection = BatchProjection(facts)
+        entities = []
+        for row in rows:
+            entity = projection.entity(row)
+            entity["materials"] = projection.materials(row)
+            entity["template"] = template_status(facts, row)
+            entities.append(entity)
+        return entities
 
     def choices(self, batch_ref=None, operation_ref=None):
         projection = BatchProjection(self.load())

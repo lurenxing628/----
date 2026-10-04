@@ -34,6 +34,7 @@ from core.services.common.excel_instruction_sheet import (
 from .file_codec import file_error
 from .file_lists import encode_code_list
 from .process_file_xml import preserve_carriage_returns
+from .table_cells import number_text
 
 XLSX_MAX_ROWS = 1048576
 XLSX_MAX_CELL_CHARACTERS = 32767
@@ -70,6 +71,12 @@ def _value(value, field, row, fmt, kind=None):
     return _escaped_text(value, field, row, fmt)
 
 
+def _cell_text(value):
+    """数字写成和页面一样的最短十进制文本：openpyxl 的数字格只留 16 位有效数字，
+    3.3000000000000003 回导会变成 3.3，被当成改动；CSV 也不再写成 7.0、1e-07。"""
+    return number_text(value) if type(value) in (int, float) else value
+
+
 def _escaped_text(value, field, row, fmt):
     """Keep literal backslashes reversible and validate the selected file format."""
     if value.startswith("\\"):
@@ -99,7 +106,8 @@ def _csv(kind, rows, filename):
         writer.writerow([item["label"] for item in public_columns(kind)])
         for count, row in enumerate(rows, 1):
             values = [_value(row[field], field, count + 1, "csv", kind) for field in file_columns(kind)]
-            writer.writerow(["'" + value if type(value) is str else value for value in values])
+            # 文字前加撇号防公式和自动转换；数字不加，回导照样认。
+            writer.writerow(["'" + value if type(value) is str else _cell_text(value) for value in values])
         text.flush()
         buffer.seek(0)
         return ResourceFileDownload(filename + ".csv", "text/csv; charset=utf-8", buffer.read(), count)
@@ -129,7 +137,7 @@ def _xlsx(kind, rows, filename, template, descriptor):
             check_capacity(count, "xlsx")
             cells = []
             for field in file_columns(kind):
-                value = _value(row[field], field, count + 1, "xlsx", kind)
+                value = _cell_text(_value(row[field], field, count + 1, "xlsx", kind))
                 cell = WriteOnlyCell(ws, value=value)
                 if type(value) is str:
                     cell.data_type, cell.number_format = "s", "@"

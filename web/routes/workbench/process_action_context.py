@@ -10,6 +10,7 @@ from .process_json import read_process_json
 from .resource_action_context import resolve_context, retain_context
 from .write_context import issue_write_context, validate_write_context
 
+# 工艺文件导入和零件批量删除出了预检结果后，弹窗里的预检按钮都改叫「重新预检」；这里的提示都在那之后出现。
 PREVIEW_SCOPE = "workbench-process-action-preview-v1"
 EXPORT_SCOPE = "workbench-process-file-export-v1"
 
@@ -21,7 +22,7 @@ def action_preview(preview, command, *, kind=None, content=None, extra=None):
     rejected = bool(body["summary"]["rejected"])
     if rejected:
         context["capabilities"][command] = False
-        context["blocked_reasons"] = [{"action": command, "code": "constraint_conflict", "message": "预检里有不能保存的行，工艺资料没有改动。请修好标红的行后重新点「开始预检」。"}]
+        context["blocked_reasons"] = [{"action": command, "code": "constraint_conflict", "message": "预检里有不能保存的行，工艺资料没有改动。请修好标红的行后点「重新预检」。"}]
     result = {"preview_ref": ref, "expires_at": expiry, "operation": body["operation"], "commit_policy": "atomic",
               "summary": body["summary"], "rows": [public_action_row(row) for row in body["rows"]],
               "can_confirm": not rejected, "write_context": context,
@@ -46,10 +47,10 @@ def confirmed_body(input_keys):
 
 def checked_preview(ref, operation, command, write_token):
     if type(ref) is not str or not ref:
-        raise WorkbenchCommandRejected("invalid_input", "预检结果已过期，工艺资料没有改动。请重新点「开始预检」。", 400)
+        raise WorkbenchCommandRejected("invalid_input", "预检结果已过期，工艺资料没有改动。请点「重新预检」。", 400)
     document, content = resolve_context(PREVIEW_SCOPE, ref, "stale_write")
     preview = ResourceActionPreview(document)
     if preview.as_dict()["operation"] != operation:
-        raise WorkbenchCommandRejected("stale_write", "预检结果和这次工艺操作对不上，工艺资料没有改动。请重新点「开始预检」。")
+        raise WorkbenchCommandRejected("stale_write", "预检结果和这次工艺操作对不上，工艺资料没有改动。请点「重新预检」。")
     validate_write_context(write_token, ref, command, preview.intent())
     return preview, content

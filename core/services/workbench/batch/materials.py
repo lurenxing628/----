@@ -15,9 +15,9 @@ from .facts import BatchFacts
 
 
 class WorkbenchBatchMaterialService:
-    def __init__(self, conn, logger=None):
+    def __init__(self, conn, logger=None, reader=None):
         self.conn = conn
-        self.reader = BatchFacts(conn, logger)
+        self.reader = reader if reader is not None else BatchFacts(conn, logger)
         self.repo = BatchMaterialRepository(conn, logger)
         self.batches = BatchRepository(conn, logger)
         self.stages = BatchMaterialStageRepository(conn, logger)

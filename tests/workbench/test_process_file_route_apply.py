@@ -5,10 +5,14 @@ import sqlite3
 import pytest
 
 from core.errors import AppError
+from core.infrastructure.connection_guards import SchemaContractMemo
 from core.infrastructure.transaction import TransactionManager
+from core.infrastructure.workbench_metadata_schema import metadata_objects
 from core.models.workbench_command import WorkbenchCommandRejected
+from core.services.process import workflow_state
 from core.services.process.part_service import PartService
 from core.services.process.workflow_state import operation_confirmations, read_workflow
+from core.services.workbench.process import part_actions_facts
 from core.services.workbench.process.file_route import ProcessRouteFileOperations
 from core.services.workbench.process.part_actions import WorkbenchProcessPartActionService
 from core.services.workbench.process.queries import WorkbenchProcessQueryService
@@ -258,7 +262,7 @@ def test_confirmation_failure_after_persisting_route_is_still_atomic(route_file_
     rows, extra = review(conn, decoded({"business_code": PART, "route_raw": "10车削30检验"}))
     before = snapshot(conn)
 
-    def broken_confirmation(*args):
+    def broken_confirmation(*args, **kwargs):
         assert "PROC-G" not in groups(conn)
         raise RuntimeError("injected workflow failure")
 
@@ -352,3 +356,34 @@ def test_foreign_key_storage_contract_is_checked_before_any_apply(route_file_con
     with pytest.raises(WorkbenchCommandRejected) as caught:
         apply(conn, rows)
     assert caught.value.code == "storage_failure" and snapshot(conn) == before
+
+
+def test_rows_share_one_storage_check_and_schema_change_is_still_detected(route_file_conn, monkeypatch):
+    # 逐行新建零件、确认路线时表结构整条命令只解析一次；结构一变（含临时表遮挡同名表）就重验并拒绝。
+    conn = route_file_conn
+    rows, _ = review(conn, decoded(*({"business_code": "MANY-" + str(index), "label": "批量", "route_raw": "10车削"} for index in range(5))))
+    calls = {"workflow": 0, "storage": 0}
+
+    def counted(key, check):
+        def run(connection):
+            calls[key] += 1
+            return check(connection)
+        return run
+
+    monkeypatch.setattr(workflow_state, "_schema_issues", counted("workflow", workflow_state._schema_issues))
+    monkeypatch.setattr(part_actions_facts, "_storage_issues", counted("storage", part_actions_facts._storage_issues))
+    results, _ = apply(conn, rows)
+    assert [row["result"] for row in results] == ["committed"] * 5 and calls == {"workflow": 1, "storage": 1}
+    assert read_workflow(conn, "MANY-4")["route"]["state"] == "confirmed"
+    trigger = conn.execute("SELECT name FROM sqlite_master WHERE type='trigger' AND name IN (" +
+                           ",".join("?" for _ in metadata_objects()) + ") LIMIT 1", list(metadata_objects())).fetchone()[0]
+    for damage in ("CREATE TEMP TABLE PartOperations(id INTEGER PRIMARY KEY)", 'DROP TRIGGER "' + trigger + '"'):
+        contracts = SchemaContractMemo(conn)
+        conn.execute("BEGIN")
+        try:
+            assert read_workflow(conn, "MANY-0", contracts=contracts)["route"]["state"] == "confirmed"
+            conn.execute(damage)
+            with pytest.raises(RuntimeError, match="Invalid process workflow storage"):
+                read_workflow(conn, "MANY-0", contracts=contracts)
+        finally:
+            conn.rollback()

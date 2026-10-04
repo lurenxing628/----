@@ -1,7 +1,5 @@
 """Independent batch route registration. Global mounting belongs to the host."""
 
-from contextlib import contextmanager
-
 from flask import current_app, g, jsonify, request
 
 from core.models.workbench_batch import normalize_operation_input, object_fields, public_ref
@@ -18,24 +16,12 @@ from core.services.workbench.commands import WorkbenchCommandService
 from web.api_responses import query_success
 
 from .api_responses import api_endpoint
-from .batch_context import command_body, json_body, load_preview, read_scope, save_preview
-from .read_budget import ReadBudget
+from .batch_context import command_body, json_body, load_preview, read_scope, retry_hint, retry_message, save_preview
+from .read_budget import batch_read_snapshot
 from .read_context import bind_read_snapshot
 from .write_context import issue_write_context, validate_write_context
 
 COLLECTION = "batch:create"
-_BATCH_READ_SLOTS = ReadBudget(1)
-
-
-@contextmanager
-def _read_snapshot(reader, *, detached=True):
-    # Each batch view projects the complete ledger, even for a short page. One
-    # reader avoids per-row SQLite/GIL handoff contention between large scans.
-    # FIFO waiters hold no SQLite transaction and cannot starve behind newcomers.
-    with _BATCH_READ_SLOTS.slot():
-        context = reader.detached_read_snapshot() if detached else reader.read_snapshot()
-        with context as fingerprint:
-            yield fingerprint
 
 
 def entity_context(entity, fingerprint):
@@ -69,7 +55,7 @@ def entity_context(entity, fingerprint):
 
 def _list(scope):
     reader = WorkbenchBatchQueryService(g.db, current_app.logger)
-    with _read_snapshot(reader) as fingerprint:
+    with batch_read_snapshot(reader) as fingerprint:
         snapshot = bind_read_snapshot(snapshot_scope(scope), fingerprint, scope.get("snapshot_ref"))
         data = reader.page(scope)
         data["entities"] = [entity_context(entity, fingerprint) for entity in data["entities"]]
@@ -93,7 +79,7 @@ def batch_selection():
     if not scope.get("snapshot_ref"):
         raise WorkbenchCommandRejected("invalid_input", "数据已更新，还没有全选。请点「刷新」后重新点「全选当前筛选」。", 400)
     reader = WorkbenchBatchQueryService(g.db, current_app.logger)
-    with _read_snapshot(reader) as fingerprint:
+    with batch_read_snapshot(reader) as fingerprint:
         snapshot = bind_read_snapshot(snapshot_scope(scope), fingerprint, scope["snapshot_ref"])
         data = reader.selection(scope)
     return query_success(data, snapshot)
@@ -103,7 +89,7 @@ def batch_selection():
 def batch_detail(ref):
     object_fields(dict(request.args), ("snapshot_ref",))
     reader = WorkbenchBatchQueryService(g.db, current_app.logger)
-    with _read_snapshot(reader) as fingerprint:
+    with batch_read_snapshot(reader) as fingerprint:
         snapshot = bind_read_snapshot({"kind": "batch", "ref": ref}, fingerprint, request.args.get("snapshot_ref"))
         data = entity_context(reader.detail(ref), fingerprint)
     return query_success(data, snapshot)
@@ -117,7 +103,7 @@ def batch_choices():
     reader = WorkbenchBatchQueryService(g.db, current_app.logger)
     # Operation choices read qualifications/capabilities after the batch snapshot.
     # Keep those reads in the same transaction; plain catalog choices can detach.
-    with _read_snapshot(reader, detached=not bool(args)) as fingerprint:
+    with batch_read_snapshot(reader, detached=not bool(args)) as fingerprint:
         data = reader.choices(args.get("batch_ref"), args.get("operation_ref"))
         snapshot = bind_read_snapshot({"kind": "batch_choices", **dict(args)}, fingerprint)
     return query_success(data, snapshot)
@@ -126,13 +112,13 @@ def batch_choices():
 @api_endpoint
 def batch_command(action, ref=None):
     body = command_body()
-    domain = WorkbenchBatchService(g.db, current_app.logger)
+    reader = WorkbenchBatchQueryService(g.db, current_app.logger)
+    domain = WorkbenchBatchService(g.db, current_app.logger, facts=reader)
     if action == "materials_update":
         normalized = normalize_material_changes(body["input"])
     else:
         normalized = normalize_operation_input(body["input"]) if action == "operation_update" else domain.normalize(action, body["input"])
     subject = COLLECTION if action == "create" else public_ref(ref)
-    reader = WorkbenchBatchQueryService(g.db, current_app.logger)
 
     def guard():
         if ref is not None:
@@ -141,13 +127,15 @@ def batch_command(action, ref=None):
 
     def mutate(_checked):
         if action == "materials_update":
-            return WorkbenchBatchMaterialService(g.db, current_app.logger).apply(ref, normalized)
+            return WorkbenchBatchMaterialService(g.db, current_app.logger, reader=reader).apply(ref, normalized)
         if action == "operation_update":
-            return WorkbenchBatchOperationService(g.db, current_app.logger).update(ref, normalized)
+            return WorkbenchBatchOperationService(g.db, current_app.logger, reader=reader).update(ref, normalized)
         return domain.apply(action, normalized, ref)
 
-    return jsonify(WorkbenchCommandService(g.db, current_app.logger).execute(request_key=body["request_key"],
-        action="batch." + action, context_ref=subject, normalized_input=normalized, guard=guard, mutate=mutate))
+    # The guard's whole-ledger load is reused by checks before the command's first write.
+    with reader.command_snapshot():
+        return jsonify(WorkbenchCommandService(g.db, current_app.logger).execute(request_key=body["request_key"],
+            action="batch." + action, context_ref=subject, normalized_input=normalized, guard=guard, mutate=mutate))
 
 
 @api_endpoint
@@ -156,26 +144,28 @@ def batch_preview(action, ref=None):
     required = ("input", "snapshot_ref", "scope") if action == "bulk_confirm" else ("input", "snapshot_ref")
     object_fields(body, required, required)
     if not isinstance(body["snapshot_ref"], str) or not body["snapshot_ref"]:
-        raise WorkbenchCommandRejected("invalid_input", "数据已更新，还没有保存。请刷新页面后重新点「预览变更」。", 400)
+        raise WorkbenchCommandRejected("invalid_input", "数据已更新，还没有保存。请刷新页面后" + retry_hint(action, body["input"]) + "。", 400)
     payload = (normalize_bulk(body["input"]) if action == "bulk_confirm" else
                normalize_split(body["input"]) if action == "split_confirm" else
                WorkbenchBatchOperationService.normalize_sync(body["input"]))
     reader = WorkbenchBatchQueryService(g.db, current_app.logger)
-    with reader.read_snapshot() as fingerprint:
+    # Split and bulk plans only compute over the captured facts. The sync preview still
+    # re-reads the stored process workflow, so it keeps one read transaction.
+    with batch_read_snapshot(reader, detached=action != "sync_confirm") as fingerprint:
         if action in ("sync_confirm", "split_confirm"):
             bind_read_snapshot({"kind": "batch", "ref": ref}, fingerprint, body["snapshot_ref"])
             if action == "split_confirm":
-                data = WorkbenchQuantitySplitService(g.db, current_app.logger).plan(ref, payload)
+                data = WorkbenchQuantitySplitService(g.db, current_app.logger, reader=reader).plan(ref, payload)
                 data["materials"] = [{"business_code": row["material_id"], **{key: value for key, value in row.items()
                                      if key not in ("requirement_id", "operation_id", "material_id")}} for row in data["materials"]]
             else:
-                data = WorkbenchBatchOperationService(g.db, current_app.logger).sync_preview(ref, payload)
+                data = WorkbenchBatchOperationService(g.db, current_app.logger, reader=reader).sync_preview(ref, payload)
         else:
             scope = batch_scope(body["scope"])
             bind_read_snapshot(snapshot_scope(scope), fingerprint, body["snapshot_ref"])
-            data = WorkbenchBatchBulkService(g.db, current_app.logger).plan(payload)
+            data = WorkbenchBatchBulkService(g.db, current_app.logger, reader=reader).plan(payload)
             if not isinstance(body["snapshot_ref"], str) or not body["snapshot_ref"]:
-                raise WorkbenchCommandRejected("invalid_input", "数据已更新，批量修改还没有保存。请刷新页面后重新点「预览变更」。", 400)
+                raise WorkbenchCommandRejected("invalid_input", "数据已更新，还没有保存。请刷新页面后" + retry_hint(action, payload) + "。", 400)
         preview = save_preview(action, ref, payload, fingerprint)
         data.update(preview_ref=preview, write_context=issue_write_context(ref or preview, ["batch." + action],
                     {"fingerprint": fingerprint, "input": payload}), warnings=data.get("warnings", []))
@@ -193,7 +183,7 @@ def batch_facets():
     if body["field"] not in SORTS or not scope.get("snapshot_ref"):
         raise WorkbenchCommandRejected("invalid_input", "要筛选的列不对或数据已更新，筛选没有变化。请点「刷新」后重新打开列筛选。", 400)
     reader = WorkbenchBatchQueryService(g.db, current_app.logger)
-    with _read_snapshot(reader) as fingerprint:
+    with batch_read_snapshot(reader) as fingerprint:
         snapshot = bind_read_snapshot(snapshot_scope(scope), fingerprint, scope["snapshot_ref"])
         filters = {key: values for key, values in scope["column_filters"].items() if key != body["field"]}
         rows = reader.matched({**scope, "column_filters": filters})
@@ -210,25 +200,27 @@ def batch_confirm(action, ref=None):
     normalized = dict(object_fields(body["input"], ("preview_ref",), ("preview_ref",)))
     token = normalized["preview_ref"]
     if not isinstance(token, str) or not token:
-        raise WorkbenchCommandRejected("invalid_input", "预检结果编号缺失，还没有保存。请重新点「预览变更」。", 400)
+        raise WorkbenchCommandRejected("invalid_input", retry_message(action, "预检结果编号缺失"), 400)
+    reader = WorkbenchBatchQueryService(g.db, current_app.logger)
 
     def guard():
         binding = load_preview(token, action, ref)
-        fingerprint = WorkbenchBatchQueryService(g.db, current_app.logger).fingerprint()
+        fingerprint = reader.fingerprint()
         if binding["fingerprint"] != fingerprint:
-            raise WorkbenchCommandRejected("stale_write", "预检之后资料有变化，还没有保存。请重新点「预览变更」。")
+            raise WorkbenchCommandRejected("stale_write", retry_message(action, "预检之后资料有变化", binding["input"]))
         validate_write_context(body["write_token"], ref or token, "batch." + action, {"fingerprint": fingerprint, "input": binding["input"]})
         return binding["input"]
 
     def mutate(payload):
         if action == "split_confirm":
-            return WorkbenchQuantitySplitService(g.db, current_app.logger).apply(ref, payload)
+            return WorkbenchQuantitySplitService(g.db, current_app.logger, reader=reader).apply(ref, payload)
         if action == "bulk_confirm":
-            return WorkbenchBatchBulkService(g.db, current_app.logger).apply(payload)
-        return WorkbenchBatchOperationService(g.db, current_app.logger).sync(ref, payload)
+            return WorkbenchBatchBulkService(g.db, current_app.logger, reader=reader).apply(payload)
+        return WorkbenchBatchOperationService(g.db, current_app.logger, reader=reader).sync(ref, payload)
 
-    return jsonify(WorkbenchCommandService(g.db, current_app.logger).execute(request_key=body["request_key"], action="batch." + action,
-        context_ref=ref or token, normalized_input=normalized, guard=guard, mutate=mutate))
+    with reader.command_snapshot():
+        return jsonify(WorkbenchCommandService(g.db, current_app.logger).execute(request_key=body["request_key"], action="batch." + action,
+            context_ref=ref or token, normalized_input=normalized, guard=guard, mutate=mutate))
 
 
 def register_batch_routes(bp):

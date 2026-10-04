@@ -13,6 +13,7 @@ from tests.workbench.process_file_hours_support import (
     apply,
     decoded,
     hours_database,
+    op_rows,
     part_ref,
     preview,
     reconfirm_source,
@@ -152,6 +153,25 @@ def test_no_stored_confirmation_is_not_inferred_from_existing_hours(hours_conn, 
     hours_conn.commit()
     rows, _ = preview(hours_conn, {"sequence": 1, "unit_hours": 1})
     assert rows[0]["errors"][0]["code"] == "stage_not_ready"
+
+
+@pytest.mark.parametrize("fmt", ("csv", "xlsx"))
+@pytest.mark.parametrize("stage", ("route", "source"))
+def test_stale_confirmation_blocks_only_rows_that_really_change_hours(hours_conn, stage, fmt):
+    assignments = ",".join(stage + suffix + "=NULL" for suffix in ("_signature", "_confirmed_at", "_confirmed_by"))
+    hours_conn.execute("UPDATE WorkbenchProcessWorkflow SET " + assignments + " WHERE part_ref=?", (part_ref(hours_conn),))
+    if stage == "source":
+        hours_conn.execute("DELETE FROM WorkbenchProcessOperationConfirmations WHERE stage='source' AND part_ref=?", (part_ref(hours_conn),))
+    hours_conn.commit()
+    current = op_rows(hours_conn)[1]
+    before = snapshot(hours_conn)
+    # 原样导回的行（全部零件一起导出时常见）判不变，和定额锁定的行一样不让整份文件卡住。
+    rows, _ = preview(hours_conn, {"sequence": 1, "setup_hours": current["setup_hours"], "unit_hours": current["unit_hours"]}, fmt=fmt)
+    assert rows[0]["result"] == "unchanged" and rows[0]["errors"] == []
+    assert [item["result"] for item in apply(hours_conn, rows, ack=True)[0]] == ["unchanged"]
+    assert snapshot(hours_conn) == before
+    rows, _ = preview(hours_conn, {"sequence": 1, "unit_hours": current["unit_hours"] + 1}, fmt=fmt)
+    assert rows[0]["result"] == "rejected" and rows[0]["errors"][0]["code"] == "stage_not_ready"
 
 
 @pytest.mark.parametrize("fmt", ("csv", "xlsx"))

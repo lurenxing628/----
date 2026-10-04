@@ -55,6 +55,28 @@ def test_bulk_modify_copy_delete_actual_records_atomic(batch_client):
     assert_error(client.get(BASE + "/" + created), "entity_not_found")
 
 
+def test_stale_previews_name_the_button_that_redoes_them(batch_client):
+    """预检过期或资料有变化时，提示点名页面上真正用来重做这一步的按钮，不再一律写「预览变更」。"""
+    client = batch_client
+    for action, button in (("update", "「预览变更」"), ("copy", "「复制所选」"), ("delete", "「删除所选」，或列表里该批次的「删除」、批次详情的「删除批次」")):
+        p = preview(client, action, patch={"remark": "x"} if action == "update" else None)
+        client.batch_conn.execute("UPDATE Parts SET remark=?", ("drift-" + action,))
+        client.batch_conn.commit()
+        message = assert_error(confirm(client, p, key="batch-drift-" + action + "-00001"), "stale_write")["error"]["message"]
+        assert message == "预检之后资料有变化，还没有保存。请重新点" + button + "。", message
+    ref = ref_for(client)
+    for path, expected in (("/" + ref + "/split-confirm", "还没有保存。请重新点「预检可开工数量」。"),
+                           ("/" + ref + "/sync-confirm", "还没有保存。请重新点「预检工序更新」。"),
+                           ("/bulk-confirm", "还没有保存。请按原来的操作重新点「预览变更」「复制所选」「删除所选」，或列表里该批次的「删除」、批次详情的「删除批次」。"),
+                           ("/import-confirm", "文件还没有导入。请点「更换文件」后重新点「开始预检」。")):
+        response = client.post(BASE + path, json={"request_key": "batch-expired" + path.replace("/", "-")[-24:],
+                                                  "write_token": "expired-write-token", "input": {"preview_ref": "expired-preview-ref"}})
+        message = assert_error(response, "stale_write")["error"]["message"]
+        assert message == "预检结果已过期，系统没有自动重做，" + expected, message
+    message = assert_error(client.get(BASE + "/export", query_string={"export_ref": "expired-export-ref"}), "stale_write")["error"]["message"]
+    assert message == "导出范围已过期，系统没有自动重做，没有开始下载。请重新点「下载批次清单」。", message
+
+
 def test_preview_drift_and_injected_second_write_rollback(batch_client, monkeypatch):
     from core.services.batch.service import BatchService
 

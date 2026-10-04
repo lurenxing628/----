@@ -11,6 +11,7 @@ Affected part refs include unchanged rows for the coordinator's read refresh.
 from contextlib import ExitStack
 
 from core.errors import ValidationError
+from core.infrastructure.connection_guards import SchemaContractMemo
 from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_resource_action import resource_refs
@@ -29,6 +30,8 @@ class ProcessRouteFileOperations:
         self.conn, self.logger = conn, logger
         self.tx = TransactionManager(conn)
         self.identities = WorkbenchIdentityRepository(conn, logger)
+        # 逐行新建零件、确认路线都要校验表结构；整条命令共用一份，按 schema 版本只解析一次。
+        self.contracts = SchemaContractMemo(conn)
 
     def preview_rows(self, decoded_rows, facts, target_ref=None):
         if not self.conn.in_transaction:
@@ -45,7 +48,7 @@ class ProcessRouteFileOperations:
             raise RuntimeError("路线文件保存必须在外层BEGIN IMMEDIATE事务中执行。")
         with self.tx.transaction():
             self._validate_batch(rows, discard_group_refs, confirm_zero_unit_hours)
-            check_part_action_storage(self.conn)
+            check_part_action_storage(self.conn, self.contracts)
             results, affected_refs = [], set()
             for row in rows:
                 result = self._apply_row(row)
@@ -71,7 +74,7 @@ class ProcessRouteFileOperations:
 
     def _apply_row(self, row):
         if row["action"] == "create":
-            outcome = WorkbenchProcessPartActionService(self.conn, self.logger).create(row["input"])
+            outcome = WorkbenchProcessPartActionService(self.conn, self.logger, self.contracts).create(row["input"])
             ref = outcome.data["entity_ref"]
             part = {"part_no": row["business_code"], "route_raw": row["after"]["route_raw"], "route_parsed": "no"}
             operations = []
@@ -88,7 +91,7 @@ class ProcessRouteFileOperations:
         if route is not None:
             discard_groups(self.conn, row["business_code"], row["related"]["affected_groups"])
             apply_route(self.conn, part, operations, route, self.identities)
-            record_confirmation(self.conn, row["business_code"], "route")
+            record_confirmation(self.conn, row["business_code"], "route", contracts=self.contracts)
         return {"row": row["row"], "result": "unchanged" if row["result"] == "unchanged" else "committed",
                 "entity_ref": ref, "business_code": row["business_code"]}
 

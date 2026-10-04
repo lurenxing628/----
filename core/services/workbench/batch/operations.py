@@ -19,17 +19,20 @@ def operation_code(batch_id, sequence, piece):
     return batch_id + "_" + str(sequence).zfill(2) + ("_" + piece if piece is not None else "")
 
 
-def insert_operation(conn, batch_id, row, *, template=False):
-    """Avoid BatchOperation.from_row, whose legacy null-hours coercion is lossy."""
-    writer = TemplateLineageWriter(conn)
+def insert_operation(conn, batch_id, row, *, template=False, writer=None):
+    """Avoid BatchOperation.from_row, whose legacy null-hours coercion is lossy.
+
+    一条命令复制多道工序时传同一个 writer，表结构只校验一次（改过表结构会重验）。
+    """
+    writer = writer if writer is not None else TemplateLineageWriter(conn)
     return writer.copy_template(batch_id, row["id"]) if template else writer.copy_instance(batch_id, row["id"])
 
 
 class WorkbenchBatchOperationService:
-    def __init__(self, conn, logger=None):
+    def __init__(self, conn, logger=None, reader=None):
         self.conn = conn
         self.logger = logger
-        self.reader = BatchFacts(conn, logger)
+        self.reader = reader if reader is not None else BatchFacts(conn, logger)
 
     @staticmethod
     def normalize_sync(payload):
@@ -65,12 +68,13 @@ class WorkbenchBatchOperationService:
         if not self.conn.in_transaction:
             raise RuntimeError("工序同步必须由工作台命令事务持有。")
         preview = self.sync_preview(ref, payload)
-        TemplateLineageWriter(self.conn).require_ready()
+        writer = TemplateLineageWriter(self.conn)
+        writer.require_ready()
         batch = self.reader.batch(ref)
         rows = [row for row in self.reader.load()["PartOperations"] if row["part_no"] == batch["part_no"] and row["status"] == "active"]
         BatchOperationRepository(self.conn).delete_by_batch(batch["batch_id"])
         for row in rows:
-            insert_operation(self.conn, batch["batch_id"], row, template=True)
+            insert_operation(self.conn, batch["batch_id"], row, template=True, writer=writer)
         return WorkbenchCommandOutcome("committed", {"entity_ref": ref, "business_code": batch["batch_id"], "operation_count": len(rows)}, preview["warnings"])
 
     def update(self, ref, payload):

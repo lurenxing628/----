@@ -27,6 +27,21 @@ class WorkbenchCommandService:
         row = self.repo.get(validate_request_key(request_key))
         return self.repo.public_result(row, replayed=True) if row else None
 
+    def replay(self, *, request_key: str, action: str, context_ref: str, normalized_input: Any) -> Optional[Dict[str, Any]]:
+        """Read-only: the committed result of this same intent, or None when none is observed.
+
+        Callers that refuse new work before ``execute`` (for example while a
+        scheduling run holds the scheduler lock) check this first, so a retry of
+        an already committed request still replays instead of being refused.
+        """
+        fingerprint = self._admit(request_key, action, context_ref, normalized_input)
+        try:
+            return self._replay(request_key, action, context_ref, fingerprint)
+        except (WorkbenchCommandRejected, BusinessError, ValidationError):
+            raise
+        except Exception as exc:
+            raise WorkbenchCommandUncertain(request_key) from exc
+
     def execute(self, *, request_key: str, action: str, context_ref: str, normalized_input: Any,
                 guard: Callable[[], Any], mutate: Callable[[Any], WorkbenchCommandOutcome]) -> Dict[str, Any]:
         """Own the outer transaction; replay before checking a now-expired edit token.
@@ -37,6 +52,27 @@ class WorkbenchCommandService:
         A missing lookup means no committed receipt was observed, not that an in-flight
         request cannot still complete. A retry must retain its original request key.
         """
+        fingerprint = self._admit(request_key, action, context_ref, normalized_input)
+        try:
+            # Receipts are immutable and committed atomically with their mutation.
+            # A completed SELECT is enough to replay one: taking a write lock here
+            # needlessly competes with the worker and long-lived DELETE readers.
+            result = self._replay(request_key, action, context_ref, fingerprint)
+            if result is not None:
+                return result
+            with self.tx.transaction(begin_immediate=True):
+                # Another connection may have admitted this intent after the
+                # read-only lookup. Keep the second lookup under the write lock.
+                result = self._replay(request_key, action, context_ref, fingerprint)
+                if result is None:
+                    result = self._apply(request_key, action, context_ref, fingerprint, guard, mutate)
+            return result
+        except (WorkbenchCommandRejected, BusinessError, ValidationError):
+            raise
+        except Exception as exc:
+            raise WorkbenchCommandUncertain(request_key) from exc
+
+    def _admit(self, request_key: str, action: str, context_ref: str, normalized_input: Any) -> str:
         validate_request_key(request_key)
         if not isinstance(action, str) or not action or not isinstance(context_ref, str) or not context_ref:
             raise WorkbenchCommandRejected("invalid_input", "没有指定要操作哪条记录或做什么操作。", 400)
@@ -46,28 +82,14 @@ class WorkbenchCommandService:
             raise WorkbenchCommandRejected("invalid_input", "提交的内容里有存不下来的数据，操作没有完成。", 400) from exc
         if self.conn.in_transaction:
             raise RuntimeError("工作台命令必须拥有最外层事务，不能在调用方未提交的事务中声称已保存。")
-        try:
-            # Receipts are immutable and committed atomically with their mutation.
-            # A completed SELECT is enough to replay one: taking a write lock here
-            # needlessly competes with the worker and long-lived DELETE readers.
-            row = self.repo.get(request_key)
-            if row:
-                self._check_replay(row, action, context_ref, fingerprint)
-                return self.repo.public_result(row, replayed=True)
-            with self.tx.transaction(begin_immediate=True):
-                # Another connection may have admitted this intent after the
-                # read-only lookup. Keep the second lookup under the write lock.
-                row = self.repo.get(request_key)
-                if row:
-                    self._check_replay(row, action, context_ref, fingerprint)
-                    result = self.repo.public_result(row, replayed=True)
-                else:
-                    result = self._apply(request_key, action, context_ref, fingerprint, guard, mutate)
-            return result
-        except (WorkbenchCommandRejected, BusinessError, ValidationError):
-            raise
-        except Exception as exc:
-            raise WorkbenchCommandUncertain(request_key) from exc
+        return fingerprint
+
+    def _replay(self, request_key: str, action: str, context_ref: str, fingerprint: str) -> Optional[Dict[str, Any]]:
+        row = self.repo.get(request_key)
+        if not row:
+            return None
+        self._check_replay(row, action, context_ref, fingerprint)
+        return self.repo.public_result(row, replayed=True)
 
     @staticmethod
     def _check_replay(row, action: str, context_ref: str, fingerprint: str) -> None:
