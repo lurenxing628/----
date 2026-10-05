@@ -61,15 +61,6 @@ def _is_port_open(host: str, port: int) -> bool:
         return False
 
 
-def _http_get(url: str, timeout: float = 2.5) -> int:
-    req = urllib.request.Request(url, method="GET")
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            return int(getattr(resp, "status", 200))
-    except urllib.error.HTTPError as e:
-        return int(getattr(e, "code", 500))
-
-
 def _http_get_text(url: str, timeout: float = 2.5) -> str:
     req = urllib.request.Request(url, method="GET")
     with urllib.request.urlopen(req, timeout=timeout) as resp:

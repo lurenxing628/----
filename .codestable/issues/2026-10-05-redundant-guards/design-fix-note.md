@@ -126,6 +126,12 @@ verification: targeted-review-and-daily-stage-complement-passed
 
 本轮独立storage定点76 passed，与上述试调验证有交集，不将它们相加为独立覆盖。产品正式Pyright（Windows）0 errors/0 warnings，全仓Ruff和diff-check通过。完整full-test-debt/final clean gate及实际Inno/Win7原机验收未执行。
 
+### 提交 hook 的实际结果与补充清理
+
+八批提交完成，743个审阅路径已入库。首次pre-push收集17,311项；parallel 11,920 passed/1 failed/1 skipped，600.69秒，唯一失败为资源transport探针所用缓存Node24.19.0进程SIGSEGV，没有契约断言失败；门禁返回1，远端未更新。原用例在相同Node下独立补验1 passed，本机已有Node24.15.0也实际完成641项mock-only检查，没有修改断言或添加重试兜底。继续使用本机已有Node执行正常pre-push，而不把原失败改写为通过。首次浏览器抽样1 passed/2 skipped，不将两项opt-in跳过写成浏览器通过。
+
+quick死代码扫描提示的回调、继承构造、Windows override、cached property、领域snapshot与owner协议均有真实使用；分页目录的禁止全量查询override承担既有边界。另确认 `validate_dist_exe._http_get` 在当前与清理前HEAD均无引用，symbol_locator也无调用者，属于旧无用代码，已删除；真实page/text/bytes读取入口保留。实际运行时身份及transport相关5 passed，Ruff/diff-check通过。这项以单独补充提交留档，不在门禁运行期间修改被测源码，不刷新扫描基线。
+
 ## 交付范围
 
 现行 workbench-shell、service-scheduler 架构和系统速查表已同步共同配置、正文权威、owner/自动维护、前端发布和旧 API 兼容边界；探索报告仍保存修前证据，并链接本实施记录。
